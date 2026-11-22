@@ -32,6 +32,7 @@ check:
     pnpm lint
     pnpm format:check
     pnpm typecheck
+    just bridge --fixture
     pnpm test
     @echo "check: schema/codegen snapshot diff arrives in WP-1N"
 
@@ -67,6 +68,10 @@ golden *args:
 bench *args:
     cargo xtask bench --suite smoke --out bench/results.json {{args}}
     cargo xtask bench-check bench/results.json
+
+# Build the cutweave-bridge napi addon into apps/desktop/native/ (`just bridge --release`; `--fixture` adds the Rust test writer)
+bridge *args:
+    node apps/desktop/scripts/build-bridge.ts {{args}}
 
 # Playwright + Electron flows
 e2e:

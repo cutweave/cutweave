@@ -5,6 +5,12 @@
 import type { CutweaveApi, EngineStatus, MenuCommand } from "../shared/api.ts";
 import { type InvokeChannel, type InvokeChannels, isMenuCommand } from "../shared/ipc-contract.ts";
 import type { BridgeAddon } from "./bridge-addon.ts";
+import {
+  browserLoopClock,
+  currentFramePresenter,
+  type LoopClock,
+  PresentLoop,
+} from "./present-loop.ts";
 
 /** Slice of `ipcRenderer` the preload uses. */
 export interface IpcRendererLike {
@@ -15,7 +21,12 @@ export interface IpcRendererLike {
 
 export const ERR_BRIDGE_UNAVAILABLE = "ERR_BRIDGE_UNAVAILABLE";
 
-export function createCutweaveApi(ipc: IpcRendererLike, addon: BridgeAddon | null): CutweaveApi {
+export function createCutweaveApi(
+  ipc: IpcRendererLike,
+  addon: BridgeAddon | null,
+  /** Present-loop timing: the preload passes the browser's, tests a fake. */
+  loopClock: () => LoopClock = browserLoopClock,
+): CutweaveApi {
   // Each call names its channel; the preload never forwards a caller-chosen channel.
   const invoke = <K extends InvokeChannel>(
     channel: K,
@@ -43,6 +54,13 @@ export function createCutweaveApi(ipc: IpcRendererLike, addon: BridgeAddon | nul
     return addon;
   };
 
+  // The present loop runs here, in the preload's isolated world (Spike S1 finding 2); only its
+  // small stats cross the context bridge.
+  let presenting: PresentLoop | null = null;
+  const stopPresenting = (): void => {
+    presenting?.stop();
+  };
+
   return {
     app: { getInfo: () => invoke("app:getInfo") },
     engine: {
@@ -54,10 +72,29 @@ export function createCutweaveApi(ipc: IpcRendererLike, addon: BridgeAddon | nul
     },
     preview: {
       isAvailable: () => addon !== null,
-      open: (ringName) => requireAddon().open(ringName),
+      open: (ringName, epoch) => {
+        const bridge = requireAddon();
+        stopPresenting();
+        presenting = null;
+        return bridge.open(ringName, epoch);
+      },
       getLatestFrame: (maxPtsFlicks) => requireAddon().getLatestFrame(maxPtsFlicks),
+      waitForFrame: (timeoutMs) => requireAddon().waitForFrame(timeoutMs),
       getClock: () => requireAddon().getClock(),
-      close: () => requireAddon().close(),
+      getStatus: () => requireAddon().getStatus(),
+      startPresenting: (options) => {
+        const bridge = requireAddon();
+        stopPresenting();
+        presenting = new PresentLoop(bridge, currentFramePresenter(), loopClock(), options);
+        presenting.start();
+      },
+      stopPresenting,
+      getPresentStats: () => presenting?.stats() ?? null,
+      close: () => {
+        stopPresenting();
+        presenting = null;
+        requireAddon().close();
+      },
     },
     menu: {
       onCommand: subscribe<MenuCommand>("menu:command", (v) => (isMenuCommand(v) ? v : undefined)),

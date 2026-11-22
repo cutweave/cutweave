@@ -340,8 +340,13 @@ test.describe("IPC", () => {
       "cutweave.preview.close",
       "cutweave.preview.getClock",
       "cutweave.preview.getLatestFrame",
+      "cutweave.preview.getPresentStats",
+      "cutweave.preview.getStatus",
       "cutweave.preview.isAvailable",
       "cutweave.preview.open",
+      "cutweave.preview.startPresenting",
+      "cutweave.preview.stopPresenting",
+      "cutweave.preview.waitForFrame",
       "cutweave.shell.openExternal",
       "cutweave.shell.showItemInFolder",
     ]);

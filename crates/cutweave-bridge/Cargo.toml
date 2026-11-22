@@ -9,7 +9,38 @@ rust-version.workspace = true
 publish = false
 
 [lib]
+# cdylib: the `.node` addon. rlib: Rust unit and integration tests.
 crate-type = ["cdylib", "rlib"]
+
+[dependencies]
+# `RING_LAYOUT_V1` constants, `RingName` and the host clock: the contract the reader must match.
+# The reader itself (read-only mapping, seqlock copies, successor following) lives in this crate.
+cutweave-playback = { path = "../cutweave-playback" }
+thiserror.workspace = true
+# napi-rs v3 (WP-1H.03, arch §10): Node-API 8 bindings, pinned to the versions Spike S1 measured (MIT).
+# `dyn-symbols` resolves napi_* at load time, so `cargo test` links without a Node binary.
+# No tokio runtime, no serde. Not yet `[workspace.dependencies]` entries (root manifest is outside this WP).
+napi = { version = "3.16.2", default-features = false, features = ["napi8", "dyn-symbols"] }
+napi-derive = "3.7.1"
+
+# Read-only file-mapping open (`OpenFileMappingW(FILE_MAP_READ)` + `MapViewOfFile`).
+# Same version as cutweave-playback.
+[target.'cfg(windows)'.dependencies]
+windows-sys = { version = "0.61.2", features = [
+  "Win32_Foundation",
+  "Win32_System_Memory",
+] }
+
+# `shm_open(O_RDONLY)` + `mmap(PROT_READ)` and the owner/mode check. Same version as cutweave-playback.
+[target.'cfg(unix)'.dependencies]
+libc = "0.2.191"
+
+[build-dependencies]
+napi-build = "2.6.0"
+
+[dev-dependencies]
+# Test publisher: the reader tests run against the real engine-side `FramePublisher`.
+cutweave-model = { path = "../cutweave-model" }
 
 [lints]
 workspace = true

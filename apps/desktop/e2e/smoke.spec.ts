@@ -37,14 +37,17 @@ test("the fake engine becomes ready and the bridge reports a connection", async 
   expect(connection?.token).toMatch(/^[0-9a-f]{64}$/);
 });
 
-test("the preview bridge is a typed stub until the addon lands", async ({ page }) => {
+test("the preview bridge addon is loaded and rejects a ring that does not exist", async ({
+  page,
+}) => {
+  expect(await page.evaluate(() => window.cutweave.preview.isAvailable())).toBe(true);
   const result = await page.evaluate(() => {
     try {
-      window.cutweave.preview.open("ring");
+      window.cutweave.preview.open("cwp-00000001-0000000000000001", "1");
       return "opened";
     } catch (err) {
       return String(err);
     }
   });
-  expect(result).toContain("ERR_BRIDGE_UNAVAILABLE");
+  expect(result).toContain("ERR_RING_NOT_FOUND");
 });
