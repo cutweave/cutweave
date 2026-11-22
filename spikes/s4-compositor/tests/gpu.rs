@@ -15,7 +15,7 @@ use s4::image::read_png;
 use s4::metrics::compare;
 use s4::scene::Transfer;
 use s4::source::SyntheticSources;
-use s4::timeline::{demo_scene, test_scenes, text_scene};
+use s4::timeline::{demo_scene, test_scenes};
 
 /// Golden set used when an adapter has none of its own (the CI software adapter on Windows).
 const FALLBACK_GOLDEN_SET: &str = "dx12-microsoft-basic-render-driver";
@@ -209,16 +209,6 @@ fn device_lost_is_reported_and_recovered() {
         before, after,
         "recovered device renders the same frame bit-identically"
     );
-}
-
-#[test]
-fn text_layers_are_reported_unsupported_until_wp_0f02() {
-    let Some(mut r) = test_renderer() else { return };
-    let provider = SyntheticSources::new(320, 180).expect("sources");
-    assert!(matches!(
-        r.render_scene(&text_scene(320, 180), &provider),
-        Err(Error::Unsupported(_))
-    ));
 }
 
 #[test]
