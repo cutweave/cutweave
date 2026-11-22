@@ -8,6 +8,8 @@
 // - Main editor window: non-sandboxed preload (needed to load the napi addon), contextIsolation
 //   on, nodeIntegration off. Every other window is sandboxed and gets no preload.
 // - `--selftest=<seconds>` runs the WP-0C.01 acceptance checks and writes results/*.json.
+// - `--transport=utility` switches to transport (b) (WP-0C.06, transport-b/main-b.ts);
+//   `--bench=<seconds>` runs the A/B benchmark (bench.ts) for either transport.
 
 import { execFileSync, spawn } from "node:child_process";
 import { randomBytes } from "node:crypto";
@@ -25,7 +27,9 @@ import {
   session,
 } from "electron";
 import type * as Addon from "../../bridge/index.d.ts";
+import { runBench } from "./bench.ts";
 import type { EngineEvent, EngineInfo, Handshake } from "./shared/types.ts";
+import { CROSS_ORIGIN_ISOLATION, startTransportB } from "./transport-b/main-b.ts";
 
 const SPIKE_ROOT = path.resolve(__dirname, "..", "..");
 const RENDERER_ROOT = path.join(__dirname, "renderer");
@@ -55,6 +59,12 @@ const opts = {
   present: flag("present") === "2d" ? "2d" : "gpu",
   verify: flag("verify") === "0" ? "0" : "1",
   chromiumDgpu: flag("chromium-dgpu") !== undefined,
+  // WP-0C.06: transport (a) = addon in the non-sandboxed preload (default); (b) = addon in a
+  // utilityProcess, frames over a MessagePort to a sandboxed renderer (transport-b/).
+  // `texture` = sharedTexture GPU-handoff feasibility probe (transport-b/texture-main.ts).
+  transport: (["utility", "texture"] as const).find((t) => t === flag("transport")) ?? "preload",
+  benchSeconds: flag("bench") === undefined ? null : Number(flag("bench") || 60),
+  warmupSeconds: Number(flag("warmup") ?? 5),
 };
 const rendererQuery = new URLSearchParams({
   draw: opts.draw,
@@ -124,6 +134,7 @@ function serveApp(req: Request): Response {
       "content-type": MIME[path.extname(file)] ?? "application/octet-stream",
       "content-security-policy": csp(),
       "x-content-type-options": "nosniff",
+      ...(opts.transport === "utility" ? CROSS_ORIGIN_ISOLATION : {}),
     },
   });
 }
@@ -542,9 +553,48 @@ app.whenReady().then(async () => {
     app.exit(2);
     return;
   }
+  if (opts.transport !== "preload") {
+    // WP-0C.06 transport (b) (or the sharedTexture probe): own windows, self-test and bench.
+    await startTransportB({
+      engine,
+      launch,
+      origin: ORIGIN,
+      spikeRoot: SPIKE_ROOT,
+      query: rendererQuery,
+      selftestSeconds: opts.selftestSeconds,
+      benchSeconds: opts.benchSeconds,
+      warmupSeconds: opts.warmupSeconds,
+      options: opts,
+    });
+    return;
+  }
   await launch(false);
   mainWindow = createMainWindow();
-  if (opts.selftestSeconds !== null) {
+  if (opts.benchSeconds !== null) {
+    // WP-0C.06 A/B benchmark, transport (a) side.
+    const win = mainWindow;
+    runBench({
+      win,
+      transport: "preload",
+      seconds: opts.benchSeconds,
+      warmupSeconds: opts.warmupSeconds,
+      engineInfo: () => engine.info,
+      enginePid: () => engine.pid,
+      utilityPid: () => null,
+      options: opts,
+      spikeRoot: SPIKE_ROOT,
+    }).then(
+      (ok) => {
+        engine.stop();
+        app.exit(ok ? 0 : 1);
+      },
+      (e: Error) => {
+        console.error(`[bench] error: ${e.stack ?? e.message}`);
+        engine.stop();
+        app.exit(1);
+      },
+    );
+  } else if (opts.selftestSeconds !== null) {
     runSelftest(opts.selftestSeconds).catch((e: Error) => {
       console.error(`[selftest] error: ${e.stack ?? e.message}`);
       engine.stop();
