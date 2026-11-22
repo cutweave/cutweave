@@ -10,7 +10,9 @@ export default defineConfig({
   testMatch: "*.spec.ts",
   outputDir: "./test-results",
   fullyParallel: true,
-  ...(ci ? { workers: 2 } : {}),
+  // Full-page software-rendered screenshots fail ("Unable to capture screenshot") when a many-core
+  // machine runs one Chromium per core; cap the workers everywhere.
+  workers: ci ? 2 : 4,
   retries: 0,
   timeout: 60_000,
   reporter: ci ? [["list"], ["html", { open: "never" }]] : "list",
