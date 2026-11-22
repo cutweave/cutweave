@@ -10,3 +10,6 @@ testdata/golden/** filter=lfs diff=lfs merge=lfs -text
 *.jpg binary
 *.ico binary
 *.woff2 binary
+
+# UI visual-regression baselines (WP-0K.05): per adapter class, Linux software-rendered Chromium.
+packages/ui/__screenshots__/** filter=lfs diff=lfs merge=lfs -text

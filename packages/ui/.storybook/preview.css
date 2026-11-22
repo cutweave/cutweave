@@ -1,0 +1,19 @@
+/* SPDX-License-Identifier: GPL-3.0-or-later */
+/* Storybook canvas chrome: tokens only (docs/07-design-system.md). Theme comes from data-theme. */
+html,
+body {
+  margin: 0;
+  background: var(--surface-1);
+  color: var(--text-primary);
+}
+
+body {
+  padding: var(--space-4);
+}
+
+/* Deterministic screenshots: no caret blink (tests also pass animations: disabled). */
+*,
+*::before,
+*::after {
+  caret-color: transparent;
+}

@@ -99,6 +99,65 @@ jobs:
       - run: pnpm test
       - run: pnpm build
 
+  # WP-0K.05. Storybook build, no-literals lint, then Playwright against the static build:
+  # per-story screenshots in both themes (SSIM >= 0.995 and PSNR >= 40 dB vs Git LFS baselines in
+  # packages/ui/__screenshots__/), axe on every story, offline-fonts test. Linux only: baselines are
+  # software-rendered Chromium. Intended visual changes: add the `ui-snapshots-update` PR label; the
+  # job then rewrites baselines, uploads them as the `ui-baselines` artifact and fails until they
+  # are committed (see packages/ui/visual/README.md).
+  ui:
+    name: ui (storybook, visual, axe, fonts)
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          lfs: true
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version-file: .nvmrc
+      - run: corepack enable
+      - run: pnpm install --frozen-lockfile
+      - name: No-literals lint (self-test, then repository)
+        run: |
+          python3 scripts/check-no-literals.py --self-test
+          python3 scripts/check-no-literals.py
+      - name: Install Chromium
+        run: pnpm --filter @cutweave/ui exec playwright install --with-deps chromium
+      - run: pnpm storybook:build
+      - name: Playwright (visual, axe, fonts)
+        env:
+          UI_SNAPSHOTS_UPDATE: ${{ contains(github.event.pull_request.labels.*.name, 'ui-snapshots-update') && '1' || '0' }}
+        run: pnpm --filter @cutweave/ui exec playwright test
+      - name: Baselines written by this run must be committed
+        if: success() || failure()
+        run: |
+          if [ -n "$(git status --porcelain -- packages/ui/__screenshots__)" ]; then
+            git status --porcelain -- packages/ui/__screenshots__ | head -n 50
+            if [ "${{ contains(github.event.pull_request.labels.*.name, 'ui-snapshots-update') }}" = "true" ]; then
+              echo "::error::Baselines changed. Download the ui-baselines artifact, commit it under packages/ui/__screenshots__/, push."
+              exit 1
+            fi
+            echo "::warning::No committed baselines (bootstrap run). Download the ui-baselines artifact and commit it under packages/ui/__screenshots__/."
+          fi
+      - name: Upload new or updated baselines
+        if: always()
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: ui-baselines
+          path: packages/ui/__screenshots__/
+          if-no-files-found: ignore
+      - name: Upload actual and diff images, Playwright report
+        if: failure()
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: ui-visual-failures
+          path: |
+            packages/ui/__screenshots-actual__/
+            packages/ui/playwright-report/
+            packages/ui/test-results/
+          if-no-files-found: ignore
+
   deny:
     name: deny
     runs-on: ubuntu-24.04

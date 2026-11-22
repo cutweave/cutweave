@@ -32,3 +32,9 @@ coverage/
 # Agent worktrees
 .claude/worktrees/
 /bench/results.json
+
+# Storybook / Playwright output
+storybook-static/
+test-results/
+playwright-report/
+packages/ui/__screenshots-actual__/

@@ -16,7 +16,7 @@ setup:
 dev:
     @echo "dev: not implemented yet (arrives in WP-1A and the Phase 1 shell work packages)"
 
-# fmt, clippy -D warnings, nextest + doc-tests, wasm32 check, dep rule, license headers, cargo-deny, Biome, Vitest
+# fmt, clippy -D warnings, nextest + doc-tests, wasm32 check, dep rule, license headers, cargo-deny, no-literals lint, Biome, Vitest
 check:
     cargo fmt --all --check
     cargo clippy --workspace --all-targets -- -D warnings
@@ -28,6 +28,7 @@ check:
     cargo deny check
     cargo xtask tokens --check
     just wbs-lint
+    just lint-literals
     pnpm lint
     pnpm format:check
     pnpm typecheck
@@ -38,6 +39,15 @@ check:
 wbs-lint:
     python scripts/wbs-to-issues/wbs_to_issues.py --check
     python -m unittest discover -s scripts/wbs-to-issues
+
+# No literal colors, px font sizes or font stacks in packages/*/src (self-test first)
+lint-literals:
+    python scripts/check-no-literals.py --self-test
+    python scripts/check-no-literals.py
+
+# Storybook build + Playwright visual regression, axe, offline fonts (`just ui-snapshots --update` on Linux rewrites baselines)
+ui-snapshots *args:
+    pnpm --filter @cutweave/ui run test:visual {{args}}
 
 # Regenerate the committed docs/wbs/wbs.json snapshot
 wbs-json:

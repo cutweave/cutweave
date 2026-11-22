@@ -1,3 +1,7 @@
 packages:
   - "apps/*"
   - "packages/*"
+
+# esbuild (via Vite/Storybook) only runs a binary self-check in postinstall; not needed.
+allowBuilds:
+  esbuild: false

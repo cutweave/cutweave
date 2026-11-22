@@ -1,0 +1,8 @@
+/* SPDX-License-Identifier: GPL-3.0-or-later */
+/* Must produce zero findings: tokens only, literals only in comments (#fff, 12px, rgb(0 0 0)). */
+#main-panel { color: var(--text-primary); }
+.a { background: var(--surface-1); border: var(--border-thin) solid var(--border-default); }
+.b { font-family: var(--font-ui); font-size: var(--text-body, inherit); }
+.c { font-family: inherit; padding: 12px; width: 288px; }
+.d { box-shadow: var(--shadow-popover); background: color-mix(in srgb, var(--agent) 20%, transparent); }
+.e { background: url("data:image/svg+xml;utf8,<svg/>"); }

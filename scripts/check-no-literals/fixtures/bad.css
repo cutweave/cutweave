@@ -1,0 +1,11 @@
+/* SPDX-License-Identifier: GPL-3.0-or-later */
+/* Planted violations for the no-literals self-test. Each `expect:` names the rule that must fire. */
+.a { color: #fff; } /* expect: literal-color */
+.b { background: #1b1404; } /* expect: literal-color */
+.c { border-color: rgb(0 0 0 / 50%); } /* expect: literal-color */
+.d { color: hsl(40 80% 50%); } /* expect: literal-color */
+.e { color: oklch(0.8 0.1 80); } /* expect: literal-color */
+.f { font-size: 13px; } /* expect: raw-font-size */
+.g { font: 500 12px/16px sans-serif; } /* expect: raw-font-size */
+.h { font-family: "Inter", sans-serif; } /* expect: font-family-stack */
+.i { font-family: system-ui; } /* expect: font-family-stack */
