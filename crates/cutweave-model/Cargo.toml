@@ -14,6 +14,7 @@ default = []
 testing = ["dep:proptest"]
 
 [dependencies]
+imbl.workspace = true
 schemars.workspace = true
 serde.workspace = true
 # `float_roundtrip`: saved floats (opacity, gain, transforms) must load back bit-identically.
@@ -30,6 +31,7 @@ proptest = { workspace = true, optional = true }
 uuid.workspace = true
 
 [dev-dependencies]
+insta.workspace = true
 proptest.workspace = true
 specta.workspace = true
 specta-serde.workspace = true

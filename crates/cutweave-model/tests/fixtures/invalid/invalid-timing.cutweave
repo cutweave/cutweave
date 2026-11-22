@@ -1,0 +1,187 @@
+{
+  "meta": {
+    "schema_version": 1,
+    "name": "Invalid fixture",
+    "created": null,
+    "app_version": null
+  },
+  "settings": {
+    "default_format": {
+      "width": 1920,
+      "height": 1080,
+      "frame_rate": {
+        "num": 30,
+        "den": 1
+      },
+      "sample_rate": 48000,
+      "color_space": "rec709",
+      "background": "#000000"
+    }
+  },
+  "media": {
+    "med_0000000000017000800000000000a001": {
+      "id": "med_0000000000017000800000000000a001",
+      "kind": "video",
+      "path_abs": "/media/video.mp4",
+      "path_rel": null,
+      "content_hash": null,
+      "sequence": null,
+      "probe": {
+        "streams": [],
+        "duration": 7056000000,
+        "fps": null,
+        "vfr": false,
+        "rotation": 0,
+        "color": {
+          "primaries": null,
+          "transfer": null,
+          "matrix": null,
+          "range": null
+        },
+        "audio": null
+      },
+      "custom": {}
+    },
+    "med_0000000000017000800000000000a002": {
+      "id": "med_0000000000017000800000000000a002",
+      "kind": "audio",
+      "path_abs": "/media/music.wav",
+      "path_rel": null,
+      "content_hash": null,
+      "sequence": null,
+      "probe": {
+        "streams": [],
+        "duration": 7056000000,
+        "fps": null,
+        "vfr": false,
+        "rotation": 0,
+        "color": {
+          "primaries": null,
+          "transfer": null,
+          "matrix": null,
+          "range": null
+        },
+        "audio": null
+      },
+      "custom": {}
+    }
+  },
+  "sequences": {
+    "seq_0000000000017000800000000000b001": {
+      "id": "seq_0000000000017000800000000000b001",
+      "name": "Main",
+      "format": {
+        "width": 1920,
+        "height": 1080,
+        "frame_rate": {
+          "num": 30,
+          "den": 1
+        },
+        "sample_rate": 48000,
+        "color_space": "rec709",
+        "background": "#000000"
+      },
+      "tracks": {
+        "trk_0000000000017000800000000000c001": {
+          "id": "trk_0000000000017000800000000000c001",
+          "kind": "video",
+          "name": "V1",
+          "items": {
+            "itm_0000000000017000800000000000d001": {
+              "kind": "clip",
+              "id": "itm_0000000000017000800000000000d001",
+              "name": null,
+              "start": 0,
+              "duration": 1411200000,
+              "enabled": true,
+              "linked_group": null,
+              "media": "med_0000000000017000800000000000a001",
+              "source_in": 0,
+              "audio": {
+                "gain": 0.0
+              },
+              "visual": {
+                "transform": {
+                  "position": {
+                    "x": 0.0,
+                    "y": 0.0
+                  },
+                  "scale": {
+                    "x": 1.0,
+                    "y": 1.0
+                  },
+                  "rotation": 0.0,
+                  "anchor": {
+                    "x": 0.5,
+                    "y": 0.5
+                  }
+                },
+                "opacity": 1.0
+              },
+              "custom": {}
+            },
+            "itm_0000000000017000800000000000d002": {
+              "kind": "clip",
+              "id": "itm_0000000000017000800000000000d002",
+              "name": null,
+              "start": 1411200000,
+              "duration": 0,
+              "enabled": true,
+              "linked_group": null,
+              "media": "med_0000000000017000800000000000a001",
+              "source_in": 705600000,
+              "audio": {
+                "gain": 0.0
+              },
+              "visual": {
+                "transform": {
+                  "position": {
+                    "x": 0.0,
+                    "y": 0.0
+                  },
+                  "scale": {
+                    "x": 1.0,
+                    "y": 1.0
+                  },
+                  "rotation": 0.0,
+                  "anchor": {
+                    "x": 0.5,
+                    "y": 0.5
+                  }
+                },
+                "opacity": 1.0
+              },
+              "custom": {}
+            }
+          },
+          "muted": false,
+          "hidden": false,
+          "locked": false,
+          "solo": false,
+          "magnetic": false,
+          "gain": 0.0,
+          "custom": {}
+        },
+        "trk_0000000000017000800000000000c002": {
+          "id": "trk_0000000000017000800000000000c002",
+          "kind": "audio",
+          "name": "A1",
+          "items": {},
+          "muted": false,
+          "hidden": false,
+          "locked": false,
+          "solo": false,
+          "magnetic": false,
+          "gain": 0.0,
+          "custom": {}
+        }
+      },
+      "track_order": [
+        "trk_0000000000017000800000000000c001",
+        "trk_0000000000017000800000000000c002"
+      ],
+      "custom": {}
+    }
+  },
+  "custom": {}
+}

@@ -33,13 +33,13 @@ use serde::{Deserialize, Deserializer, Serialize, Serializer, de};
 )]
 #[serde(rename_all = "snake_case")]
 pub enum EntityKind {
-    /// A [`MediaAsset`](crate::MediaAsset) (`med_`).
+    /// A `MediaAsset` (`med_`).
     Media,
-    /// A [`Sequence`](crate::Sequence) (`seq_`).
+    /// A `Sequence` (`seq_`).
     Sequence,
-    /// A [`Track`](crate::Track) (`trk_`).
+    /// A `Track` (`trk_`).
     Track,
-    /// A timeline [`Item`](crate::Item) (`itm_`).
+    /// A timeline `Item` (`itm_`).
     Item,
     /// A linked group of items that edit together (`grp_`).
     Group,
@@ -236,25 +236,25 @@ macro_rules! entity_id {
 }
 
 entity_id!(
-    /// The ID of a [`MediaAsset`](crate::MediaAsset): `med_…`.
+    /// The ID of a `MediaAsset`: `med_…`.
     MediaId,
     Media,
     "^med_[0-9a-f]{32}$"
 );
 entity_id!(
-    /// The ID of a [`Sequence`](crate::Sequence): `seq_…`.
+    /// The ID of a `Sequence`: `seq_…`.
     SequenceId,
     Sequence,
     "^seq_[0-9a-f]{32}$"
 );
 entity_id!(
-    /// The ID of a [`Track`](crate::Track): `trk_…`.
+    /// The ID of a `Track`: `trk_…`.
     TrackId,
     Track,
     "^trk_[0-9a-f]{32}$"
 );
 entity_id!(
-    /// The ID of a timeline [`Item`](crate::Item): `itm_…`.
+    /// The ID of a timeline `Item`: `itm_…`.
     ItemId,
     Item,
     "^itm_[0-9a-f]{32}$"

@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
-//! Property tests over the `testing` strategies (WP-1A.01): frame ↔ time ↔ timecode, text and
-//! serde round trips, checked arithmetic and ID order.
+//! Property tests over the `testing` strategies (WP-1A.01, WP-1A.02): frame ↔ time ↔ timecode,
+//! text and serde round trips, checked arithmetic, ID order, and generated projects (valid,
+//! serde identity, index consistency).
 //!
 //! They live in the crate (not `tests/`) because integration tests would need a self
 //! dev-dependency with the `testing` feature, which the dependency-rule check rejects.
@@ -8,10 +9,11 @@
 use proptest::prelude::*;
 
 use crate::{
-    Duration, EntityId, IdGen, ItemId, MAX_SAFE_FLICKS, Rounding, SampleRate, SeededGen, Time,
-    TimeInput, Timecode, Uuid7Gen,
+    Duration, EntityId, IdGen, Invariant, Item, ItemId, MAX_SAFE_FLICKS, Project, Rounding,
+    SampleRate, SeededGen, Time, TimeInput, Timecode, Uuid7Gen,
     testing::{
-        arb_any_frame_rate, arb_duration, arb_frame_rate, arb_sample_rate, arb_time, arb_timecode,
+        arb_any_frame_rate, arb_duration, arb_frame_rate, arb_project, arb_sample_rate, arb_time,
+        arb_timecode,
     },
 };
 
@@ -146,5 +148,39 @@ proptest! {
         let mut boxed: Box<dyn IdGen> = Box::new(Uuid7Gen);
         let later = ItemId::new_with(&mut boxed);
         prop_assert!(ids.iter().all(|id| *id < later));
+    }
+}
+
+proptest! {
+    #![proptest_config(ProptestConfig::with_cases(128))]
+
+    #[test]
+    fn generated_projects_are_valid(project in arb_project()) {
+        prop_assert_eq!(project.violations(), Vec::<Invariant>::new());
+    }
+
+    #[test]
+    fn serde_round_trip_is_identity(project in arb_project()) {
+        let json = serde_json::to_string(&project).unwrap();
+        let back: Project = serde_json::from_str(&json).unwrap();
+        prop_assert_eq!(&back, &project);
+        prop_assert_eq!(serde_json::to_string(&back).unwrap(), json);
+    }
+
+    #[test]
+    fn track_indexes_match_their_maps(project in arb_project()) {
+        for sequence in project.sequences.values() {
+            for track in sequence.tracks.values() {
+                let by_start: Vec<_> = track.items.iter().map(Item::id).collect();
+                let mut by_id: Vec<_> = track.items.iter_by_id().map(|(k, _)| *k).collect();
+                prop_assert_eq!(by_start.len(), by_id.len());
+                let starts: Vec<Time> = track.items.iter().map(Item::start).collect();
+                prop_assert!(starts.windows(2).all(|w| w[0] <= w[1]));
+                let mut sorted = by_start.clone();
+                sorted.sort_unstable();
+                by_id.sort_unstable();
+                prop_assert_eq!(sorted, by_id);
+            }
+        }
     }
 }

@@ -24,6 +24,8 @@ toml = "0.9"
 sha2 = "0.10"
 
 # cutweave-model (WP-1A): the project document and its wire contract (arch §4, ADR-0004/0005/0015).
+# Persistent collections with O(1) structural-sharing snapshots for the doc actor (ADR-0005).
+imbl = { version = "7.0.2", features = ["serde"] }
 # JSON Schema for every wire type (MCP inputSchema/outputSchema, schema/ catalogs; arch §5.3).
 schemars = "1.2.3"
 # TS type export (packages/protocol, arch §5.3). Release candidates: pinned exactly (S5 findings).
@@ -36,6 +38,8 @@ thiserror = "2"
 uuid = { version = "1.29", default-features = false, features = ["std", "v7"] }
 # Property tests (dev and the `cutweave-model/testing` feature only).
 proptest = "1.12"
+# Snapshot tests of generated TS, JSON Schemas and migrated documents (dev only).
+insta = { version = "1.49", features = ["json"] }
 
 [workspace.lints.rust]
 # Allowed (with justification) only in cutweave-bridge, cutweave-playback and cutweave-audio.

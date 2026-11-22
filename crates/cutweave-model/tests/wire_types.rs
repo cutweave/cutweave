@@ -3,8 +3,8 @@
 //! flicks to `number` (never `bigint`), and the JSON Schemas match what serde accepts.
 
 use cutweave_model::{
-    Duration, EntityKind, FrameRate, GroupId, ItemId, MediaId, Rounding, SampleRate, SequenceId,
-    Time, TimeInput, TrackId,
+    Duration, EntityKind, FrameRate, GroupId, Invariant, ItemId, MediaId, Project, Rounding,
+    SampleRate, SequenceId, Time, TimeInput, TrackId,
 };
 use specta::{Type, Types};
 use specta_typescript::Typescript;
@@ -24,6 +24,8 @@ fn typescript() -> String {
     TrackId::definition(&mut types);
     ItemId::definition(&mut types);
     GroupId::definition(&mut types);
+    Project::definition(&mut types);
+    Invariant::definition(&mut types);
     Typescript::default()
         .export(&types, specta_serde::Format)
         .unwrap_or_else(|e| panic!("model types must export to TypeScript: {e}"))
@@ -69,6 +71,25 @@ fn rates_export_as_numbers() {
     assert!(
         rounding.contains("\"floor\"") && rounding.contains("\"nearest\""),
         "{ts}"
+    );
+}
+
+/// The TypeScript the UI will see (WP-1N generates the real file); a change here is a wire
+/// change and needs review.
+#[test]
+fn typescript_snapshot() {
+    insta::assert_snapshot!("model_types_ts", typescript());
+}
+
+/// The JSON Schema of the project document (deserialize contract: inputs). Snapshotted in
+/// canonical form: object key order would otherwise depend on whether a workspace build
+/// enables `serde_json/preserve_order`.
+#[test]
+fn project_json_schema_snapshot() {
+    let schema = serde_json::to_value(schemars::schema_for!(Project)).unwrap();
+    insta::assert_snapshot!(
+        "project_schema",
+        cutweave_model::canonical_json_pretty(&schema)
     );
 }
 
