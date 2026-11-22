@@ -44,13 +44,14 @@ for (const file of files) {
     );
   }
   table(
-    ["scrub engine config", "requests", "scrub-to-pixel p50/p95 ms", "full-res on screen p50/p95 ms", "low-res frames shown", "lost"],
+    ["scrub config", "requests", "scrub-to-pixel p50/p95 ms", "full-res on screen p50/p95 ms", "low-res frames shown", "rAF wait p50/p95 ms", "lost"],
     r.scrub.variants.map((v) => [
       v.name,
       v.scrub.requests,
       pp(v.scrub.latency.firstPixelMs),
       pp(v.scrub.latency.fullPixelMs),
       v.scrub.lowresPresented,
+      v.scrub.waitMs?.n ? pp(v.scrub.waitMs) : "-",
       v.scrub.lost,
     ]),
   );

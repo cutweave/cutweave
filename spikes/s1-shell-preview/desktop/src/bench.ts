@@ -313,11 +313,11 @@ export async function runBench(deps: BenchDeps, arg: string): Promise<boolean> {
   checks.bothUploadPathsPresent = matrixResults.every(
     (r) => r.snapshot.framesPresented > playSeconds * 30 && r.snapshot.presenter.includes(r.upload),
   );
-  // Fastest = least upload+draw CPU time + GPU completion time among paths that held 60 fps.
+  // Fastest = least upload+draw CPU time (presenting thread) + submit-to-GPU-done time. Not
+  // fps: on a shared machine fps mostly reflects producer-side drops, not the upload path.
   const cost = (r: PhaseResult) =>
     (r.snapshot.latency.uploadDrawMs?.p50 ?? 99) + (r.snapshot.latency.gpuDoneMs?.p50 ?? 99);
-  const smooth = matrixResults.filter((r) => r.presentFps >= 59);
-  const best = [...(smooth.length ? smooth : matrixResults)].sort((a, b) => cost(a) - cost(b))[0];
+  const best = [...matrixResults].sort((a, b) => cost(a) - cost(b))[0];
   if (!best) throw new Error("no playback results");
   log(`fastest path: ${best.format} + ${best.upload}`);
   await js(`window.__s1.setFormat("${best.format}"); window.__s1.setUpload("${best.upload}")`);
@@ -383,16 +383,26 @@ export async function runBench(deps: BenchDeps, arg: string): Promise<boolean> {
   // Variants: the synthetic engine renders a full frame in ~1 ms; real full-resolution frames
   // can take tens of ms (long-GOP decode). The engine emulates that cost (scrub.rs) so the
   // value of "low-res first, then refine" (arch §10 step 5) is visible.
+  // The last variant lets the rAF callback wait up to 8 ms for a just-requested frame (see
+  // loop.ts `scrubWaitMs`), an opt-in experiment; the default does not wait.
   const scrubVariants = [
-    { name: "lowres-first, full cost 0 ms", lowresDiv: 2, costMs: 0 },
-    { name: "lowres-first, full cost 50 ms", lowresDiv: 2, costMs: 50 },
-    { name: "full only, full cost 50 ms", lowresDiv: 0, costMs: 50 },
+    { name: "lowres-first, full cost 0 ms", lowresDiv: 2, costMs: 0, waitMs: 0 },
+    { name: "lowres-first, full cost 50 ms", lowresDiv: 2, costMs: 50, waitMs: 0 },
+    { name: "full only, full cost 50 ms", lowresDiv: 0, costMs: 50, waitMs: 0 },
+    { name: "lowres-first, full cost 0 ms, rAF waits <= 8 ms", lowresDiv: 2, costMs: 0, waitMs: 8 },
   ];
-  const scrubResults: { name: string; lowresDiv: number; costMs: number; scrub: Snapshot["scrub"]; fps: number }[] = [];
+  const scrubResults: {
+    name: string;
+    lowresDiv: number;
+    costMs: number;
+    waitMs: number;
+    scrub: Snapshot["scrub"];
+    fps: number;
+  }[] = [];
   for (const v of scrubVariants) {
-    await js(`window.__s1.scrubConfig(${v.lowresDiv}, ${v.costMs})`);
+    await js(`window.__s1.scrubConfig(${v.lowresDiv}, ${v.costMs}); window.__s1.setScrubWait(${v.waitMs})`);
     await sleep(200);
-    const tag = `scrub-${v.lowresDiv > 1 ? "lowres" : "fullonly"}-${v.costMs}ms`;
+    const tag = `scrub-${v.lowresDiv > 1 ? "lowres" : "fullonly"}-${v.costMs}ms${v.waitMs ? `-wait${v.waitMs}` : ""}`;
     const res = await collect(tag, scrubSeconds, scrubDriver);
     phases.push(res);
     const sl = res.snapshot.scrub;
@@ -402,7 +412,7 @@ export async function runBench(deps: BenchDeps, arg: string): Promise<boolean> {
         `full-res ${sl.latency.fullPixelMs?.p50}/${sl.latency.fullPixelMs?.p95} ms, low-res frames ${sl.lowresPresented}, lost ${sl.lost}`,
     );
   }
-  await js("window.__s1.scrubConfig(2, 0)");
+  await js("window.__s1.scrubConfig(2, 0); window.__s1.setScrubWait(0)");
   const sl = (scrubResults[0] as (typeof scrubResults)[number]).scrub;
   checks.scrubToPixelP95Under80ms =
     sl.latency.firstPixelMs !== undefined &&

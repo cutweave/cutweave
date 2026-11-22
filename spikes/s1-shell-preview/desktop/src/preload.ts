@@ -33,7 +33,7 @@ let externalArrayBuffers: boolean | null = null;
 let preview: Preview | null = null;
 const buffers = new Map<number, Uint8Array>();
 const listeners: ((e: EngineEvent) => void)[] = [];
-const pongs = new Map<number, (rttMs: number) => void>();
+const pongs = new Map<number, () => void>();
 let pingId = 0;
 
 function emit(e: EngineEvent): void {
@@ -61,7 +61,7 @@ function openControl(port: number, token: string): void {
   sock.onmessage = (m) => {
     const msg = JSON.parse(String(m.data)) as { type: string; t?: number; message?: string };
     if (msg.type === "pong" && typeof msg.t === "number") {
-      pongs.get(msg.t)?.(performance.now() - msg.t);
+      pongs.get(msg.t)?.();
       pongs.delete(msg.t);
     } else if (msg.type === "ack") {
       wsStats.acks++;
@@ -207,6 +207,7 @@ const bridge: S1Bridge = {
     setUpload: (path) => preview?.setUpload(path),
     setEngineSize: (mode) => preview?.setEngineSize(mode),
     scrub: (pts, t0) => preview?.scrub(pts, t0),
+    setScrubWait: (ms) => preview?.setScrubWait(ms),
     presented: () => preview?.presented() ?? null,
     takeSamples: () => preview?.takeSamples() ?? null,
     stage: () => preview?.stage() ?? null,
@@ -250,9 +251,12 @@ const bridge: S1Bridge = {
       }),
     ping: () =>
       new Promise<number>((resolve) => {
-        const t = performance.now() + ++pingId * 1e-6;
-        pongs.set(t, resolve);
-        send({ type: "ping", t });
+        // Integer key: a fractional timestamp does not always survive serde_json's default
+        // (not exactly round-tripping) float parser, and the pong then never matched.
+        const id = ++pingId;
+        const sent = performance.now();
+        pongs.set(id, () => resolve(performance.now() - sent));
+        send({ type: "ping", t: id });
       }),
   },
   onEngineEvent(cb) {

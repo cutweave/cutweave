@@ -60,7 +60,6 @@ export class TransformBox {
 
   select(on: boolean): void {
     this.el.classList.toggle("selected", on);
-    this.el.setAttribute("aria-selected", String(on));
   }
 
   apply(): void {

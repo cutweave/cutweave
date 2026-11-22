@@ -405,6 +405,7 @@ async function main(): Promise<void> {
     pause: () => setPlaying(false),
     scrubConfig: (lowresDiv: number, fullCostMs: number) =>
       bridge.transport.scrubConfig(lowresDiv, fullCostMs),
+    setScrubWait: (ms: number) => preview.setScrubWait(ms),
     control: () => bridge.stats().ws ?? null,
     ping: () => bridge.transport.ping(),
     setFormat,

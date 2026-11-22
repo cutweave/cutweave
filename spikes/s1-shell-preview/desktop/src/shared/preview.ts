@@ -44,6 +44,8 @@ export interface PreviewControls {
   setEngineSize(mode: EngineSizeMode): void;
   /** Latest-wins seek for scrubbing: records the request for scrub-to-pixel, then sends it. */
   scrub(ptsFlicks: number, inputTimeMs: number): void;
+  /** Experiment: let rAF wait up to `ms` for a just-requested scrub frame (0 = off). */
+  setScrubWait(ms: number): void;
   presented(): PresentedInfo | null;
   takeSamples(): PreviewSamples | null;
   stage(): StageInfo | null;
@@ -98,6 +100,9 @@ export async function createPreview(
     scrub: (pts, t0) => {
       loop.noteScrub(pts, t0);
       deps.sendSeek(pts);
+    },
+    setScrubWait: (ms) => {
+      loop.scrubWaitMs = Number.isFinite(ms) ? Math.min(Math.max(ms, 0), 12) : 0;
     },
     presented: () => loop.presented(),
     takeSamples: () => ({

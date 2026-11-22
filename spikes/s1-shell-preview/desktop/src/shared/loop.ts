@@ -99,6 +99,9 @@ export interface ScrubSnapshot {
   pending: number;
   lowresPresented: number;
   latency: Record<ScrubKey, LatSummary>;
+  /** Wait-in-rAF budget and the time actually spent waiting per scrub frame. */
+  waitBudgetMs: number;
+  waitMs: LatSummary;
 }
 
 export interface LoopSnapshot {
@@ -141,6 +144,8 @@ export interface PresentedInfo {
 interface ScrubReq {
   pts: number;
   t0: number;
+  /** performance.now() when the request was sent. */
+  tSent: number;
   first: boolean;
 }
 
@@ -182,6 +187,9 @@ export class PresentLoop {
   private lowresPresented = 0;
   /** Scrub-to-pixel samples since the last `takeScrubSamples()` (per-second metrics log). */
   private recentScrub: number[] = [];
+  /** Max ms the rAF callback may wait for a just-requested scrub frame (0 = never wait). */
+  scrubWaitMs = 0;
+  private readonly scrubSpin = new Samples();
 
   constructor(
     private readonly drawIn: string,
@@ -219,6 +227,7 @@ export class PresentLoop {
     this.scrubReqs = [];
     this.awaitingPixel = [];
     this.recentScrub = [];
+    this.scrubSpin.reset();
     this.startedAt = performance.now();
     for (const k of LAT_KEYS) this.lat[k].reset();
     for (const k of SCRUB_KEYS) this.scrubLat[k].reset();
@@ -232,7 +241,13 @@ export class PresentLoop {
   /** A seek to `pts` was requested by an input event at `t0` (performance.now() timeline). */
   noteScrub(pts: number, t0: number): void {
     this.scrubRequests++;
-    this.scrubReqs.push({ pts, t0, first: false });
+    this.scrubReqs.push({ pts, t0, tSent: performance.now(), first: false });
+  }
+
+  /** A scrub request sent within the last frame is still waiting for its first frame. */
+  private scrubJustSent(now: number): boolean {
+    const r = this.scrubReqs[this.scrubReqs.length - 1];
+    return r !== undefined && !r.first && now - r.tSent < 17;
   }
 
   takeScrubSamples(): number[] {
@@ -314,7 +329,15 @@ export class PresentLoop {
 
   private present(): void {
     const t0 = performance.now();
-    const f = this.getFrame(this.lastSeq, this.policy);
+    let f = this.getFrame(this.lastSeq, this.policy);
+    if (!f && this.scrubWaitMs > 0 && this.scrubJustSent(t0)) {
+      // Opt-in experiment: pointer events are dispatched right before rAF callbacks, so the
+      // frame for a seek sent in this frame lands a few ms too late for it. Waiting (bounded)
+      // for it here saves a whole frame of scrub latency at the cost of main-thread time.
+      const until = t0 + this.scrubWaitMs;
+      while (!f && performance.now() < until) f = this.getFrame(this.lastSeq, this.policy);
+      this.scrubSpin.push(performance.now() - t0);
+    }
     const t1 = performance.now();
     if (!f) return;
     if (this.lastSeq > 0 && f.seq <= this.lastSeq) this.seqViolations++;
@@ -388,6 +411,8 @@ export class PresentLoop {
         latency: Object.fromEntries(
           SCRUB_KEYS.map((k) => [k, this.scrubLat[k].summary()]),
         ) as Record<ScrubKey, LatSummary>,
+        waitBudgetMs: this.scrubWaitMs,
+        waitMs: this.scrubSpin.summary(),
       },
     };
   }
