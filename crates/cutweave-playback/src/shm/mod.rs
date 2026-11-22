@@ -37,6 +37,11 @@ mod os;
 mod publisher;
 mod ring;
 
+#[cfg(test)]
+mod reader;
+#[cfg(test)]
+mod tests;
+
 pub use clock::{
     ClockPump, ClockSample, ClockWriter, DEFAULT_CLOCK_PERIOD, MAX_CLOCK_EXTRAPOLATION_NS,
 };
