@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 import { describe, expect, it, vi } from "vitest";
 import { createCutweaveApi, ERR_BRIDGE_UNAVAILABLE, type IpcRendererLike } from "./api.ts";
+import type { BridgeAddon } from "./bridge-addon.ts";
 
 function fakeIpc() {
   const listeners = new Map<string, Set<(e: unknown, ...a: unknown[]) => void>>();
@@ -67,24 +68,53 @@ describe("createCutweaveApi", () => {
     expect(seen).toEqual(["ready"]);
   });
 
-  it("preview stubs throw ERR_BRIDGE_UNAVAILABLE without an addon", () => {
+  it("preview methods throw ERR_BRIDGE_UNAVAILABLE without an addon", () => {
     const api = createCutweaveApi(fakeIpc().ipc, null);
     expect(api.preview.isAvailable()).toBe(false);
     expect(() => api.preview.getLatestFrame()).toThrow(ERR_BRIDGE_UNAVAILABLE);
-    expect(() => api.preview.open("r")).toThrow(ERR_BRIDGE_UNAVAILABLE);
+    expect(() => api.preview.open("r", "0x1")).toThrow(ERR_BRIDGE_UNAVAILABLE);
+    expect(() => api.preview.startPresenting()).toThrow(ERR_BRIDGE_UNAVAILABLE);
+    expect(api.preview.getPresentStats()).toBeNull();
   });
 
   it("preview delegates to the addon when present", () => {
-    const addon = {
-      open: vi.fn(),
-      getLatestFrame: vi.fn(() => null),
-      getClock: vi.fn(() => ({ ptsFlicks: 5 })),
-      close: vi.fn(),
-    };
+    const addon = fakeAddon();
     const api = createCutweaveApi(fakeIpc().ipc, addon);
-    api.preview.open("ring");
-    expect(addon.open).toHaveBeenCalledWith("ring");
+    api.preview.open("ring", "0xabc");
+    expect(addon.open).toHaveBeenCalledWith("ring", "0xabc");
     expect(api.preview.getClock()).toEqual({ ptsFlicks: 5 });
     expect(api.preview.isAvailable()).toBe(true);
+    api.preview.getLatestFrame(7);
+    expect(addon.getLatestFrame).toHaveBeenCalledWith(7);
+    api.preview.close();
+    expect(addon.close).toHaveBeenCalled();
+  });
+
+  it("the present loop runs in the preload: only stats come back, opening a ring stops it", () => {
+    const addon = fakeAddon();
+    const ticks: (() => void)[] = [];
+    const api = createCutweaveApi(fakeIpc().ipc, addon, () => ({
+      schedule: (t) => ticks.push(t),
+      cancel: () => {},
+      now: () => 0,
+    }));
+    api.preview.startPresenting({ latencyMs: 12 });
+    ticks.shift()?.();
+    expect(addon.frameAtClock).toHaveBeenCalledWith(12);
+    expect(api.preview.getPresentStats()?.running).toBe(true);
+    api.preview.open("ring", "1");
+    expect(api.preview.getPresentStats()).toBeNull();
   });
 });
+
+function fakeAddon() {
+  return {
+    open: vi.fn(() => ({ name: "r", epoch: "0x1", writerPid: 1, slotCount: 6, slotCapacity: 1 })),
+    getLatestFrame: vi.fn(() => null),
+    frameAtClock: vi.fn(() => null),
+    waitForFrame: vi.fn(async () => "timeout" as const),
+    getClock: vi.fn(() => ({ ptsFlicks: 5 })),
+    getStatus: vi.fn(),
+    close: vi.fn(),
+  } satisfies BridgeAddon;
+}

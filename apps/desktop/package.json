@@ -8,12 +8,13 @@
   "main": "./dist/main/index.cjs",
   "scripts": {
     "dev": "node scripts/dev.ts",
-    "build": "pnpm run build:node && pnpm run build:renderer",
+    "build": "pnpm run build:bridge && pnpm run build:node && pnpm run build:renderer",
+    "build:bridge": "node scripts/build-bridge.ts",
     "build:node": "vite build --config vite.node.config.ts",
     "build:renderer": "vite build ../../packages/editor --outDir ../../apps/desktop/dist/renderer --emptyOutDir",
     "typecheck": "tsc --noEmit",
     "test": "vitest run",
-    "e2e": "node scripts/ensure-electron.ts && playwright test"
+    "e2e": "node scripts/ensure-electron.ts && node scripts/build-bridge.ts --fixture && playwright test"
   },
   "devDependencies": {
     "@electron/fuses": "2.1.3",
