@@ -1,6 +1,7 @@
 // Spike S1 synthetic frame: scrolling hue gradient + checker, a white vertical bar moving
 // 8 px/frame (judder/tearing indicator), a yellow horizontal bar, and a 7-segment readout of
 // the frame number and the pts in milliseconds (the "pts-stamped glyph" for 0C.02 scrubbing).
+// Distances are in 1080-line units, scaled to the output size.
 // Also: an RGBA -> NV12 (BT.709 limited range) compute pass.
 
 struct Uniforms {
@@ -75,8 +76,13 @@ fn number_lit(value: u32, n: u32, origin: vec2<f32>, h_px: f32, px: vec2<f32>) -
 
 @fragment
 fn fs_main(in: VsOut) -> @location(0) vec4<f32> {
-  let px = in.pos.xy;
-  let w = f32(u.width);
+  // The picture is authored on a 1080-line canvas and scaled to the output size (WP-0C.02
+  // renders at the preview canvas size), so it looks the same at every resolution, like
+  // footage would; low-res scrub previews are the same picture with fewer pixels.
+  let scale = f32(u.height) / 1080.0;
+  let px = in.pos.xy / scale;
+  let w = f32(u.width) / scale;
+  let vw = max(u32(round(w)), 1u);
   let f = f32(u.frame);
   let hue = fract((px.x + px.y * 0.5) / w - f / 240.0);
   var col = hsv2rgb(hue, 0.55, 0.6);
@@ -84,11 +90,11 @@ fn fs_main(in: VsOut) -> @location(0) vec4<f32> {
   if ((u32(g.x) + u32(g.y)) % 2u == 0u) {
     col = col * 0.8;
   }
-  let bar_x = f32((u.frame * 8u) % u.width);
+  let bar_x = f32((u.frame * 8u) % vw);
   if (px.x >= bar_x && px.x < bar_x + 24.0) {
     col = vec3<f32>(1.0, 1.0, 1.0);
   }
-  let bar_y = f32((u.frame * 4u) % u.height);
+  let bar_y = f32((u.frame * 4u) % 1080u);
   if (px.y >= bar_y && px.y < bar_y + 12.0) {
     col = vec3<f32>(1.0, 0.85, 0.2);
   }

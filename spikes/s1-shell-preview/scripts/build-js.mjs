@@ -34,3 +34,8 @@ await build({
 for (const f of ["index.html", "sandboxed.html", "style.css"]) {
   copyFileSync(join(src, "renderer", f), join(out, "renderer", f));
 }
+// Design tokens (generated CSS custom properties) for the WP-0C.02 renderer styles.
+copyFileSync(
+  join(root, "..", "..", "packages", "ui", "src", "tokens", "tokens.css"),
+  join(out, "renderer", "tokens.css"),
+);

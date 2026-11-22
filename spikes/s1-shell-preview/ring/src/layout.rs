@@ -29,6 +29,9 @@ pub const MAX_SLOTS: u32 = 6;
 pub const PAYLOAD_ALIGN: usize = 4096;
 /// Flicks per second (arch §4.1).
 pub const FLICKS_PER_SECOND: i64 = 705_600_000;
+/// `SlotDesc::flags` bit: reduced-resolution scrub preview, a full-resolution refine of the
+/// same `pts` follows unless a newer seek supersedes it (WP-0C.02, arch §10 step 5).
+pub const FLAG_LOWRES: u32 = 1;
 
 /// Engine state word (`RingHeader::engine_state`).
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -161,7 +164,7 @@ pub struct SlotDesc {
     pub payload_len: AtomicU64,
     /// [`crate::checksum::sampled_fnv1a`] of the payload, computed after row stamping.
     pub checksum: AtomicU32,
-    /// Reserved flag bits (0).
+    /// Flag bits ([`FLAG_LOWRES`]); other bits are 0.
     pub flags: AtomicU32,
     /// Host time (µs since the Unix epoch) at which the frame's GPU work was submitted.
     pub t_render_us: AtomicU64,

@@ -1,66 +1,288 @@
-/* Spike-only styling. Product UI must use packages/ui + design tokens (AGENTS.md). */
-:root {
-  color-scheme: dark;
-  --bg: #0e0f12;
-  --panel: rgba(0, 0, 0, 0.72);
-  --fg: #e8e8ea;
-  --muted: #2a2c33;
-}
+/* SPDX-License-Identifier: GPL-3.0-or-later */
+/* Spike S1 renderer styling (WP-0C.02). Design tokens only (tokens.css is copied from
+   packages/ui/src/tokens at build time): no literal colours, sizes or font stacks. */
 
 html,
 body {
   margin: 0;
   height: 100%;
-  background: var(--bg);
-  color: var(--fg);
-  font: 13px/1.4 ui-monospace, "Cascadia Mono", Consolas, monospace;
+  overflow: hidden;
+  background: var(--surface-0);
+  color: var(--text-primary);
 }
 
 body {
   display: grid;
-  grid-template-rows: 1fr auto;
+  grid-template-rows: minmax(0, 1fr) auto auto;
 }
 
-main {
+/* ---- preview ---------------------------------------------------------------------------- */
+
+.viewer {
   position: relative;
   min-height: 0;
-  display: grid;
-  place-items: center;
   overflow: hidden;
+  background: var(--surface-preview);
+}
+
+/* Left/top/width/height are set by renderer/main.ts: the largest 16:9 box that fits, snapped
+   to whole device pixels (width a multiple of 4, even height: the engine's NV12 constraint),
+   so the canvas maps 1:1 onto screen pixels and onto the engine's frame. */
+.stage {
+  position: absolute;
 }
 
 #preview {
+  position: absolute;
+  inset: 0;
   width: 100%;
   height: 100%;
-  object-fit: contain;
   display: block;
 }
 
-#hud {
+.overlay {
   position: absolute;
-  top: 8px;
-  left: 8px;
+  inset: 0;
+  z-index: var(--z-overlay);
+  touch-action: none;
+}
+
+.guides,
+.guide {
+  position: absolute;
+  pointer-events: none;
+}
+
+.guides {
+  inset: 0;
+}
+
+.guides[hidden] {
+  display: none;
+}
+
+/* Over video: overlay-guide with a 1 px overlay-guide-shadow outline on both sides. */
+.guide {
+  border: var(--border-thin) solid var(--overlay-guide);
+  box-shadow:
+    0 0 0 var(--border-thin) var(--overlay-guide-shadow),
+    inset 0 0 0 var(--border-thin) var(--overlay-guide-shadow);
+}
+
+.guide-action {
+  inset: 3.5%; /* action safe: 93 % */
+}
+
+.guide-title {
+  inset: 5%; /* title safe: 90 % */
+}
+
+.guide-center {
+  left: 50%;
+  top: 50%;
+  width: var(--space-6);
+  height: var(--space-6);
+  border: none;
+  box-shadow: none;
+  transform: translate(-50%, -50%);
+}
+
+.guide-center::before,
+.guide-center::after {
+  content: "";
+  position: absolute;
+  background: var(--overlay-guide);
+  box-shadow: 0 0 0 var(--border-thin) var(--overlay-guide-shadow);
+}
+
+.guide-center::before {
+  left: 0;
+  right: 0;
+  top: 50%;
+  height: var(--border-thin);
+}
+
+.guide-center::after {
+  top: 0;
+  bottom: 0;
+  left: 50%;
+  width: var(--border-thin);
+}
+
+/* Transform box: guide outline; marigold when selected ("here"). */
+.tbox {
+  position: absolute;
+  box-sizing: border-box;
+  border: var(--border-thin) solid var(--overlay-guide);
+  box-shadow: 0 0 0 var(--border-thin) var(--overlay-guide-shadow);
+  cursor: move;
+  touch-action: none;
+}
+
+.tbox.selected {
+  border-color: var(--marigold);
+}
+
+.tbox:focus-visible {
+  outline: var(--border-thick) solid var(--focus-ring);
+  outline-offset: var(--border-thin);
+}
+
+/* Handles: hit-min hit area, small visible square centred on it. */
+.handle {
+  position: absolute;
+  width: var(--hit-min);
+  height: var(--hit-min);
+  margin: calc(var(--hit-min) / -2) 0 0 calc(var(--hit-min) / -2);
+}
+
+.handle::after {
+  content: "";
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  width: var(--space-2);
+  height: var(--space-2);
+  transform: translate(-50%, -50%);
+  background: var(--overlay-guide);
+  box-shadow: 0 0 0 var(--border-thin) var(--overlay-guide-shadow);
+}
+
+.tbox:not(.selected) .handle {
+  display: none;
+}
+
+.handle[data-h="nw"] { left: 0; top: 0; cursor: nwse-resize; }
+.handle[data-h="n"] { left: 50%; top: 0; cursor: ns-resize; }
+.handle[data-h="ne"] { left: 100%; top: 0; cursor: nesw-resize; }
+.handle[data-h="e"] { left: 100%; top: 50%; cursor: ew-resize; }
+.handle[data-h="se"] { left: 100%; top: 100%; cursor: nwse-resize; }
+.handle[data-h="s"] { left: 50%; top: 100%; cursor: ns-resize; }
+.handle[data-h="sw"] { left: 0; top: 100%; cursor: nesw-resize; }
+.handle[data-h="w"] { left: 0; top: 50%; cursor: ew-resize; }
+
+.hud {
+  position: absolute;
+  top: var(--space-2);
+  left: var(--space-2);
+  z-index: var(--z-dropdown);
   margin: 0;
-  padding: 8px 10px;
-  background: var(--panel);
-  border-radius: 4px;
+  padding: var(--space-2) var(--space-3);
+  background: var(--scrim);
+  color: var(--text-primary);
+  border-radius: var(--radius-sm);
   pointer-events: none;
   white-space: pre;
 }
 
-nav {
-  display: flex;
-  gap: 8px;
-  padding: 8px;
-  background: var(--muted);
+.hud[hidden] {
+  display: none;
 }
 
-button {
-  font: inherit;
-  color: var(--fg);
-  background: var(--bg);
-  border: 1px solid #555;
-  border-radius: 4px;
-  padding: 4px 10px;
+/* ---- transport + scrub bar --------------------------------------------------------------- */
+
+.transport,
+.toolbar {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+  padding: 0 var(--space-3);
+  min-height: var(--toolbar);
+  background: var(--surface-1);
+  border-top: var(--border-thin) solid var(--border-subtle);
+}
+
+.toolbar {
+  flex-wrap: wrap;
+  gap: var(--space-2);
+  padding-block: var(--space-1-5);
+}
+
+.timecode.muted {
+  color: var(--text-secondary);
+}
+
+.scrub {
+  position: relative;
+  flex: 1;
+  height: var(--control-md);
   cursor: pointer;
+  touch-action: none;
+  border-radius: var(--radius-sm);
+}
+
+.scrub:focus-visible {
+  outline: var(--border-thick) solid var(--focus-ring);
+  outline-offset: var(--border-thin);
+}
+
+.scrub-rail {
+  position: absolute;
+  left: 0;
+  right: 0;
+  top: 50%;
+  height: var(--space-1);
+  transform: translateY(-50%);
+  background: var(--surface-3);
+  border-radius: var(--radius-full);
+}
+
+.playhead {
+  position: absolute;
+  left: 0;
+  top: 0;
+  bottom: 0;
+  width: var(--border-thick);
+  margin-left: calc(var(--border-thick) / -2);
+  background: var(--playhead);
+  z-index: var(--z-playhead);
+  pointer-events: none;
+}
+
+.playhead-flag {
+  position: absolute;
+  left: 50%;
+  top: 0;
+  width: var(--space-3);
+  height: var(--space-3);
+  transform: translateX(-50%);
+  background: var(--playhead);
+  border-radius: var(--radius-full);
+}
+
+/* ---- buttons ---------------------------------------------------------------------------- */
+
+button {
+  height: var(--control-md);
+  padding: 0 var(--space-3);
+  color: var(--text-primary);
+  background: var(--surface-2);
+  border: var(--border-thin) solid var(--border-default);
+  border-radius: var(--radius-sm);
+  cursor: pointer;
+}
+
+button:hover {
+  background: var(--surface-3);
+}
+
+button:focus-visible {
+  outline: var(--border-thick) solid var(--focus-ring);
+  outline-offset: var(--border-thin);
+}
+
+button[aria-pressed="true"] {
+  background: var(--marigold-subtle);
+  color: var(--marigold-text);
+}
+
+button.primary {
+  min-width: calc(var(--space-12) + var(--space-6));
+  background: var(--marigold);
+  color: var(--on-marigold);
+  border-color: transparent;
+}
+
+button.primary:hover {
+  background: var(--marigold-hover);
 }

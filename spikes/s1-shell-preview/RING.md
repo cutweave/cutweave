@@ -37,7 +37,7 @@ total = 4096 + N * slot_stride
 | 4 | u32 | `version` | 1 |
 | 8 | u32 | `header_size` | 4096 |
 | 12 | u32 | `slot_count` | 4..=6 |
-| 16 | u64 | `slot_capacity` | max payload bytes per slot (spike: W·H·4 of the launch size) |
+| 16 | u64 | `slot_capacity` | max payload bytes per slot (spike: W·H·4 of the largest frame, `--max-width` x `--max-height`, default 2560x1440 = 14.7 MB) |
 | 24 | u64 | `payload_offset` | 4096 |
 | 32 | u64 | `slot_stride` | `align_up(slot_capacity, 4096)` |
 | 40 | u64 | `write_index` | frames published so far; newest frame is in slot `(write_index - 1) % N`; 0 = none. Stored with Release **after** the slot is complete |
@@ -68,7 +68,7 @@ the media domain are flicks (705 600 000 per second, arch §4.1).
 | 40 | u64 | `rev` | render revision (project revision the frame was rendered from) |
 | 48 | u64 | `payload_len` | bytes used (RGBA8: `stride·h`; NV12: `stride·h + stride·h/2`, UV plane follows Y) |
 | 56 | u32 | `checksum` | see Integrity |
-| 60 | u32 | `flags` | 0 |
+| 60 | u32 | `flags` | bit 0 `LOWRES`: reduced-size scrub preview; a full-resolution frame of the same `pts` follows unless a newer seek supersedes it (WP-0C.02). Other bits 0 |
 | 64 | u64 | `t_render_us` | host time the frame's GPU work was submitted |
 | 72 | u64 | `t_publish_us` | host time the slot was published |
 | 80..128 | | reserved | zero |
@@ -101,7 +101,15 @@ With N slots a reader has about (N − 1) frame periods to finish a copy before 
 
 - Keep the layout; drop row stamps/checksum (or keep behind a debug flag).
 - `slot_capacity` should be sized for the largest preview canvas you will allow; resizes
-  (0C.02) change `width/height/stride` per slot without remapping.
+  change `width/height/stride` per slot without remapping. WP-0C.02 does exactly this: the
+  renderer sends `resize {width, height}` (canvas device pixels) on the control channel, the
+  engine clamps to the capacity (keeping the aspect ratio) and rounds to width % 4 == 0 and an
+  even height (NV12 packing), and readers must accept any frame size per slot. Frames rendered
+  before the resize stay valid; the presenter scales them. 6 slots at 2560x1440 RGBA8 is
+  88 MB of pagefile-backed memory; a product ring may want fewer or smaller slots plus a
+  "too large, scaled" path.
+- `flags` bit 0 (`LOWRES`) marks scrub previews (arch §10 step 5). A scrub request is answered
+  by the first frame with the requested `pts`, whatever its resolution.
 - Consider 128-byte alignment of `write_index` / clock words onto separate cache lines if
   profiling shows false sharing (not observed in the spike).
 - Zero-copy `ArrayBuffer` views over the mapping are impossible in Electron (V8 memory

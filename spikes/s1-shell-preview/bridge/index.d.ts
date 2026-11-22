@@ -15,6 +15,8 @@ export interface FrameHeader {
   rev: number;
   payloadLen: number;
   checksum: number;
+  /** Flag bits: 1 = low-resolution scrub preview (a full-resolution refine follows). */
+  flags: number;
   /** Host µs (Unix epoch) at GPU submit in the engine. */
   tRenderUs: number;
   /** Host µs at slot publish. */

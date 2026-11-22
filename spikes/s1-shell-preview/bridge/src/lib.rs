@@ -46,6 +46,8 @@ pub struct FrameHeader {
     pub rev: f64,
     pub payload_len: f64,
     pub checksum: u32,
+    /// Flag bits: 1 = low-resolution scrub preview (a full-resolution refine follows).
+    pub flags: u32,
     /// Host µs (Unix epoch) at GPU submit in the engine.
     pub t_render_us: f64,
     /// Host µs at slot publish.
@@ -69,6 +71,7 @@ fn header(m: &SlotMeta, read_us: f64) -> FrameHeader {
         rev: n(m.rev),
         payload_len: n(m.payload_len),
         checksum: m.checksum,
+        flags: m.flags,
         t_render_us: n(m.t_render_us),
         t_publish_us: n(m.t_publish_us),
         lock: n(m.lock),
@@ -351,6 +354,7 @@ impl TestRingWriter {
             height,
             format,
             rev: 1,
+            flags: 0,
             t_render_us: s1_ring::clock::now_us(),
         };
         #[allow(clippy::cast_possible_truncation)]

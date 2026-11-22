@@ -147,66 +147,107 @@ test("end to end with the real engine: handshake, frames, control channel, exit 
     stdio: ["pipe", "pipe", "inherit"],
   });
   const exited = new Promise((resolve) => child.on("exit", (code) => resolve(code)));
-  const line = await new Promise((resolve, reject) => {
-    createInterface({ input: child.stdout }).once("line", resolve);
-    child.once("exit", () => reject(new Error("engine exited before handshake")));
+  // A failed assertion must not leave the engine running: its pipes would keep the test
+  // runner alive forever.
+  let done = false;
+  child.on("exit", () => {
+    done = true;
   });
-  const hs = JSON.parse(line);
-  assert.equal(hs.s1, "ready");
-  assert.match(hs.token, /^[0-9a-f]{64}$/, "256-bit token");
-  assert.equal(hs.ring, ring);
-
-  const r = bridge.RingReader.open(ring);
-  const dst = new Uint8Array(r.capacity);
-  let last = 0;
-  let frames = 0;
-  const until = Date.now() + 1000;
-  while (Date.now() < until) {
-    const h = r.readLatestInto(dst, last);
-    if (h) {
-      assert.ok(h.seq > last);
-      assert.equal(sampledFnv1a(dst.subarray(0, h.payloadLen)), h.checksum);
-      assert.equal(badRowStamps(dst, h.stride, h.height, h.seq), 0);
-      last = h.seq;
-      frames++;
-    }
-    await new Promise((res) => setTimeout(res, 4));
-  }
-  assert.ok(frames >= 40, `got ${frames} frames in 1 s`);
-
-  // Control channel: wrong token is rejected, right token can pause / seek / switch format.
-  const ws = (url) =>
-    new Promise((resolve, reject) => {
-      const s = new WebSocket(url);
-      s.onopen = () => resolve(s);
-      s.onerror = reject;
+  try {
+    const line = await new Promise((resolve, reject) => {
+      createInterface({ input: child.stdout }).once("line", resolve);
+      child.once("exit", () => reject(new Error("engine exited before handshake")));
     });
-  const next = (s) => new Promise((resolve) => s.addEventListener("message", (e) => resolve(JSON.parse(e.data)), { once: true }));
-  const bad = await ws(`ws://127.0.0.1:${hs.port}/`);
-  bad.send(JSON.stringify({ type: "auth", token: "00".repeat(32) }));
-  assert.equal((await next(bad)).type, "error");
+    const hs = JSON.parse(line);
+    assert.equal(hs.s1, "ready");
+    assert.match(hs.token, /^[0-9a-f]{64}$/, "256-bit token");
+    assert.equal(hs.ring, ring);
 
-  const s = await ws(`ws://127.0.0.1:${hs.port}/`);
-  s.send(JSON.stringify({ type: "auth", token: hs.token }));
-  assert.equal((await next(s)).type, "hello");
-  s.send(JSON.stringify({ type: "pause" }));
-  assert.deepEqual(await next(s), { type: "ack", cmd: "pause" });
-  await new Promise((res) => setTimeout(res, 100));
-  assert.equal(r.readHeader().engineState, 2, "paused");
-  const seekPts = 705_600_000 * 2; // 2 s
-  s.send(JSON.stringify({ type: "seek", pts: seekPts }));
-  await next(s);
-  s.send(JSON.stringify({ type: "format", format: "nv12" }));
-  await next(s);
-  await new Promise((res) => setTimeout(res, 150));
-  const h = r.latestHeader();
-  assert.equal(h.pts, seekPts, "paused seek renders exactly the requested frame");
-  assert.equal(h.format, NV12);
-  s.close();
-  bad.close();
+    const r = bridge.RingReader.open(ring);
+    const dst = new Uint8Array(r.capacity);
+    let last = 0;
+    let frames = 0;
+    const until = Date.now() + 1000;
+    while (Date.now() < until) {
+      const h = r.readLatestInto(dst, last);
+      if (h) {
+        assert.ok(h.seq > last);
+        assert.equal(sampledFnv1a(dst.subarray(0, h.payloadLen)), h.checksum);
+        assert.equal(badRowStamps(dst, h.stride, h.height, h.seq), 0);
+        last = h.seq;
+        frames++;
+      }
+      await new Promise((res) => setTimeout(res, 4));
+    }
+    assert.ok(frames >= 40, `got ${frames} frames in 1 s`);
 
-  child.stdin.end(); // parent "dies"
-  assert.equal(await exited, 0);
-  r.close();
-  assert.equal(bridge.ringExists(ring), false, "no leaked ring after engine exit + reader close");
+    // Control channel: wrong token is rejected, right token can pause / seek / switch format.
+    const ws = (url) =>
+      new Promise((resolve, reject) => {
+        const s = new WebSocket(url);
+        s.onopen = () => resolve(s);
+        s.onerror = reject;
+      });
+    const next = (s) => new Promise((resolve) => s.addEventListener("message", (e) => resolve(JSON.parse(e.data)), { once: true }));
+    const bad = await ws(`ws://127.0.0.1:${hs.port}/`);
+    bad.send(JSON.stringify({ type: "auth", token: "00".repeat(32) }));
+    assert.equal((await next(bad)).type, "error");
+
+    const s = await ws(`ws://127.0.0.1:${hs.port}/`);
+    s.send(JSON.stringify({ type: "auth", token: hs.token }));
+    assert.equal((await next(s)).type, "hello");
+    s.send(JSON.stringify({ type: "pause" }));
+    assert.deepEqual(await next(s), { type: "ack", cmd: "pause" });
+    await new Promise((res) => setTimeout(res, 100));
+    assert.equal(r.readHeader().engineState, 2, "paused");
+    const seekPts = 705_600_000 * 2; // 2 s
+    s.send(JSON.stringify({ type: "seek", pts: seekPts }));
+    await next(s);
+    s.send(JSON.stringify({ type: "format", format: "nv12" }));
+    await next(s);
+    await new Promise((res) => setTimeout(res, 150));
+    const h = r.latestHeader();
+    assert.equal(h.pts, seekPts, "paused seek renders exactly the requested frame");
+    assert.equal(h.format, NV12);
+
+    // WP-0C.02: resize renegotiates the frame size (rounded for NV12) without remapping.
+    const poll = async (what, pred, ms) => {
+      const end = Date.now() + ms;
+      for (;;) {
+        const x = r.latestHeader();
+        if (x && pred(x)) return x;
+        if (Date.now() > end) assert.fail(`timeout waiting for ${what}`);
+        await new Promise((res) => setTimeout(res, 2));
+      }
+    };
+    s.send(JSON.stringify({ type: "resize", width: 803, height: 451 }));
+    assert.deepEqual(await next(s), { type: "ack", cmd: "resize" });
+    const hr = await poll("resized frame", (x) => x.width !== 640, 2000);
+    assert.deepEqual([hr.width, hr.height, hr.stride], [800, 450, 800], "width % 4, even height");
+    assert.equal(hr.pts, seekPts, "paused: the current frame is re-rendered at the new size");
+
+    // WP-0C.02: a paused seek publishes a low-res preview first (flags bit 0), then the
+    // full-resolution frame of the same pts once the (emulated, 300 ms) decode is done.
+    s.send(JSON.stringify({ type: "scrub-config", lowres_div: 2, full_cost_ms: 300 }));
+    assert.deepEqual(await next(s), { type: "ack", cmd: "scrub-config" });
+    const seek2 = 705_600_000 * 3;
+    const t0 = Date.now();
+    s.send(JSON.stringify({ type: "seek", pts: seek2 }));
+    await next(s);
+    const lo = await poll("low-res preview", (x) => x.pts === seek2, 2000);
+    assert.equal(lo.flags & 1, 1, "first frame for the seek is the low-res preview");
+    assert.deepEqual([lo.width, lo.height], [400, 224]);
+    const full = await poll("full-resolution frame", (x) => x.pts === seek2 && x.flags === 0, 3000);
+    assert.deepEqual([full.width, full.height], [800, 450]);
+    assert.ok(Date.now() - t0 >= 250, "full resolution waited for the emulated decode");
+    s.close();
+    bad.close();
+
+    child.stdin.end(); // parent "dies"
+    assert.equal(await exited, 0);
+    r.close();
+    assert.equal(bridge.ringExists(ring), false, "no leaked ring after engine exit + reader close");
+  } finally {
+    if (!done) child.kill();
+  }
 });

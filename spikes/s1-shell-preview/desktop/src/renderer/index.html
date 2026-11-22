@@ -1,22 +1,51 @@
 <!doctype html>
-<html lang="en">
+<html lang="en" data-theme="dark">
   <head>
     <meta charset="utf-8" />
     <title>Cutweave S1 spike</title>
+    <link rel="stylesheet" href="./tokens.css" />
     <link rel="stylesheet" href="./style.css" />
   </head>
-  <body>
-    <main>
-      <canvas id="preview" width="1920" height="1080"></canvas>
-      <pre id="hud">starting...</pre>
-    </main>
-    <nav>
-      <button id="play" type="button">Pause</button>
-      <button id="back" type="button">-1 s</button>
-      <button id="fwd" type="button">+1 s</button>
-      <button id="format" type="button">Toggle RGBA8 / NV12</button>
-      <button id="verify" type="button">Verify: on</button>
-      <button id="reset" type="button">Reset stats</button>
+  <body class="body">
+    <section id="viewer" class="viewer" aria-label="Preview">
+      <div id="stage" class="stage">
+        <canvas id="preview" width="1920" height="1080"></canvas>
+        <div id="overlay" class="overlay">
+          <div id="guides" class="guides" aria-hidden="true">
+            <div class="guide guide-action"></div>
+            <div class="guide guide-title"></div>
+            <div class="guide guide-center"></div>
+          </div>
+          <div
+            id="tbox"
+            class="tbox"
+            tabindex="0"
+            role="group"
+            aria-label="Transform box. Drag to move, drag a handle to resize, arrow keys to nudge."
+          ></div>
+        </div>
+      </div>
+      <pre id="hud" class="hud numeric">Starting the preview...</pre>
+    </section>
+    <section class="transport" aria-label="Transport">
+      <button id="play" class="primary label" type="button">Pause</button>
+      <output id="tc" class="timecode">00:00:00:00</output>
+      <div id="scrub" class="scrub" role="slider" tabindex="0" aria-label="Playhead">
+        <div class="scrub-rail"></div>
+        <div id="playhead" class="playhead"><div class="playhead-flag"></div></div>
+      </div>
+      <output id="dur" class="timecode muted">00:00:00:00</output>
+    </section>
+    <nav class="toolbar" aria-label="Spike controls">
+      <button id="back" class="label" type="button">Back 1 s</button>
+      <button id="fwd" class="label" type="button">Forward 1 s</button>
+      <button id="format" class="label" type="button">Format: RGBA8</button>
+      <button id="upload" class="label" type="button">Upload: writeTexture</button>
+      <button id="size" class="label" type="button">Engine size: canvas</button>
+      <button id="guides-toggle" class="label" type="button" aria-pressed="true">Safe areas</button>
+      <button id="stats" class="label" type="button" aria-pressed="true">Stats</button>
+      <button id="verify" class="label" type="button" aria-pressed="true">Verify frames</button>
+      <button id="reset" class="label" type="button">Reset stats</button>
     </nav>
     <script type="module" src="./main.js"></script>
   </body>

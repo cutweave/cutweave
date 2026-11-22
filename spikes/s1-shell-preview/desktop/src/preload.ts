@@ -10,8 +10,7 @@
 import path from "node:path";
 import { contextBridge, ipcRenderer } from "electron";
 import type * as Addon from "../../bridge/index.d.ts";
-import { PresentLoop } from "./shared/loop.ts";
-import { createPresenter } from "./shared/present.ts";
+import { createPreview, type Preview } from "./shared/preview.ts";
 import type {
   EngineEvent,
   EngineInfo,
@@ -31,10 +30,10 @@ let info: EngineInfo | null = null;
 let ws: WebSocket | null = null;
 let errors = 0;
 let externalArrayBuffers: boolean | null = null;
-let loop: PresentLoop | null = null;
+let preview: Preview | null = null;
 const buffers = new Map<number, Uint8Array>();
 const listeners: ((e: EngineEvent) => void)[] = [];
-const pongs = new Map<number, (rttMs: number) => void>();
+const pongs = new Map<number, () => void>();
 let pingId = 0;
 
 function emit(e: EngineEvent): void {
@@ -47,25 +46,65 @@ function emit(e: EngineEvent): void {
   }
 }
 
+/** Control-channel diagnostics (WP-0C.02 bench). */
+const wsStats = {
+  opens: 0,
+  closes: 0,
+  reconnects: 0,
+  acks: 0,
+  errors: 0,
+  dropped: 0,
+  lastError: "",
+};
+
 function openControl(port: number, token: string): void {
   ws?.close();
   const sock = new WebSocket(`ws://127.0.0.1:${port}/`);
-  sock.onopen = () => sock.send(JSON.stringify({ type: "auth", token }));
+  sock.onopen = () => {
+    wsStats.opens++;
+    sock.send(JSON.stringify({ type: "auth", token }));
+    // A (re)started engine renders at its launch size until told the preview size.
+    if (lastResize) sock.send(JSON.stringify(lastResize));
+  };
   sock.onmessage = (m) => {
-    const msg = JSON.parse(String(m.data)) as { type: string; t?: number };
+    const msg = JSON.parse(String(m.data)) as { type: string; t?: number; message?: string };
     if (msg.type === "pong" && typeof msg.t === "number") {
-      pongs.get(msg.t)?.(performance.now() - msg.t);
+      pongs.get(msg.t)?.();
       pongs.delete(msg.t);
+    } else if (msg.type === "ack") {
+      wsStats.acks++;
+    } else if (msg.type === "error") {
+      wsStats.errors++;
+      wsStats.lastError = String(msg.message ?? "").slice(0, 200);
     }
   };
   sock.onclose = () => {
-    if (ws === sock) ws = null;
+    wsStats.closes++;
+    if (ws !== sock) return; // replaced or closed on purpose (engine down)
+    ws = null;
+    // The engine drops a connection whose auth does not arrive within 2 s, which can happen
+    // when this main thread is busy at start-up (WebGPU device and pipeline creation). The
+    // engine is still up, so reconnect with the same token instead of losing the channel.
+    if (info?.port === port && wsStats.reconnects < 20) {
+      wsStats.reconnects++;
+      setTimeout(() => {
+        if (!ws && info?.port === port) openControl(port, token);
+      }, 250);
+    }
   };
   ws = sock;
 }
 
 function send(msg: object): void {
   if (ws?.readyState === WebSocket.OPEN) ws.send(JSON.stringify(msg));
+  else wsStats.dropped++;
+}
+
+/** Last preview size requested (WP-0C.02); replayed whenever the control socket opens. */
+let lastResize: { type: "resize"; width: number; height: number } | null = null;
+function sendResize(width: number, height: number): void {
+  lastResize = { type: "resize", width: Math.round(width), height: Math.round(height) };
+  send(lastResize);
 }
 
 let connecting = false;
@@ -78,7 +117,7 @@ async function connect(): Promise<void> {
     reader = addon.RingReader.open(hs.info.ring);
     info = hs.info;
     openControl(hs.info.port, hs.token);
-    loop?.engineRestarted();
+    preview?.engineRestarted();
     emit({ state: "up", info: hs.info });
   } catch {
     errors++;
@@ -107,6 +146,8 @@ function bufferFor(len: number): Uint8Array {
   let b = buffers.get(len);
   if (!b) {
     b = new Uint8Array(len);
+    // Live resize (WP-0C.02) produces many frame sizes: keep only the most recent few.
+    if (buffers.size >= 4) buffers.delete(buffers.keys().next().value as number);
     buffers.set(len, b);
   }
   return b;
@@ -166,19 +207,29 @@ const bridge: S1Bridge = {
     if (Number.isFinite(ms) && ms >= 0 && ms <= 200) clockLatencyUs = ms * 1000;
   },
   async presentInPreload(canvas, opts) {
-    const target = await createPresenter(canvas, opts.preferGpu);
-    loop = new PresentLoop("preload", readFrame, addon.nowUs, target, opts.policy, opts.verify);
-    loop.start();
-    return `${target.kind} (${target.adapter})`;
+    preview = await createPreview(canvas, opts, {
+      drawIn: "preload",
+      getFrame: readFrame,
+      nowUs: addon.nowUs,
+      sendSeek: (pts) => send({ type: "seek", pts: Math.max(0, Math.round(pts)) }),
+      sendResize,
+    });
+    return preview.describe();
   },
   preloadLoop: {
-    snapshot: (recentN) => loop?.snapshot(recentN) ?? null,
-    reset: () => loop?.reset(),
-    setVerify: (on) => {
-      if (loop) loop.verify = on;
-    },
-    framesPresented: () => loop?.framesPresented ?? 0,
-    framesSinceUp: () => loop?.framesSinceUp ?? 0,
+    snapshot: (recentN) => preview?.snapshot(recentN) ?? null,
+    reset: () => preview?.reset(),
+    setVerify: (on) => preview?.setVerify(on),
+    framesPresented: () => preview?.framesPresented() ?? 0,
+    framesSinceUp: () => preview?.framesSinceUp() ?? 0,
+    setUpload: (path) => preview?.setUpload(path),
+    setEngineSize: (mode) => preview?.setEngineSize(mode),
+    scrub: (pts, t0) => preview?.scrub(pts, t0),
+    setScrubWait: (ms) => preview?.setScrubWait(ms),
+    presented: () => preview?.presented() ?? null,
+    takeSamples: () => preview?.takeSamples() ?? null,
+    stage: () => preview?.stage() ?? null,
+    describe: () => preview?.describe() ?? "",
   },
   readHeader(): RingHeader | null {
     try {
@@ -201,18 +252,29 @@ const bridge: S1Bridge = {
         errors++;
       }
     }
-    return { ...s, errors, externalArrayBuffers };
+    const open = ws?.readyState === WebSocket.OPEN;
+    return { ...s, errors, externalArrayBuffers, ws: { ...wsStats, open } };
   },
   transport: {
     play: () => send({ type: "play" }),
     pause: () => send({ type: "pause" }),
     seek: (pts: number) => send({ type: "seek", pts: Math.max(0, Math.round(pts)) }),
     setFormat: (format: PixelFormatName) => send({ type: "format", format }),
+    resize: sendResize,
+    scrubConfig: (lowresDiv: number, fullCostMs: number) =>
+      send({
+        type: "scrub-config",
+        lowres_div: Math.max(0, Math.round(lowresDiv)),
+        full_cost_ms: Math.max(0, Math.round(fullCostMs)),
+      }),
     ping: () =>
       new Promise<number>((resolve) => {
-        const t = performance.now() + ++pingId * 1e-6;
-        pongs.set(t, resolve);
-        send({ type: "ping", t });
+        // Integer key: a fractional timestamp does not always survive serde_json's default
+        // (not exactly round-tripping) float parser, and the pong then never matched.
+        const id = ++pingId;
+        const sent = performance.now();
+        pongs.set(id, () => resolve(performance.now() - sent));
+        send({ type: "ping", t: id });
       }),
   },
   onEngineEvent(cb) {
