@@ -1,5 +1,5 @@
 # Code owners. Reviews are requested automatically from these teams.
-# TODO(maintainers): create the @cutweave/maintainers team and, once the
+# Note for maintainers: create the @cutweave/maintainers team and, once the
 # legal reviewer is named (D0.6), a @cutweave/legal-review team.
 # Later patterns take precedence over earlier ones.
 
