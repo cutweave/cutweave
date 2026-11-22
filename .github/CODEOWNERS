@@ -1,0 +1,24 @@
+# Code owners. Reviews are requested automatically from these teams.
+# TODO(maintainers): create the @cutweave/maintainers team and, once the
+# legal reviewer is named (D0.6), a @cutweave/legal-review team.
+# Later patterns take precedence over earlier ones.
+
+*                                   @cutweave/maintainers
+
+# Contracts (docs/06-dev-process.md §3)
+/crates/cutweave-model/             @cutweave/maintainers
+/crates/cutweave-commands*/         @cutweave/maintainers
+/crates/cutweave-render*/           @cutweave/maintainers
+/crates/cutweave-api/               @cutweave/maintainers
+/docs/01-architecture.md            @cutweave/maintainers
+/docs/adr/                          @cutweave/maintainers
+
+# Licensing and plugin interfaces: maintainers + legal review
+/LICENSE*                           @cutweave/maintainers @cutweave/legal-review
+/wit/                               @cutweave/maintainers @cutweave/legal-review
+/packages/plugin-sdk/               @cutweave/maintainers @cutweave/legal-review
+
+# Repo plumbing and governance
+/.github/                           @cutweave/maintainers
+/GOVERNANCE.md                      @cutweave/maintainers
+/SECURITY.md                        @cutweave/maintainers

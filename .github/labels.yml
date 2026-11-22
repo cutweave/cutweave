@@ -1,0 +1,133 @@
+# Declarative label set for github.com/cutweave/cutweave.
+# This file is the source of truth. Syncing it to GitHub is a separate step
+# (not done here; nothing in this file calls the GitHub API).
+# `epic:<code>` entries must match exactly the epics in docs/05-work-breakdown.md
+# (to be checked by `cargo xtask check-labels`, WP-0A.05).
+
+# --- Phases ---
+- { name: "phase:P0", color: "1d76db", description: "Phase 0: Foundations & spikes" }
+- { name: "phase:P1", color: "1d76db", description: "Phase 1: Skeleton" }
+- { name: "phase:P2", color: "1d76db", description: "Phase 2: Core editor" }
+- { name: "phase:P3", color: "1d76db", description: "Phase 3: Text & captions" }
+- { name: "phase:P4", color: "1d76db", description: "Phase 4: Effects & color" }
+- { name: "phase:P5", color: "1d76db", description: "Phase 5: AI" }
+- { name: "phase:P6", color: "1d76db", description: "Phase 6: Platform" }
+- { name: "phase:P7", color: "1d76db", description: "Phase 7: Release" }
+
+# --- Epics: Phase 0 ---
+- { name: "epic:0A", color: "5319e7", description: "Repo & CI scaffold" }
+- { name: "epic:0B", color: "5319e7", description: "Governance & licensing docs" }
+- { name: "epic:0C", color: "5319e7", description: "Spike S1: shell & preview path" }
+- { name: "epic:0D", color: "5319e7", description: "Spike S2: audio clock & A/V sync" }
+- { name: "epic:0E", color: "5319e7", description: "Spike S3: decode, seek & HW accel" }
+- { name: "epic:0F", color: "5319e7", description: "Spike S4: compositor, color, text" }
+- { name: "epic:0G", color: "5319e7", description: "Spike S4b: compositions runtime" }
+- { name: "epic:0H", color: "5319e7", description: "Spike S5: command bus, codegen, MCP" }
+- { name: "epic:0I", color: "5319e7", description: "Test-media corpus & benchmark harness" }
+- { name: "epic:0J", color: "5319e7", description: "ADRs, go/no-go, re-estimate" }
+- { name: "epic:0K", color: "5319e7", description: "Design system foundations" }
+
+# --- Epics: Phase 1 ---
+- { name: "epic:1A", color: "5319e7", description: "Domain model" }
+- { name: "epic:1B", color: "5319e7", description: "Command bus, transactions & undo" }
+- { name: "epic:1C", color: "5319e7", description: "Persistence & recovery" }
+- { name: "epic:1D", color: "5319e7", description: "Media layer" }
+- { name: "epic:1E", color: "5319e7", description: "Export (H.264/AAC MP4)" }
+- { name: "epic:1F", color: "5319e7", description: "Render pipeline v0" }
+- { name: "epic:1G", color: "5319e7", description: "Audio playback v0" }
+- { name: "epic:1H", color: "5319e7", description: "Playback & SHM preview" }
+- { name: "epic:1I", color: "5319e7", description: "Local API server" }
+- { name: "epic:1J", color: "5319e7", description: "MCP v0" }
+- { name: "epic:1K", color: "5319e7", description: "CLI" }
+- { name: "epic:1L", color: "5319e7", description: "Electron shell & engine supervision" }
+- { name: "epic:1M", color: "5319e7", description: "Editor UI v0" }
+- { name: "epic:1N", color: "5319e7", description: "Codegen & protocol package" }
+- { name: "epic:1O", color: "5319e7", description: "CI quality gates" }
+
+# --- Epics: Phase 2 ---
+- { name: "epic:2A", color: "5319e7", description: "Timeline editing" }
+- { name: "epic:2B", color: "5319e7", description: "Sequences & canvas" }
+- { name: "epic:2C", color: "5319e7", description: "Clip properties & keyframes" }
+- { name: "epic:2D", color: "5319e7", description: "Speed basics" }
+- { name: "epic:2E", color: "5319e7", description: "Audio features" }
+- { name: "epic:2F", color: "5319e7", description: "Media management (proxies, relink, collect)" }
+- { name: "epic:2G", color: "5319e7", description: "Export presets & queue" }
+- { name: "epic:2H", color: "5319e7", description: "Workspace UI" }
+- { name: "epic:2I", color: "5319e7", description: "MCP core tool set" }
+- { name: "epic:2J", color: "5319e7", description: "Performance, reliability & dogfood" }
+
+# --- Epics: Phase 3 ---
+- { name: "epic:3A", color: "5319e7", description: "Text engine" }
+- { name: "epic:3B", color: "5319e7", description: "Compositions runtime & @cutweave/compose" }
+- { name: "epic:3C", color: "5319e7", description: "Text animations & presets" }
+- { name: "epic:3D", color: "5319e7", description: "Transcripts & Stt providers" }
+- { name: "epic:3E", color: "5319e7", description: "Captions & style gallery" }
+- { name: "epic:3F", color: "5319e7", description: "Text-based editing (silence/filler)" }
+- { name: "epic:3G", color: "5319e7", description: "Asset packs (stickers, music/SFX)" }
+- { name: "epic:3H", color: "5319e7", description: "Agent Kit v0" }
+- { name: "epic:3I", color: "5319e7", description: "Alpha packaging" }
+
+# --- Epics: Phase 4 ---
+- { name: "epic:4A", color: "5319e7", description: "WGSL effect framework" }
+- { name: "epic:4B", color: "5319e7", description: "Transitions pack" }
+- { name: "epic:4C", color: "5319e7", description: "Effects pack" }
+- { name: "epic:4D", color: "5319e7", description: "Filters & LUTs" }
+- { name: "epic:4E", color: "5319e7", description: "Clip animations" }
+- { name: "epic:4F", color: "5319e7", description: "Color tools & scopes" }
+- { name: "epic:4G", color: "5319e7", description: "Masks, keying, adjustment layers" }
+- { name: "epic:4H", color: "5319e7", description: "Speed curves & frame blending" }
+- { name: "epic:4I", color: "5319e7", description: "Stabilization & tracking" }
+
+# --- Epics: Phase 5 ---
+- { name: "epic:5A", color: "5319e7", description: "Gateway core" }
+- { name: "epic:5B", color: "5319e7", description: "Model catalog" }
+- { name: "epic:5C", color: "5319e7", description: "Aggregator adapters" }
+- { name: "epic:5D", color: "5319e7", description: "Direct adapters" }
+- { name: "epic:5E", color: "5319e7", description: "Adapter SDK (declarative HTTP + WASM)" }
+- { name: "epic:5F", color: "5319e7", description: "AI Studio UI" }
+- { name: "epic:5G", color: "5319e7", description: "AI editing features" }
+- { name: "epic:5H", color: "5319e7", description: "Long-form to shorts" }
+- { name: "epic:5I", color: "5319e7", description: "Local AI plugin & model manager" }
+- { name: "epic:5J", color: "5319e7", description: "Agent Kit: generation skills & prompt packs" }
+
+# --- Epics: Phase 6 ---
+- { name: "epic:6A", color: "5319e7", description: "Plugin platform core" }
+- { name: "epic:6B", color: "5319e7", description: "UI extensions" }
+- { name: "epic:6C", color: "5319e7", description: "Plugin index, distribution & CLI" }
+- { name: "epic:6D", color: "5319e7", description: "Templates" }
+- { name: "epic:6E", color: "5319e7", description: "Interchange" }
+- { name: "epic:6F", color: "5319e7", description: "Publishers" }
+- { name: "epic:6G", color: "5319e7", description: "Agent Kit v1" }
+- { name: "epic:6H", color: "5319e7", description: "Eval harness" }
+- { name: "epic:6I", color: "5319e7", description: "Copilot" }
+- { name: "epic:6J", color: "5319e7", description: "MCP completeness & conformance" }
+
+# --- Epics: Phase 7 ---
+- { name: "epic:7A", color: "5319e7", description: "Packaging, signing, updates" }
+- { name: "epic:7B", color: "5319e7", description: "Reliability (crash reports, fuzz, soak)" }
+- { name: "epic:7C", color: "5319e7", description: "Accessibility & i18n" }
+- { name: "epic:7D", color: "5319e7", description: "Performance sign-off" }
+- { name: "epic:7E", color: "5319e7", description: "Documentation" }
+- { name: "epic:7F", color: "5319e7", description: "Legal, compliance & security review" }
+- { name: "epic:7G", color: "5319e7", description: "Launch" }
+
+# --- Size ---
+- { name: "size:S", color: "c2e0c6", description: "Up to 1 agent-day" }
+- { name: "size:M", color: "bfd4f2", description: "2-4 agent-days" }
+
+# --- Executor ---
+- { name: "exec:sonnet", color: "fbca04", description: "Default AI executor" }
+- { name: "exec:opus", color: "fbca04", description: "Cross-cutting, GPU/media, concurrency" }
+- { name: "exec:human", color: "fbca04", description: "Decisions, legal, hardware-bound measurement" }
+
+# --- Type ---
+- { name: "type:bug", color: "d73a4a", description: "Something is broken" }
+- { name: "type:feature", color: "a2eeef", description: "New capability or improvement" }
+- { name: "type:work-package", color: "0e8a16", description: "Planned WBS work package" }
+- { name: "type:docs", color: "0075ca", description: "Documentation only" }
+- { name: "type:security", color: "b60205", description: "Security-relevant (non-sensitive details only)" }
+- { name: "type:adr", color: "d4c5f9", description: "Needs or relates to an ADR/RFC" }
+
+# --- Other ---
+- { name: "spike", color: "ededed", description: "Phase 0 spike (throwaway code)" }
+- { name: "needs-golden-run", color: "ededed", description: "Golden frames must be regenerated or reviewed" }

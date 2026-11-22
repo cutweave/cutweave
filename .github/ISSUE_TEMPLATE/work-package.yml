@@ -1,0 +1,64 @@
+name: Work package
+description: A unit of planned work. Normally generated from docs/wbs/ (the WBS markdown is the source of truth).
+labels: ["type:work-package"]
+body:
+  - type: input
+    id: wp-id
+    attributes:
+      label: WP id
+      description: "Format WP-<phase><epic>.<nn>, e.g. WP-1B.03"
+    validations:
+      required: true
+  - type: input
+    id: area
+    attributes:
+      label: Area
+      description: "crates/... | packages/... | apps/... | docs/..."
+    validations:
+      required: true
+  - type: input
+    id: depends
+    attributes:
+      label: Depends on
+      description: "WP ids, or an epic code such as E1B (means all WPs of that epic merged)"
+  - type: dropdown
+    id: size
+    attributes:
+      label: Size
+      description: "S = 1 agent-day, M = 2-4. L must be split before start."
+      options: [S, M]
+    validations:
+      required: true
+  - type: dropdown
+    id: executor
+    attributes:
+      label: Executor
+      options: [sonnet, opus, human]
+    validations:
+      required: true
+  - type: textarea
+    id: scope
+    attributes:
+      label: Scope
+    validations:
+      required: true
+  - type: textarea
+    id: interfaces
+    attributes:
+      label: Interfaces
+      description: Public types, commands or APIs touched or created.
+  - type: textarea
+    id: acceptance
+    attributes:
+      label: Acceptance criteria
+      description: Objectively checkable bullets.
+    validations:
+      required: true
+  - type: textarea
+    id: tests
+    attributes:
+      label: Tests
+  - type: textarea
+    id: out-of-scope
+    attributes:
+      label: Out of scope

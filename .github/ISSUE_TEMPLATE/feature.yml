@@ -1,0 +1,31 @@
+name: Feature request
+description: Suggest an improvement or new capability
+labels: ["type:feature"]
+body:
+  - type: textarea
+    id: problem
+    attributes:
+      label: Problem
+      description: What are you trying to do, and what gets in the way?
+    validations:
+      required: true
+  - type: textarea
+    id: proposal
+    attributes:
+      label: Proposed solution
+    validations:
+      required: true
+  - type: textarea
+    id: alternatives
+    attributes:
+      label: Alternatives considered
+  - type: checkboxes
+    id: parity
+    attributes:
+      label: Parity
+      description: Every capability must be reachable from the UI, CLI and MCP.
+      options:
+        - label: I considered how this would work from the UI, the CLI and MCP.
+  - type: markdown
+    attributes:
+      value: Settled decisions are in docs/00-product-brief.md. Contract changes go through an ADR or RFC.
