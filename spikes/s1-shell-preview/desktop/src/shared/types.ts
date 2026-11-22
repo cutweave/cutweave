@@ -3,6 +3,7 @@
 
 import type { FrameHeader, RingHeader } from "../../../bridge/index.d.ts";
 import type { LoopSnapshot } from "./loop.ts";
+import type { PreviewControls, PreviewOptions } from "./preview.ts";
 
 export type { FrameHeader, LoopSnapshot, RingHeader };
 
@@ -56,8 +57,9 @@ export type PixelFormatName = "rgba8" | "nv12";
  */
 export type FramePolicy = "latest" | "next" | "clock";
 
-/** Control surface of the present loop running inside the preload (draw=preload mode). */
-export interface PreloadLoopHandle {
+/** Control surface of the present loop running inside the preload (draw=preload mode).
+ * WP-0C.02 extends it with upload path, engine size, scrub and stage controls. */
+export interface PreloadLoopHandle extends PreviewControls {
   snapshot(recentN?: number): LoopSnapshot | null;
   reset(): void;
   setVerify(on: boolean): void;
@@ -76,10 +78,7 @@ export interface S1Bridge {
   setClockLatencyMs(ms: number): void;
   /** Experiment: run the whole present loop in the preload's isolated world, drawing into
    * `canvas` (an Element crosses contextBridge by reference), so pixels never get cloned. */
-  presentInPreload(
-    canvas: HTMLCanvasElement,
-    opts: { policy: FramePolicy; verify: boolean; preferGpu: boolean },
-  ): Promise<string>;
+  presentInPreload(canvas: HTMLCanvasElement, opts: PreviewOptions): Promise<string>;
   preloadLoop: PreloadLoopHandle;
   readHeader(): RingHeader | null;
   /** Engine-compatible host clock (µs since the Unix epoch). */
@@ -92,12 +91,26 @@ export interface S1Bridge {
     errors: number;
     /** Whether the addon could alias shared memory as an ArrayBuffer here (null = unknown). */
     externalArrayBuffers: boolean | null;
+    /** Control-channel counters (WP-0C.02). */
+    ws?: {
+      open: boolean;
+      opens: number;
+      closes: number;
+      acks: number;
+      errors: number;
+      dropped: number;
+      lastError: string;
+    };
   };
   transport: {
     play(): void;
     pause(): void;
     seek(ptsFlicks: number): void;
     setFormat(format: PixelFormatName): void;
+    /** Render at this size (device pixels) from now on (WP-0C.02). */
+    resize(width: number, height: number): void;
+    /** Scrub tuning (WP-0C.02): low-res preview divisor (0 = off), emulated full-res cost. */
+    scrubConfig(lowresDiv: number, fullCostMs: number): void;
     /** Round trip over the control WebSocket, in ms. */
     ping(): Promise<number>;
   };
