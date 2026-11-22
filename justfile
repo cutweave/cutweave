@@ -27,11 +27,25 @@ check:
     cargo xtask license-headers --check
     cargo deny check
     cargo xtask tokens --check
+    just wbs-lint
     pnpm lint
     pnpm format:check
     pnpm typecheck
     pnpm test
     @echo "check: schema/codegen snapshot diff arrives in WP-1N"
+
+# WBS lint (offline): parse docs/wbs, check ids/deps/cycles/sizes, verify docs/wbs/wbs.json snapshot
+wbs-lint:
+    python scripts/wbs-to-issues/wbs_to_issues.py --check
+    python -m unittest discover -s scripts/wbs-to-issues
+
+# Regenerate the committed docs/wbs/wbs.json snapshot
+wbs-json:
+    python scripts/wbs-to-issues/wbs_to_issues.py --write
+
+# Sync WBS work packages to GitHub issues (`just wbs-sync --repo cutweave/cutweave --phase P0 --dry-run`)
+wbs-sync *args:
+    python scripts/wbs-to-issues/wbs_to_issues.py --sync {{args}}
 
 # Render golden-frame projects headless and compare (`just golden --update`)
 golden *args:
