@@ -96,6 +96,7 @@ export interface S1Bridge {
       open: boolean;
       opens: number;
       closes: number;
+      reconnects: number;
       acks: number;
       errors: number;
       dropped: number;

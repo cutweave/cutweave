@@ -47,7 +47,15 @@ function emit(e: EngineEvent): void {
 }
 
 /** Control-channel diagnostics (WP-0C.02 bench). */
-const wsStats = { opens: 0, closes: 0, acks: 0, errors: 0, dropped: 0, lastError: "" };
+const wsStats = {
+  opens: 0,
+  closes: 0,
+  reconnects: 0,
+  acks: 0,
+  errors: 0,
+  dropped: 0,
+  lastError: "",
+};
 
 function openControl(port: number, token: string): void {
   ws?.close();
@@ -72,7 +80,17 @@ function openControl(port: number, token: string): void {
   };
   sock.onclose = () => {
     wsStats.closes++;
-    if (ws === sock) ws = null;
+    if (ws !== sock) return; // replaced or closed on purpose (engine down)
+    ws = null;
+    // The engine drops a connection whose auth does not arrive within 2 s, which can happen
+    // when this main thread is busy at start-up (WebGPU device and pipeline creation). The
+    // engine is still up, so reconnect with the same token instead of losing the channel.
+    if (info?.port === port && wsStats.reconnects < 20) {
+      wsStats.reconnects++;
+      setTimeout(() => {
+        if (!ws && info?.port === port) openControl(port, token);
+      }, 250);
+    }
   };
   ws = sock;
 }
