@@ -364,6 +364,7 @@ flowchart LR
   - Input transforms come from probe tags (matrix, range, transfer, primaries), and output transforms are per export.
   - HDR (PQ/HLG) sources are tone-mapped to SDR in v1. HDR output is v2.
   - LUTs (.cube) are applied in the specified space.
+- **Color defaults (decided in WP-1F.02):** untagged SD sources are treated as BT.601; HLG uses the BT.2100 OOTF, then the same BT.2390 EETF as PQ for SDR. Preview output is sRGB with straight alpha. Minified layers sample mipmaps. Crop masks without moving the picture.
 - **Blend modes:**
   - The core set ships in P2: normal, multiply, screen, overlay, darken, lighten, add (linear dodge) and soft light.
   - The extended set arrives in P4 as L1 plugins: color dodge/burn, hard/vivid/linear/pin light, difference, exclusion, hue, saturation, color and luminosity.
