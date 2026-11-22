@@ -83,6 +83,19 @@ missing_errors_doc = "allow"
 missing_panics_doc = "allow"
 
 # Pixel loops are ~20x slower at opt-level 0, so hot crates are optimized even in dev builds.
+# Command-bus hot path (WP-1B.03 measured Tx commit 490 µs → 42 µs at opt-level 2 in dev builds).
+[profile.dev.package.cutweave-commands]
+opt-level = 2
+
+[profile.dev.package.cutweave-model]
+opt-level = 2
+
+[profile.dev.package.imbl]
+opt-level = 2
+
+[profile.dev.package.serde_json]
+opt-level = 2
+
 [profile.dev.package.cutweave-render]
 opt-level = 3
 [profile.dev.package.cutweave-text]

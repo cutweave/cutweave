@@ -94,3 +94,7 @@ ffmpeg-fetch *args:
 ci-local:
     just check
     just ui-snapshots
+
+# Loom model checks for the document actor (slow; run before touching doc-actor concurrency)
+loom:
+    RUSTFLAGS="--cfg cutweave_loom" cargo test -p cutweave-commands --release --test doc_loom
