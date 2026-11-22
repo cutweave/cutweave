@@ -247,6 +247,20 @@ version = "0.0.0"
 [[package]]
 name = "cutweave-commands"
 version = "0.0.0"
+dependencies = [
+ "cutweave-model",
+ "imbl",
+ "insta",
+ "proptest",
+ "schemars",
+ "serde",
+ "serde_json",
+ "serde_path_to_error",
+ "specta",
+ "specta-serde",
+ "specta-typescript",
+ "thiserror",
+]
 
 [[package]]
 name = "cutweave-commands-derive"
