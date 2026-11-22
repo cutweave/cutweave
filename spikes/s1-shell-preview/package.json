@@ -1,0 +1,29 @@
+{
+  "name": "@cutweave-spike/s1-shell-preview",
+  "version": "0.0.0",
+  "private": true,
+  "description": "Spike S1 (WP-0C.01): Electron shell + Rust sidecar + SHM frame ring + napi-rs reader. Throwaway.",
+  "license": "GPL-3.0-or-later",
+  "type": "module",
+  "main": "desktop/dist/main.cjs",
+  "packageManager": "pnpm@12.21.0",
+  "engines": {
+    "node": ">=24.19.0 <25"
+  },
+  "scripts": {
+    "build:native": "node scripts/build-native.mjs",
+    "build:js": "node scripts/build-js.mjs",
+    "build": "pnpm run build:native && pnpm run build:js",
+    "start": "electron .",
+    "selftest": "node scripts/selftest.mjs",
+    "typecheck": "tsc --noEmit -p tsconfig.json",
+    "test": "node --test \"bridge/test/*.test.mjs\"",
+    "test:rust": "cargo test --workspace"
+  },
+  "devDependencies": {
+    "@types/node": "24.19.2",
+    "electron": "45.4.1",
+    "esbuild": "0.28.2",
+    "typescript": "7.0.2"
+  }
+}
