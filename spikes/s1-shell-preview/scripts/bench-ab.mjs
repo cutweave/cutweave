@@ -3,7 +3,7 @@
 //
 //   node scripts/bench-ab.mjs [seconds=60] [--sizes=1920x1080,1280x720] [--format=rgba8|nv12]
 //                             [--only=a,b-main,b-worker,texture] [--latency=20] [--warmup=5]
-//                             [--quiet-below=150] [--max-wait=600]
+//                             [--quiet-below=150] [--max-wait=600] [--retry-foreign=250] [--retries=2]
 //   node scripts/bench-ab.mjs --table            # print the table from results/bench-*.json
 //
 // Each configuration is a fresh Electron launch with `--bench=<seconds>` (desktop/src/bench.ts):
@@ -13,10 +13,10 @@
 // (up to --max-wait s) until the whole machine is below --quiet-below % of one core, and every
 // result records "foreign" CPU (machine minus our processes): other builds/agents share the box.
 import { spawn } from "node:child_process";
-import { readdirSync, readFileSync } from "node:fs";
+import { mkdirSync, readdirSync, readFileSync, renameSync } from "node:fs";
 import { createRequire } from "node:module";
 import { cpus } from "node:os";
-import { dirname, join } from "node:path";
+import { basename, dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 
 const root = join(dirname(fileURLToPath(import.meta.url)), "..");
@@ -173,17 +173,35 @@ const shared = [
   `--latency=${opt("latency", "20")}`,
   `--format=${opt("format", "rgba8")}`,
 ];
+// A run whose foreign load (machine minus our processes) exceeded --retry-foreign (% of one
+// core) is moved to results/exploratory/contaminated/ and repeated, up to --retries times.
+const retryForeign = Number(opt("retry-foreign", "250"));
+const retries = Number(opt("retries", "2"));
+const contaminated = join(resultsDir, "exploratory", "contaminated");
 const produced = [];
 for (const size of sizes) {
   for (const key of only) {
     const c = CONFIGS[key];
     if (!c) throw new Error(`unknown config ${key}`);
     console.log(`${size}: ${c.label}`);
-    const q = await waitForQuiet(Number(opt("quiet-below", "150")), Number(opt("max-wait", "600")));
-    console.log(`  machine load before run: ${q.load.toFixed(0)}% of one core${q.waited ? " (gave up waiting)" : ""}`);
-    const { code, file } = await runOne([...c.flags, ...shared, `--size=${size}`]);
-    if (code !== 0 || !file) console.log(`  FAILED (exit ${code})`);
-    else produced.push(file);
+    for (let attempt = 0; attempt <= retries; attempt++) {
+      const q = await waitForQuiet(Number(opt("quiet-below", "150")), Number(opt("max-wait", "600")));
+      console.log(`  machine load before run: ${q.load.toFixed(0)}% of one core${q.waited ? " (gave up waiting)" : ""}`);
+      const { code, file } = await runOne([...c.flags, ...shared, `--size=${size}`]);
+      if (code !== 0 || !file) {
+        console.log(`  FAILED (exit ${code})`);
+        break;
+      }
+      const foreign = JSON.parse(readFileSync(file, "utf8")).summary?.cpu?.foreign ?? 0;
+      if (foreign > retryForeign && attempt < retries) {
+        mkdirSync(contaminated, { recursive: true });
+        renameSync(file, join(contaminated, basename(file)));
+        console.log(`  foreign load ${foreign.toFixed(0)}% during the run: retrying`);
+        continue;
+      }
+      produced.push(file);
+      break;
+    }
   }
 }
 console.log();

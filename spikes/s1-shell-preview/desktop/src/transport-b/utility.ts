@@ -130,8 +130,31 @@ function openControl(port: number, token: string): void {
   ws = sock;
 }
 
-function control(msg: ControlMsg): void {
-  if (ws?.readyState === WebSocket.OPEN) ws.send(JSON.stringify(msg));
+/** The renderer is untrusted from here: rebuild the message from validated fields only, so a
+ * compromised page cannot use this process (which holds the token) to send arbitrary engine
+ * commands. Same surface as (a)'s `bridge.transport`. */
+function sanitize(m: unknown): ControlMsg | null {
+  if (typeof m !== "object" || m === null) return null;
+  const x = m as Record<string, unknown>;
+  const num = (v: unknown) => typeof v === "number" && Number.isFinite(v);
+  switch (x.type) {
+    case "play":
+    case "pause":
+      return { type: x.type };
+    case "seek":
+      return num(x.pts) ? { type: "seek", pts: Math.max(0, Math.round(x.pts as number)) } : null;
+    case "format":
+      return x.format === "rgba8" || x.format === "nv12" ? { type: "format", format: x.format } : null;
+    case "ping":
+      return num(x.t) ? { type: "ping", t: x.t as number } : null;
+    default:
+      return null;
+  }
+}
+
+function control(raw: unknown): void {
+  const msg = sanitize(raw);
+  if (msg && ws?.readyState === WebSocket.OPEN) ws.send(JSON.stringify(msg));
 }
 
 // ---- frame pump --------------------------------------------------------------------------------
@@ -293,8 +316,10 @@ function probeTransfers(port: MessagePortMain): void {
 
 function onRendererMessage(e: Electron.MessageEvent): void {
   const m = e.data as RendererToUtility;
+  if (typeof m !== "object" || m === null) return;
   switch (m.type) {
     case "ack":
+      if (typeof m.seq !== "number") return;
       // Freed credit is used on the next publish (<= 1 frame later). Pushing from here would
       // call `readSlotInto` (&mut) while `waitForFrame` holds napi-rs's borrow of the reader.
       if (m.seq > lastAckedSeq) {
@@ -303,7 +328,7 @@ function onRendererMessage(e: Electron.MessageEvent): void {
       }
       break;
     case "sync":
-      post({ type: "sync", t0: m.t0, hostUs: addon.nowUs() });
+      if (typeof m.t0 === "number") post({ type: "sync", t0: m.t0, hostUs: addon.nowUs() });
       break;
     case "control":
       control(m.msg);
