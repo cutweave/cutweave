@@ -2,7 +2,7 @@
 import { useState } from "react";
 import { IconButton } from "./IconButton.tsx";
 import { Panel, PanelDivider } from "./Panel.tsx";
-import { TabList, Tabs } from "./Tabs.tsx";
+import { TabList, TabPanel, Tabs } from "./Tabs.tsx";
 
 export default { title: "Structure/Panel", component: Panel, tags: ["autodocs"] };
 
@@ -48,10 +48,13 @@ function InspectorPanel() {
           </>
         }
       >
-        <Fact label="Clip" value="interview_A.mov" />
-        <PanelDivider />
-        <Fact label="Duration" value="00:00:12:05" />
-        <Fact label="Frame rate" value="23.976 fps" />
+        {/* Each tab needs its panel: the trigger's aria-controls must point at a real element. */}
+        <TabPanel value="video">
+          <Fact label="Clip" value="interview_A.mov" />
+          <PanelDivider />
+          <Fact label="Duration" value="00:00:12:05" />
+          <Fact label="Frame rate" value="23.976 fps" />
+        </TabPanel>
       </Panel>
     </Tabs>
   );

@@ -53,6 +53,13 @@ function CaptionsSelected() {
     <div style={{ width: "var(--layer-width-md)" }}>
       <Tabs value={tab} onValueChange={setTab}>
         <TabList tabs={WITH_DISABLED} aria-label="Asset browser, Captions selected" />
+        {WITH_DISABLED.map((t) => (
+          <TabPanel key={t.id} value={t.id}>
+            <p className="body" style={{ margin: 0, padding: "var(--space-3)" }}>
+              {t.label} panel
+            </p>
+          </TabPanel>
+        ))}
       </Tabs>
     </div>
   );
