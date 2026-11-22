@@ -1,0 +1,15 @@
+[package]
+name = "cutweave-bridge"
+description = "Cutweave: napi-rs addon for the Electron preload (SHM reader, perf counters)"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+rust-version.workspace = true
+publish = false
+
+[lib]
+crate-type = ["cdylib", "rlib"]
+
+[lints]
+workspace = true

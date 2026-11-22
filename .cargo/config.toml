@@ -1,0 +1,8 @@
+# Workspace-wide cargo configuration. No machine-specific paths here.
+#
+# bindgen (ffmpeg-sys-next, feature `ffmpeg`) needs libclang. If it is not found automatically,
+# set LIBCLANG_PATH in your shell (e.g. on Windows: C:\Program Files\LLVM\bin).
+# FFmpeg dev libraries are located through FFMPEG_DIR, set by `just ffmpeg-fetch`.
+
+[alias]
+xtask = "run --quiet --package xtask --"

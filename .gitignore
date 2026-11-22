@@ -27,3 +27,5 @@ Thumbs.db
 *.mov
 *.mkv
 !testdata/golden/**
+coverage/
+.claude/worktrees/
