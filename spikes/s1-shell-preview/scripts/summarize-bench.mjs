@@ -27,7 +27,7 @@ for (const file of files) {
   table(
     ["format + upload (1920x1080)", "fps", "drops/min (gaps + engine)", "upload+draw CPU p50/p95 ms", "submit -> GPU done p50/p95 ms", "engine render -> present p50/p95 ms", "CPU % engine / renderer / GPU proc"],
     r.matrix.map((m) => [
-      `${m.format} + ${m.upload}`,
+      `${m.format} + ${m.upload}${m.otherEngines ? " (contended*)" : ""}`,
       f1(m.presentFps),
       `${f1(m.dropsPerMin)} (${f1(m.seqGapsPerMin)} + ${f1(m.engineDropsPerMin)})`,
       pp(m.uploadDrawMs),
@@ -68,4 +68,5 @@ for (const file of files) {
       `aligned every second: ${r.checks.overlayAlignedEverySecond}.\n`,
   );
   console.log(`Checks: ${Object.entries(r.checks).map(([k, v]) => `${k} ${v ? "ok" : "FAIL"}`).join(", ")}\n`);
+  if (r.notes?.length) console.log(`Notes (* = another s1-engine ran during the phase): ${r.notes.join("; ")}\n`);
 }

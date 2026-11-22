@@ -16,7 +16,7 @@
 // `{ts, phase, fps, dropped, engineDropped, scrub_ms[], cpu{engine, main, renderer, gpu}, align}`
 // plus phase summaries and checks.
 
-import { type ChildProcess, spawn } from "node:child_process";
+import { type ChildProcess, execFile, spawn } from "node:child_process";
 import { mkdirSync, writeFileSync } from "node:fs";
 import path from "node:path";
 import { createInterface } from "node:readline";
@@ -119,6 +119,8 @@ interface PhaseResult {
   dropsPerMin: number;
   cpuMeanPercentOfOneCore: { engine: number | null; main: number; renderer: number; gpu: number };
   alignOk: boolean;
+  /** Max other s1-engine processes seen during the phase (contention; null = unknown). */
+  otherEngines: number | null;
   snapshot: Snapshot;
 }
 
@@ -155,6 +157,26 @@ class EngineCpu {
   }
 }
 
+/** Other s1-engine processes (another spike run on this machine = GPU/CPU contention). */
+function otherEngines(ownPid: number | null): Promise<number | null> {
+  if (process.platform !== "win32") return Promise.resolve(null);
+  return new Promise((resolve) => {
+    execFile(
+      "tasklist",
+      ["/FI", "IMAGENAME eq s1-engine.exe", "/FO", "CSV", "/NH"],
+      { windowsHide: true },
+      (err, out) => {
+        if (err) return resolve(null);
+        const pids = out
+          .split(/\r?\n/)
+          .map((l) => Number(l.split('","')[1]))
+          .filter((p) => Number.isFinite(p) && p > 0 && p !== ownPid);
+        resolve(pids.length);
+      },
+    );
+  });
+}
+
 function electronCpuSeconds(): Record<string, number> {
   const out: Record<string, number> = {};
   for (const m of app.getAppMetrics()) {
@@ -182,7 +204,15 @@ export async function runBench(deps: BenchDeps, arg: string): Promise<boolean> {
   win.setContentSize(1280, 800);
   const until = Date.now() + 30_000;
   while (!(await js<number>("window.__s1?.framesPresented ?? 0").catch(() => 0))) {
-    if (Date.now() > until) throw new Error("no frames presented within 30 s");
+    if (Date.now() > until) {
+      const hud = await js<string>("document.getElementById('hud')?.textContent ?? ''").catch(
+        (e: Error) => `(page unreachable: ${e.message})`,
+      );
+      const shot = path.join(deps.spikeRoot, "results", `bench-startup-timeout-${Date.now()}.png`);
+      mkdirSync(path.dirname(shot), { recursive: true });
+      writeFileSync(shot, (await win.webContents.capturePage()).toPNG());
+      throw new Error(`no frames presented within 30 s; HUD: ${hud}; screenshot ${shot}`);
+    }
     await sleep(100);
   }
   cpu.start(deps.enginePid());
@@ -223,9 +253,12 @@ export async function runBench(deps: BenchDeps, arg: string): Promise<boolean> {
         })
       : Promise.resolve();
     let next = t0 + 1000;
+    let others: number | null = null;
     while (driving || performance.now() < t0 + seconds * 1000) {
       await sleep(Math.max(0, next - performance.now()));
       next += 1000;
+      const o = await otherEngines(deps.enginePid());
+      if (o !== null) others = Math.max(others ?? 0, o);
       const s = await js<Sample>("window.__s1.sample()");
       const now = { eng: cpu.ms, el: electronCpuSeconds(), t: performance.now() };
       const dt = (now.t - prevCpu.t) / 1000;
@@ -277,8 +310,10 @@ export async function runBench(deps: BenchDeps, arg: string): Promise<boolean> {
         gpu: mean((r) => r.cpu.gpu) ?? 0,
       },
       alignOk: rows.every((r) => r.align.ok),
+      otherEngines: others,
       snapshot: snap,
     };
+    if (others) notes.push(`${phase}: ${others} other s1-engine process(es) ran during the phase`);
     log(
       `${phase}: ${res.presentFps} fps, drops/min ${res.dropsPerMin} (gaps ${res.seqGapsPerMin}, engine ${res.engineDropsPerMin}), ` +
         `upload+draw p50 ${snap.latency.uploadDrawMs?.p50} ms, gpu done p50 ${snap.latency.gpuDoneMs?.p50} ms, ` +
@@ -687,6 +722,7 @@ export async function runBench(deps: BenchDeps, arg: string): Promise<boolean> {
       renderToPresentMs: r.snapshot.latency.renderToPresentMs,
       addonCopyMs: r.snapshot.latency.addonCopyMs,
       cpu: r.cpuMeanPercentOfOneCore,
+      otherEngines: r.otherEngines,
     })),
     scrub: {
       variants: scrubResults,
