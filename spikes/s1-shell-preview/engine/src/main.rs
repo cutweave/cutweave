@@ -358,8 +358,12 @@ fn run() -> Result<()> {
             let after = gpu.resize(w, h);
             if after != before {
                 tracing::debug!(requested = ?(w, h), size = ?after, "resize");
-                // Re-render the current frame at the new size (visible while paused).
-                needs_frame = true;
+                // Paused: re-render the current frame at the new size. Playing: the next frame
+                // (<= one frame away) has the new size; an extra render would publish a
+                // duplicate pts that the clock scheduler skips.
+                if !transport.playing.load(Ordering::Acquire) {
+                    needs_frame = true;
+                }
             }
         }
         if let Some(pts) = seek {
