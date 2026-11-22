@@ -1,8 +1,10 @@
-# Spike S4 — render graph, linear-light compositor, LUT, tone-map, headless export (WP-0F.01)
+# Spike S4 — render graph, linear-light compositor, LUT, tone-map, headless export (WP-0F.01) and animated text (WP-0F.02)
 
 > **Throwaway spike** (docs/wbs/P0-foundations.md). Own Cargo workspace, excluded from the root
 > workspace, never imported by `crates/`. Only the findings below carry forward into
-> `cutweave-render` (Phase 1). Architecture: §8 (render pipeline), §20 (golden tolerances).
+> `cutweave-render` (Phase 1). Architecture: §8 (render pipeline), §11 (captions), §20 (golden
+> tolerances). **WP-0F.02 (text: MSDF atlas vs Vello) is [its own section](#wp-0f02--text-animated-captions-via-an-msdf-atlas-and-vello)**,
+> with the comparison table and the ADR-007 recommendation.
 
 ## What it does
 
@@ -32,7 +34,7 @@ planes a decoder would hand over (4:2:0 with MPEG-2 chroma siting, 8/10-bit code
 
 ```sh
 cd spikes/s4-compositor
-cargo test                                   # 42 unit + 8 GPU tests (goldens on every adapter present)
+cargo test                                   # 60 unit + 7 GPU + 7 text tests (goldens on every adapter present)
 cargo clippy --all-targets -- -D warnings
 
 cargo run --release --bin s4 -- adapters                       # list adapters (+ golden keys)
@@ -48,7 +50,10 @@ cargo run --release --bin s4 -- scene --frame 150 > scene.json            # scen
 cargo run --release --bin s4 -- render --scene-json scene.json --out s.png
 cargo run --release --bin s4 -- golden --update --adapter software        # rewrite one golden set
 S4_UPDATE_GOLDENS=1 cargo test --test gpu golden                          # rewrite all present sets
+S4_UPDATE_GOLDENS=1 cargo test --test text text_golden                    # rewrite the text sets
 ```
+
+Text (WP-0F.02) commands are listed [in its section](#how-to-run-text).
 
 Everything is headless (no window or surface); `--adapter` takes `auto`, `software`
 (WARP/lavapipe), an index, `key:<golden-key>` or a name substring. `S4_ADAPTER` picks the adapter
@@ -68,10 +73,10 @@ run on that texture; the compositor places it with the layer transform. Node kin
 * `Group { width, height, layers }` — nested stack in its own intermediate (compositions, §12).
 * `Transition { kind, progress, from: Layer, to: Layer }` — both sides rendered in the enclosing
   canvas, blended in linear light.
-* **`Text { text, font, size_px, fill_srgb, box_size }` — the WP-0F.02 plug-in point.** The graph
-  already lowers it to a cacheable `Text` pass sized `box_size`; the executor returns
-  `Error::Unsupported` until 0F.02 adds an MSDF/Vello pass that fills that texture. Nothing else
-  changes: effects, transforms, blend modes and caching apply to text like any other node.
+* **`Text { text, font, size_px, fill_srgb, box_size, align, line_height, outline, shadow, spans,
+  renderer }`** (WP-0F.02; the last six are optional serde fields). Unlike the other nodes, text is
+  rasterised *through* the layer transform at canvas resolution (see the WP-0F.02 section);
+  effects, blend modes and caching still apply.
 
 The scene is plain `serde` data, so the WP-0G.01 QuickJS runtime can emit it as JSON
 (`s4 scene` / `s4 render --scene-json`). Time is flicks (`timeline::frame_to_flicks`).
@@ -251,7 +256,8 @@ directory); sources are synthetic (no FFmpeg, no corpus).
    **fuse passes** (decode → per-layer effects; sequence LUT → output transform, which saves the
    ≈ 0.7 ms output pass on the iGPU); (d) a cheaper blur (shared-memory tiles or downsampled), since
    blur-lite is ≈ 1/3 of the iGPU frame; (e) keep the graph-level culls implemented here. The p95
-   (8.1–8.5 ms) shows there is no headroom yet for captions (WP-0F.02) on top.
+   (8.1–8.5 ms) shows there is no headroom yet for captions on top (WP-0F.02: an MSDF caption
+   drawn in place adds ≈ 0.1 ms on this iGPU, a Vello one ≈ 3–6 ms; see the WP-0F.02 section).
 6. **Pass cache works**: Merkle keys turn static sources into cache hits (2/frame in the demo:
    their decode and upload disappear). The one-frame LRU is only a demo; Phase 1 needs the
    VRAM-budgeted GPU texture cache of §7. Per-frame allocations remain (bind groups, views, upload
@@ -298,7 +304,9 @@ directory); sources are synthetic (no FFmpeg, no corpus).
 **Scene graph / interfaces**
 
 16. The "every node renders a premultiplied linear texture of its intrinsic size" contract made
-    groups, shapes, transitions and the text placeholder uniform. WP-0F.02 only adds a `Text` pass
+    groups, shapes, transitions and the text placeholder uniform. WP-0F.02 kept it for text but
+    rasterises text through the layer transform (and in place for plain MSDF layers): see its
+    section. WP-0F.01 note, kept for history: 0F.02 was to add only a `Text` pass
     executor; WP-0G.01 can emit `Scene` JSON (`Group`/`Shape`/`Text` nodes) and render it with
     `s4 render --scene-json`.
 17. PNG exports carry `cICP` (H.273 primaries/transfer/range) so frames are self-describing; the
@@ -308,4 +316,277 @@ directory); sources are synthetic (no FFmpeg, no corpus).
 
 * H.264/MP4 export (pipe raw frames to `ffmpeg`, ffprobe check of 300 frames) once the FFmpeg
   bundle exists (WP-0A.06). `s4 export` prints the intended command.
-* EXR readback; lavapipe/Metal runs (WP-0F.03 on reference machines); HLG input; text (WP-0F.02).
+* EXR readback; lavapipe/Metal runs (WP-0F.03 on reference machines); HLG input.
+
+---
+
+## WP-0F.02 — text: animated captions via an MSDF atlas and Vello
+
+```text
+TextNode (frame's spans) ──layout (cosmic-text, cached)──► TextLayout ──resolve(spans)──► ResolvedText
+                                                                                            │
+     ┌──────────────────────────────────────────────────────────────────────────────────────┤
+     ▼                                       ▼                                              ▼
+ MTSDF atlas (own generator)          vello::Scene (glyph runs,                  text::raster (CPU reference:
+ + instanced quads, 1 draw:           stroke outline, gradient karaoke)          exact outlines, 8 sub-scanlines,
+ shadow → outline → fill layers       → Vello 0.12 → RGBA8 → resolve             exact horizontal coverage)
+ (TextOver: straight onto backdrop)     → composite
+```
+
+The caption demo (`timeline::caption_scene`, on top of the WP-0F.01 demo) shows
+*"Captions that pop, word by word, right on the beat"* in Bricolage Grotesque 800, white with a
+6 px dark outline and a soft drop shadow: each word **pops in** at its start frame (scale
+0.55 → ease-out-back overshoot → 1, fade, small rise) and the **active word gets a karaoke sweep**
+to marigold (`text::caption::pop_karaoke`, a pure function of the frame). Other scenes:
+`multiscript_scene` (Latin + Arabic RTL with a right-to-left sweep + CJK pop + emoji),
+`glyph_storm_scene` (N glyphs with per-glyph rotation/scale/offset/colour/opacity),
+`crisp_scene` (fill-only, for the CPU reference) and `shimmer_scene` (sub-pixel motion).
+
+### How to run (text)
+
+```sh
+cargo run --release --bin s4 -- text --scene caption --frame 64 --out c.png            # MSDF caption on the demo
+cargo run --release --bin s4 -- text --scene caption --renderer vello --out v.png      # same, Vello
+cargo run --release --bin s4 -- text --scene multiscript --out m.png --crop 40,380,900,320,2   # + zoom crop
+cargo run --release --bin s4 -- text --scene crisp --width 3840 --height 2160 --size 200 --cpu --out ref.png
+cargo run --release --bin s4 -- text --scene crisp --out a.png --atlas-out atlas.png   # dump the MTSDF atlas
+cargo run --release --bin s4 -- text-bench --all-adapters [--plain] [--glyphs 1000]    # 1000-glyph CPU/GPU/memory
+cargo run --release --bin s4 -- text-crisp --width 3840 --height 2160 --size 200 --all-adapters --diff-dir d [--em 96]
+cargo run --release --bin s4 -- text-shimmer --all-adapters                            # sub-pixel motion
+cargo run --release --bin s4 -- atlas-bench [--em 64] [--weight 400]                   # MTSDF generation rate
+cargo run --release --bin s4 -- bench --all-adapters --captions msdf --passes          # §19 budget scene (or vello)
+```
+
+`S4_VELLO_CPU=1` enables Vello's CPU-stage mode (the only way it runs on WARP, ≈ 10 s/frame).
+
+### Design
+
+* **Fonts (`text/fonts.rs`)**: only bundled SIL OFL 1.1 faces, never system fonts (determinism).
+  Bricolage Grotesque and Instrument Sans are the UI's own woff2 files (`packages/ui/src/fonts`,
+  decoded at load with `wuff`); Noto Sans Arabic, Noto Sans SC and Noto Emoji (monochrome) are
+  7–43 KB fontTools subsets of the google/fonts TTFs to the sample text, keeping GSUB/GPOS and the
+  variation tables, with their OFL texts in `assets/fonts/`. Unknown families fall back to
+  Instrument Sans.
+* **Shaping (`text/layout.rs`)**: cosmic-text 0.19 (harfrust inside; std only, no swash, no
+  fontconfig): bidi, Arabic joining, line breaking, alignment, fallback across the bundled faces,
+  variable `wght` carried into the glyph key. Layouts are cached by text/font/size/box: an
+  animated caption re-resolves its spans every frame but is shaped once.
+* **MTSDF generator (`text/msdf.rs`, ≈ 600 lines + tests)**: written for the spike after
+  msdfgen: simple edge colouring (seeded, deterministic), pseudo-distance channels, the
+  overlapping-contour combiner (variable fonts keep overlapping contours), a sign correction
+  against the true nonzero fill, legacy clash correction plus a sub-texel interpolation check
+  against the true SDF. RGB = MSDF (sharp fill corners), **A = true SDF** (round outlines, soft
+  shadows). 48 px/em, range 12 px (±0.125 em, which is also the outline-width limit). *`fdsm` 0.8
+  (MIT) was evaluated instead*: it generates MSDF and has a scanline sign correction, but no error
+  correction, no MTSDF alpha and no overlap combiner, writes into `image::RgbImage` and pulls
+  `nalgebra`. It would have needed the same additions, so the generator is our own.
+* **Atlas (`text/atlas.rs`)**: on-demand, missing glyphs generated in parallel and packed in
+  sorted key order into a shelf-packed RGBA8 1024 × (256…8192) texture. The shader clamps every
+  bilinear tap to the glyph's cell, so atlas placement never changes pixels.
+* **Animation model**: animation is not in the node. Animators emit per-frame `TextSpan`s (byte
+  range, per-span or per-glyph pivot, offset/scale/rotation, opacity, fill override, karaoke
+  progress), so the node stays a pure description of one frame, hashed into the pass cache key.
+* **MSDF pass (`text_gpu.rs`, `shaders/text.wgsl`)**: one instanced draw (storage-buffer
+  instances, 112 B each) ordered shadow layer → outline layer → fill layer, so a neighbour's
+  outline never covers a fill; exact-weight bilinear `textureLoad` taps; coverage from the field
+  scaled by the instance's screen scale; karaoke sweep tested in layout space with an `fwidth`
+  ramp; premultiplied linear output blended with fixed-function "over".
+* **Canvas-space text**: text layers are rasterised *through* the layer transform at canvas
+  resolution, never rendered at box size and resampled. Plain (normal blend, no effects) MSDF
+  layers lower to **`TextOver`**: the glyphs are drawn straight onto the backdrop texture (moved
+  from its producer when this pass is its last reader, else onto a copy), so there is no
+  intermediate, no clear and no full-frame composite. Other text layers render into a texture of
+  the transformed box's pixel bounds, composited with an integer translation (an exact copy).
+* **Vello variant (`text/vello_scene.rs`)**: the same `ResolvedText` as glyph runs (one run per
+  word or glyph sharing transform and brush), outline = round-join stroke under the fill, karaoke
+  = hard-stop linear gradient in layout space, colours handed over as linear values. Vello
+  renders into an RGBA8 storage texture with its own queue submission (bracketed by timestamp
+  marker passes); a compute pass re-premultiplies it into `Rgba16Float`; then the normal composite.
+* **CPU reference (`text/raster.rs`)**: exact outlines (same ttf-parser geometry), flattened to
+  1/100 px, nonzero rule on 8 sub-scanlines per row with exact horizontal coverage (no 1/8 px
+  staircase under horizontal motion, unlike an 8 × 8 grid). Fill, spans and karaoke; not outline
+  or shadow. `cpu_ref` uses it for text layers.
+
+### Results (informal; dev machine as above, one run each, no clock pinning)
+
+**MSDF vs Vello at a glance** (details below):
+
+| | MSDF atlas (own) | Vello 0.12 |
+|---|---|---|
+| 1000 animated glyphs + outline + soft shadow, text GPU p50, AMD iGPU (Vulkan / DX12) | **0.71 / 0.70 ms** | 8.5 / 18.6 ms |
+| same, RTX 3080 (Vulkan / DX12) | **0.063 / 0.090 ms** | 5.2 / 6.0 ms |
+| same, WARP | 33 ms | **crashes WARP** (unsupported) |
+| 1000 glyphs fill only, AMD iGPU (Vulkan / DX12) | **0.26 / 0.30 ms** | 4.8 / 6.5 ms |
+| CPU per frame for 1000 glyphs (resolve + instances / scene encode), p50 | **0.18–0.28 ms** (+ animator 0.1, graph 0.07) | 1.4–2.4 ms |
+| Caption on the 1080p demo, AMD iGPU: text pass / whole frame p50 | **0.07–0.09 ms / 6.4–6.7 ms** (no caption: 6.5–7.1) | 1.1–1.7 ms + a composite / 9.2–12.8 ms |
+| GPU memory (allocator delta vs the same frame without text) | **1.6 MB** (atlas 1 MB) | ≈ 210 MB |
+| Crispness, 4K 200 px: SSIM of the text box (PSNR) vs CPU reference | 0.9976 (36.4 dB) | **0.9994 (42.8 dB)** |
+| Crispness, 1080p 72 / 48 / 24 px | 0.9988 / 0.9992 / 0.9994 | 0.9993 / 0.9994 / 0.9995 |
+| Sub-pixel motion: per-phase PSNR spread over 16 phases | 0.47 dB | 0.33–0.35 dB |
+| Same adapter: cold vs warm vs repeat | bit-identical | bit-identical |
+| Across vendors (NVIDIA / AMD / WARP), text goldens | ≤ 1 LSB (79–84 dB) | up to 28 codes (64 dB, ΔE max 9.7) |
+| Soft shadow | yes (true SDF) | hard only (no path blur) |
+| First frame (device + pipelines) | + 0.02–0.06 s (atlas generation) | + 0.7 s (Vulkan) … 7.6–9 s (DX12 shader compile) |
+
+**1000 animated glyphs** (`s4 text-bench --all-adapters`, 1920 × 1080, per-glyph rotation ±18°,
+scale ±20 %, offset, hue and opacity every frame, 120 frames; MSDF draws 3000 quads styled, 1000
+fill-only; "text GPU" = the text pass, or Vello's bracketed submission + resolve; ms):
+
+| Adapter | Backend | MSDF styled p50 / p95 | Vello styled p50 / p95 | MSDF fill p50 / p95 | Vello fill p50 / p95 | MSDF frame | Vello frame |
+|---|---|---|---|---|---|---|---|
+| AMD Radeon iGPU | Vulkan | **0.710 / 0.933** | 8.45 / 10.4 | **0.258 / 0.522** | 4.79 / 7.65 | 2.13 | 11.3 |
+| AMD Radeon iGPU | DX12 | **0.697 / 1.011** | 18.6 / 20.4 | **0.301 / 0.534** | 6.52 / 9.47 | 2.05 | 21.6 |
+| RTX 3080 Laptop | Vulkan | **0.063 / 0.065** | 5.19 / 5.89 | **0.026 / 0.027** | 1.74 / 2.88 | 0.16 | 5.38 |
+| RTX 3080 Laptop | DX12 | **0.090 / 0.091** | 6.03 / 11.2 | **0.035 / 0.035** | 2.47 / 5.73 | 0.18 | 6.54 |
+| WARP | DX12 | 33.3 / 38.8 | (crash) | 11.3 / 13.4 | (crash) | 51.0 | — |
+
+Before `TextOver` (text into a canvas-sized intermediate, then a full-frame composite) the AMD
+iGPU needed 1.3 ms of text GPU and a 4.2–4.5 ms frame for the same styled storm; ≈ 0.6 ms of that
+was the clear/store of the 16 MB intermediate.
+
+**Crispness** (`s4 text-crisp`; fill-only `crisp_scene` "Ag@% Cutweave / 字幕 مرحبا 🎬" vs the
+CPU reference; SSIM over the text box / PSNR / max |Δ|). Identical to 5 digits on every adapter:
+
+| Scene | MSDF 48 px/em | MSDF 64 px/em | MSDF 96 px/em | Vello |
+|---|---|---|---|---|
+| 3840 × 2160, 200 px glyphs (WBS scene 2) | 0.99760 / 36.35 dB / 240 | 0.99845 / 39.4 dB | 0.99906 / 42.4 dB | 0.99941 / 42.77 dB / 111 |
+| 1920 × 1080, 72 px | 0.99883 / 40.12 dB / 240 | | | 0.99933 / 41.7 dB / 78 |
+| 1920 × 1080, 48 px / 24 px | 0.99923 / 0.99942 | | | 0.99941 / 0.99954 |
+
+Zoom crops (`--diff-dir`): Latin edges match the reference within a few codes. The MSDF max |Δ|
+of 240 comes from features thinner than one atlas texel (the slit inside a heavy `@`, the stripes
+of the 🎬 emoji), which bulge or break at 4× magnification (fixed by 96 px/em); tiny counters of
+weight-800 glyphs (`a`) also fill in at caption sizes. Vello has no such artefacts.
+
+**Sub-pixel motion** (`s4 text-shimmer`: a 40 px line moved through 16 phases of one pixel, 1080p):
+
+| Path | ink range | centroid wobble | PSNR vs reference: mean / spread |
+|---|---|---|---|
+| CPU reference | 0.018 % | 0.029 px | — |
+| MSDF (every adapter) | 0.05 % | 0.13–0.14 px | 52.7 dB / 0.47 dB |
+| Vello (NVIDIA / AMD) | 0.07 / 0.13 % | 0.13 / 0.24 px | 49.7 dB / 0.33–0.35 dB |
+| MSDF rendered at box size, then resampled by the layer transform | 0.015 % | 0.03 px | 42.6 dB / **13.3 dB** |
+
+Both canvas-space paths are stable from frame to frame (their small centroid wobble is the sum of
+tiny, phase-dependent edge errors: field interpolation for MSDF, curve flattening for Vello). The
+resampled variant tracks position but its sharpness pumps by 13 dB between integer and half-pixel
+phases: that is the visible shimmer, and why text is rasterised through the layer transform.
+
+**MTSDF generation** (`s4 atlas-bench`): all 745 glyphs of the 5 bundled faces at wght 800 in
+0.71 s on 16 threads = **1,050 glyphs/s** at 48 px/em (8 MB atlas), 610 glyphs/s at 64 px/em;
+identical atlas bytes across runs. The storm's ≈ 25 glyphs take 17–30 ms cold.
+
+### Acceptance criteria (WP-0F.02)
+
+| Criterion (WBS + brief) | Status | Evidence |
+|---|---|---|
+| cosmic-text shaping: Latin + one RTL + one CJK sample + emoji → glyph runs | **Met** | `layout::tests::shapes_latin_rtl_cjk_and_emoji_with_fallback`, `multiscript_scene` |
+| MSDF atlas renderer (own, msdfgen-compatible; fdsm evaluated) with fill, outline, shadow, per-word pop, karaoke sweep, per-glyph transform/opacity | **Met** | `text/msdf.rs`, `text_gpu.rs`, `text.wgsl`; caption goldens |
+| The same caption via Vello 0.12, composited by the graph | **Met** on hardware adapters; **unsupported on WARP** (crash) | `text/vello_scene.rs`; `text_*_vello` goldens |
+| Scenes: animated caption at 1080p; 4K with 200 px glyphs; 1000 animated glyphs | **Met** | `caption_scene`, `crisp_scene`, `glyph_storm_scene` |
+| CPU (layout + instance build) and GPU time per frame, both paths, per adapter | **Met** | `s4 text-bench`; tables above |
+| 1000 animated glyphs: CPU instance build < 1 ms | **Met** for MSDF (≤ 0.46 ms p95 with outline + shadow); Vello 1.4–2.4 ms p50 styled (0.4–0.6 fill-only) | `text-bench` |
+| 1000 animated glyphs < 1 ms GPU (epic bar, judged in 0F.03 on M1 / Intel Xe) | **Met** for MSDF on the AMD iGPU (0.70 ms p50 styled, 0.26–0.30 fill); Vello **fails** (4.8–18.6 ms) | `text-bench` |
+| Crispness: 4K vs supersampled CPU rasterisation, SSIM ≥ 0.98 for the chosen path; diff images | **Met** (MSDF 0.9976, Vello 0.9994) | `s4 text-crisp --diff-dir`; `text_is_crisp_against_the_supersampled_outline_reference` |
+| Quality at 1080p and 4K (zoom crops); shimmer under sub-pixel motion | **Met** | tables above; `canvas_space_text_tracks_sub_pixel_motion` |
+| Memory | **Met** | allocator-report deltas above |
+| Determinism: same adapter bit-identical | **Met** (both paths) | `text_is_bit_identical_cold_warm_and_repeated_on_one_adapter`; goldens |
+| Golden tests for both paths | **Met** (5 adapter sets; WARP: MSDF only) | `text_golden_frames_match_per_adapter_references` |
+| Snapshot test for a caption frame | **Met differently**: per-adapter golden PNGs (bit-identical on the same adapter, §20 across adapters) instead of `insta` hashes, as in WP-0F.01 | `tests/golden/*/text_*.png` |
+| `cargo test`, `cargo clippy --all-targets -D warnings` in the spike; root `just check` | **Met** | 60 unit (+ 1 ignored diagnostic) + 7 GPU + 7 text tests; `just check` passes |
+
+Deviations: built inside `spikes/s4-compositor` (the brief) rather than `spikes/s4-text` (WBS);
+the reference uses 8 sub-scanlines with exact horizontal coverage instead of an 8 × 8 grid (at
+least as accurate, and needed for the motion test); emoji are the monochrome Noto Emoji outlines
+(colour emoji are WP-3A.06).
+
+### Findings for ADR-007 and Phase 3 (`cutweave-text`, the text pass)
+
+1. **MSDF is ≈ 10–100× cheaper on the GPU than Vello for caption workloads** and fits the iGPU
+   budget: a 10-word caption costs 0.07–0.09 ms on the AMD iGPU, 1000 animated styled glyphs
+   0.7 ms. Vello's per-frame cost is a full compute pipeline plus an RGBA8 intermediate, a resolve
+   and a full-frame composite: 1–1.7 ms for one caption on the iGPU, which alone breaks the §19
+   "1080p60 with captions" budget on top of the 6.5 ms demo.
+2. **Draw text in place.** Rendering text into its own canvas-sized `Rgba16Float` target cost
+   ≈ 0.6 ms of clear/store plus a ≈ 1 ms full-frame composite on the iGPU. `TextOver` (glyph quads
+   blended straight onto the backdrop) halved the storm's frame time and cut text memory from
+   32 MB to 1.6 MB. This confirms WP-0F.01 finding 5a for Phase 1: composite with render passes
+   and fixed-function blending, so cost follows the drawn area.
+3. **Rasterise text through the final transform; never resample glyphs.** Rendering at box size
+   and resampling makes sharpness pump with the sub-pixel phase (13 dB PSNR spread); canvas-space
+   rasterisation is stable (≤ 0.5 dB). Text effects then run in canvas pixels.
+4. **MSDF quality limits are resolution limits.** 48 px/em is crisp for Latin up to ≈ 4×
+   magnification (SSIM 0.9976 at 4K / 200 px, a pass) but loses features thinner than one texel
+   (heavy `@`, emoji detail, tiny counters at wght 800). 96 px/em reaches Vello's 4K quality
+   (0.9991). Use a per-glyph em tier (48 px normally; 96–128 px when a glyph is drawn more than
+   ≈ 3× its atlas size, or for CJK, emoji and complex outlines) rather than a second renderer.
+5. **Variable fonts need an overlap-aware generator.** The UI's variable fonts keep overlapping
+   contours, and a naive MSDF shows seams and holes. The overlapping-contour combiner, a sign
+   correction against the true fill and an interpolation check removed every sign error at
+   interpolated sample points (16.7 M samples: the first 120 glyphs of every face, wght 400 and
+   800) except sub-texel features. 3A.04 should run this test on every glyph of every bundled font.
+6. **Use MTSDF (alpha = true SDF).** Outlines and shadows from the true SDF get round joins and
+   no miter spikes, and the true SDF bounds far-field MSDF artefacts in the fill. Outline width is
+   limited by the distance range (±0.125 em at range 12 and 48 px/em); thick "MrBeast" outlines
+   need a larger range (less 8-bit precision) or an RGBA16F atlas.
+7. **Generation speed needs work in 3A.04**: 1,050 glyphs/s on 16 threads, against a P3 target of
+   ≥ 2,000/s on the reference CPU. Per-texel cost is O(edges) plus a winding test; spatial culling
+   of edges and a disk cache keyed by (font hash, glyph, wght, parameters) are the next steps.
+   Generation is deterministic (identical atlas bytes) and placement-independent.
+8. **Vello 0.12 in practice**: it crashes WARP (an access violation inside WARP while it executes
+   Vello's pre-fine stages, on every standalone run, with FXC or DXC; `use_cpu` survives at ≈ 10 s
+   per frame), so a Vello path has no Windows CI goldens. It also allocates ≈ 210 MB of GPU
+   buffers, takes 7–9 s to compile its shaders on DX12 at first use, only targets straight-alpha
+   RGBA8 (an 8-bit **linear** intermediate when fed linear colours, so dark tones can band), has
+   no path blur (soft shadows would need a second render and a blur pass), submits its own
+   command buffers (it cannot join the frame's encoder; timestamps need marker passes), and its
+   output differs by up to 28 codes between NVIDIA and AMD.
+9. **Determinism**: both paths are bit-identical on one adapter (cold vs warm caches, repeated
+   frames, recycled textures). Exact-weight `textureLoad` taps keep MSDF within 1 LSB across
+   NVIDIA / AMD / WARP and DX12 / Vulkan, so cross-adapter text goldens can use the compositor's
+   tight tolerance (PSNR ≥ 50 dB, max |Δ| ≤ 2); Vello would need ≥ 30 codes.
+10. **The CPU side is cheap with a layout cache.** Per frame for 1000 animated glyphs: animator
+    0.1 ms, span resolve + instance build 0.2–0.3 ms, graph build (hashing 1000 spans) 0.07 ms.
+    Shaping 1000 glyphs cold takes 0.6–1.8 ms and never happens per frame for captions. Vello's
+    scene encoding takes 1.4–2.4 ms because per-glyph transforms become per-glyph runs.
+11. **Animation as resolved spans** (per word or glyph: transform about a pivot, opacity, fill,
+    karaoke progress) keeps the node a pure per-frame description, makes the pass cache key exact,
+    and is what a QuickJS composition (WP-0G.01) or a caption-style package would emit.
+12. **Platform notes**: a WGSL struct field cannot be named `target` (reserved keyword); several
+    WARP devices used concurrently from test threads crash even with pipeline creation
+    serialised, so the text GPU tests run serially; the `woff2` 0.3 crate no longer builds
+    (bytes ≥ 1.10), so `wuff` decodes the UI's woff2; cosmic-text 0.19 pulls skrifa 0.40 while
+    Vello pulls 0.49 (two copies).
+13. **Open**: colour emoji (COLRv1 / CBDT through an RGBA atlas; Vello renders COLR natively, the
+    one place it might still earn its keep), glow and gradient fills (same MTSDF, not built here),
+    caption background boxes, M1 / Intel Xe numbers (WP-0F.03), and lavapipe (Vello on lavapipe
+    is untested).
+
+### Recommendation for ADR-007
+
+**MSDF only, as the primary and only v1 text renderer**: cosmic-text + an MTSDF atlas, drawn as
+instanced quads directly into the composite (no intermediate), with an em-size tier (48 → 96–128
+px per em) for glyphs magnified beyond ≈ 3× or with sub-texel detail, plus an RGBA colour-glyph
+atlas for emoji (3A.06). It meets every glyph criterion measured here on the AMD iGPU (1000
+animated glyphs in 0.70 ms GPU and 0.3 ms CPU; 4K SSIM 0.9976, or 0.9991 with the 96 px tier), is
+deterministic to ≤ 1 LSB across vendors, and runs on WARP for CI.
+
+**Do not adopt Vello as the in-graph "large or complex glyph" path for v1**: it is 10–100× slower
+per glyph, costs ≈ 210 MB, has no Windows CI story (the WARP crash), diverges across vendors and
+cannot do soft shadows; its one quality advantage (exact coverage of fine detail) is matched by
+the higher MSDF tier. Revisit Vello (or `vello_hybrid` / `vello_cpu`) in P3/P4 for COLRv1 emoji or
+1000+ px display type if the MSDF tiers fall short. **skia-safe is not needed**: the glyph
+criteria pass with MSDF. Once WP-0F.03 confirms the iGPU numbers on M1 and Intel Xe, §8 ("Vello
+path for very large or complex glyphs") and WP-3A.06 should be amended accordingly.
+
+### Notes for the integrator
+
+* `TextNode` gained optional fields (`align`, `line_height`, `outline`, `shadow`, `spans`,
+  `renderer`, all serde-defaulted, so WP-0F.01 scene JSON still parses). Struct literals with only
+  the five original fields no longer compile: use `TextNode::new(text, font, size_px, fill_srgb,
+  box_size)`. `PassOp::Text` gained `transform`, `PassOp::TextOver` is new, and `FrameStats` has
+  `text` and `text_gpu_ns`. The rest of the public scene-graph API is unchanged.
+* Unknown font families (e.g. `"Inter 700"` in `text_scene`) fall back to Instrument Sans.
+* New spike dependencies (spike workspace only): `cosmic-text =0.19.0`, `vello =0.12.0`,
+  `ttf-parser 0.25`, `wuff 0.2`. The Noto subsets in `assets/fonts/` are OFL-1.1 (license texts
+  beside them) and may need a REUSE annotation if REUSE linting ever covers `spikes/`.
