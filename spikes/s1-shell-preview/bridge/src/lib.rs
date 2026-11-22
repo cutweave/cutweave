@@ -8,14 +8,18 @@
 //! - `latestView()`: an `ArrayBuffer` over the mapped slot itself. Zero-copy in Node; Electron's
 //!   V8 memory cage forbids external buffers, so napi-rs silently copies there and the result
 //!   says `zeroCopy: false` (spike finding);
+//! - `waitForFrame(after, timeoutMs)`: promise that resolves when a newer frame is published
+//!   (transport (b), WP-0C.06: the addon then runs in an Electron utility process);
 //! - `TestRingWriter`: a writer for hermetic Node tests (no GPU needed).
 
 #![allow(clippy::needless_pass_by_value)] // napi signatures take owned values
 
-use std::sync::Arc;
-use std::time::Instant;
+mod wait;
 
-use napi::bindgen_prelude::{ArrayBuffer, Uint8ArraySlice};
+use std::sync::Arc;
+use std::time::{Duration, Instant};
+
+use napi::bindgen_prelude::{ArrayBuffer, AsyncTask, Uint8ArraySlice};
 use napi::{Env, Error, Result, Status};
 use napi_derive::napi;
 use s1_ring::{
@@ -273,6 +277,33 @@ impl RingReader {
         let meta = r.slot_meta(h.slot).map_err(err)?;
         #[allow(clippy::cast_possible_truncation, clippy::cast_sign_loss)]
         Ok(meta.lock == h.lock as u64 && r.still_valid(&meta))
+    }
+
+    /// Transport (b): resolve with the write index once it exceeds `after_write_index`, or
+    /// after `timeout_ms` (resolves with the unchanged index). Polls every `poll_us` µs
+    /// (default 250) on a libuv worker thread; see `wait.rs`. The pending task keeps the
+    /// mapping alive until it resolves, so callers should await it before reporting the ring
+    /// closed.
+    #[napi(ts_return_type = "Promise<number>")]
+    pub fn wait_for_frame(
+        &self,
+        after_write_index: f64,
+        timeout_ms: u32,
+        poll_us: Option<u32>,
+    ) -> Result<AsyncTask<wait::WaitTask>> {
+        let (shm, _) = self
+            .inner
+            .as_ref()
+            .ok_or_else(|| err("ring reader is closed"))?;
+        let reader = Reader::attach(Arc::clone(shm)).map_err(err)?;
+        #[allow(clippy::cast_possible_truncation, clippy::cast_sign_loss)]
+        let after = after_write_index.max(0.0) as u64;
+        Ok(AsyncTask::new(wait::WaitTask::new(
+            reader,
+            after,
+            Duration::from_millis(u64::from(timeout_ms)),
+            Duration::from_micros(u64::from(poll_us.unwrap_or(250).max(50))),
+        )))
     }
 
     #[napi]

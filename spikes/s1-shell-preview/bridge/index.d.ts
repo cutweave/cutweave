@@ -64,6 +64,9 @@ export declare class RingReader {
   readSlotInto(slot: number, dst: Uint8Array): FrameHeader;
   latestView(): FrameView | null;
   isValid(h: FrameHeader): boolean;
+  /** Transport (b): resolves with the write index once it exceeds `afterWriteIndex`, or after
+   * `timeoutMs` (unchanged index). Polls every `pollUs` µs (default 250) off the JS thread. */
+  waitForFrame(afterWriteIndex: number, timeoutMs: number, pollUs?: number): Promise<number>;
   stats(): ReaderStats;
   close(): void;
 }
