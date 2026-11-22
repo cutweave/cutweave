@@ -26,7 +26,7 @@
 //! - **Moved projects:** media is resolved by absolute path, then by the folder-relative path;
 //!   `path_rel` is recomputed on every save and on save-as.
 
-mod atomic;
+pub(crate) mod atomic;
 mod lock;
 mod paths;
 
