@@ -331,7 +331,9 @@ pub fn run_presenter(
     let clock = hud.clock;
     let rate = f64::from(clock.sample_rate());
     let fps = cfg.fps;
-    let offset_ns = (cfg.av_offset_ms * 1e6) as i64;
+    // The A/V offset shifts the video timeline after extrapolation, so offsets larger than the
+    // device latency never run into the clock's stall clamp.
+    let offset_s = cfg.av_offset_ms / 1e3;
     let mut canvas = Canvas {
         buf: vec![BG; cfg.width * cfg.height],
         w: cfg.width,
@@ -362,8 +364,7 @@ pub fn run_presenter(
             break;
         }
         let now = clock.now_ns();
-        let t_video = now.saturating_add_signed(offset_ns);
-        let Some(pos) = reader.seconds_at(clock, t_video) else {
+        let Some(pos) = reader.seconds_at(clock, now).map(|s| s + offset_s) else {
             if !surface.pump() {
                 break;
             }
@@ -390,10 +391,10 @@ pub fn run_presenter(
             stats.presented.fetch_add(1, Ordering::Relaxed);
             stats.last_index.store(idx, Ordering::Relaxed);
             if logs.frames {
-                let raw = clock.position_frames_at(t_video).unwrap_or(0.0) / rate;
+                let raw = clock.position_frames_at(now).unwrap_or(0.0) / rate + offset_s;
                 let crossed = clock.wall_ns_of_frame(idx as f64 / f64::from(fps) * rate);
                 let late_ms = crossed.map_or(f64::NAN, |c| {
-                    (present_ns as f64 + offset_ns as f64 - c) / 1e6
+                    (present_ns as f64 + offset_s * NANOS - c) / 1e6
                 });
                 let a = clock.anchor().unwrap_or(crate::clock::Anchor {
                     frame: 0,

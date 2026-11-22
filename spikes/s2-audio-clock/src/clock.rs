@@ -5,9 +5,10 @@
 //! `frame` (the first frame of this buffer) becomes audible at wall time `wall_ns`", where
 //! `wall_ns = Instant::now() at callback entry + (playback - callback)` from cpal's
 //! `OutputStreamTimestamp` (WASAPI: device position + buffered + stream latency). Readers
-//! extrapolate from the newest anchor at the nominal rate, clamped so a stalled stream cannot run
-//! away. Anchors are published through a seqlock built from atomics, so the writer never blocks and
-//! readers never see a torn anchor. This is the value §10 puts in the preview SHM header.
+//! extrapolate from the newest anchor at the nominal rate, clamped to the frames submitted so a
+//! stalled stream cannot run away. Anchors are published through a seqlock built from atomics, so
+//! the writer never blocks and readers never see a torn anchor. This is the value §10 puts in the
+//! preview SHM header.
 
 use std::hint::spin_loop;
 use std::sync::atomic::{AtomicU64, Ordering, fence};
@@ -137,7 +138,8 @@ impl AudioClock {
     }
 
     /// Audible timeline position (frames) at wall time `wall_ns`, extrapolated from the latest
-    /// anchor. Clamped to `[0, anchor + 2 buffers]` so a stalled device cannot run the clock away.
+    /// anchor. Clamped to `[0, frames submitted]`: nothing can be audible that was not handed to the
+    /// device yet, so a stalled device freezes the clock instead of running it away.
     pub fn position_frames_at(&self, wall_ns: u64) -> Option<f64> {
         let a = self.anchor()?;
         Some(extrapolate(a, wall_ns, self.sample_rate))
@@ -169,12 +171,13 @@ impl AudioClock {
     }
 }
 
-/// Extrapolates an anchor to `wall_ns` at the nominal rate, with the stall clamp.
+/// Extrapolates an anchor to `wall_ns` at the nominal rate, with the stall clamp (the end of the
+/// anchor's buffer, i.e. everything submitted so far).
 #[inline]
 pub fn extrapolate(a: Anchor, wall_ns: u64, sample_rate: u32) -> f64 {
     let dt_ns = wall_ns as f64 - a.wall_ns as f64;
     let pos = a.frame as f64 + dt_ns * f64::from(sample_rate) / NANOS;
-    let max = (a.frame + 2 * a.span_frames.max(1)) as f64;
+    let max = (a.frame + a.span_frames) as f64;
     pos.clamp(0.0, max)
 }
 
@@ -221,8 +224,8 @@ mod tests {
         // Before the anchor (previous buffer still playing): allowed, but never below zero.
         assert!((extrapolate(a, 1_990_000_000, 48_000) - 47_520.0).abs() < 1e-6);
         assert_eq!(extrapolate(a, 0, 48_000), 0.0);
-        // Stalled device: clamped to two buffers past the anchor.
-        assert_eq!(extrapolate(a, 9_000_000_000, 48_000), 48_960.0);
+        // Stalled device: never past the frames already submitted.
+        assert_eq!(extrapolate(a, 9_000_000_000, 48_000), 48_480.0);
     }
 
     #[test]

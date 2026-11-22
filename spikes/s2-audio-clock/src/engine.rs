@@ -359,6 +359,8 @@ pub struct EngineConfig {
     pub device: Option<String>,
     /// Use signalsmith's cheaper preset.
     pub cheaper_stretch: bool,
+    /// Raise worker threads to high priority.
+    pub high_priority_workers: bool,
 }
 
 /// What the stream actually ended up with.
@@ -515,7 +517,13 @@ impl Engine {
         let mut worker_stats = Vec::new();
         for (i, b) in buckets.into_iter().enumerate() {
             let ws = Arc::new(WorkerStats::default());
-            threads.push(spawn_worker(i, b, stop.clone(), ws.clone()));
+            threads.push(spawn_worker(
+                i,
+                b,
+                stop.clone(),
+                ws.clone(),
+                cfg.high_priority_workers,
+            ));
             worker_stats.push(ws);
         }
 
@@ -562,6 +570,7 @@ impl Engine {
             SampleFormat::U16 => build::<u16>(&device, config, callback, cb_stats.clone()),
             other => Err(format!("unsupported device sample format {other:?}")),
         };
+        let stream = stream.and_then(|s| s.play().map(|()| s).map_err(|e| format!("play: {e}")));
         let stream = match stream {
             Ok(s) => s,
             Err(e) => {
@@ -572,7 +581,6 @@ impl Engine {
                 return Err(e);
             }
         };
-        stream.play().map_err(|e| format!("play: {e}"))?;
         let cpal_buffer_size = stream.buffer_size().ok();
 
         Ok(Self {

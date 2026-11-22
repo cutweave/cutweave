@@ -352,16 +352,20 @@ pub struct WorkerStats {
     pub blocks: AtomicU64,
 }
 
-/// Spawns a worker that keeps `pipes` topped up until `stop`.
+/// Spawns a worker that keeps `pipes` topped up until `stop` (optionally at high priority).
 pub fn spawn_worker(
     id: usize,
     mut pipes: Vec<TrackPipeline>,
     stop: Arc<AtomicBool>,
     stats: Arc<WorkerStats>,
+    high_priority: bool,
 ) -> JoinHandle<()> {
     std::thread::Builder::new()
         .name(format!("s2-worker-{id}"))
         .spawn(move || {
+            if high_priority {
+                crate::util::raise_current_thread_priority();
+            }
             while !stop.load(Ordering::Relaxed) {
                 let t0 = Instant::now();
                 let pushed: usize = pipes.iter_mut().map(TrackPipeline::pump).sum();

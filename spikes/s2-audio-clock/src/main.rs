@@ -13,7 +13,7 @@ use s2_audio_clock::engine::{Engine, EngineConfig, list_devices};
 use s2_audio_clock::mixer::TrackParams;
 use s2_audio_clock::scene::{Scene, tracks};
 use s2_audio_clock::soak::{LoggerCtx, RunTotals, spawn_logger};
-use s2_audio_clock::util::parse_duration;
+use s2_audio_clock::util::{parse_duration, raise_current_thread_priority};
 use s2_audio_clock::video::{
     Hud, PresenterLogs, VideoConfig, VideoStats, VideoSummary, run_presenter, spawn_log_writer,
 };
@@ -44,6 +44,8 @@ USAGE: s2-audio-clock [OPTIONS]
   --out <dir>                  output directory (default s2-out/<scene>-<unix time>)
   --log-interval <dur>         CSV/console row interval (default 1s)
   --frame-log                  also write <out>/frames.csv (one row per presented frame)
+  --thread-priority <high|normal>  presenter + worker threads (default high = Windows
+                               THREAD_PRIORITY_HIGHEST; the audio callback uses MMCSS regardless)
   -h, --help                   this help
 
 Outputs: <out>/soak.csv (one row per interval), <out>/av_events.csv (one row per flash/click),
@@ -71,6 +73,7 @@ struct Args {
     out: Option<PathBuf>,
     log_interval: Duration,
     frame_log: bool,
+    high_priority: bool,
 }
 
 fn parse_args(mut it: impl Iterator<Item = String>) -> Result<Option<Args>, String> {
@@ -95,6 +98,7 @@ fn parse_args(mut it: impl Iterator<Item = String>) -> Result<Option<Args>, Stri
         out: None,
         log_interval: Duration::from_secs(1),
         frame_log: false,
+        high_priority: true,
     };
     fn val(it: &mut impl Iterator<Item = String>, flag: &str) -> Result<String, String> {
         it.next().ok_or_else(|| format!("{flag} needs a value"))
@@ -139,6 +143,13 @@ fn parse_args(mut it: impl Iterator<Item = String>) -> Result<Option<Args>, Stri
             "--out" => a.out = Some(PathBuf::from(val(&mut it, &arg)?)),
             "--log-interval" => a.log_interval = parse_duration(&val(&mut it, &arg)?)?,
             "--frame-log" => a.frame_log = true,
+            "--thread-priority" => {
+                a.high_priority = match val(&mut it, &arg)?.as_str() {
+                    "high" => true,
+                    "normal" => false,
+                    v => return Err(format!("--video-priority: {v}` (high | normal)")),
+                }
+            }
             other => return Err(format!("unknown option `{other}` (see --help)")),
         }
     }
@@ -309,6 +320,8 @@ fn summarize(
         ("drift_ms_max_abs", json_num(totals.drift_ms_max_abs)),
         ("drift_jitter_ms_max", json_num(totals.drift_jitter_ms_max)),
         ("drift_ppm_fit", json_num(ppm)),
+        ("drift_steps", totals.drift_steps.to_string()),
+        ("drift_step_ms_total", json_num(totals.drift_step_ms_total)),
         (
             "drift_frames_per_30min_extrapolated",
             json_num(frames_per_30m),
@@ -356,6 +369,7 @@ fn summarize(
         ("flashes", ld(&vstats.flashes).to_string()),
         ("late_flashes", ld(&vstats.late_flashes).to_string()),
         ("av_offset_setting_ms", json_num(args.av_offset_ms)),
+        ("thread_priority_high", args.high_priority.to_string()),
         ("sw_av_offset_ms_mean", json_num(off_mean)),
         ("sw_av_offset_ms_min", json_num(off_min)),
         ("sw_av_offset_ms_max", json_num(off_max)),
@@ -386,14 +400,16 @@ fn summarize(
             ld(&cb.frames_max_all)
         ),
         format!(
-            "duration {:.1} s | drift (audio - wall) end {:+.3} ms, fit {:+.2} ppm ≈ {:+.3} frames/30 min @ {} fps (extrapolated) | max |{:.3}| ms, anchor jitter ≤ {:.3} ms",
+            "duration {:.1} s | drift (audio - wall) end {:+.3} ms, fit {:+.2} ppm ≈ {:+.3} frames/30 min @ {} fps (extrapolated) | max |{:.3}| ms, anchor jitter ≤ {:.3} ms | clock steps {} (total {:+.3} ms)",
             totals.wall_s,
             totals.drift_ms_end,
             ppm,
             frames_per_30m,
             args.fps,
             totals.drift_ms_max_abs,
-            totals.drift_jitter_ms_max
+            totals.drift_jitter_ms_max,
+            totals.drift_steps,
+            totals.drift_step_ms_total
         ),
         format!(
             "start-up: first callbacks {} frames, latency {} ms; warm-up timestamp jump {:.2} ms (not counted)",
@@ -470,6 +486,7 @@ fn run(args: &Args) -> Result<(), String> {
         limiter_ceiling_db: args.limiter_ceiling,
         device: args.device.clone(),
         cheaper_stretch: args.cheaper,
+        high_priority_workers: args.high_priority,
     };
     let engine = Engine::start(&cfg, epoch)?;
     let info = &engine.info;
@@ -508,6 +525,7 @@ fn run(args: &Args) -> Result<(), String> {
             video: vstats.clone(),
             workers: engine.worker_stats.clone(),
             fps: args.fps,
+            av_offset_ms: args.av_offset_ms,
             interval: args.log_interval,
             csv: out.join("soak.csv"),
         },
@@ -555,6 +573,9 @@ fn run(args: &Args) -> Result<(), String> {
         tx,
         frames: args.frame_log,
     };
+    if args.high_priority && !raise_current_thread_priority() {
+        eprintln!("note: presenter thread priority not raised (unsupported on this OS)");
+    }
     let deadline = args.duration.map(|d| Instant::now() + d);
     let video = run_presenter(&vcfg, &hud, &vstats, &logs, &stop, deadline);
     drop(logs);

@@ -49,6 +49,8 @@ pub struct LoggerCtx {
     pub workers: Vec<Arc<WorkerStats>>,
     /// Video frame rate.
     pub fps: u32,
+    /// Deliberate video shift (`--av-offset-ms`), so video-vs-audio compares like with like.
+    pub av_offset_ms: f64,
     /// Row interval.
     pub interval: Duration,
     /// CSV output path.
@@ -80,11 +82,19 @@ pub struct RunTotals {
     pub latency_ms_mean: f64,
     /// Largest within-row drift spread (anchor jitter, ms).
     pub drift_jitter_ms_max: f64,
-    /// Least-squares drift slope over all rows (ppm; + = audio clock faster than wall clock).
+    /// Least-squares drift slope over all rows with clock steps removed (ppm; + = audio clock faster
+    /// than wall clock).
     pub drift_ppm_fit: f64,
-    /// Fitted drift at the end of the run (ms).
+    /// Fitted drift at the end of the run (ms, steps removed).
     pub drift_ms_fit_end: f64,
+    /// Clock steps (row-to-row drift change > 1 ms).
+    pub drift_steps: u64,
+    /// Sum of all clock steps (ms).
+    pub drift_step_ms_total: f64,
 }
+
+/// Row-to-row drift change treated as a clock step rather than drift (ms).
+pub const STEP_MS: f64 = 1.0;
 
 /// Running least-squares line fit `y = a + b x`.
 #[derive(Debug, Default)]
@@ -149,6 +159,8 @@ fn run(ctx: &LoggerCtx, stop: &AtomicBool) -> Result<RunTotals, String> {
     let mut prev_t = Instant::now();
     let mut next = Instant::now() + ctx.interval;
     let mut fit = LinFit::default();
+    let mut prev_drift: Option<f64> = None;
+    let mut step_sum = 0.0;
     loop {
         // Sleep in short steps (stop requests are honoured quickly) and sample the drift at each
         // step: a row reports the mean of ~50 anchors, which removes the per-callback jitter.
@@ -189,10 +201,20 @@ fn run(ctx: &LoggerCtx, stop: &AtomicBool) -> Result<RunTotals, String> {
             clock.drift_ns().unwrap_or(0.0) / 1e6
         };
         let drift_jitter_ms = if d_n > 1 { d_max - d_min } else { 0.0 };
-        fit.add(wall_s, drift_ms);
+        // A row-to-row change > 1 ms is a clock step (device/engine discontinuity), not drift:
+        // normal drift moves ~0.01 ms/s. Steps are counted and removed before the slope fit.
+        if let Some(prev) = prev_drift
+            && (drift_ms - prev).abs() > STEP_MS
+        {
+            totals.drift_steps += 1;
+            step_sum += drift_ms - prev;
+            totals.drift_step_ms_total = step_sum;
+        }
+        prev_drift = Some(drift_ms);
+        fit.add(wall_s, drift_ms - step_sum);
         let vstats = &ctx.video;
         let vframe = vstats.last_index.load(Ordering::Relaxed);
-        let expected = (audio_s * fps + 1e-6).floor() as i64;
+        let expected = ((audio_s + ctx.av_offset_ms / 1e3) * fps + 1e-6).floor() as i64;
         let wall_frame = (wall_s * fps).floor() as i64;
 
         let cb = &ctx.cb;
@@ -290,7 +312,8 @@ fn run(ctx: &LoggerCtx, stop: &AtomicBool) -> Result<RunTotals, String> {
             totals.drift_ppm_fit = slope * 1000.0;
             totals.drift_ms_fit_end = intercept + slope * wall_s;
         }
-        if vframe >= 0 {
+        // The final row is sampled after the presenter has stopped, so it is not compared.
+        if vframe >= 0 && !stopping {
             totals.video_minus_audio_max_abs = totals
                 .video_minus_audio_max_abs
                 .max((vframe - expected).abs());

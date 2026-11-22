@@ -85,6 +85,27 @@ pub fn parse_duration(s: &str) -> Result<Duration, String> {
 /// Nanoseconds in a second.
 pub const NANOS: f64 = 1_000_000_000.0;
 
+/// Raises the calling thread to `THREAD_PRIORITY_HIGHEST` (Windows only; elsewhere a no-op that
+/// returns false). Applied to the presenter and worker threads by `--thread-priority high`; the audio
+/// callback thread is promoted separately by cpal's `realtime` feature (MMCSS).
+pub fn raise_current_thread_priority() -> bool {
+    #[cfg(windows)]
+    {
+        unsafe extern "system" {
+            fn GetCurrentThread() -> isize;
+            fn SetThreadPriority(thread: isize, priority: i32) -> i32;
+        }
+        const THREAD_PRIORITY_HIGHEST: i32 = 2;
+        // SAFETY: GetCurrentThread returns a pseudo-handle valid for the calling thread;
+        // SetThreadPriority only reads it.
+        unsafe { SetThreadPriority(GetCurrentThread(), THREAD_PRIORITY_HIGHEST) != 0 }
+    }
+    #[cfg(not(windows))]
+    {
+        false
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
