@@ -628,7 +628,7 @@ renderer CPU, no CPU pixel copies, and about 0.5 ms from main to the page.
 
 Files: `desktop/src/transport-b/` (`main-b.ts` main-side wiring and self-test, `utility.ts`
 frame pump, `preload.ts` sandboxed port-handoff preload, `receiver.ts`, `renderer.ts`,
-`worker.ts`, `protocol.ts`), `desktop/src/bench.ts` (`ab` mode, shared with
+`worker.ts`, `protocol.ts`, `sized.ts`), `desktop/src/bench.ts` (`ab` mode, shared with
 the WP-0C.02 suite), `bridge/src/wait.rs` (`RingReader.waitForFrame`, with Node tests in
 `bridge/test/wait.test.mjs`), `scripts/build-js-b.mjs`, `scripts/bench-ab.mjs`. Shared files
 only gained additive hooks: the `--transport` option and its dispatch in `main.ts`, one method

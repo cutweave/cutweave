@@ -20,6 +20,7 @@ import {
 } from "../shared/types.ts";
 import { type ControlMsg, PORT_DELIVERY, WANT_PORT } from "./protocol.ts";
 import { FrameReceiver, type ReceiverStats } from "./receiver.ts";
+import { sizedToFrame } from "./sized.ts";
 import type { PageToWorker, WorkerToPage } from "./worker.ts";
 
 declare global {
@@ -92,7 +93,7 @@ async function mainThreadHost(port: MessagePort, canvas: HTMLCanvasElement): Pro
   let rx = new FrameReceiver(port);
   rx.latencyUs = latencyMs * 1000;
   const engineCbs: ((e: EngineEvent) => void)[] = [];
-  const target = await createPresenter(canvas, preferGpu);
+  const target = sizedToFrame(await createPresenter(canvas, preferGpu), canvas);
   const loop = new PresentLoop(
     "main-thread (sandboxed renderer)",
     (after, pol) => rx.getFrame(after, pol),

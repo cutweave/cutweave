@@ -9,6 +9,7 @@ import { createPresenter } from "../shared/present.ts";
 import type { EngineEvent, FramePolicy } from "../shared/types.ts";
 import type { ControlMsg } from "./protocol.ts";
 import { FrameReceiver, type ReceiverStats } from "./receiver.ts";
+import { sizedToFrame } from "./sized.ts";
 
 export type PageToWorker =
   | {
@@ -79,7 +80,10 @@ scope.onmessage = (e: MessageEvent) => {
       void (async () => {
         try {
           // OffscreenCanvas has the same getContext("webgpu"/"2d") + width/height surface.
-          const target = await createPresenter(m.canvas as unknown as HTMLCanvasElement, m.preferGpu);
+          const target = sizedToFrame(
+            await createPresenter(m.canvas as unknown as HTMLCanvasElement, m.preferGpu),
+            m.canvas,
+          );
           presenter = `${target.kind} (${target.adapter})`;
           loop = new PresentLoop(
             "worker (sandboxed renderer)",
