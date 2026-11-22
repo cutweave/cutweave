@@ -60,6 +60,8 @@ Much of Cutweave is built with AI agents, and contributions that use them are we
 
 The core is **GPL-3.0-or-later** (see [LICENSE](LICENSE)). The plugin SDK, WIT interfaces and composition runtime (`packages/plugin-sdk`, `wit/`, `packages/compose-runtime`) are intended to be **MIT OR Apache-2.0**, and contributions to those directories are made under both licenses. A **plugin exception** is being drafted so that plugins using only Cutweave's published interfaces may use any license; see [LICENSE-PLUGIN-EXCEPTION.md](LICENSE-PLUGIN-EXCEPTION.md). It is a draft pending legal review and is not yet in effect.
 
+**Inbound licensing for the planned exception (pending legal review).** An additional permission such as the plugin exception can only cover code whose authors agreed to it. By submitting a contribution, you agree that it is licensed under GPL-3.0-or-later and that Cutweave may also distribute it under the additional permission in LICENSE-PLUGIN-EXCEPTION.md once that text is adopted. If you do not agree, say so in your pull request before it is merged. The maintainers will replace this paragraph with counsel-reviewed wording before the first external contribution is merged.
+
 New dependencies must be GPL-3.0-compatible and pass `cargo-deny` and the JS license check (policy: [docs/01-architecture.md](docs/01-architecture.md) §21).
 
 ## Reporting bugs and security issues

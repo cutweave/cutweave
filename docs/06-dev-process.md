@@ -119,7 +119,7 @@ stateDiagram-v2
 
 ## 9. Decisions: ADRs & RFCs
 
-- **ADR** (`docs/adr/NNN-title.md`, MADR format) records an architectural decision: context, options, decision, consequences. Status: Proposed → Accepted / Superseded.
+- **ADR** (`docs/adr/NNNN-title.md`, MADR format; template `docs/adr/0000-template.md`) records an architectural decision: context, options, decision, consequences. Status: Proposed → Accepted / Superseded.
 - **RFC** (`docs/rfc/`) covers larger user-visible or ecosystem changes: plugin API, project format, MCP surface. It has a two-week comment window once external contributors exist.
 - The orchestrator may *draft* ADRs and RFCs; only maintainers accept them.
 
