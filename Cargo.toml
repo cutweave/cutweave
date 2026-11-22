@@ -53,10 +53,22 @@ syn = { version = "3.0.10", features = ["full"] }
 # Compile-fail tests of the command macros' diagnostics (dev only).
 trybuild = "1.0.125"
 
+# cutweave-commands doc actor (WP-1B.03, arch §5.2, ADR-0005).
+# Lock-free publication of immutable document snapshots: readers (render, audio, queries) never block.
+arc-swap = "1.9.5"
+# Structured logs (AGENTS.md: `tracing` for logs). `std` only: no proc-macro attributes.
+tracing = { version = "0.1.44", default-features = false, features = ["std"] }
+# Model checking of the doc actor's submit/publish/reply protocol; only under `--cfg cutweave_loom`.
+loom = { version = "0.7.3", features = ["futures"] }
+# Micro-benchmarks (dev only): doc actor round trip, recorded against the arch §19 command RTT budget.
+criterion = { version = "0.8.2", default-features = false, features = ["cargo_bench_support"] }
+
 [workspace.lints.rust]
 # Allowed (with justification) only in cutweave-bridge, cutweave-playback and cutweave-audio.
 unsafe_code = "deny"
 missing_docs = "warn"
+# `cutweave_loom`: loom model tests (`RUSTFLAGS="--cfg cutweave_loom" cargo test -p cutweave-commands --test doc_loom`).
+unexpected_cfgs = { level = "warn", check-cfg = ["cfg(cutweave_loom)"] }
 
 [workspace.lints.clippy]
 # A pedantic subset; add more as the codebase grows.

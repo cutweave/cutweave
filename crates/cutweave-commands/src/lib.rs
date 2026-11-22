@@ -21,9 +21,15 @@
 //!   [`invert`], [`diff`]): JSON-Pointer-addressed, ID-keyed ops with preimages, applied to the
 //!   typed `imbl` document or to its JSON form with identical results.
 //! - **Errors** ([`CmdError`]): typed, with a machine code and a human message.
+//! - **Document actor** ([`DocState`], [`DocActor`], [`DocHandle`], [`DocSnapshot`],
+//!   [`DocEvent`], [`Applied`], [`ActorCtx`], [`Clock`]): the single writer (WP-1B.03). Commands
+//!   run serially on a dedicated thread; readers get immutable snapshots without locking;
+//!   revisions, `expected_rev` conflicts, `request_id` dedup, bounded event streams with lag
+//!   detection, and the seams for transactions, undo and the journal (WP-1B.04/09, WP-1C.02).
 //!
-//! The document actor, undo history and transaction lifecycle build on these seams
-//! (WP-1B.03/04/09). The crate compiles to `wasm32-unknown-unknown`.
+//! The crate compiles to `wasm32-unknown-unknown`; there the actor's thread host
+//! ([`DocActor`], [`DocHandle`], [`EventStream`], [`Pending`]) is left out and [`DocState`] is
+//! driven directly.
 
 // Lets the attribute macros emit `::cutweave_commands::…` paths that also resolve in this crate.
 extern crate self as cutweave_commands;
@@ -31,6 +37,7 @@ extern crate self as cutweave_commands;
 mod apply;
 mod ctx;
 mod diff;
+mod doc;
 mod error;
 mod json;
 mod meta;
@@ -42,6 +49,18 @@ mod tx;
 pub use ctx::{Access, QueryCtx};
 pub use cutweave_commands_derive::{command, query, wire};
 pub use diff::diff;
+pub use doc::{
+    Actor, ActorCtx, ActorError, Applied, Changes, Clock, CommandPanicked, CommitRecord,
+    CommitSink, ConnId, DEDUP_CAPACITY, DEDUP_WINDOW, DedupRecord, DocConfig, DocEvent, DocPatched,
+    DocReset, DocSnapshot, DocState, Fingerprint, JournalStep, MAX_AGENT_LABEL_CHARS,
+    MAX_PLUGIN_ID_CHARS, ManualClock, NoJournal, PatchCause, RequestId, RequestIdError,
+    SOFT_LOCK_RETRY_MS, Submit, TxClosed, TxId, TxIdError, TxInfo, TxKind, TxOutcome, WallTime,
+};
+#[cfg(not(all(target_arch = "wasm32", target_os = "unknown")))]
+pub use doc::{
+    ActorOptions, DEFAULT_EVENT_CAPACITY, DocActor, DocHandle, DocMetrics, DocStats, EventStream,
+    NoMetrics, Outcome, Pending, RecvError, RequestSample, SystemClock, TryRecvError,
+};
 pub use error::{CmdError, ConflictReason, ResourceKind, Rev};
 pub use json::json_eq;
 pub use meta::{
