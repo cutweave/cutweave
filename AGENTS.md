@@ -2,7 +2,7 @@
 
 Cutweave is an open-source desktop video editor and agent-native video environment: a Rust headless engine, an Electron + React UI, full MCP control, a cloud-first AI gateway and plugins at every layer. Canonical file for Codex, Gemini CLI, Cursor, Claude Code and others (`CLAUDE.md` imports it).
 
-**Current stage: Phase 0.** The scaffold, CI, governance files and the design-token pipeline exist. Spikes (`spikes/`) and ADRs (`docs/adr/`) are in progress; product crates are mostly stubs until Phase 1.
+**Current stage: Phase 1 (walking skeleton).** Phase 0 is done with a provisional go ([M0](docs/milestones/M0-go-no-go.md)); the FFmpeg spike (S3) is still blocked. The model, command bus, project persistence, `view` commands, editor shell and timeline renderer are merged. Media, playback, export, the API server, MCP and the CLI are next, so several crates are still stubs. Spikes (`spikes/`) are reference only.
 
 ## Read before working
 
@@ -60,5 +60,5 @@ Cutweave is an open-source desktop video editor and agent-native video environme
 
 ## Where things are
 
-`crates/` engine (arch §3) · `apps/desktop` Electron · `packages/` TS (`protocol` and `schema/` generated) · `wit/` plugin interfaces · `design/` tokens and design system · `spikes/` throwaway Phase 0 prototypes (never depend on them) · `xtask/` automation · `docs/adr/` decisions.
+`crates/` engine (arch §3) · `apps/desktop` Electron · `packages/` TS (`protocol` and `schema/` generated) · `wit/` plugin interfaces · `design/` tokens and design system · `spikes/` throwaway Phase 0 prototypes (never depend on them) · `xtask/` automation · `docs/adr/` decisions. The public website is a separate repo, [cutweave/cutweave.github.io](https://github.com/cutweave/cutweave.github.io).
 - **CI minutes:** never trigger, dispatch or re-run GitHub Actions workflows. Verify locally with `just ci-local` (see docs/06-dev-process.md §8).
