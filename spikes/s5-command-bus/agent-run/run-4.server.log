@@ -1,0 +1,7 @@
+2026-11-22T17:14:27.567928Z  INFO s5_mcp: MCP over stdio profile="standard" actor=agent:claude-code
+2026-11-22T17:14:27.674816Z  INFO s5_mcp::server: initialize (2025-11-25-style session lifecycle) client=claude-code client_version=2.1.283 requested=2025-11-25 negotiated=2025-11-25 profile="standard"
+2026-11-22T17:14:27.675025Z  INFO serve_inner: rmcp::service: Service initialized as server peer_info=Some(InitializeRequestParams { meta: None, protocol_version: ProtocolVersion("2025-11-25"), capabilities: ClientCapabilities { experimental: None, extensions: None, roots: Some(RootsCapabilities { list_changed: Some(true) }), sampling: None, elicitation: Some(ElicitationCapability { form: Some(FormElicitationCapability { schema_validation: None }), url: Some(UrlElicitationCapability) }) }, client_info: Implementation { name: "claude-code", title: Some("Claude Code"), version: "2.1.283", description: Some("Anthropic's agentic coding tool"), icons: None, website_url: Some("https://claude.com/claude-code") } })
+2026-11-22T17:14:27.728584Z  INFO serve_inner: rmcp::service: received notification notification=InitializedNotification(NotificationNoParam { method: InitializedNotificationMethod, extensions: Extensions })
+2026-11-22T17:14:27.728662Z  INFO serve_inner: rmcp::handler::server: client initialized
+2026-11-22T17:14:52.614212Z  INFO serve_inner: rmcp::service: input stream terminated
+2026-11-22T17:14:52.614281Z  INFO serve_inner: rmcp::service: serve finished quit_reason=Closed
