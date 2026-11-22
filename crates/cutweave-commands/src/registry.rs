@@ -212,6 +212,17 @@ impl Entry {
         self.meta.kind
     }
 
+    /// For an engine command, the [`TypeId`] of the `Context` it runs against (what
+    /// [`Registry::invoke_engine_json`] must be given), so a host can route it; `None` for
+    /// commands and queries.
+    #[must_use]
+    pub fn engine_context(&self) -> Option<TypeId> {
+        match self.runner {
+            Runner::Engine { context, .. } => Some(context),
+            Runner::Command(_) | Runner::Query(_) => None,
+        }
+    }
+
     /// Registers the params and output TypeScript types in `types` and returns references to
     /// them (for the generated protocol package, WP-1N).
     pub fn ts_types(&self, types: &mut Types) -> (DataType, DataType) {

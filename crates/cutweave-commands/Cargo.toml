@@ -1,6 +1,6 @@
 [package]
 name = "cutweave-commands"
-description = "Cutweave: Command and Query traits, registry, transactions, patches and undo"
+description = "Cutweave: Command and Query traits, registry, transactions, patches, undo and the document actor"
 version.workspace = true
 edition.workspace = true
 license.workspace = true
@@ -22,11 +22,28 @@ specta.workspace = true
 # Only for TS `number` overrides of 64-bit integers (`specta_typescript::Number`, e.g. `Rev`).
 specta-typescript.workspace = true
 thiserror.workspace = true
+# Doc actor diagnostics (caught command panics, conflicts between open transactions).
+tracing.workspace = true
+
+# The doc actor's thread host (WP-1B.03) is native-only; the document state machine (`DocState`)
+# stays wasm32-clean.
+[target.'cfg(not(all(target_arch = "wasm32", target_os = "unknown")))'.dependencies]
+# Lock-free snapshot publication: `DocHandle::snapshot()` never blocks (arch §5.2).
+arc-swap.workspace = true
+
+# Model checking of the actor's concurrency protocol (`--cfg cutweave_loom` builds only).
+[target.'cfg(cutweave_loom)'.dependencies]
+loom.workspace = true
 
 [dev-dependencies]
 cutweave-model = { path = "../cutweave-model", features = ["testing"] }
+criterion.workspace = true
 proptest.workspace = true
 specta-serde.workspace = true
+
+[[bench]]
+name = "doc_actor"
+harness = false
 
 [lints]
 workspace = true
