@@ -1,9 +1,13 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 //! `cutweave-engine`: composition root wiring the engine together and session lifecycle.
 //!
-//! Stub crate created by WP-0A.01; real content arrives in later work packages.
+//! Currently hosts [`project_io`] (WP-1C.01): the project folder format, atomic save/open and the
+//! single-writer lock (arch §17, ADR-0006). The rest of the composition root arrives in later
+//! work packages.
 
-/// Returns the crate name; placeholder until real content lands.
+pub mod project_io;
+
+/// Returns the crate name.
 #[must_use]
 pub const fn crate_name() -> &'static str {
     "cutweave-engine"

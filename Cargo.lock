@@ -259,6 +259,13 @@ version = "0.0.0"
 [[package]]
 name = "cutweave-engine"
 version = "0.0.0"
+dependencies = [
+ "cutweave-model",
+ "proptest",
+ "serde",
+ "serde_json",
+ "thiserror",
+]
 
 [[package]]
 name = "cutweave-interchange"
