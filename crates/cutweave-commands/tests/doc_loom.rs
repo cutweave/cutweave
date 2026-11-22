@@ -15,7 +15,7 @@
 
 mod doc_support;
 
-use cutweave_commands::{DocActor, Rev, Submit};
+use cutweave_commands::{DocActor, Rev, Submit, TxKind};
 use doc_support::{agent, config, project, ui};
 use serde_json::json;
 
@@ -69,8 +69,10 @@ fn submit_publish_reply_is_linearizable() {
         assert_eq!(last.rev, Rev(2));
         assert_eq!(last.doc.meta.name, results[1].1);
 
-        let revs: Vec<Rev> = (0..2)
-            .map(|_| events.try_recv().unwrap().rev().unwrap())
+        // Every event was published before its reply; `edit.history_changed` events (no
+        // revision) are interleaved with the document's.
+        let revs: Vec<Rev> = std::iter::from_fn(|| events.try_recv().ok())
+            .filter_map(|e| e.rev())
             .collect();
         assert_eq!(revs, [Rev(1), Rev(2)]);
         drop(events);
@@ -91,6 +93,34 @@ fn an_awaited_reply_always_wakes_its_task() {
             loom::future::block_on(pending).unwrap().rev
         });
         assert_eq!(waiter.join().unwrap(), Rev(1));
+        actor.shutdown().unwrap();
+    });
+}
+
+/// While a gesture is open the actor waits for requests with a timeout (the idle-gesture
+/// timer, WP-1B.04); a request or a shutdown racing that timed wait is never lost.
+#[test]
+fn requests_reach_an_actor_waiting_on_the_gesture_timer() {
+    model(|| {
+        let (doc, _, _) = project(1);
+        let actor = DocActor::spawn(config(doc)).unwrap();
+        let h = actor.handle();
+        let tx = h
+            .begin_tx(&ui(), TxKind::Gesture, "Drag")
+            .wait()
+            .unwrap()
+            .id;
+        let client = {
+            let h = actor.handle();
+            loom::thread::spawn(move || {
+                h.submit(Submit::new(agent(), "project.rename", json!({"name": "B"})))
+                    .wait()
+                    .unwrap()
+                    .rev
+            })
+        };
+        assert_eq!(client.join().unwrap(), Rev(1));
+        h.cancel_tx(&ui(), tx).wait().unwrap();
         actor.shutdown().unwrap();
     });
 }
