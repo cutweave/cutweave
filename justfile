@@ -23,6 +23,7 @@ check:
     cargo test --workspace
     cargo xtask check-wasm
     cargo xtask check-deps
+    cargo xtask tokens --check
     pnpm lint
     pnpm format:check
     pnpm typecheck
