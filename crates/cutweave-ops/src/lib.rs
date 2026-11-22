@@ -3,14 +3,26 @@
 //!
 //! Each command namespace lives in its own module and exposes `register(&mut Registry)`;
 //! [`register`] calls them all (explicit registration, arch §5.1). Currently: [`view`]
-//! (WP-1C.04), the UI view-state namespace.
+//! (WP-1C.04), the UI view-state namespace, and the WP-1B.05 ops: [`project`], [`media`],
+//! [`track`] and [`timeline`].
 
 use cutweave_commands::{Registry, RegistryError};
 
+pub mod media;
+pub mod project;
+pub mod timeline;
+pub mod track;
+mod util;
 pub mod view;
+
+pub use util::MAX_NAME_CHARS;
 
 /// Registers every built-in command and query of this crate.
 pub fn register(registry: &mut Registry) -> Result<(), RegistryError> {
+    project::register(registry)?;
+    media::register(registry)?;
+    track::register(registry)?;
+    timeline::register(registry)?;
     view::register(registry)
 }
 

@@ -16,6 +16,8 @@ serde.workspace = true
 serde_json.workspace = true
 # Only for the `number` TS override of the 32-bit view revision counter.
 specta-typescript.workspace = true
+# Typed `ProbeError` of the `MediaProbe` boundary.
+thiserror.workspace = true
 
 [dev-dependencies]
 cutweave-model = { path = "../cutweave-model", features = ["testing"] }
