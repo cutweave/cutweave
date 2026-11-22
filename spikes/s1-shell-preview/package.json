@@ -16,6 +16,7 @@
     "build": "pnpm run build:native && pnpm run build:js",
     "start": "electron .",
     "selftest": "node scripts/selftest.mjs",
+    "bench": "node scripts/bench.mjs",
     "typecheck": "tsc --noEmit -p tsconfig.json",
     "test": "node --test \"bridge/test/*.test.mjs\"",
     "test:rust": "cargo test --workspace"

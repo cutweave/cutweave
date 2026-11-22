@@ -25,6 +25,7 @@ import {
   session,
 } from "electron";
 import type * as Addon from "../../bridge/index.d.ts";
+import { runBench } from "./bench.ts";
 import type { EngineEvent, EngineInfo, Handshake } from "./shared/types.ts";
 
 const SPIKE_ROOT = path.resolve(__dirname, "..", "..");
@@ -55,6 +56,10 @@ const opts = {
   present: flag("present") === "2d" ? "2d" : "gpu",
   verify: flag("verify") === "0" ? "0" : "1",
   chromiumDgpu: flag("chromium-dgpu") !== undefined,
+  // WP-0C.02: WebGPU upload path, engine output size (canvas | WxH), `--bench[=quick|<s>]`.
+  upload: flag("upload") === "videoFrame" ? "videoFrame" : "writeTexture",
+  engineSize: flag("engine-size") ?? "canvas",
+  bench: flag("bench"),
 };
 const rendererQuery = new URLSearchParams({
   draw: opts.draw,
@@ -62,6 +67,8 @@ const rendererQuery = new URLSearchParams({
   latency: opts.latency,
   present: opts.present,
   verify: opts.verify,
+  upload: opts.upload,
+  engineSize: opts.engineSize,
 }).toString();
 const [engineWidth, engineHeight] = opts.size.split("x").map(Number) as [number, number];
 
@@ -550,6 +557,25 @@ app.whenReady().then(async () => {
       engine.stop();
       app.exit(1);
     });
+  } else if (opts.bench !== undefined) {
+    const win = mainWindow;
+    const deps = {
+      win,
+      spikeRoot: SPIKE_ROOT,
+      engineInfo: () => engine.info,
+      enginePid: () => engine.pid,
+      options: opts,
+    };
+    runBench(deps, opts.bench)
+      .then((pass) => {
+        engine.stop();
+        app.exit(pass ? 0 : 1);
+      })
+      .catch((e: Error) => {
+        console.error(`[bench] error: ${e.stack ?? e.message}`);
+        engine.stop();
+        app.exit(1);
+      });
   }
 });
 
