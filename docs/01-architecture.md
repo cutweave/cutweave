@@ -252,7 +252,7 @@ impl Command for SplitItem {
 }
 ```
 
-- **Commands** mutate. Naming is `namespace.verb_object`. The namespaces are `project`, `media`, `sequence`, `track`, `timeline`, `item` (generic ops on any item kind: delete, move, set_props, duplicate, link), `clip` (media-clip specifics), `text`, `caption`, `transcript`, `effect`, `transition`, `keyframe`, `mask`, `color`, `audio`, `composition`, `template`, `font`, `asset` (packs, stickers, LUTs, library items), `analysis` (scene/beat/loudness/silence detection results), `tracking` (motion tracking; distinct from timeline `track`), `ai`, `render`, `export`, `plugin`, `edit` (undo/redo/history), `view` (UI-only state such as playhead, zoom and selection). New namespaces require an ADR.
+- **Commands** mutate. Naming is `namespace.verb_object`. The namespaces are `project`, `media`, `sequence`, `track`, `timeline`, `item` (generic ops on any item kind: delete, move, set_props, duplicate, link), `clip` (media-clip specifics), `text`, `caption`, `transcript`, `effect`, `transition`, `keyframe`, `mask`, `color`, `audio`, `composition`, `template`, `font`, `asset` (packs, stickers, LUTs, library items), `analysis` (scene/beat/loudness/silence detection results), `job` (job status, wait, cancel, list), `tracking` (motion tracking; distinct from timeline `track`), `ai`, `render`, `export`, `plugin`, `edit` (undo/redo/history), `view` (UI-only state such as playhead, zoom and selection). New namespaces require an ADR.
 - **Queries** are read-only (e.g. `timeline.get`, `item.get`, `media.list`, `transcript.search`, `render.frame`). They support `depth`, `fields`, `limit` and `cursor` so responses stay small.
 - **Events** are streamed to subscribers: `doc.patched{rev, actor, ops}`, `playback.state`, `job.progress`, `media.indexed`, `plugin.changed`, `catalog.updated`.
 - **Envelope & idempotency:**
@@ -260,6 +260,10 @@ impl Command for SplitItem {
   - The engine journals `request_id` with each applied transaction and deduplicates repeats within a 10-minute window: a repeat returns the original result. After an engine restart, clients resend unacknowledged requests safely.
 - **`view` namespace** covers playhead, zoom, selection, panel state and preview quality. It is **not undoable and not journaled**; it persists separately in `.cutweave/ui-state.json`.
 - **Deterministic test mode:** `--deterministic-ids <seed>` replaces UUIDv7 generation with a seeded sequence. Parity tests (CLI = MCP = RPC) and golden tests can then byte-compare saved project documents.
+- **Error semantics (decided in WP-1B.01):**
+  - `Locked{kind,id,by,tx}` means the target is *user-locked* (locked track or item).
+  - Contention with another actor's open gesture is `Conflict{reason:"item_in_gesture", retry_after_ms}` (§5.2).
+  - Patch ops follow RFC 6902 (`replace` carries `value`). `move` into a path's own descendant is rejected so every op stays invertible.
 - **Registration is explicit:** each crate that defines commands exposes `register(&mut Registry)`, and the engine composition root calls them all. No link-time registration magic, so this works identically on native and wasm32 and nothing is silently dropped by the linker. *(Decided after Spike S5.)*
 - **Validation** happens before apply: JSON Schema, then semantic checks (IDs exist, ranges, locks). Errors are typed (`NotFound`, `Locked`, `Conflict{current_rev}`, `Invalid{path,msg}`, `Unsupported`). Each error carries a human message plus a machine code; agents rely on both.
 
