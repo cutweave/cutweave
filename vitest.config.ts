@@ -16,5 +16,11 @@ export default defineConfig({
   test: {
     include: ["{packages,apps}/*/src/**/*.test.ts"],
     passWithNoTests: false,
+    // The merge gate often runs while agents compile Rust in parallel: cap workers and give
+    // worker startup / slow jsdom suites headroom so load never turns into a false failure.
+    maxWorkers: 4,
+    testTimeout: 20_000,
+    hookTimeout: 30_000,
+    teardownTimeout: 30_000,
   },
 });
