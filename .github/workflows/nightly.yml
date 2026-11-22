@@ -3,8 +3,7 @@ name: Nightly
 # Skeleton (WP-0A.03). Benchmark smoke + corpus jobs added by WP-0I.01/0I.03; soak and e2e in P2.
 
 on:
-  schedule:
-    - cron: "17 3 * * *"
+  # Manual only for now (saves Actions minutes); re-enable the schedule once runners/budget allow.
   workflow_dispatch:
 
 permissions:

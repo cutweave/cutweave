@@ -4,9 +4,9 @@ name: CI
 # (see .github/workflows/README.md). The `ffmpeg` cargo feature stays off here until WP-0A.06.
 
 on:
+  # No push trigger: maintainers run `just ci-local` before every merge to main (saves Actions minutes).
+  # The full matrix runs on pull requests and on manual dispatch (milestones, releases).
   pull_request:
-  push:
-    branches: [main]
   workflow_dispatch:
 
 permissions:

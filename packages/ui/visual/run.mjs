@@ -3,9 +3,8 @@
 // regression, axe, offline fonts, comparator tests). Anything after the known flags is passed
 // through to `playwright test` (for example `-g "icons"`).
 //
-//   --update         write/refresh baselines in __screenshots__/ (Linux only, see below)
+//   --update         write/refresh baselines in __screenshots__/ (per-OS baselines)
 //   --skip-build     reuse an existing storybook-static/
-//   --force-platform allow --update on a non-Linux machine (the baselines will not match CI)
 import { spawnSync } from "node:child_process";
 import { dirname, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -19,16 +18,6 @@ const take = (flag) => {
 };
 const update = take("--update");
 const skipBuild = take("--skip-build");
-const force = take("--force-platform");
-
-if (update && process.platform !== "linux" && !force) {
-  console.error(
-    "ui-snapshots --update: baselines are Linux software-rendered Chromium; this is " +
-      `${process.platform}. Apply the \`ui-snapshots-update\` label to the PR and let CI write ` +
-      "them (download the `ui-baselines` artifact), or pass --force-platform to override.",
-  );
-  process.exit(1);
-}
 
 const shell = process.platform === "win32";
 const run = (cmd, cmdArgs, env = {}) => {

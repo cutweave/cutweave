@@ -12,7 +12,10 @@ export const STORYBOOK_DIR = resolve(PKG_ROOT, "storybook-static");
  * Baseline class (docs/01-architecture.md §20: baselines are per adapter). Screenshots are taken
  * by Chromium with software rendering (no GPU) on Linux; other adapters get their own directory.
  */
-export const ADAPTER_CLASS = "linux-chromium-sw";
+// One baseline set per OS (fonts and anti-aliasing differ); each OS compares only against its own.
+const OS_NAME =
+  process.platform === "win32" ? "windows" : process.platform === "darwin" ? "macos" : "linux";
+export const ADAPTER_CLASS = `${OS_NAME}-chromium-sw`;
 export const BASELINE_DIR = resolve(PKG_ROOT, "__screenshots__", ADAPTER_CLASS);
 export const ACTUAL_DIR = resolve(PKG_ROOT, "__screenshots-actual__", ADAPTER_CLASS);
 

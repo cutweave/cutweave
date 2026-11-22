@@ -86,3 +86,9 @@ evals *args:
 # Download the pinned CI-built FFmpeg shared bundle and set FFMPEG_DIR
 ffmpeg-fetch:
     @echo "ffmpeg-fetch: not implemented yet (arrives in WP-0A.06)"
+
+# Everything CI checks that this machine can run: the fast gate plus Storybook visual regression,
+# axe and offline-fonts tests against this OS's baselines. Run before merging to main.
+ci-local:
+    just check
+    just ui-snapshots

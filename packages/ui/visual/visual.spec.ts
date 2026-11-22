@@ -14,12 +14,7 @@ import {
   THEMES,
 } from "./shared.ts";
 
-// Baselines are Linux software-rendered Chromium. Other platforms render differently, so the
-// comparison runs only on Linux (override with UI_SNAPSHOTS_ANY_PLATFORM=1 for debugging).
-test.skip(
-  process.platform !== "linux" && process.env.UI_SNAPSHOTS_ANY_PLATFORM !== "1",
-  "visual baselines are Linux-only (software-rendered Chromium); CI produces and checks them",
-);
+// Baselines are per OS (ADAPTER_CLASS in shared.ts); every platform compares against its own set.
 
 const UPDATE = process.env.UI_SNAPSHOTS_UPDATE === "1";
 // First run on a checkout with no committed baselines: write them (CI uploads them as an
