@@ -1,0 +1,26 @@
+[package]
+name = "s5-ops"
+description = "Spike S5: the toy commands and queries (stand-in for cutweave-ops) and the codegen binary"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+rust-version.workspace = true
+publish.workspace = true
+
+[dependencies]
+s5-bus.workspace = true
+png.workspace = true
+base64.workspace = true
+
+[dev-dependencies]
+serde_json.workspace = true
+insta.workspace = true
+proptest.workspace = true
+trybuild.workspace = true
+
+[[bin]]
+name = "s5-codegen"
+path = "src/bin/s5-codegen.rs"
+
+[lints]
+workspace = true

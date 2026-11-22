@@ -1,0 +1,5 @@
+error: command name must be lowercase `namespace.verb_object` using [a-z0-9_]
+ --> tests/ui/bad_name_grammar.rs:3:18
+  |
+3 | #[command(name = "clip.Split-Now", summary = "Split a clip", undoable, mcp = "core", annotations(destructive = false))]
+  |                  ^^^^^^^^^^^^^^^^

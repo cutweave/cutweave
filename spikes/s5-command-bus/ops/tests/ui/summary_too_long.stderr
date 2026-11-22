@@ -1,0 +1,5 @@
+error: summary must be 1..=100 chars (it is the MCP tool description and counts against the tool-list budget); put details in the doc comment
+ --> tests/ui/summary_too_long.rs:5:15
+  |
+5 | ... = "Split a clip at a timeline time, keeping the left part's id and creating a new id for the right part, which inherits all properties",
+  |       ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^

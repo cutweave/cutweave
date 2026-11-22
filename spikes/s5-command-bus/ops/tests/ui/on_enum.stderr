@@ -1,0 +1,5 @@
+error: #[command] must be placed on a struct with named fields
+ --> tests/ui/on_enum.rs:4:1
+  |
+4 | pub enum SplitClip {
+  | ^^^

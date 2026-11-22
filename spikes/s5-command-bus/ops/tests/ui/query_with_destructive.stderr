@@ -1,0 +1,5 @@
+error: queries are always read-only and idempotent; only `open_world` may be set
+ --> tests/ui/query_with_destructive.rs:3:88
+  |
+3 | #[query(name = "timeline.get", summary = "Get the timeline", mcp = "core", annotations(destructive = true))]
+  |                                                                                        ^^^^^^^^^^^
