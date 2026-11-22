@@ -64,6 +64,10 @@ export function Menu({
         aria-labelledby={undefined}
         className={cx("cw-menu", className)}
         loop
+        // Dropdowns hang from the trigger's leading edge (4 = space-1); context menus open at the pointer.
+        {...(mode === "dropdown"
+          ? { align: "start" as const, sideOffset: 4, collisionPadding: 8 }
+          : {})}
       >
         {items.map((entry, index) => {
           if (entry.kind === "separator") {
