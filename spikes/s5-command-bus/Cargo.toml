@@ -1,9 +1,10 @@
 # Spike S5 (WP-0H.01): command bus, `#[command]` macro, registry, JSON Schema + TS codegen.
+# WP-0H.02 adds `mcp/` (s5-mcp): an rmcp MCP server (stdio + Streamable HTTP) over the registry.
 # Throwaway: its own workspace, excluded from the root workspace (`exclude = ["spikes"]`) and never
 # imported by `crates/`. Only the learnings (README "Findings for Phase 1") carry forward.
 [workspace]
 resolver = "3"
-members = ["macros", "bus", "ops"]
+members = ["macros", "bus", "ops", "mcp"]
 
 [workspace.package]
 version = "0.0.0"
@@ -15,6 +16,7 @@ publish = false
 [workspace.dependencies]
 s5-bus = { path = "bus" }
 s5-bus-macros = { path = "macros" }
+s5-ops = { path = "ops" }
 
 proc-macro2 = "1"
 quote = "1"
@@ -32,6 +34,20 @@ thiserror = "2"
 uuid = { version = "1", features = ["v7"] }
 png = "0.18"
 base64 = "0.22"
+
+# WP-0H.02 (s5-mcp). rmcp is pinned exactly: 3.x has API churn between minors (research 05 §2).
+rmcp = { version = "=3.11.0", default-features = false, features = [
+    "server",
+    "transport-io",
+    "transport-streamable-http-server",
+] }
+tokio = { version = "1", features = ["rt-multi-thread", "macros", "net", "io-std", "io-util", "sync", "time", "signal", "process"] }
+tokio-util = "0.7"
+axum = { version = "0.8", default-features = false, features = ["http1", "tokio"] }
+tracing = "0.1"
+tracing-subscriber = { version = "0.3", default-features = false, features = ["fmt", "env-filter", "std"] }
+anyhow = "1"
+getrandom = "0.4"
 
 insta = { version = "1", features = ["json"] }
 proptest = "1"
