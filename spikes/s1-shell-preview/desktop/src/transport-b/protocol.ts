@@ -61,6 +61,9 @@ export type UtilityToMain =
   | { type: "ready"; probes: UtilityProbes }
   | { type: "probes"; probes: UtilityProbes }
   | { type: "ring-closed"; ring: string }
+  /** The engine's ring heartbeat stopped advancing (hang or crash; independent of the OS
+   * reporting the process exit, which can take seconds of GPU-driver teardown under load). */
+  | { type: "engine-stalled"; ring: string; ageMs: number }
   | { type: "ring-exists"; id: number; exists: boolean }
   | { type: "stats"; id: number; stats: UtilityStats };
 

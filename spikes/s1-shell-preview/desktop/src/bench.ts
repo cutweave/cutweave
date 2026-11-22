@@ -9,6 +9,7 @@
 
 import { execFileSync } from "node:child_process";
 import { mkdirSync, writeFileSync } from "node:fs";
+import { cpus } from "node:os";
 import path from "node:path";
 import { app, type BrowserWindow } from "electron";
 import type { LatSummary, LoopSnapshot } from "./shared/loop.ts";
@@ -66,6 +67,20 @@ export interface ProcSample {
   t: number;
   engineMs: number | null;
   byPid: Map<number, { type: string; cpuS: number; serviceName?: string }>;
+  /** Whole-machine CPU times (ms, all logical cores) to spot foreign load during a run. */
+  sysBusyMs: number;
+  sysTotalMs: number;
+}
+
+function systemTimes(): { busy: number; total: number } {
+  let busy = 0;
+  let total = 0;
+  for (const c of cpus()) {
+    const t = c.times;
+    busy += t.user + t.nice + t.sys + t.irq;
+    total += t.user + t.nice + t.sys + t.irq + t.idle;
+  }
+  return { busy, total };
 }
 
 export function sampleCpu(enginePid: number | null): ProcSample {
@@ -77,7 +92,14 @@ export function sampleCpu(enginePid: number | null): ProcSample {
       ...(m.serviceName ? { serviceName: m.serviceName } : {}),
     });
   }
-  return { t: performance.now(), engineMs: engineCpuMs(enginePid), byPid };
+  const sys = systemTimes();
+  return {
+    t: performance.now(),
+    engineMs: engineCpuMs(enginePid),
+    byPid,
+    sysBusyMs: sys.busy,
+    sysTotalMs: sys.total,
+  };
 }
 
 /** CPU % of one core between two samples, for the processes the A/B table cares about. */
@@ -102,7 +124,7 @@ export function cpuPercent(
     }
     return pct(s);
   };
-  return {
+  const out: Record<string, number | null> = {
     renderer: pidPct(pids.renderer),
     utility: pidPct(pids.utility),
     ...(pids.producer === undefined ? {} : { producer: pidPct(pids.producer) }),
@@ -113,6 +135,17 @@ export function cpuPercent(
         ? Math.round(((b.engineMs - a.engineMs) / 1000 / wallS) * 1000) / 10
         : null,
   };
+  // Whole machine, in % of one core (100 = one core busy), and what is NOT ours.
+  const n = cpus().length;
+  const sysPct =
+    Math.round(((b.sysBusyMs - a.sysBusyMs) / Math.max(1, b.sysTotalMs - a.sysTotalMs)) * n * 1000) /
+    10;
+  let ours = 0;
+  for (const [pid, y] of b.byPid) ours += y.cpuS - (a.byPid.get(pid)?.cpuS ?? y.cpuS);
+  ours = (ours / wallS) * 100 + (out.engine ?? 0);
+  out.system = sysPct;
+  out.foreign = Math.round(Math.max(0, sysPct - ours) * 10) / 10;
+  return out;
 }
 
 const pick = (l: LatSummary | undefined) => (l ? { p50: l.p50, p95: l.p95 } : null);

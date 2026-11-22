@@ -214,6 +214,24 @@ function pushNewFrames(r: Addon.RingReader): void {
   }
 }
 
+/** No frame for a while: is the engine still alive? (It refreshes heartbeat_us every loop,
+ * also while paused.) Reported once per engine generation. */
+const HEARTBEAT_STALE_US = 250_000;
+let stallReported = false;
+function checkHeartbeat(r: Addon.RingReader): void {
+  if (stallReported || !info) return;
+  try {
+    const h = r.readHeader();
+    const age = addon.nowUs() - h.heartbeatUs;
+    if (h.heartbeatUs > 0 && age > HEARTBEAT_STALE_US) {
+      stallReported = true;
+      toMain({ type: "engine-stalled", ring: info.ring, ageMs: age / 1000 });
+    }
+  } catch {
+    counters.readErrors++;
+  }
+}
+
 async function pump(gen: number, r: Addon.RingReader): Promise<void> {
   let seen = r.readHeader().writeIndex;
   while (gen === generation && reader === r) {
@@ -229,6 +247,7 @@ async function pump(gen: number, r: Addon.RingReader): Promise<void> {
     if (gen !== generation || reader !== r) break;
     if (wi <= seen) {
       counters.timeouts++;
+      checkHeartbeat(r);
       continue;
     }
     seen = wi;
@@ -330,6 +349,7 @@ async function engineUp(i: EngineInfo, token: string): Promise<void> {
     return;
   }
   info = i;
+  stallReported = false;
   lastSentSeq = 0;
   lastAckedSeq = 0;
   inFlight = 0;

@@ -3,15 +3,19 @@
 //
 //   node scripts/bench-ab.mjs [seconds=60] [--sizes=1920x1080,1280x720] [--format=rgba8|nv12]
 //                             [--only=a,b-main,b-worker,texture] [--latency=20] [--warmup=5]
+//                             [--quiet-below=150] [--max-wait=600]
 //   node scripts/bench-ab.mjs --table            # print the table from results/bench-*.json
 //
 // Each configuration is a fresh Electron launch with `--bench=<seconds>` (desktop/src/bench.ts):
 // warm-up, reset counters, run, record fps, skipped frames/min (seq gaps), engine GPU submit ->
 // renderer present submit p50/p95, per-process CPU. Runs are interleaved a, b, a, b, ... per size
-// so slow drift (thermals, background load) hits both transports alike.
+// so slow drift (thermals, background load) hits both transports alike. Before each run it waits
+// (up to --max-wait s) until the whole machine is below --quiet-below % of one core, and every
+// result records "foreign" CPU (machine minus our processes): other builds/agents share the box.
 import { spawn } from "node:child_process";
 import { readdirSync, readFileSync } from "node:fs";
 import { createRequire } from "node:module";
+import { cpus } from "node:os";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 
@@ -30,6 +34,36 @@ const CONFIGS = {
   texture: { label: "sharedTexture GPU handoff probe (OSR source)", flags: ["--transport=texture"] },
 };
 
+/** Whole-machine CPU busy, in % of one core (100 = one core), over `ms`. */
+async function machineLoad(ms) {
+  const snap = () => {
+    let busy = 0;
+    let total = 0;
+    for (const c of cpus()) {
+      const t = c.times;
+      busy += t.user + t.nice + t.sys + t.irq;
+      total += t.user + t.nice + t.sys + t.irq + t.idle;
+    }
+    return { busy, total };
+  };
+  const a = snap();
+  await new Promise((r) => setTimeout(r, ms));
+  const b = snap();
+  return ((b.busy - a.busy) / Math.max(1, b.total - a.total)) * cpus().length * 100;
+}
+
+/** Other agents/builds share this machine: wait (bounded) until it is quiet before a run. */
+async function waitForQuiet(belowPct, maxWaitS) {
+  const until = Date.now() + maxWaitS * 1000;
+  for (;;) {
+    const load = await machineLoad(3000);
+    if (load < belowPct) return { load, waited: false };
+    if (Date.now() > until) return { load, waited: true };
+    console.log(`  machine busy (${load.toFixed(0)}% of one core); waiting...`);
+    await new Promise((r) => setTimeout(r, 7000));
+  }
+}
+
 function runOne(flags) {
   const electron = createRequire(import.meta.url)("electron");
   return new Promise((resolve) => {
@@ -39,7 +73,9 @@ function runOne(flags) {
       for (const line of d.toString().split(/\r?\n/)) {
         const m = /^\[bench\] (.+\.json)$/.exec(line.trim());
         if (m) file = m[1];
-        if (line.startsWith("[bench]") || /error/i.test(line)) console.log(`  ${line}`);
+        if (line.startsWith("[bench]") || /^\[(main|utility|texture)\].*(error|fail)/i.test(line)) {
+          console.log(`  ${line}`);
+        }
       }
     };
     child.stdout.on("data", onLine);
@@ -72,6 +108,7 @@ function table(files) {
     "CPU % renderer",
     "CPU % utility",
     "CPU % GPU / main / engine",
+    "foreign load",
     "torn",
   ];
   const out = [`| ${head.join(" | ")} |`, `|${head.map(() => "---").join("|")}|`];
@@ -86,7 +123,7 @@ function table(files) {
           ? `n/a (OSR source ${f1(s.cpu.producer)})`
           : "n/a";
     out.push(
-      `| ${s.size} ${s.format} | ${tr} ${loop} | ${s.policy === "clock" ? `clock ${r.options?.latency ?? "?"} ms` : s.policy} | ${f1(s.seconds)} | ${f2(s.presentFps)} | ${f1(s.skippedPerMin)} | ${s.engineDropped ?? "-"} | ${f1(s.renderToPresentMs?.p50)} / ${f1(s.renderToPresentMs?.p95)} | ${f1(s.cpu.renderer)} | ${util} | ${f1(s.cpu.gpu)} / ${f1(s.cpu.main)} / ${f1(s.cpu.engine)} | ${s.tornFrames} |`,
+      `| ${s.size} ${s.format} | ${tr} ${loop} | ${s.policy === "clock" ? `clock ${r.options?.latency ?? "?"} ms` : s.policy} | ${f1(s.seconds)} | ${f2(s.presentFps)} | ${f1(s.skippedPerMin)} | ${s.engineDropped ?? "-"} | ${f1(s.renderToPresentMs?.p50)} / ${f1(s.renderToPresentMs?.p95)} | ${f1(s.cpu.renderer)} | ${util} | ${f1(s.cpu.gpu)} / ${f1(s.cpu.main)} / ${f1(s.cpu.engine)} | ${f1(s.cpu.foreign)} | ${s.tornFrames} |`,
     );
   }
   return out.join("\n");
@@ -142,6 +179,8 @@ for (const size of sizes) {
     const c = CONFIGS[key];
     if (!c) throw new Error(`unknown config ${key}`);
     console.log(`${size}: ${c.label}`);
+    const q = await waitForQuiet(Number(opt("quiet-below", "150")), Number(opt("max-wait", "600")));
+    console.log(`  machine load before run: ${q.load.toFixed(0)}% of one core${q.waited ? " (gave up waiting)" : ""}`);
     const { code, file } = await runOne([...c.flags, ...shared, `--size=${size}`]);
     if (code !== 0 || !file) console.log(`  FAILED (exit ${code})`);
     else produced.push(file);

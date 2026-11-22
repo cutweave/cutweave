@@ -70,6 +70,8 @@ type Reply = Extract<UtilityToMain, { id: number }>;
 class FramePump {
   child: UtilityProcess | null = null;
   probes: UtilityProbes | null = null;
+  /** Last stale-heartbeat report from the utility (spike: measured, not acted upon). */
+  lastStall: { ring: string; at: number; ageMs: number } | null = null;
   onRingClosed: (ring: string) => void = () => {};
   onRestart: () => void = () => {};
   private nextId = 1;
@@ -90,7 +92,10 @@ class FramePump {
     child.on("message", (m: UtilityToMain) => {
       if (m.type === "ready" || m.type === "probes") this.probes = m.probes;
       else if (m.type === "ring-closed") this.onRingClosed(m.ring);
-      else {
+      else if (m.type === "engine-stalled") {
+        this.lastStall = { ring: m.ring, at: performance.now(), ageMs: m.ageMs };
+        console.log(`[main] utility: engine heartbeat stale for ${m.ageMs.toFixed(0)} ms`);
+      } else {
         this.waiters.get(m.id)?.(m);
         this.waiters.delete(m.id);
       }
@@ -370,14 +375,18 @@ export async function startTransportB(o: TransportBOptions): Promise<void> {
       ringClosedWaiters.set(ring, () => r(performance.now() - t));
     });
     const down = o.engine.whenDown();
+    const killAt = performance.now();
     o.engine.crash();
     const ev = await down;
     const detectMs = ev.state === "down" ? ev.detectMs : null;
     const closeAckMs = await Promise.race([ringClosed, sleep(3000).then(() => null)]);
     const exists = (await pump.request({ type: "ring-exists", ring })).exists;
+    const stall = pump.lastStall?.ring === ring ? pump.lastStall : null;
     result.crash = {
       detectMs,
       pipeCloseMs: o.engine.lastPipeCloseMs,
+      // Heartbeat watchdog in the utility (reported only if it fired before the exit event).
+      heartbeatDetectMs: stall ? stall.at - killAt : null,
       closeAckMs,
       ringExistsAfterReaderClose: exists,
     };
