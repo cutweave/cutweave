@@ -151,7 +151,7 @@ jobs:
           go-version: stable
           cache: false
       - run: go install github.com/rhysd/actionlint/cmd/actionlint@v1.7.12
-      - run: "$(go env GOPATH)/bin/actionlint"
+      - run: '"$(go env GOPATH)/bin/actionlint"'
 
   # Linux display matrix for GUI tests: probes only for now; Electron tests arrive in Phase 1.
   gui-probe:
