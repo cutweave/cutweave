@@ -1,0 +1,5 @@
+error: #[command] must declare `annotations(destructive = true|false)`: MCP's destructiveHint defaults to true, so leaving it implicit would mislabel the tool
+ --> tests/ui/missing_destructive.rs:4:82
+  |
+4 | #[command(name = "clip.split", summary = "Split a clip", undoable, mcp = "core", annotations(idempotent = false))]
+  |                                                                                  ^^^^^^^^^^^
