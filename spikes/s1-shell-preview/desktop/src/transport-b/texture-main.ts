@@ -51,7 +51,9 @@ export async function startTextureProbe(o: TextureProbeOptions): Promise<void> {
   consumer.webContents.on("console-message", (e) => {
     if (e.level === "error" || e.level === "warning") console.log(`[texture page] ${e.message}`);
   });
-  await consumer.loadURL(`${o.origin}/b/texture.html?policy=${String(o.options.policy ?? "latest")}`);
+  // 2-frame FIFO unless `--policy=latest` is given explicitly (main.ts defaults policy to latest).
+  const latest = process.argv.includes("--policy=latest");
+  await consumer.loadURL(`${o.origin}/b/texture.html?policy=${latest ? "latest" : "next"}`);
 
   const producer = new BrowserWindow({
     width: w,
