@@ -1,0 +1,206 @@
+{
+  "kind": "s1-selftest",
+  "informal": true,
+  "startedAt": "2026-11-22T16:08:29.362Z",
+  "platform": "win32-x64",
+  "electron": "45.4.1",
+  "chrome": "156.0.8078.100",
+  "seconds": 30,
+  "options": {
+    "selftestSeconds": 30,
+    "format": "nv12",
+    "gpu": "high",
+    "size": "1920x1080",
+    "draw": "main",
+    "policy": "latest",
+    "latency": "20",
+    "present": "gpu",
+    "verify": "1",
+    "chromiumDgpu": false
+  },
+  "engine": {
+    "pid": 42360,
+    "port": 52086,
+    "ring": "cw-s1-34aa6ee1b679",
+    "width": 1920,
+    "height": 1080,
+    "fps": 60,
+    "slots": 6,
+    "adapter": "NVIDIA GeForce RTX 3080 Laptop GPU",
+    "backend": "Vulkan",
+    "deviceType": "DiscreteGpu",
+    "generation": 1
+  },
+  "isolation": {
+    "require": "undefined",
+    "process": "undefined",
+    "module": "undefined",
+    "bridge": "object",
+    "bridgeKeys": [
+      "getFrame",
+      "getLatestFrame",
+      "info",
+      "nowUs",
+      "onEngineEvent",
+      "preloadLoop",
+      "presentInPreload",
+      "readHeader",
+      "setClockLatencyMs",
+      "stats",
+      "transport",
+      "version"
+    ],
+    "frame": {
+      "seq": 18,
+      "bytes": 3110400,
+      "isArrayBuffer": true
+    }
+  },
+  "sandboxedWindow": {
+    "bridge": "undefined",
+    "require": "undefined",
+    "process": "undefined"
+  },
+  "run": {
+    "seconds": 30.3,
+    "drawIn": "main-world",
+    "policy": "latest",
+    "presenter": "webgpu (amd / gcn-5)",
+    "framesPresented": 1788,
+    "presentFps": 59.02,
+    "seqGaps": 24,
+    "seqGapsPerMin": 47.5,
+    "seqViolations": 0,
+    "checksumFailures": 0,
+    "rowStampFailures": 0,
+    "longRafs": 0,
+    "verify": true,
+    "format": 2,
+    "size": "1920x1080",
+    "lastPts": 21638400000,
+    "latency": {
+      "renderToPresentMs": {
+        "n": 1788,
+        "p50": 11.999,
+        "p95": 13.801,
+        "p99": 27.492,
+        "max": 56.138,
+        "mean": 12.383
+      },
+      "publishToPresentMs": {
+        "n": 1788,
+        "p50": 8.123,
+        "p95": 11.98,
+        "p99": 15.214,
+        "max": 21.655,
+        "mean": 8.65
+      },
+      "publishToFetchMs": {
+        "n": 1788,
+        "p50": 4.51,
+        "p95": 7.078,
+        "p99": 10.52,
+        "max": 17.072,
+        "mean": 4.819
+      },
+      "addonCopyMs": {
+        "n": 1788,
+        "p50": 0.245,
+        "p95": 0.379,
+        "p99": 0.482,
+        "max": 1.081,
+        "mean": 0.263
+      },
+      "getFrameMs": {
+        "n": 1788,
+        "p50": 2.7,
+        "p95": 4,
+        "p99": 4.5,
+        "max": 6.3,
+        "mean": 2.781
+      },
+      "cloneMs": {
+        "n": 1788,
+        "p50": 2.465,
+        "p95": 3.738,
+        "p99": 4.189,
+        "max": 5.944,
+        "mean": 2.518
+      },
+      "verifyMs": {
+        "n": 1788,
+        "p50": 0.1,
+        "p95": 0.2,
+        "p99": 0.3,
+        "max": 0.5,
+        "mean": 0.09
+      },
+      "uploadDrawMs": {
+        "n": 1788,
+        "p50": 1.2,
+        "p95": 2,
+        "p99": 2.2,
+        "max": 2.5,
+        "mean": 1.271
+      },
+      "rafIntervalMs": {
+        "n": 1818,
+        "p50": 16.7,
+        "p95": 16.8,
+        "p99": 16.8,
+        "max": 17.1,
+        "mean": 16.667
+      }
+    },
+    "reader": {
+      "frames": 1795,
+      "torn": 0,
+      "nothingNew": 0,
+      "errors": 0,
+      "externalArrayBuffers": false
+    },
+    "engineDropped": 6
+  },
+  "cpuPercentOfOneCore": {
+    "engine": 5.986598056346557,
+    "Browser": 0.25951725579189355,
+    "GPU": 16.21011666322472,
+    "Utility": 0.04748632047143373,
+    "Tab": 36.390893317138485
+  },
+  "crash": {
+    "detectMs": 85.37330000000293,
+    "pipeCloseMs": 70.53880000000208,
+    "closeAckMs": 88.59410000000207,
+    "ringExistsAfterReaderClose": false
+  },
+  "restart": {
+    "msToFramesFlowing": 1296.9895000000033,
+    "engine": {
+      "pid": 50632,
+      "port": 52086,
+      "ring": "cw-s1-f212939d2a5b",
+      "width": 1920,
+      "height": 1080,
+      "fps": 60,
+      "slots": 6,
+      "adapter": "NVIDIA GeForce RTX 3080 Laptop GPU",
+      "backend": "Vulkan",
+      "deviceType": "DiscreteGpu",
+      "generation": 2
+    }
+  },
+  "checks": {
+    "mainWorldHasNoRequire": true,
+    "mainWorldHasNoProcess": true,
+    "bridgeReturnsFrames": true,
+    "sandboxedWindowHasNoBridge": true,
+    "framesPresented": true,
+    "seqMonotonic": true,
+    "zeroTornFrames": true,
+    "crashDetectedUnder1s": true,
+    "ringReleased": true,
+    "restartedAndFlowing": true
+  },
+  "pass": true
+}
