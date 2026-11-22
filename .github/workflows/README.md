@@ -8,8 +8,8 @@ commit SHA with a version comment (Renovate keeps the pins current).
 
 | Check | Notes |
 |---|---|
-| `rust (windows-latest)`, `rust (macos-14)`, `rust (ubuntu-24.04)` | fmt, clippy, nextest, doc-tests, dependency rule, license headers |
-| `ts (windows-latest)`, `ts (macos-14)`, `ts (ubuntu-24.04)` | Biome, typecheck, Vitest, build |
+| `rust (windows-latest)`, `rust (macos-latest)`, `rust (ubuntu-24.04)` | fmt, clippy, nextest, doc-tests, dependency rule, license headers |
+| `ts (windows-latest)`, `ts (macos-latest)`, `ts (ubuntu-24.04)` | Biome, typecheck, Vitest, build |
 | `wasm-check` | `cargo xtask check-wasm` |
 | `deny` | `cargo deny check` and `pnpm audit --audit-level high` |
 | `schema-snapshot` | `cargo xtask gen --check` (no-op until WP-1N) |
