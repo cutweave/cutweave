@@ -28,6 +28,15 @@ serde_json = "1"
 thiserror = "2"
 clap = { version = "4.6", features = ["derive"] }
 anyhow = "1"
+# WP-0F.02 text. Shaping (harfrust inside), no system fonts (fontconfig off) for determinism.
+cosmic-text = { version = "=0.19.0", default-features = false, features = ["std"] }
+# Glyph outlines for the MSDF generator and the CPU reference (already in the tree via fontdb).
+ttf-parser = "0.25"
+# Vello variant (wgpu 30, same device as the compositor).
+vello = "=0.12.0"
+# Decodes the bundled UI fonts (packages/ui/src/fonts/*.woff2) at load time (pure Rust, MIT;
+# the `woff2` 0.3 crate no longer builds against bytes 1.10+).
+wuff = "0.2"
 
 [lints.rust]
 unsafe_code = "forbid"
