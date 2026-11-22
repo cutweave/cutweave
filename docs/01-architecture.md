@@ -762,7 +762,7 @@ MyVideo/                    ← project folder (user-chosen location)
 | 004 | Time unit: flicks (`i64`) | Accepted |
 | 005 | State: single-writer doc actor, `imbl` snapshots, invertible patches; CRDT later | Accepted |
 | 006 | Project format: folder + JSON doc + journal + backups | Accepted |
-| 007 | Text: cosmic-text + swash + MSDF; Vello variant | Proposed: **Spike 4** |
+| 007 | Text: cosmic-text + own MSDF atlas renderer (Vello rejected for v1) | **Accepted (provisional)**: S4 text, 0.70 ms / 1000 glyphs on iGPU |
 | 008 | AI: capability-typed gateway, signed manifest catalog, declarative HTTP and WASM adapters, cloud-first | Accepted |
 | 009 | MCP: rmcp; hybrid catalog (core tools + search/describe/execute/query); attach + headless | **Accepted (provisional)**: S5 passed 3/3 with Claude Code; a second client is pending |
 | 010 | Plugins: layered L0–L4; wasmtime + WIT; QuickJS compositions; WGSL effects | Accepted |

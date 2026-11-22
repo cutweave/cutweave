@@ -1,6 +1,6 @@
 # ADR-0007: Text rendering: cosmic-text + swash shaping with an MSDF atlas, and a Vello variant
 
-- **Status:** Proposed
+- **Status:** Accepted (provisional, 2026-11-22), on Spike S4 text evidence (spikes/s4-compositor/README.md). **MSDF only for v1**: cosmic-text shaping and our own MSDF generator (fdsm lacks error correction and overlap handling). 1000 animated glyphs with outline and shadow take 0.70 ms GPU on the AMD iGPU and 0.06 ms on the RTX 3080, with 1.6 MB of memory. 4K crispness SSIM is 0.9976, with no shimmer. Cross-vendor difference is ≤1 LSB. Follow-ups: a high-resolution atlas tier (96 px/em) for thin features, and a colour-emoji atlas. **Vello is rejected for v1** (10–25× slower, ~210 MB, crashes on WARP, up to 28-code cross-vendor drift). skia-safe is not needed. It becomes final after reference-machine measurement (WP-0F.03).
 - **Date:** 2026-11-22
 - **Deciders:** Cutweave maintainers (decision pending Spike S4)
 - **Supersedes:** none
