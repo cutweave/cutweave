@@ -456,6 +456,18 @@ captures), renegotiation at 49.1 / 50.5 ms, and 12 of 12 steps. The overlay chec
 7. **Measurement hygiene.** The bench marks phases during which another `s1-engine` ran
    (`(contended*)` rows, `notes`). Trust phase totals over per-second rows. Chromium's WebGPU
    ran on the AMD iGPU and the engine on the RTX 3080, as in WP-0C.01.
+8. **Open issue: intermittent "no frames" in the WP-0C.01 self-test.** 3 of about 20 runs
+   failed in one 6-minute window while other agents' spike runs were active; the next 10
+   consecutive runs passed.
+   - Two failures stopped at the restart check: after `kill -9` and the restart, the new engine
+     was up and the control socket re-authenticated, but the preload read 0 frames from the
+     new ring in 20 s. The new ring's header showed an implausible `engine_dropped` of about
+     4.2e10, roughly 59.6 s worth of flicks.
+   - One failure had no rAF callbacks at all for 8 s before the crash step. A plain Electron
+     page ran rAF at 61/s at the same time.
+
+   The root cause was not found. WP-0C.04 and WP-0C.06 should watch for it: on a failure, dump
+   `bridge.readHeader()` and `bridge.stats()`.
 
 **Bottom line for WP-0C.04 / ADR-001 (informal):** the in-page parts of S1 hold on Windows.
 The WebGPU canvas presents 1080p60 with NV12 + `writeTexture`. Scrub-to-pixel p95 is about
