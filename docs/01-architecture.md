@@ -289,6 +289,11 @@ impl Command for SplitItem {
   - Implicit (single) commands run against the committed document. One that overlaps an open transaction's items fails with `Conflict{item_in_gesture}`.
   - The doc actor is a dedicated OS thread, not a tokio task; readers use arc-swap and never lock.
   - After crash recovery in deterministic-ID mode, the seeded ID generator state must be restored from the journal (WP-1C.02).
+- **Undo rule (decided in WP-1B.04):**
+  - An undo is a *new* transaction that applies the inverse patch to the current document, so it carries past later edits to unrelated fields.
+  - It is refused with `Conflict{history_target_modified}`, naming the later changes and their actors, when any targeted field changed since, or when the result would violate a model invariant.
+  - `edit.undo{actor}` / `edit.redo{actor}` take `*` for "anyone's latest". A commit is refused when later commits invalidated the transaction.
+  - In P1, checkpoints are in memory only; journal persistence comes later.
 - **Checkpoints:** `edit.checkpoint{name}` and `edit.restore{checkpoint}` (cheap, thanks to persistent snapshots) let agents try something and roll back.
 - **Future collaboration:** patch ops are designed to map onto a CRDT (Loro) later; no CRDT in v1 *(ADR-005)*.
 
@@ -545,6 +550,12 @@ flowchart LR
 - **Resources:**
   - `cutweave://project`, `cutweave://sequence/{id}/timeline` (paginated, summarized first), `cutweave://transcript/{id}`, `cutweave://catalog/models`.
   - Subscriptions provide change notifications.
+- **`render.frame` / `render.contact_sheet` (decided in WP-1F.03):**
+  - They live in `cutweave-render`, and the engine binds the GPU backend per query via `query::enter(backend)`.
+  - Results are `{mime, data(base64), metadata}`.
+  - We use our own baseline JPEG encoder, because common crates carry IJG terms our license policy rejects.
+  - Contact-sheet labels use a built-in 5×7 bitmap font until the MSDF text engine lands in P3.
+  - Warm 1080p → 768 px JPEG takes about 8 ms on GPU.
 - **Seeing without screenshots:**
   - `render_frame` / `render_contact_sheet` / `media_filmstrip` / `audio_waveform` return **image content** (JPEG, default ≤ 768 px, `max_size` param) plus structured metadata (time, items visible, captions on screen).
   - Large outputs come back as resource links.
