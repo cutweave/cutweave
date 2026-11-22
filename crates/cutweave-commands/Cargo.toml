@@ -8,5 +8,25 @@ repository.workspace = true
 rust-version.workspace = true
 publish = false
 
+[dependencies]
+# `#[command]` / `#[query]` / `#[wire]`, re-exported from this crate.
+cutweave-commands-derive = { path = "../cutweave-commands-derive" }
+cutweave-model = { path = "../cutweave-model" }
+imbl.workspace = true
+schemars.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+# JSON Pointer of the offending param in `CmdError::Invalid` ("/at", "/items/1").
+serde_path_to_error.workspace = true
+specta.workspace = true
+# Only for TS `number` overrides of 64-bit integers (`specta_typescript::Number`, e.g. `Rev`).
+specta-typescript.workspace = true
+thiserror.workspace = true
+
+[dev-dependencies]
+cutweave-model = { path = "../cutweave-model", features = ["testing"] }
+proptest.workspace = true
+specta-serde.workspace = true
+
 [lints]
 workspace = true

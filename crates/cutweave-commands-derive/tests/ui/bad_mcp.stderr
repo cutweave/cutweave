@@ -1,0 +1,5 @@
+error: mcp must be "core", "catalog" or "hidden"
+ --> tests/ui/bad_mcp.rs:4:67
+  |
+4 | #[command(name = "clip.split", summary = "Split", undoable, mcp = "always", annotations(destructive = false))]
+  |                                                                   ^^^^^^^^

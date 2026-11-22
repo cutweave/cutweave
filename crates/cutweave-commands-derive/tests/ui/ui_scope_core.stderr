@@ -1,0 +1,5 @@
+error: a `scope = "ui"` entry cannot be an MCP core tool: agent credentials can never call it; use `mcp = "catalog"` or `mcp = "hidden"`
+ --> tests/ui/ui_scope_core.rs:8:11
+  |
+8 |     mcp = "core",
+  |           ^^^^^^

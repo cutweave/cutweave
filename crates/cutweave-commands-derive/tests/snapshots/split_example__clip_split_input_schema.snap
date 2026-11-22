@@ -1,0 +1,35 @@
+---
+source: crates/cutweave-commands-derive/tests/split_example.rs
+expression: "cutweave_model::canonical_json_pretty(&entry.meta.input_schema)"
+---
+{
+  "additionalProperties": false,
+  "description": "Defined once; generates JSON Schema, TS types, MCP tool/catalog entry, CLI help and docs.",
+  "properties": {
+    "at": {
+      "anyOf": [
+        {
+          "maximum": 9007199254740991,
+          "minimum": -9007199254740991,
+          "type": "integer"
+        },
+        {
+          "pattern": "^-?[0-9]+(\\.[0-9]+)?s$|^-?[0-9]+$",
+          "type": "string"
+        }
+      ],
+      "description": "A time in flicks (1/705600000 s) as an integer, or a string: seconds (\"62.5s\") or raw flicks (\"123\")."
+    },
+    "item": {
+      "description": "A Item id: `^itm_[0-9a-f]{32}$`.",
+      "pattern": "^itm_[0-9a-f]{32}$",
+      "type": "string"
+    }
+  },
+  "required": [
+    "item",
+    "at"
+  ],
+  "title": "SplitItem",
+  "type": "object"
+}

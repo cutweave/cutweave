@@ -1,0 +1,5 @@
+error: #[command] must be placed on a struct with named fields
+ --> tests/ui/enum_target.rs:5:1
+  |
+5 | pub enum Split {
+  | ^^^

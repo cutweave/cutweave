@@ -1,0 +1,5 @@
+error: `view.*` commands must be marked `view` (not undoable, not journaled)
+ --> tests/ui/view_namespace_without_flag.rs:5:12
+  |
+5 |     name = "view.set_zoom",
+  |            ^^^^^^^^^^^^^^^

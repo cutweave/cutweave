@@ -1,0 +1,5 @@
+error: `read_only` is derived: #[query] is read-only and #[command] never is
+ --> tests/ui/read_only_annotation.rs:4:108
+  |
+4 | #[command(name = "clip.split", summary = "Split", undoable, mcp = "core", annotations(destructive = false, read_only))]
+  |                                                                                                            ^^^^^^^^^

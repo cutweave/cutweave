@@ -43,6 +43,14 @@ proptest = "1.12"
 # Snapshot tests of generated TS, JSON Schemas and migrated documents (dev only).
 insta = { version = "1.49", features = ["json"] }
 
+# cutweave-commands-derive (WP-1B.02): the `#[command]` / `#[query]` / `#[wire]` proc-macros.
+# syn 3 is the major version serde_derive, schemars_derive and thiserror already pull in.
+proc-macro2 = "1.0.107"
+quote = "1.0.47"
+syn = { version = "3.0.10", features = ["full"] }
+# Compile-fail tests of the command macros' diagnostics (dev only).
+trybuild = "1.0.125"
+
 [workspace.lints.rust]
 # Allowed (with justification) only in cutweave-bridge, cutweave-playback and cutweave-audio.
 unsafe_code = "deny"

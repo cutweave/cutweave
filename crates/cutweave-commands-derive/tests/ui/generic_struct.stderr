@@ -1,0 +1,5 @@
+error: #[command] structs cannot be generic: each registry entry is one concrete type
+ --> tests/ui/generic_struct.rs:5:17
+  |
+5 | pub struct Split<T> {
+  |                 ^

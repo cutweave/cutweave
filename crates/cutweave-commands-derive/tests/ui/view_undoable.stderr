@@ -1,0 +1,5 @@
+error: `view` commands are never undoable (or journaled); remove `undoable`
+ --> tests/ui/view_undoable.rs:4:72
+  |
+4 | #[command(name = "view.set_zoom", summary = "Zoom the timeline", view, undoable, mcp = "catalog")]
+  |                                                                        ^^^^^^^^

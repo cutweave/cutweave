@@ -1,0 +1,5 @@
+error: unknown #[command] argument `journaled`; expected `name`, `summary`, `mcp`, `scope`, `undoable`, `view`, `engine`, `annotations(...)`
+ --> tests/ui/unknown_argument.rs:4:75
+  |
+4 | #[command(name = "clip.split", summary = "Split", undoable, mcp = "core", journaled, annotations(destructive = false))]
+  |                                                                           ^^^^^^^^^

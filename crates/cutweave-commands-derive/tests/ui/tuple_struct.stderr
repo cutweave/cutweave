@@ -1,0 +1,5 @@
+error: #[command] params must be a struct with named fields (write `{}` for none): the JSON Schema root must be an object (MCP requires inputSchema type "object")
+ --> tests/ui/tuple_struct.rs:5:12
+  |
+5 | pub struct Split(pub i32);
+  |            ^^^^^

@@ -1,0 +1,5 @@
+error: duplicate `name`
+ --> tests/ui/duplicate_argument.rs:4:32
+  |
+4 | #[command(name = "clip.split", name = "clip.cut", summary = "Split", undoable, mcp = "core", annotations(destructive = false))]
+  |                                ^^^^^^^^^^^^^^^^^
