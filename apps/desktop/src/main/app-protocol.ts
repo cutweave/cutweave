@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 // `app://cutweave/` serves the built editor from the bundle. Main owns the response headers (the
-// strict CSP of WP-1L.02 is added here), and there is no `file://` content.
+// strict CSP from csp.ts is set on every response, so a port change needs no file on disk), and
+// there is no `file://` content.
 
 import path from "node:path";
 import { pathToFileURL } from "node:url";
@@ -8,6 +9,11 @@ import { pathToFileURL } from "node:url";
 export const APP_SCHEME = "app";
 export const APP_HOST = "cutweave";
 export const APP_ORIGIN = `${APP_SCHEME}://${APP_HOST}`;
+/**
+ * Dedicated scheme for plugin UI iframes (arch §15 L3, P6). The CSP's `frame-src` allows only this
+ * scheme; nothing serves it until the plugin host lands, so every iframe load fails closed today.
+ */
+export const PLUGIN_SCHEME = "cutweave-plugin";
 
 /**
  * Map an `app://cutweave/...` URL to a file under `rootDir`, or null when the request is outside
@@ -39,11 +45,6 @@ export function resolveAppRequest(rootDir: string, requestUrl: string): string |
   return target;
 }
 
-/** Response headers main adds to every `app://` response. WP-1L.02 adds `buildCsp(port)` here. */
-export function baseResponseHeaders(): Record<string, string> {
-  return { "X-Content-Type-Options": "nosniff", "Cache-Control": "no-cache" };
-}
-
 /** Minimal slice of Electron's `protocol` and `net` used by the handler (fakes in tests). */
 export interface ProtocolLike {
   handle(scheme: string, handler: (request: { url: string }) => Promise<Response> | Response): void;
@@ -52,11 +53,23 @@ export interface NetLike {
   fetch(url: string, init?: { bypassCustomProtocolHandlers?: boolean }): Promise<Response>;
 }
 
+/**
+ * Claim the plugin scheme with a stub that answers 404, so a plugin iframe fails closed inside the
+ * app instead of being handed to the OS as an unknown external protocol. P6 replaces it.
+ */
+export function registerPluginProtocolStub(protocol: ProtocolLike): void {
+  protocol.handle(PLUGIN_SCHEME, () => new Response("plugin host not available", { status: 404 }));
+}
+
+/**
+ * Serve `rootDir` on `app://cutweave/`. `headers` is called per response (main passes
+ * `appResponseHeaders(buildCsp(currentPort))`), so the CSP follows the current engine port.
+ */
 export function registerAppProtocol(
   protocol: ProtocolLike,
   net: NetLike,
   rootDir: string,
-  headers: () => Record<string, string> = baseResponseHeaders,
+  headers: () => Record<string, string>,
 ): void {
   protocol.handle(APP_SCHEME, async (request) => {
     const file = resolveAppRequest(rootDir, request.url);

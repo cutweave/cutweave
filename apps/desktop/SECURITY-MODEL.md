@@ -1,0 +1,115 @@
+# Desktop shell security model (WP-1L.02)
+
+How the Electron shell is hardened, what each control is proven by, and what risk remains.
+Contract: [architecture §2, §6, §18](../../docs/01-architecture.md) and
+[ADR-0001](../../docs/adr/0001-desktop-shell.md) (Phase 1 preview transport (a)). Changing a
+control below is a security review item.
+
+## Threat model
+
+| Asset                           | Why it matters                                                                                              |
+| ------------------------------- | ----------------------------------------------------------------------------------------------------------- |
+| The user's files and OS account | Electron main and any Node-capable code run with the user's privileges.                                     |
+| The **UI token** (arch §6)      | The only credential allowed UI-only scopes: AI keys, spend approvals, filesystem allowlists, plugin grants. |
+| The engine's local API          | Token-authenticated, loopback only; the renderer reaches it over `http/ws://127.0.0.1:<port>`.              |
+
+Attackers we design against: hostile **content rendered by the editor** (media metadata,
+transcripts, project files, later plugin UI), **remote content** the app might be tricked into
+loading, a **compromised renderer** sending forged IPC, and **local tampering with the app
+bundle** (env vars, CLI flags, a replaced `app.asar`). Out of scope here: malware already running
+as the user, the engine's own API hardening (WP-1I), plugin isolation (P6), code signing (P7).
+
+## Windows and processes
+
+All windows come from one factory, `createWindow(kind)` in
+[src/main/windows.ts](src/main/windows.ts), with the policy in
+[src/main/window-policy.ts](src/main/window-policy.ts). It throws on any other combination, and a
+unit test fails if `new BrowserWindow` appears anywhere else in `src/`.
+
+| Kind                                    | `sandbox` | Preload                       | Notes                                                                                                                             |
+| --------------------------------------- | --------- | ----------------------------- | --------------------------------------------------------------------------------------------------------------------------------- |
+| `editor` (main editor window)           | **false** | `dist/preload/index.cjs` only | Non-sandboxed solely so the preload can load the native frame-bridge addon (ADR-0001 transport (a)).                              |
+| `auxiliary` (dialogs, any other window) | true      | none                          | No bridge, no addon.                                                                                                              |
+| iframes                                 | n/a       | none                          | `nodeIntegrationInSubFrames: false`; `frame-src` admits only the `cutweave-plugin:` scheme, which main answers with 404 until P6. |
+
+Every kind: `contextIsolation: true`, `nodeIntegration: false` (also in workers and subframes),
+`webSecurity: true`, `allowRunningInsecureContent: false`, `webviewTag: false`,
+`experimentalFeatures: false`, `plugins: false`, `navigateOnDragDrop: false`,
+`safeDialogs: true`, DevTools only in unpackaged runs, no `partition`/`session`/
+`additionalArguments`/`enableBlinkFeatures`.
+
+## Controls and evidence
+
+Unit tests run in `just check` (`pnpm test`); e2e tests run with
+`pnpm --filter @cutweave/desktop build && pnpm --filter @cutweave/desktop e2e`
+([e2e/security.spec.ts](e2e/security.spec.ts) unless noted).
+
+| #   | Control                                                                                                                                                                                                                                                                                                                                                                                       | Implementation                                                                         | Proven by                                                                                                                                                                                                                                                           |
+| --- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| 1   | Main world has no Node: `require`, `process`, `module`, `Buffer`, `ipcRenderer` undefined                                                                                                                                                                                                                                                                                                     | window policy                                                                          | e2e/smoke.spec.ts "the page main world has no Node access"                                                                                                                                                                                                          |
+| 2   | Per-kind webPreferences; factory throws on `sandbox:false`, a preload, or any weakening for a non-editor window                                                                                                                                                                                                                                                                               | `window-policy.ts`, `windows.ts`                                                       | `window-policy.test.ts`; e2e "the factory refuses a non-sandboxed or preloaded non-main window"                                                                                                                                                                     |
+| 3   | A second window is OS-sandboxed (separate process) and has no `window.cutweave`                                                                                                                                                                                                                                                                                                               | factory                                                                                | e2e "a second window from the factory is sandboxed and has no bridge" (`getAppMetrics().sandboxed` on Windows/macOS)                                                                                                                                                |
+| 4   | Iframes get no bridge                                                                                                                                                                                                                                                                                                                                                                         | `nodeIntegrationInSubFrames: false`, preload runs in the top frame only                | e2e "an iframe gets no bridge…"                                                                                                                                                                                                                                     |
+| 5   | Strict CSP served as a response header by main's `app://` handler, built per response by `buildCsp(enginePort)`: `default-src 'none'`; scripts, styles, fonts `'self'`; `img-src 'self' data: blob: <engine>`; `connect-src` the engine origin only; `media-src blob: <engine>`; `frame-src cutweave-plugin:`; `object-src`, `base-uri`, `form-action`, `frame-ancestors` none; no `unsafe-*` | `csp.ts`, `app-protocol.ts`                                                            | `csp.test.ts`, `app-protocol.test.ts`; e2e "app:// documents carry the strict CSP", "the editor loads without a single CSP violation"                                                                                                                               |
+| 6   | CSP blocks foreign fetches, other loopback ports, `localhost`, eval and `new Function`                                                                                                                                                                                                                                                                                                        | CSP                                                                                    | e2e "fetch to a foreign origin is blocked by connect-src", "only the engine's own loopback port is reachable", "eval and new Function are refused"                                                                                                                  |
+| 7   | The engine origin is reachable and `/rpc` without the token is 401                                                                                                                                                                                                                                                                                                                            | CSP + engine auth (fake engine models it)                                              | e2e "…/rpc needs the token"; `engine.test.ts`                                                                                                                                                                                                                       |
+| 8   | Port re-pick: engine exit 12 → main picks a new port, restarts, reloads the renderer; the reloaded document's CSP names the new port only                                                                                                                                                                                                                                                     | `startWithPortRetry` (`engine/launch.ts`), `index.ts`                                  | `engine.test.ts`; e2e "an occupied engine port is re-picked…" (forced with `CUTWEAVE_DEV_ENGINE_PORT`)                                                                                                                                                              |
+| 9   | Navigation guard: top-level only to `app://cutweave`; subframes to the app origin, `about:blank`/`srcdoc` and the plugin scheme; redirects checked; `file://` refused                                                                                                                                                                                                                         | `hardening.ts` (`will-frame-navigate`, `will-navigate`, `will-redirect`), `origins.ts` | `origins.test.ts`, `hardening.test.ts`; e2e "navigation to https://example.com is blocked", "file:// navigation outside the bundle is blocked"                                                                                                                      |
+| 10  | `window.open` denied (returns null); `<webview>` attachment refused                                                                                                                                                                                                                                                                                                                           | `setWindowOpenHandler`, `will-attach-webview`                                          | e2e "window.open returns null"; `hardening.test.ts`                                                                                                                                                                                                                 |
+| 11  | External links only via the allowlisted `shell:openExternal` IPC: `https:` only, a host, no credentials, ≤ 2048 chars, re-checked in the handler                                                                                                                                                                                                                                              | `ipc.ts`, `handlers.ts`, `origins.ts`                                                  | `ipc.test.ts`, `handlers.test.ts`; e2e "external https links open only through the allowlisted IPC"                                                                                                                                                                 |
+| 12  | IPC: allowlisted channels only; every handler checks the sender (frame exists, top-level, app origin, editor window) and then validates arguments with zod (pinned 4.6.7); no generic `invoke` on the bridge                                                                                                                                                                                  | `ipc.ts`, `shared/ipc-contract.ts`, `preload/api.ts`                                   | `ipc.test.ts`, `api.test.ts`; e2e "an invalid-args call is rejected with a zod error", "the bridge exposes named functions only", "forged IPC from a non-app origin is rejected", "a compromised renderer cannot reach unregistered channels or pose as the editor" |
+| 13  | Permissions: request and check handlers deny everything (`ALLOWED_PERMISSIONS` is empty), including `openExternal`, so a page cannot launch OS protocol handlers; device handler false; HID/serial/USB/Bluetooth pickers cancelled                                                                                                                                                            | `hardening.ts`                                                                         | `hardening.test.ts`; e2e "permission requests and checks are denied"                                                                                                                                                                                                |
+| 14  | No remote content: a session request filter (second layer under the CSP) cancels everything except the app origin, the engine port, `data:`/`blob:`, and `file:` for main's own protocol handler; downloads cancelled                                                                                                                                                                         | `hardening.ts`, `origins.ts` (`isAllowedRequest`)                                      | `origins.test.ts`, `hardening.test.ts`; e2e startup test asserts nothing legitimate is blocked                                                                                                                                                                      |
+| 15  | DevTools only in unpackaged runs (`devTools` pref, menu item, `devtools-opened` → close)                                                                                                                                                                                                                                                                                                      | `window-policy.ts`, `menu.ts`, `hardening.ts`                                          | `window-policy.test.ts`, `hardening.test.ts`, `menu.test.ts`                                                                                                                                                                                                        |
+| 16  | `app://` is `standard, secure, supportFetchAPI` only (no `bypassCSP`, no service workers); path traversal refused                                                                                                                                                                                                                                                                             | `index.ts`, `app-protocol.ts`                                                          | `app-protocol.test.ts`                                                                                                                                                                                                                                              |
+| 17  | Fuses: `RunAsNode` off, `EnableNodeOptionsEnvironmentVariable` off, `EnableNodeCliInspectArguments` off, `EnableCookieEncryption` on, `EnableEmbeddedAsarIntegrityValidation` on, `OnlyLoadAppFromAsar` on, `GrantFileProtocolExtraPrivileges` off (`@electron/fuses` pinned 2.1.3, strict: a new Electron fuse fails the build)                                                              | `src/build/fuses.ts`, `scripts/apply-fuses.ts`                                         | `fuses.test.ts`; [e2e/fuses.spec.ts](e2e/fuses.spec.ts) flips a copy of the Electron binary and parses `electron-fuses read --app`                                                                                                                                  |
+| 18  | UI token: generated by main, sent to the engine on stdin, to the renderer only through the bridge getter; never argv, env, disk, URL or log                                                                                                                                                                                                                                                   | `index.ts`, `engine/supervisor.ts`                                                     | `engine.test.ts`, e2e/smoke.spec.ts (WP-1L.01); disk/run-file absence is asserted by WP-1L.03                                                                                                                                                                       |
+| 19  | Test hooks (`globalThis.__cutweaveTest`, main process only) exist only when unpackaged **and** `CUTWEAVE_TEST_HOOKS=1`; the same `!app.isPackaged` gate covers `CUTWEAVE_DEV_URL`, `CUTWEAVE_ENGINE_FAKE`/`_BIN` and `CUTWEAVE_DEV_ENGINE_PORT`                                                                                                                                               | `test-hooks.ts`, `index.ts`, `engine/launch.ts`                                        | `hardening.test.ts` ("test hooks"), `engine.test.ts`                                                                                                                                                                                                                |
+
+## Residual risks
+
+1. **The editor renderer has no OS sandbox.** `sandbox: false` applies to the whole renderer
+   process, not just the preload. A memory-corruption bug in V8/Blink reached from content the
+   editor renders gives code execution with the user's full privileges, including the UI token
+   and the bridge addon. `contextIsolation` and `nodeIntegration: false` stop ordinary page
+   script from reaching Node; they do not contain a renderer exploit. Mitigations: local
+   `app://` content only, no remote content (CSP + request filter), no eval or inline script, a
+   narrow bridge, every other window sandboxed. **Exit:** Electron GPU shared textures
+   (ADR-0001 target) let the editor window run `sandbox: true`; then this row of the table
+   flips and the factory test changes with it.
+2. **Plugin iframes would share that unsandboxed window (P6 must decide).** Electron derives
+   the OS sandbox from the owning web contents, so a plugin iframe in the editor window is
+   expected to run unsandboxed even in its own site-isolated process. Before P6 ships plugin UI
+   it must verify this (`getAppMetrics().sandboxed` for the iframe's process) and, if confirmed,
+   host plugin UI in a separate sandboxed web contents instead of an editor iframe. Today the
+   plugin scheme only answers 404.
+3. **Script in the editor main world can read the UI token.** `engine.getConnection()` returns
+   it so the renderer can open the engine WebSocket. Any XSS in the editor therefore acts with
+   UI-only scopes. Mitigations: the CSP (no inline/eval, scripts only from the bundle), React's
+   escaping of untrusted text. Hardening option for WP-1M.02/1L.03: keep the token in the
+   preload's isolated world and let the preload own the socket (the spike's approach).
+4. **Fuses are not on any shipped binary yet.** No packaging step exists (`electron-builder`
+   lands with the packaging WP). It must call `applyFuses` in `afterPack` and embed the asar
+   integrity hash; `EnableEmbeddedAsarIntegrityValidation` and `OnlyLoadAppFromAsar` will refuse
+   to start an app packaged without them. Dev, unit and e2e runs use the stock binary on
+   purpose (Playwright needs the inspector flags).
+5. **Dev runs are looser by design.** With `just dev` the editor loads from the Vite dev server
+   with `'unsafe-inline'` scripts/styles (HMR, React refresh) and DevTools enabled. None of this
+   is reachable when packaged (`app.isPackaged` gates every dev input).
+6. **CSP is header-only.** There is no `<meta>` fallback in `packages/editor/index.html`
+   (outside this WP's area). Every editor document is served by main's handler, so the header
+   always applies; a meta copy would only matter if a document were ever loaded another way.
+7. **`shell:openExternal` allows any `https:` host.** Only editor code can call it (sender check),
+   and the OS browser opens the link; a host allowlist would break legitimate docs and provider
+   links. `shell:showItemInFolder` reveals a renderer-supplied path in the file manager (no
+   execution).
+8. **Main-process network.** The request filter also covers main's own requests: only `file:`
+   passes. The updater and anything else that needs the network from main must extend
+   `isAllowedRequest` explicitly, with review.
+9. **Verification gaps.** The Linux e2e run uses `--no-sandbox` (CI containers) and
+   `getAppMetrics()` has no `sandboxed` field on Linux, so the OS-sandbox assertion runs on
+   Windows and macOS only. The `electronegativity` scan named in the WBS is not wired: the tool
+   is unmaintained (last release 2023) and pulls a large deprecated tree (eslint 7,
+   TypeScript 4.2, node-pre-gyp); adding a CI job is outside `apps/desktop`. The engine's own
+   Host/Origin checks and CORS for `app://cutweave` belong to WP-1I; the fake engine only models
+   the 401.
