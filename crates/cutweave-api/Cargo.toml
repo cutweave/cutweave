@@ -8,5 +8,29 @@ repository.workspace = true
 rust-version.workspace = true
 publish = false
 
+[[bin]]
+name = "cutweave-api-serve"
+path = "src/bin/cutweave-api-serve.rs"
+
+# WP-1I.01 dependencies (each needs a justification in the PR; all are pinned exactly).
+[dependencies]
+cutweave-commands = { path = "../cutweave-commands" }
+# HTTP server and routing; `ws` arrives with WP-1I.02.
+axum = { version = "=0.8.9", default-features = false, features = ["tokio", "http1", "json"] }
+# Async runtime (the listener, signals, handshake pipe).
+tokio = { version = "=1.54.1", features = ["rt-multi-thread", "macros", "net", "signal", "sync", "io-util", "io-std", "time"] }
+# Constant-time token comparison.
+subtle = "=2.6.1"
+# 256-bit tokens from the OS CSPRNG.
+getrandom = "=0.4.3"
+serde = { version = "1", features = ["derive"] }
+serde_json = { version = "1", features = ["preserve_order"] }
+thiserror = "2"
+tracing = { version = "0.1.44", default-features = false, features = ["std"] }
+
+[dev-dependencies]
+tempfile = "3.27.0"
+tokio = { version = "=1.54.1", features = ["rt-multi-thread", "macros", "net", "io-util", "process", "time"] }
+
 [lints]
 workspace = true

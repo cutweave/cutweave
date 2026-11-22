@@ -1,20 +1,20 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
-//! `cutweave-api`: JSON-RPC over WebSocket, MCP, HTTP media endpoints and auth.
+//! `cutweave-api`: the engine's single local server: JSON-RPC over WebSocket, MCP, HTTP media
+//! endpoints and auth (arch §6).
 //!
-//! Stub crate created by WP-0A.01; real content arrives in later work packages.
+//! WP-1I.01 ships the skeleton: loopback axum server ([`ApiServer`]), credential classes and
+//! actor derivation ([`creds`]), Host/Origin validation, the run-file ([`runfile`]) and the
+//! spawn handshake ([`launch`]). Handlers for `/rpc`, `/mcp` and `/media` are mounted through
+//! [`Mounts`] by later work packages.
 
-/// Returns the crate name; placeholder until real content lands.
-#[must_use]
-pub const fn crate_name() -> &'static str {
-    "cutweave-api"
-}
+pub mod creds;
+pub mod launch;
+pub mod runfile;
+mod server;
 
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn smoke() {
-        assert_eq!(crate_name(), "cutweave-api");
-    }
-}
+pub use creds::{AgentToken, Credential, Credentials, CredentialsError, Token, TokenError};
+pub use runfile::{RunFile, RunFileContents, RunFileToken};
+pub use server::{
+    ApiConfig, ApiError, ApiServer, Authenticated, EXIT_PORT_IN_USE, Mounts, RequestId,
+    RunningServer, ShutdownHandle, WS_TOKEN_SUBPROTOCOL_PREFIX, require_scope,
+};
