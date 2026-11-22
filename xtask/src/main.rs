@@ -1,7 +1,8 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
-//! `cargo xtask <ci|check-wasm|check-deps|fetch-corpus|gen>`: developer automation (WP-0A.01).
+//! `cargo xtask <ci|check-wasm|check-deps|license-headers|fetch-corpus|gen>`: developer automation (WP-0A.01).
 
 mod deps;
+mod headers;
 
 use std::path::{Path, PathBuf};
 use std::process::{Command, ExitCode};
@@ -30,6 +31,8 @@ COMMANDS:
     ci            fmt --check, clippy, tests, check-wasm, check-deps
     check-wasm    cargo check the wasm-safe crates for wasm32-unknown-unknown
     check-deps    verify the crate dependency rule (architecture §3)
+    license-headers [--check|--fix]
+                  verify (default) or add SPDX headers; alias: check-headers
     fetch-corpus  fetch the test-media corpus (arrives in a later work package)
     gen           generate schemas and TS types (arrives in WP-1N)
     help          print this message";
@@ -113,7 +116,7 @@ fn ci() -> bool {
             return false;
         }
     }
-    check_wasm() && check_deps()
+    check_wasm() && check_deps() && headers::run(&workspace_root(), false)
 }
 
 fn main() -> ExitCode {
@@ -122,6 +125,15 @@ fn main() -> ExitCode {
         Some("ci") => ci(),
         Some("check-wasm") => check_wasm(),
         Some("check-deps") => check_deps(),
+        Some("check-headers") => headers::run(&workspace_root(), false),
+        Some("license-headers") => match std::env::args().nth(2).as_deref() {
+            None | Some("--check") => headers::run(&workspace_root(), false),
+            Some("--fix") => headers::run(&workspace_root(), true),
+            Some(other) => {
+                eprintln!("license-headers: unknown flag `{other}` (use --check or --fix)");
+                false
+            }
+        },
         Some("fetch-corpus") => {
             println!("fetch-corpus: not implemented yet (arrives in a later work package)");
             true

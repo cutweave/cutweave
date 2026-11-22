@@ -3,7 +3,7 @@
   "version": "0.0.0",
   "private": true,
   "description": "Scene API used inside the QuickJS composition runtime",
-  "license": "MIT",
+  "license": "MIT OR Apache-2.0",
   "type": "module",
   "main": "./dist/index.js",
   "types": "./dist/index.d.ts",

@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: MIT
+// SPDX-License-Identifier: MIT OR Apache-2.0
 import { describe, expect, it } from "vitest";
 import { packageName } from "./index.ts";
 
