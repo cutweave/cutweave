@@ -1,0 +1,54 @@
+# Spike S5 (WP-0H.01): command bus, `#[command]` macro, registry, JSON Schema + TS codegen.
+# Throwaway: its own workspace, excluded from the root workspace (`exclude = ["spikes"]`) and never
+# imported by `crates/`. Only the learnings (README "Findings for Phase 1") carry forward.
+[workspace]
+resolver = "3"
+members = ["macros", "bus", "ops"]
+
+[workspace.package]
+version = "0.0.0"
+edition = "2024"
+license = "GPL-3.0-or-later"
+rust-version = "1.100"
+publish = false
+
+[workspace.dependencies]
+s5-bus = { path = "bus" }
+s5-bus-macros = { path = "macros" }
+
+proc-macro2 = "1"
+quote = "1"
+syn = { version = "2", features = ["full", "extra-traits"] }
+
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+serde_path_to_error = "0.1"
+schemars = "1.2.3"
+specta = { version = "=2.0.0-rc.28", features = ["derive"] }
+specta-typescript = "=0.0.15"
+specta-serde = "=0.0.15"
+inventory = "0.3.25"
+thiserror = "2"
+uuid = { version = "1", features = ["v7"] }
+png = "0.18"
+base64 = "0.22"
+
+insta = { version = "1", features = ["json"] }
+proptest = "1"
+trybuild = "1"
+
+# Same lint posture as the root workspace, so learnings transfer to Phase 1 code.
+[workspace.lints.rust]
+unsafe_code = "deny"
+missing_docs = "warn"
+
+[workspace.lints.clippy]
+pedantic = { level = "warn", priority = -1 }
+unwrap_used = "warn"
+expect_used = "warn"
+dbg_macro = "warn"
+todo = "warn"
+module_name_repetitions = "allow"
+doc_markdown = "allow"
+missing_errors_doc = "allow"
+missing_panics_doc = "allow"

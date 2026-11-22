@@ -1,0 +1,30 @@
+[package]
+name = "s5-bus"
+description = "Spike S5: command bus runtime (Time, IDs, toy doc, Tx, registry, engine, codegen)"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+rust-version.workspace = true
+publish.workspace = true
+
+[dependencies]
+s5-bus-macros.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+serde_path_to_error.workspace = true
+schemars.workspace = true
+specta.workspace = true
+specta-typescript.workspace = true
+specta-serde.workspace = true
+inventory.workspace = true
+thiserror.workspace = true
+
+# Random UUIDv7 ids need OS entropy; wasm32-unknown-unknown builds use deterministic ids only.
+[target.'cfg(not(target_arch = "wasm32"))'.dependencies]
+uuid.workspace = true
+
+[dev-dependencies]
+proptest.workspace = true
+
+[lints]
+workspace = true
