@@ -1,0 +1,19 @@
+version = 1
+SPDX-PackageName = "Cutweave"
+SPDX-PackageDownloadLocation = "https://github.com/cutweave/cutweave"
+
+# Source files carry inline SPDX headers (checked by `cargo xtask license-headers`).
+# Everything else defaults to GPL-3.0-or-later, except the permissive plugin-facing surface
+# (docs/01-architecture.md §15).
+
+[[annotations]]
+path = ["**"]
+precedence = "aggregate"
+SPDX-FileCopyrightText = "Cutweave contributors"
+SPDX-License-Identifier = "GPL-3.0-or-later"
+
+[[annotations]]
+path = ["wit/**", "packages/plugin-sdk/**", "packages/compose-runtime/**"]
+precedence = "override"
+SPDX-FileCopyrightText = "Cutweave contributors"
+SPDX-License-Identifier = "MIT OR Apache-2.0"

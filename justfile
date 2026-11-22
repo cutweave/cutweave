@@ -16,18 +16,21 @@ setup:
 dev:
     @echo "dev: not implemented yet (arrives in WP-1A and the Phase 1 shell work packages)"
 
-# fmt, clippy -D warnings, tests, wasm32 check, Biome, Vitest (cargo-deny and schema diff arrive later)
+# fmt, clippy -D warnings, nextest + doc-tests, wasm32 check, dep rule, license headers, cargo-deny, Biome, Vitest
 check:
     cargo fmt --all --check
     cargo clippy --workspace --all-targets -- -D warnings
-    cargo test --workspace
+    cargo nextest run --workspace
+    cargo test --workspace --doc
     cargo xtask check-wasm
     cargo xtask check-deps
+    cargo xtask license-headers --check
+    cargo deny check
     pnpm lint
     pnpm format:check
     pnpm typecheck
     pnpm test
-    @echo "check: cargo-deny arrives in WP-0A.04; schema/codegen snapshot diff arrives in WP-1N"
+    @echo "check: schema/codegen snapshot diff arrives in WP-1N"
 
 # Render golden-frame projects headless and compare (`just golden --update`)
 golden *args:

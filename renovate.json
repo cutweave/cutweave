@@ -1,0 +1,49 @@
+{
+  "$schema": "https://docs.renovatebot.com/renovate-schema.json",
+  "extends": ["config:recommended"],
+  "schedule": ["before 6am on monday"],
+  "timezone": "UTC",
+  "rangeStrategy": "pin",
+  "automerge": false,
+  "dependencyDashboard": true,
+  "labels": ["dependencies"],
+  "prConcurrentLimit": 5,
+  "lockFileMaintenance": {
+    "enabled": true,
+    "schedule": ["before 6am on the first day of the month"]
+  },
+  "packageRules": [
+    {
+      "description": "Rust minor/patch updates, grouped weekly",
+      "matchManagers": ["cargo"],
+      "matchUpdateTypes": ["minor", "patch"],
+      "groupName": "rust-minor"
+    },
+    {
+      "description": "TypeScript minor/patch updates, grouped weekly",
+      "matchManagers": ["npm"],
+      "matchUpdateTypes": ["minor", "patch"],
+      "groupName": "ts-minor"
+    },
+    {
+      "description": "GitHub Actions, grouped weekly (SHA pins are kept)",
+      "matchManagers": ["github-actions"],
+      "groupName": "github-actions",
+      "pinDigests": true
+    },
+    {
+      "description": "wgpu: quarterly, reviewed against a golden-frame run",
+      "matchPackageNames": ["wgpu", "wgpu-*"],
+      "groupName": "wgpu-quarterly",
+      "schedule": ["every 3 months on the first day of the month"],
+      "labels": ["dependencies", "needs-golden-run"]
+    },
+    {
+      "description": "Electron: quarterly, reviewed against a golden-frame run",
+      "matchPackageNames": ["electron"],
+      "groupName": "electron-quarterly",
+      "schedule": ["every 3 months on the first day of the month"],
+      "labels": ["dependencies", "needs-golden-run"]
+    }
+  ]
+}
