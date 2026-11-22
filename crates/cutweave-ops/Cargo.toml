@@ -8,5 +8,19 @@ repository.workspace = true
 rust-version.workspace = true
 publish = false
 
+[dependencies]
+cutweave-commands = { path = "../cutweave-commands" }
+cutweave-model = { path = "../cutweave-model" }
+# The opaque `panel_layout` and unknown-key preservation in `ui-state.json`.
+serde.workspace = true
+serde_json.workspace = true
+# Only for the `number` TS override of the 32-bit view revision counter.
+specta-typescript.workspace = true
+
+[dev-dependencies]
+cutweave-model = { path = "../cutweave-model", features = ["testing"] }
+insta.workspace = true
+proptest.workspace = true
+
 [lints]
 workspace = true

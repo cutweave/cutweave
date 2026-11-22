@@ -1,0 +1,758 @@
+---
+source: crates/cutweave-ops/tests/view.rs
+expression: "json!({\n    \"meta\": serde_json::to_value(meta).unwrap(), \"input\": meta.input_schema,\n    \"output\": meta.output_schema,\n})"
+---
+{
+  "meta": {
+    "name": "view.set",
+    "summary": "Update the UI view state (partial merge; not undoable)",
+    "kind": "engine",
+    "undoable": false,
+    "view": true,
+    "scope": "any",
+    "mcp": "catalog",
+    "annotations": {
+      "readOnlyHint": false,
+      "destructiveHint": false,
+      "idempotentHint": true,
+      "openWorldHint": false
+    },
+    "secret_fields": [],
+    "input_schema": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "patch": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "playhead": {
+              "anyOf": [
+                {
+                  "description": "A time: integer flicks (1/705600000 s), or a string: seconds (\"62.5s\"), a frame (\"f:1500\") or a timecode (\"00:01:02:03\", drop-frame \"00:01:02;03\"). Frames and timecodes use the frame rate of the target's sequence.",
+                  "anyOf": [
+                    {
+                      "type": "integer",
+                      "minimum": -9007199254740991,
+                      "maximum": 9007199254740991
+                    },
+                    {
+                      "type": "string",
+                      "pattern": "^-?[0-9]+(\\.[0-9]+)?s$|^-?[0-9]+$|^f:[0-9]+$|^[0-9]+[:;][0-9]+[:;][0-9]+[:;][0-9]+$"
+                    }
+                  ]
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "New playhead (flicks, seconds text; `>= 0`).",
+              "default": null
+            },
+            "zoom": {
+              "type": [
+                "number",
+                "null"
+              ],
+              "format": "double",
+              "description": "New zoom in pixels per second.",
+              "default": null
+            },
+            "scroll": {
+              "type": [
+                "object",
+                "null"
+              ],
+              "additionalProperties": false,
+              "properties": {
+                "x": {
+                  "type": "number",
+                  "format": "double",
+                  "description": "Horizontal offset, `>= 0`."
+                },
+                "y": {
+                  "type": "number",
+                  "format": "double",
+                  "description": "Vertical offset, `>= 0`."
+                }
+              },
+              "required": [
+                "x",
+                "y"
+              ],
+              "description": "New scroll offset.",
+              "default": null
+            },
+            "selection": {
+              "type": [
+                "array",
+                "null"
+              ],
+              "items": {
+                "description": "One selected entity, by ID (never by index).",
+                "oneOf": [
+                  {
+                    "description": "A timeline item.",
+                    "type": "object",
+                    "properties": {
+                      "kind": {
+                        "type": "string",
+                        "const": "item"
+                      },
+                      "id": {
+                        "description": "The item.",
+                        "type": "string",
+                        "pattern": "^itm_[0-9a-f]{32}$"
+                      }
+                    },
+                    "required": [
+                      "kind",
+                      "id"
+                    ]
+                  },
+                  {
+                    "description": "A track.",
+                    "type": "object",
+                    "properties": {
+                      "kind": {
+                        "type": "string",
+                        "const": "track"
+                      },
+                      "id": {
+                        "description": "The track.",
+                        "type": "string",
+                        "pattern": "^trk_[0-9a-f]{32}$"
+                      }
+                    },
+                    "required": [
+                      "kind",
+                      "id"
+                    ]
+                  },
+                  {
+                    "description": "A media asset.",
+                    "type": "object",
+                    "properties": {
+                      "kind": {
+                        "type": "string",
+                        "const": "media"
+                      },
+                      "id": {
+                        "description": "The asset.",
+                        "type": "string",
+                        "pattern": "^med_[0-9a-f]{32}$"
+                      }
+                    },
+                    "required": [
+                      "kind",
+                      "id"
+                    ]
+                  },
+                  {
+                    "description": "A sequence.",
+                    "type": "object",
+                    "properties": {
+                      "kind": {
+                        "type": "string",
+                        "const": "sequence"
+                      },
+                      "id": {
+                        "description": "The sequence.",
+                        "type": "string",
+                        "pattern": "^seq_[0-9a-f]{32}$"
+                      }
+                    },
+                    "required": [
+                      "kind",
+                      "id"
+                    ]
+                  }
+                ]
+              },
+              "description": "New selection (replaces the whole selection; every ID must exist).",
+              "default": null
+            },
+            "panel_layout": {
+              "description": "New panel layout (opaque JSON, replaces the whole value).",
+              "default": null
+            },
+            "preview_quality": {
+              "anyOf": [
+                {
+                  "oneOf": [
+                    {
+                      "type": "string",
+                      "const": "full",
+                      "description": "Full resolution."
+                    },
+                    {
+                      "type": "string",
+                      "const": "half",
+                      "description": "Half resolution."
+                    },
+                    {
+                      "type": "string",
+                      "const": "quarter",
+                      "description": "Quarter resolution."
+                    }
+                  ],
+                  "description": "Preview resolution (arch §8 quality ladder)."
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "New preview resolution.",
+              "default": null
+            },
+            "master_gain": {
+              "type": [
+                "number",
+                "null"
+              ],
+              "format": "double",
+              "description": "New master gain (linear, `0..=4`).",
+              "default": null
+            }
+          },
+          "description": "The fields to change."
+        }
+      },
+      "required": [
+        "patch"
+      ],
+      "description": "Merges a partial update into the view state: present fields replace the current value,\nabsent ones are kept. Nothing is applied if any field is invalid. Not undoable; never\nchanges the document.",
+      "title": "ViewSet"
+    },
+    "output_schema": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "playhead": {
+          "description": "Playhead position on the timeline, `>= 0`.",
+          "type": "integer",
+          "minimum": -9007199254740991,
+          "maximum": 9007199254740991
+        },
+        "zoom": {
+          "type": "number",
+          "format": "double",
+          "description": "Timeline zoom in pixels per second."
+        },
+        "scroll": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "x": {
+              "type": "number",
+              "format": "double",
+              "description": "Horizontal offset, `>= 0`."
+            },
+            "y": {
+              "type": "number",
+              "format": "double",
+              "description": "Vertical offset, `>= 0`."
+            }
+          },
+          "required": [
+            "x",
+            "y"
+          ],
+          "description": "Timeline scroll offset."
+        },
+        "selection": {
+          "type": "array",
+          "items": {
+            "description": "One selected entity, by ID (never by index).",
+            "oneOf": [
+              {
+                "description": "A timeline item.",
+                "type": "object",
+                "properties": {
+                  "kind": {
+                    "type": "string",
+                    "const": "item"
+                  },
+                  "id": {
+                    "description": "The item.",
+                    "type": "string",
+                    "pattern": "^itm_[0-9a-f]{32}$"
+                  }
+                },
+                "required": [
+                  "kind",
+                  "id"
+                ]
+              },
+              {
+                "description": "A track.",
+                "type": "object",
+                "properties": {
+                  "kind": {
+                    "type": "string",
+                    "const": "track"
+                  },
+                  "id": {
+                    "description": "The track.",
+                    "type": "string",
+                    "pattern": "^trk_[0-9a-f]{32}$"
+                  }
+                },
+                "required": [
+                  "kind",
+                  "id"
+                ]
+              },
+              {
+                "description": "A media asset.",
+                "type": "object",
+                "properties": {
+                  "kind": {
+                    "type": "string",
+                    "const": "media"
+                  },
+                  "id": {
+                    "description": "The asset.",
+                    "type": "string",
+                    "pattern": "^med_[0-9a-f]{32}$"
+                  }
+                },
+                "required": [
+                  "kind",
+                  "id"
+                ]
+              },
+              {
+                "description": "A sequence.",
+                "type": "object",
+                "properties": {
+                  "kind": {
+                    "type": "string",
+                    "const": "sequence"
+                  },
+                  "id": {
+                    "description": "The sequence.",
+                    "type": "string",
+                    "pattern": "^seq_[0-9a-f]{32}$"
+                  }
+                },
+                "required": [
+                  "kind",
+                  "id"
+                ]
+              }
+            ]
+          },
+          "description": "Selected entities, in selection order, without duplicates. Every ID existed when it was\nselected; IDs that no longer exist are dropped."
+        },
+        "panel_layout": {
+          "description": "Dock/panel layout. Opaque to the engine (owned by the UI); `null` until the UI sets it."
+        },
+        "preview_quality": {
+          "oneOf": [
+            {
+              "type": "string",
+              "const": "full",
+              "description": "Full resolution."
+            },
+            {
+              "type": "string",
+              "const": "half",
+              "description": "Half resolution."
+            },
+            {
+              "type": "string",
+              "const": "quarter",
+              "description": "Quarter resolution."
+            }
+          ],
+          "description": "Preview resolution."
+        },
+        "master_gain": {
+          "type": "number",
+          "format": "double",
+          "description": "Master output gain (linear, `0..=4`, 1 = unity)."
+        }
+      },
+      "required": [
+        "playhead",
+        "zoom",
+        "scroll",
+        "selection",
+        "panel_layout",
+        "preview_quality",
+        "master_gain"
+      ],
+      "description": "The UI view state of a project (arch §5.1). Persisted in `.cutweave/ui-state.json`.",
+      "title": "UiState"
+    }
+  },
+  "input": {
+    "type": "object",
+    "additionalProperties": false,
+    "properties": {
+      "patch": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "playhead": {
+            "anyOf": [
+              {
+                "description": "A time: integer flicks (1/705600000 s), or a string: seconds (\"62.5s\"), a frame (\"f:1500\") or a timecode (\"00:01:02:03\", drop-frame \"00:01:02;03\"). Frames and timecodes use the frame rate of the target's sequence.",
+                "anyOf": [
+                  {
+                    "type": "integer",
+                    "minimum": -9007199254740991,
+                    "maximum": 9007199254740991
+                  },
+                  {
+                    "type": "string",
+                    "pattern": "^-?[0-9]+(\\.[0-9]+)?s$|^-?[0-9]+$|^f:[0-9]+$|^[0-9]+[:;][0-9]+[:;][0-9]+[:;][0-9]+$"
+                  }
+                ]
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "New playhead (flicks, seconds text; `>= 0`).",
+            "default": null
+          },
+          "zoom": {
+            "type": [
+              "number",
+              "null"
+            ],
+            "format": "double",
+            "description": "New zoom in pixels per second.",
+            "default": null
+          },
+          "scroll": {
+            "type": [
+              "object",
+              "null"
+            ],
+            "additionalProperties": false,
+            "properties": {
+              "x": {
+                "type": "number",
+                "format": "double",
+                "description": "Horizontal offset, `>= 0`."
+              },
+              "y": {
+                "type": "number",
+                "format": "double",
+                "description": "Vertical offset, `>= 0`."
+              }
+            },
+            "required": [
+              "x",
+              "y"
+            ],
+            "description": "New scroll offset.",
+            "default": null
+          },
+          "selection": {
+            "type": [
+              "array",
+              "null"
+            ],
+            "items": {
+              "description": "One selected entity, by ID (never by index).",
+              "oneOf": [
+                {
+                  "description": "A timeline item.",
+                  "type": "object",
+                  "properties": {
+                    "kind": {
+                      "type": "string",
+                      "const": "item"
+                    },
+                    "id": {
+                      "description": "The item.",
+                      "type": "string",
+                      "pattern": "^itm_[0-9a-f]{32}$"
+                    }
+                  },
+                  "required": [
+                    "kind",
+                    "id"
+                  ]
+                },
+                {
+                  "description": "A track.",
+                  "type": "object",
+                  "properties": {
+                    "kind": {
+                      "type": "string",
+                      "const": "track"
+                    },
+                    "id": {
+                      "description": "The track.",
+                      "type": "string",
+                      "pattern": "^trk_[0-9a-f]{32}$"
+                    }
+                  },
+                  "required": [
+                    "kind",
+                    "id"
+                  ]
+                },
+                {
+                  "description": "A media asset.",
+                  "type": "object",
+                  "properties": {
+                    "kind": {
+                      "type": "string",
+                      "const": "media"
+                    },
+                    "id": {
+                      "description": "The asset.",
+                      "type": "string",
+                      "pattern": "^med_[0-9a-f]{32}$"
+                    }
+                  },
+                  "required": [
+                    "kind",
+                    "id"
+                  ]
+                },
+                {
+                  "description": "A sequence.",
+                  "type": "object",
+                  "properties": {
+                    "kind": {
+                      "type": "string",
+                      "const": "sequence"
+                    },
+                    "id": {
+                      "description": "The sequence.",
+                      "type": "string",
+                      "pattern": "^seq_[0-9a-f]{32}$"
+                    }
+                  },
+                  "required": [
+                    "kind",
+                    "id"
+                  ]
+                }
+              ]
+            },
+            "description": "New selection (replaces the whole selection; every ID must exist).",
+            "default": null
+          },
+          "panel_layout": {
+            "description": "New panel layout (opaque JSON, replaces the whole value).",
+            "default": null
+          },
+          "preview_quality": {
+            "anyOf": [
+              {
+                "oneOf": [
+                  {
+                    "type": "string",
+                    "const": "full",
+                    "description": "Full resolution."
+                  },
+                  {
+                    "type": "string",
+                    "const": "half",
+                    "description": "Half resolution."
+                  },
+                  {
+                    "type": "string",
+                    "const": "quarter",
+                    "description": "Quarter resolution."
+                  }
+                ],
+                "description": "Preview resolution (arch §8 quality ladder)."
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "New preview resolution.",
+            "default": null
+          },
+          "master_gain": {
+            "type": [
+              "number",
+              "null"
+            ],
+            "format": "double",
+            "description": "New master gain (linear, `0..=4`).",
+            "default": null
+          }
+        },
+        "description": "The fields to change."
+      }
+    },
+    "required": [
+      "patch"
+    ],
+    "description": "Merges a partial update into the view state: present fields replace the current value,\nabsent ones are kept. Nothing is applied if any field is invalid. Not undoable; never\nchanges the document.",
+    "title": "ViewSet"
+  },
+  "output": {
+    "type": "object",
+    "additionalProperties": false,
+    "properties": {
+      "playhead": {
+        "description": "Playhead position on the timeline, `>= 0`.",
+        "type": "integer",
+        "minimum": -9007199254740991,
+        "maximum": 9007199254740991
+      },
+      "zoom": {
+        "type": "number",
+        "format": "double",
+        "description": "Timeline zoom in pixels per second."
+      },
+      "scroll": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "x": {
+            "type": "number",
+            "format": "double",
+            "description": "Horizontal offset, `>= 0`."
+          },
+          "y": {
+            "type": "number",
+            "format": "double",
+            "description": "Vertical offset, `>= 0`."
+          }
+        },
+        "required": [
+          "x",
+          "y"
+        ],
+        "description": "Timeline scroll offset."
+      },
+      "selection": {
+        "type": "array",
+        "items": {
+          "description": "One selected entity, by ID (never by index).",
+          "oneOf": [
+            {
+              "description": "A timeline item.",
+              "type": "object",
+              "properties": {
+                "kind": {
+                  "type": "string",
+                  "const": "item"
+                },
+                "id": {
+                  "description": "The item.",
+                  "type": "string",
+                  "pattern": "^itm_[0-9a-f]{32}$"
+                }
+              },
+              "required": [
+                "kind",
+                "id"
+              ]
+            },
+            {
+              "description": "A track.",
+              "type": "object",
+              "properties": {
+                "kind": {
+                  "type": "string",
+                  "const": "track"
+                },
+                "id": {
+                  "description": "The track.",
+                  "type": "string",
+                  "pattern": "^trk_[0-9a-f]{32}$"
+                }
+              },
+              "required": [
+                "kind",
+                "id"
+              ]
+            },
+            {
+              "description": "A media asset.",
+              "type": "object",
+              "properties": {
+                "kind": {
+                  "type": "string",
+                  "const": "media"
+                },
+                "id": {
+                  "description": "The asset.",
+                  "type": "string",
+                  "pattern": "^med_[0-9a-f]{32}$"
+                }
+              },
+              "required": [
+                "kind",
+                "id"
+              ]
+            },
+            {
+              "description": "A sequence.",
+              "type": "object",
+              "properties": {
+                "kind": {
+                  "type": "string",
+                  "const": "sequence"
+                },
+                "id": {
+                  "description": "The sequence.",
+                  "type": "string",
+                  "pattern": "^seq_[0-9a-f]{32}$"
+                }
+              },
+              "required": [
+                "kind",
+                "id"
+              ]
+            }
+          ]
+        },
+        "description": "Selected entities, in selection order, without duplicates. Every ID existed when it was\nselected; IDs that no longer exist are dropped."
+      },
+      "panel_layout": {
+        "description": "Dock/panel layout. Opaque to the engine (owned by the UI); `null` until the UI sets it."
+      },
+      "preview_quality": {
+        "oneOf": [
+          {
+            "type": "string",
+            "const": "full",
+            "description": "Full resolution."
+          },
+          {
+            "type": "string",
+            "const": "half",
+            "description": "Half resolution."
+          },
+          {
+            "type": "string",
+            "const": "quarter",
+            "description": "Quarter resolution."
+          }
+        ],
+        "description": "Preview resolution."
+      },
+      "master_gain": {
+        "type": "number",
+        "format": "double",
+        "description": "Master output gain (linear, `0..=4`, 1 = unity)."
+      }
+    },
+    "required": [
+      "playhead",
+      "zoom",
+      "scroll",
+      "selection",
+      "panel_layout",
+      "preview_quality",
+      "master_gain"
+    ],
+    "description": "The UI view state of a project (arch §5.1). Persisted in `.cutweave/ui-state.json`.",
+    "title": "UiState"
+  }
+}

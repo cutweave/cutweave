@@ -1,0 +1,606 @@
+---
+source: crates/cutweave-ops/tests/view.rs
+expression: "json!({\n    \"meta\": serde_json::to_value(meta).unwrap(), \"input\": meta.input_schema,\n    \"output\": meta.output_schema,\n})"
+---
+{
+  "meta": {
+    "name": "view.select",
+    "summary": "Select, add, remove or toggle entities in the selection",
+    "kind": "engine",
+    "undoable": false,
+    "view": true,
+    "scope": "any",
+    "mcp": "catalog",
+    "annotations": {
+      "readOnlyHint": false,
+      "destructiveHint": false,
+      "idempotentHint": false,
+      "openWorldHint": false
+    },
+    "secret_fields": [],
+    "input_schema": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "ids": {
+          "type": "array",
+          "items": {
+            "description": "One selected entity, by ID (never by index).",
+            "oneOf": [
+              {
+                "description": "A timeline item.",
+                "type": "object",
+                "properties": {
+                  "kind": {
+                    "type": "string",
+                    "const": "item"
+                  },
+                  "id": {
+                    "description": "The item.",
+                    "type": "string",
+                    "pattern": "^itm_[0-9a-f]{32}$"
+                  }
+                },
+                "required": [
+                  "kind",
+                  "id"
+                ]
+              },
+              {
+                "description": "A track.",
+                "type": "object",
+                "properties": {
+                  "kind": {
+                    "type": "string",
+                    "const": "track"
+                  },
+                  "id": {
+                    "description": "The track.",
+                    "type": "string",
+                    "pattern": "^trk_[0-9a-f]{32}$"
+                  }
+                },
+                "required": [
+                  "kind",
+                  "id"
+                ]
+              },
+              {
+                "description": "A media asset.",
+                "type": "object",
+                "properties": {
+                  "kind": {
+                    "type": "string",
+                    "const": "media"
+                  },
+                  "id": {
+                    "description": "The asset.",
+                    "type": "string",
+                    "pattern": "^med_[0-9a-f]{32}$"
+                  }
+                },
+                "required": [
+                  "kind",
+                  "id"
+                ]
+              },
+              {
+                "description": "A sequence.",
+                "type": "object",
+                "properties": {
+                  "kind": {
+                    "type": "string",
+                    "const": "sequence"
+                  },
+                  "id": {
+                    "description": "The sequence.",
+                    "type": "string",
+                    "pattern": "^seq_[0-9a-f]{32}$"
+                  }
+                },
+                "required": [
+                  "kind",
+                  "id"
+                ]
+              }
+            ]
+          },
+          "description": "The entities to act on."
+        },
+        "mode": {
+          "anyOf": [
+            {
+              "oneOf": [
+                {
+                  "type": "string",
+                  "const": "replace",
+                  "description": "The IDs become the selection."
+                },
+                {
+                  "type": "string",
+                  "const": "add",
+                  "description": "The IDs are appended (already selected ones keep their place)."
+                },
+                {
+                  "type": "string",
+                  "const": "remove",
+                  "description": "The IDs are removed from the selection."
+                },
+                {
+                  "type": "string",
+                  "const": "toggle",
+                  "description": "Selected IDs are removed, the others appended."
+                }
+              ],
+              "description": "How `view.select` combines its IDs with the current selection."
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "description": "How to combine them with the current selection (default `replace`).",
+          "default": null
+        }
+      },
+      "required": [
+        "ids"
+      ],
+      "description": "Changes the selection. Every ID that is added must exist in the project.",
+      "title": "ViewSelect"
+    },
+    "output_schema": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "playhead": {
+          "description": "Playhead position on the timeline, `>= 0`.",
+          "type": "integer",
+          "minimum": -9007199254740991,
+          "maximum": 9007199254740991
+        },
+        "zoom": {
+          "type": "number",
+          "format": "double",
+          "description": "Timeline zoom in pixels per second."
+        },
+        "scroll": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "x": {
+              "type": "number",
+              "format": "double",
+              "description": "Horizontal offset, `>= 0`."
+            },
+            "y": {
+              "type": "number",
+              "format": "double",
+              "description": "Vertical offset, `>= 0`."
+            }
+          },
+          "required": [
+            "x",
+            "y"
+          ],
+          "description": "Timeline scroll offset."
+        },
+        "selection": {
+          "type": "array",
+          "items": {
+            "description": "One selected entity, by ID (never by index).",
+            "oneOf": [
+              {
+                "description": "A timeline item.",
+                "type": "object",
+                "properties": {
+                  "kind": {
+                    "type": "string",
+                    "const": "item"
+                  },
+                  "id": {
+                    "description": "The item.",
+                    "type": "string",
+                    "pattern": "^itm_[0-9a-f]{32}$"
+                  }
+                },
+                "required": [
+                  "kind",
+                  "id"
+                ]
+              },
+              {
+                "description": "A track.",
+                "type": "object",
+                "properties": {
+                  "kind": {
+                    "type": "string",
+                    "const": "track"
+                  },
+                  "id": {
+                    "description": "The track.",
+                    "type": "string",
+                    "pattern": "^trk_[0-9a-f]{32}$"
+                  }
+                },
+                "required": [
+                  "kind",
+                  "id"
+                ]
+              },
+              {
+                "description": "A media asset.",
+                "type": "object",
+                "properties": {
+                  "kind": {
+                    "type": "string",
+                    "const": "media"
+                  },
+                  "id": {
+                    "description": "The asset.",
+                    "type": "string",
+                    "pattern": "^med_[0-9a-f]{32}$"
+                  }
+                },
+                "required": [
+                  "kind",
+                  "id"
+                ]
+              },
+              {
+                "description": "A sequence.",
+                "type": "object",
+                "properties": {
+                  "kind": {
+                    "type": "string",
+                    "const": "sequence"
+                  },
+                  "id": {
+                    "description": "The sequence.",
+                    "type": "string",
+                    "pattern": "^seq_[0-9a-f]{32}$"
+                  }
+                },
+                "required": [
+                  "kind",
+                  "id"
+                ]
+              }
+            ]
+          },
+          "description": "Selected entities, in selection order, without duplicates. Every ID existed when it was\nselected; IDs that no longer exist are dropped."
+        },
+        "panel_layout": {
+          "description": "Dock/panel layout. Opaque to the engine (owned by the UI); `null` until the UI sets it."
+        },
+        "preview_quality": {
+          "oneOf": [
+            {
+              "type": "string",
+              "const": "full",
+              "description": "Full resolution."
+            },
+            {
+              "type": "string",
+              "const": "half",
+              "description": "Half resolution."
+            },
+            {
+              "type": "string",
+              "const": "quarter",
+              "description": "Quarter resolution."
+            }
+          ],
+          "description": "Preview resolution."
+        },
+        "master_gain": {
+          "type": "number",
+          "format": "double",
+          "description": "Master output gain (linear, `0..=4`, 1 = unity)."
+        }
+      },
+      "required": [
+        "playhead",
+        "zoom",
+        "scroll",
+        "selection",
+        "panel_layout",
+        "preview_quality",
+        "master_gain"
+      ],
+      "description": "The UI view state of a project (arch §5.1). Persisted in `.cutweave/ui-state.json`.",
+      "title": "UiState"
+    }
+  },
+  "input": {
+    "type": "object",
+    "additionalProperties": false,
+    "properties": {
+      "ids": {
+        "type": "array",
+        "items": {
+          "description": "One selected entity, by ID (never by index).",
+          "oneOf": [
+            {
+              "description": "A timeline item.",
+              "type": "object",
+              "properties": {
+                "kind": {
+                  "type": "string",
+                  "const": "item"
+                },
+                "id": {
+                  "description": "The item.",
+                  "type": "string",
+                  "pattern": "^itm_[0-9a-f]{32}$"
+                }
+              },
+              "required": [
+                "kind",
+                "id"
+              ]
+            },
+            {
+              "description": "A track.",
+              "type": "object",
+              "properties": {
+                "kind": {
+                  "type": "string",
+                  "const": "track"
+                },
+                "id": {
+                  "description": "The track.",
+                  "type": "string",
+                  "pattern": "^trk_[0-9a-f]{32}$"
+                }
+              },
+              "required": [
+                "kind",
+                "id"
+              ]
+            },
+            {
+              "description": "A media asset.",
+              "type": "object",
+              "properties": {
+                "kind": {
+                  "type": "string",
+                  "const": "media"
+                },
+                "id": {
+                  "description": "The asset.",
+                  "type": "string",
+                  "pattern": "^med_[0-9a-f]{32}$"
+                }
+              },
+              "required": [
+                "kind",
+                "id"
+              ]
+            },
+            {
+              "description": "A sequence.",
+              "type": "object",
+              "properties": {
+                "kind": {
+                  "type": "string",
+                  "const": "sequence"
+                },
+                "id": {
+                  "description": "The sequence.",
+                  "type": "string",
+                  "pattern": "^seq_[0-9a-f]{32}$"
+                }
+              },
+              "required": [
+                "kind",
+                "id"
+              ]
+            }
+          ]
+        },
+        "description": "The entities to act on."
+      },
+      "mode": {
+        "anyOf": [
+          {
+            "oneOf": [
+              {
+                "type": "string",
+                "const": "replace",
+                "description": "The IDs become the selection."
+              },
+              {
+                "type": "string",
+                "const": "add",
+                "description": "The IDs are appended (already selected ones keep their place)."
+              },
+              {
+                "type": "string",
+                "const": "remove",
+                "description": "The IDs are removed from the selection."
+              },
+              {
+                "type": "string",
+                "const": "toggle",
+                "description": "Selected IDs are removed, the others appended."
+              }
+            ],
+            "description": "How `view.select` combines its IDs with the current selection."
+          },
+          {
+            "type": "null"
+          }
+        ],
+        "description": "How to combine them with the current selection (default `replace`).",
+        "default": null
+      }
+    },
+    "required": [
+      "ids"
+    ],
+    "description": "Changes the selection. Every ID that is added must exist in the project.",
+    "title": "ViewSelect"
+  },
+  "output": {
+    "type": "object",
+    "additionalProperties": false,
+    "properties": {
+      "playhead": {
+        "description": "Playhead position on the timeline, `>= 0`.",
+        "type": "integer",
+        "minimum": -9007199254740991,
+        "maximum": 9007199254740991
+      },
+      "zoom": {
+        "type": "number",
+        "format": "double",
+        "description": "Timeline zoom in pixels per second."
+      },
+      "scroll": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "x": {
+            "type": "number",
+            "format": "double",
+            "description": "Horizontal offset, `>= 0`."
+          },
+          "y": {
+            "type": "number",
+            "format": "double",
+            "description": "Vertical offset, `>= 0`."
+          }
+        },
+        "required": [
+          "x",
+          "y"
+        ],
+        "description": "Timeline scroll offset."
+      },
+      "selection": {
+        "type": "array",
+        "items": {
+          "description": "One selected entity, by ID (never by index).",
+          "oneOf": [
+            {
+              "description": "A timeline item.",
+              "type": "object",
+              "properties": {
+                "kind": {
+                  "type": "string",
+                  "const": "item"
+                },
+                "id": {
+                  "description": "The item.",
+                  "type": "string",
+                  "pattern": "^itm_[0-9a-f]{32}$"
+                }
+              },
+              "required": [
+                "kind",
+                "id"
+              ]
+            },
+            {
+              "description": "A track.",
+              "type": "object",
+              "properties": {
+                "kind": {
+                  "type": "string",
+                  "const": "track"
+                },
+                "id": {
+                  "description": "The track.",
+                  "type": "string",
+                  "pattern": "^trk_[0-9a-f]{32}$"
+                }
+              },
+              "required": [
+                "kind",
+                "id"
+              ]
+            },
+            {
+              "description": "A media asset.",
+              "type": "object",
+              "properties": {
+                "kind": {
+                  "type": "string",
+                  "const": "media"
+                },
+                "id": {
+                  "description": "The asset.",
+                  "type": "string",
+                  "pattern": "^med_[0-9a-f]{32}$"
+                }
+              },
+              "required": [
+                "kind",
+                "id"
+              ]
+            },
+            {
+              "description": "A sequence.",
+              "type": "object",
+              "properties": {
+                "kind": {
+                  "type": "string",
+                  "const": "sequence"
+                },
+                "id": {
+                  "description": "The sequence.",
+                  "type": "string",
+                  "pattern": "^seq_[0-9a-f]{32}$"
+                }
+              },
+              "required": [
+                "kind",
+                "id"
+              ]
+            }
+          ]
+        },
+        "description": "Selected entities, in selection order, without duplicates. Every ID existed when it was\nselected; IDs that no longer exist are dropped."
+      },
+      "panel_layout": {
+        "description": "Dock/panel layout. Opaque to the engine (owned by the UI); `null` until the UI sets it."
+      },
+      "preview_quality": {
+        "oneOf": [
+          {
+            "type": "string",
+            "const": "full",
+            "description": "Full resolution."
+          },
+          {
+            "type": "string",
+            "const": "half",
+            "description": "Half resolution."
+          },
+          {
+            "type": "string",
+            "const": "quarter",
+            "description": "Quarter resolution."
+          }
+        ],
+        "description": "Preview resolution."
+      },
+      "master_gain": {
+        "type": "number",
+        "format": "double",
+        "description": "Master output gain (linear, `0..=4`, 1 = unity)."
+      }
+    },
+    "required": [
+      "playhead",
+      "zoom",
+      "scroll",
+      "selection",
+      "panel_layout",
+      "preview_quality",
+      "master_gain"
+    ],
+    "description": "The UI view state of a project (arch §5.1). Persisted in `.cutweave/ui-state.json`.",
+    "title": "UiState"
+  }
+}
