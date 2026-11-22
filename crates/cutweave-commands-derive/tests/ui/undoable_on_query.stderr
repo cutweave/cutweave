@@ -1,0 +1,5 @@
+error: queries are read-only: `undoable` only applies to #[command]
+ --> tests/ui/undoable_on_query.rs:4:62
+  |
+4 | #[query(name = "timeline.get", summary = "Get the timeline", undoable, mcp = "core")]
+  |                                                              ^^^^^^^^

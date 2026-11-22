@@ -1,0 +1,5 @@
+error: summary must be a single line of 1..=100 characters (it is the MCP tool description and counts against the tool-list budget); put details in the doc comment, which becomes the schema description
+ --> tests/ui/summary_too_long.rs:6:15
+  |
+6 |     summary = "Split an item at a timeline time, keeping both halves linked and preserving all effects and keyframes",
+  |               ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^

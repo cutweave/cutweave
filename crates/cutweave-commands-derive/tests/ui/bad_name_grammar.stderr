@@ -1,0 +1,5 @@
+error: command name must match `^[a-z]+\.[a-z_]+$` (lowercase `namespace.verb_object`, no digits)
+ --> tests/ui/bad_name_grammar.rs:4:18
+  |
+4 | #[command(name = "clip.split2", summary = "Split", undoable, mcp = "core", annotations(destructive = false))]
+  |                  ^^^^^^^^^^^^^

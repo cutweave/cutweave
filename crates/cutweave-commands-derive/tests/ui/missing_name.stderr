@@ -1,0 +1,7 @@
+error: #[command] requires `name = "namespace.verb_object"`
+ --> tests/ui/missing_name.rs:4:1
+  |
+4 | #[command(summary = "Split", undoable, mcp = "core", annotations(destructive = false))]
+  | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  |
+  = note: this error originates in the attribute macro `command` (in Nightly builds, run with -Z macro-backtrace for more info)

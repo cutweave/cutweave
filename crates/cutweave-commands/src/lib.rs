@@ -4,6 +4,8 @@
 //! Every mutation of the project document is a typed, registered command applied through a
 //! [`Tx`] on one bus, exposed identically to the UI (JSON-RPC), MCP and the CLI.
 //!
+//! - **Macros** ([`command`], [`query`], [`wire`]): declare an entry's contract on its params
+//!   struct, checked at compile time (WP-1B.02).
 //! - **Traits** ([`Command`], [`Query`], [`EngineCommand`], [`Described`]): a command mutates
 //!   the document through a [`Tx`]; a query reads a snapshot through a [`QueryCtx`]; an engine
 //!   command acts on engine state (history, transactions, view state).
@@ -38,6 +40,7 @@ mod registry;
 mod tx;
 
 pub use ctx::{Access, QueryCtx};
+pub use cutweave_commands_derive::{command, query, wire};
 pub use diff::diff;
 pub use error::{CmdError, ConflictReason, ResourceKind, Rev};
 pub use json::json_eq;

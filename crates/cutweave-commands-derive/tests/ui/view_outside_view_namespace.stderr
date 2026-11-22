@@ -1,0 +1,5 @@
+error: only `view.*` commands may be marked `view`
+ --> tests/ui/view_outside_view_namespace.rs:4:59
+  |
+4 | #[command(name = "clip.select", summary = "Select clips", view, mcp = "catalog")]
+  |                                                           ^^^^

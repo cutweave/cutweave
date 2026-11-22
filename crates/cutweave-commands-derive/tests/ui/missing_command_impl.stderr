@@ -1,0 +1,20 @@
+error[E0277]: `Split` is registered as a command but does not implement `cutweave_commands::Command`
+ --> tests/ui/missing_command_impl.rs:4:1
+  |
+4 | #[command(name = "clip.split", summary = "Split", undoable, mcp = "core", annotations(destructive = false))]
+  | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ missing `impl Command for Split`
+  |
+help: the trait `cutweave_commands::Command` is not implemented for `Split`
+ --> tests/ui/missing_command_impl.rs:5:1
+  |
+5 | pub struct Split {
+  | ^^^^^^^^^^^^^^^^
+  = note: add `impl Command for Split { type Output = ...; fn apply(&self, tx: &mut Tx) -> Result<Self::Output, CmdError> { ... } }`
+note: required by a bound in `Registry::add_command`
+ --> $WORKSPACE/crates/cutweave-commands/src/registry.rs
+  |
+  | impl Registry {
+...
+  |     pub fn add_command<C: Command>(&mut self) -> Result<&mut Registry, RegistryError> {
+  |                           ^^^^^^^ required by this bound in `Registry::add_command`
+  = note: this error originates in the attribute macro `command` (in Nightly builds, run with -Z macro-backtrace for more info)
