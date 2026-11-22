@@ -1,19 +1,27 @@
-//! `s1-engine`: spike S1 sidecar (WP-0C.01).
+//! `s1-engine`: spike S1 sidecar (WP-0C.01, WP-0C.02).
 //!
 //! Renders synthetic animated frames with wgpu at a fixed rate, reads them back asynchronously
 //! and publishes them into a named shared-memory ring (arch §10). A WebSocket control channel
-//! accepts play/pause/seek/format. Startup handshake (arch §6): exactly one JSON line on stdout
-//! carrying the bound port and a fresh 256-bit UI token; the token is never written to disk.
-//! The engine exits when stdin closes (parent died), so it never outlives Electron main.
+//! accepts play/pause/seek/format/resize. Startup handshake (arch §6): exactly one JSON line on
+//! stdout carrying the bound port and a fresh 256-bit UI token; the token is never written to
+//! disk. The engine exits when stdin closes (parent died), so it never outlives Electron main.
+//!
+//! WP-0C.02: frames are rendered at the preview canvas size the renderer negotiates (`resize`,
+//! up to `--max-width` x `--max-height`, which sizes the ring). A seek while paused renders the
+//! requested frame on demand: a `--lowres-div` reduced frame first (`FLAG_LOWRES`), then the
+//! full-resolution frame from an emulated decoder (`--full-cost-ms` per frame, one at a time,
+//! latest-wins; arch §10 step 5, see `scrub.rs`). Both are also settable at run time
+//! (`scrub-config` control message).
 
 mod control;
 mod gpu;
+mod scrub;
 
 use std::io::{Read, Write};
 use std::net::TcpListener;
 use std::sync::Arc;
 use std::sync::atomic::{AtomicBool, AtomicI64, AtomicU64, Ordering};
-use std::sync::mpsc;
+use std::sync::mpsc::{self, RecvTimeoutError};
 use std::time::{Duration, Instant};
 
 use anyhow::{Context, Result, anyhow, bail};
@@ -22,23 +30,29 @@ use s1_ring::{EngineState, FLICKS_PER_SECOND, PixelFormat, RingWriter, SharedMem
 use serde::Serialize;
 
 use crate::control::{Command, ControlConfig};
-use crate::gpu::{Gpu, GpuPref};
+use crate::gpu::{Gpu, GpuPref, Quality};
+use crate::scrub::FullDecoder;
 
 const USAGE: &str = "usage: s1-engine --ring <name> [--port <p>] [--width 1920] [--height 1080] \
-[--fps 60] [--slots 6] [--format rgba8|nv12] [--gpu high|low|software] [--frames N] \
-[--paused] [--allow-origin app://s1] [--no-stdin-watch]";
+[--max-width 2560] [--max-height 1440] [--fps 60] [--slots 6] [--format rgba8|nv12] \
+[--gpu high|low|software] [--frames N] [--paused] [--lowres-div 2 (0 = off)] \
+[--full-cost-ms 0] [--allow-origin app://s1] [--no-stdin-watch]";
 
 struct Args {
     ring: String,
     port: u16,
     width: u32,
     height: u32,
+    max_width: u32,
+    max_height: u32,
     fps: u32,
     slots: u32,
     format: PixelFormat,
     gpu: GpuPref,
     frames: Option<u64>,
     paused: bool,
+    lowres_div: u32,
+    full_cost: Duration,
     allow_origin: String,
     watch_stdin: bool,
 }
@@ -49,12 +63,16 @@ fn parse_args() -> Result<Args> {
         port: 0,
         width: 1920,
         height: 1080,
+        max_width: 2560,
+        max_height: 1440,
         fps: 60,
         slots: 6,
         format: PixelFormat::Rgba8,
         gpu: GpuPref::High,
         frames: None,
         paused: false,
+        lowres_div: 2,
+        full_cost: Duration::ZERO,
         allow_origin: "app://s1".into(),
         watch_stdin: true,
     };
@@ -69,6 +87,10 @@ fn parse_args() -> Result<Args> {
             "--port" => a.port = val()?.parse()?,
             "--width" => a.width = val()?.parse()?,
             "--height" => a.height = val()?.parse()?,
+            "--max-width" => a.max_width = val()?.parse()?,
+            "--max-height" => a.max_height = val()?.parse()?,
+            "--lowres-div" => a.lowres_div = val()?.parse()?,
+            "--full-cost-ms" => a.full_cost = Duration::from_millis(val()?.parse()?),
             "--fps" => a.fps = val()?.parse()?,
             "--slots" => a.slots = val()?.parse()?,
             "--format" => {
@@ -103,6 +125,9 @@ fn parse_args() -> Result<Args> {
     if a.fps == 0 {
         bail!("--fps must be > 0");
     }
+    // The ring is sized for the largest frame; the launch size always fits.
+    a.max_width = a.max_width.max(a.width);
+    a.max_height = a.max_height.max(a.height);
     Ok(a)
 }
 
@@ -116,6 +141,8 @@ struct Ready<'a> {
     ring: &'a str,
     width: u32,
     height: u32,
+    max_width: u32,
+    max_height: u32,
     fps: u32,
     slots: u32,
     adapter: String,
@@ -178,15 +205,22 @@ fn run() -> Result<()> {
     let args = parse_args()?;
     let frame_dur_flicks = FLICKS_PER_SECOND / i64::from(args.fps);
 
-    // 1. Ring. Capacity = largest format at this size (RGBA8).
-    let capacity = PixelFormat::Rgba8.frame_len(args.width, args.height);
+    // 1. Ring. Capacity = largest format (RGBA8) at the largest frame size we will render;
+    //    resizes change width/height/stride per slot without remapping (RING.md).
+    let capacity = PixelFormat::Rgba8.frame_len(args.max_width, args.max_height);
     let shm = SharedMemory::create(&args.ring, mapping_len(args.slots, capacity))
         .with_context(|| format!("create ring {}", args.ring))?;
     let mut ring = RingWriter::init(shm, args.slots, capacity, frame_dur_flicks)?;
     let clock = ring.clock();
 
     // 2. GPU.
-    let mut gpu = Gpu::new(args.gpu, args.width, args.height)?;
+    let mut gpu = Gpu::new(
+        args.gpu,
+        args.width,
+        args.height,
+        args.max_width,
+        args.max_height,
+    )?;
     tracing::info!(adapter = %gpu.info.name, backend = ?gpu.info.backend, "gpu ready");
 
     // 3. Control channel.
@@ -214,6 +248,8 @@ fn run() -> Result<()> {
         ring: &args.ring,
         width: args.width,
         height: args.height,
+        max_width: args.max_width,
+        max_height: args.max_height,
         fps: args.fps,
         slots: args.slots,
         adapter: gpu.info.name.clone(),
@@ -276,16 +312,27 @@ fn run() -> Result<()> {
     let rev = 1u64;
     let mut log_at = Instant::now() + Duration::from_secs(1);
     let (mut dropped_s, mut late_s) = (0u64, 0u64);
+    // Scrub (seek while paused): the next render is low-res, and the full-resolution frame
+    // comes from the (emulated) decoder; see scrub.rs.
+    let mut lowres_next = false;
+    let mut lowres_div = args.lowres_div;
+    let mut decoder = FullDecoder::new(args.full_cost);
+    // A command that woke the loop early; handled first on the next iteration.
+    let mut stash: Option<Command> = None;
 
     while !shutdown.load(Ordering::Acquire) {
-        // Latest-wins command handling: apply in order, but only the last seek renders.
+        // Latest-wins command handling: apply in order, but only the last seek and the last
+        // resize of a burst are rendered.
         let mut seek: Option<i64> = None;
-        while let Ok(cmd) = rx.try_recv() {
+        let mut resize: Option<(u32, u32)> = None;
+        while let Some(cmd) = stash.take().or_else(|| rx.try_recv().ok()) {
             let now = s1_ring::clock::now_us();
             match cmd {
                 Command::Play => {
                     transport.reanchor(transport.position(now), true);
                     clock.set_state(EngineState::Playing);
+                    lowres_next = false;
+                    decoder.clear();
                 }
                 Command::Pause => {
                     transport.reanchor(transport.position(now), false);
@@ -296,6 +343,23 @@ fn run() -> Result<()> {
                     format = f;
                     needs_frame = true;
                 }
+                Command::Resize(w, h) => resize = Some((w, h)),
+                Command::ScrubConfig {
+                    lowres_div: div,
+                    full_cost_ms,
+                } => {
+                    lowres_div = div;
+                    decoder.cost = Duration::from_millis(u64::from(full_cost_ms));
+                }
+            }
+        }
+        if let Some((w, h)) = resize {
+            let before = gpu.size();
+            let after = gpu.resize(w, h);
+            if after != before {
+                tracing::debug!(requested = ?(w, h), size = ?after, "resize");
+                // Re-render the current frame at the new size (visible while paused).
+                needs_frame = true;
             }
         }
         if let Some(pts) = seek {
@@ -303,6 +367,16 @@ fn run() -> Result<()> {
             transport.reanchor(pts, playing);
             last_frame = None;
             needs_frame = true;
+            if !playing {
+                // Scrub: low-res preview now (if enabled), full resolution from the decoder.
+                let target = (pts + frame_dur_flicks / 2).div_euclid(frame_dur_flicks);
+                decoder.request(target, Instant::now());
+                lowres_next = lowres_div > 1;
+                if !lowres_next {
+                    needs_frame = false;
+                    last_frame = Some(target);
+                }
+            }
         }
 
         // Clock-driven production: frame N (pts = N * dur) is rendered as soon as the audio
@@ -332,16 +406,34 @@ fn run() -> Result<()> {
                 }
             }
             let frame_u = u64::try_from(frame).unwrap_or(0);
-            if gpu.render(frame_u, frame * frame_dur_flicks, format, rev) {
+            let quality = if lowres_next && !playing {
+                Quality::Low(lowres_div)
+            } else {
+                Quality::Full
+            };
+            if gpu.render(frame_u, frame * frame_dur_flicks, format, rev, quality) {
                 last_frame = Some(frame);
                 needs_frame = false;
-            } else {
+                lowres_next = false;
+            } else if playing {
                 clock.add_dropped(1);
                 dropped_s += 1;
             }
         }
+        if playing {
+            decoder.clear();
+        } else if let Some(f) = decoder.poll(Instant::now()) {
+            // The (emulated) full-resolution decode of a scrub target is done: publish it.
+            let f_u = u64::try_from(f).unwrap_or(0);
+            if gpu.render(f_u, f * frame_dur_flicks, format, rev, Quality::Full) {
+                last_frame = Some(f);
+            } else {
+                decoder.retry(f, Instant::now());
+            }
+        }
 
-        // Next wake-up: the next frame boundary on the audio clock (or one frame when paused).
+        // Next wake-up: the next frame boundary on the audio clock (or one frame when paused),
+        // earlier for a running scrub decode or a render that found every readback buffer busy.
         let wait_flicks = if playing {
             (last_frame.unwrap_or(frame) + 1) * frame_dur_flicks - pos
         } else {
@@ -351,7 +443,13 @@ fn run() -> Result<()> {
             wait_flicks.clamp(0, frame_dur_flicks * 2) * 1000 / (FLICKS_PER_SECOND / 1000),
         )
         .unwrap_or(0);
-        let next_wake = Instant::now() + Duration::from_micros(wait_us);
+        let mut next_wake = Instant::now() + Duration::from_micros(wait_us);
+        if needs_frame {
+            next_wake = next_wake.min(Instant::now() + Duration::from_millis(1));
+        }
+        if let Some(at) = decoder.deadline() {
+            next_wake = next_wake.min(at);
+        }
         // Publish finished readbacks as soon as the GPU is done (low latency), up to the wake-up.
         gpu.publish_ready(&mut ring, next_wake)?;
         clock.heartbeat();
@@ -359,9 +457,16 @@ fn run() -> Result<()> {
         if args.frames.is_some_and(|limit| ring.write_index() >= limit) {
             break;
         }
+        // Wait for the wake-up, but let a command (seek, resize, ...) end the wait at once.
         let now = Instant::now();
         if next_wake > now {
-            std::thread::sleep(next_wake - now);
+            match rx.recv_timeout(next_wake - now) {
+                Ok(cmd) => stash = Some(cmd),
+                Err(RecvTimeoutError::Timeout) => {}
+                Err(RecvTimeoutError::Disconnected) => {
+                    std::thread::sleep(next_wake.saturating_duration_since(Instant::now()));
+                }
+            }
         }
 
         if Instant::now() >= log_at {
@@ -378,6 +483,7 @@ fn run() -> Result<()> {
                     dropped = dropped_s,
                     late_ticks = late_s,
                     in_flight = gpu.in_flight(),
+                    size = format!("{}x{}", gpu.size().0, gpu.size().1),
                     "engine"
                 );
             }

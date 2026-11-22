@@ -11,7 +11,7 @@ pub mod layout;
 mod ring;
 pub mod shm;
 
-pub use layout::{EngineState, FLICKS_PER_SECOND, PixelFormat};
+pub use layout::{EngineState, FLAG_LOWRES, FLICKS_PER_SECOND, PixelFormat};
 pub use ring::{
     FrameMeta, ReadError, RingClock, RingError, RingReader, RingSnapshot, RingWriter, SlotMeta,
 };

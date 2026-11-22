@@ -1,8 +1,12 @@
 //! WebSocket control channel (`ws://127.0.0.1:<port>/`): transport commands from the
-//! renderer (play / pause / seek / format), authenticated with the one-time UI token.
+//! renderer (play / pause / seek / format / resize), authenticated with the one-time UI token.
 //!
 //! Spike stand-in for the JSON-RPC surface of arch §6. Defences kept from §6: localhost bind,
 //! Host + Origin checks (DNS rebinding), token as the first message (never in the URL).
+//!
+//! Commands are forwarded over an mpsc channel that the render loop blocks on between frames,
+//! so a seek or resize wakes it immediately; the loop applies them latest-wins (only the last
+//! seek and the last resize of a burst are rendered).
 
 use std::io::ErrorKind;
 use std::net::{TcpListener, TcpStream};
@@ -21,21 +25,49 @@ pub enum Command {
     Play,
     /// Pause at the current position.
     Pause,
-    /// Jump to `pts` flicks (latest wins).
+    /// Jump to `pts` flicks (latest wins). While paused this renders the frame on demand,
+    /// low-res first, then the full-resolution refine (arch §10 step 5).
     Seek(i64),
     /// Switch the output pixel format.
     Format(s1_ring::PixelFormat),
+    /// Render at this size from now on (the preview canvas size in device pixels).
+    Resize(u32, u32),
+    /// Scrub tuning: low-res preview divisor (0 or 1 = off) and the emulated full-resolution
+    /// decode time per frame.
+    ScrubConfig {
+        /// Each dimension of the scrub preview is divided by this.
+        lowres_div: u32,
+        /// Emulated full-resolution decode cost in ms.
+        full_cost_ms: u32,
+    },
 }
 
 #[derive(Deserialize)]
 #[serde(tag = "type", rename_all = "lowercase")]
 enum ClientMsg {
-    Auth { token: String },
+    Auth {
+        token: String,
+    },
     Play,
     Pause,
-    Seek { pts: i64 },
-    Format { format: String },
-    Ping { t: f64 },
+    Seek {
+        pts: i64,
+    },
+    Format {
+        format: String,
+    },
+    Resize {
+        width: u32,
+        height: u32,
+    },
+    #[serde(rename = "scrub-config")]
+    ScrubConfig {
+        lowres_div: u32,
+        full_cost_ms: u32,
+    },
+    Ping {
+        t: f64,
+    },
 }
 
 #[derive(Serialize)]
@@ -170,6 +202,19 @@ fn serve(stream: TcpStream, cfg: &ControlConfig, tx: &Sender<Command>) -> anyhow
             Ok(ClientMsg::Play) => (Some(Command::Play), "play"),
             Ok(ClientMsg::Pause) => (Some(Command::Pause), "pause"),
             Ok(ClientMsg::Seek { pts }) => (Some(Command::Seek(pts)), "seek"),
+            Ok(ClientMsg::Resize { width, height }) => {
+                (Some(Command::Resize(width, height)), "resize")
+            }
+            Ok(ClientMsg::ScrubConfig {
+                lowres_div,
+                full_cost_ms,
+            }) => (
+                Some(Command::ScrubConfig {
+                    lowres_div,
+                    full_cost_ms: full_cost_ms.min(2000),
+                }),
+                "scrub-config",
+            ),
             Ok(ClientMsg::Format { format }) => match format.as_str() {
                 "rgba8" => (Some(Command::Format(s1_ring::PixelFormat::Rgba8)), "format"),
                 "nv12" => (Some(Command::Format(s1_ring::PixelFormat::Nv12)), "format"),

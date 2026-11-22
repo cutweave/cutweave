@@ -92,6 +92,8 @@ pub struct FrameMeta {
     pub format: PixelFormat,
     /// Render revision.
     pub rev: u64,
+    /// Flag bits (`FLAG_LOWRES`).
+    pub flags: u32,
     /// Host µs at which GPU work for the frame was submitted.
     pub t_render_us: u64,
 }
@@ -121,6 +123,8 @@ pub struct SlotMeta {
     pub payload_len: u64,
     /// Writer-side checksum.
     pub checksum: u32,
+    /// Flag bits (`FLAG_LOWRES`).
+    pub flags: u32,
     /// Host µs at GPU submit.
     pub t_render_us: u64,
     /// Host µs at publish.
@@ -351,7 +355,7 @@ impl<M: Mapping> RingWriter<M> {
         d.rev.store(meta.rev, Ordering::Relaxed);
         d.payload_len.store(len as u64, Ordering::Relaxed);
         d.checksum.store(checksum, Ordering::Relaxed);
-        d.flags.store(0, Ordering::Relaxed);
+        d.flags.store(meta.flags, Ordering::Relaxed);
         d.t_render_us.store(meta.t_render_us, Ordering::Relaxed);
         d.t_publish_us.store(now_us(), Ordering::Relaxed);
 
@@ -478,6 +482,7 @@ impl<M: Mapping> RingReader<M> {
             rev: d.rev.load(Ordering::Relaxed),
             payload_len: d.payload_len.load(Ordering::Relaxed),
             checksum: d.checksum.load(Ordering::Relaxed),
+            flags: d.flags.load(Ordering::Relaxed),
             t_render_us: d.t_render_us.load(Ordering::Relaxed),
             t_publish_us: d.t_publish_us.load(Ordering::Relaxed),
         };
@@ -612,6 +617,7 @@ mod tests {
             height: H,
             format: PixelFormat::Rgba8,
             rev: 7,
+            flags: u32::from(n % 2 == 1),
             t_render_us: 1,
         }
     }
@@ -671,6 +677,7 @@ mod tests {
                 assert_eq!(m.slot, (n % u64::from(slots)) as u32, "slot index wraps");
                 assert_eq!(m.pts, meta(n).pts);
                 assert_eq!(m.rev, 7);
+                assert_eq!(m.flags, meta(n).flags, "flags round-trip");
                 let len = usize::try_from(m.payload_len).expect("len");
                 assert_eq!(sampled_fnv1a(&dst[..len]), m.checksum);
                 assert_eq!(
