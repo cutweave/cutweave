@@ -10,10 +10,10 @@ use s4::gpu::{AdapterChoice, FrameStats, Renderer, list_adapters};
 use s4::image::{cicp_for, read_png, write_png};
 use s4::lut::Lut3d;
 use s4::metrics::{self, compare};
-use s4::scene::{Scene, Transfer};
+use s4::scene::{Scene, TextRenderer, Transfer};
 use s4::source::SyntheticSources;
 use s4::timeline::{self, demo_scene, test_scenes};
-use s4::{cpu_ref, export, golden, graph};
+use s4::{cpu_ref, export, golden, graph, text_bench};
 
 #[derive(Parser)]
 #[command(
@@ -101,6 +101,9 @@ enum Cmd {
         /// Print the per-pass breakdown.
         #[arg(long)]
         passes: bool,
+        /// Add the animated caption (WP-0F.02) drawn by `msdf` or `vello` (§19 budget scene).
+        #[arg(long)]
+        captions: Option<String>,
     },
     /// Compare two PNGs with the §20 metrics.
     Compare {
@@ -125,6 +128,79 @@ enum Cmd {
         #[arg(long)]
         out: PathBuf,
     },
+    /// Render a text scene (WP-0F.02): caption | multiscript | storm | crisp | shimmer.
+    Text {
+        #[arg(long, default_value = "caption")]
+        scene: String,
+        /// msdf | vello
+        #[arg(long, default_value = "msdf")]
+        renderer: String,
+        #[arg(long, default_value_t = 64)]
+        frame: i64,
+        #[arg(long)]
+        out: PathBuf,
+        #[command(flatten)]
+        common: Common,
+        /// Glyph size for `crisp` (px).
+        #[arg(long, default_value_t = 200.0)]
+        size: f32,
+        /// Horizontal offset for `shimmer` / `crisp` (px, fractional).
+        #[arg(long, default_value_t = 0.0)]
+        offset: f32,
+        /// Use the CPU reference (fill-only scenes: crisp, shimmer).
+        #[arg(long)]
+        cpu: bool,
+        /// Write a nearest-neighbour zoom crop `x,y,w,h,zoom` next to the output.
+        #[arg(long)]
+        crop: Option<String>,
+        /// Also write the MTSDF atlas (RGB = MSDF, and a second image of the A = true SDF).
+        #[arg(long)]
+        atlas_out: Option<PathBuf>,
+    },
+    /// 1000 animated glyphs: CPU (animator, layout, instance build) and GPU time, both renderers.
+    TextBench {
+        #[command(flatten)]
+        common: Common,
+        #[arg(long, default_value_t = 1000)]
+        glyphs: usize,
+        #[arg(long, default_value_t = 120)]
+        frames: i64,
+        #[arg(long)]
+        all_adapters: bool,
+        /// Fill only (no outline / shadow).
+        #[arg(long)]
+        plain: bool,
+    },
+    /// Crispness: GPU text (both renderers) vs the 8×8-supersampled CPU outline rasteriser.
+    TextCrisp {
+        #[command(flatten)]
+        common: Common,
+        #[arg(long, default_value_t = 200.0)]
+        size: f32,
+        #[arg(long)]
+        diff_dir: Option<PathBuf>,
+        #[arg(long)]
+        all_adapters: bool,
+        /// MSDF atlas pixels per em (range = em / 4).
+        #[arg(long, default_value_t = 48.0)]
+        em: f64,
+    },
+    /// MTSDF generation throughput: every glyph of every bundled face into a fresh atlas (twice,
+    /// to check the atlas bytes are deterministic).
+    AtlasBench {
+        #[arg(long, default_value_t = 800)]
+        weight: u16,
+        /// MSDF atlas pixels per em (range = em / 4).
+        #[arg(long, default_value_t = 48.0)]
+        em: f64,
+    },
+    /// Shimmer under sub-pixel motion (16 phases over one pixel), both renderers.
+    TextShimmer {
+        #[command(flatten)]
+        common: Common,
+        #[arg(long)]
+        all_adapters: bool,
+    },
     /// (Re)write the golden set for an adapter, or check all adapters against the goldens.
     Golden {
         #[arg(long, default_value = "auto")]
@@ -146,6 +222,25 @@ fn parse_transfer(s: &str) -> Result<Transfer> {
         "linear" => Transfer::Linear,
         other => bail!("unknown transfer `{other}`"),
     })
+}
+
+fn parse_renderer(s: &str) -> Result<TextRenderer> {
+    Ok(match s.to_ascii_lowercase().as_str() {
+        "msdf" => TextRenderer::Msdf,
+        "vello" => TextRenderer::Vello,
+        other => bail!("unknown text renderer `{other}` (msdf | vello)"),
+    })
+}
+
+fn adapter_choices(adapter: &str, all: bool) -> Vec<AdapterChoice> {
+    if all {
+        list_adapters()
+            .into_iter()
+            .map(|a| AdapterChoice::Key(a.key))
+            .collect()
+    } else {
+        vec![AdapterChoice::parse(adapter)]
+    }
 }
 
 fn renderer(adapter: &str) -> Result<Renderer> {
@@ -325,7 +420,13 @@ fn main() -> Result<()> {
             frames,
             all_adapters,
             passes,
+            captions,
         } => {
+            let captions = captions.as_deref().map(parse_renderer).transpose()?;
+            let scene_at = |f: i64| match captions {
+                Some(r) => timeline::caption_scene(common.width, common.height, f, r),
+                None => demo_scene(common.width, common.height, f),
+            };
             let choices: Vec<AdapterChoice> = if all_adapters {
                 list_adapters()
                     .into_iter()
@@ -362,7 +463,7 @@ fn main() -> Result<()> {
                     }
                 };
                 let provider = SyntheticSources::new(common.width, common.height)?;
-                let first = demo_scene(common.width, common.height, timeline::DISSOLVE_START + 30);
+                let first = scene_at(timeline::DISSOLVE_START + 30);
                 let f0 = r.render_scene(&first, &provider)?;
                 let first_ms = t_init.elapsed().as_secs_f64() * 1e3;
                 let _ = f0;
@@ -373,7 +474,7 @@ fn main() -> Result<()> {
                 let mut per_pass: Vec<(String, f64)> = Vec::new();
                 let mut last_stats = FrameStats::default();
                 for f in timeline::DISSOLVE_START..timeline::DISSOLVE_START + frames {
-                    let s = demo_scene(common.width, common.height, f);
+                    let s = scene_at(f);
                     let st = r.render_scene(&s, &provider)?.stats;
                     if let Some(n) = st.gpu_ns {
                         gpu.push(ms(n));
@@ -455,6 +556,361 @@ fn main() -> Result<()> {
         Cmd::GenLut { size, out } => {
             std::fs::write(&out, Lut3d::warm_contrast(size).to_cube())?;
             println!("wrote {}", out.display());
+        }
+        Cmd::Text {
+            scene,
+            renderer: which,
+            frame,
+            out,
+            common,
+            size,
+            offset,
+            cpu,
+            crop,
+            atlas_out,
+        } => {
+            let rend = parse_renderer(&which)?;
+            let (w, h) = (common.width, common.height);
+            let s = match scene.as_str() {
+                "caption" => timeline::caption_scene(w, h, frame, rend),
+                "multiscript" => timeline::multiscript_scene(w, h, rend),
+                "storm" => timeline::glyph_storm_scene(w, h, frame, 1000, rend, true),
+                "crisp" => timeline::crisp_scene(w, h, size, [offset, 0.0], rend),
+                "shimmer" => timeline::shimmer_scene(w, h, offset, rend, false),
+                other => bail!("unknown text scene `{other}`"),
+            };
+            let provider = SyntheticSources::new(w, h)?;
+            let img = if cpu {
+                let t = Instant::now();
+                let img = cpu_ref::render(&s, &provider)?;
+                eprintln!("cpu reference: {:.1} ms", t.elapsed().as_secs_f64() * 1e3);
+                img
+            } else {
+                let mut r = renderer(&common.adapter)?;
+                let f = r.render_scene(&s, &provider)?;
+                let st = &f.stats;
+                eprintln!(
+                    "text: {} glyphs, {} instances, layout {:.2} ms, build {:.3} ms, atlas {:.1} ms; text GPU {}, frame GPU {}, wall {:.1} ms",
+                    st.text.glyphs,
+                    st.text.instances,
+                    st.text.layout_ms,
+                    st.text.build_ms,
+                    st.text.atlas_ms,
+                    st.text_gpu_ns
+                        .map_or("n/a".into(), |n| format!("{:.3} ms", ms(n))),
+                    st.gpu_ns
+                        .map_or("n/a".into(), |n| format!("{:.3} ms", ms(n))),
+                    st.cpu_ms
+                );
+                if let Some(p) = &atlas_out {
+                    let a = &r.text_engine()?.atlas;
+                    let px = a.pixels();
+                    let rgb: Vec<u16> = px
+                        .as_chunks::<4>()
+                        .0
+                        .iter()
+                        .flat_map(|c| [c[0], c[1], c[2], 255].map(u16::from))
+                        .collect();
+                    let alpha: Vec<u16> = px
+                        .as_chunks::<4>()
+                        .0
+                        .iter()
+                        .flat_map(|c| [c[3], c[3], c[3], 255].map(u16::from))
+                        .collect();
+                    let img = |data| s4::image::Image {
+                        width: a.width,
+                        height: a.height,
+                        bit_depth: 8,
+                        data,
+                    };
+                    write_png(p, &img(rgb), None)?;
+                    write_png(&p.with_extension("sdf.png"), &img(alpha), None)?;
+                    println!("wrote {} ({} glyphs)", p.display(), a.len());
+                }
+                f.image
+            };
+            write_png(&out, &img, Some(cicp_for(&s.output)))?;
+            if let Some(c) = crop {
+                let v: Vec<u32> = c
+                    .split(',')
+                    .map(|x| x.trim().parse::<u32>())
+                    .collect::<std::result::Result<_, _>>()?;
+                let [x, y, cw, ch, z] = v[..] else {
+                    bail!("--crop x,y,w,h,zoom")
+                };
+                let zoomed = text_bench::zoom(&text_bench::crop(&img, x, y, cw, ch), z);
+                let p = out.with_extension("zoom.png");
+                write_png(&p, &zoomed, None)?;
+                println!("wrote {}", p.display());
+            }
+            println!("wrote {}", out.display());
+        }
+        Cmd::TextBench {
+            common,
+            glyphs,
+            frames,
+            all_adapters,
+            plain,
+        } => {
+            let choices = adapter_choices(&common.adapter, all_adapters);
+            println!(
+                "scene: {glyphs} animated glyphs (per-glyph transform, colour, opacity){} at {}x{}, {frames} frames (INFORMAL)",
+                if plain {
+                    ", fill only"
+                } else {
+                    " + outline + soft shadow"
+                },
+                common.width,
+                common.height
+            );
+            println!(
+                "{:<44} {:<7} {:<6} {:>6} {:>8} {:>9} {:>9} {:>8} {:>9} {:>9} {:>9} {:>9} {:>10}",
+                "adapter",
+                "backend",
+                "path",
+                "quads",
+                "anim ms",
+                "build p50",
+                "build p95",
+                "graph",
+                "textGPU50",
+                "textGPU95",
+                "frameGPU",
+                "wall p50",
+                "mem Δ MB"
+            );
+            for choice in choices {
+                for rend in [TextRenderer::Msdf, TextRenderer::Vello] {
+                    let mut r = match Renderer::new(&choice) {
+                        Ok(r) => r,
+                        Err(e) => {
+                            println!("{choice:?}: {e}");
+                            continue;
+                        }
+                    };
+                    let b = match text_bench::glyph_bench(
+                        &mut r,
+                        (common.width, common.height),
+                        glyphs,
+                        frames,
+                        rend,
+                        !plain,
+                    ) {
+                        Ok(b) => b,
+                        Err(e) => {
+                            println!("{} {rend:?}: {e}", r.adapter().name);
+                            continue;
+                        }
+                    };
+                    let a = r.adapter();
+                    println!(
+                        "{:<44} {:<7} {:<6} {:>6} {:>8.3} {:>9.3} {:>9.3} {:>8.3} {:>9.3} {:>9.3} {:>9.3} {:>9.2} {:>10}",
+                        a.name,
+                        a.backend,
+                        format!("{rend:?}").to_lowercase(),
+                        b.instances,
+                        b.animate_ms_p50,
+                        b.build_ms_p50,
+                        b.build_ms_p95,
+                        b.graph_ms_p50,
+                        b.text_gpu_p50,
+                        b.text_gpu_p95,
+                        b.frame_gpu_p50,
+                        b.wall_p50,
+                        b.mem_delta
+                            .map_or("n/a".into(), |d| format!("{:.1}", d as f64 / 1048576.0)),
+                    );
+                    if rend == TextRenderer::Msdf {
+                        println!(
+                            "    cold: shaping {:.2} ms, MTSDF generation {:.1} ms; atlas {:.2} MB",
+                            b.layout_cold_ms,
+                            b.atlas_cold_ms,
+                            b.atlas_bytes as f64 / 1048576.0
+                        );
+                    } else {
+                        println!("    cold: shaping {:.2} ms", b.layout_cold_ms);
+                    }
+                }
+            }
+            println!(
+                "anim = animator (spans); build = span resolve + instance buffer (msdf) / scene encode (vello); graph = render-graph build;"
+            );
+            println!(
+                "textGPU = text pass (msdf draw) or Vello's own submission (timestamp-bracketed) + RGBA8→f16 resolve; mem Δ = allocator report delta."
+            );
+        }
+        Cmd::TextCrisp {
+            common,
+            size,
+            diff_dir,
+            all_adapters,
+            em,
+        } => {
+            let dims = (common.width, common.height);
+            let t = Instant::now();
+            let reference = text_bench::crisp_reference(dims, size)?;
+            eprintln!(
+                "CPU 8×8 reference {}x{} in {:.1} s",
+                dims.0,
+                dims.1,
+                t.elapsed().as_secs_f64()
+            );
+            if let Some(d) = &diff_dir {
+                write_png(
+                    &d.join(format!("crisp_{}p_reference.png", dims.1)),
+                    &reference,
+                    None,
+                )?;
+                let [x, y, _, _] = text_bench::crisp_rect(dims.0, dims.1, size);
+                let zc = text_bench::zoom(
+                    &text_bench::crop(&reference, x, y, (size * 1.6) as u32, (size * 1.3) as u32),
+                    4,
+                );
+                write_png(
+                    &d.join(format!("crisp_{}p_reference_zoom4.png", dims.1)),
+                    &zc,
+                    None,
+                )?;
+            }
+            println!(
+                "{:<44} {:<7} {:<6} {:>10} {:>10} {:>10} {:>7} {:>10}",
+                "adapter",
+                "backend",
+                "path",
+                "SSIM text",
+                "SSIM full",
+                "PSNR text",
+                "max|Δ|",
+                "text GPU"
+            );
+            for choice in adapter_choices(&common.adapter, all_adapters) {
+                let mut r = Renderer::new(&choice)?;
+                r.text_engine()?.atlas =
+                    s4::text::atlas::GlyphAtlas::new(s4::text::msdf::MsdfConfig {
+                        em_px: em,
+                        range_px: em / 4.0,
+                        ..Default::default()
+                    });
+                for rend in [TextRenderer::Msdf, TextRenderer::Vello] {
+                    let (c, _) = match text_bench::crispness(
+                        &mut r,
+                        dims,
+                        size,
+                        rend,
+                        &reference,
+                        diff_dir.as_deref(),
+                    ) {
+                        Ok(c) => c,
+                        Err(e) => {
+                            println!("{} {rend:?}: {e}", r.adapter().name);
+                            continue;
+                        }
+                    };
+                    println!(
+                        "{:<44} {:<7} {:<6} {:>10.5} {:>10.5} {:>10.2} {:>7} {:>8.3}ms",
+                        r.adapter().name,
+                        r.adapter().backend,
+                        format!("{rend:?}").to_lowercase(),
+                        c.ssim_text,
+                        c.ssim_full,
+                        c.psnr_text,
+                        c.max_abs,
+                        c.gpu_text_ms
+                    );
+                }
+            }
+            println!("criterion (WP-0F.02): SSIM ≥ 0.98 on the 4K scene for the chosen path");
+        }
+        Cmd::AtlasBench { weight, em } => {
+            use s4::text::atlas::{GlyphAtlas, GlyphKey};
+            use s4::text::msdf::MsdfConfig;
+            let lib = s4::text::fonts::FontLibrary::bundled()?;
+            let mut wanted = Vec::new();
+            for id in lib.face_ids() {
+                let face = lib.face(id).context("face")?;
+                let n = ttf_parser::Face::parse(&face.data, face.index)
+                    .map(|f| f.number_of_glyphs())
+                    .unwrap_or(0);
+                for g in 0..n {
+                    let key = GlyphKey {
+                        face_hash: face.content_hash,
+                        glyph: g,
+                        weight,
+                    };
+                    wanted.push((key, face));
+                }
+            }
+            let cfg = MsdfConfig {
+                em_px: em,
+                range_px: em / 4.0,
+                ..MsdfConfig::default()
+            };
+            let mut a = GlyphAtlas::new(cfg);
+            let st = a.ensure(&wanted);
+            let mut b = GlyphAtlas::new(cfg);
+            let _ = b.ensure(&wanted);
+            let threads = std::thread::available_parallelism().map_or(1, |n| n.get());
+            println!(
+                "{} glyphs ({} faces, weight {weight}, {em} px/em, range {}) in {:.0} ms on {threads} threads = {:.0} glyphs/s; atlas {}x{} = {:.1} MB; deterministic: {}",
+                st.generated,
+                lib.face_ids().len(),
+                em / 4.0,
+                st.ms,
+                st.generated as f64 / (st.ms / 1e3),
+                a.width,
+                a.height,
+                a.bytes() as f64 / 1048576.0,
+                a.pixels() == b.pixels()
+            );
+        }
+        Cmd::TextShimmer {
+            common,
+            all_adapters,
+        } => {
+            let dims = (common.width, common.height);
+            let refs = text_bench::shimmer_references(dims)?;
+            let base = text_bench::shimmer(None, dims, TextRenderer::Msdf, false, &refs)?;
+            println!(
+                "{:<58} {:>10} {:>12} {:>10} {:>10}",
+                "renderer", "ink range", "centroid px", "PSNR mean", "PSNR span"
+            );
+            let row = |label: &str, s: &text_bench::Shimmer| {
+                println!(
+                    "{:<58} {:>9.4}% {:>12.4} {:>10.2} {:>10.2}",
+                    label,
+                    s.ink_range * 100.0,
+                    s.centroid_err,
+                    s.psnr_mean,
+                    s.psnr_spread
+                );
+            };
+            row("CPU 8×8 reference", &base);
+            for choice in adapter_choices(&common.adapter, all_adapters) {
+                let mut r = Renderer::new(&choice)?;
+                let name = format!("{} {}", r.adapter().name, r.adapter().backend);
+                for (rend, resampled) in [
+                    (TextRenderer::Msdf, false),
+                    (TextRenderer::Vello, false),
+                    (TextRenderer::Msdf, true),
+                ] {
+                    let s = match text_bench::shimmer(Some(&mut r), dims, rend, resampled, &refs) {
+                        Ok(s) => s,
+                        Err(e) => {
+                            println!("{name} {rend:?}: {e}");
+                            continue;
+                        }
+                    };
+                    let label = format!(
+                        "{name} {}{}",
+                        format!("{rend:?}").to_lowercase(),
+                        if resampled { " (resampled)" } else { "" }
+                    );
+                    row(&label, &s);
+                }
+            }
+            println!(
+                "16 phases over 1 px; ink = Σ linear luminance; centroid = luminance centroid minus the commanded offset."
+            );
         }
         Cmd::Golden {
             adapter,

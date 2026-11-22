@@ -27,6 +27,9 @@ pub mod metrics;
 pub mod patterns;
 pub mod scene;
 pub mod source;
+pub mod text;
+pub mod text_bench;
+pub mod text_gpu;
 pub mod timeline;
 
 pub use error::{Error, Result};

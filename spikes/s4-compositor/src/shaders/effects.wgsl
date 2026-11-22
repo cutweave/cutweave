@@ -126,3 +126,15 @@ fn lut3d(@builtin(global_invocation_id) gid: vec3<u32>) {
   let m = P.v0.w;
   textureStore(dst, p, vec4<f32>((rgb * (1.0 - m) + lin * m) * c.a, c.a));
 }
+
+// Vello's RGBA8 target (straight alpha; colours were handed to Vello as linear values) ->
+// premultiplied linear Rgba16Float, so the result joins the graph like any other node.
+@compute @workgroup_size(8, 8)
+fn vello_resolve(@builtin(global_invocation_id) gid: vec3<u32>) {
+  if (!in_bounds(gid)) {
+    return;
+  }
+  let p = vec2<i32>(gid.xy);
+  let c = textureLoad(src_a, p, 0);
+  textureStore(dst, p, vec4<f32>(c.rgb * c.a, c.a));
+}

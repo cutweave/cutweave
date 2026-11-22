@@ -23,6 +23,8 @@ pub enum Error {
     InvalidGraph(String),
     #[error(".cube parse error at line {line}: {msg}")]
     Cube { line: usize, msg: String },
+    #[error("font: {0}")]
+    Font(String),
     #[error("image: {0}")]
     Image(String),
     #[error(transparent)]

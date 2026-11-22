@@ -97,6 +97,21 @@ fn composite_layer(
     if layer.opacity.is_nan() || layer.opacity <= 0.0 {
         return Ok(());
     }
+    if let Node::Text(t) = &layer.content {
+        // Same semantics as the graph: glyphs rasterised through the layer transform at canvas
+        // resolution (no resampling), effects in canvas pixels, placed without a transform.
+        let box_size = [f64::from(t.box_size[0]), f64::from(t.box_size[1])];
+        let target = layer.transform.forward(box_size);
+        let mut content = render_text(t, &target, (canvas.w, canvas.h))?;
+        for e in &layer.effects {
+            content = apply_effect(content, e, provider)?;
+        }
+        let opacity = f64::from(layer.opacity.min(1.0));
+        for (d, s) in canvas.px.iter_mut().zip(&content.px) {
+            *d = blend(*d, s.map(|v| v * opacity), layer.blend);
+        }
+        return Ok(());
+    }
     let mut content = render_node(&layer.content, (canvas.w, canvas.h), provider)?;
     for e in &layer.effects {
         content = apply_effect(content, e, provider)?;
@@ -258,10 +273,44 @@ fn render_node(
                     .collect();
             Ok(LinearImage { w: a.w, h: a.h, px })
         }
-        Node::Text(_) => Err(Error::Unsupported(
-            "text rendering lands in WP-0F.02 (MSDF / Vello)".into(),
-        )),
+        Node::Text(t) => {
+            let size = (
+                t.box_size[0].ceil().max(1.0) as u32,
+                t.box_size[1].ceil().max(1.0) as u32,
+            );
+            render_text(t, &[1.0, 0.0, 0.0, 0.0, 1.0, 0.0], size)
+        }
     }
+}
+
+thread_local! {
+    static TEXT: std::cell::RefCell<Option<crate::text::TextEngine>> =
+        const { std::cell::RefCell::new(None) };
+}
+
+/// Text via the 8×8-supersampled exact-outline rasteriser (`text::raster`); fill, spans and
+/// karaoke only (outline / shadow → `Unsupported`).
+fn render_text(
+    t: &crate::scene::TextNode,
+    target: &[f64; 6],
+    size: (u32, u32),
+) -> Result<LinearImage> {
+    TEXT.with(|cell| {
+        let mut slot = cell.borrow_mut();
+        if slot.is_none() {
+            *slot = Some(crate::text::TextEngine::new()?);
+        }
+        let engine = slot
+            .as_mut()
+            .ok_or_else(|| Error::Font("text engine".into()))?;
+        let (r, _) = engine.prepare(t);
+        let px = crate::text::raster::render(engine, &r, target, size)?;
+        Ok(LinearImage {
+            w: size.0,
+            h: size.1,
+            px,
+        })
+    })
 }
 
 fn plane_bilinear(plane: &[u16], w: u32, h: u32, x: f64, y: f64) -> f64 {
@@ -453,11 +502,29 @@ mod tests {
     }
 
     #[test]
-    fn text_is_unsupported_until_wp_0f02() {
+    fn text_renders_fill_and_rejects_outline_in_the_reference() {
         let p = SyntheticSources::new(320, 180).expect("sources");
-        assert!(matches!(
-            render(&text_scene(320, 180), &p),
-            Err(Error::Unsupported(_))
-        ));
+        let mut s = text_scene(320, 180);
+        s.layers.truncate(1);
+        s.effects.clear();
+        let plain = {
+            let mut s = s.clone();
+            s.layers.clear();
+            render(&s, &p).expect("no text")
+        };
+        let mut with_text = s.clone();
+        with_text.layers.clear();
+        with_text
+            .layers
+            .push(text_scene(320, 180).layers[3].clone());
+        let img = render(&with_text, &p).expect("text");
+        assert!(img.diff_count(&plain) > 50, "glyphs were drawn");
+        if let Node::Text(t) = &mut with_text.layers[0].content {
+            t.outline = Some(crate::scene::TextOutline {
+                width_px: 2.0,
+                color_srgb: [0.0, 0.0, 0.0, 1.0],
+            });
+        }
+        assert!(matches!(render(&with_text, &p), Err(Error::Unsupported(_))));
     }
 }

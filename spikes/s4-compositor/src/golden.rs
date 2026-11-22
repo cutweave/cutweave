@@ -48,6 +48,64 @@ pub fn write_set(renderer: &mut Renderer, root: &Path) -> Result<PathBuf> {
     Ok(dir)
 }
 
+/// Text golden frame size (WP-0F.02; caption glyphs ≈ 19 px).
+pub const TEXT_GOLDEN_SIZE: (u32, u32) = (512, 288);
+
+/// Renders the text golden scenes (caption over the demo + multi-script, MSDF and Vello; Vello
+/// is skipped on software adapters, where it is unsupported — see `text_gpu::ensure_vello`).
+pub fn render_text_set(renderer: &mut Renderer) -> Result<Vec<(String, Image)>> {
+    let (w, h) = TEXT_GOLDEN_SIZE;
+    let provider = SyntheticSources::new(w, h)?;
+    let mut out = Vec::new();
+    let software = renderer.adapter().software;
+    for (name, scene) in crate::timeline::text_golden_scenes(w, h) {
+        if software && name.contains("_vello") {
+            continue;
+        }
+        let frame = renderer.render_scene(&scene, &provider)?;
+        out.push((name, frame.image));
+    }
+    Ok(out)
+}
+
+/// Writes the text golden set for `renderer`'s adapter.
+pub fn write_text_set(renderer: &mut Renderer, root: &Path) -> Result<PathBuf> {
+    let dir = root.join(&renderer.adapter().key);
+    let cicp = cicp_for(&crate::scene::OutputTransform::default());
+    for (name, img) in render_text_set(renderer)? {
+        write_png(&dir.join(format!("{name}.png")), &img, Some(cicp))?;
+    }
+    Ok(dir)
+}
+
+/// Like [`check`] for the text set; an adapter whose directory lacks the text frames is
+/// compared cross-adapter against `fallback_set`.
+pub fn check_text(
+    renderer: &mut Renderer,
+    root: &Path,
+    fallback_set: &str,
+) -> Result<Vec<GoldenRow>> {
+    let own = renderer.adapter().key.clone();
+    let has_own = root.join(&own).join("text_multiscript_msdf.png").exists();
+    let (set, same) = if has_own {
+        (own, true)
+    } else {
+        (fallback_set.to_string(), false)
+    };
+    let dir = root.join(&set);
+    let mut rows = Vec::new();
+    for (name, img) in render_text_set(renderer)? {
+        let reference = read_png(&dir.join(format!("{name}.png")))?;
+        rows.push(GoldenRow {
+            scene: name,
+            reference_set: set.clone(),
+            same_adapter: same,
+            cmp: compare(&img, &reference, Transfer::Bt709),
+        });
+    }
+    Ok(rows)
+}
+
 /// Adapter keys that have a golden set under `root`.
 #[must_use]
 pub fn available_sets(root: &Path) -> Vec<String> {

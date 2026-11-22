@@ -52,8 +52,17 @@ pub enum PassOp {
     },
     /// Anti-aliased rounded rectangle filled with a premultiplied linear colour.
     Shape { corner_radius: f32, color: [f32; 4] },
-    /// Text run → glyph texture. Executed by WP-0F.02; reported as unsupported for now.
-    Text { node: TextNode },
+    /// Text node → glyph texture (WP-0F.02, MSDF atlas or Vello). `transform` maps box px to the
+    /// pass's output px: text is rasterised at its final resolution (no resampling of glyphs).
+    Text { node: TextNode, transform: [f32; 6] },
+    /// MSDF text drawn directly over input 0 (the backdrop) with fixed-function premultiplied
+    /// "over" and the layer `opacity`: no text intermediate, no clear, no full-frame composite.
+    /// Used for normal-blend MSDF text layers without effects; `transform`: box px → canvas px.
+    TextOver {
+        node: TextNode,
+        transform: [f32; 6],
+        opacity: f32,
+    },
     /// One direction of a separable Gaussian.
     Blur { horizontal: bool, radius: f32 },
     /// 3D LUT in `space`.
@@ -84,6 +93,7 @@ impl PassOp {
             Self::Decode { .. } => "decode",
             Self::Shape { .. } => "shape",
             Self::Text { .. } => "text",
+            Self::TextOver { .. } => "text-over",
             Self::Blur { .. } => "blur",
             Self::Lut { .. } => "lut",
             Self::Dissolve { .. } => "dissolve",
@@ -334,12 +344,17 @@ impl Builder<'_> {
             } => {
                 h.f32(*corner_radius).f32s(color);
             }
-            PassOp::Text { node } => {
-                h.str(&node.text)
-                    .str(&node.font)
-                    .f32(node.size_px)
-                    .f32s(&node.fill_srgb);
-                h.f32s(&node.box_size);
+            PassOp::Text { node, transform } => {
+                hash_text(node, h);
+                h.f32s(transform);
+            }
+            PassOp::TextOver {
+                node,
+                transform,
+                opacity,
+            } => {
+                hash_text(node, h);
+                h.f32s(transform).f32(*opacity);
             }
             PassOp::Blur { horizontal, radius } => {
                 h.u32(u32::from(*horizontal)).f32(*radius);
@@ -490,6 +505,9 @@ impl Builder<'_> {
             self.g.stats.transitions_layer_space += 1;
             return Ok(self.place(backdrop, d, &inv, layer, size, canvas));
         }
+        if let Node::Text(t) = &layer.content {
+            return self.text_layer(backdrop, layer, t, canvas);
+        }
         let (lw, lh) = self.node_size(&layer.content, canvas)?;
         let size = [f64::from(lw), f64::from(lh)];
         let fwd = layer.transform.forward(size);
@@ -500,6 +518,81 @@ impl Builder<'_> {
         let content = self.node(&layer.content, &layer.id, canvas)?;
         let content = self.effects(content, &layer.effects, &layer.id, (lw, lh))?;
         Ok(self.place(backdrop, content, &inv, layer, (lw, lh), canvas))
+    }
+
+    /// Text layers are rasterised in canvas space: the text pass draws the glyphs through the
+    /// full layer transform into a texture covering the transformed box's pixel bounds (clipped
+    /// to the canvas), which the compositor then places with an integer translation (an exact
+    /// copy). Glyphs are never resampled, so sub-pixel motion, rotation and scale stay crisp.
+    /// Effects on a text layer therefore run in canvas pixels. Plain MSDF text layers skip the
+    /// intermediate entirely (`TextOver`).
+    fn text_layer(
+        &mut self,
+        backdrop: Res,
+        layer: &Layer,
+        t: &TextNode,
+        canvas: (u32, u32),
+    ) -> Result<Res> {
+        let size = [
+            f64::from(t.box_size[0].max(0.0)),
+            f64::from(t.box_size[1].max(0.0)),
+        ];
+        let fwd = layer.transform.forward(size);
+        let corners =
+            [[0.0, 0.0], [size[0], 0.0], [0.0, size[1]], size].map(|p| apply_affine(&fwd, p));
+        let (mut x0, mut y0, mut x1, mut y1) = (f64::MAX, f64::MAX, f64::MIN, f64::MIN);
+        for c in corners {
+            x0 = x0.min(c[0]);
+            y0 = y0.min(c[1]);
+            x1 = x1.max(c[0]);
+            y1 = y1.max(c[1]);
+        }
+        let bx0 = x0.floor().max(0.0);
+        let by0 = y0.floor().max(0.0);
+        let bx1 = x1.ceil().min(f64::from(canvas.0));
+        let by1 = y1.ceil().min(f64::from(canvas.1));
+        if invert_affine(&fwd).is_none() || bx1 <= bx0 || by1 <= by0 || t.text.is_empty() {
+            self.g.stats.layers_culled += 1;
+            return Ok(backdrop);
+        }
+        // Fast path (WP-0F.01 finding 5a): normal-blend MSDF text without effects is drawn
+        // straight onto the backdrop. Same result as text-then-composite up to f16 rounding of
+        // the per-glyph blends.
+        if layer.blend == BlendMode::Normal
+            && layer.effects.is_empty()
+            && t.renderer == crate::scene::TextRenderer::Msdf
+        {
+            return Ok(self.pass(
+                format!("text-over {}", layer.id),
+                PassOp::TextOver {
+                    node: t.clone(),
+                    transform: fwd.map(|v| v as f32),
+                    opacity: layer.opacity.min(1.0),
+                },
+                vec![backdrop.id],
+                canvas,
+            ));
+        }
+        let dims = ((bx1 - bx0) as u32, (by1 - by0) as u32);
+        let target = compose_affine(&[1.0, 0.0, -bx0, 0.0, 1.0, -by0], &fwd);
+        let content = self.pass(
+            format!("text {}", layer.id),
+            PassOp::Text {
+                node: t.clone(),
+                transform: target.map(|v| v as f32),
+            },
+            vec![],
+            dims,
+        );
+        let content = self.effects(content, &layer.effects, &layer.id, dims)?;
+        Ok(self.place(
+            backdrop,
+            content,
+            &[1.0, 0.0, -bx0, 0.0, 1.0, -by0],
+            layer,
+            dims,
+            canvas,
+        ))
     }
 
     fn place(
@@ -598,10 +691,14 @@ impl Builder<'_> {
                 ))
             }
             Node::Text(t) => {
+                // Intrinsic-size rendering (e.g. both sides of a layer-space transition).
                 let size = self.node_size(node, canvas)?;
                 Ok(self.pass(
                     format!("text {label}"),
-                    PassOp::Text { node: t.clone() },
+                    PassOp::Text {
+                        node: t.clone(),
+                        transform: crate::text::IDENTITY,
+                    },
                     vec![],
                     size,
                 ))
@@ -701,6 +798,48 @@ impl Builder<'_> {
             }
         }
         Ok(cur)
+    }
+}
+
+/// Canonical hash of everything a text pass depends on.
+fn hash_text(t: &TextNode, h: &mut Fnv) {
+    h.str(&t.text)
+        .str(&t.font)
+        .f32(t.size_px)
+        .f32s(&t.fill_srgb)
+        .f32s(&t.box_size)
+        .u32(t.align as u32)
+        .f32(t.line_height)
+        .u32(t.renderer as u32);
+    match t.outline {
+        Some(o) => h.u32(1).f32(o.width_px).f32s(&o.color_srgb),
+        None => h.u32(0),
+    };
+    match t.shadow {
+        Some(s) => h
+            .u32(1)
+            .f32s(&s.offset_px)
+            .f32(s.blur_px)
+            .f32s(&s.color_srgb),
+        None => h.u32(0),
+    };
+    h.u64(t.spans.len() as u64);
+    for s in &t.spans {
+        h.u32(s.range[0])
+            .u32(s.range[1])
+            .u32(u32::from(s.per_glyph))
+            .f32s(&s.offset_px)
+            .f32s(&s.scale)
+            .f32(s.rotation_deg)
+            .f32(s.opacity);
+        match s.fill_srgb {
+            Some(c) => h.u32(1).f32s(&c),
+            None => h.u32(0),
+        };
+        match s.highlight {
+            Some(hl) => h.u32(1).f32s(&hl.color_srgb).f32(hl.progress),
+            None => h.u32(0),
+        };
     }
 }
 
@@ -964,23 +1103,103 @@ mod tests {
         assert!(matches!(cyc.topo_order(), Err(Error::InvalidGraph(_))));
     }
 
+    fn with_caption(f: impl FnOnce(&mut Layer)) -> Scene {
+        let mut s = text_scene(320, 180);
+        f(&mut s.layers[3]);
+        s
+    }
+
     #[test]
-    fn text_node_lowers_to_a_cacheable_text_pass() {
+    fn plain_msdf_text_is_drawn_over_the_backdrop_in_place() {
         let p = provider();
         let g = build(&text_scene(320, 180), &p).expect("build");
         let t = g
             .passes
             .iter()
-            .find(|p| p.op.name() == "text")
-            .expect("text pass");
-        assert!(t.cacheable);
+            .find(|p| p.op.name() == "text-over")
+            .expect("text-over pass");
+        assert!(!t.cacheable);
+        assert_eq!(t.inputs.len(), 1, "reads the backdrop");
         assert_eq!(
             g.resources[t.output],
             ResourceDesc {
-                width: 520,
-                height: 110
+                width: 320,
+                height: 180
             }
         );
+        let PassOp::TextOver { transform, .. } = &t.op else {
+            panic!("text-over op")
+        };
+        assert_eq!(*transform, [1.0, 0.0, 80.0, 0.0, 1.0, -40.0]);
+        assert!(
+            !g.passes
+                .iter()
+                .any(|p| p.label.starts_with("composite caption"))
+        );
+    }
+
+    #[test]
+    fn other_text_layers_render_to_a_canvas_space_intermediate() {
+        let p = provider();
+        for s in [
+            with_caption(|l| l.blend = BlendMode::Screen),
+            with_caption(|l| l.effects.push(Effect::BlurLite { radius: 2.0 })),
+            with_caption(|l| {
+                if let Node::Text(t) = &mut l.content {
+                    t.renderer = crate::scene::TextRenderer::Vello;
+                }
+            }),
+        ] {
+            let g = build(&s, &p).expect("build");
+            let t = g
+                .passes
+                .iter()
+                .find(|p| p.op.name() == "text")
+                .expect("text pass");
+            assert!(t.cacheable);
+            // Box 520×110 at (80, −40) on a 320×180 canvas → pixel bounds clipped to the canvas.
+            assert_eq!(
+                g.resources[t.output],
+                ResourceDesc {
+                    width: 240,
+                    height: 70
+                }
+            );
+            let PassOp::Text { transform, .. } = &t.op else {
+                panic!("text op")
+            };
+            assert_eq!(*transform, [1.0, 0.0, 0.0, 0.0, 1.0, -40.0]);
+            // Placed with an integer translation (exact copy).
+            let c = g
+                .passes
+                .iter()
+                .find(|p| p.label.starts_with("composite caption"))
+                .expect("composite");
+            let PassOp::Composite { inverse, .. } = c.op else {
+                panic!("composite op")
+            };
+            assert_eq!(inverse, [1.0, 0.0, -80.0, 0.0, 1.0, 0.0]);
+        }
+    }
+
+    #[test]
+    fn animated_text_changes_the_key_static_text_does_not() {
+        let p = provider();
+        let key = |s: &Scene| {
+            let g = build(s, &p).expect("build");
+            g.passes
+                .iter()
+                .find(|p| p.op.name().starts_with("text"))
+                .map(|p| p.key)
+                .expect("text")
+        };
+        let a = text_scene(320, 180);
+        let mut b = a.clone();
+        assert_eq!(key(&a), key(&b));
+        if let Node::Text(t) = &mut b.layers[3].content {
+            t.spans.push(crate::scene::TextSpan::new([0, 3]));
+        }
+        assert_ne!(key(&a), key(&b));
     }
 
     #[test]

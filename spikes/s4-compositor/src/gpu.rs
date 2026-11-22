@@ -14,6 +14,8 @@ use crate::hash::CacheKey;
 use crate::image::Image;
 use crate::scene::{Primaries, Scene, Transfer};
 use crate::source::{PixelData, SourceProvider};
+use crate::text::TextCpuStats;
+use crate::text_gpu::{TextGpu, pack_instances, text_params};
 use crate::{Error, Result};
 
 const COMMON_WGSL: &str = include_str!("shaders/common.wgsl");
@@ -24,6 +26,13 @@ const OUTPUT_WGSL: &str = include_str!("shaders/output.wgsl");
 
 const WORKING_FORMAT: wgpu::TextureFormat = wgpu::TextureFormat::Rgba16Float;
 const UNIFORM_SIZE: u64 = 256;
+
+/// Finding (WP-0F.01): creating compute pipelines concurrently on several WARP devices from
+/// different threads crashes the process (STATUS_ACCESS_VIOLATION in ~50% of parallel test runs
+/// on Win11 26200; hardware DX12/Vulkan adapters were fine). Serialising pipeline creation
+/// process-wide fixed it (0 crashes in 20 runs). The text pipeline and Vello's ~30 pipelines
+/// (WP-0F.02) are created under the same lock.
+pub(crate) static PIPELINE_CREATION: Mutex<()> = Mutex::new(());
 
 /// Which adapter to use.
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -100,6 +109,8 @@ fn instance() -> wgpu::Instance {
     desc.backends = wgpu::Backends::from_env().unwrap_or(wgpu::Backends::PRIMARY);
     // Backend validation layers off by default (they distort timings); WGPU_* env can enable.
     desc.flags = wgpu::InstanceFlags::empty().with_env();
+    // `WGPU_DX12_COMPILER` etc. may override the backend options (WP-0F.02 WARP experiments).
+    desc.backend_options = std::mem::take(&mut desc.backend_options).with_env();
     wgpu::Instance::new(desc)
 }
 
@@ -221,6 +232,7 @@ struct Pipelines {
     blur: Pipe,
     lut: Pipe,
     output: Pipe,
+    vello_resolve: Pipe,
 }
 
 fn make_pipe(
@@ -345,6 +357,12 @@ fn create_pipelines(device: &wgpu::Device) -> Result<Pipelines> {
             "main",
             &[(0, Uniform), (1, TexF), (2, StoreBuf)],
         ),
+        vello_resolve: make_pipe(
+            device,
+            &effects,
+            "vello_resolve",
+            &[(0, Uniform), (1, TexF), (3, StoreTex)],
+        ),
     };
     if let Some(e) = pollster::block_on(scope.pop()) {
         return Err(Error::Gpu(format!("pipeline creation: {e}")));
@@ -386,6 +404,10 @@ pub struct FrameStats {
     pub passes_run: usize,
     pub cache_hits: usize,
     pub textures_created: usize,
+    /// CPU work of the frame's text passes (layout, instance / scene build, atlas generation).
+    pub text: TextCpuStats,
+    /// GPU time of the frame's text passes (MSDF draw; or Vello's submission + resolve).
+    pub text_gpu_ns: Option<u64>,
 }
 
 /// A rendered frame.
@@ -422,16 +444,12 @@ pub struct Renderer {
     queries: Option<Queries>,
     lost: Arc<AtomicBool>,
     errors: Arc<Mutex<Vec<String>>>,
+    text: Option<TextGpu>,
 }
 
 impl Renderer {
     /// Creates a renderer on the chosen adapter.
     pub fn new(choice: &AdapterChoice) -> Result<Self> {
-        // Finding: creating compute pipelines concurrently on several WARP devices from different
-        // threads crashes the process (STATUS_ACCESS_VIOLATION in ~50% of parallel test runs on
-        // Win11 26200; hardware DX12/Vulkan adapters were fine). Serialising pipeline creation
-        // process-wide fixed it (0 crashes in 20 runs).
-        static PIPELINE_CREATION: Mutex<()> = Mutex::new(());
         let (index, adapter) = pick(enumerate(), choice)?;
         let summary = summarize(index, &adapter);
         let features = if summary.timestamps {
@@ -476,7 +494,42 @@ impl Renderer {
             queries: None,
             lost,
             errors,
+            text: None,
         })
+    }
+
+    /// GPU memory from the backend allocator (DX12/Vulkan): (allocated, reserved) bytes.
+    #[must_use]
+    pub fn gpu_memory(&self) -> Option<(u64, u64)> {
+        self.device
+            .generate_allocator_report()
+            .map(|r| (r.total_allocated_bytes, r.total_reserved_bytes))
+    }
+
+    /// Text atlas state: (glyphs, texture bytes, total glyphs generated, total generation ms).
+    #[must_use]
+    pub fn text_atlas_info(&self) -> Option<(usize, u64, usize, f64)> {
+        self.text.as_ref().map(|t| {
+            let a = &t.engine.atlas;
+            (a.len(), t.atlas_bytes(), a.total_generated, a.total_ms)
+        })
+    }
+
+    /// The text engine (fonts, layouts, atlas), created on first use.
+    pub fn text_engine(&mut self) -> Result<&mut crate::text::TextEngine> {
+        self.ensure_text()?;
+        self.text
+            .as_mut()
+            .map(|t| &mut t.engine)
+            .ok_or_else(|| Error::Gpu("text engine".into()))
+    }
+
+    fn ensure_text(&mut self) -> Result<()> {
+        if self.text.is_none() {
+            let _serialised = PIPELINE_CREATION.lock();
+            self.text = Some(TextGpu::new(&self.device)?);
+        }
+        Ok(())
     }
 
     /// The adapter this renderer runs on.
@@ -519,7 +572,12 @@ impl Renderer {
             sample_count: 1,
             dimension: wgpu::TextureDimension::D2,
             format: WORKING_FORMAT,
-            usage: wgpu::TextureUsages::STORAGE_BINDING | wgpu::TextureUsages::TEXTURE_BINDING,
+            // RENDER_ATTACHMENT / COPY_*: `TextOver` draws glyphs straight onto a backdrop.
+            usage: wgpu::TextureUsages::STORAGE_BINDING
+                | wgpu::TextureUsages::TEXTURE_BINDING
+                | wgpu::TextureUsages::RENDER_ATTACHMENT
+                | wgpu::TextureUsages::COPY_SRC
+                | wgpu::TextureUsages::COPY_DST,
             view_formats: &[],
         })
     }
@@ -606,7 +664,7 @@ impl Renderer {
         t
     }
 
-    fn ensure_buffers(&mut self, passes: usize, out_bytes: u64) {
+    fn ensure_buffers(&mut self, passes: usize, timed: usize, out_bytes: u64) {
         while self.uniforms.len() < passes {
             self.uniforms
                 .push(self.device.create_buffer(&wgpu::BufferDescriptor {
@@ -635,7 +693,7 @@ impl Renderer {
                 map,
             });
         }
-        let need = (2 * passes) as u32;
+        let need = (2 * timed) as u32;
         if self.summary.timestamps && self.queries.as_ref().is_none_or(|q| q.capacity < need) {
             let capacity = need.next_power_of_two().max(64);
             let set = self.device.create_query_set(&wgpu::QuerySetDescriptor {
@@ -841,9 +899,9 @@ impl Renderer {
                 vec![(1, input(0)?)],
                 vec![],
             ),
-            PassOp::Text { .. } => {
-                return Err(Error::Unsupported(
-                    "text rendering lands in WP-0F.02".into(),
+            PassOp::Text { .. } | PassOp::TextOver { .. } => {
+                return Err(Error::InvalidGraph(
+                    "text passes are encoded by encode_text".into(),
                 ));
             }
         })
@@ -863,6 +921,237 @@ impl Renderer {
         }
     }
 
+    /// A text pass output: rendered to (MSDF) and written by compute (Vello resolve), then
+    /// sampled by the compositor.
+    fn text_texture(&self, w: u32, h: u32) -> wgpu::Texture {
+        self.device.create_texture(&wgpu::TextureDescriptor {
+            label: Some("text"),
+            size: wgpu::Extent3d {
+                width: w,
+                height: h,
+                depth_or_array_layers: 1,
+            },
+            mip_level_count: 1,
+            sample_count: 1,
+            dimension: wgpu::TextureDimension::D2,
+            format: WORKING_FORMAT,
+            usage: wgpu::TextureUsages::STORAGE_BINDING
+                | wgpu::TextureUsages::TEXTURE_BINDING
+                | wgpu::TextureUsages::RENDER_ATTACHMENT,
+            view_formats: &[],
+        })
+    }
+
+    /// Encodes one text pass. MSDF: instanced draw into `out`. Vello: Vello renders (and submits)
+    /// into an RGBA8 target bracketed by timestamp marker passes, then a resolve pass in
+    /// `encoder` converts it into `out`. Returns the timed labels (bool = text work).
+    #[allow(clippy::too_many_arguments)]
+    fn encode_text(
+        &mut self,
+        encoder: &mut wgpu::CommandEncoder,
+        op: &PassOp,
+        label: &str,
+        size: [u32; 2],
+        pos: usize,
+        text_slot: usize,
+        ts_base: u32,
+        out: &wgpu::Texture,
+        keep_alive: &mut Vec<wgpu::Texture>,
+        stats: &mut FrameStats,
+    ) -> Result<Vec<String>> {
+        let (node, transform, over) = match op {
+            PassOp::Text { node, transform } => (node, transform, None),
+            PassOp::TextOver {
+                node,
+                transform,
+                opacity,
+            } => (node, transform, Some(*opacity)),
+            _ => return Err(Error::InvalidGraph("not a text pass".into())),
+        };
+        self.ensure_text()?;
+        let text = self
+            .text
+            .as_mut()
+            .ok_or_else(|| Error::Gpu("text engine".into()))?;
+        let (r, mut st) = text.engine.prepare(node);
+        let out_view = out.create_view(&wgpu::TextureViewDescriptor::default());
+        let ts = |i: u32| self.queries.as_ref().map(|q| (q, 2 * (ts_base + i)));
+        let mut timed = Vec::new();
+        match node.renderer {
+            crate::scene::TextRenderer::Msdf => {
+                st.atlas_ms = text.engine.ensure_glyphs(&r).ms;
+                let t0 = Instant::now();
+                text.scratch.clear();
+                let mut scratch = std::mem::take(&mut text.scratch);
+                pack_instances(&r, &text.engine.atlas, &mut scratch);
+                st.build_ms += t0.elapsed().as_secs_f64() * 1e3;
+                st.instances = scratch.len();
+                let params =
+                    text_params(transform, size, &r, &text.engine.atlas, over.unwrap_or(1.0));
+                let atlas = text.atlas_view(&self.device, &self.queue);
+                let bytes: &[u8] = bytemuck::cast_slice(&scratch);
+                let buf = text.instance_buffer(&self.device, text_slot, bytes.len() as u64);
+                if !bytes.is_empty() {
+                    self.queue.write_buffer(&buf, 0, bytes);
+                }
+                let uniform = &self.uniforms[pos];
+                self.queue
+                    .write_buffer(uniform, 0, bytemuck::cast_slice(&params));
+                let bind = self.device.create_bind_group(&wgpu::BindGroupDescriptor {
+                    label: Some(label),
+                    layout: &text.layout,
+                    entries: &[
+                        wgpu::BindGroupEntry {
+                            binding: 0,
+                            resource: uniform.as_entire_binding(),
+                        },
+                        wgpu::BindGroupEntry {
+                            binding: 1,
+                            resource: wgpu::BindingResource::TextureView(&atlas),
+                        },
+                        wgpu::BindGroupEntry {
+                            binding: 2,
+                            resource: buf.as_entire_binding(),
+                        },
+                    ],
+                });
+                {
+                    let timestamp_writes = ts(0).map(|(q, i)| wgpu::RenderPassTimestampWrites {
+                        query_set: &q.set,
+                        beginning_of_pass_write_index: Some(i),
+                        end_of_pass_write_index: Some(i + 1),
+                    });
+                    let mut rp = encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
+                        label: Some(label),
+                        color_attachments: &[Some(wgpu::RenderPassColorAttachment {
+                            view: &out_view,
+                            depth_slice: None,
+                            resolve_target: None,
+                            ops: wgpu::Operations {
+                                load: if over.is_some() {
+                                    wgpu::LoadOp::Load
+                                } else {
+                                    wgpu::LoadOp::Clear(wgpu::Color::TRANSPARENT)
+                                },
+                                store: wgpu::StoreOp::Store,
+                            },
+                        })],
+                        depth_stencil_attachment: None,
+                        timestamp_writes,
+                        occlusion_query_set: None,
+                        multiview_mask: None,
+                    });
+                    if !scratch.is_empty() {
+                        rp.set_pipeline(&text.pipeline);
+                        rp.set_bind_group(0, &bind, &[]);
+                        rp.draw(0..6, 0..scratch.len() as u32);
+                    }
+                }
+                text.scratch = scratch;
+                timed.push(format!("{label} (msdf)"));
+            }
+            crate::scene::TextRenderer::Vello => {
+                text.ensure_vello(&self.device, self.summary.software)?;
+                let t0 = Instant::now();
+                let scene = text.vello_scene(&r, transform);
+                st.build_ms += t0.elapsed().as_secs_f64() * 1e3;
+                st.instances = r.glyphs.len();
+                let target = text.vello_target(&self.device, size[0], size[1]);
+                let target_view = target.create_view(&wgpu::TextureViewDescriptor::default());
+                let marker = |begin: bool| {
+                    let mut enc =
+                        self.device
+                            .create_command_encoder(&wgpu::CommandEncoderDescriptor {
+                                label: Some("vello-marker"),
+                            });
+                    {
+                        let timestamp_writes =
+                            ts(0).map(|(q, i)| wgpu::ComputePassTimestampWrites {
+                                query_set: &q.set,
+                                beginning_of_pass_write_index: begin.then_some(i),
+                                end_of_pass_write_index: (!begin).then_some(i + 1),
+                            });
+                        let _cp = enc.begin_compute_pass(&wgpu::ComputePassDescriptor {
+                            label: Some("vello-marker"),
+                            timestamp_writes,
+                        });
+                    }
+                    self.queue.submit([enc.finish()]);
+                };
+                marker(true);
+                let vello = text
+                    .vello
+                    .as_mut()
+                    .ok_or_else(|| Error::Gpu("vello renderer".into()))?;
+                vello
+                    .render_to_texture(
+                        &self.device,
+                        &self.queue,
+                        &scene,
+                        &target_view,
+                        &vello::RenderParams {
+                            base_color: vello::peniko::Color::TRANSPARENT,
+                            width: size[0],
+                            height: size[1],
+                            antialiasing_method: vello::AaConfig::Area,
+                        },
+                    )
+                    .map_err(|e| Error::Gpu(format!("vello render: {e}")))?;
+                marker(false);
+                timed.push(format!("{label} (vello)"));
+                // Resolve RGBA8 straight → Rgba16Float premultiplied, in the frame encoder.
+                let uniform = &self.uniforms[pos];
+                self.queue.write_buffer(
+                    uniform,
+                    0,
+                    U::default().u4([size[0], size[1], 0, 0]).bytes(),
+                );
+                let pipe = &self.pipes.vello_resolve;
+                let bind = self.device.create_bind_group(&wgpu::BindGroupDescriptor {
+                    label: Some("vello-resolve"),
+                    layout: &pipe.layout,
+                    entries: &[
+                        wgpu::BindGroupEntry {
+                            binding: 0,
+                            resource: uniform.as_entire_binding(),
+                        },
+                        wgpu::BindGroupEntry {
+                            binding: 1,
+                            resource: wgpu::BindingResource::TextureView(&target_view),
+                        },
+                        wgpu::BindGroupEntry {
+                            binding: 3,
+                            resource: wgpu::BindingResource::TextureView(&out_view),
+                        },
+                    ],
+                });
+                {
+                    let timestamp_writes = ts(1).map(|(q, i)| wgpu::ComputePassTimestampWrites {
+                        query_set: &q.set,
+                        beginning_of_pass_write_index: Some(i),
+                        end_of_pass_write_index: Some(i + 1),
+                    });
+                    let mut cp = encoder.begin_compute_pass(&wgpu::ComputePassDescriptor {
+                        label: Some("vello-resolve"),
+                        timestamp_writes,
+                    });
+                    cp.set_pipeline(&pipe.pipeline);
+                    cp.set_bind_group(0, &bind, &[]);
+                    cp.dispatch_workgroups(size[0].div_ceil(8), size[1].div_ceil(8), 1);
+                }
+                timed.push(format!("{label} (vello resolve)"));
+                keep_alive.push(target.clone());
+                text.recycle_vello_target(target);
+            }
+        }
+        stats.text.layout_ms += st.layout_ms;
+        stats.text.build_ms += st.build_ms;
+        stats.text.atlas_ms += st.atlas_ms;
+        stats.text.glyphs += st.glyphs;
+        stats.text.instances += st.instances;
+        Ok(timed)
+    }
+
     /// Executes `graph` and reads the output back.
     pub fn render(&mut self, graph: &RenderGraph) -> Result<Frame> {
         if self.lost.load(Ordering::SeqCst) {
@@ -871,14 +1160,15 @@ impl Renderer {
         let t0 = Instant::now();
         let order = graph.topo_order()?;
         let last = graph.last_uses(&order);
-        for p in &graph.passes {
-            if matches!(p.op, PassOp::Text { .. }) && !self.cache.contains_key(&p.key) {
-                return Err(Error::Unsupported(format!(
-                    "`{}`: text rendering lands in WP-0F.02 (MSDF / Vello)",
-                    p.label
-                )));
-            }
-        }
+        // Vello text passes take two timestamp slots (Vello's own submission + the resolve).
+        let vello_passes = graph
+            .passes
+            .iter()
+            .filter(|p| {
+                matches!(&p.op, PassOp::Text { node, .. }
+                    if node.renderer == crate::scene::TextRenderer::Vello)
+            })
+            .count();
         let (w, h) = (graph.width, graph.height);
         let bits = graph
             .passes
@@ -889,7 +1179,12 @@ impl Renderer {
             })
             .ok_or_else(|| Error::InvalidGraph("graph output is not an output pass".into()))?;
         let out_bytes = u64::from(w) * u64::from(h) * if bits == 16 { 8 } else { 4 };
-        self.ensure_buffers(graph.passes.len(), out_bytes);
+        self.ensure_buffers(
+            graph.passes.len(),
+            graph.passes.len() + vello_passes,
+            out_bytes,
+        );
+        let mut text_slot = 0;
         let luts: Vec<wgpu::Texture> = graph.luts.iter().map(|l| self.lut_texture(l)).collect();
 
         let mut stats = FrameStats::default();
@@ -912,6 +1207,84 @@ impl Renderer {
                 tex[pass.output] = Some(t.clone());
                 used.insert(pass.key);
                 stats.cache_hits += 1;
+            } else if matches!(pass.op, PassOp::TextOver { .. }) {
+                let res = graph.resources[pass.output];
+                let input = pass
+                    .inputs
+                    .first()
+                    .copied()
+                    .ok_or_else(|| Error::InvalidGraph("text-over without backdrop".into()))?;
+                // Move the backdrop texture when this is its last reader, else draw on a copy.
+                let out = if transient[input] && last[input] == Some(pos) {
+                    transient[input] = false;
+                    tex[input]
+                        .take()
+                        .ok_or_else(|| Error::InvalidGraph("backdrop not ready".into()))?
+                } else {
+                    let src = tex[input]
+                        .clone()
+                        .ok_or_else(|| Error::InvalidGraph("backdrop not ready".into()))?;
+                    let i = self
+                        .pool
+                        .iter()
+                        .position(|(pw, ph, _)| *pw == res.width && *ph == res.height);
+                    let dst = match i {
+                        Some(i) => self.pool.swap_remove(i).2,
+                        None => {
+                            stats.textures_created += 1;
+                            self.texture(res.width, res.height, "transient")
+                        }
+                    };
+                    encoder.copy_texture_to_texture(
+                        src.as_image_copy(),
+                        dst.as_image_copy(),
+                        src.size(),
+                    );
+                    dst
+                };
+                let labels = self.encode_text(
+                    &mut encoder,
+                    &pass.op,
+                    &pass.label,
+                    [res.width, res.height],
+                    pos,
+                    text_slot,
+                    timed.len() as u32,
+                    &out,
+                    &mut keep_alive,
+                    &mut stats,
+                )?;
+                text_slot += 1;
+                timed.extend(labels);
+                stats.passes_run += 1;
+                transient[pass.output] = true;
+                tex[pass.output] = Some(out);
+            } else if matches!(pass.op, PassOp::Text { .. }) {
+                let res = graph.resources[pass.output];
+                let out = self.text_texture(res.width, res.height);
+                stats.textures_created += 1;
+                let labels = self.encode_text(
+                    &mut encoder,
+                    &pass.op,
+                    &pass.label,
+                    [res.width, res.height],
+                    pos,
+                    text_slot,
+                    timed.len() as u32,
+                    &out,
+                    &mut keep_alive,
+                    &mut stats,
+                )?;
+                text_slot += 1;
+                timed.extend(labels);
+                stats.passes_run += 1;
+                if pass.cacheable {
+                    self.cache.insert(pass.key, out.clone());
+                    used.insert(pass.key);
+                } else {
+                    transient[pass.output] = false;
+                }
+                tex[pass.output] = Some(out);
             } else {
                 let res = graph.resources[pass.output];
                 let is_output = matches!(pass.op, PassOp::Output { .. });
@@ -1125,12 +1498,18 @@ impl Renderer {
                 let period = f64::from(self.queue.get_timestamp_period());
                 let ns = |t: u64| (t as f64 * period) as u64;
                 let (mut first, mut end) = (u64::MAX, 0u64);
+                let mut text_ns = None;
                 for (i, label) in timed.iter().enumerate() {
                     let (b, e) = (ticks[2 * i], ticks[2 * i + 1]);
                     first = first.min(b);
                     end = end.max(e);
-                    stats.pass_ns.push((label.clone(), ns(e.saturating_sub(b))));
+                    let d = ns(e.saturating_sub(b));
+                    if label.starts_with("text ") || label.starts_with("text-over ") {
+                        text_ns = Some(text_ns.unwrap_or(0) + d);
+                    }
+                    stats.pass_ns.push((label.clone(), d));
                 }
+                stats.text_gpu_ns = text_ns;
                 if end >= first {
                     stats.gpu_ns = Some(ns(end - first));
                 }
