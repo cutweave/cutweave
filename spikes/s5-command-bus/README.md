@@ -18,6 +18,8 @@ It proves the arch §5 chain end to end on a toy document:
 | `schema/commands.json`, `schema/queries.json` | Generated JSON Schema catalogs (draft 2020-12) |
 | `ts/src/generated/commands.ts` | Generated TS types, the `Commands` map and the typed `CutweaveClient` |
 | `ts/src/sample.ts`, `ts/negative/wrong_field.ts` | Typecheck fixtures (positive with `@ts-expect-error` negatives; one file that must fail) |
+| `mcp/` (`s5-mcp`) | WP-0H.02: rmcp MCP server (stdio + Streamable HTTP) over the registry; the `s5-mcp` binary; MCP tests. See [WP-0H.02: MCP server](#wp-0h02-mcp-server-rmcp-3110) |
+| `agent-run/`, `MCP-AGENT-RUN.md` | WP-0H.03 runbook, checker (`check_run.py`) and evidence (scripted stdio dry-run transcripts) |
 
 ## How to run
 
@@ -104,7 +106,7 @@ engine.subscribe();                                    // mpsc::Receiver<Event::
 
 ### Numbers
 
-- 10 entries: 9 MCP-core, 1 catalog.
+- 10 entries: 9 MCP-core, 1 catalog. (WP-0H.02 adds an 11th, `ai.set_key`: catalog, UI-only.)
 - Rough `tools/list` estimate for core params only: about 1.8k tokens (bytes/4). WP-0H.02 should measure it properly, including `outputSchema`.
 - `commands.json` is 26 KB, `queries.json` 16 KB, `commands.ts` 12 KB.
 - Each proptest property runs 96 cases. The suite runs in under 1 s, excluding about 30 s of trybuild.
@@ -117,3 +119,97 @@ engine.subscribe();                                    // mpsc::Receiver<Event::
 4. Are entity-level patches fine-grained enough for `doc.patched` events and a later Loro/CRDT mapping (ADR-005), or does Phase 1 need field-level ops?
 5. What should per-actor redo do after another actor's edit? The spike re-validates `before` and returns a conflict.
 6. specta 2.0 final versus a fallback (`ts-rs`) if the RC churn continues. The specta-specific code is small (`#[specta(...)]` overrides and the `framework_runtime` client template).
+
+## WP-0H.02: MCP server (rmcp 3.11.0)
+
+`s5-mcp` (in `mcp/`) serves the registry over MCP. It stands in for the MCP module of `cutweave-api` (arch §6 and §14, ADR-009, WP 1J). rmcp is pinned to `=3.11.0`, the latest release on crates.io on 2026-11-22 (published 2026-11-17).
+
+```sh
+cargo run -p s5-mcp -- stdio [--profile minimal|standard|full] [--agent-label L] [--state-file P] [--log-file P]
+cargo run -p s5-mcp -- http  [--port N] [--run-file P] [--allow-origin O] [--state-file P]
+cargo run -p s5-mcp -- budget                      # tools/list size per profile
+cargo test -p s5-mcp                               # 22 tests (rmcp clients, raw JSON-RPC, raw HTTP)
+S5_RECORD_DRY_RUN=1 cargo test -p s5-mcp --test stdio_dry_run   # re-record agent-run/stdio-dry-run-*
+```
+
+The WP-0H.03 runbook (Claude Code over stdio, the checker and the Inspector steps) is [MCP-AGENT-RUN.md](MCP-AGENT-RUN.md).
+
+### As built
+
+- **Core tools.** Every registry entry with `mcp = "core"` that is not UI-only becomes a tool. It keeps its name (`clip_split`), its `summary` as the description and its params schema *verbatim* as `inputSchema`, so the schema is identical to RPC. `annotations` come from the macro metadata, with `openWorldHint: false`.
+  - Results carry `structuredContent`, the RPC reply shape `{rev, result, dry_run?, deduplicated?}`, plus the same JSON as text.
+  - The matching `outputSchema` is listed only on `/mcp/full`.
+- **Generic tools** reach every non-hidden entry, including `catalog` ones (`edit.redo`, `ai.set_key`):
+  - `cutweave_search_commands` does keyword matching over name and summary.
+  - `cutweave_describe_command` returns both schemas and how to call the command.
+  - `cutweave_execute` takes `steps`, `dry_run`, `expected_rev` and `request_id`. It runs all steps in one `Tx` and one undo entry, with `{"$ref":"#/steps/N/<pointer>"}` between steps. A single engine-op or non-undoable step runs as a plain call; otherwise `edit.redo` and `project.open` would be unreachable.
+  - `cutweave_query` runs a query by name.
+  - Wire names (`clip.split`) and tool names (`clip_split`) are both accepted.
+- **Envelope for core tools.** `request_id`, `expected_rev` and `dry_run` travel in request `_meta` (`io.cutweave/*`), so `inputSchema` stays identical to RPC. LLMs cannot set `_meta`, so for a model these controls exist only on `cutweave_execute`.
+- **Errors.** A command error becomes a tool result with `isError: true` and text `{"error":{code,path?,msg,message}}`, so the model can correct itself. Only an unknown tool is a JSON-RPC error (-32602).
+- **Images.** An output schema with string `mime` and `data` is an image. The bytes go out as an MCP `image` content block (first), and `data` is removed from `structuredContent` and from `outputSchema`. This also works for `render.frame` inside a batch. Frames are PNG ≤ 768 px (the WBS says JPEG ≤ 768 px; a synthetic frame needs no JPEG encoder dependency).
+- **Profiles per endpoint.** HTTP serves `/mcp` (standard), `/mcp/minimal` and `/mcp/full` over one engine; stdio uses `--profile`. Minimal lists `timeline_get`, `render_frame`, `edit_undo` and the 4 generic tools.
+- **Change notifications.** There is one resource, `cutweave://project` (summary + rev), and one internal `Notifier` fed by the engine's `doc.patched` events. It writes either to the session peer (2025-11-25 `resources/subscribe`) or to the `subscriptions/listen` sink (2026-07-28). Nothing uses `ping`.
+- **Credentials (arch §6).**
+  - On stdio, the actor is `agent:<--agent-label>`: the process boundary is the credential.
+  - Over HTTP, an axum layer runs before rmcp and checks `Host` (`127.0.0.1:<port>` / `localhost:<port>`), then `Origin` (allowlist, empty by default), answering 403, then `Authorization: Bearer <agent token>`, answering 401 with `WWW-Authenticate`. The token's label becomes the actor; the request body never can.
+  - rmcp's own Host/Origin checks are configured as a second layer.
+  - The run-file `{pid, port, url, endpoints, agent_label, agent_token}` is written with mode 0600 on Unix and removed on exit.
+- **UI-only scope.** It is registry metadata (`#[command(scope = "ui")]`), and the macro rejects `scope = "ui"` together with `mcp = "core"`. The **engine** refuses it to any caller without the UI credential with the new error `CmdError::Forbidden{scope:"ui"}`, for single calls and for every batch step. `ai.set_key` (engine op, catalog) is the example.
+
+### Acceptance (WP-0H.02 brief) and evidence
+
+| Criterion | Status | Evidence |
+|---|---|---|
+| In-process rmcp client drives import, insert, split, render frame, undo and asserts doc state | Met | `mcp/tests/agent_flow.rs`: both revisions via MCP and directly on the engine, plus a minimal-profile variant through `cutweave_execute` with `$ref` |
+| `tools/list` size test against the budgets (documented heuristic) | Met | `mcp/tests/tool_budget.rs` and `mcp/src/budget.rs`; see the table below |
+| Conformance against 2025-11-25 and 2026-07-28 as far as rmcp supports | Met: everything below passes on both | `mcp/tests/conformance.rs` (in-process, child-process stdio and HTTP, each × 2 revisions; sessions on the wire; negotiation edges) |
+| Security: wrong/missing token → 401; bad Origin/Host → 403; UI-only scope from an agent token → forbidden | Met | `mcp/tests/security.rs`, which also covers actor-from-token (two tokens, separate undo) and the run-file |
+| `MCP-AGENT-RUN.md` + one scripted dry run through stdio | Met | [MCP-AGENT-RUN.md](MCP-AGENT-RUN.md); `mcp/tests/stdio_dry_run.rs` drives the real binary with raw JSON-RPC (no rmcp client) for the exact WP-0H.03 prompt on both revisions; transcripts and server state files in `agent-run/`, `check_run.py` passes |
+| WBS: Inspector over stdio and HTTP | Open (human, WP-0H.03) | MCP-AGENT-RUN.md §6; not run here because it downloads and executes an npm package |
+| WBS: record results in `docs/spikes/S5-report.md` | Deferred to WP-0H.03 | outside this WP's area; numbers are here |
+
+Results on Windows 11 with Rust 1.100: the workspace has **73 tests passing**. That is 51 in the WP-0H.01 crates (2 new engine tests: `ui_only_scope_needs_the_ui_credential` and `batch_steps_reference_earlier_results_with_ref`; 1 new trybuild case: `ui_only_core`) and 22 in `s5-mcp`. Clippy (pedantic, `-D warnings`) and `cargo fmt --check` are clean, and wasm32 `cargo check` of `s5-bus`/`s5-ops` is still clean. Not run on macOS or Linux.
+
+### `tools/list` size (`s5-mcp budget`)
+
+| profile | tools / max | bytes | tokens ~bytes/4 | tokens upper (bytes/3) / max | model-visible ~tokens | outputSchema ~tokens |
+|---|---|---|---|---|---|---|
+| minimal | 7 / 12 | 3873 | 969 | 1291 / 3000 | 786 | 0 |
+| standard | 13 / 36 | 10824 | 2706 | 3608 / 8000 | 2365 | 0 |
+| full | 13 / 36 | 19903 | 4976 | 6635 / 8000 | 2365 | 2234 |
+
+- **Heuristic** (`mcp/src/budget.rs`). There is no offline Claude tokenizer. Budgets are asserted on the pessimistic `bytes/3` and also reported as `bytes/4`, over the compact JSON of the `tools` array.
+- **Model-visible** counts name + description + `inputSchema` only.
+- **P1 gate.** Standard is also checked against ≤ 19 tools / ≤ 5k tokens.
+- **Calibration** against Claude Code's `/context` is step 3 of MCP-AGENT-RUN.md.
+
+### MCP spec revisions with rmcp 3.11.0 (measured)
+
+| | 2025-11-25 | 2026-07-28 |
+|---|---|---|
+| Lifecycle | `initialize`/`initialized`. The server echoes the requested version if supported (2025-06-18 tested), otherwise the newest version with a handshake | `server/discover` (`supportedVersions`: all 5 revisions rmcp knows) + per-request `_meta` `protocolVersion` + `clientCapabilities` |
+| HTTP | `Mcp-Session-Id` session (`legacy_session_mode = true`); notifications on the GET stream | Stateless (no session id, whatever the flag). `MCP-Protocol-Version` header **must** mirror `_meta`, else HTTP 400 (-32020) |
+| tools/list, tools/call, structured output, image content, resources/read | ✓ identical tools and order | ✓ identical; rmcp adds `resultType`, `ttlMs` (default 0) and `cacheScope: private` |
+| Change notification | `resources/subscribe` → `notifications/resources/updated` ✓ (stdio, HTTP) | `subscriptions/listen {resourceSubscriptions}` → ack + `resources/updated` on the listen stream ✓ (stdio, HTTP) |
+| Other revision's mechanism | `subscriptions/listen` → -32601 | `resources/subscribe` → -32601 |
+| `ping` | ✓ | -32601 (removed); not relied on |
+| Clients exercised | rmcp 3.11.0 (in-process, child-process, HTTP), raw JSON-RPC (stdio dry run), raw HTTP | same |
+
+Not exercised: the tasks extension, MRTR/elicitation, and non-rmcp SDK clients (Claude Code and others: WP-0H.03).
+
+### Findings for ADR-009 and 1J
+
+1. **One rmcp server serves both revisions with the same handler code.** rmcp owns negotiation, sessions versus statelessness, `resultType` and cache hints, and -32002 versus -32602 for missing resources. No fallback or shim was needed. ADR-009 can say "both revisions, rmcp `=3.11.0`".
+2. **Notification mechanism per revision works.** rmcp gap: it acknowledges `subscriptions/listen` *before* calling `listen()` and has no pre-ack hook, so a change in between is lost. Workaround: join the feed in `accepted_subscription_filter`. Report it upstream or keep the workaround.
+3. **Over HTTP, 2026-07-28 requires the SEP-2243 headers** (`MCP-Protocol-Version`, `Mcp-Method`). Hand-rolled or proxy clients (the planned `cutweave mcp --attach`) must send them.
+4. **rmcp's Origin validation is off by default**, and its Host allowlist matches loopback names on any port. Phase 1 must configure both explicitly, and put the 403 check before auth.
+5. **outputSchema costs about 45% of `tools/list`** (`timeline_get` alone is 3.3 KB). At about 200 tokens per core tool, around 30 core tools would land near 6–7k (bytes/4), roughly 9k on the bytes/3 bound, so over 8k. Recommendation: list output schemas only in `full` (as built), keep `structuredContent` everywhere, and keep schemas lean.
+6. **`#[command]` doc comments become agent-facing text**, since root `description` is about 45% of `inputSchema` bytes. Two consequences:
+   - Write doc comments for agents, without internal references; `edit.undo` currently ships "(arch §5.2)".
+   - Minimal-profile membership (`MINIMAL_CORE`) belongs in macro metadata, not in the transport.
+7. **Envelope placement is a decision for ADR-009/015.** `_meta` keeps schemas identical to RPC, but models cannot use it. The alternative is optional `request_id`/`expected_rev` properties on every mutating tool, at about 40 tokens each.
+8. **UI-only scope must be enforced in the engine, not the transport.** Otherwise `cutweave_execute` would bypass it. This adds `forbidden` to the error set (contract change, ADR-015).
+9. **The dedup fingerprint keeps params in plaintext** for 10 minutes, so `ai.set_key`'s key sits in the journal. Phase 1 should hash fingerprints and never journal secret-bearing params.
+10. **Image outputs want a dedicated wire type** (confirms the WP-0H.01 finding). The `mime` + `data` detection rule works but is implicit.
+11. **The spike `Tx` does not roll back on panic.** `EngineHandle` keeps serving after a poisoned lock, which Phase 1 must not copy.
