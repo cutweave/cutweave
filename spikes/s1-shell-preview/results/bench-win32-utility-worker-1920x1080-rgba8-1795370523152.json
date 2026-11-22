@@ -1,0 +1,276 @@
+{
+  "kind": "s1-bench",
+  "informal": true,
+  "startedAt": "2026-11-22T18:02:03.151Z",
+  "platform": "win32-x64",
+  "electron": "45.4.1",
+  "chrome": "156.0.8078.100",
+  "options": {
+    "selftestSeconds": null,
+    "format": "rgba8",
+    "gpu": "high",
+    "size": "1920x1080",
+    "draw": "main",
+    "policy": "clock",
+    "latency": "20",
+    "present": "gpu",
+    "verify": "1",
+    "chromiumDgpu": false,
+    "transport": "utility",
+    "benchSeconds": 60,
+    "warmupSeconds": 5,
+    "drawB": "worker"
+  },
+  "engine": {
+    "pid": 46772,
+    "port": 64515,
+    "ring": "cw-s1-5e4114fbb37c",
+    "width": 1920,
+    "height": 1080,
+    "fps": 60,
+    "slots": 6,
+    "adapter": "NVIDIA GeForce RTX 3080 Laptop GPU",
+    "backend": "Vulkan",
+    "deviceType": "DiscreteGpu",
+    "generation": 1
+  },
+  "summary": {
+    "transport": "utility",
+    "drawIn": "worker (sandboxed renderer)",
+    "policy": "clock",
+    "presenter": "webgpu (amd / gcn-5)",
+    "size": "1920x1080",
+    "format": "rgba8",
+    "seconds": 60.4,
+    "presentFps": 55.93,
+    "skippedPerMin": 244.3,
+    "skipped": 246,
+    "longRafs": 88,
+    "tornFrames": 0,
+    "seqViolations": 0,
+    "renderToPresentMs": {
+      "p50": 29.38,
+      "p95": 41.117
+    },
+    "publishToPresentMs": {
+      "p50": 24.782,
+      "p95": 34.837
+    },
+    "uploadDrawMs": {
+      "p50": 0.81,
+      "p95": 1.68
+    },
+    "cpu": {
+      "renderer": 73.7,
+      "utility": 68.3,
+      "gpu": 26.5,
+      "main": 1.1,
+      "engine": 14.1,
+      "system": 580.2,
+      "foreign": 396.4
+    },
+    "os": {
+      "renderer": {
+        "sandboxed": true,
+        "integrityLevel": "untrusted"
+      },
+      "utility": {
+        "sandboxed": false,
+        "integrityLevel": "medium"
+      }
+    },
+    "priorityRaised": 7,
+    "engineDropped": 0
+  },
+  "snapshot": {
+    "seconds": 60.4,
+    "drawIn": "worker (sandboxed renderer)",
+    "policy": "clock",
+    "presenter": "webgpu (amd / gcn-5)",
+    "framesPresented": 3379,
+    "presentFps": 55.93,
+    "seqGaps": 246,
+    "seqGapsPerMin": 244.3,
+    "seqViolations": 0,
+    "checksumFailures": 0,
+    "rowStampFailures": 0,
+    "longRafs": 88,
+    "verify": true,
+    "format": 1,
+    "size": "1920x1080",
+    "lastPts": 46487280000,
+    "latency": {
+      "renderToPresentMs": {
+        "n": 3379,
+        "p50": 29.38,
+        "p95": 41.117,
+        "p99": 48.273,
+        "max": 74.001,
+        "mean": 31.472
+      },
+      "publishToPresentMs": {
+        "n": 3379,
+        "p50": 24.782,
+        "p95": 34.837,
+        "p99": 41.864,
+        "max": 68.165,
+        "mean": 25.804
+      },
+      "publishToFetchMs": {
+        "n": 3379,
+        "p50": 18.26,
+        "p95": 30.501,
+        "p99": 39.421,
+        "max": 66.755,
+        "mean": 19.973
+      },
+      "addonCopyMs": {
+        "n": 3379,
+        "p50": 0,
+        "p95": 0,
+        "p99": 0,
+        "max": 0,
+        "mean": 0
+      },
+      "getFrameMs": {
+        "n": 3379,
+        "p50": 0.005,
+        "p95": 0.01,
+        "p99": 0.02,
+        "max": 0.06,
+        "mean": 0.005
+      },
+      "cloneMs": {
+        "n": 3379,
+        "p50": 0.005,
+        "p95": 0.01,
+        "p99": 0.02,
+        "max": 0.06,
+        "mean": 0.005
+      },
+      "verifyMs": {
+        "n": 3379,
+        "p50": 0.18,
+        "p95": 0.52,
+        "p99": 0.725,
+        "max": 1.26,
+        "mean": 0.235
+      },
+      "uploadDrawMs": {
+        "n": 3379,
+        "p50": 0.81,
+        "p95": 1.68,
+        "p99": 7.36,
+        "max": 15.22,
+        "mean": 1.041
+      },
+      "rafIntervalMs": {
+        "n": 3410,
+        "p50": 16.67,
+        "p95": 16.855,
+        "p99": 66.595,
+        "max": 149.815,
+        "mean": 17.717
+      }
+    },
+    "receiver": {
+      "framesReceived": 3592,
+      "bytesReceived": 29793484800,
+      "queueDrops": 34,
+      "clockOffsetUs": -120,
+      "clockRttMs": 0.4,
+      "deserializeMs": {
+        "n": 3592,
+        "p50": 1.36,
+        "p95": 2.315,
+        "p99": 3.005,
+        "max": 4.025,
+        "mean": 1.489
+      },
+      "publishToReceiveMs": {
+        "n": 3592,
+        "p50": 18.537,
+        "p95": 36.707,
+        "p99": 54.257,
+        "max": 80.178,
+        "mean": 21.202
+      },
+      "sendToReceiveMs": {
+        "n": 3592,
+        "p50": 17.241,
+        "p95": 34.769,
+        "p99": 52.276,
+        "max": 78.961,
+        "mean": 19.812
+      },
+      "utilityCopyMs": {
+        "n": 3592,
+        "p50": 0.684,
+        "p95": 1.594,
+        "p99": 2.27,
+        "max": 4.089,
+        "mean": 0.811
+      },
+      "utilityPostMs": {
+        "n": 3592,
+        "p50": 9.682,
+        "p95": 13.762,
+        "p99": 16.162,
+        "max": 22.718,
+        "mean": 10.187
+      },
+      "interArrivalMs": {
+        "n": 3592,
+        "p50": 16.365,
+        "p95": 24.37,
+        "p99": 32.735,
+        "max": 60.93,
+        "mean": 16.82
+      }
+    },
+    "engineDropped": 0
+  },
+  "extra": {
+    "utility": {
+      "framesSent": 3613,
+      "bytesSent": 29967667200,
+      "creditDrops": 36,
+      "readErrors": 0,
+      "wakeups": 3649,
+      "timeouts": 3,
+      "maxInFlight": 3,
+      "copyMs": {
+        "n": 3613,
+        "p50": 0.685,
+        "p95": 1.594,
+        "p99": 2.255,
+        "max": 4.089,
+        "mean": 0.811
+      },
+      "postMs": {
+        "n": 3613,
+        "p50": 9.68,
+        "p95": 13.758,
+        "p99": 16.157,
+        "max": 22.718,
+        "mean": 10.183
+      },
+      "publishToWakeMs": {
+        "n": 3649,
+        "p50": 0.399,
+        "p95": 1.056,
+        "p99": 3.984,
+        "max": 10.904,
+        "mean": 0.517
+      }
+    },
+    "probes": {
+      "addonLoaded": true,
+      "node": "24.22.3",
+      "externalArrayBuffers": false,
+      "arrayBufferTransfer": "throws: Port at index 0 is not a valid port",
+      "sharedArrayBuffer": "throws: An object could not be cloned.",
+      "controlSocket": "open"
+    }
+  }
+}
