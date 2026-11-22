@@ -219,6 +219,15 @@ Provenance { origin(import|record|ai), provider?, model?, prompt?, seed?, params
 
 ---
 
+### 4.4 Model v1 implementation decisions (WP-1A, 2026-11-22)
+
+- **`TimeInput` vs `Time`:** `TimeInput` (command params) resolves timecode and `f:N` strings in the owning sequence's context. `Time` (stored values) accepts only flicks or `"62.5s"`.
+- **IDs:** IDs are `<prefix>_<32 hex>` (UUIDv7). Linked groups use `grp_`. Generators sit behind `IdGen`: `Uuid7Gen` in production, `SeededGen` (SplitMix64 plus a counter timestamp) for `--deterministic-ids`.
+- **Track storage:** sequences store `tracks` keyed by ID plus an explicit `track_order`. Items carry no `track` back-reference; it is derived.
+- **Strict documents:** every document field is required except `Option`s, and new fields arrive only through migrations. Unknown fields are kept in a flattened `extra` map, so newer files round-trip read-only.
+- **Transform units:** normalized to the canvas and the item. WP-1F.02 must confirm this against the compositor.
+- **Frame rates:** sequence frame rates must be exact in flicks and between 1 and 1000 fps.
+
 ## 5. Command bus & state (`cutweave-commands`, `cutweave-ops`)
 
 ### 5.1 Commands, queries, events
