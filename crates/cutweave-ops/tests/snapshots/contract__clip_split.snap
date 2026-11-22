@@ -1,0 +1,212 @@
+---
+source: crates/cutweave-ops/tests/contract.rs
+expression: "json!({\n    \"meta\": serde_json::to_value(meta).unwrap(), \"input\": meta.input_schema,\n    \"output\": meta.output_schema,\n})"
+---
+{
+  "meta": {
+    "name": "clip.split",
+    "summary": "Split a clip (and its linked partners) at a timeline time",
+    "kind": "command",
+    "undoable": true,
+    "view": false,
+    "scope": "any",
+    "mcp": "core",
+    "annotations": {
+      "readOnlyHint": false,
+      "destructiveHint": false,
+      "idempotentHint": false,
+      "openWorldHint": false
+    },
+    "secret_fields": [],
+    "input_schema": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "item": {
+          "type": "string",
+          "pattern": "^itm_[0-9a-f]{32}$",
+          "description": "The clip."
+        },
+        "at": {
+          "description": "Timeline time to split at: strictly inside the clip.",
+          "anyOf": [
+            {
+              "type": "integer",
+              "minimum": -9007199254740991,
+              "maximum": 9007199254740991
+            },
+            {
+              "type": "string",
+              "pattern": "^-?[0-9]+(\\.[0-9]+)?s$|^-?[0-9]+$|^f:[0-9]+$|^[0-9]+[:;][0-9]+[:;][0-9]+[:;][0-9]+$"
+            }
+          ]
+        }
+      },
+      "required": [
+        "item",
+        "at"
+      ],
+      "description": "Splits a clip into two at a timeline time that lies strictly inside it (`Invalid{path:\"/at\"}`\nat or beyond the edges). The halves are contiguous: durations sum to the original and the\nright half's `source_in` continues where the left half ends. Linked partners that contain\nthe time are split too. `at` is snapped to the sequence's frame grid. `Locked` if the clip's\ntrack or a partner's track is locked.",
+      "title": "ClipSplit"
+    },
+    "output_schema": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "left": {
+          "type": "string",
+          "pattern": "^itm_[0-9a-f]{32}$",
+          "description": "The left half of the requested item (keeps its ID)."
+        },
+        "right": {
+          "type": "string",
+          "pattern": "^itm_[0-9a-f]{32}$",
+          "description": "The right half of the requested item (new ID)."
+        },
+        "at": {
+          "description": "The time that was split at, snapped to the frame grid.",
+          "type": "integer",
+          "minimum": -9007199254740991,
+          "maximum": 9007199254740991
+        },
+        "linked": {
+          "type": "array",
+          "items": {
+            "description": "One split item.",
+            "type": "object",
+            "properties": {
+              "left": {
+                "description": "The left half (keeps the original item ID).",
+                "type": "string",
+                "pattern": "^itm_[0-9a-f]{32}$"
+              },
+              "right": {
+                "description": "The right half (new ID).",
+                "type": "string",
+                "pattern": "^itm_[0-9a-f]{32}$"
+              }
+            },
+            "additionalProperties": false,
+            "required": [
+              "left",
+              "right"
+            ]
+          },
+          "description": "The linked partners that were split too."
+        },
+        "right_group": {
+          "type": [
+            "string",
+            "null"
+          ],
+          "pattern": "^grp_[0-9a-f]{32}$",
+          "description": "The new group shared by the right halves, if there were partners."
+        }
+      },
+      "required": [
+        "left",
+        "right",
+        "at",
+        "linked",
+        "right_group"
+      ],
+      "description": "Result of `clip.split`.",
+      "title": "ClipSplitOutput"
+    }
+  },
+  "input": {
+    "type": "object",
+    "additionalProperties": false,
+    "properties": {
+      "item": {
+        "type": "string",
+        "pattern": "^itm_[0-9a-f]{32}$",
+        "description": "The clip."
+      },
+      "at": {
+        "description": "Timeline time to split at: strictly inside the clip.",
+        "anyOf": [
+          {
+            "type": "integer",
+            "minimum": -9007199254740991,
+            "maximum": 9007199254740991
+          },
+          {
+            "type": "string",
+            "pattern": "^-?[0-9]+(\\.[0-9]+)?s$|^-?[0-9]+$|^f:[0-9]+$|^[0-9]+[:;][0-9]+[:;][0-9]+[:;][0-9]+$"
+          }
+        ]
+      }
+    },
+    "required": [
+      "item",
+      "at"
+    ],
+    "description": "Splits a clip into two at a timeline time that lies strictly inside it (`Invalid{path:\"/at\"}`\nat or beyond the edges). The halves are contiguous: durations sum to the original and the\nright half's `source_in` continues where the left half ends. Linked partners that contain\nthe time are split too. `at` is snapped to the sequence's frame grid. `Locked` if the clip's\ntrack or a partner's track is locked.",
+    "title": "ClipSplit"
+  },
+  "output": {
+    "type": "object",
+    "additionalProperties": false,
+    "properties": {
+      "left": {
+        "type": "string",
+        "pattern": "^itm_[0-9a-f]{32}$",
+        "description": "The left half of the requested item (keeps its ID)."
+      },
+      "right": {
+        "type": "string",
+        "pattern": "^itm_[0-9a-f]{32}$",
+        "description": "The right half of the requested item (new ID)."
+      },
+      "at": {
+        "description": "The time that was split at, snapped to the frame grid.",
+        "type": "integer",
+        "minimum": -9007199254740991,
+        "maximum": 9007199254740991
+      },
+      "linked": {
+        "type": "array",
+        "items": {
+          "description": "One split item.",
+          "type": "object",
+          "properties": {
+            "left": {
+              "description": "The left half (keeps the original item ID).",
+              "type": "string",
+              "pattern": "^itm_[0-9a-f]{32}$"
+            },
+            "right": {
+              "description": "The right half (new ID).",
+              "type": "string",
+              "pattern": "^itm_[0-9a-f]{32}$"
+            }
+          },
+          "additionalProperties": false,
+          "required": [
+            "left",
+            "right"
+          ]
+        },
+        "description": "The linked partners that were split too."
+      },
+      "right_group": {
+        "type": [
+          "string",
+          "null"
+        ],
+        "pattern": "^grp_[0-9a-f]{32}$",
+        "description": "The new group shared by the right halves, if there were partners."
+      }
+    },
+    "required": [
+      "left",
+      "right",
+      "at",
+      "linked",
+      "right_group"
+    ],
+    "description": "Result of `clip.split`.",
+    "title": "ClipSplitOutput"
+  }
+}
