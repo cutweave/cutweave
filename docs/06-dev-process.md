@@ -111,6 +111,8 @@ stateDiagram-v2
 
 ## 8. CI quality gates
 
+> **Actions-minutes policy (2026-11-22, product owner):** GitHub CI does **not** run on pushes to `main` or on a schedule. Before every merge, the integrator runs **`just ci-local`** (`just check` + Storybook visual regression, axe and offline fonts against this OS's baselines). The cloud matrix runs on pull requests and on **manual dispatch** at milestones and releases (`gh workflow run ci.yml`, `nightly.yml`, `ffmpeg.yml`). Agents never trigger workflows.
+
 | When | Gates |
 |---|---|
 | Every PR | `just check` on Windows, macOS and Linux · golden frames (software GPU) · CLI = MCP = RPC parity · schema/codegen snapshot · MCP tools-list size budget · license and advisory scan |
