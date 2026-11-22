@@ -1,0 +1,138 @@
+{
+  "app": {
+    "name": "Cutweave",
+    "windowTitle": "Cutweave editor"
+  },
+  "topbar": {
+    "toolbarLabel": "Project actions",
+    "open": "Open",
+    "save": "Save",
+    "export": "Export",
+    "undo": "Undo",
+    "redo": "Redo",
+    "engineOffline": "Engine not connected",
+    "workspaceLabel": "Workspace",
+    "themeLabel": "Theme"
+  },
+  "workspace": {
+    "short-form": "Short-form",
+    "long-form": "Long-form",
+    "reset": "Reset layout"
+  },
+  "theme": {
+    "dark": "Dark",
+    "light": "Light"
+  },
+  "panel": {
+    "assets": "Assets",
+    "preview": "Preview",
+    "inspector": "Inspector",
+    "timeline": "Timeline"
+  },
+  "assets": {
+    "tablistLabel": "Asset browser",
+    "tabs": {
+      "media": "Media",
+      "audio": "Audio",
+      "text": "Text",
+      "stickers": "Stickers",
+      "effects": "Effects",
+      "transitions": "Transitions",
+      "filters": "Filters",
+      "templates": "Templates",
+      "captions": "Captions",
+      "ai-studio": "AI Studio"
+    },
+    "empty": {
+      "media": {
+        "title": "No media yet",
+        "body": "Drop video, audio or images here, or press Ctrl+I to import."
+      },
+      "audio": {
+        "title": "No audio yet",
+        "body": "Music, sound effects and voiceovers appear here. Import a file or record a voiceover."
+      },
+      "text": {
+        "title": "Text styles",
+        "body": "Titles, lower thirds and subtitles appear here once the text library is installed."
+      },
+      "stickers": {
+        "title": "Stickers",
+        "body": "Stickers and shapes you add to a project appear here."
+      },
+      "effects": {
+        "title": "Effects",
+        "body": "Effects you can apply to a clip appear here, grouped by what they change."
+      },
+      "transitions": {
+        "title": "Transitions",
+        "body": "Transitions between two clips appear here. Select a cut on the timeline to apply one."
+      },
+      "filters": {
+        "title": "Filters",
+        "body": "Color looks and filters appear here, with a strength slider in the inspector."
+      },
+      "templates": {
+        "title": "Templates",
+        "body": "Project templates and compositions appear here. Start from one to skip the setup."
+      },
+      "captions": {
+        "title": "Captions",
+        "body": "Generate captions from speech or import an SRT file. Caption styles appear here."
+      },
+      "ai-studio": {
+        "title": "AI Studio",
+        "body": "Generate clips, images and voices. Each action shows its cost and model before it runs."
+      }
+    }
+  },
+  "preview": {
+    "aspectLabel": "Preview aspect ratio",
+    "aspect": {
+      "r9x16": "9:16",
+      "r1x1": "1:1",
+      "r4x5": "4:5",
+      "r16x9": "16:9"
+    },
+    "emptyTitle": "Nothing to preview",
+    "emptyBody": "Add a clip to the timeline and the frame at the playhead shows here."
+  },
+  "transport": {
+    "label": "Transport",
+    "timecode": "Current time",
+    "timecodeValue": "00:00:00:00",
+    "toStart": "Go to start",
+    "stepBack": "Step back one frame",
+    "play": "Play",
+    "stepForward": "Step forward one frame",
+    "toEnd": "Go to end",
+    "loop": "Loop playback",
+    "mute": "Mute",
+    "fullscreen": "Full screen preview"
+  },
+  "inspector": {
+    "emptyTitle": "Nothing selected",
+    "emptyBody": "Select a clip on the timeline to edit its position, scale, opacity and effects.",
+    "project": "Project",
+    "resolution": "Resolution",
+    "resolutionValue": "1080 × 1920",
+    "frameRate": "Frame rate",
+    "frameRateValue": "30 fps",
+    "duration": "Duration",
+    "durationValue": "00:00:00:00"
+  },
+  "timeline": {
+    "toolbarLabel": "Timeline tools",
+    "select": "Select",
+    "razor": "Razor",
+    "ripple": "Ripple",
+    "snapping": "Snapping",
+    "zoomOut": "Zoom out",
+    "zoomIn": "Zoom in",
+    "lanesLabel": "Tracks",
+    "trackVideo": "Video {{n}}",
+    "trackAudio": "Audio {{n}}",
+    "emptyTitle": "Your timeline is empty",
+    "emptyBody": "Drag a clip from Media onto a track to start cutting."
+  }
+}

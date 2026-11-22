@@ -1,0 +1,205 @@
+// SPDX-License-Identifier: GPL-3.0-or-later
+import type { SerializedDockview } from "dockview-react";
+import { useStore } from "zustand";
+import { createJSONStorage, persist, type StateStorage } from "zustand/middleware";
+import { createStore } from "zustand/vanilla";
+import type { TKey } from "../i18n/index.ts";
+
+export const THEMES = ["dark", "light"] as const;
+export type ThemeId = (typeof THEMES)[number];
+export const DEFAULT_THEME: ThemeId = "dark";
+export const THEME_LABEL_KEYS: Record<ThemeId, TKey> = { dark: "theme.dark", light: "theme.light" };
+
+export const WORKSPACES = ["short-form", "long-form"] as const;
+export type WorkspaceId = (typeof WORKSPACES)[number];
+
+export const ASSET_TABS = [
+  "media",
+  "audio",
+  "text",
+  "stickers",
+  "effects",
+  "transitions",
+  "filters",
+  "templates",
+  "captions",
+  "ai-studio",
+] as const;
+export type AssetTabId = (typeof ASSET_TABS)[number];
+
+export interface AspectDef {
+  id: string;
+  width: number;
+  height: number;
+  labelKey: TKey;
+}
+
+export const ASPECTS = [
+  { id: "9:16", width: 9, height: 16, labelKey: "preview.aspect.r9x16" },
+  { id: "1:1", width: 1, height: 1, labelKey: "preview.aspect.r1x1" },
+  { id: "4:5", width: 4, height: 5, labelKey: "preview.aspect.r4x5" },
+  { id: "16:9", width: 16, height: 9, labelKey: "preview.aspect.r16x9" },
+] as const satisfies readonly AspectDef[];
+export type AspectId = (typeof ASPECTS)[number]["id"];
+
+/** A saved workspace: where the panels sit (ratios, never pixels) and the preview it opens with. */
+export interface WorkspaceDef {
+  id: WorkspaceId;
+  labelKey: TKey;
+  defaultAspect: AspectId;
+  /** Share of the dock width given to the asset browser and the inspector. */
+  assetsWidth: number;
+  inspectorWidth: number;
+  /** Share of the dock height given to the timeline. */
+  timelineHeight: number;
+}
+
+export const WORKSPACE_DEFS: Record<WorkspaceId, WorkspaceDef> = {
+  "short-form": {
+    id: "short-form",
+    labelKey: "workspace.short-form",
+    defaultAspect: "9:16",
+    assetsWidth: 0.24,
+    inspectorWidth: 0.22,
+    timelineHeight: 0.32,
+  },
+  "long-form": {
+    id: "long-form",
+    labelKey: "workspace.long-form",
+    defaultAspect: "16:9",
+    assetsWidth: 0.2,
+    inspectorWidth: 0.22,
+    timelineHeight: 0.42,
+  },
+};
+
+export interface ViewState {
+  theme: ThemeId;
+  workspaceId: WorkspaceId;
+  assetTab: AssetTabId;
+  aspect: AspectId;
+  /** Last dockview layout per workspace; absent means "use the workspace default". */
+  layouts: Partial<Record<WorkspaceId, SerializedDockview>>;
+  /** Bumped when a layout must be rebuilt from its default (reset). */
+  layoutRevision: number;
+}
+
+export interface ViewActions {
+  setTheme: (theme: ThemeId) => void;
+  toggleTheme: () => void;
+  switchWorkspace: (id: WorkspaceId) => void;
+  saveLayout: (id: WorkspaceId, layout: SerializedDockview) => void;
+  resetWorkspace: (id: WorkspaceId) => void;
+  setAssetTab: (tab: AssetTabId) => void;
+  setAspect: (aspect: AspectId) => void;
+}
+
+export type ViewStore = ViewState & ViewActions;
+
+export const initialViewState: ViewState = {
+  theme: DEFAULT_THEME,
+  workspaceId: "short-form",
+  assetTab: "media",
+  aspect: WORKSPACE_DEFS["short-form"].defaultAspect,
+  layouts: {},
+  layoutRevision: 0,
+};
+
+export const VIEW_STORAGE_KEY = "cutweave.view";
+
+const isOneOf = <T extends string>(list: readonly T[], value: unknown): value is T =>
+  typeof value === "string" && (list as readonly string[]).includes(value);
+
+/** Keeps only well-formed persisted values so a stale or hand-edited blob cannot break startup. */
+function sanitize(persisted: unknown): Partial<ViewState> {
+  if (typeof persisted !== "object" || persisted === null) return {};
+  const p = persisted as Record<string, unknown>;
+  const out: Partial<ViewState> = {};
+  if (isOneOf(THEMES, p.theme)) out.theme = p.theme;
+  if (isOneOf(WORKSPACES, p.workspaceId)) out.workspaceId = p.workspaceId;
+  if (isOneOf(ASSET_TABS, p.assetTab)) out.assetTab = p.assetTab;
+  if (typeof p.aspect === "string" && ASPECTS.some((a) => a.id === p.aspect)) {
+    out.aspect = p.aspect as AspectId;
+  }
+  if (typeof p.layouts === "object" && p.layouts !== null) {
+    const layouts: Partial<Record<WorkspaceId, SerializedDockview>> = {};
+    for (const id of WORKSPACES) {
+      const layout = (p.layouts as Record<string, unknown>)[id];
+      if (typeof layout === "object" && layout !== null) layouts[id] = layout as SerializedDockview;
+    }
+    out.layouts = layouts;
+  }
+  return out;
+}
+
+/** The browser's localStorage when it works; `undefined` (no persistence) when it does not. */
+function browserStorage(): StateStorage | undefined {
+  try {
+    const probe = `${VIEW_STORAGE_KEY}.probe`;
+    globalThis.localStorage.setItem(probe, "1");
+    globalThis.localStorage.removeItem(probe);
+    return globalThis.localStorage;
+  } catch {
+    return undefined;
+  }
+}
+
+function memoryStorage(): StateStorage {
+  const data = new Map<string, string>();
+  return {
+    getItem: (key) => data.get(key) ?? null,
+    setItem: (key, value) => void data.set(key, value),
+    removeItem: (key) => void data.delete(key),
+  };
+}
+
+/**
+ * Builds a view store. Pass `storage` to persist (the app uses localStorage); omit it for an
+ * in-memory store. The persisted subset is theme, workspace, asset tab, preview aspect
+ * and per-workspace layouts; WP-1M.02 later mirrors the layout part to the engine (`view.set`).
+ */
+export function createViewStore(storage?: StateStorage) {
+  const medium = storage ?? memoryStorage();
+  return createStore<ViewStore>()(
+    persist(
+      (set) => ({
+        ...initialViewState,
+        setTheme: (theme) => set(() => ({ theme })),
+        toggleTheme: () => set((s) => ({ theme: s.theme === "dark" ? "light" : "dark" })),
+        switchWorkspace: (id) =>
+          set((s) =>
+            s.workspaceId === id
+              ? {}
+              : { workspaceId: id, aspect: WORKSPACE_DEFS[id].defaultAspect },
+          ),
+        saveLayout: (id, layout) => set((s) => ({ layouts: { ...s.layouts, [id]: layout } })),
+        resetWorkspace: (id) =>
+          set((s) => {
+            const { [id]: _dropped, ...layouts } = s.layouts;
+            return { layouts, layoutRevision: s.layoutRevision + 1 };
+          }),
+        setAssetTab: (assetTab) => set(() => ({ assetTab })),
+        setAspect: (aspect) => set(() => ({ aspect })),
+      }),
+      {
+        name: VIEW_STORAGE_KEY,
+        version: 1,
+        storage: createJSONStorage(() => medium),
+        partialize: (s) => ({
+          theme: s.theme,
+          workspaceId: s.workspaceId,
+          assetTab: s.assetTab,
+          aspect: s.aspect,
+          layouts: s.layouts,
+        }),
+        merge: (persisted, current) => ({ ...current, ...sanitize(persisted) }),
+      },
+    ),
+  );
+}
+
+export const viewStore = createViewStore(browserStorage());
+
+export function useViewStore<T>(selector: (state: ViewStore) => T): T {
+  return useStore(viewStore, selector);
+}

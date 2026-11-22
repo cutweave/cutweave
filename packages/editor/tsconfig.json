@@ -2,7 +2,12 @@
   "extends": "../../tsconfig.base.json",
   "compilerOptions": {
     "noEmit": true,
-    "rootDir": "src"
+    "jsx": "react-jsx",
+    "types": ["node", "vite/client"],
+    "paths": {
+      "@cutweave/ui": ["../ui/src/index.ts"],
+      "@cutweave/ui/*": ["../ui/src/*"]
+    }
   },
-  "include": ["src"]
+  "include": ["src", "scripts", "vite.config.ts"]
 }
