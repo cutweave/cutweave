@@ -9,7 +9,7 @@
 
 import { execFileSync } from "node:child_process";
 import { mkdirSync, writeFileSync } from "node:fs";
-import { cpus } from "node:os";
+import { constants, cpus, setPriority } from "node:os";
 import path from "node:path";
 import { app, type BrowserWindow } from "electron";
 import type { LatSummary, LoopSnapshot } from "./shared/loop.ts";
@@ -150,10 +150,34 @@ export function cpuPercent(
 
 const pick = (l: LatSummary | undefined) => (l ? { p50: l.p50, p95: l.p95 } : null);
 
+/**
+ * `--bench-priority=above`: raise every process that touches frames (all Electron processes of
+ * this app, the engine, the probe's source) to above-normal priority for the run. Spike hygiene
+ * on a dev machine shared with normal-priority builds; applied identically to every transport.
+ * Windows priority classes are not inherited by Electron's children, so each pid is set here.
+ */
+function raisePriority(extraPids: (number | null)[]): string[] {
+  const done: string[] = [];
+  const pids = [...app.getAppMetrics().map((m) => m.pid), ...extraPids];
+  for (const pid of pids) {
+    if (pid === null) continue;
+    try {
+      setPriority(pid, constants.priority.PRIORITY_ABOVE_NORMAL);
+      done.push(String(pid));
+    } catch {
+      // not ours / already gone
+    }
+  }
+  return done;
+}
+
 export async function runBench(ctx: BenchContext): Promise<boolean> {
   const { win } = ctx;
   const js = <T>(code: string) => win.webContents.executeJavaScript(code) as Promise<T>;
   await waitFor("renderer frames", () => js<number>("window.__s1?.framesPresented ?? 0"), 30_000);
+  const priority = process.argv.includes("--bench-priority=above")
+    ? raisePriority([ctx.enginePid(), ctx.utilityPid(), ctx.producerPid?.() ?? null]).length
+    : 0;
   await sleep(ctx.warmupSeconds * 1000);
   // The ring's engine_dropped counter is cumulative since engine start: take the delta.
   const dropped0 = await js<number | null>(
@@ -199,6 +223,8 @@ export async function runBench(ctx: BenchContext): Promise<boolean> {
     uploadDrawMs: pick(L.uploadDrawMs),
     cpu,
     os,
+    /** Processes raised to above-normal priority for the run (0 = normal priority). */
+    priorityRaised: priority,
     /** Frames the engine itself skipped during the run (producer stalls, not transport). */
     engineDropped:
       typeof snap.engineDropped === "number" && typeof dropped0 === "number"

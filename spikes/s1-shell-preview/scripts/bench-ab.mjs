@@ -4,7 +4,8 @@
 //   node scripts/bench-ab.mjs [seconds=60] [--sizes=1920x1080,1280x720] [--format=rgba8|nv12]
 //                             [--only=a,b-main,b-worker,texture] [--latency=20] [--warmup=5]
 //                             [--quiet-below=150] [--max-wait=600] [--retry-foreign=250] [--retries=2]
-//   node scripts/bench-ab.mjs --table            # print the table from results/bench-*.json
+//                             [--priority=above|normal]
+//   node scripts/bench-ab.mjs --table           # print the table from results/bench-*.json
 //
 // Each configuration is a fresh Electron launch with `--bench=<seconds>` (desktop/src/bench.ts):
 // warm-up, reset counters, run, record fps, skipped frames/min (seq gaps), engine GPU submit ->
@@ -172,6 +173,9 @@ const shared = [
   "--policy=clock",
   `--latency=${opt("latency", "20")}`,
   `--format=${opt("format", "rgba8")}`,
+  // Above-normal priority for every measured process, both transports alike (shared dev box);
+  // --priority=normal measures without it.
+  ...(opt("priority", "above") === "above" ? ["--bench-priority=above"] : []),
 ];
 // A run whose foreign load (machine minus our processes) exceeded --retry-foreign (% of one
 // core) is moved to results/exploratory/contaminated/ and repeated, up to --retries times.
