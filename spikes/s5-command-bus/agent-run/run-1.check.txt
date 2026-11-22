@@ -1,0 +1,12 @@
+PASS  exactly one media imported  (1 media)
+PASS  one track with exactly two items  ([2])
+PASS  cut at 2 s into the clip  (left [0, 1411200000), right [1411200000, 7056000000))
+PASS  both parts come from the imported media
+PASS  every change made by one agent actor  (['agent:claude-code'])
+PASS  change log  (media.import -> timeline.insert -> clip.split)
+PASS  MCP server `cutweave` connected  ({'cutweave': 'connected'})
+PASS  only Cutweave MCP tools used (no screenshots / computer use / shell)  (4 calls)
+PASS  frame at 3 s rendered and returned as an image
+PASS  run finished without error  (turns=5 cost_usd=0.08408379999999999)
+PASS  tool sequence  (media_import -> timeline_insert -> clip_split -> render_frame)
+VERDICT: PASS

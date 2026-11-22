@@ -1,0 +1,64 @@
+{
+  "changes": [
+    {
+      "actor": "agent:claude-code",
+      "label": "media.import",
+      "rev": 1
+    },
+    {
+      "actor": "agent:claude-code",
+      "label": "timeline.insert",
+      "rev": 2
+    },
+    {
+      "actor": "agent:claude-code",
+      "label": "clip.split",
+      "rev": 3
+    }
+  ],
+  "rev": 3,
+  "timeline": {
+    "duration": 7056000000,
+    "frame_rate": {
+      "den": 1,
+      "num": 30
+    },
+    "media": [
+      {
+        "duration": 7056000000,
+        "frame_rate": {
+          "den": 1,
+          "num": 30
+        },
+        "id": "med_01a2043ecea8701cab1ebe608cb1e718",
+        "kind": "video",
+        "path": "testdata/fixture.mp4"
+      }
+    ],
+    "project": "Untitled",
+    "sequence": "seq_01a2043ec35175bda208bcc936092977",
+    "tracks": [
+      {
+        "id": "trk_01a2043ec35175bda208bcc8dc2ff6cc",
+        "items": [
+          {
+            "end": 1411200000,
+            "id": "itm_01a2043ed5fb74c3a821112d8c6e2e77",
+            "media": "med_01a2043ecea8701cab1ebe608cb1e718",
+            "source_in": 0,
+            "start": 0
+          },
+          {
+            "end": 7056000000,
+            "id": "itm_01a2043edc4876b3a5de1dbba5ca7008",
+            "media": "med_01a2043ecea8701cab1ebe608cb1e718",
+            "source_in": 1411200000,
+            "start": 1411200000
+          }
+        ],
+        "kind": "video",
+        "name": "V1"
+      }
+    ]
+  }
+}
