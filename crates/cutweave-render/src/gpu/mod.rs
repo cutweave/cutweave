@@ -30,6 +30,8 @@
 
 mod backend;
 mod compositor;
+#[cfg(test)]
+mod query_tests;
 mod readback;
 #[cfg(test)]
 mod tests;
