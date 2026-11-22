@@ -1,0 +1,4 @@
+# Allow unwrap/expect/dbg in tests (production code is held to the workspace lints).
+allow-unwrap-in-tests = true
+allow-expect-in-tests = true
+allow-dbg-in-tests = true

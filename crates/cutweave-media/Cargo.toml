@@ -1,0 +1,20 @@
+[package]
+name = "cutweave-media"
+description = "Cutweave: MediaBackend trait and FFmpeg implementation (probe, index, decode, encode, mux, HW accel)"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+rust-version.workspace = true
+publish = false
+
+[features]
+default = []
+# Enables the FFmpeg-backed MediaBackend. Requires FFmpeg dev libraries (see `just ffmpeg-fetch`).
+ffmpeg = ["dep:ffmpeg-next"]
+
+[dependencies]
+ffmpeg-next = { workspace = true, optional = true }
+
+[lints]
+workspace = true

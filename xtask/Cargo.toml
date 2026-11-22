@@ -1,0 +1,16 @@
+[package]
+name = "xtask"
+description = "Cutweave: developer automation (`cargo xtask <ci|check-wasm|check-deps|fetch-corpus|gen>`)"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+rust-version.workspace = true
+publish = false
+
+[dependencies]
+# Parses `cargo metadata` output for the dependency-rule checker.
+serde_json = { workspace = true }
+
+[lints]
+workspace = true

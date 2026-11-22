@@ -1,0 +1,49 @@
+[workspace]
+resolver = "3"
+members = ["crates/*", "xtask"]
+# Phase 0 throwaway prototypes; never part of the workspace (see spikes/README.md).
+exclude = ["spikes"]
+
+[workspace.package]
+version = "0.0.0"
+edition = "2024"
+license = "GPL-3.0-or-later"
+repository = "https://github.com/cutweave/cutweave"
+rust-version = "1.100"
+
+# Skeleton: shared dependency versions are declared here and inherited with `workspace = true`.
+# Every addition needs a justification in the PR and must pass cargo-deny (AGENTS.md).
+[workspace.dependencies]
+# Media I/O, used only behind the non-default `ffmpeg` feature of cutweave-media.
+ffmpeg-next = "9.1.0"
+# Used by xtask to read `cargo metadata` output (dependency-rule checker).
+serde_json = "1"
+
+[workspace.lints.rust]
+# Allowed (with justification) only in cutweave-bridge, cutweave-playback and cutweave-audio.
+unsafe_code = "deny"
+missing_docs = "warn"
+
+[workspace.lints.clippy]
+# A pedantic subset; add more as the codebase grows.
+pedantic = { level = "warn", priority = -1 }
+unwrap_used = "warn"
+expect_used = "warn"
+dbg_macro = "warn"
+todo = "warn"
+module_name_repetitions = "allow"
+doc_markdown = "allow"
+missing_errors_doc = "allow"
+missing_panics_doc = "allow"
+
+# Pixel loops are ~20x slower at opt-level 0, so hot crates are optimized even in dev builds.
+[profile.dev.package.cutweave-render]
+opt-level = 3
+[profile.dev.package.cutweave-text]
+opt-level = 3
+[profile.dev.package.cutweave-media]
+opt-level = 3
+[profile.dev.package.cutweave-audio]
+opt-level = 3
+[profile.dev.package.cutweave-cache]
+opt-level = 3

@@ -1,0 +1,12 @@
+* text=auto eol=lf
+
+# Golden frames and media fixtures live in Git LFS (docs/06-dev-process.md).
+testdata/golden/** filter=lfs diff=lfs merge=lfs -text
+*.golden.png filter=lfs diff=lfs merge=lfs -text
+*.golden.exr filter=lfs diff=lfs merge=lfs -text
+
+# Binary files.
+*.png binary
+*.jpg binary
+*.ico binary
+*.woff2 binary

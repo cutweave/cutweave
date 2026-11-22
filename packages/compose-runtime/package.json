@@ -1,0 +1,15 @@
+{
+  "name": "@cutweave/compose-runtime",
+  "version": "0.0.0",
+  "private": true,
+  "description": "Scene API used inside the QuickJS composition runtime",
+  "license": "MIT",
+  "type": "module",
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "scripts": {
+    "build": "tsc -p tsconfig.build.json",
+    "typecheck": "tsc --noEmit",
+    "test": "vitest run"
+  }
+}
