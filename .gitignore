@@ -31,3 +31,4 @@ coverage/
 
 # Agent worktrees
 .claude/worktrees/
+/bench/results.json

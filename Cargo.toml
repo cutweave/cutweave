@@ -18,6 +18,10 @@ rust-version = "1.100"
 ffmpeg-next = "9.1.0"
 # Used by xtask to read `cargo metadata` output (dependency-rule checker).
 serde_json = "1"
+# xtask: corpus + benchmark manifests (TOML), result JSON, and sha256 verification of fetched media.
+serde = { version = "1", features = ["derive"] }
+toml = "0.9"
+sha2 = "0.10"
 
 [workspace.lints.rust]
 # Allowed (with justification) only in cutweave-bridge, cutweave-playback and cutweave-audio.

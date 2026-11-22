@@ -1,6 +1,6 @@
 [package]
 name = "xtask"
-description = "Cutweave: developer automation (`cargo xtask <ci|check-wasm|check-deps|license-headers|tokens|fetch-corpus|gen>`)"
+description = "Cutweave: developer automation (`cargo xtask <ci|check-wasm|check-deps|license-headers|tokens|fetch-corpus|corpus-verify|bench|bench-check|gen>`)"
 version.workspace = true
 edition.workspace = true
 license.workspace = true
@@ -12,6 +12,10 @@ publish = false
 # Parses `cargo metadata` output for the dependency-rule checker.
 # `preserve_order` keeps token-file order (font families) so output is stable and readable.
 serde_json = { workspace = true, features = ["preserve_order"] }
+
+serde = { workspace = true }
+toml = { workspace = true }
+sha2 = { workspace = true }
 
 [lints]
 workspace = true

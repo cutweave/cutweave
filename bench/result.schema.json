@@ -1,0 +1,40 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://cutweave.dev/schema/bench-result.json",
+  "title": "Cutweave benchmark result",
+  "description": "Output of `cargo xtask bench` and scripts/bench/ui-bench.ts; consumed by `cargo xtask bench-check` (WP-0I.03).",
+  "type": "object",
+  "required": ["machine", "commit", "date", "toolchain", "metrics"],
+  "additionalProperties": false,
+  "properties": {
+    "machine": { "type": "string", "description": "Reference machine id (ref-win-dgpu, ref-mac-m1, ...) or `local`." },
+    "commit": { "type": "string", "description": "Git commit the run measured (`unknown` outside a checkout)." },
+    "date": { "type": "string", "description": "UTC date, YYYY-MM-DD." },
+    "suite": { "type": "string" },
+    "toolchain": {
+      "type": "object",
+      "required": ["rustc", "ffmpeg", "wgpu", "electron"],
+      "additionalProperties": false,
+      "properties": {
+        "rustc": { "type": ["string", "null"] },
+        "ffmpeg": { "type": ["string", "null"] },
+        "wgpu": { "type": ["string", "null"] },
+        "electron": { "type": ["string", "null"] }
+      }
+    },
+    "metrics": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["id", "value", "unit", "samples"],
+        "additionalProperties": false,
+        "properties": {
+          "id": { "type": "string", "description": "Budget id from bench/budgets.toml." },
+          "value": { "type": "number", "description": "Reported value (for p95 budgets, the p95)." },
+          "unit": { "type": "string" },
+          "samples": { "type": "integer", "minimum": 1 }
+        }
+      }
+    }
+  }
+}
