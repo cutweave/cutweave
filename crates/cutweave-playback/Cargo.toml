@@ -8,5 +8,30 @@ repository.workspace = true
 rust-version.workspace = true
 publish = false
 
+[dependencies]
+# `Time` / `Duration` (flicks) for frame timestamps and the audio clock (arch §4.1, ADR-0004).
+cutweave-model = { path = "../cutweave-model" }
+thiserror.workspace = true
+# Per-launch random ring names and ring epochs from the OS CSPRNG (arch §6, WP-1H.02).
+# Already in the graph through `uuid`; not yet a `[workspace.dependencies]` entry.
+getrandom = "0.4.3"
+
+# Named file mapping with a restrictive security descriptor, QPC host clock (WP-1H.02).
+# Same version the graph already resolves to; not yet a `[workspace.dependencies]` entry.
+[target.'cfg(windows)'.dependencies]
+windows-sys = { version = "0.61.2", features = [
+  "Win32_Foundation",
+  "Win32_Security",
+  "Win32_Security_Authorization",
+  "Win32_System_Memory",
+  "Win32_System_Performance",
+  "Win32_System_Threading",
+] }
+
+# POSIX shared memory (`shm_open`/`mmap`), monotonic host clock, process liveness (WP-1H.02).
+# Same version the graph already resolves to; not yet a `[workspace.dependencies]` entry.
+[target.'cfg(unix)'.dependencies]
+libc = "0.2.191"
+
 [lints]
 workspace = true
