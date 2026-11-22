@@ -1,0 +1,231 @@
+name: CI
+
+# WP-0A.03. Job names are stable: they are the branch-protection required checks
+# (see .github/workflows/README.md). The `ffmpeg` cargo feature stays off here until WP-0A.06.
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+env:
+  CARGO_TERM_COLOR: always
+  CARGO_INCREMENTAL: "0"
+  RUST_BACKTRACE: "1"
+
+jobs:
+  rust:
+    name: rust (${{ matrix.os }})
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 30
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [windows-latest, macos-14, ubuntu-24.04]
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: dtolnay/rust-toolchain@683b588c487a69d01f6c6ddf40f036ff682cc2c8 # v1
+        with:
+          toolchain: "1.100.0"
+          components: rustfmt, clippy
+          targets: wasm32-unknown-unknown
+      - uses: Swatinem/rust-cache@d1527c8f67ef9af357290475d4af4b0fab8f12e0 # v2.9.3
+      - uses: taiki-e/install-action@fe3acb53a98b62c772db35de75ce0e4595e7ca8c # v2.90.8
+        with:
+          tool: cargo-nextest
+      - name: fmt
+        run: cargo fmt --all --check
+      - name: clippy
+        run: cargo clippy --workspace --all-targets -- -D warnings
+      - name: tests (nextest)
+        run: cargo nextest run --workspace
+      - name: doc-tests
+        run: cargo test --workspace --doc
+      - name: dependency rule
+        run: cargo xtask check-deps
+      - name: license headers
+        run: cargo xtask license-headers --check
+
+  wasm-check:
+    name: wasm-check
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: dtolnay/rust-toolchain@683b588c487a69d01f6c6ddf40f036ff682cc2c8 # v1
+        with:
+          toolchain: "1.100.0"
+          targets: wasm32-unknown-unknown
+      - uses: Swatinem/rust-cache@d1527c8f67ef9af357290475d4af4b0fab8f12e0 # v2.9.3
+      - run: cargo xtask check-wasm
+
+  ts:
+    name: ts (${{ matrix.os }})
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 20
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [windows-latest, macos-14, ubuntu-24.04]
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version-file: .nvmrc
+      # pnpm is pinned by the `packageManager` field in package.json.
+      - name: Enable pnpm (corepack)
+        run: corepack enable
+      - name: Resolve pnpm store path
+        id: pnpm-store
+        shell: bash
+        run: echo "path=$(pnpm store path --silent)" >> "$GITHUB_OUTPUT"
+      - uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: ${{ steps.pnpm-store.outputs.path }}
+          key: pnpm-store-${{ runner.os }}-${{ hashFiles('pnpm-lock.yaml') }}
+          restore-keys: pnpm-store-${{ runner.os }}-
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm lint
+      - run: pnpm format:check
+      - run: pnpm typecheck
+      - run: pnpm test
+      - run: pnpm build
+
+  deny:
+    name: deny
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: taiki-e/install-action@fe3acb53a98b62c772db35de75ce0e4595e7ca8c # v2.90.8
+        with:
+          tool: cargo-deny
+      - name: cargo deny
+        run: cargo deny check
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version-file: .nvmrc
+      - run: corepack enable
+      - run: pnpm install --frozen-lockfile
+      - name: pnpm audit
+        run: pnpm audit --audit-level high
+
+  schema-snapshot:
+    name: schema-snapshot
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: dtolnay/rust-toolchain@683b588c487a69d01f6c6ddf40f036ff682cc2c8 # v1
+        with:
+          toolchain: "1.100.0"
+      - uses: Swatinem/rust-cache@d1527c8f67ef9af357290475d4af4b0fab8f12e0 # v2.9.3
+      # No-op until WP-1N implements schema/TS codegen.
+      - run: cargo xtask gen --check
+
+  docs-lint:
+    name: docs-lint
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - name: Markdown relative-link check
+        run: python3 scripts/check-md-links.py
+
+  actionlint:
+    name: actionlint
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: taiki-e/install-action@fe3acb53a98b62c772db35de75ce0e4595e7ca8c # v2.90.8
+        with:
+          tool: actionlint
+      - run: actionlint
+
+  # Linux display matrix for GUI tests: probes only for now; Electron tests arrive in Phase 1.
+  gui-probe:
+    name: gui-probe (${{ matrix.display }})
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    strategy:
+      fail-fast: false
+      matrix:
+        display: [x11, wayland]
+    steps:
+      - name: Install display stack
+        run: |
+          sudo apt-get update
+          if [ "${{ matrix.display }}" = x11 ]; then
+            sudo apt-get install -y --no-install-recommends xvfb x11-utils
+          else
+            sudo apt-get install -y --no-install-recommends weston wayland-utils
+          fi
+      - name: Probe X11
+        if: matrix.display == 'x11'
+        run: xvfb-run -a xdpyinfo | head -n 20
+      - name: Probe Wayland
+        if: matrix.display == 'wayland'
+        run: |
+          export XDG_RUNTIME_DIR="$RUNNER_TEMP/xdg"
+          mkdir -p "$XDG_RUNTIME_DIR" && chmod 700 "$XDG_RUNTIME_DIR"
+          weston --backend=headless --socket=wayland-ci --idle-time=0 &
+          sleep 3
+          WAYLAND_DISPLAY=wayland-ci wayland-info | head -n 30
+
+  # Software GPU scaffolding. `cargo xtask gpu-info` (wgpu adapter list) arrives with the render
+  # work; until then the probes below use the platform tools.
+  gpu-probe:
+    name: gpu-probe (${{ matrix.os }})
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 10
+    continue-on-error: true
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-24.04, macos-14, windows-latest]
+    steps:
+      - name: Linux, lavapipe adapter
+        if: runner.os == 'Linux'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends mesa-vulkan-drivers vulkan-tools
+          vulkaninfo --summary
+      - name: macOS, Metal adapter (verdict recorded in the WP-0A.03 PR)
+        if: runner.os == 'macOS'
+        run: system_profiler SPDisplaysDataType
+      - name: Windows, WARP is the default software adapter
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: Get-CimInstance Win32_VideoController | Format-List Name, DriverVersion
+
+  # Honours ADR-014's Ubuntu 22.04 floor (glibc 2.35).
+  engine-linux:
+    name: engine-linux (ubuntu-22.04 container)
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    container: ubuntu:22.04
+    steps:
+      - name: Install build tools
+        run: |
+          apt-get update
+          apt-get install -y --no-install-recommends ca-certificates curl git build-essential binutils pkg-config
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: dtolnay/rust-toolchain@683b588c487a69d01f6c6ddf40f036ff682cc2c8 # v1
+        with:
+          toolchain: "1.100.0"
+      - uses: Swatinem/rust-cache@d1527c8f67ef9af357290475d4af4b0fab8f12e0 # v2.9.3
+        with:
+          key: engine-linux
+      - name: Build engine binary
+        run: cargo build --release -p cutweave-cli
+      - name: glibc floor (<= 2.35)
+        run: bash scripts/check-glibc.sh target/release/cutweave 2.35
