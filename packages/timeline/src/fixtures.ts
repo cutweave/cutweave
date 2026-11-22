@@ -204,8 +204,8 @@ export function syntheticLoaders(): MediaLoaders {
     },
     async waveform(req) {
       const rnd = mulberry32(hash(req.mediaId));
-      const pps = Math.min(req.peaksPerSecond, 1000); // loaders may answer at another resolution
-      const seconds = 600;
+      const pps = Math.min(req.peaksPerSecond, 500); // loaders may answer at another resolution
+      const seconds = 300;
       const n = Math.ceil(seconds * pps);
       const min = new Float32Array(n);
       const max = new Float32Array(n);

@@ -54,6 +54,7 @@ export function TimelineCanvas(props: TimelineCanvasProps) {
     const offPointer = view.onPointer((e) => latest.current.onPointer?.(e));
     const offView = view.onViewChange((s) => latest.current.onViewChange?.(s));
     p.onView?.(view);
+    view.flush(); // first frame synchronously: no blank canvas, deterministic screenshots
     return () => {
       offPointer();
       offView();
