@@ -767,7 +767,7 @@ MyVideo/                    ← project folder (user-chosen location)
 | 009 | MCP: rmcp; hybrid catalog (core tools + search/describe/execute/query); attach + headless | **Accepted (provisional)**: S5 passed 3/3 with Claude Code; a second client is pending |
 | 010 | Plugins: layered L0–L4; wasmtime + WIT; QuickJS compositions; WGSL effects | Accepted |
 | 011 | License: GPL-3.0 core, MIT/Apache SDK/WIT/compose-runtime, plugin exception, DCO | **Accepted** (user, 2026-11-22) |
-| 012 | Compositions: TS/JSX → oxc → QuickJS → scene graph (no headless browser) | Proposed: **Spike 4b** |
+| 012 | Compositions: TS/JSX → oxc → QuickJS → scene graph (no headless browser) | **Accepted (provisional)** with S4b conditions: clang build, heap reads, fuel budget, frame-ahead pool |
 | 013 | UI: React 19 + Zustand + Canvas2D timeline + dockview + schema-driven inspector | Accepted |
 | 014 | Minimum OS: Windows 10 22H2+ / 11, macOS 13+, Ubuntu 22.04+ / Fedora 40+ (X11 and Wayland). Adjust to Electron/wgpu/FFmpeg floor | Proposed: Phase 0 |
 | 015 | Wire protocol: `request_id` idempotency, flicks as JSON integers, deterministic-ID test mode (§4.1, §5.1) | Accepted |

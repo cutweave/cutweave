@@ -1,6 +1,13 @@
 # ADR-0012: Compositions: TS/JSX transpiled by oxc and run in QuickJS to a scene graph (no headless browser)
 
-- **Status:** Proposed
+- **Status:** Accepted (provisional, 2026-11-22), with conditions from Spike S4b (spikes/s4b-compositions/README.md). It passed transpile (0.14 ms p50), determinism (byte-identical across processes and frame order) and sandbox (35/35 escapes contained). Evaluation of a 200-node fully animated scene missed 1 ms (p50 about 2.6 ms; a realistic lower-third takes 0.025 ms). Conditions for Phase 3:
+  - build QuickJS with clang;
+  - read scene nodes directly from the QuickJS heap (about 5× cheaper than JSON);
+  - add a deterministic fuel budget and watchdog;
+  - evaluate frames ahead on a runtime pool, with a scene cache keyed by (source, props, frame);
+  - batch shapes in the compositor.
+
+  Re-measure on reference machines (WP-0G.02). Declarative-only fallback rejected.
 - **Date:** 2026-11-22
 - **Deciders:** Cutweave maintainers (decision pending Spike S4b)
 - **Supersedes:** none
