@@ -25,7 +25,11 @@
 //!   [`DocEvent`], [`Applied`], [`ActorCtx`], [`Clock`]): the single writer (WP-1B.03). Commands
 //!   run serially on a dedicated thread; readers get immutable snapshots without locking;
 //!   revisions, `expected_rev` conflicts, `request_id` dedup, bounded event streams with lag
-//!   detection, and the seams for transactions, undo and the journal (WP-1B.04/09, WP-1C.02).
+//!   detection, and the seams for transaction ownership and the journal (WP-1B.09, WP-1C.02).
+//! - **History** ([`edit`], [`HistoryEntry`], [`HistoryScope`], [`CheckpointId`]): per-actor
+//!   undo/redo over one linear log (WP-1B.04). The `edit.*` engine commands open, commit and
+//!   cancel transactions, undo and redo with the per-actor safety rule, list the history and
+//!   make and restore checkpoints; register them with [`edit::register`].
 //!
 //! The crate compiles to `wasm32-unknown-unknown`; there the actor's thread host
 //! ([`DocActor`], [`DocHandle`], [`EventStream`], [`Pending`]) is left out and [`DocState`] is
@@ -38,6 +42,7 @@ mod apply;
 mod ctx;
 mod diff;
 mod doc;
+pub mod edit;
 mod error;
 mod json;
 mod meta;
@@ -50,11 +55,17 @@ pub use ctx::{Access, QueryCtx};
 pub use cutweave_commands_derive::{command, query, wire};
 pub use diff::diff;
 pub use doc::{
-    Actor, ActorCtx, ActorError, Applied, Changes, Clock, CommandPanicked, CommitRecord,
-    CommitSink, ConnId, DEDUP_CAPACITY, DEDUP_WINDOW, DedupRecord, DocConfig, DocEvent, DocPatched,
-    DocReset, DocSnapshot, DocState, Fingerprint, JournalStep, MAX_AGENT_LABEL_CHARS,
-    MAX_PLUGIN_ID_CHARS, ManualClock, NoJournal, PatchCause, RequestId, RequestIdError,
-    SOFT_LOCK_RETRY_MS, Submit, TxClosed, TxId, TxIdError, TxInfo, TxKind, TxOutcome, WallTime,
+    Actor, ActorCtx, ActorError, ActorStacks, Applied, Changes, CheckpointId, CheckpointInfo,
+    Clock, CommandPanicked, CommitRecord, CommitSink, ConnId, DEDUP_CAPACITY, DEDUP_WINDOW,
+    DEFAULT_HISTORY_BYTES, DEFAULT_HISTORY_ENTRIES, DEFAULT_HISTORY_PAGE, DEFAULT_UNDO_DEPTH,
+    DedupRecord, DocConfig, DocEvent, DocPatched, DocReset, DocSnapshot, DocState, EntryCause,
+    EntryStatus, Fingerprint, GESTURE_IDLE_TIMEOUT, HistoryChange, HistoryChanged, HistoryEntry,
+    HistoryLimits, HistoryMoved, HistoryPage, HistoryScope, HistoryUsage, JournalStep,
+    JournaledCommit, MAX_AGENT_LABEL_CHARS, MAX_CHECKPOINT_NAME_CHARS, MAX_CHECKPOINT_NOTE_CHARS,
+    MAX_CHECKPOINTS, MAX_HISTORY_PAGE, MAX_NAMED_CHECKPOINTS, MAX_PLUGIN_ID_CHARS, ManualClock,
+    NoJournal, PatchCause, RequestId, RequestIdError, Restored, RevertedChanges,
+    SOFT_LOCK_RETRY_MS, StackTop, Submit, TxClosed, TxId, TxIdError, TxInfo, TxKind, TxOutcome,
+    WallTime,
 };
 #[cfg(not(all(target_arch = "wasm32", target_os = "unknown")))]
 pub use doc::{

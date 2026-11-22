@@ -21,7 +21,7 @@ use cutweave_commands::{
     DocMetrics, Outcome, PatchCause, REDACTED, RecvError, RequestSample, Rev, Submit, TryRecvError,
 };
 use doc_support::{
-    GATE, Mirror, agent, append, config, drain, item_name, project, spawn, submit, ui,
+    GATE, Mirror, agent, append, config, drain, item_name, next_patched, project, spawn, submit, ui,
 };
 use serde_json::json;
 
@@ -275,15 +275,12 @@ fn the_actor_and_scopes_come_from_the_credential() {
     let h = actor.handle();
     let mut events = h.subscribe();
     submit(&h, &agent(), "project.rename", json!({"name": "By agent"})).unwrap();
-    let event = events.try_recv().unwrap();
-    assert_eq!(
-        event.as_patched().unwrap().actor.to_string(),
-        "agent:claude"
-    );
+    // (`edit.history_changed` events are interleaved; only `doc.patched` matters here.)
+    assert_eq!(next_patched(&mut events).actor.to_string(), "agent:claude");
     let plugin = ActorCtx::plugin(cutweave_commands::ConnId::new(5), "acme.tools").unwrap();
     submit(&h, &plugin, "project.rename", json!({"name": "By plugin"})).unwrap();
     assert_eq!(
-        events.try_recv().unwrap().as_patched().unwrap().actor,
+        next_patched(&mut events).actor,
         Actor::plugin("acme.tools").unwrap()
     );
     submit(
@@ -293,10 +290,7 @@ fn the_actor_and_scopes_come_from_the_credential() {
         json!({"name": "Sys"}),
     )
     .unwrap();
-    assert_eq!(
-        events.try_recv().unwrap().as_patched().unwrap().actor,
-        Actor::System
-    );
+    assert_eq!(next_patched(&mut events).actor, Actor::System);
 
     // UI-only scopes are refused for agents before anything runs.
     let err = submit(
@@ -512,11 +506,12 @@ fn shutdown_answers_queued_requests_then_stops() {
     assert_eq!(drain_until_closed(&mut events), 20);
 }
 
+/// The number of `doc.patched` events until the stream closes.
 fn drain_until_closed(events: &mut cutweave_commands::EventStream) -> usize {
     let mut n = 0;
     loop {
         match events.recv_blocking() {
-            Ok(_) => n += 1,
+            Ok(event) => n += usize::from(event.as_patched().is_some()),
             Err(RecvError::Closed) => return n,
             Err(e) => panic!("{e}"),
         }
@@ -537,8 +532,15 @@ fn replies_and_events_are_futures_usable_from_any_executor() {
     .unwrap();
     let event = block_on(events.recv()).unwrap();
     assert_eq!(event.rev(), Some(applied.rev));
-    // An event published while the receiver waits wakes it.
-    let waiter = thread::spawn(move || block_on(events.recv()).unwrap().rev());
+    // An event published while the receiver waits wakes it (skipping the first commit's
+    // `edit.history_changed`, which has no revision).
+    let waiter = thread::spawn(move || {
+        loop {
+            if let Some(rev) = block_on(events.recv()).unwrap().rev() {
+                break Some(rev);
+            }
+        }
+    });
     thread::sleep(Duration::from_millis(20));
     append(&h, &ui(), tracks[0], 1);
     assert_eq!(waiter.join().unwrap(), Some(Rev(2)));

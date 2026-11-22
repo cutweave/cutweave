@@ -47,7 +47,14 @@ fn a_repeat_within_the_window_applies_once_and_returns_the_original_result() {
     let first = h.submit(append_with(id, &ui(), tracks[0])).wait().unwrap();
     assert_eq!(first.rev, Rev(1));
     assert!(!first.replayed);
-    assert_eq!(drain(&mut events).len(), 1);
+    // One `doc.patched` (plus the history's `edit.history_changed`).
+    assert_eq!(
+        drain(&mut events)
+            .iter()
+            .filter(|e| e.as_patched().is_some())
+            .count(),
+        1
+    );
 
     // 9 minutes later (fake clock): same result, nothing re-applied, no event, no new rev.
     clock.advance(9 * MINUTE);

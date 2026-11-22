@@ -10,6 +10,10 @@
 //!   events as bounded per-subscriber [`EventStream`]s with lag detection and resync.
 //! - Identity: [`ActorCtx`] (derived from the credential, never client-asserted) carries the
 //!   [`Actor`], the [`ConnId`] that owns open transactions, and the [`Access`](crate::Access).
+//! - History (WP-1B.04): the linear log of committed transactions with per-actor undo/redo
+//!   stacks ([`HistoryEntry`], [`HistoryScope`], [`HistoryLimits`]), the per-actor undo safety
+//!   rule, checkpoints ([`CheckpointId`]) and `edit.history_changed` events
+//!   ([`HistoryChanged`]); the `edit.*` commands that drive it are in [`crate::edit`].
 
 #[cfg(not(all(target_arch = "wasm32", target_os = "unknown")))]
 mod actor;
@@ -18,6 +22,7 @@ mod bus;
 mod clock;
 mod dedup;
 mod event;
+mod history;
 mod identity;
 #[cfg(not(all(target_arch = "wasm32", target_os = "unknown")))]
 mod metrics;
@@ -37,6 +42,13 @@ pub use clock::SystemClock;
 pub use clock::{Clock, ManualClock, WallTime};
 pub use dedup::{DEDUP_CAPACITY, DEDUP_WINDOW, DedupRecord, Fingerprint};
 pub use event::{CommandPanicked, DocEvent, DocPatched, DocReset, DocSnapshot, PatchCause};
+pub use history::{
+    ActorStacks, CheckpointId, CheckpointInfo, DEFAULT_HISTORY_BYTES, DEFAULT_HISTORY_ENTRIES,
+    DEFAULT_HISTORY_PAGE, DEFAULT_UNDO_DEPTH, EntryCause, EntryStatus, HistoryChange,
+    HistoryChanged, HistoryEntry, HistoryLimits, HistoryMoved, HistoryPage, HistoryScope,
+    HistoryUsage, MAX_CHECKPOINT_NAME_CHARS, MAX_CHECKPOINT_NOTE_CHARS, MAX_CHECKPOINTS,
+    MAX_HISTORY_PAGE, MAX_NAMED_CHECKPOINTS, Restored, RevertedChanges, StackTop,
+};
 pub use identity::{
     Actor, ActorCtx, ActorError, ConnId, MAX_AGENT_LABEL_CHARS, MAX_PLUGIN_ID_CHARS,
 };
@@ -49,6 +61,6 @@ pub use request::{
     TxOutcome,
 };
 pub use state::{
-    Changes, CommitRecord, CommitSink, DocConfig, DocState, JournalStep, NoJournal,
-    SOFT_LOCK_RETRY_MS,
+    Changes, CommitRecord, CommitSink, DocConfig, DocState, GESTURE_IDLE_TIMEOUT, JournalStep,
+    JournaledCommit, NoJournal, SOFT_LOCK_RETRY_MS,
 };

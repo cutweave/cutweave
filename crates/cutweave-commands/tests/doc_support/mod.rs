@@ -16,8 +16,8 @@ use std::{
 
 use cutweave_commands::{
     ActorCtx, ActorOptions, Applied, CmdError, Command, ConnId, DocActor, DocConfig, DocEvent,
-    DocHandle, DocState, EngineCommand, EventStream, Patch, Query, QueryCtx, Registry, Submit, Tx,
-    TxId, TxKind, apply_patch, apply_patch_json, command, json_eq, query, wire,
+    DocHandle, EngineCommand, EventStream, Patch, Query, QueryCtx, Registry, Submit, Tx,
+    apply_patch, apply_patch_json, command, json_eq, query, wire,
 };
 use cutweave_model::{
     Clip, Duration, EntityKind, FrameRate, IdGen, Item, ItemId, MediaAsset, MediaId, MediaKind,
@@ -211,6 +211,31 @@ impl Command for RenameProject {
     }
 }
 
+/// Stamps the project's name, not undoably (a non-undoable change for the history tests).
+#[command(
+    name = "project.stamp",
+    summary = "Stamp the project name (not undoable)",
+    undoable = false,
+    mcp = "hidden",
+    annotations(destructive = false)
+)]
+pub struct Stamp {
+    /// The new name.
+    pub name: String,
+}
+
+impl Command for Stamp {
+    type Output = Done;
+
+    fn apply(&self, tx: &mut Tx<'_>) -> Result<Done, CmdError> {
+        tx.update_meta(|meta| {
+            meta.name.clone_from(&self.name);
+            Ok(())
+        })?;
+        Ok(Done {})
+    }
+}
+
 /// Does nothing (round-trip benchmark).
 #[command(
     name = "project.noop",
@@ -341,89 +366,6 @@ impl Command for Block {
     }
 }
 
-/// Transaction kinds on the wire.
-#[wire]
-#[serde(rename_all = "snake_case")]
-pub enum Kind {
-    /// Batch.
-    Batch,
-    /// Gesture.
-    Gesture,
-    /// Proposal.
-    Proposal,
-}
-
-/// The opened transaction.
-#[wire]
-pub struct TxOut {
-    /// Its id.
-    pub tx: TxId,
-}
-
-/// Opens a transaction for the caller (stand-in for WP-1B.04's `edit.begin_tx`).
-#[command(
-    name = "edit.begin_tx",
-    summary = "Open a transaction",
-    engine,
-    undoable = false,
-    mcp = "hidden",
-    annotations(destructive = false)
-)]
-pub struct BeginTx {
-    /// Kind.
-    pub kind: Kind,
-    /// Label.
-    pub label: String,
-}
-
-impl EngineCommand for BeginTx {
-    type Context = DocState;
-    type Output = TxOut;
-
-    fn run(&self, state: &mut DocState) -> Result<TxOut, CmdError> {
-        let ctx = state
-            .caller()
-            .cloned()
-            .ok_or_else(|| CmdError::internal("no caller"))?;
-        let kind = match self.kind {
-            Kind::Batch => TxKind::Batch,
-            Kind::Gesture => TxKind::Gesture,
-            Kind::Proposal => TxKind::Proposal,
-        };
-        Ok(TxOut {
-            tx: state.begin_tx(&ctx, kind, self.label.clone())?.id,
-        })
-    }
-}
-
-/// Commits the caller's transaction (stand-in for WP-1B.04's `edit.commit_tx`).
-#[command(
-    name = "edit.commit_tx",
-    summary = "Commit a transaction",
-    engine,
-    undoable = false,
-    mcp = "hidden",
-    annotations(destructive = false)
-)]
-pub struct CommitTx {
-    /// The transaction.
-    pub tx: TxId,
-}
-
-impl EngineCommand for CommitTx {
-    type Context = DocState;
-    type Output = TxOut;
-
-    fn run(&self, state: &mut DocState) -> Result<TxOut, CmdError> {
-        let ctx = state
-            .caller()
-            .cloned()
-            .ok_or_else(|| CmdError::internal("no caller"))?;
-        state.commit_tx(&ctx, self.tx)?;
-        Ok(TxOut { tx: self.tx })
-    }
-}
-
 /// UI view state stand-in: an engine command whose context is not the document actor's.
 #[derive(Debug, Default)]
 pub struct ViewState;
@@ -483,6 +425,8 @@ pub fn registry() -> Arc<Registry> {
         .unwrap()
         .register::<RenameProject>()
         .unwrap()
+        .register::<Stamp>()
+        .unwrap()
         .register::<Noop>()
         .unwrap()
         .register::<Explode>()
@@ -491,14 +435,12 @@ pub fn registry() -> Arc<Registry> {
         .unwrap()
         .register::<Block>()
         .unwrap()
-        .register::<BeginTx>()
-        .unwrap()
-        .register::<CommitTx>()
-        .unwrap()
         .register::<SetPlayhead>()
         .unwrap()
         .register::<CountItems>()
         .unwrap();
+    // The production `edit.*` commands (transactions, undo/redo, history, checkpoints).
+    cutweave_commands::edit::register(&mut r).unwrap();
     Arc::new(r)
 }
 
@@ -555,6 +497,16 @@ pub fn append(h: &DocHandle, ctx: &ActorCtx, track: TrackId, frames: u32) -> Ite
     .unwrap()
     .output;
     serde_json::from_value(out["item"].clone()).unwrap()
+}
+
+/// The next `doc.patched` event already queued, skipping other events.
+pub fn next_patched(stream: &mut EventStream) -> cutweave_commands::DocPatched {
+    loop {
+        let event = stream.try_recv().unwrap();
+        if let Some(p) = event.as_patched() {
+            return p.clone();
+        }
+    }
 }
 
 /// Drains every queued event.

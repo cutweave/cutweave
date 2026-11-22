@@ -6,6 +6,7 @@ use cutweave_model::Project;
 use serde::{Deserialize, Serialize};
 
 use super::{
+    history::HistoryChanged,
     identity::Actor,
     request::{RequestId, TxId},
 };
@@ -57,8 +58,15 @@ pub enum PatchCause {
     /// An open transaction committed. For a gesture or proposal the document already showed
     /// its changes, so `ops` is usually empty; for a batch it carries the batch's changes.
     Commit,
-    /// An open transaction was cancelled or rolled back; `ops` undoes its live changes.
+    /// An open transaction was cancelled, rolled back or expired; `ops` undoes its live
+    /// changes.
     Rollback,
+    /// `edit.undo` reverted a history entry (`actor` is who undid it).
+    Undo,
+    /// `edit.redo` re-applied a history entry (`actor` is who redid it).
+    Redo,
+    /// `edit.restore` brought the document back to a checkpoint.
+    Restore,
 }
 
 /// A change of the live document, broadcast in revision order (`doc.patched`, arch §5.1).
@@ -130,6 +138,9 @@ pub enum DocEvent {
     /// `doc.command_panicked`.
     #[serde(rename = "doc.command_panicked")]
     CommandPanicked(CommandPanicked),
+    /// `edit.history_changed`: an actor's undo/redo stacks changed (WP-1B.04).
+    #[serde(rename = "edit.history_changed")]
+    History(HistoryChanged),
 }
 
 impl DocEvent {
@@ -139,7 +150,7 @@ impl DocEvent {
         match self {
             DocEvent::Patched(p) => Some(p.rev),
             DocEvent::Reset(r) => Some(r.rev),
-            DocEvent::CommandPanicked(_) => None,
+            DocEvent::CommandPanicked(_) | DocEvent::History(_) => None,
         }
     }
 
@@ -149,7 +160,7 @@ impl DocEvent {
         match self {
             DocEvent::Patched(p) => Some(p.prev_rev),
             DocEvent::Reset(r) => Some(r.prev_rev),
-            DocEvent::CommandPanicked(_) => None,
+            DocEvent::CommandPanicked(_) | DocEvent::History(_) => None,
         }
     }
 
@@ -158,6 +169,15 @@ impl DocEvent {
     pub fn as_patched(&self) -> Option<&DocPatched> {
         match self {
             DocEvent::Patched(p) => Some(p),
+            _ => None,
+        }
+    }
+
+    /// The `edit.history_changed` payload, if this is one.
+    #[must_use]
+    pub fn as_history(&self) -> Option<&HistoryChanged> {
+        match self {
+            DocEvent::History(h) => Some(h),
             _ => None,
         }
     }

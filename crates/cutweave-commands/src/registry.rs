@@ -325,9 +325,20 @@ fn check_flags(spec: &CommandSpec) -> Result<(), String> {
                 return Err("`view` marks commands, not queries".into());
             }
         }
-        EntryKind::Command | EntryKind::Engine => {
+        EntryKind::Command => {
             if a.read_only {
                 return Err("a command is never read-only; make it a query".into());
+            }
+        }
+        // An engine entry may only read engine state (`edit.history`): queries read the
+        // document snapshot, which does not hold it.
+        EntryKind::Engine => {
+            if a.read_only && (spec.undoable || a.destructive || !a.idempotent || spec.view) {
+                return Err(
+                    "a read-only engine command must be non-undoable, non-destructive, \
+                     idempotent and not a `view` command"
+                        .into(),
+                );
             }
         }
     }

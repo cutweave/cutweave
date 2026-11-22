@@ -110,7 +110,8 @@ fn command(
 fn eight_writers_ten_thousand_commands_equal_a_sequential_replay() {
     watchdog(|progress| {
         let (doc, tracks, _) = project(WRITERS);
-        let actor = spawn_with_capacity(doc.clone(), COMMANDS + 16);
+        // Each commit also emits an `edit.history_changed` event.
+        let actor = spawn_with_capacity(doc.clone(), 2 * COMMANDS + 16);
         let h = actor.handle();
         let mut events = h.subscribe();
         let done = Arc::new(AtomicBool::new(false));
@@ -185,7 +186,10 @@ fn eight_writers_ten_thousand_commands_equal_a_sequential_replay() {
         assert_eq!(state.doc(), &last.doc);
 
         // Every event, in order; replaying them reproduces the document.
-        let events = drain(&mut events);
+        let events: Vec<_> = drain(&mut events)
+            .into_iter()
+            .filter(|e| e.as_patched().is_some())
+            .collect();
         assert_eq!(events.len(), COMMANDS);
         let mut mirror = Mirror::new(&doc, Rev(0));
         for e in &events {

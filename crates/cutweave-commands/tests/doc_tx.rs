@@ -199,7 +199,11 @@ fn a_batch_is_invisible_until_it_commits() {
     let closed = h.commit_tx(&ctx, tx).wait().unwrap();
     assert_eq!(closed.rev, Rev(1));
     assert_eq!(h.snapshot().doc.item_count(), 3);
-    let events = drain(&mut events);
+    // One `doc.patched` (plus the history's `edit.history_changed`).
+    let events: Vec<_> = drain(&mut events)
+        .into_iter()
+        .filter(|e| e.as_patched().is_some())
+        .collect();
     assert_eq!(events.len(), 1);
     let p = events[0].as_patched().unwrap();
     assert_eq!((p.cause, p.rev), (PatchCause::Commit, Rev(1)));
