@@ -83,9 +83,9 @@ corpus *args:
 evals *args:
     @echo "evals: not implemented yet (arrives in Phase 6)"
 
-# Download the pinned CI-built FFmpeg shared bundle and set FFMPEG_DIR
-ffmpeg-fetch:
-    @echo "ffmpeg-fetch: not implemented yet (arrives in WP-0A.06)"
+# Download the newest CI-built FFmpeg shared bundle for this OS into third_party/ffmpeg/ and print FFMPEG_DIR (`--help` for options)
+ffmpeg-fetch *args:
+    bash scripts/ffmpeg/fetch.sh {{args}}
 
 # Everything CI checks that this machine can run: the fast gate plus Storybook visual regression,
 # axe and offline-fonts tests against this OS's baselines. Run before merging to main.
