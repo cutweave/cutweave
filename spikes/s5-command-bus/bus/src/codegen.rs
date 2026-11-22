@@ -76,6 +76,7 @@ pub fn catalog(registry: &Registry, kind: EntryKind) -> Value {
                 "name": e.meta.name,
                 "summary": e.meta.summary,
                 "undoable": e.meta.undoable,
+                "ui_only": e.meta.ui_only,
                 "engine_op": e.is_engine_op(),
                 "mcp": {
                     "tier": e.meta.mcp,

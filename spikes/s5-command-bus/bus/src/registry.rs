@@ -81,6 +81,9 @@ pub struct CommandMeta {
     pub summary: &'static str,
     /// Command or query.
     pub kind: EntryKind,
+    /// UI-only scope (arch §6, `#[command(scope = "ui")]`): only the UI credential may invoke it;
+    /// the engine refuses every other caller with `forbidden`.
+    pub ui_only: bool,
     /// Whether applying it pushes an undo entry.
     pub undoable: bool,
     /// MCP tier.

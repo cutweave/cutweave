@@ -102,6 +102,7 @@
         "type": "object"
       },
       "summary": "Render the frame at a time as an image",
+      "ui_only": false,
       "undoable": false
     },
     {
@@ -341,6 +342,7 @@
         "type": "object"
       },
       "summary": "Get the timeline (tracks, items, media)",
+      "ui_only": false,
       "undoable": false
     }
   ],
@@ -489,6 +491,29 @@
             },
             "required": [
               "code",
+              "msg"
+            ],
+            "type": "object"
+          },
+          {
+            "description": "The caller's credential lacks the scope (e.g. an agent calling a UI-only command, arch §6).",
+            "properties": {
+              "code": {
+                "const": "forbidden",
+                "type": "string"
+              },
+              "msg": {
+                "description": "What to do instead.",
+                "type": "string"
+              },
+              "scope": {
+                "description": "The missing scope, e.g. `ui`.",
+                "type": "string"
+              }
+            },
+            "required": [
+              "code",
+              "scope",
               "msg"
             ],
             "type": "object"

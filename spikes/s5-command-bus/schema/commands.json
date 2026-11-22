@@ -3,6 +3,63 @@
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "entries": [
     {
+      "engine_op": true,
+      "mcp": {
+        "annotations": {
+          "destructiveHint": false,
+          "idempotentHint": true,
+          "openWorldHint": false,
+          "readOnlyHint": false
+        },
+        "tier": "catalog",
+        "tool": "ai_set_key"
+      },
+      "name": "ai.set_key",
+      "output": {
+        "additionalProperties": false,
+        "description": "Result of `ai.set_key` (never contains the key).",
+        "properties": {
+          "provider": {
+            "description": "Provider id.",
+            "type": "string"
+          },
+          "stored": {
+            "description": "Always true on success.",
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "provider",
+          "stored"
+        ],
+        "title": "SetAiKeyOutput",
+        "type": "object"
+      },
+      "params": {
+        "additionalProperties": false,
+        "description": "Store an AI provider API key in the engine (spike stand-in for the OS keychain). The key is\nnever echoed in results, events or the document.",
+        "properties": {
+          "key": {
+            "description": "The secret.",
+            "type": "string"
+          },
+          "provider": {
+            "description": "Provider id, e.g. `anthropic`.",
+            "type": "string"
+          }
+        },
+        "required": [
+          "provider",
+          "key"
+        ],
+        "title": "SetAiKey",
+        "type": "object"
+      },
+      "summary": "Store an AI provider API key (UI only)",
+      "ui_only": true,
+      "undoable": false
+    },
+    {
       "engine_op": false,
       "mcp": {
         "annotations": {
@@ -69,6 +126,7 @@
         "type": "object"
       },
       "summary": "Split a clip at a timeline time",
+      "ui_only": false,
       "undoable": true
     },
     {
@@ -177,6 +235,7 @@
         "type": "object"
       },
       "summary": "Trim a clip's start and/or end on the timeline",
+      "ui_only": false,
       "undoable": true
     },
     {
@@ -241,6 +300,7 @@
         "type": "object"
       },
       "summary": "Redo your most recently undone change",
+      "ui_only": false,
       "undoable": false
     },
     {
@@ -305,6 +365,7 @@
         "type": "object"
       },
       "summary": "Undo your most recent change",
+      "ui_only": false,
       "undoable": false
     },
     {
@@ -361,6 +422,7 @@
         "type": "object"
       },
       "summary": "Delete timeline items",
+      "ui_only": false,
       "undoable": true
     },
     {
@@ -486,6 +548,7 @@
         "type": "object"
       },
       "summary": "Import a media file into the project",
+      "ui_only": false,
       "undoable": true
     },
     {
@@ -586,6 +649,7 @@
         "type": "object"
       },
       "summary": "Open a new empty project, replacing the current one",
+      "ui_only": false,
       "undoable": false
     },
     {
@@ -715,6 +779,7 @@
         "type": "object"
       },
       "summary": "Insert media onto the timeline at a time",
+      "ui_only": false,
       "undoable": true
     }
   ],
@@ -863,6 +928,29 @@
             },
             "required": [
               "code",
+              "msg"
+            ],
+            "type": "object"
+          },
+          {
+            "description": "The caller's credential lacks the scope (e.g. an agent calling a UI-only command, arch §6).",
+            "properties": {
+              "code": {
+                "const": "forbidden",
+                "type": "string"
+              },
+              "msg": {
+                "description": "What to do instead.",
+                "type": "string"
+              },
+              "scope": {
+                "description": "The missing scope, e.g. `ui`.",
+                "type": "string"
+              }
+            },
+            "required": [
+              "code",
+              "scope",
               "msg"
             ],
             "type": "object"

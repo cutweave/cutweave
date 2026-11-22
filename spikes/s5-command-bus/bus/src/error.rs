@@ -98,6 +98,14 @@ pub enum CmdError {
         /// What is unsupported.
         msg: String,
     },
+    /// The caller's credential lacks the scope (e.g. an agent calling a UI-only command, arch §6).
+    #[error("forbidden ({scope} scope): {msg}")]
+    Forbidden {
+        /// The missing scope, e.g. `ui`.
+        scope: String,
+        /// What to do instead.
+        msg: String,
+    },
 }
 
 impl CmdError {
@@ -118,7 +126,7 @@ impl CmdError {
         }
     }
 
-    /// Machine code (`not_found`, `invalid`, `conflict`, `unsupported`).
+    /// Machine code (`not_found`, `invalid`, `conflict`, `unsupported`, `forbidden`).
     #[must_use]
     pub fn code(&self) -> &'static str {
         match self {
@@ -126,6 +134,7 @@ impl CmdError {
             CmdError::Invalid { .. } => "invalid",
             CmdError::Conflict { .. } => "conflict",
             CmdError::Unsupported { .. } => "unsupported",
+            CmdError::Forbidden { .. } => "forbidden",
         }
     }
 

@@ -20,6 +20,7 @@ fn inventory_collects_entries_across_crates() {
     assert_eq!(
         names,
         [
+            "ai.set_key", // UI-only (WP-0H.02)
             "clip.split",
             "clip.trim",
             "edit.redo", // registered in s5-bus
@@ -64,6 +65,15 @@ fn metadata_and_mcp_annotations() {
     assert!(!reg.get("project.open").unwrap().meta.undoable);
     assert!(reg.get("edit.undo").unwrap().is_engine_op());
     assert_eq!(reg.get("edit.redo").unwrap().meta.mcp, McpTier::Catalog);
+
+    // UI-only scope (arch §6) is registry metadata; only `ai.set_key` has it.
+    let ui_only: Vec<&str> = reg
+        .iter()
+        .filter(|e| e.meta.ui_only)
+        .map(|e| e.meta.name)
+        .collect();
+    assert_eq!(ui_only, ["ai.set_key"]);
+    assert_eq!(reg.get("ai.set_key").unwrap().meta.mcp, McpTier::Catalog);
 }
 
 #[test]

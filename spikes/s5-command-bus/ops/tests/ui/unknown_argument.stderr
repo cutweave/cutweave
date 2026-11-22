@@ -1,4 +1,4 @@
-error: unknown #[command] argument; expected `name`, `summary`, `undoable`, `engine`, `mcp` or `annotations(...)`
+error: unknown #[command] argument; expected `name`, `summary`, `undoable`, `engine`, `mcp`, `scope` or `annotations(...)`
  --> tests/ui/unknown_argument.rs:3:116
   |
 3 | #[command(name = "clip.split", summary = "Split a clip", undoable, mcp = "core", annotations(destructive = false), hidden)]
