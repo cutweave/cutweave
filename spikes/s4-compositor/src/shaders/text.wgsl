@@ -11,7 +11,7 @@ struct TextParams {
   t0: vec4<f32>,     // box -> target affine, row 0 (a, b, c, -)
   t1: vec4<f32>,     // row 1 (d, e, f, -)
   dims: vec4<f32>,   // target w, h, box w, box h
-  field: vec4<f32>,  // range_px, em_px, -, -
+  field: vec4<f32>,  // range_px, em_px, layer opacity (TextOver; else 1), -
 }
 
 struct Glyph {
@@ -113,5 +113,5 @@ fn fs(in: VsOut) -> @location(0) vec4<f32> {
     cov = clamp((sd_true + widen) / soft + 0.5, 0.0, 1.0);
   }
   let bc = clamp(min(in.box_p, P.dims.zw - in.box_p) + vec2<f32>(0.5), vec2<f32>(0.0), vec2<f32>(1.0));
-  return col * (cov * bc.x * bc.y);
+  return col * (cov * bc.x * bc.y * P.field.z);
 }

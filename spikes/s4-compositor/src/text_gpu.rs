@@ -110,6 +110,7 @@ pub fn text_params(
     size: [u32; 2],
     r: &ResolvedText,
     atlas: &GlyphAtlas,
+    opacity: f32,
 ) -> [f32; 16] {
     let t = transform;
     [
@@ -127,7 +128,7 @@ pub fn text_params(
         r.box_size[1],
         atlas.config.range_px as f32,
         atlas.config.em_px as f32,
-        0.0,
+        opacity,
         0.0,
     ]
 }

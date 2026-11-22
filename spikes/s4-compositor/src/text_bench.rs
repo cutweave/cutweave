@@ -47,7 +47,8 @@ pub struct GlyphBench {
     /// Whole frame GPU (text + composite + output).
     pub frame_gpu_p50: f64,
     pub wall_p50: f64,
-    /// Allocator delta (bytes) from before the first text frame to after the run.
+    /// Allocator delta (bytes) vs the same frame without text, after the run (text target,
+    /// atlas, instance buffers, Vello's buffers and targets).
     pub mem_delta: Option<i64>,
     pub atlas_bytes: u64,
 }
@@ -62,8 +63,12 @@ pub fn glyph_bench(
     styled: bool,
 ) -> Result<GlyphBench> {
     let provider = SyntheticSources::new(16, 16)?;
-    let mem0 = r.gpu_memory();
     let mut scene = glyph_storm_scene(size.0, size.1, 0, n, renderer, styled);
+    // Baseline: the same frame without the text layer (canvas, readback buffers allocated).
+    let mut bare = scene.clone();
+    bare.layers.clear();
+    r.render_scene(&bare, &provider)?;
+    let mem0 = r.gpu_memory();
     let text = storm_text(n);
     let first = r.render_scene(&scene, &provider)?;
     let (layout_cold_ms, atlas_cold_ms) = (first.stats.text.layout_ms, first.stats.text.atlas_ms);

@@ -101,6 +101,9 @@ enum Cmd {
         /// Print the per-pass breakdown.
         #[arg(long)]
         passes: bool,
+        /// Add the animated caption (WP-0F.02) drawn by `msdf` or `vello` (§19 budget scene).
+        #[arg(long)]
+        captions: Option<String>,
     },
     /// Compare two PNGs with the §20 metrics.
     Compare {
@@ -408,7 +411,13 @@ fn main() -> Result<()> {
             frames,
             all_adapters,
             passes,
+            captions,
         } => {
+            let captions = captions.as_deref().map(parse_renderer).transpose()?;
+            let scene_at = |f: i64| match captions {
+                Some(r) => timeline::caption_scene(common.width, common.height, f, r),
+                None => demo_scene(common.width, common.height, f),
+            };
             let choices: Vec<AdapterChoice> = if all_adapters {
                 list_adapters()
                     .into_iter()
@@ -445,7 +454,7 @@ fn main() -> Result<()> {
                     }
                 };
                 let provider = SyntheticSources::new(common.width, common.height)?;
-                let first = demo_scene(common.width, common.height, timeline::DISSOLVE_START + 30);
+                let first = scene_at(timeline::DISSOLVE_START + 30);
                 let f0 = r.render_scene(&first, &provider)?;
                 let first_ms = t_init.elapsed().as_secs_f64() * 1e3;
                 let _ = f0;
@@ -456,7 +465,7 @@ fn main() -> Result<()> {
                 let mut per_pass: Vec<(String, f64)> = Vec::new();
                 let mut last_stats = FrameStats::default();
                 for f in timeline::DISSOLVE_START..timeline::DISSOLVE_START + frames {
-                    let s = demo_scene(common.width, common.height, f);
+                    let s = scene_at(f);
                     let st = r.render_scene(&s, &provider)?.stats;
                     if let Some(n) = st.gpu_ns {
                         gpu.push(ms(n));
@@ -774,14 +783,20 @@ fn main() -> Result<()> {
                         ..Default::default()
                     });
                 for rend in [TextRenderer::Msdf, TextRenderer::Vello] {
-                    let (c, _) = text_bench::crispness(
+                    let (c, _) = match text_bench::crispness(
                         &mut r,
                         dims,
                         size,
                         rend,
                         &reference,
                         diff_dir.as_deref(),
-                    )?;
+                    ) {
+                        Ok(c) => c,
+                        Err(e) => {
+                            println!("{} {rend:?}: {e}", r.adapter().name);
+                            continue;
+                        }
+                    };
                     println!(
                         "{:<44} {:<7} {:<6} {:>10.5} {:>10.5} {:>10.2} {:>7} {:>8.3}ms",
                         r.adapter().name,
@@ -827,7 +842,13 @@ fn main() -> Result<()> {
                     (TextRenderer::Vello, false),
                     (TextRenderer::Msdf, true),
                 ] {
-                    let s = text_bench::shimmer(Some(&mut r), dims, rend, resampled, &refs)?;
+                    let s = match text_bench::shimmer(Some(&mut r), dims, rend, resampled, &refs) {
+                        Ok(s) => s,
+                        Err(e) => {
+                            println!("{name} {rend:?}: {e}");
+                            continue;
+                        }
+                    };
                     let label = format!(
                         "{name} {}{}",
                         format!("{rend:?}").to_lowercase(),

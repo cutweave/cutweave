@@ -572,7 +572,12 @@ impl Renderer {
             sample_count: 1,
             dimension: wgpu::TextureDimension::D2,
             format: WORKING_FORMAT,
-            usage: wgpu::TextureUsages::STORAGE_BINDING | wgpu::TextureUsages::TEXTURE_BINDING,
+            // RENDER_ATTACHMENT / COPY_*: `TextOver` draws glyphs straight onto a backdrop.
+            usage: wgpu::TextureUsages::STORAGE_BINDING
+                | wgpu::TextureUsages::TEXTURE_BINDING
+                | wgpu::TextureUsages::RENDER_ATTACHMENT
+                | wgpu::TextureUsages::COPY_SRC
+                | wgpu::TextureUsages::COPY_DST,
             view_formats: &[],
         })
     }
@@ -894,7 +899,7 @@ impl Renderer {
                 vec![(1, input(0)?)],
                 vec![],
             ),
-            PassOp::Text { .. } => {
+            PassOp::Text { .. } | PassOp::TextOver { .. } => {
                 return Err(Error::InvalidGraph(
                     "text passes are encoded by encode_text".into(),
                 ));
@@ -954,8 +959,14 @@ impl Renderer {
         keep_alive: &mut Vec<wgpu::Texture>,
         stats: &mut FrameStats,
     ) -> Result<Vec<String>> {
-        let PassOp::Text { node, transform } = op else {
-            return Err(Error::InvalidGraph("not a text pass".into()));
+        let (node, transform, over) = match op {
+            PassOp::Text { node, transform } => (node, transform, None),
+            PassOp::TextOver {
+                node,
+                transform,
+                opacity,
+            } => (node, transform, Some(*opacity)),
+            _ => return Err(Error::InvalidGraph("not a text pass".into())),
         };
         self.ensure_text()?;
         let text = self
@@ -975,7 +986,8 @@ impl Renderer {
                 pack_instances(&r, &text.engine.atlas, &mut scratch);
                 st.build_ms += t0.elapsed().as_secs_f64() * 1e3;
                 st.instances = scratch.len();
-                let params = text_params(transform, size, &r, &text.engine.atlas);
+                let params =
+                    text_params(transform, size, &r, &text.engine.atlas, over.unwrap_or(1.0));
                 let atlas = text.atlas_view(&self.device, &self.queue);
                 let bytes: &[u8] = bytemuck::cast_slice(&scratch);
                 let buf = text.instance_buffer(&self.device, text_slot, bytes.len() as u64);
@@ -1016,7 +1028,11 @@ impl Renderer {
                             depth_slice: None,
                             resolve_target: None,
                             ops: wgpu::Operations {
-                                load: wgpu::LoadOp::Clear(wgpu::Color::TRANSPARENT),
+                                load: if over.is_some() {
+                                    wgpu::LoadOp::Load
+                                } else {
+                                    wgpu::LoadOp::Clear(wgpu::Color::TRANSPARENT)
+                                },
                                 store: wgpu::StoreOp::Store,
                             },
                         })],
@@ -1191,6 +1207,58 @@ impl Renderer {
                 tex[pass.output] = Some(t.clone());
                 used.insert(pass.key);
                 stats.cache_hits += 1;
+            } else if matches!(pass.op, PassOp::TextOver { .. }) {
+                let res = graph.resources[pass.output];
+                let input = pass
+                    .inputs
+                    .first()
+                    .copied()
+                    .ok_or_else(|| Error::InvalidGraph("text-over without backdrop".into()))?;
+                // Move the backdrop texture when this is its last reader, else draw on a copy.
+                let out = if transient[input] && last[input] == Some(pos) {
+                    transient[input] = false;
+                    tex[input]
+                        .take()
+                        .ok_or_else(|| Error::InvalidGraph("backdrop not ready".into()))?
+                } else {
+                    let src = tex[input]
+                        .clone()
+                        .ok_or_else(|| Error::InvalidGraph("backdrop not ready".into()))?;
+                    let i = self
+                        .pool
+                        .iter()
+                        .position(|(pw, ph, _)| *pw == res.width && *ph == res.height);
+                    let dst = match i {
+                        Some(i) => self.pool.swap_remove(i).2,
+                        None => {
+                            stats.textures_created += 1;
+                            self.texture(res.width, res.height, "transient")
+                        }
+                    };
+                    encoder.copy_texture_to_texture(
+                        src.as_image_copy(),
+                        dst.as_image_copy(),
+                        src.size(),
+                    );
+                    dst
+                };
+                let labels = self.encode_text(
+                    &mut encoder,
+                    &pass.op,
+                    &pass.label,
+                    [res.width, res.height],
+                    pos,
+                    text_slot,
+                    timed.len() as u32,
+                    &out,
+                    &mut keep_alive,
+                    &mut stats,
+                )?;
+                text_slot += 1;
+                timed.extend(labels);
+                stats.passes_run += 1;
+                transient[pass.output] = true;
+                tex[pass.output] = Some(out);
             } else if matches!(pass.op, PassOp::Text { .. }) {
                 let res = graph.resources[pass.output];
                 let out = self.text_texture(res.width, res.height);
@@ -1436,7 +1504,7 @@ impl Renderer {
                     first = first.min(b);
                     end = end.max(e);
                     let d = ns(e.saturating_sub(b));
-                    if label.starts_with("text ") {
+                    if label.starts_with("text ") || label.starts_with("text-over ") {
                         text_ns = Some(text_ns.unwrap_or(0) + d);
                     }
                     stats.pass_ns.push((label.clone(), d));

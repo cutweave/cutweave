@@ -55,6 +55,14 @@ pub enum PassOp {
     /// Text node → glyph texture (WP-0F.02, MSDF atlas or Vello). `transform` maps box px to the
     /// pass's output px: text is rasterised at its final resolution (no resampling of glyphs).
     Text { node: TextNode, transform: [f32; 6] },
+    /// MSDF text drawn directly over input 0 (the backdrop) with fixed-function premultiplied
+    /// "over" and the layer `opacity`: no text intermediate, no clear, no full-frame composite.
+    /// Used for normal-blend MSDF text layers without effects; `transform`: box px → canvas px.
+    TextOver {
+        node: TextNode,
+        transform: [f32; 6],
+        opacity: f32,
+    },
     /// One direction of a separable Gaussian.
     Blur { horizontal: bool, radius: f32 },
     /// 3D LUT in `space`.
@@ -85,6 +93,7 @@ impl PassOp {
             Self::Decode { .. } => "decode",
             Self::Shape { .. } => "shape",
             Self::Text { .. } => "text",
+            Self::TextOver { .. } => "text-over",
             Self::Blur { .. } => "blur",
             Self::Lut { .. } => "lut",
             Self::Dissolve { .. } => "dissolve",
@@ -339,6 +348,14 @@ impl Builder<'_> {
                 hash_text(node, h);
                 h.f32s(transform);
             }
+            PassOp::TextOver {
+                node,
+                transform,
+                opacity,
+            } => {
+                hash_text(node, h);
+                h.f32s(transform).f32(*opacity);
+            }
             PassOp::Blur { horizontal, radius } => {
                 h.u32(u32::from(*horizontal)).f32(*radius);
             }
@@ -507,7 +524,8 @@ impl Builder<'_> {
     /// full layer transform into a texture covering the transformed box's pixel bounds (clipped
     /// to the canvas), which the compositor then places with an integer translation (an exact
     /// copy). Glyphs are never resampled, so sub-pixel motion, rotation and scale stay crisp.
-    /// Effects on a text layer therefore run in canvas pixels.
+    /// Effects on a text layer therefore run in canvas pixels. Plain MSDF text layers skip the
+    /// intermediate entirely (`TextOver`).
     fn text_layer(
         &mut self,
         backdrop: Res,
@@ -536,6 +554,24 @@ impl Builder<'_> {
         if invert_affine(&fwd).is_none() || bx1 <= bx0 || by1 <= by0 || t.text.is_empty() {
             self.g.stats.layers_culled += 1;
             return Ok(backdrop);
+        }
+        // Fast path (WP-0F.01 finding 5a): normal-blend MSDF text without effects is drawn
+        // straight onto the backdrop. Same result as text-then-composite up to f16 rounding of
+        // the per-glyph blends.
+        if layer.blend == BlendMode::Normal
+            && layer.effects.is_empty()
+            && t.renderer == crate::scene::TextRenderer::Msdf
+        {
+            return Ok(self.pass(
+                format!("text-over {}", layer.id),
+                PassOp::TextOver {
+                    node: t.clone(),
+                    transform: fwd.map(|v| v as f32),
+                    opacity: layer.opacity.min(1.0),
+                },
+                vec![backdrop.id],
+                canvas,
+            ));
         }
         let dims = ((bx1 - bx0) as u32, (by1 - by0) as u32);
         let target = compose_affine(&[1.0, 0.0, -bx0, 0.0, 1.0, -by0], &fwd);
@@ -1067,38 +1103,83 @@ mod tests {
         assert!(matches!(cyc.topo_order(), Err(Error::InvalidGraph(_))));
     }
 
+    fn with_caption(f: impl FnOnce(&mut Layer)) -> Scene {
+        let mut s = text_scene(320, 180);
+        f(&mut s.layers[3]);
+        s
+    }
+
     #[test]
-    fn text_node_lowers_to_a_cacheable_canvas_space_text_pass() {
+    fn plain_msdf_text_is_drawn_over_the_backdrop_in_place() {
         let p = provider();
         let g = build(&text_scene(320, 180), &p).expect("build");
         let t = g
             .passes
             .iter()
-            .find(|p| p.op.name() == "text")
-            .expect("text pass");
-        assert!(t.cacheable);
-        // Box 520×110 at (80, −40) on a 320×180 canvas → pixel bounds clipped to the canvas.
+            .find(|p| p.op.name() == "text-over")
+            .expect("text-over pass");
+        assert!(!t.cacheable);
+        assert_eq!(t.inputs.len(), 1, "reads the backdrop");
         assert_eq!(
             g.resources[t.output],
             ResourceDesc {
-                width: 240,
-                height: 70
+                width: 320,
+                height: 180
             }
         );
-        let PassOp::Text { transform, .. } = &t.op else {
-            panic!("text op")
+        let PassOp::TextOver { transform, .. } = &t.op else {
+            panic!("text-over op")
         };
-        assert_eq!(*transform, [1.0, 0.0, 0.0, 0.0, 1.0, -40.0]);
-        // Placed with an integer translation (exact copy).
-        let c = g
-            .passes
-            .iter()
-            .find(|p| p.label.starts_with("composite caption"))
-            .expect("composite");
-        let PassOp::Composite { inverse, .. } = c.op else {
-            panic!("composite op")
-        };
-        assert_eq!(inverse, [1.0, 0.0, -80.0, 0.0, 1.0, 0.0]);
+        assert_eq!(*transform, [1.0, 0.0, 80.0, 0.0, 1.0, -40.0]);
+        assert!(
+            !g.passes
+                .iter()
+                .any(|p| p.label.starts_with("composite caption"))
+        );
+    }
+
+    #[test]
+    fn other_text_layers_render_to_a_canvas_space_intermediate() {
+        let p = provider();
+        for s in [
+            with_caption(|l| l.blend = BlendMode::Screen),
+            with_caption(|l| l.effects.push(Effect::BlurLite { radius: 2.0 })),
+            with_caption(|l| {
+                if let Node::Text(t) = &mut l.content {
+                    t.renderer = crate::scene::TextRenderer::Vello;
+                }
+            }),
+        ] {
+            let g = build(&s, &p).expect("build");
+            let t = g
+                .passes
+                .iter()
+                .find(|p| p.op.name() == "text")
+                .expect("text pass");
+            assert!(t.cacheable);
+            // Box 520×110 at (80, −40) on a 320×180 canvas → pixel bounds clipped to the canvas.
+            assert_eq!(
+                g.resources[t.output],
+                ResourceDesc {
+                    width: 240,
+                    height: 70
+                }
+            );
+            let PassOp::Text { transform, .. } = &t.op else {
+                panic!("text op")
+            };
+            assert_eq!(*transform, [1.0, 0.0, 0.0, 0.0, 1.0, -40.0]);
+            // Placed with an integer translation (exact copy).
+            let c = g
+                .passes
+                .iter()
+                .find(|p| p.label.starts_with("composite caption"))
+                .expect("composite");
+            let PassOp::Composite { inverse, .. } = c.op else {
+                panic!("composite op")
+            };
+            assert_eq!(inverse, [1.0, 0.0, -80.0, 0.0, 1.0, 0.0]);
+        }
     }
 
     #[test]
@@ -1108,7 +1189,7 @@ mod tests {
             let g = build(s, &p).expect("build");
             g.passes
                 .iter()
-                .find(|p| p.op.name() == "text")
+                .find(|p| p.op.name().starts_with("text"))
                 .map(|p| p.key)
                 .expect("text")
         };
