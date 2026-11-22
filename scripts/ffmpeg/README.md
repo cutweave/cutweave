@@ -64,7 +64,7 @@ Workflow artifacts expire after 90 days: if `ffmpeg-fetch` finds nothing, run th
 
 ## How CI builds it
 
-[`.github/workflows/ffmpeg.yml`](../../.github/workflows/ffmpeg.yml) runs on `workflow_dispatch` and on pushes and pull requests that touch the workflow, `scripts/ffmpeg/**` or `scripts/check-glibc.sh`.
+[`.github/workflows/ffmpeg.yml`](../../.github/workflows/ffmpeg.yml) runs only on `workflow_dispatch` (Actions tab or `gh workflow run ffmpeg.yml`), to conserve Actions minutes: dispatch it after changing the workflow, `scripts/ffmpeg/**` or `scripts/check-glibc.sh`.
 
 1. **`sources`** validates `versions.toml`, downloads every tarball (sha256-checked, mirrors allowed), clones every git dependency and checks that its tag still points at, or its branch still contains, the pinned commit, then archives it with `git archive`. The result is uploaded as `cutweave-ffmpeg-<version>-source.tar.zst`.
 2. **`build (linux-x64)`, `build (macos-arm64)`, `build (windows-x64)`** unpack that same source archive (so the published source is exactly what was compiled), install the tools, build the static dependencies (cached per OS, keyed on the pins, the build scripts and the compiler version; the `clean` input skips the cache), build FFmpeg, package, verify and upload `cutweave-ffmpeg-<version>-<os>-<arch>.tar.zst`. On failure the configure/meson/CMake logs are uploaded.
@@ -95,7 +95,7 @@ The scripts never download anything themselves except in `sources.py` (pinned, v
 ## Updating a pin
 
 1. Edit [versions.toml](versions.toml): new version and the new sha256 (tarballs; from the release page, or `sha256sum` of the downloaded file) or the new tag and its full commit id (`git ls-remote <url> refs/tags/<tag>`; for annotated tags use the `^{}` line).
-2. `python3 scripts/ffmpeg/sources.py check`, then open a PR: the workflow builds and verifies all three bundles (and fails if a hash or commit does not match).
+2. `python3 scripts/ffmpeg/sources.py check`, then dispatch the workflow on the branch (`gh workflow run ffmpeg.yml --ref <branch>`): it builds and verifies all three bundles and fails if a hash or commit does not match.
 3. Check the per-OS `BUILD_INFO.txt` in the artifacts, and the configure flags if FFmpeg's options changed.
 
 ## Licensing obligations

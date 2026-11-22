@@ -7,6 +7,7 @@ name: FFmpeg bundle
 # `cutweave-ffmpeg-<ver>-source.tar.zst`. All pins live in scripts/ffmpeg/versions.toml; the
 # bundles are built from the source archive, so what is published is what was compiled.
 # Developers download the newest bundle with `just ffmpeg-fetch` (scripts/ffmpeg/README.md).
+# Manual dispatch only, to conserve Actions minutes: run it after changing scripts/ffmpeg/.
 
 on:
   workflow_dispatch:
@@ -15,24 +16,13 @@ on:
         description: Rebuild the static dependencies instead of restoring them from the cache
         type: boolean
         default: false
-  push:
-    branches: [main]
-    paths:
-      - .github/workflows/ffmpeg.yml
-      - scripts/ffmpeg/**
-      - scripts/check-glibc.sh
-  pull_request:
-    paths:
-      - .github/workflows/ffmpeg.yml
-      - scripts/ffmpeg/**
-      - scripts/check-glibc.sh
 
 permissions:
   contents: read
 
 concurrency:
-  group: ffmpeg-${{ github.event.pull_request.number || github.ref }}
-  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+  group: ffmpeg-${{ github.ref }}
+  cancel-in-progress: false
 
 env:
   # Bump to throw away every cached dependency prefix.
