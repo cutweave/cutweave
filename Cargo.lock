@@ -443,6 +443,13 @@ dependencies = [
 [[package]]
 name = "cutweave-playback"
 version = "0.0.0"
+dependencies = [
+ "cutweave-model",
+ "getrandom",
+ "libc",
+ "thiserror",
+ "windows-sys",
+]
 
 [[package]]
 name = "cutweave-plugins"
