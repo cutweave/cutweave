@@ -2,8 +2,8 @@
 // Builds the `window.cutweave` object from an `ipcRenderer` and the (optional) bridge addon.
 // Kept free of `electron` imports so it is unit-testable; `index.ts` wires the real ones.
 
-import { type InvokeChannel, type InvokeChannels, isMenuCommand } from "../ipc.ts";
 import type { CutweaveApi, EngineStatus, MenuCommand } from "../shared/api.ts";
+import { type InvokeChannel, type InvokeChannels, isMenuCommand } from "../shared/ipc-contract.ts";
 import type { BridgeAddon } from "./bridge-addon.ts";
 
 /** Slice of `ipcRenderer` the preload uses. */
@@ -63,6 +63,9 @@ export function createCutweaveApi(ipc: IpcRendererLike, addon: BridgeAddon | nul
       onCommand: subscribe<MenuCommand>("menu:command", (v) => (isMenuCommand(v) ? v : undefined)),
     },
     dialog: { openProjectFolder: () => invoke("dialog:openProjectFolder") },
-    shell: { showItemInFolder: (path) => invoke("shell:showItemInFolder", path) },
+    shell: {
+      showItemInFolder: (path) => invoke("shell:showItemInFolder", path),
+      openExternal: (url) => invoke("shell:openExternal", url),
+    },
   };
 }

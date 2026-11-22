@@ -4,6 +4,7 @@
 import { existsSync } from "node:fs";
 import net from "node:net";
 import path from "node:path";
+import { EngineStartError, EXIT_PORT_IN_USE } from "./supervisor.ts";
 
 export interface EngineLaunch {
   command: string;
@@ -43,6 +44,40 @@ export function resolveEngineLaunch(options: ResolveOptions): EngineLaunch | nul
     ? path.join(options.resourcesPath, "engine", exe)
     : path.join(options.repoRoot, "target", "debug", exe);
   return exists(candidate) ? { command: candidate, args: ["engine"] } : null;
+}
+
+export interface PortRetryOptions<T> {
+  /** Port main chose at launch (and baked into the CSP). */
+  initialPort: number;
+  /** Total start attempts, including the first. */
+  maxAttempts?: number;
+  /** Start the engine on `port`; rejects with `EngineStartError` on failure. */
+  start(port: number): Promise<T>;
+  /** Pick another port (the OS's choice, `pickFreePort`). */
+  pickPort(): Promise<number>;
+  /** The CSP must follow: main updates its port and reloads the renderer. */
+  onPortChange(port: number, previous: number): void;
+}
+
+/**
+ * Start the engine; when it exits with code 12 (port taken between pick and bind), pick a new
+ * port, report it, and retry (arch §6 "stable port"). Other failures are rethrown unchanged.
+ */
+export async function startWithPortRetry<T>(options: PortRetryOptions<T>): Promise<T> {
+  const maxAttempts = options.maxAttempts ?? 3;
+  let port = options.initialPort;
+  for (let attempt = 1; ; attempt++) {
+    try {
+      return await options.start(port);
+    } catch (err) {
+      const portTaken = err instanceof EngineStartError && err.exitCode === EXIT_PORT_IN_USE;
+      if (!portTaken || attempt >= maxAttempts) throw err;
+      let next = await options.pickPort();
+      if (next === port) next = await options.pickPort();
+      options.onPortChange(next, port);
+      port = next;
+    }
+  }
 }
 
 /** Ask the OS for a free loopback port. Main chooses it once at launch (arch §6). */

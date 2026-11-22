@@ -1,6 +1,5 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 import { describe, expect, it } from "vitest";
-import { mainWindowPreferences } from "./window-prefs.ts";
 import {
   DEFAULT_WINDOW_STATE,
   fitToDisplays,
@@ -8,21 +7,7 @@ import {
   parseWindowState,
 } from "./window-state.ts";
 
-describe("mainWindowPreferences", () => {
-  it("keeps the ADR-001 posture: isolated, no Node, non-sandboxed preload only", () => {
-    expect(mainWindowPreferences("/x/preload.cjs")).toMatchObject({
-      preload: "/x/preload.cjs",
-      contextIsolation: true,
-      nodeIntegration: false,
-      nodeIntegrationInSubFrames: false,
-      sandbox: false,
-      webSecurity: true,
-      allowRunningInsecureContent: false,
-      webviewTag: false,
-    });
-  });
-});
-
+// webPreferences policy tests: window-policy.test.ts.
 describe("window state", () => {
   it("parses valid state and rejects junk", () => {
     const raw = JSON.stringify({ bounds: { x: 1, y: 2, width: 3, height: 4 }, maximized: true });

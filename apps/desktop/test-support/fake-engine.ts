@@ -3,6 +3,7 @@
 //   node fake-engine.ts engine --port N --token-stdin
 // First stdin line = UI token (kept in memory, never printed); stdout gets the readiness line;
 // exits when stdin closes (orphan prevention); exit 12 when the port cannot be bound.
+// HTTP: `/rpc` answers 401 without `Authorization: Bearer <token>`; everything else 200.
 // Test knobs: FAKE_ENGINE_MODE=no-ready | exit-early | crash-after-ready.
 
 import { createServer } from "node:http";
@@ -24,8 +25,19 @@ input.once("line", (line) => {
   if (token.length === 0) process.exit(13);
   if (mode === "no-ready") return;
 
-  const server = createServer((_req, res) => {
-    res.writeHead(200, { "content-type": "application/json" });
+  const server = createServer((req, res) => {
+    // The editor origin may read responses (CORS), as the real engine allows for `app://cutweave`.
+    const headers = {
+      "content-type": "application/json",
+      "access-control-allow-origin": "app://cutweave",
+    };
+    // Like the real engine, /rpc needs the UI token (arch §6); there is no token in a URL.
+    if (req.url?.startsWith("/rpc") && req.headers.authorization !== `Bearer ${token}`) {
+      res.writeHead(401, headers);
+      res.end(JSON.stringify({ error: "unauthorized" }));
+      return;
+    }
+    res.writeHead(200, headers);
     res.end(JSON.stringify({ ok: true }));
   });
   server.once("error", () => process.exit(12));

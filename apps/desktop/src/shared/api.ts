@@ -86,5 +86,10 @@ export interface CutweaveApi {
   };
   readonly shell: {
     showItemInFolder(path: string): Promise<void>;
+    /**
+     * Open an `https:` link in the OS browser. Main re-validates the URL (https only, no
+     * credentials); the app itself never navigates away from `app://cutweave`.
+     */
+    openExternal(url: string): Promise<void>;
   };
 }

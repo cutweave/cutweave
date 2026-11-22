@@ -39,8 +39,10 @@ describe("createCutweaveApi", () => {
     const api = createCutweaveApi(ipc, null);
     await api.engine.getConnection();
     await api.shell.showItemInFolder("/x");
+    await api.shell.openExternal("https://cutweave.org/");
     expect(ipc.invoke).toHaveBeenNthCalledWith(1, "engine:getConnection");
     expect(ipc.invoke).toHaveBeenNthCalledWith(2, "shell:showItemInFolder", "/x");
+    expect(ipc.invoke).toHaveBeenNthCalledWith(3, "shell:openExternal", "https://cutweave.org/");
   });
 
   it("filters menu events to known commands and unsubscribes", () => {

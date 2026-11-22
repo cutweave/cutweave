@@ -1,8 +1,9 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 // Placeholder engine supervisor (WP-1L.01). It spawns `cutweave engine --port P`, sends the
 // per-launch UI token as the first stdin line (never argv/env/disk), waits for the readiness
-// line and reports status. Crash/restart/backoff, exit-12 port re-pick and the failed dialog
-// arrive in WP-1L.03.
+// line and reports status. A start that ends in exit 12 (port taken) rejects with
+// `EngineStartError.exitCode === EXIT_PORT_IN_USE`; main re-picks the port (WP-1L.02).
+// Crash/restart/backoff and the failed dialog arrive in WP-1L.03.
 
 import { type ChildProcessByStdio, spawn } from "node:child_process";
 import { createInterface } from "node:readline";
@@ -12,6 +13,18 @@ import type { EngineLaunch } from "./launch.ts";
 
 export const READY_TIMEOUT_MS = 10_000;
 export const KILL_GRACE_MS = 3_000;
+/** Engine exit code when it cannot bind the port main chose (launch protocol, WP-1I.04). */
+export const EXIT_PORT_IN_USE = 12;
+
+/** Why `start()` failed; `exitCode` is set when the engine exited before its readiness line. */
+export class EngineStartError extends Error {
+  readonly exitCode: number | null;
+  constructor(message: string, exitCode: number | null = null) {
+    super(message);
+    this.name = "EngineStartError";
+    this.exitCode = exitCode;
+  }
+}
 
 export interface EngineReady {
   readonly port: number;
@@ -83,13 +96,13 @@ export class EngineSupervisor {
 
     return new Promise<EngineReady>((resolve, reject) => {
       let settled = false;
-      const fail = (message: string) => {
+      const fail = (message: string, exitCode: number | null = null) => {
         if (settled) return;
         settled = true;
         clearTimeout(timer);
         this.#set("failed", { message });
         this.#child?.kill();
-        reject(new Error(message));
+        reject(new EngineStartError(message, exitCode));
       };
 
       const child = spawn(
@@ -134,7 +147,7 @@ export class EngineSupervisor {
         if (this.#stopping) {
           this.#set("stopped");
         } else if (!settled) {
-          fail(`engine exited before ready (code ${code ?? signal})`);
+          fail(`engine exited before ready (code ${code ?? signal})`, code);
         } else {
           this.#set("crashed", { message: `engine exited (code ${code ?? signal})` });
         }

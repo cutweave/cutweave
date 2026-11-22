@@ -1,8 +1,9 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
-import path from "node:path";
-import { BrowserWindow, screen } from "electron";
-import { APP_ORIGIN } from "./app-protocol.ts";
-import { mainWindowPreferences } from "./window-prefs.ts";
+// The main editor window: created through the factory as kind `editor` (the only kind with the
+// preload), plus bounds persistence. Navigation and window-open guards are attached to every
+// webContents in hardening.ts.
+
+import { type BrowserWindow, screen } from "electron";
 import {
   DEFAULT_WINDOW_STATE,
   fitToDisplays,
@@ -10,25 +11,14 @@ import {
   MIN_WINDOW,
   saveWindowState,
 } from "./window-state.ts";
+import { createWindow, type WindowFactoryContext } from "./windows.ts";
 
 export interface MainWindowOptions {
-  /** Directory holding `preload/index.cjs` (the bundle dir). */
-  bundleDir: string;
   /** File used to persist bounds. */
   stateFile: string;
-  /** Dev only: Vite dev server URL (HMR); production always loads `app://cutweave/`. */
-  devServerUrl: string | undefined;
-}
-
-/** True for URLs the main window may navigate to. */
-export function isAllowedNavigation(url: string, devServerUrl: string | undefined): boolean {
-  if (url.startsWith(`${APP_ORIGIN}/`)) return true;
-  if (devServerUrl === undefined) return false;
-  try {
-    return new URL(url).origin === new URL(devServerUrl).origin;
-  } catch {
-    return false;
-  }
+  /** `app://cutweave/` (or, dev only, the Vite dev server URL for HMR). */
+  url: string;
+  factory: WindowFactoryContext;
 }
 
 export function createMainWindow(options: MainWindowOptions): BrowserWindow {
@@ -38,14 +28,18 @@ export function createMainWindow(options: MainWindowOptions): BrowserWindow {
     screen.getAllDisplays().map((d) => d.workArea),
   );
 
-  const win = new BrowserWindow({
-    ...fitted.bounds,
-    minWidth: MIN_WINDOW.width,
-    minHeight: MIN_WINDOW.height,
-    show: false,
-    title: "Cutweave",
-    webPreferences: mainWindowPreferences(path.join(options.bundleDir, "preload", "index.cjs")),
-  });
+  const win = createWindow(
+    "editor",
+    {
+      ...fitted.bounds,
+      minWidth: MIN_WINDOW.width,
+      minHeight: MIN_WINDOW.height,
+      show: false,
+      title: "Cutweave",
+      url: options.url,
+    },
+    options.factory,
+  );
   if (fitted.maximized) win.maximize();
   win.once("ready-to-show", () => win.show());
 
@@ -68,13 +62,5 @@ export function createMainWindow(options: MainWindowOptions): BrowserWindow {
     clearTimeout(timer);
     persist();
   });
-
-  // Baseline containment; WP-1L.02 owns the full policy.
-  win.webContents.setWindowOpenHandler(() => ({ action: "deny" }));
-  win.webContents.on("will-navigate", (event, url) => {
-    if (!isAllowedNavigation(url, options.devServerUrl)) event.preventDefault();
-  });
-
-  void win.loadURL(options.devServerUrl ?? `${APP_ORIGIN}/`);
   return win;
 }

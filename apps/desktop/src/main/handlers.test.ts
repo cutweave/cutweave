@@ -8,6 +8,7 @@ describe("createHandlers", () => {
     engineStatus: () => ({ state: "unavailable" as const }),
     chooseFolder: async () => "/p",
     showItemInFolder: vi.fn(),
+    openExternal: vi.fn(async () => {}),
   };
 
   it("returns no connection until the engine is ready", async () => {
@@ -32,5 +33,13 @@ describe("createHandlers", () => {
     expect(await h["dialog:openProjectFolder"]()).toBe("/p");
     await h["shell:showItemInFolder"]("/out.mp4");
     expect(base.showItemInFolder).toHaveBeenCalledWith("/out.mp4");
+  });
+
+  it("opens only https links, re-checked at the point of use", async () => {
+    const h = createHandlers({ ...base, engineCredentials: () => null });
+    await h["shell:openExternal"]("https://cutweave.org/");
+    expect(base.openExternal).toHaveBeenCalledWith("https://cutweave.org/");
+    await expect(h["shell:openExternal"]("file:///etc/passwd")).rejects.toThrow(/non-https/);
+    expect(base.openExternal).toHaveBeenCalledTimes(1);
   });
 });
