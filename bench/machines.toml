@@ -1,0 +1,95 @@
+# Reference machine registry (docs/reference-machines.md, WP-0I.02). Source of truth for the
+# `machine` field of bench result JSON (bench/result.schema.json) and for the machine ids used in
+# `machine_scope` rows of bench/budgets.toml. Informational today: `cargo xtask bench` does not read
+# this file yet (it takes the id from CUTWEAVE_BENCH_MACHINE); WP-0I.04 may add an id check.
+# status: "owned" (exists, verified), "interim" (stand-in that deviates from the plan),
+#         "tbd" (not purchased; owner/due recorded). Keep in sync with the doc tables.
+
+[[machine]]
+id = "ref-win-dgpu"
+status = "owned"
+owner = "product owner (maintainer laptop)"
+os = "Windows 11 Pro 10.0.26200"
+cpu = "AMD Ryzen 9 5900HX (8C/16T)"
+gpu = "NVIDIA GeForce RTX 3080 Laptop GPU (discrete)"
+ram_gb = 31
+storage = "NVMe, 1.9 TB data volume"
+audio = "WASAPI; wired output + loopback fixture TBD (wireless headset only for informal soak)"
+display_server = "windows"
+runner_label = "ref-win-dgpu"
+adapter_forced = "NVIDIA"
+
+[[machine]]
+id = "ref-win-igpu"
+status = "interim"
+owner = "product owner (same laptop as ref-win-dgpu)"
+os = "Windows 11 Pro 10.0.26200"
+cpu = "AMD Ryzen 9 5900HX (8C/16T)"
+gpu = "AMD Radeon Graphics (Vega 8 iGPU), adapter forced"
+ram_gb = 31
+storage = "NVMe, 1.9 TB data volume"
+audio = "WASAPI; same fixture as ref-win-dgpu"
+display_server = "windows"
+runner_label = "ref-win-igpu"
+adapter_forced = "AMD"
+deviation = "Plan asks for Intel Xe/Arc and 16 GB RAM; AMD Vega 8 stands in until an Intel Xe Windows machine is acquired"
+
+[[machine]]
+id = "ref-mac-m1"
+status = "tbd"
+owner = "TBD owner=product owner"
+due = "2026-12-06"
+os = "macOS 15 or newer, arm64"
+cpu = "Apple M1 (8C CPU)"
+gpu = "Apple M1 integrated (8C GPU)"
+ram_gb = 16
+storage = "256 GB+ NVMe"
+audio = "CoreAudio; wired output + loopback fixture"
+display_server = "macos"
+runner_label = "ref-mac-m1"
+
+[[machine]]
+id = "ref-linux-x11"
+status = "tbd"
+owner = "TBD owner=product owner"
+due = "2026-12-06"
+os = "Ubuntu 24.04 LTS, GNOME on Xorg session"
+cpu = "Intel Core Ultra 7 155H or AMD Ryzen 7 7840HS class"
+gpu = "Intel Arc (Xe-LPG) iGPU or AMD Radeon 780M (RDNA3), Mesa 24.x"
+ram_gb = 32
+storage = "1 TB NVMe"
+audio = "PipeWire (PulseAudio API); wired output + loopback fixture"
+display_server = "x11"
+runner_label = "ref-linux-x11"
+same_box_as = "ref-linux-wayland"
+
+[[machine]]
+id = "ref-linux-wayland"
+status = "tbd"
+owner = "TBD owner=product owner"
+due = "2026-12-06"
+os = "Ubuntu 24.04 LTS, GNOME on Wayland session"
+cpu = "same box as ref-linux-x11"
+gpu = "same box as ref-linux-x11"
+ram_gb = 32
+storage = "1 TB NVMe"
+audio = "PipeWire (PulseAudio API); same fixture"
+display_server = "wayland"
+runner_label = "ref-linux-wayland"
+same_box_as = "ref-linux-x11"
+
+# Minimum-OS targets (ADR-014, nightly `min-os` job of WP-0I.04). VMs are acceptable; software adapter.
+[[min_os]]
+label = "min-win10"
+os = "Windows 10 22H2"
+host = "Hyper-V VM on ref-win-dgpu (owned)"
+
+[[min_os]]
+label = "min-mac13"
+os = "macOS 13 (arm64 guest)"
+host = "Apple Virtualization VM on ref-mac-m1 (TBD hardware)"
+
+[[min_os]]
+label = "min-ubuntu2204"
+os = "Ubuntu 22.04"
+host = "VM or container on the Linux box (TBD hardware)"
