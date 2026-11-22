@@ -45,9 +45,9 @@ function Harness({ onOpen, ...props }: Props) {
 }
 
 describe("Toast", () => {
-  it("success uses role=status with a tone icon, a title and a real message", () => {
+  it("success renders with a tone icon, a title and a real message", () => {
     render(h(Harness, {}));
-    const toast = screen.getAllByRole("status").find((el) => el.classList.contains("cw-toast"));
+    const toast = document.querySelector(".cw-toast");
     expect(toast).toBeTruthy();
     expect(toast?.getAttribute("data-tone")).toBe("success");
     expect(toast?.querySelector(".cw-toast__icon")?.getAttribute("data-icon")).toBe("check");
@@ -55,17 +55,21 @@ describe("Toast", () => {
     expect(screen.getAllByText("Exported 00:00:58 to Shorts_final.mp4").length).toBeGreaterThan(0);
   });
 
-  it("errors use role=alert and an alert icon", () => {
+  it("errors carry an alert icon and no duplicate role=alert (Radix foreground announces them)", () => {
     render(h(Harness, { tone: "danger", title: "Generation failed" }));
-    const alert = screen.getByRole("alert");
-    expect(alert.classList.contains("cw-toast")).toBe(true);
-    expect(alert.querySelector("svg")?.getAttribute("data-icon")).toBe("circle-alert");
+    const toast = document.querySelector(".cw-toast");
+    expect(toast?.getAttribute("data-tone")).toBe("danger");
+    expect(toast?.getAttribute("role")).not.toBe("alert");
+    expect(
+      screen.queryAllByRole("alert").filter((el) => el.classList.contains("cw-toast")),
+    ).toHaveLength(0);
+    expect(toast?.querySelector("svg")?.getAttribute("data-icon")).toBe("circle-alert");
   });
 
-  it("warnings are status with a warning icon", () => {
+  it("warnings render with a warning icon and no duplicate live role", () => {
     render(h(Harness, { tone: "warning", title: "Media missing" }));
     const toast = document.querySelector(".cw-toast");
-    expect(toast?.getAttribute("role")).toBe("status");
+    expect(toast?.getAttribute("role")).not.toBe("alert");
     expect(toast?.querySelector("svg")?.getAttribute("data-icon")).toBe("triangle-alert");
   });
 

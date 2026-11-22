@@ -71,7 +71,7 @@ export interface ToastProps {
 }
 
 /**
- * Transient outcome or job progress. `role="alert"` for errors, `role="status"` otherwise.
+ * Transient outcome or job progress. Errors and warnings are announced assertively via Radix `type="foreground"`, others politely; no extra `role`, so nothing is announced twice.
  * Escape dismisses the focused toast. Must render inside a `ToastProvider`.
  */
 export function Toast({
@@ -94,7 +94,6 @@ export function Toast({
       onOpenChange={onOpenChange}
       duration={duration ?? AUTO_DISMISS_MS[tone]}
       type={tone === "danger" || tone === "warning" ? "foreground" : "background"}
-      role={tone === "danger" ? "alert" : "status"}
       className={cx("cw-toast", className)}
       data-tone={tone}
     >
