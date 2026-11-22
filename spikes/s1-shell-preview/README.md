@@ -1,8 +1,10 @@
-# Spike S1: Electron shell + Rust sidecar + SHM frame ring + napi reader (WP-0C.01)
+# Spike S1: Electron shell + Rust sidecar + SHM frame ring + WebGPU preview (WP-0C.01, WP-0C.02)
 
 > **Throwaway spike code.** Not part of the root Cargo or pnpm workspaces; product code never
 > depends on it. It answers one question for ADR-001: can preview frames rendered in a
 > separate Rust process reach the Electron UI at 1080p60 with low latency (transport (a)).
+> WP-0C.02 adds the WebGPU canvas (three upload paths), the DOM overlay, the scrub bar and live
+> resize, plus a benchmark mode; see [WP-0C.02](#wp-0c02-webgpu-canvas-dom-overlay-scrub-bar-live-resize).
 >
 > Location note: the WBS names the area `spikes/s1-preview/{engine,bridge,desktop}`; this
 > work package was assigned `spikes/s1-shell-preview/` and keeps the same sub-structure.
@@ -14,13 +16,18 @@
 spikes/s1-shell-preview/
   Cargo.toml         own Cargo workspace: ring, engine, bridge
   ring/              s1-ring: named shared memory + seqlock frame ring (layout: RING.md)
-  engine/            s1-engine: wgpu synthetic 1080p60 frames -> async readback -> ring;
-                     WebSocket control channel; stdout handshake
+  engine/            s1-engine: wgpu synthetic 60 fps frames at the preview size -> async
+                     readback -> ring; WebSocket control channel (play/pause/seek/format/
+                     resize/scrub-config); scrub.rs = low-res-first scrub scheduling
   bridge/            s1-bridge: napi-rs v3 addon (RingReader, TestRingWriter) + Node tests
-  desktop/src/       Electron main, preload (transport (a)), renderer (WebGPU present + HUD)
-  scripts/           build-native / build-js (esbuild) / selftest / summarize
-  results/           informal self-test JSON from the dev machine (see "Informal numbers")
+  desktop/src/       Electron main, preload (transport (a)), bench.ts (WP-0C.02 benchmark)
+    shared/          present.ts (WebGPU upload paths), loop.ts (rAF loop + scrub-to-pixel),
+                     stage.ts (canvas size + resize renegotiation), preview.ts (wiring)
+    renderer/        page: stage, overlay.ts (transform box, safe areas), scrub.ts, HUD
+  scripts/           build-native / build-js (esbuild) / selftest / bench / summarize(-bench)
+  results/           informal self-test and bench JSON from the dev machine
   RING.md            ring header/slot layout and protocol (feeds WP-1H.02)
+  FLAGS.md           Chromium flags for WebGPU per OS (only Windows verified)
 ```
 
 ## Run it
@@ -36,6 +43,9 @@ node node_modules/electron/install.js   # optional: fetch the Electron binary up
 pnpm build                          # cargo build --release (engine + addon) + esbuild bundles
 pnpm start                          # window with live preview + HUD
 pnpm selftest 60                    # WP-0C.01 acceptance checks -> results/selftest-*.json
+pnpm bench [quick|<s>]              # WP-0C.02 benchmark (20 s phases by default, ~4 min)
+                                    #   -> results/bench-*.json (+ a git-ignored screenshot)
+node scripts/summarize-bench.mjs    # Markdown tables of results/bench-*.json
 pnpm test                           # Node tests for the addon (needs `pnpm build`)
 pnpm test:rust                      # ring unit tests (wrap-around, seqlock, shm lifetime)
 pnpm typecheck
@@ -50,17 +60,25 @@ node scripts/summarize.mjs          # Markdown table of results/*.json
 | `--draw=main\|preload` | where the rAF present loop runs: renderer main world (pixels cross `contextBridge`) or the preload's isolated world (draws into the page's canvas, no clone) |
 | `--policy=latest\|next\|clock` | frame choice: latest-wins; naive FIFO; or newest slot with `pts <= audio clock - latency` |
 | `--latency=<ms>` | latency target of `policy=clock` (default 20) |
-| `--present=gpu\|2d` | WebGPU `queue.writeTexture` (default) or Canvas2D `putImageData` (RGBA8 only) |
+| `--present=gpu\|2d` | WebGPU (default) or Canvas2D `putImageData` (RGBA8 only) |
+| `--upload=writeTexture\|videoFrame` | WebGPU upload path (WP-0C.02; also toggled live in the window) |
+| `--engine-size=canvas\|WxH` | engine renders at the canvas pixel size (default) or a fixed size the presenter scales |
+| `--bench[=quick\|<s>]` | run the WP-0C.02 benchmark instead of the interactive window (`pnpm bench` adds `--draw=preload --policy=clock`) |
 | `--verify=0` | disable per-frame checksum + row-stamp verification |
 | `--gpu=high\|low\|software` | wgpu adapter preference for the engine |
 | `--size=WxH` | engine frame size (default 1920x1080) |
 | `--chromium-dgpu` | adds Chromium's `force_high_performance_gpu` (WebGPU on the dGPU) |
 
 Environment: `WGPU_BACKEND=dx12|vulkan` (engine backend), `S1_LOG=debug` (engine log
-filter), `S1_ENGINE=<path>` (engine binary). Window buttons: play/pause, seek -1 s / +1 s,
-toggle RGBA8/NV12, verification on/off, reset stats.
+filter), `S1_ENGINE=<path>` (engine binary). Window: play/pause, scrub bar with timecode
+(drag, click, arrow keys), transform box (drag, 8 handles, arrow keys), back/forward 1 s,
+format RGBA8/NV12, upload path, engine size (canvas / 1920 × 1080), safe areas, stats HUD,
+verification on/off, reset stats.
 
-The engine also runs standalone: `target/release/s1-engine --ring cw-s1-test --no-stdin-watch`.
+The engine also runs standalone: `target/release/s1-engine --ring cw-s1-test --no-stdin-watch`
+(WP-0C.02 flags: `--max-width/--max-height` ring capacity, default 2560x1440;
+`--lowres-div` scrub preview divisor, default 2, 0 = off; `--full-cost-ms` emulated
+full-resolution decode time per scrub frame, default 0).
 
 ## Architecture sketch
 
@@ -114,8 +132,9 @@ its stdin closes (Electron gone), so it cannot outlive the UI.
 | Ring layout documented | Done | `RING.md` |
 
 Not done here (by design): WebGPU canvas polish, `importExternalTexture`, overlays, resize
-(0C.02); transport (b) (0C.06); formal measurement and other OSes (0C.04); POSIX shared memory
-(stub); a Playwright smoke test (the self-test drives the same checks from Electron main).
+(done in WP-0C.02, below); transport (b) (0C.06); formal measurement and other OSes (0C.04);
+POSIX shared memory (stub); a Playwright smoke test (the self-test drives the same checks from
+Electron main).
 
 ## Informal numbers (dev machine, NOT the WP-0C.04 measurement)
 
@@ -247,3 +266,202 @@ clock-scheduled. Transport (a) as literally specified (ArrayBuffer views handed 
 world) does not hold in Electron. Its remaining costs are one 8 MB copy per frame and a
 renderer process without the OS sandbox. 0C.06 should measure transport (b) against the
 `draw=preload` + `policy=clock` numbers above, not against `draw=main`.
+
+## WP-0C.02: WebGPU canvas, DOM overlay, scrub bar, live resize
+
+### How it works
+
+- **Who owns what.** The page (main world) owns the layout, the overlay, the scrub bar and the
+  controls. The preview loop owns the canvas pixels; it runs in the preload's isolated world
+  (`draw=preload`, the WP-0C.01 recommendation), so only small calls cross `contextBridge`:
+  `scrub(pts, inputTime)`, `setUpload`, `setEngineSize`, and `presented()` once per frame for
+  the playhead. `draw=main` still works for comparison.
+- **Stage.** The page sizes the stage to the largest 16:9 box that fits, in whole device
+  pixels with width % 4 == 0 and an even height (the engine's NV12 constraint). Canvas backing
+  store, screen pixels and engine frame are then the same size (the HUD says `1:1`).
+- **Presenter** (`shared/present.ts`). WebGPU, upload path switchable at run time:
+  `queue.writeTexture` of RGBA8, `queue.writeTexture` of the NV12 Y and UV planes plus a BT.709
+  YUV->RGB shader, or `new VideoFrame(pixels, {format: "RGBA" | "NV12"})` +
+  `device.importExternalTexture`. Frames of any size are scaled to the canvas; `redraw()`
+  repaints the last frame.
+- **Live resize** (`shared/stage.ts`). A `ResizeObserver` on the canvas
+  (`device-pixel-content-box`) sets the backing store, redraws the last frame in the same
+  rendering step (a resized canvas is cleared; this keeps the cleared one from ever being
+  composited) and sends `resize {width, height}` to the engine. The engine re-creates its
+  render target (readback buffers are sized once for the ring's maximum, 2560x1440) and the
+  next frame has the new size; frames in flight at the old size are scaled meanwhile.
+- **Scrub** (`renderer/scrub.ts`, `engine/src/scrub.rs`). Each dispatched `pointermove`
+  (Chromium aligns them to animation frames) sends one latest-wins seek, skipped when the frame
+  did not change, stamped with the earliest coalesced input event time. The engine blocks on
+  its command channel between frames, so a seek wakes it at once. While paused it renders a
+  half-size preview first (slot `flags` bit 0, `LOWRES`) and the full-resolution frame from an
+  emulated decoder: one decode at a time, `full_cost_ms` each (0 by default; the synthetic
+  frame takes about 1 ms), and a newer request replaces a waiting one. **Scrub-to-pixel** runs
+  from the input event to the start of the animation frame after the matching frame's
+  `queue.submit`, when the compositor takes the canvas (display scan-out is not included). A
+  frame also answers older requests still waiting, each with its own, longer, latency.
+- **Overlay** (`renderer/overlay.ts`). A transform box in normalised sequence coordinates, laid
+  out in percentages of the overlay (which has exactly the canvas's box), so it needs no JS to
+  stay aligned through resizes. It has 8 `hit-min` handles and arrow-key nudging. Safe areas
+  are 93 % (action) and 90 % (title) plus a centre cross, in `overlay-guide` with a 1 px
+  `overlay-guide-shadow` outline. The selection is marigold and focus uses `focus-ring`. Guides
+  and the HUD are `pointer-events: none`. All colours and sizes are tokens (`tokens.css` is
+  copied from `packages/ui` at build time).
+- **Benchmark** (`desktop/src/bench.ts`, `pnpm bench`). It drives real input through
+  `webContents.sendInputEvent` and runs these phases: a playback matrix at a fixed 1920x1080
+  engine size ({RGBA8, NV12} x {writeTexture, VideoFrame}), playback at the canvas size with
+  the fastest path, scripted scrubs (drags at 2/6/15/40 px per move plus click jumps) in four
+  configurations, a live resize sweep (11 sizes plus a drag-like sweep with a size change every
+  ~16 ms) with a pixel check on captured frames, and overlay hit tests and drags. It writes
+  per-second metrics `{ts, phase, fps, dropped, engineDropped, scrub_ms[], cpu{engine, main,
+  renderer, gpu}, align}` plus summaries and checks to `results/bench-*.json`.
+
+### WP-0C.02 acceptance criteria
+
+| Criterion | Status | Evidence |
+|---|---|---|
+| WebGPU canvas presents the newest slot with `pts <= audio clock` in rAF, `writeTexture` and `VideoFrame` -> `importExternalTexture` behind a toggle | Done | `shared/present.ts`; `policy=clock`; Upload button / `--upload` |
+| DOM overlay above the canvas: draggable/resizable transform box (pointer events), safe-area guides, scrub bar sending latest-wins seeks | Done | `renderer/overlay.ts`, `renderer/scrub.ts`; bench interactions and hit tests |
+| Live resize: canvas pixel size sent to the sidecar, which re-renders at the new size | Done | `shared/stage.ts`, engine `resize`; bench resize steps; addon end-to-end test |
+| Instrumentation: present timestamps, dropped frames, scrub-to-pixel, CPU of engine, main and renderer every 1 s to JSON | Done | `results/bench-*.json` `metrics[]` |
+| Overlay stays pixel-aligned during resize and playback (visual check + DOM-rect vs canvas-rect assertion every second) | PASS | `checks.overlayAlignedEverySecond`, `resize.steps[].align`; screenshots |
+| Both upload paths run 60 s on the dev machine and emit metrics JSON | PASS | `pnpm bench 60` result below |
+| `FLAGS.md` with the Linux flags | Partial | [FLAGS.md](FLAGS.md): only Windows was run; the Linux and macOS rows are unverified starting points for WP-0C.04 |
+| Test: Playwright-Electron smoke asserting the metrics file | Deviation | as in WP-0C.01, the checks run from Electron main (`pnpm bench quick` always writes the JSON and exits non-zero on failure); the addon end-to-end test covers `resize`, low-res-first seeks and `scrub-config` |
+
+Other deviation: the WBS names a React/Vite renderer. The spike keeps WP-0C.01's plain
+TypeScript + esbuild page, because React adds nothing to what is measured. WP-0C.01 finding 2
+still applies: React can own the canvas element and its layout, but the privileged preload
+owns the GPU upload.
+
+### WP-0C.02 informal numbers (dev machine, NOT the WP-0C.04 measurement)
+
+> Same machine as above (Ryzen 9 5900HX, Windows 11, engine on the RTX 3080 via Vulkan,
+> Chromium's WebGPU on the AMD iGPU, display scale 100 %), Electron 45.4.1, 1 run per
+> configuration, verification on, `draw=preload`, `policy=clock` (20 ms). **The machine was
+> shared:** other agents' spike engines, Electron windows and compiles ran during parts of
+> these runs. Rows marked `(contended*)` had another `s1-engine` running. Raw JSON:
+> `results/bench-win32-*.json`; tables from `node scripts/summarize-bench.mjs`.
+
+**Run A: `pnpm bench 60`** (60 s per playback phase, 12 s per scrub variant;
+`results/bench-win32-1795368821621.json`). It fulfils the "both upload paths run 60 s" criterion.
+
+| format + upload (engine 1920x1080, canvas 1252x706) | fps | drops/min (seq gaps + engine) | upload+draw CPU p50/p95 ms | submit -> GPU done p50/p95 ms | engine render -> present submit p50/p95 ms | CPU % of a core: engine / renderer / GPU proc |
+|---|---|---|---|---|---|---|
+| rgba8 + writeTexture | 59.7 | 14.9 (9.0 + 6.0) | 0.8 / 1.3 | 6.3 / 7.8 | 21.9 / 23.2 | 10.8 / 22.4 / 27.6 |
+| **nv12 + writeTexture** (fastest) | 59.4 | 35.8 (22.9 + 12.9) | 1.4 / 2.2 | 4.2 / 5.2 | 21.1 / 22.4 | 7.0 / 24.6 / 22.0 |
+| rgba8 + videoFrame | 45.3 | 882.5 (395.7 + 486.9) | 4.6 / 6.7 | 11.1 / 19.7 | 26.1 / 48.8 | 16.9 / 66.5 / 37.6 |
+| nv12 + videoFrame (contended*) | 50.2 | 587.3 (261.0 + 326.4) | 1.9 / 4.8 | 12.6 / 21.6 | 36.6 / 41.2 | 12.7 / 35.8 / 43.4 |
+
+Canvas-size playback (contended*), engine at the canvas size 1252x706, nv12 + writeTexture:
+59.8 fps, 9.9 drops/min, renderer CPU 21.1 %.
+
+| scrub (paused, real pointer drags + clicks) | requests | scrub-to-pixel p50/p95 ms | full-res on screen p50/p95 ms | low-res frames shown | rAF wait p50/p95 ms | lost |
+|---|---|---|---|---|---|---|
+| **low-res first, full-res cost 0 ms (default)** | 311 | **41.3 / 49.5** | 41.3 / 49.5 | 3 | - | 0 |
+| low-res first, full-res cost 50 ms (emulated decode) | 322 | 44.8 / 79.4 | 107.2 / 138.7 | 224 | - | 0 |
+| full-res only, cost 50 ms | 330 | 109.3 / 133.3 | 109.3 / 133.3 | 0 | - | 0 |
+| low-res first, cost 0 ms, rAF waits <= 8 ms (opt-in) | 322 | 29.8 / 42.2 | 41.2 / 49.0 | 208 | 1.6 / 2.0 | 0 |
+
+- **Resize (contended\*):** 119 canvas resizes, 0 blank (instrumented), 83 captured frames
+  checked with 0 blank (56 more were discarded because the window moved during the capture).
+  Engine renegotiation, from the size request to the first full-resolution frame at the new
+  size, took 32.3 / 33.4 ms p50 / p95. The engine renegotiated at every step (12 of 12), and
+  playback ran at 58.0 fps during the sweep.
+- **Overlay:** 22 of 22 hit tests and 6 of 6 real-input interactions passed. All 364
+  per-second alignment checks passed (overlay vs canvas 0 device px, box vs model at most
+  0.013 px, backing store vs box 0 px), and none needed the re-measure after a frame.
+- **Checks:** every check passed except `playback60fps` and `dropsUnder2PerMin` (finding 2).
+
+**Run B: `pnpm bench 20`** (20 s per playback phase; `results/bench-win32-1795369074193.json`).
+The first two phases ran with nothing else on the machine; then another engine started.
+
+| format + upload (engine 1920x1080) | fps | drops/min (gaps + engine) | upload+draw CPU p50/p95 ms | submit -> GPU done p50/p95 ms | engine render -> present submit p50/p95 ms | CPU % engine / renderer / GPU proc |
+|---|---|---|---|---|---|---|
+| rgba8 + writeTexture | **60.0** | **0.0** | 0.9 / 1.1 | 5.4 / 6.6 | 25.7 / 26.6 | 9.1 / 21.6 / 26.2 |
+| **nv12 + writeTexture** (fastest) | **60.0** | **0.0** | 1.3 / 2.0 | 4.0 / 5.2 | 25.1 / 26.2 | 5.9 / 21.8 / 20.3 |
+| rgba8 + videoFrame | 57.8 | 134.9 (30.0 + 104.9) | 3.0 / 4.1 | 6.6 / 8.7 | 27.3 / 29.0 | 12.0 / 63.4 / 38.9 |
+| nv12 + videoFrame (contended*) | 59.1 | 50.9 (9.0 + 42.0) | 0.9 / 2.2 | 6.6 / 9.8 | 24.4 / 26.5 | 7.6 / 26.3 / 36.7 |
+
+In run B every scrub variant was contended. The default scrub configuration had a p95 of
+179.5 ms (p50 43.8), which fails its check; the low-res/50 ms variant gave 44.1 / 76.6 ms and
+the rAF-wait variant 29.7 / 44.2 ms. Resize again gave 0 blank frames (121 resizes, 96
+captures), renegotiation at 49.1 / 50.5 ms, and 12 of 12 steps. The overlay checks all passed.
+
+### WP-0C.02 findings (informal, one machine)
+
+1. **Upload path: keep NV12 + `queue.writeTexture` + the YUV shader.** It had the lowest total
+   cost in every run: about 1.4 ms of CPU for upload and draw, 4.2 ms from submit to GPU done,
+   and 3.1 MB per frame against 8.3 MB for RGBA8 through every copy (engine memcpy, addon copy,
+   upload). RGBA8 `writeTexture` uses the least CPU (0.8 ms) but more GPU time (6.3 ms).
+   `VideoFrame` + `importExternalTexture` is the slowest path for frames that start in CPU
+   memory, because `new VideoFrame(ArrayBuffer)` adds a copy and Chromium uploads in the GPU
+   process. RGBA8 `VideoFrame` used about 66 % of a core in the renderer (writeTexture: 22 %),
+   took 11 ms to GPU done and could not hold 60 fps (33-60 fps across runs). NV12 `VideoFrame`
+   is cheap on CPU but takes 2-3x as long on the GPU. `VideoFrame` only pays off when the source
+   already is one (WebCodecs decode, GPU-backed frames). The renderer defaults to
+   `writeTexture` and `pnpm bench` picks the cheapest path itself. Use `--format=nv12`
+   interactively; main's default stays RGBA8, so WP-0C.01 and WP-0C.06 numbers stay comparable.
+2. **Playback is at 60 fps, with sporadic drops on this shared machine.** With nothing else
+   running, both `writeTexture` paths presented 60.0 fps with 0 drops (run B, 20 s each), as
+   WP-0C.01's 60 s run did. In run A, the 60 s phases had 10-36 drops/min at 59.4-59.8 fps,
+   which fails the < 2 drops/min criterion. Those drops come in single seconds (1-7 frames) and
+   coincide with producer-side stalls (engine drops) while other agents' work ran on the
+   machine. The per-second fps values swing between 47 and 75 because the main-process sampler
+   itself was delayed. WP-0C.04 decides on a quiet reference machine. Risk to carry: the 20 ms
+   clock-scheduling margin leaves little headroom for producer hiccups. WP-0C.04 should also
+   try `--latency=33` (one more frame of latency) and a higher-priority engine render thread.
+3. **Scrub-to-pixel p95 is about 50 ms against the 80 ms criterion.** It was 49.5 ms in run A
+   and 49-49.5 ms in every uncontended run. A run with another engine on the GPU (run B) had a
+   179.5 ms tail, so WP-0C.04 must measure on a quiet machine. Anatomy: the input event
+   waits up to one frame for dispatch (Chromium aligns pointer moves to frames), the engine
+   renders, reads back and publishes in about 3-5 ms, the frame misses the current rAF and is
+   drawn in the next one (one frame), then the compositor takes it (one frame).
+   - **Low-res first is what keeps 80 ms with real decode costs.** With an emulated 50 ms
+     full-resolution decode, the half-size preview gives 45 ms p50 / 79 ms p95, against
+     109 / 133 ms without it. That p95 sits right at the budget, so arch §10 step 5
+     (proxies / low-res first) is required, not optional.
+   - **Waiting in rAF saves a frame.** With `scrubWaitMs` (opt-in), the rAF callback waits up
+     to 8 ms for the frame of a seek sent in the same frame. That gives about 30 / 42 ms and
+     cost about 1.6 ms of main-thread waiting per scrub frame. It is worth adopting with a
+     budget in WP-1H.
+   - Latest-wins worked: no request was lost in about 1,300 per run. Fast drags answer many
+     requests with one frame, which the conservative per-request latency includes.
+4. **Live resize is clean in the page.** 119 canvas resizes produced 0 blank frames: every
+   resize had a frame to redraw in the same rendering step, and none of 83 captured frames was
+   blank. The engine renegotiated the size at every step (12 of 12). The first
+   full-resolution frame at the new size arrived after 32-50 ms (p50 / p95 32 / 33 ms in run A,
+   49 / 51 ms in run B; two to three frames), and the presenter scaled the old frame until
+   then. The stage snapping gave a 1:1 canvas-to-frame
+   mapping after every step. Not measured:
+   - window-level artifacts outside the page (DWM gutters while an edge is dragged by hand);
+   - fractional DPR (this machine runs at 100 %; 125 % and 150 % are for WP-0C.04).
+
+   The ring must be sized for the largest canvas (88 MB for 6 slots at 2560x1440); larger
+   canvases are clamped and scaled.
+5. **No overlay or z-order issues on Windows.** 22 of 22 hit tests passed: the canvas never
+   receives pointer events, guides and HUD are click-through, and every handle is hit. 6 of 6
+   real-input interactions worked (move, two resizes, keyboard nudge, deselect/select, scrub
+   click). The overlay stayed within 0.5 device pixels of the canvas, and the transform box
+   within 1 pixel of its model, at every 1 s check, including during the resize sweep. The
+   overlay is ordinary DOM above a WebGPU canvas in the same page (arch §10 step 4).
+6. **WP-0C.01 bugs found and fixed here.**
+   - Pings were keyed by fractional timestamps that do not always survive serde_json's default
+     float parsing, so pongs went unmatched.
+   - The control socket never reconnected after the engine dropped a connection whose auth
+     arrived after 2 s, which can happen while WebGPU starts up on a busy main thread. One
+     early bench run lost every seek and resize this way. It reconnects now.
+   - The preload's per-size frame buffers grew without bound under live resize.
+   - The addon end-to-end test hung the test runner when an assertion failed.
+7. **Measurement hygiene.** The bench marks phases during which another `s1-engine` ran
+   (`(contended*)` rows, `notes`). Trust phase totals over per-second rows. Chromium's WebGPU
+   ran on the AMD iGPU and the engine on the RTX 3080, as in WP-0C.01.
+
+**Bottom line for WP-0C.04 / ADR-001 (informal):** the in-page parts of S1 hold on Windows.
+The WebGPU canvas presents 1080p60 with NV12 + `writeTexture`. Scrub-to-pixel p95 is about
+50 ms, and low-res-first keeps it under 80 ms when full frames cost 50 ms. Live resize
+renegotiates the engine size in two to three frames with no blank frame. The DOM overlay has no
+alignment, hit-testing or z-order issues. Open for WP-0C.04: drops/min on a quiet reference
+machine (sporadic producer stalls here), fractional DPR, window-level resize artifacts,
+Linux/macOS flags ([FLAGS.md](FLAGS.md)), and whether to adopt the rAF wait for scrubs.
+
