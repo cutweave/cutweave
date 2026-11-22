@@ -11,7 +11,8 @@
       "packages/**",
       "!**/dist",
       "!**/node_modules",
-      "!**/generated"
+      "!**/generated",
+      "!packages/ui/src/tokens"
     ]
   },
   "formatter": {

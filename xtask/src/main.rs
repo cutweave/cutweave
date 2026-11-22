@@ -1,8 +1,9 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
-//! `cargo xtask <ci|check-wasm|check-deps|license-headers|fetch-corpus|gen>`: developer automation (WP-0A.01).
+//! `cargo xtask <ci|check-wasm|check-deps|license-headers|tokens|fetch-corpus|gen>`: developer automation (WP-0A.01).
 
 mod deps;
 mod headers;
+mod tokens;
 
 use std::path::{Path, PathBuf};
 use std::process::{Command, ExitCode};
@@ -20,6 +21,7 @@ const WASM_CRATES: &[&str] = &[
     "cutweave-commands",
     "cutweave-render",
     "cutweave-text",
+    "cutweave-tokens",
 ];
 
 const HELP: &str = "cargo xtask: Cutweave developer automation
@@ -34,6 +36,7 @@ COMMANDS:
     license-headers [--check|--fix]
                   verify (default) or add SPDX headers; alias: check-headers
     fetch-corpus  fetch the test-media corpus (arrives in a later work package)
+    tokens        generate design tokens (CSS, Tailwind, TS, Rust); `tokens --check` verifies
     gen           generate schemas and TS types (arrives in WP-1N)
     help          print this message";
 
@@ -120,7 +123,8 @@ fn ci() -> bool {
 }
 
 fn main() -> ExitCode {
-    let arg = std::env::args().nth(1);
+    let args: Vec<String> = std::env::args().skip(1).collect();
+    let arg = args.first().cloned();
     let ok = match arg.as_deref() {
         Some("ci") => ci(),
         Some("check-wasm") => check_wasm(),
@@ -138,6 +142,7 @@ fn main() -> ExitCode {
             println!("fetch-corpus: not implemented yet (arrives in a later work package)");
             true
         }
+        Some("tokens") => tokens::run(&workspace_root(), &args[1..]),
         Some("gen") => {
             println!("gen: not implemented yet (arrives in WP-1N)");
             true

@@ -26,6 +26,7 @@ check:
     cargo xtask check-deps
     cargo xtask license-headers --check
     cargo deny check
+    cargo xtask tokens --check
     pnpm lint
     pnpm format:check
     pnpm typecheck
