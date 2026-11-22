@@ -1,0 +1,22 @@
+[package]
+name = "s1-bridge"
+description = "Spike S1: napi-rs v3 addon that maps the SHM frame ring (transport (a))"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+rust-version.workspace = true
+publish.workspace = true
+
+[lib]
+crate-type = ["cdylib"]
+
+[dependencies]
+s1-ring.workspace = true
+napi = { version = "3.16.2", default-features = false, features = ["napi8"] }
+napi-derive = "3.7.1"
+
+[build-dependencies]
+napi-build = "2.6.0"
+
+[lints]
+workspace = true
