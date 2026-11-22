@@ -1,0 +1,61 @@
+{
+  "mode": "vsync",
+  "seconds": 30,
+  "viewport": {
+    "width": 1600,
+    "height": 900,
+    "dpr": 1
+  },
+  "dataset": {
+    "clips": 5000,
+    "keyframes": 50000,
+    "thumbnails": 200,
+    "tracks": 20
+  },
+  "hitTest": {
+    "calls": 20000,
+    "meanMs": 0.0005,
+    "p95Ms": 0.005,
+    "p99Ms": 0.005,
+    "maxMs": 0.125,
+    "hitRate": 0.862
+  },
+  "memory": {
+    "jsHeapUsedMB": 9.5,
+    "uaSpecificMB": null
+  },
+  "userAgent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) HeadlessChrome/159.0.8154.6 Safari/537.36",
+  "frames": 1800,
+  "fps": {
+    "mean": 60,
+    "p50": 60.01,
+    "p5": 59.99
+  },
+  "frameMs": {
+    "p50": 16.67,
+    "p95": 16.67,
+    "p99": 16.67,
+    "max": 16.67
+  },
+  "drawMs": {
+    "p50": 0.61,
+    "p95": 1.29,
+    "p99": 1.85,
+    "max": 5.46
+  },
+  "longFrames": {
+    "over20ms": 0,
+    "over33ms": 0,
+    "over50ms": 0
+  },
+  "visible": {
+    "clipsMax": 3407,
+    "clipsP50": 133,
+    "keyframesMax": 1312,
+    "thumbTilesMax": 182,
+    "drawCallsMax": 421,
+    "drawCallsP50": 205
+  },
+  "browser": "chromium 159.0.8154.6 (headless, playwright)",
+  "platform": "win32"
+}
