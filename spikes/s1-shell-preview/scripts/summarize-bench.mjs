@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
-// Print Markdown tables from results/bench-*.json (WP-0C.02 informal numbers; WP-0C.04 owns
-// the formal aggregation). Usage: node scripts/summarize-bench.mjs [file.json]
+// Print Markdown tables from the suite results in results/bench-*.json (WP-0C.02 informal
+// numbers; WP-0C.04 owns the formal aggregation).
+// Usage: node scripts/summarize-bench.mjs [file.json]
 import { readdirSync, readFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -23,6 +24,9 @@ const table = (head, rows) => {
 
 for (const file of files) {
   const r = JSON.parse(readFileSync(file, "utf8"));
+  // Suite results only; A/B runs (bench.ts `ab` mode) are tabulated by scripts/bench-ab.mjs
+  // --table. Files from before `mode` existed: `summary` marks an A/B file.
+  if ((r.mode ?? (r.summary ? "ab" : "suite")) !== "suite") continue;
   console.log(`### ${file.split(/[\\/]/).pop()} (${r.pass ? "PASS" : "FAIL"})\n`);
   table(
     ["format + upload (1920x1080)", "fps", "drops/min (gaps + engine)", "upload+draw CPU p50/p95 ms", "submit -> GPU done p50/p95 ms", "engine render -> present p50/p95 ms", "CPU % engine / renderer / GPU proc"],

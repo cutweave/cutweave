@@ -1,8 +1,13 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
-// WP-0C.02 benchmark / self-test, run from Electron main with `--bench[=quick|<seconds>]`
+// Benchmarks for Spike S1, run from Electron main with `--bench[=quick|<seconds>]`
 // (`pnpm bench`). Informal, one machine; WP-0C.04 owns the formal measurement.
 //
-// Phases (the window must stay visible; real input goes through webContents.sendInputEvent):
+// One CLI, two modes (`--bench-mode=suite|ab`; the default is `suite` for transport (a) and
+// `ab` for `--transport=utility|texture`):
+//
+// suite (WP-0C.02; transport (a) only, it drives the (a) page's overlay, scrub and stage hooks).
+//   `--bench` = 20 s playback phases, `--bench=<s>` = <s> s, `--bench=quick` = 5 s. Phases (the
+//   window must stay visible; real input goes through webContents.sendInputEvent):
 //   1. playback matrix at a fixed 1920x1080 engine size: {RGBA8, NV12} x {writeTexture,
 //      VideoFrame + importExternalTexture}: fps, drops/min, upload/draw cost, CPU per second;
 //   2. playback at the canvas pixel size with the fastest path;
@@ -12,16 +17,357 @@
 //      captured-pixel flicker check, engine size renegotiation, overlay alignment;
 //   5. overlay: elementFromPoint hit tests, real drags of the transform box and its handles,
 //      keyboard nudge, deselect on empty overlay, scrub bar reachable.
-// Writes results/bench-<platform>-<stamp>.json: per-second metrics
-// `{ts, phase, fps, dropped, engineDropped, scrub_ms[], cpu{engine, main, renderer, gpu}, align}`
-// plus phase summaries and checks.
+//
+// ab (WP-0C.06; every transport). One configuration per launch: wait for frames, warm up
+//   (`--warmup=<s>`, default 5), reset the page's counters, run `--bench=<s>` (default 60,
+//   quick = 10), then record present fps, skipped frames/min (seq gaps), engine submit ->
+//   present submit latency and per-process CPU (renderer, frame-pump utility, GPU, main,
+//   engine, whole machine, foreign load). In this mode transport (a) keeps the engine at the
+//   fixed `--size` (main.ts sets `--engine-size` to it) so both transports move the same bytes.
+//   `scripts/bench-ab.mjs` runs the A/B matrix and prints the table.
+//
+// Both modes: `--bench-priority=above` raises every process that touches frames to
+// above-normal priority for the run (spike hygiene on a shared dev machine).
+//
+// Result files (results/bench-*.json; README "Bench result schema"):
+//   envelope  {kind: "s1-bench", mode: "suite" | "ab", wp, transport, informal, startedAt,
+//             platform, electron, chrome, options, engine, priorityRaised}
+//   suite     + {display, config, fastest, matrix[], scrub, control, resize, overlay, phases[],
+//             metrics[] (per second: {ts, phase, fps, dropped, engineDropped, scrub_ms[],
+//             renegotiate_ms[], cpu{engine, main, renderer, gpu}, frame, align}), checks, notes,
+//             pass}
+//   ab        + {summary (flat: one row of the A/B table), snapshot, extra}
+// Files written before the modes were merged have no `mode`: `summary` marks an A/B file,
+// `matrix` a suite file (scripts/summarize-bench.mjs and bench-ab.mjs apply this rule).
+// New suite files are named bench-<platform>-suite-<stamp>.json, A/B files
+// bench-<platform>-<transport>-<loop>-<size>-<format>-<stamp>.json.
 
-import { type ChildProcess, execFile, spawn } from "node:child_process";
+import { type ChildProcess, execFile, execFileSync, spawn } from "node:child_process";
 import { mkdirSync, writeFileSync } from "node:fs";
+import { constants, cpus, setPriority } from "node:os";
 import path from "node:path";
 import { createInterface } from "node:readline";
 import { app, type BrowserWindow, screen } from "electron";
+import type { LatSummary, LoopSnapshot } from "./shared/loop.ts";
 import type { EngineInfo } from "./shared/types.ts";
+
+// ---- shared: CLI, result envelope, priority ---------------------------------------------------
+
+export type BenchArgs =
+  | { mode: "suite"; quick: boolean; playSeconds: number; scrubSeconds: number }
+  | { mode: "ab"; seconds: number }
+  | { mode: "error"; error: string };
+
+/**
+ * `--bench[=quick|<s>]` plus `--bench-mode=suite|ab` -> what to run (null = no bench).
+ * The suite needs transport (a)'s page; the other transports only have the A/B mode.
+ */
+export function parseBenchArgs(
+  value: string | undefined,
+  modeFlag: string | undefined,
+  transport: "preload" | "utility" | "texture",
+): BenchArgs | null {
+  if (value === undefined) return null;
+  const mode = modeFlag ? modeFlag : transport === "preload" ? "suite" : "ab";
+  const quick = value === "quick";
+  const n = Number(value);
+  if (value !== "" && !quick && !(n > 0)) {
+    return { mode: "error", error: `--bench=${value}: expected "quick" or a number of seconds` };
+  }
+  if (mode === "suite") {
+    if (transport !== "preload") {
+      return {
+        mode: "error",
+        error:
+          "--bench-mode=suite needs transport (a) (it drives that page's overlay, scrub and " +
+          `resize); use --bench-mode=ab with --transport=${transport}`,
+      };
+    }
+    return {
+      mode: "suite",
+      quick,
+      playSeconds: quick ? 5 : n > 0 ? n : 20,
+      scrubSeconds: quick ? 5 : 12,
+    };
+  }
+  if (mode === "ab") return { mode: "ab", seconds: quick ? 10 : n > 0 ? n : 60 };
+  return { mode: "error", error: `--bench-mode=${modeFlag}: expected "suite" or "ab"` };
+}
+
+/** Fields every bench result starts with (README "Bench result schema"). */
+function envelope(
+  mode: "suite" | "ab",
+  transport: string,
+  options: Record<string, unknown>,
+  engine: EngineInfo | null,
+  priorityRaised: number,
+  startedAt = new Date(),
+) {
+  return {
+    kind: "s1-bench" as const,
+    mode,
+    wp: mode === "suite" ? "WP-0C.02" : "WP-0C.06",
+    transport,
+    informal: true as const,
+    startedAt: startedAt.toISOString(),
+    platform: `${process.platform}-${process.arch}`,
+    electron: process.versions.electron,
+    chrome: process.versions.chrome,
+    options,
+    engine,
+    /** Processes raised to above-normal priority for the run (0 = normal priority). */
+    priorityRaised,
+  };
+}
+
+const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
+const r2 = (x: number) => Math.round(x * 100) / 100;
+const pct = (v: number[], p: number) => {
+  if (v.length === 0) return Number.NaN;
+  const s = [...v].sort((a, b) => a - b);
+  return s[Math.min(s.length - 1, Math.floor((p / 100) * s.length))] ?? Number.NaN;
+};
+
+/**
+ * `--bench-priority=above`: raise every process that touches frames (all Electron processes of
+ * this app, the engine, the probe's source) to above-normal priority for the run. Spike hygiene
+ * on a dev machine shared with normal-priority builds; applied identically to every transport.
+ * Windows priority classes are not inherited by Electron's children, so each pid is set here.
+ */
+function raisePriority(extraPids: (number | null)[]): string[] {
+  const done: string[] = [];
+  const pids = [...app.getAppMetrics().map((m) => m.pid), ...extraPids];
+  for (const pid of pids) {
+    if (pid === null) continue;
+    try {
+      setPriority(pid, constants.priority.PRIORITY_ABOVE_NORMAL);
+      done.push(String(pid));
+    } catch {
+      // not ours / already gone
+    }
+  }
+  return done;
+}
+
+/** `--bench-priority=above` given: raise now; returns how many processes were raised. */
+function maybeRaisePriority(extraPids: (number | null)[]): number {
+  return process.argv.includes("--bench-priority=above") ? raisePriority(extraPids).length : 0;
+}
+
+// ---- ab mode (WP-0C.06): one configuration of the A/B matrix ----------------------------------
+
+export interface BenchContext {
+  win: BrowserWindow;
+  transport: "preload" | "utility" | "texture";
+  seconds: number;
+  warmupSeconds: number;
+  engineInfo: () => EngineInfo | null;
+  enginePid: () => number | null;
+  /** Transport (b) frame-pump utility process. */
+  utilityPid: () => number | null;
+  /** sharedTexture probe: the offscreen window standing in for the engine. */
+  producerPid?: () => number | null;
+  options: Record<string, unknown>;
+  spikeRoot: string;
+  /** Extra per-transport data (e.g. utility stats); called with reset=true before the run. */
+  extra?: (reset: boolean) => Promise<Record<string, unknown>>;
+}
+
+export async function waitFor<T>(
+  what: string,
+  fn: () => Promise<T | null | undefined | false>,
+  ms: number,
+): Promise<T> {
+  const until = Date.now() + ms;
+  for (;;) {
+    const v = await fn().catch(() => null);
+    if (v) return v;
+    if (Date.now() > until) throw new Error(`timeout waiting for ${what}`);
+    await sleep(100);
+  }
+}
+
+/** Engine CPU time (ms) from the OS; Windows only in the spike. */
+export function engineCpuMs(pid: number | null): number | null {
+  if (pid === null || process.platform !== "win32") return null;
+  try {
+    const out = execFileSync(
+      "powershell",
+      ["-NoProfile", "-Command", `(Get-Process -Id ${pid}).TotalProcessorTime.TotalMilliseconds`],
+      { encoding: "utf8", windowsHide: true },
+    );
+    return Number(out.trim().replace(",", "."));
+  } catch {
+    return null;
+  }
+}
+
+export interface ProcSample {
+  t: number;
+  engineMs: number | null;
+  byPid: Map<number, { type: string; cpuS: number; serviceName?: string }>;
+  /** Whole-machine CPU times (ms, all logical cores) to spot foreign load during a run. */
+  sysBusyMs: number;
+  sysTotalMs: number;
+}
+
+function systemTimes(): { busy: number; total: number } {
+  let busy = 0;
+  let total = 0;
+  for (const c of cpus()) {
+    const t = c.times;
+    busy += t.user + t.nice + t.sys + t.irq;
+    total += t.user + t.nice + t.sys + t.irq + t.idle;
+  }
+  return { busy, total };
+}
+
+export function sampleCpu(enginePid: number | null): ProcSample {
+  const byPid = new Map<number, { type: string; cpuS: number; serviceName?: string }>();
+  for (const m of app.getAppMetrics()) {
+    byPid.set(m.pid, {
+      type: m.type,
+      cpuS: m.cpu.cumulativeCPUUsage ?? 0,
+      ...(m.serviceName ? { serviceName: m.serviceName } : {}),
+    });
+  }
+  const sys = systemTimes();
+  return {
+    t: performance.now(),
+    engineMs: engineCpuMs(enginePid),
+    byPid,
+    sysBusyMs: sys.busy,
+    sysTotalMs: sys.total,
+  };
+}
+
+/** CPU % of one core between two samples, for the processes the A/B table cares about. */
+export function cpuPercent(
+  a: ProcSample,
+  b: ProcSample,
+  pids: { renderer: number; utility: number | null; producer?: number | null },
+): Record<string, number | null> {
+  const wallS = (b.t - a.t) / 1000;
+  const pct = (s: number) => Math.round((s / wallS) * 1000) / 10;
+  const pidPct = (pid: number | null) => {
+    if (pid === null) return null;
+    const x = a.byPid.get(pid);
+    const y = b.byPid.get(pid);
+    return x && y ? pct(y.cpuS - x.cpuS) : null;
+  };
+  const typePct = (type: string) => {
+    let s = 0;
+    for (const [pid, y] of b.byPid) {
+      if (y.type !== type) continue;
+      s += y.cpuS - (a.byPid.get(pid)?.cpuS ?? y.cpuS);
+    }
+    return pct(s);
+  };
+  const out: Record<string, number | null> = {
+    renderer: pidPct(pids.renderer),
+    utility: pidPct(pids.utility),
+    ...(pids.producer === undefined ? {} : { producer: pidPct(pids.producer) }),
+    gpu: typePct("GPU"),
+    main: typePct("Browser"),
+    engine:
+      a.engineMs !== null && b.engineMs !== null
+        ? Math.round(((b.engineMs - a.engineMs) / 1000 / wallS) * 1000) / 10
+        : null,
+  };
+  // Whole machine, in % of one core (100 = one core busy), and what is NOT ours.
+  const n = cpus().length;
+  const sysPct =
+    Math.round(((b.sysBusyMs - a.sysBusyMs) / Math.max(1, b.sysTotalMs - a.sysTotalMs)) * n * 1000) /
+    10;
+  let ours = 0;
+  for (const [pid, y] of b.byPid) ours += y.cpuS - (a.byPid.get(pid)?.cpuS ?? y.cpuS);
+  ours = (ours / wallS) * 100 + (out.engine ?? 0);
+  out.system = sysPct;
+  out.foreign = Math.round(Math.max(0, sysPct - ours) * 10) / 10;
+  return out;
+}
+
+const pick = (l: LatSummary | undefined) => (l ? { p50: l.p50, p95: l.p95 } : null);
+
+export async function runAbBench(ctx: BenchContext): Promise<boolean> {
+  const { win } = ctx;
+  const js = <T>(code: string) => win.webContents.executeJavaScript(code) as Promise<T>;
+  await waitFor("renderer frames", () => js<number>("window.__s1?.framesPresented ?? 0"), 30_000);
+  const priority = maybeRaisePriority([
+    ctx.enginePid(),
+    ctx.utilityPid(),
+    ctx.producerPid?.() ?? null,
+  ]);
+  await sleep(ctx.warmupSeconds * 1000);
+  // The ring's engine_dropped counter is cumulative since engine start: take the delta.
+  const dropped0 = await js<number | null>(
+    "(async () => (await window.__s1.snapshot()).engineDropped ?? null)()",
+  );
+  await js("window.__s1.reset()");
+  await ctx.extra?.(true);
+  const rendererPid = win.webContents.getOSProcessId();
+  const c0 = sampleCpu(ctx.enginePid());
+  await sleep(ctx.seconds * 1000);
+  const snap = await js<LoopSnapshot & Record<string, unknown>>("window.__s1.snapshot()");
+  const c1 = sampleCpu(ctx.enginePid());
+  const extra = (await ctx.extra?.(false)) ?? {};
+  const cpu = cpuPercent(c0, c1, {
+    renderer: rendererPid,
+    utility: ctx.utilityPid(),
+    ...(ctx.producerPid ? { producer: ctx.producerPid() } : {}),
+  });
+  const info = ctx.engineInfo();
+  const L = snap.latency;
+  // OS view of the processes that touch frames (security comparison in the README).
+  const osOf = (pid: number | null) => {
+    const m = app.getAppMetrics().find((x) => x.pid === pid);
+    return m ? { sandboxed: m.sandboxed ?? null, integrityLevel: m.integrityLevel ?? null } : null;
+  };
+  const os = { renderer: osOf(rendererPid), utility: osOf(ctx.utilityPid()) };
+  const summary = {
+    transport: ctx.transport,
+    drawIn: snap.drawIn,
+    policy: snap.policy,
+    presenter: snap.presenter,
+    size: snap.size,
+    format: snap.format === 2 ? "nv12" : "rgba8",
+    seconds: snap.seconds,
+    presentFps: snap.presentFps,
+    skippedPerMin: snap.seqGapsPerMin,
+    skipped: snap.seqGaps,
+    longRafs: snap.longRafs,
+    tornFrames: snap.checksumFailures + snap.rowStampFailures,
+    seqViolations: snap.seqViolations,
+    renderToPresentMs: pick(L.renderToPresentMs),
+    publishToPresentMs: pick(L.publishToPresentMs),
+    uploadDrawMs: pick(L.uploadDrawMs),
+    cpu,
+    os,
+    /** Processes raised to above-normal priority for the run (0 = normal priority). */
+    priorityRaised: priority,
+    /** Frames the engine itself skipped during the run (producer stalls, not transport). */
+    engineDropped:
+      typeof snap.engineDropped === "number" && typeof dropped0 === "number"
+        ? snap.engineDropped - dropped0
+        : null,
+  };
+  const result = {
+    ...envelope("ab", ctx.transport, ctx.options, info, priority),
+    summary,
+    snapshot: snap,
+    extra,
+  };
+  const dir = path.join(ctx.spikeRoot, "results");
+  mkdirSync(dir, { recursive: true });
+  const tag = `${ctx.transport}-${snap.drawIn.split(" ")[0]}-${snap.size}-${summary.format}`;
+  const file = path.join(dir, `bench-${process.platform}-${tag}-${Date.now()}.json`);
+  writeFileSync(file, `${JSON.stringify(result, null, 2)}\n`);
+  console.log(`[bench] ${file}`);
+  console.log(`[bench] ${JSON.stringify(summary)}`);
+  return summary.presentFps > 0;
+}
+
+// ---- suite mode (WP-0C.02): playback matrix, scrub, resize, overlay ---------------------------
 
 export interface BenchDeps {
   win: BrowserWindow;
@@ -124,14 +470,6 @@ interface PhaseResult {
   snapshot: Snapshot;
 }
 
-const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
-const r2 = (x: number) => Math.round(x * 100) / 100;
-const pct = (v: number[], p: number) => {
-  if (v.length === 0) return Number.NaN;
-  const s = [...v].sort((a, b) => a - b);
-  return s[Math.min(s.length - 1, Math.floor((p / 100) * s.length))] ?? Number.NaN;
-};
-
 /** Engine CPU time (ms) from one long-lived PowerShell sampler (Windows only). */
 class EngineCpu {
   ms: number | null = null;
@@ -185,11 +523,12 @@ function electronCpuSeconds(): Record<string, number> {
   return out;
 }
 
-export async function runBench(deps: BenchDeps, arg: string): Promise<boolean> {
+export async function runSuiteBench(
+  deps: BenchDeps,
+  args: Extract<BenchArgs, { mode: "suite" }>,
+): Promise<boolean> {
   const { win } = deps;
-  const quick = arg === "quick";
-  const playSeconds = quick ? 5 : Number(arg) > 0 ? Number(arg) : 20;
-  const scrubSeconds = quick ? 5 : 12;
+  const { playSeconds, scrubSeconds } = args;
   const js = <T>(code: string) => win.webContents.executeJavaScript(code) as Promise<T>;
   const metrics: MetricRow[] = [];
   const checks: Record<string, boolean> = {};
@@ -215,6 +554,7 @@ export async function runBench(deps: BenchDeps, arg: string): Promise<boolean> {
     }
     await sleep(100);
   }
+  const priority = maybeRaisePriority([deps.enginePid()]);
   cpu.start(deps.enginePid());
   await js("window.__s1.play()");
   await sleep(3000); // warm-up (GPU init, first resizes)
@@ -701,15 +1041,14 @@ export async function runBench(deps: BenchDeps, arg: string): Promise<boolean> {
   const pass = Object.values(checks).every(Boolean);
   const scrubAll = metrics.flatMap((m) => m.scrub_ms);
   const result = {
-    kind: "s1-bench",
-    wp: "WP-0C.02",
-    informal: true,
-    startedAt: new Date(metrics[0]?.ts ?? Date.now()).toISOString(),
-    platform: `${process.platform}-${process.arch}`,
-    electron: process.versions.electron,
-    chrome: process.versions.chrome,
-    options: deps.options,
-    engine: deps.engineInfo(),
+    ...envelope(
+      "suite",
+      "preload",
+      deps.options,
+      deps.engineInfo(),
+      priority,
+      new Date(metrics[0]?.ts ?? Date.now()),
+    ),
     display: { scaleFactor: display.scaleFactor, size: display.size, workArea: work },
     config: { playSeconds, scrubSeconds },
     fastest: { format: best.format, upload: best.upload },
@@ -755,11 +1094,11 @@ export async function runBench(deps: BenchDeps, arg: string): Promise<boolean> {
   const dir = path.join(deps.spikeRoot, "results");
   mkdirSync(dir, { recursive: true });
   const stamp = Date.now();
-  const file = path.join(dir, `bench-${process.platform}-${stamp}.json`);
+  const file = path.join(dir, `bench-${process.platform}-suite-${stamp}.json`);
   writeFileSync(file, `${JSON.stringify(result, null, 2)}\n`);
   // Visual evidence (git-ignored): the window as it looked at the end of the run.
   writeFileSync(
-    path.join(dir, `bench-${process.platform}-${stamp}.png`),
+    path.join(dir, `bench-${process.platform}-suite-${stamp}.png`),
     (await win.webContents.capturePage()).toPNG(),
   );
   log(`${pass ? "PASS" : "FAIL"} -> ${file}`);

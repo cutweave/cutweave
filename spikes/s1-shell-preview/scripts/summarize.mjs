@@ -17,7 +17,7 @@ const rows = files.sort().map((f) => {
   const L = run.latency ?? {};
   const cpu = r.cpuPercentOfOneCore ?? {};
   return [
-    `${o.format}/${o.draw}/${o.policy}${o.policy === "clock" ? `@${o.latency}ms` : ""}/${o.present}${o.chromiumDgpu ? "/dgpu" : ""}${o.verify === "0" ? "/noverify" : ""}`,
+    `${r.transport === "utility" ? `(b) utility/${o.drawB}/` : ""}${o.format}/${r.transport === "utility" ? "" : `${o.draw}/`}${o.policy}${o.policy === "clock" ? `@${o.latency}ms` : ""}/${o.present}${o.chromiumDgpu ? "/dgpu" : ""}${o.verify === "0" ? "/noverify" : ""}`,
     run.seconds,
     run.presentFps,
     run.seqGapsPerMin,
