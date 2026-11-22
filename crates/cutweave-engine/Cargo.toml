@@ -10,11 +10,13 @@ publish = false
 
 [dependencies]
 cutweave-model = { path = "../cutweave-model" }
+cutweave-ops = { path = "../cutweave-ops" }
 serde.workspace = true
 serde_json.workspace = true
 thiserror.workspace = true
 
 [dev-dependencies]
+cutweave-commands = { path = "../cutweave-commands" }
 cutweave-model = { path = "../cutweave-model", features = ["testing"] }
 proptest.workspace = true
 
