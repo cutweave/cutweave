@@ -1,0 +1,91 @@
+---
+source: crates/cutweave-render/src/tests.rs
+expression: "[f.at(sec(1)), f.at(t(5 * S / 2)), f.at(sec(4))]"
+---
+[
+  {
+    "sequence": "seq_00000000000000000000000000000001",
+    "time": 705600000,
+    "width": 1920,
+    "height": 1080,
+    "frame_rate": {
+      "num": 24,
+      "den": 1
+    },
+    "background": "#0a141e",
+    "layers": [],
+    "audio": []
+  },
+  {
+    "sequence": "seq_00000000000000000000000000000001",
+    "time": 1764000000,
+    "width": 1920,
+    "height": 1080,
+    "frame_rate": {
+      "num": 24,
+      "den": 1
+    },
+    "background": "#0a141e",
+    "layers": [],
+    "audio": []
+  },
+  {
+    "sequence": "seq_00000000000000000000000000000001",
+    "time": 2822400000,
+    "width": 1920,
+    "height": 1080,
+    "frame_rate": {
+      "num": 24,
+      "den": 1
+    },
+    "background": "#0a141e",
+    "layers": [
+      {
+        "item": "itm_00000000000000000000000000000066",
+        "track": "trk_0000000000000000000000000000000b",
+        "request": {
+          "media": "med_00000000000000000000000000000001",
+          "stream": 0,
+          "source_time": 705600000,
+          "source_size": [
+            1920,
+            1080
+          ],
+          "rotation": 0,
+          "color": {
+            "primaries": null,
+            "transfer": null,
+            "matrix": null,
+            "range": null
+          },
+          "still": false
+        },
+        "transform": {
+          "position": {
+            "x": 0.0,
+            "y": 0.0
+          },
+          "scale": {
+            "x": 1.0,
+            "y": 1.0
+          },
+          "rotation_deg": 0.0,
+          "anchor": {
+            "x": 0.5,
+            "y": 0.5
+          }
+        },
+        "opacity": 1.0,
+        "blend": "normal",
+        "crop": {
+          "left": 0.0,
+          "top": 0.0,
+          "right": 0.0,
+          "bottom": 0.0
+        },
+        "effects": []
+      }
+    ],
+    "audio": []
+  }
+]

@@ -308,6 +308,13 @@ version = "0.0.0"
 [[package]]
 name = "cutweave-render"
 version = "0.0.0"
+dependencies = [
+ "cutweave-model",
+ "insta",
+ "proptest",
+ "serde",
+ "serde_json",
+]
 
 [[package]]
 name = "cutweave-text"
