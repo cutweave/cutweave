@@ -211,6 +211,7 @@ Provenance { origin(import|record|ai), provider?, model?, prompt?, seed?, params
 ### 4.3 Model rules
 
 - **No overlaps within a track, ever.** "Overlay" / picture-in-picture content lives on additional video tracks. Like CapCut, dropping an item where it would overlap **auto-creates a new track** above. The invariant is property-tested.
+- **Overlap policy on insert (decided in WP-1B.05):** `timeline.insert` rejects an overlap by default, which is explicit and safe for agents. Callers opt into CapCut behaviour with `overlap: "new_track"` (the UI's drag-and-drop passes it), which auto-creates a track above.
 - **Compound clips** are nested sequences referenced as media (`MediaAsset.kind = sequence-ref`). They render recursively and may not reference themselves; cycle detection is enforced.
 - **Normalized, ID-addressed.** Nothing refers to anything by index. Agents and the UI address by ID, which is stable across sessions.
 - **CapCut magnetic main track** is a track flag: `magnetic: true` gives ripple-by-default semantics. Linked items ("attached to main clip") move with their parent via `linked_group`.
