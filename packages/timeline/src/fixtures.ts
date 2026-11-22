@@ -196,9 +196,9 @@ export function syntheticLoaders(): MediaLoaders {
       const c = new OffscreenCanvas(TILE_W, TILE_H);
       const g = c.getContext("2d");
       if (!g) return null;
-      g.fillStyle = `hsl(${hue} 35% ${38 + shade}%)`;
+      g.fillStyle = `hsl(${hue} 35% ${38 + shade}%)`; // no-literals: allow (synthetic media pixels, not UI chrome)
       g.fillRect(0, 0, TILE_W, TILE_H);
-      g.fillStyle = `hsl(${hue} 40% 20%)`;
+      g.fillStyle = `hsl(${hue} 40% 20%)`; // no-literals: allow (synthetic media pixels, not UI chrome)
       g.fillRect(0, TILE_H * 0.62, TILE_W, TILE_H * 0.38);
       return createImageBitmap(c);
     },
