@@ -927,7 +927,8 @@ mod tests {
             let parsed = ttf_parser::Face::parse(&face.data, face.index).expect("parse");
             let n = parsed.number_of_glyphs();
             // Every 3rd glyph at the heavy weight (where variable-font overlaps are worst); the
-            // full sweep (all glyphs, 400 + 800) was run once: 0 errors in 16.7 M samples.
+            // full sweep (first 120 glyphs per face, 400 + 800) was run once: 0 errors in 16.7 M
+            // samples.
             for g in (0..n.min(120)).step_by(3) {
                 let weight = 800u16;
                 let o = glyph_outline(&face, g, weight);

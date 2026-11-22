@@ -185,6 +185,15 @@ enum Cmd {
         #[arg(long, default_value_t = 48.0)]
         em: f64,
     },
+    /// MTSDF generation throughput: every glyph of every bundled face into a fresh atlas (twice,
+    /// to check the atlas bytes are deterministic).
+    AtlasBench {
+        #[arg(long, default_value_t = 800)]
+        weight: u16,
+        /// MSDF atlas pixels per em (range = em / 4).
+        #[arg(long, default_value_t = 48.0)]
+        em: f64,
+    },
     /// Shimmer under sub-pixel motion (16 phases over one pixel), both renderers.
     TextShimmer {
         #[command(flatten)]
@@ -811,6 +820,48 @@ fn main() -> Result<()> {
                 }
             }
             println!("criterion (WP-0F.02): SSIM ≥ 0.98 on the 4K scene for the chosen path");
+        }
+        Cmd::AtlasBench { weight, em } => {
+            use s4::text::atlas::{GlyphAtlas, GlyphKey};
+            use s4::text::msdf::MsdfConfig;
+            let lib = s4::text::fonts::FontLibrary::bundled()?;
+            let mut wanted = Vec::new();
+            for id in lib.face_ids() {
+                let face = lib.face(id).context("face")?;
+                let n = ttf_parser::Face::parse(&face.data, face.index)
+                    .map(|f| f.number_of_glyphs())
+                    .unwrap_or(0);
+                for g in 0..n {
+                    let key = GlyphKey {
+                        face_hash: face.content_hash,
+                        glyph: g,
+                        weight,
+                    };
+                    wanted.push((key, face));
+                }
+            }
+            let cfg = MsdfConfig {
+                em_px: em,
+                range_px: em / 4.0,
+                ..MsdfConfig::default()
+            };
+            let mut a = GlyphAtlas::new(cfg);
+            let st = a.ensure(&wanted);
+            let mut b = GlyphAtlas::new(cfg);
+            let _ = b.ensure(&wanted);
+            let threads = std::thread::available_parallelism().map_or(1, |n| n.get());
+            println!(
+                "{} glyphs ({} faces, weight {weight}, {em} px/em, range {}) in {:.0} ms on {threads} threads = {:.0} glyphs/s; atlas {}x{} = {:.1} MB; deterministic: {}",
+                st.generated,
+                lib.face_ids().len(),
+                em / 4.0,
+                st.ms,
+                st.generated as f64 / (st.ms / 1e3),
+                a.width,
+                a.height,
+                a.bytes() as f64 / 1048576.0,
+                a.pixels() == b.pixels()
+            );
         }
         Cmd::TextShimmer {
             common,
