@@ -8,6 +8,10 @@
 // - Main editor window: non-sandboxed preload (needed to load the napi addon), contextIsolation
 //   on, nodeIntegration off. Every other window is sandboxed and gets no preload.
 // - `--selftest=<seconds>` runs the WP-0C.01 acceptance checks and writes results/*.json.
+// - `--transport=utility` switches to transport (b) (WP-0C.06, transport-b/main-b.ts).
+// - `--bench[=quick|<s>]` runs a benchmark (bench.ts): `--bench-mode=suite` (default for
+//   transport (a)) is the WP-0C.02 phase suite; `--bench-mode=ab` (default for the other
+//   transports) is the WP-0C.06 single-configuration A/B run.
 
 import { execFileSync, spawn } from "node:child_process";
 import { randomBytes } from "node:crypto";
@@ -25,8 +29,9 @@ import {
   session,
 } from "electron";
 import type * as Addon from "../../bridge/index.d.ts";
-import { runBench } from "./bench.ts";
+import { parseBenchArgs, runAbBench, runSuiteBench } from "./bench.ts";
 import type { EngineEvent, EngineInfo, Handshake } from "./shared/types.ts";
+import { CROSS_ORIGIN_ISOLATION, startTransportB } from "./transport-b/main-b.ts";
 
 const SPIKE_ROOT = path.resolve(__dirname, "..", "..");
 const RENDERER_ROOT = path.join(__dirname, "renderer");
@@ -44,11 +49,19 @@ function flag(name: string): string | undefined {
   return eq < 0 ? "" : hit.slice(eq + 1);
 }
 
+// WP-0C.06: transport (a) = addon in the non-sandboxed preload (default); (b) = addon in a
+// utilityProcess, frames over a MessagePort to a sandboxed renderer (transport-b/).
+// `texture` = sharedTexture GPU-handoff feasibility probe (transport-b/texture-main.ts).
+const transport = (["utility", "texture"] as const).find((t) => t === flag("transport")) ?? "preload";
+// One bench CLI for both work packages (bench.ts): `--bench[=quick|<s>]`, `--bench-mode=suite|ab`.
+const bench = parseBenchArgs(flag("bench"), flag("bench-mode"), transport);
+const size = flag("size") ?? "1920x1080";
+
 const opts = {
   selftestSeconds: flag("selftest") === undefined ? null : Number(flag("selftest") || 60),
   format: flag("format") === "nv12" ? "nv12" : "rgba8",
   gpu: flag("gpu") ?? "high",
-  size: flag("size") ?? "1920x1080",
+  size,
   // Renderer options, passed through as URL query parameters (see renderer/main.ts).
   draw: flag("draw") === "preload" ? "preload" : "main",
   policy: ["next", "clock"].includes(flag("policy") ?? "") ? (flag("policy") as string) : "latest",
@@ -56,10 +69,13 @@ const opts = {
   present: flag("present") === "2d" ? "2d" : "gpu",
   verify: flag("verify") === "0" ? "0" : "1",
   chromiumDgpu: flag("chromium-dgpu") !== undefined,
-  // WP-0C.02: WebGPU upload path, engine output size (canvas | WxH), `--bench[=quick|<s>]`.
+  // WP-0C.02: WebGPU upload path and engine output size (canvas | WxH). An A/B bench run keeps
+  // the engine at the fixed `--size` so (a) and (b) move the same bytes per frame.
   upload: flag("upload") === "videoFrame" ? "videoFrame" : "writeTexture",
-  engineSize: flag("engine-size") ?? "canvas",
-  bench: flag("bench"),
+  engineSize: flag("engine-size") ?? (bench?.mode === "ab" ? size : "canvas"),
+  transport,
+  bench,
+  warmupSeconds: Number(flag("warmup") ?? 5),
 };
 const rendererQuery = new URLSearchParams({
   draw: opts.draw,
@@ -131,6 +147,7 @@ function serveApp(req: Request): Response {
       "content-type": MIME[path.extname(file)] ?? "application/octet-stream",
       "content-security-policy": csp(),
       "x-content-type-options": "nosniff",
+      ...(opts.transport === "utility" ? CROSS_ORIGIN_ISOLATION : {}),
     },
   });
 }
@@ -549,33 +566,76 @@ app.whenReady().then(async () => {
     app.exit(2);
     return;
   }
+  if (opts.bench?.mode === "error") {
+    console.error(`[bench] ${opts.bench.error}`);
+    app.exit(2);
+    return;
+  }
+  if (opts.transport !== "preload") {
+    // WP-0C.06 transport (b) (or the sharedTexture probe): own windows, self-test and A/B bench.
+    await startTransportB({
+      engine,
+      launch,
+      origin: ORIGIN,
+      spikeRoot: SPIKE_ROOT,
+      query: rendererQuery,
+      selftestSeconds: opts.selftestSeconds,
+      benchSeconds: opts.bench?.mode === "ab" ? opts.bench.seconds : null,
+      warmupSeconds: opts.warmupSeconds,
+      options: opts,
+    });
+    return;
+  }
   await launch(false);
   mainWindow = createMainWindow();
-  if (opts.selftestSeconds !== null) {
+  const win = mainWindow;
+  const exitWith = (run: Promise<boolean>) =>
+    run.then(
+      (ok) => {
+        engine.stop();
+        app.exit(ok ? 0 : 1);
+      },
+      (e: Error) => {
+        console.error(`[bench] error: ${e.stack ?? e.message}`);
+        engine.stop();
+        app.exit(1);
+      },
+    );
+  if (opts.bench?.mode === "ab") {
+    // WP-0C.06 A/B run, transport (a) side.
+    exitWith(
+      runAbBench({
+        win,
+        transport: "preload",
+        seconds: opts.bench.seconds,
+        warmupSeconds: opts.warmupSeconds,
+        engineInfo: () => engine.info,
+        enginePid: () => engine.pid,
+        utilityPid: () => null,
+        options: opts,
+        spikeRoot: SPIKE_ROOT,
+      }),
+    );
+  } else if (opts.bench?.mode === "suite") {
+    // WP-0C.02 phase suite (playback matrix, scrub, resize, overlay).
+    exitWith(
+      runSuiteBench(
+        {
+          win,
+          spikeRoot: SPIKE_ROOT,
+          engineInfo: () => engine.info,
+          enginePid: () => engine.pid,
+          options: opts,
+        },
+        opts.bench,
+      ),
+    );
+  } else if (opts.selftestSeconds !== null) {
     runSelftest(opts.selftestSeconds).catch((e: Error) => {
       console.error(`[selftest] error: ${e.stack ?? e.message}`);
       engine.stop();
       app.exit(1);
     });
-  } else if (opts.bench !== undefined) {
-    const win = mainWindow;
-    const deps = {
-      win,
-      spikeRoot: SPIKE_ROOT,
-      engineInfo: () => engine.info,
-      enginePid: () => engine.pid,
-      options: opts,
-    };
-    runBench(deps, opts.bench)
-      .then((pass) => {
-        engine.stop();
-        app.exit(pass ? 0 : 1);
-      })
-      .catch((e: Error) => {
-        console.error(`[bench] error: ${e.stack ?? e.message}`);
-        engine.stop();
-        app.exit(1);
-      });
   }
 });
 

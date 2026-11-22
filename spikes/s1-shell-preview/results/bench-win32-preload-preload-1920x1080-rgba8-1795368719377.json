@@ -1,0 +1,182 @@
+{
+  "kind": "s1-bench",
+  "informal": true,
+  "startedAt": "2026-11-22T17:31:59.377Z",
+  "platform": "win32-x64",
+  "electron": "45.4.1",
+  "chrome": "156.0.8078.100",
+  "options": {
+    "selftestSeconds": null,
+    "format": "rgba8",
+    "gpu": "high",
+    "size": "1920x1080",
+    "draw": "preload",
+    "policy": "clock",
+    "latency": "20",
+    "present": "gpu",
+    "verify": "1",
+    "chromiumDgpu": false,
+    "transport": "preload",
+    "benchSeconds": 60,
+    "warmupSeconds": 5
+  },
+  "engine": {
+    "pid": 20676,
+    "port": 55593,
+    "ring": "cw-s1-527665f2f130",
+    "width": 1920,
+    "height": 1080,
+    "fps": 60,
+    "slots": 6,
+    "adapter": "NVIDIA GeForce RTX 3080 Laptop GPU",
+    "backend": "Vulkan",
+    "deviceType": "DiscreteGpu",
+    "generation": 1
+  },
+  "summary": {
+    "transport": "preload",
+    "drawIn": "preload",
+    "policy": "clock",
+    "presenter": "webgpu (amd / gcn-5)",
+    "size": "1920x1080",
+    "format": "rgba8",
+    "seconds": 61.6,
+    "presentFps": 59.9,
+    "skippedPerMin": 5.8,
+    "skipped": 6,
+    "longRafs": 2,
+    "tornFrames": 0,
+    "seqViolations": 0,
+    "renderToPresentMs": {
+      "p50": 34.521,
+      "p95": 38.973
+    },
+    "publishToPresentMs": {
+      "p50": 29.042,
+      "p95": 31.86
+    },
+    "uploadDrawMs": {
+      "p50": 1.3,
+      "p95": 3.1
+    },
+    "cpu": {
+      "renderer": 31.9,
+      "utility": null,
+      "gpu": 36.5,
+      "main": 0.2,
+      "engine": 19.4,
+      "system": 1036.7,
+      "foreign": 948.6
+    },
+    "os": {
+      "renderer": {
+        "sandboxed": false,
+        "integrityLevel": "medium"
+      },
+      "utility": null
+    },
+    "priorityRaised": 5,
+    "engineDropped": 0
+  },
+  "snapshot": {
+    "seconds": 61.6,
+    "drawIn": "preload",
+    "policy": "clock",
+    "presenter": "webgpu (amd / gcn-5)",
+    "framesPresented": 3690,
+    "presentFps": 59.9,
+    "seqGaps": 6,
+    "seqGapsPerMin": 5.8,
+    "seqViolations": 0,
+    "checksumFailures": 0,
+    "rowStampFailures": 0,
+    "longRafs": 2,
+    "verify": true,
+    "format": 1,
+    "size": "1920x1080",
+    "lastPts": 48462960000,
+    "latency": {
+      "renderToPresentMs": {
+        "n": 3690,
+        "p50": 34.521,
+        "p95": 38.973,
+        "p99": 41.17,
+        "max": 44.019,
+        "mean": 35.135
+      },
+      "publishToPresentMs": {
+        "n": 3690,
+        "p50": 29.042,
+        "p95": 31.86,
+        "p99": 33.364,
+        "max": 36.248,
+        "mean": 28.921
+      },
+      "publishToFetchMs": {
+        "n": 3690,
+        "p50": 27.142,
+        "p95": 29.004,
+        "p99": 29.534,
+        "max": 31.598,
+        "mean": 26.855
+      },
+      "addonCopyMs": {
+        "n": 3690,
+        "p50": 1.179,
+        "p95": 3.044,
+        "p99": 4.168,
+        "max": 5.781,
+        "mean": 1.479
+      },
+      "getFrameMs": {
+        "n": 3690,
+        "p50": 1.3,
+        "p95": 3.3,
+        "p99": 4.5,
+        "max": 6.5,
+        "mean": 1.646
+      },
+      "cloneMs": {
+        "n": 3690,
+        "p50": 0.155,
+        "p95": 0.354,
+        "p99": 0.444,
+        "max": 0.794,
+        "mean": 0.167
+      },
+      "verifyMs": {
+        "n": 3690,
+        "p50": 0.4,
+        "p95": 1.1,
+        "p99": 1.6,
+        "max": 2.6,
+        "mean": 0.493
+      },
+      "uploadDrawMs": {
+        "n": 3690,
+        "p50": 1.3,
+        "p95": 3.1,
+        "p99": 4.2,
+        "max": 6,
+        "mean": 1.554
+      },
+      "rafIntervalMs": {
+        "n": 3693,
+        "p50": 16.7,
+        "p95": 16.8,
+        "p99": 16.9,
+        "max": 50,
+        "mean": 16.68
+      }
+    },
+    "reader": {
+      "frames": 3982,
+      "torn": 0,
+      "nothingNew": 0,
+      "errors": 0,
+      "externalArrayBuffers": false
+    },
+    "engineDropped": 2
+  },
+  "extra": {}
+}

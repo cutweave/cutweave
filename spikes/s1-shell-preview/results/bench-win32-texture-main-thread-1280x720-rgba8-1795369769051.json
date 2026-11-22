@@ -1,0 +1,159 @@
+{
+  "kind": "s1-bench",
+  "informal": true,
+  "startedAt": "2026-11-22T17:49:29.050Z",
+  "platform": "win32-x64",
+  "electron": "45.4.1",
+  "chrome": "156.0.8078.100",
+  "options": {
+    "selftestSeconds": null,
+    "format": "rgba8",
+    "gpu": "high",
+    "size": "1280x720",
+    "draw": "main",
+    "policy": "clock",
+    "latency": "20",
+    "present": "gpu",
+    "verify": "1",
+    "chromiumDgpu": false,
+    "transport": "texture",
+    "benchSeconds": 60,
+    "warmupSeconds": 5
+  },
+  "engine": null,
+  "summary": {
+    "transport": "texture",
+    "drawIn": "main-thread (sandboxed renderer, sharedTexture)",
+    "policy": "next",
+    "presenter": "webgpu copyExternalImageToTexture ring (amd / gcn-5)",
+    "size": "1280x720",
+    "format": "rgba8",
+    "seconds": 60,
+    "presentFps": 59.98,
+    "skippedPerMin": 1,
+    "skipped": 1,
+    "longRafs": 0,
+    "tornFrames": 0,
+    "seqViolations": 0,
+    "renderToPresentMs": {
+      "p50": 30.762,
+      "p95": 32.167
+    },
+    "publishToPresentMs": {
+      "p50": 30.633,
+      "p95": 32.048
+    },
+    "uploadDrawMs": {
+      "p50": 0.1,
+      "p95": 0.2
+    },
+    "cpu": {
+      "renderer": 13.2,
+      "utility": null,
+      "producer": 5.6,
+      "gpu": 36.8,
+      "main": 7.9,
+      "engine": null,
+      "system": 589,
+      "foreign": 525.5
+    },
+    "os": {
+      "renderer": {
+        "sandboxed": true,
+        "integrityLevel": "untrusted"
+      },
+      "utility": null
+    },
+    "priorityRaised": 6,
+    "engineDropped": null
+  },
+  "snapshot": {
+    "seconds": 60,
+    "drawIn": "main-thread (sandboxed renderer, sharedTexture)",
+    "policy": "next",
+    "presenter": "webgpu copyExternalImageToTexture ring (amd / gcn-5)",
+    "framesPresented": 3599,
+    "presentFps": 59.98,
+    "seqGaps": 1,
+    "seqGapsPerMin": 1,
+    "seqViolations": 0,
+    "checksumFailures": 0,
+    "rowStampFailures": 0,
+    "longRafs": 0,
+    "verify": false,
+    "format": 1,
+    "size": "1280x720",
+    "lastPts": 0,
+    "latency": {
+      "renderToPresentMs": {
+        "n": 3599,
+        "p50": 30.762,
+        "p95": 32.167,
+        "p99": 33.166,
+        "max": 34.958,
+        "mean": 24.667
+      },
+      "publishToPresentMs": {
+        "n": 3599,
+        "p50": 30.633,
+        "p95": 32.048,
+        "p99": 33.106,
+        "max": 34.851,
+        "mean": 24.551
+      },
+      "publishToReceiveMs": {
+        "n": 3599,
+        "p50": 0.554,
+        "p95": 0.826,
+        "p99": 1.007,
+        "max": 5.025,
+        "mean": 0.567
+      },
+      "copyMs": {
+        "n": 3599,
+        "p50": 0.2,
+        "p95": 0.3,
+        "p99": 0.4,
+        "max": 0.7,
+        "mean": 0.191
+      },
+      "uploadDrawMs": {
+        "n": 3599,
+        "p50": 0.1,
+        "p95": 0.2,
+        "p99": 0.3,
+        "max": 0.5,
+        "mean": 0.128
+      },
+      "rafIntervalMs": {
+        "n": 3601,
+        "p50": 16.7,
+        "p95": 16.8,
+        "p99": 16.9,
+        "max": 17.2,
+        "mean": 16.666
+      }
+    },
+    "receiver": {
+      "received": 3599,
+      "notPresented": 1,
+      "clockOffsetUs": -471,
+      "clockRttUs": 0
+    },
+    "engineDropped": null
+  },
+  "extra": {
+    "texture": {
+      "paints": 3602,
+      "sent": 3600,
+      "busyDrops": 1,
+      "errors": 0,
+      "importMs": 408.02729999989333,
+      "sendMs": 2440.393700000058,
+      "paintsPerSecond": 60,
+      "importMsMean": 0.11334091666663704,
+      "sendMsMean": 0.677887138888905,
+      "producerPid": 50948
+    }
+  }
+}

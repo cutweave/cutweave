@@ -1,0 +1,326 @@
+{
+  "kind": "s1-selftest",
+  "transport": "utility",
+  "informal": true,
+  "startedAt": "2026-11-22T18:05:53.520Z",
+  "platform": "win32-x64",
+  "electron": "45.4.1",
+  "chrome": "156.0.8078.100",
+  "seconds": 60,
+  "options": {
+    "selftestSeconds": 60,
+    "format": "rgba8",
+    "gpu": "high",
+    "size": "1920x1080",
+    "draw": "main",
+    "policy": "clock",
+    "latency": "20",
+    "present": "gpu",
+    "verify": "1",
+    "chromiumDgpu": false,
+    "transport": "utility",
+    "benchSeconds": null,
+    "warmupSeconds": 5,
+    "drawB": "main"
+  },
+  "engine": {
+    "pid": 41588,
+    "port": 49210,
+    "ring": "cw-s1-7232b5b438c9",
+    "width": 1920,
+    "height": 1080,
+    "fps": 60,
+    "slots": 6,
+    "adapter": "NVIDIA GeForce RTX 3080 Laptop GPU",
+    "backend": "Vulkan",
+    "deviceType": "DiscreteGpu",
+    "generation": 1
+  },
+  "isolation": {
+    "require": "undefined",
+    "process": "undefined",
+    "module": "undefined",
+    "bridge": "undefined",
+    "electron": "undefined",
+    "crossOriginIsolated": true,
+    "sharedArrayBuffer": "function",
+    "framesPresented": 2
+  },
+  "preload": {
+    "sandboxed": true,
+    "contextIsolated": true,
+    "requireFs": "blocked: module not found: fs",
+    "requireChildProcess": "blocked: module not found: child_process",
+    "requireNativeAddon": "blocked: module not found: ../../bridge/s1_bridge.node",
+    "processDlopen": "undefined",
+    "electronModules": [
+      "contextBridge",
+      "crashReporter",
+      "ipcRenderer",
+      "nativeImage",
+      "sharedTexture",
+      "webFrame",
+      "webUtils"
+    ],
+    "sharedTextureReceiver": "function"
+  },
+  "os": {
+    "renderer": {
+      "pid": 52076,
+      "type": "Tab",
+      "sandboxed": true,
+      "integrityLevel": "untrusted"
+    },
+    "utility": {
+      "pid": 51572,
+      "type": "Utility",
+      "sandboxed": false,
+      "integrityLevel": "medium"
+    }
+  },
+  "sandboxedWindow": {
+    "bridge": "undefined",
+    "require": "undefined",
+    "process": "undefined",
+    "s1": "undefined"
+  },
+  "probes": {
+    "addonLoaded": true,
+    "node": "24.22.3",
+    "externalArrayBuffers": false,
+    "arrayBufferTransfer": "throws: Port at index 0 is not a valid port",
+    "sharedArrayBuffer": "throws: An object could not be cloned.",
+    "controlSocket": "open"
+  },
+  "run": {
+    "seconds": 60.7,
+    "drawIn": "main-thread (sandboxed renderer)",
+    "policy": "clock",
+    "presenter": "webgpu (amd / gcn-5)",
+    "framesPresented": 3093,
+    "presentFps": 50.99,
+    "seqGaps": 411,
+    "seqGapsPerMin": 406.5,
+    "seqViolations": 0,
+    "checksumFailures": 0,
+    "rowStampFailures": 0,
+    "longRafs": 40,
+    "verify": true,
+    "format": 1,
+    "size": "1920x1080",
+    "lastPts": 43229760000,
+    "latency": {
+      "renderToPresentMs": {
+        "n": 3093,
+        "p50": 33.934,
+        "p95": 63.467,
+        "p99": 89.166,
+        "max": 153.297,
+        "mean": 37.156
+      },
+      "publishToPresentMs": {
+        "n": 3093,
+        "p50": 27.592,
+        "p95": 47.969,
+        "p99": 64.179,
+        "max": 93.321,
+        "mean": 29.014
+      },
+      "publishToFetchMs": {
+        "n": 3093,
+        "p50": 17.947,
+        "p95": 44.35,
+        "p99": 59.241,
+        "max": 91.581,
+        "mean": 21.796
+      },
+      "addonCopyMs": {
+        "n": 3093,
+        "p50": 0,
+        "p95": 0,
+        "p99": 0,
+        "max": 0,
+        "mean": 0
+      },
+      "getFrameMs": {
+        "n": 3093,
+        "p50": 0.005,
+        "p95": 0.01,
+        "p99": 0.015,
+        "max": 0.045,
+        "mean": 0.004
+      },
+      "cloneMs": {
+        "n": 3093,
+        "p50": 0.005,
+        "p95": 0.01,
+        "p99": 0.015,
+        "max": 0.045,
+        "mean": 0.004
+      },
+      "verifyMs": {
+        "n": 3093,
+        "p50": 0.245,
+        "p95": 0.515,
+        "p99": 0.655,
+        "max": 1.145,
+        "mean": 0.269
+      },
+      "uploadDrawMs": {
+        "n": 3093,
+        "p50": 0.915,
+        "p95": 1.565,
+        "p99": 2.155,
+        "max": 18.025,
+        "mean": 1.05
+      },
+      "rafIntervalMs": {
+        "n": 3596,
+        "p50": 16.67,
+        "p95": 16.815,
+        "p99": 33.205,
+        "max": 50.105,
+        "mean": 16.87
+      }
+    },
+    "receiver": {
+      "framesReceived": 3465,
+      "bytesReceived": 28740096000,
+      "queueDrops": 0,
+      "clockOffsetUs": -24,
+      "clockRttMs": 0.135,
+      "deserializeMs": {
+        "n": 3465,
+        "p50": 1.505,
+        "p95": 2.705,
+        "p99": 3.27,
+        "max": 12.035,
+        "mean": 1.673
+      },
+      "publishToReceiveMs": {
+        "n": 3465,
+        "p50": 17.423,
+        "p95": 45.714,
+        "p99": 60.821,
+        "max": 91.581,
+        "mean": 21.622
+      },
+      "sendToReceiveMs": {
+        "n": 3465,
+        "p50": 15.898,
+        "p95": 38.682,
+        "p99": 55.109,
+        "max": 85.413,
+        "mean": 19.448
+      },
+      "utilityCopyMs": {
+        "n": 3465,
+        "p50": 0.897,
+        "p95": 1.913,
+        "p99": 2.545,
+        "max": 29.595,
+        "mean": 1.038
+      },
+      "utilityPostMs": {
+        "n": 3465,
+        "p50": 7.697,
+        "p95": 13.481,
+        "p99": 21.725,
+        "max": 74.995,
+        "mean": 8.677
+      },
+      "interArrivalMs": {
+        "n": 3465,
+        "p50": 16.31,
+        "p95": 27.545,
+        "p99": 44.705,
+        "max": 105.71,
+        "mean": 17.506
+      }
+    },
+    "engineDropped": 138
+  },
+  "utility": {
+    "framesSent": 3514,
+    "bytesSent": 29146521600,
+    "creditDrops": 47,
+    "readErrors": 0,
+    "wakeups": 3547,
+    "timeouts": 36,
+    "maxInFlight": 3,
+    "copyMs": {
+      "n": 3514,
+      "p50": 0.907,
+      "p95": 1.913,
+      "p99": 2.522,
+      "max": 29.595,
+      "mean": 1.043
+    },
+    "postMs": {
+      "n": 3514,
+      "p50": 7.753,
+      "p95": 13.672,
+      "p99": 22.13,
+      "max": 74.995,
+      "mean": 8.766
+    },
+    "publishToWakeMs": {
+      "n": 3547,
+      "p50": 0.451,
+      "p95": 4.586,
+      "p99": 11.757,
+      "max": 47.026,
+      "mean": 0.988
+    }
+  },
+  "cpuPercentOfOneCore": {
+    "renderer": 78.7,
+    "utility": 56.3,
+    "gpu": 28.2,
+    "main": 0.9,
+    "engine": 14.2,
+    "system": 866.1,
+    "foreign": 687.7
+  },
+  "crash": {
+    "detectMs": 152.33490000000165,
+    "pipeCloseMs": 125.1814000000013,
+    "heartbeatDetectMs": null,
+    "closeAckMs": 183.64800000000105,
+    "ringExistsAfterReaderClose": false
+  },
+  "restart": {
+    "msToFramesFlowing": 1915.0455000000002,
+    "engine": {
+      "pid": 47536,
+      "port": 49210,
+      "ring": "cw-s1-4a5852243788",
+      "width": 1920,
+      "height": 1080,
+      "fps": 60,
+      "slots": 6,
+      "adapter": "NVIDIA GeForce RTX 3080 Laptop GPU",
+      "backend": "Vulkan",
+      "deviceType": "DiscreteGpu",
+      "generation": 2
+    }
+  },
+  "checks": {
+    "mainWorldHasNoRequire": true,
+    "mainWorldHasNoProcess": true,
+    "mainWorldHasNoBridge": true,
+    "framesArriveInSandboxedRenderer": true,
+    "preloadProcessSandboxed": true,
+    "preloadHasNoNode": true,
+    "preloadHasNoNativeModules": true,
+    "rendererOsSandboxed": true,
+    "otherWindowHasNoBridge": true,
+    "framesPresented": true,
+    "seqMonotonic": true,
+    "zeroTornFrames": true,
+    "crashDetectedUnder1s": true,
+    "ringReleased": true,
+    "restartedAndFlowing": true
+  },
+  "pass": true
+}
