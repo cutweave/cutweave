@@ -1,0 +1,342 @@
+---
+source: crates/cutweave-ops/tests/contract.rs
+expression: "json!({\n    \"meta\": serde_json::to_value(meta).unwrap(), \"input\": meta.input_schema,\n    \"output\": meta.output_schema,\n})"
+---
+{
+  "meta": {
+    "name": "timeline.insert",
+    "summary": "Insert a media clip at a time on a track (adds linked audio for video with sound)",
+    "kind": "command",
+    "undoable": true,
+    "view": false,
+    "scope": "any",
+    "mcp": "core",
+    "annotations": {
+      "readOnlyHint": false,
+      "destructiveHint": false,
+      "idempotentHint": false,
+      "openWorldHint": false
+    },
+    "secret_fields": [],
+    "input_schema": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "sequence": {
+          "type": "string",
+          "pattern": "^seq_[0-9a-f]{32}$",
+          "description": "The sequence."
+        },
+        "track": {
+          "type": "string",
+          "pattern": "^trk_[0-9a-f]{32}$",
+          "description": "The target track (of that sequence): a video track for pictures, an audio track for\nsound."
+        },
+        "media": {
+          "type": "string",
+          "pattern": "^med_[0-9a-f]{32}$",
+          "description": "The media to place."
+        },
+        "at": {
+          "description": "Timeline position of the clip's first frame, `>= 0`.",
+          "anyOf": [
+            {
+              "type": "integer",
+              "minimum": -9007199254740991,
+              "maximum": 9007199254740991
+            },
+            {
+              "type": "string",
+              "pattern": "^-?[0-9]+(\\.[0-9]+)?s$|^-?[0-9]+$|^f:[0-9]+$|^[0-9]+[:;][0-9]+[:;][0-9]+[:;][0-9]+$"
+            }
+          ]
+        },
+        "source_in": {
+          "anyOf": [
+            {
+              "description": "A time: integer flicks (1/705600000 s), or a string: seconds (\"62.5s\"), a frame (\"f:1500\") or a timecode (\"00:01:02:03\", drop-frame \"00:01:02;03\"). Frames and timecodes use the frame rate of the target's sequence.",
+              "anyOf": [
+                {
+                  "type": "integer",
+                  "minimum": -9007199254740991,
+                  "maximum": 9007199254740991
+                },
+                {
+                  "type": "string",
+                  "pattern": "^-?[0-9]+(\\.[0-9]+)?s$|^-?[0-9]+$|^f:[0-9]+$|^[0-9]+[:;][0-9]+[:;][0-9]+[:;][0-9]+$"
+                }
+              ]
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "description": "Position in the media to start from (default 0).",
+          "default": null
+        },
+        "duration": {
+          "anyOf": [
+            {
+              "description": "A time: integer flicks (1/705600000 s), or a string: seconds (\"62.5s\"), a frame (\"f:1500\") or a timecode (\"00:01:02:03\", drop-frame \"00:01:02;03\"). Frames and timecodes use the frame rate of the target's sequence.",
+              "anyOf": [
+                {
+                  "type": "integer",
+                  "minimum": -9007199254740991,
+                  "maximum": 9007199254740991
+                },
+                {
+                  "type": "string",
+                  "pattern": "^-?[0-9]+(\\.[0-9]+)?s$|^-?[0-9]+$|^f:[0-9]+$|^[0-9]+[:;][0-9]+[:;][0-9]+[:;][0-9]+$"
+                }
+              ]
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "description": "Clip length, `> 0`.",
+          "default": null
+        },
+        "overlap": {
+          "anyOf": [
+            {
+              "oneOf": [
+                {
+                  "type": "string",
+                  "const": "reject",
+                  "description": "Fail with `Invalid{path:\"/at\"}` (default)."
+                },
+                {
+                  "type": "string",
+                  "const": "new_track",
+                  "description": "Create a new track of the same kind directly above the target and insert there."
+                }
+              ],
+              "description": "What to do when the clip would overlap another clip on the target track."
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "description": "Overlap handling (default `reject`).",
+          "default": null
+        },
+        "link": {
+          "type": [
+            "boolean",
+            "null"
+          ],
+          "description": "Also insert the audio of a video file as a linked clip (default `true`).",
+          "default": null
+        }
+      },
+      "required": [
+        "sequence",
+        "track",
+        "media",
+        "at"
+      ],
+      "description": "Inserts a media clip on a track at a time. `source_in` is the position in the media the clip\nstarts from and `duration` its length (defaults: the start of the media and the rest of it;\nstills default to five seconds). Times accept flicks, `\"1.5s\"`, `\"f:45\"` and timecodes,\nresolved against the sequence's frame rate. See the module docs for overlap and linked\naudio behaviour. Fails with `Locked` if the target track is locked.",
+      "title": "TimelineInsert"
+    },
+    "output_schema": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "clips": {
+          "type": "array",
+          "items": {
+            "description": "A Item id: `^itm_[0-9a-f]{32}$`.",
+            "type": "string",
+            "pattern": "^itm_[0-9a-f]{32}$"
+          },
+          "description": "The inserted clips: the one on the target track first, then the linked audio clip."
+        },
+        "linked_group": {
+          "type": [
+            "string",
+            "null"
+          ],
+          "pattern": "^grp_[0-9a-f]{32}$",
+          "description": "The group shared by the clips when audio was linked."
+        },
+        "created_tracks": {
+          "type": "array",
+          "items": {
+            "description": "A Track id: `^trk_[0-9a-f]{32}$`.",
+            "type": "string",
+            "pattern": "^trk_[0-9a-f]{32}$"
+          },
+          "description": "Tracks created by `overlap: \"new_track\"`, in creation order."
+        }
+      },
+      "required": [
+        "clips",
+        "linked_group",
+        "created_tracks"
+      ],
+      "description": "Result of `timeline.insert`.",
+      "title": "TimelineInsertOutput"
+    }
+  },
+  "input": {
+    "type": "object",
+    "additionalProperties": false,
+    "properties": {
+      "sequence": {
+        "type": "string",
+        "pattern": "^seq_[0-9a-f]{32}$",
+        "description": "The sequence."
+      },
+      "track": {
+        "type": "string",
+        "pattern": "^trk_[0-9a-f]{32}$",
+        "description": "The target track (of that sequence): a video track for pictures, an audio track for\nsound."
+      },
+      "media": {
+        "type": "string",
+        "pattern": "^med_[0-9a-f]{32}$",
+        "description": "The media to place."
+      },
+      "at": {
+        "description": "Timeline position of the clip's first frame, `>= 0`.",
+        "anyOf": [
+          {
+            "type": "integer",
+            "minimum": -9007199254740991,
+            "maximum": 9007199254740991
+          },
+          {
+            "type": "string",
+            "pattern": "^-?[0-9]+(\\.[0-9]+)?s$|^-?[0-9]+$|^f:[0-9]+$|^[0-9]+[:;][0-9]+[:;][0-9]+[:;][0-9]+$"
+          }
+        ]
+      },
+      "source_in": {
+        "anyOf": [
+          {
+            "description": "A time: integer flicks (1/705600000 s), or a string: seconds (\"62.5s\"), a frame (\"f:1500\") or a timecode (\"00:01:02:03\", drop-frame \"00:01:02;03\"). Frames and timecodes use the frame rate of the target's sequence.",
+            "anyOf": [
+              {
+                "type": "integer",
+                "minimum": -9007199254740991,
+                "maximum": 9007199254740991
+              },
+              {
+                "type": "string",
+                "pattern": "^-?[0-9]+(\\.[0-9]+)?s$|^-?[0-9]+$|^f:[0-9]+$|^[0-9]+[:;][0-9]+[:;][0-9]+[:;][0-9]+$"
+              }
+            ]
+          },
+          {
+            "type": "null"
+          }
+        ],
+        "description": "Position in the media to start from (default 0).",
+        "default": null
+      },
+      "duration": {
+        "anyOf": [
+          {
+            "description": "A time: integer flicks (1/705600000 s), or a string: seconds (\"62.5s\"), a frame (\"f:1500\") or a timecode (\"00:01:02:03\", drop-frame \"00:01:02;03\"). Frames and timecodes use the frame rate of the target's sequence.",
+            "anyOf": [
+              {
+                "type": "integer",
+                "minimum": -9007199254740991,
+                "maximum": 9007199254740991
+              },
+              {
+                "type": "string",
+                "pattern": "^-?[0-9]+(\\.[0-9]+)?s$|^-?[0-9]+$|^f:[0-9]+$|^[0-9]+[:;][0-9]+[:;][0-9]+[:;][0-9]+$"
+              }
+            ]
+          },
+          {
+            "type": "null"
+          }
+        ],
+        "description": "Clip length, `> 0`.",
+        "default": null
+      },
+      "overlap": {
+        "anyOf": [
+          {
+            "oneOf": [
+              {
+                "type": "string",
+                "const": "reject",
+                "description": "Fail with `Invalid{path:\"/at\"}` (default)."
+              },
+              {
+                "type": "string",
+                "const": "new_track",
+                "description": "Create a new track of the same kind directly above the target and insert there."
+              }
+            ],
+            "description": "What to do when the clip would overlap another clip on the target track."
+          },
+          {
+            "type": "null"
+          }
+        ],
+        "description": "Overlap handling (default `reject`).",
+        "default": null
+      },
+      "link": {
+        "type": [
+          "boolean",
+          "null"
+        ],
+        "description": "Also insert the audio of a video file as a linked clip (default `true`).",
+        "default": null
+      }
+    },
+    "required": [
+      "sequence",
+      "track",
+      "media",
+      "at"
+    ],
+    "description": "Inserts a media clip on a track at a time. `source_in` is the position in the media the clip\nstarts from and `duration` its length (defaults: the start of the media and the rest of it;\nstills default to five seconds). Times accept flicks, `\"1.5s\"`, `\"f:45\"` and timecodes,\nresolved against the sequence's frame rate. See the module docs for overlap and linked\naudio behaviour. Fails with `Locked` if the target track is locked.",
+    "title": "TimelineInsert"
+  },
+  "output": {
+    "type": "object",
+    "additionalProperties": false,
+    "properties": {
+      "clips": {
+        "type": "array",
+        "items": {
+          "description": "A Item id: `^itm_[0-9a-f]{32}$`.",
+          "type": "string",
+          "pattern": "^itm_[0-9a-f]{32}$"
+        },
+        "description": "The inserted clips: the one on the target track first, then the linked audio clip."
+      },
+      "linked_group": {
+        "type": [
+          "string",
+          "null"
+        ],
+        "pattern": "^grp_[0-9a-f]{32}$",
+        "description": "The group shared by the clips when audio was linked."
+      },
+      "created_tracks": {
+        "type": "array",
+        "items": {
+          "description": "A Track id: `^trk_[0-9a-f]{32}$`.",
+          "type": "string",
+          "pattern": "^trk_[0-9a-f]{32}$"
+        },
+        "description": "Tracks created by `overlap: \"new_track\"`, in creation order."
+      }
+    },
+    "required": [
+      "clips",
+      "linked_group",
+      "created_tracks"
+    ],
+    "description": "Result of `timeline.insert`.",
+    "title": "TimelineInsertOutput"
+  }
+}

@@ -1,0 +1,235 @@
+// SPDX-License-Identifier: GPL-3.0-or-later
+//! Shared harness of the WP-1B.05 tests: runs registered commands in a transaction on a shared
+//! document and, for every success, asserts the undo/redo identity and document validity;
+//! for every failure, that nothing changed. (Kept local until the registry-driven property
+//! harness of WP-1B.07 lands.)
+
+#![allow(dead_code, clippy::unwrap_used, clippy::expect_used)]
+
+use std::sync::{Arc, Mutex};
+
+use cutweave_commands::{
+    Access, CmdError, Committed, QueryCtx, Registry, Transaction, apply_patch,
+};
+use cutweave_model::{GroupId, ItemId, MediaId, Project, SeededGen, SequenceId, Time, TrackId};
+use cutweave_ops::media::{
+    FakeProbe, ImportCtx, MediaRegister, MediaRegistered, MediaSink, register_batch,
+};
+use serde_json::{Value, json};
+
+struct Shared {
+    doc: Project,
+    ids: SeededGen,
+    /// Number of commits, for "nothing changed" checks.
+    commits: usize,
+}
+
+/// A registry with every op, and a document it edits.
+pub struct H {
+    pub registry: Arc<Registry>,
+    shared: Arc<Mutex<Shared>>,
+    pub last: Option<Committed>,
+}
+
+pub fn secs(s: i64) -> Time {
+    Time::from_secs(s).unwrap()
+}
+
+impl H {
+    /// An empty project.
+    pub fn empty() -> H {
+        let mut registry = Registry::new();
+        cutweave_ops::register(&mut registry).unwrap();
+        H {
+            registry: Arc::new(registry),
+            shared: Arc::new(Mutex::new(Shared {
+                doc: Project::new("Empty"),
+                ids: SeededGen::new(42),
+                commits: 0,
+            })),
+            last: None,
+        }
+    }
+
+    /// A harness over an existing document.
+    pub fn with_doc(doc: Project) -> H {
+        let h = H::empty();
+        h.shared.lock().unwrap().doc = doc;
+        h
+    }
+
+    /// `project.new` applied: one sequence with V1 and A1.
+    pub fn project() -> (H, P) {
+        let mut h = H::empty();
+        let out = h.run("project.new", json!({"name": "Test"})).unwrap();
+        let p = P {
+            sequence: id(&out["sequence"]),
+            video: id(&out["video_track"]),
+            audio: id(&out["audio_track"]),
+        };
+        (h, p)
+    }
+
+    pub fn doc(&self) -> Project {
+        self.shared.lock().unwrap().doc.clone()
+    }
+
+    pub fn commits(&self) -> usize {
+        self.shared.lock().unwrap().commits
+    }
+
+    /// Runs `name` in its own transaction. On success commits and asserts the undo/redo
+    /// identity and `Project::validate`; on failure asserts that nothing changed.
+    pub fn run(&mut self, name: &str, params: Value) -> Result<Value, CmdError> {
+        let mut s = self.shared.lock().unwrap();
+        let base = s.doc.clone();
+        let Shared { doc, ids, commits } = &mut *s;
+        let mut txn = Transaction::begin(base.clone());
+        let result = {
+            let mut tx = txn.tx(ids, Access::STANDARD);
+            self.registry.invoke_json(name, params, &mut tx)
+        };
+        match result {
+            Ok(out) => {
+                let committed = txn.commit();
+                assert_eq!(
+                    apply_patch(&committed.doc, &committed.inverse).unwrap(),
+                    base,
+                    "{name}: undo must restore the document"
+                );
+                assert_eq!(
+                    apply_patch(&base, &committed.patch).unwrap(),
+                    committed.doc,
+                    "{name}: redo must reproduce the document"
+                );
+                assert_eq!(
+                    apply_patch(
+                        &apply_patch(&committed.doc, &committed.inverse).unwrap(),
+                        &committed.patch
+                    )
+                    .unwrap(),
+                    committed.doc,
+                    "{name}: redo after undo"
+                );
+                committed.doc.validate().unwrap();
+                *doc = committed.doc.clone();
+                *commits += 1;
+                self.last = Some(committed);
+                Ok(out)
+            }
+            Err(e) => {
+                assert_eq!(
+                    txn.doc(),
+                    &base,
+                    "{name}: a failed command must change nothing"
+                );
+                assert!(
+                    txn.is_empty(),
+                    "{name}: a failed command must record nothing"
+                );
+                Err(e)
+            }
+        }
+    }
+
+    /// Like `run`, but the call must succeed.
+    pub fn ok(&mut self, name: &str, params: Value) -> Value {
+        self.run(name, params)
+            .unwrap_or_else(|e| panic!("{name} failed: {e}"))
+    }
+
+    pub fn query(&self, name: &str, params: Value) -> Result<Value, CmdError> {
+        let doc = self.doc();
+        self.registry
+            .query_json(name, params, &QueryCtx::new(&doc, Access::STANDARD))
+    }
+
+    /// Whether a dry run (`validate_json`) accepts the call.
+    pub fn validate(&self, name: &str, params: Value) -> Result<(), CmdError> {
+        let doc = self.doc();
+        self.registry
+            .validate_json(name, params, &QueryCtx::new(&doc, Access::STANDARD))
+    }
+
+    /// A sink that registers imports into this harness's document in one transaction.
+    pub fn import_ctx(&self, prober: FakeProbe) -> ImportCtx {
+        ImportCtx::new(Arc::new(prober), Box::new(HSink(self.shared.clone())))
+    }
+
+    /// Imports a fake video (`secs` seconds, optional audio) and returns its media ID.
+    pub fn add_video(&mut self, path: &str, secs: i64, audio: bool) -> MediaId {
+        let p = FakeProbe::video(path, secs, audio);
+        self.register(path, &p)
+    }
+
+    pub fn add_audio(&mut self, path: &str, secs: i64) -> MediaId {
+        self.register(path, &FakeProbe::audio(path, secs))
+    }
+
+    pub fn add_image(&mut self, path: &str) -> MediaId {
+        self.register(path, &FakeProbe::image(path))
+    }
+
+    fn register(&mut self, path: &str, p: &cutweave_ops::media::Probed) -> MediaId {
+        let out = self.ok(
+            "media.register",
+            json!({"path": path, "probe": p.probe, "content_hash": p.content_hash}),
+        );
+        id(&out["media_id"])
+    }
+}
+
+struct HSink(Arc<Mutex<Shared>>);
+
+impl MediaSink for HSink {
+    fn register(&mut self, batch: Vec<MediaRegister>) -> Result<Vec<MediaRegistered>, CmdError> {
+        let mut s = self.0.lock().unwrap();
+        let Shared { doc, ids, commits } = &mut *s;
+        let mut txn = Transaction::begin(doc.clone());
+        let out = register_batch(&mut txn.tx(ids, Access::STANDARD), &batch)?;
+        let committed = txn.commit();
+        *doc = committed.doc;
+        *commits += 1;
+        Ok(out)
+    }
+}
+
+/// IDs of the project `H::project` creates.
+#[derive(Clone, Copy, Debug)]
+pub struct P {
+    pub sequence: SequenceId,
+    pub video: TrackId,
+    pub audio: TrackId,
+}
+
+pub fn id<T: serde::de::DeserializeOwned>(v: &Value) -> T {
+    serde_json::from_value(v.clone()).unwrap()
+}
+
+pub fn item_id(v: &Value) -> ItemId {
+    id(v)
+}
+
+pub fn group_id(v: &Value) -> Option<GroupId> {
+    id(v)
+}
+
+/// Asserts the error is `Invalid` at exactly `path`.
+#[track_caller]
+pub fn assert_invalid(r: Result<Value, CmdError>, path: &str) {
+    match r {
+        Err(CmdError::Invalid { path: p, msg }) => {
+            assert_eq!(p, path, "wrong path (msg: {msg})");
+            assert_ne!(msg, "");
+        }
+        other => panic!("expected Invalid at `{path}`, got {other:?}"),
+    }
+}
+
+#[track_caller]
+pub fn assert_code(r: Result<Value, CmdError>, code: &str) {
+    match r {
+        Err(e) => assert_eq!(e.code(), code, "{e}"),
+        Ok(v) => panic!("expected `{code}`, got Ok({v})"),
+    }
+}

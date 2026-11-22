@@ -1,0 +1,598 @@
+// SPDX-License-Identifier: GPL-3.0-or-later
+//! WP-1B.05: `timeline.insert` and `timeline.get`.
+
+#![allow(
+    clippy::unwrap_used,
+    clippy::expect_used,
+    clippy::many_single_char_names,
+    clippy::needless_pass_by_value
+)]
+
+mod common;
+
+use common::{H, P, assert_code, assert_invalid, group_id, id, item_id, secs};
+use cutweave_model::{Item, MediaId, SequenceId, Time, TrackId, TrackKind};
+use serde_json::{Value, json};
+
+const FLICKS: i64 = 705_600_000;
+
+fn insert(
+    h: &mut H,
+    p: P,
+    track: TrackId,
+    media: MediaId,
+    extra: Value,
+) -> Result<Value, cutweave_commands::CmdError> {
+    let mut params = json!({"sequence": p.sequence, "track": track, "media": media, "at": 0});
+    for (k, v) in extra.as_object().unwrap() {
+        params[k] = v.clone();
+    }
+    h.run("timeline.insert", params)
+}
+
+fn clip_of(h: &H, p: P, item: &Value) -> cutweave_model::Clip {
+    let doc = h.doc();
+    let _ = p;
+    doc.find_item(&item_id(item))
+        .unwrap()
+        .item
+        .as_clip()
+        .unwrap()
+        .clone()
+}
+
+// ----- timeline.insert ----------------------------------------------------------------------
+
+#[test]
+fn insert_video_with_sound_creates_linked_video_and_audio_clips() {
+    let (mut h, p) = H::project();
+    let m = h.add_video("/m/v.mp4", 10, true);
+    let out = insert(&mut h, p, p.video, m, json!({"at": "2s"})).unwrap();
+    let clips = out["clips"].as_array().unwrap();
+    assert_eq!(clips.len(), 2);
+    let group = group_id(&out["linked_group"]).expect("linked");
+    let (v, a) = (clip_of(&h, p, &clips[0]), clip_of(&h, p, &clips[1]));
+    assert_eq!(v.linked_group, Some(group));
+    assert_eq!(a.linked_group, Some(group));
+    assert_eq!((v.start, v.duration), (secs(2), a.duration));
+    assert_eq!((v.start, v.source_in), (a.start, a.source_in));
+    assert_eq!(
+        v.duration.flicks(),
+        10 * FLICKS,
+        "defaults to the whole media"
+    );
+    let doc = h.doc();
+    assert!(
+        doc.sequences[&p.sequence].tracks[&p.video]
+            .items
+            .contains(&v.id)
+    );
+    assert!(
+        doc.sequences[&p.sequence].tracks[&p.audio]
+            .items
+            .contains(&a.id)
+    );
+    assert_eq!(out["created_tracks"], json!([]));
+}
+
+#[test]
+fn insert_video_without_sound_or_with_link_false_is_a_single_clip() {
+    let (mut h, p) = H::project();
+    let silent = h.add_video("/m/silent.mp4", 4, false);
+    let noisy = h.add_video("/m/noisy.mp4", 4, true);
+    let out = insert(&mut h, p, p.video, silent, json!({})).unwrap();
+    assert_eq!(out["clips"].as_array().unwrap().len(), 1);
+    assert!(out["linked_group"].is_null());
+    let out = insert(
+        &mut h,
+        p,
+        p.video,
+        noisy,
+        json!({"at": "4s", "link": false}),
+    )
+    .unwrap();
+    assert_eq!(out["clips"].as_array().unwrap().len(), 1);
+    assert!(clip_of(&h, p, &out["clips"][0]).linked_group.is_none());
+}
+
+#[test]
+fn insert_honours_source_in_duration_and_frame_inputs() {
+    let (mut h, p) = H::project();
+    let m = h.add_video("/m/v.mp4", 10, false);
+    // 30 fps: frame 45 = 1.5 s; timecode 00:00:02:15 = 2.5 s.
+    let out = insert(
+        &mut h,
+        p,
+        p.video,
+        m,
+        json!({"at": "f:45", "source_in": "00:00:02:15", "duration": "2s"}),
+    )
+    .unwrap();
+    let c = clip_of(&h, p, &out["clips"][0]);
+    assert_eq!(c.start.flicks(), 3 * FLICKS / 2);
+    assert_eq!(c.source_in.flicks(), 5 * FLICKS / 2);
+    assert_eq!(c.duration.flicks(), 2 * FLICKS);
+    // Without a duration: the rest of the media.
+    let out = insert(
+        &mut h,
+        p,
+        p.video,
+        m,
+        json!({"at": "20s", "source_in": "4s"}),
+    )
+    .unwrap();
+    assert_eq!(
+        clip_of(&h, p, &out["clips"][0]).duration.flicks(),
+        6 * FLICKS
+    );
+}
+
+#[test]
+fn insert_audio_media_on_an_audio_track_and_video_media_as_sound_only() {
+    let (mut h, p) = H::project();
+    let song = h.add_audio("/m/song.wav", 30);
+    let video = h.add_video("/m/v.mp4", 10, true);
+    let out = insert(&mut h, p, p.audio, song, json!({})).unwrap();
+    assert_eq!(out["clips"].as_array().unwrap().len(), 1);
+    let out = insert(&mut h, p, p.audio, video, json!({"at": "30s"})).unwrap();
+    assert_eq!(out["clips"].as_array().unwrap().len(), 1, "sound only");
+    assert!(out["linked_group"].is_null());
+    assert_eq!(h.doc().item_count(), 2);
+}
+
+#[test]
+fn insert_an_image_defaults_to_five_seconds() {
+    let (mut h, p) = H::project();
+    let img = h.add_image("/m/i.png");
+    let out = insert(&mut h, p, p.video, img, json!({})).unwrap();
+    let c = clip_of(&h, p, &out["clips"][0]);
+    assert_eq!(c.duration.flicks(), 5 * FLICKS);
+    let out = insert(
+        &mut h,
+        p,
+        p.video,
+        img,
+        json!({"at": "5s", "duration": "f:30"}),
+    )
+    .unwrap();
+    assert_eq!(clip_of(&h, p, &out["clips"][0]).duration.flicks(), FLICKS);
+}
+
+#[test]
+fn insert_unknown_sequence_track_or_media_is_not_found() {
+    let (mut h, p) = H::project();
+    let m = h.add_video("/m/v.mp4", 10, false);
+    let mut call = |params: Value| h.run("timeline.insert", params);
+    assert_code(
+        call(json!({"sequence": SequenceId::from_u128(1), "track": p.video, "media": m, "at": 0})),
+        "not_found",
+    );
+    assert_code(
+        call(json!({"sequence": p.sequence, "track": TrackId::from_u128(1), "media": m, "at": 0})),
+        "not_found",
+    );
+    assert_code(
+        call(
+            json!({"sequence": p.sequence, "track": p.video, "media": MediaId::from_u128(1), "at": 0}),
+        ),
+        "not_found",
+    );
+}
+
+#[test]
+fn insert_rejects_a_track_of_another_sequence_with_its_path() {
+    let (mut h, p) = H::project();
+    let m = h.add_video("/m/v.mp4", 10, false);
+    let mut doc = h.doc();
+    let mut other = cutweave_model::Sequence::new(
+        SequenceId::from_u128(77),
+        "Other",
+        doc.settings.default_format.clone(),
+    );
+    let other_track = TrackId::from_u128(78);
+    other.insert_track(
+        0,
+        cutweave_model::Track::new(other_track, TrackKind::Video, "X"),
+    );
+    doc.sequences.insert(other.id, other);
+    let mut h = H::with_doc(doc);
+    assert_invalid(
+        h.run(
+            "timeline.insert",
+            json!({"sequence": p.sequence, "track": other_track, "media": m, "at": 0}),
+        ),
+        "/track",
+    );
+}
+
+#[test]
+fn insert_overlap_is_invalid_at_at_by_default() {
+    let (mut h, p) = H::project();
+    let m = h.add_video("/m/v.mp4", 10, false);
+    insert(&mut h, p, p.video, m, json!({"at": "2s", "duration": "4s"})).unwrap();
+    // Overlaps from the left, inside, and right; touching ends are fine.
+    for at in ["0s", "3s", "5.5s"] {
+        let r = insert(&mut h, p, p.video, m, json!({"at": at, "duration": "3s"}));
+        assert_invalid(r, "/at");
+    }
+    insert(&mut h, p, p.video, m, json!({"at": "6s", "duration": "1s"})).unwrap();
+    insert(&mut h, p, p.video, m, json!({"at": "1s", "duration": "1s"})).unwrap();
+    assert_eq!(h.doc().item_count(), 3);
+}
+
+#[test]
+fn insert_validates_times_media_bounds_and_track_kind() {
+    let (mut h, p) = H::project();
+    let v = h.add_video("/m/v.mp4", 10, false);
+    let song = h.add_audio("/m/s.wav", 10);
+    assert_invalid(insert(&mut h, p, p.video, v, json!({"at": "-1s"})), "/at");
+    assert_invalid(
+        insert(&mut h, p, p.video, v, json!({"at": "nonsense"})),
+        "/at",
+    );
+    assert_invalid(
+        insert(&mut h, p, p.video, v, json!({"source_in": "-1s"})),
+        "/source_in",
+    );
+    assert_invalid(
+        insert(&mut h, p, p.video, v, json!({"source_in": "10s"})),
+        "/source_in",
+    );
+    assert_invalid(
+        insert(&mut h, p, p.video, v, json!({"duration": 0})),
+        "/duration",
+    );
+    assert_invalid(
+        insert(&mut h, p, p.video, v, json!({"duration": "11s"})),
+        "/duration",
+    );
+    assert_invalid(
+        insert(
+            &mut h,
+            p,
+            p.video,
+            v,
+            json!({"source_in": "5s", "duration": "6s"}),
+        ),
+        "/duration",
+    );
+    assert_invalid(insert(&mut h, p, p.video, song, json!({})), "/track");
+    assert_eq!(
+        h.commits(),
+        3,
+        "only project.new and the two registrations committed"
+    );
+}
+
+#[test]
+fn insert_without_a_known_media_length_needs_a_duration() {
+    let (mut h, p) = H::project();
+    let mut probed = cutweave_ops::media::FakeProbe::audio("/m/live.wav", 1);
+    probed.probe.duration = None;
+    let out = h.ok(
+        "media.register",
+        json!({"path": "/m/live.wav", "probe": probed.probe, "content_hash": "live"}),
+    );
+    let m: MediaId = id(&out["media_id"]);
+    assert_invalid(insert(&mut h, p, p.audio, m, json!({})), "/duration");
+    insert(&mut h, p, p.audio, m, json!({"duration": "3s"})).unwrap();
+    let img = h.add_image("/m/i.png");
+    assert_invalid(
+        insert(&mut h, p, p.video, img, json!({"duration": "0s"})),
+        "/duration",
+    );
+}
+
+#[test]
+fn insert_on_a_locked_track_fails_with_locked() {
+    let (mut h, p) = H::project();
+    let m = h.add_video("/m/v.mp4", 10, true);
+    h.ok("track.set", json!({"track": p.video, "locked": true}));
+    assert_code(insert(&mut h, p, p.video, m, json!({})), "locked");
+    assert_code(
+        h.validate(
+            "timeline.insert",
+            json!({"sequence": p.sequence, "track": p.video, "media": m, "at": 0}),
+        )
+        .map(|()| json!(null)),
+        "locked",
+    );
+    assert_eq!(h.doc().item_count(), 0);
+}
+
+#[test]
+fn insert_skips_a_locked_audio_track_when_linking() {
+    let (mut h, p) = H::project();
+    let m = h.add_video("/m/v.mp4", 10, true);
+    h.ok("track.set", json!({"track": p.audio, "locked": true}));
+    let out = insert(&mut h, p, p.video, m, json!({})).unwrap();
+    assert_eq!(out["clips"].as_array().unwrap().len(), 1, "video only");
+    assert!(out["linked_group"].is_null());
+}
+
+#[test]
+fn insert_links_to_the_first_free_audio_track() {
+    let (mut h, p) = H::project();
+    let m = h.add_video("/m/v.mp4", 10, true);
+    let a2: TrackId = id(&h.ok(
+        "track.add",
+        json!({"sequence": p.sequence, "kind": "audio"}),
+    )["track"]);
+    let song = h.add_audio("/m/s.wav", 20);
+    insert(&mut h, p, p.audio, song, json!({"at": 0})).unwrap(); // A1 busy 0..20
+    let out = insert(&mut h, p, p.video, m, json!({"at": "5s"})).unwrap();
+    let audio_clip = item_id(&out["clips"][1]);
+    let doc = h.doc();
+    assert!(
+        doc.sequences[&p.sequence].tracks[&a2]
+            .items
+            .contains(&audio_clip),
+        "A2 was free"
+    );
+}
+
+#[test]
+fn insert_new_track_policy_creates_a_track_above_for_overlays() {
+    let (mut h, p) = H::project();
+    let m = h.add_video("/m/v.mp4", 10, false);
+    insert(&mut h, p, p.video, m, json!({"duration": "5s"})).unwrap();
+    let out = insert(
+        &mut h,
+        p,
+        p.video,
+        m,
+        json!({"at": "1s", "duration": "2s", "overlap": "new_track"}),
+    )
+    .unwrap();
+    let created: Vec<TrackId> = id(&out["created_tracks"]);
+    assert_eq!(created.len(), 1);
+    let doc = h.doc();
+    let seq = &doc.sequences[&p.sequence];
+    let order: Vec<_> = seq.track_order.iter().copied().collect();
+    assert_eq!(
+        order,
+        [created[0], p.video, p.audio],
+        "new track directly above the target"
+    );
+    assert_eq!(seq.tracks[&created[0]].kind, TrackKind::Video);
+    assert_eq!(seq.tracks[&created[0]].name, "V2");
+    assert!(
+        seq.tracks[&created[0]]
+            .items
+            .contains(&item_id(&out["clips"][0]))
+    );
+}
+
+#[test]
+fn insert_new_track_policy_without_overlap_creates_nothing() {
+    let (mut h, p) = H::project();
+    let m = h.add_video("/m/v.mp4", 10, false);
+    let out = insert(&mut h, p, p.video, m, json!({"overlap": "new_track"})).unwrap();
+    assert_eq!(out["created_tracks"], json!([]));
+    assert_invalid(
+        insert(&mut h, p, p.video, m, json!({"overlap": "sideways"})),
+        "/overlap",
+    );
+}
+
+#[test]
+fn insert_new_track_policy_also_makes_a_busy_audio_partner_track() {
+    let (mut h, p) = H::project();
+    let m = h.add_video("/m/v.mp4", 10, true);
+    insert(&mut h, p, p.video, m, json!({})).unwrap();
+    // Video track busy and audio track busy: both get a new track above.
+    let out = insert(
+        &mut h,
+        p,
+        p.video,
+        m,
+        json!({"at": "1s", "overlap": "new_track"}),
+    )
+    .unwrap();
+    let created: Vec<TrackId> = id(&out["created_tracks"]);
+    assert_eq!(created.len(), 2);
+    let doc = h.doc();
+    let kinds: Vec<_> = created
+        .iter()
+        .map(|t| doc.sequences[&p.sequence].tracks[t].kind)
+        .collect();
+    assert_eq!(kinds, [TrackKind::Video, TrackKind::Audio]);
+    assert!(group_id(&out["linked_group"]).is_some());
+}
+
+#[test]
+fn insert_audio_stays_reject_when_the_partner_track_is_busy_and_policy_is_reject() {
+    let (mut h, p) = H::project();
+    let m = h.add_video("/m/v.mp4", 10, true);
+    let song = h.add_audio("/m/s.wav", 20);
+    insert(&mut h, p, p.audio, song, json!({})).unwrap();
+    let out = insert(&mut h, p, p.video, m, json!({})).unwrap();
+    assert_eq!(
+        out["clips"].as_array().unwrap().len(),
+        1,
+        "no free audio track: video only"
+    );
+}
+
+#[test]
+fn insert_rejects_unknown_params_and_bad_ids_with_paths() {
+    let (mut h, p) = H::project();
+    let m = h.add_video("/m/v.mp4", 10, false);
+    assert_invalid(
+        h.run(
+            "timeline.insert",
+            json!({"sequence": p.sequence, "track": p.video, "media": m, "at": 0, "mode": "x"}),
+        ),
+        "/mode",
+    );
+    assert_invalid(
+        h.run(
+            "timeline.insert",
+            json!({"sequence": p.sequence, "track": "nope", "media": m, "at": 0}),
+        ),
+        "/track",
+    );
+    assert_invalid(
+        h.run("timeline.insert", json!({"sequence": p.sequence})),
+        "",
+    );
+}
+
+#[test]
+fn insert_undo_redo_identity_with_linked_clips_and_new_tracks() {
+    let (mut h, p) = H::project();
+    let m = h.add_video("/m/v.mp4", 10, true);
+    insert(&mut h, p, p.video, m, json!({})).unwrap();
+    insert(
+        &mut h,
+        p,
+        p.video,
+        m,
+        json!({"at": "1s", "overlap": "new_track"}),
+    )
+    .unwrap();
+    let c = h.last.as_ref().unwrap();
+    assert_eq!(c.base.item_count(), 2);
+    assert_eq!(c.doc.item_count(), 4);
+    assert_eq!(c.base.sequences[&p.sequence].tracks.len(), 2);
+    assert_eq!(c.doc.sequences[&p.sequence].tracks.len(), 4);
+}
+
+#[test]
+fn insert_results_are_valid_documents_with_exact_clip_fields() {
+    let (mut h, p) = H::project();
+    let m = h.add_video("/m/v.mp4", 10, true);
+    let out = insert(
+        &mut h,
+        p,
+        p.video,
+        m,
+        json!({"at": "1s", "source_in": "2s", "duration": "3s"}),
+    )
+    .unwrap();
+    let doc = h.doc();
+    doc.validate().unwrap();
+    for c in out["clips"].as_array().unwrap() {
+        let item = doc.find_item(&item_id(c)).unwrap().item;
+        let Item::Clip(clip) = item else { panic!() };
+        assert_eq!(clip.media, m);
+        assert!(clip.enabled && clip.name.is_none());
+        assert_eq!(clip.start, Time::from_flicks(FLICKS).unwrap());
+    }
+}
+
+// ----- timeline.get -------------------------------------------------------------------------
+
+fn fill(h: &mut H, p: P, clips: i64) {
+    let m = h.add_video("/m/v.mp4", 3600, false);
+    for i in 0..clips {
+        insert(
+            h,
+            p,
+            p.video,
+            m,
+            json!({"at": format!("{}s", i * 2), "duration": "1s"}),
+        )
+        .unwrap();
+    }
+}
+
+#[test]
+fn get_depth_zero_is_the_sequence_summary() {
+    let (mut h, p) = H::project();
+    fill(&mut h, p, 3);
+    let out = h
+        .query("timeline.get", json!({"sequence": p.sequence, "depth": 0}))
+        .unwrap();
+    assert_eq!(out["id"], json!(p.sequence));
+    assert_eq!(out["track_count"], 2);
+    assert_eq!(out["item_count"], 3);
+    assert_eq!(out["duration"], 5 * FLICKS);
+    assert!(out.get("tracks").is_none());
+    assert_eq!(out["format"]["width"], 1920);
+}
+
+#[test]
+fn get_depth_one_lists_track_summaries_in_display_order() {
+    let (mut h, p) = H::project();
+    fill(&mut h, p, 2);
+    let out = h
+        .query("timeline.get", json!({"sequence": p.sequence}))
+        .unwrap();
+    let tracks = out["tracks"].as_array().unwrap();
+    assert_eq!(tracks.len(), 2);
+    assert_eq!(tracks[0]["id"], json!(p.video));
+    assert_eq!(tracks[0]["item_count"], 2);
+    assert_eq!(tracks[0]["end"], 3 * FLICKS);
+    assert_eq!(tracks[1]["kind"], "audio");
+    assert!(tracks[0].get("items").is_none(), "depth 1 has no items");
+}
+
+#[test]
+fn get_depth_one_of_a_100_clip_timeline_is_under_2_kb() {
+    let (mut h, p) = H::project();
+    fill(&mut h, p, 100);
+    let out = h
+        .query("timeline.get", json!({"sequence": p.sequence, "depth": 1}))
+        .unwrap();
+    let size = serde_json::to_vec(&out).unwrap().len();
+    assert!(size < 2048, "depth 1 summary was {size} bytes");
+    assert_eq!(out["item_count"], 100);
+}
+
+#[test]
+fn get_depth_two_includes_items_in_start_order() {
+    let (mut h, p) = H::project();
+    fill(&mut h, p, 3);
+    let out = h
+        .query("timeline.get", json!({"sequence": p.sequence, "depth": 2}))
+        .unwrap();
+    let items = out["tracks"][0]["items"].as_array().unwrap();
+    let starts: Vec<i64> = items.iter().map(|i| i["start"].as_i64().unwrap()).collect();
+    assert_eq!(starts, [0, 2 * FLICKS, 4 * FLICKS]);
+    assert_eq!(items[0]["kind"], "clip");
+    assert!(items[0]["media"].is_string());
+}
+
+#[test]
+fn get_fields_limit_the_sections() {
+    let (h, p) = H::project();
+    let out = h
+        .query(
+            "timeline.get",
+            json!({"sequence": p.sequence, "fields": ["name"]}),
+        )
+        .unwrap();
+    assert!(out.get("name").is_some());
+    for gone in ["format", "duration", "tracks"] {
+        assert!(out.get(gone).is_none(), "{gone}");
+    }
+    assert_eq!(out["track_count"], 2, "counts are always there");
+}
+
+#[test]
+fn get_validates_with_field_paths_and_unknown_sequence_is_not_found() {
+    let (h, p) = H::project();
+    assert_code(
+        h.query(
+            "timeline.get",
+            json!({"sequence": SequenceId::from_u128(9)}),
+        ),
+        "not_found",
+    );
+    assert_invalid(
+        h.query("timeline.get", json!({"sequence": p.sequence, "depth": 3})),
+        "/depth",
+    );
+    assert_invalid(
+        h.query(
+            "timeline.get",
+            json!({"sequence": p.sequence, "fields": ["name", "bogus"]}),
+        ),
+        "/fields/1",
+    );
+    assert_invalid(
+        h.query("timeline.get", json!({"sequence": "x"})),
+        "/sequence",
+    );
+}

@@ -1,0 +1,184 @@
+---
+source: crates/cutweave-ops/tests/contract.rs
+expression: "json!({\n    \"meta\": serde_json::to_value(meta).unwrap(), \"input\": meta.input_schema,\n    \"output\": meta.output_schema,\n})"
+---
+{
+  "meta": {
+    "name": "track.add",
+    "summary": "Add an empty video or audio track to a sequence",
+    "kind": "command",
+    "undoable": true,
+    "view": false,
+    "scope": "any",
+    "mcp": "catalog",
+    "annotations": {
+      "readOnlyHint": false,
+      "destructiveHint": false,
+      "idempotentHint": false,
+      "openWorldHint": false
+    },
+    "secret_fields": [],
+    "input_schema": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "sequence": {
+          "type": "string",
+          "pattern": "^seq_[0-9a-f]{32}$",
+          "description": "The sequence."
+        },
+        "kind": {
+          "oneOf": [
+            {
+              "type": "string",
+              "const": "video",
+              "description": "Picture layers."
+            },
+            {
+              "type": "string",
+              "const": "audio",
+              "description": "Sound."
+            },
+            {
+              "type": "string",
+              "const": "text",
+              "description": "Titles (later versions)."
+            },
+            {
+              "type": "string",
+              "const": "caption",
+              "description": "Captions (later versions)."
+            },
+            {
+              "type": "string",
+              "const": "adjustment",
+              "description": "Adjustment layers (later versions)."
+            }
+          ],
+          "description": "`video` or `audio`."
+        },
+        "name": {
+          "type": [
+            "string",
+            "null"
+          ],
+          "description": "Display name; defaults to `V<n>` / `A<n>`.",
+          "default": null
+        },
+        "index": {
+          "type": [
+            "integer",
+            "null"
+          ],
+          "format": "uint32",
+          "minimum": 0,
+          "description": "Display position, 0 = top (clamped to the end).",
+          "default": null
+        }
+      },
+      "required": [
+        "sequence",
+        "kind"
+      ],
+      "description": "Adds an empty track to a sequence. New video tracks go on top of the stack, new audio\ntracks at the bottom, unless `index` says otherwise.",
+      "title": "TrackAdd"
+    },
+    "output_schema": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "track": {
+          "type": "string",
+          "pattern": "^trk_[0-9a-f]{32}$",
+          "description": "The new track."
+        }
+      },
+      "required": [
+        "track"
+      ],
+      "description": "Result of `track.add`.",
+      "title": "TrackAddOutput"
+    }
+  },
+  "input": {
+    "type": "object",
+    "additionalProperties": false,
+    "properties": {
+      "sequence": {
+        "type": "string",
+        "pattern": "^seq_[0-9a-f]{32}$",
+        "description": "The sequence."
+      },
+      "kind": {
+        "oneOf": [
+          {
+            "type": "string",
+            "const": "video",
+            "description": "Picture layers."
+          },
+          {
+            "type": "string",
+            "const": "audio",
+            "description": "Sound."
+          },
+          {
+            "type": "string",
+            "const": "text",
+            "description": "Titles (later versions)."
+          },
+          {
+            "type": "string",
+            "const": "caption",
+            "description": "Captions (later versions)."
+          },
+          {
+            "type": "string",
+            "const": "adjustment",
+            "description": "Adjustment layers (later versions)."
+          }
+        ],
+        "description": "`video` or `audio`."
+      },
+      "name": {
+        "type": [
+          "string",
+          "null"
+        ],
+        "description": "Display name; defaults to `V<n>` / `A<n>`.",
+        "default": null
+      },
+      "index": {
+        "type": [
+          "integer",
+          "null"
+        ],
+        "format": "uint32",
+        "minimum": 0,
+        "description": "Display position, 0 = top (clamped to the end).",
+        "default": null
+      }
+    },
+    "required": [
+      "sequence",
+      "kind"
+    ],
+    "description": "Adds an empty track to a sequence. New video tracks go on top of the stack, new audio\ntracks at the bottom, unless `index` says otherwise.",
+    "title": "TrackAdd"
+  },
+  "output": {
+    "type": "object",
+    "additionalProperties": false,
+    "properties": {
+      "track": {
+        "type": "string",
+        "pattern": "^trk_[0-9a-f]{32}$",
+        "description": "The new track."
+      }
+    },
+    "required": [
+      "track"
+    ],
+    "description": "Result of `track.add`.",
+    "title": "TrackAddOutput"
+  }
+}

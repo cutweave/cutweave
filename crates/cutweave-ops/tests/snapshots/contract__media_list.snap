@@ -1,0 +1,276 @@
+---
+source: crates/cutweave-ops/tests/contract.rs
+expression: "json!({\n    \"meta\": serde_json::to_value(meta).unwrap(), \"input\": meta.input_schema,\n    \"output\": meta.output_schema,\n})"
+---
+{
+  "meta": {
+    "name": "media.list",
+    "summary": "List the project's media (paged, ordered by id)",
+    "kind": "query",
+    "undoable": false,
+    "view": false,
+    "scope": "any",
+    "mcp": "core",
+    "annotations": {
+      "readOnlyHint": true,
+      "destructiveHint": false,
+      "idempotentHint": true,
+      "openWorldHint": false
+    },
+    "secret_fields": [],
+    "input_schema": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "limit": {
+          "type": [
+            "integer",
+            "null"
+          ],
+          "format": "uint32",
+          "minimum": 0,
+          "description": "Page size, `1..=500` (default 50).",
+          "default": null
+        },
+        "cursor": {
+          "type": [
+            "string",
+            "null"
+          ],
+          "pattern": "^med_[0-9a-f]{32}$",
+          "description": "`next_cursor` of the previous page; the page starts after this ID.",
+          "default": null
+        }
+      },
+      "description": "Lists the media of the project, ordered by ID, one page at a time.",
+      "title": "MediaList"
+    },
+    "output_schema": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "media": {
+          "type": "array",
+          "items": {
+            "description": "Summary of one media asset.",
+            "type": "object",
+            "properties": {
+              "id": {
+                "description": "The asset.",
+                "type": "string",
+                "pattern": "^med_[0-9a-f]{32}$"
+              },
+              "kind": {
+                "description": "What it is.",
+                "oneOf": [
+                  {
+                    "description": "A video file (may also carry audio).",
+                    "type": "string",
+                    "const": "video"
+                  },
+                  {
+                    "description": "An audio-only file.",
+                    "type": "string",
+                    "const": "audio"
+                  },
+                  {
+                    "description": "A still image (no duration).",
+                    "type": "string",
+                    "const": "image"
+                  },
+                  {
+                    "description": "Another sequence of this project, used as a compound clip (arch §4.3).",
+                    "type": "string",
+                    "const": "sequence_ref"
+                  }
+                ]
+              },
+              "path": {
+                "description": "Absolute path when it was last found (file kinds).",
+                "type": [
+                  "string",
+                  "null"
+                ]
+              },
+              "duration": {
+                "description": "Playable length, if known.",
+                "type": [
+                  "integer",
+                  "null"
+                ],
+                "minimum": 0,
+                "maximum": 9007199254740991
+              },
+              "has_video": {
+                "description": "Whether it has pictures.",
+                "type": "boolean"
+              },
+              "has_audio": {
+                "description": "Whether it has sound.",
+                "type": "boolean"
+              }
+            },
+            "additionalProperties": false,
+            "required": [
+              "id",
+              "kind",
+              "path",
+              "duration",
+              "has_video",
+              "has_audio"
+            ]
+          },
+          "description": "The page, ordered by ID."
+        },
+        "next_cursor": {
+          "type": [
+            "string",
+            "null"
+          ],
+          "pattern": "^med_[0-9a-f]{32}$",
+          "description": "Pass as `cursor` to get the next page; absent on the last page."
+        },
+        "total": {
+          "type": "integer",
+          "format": "uint32",
+          "minimum": 0,
+          "description": "Number of assets in the project."
+        }
+      },
+      "required": [
+        "media",
+        "next_cursor",
+        "total"
+      ],
+      "description": "Result of `media.list`.",
+      "title": "MediaListOutput"
+    }
+  },
+  "input": {
+    "type": "object",
+    "additionalProperties": false,
+    "properties": {
+      "limit": {
+        "type": [
+          "integer",
+          "null"
+        ],
+        "format": "uint32",
+        "minimum": 0,
+        "description": "Page size, `1..=500` (default 50).",
+        "default": null
+      },
+      "cursor": {
+        "type": [
+          "string",
+          "null"
+        ],
+        "pattern": "^med_[0-9a-f]{32}$",
+        "description": "`next_cursor` of the previous page; the page starts after this ID.",
+        "default": null
+      }
+    },
+    "description": "Lists the media of the project, ordered by ID, one page at a time.",
+    "title": "MediaList"
+  },
+  "output": {
+    "type": "object",
+    "additionalProperties": false,
+    "properties": {
+      "media": {
+        "type": "array",
+        "items": {
+          "description": "Summary of one media asset.",
+          "type": "object",
+          "properties": {
+            "id": {
+              "description": "The asset.",
+              "type": "string",
+              "pattern": "^med_[0-9a-f]{32}$"
+            },
+            "kind": {
+              "description": "What it is.",
+              "oneOf": [
+                {
+                  "description": "A video file (may also carry audio).",
+                  "type": "string",
+                  "const": "video"
+                },
+                {
+                  "description": "An audio-only file.",
+                  "type": "string",
+                  "const": "audio"
+                },
+                {
+                  "description": "A still image (no duration).",
+                  "type": "string",
+                  "const": "image"
+                },
+                {
+                  "description": "Another sequence of this project, used as a compound clip (arch §4.3).",
+                  "type": "string",
+                  "const": "sequence_ref"
+                }
+              ]
+            },
+            "path": {
+              "description": "Absolute path when it was last found (file kinds).",
+              "type": [
+                "string",
+                "null"
+              ]
+            },
+            "duration": {
+              "description": "Playable length, if known.",
+              "type": [
+                "integer",
+                "null"
+              ],
+              "minimum": 0,
+              "maximum": 9007199254740991
+            },
+            "has_video": {
+              "description": "Whether it has pictures.",
+              "type": "boolean"
+            },
+            "has_audio": {
+              "description": "Whether it has sound.",
+              "type": "boolean"
+            }
+          },
+          "additionalProperties": false,
+          "required": [
+            "id",
+            "kind",
+            "path",
+            "duration",
+            "has_video",
+            "has_audio"
+          ]
+        },
+        "description": "The page, ordered by ID."
+      },
+      "next_cursor": {
+        "type": [
+          "string",
+          "null"
+        ],
+        "pattern": "^med_[0-9a-f]{32}$",
+        "description": "Pass as `cursor` to get the next page; absent on the last page."
+      },
+      "total": {
+        "type": "integer",
+        "format": "uint32",
+        "minimum": 0,
+        "description": "Number of assets in the project."
+      }
+    },
+    "required": [
+      "media",
+      "next_cursor",
+      "total"
+    ],
+    "description": "Result of `media.list`.",
+    "title": "MediaListOutput"
+  }
+}

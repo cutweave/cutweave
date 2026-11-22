@@ -1,0 +1,780 @@
+---
+source: crates/cutweave-ops/tests/contract.rs
+expression: "json!({\n    \"meta\": serde_json::to_value(meta).unwrap(), \"input\": meta.input_schema,\n    \"output\": meta.output_schema,\n})"
+---
+{
+  "meta": {
+    "name": "media.register",
+    "summary": "Register a probed media file (used by import; deduplicates by content hash)",
+    "kind": "command",
+    "undoable": true,
+    "view": false,
+    "scope": "any",
+    "mcp": "hidden",
+    "annotations": {
+      "readOnlyHint": false,
+      "destructiveHint": false,
+      "idempotentHint": true,
+      "openWorldHint": false
+    },
+    "secret_fields": [],
+    "input_schema": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "media_id": {
+          "type": [
+            "string",
+            "null"
+          ],
+          "pattern": "^med_[0-9a-f]{32}$",
+          "description": "ID for the new asset; minted by the engine when absent. Must not exist yet.",
+          "default": null
+        },
+        "path": {
+          "type": "string",
+          "description": "Absolute path of the file."
+        },
+        "probe": {
+          "type": "object",
+          "properties": {
+            "streams": {
+              "type": "array",
+              "items": {
+                "description": "One stream of a media file.",
+                "type": "object",
+                "properties": {
+                  "index": {
+                    "description": "Index in the container.",
+                    "type": "integer",
+                    "format": "uint32",
+                    "minimum": 0
+                  },
+                  "kind": {
+                    "description": "Stream kind.",
+                    "oneOf": [
+                      {
+                        "description": "Pictures.",
+                        "type": "string",
+                        "const": "video"
+                      },
+                      {
+                        "description": "Sound.",
+                        "type": "string",
+                        "const": "audio"
+                      },
+                      {
+                        "description": "Subtitles or captions.",
+                        "type": "string",
+                        "const": "subtitle"
+                      },
+                      {
+                        "description": "Timed metadata or other data.",
+                        "type": "string",
+                        "const": "data"
+                      },
+                      {
+                        "description": "Attached files (fonts, cover art).",
+                        "type": "string",
+                        "const": "attachment"
+                      }
+                    ]
+                  },
+                  "codec": {
+                    "description": "Codec name (FFmpeg naming, e.g. `h264`, `aac`).",
+                    "type": [
+                      "string",
+                      "null"
+                    ]
+                  },
+                  "profile": {
+                    "description": "Codec profile (e.g. `High`, `Main 10`).",
+                    "type": [
+                      "string",
+                      "null"
+                    ]
+                  },
+                  "width": {
+                    "description": "Coded width in pixels (video).",
+                    "type": [
+                      "integer",
+                      "null"
+                    ],
+                    "format": "uint32",
+                    "minimum": 0
+                  },
+                  "height": {
+                    "description": "Coded height in pixels (video).",
+                    "type": [
+                      "integer",
+                      "null"
+                    ],
+                    "format": "uint32",
+                    "minimum": 0
+                  },
+                  "pixel_format": {
+                    "description": "Pixel format (FFmpeg naming, e.g. `yuv420p10le`; video).",
+                    "type": [
+                      "string",
+                      "null"
+                    ]
+                  },
+                  "sample_rate": {
+                    "description": "Sample rate (audio).",
+                    "type": [
+                      "integer",
+                      "null"
+                    ],
+                    "minimum": 1,
+                    "maximum": 352800000
+                  },
+                  "channels": {
+                    "description": "Channel count (audio).",
+                    "type": [
+                      "integer",
+                      "null"
+                    ],
+                    "format": "uint16",
+                    "minimum": 0,
+                    "maximum": 65535
+                  },
+                  "language": {
+                    "description": "Language tag (e.g. `eng`).",
+                    "type": [
+                      "string",
+                      "null"
+                    ]
+                  }
+                },
+                "required": [
+                  "index",
+                  "kind"
+                ]
+              },
+              "description": "Streams in container order."
+            },
+            "duration": {
+              "anyOf": [
+                {
+                  "description": "A non-negative duration in flicks (1/705600000 s) as an integer, or a string: seconds (\"62.5s\") or raw flicks (\"123\").",
+                  "anyOf": [
+                    {
+                      "type": "integer",
+                      "minimum": 0,
+                      "maximum": 9007199254740991
+                    },
+                    {
+                      "type": "string",
+                      "pattern": "^-?[0-9]+(\\.[0-9]+)?s$|^-?[0-9]+$"
+                    }
+                  ]
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "Playable length, if known (images have none)."
+            },
+            "fps": {
+              "description": "Frame rate of the main video stream, if constant or nominal.",
+              "type": [
+                "object",
+                "null"
+              ],
+              "properties": {
+                "num": {
+                  "type": "integer",
+                  "minimum": 1,
+                  "maximum": 4294967295,
+                  "description": "Frames."
+                },
+                "den": {
+                  "type": "integer",
+                  "minimum": 1,
+                  "maximum": 4294967295,
+                  "description": "Seconds."
+                }
+              },
+              "required": [
+                "num",
+                "den"
+              ],
+              "additionalProperties": false
+            },
+            "vfr": {
+              "type": "boolean",
+              "description": "Variable frame rate: times map through the frame index, never through `fps` (arch §4.1)."
+            },
+            "rotation": {
+              "type": "integer",
+              "format": "uint16",
+              "minimum": 0,
+              "maximum": 65535,
+              "description": "Display rotation in degrees clockwise: 0, 90, 180 or 270."
+            },
+            "color": {
+              "type": "object",
+              "additionalProperties": false,
+              "properties": {
+                "primaries": {
+                  "type": [
+                    "string",
+                    "null"
+                  ],
+                  "examples": [
+                    "bt709",
+                    "bt470m",
+                    "bt470bg",
+                    "smpte170m",
+                    "smpte240m",
+                    "film",
+                    "bt2020",
+                    "smpte428",
+                    "smpte431",
+                    "smpte432",
+                    "ebu3213"
+                  ],
+                  "description": "Color primaries."
+                },
+                "transfer": {
+                  "type": [
+                    "string",
+                    "null"
+                  ],
+                  "examples": [
+                    "bt709",
+                    "gamma22",
+                    "gamma28",
+                    "smpte170m",
+                    "smpte240m",
+                    "linear",
+                    "iec61966-2-1",
+                    "bt2020-10",
+                    "bt2020-12",
+                    "smpte2084",
+                    "arib-std-b67"
+                  ],
+                  "description": "Transfer characteristics."
+                },
+                "matrix": {
+                  "type": [
+                    "string",
+                    "null"
+                  ],
+                  "examples": [
+                    "gbr",
+                    "bt709",
+                    "fcc",
+                    "bt470bg",
+                    "smpte170m",
+                    "smpte240m",
+                    "ycgco",
+                    "bt2020nc",
+                    "bt2020c",
+                    "ictcp"
+                  ],
+                  "description": "YUV matrix coefficients."
+                },
+                "range": {
+                  "anyOf": [
+                    {
+                      "oneOf": [
+                        {
+                          "type": "string",
+                          "const": "limited",
+                          "description": "Limited (\"TV\", 16–235 for 8-bit luma)."
+                        },
+                        {
+                          "type": "string",
+                          "const": "full",
+                          "description": "Full (\"PC\", 0–255)."
+                        }
+                      ],
+                      "description": "Sample range of a video stream."
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ],
+                  "description": "Sample range."
+                }
+              },
+              "description": "Color tags of the main video stream."
+            },
+            "audio": {
+              "type": [
+                "object",
+                "null"
+              ],
+              "additionalProperties": false,
+              "properties": {
+                "rate": {
+                  "description": "Samples per second.",
+                  "type": "integer",
+                  "minimum": 1,
+                  "maximum": 352800000
+                },
+                "channels": {
+                  "type": "integer",
+                  "format": "uint16",
+                  "minimum": 0,
+                  "maximum": 65535,
+                  "description": "Channel count."
+                }
+              },
+              "required": [
+                "rate",
+                "channels"
+              ],
+              "description": "Main audio stream format, if any."
+            }
+          },
+          "required": [
+            "streams",
+            "vfr",
+            "rotation",
+            "color"
+          ],
+          "description": "What probing found."
+        },
+        "content_hash": {
+          "type": "string",
+          "description": "Content hash used to relink and deduplicate (non-empty, no whitespace)."
+        }
+      },
+      "required": [
+        "path",
+        "probe",
+        "content_hash"
+      ],
+      "description": "Registers a probed media file. Internal plumbing of `media.import` and the import job\n(WP-1D.07): the kind (video, audio or image) derives from the probe streams. If an asset\nwith the same `content_hash` already exists it is returned unchanged (`created: false`).",
+      "title": "MediaRegister"
+    },
+    "output_schema": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "media_id": {
+          "type": "string",
+          "pattern": "^med_[0-9a-f]{32}$",
+          "description": "The asset: the new one, or the existing one with the same content hash."
+        },
+        "kind": {
+          "oneOf": [
+            {
+              "type": "string",
+              "const": "video",
+              "description": "A video file (may also carry audio)."
+            },
+            {
+              "type": "string",
+              "const": "audio",
+              "description": "An audio-only file."
+            },
+            {
+              "type": "string",
+              "const": "image",
+              "description": "A still image (no duration)."
+            },
+            {
+              "type": "string",
+              "const": "sequence_ref",
+              "description": "Another sequence of this project, used as a compound clip (arch §4.3)."
+            }
+          ],
+          "description": "What the asset is."
+        },
+        "created": {
+          "type": "boolean",
+          "description": "`false` when an asset with the same content hash already existed and nothing changed."
+        }
+      },
+      "required": [
+        "media_id",
+        "kind",
+        "created"
+      ],
+      "description": "Result of `media.register`.",
+      "title": "MediaRegistered"
+    }
+  },
+  "input": {
+    "type": "object",
+    "additionalProperties": false,
+    "properties": {
+      "media_id": {
+        "type": [
+          "string",
+          "null"
+        ],
+        "pattern": "^med_[0-9a-f]{32}$",
+        "description": "ID for the new asset; minted by the engine when absent. Must not exist yet.",
+        "default": null
+      },
+      "path": {
+        "type": "string",
+        "description": "Absolute path of the file."
+      },
+      "probe": {
+        "type": "object",
+        "properties": {
+          "streams": {
+            "type": "array",
+            "items": {
+              "description": "One stream of a media file.",
+              "type": "object",
+              "properties": {
+                "index": {
+                  "description": "Index in the container.",
+                  "type": "integer",
+                  "format": "uint32",
+                  "minimum": 0
+                },
+                "kind": {
+                  "description": "Stream kind.",
+                  "oneOf": [
+                    {
+                      "description": "Pictures.",
+                      "type": "string",
+                      "const": "video"
+                    },
+                    {
+                      "description": "Sound.",
+                      "type": "string",
+                      "const": "audio"
+                    },
+                    {
+                      "description": "Subtitles or captions.",
+                      "type": "string",
+                      "const": "subtitle"
+                    },
+                    {
+                      "description": "Timed metadata or other data.",
+                      "type": "string",
+                      "const": "data"
+                    },
+                    {
+                      "description": "Attached files (fonts, cover art).",
+                      "type": "string",
+                      "const": "attachment"
+                    }
+                  ]
+                },
+                "codec": {
+                  "description": "Codec name (FFmpeg naming, e.g. `h264`, `aac`).",
+                  "type": [
+                    "string",
+                    "null"
+                  ]
+                },
+                "profile": {
+                  "description": "Codec profile (e.g. `High`, `Main 10`).",
+                  "type": [
+                    "string",
+                    "null"
+                  ]
+                },
+                "width": {
+                  "description": "Coded width in pixels (video).",
+                  "type": [
+                    "integer",
+                    "null"
+                  ],
+                  "format": "uint32",
+                  "minimum": 0
+                },
+                "height": {
+                  "description": "Coded height in pixels (video).",
+                  "type": [
+                    "integer",
+                    "null"
+                  ],
+                  "format": "uint32",
+                  "minimum": 0
+                },
+                "pixel_format": {
+                  "description": "Pixel format (FFmpeg naming, e.g. `yuv420p10le`; video).",
+                  "type": [
+                    "string",
+                    "null"
+                  ]
+                },
+                "sample_rate": {
+                  "description": "Sample rate (audio).",
+                  "type": [
+                    "integer",
+                    "null"
+                  ],
+                  "minimum": 1,
+                  "maximum": 352800000
+                },
+                "channels": {
+                  "description": "Channel count (audio).",
+                  "type": [
+                    "integer",
+                    "null"
+                  ],
+                  "format": "uint16",
+                  "minimum": 0,
+                  "maximum": 65535
+                },
+                "language": {
+                  "description": "Language tag (e.g. `eng`).",
+                  "type": [
+                    "string",
+                    "null"
+                  ]
+                }
+              },
+              "required": [
+                "index",
+                "kind"
+              ]
+            },
+            "description": "Streams in container order."
+          },
+          "duration": {
+            "anyOf": [
+              {
+                "description": "A non-negative duration in flicks (1/705600000 s) as an integer, or a string: seconds (\"62.5s\") or raw flicks (\"123\").",
+                "anyOf": [
+                  {
+                    "type": "integer",
+                    "minimum": 0,
+                    "maximum": 9007199254740991
+                  },
+                  {
+                    "type": "string",
+                    "pattern": "^-?[0-9]+(\\.[0-9]+)?s$|^-?[0-9]+$"
+                  }
+                ]
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Playable length, if known (images have none)."
+          },
+          "fps": {
+            "description": "Frame rate of the main video stream, if constant or nominal.",
+            "type": [
+              "object",
+              "null"
+            ],
+            "properties": {
+              "num": {
+                "type": "integer",
+                "minimum": 1,
+                "maximum": 4294967295,
+                "description": "Frames."
+              },
+              "den": {
+                "type": "integer",
+                "minimum": 1,
+                "maximum": 4294967295,
+                "description": "Seconds."
+              }
+            },
+            "required": [
+              "num",
+              "den"
+            ],
+            "additionalProperties": false
+          },
+          "vfr": {
+            "type": "boolean",
+            "description": "Variable frame rate: times map through the frame index, never through `fps` (arch §4.1)."
+          },
+          "rotation": {
+            "type": "integer",
+            "format": "uint16",
+            "minimum": 0,
+            "maximum": 65535,
+            "description": "Display rotation in degrees clockwise: 0, 90, 180 or 270."
+          },
+          "color": {
+            "type": "object",
+            "additionalProperties": false,
+            "properties": {
+              "primaries": {
+                "type": [
+                  "string",
+                  "null"
+                ],
+                "examples": [
+                  "bt709",
+                  "bt470m",
+                  "bt470bg",
+                  "smpte170m",
+                  "smpte240m",
+                  "film",
+                  "bt2020",
+                  "smpte428",
+                  "smpte431",
+                  "smpte432",
+                  "ebu3213"
+                ],
+                "description": "Color primaries."
+              },
+              "transfer": {
+                "type": [
+                  "string",
+                  "null"
+                ],
+                "examples": [
+                  "bt709",
+                  "gamma22",
+                  "gamma28",
+                  "smpte170m",
+                  "smpte240m",
+                  "linear",
+                  "iec61966-2-1",
+                  "bt2020-10",
+                  "bt2020-12",
+                  "smpte2084",
+                  "arib-std-b67"
+                ],
+                "description": "Transfer characteristics."
+              },
+              "matrix": {
+                "type": [
+                  "string",
+                  "null"
+                ],
+                "examples": [
+                  "gbr",
+                  "bt709",
+                  "fcc",
+                  "bt470bg",
+                  "smpte170m",
+                  "smpte240m",
+                  "ycgco",
+                  "bt2020nc",
+                  "bt2020c",
+                  "ictcp"
+                ],
+                "description": "YUV matrix coefficients."
+              },
+              "range": {
+                "anyOf": [
+                  {
+                    "oneOf": [
+                      {
+                        "type": "string",
+                        "const": "limited",
+                        "description": "Limited (\"TV\", 16–235 for 8-bit luma)."
+                      },
+                      {
+                        "type": "string",
+                        "const": "full",
+                        "description": "Full (\"PC\", 0–255)."
+                      }
+                    ],
+                    "description": "Sample range of a video stream."
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "description": "Sample range."
+              }
+            },
+            "description": "Color tags of the main video stream."
+          },
+          "audio": {
+            "type": [
+              "object",
+              "null"
+            ],
+            "additionalProperties": false,
+            "properties": {
+              "rate": {
+                "description": "Samples per second.",
+                "type": "integer",
+                "minimum": 1,
+                "maximum": 352800000
+              },
+              "channels": {
+                "type": "integer",
+                "format": "uint16",
+                "minimum": 0,
+                "maximum": 65535,
+                "description": "Channel count."
+              }
+            },
+            "required": [
+              "rate",
+              "channels"
+            ],
+            "description": "Main audio stream format, if any."
+          }
+        },
+        "required": [
+          "streams",
+          "vfr",
+          "rotation",
+          "color"
+        ],
+        "description": "What probing found."
+      },
+      "content_hash": {
+        "type": "string",
+        "description": "Content hash used to relink and deduplicate (non-empty, no whitespace)."
+      }
+    },
+    "required": [
+      "path",
+      "probe",
+      "content_hash"
+    ],
+    "description": "Registers a probed media file. Internal plumbing of `media.import` and the import job\n(WP-1D.07): the kind (video, audio or image) derives from the probe streams. If an asset\nwith the same `content_hash` already exists it is returned unchanged (`created: false`).",
+    "title": "MediaRegister"
+  },
+  "output": {
+    "type": "object",
+    "additionalProperties": false,
+    "properties": {
+      "media_id": {
+        "type": "string",
+        "pattern": "^med_[0-9a-f]{32}$",
+        "description": "The asset: the new one, or the existing one with the same content hash."
+      },
+      "kind": {
+        "oneOf": [
+          {
+            "type": "string",
+            "const": "video",
+            "description": "A video file (may also carry audio)."
+          },
+          {
+            "type": "string",
+            "const": "audio",
+            "description": "An audio-only file."
+          },
+          {
+            "type": "string",
+            "const": "image",
+            "description": "A still image (no duration)."
+          },
+          {
+            "type": "string",
+            "const": "sequence_ref",
+            "description": "Another sequence of this project, used as a compound clip (arch §4.3)."
+          }
+        ],
+        "description": "What the asset is."
+      },
+      "created": {
+        "type": "boolean",
+        "description": "`false` when an asset with the same content hash already existed and nothing changed."
+      }
+    },
+    "required": [
+      "media_id",
+      "kind",
+      "created"
+    ],
+    "description": "Result of `media.register`.",
+    "title": "MediaRegistered"
+  }
+}
