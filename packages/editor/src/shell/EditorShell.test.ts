@@ -1,0 +1,163 @@
+// SPDX-License-Identifier: GPL-3.0-or-later
+// @vitest-environment jsdom
+import { act, cleanup, render, screen, waitFor, within } from "@testing-library/react";
+import userEvent from "@testing-library/user-event";
+import axe from "axe-core";
+import { createElement as h } from "react";
+import { afterEach, beforeAll, beforeEach, describe, expect, it } from "vitest";
+import { LAYOUT_SAVE_DELAY_MS } from "../dock/Dock.tsx";
+import { initialViewState, viewStore } from "../state/viewStore.ts";
+import { EditorShell } from "./EditorShell.tsx";
+
+beforeAll(() => {
+  // jsdom has no layout engine; dockview observes sizes and Radix measures popper content.
+  class ResizeObserverStub {
+    observe() {}
+    unobserve() {}
+    disconnect() {}
+  }
+  globalThis.ResizeObserver ??= ResizeObserverStub as unknown as typeof ResizeObserver;
+  globalThis.matchMedia ??= ((query: string) => ({
+    matches: false,
+    media: query,
+    addEventListener() {},
+    removeEventListener() {},
+    addListener() {},
+    removeListener() {},
+    dispatchEvent: () => false,
+    onchange: null,
+  })) as unknown as typeof matchMedia;
+  Element.prototype.scrollIntoView ??= () => {};
+});
+
+beforeEach(() => {
+  viewStore.setState({ ...initialViewState, layouts: {} });
+});
+
+afterEach(() => {
+  cleanup();
+  delete document.documentElement.dataset.theme;
+});
+
+describe("EditorShell", () => {
+  it("renders the top bar and the four docked panels", async () => {
+    render(h(EditorShell));
+    expect(screen.getByRole("banner")).toBeTruthy();
+    expect(screen.getByRole("main")).toBeTruthy();
+    for (const name of ["Assets", "Preview", "Inspector", "Timeline"]) {
+      expect(await screen.findByRole("region", { name })).toBeTruthy();
+    }
+    expect(screen.getByRole("button", { name: "Export" })).toBeTruthy();
+    expect(screen.getByRole("button", { name: "Undo" })).toBeTruthy();
+    expect(screen.getByRole("button", { name: "Redo" })).toBeTruthy();
+  });
+
+  it("shows the asset browser tabs, Media first", async () => {
+    render(h(EditorShell));
+    const list = await screen.findByRole("tablist", { name: "Asset browser" });
+    const names = within(list)
+      .getAllByRole("tab")
+      .map((tab) => tab.textContent);
+    expect(names).toEqual([
+      "Media",
+      "Audio",
+      "Text",
+      "Stickers",
+      "Effects",
+      "Transitions",
+      "Filters",
+      "Templates",
+      "Captions",
+      "AI Studio",
+    ]);
+    expect(screen.getByRole("tab", { name: "Media" }).getAttribute("aria-selected")).toBe("true");
+    expect(screen.getByText("No media yet")).toBeTruthy();
+  });
+
+  it("switches tabs and keeps the choice in the view store", async () => {
+    const user = userEvent.setup();
+    render(h(EditorShell));
+    await user.click(await screen.findByRole("tab", { name: "Captions" }));
+    expect(viewStore.getState().assetTab).toBe("captions");
+    expect(screen.getByText(/Generate captions from speech/)).toBeTruthy();
+  });
+
+  it("switches theme through data-theme", async () => {
+    const user = userEvent.setup();
+    render(h(EditorShell));
+    await screen.findByRole("region", { name: "Timeline" });
+    expect(document.documentElement.dataset.theme).toBe("dark");
+    await user.click(screen.getByRole("radio", { name: "Light" }));
+    expect(document.documentElement.dataset.theme).toBe("light");
+    expect(viewStore.getState().theme).toBe("light");
+    await user.click(screen.getByRole("radio", { name: "Dark" }));
+    expect(document.documentElement.dataset.theme).toBe("dark");
+  });
+
+  it("switches workspace and adopts its preview aspect", async () => {
+    const user = userEvent.setup();
+    render(h(EditorShell));
+    await screen.findByRole("region", { name: "Preview" });
+    const shortForm = screen.getByRole("radio", { name: "Short-form" });
+    const longForm = screen.getByRole("radio", { name: "Long-form" });
+    expect(shortForm.getAttribute("aria-checked")).toBe("true");
+    expect(screen.getByRole("radio", { name: "9:16" }).getAttribute("aria-checked")).toBe("true");
+
+    await user.click(longForm);
+    expect(viewStore.getState().workspaceId).toBe("long-form");
+    expect(longForm.getAttribute("aria-checked")).toBe("true");
+    expect(screen.getByRole("radio", { name: "16:9" }).getAttribute("aria-checked")).toBe("true");
+    // The dock rebuilds for the new workspace and the panels are still there.
+    for (const name of ["Assets", "Preview", "Inspector", "Timeline"]) {
+      expect(await screen.findByRole("region", { name })).toBeTruthy();
+    }
+  });
+
+  it("saves a layout per workspace and restores it on return", async () => {
+    const user = userEvent.setup();
+    render(h(EditorShell));
+    await screen.findByRole("region", { name: "Timeline" });
+    await waitFor(() => expect(viewStore.getState().layouts["short-form"]).toBeDefined(), {
+      timeout: LAYOUT_SAVE_DELAY_MS * 10,
+    });
+    expect(viewStore.getState().layouts["long-form"]).toBeUndefined();
+
+    await user.click(screen.getByRole("radio", { name: "Long-form" }));
+    await waitFor(() => expect(viewStore.getState().layouts["long-form"]).toBeDefined(), {
+      timeout: LAYOUT_SAVE_DELAY_MS * 10,
+    });
+    const shortLayout = viewStore.getState().layouts["short-form"];
+
+    await user.click(screen.getByRole("radio", { name: "Short-form" }));
+    await screen.findByRole("region", { name: "Timeline" });
+    expect(viewStore.getState().layouts["short-form"]).toEqual(shortLayout);
+  });
+
+  it("resets the active workspace layout to its default", async () => {
+    const user = userEvent.setup();
+    render(h(EditorShell));
+    await screen.findByRole("region", { name: "Timeline" });
+    await waitFor(() => expect(viewStore.getState().layouts["short-form"]).toBeDefined(), {
+      timeout: LAYOUT_SAVE_DELAY_MS * 10,
+    });
+    const revision = viewStore.getState().layoutRevision;
+    await user.click(screen.getByRole("button", { name: "Reset layout" }));
+    expect(viewStore.getState().layoutRevision).toBe(revision + 1);
+    for (const name of ["Assets", "Preview", "Inspector", "Timeline"]) {
+      expect(await screen.findByRole("region", { name })).toBeTruthy();
+    }
+  });
+
+  it("has no axe violations (dark and light)", async () => {
+    render(h(EditorShell));
+    await screen.findByRole("region", { name: "Timeline" });
+    for (const theme of ["dark", "light"] as const) {
+      await act(async () => viewStore.getState().setTheme(theme));
+      const results = await axe.run(document.body, {
+        // jsdom has no layout or computed colours, so contrast is covered by the ui axe suite.
+        rules: { "color-contrast": { enabled: false } },
+      });
+      expect(results.violations.map((v) => `${v.id}: ${v.nodes[0]?.html}`)).toEqual([]);
+    }
+  });
+});
