@@ -1,0 +1,246 @@
+---
+source: crates/cutweave-ops/tests/contract.rs
+expression: "json!({\n    \"meta\": serde_json::to_value(meta).unwrap(), \"input\": meta.input_schema,\n    \"output\": meta.output_schema,\n})"
+---
+{
+  "meta": {
+    "name": "track.set",
+    "summary": "Set a track's name, mute, hide, lock, solo or gain",
+    "kind": "command",
+    "undoable": true,
+    "view": false,
+    "scope": "any",
+    "mcp": "catalog",
+    "annotations": {
+      "readOnlyHint": false,
+      "destructiveHint": false,
+      "idempotentHint": true,
+      "openWorldHint": false
+    },
+    "secret_fields": [],
+    "input_schema": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "track": {
+          "type": "string",
+          "pattern": "^trk_[0-9a-f]{32}$",
+          "description": "The track."
+        },
+        "name": {
+          "type": [
+            "string",
+            "null"
+          ],
+          "description": "New display name.",
+          "default": null
+        },
+        "muted": {
+          "type": [
+            "boolean",
+            "null"
+          ],
+          "description": "Silence the track.",
+          "default": null
+        },
+        "hidden": {
+          "type": [
+            "boolean",
+            "null"
+          ],
+          "description": "Hide the track from the render.",
+          "default": null
+        },
+        "locked": {
+          "type": [
+            "boolean",
+            "null"
+          ],
+          "description": "Lock the track: commands that change its items fail with `Locked`.",
+          "default": null
+        },
+        "solo": {
+          "type": [
+            "boolean",
+            "null"
+          ],
+          "description": "Solo the track.",
+          "default": null
+        },
+        "gain": {
+          "type": [
+            "number",
+            "null"
+          ],
+          "format": "double",
+          "description": "Track gain in dB, `-144..=48`.",
+          "default": null
+        }
+      },
+      "required": [
+        "track"
+      ],
+      "description": "Changes track properties; absent fields keep their value. Works on locked tracks (that is\nhow a track is unlocked).",
+      "title": "TrackSet"
+    },
+    "output_schema": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "track": {
+          "type": "string",
+          "pattern": "^trk_[0-9a-f]{32}$",
+          "description": "The track."
+        },
+        "name": {
+          "type": "string",
+          "description": "Display name."
+        },
+        "muted": {
+          "type": "boolean",
+          "description": "Silenced."
+        },
+        "hidden": {
+          "type": "boolean",
+          "description": "Not rendered."
+        },
+        "locked": {
+          "type": "boolean",
+          "description": "Item edits fail with `Locked`."
+        },
+        "solo": {
+          "type": "boolean",
+          "description": "Solo."
+        },
+        "gain": {
+          "type": "number",
+          "format": "double",
+          "description": "Gain in dB."
+        }
+      },
+      "required": [
+        "track",
+        "name",
+        "muted",
+        "hidden",
+        "locked",
+        "solo",
+        "gain"
+      ],
+      "description": "Result of `track.set`: the track's properties now in effect.",
+      "title": "TrackSetOutput"
+    }
+  },
+  "input": {
+    "type": "object",
+    "additionalProperties": false,
+    "properties": {
+      "track": {
+        "type": "string",
+        "pattern": "^trk_[0-9a-f]{32}$",
+        "description": "The track."
+      },
+      "name": {
+        "type": [
+          "string",
+          "null"
+        ],
+        "description": "New display name.",
+        "default": null
+      },
+      "muted": {
+        "type": [
+          "boolean",
+          "null"
+        ],
+        "description": "Silence the track.",
+        "default": null
+      },
+      "hidden": {
+        "type": [
+          "boolean",
+          "null"
+        ],
+        "description": "Hide the track from the render.",
+        "default": null
+      },
+      "locked": {
+        "type": [
+          "boolean",
+          "null"
+        ],
+        "description": "Lock the track: commands that change its items fail with `Locked`.",
+        "default": null
+      },
+      "solo": {
+        "type": [
+          "boolean",
+          "null"
+        ],
+        "description": "Solo the track.",
+        "default": null
+      },
+      "gain": {
+        "type": [
+          "number",
+          "null"
+        ],
+        "format": "double",
+        "description": "Track gain in dB, `-144..=48`.",
+        "default": null
+      }
+    },
+    "required": [
+      "track"
+    ],
+    "description": "Changes track properties; absent fields keep their value. Works on locked tracks (that is\nhow a track is unlocked).",
+    "title": "TrackSet"
+  },
+  "output": {
+    "type": "object",
+    "additionalProperties": false,
+    "properties": {
+      "track": {
+        "type": "string",
+        "pattern": "^trk_[0-9a-f]{32}$",
+        "description": "The track."
+      },
+      "name": {
+        "type": "string",
+        "description": "Display name."
+      },
+      "muted": {
+        "type": "boolean",
+        "description": "Silenced."
+      },
+      "hidden": {
+        "type": "boolean",
+        "description": "Not rendered."
+      },
+      "locked": {
+        "type": "boolean",
+        "description": "Item edits fail with `Locked`."
+      },
+      "solo": {
+        "type": "boolean",
+        "description": "Solo."
+      },
+      "gain": {
+        "type": "number",
+        "format": "double",
+        "description": "Gain in dB."
+      }
+    },
+    "required": [
+      "track",
+      "name",
+      "muted",
+      "hidden",
+      "locked",
+      "solo",
+      "gain"
+    ],
+    "description": "Result of `track.set`: the track's properties now in effect.",
+    "title": "TrackSetOutput"
+  }
+}

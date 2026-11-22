@@ -1,0 +1,236 @@
+---
+source: crates/cutweave-ops/tests/contract.rs
+expression: "json!({\n    \"meta\": serde_json::to_value(meta).unwrap(), \"input\": meta.input_schema,\n    \"output\": meta.output_schema,\n})"
+---
+{
+  "meta": {
+    "name": "project.new",
+    "summary": "Initialize an empty project with one sequence (V1 + A1)",
+    "kind": "command",
+    "undoable": true,
+    "view": false,
+    "scope": "any",
+    "mcp": "catalog",
+    "annotations": {
+      "readOnlyHint": false,
+      "destructiveHint": false,
+      "idempotentHint": false,
+      "openWorldHint": false
+    },
+    "secret_fields": [],
+    "input_schema": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "name": {
+          "type": "string",
+          "description": "Project name (1..=200 characters)."
+        },
+        "format": {
+          "type": [
+            "object",
+            "null"
+          ],
+          "additionalProperties": false,
+          "properties": {
+            "width": {
+              "type": [
+                "integer",
+                "null"
+              ],
+              "format": "uint32",
+              "minimum": 0,
+              "description": "Canvas width in pixels, `1..=16384`."
+            },
+            "height": {
+              "type": [
+                "integer",
+                "null"
+              ],
+              "format": "uint32",
+              "minimum": 0,
+              "description": "Canvas height in pixels, `1..=16384`."
+            },
+            "frame_rate": {
+              "description": "The edit grid, `1..=1000` fps and a whole number of flicks per frame.",
+              "type": [
+                "object",
+                "null"
+              ],
+              "properties": {
+                "num": {
+                  "type": "integer",
+                  "minimum": 1,
+                  "maximum": 4294967295,
+                  "description": "Frames."
+                },
+                "den": {
+                  "type": "integer",
+                  "minimum": 1,
+                  "maximum": 4294967295,
+                  "description": "Seconds."
+                }
+              },
+              "required": [
+                "num",
+                "den"
+              ],
+              "additionalProperties": false
+            },
+            "sample_rate": {
+              "description": "The mix rate in Hz, `8000..=384000`.",
+              "type": [
+                "integer",
+                "null"
+              ],
+              "minimum": 1,
+              "maximum": 352800000
+            }
+          },
+          "description": "Format of the first sequence; also the default for new sequences.",
+          "default": null
+        }
+      },
+      "required": [
+        "name"
+      ],
+      "description": "Initializes an empty project: sets the project name and default format and creates one\nsequence with a video track `V1` on top of an audio track `A1`. Fails with `Invalid` if the\nproject already has media or sequences.",
+      "title": "ProjectNew"
+    },
+    "output_schema": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "sequence": {
+          "type": "string",
+          "pattern": "^seq_[0-9a-f]{32}$",
+          "description": "The created sequence."
+        },
+        "video_track": {
+          "type": "string",
+          "pattern": "^trk_[0-9a-f]{32}$",
+          "description": "Its video track `V1`."
+        },
+        "audio_track": {
+          "type": "string",
+          "pattern": "^trk_[0-9a-f]{32}$",
+          "description": "Its audio track `A1`."
+        }
+      },
+      "required": [
+        "sequence",
+        "video_track",
+        "audio_track"
+      ],
+      "description": "Result of `project.new`.",
+      "title": "ProjectNewOutput"
+    }
+  },
+  "input": {
+    "type": "object",
+    "additionalProperties": false,
+    "properties": {
+      "name": {
+        "type": "string",
+        "description": "Project name (1..=200 characters)."
+      },
+      "format": {
+        "type": [
+          "object",
+          "null"
+        ],
+        "additionalProperties": false,
+        "properties": {
+          "width": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "format": "uint32",
+            "minimum": 0,
+            "description": "Canvas width in pixels, `1..=16384`."
+          },
+          "height": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "format": "uint32",
+            "minimum": 0,
+            "description": "Canvas height in pixels, `1..=16384`."
+          },
+          "frame_rate": {
+            "description": "The edit grid, `1..=1000` fps and a whole number of flicks per frame.",
+            "type": [
+              "object",
+              "null"
+            ],
+            "properties": {
+              "num": {
+                "type": "integer",
+                "minimum": 1,
+                "maximum": 4294967295,
+                "description": "Frames."
+              },
+              "den": {
+                "type": "integer",
+                "minimum": 1,
+                "maximum": 4294967295,
+                "description": "Seconds."
+              }
+            },
+            "required": [
+              "num",
+              "den"
+            ],
+            "additionalProperties": false
+          },
+          "sample_rate": {
+            "description": "The mix rate in Hz, `8000..=384000`.",
+            "type": [
+              "integer",
+              "null"
+            ],
+            "minimum": 1,
+            "maximum": 352800000
+          }
+        },
+        "description": "Format of the first sequence; also the default for new sequences.",
+        "default": null
+      }
+    },
+    "required": [
+      "name"
+    ],
+    "description": "Initializes an empty project: sets the project name and default format and creates one\nsequence with a video track `V1` on top of an audio track `A1`. Fails with `Invalid` if the\nproject already has media or sequences.",
+    "title": "ProjectNew"
+  },
+  "output": {
+    "type": "object",
+    "additionalProperties": false,
+    "properties": {
+      "sequence": {
+        "type": "string",
+        "pattern": "^seq_[0-9a-f]{32}$",
+        "description": "The created sequence."
+      },
+      "video_track": {
+        "type": "string",
+        "pattern": "^trk_[0-9a-f]{32}$",
+        "description": "Its video track `V1`."
+      },
+      "audio_track": {
+        "type": "string",
+        "pattern": "^trk_[0-9a-f]{32}$",
+        "description": "Its audio track `A1`."
+      }
+    },
+    "required": [
+      "sequence",
+      "video_track",
+      "audio_track"
+    ],
+    "description": "Result of `project.new`.",
+    "title": "ProjectNewOutput"
+  }
+}

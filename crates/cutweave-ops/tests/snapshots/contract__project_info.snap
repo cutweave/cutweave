@@ -1,0 +1,498 @@
+---
+source: crates/cutweave-ops/tests/contract.rs
+expression: "json!({\n    \"meta\": serde_json::to_value(meta).unwrap(), \"input\": meta.input_schema,\n    \"output\": meta.output_schema,\n})"
+---
+{
+  "meta": {
+    "name": "project.info",
+    "summary": "Get project name, default format and a summary of its sequences",
+    "kind": "query",
+    "undoable": false,
+    "view": false,
+    "scope": "any",
+    "mcp": "core",
+    "annotations": {
+      "readOnlyHint": true,
+      "destructiveHint": false,
+      "idempotentHint": true,
+      "openWorldHint": false
+    },
+    "secret_fields": [],
+    "input_schema": {
+      "type": "object",
+      "additionalProperties": false,
+      "description": "Returns the project name, format, media count and a summary of each sequence.",
+      "title": "ProjectInfo"
+    },
+    "output_schema": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "name": {
+          "type": "string",
+          "description": "Project name."
+        },
+        "schema_version": {
+          "type": "integer",
+          "format": "uint32",
+          "minimum": 0,
+          "description": "Document schema version."
+        },
+        "created": {
+          "type": [
+            "string",
+            "null"
+          ],
+          "description": "Creation time (RFC 3339 UTC), if recorded."
+        },
+        "default_format": {
+          "type": "object",
+          "properties": {
+            "width": {
+              "type": "integer",
+              "format": "uint32",
+              "minimum": 0,
+              "description": "Canvas width in pixels."
+            },
+            "height": {
+              "type": "integer",
+              "format": "uint32",
+              "minimum": 0,
+              "description": "Canvas height in pixels."
+            },
+            "frame_rate": {
+              "description": "The edit grid: timecodes and `\"f:N\"` inputs resolve against it.",
+              "type": "object",
+              "properties": {
+                "num": {
+                  "type": "integer",
+                  "minimum": 1,
+                  "maximum": 4294967295,
+                  "description": "Frames."
+                },
+                "den": {
+                  "type": "integer",
+                  "minimum": 1,
+                  "maximum": 4294967295,
+                  "description": "Seconds."
+                }
+              },
+              "required": [
+                "num",
+                "den"
+              ],
+              "additionalProperties": false
+            },
+            "sample_rate": {
+              "description": "The mix rate.",
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 352800000
+            },
+            "color_space": {
+              "oneOf": [
+                {
+                  "type": "string",
+                  "const": "rec709",
+                  "description": "Rec.709 primaries, SDR."
+                }
+              ],
+              "description": "Working color space."
+            },
+            "background": {
+              "description": "Canvas color behind all tracks.",
+              "type": "string",
+              "pattern": "^#([0-9a-fA-F]{6}|[0-9a-fA-F]{8})$"
+            }
+          },
+          "required": [
+            "width",
+            "height",
+            "frame_rate",
+            "sample_rate",
+            "color_space",
+            "background"
+          ],
+          "description": "Format of new sequences."
+        },
+        "media_count": {
+          "type": "integer",
+          "format": "uint32",
+          "minimum": 0,
+          "description": "Number of media assets."
+        },
+        "sequences": {
+          "type": "array",
+          "items": {
+            "description": "Summary of one sequence.",
+            "type": "object",
+            "properties": {
+              "id": {
+                "description": "The sequence.",
+                "type": "string",
+                "pattern": "^seq_[0-9a-f]{32}$"
+              },
+              "name": {
+                "description": "Its name.",
+                "type": "string"
+              },
+              "format": {
+                "description": "Its format.",
+                "type": "object",
+                "properties": {
+                  "width": {
+                    "description": "Canvas width in pixels.",
+                    "type": "integer",
+                    "format": "uint32",
+                    "minimum": 0
+                  },
+                  "height": {
+                    "description": "Canvas height in pixels.",
+                    "type": "integer",
+                    "format": "uint32",
+                    "minimum": 0
+                  },
+                  "frame_rate": {
+                    "description": "The edit grid: timecodes and `\"f:N\"` inputs resolve against it.",
+                    "type": "object",
+                    "properties": {
+                      "num": {
+                        "description": "Frames.",
+                        "type": "integer",
+                        "minimum": 1,
+                        "maximum": 4294967295
+                      },
+                      "den": {
+                        "description": "Seconds.",
+                        "type": "integer",
+                        "minimum": 1,
+                        "maximum": 4294967295
+                      }
+                    },
+                    "required": [
+                      "num",
+                      "den"
+                    ],
+                    "additionalProperties": false
+                  },
+                  "sample_rate": {
+                    "description": "The mix rate.",
+                    "type": "integer",
+                    "minimum": 1,
+                    "maximum": 352800000
+                  },
+                  "color_space": {
+                    "description": "Working color space.",
+                    "oneOf": [
+                      {
+                        "description": "Rec.709 primaries, SDR.",
+                        "type": "string",
+                        "const": "rec709"
+                      }
+                    ]
+                  },
+                  "background": {
+                    "description": "Canvas color behind all tracks.",
+                    "type": "string",
+                    "pattern": "^#([0-9a-fA-F]{6}|[0-9a-fA-F]{8})$"
+                  }
+                },
+                "required": [
+                  "width",
+                  "height",
+                  "frame_rate",
+                  "sample_rate",
+                  "color_space",
+                  "background"
+                ]
+              },
+              "duration": {
+                "description": "End of the last item on any track.",
+                "type": "integer",
+                "minimum": 0,
+                "maximum": 9007199254740991
+              },
+              "video_tracks": {
+                "description": "Number of video tracks.",
+                "type": "integer",
+                "format": "uint32",
+                "minimum": 0
+              },
+              "audio_tracks": {
+                "description": "Number of audio tracks.",
+                "type": "integer",
+                "format": "uint32",
+                "minimum": 0
+              },
+              "item_count": {
+                "description": "Number of items on all its tracks.",
+                "type": "integer",
+                "format": "uint32",
+                "minimum": 0
+              }
+            },
+            "additionalProperties": false,
+            "required": [
+              "id",
+              "name",
+              "format",
+              "duration",
+              "video_tracks",
+              "audio_tracks",
+              "item_count"
+            ]
+          },
+          "description": "The sequences, ordered by ID."
+        }
+      },
+      "required": [
+        "name",
+        "schema_version",
+        "created",
+        "default_format",
+        "media_count",
+        "sequences"
+      ],
+      "description": "Result of `project.info`.",
+      "title": "ProjectInfoOutput"
+    }
+  },
+  "input": {
+    "type": "object",
+    "additionalProperties": false,
+    "description": "Returns the project name, format, media count and a summary of each sequence.",
+    "title": "ProjectInfo"
+  },
+  "output": {
+    "type": "object",
+    "additionalProperties": false,
+    "properties": {
+      "name": {
+        "type": "string",
+        "description": "Project name."
+      },
+      "schema_version": {
+        "type": "integer",
+        "format": "uint32",
+        "minimum": 0,
+        "description": "Document schema version."
+      },
+      "created": {
+        "type": [
+          "string",
+          "null"
+        ],
+        "description": "Creation time (RFC 3339 UTC), if recorded."
+      },
+      "default_format": {
+        "type": "object",
+        "properties": {
+          "width": {
+            "type": "integer",
+            "format": "uint32",
+            "minimum": 0,
+            "description": "Canvas width in pixels."
+          },
+          "height": {
+            "type": "integer",
+            "format": "uint32",
+            "minimum": 0,
+            "description": "Canvas height in pixels."
+          },
+          "frame_rate": {
+            "description": "The edit grid: timecodes and `\"f:N\"` inputs resolve against it.",
+            "type": "object",
+            "properties": {
+              "num": {
+                "type": "integer",
+                "minimum": 1,
+                "maximum": 4294967295,
+                "description": "Frames."
+              },
+              "den": {
+                "type": "integer",
+                "minimum": 1,
+                "maximum": 4294967295,
+                "description": "Seconds."
+              }
+            },
+            "required": [
+              "num",
+              "den"
+            ],
+            "additionalProperties": false
+          },
+          "sample_rate": {
+            "description": "The mix rate.",
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 352800000
+          },
+          "color_space": {
+            "oneOf": [
+              {
+                "type": "string",
+                "const": "rec709",
+                "description": "Rec.709 primaries, SDR."
+              }
+            ],
+            "description": "Working color space."
+          },
+          "background": {
+            "description": "Canvas color behind all tracks.",
+            "type": "string",
+            "pattern": "^#([0-9a-fA-F]{6}|[0-9a-fA-F]{8})$"
+          }
+        },
+        "required": [
+          "width",
+          "height",
+          "frame_rate",
+          "sample_rate",
+          "color_space",
+          "background"
+        ],
+        "description": "Format of new sequences."
+      },
+      "media_count": {
+        "type": "integer",
+        "format": "uint32",
+        "minimum": 0,
+        "description": "Number of media assets."
+      },
+      "sequences": {
+        "type": "array",
+        "items": {
+          "description": "Summary of one sequence.",
+          "type": "object",
+          "properties": {
+            "id": {
+              "description": "The sequence.",
+              "type": "string",
+              "pattern": "^seq_[0-9a-f]{32}$"
+            },
+            "name": {
+              "description": "Its name.",
+              "type": "string"
+            },
+            "format": {
+              "description": "Its format.",
+              "type": "object",
+              "properties": {
+                "width": {
+                  "description": "Canvas width in pixels.",
+                  "type": "integer",
+                  "format": "uint32",
+                  "minimum": 0
+                },
+                "height": {
+                  "description": "Canvas height in pixels.",
+                  "type": "integer",
+                  "format": "uint32",
+                  "minimum": 0
+                },
+                "frame_rate": {
+                  "description": "The edit grid: timecodes and `\"f:N\"` inputs resolve against it.",
+                  "type": "object",
+                  "properties": {
+                    "num": {
+                      "description": "Frames.",
+                      "type": "integer",
+                      "minimum": 1,
+                      "maximum": 4294967295
+                    },
+                    "den": {
+                      "description": "Seconds.",
+                      "type": "integer",
+                      "minimum": 1,
+                      "maximum": 4294967295
+                    }
+                  },
+                  "required": [
+                    "num",
+                    "den"
+                  ],
+                  "additionalProperties": false
+                },
+                "sample_rate": {
+                  "description": "The mix rate.",
+                  "type": "integer",
+                  "minimum": 1,
+                  "maximum": 352800000
+                },
+                "color_space": {
+                  "description": "Working color space.",
+                  "oneOf": [
+                    {
+                      "description": "Rec.709 primaries, SDR.",
+                      "type": "string",
+                      "const": "rec709"
+                    }
+                  ]
+                },
+                "background": {
+                  "description": "Canvas color behind all tracks.",
+                  "type": "string",
+                  "pattern": "^#([0-9a-fA-F]{6}|[0-9a-fA-F]{8})$"
+                }
+              },
+              "required": [
+                "width",
+                "height",
+                "frame_rate",
+                "sample_rate",
+                "color_space",
+                "background"
+              ]
+            },
+            "duration": {
+              "description": "End of the last item on any track.",
+              "type": "integer",
+              "minimum": 0,
+              "maximum": 9007199254740991
+            },
+            "video_tracks": {
+              "description": "Number of video tracks.",
+              "type": "integer",
+              "format": "uint32",
+              "minimum": 0
+            },
+            "audio_tracks": {
+              "description": "Number of audio tracks.",
+              "type": "integer",
+              "format": "uint32",
+              "minimum": 0
+            },
+            "item_count": {
+              "description": "Number of items on all its tracks.",
+              "type": "integer",
+              "format": "uint32",
+              "minimum": 0
+            }
+          },
+          "additionalProperties": false,
+          "required": [
+            "id",
+            "name",
+            "format",
+            "duration",
+            "video_tracks",
+            "audio_tracks",
+            "item_count"
+          ]
+        },
+        "description": "The sequences, ordered by ID."
+      }
+    },
+    "required": [
+      "name",
+      "schema_version",
+      "created",
+      "default_format",
+      "media_count",
+      "sequences"
+    ],
+    "description": "Result of `project.info`.",
+    "title": "ProjectInfoOutput"
+  }
+}
