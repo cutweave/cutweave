@@ -12,9 +12,9 @@ setup:
     pnpm install --frozen-lockfile
     @echo "setup: FFmpeg bundle, git hooks and corpus manifest arrive in WP-0A.06"
 
-# Engine (cargo watch) + Electron with Vite HMR
+# Electron + Vite HMR + dev engine (target/debug/cutweave, else the fake engine); cargo watch arrives with WP-1A
 dev:
-    @echo "dev: not implemented yet (arrives in WP-1A and the Phase 1 shell work packages)"
+    pnpm --filter @cutweave/desktop dev
 
 # fmt, clippy -D warnings, nextest + doc-tests, wasm32 check, dep rule, license headers, cargo-deny, no-literals lint, Biome, Vitest
 check:

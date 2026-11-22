@@ -2,14 +2,23 @@
   "name": "@cutweave/desktop",
   "version": "0.0.0",
   "private": true,
-  "description": "Electron main and preload, packaging (stub; Electron arrives in Phase 1)",
+  "description": "Electron main, preload and renderer host for the Cutweave editor",
   "license": "GPL-3.0-or-later",
   "type": "module",
-  "main": "./dist/index.js",
-  "types": "./dist/index.d.ts",
+  "main": "./dist/main/index.cjs",
   "scripts": {
-    "build": "tsc -p tsconfig.build.json",
+    "dev": "node scripts/dev.ts",
+    "build": "pnpm run build:node && pnpm run build:renderer",
+    "build:node": "vite build --config vite.node.config.ts",
+    "build:renderer": "vite build ../../packages/editor --outDir ../../apps/desktop/dist/renderer --emptyOutDir",
     "typecheck": "tsc --noEmit",
-    "test": "vitest run"
+    "test": "vitest run",
+    "e2e": "node scripts/ensure-electron.ts && playwright test"
+  },
+  "devDependencies": {
+    "@playwright/test": "1.65.1",
+    "@types/node": "24.19.2",
+    "electron": "45.4.1",
+    "vite": "8.3.8"
   }
 }
