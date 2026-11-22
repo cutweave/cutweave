@@ -15,7 +15,8 @@
     "format": "biome format --write .",
     "typecheck": "pnpm -r --workspace-concurrency=1 run typecheck",
     "test": "vitest run",
-    "build": "pnpm -r run build"
+    "build": "pnpm -r run build",
+    "storybook:build": "pnpm --filter @cutweave/ui run storybook:build"
   },
   "devDependencies": {
     "@biomejs/biome": "2.6.8",
