@@ -322,8 +322,8 @@ pub enum Node {
     Group(GroupNode),
     /// Two-input transition between clips on one track, evaluated in the enclosing canvas.
     Transition(TransitionNode),
-    /// Text run. Rendering lands in WP-0F.02 (MSDF atlas / Vello); the render graph already
-    /// emits a `Text` pass for it, which the executor currently reports as unsupported.
+    /// Styled, animatable text (WP-0F.02): shaped with cosmic-text, drawn by the MSDF atlas
+    /// pass or by Vello. Rasterised under the layer transform (see `graph`); the box is the clip.
     Text(TextNode),
 }
 
@@ -380,15 +380,158 @@ pub struct TransitionNode {
     pub to: Box<Layer>,
 }
 
-/// Text run placeholder for WP-0F.02.
+/// Text node (WP-0F.02). The first five fields are the WP-0F.01 placeholder contract; the rest
+/// are optional (serde defaults), so older scene JSON still parses.
+///
+/// Animation is *not* part of the node: an animator (a caption style or a composition, §11/§12)
+/// evaluates its curves for the frame and emits [`TextSpan`]s with the resolved per-word or
+/// per-glyph transform, opacity, colour and karaoke progress. The node is therefore a pure
+/// description of one frame, like every other node.
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 pub struct TextNode {
     pub text: String,
+    /// Family, optionally followed by a weight: `"Bricolage Grotesque 800"`. Unknown families
+    /// fall back to the bundled UI sans (`text::fonts::DEFAULT_FAMILY`).
     pub font: String,
     pub size_px: f32,
+    /// sRGB-encoded, straight alpha.
     pub fill_srgb: [f32; 4],
-    /// Layout box (w, h) in pixels: the intrinsic size of the text node's texture.
+    /// Layout box (w, h) in pixels: wrap width, alignment frame and clip.
     pub box_size: [f32; 2],
+    #[serde(default)]
+    pub align: TextAlign,
+    /// Line advance as a multiple of `size_px`.
+    #[serde(default = "default_line_height")]
+    pub line_height: f32,
+    #[serde(default)]
+    pub outline: Option<TextOutline>,
+    #[serde(default)]
+    pub shadow: Option<TextShadow>,
+    /// Per-range overrides for this frame (animator output). Non-overlapping byte ranges.
+    #[serde(default)]
+    pub spans: Vec<TextSpan>,
+    #[serde(default)]
+    pub renderer: TextRenderer,
+}
+
+fn default_line_height() -> f32 {
+    1.2
+}
+
+fn one2() -> [f32; 2] {
+    [1.0, 1.0]
+}
+
+impl TextNode {
+    /// A plain node with the WP-0F.01 fields and default styling (MSDF, left-aligned).
+    #[must_use]
+    pub fn new(
+        text: impl Into<String>,
+        font: impl Into<String>,
+        size_px: f32,
+        fill_srgb: [f32; 4],
+        box_size: [f32; 2],
+    ) -> Self {
+        Self {
+            text: text.into(),
+            font: font.into(),
+            size_px,
+            fill_srgb,
+            box_size,
+            align: TextAlign::default(),
+            line_height: default_line_height(),
+            outline: None,
+            shadow: None,
+            spans: Vec::new(),
+            renderer: TextRenderer::default(),
+        }
+    }
+}
+
+/// Horizontal alignment of each line inside the box.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Hash, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum TextAlign {
+    #[default]
+    Left,
+    Center,
+    Right,
+}
+
+/// Which glyph renderer draws a text node.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Hash, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum TextRenderer {
+    /// MTSDF atlas + instanced quads (the default).
+    #[default]
+    Msdf,
+    /// Vello 0.12 compute rasteriser into an RGBA8 target, resolved into the linear graph.
+    Vello,
+}
+
+/// Outline drawn under the fill (round joins).
+#[derive(Clone, Copy, Debug, PartialEq, Serialize, Deserialize)]
+pub struct TextOutline {
+    pub width_px: f32,
+    pub color_srgb: [f32; 4],
+}
+
+/// Drop shadow of the (outlined) glyphs.
+#[derive(Clone, Copy, Debug, PartialEq, Serialize, Deserialize)]
+pub struct TextShadow {
+    pub offset_px: [f32; 2],
+    /// Softness (width of the edge ramp) in pixels; 0 = hard.
+    #[serde(default)]
+    pub blur_px: f32,
+    pub color_srgb: [f32; 4],
+}
+
+/// Karaoke highlight: the part of a span before `progress` (in reading direction) uses `color`.
+#[derive(Clone, Copy, Debug, PartialEq, Serialize, Deserialize)]
+pub struct TextHighlight {
+    pub color_srgb: [f32; 4],
+    /// 0 = nothing highlighted, 1 = whole span.
+    pub progress: f32,
+}
+
+/// Resolved per-frame style of a byte range of the text (one word, one glyph, …).
+#[derive(Clone, Copy, Debug, PartialEq, Serialize, Deserialize)]
+pub struct TextSpan {
+    /// UTF-8 byte range `[start, end)` of `TextNode::text`.
+    pub range: [u32; 2],
+    /// Pivot at each glyph's centre instead of the span's centre.
+    #[serde(default)]
+    pub per_glyph: bool,
+    #[serde(default)]
+    pub offset_px: [f32; 2],
+    #[serde(default = "one2")]
+    pub scale: [f32; 2],
+    #[serde(default)]
+    pub rotation_deg: f32,
+    #[serde(default = "one")]
+    pub opacity: f32,
+    /// Overrides the node fill.
+    #[serde(default)]
+    pub fill_srgb: Option<[f32; 4]>,
+    #[serde(default)]
+    pub highlight: Option<TextHighlight>,
+}
+
+impl TextSpan {
+    /// Identity span over `range`.
+    #[must_use]
+    pub fn new(range: [u32; 2]) -> Self {
+        Self {
+            range,
+            per_glyph: false,
+            offset_px: [0.0; 2],
+            scale: [1.0; 2],
+            rotation_deg: 0.0,
+            opacity: 1.0,
+            fill_srgb: None,
+            highlight: None,
+        }
+    }
 }
 
 /// Output (export) transform from the linear working space.
