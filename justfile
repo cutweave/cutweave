@@ -47,6 +47,8 @@ lint-literals:
 
 # Storybook build + Playwright visual regression, axe, offline fonts (`just ui-snapshots --update` on Linux rewrites baselines)
 ui-snapshots *args:
+    # Worktrees get LFS pointer files; materialize the baselines from the shared LFS store first.
+    git lfs checkout packages/ui/__screenshots__
     pnpm --filter @cutweave/ui run test:visual {{args}}
 
 # Regenerate the committed docs/wbs/wbs.json snapshot
