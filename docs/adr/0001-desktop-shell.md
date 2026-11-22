@@ -1,6 +1,6 @@
 # ADR-0001: Desktop shell: Electron + React with a separate Rust engine process (GPUI as plan B)
 
-- **Status:** Proposed
+- **Status:** Accepted (provisional, 2026-11-22), on Spike S1 evidence from Windows (spikes/s1-shell-preview/README.md). Electron + React. **Phase 1 uses transport (a):** a napi-rs addon in the main window's non-sandboxed preload, with the present loop in the preload and NV12 `writeTexture`. Measured: 60.00 fps, 0 skips, scrub p95 49.5 ms. The sandbox exception is documented, mitigated by contextIsolation, no nodeIntegration, local-only content, strict CSP, a narrow bridge and sandboxed plugin iframes. **Transport (b)** (utilityProcess + MessagePort) is rejected for pixels: Electron forces 4 copies per frame, so ~540 skips/min and about 2 cores. **The target is Electron GPU shared textures** (probe: 58–60 fps, ~0.5 ms, no CPU copy), which restores a fully sandboxed renderer. It is gated on engine-side texture export, matching Chromium's GPU on hybrid laptops, and WP-0C.04 numbers. It becomes final after macOS/Linux measurements (WP-0C.04).
 - **Date:** 2026-11-22
 - **Deciders:** Cutweave maintainers (decision pending Spike S1)
 - **Supersedes:** none

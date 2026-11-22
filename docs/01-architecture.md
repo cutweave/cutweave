@@ -756,7 +756,7 @@ MyVideo/                    ← project folder (user-chosen location)
 
 | ADR | Decision | Status |
 |---|---|---|
-| 001 | Desktop shell: **Electron + React**; engine as a separate Rust process; preview via SHM to WebGPU canvas, through a non-sandboxed preload addon or a utility process (Spike 1 decides). Plan B: GPUI. | Proposed: confirm by **Spike 1** |
+| 001 | Desktop shell: **Electron + React**; engine as a separate Rust process; preview via SHM → preload addon (Phase 1), moving to GPU shared textures (fully sandboxed). Plan B: GPUI. | **Accepted (provisional)**: S1 on Windows; macOS/Linux confirm in 0C.04 |
 | 002 | Single `cutweave` binary, headless-first engine, all clients on one command bus | Accepted |
 | 003 | Media: FFmpeg via `ffmpeg-next` behind `MediaBackend`; CPU upload first, zero-copy later | Proposed: **Spike 3** |
 | 004 | Time unit: flicks (`i64`) | Accepted |
