@@ -1,0 +1,430 @@
+/* SPDX-License-Identifier: GPL-3.0-or-later */
+/* Primitives I: actions and inputs. Ported from design/components/bundle.css.
+   Values come from design tokens only; type styles come from the token classes
+   (.body-strong, .label, .numeric) applied by the components. */
+
+.cw-btn:focus-visible,
+.cw-iconbtn:focus-visible,
+.cw-seg__item:focus-visible,
+.cw-num:focus-visible,
+.cw-slider__thumb:focus-visible,
+.cw-kf:focus-visible,
+.cw-switch:focus-visible {
+  outline: var(--border-thick) solid var(--focus-ring);
+  outline-offset: 1px;
+}
+
+/* ---------- Button ---------- */
+.cw-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: var(--space-1-5);
+  box-sizing: border-box;
+  height: var(--control-md);
+  min-width: var(--hit-min);
+  padding: 0 var(--space-3);
+  border: var(--border-thin) solid var(--border-default);
+  border-radius: var(--radius-sm);
+  background: var(--surface-2);
+  color: var(--text-primary);
+  white-space: nowrap;
+  cursor: pointer;
+}
+.cw-btn:hover:not(:disabled) {
+  background: var(--surface-3);
+}
+.cw-btn--primary {
+  background: var(--marigold);
+  border-color: var(--marigold);
+  color: var(--on-marigold);
+}
+.cw-btn--primary:hover:not(:disabled) {
+  background: var(--marigold-hover);
+}
+.cw-btn--agent {
+  background: var(--agent);
+  border-color: var(--agent);
+  color: var(--on-agent);
+}
+.cw-btn--agent:hover:not(:disabled) {
+  background: var(--agent-hover);
+}
+.cw-btn--ghost {
+  background: transparent;
+  border-color: transparent;
+  color: var(--text-secondary);
+}
+.cw-btn--ghost:hover:not(:disabled) {
+  color: var(--text-primary);
+}
+.cw-btn--danger {
+  background: var(--danger);
+  border-color: var(--danger);
+  color: var(--on-danger);
+}
+.cw-btn--danger:hover:not(:disabled) {
+  background: var(--danger-hover);
+}
+.cw-btn--sm {
+  height: var(--control-sm);
+  padding: 0 var(--space-2);
+}
+.cw-btn--lg {
+  height: var(--control-lg);
+  padding: 0 var(--space-4);
+}
+.cw-btn:disabled {
+  background: var(--surface-2);
+  border-color: var(--border-subtle);
+  color: var(--text-disabled);
+  cursor: not-allowed;
+}
+.cw-btn--ghost:disabled {
+  background: transparent;
+  border-color: transparent;
+}
+
+/* ---------- IconButton and Toolbar ---------- */
+.cw-iconbtn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  box-sizing: border-box;
+  width: var(--control-lg);
+  height: var(--control-lg);
+  padding: 0;
+  border: 0;
+  border-radius: var(--radius-sm);
+  background: transparent;
+  color: var(--text-secondary);
+  cursor: pointer;
+}
+.cw-iconbtn--sm {
+  width: var(--control-sm);
+  height: var(--control-sm);
+}
+.cw-iconbtn:hover:not(:disabled) {
+  background: var(--surface-3);
+  color: var(--text-primary);
+}
+.cw-iconbtn[aria-pressed="true"] {
+  background: var(--marigold-subtle);
+  color: var(--marigold-text);
+}
+.cw-iconbtn:disabled {
+  color: var(--text-disabled);
+  cursor: not-allowed;
+}
+.cw-toolbar {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-1);
+  box-sizing: border-box;
+  height: var(--toolbar);
+  padding: 0 var(--space-2);
+  background: var(--surface-1);
+  border: var(--border-thin) solid var(--border-subtle);
+  border-radius: var(--radius-md);
+}
+.cw-toolbar__sep {
+  width: 1px;
+  height: var(--icon-md);
+  margin: 0 var(--space-1);
+  flex: none;
+  border: 0;
+  background: var(--border-subtle);
+}
+
+/* ---------- SegmentedControl ---------- */
+.cw-seg {
+  position: relative;
+  display: inline-flex;
+  gap: var(--space-1);
+  box-sizing: border-box;
+  height: var(--control-sm);
+  padding: 0 var(--space-0-5);
+  background: var(--surface-2);
+  border-radius: var(--radius-sm);
+}
+.cw-seg::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  border: var(--border-thin) solid var(--border-control);
+  border-radius: inherit;
+  pointer-events: none;
+}
+.cw-seg__item {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: var(--hit-min);
+  height: 100%;
+  padding: 0 var(--space-2);
+  border: 0;
+  border-radius: var(--radius-xs);
+  background: transparent;
+  color: var(--text-secondary);
+  cursor: pointer;
+}
+.cw-seg__item:hover:not(:disabled) {
+  background: var(--surface-3);
+  color: var(--text-primary);
+}
+.cw-seg__item[aria-checked="true"] {
+  background: var(--marigold-subtle);
+  color: var(--text-primary);
+  box-shadow: inset 0 0 0 var(--border-thin) var(--marigold);
+}
+.cw-seg__item:disabled {
+  color: var(--text-disabled);
+  cursor: not-allowed;
+}
+
+/* ---------- Row (label + control) ---------- */
+.cw-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-2);
+  min-height: var(--control-sm);
+}
+.cw-row__label {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-1);
+  color: var(--text-secondary);
+}
+
+/* ---------- NumberScrubber ---------- */
+.cw-num {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-2);
+  box-sizing: border-box;
+  height: var(--control-sm);
+  padding: 0 var(--space-2);
+  background: var(--surface-2);
+  border: var(--border-thin) solid var(--border-control);
+  border-radius: var(--radius-sm);
+  color: var(--text-primary);
+  cursor: ew-resize;
+  user-select: none;
+  touch-action: none;
+}
+.cw-num:hover {
+  background: var(--surface-3);
+}
+.cw-num__label {
+  color: var(--text-secondary);
+}
+.cw-num__value {
+  min-width: 0;
+  width: 7ch;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  color: var(--text-primary);
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+  cursor: inherit;
+}
+.cw-num__value:focus-visible {
+  outline: none;
+}
+.cw-num__unit {
+  font-variant-numeric: tabular-nums;
+  color: var(--text-muted);
+}
+.cw-num[data-state="editing"] {
+  border-color: var(--marigold);
+  background: var(--surface-2);
+  cursor: text;
+  user-select: text;
+}
+.cw-num[data-state="mixed"] .cw-num__value {
+  color: var(--text-muted);
+}
+.cw-num[aria-disabled="true"] {
+  border-color: var(--border-subtle);
+  cursor: not-allowed;
+}
+.cw-num[aria-disabled="true"]:hover {
+  background: var(--surface-2);
+}
+.cw-num[aria-disabled="true"] .cw-num__label,
+.cw-num[aria-disabled="true"] .cw-num__value,
+.cw-num[aria-disabled="true"] .cw-num__unit {
+  color: var(--text-disabled);
+}
+
+/* ---------- Slider ---------- */
+.cw-slider {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  min-height: var(--control-sm);
+}
+.cw-slider__label {
+  color: var(--text-secondary);
+  min-width: calc(var(--space-8) + var(--space-6));
+}
+.cw-slider__track {
+  position: relative;
+  display: flex;
+  align-items: center;
+  flex: 1;
+  height: var(--control-sm);
+  cursor: pointer;
+  user-select: none;
+  touch-action: none;
+}
+.cw-slider__rail {
+  position: relative;
+  flex-grow: 1;
+  height: var(--space-1);
+  background: var(--border-control);
+  border-radius: var(--radius-full);
+}
+.cw-slider__fill {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  background: var(--marigold);
+  border-radius: inherit;
+}
+.cw-slider__thumb {
+  display: block;
+  box-sizing: border-box;
+  width: var(--space-3);
+  height: var(--space-3);
+  background: var(--surface-2);
+  border: var(--border-thick) solid var(--marigold);
+  border-radius: var(--radius-full);
+}
+.cw-slider__value {
+  min-width: calc(var(--space-6) + var(--space-4));
+  text-align: right;
+  color: var(--text-primary);
+}
+.cw-slider[aria-disabled="true"] .cw-slider__fill {
+  background: var(--text-disabled);
+}
+.cw-slider[aria-disabled="true"] .cw-slider__thumb {
+  border-color: var(--text-disabled);
+}
+.cw-slider[aria-disabled="true"] .cw-slider__label,
+.cw-slider[aria-disabled="true"] .cw-slider__value {
+  color: var(--text-disabled);
+}
+.cw-slider[aria-disabled="true"] .cw-slider__track {
+  cursor: not-allowed;
+}
+
+/* ---------- Switch ---------- */
+.cw-switch {
+  position: relative;
+  box-sizing: border-box;
+  width: var(--space-8);
+  height: var(--hit-min);
+  padding: 0;
+  border: 0;
+  background: transparent;
+  cursor: pointer;
+}
+.cw-switch::before {
+  content: "";
+  position: absolute;
+  left: 0;
+  right: 0;
+  top: 50%;
+  height: var(--space-4);
+  transform: translateY(-50%);
+  box-sizing: border-box;
+  background: var(--surface-3);
+  border: var(--border-thin) solid var(--border-control);
+  border-radius: var(--radius-full);
+}
+.cw-switch__thumb {
+  position: absolute;
+  top: 50%;
+  left: var(--space-0-5);
+  width: var(--space-3);
+  height: var(--space-3);
+  transform: translateY(-50%);
+  background: var(--text-secondary);
+  border-radius: var(--radius-full);
+}
+.cw-switch[aria-checked="true"]::before {
+  background: var(--marigold);
+  border-color: var(--marigold);
+}
+.cw-switch[aria-checked="true"] .cw-switch__thumb {
+  left: calc(100% - var(--space-3) - var(--space-0-5));
+  background: var(--on-marigold);
+}
+.cw-switch:disabled {
+  cursor: not-allowed;
+}
+.cw-switch:disabled::before,
+.cw-switch[aria-checked="true"]:disabled::before {
+  background: transparent;
+  border-color: var(--border-subtle);
+}
+.cw-switch:disabled .cw-switch__thumb,
+.cw-switch[aria-checked="true"]:disabled .cw-switch__thumb {
+  background: var(--text-disabled);
+}
+
+/* ---------- KeyframeToggle ---------- */
+.cw-kf {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: var(--control-sm);
+  height: var(--control-sm);
+  padding: 0;
+  border: 0;
+  border-radius: var(--radius-sm);
+  background: transparent;
+  color: var(--text-muted);
+  cursor: pointer;
+}
+.cw-kf:hover:not(:disabled) {
+  background: var(--surface-3);
+  color: var(--text-primary);
+}
+.cw-kf[data-state="elsewhere"],
+.cw-kf[data-state="on"] {
+  color: var(--marigold-text);
+}
+.cw-kf:disabled {
+  color: var(--text-disabled);
+  cursor: not-allowed;
+}
+.cw-kfgroup {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-0-5);
+}
+
+/* ---------- Motion (state changes only) ---------- */
+@media (prefers-reduced-motion: no-preference) {
+  .cw-btn,
+  .cw-iconbtn,
+  .cw-seg__item,
+  .cw-num,
+  .cw-kf,
+  .cw-switch::before {
+    transition:
+      background-color var(--duration-fast) var(--easing-standard),
+      border-color var(--duration-fast) var(--easing-standard),
+      color var(--duration-fast) var(--easing-standard);
+  }
+  .cw-switch__thumb {
+    transition:
+      left var(--duration-fast) var(--easing-standard),
+      background-color var(--duration-fast) var(--easing-standard);
+  }
+}
