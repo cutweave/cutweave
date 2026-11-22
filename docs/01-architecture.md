@@ -755,7 +755,7 @@ MyVideo/                    ← project folder (user-chosen location)
 | 006 | Project format: folder + JSON doc + journal + backups | Accepted |
 | 007 | Text: cosmic-text + swash + MSDF; Vello variant | Proposed: **Spike 4** |
 | 008 | AI: capability-typed gateway, signed manifest catalog, declarative HTTP and WASM adapters, cloud-first | Accepted |
-| 009 | MCP: rmcp; hybrid catalog (core tools + search/describe/execute/query); attach + headless | Proposed: **Spike 5** |
+| 009 | MCP: rmcp; hybrid catalog (core tools + search/describe/execute/query); attach + headless | **Accepted (provisional)**: S5 passed 3/3 with Claude Code; a second client is pending |
 | 010 | Plugins: layered L0–L4; wasmtime + WIT; QuickJS compositions; WGSL effects | Accepted |
 | 011 | License: GPL-3.0 core, MIT/Apache SDK/WIT/compose-runtime, plugin exception, DCO | **Accepted** (user, 2026-11-22) |
 | 012 | Compositions: TS/JSX → oxc → QuickJS → scene graph (no headless browser) | Proposed: **Spike 4b** |
