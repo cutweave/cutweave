@@ -127,6 +127,15 @@ export type GroupId = string;
 
 /**  A broken document invariant: what [`Project::validate`] reports. */
 export type Invariant = 
+/**
+ *  The document is not at the schema version this build edits (open it through
+ *  `open`/`migrate_to_current`, which migrate older documents).
+ */
+{ invariant: "schema_version"; 
+/**  The document's `meta.schema_version`. */
+found: number; 
+/**  `CURRENT_SCHEMA_VERSION`. */
+expected: number } | 
 /**  A map key differs from the ID inside the entity. */
 { invariant: "key_mismatch"; 
 /**  The map (`/media`, `/sequences/<id>/tracks`, …). */
@@ -343,6 +352,11 @@ export type Project = {
 
 /**  Document metadata. */
 export type ProjectMeta = {
+	/**
+	 *  Version of the document format (`CURRENT_SCHEMA_VERSION` when saved by this build).
+	 *  Older documents are migrated on open; newer ones open read-only (arch §4.3).
+	 */
+	schema_version: number,
 	/**  Project name. */
 	name: string,
 	/**

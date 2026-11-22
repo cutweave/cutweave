@@ -34,6 +34,8 @@ specta-typescript = "=0.0.15"
 specta-serde = "=0.0.15"
 # Typed library errors (AGENTS.md: thiserror in libraries).
 thiserror = "2"
+# JSON-path context for document load errors ("sequences.seq_….tracks…: missing field").
+serde_path_to_error = "0.1.20"
 # Time-ordered UUIDv7 ids (native only: wasm32-unknown-unknown has no OS entropy or wall clock).
 uuid = { version = "1.29", default-features = false, features = ["std", "v7"] }
 # Property tests (dev and the `cutweave-model/testing` feature only).

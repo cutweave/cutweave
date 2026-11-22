@@ -1,5 +1,6 @@
 ---
 source: crates/cutweave-model/tests/wire_types.rs
+assertion_line: 90
 expression: "cutweave_model::canonical_json_pretty(&schema)"
 ---
 {
@@ -475,9 +476,16 @@ expression: "cutweave_model::canonical_json_pretty(&schema)"
         "name": {
           "description": "Project name.",
           "type": "string"
+        },
+        "schema_version": {
+          "description": "Version of the document format (`CURRENT_SCHEMA_VERSION` when saved by this build).\nOlder documents are migrated on open; newer ones open read-only (arch §4.3).",
+          "format": "uint32",
+          "minimum": 0,
+          "type": "integer"
         }
       },
       "required": [
+        "schema_version",
         "name"
       ],
       "type": "object"

@@ -19,6 +19,7 @@ schemars.workspace = true
 serde.workspace = true
 # `float_roundtrip`: saved floats (opacity, gain, transforms) must load back bit-identically.
 serde_json = { workspace = true, features = ["float_roundtrip"] }
+serde_path_to_error.workspace = true
 specta.workspace = true
 # Only for the `Time` -> TS `number` override (`specta_typescript::Number`); no exporter runs here.
 specta-typescript.workspace = true

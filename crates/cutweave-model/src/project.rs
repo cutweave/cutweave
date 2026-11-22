@@ -8,12 +8,16 @@ use imbl::OrdMap;
 use serde::{Deserialize, Serialize};
 
 use crate::{
-    Custom, Extra, Item, ItemId, MediaAsset, MediaId, Sequence, SequenceFormat, SequenceId, Track,
+    CURRENT_SCHEMA_VERSION, Custom, Extra, Item, ItemId, MediaAsset, MediaId, Sequence,
+    SequenceFormat, SequenceId, Track,
 };
 
 /// Document metadata.
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize, schemars::JsonSchema, specta::Type)]
 pub struct ProjectMeta {
+    /// Version of the document format (`CURRENT_SCHEMA_VERSION` when saved by this build).
+    /// Older documents are migrated on open; newer ones open read-only (arch §4.3).
+    pub schema_version: u32,
     /// Project name.
     pub name: String,
     /// When the project was created (RFC 3339 UTC, e.g. `2026-11-22T10:00:00Z`), set by the
@@ -87,6 +91,7 @@ impl Project {
     pub fn new(name: impl Into<String>) -> Project {
         Project {
             meta: ProjectMeta {
+                schema_version: CURRENT_SCHEMA_VERSION,
                 name: name.into(),
                 created: None,
                 app_version: None,

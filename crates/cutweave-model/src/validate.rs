@@ -9,8 +9,9 @@ use std::collections::{BTreeMap, BTreeSet};
 use serde::Serialize;
 
 use crate::{
-    Clip, Custom, Duration, EntityKind, GroupId, Item, ItemId, MAX_SAFE_FLICKS, MediaId, MediaKind,
-    Project, SequenceFormat, SequenceId, Time, TrackId, TrackKind, Vec2, item::Animatable,
+    CURRENT_SCHEMA_VERSION, Clip, Custom, Duration, EntityKind, GroupId, Item, ItemId,
+    MAX_SAFE_FLICKS, MediaId, MediaKind, Project, SequenceFormat, SequenceId, Time, TrackId,
+    TrackKind, Vec2, item::Animatable,
 };
 
 /// Largest canvas side accepted by validation.
@@ -27,6 +28,15 @@ pub const SEQUENCE_SAMPLE_RATES: std::ops::RangeInclusive<u32> = 8_000..=384_000
 #[serde(tag = "invariant", rename_all = "snake_case")]
 #[non_exhaustive]
 pub enum Invariant {
+    /// The document is not at the schema version this build edits (open it through
+    /// `open`/`migrate_to_current`, which migrate older documents).
+    #[error("schema_version is {found}, but this version of Cutweave edits {expected}")]
+    SchemaVersion {
+        /// The document's `meta.schema_version`.
+        found: u32,
+        /// `CURRENT_SCHEMA_VERSION`.
+        expected: u32,
+    },
     /// A map key differs from the ID inside the entity.
     #[error("`{path}/{key}` holds an entity whose id is `{id}`")]
     KeyMismatch {
@@ -180,6 +190,12 @@ impl Project {
     #[must_use]
     pub fn violations(&self) -> Vec<Invariant> {
         let mut out = Vec::new();
+        if self.meta.schema_version != CURRENT_SCHEMA_VERSION {
+            out.push(Invariant::SchemaVersion {
+                found: self.meta.schema_version,
+                expected: CURRENT_SCHEMA_VERSION,
+            });
+        }
         check_custom("", &self.custom, &mut out);
         check_format(
             "/settings/default_format",

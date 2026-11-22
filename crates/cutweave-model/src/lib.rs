@@ -12,11 +12,15 @@
 //!   the schema v1 document, held in persistent `imbl` collections so snapshots are O(1)
 //!   (ADR-0005), with [`Project::validate`] checking the [`Invariant`]s of arch §4.3. Plugin
 //!   data lives only in namespaced [`Custom`] maps; unknown fields survive in [`Extra`].
+//! - **Versioning** ([`CURRENT_SCHEMA_VERSION`], [`open`], [`migrate_to_current`],
+//!   [`Migration`], [`OpenOutcome`]): ordered `vN → vN+1` migrations on the raw JSON with golden
+//!   fixtures; documents from newer versions open read-only (arch §4.3, ADR-0006).
 
 mod custom;
 mod id;
 mod item;
 mod media;
+mod migrate;
 mod project;
 #[cfg(test)]
 mod proptests;
@@ -40,6 +44,11 @@ pub use item::{Animatable, AudioProps, Clip, Item, Keyframes, Transform, Vec2, V
 pub use media::{
     AudioInfo, ColorPrimaries, ColorRange, ColorTags, MatrixCoefficients, MediaAsset, MediaKind,
     ProbeInfo, StreamInfo, StreamKind, TransferCharacteristics,
+};
+pub use migrate::{
+    CURRENT_SCHEMA_VERSION, MIGRATIONS, Migration, MigrationError, MigrationReport, MigrationStep,
+    Migrator, OLDEST_SCHEMA_VERSION, OpenOutcome, migrate_to_current, migrate_value, open,
+    open_str, schema_version_of, to_document_string,
 };
 pub use project::{ItemRef, Project, ProjectMeta, ProjectSettings};
 pub use rate::{FrameRate, Rounding, SampleRate};
