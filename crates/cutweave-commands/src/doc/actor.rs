@@ -202,6 +202,39 @@ impl Drop for CloseOnExit<'_> {
     }
 }
 
+/// Shortest wait before re-checking an idle gesture (the clock may lag the deadline).
+const MIN_EXPIRY_WAIT: std::time::Duration = std::time::Duration::from_millis(10);
+/// Longest wait between idle-gesture checks (bounds a wall clock stepping backwards).
+const MAX_EXPIRY_WAIT: std::time::Duration = std::time::Duration::from_secs(1);
+
+/// The next request; while a gesture is open, wakes up to cancel it once idle for
+/// [`GESTURE_IDLE_TIMEOUT`](crate::GESTURE_IDLE_TIMEOUT) even if no request arrives. `None`
+/// once every handle is gone.
+fn next_request(
+    state: &mut DocState,
+    requests: &mpsc::Receiver<Request>,
+    published: &Published,
+    metrics: &dyn DocMetrics,
+) -> Option<Request> {
+    loop {
+        let Some(deadline) = state.next_expiry() else {
+            return requests.recv().ok();
+        };
+        let wait = deadline
+            .saturating_since(state.now())
+            .clamp(MIN_EXPIRY_WAIT, MAX_EXPIRY_WAIT);
+        match requests.recv_timeout(wait) {
+            Ok(request) => return Some(request),
+            Err(mpsc::RecvTimeoutError::Disconnected) => return None,
+            Err(mpsc::RecvTimeoutError::Timeout) => {
+                if !state.expire_idle().is_empty() {
+                    publish(state, published, metrics);
+                }
+            }
+        }
+    }
+}
+
 fn run(
     mut state: DocState,
     requests: &mpsc::Receiver<Request>,
@@ -210,7 +243,7 @@ fn run(
 ) {
     let _close = CloseOnExit(published);
     tracing::debug!(rev = %state.rev(), "document actor started");
-    while let Ok(request) = requests.recv() {
+    while let Some(request) = next_request(&mut state, requests, published, metrics) {
         published.counters.dequeued();
         match request {
             Request::Shutdown => break,
@@ -410,6 +443,13 @@ impl DocHandle {
         self.job("close_connection", move |state| {
             Ok(state.close_connection(conn))
         })
+    }
+
+    /// Cancels the gestures idle for [`GESTURE_IDLE_TIMEOUT`](crate::GESTURE_IDLE_TIMEOUT) now
+    /// ([`DocState::expire_idle`]). The actor also does this on its own timer and before every
+    /// request; this is for injected clocks (tests) and hosts that want it immediately.
+    pub fn expire_idle(&self) -> Pending<Vec<TxClosed>> {
+        self.job("expire_idle", |state| Ok(state.expire_idle()))
     }
 
     /// The live document (lock-free; never blocks, whatever the actor is doing).

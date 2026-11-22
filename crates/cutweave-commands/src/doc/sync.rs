@@ -52,13 +52,14 @@ mod imp {
     /// disconnection (a send after the receiver is gone counts as a leaked message), which is
     /// exactly what shutdown races exercise.
     pub(crate) mod mpsc {
+        pub(crate) use std::sync::mpsc::RecvTimeoutError;
         use std::{
             collections::VecDeque,
             sync::mpsc::{RecvError, SendError},
         };
 
         use super::{Arc, Condvar, Mutex};
-        use crate::doc::sync::{lock, wait};
+        use crate::doc::sync::{lock, wait, wait_timeout};
 
         struct State<T> {
             queue: VecDeque<T>,
@@ -126,6 +127,27 @@ mod imp {
                     }
                     state = wait(&self.0.ready, state);
                 }
+            }
+
+            /// loom does not model time: one (possibly spurious) timed wait, then `Timeout`
+            /// if nothing arrived.
+            pub(crate) fn recv_timeout(
+                &self,
+                timeout: std::time::Duration,
+            ) -> Result<T, RecvTimeoutError> {
+                let mut state = lock(&self.0.state);
+                for waited in [false, true] {
+                    if let Some(value) = state.queue.pop_front() {
+                        return Ok(value);
+                    }
+                    if state.senders == 0 {
+                        return Err(RecvTimeoutError::Disconnected);
+                    }
+                    if !waited {
+                        state = wait_timeout(&self.0.ready, state, timeout);
+                    }
+                }
+                Err(RecvTimeoutError::Timeout)
             }
         }
 

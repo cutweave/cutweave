@@ -215,7 +215,8 @@ pub enum TxKind {
     /// commits.
     Batch,
     /// A continuous gesture (dragging, scrubbing a slider): updates the document live, collapses
-    /// into one undo step on commit, rolls back on cancel, auto-cancels when idle (WP-1B.09).
+    /// into one undo step on commit, rolls back on cancel, auto-cancels after
+    /// [`GESTURE_IDLE_TIMEOUT`](crate::GESTURE_IDLE_TIMEOUT) without a request naming it.
     Gesture,
     /// A copilot proposal (arch §14b): live like a gesture, no idle timeout.
     Proposal,
@@ -345,7 +346,7 @@ pub struct TxInfo {
     pub opened_rev: Rev,
     /// When it was opened.
     pub opened_at: WallTime,
-    /// When it last ran a command (gesture idle timeout, WP-1B.09).
+    /// When a request last named it (gesture idle timeout).
     pub last_activity: WallTime,
     /// Commands run in it so far.
     pub steps: usize,
@@ -375,6 +376,8 @@ pub enum TxOutcome {
     Cancelled,
     /// Rolled back by the engine (its connection closed, WP-1B.09).
     RolledBack,
+    /// Rolled back by the engine: a gesture idle for [`GESTURE_IDLE_TIMEOUT`](crate::GESTURE_IDLE_TIMEOUT).
+    Expired,
 }
 
 /// A transaction that was closed.

@@ -131,10 +131,13 @@ pub enum McpExposure {
 }
 
 /// MCP tool annotations (hints). Serialized with MCP's names (`readOnlyHint`, …).
+///
+/// `read_only` is true for every query and for engine commands that only read engine state
+/// (`edit.history`, `edit.list_checkpoints`).
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Hash)]
 #[allow(clippy::struct_excessive_bools)] // independent MCP hints
 pub struct Annotations {
-    /// `readOnlyHint`: true exactly for queries.
+    /// `readOnlyHint`: true for queries and read-only engine commands.
     pub read_only: bool,
     /// `destructiveHint`: may irreversibly destroy data the user cares about.
     pub destructive: bool,
@@ -249,10 +252,11 @@ impl CommandMeta {
     }
 
     /// Whether a successful call is journaled (WP-1C.02): document commands and engine
-    /// commands, never queries or `view.*` commands.
+    /// commands, never queries, read-only engine commands (`edit.history`) or `view.*`
+    /// commands.
     #[must_use]
     pub fn is_journaled(&self) -> bool {
-        self.kind != EntryKind::Query && !self.view
+        self.kind != EntryKind::Query && !self.view && !self.annotations.read_only
     }
 }
 

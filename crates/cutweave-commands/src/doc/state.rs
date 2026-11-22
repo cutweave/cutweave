@@ -19,12 +19,17 @@ use super::{
     clock::{Clock, ManualClock, WallTime},
     dedup::{DEDUP_CAPACITY, DEDUP_WINDOW, DedupRecord, DedupTable, Fingerprint},
     event::{CommandPanicked, DocEvent, DocPatched, DocReset, DocSnapshot, PatchCause},
+    history::{
+        CheckpointInfo, Checkpoints, EntryCause, History, HistoryLimits, HistoryMoved, HistoryPage,
+        HistoryScope, MAX_CHECKPOINT_NAME_CHARS, MAX_CHECKPOINT_NOTE_CHARS, MAX_HISTORY_PAGE,
+        NewRecord, Record, Restored, RevertedChanges,
+    },
     identity::{Actor, ActorCtx, ConnId},
     request::{Applied, RequestId, Submit, TxClosed, TxId, TxInfo, TxKind, TxOutcome},
 };
 use crate::{
     diff::diff,
-    error::{CmdError, ConflictReason, ResourceKind, Rev},
+    error::{CmdError, ConflictReason, ResourceKind, Rev, encode_output},
     meta::EntryKind,
     patch::{Patch, PatchError},
     registry::Registry,
@@ -33,6 +38,10 @@ use crate::{
 
 /// Suggested retry delay when a command collides with another connection's open transaction.
 pub const SOFT_LOCK_RETRY_MS: u64 = 250;
+
+/// A gesture transaction that no request has named for this long is cancelled by the engine
+/// (outcome [`TxOutcome::Expired`]; arch §5.2, ADR-0017). Proposals and batches never expire.
+pub const GESTURE_IDLE_TIMEOUT: Duration = Duration::from_secs(30);
 
 /// Mixed into the `--deterministic-ids` seed for the request-id stream, so engine-generated
 /// request ids never perturb the entity id sequence (CLI and RPC runs then produce identical
@@ -79,19 +88,101 @@ pub struct CommitRecord<'a> {
     pub prev_committed_rev: Rev,
     /// Its transaction.
     pub tx_id: TxId,
-    /// `None` for an implicit single-command transaction.
+    /// `None` for an implicit single-command transaction (and for undo, redo and restore).
     pub kind: Option<TxKind>,
     /// Who committed it.
     pub actor: &'a Actor,
-    /// The open transaction's label.
+    /// The open transaction's label, or the history label of an undo, redo or restore;
+    /// `None` for a single command (its history label is the command name).
     pub label: Option<&'a str>,
     /// When it committed (wall clock).
     pub at: WallTime,
     /// The requests it contains, in order, each with its redacted params and its dedup
-    /// record (so a restarted engine keeps deduplicating them).
+    /// record (so a restarted engine keeps deduplicating them). For an undo, redo or restore:
+    /// the `edit.*` request, when it came through [`DocState::submit`].
     pub steps: &'a [JournalStep],
     /// The net change to the committed document (coalesced, field-level).
     pub patch: &'a Patch,
+    /// Why it is in the history: an edit, an undo or redo of an earlier transaction, or a
+    /// checkpoint restore (so recovery can rebuild the undo stacks, WP-1C.02).
+    pub cause: EntryCause,
+    /// Whether it went onto its actor's undo stack (every changing command was undoable).
+    pub undoable: bool,
+}
+
+impl CommitRecord<'_> {
+    /// The owned form (what the journal reads back).
+    #[must_use]
+    pub fn to_owned(&self) -> JournaledCommit {
+        JournaledCommit {
+            rev: self.rev,
+            prev_committed_rev: self.prev_committed_rev,
+            tx_id: self.tx_id,
+            kind: self.kind,
+            actor: self.actor.clone(),
+            label: self.label.map(str::to_owned),
+            at: self.at,
+            steps: self.steps.to_vec(),
+            patch: self.patch.clone(),
+            cause: self.cause,
+            undoable: self.undoable,
+        }
+    }
+}
+
+const fn yes() -> bool {
+    true
+}
+
+/// A [`CommitRecord`] read back from the journal (same JSON form), to rebuild the undo
+/// history after recovery ([`DocConfig::with_recovered_history`], WP-1C.02).
+#[derive(Clone, Debug, PartialEq, Serialize, serde::Deserialize)]
+pub struct JournaledCommit {
+    /// The committed revision it created.
+    pub rev: Rev,
+    /// The committed revision it built on.
+    pub prev_committed_rev: Rev,
+    /// Its transaction.
+    pub tx_id: TxId,
+    /// Its kind (`None`: implicit).
+    pub kind: Option<TxKind>,
+    /// Who committed it.
+    pub actor: Actor,
+    /// Its label.
+    pub label: Option<String>,
+    /// When it committed.
+    pub at: WallTime,
+    /// Its requests.
+    pub steps: Vec<JournalStep>,
+    /// Its net patch.
+    pub patch: Patch,
+    /// Edit, undo, redo or restore.
+    #[serde(default)]
+    pub cause: EntryCause,
+    /// Whether it is undoable.
+    #[serde(default = "yes")]
+    pub undoable: bool,
+}
+
+impl JournaledCommit {
+    fn into_record(self) -> NewRecord {
+        let label = self
+            .label
+            .or_else(|| self.steps.first().map(|s| s.command.clone()))
+            .unwrap_or_else(|| "change".to_owned());
+        NewRecord {
+            tx_id: self.tx_id,
+            actor: self.actor,
+            label,
+            kind: self.kind,
+            cause: self.cause,
+            prev_rev: self.prev_committed_rev,
+            rev: self.rev,
+            at: self.at,
+            patch: Arc::new(self.patch),
+            undoable: self.undoable && self.cause.is_change(),
+        }
+    }
 }
 
 /// One request inside a committed transaction.
@@ -118,6 +209,9 @@ pub struct DocConfig {
     dedup_capacity: usize,
     restored: Vec<DedupRecord>,
     first_tx: u64,
+    history_limits: HistoryLimits,
+    gesture_timeout: Duration,
+    recovered: Vec<JournaledCommit>,
 }
 
 impl fmt::Debug for DocConfig {
@@ -179,6 +273,9 @@ impl DocConfig {
             dedup_capacity: DEDUP_CAPACITY,
             restored: Vec::new(),
             first_tx: 1,
+            history_limits: HistoryLimits::default(),
+            gesture_timeout: GESTURE_IDLE_TIMEOUT,
+            recovered: Vec::new(),
         }
     }
 
@@ -245,6 +342,29 @@ impl DocConfig {
         self.first_tx = first.get().max(1);
         self
     }
+
+    /// The undo history's bounds (default [`HistoryLimits::default`]).
+    #[must_use]
+    pub fn with_history_limits(mut self, limits: HistoryLimits) -> DocConfig {
+        self.history_limits = limits;
+        self
+    }
+
+    /// How long a gesture may stay idle (default [`GESTURE_IDLE_TIMEOUT`]).
+    #[must_use]
+    pub fn with_gesture_timeout(mut self, timeout: Duration) -> DocConfig {
+        self.gesture_timeout = timeout;
+        self
+    }
+
+    /// Rebuilds the undo history from the journal's committed transactions, in commit order
+    /// (WP-1C.02), so `edit.undo` reverts the last recovered transaction. The document must
+    /// already be the result of these commits.
+    #[must_use]
+    pub fn with_recovered_history(mut self, commits: Vec<JournaledCommit>) -> DocConfig {
+        self.recovered = commits;
+        self
+    }
 }
 
 /// What a request changed, for the host to publish.
@@ -285,6 +405,11 @@ struct OpenTx {
     view: Project,
     steps: Vec<JournalStep>,
     conflicted: bool,
+    /// Every command that changed the document in it so far is undoable.
+    undoable: bool,
+    /// Its view was rebased onto commits made since its commands ran: its ops still apply, but
+    /// the result may break an invariant they never saw (two clips appended into one gap).
+    rebased: bool,
 }
 
 impl OpenTx {
@@ -310,6 +435,7 @@ impl OpenTx {
 }
 
 /// A request being processed.
+#[derive(Clone)]
 struct Call {
     ctx: ActorCtx,
     name: String,
@@ -319,6 +445,10 @@ struct Call {
     at: WallTime,
     /// The command has `#[secret]` params: never echo its panic message.
     secret: bool,
+    /// Its changes may be undone (registry metadata).
+    undoable: bool,
+    /// A read-only engine command (`edit.history`): nothing to remember for dedup.
+    read_only: bool,
 }
 
 /// The change of the live document to broadcast.
@@ -340,6 +470,69 @@ struct Rebased {
     losers: Vec<TxId>,
     live: Project,
     live_pending: bool,
+}
+
+/// A commit computed but not applied yet: the new committed document and what follows from
+/// it (open transactions rebased, the live document recomposed, the revisions).
+struct Staged {
+    committed: Project,
+    patch: Patch,
+    views: Vec<(TxId, Project)>,
+    live: Project,
+    delta: LiveDelta,
+    committed_rev: Rev,
+    rev: Rev,
+}
+
+/// What a staged commit does to the history.
+#[derive(Clone, Copy)]
+enum HistoryMove {
+    /// A change by the committing actor.
+    Change,
+    /// Undoes the record with this seq.
+    Undo(u64),
+    /// Redoes the record with this seq.
+    Redo(u64),
+}
+
+/// How to journal and log a staged commit.
+struct CommitMeta<'a> {
+    tx_id: TxId,
+    actor: &'a Actor,
+    /// The history label.
+    label: String,
+    /// A single command: the journal carries no label.
+    implicit: bool,
+    at: WallTime,
+    steps: &'a [JournalStep],
+    cause: PatchCause,
+    entry: EntryCause,
+    undoable: bool,
+    request: Option<RequestId>,
+    history: HistoryMove,
+}
+
+/// Undo or redo.
+#[derive(Clone, Copy, PartialEq, Eq)]
+enum Direction {
+    Undo,
+    Redo,
+}
+
+impl Direction {
+    const fn verb(self) -> &'static str {
+        match self {
+            Direction::Undo => "undo",
+            Direction::Redo => "redo",
+        }
+    }
+
+    const fn title(self) -> &'static str {
+        match self {
+            Direction::Undo => "Undo",
+            Direction::Redo => "Redo",
+        }
+    }
 }
 
 /// An open transaction's contribution when (re)composing the live document.
@@ -448,6 +641,17 @@ pub(crate) fn panic_message(payload: &(dyn Any + Send)) -> String {
 /// the `rev` of the last commit; when a commit leaves other live changes pending, the commit
 /// takes one revision and the live document the next, so `rev == committed_rev` always means
 /// the live document is the committed one.
+///
+/// # History (WP-1B.04)
+///
+/// Every committed transaction is logged; undoable ones go onto their actor's undo stack, and
+/// a batch, gesture or proposal is one entry. [`undo`](Self::undo) / [`redo`](Self::redo)
+/// (`edit.undo` / `edit.redo`) commit the inverse / forward patch as a new transaction after
+/// the per-actor safety checks (module `history`: the entry's paths are unchanged since and
+/// the document's invariants still hold). [`checkpoint`](Self::checkpoint) keeps an O(1)
+/// snapshot of the committed document and [`restore`](Self::restore) brings it back as an
+/// undoable change. Gestures idle for [`GESTURE_IDLE_TIMEOUT`] are cancelled
+/// ([`expire_idle`](Self::expire_idle)).
 pub struct DocState {
     registry: Arc<Registry>,
     ids: Box<dyn IdGen + Send>,
@@ -461,8 +665,14 @@ pub struct DocState {
     open: BTreeMap<TxId, OpenTx>,
     next_tx: u64,
     dedup: DedupTable,
-    /// The caller and request while an engine command runs.
-    current: Option<(ActorCtx, RequestId)>,
+    history: History,
+    checkpoints: Checkpoints,
+    gesture_timeout: Duration,
+    /// The request while an engine command runs.
+    current: Option<Call>,
+    /// What an engine command's commit journaled for the current request, so the dedup table
+    /// remembers exactly what the journal has.
+    claimed: Option<Applied>,
     outbox: Vec<DocEvent>,
     changes: Changes,
 }
@@ -485,6 +695,10 @@ impl DocState {
         for record in config.restored {
             dedup.insert(record);
         }
+        let mut history = History::new(config.history_limits);
+        for commit in config.recovered {
+            history.replay(commit.into_record());
+        }
         DocState {
             registry: config.registry,
             ids: config.ids,
@@ -498,7 +712,11 @@ impl DocState {
             open: BTreeMap::new(),
             next_tx: config.first_tx,
             dedup,
+            history,
+            checkpoints: Checkpoints::default(),
+            gesture_timeout: config.gesture_timeout,
             current: None,
+            claimed: None,
             outbox: Vec::new(),
             changes: Changes::default(),
         }
@@ -566,7 +784,7 @@ impl DocState {
     /// as their context and act for this caller).
     #[must_use]
     pub fn caller(&self) -> Option<&ActorCtx> {
-        self.current.as_ref().map(|(ctx, _)| ctx)
+        self.current.as_ref().map(|call| &call.ctx)
     }
 
     /// The open transactions, oldest first.
@@ -610,6 +828,7 @@ impl DocState {
     /// against this state. Failures change nothing; `Conflict` errors carry the current
     /// revision.
     pub fn submit(&mut self, submit: Submit) -> Result<Applied, CmdError> {
+        self.expire_idle();
         let result = self.submit_inner(submit);
         result.map_err(|e| e.with_rev(self.rev))
     }
@@ -656,6 +875,8 @@ impl DocState {
             fingerprint,
             at,
             secret: !entry.meta.secret_fields.is_empty(),
+            undoable: entry.meta.undoable,
+            read_only: entry.meta.annotations.read_only,
         };
         match (entry.kind(), tx) {
             (EntryKind::Engine, None) => self.run_engine(entry.engine_context(), &call, params),
@@ -808,25 +1029,13 @@ impl DocState {
     }
 
     fn current_request(&self) -> Option<RequestId> {
-        self.current.as_ref().map(|(_, id)| *id)
+        self.current.as_ref().map(|call| call.request_id)
     }
 
-    /// An implicit single-command transaction, run against the committed document.
-    fn run_implicit(&mut self, call: &Call, params: Value) -> Result<Applied, CmdError> {
-        let (done, output) = self.execute(call, params, self.committed.clone())?;
-        let tx_id = self.alloc_tx();
-        if done.is_empty() {
-            let applied = self.applied(call, Some(tx_id), output, Patch::new());
-            self.dedup.insert(Self::record(call, &applied));
-            return Ok(applied);
-        }
-        let Committed {
-            doc: committed,
-            patch,
-            ..
-        } = done;
-
-        // Rebase every open transaction; one whose changes overlap refuses the command.
+    /// Computes the effects of committing `committed` (reached from the committed document by
+    /// `patch`) as an implicit transaction: every open transaction is rebased onto it (one
+    /// whose changes overlap refuses it: the soft lock) and the live document is recomposed.
+    fn stage(&self, committed: Project, patch: Patch) -> Result<Staged, CmdError> {
         let mut views = Vec::with_capacity(self.open.len());
         for t in self.open.values().filter(|t| !t.conflicted) {
             let view = if t.ops.is_empty() {
@@ -858,20 +1067,120 @@ impl DocState {
         } else {
             LiveDelta::Ops(patch.clone())
         };
-
         let committed_rev = self.rev.next();
         let rev = if live_pending {
             committed_rev.next()
         } else {
             committed_rev
         };
+        Ok(Staged {
+            committed,
+            patch,
+            views,
+            live,
+            delta,
+            committed_rev,
+            rev,
+        })
+    }
+
+    /// Journals a staged commit, then applies it (the commit point), broadcasts it and logs it
+    /// in the history. A journal error changes nothing.
+    fn finalize(&mut self, staged: Staged, meta: CommitMeta<'_>) -> Result<(), CmdError> {
+        let Staged {
+            committed,
+            patch,
+            views,
+            live,
+            delta,
+            committed_rev,
+            rev,
+        } = staged;
+        self.journal.commit(&CommitRecord {
+            rev: committed_rev,
+            prev_committed_rev: self.committed_rev,
+            tx_id: meta.tx_id,
+            kind: None,
+            actor: meta.actor,
+            label: (!meta.implicit).then_some(meta.label.as_str()),
+            at: meta.at,
+            steps: meta.steps,
+            patch: &patch,
+            cause: meta.entry,
+            undoable: meta.undoable,
+        })?;
+
+        // Commit point: nothing below fails.
+        for (id, view) in views {
+            if let Some(t) = self.open.get_mut(&id) {
+                t.view = view;
+                t.rebased |= !t.ops.is_empty();
+            }
+        }
+        let prev_rev = self.rev;
+        let prev_committed_rev = self.committed_rev;
+        self.committed = committed;
+        self.committed_rev = committed_rev;
+        self.live = live;
+        self.rev = rev;
+        self.emit(
+            prev_rev,
+            meta.actor.clone(),
+            meta.tx_id,
+            meta.cause,
+            meta.request,
+            delta,
+        );
+        self.changes = Changes::BOTH;
+        let record = NewRecord {
+            tx_id: meta.tx_id,
+            actor: meta.actor.clone(),
+            label: meta.label,
+            kind: None,
+            cause: meta.entry,
+            prev_rev: prev_committed_rev,
+            rev: committed_rev,
+            at: meta.at,
+            patch: Arc::new(patch),
+            undoable: meta.undoable,
+        };
+        self.log_commit(meta.history, record);
+        Ok(())
+    }
+
+    /// Logs a commit in the history and queues the `edit.history_changed` events.
+    fn log_commit(&mut self, history: HistoryMove, record: NewRecord) {
+        let events = match history {
+            HistoryMove::Change => self.history.push_change(record),
+            HistoryMove::Undo(seq) => self.history.push_undo(seq, record),
+            HistoryMove::Redo(seq) => self.history.push_redo(seq, record),
+        };
+        self.outbox
+            .extend(events.into_iter().map(DocEvent::History));
+    }
+
+    /// An implicit single-command transaction, run against the committed document.
+    fn run_implicit(&mut self, call: &Call, params: Value) -> Result<Applied, CmdError> {
+        let (done, output) = self.execute(call, params, self.committed.clone())?;
+        let tx_id = self.alloc_tx();
+        if done.is_empty() {
+            let applied = self.applied(call, Some(tx_id), output, Patch::new());
+            self.dedup.insert(Self::record(call, &applied));
+            return Ok(applied);
+        }
+        let Committed {
+            doc: committed,
+            patch,
+            ..
+        } = done;
+        let staged = self.stage(committed, patch)?;
         let applied = Applied {
             request_id: call.request_id,
-            rev,
-            committed_rev,
+            rev: staged.rev,
+            committed_rev: staged.committed_rev,
             tx_id: Some(tx_id),
             output,
-            ops: patch.clone(),
+            ops: staged.patch.clone(),
             replayed: false,
         };
         let record = Self::record(call, &applied);
@@ -880,48 +1189,37 @@ impl DocState {
             params: call.journal_params.clone(),
             record: record.clone(),
         }];
-        self.journal.commit(&CommitRecord {
-            rev: committed_rev,
-            prev_committed_rev: self.committed_rev,
-            tx_id,
-            kind: None,
-            actor: call.ctx.actor(),
-            label: None,
-            at: call.at,
-            steps: &steps,
-            patch: &patch,
-        })?;
-
-        // Commit point: nothing below fails.
-        for (id, view) in views {
-            if let Some(t) = self.open.get_mut(&id) {
-                t.view = view;
-            }
-        }
-        let prev_rev = self.rev;
-        self.committed = committed;
-        self.committed_rev = committed_rev;
-        self.live = live;
-        self.rev = rev;
+        self.finalize(
+            staged,
+            CommitMeta {
+                tx_id,
+                actor: call.ctx.actor(),
+                label: call.name.clone(),
+                implicit: true,
+                at: call.at,
+                steps: &steps,
+                cause: PatchCause::Command,
+                entry: EntryCause::Edit,
+                undoable: call.undoable,
+                request: Some(call.request_id),
+                history: HistoryMove::Change,
+            },
+        )?;
         self.dedup.insert(record);
-        self.emit(
-            prev_rev,
-            call.ctx.actor().clone(),
-            tx_id,
-            PatchCause::Command,
-            Some(call.request_id),
-            delta,
-        );
-        self.changes = Changes::BOTH;
         Ok(applied)
     }
 
     /// A command inside the caller's open transaction `tx_id`, run against its view.
     fn run_in_tx(&mut self, tx_id: TxId, call: &Call, params: Value) -> Result<Applied, CmdError> {
-        let t = self.open.get(&tx_id).ok_or_else(|| tx_not_found(tx_id))?;
+        let t = self
+            .open
+            .get_mut(&tx_id)
+            .ok_or_else(|| tx_not_found(tx_id))?;
         if t.conn != call.ctx.conn() {
             return Err(not_owner(t));
         }
+        // Any request naming it keeps a gesture alive, even one that fails.
+        t.last_activity = t.last_activity.max(call.at);
         if t.conflicted {
             return Err(conflicted(t));
         }
@@ -1020,8 +1318,9 @@ impl DocState {
             if let Some((step, view)) = change {
                 t.ops.extend(step);
                 t.view = view;
+                t.undoable &= call.undoable;
             }
-            t.last_activity = call.at;
+            t.last_activity = t.last_activity.max(call.at);
             t.steps.push(JournalStep {
                 command: call.name.clone(),
                 params: call.journal_params.clone(),
@@ -1047,27 +1346,72 @@ impl DocState {
         let access = call.ctx.access();
         // Restored afterwards, so an engine command may submit further requests (even engine
         // commands) and still act for its own caller.
-        let outer = self.current.replace((call.ctx.clone(), call.request_id));
+        let outer = self.current.replace(call.clone());
+        let outer_claim = self.claimed.take();
         let start = self.outbox.len();
         let result = panic::catch_unwind(AssertUnwindSafe(|| {
             registry.invoke_engine_json(&call.name, params, &mut *self, access)
         }));
         self.current = outer;
+        let claimed = std::mem::replace(&mut self.claimed, outer_claim);
         let output = match result {
             Ok(result) => result?,
             Err(payload) => return Err(self.panicked(call, payload.as_ref())),
         };
-        let ops: Patch = self
-            .outbox
-            .get(start..)
-            .unwrap_or_default()
-            .iter()
-            .filter_map(DocEvent::as_patched)
-            .flat_map(|p| p.ops.iter().cloned())
-            .collect();
-        let applied = self.applied(call, None, output, ops);
-        self.dedup.insert(Self::record(call, &applied));
+        let applied = if let Some(applied) = claimed {
+            // The command committed (undo, redo, restore) and journaled this result.
+            debug_assert_eq!(applied.output, output, "journaled output differs");
+            applied
+        } else {
+            let ops: Patch = self
+                .outbox
+                .get(start..)
+                .unwrap_or_default()
+                .iter()
+                .filter_map(DocEvent::as_patched)
+                .flat_map(|p| p.ops.iter().cloned())
+                .collect();
+            self.applied(call, None, output, ops)
+        };
+        if !call.read_only {
+            self.dedup.insert(Self::record(call, &applied));
+        }
         Ok(applied)
+    }
+
+    /// The journal step and result of the current request for an engine command whose commit
+    /// produces `output` (none when called directly, not through [`submit`](Self::submit)).
+    fn engine_step<T: Serialize>(
+        &self,
+        output: &T,
+        tx_id: TxId,
+        staged: &Staged,
+    ) -> Result<(Vec<JournalStep>, Option<Applied>), CmdError> {
+        let Some(call) = &self.current else {
+            return Ok((Vec::new(), None));
+        };
+        let applied = Applied {
+            request_id: call.request_id,
+            rev: staged.rev,
+            committed_rev: staged.committed_rev,
+            tx_id: Some(tx_id),
+            output: encode_output(output)?,
+            ops: staged.patch.clone(),
+            replayed: false,
+        };
+        let step = JournalStep {
+            command: call.name.clone(),
+            params: call.journal_params.clone(),
+            record: Self::record(call, &applied),
+        };
+        Ok((vec![step], Some(applied)))
+    }
+
+    /// When the current request was made (now, for a direct call).
+    fn request_time(&self) -> WallTime {
+        self.current
+            .as_ref()
+            .map_or_else(|| self.clock.now(), |call| call.at)
     }
 
     // ----- open transactions (the seam for WP-1B.04 / WP-1B.09) -----------------------------
@@ -1080,6 +1424,7 @@ impl DocState {
         kind: TxKind,
         label: impl Into<String>,
     ) -> Result<TxInfo, CmdError> {
+        self.expire_idle();
         if let Some(t) = self.open.values().find(|t| t.conn == ctx.conn()) {
             return Err(CmdError::invalid(
                 "",
@@ -1104,6 +1449,8 @@ impl DocState {
             view: self.committed.clone(),
             steps: Vec::new(),
             conflicted: false,
+            undoable: true,
+            rebased: false,
         };
         let info = t.info();
         self.open.insert(id, t);
@@ -1123,10 +1470,14 @@ impl DocState {
     /// (journaled first). Another open transaction whose changes no longer apply on top
     /// becomes conflicted (first committer wins).
     pub fn commit_tx(&mut self, ctx: &ActorCtx, id: TxId) -> Result<TxClosed, CmdError> {
+        self.expire_idle();
         let result = self.commit_inner(ctx, id);
         result.map_err(|e| e.with_rev(self.rev))
     }
 
+    // One commit sequence (checks, journal, commit point, events, history); splitting it would
+    // scatter the commit point.
+    #[allow(clippy::too_many_lines)]
     fn commit_inner(&mut self, ctx: &ActorCtx, id: TxId) -> Result<TxClosed, CmdError> {
         self.owned(ctx, id)?;
         // A field borrow (not `owned`), so the journal can be borrowed mutably below.
@@ -1153,6 +1504,9 @@ impl DocState {
                 committed_rev: self.committed_rev,
                 patch: Patch::new(),
             });
+        }
+        if t.rebased {
+            self.check_rebased(t)?;
         }
         let now = self.clock.now();
         let committed = t.view.clone();
@@ -1192,6 +1546,8 @@ impl DocState {
             at: now,
             steps: &t.steps,
             patch: &net,
+            cause: EntryCause::Edit,
+            undoable: t.undoable,
         })?;
 
         // Commit point: nothing below fails.
@@ -1201,10 +1557,12 @@ impl DocState {
         for (vid, view) in views {
             if let Some(o) = self.open.get_mut(&vid) {
                 o.view = view;
+                o.rebased |= !o.ops.is_empty();
             }
         }
         self.mark_conflicted(&losers);
         let prev_rev = self.rev;
+        let prev_committed_rev = self.committed_rev;
         self.committed = committed;
         self.committed_rev = committed_rev;
         self.live = live;
@@ -1213,8 +1571,29 @@ impl DocState {
             self.dedup.insert(step.record);
         }
         let request = self.current_request();
-        self.emit(prev_rev, t.actor, id, PatchCause::Commit, request, delta);
+        self.emit(
+            prev_rev,
+            t.actor.clone(),
+            id,
+            PatchCause::Commit,
+            request,
+            delta,
+        );
         self.changes = Changes::BOTH;
+        // However many commands it ran: one history entry.
+        let record = NewRecord {
+            tx_id: id,
+            actor: t.actor,
+            label: t.label,
+            kind: Some(t.kind),
+            cause: EntryCause::Edit,
+            prev_rev: prev_committed_rev,
+            rev: committed_rev,
+            at: now,
+            patch: Arc::new(net.clone()),
+            undoable: t.undoable,
+        };
+        self.log_commit(HistoryMove::Change, record);
         Ok(TxClosed {
             tx_id: id,
             kind: t.kind,
@@ -1223,6 +1602,27 @@ impl DocState {
             committed_rev,
             patch: net,
         })
+    }
+
+    /// `Conflict{stale_rev}` if committing `t`, whose view was rebased onto later commits,
+    /// would break a document invariant the committed document keeps. Nothing changes: its
+    /// owner can still adjust it or cancel it.
+    fn check_rebased(&self, t: &OpenTx) -> Result<(), CmdError> {
+        let found = t.view.violations();
+        if found.is_empty() {
+            return Ok(());
+        }
+        let before = self.committed.violations();
+        match found.iter().find(|v| !before.contains(v)) {
+            None => Ok(()),
+            Some(broken) => Err(CmdError::conflict(
+                ConflictReason::StaleRev,
+                format!(
+                    "transaction {} cannot commit: with the changes committed since it began,                      the document would become invalid ({broken}); change it or cancel it",
+                    t.id
+                ),
+            )),
+        }
     }
 
     /// Rebases the open transactions other than `id` onto `committed` (`id` is committing).
@@ -1297,6 +1697,7 @@ impl DocState {
 
     /// Cancels `ctx`'s open transaction `id`, rolling back its live changes.
     pub fn cancel_tx(&mut self, ctx: &ActorCtx, id: TxId) -> Result<TxClosed, CmdError> {
+        self.expire_idle();
         self.owned(ctx, id).map_err(|e| e.with_rev(self.rev))?;
         self.close(id, TxOutcome::Cancelled)
             .ok_or_else(|| tx_not_found(id))
@@ -1359,6 +1760,409 @@ impl DocState {
         })
     }
 
+    // ----- gesture idle timeout --------------------------------------------------------------
+
+    /// Cancels every gesture no request has named for [`GESTURE_IDLE_TIMEOUT`] (by this
+    /// state's [`Clock`]), rolling back its live changes (`doc.patched` with
+    /// `cause: rollback`). Runs before every request; the actor also runs it on a timer.
+    pub fn expire_idle(&mut self) -> Vec<TxClosed> {
+        let now = self.clock.now();
+        let timeout = self.gesture_timeout;
+        let idle: Vec<TxId> = self
+            .open
+            .values()
+            .filter(|t| {
+                t.kind == TxKind::Gesture && now.saturating_since(t.last_activity) >= timeout
+            })
+            .map(|t| t.id)
+            .collect();
+        idle.into_iter()
+            .filter_map(|id| {
+                tracing::info!(tx = %id, "gesture idle for {timeout:?}; cancelled");
+                self.close(id, TxOutcome::Expired)
+            })
+            .collect()
+    }
+
+    /// When the next open gesture expires, if any.
+    #[must_use]
+    pub fn next_expiry(&self) -> Option<WallTime> {
+        self.open
+            .values()
+            .filter(|t| t.kind == TxKind::Gesture)
+            .map(|t| t.last_activity.saturating_add(self.gesture_timeout))
+            .min()
+    }
+
+    // ----- history (WP-1B.04) ----------------------------------------------------------------
+
+    /// Undoes the newest undoable entry of `scope` (an actor's, or anyone's), for `ctx`: a new
+    /// transaction tagged with `ctx`'s actor that applies the entry's inverse patch, if the
+    /// per-actor safety rule allows it (module `history`). `Conflict{history_target_modified}`
+    /// names the later changes in the way; `Invalid` means there is nothing to undo.
+    pub fn undo(&mut self, ctx: &ActorCtx, scope: &HistoryScope) -> Result<HistoryMoved, CmdError> {
+        self.expire_idle();
+        let result = self.move_history(ctx, scope, Direction::Undo);
+        result.map_err(|e| e.with_rev(self.rev))
+    }
+
+    /// Redoes the most recently undone entry of `scope` (see [`undo`](Self::undo)).
+    pub fn redo(&mut self, ctx: &ActorCtx, scope: &HistoryScope) -> Result<HistoryMoved, CmdError> {
+        self.expire_idle();
+        let result = self.move_history(ctx, scope, Direction::Redo);
+        result.map_err(|e| e.with_rev(self.rev))
+    }
+
+    fn move_history(
+        &mut self,
+        ctx: &ActorCtx,
+        scope: &HistoryScope,
+        dir: Direction,
+    ) -> Result<HistoryMoved, CmdError> {
+        let seq = match dir {
+            Direction::Undo => self.history.next_undo(scope),
+            Direction::Redo => self.history.next_redo(scope),
+        }
+        .ok_or_else(|| {
+            CmdError::invalid(
+                "",
+                format!(
+                    "nothing to {} for {scope}: no change of theirs is on the {} stack",
+                    dir.verb(),
+                    dir.verb()
+                ),
+            )
+        })?;
+        let target = self
+            .history
+            .get(seq)
+            .cloned()
+            .ok_or_else(|| CmdError::internal("lost a history entry"))?;
+        let patch = match dir {
+            Direction::Undo => target.patch.invert(),
+            Direction::Redo => (*target.patch).clone(),
+        };
+        let committed = patch
+            .apply(&self.committed)
+            .map_err(|e| self.history_conflict(dir, &target, &e))?;
+        // Nothing committed since: the result is exactly a document we had (known valid).
+        let exact = match dir {
+            Direction::Undo => target.applied_rev == self.committed_rev,
+            Direction::Redo => target
+                .undone
+                .is_some_and(|(rev, _)| rev == self.committed_rev),
+        };
+        if !exact {
+            self.check_still_valid(&committed, dir, &target)?;
+        }
+        let staged = self.stage(committed, patch)?;
+        let tx_id = self.alloc_tx();
+        let out = HistoryMoved {
+            tx: tx_id,
+            entry: target.tx_id,
+            actor: target.actor.clone(),
+            label: target.label.clone(),
+            rev: staged.rev,
+            committed_rev: staged.committed_rev,
+        };
+        let (steps, claim) = self.engine_step(&out, tx_id, &staged)?;
+        let (cause, entry, history) = match dir {
+            Direction::Undo => (
+                PatchCause::Undo,
+                EntryCause::Undo { of: target.tx_id },
+                HistoryMove::Undo(seq),
+            ),
+            Direction::Redo => (
+                PatchCause::Redo,
+                EntryCause::Redo { of: target.tx_id },
+                HistoryMove::Redo(seq),
+            ),
+        };
+        let at = self.request_time();
+        let request = self.current_request();
+        self.finalize(
+            staged,
+            CommitMeta {
+                tx_id,
+                actor: ctx.actor(),
+                label: format!("{} {}", dir.title(), target.label),
+                implicit: false,
+                at,
+                steps: &steps,
+                cause,
+                entry,
+                undoable: false,
+                request,
+                history,
+            },
+        )?;
+        self.claimed = claim;
+        Ok(out)
+    }
+
+    /// `Conflict{history_target_modified}` for an undo or redo of `target` whose patch failed
+    /// at `e.path()`, naming the later transactions that touched that path.
+    fn history_conflict(&self, dir: Direction, target: &Record, e: &PatchError) -> CmdError {
+        let after = match dir {
+            Direction::Undo => target.applied_seq,
+            Direction::Redo => target.undone.map_or(target.seq, |(_, seq)| seq),
+        };
+        let culprits = self.history.touching(after, e.path(), 3);
+        let who = if culprits.is_empty() {
+            "a change that is no longer in the history".to_owned()
+        } else {
+            culprits
+                .iter()
+                .map(|r| {
+                    format!(
+                        "{} in {} (\"{}\", rev {})",
+                        r.actor, r.tx_id, r.label, r.rev
+                    )
+                })
+                .collect::<Vec<_>>()
+                .join(", ")
+        };
+        let hint = match dir {
+            Direction::Undo => "undo those changes first, or edit it by hand",
+            Direction::Redo => "make the change again instead",
+        };
+        CmdError::conflict(
+            ConflictReason::HistoryTargetModified,
+            format!(
+                "cannot {} \"{}\" ({} by {}): `{}` was changed afterwards by {who}; {hint}",
+                dir.verb(),
+                target.label,
+                target.tx_id,
+                target.actor,
+                e.path().as_str()
+            ),
+        )
+    }
+
+    /// `Conflict{history_target_modified}` if `after` breaks a document invariant the
+    /// committed document keeps (a later change depends on what the undo or redo reverts).
+    fn check_still_valid(
+        &self,
+        after: &Project,
+        dir: Direction,
+        target: &Record,
+    ) -> Result<(), CmdError> {
+        let found = after.violations();
+        if found.is_empty() {
+            return Ok(());
+        }
+        let before = self.committed.violations();
+        match found.iter().find(|v| !before.contains(v)) {
+            None => Ok(()),
+            Some(broken) => Err(CmdError::conflict(
+                ConflictReason::HistoryTargetModified,
+                format!(
+                    "cannot {} \"{}\" ({} by {}): with the changes made since, the document \
+                     would become invalid ({broken}); undo those changes first, or edit it by hand",
+                    dir.verb(),
+                    target.label,
+                    target.tx_id,
+                    target.actor
+                ),
+            )),
+        }
+    }
+
+    /// A page of the history, newest first: at most `limit` entries (capped at
+    /// [`MAX_HISTORY_PAGE`]) before `cursor` (a previous page's `next_cursor`), optionally only
+    /// `actor`'s, plus every actor's stacks.
+    pub fn history_page(
+        &self,
+        limit: usize,
+        cursor: Option<&str>,
+        actor: Option<&Actor>,
+    ) -> Result<HistoryPage, CmdError> {
+        let before = match cursor {
+            None => None,
+            Some(c) => Some(
+                c.strip_prefix("h_")
+                    .and_then(|n| n.parse::<u64>().ok())
+                    .ok_or_else(|| {
+                        CmdError::invalid("/cursor", "not a cursor from a previous page")
+                    })?,
+            ),
+        };
+        let (entries, next) = self
+            .history
+            .page(limit.min(MAX_HISTORY_PAGE), before, actor);
+        Ok(HistoryPage {
+            entries,
+            next_cursor: next.map(|seq| format!("h_{seq}")),
+            stacks: self.history.all_stacks(),
+            rev: self.rev,
+            committed_rev: self.committed_rev,
+            usage: self.history.usage(),
+        })
+    }
+
+    /// Captures the committed document (O(1): persistent collections) under an optional
+    /// `name` (a name moves from an older checkpoint). In memory only; at most
+    /// [`MAX_CHECKPOINTS`](crate::MAX_CHECKPOINTS), least recently used first out.
+    pub fn checkpoint(
+        &mut self,
+        ctx: &ActorCtx,
+        name: Option<String>,
+        note: Option<String>,
+    ) -> Result<CheckpointInfo, CmdError> {
+        if let Some(name) = &name {
+            let chars = name.chars().count();
+            if chars == 0 || chars > MAX_CHECKPOINT_NAME_CHARS {
+                return Err(CmdError::invalid(
+                    "/name",
+                    format!("must be 1..={MAX_CHECKPOINT_NAME_CHARS} characters"),
+                ));
+            }
+            if name.chars().any(char::is_control) || name.trim() != name {
+                return Err(CmdError::invalid(
+                    "/name",
+                    "cannot contain control characters or start or end with whitespace",
+                ));
+            }
+            if super::history::CheckpointId::parse(name).is_some() {
+                return Err(CmdError::invalid(
+                    "/name",
+                    "`cp_<n>` is reserved for checkpoint ids",
+                ));
+            }
+        }
+        if note
+            .as_ref()
+            .is_some_and(|n| n.chars().count() > MAX_CHECKPOINT_NOTE_CHARS)
+        {
+            return Err(CmdError::invalid(
+                "/note",
+                format!("must be at most {MAX_CHECKPOINT_NOTE_CHARS} characters"),
+            ));
+        }
+        Ok(self.checkpoints.create(
+            name,
+            note,
+            self.committed_rev,
+            ctx.actor().clone(),
+            self.clock.now(),
+            self.committed.clone(),
+            self.history.next_seq(),
+        ))
+    }
+
+    /// Every checkpoint, oldest first.
+    #[must_use]
+    pub fn checkpoints(&self) -> Vec<CheckpointInfo> {
+        self.checkpoints.list()
+    }
+
+    /// Brings the committed document back to `checkpoint` (an id `cp_<n>` or a name) as a new,
+    /// undoable transaction by `ctx`'s actor; history stays linear (nothing is truncated).
+    /// Without `force`, it refuses (`Conflict{history_target_modified}`) when that would also
+    /// revert changes other actors made since the checkpoint (or changes no longer in the
+    /// history). A document already equal to the checkpoint is left alone (`tx: None`).
+    pub fn restore(
+        &mut self,
+        ctx: &ActorCtx,
+        checkpoint: &str,
+        force: bool,
+    ) -> Result<Restored, CmdError> {
+        self.expire_idle();
+        let result = self.restore_inner(ctx, checkpoint, force);
+        result.map_err(|e| e.with_rev(self.rev))
+    }
+
+    fn restore_inner(
+        &mut self,
+        ctx: &ActorCtx,
+        checkpoint: &str,
+        force: bool,
+    ) -> Result<Restored, CmdError> {
+        let cp = self
+            .checkpoints
+            .find(checkpoint)
+            .ok_or_else(|| CmdError::not_found(ResourceKind::Checkpoint, checkpoint))?;
+        let (id, name, target, first_seq) = (cp.id, cp.name.clone(), cp.doc.clone(), cp.first_seq);
+        let patch = diff(&self.committed, &target).map_err(|e| {
+            CmdError::unsupported(format!(
+                "checkpoint {id} cannot be restored as a field-level change: {e}"
+            ))
+        })?;
+        if patch.is_empty() {
+            return Ok(Restored {
+                checkpoint: id,
+                tx: None,
+                rev: self.rev,
+                committed_rev: self.committed_rev,
+                reverted: Vec::new(),
+                reverted_unknown: false,
+            });
+        }
+        let (authors, unknown) = self.history.authors_since(first_seq, &patch);
+        let others: Vec<String> = authors
+            .iter()
+            .filter(|(actor, _)| *actor != ctx.actor())
+            .map(|(actor, txs)| {
+                let txs: Vec<String> = txs.iter().map(ToString::to_string).collect();
+                format!("{actor} ({})", txs.join(", "))
+            })
+            .collect();
+        if !force && (!others.is_empty() || unknown) {
+            let mut whose = others.join(", ");
+            if unknown {
+                if !whose.is_empty() {
+                    whose.push_str(" and ");
+                }
+                whose.push_str("changes no longer in the history");
+            }
+            return Err(CmdError::conflict(
+                ConflictReason::HistoryTargetModified,
+                format!(
+                    "restoring checkpoint {id} would also revert changes by {whose}; pass \
+                     `force: true` to restore anyway, or undo your own changes instead"
+                ),
+            ));
+        }
+        let staged = self.stage(target, patch)?;
+        let tx_id = self.alloc_tx();
+        let out = Restored {
+            checkpoint: id,
+            tx: Some(tx_id),
+            rev: staged.rev,
+            committed_rev: staged.committed_rev,
+            reverted: authors
+                .into_iter()
+                .map(|(actor, txs)| RevertedChanges { actor, txs })
+                .collect(),
+            reverted_unknown: unknown,
+        };
+        let (steps, claim) = self.engine_step(&out, tx_id, &staged)?;
+        let label = match &name {
+            Some(name) => format!("Restore checkpoint \"{name}\""),
+            None => format!("Restore checkpoint {id}"),
+        };
+        let at = self.request_time();
+        let request = self.current_request();
+        self.finalize(
+            staged,
+            CommitMeta {
+                tx_id,
+                actor: ctx.actor(),
+                label,
+                implicit: false,
+                at,
+                steps: &steps,
+                cause: PatchCause::Restore,
+                entry: EntryCause::Restore { checkpoint: id },
+                undoable: true,
+                request,
+                history: HistoryMove::Change,
+            },
+        )?;
+        self.claimed = claim;
+        Ok(out)
+    }
+
     // ----- diagnostics -----------------------------------------------------------------------
 
     /// Checks the model's invariants; expensive, for tests and diagnostics:
@@ -1400,6 +2204,6 @@ impl DocState {
                 self.rev
             ));
         }
-        Ok(())
+        self.history.verify().map_err(|e| format!("history: {e}"))
     }
 }

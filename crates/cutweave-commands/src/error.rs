@@ -80,6 +80,8 @@ pub enum ResourceKind {
     Command,
     /// An open transaction (WP-1B.04).
     Transaction,
+    /// A checkpoint (`cp_…` or its name, `edit.checkpoint`, WP-1B.04).
+    Checkpoint,
 }
 
 impl ResourceKind {
@@ -94,6 +96,7 @@ impl ResourceKind {
             ResourceKind::Group => "group",
             ResourceKind::Command => "command",
             ResourceKind::Transaction => "transaction",
+            ResourceKind::Checkpoint => "checkpoint",
         }
     }
 }
@@ -128,7 +131,9 @@ pub enum ConflictReason {
     /// A `request_id` was reused with a different payload (WP-1B.03).
     RequestIdReused,
     /// An undo or redo target was changed by a later transaction, so its recorded patch no
-    /// longer applies (per-actor undo, WP-1B.04).
+    /// longer applies or would leave the document invalid; or a checkpoint restore would revert
+    /// other actors' changes without `force` (per-actor undo, WP-1B.04). The detail names the
+    /// paths and the transactions and actors that changed them.
     HistoryTargetModified,
     /// The item is soft-locked by another actor's open gesture or proposal transaction
     /// (arch §5.2, ADR-0017); retry after `retry_after_ms`.
