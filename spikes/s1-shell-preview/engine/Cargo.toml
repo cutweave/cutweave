@@ -1,0 +1,25 @@
+[package]
+name = "s1-engine"
+description = "Spike S1: synthetic 1080p60 wgpu frame producer writing into the SHM ring"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+rust-version.workspace = true
+publish.workspace = true
+
+[dependencies]
+s1-ring.workspace = true
+thiserror.workspace = true
+tracing.workspace = true
+anyhow = "1.0.104"
+bytemuck = { version = "1.25.2", features = ["derive"] }
+getrandom = "0.4.3"
+pollster = "1.0.3"
+serde = { version = "1.0.229", features = ["derive"] }
+serde_json = "1.0.154"
+tracing-subscriber = { version = "0.3.23", features = ["env-filter"] }
+tungstenite = { version = "0.30.0", default-features = false, features = ["handshake"] }
+wgpu = "30.0.2"
+
+[lints]
+workspace = true

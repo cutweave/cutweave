@@ -1,0 +1,6 @@
+# Build outputs (target/, node_modules/ and dist/ are already ignored repo-wide)
+bridge/*.node
+desktop/dist/
+# Self-test screenshots and scratch runs; curated JSON results are committed
+results/*.png
+results/exploratory/

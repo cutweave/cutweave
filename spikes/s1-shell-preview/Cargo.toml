@@ -1,0 +1,27 @@
+# Spike S1 (WP-0C.01). Standalone Cargo workspace: deliberately NOT a member of the root
+# workspace (the root excludes `spikes/`). Throwaway code; never depended on by product crates.
+[workspace]
+resolver = "3"
+members = ["ring", "engine", "bridge"]
+
+[workspace.package]
+version = "0.0.0"
+edition = "2024"
+license = "GPL-3.0-or-later"
+rust-version = "1.100"
+publish = false
+
+[workspace.dependencies]
+s1-ring = { path = "ring" }
+thiserror = "2.0.21"
+tracing = "0.1.44"
+
+[workspace.lints.rust]
+unsafe_op_in_unsafe_fn = "deny"
+
+[workspace.lints.clippy]
+unwrap_used = "warn"
+dbg_macro = "warn"
+
+[profile.release]
+debug = "line-tables-only"

@@ -1,0 +1,8 @@
+# Standalone pnpm root for the S1 spike: NOT a member of the repo-root workspace.
+# Its own lockfile lives next to this file.
+packages: []
+
+# esbuild verifies its platform binary in postinstall. Electron 45 has no install script any
+# more: it downloads its binary lazily on first launch (or `node node_modules/electron/install.js`).
+allowBuilds:
+  esbuild: true

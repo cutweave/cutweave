@@ -1,0 +1,21 @@
+[package]
+name = "s1-ring"
+description = "Spike S1: named shared-memory preview frame ring (layout in ../RING.md)"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+rust-version.workspace = true
+publish.workspace = true
+
+[dependencies]
+thiserror.workspace = true
+
+[target.'cfg(windows)'.dependencies]
+windows-sys = { version = "0.61.2", features = [
+  "Win32_Foundation",
+  "Win32_Security",
+  "Win32_System_Memory",
+] }
+
+[lints]
+workspace = true
