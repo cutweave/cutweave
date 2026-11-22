@@ -1,6 +1,8 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
-//! `cargo xtask <ci|check-wasm|check-deps|license-headers|tokens|fetch-corpus|gen>`: developer automation (WP-0A.01).
+//! `cargo xtask <ci|check-wasm|check-deps|license-headers|tokens|fetch-corpus|corpus-verify|bench|bench-check|gen>`: developer automation (WP-0A.01).
 
+mod bench;
+mod corpus;
 mod deps;
 mod headers;
 mod tokens;
@@ -35,7 +37,10 @@ COMMANDS:
     check-deps    verify the crate dependency rule (architecture §3)
     license-headers [--check|--fix]
                   verify (default) or add SPDX headers; alias: check-headers
-    fetch-corpus  fetch the test-media corpus (arrives in a later work package)
+    fetch-corpus  [--tier small|full] [--pin]: fetch/generate the test-media corpus into testdata/corpus/
+    corpus-verify [--tier small|full] [--allow-unpinned]: check cached corpus files against the manifest
+    bench         --suite <name> --out <file>: run a benchmark suite (smoke) and write result JSON
+    bench-check   <results.json> [--baseline <results.json>]: compare against bench/budgets.toml
     tokens        generate design tokens (CSS, Tailwind, TS, Rust); `tokens --check` verifies
     gen           generate schemas and TS types (arrives in WP-1N)
     help          print this message";
@@ -138,10 +143,10 @@ fn main() -> ExitCode {
                 false
             }
         },
-        Some("fetch-corpus") => {
-            println!("fetch-corpus: not implemented yet (arrives in a later work package)");
-            true
-        }
+        Some("fetch-corpus") => corpus::fetch(&workspace_root(), &args[1..]),
+        Some("corpus-verify") => corpus::verify(&workspace_root(), &args[1..]),
+        Some("bench") => bench::bench(&workspace_root(), &args[1..]),
+        Some("bench-check") => bench::bench_check(&workspace_root(), &args[1..]),
         Some("tokens") => tokens::run(&workspace_root(), &args[1..]),
         Some("gen") => {
             println!("gen: not implemented yet (arrives in WP-1N)");

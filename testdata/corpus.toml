@@ -1,0 +1,368 @@
+# Cutweave test-media corpus manifest (WP-0I.01; docs/01-architecture.md §7, §20, §21).
+#
+# Media is never committed: `cargo xtask fetch-corpus [--tier small|full]` (or `just corpus`) downloads
+# or generates every item into the git-ignored `testdata/corpus/`, verifying sha256. Tests locate files
+# by id. `cargo xtask corpus-verify` re-checks the cache.
+#
+# Fields per [[item]]
+#   id, category, description, purpose, codec, container, tags
+#   file            file name inside testdata/corpus/
+#   tier            "small" (< 50 MB total, fetched on PR CI) or "full" (nightly)
+#   license         CC0-1.0 | CC-BY-3.0 | CC-BY-4.0 | public-domain | self-generated   (required)
+#   attribution     required for CC-BY; credit line reproduced in testdata/README.md
+#   license_review  true = claimed license must be audited at file level before the item is relied on
+#   source_url      download URL (http(s):// or file://)          } exactly one of
+#   generate        recipe, run as `bash <recipe> <output-file>`   } these two
+#   sha256, size    "PENDING" / 0 until the first fetch; `cargo xtask fetch-corpus --pin` writes them.
+#                   Generated items are byte-pinned only for the ffmpeg version in [meta]; if a later
+#                   build differs, compare stream properties (probe_hash) instead and re-pin.
+#   url_verified    false = URL written from the upstream project's documented layout, not yet fetched
+
+[meta]
+schema = 1
+# Version used to pin generated-item hashes; set on first generation (FFmpeg is not provisioned yet).
+ffmpeg_version = "PENDING"
+
+
+[[item]]
+id = "h264_4k30_longgop"
+category = "video-h264"
+description = "H.264 High 3840x2160 30 fps, 250-frame GOP with B-frames, 8 s, AAC audio"
+purpose = "Long-GOP seek/scrub budget (arch §19), keyframe index, proxy policy"
+codec = "h264"
+container = "mp4"
+tags = ["4k", "long-gop"]
+file = "h264_4k30_longgop.mp4"
+tier = "small"
+license = "self-generated"
+generate = "testdata/generate/h264_4k30_longgop.sh"
+sha256 = "PENDING"
+size = 0
+
+[[item]]
+id = "h264_1080p60"
+category = "video-h264"
+description = "H.264 1920x1080 60 fps, 8 s, AAC audio"
+purpose = "1080p60 playback budget, frame-exact seek"
+codec = "h264"
+container = "mp4"
+tags = ["1080p", "60fps"]
+file = "h264_1080p60.mp4"
+tier = "small"
+license = "self-generated"
+generate = "testdata/generate/h264_1080p60.sh"
+sha256 = "PENDING"
+size = 0
+
+[[item]]
+id = "hevc_10bit_sdr"
+category = "video-hevc"
+description = "HEVC Main10 1920x1080 30 fps, BT.709 tags, 5 s, no audio"
+purpose = "10-bit decode (P010 upload path), colour tags"
+codec = "hevc"
+container = "mp4"
+tags = ["10bit", "sdr"]
+file = "hevc_10bit_sdr.mp4"
+tier = "small"
+license = "self-generated"
+generate = "testdata/generate/hevc_10bit_sdr.sh"
+sha256 = "PENDING"
+size = 0
+
+[[item]]
+id = "hevc_10bit_hdr10_pq"
+category = "video-hevc"
+description = "HEVC Main10 BT.2020 PQ (SMPTE 2084) with mastering-display and MaxCLL metadata, 5 s"
+purpose = "HDR10 detection and tone-mapping, colour tags"
+codec = "hevc"
+container = "mp4"
+tags = ["10bit", "hdr10", "pq"]
+file = "hevc_10bit_hdr10_pq.mp4"
+tier = "small"
+license = "self-generated"
+generate = "testdata/generate/hevc_10bit_hdr10_pq.sh"
+sha256 = "PENDING"
+size = 0
+
+[[item]]
+id = "prores_422hq_1080p"
+category = "video-prores"
+description = "ProRes 422 HQ 1920x1080 24 fps, PCM audio, 3 s"
+purpose = "Intra-frame decode, MOV container, no-proxy scrub budget"
+codec = "prores"
+container = "mov"
+tags = ["prores", "intra"]
+file = "prores_422hq_1080p.mov"
+tier = "small"
+license = "self-generated"
+generate = "testdata/generate/prores_422hq_1080p.sh"
+sha256 = "PENDING"
+size = 0
+
+[[item]]
+id = "vfr_phone_rotated90"
+category = "video-vfr"
+description = "Variable-frame-rate portrait H.264 with a 90 degree rotation display matrix, AAC audio, 10 s"
+purpose = "VFR pts-to-frame mapping, rotation metadata (phone footage)"
+codec = "h264"
+container = "mp4"
+tags = ["vfr", "rotated", "portrait"]
+file = "vfr_phone_rotated90.mp4"
+tier = "small"
+license = "self-generated"
+generate = "testdata/generate/vfr_phone_rotated90.sh"
+sha256 = "PENDING"
+size = 0
+
+[[item]]
+id = "audio_22050"
+category = "audio"
+description = "Mono 1 kHz sine, 22050 Hz, 16-bit PCM WAV, 5 s"
+purpose = "Odd sample-rate resampling to the 48 kHz engine rate"
+codec = "pcm_s16le"
+container = "wav"
+tags = ["sample-rate", "22.05k"]
+file = "audio_22050.wav"
+tier = "small"
+license = "self-generated"
+generate = "testdata/generate/audio_22050.sh"
+sha256 = "PENDING"
+size = 0
+
+[[item]]
+id = "audio_44100"
+category = "audio"
+description = "Mono 1 kHz sine, 44100 Hz, 16-bit PCM WAV, 5 s"
+purpose = "Odd sample-rate resampling to the 48 kHz engine rate"
+codec = "pcm_s16le"
+container = "wav"
+tags = ["sample-rate", "44.1k"]
+file = "audio_44100.wav"
+tier = "small"
+license = "self-generated"
+generate = "testdata/generate/audio_44100.sh"
+sha256 = "PENDING"
+size = 0
+
+[[item]]
+id = "audio_48000"
+category = "audio"
+description = "Mono 1 kHz sine, 48000 Hz, 16-bit PCM WAV, 5 s"
+purpose = "Odd sample-rate resampling to the 48 kHz engine rate"
+codec = "pcm_s16le"
+container = "wav"
+tags = ["sample-rate", "48k"]
+file = "audio_48000.wav"
+tier = "small"
+license = "self-generated"
+generate = "testdata/generate/audio_48000.sh"
+sha256 = "PENDING"
+size = 0
+
+[[item]]
+id = "audio_96000"
+category = "audio"
+description = "Mono 1 kHz sine, 96000 Hz, 16-bit PCM WAV, 5 s"
+purpose = "Odd sample-rate resampling to the 48 kHz engine rate"
+codec = "pcm_s16le"
+container = "wav"
+tags = ["sample-rate", "96k"]
+file = "audio_96000.wav"
+tier = "small"
+license = "self-generated"
+generate = "testdata/generate/audio_96000.sh"
+sha256 = "PENDING"
+size = 0
+
+[[item]]
+id = "audio_5_1"
+category = "audio"
+description = "5.1 surround AC-3, 48 kHz, 5 s"
+purpose = "Multichannel layout handling and downmix"
+codec = "ac3"
+container = "ac3"
+tags = ["5.1", "surround"]
+file = "audio_5_1.ac3"
+tier = "small"
+license = "self-generated"
+generate = "testdata/generate/audio_5_1.sh"
+sha256 = "PENDING"
+size = 0
+
+[[item]]
+id = "image_png"
+category = "image"
+description = "1920x1080 test pattern PNG"
+purpose = "Still-image import (lossless)"
+codec = "png"
+container = "png"
+tags = ["still"]
+file = "image_png.png"
+tier = "small"
+license = "self-generated"
+generate = "testdata/generate/image_png.sh"
+sha256 = "PENDING"
+size = 0
+
+[[item]]
+id = "image_jpeg"
+category = "image"
+description = "1920x1080 SMPTE bars JPEG"
+purpose = "Still-image import (lossy)"
+codec = "mjpeg"
+container = "jpeg"
+tags = ["still"]
+file = "image_jpeg.jpg"
+tier = "small"
+license = "self-generated"
+generate = "testdata/generate/image_jpeg.sh"
+sha256 = "PENDING"
+size = 0
+
+[[item]]
+id = "no_audio_stream"
+category = "edge-case"
+description = "H.264 720p30 with no audio stream"
+purpose = "Zero-audio-stream video: no waveform, silent clip handling"
+codec = "h264"
+container = "mp4"
+tags = ["no-audio"]
+file = "no_audio_stream.mp4"
+tier = "small"
+license = "self-generated"
+generate = "testdata/generate/no_audio_stream.sh"
+sha256 = "PENDING"
+size = 0
+
+[[item]]
+id = "broken_truncated_mp4"
+category = "broken"
+description = "H.264/AAC MP4 truncated at 60% of its size (moov atom missing)"
+purpose = "Probe failure path: graceful error, relink/recovery messaging"
+codec = "h264"
+container = "mp4"
+tags = ["broken", "truncated"]
+file = "broken_truncated_mp4.mp4"
+tier = "small"
+license = "self-generated"
+generate = "testdata/generate/broken_truncated_mp4.sh"
+sha256 = "PENDING"
+size = 0
+
+[[item]]
+id = "variable_frame_size"
+category = "edge-case"
+description = "H.264 MPEG-TS whose resolution changes mid-stream (720p, 1080p, 480p)"
+purpose = "Variable frame size: decoder reconfiguration and scaling"
+codec = "h264"
+container = "mpegts"
+tags = ["variable-size"]
+file = "variable_frame_size.ts"
+tier = "small"
+license = "self-generated"
+generate = "testdata/generate/variable_frame_size.sh"
+sha256 = "PENDING"
+size = 0
+
+[[item]]
+id = "sintel_trailer_480p"
+category = "real-world"
+description = "Sintel trailer, 854x480 H.264/AAC MP4 (Blender open movie)"
+purpose = "Real-world encode (small enough for PR CI): decode, thumbnails, waveform"
+codec = "h264"
+container = "mp4"
+tags = ["real-world", "animation"]
+file = "sintel_trailer_480p.mp4"
+tier = "small"
+license = "CC-BY-3.0"
+attribution = "(c) copyright Blender Foundation | durian.blender.org (Sintel), CC BY 3.0"
+source_url = "https://download.blender.org/durian/trailer/sintel_trailer-480p.mp4"
+url_verified = false
+sha256 = "PENDING"
+size = 0
+
+[[item]]
+id = "bbb_1080p_h264"
+category = "real-world"
+description = "Big Buck Bunny 1080p H.264 MOV (Blender open movie)"
+purpose = "Real-world 1080p long-form decode and seek soak"
+codec = "h264"
+container = "mov"
+tags = ["real-world", "1080p", "animation"]
+file = "big_buck_bunny_1080p_h264.mov"
+tier = "full"
+license = "CC-BY-3.0"
+attribution = "(c) copyright 2008, Blender Foundation | www.bigbuckbunny.org, CC BY 3.0"
+source_url = "https://download.blender.org/peach/bigbuckbunny_movies/big_buck_bunny_1080p_h264.mov"
+url_verified = false
+sha256 = "PENDING"
+size = 0
+
+[[item]]
+id = "sintel_4k_mkv"
+category = "real-world"
+description = "Sintel 4K H.264 in Matroska (Blender open movie)"
+purpose = "Real-world 4K long-GOP scrub budget, MKV demux"
+codec = "h264"
+container = "mkv"
+tags = ["real-world", "4k", "long-gop", "animation"]
+file = "sintel_4k.mkv"
+tier = "full"
+license = "CC-BY-3.0"
+attribution = "(c) copyright Blender Foundation | durian.blender.org (Sintel), CC BY 3.0"
+source_url = "https://download.blender.org/durian/movies/Sintel.2010.4k.mkv"
+url_verified = false
+sha256 = "PENDING"
+size = 0
+
+[[item]]
+id = "tears_of_steel_720p"
+category = "real-world"
+description = "Tears of Steel 720p H.264 MOV (Blender open movie, live action + VFX)"
+purpose = "Real-world live-action footage, colour pipeline sanity"
+codec = "h264"
+container = "mov"
+tags = ["real-world", "live-action", "720p"]
+file = "tears_of_steel_720p.mov"
+tier = "full"
+license = "CC-BY-3.0"
+attribution = "(CC) Blender Foundation | mango.blender.org (Tears of Steel), CC BY 3.0"
+source_url = "https://download.blender.org/demo/movies/ToS/tears_of_steel_720p.mov"
+url_verified = false
+sha256 = "PENDING"
+size = 0
+
+[[item]]
+id = "wikimedia_pd_jpeg"
+category = "image"
+description = "Public-domain photograph JPEG from Wikimedia Commons (file to be chosen and audited)"
+purpose = "Real-world EXIF-bearing JPEG (orientation tag, colour profile)"
+codec = "mjpeg"
+container = "jpeg"
+tags = ["still", "exif"]
+file = "wikimedia_pd.jpg"
+tier = "full"
+license = "public-domain"
+license_review = true
+source_url = "https://commons.wikimedia.org/wiki/Special:FilePath/PLACEHOLDER_select_file.jpg"
+url_verified = false
+sha256 = "PENDING"
+size = 0
+
+[[item]]
+id = "bbb_4k_webm_wikimedia"
+category = "real-world"
+description = "Big Buck Bunny 4K WebM (VP9) mirrored on Wikimedia Commons"
+purpose = "VP9/WebM demux and decode"
+codec = "vp9"
+container = "webm"
+tags = ["real-world", "4k", "vp9", "animation"]
+file = "big_buck_bunny_4k.webm"
+tier = "full"
+license = "CC-BY-3.0"
+attribution = "(c) copyright 2008, Blender Foundation | www.bigbuckbunny.org, CC BY 3.0"
+license_review = true
+source_url = "https://commons.wikimedia.org/wiki/Special:FilePath/Big_Buck_Bunny_4K.webm"
+url_verified = false
+sha256 = "PENDING"
+size = 0

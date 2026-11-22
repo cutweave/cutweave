@@ -39,7 +39,8 @@ golden *args:
 
 # Criterion + engine benchmarks against the budgets (`just bench --compare main`)
 bench *args:
-    @echo "bench: not implemented yet (arrives in WP-0I)"
+    cargo xtask bench --suite smoke --out bench/results.json {{args}}
+    cargo xtask bench-check bench/results.json
 
 # Playwright + Electron flows
 e2e:
@@ -50,8 +51,9 @@ mcp-inspect:
     @echo "mcp-inspect: not implemented yet (arrives in WP-1N)"
 
 # Fetch the test-media corpus (not committed; checksummed)
-corpus:
-    cargo xtask fetch-corpus
+corpus *args:
+    cargo xtask fetch-corpus {{args}}
+    cargo xtask corpus-verify --allow-unpinned {{args}}
 
 # Run Agent Kit eval tasks (`just evals --client claude`)
 evals *args:
