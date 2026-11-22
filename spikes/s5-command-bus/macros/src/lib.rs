@@ -14,7 +14,11 @@
 //!    `impl Query` (a missing impl is a compile error pointing at the attribute).
 //!
 //! Every policy decision is validated at compile time (name grammar and namespace allowlist,
-//! summary length, explicit `undoable` and `destructive` on commands, named-field structs only).
+//! summary length, explicit `undoable` and `destructive` on commands, named-field structs only,
+//! UI-only entries never `mcp = "core"`).
+//!
+//! `scope = "ui"` (WP-0H.02) marks a UI-only entry (arch §6: `ai.set_key`, approvals, allowlists,
+//! budgets, plugin grants). The engine refuses it for any caller without the UI credential.
 
 use proc_macro::TokenStream;
 use proc_macro2::{Span, TokenStream as TokenStream2};
@@ -152,6 +156,7 @@ struct Args {
     undoable: Option<LitBool>,
     engine: bool,
     mcp: Option<LitStr>,
+    scope: Option<LitStr>,
     destructive: Option<LitBool>,
     idempotent: Option<LitBool>,
     open_world: Option<LitBool>,
@@ -190,6 +195,7 @@ fn parse_args(kind: Kind, args: TokenStream) -> syn::Result<Args> {
             "name" => set_once(&mut out.name, meta.value()?.parse()?, &meta, "name"),
             "summary" => set_once(&mut out.summary, meta.value()?.parse()?, &meta, "summary"),
             "mcp" => set_once(&mut out.mcp, meta.value()?.parse()?, &meta, "mcp"),
+            "scope" => set_once(&mut out.scope, meta.value()?.parse()?, &meta, "scope"),
             "undoable" if kind == Kind::Command => {
                 let v = parse_bool_flag(&meta)?;
                 set_once(&mut out.undoable, v, &meta, "undoable")
@@ -236,7 +242,7 @@ fn parse_args(kind: Kind, args: TokenStream) -> syn::Result<Args> {
                 })
             }
             _ => Err(meta.error(format!(
-                "unknown #[{}] argument; expected `name`, `summary`, {}`mcp` or `annotations(...)`",
+                "unknown #[{}] argument; expected `name`, `summary`, {}`mcp`, `scope` or `annotations(...)`",
                 kind.attr(),
                 if kind == Kind::Command {
                     "`undoable`, `engine`, "
@@ -308,6 +314,7 @@ struct Meta {
     summary: LitStr,
     mcp_tier: TokenStream2,
     kind: TokenStream2,
+    ui_only: bool,
     undoable: bool,
     read_only: bool,
     destructive: bool,
@@ -349,6 +356,23 @@ fn resolve_meta(kind: Kind, args: Args) -> syn::Result<Meta> {
             ));
         }
     };
+    let ui_only = match &args.scope {
+        None => false,
+        Some(s) if s.value() == "ui" => true,
+        Some(s) => {
+            return Err(syn::Error::new(
+                s.span(),
+                "scope must be \"ui\" (UI-only, arch §6); omit it for entries any caller may use",
+            ));
+        }
+    };
+    if ui_only && mcp.value() == "core" {
+        return Err(syn::Error::new(
+            mcp.span(),
+            "a `scope = \"ui\"` entry cannot be an MCP core tool: agent credentials can never use \
+             UI-only scopes, so listing it would only advertise a tool that always fails",
+        ));
+    }
     let open_world = args.open_world.is_some_and(|b| b.value);
 
     Ok(match kind {
@@ -371,6 +395,7 @@ fn resolve_meta(kind: Kind, args: Args) -> syn::Result<Meta> {
                 summary,
                 mcp_tier,
                 kind: quote!(::s5_bus::EntryKind::Command),
+                ui_only,
                 undoable: undoable.value,
                 read_only: false,
                 destructive: destructive.value,
@@ -383,6 +408,7 @@ fn resolve_meta(kind: Kind, args: Args) -> syn::Result<Meta> {
             summary,
             mcp_tier,
             kind: quote!(::s5_bus::EntryKind::Query),
+            ui_only,
             undoable: false,
             read_only: true,
             destructive: false,
@@ -412,6 +438,7 @@ fn expand_entry_inner(kind: Kind, args: TokenStream, item: syn::Item) -> syn::Re
         summary,
         mcp_tier,
         kind: kind_ts,
+        ui_only,
         undoable,
         read_only,
         destructive,
@@ -442,6 +469,7 @@ fn expand_entry_inner(kind: Kind, args: TokenStream, item: syn::Item) -> syn::Re
                 name: #name,
                 summary: #summary,
                 kind: #kind_ts,
+                ui_only: #ui_only,
                 undoable: #undoable,
                 mcp: #mcp_tier,
                 annotations: ::s5_bus::Annotations {

@@ -3,9 +3,11 @@
 //! Living in a separate crate from the registry proves the `inventory` registration works across
 //! crates. Anything that needs the full registry must reference this crate (see [`registry`]).
 
+mod ai;
 mod commands;
 mod queries;
 
+pub use ai::*;
 pub use commands::*;
 pub use queries::*;
 

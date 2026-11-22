@@ -1,0 +1,6 @@
+# Local agent-host config (absolute paths) and the HTTP run-file (it holds the agent token: never
+# commit it). Transcripts, state files, server logs and check results are committed as evidence
+# (see ../MCP-AGENT-RUN.md).
+mcp.json
+http-run.json
+*.tmp

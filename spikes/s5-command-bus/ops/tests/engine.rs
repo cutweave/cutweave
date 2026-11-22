@@ -617,3 +617,98 @@ fn queries_do_not_bump_rev_or_history() {
     assert_eq!(e.rev(), rev);
     assert_eq!(e.undo_depth(a.actor()), 2);
 }
+
+#[test]
+fn ui_only_scope_needs_the_ui_credential() {
+    // arch §6: agent credentials can never use UI-only scopes, whatever the path.
+    let mut e = engine();
+    let params = json!({ "provider": "anthropic", "key": "sk-test-not-a-real-key" });
+    for caller in [
+        agent(),
+        Caller::new(Actor::Plugin("p".into())),
+        Caller::new(Actor::System),
+    ] {
+        let error = err(&mut e, &caller, "ai.set_key", params.clone());
+        assert_eq!(error["code"], "forbidden", "{error}");
+        assert_eq!(error["scope"], "ui");
+        let batch = Batch {
+            steps: vec![Step {
+                name: "ai.set_key".into(),
+                params: params.clone(),
+            }],
+            request_id: None,
+            expected_rev: None,
+            dry_run: false,
+        };
+        assert_eq!(
+            e.execute(&caller, batch).unwrap_err().to_wire()["code"],
+            "forbidden"
+        );
+    }
+    assert!(!e.has_secret("anthropic"));
+
+    let out = ok(&mut e, &Caller::user(), "ai.set_key", params);
+    assert_eq!(out, json!({ "provider": "anthropic", "stored": true }));
+    assert!(e.has_secret("anthropic"));
+    assert!(
+        !out.to_string().contains("sk-test"),
+        "the key is never echoed"
+    );
+}
+
+#[test]
+fn batch_steps_reference_earlier_results_with_ref() {
+    let mut e = engine();
+    let a = agent();
+    let batch = |second: Value| Batch {
+        steps: vec![
+            Step {
+                name: "media.import".into(),
+                params: json!({ "path": "/footage/a.mp4" }),
+            },
+            Step {
+                name: "timeline.insert".into(),
+                params: second,
+            },
+            Step {
+                name: "clip.split".into(),
+                params: json!({ "item": { "$ref": "#/steps/1/item" }, "at": "2s" }),
+            },
+        ],
+        request_id: None,
+        expected_rev: None,
+        dry_run: false,
+    };
+    // Forward and dangling references are `invalid` at the `$ref` itself; nothing is applied.
+    let forward = e
+        .execute(
+            &a,
+            batch(json!({ "media": { "$ref": "#/steps/2/left" }, "at": 0 })),
+        )
+        .unwrap_err()
+        .to_wire();
+    assert_eq!(forward["path"], "/steps/1/params/media/$ref", "{forward}");
+    let dangling = e
+        .execute(
+            &a,
+            batch(json!({ "media": { "$ref": "#/steps/0/nope" }, "at": 0 })),
+        )
+        .unwrap_err()
+        .to_wire();
+    assert_eq!(dangling["code"], "invalid");
+    assert_eq!(e.rev(), Rev(0));
+
+    let resp = e
+        .execute(
+            &a,
+            batch(json!({ "media": { "$ref": "#/steps/0/media" }, "at": 0 })),
+        )
+        .unwrap();
+    assert_eq!(resp.results[1]["item"], resp.results[2]["left"]);
+    assert_eq!(e.doc().items.len(), 2);
+    assert_eq!(
+        e.undo_depth(a.actor()),
+        1,
+        "one transaction, one undo entry"
+    );
+}

@@ -8,7 +8,11 @@
 //! - `expected_rev` optimistic concurrency;
 //! - transactions: one `Tx` per call or per batch, rollback on error, dry runs;
 //! - per-actor undo/redo with "target unchanged since" checks;
-//! - `doc.patched` events to subscribers.
+//! - `doc.patched` events to subscribers;
+//! - scope checks: `ui_only` entries need the UI credential (arch §6), for single calls and for
+//!   every batch step;
+//! - `$ref` between batch steps: `{"$ref": "#/steps/<i>/<json-pointer>"}` is replaced by that
+//!   part of step `<i>`'s result before the step runs (inside the same `Tx`).
 //!
 //! The actor is never read from the request: transports construct a [`Caller`] from the
 //! credential (arch §6). `Request` denies unknown fields, so a client-sent `actor` is rejected.
@@ -78,6 +82,19 @@ impl Caller {
     #[must_use]
     pub fn agent(label: &str) -> Caller {
         Caller::new(Actor::Agent(label.into()))
+    }
+
+    /// The desktop UI (holder of the per-launch UI credential).
+    #[must_use]
+    pub fn user() -> Caller {
+        Caller::new(Actor::User)
+    }
+
+    /// Whether this caller may use UI-only scopes. Only the UI credential maps to [`Actor::User`]
+    /// (arch §6); agent, plugin and system callers never can.
+    #[must_use]
+    pub fn has_ui_scope(&self) -> bool {
+        self.actor == Actor::User
     }
 
     /// The actor.
@@ -346,6 +363,7 @@ pub struct Engine {
     journal: HashMap<JournalKey, JournalEntry>,
     journal_order: VecDeque<(Duration, JournalKey)>,
     subscribers: Vec<mpsc::Sender<Event>>,
+    secrets: HashMap<String, String>,
     config: EngineConfig,
 }
 
@@ -371,8 +389,21 @@ impl Engine {
             journal: HashMap::new(),
             journal_order: VecDeque::new(),
             subscribers: Vec::new(),
+            secrets: HashMap::new(),
             config,
         }
+    }
+
+    /// Stores a provider secret (spike stand-in for the OS keychain, arch §18). Secrets are never
+    /// part of the document, results or events.
+    pub fn set_secret(&mut self, provider: &str, secret: String) {
+        self.secrets.insert(provider.to_owned(), secret);
+    }
+
+    /// Whether a secret is stored for `provider` (the value itself is never readable).
+    #[must_use]
+    pub fn has_secret(&self, provider: &str) -> bool {
+        self.secrets.contains_key(provider)
     }
 
     /// Current document (read-only; nothing outside a `Tx` can mutate it).
@@ -431,6 +462,7 @@ impl Engine {
 
     fn invoke_inner(&mut self, caller: &Caller, req: Request) -> Result<Response, CmdError> {
         let entry = self.lookup(&req.name)?;
+        check_scope(entry, caller)?;
         let params = normalize_params(req.params);
         if let Runner::Query(run) = entry.runner {
             self.check_rev(req.expected_rev)?;
@@ -507,6 +539,7 @@ impl Engine {
         let mut steps = Vec::with_capacity(batch.steps.len());
         for (i, step) in batch.steps.iter().enumerate() {
             let entry = self.lookup(&step.name)?;
+            check_scope(entry, caller)?;
             let transactional = match entry.runner {
                 Runner::Command(_) => entry.meta.undoable,
                 Runner::Query(_) => true,
@@ -575,7 +608,11 @@ impl Engine {
             .all(|(e, _)| e.meta.kind == EntryKind::Query || e.meta.undoable);
         let mut tx = Tx::new(&mut self.doc, &mut self.ids);
         let mut results = Vec::with_capacity(steps.len());
-        for (i, (entry, params)) in steps.into_iter().enumerate() {
+        for (i, (entry, mut params)) in steps.into_iter().enumerate() {
+            if is_batch && let Err(e) = resolve_refs(&mut params, &results, i, "") {
+                tx.rollback();
+                return Err(e.under(&format!("/steps/{i}/params")));
+            }
             let outcome = with_frame_rate(rate, || match entry.runner {
                 Runner::Command(run) => run(&mut tx, params),
                 Runner::Query(run) => run(tx.doc(), params),
@@ -797,6 +834,80 @@ impl Engine {
             }
         }
     }
+}
+
+/// Refuses UI-only entries to callers without the UI credential (arch §6).
+fn check_scope(entry: &CommandEntry, caller: &Caller) -> Result<(), CmdError> {
+    if entry.meta.ui_only && !caller.has_ui_scope() {
+        return Err(CmdError::Forbidden {
+            scope: "ui".into(),
+            msg: format!(
+                "`{}` needs the UI credential; {} cannot use it. Ask the user to do this in the \
+                 Cutweave app.",
+                entry.meta.name,
+                caller.actor()
+            ),
+        });
+    }
+    Ok(())
+}
+
+/// Replaces every `{"$ref": "#/steps/<i>/<pointer>"}` object in `value` with that part of step
+/// `<i>`'s result. Only earlier steps can be referenced. `path` is the JSON Pointer of `value`
+/// inside the step params (for errors).
+fn resolve_refs(
+    value: &mut Value,
+    results: &[Value],
+    step: usize,
+    path: &str,
+) -> Result<(), CmdError> {
+    match value {
+        Value::Object(map) => {
+            if map.len() == 1
+                && let Some(Value::String(target)) = map.get("$ref")
+            {
+                let resolved = lookup_ref(target, results, step)
+                    .map_err(|msg| CmdError::invalid(format!("{path}/$ref"), msg))?;
+                *value = resolved;
+                return Ok(());
+            }
+            for (k, v) in map.iter_mut() {
+                let child = format!("{path}/{}", k.replace('~', "~0").replace('/', "~1"));
+                resolve_refs(v, results, step, &child)?;
+            }
+            Ok(())
+        }
+        Value::Array(items) => {
+            for (i, v) in items.iter_mut().enumerate() {
+                resolve_refs(v, results, step, &format!("{path}/{i}"))?;
+            }
+            Ok(())
+        }
+        _ => Ok(()),
+    }
+}
+
+fn lookup_ref(target: &str, results: &[Value], step: usize) -> Result<Value, String> {
+    let rest = target
+        .strip_prefix("#/steps/")
+        .ok_or_else(|| format!("`{target}`: a $ref must look like \"#/steps/<index>/<field>\""))?;
+    let (index, pointer) = match rest.split_once('/') {
+        Some((i, p)) => (i, format!("/{p}")),
+        None => (rest, String::new()),
+    };
+    let index: usize = index
+        .parse()
+        .map_err(|_| format!("`{target}`: `{index}` is not a step index"))?;
+    if index >= step {
+        return Err(format!(
+            "`{target}`: step {step} can only reference earlier steps (0..{step})"
+        ));
+    }
+    results
+        .get(index)
+        .and_then(|r| r.pointer(&pointer))
+        .cloned()
+        .ok_or_else(|| format!("`{target}`: step {index}'s result has no `{pointer}`"))
 }
 
 fn normalize_params(params: Value) -> Value {

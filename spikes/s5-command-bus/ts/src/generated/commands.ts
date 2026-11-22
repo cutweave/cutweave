@@ -6,6 +6,7 @@ export const FLICKS_PER_SECOND = 705600000;
 
 /** Every registered command and query: wire name -> params/output types. */
 export type Commands = {
+  "ai.set_key": { kind: "command"; params: SetAiKey; output: SetAiKeyOutput };
   "clip.split": { kind: "command"; params: SplitClip; output: SplitClipOutput };
   "clip.trim": { kind: "command"; params: TrimClip; output: TrimClipOutput };
   "edit.redo": { kind: "command"; params: Redo; output: HistoryStep };
@@ -107,6 +108,12 @@ current_rev: Rev | null } |
 /**  Valid request the engine cannot do (yet). */
 { code: "unsupported"; 
 /**  What is unsupported. */
+msg: string } | 
+/**  The caller's credential lacks the scope (e.g. an agent calling a UI-only command, arch §6). */
+{ code: "forbidden"; 
+/**  The missing scope, e.g. `ui`. */
+scope: string; 
+/**  What to do instead. */
 msg: string };
 
 /**  Machine-readable conflict reason. */
@@ -315,6 +322,25 @@ export type Rev = number;
 
 /**  A sequence id (`seq_…`). */
 export type SequenceId = string;
+
+/**
+ *  Store an AI provider API key in the engine (spike stand-in for the OS keychain). The key is
+ *  never echoed in results, events or the document.
+ */
+export type SetAiKey = {
+	/**  Provider id, e.g. `anthropic`. */
+	provider: string,
+	/**  The secret. */
+	key: string,
+};
+
+/**  Result of `ai.set_key` (never contains the key). */
+export type SetAiKeyOutput = {
+	/**  Provider id. */
+	provider: string,
+	/**  Always true on success. */
+	stored: boolean,
+};
 
 /**  Split a clip in two at a timeline time. The left part keeps the id. */
 export type SplitClip = {

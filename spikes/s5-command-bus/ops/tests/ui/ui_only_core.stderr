@@ -1,0 +1,5 @@
+error: a `scope = "ui"` entry cannot be an MCP core tool: agent credentials can never use UI-only scopes, so listing it would only advertise a tool that always fails
+ --> tests/ui/ui_only_core.rs:3:95
+  |
+3 | #[command(name = "ai.set_key", summary = "Store a key", undoable = false, scope = "ui", mcp = "core", annotations(destructive = false))]
+  |                                                                                               ^^^^^^

@@ -1,0 +1,38 @@
+[package]
+name = "s5-mcp"
+description = "Spike S5 (WP-0H.02): rmcp MCP server (stdio + Streamable HTTP) over the s5 command registry"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+rust-version.workspace = true
+publish.workspace = true
+
+[dependencies]
+s5-bus.workspace = true
+s5-ops.workspace = true
+rmcp.workspace = true
+tokio.workspace = true
+tokio-util.workspace = true
+axum.workspace = true
+serde_json.workspace = true
+tracing.workspace = true
+tracing-subscriber.workspace = true
+anyhow.workspace = true
+getrandom.workspace = true
+
+[dev-dependencies]
+# The in-process, child-process (stdio) and Streamable HTTP rmcp clients used by the tests.
+rmcp = { workspace = true, features = [
+    "client",
+    "transport-child-process",
+    "transport-streamable-http-client-reqwest",
+] }
+base64.workspace = true
+png.workspace = true
+
+[[bin]]
+name = "s5-mcp"
+path = "src/main.rs"
+
+[lints]
+workspace = true
