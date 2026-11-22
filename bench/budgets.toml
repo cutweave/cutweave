@@ -1,0 +1,95 @@
+# Performance budgets: one row per docs/01-architecture.md §19 line (WP-0I.03).
+# Row: id, metric (what is measured), op (< <= >= >), value, unit, machine_scope.
+# machine_scope: ["any"] or reference-machine ids (docs/reference-machines.md, WP-0I.02); a result from
+# a machine outside the scope is not checked against that row. Changing a row changes the architecture
+# contract: update §19 in the same PR.
+
+[[budget]]
+id = "app_start_ms"
+metric = "App start to an editable empty project"
+op = "<"
+value = 2500
+unit = "ms"
+machine_scope = ["any"]
+
+[[budget]]
+id = "project_open_1h_ms"
+metric = "Open a 1-hour, 400-item project to interactive"
+op = "<"
+value = 2000
+unit = "ms"
+machine_scope = ["any"]
+
+[[budget]]
+id = "command_roundtrip_p95_ms"
+metric = "Command round-trip (UI -> engine -> patch -> UI), p95"
+op = "<"
+value = 16
+unit = "ms"
+machine_scope = ["any"]
+
+[[budget]]
+id = "scrub_proxy_p95_ms"
+metric = "Scrub latency (proxy or intra codec), p95"
+op = "<"
+value = 80
+unit = "ms"
+machine_scope = ["any"]
+
+[[budget]]
+id = "scrub_4k_longgop_p95_ms"
+metric = "Scrub latency (4K long-GOP, no proxy), p95"
+op = "<"
+value = 150
+unit = "ms"
+machine_scope = ["any"]
+
+[[budget]]
+id = "playback_1080p60_dropped_frames"
+metric = "Playback 1080p60 (3 video layers + 2 effects + animated captions) over 60 s on an iGPU: dropped frames"
+op = "<="
+value = 0
+unit = "frames"
+machine_scope = ["ref-win-igpu", "ref-mac-m1"]
+
+[[budget]]
+id = "timeline_panzoom_5000_fps"
+metric = "Timeline pan/zoom with 5,000 items"
+op = ">="
+value = 55
+unit = "fps"
+machine_scope = ["any"]
+
+[[budget]]
+id = "av_sync_offset_ms"
+metric = "A/V sync offset (drift must also stay under 1 frame per 30 min)"
+op = "<"
+value = 40
+unit = "ms"
+machine_scope = ["any"]
+
+[[budget]]
+id = "export_1080p_h264_realtime_x"
+metric = "Export 1080p H.264 (simple timeline, HW encode), speed vs realtime"
+op = ">="
+value = 2
+unit = "x"
+machine_scope = ["any"]
+
+[[budget]]
+id = "idle_memory_1h_1080p_mb"
+metric = "Idle memory with a 1-hour 1080p project"
+op = "<"
+value = 1536
+unit = "MB"
+machine_scope = ["any"]
+
+# Not a §19 row: budget for the synthetic metric emitted by `cargo xtask bench --suite smoke`,
+# so the harness can be exercised end to end before real benchmarks exist (P2).
+[[synthetic]]
+id = "smoke_synthetic_ms"
+metric = "Smoke suite: fixed hashing workload"
+op = "<"
+value = 5000
+unit = "ms"
+machine_scope = ["any"]
