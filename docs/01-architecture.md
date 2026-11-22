@@ -535,6 +535,13 @@ flowchart LR
   - Destructive, irreversible or **paid** actions follow the three-tier authority model (§13). Dry-run `confirm_token`s never authorize spending beyond the user-set agent budget, and human-only approvals are minted only by the UI.
   - Transcript and metadata text returned to agents is marked as untrusted content (prompt-injection hygiene).
 - **Parity guarantee:** a CI test enumerates the command registry and asserts that every non-`view` command is reachable via MCP, with a schema identical to the RPC one.
+- **Hardening learned in Spike S5** *(feeds ADR-009)*:
+  - `outputSchema` is about 45% of `tools/list`, so it's listed only on `/mcp/full`. Other profiles return structured content without advertising its schema.
+  - Origin/Host validation must be enabled explicitly in rmcp; it is off by default.
+  - 2026-07-28 over HTTP requires the `MCP-Protocol-Version` header.
+  - **UI-only scopes are enforced in the engine's command dispatcher**, not in the MCP layer, so `cutweave_execute` batches can't bypass them.
+  - **Secrets never reach the journal or the dedup cache:** command params marked `#[secret]` (e.g. `ai.set_key.key`) are redacted before journaling and replaced by a keychain handle.
+  - rmcp acknowledges `subscriptions/listen` before the handler runs; the engine replays changes since the subscriber's last revision to close that gap.
 - **Stateless-spec compatibility:**
   - The MCP spec (2026-07-28) is stateless: no handshake and no session ID. Cutweave keeps all state in the engine instead: **one MCP endpoint = one engine = one open project**, plus an optional `project` argument on headless multi-project servers.
   - Nothing depends on sampling (deprecated) or on elicitation/MCP Apps (patchy support). Each has a tool-result fallback, such as a dry-run `confirm_token` instead of elicitation.
