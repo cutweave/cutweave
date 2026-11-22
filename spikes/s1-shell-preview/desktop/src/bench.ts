@@ -254,11 +254,15 @@ export async function runBench(deps: BenchDeps, arg: string): Promise<boolean> {
       : Promise.resolve();
     let next = t0 + 1000;
     let others: number | null = null;
+    let tick = 0;
     while (driving || performance.now() < t0 + seconds * 1000) {
       await sleep(Math.max(0, next - performance.now()));
       next += 1000;
-      const o = await otherEngines(deps.enginePid());
-      if (o !== null) others = Math.max(others ?? 0, o);
+      // Spawning tasklist costs CPU itself: check for other engines every 5 s only.
+      if (tick++ % 5 === 0) {
+        const o = await otherEngines(deps.enginePid());
+        if (o !== null) others = Math.max(others ?? 0, o);
+      }
       const s = await js<Sample>("window.__s1.sample()");
       const now = { eng: cpu.ms, el: electronCpuSeconds(), t: performance.now() };
       const dt = (now.t - prevCpu.t) / 1000;

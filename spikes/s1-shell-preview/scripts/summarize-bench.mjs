@@ -36,17 +36,18 @@ for (const file of files) {
       `${f1(m.cpu.engine)} / ${f1(m.cpu.renderer)} / ${f1(m.cpu.gpu)}`,
     ]),
   );
+  const star = (p) => (p?.otherEngines ? " (contended*)" : "");
   const canvas = r.phases.find((p) => p.phase.startsWith("play-canvas"));
   if (canvas) {
     console.log(
-      `Canvas-size playback (${canvas.snapshot.size}, ${r.fastest.format} + ${r.fastest.upload}): ` +
+      `Canvas-size playback${star(canvas)} (${canvas.snapshot.size}, ${r.fastest.format} + ${r.fastest.upload}): ` +
         `${f1(canvas.presentFps)} fps, ${f1(canvas.dropsPerMin)} drops/min, renderer CPU ${f1(canvas.cpuMeanPercentOfOneCore.renderer)} %.\n`,
     );
   }
   table(
     ["scrub config", "requests", "scrub-to-pixel p50/p95 ms", "full-res on screen p50/p95 ms", "low-res frames shown", "rAF wait p50/p95 ms", "lost"],
-    r.scrub.variants.map((v) => [
-      v.name,
+    r.scrub.variants.map((v, i) => [
+      `${v.name}${star(r.phases.filter((p) => p.phase.startsWith("scrub-"))[i])}`,
       v.scrub.requests,
       pp(v.scrub.latency.firstPixelMs),
       pp(v.scrub.latency.fullPixelMs),
@@ -57,7 +58,7 @@ for (const file of files) {
   );
   const z = r.resize;
   console.log(
-    `Resize: ${z.stage.resizes} canvas resizes, ${z.stage.blankResizes} blank, ` +
+    `Resize${star(r.phases.find((p) => p.phase.startsWith("resize-")))}: ${z.stage.resizes} canvas resizes, ${z.stage.blankResizes} blank, ` +
       `${z.captures.n} captures checked (${z.captures.blank} blank, ${z.captures.stale} discarded as stale), ` +
       `renegotiation p50/p95 ${f1(z.stage.renegotiateMs.p50)} / ${f1(z.stage.renegotiateMs.p95)} ms, ` +
       `steps renegotiated ${z.steps.filter((s) => s.ok).length}/${z.steps.length}, ${f1(z.fps)} fps during the sweep.\n`,
