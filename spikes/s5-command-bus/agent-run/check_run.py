@@ -69,7 +69,8 @@ def check_transcript(path, server, results):
             init = msg
         elif msg.get("type") == "result":
             final = msg
-        for block in (msg.get("message") or {}).get("content") or []:
+        m = msg.get("message")
+        for block in (m.get("content") if isinstance(m, dict) else None) or []:
             if not isinstance(block, dict):
                 continue
             if block.get("type") == "tool_use":
