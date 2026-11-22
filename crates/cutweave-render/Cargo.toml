@@ -12,14 +12,19 @@ publish = false
 default = ["gpu"]
 # The wgpu executor (`gpu` module, WP-1F.02). Native targets only: on wasm32-unknown-unknown the
 # optional dependencies below do not exist and the crate is the pure core (evaluation, colour and
-# geometry math, render graph, CPU reference, metrics), as `cargo xtask check-wasm` requires.
+# geometry math, render graph, CPU reference, metrics, encoders, queries), as
+# `cargo xtask check-wasm` requires.
 gpu = ["dep:wgpu", "dep:tracing"]
 # The golden-frame harness (`golden` module: PNG references stored per adapter class), for the
 # crate's own tests and for the WP-1O.01 `cutweave render` golden runner.
-golden = ["gpu", "dep:png"]
+golden = ["gpu"]
 
 [dependencies]
+# `render.frame` / `render.contact_sheet` are registry queries (WP-1F.03, arch §5.1, §14).
+cutweave-commands = { path = "../cutweave-commands" }
 cutweave-model = { path = "../cutweave-model" }
+# PNG output of agent frames and golden references (pure Rust, wasm32-clean).
+png = "0.18.1"
 serde.workspace = true
 thiserror.workspace = true
 
@@ -37,17 +42,14 @@ wgpu = { version = "=30.0.2", default-features = false, features = [
 ], optional = true }
 # Device-lost, watchdog and adapter diagnostics (AGENTS.md: `tracing` for logs).
 tracing = { version = "0.1.44", optional = true }
-# Reads and writes golden reference frames.
-png = { version = "0.18.1", optional = true }
 
 [dev-dependencies]
 cutweave-model = { path = "../cutweave-model", features = ["testing"] }
 insta.workspace = true
 proptest.workspace = true
 serde_json.workspace = true
-
-[target.'cfg(not(all(target_arch = "wasm32", target_os = "unknown")))'.dev-dependencies]
-png = "0.18.1"
+# Decodes the in-crate JPEG encoder's output in tests (MIT OR Apache-2.0 OR Zlib; pinned).
+zune-jpeg = "=0.5.15"
 
 [lints]
 workspace = true

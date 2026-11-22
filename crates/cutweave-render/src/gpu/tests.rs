@@ -37,18 +37,18 @@ use crate::testcard::{Alpha, Pattern, SyntheticSource, TestCard};
 static GPU_TESTS: Mutex<()> = Mutex::new(());
 
 /// The fallback golden set (the CI software rasteriser on Windows).
-const FALLBACK_SET: &str = "dx12-warp";
+pub(super) const FALLBACK_SET: &str = "dx12-warp";
 
-fn serial() -> MutexGuard<'static, ()> {
+pub(super) fn serial() -> MutexGuard<'static, ()> {
     GPU_TESTS.lock().unwrap_or_else(PoisonError::into_inner)
 }
 
-fn required() -> bool {
+pub(super) fn required() -> bool {
     std::env::var("CUTWEAVE_GPU_REQUIRED").is_ok_and(|v| v == "1")
 }
 
 /// A compositor on the test adapter, or `None` (skip) when there is none.
-fn compositor() -> Option<Compositor> {
+pub(super) fn compositor() -> Option<Compositor> {
     let choice = AdapterChoice::from_env_or(AdapterChoice::Software);
     match GpuContext::new(&choice)
         .and_then(|ctx| Compositor::new(ctx, CompositorOptions::default()))
@@ -106,6 +106,7 @@ fn layer(item: u128, media: u128, size: (u32, u32)) -> Layer {
             rotation: 0,
             color: ColorTags::default(),
             still: false,
+            proxy: false,
         },
         transform: identity(),
         opacity: 1.0,

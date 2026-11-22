@@ -1,7 +1,9 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 //! The wgpu executor (WP-1F.02; arch §8): adapter and device management ([`GpuContext`]) and
 //! the [`Compositor`] that runs [`RenderGraph`](crate::graph::RenderGraph)s in linear-light
-//! `Rgba16Float`.
+//! `Rgba16Float`, with blocking or asynchronous readback ([`Compositor::submit`],
+//! [`FrameTicket`], WP-1F.03), plus [`GpuFrameBackend`], the renderer of the `render.*`
+//! queries.
 //!
 //! Native targets only (feature `gpu`); the wasm32 build of the crate is the pure core.
 //!
@@ -26,7 +28,9 @@
 //! * A **watchdog** thread logs render frames slower than a threshold (500 ms by default)
 //!   without putting a clock in the render path.
 
+mod backend;
 mod compositor;
+mod readback;
 #[cfg(test)]
 mod tests;
 mod watchdog;
@@ -38,9 +42,11 @@ use std::sync::{Arc, Mutex, PoisonError};
 use std::task::{Context, Poll, Wake, Waker};
 use std::thread::{self, Thread};
 
+pub use backend::GpuFrameBackend;
 pub use compositor::{
     Compositor, CompositorOptions, FrameStats, RenderError, RenderedFrame, RenderedPixels,
 };
+pub use readback::{FrameTicket, ReadbackFrame};
 pub use watchdog::Watchdog;
 
 /// Process-wide lock around pipeline creation (S4 finding 7).
@@ -77,6 +83,9 @@ pub enum GpuError {
     /// Reading the frame back failed.
     #[error("readback failed: {0}")]
     Readback(String),
+    /// Every readback staging buffer is in flight: receive frames before submitting more.
+    #[error("all {0} readback buffers are in flight; receive frames before submitting more")]
+    ReadbackBusy(usize),
 }
 
 impl GpuError {

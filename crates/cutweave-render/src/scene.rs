@@ -91,6 +91,12 @@ pub struct FrameRequest {
     pub color: ColorTags,
     /// Whether the media is a still image.
     pub still: bool,
+    /// Whether a proxy (a smaller, faster-to-decode rendition) may be served instead of the
+    /// original: set by the preview quality ladder ([`crate::Quality::apply`]), never by
+    /// [`crate::evaluate`] (export and agent frames use originals). Layout does not change: it
+    /// uses [`FrameRequest::source_size`], and a proxy only enters the display → texel map.
+    #[serde(skip_serializing_if = "core::ops::Not::not")]
+    pub proxy: bool,
 }
 
 /// Placement of a layer, in the model's normalized units (see the module docs).
