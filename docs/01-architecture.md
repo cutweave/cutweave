@@ -596,7 +596,7 @@ Cutweave is also a **harness for video-creation agents**. MCP gives agents hands
 | **L1 GPU effects** | Effects, transitions, blend modes, generators | WGSL + `effect.toml` (params, passes, inputs) | naga validation, GPU time budget, auto-disable | ✅ |
 | **L1.5 Compositions** | Text animations, motion graphics, code templates | TS/JSX → QuickJS (§12) | No I/O, deterministic, CPU/mem limits | ✅ (v1.5 for 3rd party) |
 | **L2 WASM components** | AI provider adapters, importers/exporters (containers, subtitles, EDL), publishers (YouTube/TikTok upload), command handlers, audio FX | wasmtime + WIT (WASI 0.2/0.3) | Capability permissions: net allowlist, scoped FS, no keys | ✅ (providers/importers), others v1.5 |
-| **L3 UI extensions** | Panels, inspectors, dialogs | Sandboxed iframes + contribution points + postMessage SDK | CSP, no Node, RPC through host with permissions | v1.5 (auto-inspectors v1) |
+| **L3 UI extensions** | Panels, inspectors, dialogs | Each plugin panel in its **own OS-sandboxed `WebContentsView`** (separate renderer process), laid out by the editor, plus contribution points and a postMessage-style SDK. *Not* iframes in the editor window: that window runs unsandboxed for the native preview bridge (ADR-001) until GPU shared textures land | OS sandbox, CSP, no Node, RPC through host with permissions | v1.5 (auto-inspectors v1) |
 | **L4 Native out-of-process** | CLAP/VST3 audio, OFX, codecs | Separate process + IPC | Process isolation | v2+ |
 
 - **Manifest** (`cutweave-plugin.toml`): id, version, `host_api` (semver range of WIT packages), contributes (effects, commands, panels, capabilities, packs), permissions and signing info.
