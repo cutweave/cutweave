@@ -1,0 +1,944 @@
+---
+source: crates/cutweave-model/tests/wire_types.rs
+assertion_line: 90
+expression: "cutweave_model::canonical_json_pretty(&schema)"
+---
+{
+  "$defs": {
+    "AudioInfo": {
+      "additionalProperties": false,
+      "description": "Format of the main audio stream.",
+      "properties": {
+        "channels": {
+          "description": "Channel count.",
+          "format": "uint16",
+          "maximum": 65535,
+          "minimum": 0,
+          "type": "integer"
+        },
+        "rate": {
+          "description": "Samples per second.",
+          "maximum": 352800000,
+          "minimum": 1,
+          "type": "integer"
+        }
+      },
+      "required": [
+        "rate",
+        "channels"
+      ],
+      "type": "object"
+    },
+    "AudioProps": {
+      "description": "Audio properties of an item (arch §4.2 `audio{…}`, v1 subset).",
+      "properties": {
+        "gain": {
+          "description": "Gain in decibels (0.0 = unchanged).",
+          "format": "double",
+          "type": "number"
+        }
+      },
+      "required": [
+        "gain"
+      ],
+      "type": "object"
+    },
+    "Clip": {
+      "description": "A media clip: a range of a `MediaAsset` placed on a track.\n\nThe clip occupies `[start, start + duration)` on the timeline and plays the source range\n`[source_in, source_in + duration)` (speed 1 in schema v1).",
+      "properties": {
+        "audio": {
+          "$ref": "#/$defs/AudioProps",
+          "description": "Audio properties."
+        },
+        "custom": {
+          "additionalProperties": true,
+          "description": "Plugin data (arch §4.3).",
+          "propertyNames": {
+            "pattern": "^[a-z0-9][a-z0-9_-]*(\\.[a-z0-9][a-z0-9_-]*)+$"
+          },
+          "type": "object"
+        },
+        "duration": {
+          "anyOf": [
+            {
+              "maximum": 9007199254740991,
+              "minimum": 0,
+              "type": "integer"
+            },
+            {
+              "pattern": "^-?[0-9]+(\\.[0-9]+)?s$|^-?[0-9]+$",
+              "type": "string"
+            }
+          ],
+          "description": "Length on the timeline (positive)."
+        },
+        "enabled": {
+          "description": "Disabled items are kept but neither rendered nor heard.",
+          "type": "boolean"
+        },
+        "id": {
+          "description": "The item ID (also its key in the track's `items`).",
+          "pattern": "^itm_[0-9a-f]{32}$",
+          "type": "string"
+        },
+        "linked_group": {
+          "description": "Items with the same group move, trim and delete together (e.g. linked video and audio).",
+          "pattern": "^grp_[0-9a-f]{32}$",
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "media": {
+          "description": "The media this clip plays.",
+          "pattern": "^med_[0-9a-f]{32}$",
+          "type": "string"
+        },
+        "name": {
+          "description": "Display name; `None` shows the media name.",
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "source_in": {
+          "anyOf": [
+            {
+              "maximum": 9007199254740991,
+              "minimum": -9007199254740991,
+              "type": "integer"
+            },
+            {
+              "pattern": "^-?[0-9]+(\\.[0-9]+)?s$|^-?[0-9]+$",
+              "type": "string"
+            }
+          ],
+          "description": "Source position (from the start of the media) of the first frame."
+        },
+        "start": {
+          "anyOf": [
+            {
+              "maximum": 9007199254740991,
+              "minimum": -9007199254740991,
+              "type": "integer"
+            },
+            {
+              "pattern": "^-?[0-9]+(\\.[0-9]+)?s$|^-?[0-9]+$",
+              "type": "string"
+            }
+          ],
+          "description": "Timeline position of the first frame."
+        },
+        "visual": {
+          "$ref": "#/$defs/VisualProps",
+          "description": "Visual properties."
+        }
+      },
+      "required": [
+        "id",
+        "start",
+        "duration",
+        "enabled",
+        "media",
+        "source_in",
+        "audio",
+        "visual",
+        "custom"
+      ],
+      "type": "object"
+    },
+    "ColorRange": {
+      "description": "Sample range of a video stream.",
+      "oneOf": [
+        {
+          "const": "limited",
+          "description": "Limited (\"TV\", 16–235 for 8-bit luma).",
+          "type": "string"
+        },
+        {
+          "const": "full",
+          "description": "Full (\"PC\", 0–255).",
+          "type": "string"
+        }
+      ]
+    },
+    "ColorSpace": {
+      "description": "The working color space of a sequence. Schema v1 has only Rec.709 SDR.",
+      "oneOf": [
+        {
+          "const": "rec709",
+          "description": "Rec.709 primaries, SDR.",
+          "type": "string"
+        }
+      ]
+    },
+    "ColorTags": {
+      "additionalProperties": false,
+      "description": "Color description of a video stream (H.273 code points by FFmpeg name). `None` means\nunspecified in the file.",
+      "properties": {
+        "matrix": {
+          "description": "YUV matrix coefficients.",
+          "examples": [
+            "gbr",
+            "bt709",
+            "fcc",
+            "bt470bg",
+            "smpte170m",
+            "smpte240m",
+            "ycgco",
+            "bt2020nc",
+            "bt2020c",
+            "ictcp"
+          ],
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "primaries": {
+          "description": "Color primaries.",
+          "examples": [
+            "bt709",
+            "bt470m",
+            "bt470bg",
+            "smpte170m",
+            "smpte240m",
+            "film",
+            "bt2020",
+            "smpte428",
+            "smpte431",
+            "smpte432",
+            "ebu3213"
+          ],
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "range": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/ColorRange"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "description": "Sample range."
+        },
+        "transfer": {
+          "description": "Transfer characteristics.",
+          "examples": [
+            "bt709",
+            "gamma22",
+            "gamma28",
+            "smpte170m",
+            "smpte240m",
+            "linear",
+            "iec61966-2-1",
+            "bt2020-10",
+            "bt2020-12",
+            "smpte2084",
+            "arib-std-b67"
+          ],
+          "type": [
+            "string",
+            "null"
+          ]
+        }
+      },
+      "type": "object"
+    },
+    "FrameRate": {
+      "additionalProperties": false,
+      "description": "A frame rate as an exact fraction of frames per second, e.g. {\"num\": 30000, \"den\": 1001} for 29.97 fps.",
+      "properties": {
+        "den": {
+          "description": "Seconds.",
+          "maximum": 4294967295,
+          "minimum": 1,
+          "type": "integer"
+        },
+        "num": {
+          "description": "Frames.",
+          "maximum": 4294967295,
+          "minimum": 1,
+          "type": "integer"
+        }
+      },
+      "required": [
+        "num",
+        "den"
+      ],
+      "type": "object"
+    },
+    "Item": {
+      "description": "Anything placed on a track (arch §4.2). Schema v1 has only [`Clip`]; matching code outside\nthis crate needs a wildcard arm for the kinds still to come.\n\nSerialized as the variant's object plus a `\"kind\"` tag (`{\"kind\": \"clip\", …}`).",
+      "oneOf": [
+        {
+          "$ref": "#/$defs/Clip",
+          "description": "A media clip.",
+          "properties": {
+            "kind": {
+              "const": "clip",
+              "type": "string"
+            }
+          },
+          "required": [
+            "kind"
+          ],
+          "type": "object"
+        }
+      ]
+    },
+    "MediaAsset": {
+      "description": "Media imported into (or generated for) a project, referenced by path and content hash\n(arch §17), or a sequence of this project used as a compound clip.",
+      "properties": {
+        "content_hash": {
+          "description": "Content hash used to relink and to key caches (file kinds only).",
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "custom": {
+          "additionalProperties": true,
+          "description": "Plugin data (arch §4.3).",
+          "propertyNames": {
+            "pattern": "^[a-z0-9][a-z0-9_-]*(\\.[a-z0-9][a-z0-9_-]*)+$"
+          },
+          "type": "object"
+        },
+        "id": {
+          "description": "The media ID (also its key in `Project::media`).",
+          "pattern": "^med_[0-9a-f]{32}$",
+          "type": "string"
+        },
+        "kind": {
+          "$ref": "#/$defs/MediaKind",
+          "description": "What the media is."
+        },
+        "path_abs": {
+          "description": "Absolute path of the file when it was last found (file kinds only).",
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "path_rel": {
+          "description": "Path relative to the project folder, used for relinking moved projects (file kinds only).",
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "probe": {
+          "$ref": "#/$defs/ProbeInfo",
+          "description": "Probe results."
+        },
+        "sequence": {
+          "description": "The referenced sequence (`sequence_ref` only).",
+          "pattern": "^seq_[0-9a-f]{32}$",
+          "type": [
+            "string",
+            "null"
+          ]
+        }
+      },
+      "required": [
+        "id",
+        "kind",
+        "probe",
+        "custom"
+      ],
+      "type": "object"
+    },
+    "MediaKind": {
+      "description": "What a [`MediaAsset`] is.",
+      "oneOf": [
+        {
+          "const": "video",
+          "description": "A video file (may also carry audio).",
+          "type": "string"
+        },
+        {
+          "const": "audio",
+          "description": "An audio-only file.",
+          "type": "string"
+        },
+        {
+          "const": "image",
+          "description": "A still image (no duration).",
+          "type": "string"
+        },
+        {
+          "const": "sequence_ref",
+          "description": "Another sequence of this project, used as a compound clip (arch §4.3).",
+          "type": "string"
+        }
+      ]
+    },
+    "ProbeInfo": {
+      "description": "What the media backend found in a file (WP-1D.02 fills it).",
+      "properties": {
+        "audio": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/AudioInfo"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "description": "Main audio stream format, if any."
+        },
+        "color": {
+          "$ref": "#/$defs/ColorTags",
+          "description": "Color tags of the main video stream."
+        },
+        "duration": {
+          "anyOf": [
+            {
+              "anyOf": [
+                {
+                  "maximum": 9007199254740991,
+                  "minimum": 0,
+                  "type": "integer"
+                },
+                {
+                  "pattern": "^-?[0-9]+(\\.[0-9]+)?s$|^-?[0-9]+$",
+                  "type": "string"
+                }
+              ],
+              "description": "A non-negative duration in flicks (1/705600000 s) as an integer, or a string: seconds (\"62.5s\") or raw flicks (\"123\")."
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "description": "Playable length, if known (images have none)."
+        },
+        "fps": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/FrameRate"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "description": "Frame rate of the main video stream, if constant or nominal."
+        },
+        "rotation": {
+          "description": "Display rotation in degrees clockwise: 0, 90, 180 or 270.",
+          "format": "uint16",
+          "maximum": 65535,
+          "minimum": 0,
+          "type": "integer"
+        },
+        "streams": {
+          "description": "Streams in container order.",
+          "items": {
+            "$ref": "#/$defs/StreamInfo"
+          },
+          "type": "array"
+        },
+        "vfr": {
+          "description": "Variable frame rate: times map through the frame index, never through `fps` (arch §4.1).",
+          "type": "boolean"
+        }
+      },
+      "required": [
+        "streams",
+        "vfr",
+        "rotation",
+        "color"
+      ],
+      "type": "object"
+    },
+    "ProjectMeta": {
+      "description": "Document metadata.",
+      "properties": {
+        "app_version": {
+          "description": "Version of the Cutweave build that last saved the document.",
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "created": {
+          "description": "When the project was created (RFC 3339 UTC, e.g. `2026-11-22T10:00:00Z`), set by the\nengine (frozen under `--deterministic-ids`).",
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "name": {
+          "description": "Project name.",
+          "type": "string"
+        },
+        "schema_version": {
+          "description": "Version of the document format (`CURRENT_SCHEMA_VERSION` when saved by this build).\nOlder documents are migrated on open; newer ones open read-only (arch §4.3).",
+          "format": "uint32",
+          "minimum": 0,
+          "type": "integer"
+        }
+      },
+      "required": [
+        "schema_version",
+        "name"
+      ],
+      "type": "object"
+    },
+    "ProjectSettings": {
+      "description": "Project-wide settings (arch §4.2 `settings`, v1 subset).",
+      "properties": {
+        "default_format": {
+          "$ref": "#/$defs/SequenceFormat",
+          "description": "Format of new sequences."
+        }
+      },
+      "required": [
+        "default_format"
+      ],
+      "type": "object"
+    },
+    "Sequence": {
+      "description": "A timeline (arch §4.2). A project may hold several (e.g. a long cut and its shorts); the v1\nUI shows one.",
+      "properties": {
+        "custom": {
+          "additionalProperties": true,
+          "description": "Plugin data (arch §4.3).",
+          "propertyNames": {
+            "pattern": "^[a-z0-9][a-z0-9_-]*(\\.[a-z0-9][a-z0-9_-]*)+$"
+          },
+          "type": "object"
+        },
+        "format": {
+          "$ref": "#/$defs/SequenceFormat",
+          "description": "Canvas, rates and color."
+        },
+        "id": {
+          "description": "The sequence ID (also its key in `Project::sequences`).",
+          "pattern": "^seq_[0-9a-f]{32}$",
+          "type": "string"
+        },
+        "name": {
+          "description": "Display name.",
+          "type": "string"
+        },
+        "track_order": {
+          "description": "Display order, top to bottom: every key of `tracks` exactly once. Upper video tracks\nare composited over lower ones.",
+          "items": {
+            "description": "A Track id: `^trk_[0-9a-f]{32}$`.",
+            "pattern": "^trk_[0-9a-f]{32}$",
+            "type": "string"
+          },
+          "type": "array"
+        },
+        "tracks": {
+          "additionalProperties": false,
+          "description": "The tracks, keyed by ID.",
+          "patternProperties": {
+            "^trk_[0-9a-f]{32}$": {
+              "$ref": "#/$defs/Track"
+            }
+          },
+          "type": "object"
+        }
+      },
+      "required": [
+        "id",
+        "name",
+        "format",
+        "tracks",
+        "track_order",
+        "custom"
+      ],
+      "type": "object"
+    },
+    "SequenceFormat": {
+      "description": "Canvas size, frame rate, audio rate and color of a sequence (arch §4.2 `format`).",
+      "properties": {
+        "background": {
+          "description": "Canvas color behind all tracks.",
+          "pattern": "^#([0-9a-fA-F]{6}|[0-9a-fA-F]{8})$",
+          "type": "string"
+        },
+        "color_space": {
+          "$ref": "#/$defs/ColorSpace",
+          "description": "Working color space."
+        },
+        "frame_rate": {
+          "$ref": "#/$defs/FrameRate",
+          "description": "The edit grid: timecodes and `\"f:N\"` inputs resolve against it."
+        },
+        "height": {
+          "description": "Canvas height in pixels.",
+          "format": "uint32",
+          "minimum": 0,
+          "type": "integer"
+        },
+        "sample_rate": {
+          "description": "The mix rate.",
+          "maximum": 352800000,
+          "minimum": 1,
+          "type": "integer"
+        },
+        "width": {
+          "description": "Canvas width in pixels.",
+          "format": "uint32",
+          "minimum": 0,
+          "type": "integer"
+        }
+      },
+      "required": [
+        "width",
+        "height",
+        "frame_rate",
+        "sample_rate",
+        "color_space",
+        "background"
+      ],
+      "type": "object"
+    },
+    "StreamInfo": {
+      "description": "One stream of a media file.",
+      "properties": {
+        "channels": {
+          "description": "Channel count (audio).",
+          "format": "uint16",
+          "maximum": 65535,
+          "minimum": 0,
+          "type": [
+            "integer",
+            "null"
+          ]
+        },
+        "codec": {
+          "description": "Codec name (FFmpeg naming, e.g. `h264`, `aac`).",
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "height": {
+          "description": "Coded height in pixels (video).",
+          "format": "uint32",
+          "minimum": 0,
+          "type": [
+            "integer",
+            "null"
+          ]
+        },
+        "index": {
+          "description": "Index in the container.",
+          "format": "uint32",
+          "minimum": 0,
+          "type": "integer"
+        },
+        "kind": {
+          "$ref": "#/$defs/StreamKind",
+          "description": "Stream kind."
+        },
+        "language": {
+          "description": "Language tag (e.g. `eng`).",
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "pixel_format": {
+          "description": "Pixel format (FFmpeg naming, e.g. `yuv420p10le`; video).",
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "profile": {
+          "description": "Codec profile (e.g. `High`, `Main 10`).",
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "sample_rate": {
+          "description": "Sample rate (audio).",
+          "maximum": 352800000,
+          "minimum": 1,
+          "type": [
+            "integer",
+            "null"
+          ]
+        },
+        "width": {
+          "description": "Coded width in pixels (video).",
+          "format": "uint32",
+          "minimum": 0,
+          "type": [
+            "integer",
+            "null"
+          ]
+        }
+      },
+      "required": [
+        "index",
+        "kind"
+      ],
+      "type": "object"
+    },
+    "StreamKind": {
+      "description": "The kind of a container stream.",
+      "oneOf": [
+        {
+          "const": "video",
+          "description": "Pictures.",
+          "type": "string"
+        },
+        {
+          "const": "audio",
+          "description": "Sound.",
+          "type": "string"
+        },
+        {
+          "const": "subtitle",
+          "description": "Subtitles or captions.",
+          "type": "string"
+        },
+        {
+          "const": "data",
+          "description": "Timed metadata or other data.",
+          "type": "string"
+        },
+        {
+          "const": "attachment",
+          "description": "Attached files (fonts, cover art).",
+          "type": "string"
+        }
+      ]
+    },
+    "Track": {
+      "description": "A track of a sequence (arch §4.2): items that never overlap (arch §4.3).",
+      "properties": {
+        "custom": {
+          "additionalProperties": true,
+          "description": "Plugin data (arch §4.3).",
+          "propertyNames": {
+            "pattern": "^[a-z0-9][a-z0-9_-]*(\\.[a-z0-9][a-z0-9_-]*)+$"
+          },
+          "type": "object"
+        },
+        "gain": {
+          "description": "Track gain in decibels (0.0 = unchanged).",
+          "format": "double",
+          "type": "number"
+        },
+        "hidden": {
+          "description": "Not rendered (video).",
+          "type": "boolean"
+        },
+        "id": {
+          "description": "The track ID (also its key in `Sequence::tracks`).",
+          "pattern": "^trk_[0-9a-f]{32}$",
+          "type": "string"
+        },
+        "items": {
+          "additionalProperties": false,
+          "description": "The items, keyed by ID.",
+          "patternProperties": {
+            "^itm_[0-9a-f]{32}$": {
+              "$ref": "#/$defs/Item"
+            }
+          },
+          "type": "object"
+        },
+        "kind": {
+          "$ref": "#/$defs/TrackKind",
+          "description": "What the track holds."
+        },
+        "locked": {
+          "description": "Commands that would change the track's items fail with `Locked`.",
+          "type": "boolean"
+        },
+        "magnetic": {
+          "description": "Magnetic main track: ripple-by-default editing (arch §4.3; behaviour in P2).",
+          "type": "boolean"
+        },
+        "muted": {
+          "description": "Silenced (audio).",
+          "type": "boolean"
+        },
+        "name": {
+          "description": "Display name.",
+          "type": "string"
+        },
+        "solo": {
+          "description": "Solo (audio): when any track is solo, only solo tracks are heard.",
+          "type": "boolean"
+        }
+      },
+      "required": [
+        "id",
+        "kind",
+        "name",
+        "items",
+        "muted",
+        "hidden",
+        "locked",
+        "solo",
+        "magnetic",
+        "gain",
+        "custom"
+      ],
+      "type": "object"
+    },
+    "TrackKind": {
+      "description": "What a track holds. Schema v1 edits only video and audio tracks; the other kinds exist so\ndocuments and commands can name them (ops answer `Unsupported`).",
+      "oneOf": [
+        {
+          "const": "video",
+          "description": "Picture layers.",
+          "type": "string"
+        },
+        {
+          "const": "audio",
+          "description": "Sound.",
+          "type": "string"
+        },
+        {
+          "const": "text",
+          "description": "Titles (later versions).",
+          "type": "string"
+        },
+        {
+          "const": "caption",
+          "description": "Captions (later versions).",
+          "type": "string"
+        },
+        {
+          "const": "adjustment",
+          "description": "Adjustment layers (later versions).",
+          "type": "string"
+        }
+      ]
+    },
+    "Transform": {
+      "description": "Where and how a visual item is placed on the sequence canvas.\n\nCoordinates are resolution-independent: `position` is the offset of the item's anchor from\nthe canvas center in canvas units (1.0 = the canvas width horizontally and the canvas height\nvertically; +y is down); `anchor` is a point of the item in item units ((0, 0) top-left,\n(0.5, 0.5) center); `scale` multiplies the aspect-fit size; `rotation` is in degrees,\nclockwise.",
+      "properties": {
+        "anchor": {
+          "$ref": "#/$defs/Vec2",
+          "description": "The item point that `position` places and rotation turns around, in item units."
+        },
+        "position": {
+          "$ref": "#/$defs/Vec2",
+          "description": "Offset of the anchor from the canvas center, in canvas units."
+        },
+        "rotation": {
+          "description": "Clockwise rotation in degrees.",
+          "format": "double",
+          "type": "number"
+        },
+        "scale": {
+          "$ref": "#/$defs/Vec2",
+          "description": "Size multiplier per axis (1.0 = aspect-fit)."
+        }
+      },
+      "required": [
+        "position",
+        "scale",
+        "rotation",
+        "anchor"
+      ],
+      "type": "object"
+    },
+    "Vec2": {
+      "additionalProperties": false,
+      "description": "A 2D vector (positions, scales, anchors).",
+      "properties": {
+        "x": {
+          "description": "Horizontal component.",
+          "format": "double",
+          "type": "number"
+        },
+        "y": {
+          "description": "Vertical component (down is positive).",
+          "format": "double",
+          "type": "number"
+        }
+      },
+      "required": [
+        "x",
+        "y"
+      ],
+      "type": "object"
+    },
+    "VisualProps": {
+      "description": "Visual properties of an item (arch §4.2 `VisualProps`, v1 subset).",
+      "properties": {
+        "opacity": {
+          "description": "Opacity, 0.0 (transparent) to 1.0 (opaque).",
+          "format": "double",
+          "type": "number"
+        },
+        "transform": {
+          "$ref": "#/$defs/Transform",
+          "description": "Placement on the canvas."
+        }
+      },
+      "required": [
+        "transform",
+        "opacity"
+      ],
+      "type": "object"
+    }
+  },
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "description": "The project document: everything saved in `<Name>.cutweave` (arch §17).\n\nEntities are addressed by ID, never by index (arch §4.3). All collections are persistent\n(`imbl`), so `clone()` is O(1) and snapshots share structure (ADR-0005). Mutate only through\ncommands (`cutweave-ops`); readers get immutable snapshots.\n\nThe JSON form has a stable layout (fields in declaration order, maps sorted by key), so\nsaved files diff cleanly.",
+  "properties": {
+    "custom": {
+      "additionalProperties": true,
+      "description": "Plugin data (arch §4.3).",
+      "propertyNames": {
+        "pattern": "^[a-z0-9][a-z0-9_-]*(\\.[a-z0-9][a-z0-9_-]*)+$"
+      },
+      "type": "object"
+    },
+    "media": {
+      "additionalProperties": false,
+      "description": "Media, keyed by ID.",
+      "patternProperties": {
+        "^med_[0-9a-f]{32}$": {
+          "$ref": "#/$defs/MediaAsset"
+        }
+      },
+      "type": "object"
+    },
+    "meta": {
+      "$ref": "#/$defs/ProjectMeta",
+      "description": "Document metadata."
+    },
+    "sequences": {
+      "additionalProperties": false,
+      "description": "Sequences, keyed by ID.",
+      "patternProperties": {
+        "^seq_[0-9a-f]{32}$": {
+          "$ref": "#/$defs/Sequence"
+        }
+      },
+      "type": "object"
+    },
+    "settings": {
+      "$ref": "#/$defs/ProjectSettings",
+      "description": "Project-wide settings."
+    }
+  },
+  "required": [
+    "meta",
+    "settings",
+    "media",
+    "sequences",
+    "custom"
+  ],
+  "title": "Project",
+  "type": "object"
+}

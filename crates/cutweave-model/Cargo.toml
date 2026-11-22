@@ -8,5 +8,35 @@ repository.workspace = true
 rust-version.workspace = true
 publish = false
 
+[features]
+default = []
+# Proptest strategies (`cutweave_model::testing`), reused by cutweave-ops property tests (WP-1B.07).
+testing = ["dep:proptest"]
+
+[dependencies]
+imbl.workspace = true
+schemars.workspace = true
+serde.workspace = true
+# `float_roundtrip`: saved floats (opacity, gain, transforms) must load back bit-identically.
+serde_json = { workspace = true, features = ["float_roundtrip"] }
+serde_path_to_error.workspace = true
+specta.workspace = true
+# Only for the `Time` -> TS `number` override (`specta_typescript::Number`); no exporter runs here.
+specta-typescript.workspace = true
+thiserror.workspace = true
+proptest = { workspace = true, optional = true }
+
+# Real UUIDv7 needs OS entropy and a wall clock, which wasm32-unknown-unknown lacks. There the
+# engine injects an `IdGen` instead (e.g. `SeededGen`).
+[target.'cfg(not(all(target_arch = "wasm32", target_os = "unknown")))'.dependencies]
+uuid.workspace = true
+
+[dev-dependencies]
+insta.workspace = true
+proptest.workspace = true
+specta.workspace = true
+specta-serde.workspace = true
+specta-typescript.workspace = true
+
 [lints]
 workspace = true
