@@ -1,0 +1,35 @@
+<!-- @dsCard group="Overlays" height=360 -->
+<div class="cw-demo" style="background:var(--surface-0);justify-content:center">
+  <div class="cw-dialog cw-w-md" role="dialog" aria-modal="true" aria-labelledby="exp-title">
+    <h2 class="cw-dialog__title" id="exp-title">Export video</h2>
+    <div class="cw-row">
+      <span class="cw-row__label">Preset</span>
+      <div class="cw-select" role="combobox" tabindex="0" aria-label="Preset" aria-expanded="false">
+        <span>YouTube Shorts 1080p</span>
+        <svg class="cw-icon" viewBox="0 0 24 24" aria-hidden="true"><path d="m6 9 6 6 6-6"/></svg>
+      </div>
+    </div>
+    <div class="cw-row">
+      <span class="cw-row__label">Resolution</span>
+      <span style="display:inline-flex;gap:var(--space-1)">
+        <div class="cw-num" role="spinbutton" tabindex="0" aria-label="Width"><span class="cw-num__value">1080</span><span class="cw-num__unit">px</span></div>
+        <div class="cw-num" role="spinbutton" tabindex="0" aria-label="Height"><span class="cw-num__value">1920</span><span class="cw-num__unit">px</span></div>
+      </span>
+    </div>
+    <div class="cw-row">
+      <span class="cw-row__label">Frame rate</span>
+      <div class="cw-num" role="spinbutton" tabindex="0" aria-label="Frame rate"><span class="cw-num__value">23.976</span><span class="cw-num__unit">fps</span></div>
+    </div>
+    <div class="cw-row">
+      <span class="cw-row__label">Bitrate</span>
+      <div class="cw-num" role="spinbutton" tabindex="0" aria-label="Bitrate"><span class="cw-num__value">12.0</span><span class="cw-num__unit">Mbps</span></div>
+    </div>
+    <div class="cw-note">
+      <svg class="cw-icon" viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="10"/><path d="M12 16v-4M12 8h.01"/></svg>
+      Renders locally, <span class="cw-mono">Free (local)</span>. Est. 00:00:58 to Shorts_final.mp4</div>
+    <div class="cw-dialog__footer">
+      <button class="cw-btn cw-btn--lg cw-btn--ghost">Cancel</button>
+      <button class="cw-btn cw-btn--lg cw-btn--primary">Export</button>
+    </div>
+  </div>
+</div>

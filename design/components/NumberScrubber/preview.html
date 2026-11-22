@@ -1,0 +1,28 @@
+<!-- @dsCard group="Inputs" height=150 -->
+<div class="cw-demo cw-demo--col">
+  <div class="cw-demo" style="padding:0">
+    <div class="cw-num" role="spinbutton" tabindex="0" aria-label="Scale" aria-valuenow="100">
+      <span class="cw-num__label">Scale</span>
+      <span class="cw-num__value">100</span><span class="cw-num__unit">%</span>
+    </div>
+    <div class="cw-num" role="spinbutton" tabindex="0" aria-label="Rotation" style="background:var(--surface-3)">
+      <span class="cw-num__label">Rotation</span>
+      <span class="cw-num__value">-12.5</span><span class="cw-num__unit">deg</span>
+    </div>
+    <div class="cw-num" data-state="editing">
+      <span class="cw-num__label">Width</span>
+      <input class="cw-num__value" value="1920" aria-label="Width" /><span class="cw-num__unit">px</span>
+    </div>
+  </div>
+  <div class="cw-demo" style="padding:0">
+    <div class="cw-num" data-state="mixed" role="spinbutton" tabindex="0" aria-label="Volume, mixed values">
+      <span class="cw-num__label">Volume</span>
+      <span class="cw-num__value">&mdash;</span><span class="cw-num__unit">dB</span>
+    </div>
+    <div class="cw-num" role="spinbutton" aria-disabled="true" aria-label="Frame rate">
+      <span class="cw-num__label">Frame rate</span>
+      <span class="cw-num__value">23.976</span><span class="cw-num__unit">fps</span>
+    </div>
+  </div>
+  <span class="cw-demo__cap">Row 1: default, hover, editing. Row 2: mixed selection, disabled.</span>
+</div>

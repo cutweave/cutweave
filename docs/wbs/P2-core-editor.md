@@ -1,0 +1,1429 @@
+# Cutweave — Phase 2 (Core Editor) Work Breakdown
+
+> Status: baseline 2026-11-22. Source documents: [04-roadmap.md](../04-roadmap.md) (Phase 2), [01-architecture.md](../01-architecture.md) (cited as **§n**), [05-work-breakdown.md](../05-work-breakdown.md). Phase 1 is referenced by epic code only (E1A domain model, E1B command bus/tx/undo, E1C persistence, E1D media, E1E export, E1F render v0, E1G audio v0, E1H playback/SHM, E1I API, E1J MCP v0, E1K CLI, E1L shell, E1M editor UI v0, E1N codegen, E1O CI gates).
+> Sizing: S = 1 agent-day, M = 3 agent-days (used for the totals). Default executor `sonnet`.
+
+## Phase goal
+
+A genuinely usable everyday editor for both long-form and short-form (M2 Dogfood): rich multi-track timeline editing, multiple sequences with aspect presets, animatable clip properties, speed, audio mixing, media management, export presets and queue, a dockable and keyboard-driven UI, a complete core MCP tool set, and CI-enforced performance budgets.
+
+## Exit criteria (copied from roadmap)
+
+**Exit (M2):** two dogfood edits are completed by a non-developer: a 10-min multi-cam-free YouTube video with B-roll, and a 9:16 short with manual reframe, music and fades. Performance budgets for timeline, scrub and playback are met on reference machines. No data loss across 20 forced crashes.
+
+## Epics (one-line goals)
+
+| Epic | Goal |
+|---|---|
+| **2A Timeline editing** | Unlimited tracks with auto-created overlay tracks, magnetic main track, linked clips, ripple/roll/slip/slide, replace clip, snapping, markers, clipboard, multi-select, gesture soft-locks; a specified, property-tested edit-semantics core and a fast Canvas2D timeline UI. |
+| **2B Sequences & canvas** | Many sequences per project, aspect presets (16:9, 9:16, 1:1, 4:5, 21:9), sequence settings, background fill (color, blur, image), compound clips (nested sequences as media). |
+| **2C Clip properties & keyframes** | Transform/crop/opacity/flip/blend on clips, keyframes on every animatable property with easing, keyframe lanes, curve editor and bezier graph editor; keyframe/easing/time/snapping math shared with the UI as wasm. |
+| **2D Speed basics** | Constant speed with pitch preservation, reverse, freeze frame. |
+| **2E Audio features** | Fades, keyframed volume, pan, track buses, master limiter, loudness normalization, auto-ducking, basic voice effects, voiceover recording, extract audio, audio UI. |
+| **2F Media management** | Proxy pipeline (auto + manual), relink, collect & archive, image and image-sequence import, bin search/tags/smart collections. |
+| **2G Export presets & queue** | Presets (YouTube, Shorts/Reels/TikTok, GIF, audio-only, ProRes), HEVC/AV1, advanced encode controls (CBR/VBR/CRF, GOP, color tags, audio codec/bitrate), background queue, range/marker-set export. |
+| **2H Workspace UI** | Dockable Short-form/Long-form workspaces, schema-driven inspector, command palette, shortcut editor with NLE and CapCut presets, preview overlays, i18n scaffold. |
+| **2I MCP core tool set** | ~30 core tools complete, `view_get`/`view_set`, contact sheet, filmstrip, waveform image, checkpoints, `expected_rev`, per-endpoint tool profiles (`/mcp/minimal`, `/mcp`, `/mcp/full`), scripted-agent e2e. |
+| **2J Performance, reliability & dogfood** | Benchmarks in CI against §19, background render cache, crash-injection harness, and the dogfood exit review (human). |
+
+## Critical path
+
+`2A.01 (spec)` → `2A.02` → `2A.03` → `2A.04` → `2A.12 (gesture soft-lock)` → `2A.08 (interaction state machine)` → `2A.10 (timeline UI wiring)` → `2J.06/2J.07 (dogfood edits)` → `2J.08 (exit review)`.
+
+Parallel tracks that must land before the dogfood edits:
+- Keyframes: `2C.01` → `2C.02` → `2C.06 (wasm module)` → `2A.07` / `2C.05` / `2C.07`; and `2C.02` → `2C.04`. Also gates the 9:16 reframe in the short.
+- Audio: `2E.01` → `2E.02` → `2E.05`.
+- Media: `2F.01` → `2F.02`.
+- Export: `2G.01` → `2G.03` → `2G.04`.
+- UI shell: `2H.01` → `2H.02` → `2H.03`.
+- Gates: `2J.01` → `2J.04` (benchmarks) and `2J.05` (crash harness) run in parallel with the dogfood prep.
+
+Schedule note: the roadmap gives 9 weeks. Total effort here is about 162 agent-days. This fits only with 6–8 agents running in parallel across the tracks above and 1–2 human reviewers acting as the merge bottleneck. Staff the 2A opus WPs first.
+
+## Conventions used by all WPs in this phase
+
+- Namespaces (§5.1): `item.*` is generic (delete, move, set_props, duplicate, link/unlink/attach); `clip.*` is for media-clip specifics (split, trim family, speed, replace, freeze).
+- Math shared with the UI (time conversion, keyframe/easing eval, snapping) lives in wasm-safe Rust crates and ships as a wasm module in `packages/protocol` (2C.06). The UI never re-implements it and never calls an RPC per frame.
+- Every new editing capability is a `#[command]` in `cutweave-ops` with `undoable`, JSON Schema, an `mcp = core|catalog|hidden` tag, and a CLI/MCP/RPC parity test through E1O. Nothing mutates the doc outside `Tx`.
+- Continuous gestures (drag, trim, scrub of a slider) use `gesture`-kind transactions (§5.2; 30 s idle auto-cancel; owned by the opening connection, rolled back if it drops). Commands that take a gesture-friendly form say so.
+- Time is `Time` (flicks, i64). All snapping to frames goes through the `FrameRate` helpers (§4.1). No float time in model or ops.
+- Performance claims cite §19. CI benchmarks arrive in 2J but each WP states its own local threshold.
+- "Core" MCP = always listed in `tools/list`. "Catalog" = reachable only via `cutweave_search_commands/describe/execute`.
+
+---
+
+# Epic 2A — Timeline editing
+
+### WP-2A.01 — Spec: timeline edit semantics
+- **Area:** docs/spec/timeline-edit-semantics.md (new), docs/spec/fixtures/*.json (edit-scenario goldens)
+- **Depends on:** E1A, E1B
+- **Size:** M
+- **Executor:** opus
+- **Scope:** write the normative spec that 2A.02–2A.08 implement. It must define, each with ASCII before/after diagrams and a table of edge cases:
+  - **Track and placement rules:**
+    - No two items overlap on one track, on any track kind (§4.3). Overlays are additional video tracks. Dropping or moving an item where it would overlap **auto-creates a new track above** (default `new_track`).
+    - The main track is the first video track with `magnetic: true`. Exactly one magnetic track per sequence, which may be changed.
+    - Placement has three modes: `insert` (ripple the rest of the track; default on the main track), `overwrite` (trim or split what is underneath) and `new_track` (default for any overlap on a non-main track).
+  - **Magnetic track:** gap-free after every command. Deleting or trimming closes the gap. Moving an item out of it ripples the tail left. Defined behaviour for the first item (always starts at `0`) and for an empty track.
+  - **Ripple scope:** ripple affects the target track plus tracks that contain items linked to shifted items. Other tracks are untouched unless the command takes `ripple_all_tracks: true` (NLE behaviour).
+  - **Linked clips:** `linked_group` semantics for move, trim, split, delete, copy. This covers both video+audio of one source and CapCut "attached to main clip" (child follows parent's start; parent trim does not move children unless they now fall outside, then clamp).
+  - **Trim family:**
+    - Trim: change one edge, moves `source_in` accordingly, clamped to media bounds.
+    - Ripple trim: trim, then shift the downstream items.
+    - Roll: move the cut between two adjacent items, total duration is constant.
+    - Slip: change `source_in` only.
+    - Slide: move an item between neighbours by changing neighbours' trims.
+    - Each has clamping rules and what it returns when clamped.
+  - **Locks:** locked track rejects mutation with `Locked`. A ripple that would shift a locked track fails atomically; list the exact rule. Hidden/muted/solo are non-structural.
+  - **Frame alignment:** every edit point snaps to the sequence frame grid. Audio-only tracks use sample-accurate times rounded to the nearest frame unless `fine: true`.
+  - **Gesture soft-locks (§5.2):** which items a gesture locks (all items the command may touch, including ripple-shifted downstream items and linked members), and the `Conflict{reason:"item_in_gesture", retry_after_ms}` rule for other actors.
+  - **Replace clip:** attributes kept (transform, keyframes, effects, audio settings, links), duration/in-point policy (`keep_duration` trims or pads with a warning; `keep_source_in`), what happens to speed/freeze.
+  - **Atomicity:** every command is all-or-nothing and returns the list of items it moved, trimmed, split or removed (`EditReport`). Agents depend on this.
+  - **Snapping** (pure function, specified here, used by UI only): candidates are playhead, item edges, markers, beat markers. Threshold is 8 px converted to time. Priority order and tie-break rules.
+  - **Selection** semantics: multi-select, linked-group selection (selecting a linked group selects members; `alt` selects one member).
+- **Interfaces:** the spec defines the signatures of the commands implemented later: `timeline.insert`, `timeline.overwrite`, `item.move`, `timeline.lift`, `timeline.extract`, `timeline.ripple_delete`, `item.delete`, `item.duplicate`, `clip.trim`, `clip.ripple_trim`, `clip.roll`, `clip.slip`, `clip.slide`, `clip.split`, `clip.replace`, `item.link`/`item.unlink`, and the `EditReport` type.
+- **Acceptance criteria:**
+  - Document reviewed and approved by a human maintainer (PR approval).
+  - ≥ 40 scenario fixtures in `docs/spec/fixtures/` as JSON `{before, command, after_expected | error}`, covering every command × {magnetic, free track, locked track, linked group, clamp}.
+  - Every command in the spec lists its invariants as numbered statements `INV-n` that tests cite by id.
+  - Includes an explicit "NOT supported in P2" list (multicam, nested compound clips, track targeting UI).
+- **Tests:** fixtures are consumed later by 2A.03/04 as table-driven tests; this WP adds a JSON-schema validation script for the fixtures (`cargo xtask check-fixtures`).
+- **Out of scope:** implementation, UI gestures (2A.08).
+
+### WP-2A.02 — Model additions and track/marker/range commands
+- **Area:** crates/cutweave-model, crates/cutweave-ops (`track`, `timeline` marker/range modules)
+- **Depends on:** E1A, E1B, WP-2A.01
+- **Size:** M
+- **Executor:** sonnet
+- **Scope:**
+  - Model: `Marker {id, t, duration?, label, color, kind(user|beat|chapter)}` on sequence and on item. `Sequence.in_out`. `Track.magnetic` constraint (one per sequence). `Item.linked_group: Option<GroupId>`. Track kinds as in §4.2. Unlimited track counts; no hard cap, soft warn above 64.
+  - Schema version bump (v2) with migration and golden fixture from a v1 project.
+  - Track commands: `track.add{kind, index?}`, `track.remove`, `track.reorder`, `track.rename`, `track.set_flags{muted,hidden,locked,solo}`, `track.set_magnetic`, `track.set_height` (UI hint, `view`-like but persisted).
+  - Marker/range commands: `timeline.add_marker`, `timeline.move_marker`, `timeline.remove_marker`, `timeline.set_in_out`, `timeline.clear_in_out`.
+  - MCP: `track.add`, `track.set_flags`, `timeline.add_marker` core; the rest catalog.
+- **Interfaces:** commands above; queries `track.list`, `marker.list`.
+- **Acceptance criteria:**
+  - A v1 fixture migrates to v2 and round-trips (insta snapshot); newer-schema projects still open read-only.
+  - Property test: for 1,000 random sequences of track/marker commands, `undo(apply(doc)) == doc` and serialize round-trip holds.
+  - `track.set_magnetic` on a track with gaps fails with `Invalid{path:"track", msg}` or closes gaps; behaviour per 2A.01. Exactly one magnetic track invariant is asserted after each command.
+  - Solo/mute flags affect only `audio`/render evaluation, never item positions.
+  - `cargo test -p cutweave-model -p cutweave-ops` and schema snapshot gate pass.
+- **Tests:** unit, proptest, migration golden, insta schema snapshots.
+- **Out of scope:** audio-engine honouring solo (2E.02), UI.
+
+### WP-2A.03 — Placement core: insert, overwrite, move, lift, extract, ripple-delete
+- **Area:** crates/cutweave-ops/src/timeline/{placement.rs, magnetic.rs}
+- **Depends on:** WP-2A.01, WP-2A.02
+- **Size:** M
+- **Executor:** opus
+- **Scope:**
+  - Implement the placement algebra from the spec as one internal module (`PlacementPlan` computed purely from a snapshot, then applied in a `Tx`). All commands share it so that magnetic/locked/linked rules live in one place.
+  - Commands: `timeline.insert{media|item, track, at, mode}`, `timeline.overwrite`, `item.move{items[], delta | to_track+at, mode}`, `timeline.lift`, `timeline.extract`, `timeline.ripple_delete{items[] | range}`, `timeline.delete_gap`, `clip.split{item, at}` (extends P1 command with linked-group split and returns `EditReport`), `item.delete`, `item.duplicate_in_place` (the clipboard in 2A.06 reuses it). A move/insert whose target range overlaps on a non-main track creates a new track above (`created_tracks` in the report).
+  - `mode = insert|overwrite|new_track`.
+  - Gesture support: `item.move` accepts being called repeatedly under a `gesture` tx.
+  - MCP core: `timeline_insert`, `clip_split`, `item_move`, `item_delete`. Others catalog.
+- **Interfaces:** `EditReport {moved, trimmed, split, removed, created_tracks}`. Typed errors `Locked`, `Conflict`, `Invalid`.
+- **Acceptance criteria:**
+  - All spec fixtures for these commands pass (`cargo test -p cutweave-ops timeline::fixtures`).
+  - Property tests (`proptest`, ≥ 10k cases in CI nightly, 500 on PR) assert: **no overlap on any track (including after auto-created tracks and random overlapping drops); magnetic track gapless and starting at 0 after every command; items on a locked track never change; sequence total duration equals max item end; undo identity; redo identity; `EditReport` matches the diff of before/after exactly**.
+  - Ripple on a 5,000-item sequence completes in < 5 ms (criterion bench `placement_ripple_5k`); command RTT contribution stays within §19 p95 < 16 ms.
+  - Every failing command leaves the doc byte-identical (`Result::Err` ⇒ no patch).
+- **Tests:** table-driven fixtures, proptest generators for sequences (shared in `cutweave-ops::testutil`), criterion bench.
+- **Out of scope:** trim family (2A.04), linked-group creation commands beyond the split/delete/move semantics (2A.05).
+
+### WP-2A.04 — Trim family: trim, ripple trim, roll, slip, slide
+- **Area:** crates/cutweave-ops/src/clip/trim.rs
+- **Depends on:** WP-2A.03
+- **Size:** M
+- **Executor:** opus
+- **Scope:**
+  - Commands: `clip.trim{item, edge(start|end), to | delta}`, `clip.ripple_trim`, `clip.roll{left, right, to}`, `clip.slip{item, delta}`, `clip.slide{item, delta}`. All gesture-friendly via `gesture` tx.
+  - Clamping at media bounds, neighbour bounds (non-ripple), speed (source range = duration × speed) and zero-duration. Min item duration is 1 frame. Return clamped value in output (`applied_delta`).
+  - Still images and generators have no source bound. Freeze frames behave like stills.
+  - Linked members trim together (video+audio) unless `unlink: true`.
+  - Magnetic track: ripple_trim and plain trim both close gaps; roll/slip never change track length.
+  - MCP core: `clip_trim`. Others catalog.
+- **Interfaces:** `TrimOutput {applied_delta, report: EditReport}`.
+- **Acceptance criteria:**
+  - Spec fixtures for the trim family pass.
+  - Property tests: slip never changes `start/duration`; roll preserves the sum of the two durations and the outer edges; slide preserves the item duration and the outer edges of the neighbours; ripple trim shifts all downstream items by exactly the delta; source range never exceeds media duration; INV set from the spec all hold; undo/redo identity.
+  - Trim with `speed=2.0` at a 10 s source maps `source_in`/`source_out` exactly in flicks (no rounding drift over 1,000 random trims; asserted).
+- **Tests:** fixtures, proptest, unit for clamps.
+- **Out of scope:** keyframe retiming on trim (2C.03), UI gestures.
+
+### WP-2A.05 — Linked clips and groups
+- **Area:** crates/cutweave-ops/src/item/link.rs; packages/editor (stores)
+- **Depends on:** WP-2A.03
+- **Size:** S
+- **Executor:** sonnet
+- **Scope:**
+  - Commands: `item.link{items[]}`, `item.unlink`, `item.group_select` (query: members of a group), `timeline.insert` auto-links video+audio when the source has both (option `link_av`, default true).
+  - "Attach to main clip": `item.attach{child, parent}` sets a parent relationship (child follows parent start; per spec).
+  - Link survives split (each half linked to the corresponding half), duplicate (new group id), copy/paste.
+  - MCP: catalog for link/unlink/attach.
+- **Interfaces:** `linked_group` queries via `item.get`; `LinkReport`.
+- **Acceptance criteria:**
+  - Moving, deleting, splitting, trimming one member applies to all members, with fixture tests from the spec.
+  - Property test: members of a group always have identical `(start, duration)` for AV links; attached children's `start` stays within parent range after any parent command.
+  - Unlink then move affects only one item.
+  - `cargo test -p cutweave-ops link::` green.
+- **Tests:** fixtures + proptest.
+- **Out of scope:** audio-only extraction (2E.03), UI badges (2A.10).
+
+### WP-2A.06 — Clipboard: copy, cut, paste, paste-attributes, duplicate
+- **Area:** crates/cutweave-ops/src/timeline/clipboard.rs; packages/editor (clipboard store)
+- **Depends on:** WP-2A.03, WP-2A.05
+- **Size:** S
+- **Executor:** sonnet
+- **Scope:**
+  - `timeline.copy{items[]} → ClipboardPayload` (a pure query returning serialized relative layout: items, relative offsets, relative track indices, links). The UI stores the payload in the system clipboard as `application/x-cutweave-items+json` and also in the engine, so that an MCP agent can `timeline.paste` too.
+  - `timeline.paste{payload, at, track, mode}` assigns fresh IDs and remaps links.
+  - `item.duplicate{items[], offset}`, `clip.paste_attributes{from, to, which[]}` (transform, effects, audio).
+  - Cross-sequence paste works (IDs remapped, media refs preserved).
+  - MCP: catalog.
+- **Interfaces:** `ClipboardPayload` (versioned JSON Schema).
+- **Acceptance criteria:**
+  - Copy → paste in another sequence yields structurally equal items except IDs (proptest `paste(copy(x)) ≅ x`).
+  - Pasting 200 items < 20 ms.
+  - Pasting over a locked track fails with `Locked` and changes nothing.
+  - No ID collisions across 1,000 random pastes.
+- **Tests:** unit + proptest.
+- **Out of scope:** pasting from external applications.
+
+### WP-2A.07 — Snapping engine (Rust, shared via wasm)
+- **Area:** crates/cutweave-model/src/snap.rs (wasm-safe), packages/timeline/src/snap/ (thin wrapper)
+- **Depends on:** WP-2A.01 (spec), WP-2C.06, E1M
+- **Size:** S
+- **Executor:** sonnet
+- **Scope:**
+  - A pure Rust function `snap(index, t, threshold_px, px_per_second, options) → {t, target?}` in `cutweave-model::snap`, exported through the 2C.06 wasm module, implemented exactly per spec priority: playhead, item edges (including edges on other tracks), markers, beat markers, in/out. Toggle plus hold-modifier override.
+  - A spatial index (sorted array + binary search) rebuilt incrementally on `doc.patched`.
+  - Beat markers are `Marker.kind='beat'` and are produced here by manual tap (`timeline.add_marker`) or later by P5 analysis. See Notes N5.
+- **Interfaces:** Rust `SnapIndex`, `snap`; `@cutweave/timeline` exports `createSnapIndex`, `snap` (wrappers over the wasm exports from `@cutweave/protocol/wasm`).
+- **Acceptance criteria:**
+  - Rust unit tests: 30+ cases including ties, disabled kinds, threshold scaling with zoom; a Vitest smoke test proves the wasm build returns identical results on the same vectors.
+  - Perf: snap lookup on 50,000 candidates < 0.1 ms p95 (criterion and vitest bench through wasm).
+  - Snapped result is always on the frame grid.
+- **Tests:** Rust unit + criterion, Vitest wasm parity + bench.
+- **Out of scope:** drawing snap guides (2A.09).
+
+### WP-2A.08 — Timeline interaction state machine
+- **Area:** packages/timeline/src/interaction/
+- **Depends on:** WP-2A.04, WP-2A.07, WP-2A.12
+- **Size:** M
+- **Executor:** opus
+- **Scope:**
+  - A framework-free, explicit finite state machine (XState-style hand-rolled reducer, no renderer dependency) consuming normalized pointer/keyboard events and emitting `Intent`s (`begin_tx`, `command(name,args)`, `update_tx`, `commit_tx`, `cancel_tx`, `set_selection`, `set_cursor`).
+  - States: `idle, hover, selecting(marquee), moving, trimming, ripple_trimming, rolling, slipping, sliding, razor, scrubbing, keyframe_dragging, panning, zooming`.
+  - Tool modes (select, razor, ripple, slip/slide, hand).
+  - Esc cancels and rolls back the `gesture` tx. Modifier semantics: Shift = additive selection / constrain axis, Alt = single member of linked group / duplicate-on-drag, Ctrl/Cmd = disable snapping.
+  - Auto-scroll at edges; drag across tracks with `new_track` preview; drop-on-gap and drop-on-clip insert-vs-overwrite per spec.
+  - Edge cases: pointer leaves window, command rejected mid-drag (shows clamped state, no error spam), an agent command touching a gesture's items fails with `Conflict{item_in_gesture}` (§5.2, engine side in 2A.12); the machine never retries on its own. If the engine auto-cancels the gesture after 30 s idle, the machine receives `gesture.cancelled` and returns to `idle` with the doc rolled back. A drag update rejected because another actor's gesture holds an item shows a locked cursor and does not abort.
+- **Interfaces:** `createTimelineMachine(deps) → {send(event), state, subscribe}`; Intent types exported; state chart documented in `packages/timeline/README.md` with a mermaid diagram.
+- **Acceptance criteria:**
+  - Vitest transcript tests (≥ 60) replay recorded event streams and assert the Intent sequence and final doc via a fake engine that wraps the real `cutweave-ops` through WASM or a recorded-command stub.
+  - Property test (fast-check): for random event streams, the machine never reaches an undefined state, never leaves a `gesture` tx open after `pointerup/cancel/blur`, and every `begin_tx` is paired with exactly one `commit_tx` or `cancel_tx`.
+  - A drag emits `update` intents at most once per animation frame (coalesced).
+  - 100% of states/transitions in the doc diagram are covered (coverage check script).
+- **Tests:** Vitest unit/property.
+- **Out of scope:** rendering, hit-test geometry (provided via an injected `hitTest`), keyframe lane specifics (2C.05 adds the `keyframe_dragging` handlers).
+
+### WP-2A.09 — Timeline renderer: virtualization, thumbnails, waveforms, zoom/scroll
+- **Area:** packages/timeline/src/render/
+- **Depends on:** E1M, E1D, WP-2A.02
+- **Size:** M
+- **Executor:** sonnet
+- **Scope:**
+  - Canvas2D virtualized renderer: ruler (timecode and frames), tracks with headers, items, selection, playhead, markers, in/out range, snap guides, linked-group badge, lock/mute/hidden styling, collapsed track heights.
+  - Thumbnails and filmstrips come from `/media/{id}/filmstrip` and the waveform from `/media/{id}/waveform?lod=` via a bitmap cache (LRU, bounded to 256 MB) and LOD selection by zoom. Draws placeholders immediately and never blocks a frame on a fetch.
+  - Horizontal zoom range from 1 frame/≥ 100 px up to 4 hours fit. Zoom is anchored at the cursor. Smooth wheel/pinch. Vertical scroll with sticky track headers.
+  - Spatial index (interval tree) for hit-testing: `hitTest(x,y) → {item, part: body|left-edge|right-edge|fade-handle|keyframe, trackId}`.
+  - Redraw is dirty-rect or full-frame only when needed (`requestAnimationFrame` coalescing).
+- **Interfaces:** `<TimelineCanvas>` React wrapper in `packages/editor`; `TimelineRenderer` class API in `@cutweave/timeline`.
+- **Acceptance criteria:**
+  - Storybook-less demo page `packages/timeline/demo` with a 5,000-item / 50k-keyframe / 200-thumbnail fixture pans and zooms at ≥ 55 fps (§19), measured by the 2J.02 harness (a local probe in this WP prints fps).
+  - Only items intersecting the viewport are drawn (instrumented counter test).
+  - Hit-test p95 < 0.2 ms with 5,000 items.
+  - Visual regression snapshots (Playwright) for 6 states: empty, mixed tracks, selected, locked, zoomed-out, markers.
+- **Tests:** Vitest for geometry and hit-test, Playwright visual regression.
+- **Out of scope:** keyframe lanes (2C.05), fade handles drawing (2E.05).
+
+### WP-2A.10 — Timeline UI wiring: tools, selection, headers, edit gestures
+- **Area:** packages/editor/src/timeline/
+- **Depends on:** WP-2A.08, WP-2A.09, WP-2A.06, WP-2A.05, E1M
+- **Size:** M
+- **Executor:** sonnet
+- **Scope:**
+  - Wire the state machine to the engine through `@cutweave/protocol` (Intents → `edit.begin_tx`/commands/`commit_tx`). Selection lives in `viewStore` and can be set by agents via the MCP `view_set` tool (N3).
+  - Track header controls (add, lock, mute, solo, hide, rename, height, magnetic toggle). Context menus built from the command registry filtered by `when` clauses.
+  - Toolbar: select, razor, ripple, slip, slide, snap toggle, link toggle, zoom-to-fit, zoom-to-selection. Markers, in/out UI (M, I, O keys, double-click marker to edit).
+  - Multi-select, marquee, linked-group selection, copy/cut/paste/duplicate bindings.
+  - Drag from the media bin to timeline with insert/overwrite/new_track affordances; Alt-drop (or context menu "Replace clip") onto an existing clip invokes `clip.replace`. Drop preview ghost.
+  - Edits show engine errors in a non-blocking toast with machine code.
+- **Interfaces:** commands from 2A.02–2A.06; `view.*` UI state in `viewStore`; the MCP catalog exposes `view_get`/`view_set` (playhead, selection, in/out, zoom; non-undoable, not journaled; see 2I.01).
+- **Acceptance criteria:**
+  - Playwright+Electron e2e (≥ 12 scenarios): drag from bin, razor split, ripple delete on the magnetic track (no gap), roll edit, slip, slide, link toggle moves A+V together, lock prevents edit, marquee select, copy/paste across tracks, Esc cancels a drag, undo restores.
+  - Command RTT UI→engine→patch→UI p95 < 16 ms measured by an in-app probe during a 100-step drag.
+  - No UI mutation of `docStore` outside patch events (lint rule + test).
+- **Tests:** Playwright e2e, Vitest for store logic.
+- **Out of scope:** keyboard shortcut editor (2H.05); keyframe lane UI (2C.05).
+
+### WP-2A.11 — Replace clip
+- **Area:** crates/cutweave-ops/src/clip/replace.rs; packages/editor (bin drop and context menu, wired in 2A.10)
+- **Depends on:** WP-2A.03, WP-2A.04, WP-2A.05
+- **Size:** S
+- **Executor:** sonnet
+- **Scope:**
+  - `clip.replace{item, media, mode: keep_duration|keep_source_in|fit_to_source, source_in?}` swaps the media of a clip while keeping its attributes: transform, crop, opacity, blend, all keyframes, effects, masks, audio settings, color label, links and track position (per the 2A.01 spec).
+  - Duration policy: `keep_duration` (default) trims the new media's range to the old duration or, if the new media is shorter, shortens the clip (reported as `shortened: true`); `fit_to_source` changes the duration and ripples per track rules (magnetic: gapless).
+  - Kind change rules: video→image allowed (speed fields reset, reported); audio↔video blocked with `Invalid`. Linked audio is replaced together with the video when the new media has audio, otherwise unlinked and muted per option.
+  - MCP: catalog (`clip_replace`).
+- **Interfaces:** `clip.replace → {item, report: EditReport, shortened}`.
+- **Acceptance criteria:**
+  - Replacing a keyframed, effect-bearing clip: `item.get` before and after are equal except `media`, `source_in`, `duration` (fixture test).
+  - Property test: replace never creates overlap, keeps a magnetic track gapless, and `undo(apply(doc)) == doc` (1,000 cases).
+  - Locked track returns `Locked` and changes nothing.
+- **Tests:** fixtures, proptest, Playwright smoke through Alt-drop.
+- **Out of scope:** replace-all-instances, AI generative replace (P5).
+
+### WP-2A.12 — Soft-lock extension: retry semantics, UI feedback and auto-cancel
+- **Area:** crates/cutweave-commands/src/gesture.rs, crates/cutweave-api (error mapping)
+- **Depends on:** E1B, WP-2A.03
+- **Size:** M
+- **Executor:** opus
+- **Scope:**
+  - **Extends** the minimal soft-lock shipped in P1 (E1B; decision B) rather than introducing it: P2 adds the full touched-set computation, retry semantics and UI feedback. An open `gesture` tx registers a soft lock on the set of items its commands touch (including items shifted by ripple and linked members, as defined in 2A.01). Another actor's command that touches a locked item fails fast, before any mutation, with `Conflict{reason:"item_in_gesture", holder, retry_after_ms}`. Commands on other items proceed.
+  - The holder's own later updates may extend the lock set. Commit and cancel release it. Undo of a gesture inverts only its own ops (valid because the locks guarantee disjointness).
+  - Auto-cancel applies to `gesture`-kind txs only: after 30 s without updates (timer on the doc actor, injectable clock for tests) it rolls back, releases locks, emits `gesture.cancelled{reason:"idle_timeout"}`. `proposal`-kind txs have no idle timeout and are cancellable explicitly; they soft-lock their touched items by the same rule.
+  - Retry semantics: `Conflict` carries `retry_after_ms` (hint from the holder's remaining idle budget; none for proposals) and the holder; MCP clients may retry after the hint, the UI never retries on its own. UI feedback: locked items show a non-blocking "in use by <actor>" indicator and a toast with the machine code.
+  - Saves persist only the last committed rev (an open gesture/proposal tx is never written to disk).
+  - A tx is owned by its connection: a dropped connection or engine restart rolls back that connection's open txs (gesture and proposal) and releases their locks.
+  - Same-actor commands are never blocked. MCP error text includes a retry hint. All error carries the machine code.
+- **Interfaces:** error `Conflict{reason, holder, retry_after_ms}`; event `gesture.cancelled`; `edit.begin_tx{kind:"gesture"|"proposal"}` returns `tx_id`.
+- **Acceptance criteria:**
+  - Property test (proptest, interleaved actors A/B, random commands, random gesture begin/commit/cancel): history stays linear; B never mutates a locked item while A's gesture is open; commands on disjoint items always succeed; after A cancels, doc equals the state as if the gesture never happened plus B's disjoint edits; undo identity holds.
+  - Fake-clock test: gesture idle for 30 s is cancelled and the doc is rolled back; activity every 29 s keeps it alive.
+  - Rejected commands do not change the doc or the rev (byte-identical snapshot).
+  - Lock check adds < 20 µs per command on a 5,000-item doc (criterion).
+  - Parity test: identical error over RPC, MCP and CLI.
+- **Tests:** proptest, fake-clock unit, parity.
+- **Out of scope:** UI behaviour (2A.08), cross-process collaboration.
+
+---
+
+# Epic 2B — Sequences & canvas
+
+### WP-2B.01 — Multi-sequence commands, aspect presets, sequence settings
+- **Area:** crates/cutweave-ops/src/sequence/, crates/cutweave-model (aspect presets table)
+- **Depends on:** E1A, E1B, WP-2A.02
+- **Size:** M
+- **Executor:** sonnet
+- **Scope:**
+  - Commands: `sequence.create{name, preset|format}`, `sequence.duplicate`, `sequence.delete` (not the last one; not while referenced as a compound clip, see 2B.04), `sequence.rename`, `sequence.set_format{width,height,frame_rate,sample_rate,background}`, `sequence.set_active` (`view`), `sequence.list` query.
+  - Aspect presets as L0 data (`16:9 1920x1080 & 3840x2160`, `9:16 1080x1920`, `1:1 1080x1080`, `4:5 1080x1350`, `21:9 2560x1080`), frame-rate presets 24/25/30/50/60.
+  - Changing resolution or aspect: a `reframe` policy (`keep_scale | fit | fill | none`) applied to clip transforms. Default `fit`: preserve each clip's relative framing so it fits the new canvas; documented algorithm. Text/overlay items positions scale proportionally.
+  - Changing frame rate re-snaps all item times to the new grid (rounding to nearest frame, no overlap introduced; INV tested).
+  - MCP: `sequence_create`, `sequence_set_format` core. Others catalog.
+- **Interfaces:** `AspectPreset`, `ReframePolicy`, commands above.
+- **Acceptance criteria:**
+  - Duplicate sequence creates deep copy with new IDs and shared media; modifying the copy never changes the original (proptest).
+  - Changing 16:9→9:16 with `fit` leaves every clip's full frame visible (unit test on computed transform bounds).
+  - Frame-rate change 30→24 preserves overlap-freeness and magnetic gaplessness (proptest, 1,000 cases).
+  - Undo identity for all commands.
+- **Tests:** unit, proptest, snapshot of preset table.
+- **Out of scope:** background fill rendering (2B.02), UI (2B.03).
+
+### WP-2B.02 — Background fill: color, blur, image
+- **Area:** crates/cutweave-render (background pass), crates/cutweave-model (`Background`)
+- **Depends on:** E1F, WP-2B.01, WP-2C.04
+- **Size:** M
+- **Executor:** opus
+- **Scope:**
+  - `Background = Color{rgba} | Blur{source: main_track|below, radius, dim} | Image{media, fit(cover|contain|stretch)} | Transparent` (Transparent only for alpha-capable exports).
+  - Rendering: Color is a clear. Blur renders the lowest visible video layer scaled to cover the canvas, blurred with a separable Gaussian (downsample + blur + upsample, single pass pair), with radius in sequence-height-relative units so preview and export match. Image is a textured quad.
+  - Linear-light blend (§8), no banding (dither at the final 8-bit quantize).
+  - Commands: `sequence.set_background`. Background can't be keyframed in P2.
+  - Preview quality ladder consistency: blur radius scales with preview scale factor.
+- **Interfaces:** `sequence.set_background{kind,...}`; render scene node `BackgroundNode`.
+- **Acceptance criteria:**
+  - Golden frames (WARP + lavapipe) for the 4 kinds with a 16:9 clip on a 9:16 sequence; preview (full quality) equals the pre-encode export frame bit-for-bit on the same adapter; regression vs the stored per-adapter reference SSIM ≥ 0.995 and PSNR ≥ 40 dB; blur GPU cost on iGPU < 1.5 ms at 1080×1920 (render bench, run in 2J).
+  - Export of the same sequence is bit-for-bit deterministic across 2 runs.
+- **Tests:** golden frames, unit for radius scaling.
+- **Out of scope:** per-clip background (that is `VisualProps.background_fill`; deferred, see N10).
+
+### WP-2B.03 — Sequence UI: tabs, settings dialog, aspect switcher
+- **Area:** packages/editor/src/sequences/
+- **Depends on:** WP-2B.01, WP-2B.02, WP-2H.02
+- **Size:** S
+- **Executor:** sonnet
+- **Scope:**
+  - Sequence tabs above the timeline (open, close, reorder, duplicate, rename via double-click). Aspect switcher in the preview toolbar offering the presets plus custom. A settings dialog (schema-driven form) with a reframe policy selector. Background picker (color picker, blur slider, image picker from bin).
+  - Active sequence persisted in `viewStore` and the project's `ui` state.
+- **Interfaces:** consumes 2B.01/02 commands.
+- **Acceptance criteria:**
+  - Playwright: create a 9:16 sequence, switch aspect, the preview canvas changes aspect within one frame of the patch event; the tab state survives save/reopen.
+  - All controls have accessible names (axe check on the dialog, 0 violations).
+- **Tests:** Playwright, axe.
+- **Out of scope:** per-sequence workspace layouts.
+
+### WP-2B.04 — Compound clips: nested sequences as media
+- **Area:** crates/cutweave-model (`sequence-ref`), crates/cutweave-ops/src/compound/, crates/cutweave-render, crates/cutweave-audio
+- **Depends on:** WP-2B.01, WP-2A.03, WP-2C.04, E1F, E1G
+- **Size:** M
+- **Executor:** opus
+- **Scope:**
+  - Model (§4.3): `MediaAsset.kind = sequence-ref` pointing to a `SequenceId`; a compound clip is a normal `Clip` referencing it. Schema migration and fixture. Duration of the reference follows the inner sequence.
+  - Commands: `compound.create{items[], name}` (replaces the selection with one clip referencing a new sequence holding the items, keeping relative layout, tracks and links; undo restores exactly), `compound.break_apart{item}`, `sequence.insert_as_compound{sequence, track, at}` (drop a sequence from the project onto a timeline), `compound.open` (`view`: enter for editing).
+  - **Cycle detection:** a sequence may not reference itself directly or transitively; enforced at validation for every command that creates or retargets a `sequence-ref` (`Invalid{code:"compound_cycle"}`) and at project load (load rejects with a typed error; fuzz case).
+  - Recursive render: the inner sequence is evaluated as a sub-scene at the inner time (`source_time` including speed), rendered to an offscreen texture at the clip's needed resolution (not the full inner format when smaller), cached by (inner subgraph hash, t). Audio: inner mix is a bus feeding the outer clip with the outer clip's gain/pan/fades/speed. Effect-less in P2 (effects come with P4 but apply on the compound like any clip).
+  - Deleting a sequence referenced by compound clips is rejected (`Invalid{refs[]}`); `sequence.duplicate` of an outer sequence keeps references to the same inner sequences (documented; option `deep_copy`).
+  - MCP: `compound_create` core-eligible (listed in `full`, catalog otherwise); others catalog.
+- **Interfaces:** `MediaKind::SequenceRef`; commands above; query `sequence.references{sequence}`.
+- **Acceptance criteria:**
+  - Cycle property test (random reference graphs up to depth 6): no command ever produces a cycle; a hand-crafted cyclic project file is rejected at load.
+  - Round trip: `compound.create` then `compound.break_apart` restores the original items (structural equality ignoring IDs); undo identity for both.
+  - Golden frame: a compound with 2 layers renders identically (regression vs the stored reference SSIM ≥ 0.995 and PSNR ≥ 40 dB) to the same layers flattened on the outer timeline; audio null test < −90 dBFS.
+  - Edits to the inner sequence are reflected in the outer render and in the export; a 3-level nest plays 1080p30 on the reference iGPU with 0 dropped frames / 30 s.
+  - Magnetic and no-overlap property tests extended with compound commands.
+- **Tests:** proptest, golden, audio null, load fuzz seed corpus.
+- **Out of scope:** multicam, per-instance overrides of inner content, UI (2B.05).
+
+### WP-2B.05 — Compound clip UI: create, enter, breadcrumb
+- **Area:** packages/editor/src/compound/, packages/timeline
+- **Depends on:** WP-2B.04, WP-2A.10, WP-2B.03
+- **Size:** S
+- **Executor:** sonnet
+- **Scope:**
+  - Context menu and shortcut "Compound clip" / "Break apart"; compound items drawn with a distinct badge and a mini-structure preview. Double-click enters the inner sequence (opens its tab with a breadcrumb "Outer > Compound"), Esc or breadcrumb click returns. Sequence list shows reference counts and warns before deleting a referenced sequence.
+- **Interfaces:** `view.enter_compound`, consumes 2B.04 commands.
+- **Acceptance criteria:**
+  - Playwright: select 3 clips, create compound, enter, trim an inner clip, exit; the outer duration updates; undo reverses; the cycle attempt (drop a sequence onto itself) shows the typed error toast.
+  - axe 0 violations on the new menus and breadcrumb.
+- **Tests:** Playwright.
+- **Out of scope:** nested timeline view inline (expand in place).
+
+---
+
+# Epic 2C — Clip properties & keyframes
+
+### WP-2C.01 — Spec: keyframe and easing model
+- **Area:** docs/spec/keyframes.md (new)
+- **Depends on:** E1A
+- **Size:** S
+- **Executor:** opus
+- **Scope:** define precisely, extending §4.2 `Animatable<T>`:
+  - **Time domain:** keyframe `t` is item-relative timeline time in flicks (not source time), so speed changes do not move keyframes. Behaviour on trim: keyframes outside the new range are kept (not deleted) unless a `prune` flag is set; behaviour on split (boundary value inserted into both halves so that both halves evaluate identically); on ripple (no change); on duplicate; on speed change (unchanged); on slip (unchanged, since it is item-relative).
+  - **Interpolation:** `hold | linear | bezier{x1,y1,x2,y2} | spring{stiffness,damping,mass}`; interpolation belongs to the segment *starting* at a keyframe. Easing presets (ease-in/out, in-out, back, expo, bounce, elastic) are named bezier or analytic curves stored as `bezier` or `spring` after expansion, with a `preset` hint. Out-of-range handles for bezier are allowed (overshoot) with x clamped to [0,1].
+  - **Value types and combine rules:** scalar, vec2 (per-component interpolation, linked handles optional), color (interpolated in linear light, premultiplied), angle (shortest-path off by default, accumulate for rotation), enum/bool (hold only).
+  - **Evaluation contract:** `eval(animatable, t) → T` pure and deterministic, sample-exact at keyframes, clamped before first and after last, uses f64 internally.
+  - **Animatable property registry:** the complete list for P2: position, scale (x,y linked option), rotation, anchor, crop (4 edges), opacity, flip (hold), volume, pan, and effect/composition params later.
+  - **Auto-key semantics** for `item.set_props` (when a property is already animated, a set at the playhead creates/updates a keyframe; otherwise sets the static value) and an explicit `keyframe.*` API.
+- **Interfaces:** definitions for `Keyframe<T>`, `Interp`, `keyframe.set/delete/move/set_interp/clear`, `item.set_props{auto_key}`.
+- **Acceptance criteria:**
+  - Human review approval. Test vectors file `docs/spec/keyframes-vectors.json` with ≥ 50 `(animatable, t, expected)` rows including overshoot, hold, and spring.
+  - Every property in the registry names a type and its unit/range.
+- **Tests:** vectors are consumed by 2C.02.
+- **Out of scope:** speed ramps (P4), mask/effect params (P4).
+
+### WP-2C.02 — Interpolation core
+- **Area:** crates/cutweave-model/src/animate/ (wasm-safe)
+- **Depends on:** WP-2C.01
+- **Size:** M
+- **Executor:** opus
+- **Scope:**
+  - Implement `Animatable<T>` `eval`, a cubic-bezier solver (Newton with bisection fallback, error < 1e-6), analytic spring (critically/under/over-damped closed form), colour interpolation in linear light, a per-segment cache for monotonic playback queries (`Evaluator` with cursor) and batch evaluation `eval_range(t0,t1,n)` for curve drawing and the UI.
+  - Property types per the registry; `Animatable::sample_times()` for UI lane drawing; JSON schema derive.
+  - Stays free of non-wasm-safe dependencies so that 2C.06 can compile it into the shared wasm module (§16). The UI evaluates curves locally through that module; no per-frame RPC.
+- **Interfaces:** `Animatable::eval(t)`, `Evaluator`, `Easing::{preset(name), to_bezier}`, query `keyframe.eval{item, prop, from, to, samples}` (for agents and tests only; the UI does not use it).
+- **Acceptance criteria:**
+  - All `docs/spec/keyframes-vectors.json` rows pass within 1e-6.
+  - Proptests: continuity at keyframes; monotone linear; hold has no intermediate values; `eval` equals `Evaluator` result for random monotonic sequences; no NaN/inf for any input including degenerate (zero-duration segments, coincident keyframes rejected at construction).
+  - Bench: evaluating 10 animated props × 3 layers at one `t` < 20 µs; 50k keyframes lookup (binary search) < 1 µs.
+  - `cargo check --target wasm32-unknown-unknown -p cutweave-model` passes.
+- **Tests:** vectors, proptest, criterion.
+- **Out of scope:** UI.
+
+### WP-2C.03 — Keyframe and property commands (with retiming rules)
+- **Area:** crates/cutweave-ops/src/{keyframe,item}/
+- **Depends on:** WP-2C.02, WP-2A.04
+- **Size:** M
+- **Executor:** sonnet
+- **Scope:**
+  - Commands: `keyframe.set{item, prop, t, value, interp?}`, `keyframe.delete`, `keyframe.move{…, to_t}`, `keyframe.set_interp`, `keyframe.clear{prop}` (flatten to static at the value at `t` or the first), `keyframe.copy/paste` (in the same module as the clipboard payload), `item.set_props{item, props, auto_key?, at?}` (typed partial update of `VisualProps`, volume, pan; one command for UI inspector and agents), `clip.reset_props`.
+  - Hook the keyframe split/trim/ripple/duplicate rules from 2C.01 into 2A commands (boundary keyframe insertion on split; optional prune).
+  - Batch support for multi-select: `items[]`.
+  - MCP core: `keyframe_set`, `item_set_props`. Catalog for the rest.
+- **Interfaces:** commands above. `item.get` returns animatable props with keyframes (`fields` filtering).
+- **Acceptance criteria:**
+  - Splitting a clip with keyframes: evaluating each half at any matching timeline time equals the original value within 1e-6 (proptest, 1,000 cases).
+  - Setting a keyframe at an occupied `t` replaces it. Moving past a neighbour is rejected with `Invalid` or reorders (per spec; one behaviour, tested).
+  - Dragging a keyframe uses a `gesture` tx and yields one undo step.
+  - JSON Schema describes ranges (e.g., opacity 0–1) and the parity tests pass.
+- **Tests:** unit, proptest, snapshots of schema.
+- **Out of scope:** UI.
+
+### WP-2C.04 — Render: transform, crop, opacity, flip, core blend modes
+- **Area:** crates/cutweave-render (compositor, WGSL)
+- **Depends on:** E1F, WP-2C.02
+- **Size:** M
+- **Executor:** opus
+- **Scope:**
+  - Full `VisualProps` in the scene graph: position/scale/rotation/anchor, 4-edge crop (feather 0), flip H/V, opacity, evaluated via 2C.02 at `t`.
+  - Core blend modes (§8; the extended set arrives in P4): `normal, multiply, screen, overlay, darken, lighten, add, soft-light`. Implemented in linear light on `Rgba16Float` with premultiplied alpha; formulas documented per mode.
+  - Filtering: bilinear with mip/trilinear on downscale to avoid aliasing; bicubic option for export. Sub-pixel positioning stable under animation (no shimmer: golden test on a 1 px grid pattern at 0.25 px steps).
+  - Layer ordering follows the track order, top track on top. Hidden tracks excluded. Solo does not affect video.
+  - Render-graph culling of fully transparent or off-canvas layers.
+- **Interfaces:** `VisualProps` evaluator; scene `LayerNode {transform, crop, opacity, blend}`.
+- **Acceptance criteria:**
+  - Golden frames (WARP/lavapipe) per blend mode vs. analytic CPU reference at 1e-3 max abs error in linear space on a gradient test chart.
+  - Rotation 90° and flip combine with the clip's media rotation tag correctly (corpus clip with rotate=90).
+  - Playback gate: 3 video layers with transform animation at 1080p60 on the iGPU reference machine: 0 dropped frames / 60 s (run in 2J.03; locally reports GPU ms ≤ 8 per frame).
+  - Preview == export: preview (full quality) vs pre-encode export frame on the same adapter are bit-identical.
+- **Tests:** golden, CPU reference unit, bench.
+- **Out of scope:** masks, effects, adjustment layers (P4), text.
+
+### WP-2C.05 — Timeline keyframe lanes and curve editor
+- **Area:** packages/timeline/src/keyframes/, packages/ui/src/curve-editor/
+- **Depends on:** WP-2C.03, WP-2C.06, WP-2A.08, WP-2A.09
+- **Size:** M
+- **Executor:** sonnet
+- **Scope:**
+  - Expandable keyframe lanes under a selected item (one lane per animated property, with a diamond per keyframe, interpolation shown by glyph), drawn by the renderer from `item.get` data and kept within the 5,000-item / 50k-keyframe fps budget by LOD (collapse diamonds < 3 px apart).
+  - Add via the inspector "◇" or by dragging on the lane. Select, multi-select, drag in time (snap to playhead/edges), copy/paste, delete. State machine gets `keyframe_dragging` handlers (extends 2A.08).
+  - `@cutweave/ui` `<CurveEditor>`: bezier handle editing, preset picker, value/time axes, spring parameters, live preview curve evaluated locally via the 2C.06 wasm module; used in the inspector popover.
+- **Interfaces:** `<KeyframeLane>`, `<CurveEditor value onChange presets>`.
+- **Acceptance criteria:**
+  - Playwright: add 3 keyframes to opacity, drag one, change its interpolation to ease-in-out, undo twice, the doc is restored (via `timeline.get` assertion).
+  - 50k keyframes across the 5,000-item fixture still pan/zoom ≥ 55 fps (2J.02).
+  - Curve editor is keyboard-operable (arrow keys nudge handles) and passes axe.
+- **Tests:** Vitest, Playwright, visual snapshots.
+- **Out of scope:** multi-property graph editor (2C.07).
+
+### WP-2C.06 — Shared wasm module: keyframe, easing, time and snapping math
+- **Area:** crates/cutweave-wasm/ (new thin crate, wasm-bindgen), packages/protocol/wasm/, CI
+- **Depends on:** WP-2C.02, E1N
+- **Size:** M
+- **Executor:** sonnet
+- **Scope:**
+  - A thin crate `cutweave-wasm` re-exporting from the wasm-safe crates: flicks/frame/timecode conversions (`frame_to_time`, `time_to_frame`, `snap_to_frame`, timecode parse/format), `Animatable` evaluation and easing (including bezier/spring sampling and `eval_range`), and the snapping API (2A.07 adds its exports). No new logic in this crate.
+  - Build with `wasm-pack`/`wasm-bindgen` (target `web`, `--release`, `wasm-opt`), size budget ≤ 150 KB gzipped (CI check). Published inside `packages/protocol` as `@cutweave/protocol/wasm` with generated TS typings, an async `initMath()` loader (also usable in Vitest/Node) and a synchronous API after init. Float/time marshalling uses i64 as BigInt only at the boundary with typed wrappers, bulk evaluation takes `Float64Array` to avoid per-call overhead.
+  - CI: build on every PR (wasm32 compile of the source crates is already gated), regenerate and diff the package typings (snapshot gate like codegen), and run the golden-vector parity test: the same vectors (`docs/spec/keyframes-vectors.json`, timecode vectors) executed natively in Rust and in Node via wasm must match bit-for-bit for time math and within 1e-9 for float eval.
+  - Versioning: the module version is tied to the protocol package version. The UI refuses to start with a protocol/wasm mismatch.
+- **Interfaces:** `@cutweave/protocol/wasm`: `initMath`, `time.*`, `anim.eval`, `anim.evalRange`, `easing.sample`, plus snap exports from 2A.07.
+- **Acceptance criteria:**
+  - `pnpm -F @cutweave/protocol test` runs the parity vectors: 0 mismatches.
+  - Gzipped wasm ≤ 150 KB; init < 30 ms; `evalRange` of 1,000 samples < 0.3 ms in Chromium (vitest bench).
+  - Changing a Rust signature without updating typings fails the snapshot gate.
+  - No RPC is issued by any timeline/inspector code for curve drawing (lint rule banning `keyframe.eval` use in `packages/*`).
+- **Tests:** parity vectors, bench, snapshot gate.
+- **Out of scope:** rendering/GPU code in wasm, browser-lite engine.
+
+### WP-2C.07 — Bezier graph editor panel
+- **Area:** packages/ui/src/graph-editor/, packages/editor/src/panels/graph
+- **Depends on:** WP-2C.05, WP-2C.06, WP-2H.01
+- **Size:** M
+- **Executor:** sonnet
+- **Scope:**
+  - A dockable Graph Editor panel showing value-over-time curves for the selected item's animated properties (multi-curve, per-component for vec2), with pan/zoom on both axes, fit-to-selection, value and time rulers, playhead and snapping (via wasm).
+  - Keyframe point editing: drag in time and value (axis constrain with Shift), bezier tangent handles (free / aligned / mirrored), interpolation switch (hold / linear / bezier / spring), easing presets, copy/paste of keyframes, box select, numeric entry; normalized-vs-absolute value view toggle.
+  - All edits are `keyframe.*` commands under `gesture` txs; the curve preview evaluates locally via the wasm module.
+  - Soft-lock Conflict (2A.12) shows a non-blocking message.
+- **Interfaces:** `<GraphEditor item props onCommand>`; panel id `graph-editor` in the panel registry.
+- **Acceptance criteria:**
+  - Playwright: on a position animation (3 keyframes) drag a tangent handle: the stored bezier values change as expected (±1e-3) and the preview curve matches `keyframe.eval` samples from the engine within 1e-6; undo restores the original.
+  - 10 curves × 500 keyframes pan/zoom at ≥ 55 fps (probe).
+  - Keyboard operable (arrows nudge, Delete removes); axe 0 violations.
+- **Tests:** Vitest for geometry, Playwright, visual snapshots.
+- **Out of scope:** expression-driven curves, motion paths in the preview (P4).
+
+---
+
+# Epic 2D — Speed basics
+
+### WP-2D.01 — Speed model, reverse, freeze frame, source time mapping
+- **Area:** crates/cutweave-model, crates/cutweave-ops/src/clip/speed.rs, crates/cutweave-render (time map)
+- **Depends on:** E1A, E1F, WP-2A.04
+- **Size:** M
+- **Executor:** opus
+- **Scope:**
+  - Use `Speed::Constant(r)`, r in [0.1, 100], rational stored as `{num,den}` (not f64) to keep frame math exact; `reverse: bool`; `freeze: Option<{at_source}>`.
+  - Commands: `clip.set_speed{item, speed, keep: duration|in_point, ripple}`, `clip.reverse`, `clip.freeze_frame{item, at}` (splits the item and inserts a still-duration clip of the freeze frame per CapCut behaviour, default 3 s duration: configurable setting `freeze.default_duration`), `clip.reset_speed`.
+  - Source-time mapping function `source_time(item, t)` is the single canonical mapping used by render, audio, thumbnails and export. Frame-nearest sampling in v1 (no blending; blending arrives P4). Reverse requires decoder support for backwards GOP traversal: use GOP-cache decode-forward then reorder; for sources without proxy and long GOP a warning plus automatic proxy request (2F.01).
+  - Speed change on a magnetic track ripples; on a free track it keeps start and may be blocked by a neighbour (`Conflict`, with option `ripple`).
+  - MCP core: none (catalog `clip_set_speed`, `clip_freeze_frame`); note in the MCP map (2I.01).
+- **Interfaces:** `Speed`, `source_time`, commands above.
+- **Acceptance criteria:**
+  - Unit test: 2× over a 10 s clip gives duration 5 s exactly in flicks; 1/3× is exact (rational), no drift over 1,000 round trips (`set_speed(a)` then `set_speed(1/a)` restores duration±0).
+  - Frame-exact: preview/export at speed 0.5 shows source frame `floor(t*0.5*fps)` verified on the corpus clip with burned-in frame counter (golden OCR-free check via pixel-coded frame numbers).
+  - Reverse playback of a 1080p H.264 long-GOP clip scrubs at p95 < 150 ms (§19) with proxy, and works (slower, documented) without.
+  - Freeze frame creates exactly two splits + one still and keeps the track gapless on magnetic.
+  - Undo identity and magnetic-gapless property tests extended with speed commands.
+- **Tests:** unit, proptest, golden frames, e2e via CLI.
+- **Out of scope:** speed curves, optical-flow blending (P4), audio (2D.02).
+
+### WP-2D.02 — Audio for speed and reverse (pitch-preserving)
+- **Area:** crates/cutweave-audio (stretch node), crates/cutweave-ops
+- **Depends on:** E1G, WP-2D.01
+- **Size:** M
+- **Executor:** opus
+- **Scope:**
+  - Time-stretch node using `signalsmith-stretch` for 0.1×–100× (above 4× or below 0.25× quality degrades; clamp the audio-preserve path to 0.25×–4×, and outside the range switch to resample (pitch-changing) with a flag in the report).
+  - `Clip.audio.preserve_pitch: bool` (default true). Reverse audio via block reversal with crossfaded joins (5 ms).
+  - Stretch runs on worker threads ahead of the real-time thread into ring buffers (§9) and survives seeks with < 50 ms re-prime. Mixer uses the same `source_time` as video.
+  - Offline render path (export) uses the same node deterministically (fixed block size).
+- **Interfaces:** `StretchNode`, `clip.set_speed` flag `preserve_pitch`.
+- **Acceptance criteria:**
+  - Test tone 440 Hz at 2× with preserve-pitch: measured fundamental 440 Hz ± 2 Hz (FFT test); without: 880 Hz ± 4.
+  - A/V offset at 0.5× and 2× after 60 s: < 40 ms and drift < 1 frame / 30 min equivalent (the 2J.03 sync probe; this WP asserts offset < 20 ms in an offline test).
+  - 0 underruns at 256-sample buffer with 8 tracks all at 1.5× (audio soak 120 s).
+  - Reverse of a 1 s sine yields the same energy (RMS ± 0.1 dB) and no clicks (max sample discontinuity < 0.05 at joins).
+- **Tests:** FFT unit tests, offline render comparison, soak.
+- **Out of scope:** pitch shift/voice effects (P5).
+
+---
+
+# Epic 2E — Audio features
+
+### WP-2E.01 — Fades, keyframed volume, pan
+- **Area:** crates/cutweave-audio, crates/cutweave-ops/src/audio/
+- **Depends on:** E1G, WP-2C.02, WP-2C.03
+- **Size:** M
+- **Executor:** sonnet
+- **Scope:**
+  - Per-clip `fade_in`, `fade_out` (duration + curve `linear|log|equal_power|s_curve`), keyframed `volume` (dB, −∞..+12) and `pan` (−1..1, equal-power law) evaluated sample-accurately (per-block linear ramps, block ≤ 64 samples to avoid zipper noise).
+  - Commands: `audio.set_fade{item, in?, out?, curve?}`, `audio.set_volume{item, db, auto_key?}` / `audio.set_pan` (thin wrappers over `item.set_props`; same data), `audio.set_gain`. Fades clamp so that `fade_in + fade_out ≤ duration`.
+  - Fades are applied post-trim so that trimming does not change the fade length unless it would exceed the duration (spec'd).
+  - MCP core: `audio_set` (one tool covering fade/volume/pan via discriminated union).
+- **Interfaces:** commands above; clip `audio{gain,pan,fade_in,fade_out}`.
+- **Acceptance criteria:**
+  - Offline render test: a 1 kHz tone with 1 s linear fade-in has amplitude at 0.5 s of 0.5 ± 0.01; equal-power pan at center gives −3 dB per channel ± 0.1 dB.
+  - No clicks: for a keyframed volume jump between adjacent keyframes (hold), max sample discontinuity after smoothing < 0.02.
+  - Undo identity and parity tests pass; export mix equals preview mix (null test: difference < −90 dBFS).
+- **Tests:** unit with synthesized signals, offline null test.
+- **Out of scope:** ducking, EQ, compressor (P3/P5).
+
+### WP-2E.02 — Track buses, master limiter, meters
+- **Area:** crates/cutweave-audio/src/{bus.rs, limiter.rs, meter.rs}
+- **Depends on:** WP-2E.01
+- **Size:** M
+- **Executor:** opus
+- **Scope:**
+  - Per-audio-track bus: gain, pan, mute, solo (solo is exclusive-solo-in-place: any soloed track mutes non-soloed audio tracks; video not affected), meters (peak and RMS) published at 30 Hz via `playback.meters` events. Track gain keyframable.
+  - Master bus: gain plus true-peak lookahead limiter (default ceiling −1 dBTP, 5 ms lookahead, 100 ms release, configurable; on by default for export, toggle `export.limiter`), integrated LUFS-M/S/I meter via `ebur128`.
+  - The real-time thread remains lock-free and allocation-free (asserted with an `assert_no_alloc` test build).
+  - Commands: `track.set_gain`, `audio.set_master{gain, limiter{enabled,ceiling}}`, `audio.get_levels` query (for agents; returns peak/RMS/LUFS over a range by offline analysis).
+- **Interfaces:** `BusGraph`, events `playback.meters`, queries `audio.get_levels`.
+- **Acceptance criteria:**
+  - Limiter: input with a +6 dBFS sine peak produces true-peak ≤ ceiling + 0.1 dB (measured with ebur128 true peak) over a 10 s test.
+  - Zero underruns over 120 s at a 256-sample buffer with 8 tracks and active limiter (soak test); `assert_no_alloc` passes.
+  - Solo logic unit tests (multiple solos, solo+mute interplay).
+  - `audio.get_levels` for a −20 dBFS test tone returns −20 ± 0.2 dB RMS; −23 LUFS pink-noise reference returns −23 ± 0.3 LUFS.
+- **Tests:** DSP unit tests, soak, no-alloc.
+- **Out of scope:** sidechain ducking, EQ, reverb.
+
+### WP-2E.03 — Loudness normalization and extract audio
+- **Area:** crates/cutweave-ops/src/audio/{normalize.rs, extract.rs}, crates/cutweave-jobs
+- **Depends on:** WP-2E.02, E1D, WP-2A.05
+- **Size:** M
+- **Executor:** sonnet
+- **Scope:**
+  - `audio.analyze_loudness{items|range}` job (ebur128 over decoded audio, result cached in `MediaAsset.analysis.loudness` by content hash).
+  - `audio.normalize{items|master, target: -14|-16|-23|custom LUFS, mode: gain_per_clip | master_gain}` sets clip gain (non-destructive) so measured integrated loudness equals target ± 0.5 LU, never exceeding the true-peak ceiling (reduces gain if needed and reports `limited: true`). Presets are L0 data: `social -14`, `podcast -16`, `broadcast -23`, `streaming-music -14`.
+  - Export option `export.normalize{target}` computes a two-pass gain over the mixed timeline.
+  - `audio.extract{item, link: keep|unlink}` creates an audio item on a new/audio track from a video clip's audio, and optionally mutes the original video's audio (CapCut "extract audio"). `media.extract_audio{media, format}` writes a WAV/AAC file into `generated/` and imports it.
+  - MCP: `audio_normalize` catalog (core `audio_set` per 2E.01 stays); `audio.extract` catalog.
+- **Interfaces:** commands above; job kind `analysis.loudness`.
+- **Acceptance criteria:**
+  - A −30 LUFS fixture normalizes to −14 ± 0.5 LU measured on the exported file via ffmpeg `ebur128`; the true-peak stays ≤ −1 dBTP.
+  - Analysis is cached: re-running returns instantly (< 50 ms) with identical values.
+  - Extract: original clip audio muted/unlinked per option; the new audio item aligns to the video start within 0 flicks.
+  - Undo identity.
+- **Tests:** unit with synthetic LUFS fixtures, e2e through CLI + ffmpeg verification.
+- **Out of scope:** auto-ducking, AI voice enhance (P5).
+
+### WP-2E.04 — Voiceover recording
+- **Area:** crates/cutweave-audio/src/input.rs, crates/cutweave-ops/src/audio/record.rs, packages/editor (record UI)
+- **Depends on:** E1G, E1H, WP-2E.02, E1C
+- **Size:** M
+- **Executor:** opus
+- **Scope:**
+  - cpal input stream (device selection, sample rate negotiation, mono/stereo) writing a lossless WAV (32-bit float or 24-bit) into `generated/recordings/` with crash-safe incremental header finalization (write size on stop and every 5 s so a crash leaves a recoverable file).
+  - Commands: `audio.record_start{device?, track?, count_in?}`, `audio.record_stop → {media, item}`, `audio.list_devices` query. Records while the timeline plays (monitor timeline mix to output; latency compensation: measured round-trip offset setting, default from device reported latency) and on stop inserts the clip at the record start position on a (new) audio track, overwriting per mode.
+  - Level meter during recording; mic permission handling (macOS `NSMicrophoneUsageDescription`, Windows privacy toggle detection → typed error `PermissionDenied`).
+  - UI: record button in timeline toolbar, countdown 3-2-1, live level meter, input device chooser in settings.
+  - MCP: catalog (agents rarely record); marked `destructive=false`.
+- **Interfaces:** commands above; event `audio.recording{state, level}`.
+- **Acceptance criteria:**
+  - Loopback test (virtual cable or synthetic input device in CI via cpal mock): recorded clip aligns to the played click track within ±10 ms after latency compensation; 5-min recording continues with 0 dropped samples (sample count == duration × rate ± 1).
+  - Kill the engine mid-recording: the WAV is playable up to the last 5 s checkpoint, and recovery offers to import it (manual check recorded in the PR + automated header-recovery unit test).
+  - Permission denied path returns `PermissionDenied` and the UI shows guidance.
+- **Tests:** mock-device integration, header-recovery unit, manual platform checklist on 3 OSes.
+- **Out of scope:** noise reduction, multi-take comping.
+
+### WP-2E.05 — Audio UI: waveforms, fade and volume handles, mixer panel
+- **Area:** packages/timeline (audio drawing), packages/editor/src/mixer/
+- **Depends on:** WP-2E.01, WP-2E.02, WP-2A.09, WP-2A.08
+- **Size:** M
+- **Executor:** sonnet
+- **Scope:**
+  - Waveform rendering in audio items (peak pyramid, LOD by zoom, dB-scale option), volume line overlay with draggable keyframe points (rubber band) and fade handles at item corners (drag = `audio.set_fade` under `gesture` tx). Shows normalization/limited badges.
+  - Mixer panel: per-track fader, pan knob, mute/solo, live peak meters from `playback.meters`, master fader plus limiter toggle and LUFS readout. Double-click resets.
+  - Audio inspector section (volume, pan, fades, preserve pitch, normalize button) through the schema-driven inspector (2H.03).
+- **Interfaces:** consumes 2E commands; `<Mixer/>` panel registered in the dock registry (2H.01).
+- **Acceptance criteria:**
+  - Playwright: drag a fade handle to 1.0 s, the clip's `fade_in` equals 1.0 s ± 1 frame; drag the volume line creates two keyframes; undo reverts.
+  - Meters update at ≥ 25 Hz without exceeding 3% CPU in the renderer (perf probe).
+  - Waveform draws for a 60-min clip at the 1-hour zoom within the timeline frame budget (≥ 55 fps pan).
+- **Tests:** Playwright, Vitest.
+- **Out of scope:** EQ UI, spectral view.
+
+### WP-2E.06 — Auto-ducking (sidechain from voice tracks)
+- **Area:** crates/cutweave-audio/src/duck.rs, crates/cutweave-ops/src/audio/duck.rs, packages/editor (mixer controls)
+- **Depends on:** WP-2E.02, WP-2E.01
+- **Size:** M
+- **Executor:** opus
+- **Scope:**
+  - Sidechain ducker on a track bus: `audio.set_ducking{track, enabled, sources: [track_ids], threshold_db (-35), reduction_db (-12), attack_ms (50), release_ms (400), hold_ms (100), lookahead_ms (10)}`. The detector is a smoothed RMS/peak follower on the summed source tracks (post-fade, post-gain). Gain reduction is applied as a smooth dB ramp on the target bus (music/B-roll audio).
+  - Deterministic in preview and export (fixed block size, lookahead via delay compensation; no wall-clock). Runs on the audio thread with no allocation. The ducking curve is also computable offline for the timeline: `audio.get_duck_curve{track, from, to}` returns breakpoints so the UI can draw the gain-reduction shading on the music track.
+  - "Duck under voice" one-click: `audio.auto_duck{track}` picks sources as all tracks flagged `role=voice` (new `Track.role: voice|music|sfx|none`, settable via `track.set_role`, schema bump if not yet in 2A.02) and applies defaults.
+  - Manual overrides: ducking can be disabled per clip region by volume keyframes; ducking applies on top.
+  - UI: ducking section on the track in the mixer (enable, sources, amount, attack/release) with live gain-reduction meter.
+  - MCP: `audio_set` gains a `ducking` variant (core), `audio.auto_duck` catalog.
+- **Interfaces:** commands above; event field `playback.meters.gr_db`.
+- **Acceptance criteria:**
+  - Offline test: 1 kHz music at −20 dBFS under a voice burst at −18 dBFS from t=2 s to 4 s with defaults: music reduced by 12 ± 0.5 dB within 150 ms of voice onset (attack), and returns to within 0.5 dB of the original ≤ 800 ms after voice end.
+  - No gain change when the sources are silent (bit-exact passthrough, null test < −120 dBFS).
+  - Export mix equals preview mix (null test < −90 dBFS); 0 underruns over 120 s at 256-sample buffer with ducking active on 2 tracks; `assert_no_alloc` passes.
+  - `audio.get_duck_curve` agrees with the rendered gain within 0.2 dB.
+- **Tests:** DSP unit tests, null tests, soak.
+- **Out of scope:** transcript/VAD-driven ducking (P3/P5), multiband ducking.
+
+### WP-2E.07 — Basic voice effects (offline DSP)
+- **Area:** crates/cutweave-audio/src/voicefx/, crates/cutweave-ops/src/audio/voicefx.rs, crates/cutweave-jobs
+- **Depends on:** WP-2D.02, WP-2E.01, E1G
+- **Size:** M
+- **Executor:** sonnet
+- **Scope:**
+  - Effects: `pitch` (±12 semitones, formant-preserving option, `signalsmith-stretch` pitch shift), `chipmunk` (+7 st preset) and `deep` (−6 st preset), `robot` (ring modulation at 50–150 Hz plus short comb/flanger, intensity param), `echo` (delay 50–1000 ms, feedback, mix, ≤ 8 s tail), `telephone` (band-pass 300–3400 Hz, mild soft clip, optional noise). Parameters are keyframe-free in P2.
+  - "Offline DSP" means deterministic non-real-time processing: each effect clip is rendered by a job to a cached WAV (keyed by media hash, source range, effect id and params) and the mixer plays the cache. While the cache is pending the original plays and the clip shows a "processing" badge. Export always uses the same cached render (or renders inline if missing), so preview equals export.
+  - Commands: `audio.set_voice_effect{item, effect: none|pitch|chipmunk|deep|robot|echo|telephone, params}`, `audio.list_voice_effects` query (with param schemas for the schema-driven inspector, `x-ui` hints). Tail handling for echo: clip duration unchanged; the tail is clipped by the fade-out or extended through an optional `tail: true` that adds an invisible extension limited by neighbours.
+  - MCP: catalog.
+- **Interfaces:** commands above; job kind `audio.voicefx`; schema for each effect.
+- **Acceptance criteria:**
+  - Pitch +12 st on a 440 Hz tone gives 880 ± 4 Hz; −12 gives 220 ± 2 Hz (FFT); duration unchanged ± 1 sample block.
+  - Telephone: energy below 200 Hz and above 4 kHz attenuated by ≥ 24 dB relative to the passband (spectrum test). Echo of an impulse shows repeats at the configured delay ± 1 sample with the configured feedback ratio ± 0.5 dB.
+  - A 60 s clip renders in < 10 s on the reference desktop; re-applying identical params hits the cache (< 100 ms); changing params invalidates only that clip.
+  - Export of a project with voice effects equals the preview mix (null test < −90 dBFS). Undo identity.
+- **Tests:** FFT/spectrum unit tests, cache test, null test.
+- **Out of scope:** AI voice changer/voice cloning (P5), real-time effect preview while dragging params (cached render only), formant EQ.
+
+---
+
+# Epic 2F — Media management
+
+### WP-2F.01 — Proxy generation pipeline and policy
+- **Area:** crates/cutweave-cache/src/proxy/, crates/cutweave-jobs, crates/cutweave-ops/src/media/proxy.rs
+- **Depends on:** E1D, E1B, E1C
+- **Size:** M
+- **Executor:** opus
+- **Scope:**
+  - Proxy job: transcode to an intra-frame codec at ≤ 960 px on the long edge (ProRes Proxy via `prores_ks`/videotoolbox where present, DNxHR LB fallback, MJPEG last), audio copied to PCM. Keeps frame count and timestamps identical to the source (VFR sources are conformed through the media index to CFR with a stored `pts_map` so that proxy frame *n* equals source frame *n*, essential for frame-exact edits).
+  - Content-addressed in the global cache (`cache.sqlite` entry keyed by `content_hash + proxy_profile`), size-capped LRU, resumable job (partial files finalized atomically), progress events, cancel, concurrency limit (default 2; ≤ 1 while exporting), CPU/GPU niceness.
+  - Policy in `project.settings.proxy_policy`: `off | auto | all`. `auto` triggers on import for long-GOP codecs (H.264/HEVC) with long edge > 1920 px or fps > 60 or HEVC 10-bit (documented). Per-media `media.set_proxy_mode{auto|force|off}`.
+  - Commands: `media.generate_proxy{media[]}`, `media.delete_proxy`, `media.set_proxy_policy`, `media.proxy_status` query. Jobs resumed after engine restart.
+  - MCP: catalog; `media_import` reports `proxy: queued|none`.
+- **Interfaces:** `ProxyRef {path, profile, status}`; `job.progress` events; queries above.
+- **Acceptance criteria:**
+  - For the corpus 4K HEVC 10-min clip, proxy generation ≥ 1× realtime on the reference desktop; resumes after kill -9 and completes (test).
+  - Frame mapping: for 500 random frame indices on VFR phone footage, the proxy decodes the same frame index as the source (verified by embedded frame-number burn-in clip): 100% match.
+  - Cache cap respected: with a cap of 1 GB and 3 × 600 MB proxies, the least recently used one is evicted and its `ProxyRef` reports `evicted` (reverts to original).
+  - Scrub p95 on proxy < 80 ms, on 4K long-GOP original with proxy off < 150 ms (§19; measured in 2J.03).
+- **Tests:** integration with corpus, kill/resume, cache eviction unit.
+- **Out of scope:** UI beyond a status query (2F.03), preview switching logic (2F.02).
+
+### WP-2F.02 — Proxy-aware preview/export source selection
+- **Area:** crates/cutweave-playback, crates/cutweave-render, crates/cutweave-media
+- **Depends on:** WP-2F.01, E1H, E1E
+- **Size:** S
+- **Executor:** sonnet
+- **Scope:**
+  - `MediaResolver::open(media, purpose)` where `purpose = Preview(quality) | Export | Thumbnail | Analysis`. Export and Analysis always use the original; Preview uses the proxy when present and ready and quality ≤ proxy resolution scaling rule (full-res preview that needs more than the proxy provides uses the original, per quality ladder §8).
+  - Hot-swap when a proxy finishes while a file is open (next seek uses it; no visible glitch).
+  - Setting `preview.use_proxies` (default on) toggle in the transport bar. The preview status chip shows "Proxy" or "Original".
+  - Missing/evicted proxy gracefully falls back to the original.
+- **Interfaces:** `MediaResolver`; `view.set_preview_quality{use_proxies}`.
+- **Acceptance criteria:**
+  - Test asserts export never opens a proxy file (file-open spy in the integration test): 0 proxy opens across a 3-clip export.
+  - Toggling proxies during playback causes no dropped frames > 2 within 5 s on the reference iGPU (probe).
+  - Exported file of a project with proxies equals exported file without proxies (frame hash compare for 10 sample frames).
+- **Tests:** integration, spy test.
+- **Out of scope:** UI chips beyond status text (2F.03 adds the settings UI).
+
+### WP-2F.03 — Relink missing media (hash-based) and media bin UI for health
+- **Area:** crates/cutweave-ops/src/media/relink.rs, packages/editor/src/media/
+- **Depends on:** E1D, E1C, E1M, WP-2F.01
+- **Size:** M
+- **Executor:** sonnet
+- **Scope:**
+  - Detect missing media on open and on file-watch events (status `ok|missing|changed`). Offline media renders as a "media offline" slate (render pipeline fallback frame plus silent audio) and never crashes export (export refuses with a typed error listing missing assets unless `allow_offline`).
+  - `media.relink{media, path}` (single), `media.relink_folder{folder, recursive}` (search the folder, match by content hash first, then by filename+size+duration), `media.find_missing` query. Hash is computed lazily with a fast partial hash (first/last/middle 1 MB + size) and full hash only on ambiguity. Path rewrite preserves `path_rel` when under the project folder.
+  - UI: a relink dialog on open ("N files missing"), per-asset badges in the bin, proxy status badges and a proxy settings pane (policy, cache size cap, regenerate).
+  - MCP: `media_relink` catalog. `media_list` core includes `status`.
+- **Interfaces:** commands above; `MediaAsset.status`.
+- **Acceptance criteria:**
+  - Move the media folder: opening the project shows missing; `relink_folder` restores 100% of 20 test assets including renamed files (hash match) with one command; undo restores previous paths.
+  - Export with missing media fails with `Invalid{path:"media.<id>"}` and a human message; with `allow_offline` it exports a slate.
+  - Playwright: dialog flow end-to-end.
+- **Tests:** integration, Playwright.
+- **Out of scope:** network volume handling, collect & archive (2F.04).
+
+### WP-2F.04 — Collect and archive
+- **Area:** crates/cutweave-ops/src/project/collect.rs, crates/cutweave-jobs
+- **Depends on:** E1C, WP-2F.03
+- **Size:** M
+- **Executor:** sonnet
+- **Scope:**
+  - `project.collect{dest, mode: copy_all|copy_external_only, include_generated, include_proxies, trim_unused: bool}` job. Copies referenced media into `<project>/media/` (or archive destination), rewrites `path_abs/path_rel` in the project doc copy, dedupes by content hash, preserves relative folder names with collision handling, verifies by hash after copy, reports progress, cancellable and resumable.
+  - `project.archive{dest, format: zip|folder}` bundles `.cutweave`, media, `generated/`, fonts/LUTs, and a manifest `archive.json` (hash list). Zip64 for > 4 GB; no recompression for media (stored). Excludes caches by default.
+  - Dry-run query `project.collect_estimate` returns size/free-space check before starting (fails early with `Invalid{msg: not enough space}`).
+  - UI: "Collect files…" and "Archive project…" dialogs, with progress in the queue panel (reuses the job UI).
+  - MCP: catalog; both are marked `destructive=false`, `idempotent=true`.
+- **Interfaces:** `project.collect`, `project.archive`, `project.collect_estimate`.
+- **Acceptance criteria:**
+  - Collect then open the collected project on a "different machine" (test moves it and removes originals): 0 missing media; export of both versions yields identical frame hashes on 10 sample frames.
+  - Archive zip extracts and opens; `archive.json` hashes all verify (script).
+  - Interrupting at 50% then resuming completes without re-copying finished files (copy-count assertion).
+  - Original project is untouched (file mtimes unchanged).
+- **Tests:** integration with temp dirs, large-file test with sparse 5 GB file (nightly only).
+- **Out of scope:** cloud storage, encryption.
+
+### WP-2F.05 — Image and image-sequence import, still duration defaults
+- **Area:** crates/cutweave-media (image backend), crates/cutweave-ops/src/media/, crates/cutweave-render
+- **Depends on:** E1D, E1F, WP-2A.03
+- **Size:** M
+- **Executor:** sonnet
+- **Scope:**
+  - Import PNG/JPEG/WebP/HEIC-if-ffmpeg/TIFF/BMP/GIF (GIF as video with its frame timing)/SVG (rasterized at import size, scale-aware re-rasterize deferred; flagged), with EXIF orientation, color profile (sRGB assumed if untagged, ICC → sRGB conversion via `lcms2`-class lib or documented skip), 16-bit PNG, alpha (premultiplied in render).
+  - Image-sequence detection: pattern `name_%04d.ext` or folder selection with lexical/numeric order and gap detection (warn); frame rate prompt (default sequence fps); imported as a video-kind asset with `kind=image_sequence`.
+  - Still duration defaults: `project.settings.still_duration` (default 5 s; stills inserted from the bin use it); settable; for sequences-from-images, `media.import_images_as_slideshow{files, per_image, order}` convenience command.
+  - Images are unbounded in length (no source bound; per 2A.04), cached as GPU textures with VRAM budget.
+  - MCP: `media_import` handles images; `media_import_sequence` catalog.
+- **Interfaces:** `MediaKind::{Image, ImageSequence}`; commands above.
+- **Acceptance criteria:**
+  - Corpus: rotated JPEG (EXIF 6) displays upright; 16-bit PNG with alpha composites correctly over color (golden); 4000×3000 image scrub does not exceed 80 ms p95 and holds 1080p60 (textures cached).
+  - A 300-frame PNG sequence imports in < 3 s (probe only; no per-frame decode up front), plays at 30 fps, and each frame is exact (frame-number burn-in).
+  - Dropping an image onto a timeline creates a clip of `still_duration`; changing the setting does not alter existing clips.
+- **Tests:** corpus integration, golden frames.
+- **Out of scope:** animated WebP/APNG, RAW stills, vector re-rasterization.
+
+### WP-2F.06 — Media bin search, tags and smart collections
+- **Area:** crates/cutweave-ops/src/media/{tags,collections}.rs, crates/cutweave-cache (sqlite FTS), packages/editor/src/media/
+- **Depends on:** E1D, E1M, WP-2F.03
+- **Size:** M
+- **Executor:** sonnet
+- **Scope:**
+  - Model: `MediaAsset.tags: Vec<String>` (case-insensitive, trimmed, ≤ 64 chars), `rating`, `note`; `Project.collections: Vec<Collection {id, name, kind: manual{media_ids[]} | smart{rule}}>`. Schema migration and fixture.
+  - Commands: `media.add_tags{media[], tags[]}`, `media.remove_tags`, `media.set_note`, `media.set_rating`, `collection.create/rename/delete/add_items/remove_items`, `collection.set_rule`; queries `media.search{text?, tags[]?, kind?, duration{min,max}?, resolution?, has_audio?, fps?, status?, used?, collection?, sort, limit, cursor}` and `collection.list`.
+  - Search: SQLite FTS5 index in `cache.sqlite` over name, tags, note, path, and transcript text when present (P3 hook, none required now); rebuilt incrementally on `doc.patched` and on index completion; works for 10,000 assets.
+  - Smart collection rule: JSON predicate tree (`and/or/not` over the same filters as `media.search`, plus "unused in any sequence" and "imported in last N days"), evaluated live (membership computed, not stored).
+  - UI: search box with filter chips, tag editor (multi-select assign), smart-collection builder (schema-driven form), saved views in the bin sidebar, sort/group, "used/unused" badge.
+  - MCP: `media_list` (core) gains `query`/`tags`/`collection` parameters; the rest catalog.
+- **Interfaces:** commands/queries above; `Collection` JSON Schema.
+- **Acceptance criteria:**
+  - Search over 10,000 synthetic assets returns in < 30 ms p95; the index stays consistent under random add/remove/rename (proptest equivalence with a naive filter).
+  - Smart collection "video, duration > 60 s, tag:interview, unused" returns exactly the expected set on a fixture; membership updates within 100 ms after the asset is placed on a timeline.
+  - Undo identity for all tag/collection commands; schema migration golden passes.
+  - Playwright: tag three assets, filter by tag, save as smart collection, reopen the project and the collection persists.
+- **Tests:** proptest, unit, migration golden, Playwright.
+- **Out of scope:** AI auto-tagging and semantic search (P5), folders/bins hierarchy beyond collections.
+
+---
+
+# Epic 2G — Export presets & queue
+
+### WP-2G.01 — Export preset system (L0 data) and built-in presets
+- **Area:** crates/cutweave-ops/src/export/presets.rs, plugins/presets-core/ (L0 pack), schema
+- **Depends on:** E1E, E1B
+- **Size:** S
+- **Executor:** sonnet
+- **Scope:**
+  - Preset schema (JSON, versioned): `{id, name, container, video{codec, rate_control(crf|cbr|vbr), bitrate|crf, profile, preset, pix_fmt, hw_preferred}, audio{codec, bitrate, sample_rate, channels}, size{width,height|follow_sequence}, fps, loudness?, loop?, limits{max_duration, max_size}}`. Loaded from L0 packs; user presets saved in user config.
+  - Built-in set (data): YouTube 1080p, YouTube 4K, YouTube Shorts (9:16, ≤ 60 s warning), Instagram Reels, TikTok, Instagram feed 4:5, GIF (palette, 15 fps, ≤ 480 px), audio-only (WAV, MP3, AAC, FLAC, Opus), ProRes 422 HQ (MOV), Archive (HEVC high quality), H.264 draft.
+  - Commands: `export.list_presets`, `export.save_preset`, `export.delete_preset`; `export.start` accepts `preset` plus overrides.
+  - Platform limits are warnings, not errors (duration, size, aspect mismatch).
+  - MCP: `export_start` core takes preset id (list via `export.list_presets` in `cutweave_query`).
+- **Interfaces:** `ExportPreset` JSON Schema; commands above.
+- **Acceptance criteria:**
+  - All presets validate against the schema in CI (`cargo test -p cutweave-ops presets`); a snapshot lists their ids.
+  - Resolving the "TikTok" preset on a 16:9 sequence returns a warning code `AspectMismatch` and does not change the sequence.
+  - Presets referencing unavailable codecs (e.g., no HW encoder) fall back documented per the preset `hw_preferred` flag.
+- **Tests:** schema validation, snapshot.
+- **Out of scope:** encoding implementation (2G.02), UI.
+
+### WP-2G.02 — Codecs: HEVC, AV1, ProRes, GIF, audio-only, sequences
+- **Area:** crates/cutweave-media (encode), crates/cutweave-ops/src/export/
+- **Depends on:** E1E, WP-2G.01
+- **Size:** M
+- **Executor:** sonnet
+- **Scope:**
+  - Add encoders behind `MediaBackend`: HEVC (HW: NVENC/AMF/QSV/VideoToolbox/VAAPI where present, SW x265), AV1 (SW SVT-AV1, HW where present, NVENC AV1/QSV), ProRes (`prores_ks`/VideoToolbox, profiles 422 proxy…4444 with alpha), H.264 existing. Encoder capability probing at startup (`export.list_encoders` query) with a real 8-frame trial encode to confirm HW availability (not just presence of names).
+  - GIF export (palettegen/paletteuse two-pass, dither option, loop), audio-only exports (WAV/MP3/AAC/FLAC/Opus), PNG/JPEG sequence, single frame export `export.frame{t, path, format}`.
+  - 10-bit output for HEVC/ProRes when the sequence color pipeline is 16F; SDR tags (Rec.709) correctly written by default (color_primaries/trc/matrix/range) so players do not shift colour; overrides are 2G.05.
+  - Faststart for MP4. MP4 with HEVC tagged `hvc1` for Apple compatibility. Fallback to software on HW failure mid-export with a warning event (restart encoder, not whole export).
+- **Interfaces:** `export.list_encoders`, `export.frame`; extended `ExportSettings`.
+- **Acceptance criteria:**
+  - `ffprobe` conformance matrix test (CI, software encoders only, plus a nightly HW job on reference machines) verifies codec, profile, pix_fmt, color tags, duration (±1 frame), audio channels/rate for each built-in preset.
+  - Exported H.264 1080p simple timeline HW encode ≥ 2× realtime on the reference machine (§19; asserted in nightly bench).
+  - GIF 5 s 480 px < 5 MB with the preset defaults on the corpus clip; plays in Chromium (smoke).
+  - HEVC output decodes frame-exact against the golden at PSNR ≥ 40 dB (CRF preset).
+- **Tests:** ffprobe matrix, PSNR checks, HW nightly.
+- **Out of scope:** VP9/WebM beyond what ffmpeg already exposes (listed as optional, not preset), ProRes RAW, DNxHR.
+
+### WP-2G.03 — Background export queue, range and marker-set export
+- **Area:** crates/cutweave-jobs, crates/cutweave-ops/src/export/queue.rs
+- **Depends on:** E1E, WP-2G.01, WP-2A.02
+- **Size:** M
+- **Executor:** sonnet
+- **Scope:**
+  - Persistent export queue (sqlite via cutweave-jobs): `export.enqueue{sequence, preset, range, output, overrides}` snapshots the sequence at enqueue time (immutable snapshot reference at the current `rev`, so later edits do not alter queued jobs) and runs jobs serially by default (parallel limit setting, default 1 for GPU exports). Jobs survive engine restart (interrupted job restarts from the beginning, with partial output cleaned; documented).
+  - Operations: `export.start` (enqueue + start), `export.cancel`, `export.pause_queue`, `export.reorder`, `export.retry`, `export.remove`, queries `export.queue`, `job_status` (common). Progress: percent, fps, ETA, current frame, bytes. Events `job.progress`.
+  - Export doesn't block editing; the preview may degrade (GPU budget `jobs` rule: preview priority above export, with a documented throttle). Offline media rules from 2F.03.
+  - Range export: `range = {kind: sequence | in_out | custom{start,end} | markers{ids[]|all, pair_mode}}`: a marker-set range export renders one file per marker region (marker `duration` or pairs of consecutive markers, naming template `{seq}_{marker_label}_{n}`).
+  - Output file collision policy (`rename|overwrite|fail`), disk space precheck.
+  - MCP core: `export_start`, `job_status`; queue management catalog.
+- **Interfaces:** commands above; `ExportJob` state machine `queued→running→done|failed|canceled`.
+- **Acceptance criteria:**
+  - Enqueue 3 jobs, kill the engine during job 2 and restart: job 1 `done`, job 2 restarts and completes, job 3 completes; outputs valid (ffprobe).
+  - Editing the timeline during an export does not change the exported output (frame hash vs. snapshot render).
+  - Marker-set export of 4 markers produces 4 files with the right durations (±1 frame).
+  - Cancel mid-export leaves no partial file and the queue proceeds.
+  - Editing UI command RTT p95 stays < 16 ms during an export (measured in 2J.01 harness).
+- **Tests:** integration with the kill harness, unit for the state machine.
+- **Out of scope:** distributed export, `cutweave worker` parallel chunking (P7/post-1.0), publishing.
+
+### WP-2G.04 — Export dialog and queue panel
+- **Area:** packages/editor/src/export/
+- **Depends on:** WP-2G.03, WP-2G.05, WP-2H.02, E1M
+- **Size:** M
+- **Executor:** sonnet
+- **Scope:**
+  - Export dialog (schema-driven form from the preset schema): preset picker grouped by platform, summary (resolution/codec/estimated size from bitrate × duration), range selector (whole sequence / in-out / marker set), output path picker with template, filename tokens, advanced section. Platform warnings inline. Buttons: Export, Add to queue.
+  - Queue panel (dockable): list with progress, ETA, cancel/retry/reorder (drag), reveal-in-folder, open file, errors with the machine code and human message; desktop notification on completion.
+  - Save-as-preset flow.
+- **Interfaces:** consumes `export.*` commands/queries and the `job.progress` events.
+- **Acceptance criteria:**
+  - Playwright: export a YouTube 1080p preset of the fixture project through the UI and verify the output with ffprobe; queue 2 exports, cancel one.
+  - Progress updates ≥ 4 Hz without re-rendering unrelated panels (React profiler assertion: queue panel only).
+  - axe: 0 violations in the dialog.
+- **Tests:** Playwright, axe.
+- **Out of scope:** publishing/upload (P6).
+
+### WP-2G.05 — Advanced export controls
+- **Area:** crates/cutweave-ops/src/export/advanced.rs, crates/cutweave-media (encoder params), preset schema
+- **Depends on:** WP-2G.01, WP-2G.02
+- **Size:** M
+- **Executor:** sonnet
+- **Scope:**
+  - `ExportSettings.advanced` exposed on `export.start`/`enqueue` and in presets: video `rate_control: crf|cbr|vbr|cq` with `crf|bitrate|max_bitrate|buffer_size|two_pass`, `gop{keyint, keyint_min, bframes, closed_gop, scenecut}`, encoder `preset`/`tune`/`profile`/`level`, `pix_fmt`, `threads`; color tags override `color{primaries, transfer, matrix, range(limited|full)}` (default Rec.709 limited, written as container and bitstream tags; flags `tag_only` vs. convert; HDR transfers rejected with `Unsupported` in P2); audio `codec(aac|mp3|opus|flac|pcm_s16|pcm_s24)`, `bitrate`, `sample_rate(44100|48000|96000)`, `channels(mono|stereo)`.
+  - Validation: per-encoder capability matrix (from `export.list_encoders`) rejects unsupported combos with `Invalid{path, msg}` and a suggestion (e.g. CBR not supported by this HW encoder → "use VBR or software"). Seconds-based keyframe interval helper (`keyint_seconds`) converts via the sequence fps. Estimated output size shown from bitrate × duration.
+  - Query `export.describe_options{codec}` returns the JSON Schema of valid advanced options for a codec/encoder (drives the dialog's advanced section and agents).
+  - MCP: `export_start` (core) accepts `advanced`; `export.describe_options` catalog.
+- **Interfaces:** `AdvancedExportOptions` JSON Schema; commands/queries above.
+- **Acceptance criteria:**
+  - ffprobe matrix (software encoders in CI): CBR 8 Mb/s H.264 yields measured average within ±5% and max over any 1 s window ≤ 1.2× target; CRF 18 vs 28 differ in size as expected; `keyint=60` yields keyframes exactly every 60 frames (probe packet flags); closed-GOP flag verified; color tags read back exactly as set; AAC 192 kb/s and Opus 128 kb/s read back with the right bitrates ±10%.
+  - Invalid combinations (e.g. ProRes + CRF) return `Invalid` with the path and a hint; no encoder is started.
+  - Presets from 2G.01 still produce identical output when `advanced` is omitted (frame-hash regression).
+- **Tests:** ffprobe matrix, validation unit tests, schema snapshot.
+- **Out of scope:** HDR output, per-segment bitrate, custom ffmpeg arg passthrough.
+
+---
+
+# Epic 2H — Workspace UI
+
+### WP-2H.01 — Dockable workspace, Short-form/Long-form layouts, i18n scaffold
+- **Area:** packages/editor/src/workspace/, packages/editor/src/i18n/
+- **Depends on:** E1M, E1L
+- **Size:** M
+- **Executor:** sonnet
+- **Scope:**
+  - `dockview` integration: all panels (Media, Preview, Timeline, Inspector, Mixer, Export queue, Effects placeholder) registered in a typed panel registry (contribution-point shaped so L3 plugins can register later). Drag/dock/float/tab/maximize, per-panel minimum size.
+  - Layout serialization to user config (`~/.cutweave/workspaces.json`) with schema version and recovery from corrupt layouts (falls back to the default and notes it).
+  - Built-in workspaces: **Long-form** (wide preview, large timeline, media left, inspector right) and **Short-form** (9:16 preview centered and tall, timeline compact at the bottom, inspector right). Workspace switcher in the title bar, "Save layout as…", "Reset layout". Selecting a sequence with 9:16 aspect suggests (not forces) Short-form once per project.
+  - i18n scaffold: `i18next` (or `lingui`), message extraction script, `en` catalog with ICU plurals, locale detection, lint rule failing on user-visible hard-coded strings in `packages/editor` and `packages/ui` (allowlist file). Command names/descriptions come from the registry (English now, translation keys reserved).
+- **Interfaces:** `registerPanel({id,title,component,defaultDock})`, `workspace.*` view commands (UI-only).
+- **Acceptance criteria:**
+  - Playwright: switch Long→Short, drag the inspector to float, restart the app, the layout restores; corrupt `workspaces.json` → app starts with the default and a toast.
+  - Layout change with the playback running causes no dropped preview frames (> 2 per 10 s) — measured by the playback probe.
+  - `pnpm i18n:extract` is idempotent in CI; lint blocks a hard-coded string in a sample PR (test fixture).
+- **Tests:** Playwright, lint test.
+- **Out of scope:** translations other than `en`, RTL (P7), plugin panels (P6).
+
+### WP-2H.02 — Schema-driven inspector renderer
+- **Area:** packages/ui/src/schema-form/
+- **Depends on:** E1N, E1M
+- **Size:** M
+- **Executor:** sonnet
+- **Scope:**
+  - Form renderer: JSON Schema (+ `x-ui` hints) → controls. Widgets: number (drag-scrub label), slider, angle dial, color (with alpha, eyedropper later), toggle, enum/segmented, vec2 (linkable x/y), font (placeholder until P3), asset-ref (picker from bin), curve (uses `CurveEditor`), text, group/collapsible sections, conditional visibility (`x-ui.visibleWhen`), units and ranges, reset-to-default, multi-value ("mixed") display for multi-selection.
+  - Keyframeable fields render a ◇ keyframe button and animated-state indicator (filled diamond when a keyframe is at the playhead); the form delegates to `item.set_props{auto_key}` / `keyframe.*` through a provided `onChange(path, value, {gesture:'start'|'update'|'end'})` callback; gestures use `gesture` tx.
+  - Controlled by schema only: no per-command hand-written forms in this WP. Hints format specified in `packages/ui/SCHEMA_HINTS.md` and added to the command macro schema output (`x-ui`) via a small change in `cutweave-commands-derive` attribute (`#[ui(widget="slider", min=0, max=1, step=0.01, unit="%")]`).
+  - Accessibility: label/for, keyboard operation, `aria-valuetext` with units.
+- **Interfaces:** `<SchemaForm schema value hints onChange keyframes>`; `#[ui(...)]` derive attribute.
+- **Acceptance criteria:**
+  - Vitest/Storybook-style fixtures: ≥ 25 schema fixtures render the expected widget types (snapshot), including nested objects, arrays, enums, multi-select mixed values.
+  - Dragging a slider issues ≤ 60 `update` callbacks/s and exactly one `end`.
+  - A new `#[ui]` attribute changes the generated schema snapshot (insta) and TS types remain generated.
+  - Render of 40 fields < 8 ms (React profiler bench).
+  - axe 0 violations for all fixtures.
+- **Tests:** Vitest, insta, axe.
+- **Out of scope:** effect/composition params (P3/P4 reuse it), AI model forms (P5).
+
+### WP-2H.03 — Inspector wiring: clip, track, sequence, audio, export panels
+- **Area:** packages/editor/src/inspector/
+- **Depends on:** WP-2H.02, WP-2C.03, WP-2E.01, WP-2B.01, WP-2D.01
+- **Size:** M
+- **Executor:** sonnet
+- **Scope:**
+  - Context inspector: shows sections by selection: Video (transform, crop, opacity, flip, blend), Speed (rate, reverse, freeze button), Audio (volume, pan, fades, preserve-pitch, normalize), Clip info (name, color label, source, proxy status), Track (name, flags, gain), Sequence (format, background, frame rate) when nothing is selected. Multi-selection edits apply to all (`items[]`).
+  - Sections are data-driven from `item.get`/schema; no hand-coded property lists: adding a property to the schema adds a control (tested).
+  - Keyframe navigation (prev/next keyframe), "add keyframe at playhead", "reset" buttons.
+  - Numeric entry supports expressions (`+10`, `*2`, `50%`).
+- **Interfaces:** consumes the schemas of `item.set_props`, `clip.set_speed`, `audio.*`, `sequence.set_format`.
+- **Acceptance criteria:**
+  - Playwright: select two clips, set opacity 50% for both in one undo step; keyframe a position animation and verify with `timeline.get`.
+  - Adding a dummy optional prop in a test build schema adds a control without UI code changes (test).
+  - Inspector update latency (typing a value → preview shows change) p95 < 100 ms (probe).
+- **Tests:** Playwright, Vitest.
+- **Out of scope:** effects, text, masks sections.
+
+### WP-2H.04 — Command palette and registry-driven menus
+- **Area:** packages/editor/src/palette/, packages/editor/src/menus/
+- **Depends on:** E1N, WP-2H.01
+- **Size:** S
+- **Executor:** sonnet
+- **Scope:**
+  - `cmdk` palette (Ctrl/Cmd+K) listing every non-hidden registered command (from the generated catalog) with summary, bound shortcut, namespace chips, fuzzy search; commands with required args open an auto-generated argument form (via `SchemaForm`); `when` clauses (selection/track/playhead context) via a `ui.when` hint filter the list. Recent commands first. Palette also lists panels/workspaces.
+  - Application menus (File/Edit/Timeline/Clip/View) generated from `#[command(menu="Timeline/Split")]` metadata plus a small static layout file; Electron native menu mirrors it.
+- **Interfaces:** `menu`/`when` attributes in the command macro; `CommandCatalog` store.
+- **Acceptance criteria:**
+  - A newly registered command appears in the palette with no UI code change (test with a fixture command).
+  - Palette opens in < 100 ms with 400 commands; search keystroke latency < 16 ms.
+  - Playwright: run "Split at playhead" from the palette; keyboard-only operation works.
+- **Tests:** Vitest, Playwright.
+- **Out of scope:** plugin-contributed menu items (P6).
+
+### WP-2H.05 — Keymap engine, shortcut editor, NLE and CapCut presets
+- **Area:** packages/editor/src/keymap/, apps/desktop (global shortcut conflicts)
+- **Depends on:** WP-2H.04, E1M
+- **Size:** M
+- **Executor:** sonnet
+- **Scope:**
+  - Keymap engine: bindings `{key|chord, command, args?, when?}`, contexts (timeline focus, preview focus, text input suppresses), platform modifier mapping, chords (e.g. `Ctrl+K Ctrl+S`), conflict detection, key repeat rules (JKL shuttle), IME safety.
+  - Shortcut editor UI (settings page): searchable command list, record-a-shortcut, conflict warning with reassign/cancel, per-command reset, import/export JSON, preset switcher.
+  - Presets (L0 data files `keymaps/nle.json`, `keymaps/capcut.json`, plus `default`= NLE): NLE: J/K/L, I/O, B razor, A select, V, Q/W ripple trim previous/next, Home/End, Ctrl+Z/Shift+Ctrl+Z, M marker, comma/period nudge, Del / Shift+Del ripple delete. CapCut: Ctrl+B split, Del delete, Ctrl+Z, Ctrl+Shift+Z, Space, `[`/`]` trim to playhead, Ctrl+D... derived from research/01-capcut-features.md; any binding not verifiable is marked `unverified` in the file and in Notes N7.
+  - Every command bindable (palette listing = bindable list).
+- **Interfaces:** keymap JSON schema; `keymap.*` view commands.
+- **Acceptance criteria:**
+  - Both presets load with 0 conflicts (CI check script) and cover ≥ 30 commands each.
+  - Playwright: switch preset NLE→CapCut and `Ctrl+B` splits at the playhead; rebinding persists across restart; typing in the inspector's text field does not trigger shortcuts.
+  - Keymap lookup < 0.2 ms.
+- **Tests:** Vitest, Playwright, conflict check script.
+- **Out of scope:** per-workspace keymaps, gamepad/MIDI controllers.
+
+### WP-2H.06 — Preview overlays: transform handles, crop, safe areas, grid
+- **Area:** packages/editor/src/preview/overlays/
+- **Depends on:** WP-2C.03, WP-2C.04, E1H, WP-2H.02
+- **Size:** M
+- **Executor:** sonnet
+- **Scope:**
+  - DOM/SVG overlay over the WebGPU canvas (same page, no z-order issues, §10): transform box with move/scale (corner = uniform, Shift = free)/rotate handles + anchor point; crop mode (edge/corner handles); multi-selection bounding box; snapping to canvas center/edges/other layers' edges with guides; arrow-key nudges (1 px / 10 px with Shift).
+  - Overlay toggles: safe areas (action 90%/title 80% plus platform-specific UI-safe zones for 9:16 Shorts/Reels/TikTok as data), rule-of-thirds grid, center cross, custom grid, aspect-ratio frame guide, pixel-ratio display.
+  - Gestures use `gesture` tx and `item.set_props{auto_key}` so the preview updates live; on animated props, dragging with auto-key creates a keyframe at the playhead.
+  - Coordinates: conversions between overlay CSS px ↔ sequence px ↔ normalized, accounting for the preview scale and the object-fit; unit-tested.
+- **Interfaces:** `<PreviewOverlay>`; safe-area data pack `overlays/safe-areas.json`.
+- **Acceptance criteria:**
+  - Playwright: drag-move a clip 100 sequence px: `position` changes by 100 ± 0.5 px at any preview zoom (25%/50%/100%); rotate by 15° ± 0.5°; undo returns to the original.
+  - 9:16 manual reframe task: scale to fill and pan a 16:9 clip so a subject is centered, in ≤ 10 UI actions (used in dogfood B).
+  - Overlay stays aligned with the video during live resize (pixel diff on a test pattern < 1 px).
+  - Overlay interaction latency (pointer move → preview update) p95 < 50 ms.
+- **Tests:** Vitest for transforms, Playwright.
+- **Out of scope:** text editing caret, mask handles (P3/P4).
+
+### WP-2H.07 — UX design review gate (human)
+- **Area:** docs/reviews/p2-ux-review.md
+- **Depends on:** WP-2A.10, WP-2H.01, WP-2H.03, WP-2H.05, WP-2H.06
+- **Size:** S
+- **Executor:** human
+- **Scope:** structured review of the editor against research/01-capcut-features.md behaviours worth matching (magnetic track, snapping feel, aspect switch, inspector structure, keyframe workflow). Output a prioritized defect list (P0 blockers for dogfood, P1, P2), each filed as an issue with `phase:P2` label.
+- **Interfaces:** n/a.
+- **Acceptance criteria:**
+  - Review doc committed with a checklist of ≥ 25 scenarios each marked pass/fail/N/A with notes; every fail has an issue link.
+  - Zero open P0 UX issues before 2J.06 starts (or explicit maintainers' waiver in the doc).
+- **Tests:** n/a.
+- **Out of scope:** visual redesign.
+
+---
+
+# Epic 2I — MCP core tool set
+
+### WP-2I.01 — Core tool set: mapping, annotations and completion (~30 tools)
+- **Area:** crates/cutweave-api/src/mcp/, crates/cutweave-ops (`mcp = ` attributes), docs/reference/mcp-core-tools.md (generated)
+- **Depends on:** E1J, WP-2A.03, WP-2A.04, WP-2B.01, WP-2C.03, WP-2E.01, WP-2G.03, WP-2F.03
+- **Size:** M
+- **Executor:** sonnet
+- **Scope:**
+  - Reconcile the architecture §14 example core list with the commands that actually exist after P2. Implement a naming rule `namespace.verb_object → namespace_verb_object` (`.` to `_`, plus explicit aliases for `item.delete → item_delete`, etc.) and a table `mcp_core.toml` of the final ≤ 32 core tools (decision A budget: standard ≤ 36 tools / ≤ 8k tokens including the 4 generic tools and `view_get`/`view_set`): `project_open, project_info, media_import, media_list, timeline_get, timeline_insert, clip_split, clip_trim, item_move, item_delete, item_set_props, track_add, sequence_create, sequence_set_format, timeline_add_marker, keyframe_set, audio_set, render_frame, render_contact_sheet, media_filmstrip, audio_waveform, export_start, job_status, job_wait, view_get, view_set, edit_undo, edit_redo, edit_checkpoint, edit_restore, clip_set_speed`, plus the 4 generic tools (`timeline_ripple_delete` and `media_proxy_status` stay reachable via `cutweave_execute`). `media_import` returns `media_ids` synchronously; analysis/proxy work is async and agents wait with `job_wait{job_id, timeout_ms}` (decision E).
+  - `view_get`/`view_set` (N3 RESOLVED): expose playhead, selection, in/out and zoom through the MCP catalog (not core commands); non-undoable and not journaled; excluded from the parity test's command list but covered by their own schema test. Text/caption/AI tools are added in P3/P5 (placeholders for `text_add`, `caption_generate`, `effect_add`, `transition_add`, `ai_*`, `composition_create` are explicitly listed as "arrives in P3–P5").
+  - Rich annotations (`readOnlyHint`, `destructiveHint`, `idempotentHint`, `openWorldHint`) and concise descriptions ≤ 300 chars with one example each; error text always includes a recovery hint (e.g., `Locked: track trk_… is locked; call track_set_flags{locked:false}`).
+  - Every structured result carries `rev` and small summary (not full dumps).
+  - `timeline_get` supports `depth`, `fields`, `range`, `limit`, `cursor` and by default returns a summarized overview (tracks, counts, item ids/names/ranges) under 4k tokens for a 400-item sequence.
+- **Interfaces:** `mcp_core.toml`; generated reference doc.
+- **Acceptance criteria:**
+  - CI test: the `tools/list` for the `standard` profile is ≤ 36 tools and ≤ 8k tokens (budget file checked in; failing adds require a diff to the budget).
+  - Parity test (E1O) green: schemas identical to RPC schemas; every `mcp="core"` command appears in `tools/list`; every non-hidden non-view command reachable via `cutweave_execute`.
+  - MCP Inspector conformance passes on stdio and HTTP.
+  - Snapshot test on the full core tool list with annotations (insta).
+- **Tests:** insta, conformance script, parity.
+- **Out of scope:** text/caption/AI tools; resources beyond what P1 provides (adds `cutweave://sequence/{id}/timeline` pagination in 2I.02 only if absent).
+
+### WP-2I.02 — Visual tools: contact sheet, filmstrip, waveform image
+- **Area:** crates/cutweave-api/src/mcp/visual.rs, crates/cutweave-render (grid composer), crates/cutweave-cache
+- **Depends on:** E1J, E1F, E1D, WP-2I.01
+- **Size:** M
+- **Executor:** sonnet
+- **Scope:**
+  - `render_contact_sheet{sequence?, from, to, count|every, columns, max_size, labels}`: renders N frames (evenly or at given times, or at marker/cut points `at: "cuts"`), composes a labelled grid (timecode burned-in under each cell, item/track hints) into one JPEG ≤ `max_size` (default 768 px long edge, hard cap 2048), returns image content + metadata JSON `{frames:[{t, items_visible[], captions?}], rev}`. Frames rendered through `render.frame` at preview quality, parallel in the render thread within a total budget: 12 frames at 1080p < 1.5 s on the reference machine.
+  - `media_filmstrip{media, from, to, count, max_size}` (from the thumbnail/filmstrip cache; falls back to decode). Returns one strip image.
+  - `audio_waveform{target: media|item|range, from, to, width, height, channels, scale_db}`: renders a PNG waveform image (peak pyramid) with a time ruler and, optionally, silence/loudness annotation (LUFS short-term sparkline) as metadata. `audio_levels` data in `structuredContent`.
+  - Large results beyond a size threshold returned as resource links via the `/media/…` endpoints with hashed ETags.
+  - Prompt-injection hygiene: item names/captions in metadata are labeled `untrusted`.
+  - These are `mcp = core`, `readOnly`.
+- **Interfaces:** tools above; commands/queries `render.contact_sheet`, `media.filmstrip`, `audio.waveform`.
+- **Acceptance criteria:**
+  - Contact sheet golden (WARP/lavapipe): the 12-frame fixture grid matches the reference with SSIM ≥ 0.995 and PSNR ≥ 40 dB; the response content-type is `image/jpeg`, byte size ≤ 400 KB at default settings.
+  - `max_size` honored (property test over values 128–2048).
+  - Waveform of a 440 Hz sine at −6 dBFS produces peaks at the expected pixel rows (±1 px); a file with a known 2 s silence shows the silence annotation within ±50 ms.
+  - Works over both stdio and HTTP transports; MCP Inspector displays the image.
+- **Tests:** golden, property, Inspector smoke.
+- **Out of scope:** video understanding, scene detection (P5).
+
+### WP-2I.03 — Checkpoints: edit.checkpoint / edit.restore
+- **Area:** crates/cutweave-commands/src/checkpoint.rs, crates/cutweave-ops/src/edit/
+- **Depends on:** E1B, E1C
+- **Size:** M
+- **Executor:** opus
+- **Scope:**
+  - `edit.checkpoint{name?, note?} → {checkpoint, rev}` stores an `Arc` snapshot handle plus metadata (rev, actor, time) in an in-memory registry capped at 50 (LRU, named ones pinned up to 20); persisted in the journal as a marker event so restore works after crash recovery (the snapshot is re-derived by replaying to that rev if the in-memory handle is gone, bounded by journal retention; if unavailable, `NotFound` with a clear message).
+  - `edit.restore{checkpoint}`: applies a **forward** transaction computing the inverse diff to bring the doc to the checkpoint state (so history stays linear and the restore itself is undoable; it doesn't truncate history), tagged with the caller's actor. Refuses when it would revert another actor's edits unless `force: true` (default policy: restore reverts all edits since the checkpoint; report lists actors affected).
+  - `edit.list_checkpoints`, `edit.delete_checkpoint`. Checkpoints are not auto-created except `cutweave_execute{checkpoint:true}` (1 per call) used by MCP's destructive batch path.
+  - MCP core: `edit_checkpoint`, `edit_restore`; `edit_list_checkpoints` catalog.
+- **Interfaces:** commands above; `CheckpointId`; `EditReport`-like `RestoreReport{reverted_revs, actors}`.
+- **Acceptance criteria:**
+  - Property test: random command sequences, checkpoint at a random point, more commands, restore → doc equals the checkpointed doc (structural equality); then `edit.undo` returns to the pre-restore state.
+  - Memory: 50 checkpoints on a 1-hour, 400-item project add < 20 MB (persistent-structure sharing assertion via allocation counter).
+  - Restore on a 5,000-item doc completes < 50 ms.
+  - After a forced engine crash + recovery, a named checkpoint made before the crash is restorable (e2e with the crash harness).
+- **Tests:** proptest, memory test, e2e.
+- **Out of scope:** per-actor selective restore (future), collaboration semantics.
+
+### WP-2I.04 — Optimistic concurrency: expected_rev everywhere
+- **Area:** crates/cutweave-commands, crates/cutweave-api (RPC + MCP + CLI)
+- **Depends on:** E1B, E1I, E1J, E1K
+- **Size:** S
+- **Executor:** sonnet
+- **Scope:**
+  - Uniform `expected_rev` optional field on every mutating command envelope (not in each command struct: in the transport envelope) for RPC, MCP tools (injected into every mutating tool's schema through the generator), `cutweave_execute` (already per §14), and the CLI (`--expected-rev`).
+  - On mismatch: `Conflict{current_rev, expected_rev, changed_since: summary}` where `changed_since` lists a compact list of item ids touched between revs (from retained patch metadata, bounded to the last 200 revs; otherwise `unknown`). MCP error text suggests re-reading `timeline_get`.
+  - All successful mutating results include the new `rev`.
+- **Interfaces:** envelope field; error type extension.
+- **Acceptance criteria:**
+  - Integration test: two clients, A reads rev N, B edits (rev N+1), A sends with `expected_rev: N` → `Conflict` with `current_rev: N+1`, and the doc is unchanged; A retries with the new rev and succeeds.
+  - Parity test: same behaviour over CLI/MCP/RPC with identical error codes.
+  - Schema snapshots updated; no per-command schema drift.
+- **Tests:** integration, parity.
+- **Out of scope:** automatic merge/rebase of agent edits.
+
+### WP-2I.05 — Tool profiles, change notifications and tools/list budget
+- **Area:** crates/cutweave-api/src/mcp/profiles.rs, crates/cutweave-cli
+- **Depends on:** WP-2I.01
+- **Size:** S
+- **Executor:** sonnet
+- **Scope:**
+  - Profiles (single budget source): `minimal` ≤ 12 tools / ≤ 3k tokens (open/info/import/list/get/insert/split/trim/delete/render_frame/export/job_wait + generic where they fit), `standard` ≤ 36 tools / ≤ 8k tokens (the core set), `full` = standard + search-based long tail (no extra listed tools; the long tail is found via the search tool and run via `cutweave_execute`). Profiles are selected per MCP endpoint (`/mcp` = standard, `/mcp/minimal`, `/mcp/full`) or the `--profile` launch flag of `cutweave mcp` — never per connection.
+  - Change notifications when the tool set changes (plugins load; stub emitter now, plugin loading arrives in P6) use the negotiated MCP revision's mechanism. The engine supports both spec revisions 2025-11-25 and 2026-07-28 (`resources/subscribe` vs `subscriptions/listen`).
+  - Budget CI check for each profile: tool counts and estimated tokens (`minimal` ≤ 12 / ≤ 3k, `standard` ≤ 36 / ≤ 8k; `full` lists the same tools as `standard`).
+  - `cutweave mcp --print-tools --profile X` prints the list for docs.
+- **Interfaces:** CLI `--profile` flag, per-profile HTTP endpoints, `mcp_profiles.toml`.
+- **Acceptance criteria:**
+  - Inspector shows the tool count per profile matching the files; budgets enforced in CI with a failing sample.
+  - A plugin load sends the change notification via the mechanism of each negotiated revision (test clients on 2025-11-25 and 2026-07-28 both receive it); a connection to `/mcp/minimal` never sees `standard` tools.
+  - `cutweave_execute` still reaches every command under `minimal`.
+- **Tests:** unit, conformance.
+- **Out of scope:** per-client auto-profile detection; per-connection profile switching.
+
+### WP-2I.06 — Scripted-agent e2e: YouTube edit and 9:16 short via MCP only
+- **Area:** crates/cutweave-cli/tests/agent_e2e/, testdata manifests
+- **Depends on:** WP-2I.01, WP-2I.02, WP-2I.03, WP-2I.04, WP-2G.03, WP-2C.03, WP-2E.03
+- **Size:** M
+- **Executor:** sonnet
+- **Scope:**
+  - Deterministic MCP client scripts (Rust or Python via the MCP SDK) that perform, without any screenshots and using only core tools plus `cutweave_execute`: (a) a rough-cut + B-roll insert + audio normalize + 1080p export from corpus media; (b) a 9:16 short: new sequence, manual reframe via `keyframe_set`/`item_set_props`, music with `audio_set` fades, export Shorts preset.
+  - Both scripts assert state via `timeline_get`/`cutweave_query` and validate visually through `render_contact_sheet` byte counts and a rendered-frame golden compare; each script checkpoints before risky steps and tests restore.
+  - Run in CI headless on 3 OSes (software rendering) and in a nightly with the attach transport against the GUI engine.
+  - A written transcript of tool calls is kept as an example in `docs/examples/agent-session-p2.md` (generated, not hand-written).
+- **Interfaces:** none new; consumes all.
+- **Acceptance criteria:**
+  - Both scripts pass in CI on Windows/macOS/Linux; total tool calls for (a) ≤ 40 and for (b) ≤ 30 (efficiency guard).
+  - The timeline produced by the MCP run equals (structural JSON diff, ignoring IDs) the one built by the equivalent CLI script (parity).
+  - Exported files pass the ffprobe checks (duration ±1 frame, 1080×1920 for the short).
+- **Tests:** the WP itself is the test suite.
+- **Out of scope:** LLM-in-the-loop evals (P6).
+
+---
+
+# Epic 2J — Performance, reliability & dogfood
+
+### WP-2J.01 — Benchmark fixtures and Rust criterion suite
+- **Area:** crates/cutweave-bench/ (new bench crate), testdata/bench-projects/ generator
+- **Depends on:** E1A, E1B, E1C, E1O, WP-2A.03
+- **Size:** M
+- **Executor:** sonnet
+- **Scope:**
+  - Deterministic generator (seeded) `cargo xtask gen-bench-project --items N --tracks T --keyframes K` producing: **P-400** (1-hour, 400 items, 8 tracks), **P-5K** (5,000 items, 50,000 keyframes), **P-short** (9:16, 3 layers + animation). Media uses corpus-light synthesized clips (tiny generated test patterns to avoid large downloads) plus corpus references for decode tests.
+  - criterion benches: open project (< 2 s to interactive, §19, uses P-400), command RTT in-process and over WS (p95 < 16 ms; 10,000 mixed commands, a histogram is saved), `doc.patched` fan-out, placement ripple on P-5K, `timeline.get` summary on P-400 (< 30 ms), idle memory (RSS after open and idle 60 s < 1.5 GB for the 1-hour 1080p fixture with real media), app start to editable empty project (< 2.5 s; Electron start included in 2J.02/03 harness).
+  - Result JSON in a stable schema `bench-results/{machine}/{date}.json` consumed by 2J.04.
+- **Interfaces:** `cutweave-bench` crate, `xtask gen-bench-project`.
+- **Acceptance criteria:**
+  - `cargo bench -p cutweave-bench -- --save-baseline p2` runs on the reference machines; each §19 metric it covers is reported with its budget and PASS/FAIL.
+  - Fixture generation is byte-deterministic (hash check in CI).
+  - Command RTT p95 < 16 ms on P-5K for 10,000 commands.
+- **Tests:** the benches; unit for the generator.
+- **Out of scope:** CI wiring (2J.04), GPU/UI benches (2J.02/03).
+
+### WP-2J.02 — UI benchmarks: timeline pan/zoom and UI command RTT
+- **Area:** packages/timeline/bench/, packages/editor/e2e/perf/
+- **Depends on:** WP-2A.09, WP-2A.10, WP-2J.01
+- **Size:** S
+- **Executor:** sonnet
+- **Scope:**
+  - Playwright-driven perf tests on Electron with the P-5K project: scripted pan (wheel 20 s) and zoom sweeps, measuring frame times via `performance` + `requestAnimationFrame` probes (≥ 55 fps average and p5 frame time < 25 ms per §19); UI command RTT probe (UI → engine → patch → UI p95 < 16 ms over 500 drag updates); app-start-to-editable (< 2.5 s) on a cold and a warm start.
+  - Output the same result JSON schema as 2J.01.
+- **Interfaces:** perf JSON; `pnpm perf:ui`.
+- **Acceptance criteria:**
+  - `pnpm perf:ui` passes the thresholds on the reference machines and prints a table; a deliberately slowed build (test flag) fails it.
+  - Results include GPU/CPU info of the machine for provenance.
+- **Tests:** the perf suite.
+- **Out of scope:** preview playback metrics (2J.03).
+
+### WP-2J.03 — Playback, scrub and A/V sync benchmarks
+- **Area:** crates/cutweave-bench/src/playback/, tools/bench-sync/
+- **Depends on:** E1H, WP-2C.04, WP-2E.02, WP-2F.01, WP-2J.01
+- **Size:** M
+- **Executor:** sonnet
+- **Scope:**
+  - Headless-capable playback harness (engine only; plus an Electron-attached variant reading the SHM ring) that runs: 1080p60 playback with 3 video layers + 2 effects (use the P1 transform/opacity layers + 2 blend modes as stand-ins for P4 effects until P4 lands; effects flag documented) + animated overlay; counts dropped frames over 60 s (budget 0); scrub tests: 200 random seeks measuring scrub-to-pixel p95 on proxy/intra (< 80 ms) and 4K long-GOP without proxy (< 150 ms); A/V sync flash/click test measuring offset (< 40 ms) and a 30-min soak mode (drift < 1 frame; nightly only); export speed 1080p simple timeline HW encode ≥ 2× realtime.
+  - Output the results JSON schema.
+- **Interfaces:** `cutweave-bench playback|scrub|sync|export`.
+- **Acceptance criteria:**
+  - All five §19 metrics reported with PASS/FAIL on the reference iGPU (M1 / Intel Xe) machine; failing ones create a tracking issue template (documented).
+  - The sync harness detects a synthetic 60 ms offset (self-test) with ±5 ms accuracy.
+- **Tests:** self-tests for each probe.
+- **Out of scope:** CI gating logic (2J.04).
+
+### WP-2J.04 — CI benchmark gate and trend dashboard
+- **Area:** .github/workflows/bench.yml, tools/bench-compare/
+- **Depends on:** WP-2J.01, WP-2J.02, WP-2J.03, E1O
+- **Size:** S
+- **Executor:** sonnet
+- **Scope:**
+  - Workflow: PR-level lightweight benches on GitHub runners (software-only: command RTT, open project, ripple, timeline fps in headless Chromium with a relaxed 'relative to main' gate: fail on > 15% regression vs the stored baseline); nightly job on self-hosted reference machines (Win/macOS/Linux iGPU) for the absolute §19 budgets; results stored in a `bench-data` branch or artifact store and a static trend page (HTML artifact) is generated.
+  - `bench-compare` compares result JSONs, outputs a markdown summary comment on PRs and sets status.
+  - Budget file `bench/budgets.toml` mirrors §19 (single source for thresholds).
+- **Interfaces:** workflow, `bench/budgets.toml`.
+- **Acceptance criteria:**
+  - A PR with an injected 25% regression (test branch) fails the gate; a clean PR passes; nightly run publishes a trend page.
+  - Absolute-budget failures page as a failed nightly check with the offending metric in the title.
+- **Tests:** compare tool unit tests with sample JSON.
+- **Out of scope:** purchasing/maintaining the self-hosted runners (process item for maintainers; see N9).
+
+### WP-2J.05 — Crash-injection harness: 20 forced crashes, no data loss
+- **Area:** crates/cutweave-bench/src/crash/, apps/desktop/e2e/crash/
+- **Depends on:** E1C, E1L, WP-2A.10, WP-2G.03, WP-2I.03
+- **Size:** M
+- **Executor:** sonnet
+- **Scope:**
+  - Harness that drives a scripted editing workload (mixed commands incl. trims, ripple, keyframes, audio, speed, sequence ops, export in progress) via RPC and kills the engine at randomized points (SIGKILL / `TerminateProcess`; also GPU-device-lost injection and killing during atomic save, during autosave, during journal fsync boundary, mid-ephemeral-tx, mid-export, mid-proxy job, mid-recording) 20+ times per OS; after each crash the engine restarts through the supervisor, recovery runs, and the harness compares the recovered doc with the *model of acknowledged commands* (every command whose reply was received must be present; an in-flight unacknowledged command may be absent or present but never partial/corrupt).
+  - Also the Electron e2e variant: kill the engine process while the UI is open, verify the UI reconnects and resyncs, with no lost acknowledged commands.
+  - Corrupt-tail journal injection (truncate last record) test; lock-file stale takeover test.
+  - Extra check: proxy/export/recording artifacts left in a consistent state (partial files cleaned or recoverable).
+  - Reports a pass/fail matrix; nightly CI runs 20 crashes on each OS; a failing seed is printed for reproduction (`--seed`).
+- **Interfaces:** `cutweave-bench crash --count 20 --seed N`.
+- **Acceptance criteria:**
+  - 20/20 crashes on each of Windows, macOS, Ubuntu with zero lost acknowledged commands and zero unreadable project files; 3 consecutive nightly green runs before the exit review.
+  - Harness self-test: an intentionally injected bug (skip fsync, test flag) is caught within 20 runs.
+- **Tests:** the harness; self-test.
+- **Out of scope:** power-loss simulation (fsync fidelity of disk/hardware).
+
+### WP-2J.06 — Dogfood edit A: 10-min YouTube video with B-roll (human)
+- **Area:** docs/dogfood/p2-edit-a.md, testdata (non-committed footage list)
+- **Depends on:** WP-2H.07, WP-2G.04, WP-2F.01, WP-2F.03, WP-2E.05, WP-2J.04
+- **Size:** S
+- **Executor:** human
+- **Scope:**
+  - A **non-developer** edits a real ≈ 10-min single-camera video (talking head + screen/B-roll + music) in the app: import, auto proxies, rough cut with ripple/roll/trim, B-roll on overlay tracks, ducked-by-hand music with keyframed volume and fades, markers, loudness normalization to −14 LUFS, export YouTube 1080p preset, optionally a 4K export. The session is screen-recorded.
+  - The observer logs every friction point, crash, wrong behaviour, and time spent per phase.
+- **Interfaces:** n/a.
+- **Acceptance criteria:**
+  - Final export plays correctly (checked: duration, no A/V drift at the end via sync clap check, loudness within ±1 LU of target, no black frames).
+  - Report committed: total editing time, issue list with severities; 0 data-loss incidents; all P0/P1 issues filed with `phase:P2`.
+- **Tests:** manual protocol checklist in the doc.
+- **Out of scope:** captions (P3).
+
+### WP-2J.07 — Dogfood edit B: 9:16 short with manual reframe, music and fades (human)
+- **Area:** docs/dogfood/p2-edit-b.md
+- **Depends on:** WP-2H.07, WP-2H.06, WP-2B.03, WP-2G.04, WP-2E.05
+- **Size:** S
+- **Executor:** human
+- **Scope:**
+  - The non-developer creates a 9:16 sequence from 16:9 footage, performs manual reframe (scale/position keyframes following the subject), adds a blurred-background fill, music with fade in/out, a few cuts with speed ramp substitute (constant speed + freeze frame), and exports the Shorts/TikTok preset. Screen-recorded and logged as in 2J.06.
+- **Interfaces:** n/a.
+- **Acceptance criteria:**
+  - Output is 1080×1920, ≤ 60 s, music fades audible (loudness analysis shows tail < −40 LUFS-S in the last 0.5 s), reframe visibly tracks the subject (reviewer sign-off).
+  - Friction report and issues filed; no data loss.
+- **Tests:** manual checklist.
+- **Out of scope:** captions, auto reframe (P5).
+
+### WP-2J.08 — M2 exit review (human)
+- **Area:** docs/reviews/m2-exit.md
+- **Depends on:** WP-2J.04, WP-2J.05, WP-2J.06, WP-2J.07, WP-2I.06
+- **Size:** S
+- **Executor:** human
+- **Scope:** check every roadmap exit criterion and every row of the traceability table below against evidence (links to CI runs, bench JSONs, dogfood reports); decide Go/No-Go for M2; record waivers; update the roadmap with measured numbers and re-estimate P3–P5.
+- **Interfaces:** n/a.
+- **Acceptance criteria:**
+  - A signed-off checklist with every exit criterion linked to evidence: (1) two dogfood reports with non-developer, (2) a nightly bench run on the reference machines with all timeline/scrub/playback budgets PASS, (3) crash harness 20/20 on all 3 OSes, (4) zero open P0 issues.
+  - Any waived item has a named owner and due date.
+- **Tests:** n/a.
+- **Out of scope:** planning of P3.
+
+### WP-2J.09 — Background render cache (smart pre-render while idle)
+- **Area:** crates/cutweave-cache/src/render_cache/, crates/cutweave-jobs, crates/cutweave-playback, packages/timeline (ruler indicator)
+- **Depends on:** E1F, E1H, WP-2C.04, WP-2F.01, WP-2J.03
+- **Size:** M
+- **Executor:** opus
+- **Scope:**
+  - **Segment detection:** analyze the active sequence into time segments and estimate render cost from the scene graph (layer count, compound nesting, effects, blends, speed/reverse on long-GOP sources) using per-node cost estimates calibrated from measured GPU/CPU time (recorded by the playback path). A segment is "heavy" when its estimated frame time exceeds 70% of the frame budget at the current preview quality, or when playback measured dropped frames over it.
+  - **Cache:** render heavy segments to an intra-frame cache file (reusing the proxy encoder profile) keyed by (subgraph hash, range, preview resolution) per §8 "cache by (subgraph hash, t)"; stored in the global cache dir under the LRU cap (default 20 GB, configurable) with entries in `cache.sqlite`. Granularity: fixed 2 s chunks aligned to the frame grid so small edits invalidate only affected chunks.
+  - **Scheduling:** a job that runs only when idle (no playback, no gesture, no export; resume ≥ 1.5 s after the last edit), single concurrent, cancelled instantly on edit/playback start, lower priority than export and proxies, nearest-to-playhead segments first; battery/thermal aware pause option.
+  - **Playback use:** the preview resolver substitutes cached chunks when the hash matches and quality ≤ cached resolution; falls back to live render otherwise. Pure optimization: results must equal live rendering (cached chunk vs live render at the same quality on the same adapter: bit-identical). Export does not use the cache in P2 (always live, for determinism).
+  - Commands: `render.cache_enable{bool}`, `render.cache_clear`, `render.cache_status` query `{segments:[{from,to,state: none|queued|rendering|ready|stale}], bytes}`; project setting `render_cache.enabled` default on.
+  - UI: ruler bar under the timeline ruler (grey none, orange queued/rendering, green ready), cache size in settings with "Clear cache" button.
+  - MCP: catalog.
+- **Interfaces:** commands above; event `render.cache_progress`; `MediaResolver` extension for cached segments.
+- **Acceptance criteria:**
+  - On a fixture sequence with a 10 s heavy segment (6 layers + 3-level compound, which drops frames live at 1080p60 on the iGPU reference), after the idle cache completes the segment plays with 0 dropped frames over 60 s of looped playback (2J.03 harness).
+  - Editing a clip inside one chunk invalidates only chunks whose subgraph hash changed (assertion on chunk states); unaffected chunks stay ready.
+  - Starting playback or an edit cancels the cache job in < 100 ms (probe) and editing command RTT stays p95 < 16 ms while the job runs.
+  - Cached vs live bit-identical on 50 sample frames (same adapter); LRU cap enforced (cap 500 MB test).
+  - Export output frame hashes are identical with the cache on and off.
+- **Tests:** integration, invalidation unit tests, bench via 2J.03 harness.
+- **Out of scope:** using the cache for export, distributed rendering, GPU-texture caches (already in-engine).
+
+---
+
+# Traceability
+
+## Roadmap scope bullets → WPs
+
+| Roadmap Phase 2 scope | WPs |
+|---|---|
+| Timeline: unlimited video/audio/overlay tracks | 2A.02, 2A.03, 2A.10 |
+| Timeline: magnetic main track | 2A.01, 2A.02, 2A.03 |
+| Timeline: linked clips | 2A.01, 2A.05 |
+| Timeline: ripple, roll, slip, slide | 2A.01, 2A.03, 2A.04, 2A.08 |
+| Timeline: snapping (playhead, edges, markers, beats) | 2A.01, 2A.07, 2A.08 (beat markers: see N5) |
+| Timeline: markers, in/out | 2A.02, 2A.10 |
+| Timeline: copy/paste/duplicate | 2A.06 |
+| Timeline: multi-select, linked-group selection | 2A.01, 2A.08, 2A.10 |
+| Timeline: track lock, mute, solo and hide | 2A.02, 2A.09, 2A.10, 2E.02 |
+| Timeline: zoom/scroll performance | 2A.09, 2J.02 |
+| Timeline: replace clip | 2A.11 |
+| Timeline: compound clips (nested sequences) | 2B.04, 2B.05 |
+| Timeline: auto-create tracks on overlap | 2A.01, 2A.03 |
+| Timeline: gesture soft-locks (§5.2) | 2A.12, 2A.08 |
+| Sequences: multiple per project | 2B.01, 2B.03 |
+| Sequences: settings with aspect presets | 2B.01, 2B.03 |
+| Sequences: background fill (color, blur, image) | 2B.02, 2B.03 |
+| Clip properties: transform, crop, opacity, flip, core blend modes (§8) | 2C.04, 2H.03, 2H.06 |
+| Keyframes for all animatable props with easing | 2C.01, 2C.02, 2C.03 |
+| Keyframe lanes in the timeline | 2C.05 |
+| Bezier graph editor | 2C.07 |
+| Keyframe math shared with UI via wasm (§16) | 2C.06, 2A.07 |
+| Speed: constant with pitch preservation | 2D.01, 2D.02 |
+| Speed: reverse, freeze frame | 2D.01, 2D.02 |
+| Audio: fades, keyframed volume, pan | 2E.01, 2E.05 |
+| Audio: track buses, master limiter | 2E.02 |
+| Audio: loudness normalization presets | 2E.03 |
+| Audio: voiceover recording | 2E.04 |
+| Audio: extract audio | 2E.03 |
+| Audio: auto-ducking (sidechain from voice tracks) | 2E.06 |
+| Audio: basic voice effects (pitch, robot, echo, telephone, chipmunk/deep) | 2E.07 |
+| Media: proxies (auto policy + manual) | 2F.01, 2F.02, 2F.03 |
+| Media: relink | 2F.03 |
+| Media: collect & archive | 2F.04 |
+| Media: image and image-sequence support, still duration defaults | 2F.05 |
+| Media: bin search, tags, smart collections | 2F.06 |
+| Export: presets (YouTube 1080p/4K, Shorts/Reels/TikTok, GIF, audio-only, ProRes) | 2G.01, 2G.02, 2G.04 |
+| Export: HEVC/AV1 | 2G.02 |
+| Export: advanced controls (CBR/VBR/CRF, GOP, color tags, audio codec/bitrate) | 2G.05, 2G.04 |
+| Export: background queue | 2G.03, 2G.04 |
+| Export: range or marker set | 2G.03, 2G.04 |
+| UI: dockable workspace, Short-form/Long-form | 2H.01 |
+| UI: schema-driven inspector | 2H.02, 2H.03 |
+| UI: command palette | 2H.04 |
+| UI: shortcut editor (NLE + CapCut presets) | 2H.05 |
+| UI: preview overlays (transform handles, safe areas, grid) | 2H.06 |
+| UI: timeline thumbnails and waveforms | 2A.09, 2E.05 |
+| UI: i18n scaffold | 2H.01 |
+| MCP: core tool set (~30 tools) | 2I.01 |
+| MCP: `render_contact_sheet`, `media_filmstrip`, `audio_waveform` | 2I.02 |
+| MCP: checkpoints | 2I.03 |
+| MCP: `expected_rev` | 2I.04 |
+| MCP: tool profiles | 2I.05 |
+| Performance: benchmark suite in CI (timeline, scrub, playback, command RTT) | 2J.01, 2J.02, 2J.03, 2J.04 |
+| Background render cache (smart pre-render while idle) | 2J.09 |
+
+## Exit criteria → WPs
+
+| Exit criterion | WPs |
+|---|---|
+| Dogfood 1: 10-min YouTube video with B-roll by a non-developer | 2J.06 (needs 2A.*, 2E.*, 2F.*, 2G.*, 2H.*), 2J.08 |
+| Dogfood 2: 9:16 short with manual reframe, music and fades | 2J.07 (needs 2B.*, 2C.*, 2H.06, 2E.*), 2J.08 |
+| Performance: timeline budget (≥ 55 fps at 5,000 items; open < 2 s; command RTT p95 < 16 ms) | 2A.09, 2J.01, 2J.02, 2J.04, 2J.08 |
+| Performance: scrub budget (p95 < 80 ms proxy/intra, < 150 ms 4K long-GOP) | 2F.01, 2F.02, 2J.03, 2J.04, 2J.08 |
+| Performance: playback budget (1080p60 0 dropped frames / 60 s; A/V < 40 ms) | 2C.04, 2D.02, 2E.02, 2J.03, 2J.04, 2J.09, 2J.08 |
+| No data loss across 20 forced crashes | 2J.05, 2I.03 (checkpoint persistence), 2J.08 |
+
+---
+
+# Notes for integrator
+
+Contradictions, ambiguities and missing decisions found while writing this phase, with the suggested resolution. No other docs were edited.
+
+- **N1. RESOLVED.** No overlaps within any track; overlays are additional video tracks; a drop/move onto an overlap auto-creates a track above (§4.3). Property-tested in 2A.03 and 2A.12/2B.04 extensions.
+- **N2. RESOLVED.** `item` namespace added (generic delete/move/set_props/duplicate/link); `clip` is for media-clip specifics (§5.1). Applied: `item.move`, `item.delete`, `item.duplicate`, MCP `item_move`.
+- **N3. RESOLVED — `view.*` is exposed via the MCP catalog (not core) as `view_get`/`view_set`** (playhead, selection, in/out, zoom); non-undoable, not journaled. Applied in 2A.10 and 2I.01.
+- **N4. RESOLVED.** Keyframe/easing/time/snapping math ships to the UI as a wasm module inside `packages/protocol` (§16), built by WP-2C.06. No per-frame RPC; `keyframe.eval` remains as a query for agents/tests only.
+- **N5. Beat snapping vs. beat detection.** The roadmap lists "beats" as a snapping target, but beat detection arrives in P5 (analysis job). *Resolution:* P2 supports `Marker.kind='beat'` from manual tap markers and imported markers; automatic beat detection is P5. Confirm this is acceptable for M2.
+- **N6. RESOLVED.** Core blend modes in P2: normal, multiply, screen, overlay, darken, lighten, add, soft light; extended set in P4 (§8).
+- **N7. CapCut shortcut accuracy.** `research/01-capcut-features.md` may not list exact CapCut default bindings (they differ by platform and version). *Resolution:* ship the CapCut preset with only verified bindings, mark the rest `unverified`, and have a human check against the current CapCut Desktop before M2.
+- **N8. Proxy codec availability.** ProRes Proxy / DNxHR encoders in the pinned FFmpeg depend on build flags and the GPL build; Linux software `prores_ks` is slow. Add to P0 FFmpeg build requirements: `prores_ks`, `dnxhd`, `mjpeg`, `libsvtav1`, `libx265`, `gif`/palette filters. Proxy frame mapping for VFR sources (CFR conform + `pts_map`) is a design decision worth an ADR.
+- **N9. Reference machines and self-hosted runners.** §19 budgets and the P0 "reference machines" need to exist physically (Windows/macOS arm64/Linux iGPU) with runner maintenance. This phase assumes they exist by 2J.04; owner and budget are a maintainer decision (suggest decide in P0 WP-0I).
+- **N10. `VisualProps.background_fill` (§4.2) vs. sequence background (roadmap).** The model has a per-clip `background_fill?`; the roadmap only requires a sequence-level background. *Resolution:* implement sequence-level only in P2 and defer the per-clip blur-fill (it is the CapCut "canvas blur" per clip) to P4 or drop the field.
+- **N11. RESOLVED.** Epic 2J renamed "Performance, reliability & dogfood"; crash harness and dogfood WPs stay there (the 05-work-breakdown.md epic list should show the new name).
+- **N12. Roadmap typo.** "multi-cam-free YouTube video" is read as "single-camera (no multicam)". Confirm.
+- **N13. Schedule realism.** About 162 agent-days across 66 WPs for a 9-week phase needs ≥ 6 parallel agents and a review bottleneck of ≤ 1 day per PR. Review capacity (1–2 humans) is the real constraint; the 2A.01 spec, 2A.03/04, 2C.02/04, 2E.02, 2F.01, 2I.03, 2A.12, 2B.04, 2E.06 and 2J.09 (opus) deserve human review, and the rest can be reviewed by opus plus CI. Consider moving 2G.02 AV1/HEVC HW paths, 2F.04 archive zip, 2E.07 voice effects and 2J.09 render cache to "stretch" if the dogfood date slips.
+- **N14. RESOLVED.** Gesture soft-lock rule per §5.2: a `gesture` tx soft-locks touched items, other actors get `Conflict{reason:"item_in_gesture", retry_after_ms}`, other items proceed, 30 s idle auto-cancel; `proposal` txs have no idle timeout. A minimal soft-lock ships in P1; WP-2A.12 extends it (retry semantics, UI feedback) with property tests; UI side in 2A.08.
+- **N15. Voiceover latency and permissions** differ per OS (macOS mic entitlement in the signed build, Windows privacy settings). The entitlements file belongs to P1/P3 packaging; 2E.04 only verifies in dev builds. Flag to 3I/7A.
+- **N16. RESOLVED.** Compound clips are in P2 scope: nested sequence as media, cycle detection, recursive render (WP-2B.04, UI 2B.05).
+- **N17. New open decisions from the added scope.** (a) Voice effects (2E.07) are rendered by a job and cached, so they are not live-adjustable; confirm "offline DSP" means this. (b) The render cache (2J.09) is preview-only in P2; export reuse is deferred for determinism. (c) `Track.role` (voice/music/sfx) is added for auto-ducking; confirm it belongs in the §4.2 Track model. (d) Compound clips need an ADR on `sequence.duplicate` semantics (shared vs deep-copied inner sequences); default chosen is shared.

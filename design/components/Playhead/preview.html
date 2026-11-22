@@ -1,0 +1,25 @@
+<!-- @dsCard group="Timeline" height=170 -->
+<div class="cw-demo" style="padding:var(--space-4) 0">
+<div class="cw-timeline cw-w-lg" id="cw-ph">
+  <div class="cw-ruler" id="cw-ph-ruler">
+    <span class="cw-ruler__range" style="--x:calc(var(--space-12) * 3);--w:calc(var(--space-12) * 5)"></span>
+  </div>
+  <div class="cw-range-shade" style="--x:calc(var(--space-12) * 3);--w:calc(var(--space-12) * 5)"></div>
+  <div class="cw-lane">
+    <div class="cw-clip cw-clip--media" style="--x:var(--space-4);--w:calc(var(--space-12) * 9)">
+      <div class="cw-clip__header"></div>
+      <div class="cw-clip__label">interview_A.mov</div>
+    </div>
+  </div>
+  <div class="cw-playhead" style="--x:calc(var(--space-12) * 5 + var(--space-2))">
+    <span class="cw-playhead__flag">00:00:12:05</span>
+  </div>
+</div>
+</div>
+<script>
+(function(){
+  var r=document.getElementById('cw-ph-ruler'),L=['00:00:00:00','00:00:05:00','00:00:10:00','00:00:15:00','00:00:20:00','00:00:25:00'];
+  for(var i=0;i<=28;i++){var t=document.createElement('span');t.className='cw-ruler__tick'+(i%5===0?' cw-ruler__tick--major':'');t.style.setProperty('--x','calc(var(--space-6) * '+i+')');r.insertBefore(t,r.firstChild);
+    if(i%5===0&&L[i/5]){var l=document.createElement('span');l.className='cw-ruler__label';l.textContent=L[i/5];l.style.setProperty('--x','calc(var(--space-6) * '+i+')');r.appendChild(l);}}
+})();
+</script>

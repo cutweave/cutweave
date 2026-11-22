@@ -1,0 +1,58 @@
+<!-- @dsCard height=288 -->
+<div class="cv">
+  <style>
+    .cv { position: relative; width: 960px; height: 288px; overflow: hidden; background: var(--surface-1); }
+    .cv svg { position: absolute; left: 480px; top: 0; width: 480px; height: 288px; display: block; }
+    .cv .mari { fill: var(--marigold); }
+    .cv .media { fill: var(--clip-media); }
+    .cv .agent { fill: var(--agent); }
+    .cv .capt { fill: var(--clip-captions); }
+    .cv .relief { fill: var(--surface-3); }
+    .cv .tick { fill: var(--text-muted); }
+    .cv .ground { fill: var(--surface-1); }
+    .cv .ph { fill: var(--playhead); }
+    .cv .strip { rx: var(--radius-sm); }
+    .cv .flag { rx: var(--radius-full); }
+    .cv .name { position: absolute; left: 32px; bottom: 56px; margin: 0; max-width: 440px;
+      font-family: var(--font-display); font-size: 88px; line-height: 0.92; font-weight: 700; letter-spacing: -0.02em; color: var(--text-primary); }
+    .cv .tag { position: absolute; left: 32px; bottom: 32px; margin: 0; max-width: 440px;
+      font-family: var(--font-ui); font-size: 13px; line-height: 20px; color: var(--text-muted); }
+  </style>
+  <svg viewBox="0 0 480 288" aria-hidden="true">
+    <!--
+      blocks: marigold x2 long strips (largest share), clip-media x3, agent x1, clip-captions x2, surface-3 x1 relief; each strip track-md (48px) tall, corners radius-sm.
+      arrangement: four timeline rows from y=52 with space-3 (12px) gaps, cuts of space-1-5 (6px) staggered row to row like a weave, strips bleeding off the right edge.
+      pattern: ruler ticks at space-4 (16px) pitch in text-muted, chosen because the system is precise, technical and 4px-gridded ("Dense but calm"); one marigold playhead cuts through the weave ("One thread").
+      scales: space-1-5 cuts, space-3 row gap, space-4 tick pitch, track-md row height, radius-sm strips, radius-full playhead flag.
+    -->
+    <g>
+      <rect class="tick" x="8" y="24" width="2" height="12"/><rect class="tick" x="24" y="30" width="2" height="6"/><rect class="tick" x="40" y="30" width="2" height="6"/><rect class="tick" x="56" y="30" width="2" height="6"/>
+      <rect class="tick" x="72" y="24" width="2" height="12"/><rect class="tick" x="88" y="30" width="2" height="6"/><rect class="tick" x="104" y="30" width="2" height="6"/><rect class="tick" x="120" y="30" width="2" height="6"/>
+      <rect class="tick" x="136" y="24" width="2" height="12"/><rect class="tick" x="152" y="30" width="2" height="6"/><rect class="tick" x="168" y="30" width="2" height="6"/><rect class="tick" x="184" y="30" width="2" height="6"/>
+      <rect class="tick" x="200" y="24" width="2" height="12"/><rect class="tick" x="216" y="30" width="2" height="6"/><rect class="tick" x="232" y="30" width="2" height="6"/><rect class="tick" x="248" y="30" width="2" height="6"/>
+      <rect class="tick" x="264" y="24" width="2" height="12"/><rect class="tick" x="280" y="30" width="2" height="6"/><rect class="tick" x="296" y="30" width="2" height="6"/><rect class="tick" x="312" y="30" width="2" height="6"/>
+      <rect class="tick" x="328" y="24" width="2" height="12"/><rect class="tick" x="344" y="30" width="2" height="6"/><rect class="tick" x="360" y="30" width="2" height="6"/><rect class="tick" x="376" y="30" width="2" height="6"/>
+      <rect class="tick" x="392" y="24" width="2" height="12"/><rect class="tick" x="408" y="30" width="2" height="6"/><rect class="tick" x="424" y="30" width="2" height="6"/><rect class="tick" x="440" y="30" width="2" height="6"/>
+      <rect class="tick" x="456" y="24" width="2" height="12"/><rect class="tick" x="472" y="30" width="2" height="6"/>
+    </g>
+    <g>
+      <rect class="mari strip" x="24" y="52" width="208" height="48"/>
+      <rect class="mari strip" x="238" y="52" width="282" height="48"/>
+      <rect class="media strip" x="64" y="112" width="136" height="48"/>
+      <rect class="media strip" x="206" y="112" width="124" height="48"/>
+      <rect class="agent strip" x="336" y="112" width="184" height="48"/>
+      <rect class="capt strip" x="24" y="172" width="96" height="48"/>
+      <rect class="mari strip" x="126" y="172" width="274" height="48"/>
+      <rect class="capt strip" x="406" y="172" width="114" height="48"/>
+      <rect class="relief strip" x="96" y="232" width="200" height="48"/>
+      <rect class="media strip" x="302" y="232" width="218" height="48"/>
+    </g>
+    <g>
+      <rect class="ground" x="355" y="48" width="12" height="240"/>
+      <rect class="ph" x="360" y="22" width="2" height="266"/>
+      <rect class="ph flag" x="351" y="12" width="20" height="12"/>
+    </g>
+  </svg>
+  <p class="name">Cutweave</p>
+  <p class="tag">The open video editor for creators and their agents.</p>
+</div>

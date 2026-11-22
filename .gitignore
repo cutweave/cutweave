@@ -1,0 +1,29 @@
+# Rust
+/target/
+**/target/
+# Node
+node_modules/
+.pnpm-store/
+dist/
+*.tsbuildinfo
+# Local env & secrets
+.env
+.env.*
+!.env.example
+*.pem
+# Editor / OS
+.DS_Store
+Thumbs.db
+.idea/
+.vscode/*
+!.vscode/extensions.json
+# Tooling
+.claude/settings.local.json
+*.log
+# Media & caches (test corpus is fetched, never committed)
+/testdata/corpus/
+/third_party/ffmpeg/
+*.mp4
+*.mov
+*.mkv
+!testdata/golden/**

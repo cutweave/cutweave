@@ -1,0 +1,57 @@
+# Cutweave — Work Breakdown (index)
+
+Work packages (WPs) are the unit of execution for humans and AI coding agents. Each phase file lists its WPs using the template in [04-roadmap.md](04-roadmap.md#work-package-template-used-in-05-work-breakdownmd).
+
+**ID scheme:** `WP-<phase><epic>.<nn>`, e.g. `WP-1B.03` is Phase 1, Epic B (commands), item 03. A dependency on another phase may name the whole epic (e.g. `E1B`) or a specific WP. **An epic dependency means all WPs of that epic are merged.** `scripts/wbs-to-issues` expands it into the WP list, and the orchestrator may refine it to specific WPs.
+
+**Sizing:** S ≤ 1 agent-day, M = 2–4 agent-days. Anything bigger is split before it starts.
+**Executor:** `sonnet` by default. Use `opus` for cross-cutting design, concurrency or GPU/media subtleties. Use `human` for decisions, legal and review gates.
+
+| Phase file | Epics |
+|---|---|
+| [wbs/P0-foundations.md](wbs/P0-foundations.md) | **0A** Repo & CI scaffold · **0B** Governance & licensing docs · **0C** Spike S1 shell/preview · **0D** Spike S2 audio clock · **0E** Spike S3 decode/seek/HW · **0F** Spike S4 compositor/color/text · **0G** Spike S4b compositions runtime · **0H** Spike S5 command bus → MCP · **0I** Test-media corpus & benchmark harness · **0J** ADRs, go/no-go & re-estimate · **0K** Design system foundations |
+| [wbs/P1-skeleton.md](wbs/P1-skeleton.md) | **1A** Domain model · **1B** Command bus, tx & undo · **1C** Persistence & recovery · **1D** Media probe/index/decode/thumbs/waveforms · **1E** Export (H.264/AAC) · **1F** Render pipeline v0 · **1G** Audio playback v0 · **1H** Playback & SHM preview · **1I** Local API server (RPC/HTTP/auth) · **1J** MCP v0 · **1K** CLI · **1L** Electron shell & engine supervision · **1M** Editor UI v0 · **1N** Codegen & protocol package · **1O** CI quality gates (golden frames, parity) |
+| [wbs/P2-core-editor.md](wbs/P2-core-editor.md) | **2A** Timeline editing · **2B** Sequences & canvas · **2C** Clip properties & keyframes · **2D** Speed basics · **2E** Audio features · **2F** Media management (proxies, relink, collect) · **2G** Export presets & queue · **2H** Workspace UI · **2I** MCP core tool set · **2J** Performance, reliability & dogfood |
+| [wbs/P3-text-captions.md](wbs/P3-text-captions.md) | **3A** Text engine · **3B** Compositions runtime & `@cutweave/compose` · **3C** Text animations & presets · **3D** Transcripts & Stt providers · **3E** Captions & style gallery · **3F** Text-based editing (silence/filler) · **3G** Asset packs (stickers, music/SFX) · **3H** Agent Kit v0 · **3I** Alpha packaging |
+| [wbs/P4-effects-color.md](wbs/P4-effects-color.md) | **4A** WGSL effect framework · **4B** Transitions pack · **4C** Effects pack · **4D** Filters & LUTs · **4E** Clip animations · **4F** Color tools & scopes · **4G** Masks, keying, adjustment layers · **4H** Speed curves & frame blending · **4I** Stabilization & tracking |
+| [wbs/P5-ai.md](wbs/P5-ai.md) | **5A** Gateway core · **5B** Model catalog · **5C** Aggregator adapters · **5D** Direct adapters · **5E** Adapter SDK (declarative HTTP + WASM) · **5F** AI Studio UI · **5G** AI editing features · **5H** Long-form → shorts · **5I** Local AI plugin & model manager · **5J** Agent Kit: generation skills & prompt packs |
+| [wbs/P6-platform.md](wbs/P6-platform.md) | **6A** Plugin platform core · **6B** UI extensions · **6C** Plugin index, distribution & `cutweave plugin` CLI · **6D** Templates · **6E** Interchange · **6F** Publishers · **6G** Agent Kit v1 · **6H** Eval harness · **6I** Copilot · **6J** MCP completeness & conformance |
+| [wbs/P7-release.md](wbs/P7-release.md) | **7A** Packaging, signing, updates · **7B** Reliability (crash reports, fuzz, soak) · **7C** Accessibility & i18n · **7D** Performance sign-off · **7E** Documentation · **7F** Legal, compliance & security review · **7G** Launch |
+
+## Integrator resolutions (override any "open" note in phase files)
+
+| # | Raised in | Resolution |
+|---|---|---|
+| R1 | P3/P4 | `cutweave-plugins` v0 lands in WP-3B.01 for first-party packages. P4 (4A) and P5 build on it; P6 (6A) **extends** it for third-party, WASM and permissions |
+| R2 | P3/P5 | WP-3D.02 is the minimal AI-gateway slice (Capability enum + Stt + one cloud provider + whisper.cpp built-in). P5 (5A/5I) migrates and extends it, never duplicates it. Job queue base is owned by E1D |
+| R3 | P3/P4 | Namespaces `font`, `asset`, `analysis` and `tracking` were added to architecture §5.1; `timeline.remove_silences` / `remove_fillers` are accepted names |
+| R4 | P4 | Temporal effects use `history` taps (≤ 8 frames), with no persistent feedback buffers (§8). Golden references are per GPU adapter class |
+| R5 | P3 | Captions are linked to their source clip and follow its edits (§11). `timeline.ripple_delete_ranges` / `reorder_ranges` are owned by 3F if P2 did not ship them |
+| R6 | P4 | The pinned FFmpeg build must include **libvidstab** (GPL-compatible) in WP-0A.06 |
+| R7 | P3 | Music library: CC0 plus CC-BY with attribution in per-asset license metadata. Supplement with community packs and P5 AI music generation |
+| R8 | P4 | GPU budgets are measured on self-hosted reference runners (WP-0I.04). CI software adapters check correctness only |
+| R9 | P5 | Three-tier spending authority, write-only key entry, key handles and host-side signing (§13). Third-party WASM provider adapters move to P6 |
+| R10 | P0/P1 | Wire format (ADR-015), `request_id` idempotency, deterministic-ID test mode, `view` namespace (§4.1, §5.1) |
+| R11 | P2 | No overlaps within a track; auto-create tracks; compound clips in P2; gesture soft-locks; core blend modes; keyframe math via wasm (§4.3, §5.2, §8, §16) |
+| R13 | P6 | P6 is extended to 10 weeks. TikTok publisher, FCPXML and the last template batch are **Should** (may slip to P7 or 1.1) |
+| R14 | P7 | 1.0 exit gates are now in the roadmap. Crash-free is measured only among opted-in beta users (n ≥ 2,000) |
+| R15 | P3/P5/P6 | Skill names follow architecture §14b exactly. `voiceover` folds into `dubbing-and-translation`; the multicam eval task is replaced by color-match (multicam is post-1.0) |
+| R16 | P6 | Copilot proposals = ephemeral transaction + diff UI, then accept/commit or reject/rollback (§14b). No engine branching |
+| R17 | P6/P7 | Long-lead items (signing, platform API audits, Flathub, legal) are tracked in the roadmap's long-lead table and start early |
+| R18 | P5 | `StockSearch` is added to the capability enum. Local third-party declarative manifests load in P5 behind a trust prompt. `ai.generate` uses a static envelope plus runtime per-model schema validation. Headless keys come from env vars or an age-encrypted file (§13) |
+| R19 | review | Electron: the main editor window uses a non-sandboxed preload for the native frame bridge (or a utility process, per Spike 1); everything else is sandboxed (§2, §18) |
+| R20 | review | Credential classes: UI token (never on disk) vs agent tokens (run-file). Actor is derived from the credential; UI-only scopes (§6, ADR-016) |
+| R21 | review | `media.import` returns `media_ids` synchronously; new `job_wait` tool (§7, §14) |
+| R22 | review | Transaction kinds `gesture` and `proposal`; transactions owned by their connection; saves persist committed revs only; minimal soft-lock in P1 (§5.2, ADR-017) |
+| R23 | review | MCP: both spec revisions supported; profiles per endpoint or flag; single tool-list budget; `view_get`/`view_set` in the catalog (§14) |
+| R24 | review | Stable engine port chosen by Electron main (§6); Linux builds on a 22.04 baseline (§21); golden tolerances single-sourced (§20) |
+| R25 | review | P1 re-estimated to about 10 weeks and P5 to 12; P6 starts after P4 and P5; day-0 prerequisites are in the roadmap |
+| R26 | design | The design system is defined: `design/` in the repo plus the design-system artifact. Epic 0K builds the token pipeline and `packages/ui`. Editor components are built in their owning epics (1M, 2H, 5F, 6I) from the artifact's specs. Plugin iframes get tokens injected (6B); high-contrast theme in P7 (7C) |
+| R12 | all | Over-size phases (P1 60, P3 58, P4 55, P5 75, P6 86 WPs) are acceptable. Content batches inflate the counts. The orchestrator re-plans at each phase gate (06-dev-process §5, step 6) |
+
+## How WPs flow (summary; full process in [06-dev-process.md](06-dev-process.md))
+
+1. Each WP becomes a GitHub issue, labelled `phase:Pn`, `epic:XY`, `size:S|M` and `exec:sonnet|opus|human`.
+2. The orchestrator assigns ready WPs (all dependencies done) to agents, each in its own git worktree and branch.
+3. The agent implements against the acceptance criteria and opens a PR. CI gates and a reviewer (human or opus) approve it, and it merges to `main`.
+4. A phase is done when every exit criterion in the roadmap is traced to merged WPs (see the traceability table at the end of each phase file).

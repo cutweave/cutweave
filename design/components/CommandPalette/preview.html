@@ -1,0 +1,29 @@
+<!-- @dsCard group="Overlays" height=330 -->
+<div class="cw-demo" style="background:var(--surface-0);justify-content:center;align-items:flex-start">
+  <div class="cw-palette cw-w-md" role="dialog" aria-label="Command palette">
+    <div class="cw-palette__search">
+      <svg class="cw-icon" viewBox="0 0 24 24" aria-hidden="true"><circle cx="11" cy="11" r="7"/><path d="m21 21-4.3-4.3"/></svg>
+      <input class="cw-palette__input" placeholder="Type a command or ask the agent" value="sil" aria-label="Search commands" />
+      <span class="cw-kbd">Esc</span>
+    </div>
+    <div role="listbox" aria-label="Results">
+      <div class="cw-palette__group">Commands</div>
+      <div class="cw-palette__item" role="option" aria-selected="true">
+        <svg class="cw-icon" viewBox="0 0 24 24" aria-hidden="true"><circle cx="6" cy="6" r="3"/><circle cx="6" cy="18" r="3"/><path d="M20 4 8.12 15.88M14.47 14.48 20 20M8.12 8.12 12 12"/></svg>
+        <span class="cw-palette__label">Split at playhead</span><span class="cw-kbd">S</span></div>
+      <div class="cw-palette__item" role="option" aria-selected="false">
+        <svg class="cw-icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M4 12h6M14 12h6M10 7v10M14 7v10"/></svg>
+        <span class="cw-palette__label">Ripple delete selection</span><span class="cw-kbd">&#8679;&#9003;</span></div>
+      <div class="cw-palette__item" role="option" aria-selected="false">
+        <svg class="cw-icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M11 5 6 9H2v6h4l5 4z"/></svg>
+        <span class="cw-palette__label">Detach audio</span></div>
+      <div class="cw-palette__group">Agent</div>
+      <div class="cw-palette__item cw-palette__item--agent" role="option" aria-selected="false">
+        <svg class="cw-icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 3l1.9 5.1L19 10l-5.1 1.9L12 17l-1.9-5.1L5 10l5.1-1.9z"/></svg>
+        <span class="cw-palette__label">Remove silences from interview_A.mov</span><span class="cw-kbd">&#8629;</span></div>
+      <div class="cw-palette__item cw-palette__item--agent" role="option" aria-selected="false">
+        <svg class="cw-icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 3l1.9 5.1L19 10l-5.1 1.9L12 17l-1.9-5.1L5 10l5.1-1.9z"/></svg>
+        <span class="cw-palette__label">Add captions to this sequence</span></div>
+    </div>
+  </div>
+</div>
