@@ -27,3 +27,6 @@ Thumbs.db
 *.mov
 *.mkv
 !testdata/golden/**
+
+# Agent worktrees
+.claude/worktrees/
