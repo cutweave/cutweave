@@ -917,3 +917,35 @@ ADR-001 adopted all four points (Accepted, provisional); the combined view is in
 - `--transport=texture` is a probe, not a transport: it has no engine.
 - Arch §2, §10 and §18 wording should follow the ADR-001 decision. In particular, §10's
   "upgrade path" (shared textures) is also the way to drop the §18 sandbox exception.
+
+### Merged with WP-0C.02
+
+WP-0C.06 was built on WP-0C.01 in parallel with WP-0C.02, then merged on top of it:
+
+- **Bench.** The two `--bench` designs became one CLI with two modes and one result envelope
+  ([Bench CLI and result schema](#bench-cli-and-result-schema)). The A/B code is unchanged
+  apart from the envelope. `bench-ab.mjs` passes `--bench-mode=ab` and its `--table` skips
+  suite files; `summarize-bench.mjs` skips A/B files.
+- **Transport (a) in A/B mode now runs the WP-0C.02 page.** That page has the stage, overlay,
+  scrub bar and the upload-path toggle (writeTexture by default). The engine stays at `--size`
+  rather than renegotiating to the canvas size, so (a) and (b) still move the same bytes. The
+  canvas is the stage's size, so the presenter scales the frame on the GPU. The committed A/B
+  rows were measured before the merge, on the WP-0C.01 page.
+- **Canvas size in (b).** Since WP-0C.02 the shared presenter no longer sizes the canvas to the
+  frame (the stage does, in (a)). The (b) page and worker have no stage, so `sized.ts` keeps
+  their backing store at the frame size, as it was when the A/B table was measured.
+- `main.ts` keeps the WP-0C.02 options (`--upload`, `--engine-size`) and adds `--transport`,
+  `--bench-mode`, `--warmup` and the (b) dispatch. The (b) page gets COOP/COEP; the (a) page is
+  unchanged.
+
+Post-merge smoke runs, one each on the same laptop with 5-11 cores of foreign load. These are
+not committed and not comparable to the tables above:
+
+- **Self-tests (60 s):** (a) `draw=preload policy=clock` passed all 10 checks at 59.95 fps,
+  2 gaps/min. (b) `policy=clock` passed all 15 checks at 52.1 fps, 310 skipped/min.
+- **A/B mode (15 s, 1080p RGBA8):** (a) gave 53.4 fps with 3.8 skipped/min; its fps loss was
+  105 engine-side drops, and renderer CPU was 28 %. (b) gave 52.5 fps with 402 skipped/min,
+  renderer 86 % plus utility 77 %.
+- **Suite (15 s phases):** every functional check passed: scrub p95 49.1 ms, 0 blank frames in
+  121 resizes, 12/12 renegotiations, all overlay checks. `playback60fps` and
+  `dropsUnder2PerMin` failed under the load, as in run A (WP-0C.02 finding 2).
