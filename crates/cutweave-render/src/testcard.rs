@@ -299,10 +299,15 @@ fn hsv(h: f64, s: f64, v: f64) -> [f64; 3] {
 
 /// A [`FrameSource`] serving test cards by media id. Animated cards advance one frame per
 /// 1/25 s of source time. Generated frames are memoised.
+///
+/// A proxy card registered with [`SyntheticSource::with_proxy`] is served for requests that
+/// accept proxies ([`FrameRequest::proxy`]); other requests, and media without a proxy, get
+/// the original card.
 #[derive(Debug, Default)]
 pub struct SyntheticSource {
     cards: HashMap<MediaId, TestCard>,
-    frames: Mutex<HashMap<(MediaId, i64), Arc<VideoFrame>>>,
+    proxies: HashMap<MediaId, TestCard>,
+    frames: Mutex<HashMap<(MediaId, bool, i64), Arc<VideoFrame>>>,
 }
 
 impl SyntheticSource {
@@ -322,17 +327,35 @@ impl SyntheticSource {
     /// Serves `card` for `media`.
     pub fn insert(&mut self, media: MediaId, card: TestCard) {
         self.cards.insert(media, card);
+        self.forget(media);
+    }
+
+    /// Serves `card` as the proxy of `media`.
+    #[must_use]
+    pub fn with_proxy(mut self, media: MediaId, card: TestCard) -> SyntheticSource {
+        self.proxies.insert(media, card);
+        self.forget(media);
+        self
+    }
+
+    fn forget(&self, media: MediaId) {
         if let Ok(mut f) = self.frames.lock() {
-            f.retain(|(m, _), _| *m != media);
+            f.retain(|(m, _, _), _| *m != media);
         }
     }
 }
 
 impl FrameSource for SyntheticSource {
     fn frame(&self, request: &FrameRequest) -> Result<Arc<VideoFrame>, FrameError> {
-        let card = self.cards.get(&request.media).ok_or_else(|| {
-            FrameError::Unavailable(format!("no test card for {}", request.media))
-        })?;
+        let proxy = request
+            .proxy
+            .then(|| self.proxies.get(&request.media))
+            .flatten();
+        let card = proxy
+            .or_else(|| self.cards.get(&request.media))
+            .ok_or_else(|| {
+                FrameError::Unavailable(format!("no test card for {}", request.media))
+            })?;
         let index = if card.animated {
             request
                 .source_time
@@ -341,7 +364,7 @@ impl FrameSource for SyntheticSource {
         } else {
             0
         };
-        let key = (request.media, index);
+        let key = (request.media, proxy.is_some(), index);
         let mut frames = self
             .frames
             .lock()
@@ -476,6 +499,7 @@ mod tests {
             rotation: 0,
             color: ColorTags::default(),
             still: false,
+            proxy: false,
         };
         let a = src.frame(&req).unwrap();
         let b = src.frame(&req).unwrap();
@@ -484,5 +508,38 @@ mod tests {
         assert_ne!(src.frame(&req).unwrap().id, a.id);
         req.media = MediaId::from_u128(8);
         assert!(matches!(src.frame(&req), Err(FrameError::Unavailable(_))));
+    }
+
+    #[test]
+    fn proxies_are_served_only_to_requests_that_accept_them() {
+        let media = MediaId::from_u128(7);
+        let card = |w, h| {
+            TestCard::new(
+                w,
+                h,
+                Pattern::ColorBars,
+                PixelFormat::Nv12,
+                ColorTags::default(),
+            )
+        };
+        let src = SyntheticSource::new()
+            .with(media, card(16, 8))
+            .with_proxy(media, card(8, 4));
+        let mut req = FrameRequest {
+            media,
+            stream: Some(0),
+            source_time: Time::ZERO,
+            source_size: Some((16, 8)),
+            rotation: 0,
+            color: ColorTags::default(),
+            still: false,
+            proxy: false,
+        };
+        assert_eq!(src.frame(&req).unwrap().width, 16);
+        req.proxy = true;
+        assert_eq!(src.frame(&req).unwrap().width, 8);
+        // Without a proxy card the original is served.
+        let plain = SyntheticSource::new().with(media, card(16, 8));
+        assert_eq!(plain.frame(&req).unwrap().width, 16);
     }
 }

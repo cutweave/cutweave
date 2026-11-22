@@ -11,14 +11,17 @@
 //!   canvas is cleared to the background colour by the pass's load op. Cost follows the layer
 //!   area, not the canvas area (S4 finding 5a).
 //! * **Output** (compute): un-premultiply, encode, explicit round-half-up quantisation into a
-//!   storage buffer, then readback.
+//!   storage buffer, then readback: blocking ([`Compositor::render`] / [`Compositor::execute`],
+//!   one reused staging buffer) or asynchronous ([`Compositor::submit`] then
+//!   [`Compositor::try_receive`], a small pool of staging buffers; see the `readback` module).
 //!
 //! Determinism (arch §8): the same graph renders to the same bytes on the same adapter whatever
-//! the cache and pool state (cold or warm, recycled textures, after device recovery); the render
-//! path reads no clock.
+//! the cache and pool state (cold or warm, recycled textures, after device recovery), and the
+//! blocking and asynchronous readbacks deliver the same bytes; the render path reads no clock.
 //!
-//! Known per-frame allocations (bind groups, texture views, the command encoder, the readback
-//! `Vec`) remain; WP-1F.03 brings double-buffered async readback.
+//! GPU buffers and textures are pooled, so steady-state frames allocate none. wgpu's own
+//! per-frame objects remain (bind groups, texture views, the command encoder, the boxed map
+//! callback), as does the `Vec` of the blocking readback's [`Image`].
 
 #![allow(clippy::cast_possible_truncation)]
 
@@ -29,6 +32,7 @@ use std::time::Duration;
 
 use cutweave_model::ItemId;
 
+use super::readback::{FrameTicket, ReadbackFrame, ReadbackPool};
 use super::{GpuContext, GpuError, PIPELINE_CREATION, Watchdog, block_on};
 use crate::color::{Eetf, OutputTransfer};
 use crate::frame::{FrameError, FrameSource, PixelFormat, VideoFrame};
@@ -39,6 +43,7 @@ use crate::graph::{
 };
 use crate::hash::CacheKey;
 use crate::image::Image;
+use crate::quality::Quality;
 use crate::scene::{BlendMode, SceneDescription};
 
 const COMMON_WGSL: &str = include_str!("shaders/common.wgsl");
@@ -61,6 +66,9 @@ pub struct CompositorOptions {
     pub cache_budget_bytes: u64,
     /// Frames slower than this are logged by the watchdog.
     pub watchdog_threshold: Duration,
+    /// Staging buffers for asynchronous readback ([`Compositor::submit`]): at most this many
+    /// frames in flight.
+    pub readback_slots: usize,
 }
 
 impl Default for CompositorOptions {
@@ -69,6 +77,7 @@ impl Default for CompositorOptions {
             graph: GraphOptions::default(),
             cache_budget_bytes: 256 << 20,
             watchdog_threshold: Duration::from_millis(500),
+            readback_slots: 3,
         }
     }
 }
@@ -379,12 +388,17 @@ struct DeviceState {
     cache: HashMap<CacheKey, CacheEntry>,
     cache_bytes: u64,
     uniforms: Vec<wgpu::Buffer>,
-    readback: Option<(u64, wgpu::Buffer, wgpu::Buffer)>,
+    /// The output pass's storage buffer (by size).
+    output: Option<(u64, wgpu::Buffer)>,
+    /// The blocking readback's staging buffer (by size).
+    staging: Option<(u64, wgpu::Buffer)>,
+    /// Staging buffers of asynchronous readbacks.
+    readbacks: ReadbackPool,
     frame_no: u64,
 }
 
 impl DeviceState {
-    fn new(ctx: &GpuContext) -> Result<DeviceState, GpuError> {
+    fn new(ctx: &GpuContext, readback_slots: usize) -> Result<DeviceState, GpuError> {
         let pipes = create_pipelines(ctx.device())?;
         let dummy_plane = ctx.device().create_texture(&wgpu::TextureDescriptor {
             label: Some("unused plane"),
@@ -403,7 +417,9 @@ impl DeviceState {
             cache: HashMap::new(),
             cache_bytes: 0,
             uniforms: Vec::new(),
-            readback: None,
+            output: None,
+            staging: None,
+            readbacks: ReadbackPool::new(readback_slots),
             frame_no: 0,
         })
     }
@@ -511,27 +527,63 @@ impl DeviceState {
         self.uniforms[slot].clone()
     }
 
-    fn readback(&mut self, device: &wgpu::Device, bytes: u64) -> (wgpu::Buffer, wgpu::Buffer) {
-        if let Some((size, storage, map)) = &self.readback
+    /// A buffer of `bytes` with `usage` kept in `slot`, recreated only when the size changes.
+    fn sized_buffer(
+        slot: &mut Option<(u64, wgpu::Buffer)>,
+        device: &wgpu::Device,
+        bytes: u64,
+        label: &str,
+        usage: wgpu::BufferUsages,
+    ) -> wgpu::Buffer {
+        if let Some((size, buffer)) = slot.as_ref()
             && *size == bytes
         {
-            return (storage.clone(), map.clone());
+            return buffer.clone();
         }
-        let storage = device.create_buffer(&wgpu::BufferDescriptor {
-            label: Some("output"),
+        let buffer = device.create_buffer(&wgpu::BufferDescriptor {
+            label: Some(label),
             size: bytes,
-            usage: wgpu::BufferUsages::STORAGE | wgpu::BufferUsages::COPY_SRC,
+            usage,
             mapped_at_creation: false,
         });
-        let map = device.create_buffer(&wgpu::BufferDescriptor {
-            label: Some("readback"),
-            size: bytes,
-            usage: wgpu::BufferUsages::MAP_READ | wgpu::BufferUsages::COPY_DST,
-            mapped_at_creation: false,
-        });
-        self.readback = Some((bytes, storage.clone(), map.clone()));
-        (storage, map)
+        *slot = Some((bytes, buffer.clone()));
+        buffer
     }
+
+    fn output_buffer(&mut self, device: &wgpu::Device, bytes: u64) -> wgpu::Buffer {
+        Self::sized_buffer(
+            &mut self.output,
+            device,
+            bytes,
+            "output",
+            wgpu::BufferUsages::STORAGE | wgpu::BufferUsages::COPY_SRC,
+        )
+    }
+
+    fn staging_buffer(&mut self, device: &wgpu::Device, bytes: u64) -> wgpu::Buffer {
+        Self::sized_buffer(
+            &mut self.staging,
+            device,
+            bytes,
+            "readback",
+            wgpu::BufferUsages::MAP_READ | wgpu::BufferUsages::COPY_DST,
+        )
+    }
+}
+
+/// How a CPU target's pixels come back.
+#[derive(Clone, Copy, PartialEq, Eq)]
+enum Readback {
+    /// Wait for them (the reused blocking staging buffer).
+    Blocking,
+    /// Map a pool buffer and return a ticket.
+    Async,
+}
+
+/// What an execution produced.
+enum Executed {
+    Frame(RenderedFrame),
+    Submitted(FrameTicket),
 }
 
 fn extent(width: u32, height: u32) -> wgpu::Extent3d {
@@ -591,7 +643,7 @@ impl std::fmt::Debug for Compositor {
 impl Compositor {
     /// A compositor on `ctx`: builds the pipelines (once per device) and starts the watchdog.
     pub fn new(ctx: GpuContext, options: CompositorOptions) -> Result<Compositor, GpuError> {
-        let dev = DeviceState::new(&ctx)?;
+        let dev = DeviceState::new(&ctx, options.readback_slots)?;
         let watchdog = Watchdog::spawn(options.watchdog_threshold, ctx.info().key.clone());
         Ok(Compositor {
             ctx,
@@ -637,8 +689,12 @@ impl Compositor {
     /// caches.
     pub fn recover(&mut self) -> Result<(), GpuError> {
         tracing::warn!(adapter = %self.ctx.info().key, "recreating the GPU device");
+        let lost = self.dev.readbacks.in_flight();
+        if lost > 0 {
+            tracing::warn!(frames = lost, "asynchronous readbacks lost with the device");
+        }
         let ctx = self.ctx.recreate()?;
-        self.dev = DeviceState::new(&ctx)?;
+        self.dev = DeviceState::new(&ctx, self.options.readback_slots)?;
         self.ctx = ctx;
         Ok(())
     }
@@ -654,15 +710,138 @@ impl Compositor {
         self.execute(&graph)
     }
 
+    /// Renders `scene` at `quality` to straight-alpha sRGB RGBA8: the output is
+    /// [`Quality::output_size`] of `base` (the preview canvas or the sequence size) and layers
+    /// accept proxies when the rung uses them. Export and agent frames pass
+    /// [`Quality::FULL`].
+    pub fn render_to_image(
+        &mut self,
+        scene: &SceneDescription,
+        source: &dyn FrameSource,
+        base: (u32, u32),
+        quality: Quality,
+    ) -> Result<RenderedFrame, RenderError> {
+        let (width, height) = quality.output_size(base);
+        let target = Target::rgba8(width, height);
+        if scene
+            .layers
+            .iter()
+            .all(|l| l.request.proxy == quality.use_proxies)
+        {
+            return self.render(scene, source, target);
+        }
+        let mut scene = scene.clone();
+        quality.apply(&mut scene);
+        self.render(&scene, source, target)
+    }
+
     /// Executes a compiled graph. A lost device is recreated and the frame retried once.
     pub fn execute(&mut self, graph: &RenderGraph) -> Result<RenderedFrame, RenderError> {
+        match self.execute_recovering(graph, Readback::Blocking)? {
+            Executed::Frame(f) => Ok(f),
+            Executed::Submitted(_) => {
+                Err(GraphError::Invalid("unexpected async readback".into()).into())
+            }
+        }
+    }
+
+    /// Compiles `scene` for a CPU `target` and submits it **without waiting** for its pixels:
+    /// they are copied into a pooled staging buffer that is mapped asynchronously. Collect the
+    /// frame with [`Compositor::try_receive`] (never blocks) or [`Compositor::receive`].
+    /// Fails with [`GpuError::ReadbackBusy`] when every staging buffer is in flight.
+    pub fn submit(
+        &mut self,
+        scene: &SceneDescription,
+        source: &dyn FrameSource,
+        target: Target,
+    ) -> Result<FrameTicket, RenderError> {
+        let graph = build(scene, target, source, &self.options.graph)?;
+        self.submit_graph(&graph)
+    }
+
+    /// [`Compositor::submit`] for a compiled graph (which must have a CPU target).
+    pub fn submit_graph(&mut self, graph: &RenderGraph) -> Result<FrameTicket, RenderError> {
+        if !matches!(graph.target, Target::Rgba8Cpu { .. }) {
+            return Err(
+                GraphError::Invalid("asynchronous readback needs a CPU target".into()).into(),
+            );
+        }
+        match self.execute_recovering(graph, Readback::Async)? {
+            Executed::Submitted(t) => Ok(t),
+            Executed::Frame(_) => {
+                Err(GraphError::Invalid("unexpected blocking readback".into()).into())
+            }
+        }
+    }
+
+    /// Frames submitted and not yet received.
+    #[must_use]
+    pub fn readbacks_in_flight(&self) -> usize {
+        self.dev.readbacks.in_flight()
+    }
+
+    /// Staging buffers created for asynchronous readback so far (on this device); constant
+    /// once the output size is stable.
+    #[must_use]
+    pub fn readback_buffers_created(&self) -> u64 {
+        self.dev.readbacks.buffers_created
+    }
+
+    /// The oldest submitted frame, if its readback has finished: `f` gets its description and
+    /// the mapped pixels (tightly packed straight-alpha RGBA8 rows), valid only during the call.
+    /// Never blocks; `Ok(None)` when nothing is ready.
+    pub fn try_receive<R>(
+        &mut self,
+        f: impl FnOnce(&ReadbackFrame, &[u8]) -> R,
+    ) -> Result<Option<R>, GpuError> {
+        let _ = self.ctx.device().poll(wgpu::PollType::Poll);
+        self.check()?;
+        self.dev.readbacks.take_ready(&mut Some(f))
+    }
+
+    /// Like [`Compositor::try_receive`] but waits for the oldest wanted frame in flight;
+    /// `Ok(None)` only when nothing (or only discarded frames) was in flight.
+    pub fn receive<R>(
+        &mut self,
+        f: impl FnOnce(&ReadbackFrame, &[u8]) -> R,
+    ) -> Result<Option<R>, GpuError> {
+        let mut f = Some(f);
+        // A wait completes every submission and runs its map callbacks; the bound only guards
+        // against a driver that never reports completion.
+        for _ in 0..64 {
+            if self.dev.readbacks.in_flight() == 0 {
+                return Ok(None);
+            }
+            let poll = self.ctx.device().poll(wgpu::PollType::wait_indefinitely());
+            self.check()?;
+            poll.map_err(|e| GpuError::Readback(format!("poll: {e}")))?;
+            if let Some(r) = self.dev.readbacks.take_ready(&mut f)? {
+                return Ok(Some(r));
+            }
+        }
+        Err(GpuError::Readback(
+            "a readback never completed after waiting for the device".into(),
+        ))
+    }
+
+    /// Forgets every frame in flight (a seek: latest wins); their buffers are recycled as they
+    /// complete.
+    pub fn discard_readbacks(&mut self) {
+        self.dev.readbacks.discard_all();
+    }
+
+    fn execute_recovering(
+        &mut self,
+        graph: &RenderGraph,
+        readback: Readback,
+    ) -> Result<Executed, RenderError> {
         let _frame = self.watchdog.begin();
         let mut recovered = false;
         if self.ctx.is_lost() {
             self.recover()?;
             recovered = true;
         }
-        let first = self.execute_once(graph);
+        let first = self.execute_once(graph, readback);
         let result = match first {
             Err(RenderError::Gpu(e))
                 if !recovered && (self.ctx.is_lost() || e.is_device_lost()) =>
@@ -670,21 +849,36 @@ impl Compositor {
                 tracing::warn!(adapter = %self.ctx.info().key, error = %e, "render failed on a lost device; retrying");
                 self.recover()?;
                 recovered = true;
-                self.execute_once(graph)
+                self.execute_once(graph, readback)
             }
             other => other,
         };
-        result.map(|mut f| {
-            f.stats.recovered = recovered;
-            f
+        result.map(|e| match e {
+            Executed::Frame(mut f) => {
+                f.stats.recovered = recovered;
+                Executed::Frame(f)
+            }
+            submitted @ Executed::Submitted(_) => submitted,
         })
     }
 
-    fn execute_once(&mut self, graph: &RenderGraph) -> Result<RenderedFrame, RenderError> {
-        let order = graph.topo_order()?;
-        let last = graph.last_uses(&order);
-        self.dev.frame_no += 1;
-        let _ = self.ctx.take_errors();
+    fn execute_once(
+        &mut self,
+        graph: &RenderGraph,
+        readback: Readback,
+    ) -> Result<Executed, RenderError> {
+        // Reserve the staging buffer first: a busy pool must fail before anything is encoded
+        // (decode passes insert their textures into the cache as they are recorded).
+        let slot = match readback {
+            Readback::Blocking => None,
+            Readback::Async => {
+                let (width, height) = graph.target.size();
+                let bytes = u64::from(width) * u64::from(height) * 4;
+                let device = self.ctx.device().clone();
+                Some(self.dev.readbacks.acquire(&device, bytes)?)
+            }
+        };
+        let index = slot.as_ref().map(|(i, _)| *i);
         let mut f = Frame {
             encoder: self
                 .ctx
@@ -695,19 +889,37 @@ impl Compositor {
             held: (0..graph.resources.len()).map(|_| None).collect(),
             uploads: Vec::new(),
             readback: None,
+            slot,
             stats: FrameStats {
                 graph: graph.stats,
                 ..FrameStats::default()
             },
         };
+        let result = self
+            .encode_frame(&mut f, graph)
+            .and_then(|()| self.finish(f, graph));
+        if result.is_err()
+            && let Some(index) = index
+        {
+            self.dev.readbacks.release(index);
+        }
+        result
+    }
+
+    /// Records every pass of `graph` into the frame's encoder.
+    fn encode_frame(&mut self, f: &mut Frame, graph: &RenderGraph) -> Result<(), RenderError> {
+        let order = graph.topo_order()?;
+        let last = graph.last_uses(&order);
+        self.dev.frame_no += 1;
+        let _ = self.ctx.take_errors();
         let mut pos = 0;
         while pos < order.len() {
             let pass = &graph.passes[order[pos]];
             let mut end = pos;
             match &pass.op {
-                PassOp::Decode(d) => self.run_decode(&mut f, graph, pass, d, pos),
+                PassOp::Decode(d) => self.run_decode(f, graph, pass, d, pos),
                 PassOp::Background { color } => {
-                    self.run_background(&mut f, pass.output, *color, graph.target.size());
+                    self.run_background(f, pass.output, *color, graph.target.size());
                 }
                 PassOp::Composite(_) => {
                     // A run of composites chained on one canvas shares a render pass.
@@ -720,10 +932,10 @@ impl Compositor {
                         end += 1;
                     }
                     let last_reader = last[pass.inputs[0]] == Some(pos);
-                    self.run_composites(&mut f, graph, &order[pos..=end], pos, last_reader)?;
+                    self.run_composites(f, graph, &order[pos..=end], pos, last_reader)?;
                 }
                 PassOp::Output { transfer } => {
-                    self.run_output(&mut f, pass.inputs[0], *transfer, graph.target.size(), pos)?;
+                    self.run_output(f, pass.inputs[0], *transfer, graph.target.size(), pos)?;
                 }
             }
             // Recycle transient textures after their last reader.
@@ -739,17 +951,19 @@ impl Compositor {
             }
             pos = end + 1;
         }
-        self.finish(f, graph)
+        Ok(())
     }
 
-    /// Submits the frame and produces its pixels.
-    fn finish(&mut self, f: Frame, graph: &RenderGraph) -> Result<RenderedFrame, RenderError> {
+    /// Submits the frame and produces its pixels (or, for an asynchronous readback, starts
+    /// mapping them and returns the ticket).
+    fn finish(&mut self, f: Frame, graph: &RenderGraph) -> Result<Executed, RenderError> {
         let (width, height) = graph.target.size();
         let Frame {
             mut encoder,
             mut held,
             uploads,
             readback,
+            slot,
             stats,
         } = f;
         let queue = self.ctx.queue().clone();
@@ -760,6 +974,21 @@ impl Compositor {
                 })?;
                 queue.submit([encoder.finish()]);
                 self.recycle(&mut held, uploads);
+                if let Some((slot, _)) = slot {
+                    let _ = self.ctx.device().poll(wgpu::PollType::Poll);
+                    self.check()?;
+                    let frame = ReadbackFrame {
+                        ticket: FrameTicket(0),
+                        width,
+                        height,
+                        key: graph.output_key(),
+                        missing: graph.missing.clone(),
+                        stats,
+                    };
+                    return Ok(Executed::Submitted(
+                        self.dev.readbacks.start(slot, bytes, frame),
+                    ));
+                }
                 let data = self.read(&map, bytes)?;
                 RenderedPixels::Rgba8(Image {
                     width,
@@ -779,14 +1008,14 @@ impl Compositor {
                 RenderedPixels::Texture(out.texture)
             }
         };
-        Ok(RenderedFrame {
+        Ok(Executed::Frame(RenderedFrame {
             width,
             height,
             pixels,
             key: graph.output_key(),
             missing: graph.missing.clone(),
             stats,
-        })
+        }))
     }
 
     /// Returns this frame's transient textures and uploads to the pool (after submit).
@@ -924,14 +1153,18 @@ impl Compositor {
         transfer: OutputTransfer,
         (width, height): (u32, u32),
         slot: usize,
-    ) -> Result<(), GraphError> {
+    ) -> Result<(), RenderError> {
         flush_clear(&mut f.encoder, &mut f.held, input);
+        let device = self.ctx.device().clone();
+        let bytes = u64::from(width) * u64::from(height) * 4;
+        let storage = self.dev.output_buffer(&device, bytes);
+        let map = match &f.slot {
+            Some((_, buffer)) => buffer.clone(),
+            None => self.dev.staging_buffer(&device, bytes),
+        };
         let src = f.held[input]
             .as_ref()
             .ok_or_else(|| GraphError::Invalid("output input not ready".into()))?;
-        let device = self.ctx.device().clone();
-        let bytes = u64::from(width) * u64::from(height) * 4;
-        let (storage, map) = self.dev.readback(&device, bytes);
         let uniform = self.dev.uniform(&device, slot);
         let u = Uniforms::default().u4([width, height, transfer.transfer().shader_id(), 0]);
         self.ctx.queue().write_buffer(&uniform, 0, &u.0);
@@ -1187,6 +1420,8 @@ struct Frame {
     uploads: Vec<(TexKey, wgpu::Texture)>,
     /// The mappable readback buffer and its size.
     readback: Option<(wgpu::Buffer, u64)>,
+    /// The pool slot and staging buffer of an asynchronous readback.
+    slot: Option<(usize, wgpu::Buffer)>,
     stats: FrameStats,
 }
 

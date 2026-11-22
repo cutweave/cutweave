@@ -348,6 +348,7 @@ mod tests {
                 rotation,
                 color: ColorTags::default(),
                 still: false,
+                proxy: false,
             },
             transform,
             opacity: 1.0,

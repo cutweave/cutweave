@@ -304,6 +304,7 @@ mod tests {
                 rotation: 0,
                 color: ColorTags::default(),
                 still: false,
+                proxy: false,
             },
             transform: LayerTransform {
                 position: Vec2::ZERO,

@@ -194,6 +194,7 @@ fn layer_at(project: &Project, track: &Track, clip: &Clip, t: Time) -> Option<La
             rotation: media.probe.rotation,
             color: media.probe.color.clone(),
             still,
+            proxy: false,
         },
         transform: LayerTransform {
             position: finite_vec(*tr.position.value_at(rel), Vec2::ZERO),
