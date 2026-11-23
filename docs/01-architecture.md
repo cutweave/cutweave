@@ -214,8 +214,9 @@ Provenance { origin(import|record|ai), provider?, model?, prompt?, seed?, params
 - **Overlap policy on insert (decided in WP-1B.05):** `timeline.insert` rejects an overlap by default, which is explicit and safe for agents. Callers opt into CapCut behaviour with `overlap: "new_track"` (the UI's drag-and-drop passes it), which auto-creates a track above.
 - **Edit semantics (decided in WP-1B.06):**
   - Every time param snaps to the nearest frame of the item's sequence (ties go later); the result reports the time used.
+    `timeline.insert` snaps `at` and `duration` (at least one frame) the same way; `source_in` is a media position and is not snapped.
   - `clip.split`: the left half keeps the item ID and the right half gets a new one. Linked partners that contain the split time split too, and the right halves share a *new* `linked_group`.
-  - Linked groups move, trim, split and delete together. `unlink: true` on `item.move` and `clip.trim` edits only that item and removes it from its group.
+  - Linked groups move, trim, split and delete together. `unlink: true` on `item.move` and `clip.trim` edits only that item and removes it from its group. A group never keeps a single member: when an edit (`unlink: true`, `track.remove`) leaves one item alone in its group, that item is unlinked in the same transaction.
   - `item.move` takes `start` and accepts `overlap: "new_track"` like `timeline.insert`. Edits never ripple, and trims never push a neighbour.
   - An edit touching any locked track (partners' tracks included) fails with `Locked` and applies nothing.
 - **Compound clips** are nested sequences referenced as media (`MediaAsset.kind = sequence-ref`). They render recursively and may not reference themselves; cycle detection is enforced.

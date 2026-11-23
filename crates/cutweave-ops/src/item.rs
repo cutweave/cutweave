@@ -17,7 +17,10 @@
 //!   applied in that case.
 //! * **Linked groups.** Items sharing a `linked_group` (video and its audio) move, trim, split
 //!   and are deleted together. `unlink: true` on `item.move` and `clip.trim` edits only the
-//!   given item and removes it from the group.
+//!   given item and removes it from the group. A group never keeps a single member: an item
+//!   left alone in its group by `unlink` (or by `track.remove`) is unlinked in the same
+//!   transaction (a partner on a locked track is left as it is: `unlink` exists to avoid locked
+//!   tracks, and `track.remove` fails with `Locked` instead).
 //! * **No ripple.** Edits never shift other items; gaps stay gaps.
 //!
 //! ```text
@@ -27,14 +30,14 @@
 //!      ^T                  ^T                     ^T                       ^S
 //! ```
 
-use std::collections::BTreeSet;
+use std::collections::{BTreeMap, BTreeSet};
 
 use cutweave_commands::{
     CmdError, Command, Query, QueryCtx, Registry, RegistryError, Tx, command, query, wire,
 };
 use cutweave_model::{
-    AudioProps, EntityKind, Item, ItemId, Project, SequenceId, Time, TimeInput, Track, TrackId,
-    Transform, Vec2, VisualProps,
+    AudioProps, EntityKind, GroupId, Item, ItemId, Project, SequenceId, Time, TimeInput, Track,
+    TrackId, Transform, Vec2, VisualProps,
 };
 
 use crate::{
@@ -131,6 +134,41 @@ pub(crate) fn duration(pointer: &str, flicks: i64) -> Result<cutweave_model::Dur
         .map_err(|e| CmdError::invalid(pointer, e.to_string()))
 }
 
+/// Clears the `linked_group` of the last remaining member of every group in `groups` that is
+/// left with exactly one member (a group needs two to link anything). Called after an edit
+/// took members out of their groups, inside the same transaction so undo restores the link.
+/// A last member on a locked track is skipped (the transaction refuses to edit it).
+pub(crate) fn unlink_orphans(
+    tx: &mut Tx<'_>,
+    groups: impl IntoIterator<Item = GroupId>,
+) -> Result<(), CmdError> {
+    let groups: BTreeSet<GroupId> = groups.into_iter().collect();
+    if groups.is_empty() {
+        return Ok(());
+    }
+    // (member, its track is locked)
+    let mut left: BTreeMap<GroupId, Vec<(ItemId, bool)>> = BTreeMap::new();
+    for t in tx.doc().sequences.values().flat_map(|s| s.tracks.values()) {
+        for item in t.items.iter() {
+            if let Some(g) = item.linked_group().filter(|g| groups.contains(g)) {
+                left.entry(g).or_default().push((item.id(), t.locked));
+            }
+        }
+    }
+    for (id, locked) in left.into_values().filter(|m| m.len() == 1).flatten() {
+        // A locked track's items are not edited; callers that must not leave such a group
+        // behind (`track.remove`) refuse earlier.
+        if locked {
+            continue;
+        }
+        tx.update_item(id, |item| {
+            item.set_linked_group(None);
+            Ok(())
+        })?;
+    }
+    Ok(())
+}
+
 /// The first item on `track` (not in `excluded`) that overlaps `[start, end)`.
 pub(crate) fn conflict(
     track: &Track,
@@ -195,6 +233,8 @@ pub struct ItemMove {
 
 struct MovePlan {
     sequence: SequenceId,
+    /// The group the primary item leaves under `unlink: true`.
+    leaves: Option<GroupId>,
     /// `(item, new start, slot)` of each moved item.
     moves: Vec<(ItemId, Time, Slot)>,
     unlink: bool,
@@ -287,6 +327,11 @@ impl ItemMove {
         }
         Ok(MovePlan {
             sequence,
+            leaves: if unlink {
+                primary.item.linked_group()
+            } else {
+                None
+            },
             moves,
             unlink,
         })
@@ -338,6 +383,7 @@ impl Command for ItemMove {
                 start: *at,
             });
         }
+        unlink_orphans(tx, plan.leaves)?;
         Ok(ItemMoveOutput {
             items,
             created_tracks: created,
