@@ -7,11 +7,12 @@
 //! [`arb_command_from`](super::arb_command_from) panic with `missing property strategy for
 //! <name>`.
 
-use std::sync::Arc;
+use std::{sync::Arc, time::Duration};
 
+use cutweave_jobs::{JobConfig, JobCtx, JobError, JobId, JobKind, JobManager, JobSpec};
 use cutweave_model::{
-    EntityId, FrameRate, ItemId, MediaId, MediaKind, ProbeInfo, Project, SampleRate, SequenceId,
-    TrackId, TrackKind, Vec2,
+    EntityId, FrameRate, ItemId, MediaId, MediaKind, ProbeInfo, Project, SampleRate, SeededGen,
+    SequenceId, TrackId, TrackKind, Vec2,
 };
 use proptest::{
     collection::vec,
@@ -23,7 +24,10 @@ use serde_json::{Value, json};
 
 use crate::{
     item::ITEM_GET_FIELDS,
-    media::{FakeProbe, ProbeError, Probed},
+    media::{
+        AnalysisInput, AnalysisSink, AnalysisStage, AnalysisStages, Analyzer, FakeProbe,
+        MediaEvent, ProbeError, Probed,
+    },
     timeline::GET_FIELDS,
 };
 
@@ -38,8 +42,17 @@ pub const IMPORT_PATHS: [&str; 6] = [
     "C:\\import\\voice.wav",
 ];
 
-/// A file [`fake_probe`] cannot read: importing it fails with `Invalid`.
+/// A file [`fake_probe`] cannot read: `media.import` reports it in `failed[]` (code
+/// `unsupported`) and imports the other files.
 pub const BROKEN_IMPORT_PATH: &str = "/import/notes.txt";
+
+/// Seed of the job IDs a harness's job manager mints ([`job_manager`]), so the `job.*`
+/// strategies can name jobs that exist.
+pub const JOB_ID_SEED: u64 = 7;
+
+/// How many of the first [`JOB_ID_SEED`] job IDs the `job.*` strategies draw from: the three
+/// jobs [`job_manager`] starts with, then analysis jobs of the first imports.
+const KNOWN_JOBS: usize = 8;
 
 /// Checkpoint names the `edit.checkpoint` and `edit.restore` strategies share.
 pub const CHECKPOINT_NAMES: [&str; 3] = ["alpha", "beta", "gamma"];
@@ -66,6 +79,79 @@ pub fn fake_probe() -> FakeProbe {
                 reason: "no audio or video streams".to_owned(),
             },
         )
+}
+
+/// A job manager for a harness (the `job.*` commands' engine context): IDs from
+/// [`JOB_ID_SEED`], two decode slots, and three jobs already submitted, so `job.*` requests
+/// find jobs in several states: one that succeeds at once, one that fails, and one that runs
+/// for up to 200 ms unless cancelled. Job bodies never touch the document.
+///
+/// # Panics
+///
+/// If the manager's runtime cannot start.
+#[must_use]
+pub fn job_manager() -> JobManager {
+    let jobs = JobManager::builder()
+        .config(JobConfig {
+            decode_slots: 2,
+            ..JobConfig::default()
+        })
+        .ids(Box::new(SeededGen::new(JOB_ID_SEED)))
+        .build()
+        .unwrap_or_else(|e| panic!("the job manager does not start: {e}"));
+    jobs.submit(JobSpec::new(JobKind::Analysis, "index"), |_| Ok(()));
+    jobs.submit(JobSpec::new(JobKind::Analysis, "thumbnails"), |_| {
+        Err(JobError::failed("fake decoder error"))
+    });
+    jobs.submit(JobSpec::new(JobKind::Export, "export"), |ctx| {
+        ctx.sleep(Duration::from_millis(200))
+    });
+    jobs
+}
+
+/// One fake analysis stage (`index`, which succeeds at once) for `media.import` in a harness.
+struct FakeIndex;
+
+impl AnalysisStage for FakeIndex {
+    fn name(&self) -> &'static str {
+        "index"
+    }
+
+    fn builds_index(&self) -> bool {
+        true
+    }
+
+    fn run(&self, _: &AnalysisInput, ctx: &JobCtx) -> Result<(), JobError> {
+        ctx.check()
+    }
+}
+
+/// Drops the events of analysis jobs.
+struct DiscardEvents;
+
+impl AnalysisSink for DiscardEvents {
+    fn publish(&self, _: MediaEvent) {}
+}
+
+/// An analyzer for `media.import` in a harness: the fake `index` stage on `jobs`, events
+/// discarded.
+///
+/// # Panics
+///
+/// Never (the single stage always registers).
+#[must_use]
+pub fn analyzer(jobs: &JobManager) -> Analyzer {
+    let mut stages = AnalysisStages::new();
+    if let Err(e) = stages.add(Arc::new(FakeIndex)) {
+        panic!("the fake stage does not register: {e}");
+    }
+    Analyzer::new(jobs.clone(), Arc::new(stages), Arc::new(DiscardEvents))
+}
+
+/// The job IDs the `job.*` strategies name (see [`KNOWN_JOBS`]).
+fn known_job_ids() -> Vec<JobId> {
+    let mut ids = SeededGen::new(JOB_ID_SEED);
+    (0..KNOWN_JOBS).map(|_| JobId::mint(&mut ids)).collect()
 }
 
 // ----- the document's vocabulary -------------------------------------------------------------
@@ -215,6 +301,9 @@ pub(super) fn args_for(name: &str, p: &Pools) -> Option<(u32, BoxedStrategy<Valu
         "edit.history" => (1, history_page()),
         "edit.checkpoint" => (2, checkpoint()),
         "edit.restore" => (2, restore()),
+        "job.status" | "job.cancel" => (1, job_ref("id")),
+        "job.list" => (1, job_list(p)),
+        "job.wait" => (1, job_wait()),
         _ => return None,
     })
 }
@@ -404,10 +493,17 @@ fn media_register(p: &Pools) -> BoxedStrategy<Value> {
 }
 
 fn media_import() -> BoxedStrategy<Value> {
-    let valid = vec(select(IMPORT_PATHS.to_vec()), 1..=3)
-        .prop_map(|paths| {
+    // Unreadable files are not errors: the import reports them in `failed[]` and registers
+    // the rest (WP-1D.07), so they belong with the valid requests.
+    let unreadable = prop_oneof![
+        8 => Just(None),
+        1 => Just(Some(BROKEN_IMPORT_PATH)),
+        1 => Just(Some("/import/missing.mp4")),
+    ];
+    let valid = (vec(select(IMPORT_PATHS.to_vec()), 1..=3), unreadable)
+        .prop_map(|(paths, unreadable)| {
             let mut unique: Vec<&str> = Vec::new();
-            for p in paths {
+            for p in paths.into_iter().chain(unreadable) {
                 if !unique.contains(&p) {
                     unique.push(p);
                 }
@@ -417,8 +513,6 @@ fn media_import() -> BoxedStrategy<Value> {
         .boxed();
     let invalid = prop_oneof![
         Just(json!({"paths": []})),
-        Just(json!({"paths": [IMPORT_PATHS[0], BROKEN_IMPORT_PATH]})),
-        Just(json!({"paths": ["/import/missing.mp4"]})),
         Just(json!({"paths": ["import/relative.mp4"]})),
         select(IMPORT_PATHS.to_vec()).prop_map(|p| json!({"paths": [p, p]})),
     ]
@@ -904,4 +998,73 @@ fn restore() -> BoxedStrategy<Value> {
         .prop_map(|(checkpoint, force)| json!({"checkpoint": checkpoint, "force": force}))
         .boxed();
     mix(valid, Just(json!({"checkpoint": "nope"})).boxed())
+}
+
+// ----- job.* ---------------------------------------------------------------------------------
+
+/// One of the jobs [`job_manager`] and the harness imports create (usually), or an unknown one.
+fn job_id() -> BoxedStrategy<Value> {
+    let known = select(known_job_ids()).prop_map(|id| Value::String(id.to_string()));
+    let unknown = any::<u128>().prop_map(|raw| Value::String(JobId::from_u128(raw).to_string()));
+    prop_oneof![9 => known, 1 => unknown].boxed()
+}
+
+/// `{<key>: job}` (`job.status`, `job.cancel`).
+fn job_ref(key: &'static str) -> BoxedStrategy<Value> {
+    let object = move |id: Value| {
+        let mut params = serde_json::Map::new();
+        params.insert(key.to_owned(), id);
+        Value::Object(params)
+    };
+    let valid = job_id().prop_map(object).boxed();
+    let invalid = prop_oneof![
+        Just(object(json!("job_1"))),
+        fresh::<MediaId>().prop_map(object),
+    ]
+    .boxed();
+    mix(valid, invalid)
+}
+
+fn job_list(p: &Pools) -> BoxedStrategy<Value> {
+    let state = select(vec![
+        "queued",
+        "running",
+        "succeeded",
+        "failed",
+        "cancelled",
+    ]);
+    let kind = select(vec!["analysis", "export"]);
+    let valid = (
+        option::of(one_of(p.media_ids())),
+        option::of(state),
+        option::of(kind),
+        option::of(1..=20_u32),
+    )
+        .prop_map(|(media_id, state, kind, limit)| {
+            json!({"media_id": media_id, "state": state, "kind": kind, "limit": limit})
+        })
+        .boxed();
+    let invalid = prop_oneof![
+        Just(json!({"limit": 0})),
+        Just(json!({"limit": 501})),
+        Just(json!({"state": "done"})),
+    ]
+    .boxed();
+    mix(valid, invalid)
+}
+
+/// `job.wait` with a timeout of at most 5 ms. Not `mix`ed: a malformed variant could drop
+/// `timeout_ms` and wait the 30 s default on a running job.
+fn job_wait() -> BoxedStrategy<Value> {
+    let valid = (job_id(), 0..=5_u32)
+        .prop_map(|(id, ms)| json!({"job_id": id, "timeout_ms": ms}))
+        .boxed();
+    let invalid = prop_oneof![
+        Just(json!({"job_id": "job_1", "timeout_ms": 0})),
+        job_id().prop_map(|id| json!({"job_id": id, "timeout_ms": -1})),
+        job_id().prop_map(|id| json!({"job_id": id, "timeout_ms": 1, "unexpected": true})),
+        Just(json!({"id": "job_1", "timeout_ms": 0})),
+    ]
+    .boxed();
+    prop_oneof![16 => valid, 4 => invalid].boxed()
 }

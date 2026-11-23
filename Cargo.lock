@@ -3016,6 +3016,7 @@ version = "0.0.0"
 dependencies = [
  "cutweave-commands",
  "cutweave-engine",
+ "cutweave-jobs",
  "cutweave-model",
  "cutweave-ops",
  "insta",

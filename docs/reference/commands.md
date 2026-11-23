@@ -2,7 +2,7 @@
 
 # Command reference
 
-Every command and query the engine registers (33 in total), generated from the registry. The full JSON Schemas are in `schema/commands.json` and `schema/queries.json`.
+Every command and query the engine registers (37 in total), generated from the registry. The full JSON Schemas are in `schema/commands.json` and `schema/queries.json`.
 
 MCP exposure: `core` commands are always listed as tools (`item.move` is `item_move`), `catalog` ones are reachable through the catalog tools, `hidden` ones are not exposed.
 
@@ -24,7 +24,11 @@ MCP exposure: `core` commands are always listed as tools (`item.move` is `item_m
 | item | `item.get` | Get one item: summary, track, source, audio and visual properties | query | catalog |
 | item | `item.move` | Move an item in time and/or to another track (linked partners follow) | command, undoable, idempotent | core |
 | item | `item.set_props` | Set an item's name, enabled, opacity, audio_gain or transform (partial) | command, undoable, idempotent | core |
-| media | `media.import` | Import media files; probes synchronously and returns the media ids | engine, idempotent | core |
+| job | `job.cancel` | Cancel a background job (stops within 500 ms; no effect once it finished) | engine, idempotent | catalog |
+| job | `job.list` | List background jobs, newest first (filter by media, state or kind) | engine, read-only, idempotent | catalog |
+| job | `job.status` | Get a background job's state, progress and error (analysis, export) | engine, read-only, idempotent | core |
+| job | `job.wait` | Wait up to timeout_ms (max 60 s) for a background job to finish; returns its state | engine, read-only, idempotent | core |
+| media | `media.import` | Import media files: probe and register them now, return media ids and analysis job ids | engine, idempotent | core |
 | media | `media.list` | List the project's media (paged, ordered by id) | query | core |
 | media | `media.register` | Register a probed media file (used by import; deduplicates by content hash) | command, undoable, idempotent | hidden |
 | media | `media.remove` | Remove an unused media asset from the project | command, undoable, destructive | catalog |

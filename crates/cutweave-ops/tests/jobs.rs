@@ -443,6 +443,30 @@ fn a_path_outside_the_allowed_roots_is_invalid_in_restricted_mode() {
 }
 
 #[test]
+fn a_sink_error_points_at_the_requested_path_not_the_batch_entry() {
+    /// Refuses the batch, naming its first entry (as `register_batch` would).
+    struct Refuses;
+    impl cutweave_ops::media::MediaSink for Refuses {
+        fn register(
+            &mut self,
+            _: Vec<cutweave_ops::media::MediaRegister>,
+        ) -> Result<Vec<cutweave_ops::media::MediaRegistered>, CmdError> {
+            Err(CmdError::invalid("/paths/0/content_hash", "refused"))
+        }
+    }
+    let h = H::empty();
+    let mut ctx = cutweave_ops::media::ImportCtx::new(Arc::new(three()), Box::new(Refuses));
+    // `/m/missing.mp4` fails to probe, so the batch's first entry is request path 1.
+    let result = h.registry.invoke_engine_json(
+        "media.import",
+        json!({"paths": ["/m/missing.mp4", "/m/a.mp4"]}),
+        &mut ctx,
+        Access::STANDARD,
+    );
+    assert_invalid(result, "/paths/1/content_hash");
+}
+
+#[test]
 fn duplicates_queue_no_new_analysis() {
     let ran = Arc::new(Mutex::new(Vec::new()));
     let j = J::new(vec![quick("index", &[], true, &ran)]);

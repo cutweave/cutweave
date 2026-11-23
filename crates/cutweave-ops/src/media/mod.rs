@@ -385,6 +385,23 @@ impl MediaImport {
     }
 }
 
+/// Rewrites the `/paths/<batch index>` pointer of a sink error (see [`register_batch`]) to the
+/// file's index in the request, since files that failed to probe are not in the batch.
+fn request_pointer(error: CmdError, origin: &[usize]) -> CmdError {
+    let CmdError::Invalid { path, msg } = error else {
+        return error;
+    };
+    let rewritten = path.strip_prefix("/paths/").and_then(|rest| {
+        let (index, tail) = rest.split_at(rest.find('/').unwrap_or(rest.len()));
+        let original = origin.get(index.parse::<usize>().ok()?)?;
+        Some(format!("/paths/{original}{tail}"))
+    });
+    CmdError::Invalid {
+        path: rewritten.unwrap_or(path),
+        msg,
+    }
+}
+
 fn failure(path: &str, error: &ProbeError) -> ImportFailure {
     let code = match error {
         ProbeError::NotFound(_) => ImportFailureCode::NotFound,
@@ -407,8 +424,10 @@ impl EngineCommand for MediaImport {
         self.check(&ctx.policy)?;
         let probed = policy::probe_all(&ctx.prober, &self.paths, &ctx.policy);
         let mut batch = Vec::with_capacity(self.paths.len());
+        // The request index of each batch entry (failed files are not in the batch).
+        let mut origin = Vec::with_capacity(self.paths.len());
         let mut failed = Vec::new();
-        for (path, result) in self.paths.iter().zip(probed) {
+        for (i, (path, result)) in self.paths.iter().zip(probed).enumerate() {
             match result {
                 Ok(probed) => {
                     let register = MediaRegister {
@@ -418,7 +437,10 @@ impl EngineCommand for MediaImport {
                         content_hash: probed.content_hash,
                     };
                     match register.kind() {
-                        Ok(_) => batch.push(register),
+                        Ok(_) => {
+                            batch.push(register);
+                            origin.push(i);
+                        }
                         Err(e) => failed.push(ImportFailure {
                             path: path.clone(),
                             code: ImportFailureCode::Invalid,
@@ -432,7 +454,9 @@ impl EngineCommand for MediaImport {
         let results = if batch.is_empty() {
             Vec::new()
         } else {
-            ctx.sink.register(batch.clone())?
+            ctx.sink
+                .register(batch.clone())
+                .map_err(|e| request_pointer(e, &origin))?
         };
         if results.len() != batch.len() {
             return Err(CmdError::internal(
