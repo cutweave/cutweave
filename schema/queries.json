@@ -1,0 +1,1056 @@
+{
+  "error_codes": [
+    {
+      "code": "not_found",
+      "summary": "An ID or command name does not exist"
+    },
+    {
+      "code": "locked",
+      "summary": "The target is locked (a locked track, or soft-locked by another transaction)"
+    },
+    {
+      "code": "conflict",
+      "summary": "Stale revision, reused request_id, or a state the request cannot be applied to"
+    },
+    {
+      "code": "invalid",
+      "summary": "A param failed schema or semantic validation; the error carries a JSON Pointer"
+    },
+    {
+      "code": "forbidden",
+      "summary": "The caller's credential lacks the scope the command needs"
+    },
+    {
+      "code": "unsupported",
+      "summary": "A valid request this version cannot do"
+    },
+    {
+      "code": "internal",
+      "summary": "A bug or panic in the engine"
+    }
+  ],
+  "format": 1,
+  "json_schema_dialect": "https://json-schema.org/draft/2020-12/schema",
+  "queries": [
+    {
+      "annotations": {
+        "destructiveHint": false,
+        "idempotentHint": true,
+        "openWorldHint": false,
+        "readOnlyHint": true
+      },
+      "input_schema": {
+        "additionalProperties": false,
+        "description": "Reads one item: the `timeline.get` item summary plus its track, source, audio and visual\nproperties. `fields` limits the extra sections (`name`, `source`, `audio`, `visual`).",
+        "properties": {
+          "fields": {
+            "default": null,
+            "description": "Sections to include: any of `name`, `source`, `audio`, `visual` (default all).",
+            "items": {
+              "type": "string"
+            },
+            "type": [
+              "array",
+              "null"
+            ]
+          },
+          "item": {
+            "description": "The item.",
+            "pattern": "^itm_[0-9a-f]{32}$",
+            "type": "string"
+          }
+        },
+        "required": [
+          "item"
+        ],
+        "title": "ItemGet",
+        "type": "object"
+      },
+      "kind": "query",
+      "mcp": "catalog",
+      "mcp_tool": "item_get",
+      "name": "item.get",
+      "namespace": "item",
+      "output_schema": {
+        "additionalProperties": false,
+        "description": "Result of `item.get`.",
+        "properties": {
+          "audio": {
+            "description": "Audio properties (unless `fields` leaves them out).",
+            "properties": {
+              "gain": {
+                "description": "Gain in decibels (0.0 = unchanged).",
+                "format": "double",
+                "type": "number"
+              }
+            },
+            "required": [
+              "gain"
+            ],
+            "type": [
+              "object",
+              "null"
+            ]
+          },
+          "item": {
+            "additionalProperties": false,
+            "description": "The same projection `timeline.get` returns at depth 2.",
+            "properties": {
+              "duration": {
+                "description": "Length on the timeline.",
+                "maximum": 9007199254740991,
+                "minimum": 0,
+                "type": "integer"
+              },
+              "enabled": {
+                "description": "Whether the item is rendered and heard.",
+                "type": "boolean"
+              },
+              "id": {
+                "description": "The item.",
+                "pattern": "^itm_[0-9a-f]{32}$",
+                "type": "string"
+              },
+              "kind": {
+                "description": "Item kind (`clip`).",
+                "type": "string"
+              },
+              "linked_group": {
+                "description": "The linked group, if any.",
+                "pattern": "^grp_[0-9a-f]{32}$",
+                "type": [
+                  "string",
+                  "null"
+                ]
+              },
+              "media": {
+                "description": "The media a clip plays.",
+                "pattern": "^med_[0-9a-f]{32}$",
+                "type": [
+                  "string",
+                  "null"
+                ]
+              },
+              "start": {
+                "description": "Timeline position of the first frame.",
+                "maximum": 9007199254740991,
+                "minimum": -9007199254740991,
+                "type": "integer"
+              }
+            },
+            "required": [
+              "id",
+              "kind",
+              "start",
+              "duration",
+              "media",
+              "linked_group",
+              "enabled"
+            ],
+            "type": "object"
+          },
+          "linked": {
+            "description": "The other items of the linked group, if any.",
+            "items": {
+              "description": "A Item id: `^itm_[0-9a-f]{32}$`.",
+              "pattern": "^itm_[0-9a-f]{32}$",
+              "type": "string"
+            },
+            "type": "array"
+          },
+          "name": {
+            "description": "The display name, if it has one (unless `fields` leaves it out).",
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "sequence": {
+            "description": "The sequence holding the item.",
+            "pattern": "^seq_[0-9a-f]{32}$",
+            "type": "string"
+          },
+          "source": {
+            "additionalProperties": false,
+            "description": "Media and source position (unless `fields` leaves it out).",
+            "properties": {
+              "media": {
+                "description": "The media.",
+                "pattern": "^med_[0-9a-f]{32}$",
+                "type": "string"
+              },
+              "source_in": {
+                "description": "Position in the media of the clip's first frame.",
+                "maximum": 9007199254740991,
+                "minimum": -9007199254740991,
+                "type": "integer"
+              }
+            },
+            "required": [
+              "media",
+              "source_in"
+            ],
+            "type": [
+              "object",
+              "null"
+            ]
+          },
+          "track": {
+            "description": "The track holding the item.",
+            "pattern": "^trk_[0-9a-f]{32}$",
+            "type": "string"
+          },
+          "visual": {
+            "description": "Visual properties (unless `fields` leaves them out).",
+            "properties": {
+              "opacity": {
+                "description": "Opacity, 0.0 (transparent) to 1.0 (opaque).",
+                "format": "double",
+                "type": "number"
+              },
+              "transform": {
+                "description": "Placement on the canvas.",
+                "properties": {
+                  "anchor": {
+                    "additionalProperties": false,
+                    "description": "The item point that `position` places and rotation turns around, in item units.",
+                    "properties": {
+                      "x": {
+                        "description": "Horizontal component.",
+                        "format": "double",
+                        "type": "number"
+                      },
+                      "y": {
+                        "description": "Vertical component (down is positive).",
+                        "format": "double",
+                        "type": "number"
+                      }
+                    },
+                    "required": [
+                      "x",
+                      "y"
+                    ],
+                    "type": "object"
+                  },
+                  "position": {
+                    "additionalProperties": false,
+                    "description": "Offset of the anchor from the canvas center, in canvas units.",
+                    "properties": {
+                      "x": {
+                        "description": "Horizontal component.",
+                        "format": "double",
+                        "type": "number"
+                      },
+                      "y": {
+                        "description": "Vertical component (down is positive).",
+                        "format": "double",
+                        "type": "number"
+                      }
+                    },
+                    "required": [
+                      "x",
+                      "y"
+                    ],
+                    "type": "object"
+                  },
+                  "rotation": {
+                    "description": "Clockwise rotation in degrees.",
+                    "format": "double",
+                    "type": "number"
+                  },
+                  "scale": {
+                    "additionalProperties": false,
+                    "description": "Size multiplier per axis (1.0 = aspect-fit).",
+                    "properties": {
+                      "x": {
+                        "description": "Horizontal component.",
+                        "format": "double",
+                        "type": "number"
+                      },
+                      "y": {
+                        "description": "Vertical component (down is positive).",
+                        "format": "double",
+                        "type": "number"
+                      }
+                    },
+                    "required": [
+                      "x",
+                      "y"
+                    ],
+                    "type": "object"
+                  }
+                },
+                "required": [
+                  "position",
+                  "scale",
+                  "rotation",
+                  "anchor"
+                ],
+                "type": "object"
+              }
+            },
+            "required": [
+              "transform",
+              "opacity"
+            ],
+            "type": [
+              "object",
+              "null"
+            ]
+          }
+        },
+        "required": [
+          "sequence",
+          "track",
+          "item",
+          "linked"
+        ],
+        "title": "ItemGetOutput",
+        "type": "object"
+      },
+      "scope": "any",
+      "secret_fields": [],
+      "summary": "Get one item: summary, track, source, audio and visual properties",
+      "undoable": false,
+      "view": false
+    },
+    {
+      "annotations": {
+        "destructiveHint": false,
+        "idempotentHint": true,
+        "openWorldHint": false,
+        "readOnlyHint": true
+      },
+      "input_schema": {
+        "additionalProperties": false,
+        "description": "Lists the media of the project, ordered by ID, one page at a time.",
+        "properties": {
+          "cursor": {
+            "default": null,
+            "description": "`next_cursor` of the previous page; the page starts after this ID.",
+            "pattern": "^med_[0-9a-f]{32}$",
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "limit": {
+            "default": null,
+            "description": "Page size, `1..=500` (default 50).",
+            "format": "uint32",
+            "minimum": 0,
+            "type": [
+              "integer",
+              "null"
+            ]
+          }
+        },
+        "title": "MediaList",
+        "type": "object"
+      },
+      "kind": "query",
+      "mcp": "core",
+      "mcp_tool": "media_list",
+      "name": "media.list",
+      "namespace": "media",
+      "output_schema": {
+        "additionalProperties": false,
+        "description": "Result of `media.list`.",
+        "properties": {
+          "media": {
+            "description": "The page, ordered by ID.",
+            "items": {
+              "additionalProperties": false,
+              "description": "Summary of one media asset.",
+              "properties": {
+                "duration": {
+                  "description": "Playable length, if known.",
+                  "maximum": 9007199254740991,
+                  "minimum": 0,
+                  "type": [
+                    "integer",
+                    "null"
+                  ]
+                },
+                "has_audio": {
+                  "description": "Whether it has sound.",
+                  "type": "boolean"
+                },
+                "has_video": {
+                  "description": "Whether it has pictures.",
+                  "type": "boolean"
+                },
+                "id": {
+                  "description": "The asset.",
+                  "pattern": "^med_[0-9a-f]{32}$",
+                  "type": "string"
+                },
+                "kind": {
+                  "description": "What it is.",
+                  "oneOf": [
+                    {
+                      "const": "video",
+                      "description": "A video file (may also carry audio).",
+                      "type": "string"
+                    },
+                    {
+                      "const": "audio",
+                      "description": "An audio-only file.",
+                      "type": "string"
+                    },
+                    {
+                      "const": "image",
+                      "description": "A still image (no duration).",
+                      "type": "string"
+                    },
+                    {
+                      "const": "sequence_ref",
+                      "description": "Another sequence of this project, used as a compound clip (arch §4.3).",
+                      "type": "string"
+                    }
+                  ]
+                },
+                "path": {
+                  "description": "Absolute path when it was last found (file kinds).",
+                  "type": [
+                    "string",
+                    "null"
+                  ]
+                }
+              },
+              "required": [
+                "id",
+                "kind",
+                "path",
+                "duration",
+                "has_video",
+                "has_audio"
+              ],
+              "type": "object"
+            },
+            "type": "array"
+          },
+          "next_cursor": {
+            "description": "Pass as `cursor` to get the next page; absent on the last page.",
+            "pattern": "^med_[0-9a-f]{32}$",
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "total": {
+            "description": "Number of assets in the project.",
+            "format": "uint32",
+            "minimum": 0,
+            "type": "integer"
+          }
+        },
+        "required": [
+          "media",
+          "next_cursor",
+          "total"
+        ],
+        "title": "MediaListOutput",
+        "type": "object"
+      },
+      "scope": "any",
+      "secret_fields": [],
+      "summary": "List the project's media (paged, ordered by id)",
+      "undoable": false,
+      "view": false
+    },
+    {
+      "annotations": {
+        "destructiveHint": false,
+        "idempotentHint": true,
+        "openWorldHint": false,
+        "readOnlyHint": true
+      },
+      "input_schema": {
+        "additionalProperties": false,
+        "description": "Returns the project name, format, media count and a summary of each sequence.",
+        "title": "ProjectInfo",
+        "type": "object"
+      },
+      "kind": "query",
+      "mcp": "core",
+      "mcp_tool": "project_info",
+      "name": "project.info",
+      "namespace": "project",
+      "output_schema": {
+        "additionalProperties": false,
+        "description": "Result of `project.info`.",
+        "properties": {
+          "created": {
+            "description": "Creation time (RFC 3339 UTC), if recorded.",
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "default_format": {
+            "description": "Format of new sequences.",
+            "properties": {
+              "background": {
+                "description": "Canvas color behind all tracks.",
+                "pattern": "^#([0-9a-fA-F]{6}|[0-9a-fA-F]{8})$",
+                "type": "string"
+              },
+              "color_space": {
+                "description": "Working color space.",
+                "oneOf": [
+                  {
+                    "const": "rec709",
+                    "description": "Rec.709 primaries, SDR.",
+                    "type": "string"
+                  }
+                ]
+              },
+              "frame_rate": {
+                "additionalProperties": false,
+                "description": "The edit grid: timecodes and `\"f:N\"` inputs resolve against it.",
+                "properties": {
+                  "den": {
+                    "description": "Seconds.",
+                    "maximum": 4294967295,
+                    "minimum": 1,
+                    "type": "integer"
+                  },
+                  "num": {
+                    "description": "Frames.",
+                    "maximum": 4294967295,
+                    "minimum": 1,
+                    "type": "integer"
+                  }
+                },
+                "required": [
+                  "num",
+                  "den"
+                ],
+                "type": "object"
+              },
+              "height": {
+                "description": "Canvas height in pixels.",
+                "format": "uint32",
+                "minimum": 0,
+                "type": "integer"
+              },
+              "sample_rate": {
+                "description": "The mix rate.",
+                "maximum": 352800000,
+                "minimum": 1,
+                "type": "integer"
+              },
+              "width": {
+                "description": "Canvas width in pixels.",
+                "format": "uint32",
+                "minimum": 0,
+                "type": "integer"
+              }
+            },
+            "required": [
+              "width",
+              "height",
+              "frame_rate",
+              "sample_rate",
+              "color_space",
+              "background"
+            ],
+            "type": "object"
+          },
+          "media_count": {
+            "description": "Number of media assets.",
+            "format": "uint32",
+            "minimum": 0,
+            "type": "integer"
+          },
+          "name": {
+            "description": "Project name.",
+            "type": "string"
+          },
+          "schema_version": {
+            "description": "Document schema version.",
+            "format": "uint32",
+            "minimum": 0,
+            "type": "integer"
+          },
+          "sequences": {
+            "description": "The sequences, ordered by ID.",
+            "items": {
+              "additionalProperties": false,
+              "description": "Summary of one sequence.",
+              "properties": {
+                "audio_tracks": {
+                  "description": "Number of audio tracks.",
+                  "format": "uint32",
+                  "minimum": 0,
+                  "type": "integer"
+                },
+                "duration": {
+                  "description": "End of the last item on any track.",
+                  "maximum": 9007199254740991,
+                  "minimum": 0,
+                  "type": "integer"
+                },
+                "format": {
+                  "description": "Its format.",
+                  "properties": {
+                    "background": {
+                      "description": "Canvas color behind all tracks.",
+                      "pattern": "^#([0-9a-fA-F]{6}|[0-9a-fA-F]{8})$",
+                      "type": "string"
+                    },
+                    "color_space": {
+                      "description": "Working color space.",
+                      "oneOf": [
+                        {
+                          "const": "rec709",
+                          "description": "Rec.709 primaries, SDR.",
+                          "type": "string"
+                        }
+                      ]
+                    },
+                    "frame_rate": {
+                      "additionalProperties": false,
+                      "description": "The edit grid: timecodes and `\"f:N\"` inputs resolve against it.",
+                      "properties": {
+                        "den": {
+                          "description": "Seconds.",
+                          "maximum": 4294967295,
+                          "minimum": 1,
+                          "type": "integer"
+                        },
+                        "num": {
+                          "description": "Frames.",
+                          "maximum": 4294967295,
+                          "minimum": 1,
+                          "type": "integer"
+                        }
+                      },
+                      "required": [
+                        "num",
+                        "den"
+                      ],
+                      "type": "object"
+                    },
+                    "height": {
+                      "description": "Canvas height in pixels.",
+                      "format": "uint32",
+                      "minimum": 0,
+                      "type": "integer"
+                    },
+                    "sample_rate": {
+                      "description": "The mix rate.",
+                      "maximum": 352800000,
+                      "minimum": 1,
+                      "type": "integer"
+                    },
+                    "width": {
+                      "description": "Canvas width in pixels.",
+                      "format": "uint32",
+                      "minimum": 0,
+                      "type": "integer"
+                    }
+                  },
+                  "required": [
+                    "width",
+                    "height",
+                    "frame_rate",
+                    "sample_rate",
+                    "color_space",
+                    "background"
+                  ],
+                  "type": "object"
+                },
+                "id": {
+                  "description": "The sequence.",
+                  "pattern": "^seq_[0-9a-f]{32}$",
+                  "type": "string"
+                },
+                "item_count": {
+                  "description": "Number of items on all its tracks.",
+                  "format": "uint32",
+                  "minimum": 0,
+                  "type": "integer"
+                },
+                "name": {
+                  "description": "Its name.",
+                  "type": "string"
+                },
+                "video_tracks": {
+                  "description": "Number of video tracks.",
+                  "format": "uint32",
+                  "minimum": 0,
+                  "type": "integer"
+                }
+              },
+              "required": [
+                "id",
+                "name",
+                "format",
+                "duration",
+                "video_tracks",
+                "audio_tracks",
+                "item_count"
+              ],
+              "type": "object"
+            },
+            "type": "array"
+          }
+        },
+        "required": [
+          "name",
+          "schema_version",
+          "created",
+          "default_format",
+          "media_count",
+          "sequences"
+        ],
+        "title": "ProjectInfoOutput",
+        "type": "object"
+      },
+      "scope": "any",
+      "secret_fields": [],
+      "summary": "Get project name, default format and a summary of its sequences",
+      "undoable": false,
+      "view": false
+    },
+    {
+      "annotations": {
+        "destructiveHint": false,
+        "idempotentHint": true,
+        "openWorldHint": false,
+        "readOnlyHint": true
+      },
+      "input_schema": {
+        "additionalProperties": false,
+        "description": "Reads a sequence in layers: `depth` 0 is the sequence summary, 1 adds its tracks (summaries\nonly, small), 2 adds every item. `fields` limits the sections returned (`name`, `format`,\n`duration`, `tracks`); the id and the counts are always included.",
+        "properties": {
+          "depth": {
+            "default": null,
+            "description": "Detail level `0..=2` (default 1).",
+            "format": "uint8",
+            "maximum": 255,
+            "minimum": 0,
+            "type": [
+              "integer",
+              "null"
+            ]
+          },
+          "fields": {
+            "default": null,
+            "description": "Sections to include: any of `name`, `format`, `duration`, `tracks` (default all).",
+            "items": {
+              "type": "string"
+            },
+            "type": [
+              "array",
+              "null"
+            ]
+          },
+          "sequence": {
+            "description": "The sequence.",
+            "pattern": "^seq_[0-9a-f]{32}$",
+            "type": "string"
+          }
+        },
+        "required": [
+          "sequence"
+        ],
+        "title": "TimelineGet",
+        "type": "object"
+      },
+      "kind": "query",
+      "mcp": "core",
+      "mcp_tool": "timeline_get",
+      "name": "timeline.get",
+      "namespace": "timeline",
+      "output_schema": {
+        "additionalProperties": false,
+        "description": "Result of `timeline.get`.",
+        "properties": {
+          "duration": {
+            "description": "End of the last item on any track (unless `fields` leaves it out).",
+            "maximum": 9007199254740991,
+            "minimum": 0,
+            "type": [
+              "integer",
+              "null"
+            ]
+          },
+          "format": {
+            "description": "Its format (unless `fields` leaves it out).",
+            "properties": {
+              "background": {
+                "description": "Canvas color behind all tracks.",
+                "pattern": "^#([0-9a-fA-F]{6}|[0-9a-fA-F]{8})$",
+                "type": "string"
+              },
+              "color_space": {
+                "description": "Working color space.",
+                "oneOf": [
+                  {
+                    "const": "rec709",
+                    "description": "Rec.709 primaries, SDR.",
+                    "type": "string"
+                  }
+                ]
+              },
+              "frame_rate": {
+                "additionalProperties": false,
+                "description": "The edit grid: timecodes and `\"f:N\"` inputs resolve against it.",
+                "properties": {
+                  "den": {
+                    "description": "Seconds.",
+                    "maximum": 4294967295,
+                    "minimum": 1,
+                    "type": "integer"
+                  },
+                  "num": {
+                    "description": "Frames.",
+                    "maximum": 4294967295,
+                    "minimum": 1,
+                    "type": "integer"
+                  }
+                },
+                "required": [
+                  "num",
+                  "den"
+                ],
+                "type": "object"
+              },
+              "height": {
+                "description": "Canvas height in pixels.",
+                "format": "uint32",
+                "minimum": 0,
+                "type": "integer"
+              },
+              "sample_rate": {
+                "description": "The mix rate.",
+                "maximum": 352800000,
+                "minimum": 1,
+                "type": "integer"
+              },
+              "width": {
+                "description": "Canvas width in pixels.",
+                "format": "uint32",
+                "minimum": 0,
+                "type": "integer"
+              }
+            },
+            "required": [
+              "width",
+              "height",
+              "frame_rate",
+              "sample_rate",
+              "color_space",
+              "background"
+            ],
+            "type": [
+              "object",
+              "null"
+            ]
+          },
+          "id": {
+            "description": "The sequence.",
+            "pattern": "^seq_[0-9a-f]{32}$",
+            "type": "string"
+          },
+          "item_count": {
+            "description": "Number of items on all tracks.",
+            "format": "uint32",
+            "minimum": 0,
+            "type": "integer"
+          },
+          "name": {
+            "description": "Its name (unless `fields` leaves it out).",
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "track_count": {
+            "description": "Number of tracks.",
+            "format": "uint32",
+            "minimum": 0,
+            "type": "integer"
+          },
+          "tracks": {
+            "description": "The tracks in display order, top to bottom (depth >= 1, unless `fields` leaves them\nout).",
+            "items": {
+              "additionalProperties": false,
+              "description": "One track (depth 1 and 2).",
+              "properties": {
+                "end": {
+                  "description": "End of its last item.",
+                  "maximum": 9007199254740991,
+                  "minimum": -9007199254740991,
+                  "type": "integer"
+                },
+                "gain": {
+                  "description": "Gain in dB.",
+                  "format": "double",
+                  "type": "number"
+                },
+                "hidden": {
+                  "description": "Not rendered.",
+                  "type": "boolean"
+                },
+                "id": {
+                  "description": "The track.",
+                  "pattern": "^trk_[0-9a-f]{32}$",
+                  "type": "string"
+                },
+                "item_count": {
+                  "description": "Number of items.",
+                  "format": "uint32",
+                  "minimum": 0,
+                  "type": "integer"
+                },
+                "items": {
+                  "description": "The items in start order (depth 2 only).",
+                  "items": {
+                    "additionalProperties": false,
+                    "description": "One item of a track (depth 2).",
+                    "properties": {
+                      "duration": {
+                        "description": "Length on the timeline.",
+                        "maximum": 9007199254740991,
+                        "minimum": 0,
+                        "type": "integer"
+                      },
+                      "enabled": {
+                        "description": "Whether the item is rendered and heard.",
+                        "type": "boolean"
+                      },
+                      "id": {
+                        "description": "The item.",
+                        "pattern": "^itm_[0-9a-f]{32}$",
+                        "type": "string"
+                      },
+                      "kind": {
+                        "description": "Item kind (`clip`).",
+                        "type": "string"
+                      },
+                      "linked_group": {
+                        "description": "The linked group, if any.",
+                        "pattern": "^grp_[0-9a-f]{32}$",
+                        "type": [
+                          "string",
+                          "null"
+                        ]
+                      },
+                      "media": {
+                        "description": "The media a clip plays.",
+                        "pattern": "^med_[0-9a-f]{32}$",
+                        "type": [
+                          "string",
+                          "null"
+                        ]
+                      },
+                      "start": {
+                        "description": "Timeline position of the first frame.",
+                        "maximum": 9007199254740991,
+                        "minimum": -9007199254740991,
+                        "type": "integer"
+                      }
+                    },
+                    "required": [
+                      "id",
+                      "kind",
+                      "start",
+                      "duration",
+                      "media",
+                      "linked_group",
+                      "enabled"
+                    ],
+                    "type": "object"
+                  },
+                  "type": [
+                    "array",
+                    "null"
+                  ]
+                },
+                "kind": {
+                  "description": "What it holds.",
+                  "oneOf": [
+                    {
+                      "const": "video",
+                      "description": "Picture layers.",
+                      "type": "string"
+                    },
+                    {
+                      "const": "audio",
+                      "description": "Sound.",
+                      "type": "string"
+                    },
+                    {
+                      "const": "text",
+                      "description": "Titles (later versions).",
+                      "type": "string"
+                    },
+                    {
+                      "const": "caption",
+                      "description": "Captions (later versions).",
+                      "type": "string"
+                    },
+                    {
+                      "const": "adjustment",
+                      "description": "Adjustment layers (later versions).",
+                      "type": "string"
+                    }
+                  ]
+                },
+                "locked": {
+                  "description": "Item edits fail with `Locked`.",
+                  "type": "boolean"
+                },
+                "muted": {
+                  "description": "Silenced.",
+                  "type": "boolean"
+                },
+                "name": {
+                  "description": "Display name.",
+                  "type": "string"
+                },
+                "solo": {
+                  "description": "Solo.",
+                  "type": "boolean"
+                }
+              },
+              "required": [
+                "id",
+                "kind",
+                "name",
+                "muted",
+                "hidden",
+                "locked",
+                "solo",
+                "gain",
+                "item_count",
+                "end"
+              ],
+              "type": "object"
+            },
+            "type": [
+              "array",
+              "null"
+            ]
+          }
+        },
+        "required": [
+          "id",
+          "track_count",
+          "item_count"
+        ],
+        "title": "TimelineGetOutput",
+        "type": "object"
+      },
+      "scope": "any",
+      "secret_fields": [],
+      "summary": "Get a sequence: summary (depth 0), tracks (1) or tracks with items (2)",
+      "undoable": false,
+      "view": false
+    }
+  ]
+}

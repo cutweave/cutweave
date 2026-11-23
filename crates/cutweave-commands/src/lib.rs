@@ -42,6 +42,7 @@
 extern crate self as cutweave_commands;
 
 mod apply;
+mod catalog;
 mod ctx;
 mod diff;
 mod doc;
@@ -52,8 +53,12 @@ mod meta;
 mod patch;
 mod path;
 mod registry;
+mod schema_hash;
 mod tx;
 
+pub use catalog::{
+    CATALOG_FORMAT, JSON_SCHEMA_DIALECT, commands_catalog, mcp_tools_catalog, queries_catalog,
+};
 pub use ctx::{Access, QueryCtx};
 pub use cutweave_commands_derive::{command, query, wire};
 pub use diff::diff;
@@ -61,14 +66,14 @@ pub use doc::{
     Actor, ActorCtx, ActorError, ActorStacks, Applied, Changes, CheckpointId, CheckpointInfo,
     Clock, CommandPanicked, CommitRecord, CommitSink, ConnId, DEDUP_CAPACITY, DEDUP_WINDOW,
     DEFAULT_HISTORY_BYTES, DEFAULT_HISTORY_ENTRIES, DEFAULT_HISTORY_PAGE, DEFAULT_UNDO_DEPTH,
-    DedupRecord, DocConfig, DocEvent, DocPatched, DocReset, DocSnapshot, DocState, EntryCause,
-    EntryStatus, Fingerprint, GESTURE_IDLE_TIMEOUT, HistoryChange, HistoryChanged, HistoryEntry,
-    HistoryLimits, HistoryMoved, HistoryPage, HistoryScope, HistoryUsage, JournalStep,
-    JournaledCommit, LockList, MAX_AGENT_LABEL_CHARS, MAX_CHECKPOINT_NAME_CHARS,
-    MAX_CHECKPOINT_NOTE_CHARS, MAX_CHECKPOINTS, MAX_HISTORY_PAGE, MAX_NAMED_CHECKPOINTS,
-    MAX_PLUGIN_ID_CHARS, ManualClock, NoJournal, PatchCause, RequestId, RequestIdError, Restored,
-    RevertedChanges, SOFT_LOCK_RETRY_MS, StackTop, Submit, TxActivity, TxClosed, TxEnded, TxId,
-    TxIdError, TxInfo, TxKind, TxLocks, TxOutcome, WallTime,
+    DedupRecord, DocConfig, DocEvent, DocPatched, DocReset, DocSnapshot, DocState, EVENT_CATALOG,
+    EntryCause, EntryStatus, EventInfo, Fingerprint, GESTURE_IDLE_TIMEOUT, HistoryChange,
+    HistoryChanged, HistoryEntry, HistoryLimits, HistoryMoved, HistoryPage, HistoryScope,
+    HistoryUsage, JournalStep, JournaledCommit, LockList, MAX_AGENT_LABEL_CHARS,
+    MAX_CHECKPOINT_NAME_CHARS, MAX_CHECKPOINT_NOTE_CHARS, MAX_CHECKPOINTS, MAX_HISTORY_PAGE,
+    MAX_NAMED_CHECKPOINTS, MAX_PLUGIN_ID_CHARS, ManualClock, NoJournal, PatchCause, RequestId,
+    RequestIdError, Restored, RevertedChanges, SOFT_LOCK_RETRY_MS, StackTop, Submit, TxActivity,
+    TxClosed, TxEnded, TxId, TxIdError, TxInfo, TxKind, TxLocks, TxOutcome, WallTime,
 };
 #[cfg(not(all(target_arch = "wasm32", target_os = "unknown")))]
 pub use doc::{
@@ -87,6 +92,7 @@ pub use registry::{
     Command, Described, EngineCommand, Entry, Query, REDACTED, Registrable, Registry,
     RegistryError, input_schema, output_schema,
 };
+pub use schema_hash::SCHEMA_HASH;
 pub use tx::{Committed, Mark, Transaction, Tx};
 
 /// Re-exports for macro-generated code. Not part of the API.

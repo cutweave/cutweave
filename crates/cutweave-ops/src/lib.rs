@@ -15,6 +15,8 @@ pub mod item;
 pub mod job;
 pub mod media;
 pub mod project;
+#[cfg(feature = "testing")]
+pub mod testing;
 pub mod timeline;
 pub mod track;
 mod util;

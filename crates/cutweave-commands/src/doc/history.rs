@@ -643,7 +643,8 @@ impl History {
             .map(|r| r.seq)
     }
 
-    /// The entry `edit.undo{scope}` reverts.
+    /// The entry `edit.undo{scope}` reverts. For `*`: the one applied most recently (committed,
+    /// or redone since), so `edit.undo{*}` right after `edit.redo{*}` reverts that redo.
     pub(crate) fn next_undo(&self, scope: &HistoryScope) -> Option<u64> {
         match scope {
             HistoryScope::Actor(actor) => self.stacks.get(actor)?.undo.last().copied(),
@@ -651,7 +652,7 @@ impl History {
                 .stacks
                 .values()
                 .filter_map(|s| s.undo.last().copied())
-                .max(),
+                .max_by_key(|seq| self.log.get(seq).map_or(*seq, |r| r.applied_seq)),
         }
     }
 

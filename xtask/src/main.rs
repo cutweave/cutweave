@@ -5,6 +5,7 @@ mod bench;
 mod corpus;
 mod deps;
 mod headers;
+mod schema_gen;
 mod tokens;
 
 use std::path::{Path, PathBuf};
@@ -42,7 +43,7 @@ COMMANDS:
     bench         --suite <name> --out <file>: run a benchmark suite (smoke) and write result JSON
     bench-check   <results.json> [--baseline <results.json>]: compare against bench/budgets.toml
     tokens        generate design tokens (CSS, Tailwind, TS, Rust); `tokens --check` verifies
-    gen           generate schemas and TS types (arrives in WP-1N)
+    gen           [--check]: generate schema/ catalogs and docs/reference/commands.md; --check fails with a diff if committed files are stale
     help          print this message";
 
 fn workspace_root() -> PathBuf {
@@ -148,10 +149,7 @@ fn main() -> ExitCode {
         Some("bench") => bench::bench(&workspace_root(), &args[1..]),
         Some("bench-check") => bench::bench_check(&workspace_root(), &args[1..]),
         Some("tokens") => tokens::run(&workspace_root(), &args[1..]),
-        Some("gen") => {
-            println!("gen: not implemented yet (arrives in WP-1N)");
-            true
-        }
+        Some("gen") => schema_gen::run(&workspace_root(), &args[1..]),
         Some("help" | "--help" | "-h") | None => {
             println!("{HELP}");
             true

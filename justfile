@@ -34,7 +34,7 @@ check:
     pnpm typecheck
     just bridge --fixture
     pnpm test
-    @echo "check: schema/codegen snapshot diff arrives in WP-1N"
+    cargo xtask gen --check
 
 # WBS lint (offline): parse docs/wbs, check ids/deps/cycles/sizes, verify docs/wbs/wbs.json snapshot
 wbs-lint:

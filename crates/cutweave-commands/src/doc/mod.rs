@@ -49,7 +49,8 @@ pub use clock::SystemClock;
 pub use clock::{Clock, ManualClock, WallTime};
 pub use dedup::{DEDUP_CAPACITY, DEDUP_WINDOW, DedupRecord, Fingerprint};
 pub use event::{
-    CommandPanicked, DocEvent, DocPatched, DocReset, DocSnapshot, PatchCause, TxActivity, TxEnded,
+    CommandPanicked, DocEvent, DocPatched, DocReset, DocSnapshot, EVENT_CATALOG, EventInfo,
+    PatchCause, TxActivity, TxEnded,
 };
 pub use history::{
     ActorStacks, CheckpointId, CheckpointInfo, DEFAULT_HISTORY_BYTES, DEFAULT_HISTORY_ENTRIES,

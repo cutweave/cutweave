@@ -576,6 +576,31 @@ fn the_any_scope_undoes_the_latest_change_by_anyone() {
     assert_eq!(err.code(), "invalid");
 }
 
+#[test]
+fn undo_any_right_after_redo_any_reverts_that_redo() {
+    // Found by the WP-1B.07 property harness: `*` picked the stack top committed last, not the
+    // one applied last, so a redone older entry was skipped for a newer one of another actor.
+    let (doc, tracks, _) = project(1);
+    let mut s = state(doc);
+    let (u, a) = (ui(), agent());
+    let x = append(&mut s, &u, tracks[0], 10);
+    let y = append(&mut s, &a, tracks[0], 10);
+    assert_eq!(
+        undo(&mut s, &u, Some("*")).unwrap().output["actor"],
+        json!("agent:claude")
+    );
+    rename(&mut s, &u, x, "after"); // newer than the agent's entry
+    let before_redo = s.committed_doc().clone();
+    let redone = redo(&mut s, &u, Some("*")).unwrap();
+    assert_eq!(redone.output["actor"], json!("agent:claude"));
+    assert!(items(s.committed_doc()).contains(&y));
+    let undone = undo(&mut s, &u, Some("*")).unwrap();
+    assert_eq!(undone.output["entry"], redone.output["entry"]);
+    assert_eq!(s.committed_doc(), &before_redo);
+    assert_eq!(item_name(s.committed_doc(), x).as_deref(), Some("after"));
+    s.verify().unwrap();
+}
+
 // ----- redo --------------------------------------------------------------------------------
 
 #[test]
