@@ -1,0 +1,4437 @@
+---
+source: xtask/src/schema_gen.rs
+expression: text
+---
+{
+  "commands": [
+    {
+      "annotations": {
+        "destructiveHint": false,
+        "idempotentHint": false,
+        "openWorldHint": false,
+        "readOnlyHint": false
+      },
+      "input_schema": {
+        "additionalProperties": false,
+        "description": "Splits a clip into two at a timeline time that lies strictly inside it (`Invalid{path:\"/at\"}`\nat or beyond the edges). The halves are contiguous: durations sum to the original and the\nright half's `source_in` continues where the left half ends. Linked partners that contain\nthe time are split too. `at` is snapped to the sequence's frame grid. `Locked` if the clip's\ntrack or a partner's track is locked.",
+        "properties": {
+          "at": {
+            "anyOf": [
+              {
+                "maximum": 9007199254740991,
+                "minimum": -9007199254740991,
+                "type": "integer"
+              },
+              {
+                "pattern": "^-?[0-9]+(\\.[0-9]+)?s$|^-?[0-9]+$|^f:[0-9]+$|^[0-9]+[:;][0-9]+[:;][0-9]+[:;][0-9]+$",
+                "type": "string"
+              }
+            ],
+            "description": "Timeline time to split at: strictly inside the clip."
+          },
+          "item": {
+            "description": "The clip.",
+            "pattern": "^itm_[0-9a-f]{32}$",
+            "type": "string"
+          }
+        },
+        "required": [
+          "item",
+          "at"
+        ],
+        "title": "ClipSplit",
+        "type": "object"
+      },
+      "kind": "command",
+      "mcp": "core",
+      "mcp_tool": "clip_split",
+      "name": "clip.split",
+      "namespace": "clip",
+      "output_schema": {
+        "additionalProperties": false,
+        "description": "Result of `clip.split`.",
+        "properties": {
+          "at": {
+            "description": "The time that was split at, snapped to the frame grid.",
+            "maximum": 9007199254740991,
+            "minimum": -9007199254740991,
+            "type": "integer"
+          },
+          "left": {
+            "description": "The left half of the requested item (keeps its ID).",
+            "pattern": "^itm_[0-9a-f]{32}$",
+            "type": "string"
+          },
+          "linked": {
+            "description": "The linked partners that were split too.",
+            "items": {
+              "additionalProperties": false,
+              "description": "One split item.",
+              "properties": {
+                "left": {
+                  "description": "The left half (keeps the original item ID).",
+                  "pattern": "^itm_[0-9a-f]{32}$",
+                  "type": "string"
+                },
+                "right": {
+                  "description": "The right half (new ID).",
+                  "pattern": "^itm_[0-9a-f]{32}$",
+                  "type": "string"
+                }
+              },
+              "required": [
+                "left",
+                "right"
+              ],
+              "type": "object"
+            },
+            "type": "array"
+          },
+          "right": {
+            "description": "The right half of the requested item (new ID).",
+            "pattern": "^itm_[0-9a-f]{32}$",
+            "type": "string"
+          },
+          "right_group": {
+            "description": "The new group shared by the right halves, if there were partners.",
+            "pattern": "^grp_[0-9a-f]{32}$",
+            "type": [
+              "string",
+              "null"
+            ]
+          }
+        },
+        "required": [
+          "left",
+          "right",
+          "at",
+          "linked",
+          "right_group"
+        ],
+        "title": "ClipSplitOutput",
+        "type": "object"
+      },
+      "scope": "any",
+      "secret_fields": [],
+      "summary": "Split a clip (and its linked partners) at a timeline time",
+      "undoable": true,
+      "view": false
+    },
+    {
+      "annotations": {
+        "destructiveHint": false,
+        "idempotentHint": true,
+        "openWorldHint": false,
+        "readOnlyHint": false
+      },
+      "input_schema": {
+        "additionalProperties": false,
+        "description": "Moves one edge of a clip to a timeline time (`to`) or by an offset (`delta`, negative to\nmove the edge earlier; give exactly one). The clip cannot become empty, extend past the\nstart or end of its media, or overlap a neighbour: `Invalid{path:\"/to\"}` (or `/delta`).\nLinked partners get the same edge at the same time; `unlink: true` trims only this clip and\nremoves it from its group. Times are snapped to the sequence's frame grid. `Locked` if a\ntrack involved is locked.",
+        "properties": {
+          "delta": {
+            "anyOf": [
+              {
+                "anyOf": [
+                  {
+                    "maximum": 9007199254740991,
+                    "minimum": -9007199254740991,
+                    "type": "integer"
+                  },
+                  {
+                    "pattern": "^-?[0-9]+(\\.[0-9]+)?s$|^-?[0-9]+$|^f:[0-9]+$|^[0-9]+[:;][0-9]+[:;][0-9]+[:;][0-9]+$",
+                    "type": "string"
+                  }
+                ],
+                "description": "A time: integer flicks (1/705600000 s), or a string: seconds (\"62.5s\"), a frame (\"f:1500\") or a timecode (\"00:01:02:03\", drop-frame \"00:01:02;03\"). Frames and timecodes use the frame rate of the target's sequence."
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "description": "Offset of the edge from where it is now (negative: earlier). Use seconds or flicks for\nnegative values."
+          },
+          "edge": {
+            "description": "The edge to move.",
+            "oneOf": [
+              {
+                "const": "start",
+                "description": "The first frame (changes `start`, `source_in` and the length).",
+                "type": "string"
+              },
+              {
+                "const": "end",
+                "description": "The last frame (changes the length).",
+                "type": "string"
+              }
+            ]
+          },
+          "item": {
+            "description": "The clip.",
+            "pattern": "^itm_[0-9a-f]{32}$",
+            "type": "string"
+          },
+          "to": {
+            "anyOf": [
+              {
+                "anyOf": [
+                  {
+                    "maximum": 9007199254740991,
+                    "minimum": -9007199254740991,
+                    "type": "integer"
+                  },
+                  {
+                    "pattern": "^-?[0-9]+(\\.[0-9]+)?s$|^-?[0-9]+$|^f:[0-9]+$|^[0-9]+[:;][0-9]+[:;][0-9]+[:;][0-9]+$",
+                    "type": "string"
+                  }
+                ],
+                "description": "A time: integer flicks (1/705600000 s), or a string: seconds (\"62.5s\"), a frame (\"f:1500\") or a timecode (\"00:01:02:03\", drop-frame \"00:01:02;03\"). Frames and timecodes use the frame rate of the target's sequence."
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "description": "Timeline time of the edge afterwards (frame-snapped)."
+          },
+          "unlink": {
+            "default": null,
+            "description": "Trim only this clip and remove it from its linked group (default `false`).",
+            "type": [
+              "boolean",
+              "null"
+            ]
+          }
+        },
+        "required": [
+          "item",
+          "edge"
+        ],
+        "title": "ClipTrim",
+        "type": "object"
+      },
+      "kind": "command",
+      "mcp": "core",
+      "mcp_tool": "clip_trim",
+      "name": "clip.trim",
+      "namespace": "clip",
+      "output_schema": {
+        "additionalProperties": false,
+        "description": "Result of `clip.trim`.",
+        "properties": {
+          "items": {
+            "description": "The trimmed clips: the requested one first, then its linked partners.",
+            "items": {
+              "additionalProperties": false,
+              "description": "A clip after trimming.",
+              "properties": {
+                "duration": {
+                  "description": "Its length.",
+                  "maximum": 9007199254740991,
+                  "minimum": 0,
+                  "type": "integer"
+                },
+                "item": {
+                  "description": "The clip.",
+                  "pattern": "^itm_[0-9a-f]{32}$",
+                  "type": "string"
+                },
+                "source_in": {
+                  "description": "Its source position.",
+                  "maximum": 9007199254740991,
+                  "minimum": -9007199254740991,
+                  "type": "integer"
+                },
+                "start": {
+                  "description": "Its start.",
+                  "maximum": 9007199254740991,
+                  "minimum": -9007199254740991,
+                  "type": "integer"
+                }
+              },
+              "required": [
+                "item",
+                "start",
+                "duration",
+                "source_in"
+              ],
+              "type": "object"
+            },
+            "type": "array"
+          }
+        },
+        "required": [
+          "items"
+        ],
+        "title": "ClipTrimOutput",
+        "type": "object"
+      },
+      "scope": "any",
+      "secret_fields": [],
+      "summary": "Trim the start or end edge of a clip (linked partners follow; no ripple)",
+      "undoable": true,
+      "view": false
+    },
+    {
+      "annotations": {
+        "destructiveHint": false,
+        "idempotentHint": false,
+        "openWorldHint": false,
+        "readOnlyHint": false
+      },
+      "input_schema": {
+        "additionalProperties": false,
+        "description": "Opens a transaction owned by this connection (one at a time). Run commands in it by naming\nit in the request envelope (`_meta.tx`). A `batch` stays invisible until committed; a\n`gesture` (dragging, scrubbing) and a `proposal` (copilot turn) update the document live\nand soft-lock the items they touch: other actors' commands on those items fail with\n`Conflict{reason: item_in_gesture}` until it closes. Each commits as one undo step; a\ngesture idle for 30 s is cancelled by the engine; closing the connection rolls it back.",
+        "properties": {
+          "kind": {
+            "anyOf": [
+              {
+                "description": "What kind of open transaction (arch §5.2, ADR-0017).",
+                "oneOf": [
+                  {
+                    "const": "batch",
+                    "description": "A batch (`edit.begin_tx` / `edit.commit_tx`): its changes become visible only when it\ncommits.",
+                    "type": "string"
+                  },
+                  {
+                    "const": "gesture",
+                    "description": "A continuous gesture (dragging, scrubbing a slider): updates the document live, collapses\ninto one undo step on commit, rolls back on cancel, auto-cancels after\n[`GESTURE_IDLE_TIMEOUT`](crate::GESTURE_IDLE_TIMEOUT) without a request naming it.",
+                    "type": "string"
+                  },
+                  {
+                    "const": "proposal",
+                    "description": "A copilot proposal (arch §14b): live like a gesture, no idle timeout.",
+                    "type": "string"
+                  }
+                ]
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "description": "`batch` (default), `gesture` or `proposal`."
+          },
+          "label": {
+            "description": "The undo entry's label, e.g. `Move clip`.",
+            "type": "string"
+          }
+        },
+        "required": [
+          "label"
+        ],
+        "title": "BeginTx",
+        "type": "object"
+      },
+      "kind": "engine",
+      "mcp": "catalog",
+      "mcp_tool": "edit_begin_tx",
+      "name": "edit.begin_tx",
+      "namespace": "edit",
+      "output_schema": {
+        "additionalProperties": false,
+        "description": "An opened transaction.",
+        "properties": {
+          "kind": {
+            "description": "Its kind.",
+            "oneOf": [
+              {
+                "const": "batch",
+                "description": "A batch (`edit.begin_tx` / `edit.commit_tx`): its changes become visible only when it\ncommits.",
+                "type": "string"
+              },
+              {
+                "const": "gesture",
+                "description": "A continuous gesture (dragging, scrubbing a slider): updates the document live, collapses\ninto one undo step on commit, rolls back on cancel, auto-cancels after\n[`GESTURE_IDLE_TIMEOUT`](crate::GESTURE_IDLE_TIMEOUT) without a request naming it.",
+                "type": "string"
+              },
+              {
+                "const": "proposal",
+                "description": "A copilot proposal (arch §14b): live like a gesture, no idle timeout.",
+                "type": "string"
+              }
+            ]
+          },
+          "label": {
+            "description": "Its label.",
+            "type": "string"
+          },
+          "rev": {
+            "description": "The live revision it was opened at.",
+            "format": "uint64",
+            "minimum": 0,
+            "type": "integer"
+          },
+          "tx": {
+            "description": "Its id (pass it as `_meta.tx`).",
+            "pattern": "^tx_[0-9]+$",
+            "type": "string"
+          }
+        },
+        "required": [
+          "tx",
+          "kind",
+          "label",
+          "rev"
+        ],
+        "title": "TxOpened",
+        "type": "object"
+      },
+      "scope": "any",
+      "secret_fields": [],
+      "summary": "Open a transaction (batch, gesture or proposal) that commits as one undo step",
+      "undoable": false,
+      "view": false
+    },
+    {
+      "annotations": {
+        "destructiveHint": false,
+        "idempotentHint": false,
+        "openWorldHint": false,
+        "readOnlyHint": false
+      },
+      "input_schema": {
+        "additionalProperties": false,
+        "description": "Cancels this connection's open transaction and rolls back its live changes (nothing is\ncommitted, journaled or added to the history).",
+        "properties": {
+          "tx": {
+            "default": null,
+            "description": "The transaction (default: this connection's open one).",
+            "pattern": "^tx_[0-9]+$",
+            "type": [
+              "string",
+              "null"
+            ]
+          }
+        },
+        "title": "CancelTx",
+        "type": "object"
+      },
+      "kind": "engine",
+      "mcp": "catalog",
+      "mcp_tool": "edit_cancel_tx",
+      "name": "edit.cancel_tx",
+      "namespace": "edit",
+      "output_schema": {
+        "additionalProperties": false,
+        "description": "A cancelled transaction.",
+        "properties": {
+          "kind": {
+            "description": "Its kind.",
+            "oneOf": [
+              {
+                "const": "batch",
+                "description": "A batch (`edit.begin_tx` / `edit.commit_tx`): its changes become visible only when it\ncommits.",
+                "type": "string"
+              },
+              {
+                "const": "gesture",
+                "description": "A continuous gesture (dragging, scrubbing a slider): updates the document live, collapses\ninto one undo step on commit, rolls back on cancel, auto-cancels after\n[`GESTURE_IDLE_TIMEOUT`](crate::GESTURE_IDLE_TIMEOUT) without a request naming it.",
+                "type": "string"
+              },
+              {
+                "const": "proposal",
+                "description": "A copilot proposal (arch §14b): live like a gesture, no idle timeout.",
+                "type": "string"
+              }
+            ]
+          },
+          "rev": {
+            "description": "The live revision afterwards.",
+            "format": "uint64",
+            "minimum": 0,
+            "type": "integer"
+          },
+          "tx": {
+            "description": "Its id.",
+            "pattern": "^tx_[0-9]+$",
+            "type": "string"
+          }
+        },
+        "required": [
+          "tx",
+          "kind",
+          "rev"
+        ],
+        "title": "TxCancelled",
+        "type": "object"
+      },
+      "scope": "any",
+      "secret_fields": [],
+      "summary": "Cancel your open transaction and roll back its changes",
+      "undoable": false,
+      "view": false
+    },
+    {
+      "annotations": {
+        "destructiveHint": false,
+        "idempotentHint": false,
+        "openWorldHint": false,
+        "readOnlyHint": false
+      },
+      "input_schema": {
+        "additionalProperties": false,
+        "description": "Captures the committed document as a restore point (cheap: snapshots share structure).\nOpen transactions are not included. Kept in memory (at most 50, 20 named; least recently\nused first out); reusing a name moves it to the new checkpoint.",
+        "properties": {
+          "name": {
+            "default": null,
+            "description": "A name to restore it by (1..=64 characters, not `cp_<n>`).",
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "note": {
+            "default": null,
+            "description": "A note (at most 1000 characters).",
+            "type": [
+              "string",
+              "null"
+            ]
+          }
+        },
+        "title": "Checkpoint",
+        "type": "object"
+      },
+      "kind": "engine",
+      "mcp": "catalog",
+      "mcp_tool": "edit_checkpoint",
+      "name": "edit.checkpoint",
+      "namespace": "edit",
+      "output_schema": {
+        "description": "A checkpoint, as `edit.checkpoint` and `edit.list_checkpoints` report it.",
+        "properties": {
+          "actor": {
+            "description": "Who made it.",
+            "pattern": "^(user|system|agent:.+|plugin:[A-Za-z0-9._@-]+)$",
+            "type": "string"
+          },
+          "at": {
+            "description": "When.",
+            "format": "uint64",
+            "minimum": 0,
+            "type": "integer"
+          },
+          "checkpoint": {
+            "description": "Its id.",
+            "pattern": "^cp_[0-9]+$",
+            "type": "string"
+          },
+          "name": {
+            "description": "Its name, if any.",
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "note": {
+            "description": "A free-form note.",
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "rev": {
+            "description": "The committed revision it captured.",
+            "format": "uint64",
+            "minimum": 0,
+            "type": "integer"
+          }
+        },
+        "required": [
+          "checkpoint",
+          "name",
+          "note",
+          "rev",
+          "actor",
+          "at"
+        ],
+        "title": "CheckpointInfo",
+        "type": "object"
+      },
+      "scope": "any",
+      "secret_fields": [],
+      "summary": "Save a restore point of the committed document (cheap; optional name)",
+      "undoable": false,
+      "view": false
+    },
+    {
+      "annotations": {
+        "destructiveHint": false,
+        "idempotentHint": false,
+        "openWorldHint": false,
+        "readOnlyHint": false
+      },
+      "input_schema": {
+        "additionalProperties": false,
+        "description": "Commits this connection's open transaction: its changes become one committed transaction\nand one undo entry. Fails with `Conflict` (and closes it) if another transaction committed\noverlapping changes first.",
+        "properties": {
+          "tx": {
+            "default": null,
+            "description": "The transaction (default: this connection's open one).",
+            "pattern": "^tx_[0-9]+$",
+            "type": [
+              "string",
+              "null"
+            ]
+          }
+        },
+        "title": "CommitTx",
+        "type": "object"
+      },
+      "kind": "engine",
+      "mcp": "catalog",
+      "mcp_tool": "edit_commit_tx",
+      "name": "edit.commit_tx",
+      "namespace": "edit",
+      "output_schema": {
+        "additionalProperties": false,
+        "description": "A committed transaction.",
+        "properties": {
+          "changed": {
+            "description": "Whether it changed the document (and made an undo entry).",
+            "type": "boolean"
+          },
+          "committed_rev": {
+            "description": "The committed revision afterwards.",
+            "format": "uint64",
+            "minimum": 0,
+            "type": "integer"
+          },
+          "kind": {
+            "description": "Its kind.",
+            "oneOf": [
+              {
+                "const": "batch",
+                "description": "A batch (`edit.begin_tx` / `edit.commit_tx`): its changes become visible only when it\ncommits.",
+                "type": "string"
+              },
+              {
+                "const": "gesture",
+                "description": "A continuous gesture (dragging, scrubbing a slider): updates the document live, collapses\ninto one undo step on commit, rolls back on cancel, auto-cancels after\n[`GESTURE_IDLE_TIMEOUT`](crate::GESTURE_IDLE_TIMEOUT) without a request naming it.",
+                "type": "string"
+              },
+              {
+                "const": "proposal",
+                "description": "A copilot proposal (arch §14b): live like a gesture, no idle timeout.",
+                "type": "string"
+              }
+            ]
+          },
+          "rev": {
+            "description": "The live revision afterwards.",
+            "format": "uint64",
+            "minimum": 0,
+            "type": "integer"
+          },
+          "tx": {
+            "description": "Its id.",
+            "pattern": "^tx_[0-9]+$",
+            "type": "string"
+          }
+        },
+        "required": [
+          "tx",
+          "kind",
+          "changed",
+          "rev",
+          "committed_rev"
+        ],
+        "title": "TxCommitted",
+        "type": "object"
+      },
+      "scope": "any",
+      "secret_fields": [],
+      "summary": "Commit your open transaction as one undo step",
+      "undoable": false,
+      "view": false
+    },
+    {
+      "annotations": {
+        "destructiveHint": false,
+        "idempotentHint": true,
+        "openWorldHint": false,
+        "readOnlyHint": true
+      },
+      "input_schema": {
+        "additionalProperties": false,
+        "description": "Lists committed transactions newest first (edits, undos, redos, restores; each batch,\ngesture or proposal is one entry), a page at a time, plus every actor's undo/redo stacks\n(what Undo/Redo buttons show) and the history's memory use.",
+        "properties": {
+          "actor": {
+            "default": null,
+            "description": "Only this actor's entries.",
+            "pattern": "^(user|system|agent:.+|plugin:[A-Za-z0-9._@-]+)$",
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "cursor": {
+            "default": null,
+            "description": "The previous page's `next_cursor`.",
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "limit": {
+            "default": null,
+            "description": "Most entries (default 50, at most 500; 0 returns only the stacks).",
+            "format": "uint32",
+            "minimum": 0,
+            "type": [
+              "integer",
+              "null"
+            ]
+          }
+        },
+        "title": "GetHistory",
+        "type": "object"
+      },
+      "kind": "engine",
+      "mcp": "catalog",
+      "mcp_tool": "edit_history",
+      "name": "edit.history",
+      "namespace": "edit",
+      "output_schema": {
+        "description": "A page of `edit.history`.",
+        "properties": {
+          "committed_rev": {
+            "description": "The committed revision.",
+            "format": "uint64",
+            "minimum": 0,
+            "type": "integer"
+          },
+          "entries": {
+            "description": "Logged transactions, newest first.",
+            "items": {
+              "description": "One logged transaction, as `edit.history` lists it.",
+              "properties": {
+                "actor": {
+                  "description": "Who committed it (for an undo or redo: who undid or redid).",
+                  "pattern": "^(user|system|agent:.+|plugin:[A-Za-z0-9._@-]+)$",
+                  "type": "string"
+                },
+                "at": {
+                  "description": "When it committed (wall clock).",
+                  "format": "uint64",
+                  "minimum": 0,
+                  "type": "integer"
+                },
+                "can_redo": {
+                  "description": "It is on its actor's redo stack.",
+                  "type": "boolean"
+                },
+                "can_undo": {
+                  "description": "It is on its actor's undo stack (`edit.undo{actor}` reaches it).",
+                  "type": "boolean"
+                },
+                "cause": {
+                  "description": "Edit, undo, redo or restore.",
+                  "oneOf": [
+                    {
+                      "description": "A change: an implicit command, or a committed batch, gesture or proposal.",
+                      "properties": {
+                        "type": {
+                          "const": "edit",
+                          "type": "string"
+                        }
+                      },
+                      "required": [
+                        "type"
+                      ],
+                      "type": "object"
+                    },
+                    {
+                      "description": "Undid the entry of transaction `of`.",
+                      "properties": {
+                        "of": {
+                          "description": "The undone transaction.",
+                          "pattern": "^tx_[0-9]+$",
+                          "type": "string"
+                        },
+                        "type": {
+                          "const": "undo",
+                          "type": "string"
+                        }
+                      },
+                      "required": [
+                        "type",
+                        "of"
+                      ],
+                      "type": "object"
+                    },
+                    {
+                      "description": "Redid the entry of transaction `of`.",
+                      "properties": {
+                        "of": {
+                          "description": "The redone transaction.",
+                          "pattern": "^tx_[0-9]+$",
+                          "type": "string"
+                        },
+                        "type": {
+                          "const": "redo",
+                          "type": "string"
+                        }
+                      },
+                      "required": [
+                        "type",
+                        "of"
+                      ],
+                      "type": "object"
+                    },
+                    {
+                      "description": "Restored a checkpoint (an undoable change by the caller).",
+                      "properties": {
+                        "checkpoint": {
+                          "description": "The checkpoint.",
+                          "pattern": "^cp_[0-9]+$",
+                          "type": "string"
+                        },
+                        "type": {
+                          "const": "restore",
+                          "type": "string"
+                        }
+                      },
+                      "required": [
+                        "type",
+                        "checkpoint"
+                      ],
+                      "type": "object"
+                    }
+                  ]
+                },
+                "kind": {
+                  "anyOf": [
+                    {
+                      "description": "What kind of open transaction (arch §5.2, ADR-0017).",
+                      "oneOf": [
+                        {
+                          "const": "batch",
+                          "description": "A batch (`edit.begin_tx` / `edit.commit_tx`): its changes become visible only when it\ncommits.",
+                          "type": "string"
+                        },
+                        {
+                          "const": "gesture",
+                          "description": "A continuous gesture (dragging, scrubbing a slider): updates the document live, collapses\ninto one undo step on commit, rolls back on cancel, auto-cancels after\n[`GESTURE_IDLE_TIMEOUT`](crate::GESTURE_IDLE_TIMEOUT) without a request naming it.",
+                          "type": "string"
+                        },
+                        {
+                          "const": "proposal",
+                          "description": "A copilot proposal (arch §14b): live like a gesture, no idle timeout.",
+                          "type": "string"
+                        }
+                      ]
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ],
+                  "description": "The open transaction's kind; `None` for a single command, an undo, redo or restore."
+                },
+                "label": {
+                  "description": "The transaction's label, or the command name for a single command.",
+                  "type": "string"
+                },
+                "ops": {
+                  "description": "Number of patch ops.",
+                  "format": "uint32",
+                  "minimum": 0,
+                  "type": "integer"
+                },
+                "prev_rev": {
+                  "description": "The committed revision it was built on.",
+                  "format": "uint64",
+                  "minimum": 0,
+                  "type": "integer"
+                },
+                "rev": {
+                  "description": "The committed revision it created.",
+                  "format": "uint64",
+                  "minimum": 0,
+                  "type": "integer"
+                },
+                "status": {
+                  "description": "Whether its changes are currently applied.",
+                  "oneOf": [
+                    {
+                      "const": "applied",
+                      "description": "Applied (undo and redo records always are).",
+                      "type": "string"
+                    },
+                    {
+                      "const": "undone",
+                      "description": "Undone.",
+                      "type": "string"
+                    }
+                  ]
+                },
+                "tx_id": {
+                  "description": "The transaction.",
+                  "pattern": "^tx_[0-9]+$",
+                  "type": "string"
+                }
+              },
+              "required": [
+                "tx_id",
+                "actor",
+                "label",
+                "kind",
+                "cause",
+                "prev_rev",
+                "rev",
+                "at",
+                "status",
+                "can_undo",
+                "can_redo",
+                "ops"
+              ],
+              "type": "object"
+            },
+            "type": "array"
+          },
+          "next_cursor": {
+            "description": "Pass as `cursor` for the next (older) page; absent on the last page.",
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "rev": {
+            "description": "The live revision.",
+            "format": "uint64",
+            "minimum": 0,
+            "type": "integer"
+          },
+          "stacks": {
+            "description": "Every actor with something to undo or redo.",
+            "items": {
+              "description": "One actor's undo and redo stacks (what an Undo / Redo button needs).",
+              "properties": {
+                "actor": {
+                  "description": "The actor.",
+                  "pattern": "^(user|system|agent:.+|plugin:[A-Za-z0-9._@-]+)$",
+                  "type": "string"
+                },
+                "next_redo": {
+                  "description": "What `edit.redo{actor}` would re-apply next.",
+                  "properties": {
+                    "label": {
+                      "description": "Its label (\"Undo <label>\").",
+                      "type": "string"
+                    },
+                    "tx_id": {
+                      "description": "Its transaction.",
+                      "pattern": "^tx_[0-9]+$",
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "tx_id",
+                    "label"
+                  ],
+                  "type": [
+                    "object",
+                    "null"
+                  ]
+                },
+                "next_undo": {
+                  "description": "What `edit.undo{actor}` would revert next.",
+                  "properties": {
+                    "label": {
+                      "description": "Its label (\"Undo <label>\").",
+                      "type": "string"
+                    },
+                    "tx_id": {
+                      "description": "Its transaction.",
+                      "pattern": "^tx_[0-9]+$",
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "tx_id",
+                    "label"
+                  ],
+                  "type": [
+                    "object",
+                    "null"
+                  ]
+                },
+                "redo_depth": {
+                  "description": "Entries `edit.redo` can re-apply.",
+                  "format": "uint32",
+                  "minimum": 0,
+                  "type": "integer"
+                },
+                "undo_depth": {
+                  "description": "Entries `edit.undo` can revert, newest first.",
+                  "format": "uint32",
+                  "minimum": 0,
+                  "type": "integer"
+                }
+              },
+              "required": [
+                "actor",
+                "undo_depth",
+                "redo_depth",
+                "next_undo",
+                "next_redo"
+              ],
+              "type": "object"
+            },
+            "type": "array"
+          },
+          "usage": {
+            "description": "The log's size against its limits.",
+            "properties": {
+              "bytes": {
+                "description": "Their estimated memory, in bytes.",
+                "format": "uint64",
+                "minimum": 0,
+                "type": "integer"
+              },
+              "entries": {
+                "description": "Logged transactions.",
+                "format": "uint32",
+                "minimum": 0,
+                "type": "integer"
+              },
+              "evicted": {
+                "description": "Entries evicted so far.",
+                "format": "uint64",
+                "minimum": 0,
+                "type": "integer"
+              },
+              "max_bytes": {
+                "description": "The byte limit.",
+                "format": "uint64",
+                "minimum": 0,
+                "type": "integer"
+              },
+              "max_entries": {
+                "description": "The entry limit.",
+                "format": "uint32",
+                "minimum": 0,
+                "type": "integer"
+              }
+            },
+            "required": [
+              "entries",
+              "bytes",
+              "max_entries",
+              "max_bytes",
+              "evicted"
+            ],
+            "type": "object"
+          }
+        },
+        "required": [
+          "entries",
+          "next_cursor",
+          "stacks",
+          "rev",
+          "committed_rev",
+          "usage"
+        ],
+        "title": "HistoryPage",
+        "type": "object"
+      },
+      "scope": "any",
+      "secret_fields": [],
+      "summary": "List the undo history (newest first, paginated) and each actor's undo/redo stacks",
+      "undoable": false,
+      "view": false
+    },
+    {
+      "annotations": {
+        "destructiveHint": false,
+        "idempotentHint": true,
+        "openWorldHint": false,
+        "readOnlyHint": true
+      },
+      "input_schema": {
+        "additionalProperties": false,
+        "description": "Every checkpoint, oldest first.",
+        "title": "ListCheckpoints",
+        "type": "object"
+      },
+      "kind": "engine",
+      "mcp": "catalog",
+      "mcp_tool": "edit_list_checkpoints",
+      "name": "edit.list_checkpoints",
+      "namespace": "edit",
+      "output_schema": {
+        "additionalProperties": false,
+        "description": "The checkpoints.",
+        "properties": {
+          "checkpoints": {
+            "description": "Oldest first.",
+            "items": {
+              "description": "A checkpoint, as `edit.checkpoint` and `edit.list_checkpoints` report it.",
+              "properties": {
+                "actor": {
+                  "description": "Who made it.",
+                  "pattern": "^(user|system|agent:.+|plugin:[A-Za-z0-9._@-]+)$",
+                  "type": "string"
+                },
+                "at": {
+                  "description": "When.",
+                  "format": "uint64",
+                  "minimum": 0,
+                  "type": "integer"
+                },
+                "checkpoint": {
+                  "description": "Its id.",
+                  "pattern": "^cp_[0-9]+$",
+                  "type": "string"
+                },
+                "name": {
+                  "description": "Its name, if any.",
+                  "type": [
+                    "string",
+                    "null"
+                  ]
+                },
+                "note": {
+                  "description": "A free-form note.",
+                  "type": [
+                    "string",
+                    "null"
+                  ]
+                },
+                "rev": {
+                  "description": "The committed revision it captured.",
+                  "format": "uint64",
+                  "minimum": 0,
+                  "type": "integer"
+                }
+              },
+              "required": [
+                "checkpoint",
+                "name",
+                "note",
+                "rev",
+                "actor",
+                "at"
+              ],
+              "type": "object"
+            },
+            "type": "array"
+          }
+        },
+        "required": [
+          "checkpoints"
+        ],
+        "title": "CheckpointList",
+        "type": "object"
+      },
+      "scope": "any",
+      "secret_fields": [],
+      "summary": "List the checkpoints",
+      "undoable": false,
+      "view": false
+    },
+    {
+      "annotations": {
+        "destructiveHint": false,
+        "idempotentHint": true,
+        "openWorldHint": false,
+        "readOnlyHint": true
+      },
+      "input_schema": {
+        "additionalProperties": false,
+        "description": "Lists the open transactions (oldest first) and the items each soft-locks: a `gesture` or\n`proposal` locks every item it touched for other actors until it closes; a `batch` locks\nnothing. Gestures carry their idle deadline (`expires_at`); `mine` marks your connection's.",
+        "title": "ListLocks",
+        "type": "object"
+      },
+      "kind": "engine",
+      "mcp": "catalog",
+      "mcp_tool": "edit_locks",
+      "name": "edit.locks",
+      "namespace": "edit",
+      "output_schema": {
+        "description": "What `edit.locks` returns.",
+        "properties": {
+          "committed_rev": {
+            "description": "The committed revision.",
+            "format": "uint64",
+            "minimum": 0,
+            "type": "integer"
+          },
+          "rev": {
+            "description": "The live revision.",
+            "format": "uint64",
+            "minimum": 0,
+            "type": "integer"
+          },
+          "transactions": {
+            "description": "Every open transaction, oldest first.",
+            "items": {
+              "description": "An open transaction and the items it soft-locks, as `edit.locks` reports it.",
+              "properties": {
+                "actor": {
+                  "description": "Who opened it.",
+                  "pattern": "^(user|system|agent:.+|plugin:[A-Za-z0-9._@-]+)$",
+                  "type": "string"
+                },
+                "conflicted": {
+                  "description": "A commit by another transaction overlapped its changes: it can only be cancelled.",
+                  "type": "boolean"
+                },
+                "expires_at": {
+                  "description": "A gesture's idle deadline: the engine cancels it then unless a request names it first.\n`null` for proposals and batches (no idle timeout).",
+                  "format": "uint64",
+                  "minimum": 0,
+                  "type": [
+                    "integer",
+                    "null"
+                  ]
+                },
+                "items": {
+                  "description": "The items it soft-locks, in id order. Only gestures and proposals lock; a batch's\nchanges are invisible until it commits, so it locks nothing.",
+                  "items": {
+                    "description": "A Item id: `^itm_[0-9a-f]{32}$`.",
+                    "pattern": "^itm_[0-9a-f]{32}$",
+                    "type": "string"
+                  },
+                  "type": "array"
+                },
+                "kind": {
+                  "description": "`batch`, `gesture` or `proposal`.",
+                  "oneOf": [
+                    {
+                      "const": "batch",
+                      "description": "A batch (`edit.begin_tx` / `edit.commit_tx`): its changes become visible only when it\ncommits.",
+                      "type": "string"
+                    },
+                    {
+                      "const": "gesture",
+                      "description": "A continuous gesture (dragging, scrubbing a slider): updates the document live, collapses\ninto one undo step on commit, rolls back on cancel, auto-cancels after\n[`GESTURE_IDLE_TIMEOUT`](crate::GESTURE_IDLE_TIMEOUT) without a request naming it.",
+                      "type": "string"
+                    },
+                    {
+                      "const": "proposal",
+                      "description": "A copilot proposal (arch §14b): live like a gesture, no idle timeout.",
+                      "type": "string"
+                    }
+                  ]
+                },
+                "label": {
+                  "description": "Its label (the undo entry's name).",
+                  "type": "string"
+                },
+                "last_activity": {
+                  "description": "When a request last named it.",
+                  "format": "uint64",
+                  "minimum": 0,
+                  "type": "integer"
+                },
+                "mine": {
+                  "description": "Whether the caller's connection owns it.",
+                  "type": "boolean"
+                },
+                "opened_at": {
+                  "description": "When it was opened.",
+                  "format": "uint64",
+                  "minimum": 0,
+                  "type": "integer"
+                },
+                "tx": {
+                  "description": "The transaction.",
+                  "pattern": "^tx_[0-9]+$",
+                  "type": "string"
+                }
+              },
+              "required": [
+                "tx",
+                "kind",
+                "label",
+                "actor",
+                "mine",
+                "items",
+                "opened_at",
+                "last_activity",
+                "expires_at",
+                "conflicted"
+              ],
+              "type": "object"
+            },
+            "type": "array"
+          }
+        },
+        "required": [
+          "transactions",
+          "rev",
+          "committed_rev"
+        ],
+        "title": "LockList",
+        "type": "object"
+      },
+      "scope": "any",
+      "secret_fields": [],
+      "summary": "List open transactions and the items they soft-lock (who is editing what)",
+      "undoable": false,
+      "view": false
+    },
+    {
+      "annotations": {
+        "destructiveHint": false,
+        "idempotentHint": false,
+        "openWorldHint": false,
+        "readOnlyHint": false
+      },
+      "input_schema": {
+        "additionalProperties": false,
+        "description": "Redoes the most recently undone change of an actor (default: yours). A new change by that\nactor clears its redo stack. Refused with `Conflict` when the same things changed since the\nundo.",
+        "properties": {
+          "actor": {
+            "default": null,
+            "description": "Whose change (see `edit.undo`). Default: the caller's own.",
+            "pattern": "^(\\*|user|system|agent:.+|plugin:[A-Za-z0-9._@-]+)$",
+            "type": [
+              "string",
+              "null"
+            ]
+          }
+        },
+        "title": "Redo",
+        "type": "object"
+      },
+      "kind": "engine",
+      "mcp": "catalog",
+      "mcp_tool": "edit_redo",
+      "name": "edit.redo",
+      "namespace": "edit",
+      "output_schema": {
+        "description": "The result of `edit.undo` / `edit.redo`.",
+        "properties": {
+          "actor": {
+            "description": "Whose entry it is.",
+            "pattern": "^(user|system|agent:.+|plugin:[A-Za-z0-9._@-]+)$",
+            "type": "string"
+          },
+          "committed_rev": {
+            "description": "The committed revision afterwards.",
+            "format": "uint64",
+            "minimum": 0,
+            "type": "integer"
+          },
+          "entry": {
+            "description": "The entry undone or redone (its original transaction).",
+            "pattern": "^tx_[0-9]+$",
+            "type": "string"
+          },
+          "label": {
+            "description": "Its label.",
+            "type": "string"
+          },
+          "rev": {
+            "description": "The live revision afterwards.",
+            "format": "uint64",
+            "minimum": 0,
+            "type": "integer"
+          },
+          "tx": {
+            "description": "The new transaction that undid or redid it.",
+            "pattern": "^tx_[0-9]+$",
+            "type": "string"
+          }
+        },
+        "required": [
+          "tx",
+          "entry",
+          "actor",
+          "label",
+          "rev",
+          "committed_rev"
+        ],
+        "title": "HistoryMoved",
+        "type": "object"
+      },
+      "scope": "any",
+      "secret_fields": [],
+      "summary": "Redo the last undone change of yours, or of another actor (`actor`; `*` = anyone)",
+      "undoable": false,
+      "view": false
+    },
+    {
+      "annotations": {
+        "destructiveHint": false,
+        "idempotentHint": true,
+        "openWorldHint": false,
+        "readOnlyHint": false
+      },
+      "input_schema": {
+        "additionalProperties": false,
+        "description": "Brings the document back to a checkpoint as one new, undoable change by you (history is\nnot truncated; `edit.undo` reverts the restore). Without `force`, refused with `Conflict`\nwhen it would also revert other actors' changes made since the checkpoint.",
+        "properties": {
+          "checkpoint": {
+            "description": "The checkpoint: its id (`cp_<n>`) or name.",
+            "type": "string"
+          },
+          "force": {
+            "default": false,
+            "description": "Also revert other actors' changes made since the checkpoint.",
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "checkpoint"
+        ],
+        "title": "Restore",
+        "type": "object"
+      },
+      "kind": "engine",
+      "mcp": "catalog",
+      "mcp_tool": "edit_restore",
+      "name": "edit.restore",
+      "namespace": "edit",
+      "output_schema": {
+        "description": "The result of `edit.restore`.",
+        "properties": {
+          "checkpoint": {
+            "description": "The checkpoint.",
+            "pattern": "^cp_[0-9]+$",
+            "type": "string"
+          },
+          "committed_rev": {
+            "description": "The committed revision afterwards.",
+            "format": "uint64",
+            "minimum": 0,
+            "type": "integer"
+          },
+          "rev": {
+            "description": "The live revision afterwards.",
+            "format": "uint64",
+            "minimum": 0,
+            "type": "integer"
+          },
+          "reverted": {
+            "description": "Whose changes since the checkpoint it reverted.",
+            "items": {
+              "description": "Changes a checkpoint restore reverted, by actor.",
+              "properties": {
+                "actor": {
+                  "description": "The actor.",
+                  "pattern": "^(user|system|agent:.+|plugin:[A-Za-z0-9._@-]+)$",
+                  "type": "string"
+                },
+                "txs": {
+                  "description": "Its transactions (since the checkpoint) whose changes were reverted, oldest first.",
+                  "items": {
+                    "description": "A transaction id.",
+                    "pattern": "^tx_[0-9]+$",
+                    "type": "string"
+                  },
+                  "type": "array"
+                }
+              },
+              "required": [
+                "actor",
+                "txs"
+              ],
+              "type": "object"
+            },
+            "type": "array"
+          },
+          "reverted_unknown": {
+            "description": "It also reverted changes that are no longer in the history (authors unknown).",
+            "type": "boolean"
+          },
+          "tx": {
+            "description": "The restoring transaction (undo it with `edit.undo`); `None` if the document already\nequalled the checkpoint.",
+            "pattern": "^tx_[0-9]+$",
+            "type": [
+              "string",
+              "null"
+            ]
+          }
+        },
+        "required": [
+          "checkpoint",
+          "tx",
+          "rev",
+          "committed_rev",
+          "reverted",
+          "reverted_unknown"
+        ],
+        "title": "Restored",
+        "type": "object"
+      },
+      "scope": "any",
+      "secret_fields": [],
+      "summary": "Restore a checkpoint as one undoable change",
+      "undoable": true,
+      "view": false
+    },
+    {
+      "annotations": {
+        "destructiveHint": false,
+        "idempotentHint": false,
+        "openWorldHint": false,
+        "readOnlyHint": false
+      },
+      "input_schema": {
+        "additionalProperties": false,
+        "description": "Undoes the latest change of an actor (default: yours) as a new transaction. History is per\nactor: undoing the agent's change leaves your later edits alone. Refused with\n`Conflict{reason: history_target_modified}` when someone changed the same things since (the\ndetail names them) or the result would be invalid; nothing changes then.",
+        "properties": {
+          "actor": {
+            "default": null,
+            "description": "Whose change: `user`, `agent:<label>`, `plugin:<id>`, `system`, or `*` for the most\nrecent change by anyone. Default: the caller's own.",
+            "pattern": "^(\\*|user|system|agent:.+|plugin:[A-Za-z0-9._@-]+)$",
+            "type": [
+              "string",
+              "null"
+            ]
+          }
+        },
+        "title": "Undo",
+        "type": "object"
+      },
+      "kind": "engine",
+      "mcp": "core",
+      "mcp_tool": "edit_undo",
+      "name": "edit.undo",
+      "namespace": "edit",
+      "output_schema": {
+        "description": "The result of `edit.undo` / `edit.redo`.",
+        "properties": {
+          "actor": {
+            "description": "Whose entry it is.",
+            "pattern": "^(user|system|agent:.+|plugin:[A-Za-z0-9._@-]+)$",
+            "type": "string"
+          },
+          "committed_rev": {
+            "description": "The committed revision afterwards.",
+            "format": "uint64",
+            "minimum": 0,
+            "type": "integer"
+          },
+          "entry": {
+            "description": "The entry undone or redone (its original transaction).",
+            "pattern": "^tx_[0-9]+$",
+            "type": "string"
+          },
+          "label": {
+            "description": "Its label.",
+            "type": "string"
+          },
+          "rev": {
+            "description": "The live revision afterwards.",
+            "format": "uint64",
+            "minimum": 0,
+            "type": "integer"
+          },
+          "tx": {
+            "description": "The new transaction that undid or redid it.",
+            "pattern": "^tx_[0-9]+$",
+            "type": "string"
+          }
+        },
+        "required": [
+          "tx",
+          "entry",
+          "actor",
+          "label",
+          "rev",
+          "committed_rev"
+        ],
+        "title": "HistoryMoved",
+        "type": "object"
+      },
+      "scope": "any",
+      "secret_fields": [],
+      "summary": "Undo your last change, or another actor's (`actor`; `*` = anyone's latest)",
+      "undoable": false,
+      "view": false
+    },
+    {
+      "annotations": {
+        "destructiveHint": true,
+        "idempotentHint": false,
+        "openWorldHint": false,
+        "readOnlyHint": false
+      },
+      "input_schema": {
+        "additionalProperties": false,
+        "description": "Deletes items and their linked partners. Gaps stay (no ripple). All or nothing: if any\naffected track is locked the call fails with `Locked` and nothing is deleted. Unknown items\nare `NotFound`; repeated IDs are deleted once.",
+        "properties": {
+          "items": {
+            "description": "The items to delete, at least one.",
+            "items": {
+              "description": "A Item id: `^itm_[0-9a-f]{32}$`.",
+              "pattern": "^itm_[0-9a-f]{32}$",
+              "type": "string"
+            },
+            "type": "array"
+          }
+        },
+        "required": [
+          "items"
+        ],
+        "title": "ItemDelete",
+        "type": "object"
+      },
+      "kind": "command",
+      "mcp": "core",
+      "mcp_tool": "item_delete",
+      "name": "item.delete",
+      "namespace": "item",
+      "output_schema": {
+        "additionalProperties": false,
+        "description": "Result of `item.delete`.",
+        "properties": {
+          "deleted": {
+            "description": "Every deleted item: the requested ones in request order, then their linked partners.",
+            "items": {
+              "description": "A Item id: `^itm_[0-9a-f]{32}$`.",
+              "pattern": "^itm_[0-9a-f]{32}$",
+              "type": "string"
+            },
+            "type": "array"
+          }
+        },
+        "required": [
+          "deleted"
+        ],
+        "title": "ItemDeleteOutput",
+        "type": "object"
+      },
+      "scope": "any",
+      "secret_fields": [],
+      "summary": "Delete items and their linked partners (no ripple; fails if a track is locked)",
+      "undoable": true,
+      "view": false
+    },
+    {
+      "annotations": {
+        "destructiveHint": false,
+        "idempotentHint": true,
+        "openWorldHint": false,
+        "readOnlyHint": false
+      },
+      "input_schema": {
+        "additionalProperties": false,
+        "description": "Moves an item to a new start, optionally onto another track of the same kind and sequence.\nThe item's linked partners move by the same amount on their own tracks (`unlink: true`\nmoves only this item and removes it from its group). Overlap is `Invalid{path:\"/start\"}`\nby default; `overlap: \"new_track\"` puts the item on a new track directly above the target.\n`Locked` if the source, the target or a partner's track is locked. `start` is snapped to\nthe sequence's frame grid and must be `>= 0`.",
+        "properties": {
+          "item": {
+            "description": "The item.",
+            "pattern": "^itm_[0-9a-f]{32}$",
+            "type": "string"
+          },
+          "overlap": {
+            "anyOf": [
+              {
+                "description": "What to do when the clip would overlap another clip on the target track.",
+                "oneOf": [
+                  {
+                    "const": "reject",
+                    "description": "Fail with `Invalid{path:\"/at\"}` (default).",
+                    "type": "string"
+                  },
+                  {
+                    "const": "new_track",
+                    "description": "Create a new track of the same kind directly above the target and insert there.",
+                    "type": "string"
+                  }
+                ]
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "description": "Overlap handling (default `reject`)."
+          },
+          "start": {
+            "anyOf": [
+              {
+                "maximum": 9007199254740991,
+                "minimum": -9007199254740991,
+                "type": "integer"
+              },
+              {
+                "pattern": "^-?[0-9]+(\\.[0-9]+)?s$|^-?[0-9]+$|^f:[0-9]+$|^[0-9]+[:;][0-9]+[:;][0-9]+[:;][0-9]+$",
+                "type": "string"
+              }
+            ],
+            "description": "New timeline position of the item's first frame, `>= 0`."
+          },
+          "to_track": {
+            "default": null,
+            "description": "Target track of the same sequence and kind (default: stay on the current track).",
+            "pattern": "^trk_[0-9a-f]{32}$",
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "unlink": {
+            "default": null,
+            "description": "Move only this item and remove it from its linked group (default `false`).",
+            "type": [
+              "boolean",
+              "null"
+            ]
+          }
+        },
+        "required": [
+          "item",
+          "start"
+        ],
+        "title": "ItemMove",
+        "type": "object"
+      },
+      "kind": "command",
+      "mcp": "core",
+      "mcp_tool": "item_move",
+      "name": "item.move",
+      "namespace": "item",
+      "output_schema": {
+        "additionalProperties": false,
+        "description": "Result of `item.move`.",
+        "properties": {
+          "created_tracks": {
+            "description": "Tracks created by `overlap: \"new_track\"`, in creation order.",
+            "items": {
+              "description": "A Track id: `^trk_[0-9a-f]{32}$`.",
+              "pattern": "^trk_[0-9a-f]{32}$",
+              "type": "string"
+            },
+            "type": "array"
+          },
+          "items": {
+            "description": "The moved items: the requested one first, then its linked partners.",
+            "items": {
+              "additionalProperties": false,
+              "description": "Where one item ended up.",
+              "properties": {
+                "item": {
+                  "description": "The item.",
+                  "pattern": "^itm_[0-9a-f]{32}$",
+                  "type": "string"
+                },
+                "start": {
+                  "description": "Its new start.",
+                  "maximum": 9007199254740991,
+                  "minimum": -9007199254740991,
+                  "type": "integer"
+                },
+                "track": {
+                  "description": "The track it is on now.",
+                  "pattern": "^trk_[0-9a-f]{32}$",
+                  "type": "string"
+                }
+              },
+              "required": [
+                "item",
+                "track",
+                "start"
+              ],
+              "type": "object"
+            },
+            "type": "array"
+          }
+        },
+        "required": [
+          "items",
+          "created_tracks"
+        ],
+        "title": "ItemMoveOutput",
+        "type": "object"
+      },
+      "scope": "any",
+      "secret_fields": [],
+      "summary": "Move an item in time and/or to another track (linked partners follow)",
+      "undoable": true,
+      "view": false
+    },
+    {
+      "annotations": {
+        "destructiveHint": false,
+        "idempotentHint": true,
+        "openWorldHint": false,
+        "readOnlyHint": false
+      },
+      "input_schema": {
+        "additionalProperties": false,
+        "description": "Changes an item's name, enabled flag, opacity, clip gain or transform; absent fields keep\ntheir value and setting a value it already has is a no-op. `Locked` if the item's track is\nlocked.",
+        "properties": {
+          "item": {
+            "description": "The item.",
+            "pattern": "^itm_[0-9a-f]{32}$",
+            "type": "string"
+          },
+          "props": {
+            "additionalProperties": false,
+            "description": "The properties to change; at least one.",
+            "properties": {
+              "audio_gain": {
+                "description": "Clip gain in dB, `-144..=48` (0 = unchanged).",
+                "format": "double",
+                "type": [
+                  "number",
+                  "null"
+                ]
+              },
+              "enabled": {
+                "description": "Rendered and heard (`true`) or kept but skipped (`false`).",
+                "type": [
+                  "boolean",
+                  "null"
+                ]
+              },
+              "name": {
+                "description": "Display name; an empty string clears it (the media name is shown again).",
+                "type": [
+                  "string",
+                  "null"
+                ]
+              },
+              "opacity": {
+                "description": "Opacity `0.0..=1.0`.",
+                "format": "double",
+                "type": [
+                  "number",
+                  "null"
+                ]
+              },
+              "transform": {
+                "additionalProperties": false,
+                "description": "Placement on the canvas (partial).",
+                "properties": {
+                  "anchor": {
+                    "additionalProperties": false,
+                    "description": "The item point `position` places and rotation turns around, in item units.",
+                    "properties": {
+                      "x": {
+                        "description": "Horizontal component.",
+                        "format": "double",
+                        "type": "number"
+                      },
+                      "y": {
+                        "description": "Vertical component (down is positive).",
+                        "format": "double",
+                        "type": "number"
+                      }
+                    },
+                    "required": [
+                      "x",
+                      "y"
+                    ],
+                    "type": [
+                      "object",
+                      "null"
+                    ]
+                  },
+                  "position": {
+                    "additionalProperties": false,
+                    "description": "Offset of the anchor from the canvas center, in canvas units (+y is down).",
+                    "properties": {
+                      "x": {
+                        "description": "Horizontal component.",
+                        "format": "double",
+                        "type": "number"
+                      },
+                      "y": {
+                        "description": "Vertical component (down is positive).",
+                        "format": "double",
+                        "type": "number"
+                      }
+                    },
+                    "required": [
+                      "x",
+                      "y"
+                    ],
+                    "type": [
+                      "object",
+                      "null"
+                    ]
+                  },
+                  "rotation": {
+                    "description": "Clockwise rotation in degrees.",
+                    "format": "double",
+                    "type": [
+                      "number",
+                      "null"
+                    ]
+                  },
+                  "scale": {
+                    "additionalProperties": false,
+                    "description": "Size multiplier per axis (1.0 = aspect-fit); finite and `>= 0`.",
+                    "properties": {
+                      "x": {
+                        "description": "Horizontal component.",
+                        "format": "double",
+                        "type": "number"
+                      },
+                      "y": {
+                        "description": "Vertical component (down is positive).",
+                        "format": "double",
+                        "type": "number"
+                      }
+                    },
+                    "required": [
+                      "x",
+                      "y"
+                    ],
+                    "type": [
+                      "object",
+                      "null"
+                    ]
+                  }
+                },
+                "type": [
+                  "object",
+                  "null"
+                ]
+              }
+            },
+            "type": "object"
+          }
+        },
+        "required": [
+          "item",
+          "props"
+        ],
+        "title": "ItemSetProps",
+        "type": "object"
+      },
+      "kind": "command",
+      "mcp": "core",
+      "mcp_tool": "item_set_props",
+      "name": "item.set_props",
+      "namespace": "item",
+      "output_schema": {
+        "additionalProperties": false,
+        "description": "Result of `item.set_props`.",
+        "properties": {
+          "changed": {
+            "description": "The props whose value actually changed (`name`, `enabled`, `opacity`, `audio_gain`,\n`transform.position`, ...); empty if everything was already as requested.",
+            "items": {
+              "type": "string"
+            },
+            "type": "array"
+          },
+          "item": {
+            "description": "The item.",
+            "pattern": "^itm_[0-9a-f]{32}$",
+            "type": "string"
+          }
+        },
+        "required": [
+          "item",
+          "changed"
+        ],
+        "title": "ItemSetPropsOutput",
+        "type": "object"
+      },
+      "scope": "any",
+      "secret_fields": [],
+      "summary": "Set an item's name, enabled, opacity, audio_gain or transform (partial)",
+      "undoable": true,
+      "view": false
+    },
+    {
+      "annotations": {
+        "destructiveHint": false,
+        "idempotentHint": true,
+        "openWorldHint": false,
+        "readOnlyHint": false
+      },
+      "input_schema": {
+        "additionalProperties": false,
+        "description": "Imports media files: probes each one synchronously and registers it, returning `media_ids`\nat once. All or nothing: if any file cannot be probed, nothing is imported and the error\nnames that file's index (`/paths/<i>`). Files whose content is already in the project are\nreturned as duplicates. Analysis (thumbnails, waveform, index) continues in background jobs.",
+        "properties": {
+          "paths": {
+            "description": "Absolute paths of the files (1..=256, no repeats).",
+            "items": {
+              "type": "string"
+            },
+            "type": "array"
+          }
+        },
+        "required": [
+          "paths"
+        ],
+        "title": "MediaImport",
+        "type": "object"
+      },
+      "kind": "engine",
+      "mcp": "core",
+      "mcp_tool": "media_import",
+      "name": "media.import",
+      "namespace": "media",
+      "output_schema": {
+        "additionalProperties": false,
+        "description": "Result of `media.import`.",
+        "properties": {
+          "media": {
+            "description": "One entry per requested path, in request order.",
+            "items": {
+              "additionalProperties": false,
+              "description": "One imported file.",
+              "properties": {
+                "duplicate": {
+                  "description": "`true` when the content was already in the project and nothing was added.",
+                  "type": "boolean"
+                },
+                "kind": {
+                  "description": "What the asset is.",
+                  "oneOf": [
+                    {
+                      "const": "video",
+                      "description": "A video file (may also carry audio).",
+                      "type": "string"
+                    },
+                    {
+                      "const": "audio",
+                      "description": "An audio-only file.",
+                      "type": "string"
+                    },
+                    {
+                      "const": "image",
+                      "description": "A still image (no duration).",
+                      "type": "string"
+                    },
+                    {
+                      "const": "sequence_ref",
+                      "description": "Another sequence of this project, used as a compound clip (arch §4.3).",
+                      "type": "string"
+                    }
+                  ]
+                },
+                "media_id": {
+                  "description": "The asset; an existing one if the same content was imported before.",
+                  "pattern": "^med_[0-9a-f]{32}$",
+                  "type": "string"
+                },
+                "path": {
+                  "description": "The path as requested.",
+                  "type": "string"
+                }
+              },
+              "required": [
+                "path",
+                "media_id",
+                "kind",
+                "duplicate"
+              ],
+              "type": "object"
+            },
+            "type": "array"
+          }
+        },
+        "required": [
+          "media"
+        ],
+        "title": "MediaImportOutput",
+        "type": "object"
+      },
+      "scope": "any",
+      "secret_fields": [],
+      "summary": "Import media files; probes synchronously and returns the media ids",
+      "undoable": false,
+      "view": false
+    },
+    {
+      "annotations": {
+        "destructiveHint": false,
+        "idempotentHint": true,
+        "openWorldHint": false,
+        "readOnlyHint": false
+      },
+      "input_schema": {
+        "additionalProperties": false,
+        "description": "Registers a probed media file. Internal plumbing of `media.import` and the import job\n(WP-1D.07): the kind (video, audio or image) derives from the probe streams. If an asset\nwith the same `content_hash` already exists it is returned unchanged (`created: false`).",
+        "properties": {
+          "content_hash": {
+            "description": "Content hash used to relink and deduplicate (non-empty, no whitespace).",
+            "type": "string"
+          },
+          "media_id": {
+            "default": null,
+            "description": "ID for the new asset; minted by the engine when absent. Must not exist yet.",
+            "pattern": "^med_[0-9a-f]{32}$",
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "path": {
+            "description": "Absolute path of the file.",
+            "type": "string"
+          },
+          "probe": {
+            "description": "What probing found.",
+            "properties": {
+              "audio": {
+                "additionalProperties": false,
+                "description": "Main audio stream format, if any.",
+                "properties": {
+                  "channels": {
+                    "description": "Channel count.",
+                    "format": "uint16",
+                    "maximum": 65535,
+                    "minimum": 0,
+                    "type": "integer"
+                  },
+                  "rate": {
+                    "description": "Samples per second.",
+                    "maximum": 352800000,
+                    "minimum": 1,
+                    "type": "integer"
+                  }
+                },
+                "required": [
+                  "rate",
+                  "channels"
+                ],
+                "type": [
+                  "object",
+                  "null"
+                ]
+              },
+              "color": {
+                "additionalProperties": false,
+                "description": "Color tags of the main video stream.",
+                "properties": {
+                  "matrix": {
+                    "description": "YUV matrix coefficients.",
+                    "examples": [
+                      "gbr",
+                      "bt709",
+                      "fcc",
+                      "bt470bg",
+                      "smpte170m",
+                      "smpte240m",
+                      "ycgco",
+                      "bt2020nc",
+                      "bt2020c",
+                      "ictcp"
+                    ],
+                    "type": [
+                      "string",
+                      "null"
+                    ]
+                  },
+                  "primaries": {
+                    "description": "Color primaries.",
+                    "examples": [
+                      "bt709",
+                      "bt470m",
+                      "bt470bg",
+                      "smpte170m",
+                      "smpte240m",
+                      "film",
+                      "bt2020",
+                      "smpte428",
+                      "smpte431",
+                      "smpte432",
+                      "ebu3213"
+                    ],
+                    "type": [
+                      "string",
+                      "null"
+                    ]
+                  },
+                  "range": {
+                    "anyOf": [
+                      {
+                        "description": "Sample range of a video stream.",
+                        "oneOf": [
+                          {
+                            "const": "limited",
+                            "description": "Limited (\"TV\", 16–235 for 8-bit luma).",
+                            "type": "string"
+                          },
+                          {
+                            "const": "full",
+                            "description": "Full (\"PC\", 0–255).",
+                            "type": "string"
+                          }
+                        ]
+                      },
+                      {
+                        "type": "null"
+                      }
+                    ],
+                    "description": "Sample range."
+                  },
+                  "transfer": {
+                    "description": "Transfer characteristics.",
+                    "examples": [
+                      "bt709",
+                      "gamma22",
+                      "gamma28",
+                      "smpte170m",
+                      "smpte240m",
+                      "linear",
+                      "iec61966-2-1",
+                      "bt2020-10",
+                      "bt2020-12",
+                      "smpte2084",
+                      "arib-std-b67"
+                    ],
+                    "type": [
+                      "string",
+                      "null"
+                    ]
+                  }
+                },
+                "type": "object"
+              },
+              "duration": {
+                "anyOf": [
+                  {
+                    "anyOf": [
+                      {
+                        "maximum": 9007199254740991,
+                        "minimum": 0,
+                        "type": "integer"
+                      },
+                      {
+                        "pattern": "^-?[0-9]+(\\.[0-9]+)?s$|^-?[0-9]+$",
+                        "type": "string"
+                      }
+                    ],
+                    "description": "A non-negative duration in flicks (1/705600000 s) as an integer, or a string: seconds (\"62.5s\") or raw flicks (\"123\")."
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "description": "Playable length, if known (images have none)."
+              },
+              "fps": {
+                "additionalProperties": false,
+                "description": "Frame rate of the main video stream, if constant or nominal.",
+                "properties": {
+                  "den": {
+                    "description": "Seconds.",
+                    "maximum": 4294967295,
+                    "minimum": 1,
+                    "type": "integer"
+                  },
+                  "num": {
+                    "description": "Frames.",
+                    "maximum": 4294967295,
+                    "minimum": 1,
+                    "type": "integer"
+                  }
+                },
+                "required": [
+                  "num",
+                  "den"
+                ],
+                "type": [
+                  "object",
+                  "null"
+                ]
+              },
+              "rotation": {
+                "description": "Display rotation in degrees clockwise: 0, 90, 180 or 270.",
+                "format": "uint16",
+                "maximum": 65535,
+                "minimum": 0,
+                "type": "integer"
+              },
+              "streams": {
+                "description": "Streams in container order.",
+                "items": {
+                  "description": "One stream of a media file.",
+                  "properties": {
+                    "channels": {
+                      "description": "Channel count (audio).",
+                      "format": "uint16",
+                      "maximum": 65535,
+                      "minimum": 0,
+                      "type": [
+                        "integer",
+                        "null"
+                      ]
+                    },
+                    "codec": {
+                      "description": "Codec name (FFmpeg naming, e.g. `h264`, `aac`).",
+                      "type": [
+                        "string",
+                        "null"
+                      ]
+                    },
+                    "height": {
+                      "description": "Coded height in pixels (video).",
+                      "format": "uint32",
+                      "minimum": 0,
+                      "type": [
+                        "integer",
+                        "null"
+                      ]
+                    },
+                    "index": {
+                      "description": "Index in the container.",
+                      "format": "uint32",
+                      "minimum": 0,
+                      "type": "integer"
+                    },
+                    "kind": {
+                      "description": "Stream kind.",
+                      "oneOf": [
+                        {
+                          "const": "video",
+                          "description": "Pictures.",
+                          "type": "string"
+                        },
+                        {
+                          "const": "audio",
+                          "description": "Sound.",
+                          "type": "string"
+                        },
+                        {
+                          "const": "subtitle",
+                          "description": "Subtitles or captions.",
+                          "type": "string"
+                        },
+                        {
+                          "const": "data",
+                          "description": "Timed metadata or other data.",
+                          "type": "string"
+                        },
+                        {
+                          "const": "attachment",
+                          "description": "Attached files (fonts, cover art).",
+                          "type": "string"
+                        }
+                      ]
+                    },
+                    "language": {
+                      "description": "Language tag (e.g. `eng`).",
+                      "type": [
+                        "string",
+                        "null"
+                      ]
+                    },
+                    "pixel_format": {
+                      "description": "Pixel format (FFmpeg naming, e.g. `yuv420p10le`; video).",
+                      "type": [
+                        "string",
+                        "null"
+                      ]
+                    },
+                    "profile": {
+                      "description": "Codec profile (e.g. `High`, `Main 10`).",
+                      "type": [
+                        "string",
+                        "null"
+                      ]
+                    },
+                    "sample_rate": {
+                      "description": "Sample rate (audio).",
+                      "maximum": 352800000,
+                      "minimum": 1,
+                      "type": [
+                        "integer",
+                        "null"
+                      ]
+                    },
+                    "width": {
+                      "description": "Coded width in pixels (video).",
+                      "format": "uint32",
+                      "minimum": 0,
+                      "type": [
+                        "integer",
+                        "null"
+                      ]
+                    }
+                  },
+                  "required": [
+                    "index",
+                    "kind"
+                  ],
+                  "type": "object"
+                },
+                "type": "array"
+              },
+              "vfr": {
+                "description": "Variable frame rate: times map through the frame index, never through `fps` (arch §4.1).",
+                "type": "boolean"
+              }
+            },
+            "required": [
+              "streams",
+              "vfr",
+              "rotation",
+              "color"
+            ],
+            "type": "object"
+          }
+        },
+        "required": [
+          "path",
+          "probe",
+          "content_hash"
+        ],
+        "title": "MediaRegister",
+        "type": "object"
+      },
+      "kind": "command",
+      "mcp": "hidden",
+      "mcp_tool": null,
+      "name": "media.register",
+      "namespace": "media",
+      "output_schema": {
+        "additionalProperties": false,
+        "description": "Result of `media.register`.",
+        "properties": {
+          "created": {
+            "description": "`false` when an asset with the same content hash already existed and nothing changed.",
+            "type": "boolean"
+          },
+          "kind": {
+            "description": "What the asset is.",
+            "oneOf": [
+              {
+                "const": "video",
+                "description": "A video file (may also carry audio).",
+                "type": "string"
+              },
+              {
+                "const": "audio",
+                "description": "An audio-only file.",
+                "type": "string"
+              },
+              {
+                "const": "image",
+                "description": "A still image (no duration).",
+                "type": "string"
+              },
+              {
+                "const": "sequence_ref",
+                "description": "Another sequence of this project, used as a compound clip (arch §4.3).",
+                "type": "string"
+              }
+            ]
+          },
+          "media_id": {
+            "description": "The asset: the new one, or the existing one with the same content hash.",
+            "pattern": "^med_[0-9a-f]{32}$",
+            "type": "string"
+          }
+        },
+        "required": [
+          "media_id",
+          "kind",
+          "created"
+        ],
+        "title": "MediaRegistered",
+        "type": "object"
+      },
+      "scope": "any",
+      "secret_fields": [],
+      "summary": "Register a probed media file (used by import; deduplicates by content hash)",
+      "undoable": true,
+      "view": false
+    },
+    {
+      "annotations": {
+        "destructiveHint": true,
+        "idempotentHint": false,
+        "openWorldHint": false,
+        "readOnlyHint": false
+      },
+      "input_schema": {
+        "additionalProperties": false,
+        "description": "Removes a media asset from the project (the file on disk is untouched). Fails with\n`Invalid` while any clip uses it; delete those clips first.",
+        "properties": {
+          "id": {
+            "description": "The asset to remove.",
+            "pattern": "^med_[0-9a-f]{32}$",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id"
+        ],
+        "title": "MediaRemove",
+        "type": "object"
+      },
+      "kind": "command",
+      "mcp": "catalog",
+      "mcp_tool": "media_remove",
+      "name": "media.remove",
+      "namespace": "media",
+      "output_schema": {
+        "additionalProperties": false,
+        "description": "Result of `media.remove`.",
+        "properties": {
+          "media_id": {
+            "description": "The removed asset.",
+            "pattern": "^med_[0-9a-f]{32}$",
+            "type": "string"
+          }
+        },
+        "required": [
+          "media_id"
+        ],
+        "title": "MediaRemoveOutput",
+        "type": "object"
+      },
+      "scope": "any",
+      "secret_fields": [],
+      "summary": "Remove an unused media asset from the project",
+      "undoable": true,
+      "view": false
+    },
+    {
+      "annotations": {
+        "destructiveHint": false,
+        "idempotentHint": false,
+        "openWorldHint": false,
+        "readOnlyHint": false
+      },
+      "input_schema": {
+        "additionalProperties": false,
+        "description": "Initializes an empty project: sets the project name and default format and creates one\nsequence with a video track `V1` on top of an audio track `A1`. Fails with `Invalid` if the\nproject already has media or sequences.",
+        "properties": {
+          "format": {
+            "additionalProperties": false,
+            "default": null,
+            "description": "Format of the first sequence; also the default for new sequences.",
+            "properties": {
+              "frame_rate": {
+                "additionalProperties": false,
+                "description": "The edit grid, `1..=1000` fps and a whole number of flicks per frame.",
+                "properties": {
+                  "den": {
+                    "description": "Seconds.",
+                    "maximum": 4294967295,
+                    "minimum": 1,
+                    "type": "integer"
+                  },
+                  "num": {
+                    "description": "Frames.",
+                    "maximum": 4294967295,
+                    "minimum": 1,
+                    "type": "integer"
+                  }
+                },
+                "required": [
+                  "num",
+                  "den"
+                ],
+                "type": [
+                  "object",
+                  "null"
+                ]
+              },
+              "height": {
+                "description": "Canvas height in pixels, `1..=16384`.",
+                "format": "uint32",
+                "minimum": 0,
+                "type": [
+                  "integer",
+                  "null"
+                ]
+              },
+              "sample_rate": {
+                "description": "The mix rate in Hz, `8000..=384000`.",
+                "maximum": 352800000,
+                "minimum": 1,
+                "type": [
+                  "integer",
+                  "null"
+                ]
+              },
+              "width": {
+                "description": "Canvas width in pixels, `1..=16384`.",
+                "format": "uint32",
+                "minimum": 0,
+                "type": [
+                  "integer",
+                  "null"
+                ]
+              }
+            },
+            "type": [
+              "object",
+              "null"
+            ]
+          },
+          "name": {
+            "description": "Project name (1..=200 characters).",
+            "type": "string"
+          }
+        },
+        "required": [
+          "name"
+        ],
+        "title": "ProjectNew",
+        "type": "object"
+      },
+      "kind": "command",
+      "mcp": "catalog",
+      "mcp_tool": "project_new",
+      "name": "project.new",
+      "namespace": "project",
+      "output_schema": {
+        "additionalProperties": false,
+        "description": "Result of `project.new`.",
+        "properties": {
+          "audio_track": {
+            "description": "Its audio track `A1`.",
+            "pattern": "^trk_[0-9a-f]{32}$",
+            "type": "string"
+          },
+          "sequence": {
+            "description": "The created sequence.",
+            "pattern": "^seq_[0-9a-f]{32}$",
+            "type": "string"
+          },
+          "video_track": {
+            "description": "Its video track `V1`.",
+            "pattern": "^trk_[0-9a-f]{32}$",
+            "type": "string"
+          }
+        },
+        "required": [
+          "sequence",
+          "video_track",
+          "audio_track"
+        ],
+        "title": "ProjectNewOutput",
+        "type": "object"
+      },
+      "scope": "any",
+      "secret_fields": [],
+      "summary": "Initialize an empty project with one sequence (V1 + A1)",
+      "undoable": true,
+      "view": false
+    },
+    {
+      "annotations": {
+        "destructiveHint": false,
+        "idempotentHint": true,
+        "openWorldHint": false,
+        "readOnlyHint": false
+      },
+      "input_schema": {
+        "additionalProperties": false,
+        "description": "Renames the project.",
+        "properties": {
+          "name": {
+            "description": "New project name (1..=200 characters).",
+            "type": "string"
+          }
+        },
+        "required": [
+          "name"
+        ],
+        "title": "ProjectRename",
+        "type": "object"
+      },
+      "kind": "command",
+      "mcp": "catalog",
+      "mcp_tool": "project_rename",
+      "name": "project.rename",
+      "namespace": "project",
+      "output_schema": {
+        "additionalProperties": false,
+        "description": "Result of `project.rename`.",
+        "properties": {
+          "name": {
+            "description": "The name now in effect (trimmed).",
+            "type": "string"
+          }
+        },
+        "required": [
+          "name"
+        ],
+        "title": "ProjectRenameOutput",
+        "type": "object"
+      },
+      "scope": "any",
+      "secret_fields": [],
+      "summary": "Rename the project",
+      "undoable": true,
+      "view": false
+    },
+    {
+      "annotations": {
+        "destructiveHint": false,
+        "idempotentHint": false,
+        "openWorldHint": false,
+        "readOnlyHint": false
+      },
+      "input_schema": {
+        "additionalProperties": false,
+        "description": "Inserts a media clip on a track at a time. `source_in` is the position in the media the clip\nstarts from and `duration` its length (defaults: the start of the media and the rest of it;\nstills default to five seconds). Times accept flicks, `\"1.5s\"`, `\"f:45\"` and timecodes,\nresolved against the sequence's frame rate. See the module docs for overlap and linked\naudio behaviour. Fails with `Locked` if the target track is locked.",
+        "properties": {
+          "at": {
+            "anyOf": [
+              {
+                "maximum": 9007199254740991,
+                "minimum": -9007199254740991,
+                "type": "integer"
+              },
+              {
+                "pattern": "^-?[0-9]+(\\.[0-9]+)?s$|^-?[0-9]+$|^f:[0-9]+$|^[0-9]+[:;][0-9]+[:;][0-9]+[:;][0-9]+$",
+                "type": "string"
+              }
+            ],
+            "description": "Timeline position of the clip's first frame, `>= 0`."
+          },
+          "duration": {
+            "anyOf": [
+              {
+                "anyOf": [
+                  {
+                    "maximum": 9007199254740991,
+                    "minimum": -9007199254740991,
+                    "type": "integer"
+                  },
+                  {
+                    "pattern": "^-?[0-9]+(\\.[0-9]+)?s$|^-?[0-9]+$|^f:[0-9]+$|^[0-9]+[:;][0-9]+[:;][0-9]+[:;][0-9]+$",
+                    "type": "string"
+                  }
+                ],
+                "description": "A time: integer flicks (1/705600000 s), or a string: seconds (\"62.5s\"), a frame (\"f:1500\") or a timecode (\"00:01:02:03\", drop-frame \"00:01:02;03\"). Frames and timecodes use the frame rate of the target's sequence."
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "description": "Clip length, `> 0`."
+          },
+          "link": {
+            "default": null,
+            "description": "Also insert the audio of a video file as a linked clip (default `true`).",
+            "type": [
+              "boolean",
+              "null"
+            ]
+          },
+          "media": {
+            "description": "The media to place.",
+            "pattern": "^med_[0-9a-f]{32}$",
+            "type": "string"
+          },
+          "overlap": {
+            "anyOf": [
+              {
+                "description": "What to do when the clip would overlap another clip on the target track.",
+                "oneOf": [
+                  {
+                    "const": "reject",
+                    "description": "Fail with `Invalid{path:\"/at\"}` (default).",
+                    "type": "string"
+                  },
+                  {
+                    "const": "new_track",
+                    "description": "Create a new track of the same kind directly above the target and insert there.",
+                    "type": "string"
+                  }
+                ]
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "description": "Overlap handling (default `reject`)."
+          },
+          "sequence": {
+            "description": "The sequence.",
+            "pattern": "^seq_[0-9a-f]{32}$",
+            "type": "string"
+          },
+          "source_in": {
+            "anyOf": [
+              {
+                "anyOf": [
+                  {
+                    "maximum": 9007199254740991,
+                    "minimum": -9007199254740991,
+                    "type": "integer"
+                  },
+                  {
+                    "pattern": "^-?[0-9]+(\\.[0-9]+)?s$|^-?[0-9]+$|^f:[0-9]+$|^[0-9]+[:;][0-9]+[:;][0-9]+[:;][0-9]+$",
+                    "type": "string"
+                  }
+                ],
+                "description": "A time: integer flicks (1/705600000 s), or a string: seconds (\"62.5s\"), a frame (\"f:1500\") or a timecode (\"00:01:02:03\", drop-frame \"00:01:02;03\"). Frames and timecodes use the frame rate of the target's sequence."
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "description": "Position in the media to start from (default 0)."
+          },
+          "track": {
+            "description": "The target track (of that sequence): a video track for pictures, an audio track for\nsound.",
+            "pattern": "^trk_[0-9a-f]{32}$",
+            "type": "string"
+          }
+        },
+        "required": [
+          "sequence",
+          "track",
+          "media",
+          "at"
+        ],
+        "title": "TimelineInsert",
+        "type": "object"
+      },
+      "kind": "command",
+      "mcp": "core",
+      "mcp_tool": "timeline_insert",
+      "name": "timeline.insert",
+      "namespace": "timeline",
+      "output_schema": {
+        "additionalProperties": false,
+        "description": "Result of `timeline.insert`.",
+        "properties": {
+          "clips": {
+            "description": "The inserted clips: the one on the target track first, then the linked audio clip.",
+            "items": {
+              "description": "A Item id: `^itm_[0-9a-f]{32}$`.",
+              "pattern": "^itm_[0-9a-f]{32}$",
+              "type": "string"
+            },
+            "type": "array"
+          },
+          "created_tracks": {
+            "description": "Tracks created by `overlap: \"new_track\"`, in creation order.",
+            "items": {
+              "description": "A Track id: `^trk_[0-9a-f]{32}$`.",
+              "pattern": "^trk_[0-9a-f]{32}$",
+              "type": "string"
+            },
+            "type": "array"
+          },
+          "linked_group": {
+            "description": "The group shared by the clips when audio was linked.",
+            "pattern": "^grp_[0-9a-f]{32}$",
+            "type": [
+              "string",
+              "null"
+            ]
+          }
+        },
+        "required": [
+          "clips",
+          "linked_group",
+          "created_tracks"
+        ],
+        "title": "TimelineInsertOutput",
+        "type": "object"
+      },
+      "scope": "any",
+      "secret_fields": [],
+      "summary": "Insert a media clip at a time on a track (adds linked audio for video with sound)",
+      "undoable": true,
+      "view": false
+    },
+    {
+      "annotations": {
+        "destructiveHint": false,
+        "idempotentHint": false,
+        "openWorldHint": false,
+        "readOnlyHint": false
+      },
+      "input_schema": {
+        "additionalProperties": false,
+        "description": "Adds an empty track to a sequence. New video tracks go on top of the stack, new audio\ntracks at the bottom, unless `index` says otherwise.",
+        "properties": {
+          "index": {
+            "default": null,
+            "description": "Display position, 0 = top (clamped to the end).",
+            "format": "uint32",
+            "minimum": 0,
+            "type": [
+              "integer",
+              "null"
+            ]
+          },
+          "kind": {
+            "description": "`video` or `audio`.",
+            "oneOf": [
+              {
+                "const": "video",
+                "description": "Picture layers.",
+                "type": "string"
+              },
+              {
+                "const": "audio",
+                "description": "Sound.",
+                "type": "string"
+              },
+              {
+                "const": "text",
+                "description": "Titles (later versions).",
+                "type": "string"
+              },
+              {
+                "const": "caption",
+                "description": "Captions (later versions).",
+                "type": "string"
+              },
+              {
+                "const": "adjustment",
+                "description": "Adjustment layers (later versions).",
+                "type": "string"
+              }
+            ]
+          },
+          "name": {
+            "default": null,
+            "description": "Display name; defaults to `V<n>` / `A<n>`.",
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "sequence": {
+            "description": "The sequence.",
+            "pattern": "^seq_[0-9a-f]{32}$",
+            "type": "string"
+          }
+        },
+        "required": [
+          "sequence",
+          "kind"
+        ],
+        "title": "TrackAdd",
+        "type": "object"
+      },
+      "kind": "command",
+      "mcp": "catalog",
+      "mcp_tool": "track_add",
+      "name": "track.add",
+      "namespace": "track",
+      "output_schema": {
+        "additionalProperties": false,
+        "description": "Result of `track.add`.",
+        "properties": {
+          "track": {
+            "description": "The new track.",
+            "pattern": "^trk_[0-9a-f]{32}$",
+            "type": "string"
+          }
+        },
+        "required": [
+          "track"
+        ],
+        "title": "TrackAddOutput",
+        "type": "object"
+      },
+      "scope": "any",
+      "secret_fields": [],
+      "summary": "Add an empty video or audio track to a sequence",
+      "undoable": true,
+      "view": false
+    },
+    {
+      "annotations": {
+        "destructiveHint": true,
+        "idempotentHint": false,
+        "openWorldHint": false,
+        "readOnlyHint": false
+      },
+      "input_schema": {
+        "additionalProperties": false,
+        "description": "Removes a track together with its items. Fails with `Locked` if the track is locked.",
+        "properties": {
+          "track": {
+            "description": "The track.",
+            "pattern": "^trk_[0-9a-f]{32}$",
+            "type": "string"
+          }
+        },
+        "required": [
+          "track"
+        ],
+        "title": "TrackRemove",
+        "type": "object"
+      },
+      "kind": "command",
+      "mcp": "catalog",
+      "mcp_tool": "track_remove",
+      "name": "track.remove",
+      "namespace": "track",
+      "output_schema": {
+        "additionalProperties": false,
+        "description": "Result of `track.remove`.",
+        "properties": {
+          "removed_items": {
+            "description": "How many items it held (removed with it).",
+            "format": "uint32",
+            "minimum": 0,
+            "type": "integer"
+          },
+          "track": {
+            "description": "The removed track.",
+            "pattern": "^trk_[0-9a-f]{32}$",
+            "type": "string"
+          }
+        },
+        "required": [
+          "track",
+          "removed_items"
+        ],
+        "title": "TrackRemoveOutput",
+        "type": "object"
+      },
+      "scope": "any",
+      "secret_fields": [],
+      "summary": "Remove a track and the items on it (fails if the track is locked)",
+      "undoable": true,
+      "view": false
+    },
+    {
+      "annotations": {
+        "destructiveHint": false,
+        "idempotentHint": true,
+        "openWorldHint": false,
+        "readOnlyHint": false
+      },
+      "input_schema": {
+        "additionalProperties": false,
+        "description": "Changes track properties; absent fields keep their value. Works on locked tracks (that is\nhow a track is unlocked).",
+        "properties": {
+          "gain": {
+            "default": null,
+            "description": "Track gain in dB, `-144..=48`.",
+            "format": "double",
+            "type": [
+              "number",
+              "null"
+            ]
+          },
+          "hidden": {
+            "default": null,
+            "description": "Hide the track from the render.",
+            "type": [
+              "boolean",
+              "null"
+            ]
+          },
+          "locked": {
+            "default": null,
+            "description": "Lock the track: commands that change its items fail with `Locked`.",
+            "type": [
+              "boolean",
+              "null"
+            ]
+          },
+          "muted": {
+            "default": null,
+            "description": "Silence the track.",
+            "type": [
+              "boolean",
+              "null"
+            ]
+          },
+          "name": {
+            "default": null,
+            "description": "New display name.",
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "solo": {
+            "default": null,
+            "description": "Solo the track.",
+            "type": [
+              "boolean",
+              "null"
+            ]
+          },
+          "track": {
+            "description": "The track.",
+            "pattern": "^trk_[0-9a-f]{32}$",
+            "type": "string"
+          }
+        },
+        "required": [
+          "track"
+        ],
+        "title": "TrackSet",
+        "type": "object"
+      },
+      "kind": "command",
+      "mcp": "catalog",
+      "mcp_tool": "track_set",
+      "name": "track.set",
+      "namespace": "track",
+      "output_schema": {
+        "additionalProperties": false,
+        "description": "Result of `track.set`: the track's properties now in effect.",
+        "properties": {
+          "gain": {
+            "description": "Gain in dB.",
+            "format": "double",
+            "type": "number"
+          },
+          "hidden": {
+            "description": "Not rendered.",
+            "type": "boolean"
+          },
+          "locked": {
+            "description": "Item edits fail with `Locked`.",
+            "type": "boolean"
+          },
+          "muted": {
+            "description": "Silenced.",
+            "type": "boolean"
+          },
+          "name": {
+            "description": "Display name.",
+            "type": "string"
+          },
+          "solo": {
+            "description": "Solo.",
+            "type": "boolean"
+          },
+          "track": {
+            "description": "The track.",
+            "pattern": "^trk_[0-9a-f]{32}$",
+            "type": "string"
+          }
+        },
+        "required": [
+          "track",
+          "name",
+          "muted",
+          "hidden",
+          "locked",
+          "solo",
+          "gain"
+        ],
+        "title": "TrackSetOutput",
+        "type": "object"
+      },
+      "scope": "any",
+      "secret_fields": [],
+      "summary": "Set a track's name, mute, hide, lock, solo or gain",
+      "undoable": true,
+      "view": false
+    },
+    {
+      "annotations": {
+        "destructiveHint": false,
+        "idempotentHint": true,
+        "openWorldHint": false,
+        "readOnlyHint": false
+      },
+      "input_schema": {
+        "additionalProperties": false,
+        "description": "Returns the current view state: playhead, zoom, scroll, selection, panel layout, preview\nquality and master gain.",
+        "title": "ViewGet",
+        "type": "object"
+      },
+      "kind": "engine",
+      "mcp": "catalog",
+      "mcp_tool": "view_get",
+      "name": "view.get",
+      "namespace": "view",
+      "output_schema": {
+        "additionalProperties": false,
+        "description": "The UI view state of a project (arch §5.1). Persisted in `.cutweave/ui-state.json`.",
+        "properties": {
+          "master_gain": {
+            "description": "Master output gain (linear, `0..=4`, 1 = unity).",
+            "format": "double",
+            "type": "number"
+          },
+          "panel_layout": {
+            "description": "Dock/panel layout. Opaque to the engine (owned by the UI); `null` until the UI sets it."
+          },
+          "playhead": {
+            "description": "Playhead position on the timeline, `>= 0`.",
+            "maximum": 9007199254740991,
+            "minimum": -9007199254740991,
+            "type": "integer"
+          },
+          "preview_quality": {
+            "description": "Preview resolution.",
+            "oneOf": [
+              {
+                "const": "full",
+                "description": "Full resolution.",
+                "type": "string"
+              },
+              {
+                "const": "half",
+                "description": "Half resolution.",
+                "type": "string"
+              },
+              {
+                "const": "quarter",
+                "description": "Quarter resolution.",
+                "type": "string"
+              }
+            ]
+          },
+          "scroll": {
+            "additionalProperties": false,
+            "description": "Timeline scroll offset.",
+            "properties": {
+              "x": {
+                "description": "Horizontal offset, `>= 0`.",
+                "format": "double",
+                "type": "number"
+              },
+              "y": {
+                "description": "Vertical offset, `>= 0`.",
+                "format": "double",
+                "type": "number"
+              }
+            },
+            "required": [
+              "x",
+              "y"
+            ],
+            "type": "object"
+          },
+          "selection": {
+            "description": "Selected entities, in selection order, without duplicates. Every ID existed when it was\nselected; IDs that no longer exist are dropped.",
+            "items": {
+              "description": "One selected entity, by ID (never by index).",
+              "oneOf": [
+                {
+                  "description": "A timeline item.",
+                  "properties": {
+                    "id": {
+                      "description": "The item.",
+                      "pattern": "^itm_[0-9a-f]{32}$",
+                      "type": "string"
+                    },
+                    "kind": {
+                      "const": "item",
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "kind",
+                    "id"
+                  ],
+                  "type": "object"
+                },
+                {
+                  "description": "A track.",
+                  "properties": {
+                    "id": {
+                      "description": "The track.",
+                      "pattern": "^trk_[0-9a-f]{32}$",
+                      "type": "string"
+                    },
+                    "kind": {
+                      "const": "track",
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "kind",
+                    "id"
+                  ],
+                  "type": "object"
+                },
+                {
+                  "description": "A media asset.",
+                  "properties": {
+                    "id": {
+                      "description": "The asset.",
+                      "pattern": "^med_[0-9a-f]{32}$",
+                      "type": "string"
+                    },
+                    "kind": {
+                      "const": "media",
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "kind",
+                    "id"
+                  ],
+                  "type": "object"
+                },
+                {
+                  "description": "A sequence.",
+                  "properties": {
+                    "id": {
+                      "description": "The sequence.",
+                      "pattern": "^seq_[0-9a-f]{32}$",
+                      "type": "string"
+                    },
+                    "kind": {
+                      "const": "sequence",
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "kind",
+                    "id"
+                  ],
+                  "type": "object"
+                }
+              ]
+            },
+            "type": "array"
+          },
+          "zoom": {
+            "description": "Timeline zoom in pixels per second.",
+            "format": "double",
+            "type": "number"
+          }
+        },
+        "required": [
+          "playhead",
+          "zoom",
+          "scroll",
+          "selection",
+          "panel_layout",
+          "preview_quality",
+          "master_gain"
+        ],
+        "title": "UiState",
+        "type": "object"
+      },
+      "scope": "any",
+      "secret_fields": [],
+      "summary": "Get the UI view state (playhead, zoom, selection, ...)",
+      "undoable": false,
+      "view": true
+    },
+    {
+      "annotations": {
+        "destructiveHint": false,
+        "idempotentHint": false,
+        "openWorldHint": false,
+        "readOnlyHint": false
+      },
+      "input_schema": {
+        "additionalProperties": false,
+        "description": "Changes the selection. Every ID that is added must exist in the project.",
+        "properties": {
+          "ids": {
+            "description": "The entities to act on.",
+            "items": {
+              "description": "One selected entity, by ID (never by index).",
+              "oneOf": [
+                {
+                  "description": "A timeline item.",
+                  "properties": {
+                    "id": {
+                      "description": "The item.",
+                      "pattern": "^itm_[0-9a-f]{32}$",
+                      "type": "string"
+                    },
+                    "kind": {
+                      "const": "item",
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "kind",
+                    "id"
+                  ],
+                  "type": "object"
+                },
+                {
+                  "description": "A track.",
+                  "properties": {
+                    "id": {
+                      "description": "The track.",
+                      "pattern": "^trk_[0-9a-f]{32}$",
+                      "type": "string"
+                    },
+                    "kind": {
+                      "const": "track",
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "kind",
+                    "id"
+                  ],
+                  "type": "object"
+                },
+                {
+                  "description": "A media asset.",
+                  "properties": {
+                    "id": {
+                      "description": "The asset.",
+                      "pattern": "^med_[0-9a-f]{32}$",
+                      "type": "string"
+                    },
+                    "kind": {
+                      "const": "media",
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "kind",
+                    "id"
+                  ],
+                  "type": "object"
+                },
+                {
+                  "description": "A sequence.",
+                  "properties": {
+                    "id": {
+                      "description": "The sequence.",
+                      "pattern": "^seq_[0-9a-f]{32}$",
+                      "type": "string"
+                    },
+                    "kind": {
+                      "const": "sequence",
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "kind",
+                    "id"
+                  ],
+                  "type": "object"
+                }
+              ]
+            },
+            "type": "array"
+          },
+          "mode": {
+            "anyOf": [
+              {
+                "description": "How `view.select` combines its IDs with the current selection.",
+                "oneOf": [
+                  {
+                    "const": "replace",
+                    "description": "The IDs become the selection.",
+                    "type": "string"
+                  },
+                  {
+                    "const": "add",
+                    "description": "The IDs are appended (already selected ones keep their place).",
+                    "type": "string"
+                  },
+                  {
+                    "const": "remove",
+                    "description": "The IDs are removed from the selection.",
+                    "type": "string"
+                  },
+                  {
+                    "const": "toggle",
+                    "description": "Selected IDs are removed, the others appended.",
+                    "type": "string"
+                  }
+                ]
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "description": "How to combine them with the current selection (default `replace`)."
+          }
+        },
+        "required": [
+          "ids"
+        ],
+        "title": "ViewSelect",
+        "type": "object"
+      },
+      "kind": "engine",
+      "mcp": "catalog",
+      "mcp_tool": "view_select",
+      "name": "view.select",
+      "namespace": "view",
+      "output_schema": {
+        "additionalProperties": false,
+        "description": "The UI view state of a project (arch §5.1). Persisted in `.cutweave/ui-state.json`.",
+        "properties": {
+          "master_gain": {
+            "description": "Master output gain (linear, `0..=4`, 1 = unity).",
+            "format": "double",
+            "type": "number"
+          },
+          "panel_layout": {
+            "description": "Dock/panel layout. Opaque to the engine (owned by the UI); `null` until the UI sets it."
+          },
+          "playhead": {
+            "description": "Playhead position on the timeline, `>= 0`.",
+            "maximum": 9007199254740991,
+            "minimum": -9007199254740991,
+            "type": "integer"
+          },
+          "preview_quality": {
+            "description": "Preview resolution.",
+            "oneOf": [
+              {
+                "const": "full",
+                "description": "Full resolution.",
+                "type": "string"
+              },
+              {
+                "const": "half",
+                "description": "Half resolution.",
+                "type": "string"
+              },
+              {
+                "const": "quarter",
+                "description": "Quarter resolution.",
+                "type": "string"
+              }
+            ]
+          },
+          "scroll": {
+            "additionalProperties": false,
+            "description": "Timeline scroll offset.",
+            "properties": {
+              "x": {
+                "description": "Horizontal offset, `>= 0`.",
+                "format": "double",
+                "type": "number"
+              },
+              "y": {
+                "description": "Vertical offset, `>= 0`.",
+                "format": "double",
+                "type": "number"
+              }
+            },
+            "required": [
+              "x",
+              "y"
+            ],
+            "type": "object"
+          },
+          "selection": {
+            "description": "Selected entities, in selection order, without duplicates. Every ID existed when it was\nselected; IDs that no longer exist are dropped.",
+            "items": {
+              "description": "One selected entity, by ID (never by index).",
+              "oneOf": [
+                {
+                  "description": "A timeline item.",
+                  "properties": {
+                    "id": {
+                      "description": "The item.",
+                      "pattern": "^itm_[0-9a-f]{32}$",
+                      "type": "string"
+                    },
+                    "kind": {
+                      "const": "item",
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "kind",
+                    "id"
+                  ],
+                  "type": "object"
+                },
+                {
+                  "description": "A track.",
+                  "properties": {
+                    "id": {
+                      "description": "The track.",
+                      "pattern": "^trk_[0-9a-f]{32}$",
+                      "type": "string"
+                    },
+                    "kind": {
+                      "const": "track",
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "kind",
+                    "id"
+                  ],
+                  "type": "object"
+                },
+                {
+                  "description": "A media asset.",
+                  "properties": {
+                    "id": {
+                      "description": "The asset.",
+                      "pattern": "^med_[0-9a-f]{32}$",
+                      "type": "string"
+                    },
+                    "kind": {
+                      "const": "media",
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "kind",
+                    "id"
+                  ],
+                  "type": "object"
+                },
+                {
+                  "description": "A sequence.",
+                  "properties": {
+                    "id": {
+                      "description": "The sequence.",
+                      "pattern": "^seq_[0-9a-f]{32}$",
+                      "type": "string"
+                    },
+                    "kind": {
+                      "const": "sequence",
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "kind",
+                    "id"
+                  ],
+                  "type": "object"
+                }
+              ]
+            },
+            "type": "array"
+          },
+          "zoom": {
+            "description": "Timeline zoom in pixels per second.",
+            "format": "double",
+            "type": "number"
+          }
+        },
+        "required": [
+          "playhead",
+          "zoom",
+          "scroll",
+          "selection",
+          "panel_layout",
+          "preview_quality",
+          "master_gain"
+        ],
+        "title": "UiState",
+        "type": "object"
+      },
+      "scope": "any",
+      "secret_fields": [],
+      "summary": "Select, add, remove or toggle entities in the selection",
+      "undoable": false,
+      "view": true
+    },
+    {
+      "annotations": {
+        "destructiveHint": false,
+        "idempotentHint": true,
+        "openWorldHint": false,
+        "readOnlyHint": false
+      },
+      "input_schema": {
+        "additionalProperties": false,
+        "description": "Merges a partial update into the view state: present fields replace the current value,\nabsent ones are kept. Nothing is applied if any field is invalid. Not undoable; never\nchanges the document.",
+        "properties": {
+          "patch": {
+            "additionalProperties": false,
+            "description": "The fields to change.",
+            "properties": {
+              "master_gain": {
+                "default": null,
+                "description": "New master gain (linear, `0..=4`).",
+                "format": "double",
+                "type": [
+                  "number",
+                  "null"
+                ]
+              },
+              "panel_layout": {
+                "default": null,
+                "description": "New panel layout (opaque JSON, replaces the whole value)."
+              },
+              "playhead": {
+                "anyOf": [
+                  {
+                    "anyOf": [
+                      {
+                        "maximum": 9007199254740991,
+                        "minimum": -9007199254740991,
+                        "type": "integer"
+                      },
+                      {
+                        "pattern": "^-?[0-9]+(\\.[0-9]+)?s$|^-?[0-9]+$|^f:[0-9]+$|^[0-9]+[:;][0-9]+[:;][0-9]+[:;][0-9]+$",
+                        "type": "string"
+                      }
+                    ],
+                    "description": "A time: integer flicks (1/705600000 s), or a string: seconds (\"62.5s\"), a frame (\"f:1500\") or a timecode (\"00:01:02:03\", drop-frame \"00:01:02;03\"). Frames and timecodes use the frame rate of the target's sequence."
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "default": null,
+                "description": "New playhead (flicks, seconds text; `>= 0`)."
+              },
+              "preview_quality": {
+                "anyOf": [
+                  {
+                    "description": "Preview resolution (arch §8 quality ladder).",
+                    "oneOf": [
+                      {
+                        "const": "full",
+                        "description": "Full resolution.",
+                        "type": "string"
+                      },
+                      {
+                        "const": "half",
+                        "description": "Half resolution.",
+                        "type": "string"
+                      },
+                      {
+                        "const": "quarter",
+                        "description": "Quarter resolution.",
+                        "type": "string"
+                      }
+                    ]
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "default": null,
+                "description": "New preview resolution."
+              },
+              "scroll": {
+                "additionalProperties": false,
+                "default": null,
+                "description": "New scroll offset.",
+                "properties": {
+                  "x": {
+                    "description": "Horizontal offset, `>= 0`.",
+                    "format": "double",
+                    "type": "number"
+                  },
+                  "y": {
+                    "description": "Vertical offset, `>= 0`.",
+                    "format": "double",
+                    "type": "number"
+                  }
+                },
+                "required": [
+                  "x",
+                  "y"
+                ],
+                "type": [
+                  "object",
+                  "null"
+                ]
+              },
+              "selection": {
+                "default": null,
+                "description": "New selection (replaces the whole selection; every ID must exist).",
+                "items": {
+                  "description": "One selected entity, by ID (never by index).",
+                  "oneOf": [
+                    {
+                      "description": "A timeline item.",
+                      "properties": {
+                        "id": {
+                          "description": "The item.",
+                          "pattern": "^itm_[0-9a-f]{32}$",
+                          "type": "string"
+                        },
+                        "kind": {
+                          "const": "item",
+                          "type": "string"
+                        }
+                      },
+                      "required": [
+                        "kind",
+                        "id"
+                      ],
+                      "type": "object"
+                    },
+                    {
+                      "description": "A track.",
+                      "properties": {
+                        "id": {
+                          "description": "The track.",
+                          "pattern": "^trk_[0-9a-f]{32}$",
+                          "type": "string"
+                        },
+                        "kind": {
+                          "const": "track",
+                          "type": "string"
+                        }
+                      },
+                      "required": [
+                        "kind",
+                        "id"
+                      ],
+                      "type": "object"
+                    },
+                    {
+                      "description": "A media asset.",
+                      "properties": {
+                        "id": {
+                          "description": "The asset.",
+                          "pattern": "^med_[0-9a-f]{32}$",
+                          "type": "string"
+                        },
+                        "kind": {
+                          "const": "media",
+                          "type": "string"
+                        }
+                      },
+                      "required": [
+                        "kind",
+                        "id"
+                      ],
+                      "type": "object"
+                    },
+                    {
+                      "description": "A sequence.",
+                      "properties": {
+                        "id": {
+                          "description": "The sequence.",
+                          "pattern": "^seq_[0-9a-f]{32}$",
+                          "type": "string"
+                        },
+                        "kind": {
+                          "const": "sequence",
+                          "type": "string"
+                        }
+                      },
+                      "required": [
+                        "kind",
+                        "id"
+                      ],
+                      "type": "object"
+                    }
+                  ]
+                },
+                "type": [
+                  "array",
+                  "null"
+                ]
+              },
+              "zoom": {
+                "default": null,
+                "description": "New zoom in pixels per second.",
+                "format": "double",
+                "type": [
+                  "number",
+                  "null"
+                ]
+              }
+            },
+            "type": "object"
+          }
+        },
+        "required": [
+          "patch"
+        ],
+        "title": "ViewSet",
+        "type": "object"
+      },
+      "kind": "engine",
+      "mcp": "catalog",
+      "mcp_tool": "view_set",
+      "name": "view.set",
+      "namespace": "view",
+      "output_schema": {
+        "additionalProperties": false,
+        "description": "The UI view state of a project (arch §5.1). Persisted in `.cutweave/ui-state.json`.",
+        "properties": {
+          "master_gain": {
+            "description": "Master output gain (linear, `0..=4`, 1 = unity).",
+            "format": "double",
+            "type": "number"
+          },
+          "panel_layout": {
+            "description": "Dock/panel layout. Opaque to the engine (owned by the UI); `null` until the UI sets it."
+          },
+          "playhead": {
+            "description": "Playhead position on the timeline, `>= 0`.",
+            "maximum": 9007199254740991,
+            "minimum": -9007199254740991,
+            "type": "integer"
+          },
+          "preview_quality": {
+            "description": "Preview resolution.",
+            "oneOf": [
+              {
+                "const": "full",
+                "description": "Full resolution.",
+                "type": "string"
+              },
+              {
+                "const": "half",
+                "description": "Half resolution.",
+                "type": "string"
+              },
+              {
+                "const": "quarter",
+                "description": "Quarter resolution.",
+                "type": "string"
+              }
+            ]
+          },
+          "scroll": {
+            "additionalProperties": false,
+            "description": "Timeline scroll offset.",
+            "properties": {
+              "x": {
+                "description": "Horizontal offset, `>= 0`.",
+                "format": "double",
+                "type": "number"
+              },
+              "y": {
+                "description": "Vertical offset, `>= 0`.",
+                "format": "double",
+                "type": "number"
+              }
+            },
+            "required": [
+              "x",
+              "y"
+            ],
+            "type": "object"
+          },
+          "selection": {
+            "description": "Selected entities, in selection order, without duplicates. Every ID existed when it was\nselected; IDs that no longer exist are dropped.",
+            "items": {
+              "description": "One selected entity, by ID (never by index).",
+              "oneOf": [
+                {
+                  "description": "A timeline item.",
+                  "properties": {
+                    "id": {
+                      "description": "The item.",
+                      "pattern": "^itm_[0-9a-f]{32}$",
+                      "type": "string"
+                    },
+                    "kind": {
+                      "const": "item",
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "kind",
+                    "id"
+                  ],
+                  "type": "object"
+                },
+                {
+                  "description": "A track.",
+                  "properties": {
+                    "id": {
+                      "description": "The track.",
+                      "pattern": "^trk_[0-9a-f]{32}$",
+                      "type": "string"
+                    },
+                    "kind": {
+                      "const": "track",
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "kind",
+                    "id"
+                  ],
+                  "type": "object"
+                },
+                {
+                  "description": "A media asset.",
+                  "properties": {
+                    "id": {
+                      "description": "The asset.",
+                      "pattern": "^med_[0-9a-f]{32}$",
+                      "type": "string"
+                    },
+                    "kind": {
+                      "const": "media",
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "kind",
+                    "id"
+                  ],
+                  "type": "object"
+                },
+                {
+                  "description": "A sequence.",
+                  "properties": {
+                    "id": {
+                      "description": "The sequence.",
+                      "pattern": "^seq_[0-9a-f]{32}$",
+                      "type": "string"
+                    },
+                    "kind": {
+                      "const": "sequence",
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "kind",
+                    "id"
+                  ],
+                  "type": "object"
+                }
+              ]
+            },
+            "type": "array"
+          },
+          "zoom": {
+            "description": "Timeline zoom in pixels per second.",
+            "format": "double",
+            "type": "number"
+          }
+        },
+        "required": [
+          "playhead",
+          "zoom",
+          "scroll",
+          "selection",
+          "panel_layout",
+          "preview_quality",
+          "master_gain"
+        ],
+        "title": "UiState",
+        "type": "object"
+      },
+      "scope": "any",
+      "secret_fields": [],
+      "summary": "Update the UI view state (partial merge; not undoable)",
+      "undoable": false,
+      "view": true
+    },
+    {
+      "annotations": {
+        "destructiveHint": false,
+        "idempotentHint": true,
+        "openWorldHint": false,
+        "readOnlyHint": false
+      },
+      "input_schema": {
+        "additionalProperties": false,
+        "description": "Moves the playhead.",
+        "properties": {
+          "at": {
+            "anyOf": [
+              {
+                "maximum": 9007199254740991,
+                "minimum": -9007199254740991,
+                "type": "integer"
+              },
+              {
+                "pattern": "^-?[0-9]+(\\.[0-9]+)?s$|^-?[0-9]+$|^f:[0-9]+$|^[0-9]+[:;][0-9]+[:;][0-9]+[:;][0-9]+$",
+                "type": "string"
+              }
+            ],
+            "description": "New playhead, in flicks or seconds text; `>= 0`."
+          }
+        },
+        "required": [
+          "at"
+        ],
+        "title": "ViewSetPlayhead",
+        "type": "object"
+      },
+      "kind": "engine",
+      "mcp": "catalog",
+      "mcp_tool": "view_set_playhead",
+      "name": "view.set_playhead",
+      "namespace": "view",
+      "output_schema": {
+        "additionalProperties": false,
+        "description": "The UI view state of a project (arch §5.1). Persisted in `.cutweave/ui-state.json`.",
+        "properties": {
+          "master_gain": {
+            "description": "Master output gain (linear, `0..=4`, 1 = unity).",
+            "format": "double",
+            "type": "number"
+          },
+          "panel_layout": {
+            "description": "Dock/panel layout. Opaque to the engine (owned by the UI); `null` until the UI sets it."
+          },
+          "playhead": {
+            "description": "Playhead position on the timeline, `>= 0`.",
+            "maximum": 9007199254740991,
+            "minimum": -9007199254740991,
+            "type": "integer"
+          },
+          "preview_quality": {
+            "description": "Preview resolution.",
+            "oneOf": [
+              {
+                "const": "full",
+                "description": "Full resolution.",
+                "type": "string"
+              },
+              {
+                "const": "half",
+                "description": "Half resolution.",
+                "type": "string"
+              },
+              {
+                "const": "quarter",
+                "description": "Quarter resolution.",
+                "type": "string"
+              }
+            ]
+          },
+          "scroll": {
+            "additionalProperties": false,
+            "description": "Timeline scroll offset.",
+            "properties": {
+              "x": {
+                "description": "Horizontal offset, `>= 0`.",
+                "format": "double",
+                "type": "number"
+              },
+              "y": {
+                "description": "Vertical offset, `>= 0`.",
+                "format": "double",
+                "type": "number"
+              }
+            },
+            "required": [
+              "x",
+              "y"
+            ],
+            "type": "object"
+          },
+          "selection": {
+            "description": "Selected entities, in selection order, without duplicates. Every ID existed when it was\nselected; IDs that no longer exist are dropped.",
+            "items": {
+              "description": "One selected entity, by ID (never by index).",
+              "oneOf": [
+                {
+                  "description": "A timeline item.",
+                  "properties": {
+                    "id": {
+                      "description": "The item.",
+                      "pattern": "^itm_[0-9a-f]{32}$",
+                      "type": "string"
+                    },
+                    "kind": {
+                      "const": "item",
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "kind",
+                    "id"
+                  ],
+                  "type": "object"
+                },
+                {
+                  "description": "A track.",
+                  "properties": {
+                    "id": {
+                      "description": "The track.",
+                      "pattern": "^trk_[0-9a-f]{32}$",
+                      "type": "string"
+                    },
+                    "kind": {
+                      "const": "track",
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "kind",
+                    "id"
+                  ],
+                  "type": "object"
+                },
+                {
+                  "description": "A media asset.",
+                  "properties": {
+                    "id": {
+                      "description": "The asset.",
+                      "pattern": "^med_[0-9a-f]{32}$",
+                      "type": "string"
+                    },
+                    "kind": {
+                      "const": "media",
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "kind",
+                    "id"
+                  ],
+                  "type": "object"
+                },
+                {
+                  "description": "A sequence.",
+                  "properties": {
+                    "id": {
+                      "description": "The sequence.",
+                      "pattern": "^seq_[0-9a-f]{32}$",
+                      "type": "string"
+                    },
+                    "kind": {
+                      "const": "sequence",
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "kind",
+                    "id"
+                  ],
+                  "type": "object"
+                }
+              ]
+            },
+            "type": "array"
+          },
+          "zoom": {
+            "description": "Timeline zoom in pixels per second.",
+            "format": "double",
+            "type": "number"
+          }
+        },
+        "required": [
+          "playhead",
+          "zoom",
+          "scroll",
+          "selection",
+          "panel_layout",
+          "preview_quality",
+          "master_gain"
+        ],
+        "title": "UiState",
+        "type": "object"
+      },
+      "scope": "any",
+      "secret_fields": [],
+      "summary": "Move the playhead",
+      "undoable": false,
+      "view": true
+    },
+    {
+      "annotations": {
+        "destructiveHint": false,
+        "idempotentHint": true,
+        "openWorldHint": false,
+        "readOnlyHint": false
+      },
+      "input_schema": {
+        "additionalProperties": false,
+        "description": "Sets the timeline zoom.",
+        "properties": {
+          "zoom": {
+            "description": "Pixels per second, `0.001..=100000`.",
+            "format": "double",
+            "type": "number"
+          }
+        },
+        "required": [
+          "zoom"
+        ],
+        "title": "ViewSetZoom",
+        "type": "object"
+      },
+      "kind": "engine",
+      "mcp": "catalog",
+      "mcp_tool": "view_set_zoom",
+      "name": "view.set_zoom",
+      "namespace": "view",
+      "output_schema": {
+        "additionalProperties": false,
+        "description": "The UI view state of a project (arch §5.1). Persisted in `.cutweave/ui-state.json`.",
+        "properties": {
+          "master_gain": {
+            "description": "Master output gain (linear, `0..=4`, 1 = unity).",
+            "format": "double",
+            "type": "number"
+          },
+          "panel_layout": {
+            "description": "Dock/panel layout. Opaque to the engine (owned by the UI); `null` until the UI sets it."
+          },
+          "playhead": {
+            "description": "Playhead position on the timeline, `>= 0`.",
+            "maximum": 9007199254740991,
+            "minimum": -9007199254740991,
+            "type": "integer"
+          },
+          "preview_quality": {
+            "description": "Preview resolution.",
+            "oneOf": [
+              {
+                "const": "full",
+                "description": "Full resolution.",
+                "type": "string"
+              },
+              {
+                "const": "half",
+                "description": "Half resolution.",
+                "type": "string"
+              },
+              {
+                "const": "quarter",
+                "description": "Quarter resolution.",
+                "type": "string"
+              }
+            ]
+          },
+          "scroll": {
+            "additionalProperties": false,
+            "description": "Timeline scroll offset.",
+            "properties": {
+              "x": {
+                "description": "Horizontal offset, `>= 0`.",
+                "format": "double",
+                "type": "number"
+              },
+              "y": {
+                "description": "Vertical offset, `>= 0`.",
+                "format": "double",
+                "type": "number"
+              }
+            },
+            "required": [
+              "x",
+              "y"
+            ],
+            "type": "object"
+          },
+          "selection": {
+            "description": "Selected entities, in selection order, without duplicates. Every ID existed when it was\nselected; IDs that no longer exist are dropped.",
+            "items": {
+              "description": "One selected entity, by ID (never by index).",
+              "oneOf": [
+                {
+                  "description": "A timeline item.",
+                  "properties": {
+                    "id": {
+                      "description": "The item.",
+                      "pattern": "^itm_[0-9a-f]{32}$",
+                      "type": "string"
+                    },
+                    "kind": {
+                      "const": "item",
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "kind",
+                    "id"
+                  ],
+                  "type": "object"
+                },
+                {
+                  "description": "A track.",
+                  "properties": {
+                    "id": {
+                      "description": "The track.",
+                      "pattern": "^trk_[0-9a-f]{32}$",
+                      "type": "string"
+                    },
+                    "kind": {
+                      "const": "track",
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "kind",
+                    "id"
+                  ],
+                  "type": "object"
+                },
+                {
+                  "description": "A media asset.",
+                  "properties": {
+                    "id": {
+                      "description": "The asset.",
+                      "pattern": "^med_[0-9a-f]{32}$",
+                      "type": "string"
+                    },
+                    "kind": {
+                      "const": "media",
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "kind",
+                    "id"
+                  ],
+                  "type": "object"
+                },
+                {
+                  "description": "A sequence.",
+                  "properties": {
+                    "id": {
+                      "description": "The sequence.",
+                      "pattern": "^seq_[0-9a-f]{32}$",
+                      "type": "string"
+                    },
+                    "kind": {
+                      "const": "sequence",
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "kind",
+                    "id"
+                  ],
+                  "type": "object"
+                }
+              ]
+            },
+            "type": "array"
+          },
+          "zoom": {
+            "description": "Timeline zoom in pixels per second.",
+            "format": "double",
+            "type": "number"
+          }
+        },
+        "required": [
+          "playhead",
+          "zoom",
+          "scroll",
+          "selection",
+          "panel_layout",
+          "preview_quality",
+          "master_gain"
+        ],
+        "title": "UiState",
+        "type": "object"
+      },
+      "scope": "any",
+      "secret_fields": [],
+      "summary": "Set the timeline zoom (pixels per second)",
+      "undoable": false,
+      "view": true
+    }
+  ],
+  "error_codes": [
+    {
+      "code": "not_found",
+      "summary": "An ID or command name does not exist"
+    },
+    {
+      "code": "locked",
+      "summary": "The target is locked (a locked track, or soft-locked by another transaction)"
+    },
+    {
+      "code": "conflict",
+      "summary": "Stale revision, reused request_id, or a state the request cannot be applied to"
+    },
+    {
+      "code": "invalid",
+      "summary": "A param failed schema or semantic validation; the error carries a JSON Pointer"
+    },
+    {
+      "code": "forbidden",
+      "summary": "The caller's credential lacks the scope the command needs"
+    },
+    {
+      "code": "unsupported",
+      "summary": "A valid request this version cannot do"
+    },
+    {
+      "code": "internal",
+      "summary": "A bug or panic in the engine"
+    }
+  ],
+  "format": 1,
+  "json_schema_dialect": "https://json-schema.org/draft/2020-12/schema"
+}

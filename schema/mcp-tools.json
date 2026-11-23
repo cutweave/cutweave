@@ -1,0 +1,138 @@
+{
+  "format": 1,
+  "naming": "tool name = command name with '.' replaced by '_'",
+  "tools": [
+    {
+      "annotations": {
+        "destructiveHint": false,
+        "idempotentHint": false,
+        "openWorldHint": false,
+        "readOnlyHint": false
+      },
+      "command": "clip.split",
+      "description": "Split a clip (and its linked partners) at a timeline time",
+      "kind": "command",
+      "name": "clip_split"
+    },
+    {
+      "annotations": {
+        "destructiveHint": false,
+        "idempotentHint": true,
+        "openWorldHint": false,
+        "readOnlyHint": false
+      },
+      "command": "clip.trim",
+      "description": "Trim the start or end edge of a clip (linked partners follow; no ripple)",
+      "kind": "command",
+      "name": "clip_trim"
+    },
+    {
+      "annotations": {
+        "destructiveHint": false,
+        "idempotentHint": false,
+        "openWorldHint": false,
+        "readOnlyHint": false
+      },
+      "command": "edit.undo",
+      "description": "Undo your last change, or another actor's (`actor`; `*` = anyone's latest)",
+      "kind": "engine",
+      "name": "edit_undo"
+    },
+    {
+      "annotations": {
+        "destructiveHint": true,
+        "idempotentHint": false,
+        "openWorldHint": false,
+        "readOnlyHint": false
+      },
+      "command": "item.delete",
+      "description": "Delete items and their linked partners (no ripple; fails if a track is locked)",
+      "kind": "command",
+      "name": "item_delete"
+    },
+    {
+      "annotations": {
+        "destructiveHint": false,
+        "idempotentHint": true,
+        "openWorldHint": false,
+        "readOnlyHint": false
+      },
+      "command": "item.move",
+      "description": "Move an item in time and/or to another track (linked partners follow)",
+      "kind": "command",
+      "name": "item_move"
+    },
+    {
+      "annotations": {
+        "destructiveHint": false,
+        "idempotentHint": true,
+        "openWorldHint": false,
+        "readOnlyHint": false
+      },
+      "command": "item.set_props",
+      "description": "Set an item's name, enabled, opacity, audio_gain or transform (partial)",
+      "kind": "command",
+      "name": "item_set_props"
+    },
+    {
+      "annotations": {
+        "destructiveHint": false,
+        "idempotentHint": true,
+        "openWorldHint": false,
+        "readOnlyHint": false
+      },
+      "command": "media.import",
+      "description": "Import media files; probes synchronously and returns the media ids",
+      "kind": "engine",
+      "name": "media_import"
+    },
+    {
+      "annotations": {
+        "destructiveHint": false,
+        "idempotentHint": true,
+        "openWorldHint": false,
+        "readOnlyHint": true
+      },
+      "command": "media.list",
+      "description": "List the project's media (paged, ordered by id)",
+      "kind": "query",
+      "name": "media_list"
+    },
+    {
+      "annotations": {
+        "destructiveHint": false,
+        "idempotentHint": true,
+        "openWorldHint": false,
+        "readOnlyHint": true
+      },
+      "command": "project.info",
+      "description": "Get project name, default format and a summary of its sequences",
+      "kind": "query",
+      "name": "project_info"
+    },
+    {
+      "annotations": {
+        "destructiveHint": false,
+        "idempotentHint": true,
+        "openWorldHint": false,
+        "readOnlyHint": true
+      },
+      "command": "timeline.get",
+      "description": "Get a sequence: summary (depth 0), tracks (1) or tracks with items (2)",
+      "kind": "query",
+      "name": "timeline_get"
+    },
+    {
+      "annotations": {
+        "destructiveHint": false,
+        "idempotentHint": false,
+        "openWorldHint": false,
+        "readOnlyHint": false
+      },
+      "command": "timeline.insert",
+      "description": "Insert a media clip at a time on a track (adds linked audio for video with sound)",
+      "kind": "command",
+      "name": "timeline_insert"
+    }
+  ]
+}

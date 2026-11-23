@@ -193,7 +193,72 @@ pub enum DocEvent {
     TxClosed(TxEnded),
 }
 
+/// One entry of the event catalog (`schema/events.json`, WP-1N.01).
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize)]
+pub struct EventInfo {
+    /// The wire name (the `event` tag).
+    pub name: &'static str,
+    /// What it means.
+    pub summary: &'static str,
+    /// The Rust payload type.
+    pub payload: &'static str,
+}
+
+/// Every event the document actor broadcasts today, sorted by name. Later work packages (event
+/// bus, view events) append their events here; [`DocEvent::name`] keeps this list honest.
+pub const EVENT_CATALOG: &[EventInfo] = &[
+    EventInfo {
+        name: "doc.command_panicked",
+        summary: "A command panicked; its transaction was rolled back",
+        payload: "CommandPanicked",
+    },
+    EventInfo {
+        name: "doc.patched",
+        summary: "The live document changed; apply `ops` to the document at `prev_rev`",
+        payload: "DocPatched",
+    },
+    EventInfo {
+        name: "doc.reset",
+        summary: "The document changed in a way ops cannot express; resync from a snapshot",
+        payload: "DocReset",
+    },
+    EventInfo {
+        name: "edit.history_changed",
+        summary: "An actor's undo/redo stacks changed",
+        payload: "HistoryChanged",
+    },
+    EventInfo {
+        name: "tx.closed",
+        summary: "A transaction ended and released its soft locks",
+        payload: "TxEnded",
+    },
+    EventInfo {
+        name: "tx.locked",
+        summary: "A gesture or proposal soft-locked more items",
+        payload: "TxActivity",
+    },
+    EventInfo {
+        name: "tx.opened",
+        summary: "A transaction was opened (no items locked yet)",
+        payload: "TxActivity",
+    },
+];
+
 impl DocEvent {
+    /// The wire name (`doc.patched`, ...): the `event` tag.
+    #[must_use]
+    pub fn name(&self) -> &'static str {
+        match self {
+            DocEvent::Patched(_) => "doc.patched",
+            DocEvent::Reset(_) => "doc.reset",
+            DocEvent::CommandPanicked(_) => "doc.command_panicked",
+            DocEvent::History(_) => "edit.history_changed",
+            DocEvent::TxOpened(_) => "tx.opened",
+            DocEvent::TxLocked(_) => "tx.locked",
+            DocEvent::TxClosed(_) => "tx.closed",
+        }
+    }
+
     /// The live revision this event leads to, for events that change the document.
     #[must_use]
     pub fn rev(&self) -> Option<Rev> {
@@ -257,6 +322,22 @@ mod tests {
     use serde_json::json;
 
     use super::*;
+
+    #[test]
+    fn catalog_is_sorted_unique_and_matches_the_wire_tags() {
+        let names: Vec<_> = EVENT_CATALOG.iter().map(|e| e.name).collect();
+        let mut sorted = names.clone();
+        sorted.sort_unstable();
+        sorted.dedup();
+        assert_eq!(names, sorted);
+        let reset = DocEvent::Reset(DocReset {
+            rev: Rev(2),
+            prev_rev: Rev(1),
+            committed_rev: Rev(2),
+        });
+        assert_eq!(serde_json::to_value(&reset).unwrap()["event"], reset.name());
+        assert!(names.contains(&reset.name()));
+    }
 
     #[test]
     fn events_serialize_with_their_wire_names() {
