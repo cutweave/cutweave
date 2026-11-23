@@ -36,11 +36,11 @@ export function validateImportPaths(candidates: readonly unknown[]): string[] {
 }
 
 const FAILURE_REASON: Readonly<Record<ImportFailureCode, TKey>> = {
-  not_found: "media.import.reason.not_found",
-  unsupported: "media.import.reason.unsupported",
-  timed_out: "media.import.reason.timed_out",
-  io: "media.import.reason.io",
-  invalid: "media.import.reason.invalid",
+  not_found: "mediaBin.import.reason.notFound",
+  unsupported: "mediaBin.import.reason.unsupported",
+  timed_out: "mediaBin.import.reason.timedOut",
+  io: "mediaBin.import.reason.io",
+  invalid: "mediaBin.import.reason.invalid",
 };
 
 const baseName = (path: string): string => path.split(/[\\/]/).pop() || path;
@@ -82,7 +82,7 @@ export async function importMedia(
 
   const progress = toasts.getState().push({
     tone: "info",
-    title: t(paths.length === 1 ? "media.import.workingOne" : "media.import.workingMany", {
+    title: t(paths.length === 1 ? "mediaBin.import.workingOne" : "mediaBin.import.workingMany", {
       count: String(paths.length),
     }),
   });
@@ -102,7 +102,7 @@ export async function importMedia(
     toasts.getState().dismiss(progress);
     toasts.getState().push({
       tone: "danger",
-      title: t("media.import.callFailed"),
+      title: t("mediaBin.import.callFailed"),
       message: error instanceof RpcError ? error.message : String(error),
     });
     return null;
@@ -112,7 +112,7 @@ export async function importMedia(
   for (const failure of failed) {
     toasts.getState().push({
       tone: "danger",
-      title: t("media.import.failedTitle", { name: baseName(failure.path) }),
+      title: t("mediaBin.import.failedTitle", { name: baseName(failure.path) }),
       message: describeImportFailure(failure, t),
     });
   }
@@ -121,20 +121,20 @@ export async function importMedia(
     if (added > 0) {
       parts.push(
         added === 1
-          ? t("media.import.addedOne")
-          : t("media.import.addedMany", { count: String(added) }),
+          ? t("mediaBin.import.addedOne")
+          : t("mediaBin.import.addedMany", { count: String(added) }),
       );
     }
     if (duplicates > 0) {
       parts.push(
         duplicates === 1
-          ? t("media.import.duplicateOne")
-          : t("media.import.duplicateMany", { count: String(duplicates) }),
+          ? t("mediaBin.import.duplicateOne")
+          : t("mediaBin.import.duplicateMany", { count: String(duplicates) }),
       );
     }
     toasts
       .getState()
-      .push({ tone: "success", title: t("media.import.doneTitle"), message: parts.join(" ") });
+      .push({ tone: "success", title: t("mediaBin.import.doneTitle"), message: parts.join(" ") });
   }
   return { added, duplicates, failed };
 }

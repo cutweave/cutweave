@@ -24,6 +24,7 @@ import { useTranslation } from "react-i18next";
 import { useStore } from "zustand";
 import { createStore } from "zustand/vanilla";
 import { engineStore, useEngineStore } from "../engine/engineStore.ts";
+import type { TKey } from "../i18n/index.ts";
 import {
   formatDuration,
   type MediaCard,
@@ -55,6 +56,13 @@ const KIND_ICON: Record<MediaCard["kind"], IconName> = {
   audio: "audio-waveform",
   image: "image",
   sequence_ref: "layers",
+};
+
+const KIND_KEY: Record<MediaCard["kind"], TKey> = {
+  video: "mediaBin.kind.video",
+  audio: "mediaBin.kind.audio",
+  image: "mediaBin.kind.image",
+  sequence_ref: "mediaBin.kind.sequenceRef",
 };
 
 /** Cards drawn beyond the visible rows, so scrolling never shows a gap. */
@@ -129,7 +137,7 @@ function CardView({
   const drag = dragOf(card);
 
   const size = card.width !== null && card.height !== null ? `${card.width}×${card.height}` : null;
-  const meta = [size, card.fps === null ? null : t("media.card.fps", { fps: String(card.fps) })]
+  const meta = [size, card.fps === null ? null : t("mediaBin.card.fps", { fps: String(card.fps) })]
     .filter((part) => part !== null)
     .join(" · ");
 
@@ -178,18 +186,18 @@ function CardView({
       <span className="cw-media__body">
         <span className="cw-media__name body-strong">{card.name}</span>
         <span className="cw-media__meta caption">
-          <span>{t(`media.kind.${card.kind}`)}</span>
+          <span>{t(KIND_KEY[card.kind])}</span>
           {meta === "" ? null : <span>{meta}</span>}
           {card.codec === null ? null : <span className="cw-media__badge">{card.codec}</span>}
         </span>
         {card.broken || failure !== null || analyzing ? (
           <span className="cw-media__status" title={failure ?? undefined}>
             {card.broken ? (
-              <StatusChip tone="danger">{t("media.status.broken")}</StatusChip>
+              <StatusChip tone="danger">{t("mediaBin.status.broken")}</StatusChip>
             ) : failure !== null ? (
-              <StatusChip tone="warning">{t("media.status.analysisFailed")}</StatusChip>
+              <StatusChip tone="warning">{t("mediaBin.status.analysisFailed")}</StatusChip>
             ) : (
-              <StatusChip tone="neutral">{t("media.status.analyzing")}</StatusChip>
+              <StatusChip tone="neutral">{t("mediaBin.status.analyzing")}</StatusChip>
             )}
           </span>
         ) : null}
@@ -429,17 +437,19 @@ export function MediaPanel() {
     setFileOver(false);
     const paths = importer.pathsOf(Array.from(e.dataTransfer.files));
     if (paths === null) {
-      toastStore.getState().push({ tone: "info", title: tr.current("media.import.desktopOnly") });
+      toastStore
+        .getState()
+        .push({ tone: "info", title: tr.current("mediaBin.import.desktopOnly") });
       return;
     }
     void importer.importPaths(paths);
   };
 
-  const importLabel = t("media.importButton");
+  const importLabel = t("mediaBin.importButton");
   return (
     <section
       className="cw-media"
-      aria-label={t("media.panelLabel")}
+      aria-label={t("mediaBin.panelLabel")}
       data-drop-active={fileOver ? "true" : undefined}
       onDragOver={onDragOver}
       onDragEnter={onDragOver}
@@ -458,17 +468,17 @@ export function MediaPanel() {
         <IconButton
           size="sm"
           icon="trash-2"
-          label={t("media.remove.button")}
+          label={t("mediaBin.remove.button")}
           disabled={selectedCard === undefined}
           onClick={() => requestRemove(selectedCard)}
         />
         <SegmentedControl
           className="cw-media__layout"
-          aria-label={t("media.layout.label")}
+          aria-label={t("mediaBin.layout.label")}
           value={layout}
           options={[
-            { value: "grid", label: t("media.layout.grid") },
-            { value: "list", label: t("media.layout.list") },
+            { value: "grid", label: t("mediaBin.layout.grid") },
+            { value: "list", label: t("mediaBin.layout.list") },
           ]}
           onChange={(next) => layoutStore.getState().set(next)}
         />
@@ -486,7 +496,7 @@ export function MediaPanel() {
           <div
             ref={grid}
             role="listbox"
-            aria-label={t("media.listLabel")}
+            aria-label={t("mediaBin.listLabel")}
             data-layout={layout}
             className="cw-media__grid"
             style={{ paddingTop: win.padTop, paddingBottom: win.padBottom }}
@@ -518,8 +528,8 @@ export function MediaPanel() {
       {fileOver ? (
         <div className="cw-media__drop" aria-hidden="true">
           <Icon name="upload" size="lg" />
-          <span className="body-strong">{t("media.drop.title")}</span>
-          <span className="body">{t("media.drop.body")}</span>
+          <span className="body-strong">{t("mediaBin.drop.title")}</span>
+          <span className="body">{t("mediaBin.drop.body")}</span>
         </div>
       ) : null}
       <Dialog
@@ -527,26 +537,26 @@ export function MediaPanel() {
         onOpenChange={(open) => {
           if (!open) setConfirming(null);
         }}
-        title={t("media.remove.confirmTitle", { name: confirming?.name ?? "" })}
-        description={t("media.remove.confirmBody", {
+        title={t("mediaBin.remove.confirmTitle", { name: confirming?.name ?? "" })}
+        description={t("mediaBin.remove.confirmBody", {
           count: String(usage.get(confirming?.id ?? "") ?? 0),
         })}
         footer={
           <>
             <Button variant="ghost" size="lg" onClick={() => setConfirming(null)}>
-              {t("media.remove.cancel")}
+              {t("mediaBin.remove.cancel")}
             </Button>
             <Button
               variant="danger"
               size="lg"
               onClick={() => confirming !== null && void removing(confirming)}
             >
-              {t("media.remove.confirm")}
+              {t("mediaBin.remove.confirm")}
             </Button>
           </>
         }
       >
-        <p className="body">{t("media.remove.confirmNote")}</p>
+        <p className="body">{t("mediaBin.remove.confirmNote")}</p>
       </Dialog>
     </section>
   );

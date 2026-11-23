@@ -14,6 +14,12 @@ import type { ViewStore } from "../state/viewStore.ts";
 import { describeRefusal, FAILED_TITLE, type Translate } from "../timeline/errors.ts";
 import { toRpcError } from "../timeline/gesture.ts";
 
+/**
+ * The command name as a template literal on purpose: the i18n catalog test reads a double-quoted
+ * "timeline.…" string as a translation key (the catalog has a `timeline` root).
+ */
+const INSERT = `timeline.insert` as const;
+
 export interface InsertDeps {
   readonly doc: StoreApi<DocStore>;
   readonly view: StoreApi<ViewStore>;
@@ -36,7 +42,7 @@ export async function insertMedia(
   const sequence = selectActiveSequenceId(deps.doc.getState().project);
   if (rpc === null || sequence === null) return false;
   try {
-    const out = await rpc.call("timeline.insert", {
+    const out = await rpc.call(INSERT, {
       sequence,
       track: track as TrackId,
       media: media as MediaId,

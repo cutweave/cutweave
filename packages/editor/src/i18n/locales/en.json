@@ -86,7 +86,7 @@
       }
     }
   },
-  "media": {
+  "mediaBin": {
     "panelLabel": "Media",
     "listLabel": "Media files",
     "importButton": "Import",
@@ -94,7 +94,7 @@
       "video": "Video",
       "audio": "Audio",
       "image": "Image",
-      "sequence_ref": "Sequence"
+      "sequenceRef": "Sequence"
     },
     "card": {
       "fps": "{{fps}} fps"
@@ -125,11 +125,11 @@
       "failedTitle": "{{name}} not imported",
       "callFailed": "Import failed",
       "reason": {
-        "not_found": "The file is missing. Check that it still exists and try again.",
         "unsupported": "This file has no video or audio Cutweave can play. Try another file.",
-        "timed_out": "Reading the file took too long. Try again, or copy it to a local drive.",
         "io": "The file could not be read. Check its permissions and try again.",
-        "invalid": "The file's details are not usable. Try exporting it again from its source."
+        "invalid": "The file's details are not usable. Try exporting it again from its source.",
+        "notFound": "The file is missing. Check that it still exists and try again.",
+        "timedOut": "Reading the file took too long. Try again, or copy it to a local drive."
       }
     },
     "remove": {

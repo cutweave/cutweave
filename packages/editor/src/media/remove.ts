@@ -24,7 +24,7 @@ export async function removeMedia(deps: RemoveDeps, id: MediaId, name: string): 
   } catch (error) {
     deps.toasts.getState().push({
       tone: "danger",
-      title: deps.t("media.remove.failedTitle", { name }),
+      title: deps.t("mediaBin.remove.failedTitle", { name }),
       message: error instanceof RpcError ? error.message : String(error),
     });
     return false;

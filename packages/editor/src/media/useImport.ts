@@ -49,7 +49,7 @@ export function useImport(): UseImport {
     if (bridge.pickMediaFiles === undefined) {
       toastStore
         .getState()
-        .push({ tone: "info", title: translate.current("media.import.desktopOnly") });
+        .push({ tone: "info", title: translate.current("mediaBin.import.desktopOnly") });
       return null;
     }
     const answer = await bridge.pickMediaFiles().catch(() => null);

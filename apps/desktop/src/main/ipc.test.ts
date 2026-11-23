@@ -19,7 +19,7 @@ const handlers = (): InvokeHandlers => ({
   "engine:getConnection": () => null,
   "engine:getStatus": () => ({ state: "unavailable" }),
   "dialog:openProjectFolder": () => null,
-  "dialog:pickMediaFiles": () => null,
+  "dialog:pickMediaFiles": vi.fn(() => null),
   "shell:showItemInFolder": vi.fn(),
   "shell:openExternal": vi.fn(async () => undefined),
 });
