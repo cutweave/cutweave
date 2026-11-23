@@ -9,6 +9,8 @@
 
 pub mod creds;
 pub mod launch;
+/// The MCP server mounted at `/mcp` (WP-1J.01).
+pub mod mcp;
 pub mod runfile;
 mod server;
 

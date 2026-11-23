@@ -27,10 +27,22 @@ serde = { version = "1", features = ["derive"] }
 serde_json = { version = "1", features = ["preserve_order"] }
 thiserror = "2"
 tracing = { version = "0.1.44", default-features = false, features = ["std"] }
+# WP-1J.01: the MCP server (`/mcp`, arch §14, ADR-0009). The official Rust SDK, pinned exactly
+# (3.x churns between minors) at the version and feature set Spike S5 validated against both
+# spec revisions (2025-11-25 and 2026-07-28). Streamable HTTP server only; stdio is WP-1J.03.
+rmcp = { version = "=3.11.0", default-features = false, features = ["server", "transport-streamable-http-server"] }
 
 [dev-dependencies]
 tempfile = "3.27.0"
 tokio = { version = "=1.54.1", features = ["rt-multi-thread", "macros", "net", "io-util", "process", "time"] }
+# WP-1J.01 MCP tests. The engine they mount `/mcp` on (a dev-only cycle: cutweave-engine depends
+# on this crate, so the server reaches it through `mcp::Dispatch`), the fake prober for imports,
+# rmcp's own Streamable HTTP client (reqwest, no TLS: loopback only) and the `tools/list` snapshot.
+cutweave-engine = { path = "../cutweave-engine" }
+cutweave-jobs = { path = "../cutweave-jobs" }
+cutweave-ops = { path = "../cutweave-ops" }
+rmcp = { version = "=3.11.0", default-features = false, features = ["server", "transport-streamable-http-server", "client", "transport-streamable-http-client-reqwest"] }
+insta = { workspace = true }
 
 [lints]
 workspace = true
