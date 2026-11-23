@@ -231,6 +231,7 @@ Provenance { origin(import|record|ai), provider?, model?, prompt?, seed?, params
 
 - **`TimeInput` vs `Time`:** `TimeInput` (command params) resolves timecode and `f:N` strings in the owning sequence's context. `Time` (stored values) accepts only flicks or `"62.5s"`.
 - **IDs:** IDs are `<prefix>_<32 hex>` (UUIDv7). Linked groups use `grp_`. Generators sit behind `IdGen`: `Uuid7Gen` in production, `SeededGen` (SplitMix64 plus a counter timestamp) for `--deterministic-ids`.
+- **Deterministic IDs, decided in WP-1B.08:** one entity stream per engine (`SeededGen(seed)`, counter in the timestamp field) plus separate streams for request ids (`seed ^ REQUESTS`) and job ids (`seed ^ JOBS`). The streams continue across project swaps in one engine and, through the journal, across crash recovery. **Reopen rule:** a new engine that opens a saved project resumes the entity stream *past the highest counter that the document's own IDs show for this seed* (`Project::seeded_id_high_water`), so it never mints an ID the document holds; IDs from other seeds or real UUIDv7s are ignored. The scan depends only on the document, so the run stays reproducible. Deterministic mode also freezes the engine clock at the Unix epoch, which stamps `meta.created` (`1970-01-01T00:00:00Z`) and every request timestamp, so identical scripts save byte-identical `.cutweave` files (harness: `cutweave_engine::determinism`). Gui engines refuse the mode unless `--i-know-this-is-a-test` is passed.
 - **Track storage:** sequences store `tracks` keyed by ID plus an explicit `track_order`. Items carry no `track` back-reference; it is derived.
 - **Strict documents:** every document field is required except `Option`s, and new fields arrive only through migrations. Unknown fields are kept in a flattened `extra` map, so newer files round-trip read-only.
 - **Transform units:** normalized to the canvas and the item. WP-1F.02 must confirm this against the compositor.
@@ -343,6 +344,15 @@ All surfaces live on **one local server per engine** (axum on `127.0.0.1`, rando
 - **Plugin credentials** are issued in-process per plugin: actor `plugin:<id>`, limited to the permissions the plugin declares.
 - **Network hygiene:** Host and Origin headers are checked (DNS-rebinding defense). The server binds to localhost only, and remote access is out of scope for v1.
 - **Stable port:** Electron main picks the port at app launch and passes `--port` on every engine (re)start, so the renderer's CSP stays valid. If the bind fails, main picks a new port and reloads the renderer.
+- **Engine root and launch protocol (decided in WP-1I.04):** the protocol is specified in [launch-protocol.md](reference/launch-protocol.md).
+  - `Engine::start(EngineConfig)` wires the doc actor, project store, journal, autosave, job manager and API server; media, render, audio and playback attach later through the `Subsystems` trait (WP-1I.05).
+  - Surfaces mount on an in-process dispatch API: `EngineHandle::connect(&Credential)` gives each client connection its own never-reused connection ID, and dropping it rolls back that connection's open transaction. Events reach clients through one `EngineEvent` fan-out.
+  - In `Gui` mode the UI credential is the first stdin line; the engine prints a ready line (no tokens) or a JSON error line and exits with 0 clean, 1 internal, 2 usage, 10 project locked, 11 GPU init, 12 port bind, 13 handshake.
+  - **Path policy:** the UI credential is unrestricted. Every other credential can only open, save or import under the `--allow-root` folders, the start project's folder and the open project's folder (symlinks resolved, `..` refused); otherwise the call fails with `Invalid`.
+- **JSON-RPC wire (decided in WP-1I.02):** specified in [rpc.md](reference/rpc.md).
+  - Methods are registry names plus `rpc.hello`, `rpc.subscribe`, `rpc.unsubscribe` and `project.snapshot`; events arrive as notifications named after the event. The WebSocket carries the token as subprotocol `cutweave.token.<t>`.
+  - Results carry `_meta{rev, committed_rev, request_id?, tx_id?}`; errors are `{code, message, data}` with `data` = the `CmdError` wire form and fixed numeric codes (-32001 not_found, -32002 locked, -32003 conflict, -32004 forbidden, -32005 unsupported, plus the JSON-RPC standard codes).
+  - Mutating calls need `_meta.request_id` (except `view.*`); a connection's mutations run in arrival order and reads may overtake them. Per-connection event queues are bounded: overflow closes the socket with 4001 `resync_required`, and clients resync by subscribing, then calling `project.snapshot`.
 
 ---
 
@@ -694,6 +704,7 @@ MyVideo/                    ← project folder (user-chosen location)
 ```
 
 - **Atomic saves:** write a temp file, fsync, rename. Autosave runs on idle and every 30 s when the document is dirty. The journal is replayed on crash recovery, and the recovery UI offers *restore / discard*.
+- **Session lifecycle (decided in WP-1I.04):** `NoProject` (an untitled in-memory document) → `Open` → `Closing`. `project.open`, `project.save`, `project.save_as`, `project.close{save?}`, `project.recover` and `project.discard_recovery` are engine commands, neither undoable nor journaled. Opening, closing, save-as from untitled and the recovery decision swap the doc actor, cancel jobs and send `doc.reset`. `project.close` saves by default when autosave is on; `Engine::shutdown` never saves.
 - **Journal (decided in WP-1C.02):**
   - Segments are `.cutweave/journal/<base-rev>.jnl`. Each record is length + JSON + CRC-32. The header names the saved document it continues (rev and SHA-256), then the requests carried over the save, then one record per committed transaction: redacted steps, patch, and the deterministic ID-generator state.
   - Every record reaches the OS before the ack, so a killed engine loses no acknowledged op. A background thread fsyncs within 50 ms, which bounds the power-loss window to about 50 ms.

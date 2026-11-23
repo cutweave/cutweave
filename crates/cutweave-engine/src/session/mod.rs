@@ -327,7 +327,8 @@ impl Session {
 
     /// An untitled document (`NoProject`).
     pub(crate) fn untitled(deps: &Deps, ids: Option<IdState>) -> Result<Session, CmdError> {
-        let doc = Project::new(UNTITLED);
+        let mut doc = Project::new(UNTITLED);
+        doc.meta.created = Some(created_stamp(&*deps.clock));
         let tracker = deps
             .seed
             .map(|s| IdTracker::resume(s, ids.unwrap_or_default()));
@@ -361,7 +362,7 @@ impl Session {
         let store: SharedStore = Arc::new(Mutex::new(store));
         let fresh = || {
             deps.seed
-                .map(|s| IdTracker::resume(s, ids.unwrap_or_default()))
+                .map(|s| IdTracker::resume(s, ids.unwrap_or_default()).past(&base))
         };
         let (running, tracker, phase) = if let Some(reason) = read_only {
             let tracker = fresh();
@@ -686,6 +687,15 @@ fn refusing(message: String) -> Box<dyn cutweave_commands::CommitSink> {
     })
 }
 
+/// `meta.created` for a new document: the engine clock as `YYYY-MM-DDTHH:MM:SSZ`. Under
+/// `--deterministic-ids` the clock is frozen, so this is `1970-01-01T00:00:00Z` and saved
+/// documents are byte-reproducible (WP-1B.08).
+fn created_stamp(clock: &dyn Clock) -> String {
+    let at = std::time::UNIX_EPOCH + std::time::Duration::from_millis(clock.now().as_millis());
+    let full = crate::logging::rfc3339(at);
+    format!("{}Z", &full[..19])
+}
+
 /// The doc actor configuration of this engine for `doc`.
 fn doc_config(deps: &Deps, tracker: Option<&IdTracker>, doc: Project) -> DocConfig {
     let config = match tracker {
@@ -706,13 +716,16 @@ fn start_editing(
     ids: Option<IdState>,
 ) -> Result<(Doc, Option<IdTracker>, Editing), CmdError> {
     let tracker = deps.seed.map(|seed| {
-        if recovered.ids.is_some() {
+        let tracker = if recovered.ids.is_some() {
             recovered.id_tracker(seed)
         } else {
             // Nothing journaled yet: continue the streams this engine already used, so a
             // saved untitled document never sees its ids minted again.
             IdTracker::resume(seed, ids.unwrap_or_default())
-        }
+        };
+        // A new engine knows nothing of what earlier ones minted: skip the ids the document
+        // already holds (WP-1B.08).
+        tracker.past(&recovered.project)
     });
     let mut journal_config = JournalConfig::new(Arc::clone(&deps.clock))
         .with_sync(deps.journal_sync)

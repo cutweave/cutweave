@@ -29,7 +29,8 @@
 |---|---|
 | `just setup` | Toolchains, pnpm install, FFmpeg bundle, git hooks, test-corpus manifest |
 | `just dev` | Engine (cargo watch) + Electron with Vite HMR, wired to a dev project |
-| `just check` | fmt, clippy `-D warnings`, Biome, `cargo nextest`, vitest, wasm32 check of wasm-safe crates, cargo-deny, schema/codegen snapshot diff. **Must pass before any PR** |
+| `just check` | fmt, clippy `-D warnings`, Biome, `cargo nextest`, vitest, wasm32 check of wasm-safe crates, cargo-deny, schema/codegen snapshot diff, Markdown links. **The full gate** |
+| `just check-affected` | The same steps restricted to what the change can affect: changed crates plus every crate that depends on them, and TS, docs and schema checks only when relevant. Shared-config changes (root `Cargo.toml`, a lockfile-only change, toolchain, `justfile`) fall back to `just check`. `--dry-run` prints the plan |
 | `just golden [--update]` | Render golden-frame projects headless and compare (update requires a human-approved PR label) |
 | `just bench [--compare main]` | Criterion + engine benchmarks against the §19 budgets |
 | `just e2e` | Playwright + Electron flows |
@@ -73,7 +74,7 @@ stateDiagram-v2
    - the Definition of Done.
 3. **Implement (worker, in its own worktree).**
    - Read the code, then write failing tests from the acceptance criteria, then implement.
-   - Run `just check` plus any WP-specific gates (golden, bench, e2e).
+   - Iterate with targeted tests; before reporting, run `just check-affected` (relative to `main`) plus any WP-specific gates (golden, bench, e2e).
    - Open the PR with evidence, and report blockers immediately rather than guessing.
 4. **Review.**
    - An independent reviewer gets the diff, the WP and the contracts, and checks with the review checklist (§7).
@@ -112,6 +113,12 @@ stateDiagram-v2
 ## 8. CI quality gates
 
 > **Actions-minutes policy (2026-11-22, product owner):** GitHub CI does **not** run on pushes to `main` or on a schedule. Before every merge, the integrator runs **`just ci-local`** (`just check` + Storybook visual regression, axe and offline fonts against this OS's baselines). The cloud matrix runs on pull requests and on **manual dispatch** at milestones and releases (`gh workflow run ci.yml`, `nightly.yml`, `ffmpeg.yml`). Agents never trigger workflows.
+
+> **Local gating policy (2026-11-23, product owner):** gates run what a change can break, not everything every time.
+> - **Workers** run `just check-affected` before reporting a WP.
+> - **Integrator, after a merge:** if `main` was an ancestor of the branch, the merged tree is identical to the one the worker gated, so nothing is rerun. Otherwise run `just check-affected` on `main`; its base is the pre-merge `main`, so it covers the branch's changes and every dependent crate built against the new `main`.
+> - **Full `just ci-local`:** once per batch of merges, before milestones and releases, and whenever `check-affected` falls back to it.
+> - Builds share compiled dependencies through `sccache` (user-level `~/.cargo/config.toml`), so fresh worktrees don't rebuild the dependency tree.
 
 | When | Gates |
 |---|---|

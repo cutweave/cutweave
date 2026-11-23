@@ -24,6 +24,7 @@ use axum::{
     middleware::{self, Next},
     response::{IntoResponse, Response},
     routing::{get, post},
+    serve::ListenerExt,
 };
 use cutweave_commands::{ActorCtx, ConnId, Scope};
 use serde_json::json;
@@ -238,6 +239,12 @@ impl ApiServer {
         let app = build_router(&shared, config.mounts, config.enable_test_routes);
 
         let (tx, mut rx) = watch::channel(false);
+        // No Nagle delay: a WebSocket writes a response and its events back to back (WP-1I.02).
+        let listener = listener.tap_io(|tcp| {
+            if let Err(error) = tcp.set_nodelay(true) {
+                tracing::debug!(%error, "cannot disable Nagle's algorithm");
+            }
+        });
         let task = tokio::spawn(async move {
             let serve = axum::serve(listener, app).with_graceful_shutdown(async move {
                 let _ = rx.wait_for(|stop| *stop).await;

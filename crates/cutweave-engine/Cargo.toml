@@ -14,6 +14,10 @@ publish = false
 name = "cutweave-engine-serve"
 path = "src/bin/cutweave-engine-serve.rs"
 
+[features]
+# `cutweave_engine::determinism`: the double-run determinism harness (WP-1B.08). Tests only; panics on failure.
+testing = []
+
 [dependencies]
 # The local server (WP-1I.01): `ApiServer`, credential classes, run-file, the handshake token
 # rules and the exit-12 contract the engine root starts and reuses (WP-1I.04).
@@ -43,6 +47,8 @@ tracing.workspace = true
 tracing-subscriber = { version = "=0.3.23", default-features = false, features = ["registry", "std"] }
 
 [dev-dependencies]
+# This crate with `testing` on, so its tests (and `cargo nextest run --workspace`) include the harness.
+cutweave-engine = { path = ".", features = ["testing"] }
 cutweave-model = { path = "../cutweave-model", features = ["testing"] }
 criterion.workspace = true
 proptest.workspace = true
