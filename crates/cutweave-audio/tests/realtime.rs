@@ -20,7 +20,8 @@ use std::sync::Arc;
 use std::time::{Duration as StdDuration, Instant};
 
 use common::{
-    RATE, Seg, factory, max_diff, offline, render_ready, sample_of, secs, segments, sine,
+    RATE, Seg, eight_sources, factory, max_diff, offline, render_ready, sample_of, secs, segments,
+    sine,
 };
 use cutweave_audio::rt_alloc::{CountingAlloc, RtSection};
 use cutweave_audio::{
@@ -34,44 +35,6 @@ static ALLOC: CountingAlloc = CountingAlloc;
 
 fn mixer(sources: &Arc<dyn SourceFactory>) -> (Mixer, MixerHandle) {
     Mixer::new(MixerConfig::new(RATE), sources.clone()).unwrap()
-}
-
-/// 8 sources on 8 tracks: native, resampled (44.1 and 96 kHz) and down-mixed (mono, stereo,
-/// 5.1), with gaps and clip changes so lanes open new voices while playing.
-fn eight_sources(seconds: f64) -> (Arc<dyn SourceFactory>, Vec<Seg>) {
-    let specs = [
-        sine(110.0, 0.05, 0.0, RATE, 1),
-        sine(220.0, 0.05, 0.1, SampleRate::HZ_44_100, 2),
-        sine(330.0, 0.05, 0.2, SampleRate::HZ_96_000, 6),
-        sine(440.0, 0.05, 0.3, SampleRate::HZ_44_100, 1),
-        sine(550.0, 0.05, 0.4, RATE, 2),
-        sine(660.0, 0.05, 0.5, SampleRate::HZ_44_100, 2),
-        sine(770.0, 0.05, 0.6, RATE, 1),
-        ToneSpec::new(
-            Tone::Impulse {
-                amplitude: 0.1,
-                period: 4800,
-            },
-            PcmFormat::new(RATE, 1),
-        ),
-    ];
-    let mut segs = Vec::new();
-    for track in 1..=8u128 {
-        // Each track: 2 s clips with a 0.25 s gap, alternating source offsets.
-        let mut t = 0.0;
-        let mut item = track * 1000;
-        while t < seconds {
-            let end = (t + 2.0).min(seconds + 1.0);
-            segs.push(
-                Seg::new(track, item, track, secs(t), secs(end))
-                    .src(secs((item % 3) as f64 * 0.37))
-                    .gains(-1.0, -2.0),
-            );
-            item += 1;
-            t = end + 0.25;
-        }
-    }
-    (factory(&specs), segs)
 }
 
 struct SinkReport {
