@@ -15,7 +15,8 @@ Cutweave is an open-source desktop video editor and agent-native video environme
 
 | Task | Command |
 |---|---|
-| Everything CI runs (do this before a PR) | `just check` |
+| Gate for your change (do this before reporting a WP) | `just check-affected` (`--dry-run` shows the plan) |
+| Everything CI runs (full gate) | `just check` |
 | One Rust crate | `cargo nextest run -p cutweave-<crate>` (doc-tests: `cargo test -p <crate> --doc`) |
 | One TS package | `pnpm --filter @cutweave/<pkg> test` |
 | Design tokens (generate / verify) | `cargo xtask tokens` / `cargo xtask tokens --check` |
@@ -40,7 +41,7 @@ Cutweave is an open-source desktop video editor and agent-native video environme
 - **No new dependency** without a justification in the PR. It must pass `cargo-deny` and the JS license check (GPL-3.0-compatible; policy in §21).
 - **No network in tests. No committing media**: the corpus is fetched (`just corpus`), goldens go in LFS.
 - **UI uses the design system only:** `packages/ui` components and `var(--token)` values from `design/tokens.json`. No literal colors, sizes or font stacks. Follow `design/README.md` (voice, states, marigold = "here", agent blue = AI/agent). Missing a value? Add a token with a usage note in the same PR.
-- **Tests first** from the acceptance criteria. Run `just check` before opening a PR.
+- **Tests first** from the acceptance criteria. Run `just check-affected` before reporting or opening a PR (it falls back to `just check` when shared config changed).
 - **Don't guess:** if the WP is ambiguous or larger than 4 agent-days, stop and report a split or a question.
 
 ## Code conventions
