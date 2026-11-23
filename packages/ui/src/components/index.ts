@@ -45,6 +45,7 @@ export {
   Tabs,
   type TabsProps,
 } from "./Tabs.tsx";
+export { TextField, type TextFieldProps } from "./TextField.tsx";
 export {
   Toast,
   type ToastAction,

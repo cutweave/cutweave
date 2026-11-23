@@ -712,6 +712,42 @@
   color: var(--text-muted);
 }
 
+/* ---------- TextField ---------- */
+.cw-field {
+  box-sizing: border-box;
+  height: var(--control-sm);
+  min-width: 0;
+  padding: 0 var(--space-2);
+  background: var(--surface-2);
+  border: var(--border-thin) solid var(--border-control);
+  border-radius: var(--radius-sm);
+  color: var(--text-primary);
+}
+.cw-field:hover {
+  background: var(--surface-3);
+}
+.cw-field:focus-visible {
+  outline: var(--border-thick) solid var(--focus-ring);
+  outline-offset: 1px;
+  border-color: var(--marigold);
+}
+.cw-field::placeholder {
+  color: var(--text-muted);
+}
+.cw-field--numeric {
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+}
+.cw-field[aria-invalid="true"] {
+  border-color: var(--danger);
+}
+.cw-field:disabled {
+  border-color: var(--border-subtle);
+  background: var(--surface-2);
+  color: var(--text-disabled);
+  cursor: not-allowed;
+}
+
 /* ---------- Progress bar ---------- */
 .cw-bar {
   height: var(--space-1);
