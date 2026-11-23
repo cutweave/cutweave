@@ -8,6 +8,7 @@
 //! work can import files and put clips on the timeline. **Nothing is decoded**: the data is
 //! made up and clearly marked (codec `"stub"`, `"stub": true` in the probe's extra fields).
 
+use std::fmt::Write as _;
 use std::fs::File;
 use std::io::{Read, Seek, SeekFrom};
 use std::path::Path;
@@ -66,8 +67,7 @@ impl MediaProbe for StubMediaBackend {
         let ext = Path::new(path)
             .extension()
             .and_then(|e| e.to_str())
-            .map(str::to_ascii_lowercase)
-            .unwrap_or_default();
+            .map_or_default(str::to_ascii_lowercase);
         let mut probe = if VIDEO.contains(&ext.as_str()) {
             video()
         } else if AUDIO.contains(&ext.as_str()) {
@@ -102,8 +102,12 @@ fn hash(file: &mut File, len: u64) -> std::io::Result<String> {
         file.by_ref().take(SAMPLE).read_to_end(&mut buf)?;
         sha.update(&buf);
     }
-    let hex: String = sha.finalize().iter().map(|b| format!("{b:02x}")).collect();
-    Ok(format!("stub-sha256:{hex}"))
+    let mut out = String::from("stub-sha256:");
+    for b in sha.finalize() {
+        // Writing to a `String` cannot fail.
+        let _ = write!(out, "{b:02x}");
+    }
+    Ok(out)
 }
 
 fn stream(index: u32, kind: StreamKind) -> StreamInfo {
@@ -180,23 +184,23 @@ mod tests {
 
     #[test]
     fn probes_by_extension_and_marks_the_data_as_stub() {
-        let (f, p) = temp("a.MP4", b"x");
-        let v = StubMediaBackend.probe(&p).unwrap();
-        assert_eq!(v.probe.streams.len(), 2);
-        assert_eq!(v.probe.fps, Some(FrameRate::FPS_30));
-        assert_eq!(v.probe.streams[0].codec.as_deref(), Some("stub"));
-        assert_eq!(v.probe.extra.get("stub"), Some(&Value::Bool(true)));
-        assert!(v.content_hash.starts_with("stub-sha256:"));
-        std::fs::remove_file(f).unwrap();
-        let (f, p) = temp("a.wav", b"x");
-        let a = StubMediaBackend.probe(&p).unwrap();
-        assert_eq!(a.probe.streams.len(), 1);
-        assert!(a.probe.fps.is_none());
-        std::fs::remove_file(f).unwrap();
-        let (f, p) = temp("a.png", b"x");
-        let i = StubMediaBackend.probe(&p).unwrap();
-        assert!(i.probe.duration.is_none() && i.probe.audio.is_none());
-        std::fs::remove_file(f).unwrap();
+        let (file, path) = temp("a.MP4", b"x");
+        let vid = StubMediaBackend.probe(&path).unwrap();
+        assert_eq!(vid.probe.streams.len(), 2);
+        assert_eq!(vid.probe.fps, Some(FrameRate::FPS_30));
+        assert_eq!(vid.probe.streams[0].codec.as_deref(), Some("stub"));
+        assert_eq!(vid.probe.extra.get("stub"), Some(&Value::Bool(true)));
+        assert!(vid.content_hash.starts_with("stub-sha256:"));
+        std::fs::remove_file(file).unwrap();
+        let (file, path) = temp("a.wav", b"x");
+        let aud = StubMediaBackend.probe(&path).unwrap();
+        assert_eq!(aud.probe.streams.len(), 1);
+        assert!(aud.probe.fps.is_none());
+        std::fs::remove_file(file).unwrap();
+        let (file, path) = temp("a.png", b"x");
+        let img = StubMediaBackend.probe(&path).unwrap();
+        assert!(img.probe.duration.is_none() && img.probe.audio.is_none());
+        std::fs::remove_file(file).unwrap();
     }
 
     #[test]
