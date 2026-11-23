@@ -8,5 +8,33 @@ repository.workspace = true
 rust-version.workspace = true
 publish = false
 
+[features]
+# Test instrumentation: `cutweave_audio::rt_alloc`, the counting global allocator that proves
+# `Mixer::render` never touches the heap. It is the crate's only `unsafe` code, so a normal build
+# has none.
+testing = []
+
+[dependencies]
+cutweave-model = { path = "../cutweave-model" }
+# `AudioSegment`, the output of `evaluate_audio` (WP-1F.01), is the mixer's input. Only the
+# wasm-safe core: the mixer needs no GPU.
+cutweave-render = { path = "../cutweave-render", default-features = false }
+# Lock-free SPSC rings between the decode workers and the real-time callback, and for the plan and
+# garbage queues (arch §9). MIT OR Apache-2.0; pinned to the release Spike S2 measured (0 RT
+# allocations, 0 underruns over a 10-minute soak).
+rtrb = "=0.4.1"
+# Source-rate to device-rate resampling (arch §9 names rubato). MIT OR Apache-2.0; pinned to the
+# release Spike S2 measured. Its default `fft_resampler` feature provides the synchronous `Fft`
+# resampler used here (realfft/rustfft, MIT OR Apache-2.0).
+rubato = "=5.1.0"
+thiserror.workspace = true
+tracing.workspace = true
+
+[dev-dependencies]
+# This crate with `testing` on, so its real-time tests (and `cargo nextest run --workspace`)
+# get the allocation counter.
+cutweave-audio = { path = ".", features = ["testing"] }
+proptest.workspace = true
+
 [lints]
 workspace = true
