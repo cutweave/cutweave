@@ -33,8 +33,12 @@ tracing = { version = "0.1.44", default-features = false, features = ["std"] }
 futures-util = { version = "=0.3.34", default-features = false, features = ["sink", "std"] }
 # WP-1J.01: the MCP server (`/mcp`, arch §14, ADR-0009). The official Rust SDK, pinned exactly
 # (3.x churns between minors) at the version and feature set Spike S5 validated against both
-# spec revisions (2025-11-25 and 2026-07-28). Streamable HTTP server only; stdio is WP-1J.03.
-rmcp = { version = "=3.11.0", default-features = false, features = ["server", "transport-streamable-http-server"] }
+# spec revisions (2025-11-25 and 2026-07-28). Streamable HTTP server; WP-1J.03 adds the stdio
+# transport (`transport-io`, `cutweave mcp --headless`) and rmcp's own Streamable HTTP client
+# (`client`, `transport-streamable-http-client-reqwest`: reqwest without TLS, loopback only) for
+# the `cutweave mcp --attach` proxy. Both were already locked (the client as a dev-dependency of
+# the WP-1J.01 tests); no new crate enters Cargo.lock.
+rmcp = { version = "=3.11.0", default-features = false, features = ["server", "transport-streamable-http-server", "transport-io", "client", "transport-streamable-http-client-reqwest"] }
 
 [dev-dependencies]
 tempfile = "3.27.0"

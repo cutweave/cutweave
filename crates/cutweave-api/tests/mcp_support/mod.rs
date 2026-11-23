@@ -24,7 +24,8 @@ use rmcp::{
     model::{CallToolRequestParams, CallToolResult, ClientConfig, ContentBlock, ProtocolVersion},
     service::{RunningService, ServiceError},
     transport::{
-        StreamableHttpClientTransport, streamable_http_client::StreamableHttpClientTransportConfig,
+        IntoTransport, StreamableHttpClientTransport,
+        streamable_http_client::StreamableHttpClientTransportConfig,
     },
 };
 use serde_json::{Value, json};
@@ -226,6 +227,16 @@ pub async fn http_client(url: &str, token: &str, revision: Revision) -> Client {
     let transport = StreamableHttpClientTransport::from_config(
         StreamableHttpClientTransportConfig::with_uri(url).auth_header(token),
     );
+    client_over(transport, revision).await
+}
+
+/// An rmcp client speaking `revision` over any transport (HTTP above; stdio pipes in the
+/// WP-1J.03 tests).
+pub async fn client_over<T, E, A>(transport: T, revision: Revision) -> Client
+where
+    T: IntoTransport<RoleClient, E, A>,
+    E: std::error::Error + Send + Sync + 'static,
+{
     let handler = Versioned(revision.version());
     let service = match revision {
         Revision::Stateful => handler.serve(transport).await.expect("initialize"),
