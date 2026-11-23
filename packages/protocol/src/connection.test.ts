@@ -1,6 +1,12 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 import { describe, expect, it, vi } from "vitest";
-import { type ConnectionHooks, RpcConnection, type RpcConnectionOptions } from "./connection.ts";
+import {
+  type ConnectionHooks,
+  isTransactionLost,
+  RpcConnection,
+  type RpcConnectionOptions,
+  TRANSACTION_LOST,
+} from "./connection.ts";
 import type { ConnectionState } from "./connection-state.ts";
 import { RpcClient, RpcError } from "./rpc.ts";
 import { FakeEngine, flushPromises, HELLO, ManualTimers } from "./test-support/fake-socket.ts";
@@ -313,6 +319,29 @@ describe("RpcConnection reconnect", () => {
       await expect(write).resolves.toEqual({ ok: true });
       await expect(during).resolves.toEqual({ ok: true });
       expect(connection.outbox.size).toBe(0);
+    });
+
+    it("never re-sends a gesture: calls bound to the lost socket's transaction are rejected", async () => {
+      const { engine, timers, connection, client } = await connected({ retainUnacked: true });
+      engine.handler = () => undefined;
+      const begin = client.call("edit.begin_tx", { kind: "gesture", label: "Move clip" });
+      const inTx = client.call("clip.split", { item, at: 1 as never }, { tx: "tx_7" });
+      const commit = client.call("edit.commit_tx", {});
+      const plain = client.call("clip.split", { item, at: 2 as never });
+      lose(engine);
+      for (const call of [begin, inTx, commit]) {
+        const error = await call.catch((e: unknown) => e);
+        expect(isTransactionLost(error)).toBe(true);
+        expect(error).toMatchObject({ code: "conflict", data: { reason: TRANSACTION_LOST } });
+      }
+      // The plain command stays, and only it is sent again.
+      expect(connection.outbox.views().map((v) => v.method)).toEqual(["clip.split"]);
+      engine.handler = () => ({ ok: true });
+      timers.advance(250);
+      await connection.whenReady();
+      await expect(plain).resolves.toEqual({ ok: true });
+      expect(engine.last.methods().filter((m) => m.startsWith("edit."))).toEqual([]);
+      expect(isTransactionLost(new RpcError("unsupported", "x"))).toBe(false);
     });
 
     it("autoFlush: false leaves the sending to the onReconnected hook", async () => {

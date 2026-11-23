@@ -5,7 +5,8 @@
 //
 // WP-1L.03 completes the engine-restart behaviour (re-sending un-acked commands, banner) through
 // the hook points below: `hooks.onDisconnected`, `hooks.onReconnected`, the `outbox` and
-// `retainUnacked` / `autoFlush`. Nothing here re-sends a command by itself except through them.
+// `retainUnacked` / `autoFlush`. Nothing here re-sends a command by itself except through them,
+// and a call bound to the lost socket's transaction is never re-sent (`isTransactionBound`).
 
 import {
   backoffPolicy,
@@ -159,6 +160,46 @@ export function errorFromWire(error: unknown): RpcError {
 }
 
 const LOST_MESSAGE = "the connection to the engine was lost";
+
+/** `RpcError.data.reason` of a call whose transaction died with its socket. */
+export const TRANSACTION_LOST = "transaction_lost";
+
+/** Methods that open or close the connection's transaction (`edit.*`, ADR-0017). */
+const TRANSACTION_METHODS: ReadonlySet<string> = new Set([
+  "edit.begin_tx",
+  "edit.commit_tx",
+  "edit.cancel_tx",
+]);
+
+/**
+ * Whether a call belongs to a transaction of the socket it was made on: it opens or closes one,
+ * or runs inside one (`_meta.tx`). Closing a socket rolls its transaction back (rpc.md), so such
+ * a call is never re-sent on another socket.
+ */
+export function isTransactionBound(entry: {
+  readonly method: string;
+  readonly params: Readonly<Record<string, unknown>>;
+}): boolean {
+  if (TRANSACTION_METHODS.has(entry.method)) {
+    return true;
+  }
+  const meta = entry.params._meta;
+  return isRecord(meta) && meta.tx !== undefined;
+}
+
+function transactionLostError(): RpcError {
+  return new RpcError(
+    "conflict",
+    "the connection to the engine was lost during the gesture; its transaction was rolled back",
+    undefined,
+    { code: "conflict", reason: TRANSACTION_LOST },
+  );
+}
+
+/** Whether `error` rejected a call because its transaction died with the socket: start over. */
+export function isTransactionLost(error: unknown): boolean {
+  return error instanceof RpcError && error.data?.reason === TRANSACTION_LOST;
+}
 
 /** JSON-RPC 2.0 over WebSocket to the engine: a {@link Transport} with a reconnect state machine. */
 export class RpcConnection implements Transport {
@@ -631,6 +672,12 @@ export class RpcConnection implements Transport {
   #settleOnLoss(): void {
     const keepAll = !this.#everReady;
     const retain = this.#options.retainUnacked === true;
+    // The engine rolled back the lost socket's transaction: its calls can never succeed on
+    // another socket (re-sending `begin_tx` would only return the rolled-back transaction from
+    // the dedup window). Their owner restarts the gesture (WP-1B.09, WP-1L.03).
+    if (!keepAll) {
+      this.outbox.rejectWhere(transactionLostError(), isTransactionBound);
+    }
     const error = new RpcError("unsupported", LOST_MESSAGE);
     this.outbox.rejectWhere(error, (entry) => !(keepAll || (retain && entry.requestId !== null)));
     for (const [, entry] of this.outbox.keyed()) {

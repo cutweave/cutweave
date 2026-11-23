@@ -102,7 +102,7 @@ export const CLOSE_RESYNC_REQUIRED = 4001;
 
 /**
  * Exponential backoff from `baseMs` up to `maxMs`, `maxAttempts` tries, and an immediate first
- * retry after `4001 resync_required`. WP-1L.03 replaces it with the supervisor-aware policy.
+ * retry after `4001 resync_required`. Under a supervisor, wrap it in {@link supervisedPolicy}.
  */
 export function backoffPolicy(
   options: { baseMs?: number; maxMs?: number; maxAttempts?: number } = {},
@@ -119,6 +119,41 @@ export function backoffPolicy(
         return 0;
       }
       return Math.min(maxMs, baseMs * 2 ** attempt);
+    },
+  };
+}
+
+/**
+ * What the process supervising the engine (Electron main, WP-1L.03) says about it:
+ * - `up`: the engine runs; a lost socket is a network matter, so back off as usual.
+ * - `restarting`: the engine crashed and is coming back (`crashed`, `restarting`, `starting`);
+ *   keep waiting however long it takes, the supervisor's `ready` triggers `reconnectNow()`.
+ * - `down`: it gave up (`failed`) or stopped; do not retry until it says otherwise.
+ * - `unknown`: no supervisor (plain dev, tests); back off as usual.
+ */
+export type SupervisorHint = "up" | "restarting" | "down" | "unknown";
+
+/**
+ * Retries guided by the supervisor: while the engine restarts the connection never gives up (it
+ * polls every `waitMs` and is woken early by `reconnectNow()`), when the supervisor gave up the
+ * connection does too (retained calls are rejected), otherwise `base` decides.
+ */
+export function supervisedPolicy(
+  hint: () => SupervisorHint,
+  options: { base?: ReconnectPolicy; waitMs?: number } = {},
+): ReconnectPolicy {
+  const base = options.base ?? backoffPolicy();
+  const waitMs = options.waitMs ?? 1000;
+  return {
+    nextDelayMs(attempt, lost) {
+      switch (hint()) {
+        case "restarting":
+          return waitMs;
+        case "down":
+          return null;
+        default:
+          return base.nextDelayMs(attempt, lost);
+      }
     },
   };
 }

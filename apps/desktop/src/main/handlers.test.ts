@@ -17,13 +17,17 @@ describe("createHandlers", () => {
   });
 
   it("builds loopback URLs from the engine port; the token stays out of them", async () => {
-    const h = createHandlers({ ...base, engineCredentials: () => ({ port: 4321, token: "t0k" }) });
+    const h = createHandlers({
+      ...base,
+      engineCredentials: () => ({ port: 4321, token: "t0k", generation: 2 }),
+    });
     const c = await h["engine:getConnection"]();
     expect(c).toMatchObject({
       port: 4321,
       token: "t0k",
       httpUrl: "http://127.0.0.1:4321",
       wsUrl: "ws://127.0.0.1:4321/rpc",
+      generation: 2,
     });
     expect(`${c?.httpUrl}${c?.wsUrl}`).not.toContain("t0k");
   });

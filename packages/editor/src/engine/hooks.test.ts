@@ -14,7 +14,7 @@ function attach(transport: MockTransport) {
 }
 
 beforeEach(() => {
-  engineStore.setState({ rpc: null, connection: "none" });
+  engineStore.setState({ rpc: null, connection: "none", blocked: null });
   docStore.setState({ status: "empty", rev: 0, committedRev: 0, project: null });
 });
 afterEach(cleanup);
@@ -75,6 +75,22 @@ describe("useCommand", () => {
       code: "unsupported",
       message: "no engine is connected",
     });
+  });
+
+  it("refuses edits while the engine failed or speaks another schema (WP-1L.03)", async () => {
+    const transport = new MockTransport().handle("edit.undo", () => ({}));
+    attach(transport);
+    engineStore.setState({ blocked: { kind: "engine-failed", message: null } });
+    await expect(runCommand("edit.undo", {})).rejects.toMatchObject({
+      code: "unsupported",
+      message: "the engine stopped; editing resumes when it restarts",
+    });
+    engineStore.setState({ blocked: { kind: "schema-mismatch", engineVersion: "9" } });
+    await expect(runCommand("edit.undo", {})).rejects.toMatchObject({ code: "unsupported" });
+    expect(transport.requests).toEqual([]);
+    engineStore.setState({ blocked: null });
+    await runCommand("edit.undo", {});
+    expect(transport.requests).toHaveLength(1);
   });
 
   it("passes an explicit request_id or expected_rev along", async () => {

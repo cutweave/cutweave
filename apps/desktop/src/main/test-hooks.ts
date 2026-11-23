@@ -51,6 +51,10 @@ export interface CutweaveTestHooks {
   enginePid(): number | null;
   /** SIGKILL the engine (a simulated crash); returns the killed pid, or null. */
   killEngine(): number | null;
+  /** Forget past crashes so repeated crash tests stay under the crash budget. */
+  resetEngineCrashCount(): void;
+  /** The project main would reopen after a crash (what it learned from the engine). */
+  engineProject(): string | null;
   /** From now on the engine-failed dialog is recorded instead of shown. */
   captureEngineDialog(): void;
   /** Statuses the engine-failed dialog was asked for since `captureEngineDialog()`. */
@@ -100,6 +104,8 @@ export function installTestHooks(deps: TestHookDeps): void {
     engineStatus: () => deps.engine()?.status ?? null,
     enginePid: () => deps.engine()?.pid ?? null,
     killEngine: () => deps.engine()?.kill() ?? null,
+    resetEngineCrashCount: () => deps.engine()?.resetCrashHistory(),
+    engineProject: () => deps.engine()?.project ?? null,
     captureEngineDialog: () =>
       deps.captureEngineDialog(
         (status) =>

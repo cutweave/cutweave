@@ -180,7 +180,7 @@ describe("start and the handshake", () => {
     await h.ready();
     expect(await settled).toMatchObject({ state: "ready", port: 4000, generation: 1 });
     expect(h.states()).toEqual(["starting", "ready"]);
-    expect(h.sup.credentials).toEqual({ port: 4000, token });
+    expect(h.sup.credentials).toEqual({ port: 4000, token, generation: 1 });
     // The control connection subscribed to the project events and asked which project is open.
     expect(h.rpcs[0]?.methods()).toEqual(["rpc.subscribe", "rpc.hello", "rpc.hello"]);
     // Status events never carry the token.

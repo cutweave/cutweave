@@ -6,6 +6,8 @@ import {
   type ConnectionEvent,
   ConnectionMachine,
   nextState,
+  type SupervisorHint,
+  supervisedPolicy,
 } from "./connection-state.ts";
 
 const lost = { type: "socket_lost", code: 1006, reason: "" } as const;
@@ -90,5 +92,26 @@ describe("backoffPolicy", () => {
     const policy = backoffPolicy({ maxAttempts: 2 });
     expect(policy.nextDelayMs(1, { code: 1006, reason: "" })).not.toBeNull();
     expect(policy.nextDelayMs(2, { code: 1006, reason: "" })).toBeNull();
+  });
+});
+
+describe("supervisedPolicy", () => {
+  const loss = { code: 1006, reason: "" };
+
+  it("waits as long as the engine restarts, gives up when the supervisor did, else backs off", () => {
+    let hint: SupervisorHint = "restarting";
+    const policy = supervisedPolicy(() => hint, {
+      base: backoffPolicy({ baseMs: 100, maxAttempts: 2 }),
+      waitMs: 750,
+    });
+    // Far past the base policy's limit: still waiting for the restart.
+    expect(policy.nextDelayMs(50, loss)).toBe(750);
+    hint = "down";
+    expect(policy.nextDelayMs(0, loss)).toBeNull();
+    hint = "up";
+    expect(policy.nextDelayMs(0, loss)).toBe(100);
+    expect(policy.nextDelayMs(2, loss)).toBeNull();
+    hint = "unknown";
+    expect(policy.nextDelayMs(1, loss)).toBe(200);
   });
 });

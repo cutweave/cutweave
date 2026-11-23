@@ -11,7 +11,7 @@ export interface HandlerDeps {
   /** Current engine status. */
   engineStatus(): EngineStatus;
   /** Port and UI token of the supervised engine; null when none is ready. */
-  engineCredentials(): { port: number; token: string } | null;
+  engineCredentials(): { port: number; token: string; generation: number } | null;
   chooseFolder(): Promise<string | null>;
   showItemInFolder(path: string): void;
   /** `shell.openExternal`; only ever called with a validated `https:` URL. */
@@ -28,6 +28,7 @@ export function createHandlers(deps: HandlerDeps): InvokeHandlers {
       return {
         port: creds.port,
         token: creds.token,
+        generation: creds.generation,
         httpUrl: `http://127.0.0.1:${creds.port}`,
         wsUrl: `ws://127.0.0.1:${creds.port}/rpc`,
       };

@@ -3,7 +3,6 @@ import {
   Button,
   IconButton,
   SegmentedControl,
-  StatusChip,
   Toolbar,
   ToolbarSeparator,
   Tooltip,
@@ -19,6 +18,7 @@ import {
   WORKSPACES,
   type WorkspaceId,
 } from "../state/viewStore.ts";
+import { EngineStatusChip } from "./EngineNotices.tsx";
 
 /**
  * Top bar: project actions (disabled until the engine connects, WP-1M.02), the workspace
@@ -65,7 +65,7 @@ export function TopBar() {
         </Tooltip>
       </div>
       <div className="cw-topbar__group cw-topbar__group--end">
-        <StatusChip tone="neutral">{t("topbar.engineOffline")}</StatusChip>
+        <EngineStatusChip />
         <SegmentedControl<ThemeId>
           aria-label={t("topbar.themeLabel")}
           value={theme}

@@ -1,7 +1,8 @@
 {
   "app": {
     "name": "Cutweave",
-    "windowTitle": "Cutweave editor"
+    "windowTitle": "Cutweave editor",
+    "notifications": "Notifications"
   },
   "topbar": {
     "toolbarLabel": "Project actions",
@@ -10,7 +11,6 @@
     "export": "Export",
     "undo": "Undo",
     "redo": "Redo",
-    "engineOffline": "Engine not connected",
     "workspaceLabel": "Workspace",
     "themeLabel": "Theme"
   },
@@ -135,5 +135,30 @@
     "emptyTitle": "Your timeline is empty",
     "emptyBody": "Drag a clip from Media onto a track to start cutting.",
     "canvasLabel": "Timeline"
+  },
+  "engine": {
+    "status": {
+      "none": "Engine not connected",
+      "connecting": "Connecting",
+      "ready": "Engine connected",
+      "reconnecting": "Reconnecting",
+      "stopped": "Engine stopped",
+      "mismatch": "Engine mismatch"
+    },
+    "restarted": {
+      "recoveredTitle": "Engine restarted — recovered",
+      "appliedOne": "1 unsaved change restored from {{project}}.",
+      "appliedMany": "{{count}} unsaved changes restored from {{project}}.",
+      "nothingToRestore": "{{project}} is as you left it.",
+      "damaged": "The journal ended with a damaged entry; everything before it is back.",
+      "untitledTitle": "Engine restarted",
+      "untitled": "Changes to the untitled project were not kept. Save it to a project folder so a restart can restore them."
+    },
+    "blocked": {
+      "failedTitle": "The engine stopped",
+      "failedBody": "Editing is paused. Choose Restart in the engine dialog to continue, or quit Cutweave. Changes to a saved project are kept in its journal.",
+      "mismatchTitle": "This editor does not match the engine",
+      "mismatchBody": "Editing is off so nothing changes by mistake. Install matching versions of Cutweave and its engine. Engine {{version}}."
+    }
   }
 }
