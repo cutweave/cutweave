@@ -8,15 +8,17 @@
 //! ```
 //!
 //! Every interleaving (up to the preemption bound) of two submitters, a snapshot reader, an
-//! event subscriber and the actor thread is explored.
+//! event subscriber and the actor thread is explored. WP-1B.09 adds the ownership protocol
+//! across threads: a connection drop racing that connection's requests, and a soft-locked
+//! request racing the lock holder's commit.
 
 #![cfg(cutweave_loom)]
 #![allow(clippy::unwrap_used, clippy::expect_used)]
 
 mod doc_support;
 
-use cutweave_commands::{DocActor, Rev, Submit, TxKind};
-use doc_support::{agent, config, project, ui};
+use cutweave_commands::{CmdError, ConflictReason, DocActor, Rev, Submit, TxKind};
+use doc_support::{agent, append, config, item_name, project, ui};
 use serde_json::json;
 
 fn model(f: impl Fn() + Sync + Send + 'static) {
@@ -143,5 +145,108 @@ fn shutdown_never_strands_a_request() {
             Ok(rev) => assert_eq!(rev, Rev(0)),
             Err(e) => assert_eq!(e.code(), "internal"),
         }
+    });
+}
+
+/// WP-1B.09: the API layer closes a connection while that connection's `begin_tx` and first
+/// step are still in flight. Whatever the order, no transaction and no soft lock survives:
+/// either the close rolls the transaction back, or the begin (arriving after the close) is
+/// refused; another actor can then edit the item.
+#[test]
+fn a_drop_racing_its_connections_begin_never_strands_a_lock() {
+    model(|| {
+        let (doc, tracks, _) = project(1);
+        let actor = DocActor::spawn(config(doc)).unwrap();
+        let h = actor.handle();
+        let x = append(&h, &agent(), tracks[0], 10);
+        let client = {
+            let h = actor.handle();
+            loom::thread::spawn(move || {
+                let ctx = ui();
+                match h.begin_tx(&ctx, TxKind::Gesture, "Drag").wait() {
+                    Ok(info) => {
+                        // Applied, or the transaction was already rolled back (not found).
+                        let rename =
+                            Submit::new(ctx, "item.rename", json!({"item": x, "name": "u"}));
+                        let _ = h.submit(rename.in_tx(info.id)).wait();
+                    }
+                    Err(e) => assert_eq!(e.code(), "invalid", "{e}"),
+                }
+            })
+        };
+        h.close_connection(ui().conn()).wait().unwrap();
+        client.join().unwrap();
+
+        assert!(h.locks(&agent()).wait().unwrap().transactions.is_empty());
+        let rename = Submit::new(agent(), "item.rename", json!({"item": x, "name": "a"}));
+        h.submit(rename).wait().unwrap();
+        let live = h.snapshot();
+        assert!(live.is_committed());
+        assert_eq!(item_name(&live.doc, x).as_deref(), Some("a"));
+        actor.shutdown().unwrap();
+    });
+}
+
+/// WP-1B.09: an agent's request on an item soft-locked by the user's gesture races the
+/// gesture's commit. It runs after the commit, or it fails fast with `item_in_gesture` and
+/// its retry succeeds: the lock is held exactly while the gesture is open.
+#[test]
+fn a_soft_lock_is_released_exactly_when_its_gesture_commits() {
+    model(|| {
+        let (doc, tracks, _) = project(1);
+        let actor = DocActor::spawn(config(doc)).unwrap();
+        let h = actor.handle();
+        let x = append(&h, &ui(), tracks[0], 10);
+        let tx = h
+            .begin_tx(&ui(), TxKind::Gesture, "Drag")
+            .wait()
+            .unwrap()
+            .id;
+        let rename = Submit::new(ui(), "item.rename", json!({"item": x, "name": "drag"}));
+        h.submit(rename.in_tx(tx)).wait().unwrap();
+        let disable = move || {
+            Submit::new(
+                agent(),
+                "item.set_enabled",
+                json!({"item": x, "enabled": false}),
+            )
+        };
+        let bot = {
+            let h = actor.handle();
+            loom::thread::spawn(move || match h.submit(disable()).wait() {
+                Ok(_) => false,
+                Err(e) => {
+                    assert!(
+                        matches!(
+                            e,
+                            CmdError::Conflict {
+                                reason: ConflictReason::ItemInGesture,
+                                ..
+                            }
+                        ),
+                        "{e:?}"
+                    );
+                    true
+                }
+            })
+        };
+        h.commit_tx(&ui(), tx).wait().unwrap();
+        if bot.join().unwrap() {
+            h.submit(disable()).wait().unwrap();
+        }
+
+        let live = h.snapshot();
+        assert!(live.is_committed());
+        let clip = live
+            .doc
+            .find_item(&x)
+            .unwrap()
+            .item
+            .as_clip()
+            .unwrap()
+            .clone();
+        assert_eq!((clip.name.as_deref(), clip.enabled), (Some("drag"), false));
+        assert!(h.locks(&ui()).wait().unwrap().transactions.is_empty());
+        actor.shutdown().unwrap();
     });
 }

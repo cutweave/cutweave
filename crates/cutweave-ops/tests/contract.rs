@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
-//! WP-1B.05: the registry contract of the ops v1a commands: every entry has a summary, an
+//! WP-1B.05/1B.06: the registry contract of the ops v1a and v1b commands: every entry has a summary, an
 //! object schema, the right MCP exposure and annotations (arch §14), and a snapshot of its
 //! full schema (a diff means the command contract changed and needs review).
 
@@ -120,6 +120,60 @@ const CONTRACT: &[Row] = &[
         true,
         false,
     ),
+    (
+        "clip.split",
+        EntryKind::Command,
+        McpExposure::Core,
+        false,
+        false,
+        false,
+        true,
+    ),
+    (
+        "clip.trim",
+        EntryKind::Command,
+        McpExposure::Core,
+        false,
+        false,
+        true,
+        true,
+    ),
+    (
+        "item.move",
+        EntryKind::Command,
+        McpExposure::Core,
+        false,
+        false,
+        true,
+        true,
+    ),
+    (
+        "item.delete",
+        EntryKind::Command,
+        McpExposure::Core,
+        false,
+        true,
+        false,
+        true,
+    ),
+    (
+        "item.set_props",
+        EntryKind::Command,
+        McpExposure::Core,
+        false,
+        false,
+        true,
+        true,
+    ),
+    (
+        "item.get",
+        EntryKind::Query,
+        McpExposure::Catalog,
+        true,
+        false,
+        true,
+        false,
+    ),
 ];
 
 fn registry() -> Registry {
@@ -145,7 +199,7 @@ fn every_registered_entry_has_a_summary_and_object_schemas() {
 }
 
 #[test]
-fn every_v1a_command_is_registered_with_its_contract() {
+fn every_v1_command_is_registered_with_its_contract() {
     let registry = registry();
     for &(name, kind, mcp, read_only, destructive, idempotent, undoable) in CONTRACT {
         let m = &registry
@@ -184,6 +238,11 @@ fn the_arch_14_core_tools_of_this_wp_are_core_and_named_with_underscores() {
         "media_list",
         "timeline_insert",
         "timeline_get",
+        "clip_split",
+        "clip_trim",
+        "item_move",
+        "item_delete",
+        "item_set_props",
     ] {
         assert!(
             core.contains(&tool.to_owned()),
@@ -199,20 +258,27 @@ fn the_arch_14_core_tools_of_this_wp_are_core_and_named_with_underscores() {
 #[test]
 fn mutating_core_tools_are_not_read_only_and_queries_are() {
     let registry = registry();
-    for name in ["timeline.insert", "media.import"] {
+    for name in [
+        "timeline.insert",
+        "media.import",
+        "clip.split",
+        "clip.trim",
+        "item.move",
+        "item.set_props",
+    ] {
         assert!(
             !registry.get(name).unwrap().meta.annotations.read_only,
             "{name}"
         );
     }
-    for name in ["timeline.get", "media.list", "project.info"] {
+    for name in ["timeline.get", "media.list", "project.info", "item.get"] {
         let m = &registry.get(name).unwrap().meta;
         assert!(
             m.annotations.read_only && m.annotations.idempotent && !m.is_journaled(),
             "{name}"
         );
     }
-    for name in ["media.remove", "track.remove"] {
+    for name in ["media.remove", "track.remove", "item.delete"] {
         assert!(
             registry.get(name).unwrap().meta.annotations.destructive,
             "{name}"
@@ -236,6 +302,12 @@ fn optional_params_are_not_required_in_the_input_schema() {
     );
     assert_eq!(required("media.list"), Vec::<String>::new());
     assert_eq!(required("track.set"), ["track"]);
+    assert_eq!(required("clip.split"), ["item", "at"]);
+    assert_eq!(required("clip.trim"), ["item", "edge"]);
+    assert_eq!(required("item.move"), ["item", "start"]);
+    assert_eq!(required("item.delete"), ["items"]);
+    assert_eq!(required("item.set_props"), ["item", "props"]);
+    assert_eq!(required("item.get"), ["item"]);
     assert_eq!(required("project.new"), ["name"]);
 }
 

@@ -19,6 +19,21 @@
       "name": "edit.history_changed",
       "payload": "HistoryChanged",
       "summary": "An actor's undo/redo stacks changed"
+    },
+    {
+      "name": "tx.closed",
+      "payload": "TxEnded",
+      "summary": "A transaction ended and released its soft locks"
+    },
+    {
+      "name": "tx.locked",
+      "payload": "TxActivity",
+      "summary": "A gesture or proposal soft-locked more items"
+    },
+    {
+      "name": "tx.opened",
+      "payload": "TxActivity",
+      "summary": "A transaction was opened (no items locked yet)"
     }
   ],
   "format": 1

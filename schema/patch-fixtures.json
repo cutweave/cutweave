@@ -1575,7 +1575,7 @@
                       "gain": 0.0
                     },
                     "custom": {},
-                    "duration": 7056000000,
+                    "duration": 2822400000,
                     "enabled": true,
                     "id": "itm_0000000000077405950ad8d9f69f2c6f",
                     "kind": "clip",
@@ -1584,6 +1584,39 @@
                     "name": null,
                     "source_in": 0,
                     "start": 1411200000,
+                    "visual": {
+                      "opacity": 1.0,
+                      "transform": {
+                        "anchor": {
+                          "x": 0.5,
+                          "y": 0.5
+                        },
+                        "position": {
+                          "x": 0.0,
+                          "y": 0.0
+                        },
+                        "rotation": 0.0,
+                        "scale": {
+                          "x": 1.0,
+                          "y": 1.0
+                        }
+                      }
+                    }
+                  },
+                  "itm_00000000000a7677ac4d118e2be6e1b9": {
+                    "audio": {
+                      "gain": 0.0
+                    },
+                    "custom": {},
+                    "duration": 4233600000,
+                    "enabled": true,
+                    "id": "itm_00000000000a7677ac4d118e2be6e1b9",
+                    "kind": "clip",
+                    "linked_group": "grp_0000000000097031b0cbdfaef85bafd1",
+                    "media": "med_000000000004771ba4a23020bc56afc3",
+                    "name": null,
+                    "source_in": 2822400000,
+                    "start": 4233600000,
                     "visual": {
                       "opacity": 1.0,
                       "transform": {
@@ -1622,7 +1655,7 @@
                       "gain": 0.0
                     },
                     "custom": {},
-                    "duration": 7056000000,
+                    "duration": 2822400000,
                     "enabled": true,
                     "id": "itm_00000000000874918ac913f3f46b919e",
                     "kind": "clip",
@@ -1631,6 +1664,39 @@
                     "name": null,
                     "source_in": 0,
                     "start": 1411200000,
+                    "visual": {
+                      "opacity": 1.0,
+                      "transform": {
+                        "anchor": {
+                          "x": 0.5,
+                          "y": 0.5
+                        },
+                        "position": {
+                          "x": 0.0,
+                          "y": 0.0
+                        },
+                        "rotation": 0.0,
+                        "scale": {
+                          "x": 1.0,
+                          "y": 1.0
+                        }
+                      }
+                    }
+                  },
+                  "itm_00000000000b7ce789996e9998b9dcff": {
+                    "audio": {
+                      "gain": 0.0
+                    },
+                    "custom": {},
+                    "duration": 4233600000,
+                    "enabled": true,
+                    "id": "itm_00000000000b7ce789996e9998b9dcff",
+                    "kind": "clip",
+                    "linked_group": "grp_0000000000097031b0cbdfaef85bafd1",
+                    "media": "med_000000000004771ba4a23020bc56afc3",
+                    "name": null,
+                    "source_in": 2822400000,
+                    "start": 4233600000,
                     "visual": {
                       "opacity": 1.0,
                       "transform": {
@@ -1667,7 +1733,7 @@
                 "kind": "video",
                 "locked": false,
                 "magnetic": false,
-                "muted": true,
+                "muted": false,
                 "name": "B-roll",
                 "solo": false
               }
@@ -1841,6 +1907,1357 @@
                     "name": null,
                     "source_in": 0,
                     "start": 1411200000,
+                    "visual": {
+                      "opacity": 1.0,
+                      "transform": {
+                        "anchor": {
+                          "x": 0.5,
+                          "y": 0.5
+                        },
+                        "position": {
+                          "x": 0.0,
+                          "y": 0.0
+                        },
+                        "rotation": 0.0,
+                        "scale": {
+                          "x": 1.0,
+                          "y": 1.0
+                        }
+                      }
+                    }
+                  }
+                },
+                "kind": "audio",
+                "locked": false,
+                "magnetic": false,
+                "muted": false,
+                "name": "A1",
+                "solo": false
+              },
+              "trk_0000000000057d3189891744bd0efe34": {
+                "custom": {},
+                "gain": 0.0,
+                "hidden": false,
+                "id": "trk_0000000000057d3189891744bd0efe34",
+                "items": {},
+                "kind": "video",
+                "locked": false,
+                "magnetic": false,
+                "muted": false,
+                "name": "B-roll",
+                "solo": false
+              }
+            }
+          }
+        },
+        "settings": {
+          "default_format": {
+            "background": "#000000",
+            "color_space": "rec709",
+            "frame_rate": {
+              "den": 1,
+              "num": 30
+            },
+            "height": 1080,
+            "sample_rate": 48000,
+            "width": 1920
+          }
+        }
+      },
+      "command": "clip.split",
+      "forward_patch": [
+        {
+          "old": 7056000000,
+          "op": "replace",
+          "path": "/sequences/seq_0000000000017e999cdbc20a2319b9cb/tracks/trk_0000000000027f8989dde9c8c6ffc150/items/itm_0000000000077405950ad8d9f69f2c6f/duration",
+          "value": 2822400000
+        },
+        {
+          "op": "add",
+          "path": "/sequences/seq_0000000000017e999cdbc20a2319b9cb/tracks/trk_0000000000027f8989dde9c8c6ffc150/items/itm_00000000000a7677ac4d118e2be6e1b9",
+          "value": {
+            "audio": {
+              "gain": 0.0
+            },
+            "custom": {},
+            "duration": 4233600000,
+            "enabled": true,
+            "id": "itm_00000000000a7677ac4d118e2be6e1b9",
+            "kind": "clip",
+            "linked_group": "grp_0000000000097031b0cbdfaef85bafd1",
+            "media": "med_000000000004771ba4a23020bc56afc3",
+            "name": null,
+            "source_in": 2822400000,
+            "start": 4233600000,
+            "visual": {
+              "opacity": 1.0,
+              "transform": {
+                "anchor": {
+                  "x": 0.5,
+                  "y": 0.5
+                },
+                "position": {
+                  "x": 0.0,
+                  "y": 0.0
+                },
+                "rotation": 0.0,
+                "scale": {
+                  "x": 1.0,
+                  "y": 1.0
+                }
+              }
+            }
+          }
+        },
+        {
+          "old": 7056000000,
+          "op": "replace",
+          "path": "/sequences/seq_0000000000017e999cdbc20a2319b9cb/tracks/trk_00000000000376d1902a7aa83bfaaa17/items/itm_00000000000874918ac913f3f46b919e/duration",
+          "value": 2822400000
+        },
+        {
+          "op": "add",
+          "path": "/sequences/seq_0000000000017e999cdbc20a2319b9cb/tracks/trk_00000000000376d1902a7aa83bfaaa17/items/itm_00000000000b7ce789996e9998b9dcff",
+          "value": {
+            "audio": {
+              "gain": 0.0
+            },
+            "custom": {},
+            "duration": 4233600000,
+            "enabled": true,
+            "id": "itm_00000000000b7ce789996e9998b9dcff",
+            "kind": "clip",
+            "linked_group": "grp_0000000000097031b0cbdfaef85bafd1",
+            "media": "med_000000000004771ba4a23020bc56afc3",
+            "name": null,
+            "source_in": 2822400000,
+            "start": 4233600000,
+            "visual": {
+              "opacity": 1.0,
+              "transform": {
+                "anchor": {
+                  "x": 0.5,
+                  "y": 0.5
+                },
+                "position": {
+                  "x": 0.0,
+                  "y": 0.0
+                },
+                "rotation": 0.0,
+                "scale": {
+                  "x": 1.0,
+                  "y": 1.0
+                }
+              }
+            }
+          }
+        }
+      ],
+      "input": {
+        "at": 4233600000,
+        "item": "itm_0000000000077405950ad8d9f69f2c6f"
+      },
+      "inverse_patch": [
+        {
+          "old": {
+            "audio": {
+              "gain": 0.0
+            },
+            "custom": {},
+            "duration": 4233600000,
+            "enabled": true,
+            "id": "itm_00000000000b7ce789996e9998b9dcff",
+            "kind": "clip",
+            "linked_group": "grp_0000000000097031b0cbdfaef85bafd1",
+            "media": "med_000000000004771ba4a23020bc56afc3",
+            "name": null,
+            "source_in": 2822400000,
+            "start": 4233600000,
+            "visual": {
+              "opacity": 1.0,
+              "transform": {
+                "anchor": {
+                  "x": 0.5,
+                  "y": 0.5
+                },
+                "position": {
+                  "x": 0.0,
+                  "y": 0.0
+                },
+                "rotation": 0.0,
+                "scale": {
+                  "x": 1.0,
+                  "y": 1.0
+                }
+              }
+            }
+          },
+          "op": "remove",
+          "path": "/sequences/seq_0000000000017e999cdbc20a2319b9cb/tracks/trk_00000000000376d1902a7aa83bfaaa17/items/itm_00000000000b7ce789996e9998b9dcff"
+        },
+        {
+          "old": 2822400000,
+          "op": "replace",
+          "path": "/sequences/seq_0000000000017e999cdbc20a2319b9cb/tracks/trk_00000000000376d1902a7aa83bfaaa17/items/itm_00000000000874918ac913f3f46b919e/duration",
+          "value": 7056000000
+        },
+        {
+          "old": {
+            "audio": {
+              "gain": 0.0
+            },
+            "custom": {},
+            "duration": 4233600000,
+            "enabled": true,
+            "id": "itm_00000000000a7677ac4d118e2be6e1b9",
+            "kind": "clip",
+            "linked_group": "grp_0000000000097031b0cbdfaef85bafd1",
+            "media": "med_000000000004771ba4a23020bc56afc3",
+            "name": null,
+            "source_in": 2822400000,
+            "start": 4233600000,
+            "visual": {
+              "opacity": 1.0,
+              "transform": {
+                "anchor": {
+                  "x": 0.5,
+                  "y": 0.5
+                },
+                "position": {
+                  "x": 0.0,
+                  "y": 0.0
+                },
+                "rotation": 0.0,
+                "scale": {
+                  "x": 1.0,
+                  "y": 1.0
+                }
+              }
+            }
+          },
+          "op": "remove",
+          "path": "/sequences/seq_0000000000017e999cdbc20a2319b9cb/tracks/trk_0000000000027f8989dde9c8c6ffc150/items/itm_00000000000a7677ac4d118e2be6e1b9"
+        },
+        {
+          "old": 2822400000,
+          "op": "replace",
+          "path": "/sequences/seq_0000000000017e999cdbc20a2319b9cb/tracks/trk_0000000000027f8989dde9c8c6ffc150/items/itm_0000000000077405950ad8d9f69f2c6f/duration",
+          "value": 7056000000
+        }
+      ],
+      "name": "clip.split",
+      "output": {
+        "at": 4233600000,
+        "left": "itm_0000000000077405950ad8d9f69f2c6f",
+        "linked": [
+          {
+            "left": "itm_00000000000874918ac913f3f46b919e",
+            "right": "itm_00000000000b7ce789996e9998b9dcff"
+          }
+        ],
+        "right": "itm_00000000000a7677ac4d118e2be6e1b9",
+        "right_group": "grp_0000000000097031b0cbdfaef85bafd1"
+      }
+    },
+    {
+      "after": {
+        "custom": {},
+        "media": {
+          "med_000000000004771ba4a23020bc56afc3": {
+            "content_hash": "fake:/media/interview.mp4",
+            "custom": {},
+            "id": "med_000000000004771ba4a23020bc56afc3",
+            "kind": "video",
+            "path_abs": "/media/interview.mp4",
+            "path_rel": null,
+            "probe": {
+              "audio": {
+                "channels": 2,
+                "rate": 48000
+              },
+              "color": {
+                "matrix": null,
+                "primaries": null,
+                "range": null,
+                "transfer": null
+              },
+              "duration": 7056000000,
+              "fps": {
+                "den": 1,
+                "num": 30
+              },
+              "rotation": 0,
+              "streams": [
+                {
+                  "channels": null,
+                  "codec": "h264",
+                  "height": 1080,
+                  "index": 0,
+                  "kind": "video",
+                  "language": null,
+                  "pixel_format": null,
+                  "profile": null,
+                  "sample_rate": null,
+                  "width": 1920
+                },
+                {
+                  "channels": 2,
+                  "codec": "aac",
+                  "height": null,
+                  "index": 1,
+                  "kind": "audio",
+                  "language": null,
+                  "pixel_format": null,
+                  "profile": null,
+                  "sample_rate": 48000,
+                  "width": null
+                }
+              ],
+              "vfr": false
+            },
+            "sequence": null
+          }
+        },
+        "meta": {
+          "app_version": null,
+          "created": null,
+          "name": "Demo",
+          "schema_version": 1
+        },
+        "sequences": {
+          "seq_0000000000017e999cdbc20a2319b9cb": {
+            "custom": {},
+            "format": {
+              "background": "#000000",
+              "color_space": "rec709",
+              "frame_rate": {
+                "den": 1,
+                "num": 30
+              },
+              "height": 1080,
+              "sample_rate": 48000,
+              "width": 1920
+            },
+            "id": "seq_0000000000017e999cdbc20a2319b9cb",
+            "name": "Sequence 1",
+            "track_order": [
+              "trk_0000000000057d3189891744bd0efe34",
+              "trk_0000000000027f8989dde9c8c6ffc150",
+              "trk_00000000000376d1902a7aa83bfaaa17"
+            ],
+            "tracks": {
+              "trk_0000000000027f8989dde9c8c6ffc150": {
+                "custom": {},
+                "gain": 0.0,
+                "hidden": false,
+                "id": "trk_0000000000027f8989dde9c8c6ffc150",
+                "items": {
+                  "itm_0000000000077405950ad8d9f69f2c6f": {
+                    "audio": {
+                      "gain": 0.0
+                    },
+                    "custom": {},
+                    "duration": 2822400000,
+                    "enabled": true,
+                    "id": "itm_0000000000077405950ad8d9f69f2c6f",
+                    "kind": "clip",
+                    "linked_group": "grp_0000000000067e09902721405ac105a0",
+                    "media": "med_000000000004771ba4a23020bc56afc3",
+                    "name": null,
+                    "source_in": 0,
+                    "start": 21168000000,
+                    "visual": {
+                      "opacity": 1.0,
+                      "transform": {
+                        "anchor": {
+                          "x": 0.5,
+                          "y": 0.5
+                        },
+                        "position": {
+                          "x": 0.0,
+                          "y": 0.0
+                        },
+                        "rotation": 0.0,
+                        "scale": {
+                          "x": 1.0,
+                          "y": 1.0
+                        }
+                      }
+                    }
+                  },
+                  "itm_00000000000a7677ac4d118e2be6e1b9": {
+                    "audio": {
+                      "gain": 0.0
+                    },
+                    "custom": {},
+                    "duration": 4233600000,
+                    "enabled": true,
+                    "id": "itm_00000000000a7677ac4d118e2be6e1b9",
+                    "kind": "clip",
+                    "linked_group": "grp_0000000000097031b0cbdfaef85bafd1",
+                    "media": "med_000000000004771ba4a23020bc56afc3",
+                    "name": null,
+                    "source_in": 2822400000,
+                    "start": 4233600000,
+                    "visual": {
+                      "opacity": 1.0,
+                      "transform": {
+                        "anchor": {
+                          "x": 0.5,
+                          "y": 0.5
+                        },
+                        "position": {
+                          "x": 0.0,
+                          "y": 0.0
+                        },
+                        "rotation": 0.0,
+                        "scale": {
+                          "x": 1.0,
+                          "y": 1.0
+                        }
+                      }
+                    }
+                  }
+                },
+                "kind": "video",
+                "locked": false,
+                "magnetic": false,
+                "muted": false,
+                "name": "V1",
+                "solo": false
+              },
+              "trk_00000000000376d1902a7aa83bfaaa17": {
+                "custom": {},
+                "gain": 0.0,
+                "hidden": false,
+                "id": "trk_00000000000376d1902a7aa83bfaaa17",
+                "items": {
+                  "itm_00000000000874918ac913f3f46b919e": {
+                    "audio": {
+                      "gain": 0.0
+                    },
+                    "custom": {},
+                    "duration": 2822400000,
+                    "enabled": true,
+                    "id": "itm_00000000000874918ac913f3f46b919e",
+                    "kind": "clip",
+                    "linked_group": "grp_0000000000067e09902721405ac105a0",
+                    "media": "med_000000000004771ba4a23020bc56afc3",
+                    "name": null,
+                    "source_in": 0,
+                    "start": 21168000000,
+                    "visual": {
+                      "opacity": 1.0,
+                      "transform": {
+                        "anchor": {
+                          "x": 0.5,
+                          "y": 0.5
+                        },
+                        "position": {
+                          "x": 0.0,
+                          "y": 0.0
+                        },
+                        "rotation": 0.0,
+                        "scale": {
+                          "x": 1.0,
+                          "y": 1.0
+                        }
+                      }
+                    }
+                  },
+                  "itm_00000000000b7ce789996e9998b9dcff": {
+                    "audio": {
+                      "gain": 0.0
+                    },
+                    "custom": {},
+                    "duration": 4233600000,
+                    "enabled": true,
+                    "id": "itm_00000000000b7ce789996e9998b9dcff",
+                    "kind": "clip",
+                    "linked_group": "grp_0000000000097031b0cbdfaef85bafd1",
+                    "media": "med_000000000004771ba4a23020bc56afc3",
+                    "name": null,
+                    "source_in": 2822400000,
+                    "start": 4233600000,
+                    "visual": {
+                      "opacity": 1.0,
+                      "transform": {
+                        "anchor": {
+                          "x": 0.5,
+                          "y": 0.5
+                        },
+                        "position": {
+                          "x": 0.0,
+                          "y": 0.0
+                        },
+                        "rotation": 0.0,
+                        "scale": {
+                          "x": 1.0,
+                          "y": 1.0
+                        }
+                      }
+                    }
+                  }
+                },
+                "kind": "audio",
+                "locked": false,
+                "magnetic": false,
+                "muted": false,
+                "name": "A1",
+                "solo": false
+              },
+              "trk_0000000000057d3189891744bd0efe34": {
+                "custom": {},
+                "gain": 0.0,
+                "hidden": false,
+                "id": "trk_0000000000057d3189891744bd0efe34",
+                "items": {},
+                "kind": "video",
+                "locked": false,
+                "magnetic": false,
+                "muted": false,
+                "name": "B-roll",
+                "solo": false
+              }
+            }
+          }
+        },
+        "settings": {
+          "default_format": {
+            "background": "#000000",
+            "color_space": "rec709",
+            "frame_rate": {
+              "den": 1,
+              "num": 30
+            },
+            "height": 1080,
+            "sample_rate": 48000,
+            "width": 1920
+          }
+        }
+      },
+      "before": {
+        "custom": {},
+        "media": {
+          "med_000000000004771ba4a23020bc56afc3": {
+            "content_hash": "fake:/media/interview.mp4",
+            "custom": {},
+            "id": "med_000000000004771ba4a23020bc56afc3",
+            "kind": "video",
+            "path_abs": "/media/interview.mp4",
+            "path_rel": null,
+            "probe": {
+              "audio": {
+                "channels": 2,
+                "rate": 48000
+              },
+              "color": {
+                "matrix": null,
+                "primaries": null,
+                "range": null,
+                "transfer": null
+              },
+              "duration": 7056000000,
+              "fps": {
+                "den": 1,
+                "num": 30
+              },
+              "rotation": 0,
+              "streams": [
+                {
+                  "channels": null,
+                  "codec": "h264",
+                  "height": 1080,
+                  "index": 0,
+                  "kind": "video",
+                  "language": null,
+                  "pixel_format": null,
+                  "profile": null,
+                  "sample_rate": null,
+                  "width": 1920
+                },
+                {
+                  "channels": 2,
+                  "codec": "aac",
+                  "height": null,
+                  "index": 1,
+                  "kind": "audio",
+                  "language": null,
+                  "pixel_format": null,
+                  "profile": null,
+                  "sample_rate": 48000,
+                  "width": null
+                }
+              ],
+              "vfr": false
+            },
+            "sequence": null
+          }
+        },
+        "meta": {
+          "app_version": null,
+          "created": null,
+          "name": "Demo",
+          "schema_version": 1
+        },
+        "sequences": {
+          "seq_0000000000017e999cdbc20a2319b9cb": {
+            "custom": {},
+            "format": {
+              "background": "#000000",
+              "color_space": "rec709",
+              "frame_rate": {
+                "den": 1,
+                "num": 30
+              },
+              "height": 1080,
+              "sample_rate": 48000,
+              "width": 1920
+            },
+            "id": "seq_0000000000017e999cdbc20a2319b9cb",
+            "name": "Sequence 1",
+            "track_order": [
+              "trk_0000000000057d3189891744bd0efe34",
+              "trk_0000000000027f8989dde9c8c6ffc150",
+              "trk_00000000000376d1902a7aa83bfaaa17"
+            ],
+            "tracks": {
+              "trk_0000000000027f8989dde9c8c6ffc150": {
+                "custom": {},
+                "gain": 0.0,
+                "hidden": false,
+                "id": "trk_0000000000027f8989dde9c8c6ffc150",
+                "items": {
+                  "itm_0000000000077405950ad8d9f69f2c6f": {
+                    "audio": {
+                      "gain": 0.0
+                    },
+                    "custom": {},
+                    "duration": 2822400000,
+                    "enabled": true,
+                    "id": "itm_0000000000077405950ad8d9f69f2c6f",
+                    "kind": "clip",
+                    "linked_group": "grp_0000000000067e09902721405ac105a0",
+                    "media": "med_000000000004771ba4a23020bc56afc3",
+                    "name": null,
+                    "source_in": 0,
+                    "start": 1411200000,
+                    "visual": {
+                      "opacity": 1.0,
+                      "transform": {
+                        "anchor": {
+                          "x": 0.5,
+                          "y": 0.5
+                        },
+                        "position": {
+                          "x": 0.0,
+                          "y": 0.0
+                        },
+                        "rotation": 0.0,
+                        "scale": {
+                          "x": 1.0,
+                          "y": 1.0
+                        }
+                      }
+                    }
+                  },
+                  "itm_00000000000a7677ac4d118e2be6e1b9": {
+                    "audio": {
+                      "gain": 0.0
+                    },
+                    "custom": {},
+                    "duration": 4233600000,
+                    "enabled": true,
+                    "id": "itm_00000000000a7677ac4d118e2be6e1b9",
+                    "kind": "clip",
+                    "linked_group": "grp_0000000000097031b0cbdfaef85bafd1",
+                    "media": "med_000000000004771ba4a23020bc56afc3",
+                    "name": null,
+                    "source_in": 2822400000,
+                    "start": 4233600000,
+                    "visual": {
+                      "opacity": 1.0,
+                      "transform": {
+                        "anchor": {
+                          "x": 0.5,
+                          "y": 0.5
+                        },
+                        "position": {
+                          "x": 0.0,
+                          "y": 0.0
+                        },
+                        "rotation": 0.0,
+                        "scale": {
+                          "x": 1.0,
+                          "y": 1.0
+                        }
+                      }
+                    }
+                  }
+                },
+                "kind": "video",
+                "locked": false,
+                "magnetic": false,
+                "muted": false,
+                "name": "V1",
+                "solo": false
+              },
+              "trk_00000000000376d1902a7aa83bfaaa17": {
+                "custom": {},
+                "gain": 0.0,
+                "hidden": false,
+                "id": "trk_00000000000376d1902a7aa83bfaaa17",
+                "items": {
+                  "itm_00000000000874918ac913f3f46b919e": {
+                    "audio": {
+                      "gain": 0.0
+                    },
+                    "custom": {},
+                    "duration": 2822400000,
+                    "enabled": true,
+                    "id": "itm_00000000000874918ac913f3f46b919e",
+                    "kind": "clip",
+                    "linked_group": "grp_0000000000067e09902721405ac105a0",
+                    "media": "med_000000000004771ba4a23020bc56afc3",
+                    "name": null,
+                    "source_in": 0,
+                    "start": 1411200000,
+                    "visual": {
+                      "opacity": 1.0,
+                      "transform": {
+                        "anchor": {
+                          "x": 0.5,
+                          "y": 0.5
+                        },
+                        "position": {
+                          "x": 0.0,
+                          "y": 0.0
+                        },
+                        "rotation": 0.0,
+                        "scale": {
+                          "x": 1.0,
+                          "y": 1.0
+                        }
+                      }
+                    }
+                  },
+                  "itm_00000000000b7ce789996e9998b9dcff": {
+                    "audio": {
+                      "gain": 0.0
+                    },
+                    "custom": {},
+                    "duration": 4233600000,
+                    "enabled": true,
+                    "id": "itm_00000000000b7ce789996e9998b9dcff",
+                    "kind": "clip",
+                    "linked_group": "grp_0000000000097031b0cbdfaef85bafd1",
+                    "media": "med_000000000004771ba4a23020bc56afc3",
+                    "name": null,
+                    "source_in": 2822400000,
+                    "start": 4233600000,
+                    "visual": {
+                      "opacity": 1.0,
+                      "transform": {
+                        "anchor": {
+                          "x": 0.5,
+                          "y": 0.5
+                        },
+                        "position": {
+                          "x": 0.0,
+                          "y": 0.0
+                        },
+                        "rotation": 0.0,
+                        "scale": {
+                          "x": 1.0,
+                          "y": 1.0
+                        }
+                      }
+                    }
+                  }
+                },
+                "kind": "audio",
+                "locked": false,
+                "magnetic": false,
+                "muted": false,
+                "name": "A1",
+                "solo": false
+              },
+              "trk_0000000000057d3189891744bd0efe34": {
+                "custom": {},
+                "gain": 0.0,
+                "hidden": false,
+                "id": "trk_0000000000057d3189891744bd0efe34",
+                "items": {},
+                "kind": "video",
+                "locked": false,
+                "magnetic": false,
+                "muted": false,
+                "name": "B-roll",
+                "solo": false
+              }
+            }
+          }
+        },
+        "settings": {
+          "default_format": {
+            "background": "#000000",
+            "color_space": "rec709",
+            "frame_rate": {
+              "den": 1,
+              "num": 30
+            },
+            "height": 1080,
+            "sample_rate": 48000,
+            "width": 1920
+          }
+        }
+      },
+      "command": "item.move",
+      "forward_patch": [
+        {
+          "old": 1411200000,
+          "op": "replace",
+          "path": "/sequences/seq_0000000000017e999cdbc20a2319b9cb/tracks/trk_0000000000027f8989dde9c8c6ffc150/items/itm_0000000000077405950ad8d9f69f2c6f/start",
+          "value": 21168000000
+        },
+        {
+          "old": 1411200000,
+          "op": "replace",
+          "path": "/sequences/seq_0000000000017e999cdbc20a2319b9cb/tracks/trk_00000000000376d1902a7aa83bfaaa17/items/itm_00000000000874918ac913f3f46b919e/start",
+          "value": 21168000000
+        }
+      ],
+      "input": {
+        "item": "itm_0000000000077405950ad8d9f69f2c6f",
+        "start": 21168000000
+      },
+      "inverse_patch": [
+        {
+          "old": 21168000000,
+          "op": "replace",
+          "path": "/sequences/seq_0000000000017e999cdbc20a2319b9cb/tracks/trk_00000000000376d1902a7aa83bfaaa17/items/itm_00000000000874918ac913f3f46b919e/start",
+          "value": 1411200000
+        },
+        {
+          "old": 21168000000,
+          "op": "replace",
+          "path": "/sequences/seq_0000000000017e999cdbc20a2319b9cb/tracks/trk_0000000000027f8989dde9c8c6ffc150/items/itm_0000000000077405950ad8d9f69f2c6f/start",
+          "value": 1411200000
+        }
+      ],
+      "name": "item.move",
+      "output": {
+        "created_tracks": [],
+        "items": [
+          {
+            "item": "itm_0000000000077405950ad8d9f69f2c6f",
+            "start": 21168000000,
+            "track": "trk_0000000000027f8989dde9c8c6ffc150"
+          },
+          {
+            "item": "itm_00000000000874918ac913f3f46b919e",
+            "start": 21168000000,
+            "track": "trk_00000000000376d1902a7aa83bfaaa17"
+          }
+        ]
+      }
+    },
+    {
+      "after": {
+        "custom": {},
+        "media": {
+          "med_000000000004771ba4a23020bc56afc3": {
+            "content_hash": "fake:/media/interview.mp4",
+            "custom": {},
+            "id": "med_000000000004771ba4a23020bc56afc3",
+            "kind": "video",
+            "path_abs": "/media/interview.mp4",
+            "path_rel": null,
+            "probe": {
+              "audio": {
+                "channels": 2,
+                "rate": 48000
+              },
+              "color": {
+                "matrix": null,
+                "primaries": null,
+                "range": null,
+                "transfer": null
+              },
+              "duration": 7056000000,
+              "fps": {
+                "den": 1,
+                "num": 30
+              },
+              "rotation": 0,
+              "streams": [
+                {
+                  "channels": null,
+                  "codec": "h264",
+                  "height": 1080,
+                  "index": 0,
+                  "kind": "video",
+                  "language": null,
+                  "pixel_format": null,
+                  "profile": null,
+                  "sample_rate": null,
+                  "width": 1920
+                },
+                {
+                  "channels": 2,
+                  "codec": "aac",
+                  "height": null,
+                  "index": 1,
+                  "kind": "audio",
+                  "language": null,
+                  "pixel_format": null,
+                  "profile": null,
+                  "sample_rate": 48000,
+                  "width": null
+                }
+              ],
+              "vfr": false
+            },
+            "sequence": null
+          }
+        },
+        "meta": {
+          "app_version": null,
+          "created": null,
+          "name": "Demo",
+          "schema_version": 1
+        },
+        "sequences": {
+          "seq_0000000000017e999cdbc20a2319b9cb": {
+            "custom": {},
+            "format": {
+              "background": "#000000",
+              "color_space": "rec709",
+              "frame_rate": {
+                "den": 1,
+                "num": 30
+              },
+              "height": 1080,
+              "sample_rate": 48000,
+              "width": 1920
+            },
+            "id": "seq_0000000000017e999cdbc20a2319b9cb",
+            "name": "Sequence 1",
+            "track_order": [
+              "trk_0000000000057d3189891744bd0efe34",
+              "trk_0000000000027f8989dde9c8c6ffc150",
+              "trk_00000000000376d1902a7aa83bfaaa17"
+            ],
+            "tracks": {
+              "trk_0000000000027f8989dde9c8c6ffc150": {
+                "custom": {},
+                "gain": 0.0,
+                "hidden": false,
+                "id": "trk_0000000000027f8989dde9c8c6ffc150",
+                "items": {
+                  "itm_0000000000077405950ad8d9f69f2c6f": {
+                    "audio": {
+                      "gain": 0.0
+                    },
+                    "custom": {},
+                    "duration": 2822400000,
+                    "enabled": true,
+                    "id": "itm_0000000000077405950ad8d9f69f2c6f",
+                    "kind": "clip",
+                    "linked_group": "grp_0000000000067e09902721405ac105a0",
+                    "media": "med_000000000004771ba4a23020bc56afc3",
+                    "name": null,
+                    "source_in": 0,
+                    "start": 21168000000,
+                    "visual": {
+                      "opacity": 1.0,
+                      "transform": {
+                        "anchor": {
+                          "x": 0.5,
+                          "y": 0.5
+                        },
+                        "position": {
+                          "x": 0.0,
+                          "y": 0.0
+                        },
+                        "rotation": 0.0,
+                        "scale": {
+                          "x": 1.0,
+                          "y": 1.0
+                        }
+                      }
+                    }
+                  },
+                  "itm_00000000000a7677ac4d118e2be6e1b9": {
+                    "audio": {
+                      "gain": 0.0
+                    },
+                    "custom": {},
+                    "duration": 4233600000,
+                    "enabled": true,
+                    "id": "itm_00000000000a7677ac4d118e2be6e1b9",
+                    "kind": "clip",
+                    "linked_group": "grp_0000000000097031b0cbdfaef85bafd1",
+                    "media": "med_000000000004771ba4a23020bc56afc3",
+                    "name": null,
+                    "source_in": 2822400000,
+                    "start": 4233600000,
+                    "visual": {
+                      "opacity": 1.0,
+                      "transform": {
+                        "anchor": {
+                          "x": 0.5,
+                          "y": 0.5
+                        },
+                        "position": {
+                          "x": 0.0,
+                          "y": 0.0
+                        },
+                        "rotation": 0.0,
+                        "scale": {
+                          "x": 1.0,
+                          "y": 1.0
+                        }
+                      }
+                    }
+                  }
+                },
+                "kind": "video",
+                "locked": false,
+                "magnetic": false,
+                "muted": false,
+                "name": "V1",
+                "solo": false
+              },
+              "trk_00000000000376d1902a7aa83bfaaa17": {
+                "custom": {},
+                "gain": 0.0,
+                "hidden": false,
+                "id": "trk_00000000000376d1902a7aa83bfaaa17",
+                "items": {
+                  "itm_00000000000874918ac913f3f46b919e": {
+                    "audio": {
+                      "gain": 0.0
+                    },
+                    "custom": {},
+                    "duration": 2822400000,
+                    "enabled": true,
+                    "id": "itm_00000000000874918ac913f3f46b919e",
+                    "kind": "clip",
+                    "linked_group": "grp_0000000000067e09902721405ac105a0",
+                    "media": "med_000000000004771ba4a23020bc56afc3",
+                    "name": null,
+                    "source_in": 0,
+                    "start": 21168000000,
+                    "visual": {
+                      "opacity": 1.0,
+                      "transform": {
+                        "anchor": {
+                          "x": 0.5,
+                          "y": 0.5
+                        },
+                        "position": {
+                          "x": 0.0,
+                          "y": 0.0
+                        },
+                        "rotation": 0.0,
+                        "scale": {
+                          "x": 1.0,
+                          "y": 1.0
+                        }
+                      }
+                    }
+                  },
+                  "itm_00000000000b7ce789996e9998b9dcff": {
+                    "audio": {
+                      "gain": 0.0
+                    },
+                    "custom": {},
+                    "duration": 4233600000,
+                    "enabled": true,
+                    "id": "itm_00000000000b7ce789996e9998b9dcff",
+                    "kind": "clip",
+                    "linked_group": "grp_0000000000097031b0cbdfaef85bafd1",
+                    "media": "med_000000000004771ba4a23020bc56afc3",
+                    "name": null,
+                    "source_in": 2822400000,
+                    "start": 4233600000,
+                    "visual": {
+                      "opacity": 1.0,
+                      "transform": {
+                        "anchor": {
+                          "x": 0.5,
+                          "y": 0.5
+                        },
+                        "position": {
+                          "x": 0.0,
+                          "y": 0.0
+                        },
+                        "rotation": 0.0,
+                        "scale": {
+                          "x": 1.0,
+                          "y": 1.0
+                        }
+                      }
+                    }
+                  }
+                },
+                "kind": "audio",
+                "locked": false,
+                "magnetic": false,
+                "muted": false,
+                "name": "A1",
+                "solo": false
+              },
+              "trk_0000000000057d3189891744bd0efe34": {
+                "custom": {},
+                "gain": 0.0,
+                "hidden": false,
+                "id": "trk_0000000000057d3189891744bd0efe34",
+                "items": {},
+                "kind": "video",
+                "locked": false,
+                "magnetic": false,
+                "muted": true,
+                "name": "B-roll",
+                "solo": false
+              }
+            }
+          }
+        },
+        "settings": {
+          "default_format": {
+            "background": "#000000",
+            "color_space": "rec709",
+            "frame_rate": {
+              "den": 1,
+              "num": 30
+            },
+            "height": 1080,
+            "sample_rate": 48000,
+            "width": 1920
+          }
+        }
+      },
+      "before": {
+        "custom": {},
+        "media": {
+          "med_000000000004771ba4a23020bc56afc3": {
+            "content_hash": "fake:/media/interview.mp4",
+            "custom": {},
+            "id": "med_000000000004771ba4a23020bc56afc3",
+            "kind": "video",
+            "path_abs": "/media/interview.mp4",
+            "path_rel": null,
+            "probe": {
+              "audio": {
+                "channels": 2,
+                "rate": 48000
+              },
+              "color": {
+                "matrix": null,
+                "primaries": null,
+                "range": null,
+                "transfer": null
+              },
+              "duration": 7056000000,
+              "fps": {
+                "den": 1,
+                "num": 30
+              },
+              "rotation": 0,
+              "streams": [
+                {
+                  "channels": null,
+                  "codec": "h264",
+                  "height": 1080,
+                  "index": 0,
+                  "kind": "video",
+                  "language": null,
+                  "pixel_format": null,
+                  "profile": null,
+                  "sample_rate": null,
+                  "width": 1920
+                },
+                {
+                  "channels": 2,
+                  "codec": "aac",
+                  "height": null,
+                  "index": 1,
+                  "kind": "audio",
+                  "language": null,
+                  "pixel_format": null,
+                  "profile": null,
+                  "sample_rate": 48000,
+                  "width": null
+                }
+              ],
+              "vfr": false
+            },
+            "sequence": null
+          }
+        },
+        "meta": {
+          "app_version": null,
+          "created": null,
+          "name": "Demo",
+          "schema_version": 1
+        },
+        "sequences": {
+          "seq_0000000000017e999cdbc20a2319b9cb": {
+            "custom": {},
+            "format": {
+              "background": "#000000",
+              "color_space": "rec709",
+              "frame_rate": {
+                "den": 1,
+                "num": 30
+              },
+              "height": 1080,
+              "sample_rate": 48000,
+              "width": 1920
+            },
+            "id": "seq_0000000000017e999cdbc20a2319b9cb",
+            "name": "Sequence 1",
+            "track_order": [
+              "trk_0000000000057d3189891744bd0efe34",
+              "trk_0000000000027f8989dde9c8c6ffc150",
+              "trk_00000000000376d1902a7aa83bfaaa17"
+            ],
+            "tracks": {
+              "trk_0000000000027f8989dde9c8c6ffc150": {
+                "custom": {},
+                "gain": 0.0,
+                "hidden": false,
+                "id": "trk_0000000000027f8989dde9c8c6ffc150",
+                "items": {
+                  "itm_0000000000077405950ad8d9f69f2c6f": {
+                    "audio": {
+                      "gain": 0.0
+                    },
+                    "custom": {},
+                    "duration": 2822400000,
+                    "enabled": true,
+                    "id": "itm_0000000000077405950ad8d9f69f2c6f",
+                    "kind": "clip",
+                    "linked_group": "grp_0000000000067e09902721405ac105a0",
+                    "media": "med_000000000004771ba4a23020bc56afc3",
+                    "name": null,
+                    "source_in": 0,
+                    "start": 21168000000,
+                    "visual": {
+                      "opacity": 1.0,
+                      "transform": {
+                        "anchor": {
+                          "x": 0.5,
+                          "y": 0.5
+                        },
+                        "position": {
+                          "x": 0.0,
+                          "y": 0.0
+                        },
+                        "rotation": 0.0,
+                        "scale": {
+                          "x": 1.0,
+                          "y": 1.0
+                        }
+                      }
+                    }
+                  },
+                  "itm_00000000000a7677ac4d118e2be6e1b9": {
+                    "audio": {
+                      "gain": 0.0
+                    },
+                    "custom": {},
+                    "duration": 4233600000,
+                    "enabled": true,
+                    "id": "itm_00000000000a7677ac4d118e2be6e1b9",
+                    "kind": "clip",
+                    "linked_group": "grp_0000000000097031b0cbdfaef85bafd1",
+                    "media": "med_000000000004771ba4a23020bc56afc3",
+                    "name": null,
+                    "source_in": 2822400000,
+                    "start": 4233600000,
+                    "visual": {
+                      "opacity": 1.0,
+                      "transform": {
+                        "anchor": {
+                          "x": 0.5,
+                          "y": 0.5
+                        },
+                        "position": {
+                          "x": 0.0,
+                          "y": 0.0
+                        },
+                        "rotation": 0.0,
+                        "scale": {
+                          "x": 1.0,
+                          "y": 1.0
+                        }
+                      }
+                    }
+                  }
+                },
+                "kind": "video",
+                "locked": false,
+                "magnetic": false,
+                "muted": false,
+                "name": "V1",
+                "solo": false
+              },
+              "trk_00000000000376d1902a7aa83bfaaa17": {
+                "custom": {},
+                "gain": 0.0,
+                "hidden": false,
+                "id": "trk_00000000000376d1902a7aa83bfaaa17",
+                "items": {
+                  "itm_00000000000874918ac913f3f46b919e": {
+                    "audio": {
+                      "gain": 0.0
+                    },
+                    "custom": {},
+                    "duration": 2822400000,
+                    "enabled": true,
+                    "id": "itm_00000000000874918ac913f3f46b919e",
+                    "kind": "clip",
+                    "linked_group": "grp_0000000000067e09902721405ac105a0",
+                    "media": "med_000000000004771ba4a23020bc56afc3",
+                    "name": null,
+                    "source_in": 0,
+                    "start": 21168000000,
+                    "visual": {
+                      "opacity": 1.0,
+                      "transform": {
+                        "anchor": {
+                          "x": 0.5,
+                          "y": 0.5
+                        },
+                        "position": {
+                          "x": 0.0,
+                          "y": 0.0
+                        },
+                        "rotation": 0.0,
+                        "scale": {
+                          "x": 1.0,
+                          "y": 1.0
+                        }
+                      }
+                    }
+                  },
+                  "itm_00000000000b7ce789996e9998b9dcff": {
+                    "audio": {
+                      "gain": 0.0
+                    },
+                    "custom": {},
+                    "duration": 4233600000,
+                    "enabled": true,
+                    "id": "itm_00000000000b7ce789996e9998b9dcff",
+                    "kind": "clip",
+                    "linked_group": "grp_0000000000097031b0cbdfaef85bafd1",
+                    "media": "med_000000000004771ba4a23020bc56afc3",
+                    "name": null,
+                    "source_in": 2822400000,
+                    "start": 4233600000,
                     "visual": {
                       "opacity": 1.0,
                       "transform": {
@@ -2028,7 +3445,7 @@
                       "gain": 0.0
                     },
                     "custom": {},
-                    "duration": 7056000000,
+                    "duration": 2822400000,
                     "enabled": true,
                     "id": "itm_0000000000077405950ad8d9f69f2c6f",
                     "kind": "clip",
@@ -2036,7 +3453,40 @@
                     "media": "med_000000000004771ba4a23020bc56afc3",
                     "name": null,
                     "source_in": 0,
-                    "start": 1411200000,
+                    "start": 21168000000,
+                    "visual": {
+                      "opacity": 1.0,
+                      "transform": {
+                        "anchor": {
+                          "x": 0.5,
+                          "y": 0.5
+                        },
+                        "position": {
+                          "x": 0.0,
+                          "y": 0.0
+                        },
+                        "rotation": 0.0,
+                        "scale": {
+                          "x": 1.0,
+                          "y": 1.0
+                        }
+                      }
+                    }
+                  },
+                  "itm_00000000000a7677ac4d118e2be6e1b9": {
+                    "audio": {
+                      "gain": 0.0
+                    },
+                    "custom": {},
+                    "duration": 4233600000,
+                    "enabled": true,
+                    "id": "itm_00000000000a7677ac4d118e2be6e1b9",
+                    "kind": "clip",
+                    "linked_group": "grp_0000000000097031b0cbdfaef85bafd1",
+                    "media": "med_000000000004771ba4a23020bc56afc3",
+                    "name": null,
+                    "source_in": 2822400000,
+                    "start": 4233600000,
                     "visual": {
                       "opacity": 1.0,
                       "transform": {
@@ -2075,7 +3525,7 @@
                       "gain": 0.0
                     },
                     "custom": {},
-                    "duration": 7056000000,
+                    "duration": 2822400000,
                     "enabled": true,
                     "id": "itm_00000000000874918ac913f3f46b919e",
                     "kind": "clip",
@@ -2083,7 +3533,40 @@
                     "media": "med_000000000004771ba4a23020bc56afc3",
                     "name": null,
                     "source_in": 0,
-                    "start": 1411200000,
+                    "start": 21168000000,
+                    "visual": {
+                      "opacity": 1.0,
+                      "transform": {
+                        "anchor": {
+                          "x": 0.5,
+                          "y": 0.5
+                        },
+                        "position": {
+                          "x": 0.0,
+                          "y": 0.0
+                        },
+                        "rotation": 0.0,
+                        "scale": {
+                          "x": 1.0,
+                          "y": 1.0
+                        }
+                      }
+                    }
+                  },
+                  "itm_00000000000b7ce789996e9998b9dcff": {
+                    "audio": {
+                      "gain": 0.0
+                    },
+                    "custom": {},
+                    "duration": 4233600000,
+                    "enabled": true,
+                    "id": "itm_00000000000b7ce789996e9998b9dcff",
+                    "kind": "clip",
+                    "linked_group": "grp_0000000000097031b0cbdfaef85bafd1",
+                    "media": "med_000000000004771ba4a23020bc56afc3",
+                    "name": null,
+                    "source_in": 2822400000,
+                    "start": 4233600000,
                     "visual": {
                       "opacity": 1.0,
                       "transform": {
@@ -2238,7 +3721,7 @@
                       "gain": 0.0
                     },
                     "custom": {},
-                    "duration": 7056000000,
+                    "duration": 2822400000,
                     "enabled": true,
                     "id": "itm_0000000000077405950ad8d9f69f2c6f",
                     "kind": "clip",
@@ -2246,7 +3729,40 @@
                     "media": "med_000000000004771ba4a23020bc56afc3",
                     "name": null,
                     "source_in": 0,
-                    "start": 1411200000,
+                    "start": 21168000000,
+                    "visual": {
+                      "opacity": 1.0,
+                      "transform": {
+                        "anchor": {
+                          "x": 0.5,
+                          "y": 0.5
+                        },
+                        "position": {
+                          "x": 0.0,
+                          "y": 0.0
+                        },
+                        "rotation": 0.0,
+                        "scale": {
+                          "x": 1.0,
+                          "y": 1.0
+                        }
+                      }
+                    }
+                  },
+                  "itm_00000000000a7677ac4d118e2be6e1b9": {
+                    "audio": {
+                      "gain": 0.0
+                    },
+                    "custom": {},
+                    "duration": 4233600000,
+                    "enabled": true,
+                    "id": "itm_00000000000a7677ac4d118e2be6e1b9",
+                    "kind": "clip",
+                    "linked_group": "grp_0000000000097031b0cbdfaef85bafd1",
+                    "media": "med_000000000004771ba4a23020bc56afc3",
+                    "name": null,
+                    "source_in": 2822400000,
+                    "start": 4233600000,
                     "visual": {
                       "opacity": 1.0,
                       "transform": {
@@ -2285,7 +3801,7 @@
                       "gain": 0.0
                     },
                     "custom": {},
-                    "duration": 7056000000,
+                    "duration": 2822400000,
                     "enabled": true,
                     "id": "itm_00000000000874918ac913f3f46b919e",
                     "kind": "clip",
@@ -2293,7 +3809,40 @@
                     "media": "med_000000000004771ba4a23020bc56afc3",
                     "name": null,
                     "source_in": 0,
-                    "start": 1411200000,
+                    "start": 21168000000,
+                    "visual": {
+                      "opacity": 1.0,
+                      "transform": {
+                        "anchor": {
+                          "x": 0.5,
+                          "y": 0.5
+                        },
+                        "position": {
+                          "x": 0.0,
+                          "y": 0.0
+                        },
+                        "rotation": 0.0,
+                        "scale": {
+                          "x": 1.0,
+                          "y": 1.0
+                        }
+                      }
+                    }
+                  },
+                  "itm_00000000000b7ce789996e9998b9dcff": {
+                    "audio": {
+                      "gain": 0.0
+                    },
+                    "custom": {},
+                    "duration": 4233600000,
+                    "enabled": true,
+                    "id": "itm_00000000000b7ce789996e9998b9dcff",
+                    "kind": "clip",
+                    "linked_group": "grp_0000000000097031b0cbdfaef85bafd1",
+                    "media": "med_000000000004771ba4a23020bc56afc3",
+                    "name": null,
+                    "source_in": 2822400000,
+                    "start": 4233600000,
                     "visual": {
                       "opacity": 1.0,
                       "transform": {
@@ -2473,7 +4022,7 @@
                       "gain": 0.0
                     },
                     "custom": {},
-                    "duration": 7056000000,
+                    "duration": 2822400000,
                     "enabled": true,
                     "id": "itm_0000000000077405950ad8d9f69f2c6f",
                     "kind": "clip",
@@ -2481,7 +4030,40 @@
                     "media": "med_000000000004771ba4a23020bc56afc3",
                     "name": null,
                     "source_in": 0,
-                    "start": 1411200000,
+                    "start": 21168000000,
+                    "visual": {
+                      "opacity": 1.0,
+                      "transform": {
+                        "anchor": {
+                          "x": 0.5,
+                          "y": 0.5
+                        },
+                        "position": {
+                          "x": 0.0,
+                          "y": 0.0
+                        },
+                        "rotation": 0.0,
+                        "scale": {
+                          "x": 1.0,
+                          "y": 1.0
+                        }
+                      }
+                    }
+                  },
+                  "itm_00000000000a7677ac4d118e2be6e1b9": {
+                    "audio": {
+                      "gain": 0.0
+                    },
+                    "custom": {},
+                    "duration": 4233600000,
+                    "enabled": true,
+                    "id": "itm_00000000000a7677ac4d118e2be6e1b9",
+                    "kind": "clip",
+                    "linked_group": "grp_0000000000097031b0cbdfaef85bafd1",
+                    "media": "med_000000000004771ba4a23020bc56afc3",
+                    "name": null,
+                    "source_in": 2822400000,
+                    "start": 4233600000,
                     "visual": {
                       "opacity": 1.0,
                       "transform": {
@@ -2520,7 +4102,7 @@
                       "gain": 0.0
                     },
                     "custom": {},
-                    "duration": 7056000000,
+                    "duration": 2822400000,
                     "enabled": true,
                     "id": "itm_00000000000874918ac913f3f46b919e",
                     "kind": "clip",
@@ -2528,7 +4110,40 @@
                     "media": "med_000000000004771ba4a23020bc56afc3",
                     "name": null,
                     "source_in": 0,
-                    "start": 1411200000,
+                    "start": 21168000000,
+                    "visual": {
+                      "opacity": 1.0,
+                      "transform": {
+                        "anchor": {
+                          "x": 0.5,
+                          "y": 0.5
+                        },
+                        "position": {
+                          "x": 0.0,
+                          "y": 0.0
+                        },
+                        "rotation": 0.0,
+                        "scale": {
+                          "x": 1.0,
+                          "y": 1.0
+                        }
+                      }
+                    }
+                  },
+                  "itm_00000000000b7ce789996e9998b9dcff": {
+                    "audio": {
+                      "gain": 0.0
+                    },
+                    "custom": {},
+                    "duration": 4233600000,
+                    "enabled": true,
+                    "id": "itm_00000000000b7ce789996e9998b9dcff",
+                    "kind": "clip",
+                    "linked_group": "grp_0000000000097031b0cbdfaef85bafd1",
+                    "media": "med_000000000004771ba4a23020bc56afc3",
+                    "name": null,
+                    "source_in": 2822400000,
+                    "start": 4233600000,
                     "visual": {
                       "opacity": 1.0,
                       "transform": {
@@ -2670,7 +4285,7 @@
                       "gain": 0.0
                     },
                     "custom": {},
-                    "duration": 7056000000,
+                    "duration": 2822400000,
                     "enabled": true,
                     "id": "itm_0000000000077405950ad8d9f69f2c6f",
                     "kind": "clip",
@@ -2678,7 +4293,40 @@
                     "media": "med_000000000004771ba4a23020bc56afc3",
                     "name": null,
                     "source_in": 0,
-                    "start": 1411200000,
+                    "start": 21168000000,
+                    "visual": {
+                      "opacity": 1.0,
+                      "transform": {
+                        "anchor": {
+                          "x": 0.5,
+                          "y": 0.5
+                        },
+                        "position": {
+                          "x": 0.0,
+                          "y": 0.0
+                        },
+                        "rotation": 0.0,
+                        "scale": {
+                          "x": 1.0,
+                          "y": 1.0
+                        }
+                      }
+                    }
+                  },
+                  "itm_00000000000a7677ac4d118e2be6e1b9": {
+                    "audio": {
+                      "gain": 0.0
+                    },
+                    "custom": {},
+                    "duration": 4233600000,
+                    "enabled": true,
+                    "id": "itm_00000000000a7677ac4d118e2be6e1b9",
+                    "kind": "clip",
+                    "linked_group": "grp_0000000000097031b0cbdfaef85bafd1",
+                    "media": "med_000000000004771ba4a23020bc56afc3",
+                    "name": null,
+                    "source_in": 2822400000,
+                    "start": 4233600000,
                     "visual": {
                       "opacity": 1.0,
                       "transform": {
@@ -2717,7 +4365,7 @@
                       "gain": 0.0
                     },
                     "custom": {},
-                    "duration": 7056000000,
+                    "duration": 2822400000,
                     "enabled": true,
                     "id": "itm_00000000000874918ac913f3f46b919e",
                     "kind": "clip",
@@ -2725,7 +4373,40 @@
                     "media": "med_000000000004771ba4a23020bc56afc3",
                     "name": null,
                     "source_in": 0,
-                    "start": 1411200000,
+                    "start": 21168000000,
+                    "visual": {
+                      "opacity": 1.0,
+                      "transform": {
+                        "anchor": {
+                          "x": 0.5,
+                          "y": 0.5
+                        },
+                        "position": {
+                          "x": 0.0,
+                          "y": 0.0
+                        },
+                        "rotation": 0.0,
+                        "scale": {
+                          "x": 1.0,
+                          "y": 1.0
+                        }
+                      }
+                    }
+                  },
+                  "itm_00000000000b7ce789996e9998b9dcff": {
+                    "audio": {
+                      "gain": 0.0
+                    },
+                    "custom": {},
+                    "duration": 4233600000,
+                    "enabled": true,
+                    "id": "itm_00000000000b7ce789996e9998b9dcff",
+                    "kind": "clip",
+                    "linked_group": "grp_0000000000097031b0cbdfaef85bafd1",
+                    "media": "med_000000000004771ba4a23020bc56afc3",
+                    "name": null,
+                    "source_in": 2822400000,
+                    "start": 4233600000,
                     "visual": {
                       "opacity": 1.0,
                       "transform": {
@@ -2955,7 +4636,7 @@
                       "gain": 0.0
                     },
                     "custom": {},
-                    "duration": 7056000000,
+                    "duration": 2822400000,
                     "enabled": true,
                     "id": "itm_0000000000077405950ad8d9f69f2c6f",
                     "kind": "clip",
@@ -2963,7 +4644,40 @@
                     "media": "med_000000000004771ba4a23020bc56afc3",
                     "name": null,
                     "source_in": 0,
-                    "start": 1411200000,
+                    "start": 21168000000,
+                    "visual": {
+                      "opacity": 1.0,
+                      "transform": {
+                        "anchor": {
+                          "x": 0.5,
+                          "y": 0.5
+                        },
+                        "position": {
+                          "x": 0.0,
+                          "y": 0.0
+                        },
+                        "rotation": 0.0,
+                        "scale": {
+                          "x": 1.0,
+                          "y": 1.0
+                        }
+                      }
+                    }
+                  },
+                  "itm_00000000000a7677ac4d118e2be6e1b9": {
+                    "audio": {
+                      "gain": 0.0
+                    },
+                    "custom": {},
+                    "duration": 4233600000,
+                    "enabled": true,
+                    "id": "itm_00000000000a7677ac4d118e2be6e1b9",
+                    "kind": "clip",
+                    "linked_group": "grp_0000000000097031b0cbdfaef85bafd1",
+                    "media": "med_000000000004771ba4a23020bc56afc3",
+                    "name": null,
+                    "source_in": 2822400000,
+                    "start": 4233600000,
                     "visual": {
                       "opacity": 1.0,
                       "transform": {
@@ -3002,7 +4716,7 @@
                       "gain": 0.0
                     },
                     "custom": {},
-                    "duration": 7056000000,
+                    "duration": 2822400000,
                     "enabled": true,
                     "id": "itm_00000000000874918ac913f3f46b919e",
                     "kind": "clip",
@@ -3010,7 +4724,40 @@
                     "media": "med_000000000004771ba4a23020bc56afc3",
                     "name": null,
                     "source_in": 0,
-                    "start": 1411200000,
+                    "start": 21168000000,
+                    "visual": {
+                      "opacity": 1.0,
+                      "transform": {
+                        "anchor": {
+                          "x": 0.5,
+                          "y": 0.5
+                        },
+                        "position": {
+                          "x": 0.0,
+                          "y": 0.0
+                        },
+                        "rotation": 0.0,
+                        "scale": {
+                          "x": 1.0,
+                          "y": 1.0
+                        }
+                      }
+                    }
+                  },
+                  "itm_00000000000b7ce789996e9998b9dcff": {
+                    "audio": {
+                      "gain": 0.0
+                    },
+                    "custom": {},
+                    "duration": 4233600000,
+                    "enabled": true,
+                    "id": "itm_00000000000b7ce789996e9998b9dcff",
+                    "kind": "clip",
+                    "linked_group": "grp_0000000000097031b0cbdfaef85bafd1",
+                    "media": "med_000000000004771ba4a23020bc56afc3",
+                    "name": null,
+                    "source_in": 2822400000,
+                    "start": 4233600000,
                     "visual": {
                       "opacity": 1.0,
                       "transform": {
@@ -3164,7 +4911,7 @@
                       "gain": 0.0
                     },
                     "custom": {},
-                    "duration": 7056000000,
+                    "duration": 2822400000,
                     "enabled": true,
                     "id": "itm_0000000000077405950ad8d9f69f2c6f",
                     "kind": "clip",
@@ -3172,7 +4919,40 @@
                     "media": "med_000000000004771ba4a23020bc56afc3",
                     "name": null,
                     "source_in": 0,
-                    "start": 1411200000,
+                    "start": 21168000000,
+                    "visual": {
+                      "opacity": 1.0,
+                      "transform": {
+                        "anchor": {
+                          "x": 0.5,
+                          "y": 0.5
+                        },
+                        "position": {
+                          "x": 0.0,
+                          "y": 0.0
+                        },
+                        "rotation": 0.0,
+                        "scale": {
+                          "x": 1.0,
+                          "y": 1.0
+                        }
+                      }
+                    }
+                  },
+                  "itm_00000000000a7677ac4d118e2be6e1b9": {
+                    "audio": {
+                      "gain": 0.0
+                    },
+                    "custom": {},
+                    "duration": 4233600000,
+                    "enabled": true,
+                    "id": "itm_00000000000a7677ac4d118e2be6e1b9",
+                    "kind": "clip",
+                    "linked_group": "grp_0000000000097031b0cbdfaef85bafd1",
+                    "media": "med_000000000004771ba4a23020bc56afc3",
+                    "name": null,
+                    "source_in": 2822400000,
+                    "start": 4233600000,
                     "visual": {
                       "opacity": 1.0,
                       "transform": {
@@ -3211,7 +4991,7 @@
                       "gain": 0.0
                     },
                     "custom": {},
-                    "duration": 7056000000,
+                    "duration": 2822400000,
                     "enabled": true,
                     "id": "itm_00000000000874918ac913f3f46b919e",
                     "kind": "clip",
@@ -3219,7 +4999,40 @@
                     "media": "med_000000000004771ba4a23020bc56afc3",
                     "name": null,
                     "source_in": 0,
-                    "start": 1411200000,
+                    "start": 21168000000,
+                    "visual": {
+                      "opacity": 1.0,
+                      "transform": {
+                        "anchor": {
+                          "x": 0.5,
+                          "y": 0.5
+                        },
+                        "position": {
+                          "x": 0.0,
+                          "y": 0.0
+                        },
+                        "rotation": 0.0,
+                        "scale": {
+                          "x": 1.0,
+                          "y": 1.0
+                        }
+                      }
+                    }
+                  },
+                  "itm_00000000000b7ce789996e9998b9dcff": {
+                    "audio": {
+                      "gain": 0.0
+                    },
+                    "custom": {},
+                    "duration": 4233600000,
+                    "enabled": true,
+                    "id": "itm_00000000000b7ce789996e9998b9dcff",
+                    "kind": "clip",
+                    "linked_group": "grp_0000000000097031b0cbdfaef85bafd1",
+                    "media": "med_000000000004771ba4a23020bc56afc3",
+                    "name": null,
+                    "source_in": 2822400000,
+                    "start": 4233600000,
                     "visual": {
                       "opacity": 1.0,
                       "transform": {

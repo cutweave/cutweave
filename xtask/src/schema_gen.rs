@@ -234,7 +234,7 @@ fn patch_fixtures(registry: &Registry) -> Result<Value, String> {
         json!({"sequence": sequence, "kind": "video", "name": "B-roll"}),
     )?;
     // 2 s = 1_411_200_000 flicks: times are plain JSON integers on the wire (ADR-0015).
-    run(
+    let inserted = run(
         "timeline.insert",
         "timeline.insert",
         json!({
@@ -243,6 +243,19 @@ fn patch_fixtures(registry: &Registry) -> Result<Value, String> {
             "media": registered["media_id"],
             "at": 1_411_200_000_i64,
         }),
+    )?;
+    let clip = inserted["clips"][0].clone();
+    // Split 4 s into the clip (6 s = 4_233_600_000 flicks); linked audio splits too.
+    run(
+        "clip.split",
+        "clip.split",
+        json!({"item": clip, "at": 4_233_600_000_i64}),
+    )?;
+    // Move the left half (and its linked partner) to 30 s.
+    run(
+        "item.move",
+        "item.move",
+        json!({"item": clip, "start": 21_168_000_000_i64}),
     )?;
     run(
         "track.set",
@@ -562,7 +575,14 @@ mod tests {
             .iter()
             .map(|f| f["command"].as_str().unwrap())
             .collect();
-        for expected in ["project.new", "track.add", "timeline.insert", "edit.undo"] {
+        for expected in [
+            "project.new",
+            "track.add",
+            "timeline.insert",
+            "clip.split",
+            "item.move",
+            "edit.undo",
+        ] {
             assert!(names.contains(&expected), "{expected} in {names:?}");
         }
     }

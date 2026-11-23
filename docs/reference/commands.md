@@ -2,21 +2,28 @@
 
 # Command reference
 
-Every command and query the engine registers (26 in total), generated from the registry. The full JSON Schemas are in `schema/commands.json` and `schema/queries.json`.
+Every command and query the engine registers (33 in total), generated from the registry. The full JSON Schemas are in `schema/commands.json` and `schema/queries.json`.
 
 MCP exposure: `core` commands are always listed as tools (`item.move` is `item_move`), `catalog` ones are reachable through the catalog tools, `hidden` ones are not exposed.
 
 | Namespace | Command | Summary | Flags | MCP |
 |---|---|---|---|---|
+| clip | `clip.split` | Split a clip (and its linked partners) at a timeline time | command, undoable | core |
+| clip | `clip.trim` | Trim the start or end edge of a clip (linked partners follow; no ripple) | command, undoable, idempotent | core |
 | edit | `edit.begin_tx` | Open a transaction (batch, gesture or proposal) that commits as one undo step | engine | catalog |
 | edit | `edit.cancel_tx` | Cancel your open transaction and roll back its changes | engine | catalog |
 | edit | `edit.checkpoint` | Save a restore point of the committed document (cheap; optional name) | engine | catalog |
 | edit | `edit.commit_tx` | Commit your open transaction as one undo step | engine | catalog |
 | edit | `edit.history` | List the undo history (newest first, paginated) and each actor's undo/redo stacks | engine, read-only, idempotent | catalog |
 | edit | `edit.list_checkpoints` | List the checkpoints | engine, read-only, idempotent | catalog |
+| edit | `edit.locks` | List open transactions and the items they soft-lock (who is editing what) | engine, read-only, idempotent | catalog |
 | edit | `edit.redo` | Redo the last undone change of yours, or of another actor (`actor`; `*` = anyone) | engine | catalog |
 | edit | `edit.restore` | Restore a checkpoint as one undoable change | engine, undoable, idempotent | catalog |
 | edit | `edit.undo` | Undo your last change, or another actor's (`actor`; `*` = anyone's latest) | engine | core |
+| item | `item.delete` | Delete items and their linked partners (no ripple; fails if a track is locked) | command, undoable, destructive | core |
+| item | `item.get` | Get one item: summary, track, source, audio and visual properties | query | catalog |
+| item | `item.move` | Move an item in time and/or to another track (linked partners follow) | command, undoable, idempotent | core |
+| item | `item.set_props` | Set an item's name, enabled, opacity, audio_gain or transform (partial) | command, undoable, idempotent | core |
 | media | `media.import` | Import media files; probes synchronously and returns the media ids | engine, idempotent | core |
 | media | `media.list` | List the project's media (paged, ordered by id) | query | core |
 | media | `media.register` | Register a probed media file (used by import; deduplicates by content hash) | command, undoable, idempotent | hidden |

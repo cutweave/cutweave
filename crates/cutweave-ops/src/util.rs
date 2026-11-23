@@ -3,7 +3,7 @@
 //! `CmdError::Invalid` with a JSON Pointer into the request params (arch §5.1).
 
 use cutweave_commands::CmdError;
-use cutweave_model::{Duration, FrameRate, Time, TimeInput};
+use cutweave_model::{Duration, FrameRate, Rounding, Time, TimeInput};
 
 /// Longest accepted name of a project, sequence or track, in characters.
 pub const MAX_NAME_CHARS: usize = 200;
@@ -81,4 +81,17 @@ pub(crate) fn resolve_duration(
         return Err(CmdError::invalid(pointer, "the duration must be positive"));
     }
     Ok(d)
+}
+
+/// Resolves a time param and snaps it to the nearest frame boundary of the owning sequence
+/// (ties round later). Edit commands carry frame-aligned times (arch §5.1); an input between
+/// two frames is not an error but lands on the nearer one.
+pub(crate) fn resolve_frame_time(
+    pointer: &str,
+    input: TimeInput,
+    rate: FrameRate,
+) -> Result<Time, CmdError> {
+    let t = resolve_time(pointer, input, rate)?;
+    rate.snap_to_frame(t, Rounding::Nearest)
+        .map_err(|e| CmdError::invalid(pointer, e.to_string()))
 }

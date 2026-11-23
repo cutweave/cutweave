@@ -4,27 +4,31 @@
 
 use std::{
     any::{Any, TypeId},
-    collections::BTreeMap,
+    collections::{BTreeMap, BTreeSet, VecDeque},
     fmt,
     panic::{self, AssertUnwindSafe},
     sync::Arc,
     time::Duration,
 };
 
-use cutweave_model::{IdGen, Project, SeededGen};
+use cutweave_model::{IdGen, ItemId, Project, SeededGen};
 use serde::Serialize;
 use serde_json::{Map, Value};
 
 use super::{
     clock::{Clock, ManualClock, WallTime},
     dedup::{DEDUP_CAPACITY, DEDUP_WINDOW, DedupRecord, DedupTable, Fingerprint},
-    event::{CommandPanicked, DocEvent, DocPatched, DocReset, DocSnapshot, PatchCause},
+    event::{
+        CommandPanicked, DocEvent, DocPatched, DocReset, DocSnapshot, PatchCause, TxActivity,
+        TxEnded,
+    },
     history::{
         CheckpointInfo, Checkpoints, EntryCause, History, HistoryLimits, HistoryMoved, HistoryPage,
         HistoryScope, MAX_CHECKPOINT_NAME_CHARS, MAX_CHECKPOINT_NOTE_CHARS, MAX_HISTORY_PAGE,
         NewRecord, Record, Restored, RevertedChanges,
     },
     identity::{Actor, ActorCtx, ConnId},
+    locks::{ItemLocks, LockList, TxLocks},
     request::{Applied, RequestId, Submit, TxClosed, TxId, TxInfo, TxKind, TxOutcome},
 };
 use crate::{
@@ -32,12 +36,22 @@ use crate::{
     error::{CmdError, ConflictReason, ResourceKind, Rev, encode_output},
     meta::EntryKind,
     patch::{Patch, PatchError},
+    path::DocPath,
     registry::Registry,
     tx::{Committed, Transaction},
 };
 
-/// Suggested retry delay when a command collides with another connection's open transaction.
+/// The shortest `retry_after_ms` hint of a `Conflict{reason: item_in_gesture}` (WP-1B.09).
+///
+/// A collision with an open gesture hints at the time left until its idle deadline (it is
+/// committed, cancelled or expired by then unless it keeps moving), but never less than this;
+/// a collision with an open batch's changes hints exactly this (batches have no deadline and
+/// are short-lived). A proposal gives no hint: it waits for a person to accept or reject it.
 pub const SOFT_LOCK_RETRY_MS: u64 = 250;
+
+/// How many closed connections the state remembers, so that a request racing its
+/// connection's close cannot open a transaction nobody would ever close (WP-1B.09).
+const CLOSED_CONNECTIONS_REMEMBERED: usize = 1024;
 
 /// A gesture transaction that no request has named for this long is cancelled by the engine
 /// (outcome [`TxOutcome::Expired`]; arch §5.2, ADR-0017). Proposals and batches never expire.
@@ -410,10 +424,13 @@ struct OpenTx {
     /// Its view was rebased onto commits made since its commands ran: its ops still apply, but
     /// the result may break an invariant they never saw (two clips appended into one gap).
     rebased: bool,
+    /// The items it soft-locks for other actors: everything its ops touched, for a gesture or
+    /// proposal; nothing for a batch (WP-1B.09). Dropped with it, so closing it releases them.
+    locks: ItemLocks,
 }
 
 impl OpenTx {
-    fn info(&self) -> TxInfo {
+    fn info(&self, gesture_timeout: Duration) -> TxInfo {
         TxInfo {
             id: self.id,
             kind: self.kind,
@@ -423,7 +440,9 @@ impl OpenTx {
             opened_rev: self.opened_rev,
             opened_at: self.opened_at,
             last_activity: self.last_activity,
+            expires_at: self.expires_at(gesture_timeout),
             steps: self.steps.len(),
+            items: self.locks.items(),
             conflicted: self.conflicted,
         }
     }
@@ -431,6 +450,47 @@ impl OpenTx {
     /// Whether its changes are part of the live document.
     fn contributes_live(&self) -> bool {
         self.kind.is_live() && !self.conflicted && !self.ops.is_empty()
+    }
+
+    /// A gesture's idle deadline.
+    fn expires_at(&self, gesture_timeout: Duration) -> Option<WallTime> {
+        (self.kind == TxKind::Gesture).then(|| self.last_activity.saturating_add(gesture_timeout))
+    }
+
+    fn activity(&self, rev: Rev) -> TxActivity {
+        TxActivity {
+            tx_id: self.id,
+            kind: self.kind,
+            label: self.label.clone(),
+            actor: self.actor.clone(),
+            items: self.locks.items(),
+            rev,
+        }
+    }
+}
+
+/// The connections closed lately (FIFO-bounded): they cannot open transactions any more.
+#[derive(Debug, Default)]
+struct ClosedConns {
+    order: VecDeque<ConnId>,
+    set: BTreeSet<ConnId>,
+}
+
+impl ClosedConns {
+    fn insert(&mut self, conn: ConnId) {
+        if conn == ConnId::INTERNAL || !self.set.insert(conn) {
+            return;
+        }
+        self.order.push_back(conn);
+        if self.order.len() > CLOSED_CONNECTIONS_REMEMBERED
+            && let Some(oldest) = self.order.pop_front()
+        {
+            self.set.remove(&oldest);
+        }
+    }
+
+    fn contains(&self, conn: ConnId) -> bool {
+        self.set.contains(&conn)
     }
 }
 
@@ -571,21 +631,6 @@ fn not_owner(t: &OpenTx) -> CmdError {
     }
 }
 
-fn soft_locked(t: &OpenTx, e: &PatchError) -> CmdError {
-    CmdError::Conflict {
-        reason: ConflictReason::ItemInGesture,
-        current_rev: None,
-        retry_after_ms: Some(SOFT_LOCK_RETRY_MS),
-        detail: format!(
-            "`{}` is being edited in open {} transaction {} of {}; retry once it closes",
-            e.path().as_str(),
-            t.kind,
-            t.id,
-            t.actor
-        ),
-    }
-}
-
 fn conflicted(t: &OpenTx) -> CmdError {
     CmdError::conflict(
         ConflictReason::StaleRev,
@@ -627,10 +672,28 @@ pub(crate) fn panic_message(payload: &(dyn Any + Send)) -> String {
 /// - Implicit single-command transactions run against the committed document, so the journal
 ///   replays them exactly. Their patch is rebased onto every open transaction; if it overlaps
 ///   one (the patch no longer applies), the command fails fast with
-///   `Conflict{reason: item_in_gesture}`: the minimal soft lock of ADR-0017, enforced by the
-///   ops' preimages (WP-1B.09 adds an explicit lock table with better errors). Between open
+///   `Conflict{reason: item_in_gesture}` (the field-level backstop). Between open
 ///   transactions, the first to commit wins; an overlapping one becomes conflicted and can
 ///   only be cancelled.
+///
+/// # Ownership and soft locks (WP-1B.09, ADR-0017)
+///
+/// - An open transaction belongs to the [`ConnId`] that opened it (one per connection): only
+///   that connection may run commands in it, commit it or cancel it (others get
+///   `Locked{kind: transaction, by, tx}`). [`close_connection`](Self::close_connection) rolls
+///   it back and refuses later transactions from that connection.
+/// - An open **gesture or proposal soft-locks every item its commands touched** (added,
+///   removed, moved or edited, or below a path it wrote). A request by **another actor** that
+///   would change a locked item (an implicit command, a step of its own transaction, the
+///   commit of a batch, an undo, redo or restore) fails before anything is applied with
+///   `Conflict{reason: item_in_gesture, retry_after_ms}`: the time left until a gesture's idle
+///   deadline, none for a proposal (see [`SOFT_LOCK_RETRY_MS`]). Requests on other items
+///   proceed; the lock holder's own actor is never blocked by the lock (its other
+///   connections still meet the field-level backstop). A batch locks nothing: it is invisible
+///   until it commits, and its commit waits while another actor's gesture holds its items.
+/// - Locks live inside their transaction, so commit, cancel, connection close and idle expiry
+///   release them; `edit.locks` lists them and `tx.opened` / `tx.locked` / `tx.closed`
+///   events announce them.
 ///
 /// # Revisions
 ///
@@ -663,6 +726,7 @@ pub struct DocState {
     live: Project,
     rev: Rev,
     open: BTreeMap<TxId, OpenTx>,
+    closed_conns: ClosedConns,
     next_tx: u64,
     dedup: DedupTable,
     history: History,
@@ -710,6 +774,7 @@ impl DocState {
             committed_rev: config.rev,
             rev: config.rev,
             open: BTreeMap::new(),
+            closed_conns: ClosedConns::default(),
             next_tx: config.first_tx,
             dedup,
             history,
@@ -790,13 +855,16 @@ impl DocState {
     /// The open transactions, oldest first.
     #[must_use]
     pub fn transactions(&self) -> Vec<TxInfo> {
-        self.open.values().map(OpenTx::info).collect()
+        self.open
+            .values()
+            .map(|t| t.info(self.gesture_timeout))
+            .collect()
     }
 
     /// An open transaction.
     #[must_use]
     pub fn transaction(&self, id: TxId) -> Option<TxInfo> {
-        self.open.get(&id).map(OpenTx::info)
+        self.open.get(&id).map(|t| t.info(self.gesture_timeout))
     }
 
     /// The open transaction owned by `conn`, if any (one per connection).
@@ -805,7 +873,125 @@ impl DocState {
         self.open
             .values()
             .find(|t| t.conn == conn)
-            .map(OpenTx::info)
+            .map(|t| t.info(self.gesture_timeout))
+    }
+
+    /// Every open transaction with the items it soft-locks (`edit.locks`, WP-1B.09); `mine`
+    /// marks those of `conn`.
+    #[must_use]
+    pub fn locks(&self, conn: Option<ConnId>) -> LockList {
+        LockList {
+            transactions: self
+                .open
+                .values()
+                .map(|t| TxLocks {
+                    tx: t.id,
+                    kind: t.kind,
+                    label: t.label.clone(),
+                    actor: t.actor.clone(),
+                    mine: Some(t.conn) == conn,
+                    items: t.locks.items(),
+                    opened_at: t.opened_at,
+                    last_activity: t.last_activity,
+                    expires_at: t.expires_at(self.gesture_timeout),
+                    conflicted: t.conflicted,
+                })
+                .collect(),
+            rev: self.rev,
+            committed_rev: self.committed_rev,
+        }
+    }
+
+    /// Whether `conn` was closed ([`close_connection`](Self::close_connection)); it cannot open
+    /// transactions any more. (The last 1024 closed connections are remembered: the API layer
+    /// never reuses a connection id.)
+    #[must_use]
+    pub fn is_closed(&self, conn: ConnId) -> bool {
+        self.closed_conns.contains(conn)
+    }
+
+    // ----- soft locks (WP-1B.09) -------------------------------------------------------------
+
+    /// The `retry_after_ms` hint for a request blocked by `t`: the time left until a gesture's
+    /// idle deadline (at least [`SOFT_LOCK_RETRY_MS`]); none for a proposal, which waits for a
+    /// person; [`SOFT_LOCK_RETRY_MS`] for a batch.
+    fn retry_after(&self, t: &OpenTx) -> Option<u64> {
+        match t.kind {
+            TxKind::Gesture => {
+                let deadline = t.last_activity.saturating_add(self.gesture_timeout);
+                let left = deadline.saturating_since(self.clock.now()).as_millis();
+                Some(
+                    u64::try_from(left)
+                        .unwrap_or(u64::MAX)
+                        .max(SOFT_LOCK_RETRY_MS),
+                )
+            }
+            TxKind::Proposal => None,
+            TxKind::Batch => Some(SOFT_LOCK_RETRY_MS),
+        }
+    }
+
+    /// `Conflict{item_in_gesture}`: `what` is being edited in `t`.
+    fn in_use(&self, t: &OpenTx, what: &str) -> CmdError {
+        let retry_after_ms = self.retry_after(t);
+        let when = match (t.kind, retry_after_ms) {
+            (TxKind::Proposal, _) => "retry once it is accepted or rejected".to_owned(),
+            (_, Some(ms)) => format!("retry in {ms} ms or once it closes"),
+            (_, None) => "retry once it closes".to_owned(),
+        };
+        CmdError::Conflict {
+            reason: ConflictReason::ItemInGesture,
+            current_rev: None,
+            retry_after_ms,
+            detail: format!(
+                "{what} is being edited in open {} {} by {} (\"{}\"); {when}; `edit.locks` \
+                 lists who holds what",
+                t.kind, t.id, t.actor, t.label
+            ),
+        }
+    }
+
+    /// `Conflict{item_in_gesture}` for an item soft-locked by `t`.
+    fn item_locked(&self, t: &OpenTx, item: ItemId) -> CmdError {
+        self.in_use(t, &format!("item `{item}`"))
+    }
+
+    /// `Conflict{item_in_gesture}` for a change that collides with `t`'s changes at `path`
+    /// (the field-level backstop: `t`'s ops no longer apply on top of it).
+    fn collides(&self, t: &OpenTx, path: &DocPath) -> CmdError {
+        self.in_use(t, &format!("`{}`", path.as_str()))
+    }
+
+    /// `Conflict{item_in_gesture}` if `patch` touches an item soft-locked by an open gesture
+    /// or proposal of an actor other than `actor` (the holder's own actor is never blocked).
+    fn check_locks(&self, actor: &Actor, patch: &Patch) -> Result<(), CmdError> {
+        for t in self.open.values() {
+            if t.actor == *actor || t.locks.is_empty() {
+                continue;
+            }
+            if let Some(item) = t.locks.touched_by(patch) {
+                return Err(self.item_locked(t, item));
+            }
+        }
+        Ok(())
+    }
+
+    /// Maps `NotFound` for an item that only exists in another actor's open gesture or
+    /// proposal (it created the item) to the soft-lock conflict that explains it.
+    fn explain_missing(&self, actor: &Actor, e: CmdError) -> CmdError {
+        if let CmdError::NotFound {
+            kind: ResourceKind::Item,
+            id,
+        } = &e
+            && let Ok(item) = id.parse::<ItemId>()
+            && let Some(t) = self
+                .open
+                .values()
+                .find(|t| t.actor != *actor && t.locks.contains(item))
+        {
+            return self.item_locked(t, item);
+        }
+        e
     }
 
     // ----- publication (for the host) -------------------------------------------------------
@@ -1033,15 +1219,20 @@ impl DocState {
     }
 
     /// Computes the effects of committing `committed` (reached from the committed document by
-    /// `patch`) as an implicit transaction: every open transaction is rebased onto it (one
-    /// whose changes overlap refuses it: the soft lock) and the live document is recomposed.
-    fn stage(&self, committed: Project, patch: Patch) -> Result<Staged, CmdError> {
+    /// `patch`) as an implicit transaction by `actor`: refused if it touches an item another
+    /// actor's gesture or proposal soft-locks; then every open transaction is rebased onto it
+    /// (one whose changes no longer apply refuses it too: the field-level backstop, which also
+    /// covers batches and the lock holder's own actor) and the live document is recomposed.
+    fn stage(&self, actor: &Actor, committed: Project, patch: Patch) -> Result<Staged, CmdError> {
+        self.check_locks(actor, &patch)?;
         let mut views = Vec::with_capacity(self.open.len());
         for t in self.open.values().filter(|t| !t.conflicted) {
             let view = if t.ops.is_empty() {
                 committed.clone()
             } else {
-                t.ops.apply(&committed).map_err(|e| soft_locked(t, &e))?
+                t.ops
+                    .apply(&committed)
+                    .map_err(|e| self.collides(t, e.path()))?
             };
             views.push((t.id, view));
         }
@@ -1058,7 +1249,7 @@ impl DocState {
             .collect();
         let live_pending = !layers.is_empty();
         let live = compose(&committed, &layers).map_err(|(id, e)| match self.open.get(&id) {
-            Some(t) => soft_locked(t, &e),
+            Some(t) => self.collides(t, e.path()),
             None => CmdError::internal("lost an open transaction"),
         })?;
         drop(layers);
@@ -1161,7 +1352,9 @@ impl DocState {
 
     /// An implicit single-command transaction, run against the committed document.
     fn run_implicit(&mut self, call: &Call, params: Value) -> Result<Applied, CmdError> {
-        let (done, output) = self.execute(call, params, self.committed.clone())?;
+        let (done, output) = self
+            .execute(call, params, self.committed.clone())
+            .map_err(|e| self.explain_missing(call.ctx.actor(), e))?;
         let tx_id = self.alloc_tx();
         if done.is_empty() {
             let applied = self.applied(call, Some(tx_id), output, Patch::new());
@@ -1173,7 +1366,7 @@ impl DocState {
             patch,
             ..
         } = done;
-        let staged = self.stage(committed, patch)?;
+        let staged = self.stage(call.ctx.actor(), committed, patch)?;
         let applied = Applied {
             request_id: call.request_id,
             rev: staged.rev,
@@ -1224,7 +1417,9 @@ impl DocState {
             return Err(conflicted(t));
         }
         let (base, kind) = (t.view.clone(), t.kind);
-        let (done, output) = self.execute(call, params, base)?;
+        let (done, output) = self
+            .execute(call, params, base)
+            .map_err(|e| self.explain_missing(call.ctx.actor(), e))?;
         if done.is_empty() {
             let applied = self.applied(call, Some(tx_id), output, Patch::new());
             self.add_step(tx_id, call, &applied, None);
@@ -1235,6 +1430,8 @@ impl DocState {
             patch: step,
             ..
         } = done;
+        // Fail fast on another actor's soft lock, before anything is applied.
+        self.check_locks(call.ctx.actor(), &step)?;
         if !kind.is_live() {
             // A batch: nothing visible until it commits.
             let applied = self.applied(call, Some(tx_id), output, step.clone());
@@ -1280,7 +1477,7 @@ impl DocState {
                 };
                 other.map_or_else(
                     || CmdError::internal("lost an open transaction"),
-                    |o| soft_locked(o, &e),
+                    |o| self.collides(o, e.path()),
                 )
             })?;
             let delta = LiveDelta::between(&self.live, &live);
@@ -1292,7 +1489,7 @@ impl DocState {
         let prev_rev = self.rev;
         self.rev = self.rev.next();
         let applied = self.applied(call, Some(tx_id), output, step.clone());
-        self.add_step(tx_id, call, &applied, Some((step, view)));
+        let locked_more = self.add_step(tx_id, call, &applied, Some((step, view)));
         self.live = live;
         self.emit(
             prev_rev,
@@ -1302,20 +1499,30 @@ impl DocState {
             Some(call.request_id),
             delta,
         );
+        if locked_more && let Some(t) = self.open.get(&tx_id) {
+            // After the `doc.patched` that touched them (new items exist in mirrors by then).
+            self.outbox.push(DocEvent::TxLocked(t.activity(self.rev)));
+        }
         self.changes.live = true;
         Ok(applied)
     }
 
+    /// Records a step in open transaction `tx_id`; a gesture or proposal soft-locks what it
+    /// touched. Returns whether that locked items not locked before.
     fn add_step(
         &mut self,
         tx_id: TxId,
         call: &Call,
         applied: &Applied,
         change: Option<(Patch, Project)>,
-    ) {
+    ) -> bool {
         let record = Self::record(call, applied);
+        let mut locked_more = false;
         if let Some(t) = self.open.get_mut(&tx_id) {
             if let Some((step, view)) = change {
+                if t.kind.is_live() {
+                    locked_more = t.locks.extend(&step) > 0;
+                }
                 t.ops.extend(step);
                 t.view = view;
                 t.undoable &= call.undoable;
@@ -1327,6 +1534,7 @@ impl DocState {
                 record,
             });
         }
+        locked_more
     }
 
     /// Runs an engine command (`edit.*`) with this state as its context.
@@ -1416,8 +1624,10 @@ impl DocState {
 
     // ----- open transactions (the seam for WP-1B.04 / WP-1B.09) -----------------------------
 
-    /// Opens a transaction owned by `ctx`'s connection (one per connection). Nothing changes
-    /// until commands run in it ([`Submit::in_tx`]).
+    /// Opens a transaction owned by `ctx`'s connection (one per connection; a closed
+    /// connection cannot open one). Nothing changes until commands run in it
+    /// ([`Submit::in_tx`]); a gesture or proposal soft-locks the items they touch for other
+    /// actors until it closes. Emits `tx.opened`.
     pub fn begin_tx(
         &mut self,
         ctx: &ActorCtx,
@@ -1425,6 +1635,16 @@ impl DocState {
         label: impl Into<String>,
     ) -> Result<TxInfo, CmdError> {
         self.expire_idle();
+        if self.closed_conns.contains(ctx.conn()) {
+            // A request that raced its connection's close: nobody could ever close it.
+            return Err(CmdError::invalid(
+                "",
+                format!(
+                    "connection {} is closed; reconnect to open a transaction",
+                    ctx.conn()
+                ),
+            ));
+        }
         if let Some(t) = self.open.values().find(|t| t.conn == ctx.conn()) {
             return Err(CmdError::invalid(
                 "",
@@ -1451,10 +1671,25 @@ impl DocState {
             conflicted: false,
             undoable: true,
             rebased: false,
+            locks: ItemLocks::default(),
         };
-        let info = t.info();
+        let info = t.info(self.gesture_timeout);
+        self.outbox.push(DocEvent::TxOpened(t.activity(self.rev)));
         self.open.insert(id, t);
         Ok(info)
+    }
+
+    /// Queues `tx.closed` for `t`, which just ended (after its `doc.patched`, if any).
+    fn push_closed(&mut self, t: &OpenTx, outcome: TxOutcome) {
+        self.outbox.push(DocEvent::TxClosed(TxEnded {
+            tx_id: t.id,
+            kind: t.kind,
+            actor: t.actor.clone(),
+            outcome,
+            items: t.locks.items(),
+            rev: self.rev,
+            committed_rev: self.committed_rev,
+        }));
     }
 
     fn owned(&self, ctx: &ActorCtx, id: TxId) -> Result<&OpenTx, CmdError> {
@@ -1486,12 +1721,15 @@ impl DocState {
         };
         if t.conflicted {
             let err = conflicted(t);
-            self.open.remove(&id);
+            if let Some(t) = self.open.remove(&id) {
+                self.push_closed(&t, TxOutcome::Conflicted);
+            }
             return Err(err);
         }
         if t.ops.is_empty() {
             let kind = t.kind;
             if let Some(t) = self.open.remove(&id) {
+                self.push_closed(&t, TxOutcome::Committed);
                 for step in t.steps {
                     self.dedup.insert(step.record);
                 }
@@ -1505,6 +1743,9 @@ impl DocState {
                 patch: Patch::new(),
             });
         }
+        // A batch that touched an item before another actor's gesture or proposal locked it
+        // waits (stays open) until that one closes.
+        self.check_locks(&t.actor, &t.ops)?;
         if t.rebased {
             self.check_rebased(t)?;
         }
@@ -1567,9 +1808,6 @@ impl DocState {
         self.committed_rev = committed_rev;
         self.live = live;
         self.rev = rev;
-        for step in t.steps {
-            self.dedup.insert(step.record);
-        }
         let request = self.current_request();
         self.emit(
             prev_rev,
@@ -1579,6 +1817,10 @@ impl DocState {
             request,
             delta,
         );
+        self.push_closed(&t, TxOutcome::Committed);
+        for step in t.steps {
+            self.dedup.insert(step.record);
+        }
         self.changes = Changes::BOTH;
         // However many commands it ran: one history entry.
         let record = NewRecord {
@@ -1618,7 +1860,8 @@ impl DocState {
             Some(broken) => Err(CmdError::conflict(
                 ConflictReason::StaleRev,
                 format!(
-                    "transaction {} cannot commit: with the changes committed since it began,                      the document would become invalid ({broken}); change it or cancel it",
+                    "transaction {} cannot commit: with the changes committed since it began, the \
+                     document would become invalid ({broken}); change it or cancel it",
                     t.id
                 ),
             )),
@@ -1695,7 +1938,8 @@ impl DocState {
         }
     }
 
-    /// Cancels `ctx`'s open transaction `id`, rolling back its live changes.
+    /// Cancels `ctx`'s open transaction `id`, rolling back its live changes and releasing its
+    /// soft locks. Only its owner may (others get `Locked`).
     pub fn cancel_tx(&mut self, ctx: &ActorCtx, id: TxId) -> Result<TxClosed, CmdError> {
         self.expire_idle();
         self.owned(ctx, id).map_err(|e| e.with_rev(self.rev))?;
@@ -1703,8 +1947,17 @@ impl DocState {
             .ok_or_else(|| tx_not_found(id))
     }
 
-    /// Rolls back every transaction owned by `conn` (the connection closed, ADR-0017).
+    /// The connection `conn` closed (WebSocket close, MCP session end, stdio proxy exit;
+    /// ADR-0017): rolls back its open transaction immediately (`doc.patched` with
+    /// `cause: rollback`, then `tx.closed` with `outcome: rolled_back`), releasing its soft
+    /// locks, and refuses transactions it would open later (a request that raced the close).
+    ///
+    /// Call it once the API layer has handed the actor every request it read from that
+    /// connection: requests already submitted run first (the inbox is FIFO). Requests that
+    /// arrive later still run, but only as implicit transactions. [`ConnId::INTERNAL`] is
+    /// never marked closed.
     pub fn close_connection(&mut self, conn: ConnId) -> Vec<TxClosed> {
+        self.closed_conns.insert(conn);
         let ids: Vec<TxId> = self
             .open
             .values()
@@ -1750,6 +2003,7 @@ impl DocState {
             );
             self.changes.live = true;
         }
+        self.push_closed(&t, outcome);
         Some(TxClosed {
             tx_id: id,
             kind: t.kind,
@@ -1855,7 +2109,7 @@ impl DocState {
         if !exact {
             self.check_still_valid(&committed, dir, &target)?;
         }
-        let staged = self.stage(committed, patch)?;
+        let staged = self.stage(ctx.actor(), committed, patch)?;
         let tx_id = self.alloc_tx();
         let out = HistoryMoved {
             tx: tx_id,
@@ -2123,7 +2377,7 @@ impl DocState {
                 ),
             ));
         }
-        let staged = self.stage(target, patch)?;
+        let staged = self.stage(ctx.actor(), target, patch)?;
         let tx_id = self.alloc_tx();
         let out = Restored {
             checkpoint: id,
@@ -2168,13 +2422,46 @@ impl DocState {
     /// Checks the model's invariants; expensive, for tests and diagnostics:
     /// every open transaction's view is the committed document with its ops replayed, the live
     /// document is the committed document with the live transactions' ops replayed in order,
-    /// `committed_rev <= rev`, and `rev == committed_rev` implies live == committed.
+    /// `committed_rev <= rev`, and `rev == committed_rev` implies live == committed. Soft
+    /// locks (WP-1B.09): each open gesture or proposal locks exactly the items its ops touch, a
+    /// batch none, every connection owns at most one open transaction, and no item is locked
+    /// by two actors.
     pub fn verify(&self) -> Result<(), String> {
         if self.committed_rev > self.rev {
             return Err(format!(
                 "committed_rev {} > rev {}",
                 self.committed_rev, self.rev
             ));
+        }
+        let mut conns = BTreeSet::new();
+        let mut holders: BTreeMap<ItemId, &Actor> = BTreeMap::new();
+        for t in self.open.values() {
+            if !conns.insert(t.conn) {
+                return Err(format!("{} owns two open transactions", t.conn));
+            }
+            let expected = if t.kind.is_live() {
+                ItemLocks::of(&t.ops)
+            } else {
+                ItemLocks::default()
+            };
+            if t.locks != expected {
+                return Err(format!(
+                    "{}: locks {:?} are not the items its ops touch {:?}",
+                    t.id,
+                    t.locks.items(),
+                    expected.items()
+                ));
+            }
+            for item in t.locks.items() {
+                if let Some(other) = holders.insert(item, &t.actor)
+                    && *other != t.actor
+                {
+                    return Err(format!(
+                        "item {item} is locked by both {other} and {}",
+                        t.actor
+                    ));
+                }
+            }
         }
         let mut live = self.committed.clone();
         for t in self.open.values() {

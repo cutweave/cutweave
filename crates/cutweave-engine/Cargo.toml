@@ -9,16 +9,27 @@ rust-version.workspace = true
 publish = false
 
 [dependencies]
+# The doc actor's `CommitSink` seam, `JournaledCommit` and the recovery hooks of `DocConfig`
+# (WP-1C.02: the journal persists committed transactions before they are acknowledged).
+cutweave-commands = { path = "../cutweave-commands" }
 cutweave-model = { path = "../cutweave-model" }
 cutweave-ops = { path = "../cutweave-ops" }
 serde.workspace = true
 serde_json.workspace = true
+# Identity of the saved document a journal segment builds on (already a workspace dependency).
+sha2.workspace = true
 thiserror.workspace = true
+# Journal warnings (torn tails, stale segments, fsync failures).
+tracing.workspace = true
 
 [dev-dependencies]
-cutweave-commands = { path = "../cutweave-commands" }
 cutweave-model = { path = "../cutweave-model", features = ["testing"] }
+criterion.workspace = true
 proptest.workspace = true
+
+[[bench]]
+name = "journal"
+harness = false
 
 [lints]
 workspace = true

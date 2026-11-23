@@ -182,8 +182,10 @@ pub enum CmdError {
         /// The missing ID or name.
         id: String,
     },
-    /// The target is locked: a locked track (arch §4.2), or an item soft-locked by another
-    /// connection's open transaction (WP-1B.09; then `by` and `tx` are set).
+    /// The target is locked: a locked track or item (arch §4.2), or an open transaction owned
+    /// by another connection (WP-1B.09; then `by` and `tx` are set). An item soft-locked by
+    /// another actor's open gesture or proposal is a `Conflict{reason: item_in_gesture}`
+    /// instead (arch §5.1).
     #[error("{kind} `{id}` is locked{}", locked_by(by.as_deref(), tx.as_deref()))]
     Locked {
         /// What kind of thing is locked.
@@ -468,7 +470,7 @@ mod wire {
             /// Human message.
             message: String,
         },
-        /// The target is locked (a locked track, or another transaction's soft lock).
+        /// The target is locked (a locked track or item, or another connection's transaction).
         Locked {
             /// What kind of thing is locked.
             kind: ResourceKind,

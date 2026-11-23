@@ -233,3 +233,33 @@ pub fn assert_code(r: Result<Value, CmdError>, code: &str) {
         Ok(v) => panic!("expected `{code}`, got Ok({v})"),
     }
 }
+
+// ----- helpers of the WP-1B.06 edit tests ----------------------------------------------------
+
+/// The clip `item` as stored in the document.
+pub fn clip_of(h: &H, item: ItemId) -> cutweave_model::Clip {
+    h.doc()
+        .find_item(&item)
+        .unwrap_or_else(|| panic!("{item} is not in the document"))
+        .item
+        .as_clip()
+        .unwrap()
+        .clone()
+}
+
+/// The track an item is on.
+pub fn track_of(h: &H, item: ItemId) -> TrackId {
+    h.doc().find_item(&item).unwrap().track.id
+}
+
+/// A video with sound inserted at `at` of the video track: `(video clip, audio clip)`.
+pub fn insert_av(h: &mut H, p: P, media: MediaId, at: &str) -> (ItemId, ItemId) {
+    let out = h.ok(
+        "timeline.insert",
+        json!({"sequence": p.sequence, "track": p.video, "media": media, "at": at}),
+    );
+    (item_id(&out["clips"][0]), item_id(&out["clips"][1]))
+}
+
+/// One frame at 30 fps in flicks.
+pub const FRAME30: i64 = 705_600_000 / 30;

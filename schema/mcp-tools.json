@@ -9,10 +9,70 @@
         "openWorldHint": false,
         "readOnlyHint": false
       },
+      "command": "clip.split",
+      "description": "Split a clip (and its linked partners) at a timeline time",
+      "kind": "command",
+      "name": "clip_split"
+    },
+    {
+      "annotations": {
+        "destructiveHint": false,
+        "idempotentHint": true,
+        "openWorldHint": false,
+        "readOnlyHint": false
+      },
+      "command": "clip.trim",
+      "description": "Trim the start or end edge of a clip (linked partners follow; no ripple)",
+      "kind": "command",
+      "name": "clip_trim"
+    },
+    {
+      "annotations": {
+        "destructiveHint": false,
+        "idempotentHint": false,
+        "openWorldHint": false,
+        "readOnlyHint": false
+      },
       "command": "edit.undo",
       "description": "Undo your last change, or another actor's (`actor`; `*` = anyone's latest)",
       "kind": "engine",
       "name": "edit_undo"
+    },
+    {
+      "annotations": {
+        "destructiveHint": true,
+        "idempotentHint": false,
+        "openWorldHint": false,
+        "readOnlyHint": false
+      },
+      "command": "item.delete",
+      "description": "Delete items and their linked partners (no ripple; fails if a track is locked)",
+      "kind": "command",
+      "name": "item_delete"
+    },
+    {
+      "annotations": {
+        "destructiveHint": false,
+        "idempotentHint": true,
+        "openWorldHint": false,
+        "readOnlyHint": false
+      },
+      "command": "item.move",
+      "description": "Move an item in time and/or to another track (linked partners follow)",
+      "kind": "command",
+      "name": "item_move"
+    },
+    {
+      "annotations": {
+        "destructiveHint": false,
+        "idempotentHint": true,
+        "openWorldHint": false,
+        "readOnlyHint": false
+      },
+      "command": "item.set_props",
+      "description": "Set an item's name, enabled, opacity, audio_gain or transform (partial)",
+      "kind": "command",
+      "name": "item_set_props"
     },
     {
       "annotations": {

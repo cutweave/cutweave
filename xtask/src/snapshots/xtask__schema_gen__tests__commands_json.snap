@@ -13,7 +13,275 @@ expression: text
       },
       "input_schema": {
         "additionalProperties": false,
-        "description": "Opens a transaction owned by this connection (one at a time). Run commands in it by naming\nit in the request envelope (`_meta.tx`). A `batch` stays invisible until committed; a\n`gesture` (dragging, scrubbing) and a `proposal` (copilot turn) update the document live.\nEach commits as one undo step; a gesture idle for 30 s is cancelled by the engine.",
+        "description": "Splits a clip into two at a timeline time that lies strictly inside it (`Invalid{path:\"/at\"}`\nat or beyond the edges). The halves are contiguous: durations sum to the original and the\nright half's `source_in` continues where the left half ends. Linked partners that contain\nthe time are split too. `at` is snapped to the sequence's frame grid. `Locked` if the clip's\ntrack or a partner's track is locked.",
+        "properties": {
+          "at": {
+            "anyOf": [
+              {
+                "maximum": 9007199254740991,
+                "minimum": -9007199254740991,
+                "type": "integer"
+              },
+              {
+                "pattern": "^-?[0-9]+(\\.[0-9]+)?s$|^-?[0-9]+$|^f:[0-9]+$|^[0-9]+[:;][0-9]+[:;][0-9]+[:;][0-9]+$",
+                "type": "string"
+              }
+            ],
+            "description": "Timeline time to split at: strictly inside the clip."
+          },
+          "item": {
+            "description": "The clip.",
+            "pattern": "^itm_[0-9a-f]{32}$",
+            "type": "string"
+          }
+        },
+        "required": [
+          "item",
+          "at"
+        ],
+        "title": "ClipSplit",
+        "type": "object"
+      },
+      "kind": "command",
+      "mcp": "core",
+      "mcp_tool": "clip_split",
+      "name": "clip.split",
+      "namespace": "clip",
+      "output_schema": {
+        "additionalProperties": false,
+        "description": "Result of `clip.split`.",
+        "properties": {
+          "at": {
+            "description": "The time that was split at, snapped to the frame grid.",
+            "maximum": 9007199254740991,
+            "minimum": -9007199254740991,
+            "type": "integer"
+          },
+          "left": {
+            "description": "The left half of the requested item (keeps its ID).",
+            "pattern": "^itm_[0-9a-f]{32}$",
+            "type": "string"
+          },
+          "linked": {
+            "description": "The linked partners that were split too.",
+            "items": {
+              "additionalProperties": false,
+              "description": "One split item.",
+              "properties": {
+                "left": {
+                  "description": "The left half (keeps the original item ID).",
+                  "pattern": "^itm_[0-9a-f]{32}$",
+                  "type": "string"
+                },
+                "right": {
+                  "description": "The right half (new ID).",
+                  "pattern": "^itm_[0-9a-f]{32}$",
+                  "type": "string"
+                }
+              },
+              "required": [
+                "left",
+                "right"
+              ],
+              "type": "object"
+            },
+            "type": "array"
+          },
+          "right": {
+            "description": "The right half of the requested item (new ID).",
+            "pattern": "^itm_[0-9a-f]{32}$",
+            "type": "string"
+          },
+          "right_group": {
+            "description": "The new group shared by the right halves, if there were partners.",
+            "pattern": "^grp_[0-9a-f]{32}$",
+            "type": [
+              "string",
+              "null"
+            ]
+          }
+        },
+        "required": [
+          "left",
+          "right",
+          "at",
+          "linked",
+          "right_group"
+        ],
+        "title": "ClipSplitOutput",
+        "type": "object"
+      },
+      "scope": "any",
+      "secret_fields": [],
+      "summary": "Split a clip (and its linked partners) at a timeline time",
+      "undoable": true,
+      "view": false
+    },
+    {
+      "annotations": {
+        "destructiveHint": false,
+        "idempotentHint": true,
+        "openWorldHint": false,
+        "readOnlyHint": false
+      },
+      "input_schema": {
+        "additionalProperties": false,
+        "description": "Moves one edge of a clip to a timeline time (`to`) or by an offset (`delta`, negative to\nmove the edge earlier; give exactly one). The clip cannot become empty, extend past the\nstart or end of its media, or overlap a neighbour: `Invalid{path:\"/to\"}` (or `/delta`).\nLinked partners get the same edge at the same time; `unlink: true` trims only this clip and\nremoves it from its group. Times are snapped to the sequence's frame grid. `Locked` if a\ntrack involved is locked.",
+        "properties": {
+          "delta": {
+            "anyOf": [
+              {
+                "anyOf": [
+                  {
+                    "maximum": 9007199254740991,
+                    "minimum": -9007199254740991,
+                    "type": "integer"
+                  },
+                  {
+                    "pattern": "^-?[0-9]+(\\.[0-9]+)?s$|^-?[0-9]+$|^f:[0-9]+$|^[0-9]+[:;][0-9]+[:;][0-9]+[:;][0-9]+$",
+                    "type": "string"
+                  }
+                ],
+                "description": "A time: integer flicks (1/705600000 s), or a string: seconds (\"62.5s\"), a frame (\"f:1500\") or a timecode (\"00:01:02:03\", drop-frame \"00:01:02;03\"). Frames and timecodes use the frame rate of the target's sequence."
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "description": "Offset of the edge from where it is now (negative: earlier). Use seconds or flicks for\nnegative values."
+          },
+          "edge": {
+            "description": "The edge to move.",
+            "oneOf": [
+              {
+                "const": "start",
+                "description": "The first frame (changes `start`, `source_in` and the length).",
+                "type": "string"
+              },
+              {
+                "const": "end",
+                "description": "The last frame (changes the length).",
+                "type": "string"
+              }
+            ]
+          },
+          "item": {
+            "description": "The clip.",
+            "pattern": "^itm_[0-9a-f]{32}$",
+            "type": "string"
+          },
+          "to": {
+            "anyOf": [
+              {
+                "anyOf": [
+                  {
+                    "maximum": 9007199254740991,
+                    "minimum": -9007199254740991,
+                    "type": "integer"
+                  },
+                  {
+                    "pattern": "^-?[0-9]+(\\.[0-9]+)?s$|^-?[0-9]+$|^f:[0-9]+$|^[0-9]+[:;][0-9]+[:;][0-9]+[:;][0-9]+$",
+                    "type": "string"
+                  }
+                ],
+                "description": "A time: integer flicks (1/705600000 s), or a string: seconds (\"62.5s\"), a frame (\"f:1500\") or a timecode (\"00:01:02:03\", drop-frame \"00:01:02;03\"). Frames and timecodes use the frame rate of the target's sequence."
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "description": "Timeline time of the edge afterwards (frame-snapped)."
+          },
+          "unlink": {
+            "default": null,
+            "description": "Trim only this clip and remove it from its linked group (default `false`).",
+            "type": [
+              "boolean",
+              "null"
+            ]
+          }
+        },
+        "required": [
+          "item",
+          "edge"
+        ],
+        "title": "ClipTrim",
+        "type": "object"
+      },
+      "kind": "command",
+      "mcp": "core",
+      "mcp_tool": "clip_trim",
+      "name": "clip.trim",
+      "namespace": "clip",
+      "output_schema": {
+        "additionalProperties": false,
+        "description": "Result of `clip.trim`.",
+        "properties": {
+          "items": {
+            "description": "The trimmed clips: the requested one first, then its linked partners.",
+            "items": {
+              "additionalProperties": false,
+              "description": "A clip after trimming.",
+              "properties": {
+                "duration": {
+                  "description": "Its length.",
+                  "maximum": 9007199254740991,
+                  "minimum": 0,
+                  "type": "integer"
+                },
+                "item": {
+                  "description": "The clip.",
+                  "pattern": "^itm_[0-9a-f]{32}$",
+                  "type": "string"
+                },
+                "source_in": {
+                  "description": "Its source position.",
+                  "maximum": 9007199254740991,
+                  "minimum": -9007199254740991,
+                  "type": "integer"
+                },
+                "start": {
+                  "description": "Its start.",
+                  "maximum": 9007199254740991,
+                  "minimum": -9007199254740991,
+                  "type": "integer"
+                }
+              },
+              "required": [
+                "item",
+                "start",
+                "duration",
+                "source_in"
+              ],
+              "type": "object"
+            },
+            "type": "array"
+          }
+        },
+        "required": [
+          "items"
+        ],
+        "title": "ClipTrimOutput",
+        "type": "object"
+      },
+      "scope": "any",
+      "secret_fields": [],
+      "summary": "Trim the start or end edge of a clip (linked partners follow; no ripple)",
+      "undoable": true,
+      "view": false
+    },
+    {
+      "annotations": {
+        "destructiveHint": false,
+        "idempotentHint": false,
+        "openWorldHint": false,
+        "readOnlyHint": false
+      },
+      "input_schema": {
+        "additionalProperties": false,
+        "description": "Opens a transaction owned by this connection (one at a time). Run commands in it by naming\nit in the request envelope (`_meta.tx`). A `batch` stays invisible until committed; a\n`gesture` (dragging, scrubbing) and a `proposal` (copilot turn) update the document live\nand soft-lock the items they touch: other actors' commands on those items fail with\n`Conflict{reason: item_in_gesture}` until it closes. Each commits as one undo step; a\ngesture idle for 30 s is cancelled by the engine; closing the connection rolls it back.",
         "properties": {
           "kind": {
             "anyOf": [
@@ -866,6 +1134,148 @@ expression: text
     {
       "annotations": {
         "destructiveHint": false,
+        "idempotentHint": true,
+        "openWorldHint": false,
+        "readOnlyHint": true
+      },
+      "input_schema": {
+        "additionalProperties": false,
+        "description": "Lists the open transactions (oldest first) and the items each soft-locks: a `gesture` or\n`proposal` locks every item it touched for other actors until it closes; a `batch` locks\nnothing. Gestures carry their idle deadline (`expires_at`); `mine` marks your connection's.",
+        "title": "ListLocks",
+        "type": "object"
+      },
+      "kind": "engine",
+      "mcp": "catalog",
+      "mcp_tool": "edit_locks",
+      "name": "edit.locks",
+      "namespace": "edit",
+      "output_schema": {
+        "description": "What `edit.locks` returns.",
+        "properties": {
+          "committed_rev": {
+            "description": "The committed revision.",
+            "format": "uint64",
+            "minimum": 0,
+            "type": "integer"
+          },
+          "rev": {
+            "description": "The live revision.",
+            "format": "uint64",
+            "minimum": 0,
+            "type": "integer"
+          },
+          "transactions": {
+            "description": "Every open transaction, oldest first.",
+            "items": {
+              "description": "An open transaction and the items it soft-locks, as `edit.locks` reports it.",
+              "properties": {
+                "actor": {
+                  "description": "Who opened it.",
+                  "pattern": "^(user|system|agent:.+|plugin:[A-Za-z0-9._@-]+)$",
+                  "type": "string"
+                },
+                "conflicted": {
+                  "description": "A commit by another transaction overlapped its changes: it can only be cancelled.",
+                  "type": "boolean"
+                },
+                "expires_at": {
+                  "description": "A gesture's idle deadline: the engine cancels it then unless a request names it first.\n`null` for proposals and batches (no idle timeout).",
+                  "format": "uint64",
+                  "minimum": 0,
+                  "type": [
+                    "integer",
+                    "null"
+                  ]
+                },
+                "items": {
+                  "description": "The items it soft-locks, in id order. Only gestures and proposals lock; a batch's\nchanges are invisible until it commits, so it locks nothing.",
+                  "items": {
+                    "description": "A Item id: `^itm_[0-9a-f]{32}$`.",
+                    "pattern": "^itm_[0-9a-f]{32}$",
+                    "type": "string"
+                  },
+                  "type": "array"
+                },
+                "kind": {
+                  "description": "`batch`, `gesture` or `proposal`.",
+                  "oneOf": [
+                    {
+                      "const": "batch",
+                      "description": "A batch (`edit.begin_tx` / `edit.commit_tx`): its changes become visible only when it\ncommits.",
+                      "type": "string"
+                    },
+                    {
+                      "const": "gesture",
+                      "description": "A continuous gesture (dragging, scrubbing a slider): updates the document live, collapses\ninto one undo step on commit, rolls back on cancel, auto-cancels after\n[`GESTURE_IDLE_TIMEOUT`](crate::GESTURE_IDLE_TIMEOUT) without a request naming it.",
+                      "type": "string"
+                    },
+                    {
+                      "const": "proposal",
+                      "description": "A copilot proposal (arch §14b): live like a gesture, no idle timeout.",
+                      "type": "string"
+                    }
+                  ]
+                },
+                "label": {
+                  "description": "Its label (the undo entry's name).",
+                  "type": "string"
+                },
+                "last_activity": {
+                  "description": "When a request last named it.",
+                  "format": "uint64",
+                  "minimum": 0,
+                  "type": "integer"
+                },
+                "mine": {
+                  "description": "Whether the caller's connection owns it.",
+                  "type": "boolean"
+                },
+                "opened_at": {
+                  "description": "When it was opened.",
+                  "format": "uint64",
+                  "minimum": 0,
+                  "type": "integer"
+                },
+                "tx": {
+                  "description": "The transaction.",
+                  "pattern": "^tx_[0-9]+$",
+                  "type": "string"
+                }
+              },
+              "required": [
+                "tx",
+                "kind",
+                "label",
+                "actor",
+                "mine",
+                "items",
+                "opened_at",
+                "last_activity",
+                "expires_at",
+                "conflicted"
+              ],
+              "type": "object"
+            },
+            "type": "array"
+          }
+        },
+        "required": [
+          "transactions",
+          "rev",
+          "committed_rev"
+        ],
+        "title": "LockList",
+        "type": "object"
+      },
+      "scope": "any",
+      "secret_fields": [],
+      "summary": "List open transactions and the items they soft-lock (who is editing what)",
+      "undoable": false,
+      "view": false
+    },
+    {
+      "annotations": {
+        "destructiveHint": false,
         "idempotentHint": false,
         "openWorldHint": false,
         "readOnlyHint": false
@@ -1133,6 +1543,393 @@ expression: text
       "secret_fields": [],
       "summary": "Undo your last change, or another actor's (`actor`; `*` = anyone's latest)",
       "undoable": false,
+      "view": false
+    },
+    {
+      "annotations": {
+        "destructiveHint": true,
+        "idempotentHint": false,
+        "openWorldHint": false,
+        "readOnlyHint": false
+      },
+      "input_schema": {
+        "additionalProperties": false,
+        "description": "Deletes items and their linked partners. Gaps stay (no ripple). All or nothing: if any\naffected track is locked the call fails with `Locked` and nothing is deleted. Unknown items\nare `NotFound`; repeated IDs are deleted once.",
+        "properties": {
+          "items": {
+            "description": "The items to delete, at least one.",
+            "items": {
+              "description": "A Item id: `^itm_[0-9a-f]{32}$`.",
+              "pattern": "^itm_[0-9a-f]{32}$",
+              "type": "string"
+            },
+            "type": "array"
+          }
+        },
+        "required": [
+          "items"
+        ],
+        "title": "ItemDelete",
+        "type": "object"
+      },
+      "kind": "command",
+      "mcp": "core",
+      "mcp_tool": "item_delete",
+      "name": "item.delete",
+      "namespace": "item",
+      "output_schema": {
+        "additionalProperties": false,
+        "description": "Result of `item.delete`.",
+        "properties": {
+          "deleted": {
+            "description": "Every deleted item: the requested ones in request order, then their linked partners.",
+            "items": {
+              "description": "A Item id: `^itm_[0-9a-f]{32}$`.",
+              "pattern": "^itm_[0-9a-f]{32}$",
+              "type": "string"
+            },
+            "type": "array"
+          }
+        },
+        "required": [
+          "deleted"
+        ],
+        "title": "ItemDeleteOutput",
+        "type": "object"
+      },
+      "scope": "any",
+      "secret_fields": [],
+      "summary": "Delete items and their linked partners (no ripple; fails if a track is locked)",
+      "undoable": true,
+      "view": false
+    },
+    {
+      "annotations": {
+        "destructiveHint": false,
+        "idempotentHint": true,
+        "openWorldHint": false,
+        "readOnlyHint": false
+      },
+      "input_schema": {
+        "additionalProperties": false,
+        "description": "Moves an item to a new start, optionally onto another track of the same kind and sequence.\nThe item's linked partners move by the same amount on their own tracks (`unlink: true`\nmoves only this item and removes it from its group). Overlap is `Invalid{path:\"/start\"}`\nby default; `overlap: \"new_track\"` puts the item on a new track directly above the target.\n`Locked` if the source, the target or a partner's track is locked. `start` is snapped to\nthe sequence's frame grid and must be `>= 0`.",
+        "properties": {
+          "item": {
+            "description": "The item.",
+            "pattern": "^itm_[0-9a-f]{32}$",
+            "type": "string"
+          },
+          "overlap": {
+            "anyOf": [
+              {
+                "description": "What to do when the clip would overlap another clip on the target track.",
+                "oneOf": [
+                  {
+                    "const": "reject",
+                    "description": "Fail with `Invalid{path:\"/at\"}` (default).",
+                    "type": "string"
+                  },
+                  {
+                    "const": "new_track",
+                    "description": "Create a new track of the same kind directly above the target and insert there.",
+                    "type": "string"
+                  }
+                ]
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "description": "Overlap handling (default `reject`)."
+          },
+          "start": {
+            "anyOf": [
+              {
+                "maximum": 9007199254740991,
+                "minimum": -9007199254740991,
+                "type": "integer"
+              },
+              {
+                "pattern": "^-?[0-9]+(\\.[0-9]+)?s$|^-?[0-9]+$|^f:[0-9]+$|^[0-9]+[:;][0-9]+[:;][0-9]+[:;][0-9]+$",
+                "type": "string"
+              }
+            ],
+            "description": "New timeline position of the item's first frame, `>= 0`."
+          },
+          "to_track": {
+            "default": null,
+            "description": "Target track of the same sequence and kind (default: stay on the current track).",
+            "pattern": "^trk_[0-9a-f]{32}$",
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "unlink": {
+            "default": null,
+            "description": "Move only this item and remove it from its linked group (default `false`).",
+            "type": [
+              "boolean",
+              "null"
+            ]
+          }
+        },
+        "required": [
+          "item",
+          "start"
+        ],
+        "title": "ItemMove",
+        "type": "object"
+      },
+      "kind": "command",
+      "mcp": "core",
+      "mcp_tool": "item_move",
+      "name": "item.move",
+      "namespace": "item",
+      "output_schema": {
+        "additionalProperties": false,
+        "description": "Result of `item.move`.",
+        "properties": {
+          "created_tracks": {
+            "description": "Tracks created by `overlap: \"new_track\"`, in creation order.",
+            "items": {
+              "description": "A Track id: `^trk_[0-9a-f]{32}$`.",
+              "pattern": "^trk_[0-9a-f]{32}$",
+              "type": "string"
+            },
+            "type": "array"
+          },
+          "items": {
+            "description": "The moved items: the requested one first, then its linked partners.",
+            "items": {
+              "additionalProperties": false,
+              "description": "Where one item ended up.",
+              "properties": {
+                "item": {
+                  "description": "The item.",
+                  "pattern": "^itm_[0-9a-f]{32}$",
+                  "type": "string"
+                },
+                "start": {
+                  "description": "Its new start.",
+                  "maximum": 9007199254740991,
+                  "minimum": -9007199254740991,
+                  "type": "integer"
+                },
+                "track": {
+                  "description": "The track it is on now.",
+                  "pattern": "^trk_[0-9a-f]{32}$",
+                  "type": "string"
+                }
+              },
+              "required": [
+                "item",
+                "track",
+                "start"
+              ],
+              "type": "object"
+            },
+            "type": "array"
+          }
+        },
+        "required": [
+          "items",
+          "created_tracks"
+        ],
+        "title": "ItemMoveOutput",
+        "type": "object"
+      },
+      "scope": "any",
+      "secret_fields": [],
+      "summary": "Move an item in time and/or to another track (linked partners follow)",
+      "undoable": true,
+      "view": false
+    },
+    {
+      "annotations": {
+        "destructiveHint": false,
+        "idempotentHint": true,
+        "openWorldHint": false,
+        "readOnlyHint": false
+      },
+      "input_schema": {
+        "additionalProperties": false,
+        "description": "Changes an item's name, enabled flag, opacity, clip gain or transform; absent fields keep\ntheir value and setting a value it already has is a no-op. `Locked` if the item's track is\nlocked.",
+        "properties": {
+          "item": {
+            "description": "The item.",
+            "pattern": "^itm_[0-9a-f]{32}$",
+            "type": "string"
+          },
+          "props": {
+            "additionalProperties": false,
+            "description": "The properties to change; at least one.",
+            "properties": {
+              "audio_gain": {
+                "description": "Clip gain in dB, `-144..=48` (0 = unchanged).",
+                "format": "double",
+                "type": [
+                  "number",
+                  "null"
+                ]
+              },
+              "enabled": {
+                "description": "Rendered and heard (`true`) or kept but skipped (`false`).",
+                "type": [
+                  "boolean",
+                  "null"
+                ]
+              },
+              "name": {
+                "description": "Display name; an empty string clears it (the media name is shown again).",
+                "type": [
+                  "string",
+                  "null"
+                ]
+              },
+              "opacity": {
+                "description": "Opacity `0.0..=1.0`.",
+                "format": "double",
+                "type": [
+                  "number",
+                  "null"
+                ]
+              },
+              "transform": {
+                "additionalProperties": false,
+                "description": "Placement on the canvas (partial).",
+                "properties": {
+                  "anchor": {
+                    "additionalProperties": false,
+                    "description": "The item point `position` places and rotation turns around, in item units.",
+                    "properties": {
+                      "x": {
+                        "description": "Horizontal component.",
+                        "format": "double",
+                        "type": "number"
+                      },
+                      "y": {
+                        "description": "Vertical component (down is positive).",
+                        "format": "double",
+                        "type": "number"
+                      }
+                    },
+                    "required": [
+                      "x",
+                      "y"
+                    ],
+                    "type": [
+                      "object",
+                      "null"
+                    ]
+                  },
+                  "position": {
+                    "additionalProperties": false,
+                    "description": "Offset of the anchor from the canvas center, in canvas units (+y is down).",
+                    "properties": {
+                      "x": {
+                        "description": "Horizontal component.",
+                        "format": "double",
+                        "type": "number"
+                      },
+                      "y": {
+                        "description": "Vertical component (down is positive).",
+                        "format": "double",
+                        "type": "number"
+                      }
+                    },
+                    "required": [
+                      "x",
+                      "y"
+                    ],
+                    "type": [
+                      "object",
+                      "null"
+                    ]
+                  },
+                  "rotation": {
+                    "description": "Clockwise rotation in degrees.",
+                    "format": "double",
+                    "type": [
+                      "number",
+                      "null"
+                    ]
+                  },
+                  "scale": {
+                    "additionalProperties": false,
+                    "description": "Size multiplier per axis (1.0 = aspect-fit); finite and `>= 0`.",
+                    "properties": {
+                      "x": {
+                        "description": "Horizontal component.",
+                        "format": "double",
+                        "type": "number"
+                      },
+                      "y": {
+                        "description": "Vertical component (down is positive).",
+                        "format": "double",
+                        "type": "number"
+                      }
+                    },
+                    "required": [
+                      "x",
+                      "y"
+                    ],
+                    "type": [
+                      "object",
+                      "null"
+                    ]
+                  }
+                },
+                "type": [
+                  "object",
+                  "null"
+                ]
+              }
+            },
+            "type": "object"
+          }
+        },
+        "required": [
+          "item",
+          "props"
+        ],
+        "title": "ItemSetProps",
+        "type": "object"
+      },
+      "kind": "command",
+      "mcp": "core",
+      "mcp_tool": "item_set_props",
+      "name": "item.set_props",
+      "namespace": "item",
+      "output_schema": {
+        "additionalProperties": false,
+        "description": "Result of `item.set_props`.",
+        "properties": {
+          "changed": {
+            "description": "The props whose value actually changed (`name`, `enabled`, `opacity`, `audio_gain`,\n`transform.position`, ...); empty if everything was already as requested.",
+            "items": {
+              "type": "string"
+            },
+            "type": "array"
+          },
+          "item": {
+            "description": "The item.",
+            "pattern": "^itm_[0-9a-f]{32}$",
+            "type": "string"
+          }
+        },
+        "required": [
+          "item",
+          "changed"
+        ],
+        "title": "ItemSetPropsOutput",
+        "type": "object"
+      },
+      "scope": "any",
+      "secret_fields": [],
+      "summary": "Set an item's name, enabled, opacity, audio_gain or transform (partial)",
+      "undoable": true,
       "view": false
     },
     {

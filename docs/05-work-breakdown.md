@@ -48,6 +48,7 @@ Work packages (WPs) are the unit of execution for humans and AI coding agents. E
 | R25 | review | P1 re-estimated to about 10 weeks and P5 to 12; P6 starts after P4 and P5; day-0 prerequisites are in the roadmap |
 | R26 | design | The design system is defined: `design/` in the repo plus the design-system artifact. Epic 0K builds the token pipeline and `packages/ui`. Editor components are built in their owning epics (1M, 2H, 5F, 6I) from the artifact's specs. Plugin iframes get tokens injected (6B); high-contrast theme in P7 (7C) |
 | R12 | all | Over-size phases (P1 60, P3 58, P4 55, P5 75, P6 86 WPs) are acceptable. Content batches inflate the counts. The orchestrator re-plans at each phase gate (06-dev-process §5, step 6) |
+| R27 | P1 (FFmpeg hold) | While S3 is blocked, the FFmpeg-free parts of the critical path proceed against the existing seams. **WP-1D.07** builds the job manager and wires `media.import` / `job.*` through the `MediaProbe` seam (WP-1B.05) with fakes; its corpus criteria (real clips, thumbnails, waveforms) are verified when 1D.02/1D.05/1D.06 land. **WP-1I.04** may then start; **WP-1J.01** proceeds without 1E.03 (`export_start` joins the registry-derived catalog when 1E.03 lands). **WP-1B.08** waits for the engine root (1I.04), since it plumbs the flag through `EngineConfig` and the CLI |
 
 ## How WPs flow (summary; full process in [06-dev-process.md](06-dev-process.md))
 

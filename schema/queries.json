@@ -41,6 +41,288 @@
       },
       "input_schema": {
         "additionalProperties": false,
+        "description": "Reads one item: the `timeline.get` item summary plus its track, source, audio and visual\nproperties. `fields` limits the extra sections (`name`, `source`, `audio`, `visual`).",
+        "properties": {
+          "fields": {
+            "default": null,
+            "description": "Sections to include: any of `name`, `source`, `audio`, `visual` (default all).",
+            "items": {
+              "type": "string"
+            },
+            "type": [
+              "array",
+              "null"
+            ]
+          },
+          "item": {
+            "description": "The item.",
+            "pattern": "^itm_[0-9a-f]{32}$",
+            "type": "string"
+          }
+        },
+        "required": [
+          "item"
+        ],
+        "title": "ItemGet",
+        "type": "object"
+      },
+      "kind": "query",
+      "mcp": "catalog",
+      "mcp_tool": "item_get",
+      "name": "item.get",
+      "namespace": "item",
+      "output_schema": {
+        "additionalProperties": false,
+        "description": "Result of `item.get`.",
+        "properties": {
+          "audio": {
+            "description": "Audio properties (unless `fields` leaves them out).",
+            "properties": {
+              "gain": {
+                "description": "Gain in decibels (0.0 = unchanged).",
+                "format": "double",
+                "type": "number"
+              }
+            },
+            "required": [
+              "gain"
+            ],
+            "type": [
+              "object",
+              "null"
+            ]
+          },
+          "item": {
+            "additionalProperties": false,
+            "description": "The same projection `timeline.get` returns at depth 2.",
+            "properties": {
+              "duration": {
+                "description": "Length on the timeline.",
+                "maximum": 9007199254740991,
+                "minimum": 0,
+                "type": "integer"
+              },
+              "enabled": {
+                "description": "Whether the item is rendered and heard.",
+                "type": "boolean"
+              },
+              "id": {
+                "description": "The item.",
+                "pattern": "^itm_[0-9a-f]{32}$",
+                "type": "string"
+              },
+              "kind": {
+                "description": "Item kind (`clip`).",
+                "type": "string"
+              },
+              "linked_group": {
+                "description": "The linked group, if any.",
+                "pattern": "^grp_[0-9a-f]{32}$",
+                "type": [
+                  "string",
+                  "null"
+                ]
+              },
+              "media": {
+                "description": "The media a clip plays.",
+                "pattern": "^med_[0-9a-f]{32}$",
+                "type": [
+                  "string",
+                  "null"
+                ]
+              },
+              "start": {
+                "description": "Timeline position of the first frame.",
+                "maximum": 9007199254740991,
+                "minimum": -9007199254740991,
+                "type": "integer"
+              }
+            },
+            "required": [
+              "id",
+              "kind",
+              "start",
+              "duration",
+              "media",
+              "linked_group",
+              "enabled"
+            ],
+            "type": "object"
+          },
+          "linked": {
+            "description": "The other items of the linked group, if any.",
+            "items": {
+              "description": "A Item id: `^itm_[0-9a-f]{32}$`.",
+              "pattern": "^itm_[0-9a-f]{32}$",
+              "type": "string"
+            },
+            "type": "array"
+          },
+          "name": {
+            "description": "The display name, if it has one (unless `fields` leaves it out).",
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "sequence": {
+            "description": "The sequence holding the item.",
+            "pattern": "^seq_[0-9a-f]{32}$",
+            "type": "string"
+          },
+          "source": {
+            "additionalProperties": false,
+            "description": "Media and source position (unless `fields` leaves it out).",
+            "properties": {
+              "media": {
+                "description": "The media.",
+                "pattern": "^med_[0-9a-f]{32}$",
+                "type": "string"
+              },
+              "source_in": {
+                "description": "Position in the media of the clip's first frame.",
+                "maximum": 9007199254740991,
+                "minimum": -9007199254740991,
+                "type": "integer"
+              }
+            },
+            "required": [
+              "media",
+              "source_in"
+            ],
+            "type": [
+              "object",
+              "null"
+            ]
+          },
+          "track": {
+            "description": "The track holding the item.",
+            "pattern": "^trk_[0-9a-f]{32}$",
+            "type": "string"
+          },
+          "visual": {
+            "description": "Visual properties (unless `fields` leaves them out).",
+            "properties": {
+              "opacity": {
+                "description": "Opacity, 0.0 (transparent) to 1.0 (opaque).",
+                "format": "double",
+                "type": "number"
+              },
+              "transform": {
+                "description": "Placement on the canvas.",
+                "properties": {
+                  "anchor": {
+                    "additionalProperties": false,
+                    "description": "The item point that `position` places and rotation turns around, in item units.",
+                    "properties": {
+                      "x": {
+                        "description": "Horizontal component.",
+                        "format": "double",
+                        "type": "number"
+                      },
+                      "y": {
+                        "description": "Vertical component (down is positive).",
+                        "format": "double",
+                        "type": "number"
+                      }
+                    },
+                    "required": [
+                      "x",
+                      "y"
+                    ],
+                    "type": "object"
+                  },
+                  "position": {
+                    "additionalProperties": false,
+                    "description": "Offset of the anchor from the canvas center, in canvas units.",
+                    "properties": {
+                      "x": {
+                        "description": "Horizontal component.",
+                        "format": "double",
+                        "type": "number"
+                      },
+                      "y": {
+                        "description": "Vertical component (down is positive).",
+                        "format": "double",
+                        "type": "number"
+                      }
+                    },
+                    "required": [
+                      "x",
+                      "y"
+                    ],
+                    "type": "object"
+                  },
+                  "rotation": {
+                    "description": "Clockwise rotation in degrees.",
+                    "format": "double",
+                    "type": "number"
+                  },
+                  "scale": {
+                    "additionalProperties": false,
+                    "description": "Size multiplier per axis (1.0 = aspect-fit).",
+                    "properties": {
+                      "x": {
+                        "description": "Horizontal component.",
+                        "format": "double",
+                        "type": "number"
+                      },
+                      "y": {
+                        "description": "Vertical component (down is positive).",
+                        "format": "double",
+                        "type": "number"
+                      }
+                    },
+                    "required": [
+                      "x",
+                      "y"
+                    ],
+                    "type": "object"
+                  }
+                },
+                "required": [
+                  "position",
+                  "scale",
+                  "rotation",
+                  "anchor"
+                ],
+                "type": "object"
+              }
+            },
+            "required": [
+              "transform",
+              "opacity"
+            ],
+            "type": [
+              "object",
+              "null"
+            ]
+          }
+        },
+        "required": [
+          "sequence",
+          "track",
+          "item",
+          "linked"
+        ],
+        "title": "ItemGetOutput",
+        "type": "object"
+      },
+      "scope": "any",
+      "secret_fields": [],
+      "summary": "Get one item: summary, track, source, audio and visual properties",
+      "undoable": false,
+      "view": false
+    },
+    {
+      "annotations": {
+        "destructiveHint": false,
+        "idempotentHint": true,
+        "openWorldHint": false,
+        "readOnlyHint": true
+      },
+      "input_schema": {
+        "additionalProperties": false,
         "description": "Lists the media of the project, ordered by ID, one page at a time.",
         "properties": {
           "cursor": {

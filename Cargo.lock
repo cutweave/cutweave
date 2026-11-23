@@ -604,13 +604,16 @@ version = "0.0.0"
 name = "cutweave-engine"
 version = "0.0.0"
 dependencies = [
+ "criterion",
  "cutweave-commands",
  "cutweave-model",
  "cutweave-ops",
  "proptest",
  "serde",
  "serde_json",
+ "sha2",
  "thiserror",
+ "tracing",
 ]
 
 [[package]]
