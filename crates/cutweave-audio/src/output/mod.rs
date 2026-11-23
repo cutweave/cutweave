@@ -354,6 +354,11 @@ impl OutputShared {
 
 /// What a stream's error callback can report.
 #[derive(Clone, Debug)]
+// Only the device backend reports xruns and warnings.
+#[cfg_attr(
+    not(all(feature = "device", any(windows, target_os = "macos"))),
+    allow(dead_code)
+)]
 pub(crate) enum StreamFault {
     /// A buffer under/overrun: counted only.
     Xrun,
@@ -390,6 +395,11 @@ impl ErrorSink {
 
 /// What the supervisor asks a backend for.
 #[derive(Clone, Debug)]
+// The null output ignores `device`.
+#[cfg_attr(
+    not(all(feature = "device", any(windows, target_os = "macos"))),
+    allow(dead_code)
+)]
 pub(crate) struct StreamRequest {
     pub device: OutputDevice,
     pub rate: SampleRate,
