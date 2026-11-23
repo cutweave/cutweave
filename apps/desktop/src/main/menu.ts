@@ -31,8 +31,10 @@ export function buildMenuTemplate(deps: MenuDeps): MenuItemConstructorOptions[] 
     {
       label: "&File",
       submenu: [
+        item("&New Project…", "new", "CmdOrCtrl+N"),
         item("&Open Project…", "open", "CmdOrCtrl+O"),
         item("&Save", "save", "CmdOrCtrl+S"),
+        item("Save &As…", "saveAs", "CmdOrCtrl+Shift+S"),
         item("&Export…", "export", "CmdOrCtrl+M"),
         { type: "separator" },
         mac ? { role: "close" } : { role: "quit" },

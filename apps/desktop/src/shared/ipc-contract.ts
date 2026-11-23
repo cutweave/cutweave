@@ -17,6 +17,11 @@ export interface InvokeChannels {
   "engine:getConnection": { args: []; result: EngineConnection | null };
   "engine:getStatus": { args: []; result: EngineStatus };
   "dialog:openProjectFolder": { args: []; result: string | null };
+  "recent:list": { args: []; result: string[] };
+  "recent:add": { args: [path: string]; result: undefined };
+  "recent:remove": { args: [path: string]; result: undefined };
+  "window:setDirty": { args: [dirty: boolean]; result: undefined };
+  "window:confirmClose": { args: []; result: undefined };
   "shell:showItemInFolder": { args: [path: string]; result: undefined };
   "shell:openExternal": { args: [url: string]; result: undefined };
 }
@@ -25,6 +30,8 @@ export interface InvokeChannels {
 export interface EventChannels {
   "engine:status": EngineStatus;
   "menu:command": MenuCommand;
+  /** The window was asked to close while the project has unsaved changes (payload: `true`). */
+  "window:closeRequested": true;
 }
 
 export type InvokeChannel = keyof InvokeChannels;

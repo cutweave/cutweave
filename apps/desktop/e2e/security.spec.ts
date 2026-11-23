@@ -347,8 +347,14 @@ test.describe("IPC", () => {
       "cutweave.preview.startPresenting",
       "cutweave.preview.stopPresenting",
       "cutweave.preview.waitForFrame",
+      "cutweave.recent.add",
+      "cutweave.recent.list",
+      "cutweave.recent.remove",
       "cutweave.shell.openExternal",
       "cutweave.shell.showItemInFolder",
+      "cutweave.window.confirmClose",
+      "cutweave.window.onCloseRequested",
+      "cutweave.window.setDirty",
     ]);
   });
 

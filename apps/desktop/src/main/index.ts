@@ -13,6 +13,7 @@ import {
   registerAppProtocol,
   registerPluginProtocolStub,
 } from "./app-protocol.ts";
+import { CloseGuard } from "./close-guard.ts";
 import { appResponseHeaders, buildCsp } from "./csp.ts";
 import { type EngineFailedChoice, showEngineFailedDialog } from "./engine/failed-dialog.ts";
 import { devEngineArgs, resolveEngineLaunch } from "./engine/launch.ts";
@@ -22,6 +23,7 @@ import { createHandlers } from "./handlers.ts";
 import { type HardeningContext, hardenSession, hardenWebContents } from "./hardening.ts";
 import { createSenderCheck, registerIpc } from "./ipc.ts";
 import { buildMenuTemplate } from "./menu.ts";
+import { RecentProjects } from "./recent-projects.ts";
 import { installTestHooks, shouldInstallTestHooks } from "./test-hooks.ts";
 import { createMainWindow } from "./window.ts";
 import { createWindow, type WindowFactoryContext, windowKindOf, windowsOfKind } from "./windows.ts";
@@ -44,6 +46,10 @@ let enginePort: number | null = null;
 let supervisor: EngineSupervisor | null = null;
 let engineStatus: EngineStatus = { state: "unavailable", message: "no engine binary found" };
 let mainWindow: BrowserWindow | null = null;
+/** Unsaved-changes guard of the editor window (WP-1M.07). */
+const closeGuard = new CloseGuard();
+/** Recent projects; created once the profile folder is final (`app.whenReady`). */
+let recentProjects: RecentProjects | null = null;
 let openExternal = (url: string): Promise<void> => shell.openExternal(url);
 /** Asks Restart / Quit when the engine is `failed`; the e2e hooks answer it instead. */
 let askEngineFailed = (status: EngineStatus): Promise<EngineFailedChoice> =>
@@ -123,6 +129,18 @@ function openWindow(): void {
     url: devServerUrl ?? `${APP_ORIGIN}/`,
     factory,
   });
+  closeGuard.reset();
+  // With unsaved changes the editor settles them first (Save / Discard / Cancel); it answers
+  // with `window:confirmClose`, which closes the window again and lets this through.
+  mainWindow.on("close", (event) => {
+    const win = mainWindow;
+    if (win === null || win.isDestroyed()) return;
+    const alive = !win.webContents.isDestroyed() && !win.webContents.isCrashed();
+    if (closeGuard.holds(alive)) {
+      event.preventDefault();
+      win.webContents.send("window:closeRequested", true);
+    }
+  });
   mainWindow.on("closed", () => {
     mainWindow = null;
   });
@@ -143,6 +161,7 @@ if (!app.requestSingleInstanceLock()) {
     );
     registerPluginProtocolStub(protocol);
     const testHooks = shouldInstallTestHooks(app.isPackaged, process.env);
+    recentProjects = new RecentProjects(path.join(app.getPath("userData"), "recent-projects.json"));
     registerIpc(
       ipcMain,
       createHandlers({
@@ -159,6 +178,16 @@ if (!app.requestSingleInstanceLock()) {
             properties: ["openDirectory", "createDirectory"],
           });
           return result.canceled ? null : (result.filePaths[0] ?? null);
+        },
+        recentProjects: {
+          list: () => recentProjects?.list() ?? [],
+          add: (p) => recentProjects?.add(p),
+          remove: (p) => recentProjects?.remove(p),
+        },
+        setWindowDirty: (dirty) => closeGuard.setDirty(dirty),
+        confirmWindowClose: () => {
+          closeGuard.confirm();
+          mainWindow?.close();
         },
         showItemInFolder: (p) => shell.showItemInFolder(p),
         openExternal: (url) => openExternal(url),
@@ -222,6 +251,16 @@ if (!app.requestSingleInstanceLock()) {
 
   let quitting = false;
   app.on("before-quit", (event) => {
+    // Quitting with unsaved changes goes through the window's close guard first.
+    const win = mainWindow;
+    if (win !== null && !win.isDestroyed() && !quitting) {
+      const alive = !win.webContents.isDestroyed() && !win.webContents.isCrashed();
+      if (closeGuard.holds(alive)) {
+        event.preventDefault();
+        win.close();
+        return;
+      }
+    }
     if (quitting || supervisor === null) return;
     event.preventDefault();
     quitting = true;

@@ -29,7 +29,9 @@ describe("createCutweaveApi", () => {
       "engine",
       "menu",
       "preview",
+      "recent",
       "shell",
+      "window",
     ]);
     expect(Object.keys(api.engine).sort()).toEqual(["getConnection", "getStatus", "onStatus"]);
     expect("invoke" in api).toBe(false);
@@ -44,6 +46,28 @@ describe("createCutweaveApi", () => {
     expect(ipc.invoke).toHaveBeenNthCalledWith(1, "engine:getConnection");
     expect(ipc.invoke).toHaveBeenNthCalledWith(2, "shell:showItemInFolder", "/x");
     expect(ipc.invoke).toHaveBeenNthCalledWith(3, "shell:openExternal", "https://cutweave.org/");
+  });
+
+  it("maps the recent list and the close handshake to fixed channels (WP-1M.07)", async () => {
+    const { ipc, emit, listeners } = fakeIpc();
+    const api = createCutweaveApi(ipc, null);
+    await api.recent.list();
+    await api.recent.add("/p");
+    await api.window.setDirty(true);
+    await api.window.confirmClose();
+    expect(ipc.invoke).toHaveBeenNthCalledWith(1, "recent:list");
+    expect(ipc.invoke).toHaveBeenNthCalledWith(2, "recent:add", "/p");
+    expect(ipc.invoke).toHaveBeenNthCalledWith(3, "window:setDirty", true);
+    expect(ipc.invoke).toHaveBeenNthCalledWith(4, "window:confirmClose");
+    let asked = 0;
+    const off = api.window.onCloseRequested(() => {
+      asked += 1;
+    });
+    emit("window:closeRequested", true);
+    emit("window:closeRequested", "junk");
+    expect(asked).toBe(1);
+    off();
+    expect(listeners.get("window:closeRequested")?.size).toBe(0);
   });
 
   it("filters menu events to known commands and unsubscribes", () => {

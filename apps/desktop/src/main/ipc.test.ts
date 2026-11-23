@@ -19,6 +19,11 @@ const handlers = (): InvokeHandlers => ({
   "engine:getConnection": () => null,
   "engine:getStatus": () => ({ state: "unavailable" }),
   "dialog:openProjectFolder": () => null,
+  "recent:list": () => [],
+  "recent:add": vi.fn(),
+  "recent:remove": vi.fn(),
+  "window:setDirty": vi.fn(),
+  "window:confirmClose": vi.fn(),
   "shell:showItemInFolder": vi.fn(),
   "shell:openExternal": vi.fn(async () => undefined),
 });

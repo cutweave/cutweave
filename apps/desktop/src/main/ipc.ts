@@ -48,6 +48,11 @@ export const invokeSchemas = {
   "engine:getConnection": noArgs,
   "engine:getStatus": noArgs,
   "dialog:openProjectFolder": noArgs,
+  "recent:list": noArgs,
+  "recent:add": z.tuple([filePath]),
+  "recent:remove": z.tuple([filePath]),
+  "window:setDirty": z.tuple([z.boolean()]),
+  "window:confirmClose": noArgs,
   "shell:showItemInFolder": z.tuple([filePath]),
   "shell:openExternal": z.tuple([externalUrl]),
 } as const satisfies { [K in InvokeChannel]: z.ZodType<InvokeChannels[K]["args"]> };

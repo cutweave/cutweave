@@ -47,6 +47,10 @@ export function createCutweaveApi(
     };
   };
 
+  const onCloseRequested = subscribe<true>("window:closeRequested", (v) =>
+    v === true ? v : undefined,
+  );
+
   const requireAddon = (): BridgeAddon => {
     if (addon === null) {
       throw new Error(`${ERR_BRIDGE_UNAVAILABLE}: the cutweave-bridge addon is not loaded`);
@@ -100,6 +104,19 @@ export function createCutweaveApi(
       onCommand: subscribe<MenuCommand>("menu:command", (v) => (isMenuCommand(v) ? v : undefined)),
     },
     dialog: { openProjectFolder: () => invoke("dialog:openProjectFolder") },
+    recent: {
+      list: () => invoke("recent:list"),
+      add: (path) => invoke("recent:add", path),
+      remove: (path) => invoke("recent:remove", path),
+    },
+    window: {
+      setDirty: (dirty) => invoke("window:setDirty", dirty),
+      onCloseRequested: (listener) =>
+        onCloseRequested((value) => {
+          if (value === true) listener();
+        }),
+      confirmClose: () => invoke("window:confirmClose"),
+    },
     shell: {
       showItemInFolder: (path) => invoke("shell:showItemInFolder", path),
       openExternal: (url) => invoke("shell:openExternal", url),

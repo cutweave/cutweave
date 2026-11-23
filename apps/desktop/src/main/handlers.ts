@@ -13,6 +13,16 @@ export interface HandlerDeps {
   /** Port and UI token of the supervised engine; null when none is ready. */
   engineCredentials(): { port: number; token: string; generation: number } | null;
   chooseFolder(): Promise<string | null>;
+  /** Recent projects kept by main (WP-1M.07). */
+  recentProjects: {
+    list(): string[];
+    add(path: string): void;
+    remove(path: string): void;
+  };
+  /** The editor's unsaved-changes flag, for the window-close guard. */
+  setWindowDirty(dirty: boolean): void;
+  /** The editor settled unsaved changes: close the window without asking again. */
+  confirmWindowClose(): void;
   showItemInFolder(path: string): void;
   /** `shell.openExternal`; only ever called with a validated `https:` URL. */
   openExternal(url: string): Promise<void>;
@@ -34,6 +44,19 @@ export function createHandlers(deps: HandlerDeps): InvokeHandlers {
       };
     },
     "dialog:openProjectFolder": () => deps.chooseFolder(),
+    "recent:list": () => deps.recentProjects.list(),
+    "recent:add": (path) => {
+      deps.recentProjects.add(path);
+    },
+    "recent:remove": (path) => {
+      deps.recentProjects.remove(path);
+    },
+    "window:setDirty": (dirty) => {
+      deps.setWindowDirty(dirty);
+    },
+    "window:confirmClose": () => {
+      deps.confirmWindowClose();
+    },
     "shell:showItemInFolder": (path) => {
       deps.showItemInFolder(path);
     },

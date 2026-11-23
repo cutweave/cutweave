@@ -7,6 +7,9 @@ describe("createHandlers", () => {
     appInfo: { name: "Cutweave", version: "1", platform: "linux" as const },
     engineStatus: () => ({ state: "unavailable" as const }),
     chooseFolder: async () => "/p",
+    recentProjects: { list: () => ["/a", "/b"], add: vi.fn(), remove: vi.fn() },
+    setWindowDirty: vi.fn(),
+    confirmWindowClose: vi.fn(),
     showItemInFolder: vi.fn(),
     openExternal: vi.fn(async () => {}),
   };
@@ -37,6 +40,19 @@ describe("createHandlers", () => {
     expect(await h["dialog:openProjectFolder"]()).toBe("/p");
     await h["shell:showItemInFolder"]("/out.mp4");
     expect(base.showItemInFolder).toHaveBeenCalledWith("/out.mp4");
+  });
+
+  it("delegates the recent list and the window-close handshake (WP-1M.07)", async () => {
+    const h = createHandlers({ ...base, engineCredentials: () => null });
+    expect(await h["recent:list"]()).toEqual(["/a", "/b"]);
+    await h["recent:add"]("/c");
+    await h["recent:remove"]("/a");
+    await h["window:setDirty"](true);
+    await h["window:confirmClose"]();
+    expect(base.recentProjects.add).toHaveBeenCalledWith("/c");
+    expect(base.recentProjects.remove).toHaveBeenCalledWith("/a");
+    expect(base.setWindowDirty).toHaveBeenCalledWith(true);
+    expect(base.confirmWindowClose).toHaveBeenCalledTimes(1);
   });
 
   it("opens only https links, re-checked at the point of use", async () => {
