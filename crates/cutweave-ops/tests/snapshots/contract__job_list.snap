@@ -1,0 +1,472 @@
+---
+source: crates/cutweave-ops/tests/contract.rs
+expression: "json!({\n    \"meta\": serde_json::to_value(meta).unwrap(), \"input\": meta.input_schema,\n    \"output\": meta.output_schema,\n})"
+---
+{
+  "meta": {
+    "name": "job.list",
+    "summary": "List background jobs, newest first (filter by media, state or kind)",
+    "kind": "engine",
+    "undoable": false,
+    "view": false,
+    "scope": "any",
+    "mcp": "catalog",
+    "annotations": {
+      "readOnlyHint": true,
+      "destructiveHint": false,
+      "idempotentHint": true,
+      "openWorldHint": false
+    },
+    "secret_fields": [],
+    "input_schema": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "media_id": {
+          "type": [
+            "string",
+            "null"
+          ],
+          "pattern": "^med_[0-9a-f]{32}$",
+          "description": "Only jobs working on this media asset.",
+          "default": null
+        },
+        "state": {
+          "anyOf": [
+            {
+              "oneOf": [
+                {
+                  "type": "string",
+                  "const": "queued",
+                  "description": "Waiting for the jobs it depends on or for a budget slot."
+                },
+                {
+                  "type": "string",
+                  "const": "running",
+                  "description": "Running."
+                },
+                {
+                  "type": "string",
+                  "const": "succeeded",
+                  "description": "Finished its work."
+                },
+                {
+                  "type": "string",
+                  "const": "failed",
+                  "description": "Stopped with an error (see `error`), or skipped because a job it needs failed."
+                },
+                {
+                  "type": "string",
+                  "const": "cancelled",
+                  "description": "Cancelled before or while running."
+                }
+              ],
+              "description": "Where a job is in its lifecycle. `succeeded`, `failed` and `cancelled` are final."
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "description": "Only jobs in this state (e.g. `running`).",
+          "default": null
+        },
+        "kind": {
+          "anyOf": [
+            {
+              "oneOf": [
+                {
+                  "type": "string",
+                  "const": "analysis",
+                  "description": "Background analysis of an imported asset (index, thumbnails, waveform): decodes media."
+                },
+                {
+                  "type": "string",
+                  "const": "export",
+                  "description": "Rendering and encoding a sequence to a file (WP-1E.03)."
+                }
+              ],
+              "description": "What kind of work a job does. The kind decides which [`Budget`] it runs under."
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "description": "Only jobs of this kind.",
+          "default": null
+        },
+        "limit": {
+          "type": [
+            "integer",
+            "null"
+          ],
+          "format": "uint32",
+          "minimum": 0,
+          "description": "Most jobs returned, `1..=500` (default 50).",
+          "default": null
+        }
+      },
+      "description": "Lists background jobs, newest first: unfinished ones and recently finished ones, optionally\nonly those of one asset, state or kind.",
+      "title": "JobList"
+    },
+    "output_schema": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "jobs": {
+          "type": "array",
+          "items": {
+            "description": "A job as reported by `job.status`, `job.list`, `job.wait`, `job.cancel` and the\n`job.progress` event.",
+            "type": "object",
+            "properties": {
+              "id": {
+                "description": "The job.",
+                "type": "string",
+                "pattern": "^job_[0-9a-f]{32}$"
+              },
+              "kind": {
+                "description": "What kind of work it is.",
+                "oneOf": [
+                  {
+                    "description": "Background analysis of an imported asset (index, thumbnails, waveform): decodes media.",
+                    "type": "string",
+                    "const": "analysis"
+                  },
+                  {
+                    "description": "Rendering and encoding a sequence to a file (WP-1E.03).",
+                    "type": "string",
+                    "const": "export"
+                  }
+                ]
+              },
+              "label": {
+                "description": "What it does, e.g. the analysis stage (`index`, `thumbnails`, `waveform`).",
+                "type": "string"
+              },
+              "media_id": {
+                "description": "The media asset it works on, if any.",
+                "type": [
+                  "string",
+                  "null"
+                ],
+                "pattern": "^med_[0-9a-f]{32}$"
+              },
+              "state": {
+                "description": "Where it is in its lifecycle.",
+                "oneOf": [
+                  {
+                    "description": "Waiting for the jobs it depends on or for a budget slot.",
+                    "type": "string",
+                    "const": "queued"
+                  },
+                  {
+                    "description": "Running.",
+                    "type": "string",
+                    "const": "running"
+                  },
+                  {
+                    "description": "Finished its work.",
+                    "type": "string",
+                    "const": "succeeded"
+                  },
+                  {
+                    "description": "Stopped with an error (see `error`), or skipped because a job it needs failed.",
+                    "type": "string",
+                    "const": "failed"
+                  },
+                  {
+                    "description": "Cancelled before or while running.",
+                    "type": "string",
+                    "const": "cancelled"
+                  }
+                ]
+              },
+              "progress": {
+                "description": "How far it got.",
+                "type": "object",
+                "properties": {
+                  "fraction": {
+                    "description": "Done fraction, `0..=1` (1 once the job succeeded).",
+                    "type": "number",
+                    "format": "double"
+                  },
+                  "message": {
+                    "description": "What it is doing, for status lines.",
+                    "type": [
+                      "string",
+                      "null"
+                    ]
+                  }
+                },
+                "additionalProperties": false,
+                "required": [
+                  "fraction",
+                  "message"
+                ]
+              },
+              "cancel_requested": {
+                "description": "Whether cancellation was requested; a running job stops when it next checks.",
+                "type": "boolean"
+              },
+              "error": {
+                "description": "Why it failed, was skipped or was cancelled.",
+                "type": [
+                  "string",
+                  "null"
+                ]
+              }
+            },
+            "additionalProperties": false,
+            "required": [
+              "id",
+              "kind",
+              "label",
+              "media_id",
+              "state",
+              "progress",
+              "cancel_requested",
+              "error"
+            ]
+          },
+          "description": "The jobs, newest first."
+        },
+        "active": {
+          "type": "integer",
+          "format": "uint32",
+          "minimum": 0,
+          "description": "How many jobs are unfinished (queued or running) in total, whatever the filter."
+        }
+      },
+      "required": [
+        "jobs",
+        "active"
+      ],
+      "description": "Result of `job.list`.",
+      "title": "JobListOutput"
+    }
+  },
+  "input": {
+    "type": "object",
+    "additionalProperties": false,
+    "properties": {
+      "media_id": {
+        "type": [
+          "string",
+          "null"
+        ],
+        "pattern": "^med_[0-9a-f]{32}$",
+        "description": "Only jobs working on this media asset.",
+        "default": null
+      },
+      "state": {
+        "anyOf": [
+          {
+            "oneOf": [
+              {
+                "type": "string",
+                "const": "queued",
+                "description": "Waiting for the jobs it depends on or for a budget slot."
+              },
+              {
+                "type": "string",
+                "const": "running",
+                "description": "Running."
+              },
+              {
+                "type": "string",
+                "const": "succeeded",
+                "description": "Finished its work."
+              },
+              {
+                "type": "string",
+                "const": "failed",
+                "description": "Stopped with an error (see `error`), or skipped because a job it needs failed."
+              },
+              {
+                "type": "string",
+                "const": "cancelled",
+                "description": "Cancelled before or while running."
+              }
+            ],
+            "description": "Where a job is in its lifecycle. `succeeded`, `failed` and `cancelled` are final."
+          },
+          {
+            "type": "null"
+          }
+        ],
+        "description": "Only jobs in this state (e.g. `running`).",
+        "default": null
+      },
+      "kind": {
+        "anyOf": [
+          {
+            "oneOf": [
+              {
+                "type": "string",
+                "const": "analysis",
+                "description": "Background analysis of an imported asset (index, thumbnails, waveform): decodes media."
+              },
+              {
+                "type": "string",
+                "const": "export",
+                "description": "Rendering and encoding a sequence to a file (WP-1E.03)."
+              }
+            ],
+            "description": "What kind of work a job does. The kind decides which [`Budget`] it runs under."
+          },
+          {
+            "type": "null"
+          }
+        ],
+        "description": "Only jobs of this kind.",
+        "default": null
+      },
+      "limit": {
+        "type": [
+          "integer",
+          "null"
+        ],
+        "format": "uint32",
+        "minimum": 0,
+        "description": "Most jobs returned, `1..=500` (default 50).",
+        "default": null
+      }
+    },
+    "description": "Lists background jobs, newest first: unfinished ones and recently finished ones, optionally\nonly those of one asset, state or kind.",
+    "title": "JobList"
+  },
+  "output": {
+    "type": "object",
+    "additionalProperties": false,
+    "properties": {
+      "jobs": {
+        "type": "array",
+        "items": {
+          "description": "A job as reported by `job.status`, `job.list`, `job.wait`, `job.cancel` and the\n`job.progress` event.",
+          "type": "object",
+          "properties": {
+            "id": {
+              "description": "The job.",
+              "type": "string",
+              "pattern": "^job_[0-9a-f]{32}$"
+            },
+            "kind": {
+              "description": "What kind of work it is.",
+              "oneOf": [
+                {
+                  "description": "Background analysis of an imported asset (index, thumbnails, waveform): decodes media.",
+                  "type": "string",
+                  "const": "analysis"
+                },
+                {
+                  "description": "Rendering and encoding a sequence to a file (WP-1E.03).",
+                  "type": "string",
+                  "const": "export"
+                }
+              ]
+            },
+            "label": {
+              "description": "What it does, e.g. the analysis stage (`index`, `thumbnails`, `waveform`).",
+              "type": "string"
+            },
+            "media_id": {
+              "description": "The media asset it works on, if any.",
+              "type": [
+                "string",
+                "null"
+              ],
+              "pattern": "^med_[0-9a-f]{32}$"
+            },
+            "state": {
+              "description": "Where it is in its lifecycle.",
+              "oneOf": [
+                {
+                  "description": "Waiting for the jobs it depends on or for a budget slot.",
+                  "type": "string",
+                  "const": "queued"
+                },
+                {
+                  "description": "Running.",
+                  "type": "string",
+                  "const": "running"
+                },
+                {
+                  "description": "Finished its work.",
+                  "type": "string",
+                  "const": "succeeded"
+                },
+                {
+                  "description": "Stopped with an error (see `error`), or skipped because a job it needs failed.",
+                  "type": "string",
+                  "const": "failed"
+                },
+                {
+                  "description": "Cancelled before or while running.",
+                  "type": "string",
+                  "const": "cancelled"
+                }
+              ]
+            },
+            "progress": {
+              "description": "How far it got.",
+              "type": "object",
+              "properties": {
+                "fraction": {
+                  "description": "Done fraction, `0..=1` (1 once the job succeeded).",
+                  "type": "number",
+                  "format": "double"
+                },
+                "message": {
+                  "description": "What it is doing, for status lines.",
+                  "type": [
+                    "string",
+                    "null"
+                  ]
+                }
+              },
+              "additionalProperties": false,
+              "required": [
+                "fraction",
+                "message"
+              ]
+            },
+            "cancel_requested": {
+              "description": "Whether cancellation was requested; a running job stops when it next checks.",
+              "type": "boolean"
+            },
+            "error": {
+              "description": "Why it failed, was skipped or was cancelled.",
+              "type": [
+                "string",
+                "null"
+              ]
+            }
+          },
+          "additionalProperties": false,
+          "required": [
+            "id",
+            "kind",
+            "label",
+            "media_id",
+            "state",
+            "progress",
+            "cancel_requested",
+            "error"
+          ]
+        },
+        "description": "The jobs, newest first."
+      },
+      "active": {
+        "type": "integer",
+        "format": "uint32",
+        "minimum": 0,
+        "description": "How many jobs are unfinished (queued or running) in total, whatever the filter."
+      }
+    },
+    "required": [
+      "jobs",
+      "active"
+    ],
+    "description": "Result of `job.list`.",
+    "title": "JobListOutput"
+  }
+}

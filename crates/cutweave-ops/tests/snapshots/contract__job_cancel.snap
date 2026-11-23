@@ -1,0 +1,282 @@
+---
+source: crates/cutweave-ops/tests/contract.rs
+expression: "json!({\n    \"meta\": serde_json::to_value(meta).unwrap(), \"input\": meta.input_schema,\n    \"output\": meta.output_schema,\n})"
+---
+{
+  "meta": {
+    "name": "job.cancel",
+    "summary": "Cancel a background job (stops within 500 ms; no effect once it finished)",
+    "kind": "engine",
+    "undoable": false,
+    "view": false,
+    "scope": "any",
+    "mcp": "catalog",
+    "annotations": {
+      "readOnlyHint": false,
+      "destructiveHint": false,
+      "idempotentHint": true,
+      "openWorldHint": false
+    },
+    "secret_fields": [],
+    "input_schema": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "id": {
+          "type": "string",
+          "pattern": "^job_[0-9a-f]{32}$",
+          "description": "The job."
+        }
+      },
+      "required": [
+        "id"
+      ],
+      "description": "Cancels a background job. A queued job is cancelled at once; a running one stops within\n500 ms (`running` with `cancel_requested` until then; `job.wait` to see it end). Cancelling\na finished job changes nothing. Returns the job's state.",
+      "title": "JobCancel"
+    },
+    "output_schema": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "id": {
+          "type": "string",
+          "pattern": "^job_[0-9a-f]{32}$",
+          "description": "The job."
+        },
+        "kind": {
+          "oneOf": [
+            {
+              "type": "string",
+              "const": "analysis",
+              "description": "Background analysis of an imported asset (index, thumbnails, waveform): decodes media."
+            },
+            {
+              "type": "string",
+              "const": "export",
+              "description": "Rendering and encoding a sequence to a file (WP-1E.03)."
+            }
+          ],
+          "description": "What kind of work it is."
+        },
+        "label": {
+          "type": "string",
+          "description": "What it does, e.g. the analysis stage (`index`, `thumbnails`, `waveform`)."
+        },
+        "media_id": {
+          "type": [
+            "string",
+            "null"
+          ],
+          "pattern": "^med_[0-9a-f]{32}$",
+          "description": "The media asset it works on, if any."
+        },
+        "state": {
+          "oneOf": [
+            {
+              "type": "string",
+              "const": "queued",
+              "description": "Waiting for the jobs it depends on or for a budget slot."
+            },
+            {
+              "type": "string",
+              "const": "running",
+              "description": "Running."
+            },
+            {
+              "type": "string",
+              "const": "succeeded",
+              "description": "Finished its work."
+            },
+            {
+              "type": "string",
+              "const": "failed",
+              "description": "Stopped with an error (see `error`), or skipped because a job it needs failed."
+            },
+            {
+              "type": "string",
+              "const": "cancelled",
+              "description": "Cancelled before or while running."
+            }
+          ],
+          "description": "Where it is in its lifecycle."
+        },
+        "progress": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "fraction": {
+              "type": "number",
+              "format": "double",
+              "description": "Done fraction, `0..=1` (1 once the job succeeded)."
+            },
+            "message": {
+              "type": [
+                "string",
+                "null"
+              ],
+              "description": "What it is doing, for status lines."
+            }
+          },
+          "required": [
+            "fraction",
+            "message"
+          ],
+          "description": "How far it got."
+        },
+        "cancel_requested": {
+          "type": "boolean",
+          "description": "Whether cancellation was requested; a running job stops when it next checks."
+        },
+        "error": {
+          "type": [
+            "string",
+            "null"
+          ],
+          "description": "Why it failed, was skipped or was cancelled."
+        }
+      },
+      "required": [
+        "id",
+        "kind",
+        "label",
+        "media_id",
+        "state",
+        "progress",
+        "cancel_requested",
+        "error"
+      ],
+      "description": "A job as reported by `job.status`, `job.list`, `job.wait`, `job.cancel` and the\n`job.progress` event.",
+      "title": "JobInfo"
+    }
+  },
+  "input": {
+    "type": "object",
+    "additionalProperties": false,
+    "properties": {
+      "id": {
+        "type": "string",
+        "pattern": "^job_[0-9a-f]{32}$",
+        "description": "The job."
+      }
+    },
+    "required": [
+      "id"
+    ],
+    "description": "Cancels a background job. A queued job is cancelled at once; a running one stops within\n500 ms (`running` with `cancel_requested` until then; `job.wait` to see it end). Cancelling\na finished job changes nothing. Returns the job's state.",
+    "title": "JobCancel"
+  },
+  "output": {
+    "type": "object",
+    "additionalProperties": false,
+    "properties": {
+      "id": {
+        "type": "string",
+        "pattern": "^job_[0-9a-f]{32}$",
+        "description": "The job."
+      },
+      "kind": {
+        "oneOf": [
+          {
+            "type": "string",
+            "const": "analysis",
+            "description": "Background analysis of an imported asset (index, thumbnails, waveform): decodes media."
+          },
+          {
+            "type": "string",
+            "const": "export",
+            "description": "Rendering and encoding a sequence to a file (WP-1E.03)."
+          }
+        ],
+        "description": "What kind of work it is."
+      },
+      "label": {
+        "type": "string",
+        "description": "What it does, e.g. the analysis stage (`index`, `thumbnails`, `waveform`)."
+      },
+      "media_id": {
+        "type": [
+          "string",
+          "null"
+        ],
+        "pattern": "^med_[0-9a-f]{32}$",
+        "description": "The media asset it works on, if any."
+      },
+      "state": {
+        "oneOf": [
+          {
+            "type": "string",
+            "const": "queued",
+            "description": "Waiting for the jobs it depends on or for a budget slot."
+          },
+          {
+            "type": "string",
+            "const": "running",
+            "description": "Running."
+          },
+          {
+            "type": "string",
+            "const": "succeeded",
+            "description": "Finished its work."
+          },
+          {
+            "type": "string",
+            "const": "failed",
+            "description": "Stopped with an error (see `error`), or skipped because a job it needs failed."
+          },
+          {
+            "type": "string",
+            "const": "cancelled",
+            "description": "Cancelled before or while running."
+          }
+        ],
+        "description": "Where it is in its lifecycle."
+      },
+      "progress": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "fraction": {
+            "type": "number",
+            "format": "double",
+            "description": "Done fraction, `0..=1` (1 once the job succeeded)."
+          },
+          "message": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "What it is doing, for status lines."
+          }
+        },
+        "required": [
+          "fraction",
+          "message"
+        ],
+        "description": "How far it got."
+      },
+      "cancel_requested": {
+        "type": "boolean",
+        "description": "Whether cancellation was requested; a running job stops when it next checks."
+      },
+      "error": {
+        "type": [
+          "string",
+          "null"
+        ],
+        "description": "Why it failed, was skipped or was cancelled."
+      }
+    },
+    "required": [
+      "id",
+      "kind",
+      "label",
+      "media_id",
+      "state",
+      "progress",
+      "cancel_requested",
+      "error"
+    ],
+    "description": "A job as reported by `job.status`, `job.list`, `job.wait`, `job.cancel` and the\n`job.progress` event.",
+    "title": "JobInfo"
+  }
+}

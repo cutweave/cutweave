@@ -174,6 +174,52 @@ const CONTRACT: &[Row] = &[
         true,
         false,
     ),
+    // WP-1D.07: engine-state readers are read-only engine commands (like `edit.history`).
+    (
+        "media.set_analysis_error",
+        EntryKind::Command,
+        McpExposure::Hidden,
+        false,
+        false,
+        true,
+        false,
+    ),
+    (
+        "job.status",
+        EntryKind::Engine,
+        McpExposure::Core,
+        true,
+        false,
+        true,
+        false,
+    ),
+    (
+        "job.list",
+        EntryKind::Engine,
+        McpExposure::Catalog,
+        true,
+        false,
+        true,
+        false,
+    ),
+    (
+        "job.wait",
+        EntryKind::Engine,
+        McpExposure::Core,
+        true,
+        false,
+        true,
+        false,
+    ),
+    (
+        "job.cancel",
+        EntryKind::Engine,
+        McpExposure::Catalog,
+        false,
+        false,
+        true,
+        false,
+    ),
 ];
 
 fn registry() -> Registry {
@@ -243,6 +289,8 @@ fn the_arch_14_core_tools_of_this_wp_are_core_and_named_with_underscores() {
         "item_move",
         "item_delete",
         "item_set_props",
+        "job_status",
+        "job_wait",
     ] {
         assert!(
             core.contains(&tool.to_owned()),
@@ -271,7 +319,15 @@ fn mutating_core_tools_are_not_read_only_and_queries_are() {
             "{name}"
         );
     }
-    for name in ["timeline.get", "media.list", "project.info", "item.get"] {
+    for name in [
+        "timeline.get",
+        "media.list",
+        "project.info",
+        "item.get",
+        "job.status",
+        "job.list",
+        "job.wait",
+    ] {
         let m = &registry.get(name).unwrap().meta;
         assert!(
             m.annotations.read_only && m.annotations.idempotent && !m.is_journaled(),
@@ -309,6 +365,11 @@ fn optional_params_are_not_required_in_the_input_schema() {
     assert_eq!(required("item.set_props"), ["item", "props"]);
     assert_eq!(required("item.get"), ["item"]);
     assert_eq!(required("project.new"), ["name"]);
+    assert_eq!(required("job.status"), ["id"]);
+    assert_eq!(required("job.wait"), ["job_id"]);
+    assert_eq!(required("job.cancel"), ["id"]);
+    assert_eq!(required("job.list"), Vec::<String>::new());
+    assert_eq!(required("media.set_analysis_error"), ["media_id"]);
 }
 
 #[test]

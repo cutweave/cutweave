@@ -108,6 +108,13 @@ expression: "json!({\n    \"meta\": serde_json::to_value(meta).unwrap(), \"input
               "has_audio": {
                 "description": "Whether it has sound.",
                 "type": "boolean"
+              },
+              "analysis_error": {
+                "description": "The last background analysis failure (thumbnails, waveform, index), if any: the\nasset is usable but some previews may be missing.",
+                "type": [
+                  "string",
+                  "null"
+                ]
               }
             },
             "additionalProperties": false,
@@ -117,7 +124,8 @@ expression: "json!({\n    \"meta\": serde_json::to_value(meta).unwrap(), \"input
               "path",
               "duration",
               "has_video",
-              "has_audio"
+              "has_audio",
+              "analysis_error"
             ]
           },
           "description": "The page, ordered by ID."
@@ -236,6 +244,13 @@ expression: "json!({\n    \"meta\": serde_json::to_value(meta).unwrap(), \"input
             "has_audio": {
               "description": "Whether it has sound.",
               "type": "boolean"
+            },
+            "analysis_error": {
+              "description": "The last background analysis failure (thumbnails, waveform, index), if any: the\nasset is usable but some previews may be missing.",
+              "type": [
+                "string",
+                "null"
+              ]
             }
           },
           "additionalProperties": false,
@@ -245,7 +260,8 @@ expression: "json!({\n    \"meta\": serde_json::to_value(meta).unwrap(), \"input
             "path",
             "duration",
             "has_video",
-            "has_audio"
+            "has_audio",
+            "analysis_error"
           ]
         },
         "description": "The page, ordered by ID."
