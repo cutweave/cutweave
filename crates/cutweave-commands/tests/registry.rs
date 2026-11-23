@@ -200,6 +200,81 @@ fn schemas_must_be_objects() {
     );
 }
 
+/// Opts out of the journal: allowed for a non-undoable engine command (`Unjournaled<0>`),
+/// refused for an undoable one (`<1>`) and for a document command (`<2>`).
+#[derive(Clone, Debug, Serialize, Deserialize, JsonSchema, specta::Type)]
+#[serde(deny_unknown_fields)]
+struct Unjournaled<const N: usize> {}
+
+const UNJOURNALED: &[CommandSpec] = &[
+    CommandSpec {
+        name: "edit.unjournaled",
+        kind: EntryKind::Engine,
+        undoable: false,
+        ..BASE
+    },
+    CommandSpec {
+        name: "edit.unjournaled",
+        kind: EntryKind::Engine,
+        ..BASE
+    },
+    CommandSpec {
+        name: "clip.unjournaled",
+        undoable: false,
+        ..BASE
+    },
+];
+
+impl<const N: usize> Described for Unjournaled<N> {
+    const SPEC: CommandSpec = UNJOURNALED[N];
+    const JOURNALED: bool = false;
+}
+
+impl<const N: usize> cutweave_commands::EngineCommand for Unjournaled<N> {
+    type Context = ViewState;
+    type Output = Done;
+    fn run(&self, _: &mut ViewState) -> Result<Done, CmdError> {
+        Ok(Done {})
+    }
+}
+
+impl Command for Unjournaled<2> {
+    type Output = Done;
+    fn apply(&self, _: &mut Tx<'_>) -> Result<Done, CmdError> {
+        Ok(Done {})
+    }
+}
+
+#[test]
+fn only_non_undoable_engine_commands_may_opt_out_of_the_journal() {
+    let mut opted_out = Registry::new();
+    opted_out.add_engine_command::<Unjournaled<0>>().unwrap();
+    let meta = &opted_out.get("edit.unjournaled").unwrap().meta;
+    assert!(!meta.journaled && !meta.is_journaled());
+    assert_eq!(serde_json::to_value(meta).unwrap()["journaled"], false);
+    for result in [
+        Registry::new()
+            .add_engine_command::<Unjournaled<1>>()
+            .map(drop),
+        Registry::new().add_command::<Unjournaled<2>>().map(drop),
+    ] {
+        assert!(
+            matches!(&result, Err(RegistryError::InconsistentFlags { reason, .. }) if reason.contains("journal")),
+            "{result:?}"
+        );
+    }
+    // Everything else keeps the default, which is not serialized.
+    let defaults = registry();
+    let split = &defaults.get("clip.split").unwrap().meta;
+    assert!(split.journaled);
+    assert!(
+        serde_json::to_value(split)
+            .unwrap()
+            .get("journaled")
+            .is_none()
+    );
+}
+
 #[test]
 fn metadata_and_schemas() {
     let registry = registry();

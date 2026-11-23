@@ -212,6 +212,10 @@ pub struct CommandMeta {
     pub annotations: Annotations,
     /// Top-level params marked `#[secret]`.
     pub secret_fields: &'static [&'static str],
+    /// `false` for an engine command that opted out of the journal
+    /// ([`Described::JOURNALED`](crate::Described::JOURNALED)); serialized only then.
+    #[serde(skip_serializing_if = "is_true")]
+    pub journaled: bool,
     /// Rust type of the params.
     #[serde(skip)]
     pub rust_type: &'static str,
@@ -222,8 +226,18 @@ pub struct CommandMeta {
     pub output_schema: Value,
 }
 
+#[allow(clippy::trivially_copy_pass_by_ref)] // serde's `skip_serializing_if` passes a reference
+fn is_true(b: &bool) -> bool {
+    *b
+}
+
 impl CommandMeta {
-    pub(crate) fn new(spec: CommandSpec, input_schema: Value, output_schema: Value) -> CommandMeta {
+    pub(crate) fn new(
+        spec: CommandSpec,
+        journaled: bool,
+        input_schema: Value,
+        output_schema: Value,
+    ) -> CommandMeta {
         CommandMeta {
             name: spec.name,
             summary: spec.summary,
@@ -234,6 +248,7 @@ impl CommandMeta {
             mcp: spec.mcp,
             annotations: spec.annotations,
             secret_fields: spec.secret_fields,
+            journaled,
             rust_type: spec.rust_type,
             input_schema,
             output_schema,
@@ -253,11 +268,11 @@ impl CommandMeta {
     }
 
     /// Whether a successful call is journaled (WP-1C.02): document commands and engine
-    /// commands, never queries, read-only engine commands (`edit.history`) or `view.*`
-    /// commands.
+    /// commands, never queries, read-only engine commands (`edit.history`), `view.*`
+    /// commands or engine commands that opted out (`journaled = false`, e.g. `job.cancel`).
     #[must_use]
     pub fn is_journaled(&self) -> bool {
-        self.kind != EntryKind::Query && !self.view && !self.annotations.read_only
+        self.kind != EntryKind::Query && !self.view && !self.annotations.read_only && self.journaled
     }
 }
 

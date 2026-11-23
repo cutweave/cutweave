@@ -43,7 +43,9 @@
 //! `annotations(destructive, idempotent, open_world)` (`destructive` required on commands;
 //! queries accept only `open_world`); `view` (a `view.*` command: engine-run, never undoable,
 //! never journaled); `engine` (a command run against engine state, e.g. `edit.undo`, via
-//! `EngineCommand`). Field attribute: `#[secret]`.
+//! `EngineCommand`); `journaled = false` (a non-undoable engine command that is never
+//! journaled because nothing it changes is replayed, e.g. `job.cancel`). Field attribute:
+//! `#[secret]`.
 
 use proc_macro::TokenStream;
 use proc_macro2::{Span, TokenStream as TokenStream2};
@@ -175,6 +177,7 @@ struct Args {
     undoable: Option<LitBool>,
     view: Option<Span>,
     engine: Option<Span>,
+    journaled: Option<LitBool>,
     annotations: Option<Span>,
     destructive: Option<LitBool>,
     idempotent: Option<LitBool>,
@@ -225,9 +228,13 @@ fn parse_args(kind: Kind, args: TokenStream) -> syn::Result<Args> {
             ("engine", Kind::Command) => {
                 set_once(&mut out.engine, meta.path.span(), &meta, "engine")
             }
-            ("undoable" | "view" | "engine", Kind::Query) => Err(meta.error(format!(
-                "queries are read-only: `{key}` only applies to #[command]"
-            ))),
+            ("journaled", Kind::Command) => {
+                let v = flag_value(&meta)?;
+                set_once(&mut out.journaled, v, &meta, "journaled")
+            }
+            ("undoable" | "view" | "engine" | "journaled", Kind::Query) => Err(meta.error(
+                format!("queries are read-only: `{key}` only applies to #[command]"),
+            )),
             ("annotations", _) => {
                 set_once(&mut out.annotations, meta.path.span(), &meta, "annotations")?;
                 meta.parse_nested_meta(|inner| parse_annotation(kind, &inner, &mut out))
@@ -236,7 +243,7 @@ fn parse_args(kind: Kind, args: TokenStream) -> syn::Result<Args> {
                 "unknown #[{}] argument `{key}`; expected `name`, `summary`, `mcp`, `scope`, {}`annotations(...)`",
                 kind.attr(),
                 if kind == Kind::Command {
-                    "`undoable`, `view`, `engine`, "
+                    "`undoable`, `view`, `engine`, `journaled`, "
                 } else {
                     ""
                 }
@@ -332,6 +339,7 @@ struct Spec {
     destructive: bool,
     idempotent: bool,
     open_world: bool,
+    journaled: bool,
 }
 
 #[allow(clippy::too_many_lines)] // one linear list of contract rules
@@ -400,6 +408,7 @@ fn resolve(kind: Kind, args: Args) -> syn::Result<Spec> {
             destructive: false,
             idempotent: true,
             open_world,
+            journaled: true,
         });
     }
 
@@ -462,6 +471,19 @@ fn resolve(kind: Kind, args: Args) -> syn::Result<Spec> {
             .value
     };
     let engine = view || args.engine.is_some();
+    let journaled = match args.journaled {
+        Some(j) if !j.value => {
+            if args.engine.is_none() || undoable {
+                return Err(syn::Error::new(
+                    j.span(),
+                    "`journaled = false` only applies to non-undoable `engine` commands (document \
+                     commands are always journaled; `view` commands never are)",
+                ));
+            }
+            false
+        }
+        _ => true,
+    };
     Ok(Spec {
         name,
         summary,
@@ -483,6 +505,7 @@ fn resolve(kind: Kind, args: Args) -> syn::Result<Spec> {
         destructive,
         idempotent: args.idempotent.is_some_and(|b| b.value),
         open_world,
+        journaled,
     })
 }
 
@@ -570,6 +593,7 @@ fn check_shape(attr: &str, st: &ItemStruct) -> syn::Result<()> {
     }
 }
 
+#[allow(clippy::too_many_lines)] // one linear expansion: field attributes, then the impls
 fn expand_item(kind: Kind, args: TokenStream, item: syn::Item) -> syn::Result<TokenStream2> {
     let attr = kind.attr();
     let syn::Item::Struct(mut st) = item else {
@@ -636,6 +660,7 @@ fn expand_item(kind: Kind, args: TokenStream, item: syn::Item) -> syn::Result<To
         destructive,
         idempotent,
         open_world,
+        journaled,
     } = spec;
     // Errors about a missing `impl Command` point at the struct name.
     let register = quote_spanned!(ident.span()=> registry.#register::<#ident>());
@@ -668,6 +693,7 @@ fn expand_item(kind: Kind, args: TokenStream, item: syn::Item) -> syn::Result<To
                 secret_fields: &[#(#secrets),*],
                 rust_type: #rust_type,
             };
+            const JOURNALED: bool = #journaled;
         }
 
         impl ::cutweave_commands::Registrable for #ident {

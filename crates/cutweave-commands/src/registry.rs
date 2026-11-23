@@ -44,6 +44,13 @@ pub const REDACTED: &str = "[redacted]";
 pub trait Described {
     /// The entry's metadata.
     const SPEC: CommandSpec;
+
+    /// Whether successful calls are journaled for crash recovery (WP-1C.02); `true` by
+    /// default. Only a non-undoable engine command whose effect is not engine state the
+    /// journal replays may opt out (`job.cancel`: jobs are not persisted), with
+    /// `#[command(engine, journaled = false, ...)]`. Read-only entries and `view.*` commands
+    /// are never journaled regardless (see [`CommandMeta::is_journaled`]).
+    const JOURNALED: bool = true;
 }
 
 /// A document command: mutates the project through a [`Tx`].
@@ -366,6 +373,18 @@ fn check_flags(spec: &CommandSpec) -> Result<(), String> {
     Ok(())
 }
 
+/// Only a non-undoable engine command may opt out of the journal (see
+/// [`Described::JOURNALED`]): document commands change the document, which recovery replays.
+fn check_journaled(spec: &CommandSpec, journaled: bool) -> Result<(), String> {
+    if !journaled && (spec.kind != EntryKind::Engine || spec.undoable) {
+        return Err(
+            "only a non-undoable engine command can opt out of the journal (`journaled = false`)"
+                .into(),
+        );
+    }
+    Ok(())
+}
+
 fn is_object_schema(schema: &Value) -> bool {
     schema.get("type").and_then(Value::as_str) == Some("object")
 }
@@ -393,6 +412,7 @@ impl Registry {
     pub fn add_command<C: Command>(&mut self) -> Result<&mut Registry, RegistryError> {
         self.admit(
             C::SPEC,
+            C::JOURNALED,
             EntryKind::Command,
             input_schema::<C>(),
             output_schema::<C::Output>(),
@@ -406,6 +426,7 @@ impl Registry {
     pub fn add_query<Q: Query>(&mut self) -> Result<&mut Registry, RegistryError> {
         self.admit(
             Q::SPEC,
+            Q::JOURNALED,
             EntryKind::Query,
             input_schema::<Q>(),
             output_schema::<Q::Output>(),
@@ -419,6 +440,7 @@ impl Registry {
     pub fn add_engine_command<E: EngineCommand>(&mut self) -> Result<&mut Registry, RegistryError> {
         self.admit(
             E::SPEC,
+            E::JOURNALED,
             EntryKind::Engine,
             input_schema::<E>(),
             output_schema::<E::Output>(),
@@ -435,6 +457,7 @@ impl Registry {
     fn admit(
         &mut self,
         spec: CommandSpec,
+        journaled: bool,
         kind: EntryKind,
         mut input: Value,
         output: Value,
@@ -460,10 +483,12 @@ impl Registry {
                 ),
             });
         }
-        check_flags(&spec).map_err(|reason| RegistryError::InconsistentFlags {
-            name: name.clone(),
-            reason,
-        })?;
+        check_flags(&spec)
+            .and_then(|()| check_journaled(&spec, journaled))
+            .map_err(|reason| RegistryError::InconsistentFlags {
+                name: name.clone(),
+                reason,
+            })?;
         for (which, schema) in [("input", &input), ("output", &output)] {
             if !is_object_schema(schema) {
                 return Err(RegistryError::NotAnObject { name, which });
@@ -486,7 +511,7 @@ impl Registry {
         self.entries.insert(
             spec.name,
             Entry {
-                meta: CommandMeta::new(spec, input, output),
+                meta: CommandMeta::new(spec, journaled, input, output),
                 runner,
                 validate,
                 ts,

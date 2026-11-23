@@ -1,0 +1,5 @@
+error: `journaled = false` only applies to non-undoable `engine` commands (document commands are always journaled; `view` commands never are)
+ --> tests/ui/unjournaled_document_command.rs:4:81
+  |
+4 | #[command(name = "clip.split", summary = "Split", undoable = false, journaled = false, mcp = "core", annotations(destructive = false))]
+  |                                                                                 ^^^^^
