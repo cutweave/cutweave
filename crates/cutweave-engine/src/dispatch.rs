@@ -194,6 +194,10 @@ impl Connection {
             // requests already submitted.
             let applied = session.handle().submit(submit).wait()?;
             drop(guard);
+            #[cfg(debug_assertions)]
+            if entry.kind() == EntryKind::Command && !applied.replayed {
+                test_crash_hook::committed();
+            }
             return Ok(Reply {
                 output: applied.output.clone(),
                 rev: applied.rev,
@@ -224,6 +228,32 @@ impl Connection {
             .spawn_blocking(move || conn.call(call))
             .await
             .map_err(|e| CmdError::internal(format!("the request task failed: {e}")))?
+    }
+}
+
+/// Test hook (WP-1L.03), debug builds only: with `CUTWEAVE_TEST_CRASH_AFTER=N` the engine
+/// aborts right after its Nth committed document command, before that command's reply leaves
+/// (its journal record is already written), so supervisor and reconnect tests can crash the
+/// engine at a known point. Release builds do not read the variable.
+#[cfg(debug_assertions)]
+mod test_crash_hook {
+    use std::sync::OnceLock;
+    use std::sync::atomic::{AtomicU64, Ordering};
+
+    static LIMIT: OnceLock<Option<u64>> = OnceLock::new();
+    static COMMITTED: AtomicU64 = AtomicU64::new(0);
+
+    pub(super) fn committed() {
+        let limit = *LIMIT.get_or_init(|| {
+            std::env::var("CUTWEAVE_TEST_CRASH_AFTER")
+                .ok()
+                .and_then(|v| v.trim().parse().ok())
+        });
+        let Some(limit) = limit else { return };
+        if COMMITTED.fetch_add(1, Ordering::SeqCst) + 1 >= limit {
+            eprintln!("cutweave engine: CUTWEAVE_TEST_CRASH_AFTER={limit} reached; aborting");
+            std::process::abort();
+        }
     }
 }
 
