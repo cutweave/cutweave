@@ -57,8 +57,7 @@ mod schema_hash;
 mod tx;
 
 pub use catalog::{
-    CATALOG_FORMAT, JSON_SCHEMA_DIALECT, commands_catalog, events_catalog, mcp_tools_catalog,
-    queries_catalog,
+    CATALOG_FORMAT, JSON_SCHEMA_DIALECT, commands_catalog, mcp_tools_catalog, queries_catalog,
 };
 pub use ctx::{Access, QueryCtx};
 pub use cutweave_commands_derive::{command, query, wire};

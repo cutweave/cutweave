@@ -23,7 +23,7 @@ use std::path::Path;
 
 use cutweave_commands::{
     Access, CmdError, EntryKind, McpExposure, Registry, Transaction, apply_patch_json,
-    commands_catalog, events_catalog, mcp_tools_catalog, queries_catalog,
+    commands_catalog, mcp_tools_catalog, queries_catalog,
 };
 use cutweave_model::{Project, SeededGen};
 use cutweave_ops::media::FakeProbe;
@@ -300,6 +300,43 @@ fn patch_fixtures(registry: &Registry) -> Result<Value, String> {
     }))
 }
 
+/// Payload type of each engine event (their wire types are serde-only, so no JSON Schema yet).
+fn engine_event_payload(name: &str) -> &'static str {
+    match name {
+        "project.dirty" => "ProjectDirty",
+        "project.saved" => "ProjectSaved",
+        "project.recovery_available" => "RecoveryPayload",
+        "project.autosave_failed" => "AutosaveFailed",
+        _ => "unknown",
+    }
+}
+
+/// `schema/events.json`: document events (`cutweave-commands`, source `doc`) joined with engine
+/// events (`cutweave-engine`, source `engine`), sorted by name. `cutweave-commands` cannot
+/// depend on the engine, so the join happens here. New event sources append here.
+fn events_catalog() -> Value {
+    let mut events: Vec<Value> = cutweave_commands::EVENT_CATALOG
+        .iter()
+        .map(|e| {
+            json!({"name": e.name, "summary": e.summary, "payload": e.payload, "source": "doc"})
+        })
+        .collect();
+    events.extend(
+        cutweave_engine::autosave::PROJECT_EVENTS
+            .iter()
+            .map(|(name, summary)| {
+                json!({
+                    "name": name,
+                    "summary": summary,
+                    "payload": engine_event_payload(name),
+                    "source": "engine",
+                })
+            }),
+    );
+    events.sort_by(|a, b| a["name"].as_str().cmp(&b["name"].as_str()));
+    json!({"format": cutweave_commands::CATALOG_FORMAT, "events": events})
+}
+
 /// Builds every generated file in memory.
 ///
 /// # Errors
@@ -563,6 +600,29 @@ mod tests {
             let command = tool["command"].as_str().unwrap();
             assert_eq!(tool["name"], command.replace('.', "_"));
         }
+    }
+
+    #[test]
+    fn events_join_doc_and_engine_sources_sorted() {
+        let files = generate().unwrap();
+        let v: Value = serde_json::from_slice(&files[EVENTS]).unwrap();
+        let events = v["events"].as_array().unwrap();
+        let names: Vec<_> = events.iter().map(|e| e["name"].as_str().unwrap()).collect();
+        let mut sorted = names.clone();
+        sorted.sort_unstable();
+        assert_eq!(names, sorted);
+        let source = |n: &str| events.iter().find(|e| e["name"] == n).unwrap()["source"].clone();
+        assert_eq!(source("doc.patched"), "doc");
+        assert_eq!(source("tx.opened"), "doc");
+        for (n, _) in cutweave_engine::autosave::PROJECT_EVENTS {
+            assert_eq!(source(n), "engine", "{n}");
+            assert_ne!(engine_event_payload(n), "unknown", "{n}");
+        }
+        assert_eq!(
+            events.len(),
+            cutweave_commands::EVENT_CATALOG.len()
+                + cutweave_engine::autosave::PROJECT_EVENTS.len()
+        );
     }
 
     #[test]

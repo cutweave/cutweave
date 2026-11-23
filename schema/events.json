@@ -3,36 +3,67 @@
     {
       "name": "doc.command_panicked",
       "payload": "CommandPanicked",
+      "source": "doc",
       "summary": "A command panicked; its transaction was rolled back"
     },
     {
       "name": "doc.patched",
       "payload": "DocPatched",
+      "source": "doc",
       "summary": "The live document changed; apply `ops` to the document at `prev_rev`"
     },
     {
       "name": "doc.reset",
       "payload": "DocReset",
+      "source": "doc",
       "summary": "The document changed in a way ops cannot express; resync from a snapshot"
     },
     {
       "name": "edit.history_changed",
       "payload": "HistoryChanged",
+      "source": "doc",
       "summary": "An actor's undo/redo stacks changed"
+    },
+    {
+      "name": "project.autosave_failed",
+      "payload": "AutosaveFailed",
+      "source": "engine",
+      "summary": "An autosave attempt failed; it is retried automatically"
+    },
+    {
+      "name": "project.dirty",
+      "payload": "ProjectDirty",
+      "source": "engine",
+      "summary": "The project gained or lost unsaved changes (last saved revision differs from the committed one)"
+    },
+    {
+      "name": "project.recovery_available",
+      "payload": "RecoveryPayload",
+      "source": "engine",
+      "summary": "Unsaved work from a previous session can be restored or discarded"
+    },
+    {
+      "name": "project.saved",
+      "payload": "ProjectSaved",
+      "source": "engine",
+      "summary": "The project document was written to disk (autosave or explicit save)"
     },
     {
       "name": "tx.closed",
       "payload": "TxEnded",
+      "source": "doc",
       "summary": "A transaction ended and released its soft locks"
     },
     {
       "name": "tx.locked",
       "payload": "TxActivity",
+      "source": "doc",
       "summary": "A gesture or proposal soft-locked more items"
     },
     {
       "name": "tx.opened",
       "payload": "TxActivity",
+      "source": "doc",
       "summary": "A transaction was opened (no items locked yet)"
     }
   ],

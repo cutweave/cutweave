@@ -10,7 +10,7 @@
 use serde_json::{Value, json};
 
 use crate::{
-    CmdError, EVENT_CATALOG,
+    CmdError,
     meta::{CommandMeta, EntryKind, McpExposure},
     registry::Registry,
 };
@@ -97,14 +97,5 @@ pub fn mcp_tools_catalog(registry: &Registry) -> Value {
         "format": CATALOG_FORMAT,
         "naming": "tool name = command name with '.' replaced by '_'",
         "tools": tools,
-    })
-}
-
-/// `schema/events.json`: the events the engine broadcasts ([`EVENT_CATALOG`]).
-#[must_use]
-pub fn events_catalog() -> Value {
-    json!({
-        "format": CATALOG_FORMAT,
-        "events": EVENT_CATALOG,
     })
 }
