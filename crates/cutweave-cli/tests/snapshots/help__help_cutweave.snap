@@ -15,7 +15,7 @@ Commands:
   commands  List the registered commands and queries
   describe  Print one command's description and JSON Schemas
   render    Export a sequence to a media file (needs the media backend; not available yet)
-  mcp       Serve MCP over stdio (arrives with WP-1J.03)
+  mcp       Serve MCP over stdio to an agent: attach to a running engine, or run one in the process
   worker    Reserved: the sandboxed worker process
   help      Print this message or the help of the given subcommand(s)
 

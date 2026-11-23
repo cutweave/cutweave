@@ -42,7 +42,17 @@ pub enum Sub {
     Describe(DescribeCmd),
     /// Export a sequence to a media file (needs the media backend; not available yet).
     Render(RenderCmd),
-    /// Serve MCP over stdio (arrives with WP-1J.03).
+    /// Serve MCP over stdio to an agent: attach to a running engine, or run one in the process.
+    #[command(
+        long_about = "Serve MCP over stdio to an agent: attach to a running engine, or run one \
+            in the process.\n\n\
+            Stdout carries MCP protocol frames only, one JSON-RPC message per line; diagnostics \
+            go to stderr and the engine's log file. Errors before the session starts are one \
+            JSON object on stderr with the usual exit codes (2 usage, 3 no engine, 1 the engine \
+            did not start). Closing stdin ends the session. When an attached engine goes away, \
+            requests in flight get a JSON-RPC error and the process exits 3. Client setup: \
+            docs/reference/mcp-clients.md."
+    )]
     Mcp(McpCmd),
     /// Reserved: the sandboxed worker process.
     Worker(WorkerCmd),
@@ -271,18 +281,36 @@ pub enum Profile {
 /// `cutweave mcp`.
 #[derive(Debug, Args)]
 pub struct McpCmd {
-    /// Proxy to a running engine's `/mcp` endpoint instead of running one in the process.
+    /// Proxy to a running engine's MCP endpoint (`/mcp`, `/mcp/minimal` or `/mcp/full` for
+    /// --profile) with its run-file's `mcp` agent token, so the agent edits the document the
+    /// desktop app shows. This is the default when no spawn flag is given.
     #[arg(long, conflicts_with_all = ["headless", "project"])]
     pub attach: bool,
-    /// The tool profile.
+    /// The tool profile: the same catalogs and budgets as the engine's HTTP endpoints.
     #[arg(long, value_enum, default_value = "standard")]
     pub profile: Profile,
-    /// The run-file of the engine to attach to.
-    #[arg(long, value_name = "PATH", requires = "attach")]
+    /// The run-file of the engine to attach to (instead of --run-dir and --pid).
+    #[arg(
+        long,
+        value_name = "PATH",
+        requires = "attach",
+        conflicts_with_all = ["pid", "run_dir"]
+    )]
     pub run_file: Option<PathBuf>,
     /// Which engine to talk to.
     #[command(flatten)]
     pub target: Target,
+    /// Log directory of the in-process engine (default `~/.cutweave/logs`).
+    #[arg(
+        long,
+        value_name = "DIR",
+        conflicts_with = "no_log",
+        help_heading = "Spawned engine"
+    )]
+    pub log_dir: Option<PathBuf>,
+    /// No log file for the in-process engine.
+    #[arg(long, help_heading = "Spawned engine")]
+    pub no_log: bool,
 }
 
 /// `cutweave worker`.

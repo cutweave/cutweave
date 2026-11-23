@@ -34,6 +34,10 @@ futures-util = { version = "=0.3.34", default-features = false, features = ["sin
 [dev-dependencies]
 insta = { workspace = true }
 tempfile = "3.27.0"
+# WP-1J.03 process-level tests of `cutweave mcp`: rmcp's client (the version cutweave-api pins)
+# over the child's stdio pipes, and tokio's process support to spawn it. Both already locked.
+rmcp = { version = "=3.11.0", default-features = false, features = ["client", "transport-async-rw"] }
+tokio = { version = "=1.54.1", features = ["rt-multi-thread", "macros", "process", "time", "io-util"] }
 
 [lints]
 workspace = true

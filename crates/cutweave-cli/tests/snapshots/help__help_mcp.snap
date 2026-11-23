@@ -2,16 +2,18 @@
 source: crates/cutweave-cli/tests/help.rs
 expression: "help(&[\"mcp\"])"
 ---
-Serve MCP over stdio (arrives with WP-1J.03)
+Serve MCP over stdio to an agent: attach to a running engine, or run one in the process.
+
+Stdout carries MCP protocol frames only, one JSON-RPC message per line; diagnostics go to stderr and the engine's log file. Errors before the session starts are one JSON object on stderr with the usual exit codes (2 usage, 3 no engine, 1 the engine did not start). Closing stdin ends the session. When an attached engine goes away, requests in flight get a JSON-RPC error and the process exits 3. Client setup: docs/reference/mcp-clients.md.
 
 Usage: cutweave mcp [OPTIONS]
 
 Options:
       --attach
-          Proxy to a running engine's `/mcp` endpoint instead of running one in the process
+          Proxy to a running engine's MCP endpoint (`/mcp`, `/mcp/minimal` or `/mcp/full` for --profile) with its run-file's `mcp` agent token, so the agent edits the document the desktop app shows. This is the default when no spawn flag is given
 
       --profile <PROFILE>
-          The tool profile
+          The tool profile: the same catalogs and budgets as the engine's HTTP endpoints
 
           Possible values:
           - minimal:  The smallest tool set
@@ -21,7 +23,7 @@ Options:
           [default: standard]
 
       --run-file <PATH>
-          The run-file of the engine to attach to
+          The run-file of the engine to attach to (instead of --run-dir and --pid)
 
   -h, --help
           Print help (see a summary with '-h')
@@ -48,3 +50,9 @@ Spawned engine:
 
       --dev-stub-media
           Dev only: fake media probing in the spawned engine (implies --headless). `CUTWEAVE_DEV_STUB_MEDIA=1` does the same
+
+      --log-dir <DIR>
+          Log directory of the in-process engine (default `~/.cutweave/logs`)
+
+      --no-log
+          No log file for the in-process engine
