@@ -272,6 +272,10 @@ body {
   min-height: 0;
   overflow: auto;
 }
+.cw-timeline__canvas {
+  position: absolute;
+  inset: 0;
+}
 .cw-timeline__lanes {
   display: flex;
   flex-direction: column;

@@ -1,4 +1,5 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
+import type { PreviewQuality, SelectionRef, UiState } from "@cutweave/protocol";
 import type { SerializedDockview } from "dockview-react";
 import { useStore } from "zustand";
 import { createJSONStorage, persist, type StateStorage } from "zustand/middleware";
@@ -73,7 +74,37 @@ export const WORKSPACE_DEFS: Record<WorkspaceId, WorkspaceDef> = {
   },
 };
 
-export interface ViewState {
+export const TOOL_MODES = ["select", "razor", "ripple"] as const;
+export type ToolMode = (typeof TOOL_MODES)[number];
+
+/**
+ * The part of the view the engine keeps per project (`view.get` / `view.set`, WP-1C.04):
+ * playhead, zoom, scroll, selection and preview quality; the panel layout rides along as
+ * `panel_layout` (see `viewSync.ts`). It is kept out of localStorage: the engine is the source.
+ */
+export interface EngineViewState {
+  /** Playhead position, flicks. */
+  playhead: number;
+  /** Timeline zoom in pixels per second; `null` until set (the timeline picks a default). */
+  zoom: number | null;
+  /** Timeline scroll offset. */
+  scroll: { x: number; y: number };
+  /** Selected entities, in selection order. */
+  selection: SelectionRef[];
+  previewQuality: PreviewQuality;
+}
+
+export const initialEngineView: EngineViewState = {
+  playhead: 0,
+  zoom: null,
+  scroll: { x: 0, y: 0 },
+  selection: [],
+  previewQuality: "full",
+};
+
+export interface ViewState extends EngineViewState {
+  /** Session only: the active timeline tool. */
+  toolMode: ToolMode;
   theme: ThemeId;
   workspaceId: WorkspaceId;
   assetTab: AssetTabId;
@@ -92,11 +123,25 @@ export interface ViewActions {
   resetWorkspace: (id: WorkspaceId) => void;
   setAssetTab: (tab: AssetTabId) => void;
   setAspect: (aspect: AspectId) => void;
+  setToolMode: (mode: ToolMode) => void;
+  setPlayhead: (flicks: number) => void;
+  setZoom: (pxPerSec: number | null) => void;
+  setScroll: (x: number, y: number) => void;
+  setSelection: (selection: SelectionRef[]) => void;
+  setPreviewQuality: (quality: PreviewQuality) => void;
+  /**
+   * Takes the engine's view state (`view.get` on open, `view.changed` from another client)
+   * and, when it carries a panel layout, the workspace, aspect and layouts. `viewSync` calls it;
+   * nothing it sets is sent back.
+   */
+  applyEngineView: (ui: Partial<UiState>) => void;
 }
 
 export type ViewStore = ViewState & ViewActions;
 
 export const initialViewState: ViewState = {
+  ...initialEngineView,
+  toolMode: "select",
   theme: DEFAULT_THEME,
   workspaceId: "short-form",
   assetTab: "media",
@@ -130,6 +175,39 @@ function sanitize(persisted: unknown): Partial<ViewState> {
     out.layouts = layouts;
   }
   return out;
+}
+
+/** The panel layout as stored in the engine's `panel_layout` (opaque to it). */
+export interface PanelLayout {
+  workspaceId: WorkspaceId;
+  aspect: AspectId;
+  layouts: Partial<Record<WorkspaceId, SerializedDockview>>;
+}
+
+/** Version tag of the `panel_layout` blob; bump when its shape changes. */
+export const PANEL_LAYOUT_VERSION = 1;
+
+/** The `panel_layout` value to store in the engine for the current view state. */
+export function panelLayoutOf(s: Pick<ViewState, "workspaceId" | "aspect" | "layouts">): unknown {
+  return {
+    v: PANEL_LAYOUT_VERSION,
+    workspaceId: s.workspaceId,
+    aspect: s.aspect,
+    layouts: s.layouts,
+  };
+}
+
+/**
+ * Narrows the engine's opaque `panel_layout` (`unknown`, `null` until the UI first sets it) to
+ * what this build understands; `null` when it is absent, from another version or malformed.
+ */
+export function panelLayoutFrom(value: unknown): PanelLayout | null {
+  if (typeof value !== "object" || value === null) return null;
+  const v = value as Record<string, unknown>;
+  if (v.v !== PANEL_LAYOUT_VERSION) return null;
+  const clean = sanitize({ workspaceId: v.workspaceId, aspect: v.aspect, layouts: v.layouts });
+  if (clean.workspaceId === undefined || clean.aspect === undefined) return null;
+  return { workspaceId: clean.workspaceId, aspect: clean.aspect, layouts: clean.layouts ?? {} };
 }
 
 /** The browser's localStorage when it works; `undefined` (no persistence) when it does not. */
@@ -180,6 +258,28 @@ export function createViewStore(storage?: StateStorage) {
           }),
         setAssetTab: (assetTab) => set(() => ({ assetTab })),
         setAspect: (aspect) => set(() => ({ aspect })),
+        setToolMode: (toolMode) => set(() => ({ toolMode })),
+        setPlayhead: (playhead) => set(() => ({ playhead: Math.max(0, Math.round(playhead)) })),
+        setZoom: (zoom) => set(() => ({ zoom })),
+        setScroll: (x, y) => set(() => ({ scroll: { x: Math.max(0, x), y: Math.max(0, y) } })),
+        setSelection: (selection) => set(() => ({ selection })),
+        setPreviewQuality: (previewQuality) => set(() => ({ previewQuality })),
+        applyEngineView: (ui) =>
+          set((s) => {
+            const next: Partial<ViewState> = {};
+            if (typeof ui.playhead === "number") next.playhead = ui.playhead;
+            if (ui.zoom !== undefined) next.zoom = ui.zoom;
+            if (ui.scroll !== undefined) {
+              next.scroll = { x: ui.scroll.x ?? s.scroll.x, y: ui.scroll.y ?? s.scroll.y };
+            }
+            if (ui.selection !== undefined) next.selection = ui.selection;
+            if (ui.preview_quality !== undefined) next.previewQuality = ui.preview_quality;
+            const layout = panelLayoutFrom(ui.panel_layout);
+            if (layout !== null) {
+              Object.assign(next, layout, { layoutRevision: s.layoutRevision + 1 });
+            }
+            return next;
+          }),
       }),
       {
         name: VIEW_STORAGE_KEY,

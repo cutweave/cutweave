@@ -5,6 +5,10 @@
     "jsx": "react-jsx",
     "types": ["node", "vite/client"],
     "paths": {
+      "@cutweave/protocol": ["../protocol/src/index.ts"],
+      "@cutweave/protocol/*": ["../protocol/src/*"],
+      "@cutweave/timeline": ["../timeline/src/index.ts"],
+      "@cutweave/timeline/*": ["../timeline/src/*"],
       "@cutweave/ui": ["../ui/src/index.ts"],
       "@cutweave/ui/*": ["../ui/src/*"]
     }
