@@ -212,6 +212,12 @@ Provenance { origin(import|record|ai), provider?, model?, prompt?, seed?, params
 
 - **No overlaps within a track, ever.** "Overlay" / picture-in-picture content lives on additional video tracks. Like CapCut, dropping an item where it would overlap **auto-creates a new track** above. The invariant is property-tested.
 - **Overlap policy on insert (decided in WP-1B.05):** `timeline.insert` rejects an overlap by default, which is explicit and safe for agents. Callers opt into CapCut behaviour with `overlap: "new_track"` (the UI's drag-and-drop passes it), which auto-creates a track above.
+- **Edit semantics (decided in WP-1B.06):**
+  - Every time param snaps to the nearest frame of the item's sequence (ties go later); the result reports the time used.
+  - `clip.split`: the left half keeps the item ID and the right half gets a new one. Linked partners that contain the split time split too, and the right halves share a *new* `linked_group`.
+  - Linked groups move, trim, split and delete together. `unlink: true` on `item.move` and `clip.trim` edits only that item and removes it from its group.
+  - `item.move` takes `start` and accepts `overlap: "new_track"` like `timeline.insert`. Edits never ripple, and trims never push a neighbour.
+  - An edit touching any locked track (partners' tracks included) fails with `Locked` and applies nothing.
 - **Compound clips** are nested sequences referenced as media (`MediaAsset.kind = sequence-ref`). They render recursively and may not reference themselves; cycle detection is enforced.
 - **Normalized, ID-addressed.** Nothing refers to anything by index. Agents and the UI address by ID, which is stable across sessions.
 - **CapCut magnetic main track** is a track flag: `magnetic: true` gives ripple-by-default semantics. Linked items ("attached to main clip") move with their parent via `linked_group`.
@@ -295,6 +301,11 @@ impl Command for SplitItem {
   - It is refused with `Conflict{history_target_modified}`, naming the later changes and their actors, when any targeted field changed since, or when the result would violate a model invariant.
   - `edit.undo{actor}` / `edit.redo{actor}` take `*` for "anyone's latest". A commit is refused when later commits invalidated the transaction.
   - In P1, checkpoints are in memory only; journal persistence comes later.
+- **Soft-lock (decided in WP-1B.09):**
+  - `gesture` and `proposal` transactions lock every item they touch, including items they create and changes above them (for example removing the item's track). `batch` transactions lock nothing, but their commit waits.
+  - Another actor's change to a locked item fails with `Conflict{item_in_gesture, retry_after_ms}`. The hint is the time left until the gesture's idle deadline, at least 250 ms; proposals give none. The holder's own actor is not blocked.
+  - `edit.locks` lists open transactions with their locked items and deadlines. Events: `tx.opened`, `tx.locked`, `tx.closed`.
+  - A closed connection ID can never open transactions again, so the API server (WP-1I.02) must not reuse connection IDs. A `holder` field on the error would be a contract change (ADR).
 - **Checkpoints:** `edit.checkpoint{name}` and `edit.restore{checkpoint}` (cheap, thanks to persistent snapshots) let agents try something and roll back.
 - **Future collaboration:** patch ops are designed to map onto a CRDT (Loro) later; no CRDT in v1 *(ADR-005)*.
 
@@ -675,6 +686,11 @@ MyVideo/                    ← project folder (user-chosen location)
 ```
 
 - **Atomic saves:** write a temp file, fsync, rename. Autosave runs on idle and every 30 s when the document is dirty. The journal is replayed on crash recovery, and the recovery UI offers *restore / discard*.
+- **Journal (decided in WP-1C.02):**
+  - Segments are `.cutweave/journal/<base-rev>.jnl`. Each record is length + JSON + CRC-32. The header names the saved document it continues (rev and SHA-256), then the requests carried over the save, then one record per committed transaction: redacted steps, patch, and the deterministic ID-generator state.
+  - Every record reaches the OS before the ack, so a killed engine loses no acknowledged op. A background thread fsyncs within 50 ms, which bounds the power-loss window to about 50 ms.
+  - Recovery drops a torn last record, restores undo history and the 10-minute dedup window, and resumes ID generation. `#[secret]` params are redacted again at the sink.
+  - `project.recover` / `project.discard_recovery` are `ProjectStore` methods; the engine root (WP-1I.04) registers them as commands.
 - Media is referenced by absolute path, relative path and content hash. Relinking searches the moved folder and matches by hash. **Collect & archive** copies all media into the folder for portability.
 - The global caches (proxies, thumbnails, waveforms, frame index) live outside the project and can be rebuilt.
 - **Interchange:** OTIO JSON import/export (own implementation), SRT/VTT/ASS, FCPXML/EDL (v2), CapCut draft import (stretch goal; best-effort).
