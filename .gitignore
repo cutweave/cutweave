@@ -39,3 +39,4 @@ test-results/
 playwright-report/
 packages/ui/__screenshots-actual__/
 .claude/launch.json
+__pycache__/
