@@ -25,6 +25,24 @@
       "summary": "An actor's undo/redo stacks changed"
     },
     {
+      "name": "job.progress",
+      "payload": "JobInfo",
+      "source": "engine",
+      "summary": "A job was queued, started, progressed, was asked to cancel or finished (the whole job)"
+    },
+    {
+      "name": "media.analysis_failed",
+      "payload": "MediaAnalysisFailed",
+      "source": "engine",
+      "summary": "A background analysis stage failed on a media asset (it stays usable; previews may be missing)"
+    },
+    {
+      "name": "media.indexed",
+      "payload": "MediaIndexed",
+      "source": "engine",
+      "summary": "A media asset's frame index is ready (frame-exact seeking and decoding can use it)"
+    },
+    {
       "name": "project.autosave_failed",
       "payload": "AutosaveFailed",
       "source": "engine",

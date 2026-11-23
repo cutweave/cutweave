@@ -16,6 +16,8 @@ testing = ["dep:proptest", "cutweave-model/testing"]
 
 [dependencies]
 cutweave-commands = { path = "../cutweave-commands" }
+# The `job.*` commands and the import's background analysis jobs (WP-1D.07).
+cutweave-jobs = { path = "../cutweave-jobs" }
 cutweave-model = { path = "../cutweave-model" }
 # Strategies of `cutweave_ops::testing` (feature `testing` only; already a workspace dependency).
 proptest = { workspace = true, optional = true }

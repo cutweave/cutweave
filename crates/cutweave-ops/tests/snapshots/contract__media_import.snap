@@ -5,7 +5,7 @@ expression: "json!({\n    \"meta\": serde_json::to_value(meta).unwrap(), \"input
 {
   "meta": {
     "name": "media.import",
-    "summary": "Import media files; probes synchronously and returns the media ids",
+    "summary": "Import media files: probe and register them now, return media ids and analysis job ids",
     "kind": "engine",
     "undoable": false,
     "view": false,
@@ -33,7 +33,7 @@ expression: "json!({\n    \"meta\": serde_json::to_value(meta).unwrap(), \"input
       "required": [
         "paths"
       ],
-      "description": "Imports media files: probes each one synchronously and registers it, returning `media_ids`\nat once. All or nothing: if any file cannot be probed, nothing is imported and the error\nnames that file's index (`/paths/<i>`). Files whose content is already in the project are\nreturned as duplicates. Analysis (thumbnails, waveform, index) continues in background jobs.",
+      "description": "Imports media files and returns their `media_ids` at once (arch §7, R21). Each file is\nprobed synchronously (up to 4 at a time, 5 s each by default) and every readable one is\nregistered in one transaction (one undo step); files that are missing, unsupported, corrupt\nor too slow to probe are listed in `failed` and get no asset. Files whose content is\nalready in the project are returned as duplicates. Background analysis (frame index,\nthumbnails, waveform) then runs as jobs whose ids are returned in `job_ids`. Agents and\nheadless callers may only import from the project folder and user-approved folders; any\nother path fails the call with `Invalid` at `/paths/<i>`.",
       "title": "MediaImport"
     },
     "output_schema": {
@@ -93,11 +93,86 @@ expression: "json!({\n    \"meta\": serde_json::to_value(meta).unwrap(), \"input
               "duplicate"
             ]
           },
-          "description": "One entry per requested path, in request order."
+          "description": "One entry per imported path, in request order."
+        },
+        "media_ids": {
+          "type": "array",
+          "items": {
+            "description": "A Media id: `^med_[0-9a-f]{32}$`.",
+            "type": "string",
+            "pattern": "^med_[0-9a-f]{32}$"
+          },
+          "description": "The assets of `media`, in the same order (duplicates name the existing asset)."
+        },
+        "failed": {
+          "type": "array",
+          "items": {
+            "description": "A file that was not imported (no asset was created for it).",
+            "type": "object",
+            "properties": {
+              "path": {
+                "description": "The path as requested.",
+                "type": "string"
+              },
+              "code": {
+                "description": "Machine-readable reason.",
+                "oneOf": [
+                  {
+                    "description": "There is no readable file at the path.",
+                    "type": "string",
+                    "const": "not_found"
+                  },
+                  {
+                    "description": "The file holds no playable audio or video.",
+                    "type": "string",
+                    "const": "unsupported"
+                  },
+                  {
+                    "description": "Probing took longer than the per-file timeout.",
+                    "type": "string",
+                    "const": "timed_out"
+                  },
+                  {
+                    "description": "Reading the file failed.",
+                    "type": "string",
+                    "const": "io"
+                  },
+                  {
+                    "description": "The probe result cannot be registered (for example a zero duration).",
+                    "type": "string",
+                    "const": "invalid"
+                  }
+                ]
+              },
+              "error": {
+                "description": "Human-readable reason.",
+                "type": "string"
+              }
+            },
+            "additionalProperties": false,
+            "required": [
+              "path",
+              "code",
+              "error"
+            ]
+          },
+          "description": "The paths that could not be imported, in request order."
+        },
+        "job_ids": {
+          "type": "array",
+          "items": {
+            "description": "A job id: `^job_[0-9a-f]{32}$`.",
+            "type": "string",
+            "pattern": "^job_[0-9a-f]{32}$"
+          },
+          "description": "Background analysis jobs queued for the new assets (wait with `job.wait`); empty when\nno analysis stage is installed."
         }
       },
       "required": [
-        "media"
+        "media",
+        "media_ids",
+        "failed",
+        "job_ids"
       ],
       "description": "Result of `media.import`.",
       "title": "MediaImportOutput"
@@ -118,7 +193,7 @@ expression: "json!({\n    \"meta\": serde_json::to_value(meta).unwrap(), \"input
     "required": [
       "paths"
     ],
-    "description": "Imports media files: probes each one synchronously and registers it, returning `media_ids`\nat once. All or nothing: if any file cannot be probed, nothing is imported and the error\nnames that file's index (`/paths/<i>`). Files whose content is already in the project are\nreturned as duplicates. Analysis (thumbnails, waveform, index) continues in background jobs.",
+    "description": "Imports media files and returns their `media_ids` at once (arch §7, R21). Each file is\nprobed synchronously (up to 4 at a time, 5 s each by default) and every readable one is\nregistered in one transaction (one undo step); files that are missing, unsupported, corrupt\nor too slow to probe are listed in `failed` and get no asset. Files whose content is\nalready in the project are returned as duplicates. Background analysis (frame index,\nthumbnails, waveform) then runs as jobs whose ids are returned in `job_ids`. Agents and\nheadless callers may only import from the project folder and user-approved folders; any\nother path fails the call with `Invalid` at `/paths/<i>`.",
     "title": "MediaImport"
   },
   "output": {
@@ -178,11 +253,86 @@ expression: "json!({\n    \"meta\": serde_json::to_value(meta).unwrap(), \"input
             "duplicate"
           ]
         },
-        "description": "One entry per requested path, in request order."
+        "description": "One entry per imported path, in request order."
+      },
+      "media_ids": {
+        "type": "array",
+        "items": {
+          "description": "A Media id: `^med_[0-9a-f]{32}$`.",
+          "type": "string",
+          "pattern": "^med_[0-9a-f]{32}$"
+        },
+        "description": "The assets of `media`, in the same order (duplicates name the existing asset)."
+      },
+      "failed": {
+        "type": "array",
+        "items": {
+          "description": "A file that was not imported (no asset was created for it).",
+          "type": "object",
+          "properties": {
+            "path": {
+              "description": "The path as requested.",
+              "type": "string"
+            },
+            "code": {
+              "description": "Machine-readable reason.",
+              "oneOf": [
+                {
+                  "description": "There is no readable file at the path.",
+                  "type": "string",
+                  "const": "not_found"
+                },
+                {
+                  "description": "The file holds no playable audio or video.",
+                  "type": "string",
+                  "const": "unsupported"
+                },
+                {
+                  "description": "Probing took longer than the per-file timeout.",
+                  "type": "string",
+                  "const": "timed_out"
+                },
+                {
+                  "description": "Reading the file failed.",
+                  "type": "string",
+                  "const": "io"
+                },
+                {
+                  "description": "The probe result cannot be registered (for example a zero duration).",
+                  "type": "string",
+                  "const": "invalid"
+                }
+              ]
+            },
+            "error": {
+              "description": "Human-readable reason.",
+              "type": "string"
+            }
+          },
+          "additionalProperties": false,
+          "required": [
+            "path",
+            "code",
+            "error"
+          ]
+        },
+        "description": "The paths that could not be imported, in request order."
+      },
+      "job_ids": {
+        "type": "array",
+        "items": {
+          "description": "A job id: `^job_[0-9a-f]{32}$`.",
+          "type": "string",
+          "pattern": "^job_[0-9a-f]{32}$"
+        },
+        "description": "Background analysis jobs queued for the new assets (wait with `job.wait`); empty when\nno analysis stage is installed."
       }
     },
     "required": [
-      "media"
+      "media",
+      "media_ids",
+      "failed",
+      "job_ids"
     ],
     "description": "Result of `media.import`.",
     "title": "MediaImportOutput"

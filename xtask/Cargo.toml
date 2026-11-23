@@ -20,6 +20,8 @@ similar = { workspace = true }
 # `cargo xtask gen` builds the registry the way the engine does and dumps its catalogs (WP-1N.01).
 cutweave-commands = { path = "../crates/cutweave-commands" }
 cutweave-engine = { path = "../crates/cutweave-engine" }
+# `job.progress` for schema/events.json (WP-1D.07).
+cutweave-jobs = { path = "../crates/cutweave-jobs" }
 cutweave-model = { path = "../crates/cutweave-model" }
 cutweave-ops = { path = "../crates/cutweave-ops" }
 

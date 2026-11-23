@@ -30,9 +30,10 @@
 //!
 //! **Scope.** Every non-`view` entry is driven, including the queries, `media.import` (against
 //! an `ImportCtx` whose sink registers the batch in one transaction on the actor, as the engine
-//! will) and all `edit.*` engine commands: transactions, undo/redo, history, locks and
-//! checkpoints. Only `view.*` is left out: it edits UI state, never the document (WP-1C.04 tests
-//! it).
+//! will, and whose analyzer queues a fake analysis job per new asset), the `job.*` commands
+//! (against a `JobManager` with seeded job IDs; they never touch the document) and all `edit.*`
+//! engine commands: transactions, undo/redo, history, locks and checkpoints. Only `view.*` is
+//! left out: it edits UI state, never the document (WP-1C.04 tests it).
 //!
 //! `PROPTEST_CASES` sets the number of sequences (default 256; nightly runs 4096). Failing
 //! seeds are persisted to `crates/cutweave-ops/proptest-regressions/registry_props.txt`.
@@ -56,12 +57,13 @@ use cutweave_commands::{
     EntryKind, ManualClock, Registry, Rev, Submit, Tx, TxKind, WallTime, apply_patch, command,
     diff, wire,
 };
+use cutweave_jobs::JobManager;
 use cutweave_model::{ItemId, OpenOutcome, Project, open_str, to_document_string};
 use cutweave_ops::{
     media::{FakeProbe, ImportCtx, MediaRegister, MediaRegistered, MediaSink},
     testing::{
-        self, AGENT_LABEL, JsonMirror, arb_command_from, check_invariants, check_linked_edit,
-        fake_probe, replay_events,
+        self, AGENT_LABEL, JsonMirror, analyzer, arb_command_from, check_invariants,
+        check_linked_edit, fake_probe, job_manager, replay_events,
     },
 };
 use proptest::{
@@ -263,12 +265,14 @@ struct Obs {
 /// A successful request.
 struct Done {
     output: Value,
-    /// `None` for `media.import` (an engine command the actor does not run).
+    /// `None` for `media.import` and `job.*` (engine commands the actor does not run).
     applied: Option<Applied>,
 }
 
 /// Registers `media.import` batches as one transaction of the importing actor, on a connection
-/// of its own (so it never collides with the actor's open transaction).
+/// of its own (so it never collides with the actor's open transaction). `media.import` hands
+/// it only the readable files (the others are in `failed[]`) and maps a `/paths/<i>` error
+/// pointer from the batch index back to the request index.
 struct ImportSink {
     state: Arc<Mutex<DocState>>,
     ctx: ActorCtx,
@@ -306,6 +310,8 @@ impl MediaSink for ImportSink {
 struct Harness<'s> {
     registry: Arc<Registry>,
     state: Arc<Mutex<DocState>>,
+    /// The `job.*` context, also running the analysis jobs of imports (never the document).
+    jobs: JobManager,
     clock: Arc<ManualClock>,
     initial: Project,
     mirror: JsonMirror,
@@ -351,6 +357,7 @@ impl<'s> Harness<'s> {
         let mut h = Harness {
             registry: Arc::clone(&REGISTRY),
             state: Arc::new(Mutex::new(DocState::new(config))),
+            jobs: job_manager(),
             clock,
             mirror: JsonMirror::new(&initial, Rev::ZERO),
             initial,
@@ -455,9 +462,17 @@ impl<'s> Harness<'s> {
             state: Arc::clone(&self.state),
             ctx: importer,
         };
-        let mut ctx_any = ImportCtx::new(Arc::new(fake_probe()), Box::new(sink));
+        let mut ctx_any = ImportCtx::new(Arc::new(fake_probe()), Box::new(sink))
+            .with_analysis(analyzer(&self.jobs));
         self.registry
             .invoke_engine_json("media.import", params.clone(), &mut ctx_any, ctx.access())
+    }
+
+    /// Runs a `job.*` command against the job manager.
+    fn job(&self, ctx: &ActorCtx, name: &str, params: &Value) -> Result<Value, CmdError> {
+        let mut jobs = self.jobs.clone();
+        self.registry
+            .invoke_engine_json(name, params.clone(), &mut jobs, ctx.access())
     }
 
     /// Takes the events of the last request, replays them onto the mirror and checks the
@@ -540,6 +555,12 @@ impl<'s> Harness<'s> {
         let result = match context {
             Some(c) if c == TypeId::of::<ImportCtx>() => {
                 self.import(ctx, params).map(|output| Done {
+                    output,
+                    applied: None,
+                })
+            }
+            Some(c) if c == TypeId::of::<JobManager>() => {
+                self.job(ctx, name, params).map(|output| Done {
                     output,
                     applied: None,
                 })
@@ -858,7 +879,13 @@ fn every_registered_entry_has_a_property_strategy() {
         .map(|name| format!("missing property strategy for {name}"))
         .collect();
     assert!(missing.is_empty(), "{}", missing.join("\n"));
-    assert!(testing::covered(&REGISTRY).count() >= 28);
+    assert!(testing::covered(&REGISTRY).count() >= 32);
+    for job in ["job.status", "job.list", "job.wait", "job.cancel"] {
+        assert!(
+            testing::covered(&REGISTRY).any(|e| e.name() == job),
+            "{job}"
+        );
+    }
 }
 
 /// An entry no strategy knows (the self-test below registers it).

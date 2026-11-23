@@ -13,7 +13,8 @@ use cutweave_commands::{
 };
 use cutweave_model::{GroupId, ItemId, MediaId, Project, SeededGen, SequenceId, Time, TrackId};
 use cutweave_ops::media::{
-    FakeProbe, ImportCtx, MediaRegister, MediaRegistered, MediaSink, register_batch,
+    AnalysisSink, FakeProbe, ImportCtx, MediaEvent, MediaRegister, MediaRegistered, MediaSink,
+    register_batch,
 };
 use serde_json::{Value, json};
 
@@ -191,6 +192,19 @@ impl MediaSink for HSink {
         *doc = committed.doc;
         *commits += 1;
         Ok(out)
+    }
+}
+
+/// The engine side of analysis jobs: their event fan-out (WP-1D.07). Records the events.
+#[derive(Default)]
+pub struct TestAnalysisSink {
+    /// Published events, in order.
+    pub events: Mutex<Vec<MediaEvent>>,
+}
+
+impl AnalysisSink for TestAnalysisSink {
+    fn publish(&self, event: MediaEvent) {
+        self.events.lock().unwrap().push(event);
     }
 }
 

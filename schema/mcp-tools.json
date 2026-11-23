@@ -79,10 +79,34 @@
         "destructiveHint": false,
         "idempotentHint": true,
         "openWorldHint": false,
+        "readOnlyHint": true
+      },
+      "command": "job.status",
+      "description": "Get a background job's state, progress and error (analysis, export)",
+      "kind": "engine",
+      "name": "job_status"
+    },
+    {
+      "annotations": {
+        "destructiveHint": false,
+        "idempotentHint": true,
+        "openWorldHint": false,
+        "readOnlyHint": true
+      },
+      "command": "job.wait",
+      "description": "Wait up to timeout_ms (max 60 s) for a background job to finish; returns its state",
+      "kind": "engine",
+      "name": "job_wait"
+    },
+    {
+      "annotations": {
+        "destructiveHint": false,
+        "idempotentHint": true,
+        "openWorldHint": false,
         "readOnlyHint": false
       },
       "command": "media.import",
-      "description": "Import media files; probes synchronously and returns the media ids",
+      "description": "Import media files: probe and register them now, return media ids and analysis job ids",
       "kind": "engine",
       "name": "media_import"
     },
