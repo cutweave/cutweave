@@ -24,7 +24,9 @@
 //!   `StreamInvalidated`/`DeviceNotAvailable`), a different default device (polled every
 //!   500 ms, for backends that do not report it) or a stream that stopped calling back (1 s
 //!   watchdog) restarts the stream on the current device. With no device the supervisor retries
-//!   every 250 ms. The clock holds ([`ClockState::Stopped`]) meanwhile and never goes back.
+//!   every 250 ms. The clock holds ([`ClockState::Stopped`]) meanwhile and never goes back. The
+//!   output reports [`OutputState::Running`] again only once the new stream calls back; the
+//!   clock is then `Priming`, and `Running` from the next callback (one device period later).
 //! * **Pause** keeps the device running and plays silence; the clock holds. Seeks made while
 //!   paused are applied at once, so the clock shows the new position.
 //! * **Rate.** The stream runs at the mixer's rate. Shared-mode WASAPI converts any rate; on a
@@ -81,6 +83,8 @@ pub const METER_HZ: u32 = 30;
 const DEFAULT_DEVICE_POLL: StdDuration = StdDuration::from_millis(500);
 /// Supervisor wake-up period while a stream runs.
 const SUPERVISOR_POLL: StdDuration = StdDuration::from_millis(50);
+/// Supervisor wake-up period while a new stream has not called back yet.
+const FIRST_CALLBACK_POLL: StdDuration = StdDuration::from_millis(2);
 /// How long a dropped stream may take to hand the player back.
 const RETURN_TIMEOUT: StdDuration = StdDuration::from_secs(3);
 /// How long [`AudioOutput::start`] waits for the first stream.
@@ -186,9 +190,11 @@ pub struct OutputInfo {
 /// Where the output stands.
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Hash)]
 pub enum OutputState {
-    /// A stream is open and calling back.
+    /// A stream is open and has called back: the clock has left [`ClockState::Stopped`] (it is
+    /// `Priming`, `Running` or `Paused`; see [`ClockState`] for when it runs).
     Running,
-    /// The stream is being rebuilt after a device change or error.
+    /// The stream is being rebuilt after a device change or error, until the new stream's first
+    /// callback.
     Restarting,
     /// No usable device; retrying.
     WaitingForDevice,
@@ -496,8 +502,9 @@ impl AudioOutput {
         }
     }
 
-    /// Opens the output for `config` and plays `mixer` on it (paused). Fails, handing the mixer
-    /// back, if no stream could be opened.
+    /// Opens the output for `config` and plays `mixer` on it (paused). Returns once the stream
+    /// has called back ([`OutputState::Running`]). Fails, handing the mixer back, if no stream
+    /// could be opened or none started within 10 s.
     pub fn start(mixer: Mixer, config: OutputConfig) -> Result<AudioOutput, StartError> {
         match backend_factory(&config.device) {
             Ok(factory) => AudioOutput::start_with(mixer, config, factory),
@@ -549,7 +556,7 @@ impl AudioOutput {
             Ok(Ok(())) => Ok(output),
             Ok(Err(error)) => Err(output.fail(error)),
             Err(_) => Err(output.fail(OutputError::Thread(
-                "the first stream did not open in time".into(),
+                "the first stream did not start in time".into(),
             ))),
         }
     }
@@ -808,22 +815,34 @@ impl Supervisor {
         player: Player,
         ready: &SyncSender<Result<(), OutputError>>,
     ) -> Option<Player> {
+        let opened_at = self.shared.callbacks.load(Ordering::Acquire);
         let mut stream = match self.open(player) {
-            Ok(s) => {
-                self.shared.set_state(OutputState::Running);
-                let _ = ready.send(Ok(()));
-                Some(s)
-            }
+            Ok(s) => Some(s),
             Err((error, player)) => {
                 let _ = ready.send(Err(error));
                 return player;
             }
         };
+        // `start` returns once the first stream calls back.
+        let mut ready = Some(ready);
+        // The callback count when the current stream opened, until it calls back: the output
+        // reports `Running` only from the first callback on, when the clock has left `Stopped`
+        // (a device can take tens of milliseconds to start after it opened).
+        let mut awaiting: Option<u64> = Some(opened_at);
         let mut player: Option<Player> = None;
         let mut retry_at: Option<Instant> = None;
         let mut watch = Watch::new(&self.shared);
 
         while !self.shared.stop.load(Ordering::Acquire) {
+            if let Some(at) = awaiting
+                && self.shared.callbacks.load(Ordering::Acquire) != at
+            {
+                awaiting = None;
+                self.shared.set_state(OutputState::Running);
+                if let Some(ready) = ready.take() {
+                    let _ = ready.send(Ok(()));
+                }
+            }
             if let Some(live) = &stream
                 && let Some(reason) = self.restart_reason(live.as_ref(), &mut watch)
             {
@@ -840,16 +859,19 @@ impl Supervisor {
                 p.clock
                     .hold(ClockState::Stopped, None, None, ClockShared::host_ns);
                 self.shared.restarts.fetch_add(1, Ordering::Relaxed);
+                awaiting = None;
                 retry_at = Some(Instant::now());
             }
             if stream.is_none() && retry_at.is_some_and(|t| Instant::now() >= t) {
                 let Some(p) = player.take() else { break };
+                let opened_at = self.shared.callbacks.load(Ordering::Acquire);
                 match self.open(p) {
                     Ok(s) => {
+                        // Still `Restarting` until the new stream calls back.
                         stream = Some(s);
                         retry_at = None;
                         watch = Watch::new(&self.shared);
-                        self.shared.set_state(OutputState::Running);
+                        awaiting = Some(opened_at);
                     }
                     Err((error, back)) => {
                         self.shared.set_error(error.to_string());
@@ -864,6 +886,7 @@ impl Supervisor {
                 }
             }
             let wait = match (stream.is_some(), retry_at) {
+                (true, _) if awaiting.is_some() => FIRST_CALLBACK_POLL,
                 (false, Some(t)) => t
                     .saturating_duration_since(Instant::now())
                     .min(SUPERVISOR_POLL),
