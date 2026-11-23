@@ -36,6 +36,12 @@ export type AudioProps = {
 	gain: number,
 } & { [key in string]: unknown };
 
+/**  Payload of `project.autosave_failed`. */
+export type AutosaveFailed = {
+	/**  What went wrong (paths and OS messages only; never secrets). */
+	message: string,
+};
+
 /**
  *  Opens a transaction owned by this connection (one at a time). Run commands in it by naming
  *  it in the request envelope (`_meta.tx`). A `batch` stays invisible until committed; a
@@ -583,6 +589,29 @@ export type HistoryUsage = {
 	evicted: number,
 };
 
+/**  A file that was not imported (no asset was created for it). */
+export type ImportFailure = {
+	/**  The path as requested. */
+	path: string,
+	/**  Machine-readable reason. */
+	code: ImportFailureCode,
+	/**  Human-readable reason. */
+	error: string,
+};
+
+/**  Why a file was not imported. */
+export type ImportFailureCode = 
+/**  There is no readable file at the path. */
+"not_found" | 
+/**  The file holds no playable audio or video. */
+"unsupported" | 
+/**  Probing took longer than the per-file timeout. */
+"timed_out" | 
+/**  Reading the file failed. */
+"io" | 
+/**  The probe result cannot be registered (for example a zero duration). */
+"invalid";
+
 /**  One imported file. */
 export type ImportedMedia = {
 	/**  The path as requested. */
@@ -865,6 +894,122 @@ export type ItemSummary = {
 };
 
 /**
+ *  Cancels a background job. A queued job is cancelled at once; a running one stops within
+ *  500 ms (`running` with `cancel_requested` until then; `job.wait` to see it end). Cancelling
+ *  a finished job changes nothing. Returns the job's state.
+ */
+export type JobCancel = {
+	/**  The job. */
+	id: JobId,
+};
+
+/**
+ *  The ID of a background job: `job_…` (a UUIDv7, so IDs sort by creation).
+ * 
+ *  Serialized as a string, exported to TypeScript as `string`.
+ */
+export type JobId = string & { readonly __brand: "JobId" };
+
+/**
+ *  A job as reported by `job.status`, `job.list`, `job.wait`, `job.cancel` and the
+ *  `job.progress` event.
+ */
+export type JobInfo = {
+	/**  The job. */
+	id: JobId,
+	/**  What kind of work it is. */
+	kind: JobKind,
+	/**  What it does, e.g. the analysis stage (`index`, `thumbnails`, `waveform`). */
+	label: string,
+	/**  The media asset it works on, if any. */
+	media_id: MediaId | null,
+	/**  Where it is in its lifecycle. */
+	state: JobState,
+	/**  How far it got. */
+	progress: JobProgress,
+	/**  Whether cancellation was requested; a running job stops when it next checks. */
+	cancel_requested: boolean,
+	/**  Why it failed, was skipped or was cancelled. */
+	error: string | null,
+};
+
+/**  What kind of work a job does. The kind decides which [`Budget`] it runs under. */
+export type JobKind = 
+/**  Background analysis of an imported asset (index, thumbnails, waveform): decodes media. */
+"analysis" | 
+/**  Rendering and encoding a sequence to a file (WP-1E.03). */
+"export";
+
+/**
+ *  Lists background jobs, newest first: unfinished ones and recently finished ones, optionally
+ *  only those of one asset, state or kind.
+ */
+export type JobList = {
+	/**  Only jobs working on this media asset. */
+	media_id?: MediaId | null,
+	/**  Only jobs in this state (e.g. `running`). */
+	state?: JobState | null,
+	/**  Only jobs of this kind. */
+	kind?: JobKind | null,
+	/**  Most jobs returned, `1..=500` (default 50). */
+	limit?: number | null,
+};
+
+/**  Result of `job.list`. */
+export type JobListOutput = {
+	/**  The jobs, newest first. */
+	jobs: JobInfo[],
+	/**  How many jobs are unfinished (queued or running) in total, whatever the filter. */
+	active: number,
+};
+
+/**  How far a job got. */
+export type JobProgress = {
+	/**  Done fraction, `0..=1` (1 once the job succeeded). */
+	fraction: number | null,
+	/**  What it is doing, for status lines. */
+	message: string | null,
+};
+
+/**  Where a job is in its lifecycle. `succeeded`, `failed` and `cancelled` are final. */
+export type JobState = 
+/**  Waiting for the jobs it depends on or for a budget slot. */
+"queued" | 
+/**  Running. */
+"running" | 
+/**  Finished its work. */
+"succeeded" | 
+/**  Stopped with an error (see `error`), or skipped because a job it needs failed. */
+"failed" | 
+/**  Cancelled before or while running. */
+"cancelled";
+
+/**
+ *  Gets a background job's state (`queued`, `running`, `succeeded`, `failed`, `cancelled`),
+ *  progress and error. Finished jobs are remembered for a while (the last few hundred), then
+ *  `NotFound`.
+ */
+export type JobStatus = {
+	/**  The job (from `media.import`'s `job_ids`, `export.start`, …). */
+	id: JobId,
+};
+
+/**
+ *  Waits for a background job to finish, at most `timeout_ms` (default 30 s, capped at 60 s),
+ *  and returns its state: at once for a finished job, as soon as it finishes, or still
+ *  `queued`/`running` with its progress when the time is up (call again to keep waiting).
+ */
+export type JobWait = {
+	/**  The job. */
+	job_id: JobId,
+	/**
+	 *  How long to wait in milliseconds (default 30000; values above 60000 are capped; 0
+	 *  returns the current state).
+	 */
+	timeout_ms?: number | null,
+};
+
+/**
  *  TypeScript shape of any JSON value (numbers are plain `number`s). Only its type
  *  definition is used.
  */
@@ -898,6 +1043,21 @@ export type LockList = {
 export type MatrixCoefficients = string;
 
 /**
+ *  `media.analysis_failed`: a background analysis stage failed on an asset. The asset stays
+ *  usable; what the stage produces (thumbnails, waveform, …) may be missing.
+ */
+export type MediaAnalysisFailed = {
+	/**  The asset. */
+	media_id: MediaId,
+	/**  The stage (`index`, `thumbnails`, `waveform`): the job's label. */
+	stage: string,
+	/**  The failed job (`job.status` shows it). */
+	job_id: JobId,
+	/**  What went wrong (the job's error). */
+	error: string,
+};
+
+/**
  *  Media imported into (or generated for) a project, referenced by path and content hash
  *  (arch §17), or a sequence of this project used as a compound clip.
  */
@@ -928,10 +1088,14 @@ export type MediaAsset = {
 export type MediaId = string & { readonly __brand: "MediaId" };
 
 /**
- *  Imports media files: probes each one synchronously and registers it, returning `media_ids`
- *  at once. All or nothing: if any file cannot be probed, nothing is imported and the error
- *  names that file's index (`/paths/<i>`). Files whose content is already in the project are
- *  returned as duplicates. Analysis (thumbnails, waveform, index) continues in background jobs.
+ *  Imports media files and returns their `media_ids` at once (arch §7, R21). Each file is
+ *  probed synchronously (up to 4 at a time, 5 s each by default) and every readable one is
+ *  registered in one transaction (one undo step); files that are missing, unsupported, corrupt
+ *  or too slow to probe are listed in `failed` and get no asset. Files whose content is
+ *  already in the project are returned as duplicates. Background analysis (frame index,
+ *  thumbnails, waveform) then runs as jobs whose ids are returned in `job_ids`. Agents and
+ *  headless callers may only import from the project folder and user-approved folders; any
+ *  other path fails the call with `Invalid` at `/paths/<i>`.
  */
 export type MediaImport = {
 	/**  Absolute paths of the files (1..=256, no repeats). */
@@ -940,8 +1104,23 @@ export type MediaImport = {
 
 /**  Result of `media.import`. */
 export type MediaImportOutput = {
-	/**  One entry per requested path, in request order. */
+	/**  One entry per imported path, in request order. */
 	media: ImportedMedia[],
+	/**  The assets of `media`, in the same order (duplicates name the existing asset). */
+	media_ids: MediaId[],
+	/**  The paths that could not be imported, in request order. */
+	failed: ImportFailure[],
+	/**
+	 *  Background analysis jobs queued for the new assets (wait with `job.wait`); empty when
+	 *  no analysis stage is installed.
+	 */
+	job_ids: JobId[],
+};
+
+/**  `media.indexed`: the asset's frame index is ready. */
+export type MediaIndexed = {
+	/**  The asset. */
+	media_id: MediaId,
 };
 
 /**  What a [`MediaAsset`] is. */
@@ -1158,6 +1337,12 @@ export type Project = {
 	custom: { [key in string]: JsonValue },
 } & { [key in string]: unknown };
 
+/**  Payload of `project.dirty`. */
+export type ProjectDirty = {
+	/**  Whether the committed revision differs from the last saved one. */
+	dirty: boolean,
+};
+
 /**  Returns the project name, format, media count and a summary of each sequence. */
 export type ProjectInfo = Record<string, never>;
 
@@ -1229,11 +1414,36 @@ export type ProjectRenameOutput = {
 	name: string,
 };
 
+/**  Payload of `project.saved`. */
+export type ProjectSaved = {
+	/**  The committed revision that was written. */
+	rev: Rev,
+	/**  The project document path. */
+	path: string,
+};
+
 /**  Project-wide settings (arch §4.2 `settings`, v1 subset). */
 export type ProjectSettings = {
 	/**  Format of new sequences. */
 	default_format: SequenceFormat,
 } & { [key in string]: unknown };
+
+/**
+ *  Payload of `project.recovery_available`; also what a recovery dialog shows (what a restore
+ *  would bring back).
+ */
+export type RecoveryPayload = {
+	/**  Transactions a restore would replay. */
+	records: number,
+	/**  The committed revision of the saved document. */
+	base_rev: Rev,
+	/**  The revision a restore reaches. */
+	last_rev: Rev,
+	/**  When the last of those transactions was committed. */
+	last_ts: WallTime,
+	/**  The journal ends with a damaged record (replay stops there). */
+	damaged: boolean,
+};
 
 /**
  *  Redoes the most recently undone change of an actor (default: yours). A new change by that
@@ -1271,7 +1481,9 @@ export type ResourceKind =
 /**  An open transaction (WP-1B.04). */
 "transaction" | 
 /**  A checkpoint (`cp_…` or its name, `edit.checkpoint`, WP-1B.04). */
-"checkpoint";
+"checkpoint" | 
+/**  A background job (`job_…`, WP-1D.07). */
+"job";
 
 /**
  *  Brings the document back to a checkpoint as one new, undoable change by you (history is
@@ -1554,7 +1766,10 @@ export type TimelineGetOutput = {
  *  Inserts a media clip on a track at a time. `source_in` is the position in the media the clip
  *  starts from and `duration` its length (defaults: the start of the media and the rest of it;
  *  stills default to five seconds). Times accept flicks, `"1.5s"`, `"f:45"` and timecodes,
- *  resolved against the sequence's frame rate. See the module docs for overlap and linked
+ *  resolved against the sequence's frame rate. `at` and `duration` snap to the frame grid
+ *  (nearest frame, ties later; at least one frame) and the result states the values used;
+ *  `source_in` is a position in the media and is not snapped, nor is a default duration
+ *  (the rest of the media, or five seconds for a still). See the module docs for overlap and linked
  *  audio behaviour. Fails with `Locked` if the target track is locked.
  */
 export type TimelineInsert = {
@@ -1567,11 +1782,11 @@ export type TimelineInsert = {
 	track: TrackId,
 	/**  The media to place. */
 	media: MediaId,
-	/**  Timeline position of the clip's first frame, `>= 0`. */
+	/**  Timeline position of the clip's first frame, `>= 0` (snapped to the frame grid). */
 	at: TimeInput,
 	/**  Position in the media to start from (default 0). */
 	source_in?: TimeInput | null,
-	/**  Clip length, `> 0`. */
+	/**  Clip length, `> 0` (snapped to whole frames, at least one). */
 	duration?: TimeInput | null,
 	/**  Overlap handling (default `reject`). */
 	overlap?: OverlapPolicy | null,
@@ -1581,6 +1796,10 @@ export type TimelineInsert = {
 
 /**  Result of `timeline.insert`. */
 export type TimelineInsertOutput = {
+	/**  The start that was used, snapped to the frame grid. */
+	at: Time,
+	/**  The clip length that was used, a whole number of frames. */
+	duration: Duration,
 	/**  The inserted clips: the one on the target track first, then the linked audio clip. */
 	clips: ItemId[],
 	/**  The group shared by the clips when audio was linked. */
@@ -1659,7 +1878,11 @@ export type TrackKind =
 /**  Adjustment layers (later versions). */
 "adjustment";
 
-/**  Removes a track together with its items. Fails with `Locked` if the track is locked. */
+/**
+ *  Removes a track together with its items. Fails with `Locked` if the track is locked, or
+ *  if a linked partner that would be left alone in its group is on a locked track. Linked
+ *  partners of the removed items stay; a partner left alone in its group is unlinked.
+ */
 export type TrackRemove = {
 	/**  The track. */
 	track: TrackId,

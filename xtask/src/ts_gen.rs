@@ -54,10 +54,18 @@ fn register_support_types(types: &mut Types) {
     Rev::definition(types);
 }
 
-/// The payload type of a document event, when it is a specta type (`None` for engine events,
-/// whose payload structs live in `cutweave-engine`).
-fn doc_event_payload(name: &str, types: &mut Types) -> Option<DataType> {
+/// The payload type of an event, by the type name in `schema/events.json`. Every catalogued
+/// event must be a specta type: a new event whose payload is missing here fails `gen` (add the
+/// type to this table) instead of silently becoming `unknown`.
+fn event_payload(name: &str, types: &mut Types) -> Option<DataType> {
     Some(match name {
+        "ProjectDirty" => cutweave_engine::autosave::ProjectDirty::definition(types),
+        "ProjectSaved" => cutweave_engine::autosave::ProjectSaved::definition(types),
+        "RecoveryPayload" => cutweave_engine::autosave::RecoveryPayload::definition(types),
+        "AutosaveFailed" => cutweave_engine::autosave::AutosaveFailed::definition(types),
+        "JobInfo" => cutweave_jobs::JobInfo::definition(types),
+        "MediaIndexed" => cutweave_ops::media::MediaIndexed::definition(types),
+        "MediaAnalysisFailed" => cutweave_ops::media::MediaAnalysisFailed::definition(types),
         "DocPatched" => DocPatched::definition(types),
         "DocReset" => DocReset::definition(types),
         "CommandPanicked" => CommandPanicked::definition(types),
@@ -147,7 +155,7 @@ pub fn generate(
         let (input, output) = entry.ts_types(&mut types);
         entries.push((&entry.meta, input, output));
     }
-    let mut payloads: Vec<(String, String, Option<DataType>)> = Vec::new();
+    let mut payloads: Vec<(String, DataType)> = Vec::new();
     for event in events["events"]
         .as_array()
         .ok_or("events.json has no events")?
@@ -160,8 +168,10 @@ pub fn generate(
             .as_str()
             .ok_or("event without payload")?
             .to_owned();
-        let dt = doc_event_payload(&payload, &mut types);
-        payloads.push((name, payload, dt));
+        let dt = event_payload(&payload, &mut types).ok_or_else(|| {
+            format!("event `{name}`: payload `{payload}` has no TS type; add it to `event_payload`")
+        })?;
+        payloads.push((name, dt));
     }
 
     // Types file (serde mapping applied to the graph, as the high-level exporter does).
@@ -220,18 +230,10 @@ pub fn generate(
 
     let mut events_body = String::new();
     events_body.push_str(
-        "/** Event name to payload. Engine events are `unknown` until their payload types are exported. */\nexport type EventMap = {\n",
+        "/** Event name to payload (document events and engine events). */\nexport type EventMap = {\n",
     );
-    for (name, payload, dt) in &payloads {
-        if let Some(dt) = dt {
-            let _ = writeln!(events_body, "  {}: {};", quote(name), render(dt)?);
-        } else {
-            let _ = writeln!(
-                events_body,
-                "  // TODO: `{payload}` is not exported by specta yet (engine event).\n  {}: unknown;",
-                quote(name)
-            );
-        }
+    for (name, dt) in &payloads {
+        let _ = writeln!(events_body, "  {}: {};", quote(name), render(dt)?);
     }
     events_body.push_str("};\n");
     let events_ts = format!("{HEADER}{}{events_body}", imports(&events_body, &exported));

@@ -1,5 +1,5 @@
 // @generated — do not edit; run cargo xtask gen
-import type { BeginTx, CancelTx, Checkpoint, CheckpointInfo, CheckpointList, ClipSplit, ClipSplitOutput, ClipTrim, ClipTrimOutput, CommitTx, GetHistory, HistoryMoved, HistoryPage, ItemDelete, ItemDeleteOutput, ItemGet, ItemGetOutput, ItemMove, ItemMoveOutput, ItemSetProps, ItemSetPropsOutput, ListCheckpoints, ListLocks, LockList, MediaImport, MediaImportOutput, MediaList, MediaListOutput, MediaRegister, MediaRegistered, MediaRemove, MediaRemoveOutput, ProjectInfo, ProjectInfoOutput, ProjectNew, ProjectNewOutput, ProjectRename, ProjectRenameOutput, Redo, Restore, Restored, TimelineGet, TimelineGetOutput, TimelineInsert, TimelineInsertOutput, TrackAdd, TrackAddOutput, TrackRemove, TrackRemoveOutput, TrackSet, TrackSetOutput, TxCancelled, TxCommitted, TxOpened, UiState, Undo, ViewGet, ViewSelect, ViewSet, ViewSetPlayhead, ViewSetZoom } from "./types.ts";
+import type { BeginTx, CancelTx, Checkpoint, CheckpointInfo, CheckpointList, ClipSplit, ClipSplitOutput, ClipTrim, ClipTrimOutput, CommitTx, GetHistory, HistoryMoved, HistoryPage, ItemDelete, ItemDeleteOutput, ItemGet, ItemGetOutput, ItemMove, ItemMoveOutput, ItemSetProps, ItemSetPropsOutput, JobCancel, JobInfo, JobList, JobListOutput, JobStatus, JobWait, ListCheckpoints, ListLocks, LockList, MediaImport, MediaImportOutput, MediaList, MediaListOutput, MediaRegister, MediaRegistered, MediaRemove, MediaRemoveOutput, ProjectInfo, ProjectInfoOutput, ProjectNew, ProjectNewOutput, ProjectRename, ProjectRenameOutput, Redo, Restore, Restored, TimelineGet, TimelineGetOutput, TimelineInsert, TimelineInsertOutput, TrackAdd, TrackAddOutput, TrackRemove, TrackRemoveOutput, TrackSet, TrackSetOutput, TxCancelled, TxCommitted, TxOpened, UiState, Undo, ViewGet, ViewSelect, ViewSet, ViewSetPlayhead, ViewSetZoom } from "./types.ts";
 
 /** Commands and engine commands: name to input and output. */
 export type CommandMap = {
@@ -18,6 +18,10 @@ export type CommandMap = {
   "item.delete": { input: ItemDelete; output: ItemDeleteOutput };
   "item.move": { input: ItemMove; output: ItemMoveOutput };
   "item.set_props": { input: ItemSetProps; output: ItemSetPropsOutput };
+  "job.cancel": { input: JobCancel; output: JobInfo };
+  "job.list": { input: JobList; output: JobListOutput };
+  "job.status": { input: JobStatus; output: JobInfo };
+  "job.wait": { input: JobWait; output: JobInfo };
   "media.import": { input: MediaImport; output: MediaImportOutput };
   "media.register": { input: MediaRegister; output: MediaRegistered };
   "media.remove": { input: MediaRemove; output: MediaRemoveOutput };
