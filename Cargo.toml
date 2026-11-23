@@ -109,3 +109,11 @@ opt-level = 3
 opt-level = 3
 [profile.dev.package.cutweave-cache]
 opt-level = 3
+# Audio DSP used by cutweave-audio (WP-1G.01): resampling at opt-level 0 makes the real-time
+# tests and the soak measure debug overhead instead of the mixer.
+[profile.dev.package.rubato]
+opt-level = 3
+[profile.dev.package.realfft]
+opt-level = 3
+[profile.dev.package.rustfft]
+opt-level = 3

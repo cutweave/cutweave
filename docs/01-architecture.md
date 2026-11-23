@@ -431,6 +431,8 @@ flowchart LR
 - **Features:** fades, keyframed volume, ducking (sidechain driven by the voice track or transcript VAD), loudness normalization to target LUFS (−14 social / −16 podcast / custom), and voiceover recording. Beat markers come from an analysis job.
 - Audio FX are a plugin category: built-in DSP in Rust (EQ, compressor, reverb, denoise via provider/local model) in v1, CLAP hosting in v2 and VST3 in v3.
 
+- **Mixer graph (decided in WP-1G.01):** clip sources → stereo downmix → resample to the device rate (`rubato`) → one lane per track (clips summed with their gain on worker threads) → track bus (gain, ramped) → master (gain, soft limiter at 0 dBFS). Each lane streams through an SPSC ring holding ≥ 500 ms; the real-time `render` never allocates, locks or makes syscalls, and replaced plans are freed by a worker. Clips cover `[time_to_samples(start), time_to_samples(end))` rounded to the nearest sample. Edits hand off sample-exactly `edit_latency` (100 ms) after the playhead; a seek re-primes every lane. The offline `mixdown` runs the same lane and bus code, so export equals playback bit for bit. Sources implement `PcmSource`; the FFmpeg `AudioDecoder` adapts to it (WP-1D.03). Real-time allocation tests use a counting allocator behind the `testing` feature (the `assert_no_alloc` crate's licence is not allowed).
+
 ---
 
 ## 10. Playback & preview delivery (`cutweave-playback`, `cutweave-bridge`)
