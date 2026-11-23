@@ -211,6 +211,12 @@ importers:
 
   packages/editor:
     dependencies:
+      '@cutweave/protocol':
+        specifier: workspace:*
+        version: link:../protocol
+      '@cutweave/timeline':
+        specifier: workspace:*
+        version: link:../timeline
       '@cutweave/ui':
         specifier: workspace:*
         version: link:../ui

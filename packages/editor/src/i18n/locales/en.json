@@ -133,6 +133,7 @@
     "trackVideo": "Video {{n}}",
     "trackAudio": "Audio {{n}}",
     "emptyTitle": "Your timeline is empty",
-    "emptyBody": "Drag a clip from Media onto a track to start cutting."
+    "emptyBody": "Drag a clip from Media onto a track to start cutting.",
+    "canvasLabel": "Timeline"
   }
 }

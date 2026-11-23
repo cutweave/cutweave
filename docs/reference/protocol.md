@@ -36,12 +36,52 @@ rpc.call("nope", {}); // not a command
 
 ```ts
 interface Transport {
-  request(method: string, params: unknown): Promise<unknown>;
+  request(method: string, params: unknown, meta?: RequestMeta): Promise<unknown>;
   subscribe(event: string, handler: (payload: unknown) => void): () => void;
+  settled?(): Promise<void>; // every subscription so far is in effect on the engine
 }
 ```
 
-The real transport (WebSocket JSON-RPC with `rpc.hello`) lives with the UI and API server work packages. `MockTransport` is the in-memory test double: `handle(method, fn)` answers requests, `emit(event, payload)` pushes events, and `requests` records what was sent.
+`MockTransport` is the in-memory test double: `handle(method, fn)` answers requests, `emit(event, payload)` pushes events, and `requests` records what was sent. `RpcClient` also has `snapshot()` (`project.snapshot`), `subscribed()` and `onUntyped(name, handler)` for events the generated `EventMap` does not know yet (`playback.state`, `view.changed`).
+
+### RpcConnection (WebSocket)
+
+`RpcConnection` is the real `Transport` ([rpc.md](rpc.md)): JSON-RPC 2.0 over `ws://127.0.0.1:<port>/rpc`.
+
+```ts
+const connection = new RpcConnection({
+  resolve: async () => {            // called on every (re)connect: port and token may be new
+    const c = await window.cutweave.engine.getConnection();
+    return c && { wsUrl: c.wsUrl, token: c.token };
+  },
+  hooks: { onDisconnected, onReconnected }, // see below
+});
+const rpc = new RpcClient(connection);
+connection.connect();
+await connection.whenReady();
+```
+
+- The token travels only as the WebSocket subprotocol `cutweave.token.<token>`, never in the URL.
+- Mutating calls get a UUIDv7 `_meta.request_id` (`uuidv7()`); reads and `view.*` get none, so a repeat is never answered from the dedup window. `needsRequestId(method)` decides, backed by `READ_ONLY_METHODS` (a test checks it against `schema/commands.json` and `schema/queries.json`). Pass `{ request_id, expected_rev, tx }` as the third argument of `call` to set the envelope yourself.
+- Responses are matched by JSON-RPC id (a read may overtake a write). `result._meta` is stripped from typed outputs; `connection.requestWithMeta()` returns it (`rev`, `committed_rev`, `tx_id`).
+- After the handshake (`rpc.hello`; a `schema_hash` that differs from `SCHEMA_HASH` calls `hooks.onSchemaMismatch`) the engine subscriptions of every registered handler are sent again, then the state is `ready`. Subscribe first, then read `project.snapshot`: `await rpc.subscribed()` between the two.
+
+**State machine** (`connection-state.ts`): `idle` to `connecting` to `handshaking` to `ready`; a lost socket (or a failed attempt) goes to `reconnecting`, where a `ReconnectPolicy` (default `backoffPolicy()`: 250 ms doubling to 4 s, 20 tries, immediate first retry after close code 4001) schedules `retry` or `give_up` (`failed`); `close()` is final. Hook points for the engine supervisor work (WP-1L.03):
+
+| Hook point | Purpose |
+|---|---|
+| `resolve()` | reads the current port and token on every attempt; `connection.reconnectNow()` skips the backoff |
+| `hooks.onStateChange`, `connection.onStateChange` | drive banners and disabled controls |
+| `hooks.onDisconnected({code, reason, willRetry, unacked})` | the socket was lost while `ready`; `unacked` lists the calls still waiting, with their `request_id` |
+| `hooks.onReconnected(hello, {outbox, connection})` | the handshake after a loss finished; `hooks.onConnected` is the first one |
+| `connection.outbox` | every unanswered call keyed by `request_id`; `retainUnacked: true` keeps calls that carry one (they are sent again, unchanged, after the next handshake) instead of rejecting them; reads always reject |
+| `autoFlush: false` + `connection.flushOutbox()` | take over the order of re-sending (for example snapshot first) |
+
+Without `retainUnacked` a call that was waiting when the socket dropped rejects with `RpcError("unsupported")`; calls made before the first handshake wait for it.
+
+## Keeping a document mirror
+
+`DocSync` keeps a `DocSink` current by the revision-gap protocol of [rpc.md](rpc.md): `start()` subscribes to `doc.patched` and `doc.reset`, then reads the snapshot; each event is applied when `prev_rev` continues the mirror, dropped when it is not newer, and a gap (or `doc.reset`, or a patch that does not apply) triggers one `project.snapshot` (concurrent triggers share it; events that arrive meanwhile are replayed on top). Call `resync()` after every reconnect. `DocMirror` is a framework-free sink; the editor's `docStore` is another. `applyDocEvent(state, event)` is the pure step both use.
 
 ## Applying patches
 

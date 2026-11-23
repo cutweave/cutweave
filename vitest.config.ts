@@ -3,12 +3,18 @@ import { fileURLToPath } from "node:url";
 import { defineConfig } from "vitest/config";
 
 const uiSrc = fileURLToPath(new URL("./packages/ui/src", import.meta.url));
+const protocolSrc = fileURLToPath(new URL("./packages/protocol/src", import.meta.url));
+const timelineSrc = fileURLToPath(new URL("./packages/timeline/src", import.meta.url));
 
 // One root run covers every workspace package.
 export default defineConfig({
-  // Workspace packages import `@cutweave/ui` as source (its `main` points at an unbuilt dist/).
+  // Workspace packages import `@cutweave/ui`, `/protocol` and `/timeline` as source (their `main`
+  // points at an unbuilt dist/).
   resolve: {
     alias: [
+      { find: /^@cutweave\/protocol$/, replacement: `${protocolSrc}/index.ts` },
+      { find: /^@cutweave\/protocol\/(.*)$/, replacement: `${protocolSrc}/$1` },
+      { find: /^@cutweave\/timeline$/, replacement: `${timelineSrc}/index.ts` },
       { find: /^@cutweave\/ui$/, replacement: `${uiSrc}/index.ts` },
       { find: /^@cutweave\/ui\/(.*)$/, replacement: `${uiSrc}/$1` },
     ],
