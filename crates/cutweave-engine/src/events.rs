@@ -40,7 +40,7 @@ pub const SESSION_EVENTS: &[(&str, &str)] = &[
 ];
 
 /// `project.closed`.
-#[derive(Clone, Debug, PartialEq, Eq, Serialize)]
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, specta::Type)]
 pub struct ProjectClosed {
     /// The document path of the project that was closed.
     pub path: String,

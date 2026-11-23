@@ -49,10 +49,22 @@
       "summary": "An autosave attempt failed; it is retried automatically"
     },
     {
+      "name": "project.closed",
+      "payload": "ProjectClosed",
+      "source": "engine",
+      "summary": "The open project was closed; the engine now holds an untitled document"
+    },
+    {
       "name": "project.dirty",
       "payload": "ProjectDirty",
       "source": "engine",
       "summary": "The project gained or lost unsaved changes (last saved revision differs from the committed one)"
+    },
+    {
+      "name": "project.opened",
+      "payload": "ProjectStatus",
+      "source": "engine",
+      "summary": "The open project changed (opened, saved under a new path, recovery decided); payload: its status"
     },
     {
       "name": "project.recovery_available",

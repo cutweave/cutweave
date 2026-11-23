@@ -1337,11 +1337,43 @@ export type Project = {
 	custom: { [key in string]: JsonValue },
 } & { [key in string]: unknown };
 
+/**
+ *  Closes the open project (releasing its lock) and starts an untitled document. With
+ *  `save: true` the committed state is saved first; with `save: false` nothing is saved (the
+ *  unsaved work stays in the journal and is offered on the next open); by default it is saved
+ *  when autosave is on. A failed save keeps the project open. Every client must resync.
+ */
+export type ProjectClose = {
+	/**  Save before closing (`true`), never (`false`), or as autosave would (absent). */
+	save?: boolean | null,
+};
+
+/**  Result of `project.close`. */
+export type ProjectCloseOutput = {
+	/**  The document path of the project that was closed (absent if none was open). */
+	closed: string | null,
+	/**  The session now (an untitled document). */
+	project: ProjectStatus,
+};
+
+/**  `project.closed`. */
+export type ProjectClosed = {
+	/**  The document path of the project that was closed. */
+	path: string,
+};
+
 /**  Payload of `project.dirty`. */
 export type ProjectDirty = {
 	/**  Whether the committed revision differs from the last saved one. */
 	dirty: boolean,
 };
+
+/**
+ *  Discards the unsaved work a crashed session left in the journal and continues from the
+ *  saved document (the discarded journal is kept in `.cutweave/backups/`). Every client must
+ *  resync.
+ */
+export type ProjectDiscardRecovery = Record<string, never>;
 
 /**  Returns the project name, format, media count and a summary of each sequence. */
 export type ProjectInfo = Record<string, never>;
@@ -1402,6 +1434,47 @@ export type ProjectNewOutput = {
 	audio_track: TrackId,
 };
 
+/**
+ *  Opens a project (its folder or its `.cutweave` file), closing the current one first (saved
+ *  when autosave is on, as `project.close` does). A project open in another Cutweave process
+ *  fails with `Invalid` at `/path` and leaves the current project open. Unsaved work from a
+ *  crashed session is reported in `project.recovery`; edits are refused until
+ *  `project.recover` or `project.discard_recovery`. Every client must resync (`doc.reset`).
+ *  Agents and headless callers may only open projects inside the open project's folder and
+ *  the folders the user approved (`Invalid` at `/path` otherwise).
+ */
+export type ProjectOpen = {
+	/**  Absolute path of the project folder or of its `.cutweave` document. */
+	path: string,
+};
+
+/**  Result of `project.open`. */
+export type ProjectOpenOutput = {
+	/**  The session now. */
+	project: ProjectStatus,
+	/**  Media whose file was found at neither its absolute nor its project-relative path. */
+	missing_media: MediaId[],
+	/**  The schema version the document was migrated from, if it was. */
+	migrated_from: number | null,
+};
+
+/**
+ *  Restores the unsaved work a crashed session left in the journal (`project.recovery_available`):
+ *  replays it onto the saved document, with undo history, and enables editing. The restored
+ *  changes are unsaved until the next save or autosave. Every client must resync.
+ */
+export type ProjectRecover = Record<string, never>;
+
+/**  Result of `project.recover` and `project.discard_recovery`. */
+export type ProjectRecoverOutput = {
+	/**  The session now. */
+	project: ProjectStatus,
+	/**  Transactions restored from the journal (0 after a discard). */
+	applied: number,
+	/**  Replay stopped at a damaged record (everything before it was restored). */
+	damaged: boolean,
+};
+
 /**  Renames the project. */
 export type ProjectRename = {
 	/**  New project name (1..=200 characters). */
@@ -1412,6 +1485,33 @@ export type ProjectRename = {
 export type ProjectRenameOutput = {
 	/**  The name now in effect (trimmed). */
 	name: string,
+};
+
+/**
+ *  Saves the last committed state of the open project to its file (open gestures and
+ *  proposals are not included). Fails with `Invalid` for an untitled document (use
+ *  `project.save_as`) and `Unsupported` for a read-only project.
+ */
+export type ProjectSave = Record<string, never>;
+
+/**
+ *  Saves the document as a new project folder (created; it must not hold a project yet) and
+ *  continues there; the old folder keeps its last save. A journaled project keeps its undo
+ *  history; an untitled or read-only document is written and reopened (history restarts, every
+ *  client resyncs on `doc.reset`). Agents and headless callers may only save inside the open
+ *  project's folder and the folders the user approved (`Invalid` at `/path` otherwise).
+ */
+export type ProjectSaveAs = {
+	/**  Absolute path of the new project folder; the document is `<folder>/<folder name>.cutweave`. */
+	path: string,
+};
+
+/**  Result of `project.save` and `project.save_as`. */
+export type ProjectSaveOutput = {
+	/**  The project document written. */
+	path: string,
+	/**  The committed revision the project file now holds. */
+	rev: Rev,
 };
 
 /**  Payload of `project.saved`. */
@@ -1427,6 +1527,46 @@ export type ProjectSettings = {
 	/**  Format of new sequences. */
 	default_format: SequenceFormat,
 } & { [key in string]: unknown };
+
+/**  What the engine holds: the `project.*` commands return it and `project.opened` carries it. */
+export type ProjectStatus = {
+	/**  `no_project` (an untitled document) or `open`. */
+	state: SessionState,
+	/**  The project document (`.cutweave`) path; absent for an untitled document. */
+	path: string | null,
+	/**  The project name (from the document). */
+	name: string,
+	/**  The live document revision. */
+	rev: Rev,
+	/**
+	 *  The committed revision last written to the project file; absent while untitled,
+	 *  read-only or awaiting a recovery decision.
+	 */
+	saved_rev: Rev | null,
+	/**  Whether committed changes are not in the project file yet. */
+	dirty: boolean,
+	/**  Why the project is read-only (edits are refused), if it is. */
+	read_only: string | null,
+	/**
+	 *  Unsaved work from a previous session awaiting `project.recover` or
+	 *  `project.discard_recovery` (edits are refused until then).
+	 */
+	recovery: RecoveryInfo | null,
+};
+
+/**  Unsaved work from a previous session (what a restore would bring back). */
+export type RecoveryInfo = {
+	/**  Transactions a restore would replay. */
+	records: number,
+	/**  The committed revision of the saved document. */
+	base_rev: Rev,
+	/**  The revision a restore reaches. */
+	last_rev: Rev,
+	/**  When the last of them was committed. */
+	last_ts: WallTime,
+	/**  The journal ends with a damaged record (replay stops there). */
+	damaged: boolean,
+};
 
 /**
  *  Payload of `project.recovery_available`; also what a recovery dialog shows (what a restore
@@ -1655,6 +1795,15 @@ export type SequenceFormat = {
  *  Serialized as a string, exported to TypeScript as `string`.
  */
 export type SequenceId = string & { readonly __brand: "SequenceId" };
+
+/**  Where the session is in its lifecycle. */
+export type SessionState = 
+/**  An untitled document, not backed by a project folder. */
+"no_project" | 
+/**  A project folder is open. */
+"open" | 
+/**  The project is being closed (a swap or engine shutdown is under way). */
+"closing";
 
 /**  One split item. */
 export type SplitPair = {

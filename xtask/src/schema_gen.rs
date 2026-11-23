@@ -43,16 +43,14 @@ const HASH_TXT: &str = "schema/schema-hash.txt";
 const HASH_RS: &str = "crates/cutweave-commands/src/schema_hash.rs";
 const REFERENCE: &str = "docs/reference/commands.md";
 
-/// The registry as the engine builds it: every `cutweave-ops` namespace plus the `edit.*`
-/// history commands of `cutweave-commands`.
+/// The registry exactly as the core engine builds it ([`cutweave_engine::build_registry`]):
+/// every `cutweave-ops` namespace, the `edit.*` history commands of `cutweave-commands` and the
+/// engine's `project.*` session commands.
 ///
 /// # Errors
 /// A registration that breaks the contract (a bug).
 pub fn build_registry() -> Result<Registry, String> {
-    let mut registry = Registry::new();
-    cutweave_ops::register(&mut registry).map_err(|e| e.to_string())?;
-    cutweave_commands::edit::register(&mut registry).map_err(|e| e.to_string())?;
-    Ok(registry)
+    cutweave_engine::build_registry().map_err(|e| e.to_string())
 }
 
 /// Recursively sorts object keys, so output never depends on declaration order.
@@ -308,6 +306,8 @@ fn engine_event_payload(name: &str) -> &'static str {
         "project.saved" => "ProjectSaved",
         "project.recovery_available" => "RecoveryPayload",
         "project.autosave_failed" => "AutosaveFailed",
+        "project.opened" => "ProjectStatus",
+        "project.closed" => "ProjectClosed",
         "job.progress" => "JobInfo",
         "media.indexed" => "MediaIndexed",
         "media.analysis_failed" => "MediaAnalysisFailed",
@@ -315,11 +315,12 @@ fn engine_event_payload(name: &str) -> &'static str {
     }
 }
 
-/// Every engine event, as `(name, summary)`: project lifecycle (`cutweave-engine`), background
-/// jobs (`cutweave-jobs`) and media analysis (`cutweave-ops`).
+/// Every engine event, as `(name, summary)`: project file and session events
+/// (`cutweave-engine`), background jobs (`cutweave-jobs`) and media analysis (`cutweave-ops`).
 fn engine_events() -> impl Iterator<Item = &'static (&'static str, &'static str)> {
     cutweave_engine::autosave::PROJECT_EVENTS
         .iter()
+        .chain(cutweave_engine::SESSION_EVENTS)
         .chain(cutweave_jobs::EVENTS)
         .chain(cutweave_ops::media::EVENTS)
 }

@@ -1,5 +1,5 @@
 // @generated — do not edit; run cargo xtask gen
-import type { BeginTx, CancelTx, Checkpoint, CheckpointInfo, CheckpointList, ClipSplit, ClipSplitOutput, ClipTrim, ClipTrimOutput, CommitTx, GetHistory, HistoryMoved, HistoryPage, ItemDelete, ItemDeleteOutput, ItemGet, ItemGetOutput, ItemMove, ItemMoveOutput, ItemSetProps, ItemSetPropsOutput, JobCancel, JobInfo, JobList, JobListOutput, JobStatus, JobWait, ListCheckpoints, ListLocks, LockList, MediaImport, MediaImportOutput, MediaList, MediaListOutput, MediaRegister, MediaRegistered, MediaRemove, MediaRemoveOutput, ProjectInfo, ProjectInfoOutput, ProjectNew, ProjectNewOutput, ProjectRename, ProjectRenameOutput, Redo, Restore, Restored, TimelineGet, TimelineGetOutput, TimelineInsert, TimelineInsertOutput, TrackAdd, TrackAddOutput, TrackRemove, TrackRemoveOutput, TrackSet, TrackSetOutput, TxCancelled, TxCommitted, TxOpened, UiState, Undo, ViewGet, ViewSelect, ViewSet, ViewSetPlayhead, ViewSetZoom } from "./types.ts";
+import type { BeginTx, CancelTx, Checkpoint, CheckpointInfo, CheckpointList, ClipSplit, ClipSplitOutput, ClipTrim, ClipTrimOutput, CommitTx, GetHistory, HistoryMoved, HistoryPage, ItemDelete, ItemDeleteOutput, ItemGet, ItemGetOutput, ItemMove, ItemMoveOutput, ItemSetProps, ItemSetPropsOutput, JobCancel, JobInfo, JobList, JobListOutput, JobStatus, JobWait, ListCheckpoints, ListLocks, LockList, MediaImport, MediaImportOutput, MediaList, MediaListOutput, MediaRegister, MediaRegistered, MediaRemove, MediaRemoveOutput, ProjectClose, ProjectCloseOutput, ProjectDiscardRecovery, ProjectInfo, ProjectInfoOutput, ProjectNew, ProjectNewOutput, ProjectOpen, ProjectOpenOutput, ProjectRecover, ProjectRecoverOutput, ProjectRename, ProjectRenameOutput, ProjectSave, ProjectSaveAs, ProjectSaveOutput, Redo, Restore, Restored, TimelineGet, TimelineGetOutput, TimelineInsert, TimelineInsertOutput, TrackAdd, TrackAddOutput, TrackRemove, TrackRemoveOutput, TrackSet, TrackSetOutput, TxCancelled, TxCommitted, TxOpened, UiState, Undo, ViewGet, ViewSelect, ViewSet, ViewSetPlayhead, ViewSetZoom } from "./types.ts";
 
 /** Commands and engine commands: name to input and output. */
 export type CommandMap = {
@@ -25,8 +25,14 @@ export type CommandMap = {
   "media.import": { input: MediaImport; output: MediaImportOutput };
   "media.register": { input: MediaRegister; output: MediaRegistered };
   "media.remove": { input: MediaRemove; output: MediaRemoveOutput };
+  "project.close": { input: ProjectClose; output: ProjectCloseOutput };
+  "project.discard_recovery": { input: ProjectDiscardRecovery; output: ProjectRecoverOutput };
   "project.new": { input: ProjectNew; output: ProjectNewOutput };
+  "project.open": { input: ProjectOpen; output: ProjectOpenOutput };
+  "project.recover": { input: ProjectRecover; output: ProjectRecoverOutput };
   "project.rename": { input: ProjectRename; output: ProjectRenameOutput };
+  "project.save": { input: ProjectSave; output: ProjectSaveOutput };
+  "project.save_as": { input: ProjectSaveAs; output: ProjectSaveOutput };
   "timeline.insert": { input: TimelineInsert; output: TimelineInsertOutput };
   "track.add": { input: TrackAdd; output: TrackAddOutput };
   "track.remove": { input: TrackRemove; output: TrackRemoveOutput };
