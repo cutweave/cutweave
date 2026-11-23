@@ -25,6 +25,12 @@
 //!   names are validated for all platforms.
 //! - **Moved projects:** media is resolved by absolute path, then by the folder-relative path;
 //!   `path_rel` is recomputed on every save and on save-as.
+//! - **No lost work (WP-1C.02):** an editable store finds the [journal](crate::journal) chain
+//!   that continues its document and reports unsaved work ([`OpenReport::recovery`]). The
+//!   engine then calls, on every editable open: [`ProjectStore::recover`] (or
+//!   [`ProjectStore::discard_recovery`]), [`ProjectStore::start_journal`], and saves with
+//!   [`ProjectStore::save_snapshot`], which rotates the journal around the document write.
+//!   Saving or editing is refused while unsaved work awaits that decision.
 
 pub(crate) mod atomic;
 mod lock;
@@ -34,15 +40,34 @@ use std::fs;
 use std::io;
 use std::path::{Path, PathBuf};
 
+use cutweave_commands::{DocSnapshot, Rev};
 use cutweave_model::{
     MediaId, MigrationError, MigrationReport, OpenOutcome, Project, open_str, to_document_string,
 };
+use sha2::{Digest, Sha256};
 
 pub use lock::{LockInfo, LockedReason, host_name};
 pub use paths::{DOCUMENT_EXTENSION, ProjectLayout, relative_to, resolve_relative, validate_name};
 
+use crate::journal::{
+    Journal, JournalConfig, JournalError, PendingJournal, RecoverOptions, Recovered,
+    RecoveryAvailable,
+};
 use atomic::{Step, write_atomic, write_atomic_with};
 use lock::ProjectLock;
+
+/// SHA-256 of `bytes`, lowercase hex: the identity a journal segment records for the saved
+/// document it continues.
+#[must_use]
+pub fn document_sha256(bytes: &[u8]) -> String {
+    use std::fmt::Write as _;
+    let digest = Sha256::digest(bytes);
+    let mut out = String::with_capacity(64);
+    for b in digest {
+        let _ = write!(out, "{b:02x}");
+    }
+    out
+}
 
 /// Errors from project I/O.
 #[derive(Debug, thiserror::Error)]
@@ -96,6 +121,9 @@ pub enum ProjectIoError {
     /// The project could not be serialized.
     #[error("cannot serialize the project: {0}")]
     Serialize(#[source] serde_json::Error),
+    /// The command journal failed or refused (WP-1C.02).
+    #[error(transparent)]
+    Journal(#[from] JournalError),
 }
 
 fn locked_message(holder: Option<&LockInfo>, reason: LockedReason) -> String {
@@ -215,6 +243,9 @@ pub struct OpenReport {
     pub missing_media: Vec<MissingMedia>,
     /// The record of a crashed holder whose stale lock was taken over.
     pub stale_lock_taken: Option<LockInfo>,
+    /// Unsaved work in the journal (editable opens only): call [`ProjectStore::recover`] or
+    /// [`ProjectStore::discard_recovery`] before editing (arch §17).
+    pub recovery: Option<RecoveryAvailable>,
 }
 
 /// The result of opening a project.
@@ -231,6 +262,12 @@ pub struct Opened {
 /// An open project folder with its lock.
 #[derive(Debug)]
 pub struct ProjectStore {
+    /// The running journal (dropped first: synced before the lock is released).
+    journal: Option<Journal>,
+    /// The journal between open and [`start_journal`](Self::start_journal).
+    pending_journal: Option<PendingJournal>,
+    /// SHA-256 of the document bytes on disk.
+    disk_sha256: Option<String>,
     layout: ProjectLayout,
     lock: Option<ProjectLock>,
     read_only: Option<ReadOnlyReason>,
@@ -248,14 +285,21 @@ impl ProjectStore {
         }
         make_layout_dirs(&layout)?;
         let acquired = ProjectLock::acquire(&layout, false)?;
-        let mut store = ProjectStore {
-            layout,
-            lock: Some(acquired.lock),
-            read_only: None,
-            pending_premigration_backup: None,
-        };
+        let mut store = ProjectStore::writable(layout, acquired.lock);
         store.save(project)?;
         Ok(store)
+    }
+
+    fn writable(layout: ProjectLayout, lock: ProjectLock) -> ProjectStore {
+        ProjectStore {
+            journal: None,
+            pending_journal: None,
+            disk_sha256: None,
+            layout,
+            lock: Some(lock),
+            read_only: None,
+            pending_premigration_backup: None,
+        }
     }
 
     /// Opens `path` (a `.cutweave` file or a project folder) for editing; fails if locked.
@@ -319,11 +363,24 @@ impl ProjectStore {
         }
 
         resolve_media(&layout, &mut project, editable, &mut report);
+        let disk_sha256 = document_sha256(&bytes);
+        let mut pending_journal = None;
         if lock.is_some() {
             // Crash leftovers from an interrupted save; we hold the lock, so they are ours.
             let _ = fs::remove_file(atomic::temp_path_for(&layout.document));
+            let pending = PendingJournal::scan(
+                &layout.journal_dir(),
+                &layout.backups_dir(),
+                disk_sha256.clone(),
+            )
+            .map_err(|e| ProjectIoError::io("read journal", &layout.journal_dir(), e))?;
+            report.recovery = pending.available();
+            pending_journal = Some(pending);
         }
         let store = ProjectStore {
+            journal: None,
+            pending_journal,
+            disk_sha256: Some(disk_sha256),
             layout,
             lock,
             read_only: report.read_only.clone(),
@@ -338,6 +395,12 @@ impl ProjectStore {
 
     /// Saves `project` (the last committed snapshot) atomically. `path_rel` of every media asset
     /// is recomputed against the folder.
+    ///
+    /// For stores without a running journal (new projects, tools). Once
+    /// [`start_journal`](Self::start_journal) ran, save with
+    /// [`save_snapshot`](Self::save_snapshot), which knows the revision to rotate the journal
+    /// at. Refused while the journal holds unsaved work awaiting [`recover`](Self::recover) or
+    /// [`discard_recovery`](Self::discard_recovery) (saving would orphan it).
     pub fn save(&mut self, project: &Project) -> Result<(), ProjectIoError> {
         self.save_inner(project, &mut |_| Ok(()))
     }
@@ -347,15 +410,164 @@ impl ProjectStore {
         project: &Project,
         hook: &mut dyn FnMut(Step) -> io::Result<()>,
     ) -> Result<(), ProjectIoError> {
+        if self.journal.is_some() {
+            return Err(JournalError::RevisionRequired.into());
+        }
+        self.write_document(project, None, hook)
+    }
+
+    /// Saves the committed snapshot `snapshot` (from
+    /// [`DocHandle::committed_snapshot`](cutweave_commands::DocHandle::committed_snapshot)):
+    /// rotates the journal to a new segment over this revision, writes the document atomically,
+    /// then retires the superseded journal (WP-1C.02).
+    pub fn save_snapshot(&mut self, snapshot: &DocSnapshot) -> Result<(), ProjectIoError> {
+        if snapshot.rev != snapshot.committed_rev {
+            return Err(JournalError::NotCommitted {
+                rev: snapshot.rev,
+                committed_rev: snapshot.committed_rev,
+            }
+            .into());
+        }
+        self.save_at(snapshot.committed_rev, &snapshot.doc)
+    }
+
+    /// [`save_snapshot`](Self::save_snapshot) with the committed revision `rev` of `project`.
+    pub fn save_at(&mut self, rev: Rev, project: &Project) -> Result<(), ProjectIoError> {
+        self.write_document(project, Some(rev), &mut |_| Ok(()))
+    }
+
+    fn write_document(
+        &mut self,
+        project: &Project,
+        rev: Option<Rev>,
+        hook: &mut dyn FnMut(Step) -> io::Result<()>,
+    ) -> Result<(), ProjectIoError> {
         if let Some(reason) = &self.read_only {
             return Err(ProjectIoError::ReadOnly(reason.clone()));
         }
+        if self
+            .pending_journal
+            .as_ref()
+            .is_some_and(|p| p.available().is_some())
+        {
+            return Err(JournalError::RecoveryPending.into());
+        }
         let text =
             to_document_string(&self.persisted_form(project)).map_err(ProjectIoError::Serialize)?;
+        let sha = document_sha256(text.as_bytes());
         self.layout.ensure_inside(&self.layout.document)?;
         self.preserve_premigration_original()?;
+        let rotation = match (&self.journal, rev) {
+            (Some(journal), Some(rev)) => Some(journal.rotate(rev, &sha)?),
+            (Some(_), None) => return Err(JournalError::RevisionRequired.into()),
+            (None, _) => None,
+        };
         write_atomic_with(&self.layout.document, text.as_bytes(), hook)
-            .map_err(|e| ProjectIoError::io("save document", &self.layout.document, e))
+            .map_err(|e| ProjectIoError::io("save document", &self.layout.document, e))?;
+        if let (Some(journal), Some(rotation)) = (&self.journal, rotation) {
+            journal.retire(rotation);
+        }
+        self.disk_sha256 = Some(sha.clone());
+        if self.journal.is_none() && self.lock.is_some() {
+            // Not journaling yet: the journal now has to continue this document.
+            self.pending_journal =
+                Some(
+                    PendingJournal::scan(
+                        &self.layout.journal_dir(),
+                        &self.layout.backups_dir(),
+                        sha,
+                    )
+                    .map_err(|e| {
+                        ProjectIoError::io("read journal", &self.layout.journal_dir(), e)
+                    })?,
+                );
+        }
+        Ok(())
+    }
+
+    // ----- journal (WP-1C.02) ----------------------------------------------------------------
+
+    /// Unsaved work found in the journal and not yet recovered or discarded.
+    #[must_use]
+    pub fn recovery(&self) -> Option<RecoveryAvailable> {
+        self.pending_journal.as_ref()?.available()
+    }
+
+    /// Replays the journal onto `base` (the project [`open`](Self::open) returned) and decides
+    /// that the journal continues after the last replayed transaction. Call it on every
+    /// editable open: with nothing to recover it returns `base` at the saved revision. After a
+    /// crash, a torn last record (never an acknowledged transaction) is dropped; corrupt
+    /// records stop the replay and their segment is preserved in `.cutweave/backups/` when the
+    /// journal starts. See [`Recovered::configure`] to build the doc actor from the result.
+    pub fn recover(
+        &mut self,
+        base: &Project,
+        options: &RecoverOptions,
+    ) -> Result<Recovered, ProjectIoError> {
+        let pending = self.pending_for_decision()?;
+        Ok(pending.recover(base, options, false))
+    }
+
+    /// Discards the unsaved work in the journal: the doc actor continues from the saved
+    /// document `base`. The discarded journal is preserved in `.cutweave/backups/` (never
+    /// deleted), and requests remembered from before the last save stay deduplicated.
+    pub fn discard_recovery(
+        &mut self,
+        base: &Project,
+        options: &RecoverOptions,
+    ) -> Result<Recovered, ProjectIoError> {
+        let pending = self.pending_for_decision()?;
+        Ok(pending.recover(base, options, true))
+    }
+
+    fn pending_for_decision(&mut self) -> Result<&mut PendingJournal, ProjectIoError> {
+        if let Some(reason) = &self.read_only {
+            return Err(ProjectIoError::ReadOnly(reason.clone()));
+        }
+        if self.journal.is_some() {
+            return Err(JournalError::AlreadyStarted.into());
+        }
+        self.pending_journal
+            .as_mut()
+            .ok_or(ProjectIoError::Journal(JournalError::Closed))
+    }
+
+    /// Starts the journal after [`recover`](Self::recover) or
+    /// [`discard_recovery`](Self::discard_recovery); pass [`Journal::sink`] to
+    /// [`DocConfig::with_journal`](cutweave_commands::DocConfig::with_journal). From now on save
+    /// with [`save_snapshot`](Self::save_snapshot).
+    pub fn start_journal(&mut self, config: JournalConfig) -> Result<Journal, ProjectIoError> {
+        if !self.pending_for_decision()?.decided() {
+            return Err(JournalError::RecoveryPending.into());
+        }
+        let Some(pending) = self.pending_journal.take() else {
+            return Err(JournalError::Closed.into());
+        };
+        match pending.start(config) {
+            Ok(journal) => {
+                self.pending_journal = None;
+                self.journal = Some(journal.clone());
+                Ok(journal)
+            }
+            Err(e) => {
+                // Scan again, so the decision can be retried.
+                if let Some(sha) = &self.disk_sha256 {
+                    self.pending_journal = PendingJournal::scan(
+                        &self.layout.journal_dir(),
+                        &self.layout.backups_dir(),
+                        sha.clone(),
+                    )
+                    .ok();
+                }
+                Err(e.into())
+            }
+        }
+    }
+
+    /// The running journal.
+    #[must_use]
+    pub fn journal(&self) -> Option<&Journal> {
+        self.journal.as_ref()
     }
 
     /// Keeps the original of a migrated document in `.cutweave/backups/` before the first save
@@ -390,6 +602,49 @@ impl ProjectStore {
     /// it. `path_rel` is recomputed for the new location. The old folder is left untouched.
     /// Contents of `generated/` and `compositions/` are not copied (out of scope for WP-1C.01).
     pub fn save_as(&mut self, folder: &Path, project: &Project) -> Result<(), ProjectIoError> {
+        if self.journal.is_some() {
+            return Err(JournalError::RevisionRequired.into());
+        }
+        let mut next = self.save_as_target(folder)?;
+        next.save(project)?;
+        // Swapping releases the old lock (Drop) only after the new copy is safely on disk.
+        std::mem::swap(self, &mut next);
+        Ok(())
+    }
+
+    /// [`save_as`](Self::save_as) for a journaled store: the document goes to the new folder,
+    /// then the running journal moves with it (a new segment there over this revision), and
+    /// the old folder's journal goes to its backups, so the old project reopens at its last
+    /// save. Transactions committed meanwhile follow the journal.
+    pub fn save_as_snapshot(
+        &mut self,
+        folder: &Path,
+        snapshot: &DocSnapshot,
+    ) -> Result<(), ProjectIoError> {
+        let Some(journal) = self.journal.clone() else {
+            return self.save_as(folder, &snapshot.doc);
+        };
+        if snapshot.rev != snapshot.committed_rev {
+            return Err(JournalError::NotCommitted {
+                rev: snapshot.rev,
+                committed_rev: snapshot.committed_rev,
+            }
+            .into());
+        }
+        let mut next = self.save_as_target(folder)?;
+        next.write_document(&snapshot.doc, None, &mut |_| Ok(()))?;
+        next.pending_journal = None;
+        let sha = next.disk_sha256.clone().unwrap_or_default();
+        let rotation =
+            journal.relocate(&next.layout.journal_dir(), snapshot.committed_rev, &sha)?;
+        journal.retire_into(rotation, &self.layout.backups_dir());
+        next.journal = self.journal.take();
+        std::mem::swap(self, &mut next);
+        Ok(())
+    }
+
+    fn save_as_target(&self, folder: &Path) -> Result<ProjectStore, ProjectIoError> {
+        // (A fresh store: no journal, no pending decision.)
         if matches!(self.read_only, Some(ReadOnlyReason::NewerSchema { .. })) {
             return Err(ProjectIoError::ReadOnly(
                 self.read_only.clone().unwrap_or(ReadOnlyReason::Requested),
@@ -404,20 +659,16 @@ impl ProjectStore {
         }
         make_layout_dirs(&layout)?;
         let acquired = ProjectLock::acquire(&layout, false)?;
-        let mut next = ProjectStore {
-            layout,
-            lock: Some(acquired.lock),
-            read_only: None,
-            pending_premigration_backup: None,
-        };
-        next.save(project)?;
-        // Swapping releases the old lock (Drop) only after the new copy is safely on disk.
-        std::mem::swap(self, &mut next);
-        Ok(())
+        Ok(ProjectStore::writable(layout, acquired.lock))
     }
 
-    /// Releases the lock. Also happens on drop; use this to observe errors.
+    /// Syncs and closes the journal, then releases the lock. Also happens on drop; use this to
+    /// observe errors. Saves nothing: unsaved work stays in the journal and is offered for
+    /// recovery on the next open.
     pub fn close(mut self) -> Result<(), ProjectIoError> {
+        if let Some(journal) = self.journal.take() {
+            journal.close()?;
+        }
         match self.lock.take() {
             Some(mut lock) => lock
                 .release()
@@ -464,6 +715,18 @@ impl ProjectStore {
     #[must_use]
     pub fn lock_info(&self) -> Option<&LockInfo> {
         self.lock.as_ref().map(ProjectLock::info)
+    }
+}
+
+impl Drop for ProjectStore {
+    /// Closes the journal (synced) before the lock is released: once the store is gone, no
+    /// transaction can be journaled into a folder this process no longer holds.
+    fn drop(&mut self) {
+        if let Some(journal) = self.journal.take()
+            && let Err(e) = journal.close()
+        {
+            tracing::error!(error = %e, "the journal did not close cleanly");
+        }
     }
 }
 
