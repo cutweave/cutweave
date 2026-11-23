@@ -1,0 +1,197 @@
+// SPDX-License-Identifier: GPL-3.0-or-later
+//! The `view.*` transport commands (arch §5.1 `view` namespace: not undoable, not journaled).
+//! They run against the [`Transport`] (their engine-command context) and return the
+//! [`PlaybackState`] after the change.
+//!
+//! The engine attaches them through its subsystem seam (WP-1I.05): `Subsystems::register`
+//! calls [`register`], and `Subsystems::invoke` runs a call whose `context` is
+//! `TypeId::of::<Transport>()` with
+//! `registry.invoke_engine_json(name, params, &mut transport, caller.access())`.
+
+use cutweave_commands::{CmdError, EngineCommand, Registry, RegistryError, command, wire};
+use cutweave_model::{Time, TimeInput};
+
+use crate::shm::{PixelFormat, PreviewConfig};
+use crate::transport::control::Transport;
+use crate::transport::state::{PlaybackState, Rate};
+
+/// Plays forward at normal speed with audio (L). At the end of the content, playback starts
+/// again from the beginning. Returns the playback state.
+#[command(
+    name = "view.play",
+    summary = "Start playback at normal speed",
+    view,
+    mcp = "catalog",
+    annotations(destructive = false, idempotent = true)
+)]
+pub struct ViewPlay {}
+
+impl EngineCommand for ViewPlay {
+    type Context = Transport;
+    type Output = PlaybackState;
+    fn run(&self, transport: &mut Transport) -> Result<PlaybackState, CmdError> {
+        Ok(transport.play())
+    }
+}
+
+/// Pauses on the current position (K); the frame refines to full quality.
+#[command(
+    name = "view.pause",
+    summary = "Pause playback",
+    view,
+    mcp = "catalog",
+    annotations(destructive = false, idempotent = true)
+)]
+pub struct ViewPause {}
+
+impl EngineCommand for ViewPause {
+    type Context = Transport;
+    type Output = PlaybackState;
+    fn run(&self, transport: &mut Transport) -> Result<PlaybackState, CmdError> {
+        Ok(transport.pause())
+    }
+}
+
+/// Moves the playhead (latest wins: a newer seek cancels the frames of older ones). While
+/// stopped, a quarter-resolution frame comes first and the full-quality frame after 100 ms
+/// without a newer seek; while playing, playback continues from there.
+#[command(
+    name = "view.seek",
+    summary = "Move the playhead (scrub when stopped)",
+    view,
+    mcp = "catalog",
+    annotations(destructive = false, idempotent = true)
+)]
+pub struct ViewSeek {
+    /// Where: flicks, "2.5s", "f:60" or timecode "00:00:02:12" at the sequence rate; `>= 0`,
+    /// clamped to the end of the content.
+    pub t: TimeInput,
+}
+
+impl EngineCommand for ViewSeek {
+    type Context = Transport;
+    type Output = PlaybackState;
+    fn run(&self, transport: &mut Transport) -> Result<PlaybackState, CmdError> {
+        let t = self
+            .t
+            .resolve(Some(transport.timing().rate))
+            .map_err(|e| CmdError::invalid("/t", e.to_string()))?;
+        if t < Time::ZERO {
+            return Err(CmdError::invalid("/t", "the playhead cannot be negative"));
+        }
+        Ok(transport.seek(t))
+    }
+}
+
+/// Sets the playback rate (JKL): 1, 2 or 4 play forward (1 with audio; 2 and 4 video only),
+/// −1, −2 or −4 play backwards frame by frame with audio muted, 0 pauses.
+#[command(
+    name = "view.set_rate",
+    summary = "Play at a JKL rate (-4, -2, -1, 1, 2, 4) or pause (0)",
+    view,
+    mcp = "catalog",
+    annotations(destructive = false, idempotent = true)
+)]
+pub struct ViewSetRate {
+    /// One of -4, -2, -1, 0, 1, 2, 4.
+    pub rate: f64,
+}
+
+impl EngineCommand for ViewSetRate {
+    type Context = Transport;
+    type Output = PlaybackState;
+    fn run(&self, transport: &mut Transport) -> Result<PlaybackState, CmdError> {
+        if self.rate.abs() < 1e-9 {
+            return Ok(transport.pause());
+        }
+        let rate = Rate::from_f64(self.rate).ok_or_else(|| {
+            CmdError::invalid("/rate", "rate must be one of -4, -2, -1, 0, 1, 2 or 4")
+        })?;
+        Ok(transport.set_rate(rate))
+    }
+}
+
+/// Pauses and moves the playhead by whole frames of the sequence grid (negative steps back),
+/// clamped to the content. The frame renders at full quality.
+#[command(
+    name = "view.step",
+    summary = "Pause and step the playhead by frames",
+    view,
+    mcp = "catalog",
+    annotations(destructive = false, idempotent = false)
+)]
+pub struct ViewStep {
+    /// Frames to move; negative moves back.
+    pub frames: i32,
+}
+
+impl EngineCommand for ViewStep {
+    type Context = Transport;
+    type Output = PlaybackState;
+    fn run(&self, transport: &mut Transport) -> Result<PlaybackState, CmdError> {
+        Ok(transport.step(i64::from(self.frames)))
+    }
+}
+
+/// The preview frame size accepted by `view.set_preview_size`.
+#[wire]
+#[derive(Copy, Eq)]
+pub struct PreviewSize {
+    /// Width in pixels.
+    pub width: u32,
+    /// Height in pixels.
+    pub height: u32,
+}
+
+/// Sets the size preview frames are rendered at: the preview canvas in device pixels (arch §10
+/// step 1). Sizes above 8192 are scaled down keeping the aspect ratio; NV12 rings round them
+/// down to even. The current frame re-renders at the new size.
+#[command(
+    name = "view.set_preview_size",
+    summary = "Set the preview canvas size in device pixels",
+    view,
+    mcp = "hidden",
+    annotations(destructive = false, idempotent = true)
+)]
+pub struct ViewSetPreviewSize {
+    /// Width in device pixels, `>= 1`.
+    pub width: u32,
+    /// Height in device pixels, `>= 1`.
+    pub height: u32,
+}
+
+impl EngineCommand for ViewSetPreviewSize {
+    type Context = Transport;
+    type Output = PreviewSize;
+    fn run(&self, transport: &mut Transport) -> Result<PreviewSize, CmdError> {
+        if self.width == 0 {
+            return Err(CmdError::invalid("/width", "width must be at least 1"));
+        }
+        if self.height == 0 {
+            return Err(CmdError::invalid("/height", "height must be at least 1"));
+        }
+        let fitted = PreviewConfig {
+            width: self.width,
+            height: self.height,
+            format: PixelFormat::Rgba8,
+        }
+        .fitted();
+        transport.set_preview_size(fitted.width, fitted.height);
+        Ok(PreviewSize {
+            width: fitted.width,
+            height: fitted.height,
+        })
+    }
+}
+
+/// Registers the `view.*` transport commands.
+pub fn register(registry: &mut Registry) -> Result<(), RegistryError> {
+    registry
+        .register::<ViewPlay>()?
+        .register::<ViewPause>()?
+        .register::<ViewSeek>()?
+        .register::<ViewSetRate>()?
+        .register::<ViewStep>()?
+        .register::<ViewSetPreviewSize>()?;
+    Ok(())
+}

@@ -8,6 +8,18 @@ repository.workspace = true
 rust-version.workspace = true
 publish = false
 
+[features]
+# The transport, render loop, A/V sync and scrub scheduler and the `view.*` transport commands
+# (WP-1H.01). Off by default so the Electron addon (`cutweave-bridge`), which only needs the ring
+# layout, stays free of the audio, render and command crates ("no tokio runtime, no serde"
+# there); the engine turns it on when it attaches playback (WP-1I.05).
+transport = [
+  "dep:cutweave-audio",
+  "dep:cutweave-commands",
+  "dep:cutweave-render",
+  "dep:tracing",
+]
+
 [dependencies]
 # `Time` / `Duration` (flicks) for frame timestamps and the audio clock (arch §4.1, ADR-0004).
 cutweave-model = { path = "../cutweave-model" }
@@ -15,6 +27,17 @@ thiserror.workspace = true
 # Per-launch random ring names and ring epochs from the OS CSPRNG (arch §6, WP-1H.02).
 # Already in the graph through `uuid`; not yet a `[workspace.dependencies]` entry.
 getrandom = "0.4.3"
+# The master clock video follows (`AudioClock`, `ManualClock`) and the output it drives
+# (`AudioOutput`, `MixerHandle`; WP-1G.02). Workspace crate; no device backend is chosen here
+# (the engine picks the audio features).
+cutweave-audio = { path = "../cutweave-audio", default-features = false, optional = true }
+# The `view.*` transport commands (`#[command]`, `EngineCommand`, `Registry`; arch §5.1).
+cutweave-commands = { path = "../cutweave-commands", optional = true }
+# The preview quality ladder and its playback policy (`Quality`, `AutoQuality`; WP-1F.03).
+# Wasm-safe core only: rendering itself plugs in through the `FrameSource` seam.
+cutweave-render = { path = "../cutweave-render", default-features = false, optional = true }
+# Render-loop diagnostics (AGENTS.md: `tracing` for logs). Already a workspace dependency.
+tracing = { workspace = true, optional = true }
 
 # Named file mapping with a restrictive security descriptor, QPC host clock (WP-1H.02).
 # Same version the graph already resolves to; not yet a `[workspace.dependencies]` entry.
@@ -32,6 +55,14 @@ windows-sys = { version = "0.61.2", features = [
 # Same version the graph already resolves to; not yet a `[workspace.dependencies]` entry.
 [target.'cfg(unix)'.dependencies]
 libc = "0.2.191"
+
+[dev-dependencies]
+# This crate with the transport on, so its tests (and `cargo nextest run --workspace`) build it.
+cutweave-playback = { path = ".", features = ["transport"] }
+# `testing`: the counting allocator that proves the render loop does not allocate per frame.
+cutweave-audio = { path = "../cutweave-audio", default-features = false, features = ["testing"] }
+# JSON params and results in the `view.*` command tests.
+serde_json.workspace = true
 
 [lints]
 workspace = true
