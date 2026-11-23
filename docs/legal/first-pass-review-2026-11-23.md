@@ -54,7 +54,7 @@ Severity: **blocker** = must be fixed before the exception is adopted or before 
 3. **Consent to an unseen text.** "once that text is adopted" asks contributors to agree to whatever text is adopted later. Counsel should say whether that is effective; it is safer to bound it (the exception may only add permissions for plugins that use published interfaces).
 4. **ADR-0011 assumed the exception ships from day one.** It says "a DCO cannot add exceptions later, so the exception ships from day one". It has not shipped; it is a draft not in effect. The plan only works if adoption happens before any external contribution is merged.
 
-Today the gap is closable cheaply: all 236 non-merge commits on `main` have one human author and all carry a `Signed-off-by` (most are co-authored by AI models; see S12). The existing copyright holder can adopt the exception unilaterally, provided counsel confirms who that holder is (the commits use an organisational e-mail address, so the holder may be an organisation rather than the individual).
+Today the gap is closable cheaply: all 236 non-merge commits on `main` have one human author and all carry a `Signed-off-by` (most are co-authored by AI models; see S12). The existing copyright holder can adopt the exception unilaterally. **Product owner's answer (2026-11-23): the copyright in Cutweave is held by the project founder personally, as an individual, not by the company whose e-mail domain appears on the commits.** Counsel should still confirm that no employment or contractor agreement assigns this work to that company, and record the founder's legal name for the copyright notices.
 
 **Proposed text (applied to CONTRIBUTING.md, still marked pending legal review):**
 
@@ -373,7 +373,7 @@ CONTRIBUTING does not say what name a sign-off must use. Many projects now accep
 ## Questions for counsel
 
 1. Is the restructured grant (exception §1: combination, plugin terms, distribution together, Corresponding Source) an effective GPLv3 §7 additional permission in the jurisdictions where the maintainers and main distributors are based? Should it add Qt GPL Exception 1.0's source-offer condition?
-2. Who holds copyright in the existing code (an individual or an organisation, given the organisational commit e-mail), and what document should record that holder's grant of the exception?
+2. The product owner states the founder holds the copyright personally (2026-11-23). Confirm that no employment or IP-assignment agreement gives the company on the commit e-mail domain a claim, and what document should record the founder's grant of the exception (and the legal name for notices).
 3. Is DCO sign-off, plus the CONTRIBUTING statement, plus a PR-template checkbox, plus per-file `WITH` notices, plus GitHub ToS §D.6, enough to bind external contributors to the exception, including to later versions that "only add permissions" and to designations under Published Interface item 9? Or is a short contributor agreement needed?
 4. In-process plugins (WASM, QuickJS, WGSL) run in the same process as a GPL FFmpeg build (x264, x265, vid.stab). What is the realistic exposure for a proprietary plugin vendor, and which of B3's options (document, separate process, LGPL build) do you recommend?
 5. May the project place generated schemas and types derived from GPL sources (`schema/`, `packages/protocol/src/generated/`) under MIT OR Apache-2.0 or treat them as Interface Material, given the inbound terms? Are such schemas protectable at all?
