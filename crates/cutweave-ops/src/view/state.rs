@@ -121,6 +121,7 @@ pub struct UiState {
     /// selected; IDs that no longer exist are dropped.
     pub selection: Vec<SelectionRef>,
     /// Dock/panel layout. Opaque to the engine (owned by the UI); `null` until the UI sets it.
+    #[specta(type = specta_typescript::Unknown)]
     pub panel_layout: Value,
     /// Preview resolution.
     pub preview_quality: PreviewQuality,
@@ -169,6 +170,7 @@ pub struct ViewPatch {
     pub selection: Option<Vec<SelectionRef>>,
     /// New panel layout (opaque JSON, replaces the whole value).
     #[serde(default)]
+    #[specta(type = Option<specta_typescript::Unknown>)]
     pub panel_layout: Option<Value>,
     /// New preview resolution.
     #[serde(default)]
