@@ -153,6 +153,7 @@
       "inGesture": "Someone else is editing this clip right now. Try again in a moment.",
       "changed": "The project changed while you were editing. Try again.",
       "missing": "The clip no longer exists.",
+      "interrupted": "The edit was interrupted and undone. Try again.",
       "other": "The engine refused the edit: {{message}}"
     }
   },

@@ -137,9 +137,9 @@ export class TimelineController {
     this.send({ type: "pointer-cancel" });
   }
 
+  /** The panel unmounts: roll back any open gesture (the view detaches through `attach(null)`). */
   dispose(): void {
     this.cancel();
-    this.#geometry = null;
   }
 
   /** Runs one event through the machine with fresh env and carries out its intents. */

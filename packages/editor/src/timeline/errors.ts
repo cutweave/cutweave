@@ -35,6 +35,10 @@ export function describeRefusal(error: RpcError, t: Translate): string {
         ? t("timeline.reason.inGesture")
         : t("timeline.reason.changed");
     case "not_found":
+      // The gesture's transaction is gone: idle past the engine's timeout, or rolled back.
+      if (error.data?.kind === "transaction" || /^transaction\b/i.test(error.message)) {
+        return t("timeline.reason.interrupted");
+      }
       return t("timeline.reason.missing");
     case "invalid":
       if (/overlap/i.test(error.message)) return t("timeline.reason.overlap");

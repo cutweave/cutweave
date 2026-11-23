@@ -335,6 +335,14 @@ describe("refusal messages", () => {
     expect(describeRefusal(new RpcError("not_found", "no item"), tr)).toBe(
       "The clip no longer exists.",
     );
+    expect(
+      describeRefusal(
+        new RpcError("not_found", "transaction `tx_1` not found", undefined, {
+          kind: "transaction",
+        }),
+        tr,
+      ),
+    ).toBe("The edit was interrupted and undone. Try again.");
     expect(describeRefusal(new RpcError("invalid", "would read past the end"), tr)).toBe(
       "The engine refused the edit: would read past the end",
     );
