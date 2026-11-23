@@ -35,6 +35,13 @@ check:
     just bridge --fixture
     python scripts/run-vitest.py
     cargo xtask gen --check
+    python scripts/check-md-links.py
+
+# Base: main's first parent on main, else the merge base with main (`--base REV`; `--dry-run` plans).
+# Shared-config changes (root Cargo.toml, lockfile-only, toolchain, justfile) fall back to `check`.
+# Gate steps the change can affect: changed crates + their dependents, TS/docs/schema only if relevant
+check-affected *args:
+    python scripts/check-affected.py {{args}}
 
 # WBS lint (offline): parse docs/wbs, check ids/deps/cycles/sizes, verify docs/wbs/wbs.json snapshot
 wbs-lint:

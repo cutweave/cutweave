@@ -344,6 +344,11 @@ All surfaces live on **one local server per engine** (axum on `127.0.0.1`, rando
 - **Plugin credentials** are issued in-process per plugin: actor `plugin:<id>`, limited to the permissions the plugin declares.
 - **Network hygiene:** Host and Origin headers are checked (DNS-rebinding defense). The server binds to localhost only, and remote access is out of scope for v1.
 - **Stable port:** Electron main picks the port at app launch and passes `--port` on every engine (re)start, so the renderer's CSP stays valid. If the bind fails, main picks a new port and reloads the renderer.
+- **Engine root and launch protocol (decided in WP-1I.04):** the protocol is specified in [launch-protocol.md](reference/launch-protocol.md).
+  - `Engine::start(EngineConfig)` wires the doc actor, project store, journal, autosave, job manager and API server; media, render, audio and playback attach later through the `Subsystems` trait (WP-1I.05).
+  - Surfaces mount on an in-process dispatch API: `EngineHandle::connect(&Credential)` gives each client connection its own never-reused connection ID, and dropping it rolls back that connection's open transaction. Events reach clients through one `EngineEvent` fan-out.
+  - In `Gui` mode the UI credential is the first stdin line; the engine prints a ready line (no tokens) or a JSON error line and exits with 0 clean, 1 internal, 2 usage, 10 project locked, 11 GPU init, 12 port bind, 13 handshake.
+  - **Path policy:** the UI credential is unrestricted. Every other credential can only open, save or import under the `--allow-root` folders, the start project's folder and the open project's folder (symlinks resolved, `..` refused); otherwise the call fails with `Invalid`.
 
 ---
 
@@ -695,6 +700,7 @@ MyVideo/                    ← project folder (user-chosen location)
 ```
 
 - **Atomic saves:** write a temp file, fsync, rename. Autosave runs on idle and every 30 s when the document is dirty. The journal is replayed on crash recovery, and the recovery UI offers *restore / discard*.
+- **Session lifecycle (decided in WP-1I.04):** `NoProject` (an untitled in-memory document) → `Open` → `Closing`. `project.open`, `project.save`, `project.save_as`, `project.close{save?}`, `project.recover` and `project.discard_recovery` are engine commands, neither undoable nor journaled. Opening, closing, save-as from untitled and the recovery decision swap the doc actor, cancel jobs and send `doc.reset`. `project.close` saves by default when autosave is on; `Engine::shutdown` never saves.
 - **Journal (decided in WP-1C.02):**
   - Segments are `.cutweave/journal/<base-rev>.jnl`. Each record is length + JSON + CRC-32. The header names the saved document it continues (rev and SHA-256), then the requests carried over the save, then one record per committed transaction: redacted steps, patch, and the deterministic ID-generator state.
   - Every record reaches the OS before the ack, so a killed engine loses no acknowledged op. A background thread fsyncs within 50 ms, which bounds the power-loss window to about 50 ms.
