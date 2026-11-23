@@ -710,6 +710,7 @@ dependencies = [
 name = "cutweave-audio"
 version = "0.0.0"
 dependencies = [
+ "cutweave-audio",
  "cutweave-model",
  "cutweave-render",
  "proptest",

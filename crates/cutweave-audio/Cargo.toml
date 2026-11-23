@@ -8,6 +8,12 @@ repository.workspace = true
 rust-version.workspace = true
 publish = false
 
+[features]
+# Test instrumentation: `cutweave_audio::rt_alloc`, the counting global allocator that proves
+# `Mixer::render` never touches the heap. It is the crate's only `unsafe` code, so a normal build
+# has none.
+testing = []
+
 [dependencies]
 cutweave-model = { path = "../cutweave-model" }
 # `AudioSegment`, the output of `evaluate_audio` (WP-1F.01), is the mixer's input. Only the
@@ -25,6 +31,9 @@ thiserror.workspace = true
 tracing.workspace = true
 
 [dev-dependencies]
+# This crate with `testing` on, so its real-time tests (and `cargo nextest run --workspace`)
+# get the allocation counter.
+cutweave-audio = { path = ".", features = ["testing"] }
 proptest.workspace = true
 
 [lints]

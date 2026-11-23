@@ -9,6 +9,14 @@
 //! This stands in for `assert_no_alloc`, which the WBS names: that crate is BSD-1-Clause, which
 //! the root `deny.toml` does not allow (M0 finding S2-11). Same idea, no dependency; the S2 spike
 //! proved it on the real cpal callback.
+//!
+//! Test instrumentation only: compiled with the `testing` feature, so a normal build of the crate
+//! contains no `unsafe` code.
+
+// Justification: a `GlobalAlloc` implementation is necessarily `unsafe` (docs/01-architecture.md
+// §3 allows it in this crate); it only forwards to `System`. Every use carries a `// SAFETY:`
+// comment.
+#![allow(unsafe_code)]
 
 use std::alloc::{GlobalAlloc, Layout, System};
 use std::cell::Cell;

@@ -18,17 +18,13 @@
 //!   lock-free queue, seeks that flush and refill. Threading model: [`control`](crate::control)
 //!   module docs.
 //! * [`mixdown`]: the offline renderer (export) over the same lane and bus code.
-//! * [`rt_alloc`]: the allocation counter that proves `Mixer::render` never allocates.
+//! * `rt_alloc` (feature `testing`): the allocation counter that proves `Mixer::render` never
+//!   allocates.
 //!
 //! The input is the segment list of `cutweave_render::evaluate_audio` (WP-1F.01). Times are
 //! flicks; output positions are sample indices at the output rate, converted only through
 //! `SampleRate::time_to_samples` / `samples_to_time` (arch §4.1). cpal output and the master
 //! clock are WP-1G.02.
-
-// Justification: this crate talks to OS, FFI or real-time interfaces (docs/01-architecture.md §3)
-// and is allowed to use `unsafe`; every use must carry a `// SAFETY:` comment. Today the only
-// unsafe code is the counting allocator in `rt_alloc`.
-#![allow(unsafe_code)]
 
 mod control;
 mod dsp;
@@ -37,6 +33,7 @@ mod lane;
 mod offline;
 mod plan;
 mod rt;
+#[cfg(feature = "testing")]
 pub mod rt_alloc;
 pub mod source;
 mod tone;
