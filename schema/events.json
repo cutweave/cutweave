@@ -1,0 +1,25 @@
+{
+  "events": [
+    {
+      "name": "doc.command_panicked",
+      "payload": "CommandPanicked",
+      "summary": "A command panicked; its transaction was rolled back"
+    },
+    {
+      "name": "doc.patched",
+      "payload": "DocPatched",
+      "summary": "The live document changed; apply `ops` to the document at `prev_rev`"
+    },
+    {
+      "name": "doc.reset",
+      "payload": "DocReset",
+      "summary": "The document changed in a way ops cannot express; resync from a snapshot"
+    },
+    {
+      "name": "edit.history_changed",
+      "payload": "HistoryChanged",
+      "summary": "An actor's undo/redo stacks changed"
+    }
+  ],
+  "format": 1
+}

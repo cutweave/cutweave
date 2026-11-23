@@ -308,6 +308,30 @@ impl CmdError {
         CmdError::Internal { msg: msg.into() }
     }
 
+    /// Every machine code with what it means, in a fixed order (the `error_codes` of the schema
+    /// catalog, WP-1N.01). [`CmdError::code`] only returns codes listed here.
+    pub const CODES: &'static [(&'static str, &'static str)] = &[
+        ("not_found", "An ID or command name does not exist"),
+        (
+            "locked",
+            "The target is locked (a locked track, or soft-locked by another transaction)",
+        ),
+        (
+            "conflict",
+            "Stale revision, reused request_id, or a state the request cannot be applied to",
+        ),
+        (
+            "invalid",
+            "A param failed schema or semantic validation; the error carries a JSON Pointer",
+        ),
+        (
+            "forbidden",
+            "The caller's credential lacks the scope the command needs",
+        ),
+        ("unsupported", "A valid request this version cannot do"),
+        ("internal", "A bug or panic in the engine"),
+    ];
+
     /// The machine code: `not_found`, `locked`, `conflict`, `invalid`, `forbidden`,
     /// `unsupported` or `internal`.
     #[must_use]

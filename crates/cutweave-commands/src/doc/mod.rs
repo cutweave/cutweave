@@ -41,7 +41,10 @@ pub use bus::{EventStream, RecvError, TryRecvError};
 pub use clock::SystemClock;
 pub use clock::{Clock, ManualClock, WallTime};
 pub use dedup::{DEDUP_CAPACITY, DEDUP_WINDOW, DedupRecord, Fingerprint};
-pub use event::{CommandPanicked, DocEvent, DocPatched, DocReset, DocSnapshot, PatchCause};
+pub use event::{
+    CommandPanicked, DocEvent, DocPatched, DocReset, DocSnapshot, EVENT_CATALOG, EventInfo,
+    PatchCause,
+};
 pub use history::{
     ActorStacks, CheckpointId, CheckpointInfo, DEFAULT_HISTORY_BYTES, DEFAULT_HISTORY_ENTRIES,
     DEFAULT_HISTORY_PAGE, DEFAULT_UNDO_DEPTH, EntryCause, EntryStatus, HistoryChange,
