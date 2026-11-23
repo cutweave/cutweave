@@ -348,6 +348,10 @@ All surfaces live on **one local server per engine** (axum on `127.0.0.1`, rando
   - Surfaces mount on an in-process dispatch API: `EngineHandle::connect(&Credential)` gives each client connection its own never-reused connection ID, and dropping it rolls back that connection's open transaction. Events reach clients through one `EngineEvent` fan-out.
   - In `Gui` mode the UI credential is the first stdin line; the engine prints a ready line (no tokens) or a JSON error line and exits with 0 clean, 1 internal, 2 usage, 10 project locked, 11 GPU init, 12 port bind, 13 handshake.
   - **Path policy:** the UI credential is unrestricted. Every other credential can only open, save or import under the `--allow-root` folders, the start project's folder and the open project's folder (symlinks resolved, `..` refused); otherwise the call fails with `Invalid`.
+- **JSON-RPC wire (decided in WP-1I.02):** specified in [rpc.md](reference/rpc.md).
+  - Methods are registry names plus `rpc.hello`, `rpc.subscribe`, `rpc.unsubscribe` and `project.snapshot`; events arrive as notifications named after the event. The WebSocket carries the token as subprotocol `cutweave.token.<t>`.
+  - Results carry `_meta{rev, committed_rev, request_id?, tx_id?}`; errors are `{code, message, data}` with `data` = the `CmdError` wire form and fixed numeric codes (-32001 not_found, -32002 locked, -32003 conflict, -32004 forbidden, -32005 unsupported, plus the JSON-RPC standard codes).
+  - Mutating calls need `_meta.request_id` (except `view.*`); a connection's mutations run in arrival order and reads may overtake them. Per-connection event queues are bounded: overflow closes the socket with 4001 `resync_required`, and clients resync by subscribing, then calling `project.snapshot`.
 
 ---
 
