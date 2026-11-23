@@ -741,6 +741,11 @@
 .cw-field[aria-invalid="true"] {
   border-color: var(--danger);
 }
+.cw-field[readonly] {
+  background: var(--surface-1);
+  border-color: var(--border-subtle);
+  color: var(--text-secondary);
+}
 .cw-field:disabled {
   border-color: var(--border-subtle);
   background: var(--surface-2);
