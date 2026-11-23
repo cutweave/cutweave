@@ -96,7 +96,7 @@ fn case(input: &str, rate: Option<FrameRate>) -> Value {
         .parse::<TimeInput>()
         .and_then(|t| t.resolve(rate))
         .ok()
-        .map(|t| t.flicks());
+        .map(cutweave_model::Time::flicks);
     json!({ "input": input, "rate": rate_json(rate), "flicks": flicks })
 }
 
