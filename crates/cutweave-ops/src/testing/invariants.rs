@@ -4,23 +4,28 @@
 //! [`crate::item`]):
 //!
 //! - a linked group never spans sequences (checked by [`Project::validate`]);
+//! - no linked group has a single member (but for one on a locked track): edits that take members out of a group (`unlink`,
+//!   `track.remove`) unlink the last one left;
 //! - linked partners move, trim, split and are deleted together: after a successful
 //!   `item.move` every partner moved by the same offset; after `clip.trim` every partner's
 //!   trimmed edge is where the item's is; after `clip.split` every partner that contained the
 //!   time was split there too and the right halves share the new group; after `item.delete`
 //!   no partner of a deleted item is left;
 //! - `unlink: true` (`item.move`, `clip.trim`) takes only the item out of its group and leaves
-//!   its partners as they were.
+//!   its partners as they were (a partner that would be alone in the group is unlinked too).
 //!
 //! Groups need not be time-aligned: documents may link items that never were (and an undo of
 //! an unlink can re-link an item whose partner changed since), so only the edit rules are
 //! checked.
 
+use std::collections::BTreeMap;
+
 use cutweave_model::{GroupId, Item, ItemId, Project, TrackId};
 use serde_json::Value;
 
 /// Checks the invariants of `doc`: [`Project::validate`] (references, timing, bounds, formats,
-/// linked groups inside one sequence, ...) and no overlapping items on any track.
+/// linked groups inside one sequence, ...), no overlapping items on any track and no linked
+/// group with a single member.
 pub fn check_invariants(doc: &Project) -> Result<(), String> {
     doc.validate()
         .map_err(|e| format!("Project::validate fails: {e}"))?;
@@ -30,6 +35,19 @@ pub fn check_invariants(doc: &Project) -> Result<(), String> {
                 return Err(format!("items {a} and {b} overlap on track {}", t.id));
             }
         }
+    }
+    // (members, first member, that member's track is locked). A lone member on a locked track
+    // is tolerated: `unlink: true` deliberately avoids editing locked partners.
+    let mut sizes: BTreeMap<GroupId, (usize, ItemId, bool)> = BTreeMap::new();
+    for t in doc.sequences.values().flat_map(|s| s.tracks.values()) {
+        for i in t.items.iter() {
+            if let Some(g) = i.linked_group() {
+                sizes.entry(g).or_insert((0, i.id(), t.locked)).0 += 1;
+            }
+        }
+    }
+    if let Some((g, (_, only, _))) = sizes.iter().find(|(_, (n, _, locked))| *n == 1 && !*locked) {
+        return Err(format!("linked group {g} has a single member, {only}"));
     }
     Ok(())
 }
@@ -110,8 +128,18 @@ fn only_item_unlinked(
     if now.linked_group().is_some() {
         return Err(format!("{target} is still linked after `unlink: true`"));
     }
-    for p in partners(before, before_item) {
-        if item(before, p) != item(after, p) {
+    // A partner left alone in the group is unlinked too (no single-member groups); apart from
+    // that nothing about it may change.
+    let others = partners(before, before_item);
+    for p in &others {
+        let (t0, mut p0) = found(before, *p, "before the edit")?;
+        let (t1, mut p1) = found(after, *p, "after the edit")?;
+        let alone = others.len() == 1;
+        let group_ok =
+            p1.linked_group() == p0.linked_group() || (alone && p1.linked_group().is_none());
+        p0.set_linked_group(None);
+        p1.set_linked_group(None);
+        if t0 != t1 || p0 != p1 || !group_ok {
             return Err(format!(
                 "partner {p} of {target} changed although only {target} was unlinked"
             ));

@@ -75,7 +75,7 @@ pub enum PatchCause {
 /// document and on its JSON mirror alike (the UI docStore contract). A subscriber that sees
 /// `prev_rev` differ from the last revision it applied has missed events and must resync from
 /// a snapshot.
-#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize, specta::Type)]
 pub struct DocPatched {
     /// The live revision after the change.
     pub rev: Rev,
@@ -99,7 +99,7 @@ pub struct DocPatched {
 /// The live document changed in a way that could not be expressed as ops (a defensive path
 /// when open transactions had to be re-composed): every subscriber must resync from a
 /// snapshot at `rev` or later.
-#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize, specta::Type)]
 pub struct DocReset {
     /// The live revision after the change.
     pub rev: Rev,
@@ -110,7 +110,7 @@ pub struct DocReset {
 }
 
 /// A command panicked; its transaction was rolled back and the actor kept running.
-#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize, specta::Type)]
 pub struct CommandPanicked {
     /// The command's registry name.
     pub command: String,
@@ -128,7 +128,7 @@ pub struct CommandPanicked {
 /// "agent is editing" indicators. `tx.opened` comes when it opens (no items yet); `tx.locked`
 /// each time a gesture or proposal locks more items, after the `doc.patched` that touched them.
 /// After `Lagged`, re-read `edit.locks`.
-#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize, specta::Type)]
 pub struct TxActivity {
     /// The transaction.
     pub tx_id: TxId,
@@ -146,7 +146,7 @@ pub struct TxActivity {
 
 /// `tx.closed`: an open transaction ended and released its soft locks (WP-1B.09). Comes after
 /// the `doc.patched` of its commit or rollback.
-#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize, specta::Type)]
 pub struct TxEnded {
     /// The transaction.
     pub tx_id: TxId,

@@ -16,6 +16,9 @@ cutweave-model = { path = "../cutweave-model" }
 cutweave-ops = { path = "../cutweave-ops" }
 serde.workspace = true
 serde_json.workspace = true
+# `specta::Type` on the engine event payloads (TS `EventMap`, WP-1N.02); `usize` fields export as `number`.
+specta.workspace = true
+specta-typescript.workspace = true
 # Identity of the saved document a journal segment builds on (already a workspace dependency).
 sha2.workspace = true
 thiserror.workspace = true
