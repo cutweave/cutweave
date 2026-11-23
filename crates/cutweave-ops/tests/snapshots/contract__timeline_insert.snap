@@ -38,7 +38,7 @@ expression: "json!({\n    \"meta\": serde_json::to_value(meta).unwrap(), \"input
           "description": "The media to place."
         },
         "at": {
-          "description": "Timeline position of the clip's first frame, `>= 0`.",
+          "description": "Timeline position of the clip's first frame, `>= 0` (snapped to the frame grid).",
           "anyOf": [
             {
               "type": "integer",
@@ -94,7 +94,7 @@ expression: "json!({\n    \"meta\": serde_json::to_value(meta).unwrap(), \"input
               "type": "null"
             }
           ],
-          "description": "Clip length, `> 0`.",
+          "description": "Clip length, `> 0` (snapped to whole frames, at least one).",
           "default": null
         },
         "overlap": {
@@ -136,13 +136,25 @@ expression: "json!({\n    \"meta\": serde_json::to_value(meta).unwrap(), \"input
         "media",
         "at"
       ],
-      "description": "Inserts a media clip on a track at a time. `source_in` is the position in the media the clip\nstarts from and `duration` its length (defaults: the start of the media and the rest of it;\nstills default to five seconds). Times accept flicks, `\"1.5s\"`, `\"f:45\"` and timecodes,\nresolved against the sequence's frame rate. See the module docs for overlap and linked\naudio behaviour. Fails with `Locked` if the target track is locked.",
+      "description": "Inserts a media clip on a track at a time. `source_in` is the position in the media the clip\nstarts from and `duration` its length (defaults: the start of the media and the rest of it;\nstills default to five seconds). Times accept flicks, `\"1.5s\"`, `\"f:45\"` and timecodes,\nresolved against the sequence's frame rate. `at` and `duration` snap to the frame grid\n(nearest frame, ties later; at least one frame) and the result states the values used;\n`source_in` is a position in the media and is not snapped, nor is a default duration\n(the rest of the media, or five seconds for a still). See the module docs for overlap and linked\naudio behaviour. Fails with `Locked` if the target track is locked.",
       "title": "TimelineInsert"
     },
     "output_schema": {
       "type": "object",
       "additionalProperties": false,
       "properties": {
+        "at": {
+          "description": "The start that was used, snapped to the frame grid.",
+          "type": "integer",
+          "minimum": -9007199254740991,
+          "maximum": 9007199254740991
+        },
+        "duration": {
+          "description": "The clip length that was used, a whole number of frames.",
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 9007199254740991
+        },
         "clips": {
           "type": "array",
           "items": {
@@ -171,6 +183,8 @@ expression: "json!({\n    \"meta\": serde_json::to_value(meta).unwrap(), \"input
         }
       },
       "required": [
+        "at",
+        "duration",
         "clips",
         "linked_group",
         "created_tracks"
@@ -199,7 +213,7 @@ expression: "json!({\n    \"meta\": serde_json::to_value(meta).unwrap(), \"input
         "description": "The media to place."
       },
       "at": {
-        "description": "Timeline position of the clip's first frame, `>= 0`.",
+        "description": "Timeline position of the clip's first frame, `>= 0` (snapped to the frame grid).",
         "anyOf": [
           {
             "type": "integer",
@@ -255,7 +269,7 @@ expression: "json!({\n    \"meta\": serde_json::to_value(meta).unwrap(), \"input
             "type": "null"
           }
         ],
-        "description": "Clip length, `> 0`.",
+        "description": "Clip length, `> 0` (snapped to whole frames, at least one).",
         "default": null
       },
       "overlap": {
@@ -297,13 +311,25 @@ expression: "json!({\n    \"meta\": serde_json::to_value(meta).unwrap(), \"input
       "media",
       "at"
     ],
-    "description": "Inserts a media clip on a track at a time. `source_in` is the position in the media the clip\nstarts from and `duration` its length (defaults: the start of the media and the rest of it;\nstills default to five seconds). Times accept flicks, `\"1.5s\"`, `\"f:45\"` and timecodes,\nresolved against the sequence's frame rate. See the module docs for overlap and linked\naudio behaviour. Fails with `Locked` if the target track is locked.",
+    "description": "Inserts a media clip on a track at a time. `source_in` is the position in the media the clip\nstarts from and `duration` its length (defaults: the start of the media and the rest of it;\nstills default to five seconds). Times accept flicks, `\"1.5s\"`, `\"f:45\"` and timecodes,\nresolved against the sequence's frame rate. `at` and `duration` snap to the frame grid\n(nearest frame, ties later; at least one frame) and the result states the values used;\n`source_in` is a position in the media and is not snapped, nor is a default duration\n(the rest of the media, or five seconds for a still). See the module docs for overlap and linked\naudio behaviour. Fails with `Locked` if the target track is locked.",
     "title": "TimelineInsert"
   },
   "output": {
     "type": "object",
     "additionalProperties": false,
     "properties": {
+      "at": {
+        "description": "The start that was used, snapped to the frame grid.",
+        "type": "integer",
+        "minimum": -9007199254740991,
+        "maximum": 9007199254740991
+      },
+      "duration": {
+        "description": "The clip length that was used, a whole number of frames.",
+        "type": "integer",
+        "minimum": 0,
+        "maximum": 9007199254740991
+      },
       "clips": {
         "type": "array",
         "items": {
@@ -332,6 +358,8 @@ expression: "json!({\n    \"meta\": serde_json::to_value(meta).unwrap(), \"input
       }
     },
     "required": [
+      "at",
+      "duration",
       "clips",
       "linked_group",
       "created_tracks"

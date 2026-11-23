@@ -95,3 +95,20 @@ pub(crate) fn resolve_frame_time(
     rate.snap_to_frame(t, Rounding::Nearest)
         .map_err(|e| CmdError::invalid(pointer, e.to_string()))
 }
+
+/// Resolves a duration param and snaps it to a whole number of frames of the owning sequence
+/// (nearest, ties later), at least one frame. A zero or negative input is still `Invalid`:
+/// only a positive length that rounds below one frame becomes one frame.
+pub(crate) fn resolve_frame_duration(
+    pointer: &str,
+    input: TimeInput,
+    rate: FrameRate,
+) -> Result<Duration, CmdError> {
+    let d = resolve_duration(pointer, input, rate)?;
+    let t = Time::from_flicks(d.flicks()).map_err(|e| CmdError::invalid(pointer, e.to_string()))?;
+    let frames = rate.time_to_frame(t, Rounding::Nearest).max(1);
+    let snapped = rate
+        .frame_to_time(frames)
+        .map_err(|e| CmdError::invalid(pointer, e.to_string()))?;
+    Duration::try_from(snapped).map_err(|e| CmdError::invalid(pointer, e.to_string()))
+}
