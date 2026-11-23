@@ -19,7 +19,10 @@ use cutweave_model::{
 };
 
 use crate::{
-    item::{Located, conflict, duration, ensure_unlocked, members, time, unlink_orphans},
+    item::{
+        Located, conflict, duration, ensure_orphans_unlockable, ensure_unlocked, members, time,
+        unlink_orphans,
+    },
     util::resolve_frame_time,
 };
 
@@ -341,6 +344,10 @@ impl ClipTrim {
             }
         };
         ensure_unlocked(doc, &group)?;
+        if unlink {
+            let first = &group[0].item;
+            ensure_orphans_unlockable(doc, first.linked_group(), first.id())?;
+        }
         let excluded: BTreeSet<ItemId> = group.iter().map(|m| m.item.id()).collect();
         let mut clips = Vec::new();
         for m in group {

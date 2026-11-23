@@ -19,8 +19,8 @@
 //!   and are deleted together. `unlink: true` on `item.move` and `clip.trim` edits only the
 //!   given item and removes it from the group. A group never keeps a single member: an item
 //!   left alone in its group by `unlink` (or by `track.remove`) is unlinked in the same
-//!   transaction (a partner on a locked track is left as it is: `unlink` exists to avoid locked
-//!   tracks, and `track.remove` fails with `Locked` instead).
+//!   transaction. If that item sits on a locked track the edit fails with `Locked` naming that
+//!   track and applies nothing, like any edit touching a locked partner's track.
 //! * **No ripple.** Edits never shift other items; gaps stay gaps.
 //!
 //! ```text
@@ -137,7 +137,8 @@ pub(crate) fn duration(pointer: &str, flicks: i64) -> Result<cutweave_model::Dur
 /// Clears the `linked_group` of the last remaining member of every group in `groups` that is
 /// left with exactly one member (a group needs two to link anything). Called after an edit
 /// took members out of their groups, inside the same transaction so undo restores the link.
-/// A last member on a locked track is skipped (the transaction refuses to edit it).
+/// A last member on a locked track makes the transaction fail with `Locked`; commands check
+/// [`ensure_orphans_unlockable`] up front so `validate` reports it too.
 pub(crate) fn unlink_orphans(
     tx: &mut Tx<'_>,
     groups: impl IntoIterator<Item = GroupId>,
@@ -146,25 +147,44 @@ pub(crate) fn unlink_orphans(
     if groups.is_empty() {
         return Ok(());
     }
-    // (member, its track is locked)
-    let mut left: BTreeMap<GroupId, Vec<(ItemId, bool)>> = BTreeMap::new();
+    let mut left: BTreeMap<GroupId, Vec<ItemId>> = BTreeMap::new();
     for t in tx.doc().sequences.values().flat_map(|s| s.tracks.values()) {
         for item in t.items.iter() {
             if let Some(g) = item.linked_group().filter(|g| groups.contains(g)) {
-                left.entry(g).or_default().push((item.id(), t.locked));
+                left.entry(g).or_default().push(item.id());
             }
         }
     }
-    for (id, locked) in left.into_values().filter(|m| m.len() == 1).flatten() {
-        // A locked track's items are not edited; callers that must not leave such a group
-        // behind (`track.remove`) refuse earlier.
-        if locked {
-            continue;
-        }
+    for id in left.into_values().filter(|m| m.len() == 1).flatten() {
         tx.update_item(id, |item| {
             item.set_linked_group(None);
             Ok(())
         })?;
+    }
+    Ok(())
+}
+
+/// `Locked` (naming the partner's track) if taking `leaving` out of `group` would leave a
+/// single partner on a locked track: that partner would have to be unlinked, an edit of a
+/// locked track (arch §4.3).
+pub(crate) fn ensure_orphans_unlockable(
+    doc: &Project,
+    group: Option<GroupId>,
+    leaving: ItemId,
+) -> Result<(), CmdError> {
+    let Some(group) = group else {
+        return Ok(());
+    };
+    let mut rest = doc
+        .sequences
+        .values()
+        .flat_map(|s| s.tracks.values())
+        .flat_map(|t| t.items.iter().map(move |i| (t, i)))
+        .filter(|(_, i)| i.linked_group() == Some(group) && i.id() != leaving);
+    if let (Some((t, _)), None) = (rest.next(), rest.next())
+        && t.locked
+    {
+        return Err(CmdError::locked(EntityKind::Track, t.id));
     }
     Ok(())
 }
@@ -252,6 +272,9 @@ impl ItemMove {
             return Err(CmdError::invalid("/start", "the time must not be negative"));
         }
         ensure_unlocked(doc, &group)?;
+        if unlink {
+            ensure_orphans_unlockable(doc, primary.item.linked_group(), primary.item.id())?;
+        }
         let target = match self.to_track {
             None => primary.track,
             Some(t) => {

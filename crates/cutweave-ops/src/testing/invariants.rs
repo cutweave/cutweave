@@ -4,7 +4,7 @@
 //! [`crate::item`]):
 //!
 //! - a linked group never spans sequences (checked by [`Project::validate`]);
-//! - no linked group has a single member (but for one on a locked track): edits that take members out of a group (`unlink`,
+//! - no linked group has a single member (`unlink: true` on an item whose partner is on a locked track fails with `Locked`): edits that take members out of a group (`unlink`,
 //!   `track.remove`) unlink the last one left;
 //! - linked partners move, trim, split and are deleted together: after a successful
 //!   `item.move` every partner moved by the same offset; after `clip.trim` every partner's
@@ -36,17 +36,15 @@ pub fn check_invariants(doc: &Project) -> Result<(), String> {
             }
         }
     }
-    // (members, first member, that member's track is locked). A lone member on a locked track
-    // is tolerated: `unlink: true` deliberately avoids editing locked partners.
-    let mut sizes: BTreeMap<GroupId, (usize, ItemId, bool)> = BTreeMap::new();
+    let mut sizes: BTreeMap<GroupId, (usize, ItemId)> = BTreeMap::new();
     for t in doc.sequences.values().flat_map(|s| s.tracks.values()) {
         for i in t.items.iter() {
             if let Some(g) = i.linked_group() {
-                sizes.entry(g).or_insert((0, i.id(), t.locked)).0 += 1;
+                sizes.entry(g).or_insert((0, i.id())).0 += 1;
             }
         }
     }
-    if let Some((g, (_, only, _))) = sizes.iter().find(|(_, (n, _, locked))| *n == 1 && !*locked) {
+    if let Some((g, (_, only))) = sizes.iter().find(|(_, (n, _))| *n == 1) {
         return Err(format!("linked group {g} has a single member, {only}"));
     }
     Ok(())

@@ -482,13 +482,22 @@ fn trim_unlink_edits_one_clip_and_drops_it_from_the_group() {
 }
 
 #[test]
-fn trim_on_a_locked_track_is_locked_and_unlink_avoids_a_locked_partner() {
+fn trim_on_a_locked_track_is_locked_and_unlink_of_a_locked_partner_is_locked_too() {
     let (mut h, p, _, v, _) = setup();
     h.ok("track.set", json!({"track": p.audio, "locked": true}));
     assert_code(
         h.run("clip.trim", json!({"item": v, "edge": "end", "to": "5s"})),
         "locked",
     );
+    // `unlink` would leave the locked partner alone in its group: `Locked`, nothing applied.
+    assert_code(
+        h.run(
+            "clip.trim",
+            json!({"item": v, "edge": "end", "to": "5s", "unlink": true}),
+        ),
+        "locked",
+    );
+    h.ok("track.set", json!({"track": p.audio, "locked": false}));
     h.ok(
         "clip.trim",
         json!({"item": v, "edge": "end", "to": "5s", "unlink": true}),
