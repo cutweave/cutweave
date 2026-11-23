@@ -33,7 +33,7 @@ check:
     pnpm format:check
     pnpm typecheck
     just bridge --fixture
-    pnpm test
+    python scripts/run-vitest.py
     cargo xtask gen --check
 
 # WBS lint (offline): parse docs/wbs, check ids/deps/cycles/sizes, verify docs/wbs/wbs.json snapshot
