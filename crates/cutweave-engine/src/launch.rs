@@ -6,7 +6,8 @@
 //! cutweave engine [--headless] --port N [--token-stdin] [--project P] [--run-dir D]
 //!                 [--allow-origin O]... [--allow-root R]... [--deterministic-ids SEED]
 //!                 [--i-know-this-is-a-test] [--log-dir D | --no-log] [--handshake-timeout-ms MS]
-//! env    : CUTWEAVE_DETERMINISTIC_IDS=SEED (the flag wins)
+//!                 [--dev-stub-media]
+//! env    : CUTWEAVE_DETERMINISTIC_IDS=SEED (the flag wins), CUTWEAVE_DEV_STUB_MEDIA=1
 //! stdin : Gui mode: first line = the UI credential (never argv, env, disk or logs);
 //!          EOF afterwards = stop (orphan prevention)
 //! stdout : JSON lines only: {"event":"ready","port":P,"pid":N,"version":"..."} once serving,
@@ -60,7 +61,8 @@ const MAX_HANDSHAKE_BYTES: u64 = 1024;
 /// Usage text.
 pub const USAGE: &str = "usage: engine [--headless] [--port N] [--token-stdin] [--project P] \
 [--run-dir D] [--allow-origin O]... [--allow-root R]... [--deterministic-ids SEED] \
-[--i-know-this-is-a-test] [--log-dir D | --no-log] [--handshake-timeout-ms MS]";
+[--i-know-this-is-a-test] [--log-dir D | --no-log] [--handshake-timeout-ms MS] \
+[--dev-stub-media]";
 
 /// Parsed launch arguments: WP-1I.01's [`LaunchArgs`] plus the engine's own flags.
 #[derive(Debug, PartialEq, Eq)]
@@ -79,6 +81,8 @@ pub struct EngineArgs {
     pub no_log: bool,
     /// `--handshake-timeout-ms MS` (tests; default 5000).
     pub handshake_timeout: Duration,
+    /// `--dev-stub-media` or `CUTWEAVE_DEV_STUB_MEDIA=1`: dev-only fake media probing.
+    pub dev_stub_media: bool,
 }
 
 impl EngineArgs {
@@ -93,6 +97,7 @@ impl EngineArgs {
             log_dir: None,
             no_log: false,
             handshake_timeout: DEFAULT_HANDSHAKE_TIMEOUT,
+            dev_stub_media: false,
         };
         let mut it = args.into_iter();
         while let Some(arg) = it.next() {
@@ -109,6 +114,7 @@ impl EngineArgs {
                 "--allow-root" => out.allow_roots.push(PathBuf::from(value("--allow-root")?)),
                 "--log-dir" => out.log_dir = Some(PathBuf::from(value("--log-dir")?)),
                 "--no-log" => out.no_log = true,
+                "--dev-stub-media" => out.dev_stub_media = true,
                 "--handshake-timeout-ms" => {
                     let ms: u64 = value("--handshake-timeout-ms")?
                         .parse()
@@ -142,6 +148,14 @@ impl EngineArgs {
             );
         }
         Ok(out)
+    }
+
+    /// Turns the dev stub media backend on when `env` (the value of
+    /// [`DEV_STUB_MEDIA_ENV`](crate::DEV_STUB_MEDIA_ENV)) asks for it; the flag always wins.
+    #[must_use]
+    pub fn with_dev_stub_env(mut self, env: Option<&str>) -> EngineArgs {
+        self.dev_stub_media |= crate::dev_media::env_enables(env);
+        self
     }
 
     /// Refuses deterministic ids in `Gui` mode unless `--i-know-this-is-a-test` was passed:
@@ -349,6 +363,9 @@ fn run_logged(
         ui_token,
         deterministic_ids: args.deterministic_ids,
         allowed_roots: args.allow_roots.clone(),
+        subsystems: args
+            .dev_stub_media
+            .then(|| Box::new(crate::DevStubMedia) as Box<dyn crate::Subsystems>),
         api: ApiOptions {
             run_dir: args.base.run_dir.clone(),
             allowed_origins: args.base.allowed_origins.clone(),
@@ -370,6 +387,13 @@ fn run_logged(
             return fail(stdout, e.code(), e.exit_code(), &e.to_string(), extra);
         }
     };
+    if args.dev_stub_media {
+        tracing::warn!(
+            "DEV ONLY: stub media backend enabled; imported files get made-up probe data and \
+             nothing can be decoded (real media needs the FFmpeg backend, WP-1I.05)"
+        );
+        eprintln!("cutweave engine: warning: dev stub media is on (fake media probing, dev only)");
+    }
     let port = engine.port().unwrap_or(0);
     let ready = ready_line(port, std::process::id(), VERSION);
     if writeln!(stdout, "{ready}")
@@ -424,8 +448,13 @@ async fn shutdown_signal() {
 pub fn main() -> i32 {
     let mut stdout = std::io::stdout();
     let env = std::env::var(DETERMINISTIC_IDS_ENV).ok();
+    let stub_env = std::env::var(crate::DEV_STUB_MEDIA_ENV).ok();
     match EngineArgs::parse_with_env(std::env::args().skip(1), env.as_deref()) {
-        Ok(args) => run(&args, std::io::stdin(), &mut stdout),
+        Ok(args) => run(
+            &args.with_dev_stub_env(stub_env.as_deref()),
+            std::io::stdin(),
+            &mut stdout,
+        ),
         Err(message) => fail(
             &mut stdout,
             "usage",
