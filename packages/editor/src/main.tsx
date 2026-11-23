@@ -42,8 +42,8 @@ if (bridge) {
     onAutosaveFailed: (message) =>
       toastStore.getState().push({
         tone: "warning",
-        title: i18n.t("project.autosaveFailedTitle"),
-        message: i18n.t("project.autosaveFailed", { message }),
+        title: i18n.t("projectUi.autosaveFailedTitle"),
+        message: i18n.t("projectUi.autosaveFailed", { message }),
       }),
   });
   // The e2e suites drive the editor's connection; only when the desktop app enables its hooks.

@@ -18,9 +18,9 @@ import {
 import { projectController } from "../session/useProject.ts";
 
 const NAME_PROBLEM: Record<NameProblem, TKey> = {
-  empty: "project.new.errors.nameEmpty",
-  invalid: "project.new.errors.nameInvalid",
-  long: "project.new.errors.nameLong",
+  empty: "projectUi.new.errors.nameEmpty",
+  invalid: "projectUi.new.errors.nameInvalid",
+  long: "projectUi.new.errors.nameLong",
 };
 
 /** Restore or discard the unsaved work a crashed session left behind. Not dismissable. */
@@ -38,7 +38,7 @@ function RecoveryDialog() {
       open
       onOpenChange={() => {}}
       dirty
-      title={t("project.recovery.title")}
+      title={t("projectUi.recovery.title")}
       footer={
         <>
           <Button
@@ -47,7 +47,7 @@ function RecoveryDialog() {
             disabled={busy}
             onClick={() => void controller.discardRecovery()}
           >
-            {t("project.recovery.discard")}
+            {t("projectUi.recovery.discard")}
           </Button>
           <Button
             variant="primary"
@@ -55,20 +55,20 @@ function RecoveryDialog() {
             disabled={busy}
             onClick={() => void controller.recover()}
           >
-            {t("project.recovery.restoreCount", { count, time })}
+            {t("projectUi.recovery.restoreCount", { count, time })}
           </Button>
         </>
       }
     >
       <p className="body">
         {recovery.records === 1
-          ? t("project.recovery.bodyOne", { name: projectName, time })
-          : t("project.recovery.body", { name: projectName, count, time })}
+          ? t("projectUi.recovery.bodyOne", { name: projectName, time })
+          : t("projectUi.recovery.body", { name: projectName, count, time })}
       </p>
       {recovery.damaged ? (
-        <DialogNote icon="triangle-alert">{t("project.recovery.damaged")}</DialogNote>
+        <DialogNote icon="triangle-alert">{t("projectUi.recovery.damaged")}</DialogNote>
       ) : null}
-      <DialogNote>{t("project.recovery.note")}</DialogNote>
+      <DialogNote>{t("projectUi.recovery.note")}</DialogNote>
     </Dialog>
   );
 }
@@ -84,18 +84,18 @@ function UnsavedDialog() {
       onOpenChange={(open) => {
         if (!open) prompt.resolve("cancel");
       }}
-      title={t("project.unsaved.title", { name: prompt.project })}
-      description={t("project.unsaved.body")}
+      title={t("projectUi.unsaved.title", { name: prompt.project })}
+      description={t("projectUi.unsaved.body")}
       footer={
         <>
           <Button variant="ghost" size="lg" onClick={() => prompt.resolve("cancel")}>
-            {t("project.unsaved.cancel")}
+            {t("projectUi.unsaved.cancel")}
           </Button>
           <Button variant="danger" size="lg" onClick={() => prompt.resolve("discard")}>
-            {t("project.unsaved.discard")}
+            {t("projectUi.unsaved.discard")}
           </Button>
           <Button variant="primary" size="lg" onClick={() => prompt.resolve("save")}>
-            {t("project.unsaved.save")}
+            {t("projectUi.unsaved.save")}
           </Button>
         </>
       }
@@ -119,7 +119,7 @@ function NamingForm({ prompt }: { prompt: NamingPrompt }) {
     problem !== null
       ? NAME_PROBLEM[problem]
       : missingParent
-        ? "project.new.errors.locationMissing"
+        ? "projectUi.new.errors.locationMissing"
         : null;
   const isNew = prompt.mode === "new";
 
@@ -136,35 +136,35 @@ function NamingForm({ prompt }: { prompt: NamingPrompt }) {
         if (!open) prompt.resolve(null);
       }}
       onSubmit={submit}
-      title={t(isNew ? "project.new.title" : "project.new.saveAsTitle")}
+      title={t(isNew ? "projectUi.new.title" : "projectUi.new.saveAsTitle")}
       footer={
         <>
           <Button variant="ghost" size="lg" onClick={() => prompt.resolve(null)}>
-            {t("project.new.cancel")}
+            {t("projectUi.new.cancel")}
           </Button>
           <Button variant="primary" size="lg" onClick={submit}>
-            {t(isNew ? "project.new.create" : "project.new.save")}
+            {t(isNew ? "projectUi.new.create" : "projectUi.new.save")}
           </Button>
         </>
       }
     >
-      <InspectorRow label={t("project.new.name")} htmlFor={nameId}>
+      <InspectorRow label={t("projectUi.new.name")} htmlFor={nameId}>
         <TextField
           id={nameId}
           value={name}
           onChange={setName}
-          placeholder={t("project.new.namePlaceholder")}
+          placeholder={t("projectUi.new.namePlaceholder")}
           invalid={submitted && problem !== null}
           // The first field takes the focus when the dialog opens.
           autoFocus
         />
       </InspectorRow>
-      <InspectorRow label={t("project.new.location")} htmlFor={parentId}>
+      <InspectorRow label={t("projectUi.new.location")} htmlFor={parentId}>
         <TextField
           id={parentId}
           value={parent}
           onChange={setParent}
-          placeholder={t("project.new.locationNone")}
+          placeholder={t("projectUi.new.locationNone")}
           invalid={submitted && missingParent}
         />
         <Button
@@ -175,7 +175,7 @@ function NamingForm({ prompt }: { prompt: NamingPrompt }) {
             });
           }}
         >
-          {t("project.new.choose")}
+          {t("projectUi.new.choose")}
         </Button>
       </InspectorRow>
       {submitted && error !== null ? (
@@ -183,7 +183,7 @@ function NamingForm({ prompt }: { prompt: NamingPrompt }) {
           {t(error)}
         </p>
       ) : (
-        <DialogNote>{t("project.new.hint", { name: name.trim() || "…" })}</DialogNote>
+        <DialogNote>{t("projectUi.new.hint", { name: name.trim() || "…" })}</DialogNote>
       )}
     </Dialog>
   );
@@ -214,8 +214,8 @@ export function ReadOnlyBanner() {
   return (
     <div className="cw-banner" role="status">
       <span className="cw-banner__text">
-        <span className="body-strong">{t("project.readOnlyTitle")}</span>
-        <span className="body">{t("project.readOnlyBody")}</span>
+        <span className="body-strong">{t("projectUi.readOnlyTitle")}</span>
+        <span className="body">{t("projectUi.readOnlyBody")}</span>
       </span>
       <Button variant="secondary" onClick={() => void controller.saveAs()}>
         {t("topbar.saveAs")}

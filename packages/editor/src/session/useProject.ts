@@ -89,11 +89,11 @@ export function useWindowTitle(): void {
   const dirty = useUnsavedWork();
   const engineName = useSessionStore((s) => s.name);
   const docName = useDocStore((s) => s.project?.meta.name ?? null);
-  const name = docName ?? (engineName === "" ? t("project.untitled") : engineName);
+  const name = docName ?? (engineName === "" ? t("projectUi.untitled") : engineName);
   useEffect(() => {
     // Without an engine (plain `vite` dev) there is no project to name.
     document.title = known
-      ? t(dirty ? "project.windowTitleDirty" : "project.windowTitle", { name })
+      ? t(dirty ? "projectUi.windowTitleDirty" : "projectUi.windowTitle", { name })
       : t("app.windowTitle");
   }, [t, known, dirty, name]);
 }

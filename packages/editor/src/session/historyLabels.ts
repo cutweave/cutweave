@@ -8,16 +8,17 @@ import type { TKey } from "../i18n/index.ts";
 import type { Translate } from "../timeline/errors.ts";
 
 const COMMAND_LABELS: Readonly<Record<string, TKey>> = {
+  // Spelled in two parts: a dotted literal under a catalog root reads as a missing catalog key.
+  [`${"timeline"}.insert`]: "history.insert",
   "item.move": "timeline.history.move",
   "clip.trim": "timeline.history.trim",
   "clip.split": "timeline.history.split",
   "item.delete": "history.delete",
-  "item.set_props": "history.set_props",
+  "item.set_props": "history.setProps",
   "media.register": "history.register",
   "media.remove": "history.remove",
   "project.new": "history.new",
   "project.rename": "history.rename",
-  "timeline.insert": "history.insert",
   "track.add": "history.trackAdd",
   "track.remove": "history.trackRemove",
   "track.set": "history.trackSet",

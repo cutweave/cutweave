@@ -126,7 +126,7 @@ export class ProjectController {
     const named = doc.getState().project?.meta.name;
     if (named !== undefined && named !== "") return named;
     const engine = session.getState().name;
-    return engine === "" ? t("project.untitled") : engine;
+    return engine === "" ? t("projectUi.untitled") : engine;
   }
 
   /** A command over the editor's connection (results are cast by each flow). */
@@ -212,7 +212,7 @@ export class ProjectController {
       this.#applyStatus(out.project);
       return true;
     } catch (error) {
-      this.#fail("project.failed.save", error);
+      this.#fail("projectUi.failed.save", error);
       return false;
     }
   }
@@ -269,7 +269,7 @@ export class ProjectController {
         await this.#remember(saved.path);
         return true;
       } catch (error) {
-        this.#fail("project.failed.create", error);
+        this.#fail("projectUi.failed.create", error);
         return false;
       }
     });
@@ -292,7 +292,7 @@ export class ProjectController {
         this.#reportOpened(out);
         return true;
       } catch (error) {
-        this.#fail("project.failed.open", error);
+        this.#fail("projectUi.failed.open", error);
         if (path !== undefined) void this.#forget(path);
         return false;
       }
@@ -318,18 +318,18 @@ export class ProjectController {
     if (count > 0) {
       toasts.getState().push({
         tone: "warning",
-        title: t("project.missingMediaTitle"),
+        title: t("projectUi.missingMediaTitle"),
         message:
           count === 1
-            ? t("project.missingMediaOne")
-            : t("project.missingMedia", { count: String(count) }),
+            ? t("projectUi.missingMediaOne")
+            : t("projectUi.missingMedia", { count: String(count) }),
       });
     }
     if (out.migrated_from !== null) {
       toasts.getState().push({
         tone: "info",
-        title: t("project.migratedTitle"),
-        message: t("project.migrated", {
+        title: t("projectUi.migratedTitle"),
+        message: t("projectUi.migrated", {
           name: out.project.name,
           from: String(out.migrated_from),
         }),
@@ -342,7 +342,7 @@ export class ProjectController {
     const { session } = this.#deps;
     const state = session.getState();
     if (state.readOnly !== null) {
-      this.#fail("project.failed.save", new RpcError("unsupported", "the project is read-only"));
+      this.#fail("projectUi.failed.save", new RpcError("unsupported", "the project is read-only"));
       return false;
     }
     if (state.path === null) return this.saveAs();
@@ -351,7 +351,7 @@ export class ProjectController {
         await this.#call("project.save", {});
         return true;
       } catch (error) {
-        this.#fail("project.failed.save", error);
+        this.#fail("projectUi.failed.save", error);
         return false;
       }
     });
@@ -370,7 +370,7 @@ export class ProjectController {
         await this.#remember(out.path);
         return true;
       } catch (error) {
-        this.#fail("project.failed.save", error);
+        this.#fail("projectUi.failed.save", error);
         return false;
       }
     });
@@ -397,12 +397,12 @@ export class ProjectController {
         this.#applyStatus(out.project);
         toasts.getState().push({
           tone: "success",
-          title: t("project.recovered.title"),
-          message: t("project.recovered.body", { count: String(out.applied) }),
+          title: t("projectUi.recovered.title"),
+          message: t("projectUi.recovered.body", { count: String(out.applied) }),
         });
         return true;
       } catch (error) {
-        this.#fail("project.failed.recover", error);
+        this.#fail("projectUi.failed.recover", error);
         return false;
       }
     });
@@ -418,7 +418,7 @@ export class ProjectController {
         this.#applyStatus(out.project);
         return true;
       } catch (error) {
-        this.#fail("project.failed.discard", error);
+        this.#fail("projectUi.failed.discard", error);
         return false;
       }
     });
@@ -432,7 +432,7 @@ export class ProjectController {
       await this.#call("edit.undo", {});
       return true;
     } catch (error) {
-      this.#fail("project.failed.undo", error);
+      this.#fail("projectUi.failed.undo", error);
       return false;
     }
   }
@@ -443,7 +443,7 @@ export class ProjectController {
       await this.#call("edit.redo", {});
       return true;
     } catch (error) {
-      this.#fail("project.failed.redo", error);
+      this.#fail("projectUi.failed.redo", error);
       return false;
     }
   }

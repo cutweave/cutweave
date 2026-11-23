@@ -11,15 +11,15 @@ export function asRpcError(error: unknown): RpcError {
 /** Why a project command was refused, for a toast body. */
 export function describeProjectError(error: RpcError, t: Translate): string {
   const message = error.message;
-  if (/open in another Cutweave process/i.test(message)) return t("project.reason.locked");
+  if (/open in another Cutweave process/i.test(message)) return t("projectUi.reason.locked");
   if (/no \.cutweave project document found|several \.cutweave documents/i.test(message)) {
-    return t("project.reason.missing");
+    return t("projectUi.reason.missing");
   }
-  if (/project already exists/i.test(message)) return t("project.reason.exists");
+  if (/project already exists/i.test(message)) return t("projectUi.reason.exists");
   if (error.code === "unsupported" && /read-only/i.test(message)) {
-    return t("project.reason.readOnly");
+    return t("projectUi.reason.readOnly");
   }
-  return t("project.reason.other", { message });
+  return t("projectUi.reason.other", { message });
 }
 
 /** HH:MM (24 hour) of a wall-clock time in milliseconds, for "last at 14:05". */

@@ -170,7 +170,7 @@
         "video": "Video",
         "audio": "Audio",
         "image": "Image",
-        "sequence_ref": "Sequence"
+        "sequence": "Sequence"
       },
       "duration": "Duration",
       "resolution": "Resolution",
@@ -179,12 +179,11 @@
       "audioStream": "Audio",
       "audioValue": "{{rate}} Hz, {{channels}} ch",
       "path": "File",
-      "offline": "File not found",
       "placeholder": "Placeholder data. The FFmpeg backend is not installed, so this probe is made up."
     }
   },
   "history": {
-    "set_props": "Edit properties",
+    "setProps": "Edit properties",
     "register": "Import media",
     "remove": "Remove media",
     "new": "New project",
@@ -196,7 +195,7 @@
     "trackSet": "Change track",
     "restore": "Restore checkpoint"
   },
-  "project": {
+  "projectUi": {
     "untitled": "Untitled project",
     "windowTitle": "{{name}} — Cutweave",
     "windowTitleDirty": "• {{name}} — Cutweave",
@@ -233,7 +232,6 @@
       "body": "Cutweave closed before {{name}} was saved. {{count}} edits from {{time}} can be restored.",
       "bodyOne": "Cutweave closed before {{name}} was saved. 1 edit from {{time}} can be restored.",
       "damaged": "The journal ends with a damaged entry. Everything before it can be restored.",
-      "restore": "Restore unsaved changes",
       "restoreCount": "Restore unsaved changes ({{count}} edits, last at {{time}})",
       "discard": "Discard",
       "note": "Discard keeps the project as you last saved it. The discarded edits are kept in the project's backups folder."

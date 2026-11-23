@@ -33,6 +33,13 @@ const TIME_ERROR: Record<TimeInputError, TKey> = {
   invalid: "inspector.time.frames",
 };
 
+const MEDIA_KIND: Record<MediaAsset["kind"], TKey> = {
+  video: "inspector.media.kinds.video",
+  audio: "inspector.media.kinds.audio",
+  image: "inspector.media.kinds.image",
+  sequence_ref: "inspector.media.kinds.sequence",
+};
+
 /** How long a committed value stays on screen waiting for the document's patch. */
 const COMMIT_SETTLE_MS = 500;
 
@@ -333,7 +340,7 @@ function MediaInfo({ media }: { readonly media: MediaAsset }) {
             </InspectorRow>
           )}
           <InspectorRow label={t("inspector.media.kind")}>
-            <span className="body">{t(`inspector.media.kinds.${media.kind}`)}</span>
+            <span className="body">{t(MEDIA_KIND[media.kind])}</span>
           </InspectorRow>
           {media.probe.duration === null ? null : (
             <InspectorRow label={t("inspector.media.duration")}>
