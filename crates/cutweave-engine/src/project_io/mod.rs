@@ -659,6 +659,9 @@ impl ProjectStore {
         }
         make_layout_dirs(&layout)?;
         let acquired = ProjectLock::acquire(&layout, false)?;
+        // Before anything is written as a document: a failed copy leaves no project at the
+        // target, and never touches the original.
+        copy_generated(&self.layout.generated_dir(), &layout.generated_dir())?;
         Ok(ProjectStore::writable(layout, acquired.lock))
     }
 
@@ -692,6 +695,13 @@ impl ProjectStore {
     }
 
     /// The project folder layout.
+    /// SHA-256 (hex) of the document as last read from or written to disk.
+    #[must_use]
+    pub fn saved_sha256(&self) -> Option<&str> {
+        self.disk_sha256.as_deref()
+    }
+
+    /// The folder layout (document, `.cutweave/` directories).
     #[must_use]
     pub fn layout(&self) -> &ProjectLayout {
         &self.layout
@@ -745,6 +755,47 @@ fn make_layout_dirs(layout: &ProjectLayout) -> Result<(), ProjectIoError> {
 }
 
 /// Finds the document for `path`: a `.cutweave` file, or a folder holding one.
+/// Copies the `generated/` tree (AI outputs, recordings) of the project being saved to the
+/// new folder (save-as copies; the original keeps its files). Absent source: nothing to do.
+/// The copy is staged next to its final place and renamed in, so a failure (disk full, a
+/// vanished file) leaves the staging directory removed and the original untouched.
+fn copy_generated(from: &Path, to: &Path) -> Result<(), ProjectIoError> {
+    match fs::symlink_metadata(from) {
+        Ok(meta) if meta.is_dir() => {}
+        Ok(_) => return Ok(()),
+        Err(e) if e.kind() == io::ErrorKind::NotFound => return Ok(()),
+        Err(e) => return Err(ProjectIoError::io("stat", from, e)),
+    }
+    let staging = to.with_file_name("generated.copying");
+    let _ = fs::remove_dir_all(&staging);
+    let result = copy_tree(from, &staging).and_then(|()| {
+        // `make_layout_dirs` created `to` empty; swap the finished copy in.
+        let _ = fs::remove_dir(to);
+        fs::rename(&staging, to)
+    });
+    if let Err(e) = result {
+        let _ = fs::remove_dir_all(&staging);
+        return Err(ProjectIoError::io("copy generated files", from, e));
+    }
+    Ok(())
+}
+
+fn copy_tree(from: &Path, to: &Path) -> io::Result<()> {
+    fs::create_dir_all(to)?;
+    for entry in fs::read_dir(from)? {
+        let entry = entry?;
+        let (src, dst) = (entry.path(), to.join(entry.file_name()));
+        let kind = entry.file_type()?;
+        if kind.is_dir() {
+            copy_tree(&src, &dst)?;
+        } else if kind.is_file() {
+            fs::copy(&src, &dst)?;
+        }
+        // Symlinks are not followed or recreated.
+    }
+    Ok(())
+}
+
 fn locate(path: &Path) -> Result<ProjectLayout, ProjectIoError> {
     let meta = fs::metadata(path).map_err(|e| match e.kind() {
         io::ErrorKind::NotFound => ProjectIoError::NotFound(path.to_path_buf()),
