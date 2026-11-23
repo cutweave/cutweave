@@ -222,10 +222,41 @@ fn move_on_a_locked_source_target_or_partner_track_is_locked() {
         h.run("item.move", json!({"item": v, "start": "3s"})),
         "locked",
     );
+    // `unlink` would leave the locked partner alone in its group: `Locked`, nothing applied
+    // (`H::run` asserts the document is unchanged), and the link survives lock changes.
+    let before = h.doc();
+    let err = h
+        .run(
+            "item.move",
+            json!({"item": v, "start": "3s", "unlink": true}),
+        )
+        .unwrap_err();
+    assert_eq!(err.code(), "locked");
+    assert_eq!(h.doc(), before);
+    h.ok("track.set", json!({"track": p.audio, "locked": false}));
     h.ok(
         "item.move",
         json!({"item": v, "start": "3s", "unlink": true}),
     );
+}
+
+#[test]
+fn unlink_with_a_locked_partner_never_leaves_a_lone_member_after_unlock_and_undo() {
+    // Regression (registry_props seed d36d3236...): a lone member on a locked track used to be
+    // tolerated and became a single-member group once the lock was undone.
+    let (mut h, p, _, v, a) = setup();
+    h.ok("track.set", json!({"track": p.audio, "locked": true}));
+    assert_code(
+        h.run(
+            "item.move",
+            json!({"item": v, "start": "3s", "unlink": true}),
+        ),
+        "locked",
+    );
+    h.ok("track.set", json!({"track": p.audio, "locked": false}));
+    let doc = h.doc();
+    let group = |i| doc.find_item(&i).unwrap().item.linked_group();
+    assert!(group(v).is_some() && group(v) == group(a));
 }
 
 #[test]
