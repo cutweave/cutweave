@@ -213,10 +213,10 @@ struct Session {
 fn stub_media(dir: &Path) -> Vec<String> {
     let media = dir.join("media");
     std::fs::create_dir_all(&media).unwrap();
-    (1..=3)
+    (1..=3_u8)
         .map(|n| {
             let clip = media.join(format!("clip{n}.mp4"));
-            std::fs::write(&clip, vec![n as u8; 4096]).unwrap();
+            std::fs::write(&clip, vec![n; 4096]).unwrap();
             clip.to_string_lossy().into_owned()
         })
         .collect()
