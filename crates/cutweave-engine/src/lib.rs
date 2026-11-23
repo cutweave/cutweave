@@ -18,6 +18,7 @@
 
 pub mod autosave;
 pub mod config;
+#[cfg(feature = "testing")]
 pub mod determinism;
 pub mod dispatch;
 mod engine;

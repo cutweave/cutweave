@@ -23,6 +23,11 @@
 //! assert_eq!(a.sha256, b.sha256);
 //! ```
 //!
+//! Behind the cargo feature `testing` of `cutweave-engine`: enable it with
+//! `cutweave-engine = { path = "../cutweave-engine", features = ["testing"] }` in the
+//! consuming crate's `[dev-dependencies]` (WP-1O.02, WP-1O.04). It panics on failure and is
+//! never part of a normal build.
+//!
 //! The harness is plain code (no test framework) and has no new dependencies, so any crate's
 //! tests can call it.
 

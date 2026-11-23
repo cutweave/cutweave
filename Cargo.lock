@@ -607,6 +607,7 @@ dependencies = [
  "criterion",
  "cutweave-api",
  "cutweave-commands",
+ "cutweave-engine",
  "cutweave-jobs",
  "cutweave-model",
  "cutweave-ops",
