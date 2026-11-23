@@ -10,19 +10,28 @@ export type {
   Timers,
   WebSocketLike,
 } from "./connection.ts";
-export { errorFromWire, RpcConnection, tokenSubprotocol } from "./connection.ts";
+export {
+  errorFromWire,
+  isTransactionBound,
+  isTransactionLost,
+  RpcConnection,
+  TRANSACTION_LOST,
+  tokenSubprotocol,
+} from "./connection.ts";
 export type {
   ConnectionEvent,
   ConnectionState,
   ReconnectPolicy,
   SocketLoss,
   StateListener,
+  SupervisorHint,
 } from "./connection-state.ts";
 export {
   backoffPolicy,
   CLOSE_RESYNC_REQUIRED,
   ConnectionMachine,
   nextState,
+  supervisedPolicy,
 } from "./connection-state.ts";
 export type { ApplyOutcome, ApplyResult, DocSink, DocState } from "./doc-mirror.ts";
 export { applyDocEvent, DocMirror, docFromSnapshot, EMPTY_DOC } from "./doc-mirror.ts";
