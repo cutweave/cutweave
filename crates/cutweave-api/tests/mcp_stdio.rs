@@ -442,6 +442,9 @@ async fn the_proxy_answers_requests_sent_before_stdin_closed() {
     {
         answers.push(serde_json::from_str::<Value>(&line).unwrap()["id"].clone());
     }
+    // Every request sent before stdin closed is answered. JSON-RPC lets responses to concurrent
+    // requests arrive in any order, so compare them as a set.
+    answers.sort_by_key(|id| id.as_i64());
     assert_eq!(answers, [json!(1), json!(2), json!(3)]);
     assert_eq!(proxy.await.unwrap(), ProxyEnd::InputClosed);
 }
