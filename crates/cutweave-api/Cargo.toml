@@ -31,6 +31,10 @@ tracing = { version = "0.1.44", default-features = false, features = ["std"] }
 # WP-1I.02: `SinkExt::feed`/`flush`, so a WebSocket writes queued responses and events with one
 # flush (already in the graph through axum's `ws`; same license, pinned like the lockfile).
 futures-util = { version = "=0.3.34", default-features = false, features = ["sink", "std"] }
+# WP-1J.01: the MCP server (`/mcp`, arch §14, ADR-0009). The official Rust SDK, pinned exactly
+# (3.x churns between minors) at the version and feature set Spike S5 validated against both
+# spec revisions (2025-11-25 and 2026-07-28). Streamable HTTP server only; stdio is WP-1J.03.
+rmcp = { version = "=3.11.0", default-features = false, features = ["server", "transport-streamable-http-server"] }
 
 [dev-dependencies]
 tempfile = "3.27.0"
@@ -44,6 +48,12 @@ cutweave-model = { path = "../cutweave-model", features = ["testing"] }
 cutweave-ops = { path = "../cutweave-ops", features = ["testing"] }
 tokio-tungstenite = "=0.29.0"
 proptest.workspace = true
+# WP-1J.01 MCP tests (on the engine's production `/mcp` mount): the analysis-job types of the fake
+# media subsystem, rmcp's own Streamable HTTP client (reqwest, no TLS: loopback only) and the
+# `tools/list` snapshot.
+cutweave-jobs = { path = "../cutweave-jobs" }
+rmcp = { version = "=3.11.0", default-features = false, features = ["server", "transport-streamable-http-server", "client", "transport-streamable-http-client-reqwest"] }
+insta = { workspace = true }
 
 [lints]
 workspace = true

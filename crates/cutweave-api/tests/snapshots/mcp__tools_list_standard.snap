@@ -1,0 +1,846 @@
+---
+source: crates/cutweave-api/tests/mcp.rs
+expression: catalog.tools_json()
+---
+{
+  "tools": [
+    {
+      "name": "clip_split",
+      "description": "Split a clip (and its linked partners) at a timeline time",
+      "inputSchema": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "item": {
+            "type": "string",
+            "pattern": "^itm_[0-9a-f]{32}$",
+            "description": "The clip."
+          },
+          "at": {
+            "description": "Timeline time to split at: strictly inside the clip.",
+            "anyOf": [
+              {
+                "type": "integer",
+                "minimum": -9007199254740991,
+                "maximum": 9007199254740991
+              },
+              {
+                "type": "string",
+                "pattern": "^-?[0-9]+(\\.[0-9]+)?s$|^-?[0-9]+$|^f:[0-9]+$|^[0-9]+[:;][0-9]+[:;][0-9]+[:;][0-9]+$"
+              }
+            ]
+          }
+        },
+        "required": [
+          "item",
+          "at"
+        ]
+      },
+      "annotations": {
+        "readOnlyHint": false,
+        "destructiveHint": false,
+        "idempotentHint": false,
+        "openWorldHint": false
+      }
+    },
+    {
+      "name": "clip_trim",
+      "description": "Trim the start or end edge of a clip (linked partners follow; no ripple)",
+      "inputSchema": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "item": {
+            "type": "string",
+            "pattern": "^itm_[0-9a-f]{32}$",
+            "description": "The clip."
+          },
+          "edge": {
+            "oneOf": [
+              {
+                "type": "string",
+                "const": "start",
+                "description": "The first frame (changes `start`, `source_in` and the length)."
+              },
+              {
+                "type": "string",
+                "const": "end",
+                "description": "The last frame (changes the length)."
+              }
+            ],
+            "description": "The edge to move."
+          },
+          "to": {
+            "anyOf": [
+              {
+                "type": "integer",
+                "minimum": -9007199254740991,
+                "maximum": 9007199254740991
+              },
+              {
+                "type": "string",
+                "pattern": "^-?[0-9]+(\\.[0-9]+)?s$|^-?[0-9]+$|^f:[0-9]+$|^[0-9]+[:;][0-9]+[:;][0-9]+[:;][0-9]+$"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Timeline time of the edge afterwards (frame-snapped)."
+          },
+          "delta": {
+            "anyOf": [
+              {
+                "type": "integer",
+                "minimum": -9007199254740991,
+                "maximum": 9007199254740991
+              },
+              {
+                "type": "string",
+                "pattern": "^-?[0-9]+(\\.[0-9]+)?s$|^-?[0-9]+$|^f:[0-9]+$|^[0-9]+[:;][0-9]+[:;][0-9]+[:;][0-9]+$"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Offset of the edge from where it is now (negative: earlier). Use seconds or flicks for\nnegative values."
+          },
+          "unlink": {
+            "type": [
+              "boolean",
+              "null"
+            ],
+            "description": "Trim only this clip and remove it from its linked group (default `false`)."
+          }
+        },
+        "required": [
+          "item",
+          "edge"
+        ]
+      },
+      "annotations": {
+        "readOnlyHint": false,
+        "destructiveHint": false,
+        "idempotentHint": true,
+        "openWorldHint": false
+      }
+    },
+    {
+      "name": "edit_undo",
+      "description": "Undo your last change, or another actor's (`actor`; `*` = anyone's latest)",
+      "inputSchema": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "actor": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Whose change: `user`, `agent:<label>`, `plugin:<id>`, `system`, or `*` for the most\nrecent change by anyone. Default: the caller's own.",
+            "pattern": "^(\\*|user|system|agent:.+|plugin:[A-Za-z0-9._@-]+)$"
+          }
+        }
+      },
+      "annotations": {
+        "readOnlyHint": false,
+        "destructiveHint": false,
+        "idempotentHint": false,
+        "openWorldHint": false
+      }
+    },
+    {
+      "name": "item_delete",
+      "description": "Delete items and their linked partners (no ripple; fails if a track is locked)",
+      "inputSchema": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "items": {
+            "type": "array",
+            "items": {
+              "description": "A Item id: `^itm_[0-9a-f]{32}$`.",
+              "type": "string",
+              "pattern": "^itm_[0-9a-f]{32}$"
+            },
+            "description": "The items to delete, at least one."
+          }
+        },
+        "required": [
+          "items"
+        ]
+      },
+      "annotations": {
+        "readOnlyHint": false,
+        "destructiveHint": true,
+        "idempotentHint": false,
+        "openWorldHint": false
+      }
+    },
+    {
+      "name": "item_move",
+      "description": "Move an item in time and/or to another track (linked partners follow)",
+      "inputSchema": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "item": {
+            "type": "string",
+            "pattern": "^itm_[0-9a-f]{32}$",
+            "description": "The item."
+          },
+          "start": {
+            "description": "New timeline position of the item's first frame, `>= 0`.",
+            "anyOf": [
+              {
+                "type": "integer",
+                "minimum": -9007199254740991,
+                "maximum": 9007199254740991
+              },
+              {
+                "type": "string",
+                "pattern": "^-?[0-9]+(\\.[0-9]+)?s$|^-?[0-9]+$|^f:[0-9]+$|^[0-9]+[:;][0-9]+[:;][0-9]+[:;][0-9]+$"
+              }
+            ]
+          },
+          "to_track": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "pattern": "^trk_[0-9a-f]{32}$",
+            "description": "Target track of the same sequence and kind (default: stay on the current track)."
+          },
+          "unlink": {
+            "type": [
+              "boolean",
+              "null"
+            ],
+            "description": "Move only this item and remove it from its linked group (default `false`)."
+          },
+          "overlap": {
+            "anyOf": [
+              {
+                "oneOf": [
+                  {
+                    "type": "string",
+                    "const": "reject",
+                    "description": "Fail with `Invalid{path:\"/at\"}` (default)."
+                  },
+                  {
+                    "type": "string",
+                    "const": "new_track",
+                    "description": "Create a new track of the same kind directly above the target and insert there."
+                  }
+                ]
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Overlap handling (default `reject`)."
+          }
+        },
+        "required": [
+          "item",
+          "start"
+        ]
+      },
+      "annotations": {
+        "readOnlyHint": false,
+        "destructiveHint": false,
+        "idempotentHint": true,
+        "openWorldHint": false
+      }
+    },
+    {
+      "name": "item_set_props",
+      "description": "Set an item's name, enabled, opacity, audio_gain or transform (partial)",
+      "inputSchema": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "item": {
+            "type": "string",
+            "pattern": "^itm_[0-9a-f]{32}$",
+            "description": "The item."
+          },
+          "props": {
+            "type": "object",
+            "additionalProperties": false,
+            "properties": {
+              "name": {
+                "type": [
+                  "string",
+                  "null"
+                ],
+                "description": "Display name; an empty string clears it (the media name is shown again)."
+              },
+              "enabled": {
+                "type": [
+                  "boolean",
+                  "null"
+                ],
+                "description": "Rendered and heard (`true`) or kept but skipped (`false`)."
+              },
+              "opacity": {
+                "type": [
+                  "number",
+                  "null"
+                ],
+                "format": "double",
+                "description": "Opacity `0.0..=1.0`."
+              },
+              "audio_gain": {
+                "type": [
+                  "number",
+                  "null"
+                ],
+                "format": "double",
+                "description": "Clip gain in dB, `-144..=48` (0 = unchanged)."
+              },
+              "transform": {
+                "type": [
+                  "object",
+                  "null"
+                ],
+                "additionalProperties": false,
+                "properties": {
+                  "position": {
+                    "type": [
+                      "object",
+                      "null"
+                    ],
+                    "additionalProperties": false,
+                    "properties": {
+                      "x": {
+                        "type": "number",
+                        "format": "double",
+                        "description": "Horizontal component."
+                      },
+                      "y": {
+                        "type": "number",
+                        "format": "double",
+                        "description": "Vertical component (down is positive)."
+                      }
+                    },
+                    "required": [
+                      "x",
+                      "y"
+                    ],
+                    "description": "Offset of the anchor from the canvas center, in canvas units (+y is down)."
+                  },
+                  "scale": {
+                    "type": [
+                      "object",
+                      "null"
+                    ],
+                    "additionalProperties": false,
+                    "properties": {
+                      "x": {
+                        "type": "number",
+                        "format": "double",
+                        "description": "Horizontal component."
+                      },
+                      "y": {
+                        "type": "number",
+                        "format": "double",
+                        "description": "Vertical component (down is positive)."
+                      }
+                    },
+                    "required": [
+                      "x",
+                      "y"
+                    ],
+                    "description": "Size multiplier per axis (1.0 = aspect-fit); finite and `>= 0`."
+                  },
+                  "rotation": {
+                    "type": [
+                      "number",
+                      "null"
+                    ],
+                    "format": "double",
+                    "description": "Clockwise rotation in degrees."
+                  },
+                  "anchor": {
+                    "type": [
+                      "object",
+                      "null"
+                    ],
+                    "additionalProperties": false,
+                    "properties": {
+                      "x": {
+                        "type": "number",
+                        "format": "double",
+                        "description": "Horizontal component."
+                      },
+                      "y": {
+                        "type": "number",
+                        "format": "double",
+                        "description": "Vertical component (down is positive)."
+                      }
+                    },
+                    "required": [
+                      "x",
+                      "y"
+                    ],
+                    "description": "The item point `position` places and rotation turns around, in item units."
+                  }
+                },
+                "description": "Placement on the canvas (partial)."
+              }
+            },
+            "description": "The properties to change; at least one."
+          }
+        },
+        "required": [
+          "item",
+          "props"
+        ]
+      },
+      "annotations": {
+        "readOnlyHint": false,
+        "destructiveHint": false,
+        "idempotentHint": true,
+        "openWorldHint": false
+      }
+    },
+    {
+      "name": "job_status",
+      "description": "Get a background job's state, progress and error (analysis, export)",
+      "inputSchema": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "id": {
+            "type": "string",
+            "pattern": "^job_[0-9a-f]{32}$",
+            "description": "The job (from `media.import`'s `job_ids`, `export.start`, …)."
+          }
+        },
+        "required": [
+          "id"
+        ]
+      },
+      "annotations": {
+        "readOnlyHint": true,
+        "destructiveHint": false,
+        "idempotentHint": true,
+        "openWorldHint": false
+      }
+    },
+    {
+      "name": "job_wait",
+      "description": "Wait up to timeout_ms (max 60 s) for a background job to finish; returns its state",
+      "inputSchema": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "job_id": {
+            "type": "string",
+            "pattern": "^job_[0-9a-f]{32}$",
+            "description": "The job."
+          },
+          "timeout_ms": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "format": "uint32",
+            "minimum": 0,
+            "description": "How long to wait in milliseconds (default 30000; values above 60000 are capped; 0\nreturns the current state)."
+          }
+        },
+        "required": [
+          "job_id"
+        ]
+      },
+      "annotations": {
+        "readOnlyHint": true,
+        "destructiveHint": false,
+        "idempotentHint": true,
+        "openWorldHint": false
+      }
+    },
+    {
+      "name": "media_import",
+      "description": "Import media files: probe and register them now, return media ids and analysis job ids",
+      "inputSchema": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "paths": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "description": "Absolute paths of the files (1..=256, no repeats)."
+          }
+        },
+        "required": [
+          "paths"
+        ]
+      },
+      "annotations": {
+        "readOnlyHint": false,
+        "destructiveHint": false,
+        "idempotentHint": true,
+        "openWorldHint": false
+      }
+    },
+    {
+      "name": "media_list",
+      "description": "List the project's media (paged, ordered by id)",
+      "inputSchema": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "limit": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "format": "uint32",
+            "minimum": 0,
+            "description": "Page size, `1..=500` (default 50)."
+          },
+          "cursor": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "pattern": "^med_[0-9a-f]{32}$",
+            "description": "`next_cursor` of the previous page; the page starts after this ID."
+          }
+        }
+      },
+      "annotations": {
+        "readOnlyHint": true,
+        "destructiveHint": false,
+        "idempotentHint": true,
+        "openWorldHint": false
+      }
+    },
+    {
+      "name": "project_info",
+      "description": "Get project name, default format and a summary of its sequences",
+      "inputSchema": {
+        "type": "object",
+        "additionalProperties": false
+      },
+      "annotations": {
+        "readOnlyHint": true,
+        "destructiveHint": false,
+        "idempotentHint": true,
+        "openWorldHint": false
+      }
+    },
+    {
+      "name": "project_open",
+      "description": "Open a project folder or .cutweave file (closes the current project)",
+      "inputSchema": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "path": {
+            "type": "string",
+            "description": "Absolute path of the project folder or of its `.cutweave` document."
+          }
+        },
+        "required": [
+          "path"
+        ]
+      },
+      "annotations": {
+        "readOnlyHint": false,
+        "destructiveHint": false,
+        "idempotentHint": false,
+        "openWorldHint": false
+      }
+    },
+    {
+      "name": "timeline_get",
+      "description": "Get a sequence: summary (depth 0), tracks (1) or tracks with items (2)",
+      "inputSchema": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "sequence": {
+            "type": "string",
+            "pattern": "^seq_[0-9a-f]{32}$",
+            "description": "The sequence."
+          },
+          "depth": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "format": "uint8",
+            "minimum": 0,
+            "maximum": 255,
+            "description": "Detail level `0..=2` (default 1)."
+          },
+          "fields": {
+            "type": [
+              "array",
+              "null"
+            ],
+            "items": {
+              "type": "string"
+            },
+            "description": "Sections to include: any of `name`, `format`, `duration`, `tracks` (default all)."
+          }
+        },
+        "required": [
+          "sequence"
+        ]
+      },
+      "annotations": {
+        "readOnlyHint": true,
+        "destructiveHint": false,
+        "idempotentHint": true,
+        "openWorldHint": false
+      }
+    },
+    {
+      "name": "timeline_insert",
+      "description": "Insert a media clip at a time on a track (adds linked audio for video with sound)",
+      "inputSchema": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "sequence": {
+            "type": "string",
+            "pattern": "^seq_[0-9a-f]{32}$",
+            "description": "The sequence."
+          },
+          "track": {
+            "type": "string",
+            "pattern": "^trk_[0-9a-f]{32}$",
+            "description": "The target track (of that sequence): a video track for pictures, an audio track for\nsound."
+          },
+          "media": {
+            "type": "string",
+            "pattern": "^med_[0-9a-f]{32}$",
+            "description": "The media to place."
+          },
+          "at": {
+            "description": "Timeline position of the clip's first frame, `>= 0` (snapped to the frame grid).",
+            "anyOf": [
+              {
+                "type": "integer",
+                "minimum": -9007199254740991,
+                "maximum": 9007199254740991
+              },
+              {
+                "type": "string",
+                "pattern": "^-?[0-9]+(\\.[0-9]+)?s$|^-?[0-9]+$|^f:[0-9]+$|^[0-9]+[:;][0-9]+[:;][0-9]+[:;][0-9]+$"
+              }
+            ]
+          },
+          "source_in": {
+            "anyOf": [
+              {
+                "type": "integer",
+                "minimum": -9007199254740991,
+                "maximum": 9007199254740991
+              },
+              {
+                "type": "string",
+                "pattern": "^-?[0-9]+(\\.[0-9]+)?s$|^-?[0-9]+$|^f:[0-9]+$|^[0-9]+[:;][0-9]+[:;][0-9]+[:;][0-9]+$"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Position in the media to start from (default 0)."
+          },
+          "duration": {
+            "anyOf": [
+              {
+                "type": "integer",
+                "minimum": -9007199254740991,
+                "maximum": 9007199254740991
+              },
+              {
+                "type": "string",
+                "pattern": "^-?[0-9]+(\\.[0-9]+)?s$|^-?[0-9]+$|^f:[0-9]+$|^[0-9]+[:;][0-9]+[:;][0-9]+[:;][0-9]+$"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Clip length, `> 0` (snapped to whole frames, at least one)."
+          },
+          "overlap": {
+            "anyOf": [
+              {
+                "oneOf": [
+                  {
+                    "type": "string",
+                    "const": "reject",
+                    "description": "Fail with `Invalid{path:\"/at\"}` (default)."
+                  },
+                  {
+                    "type": "string",
+                    "const": "new_track",
+                    "description": "Create a new track of the same kind directly above the target and insert there."
+                  }
+                ]
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Overlap handling (default `reject`)."
+          },
+          "link": {
+            "type": [
+              "boolean",
+              "null"
+            ],
+            "description": "Also insert the audio of a video file as a linked clip (default `true`)."
+          }
+        },
+        "required": [
+          "sequence",
+          "track",
+          "media",
+          "at"
+        ]
+      },
+      "annotations": {
+        "readOnlyHint": false,
+        "destructiveHint": false,
+        "idempotentHint": false,
+        "openWorldHint": false
+      }
+    },
+    {
+      "name": "cutweave_search_commands",
+      "description": "Find commands and queries by keyword, including ones not listed as tools",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "query": {
+            "type": "string",
+            "description": "Words matched against names and summaries; \"\" lists all"
+          },
+          "limit": {
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 50,
+            "description": "Default 20"
+          }
+        },
+        "required": [
+          "query"
+        ],
+        "additionalProperties": false
+      },
+      "annotations": {
+        "readOnlyHint": true,
+        "destructiveHint": false,
+        "idempotentHint": true,
+        "openWorldHint": false
+      }
+    },
+    {
+      "name": "cutweave_describe_command",
+      "description": "Get one command's docs, annotations and full input/output JSON Schemas",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "name": {
+            "type": "string",
+            "description": "e.g. clip.split"
+          }
+        },
+        "required": [
+          "name"
+        ],
+        "additionalProperties": false
+      },
+      "annotations": {
+        "readOnlyHint": true,
+        "destructiveHint": false,
+        "idempotentHint": true,
+        "openWorldHint": false
+      }
+    },
+    {
+      "name": "cutweave_execute",
+      "description": "Run commands as one all-or-nothing transaction and one undo step",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "steps": {
+            "type": "array",
+            "minItems": 1,
+            "maxItems": 100,
+            "items": {
+              "type": "object",
+              "properties": {
+                "cmd": {
+                  "type": "string",
+                  "description": "e.g. clip.split"
+                },
+                "args": {
+                  "type": "object",
+                  "description": "Params; {\"$ref\":\"steps[0].output.left\"} inserts an earlier step's output"
+                }
+              },
+              "required": [
+                "cmd"
+              ],
+              "additionalProperties": false
+            }
+          },
+          "dry_run": {
+            "type": "boolean",
+            "description": "Validate and list the predicted ops; change nothing"
+          },
+          "expected_rev": {
+            "type": "integer",
+            "minimum": 0,
+            "description": "Fail unless the document is at this revision"
+          }
+        },
+        "required": [
+          "steps"
+        ],
+        "additionalProperties": false
+      },
+      "annotations": {
+        "readOnlyHint": false,
+        "destructiveHint": true,
+        "idempotentHint": false,
+        "openWorldHint": false
+      }
+    },
+    {
+      "name": "cutweave_query",
+      "description": "Run a read-only query by name, e.g. item.get or edit.history",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "name": {
+            "type": "string"
+          },
+          "args": {
+            "type": "object"
+          }
+        },
+        "required": [
+          "name"
+        ],
+        "additionalProperties": false
+      },
+      "annotations": {
+        "readOnlyHint": true,
+        "destructiveHint": false,
+        "idempotentHint": true,
+        "openWorldHint": false
+      }
+    }
+  ]
+}
