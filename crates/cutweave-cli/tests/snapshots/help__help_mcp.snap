@@ -1,0 +1,50 @@
+---
+source: crates/cutweave-cli/tests/help.rs
+expression: "help(&[\"mcp\"])"
+---
+Serve MCP over stdio (arrives with WP-1J.03)
+
+Usage: cutweave mcp [OPTIONS]
+
+Options:
+      --attach
+          Proxy to a running engine's `/mcp` endpoint instead of running one in the process
+
+      --profile <PROFILE>
+          The tool profile
+
+          Possible values:
+          - minimal:  The smallest tool set
+          - standard: The default tool set
+          - full:     Every tool
+          
+          [default: standard]
+
+      --run-file <PATH>
+          The run-file of the engine to attach to
+
+  -h, --help
+          Print help (see a summary with '-h')
+
+Engine selection:
+      --headless
+          Start a one-shot engine in this process instead of attaching to a running one
+
+      --project <PATH>
+          Open this project folder or `.cutweave` file in the spawned engine (implies --headless)
+
+      --pid <PID>
+          Attach to the engine with this process id when several are running
+
+      --run-dir <DIR>
+          Directory holding the engines' run-files (default `~/.cutweave/run`)
+
+Spawned engine:
+      --deterministic-ids <SEED>
+          Seed the spawned engine's ids and freeze its clock, so identical scripts give identical output (implies --headless). `CUTWEAVE_DETERMINISTIC_IDS` does the same
+
+      --allow-root <DIR>
+          A folder the spawned engine lets this command import from or save into (repeatable; implies --headless). The project folder is always allowed
+
+      --dev-stub-media
+          Dev only: fake media probing in the spawned engine (implies --headless). `CUTWEAVE_DEV_STUB_MEDIA=1` does the same

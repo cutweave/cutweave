@@ -8,9 +8,32 @@ repository.workspace = true
 rust-version.workspace = true
 publish = false
 
+[lib]
+name = "cutweave_cli"
+path = "src/lib.rs"
+
 [[bin]]
 name = "cutweave"
 path = "src/main.rs"
+
+# WP-1K.01 dependencies (each is justified here; all are already in Cargo.lock except clap_derive).
+[dependencies]
+# The one binary's argument parser (ADR-0002, WP-1K.01). Derive API; `cli.md` is generated from it.
+clap = { version = "4.6", features = ["derive"] }
+cutweave-api = { path = "../cutweave-api" }
+cutweave-commands = { path = "../cutweave-commands" }
+cutweave-engine = { path = "../cutweave-engine" }
+cutweave-model = { path = "../cutweave-model" }
+serde_json = { workspace = true }
+# Attach mode: a blocking client of the engine's `/rpc` WebSocket, on a private current-thread
+# runtime. Same pins as cutweave-api (already locked; no TLS, loopback only).
+tokio = { version = "=1.54.1", features = ["rt", "time", "net"] }
+tokio-tungstenite = { version = "=0.29.0", default-features = false, features = ["connect"] }
+futures-util = { version = "=0.3.34", default-features = false, features = ["sink", "std"] }
+
+[dev-dependencies]
+insta = { workspace = true }
+tempfile = "3.27.0"
 
 [lints]
 workspace = true

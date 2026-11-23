@@ -1,0 +1,15 @@
+---
+source: crates/cutweave-cli/tests/help.rs
+expression: "help(&[\"describe\"])"
+---
+Print one command's description and JSON Schemas
+
+Usage: cutweave describe <NAME>
+
+Arguments:
+  <NAME>
+          The command or query name, e.g. `clip.split`
+
+Options:
+  -h, --help
+          Print help

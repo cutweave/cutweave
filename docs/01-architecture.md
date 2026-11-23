@@ -320,7 +320,7 @@ The registry produces the following, each committed and checked against snapshot
 - The MCP catalog (§14) and CLI subcommand help
 - `docs/reference/commands.md`
 
-**Decided in WP-1N.01:** `cargo xtask gen` writes `schema/{commands,queries,events,mcp-tools,patch-fixtures}.json`, `schema/schema-hash.txt` (`SCHEMA_HASH` = sha256 of `commands.json`, also a generated constant in `cutweave-commands`) and `docs/reference/commands.md`. `cargo xtask gen --check` (part of `just check`) fails with a unified diff when a committed file is stale. `events.json` joins document events (`EVENT_CATALOG`) and engine events (project, job, media), each tagged with its `source`. MCP tool names are the command name with `.` replaced by `_`.
+**Decided in WP-1N.01:** `cargo xtask gen` writes `schema/{commands,queries,events,mcp-tools,patch-fixtures}.json`, `schema/schema-hash.txt` (`SCHEMA_HASH` = sha256 of `commands.json`, also a generated constant in `cutweave-commands`), `docs/reference/commands.md` and `docs/reference/cli.md` (the `cutweave` command line, from the clap definition of `cutweave-cli`, WP-1K.01). `cargo xtask gen --check` (part of `just check`) fails with a unified diff when a committed file is stale. `events.json` joins document events (`EVENT_CATALOG`) and engine events (project, job, media), each tagged with its `source`. MCP tool names are the command name with `.` replaced by `_`.
 
 ---
 

@@ -1,0 +1,47 @@
+---
+source: crates/cutweave-cli/tests/help.rs
+expression: "help(&[\"exec\"])"
+---
+Run a command, or several as one transaction, and print the result
+
+Usage: cutweave exec [OPTIONS] [JSON]
+
+Arguments:
+  [JSON]
+          The request as JSON, or `-` for stdin. One step `{"cmd": "clip.split", "args": {...}}`, or an array of steps (or `{"steps": [...]}`) that runs as one transaction and one undo step
+
+Options:
+  -f, --file <PATH>
+          Read the request from this file (`-` for stdin)
+
+      --expected-rev <REV>
+          Fail with `conflict` unless the document is at this revision
+
+      --save
+          After a successful run, save the project (`project.save`). A one-shot engine otherwise leaves its changes in the journal only
+
+  -h, --help
+          Print help
+
+Engine selection:
+      --headless
+          Start a one-shot engine in this process instead of attaching to a running one
+
+      --project <PATH>
+          Open this project folder or `.cutweave` file in the spawned engine (implies --headless)
+
+      --pid <PID>
+          Attach to the engine with this process id when several are running
+
+      --run-dir <DIR>
+          Directory holding the engines' run-files (default `~/.cutweave/run`)
+
+Spawned engine:
+      --deterministic-ids <SEED>
+          Seed the spawned engine's ids and freeze its clock, so identical scripts give identical output (implies --headless). `CUTWEAVE_DETERMINISTIC_IDS` does the same
+
+      --allow-root <DIR>
+          A folder the spawned engine lets this command import from or save into (repeatable; implies --headless). The project folder is always allowed
+
+      --dev-stub-media
+          Dev only: fake media probing in the spawned engine (implies --headless). `CUTWEAVE_DEV_STUB_MEDIA=1` does the same
