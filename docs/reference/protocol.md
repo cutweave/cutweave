@@ -77,7 +77,16 @@ await connection.whenReady();
 | `connection.outbox` | every unanswered call keyed by `request_id`; `retainUnacked: true` keeps calls that carry one (they are sent again, unchanged, after the next handshake) instead of rejecting them; reads always reject |
 | `autoFlush: false` + `connection.flushOutbox()` | take over the order of re-sending (for example snapshot first) |
 
-Without `retainUnacked` a call that was waiting when the socket dropped rejects with `RpcError("unsupported")`; calls made before the first handshake wait for it.
+Without `retainUnacked` a call that was waiting when the socket dropped rejects with `RpcError("unsupported")`; calls made before the first handshake wait for it. A call bound to the lost socket's transaction (`edit.begin_tx`, `edit.commit_tx`, `edit.cancel_tx`, or `_meta.tx`) is never kept: the engine rolled the transaction back, so it rejects with `RpcError("conflict")` whose `data.reason` is `transaction_lost` (`isTransactionLost(error)`), and its owner starts the gesture again.
+
+**Under a supervisor** (WP-1L.03): `supervisedPolicy(hint)` wraps a policy with what the supervisor says. `restarting` waits (polls every second, never gives up) until `reconnectNow()`; `down` gives up at once; `up` and `unknown` use the base policy.
+
+**In the editor** (`packages/editor/src/engine/runtime.ts`) the connection runs with `retainUnacked: true`, `autoFlush: false` and `supervisedPolicy` fed by Electron main's `engine:status`:
+
+- After every handshake: `project.snapshot` first, then `flushOutbox()` (the waiting commands go out under their original `request_id`; the engine answers a repeat from its deduplication window, which journal recovery restores), then `view.get` and `job.list`.
+- `getConnection()` is read again on every attempt (a new port and token after a restart). A status with a higher `generation` than the connected one makes the runtime drop the old socket and reconnect; after the resync the "Engine restarted — recovered" notice shows what main restored (`status.recovery`) for 3 s, or warns that an untitled project was not kept.
+- Main `failed`, or a `schema_hash` that differs from `SCHEMA_HASH`: editing is blocked with a message, waiting commands are rejected and nothing is re-sent to that engine. `ready` again (the dialog's Restart, a matching engine) lifts the block.
+- A port change on restart reloads the editor (its CSP names the port), so the outbox of the old page is lost; the new page resyncs from the snapshot.
 
 ## Keeping a document mirror
 

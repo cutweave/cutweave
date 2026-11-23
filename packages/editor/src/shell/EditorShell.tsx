@@ -1,10 +1,11 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
-import { TooltipProvider } from "@cutweave/ui";
+import { ToastProvider, TooltipProvider } from "@cutweave/ui";
 import { useEffect } from "react";
 import { I18nextProvider, useTranslation } from "react-i18next";
 import { Dock } from "../dock/Dock.tsx";
 import { i18n } from "../i18n/index.ts";
 import { useViewStore } from "../state/viewStore.ts";
+import { EngineNotices } from "./EngineNotices.tsx";
 import { TopBar } from "./TopBar.tsx";
 
 function Shell() {
@@ -24,12 +25,15 @@ function Shell() {
 
   return (
     <TooltipProvider>
-      <div className="cw-app">
-        <TopBar />
-        <main className="cw-app__dock">
-          <Dock />
-        </main>
-      </div>
+      <ToastProvider label={t("app.notifications")}>
+        <div className="cw-app">
+          <TopBar />
+          <main className="cw-app__dock">
+            <Dock />
+          </main>
+        </div>
+        <EngineNotices />
+      </ToastProvider>
     </TooltipProvider>
   );
 }

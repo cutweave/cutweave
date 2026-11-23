@@ -7,6 +7,7 @@ import { StrictMode } from "react";
 import { createRoot } from "react-dom/client";
 import { engineStore } from "./engine/engineStore.ts";
 import { bridgeFromWindow, startEngineRuntime } from "./engine/runtime.ts";
+import { appBridgeFromWindow, installTestHandleIfEnabled } from "./engine/testHandle.ts";
 import { EditorShell } from "./shell/EditorShell.tsx";
 import { docStore } from "./state/docStore.ts";
 import { jobStore } from "./state/jobStore.ts";
@@ -25,11 +26,14 @@ createRoot(root).render(
 // the editor keeps its sample data.
 const bridge = bridgeFromWindow();
 if (bridge) {
-  startEngineRuntime(bridge, {
+  const stores = {
     doc: docStore,
     view: viewStore,
     playback: playbackStore,
     jobs: jobStore,
     engine: engineStore,
-  });
+  };
+  const runtime = startEngineRuntime(bridge, stores);
+  // The e2e suites drive the editor's connection; only when the desktop app enables its hooks.
+  void installTestHandleIfEnabled(appBridgeFromWindow(), runtime, stores);
 }

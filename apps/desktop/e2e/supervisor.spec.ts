@@ -1,24 +1,20 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 // WP-1L.03 main-process half: the engine supervisor inside the real app, with the fake engine
-// (and the real one when `cutweave-engine-serve` is built). The renderer reconnect tests
-// (resend by request_id, resync, the "recovered" banner) arrive with the renderer half on top
-// of @cutweave/protocol.
+// (and the real one when `cutweave-engine-serve` is built). The renderer half (resend by
+// request_id, resync, the notice, blocked editing) is e2e/resync.spec.ts.
 
-import { existsSync, readdirSync, readFileSync } from "node:fs";
+import { readdirSync, readFileSync } from "node:fs";
 import path from "node:path";
 import type { ElectronApplication, Page } from "@playwright/test";
-import { desktopDir, engineStatus, expect, killEngine, launchApp, test } from "./fixtures.ts";
-
-const realEngine =
-  process.env.CUTWEAVE_ENGINE_BIN ??
-  path.join(
-    desktopDir,
-    "..",
-    "..",
-    "target",
-    "debug",
-    process.platform === "win32" ? "cutweave-engine-serve.exe" : "cutweave-engine-serve",
-  );
+import {
+  engineStatus,
+  expect,
+  hasRealEngine,
+  killEngine,
+  launchApp,
+  REAL_ENGINE_ENV,
+  test,
+} from "./fixtures.ts";
 
 const waitForGeneration = (app: ElectronApplication, generation: number) =>
   expect
@@ -176,11 +172,8 @@ test("quitting stops the engine and leaves no engine process or UI token behind"
 });
 
 test("with the real engine: the editor's socket is accepted before and after a restart", async () => {
-  test.skip(!existsSync(realEngine), "cutweave-engine-serve is not built");
-  const { app, page, close } = await launchApp({
-    CUTWEAVE_ENGINE_FAKE: "",
-    CUTWEAVE_ENGINE_BIN: realEngine,
-  });
+  test.skip(!hasRealEngine, "cutweave-engine-serve is not built");
+  const { app, page, close } = await launchApp(REAL_ENGINE_ENV);
   /** `rpc.hello` over the editor's own socket (Origin app://cutweave, token subprotocol). */
   const hello = () =>
     page.evaluate(async () => {

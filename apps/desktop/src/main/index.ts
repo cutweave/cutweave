@@ -142,10 +142,16 @@ if (!app.requestSingleInstanceLock()) {
       appResponseHeaders(buildCsp(enginePort)),
     );
     registerPluginProtocolStub(protocol);
+    const testHooks = shouldInstallTestHooks(app.isPackaged, process.env);
     registerIpc(
       ipcMain,
       createHandlers({
-        appInfo: { name: app.getName(), version: app.getVersion(), platform: process.platform },
+        appInfo: {
+          name: app.getName(),
+          version: app.getVersion(),
+          platform: process.platform,
+          ...(testHooks ? { testHooks: true as const } : {}),
+        },
         engineStatus: () => engineStatus,
         engineCredentials: () => supervisor?.credentials ?? null,
         chooseFolder: async () => {
@@ -172,7 +178,7 @@ if (!app.requestSingleInstanceLock()) {
         }),
       ),
     );
-    if (shouldInstallTestHooks(app.isPackaged, process.env)) {
+    if (testHooks) {
       installTestHooks({
         createWindow: (kind, options) => createWindow(kind, options, factory),
         appUrl: `${APP_ORIGIN}/`,

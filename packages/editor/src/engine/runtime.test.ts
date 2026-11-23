@@ -11,8 +11,13 @@ import { createDocStore } from "../state/docStore.ts";
 import { createJobStore } from "../state/jobStore.ts";
 import { createPlaybackStore } from "../state/playbackStore.ts";
 import { createViewStore } from "../state/viewStore.ts";
-import { createEngineStore } from "./engineStore.ts";
-import { bridgeFromWindow, type EngineBridge, startEngineRuntime } from "./runtime.ts";
+import { createEngineStore, type SupervisorStatus } from "./engineStore.ts";
+import {
+  bridgeFromWindow,
+  type EngineBridge,
+  startEngineRuntime,
+  supervisorHint,
+} from "./runtime.ts";
 
 const project = (name: string): Project =>
   ({ meta: { name }, settings: {}, media: {}, sequences: {}, custom: {} }) as unknown as Project;
@@ -150,5 +155,213 @@ describe("startEngineRuntime", () => {
     const engine: EngineBridge = { getConnection: () => Promise.resolve(null) };
     expect(bridgeFromWindow({ cutweave: { engine } })).toBe(engine);
     expect(bridgeFromWindow({})).toBeNull();
+  });
+});
+
+// ----- engine restarts (WP-1L.03) ----------------------------------------------------------------
+
+/** A runtime under a fake supervisor: the test drives `status` and what `getConnection` returns. */
+function supervised() {
+  const engine = new FakeEngine();
+  const timers = new ManualTimers();
+  engine.handler = (_socket, m: SentMessage) => {
+    switch (m.method) {
+      case "project.snapshot":
+        return { rev: 1, committed_rev: 1, project: project("p") };
+      case "view.get":
+        return {
+          playhead: 0,
+          zoom: 100,
+          scroll: { x: 0, y: 0 },
+          selection: [],
+          panel_layout: null,
+          preview_quality: "full",
+          master_gain: null,
+        };
+      case "job.list":
+        return { jobs: [], active: 0 };
+      default:
+        // The first engine never answers a command; later ones do.
+        return engine.sockets.length > 1 ? { track: "trk_new" } : undefined;
+    }
+  };
+  let status: SupervisorStatus = { state: "ready", generation: 1 };
+  const listeners = new Set<(s: SupervisorStatus) => void>();
+  const bridge: EngineBridge = {
+    getConnection: () =>
+      Promise.resolve(
+        status.state === "ready"
+          ? {
+              wsUrl: "ws://127.0.0.1:5000/rpc",
+              token: `tok-${status.generation}`,
+              generation: status.generation ?? 0,
+            }
+          : null,
+      ),
+    getStatus: () => Promise.resolve(status),
+    onStatus: (listener) => {
+      listeners.add(listener);
+      return () => listeners.delete(listener);
+    },
+  };
+  const stores = {
+    doc: createDocStore(),
+    view: createViewStore(),
+    playback: createPlaybackStore(),
+    jobs: createJobStore(),
+    engine: createEngineStore(),
+  };
+  const errors: unknown[] = [];
+  const runtime = startEngineRuntime(bridge, stores, {
+    connection: { createSocket: engine.factory, timers },
+    view: { timers },
+    onError: (e) => errors.push(e),
+  });
+  const states: string[] = [];
+  runtime.connection.onStateChange((s) => states.push(s));
+  return {
+    engine,
+    timers,
+    stores,
+    runtime,
+    errors,
+    states,
+    emit(next: SupervisorStatus) {
+      status = next;
+      for (const listener of listeners) listener(next);
+    },
+  };
+}
+
+const trackAdd = { sequence: "seq_1" as never, kind: "video" as never };
+const requestIdOf = (m: SentMessage | undefined) =>
+  (m?.params._meta as { request_id?: string } | undefined)?.request_id;
+
+describe("startEngineRuntime across engine restarts", () => {
+  it("re-sends an unanswered command after the new snapshot, under its request_id", async () => {
+    const s = supervised();
+    await s.runtime.connection.whenReady();
+    await flushPromises(50);
+    const call = s.runtime.rpc.call("track.add", trackAdd);
+    await flushPromises();
+    const first = s.engine.last.sent.find((m) => m.method === "track.add");
+    s.engine.last.serverClose(1006);
+    s.emit({ state: "crashed", generation: 1 });
+    s.emit({ state: "restarting", generation: 1 });
+    // A command fired during the outage waits as well.
+    const during = s.runtime.rpc.call("track.add", trackAdd);
+    s.emit({
+      state: "ready",
+      generation: 2,
+      recovery: { project: "/w/film.cutweave", applied: 1, damaged: false },
+    });
+    await s.runtime.connection.whenReady();
+    await flushPromises(80);
+    const order = methods(s.engine, 1);
+    expect(order.indexOf("project.snapshot")).toBeGreaterThan(-1);
+    expect(order.indexOf("project.snapshot")).toBeLessThan(order.indexOf("track.add"));
+    const resent = s.engine.last.sent.filter((m) => m.method === "track.add");
+    expect(resent.map(requestIdOf)).toEqual([requestIdOf(first), expect.any(String)]);
+    expect(requestIdOf(resent[1])).not.toBe(requestIdOf(first));
+    await expect(call).resolves.toEqual({ track: "trk_new" });
+    await expect(during).resolves.toEqual({ track: "trk_new" });
+    // The new engine was reached with the new token, and the notice says what came back.
+    expect(s.engine.last.protocols).toEqual(["cutweave.token.tok-2"]);
+    expect(s.stores.engine.getState().notice).toMatchObject({
+      recovery: { project: "/w/film.cutweave", applied: 1 },
+    });
+    expect(s.errors).toEqual([]);
+    await s.runtime.stop();
+  });
+
+  it("waits out a long restart without giving up, then reconnects at once on ready", async () => {
+    const s = supervised();
+    await s.runtime.connection.whenReady();
+    await flushPromises(50);
+    s.emit({ state: "restarting", generation: 1 });
+    s.engine.last.serverClose(1006);
+    for (let i = 0; i < 120; i++) {
+      s.timers.advance(1000);
+      await flushPromises();
+    }
+    expect(s.states).not.toContain("failed");
+    expect(s.runtime.connection.state).toBe("reconnecting");
+    s.emit({ state: "ready", generation: 2 });
+    await s.runtime.connection.whenReady();
+    await flushPromises(50);
+    expect(s.engine.last.protocols).toEqual(["cutweave.token.tok-2"]);
+    // No project was open: the notice says nothing could be restored.
+    expect(s.stores.engine.getState().notice).toMatchObject({ recovery: null });
+    await s.runtime.stop();
+  });
+
+  it("leaves a socket to a replaced engine as soon as main reports the new one", async () => {
+    const s = supervised();
+    await s.runtime.connection.whenReady();
+    await flushPromises(50);
+    s.emit({ state: "ready", generation: 2 });
+    expect(s.runtime.connection.state).toBe("reconnecting");
+    s.timers.advance(0);
+    await s.runtime.connection.whenReady();
+    await flushPromises(50);
+    expect(s.engine.sockets).toHaveLength(2);
+    expect(s.engine.sockets[0]?.closedByClient).not.toBeNull();
+    expect(s.engine.last.protocols).toEqual(["cutweave.token.tok-2"]);
+    await s.runtime.stop();
+  });
+
+  it("blocks editing while main reports failed, rejecting what waits; ready unblocks", async () => {
+    const s = supervised();
+    await s.runtime.connection.whenReady();
+    await flushPromises(50);
+    s.engine.last.serverClose(1006);
+    s.emit({ state: "crashed", generation: 1 });
+    const waiting = s.runtime.rpc.call("track.add", trackAdd);
+    s.emit({ state: "failed", generation: 1, message: "The engine stopped 4 times in 60 s." });
+    await expect(waiting).rejects.toMatchObject({ code: "unsupported" });
+    expect(s.stores.engine.getState().blocked).toEqual({
+      kind: "engine-failed",
+      message: "The engine stopped 4 times in 60 s.",
+    });
+    s.timers.advance(2000);
+    await flushPromises(20);
+    expect(s.runtime.connection.state).toBe("failed");
+    // "Restart" in main's dialog.
+    s.emit({ state: "ready", generation: 2 });
+    await s.runtime.connection.whenReady();
+    await flushPromises(50);
+    expect(s.stores.engine.getState().blocked).toBeNull();
+    await s.runtime.stop();
+  });
+
+  it("blocks editing on a schema mismatch and never re-sends to that engine", async () => {
+    const s = supervised();
+    await s.runtime.connection.whenReady();
+    await flushPromises(50);
+    const call = s.runtime.rpc.call("track.add", trackAdd);
+    await flushPromises();
+    s.engine.last.serverClose(1006);
+    s.engine.hello = { ...s.engine.hello, schema_hash: "another", engine_version: "9.9.9" };
+    s.emit({ state: "ready", generation: 2 });
+    await s.runtime.connection.whenReady();
+    await flushPromises(50);
+    await expect(call).rejects.toMatchObject({ code: "unsupported" });
+    expect(s.engine.last.methods()).not.toContain("track.add");
+    expect(s.stores.engine.getState().blocked).toEqual({
+      kind: "schema-mismatch",
+      engineVersion: "9.9.9",
+    });
+    await s.runtime.stop();
+  });
+
+  it("maps the supervisor's states to reconnect hints", () => {
+    expect(supervisorHint(null)).toBe("unknown");
+    expect(supervisorHint({ state: "ready" })).toBe("up");
+    for (const state of ["starting", "crashed", "restarting"]) {
+      expect(supervisorHint({ state })).toBe("restarting");
+    }
+    for (const state of ["failed", "stopped", "unavailable"]) {
+      expect(supervisorHint({ state })).toBe("down");
+    }
   });
 });

@@ -213,10 +213,10 @@ export class EngineSupervisor {
     return this.#project;
   }
 
-  /** Port and UI token of the running engine while `ready`; null otherwise. */
-  get credentials(): { port: number; token: string } | null {
+  /** Port, UI token and launch generation of the running engine while `ready`; else null. */
+  get credentials(): { port: number; token: string; generation: number } | null {
     if (this.#status.state !== "ready" || this.#run === null) return null;
-    return { port: this.#port, token: this.#run.token };
+    return { port: this.#port, token: this.#run.token, generation: this.#run.generation };
   }
 
   onStatus(listener: StatusListener): () => void {
@@ -253,6 +253,14 @@ export class EngineSupervisor {
     const settled = this.whenSettled();
     void this.#launch("restart");
     return settled;
+  }
+
+  /**
+   * Test hook: forget past crashes, so a suite that crashes the engine on purpose many times
+   * (WP-1L.03 resend tests) is not cut short by the crash budget.
+   */
+  resetCrashHistory(): void {
+    this.#crashes = [];
   }
 
   /** Test hook: SIGKILL the engine (a simulated crash). Returns the killed pid, or null. */

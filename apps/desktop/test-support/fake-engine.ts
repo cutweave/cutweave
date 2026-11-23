@@ -5,16 +5,20 @@
 // First stdin line = UI token (kept in memory, never printed); stdout gets the readiness line;
 // exits when stdin closes (orphan prevention); exit 12 when the port cannot be bound.
 // HTTP: `/rpc` answers 401 without `Authorization: Bearer <token>`; everything else 200.
-// WebSocket `/rpc` (token as subprotocol `cutweave.token.<t>` or bearer): `rpc.hello`,
-// `rpc.subscribe`, `project.open`, `project.recover`; anything else is `not_found`.
+// WebSocket `/rpc` (token as subprotocol `cutweave.token.<t>` or bearer): `rpc.hello` (with this
+// build's schema hash), `rpc.subscribe`, `project.open`, `project.recover`, and empty answers to
+// the editor's start-up reads (`project.snapshot`, `view.get`, `job.list`); anything else is
+// `not_found`.
 // Test knobs: FAKE_ENGINE_MODE=no-ready | exit-early | crash-after-ready;
 // FAKE_ENGINE_EXIT=<code> prints the protocol's error line and exits with it after the
-// handshake; FAKE_ENGINE_RECOVERY=1 makes a `--project` start report unsaved work to recover.
+// handshake; FAKE_ENGINE_RECOVERY=1 makes a `--project` start report unsaved work to recover;
+// FAKE_ENGINE_SCHEMA_HASH=<h> reports another schema hash (the editor must refuse to edit).
 
 import { createHash } from "node:crypto";
 import { createServer, type IncomingMessage } from "node:http";
 import { createInterface } from "node:readline";
 import type { Duplex } from "node:stream";
+import { SCHEMA_HASH } from "../../../packages/protocol/src/generated/schema-hash.ts";
 
 const args = process.argv.slice(2);
 const argValue = (name: string): string | null => {
@@ -227,7 +231,7 @@ function handle(client: Client, text: string): void {
     case "rpc.hello":
       ok({
         engine_version: "fake",
-        schema_hash: "fake",
+        schema_hash: process.env.FAKE_ENGINE_SCHEMA_HASH || SCHEMA_HASH,
         rev: 0,
         committed_rev: 0,
         actor: "user",
@@ -246,6 +250,30 @@ function handle(client: Client, text: string): void {
       ok({ project: projectStatus() });
       broadcast("doc.reset", {});
       broadcast("project.opened", projectStatus());
+      return;
+    case "project.snapshot":
+      ok({
+        rev: 0,
+        committed_rev: 0,
+        project: { meta: { name: "fake" }, settings: {}, media: {}, sequences: {}, custom: {} },
+      });
+      return;
+    case "view.get":
+      ok({
+        playhead: 0,
+        zoom: 100,
+        scroll: { x: 0, y: 0 },
+        selection: [],
+        panel_layout: null,
+        preview_quality: "full",
+        master_gain: null,
+      });
+      return;
+    case "view.set":
+      ok({});
+      return;
+    case "job.list":
+      ok({ jobs: [], active: 0 });
       return;
     case "project.recover": {
       const applied = recoveryPending ? 3 : 0;

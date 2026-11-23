@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
-import { mkdtempSync, rmSync } from "node:fs";
+import { existsSync, mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
@@ -11,6 +11,95 @@ import {
 } from "@playwright/test";
 
 export const desktopDir = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
+
+/**
+ * The real engine for the suites that need one: `CUTWEAVE_ENGINE_BIN`, else the launch-protocol
+ * binary (`cargo build -p cutweave-engine --bin cutweave-engine-serve`). Tests skip without it.
+ */
+export const realEngine =
+  process.env.CUTWEAVE_ENGINE_BIN ??
+  path.join(
+    desktopDir,
+    "..",
+    "..",
+    "target",
+    "debug",
+    process.platform === "win32" ? "cutweave-engine-serve.exe" : "cutweave-engine-serve",
+  );
+export const hasRealEngine = existsSync(realEngine);
+/** `launchApp` env that runs the real engine instead of the fake one. */
+export const REAL_ENGINE_ENV = { CUTWEAVE_ENGINE_FAKE: "", CUTWEAVE_ENGINE_BIN: realEngine };
+
+declare global {
+  /** The editor's e2e handle (packages/editor `engine/testHandle.ts`). */
+  var __cutweaveEditor:
+    | {
+        call(method: string, params?: Record<string, unknown>): Promise<unknown>;
+        state(): unknown;
+      }
+    | undefined;
+}
+
+/** What the editor's e2e handle reports (`window.__cutweaveEditor.state()`, WP-1L.03). */
+export interface EditorState {
+  connection: string;
+  indicator: string;
+  supervisorState: string | null;
+  generation: number | null;
+  blocked: string | null;
+  noticeId: number | null;
+  recoveredApplied: number | null;
+  docRev: number;
+  outbox: string[];
+}
+
+/** Waits until the editor installed its e2e handle (after `app.getInfo()` reports test hooks). */
+export async function editorHandle(page: Page): Promise<void> {
+  await page.waitForFunction(() => globalThis.__cutweaveEditor !== undefined);
+}
+
+export function editorState(page: Page): Promise<EditorState> {
+  return page.evaluate(() => {
+    const handle = globalThis.__cutweaveEditor;
+    if (handle === undefined) throw new Error("no editor handle");
+    return handle.state() as unknown as EditorState;
+  });
+}
+
+/** A call over the editor's own engine connection: the outbox, resend and resync under test. */
+export function editorCall<T = unknown>(
+  page: Page,
+  method: string,
+  params: Record<string, unknown> = {},
+): Promise<T> {
+  return page.evaluate(
+    ({ method, params }) => {
+      const handle = globalThis.__cutweaveEditor;
+      if (handle === undefined) throw new Error("no editor handle");
+      return handle.call(method, params);
+    },
+    { method, params },
+  ) as Promise<T>;
+}
+
+/** Like {@link editorCall}, resolving with the engine's error code instead of throwing. */
+export function editorCallError(
+  page: Page,
+  method: string,
+  params: Record<string, unknown> = {},
+): Promise<string | null> {
+  return page.evaluate(
+    async ({ method, params }) => {
+      try {
+        await globalThis.__cutweaveEditor?.call(method, params);
+        return null;
+      } catch (error) {
+        return (error as { code?: string }).code ?? String(error);
+      }
+    },
+    { method, params },
+  );
+}
 
 export interface LaunchedApp {
   app: ElectronApplication;

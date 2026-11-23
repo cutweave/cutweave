@@ -74,6 +74,11 @@ export interface EngineConnection {
   readonly token: string;
   readonly httpUrl: string;
   readonly wsUrl: string;
+  /**
+   * The engine launch this connection belongs to (`EngineStatus.generation`): a connection made
+   * with a lower one was to an engine that has since restarted.
+   */
+  readonly generation: number;
 }
 
 /** Commands native menu accelerators send to the renderer (validated, allowlisted). */
@@ -84,6 +89,11 @@ export interface AppInfo {
   readonly name: string;
   readonly version: string;
   readonly platform: NodeJS.Platform;
+  /**
+   * True only in unpackaged runs with `CUTWEAVE_TEST_HOOKS=1` (the e2e suites): the editor then
+   * exposes its test handle (`window.__cutweaveEditor`). Absent otherwise.
+   */
+  readonly testHooks?: true;
 }
 
 export type PreviewPixelFormat = "rgba8" | "nv12";

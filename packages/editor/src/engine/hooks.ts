@@ -19,11 +19,24 @@ export type QueryName = keyof QueryMap;
 
 export type CallStatus = "idle" | "pending" | "success" | "error";
 
+/** Why edits are refused right now, or `null` (WP-1L.03: engine failed, schema mismatch). */
+export function editBlockedReason(): string | null {
+  const blocked = engineStore.getState().blocked;
+  if (blocked === null) return null;
+  return blocked.kind === "schema-mismatch"
+    ? "this editor and the engine use different command schemas"
+    : "the engine stopped; editing resumes when it restarts";
+}
+
 /** The live client, or a rejection a caller can show ("no engine connected"). */
 function requireRpc(): RpcClient {
   const rpc = engineStore.getState().rpc;
   if (rpc === null) {
     throw new RpcError("unsupported", "no engine is connected");
+  }
+  const blocked = editBlockedReason();
+  if (blocked !== null) {
+    throw new RpcError("unsupported", blocked);
   }
   return rpc;
 }
