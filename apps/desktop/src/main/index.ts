@@ -19,7 +19,7 @@ import { type EngineFailedChoice, showEngineFailedDialog } from "./engine/failed
 import { devEngineArgs, resolveEngineLaunch } from "./engine/launch.ts";
 import { pickFreePort } from "./engine/ports.ts";
 import { EngineSupervisor } from "./engine/supervisor.ts";
-import { createHandlers } from "./handlers.ts";
+import { createHandlers, MEDIA_FILE_FILTERS } from "./handlers.ts";
 import { type HardeningContext, hardenSession, hardenWebContents } from "./hardening.ts";
 import { createSenderCheck, registerIpc } from "./ipc.ts";
 import { buildMenuTemplate } from "./menu.ts";
@@ -188,6 +188,13 @@ if (!app.requestSingleInstanceLock()) {
         confirmWindowClose: () => {
           closeGuard.confirm();
           mainWindow?.close();
+        },
+        chooseMediaFiles: async () => {
+          const result = await dialog.showOpenDialog({
+            properties: ["openFile", "multiSelections"],
+            filters: MEDIA_FILE_FILTERS,
+          });
+          return result.canceled ? null : result.filePaths;
         },
         showItemInFolder: (p) => shell.showItemInFolder(p),
         openExternal: (url) => openExternal(url),

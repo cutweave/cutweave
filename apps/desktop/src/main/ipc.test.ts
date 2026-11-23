@@ -24,6 +24,7 @@ const handlers = (): InvokeHandlers => ({
   "recent:remove": vi.fn(),
   "window:setDirty": vi.fn(),
   "window:confirmClose": vi.fn(),
+  "dialog:pickMediaFiles": vi.fn(() => null),
   "shell:showItemInFolder": vi.fn(),
   "shell:openExternal": vi.fn(async () => undefined),
 });
@@ -105,6 +106,17 @@ describe("ipc registry", () => {
     }
     await call("shell:openExternal", okEvent, "https://cutweave.org/docs");
     expect(h["shell:openExternal"]).toHaveBeenCalledWith("https://cutweave.org/docs");
+  });
+
+  it("takes no arguments on the media picker channel", () => {
+    const h = handlers();
+    const call = register(h);
+    expect(() => call("dialog:pickMediaFiles", okEvent, "/etc")).toThrow(IpcValidationError);
+    expect(() => call("dialog:pickMediaFiles", okEvent, { properties: ["openDirectory"] })).toThrow(
+      IpcValidationError,
+    );
+    call("dialog:pickMediaFiles", okEvent);
+    expect(h["dialog:pickMediaFiles"]).toHaveBeenCalledTimes(1);
   });
 
   it("runs the sender check before validation and the handler", () => {

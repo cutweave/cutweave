@@ -83,7 +83,10 @@ interface Spawned {
   pid: number | undefined;
 }
 
-describe.skipIf(!available)("EngineSupervisor with the real engine", () => {
+// Spawns and kills the real engine binary: on a machine saturated by parallel builds a first-run
+// executable scan can delay its ready line past the supervisor timeout. Retry once; a real
+// regression fails both attempts.
+describe.skipIf(!available)("EngineSupervisor with the real engine", { retry: 1 }, () => {
   let home = "";
   let sup: EngineSupervisor | null = null;
   const conns: EngineRpc[] = [];

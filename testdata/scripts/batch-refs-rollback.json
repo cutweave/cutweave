@@ -1,0 +1,48 @@
+{
+  "description": "Transactional batches with $ref between their steps: a committed batch is one undo step; a batch failing at its last step rolls everything back (cutweave_execute rollback); single-step batches, including a lone engine command.",
+  "steps": [
+    { "cmd": "project.new", "args": { "name": "Parity" } },
+    { "cmd": "media.import", "args": { "paths": [{ "$media": "a.mp4" }] } },
+    {
+      "batch": [
+        {
+          "cmd": "timeline.insert",
+          "args": {
+            "sequence": { "$script": "steps[0].output.sequence" },
+            "track": { "$script": "steps[0].output.video_track" },
+            "media": { "$script": "steps[1].output.media_ids[0]" },
+            "at": 0
+          }
+        },
+        { "cmd": "clip.split", "args": { "item": { "$ref": "steps[0].output.clips[0]" }, "at": "5s" } },
+        { "cmd": "clip.trim", "args": { "item": { "$ref": "steps[1].output.right" }, "edge": "end", "delta": "-2s" } },
+        { "cmd": "track.add", "args": { "sequence": { "$script": "steps[0].output.sequence" }, "kind": "video" } },
+        {
+          "cmd": "item.move",
+          "args": {
+            "item": { "$ref": "steps[1].output.right" },
+            "start": "9s",
+            "to_track": { "$ref": "steps[3].output.track" }
+          }
+        },
+        { "cmd": "item.get", "args": { "item": { "$ref": "steps[1].output.right" } } }
+      ]
+    },
+    {
+      "batch": [
+        { "cmd": "project.rename", "args": { "name": "Renamed by a failed batch" } },
+        { "cmd": "item.delete", "args": { "items": [{ "$script": "steps[2].output[1].left" }] } },
+        { "cmd": "clip.split", "args": { "item": { "$script": "steps[2].output[1].left" }, "at": "1s" } }
+      ],
+      "expect": { "error": "not_found", "failed_step": 2 }
+    },
+    { "cmd": "project.info" },
+    { "cmd": "edit.undo" },
+    { "cmd": "timeline.get", "args": { "sequence": { "$ref": "steps[0].output.sequence" }, "depth": 2 } },
+    { "cmd": "edit.redo" },
+    { "batch": [{ "cmd": "project.rename", "args": { "name": "Parity batch" } }] },
+    { "batch": [{ "cmd": "edit.undo" }] },
+    { "batch": [{ "cmd": "edit.redo" }] },
+    { "cmd": "timeline.get", "args": { "sequence": { "$ref": "steps[0].output.sequence" }, "depth": 2 } }
+  ]
+}

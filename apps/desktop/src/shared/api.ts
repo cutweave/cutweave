@@ -237,6 +237,19 @@ export interface CutweaveApi {
   readonly dialog: {
     /** Native folder picker; resolves to the chosen path or null when cancelled. */
     openProjectFolder(): Promise<string | null>;
+    /**
+     * Native multi-file picker for media import (WP-1M.03). Resolves to the absolute paths the
+     * user chose (at most 256) or null when cancelled; the paths are then sent to `media.import`.
+     */
+    pickMediaFiles(): Promise<string[] | null>;
+  };
+  readonly files: {
+    /**
+     * The filesystem path of a `File` dropped from the OS (`webUtils.getPathForFile`, run in the
+     * preload), or `""` when it has none (not a file on disk). The renderer validates the paths
+     * it sends on to `media.import`; the engine decides what it may read.
+     */
+    pathForFile(file: File): string;
   };
   /** Recent projects, newest first, kept by main (WP-1M.07). Paths are absolute. */
   readonly recent: {

@@ -1,6 +1,11 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 import { describe, expect, it, vi } from "vitest";
-import { createHandlers } from "./handlers.ts";
+import {
+  createHandlers,
+  MAX_MEDIA_PATHS,
+  MEDIA_FILE_FILTERS,
+  validMediaPaths,
+} from "./handlers.ts";
 
 describe("createHandlers", () => {
   const base = {
@@ -10,6 +15,7 @@ describe("createHandlers", () => {
     recentProjects: { list: () => ["/a", "/b"], add: vi.fn(), remove: vi.fn() },
     setWindowDirty: vi.fn(),
     confirmWindowClose: vi.fn(),
+    chooseMediaFiles: vi.fn(async (): Promise<readonly string[] | null> => ["/m/a.mp4"]),
     showItemInFolder: vi.fn(),
     openExternal: vi.fn(async () => {}),
   };
@@ -53,6 +59,36 @@ describe("createHandlers", () => {
     expect(base.recentProjects.remove).toHaveBeenCalledWith("/a");
     expect(base.setWindowDirty).toHaveBeenCalledWith(true);
     expect(base.confirmWindowClose).toHaveBeenCalledTimes(1);
+  });
+
+  it("answers the media picker with validated absolute paths, or null when cancelled", async () => {
+    const h = createHandlers({ ...base, engineCredentials: () => null });
+    expect(await h["dialog:pickMediaFiles"]()).toEqual(["/m/a.mp4"]);
+    base.chooseMediaFiles.mockResolvedValueOnce(null);
+    expect(await h["dialog:pickMediaFiles"]()).toBeNull();
+    base.chooseMediaFiles.mockResolvedValueOnce([
+      "/m/a.mp4",
+      "/m/a.mp4",
+      "relative/b.mp4",
+      "",
+      "/m/\u0000.mp4",
+      `/${"x".repeat(4096)}`,
+      "/m/c.wav",
+    ]);
+    expect(await h["dialog:pickMediaFiles"]()).toEqual(["/m/a.mp4", "/m/c.wav"]);
+  });
+
+  it("caps the picked files at the engine's limit of one call", () => {
+    const many = Array.from({ length: MAX_MEDIA_PATHS + 50 }, (_, i) => `/m/${i}.mp4`);
+    expect(validMediaPaths(many)).toHaveLength(MAX_MEDIA_PATHS);
+    expect(validMediaPaths([1, null, {}, "/ok.mp4"])).toEqual(["/ok.mp4"]);
+  });
+
+  it("offers the media types and, last, every file", () => {
+    expect(MEDIA_FILE_FILTERS[0]?.extensions).toEqual(
+      expect.arrayContaining(["mp4", "wav", "png"]),
+    );
+    expect(MEDIA_FILE_FILTERS.at(-1)?.extensions).toEqual(["*"]);
   });
 
   it("opens only https links, re-checked at the point of use", async () => {

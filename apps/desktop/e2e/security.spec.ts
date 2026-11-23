@@ -333,9 +333,11 @@ test.describe("IPC", () => {
     expect(surface).toEqual([
       "cutweave.app.getInfo",
       "cutweave.dialog.openProjectFolder",
+      "cutweave.dialog.pickMediaFiles",
       "cutweave.engine.getConnection",
       "cutweave.engine.getStatus",
       "cutweave.engine.onStatus",
+      "cutweave.files.pathForFile",
       "cutweave.menu.onCommand",
       "cutweave.preview.close",
       "cutweave.preview.getClock",

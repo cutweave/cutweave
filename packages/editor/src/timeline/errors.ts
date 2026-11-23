@@ -5,13 +5,14 @@ import type { RpcError } from "@cutweave/protocol";
 import type { TKey } from "../i18n/index.ts";
 
 /** The edits the timeline reports on. */
-export type TimelineEdit = "move" | "trim" | "split" | "delete";
+export type TimelineEdit = "move" | "trim" | "split" | "delete" | "insert";
 
 export const FAILED_TITLE: Readonly<Record<TimelineEdit, TKey>> = {
   move: "timeline.failed.move",
   trim: "timeline.failed.trim",
   split: "timeline.failed.split",
   delete: "timeline.failed.delete",
+  insert: "timeline.failed.insert",
 };
 
 export type Translate = (key: TKey, vars?: Readonly<Record<string, string>>) => string;

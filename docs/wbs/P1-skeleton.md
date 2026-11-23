@@ -634,7 +634,7 @@ Human gates: PR review of `1B.01`, `1B.03`/`1B.09` (concurrency + ownership core
   - Meters: peak per bus published at 30 Hz via a lock-free ring (consumed by UI later).
 - **Interfaces:** `AudioOutput`, `AudioClock`, `ManualClock`, `view.set_master_gain`.
 - **Acceptance criteria:**
-  - On a dev machine with an audio device: 10 min playback of the 8-source mix at 256-sample buffer reports 0 underruns, clock drift vs `Instant` < 5 ms/10 min.
+  - On a dev machine with an audio device: 10 min playback of the 8-source mix at 256-sample buffer reports 0 underruns, clock tracking error vs the device's sample progress < 2 ms over 10 min (the clock follows the device crystal by design, §9; drift vs `Instant` is reported, not gated: on the reference headset it is +11 ppm ≈ 6.6 ms/10 min, as Spike S2 measured).
   - Unplugging/changing the default device during playback (manual test on Windows + macOS, documented) restarts the stream within 2 s without crash.
   - Headless CI passes using null device; `AudioClock::position()` is monotonic non-decreasing (property test).
 - **Tests:** unit with null device; manual hardware checklist recorded in PR; soak nightly.

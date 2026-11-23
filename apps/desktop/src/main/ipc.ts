@@ -53,6 +53,7 @@ export const invokeSchemas = {
   "recent:remove": z.tuple([filePath]),
   "window:setDirty": z.tuple([z.boolean()]),
   "window:confirmClose": noArgs,
+  "dialog:pickMediaFiles": noArgs,
   "shell:showItemInFolder": z.tuple([filePath]),
   "shell:openExternal": z.tuple([externalUrl]),
 } as const satisfies { [K in InvokeChannel]: z.ZodType<InvokeChannels[K]["args"]> };

@@ -31,6 +31,7 @@ import {
   type SupervisorHint,
   supervisedPolicy,
 } from "@cutweave/protocol";
+import type { mediaStore } from "../media/mediaStore.ts";
 import type { sessionStore } from "../session/sessionStore.ts";
 import { SessionSync } from "../session/sessionSync.ts";
 import { docSink, type docStore } from "../state/docStore.ts";
@@ -66,6 +67,8 @@ export interface RuntimeStores {
   readonly view: typeof viewStore;
   readonly playback: typeof playbackStore;
   readonly jobs: typeof jobStore;
+  /** Asset analysis status (`media.analysis_failed`, `media.indexed`); optional for tests. */
+  readonly media?: typeof mediaStore;
   readonly engine: typeof engineStore;
   /** Project session and undo stacks (WP-1M.07); optional so older callers need not pass it. */
   readonly session?: typeof sessionStore;
@@ -231,6 +234,8 @@ export function startEngineRuntime(
       sessionSync?.start();
       offs.push(
         rpc.on("job.progress", (info: JobInfo) => stores.jobs.getState().applyProgress(info)),
+        rpc.on("media.analysis_failed", (e) => stores.media?.getState().applyAnalysisFailed(e)),
+        rpc.on("media.indexed", (e) => stores.media?.getState().applyIndexed(e)),
         rpc.onUntyped("playback.state", (payload) =>
           stores.playback.getState().applyState(payload),
         ),

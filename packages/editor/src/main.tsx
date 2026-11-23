@@ -9,6 +9,7 @@ import { engineStore } from "./engine/engineStore.ts";
 import { bridgeFromWindow, startEngineRuntime } from "./engine/runtime.ts";
 import { appBridgeFromWindow, installTestHandleIfEnabled } from "./engine/testHandle.ts";
 import { i18n } from "./i18n/index.ts";
+import { mediaStore } from "./media/mediaStore.ts";
 import { sessionStore } from "./session/sessionStore.ts";
 import { EditorShell } from "./shell/EditorShell.tsx";
 import { docStore } from "./state/docStore.ts";
@@ -34,6 +35,7 @@ if (bridge) {
     view: viewStore,
     playback: playbackStore,
     jobs: jobStore,
+    media: mediaStore,
     engine: engineStore,
     session: sessionStore,
   };

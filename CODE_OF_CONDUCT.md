@@ -60,7 +60,7 @@ representative at an online or offline event.
 
 Instances of abusive, harassing, or otherwise unacceptable behavior may be
 reported to the community leaders responsible for enforcement at
-conduct@cutweave.dev. <!-- TODO(maintainers): placeholder address. Confirm the project domain and create this mailbox alias (WBS prerequisite D0.7) before publishing. -->
+avihay@three-dev.com. <!-- Interim contact set by the product owner (2026-11-23); replace with a project alias once the project domain exists. -->
 All complaints will be reviewed and investigated promptly and fairly.
 
 All community leaders are obligated to respect the privacy and security of the

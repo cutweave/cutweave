@@ -19,6 +19,9 @@ export interface IpcRendererLike {
   removeListener(channel: string, listener: (event: unknown, ...args: unknown[]) => void): unknown;
 }
 
+/** Longest path the preload hands back (same bound as the IPC and the editor). */
+const MAX_PATH_LENGTH = 4096;
+
 export const ERR_BRIDGE_UNAVAILABLE = "ERR_BRIDGE_UNAVAILABLE";
 
 export function createCutweaveApi(
@@ -26,6 +29,8 @@ export function createCutweaveApi(
   addon: BridgeAddon | null,
   /** Present-loop timing: the preload passes the browser's, tests a fake. */
   loopClock: () => LoopClock = browserLoopClock,
+  /** `webUtils.getPathForFile` (the preload passes Electron's; it throws for a non-`File`). */
+  getPathForFile: (file: File) => string = () => "",
 ): CutweaveApi {
   // Each call names its channel; the preload never forwards a caller-chosen channel.
   const invoke = <K extends InvokeChannel>(
@@ -103,7 +108,10 @@ export function createCutweaveApi(
     menu: {
       onCommand: subscribe<MenuCommand>("menu:command", (v) => (isMenuCommand(v) ? v : undefined)),
     },
-    dialog: { openProjectFolder: () => invoke("dialog:openProjectFolder") },
+    dialog: {
+      openProjectFolder: () => invoke("dialog:openProjectFolder"),
+      pickMediaFiles: () => invoke("dialog:pickMediaFiles"),
+    },
     recent: {
       list: () => invoke("recent:list"),
       add: (path) => invoke("recent:add", path),
@@ -116,6 +124,18 @@ export function createCutweaveApi(
           if (value === true) listener();
         }),
       confirmClose: () => invoke("window:confirmClose"),
+    },
+    files: {
+      pathForFile: (file) => {
+        // A caller-supplied value: only a real `File` goes to Electron, and a failure is "no path".
+        if (typeof File === "undefined" || !(file instanceof File)) return "";
+        try {
+          const path = getPathForFile(file);
+          return path.length <= MAX_PATH_LENGTH && !path.includes("\u0000") ? path : "";
+        } catch {
+          return "";
+        }
+      },
     },
     shell: {
       showItemInFolder: (path) => invoke("shell:showItemInFolder", path),

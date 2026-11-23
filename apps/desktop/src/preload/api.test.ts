@@ -27,6 +27,7 @@ describe("createCutweaveApi", () => {
       "app",
       "dialog",
       "engine",
+      "files",
       "menu",
       "preview",
       "recent",
@@ -35,6 +36,31 @@ describe("createCutweaveApi", () => {
     ]);
     expect(Object.keys(api.engine).sort()).toEqual(["getConnection", "getStatus", "onStatus"]);
     expect("invoke" in api).toBe(false);
+  });
+
+  it("asks main for the media picker over its own channel", async () => {
+    const { ipc } = fakeIpc();
+    await createCutweaveApi(ipc, null).dialog.pickMediaFiles();
+    expect(ipc.invoke).toHaveBeenCalledWith("dialog:pickMediaFiles");
+  });
+
+  it("resolves a dropped File to its path through Electron, and to nothing otherwise", () => {
+    const { ipc } = fakeIpc();
+    const getPath = vi.fn((f: File) => `/drop/${f.name}`);
+    const api = createCutweaveApi(ipc, null, undefined, getPath);
+    expect(api.files.pathForFile(new File(["x"], "a.mp4"))).toBe("/drop/a.mp4");
+    // Anything that is not a real File never reaches Electron.
+    expect(api.files.pathForFile({ name: "evil" } as unknown as File)).toBe("");
+    expect(api.files.pathForFile("/etc/passwd" as unknown as File)).toBe("");
+    expect(getPath).toHaveBeenCalledTimes(1);
+    const throwing = createCutweaveApi(ipc, null, undefined, () => {
+      throw new Error("not a file on disk");
+    });
+    expect(throwing.files.pathForFile(new File(["x"], "b.mp4"))).toBe("");
+    const nul = createCutweaveApi(ipc, null, undefined, () => "/a\u0000b");
+    expect(nul.files.pathForFile(new File(["x"], "c.mp4"))).toBe("");
+    const long = createCutweaveApi(ipc, null, undefined, () => `/${"x".repeat(4096)}`);
+    expect(long.files.pathForFile(new File(["x"], "d.mp4"))).toBe("");
   });
 
   it("maps methods to fixed channels", async () => {

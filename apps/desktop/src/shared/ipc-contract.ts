@@ -22,6 +22,8 @@ export interface InvokeChannels {
   "recent:remove": { args: [path: string]; result: undefined };
   "window:setDirty": { args: [dirty: boolean]; result: undefined };
   "window:confirmClose": { args: []; result: undefined };
+  /** Native multi-file picker for media import (WP-1M.03): absolute paths, or null when cancelled. */
+  "dialog:pickMediaFiles": { args: []; result: string[] | null };
   "shell:showItemInFolder": { args: [path: string]; result: undefined };
   "shell:openExternal": { args: [url: string]; result: undefined };
 }

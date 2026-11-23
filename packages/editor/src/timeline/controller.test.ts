@@ -93,6 +93,7 @@ function setup(handlers: Record<string, (params: unknown) => unknown> = {}) {
   engine.setState({ rpc: new RpcClient(transport), connection: "ready" });
   const toasts = createToastStore();
   const inRect: string[] = [];
+  const under = { hit: null as HitResult | null };
   const controller = new TimelineController({
     doc,
     view,
@@ -103,8 +104,9 @@ function setup(handlers: Record<string, (params: unknown) => unknown> = {}) {
   controller.attach({
     getViewState: () => ({ pxPerSec: 100, scrollX: 0, scrollY: 0 }),
     itemsInRect: () => inRect,
+    hitTest: () => under.hit ?? hit("lane", 0),
   });
-  return { transport, doc, view, engine, toasts, controller, inRect };
+  return { transport, doc, view, engine, toasts, controller, inRect, under };
 }
 
 const hit = (
@@ -148,6 +150,72 @@ function pointer(
 
 const calls = (requests: readonly RecordedRequest[]) => requests.map((r) => r.method);
 const items = (ids: string[]) => ids.map((id) => ({ kind: "item", id }));
+
+describe("TimelineController media drops (WP-1M.03)", () => {
+  const card = { id: "med_a", kind: "video", duration: 10 * F } as const;
+  const insert = () => ({ at: 0, duration: 0, clips: ["itm_new", "itm_new_audio"] });
+
+  it("sends timeline.insert with overlap new_track at the snapped time, then selects the clip", async () => {
+    const t = setup({ "timeline.insert": insert });
+    t.under.hit = hit("lane", 3 * F + 1000, "trk_v");
+    expect(t.controller.mediaDragOver(400, 40, card)).toBe(true);
+    expect(t.controller.state.mode.name).toBe("dropping-media");
+    expect(t.controller.overlay.getState().snapGuides).toEqual([3 * F]);
+    t.controller.mediaDrop(400, 40, card);
+    await t.controller.settled();
+    const sent = t.transport.requests.filter((r) => r.method === "timeline.insert");
+    expect(sent).toHaveLength(1);
+    expect(sent[0]?.params).toEqual({
+      sequence: "seq_1",
+      track: "trk_v",
+      media: "med_a",
+      at: 3 * F,
+      overlap: "new_track",
+    });
+    expect(t.controller.overlay.getState().snapGuides).toEqual([]);
+    expect(t.view.getState().selection).toEqual(items(["itm_new"]));
+  });
+
+  it("puts a sound on the audio track even over a video lane", async () => {
+    const t = setup({ "timeline.insert": insert });
+    t.under.hit = hit("lane", 8 * F, "trk_v");
+    t.controller.mediaDrop(400, 40, { id: "med_s", kind: "audio", duration: 2 * F });
+    await t.controller.settled();
+    const sent = t.transport.requests.find((r) => r.method === "timeline.insert");
+    expect((sent?.params as { track: string } | undefined)?.track).toBe("trk_a");
+  });
+
+  it("shows the engine's refusal as a toast and leaves the selection alone", async () => {
+    const t = setup({
+      "timeline.insert": () => {
+        throw new RpcError("locked", "track trk_v is locked");
+      },
+    });
+    t.under.hit = hit("lane", 8 * F, "trk_v");
+    t.controller.mediaDrop(400, 40, card);
+    await t.controller.settled();
+    const [toast] = t.toasts.getState().notices;
+    expect(toast?.title).toBe("Clip not added");
+    expect(toast?.message).toBe("The track is locked. Unlock it to edit its clips.");
+    expect(t.view.getState().selection).toEqual([]);
+  });
+
+  it("does nothing without a live view, and leaving clears the guide", () => {
+    const t = setup();
+    t.controller.attach(null);
+    expect(t.controller.mediaDragOver(400, 40, card)).toBe(false);
+    t.controller.attach({
+      getViewState: () => ({ pxPerSec: 100, scrollX: 0, scrollY: 0 }),
+      itemsInRect: () => [],
+      hitTest: () => hit("lane", 2 * F, "trk_v"),
+    });
+    t.controller.mediaDragOver(400, 40, card);
+    expect(t.controller.overlay.getState().snapGuides).toEqual([2 * F]);
+    t.controller.mediaDragLeave();
+    expect(t.controller.overlay.getState().snapGuides).toEqual([]);
+    expect(t.controller.state.mode.name).toBe("idle");
+  });
+});
 
 describe("TimelineController", () => {
   let t: ReturnType<typeof setup>;

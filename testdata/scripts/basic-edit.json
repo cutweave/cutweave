@@ -1,0 +1,31 @@
+{
+  "description": "Basic edit: create a project, import two stub clips, insert them, add a track, rename the project and read the timeline back.",
+  "steps": [
+    { "cmd": "project.new", "args": { "name": "Parity" } },
+    { "cmd": "media.import", "args": { "paths": [{ "$media": "a.mp4" }, { "$media": "b.mov" }] } },
+    {
+      "cmd": "timeline.insert",
+      "args": {
+        "sequence": { "$ref": "steps[0].output.sequence" },
+        "track": { "$ref": "steps[0].output.video_track" },
+        "media": { "$ref": "steps[1].output.media_ids[0]" },
+        "at": 0
+      }
+    },
+    {
+      "cmd": "timeline.insert",
+      "args": {
+        "sequence": { "$ref": "steps[0].output.sequence" },
+        "track": { "$ref": "steps[0].output.video_track" },
+        "media": { "$ref": "steps[1].output.media_ids[1]" },
+        "at": "10s",
+        "duration": "4s"
+      }
+    },
+    { "cmd": "track.add", "args": { "sequence": { "$ref": "steps[0].output.sequence" }, "kind": "video", "name": "B-roll" } },
+    { "cmd": "project.rename", "args": { "name": "Parity cut" } },
+    { "cmd": "timeline.get", "args": { "sequence": { "$ref": "steps[0].output.sequence" }, "depth": 2 } },
+    { "cmd": "project.info" },
+    { "cmd": "media.list" }
+  ]
+}

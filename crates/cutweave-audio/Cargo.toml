@@ -8,5 +8,44 @@ repository.workspace = true
 rust-version.workspace = true
 publish = false
 
+[features]
+default = ["device"]
+# Real output devices through cpal (WASAPI on Windows, CoreAudio on macOS; WP-1G.02). Without it,
+# or on other targets, only the null output exists. Linux (ALSA) is left out until CI installs
+# the ALSA headers (`libasound2-dev`) that cpal's `alsa-sys` needs at build time.
+device = ["dep:cpal"]
+# Test instrumentation: `cutweave_audio::rt_alloc`, the counting global allocator that proves
+# `Mixer::render` and the output callback never touch the heap.
+testing = []
+
+[target.'cfg(any(windows, target_os = "macos"))'.dependencies]
+# Audio device output (arch §9 names cpal). Apache-2.0; pinned to the release Spike S2 measured
+# (10-minute soak: 0 underruns, 0 RT allocations). `realtime` promotes the callback thread (MMCSS
+# on Windows) through `audio_thread_priority` (MPL-2.0). The cpal graph passed the root licence
+# policy in S2 (M0 finding S2-11).
+cpal = { version = "=0.18.2", optional = true, features = ["realtime"] }
+
+[dependencies]
+cutweave-model = { path = "../cutweave-model" }
+# `AudioSegment`, the output of `evaluate_audio` (WP-1F.01), is the mixer's input. Only the
+# wasm-safe core: the mixer needs no GPU.
+cutweave-render = { path = "../cutweave-render", default-features = false }
+# Lock-free SPSC rings between the decode workers and the real-time callback, and for the plan and
+# garbage queues (arch §9). MIT OR Apache-2.0; pinned to the release Spike S2 measured (0 RT
+# allocations, 0 underruns over a 10-minute soak).
+rtrb = "=0.4.1"
+# Source-rate to device-rate resampling (arch §9 names rubato). MIT OR Apache-2.0; pinned to the
+# release Spike S2 measured. Its default `fft_resampler` feature provides the synchronous `Fft`
+# resampler used here (realfft/rustfft, MIT OR Apache-2.0).
+rubato = "=5.1.0"
+thiserror.workspace = true
+tracing.workspace = true
+
+[dev-dependencies]
+# This crate with `testing` on, so its real-time tests (and `cargo nextest run --workspace`)
+# get the allocation counter.
+cutweave-audio = { path = ".", features = ["testing"] }
+proptest.workspace = true
+
 [lints]
 workspace = true

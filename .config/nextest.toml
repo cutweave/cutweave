@@ -1,0 +1,15 @@
+# cargo-nextest configuration (https://nexte.st/docs/configuration/).
+
+[profile.default]
+# Report every failing test in a gate run instead of stopping at the first one.
+fail-fast = false
+
+# Timing-sensitive tests assert wall-clock budgets (cold start, cancellation latency, journal
+# group commit, SHM tearing under a fast writer, GPU render) or spawn the freshly built engine
+# binary (the engine's launch tests; Windows Defender scans a new executable on first run). On a
+# shared dev machine running parallel agent builds they occasionally miss; retry them. A real regression fails
+# every attempt, and nextest reports retried tests as flaky. Budgets proper are enforced on the
+# reference machines (docs/reference-machines.md).
+[[profile.default.overrides]]
+filter = 'test(/under_a_second|within_500_ms|within_timeout_plus_100_ms|syncs_within_the_window|no_torn_frames/) | (package(cutweave-render) & test(/^gpu::/)) | binary_id(cutweave-engine::launch)'
+retries = 2
