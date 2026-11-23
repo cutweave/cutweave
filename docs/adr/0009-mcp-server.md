@@ -1,6 +1,6 @@
 # ADR-0009: MCP server: `rmcp`, hybrid tool catalog (core tools plus search/describe/execute/query), attach and headless modes
 
-- **Status:** Accepted (provisional, 2026-11-22). Spike S5 passed: WP-0H.01/0H.02 build and test, and WP-0H.03 had a real Claude Code host complete the task 3/3 over stdio with no screenshots (spikes/s5-command-bus/AGENT-RUN-REPORT.md). It becomes final once a second client (Codex or Gemini CLI) passes, and a real host exercises the 2026-07-28 revision (Claude Code 2.1.283 negotiated 2025-11-25).
+- **Status:** Accepted (provisional, 2026-11-22). Spike S5 passed: WP-0H.01/0H.02 build and test, and WP-0H.03 had a real Claude Code host complete the task 3/3 over stdio with no screenshots (spikes/s5-command-bus/AGENT-RUN-REPORT.md). It becomes final once a second client (Codex or Gemini CLI) passes, and a real host exercises the 2026-07-28 revision (Claude Code 2.1.283 negotiated 2025-11-25). **Update 2026-11-23:** the production server in `cutweave-api` (WP-1J.01) passes rmcp-client tests on both revisions, and in a live demo Claude Code 2.1.283 negotiated **2026-07-28** with a running engine and completed a multi-step edit (project, import, split/delete/move, batched `cutweave_execute`, undo/redo, read-back) over HTTP with no screenshots. Remaining for final: a second client (Codex or Gemini CLI).
 - **Date:** 2026-11-22
 - **Deciders:** Cutweave maintainers (decision pending Spike S5)
 - **Supersedes:** none

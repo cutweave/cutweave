@@ -942,7 +942,7 @@ Human gates: PR review of `1B.01`, `1B.03`/`1B.09` (concurrency + ownership core
   - Test hooks: `CUTWEAVE_TEST_CRASH_AFTER=N` (engine aborts after N commands) and a Playwright helper `killEngine()`.
 - **Interfaces:** `EngineSupervisor`, connection state machine in `packages/protocol/src/connection.ts`, IPC `engine:status`.
 - **Acceptance criteria:**
-  - Security: after a restart the engine accepts the same UI token re-sent by main and rejects the old agent token's UI-only calls; the UI token is absent from disk (grep of the temp HOME) and from the run-file.
+  - Security: after a restart the engine accepts the fresh UI token main generates for the new engine process (a token is never reused across processes) and rejects the old agent token's UI-only calls; the UI token is absent from disk (grep of the temp HOME) and from the run-file.
   - Playwright test: edit (3 commands), `killEngine()` (SIGKILL), UI shows `reconnecting`, then recovers in < 5 s; `timeline_get` shows all 3 commands applied exactly once; a command fired **during** the outage is applied exactly once after recovery (**0 lost, 0 duplicated**, repeated 10×).
   - 4 kills in 60 s → app enters `failed` with the dialog (test asserts state).
   - Closing the app leaves no `cutweave` process (test checks process list on 3 OSes).

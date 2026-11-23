@@ -594,9 +594,9 @@ flowchart LR
   - A filesystem allowlist applies (project folder plus user-approved roots).
   - Destructive, irreversible or **paid** actions follow the three-tier authority model (§13). Dry-run `confirm_token`s never authorize spending beyond the user-set agent budget, and human-only approvals are minted only by the UI.
   - Transcript and metadata text returned to agents is marked as untrusted content (prompt-injection hygiene).
-- **Parity guarantee:** a CI test enumerates the command registry and asserts that every non-`view` command is reachable via MCP, with a schema identical to the RPC one.
+- **Parity guarantee:** a CI test enumerates the command registry and asserts that every non-`view` command is reachable via MCP, with a listed input schema that accepts exactly the same values as the RPC one. (Decided in WP-1J.01: listed schemas drop documentation such as titles and nullable wrappers to fit the tool-list budget; `cutweave_describe_command` returns the verbatim schema.)
 - **Hardening learned in Spike S5** *(feeds ADR-009)*:
-  - `outputSchema` is about 45% of `tools/list`, so it's listed only on `/mcp/full`. Other profiles return structured content without advertising its schema.
+  - `outputSchema` is about 45% of `tools/list`, so it's listed only on `/mcp/full` (in P1 not even there; `/mcp/full` equals the standard profile). Other profiles return structured content without advertising its schema.
   - Origin/Host validation must be enabled explicitly in rmcp; it is off by default.
   - 2026-07-28 over HTTP requires the `MCP-Protocol-Version` header.
   - **UI-only scopes are enforced in the engine's command dispatcher**, not in the MCP layer, so `cutweave_execute` batches can't bypass them.
