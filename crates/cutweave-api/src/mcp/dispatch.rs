@@ -3,10 +3,14 @@
 //!
 //! `cutweave-engine` depends on this crate (it starts the [`ApiServer`](crate::ApiServer)), so
 //! the MCP module cannot name the engine's `EngineHandle` / `Connection`. It reaches the engine
-//! through [`Dispatch`] instead: the composition root that builds the `/mcp` mount (the
-//! engine's `MountFactory`, the CLI) adapts the engine's in-process dispatch API to it. The
-//! adapter is a field-for-field mapping: [`DispatchCall`] is the engine's `Call`, and
-//! [`DispatchReply`] its `Reply` with the doc actor's step patch.
+//! through [`Dispatch`] instead, which `cutweave_engine::mcp_backend` implements for the
+//! engine's `EngineHandle` and `Connection` (`cutweave_engine::mcp_mounts` /
+//! `api_mounts` build the mount). The mapping is field for field: [`DispatchCall`] is the
+//! engine's `Call`, and [`DispatchReply`] its `Reply` with the doc actor's step patch.
+//!
+//! It parallels the JSON-RPC seam ([`RpcBackend`](crate::rpc::RpcBackend)) but stays separate:
+//! MCP runs `cutweave_execute` as one blocking sequence (so a cancelled request still ends its
+//! transaction) and needs each step's patch for dry runs, which `RpcReply` does not carry.
 
 use std::sync::Arc;
 

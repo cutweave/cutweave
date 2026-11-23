@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
-//! Shared fixtures of the MCP tests: a headless engine with `/mcp` mounted (fake prober, a
-//! media folder inside the allowed roots), the engine's dispatch API adapted to
-//! [`cutweave_api::mcp::Dispatch`], and rmcp Streamable HTTP clients for both spec revisions.
+//! Shared fixtures of the MCP tests: a headless engine with the engine's production MCP mount
+//! (`cutweave_engine::mcp_mounts`; fake prober, a media folder inside the allowed roots), and
+//! rmcp Streamable HTTP clients for both spec revisions.
 
 #![allow(
     dead_code,
@@ -14,14 +14,9 @@
 use std::path::PathBuf;
 use std::sync::Arc;
 
-use cutweave_api::mcp::{
-    self, Dispatch, DispatchCall, DispatchConn, DispatchReply, McpOptions, Profile,
-};
-use cutweave_api::{Credential, Mounts};
-use cutweave_commands::{CmdError, Registry};
-use cutweave_engine::{
-    Call, Connection, Engine, EngineConfig, EngineHandle, EngineMode, LogConfig, Subsystems,
-};
+use cutweave_api::Credential;
+use cutweave_api::mcp::{McpOptions, Profile};
+use cutweave_engine::{Call, Connection, Engine, EngineConfig, EngineMode, LogConfig, Subsystems};
 use cutweave_jobs::{JobCtx, JobError};
 use cutweave_ops::media::{AnalysisInput, AnalysisStage, AnalysisStages, FakeProbe, MediaProbe};
 use rmcp::{
@@ -36,40 +31,6 @@ use serde_json::{Value, json};
 
 /// Flicks per second.
 pub const SEC: i64 = 705_600_000;
-
-/// The engine's in-process dispatch API as the MCP server's [`Dispatch`] seam (what a
-/// composition root mounting `/mcp` writes; see the WP-1J.01 integrator notes).
-pub struct EngineDispatch(pub EngineHandle);
-
-struct EngineConn(Connection);
-
-impl Dispatch for EngineDispatch {
-    fn registry(&self) -> Arc<Registry> {
-        self.0.registry()
-    }
-
-    fn connect(&self, credential: &Credential) -> Result<Arc<dyn DispatchConn>, CmdError> {
-        Ok(Arc::new(EngineConn(self.0.connect(credential)?)))
-    }
-}
-
-impl DispatchConn for EngineConn {
-    fn call(&self, c: DispatchCall) -> Result<DispatchReply, CmdError> {
-        let reply = self.0.call(Call {
-            name: c.name,
-            params: c.params,
-            request_id: c.request_id,
-            expected_rev: c.expected_rev,
-            tx: c.tx,
-        })?;
-        Ok(DispatchReply {
-            output: reply.output,
-            rev: reply.rev,
-            committed_rev: reply.committed_rev,
-            ops: reply.applied.map(|a| a.ops),
-        })
-    }
-}
 
 /// An analysis stage that indexes instantly.
 struct Index;
@@ -161,10 +122,8 @@ impl Harness {
             probe: Arc::new(probe),
             stages: Arc::new(stages),
         }));
-        config.api.mounts = Some(Box::new(|handle: EngineHandle| Mounts {
-            mcp: Some(mcp::router(EngineDispatch(handle), &McpOptions::default())),
-            ..Mounts::default()
-        }));
+        // The production mount: `/mcp`, `/mcp/minimal`, `/mcp/full` over the engine handle.
+        config.api.mounts = Some(cutweave_engine::mcp_mounts(McpOptions::default()));
         let engine = Engine::start(config).unwrap();
         let token = |label: &str| {
             engine
