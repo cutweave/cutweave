@@ -605,7 +605,9 @@ name = "cutweave-engine"
 version = "0.0.0"
 dependencies = [
  "criterion",
+ "cutweave-api",
  "cutweave-commands",
+ "cutweave-jobs",
  "cutweave-model",
  "cutweave-ops",
  "proptest",
@@ -615,7 +617,9 @@ dependencies = [
  "specta",
  "specta-typescript",
  "thiserror",
+ "tokio",
  "tracing",
+ "tracing-subscriber",
 ]
 
 [[package]]

@@ -3257,6 +3257,346 @@ expression: text
     {
       "annotations": {
         "destructiveHint": false,
+        "idempotentHint": true,
+        "openWorldHint": false,
+        "readOnlyHint": false
+      },
+      "input_schema": {
+        "additionalProperties": false,
+        "description": "Closes the open project (releasing its lock) and starts an untitled document. With\n`save: true` the committed state is saved first; with `save: false` nothing is saved (the\nunsaved work stays in the journal and is offered on the next open); by default it is saved\nwhen autosave is on. A failed save keeps the project open. Every client must resync.",
+        "properties": {
+          "save": {
+            "default": null,
+            "description": "Save before closing (`true`), never (`false`), or as autosave would (absent).",
+            "type": [
+              "boolean",
+              "null"
+            ]
+          }
+        },
+        "title": "ProjectClose",
+        "type": "object"
+      },
+      "journaled": false,
+      "kind": "engine",
+      "mcp": "catalog",
+      "mcp_tool": "project_close",
+      "name": "project.close",
+      "namespace": "project",
+      "output_schema": {
+        "additionalProperties": false,
+        "description": "Result of `project.close`.",
+        "properties": {
+          "closed": {
+            "description": "The document path of the project that was closed (absent if none was open).",
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "project": {
+            "additionalProperties": false,
+            "description": "The session now (an untitled document).",
+            "properties": {
+              "dirty": {
+                "description": "Whether committed changes are not in the project file yet.",
+                "type": "boolean"
+              },
+              "name": {
+                "description": "The project name (from the document).",
+                "type": "string"
+              },
+              "path": {
+                "description": "The project document (`.cutweave`) path; absent for an untitled document.",
+                "type": [
+                  "string",
+                  "null"
+                ]
+              },
+              "read_only": {
+                "description": "Why the project is read-only (edits are refused), if it is.",
+                "type": [
+                  "string",
+                  "null"
+                ]
+              },
+              "recovery": {
+                "additionalProperties": false,
+                "description": "Unsaved work from a previous session awaiting `project.recover` or\n`project.discard_recovery` (edits are refused until then).",
+                "properties": {
+                  "base_rev": {
+                    "description": "The committed revision of the saved document.",
+                    "format": "uint64",
+                    "minimum": 0,
+                    "type": "integer"
+                  },
+                  "damaged": {
+                    "description": "The journal ends with a damaged record (replay stops there).",
+                    "type": "boolean"
+                  },
+                  "last_rev": {
+                    "description": "The revision a restore reaches.",
+                    "format": "uint64",
+                    "minimum": 0,
+                    "type": "integer"
+                  },
+                  "last_ts": {
+                    "description": "When the last of them was committed.",
+                    "format": "uint64",
+                    "minimum": 0,
+                    "type": "integer"
+                  },
+                  "records": {
+                    "description": "Transactions a restore would replay.",
+                    "format": "uint32",
+                    "minimum": 0,
+                    "type": "integer"
+                  }
+                },
+                "required": [
+                  "records",
+                  "base_rev",
+                  "last_rev",
+                  "last_ts",
+                  "damaged"
+                ],
+                "type": [
+                  "object",
+                  "null"
+                ]
+              },
+              "rev": {
+                "description": "The live document revision.",
+                "format": "uint64",
+                "minimum": 0,
+                "type": "integer"
+              },
+              "saved_rev": {
+                "description": "The committed revision last written to the project file; absent while untitled,\nread-only or awaiting a recovery decision.",
+                "format": "uint64",
+                "minimum": 0,
+                "type": [
+                  "integer",
+                  "null"
+                ]
+              },
+              "state": {
+                "description": "`no_project` (an untitled document) or `open`.",
+                "oneOf": [
+                  {
+                    "const": "no_project",
+                    "description": "An untitled document, not backed by a project folder.",
+                    "type": "string"
+                  },
+                  {
+                    "const": "open",
+                    "description": "A project folder is open.",
+                    "type": "string"
+                  },
+                  {
+                    "const": "closing",
+                    "description": "The project is being closed (a swap or engine shutdown is under way).",
+                    "type": "string"
+                  }
+                ]
+              }
+            },
+            "required": [
+              "state",
+              "path",
+              "name",
+              "rev",
+              "saved_rev",
+              "dirty",
+              "read_only",
+              "recovery"
+            ],
+            "type": "object"
+          }
+        },
+        "required": [
+          "closed",
+          "project"
+        ],
+        "title": "ProjectCloseOutput",
+        "type": "object"
+      },
+      "scope": "any",
+      "secret_fields": [],
+      "summary": "Close the open project (saving first if asked or if autosave is on)",
+      "undoable": false,
+      "view": false
+    },
+    {
+      "annotations": {
+        "destructiveHint": true,
+        "idempotentHint": false,
+        "openWorldHint": false,
+        "readOnlyHint": false
+      },
+      "input_schema": {
+        "additionalProperties": false,
+        "description": "Discards the unsaved work a crashed session left in the journal and continues from the\nsaved document (the discarded journal is kept in `.cutweave/backups/`). Every client must\nresync.",
+        "title": "ProjectDiscardRecovery",
+        "type": "object"
+      },
+      "journaled": false,
+      "kind": "engine",
+      "mcp": "catalog",
+      "mcp_tool": "project_discard_recovery",
+      "name": "project.discard_recovery",
+      "namespace": "project",
+      "output_schema": {
+        "additionalProperties": false,
+        "description": "Result of `project.recover` and `project.discard_recovery`.",
+        "properties": {
+          "applied": {
+            "description": "Transactions restored from the journal (0 after a discard).",
+            "format": "uint32",
+            "minimum": 0,
+            "type": "integer"
+          },
+          "damaged": {
+            "description": "Replay stopped at a damaged record (everything before it was restored).",
+            "type": "boolean"
+          },
+          "project": {
+            "additionalProperties": false,
+            "description": "The session now.",
+            "properties": {
+              "dirty": {
+                "description": "Whether committed changes are not in the project file yet.",
+                "type": "boolean"
+              },
+              "name": {
+                "description": "The project name (from the document).",
+                "type": "string"
+              },
+              "path": {
+                "description": "The project document (`.cutweave`) path; absent for an untitled document.",
+                "type": [
+                  "string",
+                  "null"
+                ]
+              },
+              "read_only": {
+                "description": "Why the project is read-only (edits are refused), if it is.",
+                "type": [
+                  "string",
+                  "null"
+                ]
+              },
+              "recovery": {
+                "additionalProperties": false,
+                "description": "Unsaved work from a previous session awaiting `project.recover` or\n`project.discard_recovery` (edits are refused until then).",
+                "properties": {
+                  "base_rev": {
+                    "description": "The committed revision of the saved document.",
+                    "format": "uint64",
+                    "minimum": 0,
+                    "type": "integer"
+                  },
+                  "damaged": {
+                    "description": "The journal ends with a damaged record (replay stops there).",
+                    "type": "boolean"
+                  },
+                  "last_rev": {
+                    "description": "The revision a restore reaches.",
+                    "format": "uint64",
+                    "minimum": 0,
+                    "type": "integer"
+                  },
+                  "last_ts": {
+                    "description": "When the last of them was committed.",
+                    "format": "uint64",
+                    "minimum": 0,
+                    "type": "integer"
+                  },
+                  "records": {
+                    "description": "Transactions a restore would replay.",
+                    "format": "uint32",
+                    "minimum": 0,
+                    "type": "integer"
+                  }
+                },
+                "required": [
+                  "records",
+                  "base_rev",
+                  "last_rev",
+                  "last_ts",
+                  "damaged"
+                ],
+                "type": [
+                  "object",
+                  "null"
+                ]
+              },
+              "rev": {
+                "description": "The live document revision.",
+                "format": "uint64",
+                "minimum": 0,
+                "type": "integer"
+              },
+              "saved_rev": {
+                "description": "The committed revision last written to the project file; absent while untitled,\nread-only or awaiting a recovery decision.",
+                "format": "uint64",
+                "minimum": 0,
+                "type": [
+                  "integer",
+                  "null"
+                ]
+              },
+              "state": {
+                "description": "`no_project` (an untitled document) or `open`.",
+                "oneOf": [
+                  {
+                    "const": "no_project",
+                    "description": "An untitled document, not backed by a project folder.",
+                    "type": "string"
+                  },
+                  {
+                    "const": "open",
+                    "description": "A project folder is open.",
+                    "type": "string"
+                  },
+                  {
+                    "const": "closing",
+                    "description": "The project is being closed (a swap or engine shutdown is under way).",
+                    "type": "string"
+                  }
+                ]
+              }
+            },
+            "required": [
+              "state",
+              "path",
+              "name",
+              "rev",
+              "saved_rev",
+              "dirty",
+              "read_only",
+              "recovery"
+            ],
+            "type": "object"
+          }
+        },
+        "required": [
+          "project",
+          "applied",
+          "damaged"
+        ],
+        "title": "ProjectRecoverOutput",
+        "type": "object"
+      },
+      "scope": "any",
+      "secret_fields": [],
+      "summary": "Discard unsaved changes from a crashed session and keep the saved project",
+      "undoable": false,
+      "view": false
+    },
+    {
+      "annotations": {
+        "destructiveHint": false,
         "idempotentHint": false,
         "openWorldHint": false,
         "readOnlyHint": false
@@ -3382,6 +3722,357 @@ expression: text
     {
       "annotations": {
         "destructiveHint": false,
+        "idempotentHint": false,
+        "openWorldHint": false,
+        "readOnlyHint": false
+      },
+      "input_schema": {
+        "additionalProperties": false,
+        "description": "Opens a project (its folder or its `.cutweave` file), closing the current one first (saved\nwhen autosave is on, as `project.close` does). A project open in another Cutweave process\nfails with `Invalid` at `/path` and leaves the current project open. Unsaved work from a\ncrashed session is reported in `project.recovery`; edits are refused until\n`project.recover` or `project.discard_recovery`. Every client must resync (`doc.reset`).\nAgents and headless callers may only open projects inside the open project's folder and\nthe folders the user approved (`Invalid` at `/path` otherwise).",
+        "properties": {
+          "path": {
+            "description": "Absolute path of the project folder or of its `.cutweave` document.",
+            "type": "string"
+          }
+        },
+        "required": [
+          "path"
+        ],
+        "title": "ProjectOpen",
+        "type": "object"
+      },
+      "journaled": false,
+      "kind": "engine",
+      "mcp": "core",
+      "mcp_tool": "project_open",
+      "name": "project.open",
+      "namespace": "project",
+      "output_schema": {
+        "additionalProperties": false,
+        "description": "Result of `project.open`.",
+        "properties": {
+          "migrated_from": {
+            "description": "The schema version the document was migrated from, if it was.",
+            "format": "uint32",
+            "minimum": 0,
+            "type": [
+              "integer",
+              "null"
+            ]
+          },
+          "missing_media": {
+            "description": "Media whose file was found at neither its absolute nor its project-relative path.",
+            "items": {
+              "description": "A Media id: `^med_[0-9a-f]{32}$`.",
+              "pattern": "^med_[0-9a-f]{32}$",
+              "type": "string"
+            },
+            "type": "array"
+          },
+          "project": {
+            "additionalProperties": false,
+            "description": "The session now.",
+            "properties": {
+              "dirty": {
+                "description": "Whether committed changes are not in the project file yet.",
+                "type": "boolean"
+              },
+              "name": {
+                "description": "The project name (from the document).",
+                "type": "string"
+              },
+              "path": {
+                "description": "The project document (`.cutweave`) path; absent for an untitled document.",
+                "type": [
+                  "string",
+                  "null"
+                ]
+              },
+              "read_only": {
+                "description": "Why the project is read-only (edits are refused), if it is.",
+                "type": [
+                  "string",
+                  "null"
+                ]
+              },
+              "recovery": {
+                "additionalProperties": false,
+                "description": "Unsaved work from a previous session awaiting `project.recover` or\n`project.discard_recovery` (edits are refused until then).",
+                "properties": {
+                  "base_rev": {
+                    "description": "The committed revision of the saved document.",
+                    "format": "uint64",
+                    "minimum": 0,
+                    "type": "integer"
+                  },
+                  "damaged": {
+                    "description": "The journal ends with a damaged record (replay stops there).",
+                    "type": "boolean"
+                  },
+                  "last_rev": {
+                    "description": "The revision a restore reaches.",
+                    "format": "uint64",
+                    "minimum": 0,
+                    "type": "integer"
+                  },
+                  "last_ts": {
+                    "description": "When the last of them was committed.",
+                    "format": "uint64",
+                    "minimum": 0,
+                    "type": "integer"
+                  },
+                  "records": {
+                    "description": "Transactions a restore would replay.",
+                    "format": "uint32",
+                    "minimum": 0,
+                    "type": "integer"
+                  }
+                },
+                "required": [
+                  "records",
+                  "base_rev",
+                  "last_rev",
+                  "last_ts",
+                  "damaged"
+                ],
+                "type": [
+                  "object",
+                  "null"
+                ]
+              },
+              "rev": {
+                "description": "The live document revision.",
+                "format": "uint64",
+                "minimum": 0,
+                "type": "integer"
+              },
+              "saved_rev": {
+                "description": "The committed revision last written to the project file; absent while untitled,\nread-only or awaiting a recovery decision.",
+                "format": "uint64",
+                "minimum": 0,
+                "type": [
+                  "integer",
+                  "null"
+                ]
+              },
+              "state": {
+                "description": "`no_project` (an untitled document) or `open`.",
+                "oneOf": [
+                  {
+                    "const": "no_project",
+                    "description": "An untitled document, not backed by a project folder.",
+                    "type": "string"
+                  },
+                  {
+                    "const": "open",
+                    "description": "A project folder is open.",
+                    "type": "string"
+                  },
+                  {
+                    "const": "closing",
+                    "description": "The project is being closed (a swap or engine shutdown is under way).",
+                    "type": "string"
+                  }
+                ]
+              }
+            },
+            "required": [
+              "state",
+              "path",
+              "name",
+              "rev",
+              "saved_rev",
+              "dirty",
+              "read_only",
+              "recovery"
+            ],
+            "type": "object"
+          }
+        },
+        "required": [
+          "project",
+          "missing_media",
+          "migrated_from"
+        ],
+        "title": "ProjectOpenOutput",
+        "type": "object"
+      },
+      "scope": "any",
+      "secret_fields": [],
+      "summary": "Open a project folder or .cutweave file (closes the current project)",
+      "undoable": false,
+      "view": false
+    },
+    {
+      "annotations": {
+        "destructiveHint": false,
+        "idempotentHint": false,
+        "openWorldHint": false,
+        "readOnlyHint": false
+      },
+      "input_schema": {
+        "additionalProperties": false,
+        "description": "Restores the unsaved work a crashed session left in the journal (`project.recovery_available`):\nreplays it onto the saved document, with undo history, and enables editing. The restored\nchanges are unsaved until the next save or autosave. Every client must resync.",
+        "title": "ProjectRecover",
+        "type": "object"
+      },
+      "journaled": false,
+      "kind": "engine",
+      "mcp": "catalog",
+      "mcp_tool": "project_recover",
+      "name": "project.recover",
+      "namespace": "project",
+      "output_schema": {
+        "additionalProperties": false,
+        "description": "Result of `project.recover` and `project.discard_recovery`.",
+        "properties": {
+          "applied": {
+            "description": "Transactions restored from the journal (0 after a discard).",
+            "format": "uint32",
+            "minimum": 0,
+            "type": "integer"
+          },
+          "damaged": {
+            "description": "Replay stopped at a damaged record (everything before it was restored).",
+            "type": "boolean"
+          },
+          "project": {
+            "additionalProperties": false,
+            "description": "The session now.",
+            "properties": {
+              "dirty": {
+                "description": "Whether committed changes are not in the project file yet.",
+                "type": "boolean"
+              },
+              "name": {
+                "description": "The project name (from the document).",
+                "type": "string"
+              },
+              "path": {
+                "description": "The project document (`.cutweave`) path; absent for an untitled document.",
+                "type": [
+                  "string",
+                  "null"
+                ]
+              },
+              "read_only": {
+                "description": "Why the project is read-only (edits are refused), if it is.",
+                "type": [
+                  "string",
+                  "null"
+                ]
+              },
+              "recovery": {
+                "additionalProperties": false,
+                "description": "Unsaved work from a previous session awaiting `project.recover` or\n`project.discard_recovery` (edits are refused until then).",
+                "properties": {
+                  "base_rev": {
+                    "description": "The committed revision of the saved document.",
+                    "format": "uint64",
+                    "minimum": 0,
+                    "type": "integer"
+                  },
+                  "damaged": {
+                    "description": "The journal ends with a damaged record (replay stops there).",
+                    "type": "boolean"
+                  },
+                  "last_rev": {
+                    "description": "The revision a restore reaches.",
+                    "format": "uint64",
+                    "minimum": 0,
+                    "type": "integer"
+                  },
+                  "last_ts": {
+                    "description": "When the last of them was committed.",
+                    "format": "uint64",
+                    "minimum": 0,
+                    "type": "integer"
+                  },
+                  "records": {
+                    "description": "Transactions a restore would replay.",
+                    "format": "uint32",
+                    "minimum": 0,
+                    "type": "integer"
+                  }
+                },
+                "required": [
+                  "records",
+                  "base_rev",
+                  "last_rev",
+                  "last_ts",
+                  "damaged"
+                ],
+                "type": [
+                  "object",
+                  "null"
+                ]
+              },
+              "rev": {
+                "description": "The live document revision.",
+                "format": "uint64",
+                "minimum": 0,
+                "type": "integer"
+              },
+              "saved_rev": {
+                "description": "The committed revision last written to the project file; absent while untitled,\nread-only or awaiting a recovery decision.",
+                "format": "uint64",
+                "minimum": 0,
+                "type": [
+                  "integer",
+                  "null"
+                ]
+              },
+              "state": {
+                "description": "`no_project` (an untitled document) or `open`.",
+                "oneOf": [
+                  {
+                    "const": "no_project",
+                    "description": "An untitled document, not backed by a project folder.",
+                    "type": "string"
+                  },
+                  {
+                    "const": "open",
+                    "description": "A project folder is open.",
+                    "type": "string"
+                  },
+                  {
+                    "const": "closing",
+                    "description": "The project is being closed (a swap or engine shutdown is under way).",
+                    "type": "string"
+                  }
+                ]
+              }
+            },
+            "required": [
+              "state",
+              "path",
+              "name",
+              "rev",
+              "saved_rev",
+              "dirty",
+              "read_only",
+              "recovery"
+            ],
+            "type": "object"
+          }
+        },
+        "required": [
+          "project",
+          "applied",
+          "damaged"
+        ],
+        "title": "ProjectRecoverOutput",
+        "type": "object"
+      },
+      "scope": "any",
+      "secret_fields": [],
+      "summary": "Restore unsaved changes from the journal after a crash",
+      "undoable": false,
+      "view": false
+    },
+    {
+      "annotations": {
+        "destructiveHint": false,
         "idempotentHint": true,
         "openWorldHint": false,
         "readOnlyHint": false
@@ -3425,6 +4116,109 @@ expression: text
       "secret_fields": [],
       "summary": "Rename the project",
       "undoable": true,
+      "view": false
+    },
+    {
+      "annotations": {
+        "destructiveHint": false,
+        "idempotentHint": true,
+        "openWorldHint": false,
+        "readOnlyHint": false
+      },
+      "input_schema": {
+        "additionalProperties": false,
+        "description": "Saves the last committed state of the open project to its file (open gestures and\nproposals are not included). Fails with `Invalid` for an untitled document (use\n`project.save_as`) and `Unsupported` for a read-only project.",
+        "title": "ProjectSave",
+        "type": "object"
+      },
+      "journaled": false,
+      "kind": "engine",
+      "mcp": "catalog",
+      "mcp_tool": "project_save",
+      "name": "project.save",
+      "namespace": "project",
+      "output_schema": {
+        "additionalProperties": false,
+        "description": "Result of `project.save` and `project.save_as`.",
+        "properties": {
+          "path": {
+            "description": "The project document written.",
+            "type": "string"
+          },
+          "rev": {
+            "description": "The committed revision the project file now holds.",
+            "format": "uint64",
+            "minimum": 0,
+            "type": "integer"
+          }
+        },
+        "required": [
+          "path",
+          "rev"
+        ],
+        "title": "ProjectSaveOutput",
+        "type": "object"
+      },
+      "scope": "any",
+      "secret_fields": [],
+      "summary": "Save the open project's committed state to its file",
+      "undoable": false,
+      "view": false
+    },
+    {
+      "annotations": {
+        "destructiveHint": false,
+        "idempotentHint": false,
+        "openWorldHint": false,
+        "readOnlyHint": false
+      },
+      "input_schema": {
+        "additionalProperties": false,
+        "description": "Saves the document as a new project folder (created; it must not hold a project yet) and\ncontinues there; the old folder keeps its last save. A journaled project keeps its undo\nhistory; an untitled or read-only document is written and reopened (history restarts, every\nclient resyncs on `doc.reset`). Agents and headless callers may only save inside the open\nproject's folder and the folders the user approved (`Invalid` at `/path` otherwise).",
+        "properties": {
+          "path": {
+            "description": "Absolute path of the new project folder; the document is `<folder>/<folder name>.cutweave`.",
+            "type": "string"
+          }
+        },
+        "required": [
+          "path"
+        ],
+        "title": "ProjectSaveAs",
+        "type": "object"
+      },
+      "journaled": false,
+      "kind": "engine",
+      "mcp": "catalog",
+      "mcp_tool": "project_save_as",
+      "name": "project.save_as",
+      "namespace": "project",
+      "output_schema": {
+        "additionalProperties": false,
+        "description": "Result of `project.save` and `project.save_as`.",
+        "properties": {
+          "path": {
+            "description": "The project document written.",
+            "type": "string"
+          },
+          "rev": {
+            "description": "The committed revision the project file now holds.",
+            "format": "uint64",
+            "minimum": 0,
+            "type": "integer"
+          }
+        },
+        "required": [
+          "path",
+          "rev"
+        ],
+        "title": "ProjectSaveOutput",
+        "type": "object"
+      },
+      "scope": "any",
+      "secret_fields": [],
+      "summary": "Save the document as a new project folder and continue there",
+      "undoable": false,
       "view": false
     },
     {

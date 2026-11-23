@@ -34,6 +34,8 @@
 mod backups;
 mod events;
 
+pub(crate) use backups::civil_from_days;
+
 use std::io;
 use std::path::PathBuf;
 use std::sync::atomic::{AtomicU64, Ordering};

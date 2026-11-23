@@ -22,14 +22,16 @@ pub const DEFAULT_PROBE_TIMEOUT: Duration = Duration::from_secs(5);
 /// Default number of files probed at once.
 pub const DEFAULT_PROBE_PARALLELISM: usize = 4;
 
-/// The folders a caller may import from (arch §14 "filesystem allowlist", §18): the project
-/// folder plus user-approved roots. The engine applies it to agent and headless callers
-/// (MCP, CLI); the editor UI imports anything the user picks.
+/// The folders a caller may use (arch §14 "filesystem allowlist", §18): the project folder
+/// plus user-approved roots. The engine applies it to agent and headless callers (MCP, CLI)
+/// for every path they pass: media to import, projects to open, folders to save into; the
+/// editor UI uses anything the user picks.
 ///
 /// A path is allowed when it lies inside a root, compared component by component (ASCII
-/// case-insensitively on Windows). Paths with `..` are refused outright. When the path and
-/// the root both exist they are also compared after resolving symlinks, so a link inside a
-/// root cannot reach outside it.
+/// case-insensitively on Windows). Paths with `..` are refused outright. When the root exists,
+/// the path is also compared after resolving symlinks: the path itself if it exists, otherwise
+/// its deepest existing ancestor with the rest appended (a folder about to be created), so a
+/// link inside a root cannot reach outside it.
 #[derive(Clone, Debug, Default, PartialEq, Eq)]
 pub struct AllowedRoots {
     roots: Vec<PathBuf>,
@@ -57,7 +59,7 @@ impl AllowedRoots {
         let Some(lexical) = components(path) else {
             return false;
         };
-        let canonical = std::fs::canonicalize(path).ok();
+        let canonical = resolved(path);
         self.roots.iter().any(|root| {
             let Some(root_parts) = components(root) else {
                 return false;
@@ -73,6 +75,22 @@ impl AllowedRoots {
                 _ => true,
             }
         })
+    }
+}
+
+/// `path` with symlinks resolved: canonicalized if it exists, otherwise its deepest existing
+/// ancestor canonicalized with the missing components appended. `None` if no ancestor exists.
+fn resolved(path: &Path) -> Option<PathBuf> {
+    let mut existing = path;
+    let mut missing = Vec::new();
+    loop {
+        if let Ok(real) = std::fs::canonicalize(existing) {
+            let mut out = real;
+            out.extend(missing.iter().rev());
+            return Some(out);
+        }
+        missing.push(existing.file_name()?);
+        existing = existing.parent()?;
     }
 }
 
@@ -271,6 +289,42 @@ mod tests {
         assert!(roots.allows(&file.to_string_lossy()));
         let other = AllowedRoots::new([dir.join("elsewhere")]);
         assert!(!other.allows(&file.to_string_lossy()));
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn a_path_not_created_yet_is_resolved_through_its_existing_ancestors() {
+        let dir = std::env::temp_dir().join(format!("cutweave-roots-new-{}", std::process::id()));
+        let (root, outside) = (dir.join("root"), dir.join("outside"));
+        std::fs::create_dir_all(&root).unwrap_or_default();
+        std::fs::create_dir_all(&outside).unwrap_or_default();
+        let roots = AllowedRoots::new([root.clone()]);
+        assert!(roots.allows(&root.join("new").join("deeper").to_string_lossy()));
+        let link = root.join("link");
+        #[cfg(unix)]
+        let linked = std::os::unix::fs::symlink(&outside, &link).is_ok();
+        // Symlinks need a privilege on Windows; a junction (resolved the same way) does not.
+        #[cfg(windows)]
+        let linked = std::os::windows::fs::symlink_dir(&outside, &link).is_ok()
+            || std::process::Command::new("cmd")
+                .arg("/C")
+                .arg("mklink")
+                .arg("/J")
+                .arg(&link)
+                .arg(&outside)
+                .output()
+                .is_ok_and(|o| o.status.success());
+        #[cfg(not(any(unix, windows)))]
+        let linked = false;
+        assert!(
+            linked || !cfg!(any(unix, windows)),
+            "could not create a link"
+        );
+        if linked {
+            // Lexically inside the root, really outside it.
+            assert!(!roots.allows(&link.join("new").to_string_lossy()));
+            assert!(!roots.allows(&link.to_string_lossy()));
+        }
         let _ = std::fs::remove_dir_all(&dir);
     }
 }

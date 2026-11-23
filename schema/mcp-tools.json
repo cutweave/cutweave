@@ -137,6 +137,18 @@
     {
       "annotations": {
         "destructiveHint": false,
+        "idempotentHint": false,
+        "openWorldHint": false,
+        "readOnlyHint": false
+      },
+      "command": "project.open",
+      "description": "Open a project folder or .cutweave file (closes the current project)",
+      "kind": "engine",
+      "name": "project_open"
+    },
+    {
+      "annotations": {
+        "destructiveHint": false,
         "idempotentHint": true,
         "openWorldHint": false,
         "readOnlyHint": true

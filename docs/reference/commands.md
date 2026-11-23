@@ -2,7 +2,7 @@
 
 # Command reference
 
-Every command and query the engine registers (37 in total), generated from the registry. The full JSON Schemas are in `schema/commands.json` and `schema/queries.json`.
+Every command and query the engine registers (43 in total), generated from the registry. The full JSON Schemas are in `schema/commands.json` and `schema/queries.json`.
 
 MCP exposure: `core` commands are always listed as tools (`item.move` is `item_move`), `catalog` ones are reachable through the catalog tools, `hidden` ones are not exposed.
 
@@ -32,9 +32,15 @@ MCP exposure: `core` commands are always listed as tools (`item.move` is `item_m
 | media | `media.list` | List the project's media (paged, ordered by id) | query | core |
 | media | `media.register` | Register a probed media file (used by import; deduplicates by content hash) | command, undoable, idempotent | hidden |
 | media | `media.remove` | Remove an unused media asset from the project | command, undoable, destructive | catalog |
+| project | `project.close` | Close the open project (saving first if asked or if autosave is on) | engine, idempotent | catalog |
+| project | `project.discard_recovery` | Discard unsaved changes from a crashed session and keep the saved project | engine, destructive | catalog |
 | project | `project.info` | Get project name, default format and a summary of its sequences | query | core |
 | project | `project.new` | Initialize an empty project with one sequence (V1 + A1) | command, undoable | catalog |
+| project | `project.open` | Open a project folder or .cutweave file (closes the current project) | engine | core |
+| project | `project.recover` | Restore unsaved changes from the journal after a crash | engine | catalog |
 | project | `project.rename` | Rename the project | command, undoable, idempotent | catalog |
+| project | `project.save` | Save the open project's committed state to its file | engine, idempotent | catalog |
+| project | `project.save_as` | Save the document as a new project folder and continue there | engine | catalog |
 | timeline | `timeline.get` | Get a sequence: summary (depth 0), tracks (1) or tracks with items (2) | query | core |
 | timeline | `timeline.insert` | Insert a media clip at a time on a track (adds linked audio for video with sound) | command, undoable | core |
 | track | `track.add` | Add an empty video or audio track to a sequence | command, undoable | catalog |
