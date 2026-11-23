@@ -31,6 +31,8 @@ import {
   type SupervisorHint,
   supervisedPolicy,
 } from "@cutweave/protocol";
+import type { sessionStore } from "../session/sessionStore.ts";
+import { SessionSync } from "../session/sessionSync.ts";
 import { docSink, type docStore } from "../state/docStore.ts";
 import type { jobStore } from "../state/jobStore.ts";
 import type { playbackStore } from "../state/playbackStore.ts";
@@ -65,6 +67,8 @@ export interface RuntimeStores {
   readonly playback: typeof playbackStore;
   readonly jobs: typeof jobStore;
   readonly engine: typeof engineStore;
+  /** Project session and undo stacks (WP-1M.07); optional so older callers need not pass it. */
+  readonly session?: typeof sessionStore;
 }
 
 export interface EngineRuntime {
@@ -72,6 +76,8 @@ export interface EngineRuntime {
   readonly rpc: RpcClient;
   readonly docSync: DocSync;
   readonly viewSync: ViewSync;
+  /** Feeds the session store; `null` when none was passed. */
+  readonly sessionSync: SessionSync | null;
   /** Stops listening and closes the connection. */
   stop(): Promise<void>;
 }
@@ -83,6 +89,8 @@ export interface RuntimeOptions {
   readonly hooks?: ConnectionHooks;
   readonly view?: Pick<ViewSyncOptions, "debounceMs" | "timers">;
   readonly onError?: (error: unknown) => void;
+  /** `project.autosave_failed`: show the engine's message (a toast). */
+  readonly onAutosaveFailed?: (message: string) => void;
 }
 
 /** What the supervisor's state means for reconnecting (`supervisedPolicy`). */
@@ -180,6 +188,15 @@ export function startEngineRuntime(
 
   const docSync = new DocSync(rpc, docSink(stores.doc), { onError });
   const viewSync = new ViewSync({ store: stores.view, rpc, onError, ...options.view });
+  const sessionSync =
+    stores.session === undefined
+      ? null
+      : new SessionSync({
+          store: stores.session,
+          rpc,
+          onError,
+          ...(options.onAutosaveFailed && { onAutosaveFailed: options.onAutosaveFailed }),
+        });
   let started = false;
   const offs: (() => void)[] = [];
 
@@ -192,6 +209,8 @@ export function startEngineRuntime(
     if (!mismatch && stores.engine.getState().blocked?.kind === "schema-mismatch") {
       setBlock(null);
     }
+    // The project status first: the events that follow (dirty, saved) are newer than the hello.
+    sessionSync?.applyHello(hello);
     try {
       await syncDocument();
     } finally {
@@ -199,7 +218,7 @@ export function startEngineRuntime(
       if (!mismatch) connection.flushOutbox();
     }
     const [, list] = await Promise.all([
-      viewSync.restore(),
+      Promise.all([viewSync.restore(), sessionSync?.refreshStacks()]),
       rpc.call("job.list", {}).then((out) => out.jobs),
     ]);
     stores.jobs.getState().reset(list);
@@ -209,6 +228,7 @@ export function startEngineRuntime(
   async function syncDocument(): Promise<void> {
     if (!started) {
       started = true;
+      sessionSync?.start();
       offs.push(
         rpc.on("job.progress", (info: JobInfo) => stores.jobs.getState().applyProgress(info)),
         rpc.onUntyped("playback.state", (payload) =>
@@ -273,11 +293,13 @@ export function startEngineRuntime(
     rpc,
     docSync,
     viewSync,
+    sessionSync,
     async stop() {
       stopping = true;
       offStatus?.();
       for (const off of offs) off();
       docSync.stop();
+      sessionSync?.stop();
       await viewSync.stop().catch(onError);
       connection.close();
       stores.engine.setState({ rpc: null, connection: "none", supervisor: null, notice: null });

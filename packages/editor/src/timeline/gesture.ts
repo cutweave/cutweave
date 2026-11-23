@@ -15,6 +15,7 @@
 import {
   type ClipTrim,
   type ItemMove,
+  type ItemSetProps,
   type RpcClient,
   RpcError,
   type TxId,
@@ -22,7 +23,12 @@ import {
 
 export type GestureUpdate =
   | { readonly name: "item.move"; readonly input: ItemMove }
-  | { readonly name: "clip.trim"; readonly input: ClipTrim };
+  | { readonly name: "clip.trim"; readonly input: ClipTrim }
+  /** An inspector slider or scrubber drag (WP-1M.07). */
+  | { readonly name: "item.set_props"; readonly input: ItemSetProps };
+
+/** One position of the gesture: a command, or several that move together (a multi-selection). */
+export type GestureStep = GestureUpdate | readonly GestureUpdate[];
 
 export type GestureOutcome =
   /** Committed; `changed` is false when the clip ended where it started (no undo entry). */
@@ -73,7 +79,11 @@ export function toRpcError(error: unknown): RpcError {
   return error instanceof RpcError ? error : new RpcError("internal", String(error));
 }
 
-const keyOf = (u: GestureUpdate): string => `${u.name}${JSON.stringify(u.input)}`;
+const keyOf = (updates: readonly GestureUpdate[]): string =>
+  updates.map((u) => `${u.name}${JSON.stringify(u.input)}`).join("|");
+
+const asList = (step: GestureStep): readonly GestureUpdate[] =>
+  Array.isArray(step) ? (step as readonly GestureUpdate[]) : [step as GestureUpdate];
 
 export class GestureSession {
   /** `item.move` / `clip.trim` requests sent so far. */
@@ -83,7 +93,7 @@ export class GestureSession {
   readonly #frames: FrameScheduler;
   readonly #onAbort: ((error: RpcError) => void) | undefined;
   readonly #tx: Promise<TxId | null>;
-  #pending: GestureUpdate | null = null;
+  #pending: readonly GestureUpdate[] | null = null;
   #lastSent: string | null = null;
   #lastError: RpcError | null = null;
   #inflight: Promise<void> | null = null;
@@ -113,9 +123,9 @@ export class GestureSession {
   }
 
   /** The newest position; sent on the next frame unless a newer one replaces it first. */
-  update(update: GestureUpdate): void {
+  update(update: GestureStep): void {
     if (this.#closing) return;
-    this.#pending = update;
+    this.#pending = asList(update);
     this.#schedule();
   }
 
@@ -154,14 +164,18 @@ export class GestureSession {
     });
   }
 
-  async #send(update: GestureUpdate): Promise<void> {
+  async #send(updates: readonly GestureUpdate[]): Promise<void> {
     const tx = await this.#tx;
     if (tx === null || this.#aborted !== null) return;
-    this.#lastSent = keyOf(update);
-    this.updates += 1;
+    this.#lastSent = keyOf(updates);
     try {
-      if (update.name === "item.move") await this.#rpc.call(update.name, update.input, { tx });
-      else await this.#rpc.call(update.name, update.input, { tx });
+      for (const update of updates) {
+        this.updates += 1;
+        if (update.name === "item.move") await this.#rpc.call(update.name, update.input, { tx });
+        else if (update.name === "clip.trim") {
+          await this.#rpc.call(update.name, update.input, { tx });
+        } else await this.#rpc.call(update.name, update.input, { tx });
+      }
       this.#lastError = null;
     } catch (error) {
       const failure = toRpcError(error);
