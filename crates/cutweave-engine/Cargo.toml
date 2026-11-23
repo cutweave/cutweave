@@ -8,10 +8,21 @@ repository.workspace = true
 rust-version.workspace = true
 publish = false
 
+# Launch-protocol harness (WP-1I.04): `cutweave-engine-serve engine --port N ...` runs
+# `launch::main`, which `cutweave engine` (WP-1K.01) wraps. The integration tests spawn it.
+[[bin]]
+name = "cutweave-engine-serve"
+path = "src/bin/cutweave-engine-serve.rs"
+
 [dependencies]
+# The local server (WP-1I.01): `ApiServer`, credential classes, run-file, the handshake token
+# rules and the exit-12 contract the engine root starts and reuses (WP-1I.04).
+cutweave-api = { path = "../cutweave-api" }
 # The doc actor's `CommitSink` seam, `JournaledCommit` and the recovery hooks of `DocConfig`
 # (WP-1C.02: the journal persists committed transactions before they are acknowledged).
 cutweave-commands = { path = "../cutweave-commands" }
+# The engine's `JobManager` behind the `job.*` commands and import analysis (WP-1D.07).
+cutweave-jobs = { path = "../cutweave-jobs" }
 cutweave-model = { path = "../cutweave-model" }
 cutweave-ops = { path = "../cutweave-ops" }
 serde.workspace = true
@@ -19,8 +30,14 @@ serde_json.workspace = true
 # Identity of the saved document a journal segment builds on (already a workspace dependency).
 sha2.workspace = true
 thiserror.workspace = true
+# The engine runtime shared by the API server and the job manager, and the event fan-out
+# (`broadcast`). Pinned exactly like cutweave-api's and cutweave-jobs' (already in Cargo.lock).
+tokio = { version = "=1.54.1", features = ["rt-multi-thread", "sync", "time", "signal", "macros"] }
 # Journal warnings (torn tails, stale segments, fsync failures).
 tracing.workspace = true
+# The engine's JSON log file (WP-1I.04): only the span registry, no formatter features, so no
+# crate outside Cargo.lock is pulled in (already locked at this version through loom).
+tracing-subscriber = { version = "=0.3.23", default-features = false, features = ["registry", "std"] }
 
 [dev-dependencies]
 cutweave-model = { path = "../cutweave-model", features = ["testing"] }

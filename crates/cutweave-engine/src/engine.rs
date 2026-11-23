@@ -1,0 +1,949 @@
+// SPDX-License-Identifier: GPL-3.0-or-later
+//! [`Engine`]: the composition root (WP-1I.04; arch §2, §3, §5, §6, §14, §17).
+//!
+//! [`Engine::start`] wires the core: the registry (`cutweave-ops` + the `edit.*` commands +
+//! the session commands + whatever the [`Subsystems`] add), the session (doc actor, project
+//! store, journal, autosave, view state), the [`JobManager`] on the engine runtime, the event
+//! fan-out, and the local API server (WP-1I.01) with the routes WP-1I.02/1J.01/1I.03 mount.
+//! Clients talk to it through an [`EngineHandle`]: [`EngineHandle::connect`] gives a
+//! [`Connection`](crate::Connection) per client connection (the in-process dispatch API the
+//! RPC layer mounts).
+//!
+//! # Threads
+//!
+//! The engine runtime (`cutweave-rt-*`, [`EngineConfig::worker_threads`] async workers plus
+//! tokio's blocking pool) runs the API server, job coordination and blocking dispatch from
+//! async callers. The doc actor (`cutweave-doc`), its event forwarder, the autosave thread, the
+//! project event forwarder and the journal flusher are plain threads of the session. Everything
+//! is joined by [`Engine::shutdown`].
+//!
+//! # Shutdown
+//!
+//! [`Engine::shutdown`] (also on drop): refuses new calls, stops the API server (removing the
+//! run-file), shuts the subsystems down, cancels jobs, then closes the session **without
+//! saving**: the doc actor drains its queue, the journal is synced and closed, the view state
+//! is flushed and the project lock released; finally the runtime stops.
+
+use std::any::TypeId;
+use std::path::{Path, PathBuf};
+use std::sync::atomic::{AtomicBool, AtomicU8, AtomicU64, Ordering};
+use std::sync::{Arc, PoisonError, RwLock, RwLockReadGuard, RwLockWriteGuard};
+use std::time::{Duration, Instant};
+
+use cutweave_api::{ApiConfig, ApiError, ApiServer, Credential, Credentials, RunningServer};
+use cutweave_commands::{
+    Access, ActorCtx, Clock, CmdError, ConnId, DocHandle, DocSnapshot, ManualClock, Registry,
+    RegistryError, Rev, SystemClock, WallTime,
+};
+use cutweave_jobs::JobManager;
+use cutweave_model::SeededGen;
+use cutweave_ops::media::{AllowedRoots, AnalysisStages, Analyzer, ImportCtx, ImportPolicy};
+use cutweave_ops::view::ViewCtx;
+use serde_json::Value;
+use tokio::runtime::Runtime;
+use tokio::sync::broadcast::error::RecvError as BroadcastRecvError;
+
+use crate::config::{EngineConfig, EngineMode};
+use crate::dispatch::{Connection, Reply};
+use crate::events::{EngineEvent, EventBus, EventReceiver};
+use crate::import::{BusAnalysisSink, ImportSink, NoMediaBackend, ctx_for};
+use crate::journal::{IdState, StopReason};
+use crate::logging::{self, LogGuard};
+use crate::project_io::{LockInfo, ProjectIoError, ProjectStore};
+use crate::session::{
+    self, Deps, ProjectCloseOutput, ProjectOpenOutput, ProjectRecoverOutput, ProjectSaveOutput,
+    ProjectStatus, Session, SessionCall, SessionState,
+};
+use crate::subsystems::{CoreOnly, SubsystemCall, SubsystemError, SubsystemEvents, SubsystemHost};
+
+/// Mixed into the `--deterministic-ids` seed for job ids: a stream separate from the
+/// document's, so job timing never shifts document ids (WP-1D.07).
+pub const JOB_ID_STREAM: u64 = 0x4A4F_4253_5354_524D; // "JOBSSTRM"
+
+/// Engine connections are numbered from here, apart from the per-request numbers the API
+/// server assigns for its own routes (connection ids must never be reused, WP-1B.09).
+const FIRST_CONN: u64 = 1 << 32;
+
+/// How long the runtime waits for blocking tasks when the engine stops.
+const RUNTIME_SHUTDOWN: Duration = Duration::from_secs(5);
+
+/// The engine version (the readiness line, the run-file).
+pub const VERSION: &str = env!("CARGO_PKG_VERSION");
+
+/// Why the engine could not start; [`exit_code`](Self::exit_code) is the launch-protocol code.
+#[derive(Debug, thiserror::Error)]
+#[non_exhaustive]
+pub enum StartError {
+    /// Another process holds the project (exit code 10).
+    #[error("{message}")]
+    ProjectLocked {
+        /// The project path as given.
+        path: PathBuf,
+        /// Who holds it, when known.
+        holder: Option<LockInfo>,
+        /// What to tell the user.
+        message: String,
+    },
+    /// The project could not be opened (not found, unreadable, a newer lock from another
+    /// host…).
+    #[error("cannot open the project {}: {source}", path.display())]
+    Project {
+        /// The project path as given.
+        path: PathBuf,
+        /// Why.
+        #[source]
+        source: ProjectIoError,
+    },
+    /// A subsystem failed (a GPU failure is exit code 11).
+    #[error(transparent)]
+    Subsystem(#[from] SubsystemError),
+    /// The API server could not bind its port (exit code 12) or start.
+    #[error(transparent)]
+    Api(#[from] ApiError),
+    /// The UI credential is missing (`Gui`) or not allowed (headless) (exit code 13).
+    #[error("bad handshake: {0}")]
+    Handshake(String),
+    /// The configuration contradicts itself (exit code 2).
+    #[error("invalid engine configuration: {0}")]
+    Config(String),
+    /// A registration broke the command contract (a bug).
+    #[error("command registry: {0}")]
+    Registry(#[from] RegistryError),
+    /// The session could not be built.
+    #[error("cannot start the session: {0}")]
+    Session(CmdError),
+    /// The runtime, a thread or the log file could not be created.
+    #[error("cannot start the engine: {0}")]
+    Io(#[from] std::io::Error),
+}
+
+impl StartError {
+    /// The process exit code (launch protocol): 10 project locked, 11 GPU init failed, 12 port
+    /// bind error, 13 bad handshake, 2 bad configuration, 1 anything else.
+    #[must_use]
+    pub fn exit_code(&self) -> i32 {
+        match self {
+            StartError::ProjectLocked { .. } => crate::launch::EXIT_PROJECT_LOCKED,
+            StartError::Subsystem(e) if e.kind == crate::subsystems::SubsystemKind::Gpu => {
+                crate::launch::EXIT_GPU_INIT_FAILED
+            }
+            StartError::Api(e) => e.exit_code(),
+            StartError::Handshake(_) => crate::launch::EXIT_HANDSHAKE,
+            StartError::Config(_) => crate::launch::EXIT_USAGE,
+            _ => crate::launch::EXIT_FAILURE,
+        }
+    }
+
+    /// The machine code of the launch protocol's error line.
+    #[must_use]
+    pub fn code(&self) -> &'static str {
+        match self {
+            StartError::ProjectLocked { .. } => "project_locked",
+            StartError::Subsystem(e) if e.kind == crate::subsystems::SubsystemKind::Gpu => {
+                "gpu_init_failed"
+            }
+            StartError::Subsystem(_) => "subsystem_failed",
+            StartError::Api(ApiError::Bind { .. }) => "port_in_use",
+            StartError::Api(_) => "server_failed",
+            StartError::Handshake(_) => "bad_handshake",
+            StartError::Config(_) => "usage",
+            StartError::Project { .. } => "project_open_failed",
+            StartError::Registry(_) | StartError::Session(_) | StartError::Io(_) => "start_failed",
+        }
+    }
+
+    fn from_project(path: &Path, e: ProjectIoError) -> StartError {
+        match e {
+            ProjectIoError::Locked { holder, reason } => StartError::ProjectLocked {
+                path: path.to_path_buf(),
+                message: ProjectIoError::Locked {
+                    holder: holder.clone(),
+                    reason,
+                }
+                .to_string(),
+                holder,
+            },
+            source => StartError::Project {
+                path: path.to_path_buf(),
+                source,
+            },
+        }
+    }
+}
+
+/// The shared engine state behind every [`EngineHandle`] and [`Connection`].
+pub(crate) struct Core {
+    pub(crate) mode: EngineMode,
+    pub(crate) deps: Deps,
+    allowed_roots: Vec<PathBuf>,
+    pub(crate) runtime: tokio::runtime::Handle,
+    session: RwLock<Option<Session>>,
+    state: AtomicU8,
+    next_conn: AtomicU64,
+    stopping: AtomicBool,
+    pub(crate) has_ui: bool,
+}
+
+fn state_code(s: SessionState) -> u8 {
+    match s {
+        SessionState::NoProject => 0,
+        SessionState::Open => 1,
+        SessionState::Closing => 2,
+    }
+}
+
+fn state_of(code: u8) -> SessionState {
+    match code {
+        1 => SessionState::Open,
+        2 => SessionState::Closing,
+        _ => SessionState::NoProject,
+    }
+}
+
+fn stopped() -> CmdError {
+    CmdError::unsupported("the engine is shutting down")
+}
+
+impl Core {
+    fn set_state(&self, s: SessionState) {
+        self.state.store(state_code(s), Ordering::Release);
+    }
+
+    fn settle_state(&self, session: &Session) {
+        self.set_state(if session.project_root().is_some() {
+            SessionState::Open
+        } else {
+            SessionState::NoProject
+        });
+    }
+
+    /// The session, for a request (shared).
+    pub(crate) fn session(&self) -> Result<RwLockReadGuard<'_, Option<Session>>, CmdError> {
+        if self.stopping.load(Ordering::Acquire) {
+            return Err(stopped());
+        }
+        let guard = self.session.read().unwrap_or_else(PoisonError::into_inner);
+        if guard.is_none() {
+            return Err(stopped());
+        }
+        Ok(guard)
+    }
+
+    fn session_mut(&self) -> Result<RwLockWriteGuard<'_, Option<Session>>, CmdError> {
+        if self.stopping.load(Ordering::Acquire) {
+            return Err(stopped());
+        }
+        let guard = self.session.write().unwrap_or_else(PoisonError::into_inner);
+        if guard.is_none() {
+            return Err(stopped());
+        }
+        Ok(guard)
+    }
+
+    /// A fresh connection id (never reused).
+    pub(crate) fn next_conn(&self) -> ConnId {
+        ConnId::new(self.next_conn.fetch_add(1, Ordering::Relaxed))
+    }
+
+    /// The current document handle.
+    pub(crate) fn doc(&self) -> Result<DocHandle, CmdError> {
+        let guard = self.session()?;
+        guard
+            .as_ref()
+            .map(|s| s.handle().clone())
+            .ok_or_else(stopped)
+    }
+
+    /// A reply carrying the current revisions.
+    pub(crate) fn reply(&self, output: Value) -> Reply {
+        let snap = self.doc().map(|d| d.snapshot()).ok();
+        Reply {
+            output,
+            rev: snap.as_ref().map_or(Rev::ZERO, |s| s.rev),
+            committed_rev: snap.as_ref().map_or(Rev::ZERO, |s| s.committed_rev),
+            applied: None,
+        }
+    }
+
+    // ----- engine commands ---------------------------------------------------------------------
+
+    /// Runs an engine command whose context is not the doc actor's.
+    pub(crate) fn run_engine(
+        self: &Arc<Self>,
+        ctx: &ActorCtx,
+        name: &str,
+        params: Value,
+        context: TypeId,
+    ) -> Result<Reply, CmdError> {
+        let registry = &self.deps.registry;
+        if context == TypeId::of::<JobManager>() {
+            // `job.wait` blocks this (non-async) thread for up to 60 s: fine here, callers on
+            // async workers use `Connection::call_async`.
+            let mut jobs = self.deps.jobs.clone();
+            let output = registry.invoke_engine_json(name, params, &mut jobs, ctx.access())?;
+            return Ok(self.reply(output));
+        }
+        if context == TypeId::of::<ImportCtx>() {
+            return self.import(ctx, name, params);
+        }
+        if context == TypeId::of::<ViewCtx>() {
+            return self.view(ctx, name, params);
+        }
+        if context == TypeId::of::<SessionCall>() {
+            let mut call = SessionCall {
+                core: Arc::clone(self),
+                caller: ctx.clone(),
+            };
+            let output = registry.invoke_engine_json(name, params, &mut call, ctx.access())?;
+            return Ok(self.reply(output));
+        }
+        let doc = self.doc()?;
+        let call = SubsystemCall {
+            name,
+            params,
+            context,
+            caller: ctx,
+            registry,
+            doc: &doc,
+        };
+        match self.deps.subsystems.invoke(call) {
+            Some(result) => result.map(|output| self.reply(output)),
+            None => Err(CmdError::unsupported(format!(
+                "`{name}` needs a subsystem this engine does not run"
+            ))),
+        }
+    }
+
+    /// `media.import` with a per-call [`ImportCtx`] (WP-1D.07 handoff).
+    fn import(&self, ctx: &ActorCtx, name: &str, params: Value) -> Result<Reply, CmdError> {
+        let guard = self.session()?;
+        let Some(session) = guard.as_ref() else {
+            return Err(stopped());
+        };
+        let handle = session.handle().clone();
+        // The UI imports whatever the user picked; agents and headless callers only from the
+        // project folder and the approved roots (arch §14, §18).
+        let policy = if ctx.access() == Access::UI {
+            ImportPolicy::default()
+        } else {
+            let mut roots = self.allowed_roots.clone();
+            if let Some(root) = session.project_root() {
+                roots.push(root.to_path_buf());
+            }
+            ImportPolicy::restricted(AllowedRoots::new(roots))
+        };
+        let sink = ImportSink::new(handle, ctx_for(ctx.actor(), self.next_conn()));
+        let prober = self
+            .deps
+            .subsystems
+            .media_probe()
+            .unwrap_or_else(|| Arc::new(NoMediaBackend));
+        let stages = self
+            .deps
+            .subsystems
+            .analysis_stages()
+            .unwrap_or_else(|| Arc::new(AnalysisStages::new()));
+        let analyzer = Analyzer::new(
+            self.deps.jobs.clone(),
+            stages,
+            Arc::new(BusAnalysisSink(self.deps.events.clone())),
+        );
+        let mut import = ImportCtx::new(prober, Box::new(sink))
+            .with_policy(policy)
+            .with_analysis(analyzer);
+        let result = self
+            .deps
+            .registry
+            .invoke_engine_json(name, params, &mut import, ctx.access());
+        // Closes the sink's connection before the session can change.
+        drop(import);
+        drop(guard);
+        result.map(|output| self.reply(output))
+    }
+
+    /// A `view.*` command against the session's view state; `view.changed` goes to the other
+    /// clients.
+    fn view(&self, ctx: &ActorCtx, name: &str, params: Value) -> Result<Reply, CmdError> {
+        let guard = self.session()?;
+        let Some(session) = guard.as_ref() else {
+            return Err(stopped());
+        };
+        let (result, change) = {
+            let mut view = session.view.lock().unwrap_or_else(PoisonError::into_inner);
+            let result = view.with_ctx(|vc| {
+                self.deps
+                    .registry
+                    .invoke_engine_json(name, params, vc, ctx.access())
+            });
+            (result, view.with_ctx(ViewCtx::take_event))
+        };
+        drop(guard);
+        if let Some(change) = change {
+            self.deps.events.publish(EngineEvent::View {
+                change,
+                origin: Some(ctx.conn()),
+            });
+        }
+        result.map(|output| self.reply(output))
+    }
+
+    // ----- the session commands ----------------------------------------------------------------
+
+    /// Swaps `slot`'s session for `next`, closing the old one (no save), and announces it.
+    fn swap_session(
+        &self,
+        slot: &mut Option<Session>,
+        build: impl FnOnce(&Deps, Option<IdState>) -> Result<Session, CmdError>,
+    ) -> Result<(Option<PathBuf>, ProjectStatus), CmdError> {
+        let Some(old) = slot.take() else {
+            return Err(stopped());
+        };
+        self.set_state(SessionState::Closing);
+        let prev_rev = old.handle().snapshot().rev;
+        let ids = old.ids();
+        self.deps.jobs.cancel_all();
+        let closed = old.close(&self.deps);
+        let (next, error) = match build(&self.deps, ids) {
+            Ok(next) => (next, None),
+            // Keep a document either way.
+            Err(e) => (Session::untitled(&self.deps, ids)?, Some(e)),
+        };
+        self.settle_state(&next);
+        if let Some(path) = &closed {
+            session::announce_closed(&self.deps, path);
+        }
+        session::announce_reset(&self.deps, prev_rev, &next);
+        let status = next.status();
+        *slot = Some(next);
+        if let Some(e) = error {
+            return Err(e);
+        }
+        Ok((closed, status))
+    }
+
+    pub(crate) fn open_project(&self, path: &Path) -> Result<ProjectOpenOutput, CmdError> {
+        {
+            // Opening the project that is already open changes nothing.
+            let guard = self.session()?;
+            if let Some(current) = guard.as_ref()
+                && current.is_project(path)
+            {
+                return Ok(ProjectOpenOutput {
+                    project: current.status(),
+                    missing_media: Vec::new(),
+                    migrated_from: None,
+                });
+            }
+        }
+        let opened = session::open_store(path).map_err(|e| session::io_error(&e, "/path"))?;
+        let missing_media = opened.report.missing_media.iter().map(|m| m.id).collect();
+        let migrated_from = opened.report.migration.as_ref().map(|m| m.from_version);
+        let mut slot = self.session_mut()?;
+        if let Some(current) = slot.as_ref() {
+            current.save_before_close(None)?;
+        }
+        let (_, status) =
+            self.swap_session(&mut slot, |deps, ids| Session::open(deps, opened, ids))?;
+        session::announce_opened(&self.deps, status.clone());
+        tracing::info!(path = %path.display(), rev = %status.rev, "project opened");
+        Ok(ProjectOpenOutput {
+            project: status,
+            missing_media,
+            migrated_from,
+        })
+    }
+
+    pub(crate) fn close_project(&self, save: Option<bool>) -> Result<ProjectCloseOutput, CmdError> {
+        let mut slot = self.session_mut()?;
+        if let Some(current) = slot.as_ref() {
+            current.save_before_close(save)?;
+        }
+        let (closed, status) = self.swap_session(&mut slot, Session::untitled)?;
+        if let Some(path) = &closed {
+            tracing::info!(path = %path.display(), "project closed");
+        }
+        Ok(ProjectCloseOutput {
+            closed: closed.map(|p| p.to_string_lossy().into_owned()),
+            project: status,
+        })
+    }
+
+    pub(crate) fn save_project(&self) -> Result<ProjectSaveOutput, CmdError> {
+        let guard = self.session()?;
+        let Some(session) = guard.as_ref() else {
+            return Err(stopped());
+        };
+        let (rev, path) = session.save()?;
+        Ok(ProjectSaveOutput { path, rev })
+    }
+
+    pub(crate) fn save_project_as(&self, folder: &Path) -> Result<ProjectSaveOutput, CmdError> {
+        let mut slot = self.session_mut()?;
+        let Some(current) = slot.as_mut() else {
+            return Err(stopped());
+        };
+        if current.can_save_as_in_place()? {
+            let rev = current.save_as_in_place(&self.deps, folder)?;
+            let status = current.status();
+            let path = status.path.clone().unwrap_or_default();
+            session::announce_opened(&self.deps, status);
+            return Ok(ProjectSaveOutput { path, rev });
+        }
+        // Untitled or read-only: write a new project from the committed document and reopen
+        // it journaled.
+        let snap = current.handle().committed_snapshot();
+        let store =
+            ProjectStore::create(folder, &snap.doc).map_err(|e| session::io_error(&e, "/path"))?;
+        let document = store.document_path().to_path_buf();
+        store.close().map_err(|e| session::io_error(&e, "/path"))?;
+        let opened = session::open_store(&document).map_err(|e| session::io_error(&e, "/path"))?;
+        let (_, status) =
+            self.swap_session(&mut slot, |deps, ids| Session::open(deps, opened, ids))?;
+        session::announce_opened(&self.deps, status.clone());
+        Ok(ProjectSaveOutput {
+            path: document.to_string_lossy().into_owned(),
+            rev: status.saved_rev.unwrap_or(status.rev),
+        })
+    }
+
+    pub(crate) fn decide_recovery(&self, discard: bool) -> Result<ProjectRecoverOutput, CmdError> {
+        let mut slot = self.session_mut()?;
+        let Some(current) = slot.as_mut() else {
+            return Err(stopped());
+        };
+        let recovered = current.decide_recovery(&self.deps, discard)?;
+        let status = current.status();
+        session::announce_opened(&self.deps, status.clone());
+        let damaged = recovered
+            .report
+            .stopped
+            .as_ref()
+            .is_some_and(|s| s.reason != StopReason::Truncated);
+        Ok(ProjectRecoverOutput {
+            project: status,
+            applied: u32::try_from(recovered.report.applied).unwrap_or(u32::MAX),
+            damaged,
+        })
+    }
+}
+
+/// A cheap, cloneable handle to a running engine: what the RPC, MCP and media layers mount
+/// (via [`ApiOptions::mounts`](crate::ApiOptions)) and what in-process clients (CLI oneshot,
+/// tests) use.
+#[derive(Clone)]
+pub struct EngineHandle {
+    pub(crate) core: Arc<Core>,
+}
+
+impl std::fmt::Debug for EngineHandle {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("EngineHandle")
+            .field("mode", &self.core.mode)
+            .field("state", &self.state())
+            .finish_non_exhaustive()
+    }
+}
+
+impl EngineHandle {
+    /// Opens a client connection with `credential`'s actor and access (ADR-0016): one per
+    /// WebSocket connection, MCP session or CLI invocation. Each gets a new connection id that
+    /// is never reused; dropping the last clone of the [`Connection`] closes it, rolling back
+    /// its open transaction (WP-1B.09). The UI credential exists only in `Gui` mode.
+    pub fn connect(&self, credential: &Credential) -> Result<Connection, CmdError> {
+        if self.core.stopping.load(Ordering::Acquire) {
+            return Err(stopped());
+        }
+        if *credential == Credential::Ui && !self.core.has_ui {
+            return Err(CmdError::unsupported(
+                "this engine runs without a UI, so the UI credential does not exist",
+            ));
+        }
+        let conn = match credential {
+            Credential::Internal => ConnId::INTERNAL,
+            _ => self.core.next_conn(),
+        };
+        let ctx = credential
+            .actor_ctx(conn)
+            .map_err(|e| CmdError::invalid("", e.to_string()))?;
+        Ok(Connection::new(Arc::clone(&self.core), ctx))
+    }
+
+    /// A subscription to the event fan-out (see [`crate::events`]).
+    #[must_use]
+    pub fn subscribe(&self) -> EventReceiver {
+        self.core.deps.events.subscribe()
+    }
+
+    /// The live document (lock-free once the session is read; `project.snapshot`).
+    pub fn snapshot(&self) -> Result<Arc<DocSnapshot>, CmdError> {
+        Ok(self.core.doc()?.snapshot())
+    }
+
+    /// The current document handle (it changes when the document is swapped; prefer
+    /// [`connect`](Self::connect) for requests).
+    pub fn doc(&self) -> Result<DocHandle, CmdError> {
+        self.core.doc()
+    }
+
+    /// What the engine holds (project path, revision, dirty, read-only, recovery).
+    pub fn status(&self) -> Result<ProjectStatus, CmdError> {
+        let guard = self.core.session()?;
+        guard.as_ref().map(Session::status).ok_or_else(stopped)
+    }
+
+    /// The session's lifecycle state (`Closing` while a swap or shutdown runs).
+    #[must_use]
+    pub fn state(&self) -> SessionState {
+        state_of(self.core.state.load(Ordering::Acquire))
+    }
+
+    /// The registry (names, schemas, MCP annotations).
+    #[must_use]
+    pub fn registry(&self) -> Arc<Registry> {
+        Arc::clone(&self.core.deps.registry)
+    }
+
+    /// How the engine runs.
+    #[must_use]
+    pub fn mode(&self) -> EngineMode {
+        self.core.mode
+    }
+
+    /// The job manager.
+    #[must_use]
+    pub fn jobs(&self) -> &JobManager {
+        &self.core.deps.jobs
+    }
+
+    /// The engine runtime (spawn async work; never block its workers).
+    #[must_use]
+    pub fn runtime(&self) -> &tokio::runtime::Handle {
+        &self.core.runtime
+    }
+}
+
+/// Every command the core engine serves: `cutweave-ops`, the `edit.*` commands and the
+/// session commands (the generated catalog should be built from this, see the integrator
+/// notes of WP-1I.04).
+pub fn build_registry() -> Result<Registry, RegistryError> {
+    let mut registry = Registry::new();
+    cutweave_ops::register(&mut registry)?;
+    cutweave_commands::edit::register(&mut registry)?;
+    session::register(&mut registry)?;
+    Ok(registry)
+}
+
+/// Runs `fut` to completion on `rt`, also when called from inside an async context (then on a
+/// helper thread, since a runtime cannot block inside another).
+fn block_on<F>(rt: &tokio::runtime::Handle, fut: F) -> F::Output
+where
+    F: std::future::Future + Send,
+    F::Output: Send,
+{
+    if tokio::runtime::Handle::try_current().is_ok() {
+        std::thread::scope(|s| match s.spawn(|| rt.block_on(fut)).join() {
+            Ok(out) => out,
+            Err(panic) => std::panic::resume_unwind(panic),
+        })
+    } else {
+        rt.block_on(fut)
+    }
+}
+
+/// The engine runtime; dropping it waits for its threads (also from async code, where a
+/// runtime may not block: then on a helper thread).
+struct OwnedRuntime(Option<Runtime>);
+
+impl OwnedRuntime {
+    fn handle(&self) -> Option<&tokio::runtime::Handle> {
+        self.0.as_ref().map(Runtime::handle)
+    }
+
+    fn stop(&mut self) {
+        let Some(rt) = self.0.take() else {
+            return;
+        };
+        if tokio::runtime::Handle::try_current().is_ok() {
+            let joined = std::thread::spawn(move || rt.shutdown_timeout(RUNTIME_SHUTDOWN)).join();
+            if joined.is_err() {
+                tracing::error!("the engine runtime did not stop cleanly");
+            }
+        } else {
+            rt.shutdown_timeout(RUNTIME_SHUTDOWN);
+        }
+    }
+}
+
+impl Drop for OwnedRuntime {
+    fn drop(&mut self) {
+        self.stop();
+    }
+}
+
+/// A running engine. Dropping it shuts it down (see [`Engine::shutdown`]).
+pub struct Engine {
+    core: Arc<Core>,
+    runtime: OwnedRuntime,
+    server: Option<RunningServer>,
+    log: Option<LogGuard>,
+    stopped: bool,
+}
+
+impl std::fmt::Debug for Engine {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("Engine")
+            .field("mode", &self.core.mode)
+            .field("port", &self.port())
+            .finish_non_exhaustive()
+    }
+}
+
+impl Engine {
+    /// Starts the core (see the module docs). Errors carry their launch-protocol exit code
+    /// ([`StartError::exit_code`]); anything started before the failure is stopped again.
+    pub fn start(mut config: EngineConfig) -> Result<Engine, StartError> {
+        let started = Instant::now();
+        Engine::check(&config)?;
+        let log = if config.log.enabled() {
+            Some(logging::init(&config.log)?)
+        } else {
+            None
+        };
+        let runtime = OwnedRuntime(Some(
+            tokio::runtime::Builder::new_multi_thread()
+                .worker_threads(config.worker_threads.max(1))
+                .thread_name("cutweave-rt")
+                .enable_all()
+                .build()?,
+        ));
+        let rt = runtime
+            .handle()
+            .cloned()
+            .ok_or_else(|| StartError::Config("no runtime".into()))?;
+        let seed = config.deterministic_ids;
+        let clock: Arc<dyn Clock> = match (&config.clock, seed) {
+            (Some(clock), _) => Arc::clone(clock),
+            (None, Some(_)) => Arc::new(ManualClock::new(WallTime::UNIX_EPOCH)),
+            (None, None) => Arc::new(SystemClock),
+        };
+        let mut jobs = JobManager::builder()
+            .config(config.jobs.clone())
+            .runtime(rt.clone());
+        if let Some(seed) = seed {
+            jobs = jobs.ids(Box::new(SeededGen::new(seed ^ JOB_ID_STREAM)));
+        }
+        let jobs = jobs.build()?;
+        let subsystems: Arc<dyn crate::Subsystems> = match config.subsystems.take() {
+            Some(s) => Arc::from(s),
+            None => Arc::new(CoreOnly),
+        };
+        let mut registry = build_registry()?;
+        subsystems.register(&mut registry)?;
+        let deps = Deps {
+            registry: Arc::new(registry),
+            clock,
+            seed,
+            journal_sync: config.journal_sync,
+            autosave: config.autosave,
+            events: EventBus::new(config.event_capacity),
+            subsystems,
+            jobs,
+        };
+        let first = match &config.project {
+            Some(path) => {
+                let opened =
+                    session::open_store(path).map_err(|e| StartError::from_project(path, e))?;
+                Session::open(&deps, opened, None).map_err(StartError::Session)?
+            }
+            None => Session::untitled(&deps, None).map_err(StartError::Session)?,
+        };
+        let core = Arc::new(Core {
+            mode: config.mode,
+            allowed_roots: config.allowed_roots.clone(),
+            runtime: rt,
+            state: AtomicU8::new(0),
+            next_conn: AtomicU64::new(FIRST_CONN),
+            stopping: AtomicBool::new(false),
+            has_ui: config.mode == EngineMode::Gui,
+            session: RwLock::new(None),
+            deps,
+        });
+        core.settle_state(&first);
+        *core.session.write().unwrap_or_else(PoisonError::into_inner) = Some(first);
+        let mut engine = Engine {
+            core: Arc::clone(&core),
+            runtime,
+            server: None,
+            log,
+            stopped: false,
+        };
+        // From here on, dropping `engine` on an error stops what already runs.
+        engine.forward_job_events();
+        let host = SubsystemHost {
+            mode: config.mode,
+            audio: config.audio,
+            gpu: config.gpu,
+            deterministic_ids: seed,
+            events: SubsystemEvents(core.deps.events.clone()),
+            runtime: core.runtime.clone(),
+        };
+        core.deps.subsystems.start(&host)?;
+        engine.serve(&mut config)?;
+        tracing::info!(
+            mode = config.mode.name(),
+            port = engine.port(),
+            deterministic = seed.is_some(),
+            elapsed_ms = u64::try_from(started.elapsed().as_millis()).unwrap_or(u64::MAX),
+            "engine ready"
+        );
+        Ok(engine)
+    }
+
+    /// Refuses configurations that contradict the mode.
+    fn check(config: &EngineConfig) -> Result<(), StartError> {
+        match (config.mode, config.ui_token.is_some()) {
+            (EngineMode::Gui, false) => {
+                return Err(StartError::Handshake(
+                    "a GUI engine needs the UI credential from the spawn handshake".into(),
+                ));
+            }
+            (EngineMode::Headless | EngineMode::Oneshot, true) => {
+                return Err(StartError::Handshake(
+                    "a headless engine has no UI credential; refusing the UI token".into(),
+                ));
+            }
+            _ => {}
+        }
+        if config.mode == EngineMode::Oneshot && config.port.is_some() {
+            return Err(StartError::Config(
+                "a oneshot engine runs no server; do not give it a port".into(),
+            ));
+        }
+        Ok(())
+    }
+
+    /// Starts the API server (WP-1I.01) with the mounted routes, when the mode serves.
+    fn serve(&mut self, config: &mut EngineConfig) -> Result<(), StartError> {
+        let Some(port) = config.server_port() else {
+            return Ok(());
+        };
+        let mounts = match config.api.mounts.take() {
+            Some(factory) => factory(self.handle()),
+            None => cutweave_api::Mounts::default(),
+        };
+        let project = config
+            .project
+            .as_ref()
+            .map(|p| p.to_string_lossy().into_owned());
+        let api = ApiConfig {
+            port,
+            run_dir: config.api.run_dir.clone(),
+            ui_token: config.ui_token.take(),
+            agent_labels: config.api.agent_labels.clone(),
+            allowed_origins: config.api.allowed_origins.clone(),
+            project,
+            version: VERSION.to_owned(),
+            enable_test_routes: config.api.enable_test_routes,
+            mounts,
+        };
+        let server = block_on(&self.core.runtime, ApiServer::start(api))?;
+        self.server = Some(server);
+        Ok(())
+    }
+
+    fn forward_job_events(&self) {
+        let mut rx = self.core.deps.jobs.subscribe();
+        let bus = self.core.deps.events.clone();
+        self.core.runtime.spawn(async move {
+            loop {
+                match rx.recv().await {
+                    Ok(event) => bus.publish(EngineEvent::Job(event)),
+                    // Progress is a stream of whole states: a lagging forwarder just goes on.
+                    Err(BroadcastRecvError::Lagged(_)) => {}
+                    Err(BroadcastRecvError::Closed) => break,
+                }
+            }
+        });
+    }
+
+    /// A handle for clients.
+    #[must_use]
+    pub fn handle(&self) -> EngineHandle {
+        EngineHandle {
+            core: Arc::clone(&self.core),
+        }
+    }
+
+    /// The API server's port, if it serves.
+    #[must_use]
+    pub fn port(&self) -> Option<u16> {
+        self.server.as_ref().map(RunningServer::port)
+    }
+
+    /// The run-file, if the engine serves.
+    #[must_use]
+    pub fn run_file_path(&self) -> Option<&Path> {
+        self.server.as_ref().map(RunningServer::run_file_path)
+    }
+
+    /// The server's credentials (agent tokens for in-process clients and tests).
+    #[must_use]
+    pub fn credentials(&self) -> Option<&Credentials> {
+        self.server.as_ref().map(RunningServer::credentials)
+    }
+
+    /// The log file, if logging is on.
+    #[must_use]
+    pub fn log_file(&self) -> Option<&Path> {
+        self.log.as_ref().map(LogGuard::path)
+    }
+
+    /// Stops the engine (see the module docs). Saves nothing.
+    pub fn shutdown(mut self) {
+        self.stop();
+    }
+
+    fn stop(&mut self) {
+        if std::mem::replace(&mut self.stopped, true) {
+            return;
+        }
+        let started = Instant::now();
+        let core = &self.core;
+        core.stopping.store(true, Ordering::Release);
+        core.set_state(SessionState::Closing);
+        if let (Some(server), Some(rt)) = (self.server.take(), self.runtime.handle()) {
+            block_on(rt, server.shutdown());
+        }
+        core.deps.subsystems.shutdown();
+        core.deps.jobs.cancel_all();
+        let session = core
+            .session
+            .write()
+            .unwrap_or_else(PoisonError::into_inner)
+            .take();
+        if let Some(session) = session {
+            session.close(&core.deps);
+        }
+        self.runtime.stop();
+        tracing::info!(
+            elapsed_ms = u64::try_from(started.elapsed().as_millis()).unwrap_or(u64::MAX),
+            "engine stopped"
+        );
+        if let Some(log) = self.log.take() {
+            log.finish();
+        }
+    }
+}
+
+impl Drop for Engine {
+    fn drop(&mut self) {
+        self.stop();
+    }
+}
+
+/// Handles and connections cross threads (RPC tasks, CLI, tests).
+const _: fn() = || {
+    fn assert_send_sync<T: Send + Sync>() {}
+    assert_send_sync::<EngineHandle>();
+    assert_send_sync::<Connection>();
+};

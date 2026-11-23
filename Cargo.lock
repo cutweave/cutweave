@@ -605,7 +605,9 @@ name = "cutweave-engine"
 version = "0.0.0"
 dependencies = [
  "criterion",
+ "cutweave-api",
  "cutweave-commands",
+ "cutweave-jobs",
  "cutweave-model",
  "cutweave-ops",
  "proptest",
@@ -613,7 +615,9 @@ dependencies = [
  "serde_json",
  "sha2",
  "thiserror",
+ "tokio",
  "tracing",
+ "tracing-subscriber",
 ]
 
 [[package]]
