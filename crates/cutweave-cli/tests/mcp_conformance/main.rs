@@ -56,8 +56,7 @@ use rmcp::{
     },
     service::{RunningService, ServiceError},
     transport::{
-        StreamableHttpClientTransport,
-        streamable_http_client::StreamableHttpClientTransportConfig,
+        StreamableHttpClientTransport, streamable_http_client::StreamableHttpClientTransportConfig,
     },
 };
 use serde_json::{Value, json};
@@ -494,9 +493,13 @@ impl<'a> Checker<'a> {
             .await;
         for step in out["steps"].as_array().expect("steps") {
             let cmd = step["cmd"].as_str().expect("step cmd");
-            self.validate("cutweave_execute", cmd, &step["output"]).await;
+            self.validate("cutweave_execute", cmd, &step["output"])
+                .await;
         }
-        self.called.lock().unwrap().insert("cutweave_execute".into());
+        self.called
+            .lock()
+            .unwrap()
+            .insert("cutweave_execute".into());
         out
     }
 
@@ -644,7 +647,10 @@ async fn exercise(session: &Session, tamper: Option<Tamper>) {
         // results against their output schemas.
         let unknown_job = format!("job_{}", "0".repeat(32));
         for (tool, args) in [
-            ("job_wait", json!({ "job_id": unknown_job, "timeout_ms": 100 })),
+            (
+                "job_wait",
+                json!({ "job_id": unknown_job, "timeout_ms": 100 }),
+            ),
             ("job_status", json!({ "id": unknown_job })),
         ] {
             let error = session.err(tool, args).await;
@@ -674,15 +680,24 @@ async fn exercise(session: &Session, tamper: Option<Tamper>) {
     let tl = c
         .tool("timeline_get", json!({ "sequence": sequence, "depth": 2 }))
         .await;
-    assert_eq!(tl["duration"], first["duration"].as_i64().unwrap() + second["duration"].as_i64().unwrap(), "{tl}");
+    assert_eq!(
+        tl["duration"],
+        first["duration"].as_i64().unwrap() + second["duration"].as_i64().unwrap(),
+        "{tl}"
+    );
     let _ = audio;
 
     // clip_trim, clip_split, item_move, item_set_props, item_delete, edit_undo
     let a = first["clips"][0].clone();
     let b = second["clips"][0].clone();
-    c.tool("clip_trim", json!({ "item": a, "edge": "end", "delta": -SEC }))
+    c.tool(
+        "clip_trim",
+        json!({ "item": a, "edge": "end", "delta": -SEC }),
+    )
+    .await;
+    let split = c
+        .tool("clip_split", json!({ "item": b, "at": "12s" }))
         .await;
-    let split = c.tool("clip_split", json!({ "item": b, "at": "12s" })).await;
     let right = split["right"].clone();
     c.tool("item_move", json!({ "item": right, "start": "40s" }))
         .await;
@@ -696,7 +711,10 @@ async fn exercise(session: &Session, tamper: Option<Tamper>) {
 
     // The undo history (before project_open replaces the document): every edit is the agent's.
     let history = c.query("edit.history", json!({})).await;
-    assert!(history["entries"].as_array().unwrap().len() >= 5, "{history}");
+    assert!(
+        history["entries"].as_array().unwrap().len() >= 5,
+        "{history}"
+    );
     assert!(
         history["entries"]
             .as_array()
@@ -707,7 +725,12 @@ async fn exercise(session: &Session, tamper: Option<Tamper>) {
     );
 
     // project_open: save, then reopen the saved folder.
-    let saved_at = session.dir.path().join("saved").to_string_lossy().into_owned();
+    let saved_at = session
+        .dir
+        .path()
+        .join("saved")
+        .to_string_lossy()
+        .into_owned();
     c.execute(json!([{ "cmd": "project.save_as", "args": { "path": saved_at } }]))
         .await;
     let opened = c.tool("project_open", json!({ "path": saved_at })).await;
@@ -723,11 +746,15 @@ async fn exercise(session: &Session, tamper: Option<Tamper>) {
         .await;
     assert!(described["output_schema"].is_object(), "{described}");
     c.query("project.info", json!({})).await;
-    c.execute(json!([{ "cmd": "edit.locks", "args": {} }])).await;
+    c.execute(json!([{ "cmd": "edit.locks", "args": {} }]))
+        .await;
 
     // Every tool of the catalog was called.
     let mut called = c.called.lock().unwrap().clone();
-    called.extend(["cutweave_search_commands".into(), "cutweave_describe_command".into()]);
+    called.extend([
+        "cutweave_search_commands".into(),
+        "cutweave_describe_command".into(),
+    ]);
     let missing: Vec<&str> = CORE_TOOLS
         .iter()
         .chain(&GENERIC_TOOLS)
@@ -771,7 +798,10 @@ async fn a_broken_output_schema_fails_the_suite_naming_the_tool() {
                 .unwrap()
                 .entry("required")
                 .or_insert_with(|| json!([]));
-            required.as_array_mut().unwrap().push(json!("no_such_field"));
+            required
+                .as_array_mut()
+                .unwrap()
+                .push(json!("no_such_field"));
         }
     }
     let run = tokio::spawn(conformance(

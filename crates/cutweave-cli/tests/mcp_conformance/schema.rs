@@ -70,7 +70,10 @@ fn walk(schema: &Value, value: &Value, at: &str, errors: &mut Vec<String>) {
     if let Some(Value::Array(branches)) = object.get("anyOf") {
         let ok = branches.iter().any(|b| passes(b, value));
         if !ok {
-            errors.push(format!("{here}: {} matches none of the anyOf branches", brief(value)));
+            errors.push(format!(
+                "{here}: {} matches none of the anyOf branches",
+                brief(value)
+            ));
         }
     }
     if let Some(Value::Array(branches)) = object.get("oneOf") {
@@ -190,7 +193,10 @@ fn kind(value: &Value) -> &'static str {
 fn brief(value: &Value) -> String {
     let text = value.to_string();
     if text.len() > 80 {
-        format!("{}...", &text[..text.char_indices().nth(80).map_or(text.len(), |(i, _)| i)])
+        format!(
+            "{}...",
+            &text[..text.char_indices().nth(80).map_or(text.len(), |(i, _)| i)]
+        )
     } else {
         text
     }
