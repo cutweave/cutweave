@@ -40,4 +40,4 @@ CapCut-class speed and ease for short-form *and* long-form video. Fully drivable
 
 ## License
 
-Cutweave is GPL-3.0, with a plugin exception: plugins that use only the published interfaces may use any license. The plugin SDK, WIT interfaces and composition runtime are MIT/Apache-2.0. Contributions require a DCO sign-off.
+Cutweave is licensed under GPL-3.0-or-later. The plugin SDK, WIT interfaces and composition runtime are MIT OR Apache-2.0. A plugin exception that would let plugins using only the published interfaces use any license is being drafted; it is pending legal review and not yet in effect (see [LICENSE-PLUGIN-EXCEPTION.md](LICENSE-PLUGIN-EXCEPTION.md)). Contributions require a DCO sign-off.
