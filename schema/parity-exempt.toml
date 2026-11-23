@@ -1,0 +1,13 @@
+# Registry entries exempt from the MCP reachability check of the CLI = MCP = RPC parity test
+# (crates/cutweave-api/tests/parity, WP-1O.02; docs/01-architecture.md §14 "Parity guarantee").
+#
+# Every registered entry except `view.*` must be reachable over MCP: a core tool, or through
+# cutweave_execute / cutweave_query / cutweave_describe_command. A command declared
+# `mcp = "hidden"` is not, so it needs an [[exempt]] entry here with the reason. The test also
+# fails on an exemption for an entry that is reachable (stale) or not registered.
+#
+# Hand-maintained (not generated). Changes are reviewed by CODEOWNERS.
+
+[[exempt]]
+name = "media.register"
+reason = "Internal plumbing of media.import and the import job (WP-1D.07): it takes probe data from the caller. Agents import files with media_import, which probes them, so an agent cannot register made-up probe data. RPC and the CLI still reach it (the engine accepts it from any credential)."

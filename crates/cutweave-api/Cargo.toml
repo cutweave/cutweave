@@ -58,6 +58,13 @@ proptest.workspace = true
 cutweave-jobs = { path = "../cutweave-jobs" }
 rmcp = { version = "=3.11.0", default-features = false, features = ["server", "transport-streamable-http-server", "client", "transport-streamable-http-client-reqwest"] }
 insta = { workspace = true }
+# WP-1O.02 parity test (`tests/parity`): the `cutweave` CLI library, so the test binary can run
+# as `cutweave exec` / `cutweave describe` child processes (another dev-only cycle, like the
+# engine's); the sha256 of saved documents; the exemption list `schema/parity-exempt.toml`.
+# All three are workspace members or workspace dependencies already in Cargo.lock.
+cutweave-cli = { path = "../cutweave-cli" }
+sha2.workspace = true
+toml.workspace = true
 
 [lints]
 workspace = true
