@@ -36,6 +36,10 @@ def run() -> tuple[int, str]:
 
 
 def main() -> int:
+    # Vitest prints box-drawing and check-mark characters; Windows defaults a redirected stdout
+    # to cp1252, which cannot encode them.
+    if hasattr(sys.stdout, "reconfigure"):
+        sys.stdout.reconfigure(encoding="utf-8", errors="replace")
     code, out = run()
     if code == 0:
         return 0
