@@ -4,9 +4,11 @@
 //! Currently hosts [`project_io`] (WP-1C.01): the project folder format, atomic save/open and the
 //! single-writer lock (arch §17, ADR-0006); [`journal`] (WP-1C.02): the append-only command
 //! journal written before every acknowledgement, and crash recovery from it; and [`ui_state`]
-//! (WP-1C.04), which persists the `view` namespace state. The rest of the composition root
+//! (WP-1C.04), which persists the `view` namespace state; and [`autosave`] (WP-1C.03): idle and
+//! periodic autosave of the committed revision, rotating backups and the project file events. The rest of the composition root
 //! arrives in later work packages.
 
+pub mod autosave;
 pub mod journal;
 pub mod project_io;
 pub mod ui_state;
