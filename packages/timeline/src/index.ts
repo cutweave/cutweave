@@ -20,6 +20,35 @@ export {
 export type { HeaderToggle } from "./geometry.ts";
 export type { HitContext, HitResult, HitZone } from "./hit-test.ts";
 export { hitTest } from "./hit-test.ts";
+export type {
+  DroppingMediaMode,
+  HoveringMode,
+  IdleMode,
+  Intent,
+  InteractionEnv,
+  InteractionEvent,
+  InteractionState,
+  InteractionStateName,
+  KeyInput,
+  Mode,
+  MovingMode,
+  PanningMode,
+  PointerInput,
+  ScrubbingMode,
+  SelectingMode,
+  Transition,
+  TrimmingMode,
+} from "./interaction.ts";
+export {
+  DEFAULT_ENV,
+  DRAG_THRESHOLD_PX,
+  fromPointerEvent,
+  initialState,
+  isBusy,
+  isGestureOpen,
+  reduce,
+  trimLimits,
+} from "./interaction.ts";
 export { IntervalIndex } from "./interval-index.ts";
 export type { TrackMetrics } from "./layout.ts";
 export { TimelineLayout } from "./layout.ts";
@@ -28,6 +57,7 @@ export type {
   ItemState,
   MediaSlice,
   Rect,
+  SourceRange,
   TimelineItem,
   TimelineModel,
   TimelineTrack,
@@ -42,6 +72,8 @@ export type { FrameInput, FrameStats } from "./renderer.ts";
 export { TimelineRenderer } from "./renderer.ts";
 export type { TickPlan } from "./ruler.ts";
 export { chooseTickPlan, tickCandidates } from "./ruler.ts";
+export type { SnapResult, SnapTargetOptions } from "./snap.ts";
+export { nearestTarget, SNAP_PX, snapSpan, snapTargets, snapTolerance } from "./snap.ts";
 export type { ClipColors, Theme } from "./theme.ts";
 export { readTheme } from "./theme.ts";
 export type { FrameRate } from "./time.ts";

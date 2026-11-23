@@ -33,15 +33,19 @@ export function frameToFlicks(frame: number, fps: FrameRate): number {
   return frame * frameDurationFlicks(fps);
 }
 
-/** Snap `t` to the frame grid (`nearest` rounds half up, as the engine does). */
+/**
+ * Snap `t` to the frame grid: `nearest` rounds half up, as the engine does; `floor` and `ceil`
+ * give the boundary at or before / at or after `t` (limits that must stay inside a range).
+ */
 export function snapToFrame(
   t: number,
   fps: FrameRate,
-  rounding: "floor" | "nearest" = "nearest",
+  rounding: "floor" | "ceil" | "nearest" = "nearest",
 ): number {
   const d = frameDurationFlicks(fps);
   const f = flicksToFrame(t, fps);
   if (rounding === "floor") return f * d;
+  if (rounding === "ceil") return f * d === t ? t : (f + 1) * d;
   return t - f * d >= d / 2 ? (f + 1) * d : f * d;
 }
 

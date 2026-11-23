@@ -105,6 +105,8 @@ export const initialEngineView: EngineViewState = {
 export interface ViewState extends EngineViewState {
   /** Session only: the active timeline tool. */
   toolMode: ToolMode;
+  /** Session only: timeline snapping to playhead and clip edges (`N`, WP-1M.06). */
+  snapping: boolean;
   theme: ThemeId;
   workspaceId: WorkspaceId;
   assetTab: AssetTabId;
@@ -124,6 +126,7 @@ export interface ViewActions {
   setAssetTab: (tab: AssetTabId) => void;
   setAspect: (aspect: AspectId) => void;
   setToolMode: (mode: ToolMode) => void;
+  setSnapping: (on: boolean) => void;
   setPlayhead: (flicks: number) => void;
   setZoom: (pxPerSec: number | null) => void;
   setScroll: (x: number, y: number) => void;
@@ -142,6 +145,7 @@ export type ViewStore = ViewState & ViewActions;
 export const initialViewState: ViewState = {
   ...initialEngineView,
   toolMode: "select",
+  snapping: true,
   theme: DEFAULT_THEME,
   workspaceId: "short-form",
   assetTab: "media",
@@ -259,6 +263,7 @@ export function createViewStore(storage?: StateStorage) {
         setAssetTab: (assetTab) => set(() => ({ assetTab })),
         setAspect: (aspect) => set(() => ({ aspect })),
         setToolMode: (toolMode) => set(() => ({ toolMode })),
+        setSnapping: (snapping) => set(() => ({ snapping })),
         setPlayhead: (playhead) => set(() => ({ playhead: Math.max(0, Math.round(playhead)) })),
         setZoom: (zoom) => set(() => ({ zoom })),
         setScroll: (x, y) => set(() => ({ scroll: { x: Math.max(0, x), y: Math.max(0, y) } })),

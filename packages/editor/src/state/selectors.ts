@@ -64,7 +64,11 @@ function toTrack(track: Track): TimelineTrack {
 
 function toItem(item: Item, track: Track, project: Project): TimelineItem {
   const kind: ItemKind = kindOf(track.kind);
-  const label = item.name ?? mediaName(project.media[item.media], item.media);
+  const media = project.media[item.media];
+  const label = item.name ?? mediaName(media, item.media);
+  // The engine's trim bounds (`clip.trim`): stills have none, other media end at the probed
+  // length when there is one.
+  const still = media?.kind === "image";
   return {
     id: item.id,
     trackId: track.id,
@@ -72,6 +76,12 @@ function toItem(item: Item, track: Track, project: Project): TimelineItem {
     start: item.start,
     duration: item.duration,
     label,
+    ...(item.linked_group !== null && { linkedGroup: item.linked_group }),
+    source: {
+      sourceIn: item.source_in,
+      mediaDuration: still ? null : (media?.probe.duration ?? null),
+      ...(still && { still }),
+    },
     ...(kind === "media" && { thumbnails: { mediaId: item.media, sourceIn: item.source_in } }),
     ...(kind === "audio" && { waveform: { mediaId: item.media, sourceIn: item.source_in } }),
     ...(!item.enabled && { state: { disabled: true } }),

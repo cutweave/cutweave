@@ -5,6 +5,7 @@ import { I18nextProvider, useTranslation } from "react-i18next";
 import { Dock } from "../dock/Dock.tsx";
 import { i18n } from "../i18n/index.ts";
 import { useViewStore } from "../state/viewStore.ts";
+import { Toasts } from "./Toasts.tsx";
 import { TopBar } from "./TopBar.tsx";
 
 function Shell() {
@@ -30,6 +31,7 @@ function Shell() {
           <Dock />
         </main>
       </div>
+      <Toasts />
     </TooltipProvider>
   );
 }
