@@ -5,9 +5,9 @@
 //! `Unsupported`.
 
 use cutweave_commands::{CmdError, Command, QueryCtx, Registry, RegistryError, Tx, command, wire};
-use cutweave_model::{EntityKind, Sequence, SequenceId, Track, TrackId, TrackKind};
+use cutweave_model::{EntityKind, Item, Sequence, SequenceId, Track, TrackId, TrackKind};
 
-use crate::util::check_name;
+use crate::{item::unlink_orphans, util::check_name};
 
 /// Lowest accepted track gain in dB.
 pub const MIN_TRACK_GAIN_DB: f64 = -144.0;
@@ -124,7 +124,9 @@ pub struct TrackRemoveOutput {
     pub removed_items: u32,
 }
 
-/// Removes a track together with its items. Fails with `Locked` if the track is locked.
+/// Removes a track together with its items. Fails with `Locked` if the track is locked, or
+/// if a linked partner that would be left alone in its group is on a locked track. Linked
+/// partners of the removed items stay; a partner left alone in its group is unlinked.
 #[command(
     name = "track.remove",
     summary = "Remove a track and the items on it (fails if the track is locked)",
@@ -145,12 +147,31 @@ impl Command for TrackRemove {
         if track.locked {
             return Err(CmdError::locked(EntityKind::Track, track.id));
         }
+        // A partner that would be left alone in its group is unlinked, which a locked track
+        // does not allow (edits touching a locked partner's track fail with `Locked`).
+        for group in track.items.iter().filter_map(Item::linked_group) {
+            let mut elsewhere = ctx
+                .doc()
+                .sequences
+                .values()
+                .flat_map(|s| s.tracks.values())
+                .filter(|t| t.id != track.id)
+                .flat_map(|t| t.items.iter().map(move |i| (t, i)))
+                .filter(|(_, i)| i.linked_group() == Some(group));
+            if let (Some((t, _)), None) = (elsewhere.next(), elsewhere.next())
+                && t.locked
+            {
+                return Err(CmdError::locked(EntityKind::Track, t.id));
+            }
+        }
         Ok(())
     }
 
     fn apply(&self, tx: &mut Tx<'_>) -> Result<TrackRemoveOutput, CmdError> {
         self.validate(&tx.query_ctx())?;
         let track = tx.remove_track(self.track)?;
+        // Partners on other tracks must not be left alone in a group.
+        unlink_orphans(tx, track.items.iter().filter_map(Item::linked_group))?;
         Ok(TrackRemoveOutput {
             track: track.id,
             removed_items: u32::try_from(track.items.len()).unwrap_or(u32::MAX),

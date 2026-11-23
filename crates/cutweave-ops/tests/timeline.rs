@@ -140,6 +140,144 @@ fn insert_audio_media_on_an_audio_track_and_video_media_as_sound_only() {
     assert_eq!(h.doc().item_count(), 2);
 }
 
+/// Frame times of the sequence the project was made with.
+fn grid(h: &H, p: P) -> cutweave_model::FrameRate {
+    h.doc().sequences[&p.sequence].format.frame_rate
+}
+
+#[test]
+fn insert_snaps_at_and_duration_to_the_frame_grid_and_reports_them() {
+    let (mut h, p) = H::project();
+    let m = h.add_video("/m/v.mp4", 10, false);
+    let frame = FLICKS / 30;
+    // 30 fps: frame 3 plus 0.4 of a frame -> frame 3 (down); 4.5 frames -> 5 (tie later).
+    let out = insert(
+        &mut h,
+        p,
+        p.video,
+        m,
+        json!({"at": 3 * frame + frame * 2 / 5, "duration": 9 * frame / 2}),
+    )
+    .unwrap();
+    assert_eq!(out["at"], json!(3 * frame));
+    assert_eq!(out["duration"], json!(5 * frame));
+    let c = clip_of(&h, p, &out["clips"][0]);
+    assert_eq!(
+        (c.start.flicks(), c.duration.flicks()),
+        (3 * frame, 5 * frame)
+    );
+    // source_in is a position in the media and keeps its off-grid value.
+    let off = frame / 2 + 7;
+    let out = insert(
+        &mut h,
+        p,
+        p.video,
+        m,
+        json!({"at": "5s", "source_in": off, "duration": "1s"}),
+    )
+    .unwrap();
+    assert_eq!(clip_of(&h, p, &out["clips"][0]).source_in.flicks(), off);
+}
+
+#[test]
+fn insert_duration_is_at_least_one_frame_but_still_positive() {
+    let (mut h, p) = H::project();
+    let m = h.add_video("/m/v.mp4", 10, false);
+    let frame = FLICKS / 30;
+    let out = insert(&mut h, p, p.video, m, json!({"duration": 3})).unwrap();
+    assert_eq!(out["duration"], json!(frame));
+    assert_invalid(
+        insert(&mut h, p, p.video, m, json!({"duration": 0})),
+        "/duration",
+    );
+    assert_invalid(
+        insert(&mut h, p, p.video, m, json!({"duration": -5})),
+        "/duration",
+    );
+    // `at` a few flicks below zero snaps to zero; a whole frame below zero fails.
+    let out = insert(
+        &mut h,
+        p,
+        p.video,
+        m,
+        json!({"at": -3, "duration": "1s", "overlap": "new_track"}),
+    )
+    .unwrap();
+    assert_eq!(out["at"], json!(0));
+    assert_invalid(insert(&mut h, p, p.video, m, json!({"at": -frame})), "/at");
+}
+
+#[test]
+fn insert_on_grid_inputs_are_unchanged() {
+    let (mut h, p) = H::project();
+    let m = h.add_video("/m/v.mp4", 10, false);
+    let out = insert(
+        &mut h,
+        p,
+        p.video,
+        m,
+        json!({"at": "f:45", "duration": "2s"}),
+    )
+    .unwrap();
+    assert_eq!(out["at"], json!(FLICKS * 3 / 2));
+    assert_eq!(out["duration"], json!(2 * FLICKS));
+    // Defaults derived from the media are not snapped.
+    let out = insert(
+        &mut h,
+        p,
+        p.video,
+        m,
+        json!({"at": "20s", "source_in": "4s"}),
+    )
+    .unwrap();
+    assert_eq!(out["duration"], json!(6 * FLICKS));
+}
+
+#[test]
+fn insert_on_an_ntsc_sequence_lands_on_the_frame_grid() {
+    let (h0, p) = H::project();
+    let mut doc = h0.doc();
+    doc.sequences
+        .get_mut(&p.sequence)
+        .unwrap()
+        .format
+        .frame_rate = cutweave_model::FrameRate::FPS_29_97;
+    let mut h = H::with_doc(doc);
+    let rate = grid(&h, p);
+    let m = h.add_video("/m/v.mp4", 100, true);
+    let off = rate.frame_to_time(100).unwrap().flicks() + 5;
+    let len = rate.frame_to_time(40).unwrap().flicks() - 9;
+    let out = insert(&mut h, p, p.video, m, json!({"at": off, "duration": len})).unwrap();
+    let want_at = rate.frame_to_time(100).unwrap();
+    let want_len = rate.frame_to_time(40).unwrap();
+    assert_eq!(out["at"], json!(want_at.flicks()));
+    assert_eq!(out["duration"], json!(want_len.flicks()));
+    for c in out["clips"].as_array().unwrap() {
+        let c = clip_of(&h, p, c);
+        assert_eq!((c.start, c.duration.flicks()), (want_at, want_len.flicks()));
+        assert_eq!(
+            rate.snap_to_frame(c.start, cutweave_model::Rounding::Nearest)
+                .unwrap(),
+            c.start
+        );
+    }
+    // An on-grid input is returned as given.
+    let at = rate.frame_to_time(300).unwrap();
+    let out = insert(
+        &mut h,
+        p,
+        p.video,
+        m,
+        json!({"at": "f:300", "duration": "f:30"}),
+    )
+    .unwrap();
+    assert_eq!(out["at"], json!(at.flicks()));
+    assert_eq!(
+        out["duration"],
+        json!(rate.frame_to_time(30).unwrap().flicks())
+    );
+}
+
 #[test]
 fn insert_an_image_defaults_to_five_seconds() {
     let (mut h, p) = H::project();

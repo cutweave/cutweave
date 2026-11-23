@@ -614,6 +614,8 @@ dependencies = [
  "serde",
  "serde_json",
  "sha2",
+ "specta",
+ "specta-typescript",
  "thiserror",
  "tokio",
  "tracing",
@@ -3028,6 +3030,9 @@ dependencies = [
  "serde_json",
  "sha2",
  "similar",
+ "specta",
+ "specta-serde",
+ "specta-typescript",
  "toml 0.9.12+spec-1.1.0",
 ]
 

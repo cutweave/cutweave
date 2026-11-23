@@ -32,14 +32,14 @@ pub const PROJECT_EVENTS: &[(&str, &str)] = &[
 ];
 
 /// Payload of `project.dirty`.
-#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize, specta::Type)]
 pub struct ProjectDirty {
     /// Whether the committed revision differs from the last saved one.
     pub dirty: bool,
 }
 
 /// Payload of `project.saved`.
-#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize, specta::Type)]
 pub struct ProjectSaved {
     /// The committed revision that was written.
     pub rev: Rev,
@@ -49,9 +49,10 @@ pub struct ProjectSaved {
 
 /// Payload of `project.recovery_available`; also what a recovery dialog shows (what a restore
 /// would bring back).
-#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize, specta::Type)]
 pub struct RecoveryPayload {
     /// Transactions a restore would replay.
+    #[specta(type = specta_typescript::Number)]
     pub records: usize,
     /// The committed revision of the saved document.
     pub base_rev: Rev,
@@ -76,7 +77,7 @@ impl From<&RecoveryAvailable> for RecoveryPayload {
 }
 
 /// Payload of `project.autosave_failed`.
-#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize, specta::Type)]
 pub struct AutosaveFailed {
     /// What went wrong (paths and OS messages only; never secrets).
     pub message: String,

@@ -7,6 +7,7 @@ mod deps;
 mod headers;
 mod schema_gen;
 mod tokens;
+mod ts_gen;
 
 use std::path::{Path, PathBuf};
 use std::process::{Command, ExitCode};

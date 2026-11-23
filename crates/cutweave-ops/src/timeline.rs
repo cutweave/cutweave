@@ -24,7 +24,7 @@ use cutweave_model::{
 use crate::{
     media::has_audio_stream,
     track::{check_editable_kind, next_track_name},
-    util::{resolve_duration, resolve_time},
+    util::{resolve_frame_duration, resolve_frame_time, resolve_time},
 };
 
 /// Length of a still image when `duration` is omitted: five seconds.
@@ -55,6 +55,10 @@ pub enum OverlapPolicy {
 /// Result of `timeline.insert`.
 #[wire]
 pub struct TimelineInsertOutput {
+    /// The start that was used, snapped to the frame grid.
+    pub at: Time,
+    /// The clip length that was used, a whole number of frames.
+    pub duration: Duration,
     /// The inserted clips: the one on the target track first, then the linked audio clip.
     pub clips: Vec<ItemId>,
     /// The group shared by the clips when audio was linked.
@@ -66,7 +70,10 @@ pub struct TimelineInsertOutput {
 /// Inserts a media clip on a track at a time. `source_in` is the position in the media the clip
 /// starts from and `duration` its length (defaults: the start of the media and the rest of it;
 /// stills default to five seconds). Times accept flicks, `"1.5s"`, `"f:45"` and timecodes,
-/// resolved against the sequence's frame rate. See the module docs for overlap and linked
+/// resolved against the sequence's frame rate. `at` and `duration` snap to the frame grid
+/// (nearest frame, ties later; at least one frame) and the result states the values used;
+/// `source_in` is a position in the media and is not snapped, nor is a default duration
+/// (the rest of the media, or five seconds for a still). See the module docs for overlap and linked
 /// audio behaviour. Fails with `Locked` if the target track is locked.
 #[command(
     name = "timeline.insert",
@@ -83,11 +90,11 @@ pub struct TimelineInsert {
     pub track: TrackId,
     /// The media to place.
     pub media: MediaId,
-    /// Timeline position of the clip's first frame, `>= 0`.
+    /// Timeline position of the clip's first frame, `>= 0` (snapped to the frame grid).
     pub at: TimeInput,
     /// Position in the media to start from (default 0).
     pub source_in: Option<TimeInput>,
-    /// Clip length, `> 0`.
+    /// Clip length, `> 0` (snapped to whole frames, at least one).
     pub duration: Option<TimeInput>,
     /// Overlap handling (default `reject`).
     pub overlap: Option<OverlapPolicy>,
@@ -124,7 +131,7 @@ impl TimelineInsert {
         media: &MediaAsset,
     ) -> Result<(Time, Time, Duration), CmdError> {
         let rate = sequence.format.frame_rate;
-        let at = resolve_time("/at", self.at, rate)?;
+        let at = resolve_frame_time("/at", self.at, rate)?;
         if at < Time::ZERO {
             return Err(CmdError::invalid("/at", "the time must not be negative"));
         }
@@ -143,7 +150,9 @@ impl TimelineInsert {
             .duration
             .filter(|_| media.kind != MediaKind::Image);
         let duration = match (self.duration, bounded) {
-            (Some(d), _) => resolve_duration("/duration", d, rate)?,
+            (Some(d), _) => resolve_frame_duration("/duration", d, rate)?,
+            // Defaults derived from the media are not snapped: a clip that plays the rest of
+            // its media ends exactly where the media does.
             (None, Some(total)) => total
                 .flicks()
                 .checked_sub(source_in.flicks())
@@ -325,6 +334,8 @@ impl Command for TimelineInsert {
             clips.push(id);
         }
         Ok(TimelineInsertOutput {
+            at: plan.at,
+            duration: plan.duration,
             clips,
             linked_group: group,
             created_tracks: created,

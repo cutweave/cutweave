@@ -266,7 +266,11 @@ importers:
 
   packages/plugin-sdk: {}
 
-  packages/protocol: {}
+  packages/protocol:
+    devDependencies:
+      '@types/node':
+        specifier: ^24.19.2
+        version: 24.19.2
 
   packages/timeline:
     dependencies:

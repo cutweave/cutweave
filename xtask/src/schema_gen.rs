@@ -11,6 +11,7 @@
 //! | `schema/patch-fixtures.json` | RFC 6902-style patches produced by real commands, for the TS patch applier |
 //! | `schema/schema-hash.txt`, `crates/cutweave-commands/src/schema_hash.rs` | sha256 of `commands.json` |
 //! | `docs/reference/commands.md` | human-readable command table |
+//! | `packages/protocol/src/generated/*.ts` | TypeScript types, `CommandMap`, `EventMap`, schema hash (`ts_gen`) |
 //!
 //! `--check` regenerates in memory and compares against the files on disk, printing a unified
 //! diff and failing when any differ. Nothing here reads the clock or a random source: patch
@@ -374,6 +375,20 @@ pub fn generate() -> Result<Files, String> {
         .into_bytes(),
     );
     files.insert(REFERENCE.into(), reference_markdown(&registry).into_bytes());
+    // TypeScript for `packages/protocol` (WP-1N.02).
+    let events = events_catalog();
+    let error_codes: Vec<String> = queries_catalog(&registry)["error_codes"]
+        .as_array()
+        .ok_or("queries catalog has no error_codes")?
+        .iter()
+        .filter_map(|c| c["code"].as_str().map(str::to_owned))
+        .collect();
+    files.extend(crate::ts_gen::generate(
+        &registry,
+        &events,
+        &error_codes,
+        &hash,
+    )?);
     Ok(files)
 }
 
@@ -679,6 +694,64 @@ mod tests {
         assert!(diff.contains("+      \"summary\""), "{diff}");
         // Only the stale file is reported.
         assert!(!diff.contains("schema/queries.json"), "{diff}");
+    }
+
+    /// WP-1N.02: a Rust-side type change that was not regenerated shows up in the TS files too.
+    #[test]
+    fn stale_generated_typescript_fails_the_check() {
+        let dir = TempDir::new("stale-ts");
+        let files = generate().unwrap();
+        write(&dir.0, &files).unwrap();
+        let ts_files: Vec<_> = files
+            .keys()
+            .filter(|rel| rel.starts_with("packages/protocol/src/generated/"))
+            .collect();
+        assert_eq!(ts_files.len(), 4, "{ts_files:?}");
+
+        // A command input lost a field: the committed `commands.ts` still names the old type.
+        let path = dir.0.join("packages/protocol/src/generated/commands.ts");
+        let committed = fs::read_to_string(&path).unwrap();
+        let mutated = committed.replacen("input: ClipSplit;", "input: ClipSplitOld;", 1);
+        assert_ne!(mutated, committed);
+        fs::write(&path, mutated).unwrap();
+
+        let diff = check(&dir.0, &files).unwrap_err();
+        assert!(
+            diff.contains("--- a/packages/protocol/src/generated/commands.ts"),
+            "{diff}"
+        );
+        assert!(
+            diff.contains("-  \"clip.split\": { input: ClipSplitOld;"),
+            "{diff}"
+        );
+    }
+
+    #[test]
+    fn generated_typescript_has_no_any_or_bigint_and_flicks_are_numbers() {
+        let files = generate().unwrap();
+        for (rel, bytes) in &files {
+            if !rel.starts_with("packages/protocol/src/generated/") {
+                continue;
+            }
+            let text = String::from_utf8(bytes.clone()).unwrap();
+            assert!(text.starts_with("// @generated"), "{rel}");
+            assert!(!text.to_lowercase().contains("bigint"), "{rel}");
+            let code: String = text
+                .lines()
+                .filter(|l| {
+                    let l = l.trim_start();
+                    !(l.starts_with("//") || l.starts_with("/*") || l.starts_with('*'))
+                })
+                .collect::<Vec<_>>()
+                .join(
+                    "
+",
+                );
+            assert!(!code.contains(": any") && !code.contains("<any>"), "{rel}");
+        }
+        let types =
+            String::from_utf8(files["packages/protocol/src/generated/types.ts"].clone()).unwrap();
+        assert!(types.contains("export type Time = number"));
     }
 
     #[test]

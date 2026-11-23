@@ -460,7 +460,7 @@ pub enum HistoryChange {
 
 /// `edit.history_changed`: an actor's undo/redo stacks changed (Undo/Redo buttons, "undo agent
 /// turn"). Not tied to a revision: after `Lagged`, re-read `edit.history`.
-#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize, specta::Type)]
 pub struct HistoryChanged {
     /// What happened.
     pub change: HistoryChange,

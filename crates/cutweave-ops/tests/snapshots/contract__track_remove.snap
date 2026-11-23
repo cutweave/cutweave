@@ -31,7 +31,7 @@ expression: "json!({\n    \"meta\": serde_json::to_value(meta).unwrap(), \"input
       "required": [
         "track"
       ],
-      "description": "Removes a track together with its items. Fails with `Locked` if the track is locked.",
+      "description": "Removes a track together with its items. Fails with `Locked` if the track is locked, or\nif a linked partner that would be left alone in its group is on a locked track. Linked\npartners of the removed items stay; a partner left alone in its group is unlinked.",
       "title": "TrackRemove"
     },
     "output_schema": {
@@ -71,7 +71,7 @@ expression: "json!({\n    \"meta\": serde_json::to_value(meta).unwrap(), \"input
     "required": [
       "track"
     ],
-    "description": "Removes a track together with its items. Fails with `Locked` if the track is locked.",
+    "description": "Removes a track together with its items. Fails with `Locked` if the track is locked, or\nif a linked partner that would be left alone in its group is on a locked track. Linked\npartners of the removed items stay; a partner left alone in its group is unlinked.",
     "title": "TrackRemove"
   },
   "output": {

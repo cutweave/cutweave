@@ -19,7 +19,7 @@ use cutweave_model::{
 };
 
 use crate::{
-    item::{Located, conflict, duration, ensure_unlocked, members, time},
+    item::{Located, conflict, duration, ensure_unlocked, members, time, unlink_orphans},
     util::resolve_frame_time,
 };
 
@@ -313,6 +313,8 @@ struct TrimPlan {
     /// `(track, after)` for the requested clip first, then partners.
     clips: Vec<(Located, Clip)>,
     unlink: bool,
+    /// The group the requested clip leaves under `unlink: true`.
+    leaves: Option<GroupId>,
 }
 
 impl ClipTrim {
@@ -364,7 +366,16 @@ impl ClipTrim {
             }
             clips.push((m, after));
         }
-        Ok(TrimPlan { clips, unlink })
+        let leaves = if unlink {
+            clips.first().and_then(|(m, _)| m.item.linked_group())
+        } else {
+            None
+        };
+        Ok(TrimPlan {
+            clips,
+            unlink,
+            leaves,
+        })
     }
 }
 
@@ -398,6 +409,7 @@ impl Command for ClipTrim {
                 source_in: after.source_in,
             });
         }
+        unlink_orphans(tx, plan.leaves)?;
         Ok(ClipTrimOutput { items })
     }
 }
