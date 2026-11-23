@@ -24,6 +24,7 @@ use std::time::Duration;
 
 use cutweave_api::Token;
 use cutweave_api::launch::{LaunchArgs, ready_line};
+use cutweave_api::rpc::RpcConfig;
 use serde_json::{Value, json};
 
 use crate::config::{ApiOptions, EngineConfig, EngineMode};
@@ -293,6 +294,8 @@ fn run_logged(
         api: ApiOptions {
             run_dir: args.base.run_dir.clone(),
             allowed_origins: args.base.allowed_origins.clone(),
+            // `/rpc` (WP-1I.02).
+            mounts: Some(crate::rpc_mounts(RpcConfig::default())),
             ..ApiOptions::default()
         },
         ..EngineConfig::default()
