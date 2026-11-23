@@ -97,7 +97,7 @@ pub struct TimelineInsert {
 
 /// Where a clip goes: an existing track, or a new one created directly above `above`.
 #[derive(Clone, Copy, Debug)]
-enum Slot {
+pub(crate) enum Slot {
     Existing(TrackId),
     New { above: TrackId },
 }
@@ -111,7 +111,7 @@ struct Plan {
     audio: Option<Slot>,
 }
 
-fn overlapping(track: &Track, start: Time, end: Time) -> Option<ItemId> {
+pub(crate) fn overlapping(track: &Track, start: Time, end: Time) -> Option<ItemId> {
     track.items.overlapping(start, end).next().map(Item::id)
 }
 
@@ -281,7 +281,7 @@ fn clip(id: ItemId, media: &MediaAsset, plan: &Plan, group: Option<GroupId>) -> 
     clip.into()
 }
 
-fn materialize(
+pub(crate) fn materialize(
     tx: &mut Tx<'_>,
     sequence: SequenceId,
     slot: Slot,
@@ -433,7 +433,7 @@ fn count(n: usize) -> u32 {
     u32::try_from(n).unwrap_or(u32::MAX)
 }
 
-fn item_summary(item: &Item) -> ItemSummary {
+pub(crate) fn item_summary(item: &Item) -> ItemSummary {
     ItemSummary {
         id: item.id(),
         kind: match item {

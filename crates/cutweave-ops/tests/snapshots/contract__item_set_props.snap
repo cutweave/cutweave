@@ -1,0 +1,358 @@
+---
+source: crates/cutweave-ops/tests/contract.rs
+expression: "json!({\n    \"meta\": serde_json::to_value(meta).unwrap(), \"input\": meta.input_schema,\n    \"output\": meta.output_schema,\n})"
+---
+{
+  "meta": {
+    "name": "item.set_props",
+    "summary": "Set an item's name, enabled, opacity, audio_gain or transform (partial)",
+    "kind": "command",
+    "undoable": true,
+    "view": false,
+    "scope": "any",
+    "mcp": "core",
+    "annotations": {
+      "readOnlyHint": false,
+      "destructiveHint": false,
+      "idempotentHint": true,
+      "openWorldHint": false
+    },
+    "secret_fields": [],
+    "input_schema": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "item": {
+          "type": "string",
+          "pattern": "^itm_[0-9a-f]{32}$",
+          "description": "The item."
+        },
+        "props": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "name": {
+              "type": [
+                "string",
+                "null"
+              ],
+              "description": "Display name; an empty string clears it (the media name is shown again)."
+            },
+            "enabled": {
+              "type": [
+                "boolean",
+                "null"
+              ],
+              "description": "Rendered and heard (`true`) or kept but skipped (`false`)."
+            },
+            "opacity": {
+              "type": [
+                "number",
+                "null"
+              ],
+              "format": "double",
+              "description": "Opacity `0.0..=1.0`."
+            },
+            "audio_gain": {
+              "type": [
+                "number",
+                "null"
+              ],
+              "format": "double",
+              "description": "Clip gain in dB, `-144..=48` (0 = unchanged)."
+            },
+            "transform": {
+              "type": [
+                "object",
+                "null"
+              ],
+              "additionalProperties": false,
+              "properties": {
+                "position": {
+                  "type": [
+                    "object",
+                    "null"
+                  ],
+                  "additionalProperties": false,
+                  "properties": {
+                    "x": {
+                      "type": "number",
+                      "format": "double",
+                      "description": "Horizontal component."
+                    },
+                    "y": {
+                      "type": "number",
+                      "format": "double",
+                      "description": "Vertical component (down is positive)."
+                    }
+                  },
+                  "required": [
+                    "x",
+                    "y"
+                  ],
+                  "description": "Offset of the anchor from the canvas center, in canvas units (+y is down)."
+                },
+                "scale": {
+                  "type": [
+                    "object",
+                    "null"
+                  ],
+                  "additionalProperties": false,
+                  "properties": {
+                    "x": {
+                      "type": "number",
+                      "format": "double",
+                      "description": "Horizontal component."
+                    },
+                    "y": {
+                      "type": "number",
+                      "format": "double",
+                      "description": "Vertical component (down is positive)."
+                    }
+                  },
+                  "required": [
+                    "x",
+                    "y"
+                  ],
+                  "description": "Size multiplier per axis (1.0 = aspect-fit); finite and `>= 0`."
+                },
+                "rotation": {
+                  "type": [
+                    "number",
+                    "null"
+                  ],
+                  "format": "double",
+                  "description": "Clockwise rotation in degrees."
+                },
+                "anchor": {
+                  "type": [
+                    "object",
+                    "null"
+                  ],
+                  "additionalProperties": false,
+                  "properties": {
+                    "x": {
+                      "type": "number",
+                      "format": "double",
+                      "description": "Horizontal component."
+                    },
+                    "y": {
+                      "type": "number",
+                      "format": "double",
+                      "description": "Vertical component (down is positive)."
+                    }
+                  },
+                  "required": [
+                    "x",
+                    "y"
+                  ],
+                  "description": "The item point `position` places and rotation turns around, in item units."
+                }
+              },
+              "description": "Placement on the canvas (partial)."
+            }
+          },
+          "description": "The properties to change; at least one."
+        }
+      },
+      "required": [
+        "item",
+        "props"
+      ],
+      "description": "Changes an item's name, enabled flag, opacity, clip gain or transform; absent fields keep\ntheir value and setting a value it already has is a no-op. `Locked` if the item's track is\nlocked.",
+      "title": "ItemSetProps"
+    },
+    "output_schema": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "item": {
+          "type": "string",
+          "pattern": "^itm_[0-9a-f]{32}$",
+          "description": "The item."
+        },
+        "changed": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          },
+          "description": "The props whose value actually changed (`name`, `enabled`, `opacity`, `audio_gain`,\n`transform.position`, ...); empty if everything was already as requested."
+        }
+      },
+      "required": [
+        "item",
+        "changed"
+      ],
+      "description": "Result of `item.set_props`.",
+      "title": "ItemSetPropsOutput"
+    }
+  },
+  "input": {
+    "type": "object",
+    "additionalProperties": false,
+    "properties": {
+      "item": {
+        "type": "string",
+        "pattern": "^itm_[0-9a-f]{32}$",
+        "description": "The item."
+      },
+      "props": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "name": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Display name; an empty string clears it (the media name is shown again)."
+          },
+          "enabled": {
+            "type": [
+              "boolean",
+              "null"
+            ],
+            "description": "Rendered and heard (`true`) or kept but skipped (`false`)."
+          },
+          "opacity": {
+            "type": [
+              "number",
+              "null"
+            ],
+            "format": "double",
+            "description": "Opacity `0.0..=1.0`."
+          },
+          "audio_gain": {
+            "type": [
+              "number",
+              "null"
+            ],
+            "format": "double",
+            "description": "Clip gain in dB, `-144..=48` (0 = unchanged)."
+          },
+          "transform": {
+            "type": [
+              "object",
+              "null"
+            ],
+            "additionalProperties": false,
+            "properties": {
+              "position": {
+                "type": [
+                  "object",
+                  "null"
+                ],
+                "additionalProperties": false,
+                "properties": {
+                  "x": {
+                    "type": "number",
+                    "format": "double",
+                    "description": "Horizontal component."
+                  },
+                  "y": {
+                    "type": "number",
+                    "format": "double",
+                    "description": "Vertical component (down is positive)."
+                  }
+                },
+                "required": [
+                  "x",
+                  "y"
+                ],
+                "description": "Offset of the anchor from the canvas center, in canvas units (+y is down)."
+              },
+              "scale": {
+                "type": [
+                  "object",
+                  "null"
+                ],
+                "additionalProperties": false,
+                "properties": {
+                  "x": {
+                    "type": "number",
+                    "format": "double",
+                    "description": "Horizontal component."
+                  },
+                  "y": {
+                    "type": "number",
+                    "format": "double",
+                    "description": "Vertical component (down is positive)."
+                  }
+                },
+                "required": [
+                  "x",
+                  "y"
+                ],
+                "description": "Size multiplier per axis (1.0 = aspect-fit); finite and `>= 0`."
+              },
+              "rotation": {
+                "type": [
+                  "number",
+                  "null"
+                ],
+                "format": "double",
+                "description": "Clockwise rotation in degrees."
+              },
+              "anchor": {
+                "type": [
+                  "object",
+                  "null"
+                ],
+                "additionalProperties": false,
+                "properties": {
+                  "x": {
+                    "type": "number",
+                    "format": "double",
+                    "description": "Horizontal component."
+                  },
+                  "y": {
+                    "type": "number",
+                    "format": "double",
+                    "description": "Vertical component (down is positive)."
+                  }
+                },
+                "required": [
+                  "x",
+                  "y"
+                ],
+                "description": "The item point `position` places and rotation turns around, in item units."
+              }
+            },
+            "description": "Placement on the canvas (partial)."
+          }
+        },
+        "description": "The properties to change; at least one."
+      }
+    },
+    "required": [
+      "item",
+      "props"
+    ],
+    "description": "Changes an item's name, enabled flag, opacity, clip gain or transform; absent fields keep\ntheir value and setting a value it already has is a no-op. `Locked` if the item's track is\nlocked.",
+    "title": "ItemSetProps"
+  },
+  "output": {
+    "type": "object",
+    "additionalProperties": false,
+    "properties": {
+      "item": {
+        "type": "string",
+        "pattern": "^itm_[0-9a-f]{32}$",
+        "description": "The item."
+      },
+      "changed": {
+        "type": "array",
+        "items": {
+          "type": "string"
+        },
+        "description": "The props whose value actually changed (`name`, `enabled`, `opacity`, `audio_gain`,\n`transform.position`, ...); empty if everything was already as requested."
+      }
+    },
+    "required": [
+      "item",
+      "changed"
+    ],
+    "description": "Result of `item.set_props`.",
+    "title": "ItemSetPropsOutput"
+  }
+}

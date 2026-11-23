@@ -1,0 +1,102 @@
+---
+source: crates/cutweave-ops/tests/contract.rs
+expression: "json!({\n    \"meta\": serde_json::to_value(meta).unwrap(), \"input\": meta.input_schema,\n    \"output\": meta.output_schema,\n})"
+---
+{
+  "meta": {
+    "name": "item.delete",
+    "summary": "Delete items and their linked partners (no ripple; fails if a track is locked)",
+    "kind": "command",
+    "undoable": true,
+    "view": false,
+    "scope": "any",
+    "mcp": "core",
+    "annotations": {
+      "readOnlyHint": false,
+      "destructiveHint": true,
+      "idempotentHint": false,
+      "openWorldHint": false
+    },
+    "secret_fields": [],
+    "input_schema": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "items": {
+          "type": "array",
+          "items": {
+            "description": "A Item id: `^itm_[0-9a-f]{32}$`.",
+            "type": "string",
+            "pattern": "^itm_[0-9a-f]{32}$"
+          },
+          "description": "The items to delete, at least one."
+        }
+      },
+      "required": [
+        "items"
+      ],
+      "description": "Deletes items and their linked partners. Gaps stay (no ripple). All or nothing: if any\naffected track is locked the call fails with `Locked` and nothing is deleted. Unknown items\nare `NotFound`; repeated IDs are deleted once.",
+      "title": "ItemDelete"
+    },
+    "output_schema": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "deleted": {
+          "type": "array",
+          "items": {
+            "description": "A Item id: `^itm_[0-9a-f]{32}$`.",
+            "type": "string",
+            "pattern": "^itm_[0-9a-f]{32}$"
+          },
+          "description": "Every deleted item: the requested ones in request order, then their linked partners."
+        }
+      },
+      "required": [
+        "deleted"
+      ],
+      "description": "Result of `item.delete`.",
+      "title": "ItemDeleteOutput"
+    }
+  },
+  "input": {
+    "type": "object",
+    "additionalProperties": false,
+    "properties": {
+      "items": {
+        "type": "array",
+        "items": {
+          "description": "A Item id: `^itm_[0-9a-f]{32}$`.",
+          "type": "string",
+          "pattern": "^itm_[0-9a-f]{32}$"
+        },
+        "description": "The items to delete, at least one."
+      }
+    },
+    "required": [
+      "items"
+    ],
+    "description": "Deletes items and their linked partners. Gaps stay (no ripple). All or nothing: if any\naffected track is locked the call fails with `Locked` and nothing is deleted. Unknown items\nare `NotFound`; repeated IDs are deleted once.",
+    "title": "ItemDelete"
+  },
+  "output": {
+    "type": "object",
+    "additionalProperties": false,
+    "properties": {
+      "deleted": {
+        "type": "array",
+        "items": {
+          "description": "A Item id: `^itm_[0-9a-f]{32}$`.",
+          "type": "string",
+          "pattern": "^itm_[0-9a-f]{32}$"
+        },
+        "description": "Every deleted item: the requested ones in request order, then their linked partners."
+      }
+    },
+    "required": [
+      "deleted"
+    ],
+    "description": "Result of `item.delete`.",
+    "title": "ItemDeleteOutput"
+  }
+}

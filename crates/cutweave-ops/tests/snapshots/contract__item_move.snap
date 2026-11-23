@@ -1,0 +1,272 @@
+---
+source: crates/cutweave-ops/tests/contract.rs
+expression: "json!({\n    \"meta\": serde_json::to_value(meta).unwrap(), \"input\": meta.input_schema,\n    \"output\": meta.output_schema,\n})"
+---
+{
+  "meta": {
+    "name": "item.move",
+    "summary": "Move an item in time and/or to another track (linked partners follow)",
+    "kind": "command",
+    "undoable": true,
+    "view": false,
+    "scope": "any",
+    "mcp": "core",
+    "annotations": {
+      "readOnlyHint": false,
+      "destructiveHint": false,
+      "idempotentHint": true,
+      "openWorldHint": false
+    },
+    "secret_fields": [],
+    "input_schema": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "item": {
+          "type": "string",
+          "pattern": "^itm_[0-9a-f]{32}$",
+          "description": "The item."
+        },
+        "start": {
+          "description": "New timeline position of the item's first frame, `>= 0`.",
+          "anyOf": [
+            {
+              "type": "integer",
+              "minimum": -9007199254740991,
+              "maximum": 9007199254740991
+            },
+            {
+              "type": "string",
+              "pattern": "^-?[0-9]+(\\.[0-9]+)?s$|^-?[0-9]+$|^f:[0-9]+$|^[0-9]+[:;][0-9]+[:;][0-9]+[:;][0-9]+$"
+            }
+          ]
+        },
+        "to_track": {
+          "type": [
+            "string",
+            "null"
+          ],
+          "pattern": "^trk_[0-9a-f]{32}$",
+          "description": "Target track of the same sequence and kind (default: stay on the current track).",
+          "default": null
+        },
+        "unlink": {
+          "type": [
+            "boolean",
+            "null"
+          ],
+          "description": "Move only this item and remove it from its linked group (default `false`).",
+          "default": null
+        },
+        "overlap": {
+          "anyOf": [
+            {
+              "oneOf": [
+                {
+                  "type": "string",
+                  "const": "reject",
+                  "description": "Fail with `Invalid{path:\"/at\"}` (default)."
+                },
+                {
+                  "type": "string",
+                  "const": "new_track",
+                  "description": "Create a new track of the same kind directly above the target and insert there."
+                }
+              ],
+              "description": "What to do when the clip would overlap another clip on the target track."
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "description": "Overlap handling (default `reject`).",
+          "default": null
+        }
+      },
+      "required": [
+        "item",
+        "start"
+      ],
+      "description": "Moves an item to a new start, optionally onto another track of the same kind and sequence.\nThe item's linked partners move by the same amount on their own tracks (`unlink: true`\nmoves only this item and removes it from its group). Overlap is `Invalid{path:\"/start\"}`\nby default; `overlap: \"new_track\"` puts the item on a new track directly above the target.\n`Locked` if the source, the target or a partner's track is locked. `start` is snapped to\nthe sequence's frame grid and must be `>= 0`.",
+      "title": "ItemMove"
+    },
+    "output_schema": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "items": {
+          "type": "array",
+          "items": {
+            "description": "Where one item ended up.",
+            "type": "object",
+            "properties": {
+              "item": {
+                "description": "The item.",
+                "type": "string",
+                "pattern": "^itm_[0-9a-f]{32}$"
+              },
+              "track": {
+                "description": "The track it is on now.",
+                "type": "string",
+                "pattern": "^trk_[0-9a-f]{32}$"
+              },
+              "start": {
+                "description": "Its new start.",
+                "type": "integer",
+                "minimum": -9007199254740991,
+                "maximum": 9007199254740991
+              }
+            },
+            "additionalProperties": false,
+            "required": [
+              "item",
+              "track",
+              "start"
+            ]
+          },
+          "description": "The moved items: the requested one first, then its linked partners."
+        },
+        "created_tracks": {
+          "type": "array",
+          "items": {
+            "description": "A Track id: `^trk_[0-9a-f]{32}$`.",
+            "type": "string",
+            "pattern": "^trk_[0-9a-f]{32}$"
+          },
+          "description": "Tracks created by `overlap: \"new_track\"`, in creation order."
+        }
+      },
+      "required": [
+        "items",
+        "created_tracks"
+      ],
+      "description": "Result of `item.move`.",
+      "title": "ItemMoveOutput"
+    }
+  },
+  "input": {
+    "type": "object",
+    "additionalProperties": false,
+    "properties": {
+      "item": {
+        "type": "string",
+        "pattern": "^itm_[0-9a-f]{32}$",
+        "description": "The item."
+      },
+      "start": {
+        "description": "New timeline position of the item's first frame, `>= 0`.",
+        "anyOf": [
+          {
+            "type": "integer",
+            "minimum": -9007199254740991,
+            "maximum": 9007199254740991
+          },
+          {
+            "type": "string",
+            "pattern": "^-?[0-9]+(\\.[0-9]+)?s$|^-?[0-9]+$|^f:[0-9]+$|^[0-9]+[:;][0-9]+[:;][0-9]+[:;][0-9]+$"
+          }
+        ]
+      },
+      "to_track": {
+        "type": [
+          "string",
+          "null"
+        ],
+        "pattern": "^trk_[0-9a-f]{32}$",
+        "description": "Target track of the same sequence and kind (default: stay on the current track).",
+        "default": null
+      },
+      "unlink": {
+        "type": [
+          "boolean",
+          "null"
+        ],
+        "description": "Move only this item and remove it from its linked group (default `false`).",
+        "default": null
+      },
+      "overlap": {
+        "anyOf": [
+          {
+            "oneOf": [
+              {
+                "type": "string",
+                "const": "reject",
+                "description": "Fail with `Invalid{path:\"/at\"}` (default)."
+              },
+              {
+                "type": "string",
+                "const": "new_track",
+                "description": "Create a new track of the same kind directly above the target and insert there."
+              }
+            ],
+            "description": "What to do when the clip would overlap another clip on the target track."
+          },
+          {
+            "type": "null"
+          }
+        ],
+        "description": "Overlap handling (default `reject`).",
+        "default": null
+      }
+    },
+    "required": [
+      "item",
+      "start"
+    ],
+    "description": "Moves an item to a new start, optionally onto another track of the same kind and sequence.\nThe item's linked partners move by the same amount on their own tracks (`unlink: true`\nmoves only this item and removes it from its group). Overlap is `Invalid{path:\"/start\"}`\nby default; `overlap: \"new_track\"` puts the item on a new track directly above the target.\n`Locked` if the source, the target or a partner's track is locked. `start` is snapped to\nthe sequence's frame grid and must be `>= 0`.",
+    "title": "ItemMove"
+  },
+  "output": {
+    "type": "object",
+    "additionalProperties": false,
+    "properties": {
+      "items": {
+        "type": "array",
+        "items": {
+          "description": "Where one item ended up.",
+          "type": "object",
+          "properties": {
+            "item": {
+              "description": "The item.",
+              "type": "string",
+              "pattern": "^itm_[0-9a-f]{32}$"
+            },
+            "track": {
+              "description": "The track it is on now.",
+              "type": "string",
+              "pattern": "^trk_[0-9a-f]{32}$"
+            },
+            "start": {
+              "description": "Its new start.",
+              "type": "integer",
+              "minimum": -9007199254740991,
+              "maximum": 9007199254740991
+            }
+          },
+          "additionalProperties": false,
+          "required": [
+            "item",
+            "track",
+            "start"
+          ]
+        },
+        "description": "The moved items: the requested one first, then its linked partners."
+      },
+      "created_tracks": {
+        "type": "array",
+        "items": {
+          "description": "A Track id: `^trk_[0-9a-f]{32}$`.",
+          "type": "string",
+          "pattern": "^trk_[0-9a-f]{32}$"
+        },
+        "description": "Tracks created by `overlap: \"new_track\"`, in creation order."
+      }
+    },
+    "required": [
+      "items",
+      "created_tracks"
+    ],
+    "description": "Result of `item.move`.",
+    "title": "ItemMoveOutput"
+  }
+}

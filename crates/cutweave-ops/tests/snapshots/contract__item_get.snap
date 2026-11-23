@@ -1,0 +1,550 @@
+---
+source: crates/cutweave-ops/tests/contract.rs
+expression: "json!({\n    \"meta\": serde_json::to_value(meta).unwrap(), \"input\": meta.input_schema,\n    \"output\": meta.output_schema,\n})"
+---
+{
+  "meta": {
+    "name": "item.get",
+    "summary": "Get one item: summary, track, source, audio and visual properties",
+    "kind": "query",
+    "undoable": false,
+    "view": false,
+    "scope": "any",
+    "mcp": "catalog",
+    "annotations": {
+      "readOnlyHint": true,
+      "destructiveHint": false,
+      "idempotentHint": true,
+      "openWorldHint": false
+    },
+    "secret_fields": [],
+    "input_schema": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "item": {
+          "type": "string",
+          "pattern": "^itm_[0-9a-f]{32}$",
+          "description": "The item."
+        },
+        "fields": {
+          "type": [
+            "array",
+            "null"
+          ],
+          "items": {
+            "type": "string"
+          },
+          "description": "Sections to include: any of `name`, `source`, `audio`, `visual` (default all).",
+          "default": null
+        }
+      },
+      "required": [
+        "item"
+      ],
+      "description": "Reads one item: the `timeline.get` item summary plus its track, source, audio and visual\nproperties. `fields` limits the extra sections (`name`, `source`, `audio`, `visual`).",
+      "title": "ItemGet"
+    },
+    "output_schema": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "sequence": {
+          "type": "string",
+          "pattern": "^seq_[0-9a-f]{32}$",
+          "description": "The sequence holding the item."
+        },
+        "track": {
+          "type": "string",
+          "pattern": "^trk_[0-9a-f]{32}$",
+          "description": "The track holding the item."
+        },
+        "item": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "id": {
+              "type": "string",
+              "pattern": "^itm_[0-9a-f]{32}$",
+              "description": "The item."
+            },
+            "kind": {
+              "type": "string",
+              "description": "Item kind (`clip`)."
+            },
+            "start": {
+              "description": "Timeline position of the first frame.",
+              "type": "integer",
+              "minimum": -9007199254740991,
+              "maximum": 9007199254740991
+            },
+            "duration": {
+              "description": "Length on the timeline.",
+              "type": "integer",
+              "minimum": 0,
+              "maximum": 9007199254740991
+            },
+            "media": {
+              "type": [
+                "string",
+                "null"
+              ],
+              "pattern": "^med_[0-9a-f]{32}$",
+              "description": "The media a clip plays."
+            },
+            "linked_group": {
+              "type": [
+                "string",
+                "null"
+              ],
+              "pattern": "^grp_[0-9a-f]{32}$",
+              "description": "The linked group, if any."
+            },
+            "enabled": {
+              "type": "boolean",
+              "description": "Whether the item is rendered and heard."
+            }
+          },
+          "required": [
+            "id",
+            "kind",
+            "start",
+            "duration",
+            "media",
+            "linked_group",
+            "enabled"
+          ],
+          "description": "The same projection `timeline.get` returns at depth 2."
+        },
+        "name": {
+          "type": [
+            "string",
+            "null"
+          ],
+          "description": "The display name, if it has one (unless `fields` leaves it out)."
+        },
+        "source": {
+          "type": [
+            "object",
+            "null"
+          ],
+          "additionalProperties": false,
+          "properties": {
+            "media": {
+              "type": "string",
+              "pattern": "^med_[0-9a-f]{32}$",
+              "description": "The media."
+            },
+            "source_in": {
+              "description": "Position in the media of the clip's first frame.",
+              "type": "integer",
+              "minimum": -9007199254740991,
+              "maximum": 9007199254740991
+            }
+          },
+          "required": [
+            "media",
+            "source_in"
+          ],
+          "description": "Media and source position (unless `fields` leaves it out)."
+        },
+        "audio": {
+          "type": [
+            "object",
+            "null"
+          ],
+          "properties": {
+            "gain": {
+              "type": "number",
+              "format": "double",
+              "description": "Gain in decibels (0.0 = unchanged)."
+            }
+          },
+          "required": [
+            "gain"
+          ],
+          "description": "Audio properties (unless `fields` leaves them out)."
+        },
+        "visual": {
+          "type": [
+            "object",
+            "null"
+          ],
+          "properties": {
+            "transform": {
+              "type": "object",
+              "properties": {
+                "position": {
+                  "type": "object",
+                  "additionalProperties": false,
+                  "properties": {
+                    "x": {
+                      "type": "number",
+                      "format": "double",
+                      "description": "Horizontal component."
+                    },
+                    "y": {
+                      "type": "number",
+                      "format": "double",
+                      "description": "Vertical component (down is positive)."
+                    }
+                  },
+                  "required": [
+                    "x",
+                    "y"
+                  ],
+                  "description": "Offset of the anchor from the canvas center, in canvas units."
+                },
+                "scale": {
+                  "type": "object",
+                  "additionalProperties": false,
+                  "properties": {
+                    "x": {
+                      "type": "number",
+                      "format": "double",
+                      "description": "Horizontal component."
+                    },
+                    "y": {
+                      "type": "number",
+                      "format": "double",
+                      "description": "Vertical component (down is positive)."
+                    }
+                  },
+                  "required": [
+                    "x",
+                    "y"
+                  ],
+                  "description": "Size multiplier per axis (1.0 = aspect-fit)."
+                },
+                "rotation": {
+                  "type": "number",
+                  "format": "double",
+                  "description": "Clockwise rotation in degrees."
+                },
+                "anchor": {
+                  "type": "object",
+                  "additionalProperties": false,
+                  "properties": {
+                    "x": {
+                      "type": "number",
+                      "format": "double",
+                      "description": "Horizontal component."
+                    },
+                    "y": {
+                      "type": "number",
+                      "format": "double",
+                      "description": "Vertical component (down is positive)."
+                    }
+                  },
+                  "required": [
+                    "x",
+                    "y"
+                  ],
+                  "description": "The item point that `position` places and rotation turns around, in item units."
+                }
+              },
+              "required": [
+                "position",
+                "scale",
+                "rotation",
+                "anchor"
+              ],
+              "description": "Placement on the canvas."
+            },
+            "opacity": {
+              "type": "number",
+              "format": "double",
+              "description": "Opacity, 0.0 (transparent) to 1.0 (opaque)."
+            }
+          },
+          "required": [
+            "transform",
+            "opacity"
+          ],
+          "description": "Visual properties (unless `fields` leaves them out)."
+        },
+        "linked": {
+          "type": "array",
+          "items": {
+            "description": "A Item id: `^itm_[0-9a-f]{32}$`.",
+            "type": "string",
+            "pattern": "^itm_[0-9a-f]{32}$"
+          },
+          "description": "The other items of the linked group, if any."
+        }
+      },
+      "required": [
+        "sequence",
+        "track",
+        "item",
+        "linked"
+      ],
+      "description": "Result of `item.get`.",
+      "title": "ItemGetOutput"
+    }
+  },
+  "input": {
+    "type": "object",
+    "additionalProperties": false,
+    "properties": {
+      "item": {
+        "type": "string",
+        "pattern": "^itm_[0-9a-f]{32}$",
+        "description": "The item."
+      },
+      "fields": {
+        "type": [
+          "array",
+          "null"
+        ],
+        "items": {
+          "type": "string"
+        },
+        "description": "Sections to include: any of `name`, `source`, `audio`, `visual` (default all).",
+        "default": null
+      }
+    },
+    "required": [
+      "item"
+    ],
+    "description": "Reads one item: the `timeline.get` item summary plus its track, source, audio and visual\nproperties. `fields` limits the extra sections (`name`, `source`, `audio`, `visual`).",
+    "title": "ItemGet"
+  },
+  "output": {
+    "type": "object",
+    "additionalProperties": false,
+    "properties": {
+      "sequence": {
+        "type": "string",
+        "pattern": "^seq_[0-9a-f]{32}$",
+        "description": "The sequence holding the item."
+      },
+      "track": {
+        "type": "string",
+        "pattern": "^trk_[0-9a-f]{32}$",
+        "description": "The track holding the item."
+      },
+      "item": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "id": {
+            "type": "string",
+            "pattern": "^itm_[0-9a-f]{32}$",
+            "description": "The item."
+          },
+          "kind": {
+            "type": "string",
+            "description": "Item kind (`clip`)."
+          },
+          "start": {
+            "description": "Timeline position of the first frame.",
+            "type": "integer",
+            "minimum": -9007199254740991,
+            "maximum": 9007199254740991
+          },
+          "duration": {
+            "description": "Length on the timeline.",
+            "type": "integer",
+            "minimum": 0,
+            "maximum": 9007199254740991
+          },
+          "media": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "pattern": "^med_[0-9a-f]{32}$",
+            "description": "The media a clip plays."
+          },
+          "linked_group": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "pattern": "^grp_[0-9a-f]{32}$",
+            "description": "The linked group, if any."
+          },
+          "enabled": {
+            "type": "boolean",
+            "description": "Whether the item is rendered and heard."
+          }
+        },
+        "required": [
+          "id",
+          "kind",
+          "start",
+          "duration",
+          "media",
+          "linked_group",
+          "enabled"
+        ],
+        "description": "The same projection `timeline.get` returns at depth 2."
+      },
+      "name": {
+        "type": [
+          "string",
+          "null"
+        ],
+        "description": "The display name, if it has one (unless `fields` leaves it out)."
+      },
+      "source": {
+        "type": [
+          "object",
+          "null"
+        ],
+        "additionalProperties": false,
+        "properties": {
+          "media": {
+            "type": "string",
+            "pattern": "^med_[0-9a-f]{32}$",
+            "description": "The media."
+          },
+          "source_in": {
+            "description": "Position in the media of the clip's first frame.",
+            "type": "integer",
+            "minimum": -9007199254740991,
+            "maximum": 9007199254740991
+          }
+        },
+        "required": [
+          "media",
+          "source_in"
+        ],
+        "description": "Media and source position (unless `fields` leaves it out)."
+      },
+      "audio": {
+        "type": [
+          "object",
+          "null"
+        ],
+        "properties": {
+          "gain": {
+            "type": "number",
+            "format": "double",
+            "description": "Gain in decibels (0.0 = unchanged)."
+          }
+        },
+        "required": [
+          "gain"
+        ],
+        "description": "Audio properties (unless `fields` leaves them out)."
+      },
+      "visual": {
+        "type": [
+          "object",
+          "null"
+        ],
+        "properties": {
+          "transform": {
+            "type": "object",
+            "properties": {
+              "position": {
+                "type": "object",
+                "additionalProperties": false,
+                "properties": {
+                  "x": {
+                    "type": "number",
+                    "format": "double",
+                    "description": "Horizontal component."
+                  },
+                  "y": {
+                    "type": "number",
+                    "format": "double",
+                    "description": "Vertical component (down is positive)."
+                  }
+                },
+                "required": [
+                  "x",
+                  "y"
+                ],
+                "description": "Offset of the anchor from the canvas center, in canvas units."
+              },
+              "scale": {
+                "type": "object",
+                "additionalProperties": false,
+                "properties": {
+                  "x": {
+                    "type": "number",
+                    "format": "double",
+                    "description": "Horizontal component."
+                  },
+                  "y": {
+                    "type": "number",
+                    "format": "double",
+                    "description": "Vertical component (down is positive)."
+                  }
+                },
+                "required": [
+                  "x",
+                  "y"
+                ],
+                "description": "Size multiplier per axis (1.0 = aspect-fit)."
+              },
+              "rotation": {
+                "type": "number",
+                "format": "double",
+                "description": "Clockwise rotation in degrees."
+              },
+              "anchor": {
+                "type": "object",
+                "additionalProperties": false,
+                "properties": {
+                  "x": {
+                    "type": "number",
+                    "format": "double",
+                    "description": "Horizontal component."
+                  },
+                  "y": {
+                    "type": "number",
+                    "format": "double",
+                    "description": "Vertical component (down is positive)."
+                  }
+                },
+                "required": [
+                  "x",
+                  "y"
+                ],
+                "description": "The item point that `position` places and rotation turns around, in item units."
+              }
+            },
+            "required": [
+              "position",
+              "scale",
+              "rotation",
+              "anchor"
+            ],
+            "description": "Placement on the canvas."
+          },
+          "opacity": {
+            "type": "number",
+            "format": "double",
+            "description": "Opacity, 0.0 (transparent) to 1.0 (opaque)."
+          }
+        },
+        "required": [
+          "transform",
+          "opacity"
+        ],
+        "description": "Visual properties (unless `fields` leaves them out)."
+      },
+      "linked": {
+        "type": "array",
+        "items": {
+          "description": "A Item id: `^itm_[0-9a-f]{32}$`.",
+          "type": "string",
+          "pattern": "^itm_[0-9a-f]{32}$"
+        },
+        "description": "The other items of the linked group, if any."
+      }
+    },
+    "required": [
+      "sequence",
+      "track",
+      "item",
+      "linked"
+    ],
+    "description": "Result of `item.get`.",
+    "title": "ItemGetOutput"
+  }
+}
