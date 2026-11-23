@@ -590,9 +590,8 @@ export class TimelineView {
   }
 
   private playheadStrip(t: number): Rect {
-    const half = (this.renderer.flagHalfWidth || 4 * this.theme.space4) + 2;
-    const x = timeToX(this.vp, t);
-    return { x: x - half, y: 0, w: 2 * half, h: this.vp.height };
+    const { x0, x1 } = this.renderer.playheadSpan(timeToX(this.vp, t), this.vp, this.theme);
+    return { x: x0, y: 0, w: x1 - x0, h: this.vp.height };
   }
 
   private setHover(item: number): void {

@@ -127,6 +127,31 @@ describe("selectTimelineModel", () => {
     expect(byId.itm_4?.thumbnails).toBeUndefined();
   });
 
+  it("carries the linked group and the trim bounds of the media (none for stills)", () => {
+    const p = project();
+    const seq = p.sequences["seq_1" as never] as unknown as {
+      tracks: Record<string, { items: Record<string, Record<string, unknown>> }>;
+    };
+    const v1 = seq.tracks.v1?.items;
+    if (v1?.itm_1) v1.itm_1.linked_group = "grp_1";
+    (p.media as unknown as Record<string, object>).med_c = {
+      id: "med_c",
+      kind: "image",
+      path_abs: "/still.png",
+      path_rel: null,
+      probe: { duration: null },
+    };
+    if (v1?.itm_2) v1.itm_2.media = "med_c";
+    const byId = Object.fromEntries(selectTimelineModel(p).items.map((i) => [i.id, i]));
+    expect(byId.itm_1).toMatchObject({
+      linkedGroup: "grp_1",
+      source: { sourceIn: 10, mediaDuration: 1000 },
+    });
+    expect(byId.itm_2?.source).toEqual({ sourceIn: 10, mediaDuration: null, still: true });
+    expect(byId.itm_4?.source).toEqual({ sourceIn: 10, mediaDuration: null });
+    expect(byId.itm_4?.linkedGroup).toBeUndefined();
+  });
+
   it("is memoized per project object and empty without one", () => {
     const p = project();
     expect(selectTimelineModel(p)).toBe(selectTimelineModel(p));

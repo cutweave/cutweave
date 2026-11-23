@@ -109,7 +109,15 @@ export class TimelineController {
 
   /** A key press in the timeline panel. Returns whether it was handled (prevent the default). */
   handleKey(e: KeyInput): boolean {
-    return this.send({ type: "key", ...e });
+    // Field by field: a DOM `KeyboardEvent` keeps these as prototype getters, which `...` skips.
+    return this.send({
+      type: "key",
+      key: e.key,
+      shiftKey: e.shiftKey === true,
+      altKey: e.altKey === true,
+      ctrlKey: e.ctrlKey === true,
+      metaKey: e.metaKey === true,
+    });
   }
 
   split(): void {

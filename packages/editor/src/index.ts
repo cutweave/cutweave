@@ -54,6 +54,14 @@ export {
   selectTimelineModel,
 } from "./state/selectors.ts";
 export {
+  createToastStore,
+  MAX_NOTICES,
+  type Notice,
+  type ToastStore,
+  toastStore,
+  useToastStore,
+} from "./state/toastStore.ts";
+export {
   createViewStore,
   type ThemeId,
   useViewStore,
@@ -62,3 +70,16 @@ export {
   type WorkspaceId,
 } from "./state/viewStore.ts";
 export { VIEW_SYNC_DEBOUNCE_MS, ViewSync } from "./state/viewSync.ts";
+export {
+  TimelineController,
+  type TimelineControllerDeps,
+  type TimelineGeometry,
+  type TimelineOverlay,
+} from "./timeline/controller.ts";
+export {
+  type FrameScheduler,
+  type GestureOutcome,
+  GestureSession,
+  type GestureUpdate,
+} from "./timeline/gesture.ts";
+export { type TimelineIntents, useTimelineIntents } from "./timeline/useTimelineIntents.ts";

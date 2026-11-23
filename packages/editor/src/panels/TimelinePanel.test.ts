@@ -159,6 +159,46 @@ describe("TimelinePanel", () => {
     expect([...(state?.selection ?? [])]).toEqual(["itm_1"]);
   });
 
+  it("hands pointer input and middle-button panning to the interaction layer", () => {
+    engineStore.setState({ connection: "ready" });
+    docStore.getState().resync({ rev: 1, committed_rev: 1, project: project([clip("itm_1", 0)]) });
+    renderPanel();
+    const props = seen.at(-1);
+    expect(props?.pan).toBe("host");
+    expect(typeof props?.onPointer).toBe("function");
+    expect(typeof props?.onView).toBe("function");
+    expect(props?.viewState?.snapGuides).toEqual([]);
+    expect(props?.viewState?.marquee).toBeNull();
+  });
+
+  it("toggles snapping from the toolbar and with N, and shows its state", () => {
+    engineStore.setState({ connection: "ready" });
+    docStore.getState().resync({ rev: 1, committed_rev: 1, project: project([clip("itm_1", 0)]) });
+    renderPanel();
+    const magnet = screen.getByRole("button", { name: "Snapping" });
+    expect(magnet.getAttribute("aria-pressed")).toBe("true");
+    act(() => magnet.click());
+    expect(viewStore.getState().snapping).toBe(false);
+    expect(screen.getByRole("button", { name: "Snapping" }).getAttribute("aria-pressed")).toBe(
+      "false",
+    );
+    const canvas = screen.getByRole("application", { name: "Timeline" });
+    act(() => {
+      canvas.dispatchEvent(new KeyboardEvent("keydown", { key: "n", bubbles: true }));
+    });
+    expect(viewStore.getState().snapping).toBe(true);
+  });
+
+  it("disables split and snapping without a live sequence", () => {
+    renderPanel();
+    expect(
+      (screen.getByRole("button", { name: "Split at playhead" }) as HTMLButtonElement).disabled,
+    ).toBe(true);
+    expect((screen.getByRole("button", { name: "Snapping" }) as HTMLButtonElement).disabled).toBe(
+      true,
+    );
+  });
+
   it("stores the zoom and scroll the user caused in the view store", () => {
     engineStore.setState({ connection: "ready" });
     docStore.getState().resync({ rev: 1, committed_rev: 1, project: project([]) });
