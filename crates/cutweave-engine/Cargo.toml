@@ -31,5 +31,9 @@ proptest.workspace = true
 name = "journal"
 harness = false
 
+[[bench]]
+name = "autosave"
+harness = false
+
 [lints]
 workspace = true
