@@ -777,6 +777,7 @@ name = "cutweave-api"
 version = "0.0.0"
 dependencies = [
  "axum",
+ "cutweave-cli",
  "cutweave-commands",
  "cutweave-engine",
  "cutweave-jobs",
@@ -789,11 +790,13 @@ dependencies = [
  "rmcp",
  "serde",
  "serde_json",
+ "sha2 0.10.9",
  "subtle",
  "tempfile",
  "thiserror 2.0.21",
  "tokio",
  "tokio-tungstenite",
+ "toml 0.9.12+spec-1.1.0",
  "tracing",
 ]
 

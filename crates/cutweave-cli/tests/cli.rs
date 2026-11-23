@@ -117,6 +117,62 @@ fn failing_step_names_its_index() {
     let e = stderr_json(&out);
     assert_eq!(e["code"], "not_found");
     assert_eq!(e["failed_step"], 1);
+    // A one-step batch names its step too (WP-1O.02: as `cutweave_execute` does); a lone step
+    // object is not a batch and has no `failed_step`.
+    for (request, failed_step) in [
+        (r#"[{"cmd":"edit.redo"}]"#, Some(0)),
+        (r#"[{"cmd":"no.such"}]"#, Some(0)),
+        (r#"{"cmd":"edit.redo"}"#, None),
+    ] {
+        let out = cutweave(&["exec", request, "--headless"]);
+        assert_eq!(out.status.code(), Some(1), "{request}: {out:?}");
+        let e = stderr_json(&out);
+        assert_eq!(e["failed_step"].as_u64(), failed_step, "{request}: {e}");
+    }
+}
+
+/// WP-1O.02 parity with `cutweave_execute`: a batch step uses an earlier step's output through
+/// `$ref`; a reference to a later step is refused before anything runs, one to a missing value
+/// fails its step and rolls the batch back.
+#[test]
+fn batch_steps_reference_earlier_outputs() {
+    let batch = format!(
+        r#"[{NEW_PROJECT},{{"cmd":"track.add","args":{{"sequence":{{"$ref":"steps[0].output.sequence"}},"kind":"video"}}}}]"#
+    );
+    let out = cutweave(&["exec", &batch, "--headless"]);
+    assert_eq!(out.status.code(), Some(0), "{out:?}");
+    let v = stdout_json(&out);
+    assert!(
+        v["steps"][1]["output"]["track"]
+            .as_str()
+            .is_some_and(|t| t.starts_with("trk_")),
+        "{v}"
+    );
+    for (reference, path) in [
+        ("steps[1].output.name", "/steps/1/args/name"),
+        ("steps[0]", "/steps/1/args/name"),
+    ] {
+        let bad = format!(
+            r#"[{NEW_PROJECT},{{"cmd":"project.rename","args":{{"name":{{"$ref":"{reference}"}}}}}}]"#
+        );
+        let out = cutweave(&["exec", &bad, "--headless"]);
+        assert_eq!(out.status.code(), Some(1), "{reference}: {out:?}");
+        let e = stderr_json(&out);
+        assert_eq!(e["code"], "invalid", "{e}");
+        assert_eq!(e["failed_step"], 1, "{e}");
+        assert_eq!(e["path"], path, "{e}");
+    }
+    let missing = format!(
+        r#"[{NEW_PROJECT},{{"cmd":"project.rename","args":{{"name":{{"$ref":"steps[0].output.nope"}}}}}}]"#
+    );
+    let out = cutweave(&["exec", &missing, "--headless"]);
+    assert_eq!(out.status.code(), Some(1), "{out:?}");
+    let e = stderr_json(&out);
+    assert_eq!(
+        (e["code"].as_str(), e["failed_step"].as_u64()),
+        (Some("invalid"), Some(1)),
+        "{e}"
+    );
 }
 
 #[test]
