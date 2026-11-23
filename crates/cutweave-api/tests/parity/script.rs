@@ -74,11 +74,11 @@ pub enum Expect {
 }
 
 /// What a surface returned for one step: the outputs (one per call) or the failure.
-pub type Outcome = Result<Vec<Value>, Failed>;
+pub type Outcome = Result<Vec<Value>, StepError>;
 
 /// A failed step as a surface reported it.
 #[derive(Clone, Debug)]
-pub struct Failed {
+pub struct StepError {
     /// The engine's machine code (`not_found`, `invalid`, ...).
     pub code: String,
     /// The failing call of a batch (0-based), when the surface names it.

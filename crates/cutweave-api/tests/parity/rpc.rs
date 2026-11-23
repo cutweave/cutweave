@@ -14,7 +14,7 @@ use serde_json::{Value, json};
 use tokio::runtime::Runtime;
 
 use crate::rpc_support::{Rpc as Ws, with_meta, with_rid};
-use crate::script::{Call, Failed, Outcome, resolve_batch_refs};
+use crate::script::{Call, Outcome, StepError, resolve_batch_refs};
 
 /// A JSON-RPC connection.
 pub struct Rpc<'a> {
@@ -39,12 +39,12 @@ impl<'a> Rpc<'a> {
     }
 
     /// One request; the result without `_meta`, or the error's `data` (the `CmdError`).
-    fn request(&mut self, method: &str, params: Value) -> Result<Value, Failed> {
+    fn request(&mut self, method: &str, params: Value) -> Result<Value, StepError> {
         let ws = self.ws.as_mut().expect("an open connection");
         let response = self.rt.block_on(ws.request(method, params));
         if let Some(error) = response.get("error") {
             let raw = error["data"].clone();
-            return Err(Failed {
+            return Err(StepError {
                 code: raw["code"].as_str().unwrap_or_default().to_owned(),
                 failed_step: None,
                 raw: error.clone(),
@@ -92,7 +92,7 @@ impl<'a> Rpc<'a> {
                 Ok(args) => args,
                 Err(msg) => {
                     let _ = self.request("edit.cancel_tx", with_rid(json!({ "tx": tx })));
-                    return Err(Failed {
+                    return Err(StepError {
                         code: "invalid".into(),
                         failed_step: u64::try_from(i).ok(),
                         raw: json!({ "client": msg }),

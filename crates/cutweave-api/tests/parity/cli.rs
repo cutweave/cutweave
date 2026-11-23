@@ -15,7 +15,7 @@ use std::process::{Command, Output, Stdio};
 use cutweave_commands::{EntryKind, Registry};
 use serde_json::{Value, json};
 
-use crate::script::{Call, Failed, Outcome};
+use crate::script::{Call, Outcome, StepError};
 
 /// The environment variable carrying the child's `cutweave` arguments (a JSON array of
 /// strings, so nothing depends on the platform's command-line quoting).
@@ -137,12 +137,12 @@ impl Cli<'_> {
 }
 
 /// Exit 0: the stdout JSON; exit 1: the stderr error. Anything else is a harness failure.
-fn finish(out: &Output) -> Result<Value, Failed> {
+fn finish(out: &Output) -> Result<Value, StepError> {
     match out.status.code() {
         Some(0) => Ok(stdout_json(out)),
         Some(1) => {
             let raw = stderr_json(out);
-            Err(Failed {
+            Err(StepError {
                 code: raw["code"].as_str().unwrap_or_default().to_owned(),
                 failed_step: raw.get("failed_step").and_then(Value::as_u64),
                 raw,

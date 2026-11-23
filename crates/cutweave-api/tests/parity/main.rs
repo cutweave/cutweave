@@ -110,7 +110,7 @@ impl Surface {
 enum Driver<'a> {
     Cli(Cli<'a>),
     Mcp(Box<Mcp>),
-    Rpc(Rpc<'a>),
+    Rpc(Box<Rpc<'a>>),
 }
 
 impl Driver<'_> {
@@ -206,7 +206,9 @@ fn run(script: &Script, surface: Surface, root: &Path) -> Run {
             Driver::Mcp(Box::new(Mcp::connect(&e.engine, Revision::Stateful)))
         }
         (Surface::McpProcess, _) => Driver::Mcp(Box::new(Mcp::spawn(root, Revision::Stateless))),
-        (Surface::Rpc, Some(e)) => Driver::Rpc(Rpc::connect(e.port(), &e.token("rpc"), &registry)),
+        (Surface::Rpc, Some(e)) => {
+            Driver::Rpc(Box::new(Rpc::connect(e.port(), &e.token("rpc"), &registry)))
+        }
         (_, None) => unreachable!("{surface:?} runs against an engine of the harness"),
     };
     let at = |i: usize| format!("{} on {}: steps[{i}]", script.name, surface.name());
@@ -395,7 +397,7 @@ fn compare(script: &Script, runs: &[Run]) -> Vec<String> {
                     ));
                 }
                 (Ok(_), Err(e)) | (Err(e), Ok(_)) => {
-                    problems.push(format!("steps[{i}]: one of {r}, {o} failed: {}", e.raw))
+                    problems.push(format!("steps[{i}]: one of {r}, {o} failed: {}", e.raw));
                 }
                 _ => {}
             }
@@ -550,7 +552,7 @@ fn every_registry_entry_is_reachable_with_the_registry_schema() {
                 "`{name}`: cutweave_describe_command's input_schema differs from the registry"
             )),
             (Err(e), false) => {
-                problems.push(format!("`{name}`: not describable over MCP: {}", e.raw))
+                problems.push(format!("`{name}`: not describable over MCP: {}", e.raw));
             }
             (Ok(_), true) => problems.push(format!("`{name}` is exempt but describable over MCP")),
             (Err(e), true) if e.code != "not_found" => {

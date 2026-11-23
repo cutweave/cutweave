@@ -27,14 +27,14 @@ use tokio::runtime::Runtime;
 use tokio::task::JoinHandle;
 
 use crate::mcp_support::{Client, Revision, client_over, text_of};
-use crate::script::{Call, Failed, Outcome};
+use crate::script::{Call, Outcome, StepError};
 
 /// The server end of a session.
 enum Server {
     /// `stdio::serve` on this runtime.
     InProcess(JoinHandle<Result<Ended, StdioError>>),
     /// A `cutweave mcp --headless` child.
-    Process(tokio::process::Child),
+    Process(Box<tokio::process::Child>),
 }
 
 /// An MCP session over stdio.
@@ -129,7 +129,7 @@ impl Mcp {
         Mcp {
             rt,
             client: Some(client),
-            server: Some(Server::Process(child)),
+            server: Some(Server::Process(Box::new(child))),
             catalog: Arc::new(Catalog::new(registry, Profile::Standard)),
         }
     }
@@ -142,14 +142,14 @@ impl Mcp {
     }
 
     /// Any tool call; `Ok(structuredContent)` or the tool error.
-    pub fn raw(&self, name: &str, args: Value) -> Result<Value, Failed> {
+    pub fn raw(&self, name: &str, args: Value) -> Result<Value, StepError> {
         let result = self.tool(name, args);
         let structured = result
             .structured_content
             .clone()
             .unwrap_or_else(|| panic!("{name}: no structuredContent: {}", text_of(&result)));
         if result.is_error == Some(true) {
-            return Err(Failed {
+            return Err(StepError {
                 code: structured["error"]["code"]
                     .as_str()
                     .unwrap_or_default()
