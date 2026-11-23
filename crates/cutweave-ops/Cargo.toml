@@ -8,9 +8,17 @@ repository.workspace = true
 rust-version.workspace = true
 publish = false
 
+[features]
+default = []
+# The property-test harness interface (`cutweave_ops::testing`, WP-1B.07): registry-driven
+# command strategies, the event-replay mirror and the model invariants. Tests only.
+testing = ["dep:proptest", "cutweave-model/testing"]
+
 [dependencies]
 cutweave-commands = { path = "../cutweave-commands" }
 cutweave-model = { path = "../cutweave-model" }
+# Strategies of `cutweave_ops::testing` (feature `testing` only; already a workspace dependency).
+proptest = { workspace = true, optional = true }
 # The opaque `panel_layout` and unknown-key preservation in `ui-state.json`.
 serde.workspace = true
 serde_json.workspace = true
@@ -20,6 +28,9 @@ specta-typescript.workspace = true
 thiserror.workspace = true
 
 [dev-dependencies]
+# This crate with `testing` on, so its property tests also run without `--features testing`
+# (`cargo nextest run --workspace`, i.e. `just check`).
+cutweave-ops = { path = ".", features = ["testing"] }
 cutweave-model = { path = "../cutweave-model", features = ["testing"] }
 insta.workspace = true
 proptest.workspace = true

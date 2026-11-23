@@ -1,8 +1,8 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
-//! Shared harness of the WP-1B.05 tests: runs registered commands in a transaction on a shared
-//! document and, for every success, asserts the undo/redo identity and document validity;
-//! for every failure, that nothing changed. (Kept local until the registry-driven property
-//! harness of WP-1B.07 lands.)
+//! Shared harness of the per-command tests (WP-1B.05/06): runs registered commands in a
+//! transaction on a shared document and, for every success, asserts the undo/redo identity and
+//! document validity; for every failure, that nothing changed. The registry-driven property
+//! harness (WP-1B.07) is `registry_props.rs`, built on `cutweave_ops::testing`.
 
 #![allow(dead_code, clippy::unwrap_used, clippy::expect_used)]
 
