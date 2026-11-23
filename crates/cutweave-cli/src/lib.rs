@@ -7,14 +7,17 @@
 //! - `exec` and `query` send commands to an engine and print JSON. They **attach** to a running
 //!   engine (run-file discovery, the `cli` agent token, `/rpc`) or **spawn** an in-process
 //!   one-shot engine (`--headless` / `--project`).
-//! - `commands` and `describe` print the registry; `render`, `mcp` and `worker` are reserved.
+//! - `mcp` (WP-1J.03) serves MCP over stdio: a proxy to a running engine's `/mcp` (the `mcp`
+//!   agent token) or an in-process engine.
+//! - `commands` and `describe` print the registry; `render` and `worker` are reserved.
 //!
 //! The CLI never reimplements command logic: every call goes through the engine's dispatcher,
-//! in process (`Connection::call`) or over `/rpc`.
+//! in process (`Connection::call`), over `/rpc` or over `/mcp`.
 
 mod cli;
 mod docs;
 mod failure;
+mod mcp;
 mod remote;
 mod run;
 mod session;

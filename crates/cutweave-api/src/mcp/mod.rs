@@ -13,6 +13,9 @@
 //! - [`handler`]: the rmcp `ServerHandler`, one engine connection per MCP session.
 //! - [`dispatch`]: the seam to the engine ([`Dispatch`]), since the engine depends on this
 //!   crate.
+//! - [`stdio`] (WP-1J.03): the same handler over stdin/stdout for an in-process engine
+//!   (`cutweave mcp --headless`); [`proxy`]: the stdio attach proxy to a running engine's
+//!   endpoint (`cutweave mcp --attach`).
 //!
 //! # Spec revisions
 //!
@@ -35,7 +38,9 @@ pub mod catalog;
 pub mod dispatch;
 pub mod execute;
 pub mod handler;
+pub mod proxy;
 pub mod results;
+pub mod stdio;
 
 use std::sync::Arc;
 

@@ -156,8 +156,9 @@ where
     0
 }
 
+/// Completes on Ctrl-C (SIGINT) or, on Unix, SIGTERM.
 #[cfg(unix)]
-async fn shutdown_signal() {
+pub async fn shutdown_signal() {
     use tokio::signal::unix::{SignalKind, signal};
     match signal(SignalKind::terminate()) {
         Ok(mut term) => {
@@ -172,8 +173,9 @@ async fn shutdown_signal() {
     }
 }
 
+/// Completes on Ctrl-C.
 #[cfg(not(unix))]
-async fn shutdown_signal() {
+pub async fn shutdown_signal() {
     let _ = tokio::signal::ctrl_c().await;
 }
 

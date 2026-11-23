@@ -13,6 +13,15 @@ One binary (ADR-0002): `cutweave engine` is the engine process the desktop app s
 
 Agents and the CLI are confined to the folders of `--allow-root` plus the project folder (launch-protocol.md, "Path policy").
 
+## MCP over stdio
+
+`cutweave mcp` is the command an agent host (Claude Code, Codex, Gemini CLI, Cursor) starts as a stdio MCP server; [mcp-clients.md](mcp-clients.md) has the setup for each.
+
+- **Attach (default, `--attach`).** A proxy to a running engine's MCP endpoint (`/mcp`, or `/mcp/minimal` and `/mcp/full` for `--profile`), found like `exec` finds its engine (or named with `--run-file`) and authenticated with the run-file's `mcp` agent token: the agent edits the document the desktop app shows, as `agent:mcp`. Messages pass through unchanged, so the agent negotiates the MCP revision with the engine (2025-11-25 or 2026-07-28).
+- **Headless (`--headless`, `--project`, `--allow-root`, ...).** An engine in this process, with no HTTP server and no run-file, serves MCP over stdio as `agent:mcp`, on either revision. It logs to `~/.cutweave/logs` like `cutweave engine` (`--log-dir`, `--no-log`).
+
+Stdout carries protocol frames only. Closing stdin ends the session, and the engine rolls back a transaction the session left open. When an attached engine goes away, requests in flight get a JSON-RPC error (`data.code` `connection_lost`) and the process exits 3.
+
 ## Input and output
 
 `exec` takes one step, `{"cmd": "clip.split", "args": {...}}`, or an array of steps (or `{"steps": [...]}`) that runs as **one transaction and one undo step**: all steps apply or none does, and a failing step is reported as `failed_step`. Engine commands (`edit.undo`, `project.open`, `media.import`, `job.*`, `view.*`) cannot join a transaction; run one as the only step.
@@ -27,7 +36,7 @@ Results are one JSON object on stdout: `{"rev", "committed_rev", "output"}` for 
 | 1 | The command, query or export failed (the error JSON has the engine's machine `code`) |
 | 2 | Usage: bad arguments or input |
 | 3 | No engine to attach to, several running without `--pid`, or the connection was lost |
-| 64 | Reserved subcommand not built yet (`worker`; `mcp` until stdio MCP lands) |
+| 64 | Reserved subcommand not built yet (`worker`) |
 
 For `cutweave engine` the exit codes are the launch protocol's (0, 1, 2, 10-13).
 
@@ -47,7 +56,7 @@ Commands:
   commands  List the registered commands and queries
   describe  Print one command's description and JSON Schemas
   render    Export a sequence to a media file (needs the media backend; not available yet)
-  mcp       Serve MCP over stdio (arrives with WP-1J.03)
+  mcp       Serve MCP over stdio to an agent: attach to a running engine, or run one in the process
   worker    Reserved: the sandboxed worker process
   help      Print this message or the help of the given subcommand(s)
 
@@ -273,16 +282,18 @@ Options:
 ### `cutweave mcp`
 
 ```text
-Serve MCP over stdio (arrives with WP-1J.03)
+Serve MCP over stdio to an agent: attach to a running engine, or run one in the process.
+
+Stdout carries MCP protocol frames only, one JSON-RPC message per line; diagnostics go to stderr and the engine's log file. Errors before the session starts are one JSON object on stderr with the usual exit codes (2 usage, 3 no engine, 1 the engine did not start). Closing stdin ends the session. When an attached engine goes away, requests in flight get a JSON-RPC error and the process exits 3. Client setup: docs/reference/mcp-clients.md.
 
 Usage: cutweave mcp [OPTIONS]
 
 Options:
       --attach
-          Proxy to a running engine's `/mcp` endpoint instead of running one in the process
+          Proxy to a running engine's MCP endpoint (`/mcp`, `/mcp/minimal` or `/mcp/full` for --profile) with its run-file's `mcp` agent token, so the agent edits the document the desktop app shows. This is the default when no spawn flag is given
 
       --profile <PROFILE>
-          The tool profile
+          The tool profile: the same catalogs and budgets as the engine's HTTP endpoints
 
           Possible values:
           - minimal:  The smallest tool set
@@ -292,7 +303,7 @@ Options:
           [default: standard]
 
       --run-file <PATH>
-          The run-file of the engine to attach to
+          The run-file of the engine to attach to (instead of --run-dir and --pid)
 
   -h, --help
           Print help (see a summary with '-h')
@@ -319,6 +330,12 @@ Spawned engine:
 
       --dev-stub-media
           Dev only: fake media probing in the spawned engine (implies --headless). `CUTWEAVE_DEV_STUB_MEDIA=1` does the same
+
+      --log-dir <DIR>
+          Log directory of the in-process engine (default `~/.cutweave/logs`)
+
+      --no-log
+          No log file for the in-process engine
 ```
 
 ### `cutweave worker`

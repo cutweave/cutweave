@@ -63,7 +63,8 @@ where
         Sub::Commands(cmd) => commands(&cmd),
         Sub::Describe(cmd) => describe(&cmd).map(Out::Json),
         Sub::Render(cmd) => render(&cmd).map(Out::Json),
-        Sub::Mcp(cmd) => mcp(&cmd).map(Out::Json),
+        // Stdout is the protocol channel: `mcp` prints nothing else there.
+        Sub::Mcp(cmd) => return mcp(&cmd),
         Sub::Worker(_) => Err(Failure::unimplemented(
             "`cutweave worker` is not implemented in this build",
         )),
@@ -299,9 +300,30 @@ fn render(_cmd: &RenderCmd) -> Result<Value, Failure> {
     ))
 }
 
-fn mcp(_cmd: &McpCmd) -> Result<Value, Failure> {
-    Err(Failure::unimplemented(
-        "stdio MCP arrives with WP-1J.03; until then use the engine's /mcp endpoint \
-         (`cutweave engine --headless --port N`, then http://127.0.0.1:N/mcp)",
-    ))
+/// `cutweave mcp`: MCP over stdio (WP-1J.03). Returns the exit code; failures before the
+/// session starts are JSON on stderr.
+fn mcp(cmd: &McpCmd) -> i32 {
+    let checked = plan(&cmd.target).and_then(|plan| {
+        let spawn = matches!(plan, Plan::Spawn(_));
+        if cmd.attach && spawn {
+            return Err(Failure::usage(
+                "--attach proxies to a running engine; it cannot be combined with \
+                 --deterministic-ids, --allow-root or --dev-stub-media, which start one",
+            ));
+        }
+        if !spawn && (cmd.log_dir.is_some() || cmd.no_log) {
+            return Err(Failure::usage(
+                "--log-dir and --no-log configure the in-process engine of --headless; an \
+                 attached engine logs on its own",
+            ));
+        }
+        Ok(plan)
+    });
+    match checked {
+        Ok(plan) => crate::mcp::run(cmd, plan),
+        Err(failure) => {
+            failure.print();
+            failure.exit
+        }
+    }
 }

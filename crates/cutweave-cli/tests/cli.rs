@@ -240,10 +240,7 @@ fn reserved_subcommands() {
     let out = cutweave(&["worker"]);
     assert_eq!(out.status.code(), Some(64));
     assert!(String::from_utf8_lossy(&out.stderr).contains("not implemented in this build"));
-
-    let out = cutweave(&["mcp", "--headless", "--profile", "minimal"]);
-    assert_eq!(out.status.code(), Some(64));
-    assert!(String::from_utf8_lossy(&out.stderr).contains("WP-1J.03"));
+    // `mcp` is built (WP-1J.03): tests/mcp.rs.
 
     let out = cutweave(&[
         "render",

@@ -86,25 +86,55 @@ pub fn discover(
     }
 }
 
+/// Reads the run-file at `path` (`cutweave mcp --attach --run-file`).
+///
+/// # Errors
+/// Exit 3 when the file cannot be read or parsed, or its engine is not running.
+pub fn read_run_file(path: &std::path::Path) -> Result<RunFileContents, Failure> {
+    let gone = |what: String| {
+        Failure::no_engine(
+            "no_engine",
+            format!("no running engine at run-file {}: {what}", path.display()),
+            Value::Null,
+        )
+    };
+    let text = std::fs::read_to_string(path).map_err(|e| gone(e.to_string()))?;
+    let engine: RunFileContents =
+        serde_json::from_str(&text).map_err(|e| gone(format!("not a run-file ({e})")))?;
+    if !cutweave_api::runfile::process_alive(engine.pid) {
+        return Err(gone(format!("process {} is not running", engine.pid)));
+    }
+    Ok(engine)
+}
+
+/// The agent token of `engine` labelled `label` (`cli` for `/rpc`, `mcp` for `/mcp`).
+///
+/// # Errors
+/// Exit 1 (`no_credential`) when the run-file has no such token.
+pub fn agent_token<'a>(engine: &'a RunFileContents, label: &str) -> Result<&'a str, Failure> {
+    engine
+        .agent_tokens
+        .iter()
+        .find(|t| t.label == label)
+        .map(|t| t.token.as_str())
+        .ok_or_else(|| {
+            Failure::error(
+                "no_credential",
+                format!(
+                    "the run-file of engine {} has no `{label}` agent token",
+                    engine.pid
+                ),
+            )
+        })
+}
+
 impl Remote {
     /// Connects to `engine` with its `cli` agent token.
     ///
     /// # Errors
     /// Exit 3 when the engine does not answer (a stale run-file), exit 1 without a `cli` token.
     pub fn connect(engine: &RunFileContents) -> Result<Remote, Failure> {
-        let token = engine
-            .agent_tokens
-            .iter()
-            .find(|t| t.label == CLI_LABEL)
-            .ok_or_else(|| {
-                Failure::error(
-                    "no_credential",
-                    format!(
-                        "the run-file of engine {} has no `{CLI_LABEL}` agent token",
-                        engine.pid
-                    ),
-                )
-            })?;
+        let token = agent_token(engine, CLI_LABEL)?;
         let lost = |what: String| {
             Failure::no_engine(
                 "no_engine",
@@ -117,8 +147,8 @@ impl Remote {
         };
         let url = format!("ws://127.0.0.1:{}/rpc", engine.port);
         let mut request = url.into_client_request().map_err(|e| lost(e.to_string()))?;
-        let bearer = HeaderValue::from_str(&format!("Bearer {}", token.token))
-            .map_err(|e| lost(e.to_string()))?;
+        let bearer =
+            HeaderValue::from_str(&format!("Bearer {token}")).map_err(|e| lost(e.to_string()))?;
         request.headers_mut().insert("Authorization", bearer);
         let rt = tokio::runtime::Builder::new_current_thread()
             .enable_all()
