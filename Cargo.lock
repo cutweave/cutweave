@@ -623,6 +623,16 @@ version = "0.0.0"
 [[package]]
 name = "cutweave-jobs"
 version = "0.0.0"
+dependencies = [
+ "cutweave-model",
+ "schemars",
+ "serde",
+ "serde_json",
+ "specta",
+ "thiserror",
+ "tokio",
+ "tracing",
+]
 
 [[package]]
 name = "cutweave-media"
@@ -654,7 +664,9 @@ name = "cutweave-ops"
 version = "0.0.0"
 dependencies = [
  "cutweave-commands",
+ "cutweave-jobs",
  "cutweave-model",
+ "cutweave-ops",
  "insta",
  "proptest",
  "serde",
@@ -3004,6 +3016,7 @@ version = "0.0.0"
 dependencies = [
  "cutweave-commands",
  "cutweave-engine",
+ "cutweave-jobs",
  "cutweave-model",
  "cutweave-ops",
  "insta",

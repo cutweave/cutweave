@@ -308,13 +308,26 @@ fn engine_event_payload(name: &str) -> &'static str {
         "project.saved" => "ProjectSaved",
         "project.recovery_available" => "RecoveryPayload",
         "project.autosave_failed" => "AutosaveFailed",
+        "job.progress" => "JobInfo",
+        "media.indexed" => "MediaIndexed",
+        "media.analysis_failed" => "MediaAnalysisFailed",
         _ => "unknown",
     }
 }
 
+/// Every engine event, as `(name, summary)`: project lifecycle (`cutweave-engine`), background
+/// jobs (`cutweave-jobs`) and media analysis (`cutweave-ops`).
+fn engine_events() -> impl Iterator<Item = &'static (&'static str, &'static str)> {
+    cutweave_engine::autosave::PROJECT_EVENTS
+        .iter()
+        .chain(cutweave_jobs::EVENTS)
+        .chain(cutweave_ops::media::EVENTS)
+}
+
 /// `schema/events.json`: document events (`cutweave-commands`, source `doc`) joined with engine
-/// events (`cutweave-engine`, source `engine`), sorted by name. `cutweave-commands` cannot
-/// depend on the engine, so the join happens here. New event sources append here.
+/// events (`cutweave-engine`, `cutweave-jobs` and `cutweave-ops::media`, source `engine`),
+/// sorted by name. `cutweave-commands` cannot depend on those crates, so the join happens here.
+/// New event sources append to [`engine_events`].
 fn events_catalog() -> Value {
     let mut events: Vec<Value> = cutweave_commands::EVENT_CATALOG
         .iter()
@@ -322,18 +335,14 @@ fn events_catalog() -> Value {
             json!({"name": e.name, "summary": e.summary, "payload": e.payload, "source": "doc"})
         })
         .collect();
-    events.extend(
-        cutweave_engine::autosave::PROJECT_EVENTS
-            .iter()
-            .map(|(name, summary)| {
-                json!({
-                    "name": name,
-                    "summary": summary,
-                    "payload": engine_event_payload(name),
-                    "source": "engine",
-                })
-            }),
-    );
+    events.extend(engine_events().map(|(name, summary)| {
+        json!({
+            "name": name,
+            "summary": summary,
+            "payload": engine_event_payload(name),
+            "source": "engine",
+        })
+    }));
     events.sort_by(|a, b| a["name"].as_str().cmp(&b["name"].as_str()));
     json!({"format": cutweave_commands::CATALOG_FORMAT, "events": events})
 }
@@ -629,14 +638,16 @@ mod tests {
         let source = |n: &str| events.iter().find(|e| e["name"] == n).unwrap()["source"].clone();
         assert_eq!(source("doc.patched"), "doc");
         assert_eq!(source("tx.opened"), "doc");
-        for (n, _) in cutweave_engine::autosave::PROJECT_EVENTS {
+        for (n, _) in engine_events() {
             assert_eq!(source(n), "engine", "{n}");
             assert_ne!(engine_event_payload(n), "unknown", "{n}");
         }
+        for n in ["job.progress", "media.indexed", "media.analysis_failed"] {
+            assert_eq!(source(n), "engine", "{n}");
+        }
         assert_eq!(
             events.len(),
-            cutweave_commands::EVENT_CATALOG.len()
-                + cutweave_engine::autosave::PROJECT_EVENTS.len()
+            cutweave_commands::EVENT_CATALOG.len() + engine_events().count()
         );
     }
 

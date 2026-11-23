@@ -144,6 +144,27 @@ impl EngineCommand for Undo {
     }
 }
 
+/// Forgets the history (engine state nothing replays, so never journaled).
+#[command(
+    name = "edit.forget",
+    summary = "Forget the history",
+    engine,
+    undoable = false,
+    journaled = false,
+    mcp = "hidden",
+    annotations(destructive = false)
+)]
+pub struct Forget {}
+
+impl EngineCommand for Forget {
+    type Context = History;
+    type Output = Done;
+    fn run(&self, ctx: &mut History) -> Result<Done, CmdError> {
+        ctx.undone = 0;
+        Ok(Done {})
+    }
+}
+
 /// A tagged wire enum.
 #[wire]
 #[serde(rename_all = "snake_case")]
@@ -164,6 +185,8 @@ fn registry() -> Registry {
         .register::<SetPlayhead>()
         .unwrap()
         .register::<Undo>()
+        .unwrap()
+        .register::<Forget>()
         .unwrap();
     registry
 }
@@ -196,8 +219,15 @@ fn specs_follow_the_attributes() {
 
     let undo = &registry.get("edit.undo").unwrap().meta;
     assert_eq!(undo.kind, EntryKind::Engine);
-    assert!(!undo.view && undo.is_journaled());
+    assert!(!undo.view && undo.is_journaled() && undo.journaled);
+
+    let forget = &registry.get("edit.forget").unwrap().meta;
+    assert_eq!(forget.kind, EntryKind::Engine);
+    assert!(!forget.journaled && !forget.is_journaled());
 }
+
+// The macro emits the opt-out on the params type itself.
+const _: () = assert!(!<Forget as cutweave_commands::Described>::JOURNALED);
 
 #[test]
 fn schemas_carry_doc_comments_optionality_and_secrets() {

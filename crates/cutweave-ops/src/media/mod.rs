@@ -1,14 +1,19 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
-//! The `media` namespace (WP-1B.05; arch §5.1, §7): `media.register`, `media.import`,
-//! `media.list`, `media.remove`.
+//! The `media` namespace (WP-1B.05, WP-1D.07; arch §5.1, §7): `media.register`,
+//! `media.import`, `media.list`, `media.remove`, and the `media.indexed` /
+//! `media.analysis_failed` events of background analysis (which never mutates the document).
 //!
-//! **Import (arch §7).** `media.import` returns `media_ids` synchronously: it probes each file
-//! through a [`MediaProbe`] and registers the results with `media.register` in one transaction.
-//! It runs against an [`ImportCtx`] (the prober plus a [`MediaSink`] that applies the
-//! registrations), so the engine decides how they are committed. Background analysis (frame
-//! index, waveform, thumbnails) is queued by the import job later (WP-1D.07) and awaited with
-//! `job_wait`.
+//! **Import (arch §7, R21).** `media.import` returns `media_ids` synchronously: it checks the
+//! caller's path allowlist, probes the files through a [`MediaProbe`] (in parallel, each with a
+//! timeout; [`ImportPolicy`]) and registers the readable ones with `media.register` in one
+//! transaction through a [`MediaSink`]; unreadable files are reported in `failed[]`. It then
+//! queues background analysis jobs for the new assets ([`Analyzer`], [`AnalysisStage`]) and
+//! returns their `job_ids`, which callers await with `job.wait`. It runs against an
+//! [`ImportCtx`], so the engine decides how registrations are committed and who may read
+//! which folders.
 
+mod analysis;
+mod policy;
 mod probe;
 
 use std::sync::Arc;
@@ -17,8 +22,14 @@ use cutweave_commands::{
     CmdError, Command, EngineCommand, Query, QueryCtx, Registry, RegistryError, Tx, command, query,
     wire,
 };
+use cutweave_jobs::JobId;
 use cutweave_model::{Duration, MediaAsset, MediaId, MediaKind, ProbeInfo, Project, StreamKind};
 
+pub use analysis::{
+    AnalysisInput, AnalysisSink, AnalysisStage, AnalysisStages, Analyzer, EVENTS,
+    MediaAnalysisFailed, MediaEvent, MediaIndexed, StageError,
+};
+pub use policy::{AllowedRoots, DEFAULT_PROBE_PARALLELISM, DEFAULT_PROBE_TIMEOUT, ImportPolicy};
 pub use probe::{FakeProbe, MediaProbe, ProbeError, Probed};
 
 use crate::util::check_abs_path;
@@ -224,19 +235,44 @@ pub trait MediaSink: Send {
     fn register(&mut self, batch: Vec<MediaRegister>) -> Result<Vec<MediaRegistered>, CmdError>;
 }
 
-/// What `media.import` runs against (the [`EngineCommand::Context`]).
+/// What `media.import` runs against (the [`EngineCommand::Context`]). The engine builds one
+/// per call, with the caller's [`ImportPolicy`].
 pub struct ImportCtx {
     /// Reads the files.
     pub prober: Arc<dyn MediaProbe>,
     /// Commits the registrations.
     pub sink: Box<dyn MediaSink>,
+    /// The caller's allowlist, the probe timeout and parallelism.
+    pub policy: ImportPolicy,
+    /// Queues background analysis of new assets; `None` queues nothing.
+    pub analysis: Option<Analyzer>,
 }
 
 impl ImportCtx {
-    /// A context from a prober and a sink.
+    /// A context from a prober and a sink, with the default (unrestricted) policy and no
+    /// analysis.
     #[must_use]
     pub fn new(prober: Arc<dyn MediaProbe>, sink: Box<dyn MediaSink>) -> ImportCtx {
-        ImportCtx { prober, sink }
+        ImportCtx {
+            prober,
+            sink,
+            policy: ImportPolicy::default(),
+            analysis: None,
+        }
+    }
+
+    /// The same context with `policy`.
+    #[must_use]
+    pub fn with_policy(mut self, policy: ImportPolicy) -> ImportCtx {
+        self.policy = policy;
+        self
+    }
+
+    /// The same context, queueing analysis jobs through `analyzer`.
+    #[must_use]
+    pub fn with_analysis(mut self, analyzer: Analyzer) -> ImportCtx {
+        self.analysis = Some(analyzer);
+        self
     }
 }
 
@@ -253,20 +289,59 @@ pub struct ImportedMedia {
     pub duplicate: bool,
 }
 
+/// Why a file was not imported.
+#[wire]
+#[derive(Copy, Eq)]
+#[serde(rename_all = "snake_case")]
+pub enum ImportFailureCode {
+    /// There is no readable file at the path.
+    NotFound,
+    /// The file holds no playable audio or video.
+    Unsupported,
+    /// Probing took longer than the per-file timeout.
+    TimedOut,
+    /// Reading the file failed.
+    Io,
+    /// The probe result cannot be registered (for example a zero duration).
+    Invalid,
+}
+
+/// A file that was not imported (no asset was created for it).
+#[wire]
+pub struct ImportFailure {
+    /// The path as requested.
+    pub path: String,
+    /// Machine-readable reason.
+    pub code: ImportFailureCode,
+    /// Human-readable reason.
+    pub error: String,
+}
+
 /// Result of `media.import`.
 #[wire]
 pub struct MediaImportOutput {
-    /// One entry per requested path, in request order.
+    /// One entry per imported path, in request order.
     pub media: Vec<ImportedMedia>,
+    /// The assets of `media`, in the same order (duplicates name the existing asset).
+    pub media_ids: Vec<MediaId>,
+    /// The paths that could not be imported, in request order.
+    pub failed: Vec<ImportFailure>,
+    /// Background analysis jobs queued for the new assets (wait with `job.wait`); empty when
+    /// no analysis stage is installed.
+    pub job_ids: Vec<JobId>,
 }
 
-/// Imports media files: probes each one synchronously and registers it, returning `media_ids`
-/// at once. All or nothing: if any file cannot be probed, nothing is imported and the error
-/// names that file's index (`/paths/<i>`). Files whose content is already in the project are
-/// returned as duplicates. Analysis (thumbnails, waveform, index) continues in background jobs.
+/// Imports media files and returns their `media_ids` at once (arch §7, R21). Each file is
+/// probed synchronously (up to 4 at a time, 5 s each by default) and every readable one is
+/// registered in one transaction (one undo step); files that are missing, unsupported, corrupt
+/// or too slow to probe are listed in `failed` and get no asset. Files whose content is
+/// already in the project are returned as duplicates. Background analysis (frame index,
+/// thumbnails, waveform) then runs as jobs whose ids are returned in `job_ids`. Agents and
+/// headless callers may only import from the project folder and user-approved folders; any
+/// other path fails the call with `Invalid` at `/paths/<i>`.
 #[command(
     name = "media.import",
-    summary = "Import media files; probes synchronously and returns the media ids",
+    summary = "Import media files: probe and register them now, return media ids and analysis job ids",
     engine,
     undoable = false,
     mcp = "core",
@@ -278,7 +353,7 @@ pub struct MediaImport {
 }
 
 impl MediaImport {
-    fn check(&self) -> Result<(), CmdError> {
+    fn check(&self, policy: &ImportPolicy) -> Result<(), CmdError> {
         if self.paths.is_empty() || self.paths.len() > MAX_IMPORT_PATHS {
             return Err(CmdError::invalid(
                 "/paths",
@@ -286,15 +361,58 @@ impl MediaImport {
             ));
         }
         for (i, path) in self.paths.iter().enumerate() {
-            check_abs_path(&format!("/paths/{i}"), path)?;
+            let pointer = format!("/paths/{i}");
+            check_abs_path(&pointer, path)?;
             if self.paths[..i].contains(path) {
                 return Err(CmdError::invalid(
-                    format!("/paths/{i}"),
+                    pointer,
                     format!("`{path}` is listed twice"),
+                ));
+            }
+            if let Some(roots) = &policy.allowed_roots
+                && !roots.allows(path)
+            {
+                return Err(CmdError::invalid(
+                    pointer,
+                    format!(
+                        "`{path}` is outside the folders you may import from (the project folder \
+                         and folders the user approved); ask the user to approve its folder"
+                    ),
                 ));
             }
         }
         Ok(())
+    }
+}
+
+/// Rewrites the `/paths/<batch index>` pointer of a sink error (see [`register_batch`]) to the
+/// file's index in the request, since files that failed to probe are not in the batch.
+fn request_pointer(error: CmdError, origin: &[usize]) -> CmdError {
+    let CmdError::Invalid { path, msg } = error else {
+        return error;
+    };
+    let rewritten = path.strip_prefix("/paths/").and_then(|rest| {
+        let (index, tail) = rest.split_at(rest.find('/').unwrap_or(rest.len()));
+        let original = origin.get(index.parse::<usize>().ok()?)?;
+        Some(format!("/paths/{original}{tail}"))
+    });
+    CmdError::Invalid {
+        path: rewritten.unwrap_or(path),
+        msg,
+    }
+}
+
+fn failure(path: &str, error: &ProbeError) -> ImportFailure {
+    let code = match error {
+        ProbeError::NotFound(_) => ImportFailureCode::NotFound,
+        ProbeError::Unsupported { .. } => ImportFailureCode::Unsupported,
+        ProbeError::TimedOut(_) => ImportFailureCode::TimedOut,
+        ProbeError::Io { .. } => ImportFailureCode::Io,
+    };
+    ImportFailure {
+        path: path.to_owned(),
+        code,
+        error: error.to_string(),
     }
 }
 
@@ -303,38 +421,75 @@ impl EngineCommand for MediaImport {
     type Output = MediaImportOutput;
 
     fn run(&self, ctx: &mut ImportCtx) -> Result<MediaImportOutput, CmdError> {
-        self.check()?;
+        self.check(&ctx.policy)?;
+        let probed = policy::probe_all(&ctx.prober, &self.paths, &ctx.policy);
         let mut batch = Vec::with_capacity(self.paths.len());
-        for (i, path) in self.paths.iter().enumerate() {
-            let probed = ctx
-                .prober
-                .probe(path)
-                .map_err(|e| CmdError::invalid(format!("/paths/{i}"), e.to_string()))?;
-            batch.push(MediaRegister {
-                media_id: None,
-                path: path.clone(),
-                probe: probed.probe,
-                content_hash: probed.content_hash,
-            });
+        // The request index of each batch entry (failed files are not in the batch).
+        let mut origin = Vec::with_capacity(self.paths.len());
+        let mut failed = Vec::new();
+        for (i, (path, result)) in self.paths.iter().zip(probed).enumerate() {
+            match result {
+                Ok(probed) => {
+                    let register = MediaRegister {
+                        media_id: None,
+                        path: path.clone(),
+                        probe: probed.probe,
+                        content_hash: probed.content_hash,
+                    };
+                    match register.kind() {
+                        Ok(_) => {
+                            batch.push(register);
+                            origin.push(i);
+                        }
+                        Err(e) => failed.push(ImportFailure {
+                            path: path.clone(),
+                            code: ImportFailureCode::Invalid,
+                            error: format!("`{path}` cannot be imported: {}", e.message()),
+                        }),
+                    }
+                }
+                Err(e) => failed.push(failure(path, &e)),
+            }
         }
-        let results = ctx.sink.register(batch)?;
-        if results.len() != self.paths.len() {
+        let results = if batch.is_empty() {
+            Vec::new()
+        } else {
+            ctx.sink
+                .register(batch.clone())
+                .map_err(|e| request_pointer(e, &origin))?
+        };
+        if results.len() != batch.len() {
             return Err(CmdError::internal(
                 "the media sink returned a different number of results than requested",
             ));
         }
-        let media = self
-            .paths
-            .iter()
-            .zip(results)
-            .map(|(path, r)| ImportedMedia {
-                path: path.clone(),
+        let mut out = MediaImportOutput {
+            media: Vec::with_capacity(batch.len()),
+            media_ids: Vec::with_capacity(batch.len()),
+            failed,
+            job_ids: Vec::new(),
+        };
+        for (register, r) in batch.into_iter().zip(results) {
+            if r.created
+                && let Some(analyzer) = &ctx.analysis
+            {
+                out.job_ids.extend(analyzer.spawn(AnalysisInput {
+                    media_id: r.media_id,
+                    kind: r.kind,
+                    path: register.path.clone(),
+                    content_hash: register.content_hash,
+                    probe: register.probe,
+                }));
+            }
+            out.media_ids.push(r.media_id);
+            out.media.push(ImportedMedia {
+                path: register.path,
                 media_id: r.media_id,
                 kind: r.kind,
                 duplicate: !r.created,
-            })
-            .collect();
-        Ok(MediaImportOutput { media })
+            });
+        }
+        Ok(out)
     }
 }
 

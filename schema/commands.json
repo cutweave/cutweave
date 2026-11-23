@@ -1937,7 +1937,705 @@
       },
       "input_schema": {
         "additionalProperties": false,
-        "description": "Imports media files: probes each one synchronously and registers it, returning `media_ids`\nat once. All or nothing: if any file cannot be probed, nothing is imported and the error\nnames that file's index (`/paths/<i>`). Files whose content is already in the project are\nreturned as duplicates. Analysis (thumbnails, waveform, index) continues in background jobs.",
+        "description": "Cancels a background job. A queued job is cancelled at once; a running one stops within\n500 ms (`running` with `cancel_requested` until then; `job.wait` to see it end). Cancelling\na finished job changes nothing. Returns the job's state.",
+        "properties": {
+          "id": {
+            "description": "The job.",
+            "pattern": "^job_[0-9a-f]{32}$",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id"
+        ],
+        "title": "JobCancel",
+        "type": "object"
+      },
+      "journaled": false,
+      "kind": "engine",
+      "mcp": "catalog",
+      "mcp_tool": "job_cancel",
+      "name": "job.cancel",
+      "namespace": "job",
+      "output_schema": {
+        "additionalProperties": false,
+        "description": "A job as reported by `job.status`, `job.list`, `job.wait`, `job.cancel` and the\n`job.progress` event.",
+        "properties": {
+          "cancel_requested": {
+            "description": "Whether cancellation was requested; a running job stops when it next checks.",
+            "type": "boolean"
+          },
+          "error": {
+            "description": "Why it failed, was skipped or was cancelled.",
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "id": {
+            "description": "The job.",
+            "pattern": "^job_[0-9a-f]{32}$",
+            "type": "string"
+          },
+          "kind": {
+            "description": "What kind of work it is.",
+            "oneOf": [
+              {
+                "const": "analysis",
+                "description": "Background analysis of an imported asset (index, thumbnails, waveform): decodes media.",
+                "type": "string"
+              },
+              {
+                "const": "export",
+                "description": "Rendering and encoding a sequence to a file (WP-1E.03).",
+                "type": "string"
+              }
+            ]
+          },
+          "label": {
+            "description": "What it does, e.g. the analysis stage (`index`, `thumbnails`, `waveform`).",
+            "type": "string"
+          },
+          "media_id": {
+            "description": "The media asset it works on, if any.",
+            "pattern": "^med_[0-9a-f]{32}$",
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "progress": {
+            "additionalProperties": false,
+            "description": "How far it got.",
+            "properties": {
+              "fraction": {
+                "description": "Done fraction, `0..=1` (1 once the job succeeded).",
+                "format": "double",
+                "type": "number"
+              },
+              "message": {
+                "description": "What it is doing, for status lines.",
+                "type": [
+                  "string",
+                  "null"
+                ]
+              }
+            },
+            "required": [
+              "fraction",
+              "message"
+            ],
+            "type": "object"
+          },
+          "state": {
+            "description": "Where it is in its lifecycle.",
+            "oneOf": [
+              {
+                "const": "queued",
+                "description": "Waiting for the jobs it depends on or for a budget slot.",
+                "type": "string"
+              },
+              {
+                "const": "running",
+                "description": "Running.",
+                "type": "string"
+              },
+              {
+                "const": "succeeded",
+                "description": "Finished its work.",
+                "type": "string"
+              },
+              {
+                "const": "failed",
+                "description": "Stopped with an error (see `error`), or skipped because a job it needs failed.",
+                "type": "string"
+              },
+              {
+                "const": "cancelled",
+                "description": "Cancelled before or while running.",
+                "type": "string"
+              }
+            ]
+          }
+        },
+        "required": [
+          "id",
+          "kind",
+          "label",
+          "media_id",
+          "state",
+          "progress",
+          "cancel_requested",
+          "error"
+        ],
+        "title": "JobInfo",
+        "type": "object"
+      },
+      "scope": "any",
+      "secret_fields": [],
+      "summary": "Cancel a background job (stops within 500 ms; no effect once it finished)",
+      "undoable": false,
+      "view": false
+    },
+    {
+      "annotations": {
+        "destructiveHint": false,
+        "idempotentHint": true,
+        "openWorldHint": false,
+        "readOnlyHint": true
+      },
+      "input_schema": {
+        "additionalProperties": false,
+        "description": "Lists background jobs, newest first: unfinished ones and recently finished ones, optionally\nonly those of one asset, state or kind.",
+        "properties": {
+          "kind": {
+            "anyOf": [
+              {
+                "description": "What kind of work a job does. The kind decides which [`Budget`] it runs under.",
+                "oneOf": [
+                  {
+                    "const": "analysis",
+                    "description": "Background analysis of an imported asset (index, thumbnails, waveform): decodes media.",
+                    "type": "string"
+                  },
+                  {
+                    "const": "export",
+                    "description": "Rendering and encoding a sequence to a file (WP-1E.03).",
+                    "type": "string"
+                  }
+                ]
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "description": "Only jobs of this kind."
+          },
+          "limit": {
+            "default": null,
+            "description": "Most jobs returned, `1..=500` (default 50).",
+            "format": "uint32",
+            "minimum": 0,
+            "type": [
+              "integer",
+              "null"
+            ]
+          },
+          "media_id": {
+            "default": null,
+            "description": "Only jobs working on this media asset.",
+            "pattern": "^med_[0-9a-f]{32}$",
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "state": {
+            "anyOf": [
+              {
+                "description": "Where a job is in its lifecycle. `succeeded`, `failed` and `cancelled` are final.",
+                "oneOf": [
+                  {
+                    "const": "queued",
+                    "description": "Waiting for the jobs it depends on or for a budget slot.",
+                    "type": "string"
+                  },
+                  {
+                    "const": "running",
+                    "description": "Running.",
+                    "type": "string"
+                  },
+                  {
+                    "const": "succeeded",
+                    "description": "Finished its work.",
+                    "type": "string"
+                  },
+                  {
+                    "const": "failed",
+                    "description": "Stopped with an error (see `error`), or skipped because a job it needs failed.",
+                    "type": "string"
+                  },
+                  {
+                    "const": "cancelled",
+                    "description": "Cancelled before or while running.",
+                    "type": "string"
+                  }
+                ]
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "description": "Only jobs in this state (e.g. `running`)."
+          }
+        },
+        "title": "JobList",
+        "type": "object"
+      },
+      "kind": "engine",
+      "mcp": "catalog",
+      "mcp_tool": "job_list",
+      "name": "job.list",
+      "namespace": "job",
+      "output_schema": {
+        "additionalProperties": false,
+        "description": "Result of `job.list`.",
+        "properties": {
+          "active": {
+            "description": "How many jobs are unfinished (queued or running) in total, whatever the filter.",
+            "format": "uint32",
+            "minimum": 0,
+            "type": "integer"
+          },
+          "jobs": {
+            "description": "The jobs, newest first.",
+            "items": {
+              "additionalProperties": false,
+              "description": "A job as reported by `job.status`, `job.list`, `job.wait`, `job.cancel` and the\n`job.progress` event.",
+              "properties": {
+                "cancel_requested": {
+                  "description": "Whether cancellation was requested; a running job stops when it next checks.",
+                  "type": "boolean"
+                },
+                "error": {
+                  "description": "Why it failed, was skipped or was cancelled.",
+                  "type": [
+                    "string",
+                    "null"
+                  ]
+                },
+                "id": {
+                  "description": "The job.",
+                  "pattern": "^job_[0-9a-f]{32}$",
+                  "type": "string"
+                },
+                "kind": {
+                  "description": "What kind of work it is.",
+                  "oneOf": [
+                    {
+                      "const": "analysis",
+                      "description": "Background analysis of an imported asset (index, thumbnails, waveform): decodes media.",
+                      "type": "string"
+                    },
+                    {
+                      "const": "export",
+                      "description": "Rendering and encoding a sequence to a file (WP-1E.03).",
+                      "type": "string"
+                    }
+                  ]
+                },
+                "label": {
+                  "description": "What it does, e.g. the analysis stage (`index`, `thumbnails`, `waveform`).",
+                  "type": "string"
+                },
+                "media_id": {
+                  "description": "The media asset it works on, if any.",
+                  "pattern": "^med_[0-9a-f]{32}$",
+                  "type": [
+                    "string",
+                    "null"
+                  ]
+                },
+                "progress": {
+                  "additionalProperties": false,
+                  "description": "How far it got.",
+                  "properties": {
+                    "fraction": {
+                      "description": "Done fraction, `0..=1` (1 once the job succeeded).",
+                      "format": "double",
+                      "type": "number"
+                    },
+                    "message": {
+                      "description": "What it is doing, for status lines.",
+                      "type": [
+                        "string",
+                        "null"
+                      ]
+                    }
+                  },
+                  "required": [
+                    "fraction",
+                    "message"
+                  ],
+                  "type": "object"
+                },
+                "state": {
+                  "description": "Where it is in its lifecycle.",
+                  "oneOf": [
+                    {
+                      "const": "queued",
+                      "description": "Waiting for the jobs it depends on or for a budget slot.",
+                      "type": "string"
+                    },
+                    {
+                      "const": "running",
+                      "description": "Running.",
+                      "type": "string"
+                    },
+                    {
+                      "const": "succeeded",
+                      "description": "Finished its work.",
+                      "type": "string"
+                    },
+                    {
+                      "const": "failed",
+                      "description": "Stopped with an error (see `error`), or skipped because a job it needs failed.",
+                      "type": "string"
+                    },
+                    {
+                      "const": "cancelled",
+                      "description": "Cancelled before or while running.",
+                      "type": "string"
+                    }
+                  ]
+                }
+              },
+              "required": [
+                "id",
+                "kind",
+                "label",
+                "media_id",
+                "state",
+                "progress",
+                "cancel_requested",
+                "error"
+              ],
+              "type": "object"
+            },
+            "type": "array"
+          }
+        },
+        "required": [
+          "jobs",
+          "active"
+        ],
+        "title": "JobListOutput",
+        "type": "object"
+      },
+      "scope": "any",
+      "secret_fields": [],
+      "summary": "List background jobs, newest first (filter by media, state or kind)",
+      "undoable": false,
+      "view": false
+    },
+    {
+      "annotations": {
+        "destructiveHint": false,
+        "idempotentHint": true,
+        "openWorldHint": false,
+        "readOnlyHint": true
+      },
+      "input_schema": {
+        "additionalProperties": false,
+        "description": "Gets a background job's state (`queued`, `running`, `succeeded`, `failed`, `cancelled`),\nprogress and error. Finished jobs are remembered for a while (the last few hundred), then\n`NotFound`.",
+        "properties": {
+          "id": {
+            "description": "The job (from `media.import`'s `job_ids`, `export.start`, …).",
+            "pattern": "^job_[0-9a-f]{32}$",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id"
+        ],
+        "title": "JobStatus",
+        "type": "object"
+      },
+      "kind": "engine",
+      "mcp": "core",
+      "mcp_tool": "job_status",
+      "name": "job.status",
+      "namespace": "job",
+      "output_schema": {
+        "additionalProperties": false,
+        "description": "A job as reported by `job.status`, `job.list`, `job.wait`, `job.cancel` and the\n`job.progress` event.",
+        "properties": {
+          "cancel_requested": {
+            "description": "Whether cancellation was requested; a running job stops when it next checks.",
+            "type": "boolean"
+          },
+          "error": {
+            "description": "Why it failed, was skipped or was cancelled.",
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "id": {
+            "description": "The job.",
+            "pattern": "^job_[0-9a-f]{32}$",
+            "type": "string"
+          },
+          "kind": {
+            "description": "What kind of work it is.",
+            "oneOf": [
+              {
+                "const": "analysis",
+                "description": "Background analysis of an imported asset (index, thumbnails, waveform): decodes media.",
+                "type": "string"
+              },
+              {
+                "const": "export",
+                "description": "Rendering and encoding a sequence to a file (WP-1E.03).",
+                "type": "string"
+              }
+            ]
+          },
+          "label": {
+            "description": "What it does, e.g. the analysis stage (`index`, `thumbnails`, `waveform`).",
+            "type": "string"
+          },
+          "media_id": {
+            "description": "The media asset it works on, if any.",
+            "pattern": "^med_[0-9a-f]{32}$",
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "progress": {
+            "additionalProperties": false,
+            "description": "How far it got.",
+            "properties": {
+              "fraction": {
+                "description": "Done fraction, `0..=1` (1 once the job succeeded).",
+                "format": "double",
+                "type": "number"
+              },
+              "message": {
+                "description": "What it is doing, for status lines.",
+                "type": [
+                  "string",
+                  "null"
+                ]
+              }
+            },
+            "required": [
+              "fraction",
+              "message"
+            ],
+            "type": "object"
+          },
+          "state": {
+            "description": "Where it is in its lifecycle.",
+            "oneOf": [
+              {
+                "const": "queued",
+                "description": "Waiting for the jobs it depends on or for a budget slot.",
+                "type": "string"
+              },
+              {
+                "const": "running",
+                "description": "Running.",
+                "type": "string"
+              },
+              {
+                "const": "succeeded",
+                "description": "Finished its work.",
+                "type": "string"
+              },
+              {
+                "const": "failed",
+                "description": "Stopped with an error (see `error`), or skipped because a job it needs failed.",
+                "type": "string"
+              },
+              {
+                "const": "cancelled",
+                "description": "Cancelled before or while running.",
+                "type": "string"
+              }
+            ]
+          }
+        },
+        "required": [
+          "id",
+          "kind",
+          "label",
+          "media_id",
+          "state",
+          "progress",
+          "cancel_requested",
+          "error"
+        ],
+        "title": "JobInfo",
+        "type": "object"
+      },
+      "scope": "any",
+      "secret_fields": [],
+      "summary": "Get a background job's state, progress and error (analysis, export)",
+      "undoable": false,
+      "view": false
+    },
+    {
+      "annotations": {
+        "destructiveHint": false,
+        "idempotentHint": true,
+        "openWorldHint": false,
+        "readOnlyHint": true
+      },
+      "input_schema": {
+        "additionalProperties": false,
+        "description": "Waits for a background job to finish, at most `timeout_ms` (default 30 s, capped at 60 s),\nand returns its state: at once for a finished job, as soon as it finishes, or still\n`queued`/`running` with its progress when the time is up (call again to keep waiting).",
+        "properties": {
+          "job_id": {
+            "description": "The job.",
+            "pattern": "^job_[0-9a-f]{32}$",
+            "type": "string"
+          },
+          "timeout_ms": {
+            "default": null,
+            "description": "How long to wait in milliseconds (default 30000; values above 60000 are capped; 0\nreturns the current state).",
+            "format": "uint32",
+            "minimum": 0,
+            "type": [
+              "integer",
+              "null"
+            ]
+          }
+        },
+        "required": [
+          "job_id"
+        ],
+        "title": "JobWait",
+        "type": "object"
+      },
+      "kind": "engine",
+      "mcp": "core",
+      "mcp_tool": "job_wait",
+      "name": "job.wait",
+      "namespace": "job",
+      "output_schema": {
+        "additionalProperties": false,
+        "description": "A job as reported by `job.status`, `job.list`, `job.wait`, `job.cancel` and the\n`job.progress` event.",
+        "properties": {
+          "cancel_requested": {
+            "description": "Whether cancellation was requested; a running job stops when it next checks.",
+            "type": "boolean"
+          },
+          "error": {
+            "description": "Why it failed, was skipped or was cancelled.",
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "id": {
+            "description": "The job.",
+            "pattern": "^job_[0-9a-f]{32}$",
+            "type": "string"
+          },
+          "kind": {
+            "description": "What kind of work it is.",
+            "oneOf": [
+              {
+                "const": "analysis",
+                "description": "Background analysis of an imported asset (index, thumbnails, waveform): decodes media.",
+                "type": "string"
+              },
+              {
+                "const": "export",
+                "description": "Rendering and encoding a sequence to a file (WP-1E.03).",
+                "type": "string"
+              }
+            ]
+          },
+          "label": {
+            "description": "What it does, e.g. the analysis stage (`index`, `thumbnails`, `waveform`).",
+            "type": "string"
+          },
+          "media_id": {
+            "description": "The media asset it works on, if any.",
+            "pattern": "^med_[0-9a-f]{32}$",
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "progress": {
+            "additionalProperties": false,
+            "description": "How far it got.",
+            "properties": {
+              "fraction": {
+                "description": "Done fraction, `0..=1` (1 once the job succeeded).",
+                "format": "double",
+                "type": "number"
+              },
+              "message": {
+                "description": "What it is doing, for status lines.",
+                "type": [
+                  "string",
+                  "null"
+                ]
+              }
+            },
+            "required": [
+              "fraction",
+              "message"
+            ],
+            "type": "object"
+          },
+          "state": {
+            "description": "Where it is in its lifecycle.",
+            "oneOf": [
+              {
+                "const": "queued",
+                "description": "Waiting for the jobs it depends on or for a budget slot.",
+                "type": "string"
+              },
+              {
+                "const": "running",
+                "description": "Running.",
+                "type": "string"
+              },
+              {
+                "const": "succeeded",
+                "description": "Finished its work.",
+                "type": "string"
+              },
+              {
+                "const": "failed",
+                "description": "Stopped with an error (see `error`), or skipped because a job it needs failed.",
+                "type": "string"
+              },
+              {
+                "const": "cancelled",
+                "description": "Cancelled before or while running.",
+                "type": "string"
+              }
+            ]
+          }
+        },
+        "required": [
+          "id",
+          "kind",
+          "label",
+          "media_id",
+          "state",
+          "progress",
+          "cancel_requested",
+          "error"
+        ],
+        "title": "JobInfo",
+        "type": "object"
+      },
+      "scope": "any",
+      "secret_fields": [],
+      "summary": "Wait up to timeout_ms (max 60 s) for a background job to finish; returns its state",
+      "undoable": false,
+      "view": false
+    },
+    {
+      "annotations": {
+        "destructiveHint": false,
+        "idempotentHint": true,
+        "openWorldHint": false,
+        "readOnlyHint": false
+      },
+      "input_schema": {
+        "additionalProperties": false,
+        "description": "Imports media files and returns their `media_ids` at once (arch §7, R21). Each file is\nprobed synchronously (up to 4 at a time, 5 s each by default) and every readable one is\nregistered in one transaction (one undo step); files that are missing, unsupported, corrupt\nor too slow to probe are listed in `failed` and get no asset. Files whose content is\nalready in the project are returned as duplicates. Background analysis (frame index,\nthumbnails, waveform) then runs as jobs whose ids are returned in `job_ids`. Agents and\nheadless callers may only import from the project folder and user-approved folders; any\nother path fails the call with `Invalid` at `/paths/<i>`.",
         "properties": {
           "paths": {
             "description": "Absolute paths of the files (1..=256, no repeats).",
@@ -1962,8 +2660,71 @@
         "additionalProperties": false,
         "description": "Result of `media.import`.",
         "properties": {
+          "failed": {
+            "description": "The paths that could not be imported, in request order.",
+            "items": {
+              "additionalProperties": false,
+              "description": "A file that was not imported (no asset was created for it).",
+              "properties": {
+                "code": {
+                  "description": "Machine-readable reason.",
+                  "oneOf": [
+                    {
+                      "const": "not_found",
+                      "description": "There is no readable file at the path.",
+                      "type": "string"
+                    },
+                    {
+                      "const": "unsupported",
+                      "description": "The file holds no playable audio or video.",
+                      "type": "string"
+                    },
+                    {
+                      "const": "timed_out",
+                      "description": "Probing took longer than the per-file timeout.",
+                      "type": "string"
+                    },
+                    {
+                      "const": "io",
+                      "description": "Reading the file failed.",
+                      "type": "string"
+                    },
+                    {
+                      "const": "invalid",
+                      "description": "The probe result cannot be registered (for example a zero duration).",
+                      "type": "string"
+                    }
+                  ]
+                },
+                "error": {
+                  "description": "Human-readable reason.",
+                  "type": "string"
+                },
+                "path": {
+                  "description": "The path as requested.",
+                  "type": "string"
+                }
+              },
+              "required": [
+                "path",
+                "code",
+                "error"
+              ],
+              "type": "object"
+            },
+            "type": "array"
+          },
+          "job_ids": {
+            "description": "Background analysis jobs queued for the new assets (wait with `job.wait`); empty when\nno analysis stage is installed.",
+            "items": {
+              "description": "A job id: `^job_[0-9a-f]{32}$`.",
+              "pattern": "^job_[0-9a-f]{32}$",
+              "type": "string"
+            },
+            "type": "array"
+          },
           "media": {
-            "description": "One entry per requested path, in request order.",
+            "description": "One entry per imported path, in request order.",
             "items": {
               "additionalProperties": false,
               "description": "One imported file.",
@@ -2016,17 +2777,29 @@
               "type": "object"
             },
             "type": "array"
+          },
+          "media_ids": {
+            "description": "The assets of `media`, in the same order (duplicates name the existing asset).",
+            "items": {
+              "description": "A Media id: `^med_[0-9a-f]{32}$`.",
+              "pattern": "^med_[0-9a-f]{32}$",
+              "type": "string"
+            },
+            "type": "array"
           }
         },
         "required": [
-          "media"
+          "media",
+          "media_ids",
+          "failed",
+          "job_ids"
         ],
         "title": "MediaImportOutput",
         "type": "object"
       },
       "scope": "any",
       "secret_fields": [],
-      "summary": "Import media files; probes synchronously and returns the media ids",
+      "summary": "Import media files: probe and register them now, return media ids and analysis job ids",
       "undoable": false,
       "view": false
     },

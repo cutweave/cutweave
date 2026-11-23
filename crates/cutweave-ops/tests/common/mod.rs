@@ -1,8 +1,8 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
-//! Shared harness of the WP-1B.05 tests: runs registered commands in a transaction on a shared
-//! document and, for every success, asserts the undo/redo identity and document validity;
-//! for every failure, that nothing changed. (Kept local until the registry-driven property
-//! harness of WP-1B.07 lands.)
+//! Shared harness of the per-command tests (WP-1B.05/06): runs registered commands in a
+//! transaction on a shared document and, for every success, asserts the undo/redo identity and
+//! document validity; for every failure, that nothing changed. The registry-driven property
+//! harness (WP-1B.07) is `registry_props.rs`, built on `cutweave_ops::testing`.
 
 #![allow(dead_code, clippy::unwrap_used, clippy::expect_used)]
 
@@ -13,7 +13,8 @@ use cutweave_commands::{
 };
 use cutweave_model::{GroupId, ItemId, MediaId, Project, SeededGen, SequenceId, Time, TrackId};
 use cutweave_ops::media::{
-    FakeProbe, ImportCtx, MediaRegister, MediaRegistered, MediaSink, register_batch,
+    AnalysisSink, FakeProbe, ImportCtx, MediaEvent, MediaRegister, MediaRegistered, MediaSink,
+    register_batch,
 };
 use serde_json::{Value, json};
 
@@ -191,6 +192,19 @@ impl MediaSink for HSink {
         *doc = committed.doc;
         *commits += 1;
         Ok(out)
+    }
+}
+
+/// The engine side of analysis jobs: their event fan-out (WP-1D.07). Records the events.
+#[derive(Default)]
+pub struct TestAnalysisSink {
+    /// Published events, in order.
+    pub events: Mutex<Vec<MediaEvent>>,
+}
+
+impl AnalysisSink for TestAnalysisSink {
+    fn publish(&self, event: MediaEvent) {
+        self.events.lock().unwrap().push(event);
     }
 }
 

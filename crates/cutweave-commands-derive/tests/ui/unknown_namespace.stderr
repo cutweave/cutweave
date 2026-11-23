@@ -1,4 +1,4 @@
-error: unknown command namespace `widget`; new namespaces require an ADR (arch §5.1). Known: project, media, sequence, track, timeline, item, clip, text, caption, transcript, effect, transition, keyframe, mask, color, audio, composition, template, font, asset, analysis, tracking, ai, render, export, plugin, edit, view
+error: unknown command namespace `widget`; new namespaces require an ADR (arch §5.1). Known: project, media, sequence, track, timeline, item, clip, text, caption, transcript, effect, transition, keyframe, mask, color, audio, composition, template, font, asset, analysis, job, tracking, ai, render, export, plugin, edit, view
  --> tests/ui/unknown_namespace.rs:4:18
   |
 4 | #[command(name = "widget.spin", summary = "Spin", undoable, mcp = "core", annotations(destructive = false))]

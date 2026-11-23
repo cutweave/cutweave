@@ -154,6 +154,10 @@ fn import_returns_media_ids_synchronously() {
     let kinds: Vec<_> = media.iter().map(|m| m["kind"].as_str().unwrap()).collect();
     assert_eq!(kinds, ["video", "audio", "image"]);
     assert_eq!(media[0]["path"], "/m/a.mp4");
+    let ids: Vec<&Value> = media.iter().map(|m| &m["media_id"]).collect();
+    assert_eq!(out["media_ids"], json!(ids));
+    assert_eq!(out["failed"], json!([]));
+    assert_eq!(out["job_ids"], json!([]), "no analysis without an analyzer");
     let doc = h.doc();
     assert_eq!(doc.media.len(), 3);
     for m in media {
@@ -175,21 +179,34 @@ fn import_reports_duplicates_and_changes_nothing_for_them() {
 }
 
 #[test]
-fn import_is_all_or_nothing_and_names_the_failing_path() {
+fn import_registers_what_it_can_and_reports_the_rest_in_failed() {
+    // WP-1D.07 replaced 1B.05's all-or-nothing rule: unreadable files no longer block the rest.
     let h = H::empty();
-    let e = import(
+    let out = import(
         &h,
         prober(),
         json!({"paths": ["/m/a.mp4", "/m/missing.mp4"]}),
     )
-    .unwrap_err();
-    assert_invalid(Err(e), "/paths/1");
-    assert_eq!(h.doc().media.len(), 0);
-    assert_eq!(h.commits(), 0);
+    .unwrap();
+    assert_eq!(out["media"].as_array().unwrap().len(), 1);
+    assert_eq!(out["media_ids"], json!([out["media"][0]["media_id"]]));
+    assert_eq!(out["failed"][0]["path"], "/m/missing.mp4");
+    assert_eq!(out["failed"][0]["code"], "not_found");
+    assert_eq!(h.doc().media.len(), 1);
+    assert_eq!(h.commits(), 1);
 }
 
 #[test]
-fn import_maps_probe_errors_to_invalid() {
+fn import_of_only_unreadable_files_changes_nothing() {
+    let h = H::empty();
+    let out = import(&h, prober(), json!({"paths": ["/m/missing.mp4"]})).unwrap();
+    assert_eq!(out["media"], json!([]));
+    assert_eq!(out["failed"].as_array().unwrap().len(), 1);
+    assert_eq!(h.commits(), 0, "no empty transaction");
+}
+
+#[test]
+fn import_reports_probe_errors_with_codes_and_messages() {
     let h = H::empty();
     let p = FakeProbe::new()
         .with_error(
@@ -200,10 +217,18 @@ fn import_maps_probe_errors_to_invalid() {
             },
         )
         .with_error("/m/slow.mp4", ProbeError::TimedOut("/m/slow.mp4".into()));
-    let e = import(&h, p.clone(), json!({"paths": ["/m/x.txt"]})).unwrap_err();
-    assert!(e.message().contains("not a supported media file"), "{e}");
-    let e = import(&h, p, json!({"paths": ["/m/slow.mp4"]})).unwrap_err();
-    assert!(e.message().contains("timed out"), "{e}");
+    let out = import(&h, p, json!({"paths": ["/m/x.txt", "/m/slow.mp4"]})).unwrap();
+    let failed = &out["failed"];
+    assert_eq!(failed[0]["code"], "unsupported");
+    assert!(
+        failed[0]["error"]
+            .as_str()
+            .unwrap()
+            .contains("not a supported media file")
+    );
+    assert_eq!(failed[1]["code"], "timed_out");
+    assert!(failed[1]["error"].as_str().unwrap().contains("timed out"));
+    assert!(h.doc().media.is_empty());
 }
 
 #[test]
