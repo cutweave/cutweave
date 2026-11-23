@@ -8,6 +8,7 @@ How a supervisor (Electron main's `EngineSupervisor`, the CLI, a test) starts an
 cutweave engine [--headless] --port N [--token-stdin] [--project P] [--run-dir D]
                 [--allow-origin O]... [--allow-root R]... [--deterministic-ids SEED]
                 [--i-know-this-is-a-test] [--log-dir D | --no-log] [--handshake-timeout-ms MS]
+                [--dev-stub-media]
 ```
 
 Until `cutweave engine` lands (WP-1K.01) the same entry point is the `cutweave-engine-serve` binary of `cutweave-engine` (point `CUTWEAVE_ENGINE_BIN` at it).
@@ -25,6 +26,7 @@ Until `cutweave engine` lands (WP-1K.01) the same entry point is the `cutweave-e
 | `--i-know-this-is-a-test` | Lets a Gui engine run with deterministic ids. Ignored otherwise. |
 | `--log-dir D` / `--no-log` | Log directory (default `~/.cutweave/logs`), or no log file. |
 | `--handshake-timeout-ms MS` | How long a Gui engine waits for the handshake line (default 5000; tests shorten it). |
+| `--dev-stub-media` | **Dev only.** Attaches a stand-in media prober until the FFmpeg backend (WP-1I.05) lands, so demos and UI work can `media.import` files and put clips on the timeline. Any existing, readable file is "probed" from its extension alone: video (`mp4 mov mkv webm m4v avi`) is 1920x1080, 30 fps, 10 s with a 48 kHz stereo audio stream; audio (`wav mp3 aac m4a flac ogg opus`) is 48 kHz stereo, 10 s; images (`png jpg jpeg webp gif`) are 1920x1080 stills. Other extensions go to `failed[]` (`unsupported`), missing files to `failed[]` (`not_found`). Nothing is decoded, so there is no preview or export of real pixels. The data is marked as made up: every stream's codec is `"stub"` and the asset's probe carries `"stub": true`. The content hash is SHA-256 over the file length and its first and last 64 KiB (`stub-sha256:...`). The environment variable `CUTWEAVE_DEV_STUB_MEDIA=1` does the same (the flag wins); the engine logs a warning at startup when it is on. Without the flag nothing changes: imports report every file as unreadable. |
 
 ## Sequence
 

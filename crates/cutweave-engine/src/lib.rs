@@ -22,6 +22,7 @@ pub mod autosave;
 pub mod config;
 #[cfg(feature = "testing")]
 pub mod determinism;
+pub mod dev_media;
 pub mod dispatch;
 mod engine;
 pub mod events;
@@ -37,6 +38,7 @@ pub mod subsystems;
 pub mod ui_state;
 
 pub use config::{ApiOptions, AudioConfig, EngineConfig, EngineMode, GpuConfig, MountFactory};
+pub use dev_media::{DEV_STUB_MEDIA_ENV, DevStubMedia, StubMediaBackend};
 pub use dispatch::{Call, Connection, Reply};
 pub use engine::{Engine, EngineHandle, JOB_ID_STREAM, StartError, VERSION, build_registry};
 pub use events::{EngineEvent, EventReceiver, SESSION_EVENTS};

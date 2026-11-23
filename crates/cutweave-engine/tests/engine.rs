@@ -750,3 +750,65 @@ fn deterministic_ids_seed_the_document_and_the_jobs_separately() {
         "job ids must come from their own stream"
     );
 }
+
+// ----- dev stub media (R27) --------------------------------------------------------------------
+
+#[test]
+fn dev_stub_media_imports_by_extension_and_the_media_goes_on_the_timeline() {
+    let t = TempDir::new("stub");
+    let file = |n: &str, bytes: &[u8]| {
+        let p = t.path().join(n);
+        std::fs::write(&p, bytes).unwrap();
+        path_str(&p)
+    };
+    let (mp4, wav, png) = (
+        file("a.mp4", b"video"),
+        file("b.wav", b"audio"),
+        file("c.png", b"image"),
+    );
+    let (txt, gone) = (file("d.txt", b"text"), path_str(&t.path().join("gone.mp4")));
+
+    let mut config = oneshot(t.path());
+    config.subsystems = Some(Box::new(cutweave_engine::DevStubMedia));
+    let engine = Engine::start(config).unwrap();
+    let conn = engine.handle().connect(&agent("cli")).unwrap();
+    let (sequence, track) = new_document(&conn, "Stub");
+    let out = must(
+        &conn,
+        "media.import",
+        json!({ "paths": [mp4, wav, png, txt, gone] }),
+    );
+    let ids = out["media_ids"].as_array().unwrap().clone();
+    assert_eq!(ids.len(), 3, "{out}");
+    assert_eq!(out["failed"].as_array().unwrap().len(), 2, "{out}");
+    assert_eq!(must(&conn, "media.list", json!({}))["total"], 3);
+
+    let inserted = must(
+        &conn,
+        "timeline.insert",
+        json!({ "sequence": sequence, "track": track, "media": ids[0], "at": "0s" }),
+    );
+    // Video with audio: linked video and audio clips.
+    assert_eq!(inserted["clips"].as_array().unwrap().len(), 2);
+    let still = must(
+        &conn,
+        "timeline.insert",
+        json!({ "sequence": sequence, "track": track, "media": ids[2], "at": "10s", "duration": "3s" }),
+    );
+    assert_eq!(still["clips"].as_array().unwrap().len(), 1);
+    engine.shutdown();
+}
+
+#[test]
+fn without_the_dev_stub_an_existing_mp4_still_fails_to_import() {
+    let t = TempDir::new("nostub");
+    let mp4 = t.path().join("a.mp4");
+    std::fs::write(&mp4, b"video").unwrap();
+    let engine = Engine::start(oneshot(t.path())).unwrap();
+    let conn = engine.handle().connect(&agent("cli")).unwrap();
+    new_document(&conn, "Core");
+    let out = must(&conn, "media.import", json!({ "paths": [path_str(&mp4)] }));
+    assert_eq!(out["failed"][0]["code"], "io");
+    assert_eq!(out["media_ids"], json!([]));
+    engine.shutdown();
+}
