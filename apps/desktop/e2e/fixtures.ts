@@ -15,6 +15,8 @@ export const desktopDir = path.resolve(path.dirname(fileURLToPath(import.meta.ur
 export interface LaunchedApp {
   app: ElectronApplication;
   page: Page;
+  /** The throwaway HOME / USERPROFILE (user data under `userData/`); removed by `close()`. */
+  home: string;
   /** Main-process stdout/stderr lines (the `[security]` log of blocked actions lands here). */
   mainLog: string[];
   /** Document responses of the first window, in order, with their CSP response header. */
@@ -57,13 +59,30 @@ export async function launchApp(env: Record<string, string> = {}): Promise<Launc
   return {
     app,
     page,
+    home,
     mainLog,
     documents,
     close: async () => {
-      await app.close();
-      rmSync(home, { recursive: true, force: true });
+      // A test may already have closed the app to inspect what it left behind.
+      await app.close().catch(() => {});
+      rmSync(home, { recursive: true, force: true, maxRetries: 5, retryDelay: 200 });
     },
   };
+}
+
+/**
+ * SIGKILL the supervised engine (a simulated crash, WP-1L.03); resolves with the killed pid.
+ * Main's supervisor then restarts it (0.5 s, 1 s, 2 s backoff; failed after a 4th crash in 60 s).
+ */
+export async function killEngine(app: ElectronApplication): Promise<number> {
+  const pid = await app.evaluate(() => globalThis.__cutweaveTest?.killEngine() ?? null);
+  if (pid === null) throw new Error("killEngine: no engine is running");
+  return pid;
+}
+
+/** The supervisor's status as main sees it (`engine:status`). */
+export function engineStatus(app: ElectronApplication) {
+  return app.evaluate(() => globalThis.__cutweaveTest?.engineStatus() ?? null);
 }
 
 interface Fixtures {

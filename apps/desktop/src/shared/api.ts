@@ -2,7 +2,12 @@
 // Types of the narrow `window.cutweave` surface the preload exposes through `contextBridge`.
 // Pure types: importable from main, preload and (later) the renderer. No generic `invoke`.
 
-/** Lifecycle of the supervised engine process (arch §2; restart states arrive in WP-1L.03). */
+/**
+ * Lifecycle of the supervised engine process (arch §2, WP-1L.03):
+ * `starting → ready → crashed → restarting → ready …`; `failed` after a start error that a
+ * retry cannot fix, or after more than 3 crashes in 60 s (main then offers Restart / Quit);
+ * `stopped` on quit; `unavailable` when there is no engine binary.
+ */
 export type EngineState =
   | "unavailable"
   | "starting"
@@ -12,18 +17,60 @@ export type EngineState =
   | "failed"
   | "stopped";
 
+/** Why the last engine process stopped or failed to start. Never contains a credential. */
+export interface EngineErrorInfo {
+  /**
+   * The engine's error-line code (`project_locked`, `port_in_use`, `bad_handshake`, `usage`,
+   * `gpu_init_failed`, `start_failed`, …) or the supervisor's own: `crashed` (exit after
+   * ready), `ready_timeout`, `spawn_failed`, `recovery_failed`.
+   */
+  readonly code: string;
+  readonly message: string;
+  readonly exitCode?: number;
+  readonly signal?: string;
+  /** Who holds the project lock (`project_locked`, exit 10). */
+  readonly holder?: { readonly pid: number; readonly host: string; readonly started: number };
+  /** The engine panicked: what its crash marker (`crash-<pid>.json`) recorded. */
+  readonly panic?: { readonly message: string; readonly location?: string };
+}
+
+/** Journal recovery main ran after a supervised restart (no prompt; arch §17). */
+export interface EngineRecovery {
+  /** The project document that was reopened. */
+  readonly project: string;
+  /** Transactions restored from the journal (0 when nothing was pending). */
+  readonly applied: number;
+  /** Replay stopped at a damaged record. */
+  readonly damaged: boolean;
+}
+
 export interface EngineStatus {
   readonly state: EngineState;
   /** Control port while `ready`. */
   readonly port?: number;
-  /** Human-readable reason for `unavailable` / `failed` / `crashed`. */
+  /** Human-readable reason for `unavailable` / `failed` / `crashed` / `restarting`. */
   readonly message?: string;
+  /**
+   * Engine launch counter since the app started (1 = the first engine). A higher value means
+   * the engine restarted: fetch `getConnection()` again (the UI token is per engine launch and
+   * the port may have changed), then resync.
+   */
+  readonly generation?: number;
+  /** Why the previous engine stopped (`crashed`, `restarting`, `failed`, and `ready` after a restart). */
+  readonly lastError?: EngineErrorInfo;
+  /** While `ready` after a supervised restart: what the automatic journal recovery restored. */
+  readonly recovery?: EngineRecovery;
+  /** While `crashed`: the backoff before the next start, in ms. */
+  readonly restartInMs?: number;
 }
 
 /** How the renderer reaches the engine. The token never leaves the preload closure's callers. */
 export interface EngineConnection {
   readonly port: number;
-  /** Per-launch UI credential (arch §6). Never put it in a URL, the DOM or storage. */
+  /**
+   * UI credential of the current engine launch (arch §6): a new one after every restart.
+   * Never put it in a URL, the DOM, storage or logs.
+   */
   readonly token: string;
   readonly httpUrl: string;
   readonly wsUrl: string;

@@ -76,5 +76,16 @@ Every command that takes a filesystem path (`media.import`, `project.open`, `pro
 ## Logs and crash marker
 
 - **Log file:** `~/.cutweave/logs/engine-<pid>.log`, one JSON object per line (`ts`, `level`, `target`, `msg`, `fields`, `spans`, `thread`). Rotated at 10 MB; the directory keeps the newest 5 engine log files.
-- **Crash marker:** a panic writes `crash-<pid>.json` (`{"event":"crash","pid","version","ts","thread","message","location"}`) next to the log. A clean exit removes it, so a marker left behind by a dead engine means it crashed (WP-1L.03 shows it).
+- **Crash marker:** a panic writes `crash-<pid>.json` (`{"event":"crash","pid","version","ts","thread","message","location"}`) next to the log. A clean exit removes it, so a marker left behind by a dead engine means it crashed (WP-1L.03 shows it as `lastError.panic`).
 - **No telemetry:** the engine opens no outbound connection; it only listens on `127.0.0.1`.
+
+## Supervision (Electron main)
+
+`EngineSupervisor` in `apps/desktop/src/main/engine/supervisor.ts` (WP-1L.03) applies this protocol:
+
+- **Per launch:** the port main chose at app start (`--port`, so the renderer's CSP stays valid), a **new UI token for every engine process** (stdin only; the renderer fetches it again after a restart), `--allow-origin app://cutweave`, and `--project` when a project was open. The ready line has 10 s.
+- **States:** `starting → ready → crashed → restarting → ready`, plus `failed` and `stopped`. An exit after the ready line is a crash: restarts follow after 0.5 s, 1 s and 2 s; a fourth crash within 60 s is `failed`, and main asks Restart / Quit. Exit 12 picks a new port, restarts at once and reloads the editor with the new CSP; before every restart the old port is checked and replaced if taken. Exits 2, 10, 11 and 13 are `failed` at once; exit 1, a signal or a missing ready line count as crashes.
+- **Main's own connection:** after the ready line main connects to `/rpc` with the UI token, subscribes to the project events and reads `rpc.hello`, so it always knows which project to reopen. The engine is reported `ready` (and the renderer gets its credentials) only after that.
+- **Supervised restart vs. cold open:** a supervised restart reopens the project the crashed engine held and main calls `project.recover` before reporting `ready`: the journal is replayed with **no prompt**, because it holds the work of the session the user was in seconds ago. A user's cold open of a project with unsaved work (`project.open`) instead gets `project.recovery_available` and the restore/discard dialog (WP-1M.07). If that dialog was still undecided when the engine crashed, the restart leaves the decision to the user. An untitled document is not journaled; a restart brings back an empty one.
+- **Quit:** stdin is closed (and SIGTERM sent on POSIX); after 3 s the engine is killed. Because a Gui engine stops on stdin EOF, an engine never outlives a crashed or killed Electron main.
+- **Test hook:** debug engine builds abort right after their Nth committed document command when `CUTWEAVE_TEST_CRASH_AFTER=N` is set (the reply is never sent; the journal holds the commit). Release builds ignore it.

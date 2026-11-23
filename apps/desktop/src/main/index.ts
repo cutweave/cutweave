@@ -1,10 +1,9 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 // Electron main process entry. Wires: the hardened app:// protocol (CSP per response), session
 // and webContents hardening, the window factory, validated IPC, the native menu and the
-// (placeholder) engine supervisor. Security controls: WP-1L.02, see SECURITY-MODEL.md.
-// Supervision/restart: WP-1L.03.
+// engine supervisor. Security controls: WP-1L.02, see SECURITY-MODEL.md.
+// Supervision, restart and the failed dialog: WP-1L.03 (src/main/engine/supervisor.ts).
 
-import { randomBytes } from "node:crypto";
 import path from "node:path";
 import { app, BrowserWindow, dialog, ipcMain, Menu, net, protocol, session, shell } from "electron";
 import type { EngineStatus } from "../shared/api.ts";
@@ -15,7 +14,9 @@ import {
   registerPluginProtocolStub,
 } from "./app-protocol.ts";
 import { appResponseHeaders, buildCsp } from "./csp.ts";
-import { pickFreePort, resolveEngineLaunch, startWithPortRetry } from "./engine/launch.ts";
+import { type EngineFailedChoice, showEngineFailedDialog } from "./engine/failed-dialog.ts";
+import { resolveEngineLaunch } from "./engine/launch.ts";
+import { pickFreePort } from "./engine/ports.ts";
 import { EngineSupervisor } from "./engine/supervisor.ts";
 import { createHandlers } from "./handlers.ts";
 import { type HardeningContext, hardenSession, hardenWebContents } from "./hardening.ts";
@@ -42,9 +43,11 @@ const devServerOrigin = devServerUrl === undefined ? undefined : new URL(devServ
 let enginePort: number | null = null;
 let supervisor: EngineSupervisor | null = null;
 let engineStatus: EngineStatus = { state: "unavailable", message: "no engine binary found" };
-let engineCredentials: { port: number; token: string } | null = null;
 let mainWindow: BrowserWindow | null = null;
 let openExternal = (url: string): Promise<void> => shell.openExternal(url);
+/** Asks Restart / Quit when the engine is `failed`; the e2e hooks answer it instead. */
+let askEngineFailed = (status: EngineStatus): Promise<EngineFailedChoice> =>
+  showEngineFailedDialog(dialog, mainWindow, status, supervisor?.project ?? null);
 
 const hardening: HardeningContext = { isDev, devServerOrigin, enginePort: () => enginePort };
 const factory: WindowFactoryContext = {
@@ -58,9 +61,10 @@ const factory: WindowFactoryContext = {
 app.on("web-contents-created", (_event, contents) => hardenWebContents(contents, hardening));
 app.on("session-created", (ses) => hardenSession(ses, hardening));
 
+/** Status to every editor window (never the token: that is `engine:getConnection` only). */
 function setEngineStatus(status: EngineStatus): void {
   engineStatus = status;
-  mainWindow?.webContents.send("engine:status", status);
+  for (const win of windowsOfKind("editor")) win.webContents.send("engine:status", status);
 }
 
 /** Initial port: the OS's choice; unpackaged runs may pin it (tests force a taken port). */
@@ -70,36 +74,46 @@ async function chooseInitialPort(): Promise<number> {
   return pickFreePort();
 }
 
-async function startEngine(launch: NonNullable<ReturnType<typeof resolveEngineLaunch>>) {
-  // 256-bit per-launch UI credential: spawn handshake pipe and preload bridge only (arch §6).
-  const token = randomBytes(32).toString("hex");
-  let portChanged = false;
-  try {
-    await startWithPortRetry({
-      initialPort: enginePort ?? (await pickFreePort()),
-      pickPort: () => pickFreePort(),
-      onPortChange: (port) => {
-        enginePort = port;
-        portChanged = true;
-      },
-      start: (port) => {
-        supervisor = new EngineSupervisor({ launch, port, uiToken: token });
-        supervisor.onStatus((status) => {
-          engineCredentials =
-            status.state === "ready" && status.port !== undefined
-              ? { port: status.port, token }
-              : null;
-          setEngineStatus(status);
-        });
-        return supervisor.start();
-      },
-    });
-  } catch (err) {
-    console.error("engine failed to start:", err instanceof Error ? err.message : err);
-  } finally {
-    // The renderer's CSP names the old port: reload so it picks up the new one.
-    if (portChanged) for (const win of windowsOfKind("editor")) win.webContents.reload();
-  }
+/**
+ * Supervise the engine (WP-1L.03). The port was chosen before the first window loaded, so the
+ * CSP already names it; when the supervisor has to move to another port, the CSP follows at
+ * once and the editor windows reload as soon as the engine on the new port is ready.
+ */
+function superviseEngine(
+  launch: NonNullable<ReturnType<typeof resolveEngineLaunch>>,
+  port: number,
+): EngineSupervisor {
+  let reloadOnReady = false;
+  const sup = new EngineSupervisor({
+    launch,
+    port,
+    // The editor's origin (and the Vite dev server's in dev) may open the engine's socket.
+    extraArgs: [
+      "--allow-origin",
+      APP_ORIGIN,
+      ...(devServerOrigin === undefined ? [] : ["--allow-origin", devServerOrigin]),
+    ],
+    clientVersion: app.getVersion(),
+    onPortChange: (next) => {
+      enginePort = next;
+      reloadOnReady = true;
+    },
+    log: (message) => console.warn(`[engine] ${message}`),
+  });
+  sup.onStatus((status) => {
+    setEngineStatus(status);
+    if (status.state === "ready" && reloadOnReady) {
+      reloadOnReady = false;
+      for (const win of windowsOfKind("editor")) win.webContents.reload();
+    }
+    if (status.state === "failed") {
+      void askEngineFailed(status).then((choice) => {
+        if (choice === "restart") void sup.restart();
+        else app.quit();
+      });
+    }
+  });
+  return sup;
 }
 
 function openWindow(): void {
@@ -132,7 +146,7 @@ if (!app.requestSingleInstanceLock()) {
       createHandlers({
         appInfo: { name: app.getName(), version: app.getVersion(), platform: process.platform },
         engineStatus: () => engineStatus,
-        engineCredentials: () => engineCredentials,
+        engineCredentials: () => supervisor?.credentials ?? null,
         chooseFolder: async () => {
           const result = await dialog.showOpenDialog({
             properties: ["openDirectory", "createDirectory"],
@@ -167,6 +181,10 @@ if (!app.requestSingleInstanceLock()) {
             sink.push(url);
           };
         },
+        engine: () => supervisor,
+        captureEngineDialog: (ask) => {
+          askEngineFailed = ask;
+        },
       });
     }
 
@@ -181,7 +199,10 @@ if (!app.requestSingleInstanceLock()) {
     if (launch !== null) enginePort = await chooseInitialPort();
 
     openWindow();
-    if (launch !== null) await startEngine(launch);
+    if (launch !== null && enginePort !== null) {
+      supervisor = superviseEngine(launch, enginePort);
+      await supervisor.start();
+    }
 
     app.on("activate", () => {
       if (BrowserWindow.getAllWindows().length === 0) openWindow();

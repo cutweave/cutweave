@@ -1,21 +1,44 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
-// Fake `cutweave engine` for dev and tests: speaks the launch protocol (WP-1I.04) only.
-//   node fake-engine.ts engine --port N --token-stdin
+// Fake `cutweave engine` for dev and tests: speaks the launch protocol (WP-1I.04) and a sliver
+// of the JSON-RPC wire (WP-1I.02), enough for the supervisor's control connection.
+//   node fake-engine.ts engine --port N --token-stdin [--project P] [--allow-origin O]...
 // First stdin line = UI token (kept in memory, never printed); stdout gets the readiness line;
 // exits when stdin closes (orphan prevention); exit 12 when the port cannot be bound.
 // HTTP: `/rpc` answers 401 without `Authorization: Bearer <token>`; everything else 200.
-// Test knobs: FAKE_ENGINE_MODE=no-ready | exit-early | crash-after-ready.
+// WebSocket `/rpc` (token as subprotocol `cutweave.token.<t>` or bearer): `rpc.hello`,
+// `rpc.subscribe`, `project.open`, `project.recover`; anything else is `not_found`.
+// Test knobs: FAKE_ENGINE_MODE=no-ready | exit-early | crash-after-ready;
+// FAKE_ENGINE_EXIT=<code> prints the protocol's error line and exits with it after the
+// handshake; FAKE_ENGINE_RECOVERY=1 makes a `--project` start report unsaved work to recover.
 
-import { createServer } from "node:http";
+import { createHash } from "node:crypto";
+import { createServer, type IncomingMessage } from "node:http";
 import { createInterface } from "node:readline";
+import type { Duplex } from "node:stream";
 
 const args = process.argv.slice(2);
-const portIndex = args.indexOf("--port");
-const port = Number(args[portIndex + 1]);
+const argValue = (name: string): string | null => {
+  const i = args.indexOf(name);
+  return i >= 0 ? (args[i + 1] ?? null) : null;
+};
+const port = Number(argValue("--port"));
 const mode = process.env.FAKE_ENGINE_MODE ?? "";
+const exitWith = Number(process.env.FAKE_ENGINE_EXIT ?? "");
 
 if (!Number.isInteger(port) || port < 0) process.exit(2);
 if (mode === "exit-early") process.exit(1);
+
+const ERROR_CODES: Record<number, string> = {
+  1: "start_failed",
+  2: "usage",
+  10: "project_locked",
+  11: "gpu_init_failed",
+  12: "port_in_use",
+  13: "bad_handshake",
+};
+
+let project: string | null = argValue("--project");
+let recoveryPending = project !== null && process.env.FAKE_ENGINE_RECOVERY === "1";
 
 const input = createInterface({ input: process.stdin });
 let token: string | null = null;
@@ -23,6 +46,14 @@ let token: string | null = null;
 input.once("line", (line) => {
   token = line.trim();
   if (token.length === 0) process.exit(13);
+  if (Number.isInteger(exitWith) && exitWith > 0) {
+    const code = ERROR_CODES[exitWith] ?? "start_failed";
+    const holder = exitWith === 10 ? { holder: { pid: 4242, host: "HOST", started: 1 } } : {};
+    const message = `fake engine failure (${code})`;
+    const errorLine = { event: "error", code, exit_code: exitWith, message, ...holder };
+    process.stdout.write(`${JSON.stringify(errorLine)}\n`, () => process.exit(exitWith));
+    return;
+  }
   if (mode === "no-ready") return;
 
   const server = createServer((req, res) => {
@@ -40,6 +71,7 @@ input.once("line", (line) => {
     res.writeHead(200, headers);
     res.end(JSON.stringify({ ok: true }));
   });
+  server.on("upgrade", (req, socket) => upgrade(req, socket));
   server.once("error", () => process.exit(12));
   server.listen(port, "127.0.0.1", () => {
     const address = server.address();
@@ -54,3 +86,184 @@ input.once("close", () => {
   if (token === null) process.exit(13);
   process.exit(0);
 });
+
+// ----- a minimal RFC 6455 server (text frames, no fragmentation) ------------------------------
+
+interface Client {
+  socket: Duplex;
+  events: Set<string>;
+}
+
+const clients = new Set<Client>();
+const WS_GUID = "258EAFA5-E914-47DA-95CA-C5AB0DC85B11";
+
+function upgrade(req: IncomingMessage, socket: Duplex): void {
+  const offered = String(req.headers["sec-websocket-protocol"] ?? "")
+    .split(",")
+    .map((p) => p.trim())
+    .find((p) => p === `cutweave.token.${token}`);
+  const bearer = req.headers.authorization === `Bearer ${token}`;
+  if (!req.url?.startsWith("/rpc") || (offered === undefined && !bearer)) {
+    socket.end("HTTP/1.1 401 Unauthorized\r\nConnection: close\r\nContent-Length: 0\r\n\r\n");
+    return;
+  }
+  const accept = createHash("sha1")
+    .update(`${req.headers["sec-websocket-key"] ?? ""}${WS_GUID}`)
+    .digest("base64");
+  socket.write(
+    [
+      "HTTP/1.1 101 Switching Protocols",
+      "Upgrade: websocket",
+      "Connection: Upgrade",
+      `Sec-WebSocket-Accept: ${accept}`,
+      ...(offered === undefined ? [] : [`Sec-WebSocket-Protocol: ${offered}`]),
+      "",
+      "",
+    ].join("\r\n"),
+  );
+  const client: Client = { socket, events: new Set() };
+  clients.add(client);
+  let buffer = Buffer.alloc(0);
+  socket.on("data", (chunk: Buffer) => {
+    buffer = Buffer.concat([buffer, chunk]);
+    for (let frame = readFrame(buffer); frame !== null; frame = readFrame(buffer)) {
+      buffer = buffer.subarray(frame.size);
+      if (frame.opcode === 0x8) {
+        socket.end();
+        return;
+      }
+      if (frame.opcode === 0x1) handle(client, frame.payload.toString("utf8"));
+    }
+  });
+  const drop = () => clients.delete(client);
+  socket.on("close", drop);
+  socket.on("error", drop);
+}
+
+function readFrame(buf: Buffer): { opcode: number; payload: Buffer; size: number } | null {
+  if (buf.length < 2) return null;
+  const opcode = (buf[0] ?? 0) & 0x0f;
+  const masked = ((buf[1] ?? 0) & 0x80) !== 0;
+  let length = (buf[1] ?? 0) & 0x7f;
+  let offset = 2;
+  if (length === 126) {
+    if (buf.length < 4) return null;
+    length = buf.readUInt16BE(2);
+    offset = 4;
+  } else if (length === 127) {
+    if (buf.length < 10) return null;
+    length = Number(buf.readBigUInt64BE(2));
+    offset = 10;
+  }
+  const maskBytes = masked ? 4 : 0;
+  if (buf.length < offset + maskBytes + length) return null;
+  const mask = buf.subarray(offset, offset + maskBytes);
+  const payload = Buffer.from(buf.subarray(offset + maskBytes, offset + maskBytes + length));
+  if (masked) {
+    for (let i = 0; i < payload.length; i++) {
+      payload[i] = (payload[i] ?? 0) ^ (mask[i % 4] ?? 0);
+    }
+  }
+  return { opcode, payload, size: offset + maskBytes + length };
+}
+
+function send(client: Client, message: unknown): void {
+  const payload = Buffer.from(JSON.stringify(message), "utf8");
+  let header: Buffer;
+  if (payload.length < 126) {
+    header = Buffer.from([0x81, payload.length]);
+  } else if (payload.length < 65_536) {
+    header = Buffer.alloc(4);
+    header[0] = 0x81;
+    header[1] = 126;
+    header.writeUInt16BE(payload.length, 2);
+  } else {
+    header = Buffer.alloc(10);
+    header[0] = 0x81;
+    header[1] = 127;
+    header.writeBigUInt64BE(BigInt(payload.length), 2);
+  }
+  client.socket.write(Buffer.concat([header, payload]));
+}
+
+// ----- JSON-RPC ---------------------------------------------------------------------------------
+
+function projectStatus() {
+  return {
+    state: project === null ? "no_project" : "open",
+    path: project,
+    name: "fake",
+    rev: 0,
+    saved_rev: null,
+    dirty: false,
+    read_only: null,
+    recovery: recoveryPending
+      ? { records: 3, base_rev: 0, last_rev: 3, last_ts: 0, damaged: false }
+      : null,
+  };
+}
+
+function broadcast(event: string, params: unknown): void {
+  for (const client of clients) {
+    if (client.events.has(event) || client.events.has("*")) {
+      send(client, { jsonrpc: "2.0", method: event, params });
+    }
+  }
+}
+
+function handle(client: Client, text: string): void {
+  let msg: { id?: unknown; method?: unknown; params?: Record<string, unknown> };
+  try {
+    msg = JSON.parse(text);
+  } catch {
+    send(client, { jsonrpc: "2.0", id: null, error: { code: -32700, message: "parse error" } });
+    return;
+  }
+  const { id, method, params } = msg;
+  const ok = (result: unknown) => {
+    if (id !== undefined) send(client, { jsonrpc: "2.0", id, result: { ...(result as object) } });
+  };
+  switch (method) {
+    case "rpc.hello":
+      ok({
+        engine_version: "fake",
+        schema_hash: "fake",
+        rev: 0,
+        committed_rev: 0,
+        actor: "user",
+        project: projectStatus(),
+      });
+      return;
+    case "rpc.subscribe": {
+      const events = Array.isArray(params?.events) ? params.events : [];
+      for (const e of events) if (typeof e === "string") client.events.add(e);
+      ok({ events: [...client.events] });
+      return;
+    }
+    case "project.open":
+      project = typeof params?.path === "string" ? params.path : null;
+      recoveryPending = false;
+      ok({ project: projectStatus() });
+      broadcast("doc.reset", {});
+      broadcast("project.opened", projectStatus());
+      return;
+    case "project.recover": {
+      const applied = recoveryPending ? 3 : 0;
+      recoveryPending = false;
+      ok({ project: projectStatus(), applied, damaged: false });
+      broadcast("doc.reset", {});
+      return;
+    }
+    default:
+      if (id === undefined) return;
+      send(client, {
+        jsonrpc: "2.0",
+        id,
+        error: {
+          code: -32601,
+          message: `no such method: ${String(method)}`,
+          data: { code: "not_found", message: "no such method" },
+        },
+      });
+  }
+}
