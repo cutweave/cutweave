@@ -318,6 +318,8 @@ The registry produces the following, each committed and checked against snapshot
 - The MCP catalog (§14) and CLI subcommand help
 - `docs/reference/commands.md`
 
+**Decided in WP-1N.01:** `cargo xtask gen` writes `schema/{commands,queries,events,mcp-tools,patch-fixtures}.json`, `schema/schema-hash.txt` (`SCHEMA_HASH` = sha256 of `commands.json`, also a generated constant in `cutweave-commands`) and `docs/reference/commands.md`. `cargo xtask gen --check` (part of `just check`) fails with a unified diff when a committed file is stale. `events.json` joins document events (`EVENT_CATALOG`) and engine events (project, job, media), each tagged with its `source`. MCP tool names are the command name with `.` replaced by `_`.
+
 ---
 
 ## 6. API surfaces (`cutweave-api`)
@@ -347,6 +349,11 @@ All surfaces live on **one local server per engine** (axum on `127.0.0.1`, rando
 
 - **Backend:** FFmpeg through `ffmpeg-next`, behind a `MediaBackend` trait *(ADR-003)*. FFmpeg ships as a pinned shared build. Because Cutweave is GPL-3.0, the full GPL build (x264/x265, etc.) may be bundled. See §21 for patent notes.
 - **Import:** `media.import` probes synchronously (with a timeout) and returns `media_ids` immediately, and agents wait on background work with `job_wait`. Background jobs then build the **frame index** (pts → keyframe/GOP map), compute a content hash for relinking, extract a waveform pyramid and generate thumbnails. Optional analysis jobs cover scene cuts, beats, loudness and transcription.
+- **Jobs and analysis (decided in WP-1D.07):**
+  - `cutweave-jobs` runs one job per (asset, analysis stage), ordered by stage dependencies, under per-class budgets (decode-class = cores/2, export = 1). Finished jobs go to a bounded in-memory history; the `cache.sqlite` history arrives with 1D.05.
+  - `job.status`, `job.list`, `job.wait` (≤ 60 s) and `job.cancel` are engine commands, not document queries. `job.cancel` is not journaled (`#[command(engine, journaled = false)]`).
+  - **Analysis status is not document state.** A failing stage is a failed job plus a `media.analysis_failed{media_id, stage, job_id, error}` event; analysis never writes to the project, so undoing an import is never blocked by it. Analysis re-runs after a restart, served from the caches.
+  - `media.import` is partial: unreadable or timed-out files go to `failed[]` with a code. In agent and headless mode paths must sit inside the allowed roots.
 - **Decode:**
   - A decoder pool runs per media.
   - **Frame-exact seek** works by keyframe seek plus decode-forward, using the index.
@@ -736,6 +743,7 @@ MyVideo/                    ← project folder (user-chosen location)
   - `insta` snapshots for schemas, the MCP catalog and generated TS.
   - Fuzzing (`cargo-fuzz`) for project load, importers and subtitle parsers.
   - `criterion` benchmarks.
+  - **Registry-driven property harness (WP-1B.07):** `cutweave_ops::testing` generates valid and invalid params for every registered non-view entry and checks undo/redo identity, failure atomicity, round-trips, invariants and event replay. A new command without a strategy in `testing/strategies.rs` fails the suite.
 - **Golden frames:** test projects are rendered headless through `cutweave render` (software adapters in CI: WARP on Windows, lavapipe on Linux) and compared to **per-adapter** reference frames.
   - **Tolerances (single source):**
     - Preview (full quality) vs pre-encode export frames on the same adapter: **bit-identical**.
