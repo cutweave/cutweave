@@ -35,6 +35,16 @@ export interface ItemState {
   readonly proposed?: boolean;
 }
 
+/** Where an item reads its media: the trim limits of WP-1M.06 (a clip never reads outside it). */
+export interface SourceRange {
+  /** Media position (flicks) at the item's left edge. */
+  readonly sourceIn: number;
+  /** Media length, flicks; `null` when unbounded (a still, or a length the probe did not report). */
+  readonly mediaDuration: number | null;
+  /** A still image: it has no source position, so its start edge is not bounded by the media. */
+  readonly still?: boolean;
+}
+
 export interface TimelineItem {
   readonly id: string;
   readonly trackId: string;
@@ -44,6 +54,10 @@ export interface TimelineItem {
   /** Duration, flicks (>= 0). */
   readonly duration: number;
   readonly label: string;
+  /** Linked group (a video and its audio): members follow each other's edits, never snap to each other. */
+  readonly linkedGroup?: string;
+  /** Media bounds for trims. Omitted: only the timeline start and the neighbours bound a trim. */
+  readonly source?: SourceRange;
   /** Filmstrip tiles come from `mediaId` through the pluggable loader. */
   readonly thumbnails?: MediaSlice;
   /** Waveform peaks come from `mediaId` through the pluggable loader. */

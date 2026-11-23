@@ -6,6 +6,7 @@ import { Dock } from "../dock/Dock.tsx";
 import { i18n } from "../i18n/index.ts";
 import { useViewStore } from "../state/viewStore.ts";
 import { EngineNotices } from "./EngineNotices.tsx";
+import { Toasts } from "./Toasts.tsx";
 import { TopBar } from "./TopBar.tsx";
 
 function Shell() {
@@ -33,6 +34,7 @@ function Shell() {
           </main>
         </div>
         <EngineNotices />
+        <Toasts />
       </ToastProvider>
     </TooltipProvider>
   );

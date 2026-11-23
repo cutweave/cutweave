@@ -185,6 +185,61 @@ describe("render loop and dirty regions", () => {
   });
 });
 
+describe("ruler labels and the playhead flag (issue #97)", () => {
+  /** A no-op context that records the text it draws (6 px per character). */
+  function textContext(): { ctx: CanvasRenderingContext2D; texts: string[] } {
+    const texts: string[] = [];
+    const ctx = new Proxy(
+      {},
+      {
+        get(_t, prop) {
+          if (prop === "measureText") return (s: string) => ({ width: s.length * 6 });
+          if (prop === "fillText") return (s: string) => texts.push(s);
+          return () => undefined;
+        },
+        set: () => true,
+      },
+    ) as CanvasRenderingContext2D;
+    return { ctx, texts };
+  }
+
+  function rulerSetup() {
+    const { ctx, texts } = textContext();
+    const frames = manualFrames();
+    const view = new TimelineView(fakeCanvas(), {
+      theme: th,
+      context: ctx,
+      requestFrame: frames.requestFrame,
+      cancelFrame: frames.cancelFrame,
+    });
+    view.resize(1600, 300, 1);
+    view.setModel(generateSmallTimeline());
+    // 100 px/s: ruler labels every second, 100 px apart; the flag is about 80 px wide.
+    view.setViewState({ pxPerSec: 100, scrollX: 0, playhead: 8 * F });
+    return { view, texts };
+  }
+
+  it("hides the ruler labels the flag would cover", () => {
+    const { view, texts } = rulerSetup();
+    view.flush();
+    expect(texts.filter((s) => s === "00:00:08:00")).toHaveLength(1); // the flag itself
+    expect(texts).not.toContain("00:00:07:00"); // runs into the flag from the left
+    expect(texts).toContain("00:00:06:00");
+    expect(texts).toContain("00:00:09:00");
+  });
+
+  it("redraws a label whole once the flag moves off it", () => {
+    const { view, texts } = rulerSetup();
+    view.flush();
+    texts.length = 0;
+    view.setViewState({ playhead: 8.5 * F });
+    expect(view.flush()).toBe(true);
+    expect(texts).toContain("00:00:07:00"); // inside the repainted strip
+    expect(texts).not.toContain("00:00:08:00"); // now under the flag
+    expect(texts.some((s) => s.startsWith("00:00:08:") && s !== "00:00:08:00")).toBe(true); // flag
+  });
+});
+
 describe("pluggable media", () => {
   const bitmap = { width: 96, height: 54, close: vi.fn() } as unknown as ImageBitmap;
 

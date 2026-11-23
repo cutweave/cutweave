@@ -134,7 +134,28 @@
     "trackAudio": "Audio {{n}}",
     "emptyTitle": "Your timeline is empty",
     "emptyBody": "Drag a clip from Media onto a track to start cutting.",
-    "canvasLabel": "Timeline"
+    "canvasLabel": "Timeline",
+    "split": "Split at playhead",
+    "history": {
+      "move": "Move clip",
+      "trim": "Trim clip",
+      "split": "Split clip"
+    },
+    "failed": {
+      "move": "Clip not moved",
+      "trim": "Clip not trimmed",
+      "split": "Clip not split",
+      "delete": "Clip not deleted"
+    },
+    "reason": {
+      "overlap": "It would overlap another clip on that track. Drop it on a free spot.",
+      "locked": "The track is locked. Unlock it to edit its clips.",
+      "inGesture": "Someone else is editing this clip right now. Try again in a moment.",
+      "changed": "The project changed while you were editing. Try again.",
+      "missing": "The clip no longer exists.",
+      "interrupted": "The edit was interrupted and undone. Try again.",
+      "other": "The engine refused the edit: {{message}}"
+    }
   },
   "engine": {
     "status": {

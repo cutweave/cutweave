@@ -7,6 +7,7 @@ import { useEngineStore } from "../engine/engineStore.ts";
 import { useDocStore } from "../state/docStore.ts";
 import { selectTimelineModel } from "../state/selectors.ts";
 import { useViewStore, viewStore } from "../state/viewStore.ts";
+import { type TimelineIntents, useTimelineIntents } from "../timeline/useTimelineIntents.ts";
 
 /** Lanes shown until the engine supplies tracks (WP-1M.05): one video, one audio. */
 const PLACEHOLDER_TRACKS = [
@@ -15,10 +16,11 @@ const PLACEHOLDER_TRACKS = [
 ] as const;
 
 /**
- * The engine's current sequence drawn read-only by the `packages/timeline` renderer, from
- * `docStore` selectors: it follows every `doc.patched`. Interactions arrive with WP-1M.06.
+ * The engine's current sequence drawn by the `packages/timeline` renderer from `docStore`
+ * selectors (it follows every `doc.patched`), with the interactions of WP-1M.06: pointer input
+ * goes through the timeline state machine and comes back as engine commands.
  */
-function EngineTimeline() {
+function EngineTimeline({ intents }: { readonly intents: TimelineIntents }) {
   const { t } = useTranslation();
   const project = useDocStore((s) => s.project);
   const model = useMemo(() => selectTimelineModel(project), [project]);
@@ -26,6 +28,7 @@ function EngineTimeline() {
   const zoom = useViewStore((s) => s.zoom);
   const scroll = useViewStore((s) => s.scroll);
   const selection = useViewStore((s) => s.selection);
+  const { snapGuides, marquee } = intents.overlay;
   const viewState = useMemo<Partial<ViewState>>(
     () => ({
       pxPerSec: zoom ?? DEFAULT_VIEW_STATE.pxPerSec,
@@ -33,8 +36,10 @@ function EngineTimeline() {
       scrollY: scroll.y,
       playhead,
       selection: new Set(selection.filter((ref) => ref.kind === "item").map((ref) => ref.id)),
+      snapGuides,
+      marquee,
     }),
-    [zoom, scroll, playhead, selection],
+    [zoom, scroll, playhead, selection, snapGuides, marquee],
   );
   // Zoom and scroll the user caused (wheel, drag) are view state: `viewSync` mirrors them.
   const onViewChange = useCallback((v: ViewState) => {
@@ -48,6 +53,9 @@ function EngineTimeline() {
       aria-label={t("timeline.canvasLabel")}
       model={model}
       viewState={viewState}
+      pan="host"
+      onPointer={intents.onPointer}
+      onView={intents.onView}
       onViewChange={onViewChange}
     />
   );
@@ -79,18 +87,22 @@ function SampleLanes() {
 
 /**
  * Bottom dock panel: timeline tools and the track area. Connected to an engine with a sequence
- * it shows that sequence; without an engine it keeps the empty sample lanes. The playhead of
- * the sample sits at the start.
+ * it shows that sequence and edits it; without an engine it keeps the empty sample lanes. Keys
+ * pressed anywhere in the panel reach the timeline: `S` split at playhead, `Delete`/`Backspace`
+ * delete the selection, `N` snapping, `Esc` cancels a drag (WP-1M.06).
  */
 export function TimelinePanel() {
   const { t } = useTranslation();
+  const intents = useTimelineIntents();
+  const snapping = useViewStore((s) => s.snapping);
   const connected = useEngineStore((s) => s.connection !== "none");
   const hasSequence = useDocStore(
     (s) => s.project !== null && Object.keys(s.project.sequences).length > 0,
   );
   const live = connected && hasSequence;
+  const { controller } = intents;
   return (
-    <div className="cw-timeline">
+    <div className="cw-timeline" ref={live ? intents.keyTarget : null}>
       <Toolbar aria-label={t("timeline.toolbarLabel")} className="cw-timeline__tools">
         <Tooltip label={t("timeline.select")}>
           <IconButton icon="mouse-pointer-2" label={t("timeline.select")} pressed disabled />
@@ -102,8 +114,23 @@ export function TimelinePanel() {
           <IconButton icon="ripple" label={t("timeline.ripple")} pressed={false} disabled />
         </Tooltip>
         <ToolbarSeparator />
-        <Tooltip label={t("timeline.snapping")}>
-          <IconButton icon="magnet" label={t("timeline.snapping")} pressed disabled />
+        <Tooltip label={t("timeline.split")} keys={["S"]}>
+          <IconButton
+            icon="scissors"
+            label={t("timeline.split")}
+            disabled={!live}
+            onClick={() => controller.split()}
+          />
+        </Tooltip>
+        <ToolbarSeparator />
+        <Tooltip label={t("timeline.snapping")} keys={["N"]}>
+          <IconButton
+            icon="magnet"
+            label={t("timeline.snapping")}
+            pressed={snapping}
+            disabled={!live}
+            onClick={() => controller.toggleSnapping()}
+          />
         </Tooltip>
         <ToolbarSeparator />
         <Tooltip label={t("timeline.zoomOut")}>
@@ -113,7 +140,9 @@ export function TimelinePanel() {
           <IconButton icon="zoom-in" label={t("timeline.zoomIn")} disabled />
         </Tooltip>
       </Toolbar>
-      <div className="cw-timeline__body">{live ? <EngineTimeline /> : <SampleLanes />}</div>
+      <div className="cw-timeline__body">
+        {live ? <EngineTimeline intents={intents} /> : <SampleLanes />}
+      </div>
     </div>
   );
 }

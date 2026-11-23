@@ -3,7 +3,7 @@
 // layout, the media caches and the render loop; takes a read-only `TimelineModel` and a
 // `ViewState`, never mutates either, and reports pointer events (with hit-test results) and
 // user-driven view changes (wheel zoom, scroll) to its host. Interactions (select, move, trim,
-// snap) are WP-1M.06's state machine and consume `onPointer`.
+// snap) are the state machine of `interaction.ts` (WP-1M.06), fed from `onPointer`.
 import { MediaCaches, type MediaLoaders } from "./cache.ts";
 import { type HitResult, hitTest } from "./hit-test.ts";
 import { TimelineLayout } from "./layout.ts";
@@ -28,7 +28,8 @@ import {
 } from "./viewport.ts";
 
 export interface TimelinePointerEvent {
-  readonly type: "down" | "move" | "up" | "leave" | "dblclick";
+  /** `cancel`: the browser took the pointer away (`pointercancel`); end any gesture. */
+  readonly type: "down" | "move" | "up" | "leave" | "dblclick" | "cancel";
   /** Canvas-relative CSS pixels. */
   readonly x: number;
   readonly y: number;
@@ -55,6 +56,11 @@ export interface TimelineViewOptions {
   /** Frame scheduler (default `requestAnimationFrame`); tests pass a manual one. */
   readonly requestFrame?: (cb: () => void) => number;
   readonly cancelFrame?: (id: number) => void;
+  /**
+   * Middle-button drag: `builtin` (default) pans the view here; `host` reports it through
+   * `onPointer` like any other button, for a host state machine that pans (WP-1M.06).
+   */
+  readonly pan?: "builtin" | "host";
 }
 
 type Unsubscribe = () => void;
@@ -421,9 +427,9 @@ export class TimelineView {
     };
 
     on("pointerdown", (e) => {
-      if (e.button === 1) {
+      if (e.button === 1) e.preventDefault(); // no autoscroll cursor
+      if (e.button === 1 && this.options.pan !== "host") {
         // Middle button drags the timeline (built-in pan); everything else goes to the host.
-        e.preventDefault();
         c.setPointerCapture(e.pointerId);
         this.panning = {
           x: e.clientX,
@@ -457,6 +463,10 @@ export class TimelineView {
     on("pointerleave", (e) => {
       this.setHover(-1);
       emit("leave", e);
+    });
+    on("pointercancel", (e) => {
+      this.panning = null;
+      emit("cancel", e);
     });
     on("dblclick", (e) => emit("dblclick", e));
     on(
@@ -580,9 +590,8 @@ export class TimelineView {
   }
 
   private playheadStrip(t: number): Rect {
-    const half = (this.renderer.flagHalfWidth || 4 * this.theme.space4) + 2;
-    const x = timeToX(this.vp, t);
-    return { x: x - half, y: 0, w: 2 * half, h: this.vp.height };
+    const { x0, x1 } = this.renderer.playheadSpan(timeToX(this.vp, t), this.vp, this.theme);
+    return { x: x0, y: 0, w: x1 - x0, h: this.vp.height };
   }
 
   private setHover(item: number): void {

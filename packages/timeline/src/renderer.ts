@@ -93,6 +93,18 @@ export class TimelineRenderer {
   /** Half width of the playhead flag as last drawn; the hit-test uses it. */
   flagHalfWidth = 0;
 
+  /**
+   * Horizontal span (canvas CSS px) to repaint for a playhead at canvas x `phx`: the line, the
+   * flag where it is drawn (kept inside the lane area) and every ruler label the flag hides, so
+   * moving the playhead redraws those labels whole.
+   */
+  playheadSpan(phx: number, vp: Viewport, theme: Theme): { x0: number; x1: number } {
+    const fw = 2 * (this.flagHalfWidth || 4 * theme.space4);
+    const fx = flagX(phx, fw, vp);
+    const reach = this.timecodeWidth + theme.space1 + 2;
+    return { x0: Math.min(phx, fx) - reach, x1: Math.max(phx, fx + fw) + reach };
+  }
+
   private readonly ids: number[] = [];
   private readonly buckets: number[][] = Array.from({ length: 15 }, () => []);
   private readonly selected: number[] = [];
@@ -765,6 +777,15 @@ export class TimelineRenderer {
       this.stats.drawCalls += 3;
     }
 
+    // The playhead flag (a pill with its timecode) is measured first: labels under it are skipped.
+    const phx = px(view.playhead);
+    const label = formatTimecode(view.playhead, f.fps, f.dropFrame);
+    ctx.font = th.fontNumeric;
+    const fw = ctx.measureText(label).width + 2 * th.space2;
+    this.flagHalfWidth = fw / 2;
+    const flagShown = phx + fw / 2 >= vp.headerWidth && phx - fw / 2 <= vp.width;
+    const fx = flagX(phx, fw, vp);
+
     const plan = chooseTickPlan(vp.pxPerSec, f.fps, this.timecodeWidth + th.space4);
     const from = Math.max(rx0, vp.headerWidth);
     const t0 = xToTime(vp, from);
@@ -798,11 +819,11 @@ export class TimelineRenderer {
       if (t < 0) continue;
       const x = Math.round(px(t)) + 0.5;
       if (x < vp.headerWidth || x > rx1 + this.timecodeWidth) continue;
-      ctx.fillText(
-        formatTimecode(t, f.fps, f.dropFrame),
-        x + th.space1,
-        th.space0_5 + th.numericPx / 2 + 1,
-      );
+      const lx = x + th.space1;
+      if (flagShown && lx < fx + fw + th.space1 && lx + this.timecodeWidth > fx - th.space1) {
+        continue; // hidden under the playhead flag (issue #97)
+      }
+      ctx.fillText(formatTimecode(t, f.fps, f.dropFrame), lx, th.space0_5 + th.numericPx / 2 + 1);
       this.stats.drawCalls++;
     }
 
@@ -814,21 +835,12 @@ export class TimelineRenderer {
     this.stats.drawCalls += 2;
 
     // Playhead line through the ruler, then the flag: pill with the timecode, kept inside the lane area.
-    const phx = px(view.playhead);
     if (phx >= vp.headerWidth - 1 && phx <= vp.width + 1) {
       ctx.fillStyle = th.playhead;
       ctx.fillRect(Math.round(phx) - th.space0_5 / 2, 0, th.space0_5, h);
       this.stats.drawCalls++;
     }
-    const label = formatTimecode(view.playhead, f.fps, f.dropFrame);
-    ctx.font = th.fontNumeric;
-    const fw = ctx.measureText(label).width + 2 * th.space2;
-    this.flagHalfWidth = fw / 2;
-    if (phx + fw / 2 >= vp.headerWidth && phx - fw / 2 <= vp.width) {
-      const fx = Math.min(
-        Math.max(phx - fw / 2, vp.headerWidth),
-        Math.max(vp.headerWidth, vp.width - fw),
-      );
+    if (flagShown) {
       ctx.fillStyle = th.playhead;
       ctx.beginPath();
       ctx.roundRect(fx, 0, fw, th.space4, th.space4 / 2);
@@ -840,6 +852,11 @@ export class TimelineRenderer {
       this.stats.drawCalls += 2;
     }
   }
+}
+
+/** Left edge of a playhead flag `fw` wide at canvas x `phx`: centered, kept inside the lane area. */
+function flagX(phx: number, fw: number, vp: Viewport): number {
+  return Math.min(Math.max(phx - fw / 2, vp.headerWidth), Math.max(vp.headerWidth, vp.width - fw));
 }
 
 function intersect(a: Rect, b: Rect): Rect {

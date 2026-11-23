@@ -13,6 +13,8 @@ export interface TimelineCanvasProps {
   /** Pluggable media loaders (filmstrip tiles, waveform peaks). */
   readonly loaders?: MediaLoaders;
   readonly headerWidth?: number;
+  /** Middle-button pan in the view (`builtin`, default) or reported to `onPointer` (`host`). */
+  readonly pan?: "builtin" | "host";
   /** Pointer events with their hit-test result (consumed by the interaction layer, WP-1M.06). */
   readonly onPointer?: (e: TimelinePointerEvent) => void;
   /** Zoom and scroll caused by the user (wheel, drag, `+`/`-`), for the host's `viewStore`. */
@@ -46,6 +48,7 @@ export function TimelineCanvas(props: TimelineCanvasProps) {
     const view = new TimelineView(canvas, {
       ...(p.loaders && { loaders: p.loaders }),
       ...(p.headerWidth !== undefined && { headerWidth: p.headerWidth }),
+      ...(p.pan !== undefined && { pan: p.pan }),
     });
     viewRef.current = view;
     view.bind();
