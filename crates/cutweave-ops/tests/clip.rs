@@ -477,7 +477,8 @@ fn trim_unlink_edits_one_clip_and_drops_it_from_the_group() {
     assert_eq!(clip_of(&h, v).linked_group, None);
     assert_eq!(clip_of(&h, v).duration.flicks(), 4 * FLICKS);
     assert_eq!(clip_of(&h, a).duration.flicks(), 10 * FLICKS);
-    assert!(clip_of(&h, a).linked_group.is_some());
+    // The partner would be alone in its group, so it is unlinked too.
+    assert_eq!(clip_of(&h, a).linked_group, None);
 }
 
 #[test]

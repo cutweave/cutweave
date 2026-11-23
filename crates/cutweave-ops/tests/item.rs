@@ -84,7 +84,8 @@ fn move_a_group_before_zero_is_invalid_and_unlink_moves_the_picture_alone() {
     assert_eq!(clip_of(&h, v).start.flicks(), 0);
     assert_eq!(clip_of(&h, v).linked_group, None);
     assert_eq!(clip_of(&h, a).start, secs(2));
-    assert!(clip_of(&h, a).linked_group.is_some());
+    // The partner would be alone in its group, so it is unlinked too.
+    assert_eq!(clip_of(&h, a).linked_group, None);
 }
 
 #[test]

@@ -9,8 +9,8 @@
 
 mod common;
 
-use common::{H, assert_code, assert_invalid, id};
-use cutweave_model::{SequenceId, TrackId, TrackKind};
+use common::{H, assert_code, assert_invalid, id, item_id};
+use cutweave_model::{GroupId, ItemId, SequenceId, TrackId, TrackKind};
 use serde_json::json;
 
 fn order(h: &H, seq: SequenceId) -> Vec<(TrackKind, String)> {
@@ -139,6 +139,86 @@ fn remove_deletes_the_track_and_its_items() {
     assert_eq!(h.doc().item_count(), 1, "the linked audio clip stays");
 }
 
+fn group_of(h: &H, item: ItemId) -> Option<GroupId> {
+    h.doc().find_item(&item).unwrap().item.linked_group()
+}
+
+#[test]
+fn remove_unlinks_a_partner_left_alone_and_undo_restores_the_link() {
+    let (mut h, p) = H::project();
+    let m = h.add_video("/m/v.mp4", 10, true);
+    let out = h.ok(
+        "timeline.insert",
+        json!({"sequence": p.sequence, "track": p.video, "media": m, "at": 0}),
+    );
+    let (v, a) = (item_id(&out["clips"][0]), item_id(&out["clips"][1]));
+    let group = group_of(&h, v);
+    assert!(group.is_some() && group == group_of(&h, a));
+    h.ok("track.remove", json!({"track": p.audio}));
+    assert_eq!(group_of(&h, v), None, "the video clip is no longer linked");
+    // One transaction: undo brings back the track, its item and the link.
+    let c = h.last.as_ref().unwrap();
+    let before = &c.base;
+    assert!(before.sequences[&p.sequence].tracks.contains_key(&p.audio));
+    assert_eq!(before.find_item(&v).unwrap().item.linked_group(), group);
+    assert_eq!(before.find_item(&a).unwrap().item.linked_group(), group);
+}
+
+#[test]
+fn remove_keeps_a_group_that_still_has_two_members() {
+    let (mut h, p) = H::project();
+    let m = h.add_video("/m/v.mp4", 10, true);
+    let out = h.ok(
+        "timeline.insert",
+        json!({"sequence": p.sequence, "track": p.video, "media": m, "at": 0}),
+    );
+    let (v, a) = (item_id(&out["clips"][0]), item_id(&out["clips"][1]));
+    let group = group_of(&h, v).unwrap();
+    // A third member: a sound-only clip on a second audio track, added to the group.
+    let a2 = id::<TrackId>(
+        &h.ok(
+            "track.add",
+            json!({"sequence": p.sequence, "kind": "audio"}),
+        )["track"],
+    );
+    let extra = item_id(
+        &h.ok(
+            "timeline.insert",
+            json!({"sequence": p.sequence, "track": a2, "media": m, "at": 0}),
+        )["clips"][0],
+    );
+    let mut doc = h.doc();
+    doc.sequences
+        .get_mut(&p.sequence)
+        .unwrap()
+        .track_mut(&a2)
+        .unwrap()
+        .items
+        .update(&extra, |i| i.set_linked_group(Some(group)))
+        .unwrap();
+    let mut h = H::with_doc(doc);
+    // Losing one of three leaves a linked pair.
+    h.ok("track.remove", json!({"track": a2}));
+    assert_eq!(group_of(&h, v), Some(group));
+    assert_eq!(group_of(&h, a), Some(group));
+    // Losing a second one dissolves the group.
+    h.ok("track.remove", json!({"track": p.audio}));
+    assert_eq!(group_of(&h, v), None);
+}
+
+#[test]
+fn remove_a_track_whose_items_are_all_of_one_group_leaves_no_group_behind() {
+    let (mut h, p) = H::project();
+    let m = h.add_video("/m/v.mp4", 10, true);
+    let out = h.ok(
+        "timeline.insert",
+        json!({"sequence": p.sequence, "track": p.video, "media": m, "at": 0}),
+    );
+    let a = item_id(&out["clips"][1]);
+    h.ok("track.remove", json!({"track": p.video}));
+    assert_eq!(group_of(&h, a), None);
+}
+
 #[test]
 fn remove_unknown_track_is_not_found() {
     let (mut h, _) = H::project();
@@ -160,6 +240,20 @@ fn remove_a_locked_track_fails_with_locked() {
             .map(|()| json!(null)),
         "locked",
     );
+}
+
+#[test]
+fn remove_fails_with_locked_when_the_orphaned_partner_is_on_a_locked_track() {
+    let (mut h, p) = H::project();
+    let m = h.add_video("/m/v.mp4", 10, true);
+    let out = h.ok(
+        "timeline.insert",
+        json!({"sequence": p.sequence, "track": p.video, "media": m, "at": 0}),
+    );
+    let a = item_id(&out["clips"][1]);
+    h.ok("track.set", json!({"track": p.audio, "locked": true}));
+    assert_code(h.run("track.remove", json!({"track": p.video})), "locked");
+    assert!(group_of(&h, a).is_some());
 }
 
 #[test]

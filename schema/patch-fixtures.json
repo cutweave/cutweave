@@ -1469,11 +1469,13 @@
       ],
       "name": "timeline.insert",
       "output": {
+        "at": 1411200000,
         "clips": [
           "itm_0000000000077405950ad8d9f69f2c6f",
           "itm_00000000000874918ac913f3f46b919e"
         ],
         "created_tracks": [],
+        "duration": 7056000000,
         "linked_group": "grp_0000000000067e09902721405ac105a0"
       }
     },
