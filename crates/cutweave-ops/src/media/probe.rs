@@ -3,7 +3,7 @@
 //! [`MediaProbe`], so this crate needs no FFmpeg. The real prober arrives with WP-1D.02;
 //! [`FakeProbe`] serves tests and headless runs.
 
-use std::collections::BTreeMap;
+use std::{collections::BTreeMap, time};
 
 use cutweave_model::{
     AudioInfo, Duration, FrameRate, ProbeInfo, SampleRate, StreamInfo, StreamKind,
@@ -49,20 +49,23 @@ pub enum ProbeError {
     },
 }
 
-/// Reads media files for `media.import` (arch §7).
+/// Reads media files for `media.import` (arch §7): the stream probe plus a fast content hash.
 ///
-/// Implementations probe synchronously and must bound their time themselves (the arch §7
-/// import timeout, reported as [`ProbeError::TimedOut`]).
+/// Implementations probe synchronously. `media.import` runs each probe on its own thread
+/// with the per-file timeout of its [`ImportPolicy`](super::ImportPolicy) and abandons probes
+/// that overrun it (reported as [`ProbeError::TimedOut`]), so an implementation should still
+/// give up on a stuck file eventually but need not enforce the timeout itself.
 pub trait MediaProbe: Send + Sync {
     /// Probes the file at the absolute `path`.
     fn probe(&self, path: &str) -> Result<Probed, ProbeError>;
 }
 
 /// A [`MediaProbe`] backed by an in-memory table, for tests and headless runs. Paths that were
-/// not added are [`ProbeError::NotFound`].
+/// not added are [`ProbeError::NotFound`]; a path can be made slow ([`FakeProbe::with_delay`]).
 #[derive(Clone, Debug, Default)]
 pub struct FakeProbe {
     files: BTreeMap<String, Result<Probed, ProbeError>>,
+    delays: BTreeMap<String, time::Duration>,
 }
 
 impl FakeProbe {
@@ -83,6 +86,13 @@ impl FakeProbe {
     #[must_use]
     pub fn with_error(mut self, path: &str, error: ProbeError) -> FakeProbe {
         self.files.insert(path.to_owned(), Err(error));
+        self
+    }
+
+    /// Makes probing `path` block for `delay` first (a slow or hung backend).
+    #[must_use]
+    pub fn with_delay(mut self, path: &str, delay: time::Duration) -> FakeProbe {
+        self.delays.insert(path.to_owned(), delay);
         self
     }
 
@@ -163,6 +173,9 @@ fn stream(index: u32, kind: StreamKind, codec: &str) -> StreamInfo {
 
 impl MediaProbe for FakeProbe {
     fn probe(&self, path: &str) -> Result<Probed, ProbeError> {
+        if let Some(delay) = self.delays.get(path) {
+            std::thread::sleep(*delay);
+        }
         self.files
             .get(path)
             .cloned()

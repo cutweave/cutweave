@@ -10,6 +10,8 @@ publish = false
 
 [dependencies]
 cutweave-commands = { path = "../cutweave-commands" }
+# The `job.*` commands and the import's background analysis jobs (WP-1D.07).
+cutweave-jobs = { path = "../cutweave-jobs" }
 cutweave-model = { path = "../cutweave-model" }
 # The opaque `panel_layout` and unknown-key preservation in `ui-state.json`.
 serde.workspace = true
