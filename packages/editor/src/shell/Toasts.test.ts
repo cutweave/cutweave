@@ -1,7 +1,8 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 // @vitest-environment jsdom
-import { act, cleanup, render, screen } from "@testing-library/react";
+
 import { ToastProvider } from "@cutweave/ui";
+import { act, cleanup, render, screen } from "@testing-library/react";
 import { createElement as h } from "react";
 import { I18nextProvider } from "react-i18next";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
