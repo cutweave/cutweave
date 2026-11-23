@@ -4,6 +4,7 @@ import { useTranslation } from "react-i18next";
 import type { TKey } from "../i18n/index.ts";
 import { ASSET_TABS, type AssetTabId, useViewStore, viewStore } from "../state/viewStore.ts";
 import { EmptyState } from "./EmptyState.tsx";
+import { MediaPanel } from "./MediaPanel.tsx";
 
 interface AssetTabDef {
   labelKey: TKey;
@@ -75,7 +76,7 @@ export const ASSET_TAB_DEFS: Record<AssetTabId, AssetTabDef> = {
   },
 };
 
-/** Left dock panel: the asset browser tabs (arch §16). Every tab is an empty state until 1M.03. */
+/** Left dock panel: the asset browser tabs (arch §16). Media is the bin (WP-1M.03); the rest are empty states. */
 export function AssetBrowserPanel() {
   const { t } = useTranslation();
   const tab = useViewStore((s) => s.assetTab);
@@ -93,6 +94,13 @@ export function AssetBrowserPanel() {
         <TabList tabs={tabs} aria-label={t("assets.tablistLabel")} />
         {ASSET_TABS.map((id) => {
           const def = ASSET_TAB_DEFS[id];
+          if (id === "media") {
+            return (
+              <TabPanel key={id} value={id} className="cw-assets__panel cw-assets__panel--media">
+                <MediaPanel />
+              </TabPanel>
+            );
+          }
           return (
             <TabPanel key={id} value={id} className="cw-assets__panel">
               <EmptyState

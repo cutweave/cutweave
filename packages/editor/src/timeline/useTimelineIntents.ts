@@ -2,10 +2,11 @@
 // `useTimelineIntents()` (WP-1M.06 interface): one `TimelineController` per timeline panel, bound
 // to the app's stores, with the callbacks the panel hands to `TimelineCanvas`.
 import type { TimelinePointerEvent, TimelineView } from "@cutweave/timeline";
-import { useCallback, useEffect, useMemo, useRef } from "react";
+import { type DragEvent, useCallback, useEffect, useMemo, useRef } from "react";
 import { useTranslation } from "react-i18next";
 import { useStore } from "zustand";
 import { engineStore } from "../engine/engineStore.ts";
+import { dragStore } from "../media/dragStore.ts";
 import { docStore } from "../state/docStore.ts";
 import { toastStore } from "../state/toastStore.ts";
 import { viewStore } from "../state/viewStore.ts";
@@ -20,6 +21,12 @@ export interface TimelineIntents {
   readonly onPointer: (e: TimelinePointerEvent) => void;
   /** `TimelineCanvas.onView`. */
   readonly onView: (view: TimelineView | null) => void;
+  /** Handlers for the element around the canvas: a media card dragged from the bin onto the lanes. */
+  readonly drop: {
+    readonly onDragOver: (e: DragEvent<HTMLElement>) => void;
+    readonly onDragLeave: (e: DragEvent<HTMLElement>) => void;
+    readonly onDrop: (e: DragEvent<HTMLElement>) => void;
+  };
   /** Ref for the panel root: timeline keys (S, N, Delete, Backspace, Esc) pressed inside it. */
   readonly keyTarget: (el: HTMLElement | null) => (() => void) | undefined;
 }
@@ -58,6 +65,15 @@ export function useTimelineIntents(): TimelineIntents {
     };
   }, [controller]);
 
+  // A card drag that ends without a drop here (Esc, dropped elsewhere) clears the drop guide.
+  useEffect(
+    () =>
+      dragStore.subscribe((state) => {
+        if (state.session === null) controller.mediaDragLeave();
+      }),
+    [controller],
+  );
+
   const overlay = useStore(controller.overlay);
 
   const onPointer = useCallback(
@@ -84,5 +100,41 @@ export function useTimelineIntents(): TimelineIntents {
     [controller],
   );
 
-  return { controller, overlay, onPointer, onView, keyTarget };
+  const drop = useMemo<TimelineIntents["drop"]>(() => {
+    /** Canvas-relative CSS pixels of a drag event, or `null` without a canvas. */
+    const local = (e: DragEvent<HTMLElement>): { x: number; y: number } | null => {
+      const canvas = e.currentTarget.querySelector("canvas");
+      if (canvas === null) return null;
+      const r = canvas.getBoundingClientRect();
+      return { x: e.clientX - r.left, y: e.clientY - r.top };
+    };
+    return {
+      onDragOver(e) {
+        const media = dragStore.getState().session;
+        const at = media === null ? null : local(e);
+        if (media === null || at === null) return;
+        const lands = controller.mediaDragOver(at.x, at.y, media);
+        // Allowing the drop is what shows the "copy" cursor; with nowhere to land it stays "no drop".
+        if (lands) {
+          e.preventDefault();
+          e.dataTransfer.dropEffect = "copy";
+        }
+      },
+      onDragLeave(e) {
+        // Moving between children fires leave too: only a real exit clears the preview.
+        const next = e.relatedTarget as Node | null;
+        if (next === null || !e.currentTarget.contains(next)) controller.mediaDragLeave();
+      },
+      onDrop(e) {
+        const media = dragStore.getState().session;
+        const at = media === null ? null : local(e);
+        if (media === null || at === null) return;
+        e.preventDefault();
+        controller.mediaDrop(at.x, at.y, media);
+        dragStore.getState().end();
+      },
+    };
+  }, [controller]);
+
+  return { controller, overlay, onPointer, onView, keyTarget, drop };
 }

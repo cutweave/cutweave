@@ -140,7 +140,7 @@ export function TimelinePanel() {
           <IconButton icon="zoom-in" label={t("timeline.zoomIn")} disabled />
         </Tooltip>
       </Toolbar>
-      <div className="cw-timeline__body">
+      <div className="cw-timeline__body" {...(live ? intents.drop : {})}>
         {live ? <EngineTimeline intents={intents} /> : <SampleLanes />}
       </div>
     </div>

@@ -1,0 +1,553 @@
+// SPDX-License-Identifier: GPL-3.0-or-later
+import type { MediaId } from "@cutweave/protocol";
+import type { MediaDrag } from "@cutweave/timeline";
+import {
+  Button,
+  Dialog,
+  Icon,
+  IconButton,
+  type IconName,
+  SegmentedControl,
+  StatusChip,
+} from "@cutweave/ui";
+import {
+  type DragEvent,
+  type KeyboardEvent,
+  useCallback,
+  useEffect,
+  useLayoutEffect,
+  useMemo,
+  useRef,
+  useState,
+} from "react";
+import { useTranslation } from "react-i18next";
+import { useStore } from "zustand";
+import { createStore } from "zustand/vanilla";
+import { engineStore, useEngineStore } from "../engine/engineStore.ts";
+import {
+  formatDuration,
+  type MediaCard,
+  selectMediaCards,
+  selectMediaUsage,
+} from "../media/cards.ts";
+import { dragStore, MEDIA_DRAG_TYPE } from "../media/dragStore.ts";
+import { insertAtPlayhead } from "../media/insert.ts";
+import { useMediaStore } from "../media/mediaStore.ts";
+import { removeMedia } from "../media/remove.ts";
+import { useThumbnailSource } from "../media/thumbnails.ts";
+import { useImport } from "../media/useImport.ts";
+import { docStore, useDocStore } from "../state/docStore.ts";
+import { useJobStore } from "../state/jobStore.ts";
+import { toastStore } from "../state/toastStore.ts";
+import { useViewStore, viewStore } from "../state/viewStore.ts";
+import { translator } from "../timeline/errors.ts";
+import { EmptyState } from "./EmptyState.tsx";
+
+type MediaLayout = "grid" | "list";
+
+/** Session-wide, like the other panel toggles: the layout survives switching asset tabs. */
+const layoutStore = createStore<{ layout: MediaLayout; set(layout: MediaLayout): void }>()(
+  (set) => ({ layout: "grid", set: (layout) => set({ layout }) }),
+);
+
+const KIND_ICON: Record<MediaCard["kind"], IconName> = {
+  video: "film",
+  audio: "audio-waveform",
+  image: "image",
+  sequence_ref: "layers",
+};
+
+/** Cards drawn beyond the visible rows, so scrolling never shows a gap. */
+const OVERSCAN_ROWS = 2;
+
+interface Metrics {
+  /** Scroll offset and height of the list, CSS px. */
+  top: number;
+  height: number;
+  /** Cards per row and the distance between row starts, CSS px (0 until measured). */
+  cols: number;
+  rowHeight: number;
+}
+
+/**
+ * Which cards to draw. Until the list has a measured size (first paint, or no layout engine) every
+ * card is drawn; after that only the rows in view plus a margin, with padding standing in for the
+ * rest so the scroll bar keeps its length.
+ */
+function windowOf(count: number, m: Metrics) {
+  if (m.height === 0 || m.rowHeight === 0 || m.cols === 0) {
+    return { start: 0, end: count, padTop: 0, padBottom: 0 };
+  }
+  const rows = Math.ceil(count / m.cols);
+  const first = Math.max(0, Math.floor(m.top / m.rowHeight) - OVERSCAN_ROWS);
+  const last = Math.min(rows - 1, Math.ceil((m.top + m.height) / m.rowHeight) + OVERSCAN_ROWS);
+  return {
+    start: first * m.cols,
+    end: Math.min(count, (last + 1) * m.cols),
+    padTop: first * m.rowHeight,
+    padBottom: Math.max(0, (rows - 1 - last) * m.rowHeight),
+  };
+}
+
+function isTextEntry(target: EventTarget | null): boolean {
+  const el = target as HTMLElement | null;
+  if (el === null || typeof el.tagName !== "string") return false;
+  return el.isContentEditable || el.tagName === "INPUT" || el.tagName === "TEXTAREA";
+}
+
+const dragOf = (card: MediaCard): MediaDrag | null =>
+  card.kind === "sequence_ref"
+    ? null
+    : { id: card.id, kind: card.kind, duration: card.kind === "image" ? null : card.duration };
+
+interface CardViewProps {
+  card: MediaCard;
+  selected: boolean;
+  /** The one card in the tab order (roving tabindex). */
+  active: boolean;
+  analyzing: boolean;
+  failure: string | null;
+  onSelect(id: MediaId): void;
+  onInsert(card: MediaCard): void;
+}
+
+function CardView({
+  card,
+  selected,
+  active,
+  analyzing,
+  failure,
+  onSelect,
+  onInsert,
+}: CardViewProps) {
+  const { t } = useTranslation();
+  const source = useThumbnailSource();
+  const indexed = useMediaStore((s) => s.indexed[card.id] ?? 0);
+  const [failedImage, setFailedImage] = useState<string | null>(null);
+  const thumb = source.thumbnailFor({ id: card.id, kind: card.kind, width: 160, indexed });
+  const image = thumb.kind === "image" && thumb.src !== failedImage ? thumb.src : null;
+  const drag = dragOf(card);
+
+  const size = card.width !== null && card.height !== null ? `${card.width}×${card.height}` : null;
+  const meta = [size, card.fps === null ? null : t("media.card.fps", { fps: String(card.fps) })]
+    .filter((part) => part !== null)
+    .join(" · ");
+
+  const onDragStart = (e: DragEvent<HTMLElement>) => {
+    if (drag === null) {
+      e.preventDefault();
+      return;
+    }
+    onSelect(card.id);
+    e.dataTransfer.setData(MEDIA_DRAG_TYPE, card.id);
+    e.dataTransfer.effectAllowed = "copy";
+    dragStore.getState().begin(drag);
+  };
+
+  return (
+    // biome-ignore lint/a11y/useKeyWithClickEvents: the listbox handles the keys (arrows, Enter, Space, Delete)
+    <div
+      role="option"
+      aria-selected={selected}
+      tabIndex={active ? 0 : -1}
+      draggable={drag !== null}
+      data-media-id={card.id}
+      data-kind={card.kind}
+      className="cw-media__card"
+      onClick={() => onSelect(card.id)}
+      onDoubleClick={() => onInsert(card)}
+      onDragStart={onDragStart}
+      onDragEnd={() => dragStore.getState().end()}
+    >
+      <span className="cw-media__thumb" aria-hidden="true">
+        {image === null ? (
+          <Icon name={KIND_ICON[card.kind]} size="lg" className="cw-media__thumb-icon" />
+        ) : (
+          <img
+            className="cw-media__thumb-img"
+            src={image}
+            alt=""
+            draggable={false}
+            onError={() => setFailedImage(image)}
+          />
+        )}
+        {card.duration !== null && card.kind !== "image" ? (
+          <span className="cw-media__duration numeric">{formatDuration(card.duration)}</span>
+        ) : null}
+      </span>
+      <span className="cw-media__body">
+        <span className="cw-media__name body-strong">{card.name}</span>
+        <span className="cw-media__meta caption">
+          <span>{t(`media.kind.${card.kind}`)}</span>
+          {meta === "" ? null : <span>{meta}</span>}
+          {card.codec === null ? null : <span className="cw-media__badge">{card.codec}</span>}
+        </span>
+        {card.broken || failure !== null || analyzing ? (
+          <span className="cw-media__status" title={failure ?? undefined}>
+            {card.broken ? (
+              <StatusChip tone="danger">{t("media.status.broken")}</StatusChip>
+            ) : failure !== null ? (
+              <StatusChip tone="warning">{t("media.status.analysisFailed")}</StatusChip>
+            ) : (
+              <StatusChip tone="neutral">{t("media.status.analyzing")}</StatusChip>
+            )}
+          </span>
+        ) : null}
+      </span>
+    </div>
+  );
+}
+
+/**
+ * The media bin (WP-1M.03): the project's assets as a grid or list, imported from a native dialog
+ * (Ctrl+I) or by dropping files from the OS, dragged onto the timeline, or added at the playhead
+ * with Enter. Listbox semantics with a roving tab stop: arrows move (and select), Enter inserts,
+ * Delete removes.
+ */
+export function MediaPanel() {
+  const { t } = useTranslation();
+  const project = useDocStore((s) => s.project);
+  const cards = useMemo(() => selectMediaCards(project), [project]);
+  const usage = useMemo(() => selectMediaUsage(project), [project]);
+  const selection = useViewStore((s) => s.selection);
+  const selectedId = (selection.find((r) => r.kind === "media")?.id ?? null) as MediaId | null;
+  const layout = useStore(layoutStore, (s) => s.layout);
+  const ready = useEngineStore((s) => s.rpc !== null && s.connection === "ready");
+  const failures = useMediaStore((s) => s.failures);
+  const jobs = useJobStore((s) => s.jobs);
+  const importer = useImport();
+
+  const analyzing = useMemo(() => {
+    const ids = new Set<string>();
+    for (const job of Object.values(jobs)) {
+      if (
+        job.kind === "analysis" &&
+        job.media_id !== null &&
+        (job.state === "queued" || job.state === "running")
+      ) {
+        ids.add(job.media_id);
+      }
+    }
+    return ids;
+  }, [jobs]);
+
+  // ---- focus and windowing ---------------------------------------------------------------
+  const scroller = useRef<HTMLDivElement>(null);
+  const grid = useRef<HTMLDivElement>(null);
+  const [metrics, setMetrics] = useState<Metrics>({ top: 0, height: 0, cols: 0, rowHeight: 0 });
+  const [focusIndex, setFocusIndex] = useState(0);
+  const focusRequest = useRef(false);
+
+  const selectedIndex = cards.findIndex((c) => c.id === selectedId);
+  // The tab stop follows focus; a selection made elsewhere (the inspector, another click) moves it.
+  useEffect(() => {
+    if (selectedIndex >= 0) setFocusIndex(selectedIndex);
+  }, [selectedIndex]);
+  const activeIndex = Math.min(Math.max(focusIndex, 0), Math.max(cards.length - 1, 0));
+
+  const measure = useCallback(() => {
+    const el = scroller.current;
+    const g = grid.current;
+    if (el === null || g === null) return;
+    const style = getComputedStyle(g);
+    const cols = Math.max(
+      1,
+      style.gridTemplateColumns.split(" ").filter((c) => /\d/.test(c)).length,
+    );
+    const first = g.firstElementChild as HTMLElement | null;
+    const rowGap = Number.parseFloat(style.rowGap) || 0;
+    const rowHeight = first === null ? 0 : first.offsetHeight + rowGap;
+    setMetrics((m) =>
+      m.top === el.scrollTop &&
+      m.height === el.clientHeight &&
+      m.cols === cols &&
+      m.rowHeight === rowHeight
+        ? m
+        : { top: el.scrollTop, height: el.clientHeight, cols, rowHeight },
+    );
+  }, []);
+
+  // Measure after every layout-affecting change; follow the scroller's own size too.
+  useLayoutEffect(measure, [measure, cards, layout]);
+  useEffect(() => {
+    const el = scroller.current;
+    if (el === null || typeof ResizeObserver === "undefined") return undefined;
+    const observer = new ResizeObserver(measure);
+    observer.observe(el);
+    return () => observer.disconnect();
+  }, [measure]);
+
+  const win = windowOf(cards.length, layout === "list" ? { ...metrics, cols: 1 } : metrics);
+
+  // Give the keyboard focus to the card a key press moved to, once it is drawn.
+  useEffect(() => {
+    if (!focusRequest.current) return;
+    focusRequest.current = false;
+    const id = cards[activeIndex]?.id;
+    const el =
+      id === undefined ? null : grid.current?.querySelector<HTMLElement>(`[data-media-id="${id}"]`);
+    el?.focus();
+  });
+
+  const select = useCallback((id: MediaId) => {
+    viewStore.getState().setSelection([{ kind: "media", id }]);
+  }, []);
+
+  const goTo = (index: number) => {
+    const card = cards[index];
+    const el = scroller.current;
+    if (card === undefined || el === null) return;
+    setFocusIndex(index);
+    select(card.id);
+    focusRequest.current = true;
+    if (metrics.rowHeight > 0 && metrics.cols > 0) {
+      const cols = layout === "list" ? 1 : metrics.cols;
+      const rowTop = Math.floor(index / cols) * metrics.rowHeight;
+      if (rowTop < el.scrollTop) el.scrollTop = rowTop;
+      else if (rowTop + metrics.rowHeight > el.scrollTop + el.clientHeight) {
+        el.scrollTop = rowTop + metrics.rowHeight - el.clientHeight;
+      }
+    }
+  };
+
+  // ---- actions ---------------------------------------------------------------------------
+  const tr = useRef(translator(t));
+  tr.current = translator(t);
+  const actionDeps = useMemo(
+    () => ({
+      doc: docStore,
+      view: viewStore,
+      engine: engineStore,
+      toasts: toastStore,
+      t: (
+        key: Parameters<ReturnType<typeof translator>>[0],
+        vars?: Readonly<Record<string, string>>,
+      ) => tr.current(key, vars),
+    }),
+    [],
+  );
+
+  const insert = useCallback(
+    (card: MediaCard) => {
+      const drag = dragOf(card);
+      if (drag !== null) void insertAtPlayhead(actionDeps, drag);
+    },
+    [actionDeps],
+  );
+
+  const [confirming, setConfirming] = useState<MediaCard | null>(null);
+  const removing = async (card: MediaCard) => {
+    setConfirming(null);
+    await removeMedia(actionDeps, card.id, card.name);
+  };
+  const requestRemove = (card: MediaCard | undefined) => {
+    if (card === undefined) return;
+    if ((usage.get(card.id) ?? 0) > 0) setConfirming(card);
+    else void removing(card);
+  };
+  const selectedCard = cards.find((c) => c.id === selectedId);
+
+  const onKeyDown = (e: KeyboardEvent<HTMLDivElement>) => {
+    if (e.ctrlKey || e.metaKey || e.altKey) return;
+    const cols = layout === "list" ? 1 : Math.max(metrics.cols, 1);
+    const last = cards.length - 1;
+    let next: number | null = null;
+    switch (e.key) {
+      case "ArrowRight":
+        next = layout === "list" ? null : activeIndex + 1;
+        break;
+      case "ArrowLeft":
+        next = layout === "list" ? null : activeIndex - 1;
+        break;
+      case "ArrowDown":
+        next = activeIndex + cols;
+        break;
+      case "ArrowUp":
+        next = activeIndex - cols;
+        break;
+      case "Home":
+        next = 0;
+        break;
+      case "End":
+        next = last;
+        break;
+      case "Enter": {
+        const card = cards[activeIndex];
+        if (card !== undefined) insert(card);
+        e.preventDefault();
+        return;
+      }
+      case " ": {
+        const card = cards[activeIndex];
+        if (card !== undefined) select(card.id);
+        e.preventDefault();
+        return;
+      }
+      case "Delete":
+      case "Backspace":
+        requestRemove(cards[activeIndex]);
+        e.preventDefault();
+        return;
+      default:
+        return;
+    }
+    e.preventDefault();
+    if (next !== null) goTo(Math.min(Math.max(next, 0), last));
+  };
+
+  // Ctrl/Cmd+I is announced by the empty state: it opens the file dialog from anywhere in the app.
+  const pickRef = useRef(importer.pickAndImport);
+  pickRef.current = importer.pickAndImport;
+  useEffect(() => {
+    const onKey = (e: globalThis.KeyboardEvent) => {
+      if (!(e.ctrlKey || e.metaKey) || e.altKey || e.shiftKey || e.key.toLowerCase() !== "i")
+        return;
+      if (e.defaultPrevented || isTextEntry(e.target)) return;
+      e.preventDefault();
+      void pickRef.current();
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, []);
+
+  // ---- OS file drop ----------------------------------------------------------------------
+  const [fileOver, setFileOver] = useState(false);
+  const hasFiles = (e: DragEvent<HTMLElement>) => e.dataTransfer.types.includes("Files");
+  const onDragOver = (e: DragEvent<HTMLElement>) => {
+    if (!hasFiles(e)) return;
+    e.preventDefault();
+    e.dataTransfer.dropEffect = ready ? "copy" : "none";
+    setFileOver(true);
+  };
+  const onDragLeave = (e: DragEvent<HTMLElement>) => {
+    const next = e.relatedTarget as Node | null;
+    if (next === null || !e.currentTarget.contains(next)) setFileOver(false);
+  };
+  const onDrop = (e: DragEvent<HTMLElement>) => {
+    if (!hasFiles(e)) return;
+    e.preventDefault();
+    setFileOver(false);
+    const paths = importer.pathsOf(Array.from(e.dataTransfer.files));
+    if (paths === null) {
+      toastStore.getState().push({ tone: "info", title: tr.current("media.import.desktopOnly") });
+      return;
+    }
+    void importer.importPaths(paths);
+  };
+
+  const importLabel = t("media.importButton");
+  return (
+    <section
+      className="cw-media"
+      aria-label={t("media.panelLabel")}
+      data-drop-active={fileOver ? "true" : undefined}
+      onDragOver={onDragOver}
+      onDragEnter={onDragOver}
+      onDragLeave={onDragLeave}
+      onDrop={onDrop}
+    >
+      <div className="cw-media__tools">
+        <Button
+          size="sm"
+          icon="upload"
+          disabled={!ready || importer.busy}
+          onClick={() => void importer.pickAndImport()}
+        >
+          {importLabel}
+        </Button>
+        <IconButton
+          size="sm"
+          icon="trash-2"
+          label={t("media.remove.button")}
+          disabled={selectedCard === undefined}
+          onClick={() => requestRemove(selectedCard)}
+        />
+        <SegmentedControl
+          className="cw-media__layout"
+          aria-label={t("media.layout.label")}
+          value={layout}
+          options={[
+            { value: "grid", label: t("media.layout.grid") },
+            { value: "list", label: t("media.layout.list") },
+          ]}
+          onChange={(next) => layoutStore.getState().set(next)}
+        />
+      </div>
+      {cards.length === 0 ? (
+        <div className="cw-media__scroll">
+          <EmptyState
+            icon="film"
+            title={t("assets.empty.media.title")}
+            body={t("assets.empty.media.body")}
+          />
+        </div>
+      ) : (
+        <div ref={scroller} className="cw-media__scroll" onScroll={measure}>
+          <div
+            ref={grid}
+            role="listbox"
+            aria-label={t("media.listLabel")}
+            data-layout={layout}
+            className="cw-media__grid"
+            style={{ paddingTop: win.padTop, paddingBottom: win.padBottom }}
+            onKeyDown={onKeyDown}
+            onFocus={(e) => {
+              const id = (e.target as HTMLElement)
+                .closest("[data-media-id]")
+                ?.getAttribute("data-media-id");
+              const index =
+                id === null || id === undefined ? -1 : cards.findIndex((c) => c.id === id);
+              if (index >= 0) setFocusIndex(index);
+            }}
+          >
+            {cards.slice(win.start, win.end).map((card, i) => (
+              <CardView
+                key={card.id}
+                card={card}
+                selected={card.id === selectedId}
+                active={win.start + i === activeIndex}
+                analyzing={analyzing.has(card.id)}
+                failure={failures[card.id]?.map((f) => `${f.stage}: ${f.error}`).join("\n") ?? null}
+                onSelect={select}
+                onInsert={insert}
+              />
+            ))}
+          </div>
+        </div>
+      )}
+      {fileOver ? (
+        <div className="cw-media__drop" aria-hidden="true">
+          <Icon name="upload" size="lg" />
+          <span className="body-strong">{t("media.drop.title")}</span>
+          <span className="body">{t("media.drop.body")}</span>
+        </div>
+      ) : null}
+      <Dialog
+        open={confirming !== null}
+        onOpenChange={(open) => {
+          if (!open) setConfirming(null);
+        }}
+        title={t("media.remove.confirmTitle", { name: confirming?.name ?? "" })}
+        description={t("media.remove.confirmBody", {
+          count: String(usage.get(confirming?.id ?? "") ?? 0),
+        })}
+        footer={
+          <>
+            <Button variant="ghost" size="lg" onClick={() => setConfirming(null)}>
+              {t("media.remove.cancel")}
+            </Button>
+            <Button
+              variant="danger"
+              size="lg"
+              onClick={() => confirming !== null && void removing(confirming)}
+            >
+              {t("media.remove.confirm")}
+            </Button>
+          </>
+        }
+      >
+        <p className="body">{t("media.remove.confirmNote")}</p>
+      </Dialog>
+    </section>
+  );
+}

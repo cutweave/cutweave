@@ -9,12 +9,14 @@ import type { ItemId, RpcClient, SelectionRef, TrackId } from "@cutweave/protoco
 import {
   DEFAULT_VIEW_STATE,
   fromPointerEvent,
+  type HitResult,
   type Intent,
   type InteractionEnv,
   type InteractionEvent,
   type InteractionState,
   initialState,
   type KeyInput,
+  type MediaDrag,
   type Rect,
   reduce,
   type TimelinePointerEvent,
@@ -23,6 +25,7 @@ import {
 import type { StoreApi } from "zustand";
 import { createStore } from "zustand/vanilla";
 import type { EngineStoreState } from "../engine/engineStore.ts";
+import { insertMedia } from "../media/insert.ts";
 import type { DocStore } from "../state/docStore.ts";
 import { selectTimelineModel } from "../state/selectors.ts";
 import type { ToastStore } from "../state/toastStore.ts";
@@ -36,6 +39,8 @@ export interface TimelineGeometry {
   getViewState(): Pick<TimelineViewState, "pxPerSec" | "scrollX" | "scrollY">;
   /** Items inside a canvas rectangle (marquee). */
   itemsInRect(rect: Rect): string[];
+  /** What is under canvas point `(x, y)`: the drop target of a dragged media card. */
+  hitTest(x: number, y: number): HitResult;
 }
 
 /** Transient drawing the timeline shows while a gesture runs. */
@@ -130,6 +135,30 @@ export class TimelineController {
 
   toggleSnapping(): void {
     this.send({ type: "toggle-snapping" });
+  }
+
+  /**
+   * A media card is dragged over the canvas at canvas point `(x, y)` (the panel converts client
+   * coordinates). Draws the snapped drop guide. Returns whether a drop would land (a track of
+   * the right kind exists), which decides the drag's `dropEffect`.
+   */
+  mediaDragOver(x: number, y: number, media: MediaDrag): boolean {
+    const hit = this.#geometry?.hitTest(x, y);
+    if (hit === undefined) return false;
+    this.send({ type: "media-drag-over", x, y, hit, media });
+    return this.#state.mode.name === "dropping-media";
+  }
+
+  /** The card was released at canvas point `(x, y)`: inserts it at the snapped time and track. */
+  mediaDrop(x: number, y: number, media: MediaDrag): void {
+    const hit = this.#geometry?.hitTest(x, y);
+    if (hit === undefined) return;
+    this.send({ type: "media-drop", x, y, hit, media });
+  }
+
+  /** The card left the canvas or the drag ended elsewhere. */
+  mediaDragLeave(): void {
+    this.send({ type: "media-drag-leave" });
   }
 
   /** The pointer went away (window blur, unmount): cancel any gesture. */
@@ -231,6 +260,11 @@ export class TimelineController {
         return;
       case "cancel-gesture":
         this.#finish(false);
+        return;
+      case "insert":
+        this.#enqueue(async () => {
+          await insertMedia(this.#deps, intent.media, intent.trackId, intent.at);
+        });
         return;
       case "split":
         this.#enqueue(() => this.#split(intent.items, intent.at));

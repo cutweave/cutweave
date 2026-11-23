@@ -30,6 +30,8 @@ export type {
   InteractionState,
   InteractionStateName,
   KeyInput,
+  MediaDrag,
+  MediaDragPoint,
   Mode,
   MovingMode,
   PanningMode,
@@ -47,6 +49,7 @@ export {
   isBusy,
   isGestureOpen,
   reduce,
+  STILL_DROP_DURATION,
   trimLimits,
 } from "./interaction.ts";
 export { IntervalIndex } from "./interval-index.ts";
