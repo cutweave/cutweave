@@ -9,7 +9,7 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { afterEach, describe, expect, it } from "vitest";
 import type { EngineStatus } from "../../shared/api.ts";
-import { resolveEngineLaunch } from "./launch.ts";
+import { devEngineArgs, resolveEngineLaunch } from "./launch.ts";
 import { isPortFree, pickFreePort } from "./ports.ts";
 import { parseEngineLine, parseReadyLine, readCrashMarker } from "./protocol.ts";
 import { connectEngineRpc, EngineRpcError, uuidv7 } from "./rpc-client.ts";
@@ -107,6 +107,23 @@ describe("resolveEngineLaunch", () => {
       command: path.join("/repo", "target", "debug", "cutweave-engine-serve"),
       args: ["engine"],
     });
+  });
+});
+
+describe("devEngineArgs", () => {
+  it("turns CUTWEAVE_ENGINE_ALLOW_ROOTS into --allow-root flags in dev", () => {
+    const env = { CUTWEAVE_ENGINE_ALLOW_ROOTS: " /a/media ;; /b " };
+    expect(devEngineArgs(env, false, ";")).toEqual([
+      "--allow-root",
+      "/a/media",
+      "--allow-root",
+      "/b",
+    ]);
+  });
+
+  it("adds nothing when unset or when packaged", () => {
+    expect(devEngineArgs({}, false, ";")).toEqual([]);
+    expect(devEngineArgs({ CUTWEAVE_ENGINE_ALLOW_ROOTS: "/a" }, true, ";")).toEqual([]);
   });
 });
 

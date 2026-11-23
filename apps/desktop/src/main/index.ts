@@ -15,7 +15,7 @@ import {
 } from "./app-protocol.ts";
 import { appResponseHeaders, buildCsp } from "./csp.ts";
 import { type EngineFailedChoice, showEngineFailedDialog } from "./engine/failed-dialog.ts";
-import { resolveEngineLaunch } from "./engine/launch.ts";
+import { devEngineArgs, resolveEngineLaunch } from "./engine/launch.ts";
 import { pickFreePort } from "./engine/ports.ts";
 import { EngineSupervisor } from "./engine/supervisor.ts";
 import { createHandlers } from "./handlers.ts";
@@ -92,6 +92,7 @@ function superviseEngine(
       "--allow-origin",
       APP_ORIGIN,
       ...(devServerOrigin === undefined ? [] : ["--allow-origin", devServerOrigin]),
+      ...devEngineArgs(process.env, app.isPackaged),
     ],
     clientVersion: app.getVersion(),
     onPortChange: (next) => {

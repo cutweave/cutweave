@@ -84,6 +84,8 @@ Every command that takes a filesystem path (`media.import`, `project.open`, `pro
 
 ## Supervision (Electron main)
 
+Dev builds of the desktop app (not packaged) add `--allow-root` for every folder in `CUTWEAVE_ENGINE_ALLOW_ROOTS` (a `;`-separated list on Windows, `:` elsewhere), so agents attached to a dev engine can import from and save into those folders. `CUTWEAVE_DEV_STUB_MEDIA=1` is inherited by the engine and turns on the stub media backend.
+
 `EngineSupervisor` in `apps/desktop/src/main/engine/supervisor.ts` (WP-1L.03) applies this protocol:
 
 - **Per launch:** the port main chose at app start (`--port`, so the renderer's CSP stays valid), a **new UI token for every engine process** (stdin only; the renderer fetches it again after a restart), `--allow-origin app://cutweave`, and `--project` when a project was open. The ready line has 10 s.

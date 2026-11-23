@@ -28,6 +28,26 @@ export interface ResolveOptions {
  * then `target/debug/cutweave-engine-serve` (the launch-protocol binary until `cutweave engine`
  * ships with WP-1K.01). Every candidate takes the `engine` subcommand.
  */
+/**
+ * Dev-only engine arguments from the environment (never when packaged):
+ * `CUTWEAVE_ENGINE_ALLOW_ROOTS` (a `path.delimiter`-separated folder list) becomes `--allow-root`
+ * flags, so agents attached to a dev engine may import from and save into those folders
+ * (docs/reference/launch-protocol.md, Path policy). Media stand-ins come from the engine's own
+ * `CUTWEAVE_DEV_STUB_MEDIA`, which the engine reads from the inherited environment.
+ */
+export function devEngineArgs(
+  env: NodeJS.ProcessEnv,
+  isPackaged: boolean,
+  delimiter = path.delimiter,
+): string[] {
+  if (isPackaged) return [];
+  const roots = (env.CUTWEAVE_ENGINE_ALLOW_ROOTS ?? "")
+    .split(delimiter)
+    .map((r) => r.trim())
+    .filter((r) => r.length > 0);
+  return roots.flatMap((r) => ["--allow-root", r]);
+}
+
 export function resolveEngineLaunch(options: ResolveOptions): EngineLaunch | null {
   const { env, isPackaged, platform } = options;
   const exists = options.exists ?? existsSync;
