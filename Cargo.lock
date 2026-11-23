@@ -623,6 +623,16 @@ version = "0.0.0"
 [[package]]
 name = "cutweave-jobs"
 version = "0.0.0"
+dependencies = [
+ "cutweave-model",
+ "schemars",
+ "serde",
+ "serde_json",
+ "specta",
+ "thiserror",
+ "tokio",
+ "tracing",
+]
 
 [[package]]
 name = "cutweave-media"
