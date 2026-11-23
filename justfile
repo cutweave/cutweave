@@ -84,9 +84,14 @@ bridge *args:
 e2e:
     @echo "e2e: not implemented yet (arrives in Phase 1)"
 
-# Start the headless engine and run the MCP conformance/inspector suite
+# The rmcp conformance suite and the scripted agent (both MCP revisions; stdio and HTTP). Offline; also part of `just check`.
+mcp-conformance:
+    cargo nextest run -p cutweave-cli --test mcp_conformance
+
+# MCP Inspector CLI (pinned) against `cutweave mcp --headless` (stdio) and a headless engine's /mcp (HTTP). Needs Node and network (npx); not part of `just check`.
 mcp-inspect:
-    @echo "mcp-inspect: not implemented yet (arrives in WP-1N)"
+    cargo build -p cutweave-cli
+    python scripts/mcp-inspect.py
 
 # Fetch the test-media corpus (not committed; checksummed)
 corpus *args:

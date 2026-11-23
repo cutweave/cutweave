@@ -1,0 +1,45 @@
+name: MCP conformance
+
+# WP-1O.03. Manual dispatch only (Actions-minutes policy, docs/06-dev-process.md §8; R31): the
+# rmcp-based suite already runs in `just check` / the `rust` job, so this job adds what needs
+# Node and the network: the MCP Inspector CLI (version pinned in scripts/mcp-inspect.py) on
+# stdio and Streamable HTTP. Run it at milestones: `gh workflow run mcp-conformance.yml`.
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: mcp-conformance-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  mcp-conformance:
+    name: mcp-conformance (${{ matrix.os }})
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 30
+    strategy:
+      fail-fast: false
+      matrix:
+        # macOS is best-effort: add it to the matrix once it has been green for a week.
+        os: [ubuntu-24.04, windows-latest]
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: dtolnay/rust-toolchain@683b588c487a69d01f6c6ddf40f036ff682cc2c8 # v1
+        with:
+          toolchain: "1.100.0"
+      - uses: Swatinem/rust-cache@d1527c8f67ef9af357290475d4af4b0fab8f12e0 # v2.9.3
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version-file: .nvmrc
+      - uses: taiki-e/install-action@fe3acb53a98b62c772db35de75ce0e4595e7ca8c # v2.90.8
+        with:
+          tool: cargo-nextest
+      - name: rmcp conformance suite and scripted agent (both revisions, stdio and HTTP)
+        run: cargo nextest run -p cutweave-cli --test mcp_conformance
+      - name: Build the cutweave binary
+        run: cargo build -p cutweave-cli
+      - name: MCP Inspector CLI (stdio and Streamable HTTP)
+        run: python scripts/mcp-inspect.py

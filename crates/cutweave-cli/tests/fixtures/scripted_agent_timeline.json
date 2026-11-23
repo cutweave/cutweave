@@ -1,0 +1,120 @@
+{
+  "id": "seq#0",
+  "name": "Sequence 1",
+  "format": {
+    "width": 1920,
+    "height": 1080,
+    "frame_rate": {
+      "num": 30,
+      "den": 1
+    },
+    "sample_rate": 48000,
+    "color_space": "rec709",
+    "background": "#000000"
+  },
+  "duration": 35280000000,
+  "track_count": 2,
+  "item_count": 8,
+  "tracks": [
+    {
+      "id": "trk#1",
+      "kind": "video",
+      "name": "V1",
+      "muted": false,
+      "hidden": false,
+      "locked": false,
+      "solo": false,
+      "gain": 0.0,
+      "item_count": 4,
+      "end": 35280000000,
+      "items": [
+        {
+          "id": "itm#2",
+          "kind": "clip",
+          "start": 0,
+          "duration": 6350400000,
+          "media": "med#3",
+          "linked_group": "grp#4",
+          "enabled": true
+        },
+        {
+          "id": "itm#5",
+          "kind": "clip",
+          "start": 7056000000,
+          "duration": 3528000000,
+          "media": "med#6",
+          "linked_group": "grp#7",
+          "enabled": true
+        },
+        {
+          "id": "itm#8",
+          "kind": "clip",
+          "start": 10584000000,
+          "duration": 3528000000,
+          "media": "med#6",
+          "linked_group": "grp#9",
+          "enabled": true
+        },
+        {
+          "id": "itm#10",
+          "kind": "clip",
+          "start": 28224000000,
+          "duration": 7056000000,
+          "media": "med#11",
+          "linked_group": "grp#12",
+          "enabled": true
+        }
+      ]
+    },
+    {
+      "id": "trk#13",
+      "kind": "audio",
+      "name": "A1",
+      "muted": false,
+      "hidden": false,
+      "locked": false,
+      "solo": false,
+      "gain": 0.0,
+      "item_count": 4,
+      "end": 35280000000,
+      "items": [
+        {
+          "id": "itm#14",
+          "kind": "clip",
+          "start": 0,
+          "duration": 6350400000,
+          "media": "med#3",
+          "linked_group": "grp#4",
+          "enabled": true
+        },
+        {
+          "id": "itm#15",
+          "kind": "clip",
+          "start": 7056000000,
+          "duration": 3528000000,
+          "media": "med#6",
+          "linked_group": "grp#7",
+          "enabled": true
+        },
+        {
+          "id": "itm#16",
+          "kind": "clip",
+          "start": 10584000000,
+          "duration": 3528000000,
+          "media": "med#6",
+          "linked_group": "grp#9",
+          "enabled": true
+        },
+        {
+          "id": "itm#17",
+          "kind": "clip",
+          "start": 28224000000,
+          "duration": 7056000000,
+          "media": "med#11",
+          "linked_group": "grp#12",
+          "enabled": true
+        }
+      ]
+    }
+  ]
+}
