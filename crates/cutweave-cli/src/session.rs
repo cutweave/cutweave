@@ -6,6 +6,7 @@
 use std::path::PathBuf;
 
 use cutweave_api::Credential;
+use cutweave_api::mcp::execute::{check_step_refs, resolve_refs};
 use cutweave_commands::{CmdError, EntryKind, Registry, Rev, TxId};
 use cutweave_engine::{
     Call, Connection, DevStubMedia, Engine, EngineConfig, EngineMode, Subsystems,
@@ -260,15 +261,28 @@ pub fn run_request(
     }
 }
 
+/// A `$ref` error of step `i`: `Invalid` at `/steps/<i>/args/...`, as `cutweave_execute` reports it.
+fn ref_failure(i: usize, error: CmdError) -> Failure {
+    Failure::from_cmd(&error.under(&format!("/steps/{i}/args"))).at_step(i)
+}
+
 /// Runs steps as one transaction: `edit.begin_tx`, each step inside it, `edit.commit_tx`. A
 /// failing step cancels it. An engine command (`edit.undo`, `project.open`, `media.import`, ...)
 /// cannot join a transaction, so one runs alone as the only step.
+///
+/// A step's args may use an earlier step's output, `{"$ref": "steps[0].output.left"}`, in the
+/// grammar of MCP's `cutweave_execute` (arch §14): a malformed reference, or one to the same or
+/// a later step, is refused before anything runs; one to a value the earlier output lacks fails
+/// that step.
 fn run_batch(
     session: &mut Session,
     registry: &Registry,
     steps: Vec<Step>,
     expected_rev: Option<u64>,
 ) -> Result<Value, Failure> {
+    for (i, step) in steps.iter().enumerate() {
+        check_step_refs(&step.args, i).map_err(|e| ref_failure(i, e))?;
+    }
     let alone = steps.len() == 1;
     if !alone
         && let Some((i, step)) = steps.iter().enumerate().find(|(_, s)| {
@@ -293,7 +307,10 @@ fn run_batch(
             return Err(Failure::usage("expected at least one step"));
         };
         let name = step.cmd.clone();
-        let done = session.call(&step.cmd, step.args, None, expected_rev)?;
+        // A batch names its failing step, also when it has only one (as `cutweave_execute`).
+        let done = session
+            .call(&step.cmd, step.args, None, expected_rev)
+            .map_err(|e| e.at_step(0))?;
         let mut out = with_revs(&done);
         out.insert(
             "steps".into(),
@@ -314,9 +331,20 @@ fn run_batch(
         .map(str::to_owned)
         .ok_or_else(|| Failure::error("internal", "edit.begin_tx returned no transaction id"))?;
     let mut results = Vec::with_capacity(steps.len());
+    let mut outputs: Vec<Value> = Vec::with_capacity(steps.len());
     for (i, step) in steps.into_iter().enumerate() {
-        match session.call(&step.cmd, step.args, Some(&tx), None) {
-            Ok(done) => results.push(json!({"cmd": step.cmd, "output": done.output})),
+        let args = match resolve_refs(&step.args, &outputs, i) {
+            Ok(args) => args,
+            Err(e) => {
+                let _ = session.call("edit.cancel_tx", json!({"tx": tx}), None, None);
+                return Err(ref_failure(i, e));
+            }
+        };
+        match session.call(&step.cmd, args, Some(&tx), None) {
+            Ok(done) => {
+                outputs.push(done.output.clone());
+                results.push(json!({"cmd": step.cmd, "output": done.output}));
+            }
             Err(e) => {
                 let _ = session.call("edit.cancel_tx", json!({"tx": tx}), None, None);
                 return Err(e.at_step(i));

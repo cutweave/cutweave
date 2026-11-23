@@ -24,7 +24,7 @@ Stdout carries protocol frames only. Closing stdin ends the session, and the eng
 
 ## Input and output
 
-`exec` takes one step, `{"cmd": "clip.split", "args": {...}}`, or an array of steps (or `{"steps": [...]}`) that runs as **one transaction and one undo step**: all steps apply or none does, and a failing step is reported as `failed_step`. Engine commands (`edit.undo`, `project.open`, `media.import`, `job.*`, `view.*`) cannot join a transaction; run one as the only step.
+`exec` takes one step, `{"cmd": "clip.split", "args": {...}}`, or an array of steps (or `{"steps": [...]}`) that runs as **one transaction and one undo step**: all steps apply or none does, and a failing step is reported as `failed_step`. Engine commands (`edit.undo`, `project.open`, `media.import`, `job.*`, `view.*`) cannot join a transaction; run one as the only step. A step's args may use an earlier step's output as in MCP's `cutweave_execute`: `{"$ref": "steps[0].output.left"}` (also `steps[1].output.media_ids[0]`, or the JSON Pointer form `#/steps/0/output/left`). A malformed reference, or one to the same or a later step, is `invalid` before anything runs.
 
 Results are one JSON object on stdout: `{"rev", "committed_rev", "output"}` for one step, `{"rev", "committed_rev", "steps": [{"cmd", "output"}]}` for a batch. Errors are one JSON object on stderr in the engine's wire form (`{"code": "not_found", "message": ..., ...}`).
 

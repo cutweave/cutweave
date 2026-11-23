@@ -185,7 +185,7 @@ fn parse_step(catalog: &Catalog, i: usize, step: Value) -> ExecResult<Step> {
             CmdError::not_found(ResourceKind::Command, &cmd),
         ));
     };
-    check_refs(&args, i, &mut String::new()).map_err(|e| ExecError::step(i, e, args.clone()))?;
+    check_step_refs(&args, i).map_err(|e| ExecError::step(i, e, args.clone()))?;
     Ok(Step {
         name: entry.meta.name,
         kind: entry.meta.kind,
@@ -354,20 +354,25 @@ pub(crate) fn escape(token: &str) -> String {
     token.replace('~', "~0").replace('/', "~1")
 }
 
-/// Replaces every `{"$ref": "..."}` in `args` by the referenced value of an earlier step's
-/// output. `Invalid` paths are relative to `args`.
-pub(crate) fn resolve_refs(
-    args: &Value,
-    outputs: &[Value],
-    step: usize,
-) -> Result<Value, CmdError> {
+/// Replaces every `{"$ref": "..."}` in `args` of step `step` by the referenced value of an
+/// earlier step's output (`outputs[N]` is step N's). `Invalid` paths are relative to `args`.
+///
+/// Public because `cutweave exec` batches use the same grammar (WP-1O.02 parity).
+pub fn resolve_refs(args: &Value, outputs: &[Value], step: usize) -> Result<Value, CmdError> {
     let mut out = args.clone();
     resolve_in(&mut out, outputs, step, &mut String::new())?;
     Ok(out)
 }
 
 /// Checks every `$ref` in `args` of step `step` before anything runs: well-formed, and naming
-/// an earlier step. Whether the field exists is only known once that step ran.
+/// an earlier step. Whether the field exists is only known once that step ran. `Invalid` paths
+/// are relative to `args`.
+///
+/// Public because `cutweave exec` batches use the same grammar (WP-1O.02 parity).
+pub fn check_step_refs(args: &Value, step: usize) -> Result<(), CmdError> {
+    check_refs(args, step, &mut String::new())
+}
+
 fn check_refs(args: &Value, step: usize, path: &mut String) -> Result<(), CmdError> {
     match args {
         Value::Object(map) => {
