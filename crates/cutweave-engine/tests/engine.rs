@@ -19,7 +19,7 @@ use std::sync::Arc;
 use std::time::{Duration, Instant};
 
 use cutweave_api::{Credential, Token};
-use cutweave_commands::{DocEvent, Rev, TxKind};
+use cutweave_commands::{CmdError, DocEvent, Rev, TxKind};
 use cutweave_engine::autosave::{AutosaveConfig, ProjectEvent};
 use cutweave_engine::project_io::{ProjectIoError, ProjectStore};
 use cutweave_engine::{
@@ -30,8 +30,8 @@ use cutweave_ops::media::{
     AnalysisInput, AnalysisStage, AnalysisStages, FakeProbe, MediaEvent, MediaProbe,
 };
 use engine_support::{
-    TempDir, drain, empty_project, headless, must, new_document, settle_threads, thread_count,
-    wait_for,
+    TempDir, drain, empty_project, headless, must, new_document, oneshot, settle_threads,
+    thread_count, wait_for,
 };
 use serde_json::json;
 
@@ -135,7 +135,7 @@ fn cold_start_to_ready_with_an_empty_project_is_under_a_second() {
 #[test]
 fn an_untitled_document_is_saved_as_a_project_closed_and_reopened() {
     let t = TempDir::new("saveas");
-    let engine = Engine::start(EngineConfig::new(EngineMode::Oneshot)).unwrap();
+    let engine = Engine::start(oneshot(t.path())).unwrap();
     assert_eq!(engine.port(), None);
     let h = engine.handle();
     let conn = h.connect(&agent("cli")).unwrap();
@@ -201,7 +201,7 @@ fn opening_a_locked_project_fails_and_keeps_the_current_document() {
     let t = TempDir::new("locked");
     let folder = empty_project(t.path(), "Busy");
     let holder = ProjectStore::open(&folder).unwrap();
-    let engine = Engine::start(EngineConfig::new(EngineMode::Oneshot)).unwrap();
+    let engine = Engine::start(oneshot(t.path())).unwrap();
     let conn = engine.handle().connect(&agent("cli")).unwrap();
     new_document(&conn, "Mine");
     let err = conn
@@ -304,6 +304,133 @@ fn job_commands_run_against_the_job_manager() {
         .call(Call::new("job.list", json!({})).in_tx(tx_id))
         .unwrap_err();
     assert_eq!(err.code(), "unsupported");
+    engine.shutdown();
+}
+
+// ----- the path policy -------------------------------------------------------------------------
+
+/// Makes `link` a directory link to `target`: a symlink, or on Windows a junction when
+/// symlinks need a privilege. Returns whether it worked.
+fn dir_link(target: &Path, link: &Path) -> bool {
+    #[cfg(unix)]
+    {
+        std::os::unix::fs::symlink(target, link).is_ok()
+    }
+    #[cfg(windows)]
+    {
+        std::os::windows::fs::symlink_dir(target, link).is_ok()
+            || std::process::Command::new("cmd")
+                .arg("/C")
+                .arg("mklink")
+                .arg("/J")
+                .arg(link)
+                .arg(target)
+                .output()
+                .is_ok_and(|o| o.status.success())
+    }
+    #[cfg(not(any(unix, windows)))]
+    {
+        let _ = (target, link);
+        false
+    }
+}
+
+/// `name` with `{"path": path}` fails with `Invalid` at `/path`.
+fn refused(conn: &cutweave_engine::Connection, name: &str, path: &Path) {
+    let err = conn
+        .call(Call::new(name, json!({ "path": path_str(path) })))
+        .unwrap_err();
+    assert!(
+        matches!(&err, CmdError::Invalid { path, .. } if path == "/path"),
+        "{name} {}: {err}",
+        path.display()
+    );
+}
+
+#[test]
+fn agents_open_and_save_only_inside_allowed_roots_while_the_ui_is_unrestricted() {
+    let t = TempDir::new("paths");
+    let approved = t.path().join("approved");
+    let outside = t.path().join("outside");
+    std::fs::create_dir_all(&approved).unwrap();
+    std::fs::create_dir_all(&outside).unwrap();
+    let inside_project = empty_project(&approved, "Inside");
+    let outside_project = empty_project(&outside, "Outside");
+    let mut config = EngineConfig::new(EngineMode::Gui);
+    config.ui_token = Some(ui_token());
+    config.api.run_dir = Some(t.path().join("run"));
+    config.allowed_roots = vec![approved.clone()];
+    let engine = Engine::start(config).unwrap();
+    let h = engine.handle();
+    let mcp = h.connect(&agent("mcp")).unwrap();
+    let user = h.connect(&Credential::Ui).unwrap();
+
+    // Outside the roots, by name, by `..` or through a link inside a root: refused.
+    refused(&mcp, "project.open", &outside_project);
+    new_document(&mcp, "Agent draft");
+    refused(&mcp, "project.save_as", &outside.join("Saved"));
+    refused(
+        &mcp,
+        "project.save_as",
+        &approved.join("..").join("outside").join("Dots"),
+    );
+    let link = approved.join("link");
+    assert!(dir_link(&outside, &link), "could not create a link");
+    refused(&mcp, "project.save_as", &link.join("Linked"));
+    refused(&mcp, "project.open", &link.join("Outside"));
+    assert!(!outside.join("Saved").exists() && !outside.join("Linked").exists());
+    assert_eq!(h.state(), SessionState::NoProject);
+
+    // Inside: fine.
+    let saved = approved.join("Saved");
+    must(&mcp, "project.save_as", json!({ "path": path_str(&saved) }));
+    must(
+        &mcp,
+        "project.open",
+        json!({ "path": path_str(&inside_project) }),
+    );
+
+    // The UI credential uses whatever the user picked; the folder of the project it opened
+    // is then usable for agents too.
+    must(
+        &user,
+        "project.open",
+        json!({ "path": path_str(&outside_project) }),
+    );
+    let copy = outside_project.join("Copy");
+    must(&mcp, "project.save_as", json!({ "path": path_str(&copy) }));
+    must(
+        &user,
+        "project.save_as",
+        json!({ "path": path_str(&t.path().join("Anywhere")) }),
+    );
+    refused(&mcp, "project.open", &outside_project);
+    engine.shutdown();
+}
+
+#[test]
+fn without_allowed_roots_agents_are_confined_to_the_start_project() {
+    let t = TempDir::new("noroots");
+    let start = empty_project(t.path(), "Start");
+    let other = empty_project(t.path(), "Other");
+    let mut config = EngineConfig::new(EngineMode::Headless);
+    config.project = Some(start.clone());
+    let engine = Engine::start(config).unwrap();
+    let cli = engine.handle().connect(&agent("cli")).unwrap();
+    refused(&cli, "project.open", &other);
+    refused(&cli, "project.save_as", &t.path().join("New"));
+    // The start project stays usable after it was closed.
+    must(&cli, "project.close", json!({ "save": false }));
+    refused(&cli, "project.open", &other);
+    must(&cli, "project.open", json!({ "path": path_str(&start) }));
+    engine.shutdown();
+
+    // Untitled and without roots: an agent can name no path at all.
+    let engine = Engine::start(EngineConfig::new(EngineMode::Oneshot)).unwrap();
+    let cli = engine.handle().connect(&agent("cli")).unwrap();
+    new_document(&cli, "Nowhere");
+    refused(&cli, "project.save_as", &t.path().join("Nowhere"));
+    refused(&cli, "project.open", &start);
     engine.shutdown();
 }
 
@@ -504,7 +631,7 @@ fn recovery_waits_for_a_decision_then_restores_and_autosaves() {
     let folder = empty_project(t.path(), "Recover");
     leave_unsaved_work(&folder, 3);
 
-    let mut config = EngineConfig::new(EngineMode::Oneshot);
+    let mut config = oneshot(t.path());
     config.autosave = Some(AutosaveConfig {
         idle: Duration::from_millis(100),
         poll: Duration::from_millis(20),

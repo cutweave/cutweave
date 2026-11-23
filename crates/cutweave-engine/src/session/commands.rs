@@ -44,12 +44,18 @@ impl std::fmt::Debug for SessionCall {
     }
 }
 
-fn absolute<'a>(pointer: &str, path: &'a str) -> Result<&'a Path, CmdError> {
-    let p = Path::new(path);
-    if path.trim().is_empty() || !p.is_absolute() {
-        return Err(CmdError::invalid(pointer, "must be an absolute path"));
+impl SessionCall {
+    /// `path` (the param at `pointer`) if it is absolute and the caller may use it: anywhere
+    /// for the UI credential, otherwise inside the approved roots or the open project's folder
+    /// (the rule `media.import` applies, arch §14, §18).
+    fn path<'a>(&self, pointer: &str, path: &'a str) -> Result<&'a Path, CmdError> {
+        let p = Path::new(path);
+        if path.trim().is_empty() || !p.is_absolute() {
+            return Err(CmdError::invalid(pointer, "must be an absolute path"));
+        }
+        self.core.check_path(&self.caller, pointer, path)?;
+        Ok(p)
     }
-    Ok(p)
 }
 
 // ----- project.open --------------------------------------------------------------------------
@@ -70,6 +76,8 @@ pub struct ProjectOpenOutput {
 /// fails with `Invalid` at `/path` and leaves the current project open. Unsaved work from a
 /// crashed session is reported in `project.recovery`; edits are refused until
 /// `project.recover` or `project.discard_recovery`. Every client must resync (`doc.reset`).
+/// Agents and headless callers may only open projects inside the open project's folder and
+/// the folders the user approved (`Invalid` at `/path` otherwise).
 #[command(
     name = "project.open",
     summary = "Open a project folder or .cutweave file (closes the current project)",
@@ -89,7 +97,7 @@ impl EngineCommand for ProjectOpen {
     type Output = ProjectOpenOutput;
 
     fn run(&self, s: &mut SessionCall) -> Result<ProjectOpenOutput, CmdError> {
-        let path = absolute("/path", &self.path)?;
+        let path = s.path("/path", &self.path)?;
         s.core.open_project(path)
     }
 }
@@ -131,7 +139,8 @@ impl EngineCommand for ProjectSave {
 /// Saves the document as a new project folder (created; it must not hold a project yet) and
 /// continues there; the old folder keeps its last save. A journaled project keeps its undo
 /// history; an untitled or read-only document is written and reopened (history restarts, every
-/// client resyncs on `doc.reset`).
+/// client resyncs on `doc.reset`). Agents and headless callers may only save inside the open
+/// project's folder and the folders the user approved (`Invalid` at `/path` otherwise).
 #[command(
     name = "project.save_as",
     summary = "Save the document as a new project folder and continue there",
@@ -151,7 +160,7 @@ impl EngineCommand for ProjectSaveAs {
     type Output = ProjectSaveOutput;
 
     fn run(&self, s: &mut SessionCall) -> Result<ProjectSaveOutput, CmdError> {
-        let path = absolute("/path", &self.path)?;
+        let path = s.path("/path", &self.path)?;
         s.core.save_project_as(path)
     }
 }

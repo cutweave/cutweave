@@ -314,23 +314,56 @@ impl Core {
         }
     }
 
-    /// `media.import` with a per-call [`ImportCtx`] (WP-1D.07 handoff).
+    /// The folders `ctx` may name in a path (arch §14, §18): `None` (anything) for the UI
+    /// credential, which only passes what the user picked; for agent, CLI, plugin and internal
+    /// callers the approved roots (`--allow-root`), the folder of the project the engine was
+    /// started with, and the open project's folder.
+    fn path_roots(&self, ctx: &ActorCtx, session: &Session) -> Option<AllowedRoots> {
+        if ctx.access() == Access::UI {
+            return None;
+        }
+        let mut roots = self.allowed_roots.clone();
+        if let Some(root) = session.project_root() {
+            roots.push(root.to_path_buf());
+        }
+        Some(AllowedRoots::new(roots))
+    }
+
+    /// `Invalid` at `pointer` unless `ctx` may use `path` ([`path_roots`](Self::path_roots);
+    /// the same rule as `media.import`).
+    pub(crate) fn check_path(
+        &self,
+        ctx: &ActorCtx,
+        pointer: &str,
+        path: &str,
+    ) -> Result<(), CmdError> {
+        let guard = self.session()?;
+        let Some(session) = guard.as_ref() else {
+            return Err(stopped());
+        };
+        match self.path_roots(ctx, session) {
+            Some(roots) if !roots.allows(path) => Err(CmdError::invalid(
+                pointer,
+                format!(
+                    "`{path}` is outside the folders you may use (the open project's folder and \
+                     folders the user approved); ask the user to approve its folder"
+                ),
+            )),
+            _ => Ok(()),
+        }
+    }
+
+    /// `media.import` with a per-call [`ImportCtx`] (WP-1D.07 handoff): the UI imports whatever
+    /// the user picked, everyone else only from [`path_roots`](Self::path_roots).
     fn import(&self, ctx: &ActorCtx, name: &str, params: Value) -> Result<Reply, CmdError> {
         let guard = self.session()?;
         let Some(session) = guard.as_ref() else {
             return Err(stopped());
         };
         let handle = session.handle().clone();
-        // The UI imports whatever the user picked; agents and headless callers only from the
-        // project folder and the approved roots (arch §14, §18).
-        let policy = if ctx.access() == Access::UI {
-            ImportPolicy::default()
-        } else {
-            let mut roots = self.allowed_roots.clone();
-            if let Some(root) = session.project_root() {
-                roots.push(root.to_path_buf());
-            }
-            ImportPolicy::restricted(AllowedRoots::new(roots))
+        let policy = match self.path_roots(ctx, session) {
+            None => ImportPolicy::default(),
+            Some(roots) => ImportPolicy::restricted(roots),
         };
         let sink = ImportSink::new(handle, ctx_for(ctx.actor(), self.next_conn()));
         let prober = self
@@ -757,9 +790,13 @@ impl Engine {
             }
             None => Session::untitled(&deps, None).map_err(StartError::Session)?,
         };
+        // The project the engine was started with stays usable for agents after it is closed
+        // (the launcher chose it); nothing else is without `--allow-root`.
+        let mut allowed_roots = config.allowed_roots.clone();
+        allowed_roots.extend(first.project_root().map(Path::to_path_buf));
         let core = Arc::new(Core {
             mode: config.mode,
-            allowed_roots: config.allowed_roots.clone(),
+            allowed_roots,
             runtime: rt,
             state: AtomicU8::new(0),
             next_conn: AtomicU64::new(FIRST_CONN),

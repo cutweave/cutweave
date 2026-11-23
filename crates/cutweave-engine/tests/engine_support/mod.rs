@@ -60,12 +60,21 @@ pub fn empty_project(dir: &Path, name: &str) -> PathBuf {
     folder
 }
 
-/// A headless engine configuration with a server on a free port and its run-file in `dir`.
+/// A headless engine configuration with a server on a free port and its run-file in `dir`;
+/// agents may use paths in `dir`.
 pub fn headless(dir: &Path) -> EngineConfig {
     let mut config = EngineConfig::new(EngineMode::Headless);
     config.port = Some(0);
     config.api.run_dir = Some(dir.join("run"));
     config.log = LogConfig::disabled();
+    config.allowed_roots = vec![dir.to_path_buf()];
+    config
+}
+
+/// A oneshot engine configuration whose agents may use paths in `dir`.
+pub fn oneshot(dir: &Path) -> EngineConfig {
+    let mut config = EngineConfig::new(EngineMode::Oneshot);
+    config.allowed_roots = vec![dir.to_path_buf()];
     config
 }
 

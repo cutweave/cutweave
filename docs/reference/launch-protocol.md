@@ -20,7 +20,7 @@ Until `cutweave engine` lands (WP-1K.01) the same entry point is the `cutweave-e
 | `--project P` | Open this project folder or `.cutweave` file at start (exit 10 if another process holds it). Without it the engine starts with an untitled document. |
 | `--run-dir D` | Run-file directory (default `~/.cutweave/run`). |
 | `--allow-origin O` | An extra allowed `Origin` (the launcher passes `app://cutweave`). Repeatable. |
-| `--allow-root R` | A folder agents and headless callers may import media from, besides the project folder. Repeatable. |
+| `--allow-root R` | A folder agents and headless callers may use (import media from, open projects in, save projects into), besides the project folders below. Repeatable. See [Path policy](#path-policy). |
 | `--deterministic-ids SEED` | Seeded document ids, separately seeded job ids, clock frozen at the Unix epoch (tests; WP-1B.08 adds the env var and refuses it in the GUI). |
 | `--log-dir D` / `--no-log` | Log directory (default `~/.cutweave/logs`), or no log file. |
 | `--handshake-timeout-ms MS` | How long a Gui engine waits for the handshake line (default 5000; tests shorten it). |
@@ -58,6 +58,20 @@ Human-readable diagnostics go to stderr; structured logs go to the log file.
 | 11 | `gpu_init_failed` | The GPU could not be initialized (Gui mode; WP-1I.05) | Show the GPU error |
 | 12 | `port_in_use` | The port could not be bound | Pick a new port, update the CSP, restart |
 | 13 | `bad_handshake` | Handshake missing, late, malformed, or given to a headless engine | Bug in the supervisor |
+
+## Path policy
+
+Every command that takes a filesystem path (`media.import`, `project.open`, `project.save_as`, and later export targets) checks it against the caller's credential (arch [§14](../01-architecture.md#14-mcp-server-in-cutweave-api), [§18](../01-architecture.md#18-security--privacy)):
+
+- **UI credential** (Gui mode): unrestricted. The editor only sends paths the user picked in a dialog.
+- **Every other credential** (agent tokens for MCP and the CLI, plugins, internal callers): the path must lie inside one of these folders, or the command fails with `Invalid` at the path's JSON Pointer (`/path`, `/paths/<i>`):
+  - the folders given with `--allow-root`;
+  - the folder of the project given with `--project` (for the engine's lifetime, also after it is closed);
+  - the folder of the project open right now.
+
+  The check is per path component (ASCII case-insensitive on Windows). A path with `..` is refused. Symlinks and junctions are resolved first, including for a folder about to be created (through its deepest existing ancestor), so a link inside an allowed folder cannot reach outside it.
+
+**Default:** without `--allow-root`, an agent of a headless or oneshot engine can use only the project it was started with (`--project`) and whatever project is open. An engine started without `--project` and without `--allow-root` accepts no path from agents (in Gui mode, until the user opens a project). Automation that creates projects or imports media from elsewhere passes `--allow-root`.
 
 ## Logs and crash marker
 
