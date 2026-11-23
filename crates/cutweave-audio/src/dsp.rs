@@ -89,6 +89,13 @@ impl Ramp {
         }
     }
 
+    /// The largest gain magnitude the ramp applies from now to its target (meters scale a
+    /// pre-gain peak by it).
+    #[must_use]
+    pub fn max_gain(&self) -> f32 {
+        self.current.abs().max(self.target.abs())
+    }
+
     /// Gain of the next frame.
     #[inline]
     fn next(&mut self) -> f32 {
@@ -143,6 +150,15 @@ impl Ramp {
             f[1] *= g;
         }
     }
+}
+
+/// Peak absolute value of the left and right channels of `buf` (interleaved stereo).
+#[must_use]
+pub fn peak(buf: &[f32]) -> [f32; 2] {
+    let (frames, _) = buf.as_chunks::<CHANNELS>();
+    frames.iter().fold([0.0f32; 2], |p, f| {
+        [p[0].max(f[0].abs()), p[1].max(f[1].abs())]
+    })
 }
 
 /// The master stage: master gain, then the soft limiter. Shared by the real-time graph and the

@@ -78,6 +78,9 @@ pub struct MixerConfig {
     pub ramp_ms: u32,
     /// Worker threads that render lanes (≥ 1).
     pub workers: usize,
+    /// Run the workers above normal priority (Windows `THREAD_PRIORITY_HIGHEST`), so a loaded
+    /// machine cannot starve the prefetch (Spike S2 finding 6). No effect on other platforms yet.
+    pub high_priority_workers: bool,
     /// Frames the real-time thread mixes per inner step (its scratch size; larger callbacks
     /// are processed in several steps).
     pub max_render_frames: usize,
@@ -85,7 +88,7 @@ pub struct MixerConfig {
 
 impl MixerConfig {
     /// The defaults at `rate`: 500 ms prefetch, 100 ms prime (1 s timeout), 100 ms edit latency,
-    /// 10 ms ramps, 2 workers, 2048-frame steps.
+    /// 10 ms ramps, 2 high-priority workers, 2048-frame steps.
     #[must_use]
     pub const fn new(rate: SampleRate) -> MixerConfig {
         MixerConfig {
@@ -96,6 +99,7 @@ impl MixerConfig {
             edit_latency_ms: 100,
             ramp_ms: 10,
             workers: 2,
+            high_priority_workers: true,
             max_render_frames: 2048,
         }
     }
@@ -470,11 +474,17 @@ impl Mixer {
             flush_pending,
         });
         let mut threads = Vec::new();
+        let high_priority = config.high_priority_workers;
         for (i, inbox) in inboxes.into_iter().enumerate() {
             let duties = janitor.take();
             let spawned = std::thread::Builder::new()
                 .name(format!("cutweave-audio-worker-{i}"))
-                .spawn(move || crate::worker::run(&inbox, duties));
+                .spawn(move || {
+                    if high_priority && !crate::priority::raise_current_thread() {
+                        tracing::debug!("audio worker {i} runs at normal priority");
+                    }
+                    crate::worker::run(&inbox, duties);
+                });
             match spawned {
                 Ok(handle) => threads.push(handle),
                 Err(e) => {
@@ -568,6 +578,21 @@ impl MixerHandle {
         self.shared
             .master_gain
             .store(db_to_gain(db).to_bits(), Ordering::Relaxed);
+    }
+
+    /// Sets the master gain as a linear factor, the unit of the `view` state's `master_gain`
+    /// (`view.set {patch: {master_gain}}`; 1 = unity, 0 = silence). Ramped like
+    /// [`set_master_gain`](Self::set_master_gain); NaN means unity, negative values are silence,
+    /// values above +24 dB are clamped.
+    pub fn set_master_gain_linear(&self, gain: f64) {
+        let db = if gain.is_nan() {
+            0.0
+        } else if gain <= 0.0 {
+            f64::NEG_INFINITY
+        } else {
+            20.0 * gain.log10()
+        };
+        self.set_master_gain(db);
     }
 
     /// The counters.

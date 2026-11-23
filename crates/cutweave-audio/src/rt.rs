@@ -12,7 +12,7 @@ use std::sync::atomic::{AtomicBool, AtomicI64, AtomicU32, AtomicU64, Ordering};
 use cutweave_model::{SampleRate, TrackId};
 use rtrb::{Consumer, Producer};
 
-use crate::dsp::{CHANNELS, Ramp, master};
+use crate::dsp::{CHANNELS, Ramp, master, peak};
 
 /// Reader id of a silent lane (no ring).
 pub(crate) const SILENT: u64 = 0;
@@ -173,6 +173,8 @@ pub(crate) struct RtBus {
     /// A reader replaced at a hand-off, kept until the plan is freed off the real-time thread.
     pub retired: Option<LaneReader>,
     pub ramp: Ramp,
+    /// Peak (L, R) after the track gain since the meter last took it.
+    pub peak: [f32; 2],
 }
 
 impl RtBus {
@@ -186,6 +188,7 @@ impl RtBus {
             next: None,
             retired: None,
             ramp: Ramp::at(gain),
+            peak: [0.0; 2],
         }
     }
 }
@@ -225,6 +228,23 @@ pub(crate) struct RtConfig {
     pub max_frames: usize,
 }
 
+/// The peak level of one track bus over a meter window.
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub struct BusPeak {
+    /// The track.
+    pub track: TrackId,
+    /// Peak absolute sample value (linear, L and R) after the track gain, before the master.
+    pub peak: [f32; 2],
+}
+
+impl BusPeak {
+    /// A silent entry (placeholder in fixed-size arrays).
+    pub const SILENT: BusPeak = BusPeak {
+        track: TrackId::from_u128(0),
+        peak: [0.0; 2],
+    };
+}
+
 /// What one [`Mixer::render`] call produced.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub struct RenderInfo {
@@ -245,6 +265,8 @@ pub struct Mixer {
     pos: i64,
     /// Frames waited while priming, `None` when not priming.
     priming: Option<u64>,
+    /// Seeks applied so far.
+    seeks: u64,
     master: Ramp,
     master_bits: u32,
     lane: Vec<f32>,
@@ -278,6 +300,7 @@ impl Mixer {
             live: Box::new(RtPlan::empty()),
             pos: 0,
             priming: None,
+            seeks: 0,
             master: Ramp::at(f32::from_bits(master_bits)),
             master_bits,
             shared,
@@ -294,6 +317,28 @@ impl Mixer {
     #[must_use]
     pub fn position(&self) -> i64 {
         self.pos
+    }
+
+    /// Writes the peak of every track bus since the last call into `out` (as many as fit) and
+    /// restarts the measurement; returns how many were written. Allocation- and lock-free.
+    pub fn take_bus_peaks(&mut self, out: &mut [BusPeak]) -> usize {
+        let mut n = 0;
+        for (slot, bus) in out.iter_mut().zip(self.live.buses.iter_mut()) {
+            *slot = BusPeak {
+                track: bus.track,
+                peak: bus.peak,
+            };
+            bus.peak = [0.0; 2];
+            n += 1;
+        }
+        n
+    }
+
+    /// How many seeks this mixer has applied. The output callback compares it across calls to
+    /// tell a seek (a discontinuity of the clock) from ordinary priming.
+    #[must_use]
+    pub fn seeks(&self) -> u64 {
+        self.seeks
     }
 
     /// Whether every lane that plays during the next `frames` frames already has its data in
@@ -402,6 +447,9 @@ impl Mixer {
             if bus.current.is_none() {
                 lane.fill(0.0);
             }
+            let p = peak(lane);
+            let g = bus.ramp.max_gain();
+            bus.peak = [bus.peak[0].max(p[0] * g), bus.peak[1].max(p[1] * g)];
             bus.ramp.add_scaled(out, lane);
         }
         master(out, &mut self.master);
@@ -439,6 +487,7 @@ impl Mixer {
         let ramp_frames = self.cfg.ramp_frames;
         if let Some(target) = plan.seek {
             self.pos = target;
+            self.seeks += 1;
             self.priming = Some(0);
             self.shared.priming.store(true, Ordering::Relaxed);
             self.shared.position.store(target, Ordering::Release);

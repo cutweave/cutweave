@@ -23,15 +23,29 @@
 //!
 //! The input is the segment list of `cutweave_render::evaluate_audio` (WP-1F.01). Times are
 //! flicks; output positions are sample indices at the output rate, converted only through
-//! `SampleRate::time_to_samples` / `samples_to_time` (arch §4.1). cpal output and the master
-//! clock are WP-1G.02.
+//! `SampleRate::time_to_samples` / `samples_to_time` (arch §4.1).
+//!
+//! WP-1G.02 adds the output and the master clock:
+//!
+//! * [`AudioOutput`] plays a [`Mixer`] on a device through cpal (feature `device`, on by
+//!   default: WASAPI, CoreAudio) or on the null output ([`OutputDevice::Null`],
+//!   `CUTWEAVE_AUDIO=null`), restarts the stream when the device changes, pauses, and meters the
+//!   master. Threading and restart rules: [`output`](crate::output) module docs.
+//! * [`AudioClock`]: the timeline position of the audio audible now, lock-free from any thread,
+//!   monotonic within a generation (a seek starts a new one). Video follows it (arch §10).
+//!   [`ManualClock`] is its deterministic stand-in for tests.
+//! * Master volume: [`MixerHandle::set_master_gain`] (dB) and
+//!   [`MixerHandle::set_master_gain_linear`] (the `view` state's linear `master_gain`).
 
+mod clock;
 mod control;
 mod dsp;
 mod error;
 mod lane;
 mod offline;
+pub mod output;
 mod plan;
+mod priority;
 mod rt;
 #[cfg(feature = "testing")]
 pub mod rt_alloc;
@@ -40,10 +54,16 @@ mod tone;
 mod voice;
 mod worker;
 
+pub use clock::{AudioClock, ClockReading, ClockState, ManualClock};
 pub use control::{MIN_PREFETCH_MS, MixerConfig, MixerHandle, MixerStats};
 pub use dsp::{CHANNELS, LIMITER_KNEE, db_to_gain, soft_limit};
-pub use error::{MixError, SourceError};
+pub use error::{MixError, OutputError, SourceError};
 pub use offline::{AudioChunk, MIXDOWN_CHUNK_FRAMES, Mixdown, mixdown};
-pub use rt::{Mixer, RenderInfo};
+pub use output::{
+    AUDIO_ENV, AudioOutput, DEFAULT_BUFFER_FRAMES, DeviceInfo, MAX_METER_BUSES, METER_HZ,
+    MeterFrame, OutputConfig, OutputDevice, OutputInfo, OutputState, OutputStats, StartError,
+    output_devices,
+};
+pub use rt::{BusPeak, Mixer, RenderInfo};
 pub use source::{PcmFormat, PcmSource, SourceFactory, SourceRequest};
 pub use tone::{Tone, ToneFactory, ToneSource, ToneSpec};

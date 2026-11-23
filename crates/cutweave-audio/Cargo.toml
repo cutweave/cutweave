@@ -9,10 +9,21 @@ rust-version.workspace = true
 publish = false
 
 [features]
+default = ["device"]
+# Real output devices through cpal (WASAPI on Windows, CoreAudio on macOS; WP-1G.02). Without it,
+# or on other targets, only the null output exists. Linux (ALSA) is left out until CI installs
+# the ALSA headers (`libasound2-dev`) that cpal's `alsa-sys` needs at build time.
+device = ["dep:cpal"]
 # Test instrumentation: `cutweave_audio::rt_alloc`, the counting global allocator that proves
-# `Mixer::render` never touches the heap. It is the crate's only `unsafe` code, so a normal build
-# has none.
+# `Mixer::render` and the output callback never touch the heap.
 testing = []
+
+[target.'cfg(any(windows, target_os = "macos"))'.dependencies]
+# Audio device output (arch §9 names cpal). Apache-2.0; pinned to the release Spike S2 measured
+# (10-minute soak: 0 underruns, 0 RT allocations). `realtime` promotes the callback thread (MMCSS
+# on Windows) through `audio_thread_priority` (MPL-2.0). The cpal graph passed the root licence
+# policy in S2 (M0 finding S2-11).
+cpal = { version = "=0.18.2", optional = true, features = ["realtime"] }
 
 [dependencies]
 cutweave-model = { path = "../cutweave-model" }
