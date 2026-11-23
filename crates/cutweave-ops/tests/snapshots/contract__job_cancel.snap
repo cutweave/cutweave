@@ -18,6 +18,7 @@ expression: "json!({\n    \"meta\": serde_json::to_value(meta).unwrap(), \"input
       "openWorldHint": false
     },
     "secret_fields": [],
+    "journaled": false,
     "input_schema": {
       "type": "object",
       "additionalProperties": false,

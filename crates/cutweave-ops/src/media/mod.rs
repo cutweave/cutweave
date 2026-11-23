@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 //! The `media` namespace (WP-1B.05, WP-1D.07; arch §5.1, §7): `media.register`,
-//! `media.import`, `media.list`, `media.remove`, `media.set_analysis_error`, and the
-//! `media.indexed` event.
+//! `media.import`, `media.list`, `media.remove`, and the `media.indexed` /
+//! `media.analysis_failed` events of background analysis (which never mutates the document).
 //!
 //! **Import (arch §7, R21).** `media.import` returns `media_ids` synchronously: it checks the
 //! caller's path allowlist, probes the files through a [`MediaProbe`] (in parallel, each with a
@@ -26,9 +26,8 @@ use cutweave_jobs::JobId;
 use cutweave_model::{Duration, MediaAsset, MediaId, MediaKind, ProbeInfo, Project, StreamKind};
 
 pub use analysis::{
-    ANALYSIS_ERROR_KEY, AnalysisErrorSet, AnalysisInput, AnalysisSink, AnalysisStage,
-    AnalysisStages, Analyzer, EVENTS, MAX_ANALYSIS_ERROR_CHARS, MediaEvent, MediaIndexed,
-    MediaSetAnalysisError, StageError, analysis_error,
+    AnalysisInput, AnalysisSink, AnalysisStage, AnalysisStages, Analyzer, EVENTS,
+    MediaAnalysisFailed, MediaEvent, MediaIndexed, StageError,
 };
 pub use policy::{AllowedRoots, DEFAULT_PROBE_PARALLELISM, DEFAULT_PROBE_TIMEOUT, ImportPolicy};
 pub use probe::{FakeProbe, MediaProbe, ProbeError, Probed};
@@ -50,8 +49,7 @@ pub fn register(registry: &mut Registry) -> Result<(), RegistryError> {
         .register::<MediaRegister>()?
         .register::<MediaImport>()?
         .register::<MediaList>()?
-        .register::<MediaRemove>()?
-        .register::<MediaSetAnalysisError>()?;
+        .register::<MediaRemove>()?;
     Ok(())
 }
 
@@ -488,9 +486,6 @@ pub struct MediaSummary {
     pub has_video: bool,
     /// Whether it has sound.
     pub has_audio: bool,
-    /// The last background analysis failure (thumbnails, waveform, index), if any: the
-    /// asset is usable but some previews may be missing.
-    pub analysis_error: Option<String>,
 }
 
 /// Result of `media.list`.
@@ -545,7 +540,6 @@ impl Query for MediaList {
                 duration: m.probe.duration,
                 has_video: m.has_video(),
                 has_audio: m.has_audio(),
-                analysis_error: analysis_error(m).map(str::to_owned),
             })
             .collect();
         let next_cursor = rest.next().and(media.last().map(|m| m.id));

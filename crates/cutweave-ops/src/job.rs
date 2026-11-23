@@ -5,8 +5,8 @@
 //! Jobs are engine state, not document state, so these are engine commands whose `Context` is
 //! the [`JobManager`]. The three readers are read-only engine commands (`readOnlyHint`,
 //! idempotent, never journaled), like `edit.history`; `job.status` and `job.wait` are MCP core
-//! tools (arch §14, R21). `job.cancel` changes only job state: it is not undoable and has
-//! nothing to replay, so the engine should not journal it.
+//! tools (arch §14, R21). `job.cancel` changes only job state, which is not persisted: it is
+//! not undoable and is declared `journaled = false`, so it is never journaled or replayed.
 //!
 //! `job.wait` blocks its caller for up to [`MAX_WAIT_MS`]: the engine must dispatch it off
 //! async executor threads (or call [`JobManager::wait_async`] directly).
@@ -231,6 +231,7 @@ impl EngineCommand for JobWait {
     summary = "Cancel a background job (stops within 500 ms; no effect once it finished)",
     engine,
     undoable = false,
+    journaled = false,
     mcp = "catalog",
     annotations(destructive = false, idempotent = true)
 )]

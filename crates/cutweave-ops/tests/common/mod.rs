@@ -13,8 +13,8 @@ use cutweave_commands::{
 };
 use cutweave_model::{GroupId, ItemId, MediaId, Project, SeededGen, SequenceId, Time, TrackId};
 use cutweave_ops::media::{
-    AnalysisSink, FakeProbe, ImportCtx, MediaEvent, MediaRegister, MediaRegistered,
-    MediaSetAnalysisError, MediaSink, register_batch,
+    AnalysisSink, FakeProbe, ImportCtx, MediaEvent, MediaRegister, MediaRegistered, MediaSink,
+    register_batch,
 };
 use serde_json::{Value, json};
 
@@ -157,17 +157,6 @@ impl H {
         ImportCtx::new(Arc::new(prober), Box::new(HSink(self.shared.clone())))
     }
 
-    /// An analysis sink that applies `media.set_analysis_error` to this harness's document
-    /// (as its own transaction, like the engine's) and records published events.
-    pub fn analysis_sink(&self) -> Arc<TestAnalysisSink> {
-        Arc::new(TestAnalysisSink {
-            registry: Arc::clone(&self.registry),
-            shared: Arc::clone(&self.shared),
-            events: Mutex::new(Vec::new()),
-            errors: Mutex::new(Vec::new()),
-        })
-    }
-
     /// Imports a fake video (`secs` seconds, optional audio) and returns its media ID.
     pub fn add_video(&mut self, path: &str, secs: i64, audio: bool) -> MediaId {
         let p = FakeProbe::video(path, secs, audio);
@@ -206,35 +195,14 @@ impl MediaSink for HSink {
     }
 }
 
-/// The engine side of analysis jobs, against the harness document (WP-1D.07).
+/// The engine side of analysis jobs: their event fan-out (WP-1D.07). Records the events.
+#[derive(Default)]
 pub struct TestAnalysisSink {
-    registry: Arc<Registry>,
-    shared: Arc<Mutex<Shared>>,
     /// Published events, in order.
     pub events: Mutex<Vec<MediaEvent>>,
-    /// Commands the bus refused.
-    pub errors: Mutex<Vec<CmdError>>,
 }
 
 impl AnalysisSink for TestAnalysisSink {
-    fn set_analysis_error(&self, command: MediaSetAnalysisError) {
-        let mut s = self.shared.lock().unwrap();
-        let Shared { doc, ids, commits } = &mut *s;
-        let mut txn = Transaction::begin(doc.clone());
-        let result = self.registry.invoke_json(
-            "media.set_analysis_error",
-            serde_json::to_value(&command).unwrap(),
-            &mut txn.tx(ids, Access::STANDARD),
-        );
-        match result {
-            Ok(_) => {
-                *doc = txn.commit().doc;
-                *commits += 1;
-            }
-            Err(e) => self.errors.lock().unwrap().push(e),
-        }
-    }
-
     fn publish(&self, event: MediaEvent) {
         self.events.lock().unwrap().push(event);
     }

@@ -176,15 +176,6 @@ const CONTRACT: &[Row] = &[
     ),
     // WP-1D.07: engine-state readers are read-only engine commands (like `edit.history`).
     (
-        "media.set_analysis_error",
-        EntryKind::Command,
-        McpExposure::Hidden,
-        false,
-        false,
-        true,
-        false,
-    ),
-    (
         "job.status",
         EntryKind::Engine,
         McpExposure::Core,
@@ -369,7 +360,19 @@ fn optional_params_are_not_required_in_the_input_schema() {
     assert_eq!(required("job.wait"), ["job_id"]);
     assert_eq!(required("job.cancel"), ["id"]);
     assert_eq!(required("job.list"), Vec::<String>::new());
-    assert_eq!(required("media.set_analysis_error"), ["media_id"]);
+}
+
+#[test]
+fn job_cancel_is_not_journaled_and_analysis_writes_no_document_command() {
+    let registry = registry();
+    // Job state is not persisted, so there is nothing to replay (WP-1D.07).
+    let cancel = &registry.get("job.cancel").unwrap().meta;
+    assert!(!cancel.journaled && !cancel.is_journaled());
+    for name in ["media.import", "media.register", "clip.split"] {
+        assert!(registry.get(name).unwrap().meta.journaled, "{name}");
+    }
+    // Background analysis reports through jobs and events, never through the document.
+    assert!(registry.get("media.set_analysis_error").is_none());
 }
 
 #[test]

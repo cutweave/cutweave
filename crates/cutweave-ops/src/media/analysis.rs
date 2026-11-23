@@ -3,17 +3,16 @@
 //! an asset, one job per applicable [`AnalysisStage`] runs on the [`JobManager`] (index →
 //! thumbnails → waveform as WP-1D.02/1D.05/1D.06 land; none are registered before that).
 //!
-//! - A stage that fails records `analysis_error` on the asset through the bus
-//!   ([`MediaSetAnalysisError`], via the engine's [`AnalysisSink`]), so the UI can badge it.
+//! - **Analysis never mutates the document.** Its results live in the global caches outside
+//!   the project (arch §7, §17), and its status is job state: a stage that fails is a failed
+//!   job (`job.status`, `job.list{media_id}` give the stage label and error) and is announced
+//!   as `media.analysis_failed` ([`MediaEvent::AnalysisFailed`]) so the UI can badge the asset
+//!   live. After an engine restart analysis simply runs again (cheap once the caches exist).
 //! - A stage that [builds the index](AnalysisStage::builds_index) announces `media.indexed`
 //!   ([`MediaEvent::Indexed`]) when it succeeds.
 //! - A stage may [require](AnalysisStage::requires) earlier stages: its job waits for theirs
 //!   (without holding a budget slot) and is skipped if one fails.
-//!
-//! **Where `analysis_error` lives.** Model v1's `MediaAsset` has no typed field for it yet
-//! (the arch §4.2 `analysis{}` block needs a model change and migration). Until then it is
-//! kept in the asset's `extra` map under [`ANALYSIS_ERROR_KEY`], which serializes as a
-//! top-level `analysis_error` field of the asset, exactly where the typed field will be.
+//! - Events reach subscribers through the engine's [`AnalysisSink`].
 
 use std::{
     collections::BTreeMap,
@@ -21,94 +20,23 @@ use std::{
     sync::Arc,
 };
 
-use cutweave_commands::{CmdError, Command, QueryCtx, Tx, command, wire};
+use cutweave_commands::wire;
 use cutweave_jobs::{JobCtx, JobError, JobId, JobKind, JobManager, JobSpec};
-use cutweave_model::{MediaAsset, MediaId, MediaKind, ProbeInfo};
+use cutweave_model::{MediaId, MediaKind, ProbeInfo};
 use serde::{Deserialize, Serialize};
-use serde_json::Value;
-
-/// The asset field that holds the last analysis failure (see the module docs).
-pub const ANALYSIS_ERROR_KEY: &str = "analysis_error";
-/// Longest stored analysis error, in characters (longer messages are cut).
-pub const MAX_ANALYSIS_ERROR_CHARS: usize = 500;
 
 /// The events of the `media` namespace, as `(name, summary)`: input for the engine's event
 /// catalog (WP-1N.01).
-pub const EVENTS: &[(&str, &str)] = &[(
-    "media.indexed",
-    "A media asset's frame index is ready (frame-exact seeking and decoding can use it)",
-)];
-
-/// The last analysis failure recorded on `media`, if any.
-#[must_use]
-pub fn analysis_error(media: &MediaAsset) -> Option<&str> {
-    media.extra.get(ANALYSIS_ERROR_KEY).and_then(Value::as_str)
-}
-
-// ----- media.set_analysis_error --------------------------------------------------------------
-
-/// Result of `media.set_analysis_error`.
-#[wire]
-#[derive(Copy)]
-pub struct AnalysisErrorSet {
-    /// The asset.
-    pub media_id: MediaId,
-}
-
-/// Records (or, with no `error`, clears) the failure of a background analysis stage on a
-/// media asset, so the UI can show a badge. Internal plumbing of the analysis jobs, applied by
-/// the engine as the `system` actor; not undoable (it reports, it does not edit).
-#[command(
-    name = "media.set_analysis_error",
-    summary = "Record or clear a background analysis failure on a media asset (internal)",
-    undoable = false,
-    mcp = "hidden",
-    annotations(destructive = false, idempotent = true)
-)]
-pub struct MediaSetAnalysisError {
-    /// The asset.
-    pub media_id: MediaId,
-    /// What failed (1..=500 characters), or absent to clear it.
-    pub error: Option<String>,
-}
-
-impl Command for MediaSetAnalysisError {
-    type Output = AnalysisErrorSet;
-
-    fn validate(&self, ctx: &QueryCtx<'_>) -> Result<(), CmdError> {
-        ctx.media(self.media_id)?;
-        if let Some(error) = &self.error {
-            let chars = error.chars().count();
-            if chars == 0 || chars > MAX_ANALYSIS_ERROR_CHARS {
-                return Err(CmdError::invalid(
-                    "/error",
-                    format!("the error must be 1..={MAX_ANALYSIS_ERROR_CHARS} characters"),
-                ));
-            }
-        }
-        Ok(())
-    }
-
-    fn apply(&self, tx: &mut Tx<'_>) -> Result<AnalysisErrorSet, CmdError> {
-        self.validate(&tx.query_ctx())?;
-        tx.update_media(self.media_id, |media| {
-            match &self.error {
-                Some(error) => {
-                    media
-                        .extra
-                        .insert(ANALYSIS_ERROR_KEY, Value::String(error.clone()));
-                }
-                None => {
-                    media.extra.remove(ANALYSIS_ERROR_KEY);
-                }
-            }
-            Ok(())
-        })?;
-        Ok(AnalysisErrorSet {
-            media_id: self.media_id,
-        })
-    }
-}
+pub const EVENTS: &[(&str, &str)] = &[
+    (
+        "media.indexed",
+        "A media asset's frame index is ready (frame-exact seeking and decoding can use it)",
+    ),
+    (
+        "media.analysis_failed",
+        "A background analysis stage failed on a media asset (it stays usable; previews may be missing)",
+    ),
+];
 
 // ----- events --------------------------------------------------------------------------------
 
@@ -120,6 +48,20 @@ pub struct MediaIndexed {
     pub media_id: MediaId,
 }
 
+/// `media.analysis_failed`: a background analysis stage failed on an asset. The asset stays
+/// usable; what the stage produces (thumbnails, waveform, …) may be missing.
+#[wire]
+pub struct MediaAnalysisFailed {
+    /// The asset.
+    pub media_id: MediaId,
+    /// The stage (`index`, `thumbnails`, `waveform`): the job's label.
+    pub stage: String,
+    /// The failed job (`job.status` shows it).
+    pub job_id: JobId,
+    /// What went wrong (the job's error).
+    pub error: String,
+}
+
 /// The events of the `media` namespace (see [`EVENTS`]).
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 #[serde(tag = "event")]
@@ -128,6 +70,9 @@ pub enum MediaEvent {
     /// `media.indexed`.
     #[serde(rename = "media.indexed")]
     Indexed(MediaIndexed),
+    /// `media.analysis_failed`.
+    #[serde(rename = "media.analysis_failed")]
+    AnalysisFailed(MediaAnalysisFailed),
 }
 
 // ----- stages --------------------------------------------------------------------------------
@@ -153,8 +98,9 @@ pub struct AnalysisInput {
 ///
 /// [`run`](Self::run) is blocking code on a job thread under the decode budget: it must poll
 /// `ctx.check()?` between units of work (a cancelled job stops within 500 ms) and should report
-/// `ctx.progress(..)`. Returning `Err(JobError::Failed(..))` (or panicking) fails the job and
-/// records `analysis_error` on the asset.
+/// `ctx.progress(..)`. It writes its results to the caches, never to the document. Returning
+/// `Err(JobError::Failed(..))` (or panicking) fails the job and announces
+/// `media.analysis_failed`.
 pub trait AnalysisStage: Send + Sync {
     /// A short stable name: the job label (`index`, `thumbnails`, `waveform`). Lowercase
     /// ASCII letters, digits and `_`, unique among the registered stages.
@@ -270,13 +216,9 @@ impl std::fmt::Debug for AnalysisStages {
     }
 }
 
-/// How analysis jobs reach the rest of the engine. The engine implements it.
+/// Where analysis jobs publish their events: the engine implements it by forwarding into its
+/// event fan-out. It is called from job threads.
 pub trait AnalysisSink: Send + Sync {
-    /// Applies `command` through the command bus as the `system` actor, in its own
-    /// transaction. Failures (for example the asset was removed meanwhile) are the engine's to
-    /// log; the job's own outcome does not change.
-    fn set_analysis_error(&self, command: MediaSetAnalysisError);
-
     /// Broadcasts a media event to subscribers.
     fn publish(&self, event: MediaEvent);
 }
@@ -291,7 +233,7 @@ pub struct Analyzer {
 }
 
 impl Analyzer {
-    /// Runs `stages` on `jobs`, reporting through `sink`.
+    /// Runs `stages` on `jobs`, publishing events through `sink`.
     #[must_use]
     pub fn new(
         jobs: JobManager,
@@ -349,13 +291,6 @@ impl std::fmt::Debug for Analyzer {
     }
 }
 
-fn truncate(text: String, max: usize) -> String {
-    match text.char_indices().nth(max) {
-        Some((cut, _)) => text[..cut].to_owned(),
-        None => text,
-    }
-}
-
 fn run_stage(
     stage: &dyn AnalysisStage,
     media: &AnalysisInput,
@@ -373,12 +308,13 @@ fn run_stage(
                 }));
             }
         }
-        Err(JobError::Failed(msg)) if !ctx.is_cancelled() => {
-            let error = truncate(format!("{}: {msg}", stage.name()), MAX_ANALYSIS_ERROR_CHARS);
-            sink.set_analysis_error(MediaSetAnalysisError {
+        Err(JobError::Failed(error)) if !ctx.is_cancelled() => {
+            sink.publish(MediaEvent::AnalysisFailed(MediaAnalysisFailed {
                 media_id: media.media_id,
-                error: Some(error),
-            });
+                stage: stage.name().to_owned(),
+                job_id: ctx.id(),
+                error: error.clone(),
+            }));
         }
         Err(_) => {}
     }
@@ -431,24 +367,39 @@ mod tests {
     }
 
     #[test]
-    fn long_errors_are_cut_on_a_char_boundary() {
-        assert_eq!(truncate("héllo".into(), 2), "hé");
-        assert_eq!(truncate("ok".into(), 5), "ok");
-    }
-
-    #[test]
-    fn media_indexed_has_its_wire_name() {
-        let e = MediaEvent::Indexed(MediaIndexed {
+    fn media_events_have_their_wire_names() {
+        let indexed = MediaEvent::Indexed(MediaIndexed {
             media_id: MediaId::from_u128(1),
         });
-        let v = serde_json::to_value(&e).unwrap();
+        let failed = MediaEvent::AnalysisFailed(MediaAnalysisFailed {
+            media_id: MediaId::from_u128(1),
+            stage: "thumbnails".into(),
+            job_id: JobId::from_u128(2),
+            error: "decoder error".into(),
+        });
+        let (vi, vf) = (
+            serde_json::to_value(&indexed).unwrap(),
+            serde_json::to_value(&failed).unwrap(),
+        );
         assert_eq!(
-            v,
+            vi,
             serde_json::json!({
                 "event": "media.indexed",
                 "media_id": "med_00000000000000000000000000000001"
             })
         );
-        assert_eq!(serde_json::from_value::<MediaEvent>(v).unwrap(), e);
+        assert_eq!(
+            vf,
+            serde_json::json!({
+                "event": "media.analysis_failed",
+                "media_id": "med_00000000000000000000000000000001",
+                "stage": "thumbnails",
+                "job_id": "job_00000000000000000000000000000002",
+                "error": "decoder error"
+            })
+        );
+        assert_eq!(serde_json::from_value::<MediaEvent>(vi).unwrap(), indexed);
+        assert_eq!(serde_json::from_value::<MediaEvent>(vf).unwrap(), failed);
+        assert!(EVENTS.iter().any(|(n, _)| *n == "media.analysis_failed"));
     }
 }

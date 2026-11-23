@@ -1,7 +1,8 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 //! WP-1D.07: `media.import` with timed parallel probing, the path allowlist and background
-//! analysis jobs; `job.status`, `job.list`, `job.wait`, `job.cancel`; `media.set_analysis_error`
-//! and `media.indexed`. FFmpeg-free (R27): fake prober and fake analysis stages.
+//! analysis jobs; `job.status`, `job.list`, `job.wait`, `job.cancel`; the `media.indexed` and
+//! `media.analysis_failed` events (analysis never mutates the document). FFmpeg-free (R27):
+//! fake prober and fake analysis stages.
 
 #![allow(clippy::unwrap_used, clippy::expect_used)]
 
@@ -16,7 +17,7 @@ use std::{
     time::{Duration, Instant},
 };
 
-use common::{H, TestAnalysisSink, assert_code, assert_invalid, id};
+use common::{H, TestAnalysisSink, assert_invalid, id};
 use cutweave_commands::{Access, CmdError};
 use cutweave_jobs::{JobConfig, JobCtx, JobError, JobId, JobManager};
 use cutweave_model::MediaId;
@@ -24,7 +25,7 @@ use cutweave_ops::{
     job::{JobWait, MAX_WAIT_MS},
     media::{
         AllowedRoots, AnalysisInput, AnalysisStage, AnalysisStages, Analyzer, FakeProbe,
-        ImportPolicy, MediaEvent, MediaIndexed, ProbeError, analysis_error,
+        ImportPolicy, MediaAnalysisFailed, MediaEvent, MediaIndexed, ProbeError,
     },
 };
 use serde_json::{Value, json};
@@ -123,7 +124,7 @@ impl J {
 
     fn with_slots(stages: Vec<Arc<dyn AnalysisStage>>, decode_slots: usize) -> J {
         let h = H::empty();
-        let sink = h.analysis_sink();
+        let sink = Arc::new(TestAnalysisSink::default());
         let mut registered = AnalysisStages::new();
         for stage in stages {
             registered.add(stage).unwrap();
@@ -234,7 +235,6 @@ fn import_registers_three_files_synchronously_and_analysis_completes_through_job
     assert_eq!(list["total"], 3);
     for m in list["media"].as_array().unwrap() {
         assert!(media_ids.contains(&id(&m["id"])));
-        assert!(m["analysis_error"].is_null());
     }
     let listed_video = list["media"]
         .as_array()
@@ -285,7 +285,7 @@ fn import_registers_three_files_synchronously_and_analysis_completes_through_job
     assert_eq!(
         j.h.commits(),
         1,
-        "one registration transaction, no analysis errors"
+        "one registration transaction; analysis never writes the document"
     );
 }
 
@@ -479,7 +479,7 @@ fn stages_that_do_not_apply_are_skipped() {
 // ----- analysis failures ---------------------------------------------------------------------
 
 #[test]
-fn a_failing_stage_sets_analysis_error_and_skips_dependent_stages() {
+fn a_failing_stage_is_a_failed_job_and_an_event_never_a_document_change() {
     let ran = Arc::new(Mutex::new(Vec::new()));
     let j = J::new(vec![
         Arc::new(Failing),
@@ -487,72 +487,70 @@ fn a_failing_stage_sets_analysis_error_and_skips_dependent_stages() {
     ]);
     let out = j.import(three(), &["/m/a.mp4"]);
     let mid: MediaId = id(&out["media_ids"][0]);
+    let doc_after_import = j.h.doc();
     let jobs = job_ids(&out);
     let index = j.wait(&jobs[0], MAX_WAIT_MS);
     assert_eq!(index["state"], "failed");
+    assert_eq!(index["label"], "index");
     assert_eq!(index["error"], "corrupt GOP at 00:00:03");
     let thumbs = j.wait(&jobs[1], MAX_WAIT_MS);
     assert_eq!(thumbs["state"], "failed");
     assert!(thumbs["error"].as_str().unwrap().starts_with("skipped"));
     assert!(ran.lock().unwrap().is_empty());
 
-    // The asset is still registered, now with a badge-worthy error, and nothing was indexed.
-    let doc = j.h.doc();
+    // One `media.analysis_failed`, for the stage that failed (not for the skipped one), and
+    // no `media.indexed`.
     assert_eq!(
-        analysis_error(&doc.media[&mid]),
-        Some("index: corrupt GOP at 00:00:03")
+        *j.sink.events.lock().unwrap(),
+        [MediaEvent::AnalysisFailed(MediaAnalysisFailed {
+            media_id: mid,
+            stage: "index".into(),
+            job_id: id(&jobs[0]),
+            error: "corrupt GOP at 00:00:03".into(),
+        })]
     );
-    let list = j.h.query("media.list", json!({})).unwrap();
-    assert_eq!(
-        list["media"][0]["analysis_error"],
-        "index: corrupt GOP at 00:00:03"
-    );
-    assert!(j.sink.events.lock().unwrap().is_empty());
-    assert!(j.sink.errors.lock().unwrap().is_empty());
-    // The document JSON carries it as a field of the asset.
-    let asset = serde_json::to_value(&doc.media[&mid]).unwrap();
-    assert_eq!(asset["analysis_error"], "index: corrupt GOP at 00:00:03");
+    // The failure is visible as job state for the asset...
+    let on_asset = j
+        .job("job.list", json!({"media_id": mid, "state": "failed"}))
+        .unwrap();
+    let labels: Vec<&str> = on_asset["jobs"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .map(|job| job["label"].as_str().unwrap())
+        .collect();
+    assert_eq!(labels, ["thumbnails", "index"]);
+    // ...and the document is untouched: the import stays the only change (undo stays clean).
+    assert_eq!(j.h.doc(), doc_after_import);
+    assert_eq!(j.h.commits(), 1);
+    let asset = serde_json::to_value(&j.h.doc().media[&mid]).unwrap();
+    assert!(asset.get("analysis_error").is_none());
 }
 
 #[test]
-fn set_analysis_error_sets_and_clears_with_an_invertible_patch() {
-    let mut h = H::empty();
-    let m = h.add_video("/m/v.mp4", 5, false);
-    let out = h.ok(
-        "media.set_analysis_error",
-        json!({"media_id": m, "error": "thumbnails: decoder error"}),
-    );
-    assert_eq!(out["media_id"], json!(m));
-    assert_eq!(
-        analysis_error(&h.doc().media[&m]),
-        Some("thumbnails: decoder error")
-    );
-    h.ok("media.set_analysis_error", json!({"media_id": m}));
-    assert_eq!(analysis_error(&h.doc().media[&m]), None);
-    assert_invalid(
-        h.run(
-            "media.set_analysis_error",
-            json!({"media_id": m, "error": ""}),
-        ),
-        "/error",
-    );
-    assert_invalid(
-        h.run(
-            "media.set_analysis_error",
-            json!({"media_id": m, "error": "x".repeat(501)}),
-        ),
-        "/error",
-    );
-    assert_code(
-        h.run(
-            "media.set_analysis_error",
-            json!({"media_id": MediaId::from_u128(1), "error": "x"}),
-        ),
-        "not_found",
-    );
-    let meta = &h.registry.get("media.set_analysis_error").unwrap().meta;
-    assert!(!meta.undoable);
-    assert_eq!(meta.mcp, cutweave_commands::McpExposure::Hidden);
+fn a_panicking_stage_fails_its_job_with_an_event() {
+    struct Panics;
+    impl AnalysisStage for Panics {
+        fn name(&self) -> &'static str {
+            "waveform"
+        }
+        fn run(&self, _: &AnalysisInput, _: &JobCtx) -> Result<(), JobError> {
+            panic!("decoder exploded")
+        }
+    }
+    let j = J::new(vec![Arc::new(Panics)]);
+    let out = j.import(three(), &["/m/b.wav"]);
+    let job = job_ids(&out)[0].clone();
+    let done = j.wait(&job, MAX_WAIT_MS);
+    assert_eq!(done["state"], "failed");
+    assert_eq!(done["error"], "the stage crashed");
+    match j.sink.events.lock().unwrap().as_slice() {
+        [MediaEvent::AnalysisFailed(e)] => {
+            assert_eq!(e.stage, "waveform");
+            assert_eq!(json!(e.job_id), job);
+        }
+        other => panic!("expected one media.analysis_failed, got {other:?}"),
+    }
 }
 
 // ----- job.* ---------------------------------------------------------------------------------
@@ -599,9 +597,8 @@ fn job_cancel_stops_a_running_analysis_within_500_ms() {
     let took = t.elapsed();
     assert_eq!(done["state"], "cancelled");
     assert!(took < Duration::from_millis(500), "{took:?}");
-    // A cancelled stage records no analysis error.
-    let mid: MediaId = id(&out["media_ids"][0]);
-    assert_eq!(analysis_error(&j.h.doc().media[&mid]), None);
+    // A cancelled stage is not reported as a failure.
+    assert!(j.sink.events.lock().unwrap().is_empty());
     // Cancelling a finished job changes nothing.
     assert_eq!(j.job("job.cancel", json!({"id": job})).unwrap(), done);
 }
