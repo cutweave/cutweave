@@ -165,11 +165,19 @@ mod imp {
 
     pub(crate) type JoinHandle = loom::thread::JoinHandle<()>;
 
+    /// The actor thread's stack under loom. Loom threads are generators with a 32 KiB stack by
+    /// default, too small for real commands (serde, patches, item maps); loom hands this to
+    /// its generator as words, so 256 Ki words is the 2 MiB a std thread gets.
+    const ACTOR_STACK: usize = 256 * 1024;
+
     pub(crate) fn spawn(
         name: String,
         f: impl FnOnce() + Send + 'static,
     ) -> std::io::Result<JoinHandle> {
-        loom::thread::Builder::new().name(name).spawn(f)
+        loom::thread::Builder::new()
+            .name(name)
+            .stack_size(ACTOR_STACK)
+            .spawn(f)
     }
 
     /// Under loom the cell is a modelled lock, so every interleaving of a publication with

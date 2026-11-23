@@ -183,6 +183,117 @@ impl Command for DeleteItem {
     }
 }
 
+/// Sets an item's start and length, refusing overlaps on its track (the stand-in for
+/// `clip.move` / `clip.trim` of WP-1B.06).
+fn place(
+    tx: &mut Tx<'_>,
+    item: ItemId,
+    start: Option<u32>,
+    frames: Option<u32>,
+) -> Result<Done, CmdError> {
+    let frames_to = |n: u32| i64::from(n) * FRAME;
+    let at = tx.item(item)?;
+    let start = match start {
+        Some(f) => {
+            Time::from_flicks(frames_to(f)).map_err(|e| CmdError::invalid("/at", e.to_string()))?
+        }
+        None => at.item.start(),
+    };
+    let duration = match frames {
+        Some(0) => return Err(CmdError::invalid("/frames", "must be at least 1")),
+        Some(f) => Duration::from_flicks(frames_to(f))
+            .map_err(|e| CmdError::invalid("/frames", e.to_string()))?,
+        None => at.item.duration(),
+    };
+    let end = start
+        .checked_add(duration)
+        .map_err(|e| CmdError::invalid("", e.to_string()))?;
+    if at
+        .track
+        .items
+        .overlapping(start, end)
+        .any(|other| other.id() != item)
+    {
+        return Err(CmdError::invalid(
+            "",
+            "would overlap another item on its track",
+        ));
+    }
+    tx.update_item(item, |i| {
+        i.set_start(start);
+        i.set_duration(duration);
+        Ok(Done {})
+    })
+}
+
+/// Moves a clip to start at frame `at` (changes only `start`).
+#[command(
+    name = "clip.move",
+    summary = "Move a clip in time",
+    undoable,
+    mcp = "hidden",
+    annotations(destructive = false)
+)]
+pub struct MoveClip {
+    /// The clip.
+    pub item: ItemId,
+    /// The new start, in frames.
+    pub at: u32,
+}
+
+impl Command for MoveClip {
+    type Output = Done;
+
+    fn apply(&self, tx: &mut Tx<'_>) -> Result<Done, CmdError> {
+        place(tx, self.item, Some(self.at), None)
+    }
+}
+
+/// Trims a clip to `frames` frames (changes only `duration`).
+#[command(
+    name = "clip.trim",
+    summary = "Trim a clip's end",
+    undoable,
+    mcp = "hidden",
+    annotations(destructive = false)
+)]
+pub struct TrimClip {
+    /// The clip.
+    pub item: ItemId,
+    /// The new length, in frames (at least 1).
+    pub frames: u32,
+}
+
+impl Command for TrimClip {
+    type Output = Done;
+
+    fn apply(&self, tx: &mut Tx<'_>) -> Result<Done, CmdError> {
+        place(tx, self.item, None, Some(self.frames))
+    }
+}
+
+/// Removes a track with its items (one op on the whole track: a change *above* its items).
+#[command(
+    name = "track.remove",
+    summary = "Remove a track and its items",
+    undoable,
+    mcp = "hidden",
+    annotations(destructive = true)
+)]
+pub struct RemoveTrack {
+    /// The track.
+    pub track: TrackId,
+}
+
+impl Command for RemoveTrack {
+    type Output = Done;
+
+    fn apply(&self, tx: &mut Tx<'_>) -> Result<Done, CmdError> {
+        tx.remove_track(self.track)?;
+        Ok(Done {})
+    }
+}
+
 /// Renames the project; the name `fail` fails after renaming (rollback check).
 #[command(
     name = "project.rename",
@@ -422,6 +533,12 @@ pub fn registry() -> Arc<Registry> {
         .register::<SetEnabled>()
         .unwrap()
         .register::<DeleteItem>()
+        .unwrap()
+        .register::<MoveClip>()
+        .unwrap()
+        .register::<TrimClip>()
+        .unwrap()
+        .register::<RemoveTrack>()
         .unwrap()
         .register::<RenameProject>()
         .unwrap()
