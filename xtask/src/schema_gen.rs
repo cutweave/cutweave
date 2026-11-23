@@ -11,6 +11,7 @@
 //! | `schema/patch-fixtures.json` | RFC 6902-style patches produced by real commands, for the TS patch applier |
 //! | `schema/schema-hash.txt`, `crates/cutweave-commands/src/schema_hash.rs` | sha256 of `commands.json` |
 //! | `docs/reference/commands.md` | human-readable command table |
+//! | `docs/reference/cli.md` | the `cutweave` command line, from the clap definition of `cutweave-cli` (WP-1K.01) |
 //! | `packages/protocol/src/generated/*.ts` | TypeScript types, `CommandMap`, `EventMap`, schema hash (`ts_gen`) |
 //!
 //! `--check` regenerates in memory and compares against the files on disk, printing a unified
@@ -42,6 +43,7 @@ const FIXTURES: &str = "schema/patch-fixtures.json";
 const HASH_TXT: &str = "schema/schema-hash.txt";
 const HASH_RS: &str = "crates/cutweave-commands/src/schema_hash.rs";
 const REFERENCE: &str = "docs/reference/commands.md";
+const CLI_REFERENCE: &str = "docs/reference/cli.md";
 
 /// The registry exactly as the core engine builds it ([`cutweave_engine::build_registry`]):
 /// every `cutweave-ops` namespace, the `edit.*` history commands of `cutweave-commands` and the
@@ -376,6 +378,10 @@ pub fn generate() -> Result<Files, String> {
         .into_bytes(),
     );
     files.insert(REFERENCE.into(), reference_markdown(&registry).into_bytes());
+    files.insert(
+        CLI_REFERENCE.into(),
+        cutweave_cli::reference_markdown().into_bytes(),
+    );
     // TypeScript for `packages/protocol` (WP-1N.02).
     let events = events_catalog();
     let error_codes: Vec<String> = queries_catalog(&registry)["error_codes"]

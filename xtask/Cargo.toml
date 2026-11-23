@@ -23,6 +23,8 @@ specta-typescript = { workspace = true }
 specta-serde = { workspace = true }
 
 # `cargo xtask gen` builds the registry the way the engine does and dumps its catalogs (WP-1N.01).
+# `docs/reference/cli.md` is generated from the CLI clap definition (WP-1K.01).
+cutweave-cli = { path = "../crates/cutweave-cli" }
 cutweave-commands = { path = "../crates/cutweave-commands" }
 cutweave-engine = { path = "../crates/cutweave-engine" }
 # `job.progress` for schema/events.json (WP-1D.07).

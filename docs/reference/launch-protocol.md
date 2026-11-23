@@ -11,7 +11,7 @@ cutweave engine [--headless] --port N [--token-stdin] [--project P] [--run-dir D
                 [--dev-stub-media]
 ```
 
-Until `cutweave engine` lands (WP-1K.01) the same entry point is the `cutweave-engine-serve` binary of `cutweave-engine` (point `CUTWEAVE_ENGINE_BIN` at it).
+`cutweave engine` (WP-1K.01, [cli.md](cli.md)) calls `cutweave_engine::launch::run`. The `cutweave-engine-serve` binary of `cutweave-engine` is the same entry point without the other subcommands; the integration tests of the engine and of `@cutweave/protocol` still spawn it.
 
 | Flag | Meaning |
 |---|---|

@@ -1,0 +1,11 @@
+---
+source: crates/cutweave-cli/tests/help.rs
+expression: "help(&[\"worker\"])"
+---
+Reserved: the sandboxed worker process
+
+Usage: cutweave worker
+
+Options:
+  -h, --help
+          Print help

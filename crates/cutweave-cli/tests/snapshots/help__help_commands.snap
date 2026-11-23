@@ -1,0 +1,14 @@
+---
+source: crates/cutweave-cli/tests/help.rs
+expression: "help(&[\"commands\"])"
+---
+List the registered commands and queries
+
+Usage: cutweave commands [OPTIONS]
+
+Options:
+      --json
+          Print a JSON array (name, kind, summary, scope, flags) instead of a table
+
+  -h, --help
+          Print help

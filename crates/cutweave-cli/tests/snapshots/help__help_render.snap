@@ -1,0 +1,38 @@
+---
+source: crates/cutweave-cli/tests/help.rs
+expression: "help(&[\"render\"])"
+---
+Export a sequence to a media file (needs the media backend; not available yet)
+
+Usage: cutweave render [OPTIONS] --project <PATH> --sequence <ID> --out <PATH>
+
+Options:
+      --project <PATH>
+          The project to render
+
+      --sequence <ID>
+          The sequence to render (`seq_...`)
+
+      --out <PATH>
+          The output file
+
+      --range <IN:OUT>
+          Render only this range, `in:out` (timecode, `62.5s` or flicks)
+
+      --preset <NAME>
+          The export preset
+
+      --sw
+          Software encoding only
+
+      --deterministic-ids <SEED>
+          Seed the engine's ids (tests)
+
+      --allow-root <DIR>
+          A folder the render may read from or write to (repeatable)
+
+      --dev-stub-media
+          Dev only: fake media probing
+
+  -h, --help
+          Print help

@@ -1,0 +1,50 @@
+---
+source: crates/cutweave-cli/tests/help.rs
+expression: "help(&[\"engine\"])"
+---
+Run the engine process (the launch protocol Electron main and scripts speak)
+
+Usage: cutweave engine [OPTIONS]
+
+Options:
+      --headless
+          No UI credential: agents and the CLI use the run-file's agent tokens. Without it the engine runs in GUI mode and reads its UI credential from stdin
+
+      --port <PORT>
+          Bind 127.0.0.1:PORT; 0 picks a free port
+
+      --token-stdin
+          Accepted for compatibility: a GUI engine always reads its UI credential from stdin
+
+      --project <PATH>
+          Open this project folder or `.cutweave` file at start
+
+      --run-dir <DIR>
+          Run-file directory (default `~/.cutweave/run`)
+
+      --allow-origin <ORIGIN>
+          An extra allowed `Origin` (repeatable)
+
+      --allow-root <DIR>
+          A folder agents may import from or save into (repeatable)
+
+      --deterministic-ids <SEED>
+          Seeded ids and a frozen clock (tests). `CUTWEAVE_DETERMINISTIC_IDS` does the same
+
+      --i-know-this-is-a-test
+          Lets a GUI engine run with deterministic ids
+
+      --log-dir <DIR>
+          Log directory (default `~/.cutweave/logs`)
+
+      --no-log
+          No log file
+
+      --handshake-timeout-ms <MS>
+          How long a GUI engine waits for the handshake line (default 5000)
+
+      --dev-stub-media
+          Dev only: fake media probing until the FFmpeg backend lands. `CUTWEAVE_DEV_STUB_MEDIA=1` does the same
+
+  -h, --help
+          Print help
