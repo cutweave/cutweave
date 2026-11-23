@@ -105,6 +105,43 @@ impl Project {
         }
     }
 
+    /// The highest position of the [`SeededGen`](crate::SeededGen) stream for `seed` among the
+    /// entity IDs in this document (0 when there is none): a generator resumed past it never
+    /// mints an ID the document holds (arch §4.4, WP-1B.08). IDs from other seeds or real
+    /// UUIDv7s are ignored.
+    #[must_use]
+    pub fn seeded_id_high_water(&self, seed: u64) -> u64 {
+        fn visit(v: &serde_json::Value, seed: u64, best: &mut u64) {
+            match v {
+                serde_json::Value::String(s) => note(s, seed, best),
+                serde_json::Value::Array(a) => a.iter().for_each(|v| visit(v, seed, best)),
+                serde_json::Value::Object(o) => {
+                    for (k, v) in o {
+                        note(k, seed, best);
+                        visit(v, seed, best);
+                    }
+                }
+                _ => {}
+            }
+        }
+        fn note(s: &str, seed: u64, best: &mut u64) {
+            let hex = match s.as_bytes() {
+                [_, _, _, b'_', ..] if s.len() == 36 => &s[4..],
+                _ => return,
+            };
+            if let Ok(raw) = u128::from_str_radix(hex, 16)
+                && let Some(c) = crate::SeededGen::counter_of(seed, raw)
+            {
+                *best = (*best).max(c);
+            }
+        }
+        let mut best = 0;
+        if let Ok(v) = serde_json::to_value(self) {
+            visit(&v, seed, &mut best);
+        }
+        best
+    }
+
     /// Finds an item in any sequence.
     #[must_use]
     pub fn find_item(&self, id: &ItemId) -> Option<ItemRef<'_>> {

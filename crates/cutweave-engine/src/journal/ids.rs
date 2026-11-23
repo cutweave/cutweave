@@ -65,6 +65,28 @@ impl IdTracker {
         }
     }
 
+    /// These streams moved past every entity id `doc` already holds from this seed's stream.
+    ///
+    /// A new engine that opens a saved project with no journaled id state (no journal
+    /// transactions, or a fresh process) would otherwise restart the entity stream at the seed
+    /// and mint ids the document has (arch §4.4, "decided in WP-1B.08"). The scan is a pure
+    /// function of the document, so the run stays reproducible. The request-id stream needs
+    /// no such step: request ids are not stored in the document.
+    #[must_use]
+    pub fn past(self, doc: &Project) -> IdTracker {
+        let high = doc.seeded_id_high_water(self.seed);
+        if high <= self.start.entity {
+            return self;
+        }
+        IdTracker::resume(
+            self.seed,
+            IdState {
+                entity: high,
+                request: self.start.request,
+            },
+        )
+    }
+
     /// The seed.
     #[must_use]
     pub fn seed(&self) -> u64 {
