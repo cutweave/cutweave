@@ -25,6 +25,7 @@ use std::time::Duration;
 
 use cutweave_api::Token;
 use cutweave_api::launch::{LaunchArgs, ready_line};
+use cutweave_api::mcp::McpOptions;
 use cutweave_api::rpc::RpcConfig;
 use serde_json::{Value, json};
 
@@ -290,6 +291,16 @@ fn handshake(rx: &mpsc::Receiver<Input>, timeout: Duration) -> Result<Token, Str
     }
 }
 
+/// The MCP mount's options: rmcp's second-layer Origin check also accepts the origins the
+/// launcher allowed (the server's own check, which runs first, uses the same list).
+fn mcp_options(args: &EngineArgs) -> McpOptions {
+    let mut options = McpOptions::default();
+    options
+        .allowed_origins
+        .extend(args.base.allowed_origins.iter().cloned());
+    options
+}
+
 fn run_logged(
     args: &EngineArgs,
     mode: EngineMode,
@@ -341,8 +352,8 @@ fn run_logged(
         api: ApiOptions {
             run_dir: args.base.run_dir.clone(),
             allowed_origins: args.base.allowed_origins.clone(),
-            // `/rpc` (WP-1I.02).
-            mounts: Some(crate::rpc_mounts(RpcConfig::default())),
+            // `/rpc` (WP-1I.02) and `/mcp`, `/mcp/minimal`, `/mcp/full` (WP-1J.01).
+            mounts: Some(crate::api_mounts(RpcConfig::default(), mcp_options(args))),
             ..ApiOptions::default()
         },
         ..EngineConfig::default()

@@ -50,6 +50,9 @@ tracing-subscriber = { version = "=0.3.23", default-features = false, features =
 # This crate with `testing` on, so its tests (and `cargo nextest run --workspace`) include the harness.
 cutweave-engine = { path = ".", features = ["testing"] }
 cutweave-model = { path = "../cutweave-model", features = ["testing"] }
+# The WP-1J.01 launch test calls `/mcp` on the engine process with rmcp's own Streamable HTTP
+# client (the version cutweave-api pins; no crate outside Cargo.lock).
+rmcp = { version = "=3.11.0", default-features = false, features = ["client", "transport-streamable-http-client-reqwest"] }
 criterion.workspace = true
 proptest.workspace = true
 

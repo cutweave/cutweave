@@ -244,6 +244,94 @@ fn usage_errors_exit_2() {
     assert_eq!(e.wait().code(), Some(2));
 }
 
+/// WP-1J.01: the engine process serves MCP next to `/rpc`. An agent with the `mcp` token from
+/// the run-file (never the UI credential) lists the tools on `/mcp` and `/mcp/minimal` and
+/// calls one, with rmcp's own client.
+#[test]
+fn the_engine_process_serves_mcp_to_the_run_file_agent_token() {
+    use rmcp::ServiceExt as _;
+    use rmcp::model::CallToolRequestParams;
+    use rmcp::transport::StreamableHttpClientTransport;
+    use rmcp::transport::streamable_http_client::StreamableHttpClientTransportConfig;
+
+    let t = TempDir::new("mcp");
+    let e = Engine::spawn(t.path(), &["--headless", "--port", "0"]);
+    let ready = e.line();
+    assert_eq!(ready["event"], "ready");
+    let port = ready["port"].as_u64().unwrap();
+    let run = cutweave_api::RunFile::discover(&t.path().join("run"));
+    assert_eq!(run.len(), 1);
+    assert_eq!(u64::from(run[0].port), port);
+    let token = run[0]
+        .agent_tokens
+        .iter()
+        .find(|a| a.label == "mcp")
+        .unwrap()
+        .token
+        .clone();
+
+    let connect = |path: &str| {
+        StreamableHttpClientTransport::from_config(
+            StreamableHttpClientTransportConfig::with_uri(format!("http://127.0.0.1:{port}{path}"))
+                .auth_header(token.clone()),
+        )
+    };
+    let rt = tokio::runtime::Builder::new_current_thread()
+        .enable_all()
+        .build()
+        .unwrap();
+    rt.block_on(async {
+        let client = ().serve(connect("/mcp")).await.expect("initialize");
+        let tools = client.list_tools(None).await.unwrap().tools;
+        let names: Vec<&str> = tools.iter().map(|t| t.name.as_ref()).collect();
+        assert_eq!(names.len(), 18, "{names:?}");
+        for name in ["clip_split", "timeline_get", "cutweave_execute"] {
+            assert!(names.contains(&name), "{name} missing from {names:?}");
+        }
+        let info = client
+            .call_tool(CallToolRequestParams::new("project_info"))
+            .await
+            .unwrap();
+        assert_ne!(info.is_error, Some(true));
+        let info = info.structured_content.unwrap();
+        assert!(info["sequences"].is_array(), "{info}");
+        // The actor is the token's: the run-file label.
+        let created = client
+            .call_tool(
+                CallToolRequestParams::new("cutweave_execute").with_arguments(
+                    serde_json::json!({
+                        "steps": [{ "cmd": "project.new", "args": { "name": "Launched" } }]
+                    })
+                    .as_object()
+                    .unwrap()
+                    .clone(),
+                ),
+            )
+            .await
+            .unwrap();
+        assert_ne!(created.is_error, Some(true), "{created:?}");
+        let history = client
+            .call_tool(
+                CallToolRequestParams::new("cutweave_query").with_arguments(
+                    serde_json::json!({ "name": "edit.history", "args": { "limit": 1 } })
+                        .as_object()
+                        .unwrap()
+                        .clone(),
+                ),
+            )
+            .await
+            .unwrap()
+            .structured_content
+            .unwrap();
+        assert_eq!(history["entries"][0]["actor"], "agent:mcp");
+        let _ = client.cancel().await;
+
+        let minimal = ().serve(connect("/mcp/minimal")).await.expect("initialize");
+        assert_eq!(minimal.list_tools(None).await.unwrap().tools.len(), 9);
+        let _ = minimal.cancel().await;
+    });
+}
+
 /// No telemetry: from spawn to exit, every socket the engine process owns is a loopback one
 /// (its listener, and the test's connection to it). Sampled with the OS socket table.
 #[test]
