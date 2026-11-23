@@ -77,6 +77,7 @@ const NAMESPACES: &[&str] = &[
     "font",
     "asset",
     "analysis",
+    "job",
     "tracking",
     "ai",
     "render",

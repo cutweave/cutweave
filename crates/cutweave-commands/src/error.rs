@@ -82,6 +82,8 @@ pub enum ResourceKind {
     Transaction,
     /// A checkpoint (`cp_…` or its name, `edit.checkpoint`, WP-1B.04).
     Checkpoint,
+    /// A background job (`job_…`, WP-1D.07).
+    Job,
 }
 
 impl ResourceKind {
@@ -97,6 +99,7 @@ impl ResourceKind {
             ResourceKind::Command => "command",
             ResourceKind::Transaction => "transaction",
             ResourceKind::Checkpoint => "checkpoint",
+            ResourceKind::Job => "job",
         }
     }
 }
