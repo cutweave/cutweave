@@ -323,3 +323,12 @@ fn json_schema_and_items_are_generated() {
     .into();
     assert_eq!(serde_json::to_value(&item).unwrap()["kind"], "clip");
 }
+
+#[test]
+fn seeded_id_high_water_finds_the_streams_own_ids_only() {
+    // `big_project(2, 3)` mints: media, sequence, then per track the track and its items.
+    let project = big_project(2, 3);
+    assert_eq!(project.seeded_id_high_water(7), 2 + 2 + 2 * 3);
+    assert_eq!(project.seeded_id_high_water(8), 0);
+    assert_eq!(Project::new("Empty").seeded_id_high_water(7), 0);
+}

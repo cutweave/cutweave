@@ -359,14 +359,31 @@ fn uuid7(timestamp: u64, rand_a: u64, rand_b: u64) -> u128 {
     (u128::from(hi) << 64) | u128::from(lo)
 }
 
+impl SeededGen {
+    /// The value a generator for `seed` issues as its `counter`-th (1-based) ID.
+    #[must_use]
+    pub fn value_at(seed: u64, counter: u64) -> u128 {
+        let base = seed ^ counter.wrapping_mul(GOLDEN_GAMMA);
+        let a = splitmix64(base);
+        let b = splitmix64(a ^ seed);
+        uuid7(counter, a >> 52, b)
+    }
+
+    /// Which position of the stream for `seed` produced `raw`, or `None` if `raw` is not one
+    /// of its values (an ID from another seed, or a real UUIDv7). Used to resume a stream past
+    /// the IDs a saved document already holds (arch §4.4, WP-1B.08).
+    #[must_use]
+    pub fn counter_of(seed: u64, raw: u128) -> Option<u64> {
+        let counter = u64::try_from(raw >> 80).ok()?;
+        (counter > 0 && SeededGen::value_at(seed, counter) == raw).then_some(counter)
+    }
+}
+
 impl IdGen for SeededGen {
     fn next_u128(&mut self) -> u128 {
         // 2^48 values per generator; far beyond any test script.
         self.counter += 1;
-        let base = self.seed ^ self.counter.wrapping_mul(GOLDEN_GAMMA);
-        let a = splitmix64(base);
-        let b = splitmix64(a ^ self.seed);
-        uuid7(self.counter, a >> 52, b)
+        SeededGen::value_at(self.seed, self.counter)
     }
 }
 
@@ -448,6 +465,18 @@ mod tests {
         }
         assert_eq!(a.issued(), 100);
         assert_eq!(a.seed(), 42);
+    }
+
+    #[test]
+    fn counter_of_recognizes_only_the_streams_own_values() {
+        let mut g = SeededGen::new(7);
+        let ids: Vec<u128> = (0..50).map(|_| g.next_u128()).collect();
+        for (i, raw) in ids.iter().enumerate() {
+            assert_eq!(SeededGen::counter_of(7, *raw), Some(i as u64 + 1));
+            assert_eq!(SeededGen::counter_of(8, *raw), None);
+        }
+        assert_eq!(SeededGen::counter_of(7, 0), None);
+        assert_eq!(SeededGen::counter_of(7, Uuid7Gen.next_u128()), None);
     }
 
     #[test]

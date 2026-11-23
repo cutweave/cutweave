@@ -7,7 +7,7 @@ How a supervisor (Electron main's `EngineSupervisor`, the CLI, a test) starts an
 ```text
 cutweave engine [--headless] --port N [--token-stdin] [--project P] [--run-dir D]
                 [--allow-origin O]... [--allow-root R]... [--deterministic-ids SEED]
-                [--log-dir D | --no-log] [--handshake-timeout-ms MS]
+                [--i-know-this-is-a-test] [--log-dir D | --no-log] [--handshake-timeout-ms MS]
 ```
 
 Until `cutweave engine` lands (WP-1K.01) the same entry point is the `cutweave-engine-serve` binary of `cutweave-engine` (point `CUTWEAVE_ENGINE_BIN` at it).
@@ -21,7 +21,8 @@ Until `cutweave engine` lands (WP-1K.01) the same entry point is the `cutweave-e
 | `--run-dir D` | Run-file directory (default `~/.cutweave/run`). |
 | `--allow-origin O` | An extra allowed `Origin` (the launcher passes `app://cutweave`). Repeatable. |
 | `--allow-root R` | A folder agents and headless callers may use (import media from, open projects in, save projects into), besides the project folders below. Repeatable. See [Path policy](#path-policy). |
-| `--deterministic-ids SEED` | Seeded document ids, separately seeded job ids, clock frozen at the Unix epoch (tests; WP-1B.08 adds the env var and refuses it in the GUI). |
+| `--deterministic-ids SEED` | Seeded document ids, separately seeded job ids, clock frozen at the Unix epoch (so `meta.created` and every timestamp in the document are fixed): identical scripts save byte-identical documents (tests). The environment variable `CUTWEAVE_DETERMINISTIC_IDS=SEED` does the same; the flag wins. A **Gui** engine refuses it (exit 2, `usage`, before reading the handshake) unless `--i-know-this-is-a-test` is also given. |
+| `--i-know-this-is-a-test` | Lets a Gui engine run with deterministic ids. Ignored otherwise. |
 | `--log-dir D` / `--no-log` | Log directory (default `~/.cutweave/logs`), or no log file. |
 | `--handshake-timeout-ms MS` | How long a Gui engine waits for the handshake line (default 5000; tests shorten it). |
 

@@ -18,6 +18,7 @@
 
 pub mod autosave;
 pub mod config;
+pub mod determinism;
 pub mod dispatch;
 mod engine;
 pub mod events;
