@@ -12,7 +12,8 @@
 //                                   ├▶ ScrubbingRuler  (ruler, playhead flag)
 //                                   └▶ Panning         (middle button)
 //   every gesture state ──up──▶ Hovering; ──Esc / pointer-cancel──▶ Idle (rolled back)
-//   DroppingMedia is reserved: WP-1M.03 adds drops from the media bin.
+//   media-drag-over ──▶ DroppingMedia (a bin card dragged over the lanes; WP-1M.03) ──media-drop──▶ Idle
+//      with an `insert` intent; Esc or `media-drag-leave` ──▶ Idle without one.
 //
 // Gestures (move, trim) follow arch §5.2: once the pointer travels `DRAG_THRESHOLD_PX` from the
 // press, `begin-gesture` opens an ephemeral transaction; each change of the snapped position
@@ -135,9 +136,27 @@ export interface PanningMode {
   readonly scrollY0: number;
 }
 
-/** Reserved for WP-1M.03 (drop media from the bin); no transition enters it yet. */
+/** What a media card carries while it is dragged over the timeline (WP-1M.03). */
+export interface MediaDrag {
+  readonly id: string;
+  readonly kind: "video" | "audio" | "image";
+  /** Flicks; `null` for stills (they drop with `STILL_DROP_DURATION`). */
+  readonly duration: number | null;
+}
+
+/** Length a still image gets when dropped (the engine's default for `timeline.insert`). */
+export const STILL_DROP_DURATION = 5 * FLICKS_PER_SECOND;
+
+/** A media card is over the lanes: where it would land if dropped now. */
 export interface DroppingMediaMode {
   readonly name: "dropping-media";
+  readonly media: MediaDrag;
+  /** Snapped, frame-aligned start of the clip. */
+  readonly at: number;
+  /** The track it would go on (the one under the pointer when it fits, else the first that does). */
+  readonly trackId: string;
+  readonly targets: readonly number[];
+  readonly guide: number | null;
 }
 
 export type Mode =
@@ -174,6 +193,12 @@ export interface PointerInput {
   readonly metaKey: boolean;
 }
 
+export interface MediaDragPoint {
+  readonly x: number;
+  readonly y: number;
+  readonly hit: HitResult;
+}
+
 export interface KeyInput {
   /** `KeyboardEvent.key`. */
   readonly key: string;
@@ -188,6 +213,12 @@ export type InteractionEvent =
   | ({ readonly type: "pointer-move" } & PointerInput)
   | ({ readonly type: "pointer-up" } & PointerInput)
   | { readonly type: "pointer-leave" }
+  /** A media card is dragged over the canvas (`x`, `y` are canvas-relative, `hit` its hit-test). */
+  | ({ readonly type: "media-drag-over"; readonly media: MediaDrag } & MediaDragPoint)
+  /** The card was released over the canvas. */
+  | ({ readonly type: "media-drop"; readonly media: MediaDrag } & MediaDragPoint)
+  /** The card left the canvas (or the drag ended elsewhere). */
+  | { readonly type: "media-drag-leave" }
   /** The pointer was taken away (capture lost, window blurred): like Esc. */
   | { readonly type: "pointer-cancel" }
   | ({ readonly type: "key" } & KeyInput)
@@ -262,6 +293,13 @@ export type Intent =
   | { readonly kind: "cancel-gesture" }
   /** Snap guide lines to draw (empty: none). */
   | { readonly kind: "snap-guides"; readonly times: readonly number[] }
+  /** A media card was dropped: `timeline.insert{media, track: trackId, at, overlap: "new_track"}`. */
+  | {
+      readonly kind: "insert";
+      readonly media: string;
+      readonly trackId: string;
+      readonly at: number;
+    }
   /** `clip.split{item, at}` for each item (one undo step). */
   | { readonly kind: "split"; readonly items: readonly string[]; readonly at: number }
   /** `item.delete{items}`. */
@@ -296,6 +334,12 @@ export function reduce(state: InteractionState, event: InteractionEvent): Transi
       return onUp(state, event);
     case "pointer-leave":
       return state.mode.name === "hovering" ? to(state, IDLE) : same(state);
+    case "media-drag-over":
+      return onMediaOver(state, event);
+    case "media-drop":
+      return onMediaDrop(state, event);
+    case "media-drag-leave":
+      return state.mode.name === "dropping-media" ? leaveDrop(state) : same(state);
     case "pointer-cancel":
       return cancel(state);
     case "gesture-aborted":
@@ -670,9 +714,102 @@ function cancel(state: InteractionState): Transition {
       return to(state, IDLE, m.at === m.origin ? NONE : [{ kind: "seek", at: m.origin }]);
     case "panning":
       return to(state, IDLE, [{ kind: "scroll", scrollX: m.scrollX0, scrollY: m.scrollY0 }]);
+    case "dropping-media":
+      return leaveDrop(state);
     default:
       return same(state);
   }
+}
+
+// ---- dropping media from the bin ------------------------------------------------------------
+
+/** The kind of track a dragged asset goes on: pictures on a media track, sound on an audio one. */
+const wantedTrack = (media: MediaDrag): TrackKind => (media.kind === "audio" ? "audio" : "media");
+
+/** The track under the pointer when the asset fits it, else the first unlocked one that does. */
+function dropTrack(
+  model: TimelineModel,
+  hitTrackId: string | null,
+  media: MediaDrag,
+): string | null {
+  const want = wantedTrack(media);
+  if (hitTrackId !== null && trackKind(model, hitTrackId) === want) return hitTrackId;
+  return model.tracks.find((t) => t.kind === want && !t.locked)?.id ?? null;
+}
+
+/** The snapped start for a clip of `media` whose left edge is at the pointer time `raw`. */
+function dropStart(
+  env: InteractionEnv,
+  targets: readonly number[],
+  media: MediaDrag,
+  raw: number,
+): { at: number; guide: number | null } {
+  const length = media.duration ?? STILL_DROP_DURATION;
+  const tolerance = snapTolerance(env.pxPerSec, SNAP_PX);
+  const out = snapSpan(Math.max(0, raw), [0, length], targets, tolerance, env.model.fps);
+  return { at: Math.max(0, out.at), guide: out.guide };
+}
+
+function onMediaOver(
+  state: InteractionState,
+  e: MediaDragPoint & { readonly media: MediaDrag },
+): Transition {
+  const m = state.mode;
+  if (m.name !== "dropping-media" && isBusy(state)) return same(state);
+  const { env } = state;
+  const trackId = dropTrack(env.model, e.hit.trackId, e.media);
+  if (trackId === null) {
+    // Nothing to land on (no track of the right kind): clear any earlier preview.
+    return m.name === "dropping-media" ? leaveDrop(state) : same(state);
+  }
+  const targets =
+    m.name === "dropping-media" && m.media.id === e.media.id
+      ? m.targets
+      : env.snapping
+        ? snapTargets(env.model, { playhead: env.playhead })
+        : [];
+  const { at } = dropStart(env, targets, e.media, e.hit.time);
+  if (
+    m.name === "dropping-media" &&
+    m.media.id === e.media.id &&
+    m.at === at &&
+    m.trackId === trackId
+  ) {
+    return same(state);
+  }
+  const mode: DroppingMediaMode = {
+    name: "dropping-media",
+    media: e.media,
+    at,
+    trackId,
+    targets,
+    guide: at,
+  };
+  return to(state, mode, [{ kind: "snap-guides", times: [at] }]);
+}
+
+function onMediaDrop(
+  state: InteractionState,
+  e: MediaDragPoint & { readonly media: MediaDrag },
+): Transition {
+  const m = state.mode;
+  if (m.name !== "dropping-media" && isBusy(state)) return same(state);
+  const { env } = state;
+  const trackId = dropTrack(env.model, e.hit.trackId, e.media);
+  const clear: Intent[] = m.name === "dropping-media" ? [{ kind: "snap-guides", times: [] }] : [];
+  if (trackId === null) return to(state, IDLE, clear);
+  const targets =
+    m.name === "dropping-media"
+      ? m.targets
+      : env.snapping
+        ? snapTargets(env.model, { playhead: env.playhead })
+        : [];
+  const { at } = dropStart(env, targets, e.media, e.hit.time);
+  return to(state, IDLE, [{ kind: "insert", media: e.media.id, trackId, at }, ...clear]);
+}
+
+function leaveDrop(state: InteractionState): Transition {
+  return to(state, IDLE, [{ kind: "snap-guides", times: [] }]);
 }
 
 /** The host already rolled the gesture back (engine refusal): only leave the gesture state. */

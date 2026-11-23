@@ -4,8 +4,13 @@
 // world only ever sees `window.cutweave` (src/shared/api.ts), never `require`, `process`,
 // `ipcRenderer` or the addon.
 
-import { contextBridge, ipcRenderer } from "electron";
+import { contextBridge, ipcRenderer, webUtils } from "electron";
 import { createCutweaveApi } from "./api.ts";
 import { loadBridgeAddon } from "./bridge-addon.ts";
 
-contextBridge.exposeInMainWorld("cutweave", createCutweaveApi(ipcRenderer, loadBridgeAddon()));
+contextBridge.exposeInMainWorld(
+  "cutweave",
+  createCutweaveApi(ipcRenderer, loadBridgeAddon(), undefined, (file) =>
+    webUtils.getPathForFile(file),
+  ),
+);

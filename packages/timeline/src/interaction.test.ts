@@ -873,3 +873,153 @@ describe("responsiveness on a 5,000-clip timeline", () => {
     expect(sent).toBeGreaterThan(0);
   });
 });
+
+describe("dropping media from the bin (WP-1M.03)", () => {
+  const VIDEO = { id: "med_v", kind: "video", duration: sec(4) } as const;
+  const SOUND = { id: "med_a", kind: "audio", duration: sec(3) } as const;
+  const STILL = { id: "med_i", kind: "image", duration: null } as const;
+  type Card = typeof VIDEO | typeof SOUND | typeof STILL;
+  const over = (x: number, o: At = {}, media: Card = VIDEO) =>
+    ({ type: "media-drag-over", media, ...pointer(x, o) }) as InteractionEvent;
+  const drop = (x: number, o: At = {}, media: Card = VIDEO) =>
+    ({ type: "media-drop", media, ...pointer(x, o) }) as InteractionEvent;
+  const inserts = (intents: readonly Intent[]) =>
+    intents.filter((i) => i.kind === "insert") as Extract<Intent, { kind: "insert" }>[];
+
+  it("enters dropping-media over a lane and draws the drop guide", () => {
+    const t = run(start(), over(xAt(sec(8)), { track: "v1" }));
+    expect(t.state.mode.name).toBe("dropping-media");
+    expect(isBusy(t.state)).toBe(true);
+    expect(t.intents).toEqual([{ kind: "snap-guides", times: [sec(8)] }]);
+  });
+
+  it("drops a video on the track under the pointer, frame-aligned", () => {
+    const x = xAt(sec(8)) + 1.4; // a little past 8 s: rounds to the frame grid
+    const t = run(start(), over(x, { track: "v1" }), drop(x, { track: "v1" }));
+    const [insert] = inserts(t.intents);
+    expect(insert).toMatchObject({ media: "med_v", trackId: "v1" });
+    expect((insert?.at ?? 0) % FRAME).toBe(0);
+    expect(Math.abs((insert?.at ?? 0) - timeAt(x))).toBeLessThanOrEqual(FRAME / 2);
+    expect(t.state.mode.name).toBe("idle");
+    expect(t.intents.at(-1)).toEqual({ kind: "snap-guides", times: [] });
+  });
+
+  it("snaps the clip start to a clip edge within 8 px", () => {
+    // B starts at 5 s; the pointer is 5 px (50 ms) before it.
+    const x = xAt(sec(5)) - 5;
+    const t = run(start(), drop(x, { track: "v2" }));
+    expect(inserts(t.intents)[0]?.at).toBe(sec(5));
+  });
+
+  it("snaps the clip's end edge too: the span is [at, at + duration]", () => {
+    // The 4 s clip dropped 4 px before 6 s would end 4 px before 10 s (the playhead).
+    const x = xAt(sec(6)) - 4;
+    const t = run(start(), drop(x, { track: "v2" }));
+    expect(inserts(t.intents)[0]?.at).toBe(sec(6));
+  });
+
+  it("does not snap to edges when snapping is off; the frame grid still applies", () => {
+    const x = xAt(sec(5)) - 5;
+    const t = run(start({ snapping: false }), drop(x, { track: "v2" }));
+    const at = inserts(t.intents)[0]?.at ?? -1;
+    expect(at).not.toBe(sec(5));
+    expect(at % FRAME).toBe(0);
+  });
+
+  it("puts sound on an audio track and pictures on a media track, whatever is under the pointer", () => {
+    const sound = run(start(), drop(xAt(sec(8)), { track: "v1" }, SOUND));
+    expect(inserts(sound.intents)[0]?.trackId).toBe("a1");
+    const picture = run(start(), drop(xAt(sec(8)), { track: "a1" }, VIDEO));
+    expect(inserts(picture.intents)[0]?.trackId).toBe("v2"); // the first (top) media track
+    const still = run(start(), drop(xAt(sec(8)), { track: "a1" }, STILL));
+    expect(inserts(still.intents)[0]?.trackId).toBe("v2");
+  });
+
+  it("falls back to the first unlocked track of the right kind", () => {
+    const model: TimelineModel = {
+      ...MODEL,
+      tracks: [
+        { id: "v2", name: "V2", kind: "media", locked: true },
+        { id: "v1", name: "V1", kind: "media" },
+        { id: "a1", name: "A1", kind: "audio" },
+      ],
+    };
+    const t = run(start({ model }), drop(xAt(sec(8)), { track: "a1" }, VIDEO));
+    expect(inserts(t.intents)[0]?.trackId).toBe("v1");
+  });
+
+  it("gives a still the 5 s default length for snapping its end", () => {
+    // Dropped 3 px before 5 s it would end 3 px before 10 s (the playhead).
+    const x = xAt(sec(5)) - 3;
+    const model: TimelineModel = { ...MODEL, items: [] };
+    const t = run(start({ model }), drop(x, { track: "v1" }, STILL));
+    expect(inserts(t.intents)[0]?.at).toBe(sec(5));
+  });
+
+  it("has nowhere to drop when the sequence has no track of that kind", () => {
+    const model: TimelineModel = {
+      ...MODEL,
+      tracks: [{ id: "a1", name: "A1", kind: "audio" }],
+      items: [],
+    };
+    const t = run(
+      start({ model }),
+      over(xAt(sec(2)), { track: "a1" }),
+      drop(xAt(sec(2)), { track: "a1" }),
+    );
+    expect(inserts(t.intents)).toEqual([]);
+    expect(t.state.mode.name).toBe("idle");
+  });
+
+  it("clamps a drop over the header (negative time) to the timeline start", () => {
+    const t = run(start(), drop(HEADER - 60, { track: "v1", zone: "header" }));
+    expect(inserts(t.intents)[0]?.at).toBe(0);
+  });
+
+  it("repeats nothing while the snapped position and track are unchanged", () => {
+    const x = xAt(sec(8));
+    const first = reduce(start(), over(x, { track: "v1" }));
+    const again = reduce(first.state, over(x + 0.2, { track: "v1" }));
+    expect(again.intents).toEqual([]);
+    expect(again.state).toBe(first.state);
+  });
+
+  it("moves the guide when the card moves to another frame", () => {
+    const first = reduce(start(), over(xAt(sec(8)), { track: "v1" }));
+    const next = reduce(first.state, over(xAt(sec(8)) + 30, { track: "v1" }));
+    expect(next.intents).toHaveLength(1);
+    const guide = next.intents[0] as Extract<Intent, { kind: "snap-guides" }>;
+    expect(guide.times[0]).toBeGreaterThan(sec(8));
+  });
+
+  it("leaving the canvas clears the preview without inserting", () => {
+    const t = run(start(), over(xAt(sec(8)), { track: "v1" }), { type: "media-drag-leave" });
+    expect(t.state.mode.name).toBe("idle");
+    expect(inserts(t.intents)).toEqual([]);
+    expect(t.intents.at(-1)).toEqual({ kind: "snap-guides", times: [] });
+  });
+
+  it("Esc cancels the drop; a later leave has nothing to clear", () => {
+    const t = run(start(), over(xAt(sec(8)), { track: "v1" }), key("Escape"));
+    expect(t.state.mode.name).toBe("idle");
+    expect(inserts(t.intents)).toEqual([]);
+    expect(reduce(t.state, { type: "media-drag-leave" }).intents).toEqual([]);
+  });
+
+  it("ignores card drags while a clip is being dragged", () => {
+    const s = run(
+      start(),
+      down(xAt(sec(2)), { item: A }),
+      move(xAt(sec(2)) + 20, { item: A }),
+    ).state;
+    expect(isGestureOpen(s)).toBe(true);
+    expect(reduce(s, over(xAt(sec(8)), { track: "v1" })).state).toBe(s);
+    expect(reduce(s, drop(xAt(sec(8)), { track: "v1" })).intents).toEqual([]);
+  });
+
+  it("keys and pointer moves are inert while dropping", () => {
+    const s = run(start(), over(xAt(sec(8)), { track: "v1" })).state;
+    expect(reduce(s, key("s")).intents).toEqual([]);
+    expect(reduce(s, move(xAt(sec(9)), { track: "v1" })).state).toBe(s);
+  });
+});

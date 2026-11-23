@@ -8,6 +8,7 @@ import { createRoot } from "react-dom/client";
 import { engineStore } from "./engine/engineStore.ts";
 import { bridgeFromWindow, startEngineRuntime } from "./engine/runtime.ts";
 import { appBridgeFromWindow, installTestHandleIfEnabled } from "./engine/testHandle.ts";
+import { mediaStore } from "./media/mediaStore.ts";
 import { EditorShell } from "./shell/EditorShell.tsx";
 import { docStore } from "./state/docStore.ts";
 import { jobStore } from "./state/jobStore.ts";
@@ -31,6 +32,7 @@ if (bridge) {
     view: viewStore,
     playback: playbackStore,
     jobs: jobStore,
+    media: mediaStore,
     engine: engineStore,
   };
   const runtime = startEngineRuntime(bridge, stores);

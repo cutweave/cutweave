@@ -86,6 +86,62 @@
       }
     }
   },
+  "mediaBin": {
+    "panelLabel": "Media",
+    "listLabel": "Media files",
+    "importButton": "Import",
+    "kind": {
+      "video": "Video",
+      "audio": "Audio",
+      "image": "Image",
+      "sequenceRef": "Sequence"
+    },
+    "card": {
+      "fps": "{{fps}} fps"
+    },
+    "layout": {
+      "label": "Media layout",
+      "grid": "Grid",
+      "list": "List"
+    },
+    "status": {
+      "analyzing": "Analyzing",
+      "analysisFailed": "Analysis failed",
+      "broken": "Unreadable"
+    },
+    "drop": {
+      "title": "Drop to import",
+      "body": "Release to add the files to this project."
+    },
+    "import": {
+      "desktopOnly": "Importing files needs the Cutweave desktop app.",
+      "workingOne": "Importing 1 file",
+      "workingMany": "Importing {{count}} files",
+      "doneTitle": "Import finished",
+      "addedOne": "1 file added.",
+      "addedMany": "{{count}} files added.",
+      "duplicateOne": "1 was already in the project.",
+      "duplicateMany": "{{count}} were already in the project.",
+      "failedTitle": "{{name}} not imported",
+      "callFailed": "Import failed",
+      "reason": {
+        "unsupported": "This file has no video or audio Cutweave can play. Try another file.",
+        "io": "The file could not be read. Check its permissions and try again.",
+        "invalid": "The file's details are not usable. Try exporting it again from its source.",
+        "notFound": "The file is missing. Check that it still exists and try again.",
+        "timedOut": "Reading the file took too long. Try again, or copy it to a local drive."
+      }
+    },
+    "remove": {
+      "button": "Remove from project",
+      "failedTitle": "{{name}} not removed",
+      "confirmTitle": "Remove {{name}}?",
+      "confirmBody": "{{count}} clips on the timeline use it.",
+      "confirmNote": "The engine only removes media that no clip uses. If it refuses, delete those clips first. The file on disk is never touched.",
+      "cancel": "Cancel",
+      "confirm": "Remove"
+    }
+  },
   "preview": {
     "aspectLabel": "Preview aspect ratio",
     "aspect": {
@@ -145,7 +201,8 @@
       "move": "Clip not moved",
       "trim": "Clip not trimmed",
       "split": "Clip not split",
-      "delete": "Clip not deleted"
+      "delete": "Clip not deleted",
+      "insert": "Clip not added"
     },
     "reason": {
       "overlap": "It would overlap another clip on that track. Drop it on a free spot.",

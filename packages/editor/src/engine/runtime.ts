@@ -31,6 +31,7 @@ import {
   type SupervisorHint,
   supervisedPolicy,
 } from "@cutweave/protocol";
+import type { mediaStore } from "../media/mediaStore.ts";
 import { docSink, type docStore } from "../state/docStore.ts";
 import type { jobStore } from "../state/jobStore.ts";
 import type { playbackStore } from "../state/playbackStore.ts";
@@ -64,6 +65,8 @@ export interface RuntimeStores {
   readonly view: typeof viewStore;
   readonly playback: typeof playbackStore;
   readonly jobs: typeof jobStore;
+  /** Asset analysis status (`media.analysis_failed`, `media.indexed`); optional for tests. */
+  readonly media?: typeof mediaStore;
   readonly engine: typeof engineStore;
 }
 
@@ -211,6 +214,8 @@ export function startEngineRuntime(
       started = true;
       offs.push(
         rpc.on("job.progress", (info: JobInfo) => stores.jobs.getState().applyProgress(info)),
+        rpc.on("media.analysis_failed", (e) => stores.media?.getState().applyAnalysisFailed(e)),
+        rpc.on("media.indexed", (e) => stores.media?.getState().applyIndexed(e)),
         rpc.onUntyped("playback.state", (payload) =>
           stores.playback.getState().applyState(payload),
         ),
