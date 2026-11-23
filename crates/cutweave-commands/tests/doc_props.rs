@@ -106,10 +106,16 @@ fn arb_op() -> impl Strategy<Value = Op> {
 }
 
 fn ctx(conn: usize) -> ActorCtx {
+    session(conn, 0)
+}
+
+/// Connection `conn` after `reconnects` drops (a closed connection id is never reused).
+fn session(conn: usize, reconnects: u64) -> ActorCtx {
+    let id = ConnId::new(1 + conn as u64 + 100 * reconnects);
     match conn {
-        0 => ActorCtx::ui(ConnId::new(1)),
-        1 => ActorCtx::agent(ConnId::new(2), "claude").unwrap(),
-        _ => ActorCtx::plugin(ConnId::new(3), "acme.tools").unwrap(),
+        0 => ActorCtx::ui(id),
+        1 => ActorCtx::agent(id, "claude").unwrap(),
+        _ => ActorCtx::plugin(id, "acme.tools").unwrap(),
     }
 }
 
@@ -178,9 +184,11 @@ fn run_ops(ops: &[Op]) {
     let mut state = DocState::new(config(initial.clone()).with_journal(Box::new(sink)));
     let mut mirror = Mirror::new(&initial, Rev(0));
     let mut open: [Option<TxId>; 3] = [None; 3];
+    let mut reconnects = [0_u64; 3];
 
     for op in ops {
         let before = observable(&state);
+        let ctx = |conn: usize| session(conn, reconnects[conn]);
         let result: Result<(), String> = match op {
             Op::Run { conn, cmd } | Op::Step { conn, cmd } => {
                 let (name, params) = request(cmd, state.doc(), &tracks);
@@ -211,6 +219,8 @@ fn run_ops(ops: &[Op]) {
             Op::Drop { conn } => {
                 open[*conn] = None;
                 state.close_connection(ctx(*conn).conn());
+                // The client reconnects with a new connection.
+                reconnects[*conn] += 1;
                 Ok(())
             }
         };

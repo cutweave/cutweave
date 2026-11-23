@@ -13,6 +13,7 @@ use super::{
     bus::{Bus, EventStream},
     event::{DocEvent, DocSnapshot},
     identity::{ActorCtx, ConnId},
+    locks::LockList,
     metrics::{Counters, DocMetrics, DocStats, NoMetrics, Outcome, RequestSample},
     pending::{self, Pending, Reply},
     request::{Applied, Submit, TxClosed, TxId, TxInfo, TxKind},
@@ -438,11 +439,20 @@ impl DocHandle {
         self.job("cancel_tx", move |state| state.cancel_tx(&ctx, tx))
     }
 
-    /// Rolls back the transactions of a closed connection ([`DocState::close_connection`]).
+    /// The connection `conn` closed: rolls back its open transaction and releases its soft
+    /// locks ([`DocState::close_connection`]). Send it after the last request read from that
+    /// connection (the inbox is FIFO, so those run first).
     pub fn close_connection(&self, conn: ConnId) -> Pending<Vec<TxClosed>> {
         self.job("close_connection", move |state| {
             Ok(state.close_connection(conn))
         })
+    }
+
+    /// The open transactions and the items each soft-locks, as `edit.locks` reports them to
+    /// `ctx` ([`DocState::locks`]).
+    pub fn locks(&self, ctx: &ActorCtx) -> Pending<LockList> {
+        let conn = ctx.conn();
+        self.job("locks", move |state| Ok(state.locks(Some(conn))))
     }
 
     /// Cancels the gestures idle for [`GESTURE_IDLE_TIMEOUT`](crate::GESTURE_IDLE_TIMEOUT) now

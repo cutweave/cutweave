@@ -25,7 +25,10 @@
 //!   [`DocEvent`], [`Applied`], [`ActorCtx`], [`Clock`]): the single writer (WP-1B.03). Commands
 //!   run serially on a dedicated thread; readers get immutable snapshots without locking;
 //!   revisions, `expected_rev` conflicts, `request_id` dedup, bounded event streams with lag
-//!   detection, and the seams for transaction ownership and the journal (WP-1B.09, WP-1C.02).
+//!   detection, and the journal seam (WP-1C.02).
+//! - **Ownership and soft locks** ([`ConnId`], [`LockList`], [`TxActivity`], [`TxEnded`]): a
+//!   transaction belongs to the connection that opened it and rolls back when it closes; an
+//!   open gesture or proposal soft-locks the items it touched for other actors (WP-1B.09).
 //! - **History** ([`edit`], [`HistoryEntry`], [`HistoryScope`], [`CheckpointId`]): per-actor
 //!   undo/redo over one linear log (WP-1B.04). The `edit.*` engine commands open, commit and
 //!   cancel transactions, undo and redo with the per-actor safety rule, list the history and
@@ -61,11 +64,11 @@ pub use doc::{
     DedupRecord, DocConfig, DocEvent, DocPatched, DocReset, DocSnapshot, DocState, EntryCause,
     EntryStatus, Fingerprint, GESTURE_IDLE_TIMEOUT, HistoryChange, HistoryChanged, HistoryEntry,
     HistoryLimits, HistoryMoved, HistoryPage, HistoryScope, HistoryUsage, JournalStep,
-    JournaledCommit, MAX_AGENT_LABEL_CHARS, MAX_CHECKPOINT_NAME_CHARS, MAX_CHECKPOINT_NOTE_CHARS,
-    MAX_CHECKPOINTS, MAX_HISTORY_PAGE, MAX_NAMED_CHECKPOINTS, MAX_PLUGIN_ID_CHARS, ManualClock,
-    NoJournal, PatchCause, RequestId, RequestIdError, Restored, RevertedChanges,
-    SOFT_LOCK_RETRY_MS, StackTop, Submit, TxClosed, TxId, TxIdError, TxInfo, TxKind, TxOutcome,
-    WallTime,
+    JournaledCommit, LockList, MAX_AGENT_LABEL_CHARS, MAX_CHECKPOINT_NAME_CHARS,
+    MAX_CHECKPOINT_NOTE_CHARS, MAX_CHECKPOINTS, MAX_HISTORY_PAGE, MAX_NAMED_CHECKPOINTS,
+    MAX_PLUGIN_ID_CHARS, ManualClock, NoJournal, PatchCause, RequestId, RequestIdError, Restored,
+    RevertedChanges, SOFT_LOCK_RETRY_MS, StackTop, Submit, TxActivity, TxClosed, TxEnded, TxId,
+    TxIdError, TxInfo, TxKind, TxLocks, TxOutcome, WallTime,
 };
 #[cfg(not(all(target_arch = "wasm32", target_os = "unknown")))]
 pub use doc::{
