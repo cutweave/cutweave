@@ -4,7 +4,7 @@
 
 use std::{borrow::Cow, fmt, str::FromStr};
 
-use cutweave_model::IdGen;
+use cutweave_model::{IdGen, ItemId};
 use schemars::{JsonSchema, Schema, SchemaGenerator, json_schema};
 use serde::{Deserialize, Deserializer, Serialize, Serializer, de};
 use serde_json::Value;
@@ -348,8 +348,14 @@ pub struct TxInfo {
     pub opened_at: WallTime,
     /// When a request last named it (gesture idle timeout).
     pub last_activity: WallTime,
+    /// A gesture's idle deadline (cancelled then unless a request names it first); `None` for
+    /// proposals and batches.
+    pub expires_at: Option<WallTime>,
     /// Commands run in it so far.
     pub steps: usize,
+    /// The items it soft-locks for other actors, in id order (gestures and proposals only,
+    /// WP-1B.09).
+    pub items: Vec<ItemId>,
     /// Whether a commit by another transaction overlapped its changes, so it can only be
     /// cancelled.
     pub conflicted: bool,
@@ -369,6 +375,7 @@ pub struct TxInfo {
     specta::Type,
 )]
 #[serde(rename_all = "snake_case")]
+#[non_exhaustive]
 pub enum TxOutcome {
     /// Committed by its owner.
     Committed,
@@ -378,6 +385,10 @@ pub enum TxOutcome {
     RolledBack,
     /// Rolled back by the engine: a gesture idle for [`GESTURE_IDLE_TIMEOUT`](crate::GESTURE_IDLE_TIMEOUT).
     Expired,
+    /// Discarded when its owner tried to commit it: a commit by another transaction had
+    /// overlapped its changes first, so it could only be cancelled (it showed no live changes
+    /// since then).
+    Conflicted,
 }
 
 /// A transaction that was closed.

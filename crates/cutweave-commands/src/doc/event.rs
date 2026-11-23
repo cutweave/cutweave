@@ -2,13 +2,13 @@
 //! What readers and subscribers see: [`DocSnapshot`] (an immutable document at a revision) and
 //! [`DocEvent`] (what changed, in revision order).
 
-use cutweave_model::Project;
+use cutweave_model::{ItemId, Project};
 use serde::{Deserialize, Serialize};
 
 use super::{
     history::HistoryChanged,
     identity::Actor,
-    request::{RequestId, TxId},
+    request::{RequestId, TxId, TxKind, TxOutcome},
 };
 use crate::{error::Rev, patch::Patch};
 
@@ -124,6 +124,47 @@ pub struct CommandPanicked {
     pub message: String,
 }
 
+/// `tx.opened` / `tx.locked`: an open transaction and the items it soft-locks (WP-1B.09), for
+/// "agent is editing" indicators. `tx.opened` comes when it opens (no items yet); `tx.locked`
+/// each time a gesture or proposal locks more items, after the `doc.patched` that touched them.
+/// After `Lagged`, re-read `edit.locks`.
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+pub struct TxActivity {
+    /// The transaction.
+    pub tx_id: TxId,
+    /// `batch`, `gesture` or `proposal`.
+    pub kind: TxKind,
+    /// Its label.
+    pub label: String,
+    /// Who opened it.
+    pub actor: Actor,
+    /// Every item it soft-locks so far, in id order (never any for a batch).
+    pub items: Vec<ItemId>,
+    /// The live revision.
+    pub rev: Rev,
+}
+
+/// `tx.closed`: an open transaction ended and released its soft locks (WP-1B.09). Comes after
+/// the `doc.patched` of its commit or rollback.
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+pub struct TxEnded {
+    /// The transaction.
+    pub tx_id: TxId,
+    /// `batch`, `gesture` or `proposal`.
+    pub kind: TxKind,
+    /// Who opened it.
+    pub actor: Actor,
+    /// Committed, cancelled, rolled back (connection closed), expired (idle gesture) or
+    /// conflicted (discarded after another commit overlapped it).
+    pub outcome: TxOutcome,
+    /// The items it no longer locks, in id order.
+    pub items: Vec<ItemId>,
+    /// The live revision afterwards.
+    pub rev: Rev,
+    /// The committed revision afterwards.
+    pub committed_rev: Rev,
+}
+
 /// Everything the document actor broadcasts to subscribers.
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 #[serde(tag = "event")]
@@ -141,6 +182,15 @@ pub enum DocEvent {
     /// `edit.history_changed`: an actor's undo/redo stacks changed (WP-1B.04).
     #[serde(rename = "edit.history_changed")]
     History(HistoryChanged),
+    /// `tx.opened`: a transaction was opened (WP-1B.09).
+    #[serde(rename = "tx.opened")]
+    TxOpened(TxActivity),
+    /// `tx.locked`: a gesture or proposal soft-locked more items (WP-1B.09).
+    #[serde(rename = "tx.locked")]
+    TxLocked(TxActivity),
+    /// `tx.closed`: a transaction ended and released its locks (WP-1B.09).
+    #[serde(rename = "tx.closed")]
+    TxClosed(TxEnded),
 }
 
 impl DocEvent {
@@ -150,7 +200,11 @@ impl DocEvent {
         match self {
             DocEvent::Patched(p) => Some(p.rev),
             DocEvent::Reset(r) => Some(r.rev),
-            DocEvent::CommandPanicked(_) | DocEvent::History(_) => None,
+            DocEvent::CommandPanicked(_)
+            | DocEvent::History(_)
+            | DocEvent::TxOpened(_)
+            | DocEvent::TxLocked(_)
+            | DocEvent::TxClosed(_) => None,
         }
     }
 
@@ -160,7 +214,11 @@ impl DocEvent {
         match self {
             DocEvent::Patched(p) => Some(p.prev_rev),
             DocEvent::Reset(r) => Some(r.prev_rev),
-            DocEvent::CommandPanicked(_) | DocEvent::History(_) => None,
+            DocEvent::CommandPanicked(_)
+            | DocEvent::History(_)
+            | DocEvent::TxOpened(_)
+            | DocEvent::TxLocked(_)
+            | DocEvent::TxClosed(_) => None,
         }
     }
 
@@ -178,6 +236,15 @@ impl DocEvent {
     pub fn as_history(&self) -> Option<&HistoryChanged> {
         match self {
             DocEvent::History(h) => Some(h),
+            _ => None,
+        }
+    }
+
+    /// The `tx.closed` payload, if this is one.
+    #[must_use]
+    pub fn as_tx_closed(&self) -> Option<&TxEnded> {
+        match self {
+            DocEvent::TxClosed(t) => Some(t),
             _ => None,
         }
     }

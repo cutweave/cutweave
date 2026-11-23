@@ -2,7 +2,8 @@
 //! WP-1B.03: the transaction seam (arch §5.2, ADR-0017). Gestures and proposals update the
 //! live document while `committed_snapshot()` keeps the last committed one; batches stay
 //! invisible until they commit; transactions belong to their connection; commands of other
-//! connections proceed on untouched items and fail fast on touched ones.
+//! connections proceed on untouched items and fail fast on touched ones. (WP-1B.09's soft
+//! locks have their own suite: `doc_locks.rs`.)
 
 #![allow(clippy::unwrap_used, clippy::expect_used)]
 
@@ -11,8 +12,8 @@ mod doc_support;
 use std::sync::{Arc, Mutex};
 
 use cutweave_commands::{
-    CmdError, CommitRecord, ConflictReason, DocActor, DocEvent, DocHandle, PatchCause,
-    ResourceKind, Rev, SOFT_LOCK_RETRY_MS, Submit, TxKind, TxOutcome, diff,
+    CmdError, CommitRecord, ConflictReason, DocActor, DocEvent, DocHandle, GESTURE_IDLE_TIMEOUT,
+    PatchCause, ResourceKind, Rev, Submit, TxKind, TxOutcome, diff,
 };
 use doc_support::{Mirror, agent, append, config, drain, item_name, project, spawn, submit, ui};
 use serde_json::json;
@@ -77,13 +78,27 @@ fn a_gesture_is_live_while_the_committed_snapshot_keeps_the_pre_tx_document() {
         assert_eq!(committed.rev, Rev(1));
         assert_eq!(committed.doc, pre.doc);
     }
-    for event in drain(&mut events) {
+    let (doc_events, tx_events): (Vec<_>, Vec<_>) = drain(&mut events)
+        .into_iter()
+        .partition(|e| e.rev().is_some());
+    for event in doc_events {
         let p = event.as_patched().unwrap();
         assert_eq!(
             (p.cause, p.committed_rev, p.tx_id),
             (PatchCause::Live, Rev(1), tx)
         );
         mirror.apply(&event);
+    }
+    // `tx.opened`, then one `tx.locked` when the first rename touched the item.
+    match &tx_events[..] {
+        [opened, locked] => {
+            let (DocEvent::TxOpened(o), DocEvent::TxLocked(l)) = (&**opened, &**locked) else {
+                panic!("{tx_events:?}")
+            };
+            assert_eq!((o.tx_id, o.kind, o.items.len()), (tx, TxKind::Gesture, 0));
+            assert_eq!((l.tx_id, &l.items[..]), (tx, &[item][..]));
+        }
+        other => panic!("{other:?}"),
     }
     mirror.assert_matches(&h.snapshot().doc);
     assert!(
@@ -153,10 +168,13 @@ fn cancelling_a_gesture_restores_the_committed_document() {
     assert_eq!(live.rev, Rev(4));
     assert_eq!(h.committed_snapshot().rev, Rev(1));
     let events = drain(&mut events);
-    assert_eq!(
-        events.last().unwrap().as_patched().unwrap().cause,
-        PatchCause::Rollback
-    );
+    let patched: Vec<_> = events.iter().filter_map(|e| e.as_patched()).collect();
+    assert_eq!(patched.last().unwrap().cause, PatchCause::Rollback);
+    // Then `tx.closed`, releasing the renamed and the appended item.
+    let ended = events.last().unwrap().as_tx_closed().unwrap();
+    assert_eq!((ended.tx_id, ended.outcome), (tx, TxOutcome::Cancelled));
+    assert_eq!(ended.items.len(), 2);
+    assert!(ended.items.contains(&item));
     for e in &events {
         mirror.apply(e);
     }
@@ -194,7 +212,13 @@ fn a_batch_is_invisible_until_it_commits() {
     // Later steps see the earlier ones.
     assert_eq!(h.snapshot().doc.item_count(), 0);
     assert_eq!(h.snapshot().rev, Rev(0));
-    assert_eq!(drain(&mut events).len(), 0);
+    // Only `tx.opened`: a batch shows nothing and soft-locks nothing.
+    let seen = drain(&mut events);
+    assert_eq!(seen.len(), 1, "{seen:?}");
+    let DocEvent::TxOpened(opened) = &*seen[0] else {
+        panic!("{seen:?}")
+    };
+    assert_eq!((opened.kind, opened.items.len()), (TxKind::Batch, 0));
 
     let closed = h.commit_tx(&ctx, tx).wait().unwrap();
     assert_eq!(closed.rev, Rev(1));
@@ -316,7 +340,11 @@ fn other_connections_edit_untouched_items_and_fail_fast_on_touched_ones() {
         panic!("{err:?}")
     };
     assert_eq!(*reason, ConflictReason::ItemInGesture);
-    assert_eq!(*retry_after_ms, Some(SOFT_LOCK_RETRY_MS));
+    // The time left until the gesture's idle deadline (the test clock stands still).
+    assert_eq!(
+        *retry_after_ms,
+        Some(u64::try_from(GESTURE_IDLE_TIMEOUT.as_millis()).unwrap())
+    );
     assert_eq!(*current_rev, Some(Rev(5)));
     assert!(detail.contains(&tx.to_string()), "{detail}");
     assert_eq!(h.snapshot().rev, Rev(5));
@@ -501,5 +529,8 @@ fn empty_transactions_close_without_a_revision() {
         h.cancel_tx(&ui(), tx).wait().unwrap();
     }
     assert_eq!(h.snapshot().rev, Rev(0));
-    assert_eq!(drain(&mut events).len(), 0);
+    // No document event; one `tx.opened` and one `tx.closed` each.
+    let seen = drain(&mut events);
+    assert!(seen.iter().all(|e| e.rev().is_none()), "{seen:?}");
+    assert_eq!(seen.len(), 12);
 }

@@ -1,14 +1,15 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
-//! The `edit.*` engine commands (WP-1B.04; arch §5.1–§5.2, §14b, ADR-0017): transactions,
-//! undo/redo, history and checkpoints. They run on the document actor with the [`DocState`] as
-//! their context and act for the authenticated caller ([`DocState::caller`]); none can run
-//! inside a transaction.
+//! The `edit.*` engine commands (WP-1B.04, WP-1B.09; arch §5.1–§5.2, §14b, ADR-0017):
+//! transactions, soft locks, undo/redo, history and checkpoints. They run on the document
+//! actor with the [`DocState`] as their context and act for the authenticated caller
+//! ([`DocState::caller`]); none can run inside a transaction.
 //!
 //! | Command | Does |
 //! |---|---|
 //! | `edit.begin_tx{kind?, label}` | opens a `batch` (default), `gesture` or `proposal` owned by the connection |
 //! | `edit.commit_tx{tx?}` | commits it as **one** history entry |
 //! | `edit.cancel_tx{tx?}` | cancels it, rolling back its live changes |
+//! | `edit.locks{}` | lists open transactions and the items each soft-locks (read-only) |
 //! | `edit.undo{actor?}` / `edit.redo{actor?}` | undo / redo the caller's (or `actor`'s, `*` = anyone's) latest entry, under the per-actor safety rule |
 //! | `edit.history{limit?, cursor?, actor?}` | lists the log newest first, paginated, plus every actor's stacks (read-only) |
 //! | `edit.checkpoint{name?, note?}` | captures the committed document (O(1)) |
@@ -19,11 +20,17 @@
 //! [`DocState::undo`] and in the `history` module: the entry's paths must hold what it left
 //! there (later changes elsewhere are kept), and the result must keep the document valid;
 //! otherwise `Conflict{reason: history_target_modified}` names who changed what since.
+//!
+//! Transactions belong to the connection that opened them: only it may run commands in,
+//! commit or cancel one (others get `Locked`), and closing it rolls the transaction back. While
+//! a `gesture` or `proposal` is open, the items it touched are soft-locked for other actors:
+//! their commands on them fail fast with `Conflict{reason: item_in_gesture, retry_after_ms}`
+//! (see [`SOFT_LOCK_RETRY_MS`](crate::SOFT_LOCK_RETRY_MS)), commands on other items proceed.
 
 use crate::{
     Actor, Annotations, CheckpointInfo, CmdError, CommandSpec, Described, DocState, EngineCommand,
-    EntryKind, HistoryMoved, HistoryPage, HistoryScope, MAX_HISTORY_PAGE, McpExposure, Registrable,
-    Registry, RegistryError, Restored, Rev, Scope, TxId, TxKind, command, wire,
+    EntryKind, HistoryMoved, HistoryPage, HistoryScope, LockList, MAX_HISTORY_PAGE, McpExposure,
+    Registrable, Registry, RegistryError, Restored, Rev, Scope, TxId, TxKind, command, wire,
 };
 
 /// Longest transaction label, in characters.
@@ -35,6 +42,7 @@ pub fn register(registry: &mut Registry) -> Result<(), RegistryError> {
         .register::<BeginTx>()?
         .register::<CommitTx>()?
         .register::<CancelTx>()?
+        .register::<ListLocks>()?
         .register::<Undo>()?
         .register::<Redo>()?
         .register::<GetHistory>()?
@@ -64,8 +72,10 @@ fn own_tx(state: &DocState, ctx: &crate::ActorCtx, tx: Option<TxId>) -> Result<T
 
 /// Opens a transaction owned by this connection (one at a time). Run commands in it by naming
 /// it in the request envelope (`_meta.tx`). A `batch` stays invisible until committed; a
-/// `gesture` (dragging, scrubbing) and a `proposal` (copilot turn) update the document live.
-/// Each commits as one undo step; a gesture idle for 30 s is cancelled by the engine.
+/// `gesture` (dragging, scrubbing) and a `proposal` (copilot turn) update the document live
+/// and soft-lock the items they touch: other actors' commands on those items fail with
+/// `Conflict{reason: item_in_gesture}` until it closes. Each commits as one undo step; a
+/// gesture idle for 30 s is cancelled by the engine; closing the connection rolls it back.
 #[command(
     name = "edit.begin_tx",
     summary = "Open a transaction (batch, gesture or proposal) that commits as one undo step",
@@ -211,6 +221,48 @@ impl EngineCommand for CancelTx {
             kind: closed.kind,
             rev: closed.rev,
         })
+    }
+}
+
+/// Lists the open transactions (oldest first) and the items each soft-locks: a `gesture` or
+/// `proposal` locks every item it touched for other actors until it closes; a `batch` locks
+/// nothing. Gestures carry their idle deadline (`expires_at`); `mine` marks your connection's.
+#[wire]
+pub struct ListLocks {}
+
+impl Described for ListLocks {
+    const SPEC: CommandSpec = CommandSpec {
+        name: "edit.locks",
+        summary: "List open transactions and the items they soft-lock (who is editing what)",
+        kind: EntryKind::Engine,
+        undoable: false,
+        view: false,
+        scope: Scope::Any,
+        mcp: McpExposure::Catalog,
+        annotations: Annotations {
+            read_only: true,
+            destructive: false,
+            idempotent: true,
+            open_world: false,
+        },
+        secret_fields: &[],
+        rust_type: "ListLocks",
+    };
+}
+
+impl Registrable for ListLocks {
+    fn register_into(registry: &mut Registry) -> Result<(), RegistryError> {
+        registry.add_engine_command::<ListLocks>().map(drop)
+    }
+}
+
+impl EngineCommand for ListLocks {
+    type Context = DocState;
+    type Output = LockList;
+
+    fn run(&self, state: &mut DocState) -> Result<LockList, CmdError> {
+        let ctx = caller(state)?;
+        Ok(state.locks(Some(ctx.conn())))
     }
 }
 
