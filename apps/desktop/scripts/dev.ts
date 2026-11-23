@@ -1,7 +1,8 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 // `just dev`: Vite dev server for `packages/editor` (HMR) + watch-built main/preload + Electron,
-// with the dev engine (`target/debug/cutweave`) or, when it is not built yet, the fake engine.
-// Main/preload changes restart Electron; renderer changes hot-reload.
+// with the dev engine (`target/debug/cutweave`, else `target/debug/cutweave-engine-serve`) or,
+// when neither is built, the fake engine. Main/preload changes restart Electron; renderer
+// changes hot-reload.
 
 import { type ChildProcess, spawn } from "node:child_process";
 import { existsSync } from "node:fs";
@@ -21,15 +22,13 @@ if (devUrl === undefined) throw new Error("Vite dev server did not report a URL"
 server.printUrls();
 
 const env: NodeJS.ProcessEnv = { ...process.env, CUTWEAVE_DEV_URL: devUrl.replace(/\/$/, "") };
-const realEngine = path.join(
-  repoRoot,
-  "target",
-  "debug",
-  process.platform === "win32" ? "cutweave.exe" : "cutweave",
+// Main resolves the same candidates (src/main/engine/launch.ts).
+const devEngines = ["cutweave", "cutweave-engine-serve"].map((name) =>
+  path.join(repoRoot, "target", "debug", process.platform === "win32" ? `${name}.exe` : name),
 );
-if (!env.CUTWEAVE_ENGINE_BIN && !existsSync(realEngine)) {
+if (!env.CUTWEAVE_ENGINE_BIN && !devEngines.some((e) => existsSync(e))) {
   env.CUTWEAVE_ENGINE_FAKE = path.join(desktopDir, "test-support", "fake-engine.ts");
-  console.log("dev: target/debug/cutweave not built; using the fake engine (test-support)");
+  console.log("dev: no dev engine in target/debug; using the fake engine (test-support)");
 }
 
 let electron: ChildProcess | null = null;

@@ -1,9 +1,13 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
-// Main-process hooks for the Playwright security suite (e2e/security.spec.ts), reachable only
-// from main via Playwright's `electronApp.evaluate` (never from a renderer). Installed only for
-// unpackaged runs with CUTWEAVE_TEST_HOOKS=1; `shouldInstallTestHooks` is unit-tested.
+// Main-process hooks for the Playwright suites (e2e/security.spec.ts, e2e/supervisor.spec.ts),
+// reachable only from main via Playwright's `electronApp.evaluate` (never from a renderer).
+// Installed only for unpackaged runs with CUTWEAVE_TEST_HOOKS=1; `shouldInstallTestHooks` is
+// unit-tested.
 
 import type { BrowserWindow, WebPreferences } from "electron";
+import type { EngineStatus } from "../shared/api.ts";
+import type { EngineFailedChoice } from "./engine/failed-dialog.ts";
+import type { EngineSupervisor } from "./engine/supervisor.ts";
 import { isWindowKind } from "./window-policy.ts";
 
 export function shouldInstallTestHooks(
@@ -23,6 +27,10 @@ export interface TestHookDeps {
   enginePort(): number | null;
   /** Replace `shell.openExternal` so tests never launch a browser; URLs are pushed to `sink`. */
   captureOpenExternal(sink: string[]): void;
+  /** The engine supervisor, once started. */
+  engine(): EngineSupervisor | null;
+  /** Replace the engine-failed dialog (tests answer it instead of a native message box). */
+  captureEngineDialog(ask: (status: EngineStatus) => Promise<EngineFailedChoice>): void;
 }
 
 export interface CutweaveTestHooks {
@@ -37,6 +45,18 @@ export interface CutweaveTestHooks {
   captureOpenExternal(): void;
   /** URLs main would have opened in the OS browser since `captureOpenExternal()`. */
   openedExternal(): string[];
+  /** The supervisor's status (what `engine:status` carries); null before the engine starts. */
+  engineStatus(): EngineStatus | null;
+  /** Pid of the running engine process, if any. */
+  enginePid(): number | null;
+  /** SIGKILL the engine (a simulated crash); returns the killed pid, or null. */
+  killEngine(): number | null;
+  /** From now on the engine-failed dialog is recorded instead of shown. */
+  captureEngineDialog(): void;
+  /** Statuses the engine-failed dialog was asked for since `captureEngineDialog()`. */
+  engineDialogs(): EngineStatus[];
+  /** Answer the oldest unanswered engine-failed dialog; false when none is open. */
+  answerEngineDialog(choice: EngineFailedChoice): boolean;
 }
 
 declare global {
@@ -46,6 +66,8 @@ declare global {
 export function installTestHooks(deps: TestHookDeps): void {
   const windows = new Map<number, BrowserWindow>();
   const opened: string[] = [];
+  const dialogs: EngineStatus[] = [];
+  const answers: ((choice: EngineFailedChoice) => void)[] = [];
   const track = (win: BrowserWindow): number => {
     windows.set(win.id, win);
     win.once("closed", () => windows.delete(win.id));
@@ -75,5 +97,22 @@ export function installTestHooks(deps: TestHookDeps): void {
     enginePort: deps.enginePort,
     captureOpenExternal: () => deps.captureOpenExternal(opened),
     openedExternal: () => [...opened],
+    engineStatus: () => deps.engine()?.status ?? null,
+    enginePid: () => deps.engine()?.pid ?? null,
+    killEngine: () => deps.engine()?.kill() ?? null,
+    captureEngineDialog: () =>
+      deps.captureEngineDialog(
+        (status) =>
+          new Promise((resolve) => {
+            dialogs.push(status);
+            answers.push(resolve);
+          }),
+      ),
+    engineDialogs: () => [...dialogs],
+    answerEngineDialog: (choice) => {
+      const answer = answers.shift();
+      answer?.(choice);
+      return answer !== undefined;
+    },
   };
 }
