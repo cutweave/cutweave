@@ -29,7 +29,13 @@ describe("toast store", () => {
 
 describe("Toasts", () => {
   it("shows each notice as a design-system toast and dismisses it", () => {
-    render(h(I18nextProvider, { i18n }, h(ToastProvider, { label: "Notifications" }, h(Toasts))));
+    render(
+      h(
+        I18nextProvider,
+        { i18n },
+        h(ToastProvider, { label: "Notifications", children: h(Toasts) }),
+      ),
+    );
     act(() => {
       toastStore.getState().push({
         tone: "warning",
