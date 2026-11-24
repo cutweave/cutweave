@@ -5,6 +5,7 @@ import {
   currentFramePresenter,
   DEFAULT_LATENCY_MS,
   type FramePresenter,
+  installedPresenter,
   type LoopClock,
   PresentLoop,
   setFramePresenter,
@@ -51,6 +52,10 @@ function manualClock() {
       const tick = pending;
       pending = null;
       tick?.();
+    },
+    /** Time passes without a tick (a stall). */
+    advance(ms: number) {
+      t += ms;
     },
     get scheduled() {
       return pending !== null;
@@ -123,6 +128,45 @@ describe("PresentLoop", () => {
     m.step();
     expect(source.frameAtClock).not.toHaveBeenCalled();
     expect(loop.running).toBe(false);
+  });
+
+  it("counts display ticks, ticks per second and late ticks (presenter instrumentation)", () => {
+    const source = { frameAtClock: vi.fn(() => null) };
+    const m = manualClock();
+    const loop = new PresentLoop(source, null, m.clock);
+    loop.start();
+    for (let i = 0; i < 90; i++) m.step();
+    expect(loop.stats()).toMatchObject({ ticks: 90, longTicks: 0, presenter: "none" });
+    expect(loop.stats().tickFps).toBeGreaterThanOrEqual(60);
+    expect(loop.stats().tickFps).toBeLessThanOrEqual(61);
+    // A stall: the next tick comes 50 ms late.
+    m.step();
+    expect(loop.stats().longTicks).toBe(0);
+    m.advance(50);
+    m.step();
+    expect(loop.stats().longTicks).toBe(1);
+  });
+
+  it("reports the installed presenter's state through the forwarding presenter", () => {
+    const presented: number[] = [];
+    setFramePresenter({
+      present: (f) => presented.push(f.seq),
+      stats: () => ({ kind: "webgpu", errors: 2, lost: true, lastError: "device lost" }),
+    });
+    const source = { frameAtClock: vi.fn(() => frame(1)) };
+    const m = manualClock();
+    const loop = new PresentLoop(source, installedPresenter, m.clock);
+    loop.start();
+    m.step();
+    expect(presented).toEqual([1]);
+    expect(loop.stats()).toMatchObject({
+      presenter: "webgpu",
+      presenterErrors: 2,
+      presenterLost: true,
+      presenterError: "device lost",
+    });
+    setFramePresenter(null);
+    expect(loop.stats().presenter).toBe("none");
   });
 
   it("WP-1M.04 installs its presenter once, for every loop started afterwards", () => {

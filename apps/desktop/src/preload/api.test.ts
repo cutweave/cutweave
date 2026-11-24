@@ -2,6 +2,7 @@
 import { describe, expect, it, vi } from "vitest";
 import { createCutweaveApi, ERR_BRIDGE_UNAVAILABLE, type IpcRendererLike } from "./api.ts";
 import type { BridgeAddon } from "./bridge-addon.ts";
+import { PresenterError } from "./webgpu-presenter.ts";
 
 function fakeIpc() {
   const listeners = new Map<string, Set<(e: unknown, ...a: unknown[]) => void>>();
@@ -154,6 +155,80 @@ describe("createCutweaveApi", () => {
     expect(api.preview.getPresentStats()?.running).toBe(true);
     api.preview.open("ring", "1");
     expect(api.preview.getPresentStats()).toBeNull();
+  });
+
+  it("attachCanvas installs a WebGPU presenter the running loop draws with; detach releases it", async () => {
+    const frame = { seq: 1, pts: 0, width: 2, height: 2, format: "rgba8" };
+    const addon = { ...fakeAddon(), frameAtClock: vi.fn(() => frame as never) };
+    const ticks: (() => void)[] = [];
+    const drawn: number[] = [];
+    const destroyed: string[] = [];
+    const presenter = {
+      adapter: "Fake GPU",
+      present: (f: { seq: number }) => drawn.push(f.seq),
+      redraw: () => true,
+      destroy: () => destroyed.push("gpu"),
+      stats: () => ({
+        kind: "webgpu" as const,
+        adapter: "Fake GPU",
+        lastPath: "",
+        uploads: 0,
+        draws: 0,
+        errors: 0,
+        lastError: null,
+        lost: false,
+      }),
+    };
+    const api = createCutweaveApi(
+      fakeIpc().ipc,
+      addon,
+      () => ({ schedule: (t) => ticks.push(t), cancel: () => {}, now: () => 0 }),
+      undefined,
+      async () => presenter,
+    );
+    api.preview.startPresenting();
+    ticks.shift()?.();
+    expect(drawn).toEqual([]);
+    expect(api.preview.getPresentStats()?.presenter).toBe("none");
+    const canvas = { getContext: () => null } as unknown as HTMLCanvasElement;
+    expect(await api.preview.attachCanvas(canvas)).toEqual({
+      ok: true,
+      adapter: "Fake GPU",
+      upload: "writeTexture",
+    });
+    ticks.shift()?.();
+    expect(drawn).toEqual([1]);
+    expect(api.preview.getPresentStats()).toMatchObject({
+      presenter: "webgpu",
+      presenterLost: false,
+    });
+    expect(api.preview.redraw()).toBe(true);
+    api.preview.detachCanvas();
+    expect(destroyed).toEqual(["gpu"]);
+    expect(api.preview.redraw()).toBe(false);
+    ticks.shift()?.();
+    expect(drawn).toEqual([1]);
+  });
+
+  it("attachCanvas reports why WebGPU cannot present instead of throwing", async () => {
+    const none = createCutweaveApi(fakeIpc().ipc, null);
+    const canvas = { getContext: () => null } as unknown as HTMLCanvasElement;
+    expect(await none.preview.attachCanvas(canvas)).toMatchObject({
+      ok: false,
+      reason: "no-addon",
+    });
+    const api = createCutweaveApi(fakeIpc().ipc, fakeAddon(), undefined, undefined, async () => {
+      throw new PresenterError("no-adapter", "no WebGPU adapter");
+    });
+    expect(await api.preview.attachCanvas(canvas)).toEqual({
+      ok: false,
+      reason: "no-adapter",
+      message: "no WebGPU adapter",
+    });
+    expect(await api.preview.attachCanvas({} as HTMLCanvasElement)).toMatchObject({
+      ok: false,
+      reason: "bad-canvas",
+    });
   });
 });
 

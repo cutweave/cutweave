@@ -23,6 +23,7 @@ import { createHandlers, MEDIA_FILE_FILTERS } from "./handlers.ts";
 import { type HardeningContext, hardenSession, hardenWebContents } from "./hardening.ts";
 import { createSenderCheck, registerIpc } from "./ipc.ts";
 import { buildMenuTemplate } from "./menu.ts";
+import { forcedPreviewPath } from "./preview-path.ts";
 import { RecentProjects } from "./recent-projects.ts";
 import { installTestHooks, shouldInstallTestHooks } from "./test-hooks.ts";
 import { createMainWindow } from "./window.ts";
@@ -170,6 +171,7 @@ if (!app.requestSingleInstanceLock()) {
           version: app.getVersion(),
           platform: process.platform,
           ...(testHooks ? { testHooks: true as const } : {}),
+          ...(forcedPreviewPath(process.env) === "jpeg" ? { preview: "jpeg" as const } : {}),
         },
         engineStatus: () => engineStatus,
         engineCredentials: () => supervisor?.credentials ?? null,

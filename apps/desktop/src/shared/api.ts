@@ -94,6 +94,11 @@ export interface AppInfo {
    * exposes its test handle (`window.__cutweaveEditor`). Absent otherwise.
    */
   readonly testHooks?: true;
+  /**
+   * `jpeg` when `CUTWEAVE_PREVIEW=jpeg` forces the reduced preview path (still frames from the
+   * engine's `/media/frame`, used on CI machines without a GPU; WP-1M.04). Absent otherwise.
+   */
+  readonly preview?: "jpeg";
 }
 
 export type PreviewPixelFormat = "rgba8" | "nv12";
@@ -187,7 +192,41 @@ export interface PresentStats {
   /** Ticks that threw (ring closed or corrupt). */
   readonly errors: number;
   readonly lastError: string | null;
+  /** Display ticks (`requestAnimationFrame` callbacks) since the loop started. */
+  readonly ticks: number;
+  /** Ticks in the last second: the rate the canvas is refreshed at. */
+  readonly tickFps: number;
+  /** Ticks that came more than 1.5 display frames (25 ms) after the previous one. */
+  readonly longTicks: number;
+  /** The attached presenter (`webgpu`) or `none` (frames are counted but not drawn). */
+  readonly presenter: "webgpu" | "none";
+  /** Frames the presenter failed to upload or draw. */
+  readonly presenterErrors: number;
+  /** The presenter's GPU device was lost: nothing is drawn any more. */
+  readonly presenterLost: boolean;
+  readonly presenterError: string | null;
 }
+
+/** Result of `preview.attachCanvas`. */
+export type AttachCanvasResult =
+  | {
+      readonly ok: true;
+      /** The WebGPU adapter, e.g. `nvidia / ampere / NVIDIA GeForce RTX 3060`. */
+      readonly adapter: string;
+      /** The upload path (Spike S1's choice). */
+      readonly upload: "writeTexture";
+    }
+  | {
+      readonly ok: false;
+      readonly reason:
+        | "no-addon"
+        | "bad-canvas"
+        | "no-webgpu"
+        | "no-adapter"
+        | "no-context"
+        | "device-failed";
+      readonly message: string;
+    };
 
 export interface PresentOptions {
   /**
@@ -227,6 +266,17 @@ export interface CutweaveApi {
     getStatus(): PreviewStatus;
     /** Start the present loop in the preload (clock-scheduled frame choice). */
     startPresenting(options?: PresentOptions): void;
+    /**
+     * Draw presented frames into `canvas` with WebGPU (WP-1M.04): the preload creates the device
+     * and the canvas's `webgpu` context and uploads each frame itself, so pixels never cross the
+     * bridge. Replaces a canvas attached before. Resolves `{ok: false, reason}` when WebGPU cannot
+     * present here (the page then falls back to JPEG frames).
+     */
+    attachCanvas(canvas: HTMLCanvasElement): Promise<AttachCanvasResult>;
+    /** Release the canvas and its GPU device; frames are counted but not drawn. */
+    detachCanvas(): void;
+    /** Draw the last frame again (the page resized the canvas, which cleared it). */
+    redraw(): boolean;
     stopPresenting(): void;
     getPresentStats(): PresentStats | null;
     close(): void;

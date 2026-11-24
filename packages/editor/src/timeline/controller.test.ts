@@ -247,6 +247,26 @@ describe("TimelineController", () => {
     expect(t.view.getState().playhead).toBe(2.5 * F);
   });
 
+  it("with a transport, ruler scrubbing seeks through it (view.seek, WP-1M.04)", () => {
+    const seeks: number[] = [];
+    const controller = new TimelineController({
+      doc: t.doc,
+      view: t.view,
+      engine: t.engine,
+      toasts: t.toasts,
+      t: translator(i18n.t.bind(i18n)),
+      seek: (at) => seeks.push(at),
+    });
+    controller.attach({
+      getViewState: () => ({ pxPerSec: 100, scrollX: 0, scrollY: 0 }),
+      itemsInRect: () => [],
+      hitTest: () => hit("lane", 0),
+    });
+    pointer(controller, "down", 300, hit("ruler", 2 * F + 5, null));
+    pointer(controller, "move", 350, hit("ruler", 2.5 * F, null));
+    expect(seeks).toEqual([2 * F, 2.5 * F]);
+  });
+
   it("pans with the middle button through the view store's scroll", () => {
     pointer(t.controller, "down", 500, hit("lane", 4 * F), { button: 1 });
     pointer(t.controller, "move", 400, hit("lane", 3 * F), { button: 1 });

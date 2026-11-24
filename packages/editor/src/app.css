@@ -347,7 +347,9 @@ body {
 }
 .cw-preview__bar {
   display: flex;
+  align-items: center;
   justify-content: center;
+  gap: var(--space-2);
   padding: var(--space-2);
 }
 .cw-preview__stage {
@@ -358,20 +360,75 @@ body {
   min-height: 0;
   padding: var(--space-4);
   background: var(--surface-preview);
+  /* The frame fits itself to this box (container units), keeping the canvas aspect exact. */
+  container-type: size;
 }
+/* Content box = the canvas: exactly the sequence's aspect, as large as the stage allows. */
 .cw-preview__frame {
+  position: relative;
   display: flex;
   align-items: center;
   justify-content: center;
-  box-sizing: border-box;
-  max-width: 100%;
-  max-height: 100%;
-  height: 100%;
+  flex: none;
+  box-sizing: content-box;
+  width: min(
+    calc(100cqw - 2 * var(--border-thin)),
+    calc((100cqh - 2 * var(--border-thin)) * var(--cw-ar))
+  );
   aspect-ratio: var(--cw-aspect);
   overflow: hidden;
   background: var(--surface-1);
   border: var(--border-thin) solid var(--border-default);
   border-radius: var(--radius-sm);
+}
+.cw-preview__surface {
+  position: absolute;
+  inset: 0;
+}
+.cw-preview__canvas {
+  position: absolute;
+  inset: 0;
+  display: block;
+  width: 100%;
+  height: 100%;
+}
+/* Overlay layer (arch §10 step 4): same box as the canvas, display only in v1. */
+.cw-preview__overlay {
+  position: absolute;
+  inset: 0;
+  z-index: var(--z-overlay);
+  overflow: hidden;
+  pointer-events: none;
+}
+.cw-preview__safe {
+  position: absolute;
+  border: var(--border-thin) solid var(--overlay-guide);
+  outline: var(--border-thin) solid var(--overlay-guide-shadow);
+  box-shadow: inset 0 0 0 var(--border-thin) var(--overlay-guide-shadow);
+}
+.cw-preview__selection {
+  position: absolute;
+  box-sizing: border-box;
+  border: var(--border-thick) solid var(--marigold);
+  outline: var(--border-thin) solid var(--overlay-guide-shadow);
+}
+.cw-preview__readout {
+  position: absolute;
+  left: var(--space-2);
+  bottom: var(--space-2);
+  padding: var(--space-0-5) var(--space-1-5);
+  color: var(--text-primary);
+  background: var(--surface-1);
+  border-radius: var(--radius-xs);
+}
+.cw-preview__notice {
+  position: absolute;
+  inset: 0;
+  z-index: var(--z-overlay);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: var(--surface-1);
 }
 
 /* ---------- Transport ---------- */
@@ -390,6 +447,28 @@ body {
 }
 .cw-transport__bar {
   grid-column: 2;
+}
+.cw-transport__side {
+  display: flex;
+  grid-column: 3;
+  align-items: center;
+  justify-content: flex-end;
+  gap: var(--space-2);
+  min-width: 0;
+}
+.cw-transport__quality {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-1);
+  color: var(--text-secondary);
+  white-space: nowrap;
+}
+.cw-transport__volume {
+  flex: 0 1 calc(var(--space-12) * 4);
+  min-width: 0;
+}
+.cw-transport__volume .cw-slider__label {
+  min-width: 0;
 }
 
 /* ---------- Inspector ---------- */

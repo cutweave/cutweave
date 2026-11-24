@@ -107,6 +107,16 @@ export interface ViewState extends EngineViewState {
   toolMode: ToolMode;
   /** Session only: timeline snapping to playhead and clip edges (`N`, WP-1M.06). */
   snapping: boolean;
+  /**
+   * Master output gain (linear, `0..=4`, 1 = unity): the transport bar's volume (WP-1M.04). The
+   * engine keeps it per project (`master_gain`); the transport sends it as the slider moves
+   * (`view.set`), so `viewSync` only restores it.
+   */
+  masterGain: number;
+  /** Session only: the output is muted (the engine gets `master_gain` 0, WP-1M.04). */
+  muted: boolean;
+  /** Session only: safe-area guides over the preview (WP-1M.04). */
+  safeAreas: boolean;
   theme: ThemeId;
   workspaceId: WorkspaceId;
   assetTab: AssetTabId;
@@ -132,6 +142,9 @@ export interface ViewActions {
   setScroll: (x: number, y: number) => void;
   setSelection: (selection: SelectionRef[]) => void;
   setPreviewQuality: (quality: PreviewQuality) => void;
+  setMasterGain: (gain: number) => void;
+  setMuted: (muted: boolean) => void;
+  setSafeAreas: (on: boolean) => void;
   /**
    * Takes the engine's view state (`view.get` on open, `view.changed` from another client)
    * and, when it carries a panel layout, the workspace, aspect and layouts. `viewSync` calls it;
@@ -146,6 +159,9 @@ export const initialViewState: ViewState = {
   ...initialEngineView,
   toolMode: "select",
   snapping: true,
+  masterGain: 1,
+  muted: false,
+  safeAreas: false,
   theme: DEFAULT_THEME,
   workspaceId: "short-form",
   assetTab: "media",
@@ -269,6 +285,10 @@ export function createViewStore(storage?: StateStorage) {
         setScroll: (x, y) => set(() => ({ scroll: { x: Math.max(0, x), y: Math.max(0, y) } })),
         setSelection: (selection) => set(() => ({ selection })),
         setPreviewQuality: (previewQuality) => set(() => ({ previewQuality })),
+        setMasterGain: (gain) =>
+          set(() => (Number.isFinite(gain) ? { masterGain: Math.min(4, Math.max(0, gain)) } : {})),
+        setMuted: (muted) => set(() => ({ muted })),
+        setSafeAreas: (safeAreas) => set(() => ({ safeAreas })),
         applyEngineView: (ui) =>
           set((s) => {
             const next: Partial<ViewState> = {};
@@ -279,6 +299,7 @@ export function createViewStore(storage?: StateStorage) {
             }
             if (ui.selection !== undefined) next.selection = ui.selection;
             if (ui.preview_quality !== undefined) next.previewQuality = ui.preview_quality;
+            if (typeof ui.master_gain === "number") next.masterGain = ui.master_gain;
             const layout = panelLayoutFrom(ui.panel_layout);
             if (layout !== null) {
               Object.assign(next, layout, { layoutRevision: s.layoutRevision + 1 });

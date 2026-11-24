@@ -21,6 +21,8 @@ export interface EditorTestState {
   readonly docRev: number;
   /** Methods of the calls still waiting for an answer, in call order. */
   readonly outbox: readonly string[];
+  /** Timeline items in the document (every sequence and track). */
+  readonly items: number;
 }
 
 export interface EditorTestHandle {
@@ -63,6 +65,11 @@ export function createTestHandle(runtime: EngineRuntime, stores: RuntimeStores):
         recoveredApplied: engine.notice?.recovery?.applied ?? null,
         docRev: stores.doc.getState().rev,
         outbox: runtime.connection.outbox.views().map((v) => v.method),
+        items: Object.values(stores.doc.getState().project?.sequences ?? {}).reduce(
+          (n, sequence) =>
+            n + Object.values(sequence.tracks).reduce((m, t) => m + Object.keys(t.items).length, 0),
+          0,
+        ),
       };
     },
   };

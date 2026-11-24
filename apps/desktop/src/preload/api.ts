@@ -2,15 +2,17 @@
 // Builds the `window.cutweave` object from an `ipcRenderer` and the (optional) bridge addon.
 // Kept free of `electron` imports so it is unit-testable; `index.ts` wires the real ones.
 
-import type { CutweaveApi, EngineStatus, MenuCommand } from "../shared/api.ts";
+import type { AttachCanvasResult, CutweaveApi, EngineStatus, MenuCommand } from "../shared/api.ts";
 import { type InvokeChannel, type InvokeChannels, isMenuCommand } from "../shared/ipc-contract.ts";
 import type { BridgeAddon } from "./bridge-addon.ts";
 import {
   browserLoopClock,
-  currentFramePresenter,
+  installedPresenter,
   type LoopClock,
   PresentLoop,
+  setFramePresenter,
 } from "./present-loop.ts";
+import { type CanvasPresenter, createWebGpuPresenter, PresenterError } from "./webgpu-presenter.ts";
 
 /** Slice of `ipcRenderer` the preload uses. */
 export interface IpcRendererLike {
@@ -31,6 +33,8 @@ export function createCutweaveApi(
   loopClock: () => LoopClock = browserLoopClock,
   /** `webUtils.getPathForFile` (the preload passes Electron's; it throws for a non-`File`). */
   getPathForFile: (file: File) => string = () => "",
+  /** Builds the WebGPU presenter on the page's canvas (WP-1M.04); tests pass a fake. */
+  createPresenter: (canvas: HTMLCanvasElement) => Promise<CanvasPresenter> = createWebGpuPresenter,
 ): CutweaveApi {
   // Each call names its channel; the preload never forwards a caller-chosen channel.
   const invoke = <K extends InvokeChannel>(
@@ -70,6 +74,43 @@ export function createCutweaveApi(
     presenting?.stop();
   };
 
+  // The WebGPU presenter drawing into the page's canvas (WP-1M.04). The present loop always
+  // presents through `installedPresenter`, so attaching or detaching takes effect at once.
+  let canvasPresenter: CanvasPresenter | null = null;
+  /** Bumped by every attach and detach: an attach that finishes after a newer one is dropped. */
+  let attachEpoch = 0;
+  const detachCanvas = (): void => {
+    attachEpoch += 1;
+    setFramePresenter(null);
+    canvasPresenter?.destroy();
+    canvasPresenter = null;
+  };
+  const attachCanvas = async (canvas: HTMLCanvasElement): Promise<AttachCanvasResult> => {
+    if (addon === null) {
+      return { ok: false, reason: "no-addon", message: "the cutweave-bridge addon is not loaded" };
+    }
+    const isCanvas =
+      typeof canvas === "object" &&
+      canvas !== null &&
+      typeof (canvas as { getContext?: unknown }).getContext === "function";
+    if (!isCanvas) return { ok: false, reason: "bad-canvas", message: "not a canvas element" };
+    detachCanvas();
+    const epoch = attachEpoch;
+    try {
+      const presenter = await createPresenter(canvas);
+      if (epoch !== attachEpoch) {
+        presenter.destroy();
+        return { ok: false, reason: "device-failed", message: "superseded by a newer attach" };
+      }
+      canvasPresenter = presenter;
+      setFramePresenter(presenter);
+      return { ok: true, adapter: presenter.adapter, upload: "writeTexture" };
+    } catch (err) {
+      const reason = err instanceof PresenterError ? err.reason : "device-failed";
+      return { ok: false, reason, message: err instanceof Error ? err.message : String(err) };
+    }
+  };
+
   return {
     app: { getInfo: () => invoke("app:getInfo") },
     engine: {
@@ -94,10 +135,13 @@ export function createCutweaveApi(
       startPresenting: (options) => {
         const bridge = requireAddon();
         stopPresenting();
-        presenting = new PresentLoop(bridge, currentFramePresenter(), loopClock(), options);
+        presenting = new PresentLoop(bridge, installedPresenter, loopClock(), options);
         presenting.start();
       },
       stopPresenting,
+      attachCanvas,
+      detachCanvas,
+      redraw: () => canvasPresenter?.redraw() ?? false,
       getPresentStats: () => presenting?.stats() ?? null,
       close: () => {
         stopPresenting();

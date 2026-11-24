@@ -10,7 +10,7 @@ import { desktopDir } from "./fixtures.ts";
 
 const repoRoot = path.resolve(desktopDir, "..", "..");
 const profile = process.env.CUTWEAVE_BRIDGE_PROFILE === "release" ? "release" : "debug";
-const fixtureExe = path.join(
+export const fixtureExe = path.join(
   process.env.CARGO_TARGET_DIR ?? path.join(repoRoot, "target"),
   profile,
   "examples",

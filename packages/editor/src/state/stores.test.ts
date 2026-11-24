@@ -86,6 +86,42 @@ describe("playbackStore", () => {
     expect(store.getState()).toMatchObject({ mode: "stopped", rate: 1, quality: "half" });
   });
 
+  it("reads the engine's PlaybackState (t, playing, dropped) and stamps each playhead sample", () => {
+    let now = 10;
+    const store = createPlaybackStore(() => now);
+    store.getState().applyState({
+      state: "playing",
+      playing: true,
+      rate: 1,
+      t: 2_000,
+      rev: 3,
+      quality: "quarter",
+      dropped: 2,
+    });
+    expect(store.getState()).toMatchObject({
+      mode: "playing",
+      playing: true,
+      playhead: 2_000,
+      quality: "quarter",
+      dropped: 2,
+      sampledAt: 10,
+    });
+    now = 20;
+    store.getState().applyState({ state: "stopped", rate: 0 });
+    expect(store.getState()).toMatchObject({ playing: false, sampledAt: 10 });
+  });
+
+  it("holds the playhead while a seek is on its way", () => {
+    const store = createPlaybackStore(() => 0);
+    store.getState().setPlayhead(500);
+    store.getState().setHoldPlayhead(true);
+    store.getState().applyState({ state: "scrubbing", t: 1 });
+    expect(store.getState()).toMatchObject({ mode: "scrubbing", playhead: 500 });
+    store.getState().setHoldPlayhead(false);
+    store.getState().applyState({ t: 1 });
+    expect(store.getState().playhead).toBe(1);
+  });
+
   it("ignores unusable payloads", () => {
     const store = createPlaybackStore();
     const before = store.getState();
