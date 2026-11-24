@@ -16,6 +16,10 @@
 #   sha256, size    "PENDING" / 0 until the first fetch; `cargo xtask fetch-corpus --pin` writes them.
 #                   Generated items are byte-pinned only for the ffmpeg version in [meta]; if a later
 #                   build differs, compare stream properties (probe_hash) instead and re-pin.
+#   expect          inline table of what ffprobe must report for a generated file (width, height, fps, vfr,
+#                   rotation as degrees clockwise, pix_fmt, color_transfer, frame_sizes, audio, channels,
+#                   sample_rate, duration, duration_tolerance, broken); `cargo xtask corpus-verify` checks it,
+#                   so a recipe that silently makes the wrong media fails. See testdata/README.md.
 #   url_verified    false = URL written from the upstream project's documented layout, not yet fetched
 
 [meta]
@@ -36,6 +40,7 @@ file = "h264_4k30_longgop.mp4"
 tier = "small"
 license = "self-generated"
 generate = "testdata/generate/h264_4k30_longgop.sh"
+expect = { width = 3840, height = 2160, fps = 30.0, vfr = false, pix_fmt = "yuv420p", audio = true, duration = 8.0 }
 sha256 = "PENDING"
 size = 0
 
@@ -51,6 +56,7 @@ file = "h264_1080p60.mp4"
 tier = "small"
 license = "self-generated"
 generate = "testdata/generate/h264_1080p60.sh"
+expect = { width = 1920, height = 1080, fps = 60.0, vfr = false, pix_fmt = "yuv420p", audio = true, duration = 8.0 }
 sha256 = "PENDING"
 size = 0
 
@@ -66,6 +72,7 @@ file = "hevc_10bit_sdr.mp4"
 tier = "small"
 license = "self-generated"
 generate = "testdata/generate/hevc_10bit_sdr.sh"
+expect = { width = 1920, height = 1080, fps = 30.0, vfr = false, pix_fmt = "yuv420p10le", color_transfer = "bt709", audio = false, duration = 5.0 }
 sha256 = "PENDING"
 size = 0
 
@@ -81,6 +88,7 @@ file = "hevc_10bit_hdr10_pq.mp4"
 tier = "small"
 license = "self-generated"
 generate = "testdata/generate/hevc_10bit_hdr10_pq.sh"
+expect = { width = 1920, height = 1080, fps = 30.0, vfr = false, pix_fmt = "yuv420p10le", color_transfer = "smpte2084", audio = false, duration = 5.0 }
 sha256 = "PENDING"
 size = 0
 
@@ -96,6 +104,7 @@ file = "prores_422hq_1080p.mov"
 tier = "small"
 license = "self-generated"
 generate = "testdata/generate/prores_422hq_1080p.sh"
+expect = { width = 1920, height = 1080, fps = 24.0, vfr = false, pix_fmt = "yuv422p10le", audio = true, duration = 3.0 }
 sha256 = "PENDING"
 size = 0
 
@@ -111,6 +120,7 @@ file = "vfr_phone_rotated90.mp4"
 tier = "small"
 license = "self-generated"
 generate = "testdata/generate/vfr_phone_rotated90.sh"
+expect = { width = 1080, height = 1920, vfr = true, rotation = 270, audio = true, duration = 10.0 }
 sha256 = "PENDING"
 size = 0
 
@@ -126,6 +136,7 @@ file = "audio_22050.wav"
 tier = "small"
 license = "self-generated"
 generate = "testdata/generate/audio_22050.sh"
+expect = { audio = true, channels = 1, sample_rate = 22050, duration = 5.0 }
 sha256 = "PENDING"
 size = 0
 
@@ -141,6 +152,7 @@ file = "audio_44100.wav"
 tier = "small"
 license = "self-generated"
 generate = "testdata/generate/audio_44100.sh"
+expect = { audio = true, channels = 1, sample_rate = 44100, duration = 5.0 }
 sha256 = "PENDING"
 size = 0
 
@@ -156,6 +168,7 @@ file = "audio_48000.wav"
 tier = "small"
 license = "self-generated"
 generate = "testdata/generate/audio_48000.sh"
+expect = { audio = true, channels = 1, sample_rate = 48000, duration = 5.0 }
 sha256 = "PENDING"
 size = 0
 
@@ -171,6 +184,7 @@ file = "audio_96000.wav"
 tier = "small"
 license = "self-generated"
 generate = "testdata/generate/audio_96000.sh"
+expect = { audio = true, channels = 1, sample_rate = 96000, duration = 5.0 }
 sha256 = "PENDING"
 size = 0
 
@@ -186,6 +200,7 @@ file = "audio_5_1.ac3"
 tier = "small"
 license = "self-generated"
 generate = "testdata/generate/audio_5_1.sh"
+expect = { audio = true, channels = 6, sample_rate = 48000, duration = 5.0 }
 sha256 = "PENDING"
 size = 0
 
@@ -201,6 +216,7 @@ file = "image_png.png"
 tier = "small"
 license = "self-generated"
 generate = "testdata/generate/image_png.sh"
+expect = { width = 1920, height = 1080, audio = false }
 sha256 = "PENDING"
 size = 0
 
@@ -216,6 +232,7 @@ file = "image_jpeg.jpg"
 tier = "small"
 license = "self-generated"
 generate = "testdata/generate/image_jpeg.sh"
+expect = { width = 1920, height = 1080, audio = false }
 sha256 = "PENDING"
 size = 0
 
@@ -231,6 +248,7 @@ file = "no_audio_stream.mp4"
 tier = "small"
 license = "self-generated"
 generate = "testdata/generate/no_audio_stream.sh"
+expect = { width = 1280, height = 720, fps = 30.0, vfr = false, audio = false, duration = 4.0 }
 sha256 = "PENDING"
 size = 0
 
@@ -246,6 +264,7 @@ file = "broken_truncated_mp4.mp4"
 tier = "small"
 license = "self-generated"
 generate = "testdata/generate/broken_truncated_mp4.sh"
+expect = { broken = true }
 sha256 = "PENDING"
 size = 0
 
@@ -261,6 +280,7 @@ file = "variable_frame_size.ts"
 tier = "small"
 license = "self-generated"
 generate = "testdata/generate/variable_frame_size.sh"
+expect = { frame_sizes = ["1280x720", "1920x1080", "854x480"], audio = false, duration = 6.0, duration_tolerance = 0.5 }
 sha256 = "PENDING"
 size = 0
 

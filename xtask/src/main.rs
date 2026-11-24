@@ -3,6 +3,7 @@
 
 mod bench;
 mod corpus;
+mod corpus_probe;
 mod deps;
 mod headers;
 mod schema_gen;
@@ -39,8 +40,9 @@ COMMANDS:
     check-deps    verify the crate dependency rule (architecture §3)
     license-headers [--check|--fix]
                   verify (default) or add SPDX headers; alias: check-headers
-    fetch-corpus  [--tier small|full] [--pin]: fetch/generate the test-media corpus into testdata/corpus/
-    corpus-verify [--tier small|full] [--allow-unpinned]: check cached corpus files against the manifest
+    fetch-corpus  [--tier small|full] [--pin] [--verify]: fetch/generate the test-media corpus into testdata/corpus/
+    corpus-verify [--tier small|full] [--allow-unpinned] [--probe|--no-probe]: check cached corpus files against the
+                  manifest (sha256) and probe generated items with ffprobe against their `expect` table
     bench         --suite <name> --out <file>: run a benchmark suite (smoke) and write result JSON
     bench-check   <results.json> [--baseline <results.json>]: compare against bench/budgets.toml
     tokens        generate design tokens (CSS, Tailwind, TS, Rust); `tokens --check` verifies
