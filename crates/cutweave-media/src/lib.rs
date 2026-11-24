@@ -11,9 +11,10 @@
 //!   unless the loaded libav* libraries equal the headers it was built against, and routes
 //!   FFmpeg's log into `tracing` (target `ffmpeg`). Build and run setup: docs/dev/ffmpeg.md.
 //!
-//! WP-1D.01 ships the boundary. Probe and the frame index arrive with WP-1D.02, decode with
-//! WP-1D.03, hardware decode with WP-1D.04 and encode with WP-1E.01; until then the FFmpeg
-//! backend opens and validates files and answers [`MediaError::NotImplemented`] past that point.
+//! WP-1D.01 ships the boundary and WP-1E.01 the encoder (H.264 + AAC in MP4, [`EncodeSpec`]).
+//! Probe and the frame index arrive with WP-1D.02, decode with WP-1D.03 and hardware decode with
+//! WP-1D.04; until then the FFmpeg backend opens and validates files and answers
+//! [`MediaError::NotImplemented`] past that point.
 //!
 //! **Dependency rule** (arch §3, `cargo xtask check-deps`): `cutweave-model` never depends on
 //! this crate, and `cutweave-render` / `cutweave-audio` may use only its trait half (the default
@@ -21,6 +22,7 @@
 
 mod backend;
 mod caps;
+mod encode;
 mod error;
 mod frame;
 #[cfg(any(feature = "ffmpeg", test))]
@@ -37,6 +39,7 @@ pub use backend::{
     MediaBackend, VideoDecoder, VideoEncodeSpec,
 };
 pub use caps::{Capabilities, CodecSupport, HwCodec};
+pub use encode::{CancelCheck, EncodeProgress, ProgressSink, RateControl, SpeedPreset, bt709_tags};
 pub use error::MediaError;
 pub use frame::{AudioChunk, AudioFormat, PixelFormat, Plane, VideoFrame};
 pub use testing::FakeBackend;

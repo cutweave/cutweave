@@ -233,6 +233,79 @@ pub(super) fn install_log_callback() {
     unsafe { ffi::av_log_set_callback(Some(log_callback)) };
 }
 
+// ---------------------------------------------------------------------------------------------
+// Encode (WP-1E.01): swscale with an explicit YUV matrix and range, movable between threads.
+// `ffmpeg-next` has no wrapper for `sws_setColorspaceDetails`, and its scaling context is not
+// `Send`, which an `Encoder` must be.
+// ---------------------------------------------------------------------------------------------
+
+/// A swscale context converting `src` to `dst` at one size, with the YUV side in an explicit
+/// matrix (an `SWS_CS_*` value) and range. swscale's default is BT.601, so the encoder always
+/// sets it.
+pub(super) struct Scaler(ffmpeg_next::software::scaling::Context);
+
+// SAFETY: an SwsContext is plain heap state with no thread affinity (no thread-local data; the
+// legacy single-threaded context made by `sws_getContext` starts no worker threads). FFmpeg only
+// forbids using one context from two threads at once, and `Scaler` is used through `&mut` by
+// the one encoder that owns it.
+unsafe impl Send for Scaler {}
+
+impl Scaler {
+    /// A `width × height` converter from `src` to `dst`. `colorspace` is the `SWS_CS_*` matrix
+    /// of the YUV side(s); `src_full` / `dst_full` say whether each side is full range (RGB
+    /// always is).
+    pub(super) fn new(
+        src: ffmpeg_next::format::Pixel,
+        dst: ffmpeg_next::format::Pixel,
+        (width, height): (u32, u32),
+        colorspace: c_int,
+        (src_full, dst_full): (bool, bool),
+    ) -> Result<Scaler, ffmpeg_next::Error> {
+        use ffmpeg_next::software::scaling::{Context, Flags};
+        let mut ctx = Context::get(
+            src,
+            width,
+            height,
+            dst,
+            width,
+            height,
+            Flags::BILINEAR | Flags::ACCURATE_RND,
+        )?;
+        // SAFETY: sws_getCoefficients returns a pointer into libswscale's static, read-only
+        // coefficient table for any argument (unknown values fall back to the default matrix).
+        let table = unsafe { ffi::sws_getCoefficients(colorspace) };
+        // SAFETY: `as_mut_ptr` is the live SwsContext `ctx` owns, initialised by sws_getContext
+        // above and not shared; both tables are the static table from above, which the call only
+        // reads (it copies the coefficients). Brightness 0, contrast and saturation 1.0 in 16.16
+        // fixed point are the identity.
+        let ret = unsafe {
+            ffi::sws_setColorspaceDetails(
+                ctx.as_mut_ptr(),
+                table,
+                c_int::from(src_full),
+                table,
+                c_int::from(dst_full),
+                0,
+                1 << 16,
+                1 << 16,
+            )
+        };
+        if ret < 0 {
+            return Err(ffmpeg_next::Error::from(ret));
+        }
+        Ok(Scaler(ctx))
+    }
+
+    /// Converts `input` into `output` (allocated on first use).
+    pub(super) fn run(
+        &mut self,
+        input: &ffmpeg_next::frame::Video,
+        output: &mut ffmpeg_next::frame::Video,
+    ) -> Result<(), ffmpeg_next::Error> {
+        self.0.run(input, output)
+    }
+}
+
 #[cfg(test)]
 pub(super) mod test_support {
     //! Test-only access to `av_log` (C-variadic, so it cannot be wrapped safely in general).

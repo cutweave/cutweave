@@ -237,22 +237,15 @@ fn injected_errors_are_returned_everywhere() {
 fn the_fake_encoder_takes_a_decoded_clip_and_checks_its_input() {
     let backend = clip_backend();
     let out = Path::new("/fake/out.mp4");
-    let spec = EncodeSpec {
-        path: out.to_path_buf(),
-        container: None,
-        video: Some(VideoEncodeSpec {
+    let spec = EncodeSpec::new(out)
+        .with_video(VideoEncodeSpec {
             codec: "rawvideo".into(),
-            width: 64,
-            height: 36,
-            rate: FrameRate::FPS_30,
-            input_format: PixelFormat::Yuv420p,
-        }),
-        audio: Some(AudioEncodeSpec {
+            ..VideoEncodeSpec::h264(64, 36, FrameRate::FPS_30, PixelFormat::Yuv420p)
+        })
+        .with_audio(AudioEncodeSpec {
             codec: "pcm_f32le".into(),
-            rate: SampleRate::HZ_48_000,
-            channels: 2,
-        }),
-    };
+            ..AudioEncodeSpec::aac(SampleRate::HZ_48_000, 2)
+        });
     let mut enc = backend.open_encoder(&spec).unwrap();
     let mut video = backend
         .open_decoder(Path::new(CLIP), &DecodeOpts::default())

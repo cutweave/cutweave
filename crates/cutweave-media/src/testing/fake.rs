@@ -28,9 +28,11 @@ use cutweave_model::{
 use crate::backend::{
     AudioDecoder, DecodeOpts, EncodeSpec, EncodeSummary, Encoder, MediaBackend, VideoDecoder,
 };
+use crate::encode::InputCheck;
 use crate::path;
 use crate::{
-    AudioChunk, AudioFormat, Capabilities, CodecSupport, MediaError, PixelFormat, Plane, VideoFrame,
+    AudioChunk, AudioFormat, CancelCheck, Capabilities, CodecSupport, MediaError, PixelFormat,
+    Plane, VideoFrame,
 };
 
 /// Codec name the fake reports for its pictures.
@@ -442,11 +444,10 @@ impl MediaBackend for FakeBackend {
             }
         }
         Ok(Box::new(FakeEncoder {
+            input: InputCheck::new(spec),
             spec: spec.clone(),
-            summary: EncodeSummary::default(),
-            last_pts: None,
-            video_end: Duration::ZERO,
-            audio_end: Duration::ZERO,
+            bytes: 0,
+            cancelled: false,
             shared: Arc::clone(&self.shared),
         }))
     }
@@ -526,80 +527,69 @@ impl AudioDecoder for FakeAudioDecoder {
     }
 }
 
+/// Checks its input like a real encoder (the shared `InputCheck`), honours the spec's cancel
+/// check and progress sink, and writes nothing: its "bytes" are the raw sizes pushed.
 struct FakeEncoder {
     spec: EncodeSpec,
-    summary: EncodeSummary,
-    last_pts: Option<Time>,
-    video_end: Duration,
-    audio_end: Duration,
+    input: InputCheck,
+    bytes: u64,
+    cancelled: bool,
     shared: Arc<Shared>,
+}
+
+impl FakeEncoder {
+    fn check_cancel(&mut self) -> Result<(), MediaError> {
+        if self.cancelled
+            || self
+                .spec
+                .cancel
+                .as_ref()
+                .is_some_and(CancelCheck::is_cancelled)
+        {
+            self.cancelled = true;
+            return Err(MediaError::Cancelled);
+        }
+        Ok(())
+    }
+
+    fn report(&self) {
+        if let Some(sink) = &self.spec.progress {
+            sink.report(
+                &self
+                    .input
+                    .progress(self.input.summary().duration, self.bytes),
+            );
+        }
+    }
 }
 
 impl Encoder for FakeEncoder {
     fn push_video(&mut self, frame: &VideoFrame) -> Result<(), MediaError> {
-        let invalid = |message: String| Err(MediaError::Invalid { message });
-        let Some(spec) = &self.spec.video else {
-            return invalid("this output has no video stream".to_owned());
-        };
-        frame.validate()?;
-        if (frame.width, frame.height, frame.format) != (spec.width, spec.height, spec.input_format)
-        {
-            return invalid(format!(
-                "frame is {}x{} {:?}, the stream is {}x{} {:?}",
-                frame.width, frame.height, frame.format, spec.width, spec.height, spec.input_format
-            ));
-        }
-        if self.last_pts.is_some_and(|last| frame.pts <= last) {
-            return invalid(format!("frame pts {} does not increase", frame.pts));
-        }
-        let period = spec
-            .rate
-            .frame_to_time(1)
-            .ok()
-            .and_then(|t| Duration::try_from(t).ok())
-            .unwrap_or(Duration::ZERO);
-        let end = Duration::try_from(frame.pts)
-            .unwrap_or(Duration::ZERO)
-            .saturating_add(period);
-        self.last_pts = Some(frame.pts);
-        self.video_end = self.video_end.max(end);
-        self.summary.video_frames += 1;
+        self.check_cancel()?;
+        self.input.video(frame)?;
+        self.input.add_video();
+        self.bytes += frame
+            .planes
+            .iter()
+            .map(|p| p.data.len() as u64)
+            .sum::<u64>();
+        self.report();
         Ok(())
     }
 
     fn push_audio(&mut self, chunk: &AudioChunk) -> Result<(), MediaError> {
-        let invalid = |message: String| Err(MediaError::Invalid { message });
-        let Some(spec) = &self.spec.audio else {
-            return invalid("this output has no audio stream".to_owned());
-        };
-        chunk.validate()?;
-        if (chunk.rate, chunk.channels) != (spec.rate, spec.channels) {
-            return invalid(format!(
-                "chunk is {} Hz x{}, the stream is {} Hz x{}",
-                chunk.rate, chunk.channels, spec.rate, spec.channels
-            ));
-        }
-        let at = |n: u64| {
-            i64::try_from(n)
-                .ok()
-                .and_then(|n| spec.rate.samples_to_time(n).ok())
-        };
-        if at(self.summary.audio_samples) != Some(chunk.pts) {
-            return invalid(format!(
-                "chunk at {} does not continue the stream at sample {}",
-                chunk.pts, self.summary.audio_samples
-            ));
-        }
-        self.summary.audio_samples += chunk.frames() as u64;
-        self.audio_end = at(self.summary.audio_samples)
-            .and_then(|t| Duration::try_from(t).ok())
-            .unwrap_or(self.audio_end);
+        self.check_cancel()?;
+        self.input.audio(chunk)?;
+        self.input.add_audio(chunk.frames());
+        self.bytes += 4 * chunk.frames() as u64 * u64::from(chunk.channels);
+        self.report();
         Ok(())
     }
 
-    fn finish(self: Box<Self>) -> Result<EncodeSummary, MediaError> {
-        let mut summary = self.summary;
-        summary.duration = self.video_end.max(self.audio_end);
+    fn finish(mut self: Box<Self>) -> Result<EncodeSummary, MediaError> {
+        self.check_cancel()?;
+        let summary = self.input.summary();
+        self.report();
         self.shared
             .encodes
             .lock()
