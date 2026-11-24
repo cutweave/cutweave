@@ -1,0 +1,41 @@
+source,file,bytes,stage,error,frames_indexed,frames_decoded,seeks_ok,seeks_err,decode_errors,demux_errors,panic,ms,corrupt_frames
+h264_1080p23976_gop48.mp4,000 truncate@19186066,19186066,open,ffmpeg: avformat_open_input: Invalid data found when processing input,0,0,0,0,0,0,,2.0,0
+h264_1080p23976_gop48.mp4,001 bitflip x18,20303802,done,,240,240,25,0,0,0,,3448.7,35
+h264_1080p23976_gop48.mp4,002 zero 40873B @4212047,20303802,done,,240,240,25,0,0,0,,2937.4,0
+h264_1080p23976_gop48.mp4,003 header garbage 2814B,20303802,open,ffmpeg: avformat_open_input: Invalid data found when processing input,0,0,0,0,0,0,,44.0,0
+h264_1080p23976_gop48.mp4,004 swap 4KiB @19119040<->7978418,20303802,done,,240,239,25,0,6,0,,2545.7,3
+h264_1080p23976_gop48.mp4,005 truncate@515418,515418,open,ffmpeg: avformat_open_input: Invalid data found when processing input,0,0,0,0,0,0,,1.5,0
+h264_1080p23976_gop48.mp4,006 bitflip x37,20303802,done,,240,240,25,0,0,0,,3174.4,74
+h264_1080p23976_gop48.mp4,007 zero 25942B @13662888,20303802,done,,240,239,25,0,3,0,,3173.8,3
+h264_1080p23976_gop48.mp4,008 header garbage 253B,20303802,open,ffmpeg: avformat_open_input: Invalid data found when processing input,0,0,0,0,0,0,,83.2,0
+h264_1080p23976_gop48.mp4,009 swap 4KiB @147189<->7524764,20303802,done,,240,240,25,0,0,0,,2440.0,10
+h264_1080p23976_gop48.mp4,010 truncate@19193320,19193320,open,ffmpeg: avformat_open_input: Invalid data found when processing input,0,0,0,0,0,0,,1.6,0
+h264_1080p23976_gop48.mp4,011 bitflip x10,20303802,done,,240,240,25,0,0,0,,4640.3,23
+h264_1080p23976_gop48.mp4,012 zero 13320B @15984074,20303802,done,,240,240,25,0,0,0,,4016.7,0
+h264_1080p23976_gop48.mp4,013 header garbage 893B,20303802,open,ffmpeg: avformat_open_input: Invalid data found when processing input,0,0,0,0,0,0,,123.6,0
+h264_1080p23976_gop48.mp4,014 swap 4KiB @14526673<->15924224,20303802,done,,240,240,25,0,0,0,,3557.3,5
+h264_1080p23976_gop48.mp4,015 truncate@1780391,1780391,open,ffmpeg: avformat_open_input: Invalid data found when processing input,0,0,0,0,0,0,,5.1,0
+h264_1080p23976_gop48.mp4,016 bitflip x38,20303802,done,,240,240,25,0,0,0,,2294.4,89
+h264_1080p23976_gop48.mp4,017 zero 30269B @11076562,20303802,done,,240,239,25,0,1,0,,3012.5,1
+h264_1080p23976_gop48.mp4,018 header garbage 2904B,20303802,open,ffmpeg: avformat_open_input: Invalid data found when processing input,0,0,0,0,0,0,,79.7,0
+h264_1080p23976_gop48.mp4,019 swap 4KiB @6628184<->17163007,20303802,done,,240,240,25,0,0,0,,2868.3,5
+h264_1080p23976_gop48.mp4,020 truncate@9422474,9422474,open,ffmpeg: avformat_open_input: Invalid data found when processing input,0,0,0,0,0,0,,1.7,0
+h264_1080p23976_gop48.mp4,021 bitflip x40,20303802,done,,240,240,25,0,0,0,,2336.1,101
+h264_1080p23976_gop48.mp4,022 zero 13626B @5971220,20303802,done,,240,240,25,0,0,0,,2170.8,0
+h264_1080p23976_gop48.mp4,023 header garbage 2656B,20303802,open,ffmpeg: avformat_open_input: Invalid data found when processing input,0,0,0,0,0,0,,112.5,0
+h264_1080p23976_gop48.mp4,024 swap 4KiB @454369<->9902760,20303802,done,,240,240,25,0,0,0,,2322.1,5
+h264_1080p23976_gop48.mp4,025 truncate@2525377,2525377,open,ffmpeg: avformat_open_input: Invalid data found when processing input,0,0,0,0,0,0,,2.7,0
+h264_1080p23976_gop48.mp4,026 bitflip x15,20303802,done,,240,240,25,0,0,0,,3092.1,34
+h264_1080p23976_gop48.mp4,027 zero 13266B @8236618,20303802,done,,240,240,25,0,0,0,,2870.1,0
+h264_1080p23976_gop48.mp4,028 header garbage 4093B,20303802,open,ffmpeg: avformat_open_input: Invalid data found when processing input,0,0,0,0,0,0,,72.3,0
+h264_1080p23976_gop48.mp4,029 swap 4KiB @578096<->2910074,20303802,done,,240,239,25,0,3,0,,3295.3,7
+h264_1080p23976_gop48.mp4,030 truncate@15182422,15182422,open,ffmpeg: avformat_open_input: Invalid data found when processing input,0,0,0,0,0,0,,2.5,0
+h264_1080p23976_gop48.mp4,031 bitflip x36,20303802,done,,240,240,25,0,0,0,,3459.7,82
+h264_1080p23976_gop48.mp4,032 zero 43418B @14300312,20303802,done,,240,240,25,0,0,0,,3179.0,0
+h264_1080p23976_gop48.mp4,033 header garbage 481B,20303802,open,ffmpeg: avformat_open_input: Invalid data found when processing input,0,0,0,0,0,0,,70.7,0
+h264_1080p23976_gop48.mp4,034 swap 4KiB @2620027<->11991260,20303802,done,,240,240,25,0,0,0,,2963.7,9
+h264_1080p23976_gop48.mp4,035 truncate@12772849,12772849,open,ffmpeg: avformat_open_input: Invalid data found when processing input,0,0,0,0,0,0,,2.7,0
+h264_1080p23976_gop48.mp4,036 bitflip x39,20303802,done,,240,240,25,0,0,0,,3421.4,79
+h264_1080p23976_gop48.mp4,037 zero 36922B @8143334,20303802,done,,240,239,25,0,5,0,,2969.4,5
+h264_1080p23976_gop48.mp4,038 header garbage 1632B,20303802,open,ffmpeg: avformat_open_input: Invalid data found when processing input,0,0,0,0,0,0,,71.0,0
+h264_1080p23976_gop48.mp4,039 swap 4KiB @17825061<->5042409,20303802,done,,240,240,25,0,0,0,,3066.1,12

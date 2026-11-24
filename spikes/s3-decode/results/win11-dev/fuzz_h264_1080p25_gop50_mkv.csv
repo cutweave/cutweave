@@ -1,0 +1,41 @@
+source,file,bytes,stage,error,frames_indexed,frames_decoded,seeks_ok,seeks_err,decode_errors,demux_errors,panic,ms,corrupt_frames
+h264_1080p25_gop50.mkv,000 truncate@11586974,11586974,done,,139,139,25,0,0,0,,3058.5,0
+h264_1080p25_gop50.mkv,001 bitflip x18,19804549,done,,250,250,25,0,0,0,,3323.6,42
+h264_1080p25_gop50.mkv,002 zero 40873B @8638442,19804549,done,,250,250,25,0,0,0,,2935.9,0
+h264_1080p25_gop50.mkv,003 header garbage 2814B,19804549,open,ffmpeg: avformat_open_input: Invalid data found when processing input,0,0,0,0,0,0,,49.8,0
+h264_1080p25_gop50.mkv,004 swap 4KiB @18752290<->12225826,19804549,done,,250,250,25,0,0,0,,3184.2,1
+h264_1080p25_gop50.mkv,005 truncate@16474206,16474206,done,,208,208,25,0,0,0,,2873.1,0
+h264_1080p25_gop50.mkv,006 bitflip x37,19804549,done,,250,250,25,0,0,0,,3106.1,87
+h264_1080p25_gop50.mkv,007 zero 25942B @5611713,19804549,done,,250,250,25,0,0,0,,3119.7,3
+h264_1080p25_gop50.mkv,008 header garbage 253B,19804549,open,ffmpeg: avformat_open_input: Invalid data found when processing input,0,0,0,0,0,0,,72.0,0
+h264_1080p25_gop50.mkv,009 swap 4KiB @8539288<->4804971,19804549,done,,250,250,25,0,0,0,,3096.3,3
+h264_1080p25_gop50.mkv,010 truncate@10042353,10042353,done,,125,125,25,0,0,0,,3094.8,0
+h264_1080p25_gop50.mkv,011 bitflip x10,19804549,done,,250,250,25,0,0,0,,3095.3,14
+h264_1080p25_gop50.mkv,012 zero 13320B @12824600,19804549,done,,250,250,25,0,0,0,,3350.4,0
+h264_1080p25_gop50.mkv,013 header garbage 893B,19804549,open,ffmpeg: avformat_open_input: Invalid data found when processing input,0,0,0,0,0,0,,49.0,0
+h264_1080p25_gop50.mkv,014 swap 4KiB @17685035<->7922824,19804549,done,,250,250,25,0,0,0,,3026.6,3
+h264_1080p25_gop50.mkv,015 truncate@4502869,4502869,done,,50,50,25,0,0,0,,2731.6,0
+h264_1080p25_gop50.mkv,016 bitflip x38,19804549,done,,250,250,25,0,0,0,,3157.4,91
+h264_1080p25_gop50.mkv,017 zero 30269B @17295258,19804549,done,,250,250,25,0,0,0,,3104.6,2
+h264_1080p25_gop50.mkv,018 header garbage 2904B,19804549,open,ffmpeg: avformat_open_input: Invalid data found when processing input,0,0,0,0,0,0,,47.9,0
+h264_1080p25_gop50.mkv,019 swap 4KiB @10203230<->9420795,19804549,done,,250,250,25,0,0,0,,2492.1,9
+h264_1080p25_gop50.mkv,020 truncate@162457,162457,open,empty_index: packet scan found no decodable frame,0,0,0,0,0,0,,3.6,0
+h264_1080p25_gop50.mkv,021 bitflip x40,19804549,done,,250,250,25,0,0,0,,3051.2,99
+h264_1080p25_gop50.mkv,022 zero 13626B @807091,19804549,done,,202,202,25,0,0,0,,2949.3,0
+h264_1080p25_gop50.mkv,023 header garbage 2656B,19804549,open,ffmpeg: avformat_open_input: Invalid data found when processing input,0,0,0,0,0,0,,42.9,0
+h264_1080p25_gop50.mkv,024 swap 4KiB @12644921<->9092503,19804549,done,,250,250,25,0,0,0,,2920.2,6
+h264_1080p25_gop50.mkv,025 truncate@17022033,17022033,done,,217,217,25,0,0,0,,3025.6,0
+h264_1080p25_gop50.mkv,026 bitflip x15,19804549,done,,250,250,25,0,0,0,,3203.3,27
+h264_1080p25_gop50.mkv,027 zero 13266B @5284894,19804549,done,,223,223,25,0,0,0,,3125.3,1
+h264_1080p25_gop50.mkv,028 header garbage 4093B,19804549,open,ffmpeg: avformat_open_input: Invalid data found when processing input,0,0,0,0,0,0,,74.9,0
+h264_1080p25_gop50.mkv,029 swap 4KiB @867375<->557763,19804549,done,,250,250,25,0,0,0,,3348.0,11
+h264_1080p25_gop50.mkv,030 truncate@19485517,19485517,done,,247,247,25,0,0,0,,3224.1,0
+h264_1080p25_gop50.mkv,031 bitflip x36,19804549,done,,250,250,25,0,0,0,,5752.0,75
+h264_1080p25_gop50.mkv,032 zero 43418B @19530601,19804549,done,,248,248,25,0,0,0,,2569.3,1
+h264_1080p25_gop50.mkv,033 header garbage 481B,19804549,open,ffmpeg: avformat_open_input: Invalid data found when processing input,0,0,0,0,0,0,,58.4,0
+h264_1080p25_gop50.mkv,034 swap 4KiB @6921179<->9340965,19804549,done,,250,250,25,0,0,0,,3617.1,6
+h264_1080p25_gop50.mkv,035 truncate@7171861,7171861,done,,100,100,25,0,0,0,,3094.3,0
+h264_1080p25_gop50.mkv,036 bitflip x39,19804549,done,,250,250,25,0,0,0,,4188.0,95
+h264_1080p25_gop50.mkv,037 zero 36922B @5862106,19804549,done,,250,250,25,0,0,0,,3940.4,2
+h264_1080p25_gop50.mkv,038 header garbage 1632B,19804549,open,ffmpeg: avformat_open_input: Invalid data found when processing input,0,0,0,0,0,0,,92.8,0
+h264_1080p25_gop50.mkv,039 swap 4KiB @4081950<->5991436,19804549,done,,250,250,25,0,0,0,,3138.5,3

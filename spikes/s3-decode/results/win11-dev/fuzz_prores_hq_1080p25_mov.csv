@@ -1,0 +1,41 @@
+source,file,bytes,stage,error,frames_indexed,frames_decoded,seeks_ok,seeks_err,decode_errors,demux_errors,panic,ms,corrupt_frames
+prores_hq_1080p25.mov,000 truncate@83496784,83496784,open,ffmpeg: avformat_open_input: Invalid data found when processing input,0,0,0,0,0,0,,1.6,0
+prores_hq_1080p25.mov,001 bitflip x18,87421357,done,,100,100,25,0,0,0,,1324.9,1
+prores_hq_1080p25.mov,002 zero 40873B @39276974,87421357,done,,100,100,25,0,0,0,,1312.9,2
+prores_hq_1080p25.mov,003 header garbage 2814B,87421357,open,ffmpeg: avformat_open_input: Invalid data found when processing input,0,0,0,0,0,0,,43.1,0
+prores_hq_1080p25.mov,004 swap 4KiB @61641895<->2772262,87421357,done,,100,100,25,0,0,0,,1175.6,2
+prores_hq_1080p25.mov,005 truncate@58672393,58672393,open,ffmpeg: avformat_open_input: Invalid data found when processing input,0,0,0,0,0,0,,2.1,0
+prores_hq_1080p25.mov,006 bitflip x37,87421357,done,,100,100,25,0,0,0,,1252.1,4
+prores_hq_1080p25.mov,007 zero 25942B @48837276,87421357,done,,100,100,25,0,0,0,,1219.2,1
+prores_hq_1080p25.mov,008 header garbage 253B,87421357,open,ffmpeg: avformat_open_input: Invalid data found when processing input,0,0,0,0,0,0,,51.7,0
+prores_hq_1080p25.mov,009 swap 4KiB @6962554<->44042772,87421357,done,,100,100,25,0,0,0,,1393.0,3
+prores_hq_1080p25.mov,010 truncate@22635250,22635250,open,ffmpeg: avformat_open_input: Invalid data found when processing input,0,0,0,0,0,0,,1.6,0
+prores_hq_1080p25.mov,011 bitflip x10,87421357,done,,100,99,25,0,1,0,,1086.5,4
+prores_hq_1080p25.mov,012 zero 13320B @57263482,87421357,done,,100,100,25,0,0,0,,1165.4,2
+prores_hq_1080p25.mov,013 header garbage 893B,87421357,open,ffmpeg: avformat_open_input: Invalid data found when processing input,0,0,0,0,0,0,,47.1,0
+prores_hq_1080p25.mov,014 swap 4KiB @44223440<->47641462,87421357,done,,100,100,25,0,0,0,,1100.7,3
+prores_hq_1080p25.mov,015 truncate@63060576,63060576,open,ffmpeg: avformat_open_input: Invalid data found when processing input,0,0,0,0,0,0,,1.6,0
+prores_hq_1080p25.mov,016 bitflip x38,87421357,done,,100,99,25,0,1,0,,1112.1,0
+prores_hq_1080p25.mov,017 zero 30269B @52258857,87421357,done,,100,100,25,0,0,0,,1276.8,2
+prores_hq_1080p25.mov,018 header garbage 2904B,87421357,open,ffmpeg: avformat_open_input: Invalid data found when processing input,0,0,0,0,0,0,,42.8,0
+prores_hq_1080p25.mov,019 swap 4KiB @6761486<->14298969,87421357,done,,100,100,25,0,0,0,,961.5,2
+prores_hq_1080p25.mov,020 truncate@62824064,62824064,open,ffmpeg: avformat_open_input: Invalid data found when processing input,0,0,0,0,0,0,,1.7,0
+prores_hq_1080p25.mov,021 bitflip x40,87421357,done,,100,99,25,0,1,0,,1019.4,3
+prores_hq_1080p25.mov,022 zero 13626B @15697549,87421357,done,,100,100,25,0,0,0,,1131.9,1
+prores_hq_1080p25.mov,023 header garbage 2656B,87421357,open,ffmpeg: avformat_open_input: Invalid data found when processing input,0,0,0,0,0,0,,44.0,0
+prores_hq_1080p25.mov,024 swap 4KiB @37733636<->24044842,87421357,done,,100,100,25,0,0,0,,1083.4,2
+prores_hq_1080p25.mov,025 truncate@11988796,11988796,open,ffmpeg: avformat_open_input: Invalid data found when processing input,0,0,0,0,0,0,,1.6,0
+prores_hq_1080p25.mov,026 bitflip x15,87421357,done,,100,100,25,0,0,0,,1147.3,0
+prores_hq_1080p25.mov,027 zero 13266B @34831098,87421357,done,,100,100,25,0,0,0,,1221.4,1
+prores_hq_1080p25.mov,028 header garbage 4093B,87421357,open,ffmpeg: avformat_open_input: Invalid data found when processing input,0,0,0,0,0,0,,89.5,0
+prores_hq_1080p25.mov,029 swap 4KiB @67449207<->60891549,87421357,done,,100,100,25,0,0,0,,1113.7,2
+prores_hq_1080p25.mov,030 truncate@79166388,79166388,open,ffmpeg: avformat_open_input: Invalid data found when processing input,0,0,0,0,0,0,,1.9,0
+prores_hq_1080p25.mov,031 bitflip x36,87421357,done,,100,100,25,0,0,0,,1141.7,5
+prores_hq_1080p25.mov,032 zero 43418B @35383855,87421357,done,,100,100,25,0,0,0,,1172.2,1
+prores_hq_1080p25.mov,033 header garbage 481B,87421357,open,ffmpeg: avformat_open_input: Invalid data found when processing input,0,0,0,0,0,0,,41.7,0
+prores_hq_1080p25.mov,034 swap 4KiB @49726589<->66093264,87421357,done,,100,100,25,0,0,0,,1059.2,2
+prores_hq_1080p25.mov,035 truncate@46717129,46717129,open,ffmpeg: avformat_open_input: Invalid data found when processing input,0,0,0,0,0,0,,1.6,0
+prores_hq_1080p25.mov,036 bitflip x39,87421357,done,,100,100,25,0,0,0,,1070.9,7
+prores_hq_1080p25.mov,037 zero 36922B @17929174,87421357,done,,100,100,25,0,0,0,,1114.2,1
+prores_hq_1080p25.mov,038 header garbage 1632B,87421357,open,ffmpeg: avformat_open_input: Invalid data found when processing input,0,0,0,0,0,0,,42.3,0
+prores_hq_1080p25.mov,039 swap 4KiB @7019265<->38487760,87421357,done,,100,100,25,0,0,0,,1205.6,3

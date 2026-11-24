@@ -1,0 +1,17 @@
+file,container,codec,profile,pix_fmt,width,height,bit_depth,rotation_ccw,vfr,primaries,transfer,matrix,time_base,start_pts,frames,gop_max,gop_mean,index_ms,check
+h264_1080p23976_gop48.mp4,mov;mp4;m4a;3gp;3g2;mj2,h264,H264(High),YUV420P,1920,1080,8,0,false,Unspecified,Unspecified,Unspecified,1/24000,0,240,48,48.00,238.5,ok
+h264_1080p25_gop50.mkv,matroska;webm,h264,H264(High),YUV420P,1920,1080,8,0,false,Unspecified,Unspecified,Unspecified,1/1000,0,250,50,50.00,10758.8,ok
+h264_1080p2997_gop60_opengop.mp4,mov;mp4;m4a;3gp;3g2;mj2,h264,H264(High),YUV420P,1920,1080,8,0,false,Unspecified,Unspecified,Unspecified,1/30000,0,300,60,60.00,257.9,ok
+h264_1080p30_gop30.mov,mov;mp4;m4a;3gp;3g2;mj2,h264,H264(High),YUV420P,1920,1080,8,0,false,Unspecified,Unspecified,Unspecified,1/15360,0,300,30,30.00,204.3,ok
+h264_1080p60_gop120.mp4,mov;mp4;m4a;3gp;3g2;mj2,h264,H264(High),YUV420P,1920,1080,8,0,false,Unspecified,Unspecified,Unspecified,1/15360,0,600,120,120.00,16485.3,ok
+h264_1080p25_gop25.ts,mpegts,h264,H264(High),YUV420P,1920,1080,8,0,false,Unspecified,Unspecified,Unspecified,1/90000,133200,200,25,25.00,13645.6,ok
+h264_2160p30_gop30.mp4,mov;mp4;m4a;3gp;3g2;mj2,h264,H264(High),YUV420P,3840,2160,8,0,false,Unspecified,Unspecified,Unspecified,1/15360,0,300,30,30.00,327.9,ok
+h264_2160p30_gop250.mp4,mov;mp4;m4a;3gp;3g2;mj2,h264,H264(High),YUV420P,3840,2160,8,0,false,Unspecified,Unspecified,Unspecified,1/15360,0,600,250,250.00,8159.7,ok
+h264_vfr_phone_1080p_rot90.mp4,mov;mp4;m4a;3gp;3g2;mj2,h264,H264(High),YUV420P,1920,1080,8,90,true,Unspecified,Unspecified,Unspecified,1/90000,0,300,30,30.00,4471.1,ok
+h264_vfr_rates_1080p.mkv,matroska;webm,h264,H264(High),YUV420P,1920,1080,8,0,true,Unspecified,Unspecified,Unspecified,1/1000,0,300,30,30.00,4854.1,ok
+h264_720p30_rot270.mp4,mov;mp4;m4a;3gp;3g2;mj2,h264,H264(High),YUV420P,1280,720,8,270,false,Unspecified,Unspecified,Unspecified,1/15360,0,180,30,30.00,2238.7,ok
+hevc_main10_2160p30_gop60.mp4,mov;mp4;m4a;3gp;3g2;mj2,hevc,HEVC(Main10),YUV420P10LE,3840,2160,10,0,false,Unspecified,Unspecified,Unspecified,1/15360,0,180,60,60.00,14.5,ok
+hevc_main10_pq_1080p24.mp4,mov;mp4;m4a;3gp;3g2;mj2,hevc,HEVC(Main10),YUV420P10LE,1920,1080,10,0,false,BT2020,SMPTE2084,BT2020NCL,1/12288,0,144,48,48.00,5.8,ok
+prores_hq_1080p25.mov,mov;mp4;m4a;3gp;3g2;mj2,prores,Unknown,YUV422P10LE,1920,1080,10,0,false,Unspecified,Unspecified,Unspecified,1/12800,0,100,1,1.00,6318.2,ok
+proxy_prores_540p.mov,mov;mp4;m4a;3gp;3g2;mj2,prores,Unknown,YUV422P10LE,960,540,10,0,false,Unspecified,Unspecified,Unspecified,1/15360,0,600,1,1.00,16721.6,ok
+proxy_mjpeg_540p.mov,mov;mp4;m4a;3gp;3g2;mj2,mjpeg,Unknown,YUVJ420P,960,540,8,0,false,Unspecified,Unspecified,BT470BG,1/15360,0,600,1,1.00,10653.3,ok
