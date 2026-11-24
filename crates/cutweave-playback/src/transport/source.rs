@@ -27,6 +27,13 @@
 //! its sequence index, scene, render graph and GPU objects across frames, and copies the mapped
 //! readback straight into `out`; only wgpu and the media layer (decoding a picture it does not
 //! hold yet) allocate inside a render. Its `preview_alloc` test counts both per scope.
+//!
+//! # Sources (ADR-0022, WP-1H.04)
+//!
+//! A request whose [`target`](RenderRequest::target) is [`PlaybackTarget::Media`] renders that
+//! asset on its own: the engine indexes a transient one-clip timeline built from the asset's
+//! probe (once per target and document revision, like the sequence) and fits the picture into
+//! the output with the asset's aspect. Nothing of it is stored in the document.
 
 use cutweave_model::{Duration, FrameRate, Rounding, Time};
 use cutweave_render::Quality;
@@ -34,6 +41,7 @@ use thiserror::Error;
 
 use crate::shm::FrameLayout;
 use crate::transport::cancel::CancelToken;
+use crate::transport::target::PlaybackTarget;
 
 /// The frame grid and extent of the sequence being played.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -115,7 +123,10 @@ pub enum RenderPurpose {
 /// One output frame to render.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub struct RenderRequest {
-    /// Frame index on the sequence grid.
+    /// What to render: the sequence, or one media asset on its own (ADR-0022). `frame` and `t`
+    /// are on the target's own grid and in its own time.
+    pub target: PlaybackTarget,
+    /// Frame index on the target's grid.
     pub frame: i64,
     /// Its start time (the frame's presentation timestamp).
     pub t: Time,

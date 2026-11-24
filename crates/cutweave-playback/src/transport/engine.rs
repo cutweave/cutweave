@@ -17,6 +17,7 @@ use crate::transport::render_loop::{RenderConfig, RenderLoop, Tick};
 use crate::transport::sink::{FrameSink, SinkError};
 use crate::transport::source::FrameSource;
 use crate::transport::status::{StateSink, StatusPump};
+use crate::transport::target::SourceResolver;
 
 /// Playback could not start.
 #[derive(Debug, Error)]
@@ -41,6 +42,9 @@ pub struct PlaybackConfig {
     pub render: RenderConfig,
     /// The host clock ([`SystemClock`] unless simulating).
     pub host: Arc<dyn HostClock>,
+    /// Finds the media `view.set_source` names (ADR-0022); `None`: playback has no media to
+    /// play on its own and `view.set_source{media}` is unsupported.
+    pub sources: Option<Arc<dyn SourceResolver>>,
 }
 
 impl Default for PlaybackConfig {
@@ -48,6 +52,7 @@ impl Default for PlaybackConfig {
         PlaybackConfig {
             render: RenderConfig::default(),
             host: Arc::new(SystemClock),
+            sources: None,
         }
     }
 }
@@ -56,6 +61,7 @@ impl std::fmt::Debug for PlaybackConfig {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         f.debug_struct("PlaybackConfig")
             .field("render", &self.render)
+            .field("sources", &self.sources.is_some())
             .finish_non_exhaustive()
     }
 }
@@ -81,7 +87,12 @@ impl PlaybackParts {
         sink: Box<dyn FrameSink>,
         config: PlaybackConfig,
     ) -> Result<PlaybackParts, PlaybackError> {
-        let transport = Transport::new(audio, source.timing(), Arc::clone(&config.host));
+        let transport = Transport::new(
+            audio,
+            source.timing(),
+            Arc::clone(&config.host),
+            config.sources.clone(),
+        );
         let render = RenderLoop::new(Arc::clone(&transport.shared), source, sink, config.render)?;
         let status = StatusPump::new(transport.clone());
         Ok(PlaybackParts {

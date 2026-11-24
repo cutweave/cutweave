@@ -17,7 +17,10 @@
 //!
 //! A new request (any transport change) starts a new epoch: renders of older epochs are told
 //! through their [`CancelToken`](crate::transport::CancelToken) and can never be delivered
-//! ([`EpochGate::try_commit`](crate::transport::EpochGate::try_commit)).
+//! ([`EpochGate::try_commit`](crate::transport::EpochGate::try_commit)). A new target
+//! (`view.set_source`, ADR-0022) is such a request, on the target's own frame grid; it also
+//! changes the snapshot's content counter, so a frame of the old target on screen is never
+//! taken for one of the new target.
 //!
 //! No locks, no blocking and no allocation per frame: the pixel buffer is reused (it grows only
 //! when the preview size grows), state is read through seqlocks and counters are atomics.
@@ -529,6 +532,7 @@ impl RenderLoop {
         }
         let timing = snap.timing();
         let request = RenderRequest {
+            target: snap.target,
             frame,
             t: timing.frame_start(frame),
             quality,

@@ -18,6 +18,8 @@ use std::sync::atomic::{AtomicU64, Ordering};
 use cutweave_audio::{AudioClock, AudioOutput, ManualClock, MixerHandle};
 use cutweave_model::Time;
 
+use crate::transport::target::PlaybackTarget;
+
 /// The audio output as the transport drives it.
 pub trait AudioControl: Send {
     /// The master clock (lock-free; read from any thread).
@@ -29,6 +31,13 @@ pub trait AudioControl: Send {
     /// Moves the audio playhead to `t`: the clock starts a new generation at `t` and holds there
     /// until the audio at `t` is audible.
     fn seek(&mut self, t: Time);
+    /// What plays changed (`view.set_source`, ADR-0022): from now on the audio is `target`'s,
+    /// in its own time. Called paused, before the next `seek`, which re-primes from it. The
+    /// transport's audio alone cannot know a target's sound: the engine feeds the mixer (the
+    /// default does nothing).
+    fn set_target(&mut self, target: PlaybackTarget) {
+        let _ = target;
+    }
 }
 
 /// The device (or null) output playing the mixer.
@@ -100,6 +109,8 @@ pub struct AudioCalls {
     pub pause: u64,
     /// `seek` calls.
     pub seek: u64,
+    /// `set_target` calls.
+    pub set_target: u64,
 }
 
 #[derive(Debug, Default)]
@@ -107,6 +118,7 @@ struct CallCounters {
     play: AtomicU64,
     pause: AtomicU64,
     seek: AtomicU64,
+    set_target: AtomicU64,
 }
 
 /// A [`ManualClock`] as the transport's audio (tests, deterministic demos): play/pause set its
@@ -140,6 +152,7 @@ impl ManualAudio {
             play: self.calls.play.load(Ordering::SeqCst),
             pause: self.calls.pause.load(Ordering::SeqCst),
             seek: self.calls.seek.load(Ordering::SeqCst),
+            set_target: self.calls.set_target.load(Ordering::SeqCst),
         }
     }
 }
@@ -162,5 +175,9 @@ impl AudioControl for ManualAudio {
     fn seek(&mut self, t: Time) {
         self.calls.seek.fetch_add(1, Ordering::SeqCst);
         self.clock.seek(t);
+    }
+
+    fn set_target(&mut self, _target: PlaybackTarget) {
+        self.calls.set_target.fetch_add(1, Ordering::SeqCst);
     }
 }

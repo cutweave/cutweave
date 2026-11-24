@@ -20,8 +20,8 @@ use std::sync::{Arc, Mutex, OnceLock};
 use std::time::{Duration as StdDuration, Instant};
 
 use cutweave_audio::{AudioClock, ManualClock};
-use cutweave_commands::{Access, Registry};
-use cutweave_model::{Duration, FrameRate, SampleRate, Time};
+use cutweave_commands::{Access, CmdError, Registry};
+use cutweave_model::{Duration, EntityKind, FrameRate, MediaId, SampleRate, Time};
 use cutweave_render::{AutoQualityConfig, Quality, Scale};
 use serde_json::json;
 
@@ -31,6 +31,44 @@ use crate::shm::{ClockState, FrameLayout, PixelFormat, PreviewConfig};
 const MS: u64 = 1_000_000;
 const FLICKS_PER_MS: i64 = 705_600;
 const FRAME_30: i64 = 23_520_000;
+const FRAME_25: i64 = 28_224_000;
+
+/// The marker offset of a target's frames: a source's test pattern carries `frame + (n << 32)`
+/// for media `n`, so every delivered frame says which target it shows.
+fn target_offset(target: PlaybackTarget) -> i64 {
+    match target {
+        PlaybackTarget::Sequence => 0,
+        PlaybackTarget::Media(id) => (id.as_u128() as i64) << 32,
+    }
+}
+
+/// The test sources: media 1 to 3.
+fn media(n: u128) -> MediaId {
+    MediaId::from_u128(n)
+}
+
+/// A source of `secs` seconds at `fps`.
+fn source(n: u128, secs: i64, fps: FrameRate) -> SourceInfo {
+    SourceInfo {
+        media: media(n),
+        duration: Duration::from_secs(secs).unwrap(),
+        fps,
+    }
+}
+
+/// Resolves media 1 (10 s at 25 fps), 2 (4 s at 30 fps) and 3 (2 s at 24 fps).
+struct TestResolver;
+
+impl SourceResolver for TestResolver {
+    fn resolve(&self, id: MediaId) -> Result<SourceInfo, CmdError> {
+        match id.as_u128() {
+            1 => Ok(source(1, 10, FrameRate::FPS_25)),
+            2 => Ok(source(2, 4, FrameRate::FPS_30)),
+            3 => Ok(source(3, 2, FrameRate::FPS_24)),
+            _ => Err(CmdError::not_found(EntityKind::Media, id)),
+        }
+    }
+}
 
 fn timing(secs: i64) -> SequenceTiming {
     SequenceTiming::new(FrameRate::FPS_30, Time::from_secs(secs).unwrap())
@@ -66,11 +104,16 @@ impl Rng {
 struct Record {
     seq: u64,
     frame: i64,
+    /// The frame number painted into the pixels.
     decoded: Option<i64>,
+    /// The target offset painted into the pixels ([`target_offset`]).
+    painted: Option<i64>,
     pts: Time,
     epoch: u64,
     /// The transport's epoch read inside the delivery (under the commit gate).
     epoch_at_delivery: u64,
+    /// The transport's target read inside the delivery.
+    target_at_delivery: PlaybackTarget,
     quality: Quality,
     lowres: bool,
     width: u32,
@@ -107,13 +150,20 @@ impl FrameSink for RecordingSink {
     ) -> Result<u64, SinkError> {
         self.seq += 1;
         let epoch_at_delivery = self.transport.get().map_or(u64::MAX, Transport::epoch);
+        let target_at_delivery = self
+            .transport
+            .get()
+            .map_or(PlaybackTarget::Sequence, Transport::target);
+        let raw = decode_frame_number(layout, pixels);
         self.records.lock().unwrap().push(Record {
             seq: self.seq,
             frame: info.frame,
-            decoded: decode_frame_number(layout, pixels),
+            decoded: raw.map(|v| v & 0xFFFF_FFFF),
+            painted: raw.map(|v| v & !0xFFFF_FFFF),
             pts: info.pts,
             epoch: info.epoch,
             epoch_at_delivery,
+            target_at_delivery,
             quality: info.quality,
             lowres: info.lowres,
             width: layout.width(),
@@ -192,11 +242,14 @@ impl FrameSource for TestSource {
         if self.cooperative && cancel.is_cancelled() {
             return Err(SourceError::Cancelled);
         }
-        self.inner.render(request, &CancelToken::never(), out)
+        let mut marked = *request;
+        marked.frame += target_offset(request.target);
+        self.inner.render(&marked, &CancelToken::never(), out)
     }
 
     fn cached(&mut self, request: &RenderRequest, out: &mut [u8]) -> Option<Rendered> {
-        if !self.cached.contains(&request.frame) {
+        // Only the sequence's frames are cached.
+        if request.target != PlaybackTarget::Sequence || !self.cached.contains(&request.frame) {
             return None;
         }
         SyntheticSource::paint(request.frame, &request.layout, out);
@@ -217,6 +270,8 @@ struct Setup {
     cooperative: bool,
     during: Option<During>,
     render: RenderConfig,
+    /// Media the transport can play on its own (`view.set_source`).
+    sources: Option<Arc<dyn SourceResolver>>,
 }
 
 impl Default for Setup {
@@ -228,6 +283,7 @@ impl Default for Setup {
             cooperative: true,
             during: None,
             render: RenderConfig::default(),
+            sources: Some(Arc::new(TestResolver)),
         }
     }
 }
@@ -289,6 +345,7 @@ impl Harness {
             PlaybackConfig {
                 render: setup.render,
                 host: Arc::new(host.clone()),
+                sources: setup.sources,
             },
         )
         .unwrap();
@@ -385,6 +442,14 @@ fn assert_never_stale(records: &[Record]) {
             r.frame, r.epoch, r.epoch_at_delivery
         );
         assert_eq!(r.decoded, Some(r.frame), "the pixels show the frame");
+        assert_eq!(
+            r.painted,
+            Some(target_offset(r.target_at_delivery)),
+            "frame {} of request {} shows another target than {:?}",
+            r.frame,
+            r.epoch,
+            r.target_at_delivery
+        );
     }
 }
 
@@ -851,7 +916,8 @@ fn jkl_transitions_drive_the_audio_and_the_rate() {
         AudioCalls {
             play: 1,
             pause: 0,
-            seek: 1
+            seek: 1,
+            set_target: 0,
         }
     );
     h.run_ms(100);
@@ -891,7 +957,8 @@ fn jkl_transitions_drive_the_audio_and_the_rate() {
         AudioCalls {
             play: 2,
             pause: 1,
-            seek: 2
+            seek: 2,
+            set_target: 0,
         }
     );
     h.run_ms(50);
@@ -981,6 +1048,269 @@ fn steps_move_by_whole_frames_and_pause_playback() {
     assert!(!s.playing);
     assert_eq!(s.t.flicks(), 34 * FRAME_30);
     assert_eq!(h.audio.calls().pause, 1);
+}
+
+// ----- sources (ADR-0022, WP-1H.04) ------------------------------------------------------------
+
+#[test]
+fn a_ten_second_25_fps_source_plays_250_frames_in_order_in_sync() {
+    let mut h = Harness::new(Setup::default());
+    h.transport.seek(t(40 * FRAME_30));
+    h.run_ms(200);
+    let info = source(1, 10, FrameRate::FPS_25);
+    let s = h.transport.set_source(Some(info));
+    assert_eq!(s.source, Some(info));
+    assert_eq!((s.state, s.t), (TransportMode::Stopped, Time::ZERO));
+    assert_eq!(h.transport.target(), PlaybackTarget::Media(media(1)));
+    assert_eq!(h.transport.timing(), info.timing());
+    assert_eq!(
+        h.audio.calls().set_target,
+        1,
+        "the audio follows the target"
+    );
+    let switched = h.last_seq();
+    let s = h.transport.play();
+    assert!(s.playing && s.source == Some(info));
+    let play_epoch = h.transport.epoch();
+    let took = h.run_until_stopped(11_000);
+    assert_eq!(
+        took, 10_000,
+        "stops when the audio clock reaches the source's end"
+    );
+
+    let records = h.records_after(switched);
+    assert_never_stale(&records);
+    let played: Vec<&Record> = records.iter().filter(|r| r.epoch == play_epoch).collect();
+    assert_eq!(played.len(), 250, "exactly 250 frames");
+    let mut worst = 0;
+    for (i, r) in played.iter().enumerate() {
+        assert_eq!(r.frame, i as i64, "in order, none skipped");
+        assert_eq!(r.pts.flicks(), i as i64 * FRAME_25);
+        assert_eq!(r.target_at_delivery, PlaybackTarget::Media(media(1)));
+        let offset = (r.clock.flicks() - r.pts.flicks()).abs();
+        worst = worst.max(offset);
+        assert!(offset <= FRAME_25, "frame {i}: A/V offset {offset} flicks");
+    }
+    println!(
+        "source, 10 s at 25 fps: 250 frames in order, worst A/V offset {:.3} ms",
+        worst as f64 / FLICKS_PER_MS as f64
+    );
+    let end = h.transport.state();
+    assert_eq!(
+        (end.t, end.source),
+        (Time::from_secs(10).unwrap(), Some(info))
+    );
+    assert_eq!(h.transport.stats().dropped, 0);
+    // The sequence's playhead never moved.
+    assert_eq!(h.transport.sequence_playhead().flicks(), 40 * FRAME_30);
+    assert_eq!(h.transport.sequence_timing(), timing(10));
+}
+
+#[test]
+fn switching_back_mid_play_shows_the_sequence_frame_at_its_unchanged_playhead() {
+    let mut h = Harness::new(Setup::default());
+    h.transport.seek(t(40 * FRAME_30 + 9));
+    h.run_ms(200);
+    let one = source(1, 10, FrameRate::FPS_25);
+    h.transport.set_source(Some(one));
+    h.transport.play();
+    h.run_ms(500);
+    let left = h.transport.state();
+    assert!(left.playing && left.t > Time::ZERO, "{left:?}");
+    let before = h.last_seq();
+    let calls = h.audio.calls();
+    let s = h.transport.set_source(None);
+    assert_eq!(
+        (s.state, s.playing, s.source, s.t.flicks()),
+        (TransportMode::Stopped, false, None, 40 * FRAME_30 + 9),
+        "the sequence's own playhead"
+    );
+    assert_eq!(h.transport.timing(), timing(10));
+    let now = h.audio.calls();
+    assert_eq!(
+        (now.pause - calls.pause, now.set_target - calls.set_target),
+        (1, 1),
+        "the audio paused and follows the sequence again"
+    );
+    h.run_ms(100);
+    let back = h.records_after(before);
+    assert_eq!(back.len(), 1, "{back:?}");
+    assert_eq!(back[0].frame, 40);
+    assert_eq!(back[0].target_at_delivery, PlaybackTarget::Sequence);
+    assert!(back[0].quality.is_full() && !back[0].lowres);
+    assert_never_stale(&h.records());
+
+    // Each source keeps its own playhead; a new one starts at 0.
+    let s = h
+        .transport
+        .set_source(Some(source(2, 4, FrameRate::FPS_30)));
+    assert_eq!(s.t, Time::ZERO);
+    h.transport.seek(t(30 * FRAME_30));
+    let s = h.transport.set_source(Some(one));
+    assert_eq!(s.t, left.t, "media 1 is where it was left");
+    let s = h.transport.set_source_media(Some(media(2))).unwrap();
+    assert_eq!(s.t.flicks(), 30 * FRAME_30, "media 2 too");
+    // The same source again changes nothing.
+    let epoch = h.transport.epoch();
+    h.transport
+        .set_source(Some(source(2, 4, FrameRate::FPS_30)));
+    assert_eq!(h.transport.epoch(), epoch);
+    let s = h.transport.set_source(None);
+    assert_eq!(s.t.flicks(), 40 * FRAME_30 + 9);
+    let epoch = h.transport.epoch();
+    h.transport.set_source(None);
+    assert_eq!(
+        h.transport.epoch(),
+        epoch,
+        "the sequence again changes nothing"
+    );
+}
+
+#[test]
+fn a_hundred_random_switches_and_seeks_never_deliver_a_frame_of_an_old_target() {
+    let targets = [
+        None,
+        Some(source(1, 10, FrameRate::FPS_25)),
+        Some(source(2, 4, FrameRate::FPS_30)),
+        Some(source(3, 2, FrameRate::FPS_24)),
+    ];
+    let rng = Arc::new(Mutex::new(Rng(0xA5A5_5A5A_1234_5678)));
+    let injected = Arc::new(AtomicU64::new(0));
+    let during: During = {
+        let (rng, injected) = (Arc::clone(&rng), Arc::clone(&injected));
+        Box::new(move |transport: &Transport, _req: &RenderRequest| {
+            let mut rng = rng.lock().unwrap();
+            if rng.chance(25) {
+                // A switch or a seek arrives while this frame renders.
+                if rng.chance(50) {
+                    transport.set_source(targets[rng.below(4) as usize]);
+                } else {
+                    let end = transport.timing().end.flicks();
+                    transport.seek(t(rng.below(end.max(1) as u64) as i64));
+                }
+                injected.fetch_add(1, Ordering::SeqCst);
+            }
+        })
+    };
+    let mut h = Harness::new(Setup {
+        cost_ns: [30 * MS, 15 * MS, 5 * MS],
+        cooperative: false,
+        during: Some(during),
+        ..Setup::default()
+    });
+    h.settle();
+    let mut rng = Rng(99);
+    let mut switches = 0;
+    for i in 0..100 {
+        match rng.below(10) {
+            0..=4 => {
+                // The test thread's own switch: after it returns, only the new target's frames.
+                let next = targets[rng.below(4) as usize];
+                let before = h.last_seq();
+                let s = h.transport.set_source(next);
+                let epoch = h.transport.epoch();
+                assert_eq!(s.source, next);
+                h.run_ms(1);
+                let target = next.map_or(PlaybackTarget::Sequence, |n| n.target());
+                for r in h.records_after(before) {
+                    // Nothing older than the switch; switches injected mid-render may follow.
+                    assert!(
+                        r.epoch >= epoch,
+                        "switch {i}: a frame of request {}",
+                        r.epoch
+                    );
+                    if r.epoch == epoch {
+                        assert_eq!(r.target_at_delivery, target, "switch {i}");
+                        assert_eq!(r.painted, Some(target_offset(target)), "switch {i}");
+                    }
+                }
+                switches += 1;
+            }
+            5..=7 => {
+                let end = h.transport.timing().end.flicks();
+                h.transport.seek(t(rng.below(end.max(1) as u64) as i64));
+            }
+            8 => {
+                h.transport.play();
+            }
+            _ => {
+                h.transport.pause();
+            }
+        }
+        h.run_ms(if i % 3 == 0 { 300 } else { 20 });
+    }
+    h.run_ms(1_000);
+    let records = h.records();
+    assert_never_stale(&records);
+    let targets_seen: HashSet<i64> = records.iter().filter_map(|r| r.painted).collect();
+    let stats = h.transport.stats();
+    println!(
+        "{switches} switches and {} seeks/plays/pauses (+{} injected mid-render): {} frames from \
+         {} targets, {} renders cancelled, 0 stale",
+        100 - switches,
+        injected.load(Ordering::SeqCst),
+        records.len(),
+        targets_seen.len(),
+        stats.cancelled
+    );
+    assert!(switches >= 30, "{switches} switches");
+    assert_eq!(targets_seen.len(), 4, "every target was shown");
+    assert!(injected.load(Ordering::SeqCst) > 10);
+    assert_eq!(stats.errors, 0);
+}
+
+#[test]
+fn edits_during_a_source_wait_and_a_removed_asset_ends_it() {
+    let mut h = Harness::new(Setup::default());
+    h.transport.seek(t(200 * FRAME_30));
+    h.run_ms(200);
+    let one = source(1, 10, FrameRate::FPS_25);
+    h.transport.set_source(Some(one));
+    h.transport.play();
+    h.run_ms(300);
+    // The timeline shrinks to 5 s while the source plays: the source is not interrupted.
+    let epoch = h.transport.epoch();
+    let s = h
+        .transport
+        .sequence_edited(SequenceTiming::new(FrameRate::FPS_30, t(150 * FRAME_30)));
+    assert!(s.playing && s.source == Some(one));
+    assert_eq!(h.transport.epoch(), epoch, "no new request for the source");
+    h.transport
+        .set_timing(SequenceTiming::new(FrameRate::FPS_30, t(100 * FRAME_30)));
+    assert_eq!(h.transport.epoch(), epoch);
+    assert_eq!(h.transport.timing(), one.timing());
+    // Another asset changing does nothing either.
+    h.transport.source_changed(media(2), None);
+    assert_eq!(h.transport.epoch(), epoch);
+    // The asset is re-probed shorter: playback continues on the new extent.
+    let shorter = source(1, 8, FrameRate::FPS_25);
+    let s = h.transport.source_changed(media(1), Some(shorter));
+    assert!(s.playing && s.source == Some(shorter));
+    // The same asset again (a relink): the current frame re-renders.
+    let before = h.transport.epoch();
+    h.transport.source_changed(media(1), Some(shorter));
+    assert!(h.transport.epoch() > before);
+    h.run_ms(100);
+    // The asset is removed: the sequence plays again, stopped on its playhead clamped to the
+    // new extent.
+    let s = h.transport.source_changed(media(1), None);
+    assert_eq!(
+        (s.source, s.playing, s.t.flicks()),
+        (None, false, 100 * FRAME_30)
+    );
+    assert_eq!(h.transport.timing().end.flicks(), 100 * FRAME_30);
+    h.settle();
+    let last = h.records().last().cloned().unwrap();
+    assert_eq!(
+        (last.frame, last.target_at_delivery),
+        (99, PlaybackTarget::Sequence)
+    );
+    // Back on the sequence, edits refresh it as before.
+    let before = h.transport.epoch();
+    h.transport
+        .sequence_edited(SequenceTiming::new(FrameRate::FPS_30, t(100 * FRAME_30)));
+    assert!(h.transport.epoch() > before, "a refresh");
+    assert_never_stale(&h.records());
 }
 
 // ----- pause, refresh, preview size, timing ---------------------------------------------------
@@ -1189,19 +1519,68 @@ fn view_transport_commands_run_against_the_transport() {
     )
     .unwrap();
     assert_eq!(size, json!({"width": 8192, "height": 4096}));
+    // A media item on its own: the commands then act on it, in its time (25 fps).
+    let id = serde_json::to_value(media(1)).unwrap();
+    let s = call("view.set_source", json!({ "media": id })).unwrap();
+    assert_eq!(
+        s["source"],
+        json!({ "media": id, "duration": 10 * 705_600_000_i64, "fps": {"num": 25, "den": 1} })
+    );
+    assert_eq!(
+        (s["t"].as_i64(), s["playing"].as_bool()),
+        (Some(0), Some(false))
+    );
+    let s = call("view.seek", json!({"t": "f:30"})).unwrap();
+    assert_eq!(s["t"].as_i64(), Some(30 * FRAME_25));
+    let s = call("view.step", json!({"frames": -1})).unwrap();
+    assert_eq!(s["t"].as_i64(), Some(29 * FRAME_25));
+    let err = call(
+        "view.set_source",
+        json!({ "media": serde_json::to_value(media(9)).unwrap() }),
+    )
+    .unwrap_err();
+    assert_eq!(err.code(), "not_found", "{err}");
+    assert!(call("view.set_source", json!({ "media": 3 })).is_err());
+    // Without `media`: the timeline again, on its own playhead.
+    let s = call("view.set_source", json!({})).unwrap();
+    assert_eq!(
+        (s["source"].clone(), s["t"].as_i64()),
+        (json!(null), Some(62 * FRAME_30))
+    );
     for name in [
         "view.play",
         "view.pause",
         "view.seek",
         "view.set_rate",
         "view.step",
+        "view.set_source",
         "view.set_preview_size",
     ] {
         // `view` commands are never undoable, never journaled and bump no `rev` (arch §5.1).
         let meta = &registry.get(name).unwrap().meta;
         assert!(!meta.undoable && meta.view, "{name}: a view command");
     }
+    // Agents reach `view.set_source` through the catalog, not `tools/list`.
+    assert_eq!(
+        registry.get("view.set_source").unwrap().meta.mcp,
+        cutweave_commands::McpExposure::Catalog
+    );
     h.settle();
+    // Without a resolver, playback has no media to play on its own.
+    let mut bare = Harness::new(Setup {
+        sources: None,
+        ..Setup::default()
+    });
+    let err = registry
+        .invoke_engine_json(
+            "view.set_source",
+            json!({ "media": id }),
+            &mut bare.transport.clone(),
+            Access::UI,
+        )
+        .unwrap_err();
+    assert_eq!(err.code(), "unsupported", "{err}");
+    bare.settle();
 }
 
 // ----- headless with the null audio output and the SHM ring ---------------------------------
