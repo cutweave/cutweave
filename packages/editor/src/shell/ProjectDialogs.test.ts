@@ -5,7 +5,7 @@
 // engine is a recording fake; `session/session.integration.test.ts` runs the same flows on a real
 // engine.
 import { TooltipProvider } from "@cutweave/ui";
-import { cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
+import { act, cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { Fragment, createElement as h, type ReactElement } from "react";
 import { I18nextProvider } from "react-i18next";
@@ -341,6 +341,17 @@ describe("keyboard shortcuts of the menu bar (WP-1M.09)", () => {
     const field = screen.getByRole("textbox", { name: "Field" });
     field.focus();
     fireEvent.keyDown(field, { key: "n", ctrlKey: true });
+    await waitFor(() => expect(sessionUiStore.getState().naming?.mode).toBe("new"));
+  });
+
+  it("a project shortcut pressed while a save is running runs once it has finished", async () => {
+    sessionStore.setState({ path: "C:\\p\\Film\\Film.cutweave" });
+    sessionUiStore.setState({ busy: true });
+    render(wrap(h(Wired)));
+    fireEvent.keyDown(window, { key: "n", ctrlKey: true });
+    await new Promise((r) => setTimeout(r, 60));
+    expect(sessionUiStore.getState().naming).toBeNull();
+    act(() => sessionUiStore.setState({ busy: false }));
     await waitFor(() => expect(sessionUiStore.getState().naming?.mode).toBe("new"));
   });
 

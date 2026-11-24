@@ -15,7 +15,7 @@ import { type DesktopBridge, desktopFromWindow, hasNativeMenu } from "../session
 import { historyLabel } from "../session/historyLabels.ts";
 import type { ProjectController } from "../session/projectController.ts";
 import { projectFileName, useSessionStore } from "../session/sessionStore.ts";
-import { useSessionUiStore } from "../session/sessionUiStore.ts";
+import { sessionUiStore, useSessionUiStore } from "../session/sessionUiStore.ts";
 import { isTextEntry } from "../session/useProject.ts";
 import { translator } from "../timeline/errors.ts";
 import {
@@ -154,9 +154,19 @@ export function useAppMenus(desktop: DesktopBridge | null = desktopFromWindow())
   }, [t, desktop, dev, ready, known, busy, readOnly, recovering, stacks, recent]);
 }
 
+/** Project commands a shortcut may press while another project operation is still running. */
+const DEFERRABLE: ReadonlySet<AppCommand> = new Set<AppCommand>(["new", "open", "save", "saveAs"]);
+
+/** How long a deferred shortcut waits for the operation in flight before it is dropped. */
+export const DEFER_SHORTCUT_MS = 10_000;
+
 /**
  * The menu shortcuts, window-wide (not on macOS, whose native menu has them). A command runs
  * only while its menu item is enabled; `beforeRun` closes an open menu first.
+ *
+ * A project shortcut pressed while a project operation is running (Ctrl+N right after Ctrl+S,
+ * say) runs once that operation has finished, as the native menu's accelerators did, instead
+ * of being lost. Only the latest such key waits, for at most `DEFER_SHORTCUT_MS`.
  */
 export function useAppShortcuts(
   menus: readonly AppMenu[],
@@ -176,12 +186,44 @@ export function useAppShortcuts(
       const command = commandForKey(event, platform, { typing: isTextEntry(event.target), dev });
       if (command === null) return;
       event.preventDefault();
+      cancelDeferred();
       const now = latest.current;
-      if (!isEnabled(now.menus, command)) return;
-      now.beforeRun();
-      runAppCommand(command, now.deps);
+      if (isEnabled(now.menus, command)) {
+        now.beforeRun();
+        runAppCommand(command, now.deps);
+      } else if (DEFERRABLE.has(command) && sessionUiStore.getState().busy) {
+        deferred = runWhenIdle(command);
+      }
+    };
+    let deferred: (() => void) | null = null;
+    const cancelDeferred = (): void => {
+      deferred?.();
+      deferred = null;
+    };
+    /** Runs `command` once nothing is busy and its menu item is enabled; returns a canceller. */
+    const runWhenIdle = (command: AppCommand): (() => void) => {
+      const deadline = Date.now() + DEFER_SHORTCUT_MS;
+      let timer: ReturnType<typeof setTimeout> | undefined;
+      const check = (): void => {
+        const now = latest.current;
+        // The menus re-render after the operation ends, so poll briefly for the item.
+        if (!sessionUiStore.getState().busy && isEnabled(now.menus, command)) {
+          deferred = null;
+          now.beforeRun();
+          runAppCommand(command, now.deps);
+        } else if (Date.now() < deadline) {
+          timer = setTimeout(check, 25);
+        } else {
+          deferred = null;
+        }
+      };
+      timer = setTimeout(check, 25);
+      return () => clearTimeout(timer);
     };
     window.addEventListener("keydown", onKey);
-    return () => window.removeEventListener("keydown", onKey);
+    return () => {
+      window.removeEventListener("keydown", onKey);
+      cancelDeferred();
+    };
   }, [dev]);
 }
