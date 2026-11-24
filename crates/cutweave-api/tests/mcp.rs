@@ -430,17 +430,40 @@ async fn each_core_tool_returns_the_engine_output() {
         same!("edit_undo", json!({}));
         same!("timeline_get", json!({ "sequence": seq, "depth": 2 }));
         // export_start: these engines run without the media subsystem, so both validate the
-        // export and refuse it the same way (`unsupported`).
+        // export and refuse it the same way (`unsupported`), whichever `hw` policy is asked
+        // for (the listed schema takes every form).
         let out = |h: &Harness| h.dir.path().join("out.mp4").to_string_lossy().into_owned();
-        let mcp = client.err("export_start", json!({ "path": out(&a) })).await;
+        for hw in [
+            Value::Null,
+            json!("auto"),
+            json!("off"),
+            json!({ "force": "h264_nvenc" }),
+        ] {
+            let mcp = client
+                .err("export_start", json!({ "path": out(&a), "hw": hw }))
+                .await;
+            let engine = direct
+                .call(cutweave_engine::Call::new(
+                    "export.start",
+                    json!({ "path": out(&b), "hw": hw }),
+                ))
+                .expect_err("export.start without a media subsystem");
+            assert_eq!(mcp["error"]["code"], json!(engine.code()), "{hw}: {mcp}");
+            assert_eq!(engine.code(), "unsupported", "{hw}");
+        }
+        // A malformed encoder name fails validation the same way on both.
+        let bad = json!({ "force": "H264 NVENC" });
+        let mcp = client
+            .err("export_start", json!({ "path": out(&a), "hw": bad }))
+            .await;
         let engine = direct
             .call(cutweave_engine::Call::new(
                 "export.start",
-                json!({ "path": out(&b) }),
+                json!({ "path": out(&b), "hw": bad }),
             ))
-            .expect_err("export.start without a media subsystem");
+            .expect_err("a malformed encoder name");
         assert_eq!(mcp["error"]["code"], json!(engine.code()), "{mcp}");
-        assert_eq!(engine.code(), "unsupported");
+        assert_eq!(engine.code(), "invalid");
         step("export_start");
         // project_open: save each document as a project, close it, open it again.
         for (h, conn) in [(&a, a.direct("mcp")), (&b, b.direct("mcp"))] {
