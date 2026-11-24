@@ -97,6 +97,11 @@ struct Asset {
     identity: u64,
 }
 
+/// The identity of a media file in frame ids: a hash of its content hash (or path).
+pub(crate) fn media_identity(key: &str) -> u64 {
+    Fnv::new().bytes(key.as_bytes()).0
+}
+
 fn assets(doc: &Project) -> HashMap<MediaId, Asset> {
     doc.media
         .values()
@@ -107,11 +112,50 @@ fn assets(doc: &Project) -> HashMap<MediaId, Asset> {
                 m.id,
                 Asset {
                     path: PathBuf::from(path),
-                    identity: Fnv::new().bytes(key.as_bytes()).0,
+                    identity: media_identity(key),
                 },
             ))
         })
         .collect()
+}
+
+/// The compositor's frame for a decoded one of the media with `identity`
+/// ([`media_identity`]): same planes, an id from the media and the pts.
+pub(crate) fn compositor_frame(
+    identity: u64,
+    frame: cutweave_media::VideoFrame,
+) -> Result<Arc<VideoFrame>, FrameError> {
+    use cutweave_media::PixelFormat as M;
+    use cutweave_render::PixelFormat as R;
+    let format = match frame.format {
+        M::Nv12 => R::Nv12,
+        M::P010 => R::P010,
+        M::Yuv420p => R::Yuv420p,
+        M::Rgba8 => R::Rgba8,
+        other => {
+            return Err(FrameError::Unavailable(format!(
+                "the compositor cannot read {other:?} frames"
+            )));
+        }
+    };
+    let id = FrameId(
+        Fnv::new()
+            .bytes(&identity.to_le_bytes())
+            .bytes(&frame.pts.flicks().to_le_bytes())
+            .bytes(format!("{format:?}").as_bytes())
+            .bytes(&frame.width.to_le_bytes())
+            .bytes(&frame.height.to_le_bytes())
+            .0,
+    );
+    let planes = frame
+        .planes
+        .into_iter()
+        .map(|p| cutweave_render::Plane {
+            data: p.data,
+            stride: p.stride,
+        })
+        .collect();
+    VideoFrame::new(id, frame.width, frame.height, format, planes, frame.color).map(Arc::new)
 }
 
 /// One media's decoder and where it is.
@@ -160,37 +204,7 @@ impl DecoderFrameSource {
         asset: &Asset,
         frame: cutweave_media::VideoFrame,
     ) -> Result<Arc<VideoFrame>, FrameError> {
-        use cutweave_media::PixelFormat as M;
-        use cutweave_render::PixelFormat as R;
-        let format = match frame.format {
-            M::Nv12 => R::Nv12,
-            M::P010 => R::P010,
-            M::Yuv420p => R::Yuv420p,
-            M::Rgba8 => R::Rgba8,
-            other => {
-                return Err(FrameError::Unavailable(format!(
-                    "the compositor cannot read {other:?} frames"
-                )));
-            }
-        };
-        let id = FrameId(
-            Fnv::new()
-                .bytes(&asset.identity.to_le_bytes())
-                .bytes(&frame.pts.flicks().to_le_bytes())
-                .bytes(format!("{format:?}").as_bytes())
-                .bytes(&frame.width.to_le_bytes())
-                .bytes(&frame.height.to_le_bytes())
-                .0,
-        );
-        let planes = frame
-            .planes
-            .into_iter()
-            .map(|p| cutweave_render::Plane {
-                data: p.data,
-                stride: p.stride,
-            })
-            .collect();
-        VideoFrame::new(id, frame.width, frame.height, format, planes, frame.color).map(Arc::new)
+        compositor_frame(asset.identity, frame)
     }
 
     /// The frame on screen at `t` in `stream` (see the module docs).

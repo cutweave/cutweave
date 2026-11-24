@@ -30,16 +30,19 @@ use std::sync::atomic::{AtomicBool, AtomicU8, AtomicU64, Ordering};
 use std::sync::{Arc, Mutex, PoisonError, RwLock, RwLockReadGuard, RwLockWriteGuard};
 use std::time::{Duration, Instant};
 
-use cutweave_api::{ApiConfig, ApiError, ApiServer, Credential, Credentials, RunningServer};
+use cutweave_api::{
+    ApiConfig, ApiError, ApiServer, Credential, Credentials, RunFile, RunFileContents,
+    RunningServer,
+};
 use cutweave_commands::{
     Access, ActorCtx, Clock, CmdError, ConnId, DocHandle, DocSnapshot, ManualClock, Registry,
     RegistryError, Rev, SystemClock, WallTime,
 };
 use cutweave_jobs::JobManager;
-use cutweave_model::SeededGen;
+use cutweave_model::{SeededGen, Time};
 use cutweave_ops::export::ExportCtx;
 use cutweave_ops::media::{AllowedRoots, AnalysisStages, Analyzer, ImportCtx, ImportPolicy};
-use cutweave_ops::view::ViewCtx;
+use cutweave_ops::view::{UiState, ViewCtx};
 use serde_json::Value;
 use tokio::runtime::Runtime;
 use tokio::sync::broadcast::error::RecvError as BroadcastRecvError;
@@ -49,6 +52,7 @@ use crate::config::{EngineConfig, EngineMode};
 use crate::dispatch::{Connection, Reply};
 use crate::events::{EngineEvent, EventBus, EventReceiver};
 use crate::export::{ActiveExports, Starter};
+use crate::full::MediaState;
 use crate::import::{BusAnalysisSink, ImportSink, NoMediaBackend, ctx_for};
 use crate::journal::{IdState, StopReason};
 use crate::logging::{self, LogGuard};
@@ -57,7 +61,9 @@ use crate::session::{
     self, Deps, ProjectCloseOutput, ProjectOpenOutput, ProjectRecoverOutput, ProjectSaveOutput,
     ProjectStatus, Session, SessionCall, SessionState,
 };
-use crate::subsystems::{CoreOnly, SubsystemCall, SubsystemError, SubsystemEvents, SubsystemHost};
+use crate::subsystems::{
+    CoreOnly, EngineLink, SubsystemCall, SubsystemError, SubsystemEvents, SubsystemHost,
+};
 
 /// Mixed into the `--deterministic-ids` seed for job ids: a stream separate from the
 /// document's, so job timing never shifts document ids (WP-1D.07).
@@ -187,6 +193,8 @@ pub(crate) struct Core {
     pub(crate) has_ui: bool,
     /// Output files of queued and running exports.
     exports: ActiveExports,
+    /// The run-file, once the server runs (its `shm` follows the preview ring).
+    run_file: Mutex<Option<PathBuf>>,
 }
 
 fn state_code(s: SessionState) -> u8 {
@@ -447,16 +455,108 @@ impl Core {
                     .registry
                     .invoke_engine_json(name, params, vc, ctx.access())
             });
-            (result, view.with_ctx(ViewCtx::take_event))
+            let change =
+                view.with_ctx(|vc| vc.take_event().map(|change| (change, vc.state().clone())));
+            (result, change)
         };
         drop(guard);
-        if let Some(change) = change {
+        if let Some((change, state)) = change {
             self.deps.events.publish(EngineEvent::View {
                 change,
                 origin: Some(ctx.conn()),
             });
+            self.deps.subsystems.on_view(&state, false);
         }
         result.map(|output| self.reply(output))
+    }
+
+    /// Starts the subsystems' devices (after the core is up, before the server binds) and gives
+    /// them the first document's view state.
+    fn start_subsystems(self: &Arc<Self>, config: &EngineConfig) -> Result<(), StartError> {
+        let host = SubsystemHost {
+            mode: config.mode,
+            audio: config.audio,
+            gpu: config.gpu,
+            deterministic_ids: self.deps.seed,
+            events: SubsystemEvents(self.deps.events.clone()),
+            runtime: self.runtime.clone(),
+            link: EngineLink {
+                core: Arc::downgrade(self),
+            },
+        };
+        self.deps.subsystems.start(&host)?;
+        self.announce_first_view();
+        Ok(())
+    }
+
+    /// Gives the subsystems the view state of the document the engine started with (master
+    /// volume, the saved playhead).
+    fn announce_first_view(&self) {
+        let guard = self.session.read().unwrap_or_else(PoisonError::into_inner);
+        if let Some(session) = guard.as_ref() {
+            self.deps
+                .subsystems
+                .on_view(&Core::view_state(session), true);
+        }
+    }
+
+    /// The view state of `session` (for [`Subsystems::on_view`](crate::Subsystems::on_view)).
+    fn view_state(session: &Session) -> UiState {
+        session
+            .view
+            .lock()
+            .unwrap_or_else(PoisonError::into_inner)
+            .with_ctx(|vc| vc.state().clone())
+    }
+
+    /// Moves the view playhead with the registered `view.set_playhead` command (the transport
+    /// keeps it in step on pause, seek and stop; WP-1I.05).
+    pub(crate) fn set_view_playhead(
+        &self,
+        t: Time,
+        origin: Option<ConnId>,
+    ) -> Result<(), CmdError> {
+        let guard = self.session()?;
+        let Some(session) = guard.as_ref() else {
+            return Err(stopped());
+        };
+        let change = {
+            let mut view = session.view.lock().unwrap_or_else(PoisonError::into_inner);
+            view.with_ctx(|vc| {
+                self.deps
+                    .registry
+                    .invoke_engine_json(
+                        "view.set_playhead",
+                        serde_json::json!({ "at": t.flicks() }),
+                        vc,
+                        Access::STANDARD,
+                    )
+                    .map(|_| vc.take_event())
+            })
+        }?;
+        drop(guard);
+        if let Some(change) = change {
+            self.deps
+                .events
+                .publish(EngineEvent::View { change, origin });
+        }
+        Ok(())
+    }
+
+    /// Rewrites the run-file's `shm` with the current preview ring (on the blocking pool).
+    pub(crate) fn preview_ring_changed(self: &Arc<Self>) {
+        let core = Arc::clone(self);
+        self.runtime.spawn_blocking(move || {
+            let path = core
+                .run_file
+                .lock()
+                .unwrap_or_else(PoisonError::into_inner)
+                .clone();
+            let Some(path) = path else { return };
+            if let Err(e) = rewrite_run_file_shm(&path, core.deps.subsystems.preview_ring_name()) {
+                tracing::warn!(error = %e, "could not update the run-file's preview ring");
+            }
+        });
     }
 
     // ----- the session commands ----------------------------------------------------------------
@@ -486,6 +586,7 @@ impl Core {
         }
         session::announce_reset(&self.deps, prev_rev, &next);
         let status = next.status();
+        self.deps.subsystems.on_view(&Core::view_state(&next), true);
         *slot = Some(next);
         if let Some(e) = error {
             return Err(e);
@@ -705,6 +806,38 @@ impl EngineHandle {
     pub fn runtime(&self) -> &tokio::runtime::Handle {
         &self.core.runtime
     }
+
+    /// The preview ring announcement (`rpc.hello`'s `shm`), when the engine publishes one.
+    #[must_use]
+    pub fn preview_ring(&self) -> Option<String> {
+        self.core.deps.subsystems.preview_ring()
+    }
+
+    /// What the `/media` HTTP endpoints serve (WP-1I.03), when media subsystems run.
+    #[must_use]
+    pub fn media_state(&self) -> Option<MediaState> {
+        self.core.deps.subsystems.media_state()
+    }
+}
+
+/// Sets the `shm` of the run-file at `path` (kept user-only by [`RunFile::write`]). A run-file
+/// that is gone (the engine is stopping) is not recreated.
+fn rewrite_run_file_shm(path: &Path, shm: Option<String>) -> std::io::Result<()> {
+    let text = match std::fs::read_to_string(path) {
+        Ok(text) => text,
+        Err(e) if e.kind() == std::io::ErrorKind::NotFound => return Ok(()),
+        Err(e) => return Err(e),
+    };
+    let mut contents: RunFileContents =
+        serde_json::from_str(&text).map_err(std::io::Error::other)?;
+    if contents.shm == shm {
+        return Ok(());
+    }
+    contents.shm = shm;
+    let dir = path
+        .parent()
+        .ok_or_else(|| std::io::Error::other("the run-file has no folder"))?;
+    RunFile::write(dir, &contents).map(|_| ())
 }
 
 /// Every command the core engine serves: `cutweave-ops`, the `edit.*` commands and the
@@ -857,6 +990,7 @@ impl Engine {
             has_ui: config.mode == EngineMode::Gui,
             session: RwLock::new(None),
             exports: ActiveExports::default(),
+            run_file: Mutex::new(None),
             deps,
         });
         core.settle_state(&first);
@@ -870,15 +1004,7 @@ impl Engine {
         };
         // From here on, dropping `engine` on an error stops what already runs.
         engine.forward_job_events();
-        let host = SubsystemHost {
-            mode: config.mode,
-            audio: config.audio,
-            gpu: config.gpu,
-            deterministic_ids: seed,
-            events: SubsystemEvents(core.deps.events.clone()),
-            runtime: core.runtime.clone(),
-        };
-        core.deps.subsystems.start(&host)?;
+        core.start_subsystems(&config)?;
         engine.serve(&mut config)?;
         tracing::info!(
             mode = config.mode.name(),
@@ -936,8 +1062,14 @@ impl Engine {
             version: VERSION.to_owned(),
             enable_test_routes: config.api.enable_test_routes,
             mounts,
+            shm: self.core.deps.subsystems.preview_ring_name(),
         };
         let server = block_on(&self.core.runtime, ApiServer::start(api))?;
+        *self
+            .core
+            .run_file
+            .lock()
+            .unwrap_or_else(PoisonError::into_inner) = Some(server.run_file_path().to_path_buf());
         self.server = Some(server);
         Ok(())
     }
@@ -1002,6 +1134,11 @@ impl Engine {
         let core = &self.core;
         core.stopping.store(true, Ordering::Release);
         core.set_state(SessionState::Closing);
+        // No run-file rewrite may race the server removing it.
+        core.run_file
+            .lock()
+            .unwrap_or_else(PoisonError::into_inner)
+            .take();
         if let (Some(server), Some(rt)) = (self.server.take(), self.runtime.handle()) {
             block_on(rt, server.shutdown());
         }

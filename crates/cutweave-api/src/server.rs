@@ -81,6 +81,9 @@ pub struct ApiConfig {
     pub enable_test_routes: bool,
     /// Route mount points.
     pub mounts: Mounts,
+    /// The name of the preview frame ring the engine publishes, recorded in the run-file's
+    /// `shm` (WP-1I.05); `None` without one.
+    pub shm: Option<String>,
 }
 
 impl Default for ApiConfig {
@@ -95,6 +98,7 @@ impl Default for ApiConfig {
             version: env!("CARGO_PKG_VERSION").to_owned(),
             enable_test_routes: false,
             mounts: Mounts::default(),
+            shm: None,
         }
     }
 }
@@ -226,7 +230,7 @@ impl ApiServer {
                 .duration_since(UNIX_EPOCH)
                 .map_or(0, |d| d.as_secs()),
             version: config.version.clone(),
-            shm: None,
+            shm: config.shm.clone(),
         };
         let run_file = RunFile::write(&run_dir, &contents).map_err(ApiError::RunFile)?;
 

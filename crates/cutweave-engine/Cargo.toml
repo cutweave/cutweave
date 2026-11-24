@@ -27,9 +27,16 @@ ffmpeg = ["cutweave-media/ffmpeg"]
 # The local server (WP-1I.01): `ApiServer`, credential classes, run-file, the handshake token
 # rules and the exit-12 contract the engine root starts and reuses (WP-1I.04).
 cutweave-api = { path = "../cutweave-api" }
-# The export pipeline's offline mixdown and its `SourceFactory` seam (WP-1E.03). No `device`
-# feature: export needs no audio output (WP-1I.05 enables it for playback).
-cutweave-audio = { path = "../cutweave-audio", default-features = false }
+# The export pipeline's offline mixdown and its `SourceFactory` seam (WP-1E.03), and the
+# playback mixer and output (WP-1I.05): `device` is cpal output on Windows and macOS (the null
+# output everywhere else and in headless engines).
+cutweave-audio = { path = "../cutweave-audio", default-features = false, features = ["device"] }
+# The full engine's caches (WP-1I.05): `cache.sqlite` (frame indexes), thumbnails and
+# filmstrips, waveform pyramids and the RAM frame cache (WP-1D.02/1D.05/1D.06). Workspace crate.
+cutweave-cache = { path = "../cutweave-cache" }
+# Playback (WP-1I.05): the transport, render loop, `view.*` transport commands and the preview
+# ring publisher (WP-1H.01/1H.02). Workspace crate.
+cutweave-playback = { path = "../cutweave-playback", features = ["transport"] }
 # The doc actor's `CommitSink` seam, `JournaledCommit` and the recovery hooks of `DocConfig`
 # (WP-1C.02: the journal persists committed transactions before they are acknowledged).
 cutweave-commands = { path = "../cutweave-commands" }
@@ -41,9 +48,9 @@ cutweave-media = { path = "../cutweave-media" }
 cutweave-model = { path = "../cutweave-model" }
 cutweave-ops = { path = "../cutweave-ops" }
 # The export pipeline renders through the same evaluation, render graph and `FrameBackend` as
-# `render.frame` (WP-1E.03). The wasm-safe core only: the GPU backend is built by whoever owns
-# the device (WP-1I.05; the export tests enable `gpu` below).
-cutweave-render = { path = "../cutweave-render", default-features = false }
+# `render.frame` (WP-1E.03). `gpu`: the engine owns the device (WP-1I.05), so the full engine
+# builds the wgpu compositor for preview, `render.frame` and export.
+cutweave-render = { path = "../cutweave-render", default-features = false, features = ["gpu"] }
 serde.workspace = true
 serde_json.workspace = true
 # `specta::Type` on the engine event payloads (TS `EventMap`, WP-1N.02); `usize` fields export as `number`.
