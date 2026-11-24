@@ -60,10 +60,11 @@ use cutweave_commands::{
 use cutweave_jobs::JobManager;
 use cutweave_model::{ItemId, OpenOutcome, Project, open_str, to_document_string};
 use cutweave_ops::{
+    export::ExportCtx,
     media::{FakeProbe, ImportCtx, MediaRegister, MediaRegistered, MediaSink},
     testing::{
         self, AGENT_LABEL, JsonMirror, analyzer, arb_command_from, check_invariants,
-        check_linked_edit, fake_probe, job_manager, replay_events,
+        check_linked_edit, export_ctx, fake_probe, job_manager, replay_events,
     },
 };
 use proptest::{
@@ -468,6 +469,14 @@ impl<'s> Harness<'s> {
             .invoke_engine_json("media.import", params.clone(), &mut ctx_any, ctx.access())
     }
 
+    /// Runs `export.start` against the committed document (the starter queues nothing).
+    fn export(&self, ctx: &ActorCtx, params: &Value) -> Result<Value, CmdError> {
+        let snapshot = Arc::new(self.lock().committed_snapshot());
+        let mut ctx_any = export_ctx(snapshot);
+        self.registry
+            .invoke_engine_json("export.start", params.clone(), &mut ctx_any, ctx.access())
+    }
+
     /// Runs a `job.*` command against the job manager.
     fn job(&self, ctx: &ActorCtx, name: &str, params: &Value) -> Result<Value, CmdError> {
         let mut jobs = self.jobs.clone();
@@ -561,6 +570,12 @@ impl<'s> Harness<'s> {
             }
             Some(c) if c == TypeId::of::<JobManager>() => {
                 self.job(ctx, name, params).map(|output| Done {
+                    output,
+                    applied: None,
+                })
+            }
+            Some(c) if c == TypeId::of::<ExportCtx>() => {
+                self.export(ctx, params).map(|output| Done {
                     output,
                     applied: None,
                 })

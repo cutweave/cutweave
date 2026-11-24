@@ -602,7 +602,9 @@ mod tests {
         assert_eq!(preset_size(1080, 1920), (1080, 1920));
         assert_eq!(preset_size(2160, 3840), (1080, 1920));
         assert_eq!(preset_size(1280, 720), (1280, 720));
-        assert_eq!(preset_size(1919, 1081), (1918, 1080));
+        // Odd sizes: 1919x1081 scales by 1080/1081 to 1917.2 px, rounded down to even.
+        assert_eq!(preset_size(1919, 1081), (1916, 1080));
+        assert_eq!(preset_size(1279, 719), (1278, 718));
         // 21:9 is limited by the width; 4:3 by the height.
         assert_eq!(preset_size(2560, 1080), (1920, 810));
         assert_eq!(preset_size(2880, 2160), (1440, 1080));

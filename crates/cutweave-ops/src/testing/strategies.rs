@@ -22,7 +22,10 @@ use proptest::{
 };
 use serde_json::{Value, json};
 
+use cutweave_commands::DocSnapshot;
+
 use crate::{
+    export::{ExportCtx, ExportPlan, ExportStarter},
     item::ITEM_GET_FIELDS,
     media::{
         AnalysisInput, AnalysisSink, AnalysisStage, AnalysisStages, Analyzer, FakeProbe,
@@ -304,6 +307,7 @@ pub(super) fn args_for(name: &str, p: &Pools) -> Option<(u32, BoxedStrategy<Valu
         "job.status" | "job.cancel" => (1, job_ref("id")),
         "job.list" => (1, job_list(p)),
         "job.wait" => (1, job_wait()),
+        "export.start" => (1, export_start(p)),
         _ => return None,
     })
 }
@@ -1067,4 +1071,90 @@ fn job_wait() -> BoxedStrategy<Value> {
     ]
     .boxed();
     prop_oneof![16 => valid, 4 => invalid].boxed()
+}
+
+// ----- export --------------------------------------------------------------------------------
+
+/// File name of the `export.start` output in the OS temp folder. Harnesses give the command a
+/// starter that queues nothing, so no file is written there (only the writability check's
+/// probe file, created and removed at once).
+pub const EXPORT_FILE_NAME: &str = "cutweave-props-export.mp4";
+
+/// `export.start` to [`EXPORT_FILE_NAME`] in the OS temp folder: the whole sequence or a range
+/// on the 30 fps grid (sometimes past the end), the preset or custom settings.
+fn export_start(p: &Pools) -> BoxedStrategy<Value> {
+    let path = std::env::temp_dir()
+        .join(EXPORT_FILE_NAME)
+        .to_string_lossy()
+        .into_owned();
+    let range = (0..120_i64, 1..120_i64, any::<u8>(), any::<u8>()).prop_map(|(at, len, fa, fb)| {
+        json!({"in": time_json(FPF_30, at, fa, 0), "out": time_json(FPF_30, at + len, fb, 0)})
+    });
+    let custom = (
+        option::of(select(vec![320_u32, 640, 1280, 1920])),
+        option::of(select(vec![180_u32, 360, 720, 1080])),
+        option::of(select(FrameRate::COMMON.to_vec())),
+        option::of(select(vec!["low", "medium", "high"])),
+    )
+        .prop_map(|(width, height, fps, quality)| {
+            json!({"custom": {"width": width, "height": height, "fps": fps, "quality": quality}})
+        });
+    let preset = prop_oneof![
+        2 => Just(Value::Null),
+        1 => Just(json!("h264-mp4-1080p")),
+        2 => custom,
+    ];
+    let to = path.clone();
+    let valid = (
+        one_of(p.seqs.clone()),
+        option::weighted(0.4, range),
+        preset,
+        option::of(select(vec!["auto", "off"])),
+        option::of(any::<bool>()),
+    )
+        .prop_map(move |(sequence, range, preset, hw, overwrite)| {
+            json!({"sequence": sequence, "path": to, "range": range, "preset": preset,
+                   "hw": hw, "overwrite": overwrite})
+        })
+        .boxed();
+    let in_temp = move |name: &str| {
+        std::env::temp_dir()
+            .join(name)
+            .to_string_lossy()
+            .into_owned()
+    };
+    let invalid = prop_oneof![
+        Just(json!({"path": "relative/out.mp4"})),
+        Just(json!({"path": in_temp("cutweave-props-export.mov")})),
+        Just(json!({"path": in_temp("cutweave-missing-folder/out.mp4")})),
+        Just(json!({"path": path, "preset": {"custom": {"width": 641}}})),
+        Just(json!({"path": path, "preset": {"custom": {"fps": {"num": 1000, "den": 1}}}})),
+        Just(json!({"path": path, "range": {"in": "2s", "out": "1s"}})),
+        Just(json!({"path": path, "preset": "h265-mkv"})),
+    ]
+    .boxed();
+    mix(valid, invalid)
+}
+
+/// The job id [`export_ctx`]'s starter returns for every export it is given.
+pub const EXPORT_JOB_ID: JobId = JobId::from_u128(0xE0);
+
+/// Takes export plans and queues nothing (see [`export_ctx`]).
+struct QueueNothing;
+
+impl ExportStarter for QueueNothing {
+    fn start(&mut self, _plan: ExportPlan) -> Result<JobId, cutweave_commands::CmdError> {
+        Ok(EXPORT_JOB_ID)
+    }
+}
+
+/// The engine context of `export.start` in a harness: `snapshot` (the committed document), no
+/// path allowlist, and a starter that queues nothing and answers [`EXPORT_JOB_ID`].
+#[must_use]
+pub fn export_ctx(snapshot: Arc<DocSnapshot>) -> ExportCtx {
+    ExportCtx {
+        snapshot,
+        allowed_roots: None,
+        starter: Box::new(QueueNothing),
+    }
 }
