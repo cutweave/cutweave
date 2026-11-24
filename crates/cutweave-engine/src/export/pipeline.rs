@@ -504,6 +504,8 @@ impl EncodeSide<'_> {
                     stride: width * 4,
                 }],
                 color: ColorTags::default(),
+                // Rendered, not decoded: nothing here can be damaged.
+                damaged: false,
             })
             .map_err(|e| media("encoding video failed", e))?;
             let frame_end = at(i64::from(expected) + 1)?;

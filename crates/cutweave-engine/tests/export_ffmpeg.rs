@@ -209,6 +209,13 @@ impl VideoDecoder for PaintedDecoder {
         let frame = self.inner.seek_exact(t)?;
         Ok(self.painted(frame))
     }
+    fn index(&self) -> std::sync::Arc<cutweave_media::FrameIndex> {
+        self.inner.index()
+    }
+
+    fn set_cancel(&mut self, cancel: Option<cutweave_media::CancelToken>) {
+        self.inner.set_cancel(cancel);
+    }
 }
 
 impl MediaBackend for Painted {

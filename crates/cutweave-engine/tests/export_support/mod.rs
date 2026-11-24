@@ -274,6 +274,13 @@ impl VideoDecoder for CountingDecoder {
         self.seeks.fetch_add(1, Ordering::Relaxed);
         self.inner.seek_exact(t)
     }
+    fn index(&self) -> std::sync::Arc<cutweave_media::FrameIndex> {
+        self.inner.index()
+    }
+
+    fn set_cancel(&mut self, cancel: Option<cutweave_media::CancelToken>) {
+        self.inner.set_cancel(cancel);
+    }
 }
 
 impl MediaBackend for Counting {
