@@ -344,9 +344,19 @@ fn the_engine_opens_no_outbound_sockets_during_startup_and_shutdown() {
     let t = TempDir::new("network");
     let folder = empty_project(t.path(), "Offline");
     let project = folder.to_string_lossy().into_owned();
+    // The socket table is read (netstat / lsof) before the token is sent, which can take longer
+    // than the default 5 s handshake timeout on a loaded machine.
     let mut e = Engine::spawn(
         t.path(),
-        &["--port", "0", "--token-stdin", "--project", &project],
+        &[
+            "--port",
+            "0",
+            "--token-stdin",
+            "--project",
+            &project,
+            "--handshake-timeout-ms",
+            "60000",
+        ],
     );
     let pid = e.child.id();
     if sockets_of(pid).is_none() {
