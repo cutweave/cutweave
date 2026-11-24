@@ -8,13 +8,32 @@ repository.workspace = true
 rust-version.workspace = true
 publish = false
 
+[features]
+default = []
+# Corpus tests against the FFmpeg backend (`tests/ffmpeg_thumbs.rs`); needs the bundle: see
+# docs/dev/ffmpeg.md (`. scripts/ffmpeg/env.sh`).
+ffmpeg = ["cutweave-media/ffmpeg"]
+
 [dependencies]
 # `FrameIndex` and the `MediaBackend` that builds it (default features: the trait half only).
 cutweave-media = { path = "../cutweave-media" }
 cutweave-model = { path = "../cutweave-model" }
+# Thumbnails are encoded with its baseline JPEG encoder (no IJG-licensed crate needed); the pure
+# core only (`gpu` off), so no wgpu is pulled in.
+cutweave-render = { path = "../cutweave-render", default-features = false }
+# `submit_prefetch`: generation as a background job under the decode budget (WP-1D.07).
+cutweave-jobs = { path = "../cutweave-jobs" }
+# ETags: a hash of the request parameters (already used by cutweave-media).
+blake3.workspace = true
+# The OS cache directory (`ThumbConfig::default_dir`).
+dirs.workspace = true
 thiserror.workspace = true
 # `cache.sqlite`.
 rusqlite.workspace = true
+
+[dev-dependencies]
+# Decodes the generated JPEGs in tests (the same pinned version cutweave-render's tests use).
+zune-jpeg = "=0.5.15"
 
 [lints]
 workspace = true

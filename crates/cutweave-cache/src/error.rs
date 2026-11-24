@@ -40,4 +40,10 @@ pub enum CacheError {
     /// Building a missing entry failed in the media backend.
     #[error(transparent)]
     Media(#[from] MediaError),
+    /// A request parameter is out of bounds (zero width, too many tiles).
+    #[error("invalid request: {0}")]
+    InvalidParams(String),
+    /// Encoding a generated image failed.
+    #[error("image encoding failed: {0}")]
+    Encode(String),
 }

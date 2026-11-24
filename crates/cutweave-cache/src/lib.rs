@@ -16,8 +16,17 @@
 //! too-new database is moved aside ([`CacheDb::open_or_reset`]) rather than repaired.
 
 mod db;
+mod disk;
 mod error;
+mod frame_cache;
+mod thumbs;
 
 pub use cutweave_media::{ContentHash, FrameIndex, HashMode};
 pub use db::{CacheDb, CacheUsage, Eviction, SCHEMA_VERSION};
+pub use disk::{DiskCache, DiskEntry, DiskKind};
 pub use error::CacheError;
+pub use frame_cache::{FrameCache, FrameCacheStats, FrameKey};
+pub use thumbs::{
+    Filmstrip, FilmstripManifest, FilmstripSpec, MediaRef, PrefetchSpec, Thumb, ThumbCache,
+    ThumbConfig, submit_prefetch,
+};

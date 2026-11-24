@@ -15,6 +15,9 @@
 //!   serialized [`FrameIndex`] of one video stream of one file. `bytes` is the blob size, the unit
 //!   of the size accounting.
 //!
+//! `disk_entries(path, content_hash, kind, meta, bytes, last_used)` (version 2): the files the
+//! disk cache holds (see `crate::disk`), accounted and evicted by the same access counter.
+//!
 //! **Size accounting (stub).** [`CacheDb::usage`] sums `bytes`; [`CacheDb::evict_lru`] deletes the
 //! least recently used entries until the total fits a budget. It covers `frame_index` only;
 //! WP-1D.05 moves the accounting to a table shared by thumbnails, filmstrips and waveforms.
@@ -28,7 +31,7 @@ use rusqlite::{Connection, ErrorCode, OptionalExtension, params};
 use crate::CacheError;
 
 /// The schema version this build writes (the number of [`MIGRATIONS`]).
-pub const SCHEMA_VERSION: u32 = 1;
+pub const SCHEMA_VERSION: u32 = 2;
 
 /// One script per schema version; script `i` upgrades version `i` to `i + 1`.
 const MIGRATIONS: &[&str] = &[
@@ -49,6 +52,17 @@ const MIGRATIONS: &[&str] = &[
          PRIMARY KEY (content_hash, stream)
      ) WITHOUT ROWID;
      CREATE INDEX frame_index_lru ON frame_index (last_used);",
+    // 2: the disk cache of generated files (thumbnails, filmstrips; WP-1D.05).
+    "CREATE TABLE disk_entries (
+         path         TEXT    PRIMARY KEY,
+         content_hash TEXT    NOT NULL,
+         kind         INTEGER NOT NULL,
+         meta         TEXT    NOT NULL,
+         bytes        INTEGER NOT NULL,
+         last_used    INTEGER NOT NULL
+     ) WITHOUT ROWID;
+     CREATE INDEX disk_entries_lru ON disk_entries (last_used);
+     CREATE INDEX disk_entries_media ON disk_entries (content_hash);",
 ];
 
 /// What the cache holds, for the size accounting.
@@ -154,7 +168,7 @@ impl CacheDb {
         Ok(user_version(&self.lock())?)
     }
 
-    fn lock(&self) -> MutexGuard<'_, Connection> {
+    pub(crate) fn lock(&self) -> MutexGuard<'_, Connection> {
         // A panic while holding the lock cannot leave the database inconsistent (SQLite
         // transactions roll back), so a poisoned lock is still usable.
         self.conn.lock().unwrap_or_else(PoisonError::into_inner)
@@ -331,7 +345,7 @@ impl CacheDb {
     }
 }
 
-fn next_access(tx: &rusqlite::Transaction<'_>) -> rusqlite::Result<i64> {
+pub(crate) fn next_access(tx: &rusqlite::Transaction<'_>) -> rusqlite::Result<i64> {
     tx.query_row(
         "UPDATE meta SET value = value + 1 WHERE key = 'access_seq' RETURNING value",
         [],
