@@ -60,19 +60,28 @@ interface Pending<V> {
   seen: number;
 }
 
+interface InFlight {
+  readonly ctl: AbortController;
+  seen: number;
+}
+
 /**
  * LRU cache with a byte budget, de-duplicated async loads, bounded concurrency and stale-request
  * dropping: `get` marks a key as wanted in the current frame (`beginFrame`), and queued loads that
  * were not wanted in the previous frame are discarded, so scrubbing and zooming never build a
- * backlog of tiles that scrolled away. Newest requests load first.
+ * backlog of tiles that scrolled away. A load already running that the last full frame did not
+ * want is aborted through its `AbortSignal` (a partial redraw, such as the playhead's, does not
+ * ask for every visible tile, so only full frames decide). Newest requests load first.
  */
 export class LoadingCache<V> {
   private readonly entries = new Map<string, { value: V; bytes: number }>();
   private readonly queued = new Map<string, Pending<V>>();
-  private readonly inflight = new Map<string, AbortController>();
+  private readonly inflight = new Map<string, InFlight>();
   private readonly failed = new Set<string>();
   private bytes = 0;
   private frame = 0;
+  /** The frame number of the last full frame. */
+  private lastFull = 0;
   private disposed = false;
 
   constructor(private readonly opts: LoadingCacheOptions<V>) {}
@@ -89,9 +98,22 @@ export class LoadingCache<V> {
     return this.queued.size + this.inflight.size;
   }
 
-  /** Call once per rendered frame, before the frame's `get`s. */
-  beginFrame(): void {
+  /**
+   * Call once per rendered frame, before the frame's `get`s. `full`: the frame draws everything
+   * in view (not a partial redraw), so loads it does not ask for have scrolled away.
+   */
+  beginFrame(full = true): void {
     this.frame++;
+    if (!full) return;
+    if (this.lastFull > 0) {
+      for (const [key, f] of this.inflight) {
+        if (f.seen >= this.lastFull) continue;
+        f.ctl.abort();
+        this.inflight.delete(key);
+      }
+    }
+    this.lastFull = this.frame;
+    queueMicrotask(() => this.pump());
   }
 
   /** Cached value (refreshing its recency) or undefined; starts a load on a miss. */
@@ -102,7 +124,12 @@ export class LoadingCache<V> {
       this.entries.set(key, hit);
       return hit.value;
     }
-    if (!load || this.disposed || this.failed.has(key) || this.inflight.has(key)) return undefined;
+    const running = this.inflight.get(key);
+    if (running) {
+      running.seen = this.frame;
+      return undefined;
+    }
+    if (!load || this.disposed || this.failed.has(key)) return undefined;
     const q = this.queued.get(key);
     if (q) {
       q.seen = this.frame;
@@ -119,7 +146,7 @@ export class LoadingCache<V> {
 
   /** Drop everything (aborting loads); keeps the cache usable. */
   clear(): void {
-    for (const c of this.inflight.values()) c.abort();
+    for (const f of this.inflight.values()) f.ctl.abort();
     this.inflight.clear();
     this.queued.clear();
     this.failed.clear();
@@ -142,7 +169,7 @@ export class LoadingCache<V> {
       this.queued.delete(key);
       if (p.seen < this.frame - 1) continue; // scrolled away before it started
       const ctl = new AbortController();
-      this.inflight.set(key, ctl);
+      this.inflight.set(key, { ctl, seen: p.seen });
       p.load(ctl.signal).then(
         (value) => this.settle(key, ctl, value, false),
         () => this.settle(key, ctl, null, true),
@@ -151,8 +178,8 @@ export class LoadingCache<V> {
   }
 
   private settle(key: string, ctl: AbortController, value: V | null, errored: boolean): void {
-    if (this.inflight.get(key) !== ctl) {
-      // Cleared while loading: the result is stale.
+    if (this.inflight.get(key)?.ctl !== ctl) {
+      // Cleared or aborted while loading: the result is stale.
       if (value !== null) this.opts.dispose?.(value);
       return;
     }
@@ -211,9 +238,10 @@ export class MediaCaches {
     });
   }
 
-  beginFrame(): void {
-    this.filmstrip.beginFrame();
-    this.waveform.beginFrame();
+  /** See {@link LoadingCache.beginFrame}. */
+  beginFrame(full = true): void {
+    this.filmstrip.beginFrame(full);
+    this.waveform.beginFrame(full);
   }
 
   get hasFilmstripLoader(): boolean {

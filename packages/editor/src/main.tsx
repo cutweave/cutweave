@@ -10,6 +10,7 @@ import { bridgeFromWindow, startEngineRuntime } from "./engine/runtime.ts";
 import { appBridgeFromWindow, installTestHandleIfEnabled } from "./engine/testHandle.ts";
 import { i18n } from "./i18n/index.ts";
 import { mediaStore } from "./media/mediaStore.ts";
+import { startMediaHttp } from "./media/mediaWiring.ts";
 import { sessionStore } from "./session/sessionStore.ts";
 import { EditorShell } from "./shell/EditorShell.tsx";
 import { docStore } from "./state/docStore.ts";
@@ -48,6 +49,8 @@ if (bridge) {
         message: i18n.t("projectUi.autosaveFailed", { message }),
       }),
   });
+  // Real thumbnails, filmstrips and waveforms once the engine is up and has media (WP-1I.03).
+  startMediaHttp({ bridge, engine: engineStore, doc: docStore, jobs: jobStore });
   // The e2e suites drive the editor's connection; only when the desktop app enables its hooks.
   void installTestHandleIfEnabled(appBridgeFromWindow(), runtime, stores);
 }

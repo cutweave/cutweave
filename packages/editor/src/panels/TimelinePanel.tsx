@@ -4,6 +4,7 @@ import { Icon, IconButton, Toolbar, ToolbarSeparator, Tooltip } from "@cutweave/
 import { useCallback, useMemo } from "react";
 import { useTranslation } from "react-i18next";
 import { useEngineStore } from "../engine/engineStore.ts";
+import { useMediaLoaders } from "../media/mediaWiring.ts";
 import { useDocStore } from "../state/docStore.ts";
 import { selectTimelineModel } from "../state/selectors.ts";
 import { useViewStore, viewStore } from "../state/viewStore.ts";
@@ -18,11 +19,13 @@ const PLACEHOLDER_TRACKS = [
 /**
  * The engine's current sequence drawn by the `packages/timeline` renderer from `docStore`
  * selectors (it follows every `doc.patched`), with the interactions of WP-1M.06: pointer input
- * goes through the timeline state machine and comes back as engine commands.
+ * goes through the timeline state machine and comes back as engine commands. Video clips draw
+ * filmstrips and audio clips waveforms through the engine's media endpoints (WP-1I.03).
  */
 function EngineTimeline({ intents }: { readonly intents: TimelineIntents }) {
   const { t } = useTranslation();
   const project = useDocStore((s) => s.project);
+  const loaders = useMediaLoaders();
   const model = useMemo(() => selectTimelineModel(project), [project]);
   const playhead = useViewStore((s) => s.playhead);
   const zoom = useViewStore((s) => s.zoom);
@@ -53,6 +56,7 @@ function EngineTimeline({ intents }: { readonly intents: TimelineIntents }) {
       aria-label={t("timeline.canvasLabel")}
       model={model}
       viewState={viewState}
+      loaders={loaders}
       pan="host"
       onPointer={intents.onPointer}
       onView={intents.onView}

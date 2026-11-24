@@ -336,7 +336,7 @@ All surfaces live on **one local server per engine** (axum on `127.0.0.1`, rando
 |---|---|---|---|
 | JSON-RPC 2.0 | `ws://127.0.0.1:P/rpc` | Desktop UI, scripts | Commands, queries, event subscriptions; MessagePack upgrade later if needed |
 | MCP | `http://127.0.0.1:P/mcp` (Streamable HTTP) and stdio via `cutweave mcp` | AI agents | rmcp; §14 |
-| Media HTTP | `GET /media/{id}/thumb?t=&w=`, `/filmstrip`, `/waveform?lod=`, `/media/frame?seq=&t=&w=&h=&fmt=jpeg` | UI `<img>`/canvas, agents | Cacheable, content-hashed ETags |
+| Media HTTP | `GET /media/{id}/thumb?t=&w=`, `/filmstrip`, `/waveform?lod=`, `/media/frame?seq=&t=&w=&h=&fmt=jpeg`, `POST /media/sign` | UI `<img>`/canvas, agents | Cacheable, content-hashed ETags; [http-media.md](reference/http-media.md) |
 | Preview SHM | named shared memory ring buffer | Desktop UI (preload addon) | §10 |
 | CLI | `cutweave exec '<json>'`, `cutweave query …`, `cutweave render …` | Humans, CI, scripts | Attaches to the running engine or spawns headless |
 
@@ -353,6 +353,10 @@ All surfaces live on **one local server per engine** (axum on `127.0.0.1`, rando
   - Surfaces mount on an in-process dispatch API: `EngineHandle::connect(&Credential)` gives each client connection its own never-reused connection ID, and dropping it rolls back that connection's open transaction. Events reach clients through one `EngineEvent` fan-out.
   - In `Gui` mode the UI credential is the first stdin line; the engine prints a ready line (no tokens) or a JSON error line and exits with 0 clean, 1 internal, 2 usage, 10 project locked, 11 GPU init, 12 port bind, 13 handshake.
   - **Path policy:** the UI credential is unrestricted. Every other credential can only open, save or import under the `--allow-root` folders, the start project's folder and the open project's folder (symlinks resolved, `..` refused); otherwise the call fails with `Invalid`.
+- **Media HTTP (decided in WP-1I.03):** specified in [http-media.md](reference/http-media.md).
+  - **Auth:** a bearer token (UI or agent), or for `GET`/`HEAD` a URL signed by `POST /media/sign`: HMAC-SHA256 over the path and query up to an `exp`, with a per-launch 256-bit key held only in the engine. A signature opens exactly one resource and expires (an hour by default); `<img src>` uses it, so tokens never appear in URLs. A bad or expired signature is 401.
+  - **Caching:** content-hash ETags computed from the request alone, so `If-None-Match` gets a 304 before any decode or cache read; `immutable` only when the URL names the content (`hash=`), `no-cache` otherwise (a relink may change what a media id shows); frames are `no-store`.
+  - **Work:** at most 4 requests produce at once, on the blocking pool; a client that disconnects cancels its decode (`CancelToken`). `/media/frame` is `render.frame`'s bytes (software decode, no frame cache).
 - **JSON-RPC wire (decided in WP-1I.02):** specified in [rpc.md](reference/rpc.md).
   - Methods are registry names plus `rpc.hello`, `rpc.subscribe`, `rpc.unsubscribe` and `project.snapshot`; events arrive as notifications named after the event. The WebSocket carries the token as subprotocol `cutweave.token.<t>`.
   - Results carry `_meta{rev, committed_rev, request_id?, tx_id?}`; errors are `{code, message, data}` with `data` = the `CmdError` wire form and fixed numeric codes (-32001 not_found, -32002 locked, -32003 conflict, -32004 forbidden, -32005 unsupported, plus the JSON-RPC standard codes).
@@ -780,7 +784,7 @@ MyVideo/                    ← project folder (user-chosen location)
 
 - **No account and no telemetry by default.** Crash reports are opt-in and scrubbed. Update checks can be disabled.
 - **Secrets:** API keys live in the OS keychain only. The engine performs all provider HTTP; the renderer, plugins and MCP clients never receive keys.
-- **Local API:** localhost-only, token-authenticated, Host/Origin checked, with filesystem allowlists.
+- **Local API:** localhost-only, token-authenticated, Host/Origin checked, with filesystem allowlists. Tokens never appear in URLs; `<img>` loads media through short-lived signed URLs scoped to one resource (§6).
 - **Plugins:** signed index, explicit permission prompts (network domains, file scopes, paid AI use), and process or sandbox isolation per layer.
 - **Electron hardening:**
   - `contextIsolation` everywhere, no `nodeIntegration`, strict CSP (connect only to the engine origin), validated IPC.
