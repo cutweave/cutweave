@@ -29,6 +29,10 @@ struct Engine {
 
 impl Engine {
     fn spawn(dir: &Path, args: &[&str]) -> Engine {
+        Engine::spawn_with_env(dir, args, &[])
+    }
+
+    fn spawn_with_env(dir: &Path, args: &[&str], env: &[(&str, &str)]) -> Engine {
         let mut child = Command::new(env!("CARGO_BIN_EXE_cutweave-engine-serve"))
             .arg("engine")
             .args(args)
@@ -36,6 +40,7 @@ impl Engine {
             .arg(dir.join("run"))
             .arg("--log-dir")
             .arg(dir.join("logs"))
+            .envs(env.iter().copied())
             .stdin(Stdio::piped())
             .stdout(Stdio::piped())
             .stderr(Stdio::null())
@@ -234,6 +239,30 @@ fn an_occupied_port_exits_12() {
     assert_eq!(files_under(&t.path().join("run")), Vec::<PathBuf>::new());
     // The project opened before the bind failed is released again.
     drop(ProjectStore::open(&folder).unwrap());
+}
+
+/// WP-1I.05: a `Gui` engine whose GPU cannot start exits 11 with a JSON error line; a headless
+/// engine falls back to the software adapter (or the CPU) and serves.
+#[test]
+fn a_gui_engine_without_a_usable_gpu_exits_11_and_a_headless_one_falls_back() {
+    let t = TempDir::new("gpu");
+    let no_gpu = [
+        ("CUTWEAVE_GPU", "no-adapter-is-called-this"),
+        ("CUTWEAVE_AUDIO", "null"),
+    ];
+    let mut gui = Engine::spawn_with_env(t.path(), &["--port", "0", "--token-stdin"], &no_gpu);
+    gui.handshake(UI);
+    let line = gui.line();
+    assert_eq!(gui.wait().code(), Some(11), "{line}");
+    assert_eq!(line["event"], "error");
+    assert_eq!(line["code"], "gpu_init_failed");
+    assert_eq!(line["exit_code"], 11);
+    assert_eq!(files_under(&t.path().join("run")), Vec::<PathBuf>::new());
+
+    let mut headless = Engine::spawn_with_env(t.path(), &["--headless", "--port", "0"], &no_gpu);
+    let ready = headless.line();
+    assert_eq!(ready["event"], "ready", "{ready}");
+    drop(headless.stdin.take());
 }
 
 #[test]

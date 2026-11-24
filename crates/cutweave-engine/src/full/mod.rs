@@ -233,6 +233,9 @@ fn lock<T>(m: &Mutex<T>) -> MutexGuard<'_, T> {
     m.lock().unwrap_or_else(PoisonError::into_inner)
 }
 
+/// What starts next to the GPU: the caches, audio and the preview ring.
+type Devices = (Caches, Audio, Option<(Box<dyn FrameSink>, ClockWriter)>);
+
 /// Media, render, audio and playback for the core engine (see the module docs).
 pub struct FullSubsystems {
     inner: Arc<Inner>,
@@ -575,6 +578,33 @@ impl FullSubsystems {
         Arc::new(stages)
     }
 
+    /// The caches, audio and (in `Gui` mode) the preview ring.
+    fn start_devices(&self, host: &SubsystemHost) -> Result<Devices, SubsystemError> {
+        let config = &self.inner.config;
+        if let Some(problem) = &config.media_problem {
+            self.degrade(&host.events, "media", problem);
+        }
+        // Caches.
+        let caches = match &config.media {
+            Some(backend) => {
+                let (caches, problem) = Caches::open(backend, config.cache_dir.as_deref());
+                if let Some(problem) = problem {
+                    self.degrade(&host.events, "cache", &problem);
+                }
+                caches
+            }
+            None => Caches::default(),
+        };
+        // Audio.
+        let (audio, degraded) = audio::start(&config.audio, host.audio, &self.inner.pcm)?;
+        if let Some(reason) = degraded {
+            self.degrade(&host.events, "audio", &reason);
+        }
+        // Preview ring (Gui).
+        let ring = self.start_ring(host);
+        Ok((caches, audio, ring))
+    }
+
     fn transport(&self) -> Option<Transport> {
         lock(&self.inner.per_doc)
             .as_ref()
@@ -591,29 +621,39 @@ impl Subsystems for FullSubsystems {
     }
 
     fn start(&self, host: &SubsystemHost) -> Result<(), SubsystemError> {
-        let config = &self.inner.config;
-        if let Some(problem) = &config.media_problem {
-            self.degrade(&host.events, "media", problem);
-        }
-        // Caches.
-        let caches = match &config.media {
-            Some(backend) => {
-                let (caches, problem) = Caches::open(backend, config.cache_dir.as_deref());
-                if let Some(problem) = problem {
-                    self.degrade(&host.events, "cache", &problem);
-                }
-                caches
+        // The GPU device takes most of the start (about a second for the driver): open it while
+        // the caches, audio and the ring start here.
+        let (gpu, rest) = std::thread::scope(|s| {
+            let gpu = std::thread::Builder::new()
+                .name("cw-gpu-init".into())
+                .spawn_scoped(s, || self.start_gpu(host));
+            let rest = self.start_devices(host);
+            let gpu = match gpu {
+                Ok(handle) => handle.join().unwrap_or_else(|_| {
+                    Err(SubsystemError {
+                        kind: SubsystemKind::Gpu,
+                        message: "GPU initialization panicked".into(),
+                    })
+                }),
+                Err(_) => self.start_gpu(host),
+            };
+            (gpu, rest)
+        });
+        let (caches, audio, ring) = rest?;
+        let gpu = match gpu {
+            Ok(gpu) => gpu,
+            Err(e) => {
+                *lock(&self.inner.ring) = None;
+                drop((caches, audio, ring));
+                return Err(e);
             }
-            None => Caches::default(),
         };
         let frames = Arc::new(MediaFrames::new(
-            config.media.clone(),
+            self.inner.config.media.clone(),
             self.inner.doc.clone(),
             Arc::clone(&self.inner.frame_cache),
             caches.db.clone(),
         ));
-        // Render.
-        let gpu = self.start_gpu(host)?;
         let compositor_home = Arc::new(Mutex::new(None));
         let (gpu, renderer) = match gpu {
             Some((ctx, frame, preview)) => {
@@ -626,16 +666,11 @@ impl Subsystems for FullSubsystems {
                 ReferenceBackend::new(Arc::clone(&frames) as _).shared(),
             ),
         };
-        // Audio.
-        let (audio, degraded) = audio::start(&config.audio, host.audio, &self.inner.pcm)?;
-        if let Some(reason) = degraded {
-            self.degrade(&host.events, "audio", &reason);
-        }
-        // Preview ring (Gui).
-        let (sink_home, clock_writer) = match self.start_ring(host) {
+        let (sink_home, clock_writer) = match ring {
             Some((sink, writer)) => (Some(sink), Some(writer)),
             None => (None, None),
         };
+        let config = &self.inner.config;
         // Import.
         let probe = config.probe.clone().or_else(|| {
             config

@@ -221,6 +221,54 @@ fn render_frame_and_imports_use_the_full_engine() {
     engine.shutdown();
 }
 
+/// Acceptance 2: cold start to ready (subsystems up, server bound, run-file written) with an
+/// empty project, as the app runs it: `Gui` mode, the best GPU, the default audio output, the
+/// preview ring, FFmpeg when built with it. Budget 1.5 s (arch §19: 2.5 s for the whole app).
+#[test]
+fn cold_start_of_the_full_gui_engine_is_under_a_second_and_a_half() {
+    cold_start(EngineMode::Gui);
+}
+
+/// The same for a headless server (null audio, no ring).
+#[test]
+fn cold_start_of_the_full_headless_engine_is_under_a_second_and_a_half() {
+    cold_start(EngineMode::Headless);
+}
+
+fn cold_start(mode: EngineMode) {
+    let t = TempDir::new("cold");
+    let folder = engine_support::empty_project(t.path(), "Cold");
+    let started = std::time::Instant::now();
+    let full = FullSubsystems::new(FullConfig {
+        cache_dir: Some(t.path().join("cache")),
+        ..FullConfig::native()
+    });
+    let handle = full.handle();
+    let mut config = engine_config(t.path(), mode, Box::new(full));
+    config.project = Some(folder);
+    config.gpu = cutweave_engine::GpuConfig::Auto;
+    if mode == EngineMode::Gui {
+        config.audio = cutweave_engine::AudioConfig::Default;
+        config.ui_token = Some(Token::parse(&"u".repeat(48)).unwrap());
+    }
+    let engine = Engine::start(config).unwrap();
+    let elapsed = started.elapsed();
+    assert!(engine.port().is_some());
+    assert!(handle.playing_a_document());
+    println!(
+        "cold start to ready ({} full engine, empty project, gpu: {}, degraded: {:?}): {:.1} ms",
+        mode.name(),
+        handle.has_gpu(),
+        handle.degraded(),
+        elapsed.as_secs_f64() * 1000.0
+    );
+    engine.shutdown();
+    assert!(
+        elapsed < std::time::Duration::from_millis(1500),
+        "cold start took {elapsed:?}"
+    );
+}
+
 /// Without a media backend `media.capabilities` says so instead of failing.
 #[test]
 fn media_capabilities_without_a_backend_report_unavailable() {

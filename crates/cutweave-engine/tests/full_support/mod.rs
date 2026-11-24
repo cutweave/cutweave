@@ -208,6 +208,56 @@ pub fn play_frames(conn: &Connection, handle: &FullHandle, clocks: &Clocks, fram
     state
 }
 
+/// The test-media corpus: `CUTWEAVE_CORPUS_DIR`, else `testdata/corpus` of this checkout, else
+/// that of the main checkout when this is a git worktree.
+pub fn corpus_dir() -> Option<std::path::PathBuf> {
+    if let Some(dir) = std::env::var_os("CUTWEAVE_CORPUS_DIR") {
+        let dir = std::path::PathBuf::from(dir);
+        return dir.is_dir().then_some(dir);
+    }
+    let root = Path::new(env!("CARGO_MANIFEST_DIR")).join("../..");
+    let local = root.join("testdata/corpus");
+    if local.is_dir() {
+        return Some(local);
+    }
+    // A worktree's `.git` is a file: `gitdir: <main>/.git/worktrees/<name>`.
+    let gitdir = std::fs::read_to_string(root.join(".git")).ok()?;
+    let gitdir = std::path::PathBuf::from(gitdir.strip_prefix("gitdir:")?.trim());
+    let main = gitdir.parent()?.parent()?.parent()?;
+    let dir = main.join("testdata/corpus");
+    dir.is_dir().then_some(dir)
+}
+
+/// A corpus file by name, or `None` with a skip message.
+pub fn corpus_file(name: &str) -> Option<std::path::PathBuf> {
+    let Some(dir) = corpus_dir() else {
+        eprintln!("skipping: no corpus (cargo xtask fetch-corpus --tier small)");
+        return None;
+    };
+    let path = dir.join(name);
+    if path.is_file() {
+        Some(path)
+    } else {
+        eprintln!("skipping: {name} is not in {}", dir.display());
+        None
+    }
+}
+
+/// The bundle's (or `PATH`'s) FFmpeg tool `name` (`ffprobe`), if it runs.
+pub fn ffmpeg_tool(name: &str) -> Option<std::path::PathBuf> {
+    let exe = format!("{name}{}", std::env::consts::EXE_SUFFIX);
+    let in_bundle = std::env::var_os("FFMPEG_DIR")
+        .map(|d| std::path::PathBuf::from(d).join("bin").join(&exe))
+        .filter(|p| p.is_file());
+    let tool = in_bundle.unwrap_or_else(|| std::path::PathBuf::from(&exe));
+    std::process::Command::new(&tool)
+        .arg("-version")
+        .output()
+        .ok()
+        .filter(|o| o.status.success())
+        .map(|_| tool)
+}
+
 /// Every event queued in `rx` now.
 pub fn drain(rx: &mut EventReceiver) -> Vec<EngineEvent> {
     let mut out = Vec::new();
