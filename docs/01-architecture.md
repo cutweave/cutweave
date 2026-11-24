@@ -735,8 +735,11 @@ Cutweave is also a **harness for video-creation agents**. MCP gives agents hands
 - **Accessibility:** Radix primitives, focus management, screen-reader labels on all controls, reduced-motion respect, and high-contrast tokens.
 
 ---
+- **Settings (planned in WP-1M.11).** Settings have three homes. *App preferences* are the person's choices for every project (theme, startup, saving, editing defaults, shortcuts, agents' folders, AI routing); *this computer's settings* belong to the installation (cache folder and limits, hardware, audio devices). Both live in `preferences.json` in the app's user-data folder, owned by Electron main, which validates every write against one versioned schema shared with the editor and broadcasts changes; export and import carry app preferences only. *Project settings* live in the document (`project.settings`) and change only through undoable commands, so agents read and change them like any edit. Defaults for new projects are preferences that `project.new` copies into the document; after that the project's value rules. A preference that changes engine behaviour is applied by the app to its own engine, at spawn as a flag or after each handshake through an engine command in a UI-only scope (ADR-0016); headless engines take flags, environment variables and project settings instead. Agents read the effective values (`project.info`, `media.cache_status`) but never change preferences. No secret is stored in preferences: keys go to the OS keychain through write-only `ai.set_key` (§13). The catalog of every setting is [settings.md](reference/settings.md).
 
 ## 17. Persistence & project format
+
+Project settings live in the document; app preferences and this computer's settings live outside it (§16, "Settings").
 
 ```
 MyVideo/                    ← project folder (user-chosen location)
