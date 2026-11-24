@@ -310,6 +310,7 @@ fn engine_event_payload(name: &str) -> &'static str {
         "project.autosave_failed" => "AutosaveFailed",
         "project.opened" => "ProjectStatus",
         "project.closed" => "ProjectClosed",
+        "project.connection_opened" | "project.connection_closed" => "AgentConnection",
         "job.progress" => "JobInfo",
         "media.indexed" => "MediaIndexed",
         "media.analysis_failed" => "MediaAnalysisFailed",

@@ -283,10 +283,13 @@ pub struct ProjectSetAutosaveOutput {
 /// effect at once, also for a project that is already dirty, and the 2 s idle save stays.
 /// Not undoable, not journaled and never marks the project dirty; it is not written to the
 /// project. An engine nobody sent it to keeps the project's own setting, then the defaults.
+/// UI credential only (ADR-0016): it is the app applying the person's preference to its own
+/// engine, which an agent must not override (agents get `forbidden`).
 #[command(
     name = "project.set_autosave",
     summary = "Set whether, how often and with how many backups the engine autosaves",
     engine,
+    scope = "ui",
     undoable = false,
     journaled = false,
     mcp = "catalog",

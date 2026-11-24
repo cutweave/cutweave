@@ -103,6 +103,11 @@ export interface SupervisorOptions {
   project?: string | null;
   /** Arguments after the per-launch ones (`--allow-origin`, `--run-dir`, `--log-dir`, …). */
   extraArgs?: readonly string[];
+  /**
+   * The folders agents may use (WP-1J.05), read at every start and supervised restart (each one
+   * an `--allow-root`) and sent to the running engine by `applyAllowedRoots`.
+   */
+  allowRoots?(): readonly string[];
   /** Merged over `process.env` for the engine. Never put the token here. */
   env?: NodeJS.ProcessEnv;
   /** Sent in `rpc.hello`. */
@@ -138,6 +143,8 @@ interface Run {
   /** Run journal recovery on the reopened project before reporting `ready`. */
   readonly recover: boolean;
   readonly project: string | null;
+  /** The folders it was started with (`--allow-root`). */
+  readonly roots: readonly string[];
   readyTimer: ReturnType<typeof setTimeout> | undefined;
   /** The ready line arrived. */
   sawReady: boolean;
@@ -249,6 +256,30 @@ export class EngineSupervisor {
     rpc
       .call("project.report_focus", { _meta: { request_id: uuidv7() } })
       .catch((err: unknown) => this.#log(`reporting the window focus failed: ${errorText(err)}`));
+  }
+
+  /**
+   * The folders agents may use changed (WP-1J.05): tells the running engine at once
+   * (`project.set_allowed_roots`, UI credential only), so a removed folder stops agents that are
+   * already connected. Resolves when the engine answered; with no engine connected it resolves at
+   * once (the next start passes the folders as `--allow-root`, and a start already under way
+   * sends them as soon as main is connected).
+   */
+  async applyAllowedRoots(): Promise<void> {
+    const rpc = this.#rpc;
+    if (rpc === null) return;
+    await this.#sendAllowedRoots(rpc, this.#o.allowRoots?.() ?? []);
+  }
+
+  async #sendAllowedRoots(rpc: EngineRpc, roots: readonly string[]): Promise<void> {
+    try {
+      await rpc.call("project.set_allowed_roots", {
+        roots: [...roots],
+        _meta: { request_id: uuidv7() },
+      });
+    } catch (err) {
+      this.#log(`the folders agents may use were not applied: ${errorText(err)}`);
+    }
   }
 
   /** Resolves with the next `ready`, `failed` or `stopped` status. */
@@ -366,6 +397,8 @@ export class EngineSupervisor {
     // A fresh credential for every engine process: the old one dies with the old engine.
     const token = (this.#o.generateToken ?? generateUiToken)();
     const project = this.#project;
+    // The folders agents may use, read now: a restart gets the list as it is today.
+    const roots = [...(this.#o.allowRoots?.() ?? [])];
     const args = [
       ...this.#o.launch.args,
       "--port",
@@ -373,6 +406,7 @@ export class EngineSupervisor {
       "--token-stdin",
       ...(project === null ? [] : ["--project", project]),
       ...(this.#o.extraArgs ?? []),
+      ...roots.flatMap((root) => ["--allow-root", root]),
     ];
     const env = { ...process.env, ...this.#o.env };
     let child: ChildLike;
@@ -392,6 +426,7 @@ export class EngineSupervisor {
       restart,
       recover: restart && project !== null && !this.#recoveryPending,
       project,
+      roots,
       readyTimer: undefined,
       sawReady: false,
       timedOut: false,
@@ -477,6 +512,11 @@ export class EngineSupervisor {
       if (!live()) return;
       await this.#refreshProject(rpc);
       if (this.#windowFocused) this.#reportFocus();
+      // The folders changed while this engine was starting: it gets the list of today.
+      const roots = this.#o.allowRoots?.() ?? [];
+      if (roots.length !== run.roots.length || roots.some((r, i) => r !== run.roots[i])) {
+        await this.#sendAllowedRoots(rpc, roots);
+      }
     } catch (err) {
       if (!live()) return;
       // The engine runs; only main's bookkeeping is missing (no project tracking or recovery).

@@ -55,6 +55,18 @@
       "summary": "The open project was closed; the engine now holds an untitled document"
     },
     {
+      "name": "project.connection_closed",
+      "payload": "AgentConnection",
+      "source": "engine",
+      "summary": "An agent connection closed; payload: the connection with its last command"
+    },
+    {
+      "name": "project.connection_opened",
+      "payload": "AgentConnection",
+      "source": "engine",
+      "summary": "An agent connected to this engine (WP-1J.05); payload: the connection as project.connections lists it"
+    },
+    {
       "name": "project.dirty",
       "payload": "ProjectDirty",
       "source": "engine",

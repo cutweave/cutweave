@@ -40,12 +40,23 @@ export function devEngineArgs(
   isPackaged: boolean,
   delimiter = path.delimiter,
 ): string[] {
+  return devAllowRoots(env, isPackaged, delimiter).flatMap((r) => ["--allow-root", r]);
+}
+
+/**
+ * The folders of `CUTWEAVE_ENGINE_ALLOW_ROOTS` (unpackaged runs only). Main passes them to the
+ * engine with the person's "Folders agents can use" (WP-1J.05), at every start and on change.
+ */
+export function devAllowRoots(
+  env: NodeJS.ProcessEnv,
+  isPackaged: boolean,
+  delimiter = path.delimiter,
+): string[] {
   if (isPackaged) return [];
-  const roots = (env.CUTWEAVE_ENGINE_ALLOW_ROOTS ?? "")
+  return (env.CUTWEAVE_ENGINE_ALLOW_ROOTS ?? "")
     .split(delimiter)
     .map((r) => r.trim())
     .filter((r) => r.length > 0);
-  return roots.flatMap((r) => ["--allow-root", r]);
 }
 
 /**

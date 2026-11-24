@@ -4496,6 +4496,92 @@ expression: text
     },
     {
       "annotations": {
+        "destructiveHint": false,
+        "idempotentHint": true,
+        "openWorldHint": false,
+        "readOnlyHint": true
+      },
+      "input_schema": {
+        "additionalProperties": false,
+        "description": "Lists the agent connections open on this engine: who (`agent:mcp`, `agent:cli`), since\nwhen, and the last command each called and when. The person's own editor is not listed.\n`project.connection_opened` and `project.connection_closed` announce changes. Read-only.",
+        "title": "ProjectConnections",
+        "type": "object"
+      },
+      "kind": "engine",
+      "mcp": "catalog",
+      "mcp_tool": "project_connections",
+      "name": "project.connections",
+      "namespace": "project",
+      "output_schema": {
+        "additionalProperties": false,
+        "description": "Result of `project.connections`.",
+        "properties": {
+          "connections": {
+            "description": "The open agent connections, oldest first.",
+            "items": {
+              "additionalProperties": false,
+              "description": "One agent connection open on the engine (`project.connections`, and the payload of\n`project.connection_opened` and `project.connection_closed`).",
+              "properties": {
+                "actor": {
+                  "description": "Who it is: `agent:<label>` (`agent:mcp` for MCP clients, `agent:cli` for the command\nline) or `plugin:<id>`.",
+                  "pattern": "^(user|system|agent:.+|plugin:[A-Za-z0-9._@-]+)$",
+                  "type": "string"
+                },
+                "connected_at": {
+                  "description": "When it opened, in milliseconds since the Unix epoch.",
+                  "format": "uint64",
+                  "minimum": 0,
+                  "type": "integer"
+                },
+                "id": {
+                  "description": "The connection's number on this engine (never reused).",
+                  "format": "uint64",
+                  "minimum": 0,
+                  "type": "integer"
+                },
+                "last_command": {
+                  "description": "The last command or query it called (also one it was refused), if any.",
+                  "type": [
+                    "string",
+                    "null"
+                  ]
+                },
+                "last_command_at": {
+                  "description": "When it called it.",
+                  "format": "uint64",
+                  "minimum": 0,
+                  "type": [
+                    "integer",
+                    "null"
+                  ]
+                }
+              },
+              "required": [
+                "id",
+                "actor",
+                "connected_at",
+                "last_command",
+                "last_command_at"
+              ],
+              "type": "object"
+            },
+            "type": "array"
+          }
+        },
+        "required": [
+          "connections"
+        ],
+        "title": "ProjectConnectionsOutput",
+        "type": "object"
+      },
+      "scope": "any",
+      "secret_fields": [],
+      "summary": "List the agent connections open on this engine, with their last command",
+      "undoable": false,
+      "view": false
+    },
+    {
+      "annotations": {
         "destructiveHint": true,
         "idempotentHint": false,
         "openWorldHint": false,
@@ -5339,7 +5425,62 @@ expression: text
       },
       "input_schema": {
         "additionalProperties": false,
-        "description": "Sets how this engine autosaves, for the open project and every project it opens later: the\neditor's own preference wins over the project's `settings.autosave` (arch §17). It takes\neffect at once, also for a project that is already dirty, and the 2 s idle save stays.\nNot undoable, not journaled and never marks the project dirty; it is not written to the\nproject. An engine nobody sent it to keeps the project's own setting, then the defaults.",
+        "description": "Sets the folders agents and other non-UI callers may use (import media from, open projects\nin, save projects and exports into) besides the open project's folder: the desktop app's\nSettings > Agents and MCP. The list replaces the engine's approved folders, those given with\n`--allow-root` included, and applies at once, also to agent connections that are already\nopen. Each folder must be an absolute path without `..` that names an existing folder; it is\nstored canonical, with symlinks resolved (`project.info` reports the result as\n`allowed_roots`). UI credential only: agents get `forbidden`. Not undoable, not journaled,\nnever marks the project dirty.",
+        "properties": {
+          "roots": {
+            "description": "Absolute paths of existing folders (at most 64); an empty list leaves only the project.",
+            "items": {
+              "type": "string"
+            },
+            "type": "array"
+          }
+        },
+        "required": [
+          "roots"
+        ],
+        "title": "ProjectSetAllowedRoots",
+        "type": "object"
+      },
+      "journaled": false,
+      "kind": "engine",
+      "mcp": "catalog",
+      "mcp_tool": "project_set_allowed_roots",
+      "name": "project.set_allowed_roots",
+      "namespace": "project",
+      "output_schema": {
+        "additionalProperties": false,
+        "description": "Result of `project.set_allowed_roots`.",
+        "properties": {
+          "roots": {
+            "description": "The approved folders now in force: canonical (symlinks resolved), in the order given,\nwithout duplicates.",
+            "items": {
+              "type": "string"
+            },
+            "type": "array"
+          }
+        },
+        "required": [
+          "roots"
+        ],
+        "title": "ProjectSetAllowedRootsOutput",
+        "type": "object"
+      },
+      "scope": "ui",
+      "secret_fields": [],
+      "summary": "Set the folders agents may use besides the open project's (the app's own setting)",
+      "undoable": false,
+      "view": false
+    },
+    {
+      "annotations": {
+        "destructiveHint": false,
+        "idempotentHint": true,
+        "openWorldHint": false,
+        "readOnlyHint": false
+      },
+      "input_schema": {
+        "additionalProperties": false,
+        "description": "Sets how this engine autosaves, for the open project and every project it opens later: the\neditor's own preference wins over the project's `settings.autosave` (arch §17). It takes\neffect at once, also for a project that is already dirty, and the 2 s idle save stays.\nNot undoable, not journaled and never marks the project dirty; it is not written to the\nproject. An engine nobody sent it to keeps the project's own setting, then the defaults.\nUI credential only (ADR-0016): it is the app applying the person's preference to its own\nengine, which an agent must not override (agents get `forbidden`).",
         "properties": {
           "enabled": {
             "description": "Save automatically (the idle save and the interval save), or not at all.",
@@ -5401,7 +5542,7 @@ expression: text
         "title": "ProjectSetAutosaveOutput",
         "type": "object"
       },
-      "scope": "any",
+      "scope": "ui",
       "secret_fields": [],
       "summary": "Set whether, how often and with how many backups the engine autosaves",
       "undoable": false,

@@ -133,6 +133,34 @@ export type PrefsImportResult =
 export const APP_FOLDERS = ["settings", "logs"] as const;
 export type AppFolder = (typeof APP_FOLDERS)[number];
 
+/** The agent hosts Settings > Agents and MCP has a copyable setup for (WP-1J.05). */
+export const AGENT_CLIENTS = ["claude-code", "claude-desktop", "cursor", "codex", "stdio"] as const;
+export type AgentClient = (typeof AGENT_CLIENTS)[number];
+
+/** One client's setup: the text the person pastes (a command, JSON or TOML). */
+export interface ClientSetup {
+  readonly client: AgentClient;
+  readonly text: string;
+}
+
+/**
+ * How agents connect to this window (WP-1J.05): the bundled CLI they run (absolute; null when
+ * this build has none, and then there are no setups) and each client's setup with the tool set
+ * of `agents.client_profile`. No pid, port or token is ever part of it.
+ */
+export interface AgentConnectInfo {
+  readonly cliPath: string | null;
+  readonly setups: readonly ClientSetup[];
+}
+
+/** "Add folder…" in "Folders agents can use": what happened to the folder the person picked. */
+export type AgentFolderResult =
+  | { readonly status: "added"; readonly folder: string }
+  | { readonly status: "exists"; readonly folder: string }
+  | { readonly status: "full" }
+  | { readonly status: "invalid" }
+  | { readonly status: "cancelled" };
+
 /**
  * Edit > Cut, Copy, Paste and Select all of the in-app menu bar: main runs them on the focused
  * element of the editor window, as the native menu's edit roles did (WP-1M.09).
@@ -427,6 +455,21 @@ export interface CutweaveApi {
     /** Asks for a file with the native open dialog and applies its valid keys. */
     importFromFile(): Promise<PrefsImportResult>;
     onChanged(listener: (changes: PreferenceChanges) => void): Unsubscribe;
+  };
+  /**
+   * Settings > Agents and MCP (WP-1J.05). Folders are added only with main's own folder picker,
+   * so the page never names a path agents may use; removing one names a stored folder (anything
+   * else changes nothing). Each change reaches the engine before the call resolves.
+   */
+  readonly agents: {
+    /** Shows the OS folder picker and adds the chosen folder (resolved) to the list. */
+    addFolder(): Promise<AgentFolderResult>;
+    /** Removes this stored folder from the list. */
+    removeFolder(folder: string): Promise<void>;
+    /** The bundled CLI and the client setups with the current tool set. */
+    connectInfo(): Promise<AgentConnectInfo>;
+    /** Puts this client's setup on the clipboard (main builds it); resolves to the text. */
+    copySetup(client: AgentClient): Promise<string>;
   };
   readonly shell: {
     /** "Open settings folder" and "Open logs folder": shows one of the app's own folders. */

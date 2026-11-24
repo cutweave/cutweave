@@ -2,7 +2,7 @@
 
 # Command reference
 
-Every command and query the engine registers (51 in total), generated from the registry. The full JSON Schemas are in `schema/commands.json` and `schema/queries.json`.
+Every command and query the engine registers (53 in total), generated from the registry. The full JSON Schemas are in `schema/commands.json` and `schema/queries.json`.
 
 MCP exposure: `core` commands are always listed as tools (`item.move` is `item_move`), `catalog` ones are reachable through the catalog tools, `hidden` ones are not exposed.
 
@@ -39,6 +39,7 @@ MCP exposure: `core` commands are always listed as tools (`item.move` is `item_m
 | media | `media.set_cache_config` | Set the cache limits and the memory for decoded frames | engine, destructive, idempotent, ui-only | catalog |
 | media | `media.set_decode_policy` | Choose hardware or software decoding for the preview | engine, idempotent, ui-only | catalog |
 | project | `project.close` | Close the open project (saving first if asked or if autosave is on) | engine, idempotent | catalog |
+| project | `project.connections` | List the agent connections open on this engine, with their last command | engine, read-only, idempotent | catalog |
 | project | `project.discard_recovery` | Discard unsaved changes from a crashed session and keep the saved project | engine, destructive | catalog |
 | project | `project.info` | Get project name, default format and a summary of its sequences | query | core |
 | project | `project.new` | Initialize an empty project with one sequence (V1 + A1) | command, undoable | catalog |
@@ -48,7 +49,8 @@ MCP exposure: `core` commands are always listed as tools (`item.move` is `item_m
 | project | `project.report_focus` | The window gained the focus: record it for agent engine choice | engine, idempotent, ui-only | hidden |
 | project | `project.save` | Save the open project's committed state to its file | engine, idempotent | catalog |
 | project | `project.save_as` | Save the document as a new project folder and continue there | engine | catalog |
-| project | `project.set_autosave` | Set whether, how often and with how many backups the engine autosaves | engine, idempotent | catalog |
+| project | `project.set_allowed_roots` | Set the folders agents may use besides the open project's (the app's own setting) | engine, idempotent, ui-only | catalog |
+| project | `project.set_autosave` | Set whether, how often and with how many backups the engine autosaves | engine, idempotent, ui-only | catalog |
 | timeline | `timeline.get` | Get a sequence: summary (depth 0), tracks (1) or tracks with items (2) | query | core |
 | timeline | `timeline.insert` | Insert a media clip at a time on a track (adds linked audio for video with sound) | command, undoable | core |
 | track | `track.add` | Add an empty video or audio track to a sequence | command, undoable | catalog |

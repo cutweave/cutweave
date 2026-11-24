@@ -6,6 +6,7 @@ import { EventEmitter } from "node:events";
 import { PassThrough } from "node:stream";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { EngineStatus } from "../../shared/api.ts";
+import { engineAllowRoots } from "../agents.ts";
 import type { EngineRpc, NotificationListener } from "./rpc-client.ts";
 import { type ChildLike, EngineSupervisor, type SupervisorOptions } from "./supervisor.ts";
 
@@ -676,5 +677,75 @@ describe("window focus (WP-1J.04)", () => {
     await flush();
     await h.ready();
     expect(reports(h.rpcs[0])).toHaveLength(0);
+  });
+});
+
+describe("folders agents can use (WP-1J.05)", () => {
+  /** `--allow-root` values of a spawn, in order. */
+  const roots = (child: FakeChild) =>
+    child.args.flatMap((a, i) => (a === "--allow-root" ? [child.args[i + 1]] : []));
+  const sent = (rpc: FakeRpc | undefined) =>
+    (rpc?.calls ?? [])
+      .filter((c) => c.method === "project.set_allowed_roots")
+      .map((c) => c.params?.roots);
+
+  it("passes every stored folder as --allow-root on start and after a supervised restart", async () => {
+    const stored = ["/footage", "/gone", "/music"];
+    const warnings: string[] = [];
+    const exists = new Set(["/footage", "/music", "/dev-root"]);
+    const h = harness({
+      allowRoots: () =>
+        engineAllowRoots(["/dev-root"], stored, {
+          platform: "linux",
+          isDirectory: (p) => exists.has(p),
+          log: (m) => warnings.push(m),
+        }),
+    });
+    void h.sup.start();
+    await flush();
+    // The folder that no longer exists is skipped, with a warning for the main log.
+    expect(roots(h.last())).toEqual(["/dev-root", "/footage", "/music"]);
+    expect(warnings).toEqual(["skipping a folder agents may use: /gone no longer exists"]);
+    await h.ready();
+    // Nothing changed while it started: no extra call.
+    expect(sent(h.rpcs[0])).toEqual([]);
+
+    // A crash: the restart reads the folders of today.
+    stored.push("/new");
+    exists.add("/new");
+    h.last().exit(null, "SIGKILL");
+    await flush();
+    await vi.advanceTimersByTimeAsync(500);
+    await flush();
+    expect(h.children).toHaveLength(2);
+    expect(roots(h.last())).toEqual(["/dev-root", "/footage", "/music", "/new"]);
+  });
+
+  it("sends a change to the running engine and waits for its answer", async () => {
+    let folders = ["/a"];
+    const h = harness({ allowRoots: () => folders });
+    void h.sup.start();
+    await flush();
+    await h.ready();
+    folders = [];
+    await h.sup.applyAllowedRoots();
+    expect(sent(h.rpcs[0])).toEqual([[]]);
+    const meta = h.rpcs[0]?.calls.at(-1)?.params?._meta as { request_id?: string } | undefined;
+    expect(meta?.request_id).toMatch(/^[0-9a-f]{8}-/);
+  });
+
+  it("gives an engine that was starting during a change the folders of today", async () => {
+    let folders = ["/a"];
+    const h = harness({ allowRoots: () => folders });
+    void h.sup.start();
+    await flush();
+    expect(roots(h.last())).toEqual(["/a"]);
+    // The person removes the folder before main is connected: nothing to send yet.
+    folders = [];
+    await h.sup.applyAllowedRoots();
+    expect(h.rpcs).toHaveLength(0);
+    await h.ready();
+    expect(sent(h.rpcs[0])).toEqual([[]]);
+    expect(h.sup.status.state).toBe("ready");
   });
 });

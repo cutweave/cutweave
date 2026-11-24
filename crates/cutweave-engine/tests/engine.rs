@@ -408,6 +408,173 @@ fn agents_open_and_save_only_inside_allowed_roots_while_the_ui_is_unrestricted()
     engine.shutdown();
 }
 
+/// WP-1J.05: `project.set_allowed_roots` replaces the approved roots (the `--allow-root` ones
+/// too), stores them resolved, applies at once to an open agent connection, and is the UI
+/// credential's alone; `project.info` reports the roots in effect.
+#[test]
+fn the_app_sets_the_allowed_roots_live_and_resolved() {
+    let t = TempDir::new("setroots");
+    let launch_root = t.path().join("launch");
+    let footage = t.path().join("footage");
+    std::fs::create_dir_all(&launch_root).unwrap();
+    std::fs::create_dir_all(footage.join("day1")).unwrap();
+    let in_launch = empty_project(&launch_root, "Launch");
+    let in_footage = empty_project(&footage, "Footage");
+    let mut config = EngineConfig::new(EngineMode::Gui);
+    config.ui_token = Some(ui_token());
+    config.api.run_dir = Some(t.path().join("run"));
+    config.allowed_roots = vec![launch_root.clone()];
+    let engine = Engine::start(config).unwrap();
+    let h = engine.handle();
+    let user = h.connect(&Credential::Ui).unwrap();
+    let cli = h.connect(&agent("cli")).unwrap();
+    let roots_of = |conn: &cutweave_engine::Connection| {
+        must(conn, "project.info", json!({}))["allowed_roots"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .map(|r| r.as_str().unwrap().to_owned())
+            .collect::<Vec<_>>()
+    };
+    assert_eq!(roots_of(&cli), vec![path_str(&launch_root)]);
+    must(
+        &cli,
+        "project.open",
+        json!({ "path": path_str(&in_launch) }),
+    );
+    must(&cli, "project.close", json!({ "save": false }));
+
+    // Bad lists change nothing: relative, `..`, missing, a file, too many.
+    let file = footage.join("note.txt");
+    std::fs::write(&file, b"x").unwrap();
+    for (roots, pointer) in [
+        (json!(["relative"]), "/roots/0"),
+        (
+            json!([
+                path_str(&footage),
+                path_str(&footage.join("day1").join(".."))
+            ]),
+            "/roots/1",
+        ),
+        (json!([path_str(&t.path().join("missing"))]), "/roots/0"),
+        (json!([path_str(&file)]), "/roots/0"),
+        (
+            json!(vec![
+                path_str(&footage);
+                cutweave_engine::MAX_ALLOWED_ROOTS + 1
+            ]),
+            "/roots",
+        ),
+    ] {
+        let err = user
+            .call(Call::new(
+                "project.set_allowed_roots",
+                json!({ "roots": roots }),
+            ))
+            .unwrap_err();
+        assert!(
+            matches!(&err, CmdError::Invalid { path, .. } if path == pointer),
+            "{err}"
+        );
+    }
+    assert_eq!(roots_of(&cli), vec![path_str(&launch_root)]);
+
+    // A link to the footage folder is stored resolved, and replaces the launch root.
+    let link = t.path().join("footage-link");
+    let root = if dir_link(&footage, &link) {
+        link.clone()
+    } else {
+        footage.clone()
+    };
+    let out = must(
+        &user,
+        "project.set_allowed_roots",
+        json!({ "roots": [path_str(&root)] }),
+    );
+    let stored = out["roots"][0].as_str().unwrap().to_owned();
+    assert!(
+        std::path::Path::new(&stored).ends_with("footage"),
+        "resolved: {stored}"
+    );
+    assert!(!stored.starts_with(r"\\?\"), "{stored}");
+    assert_eq!(roots_of(&cli), vec![stored.clone()]);
+    // The same open connection: the old root is gone, the new one works at once.
+    refused(&cli, "project.open", &in_launch);
+    must(
+        &cli,
+        "project.open",
+        json!({ "path": path_str(&in_footage) }),
+    );
+    // The open project's folder is listed too.
+    assert!(roots_of(&cli).contains(&stored));
+    // Removing it stops the same connection at once (the open project stays usable).
+    must(&user, "project.set_allowed_roots", json!({ "roots": [] }));
+    let err = cli
+        .call(Call::new(
+            "project.save_as",
+            json!({ "path": path_str(&footage.join("day1").join("Copy")) }),
+        ))
+        .unwrap_err();
+    assert!(
+        err.to_string().contains("Settings > Agents and MCP"),
+        "{err}"
+    );
+
+    // Agents may not change it.
+    let err = cli
+        .call(Call::new(
+            "project.set_allowed_roots",
+            json!({ "roots": [path_str(&footage)] }),
+        ))
+        .unwrap_err();
+    assert_eq!(err.code(), "forbidden");
+    engine.shutdown();
+}
+
+/// WP-1J.05: agent connections are listed with their last command and announced; the UI's are
+/// not.
+#[test]
+fn agent_connections_are_listed_and_announced() {
+    let t = TempDir::new("connections");
+    let mut config = EngineConfig::new(EngineMode::Gui);
+    config.ui_token = Some(ui_token());
+    config.api.run_dir = Some(t.path().join("run"));
+    let engine = Engine::start(config).unwrap();
+    let h = engine.handle();
+    let mut events = h.subscribe();
+    let user = h.connect(&Credential::Ui).unwrap();
+    let mcp = h.connect(&agent("mcp")).unwrap();
+    let opened = wait_for(&mut events, 10 * SEC, |e| {
+        e.name() == "project.connection_opened"
+    });
+    assert_eq!(opened.payload()["actor"], "agent:mcp");
+    let _ = mcp.call(Call::new("project.set_autosave", json!({})));
+    must(&mcp, "project.info", json!({}));
+    let listed = must(&user, "project.connections", json!({}));
+    let list = listed["connections"].as_array().unwrap();
+    assert_eq!(list.len(), 1, "the UI is not an agent: {listed}");
+    assert_eq!(list[0]["actor"], "agent:mcp");
+    assert_eq!(list[0]["last_command"], "project.info");
+    // Read-only and open to agents too.
+    assert_eq!(
+        must(&mcp, "project.connections", json!({}))["connections"]
+            .as_array()
+            .unwrap()
+            .len(),
+        1
+    );
+    drop(mcp);
+    let closed = wait_for(&mut events, 10 * SEC, |e| {
+        e.name() == "project.connection_closed"
+    });
+    assert_eq!(closed.payload()["last_command"], "project.connections");
+    assert_eq!(
+        must(&user, "project.connections", json!({}))["connections"],
+        json!([])
+    );
+    engine.shutdown();
+}
+
 #[test]
 fn without_allowed_roots_agents_are_confined_to_the_start_project() {
     let t = TempDir::new("noroots");
@@ -830,12 +997,27 @@ fn set_autosave_never_dirties_and_off_stops_autosaves_across_projects() {
     let t = TempDir::new("set-autosave");
     let a = empty_project(t.path(), "A");
     let b = empty_project(t.path(), "B");
-    let engine = Engine::start(fast_autosave(&t)).unwrap();
+    // The app applies the person's preference to its own engine: the UI credential only.
+    let mut config = fast_autosave(&t);
+    config.mode = EngineMode::Gui;
+    config.ui_token = Some(ui_token());
+    config.api.run_dir = Some(t.path().join("run"));
+    let engine = Engine::start(config).unwrap();
     let h = engine.handle();
-    let conn = h.connect(&agent("cli")).unwrap();
+    let conn = h.connect(&Credential::Ui).unwrap();
     let mut events = h.subscribe();
     must(&conn, "project.open", json!({ "path": path_str(&a) }));
     assert!(!h.status().unwrap().dirty);
+    // An agent cannot override it (WP-1J.05).
+    let err = h
+        .connect(&agent("cli"))
+        .unwrap()
+        .call(Call::new(
+            "project.set_autosave",
+            json!({ "enabled": false, "interval_s": 60, "keep_backups": 5 }),
+        ))
+        .unwrap_err();
+    assert_eq!(err.code(), "forbidden");
 
     let out = must(
         &conn,

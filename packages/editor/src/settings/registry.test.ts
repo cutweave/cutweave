@@ -5,6 +5,7 @@ import { afterEach, describe, expect, it } from "vitest";
 import { i18n, type TKey } from "../i18n/index.ts";
 import "./core.ts";
 import "./featurePages.tsx";
+import "./agents.tsx";
 import {
   pageKeys,
   registeredKeys,
@@ -72,6 +73,8 @@ describe("the registry and the catalog", () => {
       "export",
       "saving",
       "shortcuts",
+      "notifications",
+      "agents",
       "cache",
       "performance",
       "advanced",

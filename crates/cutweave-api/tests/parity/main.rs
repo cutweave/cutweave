@@ -564,11 +564,12 @@ fn every_registry_entry_is_reachable_with_the_registry_schema() {
             cmd: name.to_owned(),
             args: probe.clone(),
         };
-        // An agent's MCP call reaches a UI-only catalog entry (`cutweave_execute`), which refuses
-        // it before it looks at the params (ADR-0016): `forbidden`, as over RPC below.
+        // An agent reaches a UI-only entry (it is described, so it can tell the person what to
+        // do) but is refused before its params are looked at (ADR-0016, WP-1J.05).
+        let ui_only = meta.scope == cutweave_commands::Scope::UiOnly;
         let expected = if exempt {
             "not_found"
-        } else if meta.scope == cutweave_commands::Scope::UiOnly {
+        } else if ui_only {
             "forbidden"
         } else {
             "invalid"
@@ -582,11 +583,7 @@ fn every_registry_entry_is_reachable_with_the_registry_schema() {
         }
         // RPC: a method under the registry name. This client holds an agent credential, which a
         // UI-only entry refuses before it looks at the params (ADR-0016).
-        let expected = if meta.scope == cutweave_commands::Scope::UiOnly {
-            "forbidden"
-        } else {
-            "invalid"
-        };
+        let expected = if ui_only { "forbidden" } else { "invalid" };
         match rpc.call(&call) {
             Err(e) if e.code == expected => {}
             other => problems.push(format!(

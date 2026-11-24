@@ -351,6 +351,10 @@ test.describe("IPC", () => {
       return walk(window.cutweave, "cutweave").sort();
     });
     expect(surface).toEqual([
+      "cutweave.agents.addFolder",
+      "cutweave.agents.connectInfo",
+      "cutweave.agents.copySetup",
+      "cutweave.agents.removeFolder",
       "cutweave.app.about",
       "cutweave.app.getInfo",
       "cutweave.app.quit",

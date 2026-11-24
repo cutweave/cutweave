@@ -671,6 +671,8 @@ export async function openSettingsPage(
     | "Export"
     | "Saving and backups"
     | "Keyboard shortcuts"
+    | "Notifications"
+    | "Agents and MCP"
     | "Cache and storage"
     | "Performance and hardware"
     | "Advanced",

@@ -54,6 +54,13 @@ export type HwDecodeChoice = (typeof HW_DECODE_CHOICES)[number];
 /** "Don't ask again" choices dialogs remember, by dialog id. */
 export type DialogChoices = Record<string, string>;
 
+/** The tool set of a copied agent client setup (`cutweave mcp --profile`, WP-1J.05). */
+export const CLIENT_PROFILES = ["minimal", "standard", "full"] as const;
+export type ClientProfile = (typeof CLIENT_PROFILES)[number];
+
+/** The most folders "Folders agents can use" holds (the engine takes no more, WP-1J.05). */
+export const MAX_AGENT_FOLDERS = 64;
+
 /** Every preference key and the type of its value. */
 export interface PreferenceValues {
   "general.startup": StartupChoice;
@@ -79,6 +86,15 @@ export interface PreferenceValues {
   "cache.waveforms_limit": (typeof WAVEFORM_LIMITS)[number];
   "performance.hw_decode": HwDecodeChoice;
   "performance.frame_memory": (typeof FRAME_MEMORY_CHOICES)[number];
+  /** Notifications (WP-1J.05): a toast when an agent connects or disconnects. */
+  "notify.agent_connected": boolean;
+  /**
+   * Agents and MCP (WP-1J.05): folders agents may use besides the open project's, as main
+   * stored them (resolved, absolute). This computer's: never exported or imported, and only
+   * main writes it (its folder picker), so the renderer never names a folder.
+   */
+  "agents.allowed_folders": readonly string[];
+  "agents.client_profile": ClientProfile;
 }
 
 export type PreferenceKey = keyof PreferenceValues;
@@ -101,7 +117,18 @@ export type PreferenceDef =
   /** An absolute folder or file path, or `""` for "not chosen". */
   | { type: "path"; scope: PreferenceScope; default: string }
   /** A short map of remembered choices: ids to short words. */
-  | { type: "record"; scope: PreferenceScope; default: Record<string, string> };
+  | { type: "record"; scope: PreferenceScope; default: Record<string, string> }
+  /**
+   * A list of distinct absolute paths, at most `max`. `writer: "main"`: only main changes it
+   * (through its own dialogs); `prefs:set` from the renderer is refused.
+   */
+  | {
+      type: "paths";
+      scope: PreferenceScope;
+      default: readonly string[];
+      max: number;
+      writer?: "main";
+    };
 
 export const RECENT_COUNT_MAX = 25;
 const MAX_PATH_LENGTH = 4096;
@@ -155,12 +182,38 @@ export const PREFERENCES: { readonly [K in PreferenceKey]: PreferenceDef } = {
     options: FRAME_MEMORY_CHOICES,
     default: 0,
   },
+  // Notifications and Agents and MCP (WP-1J.05).
+  "notify.agent_connected": { type: "boolean", scope: "app", default: true },
+  "agents.allowed_folders": {
+    type: "paths",
+    scope: "machine",
+    default: [],
+    max: MAX_AGENT_FOLDERS,
+    writer: "main",
+  },
+  "agents.client_profile": {
+    type: "enum",
+    scope: "app",
+    options: CLIENT_PROFILES,
+    default: "standard",
+  },
 };
 
 export const PREFERENCE_KEYS = Object.keys(PREFERENCES) as PreferenceKey[];
 
 export function isPreferenceKey(key: unknown): key is PreferenceKey {
   return typeof key === "string" && Object.hasOwn(PREFERENCES, key);
+}
+
+/**
+ * Whether the editor may write `key` (`prefs:set`). Keys only main writes are changed through
+ * main's own channels: "Folders agents can use" adds a folder with main's folder picker, so a
+ * renderer never names a path agents may then use (WP-1J.05). Resetting them is allowed.
+ */
+export function isRendererWritable(key: unknown): boolean {
+  if (!isPreferenceKey(key)) return false;
+  const def = PREFERENCES[key];
+  return !(def.type === "paths" && def.writer === "main");
 }
 
 export type Validation<T = unknown> = { ok: true; value: T } | { ok: false; reason: string };
@@ -199,6 +252,25 @@ function validateAgainst(def: PreferenceDef, value: unknown): Validation {
       return isAbsolutePath(value)
         ? { ok: true, value }
         : { ok: false, reason: "expected an absolute path" };
+    case "paths": {
+      if (!Array.isArray(value)) return { ok: false, reason: "expected a list of folders" };
+      if (value.length > def.max) return { ok: false, reason: `at most ${def.max} folders` };
+      const clean: string[] = [];
+      for (const item of value) {
+        if (
+          typeof item !== "string" ||
+          item === "" ||
+          item.length > MAX_PATH_LENGTH ||
+          item.includes("\0") ||
+          !isAbsolutePath(item)
+        ) {
+          return { ok: false, reason: "expected absolute folder paths" };
+        }
+        if (clean.includes(item)) return { ok: false, reason: `"${item}" is listed twice` };
+        clean.push(item);
+      }
+      return { ok: true, value: clean };
+    }
     case "record": {
       if (!isPlainObject(value)) return { ok: false, reason: "expected a list of choices" };
       const entries = Object.entries(value);
@@ -230,7 +302,12 @@ export function defaultPreferences(overrides: PreferenceChanges = {}): Preferenc
   const out: Record<string, unknown> = {};
   for (const key of PREFERENCE_KEYS) {
     const def = PREFERENCES[key];
-    out[key] = def.type === "record" ? { ...def.default } : def.default;
+    out[key] =
+      def.type === "record"
+        ? { ...def.default }
+        : def.type === "paths"
+          ? [...def.default]
+          : def.default;
   }
   for (const [key, value] of Object.entries(overrides)) {
     if (validatePreference(key, value).ok) out[key] = value;
@@ -239,6 +316,9 @@ export function defaultPreferences(overrides: PreferenceChanges = {}): Preferenc
 }
 
 export function samePreferenceValue(a: unknown, b: unknown): boolean {
+  if (Array.isArray(a) && Array.isArray(b)) {
+    return a.length === b.length && a.every((item, i) => item === b[i]);
+  }
   if (isPlainObject(a) && isPlainObject(b)) {
     const ka = Object.keys(a);
     return (
