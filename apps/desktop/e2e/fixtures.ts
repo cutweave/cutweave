@@ -176,6 +176,8 @@ export async function quitApp(
   app: ElectronApplication,
   page: Page,
   answer: Exclude<UnsavedAnswer, "cancel"> = "discard",
+  /** The main process's output (`LaunchedApp.mainLog`): its last lines go with a hang report. */
+  mainLog: readonly string[] = [],
 ): Promise<void> {
   let child: ReturnType<ElectronApplication["process"]>;
   try {
@@ -189,13 +191,19 @@ export async function quitApp(
     else child.once("exit", () => resolve());
   });
   // Quit, as File > Exit / Alt+F4 would; with unsaved changes main holds it and the editor asks.
+  const started = Date.now();
+  const at = () => `${((Date.now() - started) / 1000).toFixed(1)} s`;
   void app.close().catch(() => {});
   const prompt = unsavedPrompt(page);
-  const deadline = Date.now() + CLOSE_TIMEOUT_MS;
+  const deadline = started + CLOSE_TIMEOUT_MS;
   let answered = 0;
+  let windowClosed: string | null = null;
   while (Date.now() < deadline) {
     if (await settleWithin(exited, 250)) return;
-    if (page.isClosed()) continue;
+    if (page.isClosed()) {
+      windowClosed ??= at();
+      continue;
+    }
     if (await prompt.dialog.isVisible().catch(() => false)) {
       answered += 1;
       await prompt[answer].click({ timeout: 2_000 }).catch(() => {});
@@ -203,18 +211,23 @@ export async function quitApp(
   }
   // What was on screen and still running, for the hunt (a hang is a bug, not something to retry).
   const dialogs = page.isClosed()
-    ? "the window had closed"
+    ? `the window had closed (at ${windowClosed ?? "?"})`
     : await page
         .getByRole("dialog")
         .allInnerTexts()
         .then((texts) => (texts.length === 0 ? "no dialog open" : texts.join(" | ")))
         .catch(() => "unknown");
   const running = processTree(child.pid);
+  // How late it is: a slow exit and a stuck one need different fixes.
+  const late = (await settleWithin(exited, CLOSE_TIMEOUT_MS))
+    ? `it exited at ${at()}`
+    : `still running at ${at()}`;
   killTree(child.pid);
   throw new Error(
     `the app did not quit within ${CLOSE_TIMEOUT_MS / 1000} s (killed so no window stays open); ` +
       `answered the unsaved-changes prompt ${answered} time(s); on screen: ${dialogs}; ` +
-      `still running: ${running}`,
+      `processes: ${running}; ${late}` +
+      (mainLog.length === 0 ? "" : `\nmain log (last lines):\n${mainLog.slice(-20).join("\n")}`),
   );
 }
 
@@ -249,7 +262,7 @@ function processTree(pid: number | undefined): string {
   };
   const root = rows.find((r) => r.pid === pid);
   walk(pid, 0);
-  return `${root === undefined ? "the app had exited" : `${root.name}(${pid})`}; children: ${
+  return `${root === undefined ? "the app process is gone" : `${root.name}(${pid})`}; children: ${
     found.join(", ") || "none"
   }`;
 }
@@ -312,13 +325,7 @@ export async function launchApp(
       closing ??= (async () => {
         openApps.delete(launched);
         try {
-          await quitApp(app, page);
-        } catch (error) {
-          // The main process's last words (supervisor and engine lines) go with a hang report.
-          if (error instanceof Error) {
-            error.message += `\nmain log (last lines):\n${mainLog.slice(-20).join("\n")}`;
-          }
-          throw error;
+          await quitApp(app, page, "discard", mainLog);
         } finally {
           if (ownsHome) {
             rmSync(home, { recursive: true, force: true, maxRetries: 5, retryDelay: 200 });

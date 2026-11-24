@@ -37,7 +37,7 @@ test.describe("F9 unsaved changes on quit", () => {
 
   test("the dialog asks; Cancel keeps the app and the edit; Save quits with the edit saved", async () => {
     const work = workspace();
-    const { app, page, close } = await launchFlowApp(work);
+    const { app, page, mainLog, close } = await launchFlowApp(work);
     try {
       const doc = await createProject(app, page, "Unsaved quit", work.dir);
       expect(mediaOnDisk(doc)).toBe(0);
@@ -59,7 +59,7 @@ test.describe("F9 unsaved changes on quit", () => {
       expect(mediaOnDisk(doc)).toBe(0);
 
       // Quit again and Save: the app exits and the document on disk has the media.
-      await quitApp(app, page, "save");
+      await quitApp(app, page, "save", mainLog);
       expect(mediaOnDisk(doc)).toBe(1);
     } finally {
       await close();
@@ -69,12 +69,12 @@ test.describe("F9 unsaved changes on quit", () => {
 
   test("Discard quits without writing the edit to the document", async () => {
     const work = workspace();
-    const { app, page, close } = await launchFlowApp(work);
+    const { app, page, mainLog, close } = await launchFlowApp(work);
     try {
       const doc = await createProject(app, page, "Discard quit", work.dir);
       await editUnsaved(app, page, work);
 
-      await quitApp(app, page, "discard");
+      await quitApp(app, page, "discard", mainLog);
       expect(mediaOnDisk(doc)).toBe(0);
     } finally {
       await close();
