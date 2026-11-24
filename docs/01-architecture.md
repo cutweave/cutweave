@@ -450,6 +450,14 @@ flowchart LR
 4. **Overlays** (transform handles, crop box, safe areas, text editing caret, guides) are DOM/Canvas layers on top of the preview canvas, all in the same page, so there are no z-order problems.
 5. **Scrubbing** uses a latest-wins scheduler: stale requests are cancelled, proxies and the GOP cache are tried first, and a low-res frame is sent before the full-res refine.
 
+**Transport (decided in WP-1H.01).** The transport lives in `cutweave-playback` behind its non-default `transport` cargo feature, so the Electron addon builds playback without the audio, render and command crates.
+- **Clocks.** At 1× forward, video follows the audio clock (`clock.read()`, never `OutputState`). In P1 the other JKL rates (±2×, ±4×, all reverse rates) are video-only on the host clock with audio paused, because the mixer has no varispeed yet. 2× and 4× show every 2nd or 4th frame.
+- **Frame target.** The render loop renders the frame due when the render will finish: the floor of the predicted playhead, with the lead capped at 100 ms. It drops the frames in between and never pauses or re-seeks audio to wait for video.
+- **Exact latest-wins.** Every control request starts a new epoch, which cancels in-flight renders through their `CancelToken`. A frame commits only while its epoch is current, and the render side never waits; the control side waits out one in-progress commit. Once a request returns, no frame from an older request can be delivered.
+- **Scrubbing** goes cache → quarter-resolution frame flagged `LOWRES` → full frame after 100 ms without a newer seek.
+- **Wire.** `playback.state` is sent at most 30 times a second. The `view.play`, `view.pause`, `view.seek`, `view.set_rate`, `view.step` and `view.set_preview_size` engine commands drive the transport; `view.set_preview_size` is hidden from MCP.
+- **Threads.** The render thread takes no locks and makes no per-frame heap allocation (a counting-allocator test enforces this). Its frames come through the `FrameSource` seam: synthetic frames until WP-1I.05 connects the real renderer (R31).
+
 The upgrade path, behind a feature flag once proven, is zero-copy GPU texture sharing into Chromium via Electron's shared-texture import. **Fallback** for remote or non-Electron clients is JPEG frames over `/media/frame`.
 
 ---
