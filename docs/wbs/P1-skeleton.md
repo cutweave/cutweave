@@ -1188,6 +1188,7 @@ Human gates: PR review of `1B.01`, `1B.03`/`1B.09` (concurrency + ownership core
 - **Out of scope:** LLM-in-the-loop evals (P6).
 
 ### WP-1O.04 — M1 exit acceptance suite (UI + MCP + crash)
+- **Note (ADR-0018):** the UI exits are the milestone subset of the user-flow suite built in WP-1O.05; this WP adds the M1-specific flows and the CI aggregation.
 - **Area:** `apps/desktop/e2e`, `crates/cutweave-cli/tests`, `docs/m1-acceptance.md`
 - **Depends on:** WP-1M.08, WP-1L.03, WP-1M.07, WP-1O.01, WP-1O.02, WP-1O.03, WP-1B.08, WP-1B.09
 - **Size:** M
@@ -1201,6 +1202,31 @@ Human gates: PR review of `1B.01`, `1B.03`/`1B.09` (concurrency + ownership core
 - **Acceptance criteria:** all four exit criteria items evidenced by green CI run URLs in `docs/m1-acceptance.md`; Human reviewer signs off by checking boxes in the PR.
 - **Tests:** this WP is e2e.
 - **Out of scope:** performance budgets beyond those recorded in earlier WPs.
+
+### WP-1O.05 — User-flow e2e suite (real app, real input, real dialogs)
+- **Area:** `apps/desktop/e2e/flows/`, `apps/desktop/test-support`, `docs/user-flows.md`, `justfile` (`e2e-flows`), `scripts/check-affected.py` (the flow step)
+- **Depends on:** WP-1M.03, WP-1M.06, WP-1M.07, WP-1L.03
+- **Size:** M
+- **Executor:** opus
+- **Scope:**
+  - The living suite of ADR-0018: one spec per flow in `docs/user-flows.md`, against the built app and the real engine (`cutweave-engine-serve`), with real files and the demo and corpus media.
+    - The engine runs with `--dev-stub-media` until WP-1I.05 wires real probing and decode.
+    - Flows drive the UI like a user: pointer clicks and drags, typing, shortcuts, menus (through the app's menu commands), and the app's own dialogs answered in the UI.
+    - Only OS file pickers are stubbed, in the main process, to return the path a user would pick.
+    - Read-only test hooks may observe state; no hook may change app behaviour.
+  - This WP covers flows F1–F12, F15 and F16. F13, F14 and F17 stay blocked, with their WPs named.
+  - Shared flow helpers in `e2e/flows/`: launch with the real engine, the media bin, timeline drag targets, the inspector, menus, and `quitApp`.
+  - Assertions cover what is visible, the saved `.cutweave` on disk, and engine state read back through `timeline.get`.
+  - A `just e2e-flows` recipe. `check-affected` runs it when the desktop app, editor, UI kit or engine are affected.
+  - A run-level check that no Electron or engine process survives the suite.
+- **Interfaces:** `just e2e-flows`; `e2e/flows/*.spec.ts`; `docs/user-flows.md` statuses.
+- **Acceptance criteria:**
+  - All flows in scope pass twice in a row on Windows with no retries, and the whole suite takes under 10 minutes.
+  - No flow uses a behaviour-changing hook or a fixed sleep (review checklist).
+  - After the run, no Electron or engine process is left (asserted).
+  - `docs/user-flows.md` marks every flow in scope as covered, and each blocked flow names its WP.
+- **Tests:** this WP is e2e.
+- **Out of scope:** playback with the real engine, export and real decode (F13, F14, F17); the CI workflow aggregation (WP-1O.04).
 
 ---
 

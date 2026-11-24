@@ -25,3 +25,4 @@ ADRs record architectural decisions in [MADR](https://adr.github.io/madr/) style
 | [0015](0015-wire-protocol.md) | Wire protocol: `request_id` idempotency, flicks as JSON integers, deterministic IDs | Accepted | n/a (2026-11-22) |
 | [0016](0016-credential-classes.md) | Credential classes (UI / agent / plugin), server-derived actor, UI-only scopes | Accepted | n/a (2026-11-22) |
 | [0017](0017-transaction-kinds.md) | Transaction kinds (`gesture`, `proposal`), connection-owned, committed-only saves | Accepted | n/a (2026-11-22) |
+| [0018](0018-user-flow-e2e-suite.md) | User-flow e2e suite (real app, real input, real dialogs) as the regression gate | Accepted | Product owner (2026-11-24) |

@@ -95,6 +95,7 @@ stateDiagram-v2
 
 - [ ] All acceptance criteria are met, with evidence linked in the PR.
 - [ ] Tests are added at the level the WP specifies (unit, property, golden, e2e, bench). New commands get the undo/redo property test automatically through the registry harness.
+- [ ] **User flows (ADR-0018):** a WP that adds or changes user-visible behaviour adds or extends a flow in [user-flows.md](user-flows.md) and in `apps/desktop/e2e/flows/`, driven like a user (real clicks, drags, keys and dialogs; only OS file pickers stubbed). `just e2e-flows` is green.
 - [ ] `just check` is green; WP-specific gates are green; no benchmark regression above 5% without approval.
 - [ ] Every new mutation is a **registered command**, shows up in the generated schema, TS client and MCP catalog, and passes the parity test.
 - [ ] No secrets or paths leaked into logs. Filesystem access goes through allowlists; network goes through the gateway only.
@@ -119,6 +120,7 @@ stateDiagram-v2
 > - **Workers** run `just check-affected` before reporting a WP.
 > - **Integrator, after a merge:** if `main` was an ancestor of the branch, the merged tree is identical to the one the worker gated, so nothing is rerun. Otherwise run `just check-affected` on `main`; its base is the pre-merge `main`, so it covers the branch's changes and every dependent crate built against the new `main`.
 > - **Full `just ci-local`:** once per batch of merges, before milestones and releases, and whenever `check-affected` falls back to it.
+> - **User flows (ADR-0018, 2026-11-24, product owner):** after every merge that touches `apps/`, `packages/` or `crates/`, the integrator runs `just e2e-flows` (the real app, engine and media, driven like a user). A broken or flaky flow blocks the push.
 > - Builds share compiled dependencies through `sccache` (user-level `~/.cargo/config.toml`), so fresh worktrees don't rebuild the dependency tree.
 
 | When | Gates |

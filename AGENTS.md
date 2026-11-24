@@ -42,6 +42,7 @@ Cutweave is an open-source desktop video editor and agent-native video environme
 - **No network in tests. No committing media**: the corpus is fetched (`just corpus`), goldens go in LFS.
 - **UI uses the design system only:** `packages/ui` components and `var(--token)` values from `design/tokens.json`. No literal colors, sizes or font stacks. Follow `design/README.md` (voice, states, marigold = "here", agent blue = AI/agent). Missing a value? Add a token with a usage note in the same PR.
 - **Tests first** from the acceptance criteria. Run `just check-affected` before reporting or opening a PR (it falls back to `just check` when shared config changed).
+- **User flows are the regression gate (ADR-0018):** if your WP adds or changes anything a user can see or do, add or extend a flow in [docs/user-flows.md](docs/user-flows.md) and `apps/desktop/e2e/flows/`. Drive it like a person: real clicks, drags, keys and the app's own dialogs. Stub only OS file pickers; never add a hook that changes app behaviour for tests. Wait for visible state, never sleep, and quit with `quitApp`.
 - **Don't guess:** if the WP is ambiguous or larger than 4 agent-days, stop and report a split or a question.
 
 ## Code conventions

@@ -1,7 +1,7 @@
 {
   "version": 1,
   "generated_by": "scripts/wbs-to-issues",
-  "count": 482,
+  "count": 483,
   "work_packages": [
     {
       "id": "WP-0A.01",
@@ -3404,6 +3404,44 @@
       "out_of_scope": "performance budgets beyond those recorded in earlier WPs."
     },
     {
+      "id": "WP-1O.05",
+      "title": "User-flow e2e suite (real app, real input, real dialogs)",
+      "source": {
+        "file": "docs/wbs/P1-skeleton.md",
+        "line": 1206
+      },
+      "phase": "P1",
+      "epic": "1O",
+      "area": "`apps/desktop/e2e/flows/`, `apps/desktop/test-support`, `docs/user-flows.md`, `justfile` (`e2e-flows`), `scripts/check-affected.py` (the flow step)",
+      "size": "M",
+      "executor": "opus",
+      "executor_note": "",
+      "depends_raw": "WP-1M.03, WP-1M.06, WP-1M.07, WP-1L.03",
+      "depends_wps": [
+        "WP-1M.03",
+        "WP-1M.06",
+        "WP-1M.07",
+        "WP-1L.03"
+      ],
+      "depends_epics": [],
+      "depends": [
+        "WP-1L.03",
+        "WP-1M.03",
+        "WP-1M.06",
+        "WP-1M.07"
+      ],
+      "scope": "- The living suite of ADR-0018: one spec per flow in `docs/user-flows.md`, against the built app and the real engine (`cutweave-engine-serve`), with real files and the demo and corpus media.\n  - The engine runs with `--dev-stub-media` until WP-1I.05 wires real probing and decode.\n  - Flows drive the UI like a user: pointer clicks and drags, typing, shortcuts, menus (through the app's menu commands), and the app's own dialogs answered in the UI.\n  - Only OS file pickers are stubbed, in the main process, to return the path a user would pick.\n  - Read-only test hooks may observe state; no hook may change app behaviour.\n- This WP covers flows F1–F12, F15 and F16. F13, F14 and F17 stay blocked, with their WPs named.\n- Shared flow helpers in `e2e/flows/`: launch with the real engine, the media bin, timeline drag targets, the inspector, menus, and `quitApp`.\n- Assertions cover what is visible, the saved `.cutweave` on disk, and engine state read back through `timeline.get`.\n- A `just e2e-flows` recipe. `check-affected` runs it when the desktop app, editor, UI kit or engine are affected.\n- A run-level check that no Electron or engine process survives the suite.",
+      "interfaces": "`just e2e-flows`; `e2e/flows/*.spec.ts`; `docs/user-flows.md` statuses.",
+      "acceptance": [
+        "All flows in scope pass twice in a row on Windows with no retries, and the whole suite takes under 10 minutes.",
+        "No flow uses a behaviour-changing hook or a fixed sleep (review checklist).",
+        "After the run, no Electron or engine process is left (asserted).",
+        "`docs/user-flows.md` marks every flow in scope as covered, and each blocked flow names its WP."
+      ],
+      "tests": "this WP is e2e.",
+      "out_of_scope": "playback with the real engine, export and real decode (F13, F14, F17); the CI workflow aggregation (WP-1O.04)."
+    },
+    {
       "id": "WP-2A.01",
       "title": "Spec: timeline edit semantics",
       "source": {
@@ -5732,6 +5770,7 @@
         "WP-1O.02",
         "WP-1O.03",
         "WP-1O.04",
+        "WP-1O.05",
         "WP-2A.03"
       ],
       "scope": "- Deterministic generator (seeded) `cargo xtask gen-bench-project --items N --tracks T --keyframes K` producing: **P-400** (1-hour, 400 items, 8 tracks), **P-5K** (5,000 items, 50,000 keyframes), **P-short** (9:16, 3 layers + animation). Media uses corpus-light synthesized clips (tiny generated test patterns to avoid large downloads) plus corpus references for decode tests.\n- criterion benches: open project (< 2 s to interactive, §19, uses P-400), command RTT in-process and over WS (p95 < 16 ms; 10,000 mixed commands, a histogram is saved), `doc.patched` fan-out, placement ripple on P-5K, `timeline.get` summary on P-400 (< 30 ms), idle memory (RSS after open and idle 60 s < 1.5 GB for the 1-hour 1080p fixture with real media), app start to editable empty project (< 2.5 s; Electron start included in 2J.02/03 harness).\n- Result JSON in a stable schema `bench-results/{machine}/{date}.json` consumed by 2J.04.",
@@ -5846,6 +5885,7 @@
         "WP-1O.02",
         "WP-1O.03",
         "WP-1O.04",
+        "WP-1O.05",
         "WP-2J.01",
         "WP-2J.02",
         "WP-2J.03"
@@ -14040,6 +14080,7 @@
         "WP-1O.02",
         "WP-1O.03",
         "WP-1O.04",
+        "WP-1O.05",
         "WP-6A.07",
         "WP-6D.02"
       ],
@@ -16269,6 +16310,7 @@
         "WP-1O.02",
         "WP-1O.03",
         "WP-1O.04",
+        "WP-1O.05",
         "WP-6A.06"
       ],
       "scope": "- CI test enumerates the command/query registry (core + sample plugin loaded) and asserts every non-`view` command is **reachable via MCP** — via a core tool or via `cutweave_describe_command` + `cutweave_execute` (`mcp=\"hidden\"` still reachable via execute) — with a schema **byte-identical** to the RPC schema; reports unreachable ones by name.\n- Executes each command's generated example payload (from schema examples) through MCP and RPC on a scratch project and compares resulting doc hashes (extends the 1O CLI=MCP=RPC parity test to all commands with examples).\n- Allowlist file for intentional exclusions (`view.*`) requires review to change.",
@@ -16980,6 +17022,7 @@
         "WP-1O.02",
         "WP-1O.03",
         "WP-1O.04",
+        "WP-1O.05",
         "WP-2J.01",
         "WP-2J.02",
         "WP-2J.03",
