@@ -90,9 +90,9 @@ async fn current_rev(client: &Client) -> u64 {
 
 // ----- catalog ------------------------------------------------------------------------------
 
-/// Acceptance 1: `/mcp` lists exactly the registry's core tools plus the 4 generic tools (18 in
-/// P1: `render_frame` arrives with WP-1J.02, `export_start` with WP-1E.03), within the P1 gate,
-/// on both revisions.
+/// Acceptance 1: `/mcp` lists exactly the registry's core tools plus the 4 generic tools (19 in
+/// P1 since `export_start`, WP-1E.03; `render_frame` arrives with WP-1J.02), within the P1
+/// gate, on both revisions.
 #[tokio::test]
 async fn mcp_lists_the_core_and_generic_tools_within_the_p1_gate() {
     let h = Harness::start(None);
@@ -101,7 +101,7 @@ async fn mcp_lists_the_core_and_generic_tools_within_the_p1_gate() {
         .map(|t| t["name"].as_str().unwrap().to_owned())
         .collect();
     expected.extend(catalog::GENERIC_TOOLS.map(str::to_owned));
-    assert_eq!(expected.len(), 18);
+    assert_eq!(expected.len(), 19);
     for revision in Revision::ALL {
         let client = h.client(Profile::Standard, revision).await;
         assert_eq!(client.negotiated(), revision.version());
