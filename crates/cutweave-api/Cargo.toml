@@ -56,6 +56,9 @@ tokio = { version = "=1.54.1", features = ["rt-multi-thread", "macros", "net", "
 # the version axum's `ws` feature already pulls in.
 cutweave-engine = { path = "../cutweave-engine" }
 cutweave-model = { path = "../cutweave-model", features = ["testing"] }
+# WP-1J.02 render_frame tests: `FakeBackend` decodes the fake clips of the full engine (the
+# `testing` module is always compiled; no FFmpeg).
+cutweave-media = { path = "../cutweave-media" }
 cutweave-ops = { path = "../cutweave-ops", features = ["testing"] }
 tokio-tungstenite = "=0.29.0"
 proptest.workspace = true

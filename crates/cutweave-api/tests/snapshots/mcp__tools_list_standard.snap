@@ -59,13 +59,11 @@ expression: catalog.tools_json()
             "oneOf": [
               {
                 "type": "string",
-                "const": "start",
-                "description": "The first frame (changes `start`, `source_in` and the length)."
+                "const": "start"
               },
               {
                 "type": "string",
-                "const": "end",
-                "description": "The last frame (changes the length)."
+                "const": "end"
               }
             ],
             "description": "The edge to move."
@@ -215,8 +213,7 @@ expression: catalog.tools_json()
                 "oneOf": [
                   {
                     "type": "string",
-                    "const": "h264-mp4-1080p",
-                    "description": "MP4, H.264 + AAC 48 kHz stereo, at the sequence frame rate, fit into 1920x1080\n(1080x1920 when portrait) without upscaling, high quality."
+                    "const": "h264-mp4-1080p"
                   },
                   {
                     "type": "object",
@@ -231,7 +228,6 @@ expression: catalog.tools_json()
                               "integer",
                               "null"
                             ],
-                            "format": "uint32",
                             "minimum": 0
                           },
                           "height": {
@@ -240,7 +236,6 @@ expression: catalog.tools_json()
                               "integer",
                               "null"
                             ],
-                            "format": "uint32",
                             "minimum": 0
                           },
                           "fps": {
@@ -275,19 +270,16 @@ expression: catalog.tools_json()
                               {
                                 "oneOf": [
                                   {
-                                    "description": "Small files, visible compression.",
-                                    "type": "string",
-                                    "const": "low"
+                                    "const": "low",
+                                    "type": "string"
                                   },
                                   {
-                                    "description": "Balanced.",
-                                    "type": "string",
-                                    "const": "medium"
+                                    "const": "medium",
+                                    "type": "string"
                                   },
                                   {
-                                    "description": "Close to the original (the default).",
-                                    "type": "string",
-                                    "const": "high"
+                                    "const": "high",
+                                    "type": "string"
                                   }
                                 ]
                               },
@@ -320,13 +312,11 @@ expression: catalog.tools_json()
                 "oneOf": [
                   {
                     "type": "string",
-                    "const": "auto",
-                    "description": "The first hardware H.264 encoder that works here, else software (x264); if it fails\nduring the export, the export starts again in software."
+                    "const": "auto"
                   },
                   {
                     "type": "string",
-                    "const": "off",
-                    "description": "Software (x264) only."
+                    "const": "off"
                   },
                   {
                     "type": "object",
@@ -443,13 +433,11 @@ expression: catalog.tools_json()
                 "oneOf": [
                   {
                     "type": "string",
-                    "const": "reject",
-                    "description": "Fail with `Invalid{path:\"/at\"}` (default)."
+                    "const": "reject"
                   },
                   {
                     "type": "string",
-                    "const": "new_track",
-                    "description": "Create a new track of the same kind directly above the target and insert there."
+                    "const": "new_track"
                   }
                 ]
               },
@@ -507,7 +495,6 @@ expression: catalog.tools_json()
                   "number",
                   "null"
                 ],
-                "format": "double",
                 "description": "Opacity `0.0..=1.0`."
               },
               "audio_gain": {
@@ -515,7 +502,6 @@ expression: catalog.tools_json()
                   "number",
                   "null"
                 ],
-                "format": "double",
                 "description": "Clip gain in dB, `-144..=48` (0 = unchanged)."
               },
               "transform": {
@@ -534,12 +520,10 @@ expression: catalog.tools_json()
                     "properties": {
                       "x": {
                         "type": "number",
-                        "format": "double",
                         "description": "Horizontal component."
                       },
                       "y": {
                         "type": "number",
-                        "format": "double",
                         "description": "Vertical component (down is positive)."
                       }
                     },
@@ -558,12 +542,10 @@ expression: catalog.tools_json()
                     "properties": {
                       "x": {
                         "type": "number",
-                        "format": "double",
                         "description": "Horizontal component."
                       },
                       "y": {
                         "type": "number",
-                        "format": "double",
                         "description": "Vertical component (down is positive)."
                       }
                     },
@@ -578,7 +560,6 @@ expression: catalog.tools_json()
                       "number",
                       "null"
                     ],
-                    "format": "double",
                     "description": "Clockwise rotation in degrees."
                   },
                   "anchor": {
@@ -590,12 +571,10 @@ expression: catalog.tools_json()
                     "properties": {
                       "x": {
                         "type": "number",
-                        "format": "double",
                         "description": "Horizontal component."
                       },
                       "y": {
                         "type": "number",
-                        "format": "double",
                         "description": "Vertical component (down is positive)."
                       }
                     },
@@ -665,9 +644,8 @@ expression: catalog.tools_json()
               "integer",
               "null"
             ],
-            "format": "uint32",
-            "minimum": 0,
-            "description": "How long to wait in milliseconds (default 30000; values above 60000 are capped; 0\nreturns the current state)."
+            "description": "How long to wait in milliseconds (default 30000; values above 60000 are capped; 0\nreturns the current state).",
+            "minimum": 0
           }
         },
         "required": [
@@ -719,9 +697,8 @@ expression: catalog.tools_json()
               "integer",
               "null"
             ],
-            "format": "uint32",
-            "minimum": 0,
-            "description": "Page size, `1..=500` (default 50)."
+            "description": "Page size, `1..=500` (default 50).",
+            "minimum": 0
           },
           "cursor": {
             "type": [
@@ -754,24 +731,20 @@ expression: catalog.tools_json()
                   "description": "What a [`MediaAsset`] is.",
                   "oneOf": [
                     {
-                      "description": "A video file (may also carry audio).",
-                      "type": "string",
-                      "const": "video"
+                      "const": "video",
+                      "type": "string"
                     },
                     {
-                      "description": "An audio-only file.",
-                      "type": "string",
-                      "const": "audio"
+                      "const": "audio",
+                      "type": "string"
                     },
                     {
-                      "description": "A still image (no duration).",
-                      "type": "string",
-                      "const": "image"
+                      "const": "image",
+                      "type": "string"
                     },
                     {
-                      "description": "Another sequence of this project, used as a compound clip (arch §4.3).",
-                      "type": "string",
-                      "const": "sequence_ref"
+                      "const": "sequence_ref",
+                      "type": "string"
                     }
                   ]
                 },
@@ -923,10 +896,9 @@ expression: catalog.tools_json()
               "integer",
               "null"
             ],
-            "format": "uint8",
+            "description": "Detail level `0..=2` (default 1).",
             "minimum": 0,
-            "maximum": 255,
-            "description": "Detail level `0..=2` (default 1)."
+            "maximum": 255
           },
           "fields": {
             "type": [
@@ -1026,13 +998,11 @@ expression: catalog.tools_json()
                 "oneOf": [
                   {
                     "type": "string",
-                    "const": "reject",
-                    "description": "Fail with `Invalid{path:\"/at\"}` (default)."
+                    "const": "reject"
                   },
                   {
                     "type": "string",
-                    "const": "new_track",
-                    "description": "Create a new track of the same kind directly above the target and insert there."
+                    "const": "new_track"
                   }
                 ]
               },

@@ -23,8 +23,8 @@
 //! | 2025-11-25 | `initialize`, `ping` |
 //! | 2026-07-28 | `server/discover`, per-request `_meta` (no `ping`: the revision dropped it) |
 //!
-//! Each run checks `tools/list` (the P1 budget and the exact catalog), `ping`, the absent
-//! `resources` capability, then calls **every** core tool and the four generic tools on a
+//! Each run checks `tools/list` (the P1 budget and the exact catalog), `ping`, the offered
+//! `resources` capability (list, templates, read), then calls **every** core tool and the four generic tools on a
 //! fixture project and validates each result's `structuredContent` against the command's
 //! `output_schema` as served by `cutweave_describe_command` ([`schema`]). A violation panics
 //! with the tool name; [`a_broken_output_schema_fails_the_suite_naming_the_tool`] proves it.
@@ -52,7 +52,7 @@ use rmcp::{
     ClientHandler, ClientLifecycleMode, ClientServiceExt as _, RoleClient, ServiceExt as _,
     model::{
         CallToolRequestParams, CallToolResult, ClientConfig, ClientRequest, ContentBlock,
-        PingRequest, ProtocolVersion, ServerResult,
+        PingRequest, ProtocolVersion, ReadResourceRequestParams, ResourceContents, ServerResult,
     },
     service::{RunningService, ServiceError},
     transport::{
@@ -69,8 +69,8 @@ const BIN: &str = env!("CARGO_BIN_EXE_cutweave");
 const SEC: i64 = 705_600_000;
 
 /// The standard profile's tools in Phase 1: the registry's 15 core tools and the 4 generic
-/// ones. `render_frame` (WP-1J.02) is not here yet: the count in the assertions goes to 20
-/// with it (P1 gate: 19 tools; the gate is widened by the WP that adds it).
+/// ones. `render_frame` is not here: this suite runs the dev-stub engine, which has no renderer
+/// (the full engine lists 20, P1 gate R33).
 const CORE_TOOLS: [&str; 15] = [
     "clip_split",
     "clip_trim",
@@ -561,12 +561,12 @@ async fn conformance(transport: Transport, revision: Revision, tamper: Option<Ta
     expected.sort();
     assert_eq!(
         names, expected,
-        "{label}: tools/list changed; render_frame (WP-1J.02) joins it"
+        "{label}: tools/list changed (the dev-stub engine has no renderer: no render_frame)"
     );
     let size = ListSize::of(&tools);
     assert!(
         P1_GATE.fits(size),
-        "{label}: {} tools / ~{} tokens exceeds the P1 gate (<= 19 / 5k)",
+        "{label}: {} tools / ~{} tokens exceeds the P1 gate (<= 20 / 5k)",
         size.tools,
         size.tokens()
     );
@@ -591,15 +591,51 @@ async fn conformance(transport: Transport, revision: Revision, tamper: Option<Ta
         assert!(tool.annotations.is_some(), "{label}: `{}`", tool.name);
     }
 
-    // The server exposes no resources yet (WP-1J.02 may add some): the capability is absent.
-    // TODO(WP-1J.02): when `resources` appears, run `resources/list` and `resources/read` here
-    // and validate each resource's content type.
+    // Resources (WP-1J.02): the capability is offered with subscriptions; the project and the
+    // command catalog list and read as JSON text.
     let info = session.service.peer_info().unwrap();
-    assert!(
-        info.capabilities.resources.is_none(),
-        "{label}: the server now offers resources; add resources/list and read checks"
-    );
     assert!(info.capabilities.tools.is_some(), "{label}");
+    let resources = info
+        .capabilities
+        .resources
+        .as_ref()
+        .unwrap_or_else(|| panic!("{label}: no resources capability"));
+    assert_eq!(resources.subscribe, Some(true), "{label}");
+    let listed = session
+        .service
+        .list_resources(None)
+        .await
+        .unwrap()
+        .resources;
+    let uris: Vec<&str> = listed.iter().map(|r| r.uri.as_str()).collect();
+    assert!(uris.contains(&"cutweave://project"), "{label}: {uris:?}");
+    assert!(
+        uris.contains(&"cutweave://catalog/commands"),
+        "{label}: {uris:?}"
+    );
+    let templates = session
+        .service
+        .list_resource_templates(None)
+        .await
+        .unwrap()
+        .resource_templates;
+    assert_eq!(templates.len(), 2, "{label}");
+    for uri in ["cutweave://project", "cutweave://catalog/commands"] {
+        let read = session
+            .service
+            .read_resource(ReadResourceRequestParams::new(uri))
+            .await
+            .unwrap_or_else(|e| panic!("{label}: read {uri}: {e}"));
+        let ResourceContents::TextResourceContents {
+            text, mime_type, ..
+        } = &read.contents[0]
+        else {
+            panic!("{label}: {uri} is not text")
+        };
+        assert_eq!(mime_type.as_deref(), Some("application/json"), "{label}");
+        serde_json::from_str::<Value>(text)
+            .unwrap_or_else(|e| panic!("{label}: {uri} is not JSON: {e}"));
+    }
 
     exercise(&session, tamper).await;
 
@@ -776,7 +812,9 @@ async fn exercise(session: &Session, tamper: Option<Tamper>) {
         .filter(|t| !called.contains(*t))
         .collect();
     assert!(missing.is_empty(), "tools never called: {missing:?}");
-    // TODO(WP-1J.02): `render_frame` on the fixture project, decode the image content block.
+    // `render_frame` needs the full engine (this suite runs the dev-stub engine, which has no
+    // renderer): tests/mcp.rs `headless_runs_the_full_engine_and_renders_a_frame` decodes its
+    // image block, and cutweave-api's tests/mcp_frames.rs does it on the 3-clip fixture.
     // TODO(WP-1I.05): `export_start` + `job_wait` on the fixture project once the CLI engine
     // exports (it answers `unsupported` above until then).
 }
@@ -974,8 +1012,7 @@ async fn scripted_agent_edits_over_stdio_with_mcp_tools_only() {
             "{history}"
         );
 
-        // TODO(WP-1J.02): `render_frame` at a time inside the second clip; decode the image
-        // content block (non-empty PNG, expected size).
+        // `render_frame` is not part of this stub-media session (see the note in `exercise`).
         // TODO(WP-1I.05): `export_start` + `job_wait`; check the output file exists.
 
         // Nothing but protocol frames on stdout: rmcp would have failed on anything else; the

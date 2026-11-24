@@ -17,7 +17,7 @@
 //! Tokens are estimated as `ceil(bytes / 4)` of the compact JSON of the `tools/list` result
 //! (`{"tools":[...]}`), [`ListSize`]. There is no offline tokenizer; the estimate is close for
 //! prose and low for dense JSON, so budgets keep headroom. Minimal: <= 12 tools / <= 3k tokens.
-//! Standard: <= 36 tools / <= 8k tokens, and [`P1_GATE`] (<= 19 tools / <= 5k tokens) during
+//! Standard: <= 36 tools / <= 8k tokens, and [`P1_GATE`] (<= 20 tools / <= 5k tokens) during
 //! Phase 1. Full: standard plus the search-based long tail, so in Phase 1 it lists exactly the
 //! standard tools. `outputSchema`s are not listed (Spike S5: about 45% of the bytes); results
 //! still carry `structuredContent`.
@@ -43,7 +43,7 @@ pub const GENERIC_TOOLS: [&str; 4] = [SEARCH, DESCRIBE, EXECUTE, QUERY];
 /// Registry entries the minimal profile lists as tools: look (`project.info`, `media.list`,
 /// `timeline.get`, `render.frame`), wait (`job.wait`) and recover (`edit.undo`). Everything
 /// else goes through the generic tools. Entries that are not registered (or not core) yet are
-/// skipped: `render.frame` arrives with WP-1J.02.
+/// skipped: `render.frame` exists only with the engine's renderer (the full engine).
 pub const MINIMAL_CORE: &[&str] = &[
     "project.info",
     "media.list",
@@ -70,9 +70,9 @@ impl Budget {
     }
 }
 
-/// The Phase 1 gate of the standard profile (WP-1J.01): <= 19 tools and <= 5k tokens.
+/// The Phase 1 gate of the standard profile (WP-1J.01, raised to 20 tools by WP-1J.02, R33): <= 20 tools and <= 5k tokens.
 pub const P1_GATE: Budget = Budget {
-    max_tools: 19,
+    max_tools: 20,
     max_tokens: 5_000,
 };
 
@@ -314,10 +314,22 @@ fn annotations(meta: &CommandMeta) -> ToolAnnotations {
         .open_world(a.open_world)
 }
 
+/// What a core tool's listing says: the registry summary, except where the MCP form differs
+/// from the engine's (`render_frame` returns an image block and cannot run in a transaction).
+fn tool_description(meta: &CommandMeta) -> String {
+    if meta.name == crate::mcp::frame::COMMAND {
+        "Render the frame at a time as an image, with the items on screen. Not usable inside \
+         cutweave_execute"
+            .to_owned()
+    } else {
+        meta.summary.to_owned()
+    }
+}
+
 fn entry_tool(meta: &CommandMeta) -> Tool {
     Tool::new(
         meta.mcp_tool_name(),
-        meta.summary,
+        tool_description(meta),
         object(lean_schema(&meta.input_schema)),
     )
     .with_annotations(annotations(meta))
@@ -369,6 +381,15 @@ fn trim(schema: &mut Value) {
         return;
     };
     map.remove("title");
+    // `format: "uint32"` and friends only name the Rust width; the `minimum`/`maximum` next to
+    // them are what validates.
+    if map.get("format").and_then(Value::as_str).is_some_and(|f| {
+        ["uint", "int", "float", "double"]
+            .iter()
+            .any(|p| f.starts_with(p))
+    }) {
+        map.remove("format");
+    }
     if map.get("default") == Some(&Value::Null) {
         map.remove("default");
     }
@@ -385,6 +406,15 @@ fn trim(schema: &mut Value) {
             && let Value::Array(list) = value
         {
             list.iter_mut().for_each(trim);
+            // An enum variant (`oneOf` of `const`s) loses its own description: the field's
+            // description names the values, and the variant docs cost more than they teach.
+            if key == "oneOf" {
+                for variant in list.iter_mut().filter_map(Value::as_object_mut) {
+                    if variant.contains_key("const") {
+                        variant.remove("description");
+                    }
+                }
+            }
         }
     }
 }
@@ -637,13 +667,13 @@ mod tests {
         assert_eq!(Profile::parse("nope"), None);
         assert_eq!(Profile::Standard.route(), "/");
         let size = ListSize {
-            tools: 19,
+            tools: 20,
             bytes: 20_000,
         };
         assert_eq!(size.tokens(), 5_000);
         assert!(P1_GATE.fits(size));
         assert!(!P1_GATE.fits(ListSize {
-            tools: 19,
+            tools: 20,
             bytes: 20_001
         }));
         assert!(!Profile::Minimal.budget().fits(size));

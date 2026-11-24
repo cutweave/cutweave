@@ -8,6 +8,7 @@
 //! When the session ends (`DELETE`, idle timeout, server shutdown) the handler and its
 //! connection drop, which rolls back any transaction the connection still holds (WP-1B.09).
 
+use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::{Arc, Mutex, PoisonError};
 
 use axum::http::request::Parts;
@@ -15,10 +16,13 @@ use cutweave_commands::{CmdError, RequestId, Rev};
 use rmcp::{
     ErrorData as McpError, RoleServer, ServerHandler,
     model::{
-        CallToolRequestParams, CallToolResponse, CallToolResult, Implementation, ListToolsResult,
-        PaginatedRequestParams, RequestMetaObject, ServerCapabilities, ServerConfig, Tool,
+        CallToolRequestParams, CallToolResponse, CallToolResult, Implementation,
+        ListResourceTemplatesResult, ListResourcesResult, ListToolsResult, PaginatedRequestParams,
+        ReadResourceRequestParams, ReadResourceResponse, ReadResourceResult, RequestMetaObject,
+        ResourceContents, ServerCapabilities, ServerConfig, SubscribeRequestParams,
+        SubscriptionFilter, Tool, UnsubscribeRequestParams,
     },
-    service::RequestContext,
+    service::{RequestContext, SubscriptionContext},
 };
 use serde_json::{Value, json};
 
@@ -27,7 +31,9 @@ use crate::{
     mcp::{
         catalog::{self, Catalog, Target},
         dispatch::{Dispatch, DispatchCall, DispatchConn},
-        execute,
+        execute, frame,
+        notify::{Changed, Notifier, Subscriptions, updated_uris},
+        resources::{self, Kind, Uri},
         results::{self, META_EXPECTED_REV, META_REQUEST_ID},
     },
     server::Authenticated,
@@ -55,6 +61,12 @@ pub struct CutweaveMcp {
     /// `cutweave_execute` calls of a session run one at a time (a connection holds at most
     /// one open transaction).
     exec: Arc<tokio::sync::Mutex<()>>,
+    /// Resource change notifications (shared by every session of the engine).
+    notifier: Arc<Notifier>,
+    /// This session's `resources/subscribe` URIs (2025-11-25).
+    subscriptions: Arc<Subscriptions>,
+    /// The notifier's generation when the last `subscriptions/listen` was accepted.
+    listen_from: Arc<AtomicU64>,
 }
 
 impl std::fmt::Debug for CutweaveMcp {
@@ -79,13 +91,25 @@ impl CutweaveMcp {
         catalog: Arc<Catalog>,
         fixed: Option<Credential>,
     ) -> CutweaveMcp {
+        let notifier = Notifier::new(Arc::clone(&dispatch));
         CutweaveMcp {
             dispatch,
             catalog,
             fixed,
             conn: Arc::default(),
             exec: Arc::default(),
+            notifier,
+            subscriptions: Arc::default(),
+            listen_from: Arc::default(),
         }
+    }
+
+    /// Uses `notifier` (one per engine, shared by every handler of a mount) for resource change
+    /// notifications.
+    #[must_use]
+    pub fn with_notifier(mut self, notifier: Arc<Notifier>) -> CutweaveMcp {
+        self.notifier = notifier;
+        self
     }
 
     /// The catalog this handler lists.
@@ -143,6 +167,9 @@ impl CutweaveMcp {
             return error_result(tool, &CmdError::internal("tool without a command"), None);
         };
         let read_only = entry.meta.annotations.read_only;
+        if name == frame::COMMAND {
+            return self.render_frame(conn, tool, args, meta).await;
+        }
         let mut call = DispatchCall::new(name, args.clone());
         match envelope(meta) {
             Ok((request_id, expected_rev)) => {
@@ -162,6 +189,62 @@ impl CutweaveMcp {
                 )
             }
             Err(e) => error_result(tool, &e, Some(&args)),
+        }
+    }
+
+    /// `render_frame`: the image as an image content block (or, for a large request, a resource
+    /// link), under the payload cap (see [`frame`]).
+    async fn render_frame(
+        &self,
+        conn: Arc<dyn DispatchConn>,
+        tool: &str,
+        args: Value,
+        meta: &RequestMetaObject,
+    ) -> CallToolResult {
+        let expected_rev = match envelope(meta) {
+            Ok((_, expected_rev)) => expected_rev,
+            Err(e) => return error_result(tool, &e, None),
+        };
+        let link = frame::wants_link(&args);
+        let mut run_args = args.clone();
+        let mut lowered = None;
+        loop {
+            let call = DispatchCall::new(frame::COMMAND, run_args.clone()).expecting(expected_rev);
+            let reply = match blocking(Arc::clone(&conn), call).await {
+                Ok(reply) => reply,
+                Err(e) => return error_result(tool, &e, Some(&args)),
+            };
+            let revs = (reply.rev, reply.committed_rev);
+            let mut output = reply.output;
+            if link {
+                return frame::link(output, &args, revs);
+            }
+            let jpeg = frame::is_jpeg(&output);
+            if let Some(q) = lowered {
+                frame::add_note(
+                    &mut output,
+                    format!("JPEG quality lowered to {q} to keep the result under 1 MB"),
+                );
+            }
+            let size = match frame::inline(output, revs) {
+                Ok(result) => return result,
+                Err(size) => size,
+            };
+            let current = run_args.get("quality").and_then(Value::as_u64);
+            if let Some(q) = frame::next_quality(current).filter(|_| jpeg) {
+                run_args["quality"] = json!(q);
+                lowered = Some(q);
+                continue;
+            }
+            let e = CmdError::invalid(
+                "/max_size",
+                format!(
+                    "the image is {size} bytes, over the {} byte result limit; lower max_size{}",
+                    frame::MAX_PAYLOAD,
+                    if jpeg { "" } else { " or use format jpeg" }
+                ),
+            );
+            return error_result(tool, &e, Some(&args));
         }
     }
 
@@ -202,6 +285,7 @@ impl CutweaveMcp {
                 error: CmdError::internal(format!("cutweave_execute failed: {join}")),
                 failed_step: None,
                 args: None,
+                hint: None,
             }),
         }
     }
@@ -412,7 +496,10 @@ fn execute_error(e: &execute::ExecError) -> CallToolResult {
     let prefix = e
         .failed_step
         .map_or_else(String::new, |i| format!("/steps/{i}/args"));
-    let error = results::error_json(&e.error, e.args.as_ref(), &prefix);
+    let mut error = results::error_json(&e.error, e.args.as_ref(), &prefix);
+    if let Some(hint) = e.hint {
+        error["hint"] = json!(hint);
+    }
     let failed_step = e.failed_step.map_or(Value::Null, |i| json!(i));
     results::failure(
         catalog::EXECUTE,
@@ -421,13 +508,120 @@ fn execute_error(e: &execute::ExecError) -> CallToolResult {
     )
 }
 
+/// A resource error for a failed engine call.
+fn resource_error(uri: &str, e: &CmdError) -> McpError {
+    let data = Some(json!({ "uri": uri, "error": results::error_json(e, None, "") }));
+    match e {
+        CmdError::NotFound { .. } => McpError::resource_not_found(e.message(), data),
+        CmdError::Invalid { .. } | CmdError::Conflict { .. } => {
+            McpError::invalid_params(e.message(), data)
+        }
+        _ => McpError::internal_error(e.message(), data),
+    }
+}
+
+fn json_contents(uri: &str, value: &Value) -> ResourceContents {
+    ResourceContents::text(value.to_string(), uri).with_mime_type(resources::JSON)
+}
+
+impl CutweaveMcp {
+    /// One engine call for resource `uri`.
+    async fn engine(
+        &self,
+        ctx: &RequestContext<RoleServer>,
+        uri: &str,
+        name: &'static str,
+        params: Value,
+    ) -> Result<crate::mcp::dispatch::DispatchReply, McpError> {
+        let conn = self.connection(ctx)?;
+        blocking(conn, DispatchCall::new(name, params))
+            .await
+            .map_err(|e| resource_error(uri, &e))
+    }
+
+    async fn read(
+        &self,
+        uri: &str,
+        ctx: &RequestContext<RoleServer>,
+    ) -> Result<ResourceContents, McpError> {
+        let parsed = resources::parse(uri)
+            .map_err(|m| McpError::resource_not_found(m, Some(json!({ "uri": uri }))))?;
+        match parsed {
+            Uri::Commands => Ok(json_contents(uri, &resources::commands(&self.catalog))),
+            Uri::Project => {
+                let reply = self.engine(ctx, uri, "project.info", json!({})).await?;
+                let mut out = reply.output;
+                out["rev"] = json!(reply.rev);
+                Ok(json_contents(uri, &out))
+            }
+            Uri::Timeline { sequence, cursor } => {
+                let reply = self
+                    .engine(
+                        ctx,
+                        uri,
+                        "timeline.get",
+                        json!({ "sequence": sequence, "depth": 2 }),
+                    )
+                    .await?;
+                let page = resources::timeline_page(&reply.output, &sequence, reply.rev.0, cursor)
+                    .map_err(|m| McpError::invalid_params(m, Some(json!({ "uri": uri }))))?;
+                Ok(json_contents(uri, &page))
+            }
+            Uri::Frame(f) => {
+                let mut params = json!({ "t": f.t });
+                if let Some(s) = &f.sequence {
+                    params["sequence"] = json!(s);
+                }
+                if let Some(m) = f.max_size {
+                    params["max_size"] = json!(m);
+                }
+                if let Some(format) = &f.format {
+                    params["format"] = json!(format);
+                }
+                if let Some(q) = f.quality {
+                    params["quality"] = json!(q);
+                }
+                let reply = self.engine(ctx, uri, frame::COMMAND, params).await?;
+                if reply.output["rev"].as_u64() != Some(f.rev) {
+                    let e = CmdError::invalid(
+                        "/uri",
+                        format!(
+                            "this frame link is for document revision {}, which is gone (the \
+                             document is at {}); call render_frame again",
+                            f.rev, reply.rev
+                        ),
+                    );
+                    return Err(resource_error(uri, &e));
+                }
+                let data = reply.output["data"].as_str().unwrap_or_default();
+                let mime = reply.output["mime"].as_str().unwrap_or("image/jpeg");
+                Ok(ResourceContents::blob(data, uri).with_mime_type(mime))
+            }
+        }
+    }
+}
+
+/// Whether `uri` is a resource a client can subscribe to.
+fn subscribable(uri: &str) -> bool {
+    matches!(
+        resources::kind(uri),
+        Some(Kind::Project | Kind::Timeline | Kind::Commands)
+    )
+}
+
 // rmcp handler methods are `async fn` by convention even where nothing is awaited.
-#[allow(clippy::unused_async_trait_impl)]
+#[allow(clippy::unused_async_trait_impl, deprecated)]
 impl ServerHandler for CutweaveMcp {
     fn get_info(&self) -> ServerConfig {
-        ServerConfig::new(ServerCapabilities::builder().enable_tools().build())
-            .with_server_info(Implementation::new("cutweave", env!("CARGO_PKG_VERSION")))
-            .with_instructions(INSTRUCTIONS)
+        ServerConfig::new(
+            ServerCapabilities::builder()
+                .enable_tools()
+                .enable_resources()
+                .enable_resources_subscribe()
+                .build(),
+        )
+        .with_server_info(Implementation::new("cutweave", env!("CARGO_PKG_VERSION")))
+        .with_instructions(INSTRUCTIONS)
     }
 
     async fn list_tools(
@@ -442,6 +636,131 @@ impl ServerHandler for CutweaveMcp {
 
     fn get_tool(&self, name: &str) -> Option<Tool> {
         self.catalog.tool(name).cloned()
+    }
+
+    async fn list_resources(
+        &self,
+        _request: Option<PaginatedRequestParams>,
+        ctx: RequestContext<RoleServer>,
+    ) -> Result<ListResourcesResult, McpError> {
+        let mut listed = resources::fixed();
+        let conn = self.connection(&ctx)?;
+        if let Ok(info) = blocking(conn, DispatchCall::new("project.info", json!({}))).await {
+            listed.extend(
+                resources::sequences(&info.output)
+                    .iter()
+                    .map(|(id, name)| resources::timeline_resource(id, name)),
+            );
+        }
+        Ok(ListResourcesResult::with_all_items(listed))
+    }
+
+    async fn list_resource_templates(
+        &self,
+        _request: Option<PaginatedRequestParams>,
+        _ctx: RequestContext<RoleServer>,
+    ) -> Result<ListResourceTemplatesResult, McpError> {
+        Ok(ListResourceTemplatesResult::with_all_items(
+            resources::templates(),
+        ))
+    }
+
+    async fn read_resource(
+        &self,
+        request: ReadResourceRequestParams,
+        ctx: RequestContext<RoleServer>,
+    ) -> Result<ReadResourceResponse, McpError> {
+        let contents = self.read(&request.uri, &ctx).await?;
+        Ok(ReadResourceResult::new(vec![contents]).into())
+    }
+
+    async fn subscribe(
+        &self,
+        request: SubscribeRequestParams,
+        ctx: RequestContext<RoleServer>,
+    ) -> Result<(), McpError> {
+        if !subscribable(&request.uri) {
+            return Err(McpError::invalid_params(
+                format!(
+                    "`{}` cannot be subscribed to; subscribe to cutweave://project or a \
+                     sequence timeline",
+                    request.uri
+                ),
+                None,
+            ));
+        }
+        self.subscriptions
+            .add(request.uri, &self.notifier, &ctx.peer);
+        Ok(())
+    }
+
+    async fn unsubscribe(
+        &self,
+        request: UnsubscribeRequestParams,
+        _ctx: RequestContext<RoleServer>,
+    ) -> Result<(), McpError> {
+        self.subscriptions.remove(&request.uri);
+        Ok(())
+    }
+
+    fn accepted_subscription_filter(
+        &self,
+        requested: &SubscriptionFilter,
+    ) -> Option<SubscriptionFilter> {
+        // Subscribe to the engine's events before the acknowledgment goes out, and remember
+        // where we are: `listen` replays a change that lands in between.
+        self.notifier.start();
+        self.listen_from
+            .store(self.notifier.generation(), Ordering::SeqCst);
+        let uris: Vec<String> = requested
+            .resource_subscriptions
+            .iter()
+            .flatten()
+            .filter(|u| subscribable(u))
+            .cloned()
+            .collect();
+        Some(
+            SubscriptionFilter::builder()
+                .resource_subscriptions(uris)
+                .build(),
+        )
+    }
+
+    async fn listen(&self, context: SubscriptionContext) -> Result<(), McpError> {
+        let accepted = context
+            .accepted()
+            .resource_subscriptions
+            .clone()
+            .unwrap_or_default();
+        if accepted.is_empty() {
+            context.cancelled().await;
+            return Ok(());
+        }
+        let mut stream = self.notifier.subscribe();
+        let mut pending = (self.notifier.generation() > self.listen_from.load(Ordering::SeqCst))
+            .then_some(Changed::ALL);
+        loop {
+            let changed = if let Some(replayed) = pending.take() {
+                replayed
+            } else {
+                tokio::select! {
+                    () = context.cancelled() => return Ok(()),
+                    received = stream.recv() => match received {
+                        Ok(next) => next,
+                        Err(tokio::sync::broadcast::error::RecvError::Lagged(_)) => Changed::ALL,
+                        Err(tokio::sync::broadcast::error::RecvError::Closed) => {
+                            context.cancelled().await;
+                            return Ok(());
+                        }
+                    },
+                }
+            };
+            for uri in updated_uris(changed, &accepted) {
+                if context.sink().notify_resource_updated(uri).await.is_err() {
+                    return Ok(());
+                }
+            }
+        }
     }
 
     async fn call_tool(

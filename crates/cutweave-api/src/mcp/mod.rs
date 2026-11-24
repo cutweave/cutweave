@@ -23,8 +23,15 @@
 //! (stateful): `initialize`, an `Mcp-Session-Id` session (`legacy_session_mode`), one engine
 //! connection per session. **2026-07-28** (stateless): `server/discover`, per-request `_meta`
 //! and the `MCP-Protocol-Version` header; every request gets a fresh handler and connection.
-//! Older revisions rmcp knows are negotiated too. Resources and their change notifications
-//! (`resources/subscribe` vs `subscriptions/listen`) arrive with WP-1J.02.
+//! Older revisions rmcp knows are negotiated too.
+//!
+//! # Resources and `render_frame` (WP-1J.02)
+//!
+//! [`resources`] serves `cutweave://project`, the sequence timelines, the command catalog and
+//! frame links; [`notify`] turns the engine's document events into change notifications for
+//! both revisions (`resources/subscribe` on 2025-11-25, `subscriptions/listen` on 2026-07-28)
+//! behind one [`Notifier`]; [`frame`] maps `render.frame` to an image content block under a
+//! 1 MB payload cap.
 //!
 //! # Security
 //!
@@ -37,8 +44,11 @@
 pub mod catalog;
 pub mod dispatch;
 pub mod execute;
+pub mod frame;
 pub mod handler;
+pub mod notify;
 pub mod proxy;
+pub mod resources;
 pub mod results;
 pub mod stdio;
 
@@ -52,6 +62,7 @@ use rmcp::transport::streamable_http_server::{
 pub use catalog::{Budget, Catalog, ListSize, P1_GATE, Profile};
 pub use dispatch::{Dispatch, DispatchCall, DispatchConn, DispatchReply};
 pub use handler::{CutweaveMcp, INSTRUCTIONS};
+pub use notify::Notifier;
 
 /// Options of the `/mcp` mount.
 #[derive(Clone, Debug)]
@@ -77,10 +88,13 @@ impl Default for McpOptions {
 pub fn router(dispatch: impl Dispatch, options: &McpOptions) -> Router {
     let dispatch: Arc<dyn Dispatch> = Arc::new(dispatch);
     let registry = dispatch.registry();
+    // One notifier for every profile and session of this engine.
+    let notifier = Notifier::new(Arc::clone(&dispatch));
     let mut router = Router::new();
     for profile in Profile::ALL {
         let catalog = Arc::new(Catalog::new(Arc::clone(&registry), profile));
         let dispatch = Arc::clone(&dispatch);
+        let notifier = Arc::clone(&notifier);
         let config = StreamableHttpServerConfig::default()
             .with_allowed_hosts(options.allowed_hosts.clone())
             .with_allowed_origins(options.allowed_origins.clone())
@@ -88,11 +102,10 @@ pub fn router(dispatch: impl Dispatch, options: &McpOptions) -> Router {
             .with_legacy_session_mode(true);
         let service = StreamableHttpService::new(
             move || {
-                Ok(CutweaveMcp::new(
-                    Arc::clone(&dispatch),
-                    Arc::clone(&catalog),
-                    None,
-                ))
+                Ok(
+                    CutweaveMcp::new(Arc::clone(&dispatch), Arc::clone(&catalog), None)
+                        .with_notifier(Arc::clone(&notifier)),
+                )
             },
             Arc::new(LocalSessionManager::default()),
             config,

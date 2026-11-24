@@ -313,9 +313,9 @@ fn the_engine_process_serves_mcp_to_the_run_file_agent_token() {
         let client = ().serve(connect("/mcp")).await.expect("initialize");
         let tools = client.list_tools(None).await.unwrap().tools;
         let names: Vec<&str> = tools.iter().map(|t| t.name.as_ref()).collect();
-        // 16 core tools (`render_frame` arrives with the full engine's renderer, WP-1I.05) and
-        // the 4 generic ones. NOTE for the integrator: one above the P1 gate of 19
-        // (`cutweave_api::mcp::P1_GATE`); WP-1J.02 decides (see the WP-1I.05 report).
+        // 16 core tools (`render_frame` comes with the full engine's renderer, WP-1I.05) and
+        // the 4 generic ones: the P1 gate of 20 (R33,
+        // `cutweave_api::mcp::P1_GATE`).
         assert_eq!(names.len(), 20, "{names:?}");
         for name in [
             "clip_split",

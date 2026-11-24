@@ -18,6 +18,7 @@ use cutweave_commands::{CmdError, Patch, Registry, RequestId, Rev, TxId};
 use serde_json::Value;
 
 use crate::creds::Credential;
+use crate::rpc::RpcEvents;
 
 /// One request to the engine: a registered name, its params and the envelope.
 #[derive(Clone, Debug, PartialEq)]
@@ -86,6 +87,11 @@ pub trait Dispatch: Send + Sync + 'static {
     /// connection gets a connection id of its own; dropping the last reference closes it and
     /// rolls back its open transaction (WP-1B.09).
     fn connect(&self, credential: &Credential) -> Result<Arc<dyn DispatchConn>, CmdError>;
+
+    /// A subscription to the engine's event fan-out (`doc.patched`, ...), the same stream the
+    /// JSON-RPC hub reads. The MCP [`Notifier`](crate::mcp::Notifier) turns it into resource
+    /// change notifications.
+    fn events(&self) -> Box<dyn RpcEvents>;
 }
 
 /// One engine connection (one per MCP session; one per request on the stateless revision).
