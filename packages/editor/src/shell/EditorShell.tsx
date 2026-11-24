@@ -6,6 +6,7 @@ import { Dock } from "../dock/Dock.tsx";
 import { i18n } from "../i18n/index.ts";
 import { useProjectWiring, useWindowTitle } from "../session/useProject.ts";
 import { useViewStore } from "../state/viewStore.ts";
+import { useTransportWiring } from "../transport/useTransport.ts";
 import { EngineNotices } from "./EngineNotices.tsx";
 import { ProjectDialogs, ReadOnlyBanner } from "./ProjectDialogs.tsx";
 import { Toasts } from "./Toasts.tsx";
@@ -28,6 +29,8 @@ function Shell() {
   // Project actions: native menu, shortcuts, the window-close handshake and the title (WP-1M.07).
   useProjectWiring();
   useWindowTitle();
+  // Transport keys through the keymap; the timeline's playhead follows playback (WP-1M.04).
+  useTransportWiring();
 
   return (
     <TooltipProvider>

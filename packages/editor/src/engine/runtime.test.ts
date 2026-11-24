@@ -130,6 +130,24 @@ describe("startEngineRuntime", () => {
     await runtime.stop();
   });
 
+  it("records the preview frame ring each handshake announces (rpc.hello shm, WP-1M.04)", async () => {
+    const { engine, timers, stores, runtime } = setup();
+    expect(stores.engine.getState().previewRing).toBeUndefined();
+    await runtime.connection.whenReady();
+    await flushPromises(50);
+    // This engine publishes no ring.
+    expect(stores.engine.getState().previewRing).toBeNull();
+    const ring = { name: "cwp-00000001-0000000000000002", epoch: "0x0000000000000003" };
+    engine.hello = { ...engine.hello, shm: { ...ring, layout_version: 1, mapping_size: 4096 } };
+    engine.last.serverClose(1006);
+    timers.advance(250);
+    await runtime.connection.whenReady();
+    await flushPromises(50);
+    expect(stores.engine.getState().previewRing).toEqual(ring);
+    await runtime.stop();
+    expect(stores.engine.getState().previewRing).toBeUndefined();
+  });
+
   it("after a reconnect it resubscribes and takes one fresh snapshot", async () => {
     const { engine, timers, stores, runtime, live } = setup();
     await runtime.connection.whenReady();

@@ -158,12 +158,23 @@
       "r16x9": "16:9"
     },
     "emptyTitle": "Nothing to preview",
-    "emptyBody": "Add a clip to the timeline and the frame at the playhead shows here."
+    "emptyBody": "Add a clip to the timeline and the frame at the playhead shows here.",
+    "canvasLabel": "Preview of the frame at the playhead",
+    "safeAreas": "Safe areas",
+    "reducedTitle": "Reduced preview",
+    "reduced": {
+      "forced": "CUTWEAVE_PREVIEW=jpeg is set, so frames arrive as still images at up to 15 fps.",
+      "webgpu": "WebGPU is not available here, so frames arrive as still images at up to 15 fps.",
+      "noAddon": "The fast preview bridge did not load, so frames arrive as still images at up to 15 fps.",
+      "noRing": "This engine does not stream preview frames, so they arrive as still images at up to 15 fps.",
+      "ring": "The preview stream stopped, so frames arrive as still images at up to 15 fps."
+    },
+    "noFramesTitle": "No preview frames",
+    "noFramesBody": "The engine sent no frame for the playhead. You can still edit and move the playhead."
   },
   "transport": {
     "label": "Transport",
     "timecode": "Current time",
-    "timecodeValue": "00:00:00:00",
     "toStart": "Go to start",
     "stepBack": "Step back one frame",
     "play": "Play",
@@ -171,7 +182,19 @@
     "toEnd": "Go to end",
     "loop": "Loop playback",
     "mute": "Mute",
-    "fullscreen": "Full screen preview"
+    "fullscreen": "Full screen preview",
+    "pause": "Pause",
+    "unmute": "Unmute",
+    "volume": "Volume",
+    "volumeValue": "{{value}} %",
+    "qualityValue": "Preview quality: {{quality}}",
+    "quality": {
+      "full": "Full",
+      "half": "Half",
+      "quarter": "Quarter"
+    },
+    "unsupportedTitle": "Playback not available",
+    "unsupported": "This engine can't play the timeline yet. You can still edit and move the playhead."
   },
   "inspector": {
     "emptyTitle": "Nothing selected",

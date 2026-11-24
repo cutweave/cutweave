@@ -32,6 +32,7 @@ import {
   supervisedPolicy,
 } from "@cutweave/protocol";
 import type { mediaStore } from "../media/mediaStore.ts";
+import { parseRingAnnouncement } from "../preview/ringPreview.ts";
 import type { sessionStore } from "../session/sessionStore.ts";
 import { SessionSync } from "../session/sessionSync.ts";
 import { docSink, type docStore } from "../state/docStore.ts";
@@ -214,6 +215,8 @@ export function startEngineRuntime(
     }
     // The project status first: the events that follow (dirty, saved) are newer than the hello.
     sessionSync?.applyHello(hello);
+    // The preview frame ring of this engine launch (WP-1M.04); `null` when it publishes none.
+    stores.engine.setState({ previewRing: parseRingAnnouncement(hello.shm) });
     try {
       await syncDocument();
     } finally {
@@ -307,7 +310,13 @@ export function startEngineRuntime(
       sessionSync?.stop();
       await viewSync.stop().catch(onError);
       connection.close();
-      stores.engine.setState({ rpc: null, connection: "none", supervisor: null, notice: null });
+      stores.engine.setState({
+        rpc: null,
+        connection: "none",
+        supervisor: null,
+        notice: null,
+        previewRing: undefined,
+      });
     },
   };
 }

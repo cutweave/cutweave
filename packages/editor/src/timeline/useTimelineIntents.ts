@@ -10,6 +10,7 @@ import { dragStore } from "../media/dragStore.ts";
 import { docStore } from "../state/docStore.ts";
 import { toastStore } from "../state/toastStore.ts";
 import { viewStore } from "../state/viewStore.ts";
+import { transportController } from "../transport/useTransport.ts";
 import { TimelineController, type TimelineOverlay } from "./controller.ts";
 import { type Translate, translator } from "./errors.ts";
 
@@ -51,6 +52,8 @@ export function useTimelineIntents(): TimelineIntents {
         engine: engineStore,
         toasts: toastStore,
         t: (key, vars) => translate.current(key, vars),
+        // Ruler scrubbing goes to the engine as latest-wins `view.seek` (WP-1M.04).
+        seek: (at) => void transportController().seek(at),
       }),
     [],
   );

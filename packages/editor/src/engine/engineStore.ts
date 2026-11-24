@@ -47,6 +47,17 @@ export interface EngineStoreState {
   blocked: EngineBlock | null;
   /** The current restart notice, if any. */
   notice: EngineNotice | null;
+  /**
+   * The preview frame ring the engine announced in its last `rpc.hello` (`shm`, WP-1M.04):
+   * `undefined` before the first handshake, `null` when the engine publishes none.
+   */
+  previewRing: PreviewRing | null | undefined;
+}
+
+/** A shared-memory frame ring: its name and the epoch its header must carry (RING.md). */
+export interface PreviewRing {
+  readonly name: string;
+  readonly epoch: string;
 }
 
 export const initialEngineState: EngineStoreState = {
@@ -55,6 +66,7 @@ export const initialEngineState: EngineStoreState = {
   supervisor: null,
   blocked: null,
   notice: null,
+  previewRing: undefined,
 };
 
 export function createEngineStore() {

@@ -56,6 +56,11 @@ export interface TimelineControllerDeps {
   readonly toasts: StoreApi<ToastStore>;
   readonly t: Translate;
   readonly frames?: FrameScheduler;
+  /**
+   * Moves the playhead (ruler scrubbing, clicks on the ruler): the transport's latest-wins
+   * `view.seek` (WP-1M.04). Without it the view's playhead moves alone.
+   */
+  readonly seek?: (t: number) => void;
 }
 
 interface OpenGesture {
@@ -273,7 +278,8 @@ export class TimelineController {
         this.#enqueue(() => this.#delete(intent.items));
         return;
       case "seek":
-        view.setPlayhead(intent.at);
+        if (this.#deps.seek) this.#deps.seek(intent.at);
+        else view.setPlayhead(intent.at);
         return;
       case "scroll":
         view.setScroll(intent.scrollX, intent.scrollY);
