@@ -3059,7 +3059,123 @@
       },
       "input_schema": {
         "additionalProperties": false,
-        "description": "Returns what this engine's media backend can decode and encode: software codecs with their\nimplementations, the hardware encoders in the order `export.start{hw: \"auto\"}` tries them,\nand the hardware decode paths. `available` is false when the engine has no media backend.",
+        "description": "Returns the media caches: the folder they live in, each disk cache's usage and limit, the\nhardware decoding policy and the memory the decoded-frame cache may use. Agents may read it;\nchanging any of it is the desktop app's.",
+        "title": "MediaCacheStatus",
+        "type": "object"
+      },
+      "kind": "engine",
+      "mcp": "catalog",
+      "mcp_tool": "media_cache_status",
+      "name": "media.cache_status",
+      "namespace": "media",
+      "output_schema": {
+        "additionalProperties": false,
+        "description": "What `media.cache_status` and `media.set_cache_config` report.",
+        "properties": {
+          "decode_hw": {
+            "description": "The hardware decoding policy in force.",
+            "oneOf": [
+              {
+                "const": "auto",
+                "description": "A verified hardware decoder when the machine has one for the stream (the default).",
+                "type": "string"
+              },
+              {
+                "const": "off",
+                "description": "Software decoding only.",
+                "type": "string"
+              }
+            ]
+          },
+          "folder": {
+            "description": "The folder the caches live in (`--cache-dir`, else the OS cache folder); `null` when\nthe engine has none.",
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "frame_cache_bytes": {
+            "description": "Bytes of decoded frames the RAM frame cache may hold.",
+            "format": "uint64",
+            "minimum": 0,
+            "type": "integer"
+          },
+          "kinds": {
+            "description": "Each disk cache, in a fixed order (thumbnails, waveforms).",
+            "items": {
+              "additionalProperties": false,
+              "description": "One disk cache's usage and limit.",
+              "properties": {
+                "bytes": {
+                  "description": "Bytes it holds.",
+                  "format": "uint64",
+                  "minimum": 0,
+                  "type": "integer"
+                },
+                "entries": {
+                  "description": "Entries it holds.",
+                  "format": "uint64",
+                  "minimum": 0,
+                  "type": "integer"
+                },
+                "kind": {
+                  "description": "Which cache.",
+                  "oneOf": [
+                    {
+                      "const": "thumbnails",
+                      "description": "Thumbnails and filmstrips (JPEG files, accounted in `cache.sqlite`).",
+                      "type": "string"
+                    },
+                    {
+                      "const": "waveforms",
+                      "description": "Waveform pyramids (one file per audio stream).",
+                      "type": "string"
+                    }
+                  ]
+                },
+                "limit_bytes": {
+                  "description": "Bytes it may hold before the least recently used entries are deleted.",
+                  "format": "uint64",
+                  "minimum": 0,
+                  "type": "integer"
+                }
+              },
+              "required": [
+                "kind",
+                "bytes",
+                "limit_bytes",
+                "entries"
+              ],
+              "type": "object"
+            },
+            "type": "array"
+          }
+        },
+        "required": [
+          "folder",
+          "kinds",
+          "decode_hw",
+          "frame_cache_bytes"
+        ],
+        "title": "MediaCacheStatusOutput",
+        "type": "object"
+      },
+      "scope": "any",
+      "secret_fields": [],
+      "summary": "Show the media caches: folder, usage and limits, hardware decoding, frame memory",
+      "undoable": false,
+      "view": false
+    },
+    {
+      "annotations": {
+        "destructiveHint": false,
+        "idempotentHint": true,
+        "openWorldHint": false,
+        "readOnlyHint": true
+      },
+      "input_schema": {
+        "additionalProperties": false,
+        "description": "Returns what this engine's media backend can decode and encode: software codecs with their\nimplementations, the hardware encoders in the order `export.start{hw: \"auto\"}` tries them,\nand the hardware decode paths, and the graphics adapter in use (`gpu`). `available` is\nfalse when the engine has no media backend.",
         "title": "MediaCapabilities",
         "type": "object"
       },
@@ -3141,6 +3257,38 @@
             },
             "type": "array"
           },
+          "gpu": {
+            "additionalProperties": false,
+            "description": "The graphics adapter the renderer runs on; absent while the device is still opening and\nwhen the engine renders on the CPU.",
+            "properties": {
+              "backend": {
+                "description": "The graphics API (`dx12`, `vulkan`, `metal`).",
+                "type": "string"
+              },
+              "device_type": {
+                "description": "`DiscreteGpu`, `IntegratedGpu`, `VirtualGpu`, `Cpu` or `Other`.",
+                "type": "string"
+              },
+              "name": {
+                "description": "The adapter's name (`NVIDIA GeForce RTX 3060`).",
+                "type": "string"
+              },
+              "software": {
+                "description": "Whether this is a software rasterizer (WARP, lavapipe).",
+                "type": "boolean"
+              }
+            },
+            "required": [
+              "name",
+              "backend",
+              "device_type",
+              "software"
+            ],
+            "type": [
+              "object",
+              "null"
+            ]
+          },
           "hw_decode": {
             "description": "Hardware decode paths verified on this machine.",
             "items": {
@@ -3210,6 +3358,109 @@
       "scope": "any",
       "secret_fields": [],
       "summary": "List the codecs and hardware encoders/decoders the media backend supports",
+      "undoable": false,
+      "view": false
+    },
+    {
+      "annotations": {
+        "destructiveHint": true,
+        "idempotentHint": true,
+        "openWorldHint": false,
+        "readOnlyHint": false
+      },
+      "input_schema": {
+        "additionalProperties": false,
+        "description": "Deletes every entry of the named caches. Projects and `generated/` media are never touched:\nonly files the engine can rebuild from the media. Not undoable, not journaled, never marks\nthe project dirty; UI credential only.",
+        "properties": {
+          "kinds": {
+            "description": "The caches to empty (`thumbnails`, `waveforms`).",
+            "items": {
+              "description": "A kind of disk cache.",
+              "oneOf": [
+                {
+                  "const": "thumbnails",
+                  "description": "Thumbnails and filmstrips (JPEG files, accounted in `cache.sqlite`).",
+                  "type": "string"
+                },
+                {
+                  "const": "waveforms",
+                  "description": "Waveform pyramids (one file per audio stream).",
+                  "type": "string"
+                }
+              ]
+            },
+            "type": "array"
+          }
+        },
+        "required": [
+          "kinds"
+        ],
+        "title": "MediaClearCache",
+        "type": "object"
+      },
+      "journaled": false,
+      "kind": "engine",
+      "mcp": "catalog",
+      "mcp_tool": "media_clear_cache",
+      "name": "media.clear_cache",
+      "namespace": "media",
+      "output_schema": {
+        "additionalProperties": false,
+        "description": "Result of `media.clear_cache`.",
+        "properties": {
+          "cleared": {
+            "description": "What each requested kind lost.",
+            "items": {
+              "additionalProperties": false,
+              "description": "What clearing one kind removed.",
+              "properties": {
+                "freed_bytes": {
+                  "description": "Bytes freed.",
+                  "format": "uint64",
+                  "minimum": 0,
+                  "type": "integer"
+                },
+                "kind": {
+                  "description": "Which cache.",
+                  "oneOf": [
+                    {
+                      "const": "thumbnails",
+                      "description": "Thumbnails and filmstrips (JPEG files, accounted in `cache.sqlite`).",
+                      "type": "string"
+                    },
+                    {
+                      "const": "waveforms",
+                      "description": "Waveform pyramids (one file per audio stream).",
+                      "type": "string"
+                    }
+                  ]
+                },
+                "removed": {
+                  "description": "Entries deleted.",
+                  "format": "uint64",
+                  "minimum": 0,
+                  "type": "integer"
+                }
+              },
+              "required": [
+                "kind",
+                "removed",
+                "freed_bytes"
+              ],
+              "type": "object"
+            },
+            "type": "array"
+          }
+        },
+        "required": [
+          "cleared"
+        ],
+        "title": "MediaClearCacheOutput",
+        "type": "object"
+      },
+      "scope": "ui",
+      "secret_fields": [],
+      "summary": "Delete everything in the named media caches (they rebuild on demand)",
       "undoable": false,
       "view": false
     },
@@ -3835,6 +4086,235 @@
       "secret_fields": [],
       "summary": "Remove an unused media asset from the project",
       "undoable": true,
+      "view": false
+    },
+    {
+      "annotations": {
+        "destructiveHint": true,
+        "idempotentHint": true,
+        "openWorldHint": false,
+        "readOnlyHint": false
+      },
+      "input_schema": {
+        "additionalProperties": false,
+        "description": "Sets the disk cache limits and the memory for decoded frames. A lower limit deletes the\nleast recently used entries at once. Not undoable, not journaled, never marks the project\ndirty; UI credential only (the desktop app applies the person's machine preferences).",
+        "properties": {
+          "frame_cache_bytes": {
+            "default": null,
+            "description": "Memory for decoded frames in bytes (64 MiB to 64 GiB), or `0` for Auto (the smaller of\n1 GiB and a quarter of the machine's RAM). Left out: unchanged.",
+            "format": "uint64",
+            "minimum": 0,
+            "type": [
+              "integer",
+              "null"
+            ]
+          },
+          "limits": {
+            "additionalProperties": false,
+            "default": null,
+            "description": "New limits in bytes (`0` to `16 TiB`); a kind left out keeps its limit.",
+            "properties": {
+              "thumbnails": {
+                "description": "Cap on thumbnails and filmstrips, in bytes.",
+                "format": "uint64",
+                "minimum": 0,
+                "type": [
+                  "integer",
+                  "null"
+                ]
+              },
+              "waveforms": {
+                "description": "Cap on waveforms, in bytes.",
+                "format": "uint64",
+                "minimum": 0,
+                "type": [
+                  "integer",
+                  "null"
+                ]
+              }
+            },
+            "type": [
+              "object",
+              "null"
+            ]
+          }
+        },
+        "title": "MediaSetCacheConfig",
+        "type": "object"
+      },
+      "journaled": false,
+      "kind": "engine",
+      "mcp": "catalog",
+      "mcp_tool": "media_set_cache_config",
+      "name": "media.set_cache_config",
+      "namespace": "media",
+      "output_schema": {
+        "additionalProperties": false,
+        "description": "What `media.cache_status` and `media.set_cache_config` report.",
+        "properties": {
+          "decode_hw": {
+            "description": "The hardware decoding policy in force.",
+            "oneOf": [
+              {
+                "const": "auto",
+                "description": "A verified hardware decoder when the machine has one for the stream (the default).",
+                "type": "string"
+              },
+              {
+                "const": "off",
+                "description": "Software decoding only.",
+                "type": "string"
+              }
+            ]
+          },
+          "folder": {
+            "description": "The folder the caches live in (`--cache-dir`, else the OS cache folder); `null` when\nthe engine has none.",
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "frame_cache_bytes": {
+            "description": "Bytes of decoded frames the RAM frame cache may hold.",
+            "format": "uint64",
+            "minimum": 0,
+            "type": "integer"
+          },
+          "kinds": {
+            "description": "Each disk cache, in a fixed order (thumbnails, waveforms).",
+            "items": {
+              "additionalProperties": false,
+              "description": "One disk cache's usage and limit.",
+              "properties": {
+                "bytes": {
+                  "description": "Bytes it holds.",
+                  "format": "uint64",
+                  "minimum": 0,
+                  "type": "integer"
+                },
+                "entries": {
+                  "description": "Entries it holds.",
+                  "format": "uint64",
+                  "minimum": 0,
+                  "type": "integer"
+                },
+                "kind": {
+                  "description": "Which cache.",
+                  "oneOf": [
+                    {
+                      "const": "thumbnails",
+                      "description": "Thumbnails and filmstrips (JPEG files, accounted in `cache.sqlite`).",
+                      "type": "string"
+                    },
+                    {
+                      "const": "waveforms",
+                      "description": "Waveform pyramids (one file per audio stream).",
+                      "type": "string"
+                    }
+                  ]
+                },
+                "limit_bytes": {
+                  "description": "Bytes it may hold before the least recently used entries are deleted.",
+                  "format": "uint64",
+                  "minimum": 0,
+                  "type": "integer"
+                }
+              },
+              "required": [
+                "kind",
+                "bytes",
+                "limit_bytes",
+                "entries"
+              ],
+              "type": "object"
+            },
+            "type": "array"
+          }
+        },
+        "required": [
+          "folder",
+          "kinds",
+          "decode_hw",
+          "frame_cache_bytes"
+        ],
+        "title": "MediaCacheStatusOutput",
+        "type": "object"
+      },
+      "scope": "ui",
+      "secret_fields": [],
+      "summary": "Set the cache limits and the memory for decoded frames",
+      "undoable": false,
+      "view": false
+    },
+    {
+      "annotations": {
+        "destructiveHint": false,
+        "idempotentHint": true,
+        "openWorldHint": false,
+        "readOnlyHint": false
+      },
+      "input_schema": {
+        "additionalProperties": false,
+        "description": "Sets whether decoders may use the hardware. It applies to decoders opened from now on; idle\ndecoders are closed and the open pools reopen on their next seek. Exports and `render.frame`\nalways decode in software. Not undoable, not journaled, never marks the project dirty; UI\ncredential only.",
+        "properties": {
+          "hw": {
+            "description": "`auto` (a verified hardware decoder when there is one) or `off` (software only).",
+            "oneOf": [
+              {
+                "const": "auto",
+                "description": "A verified hardware decoder when the machine has one for the stream (the default).",
+                "type": "string"
+              },
+              {
+                "const": "off",
+                "description": "Software decoding only.",
+                "type": "string"
+              }
+            ]
+          }
+        },
+        "required": [
+          "hw"
+        ],
+        "title": "MediaSetDecodePolicy",
+        "type": "object"
+      },
+      "journaled": false,
+      "kind": "engine",
+      "mcp": "catalog",
+      "mcp_tool": "media_set_decode_policy",
+      "name": "media.set_decode_policy",
+      "namespace": "media",
+      "output_schema": {
+        "additionalProperties": false,
+        "description": "Result of `media.set_decode_policy`.",
+        "properties": {
+          "hw": {
+            "description": "The policy now in force.",
+            "oneOf": [
+              {
+                "const": "auto",
+                "description": "A verified hardware decoder when the machine has one for the stream (the default).",
+                "type": "string"
+              },
+              {
+                "const": "off",
+                "description": "Software decoding only.",
+                "type": "string"
+              }
+            ]
+          }
+        },
+        "required": [
+          "hw"
+        ],
+        "title": "MediaSetDecodePolicyOutput",
+        "type": "object"
+      },
+      "scope": "ui",
+      "secret_fields": [],
+      "summary": "Choose hardware or software decoding for the preview",
+      "undoable": false,
       "view": false
     },
     {

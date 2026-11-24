@@ -10,8 +10,8 @@ use cutweave_api::engines::{SelectError, Selector};
 use cutweave_api::mcp::execute::{check_step_refs, resolve_refs};
 use cutweave_commands::{CmdError, EntryKind, Registry, Rev, TxId};
 use cutweave_engine::{
-    AudioConfig, Call, Connection, DevStubMedia, Engine, EngineConfig, EngineMode, FullSubsystems,
-    Subsystems,
+    AudioConfig, Call, Connection, DevStubMedia, Engine, EngineConfig, EngineMode, FullConfig,
+    FullSubsystems, Subsystems,
 };
 use serde_json::{Map, Value, json};
 
@@ -61,8 +61,26 @@ pub struct SpawnPlan {
     pub deterministic_ids: Option<u64>,
     /// `--allow-root`.
     pub allow_roots: Vec<PathBuf>,
+    /// `--cache-dir`; without it `CUTWEAVE_CACHE_DIR`, else the OS cache folder.
+    pub cache_dir: Option<PathBuf>,
     /// `--dev-stub-media` or `CUTWEAVE_DEV_STUB_MEDIA`.
     pub dev_stub_media: bool,
+}
+
+impl SpawnPlan {
+    /// The subsystems the spawned engine runs: the stub with `--dev-stub-media`, else the full
+    /// engine (FFmpeg media when this build has it, the caches in `--cache-dir`).
+    #[must_use]
+    pub fn subsystems(&self) -> Box<dyn Subsystems> {
+        if self.dev_stub_media {
+            return Box::new(DevStubMedia);
+        }
+        let mut config = FullConfig::native();
+        if let Some(dir) = &self.cache_dir {
+            config = config.with_cache_dir(dir);
+        }
+        Box::new(FullSubsystems::new(config))
+    }
 }
 
 /// A connection to an engine.
@@ -100,6 +118,7 @@ impl Session {
                 },
             },
             Plan::Spawn(spawn) => {
+                let subsystems = spawn.subsystems();
                 let mut config = EngineConfig::new(EngineMode::Oneshot);
                 config.project = spawn.project;
                 config.deterministic_ids = spawn.deterministic_ids;
@@ -107,11 +126,7 @@ impl Session {
                 // The full engine on the null audio output (see `cutweave mcp --headless`);
                 // `--dev-stub-media` keeps the stub.
                 config.audio = AudioConfig::Null;
-                config.subsystems = Some(if spawn.dev_stub_media {
-                    Box::new(DevStubMedia) as Box<dyn Subsystems>
-                } else {
-                    Box::new(FullSubsystems::native())
-                });
+                config.subsystems = Some(subsystems);
                 let engine =
                     Engine::start(config).map_err(|e| Failure::error(e.code(), e.to_string()))?;
                 let conn = engine

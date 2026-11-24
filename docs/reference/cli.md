@@ -11,7 +11,7 @@ One binary (ADR-0002): `cutweave engine` is the engine process the desktop app s
 - **Attach (default).** The CLI reads the run-files in `--run-dir` (default `~/.cutweave/run`), picks the engine ([Choosing an engine](#choosing-an-engine)), connects to `ws://127.0.0.1:<port>/rpc` with the run-file's `cli` agent token and sends JSON-RPC calls, each with a fresh `_meta.request_id`. Edits are visible to everyone else attached (the desktop UI included) and land in the engine's history as the actor `agent:cli`.
 - **Spawn.** With `--headless`, `--deterministic-ids`, `--allow-root` or `--dev-stub-media` the CLI starts a one-shot engine inside the process (no server, no run-file), runs the request and shuts it down. Nothing is saved unless the request saves (`--save`, or the `project.save` command): unsaved work stays in the journal, as for any engine. A project another process holds is `project_locked`.
 
-Agents and the CLI are confined to the folders of `--allow-root` plus the project folder (launch-protocol.md, "Path policy").
+Agents and the CLI are confined to the folders of `--allow-root` plus the project folder (launch-protocol.md, "Path policy"). A spawned engine keeps its caches in the OS cache folder, or in `--cache-dir` (`CUTWEAVE_CACHE_DIR`); `cutweave query media.cache_status` reports the folder, usage and limits, and changing them is the desktop app's (UI credential only).
 
 ## Choosing an engine
 
@@ -111,6 +111,9 @@ Options:
       --deterministic-ids <SEED>
           Seeded ids and a frozen clock (tests). `CUTWEAVE_DETERMINISTIC_IDS` does the same
 
+      --cache-dir <DIR>
+          The folder for the thumbnail, waveform and frame-index caches (default `<OS cache folder>/cutweave`). `CUTWEAVE_CACHE_DIR` does the same
+
       --i-know-this-is-a-test
           Lets a GUI engine run with deterministic ids
 
@@ -174,6 +177,9 @@ Spawned engine:
       --allow-root <DIR>
           A folder the spawned engine lets this command import from or save into (repeatable; implies --headless). The project folder is always allowed
 
+      --cache-dir <DIR>
+          The folder the spawned engine keeps its thumbnail, waveform and frame-index caches in (implies --headless). `CUTWEAVE_CACHE_DIR` does the same; the default is `<OS cache folder>/cutweave`
+
       --dev-stub-media
           Dev only: fake media probing in the spawned engine (implies --headless). `CUTWEAVE_DEV_STUB_MEDIA=1` does the same
 ```
@@ -215,6 +221,9 @@ Spawned engine:
 
       --allow-root <DIR>
           A folder the spawned engine lets this command import from or save into (repeatable; implies --headless). The project folder is always allowed
+
+      --cache-dir <DIR>
+          The folder the spawned engine keeps its thumbnail, waveform and frame-index caches in (implies --headless). `CUTWEAVE_CACHE_DIR` does the same; the default is `<OS cache folder>/cutweave`
 
       --dev-stub-media
           Dev only: fake media probing in the spawned engine (implies --headless). `CUTWEAVE_DEV_STUB_MEDIA=1` does the same
@@ -356,6 +365,9 @@ Spawned engine:
 
       --allow-root <DIR>
           A folder the spawned engine lets this command import from or save into (repeatable; implies --headless). The project folder is always allowed
+
+      --cache-dir <DIR>
+          The folder the spawned engine keeps its thumbnail, waveform and frame-index caches in (implies --headless). `CUTWEAVE_CACHE_DIR` does the same; the default is `<OS cache folder>/cutweave`
 
       --dev-stub-media
           Dev only: fake media probing in the spawned engine (implies --headless). `CUTWEAVE_DEV_STUB_MEDIA=1` does the same

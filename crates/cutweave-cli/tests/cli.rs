@@ -56,6 +56,40 @@ fn exec_headless_prints_rev_and_output() {
     );
 }
 
+/// WP-1D.08: an agent (the CLI's credential) reads the cache status, and the three commands
+/// that change the caches are the desktop app's: `forbidden`.
+#[test]
+fn the_cache_status_is_readable_and_changing_the_caches_is_forbidden() {
+    let dir = tempfile::tempdir().unwrap();
+    let cache = dir.path().join("cache");
+    let cache = cache.to_str().unwrap();
+    let out = cutweave(&[
+        "exec",
+        r#"{"cmd":"media.cache_status"}"#,
+        "--headless",
+        "--cache-dir",
+        cache,
+    ]);
+    assert_eq!(out.status.code(), Some(0), "{out:?}");
+    let status = stdout_json(&out)["output"].clone();
+    assert_eq!(status["decode_hw"], "auto", "{status}");
+    assert!(status["kinds"].is_array(), "{status}");
+    // The folder is the one asked for (or none: an engine built without FFmpeg has no caches).
+    assert!(
+        status["folder"].is_null() || status["folder"] == cache,
+        "{status}"
+    );
+    for request in [
+        r#"{"cmd":"media.set_cache_config","args":{"frame_cache_bytes":0}}"#,
+        r#"{"cmd":"media.clear_cache","args":{"kinds":["thumbnails"]}}"#,
+        r#"{"cmd":"media.set_decode_policy","args":{"hw":"off"}}"#,
+    ] {
+        let out = cutweave(&["exec", request, "--headless", "--cache-dir", cache]);
+        assert_eq!(out.status.code(), Some(1), "{request}: {out:?}");
+        assert_eq!(stderr_json(&out)["code"], "forbidden", "{request}");
+    }
+}
+
 #[test]
 fn unknown_command_is_exit_1_not_found() {
     let out = cutweave(&["exec", r#"{"cmd":"no.such"}"#, "--headless"]);

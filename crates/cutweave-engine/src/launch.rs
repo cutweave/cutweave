@@ -6,8 +6,9 @@
 //! cutweave engine [--headless] --port N [--token-stdin] [--project P] [--run-dir D]
 //!                 [--allow-origin O]... [--allow-root R]... [--deterministic-ids SEED]
 //!                 [--i-know-this-is-a-test] [--log-dir D | --no-log] [--handshake-timeout-ms MS]
-//!                 [--dev-stub-media]
+//!                 [--cache-dir D] [--dev-stub-media]
 //! env    : CUTWEAVE_DETERMINISTIC_IDS=SEED (the flag wins), CUTWEAVE_DEV_STUB_MEDIA=1,
+//!          CUTWEAVE_CACHE_DIR=D (the cache folder; the flag wins),
 //!          CUTWEAVE_GPU=auto|software|... (the adapter), CUTWEAVE_AUDIO=null|default|<device>
 //!          (the GUI engine's output; a headless engine always plays on the null clock)
 //! stdin : Gui mode: first line = the UI credential (never argv, env, disk or logs);
@@ -64,7 +65,7 @@ const MAX_HANDSHAKE_BYTES: u64 = 1024;
 pub const USAGE: &str = "usage: engine [--headless] [--port N] [--token-stdin] [--project P] \
 [--run-dir D] [--allow-origin O]... [--allow-root R]... [--deterministic-ids SEED] \
 [--i-know-this-is-a-test] [--log-dir D | --no-log] [--handshake-timeout-ms MS] \
-[--dev-stub-media]";
+[--cache-dir D] [--dev-stub-media]";
 
 /// Parsed launch arguments: WP-1I.01's [`LaunchArgs`] plus the engine's own flags.
 #[derive(Debug, PartialEq, Eq)]
@@ -85,6 +86,9 @@ pub struct EngineArgs {
     pub handshake_timeout: Duration,
     /// `--dev-stub-media` or `CUTWEAVE_DEV_STUB_MEDIA=1`: dev-only fake media probing.
     pub dev_stub_media: bool,
+    /// `--cache-dir D`: the folder the thumbnail, waveform and frame-index caches live in
+    /// (default `CUTWEAVE_CACHE_DIR`, else `<OS cache folder>/cutweave`; WP-1D.08).
+    pub cache_dir: Option<PathBuf>,
 }
 
 impl EngineArgs {
@@ -100,6 +104,7 @@ impl EngineArgs {
             no_log: false,
             handshake_timeout: DEFAULT_HANDSHAKE_TIMEOUT,
             dev_stub_media: false,
+            cache_dir: None,
         };
         let mut it = args.into_iter();
         while let Some(arg) = it.next() {
@@ -116,6 +121,13 @@ impl EngineArgs {
                 "--allow-root" => out.allow_roots.push(PathBuf::from(value("--allow-root")?)),
                 "--log-dir" => out.log_dir = Some(PathBuf::from(value("--log-dir")?)),
                 "--no-log" => out.no_log = true,
+                "--cache-dir" => {
+                    let dir = value("--cache-dir")?;
+                    if dir.trim().is_empty() {
+                        return Err("--cache-dir needs a folder".into());
+                    }
+                    out.cache_dir = Some(PathBuf::from(dir));
+                }
                 "--dev-stub-media" => out.dev_stub_media = true,
                 "--handshake-timeout-ms" => {
                     let ms: u64 = value("--handshake-timeout-ms")?
@@ -324,7 +336,11 @@ fn engine_config(args: &EngineArgs, mode: EngineMode, ui_token: Option<Token>) -
     let subsystems: Box<dyn crate::Subsystems> = if args.dev_stub_media {
         Box::new(crate::DevStubMedia)
     } else {
-        Box::new(crate::FullSubsystems::native())
+        let mut config = crate::FullConfig::native();
+        if let Some(dir) = &args.cache_dir {
+            config = config.with_cache_dir(dir);
+        }
+        Box::new(crate::FullSubsystems::new(config))
     };
     EngineConfig {
         mode,
@@ -509,6 +525,16 @@ mod tests {
         assert_eq!(a.handshake_timeout, Duration::from_millis(250));
         assert_eq!(a.base.allowed_origins, vec!["app://cutweave".to_owned()]);
         assert_eq!(parse("--headless").unwrap().mode(), EngineMode::Headless);
+    }
+
+    #[test]
+    fn the_cache_dir_flag_names_the_cache_folder() {
+        assert_eq!(parse("--headless").unwrap().cache_dir, None);
+        assert_eq!(
+            parse("--headless --cache-dir /c").unwrap().cache_dir,
+            Some(PathBuf::from("/c"))
+        );
+        assert!(parse("--cache-dir").is_err());
     }
 
     #[test]

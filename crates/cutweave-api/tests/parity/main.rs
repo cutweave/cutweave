@@ -564,7 +564,15 @@ fn every_registry_entry_is_reachable_with_the_registry_schema() {
             cmd: name.to_owned(),
             args: probe.clone(),
         };
-        let expected = if exempt { "not_found" } else { "invalid" };
+        // An agent's MCP call reaches a UI-only catalog entry (`cutweave_execute`), which refuses
+        // it before it looks at the params (ADR-0016): `forbidden`, as over RPC below.
+        let expected = if exempt {
+            "not_found"
+        } else if meta.scope == cutweave_commands::Scope::UiOnly {
+            "forbidden"
+        } else {
+            "invalid"
+        };
         match mcp.call(&call) {
             Err(e) if e.code == expected => {}
             other => problems.push(format!(

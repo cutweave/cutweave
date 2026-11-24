@@ -20,11 +20,26 @@ use cutweave_model::StreamKind;
 #[derive(Debug)]
 pub struct CapabilitiesCall {
     pub(crate) caps: Option<Capabilities>,
+    pub(crate) gpu: Option<GpuAdapterInfo>,
+}
+
+/// The graphics adapter the renderer runs on.
+#[wire]
+pub struct GpuAdapterInfo {
+    /// The adapter's name (`NVIDIA GeForce RTX 3060`).
+    pub name: String,
+    /// The graphics API (`dx12`, `vulkan`, `metal`).
+    pub backend: String,
+    /// `DiscreteGpu`, `IntegratedGpu`, `VirtualGpu`, `Cpu` or `Other`.
+    pub device_type: String,
+    /// Whether this is a software rasterizer (WARP, lavapipe).
+    pub software: bool,
 }
 
 /// Returns what this engine's media backend can decode and encode: software codecs with their
 /// implementations, the hardware encoders in the order `export.start{hw: "auto"}` tries them,
-/// and the hardware decode paths. `available` is false when the engine has no media backend.
+/// and the hardware decode paths, and the graphics adapter in use (`gpu`). `available` is
+/// false when the engine has no media backend.
 #[wire]
 pub struct MediaCapabilities {}
 
@@ -63,6 +78,10 @@ pub struct MediaCapabilitiesOutput {
     pub hw_encode: Vec<HwCodecInfo>,
     /// Hardware decode paths verified on this machine.
     pub hw_decode: Vec<HwCodecInfo>,
+    /// The graphics adapter the renderer runs on; absent while the device is still opening and
+    /// when the engine renders on the CPU.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub gpu: Option<GpuAdapterInfo>,
 }
 
 impl Described for MediaCapabilities {
@@ -112,6 +131,7 @@ impl EngineCommand for MediaCapabilities {
                 codecs: Vec::new(),
                 hw_encode: Vec::new(),
                 hw_decode: Vec::new(),
+                gpu: call.gpu.clone(),
             });
         };
         Ok(MediaCapabilitiesOutput {
@@ -128,6 +148,7 @@ impl EngineCommand for MediaCapabilities {
                 .collect(),
             hw_encode: hw(&caps.hw_encode),
             hw_decode: hw(&caps.hw_decode),
+            gpu: call.gpu.clone(),
         })
     }
 }

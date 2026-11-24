@@ -31,6 +31,9 @@ Options:
       --deterministic-ids <SEED>
           Seeded ids and a frozen clock (tests). `CUTWEAVE_DETERMINISTIC_IDS` does the same
 
+      --cache-dir <DIR>
+          The folder for the thumbnail, waveform and frame-index caches (default `<OS cache folder>/cutweave`). `CUTWEAVE_CACHE_DIR` does the same
+
       --i-know-this-is-a-test
           Lets a GUI engine run with deterministic ids
 

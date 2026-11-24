@@ -125,6 +125,7 @@ fn plan(target: &Target) -> Result<Plan, Failure> {
     let spawn_only = target.headless
         || target.deterministic_ids.is_some()
         || !target.allow_root.is_empty()
+        || target.cache_dir.is_some()
         || target.dev_stub_media;
     if !spawn_only {
         let project = target.project.as_deref().map(str::trim);
@@ -144,7 +145,8 @@ fn plan(target: &Target) -> Result<Plan, Failure> {
     if target.pid.is_some() || target.run_dir.is_some() {
         return Err(Failure::usage(
             "--pid and --run-dir attach to a running engine; they cannot be combined with \
-             --headless, --deterministic-ids, --allow-root or --dev-stub-media, which start one",
+             --headless, --deterministic-ids, --allow-root, --cache-dir or --dev-stub-media, \
+             which start one",
         ));
     }
     spawn_plan(target).map(Plan::Spawn)
@@ -171,6 +173,7 @@ fn spawn_plan(target: &Target) -> Result<SpawnPlan, Failure> {
         project: target.project.as_deref().map(PathBuf::from),
         deterministic_ids: seed,
         allow_roots: target.allow_root.clone(),
+        cache_dir: target.cache_dir.clone(),
         dev_stub_media: target.dev_stub_media
             || env_enables(std::env::var(DEV_STUB_MEDIA_ENV).ok().as_deref()),
     })
@@ -394,7 +397,7 @@ fn mcp(cmd: &McpCmd) -> i32 {
         if cmd.attach && spawn {
             return Err(Failure::usage(
                 "--attach proxies to a running engine; it cannot be combined with \
-                 --deterministic-ids, --allow-root or --dev-stub-media, which start one",
+                 --deterministic-ids, --allow-root, --cache-dir or --dev-stub-media, which start one",
             ));
         }
         if !spawn && !may_spawn && (cmd.log_dir.is_some() || cmd.no_log) {

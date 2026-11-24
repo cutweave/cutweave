@@ -92,6 +92,11 @@ pub struct Target {
     /// implies --headless). The project folder is always allowed.
     #[arg(long, value_name = "DIR", help_heading = "Spawned engine")]
     pub allow_root: Vec<PathBuf>,
+    /// The folder the spawned engine keeps its thumbnail, waveform and frame-index caches in
+    /// (implies --headless). `CUTWEAVE_CACHE_DIR` does the same; the default is
+    /// `<OS cache folder>/cutweave`.
+    #[arg(long, value_name = "DIR", help_heading = "Spawned engine")]
+    pub cache_dir: Option<PathBuf>,
     /// Dev only: fake media probing in the spawned engine (implies --headless).
     /// `CUTWEAVE_DEV_STUB_MEDIA=1` does the same.
     #[arg(long, help_heading = "Spawned engine")]
@@ -127,6 +132,10 @@ pub struct EngineCmd {
     /// Seeded ids and a frozen clock (tests). `CUTWEAVE_DETERMINISTIC_IDS` does the same.
     #[arg(long, value_name = "SEED")]
     pub deterministic_ids: Option<u64>,
+    /// The folder for the thumbnail, waveform and frame-index caches (default
+    /// `<OS cache folder>/cutweave`). `CUTWEAVE_CACHE_DIR` does the same.
+    #[arg(long, value_name = "DIR")]
+    pub cache_dir: Option<PathBuf>,
     /// Lets a GUI engine run with deterministic ids.
     #[arg(long)]
     pub i_know_this_is_a_test: bool,
@@ -167,6 +176,7 @@ impl EngineCmd {
         value("--port", self.port.map(|p| p.to_string()));
         value("--project", self.project.clone());
         value("--run-dir", path_arg(self.run_dir.as_ref()));
+        value("--cache-dir", path_arg(self.cache_dir.as_ref()));
         value("--log-dir", path_arg(self.log_dir.as_ref()));
         value(
             "--deterministic-ids",
