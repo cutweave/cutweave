@@ -1,7 +1,7 @@
 {
   "version": 1,
   "generated_by": "scripts/wbs-to-issues",
-  "count": 485,
+  "count": 486,
   "work_packages": [
     {
       "id": "WP-0A.01",
@@ -3328,11 +3328,48 @@
       "out_of_scope": "a command palette (P2); custom-drawn window buttons (the OS draws them)."
     },
     {
+      "id": "WP-1M.10",
+      "title": "Autosave settings and the title bar's save status",
+      "source": {
+        "file": "docs/wbs/P1-skeleton.md",
+        "line": 1192
+      },
+      "phase": "P1",
+      "epic": "1M",
+      "area": "`crates/cutweave-engine` (autosave, session engine command), `crates/cutweave-ops` only if the command must live there, generated schema and TS types, `packages/editor` (Settings > Saving, title-bar save status, preference persistence), `apps/desktop/e2e/flows`, `docs/user-flows.md`, `docs/01-architecture.md` §17",
+      "size": "S",
+      "executor": "sonnet",
+      "executor_note": "",
+      "depends_raw": "WP-1C.03, WP-1M.07, WP-1M.09, WP-1I.05",
+      "depends_wps": [
+        "WP-1C.03",
+        "WP-1M.07",
+        "WP-1M.09",
+        "WP-1I.05"
+      ],
+      "depends_epics": [],
+      "depends": [
+        "WP-1C.03",
+        "WP-1I.05",
+        "WP-1M.07",
+        "WP-1M.09"
+      ],
+      "scope": "(product owner request, 2026-11-24) saving is automatic and configurable; the title bar keeps no Save button (File > Save, Ctrl+S remain).\n- **App-wide preference** in File > Settings… > Saving: \"Save automatically\" on/off; while editing, save at least every 30 s / 1 min / 2 min / 5 min; backups to keep (5 / 10 / 20). Kept with the editor's other preferences (like the theme), so it applies to every project.\n- **The editor applies it to its engine** after every handshake and on change, through a new engine command (not undoable, not journaled, does not make the project dirty) that sets the session's autosave config: enabled, interval, kept backups. The idle save (2 s after the last edit) stays. Engines without an app (headless, agents) keep using the project's `settings.autosave`, then the defaults.\n- **Title-bar save status** (replacing the Save button): an icon with a tooltip, \"All changes saved\", \"Unsaved changes\" (with \"saving automatically\" or \"autosave is off\"), \"Saving…\", and \"Autosave failed\" from `project.autosave_failed`. The unsaved state keeps `data-testid=\"dirty-dot\"`.\n- Arch §17: record the precedence (the app's preference for its own engine, the project setting otherwise).",
+      "interfaces": "engine command for the autosave config (name it in the session namespace, e.g. `project.set_autosave{enabled, interval_s, keep_backups}`); Settings > Saving; title-bar save status.",
+      "acceptance": [
+        "Unit: the engine applies a new config at once (an interval change takes effect for the current dirty period); disabling stops autosaves; the command never marks the project dirty; kept backups follow the setting.",
+        "**A user flow (ADR-0018):** in Settings turn autosave off, edit, wait past the interval: the status says unsaved and the file on disk is unchanged. Turn it on with 30 s: the edit is saved, the status says saved. The choice survives a relaunch.",
+        "The title bar has no Save button; File > Save and Ctrl+S still save."
+      ],
+      "tests": "unit, Vitest, user flow.",
+      "out_of_scope": "cloud sync, version history UI (backups stay files in `.cutweave/backups/`)."
+    },
+    {
       "id": "WP-1O.01",
       "title": "Golden-frame test infrastructure",
       "source": {
         "file": "docs/wbs/P1-skeleton.md",
-        "line": 1192
+        "line": 1210
       },
       "phase": "P1",
       "epic": "1O",
@@ -3371,7 +3408,7 @@
       "title": "CLI = MCP = RPC parity test",
       "source": {
         "file": "docs/wbs/P1-skeleton.md",
-        "line": 1211
+        "line": 1229
       },
       "phase": "P1",
       "epic": "1O",
@@ -3405,7 +3442,7 @@
       "title": "MCP conformance + scripted-agent e2e",
       "source": {
         "file": "docs/wbs/P1-skeleton.md",
-        "line": 1228
+        "line": 1246
       },
       "phase": "P1",
       "epic": "1O",
@@ -3434,7 +3471,7 @@
       "title": "M1 exit acceptance suite (UI + MCP + crash)",
       "source": {
         "file": "docs/wbs/P1-skeleton.md",
-        "line": 1242
+        "line": 1260
       },
       "phase": "P1",
       "epic": "1O",
@@ -3477,7 +3514,7 @@
       "title": "User-flow e2e suite (real app, real input, real dialogs)",
       "source": {
         "file": "docs/wbs/P1-skeleton.md",
-        "line": 1258
+        "line": 1276
       },
       "phase": "P1",
       "epic": "1O",
@@ -3764,6 +3801,7 @@
         "WP-1M.07",
         "WP-1M.08",
         "WP-1M.09",
+        "WP-1M.10",
         "WP-2A.01",
         "WP-2C.06"
       ],
@@ -3851,6 +3889,7 @@
         "WP-1M.07",
         "WP-1M.08",
         "WP-1M.09",
+        "WP-1M.10",
         "WP-2A.02"
       ],
       "scope": "- Canvas2D virtualized renderer: ruler (timecode and frames), tracks with headers, items, selection, playhead, markers, in/out range, snap guides, linked-group badge, lock/mute/hidden styling, collapsed track heights.\n- Thumbnails and filmstrips come from `/media/{id}/filmstrip` and the waveform from `/media/{id}/waveform?lod=` via a bitmap cache (LRU, bounded to 256 MB) and LOD selection by zoom. Draws placeholders immediately and never blocks a frame on a fetch.\n- Horizontal zoom range from 1 frame/≥ 100 px up to 4 hours fit. Zoom is anchored at the cursor. Smooth wheel/pinch. Vertical scroll with sticky track headers.\n- Spatial index (interval tree) for hit-testing: `hitTest(x,y) → {item, part: body|left-edge|right-edge|fade-handle|keyframe, trackId}`.\n- Redraw is dirty-rect or full-frame only when needed (`requestAnimationFrame` coalescing).",
@@ -3897,6 +3936,7 @@
         "WP-1M.07",
         "WP-1M.08",
         "WP-1M.09",
+        "WP-1M.10",
         "WP-2A.05",
         "WP-2A.06",
         "WP-2A.08",
@@ -4910,6 +4950,7 @@
         "WP-1M.07",
         "WP-1M.08",
         "WP-1M.09",
+        "WP-1M.10",
         "WP-2F.01"
       ],
       "scope": "- Detect missing media on open and on file-watch events (status `ok|missing|changed`). Offline media renders as a \"media offline\" slate (render pipeline fallback frame plus silent audio) and never crashes export (export refuses with a typed error listing missing assets unless `allow_offline`).\n- `media.relink{media, path}` (single), `media.relink_folder{folder, recursive}` (search the folder, match by content hash first, then by filename+size+duration), `media.find_missing` query. Hash is computed lazily with a fast partial hash (first/last/middle 1 MB + size) and full hash only on ambiguity. Path rewrite preserves `path_rel` when under the project folder.\n- UI: a relink dialog on open (\"N files missing\"), per-asset badges in the bin, proxy status badges and a proxy settings pane (policy, cache size cap, regenerate).\n- MCP: `media_relink` catalog. `media_list` core includes `status`.",
@@ -5042,6 +5083,7 @@
         "WP-1M.07",
         "WP-1M.08",
         "WP-1M.09",
+        "WP-1M.10",
         "WP-2F.03"
       ],
       "scope": "- Model: `MediaAsset.tags: Vec<String>` (case-insensitive, trimmed, ≤ 64 chars), `rating`, `note`; `Project.collections: Vec<Collection {id, name, kind: manual{media_ids[]} | smart{rule}}>`. Schema migration and fixture.\n- Commands: `media.add_tags{media[], tags[]}`, `media.remove_tags`, `media.set_note`, `media.set_rating`, `collection.create/rename/delete/add_items/remove_items`, `collection.set_rule`; queries `media.search{text?, tags[]?, kind?, duration{min,max}?, resolution?, has_audio?, fps?, status?, used?, collection?, sort, limit, cursor}` and `collection.list`.\n- Search: SQLite FTS5 index in `cache.sqlite` over name, tags, note, path, and transcript text when present (P3 hook, none required now); rebuilt incrementally on `doc.patched` and on index completion; works for 10,000 assets.\n- Smart collection rule: JSON predicate tree (`and/or/not` over the same filters as `media.search`, plus \"unused in any sequence\" and \"imported in last N days\"), evaluated live (membership computed, not stored).\n- UI: search box with filter chips, tag editor (multi-select assign), smart-collection builder (schema-driven form), saved views in the bin sidebar, sort/group, \"used/unused\" badge.\n- MCP: `media_list` (core) gains `query`/`tags`/`collection` parameters; the rest catalog.",
@@ -5207,6 +5249,7 @@
         "WP-1M.07",
         "WP-1M.08",
         "WP-1M.09",
+        "WP-1M.10",
         "WP-2G.03",
         "WP-2G.05",
         "WP-2H.02"
@@ -5285,7 +5328,8 @@
         "WP-1M.06",
         "WP-1M.07",
         "WP-1M.08",
-        "WP-1M.09"
+        "WP-1M.09",
+        "WP-1M.10"
       ],
       "scope": "- `dockview` integration: all panels (Media, Preview, Timeline, Inspector, Mixer, Export queue, Effects placeholder) registered in a typed panel registry (contribution-point shaped so L3 plugins can register later). Drag/dock/float/tab/maximize, per-panel minimum size.\n- Layout serialization to user config (`~/.cutweave/workspaces.json`) with schema version and recovery from corrupt layouts (falls back to the default and notes it).\n- Built-in workspaces: **Long-form** (wide preview, large timeline, media left, inspector right) and **Short-form** (9:16 preview centered and tall, timeline compact at the bottom, inspector right). Workspace switcher in the title bar, \"Save layout as…\", \"Reset layout\". Selecting a sequence with 9:16 aspect suggests (not forces) Short-form once per project.\n- i18n scaffold: `i18next` (or `lingui`), message extraction script, `en` catalog with ICU plurals, locale detection, lint rule failing on user-visible hard-coded strings in `packages/editor` and `packages/ui` (allowlist file). Command names/descriptions come from the registry (English now, translation keys reserved).",
       "interfaces": "`registerPanel({id,title,component,defaultDock})`, `workspace.*` view commands (UI-only).",
@@ -5326,6 +5370,7 @@
         "WP-1M.07",
         "WP-1M.08",
         "WP-1M.09",
+        "WP-1M.10",
         "WP-1N.01",
         "WP-1N.02"
       ],
@@ -5445,6 +5490,7 @@
         "WP-1M.07",
         "WP-1M.08",
         "WP-1M.09",
+        "WP-1M.10",
         "WP-2H.04"
       ],
       "scope": "- Keymap engine: bindings `{key|chord, command, args?, when?}`, contexts (timeline focus, preview focus, text input suppresses), platform modifier mapping, chords (e.g. `Ctrl+K Ctrl+S`), conflict detection, key repeat rules (JKL shuttle), IME safety.\n- Shortcut editor UI (settings page): searchable command list, record-a-shortcut, conflict warning with reassign/cancel, per-command reset, import/export JSON, preset switcher.\n- Presets (L0 data files `keymaps/nle.json`, `keymaps/capcut.json`, plus `default`= NLE): NLE: J/K/L, I/O, B razor, A select, V, Q/W ripple trim previous/next, Home/End, Ctrl+Z/Shift+Ctrl+Z, M marker, comma/period nudge, Del / Shift+Del ripple delete. CapCut: Ctrl+B split, Del delete, Ctrl+Z, Ctrl+Shift+Z, Space, `[`/`]` trim to playhead, Ctrl+D... derived from research/01-capcut-features.md; any binding not verifiable is marked `unverified` in the file and in Notes N7.\n- Every command bindable (palette listing = bindable list).",
@@ -6430,6 +6476,7 @@
         "WP-1M.07",
         "WP-1M.08",
         "WP-1M.09",
+        "WP-1M.10",
         "WP-2H.01",
         "WP-2H.02",
         "WP-2H.03",
@@ -6623,6 +6670,7 @@
         "WP-1M.07",
         "WP-1M.08",
         "WP-1M.09",
+        "WP-1M.10",
         "WP-3B.01",
         "WP-3B.03",
         "WP-3B.04"

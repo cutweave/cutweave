@@ -1189,6 +1189,24 @@ Human gates: PR review of `1B.01`, `1B.03`/`1B.09` (concurrency + ownership core
 - **Tests:** unit (menu model, IPC validation), Storybook visual, e2e user flow.
 - **Out of scope:** a command palette (P2); custom-drawn window buttons (the OS draws them).
 
+### WP-1M.10 — Autosave settings and the title bar's save status
+- **Area:** `crates/cutweave-engine` (autosave, session engine command), `crates/cutweave-ops` only if the command must live there, generated schema and TS types, `packages/editor` (Settings > Saving, title-bar save status, preference persistence), `apps/desktop/e2e/flows`, `docs/user-flows.md`, `docs/01-architecture.md` §17
+- **Depends on:** WP-1C.03, WP-1M.07, WP-1M.09, WP-1I.05
+- **Size:** S
+- **Executor:** sonnet
+- **Scope:** (product owner request, 2026-11-24) saving is automatic and configurable; the title bar keeps no Save button (File > Save, Ctrl+S remain).
+  - **App-wide preference** in File > Settings… > Saving: "Save automatically" on/off; while editing, save at least every 30 s / 1 min / 2 min / 5 min; backups to keep (5 / 10 / 20). Kept with the editor's other preferences (like the theme), so it applies to every project.
+  - **The editor applies it to its engine** after every handshake and on change, through a new engine command (not undoable, not journaled, does not make the project dirty) that sets the session's autosave config: enabled, interval, kept backups. The idle save (2 s after the last edit) stays. Engines without an app (headless, agents) keep using the project's `settings.autosave`, then the defaults.
+  - **Title-bar save status** (replacing the Save button): an icon with a tooltip, "All changes saved", "Unsaved changes" (with "saving automatically" or "autosave is off"), "Saving…", and "Autosave failed" from `project.autosave_failed`. The unsaved state keeps `data-testid="dirty-dot"`.
+  - Arch §17: record the precedence (the app's preference for its own engine, the project setting otherwise).
+- **Interfaces:** engine command for the autosave config (name it in the session namespace, e.g. `project.set_autosave{enabled, interval_s, keep_backups}`); Settings > Saving; title-bar save status.
+- **Acceptance criteria:**
+  - Unit: the engine applies a new config at once (an interval change takes effect for the current dirty period); disabling stops autosaves; the command never marks the project dirty; kept backups follow the setting.
+  - **A user flow (ADR-0018):** in Settings turn autosave off, edit, wait past the interval: the status says unsaved and the file on disk is unchanged. Turn it on with 30 s: the edit is saved, the status says saved. The choice survives a relaunch.
+  - The title bar has no Save button; File > Save and Ctrl+S still save.
+- **Tests:** unit, Vitest, user flow.
+- **Out of scope:** cloud sync, version history UI (backups stay files in `.cutweave/backups/`).
+
 ### WP-1O.01 — Golden-frame test infrastructure
 - **Area:** `crates/cutweave-render/tests`, `testdata/golden`, `xtask`, `.github/workflows`
 - **Depends on:** WP-1F.03, WP-0J.02, WP-0F.03 (adapter behaviour notes), WP-0I.01, WP-0I.04 (macOS reference runner)
