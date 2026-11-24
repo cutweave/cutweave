@@ -9,6 +9,7 @@ import {
   type IconName,
   SegmentedControl,
   StatusChip,
+  Tooltip,
 } from "@cutweave/ui";
 import {
   type DragEvent,
@@ -45,6 +46,12 @@ import { translator } from "../timeline/errors.ts";
 import { EmptyState } from "./EmptyState.tsx";
 
 type MediaLayout = "grid" | "list";
+
+/** The modifier key cap for tooltips: ⌘ on macOS, Ctrl elsewhere. */
+function modifierKey(): string {
+  const platform = typeof navigator === "undefined" ? "" : navigator.platform;
+  return /mac/i.test(platform) ? "⌘" : "Ctrl";
+}
 
 /** Session-wide, like the other panel toggles: the layout survives switching asset tabs. */
 const layoutStore = createStore<{ layout: MediaLayout; set(layout: MediaLayout): void }>()(
@@ -457,28 +464,33 @@ export function MediaPanel() {
       onDrop={onDrop}
     >
       <div className="cw-media__tools">
-        <Button
-          size="sm"
-          icon="upload"
-          disabled={!ready || importer.busy}
-          onClick={() => void importer.pickAndImport()}
-        >
-          {importLabel}
-        </Button>
-        <IconButton
-          size="sm"
-          icon="trash-2"
-          label={t("mediaBin.remove.button")}
-          disabled={selectedCard === undefined}
-          onClick={() => requestRemove(selectedCard)}
-        />
+        {/* Icons with tooltips: the panel is narrow and its toolbar is for doing, not reading. */}
+        <Tooltip label={importLabel} keys={[modifierKey(), "I"]}>
+          <IconButton
+            size="sm"
+            icon="upload"
+            label={importLabel}
+            disabled={!ready || importer.busy}
+            onClick={() => void importer.pickAndImport()}
+          />
+        </Tooltip>
+        <Tooltip label={t("mediaBin.remove.button")}>
+          <IconButton
+            size="sm"
+            icon="trash-2"
+            label={t("mediaBin.remove.button")}
+            disabled={selectedCard === undefined}
+            onClick={() => requestRemove(selectedCard)}
+          />
+        </Tooltip>
         <SegmentedControl
           className="cw-media__layout"
           aria-label={t("mediaBin.layout.label")}
           value={layout}
+          iconOnly
           options={[
-            { value: "grid", label: t("mediaBin.layout.grid") },
-            { value: "list", label: t("mediaBin.layout.list") },
+            { value: "grid", label: t("mediaBin.layout.grid"), icon: "layout-grid" },
+            { value: "list", label: t("mediaBin.layout.list"), icon: "list" },
           ]}
           onChange={(next) => layoutStore.getState().set(next)}
         />
