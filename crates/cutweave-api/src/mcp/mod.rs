@@ -51,6 +51,7 @@ pub mod proxy;
 pub mod resources;
 pub mod results;
 pub mod stdio;
+pub mod switch;
 
 use std::sync::Arc;
 

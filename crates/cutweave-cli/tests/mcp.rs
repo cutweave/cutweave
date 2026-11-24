@@ -14,6 +14,7 @@ use std::path::Path;
 use std::process::{Command, Output, Stdio};
 use std::time::{Duration, Instant};
 
+use cutweave_api::mcp::switch::PROXY_TOOLS;
 use cutweave_api::mcp::{ListSize, P1_GATE};
 use rmcp::{
     ClientHandler, ClientLifecycleMode, ClientServiceExt as _, RoleClient, ServiceExt as _,
@@ -158,6 +159,14 @@ impl Agent {
             .expect("wait");
         (status.code(), stderr.await.unwrap_or_default())
     }
+}
+
+/// The tools of the engine in `tools`: an attach proxy's list also has its own (WP-1J.04).
+fn engine_tools(tools: &[rmcp::model::Tool]) -> usize {
+    tools
+        .iter()
+        .filter(|t| !PROXY_TOOLS.contains(&&*t.name))
+        .count()
 }
 
 /// A stub media file (`--dev-stub-media` probes by extension).
@@ -552,7 +561,10 @@ async fn attach_edits_the_running_engines_document() {
     let agent = Agent::start(&["--attach", "--run-file", &run_file], Revision::Stateful).await;
     assert_eq!(agent.negotiated(), Revision::Stateful.version());
     let tools = agent.tools().await;
-    assert_eq!(tools.len(), 19);
+    // The dev-stub engine's 19 (no renderer, so no `render_frame`; the full engine lists 20, the
+    // P1 gate) plus the proxy's own `engines_list` and `engine_attach`.
+    assert_eq!(engine_tools(&tools), 19);
+    assert_eq!(tools.len(), 19 + PROXY_TOOLS.len());
     scripted_edit(&agent, &clip).await;
     // The same document through the engine's `/rpc`.
     let out = cutweave(&["query", "project.info", "--run-dir", &run]);
@@ -585,7 +597,8 @@ async fn attach_edits_the_running_engines_document() {
     .await;
     assert_eq!(agent.negotiated(), Revision::Stateless.version());
     let tools = agent.tools().await;
-    assert!(tools.len() <= 12, "{}", tools.len());
+    // The proxy adds its own two tools (WP-1J.04) to the engine's list; the budget is the engine's.
+    assert!(engine_tools(&tools) <= 12, "{}", tools.len());
     let info = agent.ok("project_info", json!({})).await;
     assert_eq!(info["name"], "Stdio cut");
 

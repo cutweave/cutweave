@@ -79,7 +79,7 @@ flowchart TB
 
 - **One binary, many modes.** `cutweave` is a single Rust executable:
   - `cutweave engine` runs the daemon the GUI uses.
-  - `cutweave mcp --attach` is an MCP stdio proxy to the running GUI engine.
+  - `cutweave mcp --attach` is an MCP stdio proxy to a running engine: the GUI engine whose window had the focus last, unless `--project` or `--pid` names another (several engines: ADR-0021; the proxy adds `engines_list` and `engine_attach`).
   - `cutweave mcp --headless` is an MCP server on an in-process engine.
   - `cutweave exec` / `cutweave query` send JSON commands.
   - `cutweave render` performs headless export.
@@ -632,7 +632,7 @@ flowchart LR
 
 - **Transports:**
   - Streamable HTTP on the engine's localhost server.
-  - `cutweave mcp --attach` (stdio proxy into the running GUI, so the user watches the agent edit live).
+  - `cutweave mcp --attach` (stdio proxy into the running GUI, so the user watches the agent edit live; with several engines it takes the focused window's, or the one `--project` names, and switches with `engine_attach`; ADR-0021).
   - `cutweave mcp --headless --project X` (no GUI; CI and servers).
   - Built on the official Rust SDK **`rmcp`** (pinned).
   - **Both spec revisions** are supported: 2025-11-25 (stateful) and 2026-07-28 (stateless).

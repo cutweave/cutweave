@@ -8,16 +8,26 @@ One binary (ADR-0002): `cutweave engine` is the engine process the desktop app s
 
 `exec` and `query` need an engine:
 
-- **Attach (default).** The CLI reads the run-files in `--run-dir` (default `~/.cutweave/run`), picks the one engine that is running (`--pid` chooses among several), connects to `ws://127.0.0.1:<port>/rpc` with the run-file's `cli` agent token and sends JSON-RPC calls, each with a fresh `_meta.request_id`. Edits are visible to everyone else attached (the desktop UI included) and land in the engine's history as the actor `agent:cli`.
-- **Spawn.** With `--headless`, `--project`, `--deterministic-ids`, `--allow-root` or `--dev-stub-media` the CLI starts a one-shot engine inside the process (no server, no run-file), runs the request and shuts it down. Nothing is saved unless the request saves (`--save`, or the `project.save` command): unsaved work stays in the journal, as for any engine. A project another process holds is `project_locked`.
+- **Attach (default).** The CLI reads the run-files in `--run-dir` (default `~/.cutweave/run`), picks the engine ([Choosing an engine](#choosing-an-engine)), connects to `ws://127.0.0.1:<port>/rpc` with the run-file's `cli` agent token and sends JSON-RPC calls, each with a fresh `_meta.request_id`. Edits are visible to everyone else attached (the desktop UI included) and land in the engine's history as the actor `agent:cli`.
+- **Spawn.** With `--headless`, `--deterministic-ids`, `--allow-root` or `--dev-stub-media` the CLI starts a one-shot engine inside the process (no server, no run-file), runs the request and shuts it down. Nothing is saved unless the request saves (`--save`, or the `project.save` command): unsaved work stays in the journal, as for any engine. A project another process holds is `project_locked`.
 
 Agents and the CLI are confined to the folders of `--allow-root` plus the project folder (launch-protocol.md, "Path policy").
+
+## Choosing an engine
+
+Several engines can run at once: the desktop app's, and any started with `cutweave engine --headless`. `cutweave engines [--json]` lists them (pid, mode, project, port, start, last focus), newest focus first. `exec`, `query` and `mcp --attach` choose one like this:
+
+1. `--project <name or path>` takes the engine that has that project open. A name matches case-insensitively; a path matches the project folder or its `.cutweave` document. No match is exit 3 with the list of engines. (A path that exists but is open in no engine starts a one-shot engine on it, as `--project` always did; `mcp --attach` never does.)
+2. `--pid <pid>` takes that engine.
+3. With neither flag, the app's engine whose window had the focus last, the window the person is looking at. A headless engine is taken only when it is the only engine; several headless engines and no app are exit 3 (`ambiguous_engine`), with the list and how to choose.
+
+So an agent configured with plain `cutweave mcp --attach` edits what the person has in front of them, and needs no pid in its config. It can also look and switch from inside the session: the attach proxy adds two tools of its own, `engines_list` and `engine_attach {project | pid}`, and sends `notifications/tools/list_changed` when the new engine's tool list differs. The engine's own `/mcp` endpoint lists neither tool.
 
 ## MCP over stdio
 
 `cutweave mcp` is the command an agent host (Claude Code, Codex, Gemini CLI, Cursor) starts as a stdio MCP server; [mcp-clients.md](mcp-clients.md) has the setup for each.
 
-- **Attach (default, `--attach`).** A proxy to a running engine's MCP endpoint (`/mcp`, or `/mcp/minimal` and `/mcp/full` for `--profile`), found like `exec` finds its engine (or named with `--run-file`) and authenticated with the run-file's `mcp` agent token: the agent edits the document the desktop app shows, as `agent:mcp`. Messages pass through unchanged, so the agent negotiates the MCP revision with the engine (2025-11-25 or 2026-07-28).
+- **Attach (default, `--attach`).** A proxy to a running engine's MCP endpoint (`/mcp`, or `/mcp/minimal` and `/mcp/full` for `--profile`), found like `exec` finds its engine (or named with `--run-file`), with the two proxy tools of [Choosing an engine](#choosing-an-engine), and authenticated with the run-file's `mcp` agent token: the agent edits the document the desktop app shows, as `agent:mcp`. Messages pass through unchanged, so the agent negotiates the MCP revision with the engine (2025-11-25 or 2026-07-28).
 - **Headless (`--headless`, `--project`, `--allow-root`, ...).** An engine in this process, with no HTTP server and no run-file, serves MCP over stdio as `agent:mcp`, on either revision. It logs to `~/.cutweave/logs` like `cutweave engine` (`--log-dir`, `--no-log`).
 
 Stdout carries protocol frames only. Closing stdin ends the session, and the engine rolls back a transaction the session left open. When an attached engine goes away, requests in flight get a JSON-RPC error (`data.code` `connection_lost`) and the process exits 3.
@@ -35,7 +45,7 @@ Results are one JSON object on stdout: `{"rev", "committed_rev", "output"}` for 
 | 0 | Success |
 | 1 | The command, query or export failed (the error JSON has the engine's machine `code`) |
 | 2 | Usage: bad arguments or input |
-| 3 | No engine to attach to, several running without `--pid`, or the connection was lost |
+| 3 | No engine to attach to, none matches `--project` or `--pid`, several headless engines and no app without a choice, or the connection was lost |
 | 64 | Reserved subcommand not built yet (`worker`) |
 
 For `cutweave engine` the exit codes are the launch protocol's (0, 1, 2, 10-13).
@@ -53,6 +63,7 @@ Commands:
   engine    Run the engine process (the launch protocol Electron main and scripts speak)
   exec      Run a command, or several as one transaction, and print the result
   query     Run a query and print the result
+  engines   List the running engines: pid, mode, project, port, start and last focus
   commands  List the registered commands and queries
   describe  Print one command's description and JSON Schemas
   render    Export a sequence to a media file (needs the media backend; not available yet)
@@ -147,11 +158,11 @@ Engine selection:
       --headless
           Start a one-shot engine in this process instead of attaching to a running one
 
-      --project <PATH>
-          Open this project folder or `.cutweave` file in the spawned engine (implies --headless)
+      --project <NAME|PATH>
+          Attach to the running engine that has this project open: a project name (any case) or the path of a project folder or `.cutweave` file. When none has it and the path exists, a one-shot engine opens it. With --headless or a spawn-only flag, always the one-shot engine
 
       --pid <PID>
-          Attach to the engine with this process id when several are running
+          Attach to the engine with this process id. Without --project and --pid the command takes the app's engine whose window had the focus last (`cutweave engines` lists them); with several headless engines and no app, it exits 3
 
       --run-dir <DIR>
           Directory holding the engines' run-files (default `~/.cutweave/run`)
@@ -189,11 +200,11 @@ Engine selection:
       --headless
           Start a one-shot engine in this process instead of attaching to a running one
 
-      --project <PATH>
-          Open this project folder or `.cutweave` file in the spawned engine (implies --headless)
+      --project <NAME|PATH>
+          Attach to the running engine that has this project open: a project name (any case) or the path of a project folder or `.cutweave` file. When none has it and the path exists, a one-shot engine opens it. With --headless or a spawn-only flag, always the one-shot engine
 
       --pid <PID>
-          Attach to the engine with this process id when several are running
+          Attach to the engine with this process id. Without --project and --pid the command takes the app's engine whose window had the focus last (`cutweave engines` lists them); with several headless engines and no app, it exits 3
 
       --run-dir <DIR>
           Directory holding the engines' run-files (default `~/.cutweave/run`)
@@ -207,6 +218,24 @@ Spawned engine:
 
       --dev-stub-media
           Dev only: fake media probing in the spawned engine (implies --headless). `CUTWEAVE_DEV_STUB_MEDIA=1` does the same
+```
+
+### `cutweave engines`
+
+```text
+List the running engines: pid, mode, project, port, start and last focus
+
+Usage: cutweave engines [OPTIONS]
+
+Options:
+      --json
+          Print a JSON array instead of a table
+
+      --run-dir <DIR>
+          Directory holding the engines' run-files (default `~/.cutweave/run`)
+
+  -h, --help
+          Print help
 ```
 
 ### `cutweave commands`
@@ -312,11 +341,11 @@ Engine selection:
       --headless
           Start a one-shot engine in this process instead of attaching to a running one
 
-      --project <PATH>
-          Open this project folder or `.cutweave` file in the spawned engine (implies --headless)
+      --project <NAME|PATH>
+          Attach to the running engine that has this project open: a project name (any case) or the path of a project folder or `.cutweave` file. When none has it and the path exists, a one-shot engine opens it. With --headless or a spawn-only flag, always the one-shot engine
 
       --pid <PID>
-          Attach to the engine with this process id when several are running
+          Attach to the engine with this process id. Without --project and --pid the command takes the app's engine whose window had the focus last (`cutweave engines` lists them); with several headless engines and no app, it exits 3
 
       --run-dir <DIR>
           Directory holding the engines' run-files (default `~/.cutweave/run`)

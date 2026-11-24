@@ -76,6 +76,26 @@ Every command that takes a filesystem path (`media.import`, `project.open`, `pro
 
 **Default:** without `--allow-root`, an agent of a headless or oneshot engine can use only the project it was started with (`--project`) and whatever project is open. An engine started without `--project` and without `--allow-root` accepts no path from agents (in Gui mode, until the user opens a project). Automation that creates projects or imports media from elsewhere passes `--allow-root`.
 
+## The run-file
+
+A server engine (not a one-shot) writes `<run-dir>/<pid>.json` when it is ready and removes it when it stops. It tells local clients how to attach and which engine is which (`cutweave engines`, `--project`, `engines_list`; [cli.md](cli.md#choosing-an-engine)). User-only permissions; **agent tokens only, never the UI credential**.
+
+| Field | Meaning |
+|---|---|
+| `pid`, `port`, `version` | The engine process, its loopback port and version. |
+| `agent_tokens` | `[{label, token}]` for `cli` (`/rpc`) and `mcp` (`/mcp`). |
+| `mode` | `gui` for the app's engine (it was given a UI credential), else `headless`. |
+| `project` | `{name, path}` of the project open now (`path` is the project folder), or absent for an untitled document. Rewritten after every open, close, save and recovery; a rename shows after the next save. A file from before this field holds a bare path and is read as a project named after its folder. |
+| `started` | Start time, seconds since the Unix epoch. |
+| `focused_at` | GUI engines only: when the window last gained the focus, milliseconds since the Unix epoch. Absent until it has. Written by `project.report_focus`. |
+| `shm` | Name of the preview ring (WP-1I.05), if any. |
+
+**Writes are atomic.** Every write goes to `<pid>.tmp` (user-only from the first byte) and is renamed over `<pid>.json`, so a reader sees the old file or the new one and never none or half of one. The engine serializes its rewrites (project, focus, ring) so none loses another's field, and never recreates the file once shutdown removed it. **Stale files** (an engine killed with `kill -9`) are ignored by readers when their pid is not running, and reaped at the next engine start.
+
+**Focus.** `project.report_focus` is an engine command in the `ui` scope (UI credential only, ADR-0016) and `mcp = "hidden"`: no agent can call it or see it. Electron main sends it on every `focus` of the window, and once after the control connection opens (also after a supervised restart) if the window is focused then. The engine stamps its own clock and rewrites `focused_at`.
+
+**Choosing.** Newest `focused_at` first; with `--project` the engine with that project (name case-insensitive, or a project folder or `.cutweave` path); with neither, the GUI engine focused last, else the only engine, else exit 3 with the list.
+
 ## Logs and crash marker
 
 - **Log file:** `~/.cutweave/logs/engine-<pid>.log`, one JSON object per line (`ts`, `level`, `target`, `msg`, `fields`, `spans`, `thread`). Rotated at 10 MB; the directory keeps the newest 5 engine log files.
@@ -91,6 +111,7 @@ Dev builds of the desktop app (not packaged) add `--allow-root` for every folder
 - **Per launch:** the port main chose at app start (`--port`, so the renderer's CSP stays valid), a **new UI token for every engine process** (stdin only; the renderer fetches it again after a restart), `--allow-origin app://cutweave`, and `--project` when a project was open. The ready line has 10 s.
 - **States:** `starting → ready → crashed → restarting → ready`, plus `failed` and `stopped`. An exit after the ready line is a crash: restarts follow after 0.5 s, 1 s and 2 s; a fourth crash within 60 s is `failed`, and main asks Restart / Quit. Exit 12 picks a new port, restarts at once and reloads the editor with the new CSP; before every restart the old port is checked and replaced if taken. Exits 2, 10, 11 and 13 are `failed` at once; exit 1, a signal or a missing ready line count as crashes.
 - **Main's own connection:** after the ready line main connects to `/rpc` with the UI token, subscribes to the project events and reads `rpc.hello`, so it always knows which project to reopen. The engine is reported `ready` (and the renderer gets its credentials) only after that.
+- **Window focus:** main reports each focus gain of the window with `project.report_focus` (see [The run-file](#the-run-file)), and tells a fresh engine at once when the window is already focused.
 - **Supervised restart vs. cold open:** a supervised restart reopens the project the crashed engine held and main calls `project.recover` before reporting `ready`: the journal is replayed with **no prompt**, because it holds the work of the session the user was in seconds ago. A user's cold open of a project with unsaved work (`project.open`) instead gets `project.recovery_available` and the restore/discard dialog (WP-1M.07). If that dialog was still undecided when the engine crashed, the restart leaves the decision to the user. An untitled document is not journaled; a restart brings back an empty one.
 - **Quit:** stdin is closed (and SIGTERM sent on POSIX); after 3 s the engine is killed. Because a Gui engine stops on stdin EOF, an engine never outlives a crashed or killed Electron main.
 - **Test hook:** debug engine builds abort right after their Nth committed document command when `CUTWEAVE_TEST_CRASH_AFTER=N` is set (the reply is never sent; the journal holds the commit). Release builds ignore it.

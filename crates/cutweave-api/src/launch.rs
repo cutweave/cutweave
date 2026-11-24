@@ -16,6 +16,7 @@ use tokio::io::{AsyncBufRead, AsyncBufReadExt, AsyncReadExt};
 
 use crate::{
     creds::Token,
+    runfile::RunFileProject,
     server::{ApiConfig, ApiServer},
 };
 
@@ -110,7 +111,7 @@ where
         port: args.port,
         run_dir: args.run_dir,
         ui_token,
-        project: args.project,
+        project: args.project.as_deref().map(RunFileProject::from_path),
         allowed_origins: args.allowed_origins,
         ..ApiConfig::default()
     };

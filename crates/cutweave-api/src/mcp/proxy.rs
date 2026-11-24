@@ -25,8 +25,8 @@
 
 use std::collections::HashSet;
 use std::future::Future;
-use std::sync::Arc;
 use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::{Arc, Mutex, PoisonError};
 use std::time::Duration;
 
 use futures_util::{FutureExt as _, StreamExt as _, stream::FuturesUnordered};
@@ -35,7 +35,7 @@ use rmcp::{
         ClientJsonRpcMessage, ClientNotification, ErrorCode, ErrorData, JsonRpcMessage, RequestId,
         ServerJsonRpcMessage,
     },
-    service::RoleServer,
+    service::{RoleClient, RoleServer},
     transport::{
         StreamableHttpClientTransport, Transport, async_rw::AsyncRwTransport,
         streamable_http_client::StreamableHttpClientTransportConfig,
@@ -45,7 +45,9 @@ use serde_json::json;
 use tokio::io::{AsyncRead, AsyncWrite};
 use tokio::sync::Notify;
 
+use crate::engines;
 use crate::mcp::Profile;
+use crate::mcp::switch::{self, Directory, Observed, Switchboard};
 
 /// How often the watchdog checks the engine while a request is in flight.
 pub const BUSY_CHECK: Duration = Duration::from_millis(400);
@@ -105,10 +107,32 @@ pub enum ProxyEnd {
     },
 }
 
+/// The upstream's HTTP transport. One function builds every one, so a switched-to engine's
+/// transport has the type of the first.
+fn open(upstream: &Upstream) -> impl Transport<RoleClient> + 'static {
+    StreamableHttpClientTransport::from_config(
+        StreamableHttpClientTransportConfig::with_uri(upstream.url.clone())
+            .auth_header(upstream.token.clone()),
+    )
+}
+
+/// What the watchdog asks: whether the engine in use still runs. `engine_attach` replaces it.
+type Alive = Arc<Mutex<Arc<dyn Fn() -> bool + Send + Sync>>>;
+
 /// Proxies the process's stdin and stdout to `upstream`.
 pub async fn proxy_stdio(upstream: Upstream, shutdown: impl Future<Output = ()>) -> ProxyEnd {
+    proxy_stdio_with(upstream, None, shutdown).await
+}
+
+/// [`proxy_stdio`] with the tools `engines_list` and `engine_attach` (`directory` says where
+/// the engines are).
+pub async fn proxy_stdio_with(
+    upstream: Upstream,
+    directory: Option<Directory>,
+    shutdown: impl Future<Output = ()>,
+) -> ProxyEnd {
     let (read, write) = rmcp::transport::stdio_pipes();
-    proxy(upstream, read, write, shutdown).await
+    proxy_with(upstream, directory, read, write, shutdown).await
 }
 
 /// Proxies `read` (client to server) and `write` (server to client), one JSON-RPC message per
@@ -123,20 +147,37 @@ where
     R: AsyncRead + Send + Unpin + 'static,
     W: AsyncWrite + Send + Unpin + 'static,
 {
+    proxy_with(upstream, None, read, write, shutdown).await
+}
+
+/// [`proxy`] with the proxy tools of [`switch`] when `directory` is given: the client can list
+/// the engines and move to another one (`engine_attach`) without restarting.
+// One select loop over five sources; splitting it would mean passing its whole state around.
+#[allow(clippy::too_many_lines)]
+pub async fn proxy_with<R, W>(
+    upstream: Upstream,
+    directory: Option<Directory>,
+    read: R,
+    write: W,
+    shutdown: impl Future<Output = ()>,
+) -> ProxyEnd
+where
+    R: AsyncRead + Send + Unpin + 'static,
+    W: AsyncWrite + Send + Unpin + 'static,
+{
     let mut down = AsyncRwTransport::<RoleServer, R, W>::new_server(read, write);
-    let mut up = StreamableHttpClientTransport::from_config(
-        StreamableHttpClientTransportConfig::with_uri(upstream.url.clone())
-            .auth_header(upstream.token.clone()),
-    );
-    let pid = upstream.pid;
+    let mut up = open(&upstream);
+    let mut pid = upstream.pid;
+    let mut board = directory.map(Switchboard::new);
     // Upstream sends complete when their POST does; they stay alive until then, because
     // dropping one cancels its request. Pushed in arrival order, they reach the upstream
     // worker in that order.
     let mut sends = FuturesUnordered::new();
     let mut flight = InFlight::default();
     let mut last_error: Option<String> = None;
+    let alive: Alive = Arc::new(Mutex::new(Arc::clone(&upstream.alive)));
     let watchdog = watch_engine(
-        Arc::clone(&upstream.alive),
+        Arc::clone(&alive),
         Arc::clone(&flight.busy),
         Arc::clone(&flight.kick),
     );
@@ -174,20 +215,105 @@ where
                     };
                 };
                 flight.answered(&message);
+                let message = match board.as_mut() {
+                    Some(board) => board.patch(message),
+                    None => message,
+                };
                 if down.send(message).await.is_err() {
                     // Stdout is gone: so is the client.
                     break ProxyEnd::InputClosed;
                 }
             }
             message = down.receive(), if input_open => {
-                if let Some(message) = message {
-                    let id = flight.sent(&message);
-                    sends.push(up.send(message).map(move |sent| (id, sent)));
-                } else {
+                let Some(message) = message else {
                     input_open = false;
                     drained
                         .as_mut()
                         .reset(tokio::time::Instant::now() + DRAIN_TIMEOUT);
+                    continue;
+                };
+                let observed = match board.as_mut() {
+                    Some(board) => board.observe(&message),
+                    None => Observed::Forward,
+                };
+                let (id, tool, args) = match observed {
+                    Observed::Forward => {
+                        let id = flight.sent(&message);
+                        sends.push(up.send(message).map(move |sent| (id, sent)));
+                        continue;
+                    }
+                    Observed::Call { id, tool, args } => (id, tool, args),
+                };
+                let Some(board) = board.as_mut() else { continue };
+                let engines = {
+                    let dir = board.run_dir().to_path_buf();
+                    tokio::task::spawn_blocking(move || engines::list(&dir))
+                        .await
+                        .unwrap_or_default()
+                };
+                let mut notify = false;
+                let outcome = if tool == "engines_list" {
+                    Ok(board.engines_list(&engines, pid))
+                } else {
+                    match board.resolve(&args, engines, pid) {
+                        Err(error) => Err(error),
+                        Ok(None) => Ok(json!({"attached": {"pid": pid}, "catalog_changed": false})),
+                        Ok(Some(engine)) => match board.upstream(&engine) {
+                            None => Err(switch::tool_error(
+                                "no_credential",
+                                "the engine's run-file has no `mcp` token",
+                            )),
+                            Some(target) => {
+                                let mut next = open(&target);
+                                match board.connect(&mut next, &engine).await {
+                                    Err(error) => {
+                                        let _ = tokio::time::timeout(CLOSE_TIMEOUT, next.close()).await;
+                                        Err(error)
+                                    }
+                                    Ok(switched) => {
+                                        // The new engine answers: the old session ends and
+                                        // whatever was in flight on it is over.
+                                        sends.clear();
+                                        let mut old = std::mem::replace(&mut up, next);
+                                        if tokio::time::timeout(CLOSE_TIMEOUT, old.close())
+                                            .await
+                                            .is_err()
+                                        {
+                                            tracing::warn!("MCP proxy: ending the old session timed out");
+                                        }
+                                        let note = format!(
+                                            "the client moved to engine {}; this request did not finish",
+                                            target.pid
+                                        );
+                                        for pending in flight.pending.drain() {
+                                            let _ = down.send(switched_error(pending, &note)).await;
+                                        }
+                                        flight.busy.store(false, Ordering::Relaxed);
+                                        pid = target.pid;
+                                        *alive.lock().unwrap_or_else(PoisonError::into_inner) =
+                                            Arc::clone(&target.alive);
+                                        if switched.catalog_changed {
+                                            tracing::info!("MCP proxy: the engine's tools differ");
+                                        }
+                                        notify = switched.catalog_changed;
+                                        Ok(switched.result)
+                                    }
+                                }
+                            }
+                        },
+                    }
+                };
+                let (value, is_error) = match &outcome {
+                    Ok(value) => (value, false),
+                    Err(value) => (value, true),
+                };
+                if let Some(reply) = switch::tool_result(&id, value, is_error) {
+                    let _ = down.send(reply).await;
+                }
+                if std::mem::take(&mut notify)
+                    && let Some(changed) = switch::list_changed()
+                {
+                    let _ = down.send(changed).await;
                 }
             }
             () = &mut watchdog => break ProxyEnd::Lost {
@@ -293,6 +419,18 @@ fn cancelled(message: &ClientJsonRpcMessage) -> Option<&RequestId> {
     }
 }
 
+/// The error a request in flight gets when the client moves to another engine.
+fn switched_error(id: RequestId, message: &str) -> ServerJsonRpcMessage {
+    ServerJsonRpcMessage::error(
+        ErrorData::new(
+            ErrorCode::INTERNAL_ERROR,
+            message.to_owned(),
+            Some(json!({"code": "engine_switched"})),
+        ),
+        Some(id),
+    )
+}
+
 /// The error a request in flight gets when the engine is gone.
 fn lost_error(id: RequestId, message: &str, pid: u32) -> ServerJsonRpcMessage {
     ServerJsonRpcMessage::error(
@@ -310,11 +448,7 @@ fn lost_error(id: RequestId, message: &str, pid: u32) -> ServerJsonRpcMessage {
 }
 
 /// Completes when `alive` says the engine is gone (see the module docs).
-async fn watch_engine(
-    alive: Arc<dyn Fn() -> bool + Send + Sync>,
-    busy: Arc<AtomicBool>,
-    kick: Arc<Notify>,
-) {
+async fn watch_engine(alive: Alive, busy: Arc<AtomicBool>, kick: Arc<Notify>) {
     loop {
         let interval = if busy.load(Ordering::Relaxed) {
             BUSY_CHECK
@@ -325,7 +459,7 @@ async fn watch_engine(
             () = tokio::time::sleep(interval) => {}
             () = kick.notified() => {}
         }
-        let check = Arc::clone(&alive);
+        let check = Arc::clone(&alive.lock().unwrap_or_else(PoisonError::into_inner));
         if !tokio::task::spawn_blocking(move || check())
             .await
             .unwrap_or(true)

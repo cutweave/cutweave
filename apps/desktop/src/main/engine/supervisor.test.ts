@@ -627,3 +627,54 @@ describe("stop", () => {
     expect(h.last().signals).toEqual(["SIGKILL"]);
   });
 });
+
+describe("window focus (WP-1J.04)", () => {
+  const reports = (rpc: FakeRpc | undefined) =>
+    rpc?.calls.filter((c) => c.method === "project.report_focus") ?? [];
+
+  it("reports every focus gain to the engine, and nothing on a blur", async () => {
+    const h = harness();
+    void h.sup.start();
+    await flush();
+    await h.ready();
+    expect(reports(h.rpcs[0])).toHaveLength(0);
+
+    h.sup.setWindowFocused(true);
+    await flush();
+    h.sup.setWindowFocused(false);
+    await flush();
+    expect(reports(h.rpcs[0])).toHaveLength(1);
+    h.sup.setWindowFocused(true);
+    await flush();
+    const sent = reports(h.rpcs[0]);
+    expect(sent).toHaveLength(2);
+    const meta = sent[0]?.params?._meta as { request_id?: string } | undefined;
+    expect(meta?.request_id).toMatch(/^[0-9a-f]{8}-[0-9a-f]{4}-7[0-9a-f]{3}-/);
+  });
+
+  it("tells an engine that starts under a focused window, also after a restart", async () => {
+    const h = harness();
+    h.sup.setWindowFocused(true);
+    void h.sup.start();
+    await flush();
+    await h.ready();
+    expect(reports(h.rpcs[0])).toHaveLength(1);
+
+    h.last().exit(null, "SIGKILL");
+    await flush();
+    await vi.advanceTimersByTimeAsync(500);
+    await flush();
+    h.last().ready();
+    await flush();
+    expect(reports(h.rpcs[1])).toHaveLength(1);
+  });
+
+  it("does not tell an engine while the window is not focused", async () => {
+    const h = harness();
+    h.sup.setWindowFocused(false);
+    void h.sup.start();
+    await flush();
+    await h.ready();
+    expect(reports(h.rpcs[0])).toHaveLength(0);
+  });
+});

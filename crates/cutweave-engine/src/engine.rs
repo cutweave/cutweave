@@ -32,7 +32,7 @@ use std::time::{Duration, Instant};
 
 use cutweave_api::{
     ApiConfig, ApiError, ApiServer, Credential, Credentials, RunFile, RunFileContents,
-    RunningServer,
+    RunFileProject, RunningServer,
 };
 use cutweave_commands::{
     Access, ActorCtx, Clock, CmdError, ConnId, DocHandle, DocSnapshot, ManualClock, Registry,
@@ -551,27 +551,79 @@ impl Core {
         Ok(())
     }
 
+    /// Rewrites the run-file (atomically) with `change`, which says whether it changed
+    /// anything. The lock is held throughout, so rewrites do not lose each other's fields and
+    /// none recreates the file after shutdown removed it.
+    fn update_run_file(&self, what: &str, change: impl FnOnce(&mut RunFileContents) -> bool) {
+        let guard = self.run_file.lock().unwrap_or_else(PoisonError::into_inner);
+        let Some(path) = guard.as_ref() else { return };
+        if let Err(e) = RunFile::update(path, change) {
+            tracing::warn!(error = %e, "could not update the run-file's {what}");
+        }
+    }
+
     /// Rewrites the run-file's `shm` with the current preview ring (on the blocking pool).
     pub(crate) fn preview_ring_changed(self: &Arc<Self>) {
         let core = Arc::clone(self);
         self.runtime.spawn_blocking(move || {
-            let path = core
-                .run_file
-                .lock()
-                .unwrap_or_else(PoisonError::into_inner)
-                .clone();
-            let Some(path) = path else { return };
-            if let Err(e) = rewrite_run_file_shm(&path, core.deps.subsystems.preview_ring_name()) {
-                tracing::warn!(error = %e, "could not update the run-file's preview ring");
-            }
+            let shm = core.deps.subsystems.preview_ring_name();
+            core.update_run_file("preview ring", |c| {
+                let changed = c.shm != shm;
+                c.shm = shm;
+                changed
+            });
         });
+    }
+
+    /// The open project as the run-file records it: none for an untitled document.
+    fn run_file_project(&self) -> Option<RunFileProject> {
+        let guard = self.session().ok()?;
+        let session = guard.as_ref()?;
+        let root = session.project_root()?;
+        Some(RunFileProject {
+            name: session.status().name,
+            path: root.to_string_lossy().into_owned(),
+        })
+    }
+
+    /// Rewrites the run-file's `project` to what is open now (on the blocking pool). Called
+    /// after every open, close, save and recovery, so `cutweave engines` and the choice of an
+    /// engine by project stay right. A rename shows after the next save.
+    pub(crate) fn project_changed(self: &Arc<Self>) {
+        let core = Arc::clone(self);
+        self.runtime.spawn_blocking(move || {
+            let project = core.run_file_project();
+            core.update_run_file("project", |c| {
+                let changed = c.project != project;
+                c.project = project;
+                changed
+            });
+        });
+    }
+
+    /// Records that the window gained the focus (`project.report_focus`); returns the time,
+    /// milliseconds since the Unix epoch. The file is written on the blocking pool.
+    pub(crate) fn report_focus(self: &Arc<Self>) -> u64 {
+        let at = self.deps.clock.now().as_millis();
+        let core = Arc::clone(self);
+        self.runtime.spawn_blocking(move || {
+            core.update_run_file("focus time", |c| {
+                // Reports can overtake each other on the pool; the latest one stands.
+                let changed = c.focused_at.is_none_or(|old| old < at);
+                if changed {
+                    c.focused_at = Some(at);
+                }
+                changed
+            });
+        });
+        at
     }
 
     // ----- the session commands ----------------------------------------------------------------
 
     /// Swaps `slot`'s session for `next`, closing the old one (no save), and announces it.
     fn swap_session(
-        &self,
+        self: &Arc<Self>,
         slot: &mut Option<Session>,
         build: impl FnOnce(&Deps, Option<IdState>) -> Result<Session, CmdError>,
     ) -> Result<(Option<PathBuf>, ProjectStatus), CmdError> {
@@ -596,13 +648,17 @@ impl Core {
         let status = next.status();
         self.deps.subsystems.on_view(&Core::view_state(&next), true);
         *slot = Some(next);
+        self.project_changed();
         if let Some(e) = error {
             return Err(e);
         }
         Ok((closed, status))
     }
 
-    pub(crate) fn open_project(&self, path: &Path) -> Result<ProjectOpenOutput, CmdError> {
+    pub(crate) fn open_project(
+        self: &Arc<Self>,
+        path: &Path,
+    ) -> Result<ProjectOpenOutput, CmdError> {
         {
             // Opening the project that is already open changes nothing.
             let guard = self.session()?;
@@ -634,7 +690,10 @@ impl Core {
         })
     }
 
-    pub(crate) fn close_project(&self, save: Option<bool>) -> Result<ProjectCloseOutput, CmdError> {
+    pub(crate) fn close_project(
+        self: &Arc<Self>,
+        save: Option<bool>,
+    ) -> Result<ProjectCloseOutput, CmdError> {
         let mut slot = self.session_mut()?;
         if let Some(current) = slot.as_ref() {
             current.save_before_close(save)?;
@@ -662,16 +721,20 @@ impl Core {
         Ok(())
     }
 
-    pub(crate) fn save_project(&self) -> Result<ProjectSaveOutput, CmdError> {
+    pub(crate) fn save_project(self: &Arc<Self>) -> Result<ProjectSaveOutput, CmdError> {
         let guard = self.session()?;
         let Some(session) = guard.as_ref() else {
             return Err(stopped());
         };
         let (rev, path) = session.save()?;
+        self.project_changed();
         Ok(ProjectSaveOutput { path, rev })
     }
 
-    pub(crate) fn save_project_as(&self, folder: &Path) -> Result<ProjectSaveOutput, CmdError> {
+    pub(crate) fn save_project_as(
+        self: &Arc<Self>,
+        folder: &Path,
+    ) -> Result<ProjectSaveOutput, CmdError> {
         let mut slot = self.session_mut()?;
         let Some(current) = slot.as_mut() else {
             return Err(stopped());
@@ -681,6 +744,7 @@ impl Core {
             let status = current.status();
             let path = status.path.clone().unwrap_or_default();
             session::announce_opened(&self.deps, status);
+            self.project_changed();
             return Ok(ProjectSaveOutput { path, rev });
         }
         // Untitled or read-only: write a new project from the committed document and reopen
@@ -700,12 +764,16 @@ impl Core {
         })
     }
 
-    pub(crate) fn decide_recovery(&self, discard: bool) -> Result<ProjectRecoverOutput, CmdError> {
+    pub(crate) fn decide_recovery(
+        self: &Arc<Self>,
+        discard: bool,
+    ) -> Result<ProjectRecoverOutput, CmdError> {
         let mut slot = self.session_mut()?;
         let Some(current) = slot.as_mut() else {
             return Err(stopped());
         };
         let recovered = current.decide_recovery(&self.deps, discard)?;
+        self.project_changed();
         let status = current.status();
         session::announce_opened(&self.deps, status.clone());
         let damaged = recovered
@@ -826,26 +894,6 @@ impl EngineHandle {
     pub fn media_state(&self) -> Option<MediaState> {
         self.core.deps.subsystems.media_state()
     }
-}
-
-/// Sets the `shm` of the run-file at `path` (kept user-only by [`RunFile::write`]). A run-file
-/// that is gone (the engine is stopping) is not recreated.
-fn rewrite_run_file_shm(path: &Path, shm: Option<String>) -> std::io::Result<()> {
-    let text = match std::fs::read_to_string(path) {
-        Ok(text) => text,
-        Err(e) if e.kind() == std::io::ErrorKind::NotFound => return Ok(()),
-        Err(e) => return Err(e),
-    };
-    let mut contents: RunFileContents =
-        serde_json::from_str(&text).map_err(std::io::Error::other)?;
-    if contents.shm == shm {
-        return Ok(());
-    }
-    contents.shm = shm;
-    let dir = path
-        .parent()
-        .ok_or_else(|| std::io::Error::other("the run-file has no folder"))?;
-    RunFile::write(dir, &contents).map(|_| ())
 }
 
 /// Every command the core engine serves: `cutweave-ops`, the `edit.*` commands and the
@@ -1057,10 +1105,7 @@ impl Engine {
             Some(factory) => factory(self.handle()),
             None => cutweave_api::Mounts::default(),
         };
-        let project = config
-            .project
-            .as_ref()
-            .map(|p| p.to_string_lossy().into_owned());
+        let project = self.core.run_file_project();
         let api = ApiConfig {
             port,
             run_dir: config.api.run_dir.clone(),

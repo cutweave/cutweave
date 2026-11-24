@@ -4,10 +4,11 @@
 use std::ffi::OsString;
 use std::fmt::Write as _;
 use std::io::Read;
-use std::path::Path;
+use std::path::{Path, PathBuf};
 
 use clap::Parser;
 use clap::error::ErrorKind;
+use cutweave_api::engines::Selector;
 use cutweave_commands::{EntryKind, Registry, SCHEMA_HASH};
 use cutweave_engine::dev_media::env_enables;
 use cutweave_engine::launch::{self, DETERMINISTIC_IDS_ENV, EXIT_USAGE as ENGINE_EXIT_USAGE};
@@ -15,9 +16,11 @@ use cutweave_engine::{DEV_STUB_MEDIA_ENV, VERSION, build_registry};
 use serde_json::{Value, json};
 
 use crate::cli::{
-    Cli, CommandsCmd, DescribeCmd, EngineCmd, ExecCmd, McpCmd, QueryCmd, RenderCmd, Sub, Target,
+    Cli, CommandsCmd, DescribeCmd, EngineCmd, EnginesCmd, ExecCmd, McpCmd, QueryCmd, RenderCmd,
+    Sub, Target,
 };
 use crate::failure::{EXIT_OK, Failure};
+use crate::remote;
 use crate::session::{Plan, Session, SpawnPlan, parse_request, run_request};
 
 /// What a successful subcommand prints.
@@ -60,6 +63,7 @@ where
         Sub::Engine(cmd) => return engine(&cmd),
         Sub::Exec(cmd) => exec(&cmd).map(Out::Json),
         Sub::Query(cmd) => query(&cmd).map(Out::Json),
+        Sub::Engines(cmd) => engines(&cmd),
         Sub::Commands(cmd) => commands(&cmd),
         Sub::Describe(cmd) => describe(&cmd).map(Out::Json),
         Sub::Render(cmd) => render(&cmd).map(Out::Json),
@@ -112,25 +116,42 @@ fn engine(cmd: &EngineCmd) -> i32 {
 }
 
 /// How the command reaches its engine.
+///
+/// It attaches to a running engine, chosen by `--pid` and `--project`, or else the app whose
+/// window had the focus last. `--project <path>` that no running engine has open starts a
+/// one-shot engine on that path, as it always has. `--headless` and the spawn-only flags
+/// always start a one-shot engine.
 fn plan(target: &Target) -> Result<Plan, Failure> {
-    let spawn = target.headless
-        || target.project.is_some()
+    let spawn_only = target.headless
         || target.deterministic_ids.is_some()
         || !target.allow_root.is_empty()
         || target.dev_stub_media;
-    if !spawn {
+    if !spawn_only {
+        let project = target.project.as_deref().map(str::trim);
+        let fallback = match project {
+            Some(p) if target.pid.is_none() && Path::new(p).exists() => Some(spawn_plan(target)?),
+            _ => None,
+        };
         return Ok(Plan::Attach {
             run_dir: target.run_dir.clone(),
-            pid: target.pid,
+            selector: Selector {
+                pid: target.pid,
+                project: project.map(str::to_owned),
+            },
+            fallback,
         });
     }
     if target.pid.is_some() || target.run_dir.is_some() {
         return Err(Failure::usage(
             "--pid and --run-dir attach to a running engine; they cannot be combined with \
-             --headless, --project, --deterministic-ids, --allow-root or --dev-stub-media, \
-             which start one",
+             --headless, --deterministic-ids, --allow-root or --dev-stub-media, which start one",
         ));
     }
+    spawn_plan(target).map(Plan::Spawn)
+}
+
+/// The one-shot engine `target` describes (`--project` is the project it opens).
+fn spawn_plan(target: &Target) -> Result<SpawnPlan, Failure> {
     let seed = match target.deterministic_ids {
         Some(seed) => Some(seed),
         None => std::env::var(DETERMINISTIC_IDS_ENV)
@@ -146,13 +167,70 @@ fn plan(target: &Target) -> Result<Plan, Failure> {
             })
             .transpose()?,
     };
-    Ok(Plan::Spawn(SpawnPlan {
-        project: target.project.clone(),
+    Ok(SpawnPlan {
+        project: target.project.as_deref().map(PathBuf::from),
         deterministic_ids: seed,
         allow_roots: target.allow_root.clone(),
         dev_stub_media: target.dev_stub_media
             || env_enables(std::env::var(DEV_STUB_MEDIA_ENV).ok().as_deref()),
-    }))
+    })
+}
+
+/// `cutweave engines`: the running engines, newest focus first.
+fn engines(cmd: &EnginesCmd) -> Result<Out, Failure> {
+    let dir = remote::run_dir(cmd.run_dir.as_deref())?;
+    let found = cutweave_api::engines::list(&dir);
+    if cmd.json {
+        return Ok(Out::Json(cutweave_api::engines::describe_all(&found)));
+    }
+    if found.is_empty() {
+        return Ok(Out::Text(format!(
+            "no engines running in {}\n",
+            dir.display()
+        )));
+    }
+    let mut table = format!(
+        "{:<7} {:<9} {:<6} {:<20} {:<20} PROJECT\n",
+        "PID", "MODE", "PORT", "STARTED", "FOCUSED"
+    );
+    for e in &found {
+        let project = e.project.as_ref().map_or_else(
+            || "(none)".to_owned(),
+            |p| format!("{} ({})", p.name, p.path),
+        );
+        let _ = writeln!(
+            table,
+            "{:<7} {:<9} {:<6} {:<20} {:<20} {project}",
+            e.pid,
+            e.mode.as_str(),
+            e.port,
+            clock(e.started.saturating_mul(1000)),
+            e.focused_at.map_or_else(|| "-".to_owned(), clock),
+        );
+    }
+    Ok(Out::Text(table))
+}
+
+/// `2026-11-24 09:41:07` (UTC) for a time in milliseconds since the Unix epoch.
+fn clock(millis: u64) -> String {
+    let secs = millis / 1000;
+    let (days, rest) = (secs / 86_400, secs % 86_400);
+    // Civil date from a day count (Howard Hinnant's algorithm).
+    let z = i64::try_from(days).unwrap_or(0) + 719_468;
+    let era = z.div_euclid(146_097);
+    let doe = z.rem_euclid(146_097);
+    let yoe = (doe - doe / 1460 + doe / 36_524 - doe / 146_096) / 365;
+    let doy = doe - (365 * yoe + yoe / 4 - yoe / 100);
+    let mp = (5 * doy + 2) / 153;
+    let day = doy - (153 * mp + 2) / 5 + 1;
+    let month = if mp < 10 { mp + 3 } else { mp - 9 };
+    let year = yoe + era * 400 + i64::from(month <= 2);
+    format!(
+        "{year:04}-{month:02}-{day:02} {:02}:{:02}:{:02}",
+        rest / 3600,
+        rest % 3600 / 60,
+        rest % 60
+    )
 }
 
 /// The JSON text of an argument: the argument itself, or stdin for `-`.
@@ -303,15 +381,23 @@ fn render(_cmd: &RenderCmd) -> Result<Value, Failure> {
 /// `cutweave mcp`: MCP over stdio (WP-1J.03). Returns the exit code; failures before the
 /// session starts are JSON on stderr.
 fn mcp(cmd: &McpCmd) -> i32 {
-    let checked = plan(&cmd.target).and_then(|plan| {
+    let checked = plan(&cmd.target).and_then(|mut plan| {
         let spawn = matches!(plan, Plan::Spawn(_));
+        // `--attach` never falls back to an engine of its own.
+        let mut may_spawn = spawn;
+        if let Plan::Attach { fallback, .. } = &mut plan {
+            if cmd.attach {
+                *fallback = None;
+            }
+            may_spawn = fallback.is_some();
+        }
         if cmd.attach && spawn {
             return Err(Failure::usage(
                 "--attach proxies to a running engine; it cannot be combined with \
                  --deterministic-ids, --allow-root or --dev-stub-media, which start one",
             ));
         }
-        if !spawn && (cmd.log_dir.is_some() || cmd.no_log) {
+        if !spawn && !may_spawn && (cmd.log_dir.is_some() || cmd.no_log) {
             return Err(Failure::usage(
                 "--log-dir and --no-log configure the in-process engine of --headless; an \
                  attached engine logs on its own",

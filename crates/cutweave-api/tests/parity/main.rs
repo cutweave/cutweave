@@ -572,11 +572,17 @@ fn every_registry_entry_is_reachable_with_the_registry_schema() {
                 other.map_err(|e| e.raw)
             )),
         }
-        // RPC: a method under the registry name.
+        // RPC: a method under the registry name. This client holds an agent credential, which a
+        // UI-only entry refuses before it looks at the params (ADR-0016).
+        let expected = if meta.scope == cutweave_commands::Scope::UiOnly {
+            "forbidden"
+        } else {
+            "invalid"
+        };
         match rpc.call(&call) {
-            Err(e) if e.code == "invalid" => {}
+            Err(e) if e.code == expected => {}
             other => problems.push(format!(
-                "`{name}`: RPC call with an unknown field: expected `invalid`, got {:?}",
+                "`{name}`: RPC call with an unknown field: expected `{expected}`, got {:?}",
                 other.map_err(|e| e.raw)
             )),
         }

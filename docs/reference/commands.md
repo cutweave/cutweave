@@ -2,7 +2,7 @@
 
 # Command reference
 
-Every command and query the engine registers (46 in total), generated from the registry. The full JSON Schemas are in `schema/commands.json` and `schema/queries.json`.
+Every command and query the engine registers (47 in total), generated from the registry. The full JSON Schemas are in `schema/commands.json` and `schema/queries.json`.
 
 MCP exposure: `core` commands are always listed as tools (`item.move` is `item_move`), `catalog` ones are reachable through the catalog tools, `hidden` ones are not exposed.
 
@@ -41,6 +41,7 @@ MCP exposure: `core` commands are always listed as tools (`item.move` is `item_m
 | project | `project.open` | Open a project folder or .cutweave file (closes the current project) | engine | core |
 | project | `project.recover` | Restore unsaved changes from the journal after a crash | engine | catalog |
 | project | `project.rename` | Rename the project | command, undoable, idempotent | catalog |
+| project | `project.report_focus` | The window gained the focus: record it for agent engine choice | engine, idempotent, ui-only | hidden |
 | project | `project.save` | Save the open project's committed state to its file | engine, idempotent | catalog |
 | project | `project.save_as` | Save the document as a new project folder and continue there | engine | catalog |
 | project | `project.set_autosave` | Set whether, how often and with how many backups the engine autosaves | engine, idempotent | catalog |

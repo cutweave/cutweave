@@ -32,11 +32,11 @@ Engine selection:
       --headless
           Start a one-shot engine in this process instead of attaching to a running one
 
-      --project <PATH>
-          Open this project folder or `.cutweave` file in the spawned engine (implies --headless)
+      --project <NAME|PATH>
+          Attach to the running engine that has this project open: a project name (any case) or the path of a project folder or `.cutweave` file. When none has it and the path exists, a one-shot engine opens it. With --headless or a spawn-only flag, always the one-shot engine
 
       --pid <PID>
-          Attach to the engine with this process id when several are running
+          Attach to the engine with this process id. Without --project and --pid the command takes the app's engine whose window had the focus last (`cutweave engines` lists them); with several headless engines and no app, it exits 3
 
       --run-dir <DIR>
           Directory holding the engines' run-files (default `~/.cutweave/run`)

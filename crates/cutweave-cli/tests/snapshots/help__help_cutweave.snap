@@ -12,6 +12,7 @@ Commands:
   engine    Run the engine process (the launch protocol Electron main and scripts speak)
   exec      Run a command, or several as one transaction, and print the result
   query     Run a query and print the result
+  engines   List the running engines: pid, mode, project, port, start and last focus
   commands  List the registered commands and queries
   describe  Print one command's description and JSON Schemas
   render    Export a sequence to a media file (needs the media backend; not available yet)

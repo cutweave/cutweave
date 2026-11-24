@@ -11,3 +11,7 @@
 [[exempt]]
 name = "media.register"
 reason = "Internal plumbing of media.import and the import job (WP-1D.07): it takes probe data from the caller. Agents import files with media_import, which probes them, so an agent cannot register made-up probe data. RPC and the CLI still reach it (the engine accepts it from any credential)."
+
+[[exempt]]
+name = "project.report_focus"
+reason = "The desktop app reporting that its window gained the focus (WP-1J.04), so an agent that names no engine gets the one the person is looking at. UI credential only (scope = \"ui\", ADR-0016): an agent has no window, and the focus is the app applying its own state to its engine, so no agent can or should call it. RPC reaches it with the UI credential and refuses agent tokens with forbidden."

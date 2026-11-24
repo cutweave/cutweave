@@ -34,7 +34,7 @@ use tracing::Instrument;
 use crate::{
     creds::{Credential, Credentials, CredentialsError, Token, hex},
     media::sign::{SIGNATURE_PARAM, SignError, UrlSigner},
-    runfile::{RunFile, RunFileContents, RunFileToken},
+    runfile::{RunFile, RunFileContents, RunFileProject, RunFileToken, RunMode},
 };
 
 /// Exit code of an engine whose port could not be bound (Electron main re-picks a port).
@@ -76,7 +76,7 @@ pub struct ApiConfig {
     /// Extra allowed `Origin` values (e.g. `app://cutweave`, configured by the launcher).
     pub allowed_origins: Vec<String>,
     /// The open project, recorded in the run-file.
-    pub project: Option<String>,
+    pub project: Option<RunFileProject>,
     /// Engine version, recorded in the run-file and the readiness line.
     pub version: String,
     /// Mount the `/_test/*` placeholder routes (the UI-only scope enforcement check). Tests
@@ -231,6 +231,12 @@ impl ApiServer {
                 })
                 .collect(),
             project: config.project.clone(),
+            mode: if config.ui_token.is_some() {
+                RunMode::Gui
+            } else {
+                RunMode::Headless
+            },
+            focused_at: None,
             started: SystemTime::now()
                 .duration_since(UNIX_EPOCH)
                 .map_or(0, |d| d.as_secs()),
