@@ -394,6 +394,13 @@ All surfaces live on **one local server per engine** (axum on `127.0.0.1`, rando
   - **Missing media** is drawn as missing (an absent layer, silent audio) and counted in the final message; it doesn't fail the export.
   - **Files:** one export per output path at a time. Replacing an existing file needs `overwrite: true`. Cancel stops within a second and leaves no file.
   - **Colour:** the pixels are sRGB-encoded while the file is tagged BT.709; that decision is still open (#110).
+- **Thumbnails, filmstrips and the frame cache (decided in WP-1D.05).**
+  - **Frame cache:** `FrameCache` holds decoded frames in RAM, keyed by `(content hash, stream, pts)`. Its budget is the smaller of 1 GiB and a quarter of RAM, with LRU eviction. Thumbnail generation does not go through it, so thumbnail decodes never evict scrub frames.
+  - **Disk cache:** thumbnails and filmstrips are JPEG files in the OS cache directory (`<cache>/cutweave/media-cache`), never in the project. Each file is a row of `disk_entries` in `cache.sqlite` (migration 2), capped at 2 GiB by default with LRU eviction. Deleting the folder loses nothing: a row whose file is missing is a miss.
+  - **Requests:** a thumbnail is `(media, t, width)`; a filmstrip is a sprite of `count` tiles of `tile_w`, wrapping at 8192 px, with a manifest giving tile `i` at column `i % columns`, row `i / columns`. Neither upscales. ETags are pure functions of the request, so the HTTP layer answers `If-None-Match` with 304 without decoding or touching the cache. The HTTP layer floors `t` to the frame grid.
+  - **Prefetch:** after import, an `Analysis` job (`thumbnails`) fills the cache under the decode budget; cancelling it stops the decode in flight.
+  - **Not yet:** container rotation and colour conversion are not applied to thumbnails. JPEG only (no WebP).
+- **Waveforms (decided in WP-1D.06).** Min/max peak pyramids (256 × 4^N samples per bin, `i16` peaks, a mono mix track plus optional per-channel tracks) are computed once per `(content hash, audio stream)` by decoding the audio. They are stored as **files** (`.cwwf`, with a checksum) in the OS cache directory, not in SQLite, with LRU eviction per cache directory. The format is in [waveform-format.md](reference/waveform-format.md). The endpoint reads a level and range as peak data or renders a PNG. Media without audio has no waveform (`NoStream`).
 - **Corpus:** a test-media manifest (VFR phone footage, HEVC 10-bit HDR, ProRes, rotated, odd sample rates, broken files) is fetched in CI to gate decode correctness.
 
 ---
