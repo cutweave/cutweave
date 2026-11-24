@@ -215,7 +215,9 @@ pub fn corpus_dir() -> Option<std::path::PathBuf> {
         let dir = std::path::PathBuf::from(dir);
         return dir.is_dir().then_some(dir);
     }
-    let root = Path::new(env!("CARGO_MANIFEST_DIR")).join("../..");
+    // The workspace root without `..`: allowed roots never match a path with `..` in it
+    // (`AllowedRoots::allows`), so the corpus folder must be spelled out.
+    let root = Path::new(env!("CARGO_MANIFEST_DIR")).ancestors().nth(2)?;
     let local = root.join("testdata/corpus");
     if local.is_dir() {
         return Some(local);
