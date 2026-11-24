@@ -29,16 +29,44 @@ body {
 }
 
 /* ---------- Top bar ---------- */
+/* The top bar is the window's title bar (WP-1M.09). Its empty areas drag the window (and a
+   double-click maximizes it); every control opts out. The OS draws the window controls over
+   it: `env(titlebar-area-*)` (the Window Controls Overlay) says where they are, on the right on
+   Windows and Linux and on the left on macOS, and the padding keeps the content clear of them.
+   Without an overlay (a browser, or full screen) the fallbacks give the plain padding. */
 .cw-topbar {
   display: grid;
-  grid-template-columns: 1fr auto 1fr;
+  /* The side groups never shrink under their content: the center group moves over instead of
+     covering them (the window controls take the right end now). */
+  grid-template-columns: minmax(max-content, 1fr) auto minmax(max-content, 1fr);
   align-items: center;
   gap: var(--space-3);
   box-sizing: border-box;
   height: var(--toolbar);
-  padding: 0 var(--space-2);
+  padding-block: 0;
+  padding-inline-start: max(var(--space-2), env(titlebar-area-x, 0px));
+  padding-inline-end: max(
+    var(--space-2),
+    calc(100vw - env(titlebar-area-x, 0px) - env(titlebar-area-width, 100vw))
+  );
   background: var(--surface-0);
   border-bottom: var(--border-thin) solid var(--border-subtle);
+  -webkit-app-region: drag;
+  user-select: none;
+}
+.cw-topbar
+  :is(
+    button,
+    a,
+    input,
+    select,
+    textarea,
+    [role="menubar"],
+    [role="toolbar"],
+    [role="radiogroup"],
+    [tabindex]
+  ) {
+  -webkit-app-region: no-drag;
 }
 .cw-topbar__group {
   display: flex;
@@ -51,6 +79,23 @@ body {
 }
 .cw-topbar__group--end {
   justify-content: flex-end;
+}
+/* Narrower windows: the brand goes first (the taskbar still names the app), then New and Open
+   keep only their icons (their names stay for assistive tech and the tooltips). */
+@media (max-width: 1320px) {
+  .cw-topbar__brand {
+    display: none;
+  }
+}
+@media (max-width: 1240px) {
+  .cw-topbar__label {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    overflow: hidden;
+    clip-path: inset(50%);
+    white-space: nowrap;
+  }
 }
 .cw-topbar__brand {
   padding: 0 var(--space-2);

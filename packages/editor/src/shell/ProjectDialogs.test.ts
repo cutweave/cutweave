@@ -7,7 +7,7 @@
 import { TooltipProvider } from "@cutweave/ui";
 import { cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
-import { createElement as h, type ReactElement } from "react";
+import { Fragment, createElement as h, type ReactElement } from "react";
 import { I18nextProvider } from "react-i18next";
 import { afterEach, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
 import { i18n } from "../i18n/index.ts";
@@ -17,6 +17,7 @@ import { resetProjectController, useProjectWiring } from "../session/useProject.
 import { docStore } from "../state/docStore.ts";
 import { toastStore } from "../state/toastStore.ts";
 import { createFakeEngine, type FakeEngine } from "../testing/fakeEngine.ts";
+import { AppMenuBar } from "./AppMenuBar.tsx";
 import { ProjectDialogs, ReadOnlyBanner } from "./ProjectDialogs.tsx";
 import { TopBar } from "./TopBar.tsx";
 
@@ -291,13 +292,24 @@ describe("top bar", () => {
   });
 });
 
-describe("keyboard shortcuts without a native menu", () => {
+describe("keyboard shortcuts of the menu bar (WP-1M.09)", () => {
   function Wired() {
     useProjectWiring();
-    return h("input", { "aria-label": "Field" });
+    return h(Fragment, null, h(AppMenuBar), h("input", { "aria-label": "Field" }));
   }
 
+  const realPlatform = Object.getOwnPropertyDescriptor(Navigator.prototype, "platform");
+  const setPlatform = (value: string) =>
+    Object.defineProperty(navigator, "platform", { value, configurable: true });
+  afterEach(() => {
+    delete (navigator as { platform?: string }).platform;
+    if (realPlatform !== undefined) {
+      Object.defineProperty(Navigator.prototype, "platform", realPlatform);
+    }
+  });
+
   it("Ctrl+Z undoes, Ctrl+Shift+Z and Ctrl+Y redo, Ctrl+S saves", async () => {
+    setPlatform("Win32");
     sessionStore.setState({
       path: "C:\\p\\Film\\Film.cutweave",
       stacks: { undoDepth: 1, redoDepth: 1, nextUndo: "Move clip", nextRedo: "Trim clip" },
@@ -323,6 +335,15 @@ describe("keyboard shortcuts without a native menu", () => {
     expect(engine.calls).toEqual([]);
   });
 
+  it("runs the other shortcuts from a text field, as native accelerators do", async () => {
+    sessionStore.setState({ path: null });
+    render(wrap(h(Wired)));
+    const field = screen.getByRole("textbox", { name: "Field" });
+    field.focus();
+    fireEvent.keyDown(field, { key: "n", ctrlKey: true });
+    await waitFor(() => expect(sessionUiStore.getState().naming?.mode).toBe("new"));
+  });
+
   it("does nothing for Undo when there is nothing to undo", async () => {
     render(wrap(h(Wired)));
     fireEvent.keyDown(window, { key: "z", ctrlKey: true });
@@ -330,7 +351,35 @@ describe("keyboard shortcuts without a native menu", () => {
     expect(engine.calls).toEqual([]);
   });
 
-  it("with a native menu the page ignores the keys and the menu commands run", async () => {
+  it("runs nothing while the engine is not connected (the menu items are disabled)", async () => {
+    engine.uninstall();
+    sessionStore.setState({ path: "C:\\p\\Film\\Film.cutweave" });
+    render(wrap(h(Wired)));
+    fireEvent.keyDown(window, { key: "s", ctrlKey: true });
+    fireEvent.keyDown(window, { key: "n", ctrlKey: true });
+    await new Promise((r) => setTimeout(r, 20));
+    expect(engine.calls).toEqual([]);
+    expect(sessionUiStore.getState().naming).toBeNull();
+  });
+
+  it("in the Windows and Linux app the page has the keys even though a menu bridge exists", async () => {
+    setPlatform("Win32");
+    (globalThis as { cutweave?: unknown }).cutweave = {
+      dialog: { openProjectFolder: () => Promise.resolve(null) },
+      menu: { onCommand: () => () => undefined },
+    };
+    resetProjectController();
+    sessionStore.setState({
+      path: "C:\\p\\Film\\Film.cutweave",
+      stacks: { undoDepth: 1, redoDepth: 0, nextUndo: "Move clip", nextRedo: null },
+    });
+    render(wrap(h(Wired)));
+    fireEvent.keyDown(window, { key: "z", ctrlKey: true });
+    await waitFor(() => expect(engine.names()).toEqual(["edit.undo"]));
+  });
+
+  it("with the native menu (macOS) the page ignores the keys and the menu commands run", async () => {
+    setPlatform("MacIntel");
     const listeners: ((command: string) => void)[] = [];
     (globalThis as { cutweave?: unknown }).cutweave = {
       dialog: { openProjectFolder: () => Promise.resolve(null) },
@@ -347,7 +396,7 @@ describe("keyboard shortcuts without a native menu", () => {
       stacks: { undoDepth: 1, redoDepth: 0, nextUndo: "Move clip", nextRedo: null },
     });
     render(wrap(h(Wired)));
-    fireEvent.keyDown(window, { key: "z", ctrlKey: true });
+    fireEvent.keyDown(window, { key: "z", metaKey: true });
     await new Promise((r) => setTimeout(r, 20));
     expect(engine.calls).toEqual([]);
     listeners[0]?.("undo");
