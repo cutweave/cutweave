@@ -20,9 +20,6 @@ import { projectFileName, useSessionStore } from "../session/sessionStore.ts";
 import { useSessionUiStore } from "../session/sessionUiStore.ts";
 import { projectController, useUnsavedWork } from "../session/useProject.ts";
 import {
-  THEME_LABEL_KEYS,
-  THEMES,
-  type ThemeId,
   useViewStore,
   viewStore,
   WORKSPACE_DEFS,
@@ -45,7 +42,7 @@ function modifierKey(): string {
   return /mac/i.test(platform) ? "⌘" : "Ctrl";
 }
 
-/** Recent projects as a dropdown next to Open. */
+/** Recent projects as a dropdown (macOS only: its native menu has no Open recent). */
 function RecentMenu({ disabled }: { disabled: boolean }) {
   const { t } = useTranslation();
   const recent = useSessionUiStore((s) => s.recent);
@@ -68,15 +65,16 @@ function RecentMenu({ disabled }: { disabled: boolean }) {
 
 /**
  * Top bar, which is also the window's title bar (WP-1M.09): the brand and the application menu
- * bar (File, Edit, View, Help; macOS keeps its native menu instead), project actions and
- * undo/redo (WP-1M.07; disabled until the engine connects), the workspace switcher and the theme
- * switch, export right (WP-1M.08: opens the export dialog once the timeline has clips). Its empty areas drag the window and a double-click maximizes it; the
- * OS draws the window controls over its right end (left on macOS), which the layout leaves free.
+ * bar (File, Edit, View, Help; macOS keeps its native menu instead), Save with the unsaved dot
+ * and undo/redo (WP-1M.07; disabled until the engine connects), the workspace switcher, and the
+ * export and engine status with Export at the right (WP-1M.08). Every pixel here counts: New,
+ * Open, Save as and the theme are in the menus and Settings. Its empty areas drag the window and
+ * a double-click maximizes it; the OS draws the window controls over its right end (left on
+ * macOS), which the layout leaves free.
  */
 export function TopBar() {
   const { t } = useTranslation();
   const workspaceId = useViewStore((s) => s.workspaceId);
-  const theme = useViewStore((s) => s.theme);
   const ready = useEngineReady();
   const known = useSessionStore((s) => s.known);
   const dirty = useUnsavedWork();
@@ -97,27 +95,9 @@ export function TopBar() {
         <span className="cw-topbar__brand heading">{t("app.name")}</span>
         {hasNativeMenu() ? null : <AppMenuBar />}
         <Toolbar aria-label={t("topbar.toolbarLabel")} className="cw-topbar__actions">
-          <Tooltip label={t("topbar.new")} keys={[mod, "N"]}>
-            <Button
-              variant="ghost"
-              icon="plus"
-              disabled={!live}
-              onClick={() => void controller.newProject()}
-            >
-              <span className="cw-topbar__label">{t("topbar.new")}</span>
-            </Button>
-          </Tooltip>
-          <Tooltip label={t("topbar.open")} keys={[mod, "O"]}>
-            <Button
-              variant="ghost"
-              icon="folder-open"
-              disabled={!live}
-              onClick={() => void controller.open()}
-            >
-              <span className="cw-topbar__label">{t("topbar.open")}</span>
-            </Button>
-          </Tooltip>
-          <RecentMenu disabled={!live} />
+          {/* New, Open, Open recent and Save as live in the File menu with their shortcuts. macOS
+              keeps the native menu, which has no Open recent, so its list stays here. */}
+          {hasNativeMenu() ? <RecentMenu disabled={!live} /> : null}
           <Tooltip label={t("topbar.save")} keys={[mod, "S"]}>
             <Button
               variant="ghost"
@@ -134,15 +114,6 @@ export function TopBar() {
                 />
               ) : null}
             </Button>
-          </Tooltip>
-          <Tooltip label={t("topbar.saveAs")} keys={[mod, "Shift", "S"]}>
-            <IconButton
-              icon="copy"
-              size="sm"
-              label={t("topbar.saveAs")}
-              disabled={!live || recovering}
-              onClick={() => void controller.saveAs()}
-            />
           </Tooltip>
           <ToolbarSeparator />
           <Tooltip label={undoName} keys={[mod, "Z"]}>
@@ -187,12 +158,6 @@ export function TopBar() {
       <div className="cw-topbar__group cw-topbar__group--end">
         <ExportStatusChip />
         <EngineStatusChip />
-        <SegmentedControl<ThemeId>
-          aria-label={t("topbar.themeLabel")}
-          value={theme}
-          onChange={(id) => viewStore.getState().setTheme(id)}
-          options={THEMES.map((id) => ({ value: id, label: t(THEME_LABEL_KEYS[id]) }))}
-        />
         <Tooltip label={t("topbar.export")} keys={[mod, "M"]}>
           <Button
             variant="primary"

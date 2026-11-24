@@ -28,7 +28,7 @@ import {
   test,
   unsavedPrompt,
 } from "../fixtures.ts";
-import { chooseMenu } from "./helpers.ts";
+import { chooseMenu, chooseTheme } from "./helpers.ts";
 import {
   osClick,
   osDoubleClick,
@@ -147,14 +147,12 @@ async function nameProject(
 }
 
 /**
- * Waits until no project action is running: the toolbar's New is enabled again (the menu's
+ * Waits until no project action is running: the toolbar's Save is enabled again (the menu's
  * project commands, and their shortcuts, are disabled while one runs).
  */
 async function projectActionsReady(page: Page): Promise<void> {
   await expect(
-    page
-      .getByRole("toolbar", { name: "Project actions" })
-      .getByRole("button", { name: "New", exact: true }),
+    page.getByRole("toolbar", { name: "Project actions" }).getByRole("button", { name: /^Save/ }),
   ).toBeEnabled();
 }
 
@@ -639,10 +637,9 @@ test.describe("F18 window and menu", () => {
       });
       const park = await screenPoint(app, { x: geometry.viewport / 2, y: 400 });
       await expect.poll(() => osPixel(owner, controlsAt, park)).toBe(colors.dark["surface-0"]);
-      const theme = page.getByRole("radiogroup", { name: "Theme" });
-      await theme.getByRole("radio", { name: "Light" }).click();
+      await chooseTheme(page, app, "Light");
       await expect.poll(() => osPixel(owner, controlsAt, park)).toBe(colors.light["surface-0"]);
-      await theme.getByRole("radio", { name: "Dark" }).click();
+      await chooseTheme(page, app, "Dark");
       await expect.poll(() => osPixel(owner, controlsAt, park)).toBe(colors.dark["surface-0"]);
 
       // An empty spot of the title bar: the space before the engine status.

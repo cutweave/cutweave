@@ -62,16 +62,32 @@ describe("applicationMenuTemplate (WP-1M.09)", () => {
   it("keeps the native app menu on macOS, routing accelerators to the renderer", () => {
     const send = vi.fn<(c: MenuCommand) => void>();
     const template = applicationMenuTemplate({ ...deps("darwin"), send });
-    expect(template?.[0]?.role).toBe("appMenu");
     expect(template?.map((m) => m.label)).toEqual(["Cutweave", "&File", "&Edit", "&View", "&Help"]);
     const items = flatten(template ?? []);
     items
       .find((i) => i.accelerator === "Cmd+Shift+Z")
       ?.click?.({} as never, undefined, {} as never);
     expect(send).toHaveBeenCalledWith("redo");
+    // The app menu: About, then Settings… (⌘,), which the editor opens as its own dialog.
+    const appMenu = flatten((template?.[0]?.submenu as MenuItemConstructorOptions[]) ?? []);
+    expect(appMenu.map((i) => i.role ?? i.label).slice(0, 3)).toEqual([
+      "about",
+      undefined,
+      "Settings…",
+    ]);
+    appMenu.find((i) => i.accelerator === "Cmd+,")?.click?.({} as never, undefined, {} as never);
+    expect(send).toHaveBeenCalledWith("settings");
     // macOS needs the edit roles: Cmd+C/V/X/A in text fields go through them.
     expect(items.filter((i) => i.role).map((i) => i.role)).toEqual(
-      expect.arrayContaining(["cut", "copy", "paste", "selectAll", "togglefullscreen", "about"]),
+      expect.arrayContaining([
+        "cut",
+        "copy",
+        "paste",
+        "selectAll",
+        "togglefullscreen",
+        "about",
+        "quit",
+      ]),
     );
   });
 });

@@ -688,3 +688,9 @@ body {
 .cw-export-chip {
   flex: none;
 }
+
+/* File > Settings…: a section heading above its rows, in the overline style. */
+.cw-settings__section {
+  margin: 0;
+  color: var(--text-secondary);
+}

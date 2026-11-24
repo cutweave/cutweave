@@ -85,7 +85,16 @@ export interface EngineConnection {
  * Commands the native menu sends to the renderer (validated, allowlisted). Only macOS has a
  * native menu; on Windows and Linux the editor draws its own menu bar (WP-1M.09).
  */
-export const MENU_COMMANDS = ["undo", "redo", "save", "saveAs", "new", "open", "export"] as const;
+export const MENU_COMMANDS = [
+  "undo",
+  "redo",
+  "save",
+  "saveAs",
+  "new",
+  "open",
+  "export",
+  "settings",
+] as const;
 export type MenuCommand = (typeof MENU_COMMANDS)[number];
 
 /** The editor's themes: the OS window-controls overlay follows the one it shows (WP-1M.09). */

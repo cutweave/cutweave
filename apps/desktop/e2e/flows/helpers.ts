@@ -596,10 +596,55 @@ export async function importWithButton(
   await expect(mediaCards(page)).toHaveCount(before + files.length);
 }
 
-/** Opens the top bar's Recent menu and picks a project by its file name. */
+/**
+ * Opens File > Open recent and returns its list (macOS: the top bar's Recent menu, since the
+ * native menu has no Open recent). Escape closes it.
+ */
+export async function showRecent(page: Page): Promise<Locator> {
+  if (process.platform === "darwin") {
+    await toolbar(page).getByRole("button", { name: "Recent projects" }).click();
+    return page.getByRole("menu", { name: "Recent projects" });
+  }
+  await page
+    .getByRole("menubar", { name: "Application menu" })
+    .getByRole("menuitem", { name: "File", exact: true })
+    .click();
+  await page
+    .getByRole("menu", { name: "File" })
+    .getByRole("menuitem", { name: /^Open recent/ })
+    .click();
+  const recent = page.getByRole("menu", { name: "Open recent" });
+  await expect(recent).toBeVisible();
+  return recent;
+}
+
+/** File > Open recent > the project with this file name. */
 export async function openRecent(page: Page, fileName: string): Promise<void> {
-  await toolbar(page).getByRole("button", { name: "Recent projects" }).click();
-  await page.getByRole("menuitem", { name: fileName }).click();
+  const recent = await showRecent(page);
+  await recent.getByRole("menuitem", { name: fileName }).click();
+  await expect(recent).toBeHidden();
+}
+
+/**
+ * File > Settings… (Ctrl+,; ⌘, in the macOS app menu), picks the theme and closes with Done.
+ * The theme lives in Settings, not in the title bar.
+ */
+export async function chooseTheme(
+  page: Page,
+  app: ElectronApplication,
+  theme: "Dark" | "Light",
+): Promise<void> {
+  if (process.platform === "darwin") await shortcut(app, "Control+,");
+  else await chooseMenu(page, app, "File", "Settings…");
+  const settings = page.getByRole("dialog", { name: "Settings" });
+  await expect(settings).toBeVisible();
+  const radio = settings.getByRole("radiogroup", { name: "Theme" }).getByRole("radio", {
+    name: theme,
+  });
+  await radio.click();
+  await expect(radio).toHaveAttribute("aria-checked", "true");
+  await settings.getByRole("button", { name: "Done" }).click();
+  await expect(settings).toBeHidden();
 }
 
 /** The crash-recovery dialog (WP-1M.07). */

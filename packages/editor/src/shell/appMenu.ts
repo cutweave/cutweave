@@ -3,11 +3,12 @@
 // enabled, the shortcut of each, and which key press runs which command. Pure and unit-tested;
 // `AppMenuBar` draws it with `@cutweave/ui`'s `MenuBar` and `useAppShortcuts` listens for the keys.
 //
-// It holds exactly what the native menu had (apps/desktop `menu.ts`, kept for macOS), plus Open
-// recent. The shortcuts match Electron's native roles on Windows and Linux:
+// It holds what the native menu has (apps/desktop `menu.ts`, kept for macOS, where Settings… sits
+// in the app menu), plus Open recent. The shortcuts match Electron's native roles on Windows and Linux:
 //
 //   File  New project… Ctrl+N · Open project… Ctrl+O · Open recent ▸ · Save Ctrl+S ·
-//         Save as… Ctrl+Shift+S · Export… Ctrl+M · Exit (Windows: the OS's Alt+F4) / Quit Ctrl+Q (Linux)
+//         Save as… Ctrl+Shift+S · Export… Ctrl+M · Settings… Ctrl+, ·
+//         Exit (Windows: the OS's Alt+F4) / Quit Ctrl+Q (Linux)
 //   Edit  Undo Ctrl+Z · Redo Ctrl+Y (also Ctrl+Shift+Z) · Cut Ctrl+X · Copy Ctrl+C · Paste Ctrl+V ·
 //         Select all Ctrl+A
 //   View  Toggle full screen F11 · dev builds: Reload Ctrl+R · Toggle developer tools Ctrl+Shift+I
@@ -35,6 +36,7 @@ export type AppCommand =
   | "toggleFullScreen"
   | "reload"
   | "toggleDevTools"
+  | "settings"
   | "about";
 
 /** Where the menu bar is drawn: Windows and Linux differ only in Exit/Quit. */
@@ -88,6 +90,8 @@ export function chordsFor(command: AppCommand, platform: MenuPlatform): readonly
       return [mod("R")];
     case "toggleDevTools":
       return [mod("I", true)];
+    case "settings":
+      return [mod(",")];
     case "about":
       return [];
   }
@@ -137,6 +141,7 @@ const KEYED: readonly AppCommand[] = [
   "save",
   "saveAs",
   "export",
+  "settings",
   "quit",
   "undo",
   "redo",
@@ -263,6 +268,9 @@ export function buildAppMenu(state: AppMenuState, t: MenuTranslate): AppMenu[] {
     sep("file-2"),
     command("export", t("menu.export"), state.exportAvailable && live),
     sep("file-3"),
+    // App preferences (the theme); the engine need not be connected.
+    command("settings", t("menu.settings"), true),
+    sep("file-4"),
     command("quit", t(platform === "linux" ? "menu.quit" : "menu.exit"), desktop),
   ];
   const edit: AppMenuEntry[] = [

@@ -29,7 +29,7 @@ import {
   menuPlatform,
 } from "./appMenu.ts";
 
-/** Help > About is showing. */
+/** Help > About (or File > Settings…) is showing. */
 export interface AboutState {
   readonly open: boolean;
   setOpen(open: boolean): void;
@@ -42,6 +42,16 @@ export const aboutStore = createStore<AboutState>()((set) => ({
 
 export function useAboutOpen(): boolean {
   return useStore(aboutStore, (s) => s.open);
+}
+
+/** File > Settings… is showing. */
+export const settingsStore = createStore<AboutState>()((set) => ({
+  open: false,
+  setOpen: (open) => set({ open }),
+}));
+
+export function useSettingsOpen(): boolean {
+  return useStore(settingsStore, (s) => s.open);
 }
 
 export interface AppCommandDeps {
@@ -86,6 +96,9 @@ export function runAppCommand(command: AppCommand, deps: AppCommandDeps): void {
       return;
     case "toggleDevTools":
       void desktop?.window?.toggleDevTools?.().catch(ignore);
+      return;
+    case "settings":
+      settingsStore.getState().setOpen(true);
       return;
     case "about":
       aboutStore.getState().setOpen(true);

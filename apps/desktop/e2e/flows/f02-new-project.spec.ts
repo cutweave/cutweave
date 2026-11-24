@@ -13,7 +13,7 @@ import {
   sequence,
   shortcut,
   snapshot,
-  toolbar,
+  showRecent,
   workspace,
 } from "./helpers.ts";
 
@@ -65,8 +65,9 @@ test.describe("F2 new project", () => {
       await expect(page.getByText("Your timeline is empty")).toBeHidden();
 
       // It is on the Recent list.
-      await toolbar(page).getByRole("button", { name: "Recent projects" }).click();
-      await expect(page.getByRole("menuitem", { name: "Coffee promo.cutweave" })).toBeVisible();
+      const recent = await showRecent(page);
+      await expect(recent.getByRole("menuitem", { name: "Coffee promo.cutweave" })).toBeVisible();
+      await page.keyboard.press("Escape");
       await page.keyboard.press("Escape");
       await snapshot(page, info, "new project");
     } finally {

@@ -6,8 +6,6 @@
   },
   "topbar": {
     "toolbarLabel": "Project actions",
-    "new": "New",
-    "open": "Open",
     "save": "Save",
     "saveAs": "Save as…",
     "recent": "Recent projects",
@@ -18,8 +16,7 @@
     "undoAction": "Undo {{label}}",
     "redoAction": "Redo {{label}}",
     "unsaved": "Unsaved changes",
-    "workspaceLabel": "Workspace",
-    "themeLabel": "Theme"
+    "workspaceLabel": "Workspace"
   },
   "menu": {
     "barLabel": "Application menu",
@@ -33,6 +30,7 @@
     "save": "Save",
     "saveAs": "Save as…",
     "export": "Export…",
+    "settings": "Settings…",
     "exit": "Exit",
     "quit": "Quit",
     "cut": "Cut",
@@ -43,6 +41,13 @@
     "reload": "Reload",
     "toggleDevTools": "Toggle developer tools",
     "about": "About {{name}}"
+  },
+  "settings": {
+    "title": "Settings",
+    "description": "Changes apply at once and are kept for next time.",
+    "appearance": "Appearance",
+    "theme": "Theme",
+    "done": "Done"
   },
   "about": {
     "title": "About {{name}}",

@@ -98,10 +98,10 @@ test.describe("F10 unsaved changes on New/Open", () => {
       await expect(dirtyDot(page)).toBeHidden();
       expect(mediaOnDisk(current)).toBe(1);
 
-      // Back to Current from the top bar's Open button: no question (nothing unsaved), no
-      // recovery offer (it was saved), and the music is there.
+      // Back to Current with File > Open project…: no question (nothing unsaved), no recovery
+      // offer (it was saved), and the music is there.
       await pickFiles(app, [path.join(work.dir, "Current")]);
-      await page.getByRole("button", { name: "Open", exact: true }).click();
+      await chooseMenu(page, app, "File", "Open project…");
       await expect(page).toHaveTitle("Current — Cutweave");
       await expect(prompt.dialog).toBeHidden();
       await expect(recoveryDialog(page).dialog).toBeHidden();

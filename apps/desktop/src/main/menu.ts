@@ -38,7 +38,25 @@ export function buildMenuTemplate(deps: MenuDeps): MenuItemConstructorOptions[] 
   });
 
   const template: MenuItemConstructorOptions[] = [];
-  if (mac) template.push({ label: deps.appName, role: "appMenu" });
+  if (mac) {
+    // The app menu as Electron's `appMenu` role builds it, plus Settings… (⌘,) after About.
+    template.push({
+      label: deps.appName,
+      submenu: [
+        { role: "about" },
+        { type: "separator" },
+        item("Settings…", "settings", "Cmd+,"),
+        { type: "separator" },
+        { role: "services" },
+        { type: "separator" },
+        { role: "hide" },
+        { role: "hideOthers" },
+        { role: "unhide" },
+        { type: "separator" },
+        { role: "quit" },
+      ],
+    });
+  }
   template.push(
     {
       label: "&File",

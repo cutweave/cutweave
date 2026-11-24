@@ -275,8 +275,12 @@ describe("top bar", () => {
     }));
     render(wrap(h(TopBar)));
     const user = userEvent.setup();
-    await user.click(screen.getByRole("button", { name: "Recent projects" }));
-    const menu = await screen.findByRole("menu", { name: "Recent projects" });
+    // File > Open recent (the top bar keeps its own Recent list on macOS only).
+    await user.click(screen.getByRole("menuitem", { name: "File" }));
+    const sub = await screen.findByRole("menuitem", { name: /Open recent/ });
+    sub.focus();
+    await user.keyboard("{ArrowRight}");
+    const menu = await screen.findByRole("menu", { name: "Open recent" });
     expect(
       within(menu)
         .getAllByRole("menuitem")
@@ -291,12 +295,11 @@ describe("top bar", () => {
   it("disables the project actions until the engine is connected", () => {
     engine.uninstall();
     render(wrap(h(TopBar)));
-    expect((screen.getByRole("button", { name: /^Open/ }) as HTMLButtonElement).disabled).toBe(
-      true,
-    );
     expect((screen.getByRole("button", { name: /^Save$/ }) as HTMLButtonElement).disabled).toBe(
       true,
     );
+    // New and Open are in the File menu now (their states: appMenu.test.ts).
+    expect(screen.queryByRole("button", { name: /^(New|Open)$/ })).toBeNull();
   });
 });
 

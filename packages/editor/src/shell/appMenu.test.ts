@@ -70,6 +70,8 @@ describe("the application menu (WP-1M.09)", () => {
         "---",
         "Export… [Ctrl+M] (off)",
         "---",
+        "Settings… [Ctrl+,]",
+        "---",
         "Exit",
       ],
       Edit: [
@@ -116,6 +118,8 @@ describe("the application menu (WP-1M.09)", () => {
       "---",
       "Export… [Ctrl+M] (off)",
       "---",
+      "Settings… [Ctrl+,]",
+      "---",
       "Exit",
     ]);
     expect(off.Edit?.slice(0, 2)).toEqual([
@@ -154,6 +158,7 @@ describe("menu shortcuts", () => {
     expect(on(key("s", { ctrlKey: true }))).toBe("save");
     expect(on(key("S", { ctrlKey: true, shiftKey: true }))).toBe("saveAs");
     expect(on(key("m", { ctrlKey: true }))).toBe("export");
+    expect(on(key(",", { ctrlKey: true }))).toBe("settings");
     expect(on(key("z", { ctrlKey: true }))).toBe("undo");
     expect(on(key("y", { ctrlKey: true }))).toBe("redo");
     expect(on(key("Z", { ctrlKey: true, shiftKey: true }))).toBe("redo");

@@ -82,16 +82,22 @@ describe("EditorShell", () => {
     expect(screen.getByText(/Generate captions from speech/)).toBeTruthy();
   });
 
-  it("switches theme through data-theme", async () => {
+  it("switches theme through data-theme, from Settings (Ctrl+,)", async () => {
     const user = userEvent.setup();
     render(h(EditorShell));
     await screen.findByRole("region", { name: "Timeline" });
     expect(document.documentElement.dataset.theme).toBe("dark");
-    await user.click(screen.getByRole("radio", { name: "Light" }));
+    // The title bar has no theme switch; it is in File > Settings….
+    expect(screen.queryByRole("radiogroup", { name: "Theme" })).toBeNull();
+    await user.keyboard("{Control>},{/Control}");
+    const settings = await screen.findByRole("dialog", { name: "Settings" });
+    await user.click(within(settings).getByRole("radio", { name: "Light" }));
     expect(document.documentElement.dataset.theme).toBe("light");
     expect(viewStore.getState().theme).toBe("light");
-    await user.click(screen.getByRole("radio", { name: "Dark" }));
+    await user.click(within(settings).getByRole("radio", { name: "Dark" }));
     expect(document.documentElement.dataset.theme).toBe("dark");
+    await user.click(within(settings).getByRole("button", { name: "Done" }));
+    await waitFor(() => expect(screen.queryByRole("dialog", { name: "Settings" })).toBeNull());
   });
 
   it("switches workspace and adopts its preview aspect", async () => {

@@ -6,6 +6,7 @@ import type { Page } from "@playwright/test";
 import { expect, test } from "../fixtures.ts";
 import {
   chooseMenu,
+  chooseTheme,
   drag,
   hasRealEngine,
   launchFlowApp,
@@ -68,20 +69,17 @@ test.describe("F16 appearance and layout", () => {
     try {
       const first = await launchFlowApp(work, home);
       const { app, page } = first;
-      const themes = page.getByRole("radiogroup", { name: "Theme" });
       const workspaces = page.getByRole("radiogroup", { name: "Workspace" });
       const aspects = page.getByRole("radiogroup", { name: "Preview aspect ratio" });
 
-      // Dark by default; Light applies at once.
+      // Dark by default; Light (File > Settings…) applies at once. The title bar has no theme
+      // switch.
       expect(await theme(page)).toBe("dark");
+      await expect(page.getByRole("radiogroup", { name: "Theme" })).toHaveCount(0);
       const dark = await background(page);
-      await themes.getByRole("radio", { name: "Light" }).click();
+      await chooseTheme(page, app, "Light");
       await expect.poll(() => theme(page)).toBe("light");
       expect(await background(page)).not.toBe(dark);
-      await expect(themes.getByRole("radio", { name: "Light" })).toHaveAttribute(
-        "aria-checked",
-        "true",
-      );
 
       // Long-form: its layout, with a 16:9 preview.
       await expect(aspects.getByRole("radio", { name: "9:16" })).toHaveAttribute(
@@ -130,10 +128,7 @@ test.describe("F16 appearance and layout", () => {
         await snapshot(page2, info, "after relaunch");
 
         // Back to Dark and Short-form, as a person tidying up would.
-        await page2
-          .getByRole("radiogroup", { name: "Theme" })
-          .getByRole("radio", { name: "Dark" })
-          .click();
+        await chooseTheme(page2, second.app, "Dark");
         await expect.poll(() => theme(page2)).toBe("dark");
         await page2
           .getByRole("radiogroup", { name: "Workspace" })
