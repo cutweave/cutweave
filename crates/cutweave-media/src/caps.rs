@@ -23,10 +23,13 @@ pub struct CodecSupport {
 /// A codec a hardware API can handle on this machine.
 #[derive(Clone, Debug, PartialEq, Eq, Hash, PartialOrd, Ord)]
 pub struct HwCodec {
-    /// FFmpeg hardware device type (`d3d11va`, `cuda`, `videotoolbox`, `vaapi`, `qsv`).
+    /// FFmpeg hardware device type (`d3d11va`, `cuda`, `amf`, `videotoolbox`, `vaapi`, `qsv`).
     pub device: String,
     /// Codec-id name (`h264`).
     pub codec: String,
+    /// The FFmpeg implementation: for encoders the name [`HwEncode::Force`](crate::HwEncode::Force)
+    /// takes (`h264_nvenc`, `h264_amf`, `h264_qsv`, `h264_videotoolbox`, `h264_vaapi`).
+    pub implementation: String,
 }
 
 /// What a backend can do. Deterministic for a given backend and machine; codecs are sorted by
@@ -36,7 +39,9 @@ pub struct HwCodec {
 pub struct Capabilities {
     /// Hardware decode paths verified on this machine (empty until WP-1D.04 probes devices).
     pub hw_decode: Vec<HwCodec>,
-    /// Hardware encode paths verified on this machine (empty until WP-1E.02).
+    /// Hardware encoders that completed a 256×256 test encode on this machine (probed once per
+    /// process, WP-1E.02), in the order [`HwEncode::Auto`](crate::HwEncode::Auto) tries them.
+    /// Empty on a machine without one.
     pub hw_encode: Vec<HwCodec>,
     /// Software codecs, sorted by name.
     pub codecs: Vec<CodecSupport>,

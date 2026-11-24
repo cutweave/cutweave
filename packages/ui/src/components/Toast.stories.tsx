@@ -74,3 +74,20 @@ function Stack() {
 
 /** All four tones stacked in the viewport; Escape dismisses the focused toast, F8 focuses the stack. */
 export const Tones = { render: () => <Stack /> };
+
+/** Long unbroken text (a file path) wraps inside the toast instead of overflowing it. */
+export const LongPath = {
+  render: () => (
+    <ToastProvider>
+      <div style={{ minHeight: "var(--layer-width-sm)", background: "var(--surface-0)" }} />
+      <Toast
+        tone="warning"
+        title="Media missing: Interview_with_the_coffee_shop_owner_final_v3_color_graded.mov"
+        message="Cutweave can't find E:\projects\cutweave-demo\media\2026-11-24_shoot\camera_A\Interview_with_the_coffee_shop_owner_final_v3_color_graded.mov. Relink it or remove its clips."
+        duration={Number.POSITIVE_INFINITY}
+        open
+        onOpenChange={() => {}}
+      />
+    </ToastProvider>
+  ),
+};

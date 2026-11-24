@@ -378,6 +378,35 @@ All surfaces live on **one local server per engine** (axum on `127.0.0.1`, rando
   - Containers: MP4, MOV, MKV, WebM, GIF, audio-only (WAV/MP3/AAC/FLAC/Opus), PNG/JPEG sequence.
   - Codecs: H.264, HEVC and AV1, each with a hardware encoder (NVENC/AMF/QSV/VideoToolbox/VA-API) or a software one (x264/x265/SVT-AV1), plus ProRes.
   - Presets cover TikTok/Reels/Shorts, YouTube 1080p/4K, archive and GIF.
+- **Decoding (decided in WP-1D.03).**
+  - **Pool:** one `DecoderPool` per media item, four live decoders by default with LRU eviction. Each pooled decoder runs on its own thread, so a `CancelToken` stops a pending seek in well under 10 ms; a frame-threaded FFmpeg flush can't be interrupted.
+  - **Threads:** seek and scrub decoders use one thread; `DecodeMode::Sequential` uses frame threads for playback and export.
+  - **Seeking:** follows ADR-0003 (index seek rule, NONREF skip, drain before flush).
+  - **Output:** frames come in coded orientation (rotation comes from the probe) as NV12, P010 or planar YUV (`Yuv420p10`, `Yuv422p`, `Yuv422p10` added). Layouts without a match are converted to the nearest one.
+  - **Damage:** a frame that stood in for an undecodable one carries `damaged = true`.
+  - **Measured on the CPU path:** 4K long-GOP random seek p95 is about 0.5 s; hardware decode or proxies cover the 150 ms budget.
+- **Export (decided in WP-1E.03).**
+  - **Command:** `export.start` starts an `Export` job. It is undoable = false and journaled = false; a core MCP tool that is marked destructive.
+  - **Snapshot:** the job renders the **committed** document snapshot from when it started; later edits don't affect it.
+  - **Frames:** each frame is rendered on headless wgpu to the same sRGB RGBA8 target as `render.frame`, and is bit-identical to it before encoding.
+  - **Audio:** the offline mixdown is fixed at 48 kHz stereo. A timeline with no audio still gets a silent track.
+  - **Preset:** `h264-mp4-1080p` fits the sequence into 1920×1080, or 1080×1920 for portrait, without upscaling. Quality maps to x264 CRF 28 / 23 / 20.
+  - **Missing media** is drawn as missing (an absent layer, silent audio) and counted in the final message; it doesn't fail the export.
+  - **Files:** one export per output path at a time. Replacing an existing file needs `overwrite: true`. Cancel stops within a second and leaves no file.
+  - **Colour:** the pixels are sRGB-encoded while the file is tagged BT.709; that decision is still open (#110).
+- **Hardware encoders (decided in WP-1E.02 and WP-1E.03b).**
+  - **Policy:** `EncodeSpec.hw` is `Auto`, `Off` or `Force(name)`; `export.start{hw}` maps `"auto"`, `"off"` and `{"force": "<implementation>"}` onto it. A forced name must be one of `Capabilities::hw_encode` (`Invalid` at `/hw/force` otherwise) and never falls back.
+  - **Order under `Auto`:** NVENC, AMF, QSV on Windows; VideoToolbox on macOS; NVENC, QSV, VA-API on Linux. The first encoder that opens wins. The probe runs once per process and is cached.
+  - **Fallback:** an encoder that fails to open falls back to x264 at once. One that fails mid-stream makes the export start again in software from frame 0 (`encode_with_fallback`): progress drops to 0 once and the status says so. The final message names the encoder used. Cancelling is never retried.
+  - **Quality:** the presets give a rate-control value (`Crf` 28 / 23 / 20 for low / medium / high), which `cutweave-media` maps onto each encoder's scale (NVENC `cq`, AMF `qp`, …). The mapping and measured PSNR are in [export-quality.md](reference/export-quality.md).
+  - **Pipeline:** decoding, GPU rendering and encoding run on three threads joined by bounded queues (`PIPELINE_DEPTH` frames ahead). Determinism tests pin `hw: "off"` and one encoder thread.
+- **Thumbnails, filmstrips and the frame cache (decided in WP-1D.05).**
+  - **Frame cache:** `FrameCache` holds decoded frames in RAM, keyed by `(content hash, stream, pts)`. Its budget is the smaller of 1 GiB and a quarter of RAM, with LRU eviction. Thumbnail generation does not go through it, so thumbnail decodes never evict scrub frames.
+  - **Disk cache:** thumbnails and filmstrips are JPEG files in the OS cache directory (`<cache>/cutweave/media-cache`), never in the project. Each file is a row of `disk_entries` in `cache.sqlite` (migration 2), capped at 2 GiB by default with LRU eviction. Deleting the folder loses nothing: a row whose file is missing is a miss.
+  - **Requests:** a thumbnail is `(media, t, width)`; a filmstrip is a sprite of `count` tiles of `tile_w`, wrapping at 8192 px, with a manifest giving tile `i` at column `i % columns`, row `i / columns`. Neither upscales. ETags are pure functions of the request, so the HTTP layer answers `If-None-Match` with 304 without decoding or touching the cache. The HTTP layer floors `t` to the frame grid.
+  - **Prefetch:** after import, an `Analysis` job (`thumbnails`) fills the cache under the decode budget; cancelling it stops the decode in flight.
+  - **Not yet:** container rotation and colour conversion are not applied to thumbnails. JPEG only (no WebP).
+- **Waveforms (decided in WP-1D.06).** Min/max peak pyramids (256 × 4^N samples per bin, `i16` peaks, a mono mix track plus optional per-channel tracks) are computed once per `(content hash, audio stream)` by decoding the audio. They are stored as **files** (`.cwwf`, with a checksum) in the OS cache directory, not in SQLite, with LRU eviction per cache directory. The format is in [waveform-format.md](reference/waveform-format.md). The endpoint reads a level and range as peak data or renders a PNG. Media without audio has no waveform (`NoStream`).
 - **Corpus:** a test-media manifest (VFR phone footage, HEVC 10-bit HDR, ProRes, rotated, odd sample rates, broken files) is fetched in CI to gate decode correctness.
 
 ---
@@ -755,7 +784,7 @@ MyVideo/                    ← project folder (user-chosen location)
 | Playback 1080p60: 3 video layers + 2 effects + animated captions on an iGPU (M1 / Intel Xe) | 0 dropped frames over 60 s |
 | Timeline pan/zoom with 5,000 items | ≥ 55 fps |
 | A/V sync offset | < 40 ms, drift < 1 frame / 30 min |
-| Export 1080p H.264 (simple timeline, HW encode) | ≥ 2× realtime |
+| Export 1080p H.264 (simple timeline, HW encode) | ≥ 2× realtime. Measured (WP-1E.03b, debug engine, loaded machine): 20 s of 1080p30 in 6.6 s with NVENC (3.0×) and 7.0 s with AMF (2.9×); the encoders alone reach 6× (NVENC) and 5.7–7.6× (AMF) realtime (WP-1E.02). The blocking GPU readback limits the pipeline at about 75–90 fps |
 | Idle memory with a 1-hour 1080p project | < 1.5 GB |
 
 ---

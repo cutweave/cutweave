@@ -2,7 +2,7 @@
 
 # Command reference
 
-Every command and query the engine registers (43 in total), generated from the registry. The full JSON Schemas are in `schema/commands.json` and `schema/queries.json`.
+Every command and query the engine registers (44 in total), generated from the registry. The full JSON Schemas are in `schema/commands.json` and `schema/queries.json`.
 
 MCP exposure: `core` commands are always listed as tools (`item.move` is `item_move`), `catalog` ones are reachable through the catalog tools, `hidden` ones are not exposed.
 
@@ -20,6 +20,7 @@ MCP exposure: `core` commands are always listed as tools (`item.move` is `item_m
 | edit | `edit.redo` | Redo the last undone change of yours, or of another actor (`actor`; `*` = anyone) | engine | catalog |
 | edit | `edit.restore` | Restore a checkpoint as one undoable change | engine, undoable, idempotent | catalog |
 | edit | `edit.undo` | Undo your last change, or another actor's (`actor`; `*` = anyone's latest) | engine | core |
+| export | `export.start` | Export a sequence to an MP4 file (H.264 + AAC) as a background job; returns job_id | engine, destructive | core |
 | item | `item.delete` | Delete items and their linked partners (no ripple; fails if a track is locked) | command, undoable, destructive | core |
 | item | `item.get` | Get one item: summary, track, source, audio and visual properties | query | catalog |
 | item | `item.move` | Move an item in time and/or to another track (linked partners follow) | command, undoable, idempotent | core |

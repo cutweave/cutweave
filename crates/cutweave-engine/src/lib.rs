@@ -10,6 +10,9 @@
 //!   handshake, exit codes) and [`logging`] the JSON log file and crash marker.
 //!   [`rpc_backend`] puts the engine behind `cutweave-api`'s JSON-RPC endpoint (WP-1I.02),
 //!   [`mcp_backend`] behind its MCP endpoints (WP-1J.01).
+//! - [`export`] (WP-1E.03): `export.start` as a job: render every frame like `render.frame`,
+//!   mix the range down and encode H.264 + AAC into an MP4, with what the subsystems provide
+//!   ([`ExportServices`]).
 //! - [`project_io`] (WP-1C.01): the project folder format, atomic save/open and the
 //!   single-writer lock (arch §17, ADR-0006).
 //! - [`journal`] (WP-1C.02): the append-only command journal written before every
@@ -26,6 +29,7 @@ pub mod dev_media;
 pub mod dispatch;
 mod engine;
 pub mod events;
+pub mod export;
 mod import;
 pub mod journal;
 pub mod launch;
@@ -42,6 +46,7 @@ pub use dev_media::{DEV_STUB_MEDIA_ENV, DevStubMedia, StubMediaBackend};
 pub use dispatch::{Call, Connection, Reply};
 pub use engine::{Engine, EngineHandle, JOB_ID_STREAM, StartError, VERSION, build_registry};
 pub use events::{EngineEvent, EventReceiver, SESSION_EVENTS};
+pub use export::{DecoderSources, ExportServices, ExportSources};
 pub use import::NoMediaBackend;
 pub use logging::LogConfig;
 pub use mcp_backend::{api_mounts, mcp_mounts};
@@ -76,6 +81,7 @@ mod tests {
             "view.get",
             "job.wait",
             "media.import",
+            "export.start",
             "project.open",
             "project.save",
             "project.save_as",

@@ -7,7 +7,9 @@
 //! end up in `failed[]`). A [`Subsystems`] implementation adds:
 //!
 //! - commands ([`register`](Subsystems::register)) whose engine-command context it owns and
-//!   runs ([`invoke`](Subsystems::invoke)): `render.frame`, `export.start`, transport;
+//!   runs ([`invoke`](Subsystems::invoke)): `render.frame`, transport;
+//! - what `export.start` renders, decodes and encodes with
+//!   ([`export_services`](Subsystems::export_services); the core runs the command itself);
 //! - the media prober and the analysis stages `media.import` uses;
 //! - devices started after the core is up ([`start`](Subsystems::start); a GPU failure in `Gui`
 //!   mode exits with code 11) and stopped in order before it goes down
@@ -28,6 +30,7 @@ use serde_json::Value;
 
 use crate::config::{AudioConfig, EngineMode, GpuConfig};
 use crate::events::{EngineEvent, EventBus};
+use crate::export::ExportServices;
 use crate::project_io::ProjectLayout;
 
 /// Which subsystem failed.
@@ -120,6 +123,13 @@ pub trait Subsystems: Send + Sync {
 
     /// The analysis stages run on newly imported media (none by default).
     fn analysis_stages(&self) -> Option<Arc<AnalysisStages>> {
+        None
+    }
+
+    /// What `export.start` renders, decodes and encodes with: the media backend's encoder, the
+    /// clip sources and the renderer shared with `render.frame` (its lock is the GPU budget).
+    /// Asked on every `export.start`; `None` (the default): exports fail with `Unsupported`.
+    fn export_services(&self) -> Option<ExportServices> {
         None
     }
 

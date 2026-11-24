@@ -4,17 +4,19 @@
 //!
 //! Timestamps are media time in flicks (ADR-0004): a frame's `pts` is its presentation time in
 //! the source, from the stream's own timestamps (never `n / fps`, ADR-0003). Frames are in coded
-//! orientation; the display rotation is in the probe. The plane layout matches
-//! `cutweave_render::frame` exactly, so handing a frame to the compositor moves the planes
-//! without copying.
+//! orientation; the display rotation is in the probe. The plane layout of the formats the
+//! compositor shares (`Nv12`, `P010`, `Yuv420p`, `Rgba8`) matches `cutweave_render::frame`
+//! exactly, so handing such a frame to the compositor moves the planes without copying. Software
+//! decoders also produce planar 10-bit and 4:2:2 layouts (WP-1D.03), which the GPU upload path
+//! converts (WP-1F.02).
 
 use cutweave_model::{ColorTags, SampleRate, Time};
 
 use crate::MediaError;
 
-/// Pixel layout of a decoded frame. Same variants and plane layout as the compositor's
-/// `cutweave_render::PixelFormat`; software decoders' other layouts (10-bit planar, 4:2:2)
-/// arrive with WP-1D.03.
+/// Pixel layout of a decoded frame. `Nv12`, `P010`, `Yuv420p` and `Rgba8` are the compositor's
+/// `cutweave_render::PixelFormat` (same plane layout); the planar 10-bit and 4:2:2 layouts are
+/// what software decoders produce (WP-1D.03).
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
 #[non_exhaustive]
 pub enum PixelFormat {
@@ -23,34 +25,63 @@ pub enum PixelFormat {
     /// 10-bit 4:2:0 in 16-bit little-endian words, value in the high 10 bits; two planes: Y,
     /// then interleaved Cb Cr (hardware decoders, HDR).
     P010,
-    /// 8-bit 4:2:0, three planes: Y, Cb, Cr (software decoders).
+    /// 8-bit 4:2:0, three planes: Y, Cb, Cr (software decoders: H.264, HEVC Main, VP9, AV1).
     Yuv420p,
+    /// 10-bit 4:2:0 in 16-bit little-endian words, value in the **low** 10 bits; three planes:
+    /// Y, Cb, Cr (software decoders: HEVC Main 10, 10-bit VP9/AV1/H.264). FFmpeg's
+    /// `yuv420p10le`.
+    Yuv420p10,
+    /// 8-bit 4:2:2, three planes: Y, then Cb and Cr at half width and full height (DNxHD,
+    /// MJPEG, 4:2:2 H.264).
+    Yuv422p,
+    /// 10-bit 4:2:2 in 16-bit little-endian words, value in the low 10 bits; three planes
+    /// (ProRes 422, DNxHR, 10-bit 4:2:2 H.264/HEVC). FFmpeg's `yuv422p10le`.
+    Yuv422p10,
     /// 8-bit interleaved R'G'B'A, straight alpha (thumbnails, stills).
     Rgba8,
 }
 
 impl PixelFormat {
+    /// Every layout, for tests and tables.
+    pub const ALL: [PixelFormat; 7] = [
+        PixelFormat::Nv12,
+        PixelFormat::P010,
+        PixelFormat::Yuv420p,
+        PixelFormat::Yuv420p10,
+        PixelFormat::Yuv422p,
+        PixelFormat::Yuv422p10,
+        PixelFormat::Rgba8,
+    ];
+
     /// Number of planes.
     #[must_use]
     pub const fn plane_count(self) -> usize {
         match self {
             PixelFormat::Nv12 | PixelFormat::P010 => 2,
-            PixelFormat::Yuv420p => 3,
+            PixelFormat::Yuv420p
+            | PixelFormat::Yuv420p10
+            | PixelFormat::Yuv422p
+            | PixelFormat::Yuv422p10 => 3,
             PixelFormat::Rgba8 => 1,
         }
     }
 
     /// Size in samples of plane `index` of a `w × h` frame, and bytes per texel of that plane
-    /// (`(width, height, bytes)`).
+    /// (`(width, height, bytes)`). Subsampled chroma rounds up, so odd sizes keep their last
+    /// column and row.
     #[must_use]
     pub const fn plane_layout(self, index: usize, w: u32, h: u32) -> (u32, u32, u32) {
-        let chroma = (w.div_ceil(2), h.div_ceil(2));
+        let c420 = (w.div_ceil(2), h.div_ceil(2));
+        let c422 = (w.div_ceil(2), h);
         match (self, index) {
-            (PixelFormat::Nv12 | PixelFormat::Yuv420p, 0) => (w, h, 1),
-            (PixelFormat::Nv12, _) => (chroma.0, chroma.1, 2),
-            (PixelFormat::P010, 0) => (w, h, 2),
-            (PixelFormat::P010, _) => (chroma.0, chroma.1, 4),
-            (PixelFormat::Yuv420p, _) => (chroma.0, chroma.1, 1),
+            (PixelFormat::Nv12 | PixelFormat::Yuv420p | PixelFormat::Yuv422p, 0) => (w, h, 1),
+            (PixelFormat::P010 | PixelFormat::Yuv420p10 | PixelFormat::Yuv422p10, 0) => (w, h, 2),
+            // NV12's interleaved CbCr pair and a 10-bit sample are both 2 bytes.
+            (PixelFormat::Nv12 | PixelFormat::Yuv420p10, _) => (c420.0, c420.1, 2),
+            (PixelFormat::P010, _) => (c420.0, c420.1, 4),
+            (PixelFormat::Yuv420p, _) => (c420.0, c420.1, 1),
+            (PixelFormat::Yuv422p, _) => (c422.0, c422.1, 1),
+            (PixelFormat::Yuv422p10, _) => (c422.0, c422.1, 2),
             (PixelFormat::Rgba8, _) => (w, h, 4),
         }
     }
@@ -59,18 +90,28 @@ impl PixelFormat {
     #[must_use]
     pub const fn bit_depth(self) -> u8 {
         match self {
-            PixelFormat::P010 => 10,
+            PixelFormat::P010 | PixelFormat::Yuv420p10 | PixelFormat::Yuv422p10 => 10,
             _ => 8,
         }
     }
 
-    /// FFmpeg's name for the layout (`nv12`, `p010le`, `yuv420p`, `rgba`).
+    /// Whether the samples are Y'CbCr (everything but `Rgba8`).
+    #[must_use]
+    pub const fn is_yuv(self) -> bool {
+        !matches!(self, PixelFormat::Rgba8)
+    }
+
+    /// FFmpeg's name for the layout (`nv12`, `p010le`, `yuv420p`, `yuv420p10le`, `yuv422p`,
+    /// `yuv422p10le`, `rgba`).
     #[must_use]
     pub const fn ffmpeg_name(self) -> &'static str {
         match self {
             PixelFormat::Nv12 => "nv12",
             PixelFormat::P010 => "p010le",
             PixelFormat::Yuv420p => "yuv420p",
+            PixelFormat::Yuv420p10 => "yuv420p10le",
+            PixelFormat::Yuv422p => "yuv422p",
+            PixelFormat::Yuv422p10 => "yuv422p10le",
             PixelFormat::Rgba8 => "rgba",
         }
     }
@@ -100,6 +141,11 @@ pub struct VideoFrame {
     pub planes: Vec<Plane>,
     /// The decoder's color tags (unspecified fields fall back to the probe's).
     pub color: ColorTags,
+    /// The media is damaged here: the decoder concealed errors in this picture, or returned it
+    /// in place of the requested one, which it could not decode (the nearest following frame,
+    /// else the nearest preceding one; ADR-0003). Playback and scrubbing go on; the asset can be
+    /// flagged.
+    pub damaged: bool,
 }
 
 impl VideoFrame {
@@ -229,6 +275,7 @@ mod tests {
             format,
             planes,
             color: ColorTags::default(),
+            damaged: false,
         }
     }
 
@@ -243,13 +290,34 @@ mod tests {
     }
 
     #[test]
+    fn software_layouts_are_planar_with_rounded_up_chroma() {
+        assert_eq!(PixelFormat::Yuv420p10.plane_layout(0, 7, 5), (7, 5, 2));
+        assert_eq!(PixelFormat::Yuv420p10.plane_layout(2, 7, 5), (4, 3, 2));
+        assert_eq!(PixelFormat::Yuv422p.plane_layout(1, 7, 5), (4, 5, 1));
+        assert_eq!(
+            PixelFormat::Yuv422p10.plane_layout(1, 1920, 1080),
+            (960, 1080, 2)
+        );
+        assert_eq!(PixelFormat::Yuv422p10.bit_depth(), 10);
+        assert_eq!(PixelFormat::Yuv422p.bit_depth(), 8);
+        for f in PixelFormat::ALL {
+            assert_eq!(f.is_yuv(), f != PixelFormat::Rgba8, "{f:?}");
+            assert_eq!(
+                f.plane_count(),
+                if f == PixelFormat::Rgba8 {
+                    1
+                } else if matches!(f, PixelFormat::Nv12 | PixelFormat::P010) {
+                    2
+                } else {
+                    3
+                }
+            );
+        }
+    }
+
+    #[test]
     fn tight_frames_validate_and_short_planes_do_not() {
-        for format in [
-            PixelFormat::Nv12,
-            PixelFormat::P010,
-            PixelFormat::Yuv420p,
-            PixelFormat::Rgba8,
-        ] {
+        for format in PixelFormat::ALL {
             let f = frame(format, 7, 5);
             assert_eq!(f.validate(), Ok(()), "{format:?}");
             let mut short = f.clone();

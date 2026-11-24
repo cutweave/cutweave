@@ -310,13 +310,19 @@ impl FrameIndex {
         self.time_base.to_time(self.frames.get(n)?.pts)
     }
 
-    /// The presentation index of the frame on screen at `t`: the last frame whose time is at or
-    /// before `t`, or the first frame for a `t` before it. (An index always has a frame.)
+    /// The presentation index of the frame on screen at `t`: the last frame whose time (as
+    /// [`time_of`](Self::time_of) reports it) is at or before `t`, or the first frame for a `t`
+    /// before it. (An index always has a frame.) `frame_at(time_of(n)) == n` for every frame,
+    /// also when a tick is not a whole number of flicks (MP4's 1/30720 at 60 fps).
     #[must_use]
     pub fn frame_at(&self, t: Time) -> usize {
-        // Compare in ticks: a frame is shown at `t` if its time is <= t, i.e. pts <= floor(t).
-        let ticks = self.time_base.floor_ticks(t);
-        let after = self.frames.partition_point(|f| f.pts <= ticks);
+        // Compare the frames' rounded times, not ticks: `floor_ticks(time_of(n))` falls one
+        // tick short when `time_of` rounded down.
+        let after = self.frames.partition_point(|f| {
+            self.time_base
+                .to_time(f.pts)
+                .map_or(f.pts < 0, |ft| ft <= t)
+        });
         after.saturating_sub(1)
     }
 
@@ -344,6 +350,20 @@ impl FrameIndex {
         };
         let ticks = last.checked_sub(first)?.checked_add(tail)?;
         Duration::from_flicks(self.time_base.to_time(ticks)?.flicks()).ok()
+    }
+
+    /// When the last frame stops being on screen: it lasts as long as the gap before it. A
+    /// decoder answers seeks at or past it with [`MediaError::OutOfRange`]. `None` for a stream
+    /// of one picture (a still has no end).
+    #[must_use]
+    pub fn end_time(&self) -> Option<Time> {
+        let n = self.frames.len();
+        if n < 2 {
+            return None;
+        }
+        let last = self.frames[n - 1].pts;
+        let end = last.saturating_add(last - self.frames[n - 2].pts);
+        Some(self.time_base.to_time(end).unwrap_or(Time::MAX))
     }
 
     /// Presentation indices of the keyframes, in order.
@@ -895,6 +915,28 @@ mod tests {
         // The last frame lasts as long as the gap before it.
         assert_eq!(ix.duration().map(Duration::flicks), Some(170 * 705_600));
         assert_eq!(ix.start_time(), Some(Time::ZERO));
+        assert_eq!(ix.end_time(), Some(ms(170)));
+        // A single picture never ends.
+        assert_eq!(index(tb, vec![pkt(0, 0, true)]).end_time(), None);
+    }
+
+    #[test]
+    fn frame_at_inverts_time_of_when_ticks_are_not_whole_flicks() {
+        // MP4's 60 fps timescale 1/30720: one tick is 22 968.75 flicks, so `time_of` rounds
+        // tick 3 down to 68 906 flicks, one flick before the tick's exact start.
+        let tb = TimeBase {
+            num: 1,
+            den: 30_720,
+        };
+        let ix = index(tb, (0..40).map(|t| pkt(t, t, t == 0)).collect());
+        for n in 0..ix.frame_count() {
+            let t = ix.time_of(n).expect("time");
+            assert_eq!(ix.frame_at(t), n, "frame {n} at {t:?}");
+            if n > 0 {
+                let before = Time::from_flicks(t.flicks() - 1).expect("time");
+                assert_eq!(ix.frame_at(before), n - 1, "just before frame {n}");
+            }
+        }
     }
 
     #[test]

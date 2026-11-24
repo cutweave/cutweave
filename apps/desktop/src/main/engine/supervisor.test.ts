@@ -376,6 +376,47 @@ describe("start errors", () => {
     expect(h.children).toHaveLength(1);
   });
 
+  it.each([
+    [0xc0000135, "exit code 0xC0000135: a DLL it needs is missing"],
+    [0xc0000139, "exit code 0xC0000139: a DLL it loaded is the wrong version"],
+  ])(
+    "Windows refusing to load the engine (%i) is failed at once and says why",
+    async (exitCode, why) => {
+      const h = harness();
+      void h.sup.start();
+      await flush();
+      h.last().exit(exitCode);
+      await flush();
+      expect(h.sup.status).toMatchObject({
+        state: "failed",
+        lastError: {
+          code: "start_failed",
+          exitCode,
+          message: `the engine exited before it was ready (${why})`,
+        },
+      });
+      await vi.advanceTimersByTimeAsync(60_000);
+      expect(h.children).toHaveLength(1);
+    },
+  );
+
+  it("names other Windows status codes in hex and still restarts", async () => {
+    const h = harness();
+    void h.sup.start();
+    await flush();
+    h.last().exit(0xc0000005);
+    await flush();
+    expect(h.sup.status).toMatchObject({
+      state: "crashed",
+      lastError: {
+        message: "the engine exited before it was ready (exit code 0xC0000005: access violation)",
+      },
+    });
+    await vi.advanceTimersByTimeAsync(500);
+    await flush();
+    expect(h.children).toHaveLength(2);
+  });
+
   it("exit 12 picks a new port, starts again at once and reports the change", async () => {
     const h = harness();
     const settled = h.sup.start();

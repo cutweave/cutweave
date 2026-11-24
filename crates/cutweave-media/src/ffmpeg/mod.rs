@@ -12,11 +12,15 @@
 //!
 //! Paths are validated before FFmpeg sees them (ffmpeg-next panics on non-UTF-8 paths and
 //! interior NULs, S3 F2.2), and open failures map to typed errors. Probe/index (WP-1D.02),
-//! decode (WP-1D.03) and hardware decode (WP-1D.04) build on [`input`]; the encoder (WP-1E.01)
-//! is in `encode`.
+//! decode (WP-1D.03: `decode` for video, `audio`) and hardware decode (WP-1D.04) build on
+//! [`input`]; the encoder (WP-1E.01) is in `encode`, its hardware encoders and their probe
+//! (WP-1E.02) in `hwenc`.
 
+mod audio;
+mod decode;
 mod encode;
 mod error;
+mod hwenc;
 mod index;
 mod log;
 mod probe;
@@ -36,8 +40,6 @@ use cutweave_model::ProbeInfo;
 use crate::backend::{AudioDecoder, DecodeOpts, EncodeSpec, Encoder, MediaBackend, VideoDecoder};
 use crate::version::{self, LinkedLibrary, Release};
 use crate::{Capabilities, FrameIndex, MediaError};
-
-const BACKEND: &str = "ffmpeg";
 
 /// What FFmpeg the process loaded.
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -171,25 +173,17 @@ impl MediaBackend for FfmpegBackend {
     fn open_decoder(
         &self,
         path: &Path,
-        _opts: &DecodeOpts,
+        opts: &DecodeOpts,
     ) -> Result<Box<dyn VideoDecoder>, MediaError> {
-        let _input = input::open(path)?;
-        Err(MediaError::not_implemented(
-            BACKEND,
-            "open_decoder (WP-1D.03)",
-        ))
+        decode::open(path, opts)
     }
 
     fn open_audio_decoder(
         &self,
         path: &Path,
-        _stream: Option<u32>,
+        stream: Option<u32>,
     ) -> Result<Box<dyn AudioDecoder>, MediaError> {
-        let _input = input::open(path)?;
-        Err(MediaError::not_implemented(
-            BACKEND,
-            "open_audio_decoder (WP-1D.03)",
-        ))
+        audio::open(path, stream)
     }
 
     fn open_encoder(&self, spec: &EncodeSpec) -> Result<Box<dyn Encoder>, MediaError> {
@@ -198,7 +192,11 @@ impl MediaBackend for FfmpegBackend {
     }
 
     fn capabilities(&self) -> Capabilities {
-        (*self.caps).clone()
+        Capabilities {
+            // Probed on first use (WP-1E.02), then cached for the process.
+            hw_encode: hwenc::capabilities(),
+            ..(*self.caps).clone()
+        }
     }
 }
 
@@ -390,6 +388,6 @@ mod tests {
         ] {
             assert!(!all.iter().any(|n| *n == hw), "{hw} listed as software");
         }
-        assert!(caps.hw_decode.is_empty() && caps.hw_encode.is_empty());
+        assert_eq!(caps.hw_decode, Vec::new());
     }
 }

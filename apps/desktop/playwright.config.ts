@@ -8,7 +8,10 @@ import { defineConfig } from "@playwright/test";
 export default defineConfig({
   testDir: "e2e",
   testMatch: "**/*.spec.ts",
-  globalSetup: "./e2e/run-check.ts",
+  // global-setup: fails the run once, with the reason, when the real engine binary cannot load.
+  // run-check: notes the processes already running, and after the run fails it if the suites
+  // left any of theirs behind.
+  globalSetup: ["./e2e/global-setup.ts", "./e2e/run-check.ts"],
   retries: 0,
   workers: 1,
   fullyParallel: false,

@@ -52,6 +52,10 @@ blake3 = "1.8.7"
 # compiles SQLite into the binary so every platform ships the same, known version and needs no
 # system library. MIT (SQLite itself is public domain).
 rusqlite = { version = "0.43", features = ["bundled"] }
+# cutweave-cache (WP-1D.05): the OS cache directory for the thumbnail/filmstrip disk cache
+# (`~/.cache`, `%LOCALAPPDATA%`, `~/Library/Caches`), never the project folder. MIT OR Apache-2.0;
+# its only non-std dependencies are platform path shims (`dirs-sys`, `option-ext` MPL-2.0).
+dirs = "6.0.0"
 
 # Time-ordered UUIDv7 ids (native only: wasm32-unknown-unknown has no OS entropy or wall clock).
 uuid = { version = "1.29", default-features = false, features = ["std", "v7"] }

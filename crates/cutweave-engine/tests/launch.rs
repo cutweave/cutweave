@@ -284,8 +284,13 @@ fn the_engine_process_serves_mcp_to_the_run_file_agent_token() {
         let client = ().serve(connect("/mcp")).await.expect("initialize");
         let tools = client.list_tools(None).await.unwrap().tools;
         let names: Vec<&str> = tools.iter().map(|t| t.name.as_ref()).collect();
-        assert_eq!(names.len(), 18, "{names:?}");
-        for name in ["clip_split", "timeline_get", "cutweave_execute"] {
+        assert_eq!(names.len(), 19, "{names:?}");
+        for name in [
+            "clip_split",
+            "timeline_get",
+            "export_start",
+            "cutweave_execute",
+        ] {
             assert!(names.contains(&name), "{name} missing from {names:?}");
         }
         let info = client
@@ -339,9 +344,19 @@ fn the_engine_opens_no_outbound_sockets_during_startup_and_shutdown() {
     let t = TempDir::new("network");
     let folder = empty_project(t.path(), "Offline");
     let project = folder.to_string_lossy().into_owned();
+    // The socket table is read (netstat / lsof) before the token is sent, which can take longer
+    // than the default 5 s handshake timeout on a loaded machine.
     let mut e = Engine::spawn(
         t.path(),
-        &["--port", "0", "--token-stdin", "--project", &project],
+        &[
+            "--port",
+            "0",
+            "--token-stdin",
+            "--project",
+            &project,
+            "--handshake-timeout-ms",
+            "60000",
+        ],
     );
     let pid = e.child.id();
     if sockets_of(pid).is_none() {

@@ -109,8 +109,11 @@ fn an_engine_killed_mid_edit_recovers_through_project_recover_and_autosaves() {
     // holds every acknowledged rename (and at most the one in flight).
     let mut config = EngineConfig::new(EngineMode::Headless);
     config.project = Some(folder.clone());
+    // An idle long enough that autosave cannot save between replaying the journal and building
+    // `project.recover`'s reply, even on a loaded machine; the reply must still show the restored
+    // work as unsaved.
     config.autosave = Some(AutosaveConfig {
-        idle: Duration::from_millis(100),
+        idle: Duration::from_secs(1),
         poll: Duration::from_millis(20),
         ..AutosaveConfig::default()
     });

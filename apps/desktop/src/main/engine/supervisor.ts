@@ -39,11 +39,13 @@ import type { EngineLaunch } from "./launch.ts";
 import { isPortFree, pickFreePort } from "./ports.ts";
 import {
   defaultEngineLogDir,
+  describeExitCode,
   type EngineErrorLine,
   type EngineReady,
   EXIT,
   parseEngineLine,
   readCrashMarker,
+  WINDOWS_LOADER_EXITS,
 } from "./protocol.ts";
 import { connectEngineRpc, type EngineRpc, uuidv7 } from "./rpc-client.ts";
 
@@ -63,6 +65,9 @@ const FATAL_EXITS = new Set<number>([
   EXIT.projectLocked,
   EXIT.gpuInitFailed,
   EXIT.badHandshake,
+  // Windows refused to load the engine (a missing or mismatched DLL): it never ran.
+  WINDOWS_LOADER_EXITS.dllNotFound,
+  WINDOWS_LOADER_EXITS.entryPointNotFound,
 ]);
 
 /** Project events after which main re-reads which project the engine holds. */
@@ -567,7 +572,11 @@ export class EngineSupervisor {
 
   #describeExit(run: Run, code: number | null, signal: NodeJS.Signals | null): EngineErrorInfo {
     const how =
-      code !== null ? `exit code ${code}` : signal !== null ? `signal ${signal}` : "no exit code";
+      code !== null
+        ? describeExitCode(code)
+        : signal !== null
+          ? `signal ${signal}`
+          : "no exit code";
     const base = {
       ...(code === null ? {} : { exitCode: code }),
       ...(signal === null ? {} : { signal }),

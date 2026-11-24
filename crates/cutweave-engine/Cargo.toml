@@ -17,18 +17,33 @@ path = "src/bin/cutweave-engine-serve.rs"
 [features]
 # `cutweave_engine::determinism`: the double-run determinism harness (WP-1B.08). Tests only; panics on failure.
 testing = []
+# The FFmpeg media backend (`cutweave_media::FfmpegBackend`): the export pipeline's encoder in
+# the full engine (WP-1I.05) and the WP-1E.03 export tests that check real MP4 output. Needs the
+# FFmpeg bundle (docs/dev/ffmpeg.md); off by default like cutweave-media's own feature. The
+# engine is the composition root, the one crate allowed to enable it (`cargo xtask check-deps`).
+ffmpeg = ["cutweave-media/ffmpeg"]
 
 [dependencies]
 # The local server (WP-1I.01): `ApiServer`, credential classes, run-file, the handshake token
 # rules and the exit-12 contract the engine root starts and reuses (WP-1I.04).
 cutweave-api = { path = "../cutweave-api" }
+# The export pipeline's offline mixdown and its `SourceFactory` seam (WP-1E.03). No `device`
+# feature: export needs no audio output (WP-1I.05 enables it for playback).
+cutweave-audio = { path = "../cutweave-audio", default-features = false }
 # The doc actor's `CommitSink` seam, `JournaledCommit` and the recovery hooks of `DocConfig`
 # (WP-1C.02: the journal persists committed transactions before they are acknowledged).
 cutweave-commands = { path = "../cutweave-commands" }
 # The engine's `JobManager` behind the `job.*` commands and import analysis (WP-1D.07).
 cutweave-jobs = { path = "../cutweave-jobs" }
+# The export pipeline's decoders and encoder (`MediaBackend`, WP-1E.03); the trait half unless
+# the `ffmpeg` feature is on.
+cutweave-media = { path = "../cutweave-media" }
 cutweave-model = { path = "../cutweave-model" }
 cutweave-ops = { path = "../cutweave-ops" }
+# The export pipeline renders through the same evaluation, render graph and `FrameBackend` as
+# `render.frame` (WP-1E.03). The wasm-safe core only: the GPU backend is built by whoever owns
+# the device (WP-1I.05; the export tests enable `gpu` below).
+cutweave-render = { path = "../cutweave-render", default-features = false }
 serde.workspace = true
 serde_json.workspace = true
 # `specta::Type` on the engine event payloads (TS `EventMap`, WP-1N.02); `usize` fields export as `number`.
@@ -50,6 +65,10 @@ tracing-subscriber = { version = "=0.3.23", default-features = false, features =
 # This crate with `testing` on, so its tests (and `cargo nextest run --workspace`) include the harness.
 cutweave-engine = { path = ".", features = ["testing"] }
 cutweave-model = { path = "../cutweave-model", features = ["testing"] }
+# The WP-1E.03 export tests render on a headless wgpu device (`GpuFrameBackend`).
+cutweave-render = { path = "../cutweave-render", features = ["gpu"] }
+# Decodes `render.frame`'s PNG in the export tests (already locked through cutweave-render).
+png = "0.18.1"
 # The WP-1J.01 launch test calls `/mcp` on the engine process with rmcp's own Streamable HTTP
 # client (the version cutweave-api pins; no crate outside Cargo.lock).
 rmcp = { version = "=3.11.0", default-features = false, features = ["client", "transport-streamable-http-client-reqwest"] }

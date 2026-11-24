@@ -596,10 +596,12 @@ body {
   flex-wrap: wrap;
   gap: var(--space-2);
   min-width: 0;
+  overflow-wrap: anywhere;
 }
 
 .cw-inspector__note {
   margin: 0;
+  overflow-wrap: anywhere;
   color: var(--text-secondary);
 }
 

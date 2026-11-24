@@ -12,12 +12,36 @@
 //! - [`FrameIndex`] (from `cutweave-media`, re-exported): the packet-scan index that makes seeks
 //!   frame-exact and maps VFR time to frames.
 //!
+//! WP-1D.05 adds the RAM frame cache ([`FrameCache`]), JPEG thumbnails and filmstrips
+//! ([`ThumbCache`]) kept in a size-capped disk cache ([`DiskCache`], table `disk_entries`) and a
+//! prefetch job ([`submit_prefetch`]).
+//!
+//! WP-1D.06 adds waveform pyramids ([`WaveformCache`], [`Waveform`], [`PeakData`]): min/max peaks
+//! at 256, 1024, 4096, ... samples per bin, stored as one file per audio stream (not in SQLite;
+//! format: docs/reference/waveform-format.md).
+//!
 //! The cache is disposable: everything in it can be rebuilt from the media, so a damaged or
 //! too-new database is moved aside ([`CacheDb::open_or_reset`]) rather than repaired.
 
 mod db;
+mod disk;
 mod error;
+mod frame_cache;
+mod thumbs;
+mod waveform;
+mod waveform_cache;
 
 pub use cutweave_media::{ContentHash, FrameIndex, HashMode};
 pub use db::{CacheDb, CacheUsage, Eviction, SCHEMA_VERSION};
+pub use disk::{DiskCache, DiskEntry, DiskKind};
 pub use error::CacheError;
+pub use frame_cache::{FrameCache, FrameCacheStats, FrameKey};
+pub use thumbs::{
+    Filmstrip, FilmstripManifest, FilmstripSpec, MediaRef, PrefetchSpec, Thumb, ThumbCache,
+    ThumbConfig, submit_prefetch,
+};
+pub use waveform::{
+    BASE_SAMPLES_PER_BIN, LEVEL_FACTOR, MAX_LEVELS, Peak, PeakData, Track, Waveform,
+    WaveformBuilder, WaveformOptions, WaveformStyle, render_png,
+};
+pub use waveform_cache::{WaveformCache, WaveformRequest};

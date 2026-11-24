@@ -5,12 +5,14 @@
 //! [`register`] calls them all (explicit registration, arch §5.1). Currently: [`view`]
 //! (WP-1C.04), the UI view-state namespace, and the WP-1B.05 ops: [`project`], [`media`],
 //! [`track`] and [`timeline`]; the WP-1B.06 clip edits: [`clip`] (split, trim) and [`item`]
-//! (move, delete, set_props, get); and the WP-1D.07 background jobs: [`job`] (status, list,
-//! wait, cancel) plus the import's analysis jobs ([`media::Analyzer`]).
+//! (move, delete, set_props, get); the WP-1D.07 background jobs: [`job`] (status, list,
+//! wait, cancel) plus the import's analysis jobs ([`media::Analyzer`]); and the WP-1E.03
+//! [`export`] command (`export.start`, run by the engine's export pipeline).
 
 use cutweave_commands::{Registry, RegistryError};
 
 pub mod clip;
+pub mod export;
 pub mod item;
 pub mod job;
 pub mod media;
@@ -33,6 +35,7 @@ pub fn register(registry: &mut Registry) -> Result<(), RegistryError> {
     clip::register(registry)?;
     item::register(registry)?;
     job::register(registry)?;
+    export::register(registry)?;
     view::register(registry)
 }
 

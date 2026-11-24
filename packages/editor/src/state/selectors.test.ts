@@ -6,6 +6,7 @@ import {
   mediaName,
   selectActiveSequenceId,
   selectMedia,
+  selectSequenceSummary,
   selectTimelineItems,
   selectTimelineModel,
 } from "./selectors.ts";
@@ -78,6 +79,25 @@ const project = (): Project =>
 function fmt() {
   return { width: 1920, height: 1080, frame_rate: { num: 30000, den: 1001 } };
 }
+
+describe("selectSequenceSummary", () => {
+  it("reads the active sequence's canvas and rate and ends at its last item", () => {
+    expect(selectSequenceSummary(project())).toEqual({
+      width: 1920,
+      height: 1080,
+      frameRate: { num: 30000, den: 1001 },
+      duration: 600,
+    });
+  });
+
+  it("is 0 long for an empty sequence and null without a project", () => {
+    const p = project();
+    const sequences = p.sequences as unknown as Record<string, unknown>;
+    const empty = { ...p, sequences: { seq_2: sequences.seq_2 } } as unknown as Project;
+    expect(selectSequenceSummary(empty)?.duration).toBe(0);
+    expect(selectSequenceSummary(null)).toBeNull();
+  });
+});
 
 describe("selectActiveSequenceId", () => {
   it("is the lowest sequence ID, or null without a project", () => {

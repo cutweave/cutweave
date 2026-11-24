@@ -81,8 +81,14 @@ function ourProcesses(): () => Proc[] {
   const exes = new Set(binaries.map(norm));
   const names = [...new Set([...binaries.map((b) => path.basename(b)), win ? "node.exe" : "node"])];
   const support = norm(path.join(desktopDir, "test-support"));
+  // Electron and the engine also run the developer's own app from this checkout (`pnpm dev`),
+  // which can start new processes during a run (a renderer after a reload, an engine restart).
+  // Only those carrying a suite's marker are ours: the throwaway profile (`cutweave-e2e-*`, in
+  // the user-data, run and log folders of the app and its engine) or Playwright's loader.
+  const marked = new Set([norm(electron), norm(realEngine)]);
+  const hasMarker = (p: Proc) => /cutweave-e2e-|playwright/i.test(p.cmd);
   const isOurs = (p: Proc) =>
-    (p.exe !== "" && exes.has(norm(p.exe))) ||
+    (p.exe !== "" && exes.has(norm(p.exe)) && (!marked.has(norm(p.exe)) || hasMarker(p))) ||
     (/^node/i.test(p.name) && (win ? p.cmd.toLowerCase() : p.cmd).includes(support));
   return () => processes(names).filter(isOurs);
 }

@@ -220,7 +220,7 @@ async fn scripted_edit(agent: &Agent, clip: &str) {
 
 // ----- headless -----------------------------------------------------------------------------
 
-/// Acceptance 1: `cutweave mcp --headless` lists the standard profile (18 tools within the P1
+/// Acceptance 1: `cutweave mcp --headless` lists the standard profile (19 tools within the P1
 /// gate) and runs the scripted session, on both revisions; the path policy confines it.
 #[tokio::test]
 async fn headless_runs_a_scripted_session_on_both_revisions() {
@@ -241,9 +241,9 @@ async fn headless_runs_a_scripted_session_on_both_revisions() {
         .await;
         assert_eq!(agent.negotiated(), revision.version(), "{revision:?}");
         let tools = agent.tools().await;
-        // The registry's core tools plus the 4 generic tools, the same catalog as `/mcp`: 18
-        // until `render_frame` (WP-1J.02) and `export_start` (WP-1E.03) join it.
-        assert_eq!(tools.len(), 18, "{revision:?}");
+        // The registry's core tools plus the 4 generic tools, the same catalog as `/mcp`: 19
+        // with `export_start` (WP-1E.03), 20 once `render_frame` (WP-1J.02) joins it.
+        assert_eq!(tools.len(), 19, "{revision:?}");
         let size = ListSize::of(&tools);
         assert!(P1_GATE.fits(size), "{size:?}");
         println!(
@@ -512,7 +512,7 @@ async fn attach_edits_the_running_engines_document() {
     let agent = Agent::start(&["--attach", "--run-file", &run_file], Revision::Stateful).await;
     assert_eq!(agent.negotiated(), Revision::Stateful.version());
     let tools = agent.tools().await;
-    assert_eq!(tools.len(), 18);
+    assert_eq!(tools.len(), 19);
     scripted_edit(&agent, &clip).await;
     // The same document through the engine's `/rpc`.
     let out = cutweave(&["query", "project.info", "--run-dir", &run]);

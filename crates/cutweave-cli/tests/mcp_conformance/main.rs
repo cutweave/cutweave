@@ -68,14 +68,14 @@ const BIN: &str = env!("CARGO_BIN_EXE_cutweave");
 /// Flicks per second.
 const SEC: i64 = 705_600_000;
 
-/// The standard profile's tools in Phase 1: the registry's 14 core tools and the 4 generic
-/// ones. `render_frame` (WP-1J.02) and `export_start` (WP-1E.03) are not here yet: the count
-/// in the assertions goes to 20 with them (P1 gate: 19 tools; the gate is widened by the
-/// WP that adds them).
-const CORE_TOOLS: [&str; 14] = [
+/// The standard profile's tools in Phase 1: the registry's 15 core tools and the 4 generic
+/// ones. `render_frame` (WP-1J.02) is not here yet: the count in the assertions goes to 20
+/// with it (P1 gate: 19 tools; the gate is widened by the WP that adds it).
+const CORE_TOOLS: [&str; 15] = [
     "clip_split",
     "clip_trim",
     "edit_undo",
+    "export_start",
     "item_delete",
     "item_move",
     "item_set_props",
@@ -561,7 +561,7 @@ async fn conformance(transport: Transport, revision: Revision, tamper: Option<Ta
     expected.sort();
     assert_eq!(
         names, expected,
-        "{label}: tools/list changed; render_frame (WP-1J.02) and export_start (WP-1E.03) join it"
+        "{label}: tools/list changed; render_frame (WP-1J.02) joins it"
     );
     let size = ListSize::of(&tools);
     assert!(
@@ -724,6 +724,20 @@ async fn exercise(session: &Session, tamper: Option<Tamper>) {
         "{history}"
     );
 
+    // export_start: this engine runs without the media subsystem (WP-1I.05 wires it), so a
+    // valid export is refused with the structured `unsupported` error after validation.
+    let exported = session
+        .dir
+        .path()
+        .join("export.mp4")
+        .to_string_lossy()
+        .into_owned();
+    let error = session
+        .err("export_start", json!({ "path": exported }))
+        .await;
+    assert_eq!(error["error"]["code"], "unsupported", "{error}");
+    c.called.lock().unwrap().insert("export_start".into());
+
     // project_open: save, then reopen the saved folder.
     let saved_at = session
         .dir
@@ -763,7 +777,8 @@ async fn exercise(session: &Session, tamper: Option<Tamper>) {
         .collect();
     assert!(missing.is_empty(), "tools never called: {missing:?}");
     // TODO(WP-1J.02): `render_frame` on the fixture project, decode the image content block.
-    // TODO(WP-1E.03): `export_start` + `job_wait` on the fixture project.
+    // TODO(WP-1I.05): `export_start` + `job_wait` on the fixture project once the CLI engine
+    // exports (it answers `unsupported` above until then).
 }
 
 #[tokio::test]
@@ -961,7 +976,7 @@ async fn scripted_agent_edits_over_stdio_with_mcp_tools_only() {
 
         // TODO(WP-1J.02): `render_frame` at a time inside the second clip; decode the image
         // content block (non-empty PNG, expected size).
-        // TODO(WP-1E.03): `export_start` + `job_wait`; check the output file exists.
+        // TODO(WP-1I.05): `export_start` + `job_wait`; check the output file exists.
 
         // Nothing but protocol frames on stdout: rmcp would have failed on anything else; the
         // child exits 0 with only diagnostics on stderr.

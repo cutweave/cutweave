@@ -1,13 +1,18 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
-//! The FFmpeg [`Encoder`]: H.264 (libx264) and AAC (FFmpeg's native encoder) in MP4 (WP-1E.01).
+//! The FFmpeg [`Encoder`]: H.264 (libx264 or a hardware encoder) and AAC (FFmpeg's native
+//! encoder) in MP4 (WP-1E.01, hardware WP-1E.02).
 //!
-//! - **Video.** libx264 in `yuv420p` with CRF or an average bitrate and an x264 speed preset.
-//!   BT.709 primaries, transfer and matrix in limited range go into the SPS (VUI) and the MP4
-//!   `colr` box. RGBA input is converted by swscale with the BT.709 matrix into limited range;
-//!   NV12 and YUV 4:2:0 input are only re-laid out. Constant frame rate: the codec time base
-//!   is one frame, so frame `n` (pts `rate.frame_to_time(n)` in flicks, checked by
-//!   `InputCheck`) gets pts `n`. This is the only place flicks become a codec time base (arch
-//!   §4.1).
+//! - **Video.** libx264 in `yuv420p` with CRF or an average bitrate and an x264 speed preset,
+//!   or a hardware encoder in NV12 with the same settings mapped onto its own (`hwenc`). Which
+//!   one follows [`EncodeSpec::hw`]: `Auto` tries the probed hardware encoders in order and then
+//!   x264, skipping (and logging) any that fails to open; `Force` opens one hardware encoder;
+//!   `Off` opens x264. A hardware encoder that fails after it opened ends the encode with
+//!   [`MediaError::HwUnavailable`] (the caller re-encodes in software). BT.709 primaries,
+//!   transfer and matrix in limited range go into the SPS (VUI) and the MP4 `colr` box. RGBA
+//!   input is converted by swscale with the BT.709 matrix into limited range; NV12 and YUV
+//!   4:2:0 input are only re-laid out. Constant frame rate: the codec time base is one frame,
+//!   so frame `n` (pts `rate.frame_to_time(n)` in flicks, checked by `InputCheck`) gets pts
+//!   `n`. This is the only place flicks become a codec time base (arch §4.1).
 //! - **Audio.** FFmpeg's native `aac` takes planar f32, the layout of [`AudioChunk`], so pushed
 //!   samples are only cut into its 1024-sample frames (the last may be short). Pts count
 //!   samples.
@@ -36,18 +41,15 @@ use ffmpeg_next::format::{self, Pixel, Sample, sample};
 use ffmpeg_next::util::color;
 use ffmpeg_next::{ChannelLayout, Dictionary, Packet, Rational, frame};
 
-use super::sys::Scaler;
+use super::hwenc::{self, Choice};
+use super::sys::{HwFrames, Scaler};
 use crate::backend::{AudioEncodeSpec, EncodeSpec, EncodeSummary, Encoder, VideoEncodeSpec};
 use crate::encode::{InputCheck, output_color};
 use crate::path::display;
-use crate::{
-    AudioChunk, CancelCheck, MediaError, PixelFormat, ProgressSink, RateControl, VideoFrame,
-};
+use crate::{AudioChunk, CancelCheck, MediaError, PixelFormat, ProgressSink, VideoFrame};
 
 /// The container this encoder writes.
 const MP4: &str = "mp4";
-/// The H.264 encoder.
-const X264: &str = "libx264";
 /// The AAC encoder (FFmpeg's own; no libfdk).
 const AAC: &str = "aac";
 /// swscale's BT.709 matrix.
@@ -59,18 +61,63 @@ impl<T: Write + Seek + Send> WriteSeek for T {}
 
 /// Opens an encoder for `spec` (already validated) writing through the partial file itself.
 pub(super) fn open(spec: &EncodeSpec) -> Result<Box<dyn Encoder>, MediaError> {
-    open_with(spec, |file| Box::new(file))
+    open_with(spec, &|file| Box::new(file))
 }
 
 /// [`open`], with the partial file wrapped by `wrap` (tests simulate a full disk with it).
+///
+/// Tries the video encoders [`hwenc::choices`] lists for `spec.hw` in order: a hardware encoder
+/// that fails to open is logged and skipped while another choice is left (`Auto` always ends
+/// with x264); the last choice's error is returned as it is.
 pub(super) fn open_with(
     spec: &EncodeSpec,
-    wrap: impl FnOnce(File) -> Box<dyn WriteSeek>,
+    wrap: &dyn Fn(File) -> Box<dyn WriteSeek>,
 ) -> Result<Box<dyn Encoder>, MediaError> {
     check_container(spec)?;
     let video = spec.video.as_ref().map(VideoPlan::new).transpose()?;
     let audio = spec.audio.as_ref().map(AudioPlan::new).transpose()?;
     check_target(&spec.path)?;
+    let choices = match video {
+        Some(_) => hwenc::choices(&spec.hw)?,
+        None => vec![Choice::Software],
+    };
+    // (Formatted before the log macros, whose scope has a `display` of their own.)
+    let path = display(&spec.path);
+    let mut choices = choices.into_iter().peekable();
+    while let Some(choice) = choices.next() {
+        let video = video.as_ref().map(|plan| (plan, choice));
+        match open_attempt(spec, video, audio.as_ref(), wrap) {
+            Ok(enc) => {
+                if let Some(name) = enc.video_encoder() {
+                    tracing::info!(
+                        target: "cutweave_media",
+                        "encoding the video of `{path}` with {name}"
+                    );
+                }
+                return Ok(enc);
+            }
+            Err(MediaError::HwUnavailable { reason }) if choices.peek().is_some() => {
+                let next = choices.peek().map_or("another encoder", |c| c.name());
+                tracing::warn!(
+                    target: "cutweave_media",
+                    "{reason}; trying {next} for `{path}`"
+                );
+            }
+            Err(e) => return Err(e),
+        }
+    }
+    Err(MediaError::Backend {
+        message: "no video encoder to try".to_owned(),
+    })
+}
+
+/// One attempt of [`open_with`] with one video encoder.
+fn open_attempt(
+    spec: &EncodeSpec,
+    video: Option<(&VideoPlan, Choice)>,
+    audio: Option<&AudioPlan>,
+    wrap: &dyn Fn(File) -> Box<dyn WriteSeek>,
+) -> Result<Box<FfmpegEncoder>, MediaError> {
     let (partial, file) = PartialFile::create(&spec.path)?;
     let state = Arc::new(SinkState::default());
     let sink = Sink {
@@ -85,6 +132,7 @@ pub(super) fn open_with(
         audio: None,
         partial: Some(partial),
         path: spec.path.clone(),
+        video_encoder: video.map(|(_, choice)| choice.name()),
         input: InputCheck::new(spec),
         cancel: spec.cancel.clone(),
         progress: spec.progress.clone(),
@@ -93,7 +141,7 @@ pub(super) fn open_with(
         failed: None,
     };
     // From here on, an error drops `enc`, which closes and removes the partial file.
-    match enc.start(sink, video.as_ref(), audio.as_ref()) {
+    match enc.start(sink, video, audio) {
         Ok(()) => Ok(Box::new(enc)),
         Err(fault) => Err(enc.fail(fault)),
     }
@@ -162,25 +210,28 @@ fn rational(num: u32, den: u32) -> Result<Rational, MediaError> {
     }
 }
 
-/// The checked video settings, before anything is opened.
-struct VideoPlan {
+/// The checked video settings, before anything is opened (whichever encoder then opens).
+pub(super) struct VideoPlan {
     spec: VideoEncodeSpec,
-    codec: ffmpeg_next::Codec,
     /// One frame.
     time_base: Rational,
     fps: Rational,
 }
 
 impl VideoPlan {
-    fn new(spec: &VideoEncodeSpec) -> Result<VideoPlan, MediaError> {
+    pub(super) fn new(spec: &VideoEncodeSpec) -> Result<VideoPlan, MediaError> {
         if spec.codec != "h264" {
             return Err(unsupported(format!(
                 "no `{}` encoder for MP4: this backend writes H.264 (HEVC and AV1 arrive in P2)",
                 spec.codec
             )));
         }
-        let codec = encoder::find_by_name(X264)
-            .ok_or_else(|| unsupported(format!("this FFmpeg build has no {X264}")))?;
+        if encoder::find_by_name(hwenc::X264).is_none() {
+            return Err(unsupported(format!(
+                "this FFmpeg build has no {}",
+                hwenc::X264
+            )));
+        }
         if !matches!(
             spec.input_format,
             PixelFormat::Rgba8 | PixelFormat::Nv12 | PixelFormat::Yuv420p
@@ -212,7 +263,6 @@ impl VideoPlan {
         let (num, den) = (spec.rate.num(), spec.rate.den());
         Ok(VideoPlan {
             spec: spec.clone(),
-            codec,
             time_base: rational(den, num)?,
             fps: rational(num, den)?,
         })
@@ -405,6 +455,10 @@ impl Seek for Sink {
 enum Fault {
     /// Opening or running an encoder.
     Encode(&'static str, ffmpeg_next::Error),
+    /// A hardware video encoder failed (opening, uploading, encoding or flushing; the message
+    /// starts with its name): becomes [`MediaError::HwUnavailable`], which `Auto` answers with
+    /// the next encoder or a software re-encode.
+    Hardware(String),
     /// The muxer or the writer.
     Write(ffmpeg_next::Error),
     /// The cancel check answered `true`.
@@ -413,9 +467,22 @@ enum Fault {
     Media(MediaError),
 }
 
-/// How the input reaches `yuv420p`.
+impl Fault {
+    /// The failure as text (the probe's reason).
+    fn text(self) -> String {
+        match self {
+            Fault::Hardware(message) => message,
+            Fault::Encode(which, e) => format!("{which}: {e}"),
+            Fault::Write(e) => e.to_string(),
+            Fault::Cancelled => "cancelled".to_owned(),
+            Fault::Media(e) => e.to_string(),
+        }
+    }
+}
+
+/// How the input reaches the encoder's layout (`yuv420p` for x264, NV12 for hardware).
 enum Convert {
-    /// Already YUV 4:2:0 planar: copy the planes.
+    /// Already in that layout: copy the planes.
     Copy,
     /// swscale from the staging frame's layout.
     Scale {
@@ -424,34 +491,47 @@ enum Convert {
     },
 }
 
+/// The FFmpeg layout of an RGBA, NV12 or YUV 4:2:0 input format.
+fn pixel(format: PixelFormat) -> Pixel {
+    match format {
+        PixelFormat::Rgba8 => Pixel::RGBA,
+        PixelFormat::Nv12 => Pixel::NV12,
+        _ => Pixel::YUV420P,
+    }
+}
+
 impl Convert {
-    fn new(input: PixelFormat, size: (u32, u32)) -> Result<Convert, ffmpeg_next::Error> {
-        let src = match input {
-            PixelFormat::Rgba8 => Pixel::RGBA,
-            PixelFormat::Nv12 => Pixel::NV12,
-            _ => return Ok(Convert::Copy),
-        };
-        // RGB input is full range; NV12 input is already limited range like the output.
+    /// From `input` frames to `output` frames (both RGBA, NV12 or YUV 4:2:0) at `size`.
+    fn new(
+        input: PixelFormat,
+        output: PixelFormat,
+        size: (u32, u32),
+    ) -> Result<Convert, ffmpeg_next::Error> {
+        if input == output {
+            return Ok(Convert::Copy);
+        }
+        let src = pixel(input);
+        // RGB input is full range; YUV input is already limited range like the output.
         let src_full = input == PixelFormat::Rgba8;
         Ok(Convert::Scale {
-            scaler: Scaler::new(src, Pixel::YUV420P, size, SWS_CS_ITU709, (src_full, false))?,
+            scaler: Scaler::new(src, pixel(output), size, SWS_CS_ITU709, (src_full, false))?,
             staging: frame::Video::new(src, size.0, size.1),
         })
     }
 
-    /// `frame` as a new `yuv420p` frame (new, because the encoder may keep a reference).
-    fn run(&mut self, frame: &VideoFrame) -> Result<frame::Video, Fault> {
-        let mut yuv = frame::Video::new(Pixel::YUV420P, frame.width, frame.height);
+    /// `frame` as a new `output` frame (new, because the encoder may keep a reference).
+    fn run(&mut self, frame: &VideoFrame, output: PixelFormat) -> Result<frame::Video, Fault> {
+        let mut out = frame::Video::new(pixel(output), frame.width, frame.height);
         match self {
-            Convert::Copy => copy_planes(frame, &mut yuv)?,
+            Convert::Copy => copy_planes(frame, &mut out)?,
             Convert::Scale { scaler, staging } => {
                 copy_planes(frame, staging)?;
                 scaler
-                    .run(staging, &mut yuv)
+                    .run(staging, &mut out)
                     .map_err(|e| Fault::Encode("swscale", e))?;
             }
         }
-        Ok(yuv)
+        Ok(out)
     }
 }
 
@@ -477,14 +557,214 @@ fn copy_planes(frame: &VideoFrame, dst: &mut frame::Video) -> Result<(), Fault> 
     Ok(())
 }
 
+/// One open video encoder, without a muxer: input conversion, the upload to GPU surfaces for
+/// encoders that take only those, and the FFmpeg encoder. The muxed stream ([`VideoOut`]) and
+/// the hardware probe ([`test_encode`]) both use it.
+struct VideoEncoder {
+    encoder: encoder::video::Encoder,
+    codec: ffmpeg_next::Codec,
+    convert: Convert,
+    /// The pool frames are uploaded to (VA-API).
+    surfaces: Option<HwFrames>,
+    choice: Choice,
+}
+
+/// The faults a [`hwenc::Family::Pseudo`] encoder injects (tests).
+#[cfg(test)]
+fn injected(choice: Choice) -> Option<hwenc::Faults> {
+    if let hwenc::Family::Pseudo(faults) = choice.hardware()?.family {
+        Some(faults)
+    } else {
+        None
+    }
+}
+
+impl VideoEncoder {
+    /// Opens `choice` for `plan`.
+    fn open(plan: &VideoPlan, choice: Choice, global_header: bool) -> Result<VideoEncoder, Fault> {
+        let spec = &plan.spec;
+        let name = choice.name();
+        let fault = |message: String| match choice.hardware() {
+            Some(_) => Fault::Hardware(message),
+            None => Fault::Media(unsupported(message)),
+        };
+        #[cfg(test)]
+        if injected(choice).is_some_and(|f| f.open) {
+            return Err(fault(format!("{name} could not open (injected)")));
+        }
+        let codec = encoder::find_by_name(choice.ffmpeg_name())
+            .ok_or_else(|| fault(format!("{name} is not in this FFmpeg build")))?;
+        let mut ctx = codec::context::Context::new_with_codec(codec)
+            .encoder()
+            .video()
+            .map_err(|e| fault(format!("{name}: {e}")))?;
+        ctx.set_width(spec.width);
+        ctx.set_height(spec.height);
+        ctx.set_time_base(plan.time_base);
+        ctx.set_frame_rate(Some(plan.fps));
+        ctx.set_aspect_ratio(Rational::new(1, 1));
+        ctx.set_colorspace(color::Space::BT709);
+        ctx.set_color_range(color::Range::MPEG);
+        ctx.set_color_primaries(color::Primaries::BT709);
+        ctx.set_color_transfer_characteristic(color::TransferCharacteristic::BT709);
+        if global_header {
+            ctx.set_flags(codec::Flags::GLOBAL_HEADER);
+        }
+        let surfaces = if let Some((device, format)) = choice.surfaces() {
+            let pool = HwFrames::new(device, format, (spec.width, spec.height))
+                .map_err(|e| fault(format!("{name}: no {device:?} surfaces: {e}")))?;
+            pool.attach(&mut ctx)
+                .map_err(|e| fault(format!("{name}: {e}")))?;
+            ctx.set_format(format);
+            Some(pool)
+        } else {
+            ctx.set_format(pixel(choice.input_format()));
+            None
+        };
+        let mut options = Dictionary::new();
+        for (key, value) in choice.settings(spec) {
+            options.set(key, &value);
+        }
+        let encoder = ctx.open_with(options).map_err(|e| {
+            fault(format!(
+                "{name} refused {}x{} at {} fps: {e}",
+                spec.width, spec.height, spec.rate
+            ))
+        })?;
+        let convert = Convert::new(
+            spec.input_format,
+            choice.input_format(),
+            (spec.width, spec.height),
+        )
+        .map_err(|e| Fault::Encode("swscale", e))?;
+        Ok(VideoEncoder {
+            encoder,
+            codec,
+            convert,
+            surfaces,
+            choice,
+        })
+    }
+
+    /// What an encoder call failing with `e` means.
+    fn fault(&self, e: ffmpeg_next::Error) -> Fault {
+        match self.choice.hardware() {
+            Some(hw) => Fault::Hardware(format!("{}: {e}", hw.name)),
+            None => Fault::Encode(hwenc::X264, e),
+        }
+    }
+
+    /// Converts (and uploads) `frame` and sends it as frame `index`.
+    fn send(&mut self, frame: &VideoFrame, index: i64) -> Result<(), Fault> {
+        #[cfg(test)]
+        if injected(self.choice).is_some_and(|f| f.frame == Some(index)) {
+            let name = self.choice.name();
+            return Err(Fault::Hardware(format!(
+                "{name}: device lost at frame {index} (injected)"
+            )));
+        }
+        let mut input = self.convert.run(frame, self.choice.input_format())?;
+        if let Some(pool) = &self.surfaces {
+            input = pool.upload(&input).map_err(|e| self.fault(e))?;
+        }
+        input.set_pts(Some(index));
+        self.encoder.send_frame(&input).map_err(|e| self.fault(e))
+    }
+
+    /// Signals the end of the stream.
+    fn send_eof(&mut self) -> Result<(), Fault> {
+        #[cfg(test)]
+        if injected(self.choice).is_some_and(|f| f.finish) {
+            let name = self.choice.name();
+            return Err(Fault::Hardware(format!("{name}: flush failed (injected)")));
+        }
+        self.encoder.send_eof().map_err(|e| self.fault(e))
+    }
+
+    /// The next packet into `packet`: `false` when none is ready (or at the end).
+    fn receive(&mut self, packet: &mut Packet) -> Result<bool, Fault> {
+        receive(&mut self.encoder, packet).map_err(|e| self.fault(e))
+    }
+}
+
+/// `receive_packet`: `Ok(false)` when the encoder needs input or is drained.
+fn receive(enc: &mut encoder::Encoder, packet: &mut Packet) -> Result<bool, ffmpeg_next::Error> {
+    match enc.receive_packet(packet) {
+        Ok(()) => Ok(true),
+        Err(ffmpeg_next::Error::Other { errno }) if errno == ffmpeg_next::error::EAGAIN => {
+            Ok(false)
+        }
+        Err(ffmpeg_next::Error::Eof) => Ok(false),
+        Err(e) => Err(e),
+    }
+}
+
+/// Encodes `frames` frames of a moving NV12 ramp at `spec` with `choice`, without a file, and
+/// expects at least one packet: the hardware probe. The error is the reason, for the log.
+pub(super) fn test_encode(
+    spec: &VideoEncodeSpec,
+    choice: Choice,
+    frames: i64,
+) -> Result<(), String> {
+    let plan = VideoPlan::new(spec).map_err(|e| e.to_string())?;
+    let mut enc = VideoEncoder::open(&plan, choice, false).map_err(Fault::text)?;
+    let mut packet = Packet::empty();
+    let mut packets = 0_usize;
+    for n in 0..frames {
+        let frame = ramp(spec, n).map_err(|e| e.to_string())?;
+        enc.send(&frame, n).map_err(Fault::text)?;
+        while enc.receive(&mut packet).map_err(Fault::text)? {
+            packets += 1;
+        }
+    }
+    enc.send_eof().map_err(Fault::text)?;
+    while enc.receive(&mut packet).map_err(Fault::text)? {
+        packets += 1;
+    }
+    if packets == 0 {
+        return Err(format!("no packet for {frames} frames"));
+    }
+    Ok(())
+}
+
+/// Frame `n` for `spec` (NV12): a diagonal luma ramp moving with `n`, neutral chroma.
+fn ramp(spec: &VideoEncodeSpec, n: i64) -> Result<VideoFrame, MediaError> {
+    let (w, h) = (spec.width as usize, spec.height as usize);
+    let shift = usize::try_from(n).unwrap_or(0) * 8;
+    #[allow(clippy::cast_possible_truncation)] // `% 220` keeps it below 256
+    let luma = (0..w * h)
+        .map(|i| 16 + ((i % w + i / w + shift) % 220) as u8)
+        .collect();
+    Ok(VideoFrame {
+        pts: spec
+            .rate
+            .frame_to_time(n)
+            .map_err(|e| unsupported(e.to_string()))?,
+        width: spec.width,
+        height: spec.height,
+        format: PixelFormat::Nv12,
+        planes: vec![
+            crate::Plane {
+                data: luma,
+                stride: spec.width,
+            },
+            crate::Plane {
+                data: vec![128; w * h / 2],
+                stride: spec.width,
+            },
+        ],
+        color: cutweave_model::ColorTags::default(),
+        damaged: false,
+    })
+}
+
 /// The open video stream.
 struct VideoOut {
-    encoder: encoder::video::Encoder,
+    encoder: VideoEncoder,
     stream: usize,
     time_base: Rational,
     stream_time_base: Rational,
     rate: FrameRate,
-    convert: Convert,
 }
 
 /// The open audio stream.
@@ -539,6 +819,8 @@ struct FfmpegEncoder {
     partial: Option<PartialFile>,
     /// The target.
     path: PathBuf,
+    /// The video encoder's name (`libx264`, `h264_nvenc`).
+    video_encoder: Option<&'static str>,
     input: InputCheck,
     cancel: Option<CancelCheck>,
     progress: Option<ProgressSink>,
@@ -554,7 +836,7 @@ impl FfmpegEncoder {
     fn start(
         &mut self,
         sink: Sink,
-        video: Option<&VideoPlan>,
+        video: Option<(&VideoPlan, Choice)>,
         audio: Option<&AudioPlan>,
     ) -> Result<(), Fault> {
         let io = StreamIo::from_write_seek(sink).map_err(Fault::Write)?;
@@ -566,7 +848,7 @@ impl FfmpegEncoder {
         let mut out = format::output_to_stream(io, Some(&url), Some(MP4)).map_err(Fault::Write)?;
         let global_header = out.format().flags().contains(format::Flags::GLOBAL_HEADER);
         let mut video = video
-            .map(|plan| open_video(&mut out, plan, global_header))
+            .map(|(plan, choice)| open_video(&mut out, plan, choice, global_header))
             .transpose()?;
         let mut audio = audio
             .map(|plan| open_audio(&mut out, plan, global_header))
@@ -612,6 +894,7 @@ impl FfmpegEncoder {
             Fault::Encode(which, e) => MediaError::Backend {
                 message: format!("{which}: {e}"),
             },
+            Fault::Hardware(reason) => MediaError::HwUnavailable { reason },
             Fault::Write(e) => MediaError::Backend {
                 message: format!("writing `{}`: {e}", display(&self.path)),
             },
@@ -654,12 +937,22 @@ impl FfmpegEncoder {
 
     fn encode_video(&mut self, frame: &VideoFrame, index: i64) -> Result<(), Fault> {
         let v = self.video.as_mut().ok_or(Fault::Cancelled)?;
-        let mut yuv = v.convert.run(frame)?;
-        yuv.set_pts(Some(index));
-        v.encoder
-            .send_frame(&yuv)
-            .map_err(|e| Fault::Encode(X264, e))?;
+        v.encoder.send(frame, index)?;
         self.drain_video()
+    }
+
+    /// [`fail`](Self::fail) after the encoder opened, logging a hardware encoder's failure
+    /// (the caller then re-encodes in software, or reports it).
+    fn fail_midway(&mut self, fault: Fault) -> MediaError {
+        let err = self.fail(fault);
+        if let MediaError::HwUnavailable { reason } = &err {
+            let (path, frames) = (display(&self.path), self.input.summary().video_frames);
+            tracing::warn!(
+                target: "cutweave_media",
+                "the hardware video encoder failed after {frames} frames of `{path}`: {reason}"
+            );
+        }
+        err
     }
 
     fn encode_audio(&mut self, chunk: &AudioChunk) -> Result<(), Fault> {
@@ -682,7 +975,7 @@ impl FfmpegEncoder {
             return Err(Fault::Cancelled);
         };
         let end = drain(
-            &mut v.encoder,
+            |p| v.encoder.receive(p),
             out,
             (v.stream, v.time_base, v.stream_time_base),
             1,
@@ -701,7 +994,7 @@ impl FfmpegEncoder {
             return Err(Fault::Cancelled);
         };
         let end = drain(
-            &mut a.encoder,
+            |p| receive(&mut a.encoder, p).map_err(|e| Fault::Encode(AAC, e)),
             out,
             (a.stream, a.time_base, a.stream_time_base),
             0,
@@ -729,7 +1022,7 @@ impl FfmpegEncoder {
             self.report();
         }
         if let Some(v) = self.video.as_mut() {
-            v.encoder.send_eof().map_err(|e| Fault::Encode(X264, e))?;
+            v.encoder.send_eof()?;
             self.drain_video()?;
             self.report();
         }
@@ -741,11 +1034,11 @@ impl FfmpegEncoder {
     }
 }
 
-/// Moves every packet `enc` has ready into the muxer, giving packets without a duration
+/// Moves every packet `receive` has ready into the muxer, giving packets without a duration
 /// `default_duration` (one frame for video: CFR). Returns the end of the latest packet in the
 /// codec time base.
 fn drain(
-    enc: &mut encoder::Encoder,
+    mut receive: impl FnMut(&mut Packet) -> Result<bool, Fault>,
     out: &mut Output,
     (stream, time_base, stream_time_base): (usize, Rational, Rational),
     default_duration: i64,
@@ -754,13 +1047,8 @@ fn drain(
     let mut packet = Packet::empty();
     let mut end = None;
     loop {
-        match enc.receive_packet(&mut packet) {
-            Ok(()) => {}
-            Err(ffmpeg_next::Error::Other { errno }) if errno == ffmpeg_next::error::EAGAIN => {
-                return Ok(end);
-            }
-            Err(ffmpeg_next::Error::Eof) => return Ok(end),
-            Err(e) => return Err(Fault::Encode("encoder", e)),
+        if !receive(&mut packet)? {
+            return Ok(end);
         }
         if packet.duration() == 0 {
             packet.set_duration(default_duration);
@@ -786,45 +1074,15 @@ fn stream_time_base(out: &Output, index: usize) -> Result<Rational, Fault> {
     })
 }
 
-fn open_video(out: &mut Output, plan: &VideoPlan, global_header: bool) -> Result<VideoOut, Fault> {
-    let spec = &plan.spec;
-    let mut ctx = codec::context::Context::new_with_codec(plan.codec)
-        .encoder()
-        .video()
-        .map_err(|e| Fault::Encode(X264, e))?;
-    ctx.set_width(spec.width);
-    ctx.set_height(spec.height);
-    ctx.set_format(Pixel::YUV420P);
-    ctx.set_time_base(plan.time_base);
-    ctx.set_frame_rate(Some(plan.fps));
-    ctx.set_aspect_ratio(Rational::new(1, 1));
-    ctx.set_colorspace(color::Space::BT709);
-    ctx.set_color_range(color::Range::MPEG);
-    ctx.set_color_primaries(color::Primaries::BT709);
-    ctx.set_color_transfer_characteristic(color::TransferCharacteristic::BT709);
-    if global_header {
-        ctx.set_flags(codec::Flags::GLOBAL_HEADER);
-    }
-    let mut options = Dictionary::new();
-    options.set("preset", spec.preset.name());
-    match spec.rate_control {
-        RateControl::Crf(q) => options.set("crf", &q.to_string()),
-        RateControl::Bitrate(bps) => ctx.set_bit_rate(bps as usize),
-    }
-    let threads = if spec.threads == 0 {
-        "auto".to_owned()
-    } else {
-        spec.threads.to_string()
-    };
-    options.set("threads", &threads);
-    let encoder = ctx.open_with(options).map_err(|e| {
-        Fault::Media(unsupported(format!(
-            "{X264} refused {}x{} at {} fps: {e}",
-            spec.width, spec.height, spec.rate
-        )))
-    })?;
-    let mut stream = out.add_stream(plan.codec).map_err(Fault::Write)?;
-    stream.set_parameters(&encoder);
+fn open_video(
+    out: &mut Output,
+    plan: &VideoPlan,
+    choice: Choice,
+    global_header: bool,
+) -> Result<VideoOut, Fault> {
+    let encoder = VideoEncoder::open(plan, choice, global_header)?;
+    let mut stream = out.add_stream(encoder.codec).map_err(Fault::Write)?;
+    stream.set_parameters(&encoder.encoder);
     stream.set_time_base(plan.time_base);
     stream.set_rate(plan.fps);
     stream.set_avg_frame_rate(plan.fps);
@@ -834,9 +1092,7 @@ fn open_video(out: &mut Output, plan: &VideoPlan, global_header: bool) -> Result
         stream: index,
         time_base: plan.time_base,
         stream_time_base: plan.time_base,
-        rate: spec.rate,
-        convert: Convert::new(spec.input_format, (spec.width, spec.height))
-            .map_err(|e| Fault::Encode("swscale", e))?,
+        rate: plan.spec.rate,
     })
 }
 
@@ -892,7 +1148,7 @@ impl Encoder for FfmpegEncoder {
         self.ready()?;
         let index = self.input.video(frame)?;
         if let Err(fault) = self.encode_video(frame, index) {
-            return Err(self.fail(fault));
+            return Err(self.fail_midway(fault));
         }
         self.input.add_video();
         self.report();
@@ -903,17 +1159,21 @@ impl Encoder for FfmpegEncoder {
         self.ready()?;
         self.input.audio(chunk)?;
         if let Err(fault) = self.encode_audio(chunk) {
-            return Err(self.fail(fault));
+            return Err(self.fail_midway(fault));
         }
         self.input.add_audio(chunk.frames());
         self.report();
         Ok(())
     }
 
+    fn video_encoder(&self) -> Option<&str> {
+        self.video_encoder
+    }
+
     fn finish(mut self: Box<Self>) -> Result<EncodeSummary, MediaError> {
         self.ready()?;
         if let Err(fault) = self.flush() {
-            return Err(self.fail(fault));
+            return Err(self.fail_midway(fault));
         }
         // Close the file (the writer goes with the muxer) before renaming it.
         self.out = None;
@@ -965,6 +1225,7 @@ mod tests {
             format,
             planes,
             color: ColorTags::default(),
+            damaged: false,
         }
     }
 
@@ -984,27 +1245,50 @@ mod tests {
     fn rgba_becomes_bt709_limited_range_yuv() {
         FfmpegBackend::new().expect("backend");
         let size = (16, 8);
-        let mut convert = Convert::new(PixelFormat::Rgba8, size).expect("swscale");
         // BT.709 limited range: Y = 16 + 219·Y', Cb/Cr = 128 + 224·(B'−Y')/1.8556, (R'−Y')/1.5748.
         // BT.601 would give red Y 81, green Y 145: the matrix is checked, not just the range.
-        for (rgb, want) in [
-            ([0, 0, 0], [16.0, 128.0, 128.0]),
-            ([255, 255, 255], [235.0, 128.0, 128.0]),
-            ([255, 0, 0], [62.6, 102.3, 240.0]),
-            ([0, 255, 0], [172.6, 41.7, 26.3]),
-            ([0, 0, 255], [31.8, 240.0, 117.7]),
-        ] {
-            let yuv = convert
-                .run(&solid(PixelFormat::Rgba8, size, rgb))
-                .expect("convert");
-            assert_eq!(yuv.format(), Pixel::YUV420P);
-            let got = [
-                mean(yuv.data(0), yuv.stride(0), (16, 8)),
-                mean(yuv.data(1), yuv.stride(1), (8, 4)),
-                mean(yuv.data(2), yuv.stride(2), (8, 4)),
-            ];
-            for (g, w) in got.iter().zip(want) {
-                assert!((g - w).abs() <= 1.0, "{rgb:?}: got {got:?}, want {want:?}");
+        // Both the x264 layout (planar) and the hardware layout (NV12, interleaved chroma).
+        for output in [PixelFormat::Yuv420p, PixelFormat::Nv12] {
+            let mut convert = Convert::new(PixelFormat::Rgba8, output, size).expect("swscale");
+            for (rgb, want) in [
+                ([0, 0, 0], [16.0, 128.0, 128.0]),
+                ([255, 255, 255], [235.0, 128.0, 128.0]),
+                ([255, 0, 0], [62.6, 102.3, 240.0]),
+                ([0, 255, 0], [172.6, 41.7, 26.3]),
+                ([0, 0, 255], [31.8, 240.0, 117.7]),
+            ] {
+                let yuv = convert
+                    .run(&solid(PixelFormat::Rgba8, size, rgb), output)
+                    .expect("convert");
+                assert_eq!(yuv.format(), pixel(output));
+                let chroma = |c: usize| -> Vec<u8> {
+                    match output {
+                        PixelFormat::Nv12 => (0..4)
+                            .flat_map(|r| {
+                                yuv.data(1)[r * yuv.stride(1)..][..16]
+                                    .iter()
+                                    .skip(c)
+                                    .step_by(2)
+                                    .copied()
+                                    .collect::<Vec<_>>()
+                            })
+                            .collect(),
+                        _ => (0..4)
+                            .flat_map(|r| yuv.data(1 + c)[r * yuv.stride(1 + c)..][..8].to_vec())
+                            .collect(),
+                    }
+                };
+                let got = [
+                    mean(yuv.data(0), yuv.stride(0), (16, 8)),
+                    mean(&chroma(0), 8, (8, 4)),
+                    mean(&chroma(1), 8, (8, 4)),
+                ];
+                for (g, w) in got.iter().zip(want) {
+                    assert!(
+                        (g - w).abs() <= 1.0,
+                        "{output:?} {rgb:?}: got {got:?}, want {want:?}"
+                    );
+                }
             }
         }
     }
@@ -1036,6 +1320,7 @@ mod tests {
                 },
             ],
             color: ColorTags::default(),
+            damaged: false,
         };
         let planar = VideoFrame {
             format: PixelFormat::Yuv420p,
@@ -1055,17 +1340,32 @@ mod tests {
             ],
             ..nv12.clone()
         };
+        let uv: Vec<u8> = cb.iter().zip(&cr).flat_map(|(&u, &v)| [u, v]).collect();
         for frame in [nv12, planar] {
-            let mut convert = Convert::new(frame.format, (w, h)).expect("swscale");
-            let out = convert.run(&frame).expect("convert");
-            let plane = |i: usize, (pw, ph): (u32, u32)| -> Vec<u8> {
+            // To x264's planar layout.
+            let mut convert =
+                Convert::new(frame.format, PixelFormat::Yuv420p, (w, h)).expect("swscale");
+            let out = convert.run(&frame, PixelFormat::Yuv420p).expect("convert");
+            let plane = |out: &frame::Video, i: usize, (pw, ph): (u32, u32)| -> Vec<u8> {
                 (0..ph as usize)
                     .flat_map(|r| out.data(i)[r * out.stride(i)..][..pw as usize].to_vec())
                     .collect()
             };
-            assert_eq!(plane(0, (w, h)), y, "{:?} luma", frame.format);
-            assert_eq!(plane(1, (w / 2, h / 2)), cb, "{:?} Cb", frame.format);
-            assert_eq!(plane(2, (w / 2, h / 2)), cr, "{:?} Cr", frame.format);
+            assert_eq!(plane(&out, 0, (w, h)), y, "{:?} luma", frame.format);
+            assert_eq!(plane(&out, 1, (w / 2, h / 2)), cb, "{:?} Cb", frame.format);
+            assert_eq!(plane(&out, 2, (w / 2, h / 2)), cr, "{:?} Cr", frame.format);
+            // To the hardware encoders' NV12.
+            let mut convert =
+                Convert::new(frame.format, PixelFormat::Nv12, (w, h)).expect("swscale");
+            let out = convert.run(&frame, PixelFormat::Nv12).expect("convert");
+            assert_eq!(out.format(), Pixel::NV12);
+            assert_eq!(plane(&out, 0, (w, h)), y, "{:?} → NV12 luma", frame.format);
+            assert_eq!(
+                plane(&out, 1, (w, h / 2)),
+                uv,
+                "{:?} → NV12 CbCr",
+                frame.format
+            );
         }
     }
 
@@ -1111,16 +1411,18 @@ mod tests {
     const SIZE: (u32, u32) = (320, 180);
     const FRAMES: u64 = 30;
 
-    /// A one-thread (so byte-identical every run) lossless 320×180 encode of 30 frames on a
-    /// disk with `budget` bytes free: its result, the error of a failed push if any, and the
+    /// A one-thread x264 (so byte-identical every run) lossless 320×180 encode of 30 frames on
+    /// a disk with `budget` bytes free: its result, the error of a failed push if any, and the
     /// bytes the disk took.
     fn encode_on_disk(path: &Path, budget: u64) -> (Result<EncodeSummary, MediaError>, u64) {
-        let spec = EncodeSpec::new(path).with_video(VideoEncodeSpec {
-            preset: crate::SpeedPreset::Ultrafast,
-            rate_control: RateControl::Crf(0),
-            threads: 1,
-            ..VideoEncodeSpec::h264(SIZE.0, SIZE.1, FrameRate::FPS_30, PixelFormat::Rgba8)
-        });
+        let spec = EncodeSpec::new(path)
+            .with_video(VideoEncodeSpec {
+                preset: crate::SpeedPreset::Ultrafast,
+                rate_control: crate::RateControl::Crf(0),
+                threads: 1,
+                ..VideoEncodeSpec::h264(SIZE.0, SIZE.1, FrameRate::FPS_30, PixelFormat::Rgba8)
+            })
+            .with_hw(crate::HwEncode::Off);
         let written = Arc::new(AtomicU64::new(0));
         let disk = {
             let written = Arc::clone(&written);
@@ -1128,11 +1430,11 @@ mod tests {
                 Box::new(FullDisk {
                     file,
                     budget,
-                    written,
+                    written: Arc::clone(&written),
                 })
             }
         };
-        let mut enc = match open_with(&spec, disk) {
+        let mut enc = match open_with(&spec, &disk) {
             Ok(enc) => enc,
             Err(e) => return (Err(e), written.load(Ordering::Relaxed)),
         };

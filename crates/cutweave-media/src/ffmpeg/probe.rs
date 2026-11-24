@@ -89,7 +89,7 @@ pub(super) fn probe(path: &Path) -> Result<ProbeInfo, MediaError> {
 }
 
 /// A color name as the model's enum (unknown names are kept as `Other`, never an error).
-fn parse_name<T: std::str::FromStr<Err = std::convert::Infallible>>(name: &str) -> T {
+pub(super) fn parse_name<T: std::str::FromStr<Err = std::convert::Infallible>>(name: &str) -> T {
     match name.parse() {
         Ok(v) => v,
         Err(e) => match e {},

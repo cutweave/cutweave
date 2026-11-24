@@ -228,7 +228,12 @@ mod tests {
             assert!(t0.elapsed() < Duration::from_secs(20), "no progress");
             gate.advance();
             advances += 1;
-            if advances.is_multiple_of(16) {
+            if advances >= 20_000 {
+                // Enough advances: keep racing the committer, but slowly enough that it gets
+                // its 1 000 commits even on a loaded machine (it can starve while every core
+                // is busy).
+                std::thread::sleep(Duration::from_micros(50));
+            } else if advances.is_multiple_of(16) {
                 std::thread::yield_now();
             }
         }

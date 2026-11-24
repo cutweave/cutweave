@@ -149,6 +149,226 @@ expression: catalog.tools_json()
       }
     },
     {
+      "name": "export_start",
+      "description": "Export a sequence to an MP4 file (H.264 + AAC) as a background job; returns job_id",
+      "inputSchema": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "sequence": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "pattern": "^seq_[0-9a-f]{32}$",
+            "description": "Sequence; optional when the project has one."
+          },
+          "path": {
+            "type": "string",
+            "description": "Absolute path of the output file (`.mp4`)."
+          },
+          "range": {
+            "type": [
+              "object",
+              "null"
+            ],
+            "additionalProperties": false,
+            "properties": {
+              "in": {
+                "description": "Start: flicks, \"2.5s\", \"f:60\" or a timecode.",
+                "anyOf": [
+                  {
+                    "type": "integer",
+                    "minimum": -9007199254740991,
+                    "maximum": 9007199254740991
+                  },
+                  {
+                    "type": "string",
+                    "pattern": "^-?[0-9]+(\\.[0-9]+)?s$|^-?[0-9]+$|^f:[0-9]+$|^[0-9]+[:;][0-9]+[:;][0-9]+[:;][0-9]+$"
+                  }
+                ]
+              },
+              "out": {
+                "description": "End, exclusive: at most the sequence end.",
+                "anyOf": [
+                  {
+                    "type": "integer",
+                    "minimum": -9007199254740991,
+                    "maximum": 9007199254740991
+                  },
+                  {
+                    "type": "string",
+                    "pattern": "^-?[0-9]+(\\.[0-9]+)?s$|^-?[0-9]+$|^f:[0-9]+$|^[0-9]+[:;][0-9]+[:;][0-9]+[:;][0-9]+$"
+                  }
+                ]
+              }
+            },
+            "required": [
+              "in",
+              "out"
+            ],
+            "description": "Part of the sequence to export (default: all of it)."
+          },
+          "preset": {
+            "anyOf": [
+              {
+                "oneOf": [
+                  {
+                    "type": "string",
+                    "const": "h264-mp4-1080p",
+                    "description": "MP4, H.264 + AAC 48 kHz stereo, at the sequence frame rate, fit into 1920x1080\n(1080x1920 when portrait) without upscaling, high quality."
+                  },
+                  {
+                    "type": "object",
+                    "properties": {
+                      "custom": {
+                        "description": "Custom output settings; absent fields take the sequence's value (quality: high).",
+                        "type": "object",
+                        "properties": {
+                          "width": {
+                            "description": "Frame width in pixels: even, 16-8192.",
+                            "type": [
+                              "integer",
+                              "null"
+                            ],
+                            "format": "uint32",
+                            "minimum": 0
+                          },
+                          "height": {
+                            "description": "Frame height in pixels: even, 16-8192.",
+                            "type": [
+                              "integer",
+                              "null"
+                            ],
+                            "format": "uint32",
+                            "minimum": 0
+                          },
+                          "fps": {
+                            "description": "Frame rate, e.g. {\"num\": 30, \"den\": 1}: at most 240 fps, a whole number of flicks per\nframe.",
+                            "type": [
+                              "object",
+                              "null"
+                            ],
+                            "properties": {
+                              "num": {
+                                "description": "Frames.",
+                                "type": "integer",
+                                "minimum": 1,
+                                "maximum": 4294967295
+                              },
+                              "den": {
+                                "description": "Seconds.",
+                                "type": "integer",
+                                "minimum": 1,
+                                "maximum": 4294967295
+                              }
+                            },
+                            "required": [
+                              "num",
+                              "den"
+                            ],
+                            "additionalProperties": false
+                          },
+                          "quality": {
+                            "description": "\"low\", \"medium\" or \"high\".",
+                            "anyOf": [
+                              {
+                                "oneOf": [
+                                  {
+                                    "description": "Small files, visible compression.",
+                                    "type": "string",
+                                    "const": "low"
+                                  },
+                                  {
+                                    "description": "Balanced.",
+                                    "type": "string",
+                                    "const": "medium"
+                                  },
+                                  {
+                                    "description": "Close to the original (the default).",
+                                    "type": "string",
+                                    "const": "high"
+                                  }
+                                ]
+                              },
+                              {
+                                "type": "null"
+                              }
+                            ]
+                          }
+                        },
+                        "additionalProperties": false
+                      }
+                    },
+                    "required": [
+                      "custom"
+                    ],
+                    "additionalProperties": false,
+                    "description": "MP4, H.264 + AAC at a custom size, frame rate and quality."
+                  }
+                ]
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "\"h264-mp4-1080p\" (default) or {\"custom\": {width, height, fps, quality}}."
+          },
+          "hw": {
+            "anyOf": [
+              {
+                "oneOf": [
+                  {
+                    "type": "string",
+                    "const": "auto",
+                    "description": "The first hardware H.264 encoder that works here, else software (x264); if it fails\nduring the export, the export starts again in software."
+                  },
+                  {
+                    "type": "string",
+                    "const": "off",
+                    "description": "Software (x264) only."
+                  },
+                  {
+                    "type": "object",
+                    "properties": {
+                      "force": {
+                        "type": "string"
+                      }
+                    },
+                    "required": [
+                      "force"
+                    ],
+                    "additionalProperties": false,
+                    "description": "This hardware encoder and no other, e.g. \"h264_nvenc\" (the `implementation` names of\nthe machine's hardware encoders); fails instead of falling back."
+                  }
+                ]
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Hardware encoder: \"auto\" (default), \"off\", or {\"force\": \"h264_nvenc\"}."
+          },
+          "overwrite": {
+            "type": [
+              "boolean",
+              "null"
+            ],
+            "description": "Replace an existing file at `path` (default false)."
+          }
+        },
+        "required": [
+          "path"
+        ]
+      },
+      "annotations": {
+        "readOnlyHint": false,
+        "destructiveHint": true,
+        "idempotentHint": false,
+        "openWorldHint": false
+      }
+    },
+    {
       "name": "item_delete",
       "description": "Delete items and their linked partners (no ripple; fails if a track is locked)",
       "inputSchema": {

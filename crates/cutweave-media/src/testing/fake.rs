@@ -13,12 +13,23 @@
 //!
 //! **Tones.** Channel `c` of a [`FakeAudio`] is a sine at `frequency_hz × (c + 1)` with peak
 //! `amplitude`, sample `n` at time `rate.samples_to_time(n)` ([`FakeAudio::sample`]).
+//!
+//! **Decoders** behave like the real ones (the backend contract holds both to it): they poll
+//! their [`CancelToken`](crate::CancelToken), report their [`FrameIndex`], and with
+//! [`FakeBackend::with_frame_cost`] take time like a real decoder (a seek decodes forward from its
+//! keyframe, every [`FAKE_GOP_FRAMES`] frames), so timing and cancellation can be tested without
+//! FFmpeg.
+//!
+//! **Encoded files read back.** A finished encode registers its output, so probing or decoding
+//! it serves synthetic media of the same size, rate and length (frames decode as `Yuv420p`, like
+//! an H.264 file).
 
 use std::collections::BTreeMap;
 use std::f64::consts::TAU;
 use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::{Arc, Mutex, PoisonError};
+use std::time::{Duration as Wall, Instant};
 
 use cutweave_model::{
     AudioInfo, ColorTags, Duration, Extra, FrameRate, ProbeInfo, Rounding, SampleRate, StreamInfo,
@@ -28,11 +39,12 @@ use cutweave_model::{
 use crate::backend::{
     AudioDecoder, DecodeOpts, EncodeSpec, EncodeSummary, Encoder, MediaBackend, VideoDecoder,
 };
-use crate::encode::InputCheck;
+use crate::cancel;
+use crate::encode::{InputCheck, output_color};
 use crate::path;
 use crate::{
-    AudioChunk, AudioFormat, CancelCheck, Capabilities, CodecSupport, FrameIndex, IndexEntry,
-    MediaError, PixelFormat, Plane, ScanInfo, TimeBase, VideoFrame,
+    AudioChunk, AudioFormat, CancelCheck, CancelToken, Capabilities, CodecSupport, FrameIndex,
+    IndexEntry, MediaError, PixelFormat, Plane, ScanInfo, TimeBase, VideoFrame,
 };
 
 /// Codec name the fake reports for its pictures.
@@ -134,6 +146,7 @@ impl FakeVideo {
             format,
             planes: fake_planes(self.width, self.height, format, n),
             color: self.color.clone(),
+            damaged: false,
         })
     }
 }
@@ -323,16 +336,21 @@ enum Entry {
 #[derive(Debug, Default)]
 struct Shared {
     decoded_frames: AtomicU64,
+    index_scans: AtomicU64,
+    decoders_opened: AtomicU64,
     encodes: Mutex<Vec<(PathBuf, EncodeSummary)>>,
+    /// Finished encodes, readable back.
+    outputs: Mutex<BTreeMap<PathBuf, FakeMedia>>,
 }
 
 /// A [`MediaBackend`] serving registered in-memory media (see the module docs).
 ///
-/// Clones share their counters and encode log.
+/// Clones share their counters, encode log and encoded outputs.
 #[derive(Clone, Debug)]
 pub struct FakeBackend {
     media: BTreeMap<PathBuf, Entry>,
     caps: Capabilities,
+    frame_cost: Wall,
     shared: Arc<Shared>,
 }
 
@@ -358,8 +376,31 @@ impl FakeBackend {
                 codec(FAKE_VIDEO_CODEC, StreamKind::Video),
                 codec(FAKE_AUDIO_CODEC, StreamKind::Audio),
             ]),
+            frame_cost: Wall::ZERO,
             shared: Arc::default(),
         }
+    }
+
+    /// Makes every video frame a decoder decodes take `cost` of wall time (sleeping, polling its
+    /// cancel token at least every millisecond): `next_frame` decodes one frame, and a seek
+    /// decodes forward from the frame's keyframe (or from where the decoder is, when that is on
+    /// the way), like a long-GOP decoder.
+    #[must_use]
+    pub fn with_frame_cost(mut self, cost: Wall) -> FakeBackend {
+        self.frame_cost = cost;
+        self
+    }
+
+    /// Frame indexes built so far (`index_media` calls and decoders opened without an index).
+    #[must_use]
+    pub fn index_scans(&self) -> u64 {
+        self.shared.index_scans.load(Ordering::Relaxed)
+    }
+
+    /// Video decoders opened so far.
+    #[must_use]
+    pub fn decoders_opened(&self) -> u64 {
+        self.shared.decoders_opened.load(Ordering::Relaxed)
     }
 
     /// Serves `media` at `path` (the path need not exist on disk).
@@ -399,12 +440,23 @@ impl FakeBackend {
             .clone()
     }
 
-    fn lookup(&self, p: &Path) -> Result<&FakeMedia, MediaError> {
+    /// The media at `p`: registered, or written by an encode of this backend (or a clone).
+    fn lookup(&self, p: &Path) -> Result<FakeMedia, MediaError> {
         path::check_syntax(p)?;
         match self.media.get(p) {
-            Some(Entry::Media(m)) => Ok(m),
+            Some(Entry::Media(m)) => Ok(m.clone()),
             Some(Entry::Error(e)) => Err(e.clone()),
             None => {
+                let encoded = self
+                    .shared
+                    .outputs
+                    .lock()
+                    .unwrap_or_else(PoisonError::into_inner)
+                    .get(p)
+                    .cloned();
+                if let Some(m) = encoded {
+                    return Ok(m);
+                }
                 path::check_file(p)?;
                 Err(MediaError::Corrupt {
                     path: path::display(p),
@@ -423,7 +475,9 @@ impl MediaBackend for FakeBackend {
     }
 
     fn index_media(&self, path: &Path) -> Result<FrameIndex, MediaError> {
-        self.lookup(path)?.index(path)
+        let index = self.lookup(path)?.index(path)?;
+        self.shared.index_scans.fetch_add(1, Ordering::Relaxed);
+        Ok(index)
     }
 
     fn open_decoder(
@@ -437,10 +491,26 @@ impl MediaBackend for FakeBackend {
             kind: StreamKind::Video,
             index: None,
         })?;
+        let index = match &opts.index {
+            Some(index) => Arc::clone(index),
+            None => Arc::new(self.index_media(p)?),
+        };
+        if index.frame_count() as u64 != video.frames || index.time_base() != TimeBase::FLICKS {
+            return Err(MediaError::Invalid {
+                message: format!(
+                    "the frame index passed for `{}` is another file's",
+                    p.display()
+                ),
+            });
+        }
+        self.shared.decoders_opened.fetch_add(1, Ordering::Relaxed);
         Ok(Box::new(FakeVideoDecoder {
             format: opts.target_pixfmt.unwrap_or(video.format),
             video,
+            index,
             next: 0,
+            cost: self.frame_cost,
+            cancel: None,
             shared: Arc::clone(&self.shared),
         }))
     }
@@ -460,7 +530,10 @@ impl MediaBackend for FakeBackend {
         if stream.is_some_and(|i| i != media.audio_index()) {
             return Err(no_stream());
         }
-        Ok(Box::new(FakeAudioDecoder { audio }))
+        Ok(Box::new(FakeAudioDecoder {
+            audio,
+            cancel: None,
+        }))
     }
 
     fn open_encoder(&self, spec: &EncodeSpec) -> Result<Box<dyn Encoder>, MediaError> {
@@ -476,6 +549,12 @@ impl MediaBackend for FakeBackend {
                     message: format!("no encoder for `{codec}`"),
                 });
             }
+        }
+        // No hardware here: `Auto` encodes in "software", a forced hardware encoder is missing.
+        if let (Some(_), crate::HwEncode::Force(name)) = (&spec.video, &spec.hw) {
+            return Err(MediaError::HwUnavailable {
+                reason: format!("the fake backend has no hardware encoder `{name}`"),
+            });
         }
         Ok(Box::new(FakeEncoder {
             input: InputCheck::new(spec),
@@ -494,12 +573,37 @@ impl MediaBackend for FakeBackend {
 struct FakeVideoDecoder {
     video: FakeVideo,
     format: PixelFormat,
+    index: Arc<FrameIndex>,
     /// Index of the frame `next_frame` returns.
     next: u64,
+    /// Wall time per decoded frame ([`FakeBackend::with_frame_cost`]).
+    cost: Wall,
+    cancel: Option<CancelToken>,
     shared: Arc<Shared>,
 }
 
 impl FakeVideoDecoder {
+    /// Spends `frames × cost` like a decoder would, polling the cancel token at least every
+    /// millisecond.
+    fn work(&self, frames: u64) -> Result<(), MediaError> {
+        cancel::check(self.cancel.as_ref())?;
+        if self.cost.is_zero() {
+            return Ok(());
+        }
+        let total = self
+            .cost
+            .saturating_mul(u32::try_from(frames).unwrap_or(u32::MAX));
+        let start = Instant::now();
+        loop {
+            let left = total.saturating_sub(start.elapsed());
+            if left.is_zero() {
+                return Ok(());
+            }
+            std::thread::sleep(left.min(Wall::from_millis(1)));
+            cancel::check(self.cancel.as_ref())?;
+        }
+    }
+
     fn emit(&mut self, n: u64) -> Result<VideoFrame, MediaError> {
         let frame = self.video.frame(n, self.format)?;
         self.next = n + 1;
@@ -510,23 +614,46 @@ impl FakeVideoDecoder {
 
 impl VideoDecoder for FakeVideoDecoder {
     fn next_frame(&mut self) -> Result<Option<VideoFrame>, MediaError> {
+        cancel::check(self.cancel.as_ref())?;
         if self.next >= self.video.frames {
             return Ok(None);
         }
+        self.work(1)?;
         self.emit(self.next).map(Some)
     }
 
     fn seek_exact(&mut self, t: Time) -> Result<VideoFrame, MediaError> {
+        cancel::check(self.cancel.as_ref())?;
         if self.video.frames == 0 || t >= Time::from(self.video.duration()?) {
             return Err(out_of_range(t));
         }
-        let n = u64::try_from(self.video.rate.time_to_frame(t, Rounding::Floor)).unwrap_or(0);
-        self.emit(n.min(self.video.frames - 1))
+        let n = u64::try_from(self.video.rate.time_to_frame(t, Rounding::Floor))
+            .unwrap_or(0)
+            .min(self.video.frames - 1);
+        // Decode forward from the keyframe, or from where the decoder is when that is on the
+        // way (the same frame again costs nothing).
+        let key = n - n % FAKE_GOP_FRAMES;
+        let from = if (key..=n + 1).contains(&self.next) {
+            self.next
+        } else {
+            key
+        };
+        self.work((n + 1).saturating_sub(from))?;
+        self.emit(n)
+    }
+
+    fn index(&self) -> Arc<FrameIndex> {
+        Arc::clone(&self.index)
+    }
+
+    fn set_cancel(&mut self, cancel: Option<CancelToken>) {
+        self.cancel = cancel;
     }
 }
 
 struct FakeAudioDecoder {
     audio: FakeAudio,
+    cancel: Option<CancelToken>,
 }
 
 impl AudioDecoder for FakeAudioDecoder {
@@ -534,7 +661,12 @@ impl AudioDecoder for FakeAudioDecoder {
         self.audio.format()
     }
 
+    fn set_cancel(&mut self, cancel: Option<CancelToken>) {
+        self.cancel = cancel;
+    }
+
     fn decode_range(&mut self, start: Time, dur: Duration) -> Result<AudioChunk, MediaError> {
+        cancel::check(self.cancel.as_ref())?;
         let rate = self.audio.rate;
         let index = |t: Time| {
             let n = first_unit_at_or_after(
@@ -629,6 +761,31 @@ impl Encoder for FakeEncoder {
             .lock()
             .unwrap_or_else(PoisonError::into_inner)
             .push((self.spec.path.clone(), summary));
+        // The output reads back as synthetic media of the same shape (an H.264 file decodes to
+        // 4:2:0 in the output's color).
+        let written = FakeMedia {
+            video: self.spec.video.as_ref().map(|v| FakeVideo {
+                width: v.width,
+                height: v.height,
+                rate: v.rate,
+                frames: summary.video_frames,
+                format: PixelFormat::Yuv420p,
+                color: output_color(&v.color),
+                rotation: 0,
+            }),
+            audio: self.spec.audio.as_ref().map(|a| FakeAudio {
+                rate: a.rate,
+                channels: a.channels,
+                samples: summary.audio_samples,
+                frequency_hz: 440.0,
+                amplitude: 0.5,
+            }),
+        };
+        self.shared
+            .outputs
+            .lock()
+            .unwrap_or_else(PoisonError::into_inner)
+            .insert(self.spec.path.clone(), written);
         Ok(summary)
     }
 }
@@ -673,6 +830,10 @@ fn fake_planes(width: u32, height: u32, format: PixelFormat, n: u64) -> Vec<Plan
                             + 5 * u64::from(k)) as u8;
                         data.push(match format {
                             PixelFormat::P010 if k % 2 == 0 => 0, // low 6 bits of the 16-bit word
+                            // High byte of a low-aligned 10-bit sample: values stay below 1024.
+                            PixelFormat::Yuv420p10 | PixelFormat::Yuv422p10 if k % 2 == 1 => {
+                                v & 0x03
+                            }
                             PixelFormat::Rgba8 if k == 3 => 0xff, // opaque
                             _ => v,
                         });
@@ -701,7 +862,9 @@ fn fake_planes(width: u32, height: u32, format: PixelFormat, n: u64) -> Vec<Plan
 /// Offset in row 0 of plane 0 of the byte that carries label byte `j`.
 fn sample_byte(format: PixelFormat, j: usize) -> usize {
     match format {
-        PixelFormat::Nv12 | PixelFormat::Yuv420p => j,
+        PixelFormat::Nv12 | PixelFormat::Yuv420p | PixelFormat::Yuv422p => j,
+        // The low byte of a low-aligned 10-bit sample (the label stays a valid sample).
+        PixelFormat::Yuv420p10 | PixelFormat::Yuv422p10 => 2 * j,
         PixelFormat::P010 => 2 * j + 1,
         PixelFormat::Rgba8 => 4 * j,
     }
@@ -725,12 +888,7 @@ mod tests {
 
     #[test]
     fn every_format_carries_its_frame_number() {
-        for format in [
-            PixelFormat::Nv12,
-            PixelFormat::P010,
-            PixelFormat::Yuv420p,
-            PixelFormat::Rgba8,
-        ] {
+        for format in PixelFormat::ALL {
             let v = FakeVideo::new(7, 5, FrameRate::FPS_25, 300_000).with_format(format);
             for n in [0, 1, 255, 256, 299_999] {
                 let f = v.frame(n, format).unwrap();

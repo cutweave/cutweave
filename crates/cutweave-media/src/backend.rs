@@ -11,12 +11,14 @@
 //! ([`backend_contract!`](crate::backend_contract)).
 
 use std::path::{Path, PathBuf};
+use std::sync::Arc;
 
 use cutweave_model::{ColorTags, Duration, FrameRate, ProbeInfo, SampleRate, Time};
 
 use crate::encode::{CancelCheck, ProgressSink, RateControl, SpeedPreset};
 use crate::{
-    AudioChunk, AudioFormat, Capabilities, FrameIndex, MediaError, PixelFormat, VideoFrame,
+    AudioChunk, AudioFormat, CancelToken, Capabilities, FrameIndex, MediaError, PixelFormat,
+    VideoFrame,
 };
 
 /// Whether a decoder may use hardware acceleration.
@@ -31,14 +33,91 @@ pub enum HwMode {
     Off,
 }
 
-/// How to open a video decoder.
+/// Whether an encoder may use a hardware video encoder (WP-1E.02).
+///
+/// The backend lists the hardware encoders that work on this machine in
+/// [`Capabilities::hw_encode`](crate::Capabilities::hw_encode), in the order `Auto` tries them
+/// (per OS: docs/reference/export-quality.md). Audio is always encoded in software.
+#[derive(Clone, Debug, Default, PartialEq, Eq, Hash)]
+#[non_exhaustive]
+pub enum HwEncode {
+    /// The first hardware encoder that opens for the stream, else the software encoder. An encoder
+    /// that fails to open is skipped silently (logged); one that fails after frames were pushed
+    /// ends the encode with [`MediaError::HwUnavailable`], and the caller re-encodes from the
+    /// start with `Off` ([`encode_with_fallback`](crate::encode_with_fallback) does this).
+    #[default]
+    Auto,
+    /// Software only (x264). Its output is identical run to run for a given thread count.
+    Off,
+    /// This hardware encoder (an [`HwCodec::implementation`](crate::HwCodec::implementation)
+    /// name such as `h264_nvenc`) and no other: when it cannot open or fails later, the encode
+    /// fails with [`MediaError::HwUnavailable`] and nothing falls back.
+    Force(String),
+}
+
+/// What a video decoder is for: it picks the threading (ADR-0003 decoder pool, S3 finding F4).
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Hash)]
+#[non_exhaustive]
+pub enum DecodeMode {
+    /// Random access and scrubbing ([`VideoDecoder::seek_exact`]): frame threads for long-GOP
+    /// streams, slice threads for intra-only ones (frame threads cost intra codecs about 15×
+    /// on a seek, S3).
+    #[default]
+    Seek,
+    /// Reading frames in order ([`VideoDecoder::next_frame`]: playback, export, filmstrips):
+    /// frame threads, for throughput.
+    Sequential,
+}
+
+/// How to open a video decoder.
+#[derive(Clone, Debug, Default, PartialEq, Eq)]
 pub struct DecodeOpts {
-    /// Hardware acceleration policy.
+    /// Hardware acceleration policy. WP-1D.03 decodes in software either way; hardware decode
+    /// arrives with WP-1D.04.
     pub hw: HwMode,
     /// Convert frames to this layout; `None` keeps the decoder's native layout (the GPU converts,
-    /// arch §7). `Some(PixelFormat::Rgba8)` is the software-scaled thumbnail path.
+    /// arch §7; layouts outside [`PixelFormat`] are converted to the nearest one).
+    /// `Some(PixelFormat::Rgba8)` is the software-scaled thumbnail path.
     pub target_pixfmt: Option<PixelFormat>,
+    /// What the decoder is for (threading).
+    pub mode: DecodeMode,
+    /// Decoder threads; 0 lets the backend choose (FFmpeg: cores + 1, at most 16).
+    pub threads: u16,
+    /// The file's frame index ([`MediaBackend::index_media`], or the copy in `cache.sqlite`).
+    /// `None` makes the decoder build it on open, which reads the whole file: pass it whenever
+    /// it is known ([`DecoderPool`](crate::DecoderPool) does after its first decoder).
+    pub index: Option<Arc<FrameIndex>>,
+}
+
+impl DecodeOpts {
+    /// The same options with a known frame index.
+    #[must_use]
+    pub fn with_index(mut self, index: Arc<FrameIndex>) -> DecodeOpts {
+        self.index = Some(index);
+        self
+    }
+
+    /// The same options converting every frame to `format`.
+    #[must_use]
+    pub fn with_target(mut self, format: PixelFormat) -> DecodeOpts {
+        self.target_pixfmt = Some(format);
+        self
+    }
+
+    /// The same options for `mode`.
+    #[must_use]
+    pub fn with_mode(mut self, mode: DecodeMode) -> DecodeOpts {
+        self.mode = mode;
+        self
+    }
+
+    /// Whether decoders opened with `self` and with `other` behave the same (everything but the
+    /// index, which only saves the scan).
+    #[must_use]
+    pub fn same_decoder(&self, other: &DecodeOpts) -> bool {
+        (self.hw, self.target_pixfmt, self.mode, self.threads)
+            == (other.hw, other.target_pixfmt, other.mode, other.threads)
+    }
 }
 
 /// A video stream to encode.
@@ -64,7 +143,8 @@ pub struct VideoEncodeSpec {
     pub color: ColorTags,
     /// Encoder threads; 0 lets the encoder choose. x264 output is identical run to run for a
     /// given thread count, so `1` also makes it identical across machines that load the same
-    /// FFmpeg bundle (the export determinism test, WP-1E.03).
+    /// FFmpeg bundle (the export determinism test, WP-1E.03, which also sets
+    /// [`HwEncode::Off`]: hardware encoders ignore this field).
     pub threads: u16,
 }
 
@@ -137,10 +217,13 @@ pub struct EncodeSpec {
     pub cancel: Option<CancelCheck>,
     /// Receives progress while encoding.
     pub progress: Option<ProgressSink>,
+    /// Hardware video encoding policy ([`HwEncode::Auto`] unless set).
+    pub hw: HwEncode,
 }
 
 impl EncodeSpec {
-    /// An output at `path` with no streams and no hooks yet.
+    /// An output at `path` with no streams and no hooks yet, hardware encoding on
+    /// [`HwEncode::Auto`].
     #[must_use]
     pub fn new(path: impl Into<PathBuf>) -> EncodeSpec {
         EncodeSpec {
@@ -150,7 +233,15 @@ impl EncodeSpec {
             audio: None,
             cancel: None,
             progress: None,
+            hw: HwEncode::Auto,
         }
+    }
+
+    /// The same output with hardware encoding policy `hw`.
+    #[must_use]
+    pub fn with_hw(mut self, hw: HwEncode) -> EncodeSpec {
+        self.hw = hw;
+        self
     }
 
     /// The same output with a video stream.
@@ -183,8 +274,8 @@ impl EncodeSpec {
 
     /// Checks what every backend requires before opening an output: at least one stream,
     /// non-empty codec names, a non-empty video size, a CRF on the 0–51 scale, non-zero
-    /// bitrates, at least one audio channel and a syntactically valid path. Backends call it
-    /// first, so they reject bad specs the same way.
+    /// bitrates, at least one audio channel, a non-empty name in [`HwEncode::Force`] and a
+    /// syntactically valid path. Backends call it first, so they reject bad specs the same way.
     pub fn validate(&self) -> Result<(), MediaError> {
         let invalid = |message: &str| {
             Err(MediaError::Invalid {
@@ -208,6 +299,9 @@ impl EncodeSpec {
                 }
                 RateControl::Bitrate(0) => return invalid("the video bitrate is zero"),
                 _ => {}
+            }
+            if matches!(&self.hw, HwEncode::Force(name) if name.trim().is_empty()) {
+                return invalid("the forced hardware encoder name is empty");
             }
         }
         if let Some(a) = &self.audio {
@@ -253,7 +347,14 @@ pub trait MediaBackend: Send + Sync {
     /// timestamps or no keyframe.
     fn index_media(&self, path: &Path) -> Result<FrameIndex, MediaError>;
 
-    /// Opens a decoder for the main video stream of `path`.
+    /// Opens a decoder for the main video stream of `path` (the stream
+    /// [`index_media`](Self::index_media) indexes). Builds the frame index first unless
+    /// `opts.index` has it. Callers that open several decoders on one file share them through a
+    /// [`DecoderPool`](crate::DecoderPool).
+    ///
+    /// Errors as for [`probe`](Self::probe), plus [`MediaError::NoStream`] for a file without
+    /// pictures, [`MediaError::Unsupported`] for a codec the backend cannot decode and
+    /// [`MediaError::Invalid`] for an `opts.index` that belongs to another file.
     fn open_decoder(
         &self,
         path: &Path,
@@ -275,16 +376,39 @@ pub trait MediaBackend: Send + Sync {
     fn capabilities(&self) -> Capabilities;
 }
 
-/// A video decoder on one stream. Frames come back in presentation order with their exact
-/// source pts.
+/// A video decoder on the main video stream of a file. Frames come back in presentation order
+/// with their exact source pts (the index's, mapped to flicks), in coded orientation (the probe's
+/// `rotation` says how to display them) and at their coded size (odd sizes included).
+///
+/// **Frame-exact seek** (ADR-0003): [`seek_exact`](Self::seek_exact) finds the frame in the
+/// [`FrameIndex`], starts decoding at the keyframe the index names for it (open-GOP leading
+/// pictures start one GOP earlier), and decodes forward; it continues from where the decoder is
+/// instead when that is on the way (scrubbing forward). The result is bit-identical to decoding
+/// the file from the start.
+///
+/// **Damage** never blocks: a frame the decoder cannot produce resolves to the nearest following
+/// frame (else the nearest preceding one), flagged [`VideoFrame::damaged`].
+///
+/// **Cancellation**: with a token set ([`set_cancel`](Self::set_cancel)) every call polls it
+/// between packets and returns [`MediaError::Cancelled`] once it is cancelled. The decoder stays
+/// usable; where `next_frame` continues after a cancelled call is unspecified until the next
+/// seek.
 pub trait VideoDecoder: Send {
     /// The next frame in presentation order, or `None` at the end of the stream.
     fn next_frame(&mut self) -> Result<Option<VideoFrame>, MediaError>;
 
     /// The frame on screen at media time `t`: the last frame whose pts is at or before `t` (the
     /// first frame for a `t` before it). Subsequent [`next_frame`](Self::next_frame) calls
-    /// continue after it. [`MediaError::OutOfRange`] past the end of the stream.
+    /// continue after it. [`MediaError::OutOfRange`] at or past the end of the last frame (a
+    /// stream of one picture never ends).
     fn seek_exact(&mut self, t: Time) -> Result<VideoFrame, MediaError>;
+
+    /// The frame index the decoder seeks with (the one passed in [`DecodeOpts::index`], or the
+    /// one it built on open).
+    fn index(&self) -> Arc<FrameIndex>;
+
+    /// Makes every following call poll `cancel` (`None` stops polling).
+    fn set_cancel(&mut self, cancel: Option<CancelToken>);
 
     /// Whether frames come from a hardware decoder (WP-1D.04).
     fn is_hw(&self) -> bool {
@@ -293,6 +417,14 @@ pub trait VideoDecoder: Send {
 }
 
 /// An audio decoder on one stream, at the stream's native rate and channel count.
+///
+/// Sample `n` of the stream starts at media time `rate.samples_to_time(n)`; the decoder places
+/// samples by the stream's own timestamps (priming samples the container marks are already
+/// removed), so a stream that starts late starts at a later sample. A range read after a seek is
+/// placed sample-exactly for containers whose audio time base is the sample rate (MP4, MOV,
+/// WAV), within half a time-base tick elsewhere (Matroska: 1 ms), and holds the samples a
+/// sequential read gives, except for noise that lossy codecs synthesize from decoder state (AAC
+/// noise substitution: around −100 dBFS).
 pub trait AudioDecoder: Send {
     /// The decoded format.
     fn format(&self) -> AudioFormat;
@@ -301,6 +433,9 @@ pub trait AudioDecoder: Send {
     /// the first such sample's time. Ranges past the end are cut short (possibly to zero
     /// samples); consecutive ranges join without gaps or overlaps.
     fn decode_range(&mut self, start: Time, dur: Duration) -> Result<AudioChunk, MediaError>;
+
+    /// Makes every following call poll `cancel` (`None` stops polling).
+    fn set_cancel(&mut self, cancel: Option<CancelToken>);
 }
 
 /// An encoder writing one output file.
@@ -326,4 +461,12 @@ pub trait Encoder: Send {
 
     /// Flushes and closes the output.
     fn finish(self: Box<Self>) -> Result<EncodeSummary, MediaError>;
+
+    /// The implementation encoding the video stream (`libx264`, `h264_nvenc`), for logs and job
+    /// reports; `None` without a video stream or when the backend does not name it. Fixed for
+    /// the encoder's life: hardware fallback happens while opening, or by re-encoding
+    /// ([`HwEncode::Auto`]).
+    fn video_encoder(&self) -> Option<&str> {
+        None
+    }
 }
