@@ -24,6 +24,7 @@ Cutweave is an open-source desktop video editor and agent-native video environme
 | License headers | `cargo xtask license-headers --check` (`--fix` adds them) |
 | Markdown links | `python scripts/check-md-links.py` |
 | Snapshots | `cargo insta review`; never hand-edit `.snap` files |
+| Golden frames | `just golden` (needs the FFmpeg bundle); references change only via `--update --i-know` ([testdata/golden/README.md](testdata/golden/README.md)) |
 | All recipes | `just --list` |
 
 `cargo xtask gen` (schemas and TS types) arrives in WP-1N. Never hand-edit generated files (`schema/`, `packages/protocol/src/generated/`, token outputs); regenerate them.

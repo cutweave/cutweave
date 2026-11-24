@@ -17,6 +17,8 @@ commit SHA with a version comment (Renovate keeps the pins current).
 | `actionlint` | workflow lint |
 
 Informational (not required): `gui-probe (x11|wayland)`, `gpu-probe (<os>)`,
-`engine-linux (ubuntu-22.04 container)`.
+`engine-linux (ubuntu-22.04 container)`, `golden-frames (windows-latest, WARP)` (WP-1O.01: the
+reference-update guard with the `golden-update` label, then the golden frames; it becomes a
+required check when the M1 gate aggregates the required checks, WP-1O.04).
 
 The `ffmpeg` cargo feature is off in CI until WP-0A.06.

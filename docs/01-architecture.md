@@ -858,6 +858,7 @@ MyVideo/                    ← project folder (user-chosen location)
     - Regression vs a stored reference: **SSIM ≥ 0.995 and PSNR ≥ 40 dB**.
     - Spike quality vs an FFmpeg reference: **PSNR > 45 dB**.
   - macOS goldens run on the self-hosted reference Mac if hosted runners lack a usable Metal device.
+  - **Built in WP-1O.01** ([testdata/golden/README.md](../testdata/golden/README.md)): six projects built from synthetic sources by real commands, 18 frames, `cargo xtask golden` (`just golden`). Each frame is also rendered a second time and through the export readback, bit-identically. A reference change needs an entry in `testdata/golden/UPDATES.md` with the set's content digest (and the `golden-update` label in CI). M1 has Windows sets only (WARP for CI, plus the reference laptop's GPUs); lavapipe and Metal sets follow when those machines exist (R34).
 - **Media corpus tests:** frame-exact seek against ffprobe truth, VFR mapping, color tags.
 - **A/V sync soak:** a nightly 30-minute playback check for drift and underruns.
 - **Client parity:** the same command script is run via CLI, MCP and RPC, and the resulting docs must be byte-identical.
