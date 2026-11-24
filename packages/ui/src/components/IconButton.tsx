@@ -17,10 +17,15 @@ export interface IconButtonProps
   size?: "sm" | "lg";
   /** Toggle state, mirrored to `aria-pressed`. Omit for a plain action button. */
   pressed?: boolean;
+  /**
+   * A small count on the corner (active filters). Shown from 1; it is decoration, so put the count
+   * in `label` too ("Filters, 2 active").
+   */
+  badge?: number | undefined;
 }
 
 export const IconButton = forwardRef<HTMLButtonElement, IconButtonProps>(function IconButton(
-  { icon, label, size = "lg", pressed, className, type = "button", ...rest },
+  { icon, label, size = "lg", pressed, badge, className, type = "button", ...rest },
   ref,
 ) {
   return (
@@ -33,6 +38,11 @@ export const IconButton = forwardRef<HTMLButtonElement, IconButtonProps>(functio
       {...rest}
     >
       <Icon name={icon} size={size === "sm" ? "md" : "lg"} />
+      {badge !== undefined && badge > 0 ? (
+        <span className="cw-iconbtn__badge caption" aria-hidden="true">
+          {badge > 9 ? "9+" : badge}
+        </span>
+      ) : null}
     </button>
   );
 });

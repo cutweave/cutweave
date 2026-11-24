@@ -1,8 +1,9 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 import * as RadixTooltip from "@radix-ui/react-tooltip";
-import type { ReactElement } from "react";
+import type { HTMLAttributes, ReactElement, Ref } from "react";
 
-export interface TooltipProps {
+export interface TooltipProps
+  extends Omit<HTMLAttributes<HTMLElement>, "children" | "title" | "color"> {
   /** Verb phrase naming the action: "Split at playhead". */
   label: string;
   /** Current shortcut from the keymap, one cap per key: ["Shift", "Backspace"]. */
@@ -12,6 +13,11 @@ export interface TooltipProps {
   side?: "top" | "right" | "bottom" | "left" | undefined;
   /** Hover delay in ms before showing; keyboard focus shows immediately. */
   delayDuration?: number | undefined;
+  /**
+   * Props from a parent that wraps this tooltip as its trigger (a dropdown `Menu` around a
+   * `Tooltip` around a button) reach the button, not this component.
+   */
+  ref?: Ref<HTMLButtonElement> | undefined;
 }
 
 /** Shares the hover delay between tooltips; optional, `Tooltip` works without it. */
@@ -27,11 +33,14 @@ export function Tooltip({
   children,
   side = "bottom",
   delayDuration = 500,
+  ...triggerProps
 }: TooltipProps) {
   return (
     <RadixTooltip.Provider delayDuration={delayDuration}>
       <RadixTooltip.Root>
-        <RadixTooltip.Trigger asChild>{children}</RadixTooltip.Trigger>
+        <RadixTooltip.Trigger asChild {...triggerProps}>
+          {children}
+        </RadixTooltip.Trigger>
         <RadixTooltip.Portal>
           <RadixTooltip.Content side={side} className="cw-tooltip label">
             {label}
