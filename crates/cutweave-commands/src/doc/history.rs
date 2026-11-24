@@ -351,6 +351,31 @@ pub struct ActorStacks {
     pub next_redo: Option<StackTop>,
 }
 
+/// The next entry `edit.undo{*}` / `edit.redo{*}` would move, and whose it is.
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize, schemars::JsonSchema, specta::Type)]
+pub struct LatestTop {
+    /// Its transaction.
+    pub tx_id: TxId,
+    /// Its label ("Undo <label>").
+    pub label: String,
+    /// For undo, the actor that made the change; for redo, the actor that undid it.
+    pub actor: Actor,
+}
+
+/// What `edit.undo{*}` and `edit.redo{*}` (anyone's latest change) would do: the shared view the
+/// editor's Undo and Redo buttons use (ADR-0019).
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize, schemars::JsonSchema, specta::Type)]
+pub struct LatestStacks {
+    /// Entries `*` can undo, over every actor (0 disables Undo).
+    pub undo_depth: u32,
+    /// Entries `*` can redo, over every actor (0 disables Redo).
+    pub redo_depth: u32,
+    /// What `edit.undo{*}` would revert next.
+    pub next_undo: Option<LatestTop>,
+    /// What `edit.redo{*}` would re-apply next.
+    pub next_redo: Option<LatestTop>,
+}
+
 /// The log's size against its limits.
 #[derive(
     Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize, schemars::JsonSchema, specta::Type,
@@ -397,6 +422,8 @@ pub struct HistoryPage {
     pub next_cursor: Option<String>,
     /// Every actor with something to undo or redo.
     pub stacks: Vec<ActorStacks>,
+    /// What `*` would undo and redo next, over every actor (ADR-0019).
+    pub latest: LatestStacks,
     /// The live revision.
     pub rev: Rev,
     /// The committed revision.
@@ -470,6 +497,9 @@ pub struct HistoryChanged {
     pub committed_rev: Rev,
     /// The actor's stacks afterwards.
     pub stacks: ActorStacks,
+    /// What `*` would undo and redo next afterwards, over every actor (ADR-0019). It can change
+    /// whichever actor's stack moved.
+    pub latest: LatestStacks,
 }
 
 /// Where a record sits.
@@ -692,6 +722,40 @@ impl History {
         }
     }
 
+    /// What `*` would undo and redo next (agrees with `next_undo` / `next_redo` for
+    /// [`HistoryScope::Any`]).
+    pub(crate) fn latest(&self) -> LatestStacks {
+        let count = |f: fn(&Stacks) -> usize| {
+            u32::try_from(self.stacks.values().map(f).sum::<usize>()).unwrap_or(u32::MAX)
+        };
+        let next_undo = self
+            .next_undo(&HistoryScope::Any)
+            .and_then(|seq| self.log.get(&seq))
+            .map(|r| LatestTop {
+                tx_id: r.tx_id,
+                label: r.label.clone(),
+                actor: r.actor.clone(),
+            });
+        let next_redo = self
+            .next_redo(&HistoryScope::Any)
+            .and_then(|seq| self.log.get(&seq))
+            .map(|r| LatestTop {
+                tx_id: r.tx_id,
+                label: r.label.clone(),
+                // Whoever undid it; the owner if that record has been evicted.
+                actor: r
+                    .undone
+                    .and_then(|(_, undo_seq)| self.log.get(&undo_seq))
+                    .map_or_else(|| r.actor.clone(), |u| u.actor.clone()),
+            });
+        LatestStacks {
+            undo_depth: count(|s| s.undo.len()),
+            redo_depth: count(|s| s.redo.len()),
+            next_undo,
+            next_redo,
+        }
+    }
+
     /// Every actor with a non-empty stack.
     pub(crate) fn all_stacks(&self) -> Vec<ActorStacks> {
         self.stacks
@@ -725,6 +789,7 @@ impl History {
             tx_id,
             committed_rev: rev,
             stacks: self.stacks_of(actor),
+            latest: self.latest(),
         }
     }
 
@@ -1263,6 +1328,62 @@ mod tests {
         // ... the user's own clears it.
         h.push_change(rec(6, &u, "/custom"));
         assert_eq!(h.next_redo(&HistoryScope::Actor(u.clone())), None);
+        h.verify().unwrap();
+    }
+
+    fn undo_rec(tx: u64, of: u64, actor: &Actor, path: &str) -> NewRecord {
+        let mut r = rec(tx, actor, path);
+        r.cause = EntryCause::Undo { of: TxId::new(of) };
+        r
+    }
+
+    #[test]
+    fn latest_summarises_every_actors_stacks() {
+        let (u, a) = (Actor::User, Actor::agent("claude").unwrap());
+        let mut h = History::new(HistoryLimits::default());
+        assert_eq!(h.latest().undo_depth, 0);
+        assert!(h.latest().next_undo.is_none());
+        h.push_change(rec(1, &u, "/meta/name"));
+        h.push_change(rec(2, &a, "/settings"));
+        let l = h.latest();
+        assert_eq!((l.undo_depth, l.redo_depth), (2, 0));
+        let top = l.next_undo.unwrap();
+        assert_eq!((top.tx_id, top.actor), (TxId::new(2), a.clone()));
+        assert!(l.next_redo.is_none());
+        // The event after any actor's change carries the same shared view.
+        let events = h.push_change(rec(3, &u, "/custom"));
+        assert_eq!(
+            events[0].latest.next_undo.as_ref().unwrap().tx_id,
+            TxId::new(3)
+        );
+        assert_eq!(events[0].latest.undo_depth, 3);
+    }
+
+    #[test]
+    fn latest_undo_then_redo_order_matches_any_scope() {
+        let (u, a) = (Actor::User, Actor::agent("claude").unwrap());
+        let mut h = History::new(HistoryLimits::default());
+        h.push_change(rec(1, &u, "/meta/name"));
+        h.push_change(rec(2, &a, "/settings"));
+        // `*` undoes the agent's change (the latest), recorded as an undo by the user.
+        let target = h.next_undo(&HistoryScope::Any).unwrap();
+        assert_eq!(h.latest().next_undo.unwrap().tx_id.get(), 2);
+        let events = h.push_undo(target, undo_rec(3, 2, &u, "/settings"));
+        // The event is for the agent (whose stack moved) but shows the shared view.
+        assert_eq!(events[0].stacks.actor, a);
+        let l = h.latest();
+        assert_eq!((l.undo_depth, l.redo_depth), (1, 1));
+        assert_eq!(l.next_undo.as_ref().unwrap().tx_id.get(), 1);
+        let redo = l.next_redo.unwrap();
+        // The redo names the actor that undid it.
+        assert_eq!((redo.tx_id.get(), redo.actor), (2, u.clone()));
+        // Then `*` undoes the user's change too; redo now offers it first (most recent undo).
+        let target = h.next_undo(&HistoryScope::Any).unwrap();
+        h.push_undo(target, undo_rec(4, 1, &u, "/meta/name"));
+        let l = h.latest();
+        assert_eq!((l.undo_depth, l.redo_depth), (0, 2));
+        assert_eq!(l.next_redo.unwrap().tx_id.get(), 1);
+        assert_eq!(h.next_redo(&HistoryScope::Any), Some(1));
         h.verify().unwrap();
     }
 

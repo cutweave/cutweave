@@ -15,7 +15,7 @@ import { useEngineReady } from "../engine/engineStore.ts";
 import { ExportStatusChip } from "../export/ExportChip.tsx";
 import { exportController, useTimelineHasItems } from "../export/useExport.ts";
 import { hasNativeMenu } from "../session/desktop.ts";
-import { historyLabel } from "../session/historyLabels.ts";
+import { redoText, undoText } from "../session/historyLabels.ts";
 import { projectFileName, useSessionStore } from "../session/sessionStore.ts";
 import { useSessionUiStore } from "../session/sessionUiStore.ts";
 import { projectController, useUnsavedWork } from "../session/useProject.ts";
@@ -89,14 +89,8 @@ export function TopBar() {
   const live = ready && known && !busy;
   const mod = modifierKey();
   const translate = translator(t);
-  const undoName =
-    stacks.nextUndo === null
-      ? t("topbar.undo")
-      : t("topbar.undoAction", { label: historyLabel(stacks.nextUndo, translate) });
-  const redoName =
-    stacks.nextRedo === null
-      ? t("topbar.redo")
-      : t("topbar.redoAction", { label: historyLabel(stacks.nextRedo, translate) });
+  const undoName = undoText(stacks, translate);
+  const redoName = redoText(stacks, translate);
   return (
     <header className="cw-topbar">
       <div className="cw-topbar__group">

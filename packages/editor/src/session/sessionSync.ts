@@ -4,38 +4,37 @@
 // after a handshake and after `doc.reset`, because stacks are not tied to a revision and an
 // event can be missed while disconnected).
 
-import type { ActorStacks, ProjectStatus, RpcClient } from "@cutweave/protocol";
+import type { LatestStacks, ProjectStatus, RpcClient } from "@cutweave/protocol";
 import type { StoreApi } from "zustand/vanilla";
 import { EMPTY_STACKS, type SessionStore, type UndoStacks } from "./sessionStore.ts";
 
 export interface SessionSyncOptions {
   readonly store: StoreApi<SessionStore>;
   readonly rpc: RpcClient;
-  /** The actor of this connection (`rpc.hello`'s `actor`); defaults to `user`. */
-  readonly actor?: string;
   /** `project.autosave_failed`: say so (a toast); the message holds paths and OS text only. */
   readonly onAutosaveFailed?: (message: string) => void;
   readonly onError?: (error: unknown) => void;
 }
 
-export function stacksOf(stacks: ActorStacks | undefined): UndoStacks {
-  if (stacks === undefined) return EMPTY_STACKS;
+/** The shared view of the history (ADR-0019): what `*` would undo and redo next, and whose it is. */
+export function stacksOf(latest: LatestStacks | undefined): UndoStacks {
+  if (latest === undefined) return EMPTY_STACKS;
   return {
-    undoDepth: stacks.undo_depth,
-    redoDepth: stacks.redo_depth,
-    nextUndo: stacks.next_undo?.label ?? null,
-    nextRedo: stacks.next_redo?.label ?? null,
+    undoDepth: latest.undo_depth,
+    redoDepth: latest.redo_depth,
+    nextUndo: latest.next_undo?.label ?? null,
+    nextRedo: latest.next_redo?.label ?? null,
+    nextUndoActor: latest.next_undo?.actor ?? null,
+    nextRedoActor: latest.next_redo?.actor ?? null,
   };
 }
 
 export class SessionSync {
   readonly #options: SessionSyncOptions;
-  #actor: string;
   #offs: (() => void)[] = [];
 
   constructor(options: SessionSyncOptions) {
     this.#options = options;
-    this.#actor = options.actor ?? "user";
   }
 
   /** Subscribes to the events; call once. Read the state with {@link applyHello} / {@link refresh}. */
@@ -48,27 +47,22 @@ export class SessionSync {
       rpc.on("project.dirty", ({ dirty }) => state().setDirty(dirty)),
       rpc.on("project.recovery_available", (payload) => state().setRecovery(payload)),
       rpc.on("project.autosave_failed", ({ message }) => this.#options.onAutosaveFailed?.(message)),
-      rpc.on("edit.history_changed", ({ stacks }) => {
-        // Another actor's changes do not move this user's stacks.
-        if (stacks.actor === this.#actor) state().setStacks(stacksOf(stacks));
-      }),
+      // Whichever actor's stack moved, the shared view (`latest`) may have changed.
+      rpc.on("edit.history_changed", ({ latest }) => state().setStacks(stacksOf(latest))),
       rpc.on("doc.reset", () => void this.refreshStacks()),
     );
   }
 
   /** The project status the engine reported in `rpc.hello` (every handshake). */
-  applyHello(hello: { readonly actor: string; readonly project: ProjectStatus }): void {
-    this.#actor = hello.actor;
+  applyHello(hello: { readonly project: ProjectStatus }): void {
     this.#options.store.getState().applyStatus(hello.project);
   }
 
-  /** Reads the undo/redo stacks of this actor. */
+  /** Reads what Undo and Redo would do next. */
   async refreshStacks(): Promise<void> {
     try {
       const page = await this.#options.rpc.call("edit.history", { limit: 0 });
-      this.#options.store
-        .getState()
-        .setStacks(stacksOf(page.stacks.find((s) => s.actor === this.#actor)));
+      this.#options.store.getState().setStacks(stacksOf(page.latest));
     } catch (error) {
       this.#options.onError?.(error);
     }

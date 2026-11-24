@@ -13,7 +13,7 @@ import { createStore } from "zustand/vanilla";
 import { useEngineReady } from "../engine/engineStore.ts";
 import { exportController, useTimelineHasItems } from "../export/useExport.ts";
 import { type DesktopBridge, desktopFromWindow, hasNativeMenu } from "../session/desktop.ts";
-import { historyLabel } from "../session/historyLabels.ts";
+import { redoText, undoText } from "../session/historyLabels.ts";
 import type { ProjectController } from "../session/projectController.ts";
 import { projectFileName, useSessionStore } from "../session/sessionStore.ts";
 import { sessionUiStore, useSessionUiStore } from "../session/sessionUiStore.ts";
@@ -140,14 +140,8 @@ export function useAppMenus(desktop: DesktopBridge | null = desktopFromWindow())
         recovering,
         canUndo: stacks.undoDepth > 0,
         canRedo: stacks.redoDepth > 0,
-        undoLabel:
-          stacks.nextUndo === null
-            ? translate("topbar.undo")
-            : translate("topbar.undoAction", { label: historyLabel(stacks.nextUndo, translate) }),
-        redoLabel:
-          stacks.nextRedo === null
-            ? translate("topbar.redo")
-            : translate("topbar.redoAction", { label: historyLabel(stacks.nextRedo, translate) }),
+        undoLabel: undoText(stacks, translate),
+        redoLabel: redoText(stacks, translate),
         recent: recent.map((path) => ({ path, label: projectFileName(path) })),
         exportAvailable: hasItems,
       },

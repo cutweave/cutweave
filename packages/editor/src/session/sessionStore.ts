@@ -18,6 +18,10 @@ export interface UndoStacks {
   /** The label "Undo <label>" would revert, as the engine logged it (a command name or a tx label). */
   readonly nextUndo: string | null;
   readonly nextRedo: string | null;
+  /** Who made the change `nextUndo` names (an actor id such as `user` or `agent:claude`). */
+  readonly nextUndoActor: string | null;
+  /** Who undid the change `nextRedo` names. */
+  readonly nextRedoActor: string | null;
 }
 
 export const EMPTY_STACKS: UndoStacks = {
@@ -25,6 +29,8 @@ export const EMPTY_STACKS: UndoStacks = {
   redoDepth: 0,
   nextUndo: null,
   nextRedo: null,
+  nextUndoActor: null,
+  nextRedoActor: null,
 };
 
 export interface SessionState {

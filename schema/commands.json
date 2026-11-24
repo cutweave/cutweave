@@ -886,6 +886,86 @@
             },
             "type": "array"
           },
+          "latest": {
+            "description": "What `*` would undo and redo next, over every actor (ADR-0019).",
+            "properties": {
+              "next_redo": {
+                "description": "What `edit.redo{*}` would re-apply next.",
+                "properties": {
+                  "actor": {
+                    "description": "For undo, the actor that made the change; for redo, the actor that undid it.",
+                    "pattern": "^(user|system|agent:.+|plugin:[A-Za-z0-9._@-]+)$",
+                    "type": "string"
+                  },
+                  "label": {
+                    "description": "Its label (\"Undo <label>\").",
+                    "type": "string"
+                  },
+                  "tx_id": {
+                    "description": "Its transaction.",
+                    "pattern": "^tx_[0-9]+$",
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "tx_id",
+                  "label",
+                  "actor"
+                ],
+                "type": [
+                  "object",
+                  "null"
+                ]
+              },
+              "next_undo": {
+                "description": "What `edit.undo{*}` would revert next.",
+                "properties": {
+                  "actor": {
+                    "description": "For undo, the actor that made the change; for redo, the actor that undid it.",
+                    "pattern": "^(user|system|agent:.+|plugin:[A-Za-z0-9._@-]+)$",
+                    "type": "string"
+                  },
+                  "label": {
+                    "description": "Its label (\"Undo <label>\").",
+                    "type": "string"
+                  },
+                  "tx_id": {
+                    "description": "Its transaction.",
+                    "pattern": "^tx_[0-9]+$",
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "tx_id",
+                  "label",
+                  "actor"
+                ],
+                "type": [
+                  "object",
+                  "null"
+                ]
+              },
+              "redo_depth": {
+                "description": "Entries `*` can redo, over every actor (0 disables Redo).",
+                "format": "uint32",
+                "minimum": 0,
+                "type": "integer"
+              },
+              "undo_depth": {
+                "description": "Entries `*` can undo, over every actor (0 disables Undo).",
+                "format": "uint32",
+                "minimum": 0,
+                "type": "integer"
+              }
+            },
+            "required": [
+              "undo_depth",
+              "redo_depth",
+              "next_undo",
+              "next_redo"
+            ],
+            "type": "object"
+          },
           "next_cursor": {
             "description": "Pass as `cursor` for the next (older) page; absent on the last page.",
             "type": [
@@ -1025,6 +1105,7 @@
           "entries",
           "next_cursor",
           "stacks",
+          "latest",
           "rev",
           "committed_rev",
           "usage"

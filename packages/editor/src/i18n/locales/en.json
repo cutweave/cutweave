@@ -295,6 +295,8 @@
     }
   },
   "history": {
+    "stepBy": "{{step}} ({{who}})",
+    "actorSystem": "Cutweave",
     "setProps": "Edit properties",
     "register": "Import media",
     "remove": "Remove media",
@@ -356,6 +358,10 @@
       "discard": "Changes not discarded",
       "undo": "Nothing was undone",
       "redo": "Nothing was redone"
+    },
+    "historyConflict": {
+      "undo": "{{step}} could not be undone because later edits changed the same clips or media. Undo those first.",
+      "redo": "{{step}} could not be redone because the timeline has changed since it was undone."
     },
     "reason": {
       "locked": "It is open in another Cutweave window. Close it there, then try again.",
