@@ -92,7 +92,7 @@ At about 6 parallel agents, that is roughly 40 weeks of pure execution. Serial d
 - **API:** WS JSON-RPC, media HTTP endpoints, token auth, run-file discovery.
 - **MCP v0:** rmcp server (HTTP + stdio `attach`/`headless`), 15 core tools (the P1 subset of §14, including `render_frame` and `job_wait`) plus the 4 generic tools. P2 completes the ~30-tool core set.
 - **CLI:** `cutweave engine | mcp | exec | query | render`.
-- **UI** (built only from `packages/ui` and design tokens): Electron shell, engine supervision and restart, media bin (import/drag-drop, search and filters), preview, a basic timeline (1 video + 1 audio track: select, move, trim, split, delete), minimal inspector, undo/redo, save/open, export dialog, and the Settings frame with its first pages (general, appearance, saving, export, shortcuts, agents and MCP, cache and hardware).
+- **UI** (built only from `packages/ui` and design tokens): Electron shell, engine supervision and restart, media bin (import/drag-drop, search and filters, hover-scrub), preview (with a Source view that plays a media asset before it is placed), a basic timeline (1 video + 1 audio track: select, move, trim, split, delete), minimal inspector, undo/redo, save/open, export dialog, and the Settings frame with its first pages (general, appearance, saving, export, shortcuts, agents and MCP, cache and hardware).
 - **Codegen:** TS protocol package generated in CI with a snapshot diff gate.
 
 **Exit (M1):**
@@ -114,10 +114,11 @@ At about 6 parallel agents, that is roughly 40 weeks of pure execution. Serial d
   - Ripple, roll, slip and slide; snapping (playhead, edges, markers, beats).
   - Markers, in/out, copy/paste/duplicate, multi-select, linked-group selection.
   - Track lock, mute, solo and hide; zoom/scroll performance.
+  - Source marks and three-point editing (insert, overwrite, match frame) from the Source view.
   - **Replace clip** (keeps attributes and effects); **compound clips** (nested sequences, §4.3).
   - Auto-create tracks on overlap (§4.3).
 - **Sequences:** multiple sequences per project; sequence settings with aspect presets (16:9, 9:16, 1:1, 4:5, 21:9); background fill (color, blur, image).
-- **Clip properties:** transform, crop, opacity, flip, core blend modes (§8), and **keyframes** for all animatable props with easing curves; keyframe lanes in the timeline plus a **bezier graph editor**. Keyframe math is shared with the UI via wasm (§16).
+- **Clip properties:** transform, crop, opacity, flip, core blend modes (§8), layouts for several clips (side by side, top and bottom, picture in picture, grids), and **keyframes** for all animatable props with easing curves; keyframe lanes in the timeline plus a **bezier graph editor**. Keyframe math is shared with the UI via wasm (§16).
 - **Speed:** constant speed with pitch preservation, reverse, freeze frame.
 - **Audio:**
   - Fades, keyframed volume, pan, track buses, master limiter, loudness normalization presets.
@@ -126,13 +127,14 @@ At about 6 parallel agents, that is roughly 40 weeks of pure execution. Serial d
   - Voiceover recording, extract audio.
 - **Media:** proxies (auto policy + manual), relink, collect & archive, image and image-sequence support, still duration defaults, **media bin folders, tags and smart collections**, project settings, and the settings pages for editing, timeline, playback, audio and appearance ([settings catalog](reference/settings.md)).
 - **Export:**
-  - Presets: YouTube 1080p/4K, Shorts/Reels/TikTok, GIF, audio-only, ProRes. HEVC/AV1.
+  - Presets: YouTube 1080p/4K, YouTube Shorts, Instagram Reels, Stories and feed, TikTok, X (with dated platform limits and safe areas), GIF, audio-only, ProRes. HEVC/AV1.
   - **Advanced controls:** bitrate mode (CBR/VBR/CRF), GOP, color tags, audio codec and bitrate.
   - Background export queue; export a range or a marker set.
 - **Background render cache** for heavy segments (smart pre-render while idle).
 - **UI:**
   - Dockable workspace with "Short-form" / "Long-form" layouts, with every panel built from design-system components (TimelineClip, TrackHeader, Playhead, AssetTile, InspectorSection, CommandPalette).
   - Schema-driven inspector, command palette and a shortcut editor (default NLE + CapCut presets).
+  - Panels that close and reopen from View > Panels; a History panel listing every undo step and who made it.
   - Preview overlays (transform handles, safe areas, grid), timeline thumbnails and waveforms, i18n scaffold.
 - **MCP:** core tool set complete for editing (~30 tools), `render_contact_sheet`, `media_filmstrip`, `audio_waveform`, checkpoints, `expected_rev`, tool profiles.
 - **Performance:** benchmark suite in CI against architecture §19 budgets (timeline, scrub, playback, command RTT).

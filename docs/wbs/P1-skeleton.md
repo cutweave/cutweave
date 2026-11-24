@@ -35,12 +35,12 @@ The thinnest end-to-end product through every architectural layer, with producti
 | **1E** Export | H.264/AAC MP4 export (HW + software) through the render pipeline as a job |
 | **1F** Render pipeline v0 | Timeline eval → single-layer wgpu compositor, linear light, quality ladder, frame readback |
 | **1G** Audio playback v0 | Mixer, cpal output, master clock, volume, offline mixdown |
-| **1H** Playback & SHM preview | Transport, scrub scheduler, JKL, SHM ring publisher, napi bridge reader |
+| **1H** Playback & SHM preview | Transport, scrub scheduler, JKL, SHM ring publisher, napi bridge reader, playing a media item outside any sequence (source preview) |
 | **1I** Local API server | axum server, credential classes (UI/agent), Host/Origin, run-file, WS JSON-RPC + events, media HTTP, engine root + subsystem wiring |
 | **1J** MCP v0 | rmcp server (HTTP + stdio attach/headless), 16 core + 4 generic tools (20 listed, R33), `render_frame`, `job_wait`, `cutweave_execute`, per-endpoint profiles, agent targeting and the Agents and MCP settings |
 | **1K** CLI | `cutweave engine | mcp | exec | query | render` |
 | **1L** Electron shell & supervision | Hardened Electron app, engine spawn/supervise/restart/resync |
-| **1M** Editor UI v0 | Layout, stores, media bin (with search), preview, Canvas2D timeline, inspector, undo/redo, save/open, export dialog, settings framework |
+| **1M** Editor UI v0 | Layout, stores, media bin (with search), preview, Canvas2D timeline, inspector, undo/redo, save/open, export dialog, settings framework, seeing and playing media before placing it |
 | **1N** Codegen & protocol | JSON Schema + TS types + typed client generated, snapshot-gated in CI |
 | **1O** CI quality gates | Golden frames, CLI=MCP=RPC parity, MCP conformance, M1 exit e2e |
 
@@ -717,6 +717,28 @@ Human gates: PR review of `1B.01`, `1B.03`/`1B.09` (concurrency + ownership core
 - **Tests:** Vitest + Rust fixture, CI build matrix.
 - **Out of scope:** perf counters, WebGPU drawing (1M.04).
 
+### WP-1H.04 — Source preview: play one media item outside any sequence
+- **Area:** `crates/cutweave-playback` (transport target, `view.*` transport commands, `playback.state`), `crates/cutweave-engine` (`full/preview.rs` and `full/audio.rs`: the source's frames and sound), generated schema and TS types, `docs/01-architecture.md` §10 (the decided paragraph), `docs/adr/0022-source-preview.md` (status once accepted)
+- **Depends on:** WP-1H.01, WP-1I.05, WP-1N.01
+- **Size:** M
+- **Executor:** opus
+- **Scope:** (product owner request, 2026-11-24: "I don't have a way to preview without adding to timeline") the preview transport plays a media asset on its own, as ADR-0022 proposes (Proposed; it must be Accepted before this WP starts).
+  - **One transport, two targets.** The document's `PlaybackEngine` plays either the active sequence (as today) or one media asset. `view.set_source{media?}` makes the asset the target; without `media` it returns to the sequence. Nothing touches the document: no item, no sequence, no undo step, no journal record, no unsaved state.
+  - **The source is a transient one-clip timeline** built from the probe: the asset's video and its audio, at its own frame rate (audio-only assets on a 30 fps grid over a blank picture), fitted into the preview size with the asset's aspect. It is indexed and rendered through the same `PreviewSource` path (compositor, quality ladder, hardware decode, proxies once WP-2F.02 lands) and its sound goes through the mixer on the master clock, so A/V sync, JKL, steps and scrubbing behave as on the sequence.
+  - **Playheads.** `view.play`, `view.pause`, `view.seek`, `view.step` and `view.set_rate` act on the current target, in its time. Each asset's source playhead is kept for the session; the sequence's playhead does not move while a source plays, and returning shows its frame exactly.
+  - **Events.** `playback.state` gains `source: {media, duration, fps} | null` (additive). After `view.set_source` returns, no frame of the old target reaches the ring (the transport's exact latest-wins rule), so the ring format does not change.
+  - **Ending.** Removing the asset, opening another project or `doc.reset` returns to the sequence with `source: null`. Timeline edits during a source session re-index the sequence as today and do not interrupt the source.
+  - **Agents and headless engines.** `view.set_source` is a `view` command (not undoable, not journaled, MCP catalog like the other `view` commands, not in `tools/list`); a headless engine plays into its null sink. Agents keep seeing media frames through `/media/{id}/thumb` and, in P2, `media_filmstrip`.
+- **Interfaces:** `view.set_source{media?: MediaId}` → `{source}`; `playback.state.source`; a `PlaybackTarget` (sequence or media) in `cutweave-playback`.
+- **Acceptance criteria:**
+  - With `FakeBackend` and `ManualClock`: a 10 s 25 fps asset plays 250 frames in order with A/V offset ≤ 1 frame; switching back mid-play shows the sequence's frame at its unchanged playhead; over 100 random switches and seeks, no frame of an old target is delivered after `view.set_source` returns.
+  - The project stays clean, and `edit.history`, the journal and the saved document are byte-identical before and after a source session (test).
+  - The engine's `preview_alloc` counting-allocator test passes with a source target (no per-frame allocation of our own).
+  - Real media (corpus): an H.264 1080p30 and a HEVC 10-bit clip each play as a source for 10 s with 0 dropped frames on the dev machine (recorded); an audio-only asset plays its sound.
+  - Removing the asset while it plays returns to the sequence (test).
+- **Tests:** unit with the fake clock, engine integration, alloc test, corpus.
+- **Out of scope:** the UI (WP-1M.15); in/out marks and inserting from a source (WP-2A.14); a second viewer playing at the same time (ADR-0022, option 2).
+
 ---
 
 ## 1I — Local API server (`cutweave-api`, `cutweave-engine`)
@@ -1325,6 +1347,43 @@ Human gates: PR review of `1B.01`, `1B.03`/`1B.09` (concurrency + ownership core
 - **Tests:** Vitest, user flow.
 - **Out of scope:** export presets and file-name patterns (WP-2G.04); editing shortcuts, presets and conflicts (WP-2H.05).
 
+### WP-1M.14 — See media before placing it: hover-scrub on bin cards and a scrubbable picture in the Inspector
+- **Area:** `packages/editor` (media cards, the Inspector's media section, the Media and import settings row), `packages/ui` (a scrub-bar component if `design/components/` has none; spec added there), `packages/preferences` and `docs/reference/settings.md` (`media.hover_scrub`), `apps/desktop/e2e/flows`, `docs/user-flows.md`
+- **Depends on:** WP-1M.03, WP-1M.07, WP-1I.03, WP-1M.11
+- **Size:** M
+- **Executor:** sonnet
+- **Scope:** (product owner request, 2026-11-24: "We need both the asset item to be playable + preview inside inspector") the picture half, with no engine change: frames come from `/media/{id}/thumb?t=&w=` (WP-1I.03), which floors `t` to the media's frame grid and caches. Playing with sound is WP-1M.15.
+  - **Hover-scrub on bin cards:** moving the pointer across a video card shows the frame at that fraction of its duration, with a position line and the time; leaving restores the poster. Requests are latest-wins (a request in flight is aborted when a newer one starts), at most one per animation frame, at the card's width. Audio cards show a position line over their waveform. Settings > Media and import can turn it off (`media.hover_scrub`, on).
+  - **Inspector preview:** when a bin asset is selected, the Inspector's media section starts with a picture of the asset (its aspect, the panel's width) above the probe facts, and a scrub bar under it: click or drag to see any frame; ←/→ step one frame at the asset's rate and Home/End go to the ends while the bar has the focus; the time shows as timecode at the asset's rate. Audio-only assets show their waveform with the same bar.
+  - **Keyboard and screen readers:** the scrub bar is a slider (`aria-valuetext` in timecode); hover-scrub on cards is pointer-only, and the Inspector gives the keyboard path.
+- **Interfaces:** a media scrub component over the `ThumbnailSource` seam; preference `media.hover_scrub`.
+- **Acceptance criteria:**
+  - Vitest: pointer position maps to media time on the frame grid at 9 fractions; an aborted or late response never paints over a newer frame (fake source answering out of order).
+  - Hover-scrubbing across a card sends at most one thumbnail request per animation frame and none after the pointer leaves (test).
+  - **A user flow (ADR-0018, F31):** import the corpus clips; hover across the HEVC card: its picture and time change; select it: the Inspector shows its picture; drag the scrub bar to the middle: the picture is the frame at half its duration (compared with `/media/{id}/thumb` at that time); turn hover-scrub off in Settings: hovering leaves the poster.
+  - axe: 0 violations on the bin and on the Inspector with an asset selected; visual baselines of a card mid-scrub and of the Inspector preview, in dark and light.
+- **Tests:** Vitest, visual, user flow.
+- **Out of scope:** playback with sound (WP-1H.04, WP-1M.15); in/out marks (WP-2A.14); proxies for thumbnails.
+
+### WP-1M.15 — Play media before placing it: a Source view in the Preview, play from the bin and the Inspector
+- **Area:** `packages/editor` (Preview panel Source view, transport bar and keymap targets, play control on media cards, Inspector preview playback, bin key table), `apps/desktop/e2e/flows`, `docs/user-flows.md`
+- **Depends on:** WP-1H.04, WP-1M.14, WP-1M.04
+- **Size:** M
+- **Executor:** sonnet
+- **Scope:** (product owner request, 2026-11-24) the "playable asset" half, on WP-1H.04's source target (ADR-0022).
+  - **Play from the bin:** a play button on a hovered or selected card, and Space while a card has the focus (it selects the card, as today, then plays or pauses it). The bin's key table (`BIN_KEYS`, listed by `listBindings()`) gains the play key. Double-click and Enter still insert at the playhead.
+  - **Source view in the Preview panel:** while a source is shown, the Preview has a "Source" header with the asset's name, its own timecode and duration at its rate, and "Back to timeline" (also Esc in the Preview, clicking the timeline, or moving the timeline's playhead). The transport bar and its keys (Space, J/K/L, arrows, step and go-to buttons) act on the source, and the Preview's scrubbing seeks it. Back on the timeline, its playhead and frame are as they were.
+  - **Play in the Inspector:** WP-1M.14's Inspector preview gains play and pause. It plays the same source target and draws the ring's frames in its own picture, reporting its size with `view.set_preview_size` while it shows them; the Preview keeps showing the timeline's frame. Starting a source from the bin moves it to the Preview. One source plays at a time.
+  - **Place from the Source view:** Enter, or its Insert button, places the whole asset at the timeline playhead, as the bin's Enter does; dragging from the Source view's picture onto the timeline drops it like a card. Marks and placing part of a clip are WP-2A.14.
+  - The source ends when another project opens or the asset is removed (WP-1H.04's `playback.state`), and the Preview returns to the timeline.
+- **Interfaces:** a `SourceView` in the Preview panel; `playbackStore.source`; the bin's play binding.
+- **Acceptance criteria:**
+  - Vitest: the transport bar's buttons and keys address the source while it is shown and the sequence after "Back to timeline"; the bindings test finds the bin's play key.
+  - **A user flow (ADR-0018, F31 extended), real engine and corpus:** press play on the phone clip's card: the Preview says "Source" and its timecode runs from 0; `playback.state` reports the source playing and the master clock advances; J, K, L and → act on the source; "Back to timeline" shows the timeline frame at its unchanged playhead; play from the Inspector: the Inspector's picture changes while the Preview's does not; Enter in the Source view places the clip at the playhead; the undo history holds only that insert and the project was clean before it.
+  - axe: 0 violations on the Preview in Source view; visual baselines of the Source header in dark and light.
+- **Tests:** Vitest, visual, user flow (real media).
+- **Out of scope:** in/out marks, inserting or overwriting a marked range, match frame (WP-2A.14); source and timeline playing side by side (ADR-0022, option 2).
+
 ### WP-1O.01 — Golden-frame test infrastructure
 - **Area:** `crates/cutweave-render/tests`, `testdata/golden`, `xtask`, `.github/workflows`
 - **Depends on:** WP-1F.03, WP-0J.02, WP-0F.03 (adapter behaviour notes), WP-0I.01, WP-0I.04 (macOS reference runner)
@@ -1443,6 +1502,7 @@ Human gates: PR review of `1B.01`, `1B.03`/`1B.09` (concurrency + ownership core
 | basic timeline (1V + 1A: select, move, trim, split, delete) | 1M.05, 1M.06 |
 | minimal inspector, undo/redo, save/open | 1M.07 |
 | export dialog | 1M.08 |
+| (product owner request, 2026-11-24) see and play media before placing it: hover-scrub, Inspector preview, source playback | 1M.14, 1H.04, 1M.15 |
 | **Codegen:** TS protocol package generated in CI with a snapshot diff gate | 1N.01, 1N.02 |
 | (arch §18) Electron security hardening | 1L.02 |
 | (arch §20) golden-frame infra, parity test, schema snapshot gate, journal crash test, undo/redo property tests | 1O.01, 1O.02, 1N.01, 1C.02, 1B.07 |
@@ -1486,3 +1546,22 @@ Status per item after the two integrator rounds.
 20. **OPEN (minor): spike coupling.** If S1 lands a GPUI fallback, 1L, 1M and 1H.03 change materially.
 21. **OPEN (minor): phase size.** 60 WPs, ~10 weeks; first merge candidates: 1D.06 into 1D.05, 1K.01 into 1J.03.
 22. **PLANNED (product owner requests, 2026-11-24): settings, bin search, folders.** Settings: WP-1M.11 (framework: tabbed pages, search, preferences store in main, reset, import and export; General, Appearance, Saving and backups, Advanced), WP-1M.13 (Export, Keyboard shortcuts read-only), WP-1J.05 (Agents and MCP, Notifications), WP-1D.08 (Cache and storage, Performance and hardware). Every setting, its default, scope, storage, agent access and owning WP is in the catalog [docs/reference/settings.md](../reference/settings.md); later pages are owned by their feature WPs (noted in each). Bin search: WP-1M.12 (`media.list` filter and sort, shared with the editor's predicate). Folders are P2 (WP-2F.07 to WP-2F.09, ADR-0020 Proposed). For the integrator: (a) place WP-1M.11's proposed arch paragraph in §16 with a pointer from §17; (b) the "apply a preference to the engine" commands are UI-only scopes (ADR-0016's mechanism): `project.set_autosave` (WP-1M.10; made UI-only in WP-1J.05), `project.set_allowed_roots`, `media.set_cache_config`, `media.clear_cache`, `media.set_decode_policy`; (c) these commands use the existing `project` and `media` namespaces; no new namespace.
+23. **PLANNED (product owner requests after using the app, 2026-11-24, second batch).** Verdicts and recommended phases; the integrator and the owner decide any move.
+    - **Undo and redo keys:** they work (the owner confirmed it); no change. The Edit menu shows Ctrl+Y for Redo on Windows and Linux, though Ctrl+Shift+Z is bound too. WP-2H.05 now covers which one the menu shows, and matching keys on non-Latin keyboard layouts.
+    - **Shortcut mapping in Settings:** already planned as WP-2H.05 (P2), extended. **Keep it in P2**, scheduled right after WP-2H.04. The editor must cover every registered command (the palette's list) and the P2 tools the presets bind (ripple trims, razor, markers, nudge), so making P1's few dozen keys rebindable now would be redone. P1 already lists every shortcut (WP-1M.13).
+    - **Preview media without adding it to the timeline:** new. WP-1M.14 (hover-scrub on cards and a scrubbable picture in the Inspector, no engine change), WP-1H.04 (the engine's source target, ADR-0022 Proposed) and WP-1M.15 (the Source view, playing from the bin and the Inspector) are in **P1**; WP-2A.14 (marks, insert and overwrite, match frame) is in P2. Reason for P1: auditioning footage is part of editing real media, which is where P1 now is, and none of the three needs P2 work. WP-1M.14 can start at once. If M1 must close first, WP-1H.04 and WP-1M.15 can move to P2 unchanged.
+    - **Export presets for Instagram, YouTube and others:** partly planned in WP-2G.01 (built-in platform presets) and WP-2G.04 (picker), both P2. Extended with Instagram Stories and feed, X, platform limits that carry their source and check date, and safe-area IDs shared with WP-2H.06. **Recommended pull: WP-2G.01 into P1.** It is S, its dependencies (E1E, E1B) are merged, and platform presets are H.264 + AAC MP4, which P1's export already writes. The pull needs a Preset menu in WP-1M.08's dialog, which widens 2G.01's Area to `packages/editor/src/export/` and extends F14. Codecs (2G.02), the full dialog and the queue (2G.03, 2G.04) stay in P2.
+    - **History panel:** new, WP-2H.11 (P2). **Keep it in P2:** it docks through WP-2H.01's panel registry and View > Panels, and the Undo and Redo buttons already name each step and its actor (ADR-0019). It needs only an additive `steps` on `edit.undo` and `edit.redo`, so it can be pulled early in P2.
+    - **Remove and re-add panels:** partly planned in WP-2H.01 (P2), extended with close buttons, View > Panels with checkmarks, Reset layout in the View menu and an empty state. **Keep it in P2:** P1's four panels have no close button, so nothing can be lost today, and the top bar already resets the layout. If the owner wants it before M1, close buttons and View > Panels for the four P1 panels are an S slice of 2H.01 that needs nothing else from P2.
+    - **Two videos side by side:** possible today by hand: the second clip dropped at the same time goes to a new track, then Scale 50 % and Position X ±480 in the Inspector. The clips are letterboxed, though, because P1's model has no crop. Crop is planned (2C.01 registry, 2C.04 render, 2H.03 Inspector), but no WP added the `crop`, `flip` and `blend_mode` fields to `VisualProps`; WP-2C.03 now does. Transform handles and snapping guides are WP-2H.06, extended with half and quarter guides. Layout presets are new: WP-2C.08 (`item.apply_layout`: side by side, top and bottom, picture in picture, three columns, 2 × 2). **Keep all of it in P2**, because it needs crop in the model, render and Inspector, plus multi-select (2A.10). A P1 slice (static crop and a two-clip layout) would front-load 2C.03's migration.
+    - **For the integrator:**
+      - (a) ADR-0022 (source preview) needs the owner's decision before WP-1H.04 starts; once accepted, add it to arch §23.
+      - (b) Additive contract changes:
+        - `view.set_source` and `playback.state.source` (1H.04);
+        - `view.set{source_marks}` (2A.14);
+        - `edit.undo` and `edit.redo` `{steps}` with `done` (2H.11);
+        - `item.apply_layout` (2C.08);
+        - `ExportPreset.platform` and `safe_area` (2G.01);
+        - `VisualProps.{crop, flip, blend_mode}` with a migration chained after 2F.07's v2 (2C.03, N18).
+      - (c) No new namespace.
+      - (d) New flows F31 to F36 are in `docs/user-flows.md` as blocked.

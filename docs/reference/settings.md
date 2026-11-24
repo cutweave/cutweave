@@ -39,7 +39,7 @@ The dialog is a side tab list of these pages, in this order, with one search fie
 | 4 | Timeline | Preferences | WP-2A.13 |
 | 5 | Playback | Preferences | WP-2H.10 |
 | 6 | Audio | Preferences | WP-2E.08 |
-| 7 | Media and import | Preferences | WP-2F.03 |
+| 7 | Media and import | Preferences | WP-1M.14 (hover-scrub), WP-2F.03 |
 | 8 | Export | Preferences | WP-1M.13 |
 | 9 | Saving and backups | Preferences | WP-1M.11 (rows from WP-1M.10) |
 | 10 | Keyboard shortcuts | Preferences | WP-1M.13 (read-only), WP-2H.05 (editor) |
@@ -139,6 +139,7 @@ The dialog is a side tab list of these pages, in this order, with one search fie
 
 | Key | Setting | Default | Scope | Applied by | Agents | Ships in |
 |---|---|---|---|---|---|---|
+| `media.hover_scrub` | Show a video's frames while the pointer moves across its card in the bin | On | App | Renderer | — | WP-1M.14 |
 | `media.proxy_policy` | Proxies for new projects: off, auto, all | Auto | App, copied to the project | `project.new` | Read and change the project's value | WP-2F.03 |
 | `media.proxy_size` | Proxy size: 540p, 720p, 960p | 960p | Machine | Engine (UI-only) | Read | WP-2F.03 |
 | `media.keep_structure` | Keep folder structure when importing folders | On | App | Renderer (passes it to `media.import`) | — | WP-2F.09 |
@@ -175,7 +176,7 @@ Backups always go to the project's `.cutweave/backups/` (arch §17); that is not
 |---|---|---|---|---|---|---|
 | — | Every shortcut, searchable (read-only) | The built-in bindings | — | — | — | WP-1M.13 |
 | `shortcuts.preset` | Preset: Cutweave (NLE-style) or CapCut | Cutweave | App | Renderer (keymap) | — | WP-2H.05 |
-| `shortcuts.bindings` | Your bindings: record, conflicts, reset one, import and export | None | App | Renderer | — | WP-2H.05 |
+| `shortcuts.bindings` | Your bindings: record, conflicts, reset one or all, the Redo key the Edit menu shows, import and export (only the changes from the preset are stored) | None | App | Renderer | — | WP-2H.05 |
 
 ### Notifications
 
