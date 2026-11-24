@@ -13,12 +13,14 @@
 //! Paths are validated before FFmpeg sees them (ffmpeg-next panics on non-UTF-8 paths and
 //! interior NULs, S3 F2.2), and open failures map to typed errors. Probe/index (WP-1D.02),
 //! decode (WP-1D.03: `decode` for video, `audio`) and hardware decode (WP-1D.04) build on
-//! [`input`]; the encoder (WP-1E.01) is in `encode`.
+//! [`input`]; the encoder (WP-1E.01) is in `encode`, its hardware encoders and their probe
+//! (WP-1E.02) in `hwenc`.
 
 mod audio;
 mod decode;
 mod encode;
 mod error;
+mod hwenc;
 mod index;
 mod log;
 mod probe;
@@ -190,7 +192,11 @@ impl MediaBackend for FfmpegBackend {
     }
 
     fn capabilities(&self) -> Capabilities {
-        (*self.caps).clone()
+        Capabilities {
+            // Probed on first use (WP-1E.02), then cached for the process.
+            hw_encode: hwenc::capabilities(),
+            ..(*self.caps).clone()
+        }
     }
 }
 
@@ -382,6 +388,6 @@ mod tests {
         ] {
             assert!(!all.iter().any(|n| *n == hw), "{hw} listed as software");
         }
-        assert!(caps.hw_decode.is_empty() && caps.hw_encode.is_empty());
+        assert_eq!(caps.hw_decode, Vec::new());
     }
 }

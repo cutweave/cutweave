@@ -3,7 +3,8 @@
 //! callback and codec enumeration. This is the only `unsafe` in the crate (ADR-0003); every
 //! block carries a `// SAFETY:` comment. WP-1D.02 appended the codec-parameter, seek-index and
 //! packet-flag reads (its section is delimited at the end); WP-1D.03 adds per-stream seek and
-//! pixel-format descriptors here (S3 finding F2.1).
+//! pixel-format descriptors here (S3 finding F2.1); WP-1E.02 the GPU-surface pool for hardware
+//! encoders (its own delimited section).
 
 use std::cell::Cell;
 use std::ffi::{CStr, c_char, c_int, c_void};
@@ -396,19 +397,23 @@ pub(super) fn packet_is_discard(packet: &Packet) -> bool {
 // ---------------------------------------------------------------------------------------------
 // Encode (WP-1E.01): swscale with an explicit YUV matrix and range, movable between threads.
 // `ffmpeg-next` has no wrapper for `sws_setColorspaceDetails`, and its scaling context is not
-// `Send`, which an `Encoder` must be.
+// `Send`, which an `Encoder` must be. WP-1E.02 made it slice-threaded: an RGBA 1080p frame took
+// about 14 ms on one thread, which alone held a hardware export under 2× realtime.
 // ---------------------------------------------------------------------------------------------
 
 /// A swscale context converting `src` to `dst` at one size, with the YUV side in an explicit
 /// matrix (an `SWS_CS_*` value) and range. swscale's default is BT.601, so the encoder always
-/// sets it.
-pub(super) struct Scaler(ffmpeg_next::software::scaling::Context);
+/// sets it. Large frames are converted in slices on swscale's own worker threads.
+pub(super) struct Scaler(ptr::NonNull<ffi::SwsContext>);
 
-// SAFETY: an SwsContext is plain heap state with no thread affinity (no thread-local data; the
-// legacy single-threaded context made by `sws_getContext` starts no worker threads). FFmpeg only
+// SAFETY: an SwsContext is heap state with no thread affinity: its slice-thread pool (if any) is
+// owned by the context and synchronises internally, and nothing is thread-local. FFmpeg only
 // forbids using one context from two threads at once, and `Scaler` is used through `&mut` by
 // the one encoder that owns it.
 unsafe impl Send for Scaler {}
+
+/// Frames this many pixels or larger are converted on several threads (720p and up).
+const THREADED_PIXELS: u64 = 1280 * 720;
 
 impl Scaler {
     /// A `width × height` converter from `src` to `dst`. `colorspace` is the `SWS_CS_*` matrix
@@ -421,50 +426,226 @@ impl Scaler {
         colorspace: c_int,
         (src_full, dst_full): (bool, bool),
     ) -> Result<Scaler, ffmpeg_next::Error> {
-        use ffmpeg_next::software::scaling::{Context, Flags};
-        let mut ctx = Context::get(
-            src,
-            width,
-            height,
-            dst,
-            width,
-            height,
-            Flags::BILINEAR | Flags::ACCURATE_RND,
+        let (Ok(w), Ok(h)) = (c_int::try_from(width), c_int::try_from(height)) else {
+            return Err(ffmpeg_next::Error::Other {
+                errno: ffmpeg_next::error::EINVAL,
+            });
+        };
+        // 1 for small frames; 0 is automatic, one slice per core.
+        let threads = c_int::from(u64::from(width) * u64::from(height) < THREADED_PIXELS);
+        // SAFETY: allocates a context with default fields, or returns NULL.
+        let ctx = ptr::NonNull::new(unsafe { ffi::sws_alloc_context() }).ok_or(
+            ffmpeg_next::Error::Other {
+                errno: ffmpeg_next::error::ENOMEM,
+            },
         )?;
-        // SAFETY: sws_getCoefficients returns a pointer into libswscale's static, read-only
-        // coefficient table for any argument (unknown values fall back to the default matrix).
-        let table = unsafe { ffi::sws_getCoefficients(colorspace) };
-        // SAFETY: `as_mut_ptr` is the live SwsContext `ctx` owns, initialised by sws_getContext
-        // above and not shared; both tables are the static table from above, which the call only
-        // reads (it copies the coefficients). Brightness 0, contrast and saturation 1.0 in 16.16
-        // fixed point are the identity.
+        // From here on, dropping `scaler` frees the context.
+        let scaler = Scaler(ctx);
+        // SAFETY: `ctx` is the live, not yet initialised context allocated above and not shared.
+        // Its public fields are set as documented for sws_init_context (the pixel formats as the
+        // `int` values of the bindings' own enum). sws_getCoefficients returns a pointer into
+        // libswscale's static, read-only coefficient table for any argument (unknown values fall
+        // back to the default matrix); sws_setColorspaceDetails only reads it (it copies the
+        // coefficients, into the slice contexts too). Brightness 0, contrast and saturation 1.0
+        // in 16.16 fixed point are the identity.
         let ret = unsafe {
-            ffi::sws_setColorspaceDetails(
-                ctx.as_mut_ptr(),
-                table,
-                c_int::from(src_full),
-                table,
-                c_int::from(dst_full),
-                0,
-                1 << 16,
-                1 << 16,
-            )
+            let c = ctx.as_ptr();
+            (*c).flags = ffi::SwsFlags::SWS_BILINEAR as std::ffi::c_uint
+                | ffi::SwsFlags::SWS_ACCURATE_RND as std::ffi::c_uint;
+            (*c).threads = threads;
+            (*c).src_w = w;
+            (*c).src_h = h;
+            (*c).dst_w = w;
+            (*c).dst_h = h;
+            (*c).src_format = ffi::AVPixelFormat::from(src) as c_int;
+            (*c).dst_format = ffi::AVPixelFormat::from(dst) as c_int;
+            (*c).src_range = c_int::from(src_full);
+            (*c).dst_range = c_int::from(dst_full);
+            let ret = ffi::sws_init_context(c, ptr::null_mut(), ptr::null_mut());
+            if ret < 0 {
+                ret
+            } else {
+                let table = ffi::sws_getCoefficients(colorspace);
+                ffi::sws_setColorspaceDetails(
+                    c,
+                    table,
+                    c_int::from(src_full),
+                    table,
+                    c_int::from(dst_full),
+                    0,
+                    1 << 16,
+                    1 << 16,
+                )
+            }
         };
         if ret < 0 {
             return Err(ffmpeg_next::Error::from(ret));
         }
-        Ok(Scaler(ctx))
+        Ok(scaler)
     }
 
-    /// Converts `input` into `output` (allocated on first use).
+    /// Converts `input` into `output` (both allocated, of the context's size and formats).
     pub(super) fn run(
         &mut self,
         input: &ffmpeg_next::frame::Video,
         output: &mut ffmpeg_next::frame::Video,
     ) -> Result<(), ffmpeg_next::Error> {
-        self.0.run(input, output)
+        // SAFETY: the context is initialised and used by this one call; `output` and `input` are
+        // live frames with allocated buffers in the formats and size the context was made for
+        // (the encoder allocates both to match), so sws_scale_frame only writes `output`'s
+        // buffers and only reads `input`.
+        let ret =
+            unsafe { ffi::sws_scale_frame(self.0.as_ptr(), output.as_mut_ptr(), input.as_ptr()) };
+        if ret < 0 {
+            return Err(ffmpeg_next::Error::from(ret));
+        }
+        Ok(())
     }
 }
+
+impl Drop for Scaler {
+    fn drop(&mut self) {
+        // SAFETY: frees the context this struct owns (and its slice threads); nothing else holds
+        // it.
+        unsafe { ffi::sws_freeContext(self.0.as_ptr()) };
+    }
+}
+
+// ===== WP-1E.02: GPU surfaces for hardware encoders (this section is this work package's) ======
+//
+// VA-API (and D3D12VA, which the tests use on Windows) encoders take only GPU surfaces. The
+// encoder gets a frames pool on a new device of that type (`hw_frames_ctx`), and every converted
+// NV12 frame is uploaded into a surface from it. `ffmpeg-next` 9.1 wraps none of the `hwcontext`
+// API. The device is the type's default one (VA-API: the first render node), never an adapter
+// index (S3 finding H7).
+
+/// A pool of NV12-backed GPU surfaces on a device of its own, for one encoder.
+pub(super) struct HwFrames {
+    /// Our reference to the `AVHWFramesContext` (which holds one to its device).
+    frames: ptr::NonNull<ffi::AVBufferRef>,
+}
+
+// SAFETY: a frames context is reference-counted heap state with no thread affinity (FFmpeg's
+// hwcontext API may be called from any thread, not concurrently on one context). `HwFrames` is
+// owned by one encoder, used through it from one thread at a time.
+unsafe impl Send for HwFrames {}
+
+/// `AVERROR(errno)` as an `ffmpeg-next` error.
+fn errno(code: c_int) -> ffmpeg_next::Error {
+    ffmpeg_next::Error::Other { errno: code }
+}
+
+impl HwFrames {
+    /// A pool of `format` surfaces (`AV_PIX_FMT_VAAPI`, `AV_PIX_FMT_D3D12`) of `width × height`
+    /// NV12 on a new device of type `device` (`vaapi`, `d3d12va`).
+    pub(super) fn new(
+        device: &CStr,
+        format: ffmpeg_next::format::Pixel,
+        (width, height): (u32, u32),
+    ) -> Result<HwFrames, ffmpeg_next::Error> {
+        let (Ok(width), Ok(height)) = (c_int::try_from(width), c_int::try_from(height)) else {
+            return Err(errno(ffmpeg_next::error::EINVAL));
+        };
+        // SAFETY: `device` is a NUL-terminated string; the call only reads it and returns
+        // AV_HWDEVICE_TYPE_NONE for an unknown name (a value of the bindings' enum: the start-up
+        // version lock ties these headers to the loaded library).
+        let kind = unsafe { ffi::av_hwdevice_find_type_by_name(device.as_ptr()) };
+        if kind == ffi::AVHWDeviceType::AV_HWDEVICE_TYPE_NONE {
+            return Err(errno(ffmpeg_next::error::ENOSYS));
+        }
+        let mut device_ref: *mut ffi::AVBufferRef = ptr::null_mut();
+        // SAFETY: `device_ref` is a valid out-pointer; a NULL device string and NULL options
+        // open the type's default device. On success it holds a new reference we own.
+        let ret = unsafe {
+            ffi::av_hwdevice_ctx_create(&raw mut device_ref, kind, ptr::null(), ptr::null_mut(), 0)
+        };
+        if ret < 0 {
+            return Err(ffmpeg_next::Error::from(ret));
+        }
+        // SAFETY: `device_ref` is the live device reference from above; av_hwframe_ctx_alloc
+        // takes a reference of its own (NULL on allocation failure).
+        let frames = unsafe { ffi::av_hwframe_ctx_alloc(device_ref) };
+        // SAFETY: releases our device reference (the frames context keeps its own) and sets the
+        // pointer to NULL.
+        unsafe { ffi::av_buffer_unref(&raw mut device_ref) };
+        let frames = ptr::NonNull::new(frames).ok_or(errno(ffmpeg_next::error::ENOMEM))?;
+        // From here on, dropping `pool` releases the frames context.
+        let pool = HwFrames { frames };
+        // SAFETY: the `data` of a reference from av_hwframe_ctx_alloc is its AVHWFramesContext
+        // (allocated by av_mallocz, so suitably aligned), which the caller fills in before
+        // av_hwframe_ctx_init (documented usage); nothing else holds it yet. `format` comes from
+        // the bindings' own enum.
+        #[allow(clippy::cast_ptr_alignment)] // see above: FFmpeg's allocation is aligned
+        let ret = unsafe {
+            let ctx = (*frames.as_ptr()).data.cast::<ffi::AVHWFramesContext>();
+            (*ctx).format = format.into();
+            (*ctx).sw_format = ffi::AVPixelFormat::AV_PIX_FMT_NV12;
+            (*ctx).width = width;
+            (*ctx).height = height;
+            ffi::av_hwframe_ctx_init(frames.as_ptr())
+        };
+        if ret < 0 {
+            return Err(ffmpeg_next::Error::from(ret));
+        }
+        Ok(pool)
+    }
+
+    /// Gives the not yet opened encoder context `ctx` a reference to the pool
+    /// (`hw_frames_ctx`), which the encoder needs to open.
+    pub(super) fn attach(
+        &self,
+        ctx: &mut ffmpeg_next::codec::context::Context,
+    ) -> Result<(), ffmpeg_next::Error> {
+        // SAFETY: `frames` is our live reference; av_buffer_ref returns a new one or NULL.
+        let reference = unsafe { ffi::av_buffer_ref(self.frames.as_ptr()) };
+        if reference.is_null() {
+            return Err(errno(ffmpeg_next::error::ENOMEM));
+        }
+        // SAFETY: `as_mut_ptr` is the live codec context `ctx` owns, not yet opened and not
+        // shared. Any previous `hw_frames_ctx` is released first; the context then owns the new
+        // reference and releases it when it is freed.
+        unsafe {
+            let c = ctx.as_mut_ptr();
+            ffi::av_buffer_unref(&raw mut (*c).hw_frames_ctx);
+            (*c).hw_frames_ctx = reference;
+        }
+        Ok(())
+    }
+
+    /// A new surface from the pool holding `frame` (NV12 at the pool's size).
+    pub(super) fn upload(
+        &self,
+        frame: &ffmpeg_next::frame::Video,
+    ) -> Result<ffmpeg_next::frame::Video, ffmpeg_next::Error> {
+        let mut surface = ffmpeg_next::frame::Video::empty();
+        // SAFETY: `surface` owns a fresh, empty AVFrame and the pool is initialised; on success
+        // the frame holds a reference to a pool surface, released when `surface` drops.
+        let ret =
+            unsafe { ffi::av_hwframe_get_buffer(self.frames.as_ptr(), surface.as_mut_ptr(), 0) };
+        if ret < 0 {
+            return Err(ffmpeg_next::Error::from(ret));
+        }
+        // SAFETY: `surface` holds a pool surface and `frame` an allocated NV12 frame of the same
+        // size (the encoder converts every input to that before uploading); the call copies
+        // `frame` into the surface and only reads `frame`.
+        let ret = unsafe { ffi::av_hwframe_transfer_data(surface.as_mut_ptr(), frame.as_ptr(), 0) };
+        if ret < 0 {
+            return Err(ffmpeg_next::Error::from(ret));
+        }
+        Ok(surface)
+    }
+}
+
+impl Drop for HwFrames {
+    fn drop(&mut self) {
+        let mut reference = self.frames.as_ptr();
+        // SAFETY: releases our one reference to the frames context (the encoder context and
+        // surfaces in flight keep theirs).
+        unsafe { ffi::av_buffer_unref(&raw mut reference) };
+    }
+}
+
+// ===== end of WP-1E.02 section ===============================================================
 
 // ===== WP-1D.03: decode (everything below up to the test module is this work package's) =====
 //

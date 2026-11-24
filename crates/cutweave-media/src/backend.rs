@@ -33,6 +33,28 @@ pub enum HwMode {
     Off,
 }
 
+/// Whether an encoder may use a hardware video encoder (WP-1E.02).
+///
+/// The backend lists the hardware encoders that work on this machine in
+/// [`Capabilities::hw_encode`](crate::Capabilities::hw_encode), in the order `Auto` tries them
+/// (per OS: docs/reference/export-quality.md). Audio is always encoded in software.
+#[derive(Clone, Debug, Default, PartialEq, Eq, Hash)]
+#[non_exhaustive]
+pub enum HwEncode {
+    /// The first hardware encoder that opens for the stream, else the software encoder. An encoder
+    /// that fails to open is skipped silently (logged); one that fails after frames were pushed
+    /// ends the encode with [`MediaError::HwUnavailable`], and the caller re-encodes from the
+    /// start with `Off` ([`encode_with_fallback`](crate::encode_with_fallback) does this).
+    #[default]
+    Auto,
+    /// Software only (x264). Its output is identical run to run for a given thread count.
+    Off,
+    /// This hardware encoder (an [`HwCodec::implementation`](crate::HwCodec::implementation)
+    /// name such as `h264_nvenc`) and no other: when it cannot open or fails later, the encode
+    /// fails with [`MediaError::HwUnavailable`] and nothing falls back.
+    Force(String),
+}
+
 /// What a video decoder is for: it picks the threading (ADR-0003 decoder pool, S3 finding F4).
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Hash)]
 #[non_exhaustive]
@@ -121,7 +143,8 @@ pub struct VideoEncodeSpec {
     pub color: ColorTags,
     /// Encoder threads; 0 lets the encoder choose. x264 output is identical run to run for a
     /// given thread count, so `1` also makes it identical across machines that load the same
-    /// FFmpeg bundle (the export determinism test, WP-1E.03).
+    /// FFmpeg bundle (the export determinism test, WP-1E.03, which also sets
+    /// [`HwEncode::Off`]: hardware encoders ignore this field).
     pub threads: u16,
 }
 
@@ -194,10 +217,13 @@ pub struct EncodeSpec {
     pub cancel: Option<CancelCheck>,
     /// Receives progress while encoding.
     pub progress: Option<ProgressSink>,
+    /// Hardware video encoding policy ([`HwEncode::Auto`] unless set).
+    pub hw: HwEncode,
 }
 
 impl EncodeSpec {
-    /// An output at `path` with no streams and no hooks yet.
+    /// An output at `path` with no streams and no hooks yet, hardware encoding on
+    /// [`HwEncode::Auto`].
     #[must_use]
     pub fn new(path: impl Into<PathBuf>) -> EncodeSpec {
         EncodeSpec {
@@ -207,7 +233,15 @@ impl EncodeSpec {
             audio: None,
             cancel: None,
             progress: None,
+            hw: HwEncode::Auto,
         }
+    }
+
+    /// The same output with hardware encoding policy `hw`.
+    #[must_use]
+    pub fn with_hw(mut self, hw: HwEncode) -> EncodeSpec {
+        self.hw = hw;
+        self
     }
 
     /// The same output with a video stream.
@@ -240,8 +274,8 @@ impl EncodeSpec {
 
     /// Checks what every backend requires before opening an output: at least one stream,
     /// non-empty codec names, a non-empty video size, a CRF on the 0–51 scale, non-zero
-    /// bitrates, at least one audio channel and a syntactically valid path. Backends call it
-    /// first, so they reject bad specs the same way.
+    /// bitrates, at least one audio channel, a non-empty name in [`HwEncode::Force`] and a
+    /// syntactically valid path. Backends call it first, so they reject bad specs the same way.
     pub fn validate(&self) -> Result<(), MediaError> {
         let invalid = |message: &str| {
             Err(MediaError::Invalid {
@@ -265,6 +299,9 @@ impl EncodeSpec {
                 }
                 RateControl::Bitrate(0) => return invalid("the video bitrate is zero"),
                 _ => {}
+            }
+            if matches!(&self.hw, HwEncode::Force(name) if name.trim().is_empty()) {
+                return invalid("the forced hardware encoder name is empty");
             }
         }
         if let Some(a) = &self.audio {
@@ -424,4 +461,12 @@ pub trait Encoder: Send {
 
     /// Flushes and closes the output.
     fn finish(self: Box<Self>) -> Result<EncodeSummary, MediaError>;
+
+    /// The implementation encoding the video stream (`libx264`, `h264_nvenc`), for logs and job
+    /// reports; `None` without a video stream or when the backend does not name it. Fixed for
+    /// the encoder's life: hardware fallback happens while opening, or by re-encoding
+    /// ([`HwEncode::Auto`]).
+    fn video_encoder(&self) -> Option<&str> {
+        None
+    }
 }
