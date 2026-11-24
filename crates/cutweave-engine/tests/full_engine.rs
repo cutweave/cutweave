@@ -403,7 +403,13 @@ fn project_swaps_move_playback_without_leaking_threads() {
         counts.push(thread_count());
     }
     // The first rounds warm up thread pools (GPU driver, runtime); later swaps add nothing.
-    let settled = settle_threads(counts[1], 3);
+    // Idle pool threads (the runtime's blocking pool keeps them 10 s) may take a while to go
+    // on a busy machine: wait up to 20 s.
+    let deadline = std::time::Instant::now() + std::time::Duration::from_secs(20);
+    let mut settled = settle_threads(counts[1], 3);
+    while settled > counts[1] + 3 && std::time::Instant::now() < deadline {
+        settled = settle_threads(counts[1], 3);
+    }
     assert!(
         settled <= counts[1] + 3,
         "threads grew across swaps: {counts:?} then {settled}"
