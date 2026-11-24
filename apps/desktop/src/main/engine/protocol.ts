@@ -20,6 +20,37 @@ export const EXIT = {
 /** Engine exit code when it cannot bind the port main chose. */
 export const EXIT_PORT_IN_USE = EXIT.portInUse;
 
+/**
+ * Windows status codes a process exits with when the loader refuses to start it, before the
+ * engine's own code runs. A retry cannot fix them.
+ */
+export const WINDOWS_LOADER_EXITS = {
+  dllNotFound: 0xc0000135,
+  entryPointNotFound: 0xc0000139,
+} as const;
+
+/** What the common Windows status exit codes mean, in the dialog's words. */
+const WINDOWS_STATUS_TEXT: Readonly<Record<number, string>> = {
+  [WINDOWS_LOADER_EXITS.dllNotFound]: "a DLL it needs is missing",
+  [WINDOWS_LOADER_EXITS.entryPointNotFound]: "a DLL it loaded is the wrong version",
+  0xc0000005: "access violation",
+  0xc00000fd: "stack overflow",
+  0xc0000409: "it aborted",
+};
+
+/**
+ * `exit code 70`, or for a Windows status code (Node reports them unsigned, e.g. 3221225781)
+ * `exit code 0xC0000135: a DLL it needs is missing`.
+ */
+export function describeExitCode(code: number): string {
+  if (code >= 0xc0000000 && code <= 0xffffffff) {
+    const hex = `0x${code.toString(16).toUpperCase()}`;
+    const what = WINDOWS_STATUS_TEXT[code];
+    return what === undefined ? `exit code ${hex}` : `exit code ${hex}: ${what}`;
+  }
+  return `exit code ${code}`;
+}
+
 export interface EngineReady {
   readonly port: number;
   readonly pid: number;

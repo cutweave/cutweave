@@ -6,6 +6,8 @@ import { defineConfig } from "@playwright/test";
 export default defineConfig({
   testDir: "e2e",
   testMatch: "**/*.spec.ts",
+  // Fails the run once, with the reason, when the real engine binary cannot load.
+  globalSetup: "./e2e/global-setup.ts",
   workers: 1,
   fullyParallel: false,
   timeout: 60_000,
