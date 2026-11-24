@@ -10,23 +10,38 @@
 //! copies the RGBA8 readback into the ring slot layout. Without a GPU it renders with the CPU
 //! reference renderer.
 //!
-//! **No per-frame allocation of its own** (arch §10 "Threads"): the sequence is indexed once
-//! per document revision ([`TimelineIndex`]: an edit costs one re-index on the next frame), the
-//! scene, the render graph and its scratch are reused, and the pixels go from the mapped
-//! readback straight into the ring slot. What still allocates on the render thread is inside
-//! wgpu and inside the media layer when a picture the preview does not hold must be decoded or
-//! fetched from the frame cache (see [`PreviewFrames`]); the CPU fallback and error paths
-//! allocate too. The engine's `preview_alloc` test holds it to that.
+//! **Sources (ADR-0022, WP-1H.04).** A request whose target is a media asset renders that asset
+//! on its own: [`source_timeline`] builds a transient one-clip timeline from the asset's probe
+//! (its picture and its sound, at its own frame rate; audio-only assets on a 30 fps grid over
+//! the black background) in a project of its own, never in the document. It is indexed and
+//! rendered exactly like the sequence, with the canvas set to the output size, so the picture is
+//! fitted into the preview with the asset's aspect. [`DocSources`] answers `view.set_source`
+//! from the same rules ([`source_info`]).
+//!
+//! **No per-frame allocation of its own** (arch §10 "Threads"): the sequence and the source
+//! shown last are each indexed once per document revision ([`TimelineIndex`]: an edit costs one
+//! re-index on the next frame, a switch to a new source one index; an edit that leaves a
+//! source's asset alone costs it nothing), the scene, the render graph and its scratch are
+//! reused, and the pixels go from the mapped readback straight into the ring slot. What still
+//! allocates on the render thread is inside wgpu and inside the media layer when a picture the
+//! preview does not hold must be decoded or fetched from the frame cache (see
+//! [`PreviewFrames`]); the CPU fallback and error paths allocate too. The engine's
+//! `preview_alloc` test holds it to that.
 
 use std::sync::Arc;
 use std::sync::atomic::{AtomicBool, Ordering};
 
-use cutweave_commands::{DocHandle, DocSnapshot, Rev};
+use cutweave_commands::{CmdError, DocHandle, DocSnapshot, Rev};
 use cutweave_media::DecodeMode;
-use cutweave_model::{Project, SequenceId, Time};
+use cutweave_model::{
+    Clip, Duration, EntityKind, FrameRate, ItemId, MediaAsset, MediaId, MediaKind, Project,
+    SampleRate, Sequence, SequenceFormat, SequenceId, StreamKind, Time, Track, TrackId, TrackKind,
+};
+use cutweave_ops::media::has_audio_stream;
 use cutweave_playback::shm::{FrameLayout, PixelFormat};
 use cutweave_playback::transport::{
-    CancelToken, FrameSource, RenderPurpose, RenderRequest, Rendered, SequenceTiming, SourceError,
+    CancelToken, FrameSource, PlaybackTarget, RenderPurpose, RenderRequest, Rendered,
+    SequenceTiming, SourceError, SourceInfo, SourceResolver,
 };
 use cutweave_render::alloc_scope::{self, Scope};
 use cutweave_render::gpu::{Compositor, CompositorOptions, RenderError};
@@ -48,7 +63,131 @@ pub(crate) fn active_sequence(doc: &Project) -> Option<SequenceId> {
 pub(crate) fn timing_of(doc: &Project) -> SequenceTiming {
     match active_sequence(doc).and_then(|id| doc.sequences.get(&id)) {
         Some(seq) => SequenceTiming::new(seq.format.frame_rate, Time::from(seq.duration())),
-        None => SequenceTiming::new(cutweave_model::FrameRate::FPS_30, Time::ZERO),
+        None => SequenceTiming::new(FrameRate::FPS_30, Time::ZERO),
+    }
+}
+
+/// The sequence of a source's transient timeline ([`source_timeline`]); its own project holds
+/// nothing else, so these ids cannot meet the document's.
+pub(crate) const SOURCE_SEQUENCE: SequenceId = SequenceId::from_u128(0x5ce_0001);
+const SOURCE_VIDEO_TRACK: TrackId = TrackId::from_u128(0x5ce_0002);
+const SOURCE_AUDIO_TRACK: TrackId = TrackId::from_u128(0x5ce_0003);
+const SOURCE_VIDEO_CLIP: ItemId = ItemId::from_u128(0x5ce_0004);
+const SOURCE_AUDIO_CLIP: ItemId = ItemId::from_u128(0x5ce_0005);
+/// The canvas of an asset without a picture size (its pictures are fitted to the output).
+const DEFAULT_CANVAS: (u32, u32) = (1920, 1080);
+
+/// The source that plays `media` of `doc` on its own (ADR-0022): its length and frame grid, the
+/// asset's own frame rate (30 fps for audio-only assets).
+///
+/// # Errors
+/// `NotFound` for an asset `doc` does not have; `Invalid` (at `/media`) for one with nothing to
+/// play: a still image, a compound clip, a file without a known length.
+pub(crate) fn source_info(doc: &Project, media: MediaId) -> Result<SourceInfo, CmdError> {
+    let asset = doc
+        .media
+        .get(&media)
+        .ok_or_else(|| CmdError::not_found(EntityKind::Media, media))?;
+    let fps = match asset.kind {
+        MediaKind::Video => asset.probe.fps.unwrap_or(FrameRate::FPS_30),
+        MediaKind::Audio => FrameRate::FPS_30,
+        MediaKind::Image => {
+            return Err(CmdError::invalid(
+                "/media",
+                format!("media {media} is a still image: it has nothing to play"),
+            ));
+        }
+        MediaKind::SequenceRef => {
+            return Err(CmdError::invalid(
+                "/media",
+                format!("media {media} is a compound clip, which cannot play on its own yet"),
+            ));
+        }
+    };
+    let duration = asset
+        .probe
+        .duration
+        .filter(|d| *d > Duration::ZERO)
+        .ok_or_else(|| {
+            CmdError::invalid(
+                "/media",
+                format!("media {media} has no known length to play"),
+            )
+        })?;
+    Ok(SourceInfo {
+        media,
+        duration,
+        fps,
+    })
+}
+
+/// The picture size of `asset` upright (the display rotation applied), if the probe knows it.
+fn display_size(asset: &MediaAsset) -> Option<(u32, u32)> {
+    let video = asset
+        .probe
+        .streams
+        .iter()
+        .find(|s| s.kind == StreamKind::Video)?;
+    let (w, h) = (video.width?, video.height?);
+    if w == 0 || h == 0 {
+        return None;
+    }
+    Some(if asset.probe.rotation % 180 == 90 {
+        (h, w)
+    } else {
+        (w, h)
+    })
+}
+
+/// The transient one-clip timeline a source plays (ADR-0022): a project of its own holding the
+/// asset and [`SOURCE_SEQUENCE`], whose clips cover the whole asset from 0: its picture on a
+/// video track (video files) and its sound on an audio track (when it has some). `None` when
+/// `media` cannot play ([`source_info`]). Never part of the document.
+pub(crate) fn source_timeline(doc: &Project, media: MediaId) -> Option<Project> {
+    let info = source_info(doc, media).ok()?;
+    let asset = doc.media.get(&media)?;
+    let (width, height) = display_size(asset).unwrap_or(DEFAULT_CANVAS);
+    let format = SequenceFormat::new(width, height, info.fps, SampleRate::HZ_48_000);
+    let mut sequence = Sequence::new(SOURCE_SEQUENCE, "Source", format);
+    let clip = |id: ItemId| Clip::new(id, media, Time::ZERO, info.duration);
+    let mut tracks = 0;
+    if asset.kind == MediaKind::Video {
+        sequence.insert_track(
+            tracks,
+            Track::new(SOURCE_VIDEO_TRACK, TrackKind::Video, "V1"),
+        );
+        let track = sequence.track_mut(&SOURCE_VIDEO_TRACK)?;
+        track.items.insert(clip(SOURCE_VIDEO_CLIP).into());
+        tracks += 1;
+    }
+    if asset.kind == MediaKind::Audio || has_audio_stream(asset) {
+        sequence.insert_track(
+            tracks,
+            Track::new(SOURCE_AUDIO_TRACK, TrackKind::Audio, "A1"),
+        );
+        let track = sequence.track_mut(&SOURCE_AUDIO_TRACK)?;
+        track.items.insert(clip(SOURCE_AUDIO_CLIP).into());
+    }
+    let mut project = Project::new("Source");
+    project.media.insert(media, asset.clone());
+    project.sequences.insert(SOURCE_SEQUENCE, sequence);
+    Some(project)
+}
+
+/// Finds the media `view.set_source` names in the open document ([`source_info`]).
+pub(crate) struct DocSources {
+    doc: DocHandle,
+}
+
+impl DocSources {
+    pub(crate) fn new(doc: DocHandle) -> DocSources {
+        DocSources { doc }
+    }
+}
+
+impl SourceResolver for DocSources {
+    fn resolve(&self, media: MediaId) -> Result<SourceInfo, CmdError> {
+        source_info(&self.doc.snapshot().doc, media)
     }
 }
 
@@ -113,9 +252,20 @@ struct Indexed {
     index: Option<TimelineIndex>,
 }
 
+/// A source's transient timeline indexed for the asset as it was at `rev`.
+struct SourceIndexed {
+    media: MediaId,
+    rev: Rev,
+    /// The asset it was built from: an edit that leaves it alone needs no new index.
+    asset: Option<MediaAsset>,
+    /// `None`: the asset is gone or cannot play.
+    index: Option<TimelineIndex>,
+}
+
 /// What a render reuses from the last one (see the module docs).
 struct Reused {
-    indexed: Option<Indexed>,
+    sequence: Option<Indexed>,
+    source: Option<SourceIndexed>,
     scene: Option<SceneDescription>,
     graph: RenderGraph,
     scratch: BuildScratch,
@@ -164,7 +314,8 @@ impl PreviewSource {
             events,
             lost_reported,
             reused: Reused {
-                indexed: None,
+                sequence: None,
+                source: None,
                 scene: None,
                 graph: RenderGraph::new(Target::rgba8(1, 1)),
                 scratch: BuildScratch::default(),
@@ -228,6 +379,39 @@ fn indexed<'a>(
     slot.as_ref().and_then(|i| i.index.as_ref())
 }
 
+/// The transient timeline of the source `media` in `snapshot`, indexed for rendering: built
+/// when the source is new or its asset changed (allocates, once), kept across other edits.
+fn source_indexed<'a>(
+    slot: &'a mut Option<SourceIndexed>,
+    frames: &PreviewFrames,
+    snapshot: &DocSnapshot,
+    media: MediaId,
+) -> Option<&'a TimelineIndex> {
+    let asset = snapshot.doc.media.get(&media);
+    let fresh = match slot.as_mut() {
+        Some(s) if s.media == media && s.rev == snapshot.rev => true,
+        Some(s) if s.media == media && s.asset.as_ref() == asset => {
+            // An edit elsewhere: the same picture and sound.
+            s.rev = snapshot.rev;
+            frames.retain_current(&snapshot.doc);
+            true
+        }
+        _ => false,
+    };
+    if !fresh {
+        let index = source_timeline(&snapshot.doc, media)
+            .and_then(|project| TimelineIndex::new(&project, SOURCE_SEQUENCE).ok());
+        frames.retain_current(&snapshot.doc);
+        *slot = Some(SourceIndexed {
+            media,
+            rev: snapshot.rev,
+            asset: asset.cloned(),
+            index,
+        });
+    }
+    slot.as_ref().and_then(|s| s.index.as_ref())
+}
+
 impl FrameSource for PreviewSource {
     fn timing(&self) -> SequenceTiming {
         self.timing
@@ -252,7 +436,13 @@ impl FrameSource for PreviewSource {
             reused,
             ..
         } = self;
-        let Some(index) = indexed(&mut reused.indexed, frames, &snapshot) else {
+        let index = match request.target {
+            PlaybackTarget::Sequence => indexed(&mut reused.sequence, frames, &snapshot),
+            PlaybackTarget::Media(media) => {
+                source_indexed(&mut reused.source, frames, &snapshot, media)
+            }
+        };
+        let Some(index) = index else {
             fill_black(&request.layout, out);
             return Ok(rendered);
         };
@@ -266,6 +456,12 @@ impl FrameSource for PreviewSource {
             }
             None => reused.scene.insert(index.evaluate(request.t)),
         };
+        if request.target != PlaybackTarget::Sequence {
+            // A source fills the preview with the asset's own aspect (letterboxed): its canvas
+            // is the output.
+            scene.width = request.layout.width();
+            scene.height = request.layout.height();
+        }
         request.quality.apply(scene);
         let target = Target::rgba8(request.layout.width(), request.layout.height());
         let mode = match request.purpose {

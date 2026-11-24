@@ -4,10 +4,14 @@
 //! A thread per open document follows its event stream. After every change (coalesced: one
 //! update for a burst of events, skipped when the revision did not move) it
 //!
-//! - gives the transport the sequence's new frame grid and extent (`set_timing`), or makes it
-//!   re-render the current frame (`refresh`);
-//! - re-points the mixer's clip sources at the document and replaces its segments with the
-//!   whole sequence (`evaluate_audio`), so edits are heard `edit_latency` after the playhead;
+//! - gives the transport the sequence's new frame grid and extent, or makes it re-render the
+//!   current frame (`Transport::sequence_edited`); while a source plays (ADR-0022) the sequence
+//!   waits and the source is not interrupted;
+//! - ends a source whose asset was removed, and re-times or refreshes one whose asset changed
+//!   (`Transport::source_changed`);
+//! - re-points the mixer's clip sources at the document and feeds the mixer the sound of what
+//!   plays ([`AudioFeed`]: the whole sequence, or the source), so edits are heard
+//!   `edit_latency` after the playhead;
 //! - drops the decoder pools and cached frames of media that were removed or relinked, and
 //!   their thumbnails and filmstrips (WP-1D.05 handoff).
 //!
@@ -18,16 +22,14 @@ use std::sync::atomic::{AtomicBool, Ordering};
 use std::thread::JoinHandle;
 use std::time::Duration as StdDuration;
 
-use cutweave_audio::MixerHandle;
 use cutweave_cache::ThumbCache;
-use cutweave_commands::{DocHandle, RecvError, Rev, TryRecvError};
-use cutweave_model::{Project, Time};
-use cutweave_playback::transport::Transport;
-use cutweave_render::evaluate_audio;
+use cutweave_commands::{DocHandle, RecvError, TryRecvError};
+use cutweave_model::Project;
+use cutweave_playback::transport::{PlaybackTarget, Transport};
 
-use super::audio::LivePcm;
+use super::audio::{AudioFeed, LivePcm};
 use super::frames::MediaFrames;
-use super::preview::{active_sequence, timing_of};
+use super::preview::{source_info, timing_of};
 
 /// How long the thread waits for an event before looking at its stop flag.
 const POLL: StdDuration = StdDuration::from_millis(50);
@@ -35,41 +37,36 @@ const POLL: StdDuration = StdDuration::from_millis(50);
 /// What the watcher updates.
 pub(crate) struct Targets {
     pub(crate) transport: Transport,
-    pub(crate) mixer: Option<Arc<MixerHandle>>,
+    pub(crate) feed: Arc<AudioFeed>,
     pub(crate) pcm: Arc<LivePcm>,
     pub(crate) frames: Arc<MediaFrames>,
     pub(crate) thumbs: Option<Arc<ThumbCache>>,
 }
 
 impl Targets {
-    /// Brings everything in line with `doc`.
-    fn apply(&self, doc: &Project, first: bool) {
+    /// Brings everything in line with `doc`, which follows `previous` (`None`: the document
+    /// playback attached to).
+    fn apply(&self, doc: &Project, previous: Option<&Project>) {
         let timing = timing_of(doc);
-        if timing != self.transport.timing() {
-            self.transport.set_timing(timing);
-        } else if !first {
-            self.transport.refresh();
-        }
-        self.pcm.set_doc(Some(doc));
-        if let Some(mixer) = &self.mixer {
-            let segments = active_sequence(doc)
-                .map(|seq| {
-                    let end = doc
-                        .sequences
-                        .get(&seq)
-                        .map_or(Time::ZERO, |s| Time::from(s.duration()));
-                    evaluate_audio(doc, seq, Time::ZERO, end)
-                })
-                .transpose();
-            match segments {
-                Ok(segments) => {
-                    if let Err(e) = mixer.set_segments(&segments.unwrap_or_default()) {
-                        tracing::warn!(error = %e, "the mixer refused the sequence's audio");
-                    }
+        match previous {
+            None => {
+                if timing != self.transport.sequence_timing() {
+                    self.transport.set_timing(timing);
                 }
-                Err(e) => tracing::warn!(error = %e, "cannot evaluate the sequence's audio"),
+            }
+            Some(previous) => {
+                self.transport.sequence_edited(timing);
+                if let PlaybackTarget::Media(media) = self.transport.target()
+                    && previous.media.get(&media) != doc.media.get(&media)
+                {
+                    // Removed (the source ends), re-probed or relinked.
+                    self.transport
+                        .source_changed(media, source_info(doc, media).ok());
+                }
             }
         }
+        self.pcm.set_doc(Some(doc));
+        self.feed.document(doc);
         for hash in self.frames.forget_stale() {
             if let Some(thumbs) = &self.thumbs
                 && let Err(e) = thumbs.disk().remove_media(&hash)
@@ -93,8 +90,8 @@ impl DocWatcher {
         let flag = Arc::clone(&stop);
         let mut stream = doc.subscribe();
         let first = doc.snapshot();
-        targets.apply(&first.doc, true);
-        let mut last: Rev = first.rev;
+        targets.apply(&first.doc, None);
+        let mut last = first;
         let thread = std::thread::Builder::new()
             .name("cw-doc-watch".into())
             .spawn(move || {
@@ -113,11 +110,11 @@ impl DocWatcher {
                         }
                     }
                     let snap = doc.snapshot();
-                    if snap.rev == last {
+                    if snap.rev == last.rev {
                         continue;
                     }
-                    last = snap.rev;
-                    targets.apply(&snap.doc, false);
+                    targets.apply(&snap.doc, Some(&last.doc));
+                    last = snap;
                 }
             })?;
         Ok(DocWatcher {

@@ -2,7 +2,9 @@
 //! The preview's frame source makes no heap allocation of its own per steady-state frame (arch
 //! §10 "Threads", AGENTS.md "Real-time and render threads"), on the real path: a document with
 //! two clips, `FakeBackend` decoders behind [`MediaFrames`], the software GPU adapter, the
-//! counting allocator of `cutweave-audio` (feature `testing`).
+//! counting allocator of `cutweave-audio` (feature `testing`). The same holds with a media item
+//! playing on its own (a source, ADR-0022) and when the preview switches between the sequence
+//! and a source it has shown before.
 //!
 //! Heap operations are counted per [`Scope`]: our own code must make none; wgpu's are bounded
 //! by [`WGPU_OPS_PER_FRAME`]; the media layer's (decoding a picture the preview does not hold,
@@ -24,7 +26,9 @@ use cutweave_model::{
     Time, Track, TrackId, TrackKind, Vec2,
 };
 use cutweave_playback::shm::{FrameLayout, PixelFormat};
-use cutweave_playback::transport::{CancelToken, FrameSource as _, RenderPurpose, RenderRequest};
+use cutweave_playback::transport::{
+    CancelToken, FrameSource as _, PlaybackTarget, RenderPurpose, RenderRequest,
+};
 use cutweave_render::gpu::{AdapterChoice, Compositor, CompositorOptions, GpuContext};
 use cutweave_render::{Quality, Scale};
 
@@ -132,7 +136,12 @@ struct Rig {
     _actor: DocActor,
     source: PreviewSource,
     cancel: CancelToken,
+    /// What the frames show: the sequence, or a media item on its own.
+    target: PlaybackTarget,
 }
+
+/// The NV12 clip's media (V1), as a source.
+const CLIP_A: PlaybackTarget = PlaybackTarget::Media(MediaId::from_u128(21));
 
 /// Heap operations of one frame, per scope.
 type Ops = [u64; Scope::COUNT];
@@ -185,6 +194,7 @@ impl Rig {
             _actor: actor,
             source,
             cancel: CancelToken::never(),
+            target: PlaybackTarget::Sequence,
         })
     }
 
@@ -202,6 +212,7 @@ impl Rig {
         let mut ops = Vec::new();
         for frame in frames {
             let request = RenderRequest {
+                target: self.target,
                 frame,
                 t: Time::from_flicks(frame * FRAME_30).unwrap(),
                 quality,
@@ -287,4 +298,60 @@ fn preview_frames_make_no_heap_allocation_of_their_own() {
         scrub.extend(rig.render([f], full, RenderPurpose::Still));
     }
     check("scrub", &scrub);
+}
+
+/// WP-1H.04: the same with the V1 clip's media playing on its own (ADR-0022). Its transient
+/// timeline is indexed on the first frame after the switch (the warm-up), like the sequence
+/// after an edit; from then on its frames and the switches between it and the sequence make no
+/// heap allocation of our own.
+#[test]
+fn source_frames_make_no_heap_allocation_of_their_own() {
+    let Some(mut rig) = Rig::new() else { return };
+    let full = Quality::FULL;
+    let playback = RenderPurpose::Playback;
+    rig.target = CLIP_A;
+    rig.render(0..WARM_UP, full, playback);
+
+    let n = i64::try_from(COUNTED).unwrap();
+    let played = rig.render(WARM_UP..WARM_UP + n, full, playback);
+    let (_, media) = check("source playback", &played);
+    assert!(media > 0, "new pictures come from the media layer");
+    check(
+        "source replay",
+        &rig.render(WARM_UP..WARM_UP + n, full, playback),
+    );
+
+    let paused = WARM_UP + 7;
+    rig.render([paused], full, RenderPurpose::Still);
+    let still = rig.render(
+        std::iter::repeat_n(paused, COUNTED),
+        full,
+        RenderPurpose::Still,
+    );
+    let (_, media) = check("source still", &still);
+    assert_eq!(media, 0, "a picture the preview holds needs no media layer");
+
+    let quarter = Quality::new(Scale::Quarter, false);
+    rig.render([WARM_UP, WARM_UP + 1], quarter, RenderPurpose::Scrub);
+    let mut scrub = Vec::new();
+    for f in (WARM_UP..WARM_UP + n).step_by(6) {
+        scrub.extend(rig.render([f], quarter, RenderPurpose::Scrub));
+        scrub.extend(rig.render([f], full, RenderPurpose::Still));
+    }
+    check("source scrub", &scrub);
+
+    // Back and forth between the sequence (indexed once, here) and the source: both stay
+    // indexed, so a switch is a frame like any other.
+    rig.target = PlaybackTarget::Sequence;
+    rig.render([paused, paused + 1], full, RenderPurpose::Still);
+    let mut switches = Vec::new();
+    for i in 0..COUNTED {
+        rig.target = if i % 2 == 0 {
+            CLIP_A
+        } else {
+            PlaybackTarget::Sequence
+        };
+        switches.extend(rig.render([paused], full, RenderPurpose::Still));
+    }
+    check("switches", &switches);
 }

@@ -11,6 +11,10 @@
 //! - `Gui` mode announces the preview ring in `rpc.hello` and the run-file and removes it at
 //!   shutdown; project swaps move playback to the new document without leaking threads.
 //! - Deterministic ids hold end to end (import → insert → export twice, same documents and jobs).
+//! - WP-1H.04 (ADR-0022): a media item plays on its own (`view.set_source`) frame by frame on
+//!   the manual clock, leaves the project, its history, journal and saved document untouched and
+//!   the timeline's playhead where it was; removing the asset or opening another project returns
+//!   to the timeline; an audio-only asset plays its sound through the mixer.
 
 #![allow(clippy::unwrap_used, clippy::expect_used)]
 
@@ -44,6 +48,70 @@ fn fake_clip(dir: &Path, name: &str, fake: FakeBackend) -> (FakeBackend, PathBuf
         audio: Some(FakeAudio::tone(SampleRate::HZ_48_000, 2, d)),
     };
     (fake.with_media(&path, media), path)
+}
+
+/// A `secs` s clip at `fps` with a picture (`video`) and a stereo tone (`audio`), as a file on
+/// disk (its bytes are only hashed) and in `FakeBackend`.
+fn fake_media(
+    dir: &Path,
+    name: &str,
+    fake: FakeBackend,
+    (secs, fps): (i64, FrameRate),
+    (video, audio): (bool, bool),
+) -> (FakeBackend, PathBuf) {
+    let path = dir.join(name);
+    std::fs::write(&path, format!("fake media {name}")).unwrap();
+    let d = Duration::from_secs(secs).unwrap();
+    let media = FakeMedia {
+        video: video.then(|| FakeVideo::lasting(320, 180, fps, d)),
+        audio: audio.then(|| FakeAudio::tone(SampleRate::HZ_48_000, 2, d)),
+    };
+    (fake.with_media(&path, media), path)
+}
+
+/// Imports `path` and waits for its analysis jobs; returns the media id.
+fn import_one(conn: &Connection, path: &Path) -> Value {
+    let imported = call(
+        conn,
+        "media.import",
+        json!({ "paths": [path.to_string_lossy()] }),
+    )
+    .unwrap();
+    assert_eq!(imported["failed"], json!([]), "{imported}");
+    for job in imported["job_ids"].as_array().unwrap() {
+        call(
+            conn,
+            "job.wait",
+            json!({ "job_id": job, "timeout_ms": 30_000 }),
+        )
+        .unwrap();
+    }
+    imported["media_ids"][0].clone()
+}
+
+/// Every file under `dir` with its bytes, by relative path.
+fn tree_bytes(dir: &Path) -> std::collections::BTreeMap<String, Vec<u8>> {
+    let mut out = std::collections::BTreeMap::new();
+    let mut stack = vec![dir.to_path_buf()];
+    while let Some(d) = stack.pop() {
+        let Ok(entries) = std::fs::read_dir(&d) else {
+            continue;
+        };
+        for entry in entries {
+            let path = entry.unwrap().path();
+            if path.is_dir() {
+                stack.push(path);
+            } else {
+                let rel = path
+                    .strip_prefix(dir)
+                    .unwrap()
+                    .to_string_lossy()
+                    .into_owned();
+                out.insert(rel, std::fs::read(&path).unwrap());
+            }
+        }
+    }
+    out
 }
 
 /// `FakeBackend` codecs plus the export's `h264` and `aac` encoders.
@@ -513,4 +581,311 @@ fn deterministic_ids_hold_end_to_end() {
     let first = run(1);
     let second = run(2);
     assert_eq!(first, second);
+}
+
+// ----- WP-1H.04: a media item on its own (ADR-0022) ------------------------------------------
+
+/// One frame at 25 fps, in flicks.
+const FRAME_25: i64 = SEC / 25;
+
+/// A headless engine on the manual clocks with `fake`'s media.
+fn manual_engine(
+    dir: &Path,
+    fake: FakeBackend,
+    clocks: &Clocks,
+) -> (Engine, cutweave_engine::FullHandle) {
+    let config = full_config(dir, clocks.mode()).with_media(Arc::new(fake));
+    let full = FullSubsystems::new(config);
+    let handle = full.handle();
+    let engine = Engine::start(engine_config(dir, EngineMode::Headless, Box::new(full))).unwrap();
+    (engine, handle)
+}
+
+/// The newest delivered frame's index.
+fn last_frame(handle: &cutweave_engine::FullHandle) -> i64 {
+    handle.playback_stats().map_or(-1, |s| s.last_frame)
+}
+
+/// What a source session must leave as it was: the revision, the dirty flag, the undo history,
+/// the saved document and the journal of the project in `folder`.
+#[derive(Debug, PartialEq)]
+struct Untouched {
+    rev: u64,
+    dirty: bool,
+    history: Value,
+    document: Vec<u8>,
+    journal: std::collections::BTreeMap<String, Vec<u8>>,
+}
+
+impl Untouched {
+    fn now(engine: &Engine, conn: &Connection, folder: &Path) -> Untouched {
+        let status = engine.handle().status().unwrap();
+        Untouched {
+            rev: engine.handle().snapshot().unwrap().rev.0,
+            dirty: status.dirty,
+            history: call(conn, "edit.history", json!({})).unwrap(),
+            document: std::fs::read(status.path.unwrap()).unwrap(),
+            journal: tree_bytes(&folder.join(".cutweave").join("journal")),
+        }
+    }
+}
+
+/// Plays the target from frame 0 (on screen) to its end, `frames` frames of `frame` flicks, one
+/// manual-clock frame at a time: each frame is delivered in order and in step with the master
+/// clock, and the end stops playback. Returns the worst A/V offset.
+fn play_to_the_end(
+    conn: &Connection,
+    handle: &cutweave_engine::FullHandle,
+    clocks: &Clocks,
+    frames: i64,
+    frame: i64,
+) -> i64 {
+    let state = call(conn, "view.play", json!({})).unwrap();
+    assert_eq!(state["playing"], json!(true), "{state}");
+    let mut worst = 0;
+    for i in 1..frames {
+        let before = delivered(handle);
+        clocks.advance(frame);
+        eventually("the next frame", || {
+            (delivered(handle) > before).then_some(())
+        });
+        assert_eq!(last_frame(handle), i, "in order, none skipped");
+        let offset = (clocks.audio.clock().position().flicks() - i * frame).abs();
+        worst = worst.max(offset);
+        assert!(offset <= frame, "frame {i}: A/V offset {offset} flicks");
+    }
+    let playing = handle.playback_state().unwrap();
+    assert_eq!(playing.t.flicks(), (frames - 1) * frame, "{playing:?}");
+    clocks.advance(frame);
+    let end = eventually("the end", || {
+        let s = handle.playback_state()?;
+        (!s.playing).then_some(s)
+    });
+    assert_eq!(end.t.flicks(), frames * frame);
+    let counters = handle.playback_stats().unwrap();
+    assert_eq!((counters.dropped, counters.errors), (0, 0), "{counters:?}");
+    worst
+}
+
+/// WP-1H.04 acceptance: a 10 s 25 fps media item plays on its own, all 250 frames in order on
+/// the manual clock, in step with the master clock; seeks and steps act on it in its own time;
+/// back on the timeline its frame shows at its unchanged playhead. Meanwhile the project stays
+/// clean and its revision, undo history, journal and saved document stay byte-identical.
+#[test]
+fn a_media_item_plays_on_its_own_and_leaves_the_project_untouched() {
+    let t = TempDir::new("source");
+    let (fake, clip) = fake_clip(t.path(), "a.mp4", FakeBackend::new());
+    let (fake, bin) = fake_media(
+        t.path(),
+        "b.mp4",
+        fake,
+        (10, FrameRate::FPS_25),
+        (true, true),
+    );
+    let clocks = Clocks::new();
+    let (engine, handle) = manual_engine(t.path(), fake, &clocks);
+    let conn = agent(&engine);
+    build_timeline(&conn, &clip);
+    let media = import_one(&conn, &bin);
+    let folder = t.path().join("Source");
+    call(
+        &conn,
+        "project.save_as",
+        json!({ "path": folder.to_string_lossy() }),
+    )
+    .unwrap();
+    let seq = call(&conn, "view.seek", json!({ "t": "1s" })).unwrap();
+    assert_eq!(seq["t"], json!(SEC));
+    eventually("the timeline's frame at 1 s", || {
+        (last_frame(&handle) == 30).then_some(())
+    });
+
+    let before = Untouched::now(&engine, &conn, &folder);
+    assert!(!before.dirty, "{before:?}");
+
+    let s = call(&conn, "view.set_source", json!({ "media": media })).unwrap();
+    assert_eq!(
+        s["source"],
+        json!({ "media": media, "duration": 10 * SEC, "fps": { "num": 25, "den": 1 } })
+    );
+    assert_eq!(
+        (s["t"].clone(), s["playing"].clone()),
+        (json!(0), json!(false))
+    );
+    eventually("the source's first frame", || {
+        (last_frame(&handle) == 0).then_some(())
+    });
+    let worst = play_to_the_end(&conn, &handle, &clocks, 250, FRAME_25);
+    println!("source: 250 frames at 25 fps in order, worst A/V offset {worst} flicks");
+    assert_eq!(
+        call(&conn, "view.get", json!({})).unwrap()["playhead"],
+        json!(SEC),
+        "the timeline's playhead does not move while a source plays"
+    );
+
+    // Seeks and steps act on the source, in its time.
+    let s = call(&conn, "view.seek", json!({ "t": "f:100" })).unwrap();
+    assert_eq!(s["t"], json!(100 * FRAME_25));
+    let s = call(&conn, "view.step", json!({ "frames": -1 })).unwrap();
+    assert_eq!(s["t"], json!(99 * FRAME_25));
+    eventually("the stepped source frame", || {
+        (last_frame(&handle) == 99).then_some(())
+    });
+    assert_eq!(
+        call(&conn, "view.get", json!({})).unwrap()["playhead"],
+        json!(SEC)
+    );
+
+    // Back to the timeline: its frame at its unchanged playhead; the source keeps its own.
+    let s = call(&conn, "view.set_source", json!({})).unwrap();
+    assert_eq!(
+        (s["source"].clone(), s["t"].clone()),
+        (json!(null), json!(SEC))
+    );
+    eventually("the timeline's frame again", || {
+        (last_frame(&handle) == 30).then_some(())
+    });
+    let s = call(&conn, "view.set_source", json!({ "media": media })).unwrap();
+    assert_eq!(s["t"], json!(99 * FRAME_25));
+    call(&conn, "view.set_source", json!({})).unwrap();
+
+    // Nothing reached the project.
+    assert_eq!(Untouched::now(&engine, &conn, &folder), before);
+    // Unknown or unplayable media are refused.
+    let err = call(
+        &conn,
+        "view.set_source",
+        json!({ "media": "med_0190f5c200007000800000000000000a" }),
+    )
+    .unwrap_err();
+    assert_eq!(err.code(), "not_found", "{err}");
+    drop(conn);
+    engine.shutdown();
+}
+
+/// WP-1H.04 acceptance: removing the asset while it plays returns to the timeline (stopped, on
+/// its playhead); undoing the removal does not bring the source back; opening another project
+/// (`doc.reset`) ends a source too.
+#[test]
+fn removing_the_media_or_opening_another_project_ends_the_source() {
+    let t = TempDir::new("source-ends");
+    let (fake, clip) = fake_clip(t.path(), "a.mp4", FakeBackend::new());
+    let (fake, bin) = fake_media(
+        t.path(),
+        "b.mp4",
+        fake,
+        (4, FrameRate::FPS_30),
+        (true, true),
+    );
+    let clocks = Clocks::new();
+    let (engine, handle) = manual_engine(t.path(), fake, &clocks);
+    let mut rx = engine.handle().subscribe();
+    let conn = agent(&engine);
+    build_timeline(&conn, &clip);
+    let media = import_one(&conn, &bin);
+    call(&conn, "view.seek", json!({ "t": SEC / 2 })).unwrap();
+
+    let s = call(&conn, "view.set_source", json!({ "media": media })).unwrap();
+    assert_eq!(s["source"]["media"], media);
+    play_frames(&conn, &handle, &clocks, 10);
+    assert!(handle.playback_state().unwrap().playing);
+    call(&conn, "media.remove", json!({ "id": media })).unwrap();
+    let back = eventually("the source to end", || {
+        let s = handle.playback_state()?;
+        s.source.is_none().then_some(s)
+    });
+    assert!(!back.playing, "{back:?}");
+    assert_eq!(back.t.flicks(), SEC / 2, "the timeline's own playhead");
+    // Clients hear it: a `playback.state` with `source: null` after ones with the source (the
+    // status pump's 30 Hz throttle runs on the manual host clock: move it on).
+    let mut states: Vec<Value> = Vec::new();
+    eventually("playback.state without the source", || {
+        clocks.advance(full_support::FRAME_30);
+        states.extend(
+            drain(&mut rx)
+                .iter()
+                .filter(|e| e.name() == "playback.state")
+                .map(cutweave_engine::EngineEvent::payload),
+        );
+        let with_source = states.iter().rposition(|s| s["source"]["media"] == media)?;
+        let without = states.iter().rposition(|s| s["source"].is_null())?;
+        (without > with_source).then_some(())
+    });
+    // Undo brings the asset back, not the source.
+    call(&conn, "edit.undo", json!({})).unwrap();
+    assert!(
+        engine.handle().snapshot().unwrap().doc.media.contains_key(
+            &serde_json::from_value::<cutweave_model::MediaId>(media.clone()).unwrap()
+        )
+    );
+    std::thread::sleep(std::time::Duration::from_millis(200));
+    assert!(handle.playback_state().unwrap().source.is_none());
+
+    // Another document (`doc.reset`): it plays its own timeline.
+    let folder = t.path().join("Ends");
+    call(
+        &conn,
+        "project.save_as",
+        json!({ "path": folder.to_string_lossy() }),
+    )
+    .unwrap();
+    let s = call(&conn, "view.set_source", json!({ "media": media })).unwrap();
+    assert_eq!(s["source"]["media"], media);
+    call(&conn, "project.close", json!({ "save": false })).unwrap();
+    let state = handle.playback_state().unwrap();
+    assert!(state.source.is_none(), "{state:?}");
+    let err = call(&conn, "view.set_source", json!({ "media": media })).unwrap_err();
+    assert_eq!(err.code(), "not_found", "{err}");
+    drop(conn);
+    engine.shutdown();
+}
+
+/// WP-1H.04 acceptance: an audio-only asset plays as a source (on a 30 fps grid over a blank
+/// picture) and its sound goes through the mixer to the (null) output.
+#[test]
+fn an_audio_only_media_item_plays_its_sound() {
+    let t = TempDir::new("source-audio");
+    let (fake, tone) = fake_media(
+        t.path(),
+        "tone.wav",
+        FakeBackend::new(),
+        (5, FrameRate::FPS_30),
+        (false, true),
+    );
+    let config = full_config(t.path(), AudioMode::FromEngine).with_media(Arc::new(fake));
+    let full = FullSubsystems::new(config);
+    let handle = full.handle();
+    let engine = Engine::start(engine_config(
+        t.path(),
+        EngineMode::Headless,
+        Box::new(full),
+    ))
+    .unwrap();
+    let conn = agent(&engine);
+    call(&conn, "project.new", json!({ "name": "Tone" })).unwrap();
+    let media = import_one(&conn, &tone);
+    let s = call(&conn, "view.set_source", json!({ "media": media })).unwrap();
+    assert_eq!(
+        s["source"],
+        json!({ "media": media, "duration": 5 * SEC, "fps": { "num": 30, "den": 1 } })
+    );
+    let silent = handle.audio_output_stats().unwrap().master_peak;
+    assert!(silent[0] < 1e-6, "silence before playing: {silent:?}");
+    call(&conn, "view.play", json!({})).unwrap();
+    let peak = eventually("the tone in the master meter", || {
+        let out = handle.audio_output_stats()?;
+        (out.master_peak[0] > 0.01).then_some(out.master_peak)
+    });
+    let state = eventually("the master clock to move", || {
+        let s = handle.playback_state()?;
+        (s.t.flicks() > SEC / 10).then_some(s)
+    });
+    assert!(state.playing && state.source.is_some(), "{state:?}");
+    let mixer = handle.mixer_stats().unwrap();
+    assert_eq!(mixer.source_errors, 0, "{mixer:?}");
+    assert!(delivered(&handle) > 0, "the blank picture is delivered too");
+    println!("audio-only source: master peak {peak:?}, {mixer:?}");
+    call(&conn, "view.pause", json!({})).unwrap();
+    drop(conn);
+    engine.shutdown();
 }

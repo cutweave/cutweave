@@ -3,17 +3,26 @@
 //! document's clips, played on the output `EngineConfig::audio` names, and the degrade rule:
 //! when the device cannot start, the mixer plays on the null output (a wall-clock-driven clock)
 //! and `engine.degraded{subsystem: "audio"}` is sent.
+//!
+//! **What the mixer plays** ([`AudioFeed`], ADR-0022): the sound of the transport's target, the
+//! active sequence's audible clips or one source's clip (its transient timeline, built like the
+//! preview's), from the document's current revision. The document watcher feeds it after every
+//! change; the transport switches it ([`TargetedAudio`]) under its control lock, paused, before
+//! the seek that primes the new target's sound at its playhead.
 
-use std::sync::{Arc, PoisonError, RwLock};
+use std::sync::{Arc, Mutex, PoisonError, RwLock};
 
 use cutweave_audio::{
-    AudioOutput, ManualClock, Mixer, MixerConfig, MixerHandle, OutputConfig, PcmSource,
+    AudioClock, AudioOutput, ManualClock, Mixer, MixerConfig, MixerHandle, OutputConfig, PcmSource,
     SourceError, SourceFactory, SourceRequest,
 };
+use cutweave_commands::DocHandle;
 use cutweave_media::MediaBackend;
 use cutweave_model::{Project, SampleRate, Time};
-use cutweave_playback::transport::VirtualClock;
+use cutweave_playback::transport::{AudioControl, PlaybackTarget, VirtualClock};
+use cutweave_render::{AudioSegment, EvalError, evaluate_audio};
 
+use super::preview::{SOURCE_SEQUENCE, active_sequence, source_timeline};
 use crate::config::AudioConfig;
 use crate::export::DecoderPcmFactory;
 use crate::subsystems::{SubsystemError, SubsystemKind};
@@ -83,6 +92,125 @@ impl SourceFactory for LivePcm {
         inner
             .ok_or(SourceError::UnknownMedia(request.media))?
             .open(request)
+    }
+}
+
+/// The sound of `target` in `doc`: the active sequence's audible clips over its whole length,
+/// or the one clip of a source's transient timeline (nothing when its asset is gone).
+pub(crate) fn segments_of(
+    doc: &Project,
+    target: PlaybackTarget,
+) -> Result<Vec<AudioSegment>, EvalError> {
+    let (project, seq) = match target {
+        PlaybackTarget::Sequence => match active_sequence(doc) {
+            Some(seq) => (None, seq),
+            None => return Ok(Vec::new()),
+        },
+        PlaybackTarget::Media(media) => match source_timeline(doc, media) {
+            Some(project) => (Some(project), SOURCE_SEQUENCE),
+            None => return Ok(Vec::new()),
+        },
+    };
+    let project = project.as_ref().unwrap_or(doc);
+    let end = project
+        .sequences
+        .get(&seq)
+        .map_or(Time::ZERO, |s| Time::from(s.duration()));
+    evaluate_audio(project, seq, Time::ZERO, end)
+}
+
+/// What the mixer plays (see the module docs): the sound of the transport's target in the
+/// open document. Without a mixer (manual audio in tests) it only follows the target.
+pub(crate) struct AudioFeed {
+    mixer: Option<Arc<MixerHandle>>,
+    doc: DocHandle,
+    target: Mutex<PlaybackTarget>,
+}
+
+impl std::fmt::Debug for AudioFeed {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("AudioFeed")
+            .field("mixer", &self.mixer.is_some())
+            .field("target", &self.target())
+            .finish_non_exhaustive()
+    }
+}
+
+impl AudioFeed {
+    /// The feed of `doc`'s sound into `mixer`, playing the sequence.
+    pub(crate) fn new(mixer: Option<Arc<MixerHandle>>, doc: DocHandle) -> AudioFeed {
+        AudioFeed {
+            mixer,
+            doc,
+            target: Mutex::new(PlaybackTarget::Sequence),
+        }
+    }
+
+    /// The target whose sound the mixer plays.
+    pub(crate) fn target(&self) -> PlaybackTarget {
+        *self.target.lock().unwrap_or_else(PoisonError::into_inner)
+    }
+
+    /// The mixer plays `target` from now on (the document's current revision).
+    pub(crate) fn set_target(&self, target: PlaybackTarget) {
+        let mut current = self.target.lock().unwrap_or_else(PoisonError::into_inner);
+        *current = target;
+        let snapshot = self.doc.snapshot();
+        self.feed(&snapshot.doc, target);
+    }
+
+    /// The document changed: the mixer plays its target's sound in `doc`.
+    pub(crate) fn document(&self, doc: &Project) {
+        let target = self.target.lock().unwrap_or_else(PoisonError::into_inner);
+        self.feed(doc, *target);
+    }
+
+    fn feed(&self, doc: &Project, target: PlaybackTarget) {
+        let Some(mixer) = &self.mixer else { return };
+        match segments_of(doc, target) {
+            Ok(segments) => {
+                if let Err(e) = mixer.set_segments(&segments) {
+                    tracing::warn!(error = %e, ?target, "the mixer refused the audio to play");
+                }
+            }
+            Err(e) => tracing::warn!(error = %e, ?target, "cannot evaluate the audio to play"),
+        }
+    }
+}
+
+/// The transport's audio in the full engine: the output (or the manual clock) plus the
+/// [`AudioFeed`], so a new target's sound is in the mixer before the next seek primes it.
+pub(crate) struct TargetedAudio {
+    inner: Box<dyn AudioControl>,
+    feed: Arc<AudioFeed>,
+}
+
+impl TargetedAudio {
+    pub(crate) fn new(inner: Box<dyn AudioControl>, feed: Arc<AudioFeed>) -> TargetedAudio {
+        TargetedAudio { inner, feed }
+    }
+}
+
+impl AudioControl for TargetedAudio {
+    fn clock(&self) -> AudioClock {
+        self.inner.clock()
+    }
+
+    fn play(&mut self) {
+        self.inner.play();
+    }
+
+    fn pause(&mut self) {
+        self.inner.pause();
+    }
+
+    fn seek(&mut self, t: Time) {
+        self.inner.seek(t);
+    }
+
+    fn set_target(&mut self, target: PlaybackTarget) {
+        self.inner.set_target(target);
+        self.feed.set_target(target);
     }
 }
 
