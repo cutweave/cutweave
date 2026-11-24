@@ -4,7 +4,7 @@
 // Dragging a title bar and double-clicking it are handled by the OS (the drag region is a
 // caption hit-test), not by the page, so Playwright's page-level mouse cannot exercise them.
 // These helpers move the real cursor and press the real button with Win32 `SetCursorPos` /
-// `mouse_event`, and read real screen pixels with GDI, the way a person's hand and eyes would.
+// `SendInput`, and read real screen pixels with GDI, the way a person's hand and eyes would.
 // Windows only (`osInputAvailable`); other platforms skip the steps that need it.
 //
 // Safety: every press first checks that the window under the cursor belongs to the app under
@@ -28,6 +28,10 @@ export type OsStep =
   | { readonly op: "move"; readonly x: number; readonly y: number }
   | { readonly op: "down" }
   | { readonly op: "up" }
+  /** One click (down and up queued together). */
+  | { readonly op: "click" }
+  /** Two clicks queued in one `SendInput` call: a double-click whatever the machine's load. */
+  | { readonly op: "doubleClick" }
   | { readonly op: "pause"; readonly ms: number }
   | { readonly op: "pixel"; readonly x: number; readonly y: number };
 
@@ -40,14 +44,27 @@ public static class CwOsInput {
   [DllImport("user32.dll")] static extern bool SetProcessDPIAware();
   [DllImport("user32.dll")] static extern bool SetCursorPos(int x, int y);
   [DllImport("user32.dll")] static extern bool GetCursorPos(out POINT p);
-  [DllImport("user32.dll")] static extern void mouse_event(uint f, uint dx, uint dy, uint d, UIntPtr e);
+  [StructLayout(LayoutKind.Sequential)] struct MOUSEINPUT {
+    public int dx; public int dy; public uint mouseData; public uint dwFlags; public uint time; public IntPtr extra;
+  }
+  [StructLayout(LayoutKind.Sequential)] struct INPUT { public uint type; public MOUSEINPUT mi; }
+  [DllImport("user32.dll")] static extern uint SendInput(uint n, INPUT[] inputs, int size);
+  static void Buttons(params uint[] flags) {
+    var inputs = new INPUT[flags.Length];
+    for (int i = 0; i < flags.Length; i++) { inputs[i].type = 0; inputs[i].mi.dwFlags = flags[i]; }
+    if (SendInput((uint)inputs.Length, inputs, Marshal.SizeOf(typeof(INPUT))) != inputs.Length) {
+      throw new InvalidOperationException("SendInput was blocked");
+    }
+  }
   [DllImport("user32.dll")] static extern IntPtr WindowFromPoint(POINT p);
   [DllImport("user32.dll")] static extern IntPtr GetAncestor(IntPtr h, uint flags);
   [DllImport("user32.dll")] static extern uint GetWindowThreadProcessId(IntPtr h, out uint pid);
   public static void Init() { SetProcessDPIAware(); }
   public static void Move(int x, int y) { SetCursorPos(x, y); }
-  public static void Down() { mouse_event(0x0002, 0, 0, 0, UIntPtr.Zero); }
-  public static void Up() { mouse_event(0x0004, 0, 0, 0, UIntPtr.Zero); }
+  public static void Down() { Buttons(0x0002); }
+  public static void Up() { Buttons(0x0004); }
+  public static void Click() { Buttons(0x0002, 0x0004); }
+  public static void DoubleClick() { Buttons(0x0002, 0x0004, 0x0002, 0x0004); }
   public static int[] Cursor() { POINT p; GetCursorPos(out p); return new int[] { p.X, p.Y }; }
   public static uint OwnerUnderCursor() {
     POINT p; GetCursorPos(out p);
@@ -83,6 +100,16 @@ try {
         [CwOsInput]::Down(); $pressed = $true
       }
       'up' { [CwOsInput]::Up(); $pressed = $false }
+      'click' {
+        $pid0 = [CwOsInput]::OwnerUnderCursor()
+        if ($pid0 -ne ${owner}) { throw "the window under the cursor belongs to process $pid0, not the app (${owner})" }
+        [CwOsInput]::Click()
+      }
+      'doubleClick' {
+        $pid0 = [CwOsInput]::OwnerUnderCursor()
+        if ($pid0 -ne ${owner}) { throw "the window under the cursor belongs to process $pid0, not the app (${owner})" }
+        [CwOsInput]::DoubleClick()
+      }
       'pause' { Start-Sleep -Milliseconds ([int]$s.ms) }
       'pixel' { Write-Output ([CwOsInput]::Pixel([int]$s.x, [int]$s.y)) }
     }
@@ -163,20 +190,30 @@ export function osDrag(owner: number, from: Point, to: Point, nudge: Point): voi
   runOsInput(steps, owner);
 }
 
-/** Two quick clicks at one spot (inside the OS double-click time). */
-export function osDoubleClick(owner: number, at: Point): void {
+/**
+ * One click: what a person does to bring a window to the front before dragging it (Windows
+ * does not let a background process take the foreground itself).
+ */
+export function osClick(owner: number, at: Point): void {
   runOsInput(
     [
       { op: "move", x: at.x, y: at.y },
       { op: "pause", ms: 200 },
-      { op: "down" },
-      { op: "pause", ms: 30 },
-      { op: "up" },
-      { op: "pause", ms: 60 },
-      { op: "down" },
-      { op: "pause", ms: 30 },
-      { op: "up" },
+      { op: "click" },
       { op: "pause", ms: 200 },
+    ],
+    owner,
+  );
+}
+
+/** A double-click at one spot (both clicks queued together, so the OS always pairs them). */
+export function osDoubleClick(owner: number, at: Point): void {
+  runOsInput(
+    [
+      { op: "move", x: at.x, y: at.y },
+      { op: "pause", ms: 300 },
+      { op: "doubleClick" },
+      { op: "pause", ms: 300 },
     ],
     owner,
   );

@@ -29,6 +29,7 @@ import {
   unsavedPrompt,
 } from "../fixtures.ts";
 import {
+  osClick,
   osDoubleClick,
   osDrag,
   osInputAvailable,
@@ -214,6 +215,18 @@ function focusedField(page: Page) {
   });
 }
 
+/**
+ * Keeps the app's window in front of the desktop for a real-mouse step (other apps may open
+ * windows meanwhile): a window-manager setting, the app itself is not changed.
+ */
+function toFront(app: ElectronApplication): Promise<void> {
+  return app.evaluate(({ BrowserWindow }) => {
+    const win = BrowserWindow.getAllWindows()[0];
+    win?.setAlwaysOnTop(true, "screen-saver");
+    win?.moveTop();
+  });
+}
+
 /** Main's view of the editor window (read-only). */
 function windowState(app: ElectronApplication) {
   return app.evaluate(({ BrowserWindow }) => {
@@ -222,6 +235,7 @@ function windowState(app: ElectronApplication) {
     return {
       bounds: win.getBounds(),
       maximized: win.isMaximized(),
+      focused: win.isFocused(),
       fullScreen: win.isFullScreen(),
       devTools: win.webContents.isDevToolsOpened(),
     };
@@ -619,7 +633,7 @@ test.describe("F18 window and menu", () => {
       const owner = await ownerOf(app);
       await app.evaluate(({ BrowserWindow }) => {
         const win = BrowserWindow.getAllWindows()[0];
-        win?.setAlwaysOnTop(true);
+        win?.setAlwaysOnTop(true, "screen-saver");
         win?.show();
         win?.focus();
       });
@@ -650,6 +664,12 @@ test.describe("F18 window and menu", () => {
       );
       expect(hit).toContain("cw-topbar__group");
 
+      // Click it first, as a person does to bring a window forward (Windows does not let a
+      // background process take the foreground itself): the window becomes the active one.
+      await toFront(app);
+      osClick(owner, await screenPoint(app, grip));
+      await expect.poll(async () => (await windowState(app)).focused).toBe(true);
+
       // Drag it: the window moves by the distance dragged.
       const before = await windowState(app);
       expect(before.maximized).toBe(false);
@@ -660,6 +680,7 @@ test.describe("F18 window and menu", () => {
       const from = await screenPoint(app, grip);
       const by = { x: Math.round(120 * scale), y: Math.round(80 * scale) };
       const nudge = { x: Math.round(8 * scale), y: Math.round(5 * scale) };
+      await toFront(app);
       osDrag(owner, from, { x: from.x + by.x, y: from.y + by.y }, nudge);
       // The OS starts moving the window once the pointer leaves its drag threshold (the nudge);
       // from there the window follows the pointer.
@@ -679,6 +700,7 @@ test.describe("F18 window and menu", () => {
       });
 
       // Double-click it: maximized; again: restored to where it was.
+      await toFront(app);
       osDoubleClick(owner, await screenPoint(app, grip));
       await expect.poll(async () => (await windowState(app)).maximized).toBe(true);
       const maxGrip = await page.evaluate(() => {
@@ -687,6 +709,7 @@ test.describe("F18 window and menu", () => {
         const left = end.getBoundingClientRect().left;
         return { x: Math.round((left + first.getBoundingClientRect().left) / 2), y: 20 };
       });
+      await toFront(app);
       osDoubleClick(owner, await screenPoint(app, maxGrip));
       await expect.poll(async () => (await windowState(app)).maximized).toBe(false);
       await expect.poll(async () => (await windowState(app)).bounds).toEqual(moved);
