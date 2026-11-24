@@ -11,9 +11,9 @@ import { useProjectWiring, useWindowTitle } from "../session/useProject.ts";
 import { useViewStore } from "../state/viewStore.ts";
 import { useTransportWiring } from "../transport/useTransport.ts";
 import { AboutDialog } from "./AboutDialog.tsx";
-import { SettingsDialog } from "./SettingsDialog.tsx";
 import { EngineNotices } from "./EngineNotices.tsx";
 import { ProjectDialogs, ReadOnlyBanner } from "./ProjectDialogs.tsx";
+import { SettingsDialog } from "./SettingsDialog.tsx";
 import { Toasts } from "./Toasts.tsx";
 import { TopBar } from "./TopBar.tsx";
 
