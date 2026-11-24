@@ -397,6 +397,11 @@ All surfaces live on **one local server per engine** (axum on `127.0.0.1`, rando
   - **Non-IDR H.264 keyframes (ADR-0003, S3 finding H10):** AMD's D3D11VA decoder returns wrong pixels late in a GOP when decoding starts at a non-IDR I-frame. On every device but NVIDIA's, a seek that lands on such a keyframe goes over to software. Streams whose keyframes are IDR pictures stay in hardware.
   - **Measured (`seek_bench`, Windows dev machine shared with other jobs, RTX 3080 Laptop and Radeon iGPU, two runs):** cold 4K seek p95 with a 1 s GOP is 102-129 ms on all three decoders (NVDEC, D3D11VA on each GPU), against 195 ms on the CPU. With the corpus's 8 s GOPs it is 518-768 ms in hardware and 489-982 ms on the CPU, so such files need proxies (ADR-0003). 1080p HEVC 10-bit with a 5 s GOP: 46-182 ms in hardware (one NVDEC outlier at 325 ms), 309-321 ms on the CPU.
   - **Zero-copy** (path b) is not built; the `zero-copy` cargo feature only reserves the name.
+- **Engine wiring (decided in WP-1I.05).**
+  - **Decode modes:** the preview decodes with hardware (`Auto`) through the RAM frame cache. Exports and `render.frame` pin `HwMode::Off`, so an export is the same on every machine and the frame an agent sees equals the exported one.
+  - **Layouts:** frames in layouts the compositor cannot read (`Yuv420p10`, `Yuv422p`, `Yuv422p10`) are converted to P010 or `Yuv420p` with swscale before upload.
+  - **Analysis at import:** index, then thumbnails (video only), and the waveform (media with sound; no audio is not an error), into `cache.sqlite`, the thumbnail cache and the waveform cache. Pools and cached frames of deleted or relinked media are dropped.
+  - **Capabilities** are probed once on a worker thread at start (0.5-2 s) and answered by `media.capabilities`.
 - **Export (decided in WP-1E.03).**
   - **Command:** `export.start` starts an `Export` job. It is undoable = false and journaled = false; a core MCP tool that is marked destructive.
   - **Snapshot:** the job renders the **committed** document snapshot from when it started; later edits don't affect it.
@@ -453,6 +458,7 @@ flowchart LR
   - All blending is done in linear light.
 - **No hidden state in effects.** Effects cannot keep persistent feedback buffers across frames, because that would break determinism. Temporal effects (echo, trails, motion blur, datamosh-style) declare **`history` taps** (input frames t−1…t−N, N ≤ 8). The render graph provides these from the frame cache, so the output stays a pure function of the inputs.
 - **Golden references are stored per GPU adapter class** (software WARP/lavapipe for CI, plus reference machines), with a perceptual tolerance.
+- **GPU device (decided in WP-1I.05).** The engine opens the wgpu device on its own thread at start (`CUTWEAVE_GPU` picks the adapter). A Gui engine waits up to 4 s for it and exits 11 if it fails in that window; a headless engine does not wait, and `render.frame` waits up to 60 s for a device that is still opening. A device that fails later falls back to the software adapter, then to the CPU reference renderer, and the engine sends `engine.degraded{subsystem, reason}`. One compositor serves `render.frame` and export; a second serves the preview.
 - **Effects & transitions** are WGSL effect packages (§15 L1). The built-ins are first-party packages. Effects declare passes, inputs and params, and the render graph fuses compatible passes.
 - **Masks:** shape masks (rect, ellipse, polygon, bezier) with feather and invert, plus **matte masks** from AI segmentation (alpha video produced by a job) and chroma key.
 - **Text (`cutweave-text`):**
@@ -477,6 +483,8 @@ flowchart LR
 
 - **Output and master clock (decided in WP-1G.02):** cpal 0.18 output (WASAPI and CoreAudio; Linux uses the null output until ALSA is set up in CI) or a null output (`CUTWEAVE_AUDIO=null`). A supervisor thread restarts the stream on stream errors, default-device changes and stalls; the clock never goes backwards (a restart skips forward by at most the device latency). `AudioClock` is anchored per callback and published through a seqlock, monotonic within a generation; a seek starts a new generation. The clock follows the device crystal, so it drifts against the system timer by the device's ppm error (≈ +11 ppm on the reference headset); A/V sync follows the audio clock. Pause plays silence; master and per-bus peak meters update at 30 Hz. Master volume uses `view.set {master_gain}`.
 
+- **Engine wiring (decided in WP-1I.05):** a Gui engine plays through the default output (`CUTWEAVE_AUDIO` overrides it); a headless engine always plays on the null clock. When the device fails, playback continues on the null clock and the engine sends `engine.degraded{subsystem: "audio"}`. The master gain follows `view.set`.
+
 ---
 
 ## 10. Playback & preview delivery (`cutweave-playback`, `cutweave-bridge`)
@@ -498,7 +506,12 @@ flowchart LR
 - **Exact latest-wins.** Every control request starts a new epoch, which cancels in-flight renders through their `CancelToken`. A frame commits only while its epoch is current, and the render side never waits; the control side waits out one in-progress commit. Once a request returns, no frame from an older request can be delivered.
 - **Scrubbing** goes cache → quarter-resolution frame flagged `LOWRES` → full frame after 100 ms without a newer seek.
 - **Wire.** `playback.state` is sent at most 30 times a second. The `view.play`, `view.pause`, `view.seek`, `view.set_rate`, `view.step` and `view.set_preview_size` engine commands drive the transport; `view.set_preview_size` is hidden from MCP.
-- **Threads.** The render thread takes no locks and makes no per-frame heap allocation (a counting-allocator test enforces this). Its frames come through the `FrameSource` seam: synthetic frames until WP-1I.05 connects the real renderer (R31).
+- **Threads.** The render thread takes no locks and makes no per-frame heap allocation (a counting-allocator test enforces this). Its frames come through the `FrameSource` seam (synthetic frames in the transport tests). The real renderer behind it (WP-1I.05) still allocates per frame (evaluation, graph building, wgpu); pooling those buffers is follow-up work.
+- **Engine wiring (decided in WP-1I.05).**
+  - **One transport per document:** each open document gets its own `PlaybackEngine` fed by the real renderer. A Gui engine publishes into the preview ring; a headless engine uses a null sink.
+  - **The ring:** it carries **RGBA8 only** in P1 (NV12 later). It is announced in `rpc.hello`'s `shm` (see [rpc.md](reference/rpc.md)) and by name in the run-file's `shm`.
+  - **The playhead:** pause, seek and step keep the view playhead in step, and opening a project seeks to its saved playhead. Every edit refreshes the timing and re-feeds the mixer.
+  - **The bridge** subtracts its presentation latency only while the clock plays, so a stopped preview shows the playhead's own frame.
 
 The upgrade path, behind a feature flag once proven, is zero-copy GPU texture sharing into Chromium via Electron's shared-texture import. **Fallback** is JPEG frames over `/media/frame`: for remote or non-Electron clients, and locally when WebGPU is unavailable or fails, when no ring is announced, or when `CUTWEAVE_PREVIEW=jpeg` forces it (CI without a GPU). The client polls at ≤ 15 fps and shows a reduced-mode banner (WP-1M.04).
 

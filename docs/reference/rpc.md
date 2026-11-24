@@ -46,7 +46,7 @@ Reserved methods (not registry entries):
 
 | Method | Params | Result |
 |---|---|---|
-| `rpc.hello` | `{client, version}` (`RpcClientHello`) | `{engine_version, schema_hash, rev, committed_rev, actor, project, shm?}` (`RpcServerHello`): compare `schema_hash` with the client's generated `SCHEMA_HASH`; `project` is the engine's project status (path, name, dirty, read-only, a pending `recovery`); `actor` is derived from the credential |
+| `rpc.hello` | `{client, version}` (`RpcClientHello`) | `{engine_version, schema_hash, rev, committed_rev, actor, project, shm?}` (`RpcServerHello`): compare `schema_hash` with the client's generated `SCHEMA_HASH`; `project` is the engine's project status (path, name, dirty, read-only, a pending `recovery`); `actor` is derived from the credential; `shm` (WP-1I.05) announces the preview ring of a Gui engine as JSON text `{name, epoch: "0x…", layout_version, mapping_size}` (clients also accept the object), absent without a ring |
 | `rpc.subscribe` | `{events: [name, …]}`: event names or `*` (all) | `{events}`: the subscriptions now held |
 | `rpc.unsubscribe` | `{events?: [name, …]}`; no `events` = all | `{events}` |
 | `project.snapshot` | none | `{rev, committed_rev, project}`: the live document (resync) |

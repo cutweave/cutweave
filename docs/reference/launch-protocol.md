@@ -26,7 +26,7 @@ cutweave engine [--headless] --port N [--token-stdin] [--project P] [--run-dir D
 | `--i-know-this-is-a-test` | Lets a Gui engine run with deterministic ids. Ignored otherwise. |
 | `--log-dir D` / `--no-log` | Log directory (default `~/.cutweave/logs`), or no log file. |
 | `--handshake-timeout-ms MS` | How long a Gui engine waits for the handshake line (default 5000; tests shorten it). |
-| `--dev-stub-media` | **Dev only.** Attaches a stand-in media prober until the FFmpeg backend (WP-1I.05) lands, so demos and UI work can `media.import` files and put clips on the timeline. Any existing, readable file is "probed" from its extension alone: video (`mp4 mov mkv webm m4v avi`) is 1920x1080, 30 fps, 10 s with a 48 kHz stereo audio stream; audio (`wav mp3 aac m4a flac ogg opus`) is 48 kHz stereo, 10 s; images (`png jpg jpeg webp gif`) are 1920x1080 stills. Other extensions go to `failed[]` (`unsupported`), missing files to `failed[]` (`not_found`). Nothing is decoded, so there is no preview or export of real pixels. The data is marked as made up: every stream's codec is `"stub"` and the asset's probe carries `"stub": true`. The content hash is SHA-256 over the file length and its first and last 64 KiB (`stub-sha256:...`). The environment variable `CUTWEAVE_DEV_STUB_MEDIA=1` does the same (the flag wins); the engine logs a warning at startup when it is on. Without the flag nothing changes: imports report every file as unreadable. |
+| `--dev-stub-media` | **Dev only.** Attaches a stand-in media prober instead of the full engine (FFmpeg media, the GPU, audio and playback; WP-1I.05), so tests and UI work without the FFmpeg bundle can `media.import` files and put clips on the timeline. Any existing, readable file is "probed" from its extension alone: video (`mp4 mov mkv webm m4v avi`) is 1920x1080, 30 fps, 10 s with a 48 kHz stereo audio stream; audio (`wav mp3 aac m4a flac ogg opus`) is 48 kHz stereo, 10 s; images (`png jpg jpeg webp gif`) are 1920x1080 stills. Other extensions go to `failed[]` (`unsupported`), missing files to `failed[]` (`not_found`). Nothing is decoded, so there is no preview or export of real pixels. The data is marked as made up: every stream's codec is `"stub"` and the asset's probe carries `"stub": true`. The content hash is SHA-256 over the file length and its first and last 64 KiB (`stub-sha256:...`). The environment variable `CUTWEAVE_DEV_STUB_MEDIA=1` does the same (the flag wins); the engine logs a warning at startup when it is on. Without the flag nothing changes: imports report every file as unreadable. |
 
 ## Sequence
 
@@ -58,7 +58,7 @@ Human-readable diagnostics go to stderr; structured logs go to the log file.
 | 1 | `start_failed`, `project_open_failed`, `server_failed`, `subsystem_failed` | Any other failure | Show the error, offer a restart |
 | 2 | `usage` | Bad arguments | Bug in the supervisor |
 | 10 | `project_locked` | The project is open in another process | Tell the user who holds it |
-| 11 | `gpu_init_failed` | The GPU could not be initialized (Gui mode; WP-1I.05) | Show the GPU error |
+| 11 | `gpu_init_failed` | The GPU could not be initialized within 4 s of the start (Gui mode; WP-1I.05). A later failure does not exit: the engine falls back to software rendering and sends `engine.degraded`. A headless engine never exits 11 | Show the GPU error |
 | 12 | `port_in_use` | The port could not be bound | Pick a new port, update the CSP, restart |
 | 13 | `bad_handshake` | Handshake missing, late, malformed, or given to a headless engine | Bug in the supervisor |
 
@@ -84,7 +84,7 @@ Every command that takes a filesystem path (`media.import`, `project.open`, `pro
 
 ## Supervision (Electron main)
 
-Dev builds of the desktop app (not packaged) add `--allow-root` for every folder in `CUTWEAVE_ENGINE_ALLOW_ROOTS` (a `;`-separated list on Windows, `:` elsewhere), so agents attached to a dev engine can import from and save into those folders. `CUTWEAVE_DEV_STUB_MEDIA=1` is inherited by the engine and turns on the stub media backend.
+Dev builds of the desktop app (not packaged) add `--allow-root` for every folder in `CUTWEAVE_ENGINE_ALLOW_ROOTS` (a `;`-separated list on Windows, `:` elsewhere), so agents attached to a dev engine can import from and save into those folders. `CUTWEAVE_DEV_STUB_MEDIA=1` is inherited by the engine and turns on the stub media backend. Two more variables reach the engine: `CUTWEAVE_GPU` (`auto`, `software` or an adapter name) picks the GPU, and `CUTWEAVE_AUDIO` (`null`, `default` or a device name) picks a Gui engine's audio output. A headless engine always plays on the null clock.
 
 `EngineSupervisor` in `apps/desktop/src/main/engine/supervisor.ts` (WP-1L.03) applies this protocol:
 
