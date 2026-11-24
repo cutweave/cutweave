@@ -19,6 +19,7 @@
 //! Frames come from a [`FrameSource`] (the decoder pool / frame cache, WP-1D); until FFmpeg
 //! decode lands, [`testcard::SyntheticSource`] serves generated test cards.
 
+pub mod alloc_scope;
 pub mod color;
 pub mod encode;
 mod eval;
@@ -57,7 +58,7 @@ pub mod gpu;
 ))]
 pub mod golden;
 
-pub use eval::{EvalError, evaluate, evaluate_audio};
+pub use eval::{EvalError, TimelineIndex, evaluate, evaluate_audio};
 pub use frame::{ChromaSiting, FrameError, FrameId, FrameSource, PixelFormat, Plane, VideoFrame};
 pub use graph::Target;
 pub use hash::CacheKey;

@@ -23,8 +23,10 @@
 //! 3. `prefetch`: evaluate the hinted times and queue decodes of the active clips' next frames
 //!    in the decoder pool (arch §7), so playback finds them decoded.
 //!
-//! The render thread must not allocate per frame: the evaluation and graph building that do
-//! today need pooled buffers there (or must move to a worker that feeds the render thread).
+//! The render thread must not allocate per frame (arch §10 "Threads"). The engine's source keeps
+//! its sequence index, scene, render graph and GPU objects across frames, and copies the mapped
+//! readback straight into `out`; only wgpu and the media layer (decoding a picture it does not
+//! hold yet) allocate inside a render. Its `preview_alloc` test counts both per scope.
 
 use cutweave_model::{Duration, FrameRate, Rounding, Time};
 use cutweave_render::Quality;

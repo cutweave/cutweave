@@ -4,31 +4,36 @@
 //!
 //! `render` takes the live document snapshot, evaluates the first sequence at the requested
 //! frame, applies the quality rung (proxy eligibility), builds the render graph for the output
-//! size with source pictures from [`MediaFrames`] (decodes cancelled with the render's epoch),
+//! size with source pictures from [`PreviewFrames`] (decodes cancelled with the render's epoch),
 //! composites it on the preview's own [`Compositor`] (the GPU device is shared with
 //! `render.frame` and export, the compositor is not, so preview never waits on their lock) and
 //! copies the RGBA8 readback into the ring slot layout. Without a GPU it renders with the CPU
 //! reference renderer.
 //!
-//! Evaluation, graph building and wgpu allocate per frame; the playback crate's no-allocation
-//! test covers the render loop itself (with its synthetic source). Pooled buffers for the real
-//! renderer are a follow-up (see the WP-1I.05 notes).
+//! **No per-frame allocation of its own** (arch §10 "Threads"): the sequence is indexed once
+//! per document revision ([`TimelineIndex`]: an edit costs one re-index on the next frame), the
+//! scene, the render graph and its scratch are reused, and the pixels go from the mapped
+//! readback straight into the ring slot. What still allocates on the render thread is inside
+//! wgpu and inside the media layer when a picture the preview does not hold must be decoded or
+//! fetched from the frame cache (see [`PreviewFrames`]); the CPU fallback and error paths
+//! allocate too. The engine's `preview_alloc` test holds it to that.
 
 use std::sync::Arc;
 use std::sync::atomic::{AtomicBool, Ordering};
 
-use cutweave_commands::DocHandle;
-use cutweave_media::{CancelCheck, DecodeMode};
+use cutweave_commands::{DocHandle, DocSnapshot, Rev};
+use cutweave_media::DecodeMode;
 use cutweave_model::{Project, SequenceId, Time};
 use cutweave_playback::shm::{FrameLayout, PixelFormat};
 use cutweave_playback::transport::{
     CancelToken, FrameSource, RenderPurpose, RenderRequest, Rendered, SequenceTiming, SourceError,
 };
+use cutweave_render::alloc_scope::{self, Scope};
 use cutweave_render::gpu::{Compositor, CompositorOptions, RenderError};
-use cutweave_render::graph::{GraphOptions, build};
-use cutweave_render::{Image, Target, evaluate};
+use cutweave_render::graph::{BuildScratch, GraphOptions, RenderGraph, build_into};
+use cutweave_render::{SceneDescription, Target, TimelineIndex};
 
-use super::frames::MediaFrames;
+use super::frames::{MediaFrames, PreviewFrames};
 use super::gpu::LateGpu;
 use crate::subsystems::SubsystemEvents;
 
@@ -101,16 +106,32 @@ impl Drop for CompositorSlot {
     }
 }
 
+/// The active sequence indexed at one document revision.
+struct Indexed {
+    rev: Rev,
+    /// `None`: the document has no sequence.
+    index: Option<TimelineIndex>,
+}
+
+/// What a render reuses from the last one (see the module docs).
+struct Reused {
+    indexed: Option<Indexed>,
+    scene: Option<SceneDescription>,
+    graph: RenderGraph,
+    scratch: BuildScratch,
+}
+
 /// The transport's frame source over the render core (see the module docs).
 pub(crate) struct PreviewSource {
     doc: DocHandle,
     timing: SequenceTiming,
     compositor: CompositorSlot,
-    frames: Arc<MediaFrames>,
+    frames: PreviewFrames,
     options: GraphOptions,
     events: SubsystemEvents,
     /// `engine.degraded{gpu}` was sent for a lost device.
     lost_reported: Arc<AtomicBool>,
+    reused: Reused,
 }
 
 impl std::fmt::Debug for PreviewSource {
@@ -138,69 +159,32 @@ impl PreviewSource {
             doc,
             timing,
             compositor,
-            frames,
+            frames: PreviewFrames::new(frames),
             options,
             events,
             lost_reported,
-        }
-    }
-
-    fn rasterize(
-        &mut self,
-        scene: &cutweave_render::SceneDescription,
-        graph: &cutweave_render::graph::RenderGraph,
-    ) -> Result<Image, SourceError> {
-        let compositor = match self.compositor.renderer() {
-            Renderer::Gpu(c) => c,
-            Renderer::Cpu => {
-                return cutweave_render::reference::render(
-                    scene,
-                    graph.target,
-                    &*self.frames,
-                    &self.options,
-                )
-                .map_err(|e| SourceError::Failed(e.to_string()));
-            }
-            Renderer::Pending => {
-                // Black until the device is open (it then re-renders the current frame).
-                let (w, h) = graph.target.size();
-                return Ok(Image {
-                    width: w,
-                    height: h,
-                    data: [0, 0, 0, 255].repeat((w as usize) * (h as usize)),
-                });
-            }
-        };
-        match compositor.execute(graph) {
-            Ok(frame) => frame
-                .into_image()
-                .ok_or_else(|| SourceError::Failed("the graph has no CPU target".into())),
-            Err(RenderError::Gpu(e)) if e.is_device_lost() => {
-                // The compositor already recreated the device once; tell the clients.
-                if !self.lost_reported.swap(true, Ordering::AcqRel) {
-                    self.events.degraded("gpu", &format!("preview: {e}"));
-                }
-                Err(SourceError::Failed(e.to_string()))
-            }
-            Err(e) => Err(SourceError::Failed(e.to_string())),
+            reused: Reused {
+                indexed: None,
+                scene: None,
+                graph: RenderGraph::new(Target::rgba8(1, 1)),
+                scratch: BuildScratch::default(),
+            },
         }
     }
 }
 
-/// Copies straight RGBA8 `image` into `out` laid out as `layout` (RGBA8; other formats get an
-/// opaque black frame).
-fn copy_into(image: &Image, layout: &FrameLayout, out: &mut [u8]) {
+/// Copies straight RGBA8 `pixels` (`width × height`, tightly packed rows) into `out` laid out
+/// as `layout` (RGBA8; other formats or sizes get an opaque black frame).
+fn copy_rgba(pixels: &[u8], (width, height): (u32, u32), layout: &FrameLayout, out: &mut [u8]) {
     let plane = layout.planes()[0];
     let row = (layout.width() as usize) * 4;
     let stride = plane.stride as usize;
-    if layout.format() != PixelFormat::Rgba8
-        || image.width != layout.width()
-        || image.height != layout.height()
+    if layout.format() != PixelFormat::Rgba8 || width != layout.width() || height != layout.height()
     {
         fill_black(layout, out);
         return;
     }
-    for (y, src) in image.data.chunks_exact(row).enumerate() {
+    for (y, src) in pixels.chunks_exact(row).enumerate() {
         let start = plane.offset + y * stride;
         if let Some(dst) = out.get_mut(start..start + row) {
             dst.copy_from_slice(src);
@@ -225,6 +209,25 @@ fn fill_black(layout: &FrameLayout, out: &mut [u8]) {
     }
 }
 
+/// The sequence of `snapshot` indexed for rendering (re-indexed when the revision moved).
+fn indexed<'a>(
+    slot: &'a mut Option<Indexed>,
+    frames: &PreviewFrames,
+    snapshot: &DocSnapshot,
+) -> Option<&'a TimelineIndex> {
+    if slot.as_ref().is_none_or(|i| i.rev != snapshot.rev) {
+        // An edit: index the new revision (allocates, once) and let go of media it dropped.
+        let index = active_sequence(&snapshot.doc)
+            .and_then(|seq| TimelineIndex::new(&snapshot.doc, seq).ok());
+        frames.retain_current(&snapshot.doc);
+        *slot = Some(Indexed {
+            rev: snapshot.rev,
+            index,
+        });
+    }
+    slot.as_ref().and_then(|i| i.index.as_ref())
+}
+
 impl FrameSource for PreviewSource {
     fn timing(&self) -> SequenceTiming {
         self.timing
@@ -240,38 +243,87 @@ impl FrameSource for PreviewSource {
         let rendered = Rendered {
             rev: snapshot.rev.0,
         };
-        let Some(seq) = active_sequence(&snapshot.doc) else {
+        let PreviewSource {
+            compositor,
+            frames,
+            options,
+            events,
+            lost_reported,
+            reused,
+            ..
+        } = self;
+        let Some(index) = indexed(&mut reused.indexed, frames, &snapshot) else {
             fill_black(&request.layout, out);
             return Ok(rendered);
         };
         if cancel.is_cancelled() {
             return Err(SourceError::Cancelled);
         }
-        let mut scene = evaluate(&snapshot.doc, seq, request.t)
-            .map_err(|e| SourceError::Failed(e.to_string()))?;
-        request.quality.apply(&mut scene);
+        let scene = match &mut reused.scene {
+            Some(scene) => {
+                index.evaluate_into(request.t, scene);
+                scene
+            }
+            None => reused.scene.insert(index.evaluate(request.t)),
+        };
+        request.quality.apply(scene);
         let target = Target::rgba8(request.layout.width(), request.layout.height());
-        let token = cancel.clone();
-        let decode_cancel =
-            cutweave_media::CancelToken::linked(CancelCheck::new(move || token.is_cancelled()));
         let mode = match request.purpose {
             RenderPurpose::Playback => DecodeMode::Sequential,
             RenderPurpose::Scrub | RenderPurpose::Still => DecodeMode::Seek,
         };
-        let frames = Arc::clone(&self.frames);
-        let options = self.options;
-        let graph = MediaFrames::scoped(decode_cancel, mode, || {
-            build(&scene, target, &*frames, &options)
-        })
-        .map_err(|e| SourceError::Failed(format!("cannot compile the frame: {e}")))?;
+        let source = frames.request(&snapshot, cancel, mode);
+        let result = build_into(
+            &mut reused.graph,
+            &mut reused.scratch,
+            scene,
+            target,
+            &source,
+            options,
+        )
+        .map_err(|e| SourceError::Failed(format!("cannot compile the frame: {e}")))
+        .and_then(|()| {
+            if cancel.is_cancelled() {
+                return Err(SourceError::Cancelled);
+            }
+            let layout = &request.layout;
+            match compositor.renderer() {
+                Renderer::Gpu(c) => {
+                    match c.execute_with(&reused.graph, |pixels| {
+                        copy_rgba(pixels, target.size(), layout, out);
+                    }) {
+                        Ok(((), _stats)) => Ok(()),
+                        Err(RenderError::Gpu(e)) if e.is_device_lost() => {
+                            // The compositor already recreated the device once; tell the clients.
+                            if !lost_reported.swap(true, Ordering::AcqRel) {
+                                events.degraded("gpu", &format!("preview: {e}"));
+                            }
+                            Err(SourceError::Failed(e.to_string()))
+                        }
+                        Err(e) => Err(SourceError::Failed(e.to_string())),
+                    }
+                }
+                Renderer::Cpu => {
+                    cutweave_render::reference::render(scene, target, &source, options)
+                        .map(|image| copy_rgba(&image.data, target.size(), layout, out))
+                        .map_err(|e| SourceError::Failed(e.to_string()))
+                }
+                // Black until the device is open (it then re-renders the current frame).
+                Renderer::Pending => {
+                    fill_black(layout, out);
+                    Ok(())
+                }
+            }
+        });
+        // The pictures belong to the media layer: let go of them where it is accounted for.
+        alloc_scope::within(Scope::Media, || {
+            reused.graph.release_frames();
+            reused.scratch.release_frames();
+        });
+        result?;
         if cancel.is_cancelled() {
             return Err(SourceError::Cancelled);
         }
-        let image = self.rasterize(&scene, &graph)?;
-        if cancel.is_cancelled() {
-            return Err(SourceError::Cancelled);
-        }
-        copy_into(&image, &request.layout, out);
         Ok(rendered)
     }
 }
@@ -286,22 +338,13 @@ mod tests {
     fn rgba_frames_land_in_the_slot_rows() {
         let layout = FrameLayout::aligned(3, 2, PixelFormat::Rgba8, 256).unwrap();
         let mut out = vec![0u8; layout.len()];
-        let image = Image {
-            width: 3,
-            height: 2,
-            data: (0..24).collect(),
-        };
-        copy_into(&image, &layout, &mut out);
+        let pixels: Vec<u8> = (0..24).collect();
+        copy_rgba(&pixels, (3, 2), &layout, &mut out);
         let stride = layout.planes()[0].stride as usize;
-        assert_eq!(&out[..12], &image.data[..12]);
-        assert_eq!(&out[stride..stride + 12], &image.data[12..]);
+        assert_eq!(&out[..12], &pixels[..12]);
+        assert_eq!(&out[stride..stride + 12], &pixels[12..]);
         // A size mismatch gives an opaque black frame, never garbage.
-        let small = Image {
-            width: 1,
-            height: 1,
-            data: vec![9; 4],
-        };
-        copy_into(&small, &layout, &mut out);
+        copy_rgba(&[9; 4], (1, 1), &layout, &mut out);
         assert_eq!(&out[..4], &[0, 0, 0, 255]);
     }
 }

@@ -12,34 +12,45 @@
 //!   area, not the canvas area (S4 finding 5a).
 //! * **Output** (compute): un-premultiply, encode, explicit round-half-up quantisation into a
 //!   storage buffer, then readback: blocking ([`Compositor::render`] / [`Compositor::execute`],
-//!   one reused staging buffer) or asynchronous ([`Compositor::submit`] then
-//!   [`Compositor::try_receive`], a small pool of staging buffers; see the `readback` module).
+//!   or [`Compositor::execute_with`], which hands the mapped pixels to the caller; one reused
+//!   staging buffer) or asynchronous ([`Compositor::submit`] then [`Compositor::try_receive`], a
+//!   small pool of staging buffers; see the `readback` module).
 //!
 //! Determinism (arch §8): the same graph renders to the same bytes on the same adapter whatever
 //! the cache and pool state (cold or warm, recycled textures, after device recovery), and the
 //! blocking and asynchronous readbacks deliver the same bytes; the render path reads no clock.
 //!
-//! GPU buffers and textures are pooled, so steady-state frames allocate none. wgpu's own
-//! per-frame objects remain (bind groups, texture views, the command encoder, the boxed map
-//! callback), as does the `Vec` of the blocking readback's [`Image`].
+//! # Steady-state frames allocate nothing of ours (arch §10 "Threads")
+//!
+//! GPU textures and buffers are pooled; texture views, bind groups and the uniform buffers are
+//! made once per texture (or slot) and reused; per-frame bookkeeping (resource table, uploads,
+//! ordering, draw lists) lives in buffers kept across frames; uniforms are packed on the stack;
+//! [`Compositor::execute_with`] reads back without an intermediate `Vec`. Every wgpu call runs
+//! in [`Scope::Wgpu`](crate::alloc_scope::Scope), so a counting allocator can tell the heap use
+//! inside wgpu (command encoders and passes, queue writes and submission, the map callback, the
+//! device poll) from ours, which is zero once the pools, caches and buffers are warm. The
+//! decoded-frame cache evicts textures of the size it needs first, so a playing timeline cycles
+//! through the same textures instead of creating new ones. [`Compositor::execute`] still returns
+//! an owned [`Image`] (one `Vec` per frame).
 
 #![allow(clippy::cast_possible_truncation)]
 
 use std::collections::HashMap;
-use std::sync::PoisonError;
-use std::sync::mpsc;
+use std::sync::atomic::{AtomicU8, Ordering};
+use std::sync::{Arc, PoisonError};
 use std::time::Duration;
 
 use cutweave_model::ItemId;
 
 use super::readback::{FrameTicket, ReadbackFrame, ReadbackPool};
 use super::{GpuContext, GpuError, PIPELINE_CREATION, Watchdog, block_on};
+use crate::alloc_scope::wgpu as in_wgpu;
 use crate::color::{Eetf, OutputTransfer};
 use crate::frame::{FrameError, FrameSource, PixelFormat, VideoFrame};
 use crate::geometry::mip_size;
 use crate::graph::{
-    BuildStats, CompositeOp, DecodeOp, GraphError, GraphOptions, Pass, PassOp, RenderGraph, Target,
-    build,
+    BuildStats, CompositeOp, DecodeOp, GraphError, GraphOptions, OrderScratch, Pass, PassOp,
+    RenderGraph, Target, build,
 };
 use crate::hash::CacheKey;
 use crate::image::Image;
@@ -56,6 +67,11 @@ const WORKING_FORMAT: wgpu::TextureFormat = wgpu::TextureFormat::Rgba16Float;
 const UNIFORM_SIZE: u64 = 256;
 /// Pooled textures kept per (kind, size) beyond the current frame.
 const POOL_PER_KEY: usize = 4;
+
+/// States of the blocking readback's map callback.
+const MAP_PENDING: u8 = 0;
+const MAP_DONE: u8 = 1;
+const MAP_FAILED: u8 = 2;
 
 /// Compositor settings.
 #[derive(Clone, Debug, PartialEq)]
@@ -328,23 +344,47 @@ fn create_pipelines(device: &wgpu::Device) -> Result<Pipelines, GpuError> {
     })
 }
 
-/// Packs uniform data as 16-byte `vec4` slots.
-#[derive(Default)]
-struct Uniforms(Vec<u8>);
+/// Packs uniform data as 16-byte `vec4` slots, on the stack.
+struct Uniforms {
+    bytes: [u8; UNIFORM_SIZE as usize],
+    len: usize,
+}
+
+impl Default for Uniforms {
+    fn default() -> Uniforms {
+        Uniforms {
+            bytes: [0; UNIFORM_SIZE as usize],
+            len: 0,
+        }
+    }
+}
 
 impl Uniforms {
+    fn put(&mut self, word: [u8; 4]) {
+        // Every layout is far below the buffer size; a longer one would be a bug caught by the
+        // GPU validation of the shader's binding size, so extra words are dropped.
+        if let Some(dst) = self.bytes.get_mut(self.len..self.len + 4) {
+            dst.copy_from_slice(&word);
+            self.len += 4;
+        }
+    }
+
     fn f4(mut self, v: [f64; 4]) -> Self {
         for x in v {
-            self.0.extend_from_slice(&(x as f32).to_le_bytes());
+            self.put((x as f32).to_le_bytes());
         }
         self
     }
 
     fn u4(mut self, v: [u32; 4]) -> Self {
         for x in v {
-            self.0.extend_from_slice(&x.to_le_bytes());
+            self.put(x.to_le_bytes());
         }
         self
+    }
+
+    fn as_bytes(&self) -> &[u8] {
+        &self.bytes[..self.len]
     }
 }
 
@@ -372,28 +412,88 @@ impl TexKey {
             TexKind::Plane(_) => px * 4,
         }
     }
+
+    fn mips(&self) -> u32 {
+        match self.kind {
+            TexKind::Content(m) => m.max(1),
+            TexKind::Plane(_) | TexKind::Canvas => 1,
+        }
+    }
 }
 
+/// A decoded texture kept across frames, under its decode pass's Merkle key.
 struct CacheEntry {
+    id: CacheKey,
     texture: wgpu::Texture,
     key: TexKey,
     last_used: u64,
 }
 
+/// The views of a pooled texture, made once.
+struct Views {
+    /// Every mip level (sampling, render targets).
+    full: wgpu::TextureView,
+    /// One view per mip level (storage writes of the decode and mip passes); empty for
+    /// textures without a mip chain to write.
+    levels: Vec<wgpu::TextureView>,
+}
+
+/// The decode pass's bind group of a destination texture, valid for its uniform slot and planes.
+struct DecodeBind {
+    slot: usize,
+    planes: [Option<wgpu::Texture>; 3],
+    bind: wgpu::BindGroup,
+}
+
+/// Bind groups and views kept across frames, keyed by the textures they reference. A texture
+/// leaving the pool for good is [`forgotten`](BindCache::forget) everywhere.
+#[derive(Default)]
+struct BindCache {
+    views: HashMap<wgpu::Texture, Views>,
+    /// Keyed by the decode's destination texture.
+    decode: HashMap<wgpu::Texture, DecodeBind>,
+    /// Keyed by the destination's mip chain: level `i - 1` → `i` for `i` in `1..mips`.
+    mips: HashMap<wgpu::Texture, Vec<wgpu::BindGroup>>,
+    /// Keyed by (uniform slot, content texture).
+    composite: HashMap<(usize, wgpu::Texture), wgpu::BindGroup>,
+    /// Keyed by (uniform slot, canvas read); valid for the output buffer it was made with.
+    output: HashMap<(usize, wgpu::Texture), (wgpu::Buffer, wgpu::BindGroup)>,
+}
+
+impl BindCache {
+    /// Drops everything referencing `texture` (inside wgpu: the objects free wgpu memory).
+    fn forget(&mut self, texture: &wgpu::Texture) {
+        in_wgpu(|| {
+            self.views.remove(texture);
+            self.decode.retain(|dst, d| {
+                dst != texture && !d.planes.iter().flatten().any(|p| p == texture)
+            });
+            self.mips.remove(texture);
+            self.composite.retain(|(_, t), _| t != texture);
+            self.output.retain(|(_, t), _| t != texture);
+        });
+    }
+}
+
 /// Device-bound state: everything dropped and rebuilt on recovery.
 struct DeviceState {
     pipes: Pipelines,
-    dummy_plane: wgpu::Texture,
+    dummy_view: wgpu::TextureView,
     pool: HashMap<TexKey, Vec<wgpu::Texture>>,
-    cache: HashMap<CacheKey, CacheEntry>,
+    /// Decoded textures (few: a VRAM budget of textures). A vector, so the churn of a playing
+    /// timeline (one insert and one eviction per layer and frame) never reallocates.
+    cache: Vec<CacheEntry>,
     cache_bytes: u64,
     uniforms: Vec<wgpu::Buffer>,
     /// The output pass's storage buffer (by size).
     output: Option<(u64, wgpu::Buffer)>,
     /// The blocking readback's staging buffer (by size).
     staging: Option<(u64, wgpu::Buffer)>,
+    /// The blocking readback's map state (set by wgpu's callback during the poll).
+    map_state: Arc<AtomicU8>,
     /// Staging buffers of asynchronous readbacks.
     readbacks: ReadbackPool,
+    binds: BindCache,
     frame_no: u64,
 }
 
@@ -410,16 +510,19 @@ impl DeviceState {
             usage: wgpu::TextureUsages::TEXTURE_BINDING,
             view_formats: &[],
         });
+        let dummy_view = view(&dummy_plane, None);
         Ok(DeviceState {
             pipes,
-            dummy_plane,
+            dummy_view,
             pool: HashMap::new(),
-            cache: HashMap::new(),
+            cache: Vec::new(),
             cache_bytes: 0,
             uniforms: Vec::new(),
             output: None,
             staging: None,
+            map_state: Arc::new(AtomicU8::new(MAP_PENDING)),
             readbacks: ReadbackPool::new(readback_slots),
+            binds: BindCache::default(),
             frame_no: 0,
         })
     }
@@ -454,19 +557,21 @@ impl DeviceState {
                 1,
             ),
         };
-        device.create_texture(&wgpu::TextureDescriptor {
-            label: Some(match key.kind {
-                TexKind::Plane(_) => "plane",
-                TexKind::Content(_) => "decoded",
-                TexKind::Canvas => "canvas",
-            }),
-            size: extent(key.width, key.height),
-            mip_level_count: mips,
-            sample_count: 1,
-            dimension: wgpu::TextureDimension::D2,
-            format,
-            usage,
-            view_formats: &[],
+        in_wgpu(|| {
+            device.create_texture(&wgpu::TextureDescriptor {
+                label: Some(match key.kind {
+                    TexKind::Plane(_) => "plane",
+                    TexKind::Content(_) => "decoded",
+                    TexKind::Canvas => "canvas",
+                }),
+                size: extent(key.width, key.height),
+                mip_level_count: mips,
+                sample_count: 1,
+                dimension: wgpu::TextureDimension::D2,
+                format,
+                usage,
+                view_formats: &[],
+            })
         })
     }
 
@@ -474,11 +579,15 @@ impl DeviceState {
         let slot = self.pool.entry(key).or_default();
         if slot.len() < POOL_PER_KEY {
             slot.push(texture);
+        } else {
+            self.binds.forget(&texture);
+            in_wgpu(|| drop(texture));
         }
     }
 
-    /// Caches a decoded texture, evicting least-recently-used entries not used by this frame.
-    /// Returns the texture back when it does not fit.
+    /// Caches a decoded texture, evicting least-recently-used entries not used by this frame
+    /// (of the same size first, so their textures serve the next frame's decodes from the
+    /// pool). Returns the texture back when it does not fit.
     fn cache_insert(
         &mut self,
         key: CacheKey,
@@ -488,46 +597,50 @@ impl DeviceState {
     ) -> Option<wgpu::Texture> {
         let bytes = tex_key.bytes();
         while self.cache_bytes + bytes > budget {
-            let victim = self
-                .cache
-                .iter()
-                .filter(|(_, e)| e.last_used < self.frame_no)
-                .min_by_key(|(k, e)| (e.last_used, **k))
-                .map(|(k, _)| *k);
-            let Some(victim) = victim else {
+            let frame_no = self.frame_no;
+            let oldest = |same: bool| {
+                self.cache
+                    .iter()
+                    .enumerate()
+                    .filter(|(_, e)| e.last_used < frame_no && (!same || e.key == tex_key))
+                    .min_by_key(|(_, e)| (e.last_used, e.id))
+                    .map(|(i, _)| i)
+            };
+            let Some(victim) = oldest(true).or_else(|| oldest(false)) else {
                 return Some(texture);
             };
-            if let Some(e) = self.cache.remove(&victim) {
-                self.cache_bytes -= e.key.bytes();
-                self.give(e.key, e.texture);
-            }
+            let e = self.cache.swap_remove(victim);
+            self.cache_bytes -= e.key.bytes();
+            self.give(e.key, e.texture);
         }
         self.cache_bytes += bytes;
-        self.cache.insert(
-            key,
-            CacheEntry {
-                texture,
-                key: tex_key,
-                last_used: self.frame_no,
-            },
-        );
+        self.cache.push(CacheEntry {
+            id: key,
+            texture,
+            key: tex_key,
+            last_used: self.frame_no,
+        });
         None
     }
 
     fn uniform(&mut self, device: &wgpu::Device, slot: usize) -> wgpu::Buffer {
         while self.uniforms.len() <= slot {
-            self.uniforms
-                .push(device.create_buffer(&wgpu::BufferDescriptor {
+            let buffer = in_wgpu(|| {
+                device.create_buffer(&wgpu::BufferDescriptor {
                     label: Some("uniforms"),
                     size: UNIFORM_SIZE,
                     usage: wgpu::BufferUsages::UNIFORM | wgpu::BufferUsages::COPY_DST,
                     mapped_at_creation: false,
-                }));
+                })
+            });
+            self.uniforms.push(buffer);
         }
         self.uniforms[slot].clone()
     }
 
-    /// A buffer of `bytes` with `usage` kept in `slot`, recreated only when the size changes.
+    /// A buffer of at least `bytes` with `usage` kept in `slot`, recreated only when it is too
+    /// small (passes use its first `bytes`): alternating output sizes, as scrubbing does with
+    /// its quarter-resolution answers, keep one buffer and its bind groups.
     fn sized_buffer(
         slot: &mut Option<(u64, wgpu::Buffer)>,
         device: &wgpu::Device,
@@ -536,18 +649,20 @@ impl DeviceState {
         usage: wgpu::BufferUsages,
     ) -> wgpu::Buffer {
         if let Some((size, buffer)) = slot.as_ref()
-            && *size == bytes
+            && *size >= bytes
         {
             return buffer.clone();
         }
-        let buffer = device.create_buffer(&wgpu::BufferDescriptor {
-            label: Some(label),
-            size: bytes,
-            usage,
-            mapped_at_creation: false,
-        });
-        *slot = Some((bytes, buffer.clone()));
-        buffer
+        in_wgpu(|| {
+            let buffer = device.create_buffer(&wgpu::BufferDescriptor {
+                label: Some(label),
+                size: bytes,
+                usage,
+                mapped_at_creation: false,
+            });
+            *slot = Some((bytes, buffer.clone()));
+            buffer
+        })
     }
 
     fn output_buffer(&mut self, device: &wgpu::Device, bytes: u64) -> wgpu::Buffer {
@@ -569,20 +684,52 @@ impl DeviceState {
             wgpu::BufferUsages::MAP_READ | wgpu::BufferUsages::COPY_DST,
         )
     }
+
+    /// The views of `texture` (made on first use).
+    fn views(&mut self, texture: &wgpu::Texture, key: TexKey) -> &Views {
+        if !self.binds.views.contains_key(texture) {
+            let mips = key.mips();
+            let views = in_wgpu(|| Views {
+                full: view(texture, None),
+                levels: if matches!(key.kind, TexKind::Content(_)) {
+                    (0..mips).map(|level| view(texture, Some(level))).collect()
+                } else {
+                    Vec::new()
+                },
+            });
+            self.binds.views.insert(texture.clone(), views);
+        }
+        &self.binds.views[texture]
+    }
+
+    /// The full view of `texture`.
+    fn full_view(&mut self, texture: &wgpu::Texture, key: TexKey) -> wgpu::TextureView {
+        self.views(texture, key).full.clone()
+    }
 }
 
 /// How a CPU target's pixels come back.
-#[derive(Clone, Copy, PartialEq, Eq)]
-enum Readback {
-    /// Wait for them (the reused blocking staging buffer).
-    Blocking,
+enum Readback<'a> {
+    /// Wait for them (the reused blocking staging buffer) and hand them to the sink while they
+    /// are mapped.
+    Blocking(&'a mut dyn FnMut(&[u8])),
     /// Map a pool buffer and return a ticket.
     Async,
 }
 
+impl Readback<'_> {
+    fn is_async(&self) -> bool {
+        matches!(self, Readback::Async)
+    }
+}
+
 /// What an execution produced.
 enum Executed {
+    /// A texture target's frame.
     Frame(RenderedFrame),
+    /// A CPU target's pixels went to the blocking sink.
+    Read(FrameStats),
+    /// A CPU target's pixels are being mapped asynchronously.
     Submitted(FrameTicket),
 }
 
@@ -623,12 +770,24 @@ fn view(t: &wgpu::Texture, mip: Option<u32>) -> wgpu::TextureView {
     })
 }
 
+/// Per-frame bookkeeping kept across frames (its capacity is reused).
+#[derive(Default)]
+struct FrameScratch {
+    held: Vec<Option<Held>>,
+    uploads: Vec<(TexKey, wgpu::Texture)>,
+    order: Vec<usize>,
+    last: Vec<Option<usize>>,
+    order_scratch: OrderScratch,
+    draws: Vec<(wgpu::BindGroup, [u32; 4])>,
+}
+
 /// Executes render graphs on one GPU device.
 pub struct Compositor {
     ctx: GpuContext,
     options: CompositorOptions,
     dev: DeviceState,
     watchdog: Watchdog,
+    scratch: FrameScratch,
 }
 
 impl std::fmt::Debug for Compositor {
@@ -650,6 +809,7 @@ impl Compositor {
             options,
             dev,
             watchdog,
+            scratch: FrameScratch::default(),
         })
     }
 
@@ -673,7 +833,7 @@ impl Compositor {
 
     /// Drops every cached decoded frame (the next render is cold).
     pub fn clear_cache(&mut self) {
-        let entries: Vec<CacheEntry> = self.dev.cache.drain().map(|(_, e)| e).collect();
+        let entries = std::mem::take(&mut self.dev.cache);
         for e in entries {
             self.dev.give(e.key, e.texture);
         }
@@ -737,11 +897,55 @@ impl Compositor {
 
     /// Executes a compiled graph. A lost device is recreated and the frame retried once.
     pub fn execute(&mut self, graph: &RenderGraph) -> Result<RenderedFrame, RenderError> {
-        match self.execute_recovering(graph, Readback::Blocking)? {
+        let mut data = None;
+        let mut sink = |pixels: &[u8]| data = Some(pixels.to_vec());
+        let executed = self.execute_recovering(graph, &mut Readback::Blocking(&mut sink))?;
+        match executed {
             Executed::Frame(f) => Ok(f),
+            Executed::Read(stats) => {
+                let (width, height) = graph.target.size();
+                Ok(RenderedFrame {
+                    width,
+                    height,
+                    pixels: RenderedPixels::Rgba8(Image {
+                        width,
+                        height,
+                        data: data.unwrap_or_default(),
+                    }),
+                    key: graph.output_key(),
+                    missing: graph.missing.clone(),
+                    stats,
+                })
+            }
             Executed::Submitted(_) => {
                 Err(GraphError::Invalid("unexpected async readback".into()).into())
             }
+        }
+    }
+
+    /// Executes a compiled graph with a CPU target and hands `read` its pixels (tightly packed
+    /// straight-alpha RGBA8 rows, exactly what [`Compositor::execute`] returns) while they are
+    /// still mapped: no per-frame allocation of ours (the preview copies them into its ring
+    /// slot). A lost device is recreated and the frame retried once; `read` runs at most once.
+    pub fn execute_with<R>(
+        &mut self,
+        graph: &RenderGraph,
+        read: impl FnOnce(&[u8]) -> R,
+    ) -> Result<(R, FrameStats), RenderError> {
+        if !matches!(graph.target, Target::Rgba8Cpu { .. }) {
+            return Err(GraphError::Invalid("a readback needs a CPU target".into()).into());
+        }
+        let mut read = Some(read);
+        let mut out = None;
+        let mut sink = |pixels: &[u8]| {
+            if let Some(read) = read.take() {
+                out = Some(read(pixels));
+            }
+        };
+        let executed = self.execute_recovering(graph, &mut Readback::Blocking(&mut sink))?;
+        match (executed, out) {
+            (Executed::Read(stats), Some(out)) => Ok((out, stats)),
+            _ => Err(GraphError::Invalid("the frame produced no pixels".into()).into()),
         }
     }
 
@@ -766,9 +970,9 @@ impl Compositor {
                 GraphError::Invalid("asynchronous readback needs a CPU target".into()).into(),
             );
         }
-        match self.execute_recovering(graph, Readback::Async)? {
+        match self.execute_recovering(graph, &mut Readback::Async)? {
             Executed::Submitted(t) => Ok(t),
-            Executed::Frame(_) => {
+            Executed::Frame(_) | Executed::Read(_) => {
                 Err(GraphError::Invalid("unexpected blocking readback".into()).into())
             }
         }
@@ -833,7 +1037,7 @@ impl Compositor {
     fn execute_recovering(
         &mut self,
         graph: &RenderGraph,
-        readback: Readback,
+        readback: &mut Readback<'_>,
     ) -> Result<Executed, RenderError> {
         let _frame = self.watchdog.begin();
         let mut recovered = false;
@@ -858,6 +1062,10 @@ impl Compositor {
                 f.stats.recovered = recovered;
                 Executed::Frame(f)
             }
+            Executed::Read(mut stats) => {
+                stats.recovered = recovered;
+                Executed::Read(stats)
+            }
             submitted @ Executed::Submitted(_) => submitted,
         })
     }
@@ -865,29 +1073,31 @@ impl Compositor {
     fn execute_once(
         &mut self,
         graph: &RenderGraph,
-        readback: Readback,
+        readback: &mut Readback<'_>,
     ) -> Result<Executed, RenderError> {
         // Reserve the staging buffer first: a busy pool must fail before anything is encoded
         // (decode passes insert their textures into the cache as they are recorded).
-        let slot = match readback {
-            Readback::Blocking => None,
-            Readback::Async => {
-                let (width, height) = graph.target.size();
-                let bytes = u64::from(width) * u64::from(height) * 4;
-                let device = self.ctx.device().clone();
-                Some(self.dev.readbacks.acquire(&device, bytes)?)
-            }
+        let slot = if readback.is_async() {
+            let (width, height) = graph.target.size();
+            let bytes = u64::from(width) * u64::from(height) * 4;
+            let device = self.ctx.device().clone();
+            Some(in_wgpu(|| self.dev.readbacks.acquire(&device, bytes))?)
+        } else {
+            None
         };
         let index = slot.as_ref().map(|(i, _)| *i);
+        let device = self.ctx.device().clone();
+        let mut scratch = std::mem::take(&mut self.scratch);
+        scratch.held.clear();
+        scratch.held.resize_with(graph.resources.len(), || None);
+        scratch.uploads.clear();
         let mut f = Frame {
-            encoder: self
-                .ctx
-                .device()
-                .create_command_encoder(&wgpu::CommandEncoderDescriptor {
+            encoder: in_wgpu(|| {
+                device.create_command_encoder(&wgpu::CommandEncoderDescriptor {
                     label: Some("frame"),
-                }),
-            held: (0..graph.resources.len()).map(|_| None).collect(),
-            uploads: Vec::new(),
+                })
+            }),
+            scratch,
             readback: None,
             slot,
             stats: FrameStats {
@@ -895,9 +1105,14 @@ impl Compositor {
                 ..FrameStats::default()
             },
         };
-        let result = self
-            .encode_frame(&mut f, graph)
-            .and_then(|()| self.finish(f, graph));
+        let encoded = self.encode_frame(&mut f, graph);
+        let result = match encoded {
+            Ok(()) => self.finish(f, graph, readback),
+            Err(e) => {
+                self.recycle_frame(f);
+                Err(e)
+            }
+        };
         if result.is_err()
             && let Some(index) = index
         {
@@ -908,8 +1123,27 @@ impl Compositor {
 
     /// Records every pass of `graph` into the frame's encoder.
     fn encode_frame(&mut self, f: &mut Frame, graph: &RenderGraph) -> Result<(), RenderError> {
-        let order = graph.topo_order()?;
-        let last = graph.last_uses(&order);
+        let mut order = std::mem::take(&mut f.scratch.order);
+        let mut last = std::mem::take(&mut f.scratch.last);
+        let result = graph
+            .topo_order_into(&mut order, &mut f.scratch.order_scratch)
+            .map_err(RenderError::from)
+            .and_then(|()| {
+                graph.last_uses_into(&order, &mut last);
+                self.encode_passes(f, graph, &order, &last)
+            });
+        f.scratch.order = order;
+        f.scratch.last = last;
+        result
+    }
+
+    fn encode_passes(
+        &mut self,
+        f: &mut Frame,
+        graph: &RenderGraph,
+        order: &[usize],
+        last: &[Option<usize>],
+    ) -> Result<(), RenderError> {
         self.dev.frame_no += 1;
         let _ = self.ctx.take_errors();
         let mut pos = 0;
@@ -942,8 +1176,8 @@ impl Compositor {
             for p in &order[pos..=end] {
                 for &r in &graph.passes[*p].inputs {
                     if last[r].is_some_and(|l| l <= end)
-                        && f.held[r].as_ref().is_some_and(|h| h.transient)
-                        && let Some(h) = f.held[r].take()
+                        && f.scratch.held[r].as_ref().is_some_and(|h| h.transient)
+                        && let Some(h) = f.scratch.held[r].take()
                     {
                         self.dev.give(h.key, h.texture);
                     }
@@ -956,78 +1190,126 @@ impl Compositor {
 
     /// Submits the frame and produces its pixels (or, for an asynchronous readback, starts
     /// mapping them and returns the ticket).
-    fn finish(&mut self, f: Frame, graph: &RenderGraph) -> Result<Executed, RenderError> {
+    fn finish(
+        &mut self,
+        f: Frame,
+        graph: &RenderGraph,
+        readback: &mut Readback<'_>,
+    ) -> Result<Executed, RenderError> {
         let (width, height) = graph.target.size();
         let Frame {
-            mut encoder,
-            mut held,
-            uploads,
-            readback,
+            encoder,
+            mut scratch,
+            readback: map,
             slot,
             stats,
         } = f;
         let queue = self.ctx.queue().clone();
-        let pixels = match graph.target {
-            Target::Rgba8Cpu { .. } => {
-                let (map, bytes) = readback.ok_or_else(|| {
-                    GraphError::Invalid("CPU target without an output pass".into())
-                })?;
-                queue.submit([encoder.finish()]);
-                self.recycle(&mut held, uploads);
-                if let Some((slot, _)) = slot {
-                    let _ = self.ctx.device().poll(wgpu::PollType::Poll);
-                    self.check()?;
-                    let frame = ReadbackFrame {
-                        ticket: FrameTicket(0),
-                        width,
-                        height,
-                        key: graph.output_key(),
-                        missing: graph.missing.clone(),
-                        stats,
-                    };
-                    return Ok(Executed::Submitted(
-                        self.dev.readbacks.start(slot, bytes, frame),
-                    ));
+        let result = match graph.target {
+            Target::Rgba8Cpu { .. } => match map {
+                None => {
+                    in_wgpu(|| drop(encoder));
+                    self.recycle(&mut scratch);
+                    Err(GraphError::Invalid("CPU target without an output pass".into()).into())
                 }
-                let data = self.read(&map, bytes)?;
-                RenderedPixels::Rgba8(Image {
-                    width,
-                    height,
-                    data,
-                })
-            }
+                Some((map, bytes)) => {
+                    in_wgpu(|| {
+                        queue.submit([encoder.finish()]);
+                    });
+                    self.recycle(&mut scratch);
+                    if let Some((slot, _)) = slot {
+                        let _ = in_wgpu(|| self.ctx.device().poll(wgpu::PollType::Poll));
+                        self.check()
+                            .map(|()| {
+                                let frame = ReadbackFrame {
+                                    ticket: FrameTicket(0),
+                                    width,
+                                    height,
+                                    key: graph.output_key(),
+                                    missing: graph.missing.clone(),
+                                    stats,
+                                };
+                                Executed::Submitted(in_wgpu(|| {
+                                    self.dev.readbacks.start(slot, bytes, frame)
+                                }))
+                            })
+                            .map_err(RenderError::from)
+                    } else {
+                        match readback {
+                            Readback::Blocking(sink) => self
+                                .read_into(&map, bytes, &mut **sink)
+                                .map(|()| Executed::Read(stats))
+                                .map_err(RenderError::from),
+                            Readback::Async => Err(GraphError::Invalid(
+                                "asynchronous readback without a staging buffer".into(),
+                            )
+                            .into()),
+                        }
+                    }
+                }
+            },
             Target::Texture { .. } => {
-                flush_clear(&mut encoder, &mut held, graph.output);
-                let out = held[graph.output]
-                    .take()
-                    .ok_or_else(|| GraphError::Invalid("graph output not ready".into()))?;
-                queue.submit([encoder.finish()]);
-                self.recycle(&mut held, uploads);
-                let _ = self.ctx.device().poll(wgpu::PollType::Poll);
-                self.check()?;
-                RenderedPixels::Texture(out.texture)
+                let mut encoder = encoder;
+                flush_clear(&mut self.dev, &mut encoder, &mut scratch.held, graph.output);
+                match scratch.held[graph.output].take() {
+                    None => {
+                        in_wgpu(|| drop(encoder));
+                        self.recycle(&mut scratch);
+                        Err(GraphError::Invalid("graph output not ready".into()).into())
+                    }
+                    Some(out) => {
+                        in_wgpu(|| {
+                            queue.submit([encoder.finish()]);
+                        });
+                        self.recycle(&mut scratch);
+                        // The caller owns the canvas now: it leaves the pool for good.
+                        self.dev.binds.forget(&out.texture);
+                        let _ = in_wgpu(|| self.ctx.device().poll(wgpu::PollType::Poll));
+                        self.check().map_err(RenderError::from).map(|()| {
+                            Executed::Frame(RenderedFrame {
+                                width,
+                                height,
+                                pixels: RenderedPixels::Texture(out.texture),
+                                key: graph.output_key(),
+                                missing: graph.missing.clone(),
+                                stats,
+                            })
+                        })
+                    }
+                }
             }
         };
-        Ok(Executed::Frame(RenderedFrame {
-            width,
-            height,
-            pixels,
-            key: graph.output_key(),
-            missing: graph.missing.clone(),
-            stats,
-        }))
+        self.scratch = scratch;
+        result
     }
 
     /// Returns this frame's transient textures and uploads to the pool (after submit).
-    fn recycle(&mut self, held: &mut [Option<Held>], uploads: Vec<(TexKey, wgpu::Texture)>) {
-        for h in held.iter_mut().filter_map(Option::take) {
+    fn recycle(&mut self, scratch: &mut FrameScratch) {
+        for h in scratch.held.iter_mut().filter_map(Option::take) {
             if h.transient {
                 self.dev.give(h.key, h.texture);
             }
         }
-        for (k, t) in uploads {
+        for (k, t) in scratch.uploads.drain(..) {
             self.dev.give(k, t);
         }
+        scratch.draws.clear();
+    }
+
+    /// A frame that failed while encoding: drop its encoder, keep its textures and buffers.
+    fn recycle_frame(&mut self, f: Frame) {
+        let Frame {
+            encoder,
+            mut scratch,
+            readback,
+            ..
+        } = f;
+        in_wgpu(|| {
+            drop(encoder);
+            drop(readback);
+        });
+        self.recycle(&mut scratch);
+        self.scratch = scratch;
     }
 
     fn check(&self) -> Result<(), GpuError> {
@@ -1040,25 +1322,48 @@ impl Compositor {
         }
     }
 
-    fn read(&self, map: &wgpu::Buffer, bytes: u64) -> Result<Vec<u8>, GpuError> {
-        let (tx, rx) = mpsc::channel();
-        map.slice(..bytes).map_async(wgpu::MapMode::Read, move |r| {
-            let _ = tx.send(r);
+    /// Maps the blocking staging buffer, waits for it and hands the pixels to `sink`.
+    fn read_into(
+        &self,
+        map: &wgpu::Buffer,
+        bytes: u64,
+        sink: &mut dyn FnMut(&[u8]),
+    ) -> Result<(), GpuError> {
+        let state = &self.dev.map_state;
+        state.store(MAP_PENDING, Ordering::Release);
+        let done = Arc::clone(state);
+        let poll = in_wgpu(|| {
+            map.slice(..bytes).map_async(wgpu::MapMode::Read, move |r| {
+                done.store(
+                    if r.is_ok() { MAP_DONE } else { MAP_FAILED },
+                    Ordering::Release,
+                );
+            });
+            self.ctx.device().poll(wgpu::PollType::wait_indefinitely())
         });
-        let poll = self.ctx.device().poll(wgpu::PollType::wait_indefinitely());
         self.check()?;
         poll.map_err(|e| GpuError::Readback(format!("poll: {e}")))?;
-        rx.recv()
-            .map_err(|e| GpuError::Readback(e.to_string()))?
-            .map_err(|e| GpuError::Readback(format!("map: {e}")))?;
-        let data = {
-            let range = map
-                .get_mapped_range(..bytes)
-                .map_err(|e| GpuError::Readback(format!("{e:?}")))?;
-            range.to_vec()
-        };
-        map.unmap();
-        Ok(data)
+        match state.load(Ordering::Acquire) {
+            MAP_DONE => {}
+            MAP_FAILED => {
+                return Err(GpuError::Readback(
+                    "map: the buffer could not be mapped".into(),
+                ));
+            }
+            _ => {
+                return Err(GpuError::Readback(
+                    "map: the readback did not complete".into(),
+                ));
+            }
+        }
+        let range = in_wgpu(|| map.get_mapped_range(..bytes))
+            .map_err(|e| GpuError::Readback(format!("{e:?}")));
+        let result = range.map(|range| {
+            sink(&range);
+            in_wgpu(|| drop(range));
+        });
+        in_wgpu(|| map.unmap());
+        result
     }
 
     /// A decode pass: a cache hit, or upload + convert (+ mips) into a cached texture.
@@ -1077,10 +1382,10 @@ impl Compositor {
             height: frame.height,
         };
         let frame_no = self.dev.frame_no;
-        if let Some(e) = self.dev.cache.get_mut(&pass.key) {
+        if let Some(e) = self.dev.cache.iter_mut().find(|e| e.id == pass.key) {
             e.last_used = frame_no;
             f.stats.cache_hits += 1;
-            f.held[pass.output] = Some(Held {
+            f.scratch.held[pass.output] = Some(Held {
                 texture: e.texture.clone(),
                 key,
                 transient: false,
@@ -1090,13 +1395,13 @@ impl Compositor {
         }
         let device = self.ctx.device().clone();
         let texture = self.dev.take(&device, key, &mut f.stats);
-        self.encode_decode(f, frame, d, &texture, slot);
+        self.encode_decode(f, frame, d, &texture, key, slot);
         let budget = self.options.cache_budget_bytes;
         let transient = self
             .dev
             .cache_insert(pass.key, key, texture.clone(), budget)
             .is_some();
-        f.held[pass.output] = Some(Held {
+        f.scratch.held[pass.output] = Some(Held {
             texture,
             key,
             transient,
@@ -1114,7 +1419,7 @@ impl Compositor {
         };
         let device = self.ctx.device().clone();
         let texture = self.dev.take(&device, key, &mut f.stats);
-        f.held[output] = Some(Held {
+        f.scratch.held[output] = Some(Held {
             texture,
             key,
             transient: true,
@@ -1141,7 +1446,7 @@ impl Compositor {
         let mut canvas = self.take_canvas(f, backdrop, last_reader)?;
         self.encode_composites(f, graph, run, first_slot, &mut canvas)?;
         f.stats.passes_run += run.len();
-        f.held[graph.passes[run[run.len() - 1]].output] = Some(canvas);
+        f.scratch.held[graph.passes[run[run.len() - 1]].output] = Some(canvas);
         Ok(())
     }
 
@@ -1154,7 +1459,7 @@ impl Compositor {
         (width, height): (u32, u32),
         slot: usize,
     ) -> Result<(), RenderError> {
-        flush_clear(&mut f.encoder, &mut f.held, input);
+        flush_clear(&mut self.dev, &mut f.encoder, &mut f.scratch.held, input);
         let device = self.ctx.device().clone();
         let bytes = u64::from(width) * u64::from(height) * 4;
         let storage = self.dev.output_buffer(&device, bytes);
@@ -1162,44 +1467,75 @@ impl Compositor {
             Some((_, buffer)) => buffer.clone(),
             None => self.dev.staging_buffer(&device, bytes),
         };
-        let src = f.held[input]
+        let (src, src_key) = f.scratch.held[input]
             .as_ref()
+            .map(|h| (h.texture.clone(), h.key))
             .ok_or_else(|| GraphError::Invalid("output input not ready".into()))?;
         let uniform = self.dev.uniform(&device, slot);
         let u = Uniforms::default().u4([width, height, transfer.transfer().shader_id(), 0]);
-        self.ctx.queue().write_buffer(&uniform, 0, &u.0);
-        let src_view = view(&src.texture, None);
-        let bind = device.create_bind_group(&wgpu::BindGroupDescriptor {
-            label: Some("output"),
-            layout: &self.dev.pipes.output.layout,
-            entries: &[
-                wgpu::BindGroupEntry {
-                    binding: 0,
-                    resource: uniform.as_entire_binding(),
-                },
-                wgpu::BindGroupEntry {
-                    binding: 1,
-                    resource: wgpu::BindingResource::TextureView(&src_view),
-                },
-                wgpu::BindGroupEntry {
-                    binding: 2,
-                    resource: storage.as_entire_binding(),
-                },
-            ],
-        });
-        {
+        in_wgpu(|| self.ctx.queue().write_buffer(&uniform, 0, u.as_bytes()));
+        let bind = self.output_bind(&device, slot, &src, src_key, &uniform, &storage);
+        let pipeline = &self.dev.pipes.output.pipeline;
+        in_wgpu(|| {
             let mut cp = f.encoder.begin_compute_pass(&wgpu::ComputePassDescriptor {
                 label: Some("output"),
                 timestamp_writes: None,
             });
-            cp.set_pipeline(&self.dev.pipes.output.pipeline);
+            cp.set_pipeline(pipeline);
             cp.set_bind_group(0, &bind, &[]);
             cp.dispatch_workgroups(width.div_ceil(8), height.div_ceil(8), 1);
-        }
-        f.encoder.copy_buffer_to_buffer(&storage, 0, &map, 0, bytes);
+            drop(cp);
+            f.encoder.copy_buffer_to_buffer(&storage, 0, &map, 0, bytes);
+        });
         f.readback = Some((map, bytes));
         f.stats.passes_run += 1;
         Ok(())
+    }
+
+    /// The output pass's bind group for reading `src` with uniform `slot` into `storage`.
+    fn output_bind(
+        &mut self,
+        device: &wgpu::Device,
+        slot: usize,
+        src: &wgpu::Texture,
+        src_key: TexKey,
+        uniform: &wgpu::Buffer,
+        storage: &wgpu::Buffer,
+    ) -> wgpu::BindGroup {
+        if let Some((buffer, bind)) = self.dev.binds.output.get(&(slot, src.clone()))
+            && buffer == storage
+        {
+            return bind.clone();
+        }
+        let src_view = self.dev.full_view(src, src_key);
+        let layout = &self.dev.pipes.output.layout;
+        let bind = in_wgpu(|| {
+            device.create_bind_group(&wgpu::BindGroupDescriptor {
+                label: Some("output"),
+                layout,
+                entries: &[
+                    wgpu::BindGroupEntry {
+                        binding: 0,
+                        resource: uniform.as_entire_binding(),
+                    },
+                    wgpu::BindGroupEntry {
+                        binding: 1,
+                        resource: wgpu::BindingResource::TextureView(&src_view),
+                    },
+                    wgpu::BindGroupEntry {
+                        binding: 2,
+                        resource: storage.as_entire_binding(),
+                    },
+                ],
+            })
+        });
+        let old = self
+            .dev
+            .binds
+            .output
+            .insert((slot, src.clone()), (storage.clone(), bind.clone()));
+        in_wgpu(|| drop(old));
+        bind
     }
 
     /// Takes the backdrop canvas for a composite run: moved when the run is its last reader,
@@ -1211,9 +1547,9 @@ impl Compositor {
         last_reader: bool,
     ) -> Result<Held, GraphError> {
         let not_ready = || GraphError::Invalid("composite backdrop not ready".into());
-        let src = f.held[backdrop].as_ref().ok_or_else(not_ready)?;
+        let src = f.scratch.held[backdrop].as_ref().ok_or_else(not_ready)?;
         if last_reader && src.transient {
-            return f.held[backdrop].take().ok_or_else(not_ready);
+            return f.scratch.held[backdrop].take().ok_or_else(not_ready);
         }
         let key = TexKey {
             kind: TexKind::Canvas,
@@ -1224,11 +1560,13 @@ impl Compositor {
         let device = self.ctx.device().clone();
         let texture = self.dev.take(&device, key, &mut f.stats);
         if clear.is_none() {
-            f.encoder.copy_texture_to_texture(
-                source.as_image_copy(),
-                texture.as_image_copy(),
-                source.size(),
-            );
+            in_wgpu(|| {
+                f.encoder.copy_texture_to_texture(
+                    source.as_image_copy(),
+                    texture.as_image_copy(),
+                    source.size(),
+                );
+            });
         }
         Ok(Held {
             texture,
@@ -1244,95 +1582,208 @@ impl Compositor {
         frame: &VideoFrame,
         d: &DecodeOp,
         texture: &wgpu::Texture,
+        key: TexKey,
         slot: usize,
     ) {
         let device = self.ctx.device().clone();
         let queue = self.ctx.queue().clone();
-        let mut plane_views = Vec::with_capacity(3);
-        for (i, plane) in frame.planes.iter().enumerate() {
+        let mut planes: [Option<wgpu::Texture>; 3] = [None, None, None];
+        for (i, plane) in frame.planes.iter().enumerate().take(3) {
             let (pw, ph, _) = frame.format.plane_layout(i, frame.width, frame.height);
-            let key = TexKey {
+            let plane_key = TexKey {
                 kind: TexKind::Plane(plane_format(frame.format, i)),
                 width: pw,
                 height: ph,
             };
-            let t = self.dev.take(&device, key, &mut f.stats);
-            queue.write_texture(
-                t.as_image_copy(),
-                &plane.data,
-                wgpu::TexelCopyBufferLayout {
-                    offset: 0,
-                    bytes_per_row: Some(plane.stride),
-                    rows_per_image: Some(ph),
-                },
-                extent(pw, ph),
-            );
-            plane_views.push(view(&t, None));
-            f.uploads.push((key, t));
-        }
-        while plane_views.len() < 3 {
-            plane_views.push(view(&self.dev.dummy_plane, None));
+            let t = self.dev.take(&device, plane_key, &mut f.stats);
+            in_wgpu(|| {
+                queue.write_texture(
+                    t.as_image_copy(),
+                    &plane.data,
+                    wgpu::TexelCopyBufferLayout {
+                        offset: 0,
+                        bytes_per_row: Some(plane.stride),
+                        rows_per_image: Some(ph),
+                    },
+                    extent(pw, ph),
+                );
+            });
+            // Views of the plane are made once (before `uploads` holds the texture).
+            let _ = self.dev.views(&t, plane_key);
+            planes[i] = Some(t.clone());
+            f.scratch.uploads.push((plane_key, t));
         }
         let uniform = self.dev.uniform(&device, slot);
-        queue.write_buffer(&uniform, 0, &decode_uniforms(frame, d).0);
-        let dst = view(texture, Some(0));
-        let mut entries = vec![wgpu::BindGroupEntry {
-            binding: 0,
-            resource: uniform.as_entire_binding(),
-        }];
-        for (binding, v) in (1u32..).zip(&plane_views) {
-            entries.push(wgpu::BindGroupEntry {
-                binding,
-                resource: wgpu::BindingResource::TextureView(v),
-            });
-        }
-        entries.push(wgpu::BindGroupEntry {
-            binding: 4,
-            resource: wgpu::BindingResource::TextureView(&dst),
-        });
-        let bind = device.create_bind_group(&wgpu::BindGroupDescriptor {
-            label: Some("decode"),
-            layout: &self.dev.pipes.decode.layout,
-            entries: &entries,
-        });
-        {
+        in_wgpu(|| queue.write_buffer(&uniform, 0, decode_uniforms(frame, d).as_bytes()));
+        let bind = self.decode_bind(&device, slot, texture, key, planes, &uniform);
+        let pipeline = &self.dev.pipes.decode.pipeline;
+        in_wgpu(|| {
             let mut cp = f.encoder.begin_compute_pass(&wgpu::ComputePassDescriptor {
                 label: Some("decode"),
                 timestamp_writes: None,
             });
-            cp.set_pipeline(&self.dev.pipes.decode.pipeline);
+            cp.set_pipeline(pipeline);
             cp.set_bind_group(0, &bind, &[]);
             cp.dispatch_workgroups(frame.width.div_ceil(8), frame.height.div_ceil(8), 1);
-        }
+        });
         // One compute pass per level, so each level is complete before the next reads it.
         let mips = d.mip_levels.max(1);
-        for level in 1..mips {
-            let (src, dst) = (view(texture, Some(level - 1)), view(texture, Some(level)));
-            let bind = device.create_bind_group(&wgpu::BindGroupDescriptor {
-                label: Some("mip"),
-                layout: &self.dev.pipes.mip.layout,
-                entries: &[
-                    wgpu::BindGroupEntry {
-                        binding: 0,
-                        resource: wgpu::BindingResource::TextureView(&src),
-                    },
-                    wgpu::BindGroupEntry {
-                        binding: 1,
-                        resource: wgpu::BindingResource::TextureView(&dst),
-                    },
-                ],
-            });
-            let (w, h) = mip_size(frame.width, frame.height, level);
-            let mut cp = f.encoder.begin_compute_pass(&wgpu::ComputePassDescriptor {
-                label: Some("mip"),
-                timestamp_writes: None,
-            });
-            cp.set_pipeline(&self.dev.pipes.mip.pipeline);
-            cp.set_bind_group(0, &bind, &[]);
-            cp.dispatch_workgroups(w.div_ceil(8), h.div_ceil(8), 1);
+        if mips > 1 {
+            self.mip_binds(&device, texture, key);
+            let binds = &self.dev.binds.mips[texture];
+            let pipeline = &self.dev.pipes.mip.pipeline;
+            for level in 1..mips {
+                let (w, h) = mip_size(frame.width, frame.height, level);
+                let bind = &binds[(level - 1) as usize];
+                in_wgpu(|| {
+                    let mut cp = f.encoder.begin_compute_pass(&wgpu::ComputePassDescriptor {
+                        label: Some("mip"),
+                        timestamp_writes: None,
+                    });
+                    cp.set_pipeline(pipeline);
+                    cp.set_bind_group(0, bind, &[]);
+                    cp.dispatch_workgroups(w.div_ceil(8), h.div_ceil(8), 1);
+                });
+            }
         }
         f.stats.decodes_run += 1;
         f.stats.passes_run += mips as usize;
+    }
+
+    /// The decode pass's bind group writing `dst` (made when its slot or planes change).
+    fn decode_bind(
+        &mut self,
+        device: &wgpu::Device,
+        slot: usize,
+        dst: &wgpu::Texture,
+        dst_key: TexKey,
+        planes: [Option<wgpu::Texture>; 3],
+        uniform: &wgpu::Buffer,
+    ) -> wgpu::BindGroup {
+        if let Some(cached) = self.dev.binds.decode.get(dst)
+            && cached.slot == slot
+            && cached.planes == planes
+        {
+            in_wgpu(|| drop(planes));
+            return cached.bind.clone();
+        }
+        let dst_view = self.dev.views(dst, dst_key).levels[0].clone();
+        let mut plane_views: [wgpu::TextureView; 3] = [
+            self.dev.dummy_view.clone(),
+            self.dev.dummy_view.clone(),
+            self.dev.dummy_view.clone(),
+        ];
+        for (v, plane) in plane_views.iter_mut().zip(&planes) {
+            if let Some(p) = plane {
+                *v = self.dev.binds.views[p].full.clone();
+            }
+        }
+        let layout = &self.dev.pipes.decode.layout;
+        let bind = in_wgpu(|| {
+            device.create_bind_group(&wgpu::BindGroupDescriptor {
+                label: Some("decode"),
+                layout,
+                entries: &[
+                    wgpu::BindGroupEntry {
+                        binding: 0,
+                        resource: uniform.as_entire_binding(),
+                    },
+                    wgpu::BindGroupEntry {
+                        binding: 1,
+                        resource: wgpu::BindingResource::TextureView(&plane_views[0]),
+                    },
+                    wgpu::BindGroupEntry {
+                        binding: 2,
+                        resource: wgpu::BindingResource::TextureView(&plane_views[1]),
+                    },
+                    wgpu::BindGroupEntry {
+                        binding: 3,
+                        resource: wgpu::BindingResource::TextureView(&plane_views[2]),
+                    },
+                    wgpu::BindGroupEntry {
+                        binding: 4,
+                        resource: wgpu::BindingResource::TextureView(&dst_view),
+                    },
+                ],
+            })
+        });
+        let old = self.dev.binds.decode.insert(
+            dst.clone(),
+            DecodeBind {
+                slot,
+                planes,
+                bind: bind.clone(),
+            },
+        );
+        in_wgpu(|| drop((old, plane_views, dst_view)));
+        bind
+    }
+
+    /// Makes the mip-chain bind groups of `texture` (once).
+    fn mip_binds(&mut self, device: &wgpu::Device, texture: &wgpu::Texture, key: TexKey) {
+        if self.dev.binds.mips.contains_key(texture) {
+            return;
+        }
+        let levels: Vec<wgpu::TextureView> = self.dev.views(texture, key).levels.clone();
+        let layout = &self.dev.pipes.mip.layout;
+        let binds = in_wgpu(|| {
+            levels
+                .windows(2)
+                .map(|pair| {
+                    device.create_bind_group(&wgpu::BindGroupDescriptor {
+                        label: Some("mip"),
+                        layout,
+                        entries: &[
+                            wgpu::BindGroupEntry {
+                                binding: 0,
+                                resource: wgpu::BindingResource::TextureView(&pair[0]),
+                            },
+                            wgpu::BindGroupEntry {
+                                binding: 1,
+                                resource: wgpu::BindingResource::TextureView(&pair[1]),
+                            },
+                        ],
+                    })
+                })
+                .collect()
+        });
+        self.dev.binds.mips.insert(texture.clone(), binds);
+        in_wgpu(|| drop(levels));
+    }
+
+    /// The composite pass's bind group sampling `content` with uniform `slot`.
+    fn composite_bind(
+        &mut self,
+        device: &wgpu::Device,
+        slot: usize,
+        content: &wgpu::Texture,
+        content_key: TexKey,
+        uniform: &wgpu::Buffer,
+    ) -> wgpu::BindGroup {
+        let cache_key = (slot, content.clone());
+        if let Some(bind) = self.dev.binds.composite.get(&cache_key) {
+            return bind.clone();
+        }
+        let content_view = self.dev.full_view(content, content_key);
+        let layout = &self.dev.pipes.composite.layout;
+        let bind = in_wgpu(|| {
+            device.create_bind_group(&wgpu::BindGroupDescriptor {
+                label: Some("composite"),
+                layout,
+                entries: &[
+                    wgpu::BindGroupEntry {
+                        binding: 0,
+                        resource: uniform.as_entire_binding(),
+                    },
+                    wgpu::BindGroupEntry {
+                        binding: 1,
+                        resource: wgpu::BindingResource::TextureView(&content_view),
+                    },
+                ],
+            })
+        });
+        self.dev.binds.composite.insert(cache_key, bind.clone());
+        bind
     }
 
     fn encode_composites(
@@ -1345,67 +1796,63 @@ impl Compositor {
     ) -> Result<(), GraphError> {
         let device = self.ctx.device().clone();
         let output = graph.target.size();
-        let mut draws = Vec::with_capacity(run.len());
+        let mut draws = std::mem::take(&mut f.scratch.draws);
+        draws.clear();
         for (i, &pi) in run.iter().enumerate() {
             let pass = &graph.passes[pi];
             let PassOp::Composite(c) = &pass.op else {
+                f.scratch.draws = draws;
                 return Err(GraphError::Invalid("not a composite".into()));
             };
-            let content = f.held[pass.inputs[1]]
+            let Some((content, content_key)) = f.scratch.held[pass.inputs[1]]
                 .as_ref()
-                .ok_or_else(|| GraphError::Invalid("composite content not ready".into()))?;
+                .map(|h| (h.texture.clone(), h.key))
+            else {
+                f.scratch.draws = draws;
+                return Err(GraphError::Invalid("composite content not ready".into()));
+            };
             let uniform = self.dev.uniform(&device, first_slot + i);
-            self.ctx.queue().write_buffer(
-                &uniform,
-                0,
-                &composite_uniforms(c, content.key, output).0,
-            );
-            let content_view = view(&content.texture, None);
-            let bind = device.create_bind_group(&wgpu::BindGroupDescriptor {
-                label: Some("composite"),
-                layout: &self.dev.pipes.composite.layout,
-                entries: &[
-                    wgpu::BindGroupEntry {
-                        binding: 0,
-                        resource: uniform.as_entire_binding(),
-                    },
-                    wgpu::BindGroupEntry {
-                        binding: 1,
-                        resource: wgpu::BindingResource::TextureView(&content_view),
-                    },
-                ],
-            });
+            let u = composite_uniforms(c, content_key, output);
+            in_wgpu(|| self.ctx.queue().write_buffer(&uniform, 0, u.as_bytes()));
+            let bind =
+                self.composite_bind(&device, first_slot + i, &content, content_key, &uniform);
             draws.push((bind, c.rect));
         }
-        let target = view(&canvas.texture, None);
+        let target = self.dev.full_view(&canvas.texture, canvas.key);
         let load = canvas
             .clear
             .take()
             .map_or(wgpu::LoadOp::Load, wgpu::LoadOp::Clear);
-        let mut rp = f.encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
-            label: Some("composite"),
-            color_attachments: &[Some(wgpu::RenderPassColorAttachment {
-                view: &target,
-                depth_slice: None,
-                resolve_target: None,
-                ops: wgpu::Operations {
-                    load,
-                    store: wgpu::StoreOp::Store,
-                },
-            })],
-            depth_stencil_attachment: None,
-            timestamp_writes: None,
-            occlusion_query_set: None,
-            multiview_mask: None,
-        });
-        rp.set_pipeline(&self.dev.pipes.composite.pipeline);
-        for (bind, rect) in &draws {
-            if rect[2] <= rect[0] || rect[3] <= rect[1] {
-                continue;
+        let pipeline = &self.dev.pipes.composite.pipeline;
+        in_wgpu(|| {
+            let mut rp = f.encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
+                label: Some("composite"),
+                color_attachments: &[Some(wgpu::RenderPassColorAttachment {
+                    view: &target,
+                    depth_slice: None,
+                    resolve_target: None,
+                    ops: wgpu::Operations {
+                        load,
+                        store: wgpu::StoreOp::Store,
+                    },
+                })],
+                depth_stencil_attachment: None,
+                timestamp_writes: None,
+                occlusion_query_set: None,
+                multiview_mask: None,
+            });
+            rp.set_pipeline(pipeline);
+            for (bind, rect) in &draws {
+                if rect[2] <= rect[0] || rect[3] <= rect[1] {
+                    continue;
+                }
+                rp.set_bind_group(0, bind, &[]);
+                rp.draw(0..6, 0..1);
             }
-            rp.set_bind_group(0, bind, &[]);
-            rp.draw(0..6, 0..1);
-        }
+        });
+        // The bind groups stay cached; the list keeps its capacity for the next run.
+        draws.clear();
+        f.scratch.draws = draws;
         Ok(())
     }
 }
@@ -1413,11 +1860,10 @@ impl Compositor {
 /// Per-frame execution state.
 struct Frame {
     encoder: wgpu::CommandEncoder,
-    /// The texture of each graph resource while it is live.
-    held: Vec<Option<Held>>,
-    /// Plane textures written this frame: back to the pool only after submit (queue writes run
-    /// before the submission's commands).
-    uploads: Vec<(TexKey, wgpu::Texture)>,
+    /// Bookkeeping lent by the compositor for this frame: the texture of each graph resource
+    /// while it is live, the plane textures written this frame (back to the pool only after
+    /// submit: queue writes run before the submission's commands), ordering and draw lists.
+    scratch: FrameScratch,
     /// The mappable readback buffer and its size.
     readback: Option<(wgpu::Buffer, u64)>,
     /// The pool slot and staging buffer of an asynchronous readback.
@@ -1426,26 +1872,33 @@ struct Frame {
 }
 
 /// Applies a pending clear with an empty render pass.
-fn flush_clear(encoder: &mut wgpu::CommandEncoder, held: &mut [Option<Held>], res: usize) {
+fn flush_clear(
+    dev: &mut DeviceState,
+    encoder: &mut wgpu::CommandEncoder,
+    held: &mut [Option<Held>],
+    res: usize,
+) {
     if let Some(h) = held[res].as_mut()
         && let Some(color) = h.clear.take()
     {
-        let v = view(&h.texture, None);
-        let _pass = encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
-            label: Some("clear"),
-            color_attachments: &[Some(wgpu::RenderPassColorAttachment {
-                view: &v,
-                depth_slice: None,
-                resolve_target: None,
-                ops: wgpu::Operations {
-                    load: wgpu::LoadOp::Clear(color),
-                    store: wgpu::StoreOp::Store,
-                },
-            })],
-            depth_stencil_attachment: None,
-            timestamp_writes: None,
-            occlusion_query_set: None,
-            multiview_mask: None,
+        let v = dev.full_view(&h.texture, h.key);
+        in_wgpu(|| {
+            let _pass = encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
+                label: Some("clear"),
+                color_attachments: &[Some(wgpu::RenderPassColorAttachment {
+                    view: &v,
+                    depth_slice: None,
+                    resolve_target: None,
+                    ops: wgpu::Operations {
+                        load: wgpu::LoadOp::Clear(color),
+                        store: wgpu::StoreOp::Store,
+                    },
+                })],
+                depth_stencil_attachment: None,
+                timestamp_writes: None,
+                occlusion_query_set: None,
+                multiview_mask: None,
+            });
         });
     }
 }

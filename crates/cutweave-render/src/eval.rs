@@ -18,10 +18,16 @@
 //!   sees NaN.
 //! * Anything that cannot be resolved (missing media, unrepresentable time) skips that clip
 //!   instead of failing: evaluation of a valid project never panics and never errors on content.
+//!
+//! **Repeated evaluation** (the preview render thread, arch §10): [`TimelineIndex`] flattens a
+//! sequence once per document revision into sorted arrays, and
+//! [`TimelineIndex::evaluate_into`] then fills a reused [`SceneDescription`] with exactly
+//! [`evaluate`]'s result and no heap allocation (the model's persistent trees allocate cursor
+//! stacks when walked once a track outgrows one node).
 
 use cutweave_model::{
-    Clip, Duration, Item, MediaAsset, MediaKind, Project, Sequence, SequenceId, StreamKind, Time,
-    Track, TrackKind, Vec2,
+    Clip, Color, Duration, FrameRate, Item, MediaAsset, MediaKind, Project, Sequence, SequenceId,
+    StreamKind, Time, Track, TrackId, TrackKind, Vec2,
 };
 
 use crate::{
@@ -49,6 +55,21 @@ impl core::fmt::Display for EvalError {
 
 impl core::error::Error for EvalError {}
 
+/// A scene of `sequence` at `t` with no layers or audio yet.
+fn empty_scene(seq: SequenceId, sequence: &Sequence, t: Time) -> SceneDescription {
+    let format = &sequence.format;
+    SceneDescription {
+        sequence: seq,
+        time: t,
+        width: format.width,
+        height: format.height,
+        frame_rate: format.frame_rate,
+        background: format.background,
+        layers: Vec::new(),
+        audio: Vec::new(),
+    }
+}
+
 /// Evaluates sequence `seq` of `project` at sequence time `t`.
 ///
 /// Times outside all content yield an empty scene (background only), never an error; an unknown
@@ -62,45 +83,190 @@ pub fn evaluate(
         .sequences
         .get(&seq)
         .ok_or(EvalError::UnknownSequence(seq))?;
-    let format = &sequence.format;
+    let mut scene = empty_scene(seq, sequence, t);
 
-    let mut layers = Vec::new();
     // `track_order` is top to bottom; compositing order is bottom first.
-    let top_down: Vec<&Track> = sequence.tracks_in_order().collect();
-    for track in top_down.into_iter().rev() {
+    for track in sequence
+        .track_order
+        .iter()
+        .rev()
+        .filter_map(|id| sequence.tracks.get(id))
+    {
         if track.kind != TrackKind::Video || track.hidden {
             continue;
         }
         if let Some(Item::Clip(clip)) = track.items.at(t)
-            && let Some(layer) = layer_at(project, track, clip, t)
+            && let Some(layer) = layer_at(media_of(project, clip), track.id, clip, t)
         {
-            layers.push(layer);
+            scene.layers.push(layer);
         }
     }
 
     let solo = any_solo(sequence);
-    let mut audio = Vec::new();
     for track in sequence.tracks_in_order() {
         if !audible(track, solo) {
             continue;
         }
         if let Some(Item::Clip(clip)) = track.items.at(t)
-            && let Some(a) = activation_at(project, track, clip, t)
+            && let Some(a) = activation_at(media_of(project, clip), track, clip, t)
         {
-            audio.push(a);
+            scene.audio.push(a);
+        }
+    }
+    Ok(scene)
+}
+
+/// One item of an [`IndexedTrack`].
+#[derive(Clone, Debug)]
+struct Entry {
+    start: Time,
+    /// `start + duration` in wide integers (an invalid document may overflow `Time`).
+    end: i128,
+    /// The clip and its media ([`media_of`]) when the item is a clip.
+    clip: Option<(Clip, Option<MediaAsset>)>,
+}
+
+/// A track's items in `(start, id)` order, with what evaluation reads of them.
+#[derive(Clone, Debug)]
+struct IndexedTrack {
+    id: TrackId,
+    gain: f64,
+    entries: Vec<Entry>,
+}
+
+impl IndexedTrack {
+    fn new(project: &Project, track: &Track) -> IndexedTrack {
+        let entries = track
+            .items
+            .iter()
+            .map(|item| Entry {
+                start: item.start(),
+                end: i128::from(item.start().flicks()) + i128::from(item.duration().flicks()),
+                clip: match item {
+                    Item::Clip(clip) => Some((clip.clone(), media_of(project, clip).cloned())),
+                    _ => None,
+                },
+            })
+            .collect();
+        IndexedTrack {
+            id: track.id,
+            gain: track.gain,
+            entries,
         }
     }
 
-    Ok(SceneDescription {
-        sequence: seq,
-        time: t,
-        width: format.width,
-        height: format.height,
-        frame_rate: format.frame_rate,
-        background: format.background,
-        layers,
-        audio,
-    })
+    /// The item playing at `t`, as `TrackItems::at` finds it: the last one (in `(start, id)`
+    /// order) starting at or before `t`, if `t` is before its end.
+    fn at(&self, t: Time) -> Option<&Entry> {
+        let after = self.entries.partition_point(|e| e.start <= t);
+        let entry = self.entries.get(after.checked_sub(1)?)?;
+        (i128::from(t.flicks()) < entry.end).then_some(entry)
+    }
+}
+
+/// A sequence flattened for repeated evaluation (see the module docs): build it when the
+/// document changes, then [`evaluate_into`](TimelineIndex::evaluate_into) any number of times.
+#[derive(Clone, Debug)]
+pub struct TimelineIndex {
+    sequence: SequenceId,
+    width: u32,
+    height: u32,
+    frame_rate: FrameRate,
+    background: Color,
+    /// Visible video tracks, bottom first.
+    video: Vec<IndexedTrack>,
+    /// Audible audio tracks (mute and solo applied), top first.
+    audio: Vec<IndexedTrack>,
+}
+
+impl TimelineIndex {
+    /// Indexes sequence `seq` of `project` (allocates; once per document revision).
+    pub fn new(project: &Project, seq: SequenceId) -> Result<TimelineIndex, EvalError> {
+        let sequence = project
+            .sequences
+            .get(&seq)
+            .ok_or(EvalError::UnknownSequence(seq))?;
+        let format = &sequence.format;
+        let video = sequence
+            .track_order
+            .iter()
+            .rev()
+            .filter_map(|id| sequence.tracks.get(id))
+            .filter(|track| track.kind == TrackKind::Video && !track.hidden)
+            .map(|track| IndexedTrack::new(project, track))
+            .collect();
+        let solo = any_solo(sequence);
+        let audio = sequence
+            .tracks_in_order()
+            .filter(|track| audible(track, solo))
+            .map(|track| IndexedTrack::new(project, track))
+            .collect();
+        Ok(TimelineIndex {
+            sequence: seq,
+            width: format.width,
+            height: format.height,
+            frame_rate: format.frame_rate,
+            background: format.background,
+            video,
+            audio,
+        })
+    }
+
+    /// The indexed sequence.
+    #[must_use]
+    pub fn sequence(&self) -> SequenceId {
+        self.sequence
+    }
+
+    /// The scene at `t`: the same as [`evaluate`] on the indexed project.
+    #[must_use]
+    pub fn evaluate(&self, t: Time) -> SceneDescription {
+        let mut scene = SceneDescription {
+            sequence: self.sequence,
+            time: t,
+            width: self.width,
+            height: self.height,
+            frame_rate: self.frame_rate,
+            background: self.background,
+            layers: Vec::new(),
+            audio: Vec::new(),
+        };
+        self.evaluate_into(t, &mut scene);
+        scene
+    }
+
+    /// [`TimelineIndex::evaluate`] into `scene`, replacing its content and reusing its
+    /// vectors: no heap allocation once they have grown to the most layers and sounds seen.
+    pub fn evaluate_into(&self, t: Time, scene: &mut SceneDescription) {
+        scene.sequence = self.sequence;
+        scene.time = t;
+        scene.width = self.width;
+        scene.height = self.height;
+        scene.frame_rate = self.frame_rate;
+        scene.background = self.background;
+        scene.layers.clear();
+        scene.audio.clear();
+        for track in &self.video {
+            if let Some(Entry {
+                clip: Some((clip, media)),
+                ..
+            }) = track.at(t)
+                && let Some(layer) = layer_at(media.as_ref(), track.id, clip, t)
+            {
+                scene.layers.push(layer);
+            }
+        }
+        for track in &self.audio {
+            if let Some(Entry {
+                clip: Some((clip, media)),
+                ..
+            }) = track.at(t)
+                && let Some(a) = activation_on(media.as_ref(), (track.id, track.gain), clip, t)
+            {
+                scene.audio.push(a);
+            }
+        }
+    }
 }
 
 /// The audible stretches of clips within the timeline range `[start, end)`, in track order
@@ -166,8 +332,9 @@ fn offset_in(clip: &Clip, t: Time) -> Option<(Duration, Time)> {
     Some((offset, rel))
 }
 
-fn layer_at(project: &Project, track: &Track, clip: &Clip, t: Time) -> Option<Layer> {
-    let media = media_of(project, clip)?;
+/// The layer `clip` (on track `track`, showing `media`: [`media_of`]) contributes at `t`.
+fn layer_at(media: Option<&MediaAsset>, track: TrackId, clip: &Clip, t: Time) -> Option<Layer> {
+    let media = media?;
     let still = match media.kind {
         MediaKind::Video => false,
         MediaKind::Image => true,
@@ -185,7 +352,7 @@ fn layer_at(project: &Project, track: &Track, clip: &Clip, t: Time) -> Option<La
     let tr = &clip.visual.transform;
     Some(Layer {
         item: clip.id,
-        track: track.id,
+        track,
         request: FrameRequest {
             media: clip.media,
             stream: stream.map(|s| s.index),
@@ -210,12 +377,22 @@ fn layer_at(project: &Project, track: &Track, clip: &Clip, t: Time) -> Option<La
 }
 
 fn activation_at(
-    project: &Project,
+    media: Option<&MediaAsset>,
     track: &Track,
     clip: &Clip,
     t: Time,
 ) -> Option<AudioActivation> {
-    let media = media_of(project, clip)?;
+    activation_on(media, (track.id, track.gain), clip, t)
+}
+
+/// The sound `clip` (on the track `(id, gain)`, playing `media`: [`media_of`]) makes at `t`.
+fn activation_on(
+    media: Option<&MediaAsset>,
+    (track, gain): (TrackId, f64),
+    clip: &Clip,
+    t: Time,
+) -> Option<AudioActivation> {
+    let media = media?;
     if !media.has_audio() || media.kind == MediaKind::SequenceRef {
         return None;
     }
@@ -223,12 +400,12 @@ fn activation_at(
     let speed = Speed::NORMAL;
     Some(AudioActivation {
         item: clip.id,
-        track: track.id,
+        track,
         media: clip.media,
         stream: first_stream(media, StreamKind::Audio).map(|s| s.index),
         source_time: speed.map(clip.source_in, clip.duration, offset)?,
         clip_gain_db: finite(*clip.audio.gain.value_at(rel), 0.0),
-        track_gain_db: finite(track.gain, 0.0),
+        track_gain_db: finite(gain, 0.0),
         reverse: speed.reverse,
         speed: (speed.num, speed.den),
     })
