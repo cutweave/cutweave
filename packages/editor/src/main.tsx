@@ -5,6 +5,8 @@ import "dockview-react/dist/styles/dockview.css";
 import "./app.css";
 import { StrictMode } from "react";
 import { createRoot } from "react-dom/client";
+import { agentToast } from "./agents/agentNames.ts";
+import { AgentNotices, agentsStore } from "./agents/agentsStore.ts";
 import { engineStore } from "./engine/engineStore.ts";
 import { bridgeFromWindow, startEngineRuntime } from "./engine/runtime.ts";
 import { appBridgeFromWindow, installTestHandleIfEnabled } from "./engine/testHandle.ts";
@@ -63,7 +65,23 @@ async function boot(): Promise<void> {
       bin: binStore,
       engine: engineStore,
       session: sessionStore,
+      agents: agentsStore,
     };
+    // A notice names an agent when it connects or disconnects (Settings > Notifications).
+    new AgentNotices({
+      notify: (notice) => {
+        if (prefsStore.getState().values["notify.agent_connected"]) {
+          toastStore
+            .getState()
+            .push(
+              agentToast(
+                notice,
+                (key, vars) => i18n.t(key as never, vars as never) as unknown as string,
+              ),
+            );
+        }
+      },
+    }).watch(agentsStore);
     const runtime = startEngineRuntime(bridge, stores, {
       // The engine could not autosave: say what it said and what to do (WP-1C.03, WP-1M.07).
       onAutosaveFailed: (message) =>

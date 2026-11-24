@@ -34,6 +34,33 @@ export interface PrefsBridge {
   onChanged(listener: (changes: PreferenceChanges) => void): () => void;
 }
 
+/** The agent hosts Settings > Agents and MCP has a setup for (WP-1J.05). */
+export const AGENT_CLIENTS = ["claude-code", "claude-desktop", "cursor", "codex", "stdio"] as const;
+export type AgentClient = (typeof AGENT_CLIENTS)[number];
+
+/** How agents connect to this window: the bundled CLI (null when this build has none). */
+export interface AgentConnectInfo {
+  readonly cliPath: string | null;
+  readonly setups: readonly { readonly client: AgentClient; readonly text: string }[];
+}
+
+/** "Add folder…": what happened to the folder the person picked in main's folder picker. */
+export type AgentFolderResult =
+  | { readonly status: "added" | "exists"; readonly folder: string }
+  | { readonly status: "full" | "invalid" | "cancelled" };
+
+/**
+ * Settings > Agents and MCP (`window.cutweave.agents`, WP-1J.05). Main owns the folder list:
+ * the page never names a folder agents may use, it only asks main to pick one or to remove a
+ * stored one. Main builds the client setups and writes the clipboard.
+ */
+export interface AgentsBridge {
+  addFolder(): Promise<AgentFolderResult>;
+  removeFolder(folder: string): Promise<void>;
+  connectInfo(): Promise<AgentConnectInfo>;
+  copySetup(client: AgentClient): Promise<string>;
+}
+
 /** Menu commands main sends (a subset of the desktop `MenuCommand`). */
 export type SessionMenuCommand = "new" | "open" | "save" | "saveAs" | "undo" | "redo";
 
@@ -75,6 +102,8 @@ export interface DesktopBridge {
   };
   /** App preferences, kept by main in `preferences.json` (WP-1M.11). */
   readonly prefs?: PrefsBridge;
+  /** Settings > Agents and MCP (WP-1J.05). */
+  readonly agents?: AgentsBridge;
   readonly edit?: {
     run(action: EditAction): Promise<void>;
   };

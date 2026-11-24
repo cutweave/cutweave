@@ -74,7 +74,9 @@
       "general": "General",
       "appearance": "Appearance",
       "saving": "Saving and backups",
-      "advanced": "Advanced"
+      "advanced": "Advanced",
+      "notifications": "Notifications",
+      "agents": "Agents and MCP"
     },
     "notices": {
       "unreadable": "That file could not be read.",
@@ -176,6 +178,77 @@
         "description": "Show the folder with Cutweave's log files, for bug reports.",
         "keywords": "diagnostics, debug, errors, support, show, open",
         "button": "Open logs folder"
+      },
+      "agentNotices": {
+        "label": "Agent connections",
+        "description": "Show a notice when an agent connects to this window or disconnects.",
+        "keywords": "notify, notice, toast, agent, MCP, connected, disconnected, alert"
+      },
+      "agentStatus": {
+        "label": "Connection",
+        "description": "Whether agents on this computer can reach this window.",
+        "keywords": "agent, MCP, connect, status, attach, AI",
+        "ready": "Agents can connect to this window",
+        "readyHint": "An agent started with a setup below edits the project in the window you used last.",
+        "noEngine": "Agents cannot connect right now: the engine is not running",
+        "noCli": "Agents cannot connect: this build has no cutweave command-line tool"
+      },
+      "agentFolders": {
+        "label": "Folders agents can use",
+        "description": "Agents may import media from, open projects in and save into these folders. The open project's folder is always allowed.",
+        "keywords": "agent, MCP, folder, allow, access, path, import, permission, allow-root",
+        "add": "Add folder…",
+        "remove": "Remove {{name}}",
+        "empty": "No folders yet: agents can use the open project's folder only.",
+        "project": "{{path}} (the open project, always allowed)",
+        "added": "Agents can use {{folder}} now.",
+        "exists": "{{folder}} is already in the list.",
+        "full": "The list is full. Remove a folder first.",
+        "invalid": "That folder cannot be used: it does not exist any more.",
+        "removed": "Agents can no longer use {{folder}}."
+      },
+      "clientProfile": {
+        "label": "Tools in copied setups",
+        "description": "How many tools an agent sees: Minimal suits small context windows, Full lists everything.",
+        "keywords": "agent, MCP, profile, tools, minimal, standard, full, context",
+        "minimal": "Minimal",
+        "standard": "Standard",
+        "full": "Full"
+      },
+      "connectClient": {
+        "label": "Connect a client",
+        "description": "Copy the setup for your agent app. It starts Cutweave's command-line tool, which connects to this window; no port or password is needed.",
+        "keywords": "agent, MCP, Claude Code, Claude Desktop, Cursor, Codex, stdio, setup, config, connect, copy",
+        "clients": {
+          "claude-code": "Claude Code",
+          "claude-desktop": "Claude Desktop",
+          "cursor": "Cursor",
+          "codex": "Codex",
+          "stdio": "Other (stdio)"
+        },
+        "where": {
+          "claude-code": "Run this in a terminal.",
+          "claude-desktop": "Add this to claude_desktop_config.json (Settings, Developer, Edit Config), then restart Claude Desktop.",
+          "cursor": "Add this to ~/.cursor/mcp.json, or .cursor/mcp.json in a project.",
+          "codex": "Add this to ~/.codex/config.toml.",
+          "stdio": "Any MCP client: start this command as a stdio server."
+        },
+        "clientLabel": "Client",
+        "setupLabel": "Setup for {{client}}",
+        "copy": "Copy",
+        "copied": "Copied the {{client}} setup.",
+        "copyFailed": "The setup could not be copied.",
+        "none": "No setup to copy: this build has no cutweave command-line tool."
+      },
+      "connectedAgents": {
+        "label": "Connected agents",
+        "description": "The agents connected to this window now, and the last thing each asked for.",
+        "keywords": "agent, MCP, connected, who, sessions, last command, activity",
+        "none": "No agent is connected.",
+        "listLabel": "Connected agents",
+        "since": "Connected at {{time}}",
+        "last": "Last: {{command}} at {{time}}",
+        "lastNone": "No command yet"
       }
     },
     "resultCount": "{{count}} found"
@@ -699,6 +772,17 @@
     "lost": {
       "title": "Export stopped",
       "message": "The engine restarted. Start the export again."
+    }
+  },
+  "agentUi": {
+    "connectedTitle": "Agent connected",
+    "connected": "{{name}} is connected to this window and can edit the project.",
+    "disconnectedTitle": "Agent disconnected",
+    "disconnected": "{{name}} is no longer connected.",
+    "named": "{{kind}} ({{actor}})",
+    "names": {
+      "mcp": "MCP client",
+      "cli": "Command line"
     }
   }
 }

@@ -27,6 +27,7 @@ test("the page main world has no Node access, only window.cutweave", async ({ pa
     buffer: "undefined",
     ipcRenderer: "undefined",
     cutweave: [
+      "agents",
       "app",
       "dialog",
       "edit",

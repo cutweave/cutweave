@@ -6,6 +6,7 @@ import nodePath from "node:path";
 import type { PreferenceKey } from "../../../../packages/preferences/src/index.ts";
 import type {
   AboutInfo,
+  AgentConnectInfo,
   AppFolder,
   AppInfo,
   EditAction,
@@ -49,6 +50,28 @@ export interface HandlerDeps {
   readTextFile(file: string, maxBytes: number): string | null;
   /** Shows the app's settings folder or logs folder in the OS file manager. */
   openAppFolder(which: AppFolder): Promise<void>;
+  /** Settings > Agents and MCP (WP-1J.05). */
+  agents: {
+    /** The OS folder picker for a folder agents may use; the chosen path or null. */
+    chooseFolder(): Promise<string | null>;
+    /** The chosen folder resolved and checked (an existing folder), or not. */
+    resolveFolder(chosen: string): { ok: true; folder: string } | { ok: false };
+    /** The stored folders (`agents.allowed_folders`). */
+    folders(): readonly string[];
+    /** `folder` added to the stored folders (or why not), without storing it yet. */
+    add(
+      folders: readonly string[],
+      folder: string,
+    ):
+      | { status: "added"; folder: string; folders: string[] }
+      | { status: "exists"; folder: string }
+      | { status: "full" }
+      | { status: "invalid" };
+    /** Stores the folders; resolves once the engine applied them (or was not running). */
+    store(folders: readonly string[]): Promise<void>;
+    connectInfo(): AgentConnectInfo;
+    writeClipboard(text: string): void;
+  };
   /** The editor's unsaved-changes flag, for the window-close guard. */
   setWindowDirty(dirty: boolean): void;
   /** The editor settled unsaved changes: close the window without asking again. */
@@ -252,6 +275,30 @@ export function createHandlers(deps: HandlerDeps): InvokeHandlers {
     },
     "shell:openAppFolder": async (which) => {
       await deps.openAppFolder(which);
+    },
+    "agents:addFolder": async () => {
+      const chosen = await deps.agents.chooseFolder();
+      if (chosen === null) return { status: "cancelled" };
+      // Re-check what comes back from the dialog layer: one existing folder, resolved.
+      const resolved = deps.agents.resolveFolder(chosen);
+      if (!resolved.ok) return { status: "invalid" };
+      const outcome = deps.agents.add(deps.agents.folders(), resolved.folder);
+      if (outcome.status !== "added") return outcome;
+      await deps.agents.store(outcome.folders);
+      return { status: "added", folder: outcome.folder };
+    },
+    "agents:removeFolder": async (folder) => {
+      const folders = deps.agents.folders();
+      // Only a stored folder can be named; nothing is ever added this way.
+      if (!folders.includes(folder)) return;
+      await deps.agents.store(folders.filter((f) => f !== folder));
+    },
+    "agents:connectInfo": () => deps.agents.connectInfo(),
+    "agents:copySetup": (client) => {
+      const setup = deps.agents.connectInfo().setups.find((s) => s.client === client);
+      if (setup === undefined) throw new Error("there is no command-line tool to set up");
+      deps.agents.writeClipboard(setup.text);
+      return setup.text;
     },
   };
 }

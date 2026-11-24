@@ -113,6 +113,8 @@ describe("Settings: the frame", () => {
       "General:true",
       "Appearance:false",
       "Saving and backups:false",
+      "Notifications:false",
+      "Agents and MCP:false",
       "Advanced:false",
     ]);
     expect(within(settings).getByText("Preferences")).toBeTruthy();

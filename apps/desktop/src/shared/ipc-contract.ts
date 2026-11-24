@@ -6,6 +6,9 @@
 import type { PreferenceChanges } from "../../../../packages/preferences/src/index.ts";
 import {
   type AboutInfo,
+  type AgentClient,
+  type AgentConnectInfo,
+  type AgentFolderResult,
   type AppFolder,
   type AppInfo,
   type EditAction,
@@ -57,6 +60,14 @@ export interface InvokeChannels {
   "prefs:export": { args: []; result: PrefsExportResult };
   "prefs:import": { args: []; result: PrefsImportResult };
   "shell:openAppFolder": { args: [which: AppFolder]; result: undefined };
+  // Settings > Agents and MCP (WP-1J.05).
+  /** Main's folder picker; the chosen folder, resolved, joins `agents.allowed_folders`. */
+  "agents:addFolder": { args: []; result: AgentFolderResult };
+  /** Removes a stored folder (a path not in the list changes nothing). */
+  "agents:removeFolder": { args: [folder: string]; result: undefined };
+  "agents:connectInfo": { args: []; result: AgentConnectInfo };
+  /** Main writes the client's setup to the clipboard and returns it. */
+  "agents:copySetup": { args: [client: AgentClient]; result: string };
 }
 
 /** Main -> renderer events (`webContents.send`). */

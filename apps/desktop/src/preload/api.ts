@@ -207,6 +207,12 @@ export function createCutweaveApi(
           : undefined,
       ),
     },
+    agents: {
+      addFolder: () => invoke("agents:addFolder"),
+      removeFolder: (folder) => invoke("agents:removeFolder", folder),
+      connectInfo: () => invoke("agents:connectInfo"),
+      copySetup: (client) => invoke("agents:copySetup", client),
+    },
     shell: {
       openAppFolder: (which) => invoke("shell:openAppFolder", which),
       showItemInFolder: (path) => invoke("shell:showItemInFolder", path),

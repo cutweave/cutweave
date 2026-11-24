@@ -5,8 +5,12 @@
 // functions only; there is no generic `invoke(channel, ...)` anywhere on the bridge.
 
 import { z } from "zod";
-import { isPreferenceKey, validatePreference } from "../../../../packages/preferences/src/index.ts";
-import { APP_FOLDERS, EDIT_ACTIONS, THEMES } from "../shared/api.ts";
+import {
+  isPreferenceKey,
+  isRendererWritable,
+  validatePreference,
+} from "../../../../packages/preferences/src/index.ts";
+import { AGENT_CLIENTS, APP_FOLDERS, EDIT_ACTIONS, THEMES } from "../shared/api.ts";
 import type { InvokeChannel, InvokeChannels } from "../shared/ipc-contract.ts";
 import {
   isTrustedOrigin,
@@ -47,10 +51,16 @@ const externalUrl = z
 /**
  * One preference write: a known key and a value of its type and range. The schema is the one the
  * editor imports (packages/preferences), so a value the dialog cannot produce is refused here.
+ * Keys only main writes ("Folders agents can use", WP-1J.05) are refused: the renderer never
+ * names a folder agents may use; main's own folder picker adds them (`agents:addFolder`).
  */
 const preferenceWrite = z
   .tuple([z.string().max(128), z.unknown()])
   .superRefine(([key, value], context) => {
+    if (isPreferenceKey(key) && !isRendererWritable(key)) {
+      context.addIssue({ code: "custom", message: `${key}: only the app's own dialogs change it` });
+      return;
+    }
     const checked = validatePreference(key, value);
     if (!checked.ok) context.addIssue({ code: "custom", message: `${key}: ${checked.reason}` });
   });
@@ -84,6 +94,10 @@ export const invokeSchemas = {
   "prefs:export": noArgs,
   "prefs:import": noArgs,
   "shell:openAppFolder": z.tuple([z.enum(APP_FOLDERS)]),
+  "agents:addFolder": noArgs,
+  "agents:removeFolder": z.tuple([filePath]),
+  "agents:connectInfo": noArgs,
+  "agents:copySetup": z.tuple([z.enum(AGENT_CLIENTS)]),
 } as const satisfies { [K in InvokeChannel]: z.ZodType<InvokeChannels[K]["args"]> };
 
 export const INVOKE_CHANNELS = Object.keys(invokeSchemas) as InvokeChannel[];

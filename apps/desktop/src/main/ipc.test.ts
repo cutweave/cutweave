@@ -50,6 +50,10 @@ const handlers = (): InvokeHandlers => ({
   "prefs:export": vi.fn(() => ({ status: "cancelled" as const })),
   "prefs:import": vi.fn(() => ({ status: "cancelled" as const })),
   "shell:openAppFolder": vi.fn(),
+  "agents:addFolder": vi.fn(() => ({ status: "cancelled" as const })),
+  "agents:removeFolder": vi.fn(),
+  "agents:connectInfo": vi.fn(() => ({ cliPath: null, setups: [] })),
+  "agents:copySetup": vi.fn(() => ""),
 });
 
 type Listener = (e: IpcEventLike, ...a: unknown[]) => unknown;
@@ -154,6 +158,41 @@ describe("ipc registry", () => {
     }
     expect(() => call("prefs:set", okEvent, "appearance.theme")).toThrow(IpcValidationError);
     expect(h["prefs:set"]).toHaveBeenCalledTimes(2);
+  });
+
+  it("never lets the renderer write the folders agents may use (WP-1J.05)", () => {
+    const h = handlers();
+    const call = register(h);
+    for (const value of [["C:\\Users"], ["/home/me"], []]) {
+      expect(() => call("prefs:set", okEvent, "agents.allowed_folders", value)).toThrow(
+        IpcValidationError,
+      );
+    }
+    expect(h["prefs:set"]).not.toHaveBeenCalled();
+    // The rows a person may set, and resetting the folders (which only takes access away).
+    call("prefs:set", okEvent, "agents.client_profile", "minimal");
+    call("prefs:set", okEvent, "notify.agent_connected", false);
+    call("prefs:reset", okEvent, ["agents.allowed_folders"]);
+    expect(h["prefs:reset"]).toHaveBeenCalledWith(["agents.allowed_folders"]);
+  });
+
+  it("takes no folder to add, one bounded folder to remove and a known client to copy", () => {
+    const h = handlers();
+    const call = register(h);
+    expect(() => call("agents:addFolder", okEvent, "C:\\Users")).toThrow(IpcValidationError);
+    call("agents:addFolder", okEvent);
+    expect(h["agents:addFolder"]).toHaveBeenCalledWith();
+    call("agents:removeFolder", okEvent, "/footage");
+    expect(h["agents:removeFolder"]).toHaveBeenCalledWith("/footage");
+    for (const bad of ["", "a\0b", "x".repeat(5000), 3]) {
+      expect(() => call("agents:removeFolder", okEvent, bad)).toThrow(IpcValidationError);
+    }
+    expect(() => call("agents:connectInfo", okEvent, "x")).toThrow(IpcValidationError);
+    call("agents:copySetup", okEvent, "claude-code");
+    expect(h["agents:copySetup"]).toHaveBeenCalledWith("claude-code");
+    for (const bad of ["bash", "claude code --pid 1", 1]) {
+      expect(() => call("agents:copySetup", okEvent, bad)).toThrow(IpcValidationError);
+    }
   });
 
   it("resets only known keys, and takes no arguments to read, export or import", () => {

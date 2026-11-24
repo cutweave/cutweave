@@ -4,6 +4,7 @@ import { PREFERENCE_KEYS } from "@cutweave/preferences";
 import { afterEach, describe, expect, it } from "vitest";
 import { i18n, type TKey } from "../i18n/index.ts";
 import "./core.ts";
+import "./agents.tsx";
 import {
   pageKeys,
   registeredKeys,
@@ -54,11 +55,14 @@ describe("the registry and the catalog", () => {
     expect(new Set(ids).size).toBe(ids.length);
   });
 
-  it("ships General, Appearance, Saving and backups and Advanced, in the catalog's order", () => {
+  it("ships its pages in the catalog's order", () => {
     expect(settingsPages().map((p) => p.id)).toEqual([
       "general",
       "appearance",
       "saving",
+      // WP-1J.05
+      "notifications",
+      "agents",
       "advanced",
     ]);
   });
@@ -100,6 +104,8 @@ describe("registering pages and rows", () => {
       "appearance",
       "export",
       "saving",
+      "notifications",
+      "agents",
       "advanced",
     ]);
     offs.push(
@@ -110,7 +116,9 @@ describe("registering pages and rows", () => {
       "appearance",
       "export",
       "saving",
+      "notifications",
       "ai",
+      "agents",
       "advanced",
     ]);
   });

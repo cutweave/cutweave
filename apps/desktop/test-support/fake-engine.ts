@@ -7,8 +7,8 @@
 // HTTP: `/rpc` answers 401 without `Authorization: Bearer <token>`; everything else 200.
 // WebSocket `/rpc` (token as subprotocol `cutweave.token.<t>` or bearer): `rpc.hello` (with this
 // build's schema hash), `rpc.subscribe`, `project.open`, `project.recover`, and empty answers to
-// the editor's start-up reads (`project.snapshot`, `view.get`, `job.list`); anything else is
-// `not_found`.
+// the editor's start-up reads (`project.snapshot`, `view.get`, `job.list`, `project.connections`)
+// and to `project.set_allowed_roots`; anything else is `not_found`.
 // Test knobs: FAKE_ENGINE_MODE=no-ready | exit-early | crash-after-ready;
 // FAKE_ENGINE_EXIT=<code> prints the protocol's error line and exits with it after the
 // handshake; FAKE_ENGINE_RECOVERY=1 makes a `--project` start report unsaved work to recover;
@@ -407,6 +407,13 @@ function handle(client: Client, text: string): void {
       return;
     case "job.list":
       ok({ jobs: [...jobs.values()].map(jobInfo), active: 0 });
+      return;
+    // Settings > Agents and MCP (WP-1J.05): no agent ever connects to the fake.
+    case "project.connections":
+      ok({ connections: [] });
+      return;
+    case "project.set_allowed_roots":
+      ok({ roots: Array.isArray(params?.roots) ? params.roots : [] });
       return;
     case "media.capabilities":
       ok({
