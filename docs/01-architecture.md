@@ -332,7 +332,7 @@ All surfaces live on **one local server per engine** (axum on `127.0.0.1`, rando
 |---|---|---|---|
 | JSON-RPC 2.0 | `ws://127.0.0.1:P/rpc` | Desktop UI, scripts | Commands, queries, event subscriptions; MessagePack upgrade later if needed |
 | MCP | `http://127.0.0.1:P/mcp` (Streamable HTTP) and stdio via `cutweave mcp` | AI agents | rmcp; §14 |
-| Media HTTP | `GET /media/{id}/thumb?t=&w=`, `/filmstrip`, `/waveform?lod=`, `/frame?seq=&t=&w=&fmt=jpeg` | UI `<img>`/canvas, agents | Cacheable, content-hashed ETags |
+| Media HTTP | `GET /media/{id}/thumb?t=&w=`, `/filmstrip`, `/waveform?lod=`, `/media/frame?seq=&t=&w=&h=&fmt=jpeg` | UI `<img>`/canvas, agents | Cacheable, content-hashed ETags |
 | Preview SHM | named shared memory ring buffer | Desktop UI (preload addon) | §10 |
 | CLI | `cutweave exec '<json>'`, `cutweave query …`, `cutweave render …` | Humans, CI, scripts | Attaches to the running engine or spawns headless |
 
@@ -459,7 +459,7 @@ flowchart LR
 - **Wire.** `playback.state` is sent at most 30 times a second. The `view.play`, `view.pause`, `view.seek`, `view.set_rate`, `view.step` and `view.set_preview_size` engine commands drive the transport; `view.set_preview_size` is hidden from MCP.
 - **Threads.** The render thread takes no locks and makes no per-frame heap allocation (a counting-allocator test enforces this). Its frames come through the `FrameSource` seam: synthetic frames until WP-1I.05 connects the real renderer (R31).
 
-The upgrade path, behind a feature flag once proven, is zero-copy GPU texture sharing into Chromium via Electron's shared-texture import. **Fallback** for remote or non-Electron clients is JPEG frames over `/media/frame`.
+The upgrade path, behind a feature flag once proven, is zero-copy GPU texture sharing into Chromium via Electron's shared-texture import. **Fallback** is JPEG frames over `/media/frame`: for remote or non-Electron clients, and locally when WebGPU is unavailable or fails, when no ring is announced, or when `CUTWEAVE_PREVIEW=jpeg` forces it (CI without a GPU). The client polls at ≤ 15 fps and shows a reduced-mode banner (WP-1M.04).
 
 ---
 

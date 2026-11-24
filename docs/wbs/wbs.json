@@ -2571,10 +2571,10 @@
         "WP-1I.01",
         "WP-1I.05"
       ],
-      "scope": "- `GET /media/{id}/thumb?t=&w=`, `/media/{id}/filmstrip?w=&h=&count=`, `/media/{id}/waveform?lod=&start=&end=` (binary peaks or PNG via `fmt=png`), `/frame?seq=&t=&w=&fmt=jpeg|png` (uses `render.frame`); all authenticated (header or short-lived URL token param); validate params (bounds, `w` ≤ 4096); content-hash **ETag** + `Cache-Control: private, max-age=31536000, immutable` when keyed by content hash and `If-None-Match → 304`; range requests not needed.\n- Concurrency limits (semaphore) and request cancellation when the client disconnects.\n- 404 for unknown media; 422 with JSON error for bad params.",
+      "scope": "- `GET /media/{id}/thumb?t=&w=`, `/media/{id}/filmstrip?w=&h=&count=`, `/media/{id}/waveform?lod=&start=&end=` (binary peaks or PNG via `fmt=png`), `/media/frame?seq=&t=&w=&h=&fmt=jpeg|png` (uses `render.frame`; the preview's JPEG fallback from WP-1M.04 calls it with `t` floored to the frame grid in integer flicks, even `w`/`h`, the token in `Authorization: Bearer`, and a CORS preflight from `app://cutweave` that must allow `authorization`); all authenticated (header or short-lived URL token param); validate params (bounds, `w` ≤ 4096); content-hash **ETag** + `Cache-Control: private, max-age=31536000, immutable` when keyed by content hash and `If-None-Match → 304`; range requests not needed.\n- Concurrency limits (semaphore) and request cancellation when the client disconnects.\n- 404 for unknown media; 422 with JSON error for bad params.",
       "interfaces": "routes above; `docs/reference/http-media.md`.",
       "acceptance": [
-        "Integration test with corpus: thumb returns decodable JPEG of requested width; repeated request with `If-None-Match` → 304 with 0 decodes; `/frame` for t=2 s returns the same bytes as `render.frame` query.",
+        "Integration test with corpus: thumb returns decodable JPEG of requested width; repeated request with `If-None-Match` → 304 with 0 decodes; `/media/frame` for t=2 s returns the same bytes as `render.frame` query.",
         "Disconnecting mid-request cancels the decode within 100 ms (test).",
         "Requests without token → 401; `w=100000` → 422."
       ],
