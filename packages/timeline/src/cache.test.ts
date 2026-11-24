@@ -96,6 +96,42 @@ describe("LoadingCache", () => {
     expect(cache.pending).toBe(0);
   });
 
+  it("aborts a running load the last full frame did not want; partial frames keep it", async () => {
+    const { cache } = make();
+    const signals = new Map<string, AbortSignal>();
+    const finishers = new Map<string, (v: { n: number }) => void>();
+    const slow = (key: string) => (s: AbortSignal) => {
+      signals.set(key, s);
+      return new Promise<{ n: number }>((r) => finishers.set(key, r));
+    };
+    cache.beginFrame();
+    cache.get("a", slow("a"));
+    cache.get("b", slow("b"));
+    await tick();
+    // Partial redraws (the playhead) ask for nothing: nothing is aborted.
+    cache.beginFrame(false);
+    cache.beginFrame(false);
+    cache.beginFrame(false);
+    expect(signals.get("a")?.aborted).toBe(false);
+    // A full frame still wants `a` (it is on screen) but not `b` (scrolled away)...
+    cache.beginFrame();
+    cache.get("a", slow("a"));
+    expect(signals.get("b")?.aborted).toBe(false);
+    // ...so the next full frame aborts `b` only.
+    cache.beginFrame();
+    expect(signals.get("a")?.aborted).toBe(false);
+    expect(signals.get("b")?.aborted).toBe(true);
+    finishers.get("b")?.({ n: 2 });
+    finishers.get("a")?.({ n: 1 });
+    await tick();
+    expect(cache.has("a")).toBe(true);
+    // An aborted load is not a failure: asking again loads it again.
+    expect(cache.has("b")).toBe(false);
+    cache.get("b", slow("b2"));
+    await tick();
+    expect(signals.has("b2")).toBe(true);
+  });
+
   it("aborts in-flight loads and discards their results on clear", async () => {
     const { cache, dispose } = make();
     let signal: AbortSignal | undefined;

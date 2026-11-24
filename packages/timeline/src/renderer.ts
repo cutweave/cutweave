@@ -178,12 +178,13 @@ export class TimelineRenderer {
     s.drawCalls = s.visibleItems = s.visibleKeyframes = s.tiles = s.labels = s.tracksDrawn = 0;
     this.labelsLeft = MAX_LABELS;
     this.measure(ctx, th);
-    f.caches.beginFrame();
 
     ctx.setTransform(f.dpr, 0, 0, f.dpr, 0, 0);
     ctx.save();
     const full: Rect = { x: 0, y: 0, w: vp.width, h: vp.height };
     const reg = f.region ? intersect(f.region, full) : full;
+    // Only a full frame asks for every visible tile, so only it may cancel loads that scrolled away.
+    f.caches.beginFrame(reg.x <= 0 && reg.y <= 0 && reg.w >= full.w && reg.h >= full.h);
     if (reg.w <= 0 || reg.h <= 0) {
       ctx.restore();
       return;

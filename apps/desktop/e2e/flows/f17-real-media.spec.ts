@@ -1,21 +1,22 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
-// F17 Real media (docs/user-flows.md; WP-1I.05): F3-F5 with real decoding instead of the dev
-// stub. Import H.264 1080p60, HEVC 10-bit and the rotated VFR phone clip from the corpus: the
-// cards show what FFmpeg probed (codec, size, frame rate, duration) and the engine analyses each
-// file in the background (frame index, thumbnails and filmstrip, waveform). Place two clips, play
-// across the cut, and step frame by frame: every step shows its own picture, and stepping back
-// shows the same pictures again (frame-accurate preview from the decoder pool).
+// F17 Real media (docs/user-flows.md; WP-1I.05, WP-1I.03): F3-F5 with real decoding instead of
+// the dev stub. Import H.264 1080p60, HEVC 10-bit and the rotated VFR phone clip from the corpus:
+// the cards show what FFmpeg probed (codec, size, frame rate, duration) and the engine analyses
+// each file in the background (frame index, thumbnails and filmstrip, waveform). The cards then
+// show real thumbnails, and once two clips are placed the video clip draws a filmstrip and the
+// phone clip's sound (its linked audio clip) a waveform: all checked from the pixels on screen,
+// against the flat placeholder tiles. Then play across the cut and step frame by frame: every
+// step shows its own picture, and stepping back shows the same pictures again (frame-accurate
+// preview from the decoder pool).
 //
-// Not yet visible: the cards' thumbnails and the timeline's waveforms are generated into the
-// cache here, but reach the UI through the `/media` HTTP routes of WP-1I.03 (the cards draw
-// their placeholder tile until then). Needs an engine built with FFmpeg (`just e2e-flows`
-// builds it when the bundle is set up) and the fetched corpus (`just corpus`); without either
-// the flow skips and says why.
+// Needs an engine built with FFmpeg (`just e2e-flows` builds it when the bundle is set up) and
+// the fetched corpus (`just corpus`); without either the flow skips and says why.
 import { createHash } from "node:crypto";
 import type { Page } from "@playwright/test";
 import { editorCall, expect, test } from "../fixtures.ts";
 import { copyCorpusClips, corpusDir } from "./export-helpers.ts";
 import {
+  clipBox,
   createProject,
   dropCard,
   editorCaughtUp,
@@ -28,6 +29,7 @@ import {
   rulerY,
   sec,
   snapshot,
+  type TimelineGeometry,
   timecode,
   timelineGeometry,
   workspace,
@@ -62,6 +64,69 @@ async function previewHash(page: Page): Promise<string> {
     caret: "initial",
   });
   return createHash("sha1").update(png).digest("hex");
+}
+
+interface PixelStats {
+  /** Colours in the region, quantized to 4 bits a channel. */
+  readonly colours: number;
+  /** Share of the pixels that have the most common of them. */
+  readonly dominant: number;
+}
+
+type Region = { x: number; y: number; width: number; height: number };
+
+/**
+ * What the person sees in `region` of the window: a screenshot, decoded and counted. The
+ * placeholders (a card's icon tile, a clip body without tiles or peaks) are flat: one colour
+ * covers nearly all of it. A video frame, a filmstrip or a waveform is not.
+ */
+async function pixels(page: Page, region: Region): Promise<PixelStats> {
+  const png = await page.screenshot({
+    clip: {
+      x: Math.round(region.x),
+      y: Math.round(region.y),
+      width: Math.max(1, Math.round(region.width)),
+      height: Math.max(1, Math.round(region.height)),
+    },
+    animations: "allow",
+    caret: "initial",
+  });
+  // Decoded in the page (the test has no PNG decoder); only reads the screenshot's bytes.
+  return page.evaluate(async (base64) => {
+    const bytes = Uint8Array.from(atob(base64), (c) => c.charCodeAt(0));
+    const bitmap = await createImageBitmap(new Blob([bytes], { type: "image/png" }));
+    const canvas = new OffscreenCanvas(bitmap.width, bitmap.height);
+    const ctx = canvas.getContext("2d");
+    if (ctx === null) throw new Error("no 2D context");
+    ctx.drawImage(bitmap, 0, 0);
+    const { data } = ctx.getImageData(0, 0, bitmap.width, bitmap.height);
+    const counts = new Map<number, number>();
+    for (let i = 0; i < data.length; i += 4) {
+      const key =
+        (((data[i] ?? 0) >> 4) << 8) | (((data[i + 1] ?? 0) >> 4) << 4) | ((data[i + 2] ?? 0) >> 4);
+      counts.set(key, (counts.get(key) ?? 0) + 1);
+    }
+    return { colours: counts.size, dominant: Math.max(...counts.values()) / (data.length / 4) };
+  }, png.toString("base64"));
+}
+
+/** A card's picture area. */
+async function cardThumb(page: Page, name: string): Promise<Region> {
+  const box = await mediaCard(page, name).locator(".cw-media__thumb").boundingBox();
+  if (box === null) throw new Error(`the card of ${name} has no picture area`);
+  return box;
+}
+
+/**
+ * The start of the lower part of a clip's body on the timeline (under its name), where the
+ * filmstrip tiles and the waveform are drawn: 200 px from just inside its left end, clear of
+ * the notices in the window's corner.
+ */
+function clipBody(g: TimelineGeometry, itemId: string): Region {
+  const clip = clipBox(g, itemId);
+  const left = Math.max(clip.x + 8, g.box.x + g.headerWidth + 4);
+  const right = Math.min(clip.x + clip.w - 8, g.box.x + g.box.width - 4, left + 200);
+  return { x: left, y: clip.y + 1, width: right - left, height: 16 };
 }
 
 /** Resolves once `read` gives the same answer twice in a row. */
@@ -150,6 +215,21 @@ test.describe("F17 real media", () => {
           .toBe(expected);
       }
 
+      // The cards show a real picture of each file, not the icon tile.
+      for (const name of [H264, HEVC, PHONE]) {
+        await expect(mediaCard(page, name).locator("img.cw-media__thumb-img")).toBeVisible({
+          timeout: 30_000,
+        });
+        await expect
+          .poll(async () => (await pixels(page, await cardThumb(page, name))).dominant, {
+            timeout: 30_000,
+            message: `the thumbnail of ${name}`,
+          })
+          .toBeLessThan(0.6);
+        expect((await pixels(page, await cardThumb(page, name))).colours).toBeGreaterThan(24);
+      }
+      await snapshot(page, info, "thumbnails");
+
       // Place the HEVC clip, then the phone clip right after it.
       await dropCard(page, HEVC, "V1", 0);
       await expect.poll(async () => (await layout(page))[0]?.clips.length ?? 0).toBe(1);
@@ -160,12 +240,37 @@ test.describe("F17 real media", () => {
       await expect.poll(async () => (await layout(page))[0]?.clips.length ?? 0).toBe(2);
       await editorCaughtUp(page);
 
+      // The video clip draws a filmstrip of its frames; the phone clip's sound (its linked
+      // audio clip) draws a waveform. Without them both bodies are flat.
+      const placed = await timelineGeometry(page);
+      const video = placed.tracks.find((t) => t.name === "V1")?.items[0];
+      const sound = placed.tracks
+        .find((t) => t.kind === "audio" && t.items.length > 0)
+        ?.items.find((i) => Math.abs(i.start - sec(first)) < sec(0.05));
+      if (video === undefined || sound === undefined) {
+        throw new Error("the HEVC clip or the phone clip's sound is not on the timeline");
+      }
+      await expect
+        .poll(async () => (await pixels(page, clipBody(placed, video.id))).dominant, {
+          timeout: 30_000,
+          message: "the filmstrip of the HEVC clip",
+        })
+        .toBeLessThan(0.6);
+      expect((await pixels(page, clipBody(placed, video.id))).colours).toBeGreaterThan(24);
+      await expect
+        .poll(async () => (await pixels(page, clipBody(placed, sound.id))).dominant, {
+          timeout: 30_000,
+          message: "the waveform of the phone clip's sound",
+        })
+        .toBeLessThan(0.97);
+      await snapshot(page, info, "filmstrip and waveform");
+
       // The preview streams the real frames.
       const surface = page.locator(".cw-preview__surface");
       await expect(surface).toHaveAttribute("data-path", /^(gpu|jpeg)$/, { timeout: 20_000 });
       test.skip(
         (await surface.getAttribute("data-path")) !== "gpu",
-        "the preview fell back to still frames; the JPEG path needs /media/frame (WP-1I.03)",
+        "the preview fell back to still frames (JPEG); the playback and step checks are for the frame ring",
       );
       await expect(surface).toHaveAttribute("data-live", "true", { timeout: 30_000 });
 

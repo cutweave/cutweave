@@ -802,6 +802,7 @@ dependencies = [
  "cutweave-jobs",
  "cutweave-model",
  "cutweave-ops",
+ "form_urlencoded",
  "futures-util",
  "getrandom 0.4.3",
  "insta",
@@ -945,6 +946,7 @@ dependencies = [
  "cutweave-render",
  "png",
  "proptest",
+ "reqwest",
  "rmcp",
  "serde",
  "serde_json",
@@ -955,6 +957,7 @@ dependencies = [
  "tokio",
  "tracing",
  "tracing-subscriber",
+ "zune-jpeg",
 ]
 
 [[package]]
