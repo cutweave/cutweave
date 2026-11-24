@@ -224,7 +224,15 @@ pub fn validation_form(schema: &Value) -> Value {
     let mut out = Map::new();
     for (key, value) in map {
         let key = key.as_str();
-        if ANNOTATIONS.contains(&key) {
+        // `format: "uint32"` names a Rust width, it does not validate (the listed schemas drop
+        // it: `catalog::lean_schema`).
+        let numeric_width = key == "format"
+            && value.as_str().is_some_and(|f| {
+                ["uint", "int", "float", "double"]
+                    .iter()
+                    .any(|p| f.starts_with(p))
+            });
+        if ANNOTATIONS.contains(&key) || numeric_width {
             continue;
         }
         let value = if SCHEMA_MAPS.contains(&key) {

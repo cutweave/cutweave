@@ -152,7 +152,7 @@ impl Agent {
             stderr,
         } = self;
         let _ = service.cancel().await;
-        let status = tokio::time::timeout(Duration::from_secs(15), child.wait())
+        let status = tokio::time::timeout(Duration::from_secs(60), child.wait())
             .await
             .expect("cutweave mcp exits when its stdin closes")
             .expect("wait");
