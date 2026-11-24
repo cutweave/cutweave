@@ -84,6 +84,14 @@ bridge *args:
 e2e:
     @echo "e2e: not implemented yet (arrives in Phase 1)"
 
+# The user-flow suite (ADR-0018, docs/user-flows.md): builds the engine, the CLI and the app, then drives it like a person (`just e2e-flows -g F8` runs one flow)
+e2e-flows *args:
+    cargo build -p cutweave-engine --bin cutweave-engine-serve
+    cargo build -p cutweave-cli --bin cutweave
+    pnpm --filter @cutweave/desktop build:node
+    pnpm --filter @cutweave/desktop build:renderer
+    pnpm --filter @cutweave/desktop e2e:flows {{args}}
+
 # The rmcp conformance suite and the scripted agent (both MCP revisions; stdio and HTTP). Offline; also part of `just check`.
 mcp-conformance:
     cargo nextest run -p cutweave-cli --test mcp_conformance
