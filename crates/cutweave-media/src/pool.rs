@@ -27,6 +27,11 @@
 //! A [`DecoderLease`] is a [`VideoDecoder`]; releasing it ([`DecoderPool::release`] or dropping
 //! it) returns the decoder to the pool. A decoder that failed (anything but a cancel or an
 //! out-of-range request) is closed instead of pooled.
+//!
+//! - **Hardware failures stick** (WP-1D.04). Once one decoder of the media goes over from
+//!   hardware to software ([`VideoDecoder::hw_failed`]), the pool opens every later decoder in
+//!   software ([`DecoderPool::hw_failed`]), so a stream the GPU cannot handle fails once, not
+//!   once per decoder.
 
 use std::fmt;
 use std::path::{Path, PathBuf};
@@ -37,7 +42,7 @@ use std::time::Duration as Wall;
 
 use cutweave_model::Time;
 
-use crate::backend::{DecodeOpts, MediaBackend, VideoDecoder};
+use crate::backend::{DecodeOpts, HwMode, MediaBackend, VideoDecoder};
 use crate::cancel::Waker;
 use crate::{CancelToken, FrameIndex, MediaError, VideoFrame};
 
@@ -63,6 +68,7 @@ struct Job {
 struct Reply {
     result: Result<Option<VideoFrame>, MediaError>,
     is_hw: bool,
+    hw_failed: bool,
 }
 
 /// Where the decoder thread leaves its answer; the caller waits on it.
@@ -101,6 +107,7 @@ impl Drop for ReplySender {
                     message: "the decoder thread stopped".to_owned(),
                 }),
                 is_hw: false,
+                hw_failed: false,
             });
         }
     }
@@ -112,12 +119,17 @@ struct Worker {
     jobs: mpsc::Sender<Job>,
     index: Arc<FrameIndex>,
     is_hw: bool,
+    hw_failed: bool,
+    /// The hardware decoder it opened with, if any (reported while `is_hw`).
+    hw_decoder: Option<String>,
 }
 
 impl Worker {
     fn spawn(mut decoder: Box<dyn VideoDecoder>) -> Result<Worker, MediaError> {
         let index = decoder.index();
         let is_hw = decoder.is_hw();
+        let hw_failed = decoder.hw_failed();
+        let hw_decoder = decoder.hw_decoder().map(str::to_owned);
         let (jobs, inbox) = mpsc::channel::<Job>();
         thread::Builder::new()
             .name("cutweave-decoder".to_owned())
@@ -138,13 +150,20 @@ impl Worker {
                     job.reply.send(Reply {
                         result,
                         is_hw: decoder.is_hw(),
+                        hw_failed: decoder.hw_failed(),
                     });
                 }
             })
             .map_err(|e| MediaError::Backend {
                 message: format!("cannot start a decoder thread: {e}"),
             })?;
-        Ok(Worker { jobs, index, is_hw })
+        Ok(Worker {
+            jobs,
+            index,
+            is_hw,
+            hw_failed,
+            hw_decoder,
+        })
     }
 
     /// Runs `call` on the decoder thread and waits for the answer or for `cancel`.
@@ -176,6 +195,7 @@ impl Worker {
         loop {
             if let Some(r) = reply.take() {
                 self.is_hw = r.is_hw;
+                self.hw_failed |= r.hw_failed;
                 return r.result;
             }
             if cancel.is_cancelled() {
@@ -213,6 +233,8 @@ struct State {
     clock: u64,
     opened: u64,
     evicted: u64,
+    /// A decoder of this media went over from hardware to software: later ones open in software.
+    hw_failed: bool,
 }
 
 impl State {
@@ -319,6 +341,15 @@ impl DecoderPool {
         self.shared.lock().evicted
     }
 
+    /// Whether a decoder of this media went over from hardware to software after a failure
+    /// ([`VideoDecoder::hw_failed`], WP-1D.04). From then on, for the pool's life (the media's
+    /// session), every decoder it opens decodes in software, whatever the checkout's
+    /// [`HwMode`](crate::HwMode); decoders already open keep what they have.
+    #[must_use]
+    pub fn hw_failed(&self) -> bool {
+        self.shared.lock().hw_failed
+    }
+
     /// Closes every idle decoder (memory pressure, the file went away). Checked-out decoders are
     /// unaffected.
     pub fn trim(&self) {
@@ -401,6 +432,9 @@ impl DecoderPool {
         if with_index.index.is_none() {
             with_index.index.clone_from(&opts.index);
         }
+        if st.hw_failed {
+            with_index.hw = HwMode::Off;
+        }
         drop(st);
         drop(evicted);
         let opened = self
@@ -417,6 +451,7 @@ impl DecoderPool {
                 if st.index.is_none() {
                     st.index = Some(Arc::clone(&worker.index));
                 }
+                st.hw_failed |= worker.hw_failed;
                 st.opened += 1;
                 if cancel.is_cancelled() {
                     // Keep the work: the next checkout gets it.
@@ -456,6 +491,7 @@ impl DecoderPool {
             opts,
             position,
             broken: false,
+            hw_failed_seen: false,
             shared: Arc::clone(&self.shared),
         }
     }
@@ -509,6 +545,8 @@ pub struct DecoderLease {
     opts: DecodeOpts,
     position: Option<Time>,
     broken: bool,
+    /// This lease already passed its decoder's `hw_failed` on to the pool.
+    hw_failed_seen: bool,
     shared: Arc<Shared>,
 }
 
@@ -538,6 +576,10 @@ impl DecoderLease {
             });
         };
         let result = worker.call(call, &self.cancel);
+        if worker.hw_failed && !self.hw_failed_seen {
+            self.hw_failed_seen = true;
+            self.shared.lock().hw_failed = true;
+        }
         match &result {
             Ok(frame) => {
                 if let Some(f) = frame {
@@ -573,6 +615,17 @@ impl VideoDecoder for DecoderLease {
 
     fn is_hw(&self) -> bool {
         self.worker.as_ref().is_some_and(|w| w.is_hw)
+    }
+
+    fn hw_failed(&self) -> bool {
+        self.worker.as_ref().is_some_and(|w| w.hw_failed)
+    }
+
+    fn hw_decoder(&self) -> Option<&str> {
+        self.worker
+            .as_ref()
+            .filter(|w| w.is_hw)
+            .and_then(|w| w.hw_decoder.as_deref())
     }
 }
 

@@ -12,14 +12,15 @@
 //!
 //! Paths are validated before FFmpeg sees them (ffmpeg-next panics on non-UTF-8 paths and
 //! interior NULs, S3 F2.2), and open failures map to typed errors. Probe/index (WP-1D.02),
-//! decode (WP-1D.03: `decode` for video, `audio`) and hardware decode (WP-1D.04) build on
-//! [`input`]; the encoder (WP-1E.01) is in `encode`, its hardware encoders and their probe
-//! (WP-1E.02) in `hwenc`.
+//! decode (WP-1D.03: `decode` for video, `audio`) and hardware decode (WP-1D.04: devices,
+//! eligible streams and the probe in `hwdec`) build on [`input`]; the encoder (WP-1E.01) is in
+//! `encode`, its hardware encoders and their probe (WP-1E.02) in `hwenc`.
 
 mod audio;
 mod decode;
 mod encode;
 mod error;
+mod hwdec;
 mod hwenc;
 mod index;
 mod log;
@@ -121,21 +122,61 @@ fn init() -> Result<Arc<RuntimeInfo>, MediaError> {
 pub struct FfmpegBackend {
     runtime: Arc<RuntimeInfo>,
     caps: Arc<Capabilities>,
+    /// Which hardware decoders `HwMode::Auto` decoders may use.
+    hw: Arc<hwdec::Policy>,
 }
 
 impl FfmpegBackend {
     /// Checks the loaded FFmpeg against the build (see the module docs) and returns the backend.
+    /// Hardware decode follows `CUTWEAVE_HW` ([`with_hw_decoders`](Self::with_hw_decoders)
+    /// syntax; unset is `auto`, a value that does not parse is logged and means `off`).
     ///
     /// Errors: [`MediaError::RuntimeMismatch`] if the loaded libav* versions differ from the
     /// headers this crate was built against. (Missing libraries fail earlier, at process load:
     /// see docs/dev/ffmpeg.md.)
     pub fn new() -> Result<FfmpegBackend, MediaError> {
         static CAPS: OnceLock<Arc<Capabilities>> = OnceLock::new();
+        static HW: OnceLock<Arc<hwdec::Policy>> = OnceLock::new();
         let runtime = init()?;
         let caps = CAPS
             .get_or_init(|| Arc::new(Capabilities::with_codecs(sys::software_codecs())))
             .clone();
-        Ok(FfmpegBackend { runtime, caps })
+        let hw = HW
+            .get_or_init(|| Arc::new(hwdec::Policy::from_env()))
+            .clone();
+        Ok(FfmpegBackend { runtime, caps, hw })
+    }
+
+    /// The same backend with hardware decoders restricted by `spec` (WP-1D.04), the syntax of
+    /// `CUTWEAVE_HW`, case-insensitive:
+    ///
+    /// - `off` (also `none`, `sw`, `0`): every decoder decodes in software;
+    /// - `auto` (also empty, `on`, `1`): the OS's devices in order: Windows `cuda` (NVDEC),
+    ///   then `d3d11va` on an NVIDIA, AMD or Intel GPU; macOS `videotoolbox`; Linux `cuda`,
+    ///   then `vaapi`;
+    /// - a comma-separated list of devices, tried in that order: `cuda` (or `nvdec`),
+    ///   `d3d11va` (every vendor), `d3d11va:nvidia`, `d3d11va:amd`, `d3d11va:intel`,
+    ///   `d3d11va:vendor=0xNNNN`, `vaapi`, `vaapi:/dev/dri/renderDN`, `videotoolbox`. GPUs are
+    ///   named by vendor, never by adapter index (adapter order changes inside a process).
+    ///
+    /// Only devices that pass the probe are used (listed in
+    /// [`Capabilities::hw_decode`](crate::Capabilities::hw_decode)); decoders opened with
+    /// [`HwMode::Off`](crate::HwMode::Off) stay in software whatever the policy.
+    ///
+    /// Errors: [`MediaError::Invalid`] for a spec that does not parse.
+    pub fn with_hw_decoders(mut self, spec: &str) -> Result<FfmpegBackend, MediaError> {
+        let policy = hwdec::Policy::parse(spec).map_err(|why| MediaError::Invalid {
+            message: format!("hardware decoders `{spec}`: {why}"),
+        })?;
+        self.hw = Arc::new(policy);
+        Ok(self)
+    }
+
+    /// The same backend with a pseudo hardware decoder failing as `faults` says (tests).
+    #[cfg(test)]
+    fn with_pseudo_hw(mut self, faults: hwdec::Faults) -> FfmpegBackend {
+        self.hw = Arc::new(hwdec::Policy::Pseudo(faults));
+        self
     }
 
     /// The FFmpeg the process loaded.
@@ -175,7 +216,7 @@ impl MediaBackend for FfmpegBackend {
         path: &Path,
         opts: &DecodeOpts,
     ) -> Result<Box<dyn VideoDecoder>, MediaError> {
-        decode::open(path, opts)
+        decode::open(path, opts, &self.hw)
     }
 
     fn open_audio_decoder(
@@ -193,7 +234,8 @@ impl MediaBackend for FfmpegBackend {
 
     fn capabilities(&self) -> Capabilities {
         Capabilities {
-            // Probed on first use (WP-1E.02), then cached for the process.
+            // Probed on first use (WP-1D.04, WP-1E.02), then cached for the process.
+            hw_decode: hwdec::capabilities(&self.hw),
             hw_encode: hwenc::capabilities(),
             ..(*self.caps).clone()
         }
@@ -249,7 +291,8 @@ mod tests {
         fn exit(&self, _: &Id) {}
     }
 
-    fn recorded(f: impl FnOnce()) -> Vec<(String, Level, String)> {
+    /// `(target, level, message)` of every event `f` emits on this thread.
+    pub(super) fn recorded(f: impl FnOnce()) -> Vec<(String, Level, String)> {
         let recorder: &'static Recorder = Box::leak(Box::default());
         tracing::subscriber::with_default(recorder, f);
         recorder.events.lock().unwrap().clone()
@@ -388,6 +431,15 @@ mod tests {
         ] {
             assert!(!all.iter().any(|n| *n == hw), "{hw} listed as software");
         }
-        assert_eq!(caps.hw_decode, Vec::new());
+        // Hardware decoders (WP-1D.04): whatever this machine verified, H.264 and HEVC only;
+        // none with hardware decode off.
+        for hw in &caps.hw_decode {
+            assert!(["h264", "hevc"].contains(&hw.codec.as_str()), "{hw:?}");
+            assert!(hw.implementation.starts_with(&hw.codec), "{hw:?}");
+        }
+        let off = FfmpegBackend::new()
+            .and_then(|b| b.with_hw_decoders("off"))
+            .expect("backend");
+        assert_eq!(off.capabilities().hw_decode, Vec::new());
     }
 }

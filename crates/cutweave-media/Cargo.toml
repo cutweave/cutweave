@@ -15,6 +15,10 @@ default = []
 # see docs/dev/ffmpeg.md and `just test-ffmpeg`. Off by default so the workspace builds and tests
 # without FFmpeg; the trait, the frame types and `FakeBackend` never need it.
 ffmpeg = ["dep:ffmpeg-next"]
+# Reserved for zero-copy hardware frames (ADR-0003 path (b): decoder surfaces shared with wgpu,
+# e.g. D3D11 -> D3D12 shared handles), the later optimisation of WP-1D.04's CPU-upload path.
+# A stub: enabling it changes nothing yet.
+zero-copy = []
 
 [dependencies]
 # `ProbeInfo`, `ColorTags`, `Time` and `SampleRate`: the media layer speaks the model's types.

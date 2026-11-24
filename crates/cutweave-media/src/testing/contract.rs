@@ -720,12 +720,13 @@ fn frame_time(n: usize) -> Time {
 
 /// The backend decodes what it encoded: every frame once, in order, with pts `n / 30 s` exactly,
 /// at the encoded size in a 4:2:0 layout, undamaged; the end stays the end; the index has the
-/// same frames.
+/// same frames. With [`HwMode::Off`](crate::HwMode::Off) the decoder is software.
 pub fn encoded_clips_decode_back(b: &dyn MediaBackend, fx: &Fixtures) {
     let dir = output_dir(fx, "decode");
     let clip = encoded_clip(b, &dir, "clip.mp4", true, true);
-    let mut d = open_video(b, &clip, &DecodeOpts::default());
-    assert!(!d.is_hw(), "software decode");
+    let opts = DecodeOpts::default().with_hw(crate::HwMode::Off);
+    let mut d = open_video(b, &clip, &opts);
+    assert!(!d.is_hw() && !d.hw_failed(), "software decode");
     let index = d.index();
     assert_eq!(index.frame_count() as u64, CLIP_FRAMES, "index frames");
     let mut n = 0usize;

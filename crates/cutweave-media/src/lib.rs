@@ -19,8 +19,9 @@
 //!
 //! WP-1D.01 ships the boundary, WP-1D.02 probe, the frame index and content hashes, WP-1E.01
 //! the encoder (H.264 + AAC in MP4, [`EncodeSpec`]), WP-1E.02 hardware H.264 encoders with
-//! software fallback ([`HwEncode`], [`encode_with_fallback`]) and WP-1D.03 software decode,
-//! frame-exact seek and the decoder pool. Hardware decode arrives with WP-1D.04.
+//! software fallback ([`HwEncode`], [`encode_with_fallback`]), WP-1D.03 software decode,
+//! frame-exact seek and the decoder pool, and WP-1D.04 hardware decode with software fallback
+//! ([`HwMode`], [`Capabilities::hw_decode`], [`VideoDecoder::hw_failed`]).
 //!
 //! **Dependency rule** (arch §3, `cargo xtask check-deps`): `cutweave-model` never depends on
 //! this crate, and `cutweave-render` / `cutweave-audio` may use only its trait half (the default
