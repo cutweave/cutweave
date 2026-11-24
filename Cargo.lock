@@ -854,6 +854,8 @@ version = "0.0.0"
 dependencies = [
  "cutweave-media",
  "cutweave-model",
+ "png",
+ "proptest",
  "rusqlite",
  "thiserror 2.0.21",
 ]
