@@ -61,6 +61,9 @@ export interface PreferenceValues {
   "export.last_folder": string;
   "export.quality": ExportQualityChoice;
   "export.hw": ExportHwChoice;
+  // Media and import (WP-1M.14)
+  /** Show a video's frames while the pointer moves across its card in the bin. */
+  "media.hover_scrub": boolean;
 }
 
 export type PreferenceKey = keyof PreferenceValues;
@@ -111,6 +114,8 @@ export const PREFERENCES: { readonly [K in PreferenceKey]: PreferenceDef } = {
   "export.last_folder": { type: "path", scope: "app", default: "" },
   "export.quality": { type: "enum", scope: "app", options: EXPORT_QUALITIES, default: "medium" },
   "export.hw": { type: "enum", scope: "app", options: EXPORT_HW_CHOICES, default: "auto" },
+  // Media and import (WP-1M.14)
+  "media.hover_scrub": { type: "boolean", scope: "app", default: true },
 };
 
 export const PREFERENCE_KEYS = Object.keys(PREFERENCES) as PreferenceKey[];

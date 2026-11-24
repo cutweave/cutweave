@@ -662,6 +662,7 @@ export async function openSettingsPage(
   name:
     | "General"
     | "Appearance"
+    | "Media and import"
     | "Export"
     | "Saving and backups"
     | "Keyboard shortcuts"

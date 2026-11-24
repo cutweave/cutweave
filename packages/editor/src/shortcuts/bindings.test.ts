@@ -209,6 +209,8 @@ describe("every key handler in the editor is accounted for", () => {
   // generated into the list above or a text field's own keys, named here with the reason. A new
   // handler fails this test until it is listed in bindings.ts or named here.
   const KNOWN: Readonly<Record<string, string>> = {
+    "inspector/MediaPreview.tsx":
+      "a slider's own keys while it has the focus: arrows step a frame, Home, End, Page Up and Down",
     "panels/InspectorPanel.tsx":
       "name field: Enter commits, Escape puts the old text back (dialogs group)",
     "panels/MediaPanel.tsx": "the bin's keys: binKeys.ts",

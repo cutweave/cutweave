@@ -19,6 +19,7 @@ import {
   type TextField as TextFieldDef,
   type TimeField,
 } from "../inspector/fields.ts";
+import { MediaPreview } from "../inspector/MediaPreview.tsx";
 import { useDocStore } from "../state/docStore.ts";
 import { selectSequenceSummary } from "../state/selectors.ts";
 import { toastStore } from "../state/toastStore.ts";
@@ -334,6 +335,7 @@ function MediaInfo({ media }: { readonly media: MediaAsset }) {
         expanded={open}
         onExpandedChange={setOpen}
       >
+        <MediaPreview key={media.id} media={media} />
         <div className="cw-inspector__rows">
           {name === null ? null : (
             <InspectorRow label={t("inspector.media.path")}>

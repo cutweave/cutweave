@@ -73,6 +73,7 @@
     "pages": {
       "general": "General",
       "appearance": "Appearance",
+      "media": "Media and import",
       "export": "Export",
       "shortcuts": "Keyboard shortcuts",
       "saving": "Saving and backups",
@@ -155,6 +156,11 @@
         "low": "Low",
         "medium": "Medium",
         "high": "High"
+      },
+      "hoverScrub": {
+        "label": "Preview video on hover",
+        "description": "Moving the pointer across a video in the Media panel shows its frames. Off keeps the poster.",
+        "keywords": "scrub, hover, preview, thumbnail, filmstrip, poster, media panel, bin"
       },
       "exportHw": {
         "label": "Hardware encoders",
@@ -593,6 +599,10 @@
       "audioStream": "Audio",
       "audioValue": "{{rate}} Hz, {{channels}} ch",
       "path": "File",
+      "preview": {
+        "picture": "Preview of {{name}}",
+        "scrub": "Scrub position"
+      },
       "placeholder": "Placeholder data. The FFmpeg backend is not installed, so this probe is made up."
     }
   },

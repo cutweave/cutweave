@@ -53,6 +53,7 @@ import { insertAtPlayhead } from "../media/insert.ts";
 import { useMediaStore } from "../media/mediaStore.ts";
 import { removeMedia } from "../media/remove.ts";
 import { useThumbnailSource } from "../media/thumbnails.ts";
+import { useCardScrub } from "../media/useCardScrub.ts";
 import { useImport } from "../media/useImport.ts";
 import { docStore, useDocStore } from "../state/docStore.ts";
 import { useJobStore } from "../state/jobStore.ts";
@@ -181,6 +182,7 @@ function CardView({
   const thumb = source.thumbnailFor({ id: card.id, kind: card.kind, width: 160, indexed });
   const image = thumb.kind === "image" && thumb.src !== failedImage ? thumb.src : null;
   const drag = dragOf(card);
+  const scrub = useCardScrub(card);
 
   const size = card.width !== null && card.height !== null ? `${card.width}×${card.height}` : null;
   const meta = [size, card.fps === null ? null : t("mediaBin.card.fps", { fps: String(card.fps) })]
@@ -192,6 +194,7 @@ function CardView({
       e.preventDefault();
       return;
     }
+    scrub.stop();
     onSelect(card.id);
     e.dataTransfer.setData(MEDIA_DRAG_TYPE, card.id);
     e.dataTransfer.effectAllowed = "copy";
@@ -213,7 +216,14 @@ function CardView({
       onDragStart={onDragStart}
       onDragEnd={() => dragStore.getState().end()}
     >
-      <span className="cw-media__thumb" aria-hidden="true">
+      <span
+        className="cw-media__thumb"
+        aria-hidden="true"
+        ref={scrub.thumbRef}
+        onPointerMove={scrub.onPointerMove}
+        onPointerLeave={scrub.stop}
+        onPointerCancel={scrub.stop}
+      >
         {image === null ? (
           <Icon name={KIND_ICON[card.kind]} size="lg" className="cw-media__thumb-icon" />
         ) : (
@@ -225,6 +235,13 @@ function CardView({
             onError={() => setFailedImage(image)}
           />
         )}
+        {scrub.enabled ? (
+          <>
+            <canvas className="cw-media__scrub-canvas" ref={scrub.canvasRef} hidden />
+            <span className="cw-media__scrub-line" ref={scrub.lineRef} />
+            <span className="cw-media__scrub-time numeric" ref={scrub.timeRef} />
+          </>
+        ) : null}
         {card.duration !== null && card.kind !== "image" ? (
           <span className="cw-media__duration numeric">{formatDuration(card.duration)}</span>
         ) : null}
