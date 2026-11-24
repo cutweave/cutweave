@@ -26,6 +26,9 @@ serde.workspace = true
 serde_json.workspace = true
 # Only for the `number` TS override of the 32-bit view revision counter.
 specta-typescript.workspace = true
+# Accent-insensitive media search (WP-1M.12): NFD decomposition and the combining-mark test, the
+# same fold as the editor's `String.normalize`. Already in the lockfile through the MCP stack.
+unicode-normalization = "0.1"
 # Typed `ProbeError` of the `MediaProbe` boundary.
 thiserror.workspace = true
 
@@ -36,6 +39,10 @@ cutweave-ops = { path = ".", features = ["testing"] }
 cutweave-model = { path = "../cutweave-model", features = ["testing"] }
 insta.workspace = true
 proptest.workspace = true
+
+[[bench]]
+name = "media_list"
+harness = false
 
 [lints]
 workspace = true

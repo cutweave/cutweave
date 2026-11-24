@@ -13,10 +13,11 @@
 //! which folders.
 
 mod analysis;
+mod find;
 mod policy;
 mod probe;
 
-use std::sync::Arc;
+use std::{cmp::Ordering, sync::Arc};
 
 use cutweave_commands::{
     CmdError, Command, EngineCommand, Query, QueryCtx, Registry, RegistryError, Tx, command, query,
@@ -28,6 +29,10 @@ use cutweave_model::{Duration, MediaAsset, MediaId, MediaKind, ProbeInfo, Projec
 pub use analysis::{
     AnalysisInput, AnalysisSink, AnalysisStage, AnalysisStages, Analyzer, EVENTS,
     MediaAnalysisFailed, MediaEvent, MediaIndexed, StageError,
+};
+pub use find::{
+    Keyed, Matcher, MediaFilter, MediaSort, MediaSortBy, MediaSortOrder, asset_name, compare, fold,
+    is_problem, used_media,
 };
 pub use policy::{AllowedRoots, DEFAULT_PROBE_PARALLELISM, DEFAULT_PROBE_TIMEOUT, ImportPolicy};
 pub use probe::{FakeProbe, MediaProbe, ProbeError, Probed};
@@ -515,25 +520,44 @@ pub struct MediaSummary {
 /// Result of `media.list`.
 #[wire]
 pub struct MediaListOutput {
-    /// The page, ordered by ID.
+    /// The page, in the requested order (default: by ID).
     pub media: Vec<MediaSummary>,
     /// Pass as `cursor` to get the next page; absent on the last page.
     pub next_cursor: Option<MediaId>,
     /// Number of assets in the project.
     pub total: u32,
+    /// Number of assets that pass `filter` (all of them without one).
+    pub matched: u32,
 }
 
-/// Lists the media of the project, ordered by ID, one page at a time.
+/// Lists the media of the project, filtered and ordered, one page at a time.
 #[query(
     name = "media.list",
-    summary = "List the project's media (paged, ordered by id)",
+    summary = "List the project's media (filter, sort, paged; default by id)",
     mcp = "core"
 )]
 pub struct MediaList {
     /// Page size, `1..=500` (default 50).
     pub limit: Option<u32>,
-    /// `next_cursor` of the previous page; the page starts after this ID.
+    /// `next_cursor` of the previous page.
     pub cursor: Option<MediaId>,
+    /// Keep only matching media.
+    #[serde(default)]
+    pub filter: Option<MediaFilter>,
+    /// Order.
+    #[serde(default)]
+    pub sort: Option<MediaSort>,
+}
+
+fn summary(m: &MediaAsset) -> MediaSummary {
+    MediaSummary {
+        id: m.id,
+        kind: m.kind,
+        path: m.path_abs.clone(),
+        duration: m.probe.duration,
+        has_video: m.has_video(),
+        has_audio: m.has_audio(),
+    }
 }
 
 impl Query for MediaList {
@@ -549,28 +573,64 @@ impl Query for MediaList {
         }
         let limit = limit as usize;
         let doc = ctx.doc();
-        let mut rest = doc
+        let filter = self.filter.clone().unwrap_or_default();
+        let sort = self.sort.unwrap_or_default();
+        let desc = sort.order == MediaSortOrder::Desc;
+        let used = filter.used.is_some().then(|| used_media(doc));
+        let matcher = Matcher::new(&filter, used.as_ref())?;
+
+        // The matching assets, in the requested order. `doc.media` iterates by ID already.
+        let mut found: Vec<Keyed<'_>> = doc
             .media
-            .iter()
-            .filter(|(id, _)| self.cursor.is_none_or(|c| **id > c))
-            .map(|(_, m)| m);
-        let media: Vec<MediaSummary> = rest
-            .by_ref()
-            .take(limit)
-            .map(|m| MediaSummary {
-                id: m.id,
-                kind: m.kind,
-                path: m.path_abs.clone(),
-                duration: m.probe.duration,
-                has_video: m.has_video(),
-                has_audio: m.has_audio(),
-            })
+            .values()
+            .filter(|m| matcher.matches(m))
+            .map(|m| Keyed::new(sort.by, m))
             .collect();
-        let next_cursor = rest.next().and(media.last().map(|m| m.id));
+        if sort.by != MediaSortBy::Imported {
+            found.sort_by(|a, b| compare(sort.by, a, b));
+        }
+        if desc {
+            found.reverse();
+        }
+
+        // The page starts after the cursor in that order; the cursor need not match the filter.
+        let start = match self.cursor {
+            None => 0,
+            Some(c) if sort.by == MediaSortBy::Imported => found.partition_point(|k| {
+                if desc {
+                    k.media.id >= c
+                } else {
+                    k.media.id <= c
+                }
+            }),
+            Some(c) => {
+                let anchor = doc
+                    .media
+                    .get(&c)
+                    .ok_or_else(|| CmdError::invalid("/cursor", "no such media asset"))?;
+                let anchor = Keyed::new(sort.by, anchor);
+                found.partition_point(|k| {
+                    let o = compare(sort.by, k, &anchor);
+                    if desc {
+                        o != Ordering::Less
+                    } else {
+                        o != Ordering::Greater
+                    }
+                })
+            }
+        };
+        let end = found.len().min(start.saturating_add(limit));
+        let page = &found[start..end];
+        let next_cursor = if end < found.len() {
+            page.last().map(|k| k.media.id)
+        } else {
+            None
+        };
         Ok(MediaListOutput {
-            media,
+            media: page.iter().map(|k| summary(k.media)).collect(),
             next_cursor,
             total: u32::try_from(doc.media.len()).unwrap_or(u32::MAX),
+            matched: u32::try_from(found.len()).unwrap_or(u32::MAX),
         })
     }
 }

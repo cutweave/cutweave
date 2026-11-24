@@ -1259,6 +1259,22 @@ export type MediaCapabilitiesOutput = {
 	hw_decode: HwCodecInfo[],
 };
 
+/**  Which media to list; every part that is absent or empty lets everything through. */
+export type MediaFilter = {
+	/**  Terms that must all occur in the file name, ignoring case and accents. */
+	text?: string | null,
+	/**  Only these kinds. */
+	kinds?: MediaKind[] | null,
+	/**  Shortest length (flicks), inclusive; stills never match a bound. */
+	min_duration?: Duration | null,
+	/**  Longest length (flicks), inclusive. */
+	max_duration?: Duration | null,
+	/**  Placed on a timeline of any sequence (`true`) or not (`false`). */
+	used?: boolean | null,
+	/**  `true`: only files nothing can be read from (no streams). */
+	problems?: boolean | null,
+};
+
 /**
  *  The ID of a `MediaAsset`: `med_…`.
  * 
@@ -1313,22 +1329,28 @@ export type MediaKind =
 /**  Another sequence of this project, used as a compound clip (arch §4.3). */
 "sequence_ref";
 
-/**  Lists the media of the project, ordered by ID, one page at a time. */
+/**  Lists the media of the project, filtered and ordered, one page at a time. */
 export type MediaList = {
 	/**  Page size, `1..=500` (default 50). */
 	limit?: number | null,
-	/**  `next_cursor` of the previous page; the page starts after this ID. */
+	/**  `next_cursor` of the previous page. */
 	cursor?: MediaId | null,
+	/**  Keep only matching media. */
+	filter?: MediaFilter | null,
+	/**  Order. */
+	sort?: MediaSort | null,
 };
 
 /**  Result of `media.list`. */
 export type MediaListOutput = {
-	/**  The page, ordered by ID. */
+	/**  The page, in the requested order (default: by ID). */
 	media: MediaSummary[],
 	/**  Pass as `cursor` to get the next page; absent on the last page. */
 	next_cursor: MediaId | null,
 	/**  Number of assets in the project. */
 	total: number,
+	/**  Number of assets that pass `filter` (all of them without one). */
+	matched: number,
 };
 
 /**
@@ -1371,6 +1393,23 @@ export type MediaRemoveOutput = {
 	/**  The removed asset. */
 	media_id: MediaId,
 };
+
+/**  How to order the list; without one, by ID ascending. */
+export type MediaSort = {
+	/**  What to order by. */
+	by: MediaSortBy,
+	/**  Direction. */
+	order?: MediaSortOrder,
+};
+
+/**
+ *  What to order by: `imported` (by ID), `name`, `duration` (stills first when ascending) or
+ *  `kind` (video, audio, image, sequence; by name within a kind).
+ */
+export type MediaSortBy = "imported" | "name" | "duration" | "kind";
+
+/**  `asc` (default), or `desc`: exactly the reverse. */
+export type MediaSortOrder = "asc" | "desc";
 
 /**  Summary of one media asset. */
 export type MediaSummary = {

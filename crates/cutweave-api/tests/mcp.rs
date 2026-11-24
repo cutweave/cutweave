@@ -1176,3 +1176,69 @@ async fn a_scripted_agent_edits_entirely_over_mcp() {
         agent.close().await;
     }
 }
+
+/// WP-1M.12: `media_list` takes `filter` and `sort` over MCP, and `filter.text` returns the
+/// assets whose file names contain every term, in the order asked for (the editor's bin applies
+/// the same predicate to the same names; both are held to `media-find.json`).
+#[tokio::test]
+async fn media_list_filters_and_sorts_over_mcp() {
+    for revision in Revision::ALL {
+        let h = Harness::start(None);
+        let agent = h.client(Profile::Standard, revision).await;
+        agent.ok("project_info", json!({})).await;
+        let imported = agent
+            .ok(
+                "media_import",
+                json!({ "paths": [h.clip(1), h.clip(2), h.clip(3)] }),
+            )
+            .await;
+        let ids = imported["media_ids"].clone();
+        for job in imported["job_ids"].as_array().unwrap() {
+            agent
+                .ok("job_wait", json!({ "job_id": job, "timeout_ms": 10_000 }))
+                .await;
+        }
+        let id_of = |out: &Value| -> Vec<Value> {
+            out["media"]
+                .as_array()
+                .unwrap()
+                .iter()
+                .map(|m| m["id"].clone())
+                .collect()
+        };
+        let all = agent.ok("media_list", json!({})).await;
+        assert_eq!(all["total"], 3);
+        assert_eq!(all["matched"], 3);
+
+        let one = agent
+            .ok("media_list", json!({ "filter": { "text": "CLIP2" } }))
+            .await;
+        assert_eq!(id_of(&one), vec![ids[1].clone()]);
+        assert_eq!(
+            (one["total"].clone(), one["matched"].clone()),
+            (json!(3), json!(1))
+        );
+
+        let none = agent
+            .ok("media_list", json!({ "filter": { "text": "clip2 clip3" } }))
+            .await;
+        assert_eq!(none["matched"], 0);
+
+        // Longest first: clip3 (12 s), clip2, clip1; the cursor continues in that order.
+        let longest = agent
+            .ok(
+                "media_list",
+                json!({ "sort": { "by": "duration", "order": "desc" }, "limit": 2 }),
+            )
+            .await;
+        assert_eq!(id_of(&longest), vec![ids[2].clone(), ids[1].clone()]);
+        let rest = agent
+            .ok(
+                "media_list",
+                json!({ "sort": { "by": "duration", "order": "desc" }, "cursor": longest["next_cursor"] }),
+            )
+            .await;
+        assert_eq!(id_of(&rest), vec![ids[0].clone()]);
+        agent.close().await;
+    }
+}

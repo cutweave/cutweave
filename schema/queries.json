@@ -323,14 +323,128 @@
       },
       "input_schema": {
         "additionalProperties": false,
-        "description": "Lists the media of the project, ordered by ID, one page at a time.",
+        "description": "Lists the media of the project, filtered and ordered, one page at a time.",
         "properties": {
           "cursor": {
             "default": null,
-            "description": "`next_cursor` of the previous page; the page starts after this ID.",
+            "description": "`next_cursor` of the previous page.",
             "pattern": "^med_[0-9a-f]{32}$",
             "type": [
               "string",
+              "null"
+            ]
+          },
+          "filter": {
+            "additionalProperties": false,
+            "default": null,
+            "description": "Keep only matching media.",
+            "properties": {
+              "kinds": {
+                "default": null,
+                "description": "Only these kinds.",
+                "items": {
+                  "description": "What a [`MediaAsset`] is.",
+                  "oneOf": [
+                    {
+                      "const": "video",
+                      "description": "A video file (may also carry audio).",
+                      "type": "string"
+                    },
+                    {
+                      "const": "audio",
+                      "description": "An audio-only file.",
+                      "type": "string"
+                    },
+                    {
+                      "const": "image",
+                      "description": "A still image (no duration).",
+                      "type": "string"
+                    },
+                    {
+                      "const": "sequence_ref",
+                      "description": "Another sequence of this project, used as a compound clip (arch §4.3).",
+                      "type": "string"
+                    }
+                  ]
+                },
+                "type": [
+                  "array",
+                  "null"
+                ]
+              },
+              "max_duration": {
+                "anyOf": [
+                  {
+                    "anyOf": [
+                      {
+                        "maximum": 9007199254740991,
+                        "minimum": 0,
+                        "type": "integer"
+                      },
+                      {
+                        "pattern": "^-?[0-9]+(\\.[0-9]+)?s$|^-?[0-9]+$",
+                        "type": "string"
+                      }
+                    ],
+                    "description": "A non-negative duration in flicks (1/705600000 s) as an integer, or a string: seconds (\"62.5s\") or raw flicks (\"123\")."
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "default": null,
+                "description": "Longest length (flicks), inclusive."
+              },
+              "min_duration": {
+                "anyOf": [
+                  {
+                    "anyOf": [
+                      {
+                        "maximum": 9007199254740991,
+                        "minimum": 0,
+                        "type": "integer"
+                      },
+                      {
+                        "pattern": "^-?[0-9]+(\\.[0-9]+)?s$|^-?[0-9]+$",
+                        "type": "string"
+                      }
+                    ],
+                    "description": "A non-negative duration in flicks (1/705600000 s) as an integer, or a string: seconds (\"62.5s\") or raw flicks (\"123\")."
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "default": null,
+                "description": "Shortest length (flicks), inclusive; stills never match a bound."
+              },
+              "problems": {
+                "default": null,
+                "description": "`true`: only files nothing can be read from (no streams).",
+                "type": [
+                  "boolean",
+                  "null"
+                ]
+              },
+              "text": {
+                "default": null,
+                "description": "Terms that must all occur in the file name, ignoring case and accents.",
+                "type": [
+                  "string",
+                  "null"
+                ]
+              },
+              "used": {
+                "default": null,
+                "description": "Placed on a timeline of any sequence (`true`) or not (`false`).",
+                "type": [
+                  "boolean",
+                  "null"
+                ]
+              }
+            },
+            "type": [
+              "object",
               "null"
             ]
           },
@@ -341,6 +455,39 @@
             "minimum": 0,
             "type": [
               "integer",
+              "null"
+            ]
+          },
+          "sort": {
+            "additionalProperties": false,
+            "default": null,
+            "description": "Order.",
+            "properties": {
+              "by": {
+                "description": "What to order by.",
+                "enum": [
+                  "imported",
+                  "name",
+                  "duration",
+                  "kind"
+                ],
+                "type": "string"
+              },
+              "order": {
+                "default": "asc",
+                "description": "Direction.",
+                "enum": [
+                  "asc",
+                  "desc"
+                ],
+                "type": "string"
+              }
+            },
+            "required": [
+              "by"
+            ],
+            "type": [
+              "object",
               "null"
             ]
           }
@@ -357,8 +504,14 @@
         "additionalProperties": false,
         "description": "Result of `media.list`.",
         "properties": {
+          "matched": {
+            "description": "Number of assets that pass `filter` (all of them without one).",
+            "format": "uint32",
+            "minimum": 0,
+            "type": "integer"
+          },
           "media": {
-            "description": "The page, ordered by ID.",
+            "description": "The page, in the requested order (default: by ID).",
             "items": {
               "additionalProperties": false,
               "description": "Summary of one media asset.",
@@ -448,14 +601,15 @@
         "required": [
           "media",
           "next_cursor",
-          "total"
+          "total",
+          "matched"
         ],
         "title": "MediaListOutput",
         "type": "object"
       },
       "scope": "any",
       "secret_fields": [],
-      "summary": "List the project's media (paged, ordered by id)",
+      "summary": "List the project's media (filter, sort, paged; default by id)",
       "undoable": false,
       "view": false
     },

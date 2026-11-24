@@ -402,3 +402,95 @@ fn remove_undo_redo_identity_restores_the_asset() {
     assert!(c.base.media.contains_key(&m));
     assert!(!c.doc.media.contains_key(&m));
 }
+
+// ----- media.list: filter, sort (WP-1M.12; the shared cases are in media_find_fixture.rs) ----
+
+fn names(out: &Value) -> Vec<String> {
+    out["media"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .map(|m| {
+            let p = m["path"].as_str().unwrap();
+            p.rsplit('/').next().unwrap().to_owned()
+        })
+        .collect()
+}
+
+#[test]
+fn list_filters_by_text_kind_and_length() {
+    let mut h = H::empty();
+    h.add_video("/m/Beach Day.mp4", 12, true);
+    h.add_audio("/m/beach.wav", 90);
+    h.add_image("/m/Café.png");
+    let by_text = h
+        .query("media.list", json!({"filter": {"text": "BEACH"}}))
+        .unwrap();
+    assert_eq!(names(&by_text), ["Beach Day.mp4", "beach.wav"]);
+    assert_eq!(by_text["matched"], 2);
+    assert_eq!(by_text["total"], 3);
+    let accents = h
+        .query("media.list", json!({"filter": {"text": "cafe"}}))
+        .unwrap();
+    assert_eq!(names(&accents), ["Café.png"]);
+    let audio = h
+        .query(
+            "media.list",
+            json!({"filter": {"kinds": ["audio"], "min_duration": 60 * 705_600_000_i64}}),
+        )
+        .unwrap();
+    assert_eq!(names(&audio), ["beach.wav"]);
+    // A still has no length, so any bound excludes it.
+    let bounded = h
+        .query(
+            "media.list",
+            json!({"filter": {"max_duration": 705_600_000_000_i64}}),
+        )
+        .unwrap();
+    assert_eq!(names(&bounded), ["Beach Day.mp4", "beach.wav"]);
+}
+
+#[test]
+fn list_sorts_and_pages_in_the_requested_order() {
+    let mut h = H::empty();
+    h.add_audio("/m/b.wav", 5);
+    h.add_audio("/m/C.wav", 3);
+    h.add_audio("/m/a.wav", 9);
+    let sorted = |sort: Value| names(&h.query("media.list", json!({"sort": sort})).unwrap());
+    assert_eq!(sorted(json!({"by": "name"})), ["a.wav", "b.wav", "C.wav"]);
+    assert_eq!(
+        sorted(json!({"by": "duration", "order": "desc"})),
+        ["a.wav", "b.wav", "C.wav"]
+    );
+    let first = h
+        .query("media.list", json!({"sort": {"by": "name"}, "limit": 2}))
+        .unwrap();
+    assert_eq!(names(&first), ["a.wav", "b.wav"]);
+    let second = h
+        .query(
+            "media.list",
+            json!({"sort": {"by": "name"}, "limit": 2, "cursor": first["next_cursor"]}),
+        )
+        .unwrap();
+    assert_eq!(names(&second), ["C.wav"]);
+    assert!(second["next_cursor"].is_null());
+}
+
+#[test]
+fn list_knows_which_media_is_used_on_a_timeline() {
+    let (mut h, p) = H::project();
+    let used = h.add_video("/m/used.mp4", 4, false);
+    h.add_video("/m/unused.mp4", 4, false);
+    h.ok(
+        "timeline.insert",
+        json!({"sequence": p.sequence, "track": p.video, "media": used, "at": "0"}),
+    );
+    let on = h
+        .query("media.list", json!({"filter": {"used": true}}))
+        .unwrap();
+    assert_eq!(names(&on), ["used.mp4"]);
+    let off = h
+        .query("media.list", json!({"filter": {"used": false}}))
+        .unwrap();
+    assert_eq!(names(&off), ["unused.mp4"]);
+}

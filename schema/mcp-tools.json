@@ -130,7 +130,7 @@
         "readOnlyHint": true
       },
       "command": "media.list",
-      "description": "List the project's media (paged, ordered by id)",
+      "description": "List the project's media (filter, sort, paged; default by id)",
       "kind": "query",
       "name": "media_list"
     },

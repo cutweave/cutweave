@@ -31,7 +31,7 @@ MCP exposure: `core` commands are always listed as tools (`item.move` is `item_m
 | job | `job.wait` | Wait up to timeout_ms (max 60 s) for a background job to finish; returns its state | engine, read-only, idempotent | core |
 | media | `media.capabilities` | List the codecs and hardware encoders/decoders the media backend supports | engine, read-only, idempotent | catalog |
 | media | `media.import` | Import media files: probe and register them now, return media ids and analysis job ids | engine, idempotent | core |
-| media | `media.list` | List the project's media (paged, ordered by id) | query | core |
+| media | `media.list` | List the project's media (filter, sort, paged; default by id) | query | core |
 | media | `media.register` | Register a probed media file (used by import; deduplicates by content hash) | command, undoable, idempotent | hidden |
 | media | `media.remove` | Remove an unused media asset from the project | command, undoable, destructive | catalog |
 | project | `project.close` | Close the open project (saving first if asked or if autosave is on) | engine, idempotent | catalog |
