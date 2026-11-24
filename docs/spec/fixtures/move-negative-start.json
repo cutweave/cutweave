@@ -1,0 +1,20 @@
+{
+  "$schema": "../fixture.schema.json",
+  "kind": "edit",
+  "id": "move-negative-start",
+  "title": "A delta that would start the clip before 0 is refused",
+  "command": "item.move",
+  "tags": ["free", "clamp"],
+  "cites": ["INV-24", "INV-121"],
+  "fps": 25,
+  "media": {
+    "mn": {"kind": "video", "frames": 250, "audio": false}
+  },
+  "before": [
+    { "track": "V2", "kind": "video", "items": [
+      {"id": "X", "media": "mn", "start": 10, "dur": 20}
+    ] }
+  ],
+  "params": {"item": "X", "delta": "-0.8s"},
+  "error": {"code": "invalid", "path": "/delta"}
+}

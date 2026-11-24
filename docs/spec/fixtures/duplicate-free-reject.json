@@ -1,0 +1,21 @@
+{
+  "$schema": "../fixture.schema.json",
+  "kind": "edit",
+  "id": "duplicate-free-reject",
+  "title": "By default a copy that would overlap on a free track is refused",
+  "command": "item.duplicate",
+  "tags": ["free"],
+  "cites": ["INV-40"],
+  "fps": 25,
+  "media": {
+    "mn": {"kind": "video", "frames": 250, "audio": false}
+  },
+  "before": [
+    { "track": "V2", "kind": "video", "items": [
+      {"id": "X", "media": "mn", "start": 0, "dur": 20},
+      {"id": "Y", "media": "mn", "start": 20, "dur": 20, "in": 20}
+    ] }
+  ],
+  "params": {"items": ["X"]},
+  "error": {"code": "invalid", "path": "/items"}
+}

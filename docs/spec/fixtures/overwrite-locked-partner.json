@@ -1,0 +1,24 @@
+{
+  "$schema": "../fixture.schema.json",
+  "kind": "edit",
+  "id": "overwrite-locked-partner",
+  "title": "Overwrite that would cut a partner on a locked track is refused",
+  "command": "timeline.overwrite",
+  "tags": ["locked", "linked"],
+  "cites": ["INV-27", "INV-44"],
+  "fps": 25,
+  "media": {
+    "mn": {"kind": "video", "frames": 250, "audio": false},
+    "mv": {"kind": "video", "frames": 250, "audio": true}
+  },
+  "before": [
+    { "track": "V2", "kind": "video", "items": [
+      {"id": "X", "media": "mv", "start": 0, "dur": 40, "group": "gX"}
+    ] },
+    { "track": "A2", "kind": "audio", "locked": true, "items": [
+      {"id": "x", "media": "mv", "start": 0, "dur": 40, "group": "gX"}
+    ] }
+  ],
+  "params": {"sequence": "S", "track": "V2", "media": "mn", "at": "f:10", "duration": "f:10"},
+  "error": {"code": "locked", "id": "A2"}
+}

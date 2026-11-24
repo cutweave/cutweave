@@ -1,0 +1,28 @@
+{
+  "$schema": "../fixture.schema.json",
+  "kind": "edit",
+  "id": "trim-magnetic-start",
+  "title": "Trimming a main-track clip's head keeps its start and pulls the rest left",
+  "command": "clip.trim",
+  "tags": ["magnetic"],
+  "cites": ["INV-203", "INV-212"],
+  "fps": 25,
+  "media": {
+    "mn": {"kind": "video", "frames": 250, "audio": false}
+  },
+  "before": [
+    { "track": "V1", "kind": "video", "magnetic": true, "items": [
+      {"id": "A", "media": "mn", "start": 0, "dur": 30},
+      {"id": "B", "media": "mn", "start": 30, "dur": 30, "in": 30},
+      {"id": "C", "media": "mn", "start": 60, "dur": 30, "in": 60}
+    ] }
+  ],
+  "params": {"item": "B", "edge": "start", "delta": "0.4s"},
+  "after": [
+    { "track": "V1", "kind": "video", "magnetic": true, "items": [
+      {"id": "A", "media": "mn", "start": 0, "dur": 30},
+      {"id": "B", "media": "mn", "start": 30, "dur": 20, "in": 40},
+      {"id": "C", "media": "mn", "start": 50, "dur": 30, "in": 60}
+    ] }
+  ]
+}

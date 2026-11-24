@@ -1,0 +1,24 @@
+{
+  "$schema": "../fixture.schema.json",
+  "kind": "edit",
+  "id": "extract-locked",
+  "title": "Extract over every track is refused when a locked track has content at or after the range",
+  "command": "timeline.extract",
+  "tags": ["locked"],
+  "cites": ["INV-27"],
+  "fps": 25,
+  "media": {
+    "ma": {"kind": "audio", "frames": 500},
+    "mn": {"kind": "video", "frames": 250, "audio": false}
+  },
+  "before": [
+    { "track": "V2", "kind": "video", "items": [
+      {"id": "X", "media": "mn", "start": 0, "dur": 40}
+    ] },
+    { "track": "A2", "kind": "audio", "locked": true, "items": [
+      {"id": "M", "media": "ma", "start": 0, "dur": 100}
+    ] }
+  ],
+  "params": {"sequence": "S", "ranges": [{"start": "f:10", "end": "f:20"}]},
+  "error": {"code": "locked", "id": "A2"}
+}

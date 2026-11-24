@@ -1,0 +1,22 @@
+{
+  "$schema": "../fixture.schema.json",
+  "kind": "edit",
+  "id": "slide-locked",
+  "title": "Sliding on a locked track is refused",
+  "command": "clip.slide",
+  "tags": ["locked"],
+  "cites": ["INV-27"],
+  "fps": 25,
+  "media": {
+    "mn": {"kind": "video", "frames": 250, "audio": false}
+  },
+  "before": [
+    { "track": "V2", "kind": "video", "locked": true, "items": [
+      {"id": "X", "media": "mn", "start": 0, "dur": 20},
+      {"id": "Y", "media": "mn", "start": 20, "dur": 20, "in": 20},
+      {"id": "Z", "media": "mn", "start": 40, "dur": 20, "in": 40}
+    ] }
+  ],
+  "params": {"item": "Y", "delta": "0.2s"},
+  "error": {"code": "locked", "id": "V2"}
+}

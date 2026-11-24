@@ -1,0 +1,34 @@
+{
+  "$schema": "../fixture.schema.json",
+  "kind": "edit",
+  "id": "insert-free-new-track",
+  "title": "new_track puts an overlapping insert on a new track directly above (P1)",
+  "command": "timeline.insert",
+  "tags": ["free"],
+  "cites": ["INV-42", "INV-104"],
+  "fps": 25,
+  "media": {
+    "mn": {"kind": "video", "frames": 250, "audio": false}
+  },
+  "before": [
+    { "track": "V2", "kind": "video", "items": [
+      {"id": "X", "media": "mn", "start": 10, "dur": 30}
+    ] },
+    { "track": "V1", "kind": "video", "items": [] }
+  ],
+  "params": {"sequence": "S", "track": "V2", "media": "mn", "at": "f:20", "duration": "f:10", "mode": "new_track"},
+  "after": [
+    { "track": "+V3", "kind": "video", "items": [
+      {"id": "+N", "media": "mn", "start": 20, "dur": 10}
+    ] },
+    { "track": "V2", "kind": "video", "items": [
+      {"id": "X", "media": "mn", "start": 10, "dur": 30}
+    ] },
+    { "track": "V1", "kind": "video", "items": [] }
+  ],
+  "output": {"at": "f:20", "created_tracks": ["+V3"]},
+  "report": {
+    "created": ["+N"],
+    "created_tracks": ["+V3"]
+  }
+}

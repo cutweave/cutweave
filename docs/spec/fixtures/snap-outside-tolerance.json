@@ -1,0 +1,16 @@
+{
+  "$schema": "../fixture.schema.json",
+  "kind": "snap",
+  "id": "snap-outside-tolerance",
+  "title": "Beyond the tolerance the time only snaps to the nearest frame",
+  "cites": ["INV-321"],
+  "fps": 25,
+  "px_per_second": 100,
+  "threshold_px": 8,
+  "offsets": [0],
+  "r": 355622400,
+  "candidates": [
+    {"kind": "edge", "t": 282240000}
+  ],
+  "expected": {"t": 366912000, "target": null}
+}

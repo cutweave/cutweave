@@ -223,9 +223,10 @@ Provenance { origin(import|record|ai), provider?, model?, prompt?, seed?, params
   - Linked groups move, trim, split and delete together. `unlink: true` on `item.move` and `clip.trim` edits only that item and removes it from its group. A group never keeps a single member: when an edit (`unlink: true`, `track.remove`) leaves one item alone in its group, that item is unlinked in the same transaction. If that item sits on a locked track the edit fails with `Locked` instead (it never leaves a lone member behind).
   - `item.move` takes `start` and accepts `overlap: "new_track"` like `timeline.insert`. Edits never ripple, and trims never push a neighbour.
   - An edit touching any locked track (partners' tracks included) fails with `Locked` and applies nothing.
+- **Phase 2 edit semantics** are specified in [docs/spec/timeline-edit-semantics.md](spec/timeline-edit-semantics.md) (WP-2A.01): the magnetic main track, placement modes (`insert`, `overwrite`, `new_track`, `reject`), ripple scope, attachments, the trim family, `EditReport`, snapping and selection, with executable fixtures (`cargo xtask check-fixtures`). Its contract changes are in [ADR-0023](adr/0023-timeline-edit-semantics.md) (**Proposed**); until that is accepted, the P1 rules above hold.
 - **Compound clips** are nested sequences referenced as media (`MediaAsset.kind = sequence-ref`). They render recursively and may not reference themselves; cycle detection is enforced.
 - **Normalized, ID-addressed.** Nothing refers to anything by index. Agents and the UI address by ID, which is stable across sessions.
-- **CapCut magnetic main track** is a track flag: `magnetic: true` gives ripple-by-default semantics. Linked items ("attached to main clip") move with their parent via `linked_group`.
+- **CapCut magnetic main track** is a track flag: `magnetic: true` gives ripple-by-default semantics. Linked items ("attached to main clip") move with their parent via `linked_group`. (The P2 spec proposes a separate one-way `attached_to` relation for these, spec §1.4, ADR-0023.)
 - **Plugin data** goes only into namespaced `custom` maps, so it can never corrupt core fields.
 - **Schema versioning:** `schema_version` plus ordered migrations (`vN → vN+1`) with golden fixture tests. Projects from newer app versions open read-only with a warning.
 
@@ -312,6 +313,7 @@ impl Command for SplitItem {
   - Another actor's change to a locked item fails with `Conflict{item_in_gesture, retry_after_ms}`. The hint is the time left until the gesture's idle deadline, at least 250 ms; proposals give none. The holder's own actor is not blocked.
   - `edit.locks` lists open transactions with their locked items and deadlines. Events: `tx.opened`, `tx.locked`, `tx.closed`.
   - A closed connection ID can never open transactions again, so the API server (WP-1I.02) must not reuse connection IDs. A `holder` field on the error would be a contract change (ADR).
+- **P2 gesture updates (proposed in ADR-0023, spec §5):** each update of a gesture carries `_meta.replace: true` and replaces the previous one atomically, so a gesture commits the effect of its last command; its soft-lock set is the union of the items each update's `EditReport` names, and `Conflict{item_in_gesture}` gains `holder` (WP-2A.12).
 - **Checkpoints:** `edit.checkpoint{name}` and `edit.restore{checkpoint}` (cheap, thanks to persistent snapshots) let agents try something and roll back.
 - **Future collaboration:** patch ops are designed to map onto a CRDT (Loro) later; no CRDT in v1 *(ADR-005)*.
 

@@ -1,0 +1,31 @@
+{
+  "$schema": "../fixture.schema.json",
+  "kind": "edit",
+  "id": "move-into-magnetic-inserts",
+  "title": "Moving an overlay onto the main track inserts it at a cut by default",
+  "command": "item.move",
+  "tags": ["magnetic", "free"],
+  "cites": ["INV-40", "INV-123"],
+  "fps": 25,
+  "media": {
+    "mn": {"kind": "video", "frames": 250, "audio": false}
+  },
+  "before": [
+    { "track": "V2", "kind": "video", "items": [
+      {"id": "X", "media": "mn", "start": 100, "dur": 20}
+    ] },
+    { "track": "V1", "kind": "video", "magnetic": true, "items": [
+      {"id": "A", "media": "mn", "start": 0, "dur": 30},
+      {"id": "B", "media": "mn", "start": 30, "dur": 30, "in": 30}
+    ] }
+  ],
+  "params": {"item": "X", "start": "f:30", "to_track": "V1"},
+  "after": [
+    { "track": "V2", "kind": "video", "items": [] },
+    { "track": "V1", "kind": "video", "magnetic": true, "items": [
+      {"id": "A", "media": "mn", "start": 0, "dur": 30},
+      {"id": "X", "media": "mn", "start": 30, "dur": 20},
+      {"id": "B", "media": "mn", "start": 50, "dur": 30, "in": 30}
+    ] }
+  ]
+}

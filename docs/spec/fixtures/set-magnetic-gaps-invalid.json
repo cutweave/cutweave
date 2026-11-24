@@ -1,0 +1,21 @@
+{
+  "$schema": "../fixture.schema.json",
+  "kind": "edit",
+  "id": "set-magnetic-gaps-invalid",
+  "title": "A track with gaps cannot become the main track unless close_gaps is set",
+  "command": "track.set_magnetic",
+  "tags": ["free"],
+  "cites": ["INV-281", "INV-7"],
+  "fps": 25,
+  "media": {
+    "mn": {"kind": "video", "frames": 250, "audio": false}
+  },
+  "before": [
+    { "track": "V1", "kind": "video", "items": [
+      {"id": "X", "media": "mn", "start": 10, "dur": 10},
+      {"id": "Y", "media": "mn", "start": 40, "dur": 10, "in": 40}
+    ] }
+  ],
+  "params": {"track": "V1", "magnetic": true},
+  "error": {"code": "invalid", "path": "/track"}
+}

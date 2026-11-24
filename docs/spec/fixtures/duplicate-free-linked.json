@@ -1,0 +1,32 @@
+{
+  "$schema": "../fixture.schema.json",
+  "kind": "edit",
+  "id": "duplicate-free-linked",
+  "title": "A copied group gets a new group; the copies follow the originals",
+  "command": "item.duplicate",
+  "tags": ["free", "linked"],
+  "cites": ["INV-191", "INV-192"],
+  "fps": 25,
+  "media": {
+    "mv": {"kind": "video", "frames": 250, "audio": true}
+  },
+  "before": [
+    { "track": "V2", "kind": "video", "items": [
+      {"id": "X", "media": "mv", "start": 0, "dur": 20, "group": "gX"}
+    ] },
+    { "track": "A2", "kind": "audio", "items": [
+      {"id": "x", "media": "mv", "start": 0, "dur": 20, "group": "gX"}
+    ] }
+  ],
+  "params": {"items": ["X"]},
+  "after": [
+    { "track": "V2", "kind": "video", "items": [
+      {"id": "X", "media": "mv", "start": 0, "dur": 20, "group": "gX"},
+      {"id": "+X2", "media": "mv", "start": 20, "dur": 20, "group": "+gX2"}
+    ] },
+    { "track": "A2", "kind": "audio", "items": [
+      {"id": "x", "media": "mv", "start": 0, "dur": 20, "group": "gX"},
+      {"id": "+x2", "media": "mv", "start": 20, "dur": 20, "group": "+gX2"}
+    ] }
+  ]
+}

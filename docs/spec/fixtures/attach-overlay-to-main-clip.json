@@ -1,0 +1,35 @@
+{
+  "$schema": "../fixture.schema.json",
+  "kind": "edit",
+  "id": "attach-overlay-to-main-clip",
+  "title": "An overlay inside a main-track clip is attached to it",
+  "command": "item.attach",
+  "tags": ["magnetic", "linked"],
+  "cites": ["INV-271", "INV-9"],
+  "fps": 25,
+  "media": {
+    "mn": {"kind": "video", "frames": 250, "audio": false}
+  },
+  "before": [
+    { "track": "V2", "kind": "video", "items": [
+      {"id": "T", "media": "mn", "start": 35, "dur": 10}
+    ] },
+    { "track": "V1", "kind": "video", "magnetic": true, "items": [
+      {"id": "A", "media": "mn", "start": 0, "dur": 30},
+      {"id": "B", "media": "mn", "start": 30, "dur": 30, "in": 30}
+    ] }
+  ],
+  "params": {"items": ["T"], "parent": "B"},
+  "after": [
+    { "track": "V2", "kind": "video", "items": [
+      {"id": "T", "media": "mn", "start": 35, "dur": 10, "parent": "B"}
+    ] },
+    { "track": "V1", "kind": "video", "magnetic": true, "items": [
+      {"id": "A", "media": "mn", "start": 0, "dur": 30},
+      {"id": "B", "media": "mn", "start": 30, "dur": 30, "in": 30}
+    ] }
+  ],
+  "report": {
+    "relinked": [{"item": "T", "group": null, "parent": "B"}]
+  }
+}

@@ -1,0 +1,17 @@
+{
+  "$schema": "../fixture.schema.json",
+  "kind": "snap",
+  "id": "snap-tie-marker-over-beat",
+  "title": "At equal distance a marker outranks a beat",
+  "cites": ["INV-322"],
+  "fps": 25,
+  "px_per_second": 100,
+  "threshold_px": 8,
+  "offsets": [0],
+  "r": 310464000,
+  "candidates": [
+    {"kind": "beat", "t": 338688000},
+    {"kind": "marker", "t": 282240000}
+  ],
+  "expected": {"t": 282240000, "target": {"kind": "marker", "t": 282240000}}
+}

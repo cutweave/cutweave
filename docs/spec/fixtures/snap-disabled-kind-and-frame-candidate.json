@@ -1,0 +1,18 @@
+{
+  "$schema": "../fixture.schema.json",
+  "kind": "snap",
+  "id": "snap-disabled-kind-and-frame-candidate",
+  "title": "A disabled kind is skipped and a beat between frames is snapped to a frame first",
+  "cites": ["INV-321", "INV-322"],
+  "fps": 25,
+  "px_per_second": 100,
+  "threshold_px": 8,
+  "offsets": [0],
+  "r": 316108800,
+  "candidates": [
+    {"kind": "playhead", "t": 310464000},
+    {"kind": "beat", "t": 352800000}
+  ],
+  "enabled": ["edge", "marker", "beat", "in_out"],
+  "expected": {"t": 366912000, "target": {"kind": "beat", "t": 366912000}}
+}

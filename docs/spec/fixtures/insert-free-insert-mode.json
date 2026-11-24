@@ -1,0 +1,45 @@
+{
+  "$schema": "../fixture.schema.json",
+  "kind": "edit",
+  "id": "insert-free-insert-mode",
+  "title": "insert on a free track splits at the time and ripples the track and its partners' track, not the music",
+  "command": "timeline.insert",
+  "tags": ["free", "linked"],
+  "cites": ["INV-102", "INV-31", "INV-43", "INV-45"],
+  "fps": 25,
+  "media": {
+    "ma": {"kind": "audio", "frames": 500},
+    "mv": {"kind": "video", "frames": 250, "audio": true}
+  },
+  "before": [
+    { "track": "V2", "kind": "video", "items": [
+      {"id": "X", "media": "mv", "start": 0, "dur": 20, "group": "gX"},
+      {"id": "Y", "media": "mv", "start": 40, "dur": 20, "in": 40, "group": "gY"}
+    ] },
+    { "track": "A2", "kind": "audio", "items": [
+      {"id": "x", "media": "mv", "start": 0, "dur": 20, "group": "gX"},
+      {"id": "y", "media": "mv", "start": 40, "dur": 20, "in": 40, "group": "gY"}
+    ] },
+    { "track": "A3", "kind": "audio", "items": [
+      {"id": "M", "media": "ma", "start": 0, "dur": 100}
+    ] }
+  ],
+  "params": {"sequence": "S", "track": "V2", "media": "mv", "at": "f:10", "source_in": "f:200", "duration": "f:10", "mode": "insert"},
+  "after": [
+    { "track": "V2", "kind": "video", "items": [
+      {"id": "X", "media": "mv", "start": 0, "dur": 10, "group": "gX"},
+      {"id": "+N", "media": "mv", "start": 10, "dur": 10, "in": 200, "group": "+gN"},
+      {"id": "+X2", "media": "mv", "start": 20, "dur": 10, "in": 10, "group": "+gX2"},
+      {"id": "Y", "media": "mv", "start": 50, "dur": 20, "in": 40, "group": "gY"}
+    ] },
+    { "track": "A2", "kind": "audio", "items": [
+      {"id": "x", "media": "mv", "start": 0, "dur": 10, "group": "gX"},
+      {"id": "+n", "media": "mv", "start": 10, "dur": 10, "in": 200, "group": "+gN"},
+      {"id": "+x2", "media": "mv", "start": 20, "dur": 10, "in": 10, "group": "+gX2"},
+      {"id": "y", "media": "mv", "start": 50, "dur": 20, "in": 40, "group": "gY"}
+    ] },
+    { "track": "A3", "kind": "audio", "items": [
+      {"id": "M", "media": "ma", "start": 0, "dur": 100}
+    ] }
+  ]
+}

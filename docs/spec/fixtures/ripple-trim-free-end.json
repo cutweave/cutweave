@@ -1,0 +1,35 @@
+{
+  "$schema": "../fixture.schema.json",
+  "kind": "edit",
+  "id": "ripple-trim-free-end",
+  "title": "Ripple-trimming an end pushes the rest of the track and its partners' track",
+  "command": "clip.ripple_trim",
+  "tags": ["free", "linked"],
+  "cites": ["INV-211", "INV-31"],
+  "fps": 25,
+  "media": {
+    "mv": {"kind": "video", "frames": 250, "audio": true}
+  },
+  "before": [
+    { "track": "V2", "kind": "video", "items": [
+      {"id": "X", "media": "mv", "start": 0, "dur": 20, "group": "gX"},
+      {"id": "Y", "media": "mv", "start": 40, "dur": 20, "in": 40, "group": "gY"}
+    ] },
+    { "track": "A2", "kind": "audio", "items": [
+      {"id": "x", "media": "mv", "start": 0, "dur": 20, "group": "gX"},
+      {"id": "y", "media": "mv", "start": 40, "dur": 20, "in": 40, "group": "gY"}
+    ] }
+  ],
+  "params": {"item": "X", "edge": "end", "delta": "0.4s"},
+  "after": [
+    { "track": "V2", "kind": "video", "items": [
+      {"id": "X", "media": "mv", "start": 0, "dur": 30, "group": "gX"},
+      {"id": "Y", "media": "mv", "start": 50, "dur": 20, "in": 40, "group": "gY"}
+    ] },
+    { "track": "A2", "kind": "audio", "items": [
+      {"id": "x", "media": "mv", "start": 0, "dur": 30, "group": "gX"},
+      {"id": "y", "media": "mv", "start": 50, "dur": 20, "in": 40, "group": "gY"}
+    ] }
+  ],
+  "output": {"applied_delta": "0.4s", "clamped": false}
+}

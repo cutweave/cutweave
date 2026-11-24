@@ -1,0 +1,42 @@
+{
+  "$schema": "../fixture.schema.json",
+  "kind": "edit",
+  "id": "move-parent-children-follow",
+  "title": "Reordering a main-track clip carries its attached overlay; an overlay in the way sends it to a new track",
+  "command": "item.move",
+  "tags": ["magnetic", "linked"],
+  "cites": ["INV-36", "INV-37", "INV-123"],
+  "fps": 25,
+  "media": {
+    "mn": {"kind": "video", "frames": 250, "audio": false}
+  },
+  "before": [
+    { "track": "V2", "kind": "video", "items": [
+      {"id": "U", "media": "mn", "start": 5, "dur": 5},
+      {"id": "T", "media": "mn", "start": 35, "dur": 10, "parent": "B"}
+    ] },
+    { "track": "V1", "kind": "video", "magnetic": true, "items": [
+      {"id": "A", "media": "mn", "start": 0, "dur": 30},
+      {"id": "B", "media": "mn", "start": 30, "dur": 30, "in": 30},
+      {"id": "C", "media": "mn", "start": 60, "dur": 30, "in": 60}
+    ] }
+  ],
+  "params": {"item": "B", "start": "f:0"},
+  "after": [
+    { "track": "+V3", "kind": "video", "items": [
+      {"id": "T", "media": "mn", "start": 5, "dur": 10, "parent": "B"}
+    ] },
+    { "track": "V2", "kind": "video", "items": [
+      {"id": "U", "media": "mn", "start": 5, "dur": 5}
+    ] },
+    { "track": "V1", "kind": "video", "magnetic": true, "items": [
+      {"id": "B", "media": "mn", "start": 0, "dur": 30, "in": 30},
+      {"id": "A", "media": "mn", "start": 30, "dur": 30},
+      {"id": "C", "media": "mn", "start": 60, "dur": 30, "in": 60}
+    ] }
+  ],
+  "report": {
+    "moved": [{"item": "B", "track": "V1", "start": 0}, {"item": "A", "track": "V1", "start": 30}, {"item": "T", "track": "+V3", "start": 5}],
+    "created_tracks": ["+V3"]
+  }
+}

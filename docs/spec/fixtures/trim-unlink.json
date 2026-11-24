@@ -1,0 +1,34 @@
+{
+  "$schema": "../fixture.schema.json",
+  "kind": "edit",
+  "id": "trim-unlink",
+  "title": "unlink trims one member and dissolves the pair (P1)",
+  "command": "clip.trim",
+  "tags": ["free", "linked"],
+  "cites": ["INV-35"],
+  "fps": 25,
+  "media": {
+    "mv": {"kind": "video", "frames": 250, "audio": true}
+  },
+  "before": [
+    { "track": "V2", "kind": "video", "items": [
+      {"id": "X", "media": "mv", "start": 0, "dur": 30, "group": "gX"}
+    ] },
+    { "track": "A2", "kind": "audio", "items": [
+      {"id": "x", "media": "mv", "start": 0, "dur": 30, "group": "gX"}
+    ] }
+  ],
+  "params": {"item": "X", "edge": "end", "delta": "-0.4s", "unlink": true},
+  "after": [
+    { "track": "V2", "kind": "video", "items": [
+      {"id": "X", "media": "mv", "start": 0, "dur": 20}
+    ] },
+    { "track": "A2", "kind": "audio", "items": [
+      {"id": "x", "media": "mv", "start": 0, "dur": 30}
+    ] }
+  ],
+  "report": {
+    "trimmed": [{"item": "X", "start": 0, "dur": 20, "in": 0}],
+    "relinked": [{"item": "X", "group": null, "parent": null}, {"item": "x", "group": null, "parent": null}]
+  }
+}

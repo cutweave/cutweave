@@ -1,0 +1,41 @@
+{
+  "$schema": "../fixture.schema.json",
+  "kind": "edit",
+  "id": "slip-linked",
+  "title": "Slip changes only what the clip and its audio show",
+  "command": "clip.slip",
+  "tags": ["magnetic", "linked"],
+  "cites": ["INV-231", "INV-35"],
+  "fps": 25,
+  "media": {
+    "mv": {"kind": "video", "frames": 250, "audio": true}
+  },
+  "before": [
+    { "track": "V1", "kind": "video", "magnetic": true, "items": [
+      {"id": "A", "media": "mv", "start": 0, "dur": 30, "group": "gA"},
+      {"id": "B", "media": "mv", "start": 30, "dur": 30, "in": 30, "group": "gB"},
+      {"id": "C", "media": "mv", "start": 60, "dur": 30, "in": 60, "group": "gC"}
+    ] },
+    { "track": "A1", "kind": "audio", "items": [
+      {"id": "a", "media": "mv", "start": 0, "dur": 30, "group": "gA"},
+      {"id": "b", "media": "mv", "start": 30, "dur": 30, "in": 30, "group": "gB"},
+      {"id": "c", "media": "mv", "start": 60, "dur": 30, "in": 60, "group": "gC"}
+    ] }
+  ],
+  "params": {"item": "B", "delta": "4s"},
+  "after": [
+    { "track": "V1", "kind": "video", "magnetic": true, "items": [
+      {"id": "A", "media": "mv", "start": 0, "dur": 30, "group": "gA"},
+      {"id": "B", "media": "mv", "start": 30, "dur": 30, "in": 130, "group": "gB"},
+      {"id": "C", "media": "mv", "start": 60, "dur": 30, "in": 60, "group": "gC"}
+    ] },
+    { "track": "A1", "kind": "audio", "items": [
+      {"id": "a", "media": "mv", "start": 0, "dur": 30, "group": "gA"},
+      {"id": "b", "media": "mv", "start": 30, "dur": 30, "in": 130, "group": "gB"},
+      {"id": "c", "media": "mv", "start": 60, "dur": 30, "in": 60, "group": "gC"}
+    ] }
+  ],
+  "report": {
+    "trimmed": [{"item": "B", "start": 30, "dur": 30, "in": 130}, {"item": "b", "start": 30, "dur": 30, "in": 130}]
+  }
+}

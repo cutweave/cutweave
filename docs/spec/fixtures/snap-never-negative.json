@@ -1,0 +1,17 @@
+{
+  "$schema": "../fixture.schema.json",
+  "kind": "snap",
+  "id": "snap-never-negative",
+  "title": "A candidate that would start the span before 0 is not eligible",
+  "cites": ["INV-321"],
+  "fps": 25,
+  "px_per_second": 25,
+  "threshold_px": 8,
+  "offsets": [0, 564480000],
+  "r": 28224000,
+  "candidates": [
+    {"kind": "marker", "t": 508032000}
+  ],
+  "enabled": ["marker"],
+  "expected": {"t": 28224000, "target": null}
+}

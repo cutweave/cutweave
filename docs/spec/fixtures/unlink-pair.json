@@ -1,0 +1,30 @@
+{
+  "$schema": "../fixture.schema.json",
+  "kind": "edit",
+  "id": "unlink-pair",
+  "title": "Unlinking one member of a pair dissolves the group",
+  "command": "item.unlink",
+  "tags": ["free", "linked"],
+  "cites": ["INV-262"],
+  "fps": 25,
+  "media": {
+    "mv": {"kind": "video", "frames": 250, "audio": true}
+  },
+  "before": [
+    { "track": "V2", "kind": "video", "items": [
+      {"id": "X", "media": "mv", "start": 0, "dur": 20, "group": "gX"}
+    ] },
+    { "track": "A2", "kind": "audio", "items": [
+      {"id": "x", "media": "mv", "start": 0, "dur": 20, "group": "gX"}
+    ] }
+  ],
+  "params": {"items": ["X"]},
+  "after": [
+    { "track": "V2", "kind": "video", "items": [
+      {"id": "X", "media": "mv", "start": 0, "dur": 20}
+    ] },
+    { "track": "A2", "kind": "audio", "items": [
+      {"id": "x", "media": "mv", "start": 0, "dur": 20}
+    ] }
+  ]
+}

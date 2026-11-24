@@ -1,0 +1,20 @@
+{
+  "$schema": "../fixture.schema.json",
+  "kind": "edit",
+  "id": "delete-gap-after-end",
+  "title": "After the last clip there is no gap to delete",
+  "command": "timeline.delete_gap",
+  "tags": ["free", "clamp"],
+  "cites": ["INV-171"],
+  "fps": 25,
+  "media": {
+    "mn": {"kind": "video", "frames": 250, "audio": false}
+  },
+  "before": [
+    { "track": "V2", "kind": "video", "items": [
+      {"id": "X", "media": "mn", "start": 0, "dur": 20}
+    ] }
+  ],
+  "params": {"track": "V2", "at": "f:50"},
+  "error": {"code": "invalid", "path": "/at"}
+}

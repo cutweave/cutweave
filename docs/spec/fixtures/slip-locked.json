@@ -1,0 +1,20 @@
+{
+  "$schema": "../fixture.schema.json",
+  "kind": "edit",
+  "id": "slip-locked",
+  "title": "Slipping on a locked track is refused",
+  "command": "clip.slip",
+  "tags": ["locked"],
+  "cites": ["INV-27"],
+  "fps": 25,
+  "media": {
+    "mn": {"kind": "video", "frames": 250, "audio": false}
+  },
+  "before": [
+    { "track": "V2", "kind": "video", "locked": true, "items": [
+      {"id": "X", "media": "mn", "start": 0, "dur": 30, "in": 30}
+    ] }
+  ],
+  "params": {"item": "X", "delta": "0.2s"},
+  "error": {"code": "locked", "id": "V2"}
+}

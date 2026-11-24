@@ -1,0 +1,39 @@
+{
+  "$schema": "../fixture.schema.json",
+  "kind": "edit",
+  "id": "move-magnetic-clamp-to-end",
+  "title": "A main-track move past the end lands at the end of the lifted track",
+  "command": "item.move",
+  "tags": ["magnetic", "clamp", "linked"],
+  "cites": ["INV-41", "INV-123"],
+  "fps": 25,
+  "media": {
+    "mv": {"kind": "video", "frames": 250, "audio": true}
+  },
+  "before": [
+    { "track": "V1", "kind": "video", "magnetic": true, "items": [
+      {"id": "A", "media": "mv", "start": 0, "dur": 30, "group": "gA"},
+      {"id": "B", "media": "mv", "start": 30, "dur": 30, "in": 30, "group": "gB"},
+      {"id": "C", "media": "mv", "start": 60, "dur": 30, "in": 60, "group": "gC"}
+    ] },
+    { "track": "A1", "kind": "audio", "items": [
+      {"id": "a", "media": "mv", "start": 0, "dur": 30, "group": "gA"},
+      {"id": "b", "media": "mv", "start": 30, "dur": 30, "in": 30, "group": "gB"},
+      {"id": "c", "media": "mv", "start": 60, "dur": 30, "in": 60, "group": "gC"}
+    ] }
+  ],
+  "params": {"item": "A", "start": "f:500"},
+  "after": [
+    { "track": "V1", "kind": "video", "magnetic": true, "items": [
+      {"id": "B", "media": "mv", "start": 0, "dur": 30, "in": 30, "group": "gB"},
+      {"id": "C", "media": "mv", "start": 30, "dur": 30, "in": 60, "group": "gC"},
+      {"id": "A", "media": "mv", "start": 60, "dur": 30, "group": "gA"}
+    ] },
+    { "track": "A1", "kind": "audio", "items": [
+      {"id": "b", "media": "mv", "start": 0, "dur": 30, "in": 30, "group": "gB"},
+      {"id": "c", "media": "mv", "start": 30, "dur": 30, "in": 60, "group": "gC"},
+      {"id": "a", "media": "mv", "start": 60, "dur": 30, "group": "gA"}
+    ] }
+  ],
+  "output": {"items": [{"item": "A", "track": "V1", "start": "f:60"}, {"item": "a", "track": "A1", "start": "f:60"}]}
+}

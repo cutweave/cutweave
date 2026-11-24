@@ -1,0 +1,27 @@
+{
+  "$schema": "../fixture.schema.json",
+  "kind": "edit",
+  "id": "delete-gap-free",
+  "title": "Deleting a gap moves what follows to its start",
+  "command": "timeline.delete_gap",
+  "tags": ["free"],
+  "cites": ["INV-171"],
+  "fps": 25,
+  "media": {
+    "mn": {"kind": "video", "frames": 250, "audio": false}
+  },
+  "before": [
+    { "track": "V2", "kind": "video", "items": [
+      {"id": "X", "media": "mn", "start": 0, "dur": 20},
+      {"id": "Y", "media": "mn", "start": 40, "dur": 20, "in": 40}
+    ] }
+  ],
+  "params": {"track": "V2", "at": "f:30"},
+  "after": [
+    { "track": "V2", "kind": "video", "items": [
+      {"id": "X", "media": "mn", "start": 0, "dur": 20},
+      {"id": "Y", "media": "mn", "start": 20, "dur": 20, "in": 40}
+    ] }
+  ],
+  "output": {"gap": {"start": "f:20", "end": "f:40"}}
+}

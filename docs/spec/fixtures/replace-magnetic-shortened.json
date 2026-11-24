@@ -1,0 +1,47 @@
+{
+  "$schema": "../fixture.schema.json",
+  "kind": "edit",
+  "id": "replace-magnetic-shortened",
+  "title": "Replacing with shorter silent media shortens the clip and ripples; the old sound stays, unlinked, trimmed and muted",
+  "command": "clip.replace",
+  "tags": ["magnetic", "linked", "clamp"],
+  "cites": ["INV-251", "INV-252", "INV-211", "INV-21"],
+  "fps": 25,
+  "media": {
+    "ms": {"kind": "video", "frames": 20, "audio": false},
+    "mv": {"kind": "video", "frames": 250, "audio": true}
+  },
+  "before": [
+    { "track": "V1", "kind": "video", "magnetic": true, "items": [
+      {"id": "A", "media": "mv", "start": 0, "dur": 30, "group": "gA"},
+      {"id": "B", "media": "mv", "start": 30, "dur": 30, "in": 30, "group": "gB"},
+      {"id": "C", "media": "mv", "start": 60, "dur": 30, "in": 60, "group": "gC"}
+    ] },
+    { "track": "A1", "kind": "audio", "items": [
+      {"id": "a", "media": "mv", "start": 0, "dur": 30, "group": "gA"},
+      {"id": "b", "media": "mv", "start": 30, "dur": 30, "in": 30, "group": "gB"},
+      {"id": "c", "media": "mv", "start": 60, "dur": 30, "in": 60, "group": "gC"}
+    ] }
+  ],
+  "params": {"item": "B", "media": "ms"},
+  "after": [
+    { "track": "V1", "kind": "video", "magnetic": true, "items": [
+      {"id": "A", "media": "mv", "start": 0, "dur": 30, "group": "gA"},
+      {"id": "B", "media": "ms", "start": 30, "dur": 20},
+      {"id": "C", "media": "mv", "start": 50, "dur": 30, "in": 60, "group": "gC"}
+    ] },
+    { "track": "A1", "kind": "audio", "items": [
+      {"id": "a", "media": "mv", "start": 0, "dur": 30, "group": "gA"},
+      {"id": "b", "media": "mv", "start": 30, "dur": 20, "in": 30, "enabled": false},
+      {"id": "c", "media": "mv", "start": 50, "dur": 30, "in": 60, "group": "gC"}
+    ] }
+  ],
+  "output": {"item": "B", "shortened": true},
+  "report": {
+    "replaced": [{"item": "B", "media": "ms"}],
+    "trimmed": [{"item": "B", "start": 30, "dur": 20, "in": 0}, {"item": "b", "start": 30, "dur": 20, "in": 30}],
+    "relinked": [{"item": "B", "group": null, "parent": null}, {"item": "b", "group": null, "parent": null}],
+    "toggled": [{"item": "b", "enabled": false}],
+    "moved": [{"item": "C", "track": "V1", "start": 50}, {"item": "c", "track": "A1", "start": 50}]
+  }
+}

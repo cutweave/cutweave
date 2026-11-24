@@ -1,0 +1,23 @@
+{
+  "$schema": "../fixture.schema.json",
+  "kind": "edit",
+  "id": "split-locked-partner",
+  "title": "Splitting a clip whose audio is on a locked track is refused",
+  "command": "clip.split",
+  "tags": ["locked", "linked"],
+  "cites": ["INV-27"],
+  "fps": 25,
+  "media": {
+    "mv": {"kind": "video", "frames": 250, "audio": true}
+  },
+  "before": [
+    { "track": "V2", "kind": "video", "items": [
+      {"id": "X", "media": "mv", "start": 0, "dur": 20, "group": "gX"}
+    ] },
+    { "track": "A2", "kind": "audio", "locked": true, "items": [
+      {"id": "x", "media": "mv", "start": 0, "dur": 20, "group": "gX"}
+    ] }
+  ],
+  "params": {"item": "X", "at": "f:10"},
+  "error": {"code": "locked", "id": "A2"}
+}

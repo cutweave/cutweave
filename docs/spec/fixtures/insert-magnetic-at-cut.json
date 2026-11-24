@@ -1,0 +1,45 @@
+{
+  "$schema": "../fixture.schema.json",
+  "kind": "edit",
+  "id": "insert-magnetic-at-cut",
+  "title": "Inserting at a cut on the main track pushes the rest right; the linked audio track follows",
+  "command": "timeline.insert",
+  "tags": ["magnetic", "linked"],
+  "cites": ["INV-40", "INV-45", "INV-101", "INV-102", "INV-31"],
+  "fps": 25,
+  "media": {
+    "mv": {"kind": "video", "frames": 250, "audio": true}
+  },
+  "before": [
+    { "track": "V1", "kind": "video", "magnetic": true, "items": [
+      {"id": "A", "media": "mv", "start": 0, "dur": 30, "group": "gA"},
+      {"id": "B", "media": "mv", "start": 30, "dur": 30, "in": 30, "group": "gB"},
+      {"id": "C", "media": "mv", "start": 60, "dur": 30, "in": 60, "group": "gC"}
+    ] },
+    { "track": "A1", "kind": "audio", "items": [
+      {"id": "a", "media": "mv", "start": 0, "dur": 30, "group": "gA"},
+      {"id": "b", "media": "mv", "start": 30, "dur": 30, "in": 30, "group": "gB"},
+      {"id": "c", "media": "mv", "start": 60, "dur": 30, "in": 60, "group": "gC"}
+    ] }
+  ],
+  "params": {"sequence": "S", "track": "V1", "media": "mv", "at": "f:30", "source_in": "f:100", "duration": "f:20"},
+  "after": [
+    { "track": "V1", "kind": "video", "magnetic": true, "items": [
+      {"id": "A", "media": "mv", "start": 0, "dur": 30, "group": "gA"},
+      {"id": "+N", "media": "mv", "start": 30, "dur": 20, "in": 100, "group": "+gN"},
+      {"id": "B", "media": "mv", "start": 50, "dur": 30, "in": 30, "group": "gB"},
+      {"id": "C", "media": "mv", "start": 80, "dur": 30, "in": 60, "group": "gC"}
+    ] },
+    { "track": "A1", "kind": "audio", "items": [
+      {"id": "a", "media": "mv", "start": 0, "dur": 30, "group": "gA"},
+      {"id": "+n", "media": "mv", "start": 30, "dur": 20, "in": 100, "group": "+gN"},
+      {"id": "b", "media": "mv", "start": 50, "dur": 30, "in": 30, "group": "gB"},
+      {"id": "c", "media": "mv", "start": 80, "dur": 30, "in": 60, "group": "gC"}
+    ] }
+  ],
+  "output": {"at": "f:30", "duration": "f:20", "clips": ["+N", "+n"], "linked_group": "+gN", "created_tracks": []},
+  "report": {
+    "created": ["+N", "+n"],
+    "moved": [{"item": "B", "track": "V1", "start": 50}, {"item": "b", "track": "A1", "start": 50}, {"item": "C", "track": "V1", "start": 80}, {"item": "c", "track": "A1", "start": 80}]
+  }
+}

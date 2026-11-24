@@ -1,0 +1,25 @@
+{
+  "$schema": "../fixture.schema.json",
+  "kind": "edit",
+  "id": "split-still",
+  "title": "A still's halves both keep the source position",
+  "command": "clip.split",
+  "tags": ["free"],
+  "cites": ["INV-181"],
+  "fps": 25,
+  "media": {
+    "mi": {"kind": "image"}
+  },
+  "before": [
+    { "track": "V2", "kind": "video", "items": [
+      {"id": "X", "media": "mi", "start": 0, "dur": 30}
+    ] }
+  ],
+  "params": {"item": "X", "at": "f:10"},
+  "after": [
+    { "track": "V2", "kind": "video", "items": [
+      {"id": "X", "media": "mi", "start": 0, "dur": 10},
+      {"id": "+X2", "media": "mi", "start": 10, "dur": 20}
+    ] }
+  ]
+}

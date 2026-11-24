@@ -1,0 +1,17 @@
+{
+  "$schema": "../fixture.schema.json",
+  "kind": "snap",
+  "id": "snap-nearest-wins",
+  "title": "The nearest candidate wins over a farther playhead",
+  "cites": ["INV-321", "INV-322"],
+  "fps": 25,
+  "px_per_second": 100,
+  "threshold_px": 8,
+  "offsets": [0],
+  "r": 321753600,
+  "candidates": [
+    {"kind": "edge", "t": 282240000},
+    {"kind": "playhead", "t": 366912000}
+  ],
+  "expected": {"t": 282240000, "target": {"kind": "edge", "t": 282240000}}
+}

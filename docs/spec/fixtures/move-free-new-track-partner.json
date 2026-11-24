@@ -1,0 +1,39 @@
+{
+  "$schema": "../fixture.schema.json",
+  "kind": "edit",
+  "id": "move-free-new-track-partner",
+  "title": "new_track sends a partner that would overlap to a new track above its own",
+  "command": "item.move",
+  "tags": ["free", "linked"],
+  "cites": ["INV-42", "INV-104", "INV-35"],
+  "fps": 25,
+  "media": {
+    "ma": {"kind": "audio", "frames": 500},
+    "mv": {"kind": "video", "frames": 250, "audio": true}
+  },
+  "before": [
+    { "track": "V2", "kind": "video", "items": [
+      {"id": "X", "media": "mv", "start": 0, "dur": 20, "group": "gX"}
+    ] },
+    { "track": "A2", "kind": "audio", "items": [
+      {"id": "x", "media": "mv", "start": 0, "dur": 20, "group": "gX"},
+      {"id": "M", "media": "ma", "start": 30, "dur": 30}
+    ] }
+  ],
+  "params": {"item": "X", "start": "f:30", "mode": "new_track"},
+  "after": [
+    { "track": "V2", "kind": "video", "items": [
+      {"id": "X", "media": "mv", "start": 30, "dur": 20, "group": "gX"}
+    ] },
+    { "track": "+A3", "kind": "audio", "items": [
+      {"id": "x", "media": "mv", "start": 30, "dur": 20, "group": "gX"}
+    ] },
+    { "track": "A2", "kind": "audio", "items": [
+      {"id": "M", "media": "ma", "start": 30, "dur": 30}
+    ] }
+  ],
+  "report": {
+    "moved": [{"item": "X", "track": "V2", "start": 30}, {"item": "x", "track": "+A3", "start": 30}],
+    "created_tracks": ["+A3"]
+  }
+}

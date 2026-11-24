@@ -1,0 +1,29 @@
+{
+  "$schema": "../fixture.schema.json",
+  "kind": "edit",
+  "id": "slide-free-gap-bounded",
+  "title": "With clamp, a slide into a gap stops at the next clip",
+  "command": "clip.slide",
+  "tags": ["free", "clamp"],
+  "cites": ["INV-46", "INV-241"],
+  "fps": 25,
+  "media": {
+    "mn": {"kind": "video", "frames": 250, "audio": false}
+  },
+  "before": [
+    { "track": "V2", "kind": "video", "items": [
+      {"id": "X", "media": "mn", "start": 0, "dur": 20},
+      {"id": "Y", "media": "mn", "start": 30, "dur": 20, "in": 30},
+      {"id": "Z", "media": "mn", "start": 60, "dur": 20, "in": 60}
+    ] }
+  ],
+  "params": {"item": "Y", "delta": "0.8s", "clamp": true},
+  "after": [
+    { "track": "V2", "kind": "video", "items": [
+      {"id": "X", "media": "mn", "start": 0, "dur": 20},
+      {"id": "Y", "media": "mn", "start": 40, "dur": 20, "in": 30},
+      {"id": "Z", "media": "mn", "start": 60, "dur": 20, "in": 60}
+    ] }
+  ],
+  "output": {"applied_delta": "0.4s", "clamped": true}
+}

@@ -1,0 +1,43 @@
+{
+  "$schema": "../fixture.schema.json",
+  "kind": "edit",
+  "id": "delete-magnetic-locked-music-untouched",
+  "title": "A main-track delete succeeds when a locked track is not reached by its ripple",
+  "command": "item.delete",
+  "tags": ["magnetic", "locked", "linked"],
+  "cites": ["INV-28", "INV-31", "INV-143"],
+  "fps": 25,
+  "media": {
+    "ma": {"kind": "audio", "frames": 500},
+    "mv": {"kind": "video", "frames": 250, "audio": true}
+  },
+  "before": [
+    { "track": "V1", "kind": "video", "magnetic": true, "items": [
+      {"id": "A", "media": "mv", "start": 0, "dur": 30, "group": "gA"},
+      {"id": "B", "media": "mv", "start": 30, "dur": 30, "in": 30, "group": "gB"},
+      {"id": "C", "media": "mv", "start": 60, "dur": 30, "in": 60, "group": "gC"}
+    ] },
+    { "track": "A1", "kind": "audio", "items": [
+      {"id": "a", "media": "mv", "start": 0, "dur": 30, "group": "gA"},
+      {"id": "b", "media": "mv", "start": 30, "dur": 30, "in": 30, "group": "gB"},
+      {"id": "c", "media": "mv", "start": 60, "dur": 30, "in": 60, "group": "gC"}
+    ] },
+    { "track": "A2", "kind": "audio", "locked": true, "items": [
+      {"id": "M", "media": "ma", "start": 0, "dur": 100}
+    ] }
+  ],
+  "params": {"items": ["B"]},
+  "after": [
+    { "track": "V1", "kind": "video", "magnetic": true, "items": [
+      {"id": "A", "media": "mv", "start": 0, "dur": 30, "group": "gA"},
+      {"id": "C", "media": "mv", "start": 30, "dur": 30, "in": 60, "group": "gC"}
+    ] },
+    { "track": "A1", "kind": "audio", "items": [
+      {"id": "a", "media": "mv", "start": 0, "dur": 30, "group": "gA"},
+      {"id": "c", "media": "mv", "start": 30, "dur": 30, "in": 60, "group": "gC"}
+    ] },
+    { "track": "A2", "kind": "audio", "locked": true, "items": [
+      {"id": "M", "media": "ma", "start": 0, "dur": 100}
+    ] }
+  ]
+}

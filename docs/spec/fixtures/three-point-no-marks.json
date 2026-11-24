@@ -1,0 +1,11 @@
+{
+  "$schema": "../fixture.schema.json",
+  "kind": "three_point",
+  "id": "three-point-no-marks",
+  "title": "No marks: the whole media at the playhead",
+  "cites": ["INV-291", "INV-25"],
+  "fps": 25,
+  "media": {"kind": "video", "frames": 250, "audio": true},
+  "playhead": 10,
+  "expected": {"at": 10, "source_in": 0, "duration": 250, "shortened": false}
+}

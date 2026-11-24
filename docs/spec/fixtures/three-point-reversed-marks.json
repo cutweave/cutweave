@@ -1,0 +1,13 @@
+{
+  "$schema": "../fixture.schema.json",
+  "kind": "three_point",
+  "id": "three-point-reversed-marks",
+  "title": "A source out before the source in is refused",
+  "cites": ["INV-292"],
+  "fps": 25,
+  "media": {"kind": "video", "frames": 250, "audio": true},
+  "playhead": 0,
+  "source_in": 100,
+  "source_out": 50,
+  "error": {"code": "invalid"}
+}

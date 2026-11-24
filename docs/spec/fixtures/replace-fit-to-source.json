@@ -1,0 +1,28 @@
+{
+  "$schema": "../fixture.schema.json",
+  "kind": "edit",
+  "id": "replace-fit-to-source",
+  "title": "fit_to_source takes the new media's length and ripples what follows",
+  "command": "clip.replace",
+  "tags": ["free"],
+  "cites": ["INV-251", "INV-252", "INV-211"],
+  "fps": 25,
+  "media": {
+    "mn": {"kind": "video", "frames": 250, "audio": false},
+    "ms": {"kind": "video", "frames": 20, "audio": false}
+  },
+  "before": [
+    { "track": "V2", "kind": "video", "items": [
+      {"id": "X", "media": "mn", "start": 0, "dur": 30},
+      {"id": "Y", "media": "mn", "start": 40, "dur": 20, "in": 40}
+    ] }
+  ],
+  "params": {"item": "X", "media": "ms", "mode": "fit_to_source"},
+  "after": [
+    { "track": "V2", "kind": "video", "items": [
+      {"id": "X", "media": "ms", "start": 0, "dur": 20},
+      {"id": "Y", "media": "mn", "start": 30, "dur": 20, "in": 40}
+    ] }
+  ],
+  "output": {"item": "X", "shortened": false}
+}

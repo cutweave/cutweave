@@ -1,0 +1,28 @@
+{
+  "$schema": "../fixture.schema.json",
+  "kind": "edit",
+  "id": "slide-magnetic-first-clamped",
+  "title": "The first main-track clip cannot slide: with clamp nothing changes",
+  "command": "clip.slide",
+  "tags": ["magnetic", "clamp"],
+  "cites": ["INV-241", "INV-46", "INV-7", "INV-22"],
+  "fps": 25,
+  "media": {
+    "mn": {"kind": "video", "frames": 250, "audio": false}
+  },
+  "before": [
+    { "track": "V1", "kind": "video", "magnetic": true, "items": [
+      {"id": "A", "media": "mn", "start": 0, "dur": 30},
+      {"id": "B", "media": "mn", "start": 30, "dur": 30, "in": 30}
+    ] }
+  ],
+  "params": {"item": "A", "delta": "0.4s", "clamp": true},
+  "after": [
+    { "track": "V1", "kind": "video", "magnetic": true, "items": [
+      {"id": "A", "media": "mn", "start": 0, "dur": 30},
+      {"id": "B", "media": "mn", "start": 30, "dur": 30, "in": 30}
+    ] }
+  ],
+  "output": {"applied_delta": 0, "clamped": true},
+  "report": {}
+}

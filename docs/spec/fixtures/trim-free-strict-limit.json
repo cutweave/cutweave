@@ -1,0 +1,21 @@
+{
+  "$schema": "../fixture.schema.json",
+  "kind": "edit",
+  "id": "trim-free-strict-limit",
+  "title": "Without clamp, the same trim is refused and names the limit (P1)",
+  "command": "clip.trim",
+  "tags": ["free", "clamp"],
+  "cites": ["INV-46"],
+  "fps": 25,
+  "media": {
+    "mn": {"kind": "video", "frames": 250, "audio": false}
+  },
+  "before": [
+    { "track": "V2", "kind": "video", "items": [
+      {"id": "X", "media": "mn", "start": 0, "dur": 30},
+      {"id": "Y", "media": "mn", "start": 40, "dur": 20, "in": 40}
+    ] }
+  ],
+  "params": {"item": "X", "edge": "end", "to": "f:50"},
+  "error": {"code": "invalid", "path": "/to"}
+}

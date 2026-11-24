@@ -1,0 +1,48 @@
+{
+  "$schema": "../fixture.schema.json",
+  "kind": "edit",
+  "id": "insert-magnetic-inside-splits",
+  "title": "Inserting inside a main-track clip splits it and its audio; the right halves ripple with a new group",
+  "command": "timeline.insert",
+  "tags": ["magnetic", "linked"],
+  "cites": ["INV-43", "INV-102", "INV-35", "INV-21"],
+  "fps": 25,
+  "media": {
+    "mv": {"kind": "video", "frames": 250, "audio": true}
+  },
+  "before": [
+    { "track": "V1", "kind": "video", "magnetic": true, "items": [
+      {"id": "A", "media": "mv", "start": 0, "dur": 30, "group": "gA"},
+      {"id": "B", "media": "mv", "start": 30, "dur": 30, "in": 30, "group": "gB"},
+      {"id": "C", "media": "mv", "start": 60, "dur": 30, "in": 60, "group": "gC"}
+    ] },
+    { "track": "A1", "kind": "audio", "items": [
+      {"id": "a", "media": "mv", "start": 0, "dur": 30, "group": "gA"},
+      {"id": "b", "media": "mv", "start": 30, "dur": 30, "in": 30, "group": "gB"},
+      {"id": "c", "media": "mv", "start": 60, "dur": 30, "in": 60, "group": "gC"}
+    ] }
+  ],
+  "params": {"sequence": "S", "track": "V1", "media": "mv", "at": "f:40", "source_in": "f:100", "duration": "f:20"},
+  "after": [
+    { "track": "V1", "kind": "video", "magnetic": true, "items": [
+      {"id": "A", "media": "mv", "start": 0, "dur": 30, "group": "gA"},
+      {"id": "B", "media": "mv", "start": 30, "dur": 10, "in": 30, "group": "gB"},
+      {"id": "+N", "media": "mv", "start": 40, "dur": 20, "in": 100, "group": "+gN"},
+      {"id": "+B2", "media": "mv", "start": 60, "dur": 20, "in": 40, "group": "+gB2"},
+      {"id": "C", "media": "mv", "start": 80, "dur": 30, "in": 60, "group": "gC"}
+    ] },
+    { "track": "A1", "kind": "audio", "items": [
+      {"id": "a", "media": "mv", "start": 0, "dur": 30, "group": "gA"},
+      {"id": "b", "media": "mv", "start": 30, "dur": 10, "in": 30, "group": "gB"},
+      {"id": "+n", "media": "mv", "start": 40, "dur": 20, "in": 100, "group": "+gN"},
+      {"id": "+b2", "media": "mv", "start": 60, "dur": 20, "in": 40, "group": "+gB2"},
+      {"id": "c", "media": "mv", "start": 80, "dur": 30, "in": 60, "group": "gC"}
+    ] }
+  ],
+  "report": {
+    "created": ["+N", "+n"],
+    "split": [{"left": "B", "right": "+B2", "at": 40}, {"left": "b", "right": "+b2", "at": 40}],
+    "trimmed": [{"item": "B", "start": 30, "dur": 10, "in": 30}, {"item": "b", "start": 30, "dur": 10, "in": 30}],
+    "moved": [{"item": "C", "track": "V1", "start": 80}, {"item": "c", "track": "A1", "start": 80}]
+  }
+}

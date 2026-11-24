@@ -1,0 +1,21 @@
+{
+  "$schema": "../fixture.schema.json",
+  "kind": "edit",
+  "id": "roll-locked",
+  "title": "Rolling on a locked track is refused",
+  "command": "clip.roll",
+  "tags": ["locked"],
+  "cites": ["INV-27"],
+  "fps": 25,
+  "media": {
+    "mn": {"kind": "video", "frames": 250, "audio": false}
+  },
+  "before": [
+    { "track": "V2", "kind": "video", "locked": true, "items": [
+      {"id": "X", "media": "mn", "start": 0, "dur": 30},
+      {"id": "Y", "media": "mn", "start": 30, "dur": 30, "in": 30}
+    ] }
+  ],
+  "params": {"left": "X", "right": "Y", "delta": "0.2s"},
+  "error": {"code": "locked", "id": "V2"}
+}

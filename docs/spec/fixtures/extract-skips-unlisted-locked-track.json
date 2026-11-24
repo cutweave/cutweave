@@ -1,0 +1,32 @@
+{
+  "$schema": "../fixture.schema.json",
+  "kind": "edit",
+  "id": "extract-skips-unlisted-locked-track",
+  "title": "Listing tracks leaves a locked music track out of an extract",
+  "command": "timeline.extract",
+  "tags": ["locked", "free"],
+  "cites": ["INV-28", "INV-162"],
+  "fps": 25,
+  "media": {
+    "ma": {"kind": "audio", "frames": 500},
+    "mn": {"kind": "video", "frames": 250, "audio": false}
+  },
+  "before": [
+    { "track": "V2", "kind": "video", "items": [
+      {"id": "X", "media": "mn", "start": 0, "dur": 40}
+    ] },
+    { "track": "A2", "kind": "audio", "locked": true, "items": [
+      {"id": "M", "media": "ma", "start": 0, "dur": 100}
+    ] }
+  ],
+  "params": {"sequence": "S", "ranges": [{"start": "f:10", "end": "f:20"}], "tracks": ["V2"]},
+  "after": [
+    { "track": "V2", "kind": "video", "items": [
+      {"id": "X", "media": "mn", "start": 0, "dur": 10},
+      {"id": "+X2", "media": "mn", "start": 10, "dur": 20, "in": 20}
+    ] },
+    { "track": "A2", "kind": "audio", "locked": true, "items": [
+      {"id": "M", "media": "ma", "start": 0, "dur": 100}
+    ] }
+  ]
+}

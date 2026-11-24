@@ -1,0 +1,24 @@
+{
+  "$schema": "../fixture.schema.json",
+  "kind": "edit",
+  "id": "link-misaligned-invalid",
+  "title": "Items that do not share start and length cannot be linked",
+  "command": "item.link",
+  "tags": ["free", "linked"],
+  "cites": ["INV-8", "INV-261"],
+  "fps": 25,
+  "media": {
+    "ma": {"kind": "audio", "frames": 500},
+    "mn": {"kind": "video", "frames": 250, "audio": false}
+  },
+  "before": [
+    { "track": "V2", "kind": "video", "items": [
+      {"id": "X", "media": "mn", "start": 10, "dur": 20}
+    ] },
+    { "track": "A2", "kind": "audio", "items": [
+      {"id": "M", "media": "ma", "start": 10, "dur": 30}
+    ] }
+  ],
+  "params": {"items": ["X", "M"]},
+  "error": {"code": "invalid", "path": "/items"}
+}

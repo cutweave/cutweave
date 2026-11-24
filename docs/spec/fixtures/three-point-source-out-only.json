@@ -1,0 +1,12 @@
+{
+  "$schema": "../fixture.schema.json",
+  "kind": "three_point",
+  "id": "three-point-source-out-only",
+  "title": "A source out alone starts at the media start",
+  "cites": ["INV-291"],
+  "fps": 25,
+  "media": {"kind": "video", "frames": 250, "audio": true},
+  "playhead": 5,
+  "source_out": 100,
+  "expected": {"at": 5, "source_in": 0, "duration": 100, "shortened": false}
+}

@@ -1,0 +1,44 @@
+{
+  "$schema": "../fixture.schema.json",
+  "kind": "edit",
+  "id": "extract-all-tracks",
+  "title": "Extract removes the range from every track and closes it everywhere",
+  "command": "timeline.extract",
+  "tags": ["magnetic", "linked"],
+  "cites": ["INV-162", "INV-163", "INV-44"],
+  "fps": 25,
+  "media": {
+    "mn": {"kind": "video", "frames": 250, "audio": false},
+    "mv": {"kind": "video", "frames": 250, "audio": true}
+  },
+  "before": [
+    { "track": "V2", "kind": "video", "items": [
+      {"id": "T", "media": "mn", "start": 15, "dur": 10}
+    ] },
+    { "track": "V1", "kind": "video", "magnetic": true, "items": [
+      {"id": "A", "media": "mv", "start": 0, "dur": 30, "group": "gA"},
+      {"id": "B", "media": "mv", "start": 30, "dur": 30, "in": 30, "group": "gB"}
+    ] },
+    { "track": "A1", "kind": "audio", "items": [
+      {"id": "a", "media": "mv", "start": 0, "dur": 30, "group": "gA"},
+      {"id": "b", "media": "mv", "start": 30, "dur": 30, "in": 30, "group": "gB"}
+    ] }
+  ],
+  "params": {"sequence": "S", "ranges": [{"start": "f:10", "end": "f:20"}]},
+  "after": [
+    { "track": "V2", "kind": "video", "items": [
+      {"id": "T", "media": "mn", "start": 10, "dur": 5, "in": 5}
+    ] },
+    { "track": "V1", "kind": "video", "magnetic": true, "items": [
+      {"id": "A", "media": "mv", "start": 0, "dur": 10, "group": "gA"},
+      {"id": "+A2", "media": "mv", "start": 10, "dur": 10, "in": 20, "group": "+gA2"},
+      {"id": "B", "media": "mv", "start": 20, "dur": 30, "in": 30, "group": "gB"}
+    ] },
+    { "track": "A1", "kind": "audio", "items": [
+      {"id": "a", "media": "mv", "start": 0, "dur": 10, "group": "gA"},
+      {"id": "+a2", "media": "mv", "start": 10, "dur": 10, "in": 20, "group": "+gA2"},
+      {"id": "b", "media": "mv", "start": 20, "dur": 30, "in": 30, "group": "gB"}
+    ] }
+  ],
+  "output": {"ranges": [{"start": "f:10", "end": "f:20"}]}
+}

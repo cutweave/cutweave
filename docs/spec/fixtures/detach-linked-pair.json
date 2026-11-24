@@ -1,0 +1,37 @@
+{
+  "$schema": "../fixture.schema.json",
+  "kind": "edit",
+  "id": "detach-linked-pair",
+  "title": "Detaching one member of a pair detaches its partner too",
+  "command": "item.detach",
+  "tags": ["free", "linked"],
+  "cites": ["INV-271", "INV-9"],
+  "fps": 25,
+  "media": {
+    "mn": {"kind": "video", "frames": 250, "audio": false},
+    "mv": {"kind": "video", "frames": 250, "audio": true}
+  },
+  "before": [
+    { "track": "V3", "kind": "video", "items": [
+      {"id": "P", "media": "mn", "start": 0, "dur": 60}
+    ] },
+    { "track": "V2", "kind": "video", "items": [
+      {"id": "X", "media": "mv", "start": 10, "dur": 20, "group": "gX", "parent": "P"}
+    ] },
+    { "track": "A2", "kind": "audio", "items": [
+      {"id": "x", "media": "mv", "start": 10, "dur": 20, "group": "gX", "parent": "P"}
+    ] }
+  ],
+  "params": {"items": ["X"]},
+  "after": [
+    { "track": "V3", "kind": "video", "items": [
+      {"id": "P", "media": "mn", "start": 0, "dur": 60}
+    ] },
+    { "track": "V2", "kind": "video", "items": [
+      {"id": "X", "media": "mv", "start": 10, "dur": 20, "group": "gX"}
+    ] },
+    { "track": "A2", "kind": "audio", "items": [
+      {"id": "x", "media": "mv", "start": 10, "dur": 20, "group": "gX"}
+    ] }
+  ]
+}

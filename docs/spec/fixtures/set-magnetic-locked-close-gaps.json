@@ -1,0 +1,20 @@
+{
+  "$schema": "../fixture.schema.json",
+  "kind": "edit",
+  "id": "set-magnetic-locked-close-gaps",
+  "title": "Closing gaps on a locked track is refused",
+  "command": "track.set_magnetic",
+  "tags": ["locked"],
+  "cites": ["INV-27", "INV-281"],
+  "fps": 25,
+  "media": {
+    "mn": {"kind": "video", "frames": 250, "audio": false}
+  },
+  "before": [
+    { "track": "V1", "kind": "video", "locked": true, "items": [
+      {"id": "X", "media": "mn", "start": 10, "dur": 10}
+    ] }
+  ],
+  "params": {"track": "V1", "magnetic": true, "close_gaps": true},
+  "error": {"code": "locked", "id": "V1"}
+}

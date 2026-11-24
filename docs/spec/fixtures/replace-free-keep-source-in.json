@@ -1,0 +1,26 @@
+{
+  "$schema": "../fixture.schema.json",
+  "kind": "edit",
+  "id": "replace-free-keep-source-in",
+  "title": "keep_source_in reads the new media from the same position",
+  "command": "clip.replace",
+  "tags": ["free"],
+  "cites": ["INV-251"],
+  "fps": 25,
+  "media": {
+    "mn": {"kind": "video", "frames": 250, "audio": false},
+    "mo": {"kind": "video", "frames": 250, "audio": false}
+  },
+  "before": [
+    { "track": "V2", "kind": "video", "items": [
+      {"id": "X", "media": "mn", "start": 0, "dur": 30, "in": 40}
+    ] }
+  ],
+  "params": {"item": "X", "media": "mo", "mode": "keep_source_in"},
+  "after": [
+    { "track": "V2", "kind": "video", "items": [
+      {"id": "X", "media": "mo", "start": 0, "dur": 30, "in": 40}
+    ] }
+  ],
+  "output": {"item": "X", "shortened": false}
+}

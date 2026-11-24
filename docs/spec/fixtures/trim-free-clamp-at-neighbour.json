@@ -1,0 +1,30 @@
+{
+  "$schema": "../fixture.schema.json",
+  "kind": "edit",
+  "id": "trim-free-clamp-at-neighbour",
+  "title": "With clamp, an end trim stops at the next clip and reports the delta used",
+  "command": "clip.trim",
+  "tags": ["free", "clamp"],
+  "cites": ["INV-46", "INV-201", "INV-202"],
+  "fps": 25,
+  "media": {
+    "mn": {"kind": "video", "frames": 250, "audio": false}
+  },
+  "before": [
+    { "track": "V2", "kind": "video", "items": [
+      {"id": "X", "media": "mn", "start": 0, "dur": 30},
+      {"id": "Y", "media": "mn", "start": 40, "dur": 20, "in": 40}
+    ] }
+  ],
+  "params": {"item": "X", "edge": "end", "to": "f:50", "clamp": true},
+  "after": [
+    { "track": "V2", "kind": "video", "items": [
+      {"id": "X", "media": "mn", "start": 0, "dur": 40},
+      {"id": "Y", "media": "mn", "start": 40, "dur": 20, "in": 40}
+    ] }
+  ],
+  "output": {"applied_delta": "0.4s", "clamped": true},
+  "report": {
+    "trimmed": [{"item": "X", "start": 0, "dur": 40, "in": 0}]
+  }
+}
