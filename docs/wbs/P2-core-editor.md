@@ -15,14 +15,14 @@ A genuinely usable everyday editor for both long-form and short-form (M2 Dogfood
 
 | Epic | Goal |
 |---|---|
-| **2A Timeline editing** | Unlimited tracks with auto-created overlay tracks, magnetic main track, linked clips, ripple/roll/slip/slide, replace clip, snapping, markers, clipboard, multi-select, gesture soft-locks; a specified, property-tested edit-semantics core and a fast Canvas2D timeline UI. |
+| **2A Timeline editing** | Unlimited tracks with auto-created overlay tracks, magnetic main track, linked clips, ripple/roll/slip/slide, replace clip, snapping, markers, clipboard, multi-select, gesture soft-locks; a specified, property-tested edit-semantics core and a fast Canvas2D timeline UI; the Editing and Timeline settings pages. |
 | **2B Sequences & canvas** | Many sequences per project, aspect presets (16:9, 9:16, 1:1, 4:5, 21:9), sequence settings, background fill (color, blur, image), compound clips (nested sequences as media). |
 | **2C Clip properties & keyframes** | Transform/crop/opacity/flip/blend on clips, keyframes on every animatable property with easing, keyframe lanes, curve editor and bezier graph editor; keyframe/easing/time/snapping math shared with the UI as wasm. |
 | **2D Speed basics** | Constant speed with pitch preservation, reverse, freeze frame. |
-| **2E Audio features** | Fades, keyframed volume, pan, track buses, master limiter, loudness normalization, auto-ducking, basic voice effects, voiceover recording, extract audio, audio UI. |
-| **2F Media management** | Proxy pipeline (auto + manual), relink, collect & archive, image and image-sequence import, bin search/tags/smart collections. |
+| **2E Audio features** | Fades, keyframed volume, pan, track buses, master limiter, loudness normalization, auto-ducking, basic voice effects, voiceover recording, extract audio, audio UI, the Audio settings page. |
+| **2F Media management** | Proxy pipeline (auto + manual), relink, collect & archive, image and image-sequence import, bin tags/smart collections, media folders (ADR-0020) and importing folders with their structure. |
 | **2G Export presets & queue** | Presets (YouTube, Shorts/Reels/TikTok, GIF, audio-only, ProRes), HEVC/AV1, advanced encode controls (CBR/VBR/CRF, GOP, color tags, audio codec/bitrate), background queue, range/marker-set export. |
-| **2H Workspace UI** | Dockable Short-form/Long-form workspaces, schema-driven inspector, command palette, shortcut editor with NLE and CapCut presets, preview overlays, i18n scaffold. |
+| **2H Workspace UI** | Dockable Short-form/Long-form workspaces, schema-driven inspector, command palette, shortcut editor with NLE and CapCut presets, preview overlays, i18n scaffold, the Project settings dialog, the Appearance and Playback settings pages. |
 | **2I MCP core tool set** | ~30 core tools complete, `view_get`/`view_set`, contact sheet, filmstrip, waveform image, checkpoints, `expected_rev`, per-endpoint tool profiles (`/mcp/minimal`, `/mcp`, `/mcp/full`), scripted-agent e2e. |
 | **2J Performance, reliability & dogfood** | Benchmarks in CI against §19, background render cache, crash-injection harness, and the dogfood exit review (human). |
 
@@ -308,6 +308,23 @@ Schedule note: the roadmap gives 9 weeks. Total effort here is about 162 agent-d
   - Parity test: identical error over RPC, MCP and CLI.
 - **Tests:** proptest, fake-clock unit, parity.
 - **Out of scope:** UI behaviour (2A.08), cross-process collaboration.
+
+### WP-2A.13 — Settings: Editing and Timeline pages (editing defaults, snapping, playhead follow, display)
+- **Area:** packages/editor (the two pages; the callers that pass the defaults to commands), packages/timeline (follow modes, thumbnail and waveform display, track height, wheel, time display), crates/cutweave-commands or crates/cutweave-engine (undo history limit), generated schema and TS types, docs/reference/settings.md, apps/desktop/e2e/flows, docs/user-flows.md
+- **Depends on:** WP-1M.11, WP-2A.05, WP-2A.07, WP-2A.09, WP-2A.10
+- **Size:** M
+- **Executor:** sonnet
+- **Scope:** (product owner request, 2026-11-24) the Editing and Timeline pages of the settings catalog (`docs/reference/settings.md`); all rows are app preferences.
+  - **Editing page:** keep a clip's video and audio linked when inserted (on); dropping media onto a clip outside the main track overwrites (default) or inserts; nudge step for comma and period (1 frame, Shift ×10); undo steps kept per person or agent (1,000), applied through a new engine command (for example `edit.set_history_limit{steps}`: UI-only, not undoable, not journaled) that drops the oldest steps, with the limit reported by `project.info`. Rows other WPs add to this page: still image duration (WP-2F.05), one-click fade length (WP-2E.05), text duration (WP-3A.07), caption defaults (WP-3E.11), transition duration (WP-4A.09).
+  - **Timeline page:** snapping on when a project opens (on); snap to playhead, clip edges, markers and beats (all on; the shared snapping of WP-2A.07); snap distance (8 px); follow the playhead while playing: page (default), smooth, off; main track magnetic in new sequences (on; passed when the editor creates a sequence); video clip thumbnails: filmstrip (default), first frame, off; audio waveforms on clips (on); height of new tracks: small, medium (default), large; the mouse wheel scrolls (default; Ctrl/Cmd+wheel zooms) or zooms; show time as timecode (default), frames or seconds; drop-frame timecode at 29.97 and 59.94 fps (on).
+  - Rows apply at once to the open timeline. Nothing is written to the project except through the commands the defaults feed.
+- **Interfaces:** preference keys `editing.*` and `timeline.*` (catalog); `edit.set_history_limit` (UI-only engine command).
+- **Acceptance criteria:**
+  - Unit: the history limit drops the oldest steps per actor and undo still works up to it; an agent token calling `edit.set_history_limit` gets `forbidden`.
+  - Vitest: each display row changes what the timeline renderer draws (one snapshot per value); every follow mode keeps the playhead in view during simulated playback, except Off.
+  - **A user flow (ADR-0018, F25):** turn "Snapping on when a project opens" off, relaunch and open the project: snapping is off; show time as frames: the ruler and the inspector show frames; set follow to Off and play: the view stays where it was; set new tracks to Large and drop a clip that creates a track: it is large; set undo steps to 2, make three edits: two undo and the third does not.
+- **Tests:** unit, Vitest, user flow.
+- **Out of scope:** per-sequence overrides of these defaults; the rows other WPs own (listed above).
 
 ---
 
@@ -650,7 +667,7 @@ Schedule note: the roadmap gives 9 weeks. Total effort here is about 162 agent-d
   - cpal input stream (device selection, sample rate negotiation, mono/stereo) writing a lossless WAV (32-bit float or 24-bit) into `generated/recordings/` with crash-safe incremental header finalization (write size on stop and every 5 s so a crash leaves a recoverable file).
   - Commands: `audio.record_start{device?, track?, count_in?}`, `audio.record_stop → {media, item}`, `audio.list_devices` query. Records while the timeline plays (monitor timeline mix to output; latency compensation: measured round-trip offset setting, default from device reported latency) and on stop inserts the clip at the record start position on a (new) audio track, overwriting per mode.
   - Level meter during recording; mic permission handling (macOS `NSMicrophoneUsageDescription`, Windows privacy toggle detection → typed error `PermissionDenied`).
-  - UI: record button in timeline toolbar, countdown 3-2-1, live level meter, input device chooser in settings.
+  - UI: record button in timeline toolbar, countdown 3-2-1, live level meter. The input device chooser, count-in, monitoring and latency rows are on Settings > Audio (WP-2E.08).
   - MCP: catalog (agents rarely record); marked `destructive=false`.
 - **Interfaces:** commands above; event `audio.recording{state, level}`.
 - **Acceptance criteria:**
@@ -668,7 +685,7 @@ Schedule note: the roadmap gives 9 weeks. Total effort here is about 162 agent-d
 - **Scope:**
   - Waveform rendering in audio items (peak pyramid, LOD by zoom, dB-scale option), volume line overlay with draggable keyframe points (rubber band) and fade handles at item corners (drag = `audio.set_fade` under `gesture` tx). Shows normalization/limited badges.
   - Mixer panel: per-track fader, pan knob, mute/solo, live peak meters from `playback.meters`, master fader plus limiter toggle and LUFS readout. Double-click resets.
-  - Audio inspector section (volume, pan, fades, preserve pitch, normalize button) through the schema-driven inspector (2H.03).
+  - Audio inspector section (volume, pan, fades, preserve pitch, normalize button) through the schema-driven inspector (2H.03). Its "Fade in" and "Fade out" buttons add a fade of the length set in Settings > Editing ("Length of a fade added with one click", `editing.audio_fade`, 0.5 s; catalog `docs/reference/settings.md`).
 - **Interfaces:** consumes 2E commands; `<Mixer/>` panel registered in the dock registry (2H.01).
 - **Acceptance criteria:**
   - Playwright: drag a fade handle to 1.0 s, the clip's `fade_in` equals 1.0 s ± 1 frame; drag the volume line creates two keyframes; undo reverts.
@@ -717,6 +734,23 @@ Schedule note: the roadmap gives 9 weeks. Total effort here is about 162 agent-d
 - **Tests:** FFT/spectrum unit tests, cache test, null test.
 - **Out of scope:** AI voice changer/voice cloning (P5), real-time effect preview while dragging params (cached render only), formant EQ.
 
+### WP-2E.08 — Settings: Audio page (output and input devices, buffer, recording, loudness target)
+- **Area:** crates/cutweave-audio (output device selection and switching, buffer size), crates/cutweave-engine (UI-only engine command), generated schema and TS types, packages/editor (Audio page), docs/reference/settings.md, apps/desktop/e2e/flows, docs/user-flows.md
+- **Depends on:** WP-1M.11, WP-2E.03, WP-2E.04, E1G
+- **Size:** M
+- **Executor:** opus
+- **Scope:** (product owner request, 2026-11-24) the Audio page of the settings catalog.
+  - **This computer:** output device (system default, which follows the OS default); output buffer (Auto, 256, 512, 1024 samples); input device for voiceover (system default; WP-2E.04's device chooser moves here); recording latency compensation (as the device reports, adjustable in ms).
+  - **Preferences:** count-in before recording (3 s; off, 1, 3, 5 s); hear the microphone while recording (off); loudness target for Normalize (−14 LUFS; −14, −16, −23 or a value; WP-2E.03's command takes it as its default); mute playback when Cutweave is in the background (off).
+  - **Engine:** `audio.list_devices` (WP-2E.04) lists outputs too; `audio.set_devices{output?, input?, buffer?, latency_ms?}` is an engine command, UI-only, not undoable, not journaled, applied after each handshake. Switching the output during playback reopens the stream without stopping the transport (one gap of at most 200 ms); an unplugged device falls back to the system default with a toast ("Audio moved to <device>").
+- **Interfaces:** `audio.set_devices` (UI-only); `audio.list_devices` with outputs; preference keys `audio.*`.
+- **Acceptance criteria:**
+  - Integration with a mock or null audio host: switching the output during playback keeps the audio clock monotonic and the A/V offset under 40 ms after the switch; removing the current device falls back to the default and emits the event the toast uses.
+  - An agent token calling `audio.set_devices` gets `forbidden`; `audio.list_devices` answers agents.
+  - **A user flow (ADR-0018, F27):** Settings > Audio lists the output devices (the machine's, or the null device in CI); choose another and back; set the loudness target to −16 LUFS and Normalize a clip: the document records −16 LUFS as its target; the choices survive a relaunch.
+- **Tests:** audio integration with mock devices, unit, user flow.
+- **Out of scope:** ASIO and exclusive modes, multichannel routing, per-track output devices, audio plugin hosting (post-1.0).
+
 ---
 
 # Epic 2F — Media management
@@ -761,13 +795,14 @@ Schedule note: the roadmap gives 9 weeks. Total effort here is about 162 agent-d
 
 ### WP-2F.03 — Relink missing media (hash-based) and media bin UI for health
 - **Area:** crates/cutweave-ops/src/media/relink.rs, packages/editor/src/media/
-- **Depends on:** E1D, E1C, E1M, WP-2F.01
+- **Depends on:** E1D, E1C, E1M, WP-2F.01, WP-1D.08
 - **Size:** M
 - **Executor:** sonnet
 - **Scope:**
   - Detect missing media on open and on file-watch events (status `ok|missing|changed`). Offline media renders as a "media offline" slate (render pipeline fallback frame plus silent audio) and never crashes export (export refuses with a typed error listing missing assets unless `allow_offline`).
   - `media.relink{media, path}` (single), `media.relink_folder{folder, recursive}` (search the folder, match by content hash first, then by filename+size+duration), `media.find_missing` query. Hash is computed lazily with a fast partial hash (first/last/middle 1 MB + size) and full hash only on ambiguity. Path rewrite preserves `path_rel` when under the project folder.
-  - UI: a relink dialog on open ("N files missing"), per-asset badges in the bin, proxy status badges and a proxy settings pane (policy, cache size cap, regenerate).
+  - UI: a relink dialog on open ("N files missing"), per-asset badges in the bin, proxy status badges, and "Regenerate proxies" in the bin's context menu.
+  - Proxy settings where the settings catalog (`docs/reference/settings.md`) puts them: Settings > Media and import (proxies for new projects: off / auto / all; proxy size 540p / 720p / 960p, a machine value), Settings > Cache and storage (proxy limit, 50 GiB), Settings > Performance and hardware (proxy jobs at once, 2). The machine values are applied through UI-only engine commands as in WP-1D.08; the project's own policy is edited in File > Project settings… (WP-2H.08).
   - MCP: `media_relink` catalog. `media_list` core includes `status`.
 - **Interfaces:** commands above; `MediaAsset.status`.
 - **Acceptance criteria:**
@@ -786,6 +821,7 @@ Schedule note: the roadmap gives 9 weeks. Total effort here is about 162 agent-d
   - `project.collect{dest, mode: copy_all|copy_external_only, include_generated, include_proxies, trim_unused: bool}` job. Copies referenced media into `<project>/media/` (or archive destination), rewrites `path_abs/path_rel` in the project doc copy, dedupes by content hash, preserves relative folder names with collision handling, verifies by hash after copy, reports progress, cancellable and resumable.
   - `project.archive{dest, format: zip|folder}` bundles `.cutweave`, media, `generated/`, fonts/LUTs, and a manifest `archive.json` (hash list). Zip64 for > 4 GB; no recompression for media (stored). Excludes caches by default.
   - Dry-run query `project.collect_estimate` returns size/free-space check before starting (fails early with `Invalid{msg: not enough space}`).
+  - Copy on import: `media.import{copy_to_project?}` copies new files into `<project>/media/` with the same copier before registering them; the editor passes the preference "Copy imported files into the project folder" (`media.copy_on_import`, off; Settings > Media and import).
   - UI: "Collect files…" and "Archive project…" dialogs, with progress in the queue panel (reuses the job UI).
   - MCP: catalog; both are marked `destructive=false`, `idempotent=true`.
 - **Interfaces:** `project.collect`, `project.archive`, `project.collect_estimate`.
@@ -806,6 +842,7 @@ Schedule note: the roadmap gives 9 weeks. Total effort here is about 162 agent-d
   - Import PNG/JPEG/WebP/HEIC-if-ffmpeg/TIFF/BMP/GIF (GIF as video with its frame timing)/SVG (rasterized at import size, scale-aware re-rasterize deferred; flagged), with EXIF orientation, color profile (sRGB assumed if untagged, ICC → sRGB conversion via `lcms2`-class lib or documented skip), 16-bit PNG, alpha (premultiplied in render).
   - Image-sequence detection: pattern `name_%04d.ext` or folder selection with lexical/numeric order and gap detection (warn); frame rate prompt (default sequence fps); imported as a video-kind asset with `kind=image_sequence`.
   - Still duration defaults: `project.settings.still_duration` (default 5 s; stills inserted from the bin use it); settable; for sequences-from-images, `media.import_images_as_slideshow{files, per_image, order}` convenience command.
+  - Settings (catalog `docs/reference/settings.md`): the default for new projects is the preference `editing.still_duration` (Settings > Editing; `project.new` copies it, WP-2H.08), and the frame rate for image sequences is `media.image_sequence_fps` (Settings > Media and import, default: the sequence's rate); the project's own value is a row of File > Project settings… (WP-2H.08).
   - Images are unbounded in length (no source bound; per 2A.04), cached as GPU textures with VRAM budget.
   - MCP: `media_import` handles images; `media_import_sequence` catalog.
 - **Interfaces:** `MediaKind::{Image, ImageSequence}`; commands above.
@@ -816,26 +853,93 @@ Schedule note: the roadmap gives 9 weeks. Total effort here is about 162 agent-d
 - **Tests:** corpus integration, golden frames.
 - **Out of scope:** animated WebP/APNG, RAW stills, vector re-rasterization.
 
-### WP-2F.06 — Media bin search, tags and smart collections
-- **Area:** crates/cutweave-ops/src/media/{tags,collections}.rs, crates/cutweave-cache (sqlite FTS), packages/editor/src/media/
-- **Depends on:** E1D, E1M, WP-2F.03
+### WP-2F.06 — Media bin tags, ratings, notes, collections and the bin sidebar
+- **Area:** crates/cutweave-ops/src/media/{tags,collections}.rs, crates/cutweave-model (fields, migration), packages/editor/src/media/
+- **Depends on:** E1D, E1M, WP-2F.03, WP-1M.12, WP-2F.07, WP-2F.08
 - **Size:** M
 - **Executor:** sonnet
-- **Scope:**
-  - Model: `MediaAsset.tags: Vec<String>` (case-insensitive, trimmed, ≤ 64 chars), `rating`, `note`; `Project.collections: Vec<Collection {id, name, kind: manual{media_ids[]} | smart{rule}}>`. Schema migration and fixture.
-  - Commands: `media.add_tags{media[], tags[]}`, `media.remove_tags`, `media.set_note`, `media.set_rating`, `collection.create/rename/delete/add_items/remove_items`, `collection.set_rule`; queries `media.search{text?, tags[]?, kind?, duration{min,max}?, resolution?, has_audio?, fps?, status?, used?, collection?, sort, limit, cursor}` and `collection.list`.
-  - Search: SQLite FTS5 index in `cache.sqlite` over name, tags, note, path, and transcript text when present (P3 hook, none required now); rebuilt incrementally on `doc.patched` and on index completion; works for 10,000 assets.
-  - Smart collection rule: JSON predicate tree (`and/or/not` over the same filters as `media.search`, plus "unused in any sequence" and "imported in last N days"), evaluated live (membership computed, not stored).
-  - UI: search box with filter chips, tag editor (multi-select assign), smart-collection builder (schema-driven form), saved views in the bin sidebar, sort/group, "used/unused" badge.
-  - MCP: `media_list` (core) gains `query`/`tags`/`collection` parameters; the rest catalog.
-- **Interfaces:** commands/queries above; `Collection` JSON Schema.
+- **Scope:** (re-scoped 2026-11-24: searching by name, kind, duration and use moved to WP-1M.12; folders are WP-2F.07 to WP-2F.09 under ADR-0020)
+  - Model: `MediaAsset.tags: Vec<String>` (case-insensitive, trimmed, ≤ 64 chars), `rating` (0–5), `note`; `Project.collections: Map<CollectionId, Collection {id, name, kind: manual{media_ids[]} | smart{filter, folder?}}>`. Schema migration and fixture, chained after WP-2F.07's v2.
+  - Commands in the `media` namespace (no new namespace, arch §5.1): `media.add_tags{media[], tags[]}`, `media.remove_tags`, `media.set_note`, `media.set_rating`, `media.create_collection`, `media.rename_collection`, `media.delete_collection`, `media.add_to_collection`, `media.remove_from_collection`, `media.set_collection_filter`; query `media.list_collections`.
+  - `MediaFilter` (WP-1M.12) gains `tags`, `min_rating`, `collection` and `imported_within_days`, and `text` also matches tags and notes. Smart collections are saved filters, optionally scoped to a folder, evaluated live (membership computed, not stored). Manual collections are the many-to-many view: an asset lives in exactly one folder (ADR-0020) but can be in any number of collections.
+  - Search stays a scan of the document shared by the engine and the editor (WP-1M.12), with no FTS5 index unless the 10,000-asset target below fails; transcript text joins through `transcript.search` in P3.
+  - UI: tag editor (multi-select assign), rating stars and a note field in the media info; the Filters popover gains Tags and Rating; "Save as smart collection" from the current search and filters; a **bin sidebar** (toggle, shown when the panel is wide enough) with the folder tree (WP-2F.07 folders, each a drop target like the breadcrumb) and the collections; a "used/unused" badge.
+  - MCP: `media_list` (core) takes the extended filter; the rest catalog.
+- **Interfaces:** commands and queries above; `Collection` JSON Schema; extended `MediaFilter`.
 - **Acceptance criteria:**
-  - Search over 10,000 synthetic assets returns in < 30 ms p95; the index stays consistent under random add/remove/rename (proptest equivalence with a naive filter).
+  - `media.list` with tags and text over 10,000 synthetic assets returns in < 30 ms p95; the Rust and TS predicates agree on the extended shared fixture.
   - Smart collection "video, duration > 60 s, tag:interview, unused" returns exactly the expected set on a fixture; membership updates within 100 ms after the asset is placed on a timeline.
-  - Undo identity for all tag/collection commands; schema migration golden passes.
-  - Playwright: tag three assets, filter by tag, save as smart collection, reopen the project and the collection persists.
-- **Tests:** proptest, unit, migration golden, Playwright.
-- **Out of scope:** AI auto-tagging and semantic search (P5), folders/bins hierarchy beyond collections.
+  - Undo identity for all tag and collection commands; schema migration golden passes.
+  - **A user flow (ADR-0018, F22 extended):** tag three assets, filter by tag, save as a smart collection, reopen the project and the collection is in the sidebar; drag a clip onto a folder in the sidebar's tree and it moves there.
+- **Tests:** proptest, unit, migration golden, Vitest, user flow.
+- **Out of scope:** AI auto-tagging and semantic search (P5); an FTS5 index unless the target fails; folder model and commands (WP-2F.07).
+
+### WP-2F.07 — Media folders: model, commands and migration (ADR-0020)
+- **Area:** crates/cutweave-model (folders, asset display names, invariants, migration v1→v2 with fixtures), crates/cutweave-ops/src/media/ (folder commands, `media.list`), crates/cutweave-ops testing strategies, generated schema and TS types, docs/adr/0020-media-folders.md (status once accepted)
+- **Depends on:** E1A, E1B, WP-1M.12, WP-1O.02
+- **Size:** M
+- **Executor:** opus
+- **Scope:** (product owner request, 2026-11-24) organize the project's media into folders, as decided in ADR-0020 (Proposed; it must be Accepted before this WP starts).
+  - Model: `Project.folders: Map<FolderId, MediaFolder{id, name, parent?: FolderId, custom}>` with IDs `fld_…` (deterministic under `--deterministic-ids`), `MediaAsset.folder?: FolderId` (absent = top level) and `MediaAsset.name?: String` (display name; absent = the file name).
+  - Invariants in `Project::validate`: parents and asset folders exist; no cycles; depth ≤ 32; folder names 1–255 characters, no `/` or control characters, unique among siblings ignoring case.
+  - Commands in the `media` namespace, all undoable as one step, MCP catalog:
+    - `media.create_folder{parent?, name?}` → `{folder_id, name}` (no name: "New folder", "New folder 2", …).
+    - `media.rename_folder{folder, name}`; `media.rename{media, name?}` (no name: back to the file name).
+    - `media.move{media?, folders?, to?, on_conflict?: fail|rename}` moves assets and folders (no `to` = top level). A folder into itself or a descendant is `Invalid`; a sibling name clash fails or renames ("Day 1 2").
+    - `media.delete_folder{folder, contents: move_up|remove}`: `move_up` lifts everything one level; `remove` removes the folder, its subfolders and every asset no timeline uses, and moves the used ones to the deleted folder's parent; the result lists `removed` and `kept`. Timelines never change; files on disk are never touched.
+    - `media.import` and `media.register` take an optional `folder`.
+  - Queries: `media.list`'s filter gains `folder` and `recursive` (no folder: the whole project; a folder: one level unless `recursive`), and each summary carries `name` and `folder`; new `media.list_folders` returns the tree (id, name, parent, path, asset and subfolder counts). WP-1M.12's `text` matches the display name.
+  - Migration v1→v2 adds `folders: {}`, `folder: null` and `name: null`; golden fixtures under `v2/` (nested folders, renamed assets); every v1 fixture migrates; v1 apps open v2 files read-only (the existing rule). Strategies for every new command in the registry property harness (`testing/strategies.rs`).
+- **Interfaces:** `FolderId`, `MediaFolder`, `MediaAsset.{folder, name}`; the commands and queries above; `CURRENT_SCHEMA_VERSION` = 2.
+- **Acceptance criteria:**
+  - The registry property harness covers every new command: undo/redo identity, failure atomicity, and the invariants after random sequences of create, rename, move and delete (no cycle, no orphan, unique sibling names).
+  - `media.delete_folder{remove}` on a fixture of 30 assets, 5 of them on a timeline, removes 25, keeps 5 in the parent, changes no timeline item; one undo restores the tree, the 25 assets and their folders exactly.
+  - Migration: every v1 fixture migrates to its v2 golden; migrating and saving twice gives identical bytes.
+  - Parity: a script that builds folders and moves media gives byte-identical documents through the CLI, MCP and RPC (WP-1O.02's harness, `--deterministic-ids`).
+  - `media.list{filter:{folder, recursive:true}}` over 10,000 assets in 200 folders < 20 ms p95.
+- **Tests:** unit, proptest through the registry harness, migration goldens, parity script, bench.
+- **Out of scope:** the bin UI (WP-2F.08); importing OS folders (WP-2F.09); sequences in folders; a manual order inside folders; folder colors.
+
+### WP-2F.08 — Media folders in the bin: browse, organize, drag and drop
+- **Area:** packages/editor (media panel), packages/ui (breadcrumb; folder variant of `AssetTile`, with its spec in design/components/), apps/desktop/e2e/flows, docs/user-flows.md
+- **Depends on:** WP-2F.07, WP-1M.12, E1M
+- **Size:** M
+- **Executor:** sonnet
+- **Scope:** (product owner request, 2026-11-24) folders in the Media tab, built on WP-2F.07's commands.
+  - **Browse:** the tab shows the open folder: its subfolders first as folder tiles (name, item count), then its assets. A breadcrumb above the grid ("Media › Interviews › Day 1"), each segment a button and a drop target. Double-click or Enter opens a folder; Backspace or Alt+↑ goes up. The open folder is kept per project with the panel's view state.
+  - **Organize:** New folder (toolbar button, Ctrl/Cmd+Shift+N in the bin, context menu) creates it in the open folder and starts renaming; F2 or a slow click on the name renames a folder or an asset (WP-2F.07 display names); a context menu on tiles and on empty space: New folder, Rename, Move to… (a folder picker), Delete, Reveal in Explorer / Finder (assets).
+  - **Multi-select:** Ctrl/Cmd-click, Shift-click ranges, Ctrl/Cmd+A in the bin; Delete on a selection removes the assets in one undo step (used ones refused with the engine's message, as today) and asks about folders.
+  - **Drag and drop:** dragging selected tiles onto a folder tile, a breadcrumb segment or the top level moves them (`media.move{on_conflict:"rename"}`, one undo step, a toast when something was renamed). Dragging assets to the timeline works from inside folders as today. Import (button, Ctrl/Cmd+I) and OS files dropped on the bin import into the open folder; dropped on a folder tile, into that folder.
+  - **Delete a folder:** a dialog that says what it holds ("Delete "B-roll" and its 30 media? 5 are used on the timeline and will move to "Interviews"."). Buttons: Delete folder and media (`remove`), Keep media (`move_up`), Cancel. An empty folder deletes without asking. Undo restores everything.
+  - **Search and folders:** WP-1M.12's field gets a scope switch, All media (default) or This folder (with subfolders). In All media, results are flat with the folder path under each name, and folders whose names match come first.
+  - **Accessibility:** folder tiles are options in the same listbox, announced as "folder, N items"; the breadcrumb is a `nav` with `aria-current`.
+- **Interfaces:** consumes WP-2F.07's commands and queries; `<MediaBreadcrumb>`; the folder variant of `AssetTile`.
+- **Acceptance criteria:**
+  - **A user flow (ADR-0018, F22):** create "Interviews" and inside it "Day 1", rename it "Day one"; Ctrl-click three clips and drag them onto "Day one"; open it with a double-click and see them; go up with the breadcrumb; drag one clip back to the top level by dropping it on the breadcrumb; search "inter" in All media and see the path captions, then switch to This folder; delete "Interviews" with Keep media and see its contents lifted; Ctrl+Z brings the folder back; save, relaunch and reopen: the folders are there.
+  - Vitest: the selection model (ranges across folders and assets), drop-target resolution, the delete dialog's wording for 0, 1 and N used media.
+  - A folder of 5,000 assets scrolls at ≥ 55 fps (the existing windowing) and opens in < 50 ms.
+  - axe: 0 violations; visual baselines for folder tiles, the breadcrumb and the delete dialog in dark and light.
+- **Tests:** Vitest, visual, user flow.
+- **Out of scope:** the folder tree sidebar (WP-2F.06); importing OS folder structure (WP-2F.09); opening a folder in a second panel.
+
+### WP-2F.09 — Import folders with their structure
+- **Area:** crates/cutweave-ops/src/media/ (`media.import` of directories), crates/cutweave-engine if the walk lives there, generated schema and TS types, apps/desktop (folder picker IPC), packages/editor (Import folder…, folder drops, progress), docs/reference/settings.md, apps/desktop/e2e/flows, docs/user-flows.md
+- **Depends on:** WP-2F.07, WP-2F.08, WP-1J.05
+- **Size:** M
+- **Executor:** sonnet
+- **Scope:** (product owner request, 2026-11-24) importing a folder from the OS keeps its structure, as Premiere (since 23.6) and Resolve do.
+  - `media.import{paths, folder?, keep_structure?}` accepts folders. The engine walks each one: no symlinked folders, hidden and system files skipped, depth ≤ 16, at most 2,000 files per call (more is `Invalid` with the count and a hint to import subfolders). It imports the files it can probe and skips the rest, counted by reason (unsupported, unreadable). With `keep_structure` (default true) it creates a folder for each directory that holds media, named after it, inside `folder`; without it everything lands in `folder`. One transaction: one undo removes the media and the folders. Files already in the project (same content hash) keep their asset and folder.
+  - Progress: `media.import_progress{done, total}` events while probing; the call still returns `media_ids` when done (arch §7). Agents and headless engines are confined to the allowed roots as for files (WP-1J.05).
+  - UI: "Import folder…" next to Import (a native folder picker through a new allowlisted IPC; several folders allowed); OS folders dropped on the bin or on a folder tile; a progress toast and a summary ("Imported 214 files into 12 folders; skipped 9 unsupported").
+  - Settings > Media and import: "Keep folder structure when importing folders" (`media.keep_structure`, on).
+- **Interfaces:** `media.import{paths, folder?, keep_structure?}` (directories accepted; `skipped` in the result); event `media.import_progress`; IPC for the folder picker; preference `media.keep_structure`.
+- **Acceptance criteria:**
+  - Integration: a fixture tree (3 levels, 40 media files, 5 unsupported files, a hidden file and a symlink loop) imports 40 assets into folders mirroring the directories that hold media; 5 are reported unsupported; the loop is not followed; one undo removes the 40 assets and their folders; importing the tree again creates nothing.
+  - A tree of 2,001 files fails with `Invalid` and imports nothing; an agent path outside the allowed roots fails with `Invalid`.
+  - A 500-file folder imports in < 30 s on the reference desktop (recorded, not gating).
+  - **A user flow (ADR-0018, F22 extended):** Import folder… on the demo media folder (picker stubbed) creates its folders inside the open folder; an OS folder dropped onto a folder tile imports into it; the summary toast reports what was skipped; with the setting off, the files land flat.
+- **Tests:** integration, Vitest, user flow.
+- **Out of scope:** watching folders for new files; copying files into the project (WP-2F.04); tags from folder names (WP-2F.06).
 
 ---
 
@@ -910,6 +1014,7 @@ Schedule note: the roadmap gives 9 weeks. Total effort here is about 162 agent-d
   - Export dialog (schema-driven form from the preset schema): preset picker grouped by platform, summary (resolution/codec/estimated size from bitrate × duration), range selector (whole sequence / in-out / marker set), output path picker with template, filename tokens, advanced section. Platform warnings inline. Buttons: Export, Add to queue.
   - Queue panel (dockable): list with progress, ETA, cancel/retry/reorder (drag), reveal-in-folder, open file, errors with the machine code and human message; desktop notification on completion.
   - Save-as-preset flow.
+  - Settings (catalog `docs/reference/settings.md`): Settings > Export gains the default preset (last used) and the file name pattern (`{project}`; tokens project, sequence, date, preset) next to WP-1M.13's rows; Settings > Notifications gains "Notify when an export finishes while Cutweave is in the background" (on; an OS notification from main) and "Play a sound when an export finishes" (off).
 - **Interfaces:** consumes `export.*` commands/queries and the `job.progress` events.
 - **Acceptance criteria:**
   - Playwright: export a YouTube 1080p preset of the fixture project through the UI and verify the output with ffprobe; queue 2 exports, cancel one.
@@ -949,6 +1054,7 @@ Schedule note: the roadmap gives 9 weeks. Total effort here is about 162 agent-d
   - `dockview` integration: all panels (Media, Preview, Timeline, Inspector, Mixer, Export queue, Effects placeholder) registered in a typed panel registry (contribution-point shaped so L3 plugins can register later). Drag/dock/float/tab/maximize, per-panel minimum size.
   - Layout serialization to user config (`~/.cutweave/workspaces.json`) with schema version and recovery from corrupt layouts (falls back to the default and notes it).
   - Built-in workspaces: **Long-form** (wide preview, large timeline, media left, inspector right) and **Short-form** (9:16 preview centered and tall, timeline compact at the bottom, inspector right). Workspace switcher in the title bar, "Save layout as…", "Reset layout". Selecting a sequence with 9:16 aspect suggests (not forces) Short-form once per project.
+  - Settings > General: "Workspace for new projects": last used (default), Long-form, Short-form (`general.workspace`, catalog `docs/reference/settings.md`).
   - i18n scaffold: `i18next` (or `lingui`), message extraction script, `en` catalog with ICU plurals, locale detection, lint rule failing on user-visible hard-coded strings in `packages/editor` and `packages/ui` (allowlist file). Command names/descriptions come from the registry (English now, translation keys reserved).
 - **Interfaces:** `registerPanel({id,title,component,defaultDock})`, `workspace.*` view commands (UI-only).
 - **Acceptance criteria:**
@@ -1002,7 +1108,7 @@ Schedule note: the roadmap gives 9 weeks. Total effort here is about 162 agent-d
 - **Size:** S
 - **Executor:** sonnet
 - **Scope:**
-  - `cmdk` palette (Ctrl/Cmd+K) listing every non-hidden registered command (from the generated catalog) with summary, bound shortcut, namespace chips, fuzzy search; commands with required args open an auto-generated argument form (via `SchemaForm`); `when` clauses (selection/track/playhead context) via a `ui.when` hint filter the list. Recent commands first. Palette also lists panels/workspaces.
+  - `cmdk` palette (Ctrl/Cmd+K) listing every non-hidden registered command (from the generated catalog) with summary, bound shortcut, namespace chips, fuzzy search; commands with required args open an auto-generated argument form (via `SchemaForm`); `when` clauses (selection/track/playhead context) via a `ui.when` hint filter the list. Recent commands first. Palette also lists panels/workspaces, and the settings pages and rows (opened at the row with `openSettings`, WP-1M.11).
   - Application menus (File/Edit/Timeline/Clip/View) generated from `#[command(menu="Timeline/Split")]` metadata plus a small static layout file; Electron native menu mirrors it.
 - **Interfaces:** `menu`/`when` attributes in the command macro; `CommandCatalog` store.
 - **Acceptance criteria:**
@@ -1014,12 +1120,12 @@ Schedule note: the roadmap gives 9 weeks. Total effort here is about 162 agent-d
 
 ### WP-2H.05 — Keymap engine, shortcut editor, NLE and CapCut presets
 - **Area:** packages/editor/src/keymap/, apps/desktop (global shortcut conflicts)
-- **Depends on:** WP-2H.04, E1M
+- **Depends on:** WP-2H.04, E1M, WP-1M.13
 - **Size:** M
 - **Executor:** sonnet
 - **Scope:**
   - Keymap engine: bindings `{key|chord, command, args?, when?}`, contexts (timeline focus, preview focus, text input suppresses), platform modifier mapping, chords (e.g. `Ctrl+K Ctrl+S`), conflict detection, key repeat rules (JKL shuttle), IME safety.
-  - Shortcut editor UI (settings page): searchable command list, record-a-shortcut, conflict warning with reassign/cancel, per-command reset, import/export JSON, preset switcher.
+  - Shortcut editor UI as the Keyboard shortcuts page of Settings (it replaces WP-1M.13's read-only list in WP-1M.11's frame; its search also answers the dialog's search): searchable command list, record-a-shortcut, conflict warning with reassign/cancel, per-command reset, import/export JSON, preset switcher. Bindings and the preset are app preferences (`shortcuts.*`, catalog `docs/reference/settings.md`), included in Export settings….
   - Presets (L0 data files `keymaps/nle.json`, `keymaps/capcut.json`, plus `default`= NLE): NLE: J/K/L, I/O, B razor, A select, V, Q/W ripple trim previous/next, Home/End, Ctrl+Z/Shift+Ctrl+Z, M marker, comma/period nudge, Del / Shift+Del ripple delete. CapCut: Ctrl+B split, Del delete, Ctrl+Z, Ctrl+Shift+Z, Space, `[`/`]` trim to playhead, Ctrl+D... derived from research/01-capcut-features.md; any binding not verifiable is marked `unverified` in the file and in Notes N7.
   - Every command bindable (palette listing = bindable list).
 - **Interfaces:** keymap JSON schema; `keymap.*` view commands.
@@ -1061,6 +1167,59 @@ Schedule note: the roadmap gives 9 weeks. Total effort here is about 162 agent-d
   - Zero open P0 UX issues before 2J.06 starts (or explicit maintainers' waiver in the doc).
 - **Tests:** n/a.
 - **Out of scope:** visual redesign.
+
+### WP-2H.08 — Project settings: `project.set_settings` and File > Project settings…
+- **Area:** crates/cutweave-ops (`project.set_settings`, `project.new` defaults), crates/cutweave-model (`ProjectSettings` schema hints), generated schema and TS types, packages/editor (Project settings dialog, inspector link, "Use as defaults for new projects"), docs/reference/settings.md, apps/desktop/e2e/flows, docs/user-flows.md
+- **Depends on:** WP-1M.11, WP-2H.02, WP-2B.01, WP-2F.05
+- **Size:** M
+- **Executor:** sonnet
+- **Scope:** (product owner request, 2026-11-24) project settings get their own surface, apart from the app's Settings (catalog: "Project settings").
+  - `project.set_settings{patch}`: one undoable command for every `project.settings` key (a merge patch validated against the `ProjectSettings` JSON Schema, then semantic checks), MCP catalog; `project.info` returns the settings. Feature commands that set one key (`media.set_proxy_policy`, WP-2F.01; `render.cache_enable`, WP-2J.09) produce the same patch and stay as named shortcuts for agents. Keys whose change is a UI-only scope (the project's AI budget cap, WP-5A.07) are refused for agents with `forbidden`.
+  - Defaults for new projects: `project.new` takes optional `settings`; the editor passes the app preferences that are defaults for new projects (still image duration, proxy policy, the last sequence format chosen).
+  - Dialog: File > Project settings… (and "Project settings…" in the inspector when nothing is selected); a schema-driven form (WP-2H.02) over `ProjectSettings` in sections: New sequences (format), Media (still image duration, WP-2F.05; proxies, WP-2F.01), Preview (background rendering, WP-2J.09), Saving (autosave for engines without the app, WP-1C.03), AI (spending cap, WP-5A.07, when it lands). Each change is one undo step ("Change project settings"); changes made by agents show live; "Use as defaults for new projects" writes the matching preferences.
+  - Keys added by later WPs appear in the dialog without UI work (schema-driven).
+- **Interfaces:** `project.set_settings{patch}`; `project.new{…, settings?}`; the Project settings dialog.
+- **Acceptance criteria:**
+  - Registry property harness: undo identity and failure atomicity for `project.set_settings`; an unknown key fails with `Invalid` at its path.
+  - **A user flow (ADR-0018, F24):** File > Project settings…, set still image duration to 3 s, drop an image on the timeline: its clip is 3 s long; Ctrl+Z puts 5 s back in the dialog; "Use as defaults for new projects", then create a new project: its still duration is 3 s; an agent (`cutweave exec` with `project.set_settings`) changes the proxy policy and the open dialog shows it.
+  - Adding an optional key to `ProjectSettings` in a test build adds a control with no UI change (test).
+- **Tests:** registry harness, Vitest, user flow.
+- **Out of scope:** per-sequence settings (WP-2B.03); app preferences (WP-1M.11); the brand kit (WP-6I.05).
+
+### WP-2H.09 — Settings: Appearance page (interface scale, density, reduce motion)
+- **Area:** design/tokens.json and the `cargo xtask tokens` outputs (density sizes; design owner review), packages/ui (density through `data-density`), apps/desktop (zoom factor in main), packages/editor (Appearance rows), packages/timeline (hit-testing at any scale), docs/reference/settings.md, apps/desktop/e2e/flows, docs/user-flows.md
+- **Depends on:** WP-1M.11, WP-2H.01, WP-2A.10
+- **Size:** M
+- **Executor:** sonnet
+- **Scope:** (product owner request, 2026-11-24) the rest of the Appearance page of the settings catalog.
+  - **Interface scale** 90, 100 (default), 110, 125, 150%: main sets the window's zoom factor at once and keeps it across relaunches; the preview canvas and the timeline stay crisp (backing size = CSS size × device pixel ratio, as today) and pointer hit-testing stays exact.
+  - **Density** Standard (default) or Comfortable: a second set of size tokens (control heights, row and panel padding, track heights) under `data-density="comfortable"`, with usage notes and a passing contrast check; Standard is today's tokens, unchanged.
+  - **Reduce motion:** follow the system (default), on, off; on makes every transition instant, as `prefers-reduced-motion` does today.
+  - The high-contrast theme joins the theme row in WP-7C.02. Accent colors are not offered (marigold is the one "here" color, design/README.md) unless the product owner decides otherwise.
+- **Interfaces:** preference keys `appearance.scale`, `appearance.density`, `appearance.reduce_motion`; density tokens in `design/tokens.json`.
+- **Acceptance criteria:**
+  - Visual baselines of the editor shell in both densities and both themes, at 100% and 125%.
+  - Playwright: at 90% and 125%, dragging a clip by 100 CSS px moves it by the same time as at 100%, and the preview canvas backing size equals CSS size × DPR within 1 px.
+  - **A user flow (ADR-0018, F26):** set the interface scale to 125% and density to Comfortable: the controls grow at once; relaunch: both persist; turn Reduce motion on: dialogs open with no transition.
+  - axe: 0 violations in both densities.
+- **Tests:** visual, Playwright, user flow.
+- **Out of scope:** the high-contrast theme (WP-7C.02), custom accent colors, per-panel font sizes.
+
+### WP-2H.10 — Settings: Playback page (preview quality, proxies, scrub audio, loop)
+- **Area:** packages/editor (Playback page, transport bar), crates/cutweave-playback (scrub-audio switch, loop) and generated schema if a transport command changes, docs/reference/settings.md, apps/desktop/e2e/flows, docs/user-flows.md
+- **Depends on:** WP-1M.11, WP-2F.02, E1H
+- **Size:** S
+- **Executor:** sonnet
+- **Scope:** (product owner request, 2026-11-24) the Playback page of the settings catalog; app preferences.
+  - Preview quality while playing: Auto (default), Full, Half, Quarter; when paused: Full (default) or Auto (the quality ladder, arch §8).
+  - Use proxies in the preview when they are ready (on); play audio while scrubbing (on); loop playback (off); when playback stops, go back to where it started (off).
+  - The transport bar's proxy, loop and quality controls and these rows are one value each, app-wide. The per-project `preview_quality` in `ui-state.json` (WP-1C.04) is no longer restored; the preference wins.
+- **Interfaces:** preference keys `playback.*`; the existing `view.*` transport commands, plus a scrub-audio switch if the engine has none.
+- **Acceptance criteria:**
+  - Vitest: the transport's proxy and loop controls change the preference and the page shows it, and the reverse.
+  - **A user flow (ADR-0018, F28):** turn "go back to where it started" on, play and stop: the playhead returns; turn Loop on and play past the end: playback wraps; set quality while playing to Half: the transport's quality indicator says Half while playing; relaunch: the values persist.
+- **Tests:** Vitest, user flow.
+- **Out of scope:** pre-roll and post-roll; shuttle speed presets.
 
 ---
 
@@ -1308,7 +1467,7 @@ Schedule note: the roadmap gives 9 weeks. Total effort here is about 162 agent-d
 
 ### WP-2J.09 — Background render cache (smart pre-render while idle)
 - **Area:** crates/cutweave-cache/src/render_cache/, crates/cutweave-jobs, crates/cutweave-playback, packages/timeline (ruler indicator)
-- **Depends on:** E1F, E1H, WP-2C.04, WP-2F.01, WP-2J.03
+- **Depends on:** E1F, E1H, WP-2C.04, WP-2F.01, WP-2J.03, WP-1D.08
 - **Size:** M
 - **Executor:** opus
 - **Scope:**
@@ -1317,7 +1476,8 @@ Schedule note: the roadmap gives 9 weeks. Total effort here is about 162 agent-d
   - **Scheduling:** a job that runs only when idle (no playback, no gesture, no export; resume ≥ 1.5 s after the last edit), single concurrent, cancelled instantly on edit/playback start, lower priority than export and proxies, nearest-to-playhead segments first; battery/thermal aware pause option.
   - **Playback use:** the preview resolver substitutes cached chunks when the hash matches and quality ≤ cached resolution; falls back to live render otherwise. Pure optimization: results must equal live rendering (cached chunk vs live render at the same quality on the same adapter: bit-identical). Export does not use the cache in P2 (always live, for determinism).
   - Commands: `render.cache_enable{bool}`, `render.cache_clear`, `render.cache_status` query `{segments:[{from,to,state: none|queued|rendering|ready|stale}], bytes}`; project setting `render_cache.enabled` default on.
-  - UI: ruler bar under the timeline ruler (grey none, orange queued/rendering, green ready), cache size in settings with "Clear cache" button.
+  - UI: ruler bar under the timeline ruler (grey none, orange queued/rendering, green ready).
+  - Settings (catalog `docs/reference/settings.md`): background renders limit (20 GiB) with usage and Clear on Settings > Cache and storage; "Start background rendering after" (1.5 s idle) and "Pause background work on battery" (on) on Settings > Performance and hardware, all machine values applied through UI-only engine commands (WP-1D.08's pattern); `render_cache.enabled` in File > Project settings… (WP-2H.08).
   - MCP: catalog.
 - **Interfaces:** commands above; event `render.cache_progress`; `MediaResolver` extension for cached segments.
 - **Acceptance criteria:**
@@ -1372,7 +1532,9 @@ Schedule note: the roadmap gives 9 weeks. Total effort here is about 162 agent-d
 | Media: relink | 2F.03 |
 | Media: collect & archive | 2F.04 |
 | Media: image and image-sequence support, still duration defaults | 2F.05 |
-| Media: bin search, tags, smart collections | 2F.06 |
+| Media: bin search, tags, smart collections | 1M.12 (search, filters, sort), 2F.06 |
+| Media: folders and importing folder structure (product owner request, ADR-0020) | 2F.07, 2F.08, 2F.09 |
+| Settings: Editing, Timeline, Playback, Audio and Appearance pages; Project settings (product owner request; catalog `docs/reference/settings.md`) | 2A.13, 2H.10, 2E.08, 2H.09, 2H.08 |
 | Export: presets (YouTube 1080p/4K, Shorts/Reels/TikTok, GIF, audio-only, ProRes) | 2G.01, 2G.02, 2G.04 |
 | Export: HEVC/AV1 | 2G.02 |
 | Export: advanced controls (CBR/VBR/CRF, GOP, color tags, audio codec/bitrate) | 2G.05, 2G.04 |
@@ -1427,3 +1589,4 @@ Contradictions, ambiguities and missing decisions found while writing this phase
 - **N15. Voiceover latency and permissions** differ per OS (macOS mic entitlement in the signed build, Windows privacy settings). The entitlements file belongs to P1/P3 packaging; 2E.04 only verifies in dev builds. Flag to 3I/7A.
 - **N16. RESOLVED.** Compound clips are in P2 scope: nested sequence as media, cycle detection, recursive render (WP-2B.04, UI 2B.05).
 - **N17. New open decisions from the added scope.** (a) Voice effects (2E.07) are rendered by a job and cached, so they are not live-adjustable; confirm "offline DSP" means this. (b) The render cache (2J.09) is preview-only in P2; export reuse is deferred for determinism. (c) `Track.role` (voice/music/sfx) is added for auto-ducking; confirm it belongs in the §4.2 Track model. (d) Compound clips need an ADR on `sequence.duplicate` semantics (shared vs deep-copied inner sequences); default chosen is shared.
+- **N18. Settings, folders and bin search (planned 2026-11-24, product owner requests).** Every setting, with its default, scope, storage, agent access and owning WP, is in the catalog [docs/reference/settings.md](../reference/settings.md); P2 adds the Editing and Timeline (2A.13), Audio (2E.08), Appearance (2H.09) and Playback (2H.10) pages and the Project settings dialog (2H.08), and existing WPs add rows (2E.04, 2E.05, 2F.03, 2F.04, 2F.05, 2G.04, 2H.01, 2H.05, 2J.09). Folders are 2F.07 to 2F.09 under ADR-0020 (Proposed). 2F.06 is re-scoped: its search box and the name/kind/duration filters moved to 1M.12 (P1), `media.search` became filters on `media.list`, `collection.*` became `media.*` commands (no new namespace), and FTS5 is dropped unless the 10,000-asset target fails. Schema versions: 2F.07 takes v2; any other P2 migration (2F.06, 2A.02) chains after it in merge order.

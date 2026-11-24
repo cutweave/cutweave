@@ -25,12 +25,12 @@
 | CapCut feature | Cutweave approach | Epic | Milestone | Priority | Notes |
 |---|---|---|---|---|---|
 | Media import | Core `media.import`; FFmpeg probe/index/decode | 1D | M1 | Must-1.0 | Drag-drop. Phone/QR transfer: Later (needs mobile companion) |
-| Media library/bin | Core media index (SQLite), thumbnails; bin UI | 1D, 1M, 2F | M2 | Must-1.0 | Bin search, tags, ratings and metadata filters: RESOLVED → 2F (G12) |
+| Media library/bin | Core media index (SQLite), thumbnails; bin UI | 1D, 1M, 2F | M2 | Must-1.0 | Bin search, tags, ratings and metadata filters: RESOLVED → 2F (G12). Search, filters and sort: 1M.12; folders (one per asset, ADR-0020) and import keeping folder structure: 2F.07–2F.09; tags, ratings and smart collections: 2F.06 |
 | Stock video/photo library | L2 importer plugins: Pexels, Pixabay, Openverse (BYO key) | 5D, 5F (StockSearch) | M5 | Should-1.0 | Better than CapCut: no account, license shown per asset. G1 RESOLVED → 5D/5F `StockSearch` capability + stock adapters, results in the AI Studio/bin |
 | Proxy mode | Core proxy jobs, auto policy, relink at export | 2F | M2 | Must-1.0 | Same render graph for preview and export |
-| Preview resolution / HW accel toggles [8] | Core preview quality ladder; HW decode (a) path | 1H, 2H | M1 | Must-1.0 | Settings UI in 2H |
+| Preview resolution / HW accel toggles [8] | Core preview quality ladder; HW decode (a) path | 1H, 1D, 2H | M1 | Must-1.0 | Settings: hardware decoding and frame memory in 1D.08, preview quality in 2H.10 (catalog: [reference/settings.md](reference/settings.md)) |
 | Render cache [U] | Core frame cache + background cache of effect stacks | 2J | M2 | Should-1.0 | Frame cache in P1; background effect-stack render cache: RESOLVED → 2J (G11) |
-| Project settings [U] | Core sequence settings (res/fps/ratio), cache dirs | 1A, 2B | M2 | Must-1.0 | |
+| Project settings [U] | Core sequence settings (res/fps/ratio), cache dirs | 1A, 2B, 2H | M2 | Must-1.0 | File > Project settings… and `project.set_settings` in 2H.08; app preferences in Settings (1M.11 and its pages); cache folder in 1D.08 |
 | Drafts / autosave [U] | Core journal, atomic save, backups, crash recovery | 1C | M1 | Must-1.0 | Better than CapCut: command-journal recovery, open JSON format |
 | Cloud drafts/sync | Local-first project folder; works with any folder sync (Syncthing/Dropbox). Optional L2 sync plugin later | — | post-1.0 | Later | Open equivalent, no account. Post-1.0 (roadmap 'After 1.0'; G14) |
 | Brand kit / asset organisation [U] | Typed brand-kit data (fonts, colors, logo, caption style) + L0 pack; applied by copilot/skill `brand-kit-apply` | 6I, 6D | M6 | Should-1.0 | Memory in 6I; brand kit as L0 pack + inspector: RESOLVED → 6D (G13) |
@@ -55,7 +55,7 @@
 | Reverse [U] | Core reverse | 2D | M2 | Must-1.0 | |
 | Freeze frame [U] | Core freeze | 2D | M2 | Must-1.0 | |
 | Replace clip [U] | Core `clip.replace_media` keeping timing/effects | 2A | M2 | Should-1.0 | RESOLVED → 2A (G7) |
-| Shortcut remap [8] | Core command registry; shortcut editor; CapCut preset | 2H | M2 | Must-1.0 | Better: every plugin command bindable |
+| Shortcut remap [8] | Core command registry; shortcut editor; CapCut preset | 1M, 2H | M2 | Must-1.0 | Better: every plugin command bindable. Read-only shortcut list in Settings: 1M.13; editor: 2H.05 |
 | Track lock/mute/hide [U] | Core track flags; solo | 2A | M2 | Must-1.0 | |
 
 ## 3. Canvas and transform

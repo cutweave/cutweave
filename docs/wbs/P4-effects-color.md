@@ -162,6 +162,7 @@ Auto-disable (4A.05) triggers at 2× budget for 30 consecutive frames. At ½/¼ 
 - **Size:** M
 - **Executor:** sonnet
 - **Scope:** shared browser component for Effects, Transitions and Filters tabs: categories, search, tags, favourites, animated hover thumbnails (pre-rendered from `pack thumbs`, on-demand `render.frame` fallback at 160 px cached); drag onto clip / edit point / gap or double-click to apply to selection; inspector "Effects" section (reorder drag, toggle, delete, reset, schema-driven params with keyframe diamonds from E2C, "disabled: over budget" badge); timeline transition handles (drag to extend, context menu: change type, apply to all, set default).
+  - Settings > Editing: duration of new transitions (`editing.transition_duration`, 0.5 s); applying a transition uses it (catalog `docs/reference/settings.md`).
 - **Interfaces:** consumes `effect.*`, `transition.*`, `color.apply_filter`; registers tabs in the panel registry.
 - **Acceptance criteria:** Playwright e2e: drag "Cross Dissolve" to a cut → handle appears → drag duration → export frame matches golden; applying 5 effects and undoing 5 times restores; browser with 150 items scrolls ≥ 55 fps and shows thumbnails < 300 ms warm.
 - **Tests:** Playwright-Electron, Vitest, visual regression.

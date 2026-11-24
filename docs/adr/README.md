@@ -27,3 +27,4 @@ ADRs record architectural decisions in [MADR](https://adr.github.io/madr/) style
 | [0017](0017-transaction-kinds.md) | Transaction kinds (`gesture`, `proposal`), connection-owned, committed-only saves | Accepted | n/a (2026-11-22) |
 | [0018](0018-user-flow-e2e-suite.md) | User-flow e2e suite (real app, real input, real dialogs) as the regression gate | Accepted | Product owner (2026-11-24) |
 | [0019](0019-ui-undo-covers-every-actor.md) | The editor's Undo and Redo cover every actor's changes (`edit.undo{actor:"*"}`) | Accepted | Product owner (2026-11-24) |
+| [0020](0020-media-folders.md) | Media folders: a folder tree in the project document, one folder per asset, `media.*` folder commands, schema v2 | Proposed | Product owner and maintainers, before WP-2F.07 |

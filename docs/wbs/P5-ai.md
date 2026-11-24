@@ -553,6 +553,7 @@ Highest-risk items: 5A.08 (spending-authority security), 5C.04 (Higgsfield API u
 - **Size:** M
 - **Executor:** sonnet
 - **Scope:** queue list (state, progress, ETA, cancel, retry, `NeedsReview` with explanation and manual resolve), results gallery (virtualized grid; video hover-play; audio waveform players; compare variants side by side; favourite), history persisted from the jobs table across restarts, provenance drawer (model, prompt, seed, params, cost, licence, watermark, C2PA badge, parent/child links), actions: **vary**, **re-run with same seed**, **use as reference**, send to bin; filters/search.
+  - Settings > Notifications: "Notify when an AI generation finishes while Cutweave is in the background" (`notify.ai_done`, on) (catalog `docs/reference/settings.md`).
 - **Interfaces:** gallery and queue components; actions call `ai.*` commands.
 - **Acceptance criteria:** 500-item history scrolls at 60 fps; restart mid-job restores the queue; "vary" creates a new job from the stored recipe with the cost chip.
 - **Tests:** Vitest, Playwright with MockProvider (success, failure, cancel, needs-review).
@@ -586,6 +587,7 @@ Highest-risk items: 5A.08 (spending-authority security), 5C.04 (Higgsfield API u
 - **Size:** M
 - **Executor:** sonnet
 - **Scope:** provider cards (status, key entry with validation spinner, remove, data-flow disclosure, last used); **key entry is write-only**: the dialog calls `ai.set_key{provider, key}` with the UI token (UI-only scope), the engine returns only a fingerprint (last 4 characters) and the renderer discards the value immediately — never stored in Zustand/localStorage/devtools-visible state; per-capability routing policy (cloud-first / local-first / local-only / off) and privacy-mode toggle; budget editor (per-action and per-session **agent budget**, default $0, with a plain-language explanation); catalog status (version, channel, last update, update now, stale warning); custom model slug form + uncurated list; "Local models" page wrapping `model.*` commands (size, licence text + accept, download/remove, benchmark tier).
+  - These are the AI providers page of Settings (created by WP-3D.06 in WP-1M.11's frame); the agent budgets (per action, per session) sit on the Agents and MCP page (WP-1J.05) and the monthly cap on AI providers. Routing, local-only mode, catalog, custom models and budgets are app preferences applied to the engine through UI-only commands; keys never enter `preferences.json` (catalog `docs/reference/settings.md`).
 - **Interfaces:** settings pages; commands `ai.provider.*`, `ai.routing.set`, `ai.catalog.*`, `model.*`.
 - **Acceptance criteria:** key never readable back from UI or engine (verified by the 5A.03 sentinel test extended to the UI e2e); local model cannot be installed without accepting the licence screen; budgets persist.
 - **Tests:** Vitest, Playwright with MockProvider and a fake keychain.
@@ -737,6 +739,7 @@ Highest-risk items: 5A.08 (spending-authority security), 5C.04 (Higgsfield API u
 - **Size:** M
 - **Executor:** sonnet
 - **Scope:** local-only analysis jobs (cpu class, cost 0): **beats** via an Ellis-style spectral-flux + dynamic-programming tracker in Rust (own implementation keeps dependencies small; aubio (GPL) would now be licence-allowed under §21, but essentia (AGPL) and madmom weights (NC-SA) stay excluded); **scenes** via an HSV-histogram content/adaptive detector on 48×27 downscaled frames. Outputs stored in the analysis cache and written as markers (`beat`, `scene`) on the clip/sequence so E2A snapping uses them; optional `timeline.split_at_scenes`. ONNX upgrades (beat_this, TransNetV2) arrive as higher-quality local providers in 5I.07 and take over when installed.
+  - Settings > Media and import: "Detect scenes and beats in new media" (`media.analyze_on_import`, off) (catalog `docs/reference/settings.md`).
 - **Interfaces:** commands `audio.detect_beats`, `video.detect_scenes`; markers.
 - **Acceptance criteria:** F1 (cost 0); beat F-measure ≥ 0.8 on synthetic click tracks and the CC0 music fixtures; scene detection precision/recall ≥ 0.9 on the corpus hard-cut set; results cached per media hash.
 - **Tests:** unit, accuracy tests on corpus, e2e.
@@ -822,6 +825,7 @@ Highest-risk items: 5A.08 (spending-authority security), 5C.04 (Higgsfield API u
 - **Size:** M
 - **Executor:** sonnet
 - **Scope:** local models are **catalog entries** (`locality: local`, `artifacts[]` with pinned-commit URL or mirror, sha256, size, SPDX licence, EP, min VRAM, `redistributable`) — no second registry (Notes §16). Commands `model.list|install|remove|verify|status|license`. Download over HTTPS with Range resume, SHA-256 verification, content-addressed store `<app-data>/models/<id>/<sha>/`, disk usage + quota, progress as `io` jobs. **Licence screen is mandatory**: SPDX id, licence text, source URL; acceptance stored with a hash of the text; installs of deny-listed licences (NC/research-only, AGPL, GPL-2.0-only, unclear weights — §21) refused unless the entry is user-added with an explicit warning. Runtime "GPU packs" (CUDA/TensorRT/OpenVINO ORT builds) use the same mechanism with signature checks. `xtask models-lint` fails CI on deny-listed licences (§21) or missing sha256 in the default set and checks the "core pack" budget (< 1.5 GB).
+  - Settings > AI providers lists the local models; their download folder is a machine setting (`ai.models_folder`, default the app's data folder, applied through a UI-only engine command) (catalog `docs/reference/settings.md`).
 - **Interfaces:** `model.*` commands/queries, events `model.progress`.
 - **Acceptance criteria:** interrupted download resumes; corrupted file detected and re-fetched; installing without accepting the licence fails; lint demonstrably rejects an NC fixture.
 - **Tests:** unit, integration with a local HTTP server (Range, corruption), lint tests.

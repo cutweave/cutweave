@@ -92,7 +92,7 @@ At about 6 parallel agents, that is roughly 40 weeks of pure execution. Serial d
 - **API:** WS JSON-RPC, media HTTP endpoints, token auth, run-file discovery.
 - **MCP v0:** rmcp server (HTTP + stdio `attach`/`headless`), 15 core tools (the P1 subset of §14, including `render_frame` and `job_wait`) plus the 4 generic tools. P2 completes the ~30-tool core set.
 - **CLI:** `cutweave engine | mcp | exec | query | render`.
-- **UI** (built only from `packages/ui` and design tokens): Electron shell, engine supervision and restart, media bin (import/drag-drop), preview, a basic timeline (1 video + 1 audio track: select, move, trim, split, delete), minimal inspector, undo/redo, save/open, export dialog.
+- **UI** (built only from `packages/ui` and design tokens): Electron shell, engine supervision and restart, media bin (import/drag-drop, search and filters), preview, a basic timeline (1 video + 1 audio track: select, move, trim, split, delete), minimal inspector, undo/redo, save/open, export dialog, and the Settings frame with its first pages (general, appearance, saving, export, shortcuts, agents and MCP, cache and hardware).
 - **Codegen:** TS protocol package generated in CI with a snapshot diff gate.
 
 **Exit (M1):**
@@ -124,7 +124,7 @@ At about 6 parallel agents, that is roughly 40 weeks of pure execution. Serial d
   - **Auto-ducking** (sidechain from voice tracks).
   - **Basic voice effects** (offline DSP: pitch, robot, echo, telephone, chipmunk/deep).
   - Voiceover recording, extract audio.
-- **Media:** proxies (auto policy + manual), relink, collect & archive, image and image-sequence support, still duration defaults, **media bin search, tags and smart collections**.
+- **Media:** proxies (auto policy + manual), relink, collect & archive, image and image-sequence support, still duration defaults, **media bin folders, tags and smart collections**, project settings, and the settings pages for editing, timeline, playback, audio and appearance ([settings catalog](reference/settings.md)).
 - **Export:**
   - Presets: YouTube 1080p/4K, Shorts/Reels/TikTok, GIF, audio-only, ProRes. HEVC/AV1.
   - **Advanced controls:** bitrate mode (CBR/VBR/CRF), GOP, color tags, audio codec and bitrate.

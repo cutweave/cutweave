@@ -217,6 +217,7 @@ Three long chains run in parallel; the **eval chain is the longest** because it 
   - Auto-inspectors for L1/L1.5 contributions from parameter schemas (reuse schema-driven inspector; no plugin UI code).
   - Example panel "Marker Notes" (lists markers, edits note, seeks playhead) as L3 reference + fixture.
   - L3 abuse tests: XSS via plugin strings in host chrome (titles, menu labels), oversize assets, frame spam.
+  - A plugin's `settings` contribution becomes a page, or rows on an existing page, in WP-1M.11's settings frame, rendered from its schema; values are stored under `plugins.<id>.*` in the preferences, validated against that schema, included in Export settings…, and removed when the plugin is uninstalled.
 - **Interfaces:** manifest `contributes.panels|inspectors|menus|keybindings|settings`; dockview panel registry.
 - **Acceptance criteria:** installing the example adds a dockable panel, palette command and keybinding without restart; uninstall removes all; plugin labels render as text only (escape test).
 - **Tests:** Playwright install→use→uninstall, label-sanitization unit tests, visual regression.
@@ -307,6 +308,7 @@ Three long chains run in parallel; the **eval chain is the longest** because it 
   - Settings → Plugins (installed: enable/disable/update/rollback/uninstall/permissions/audit) and **Browse** tab (search, layer chips, license, verified badge, permission summary, screenshots); "get more" links from Effects/Transitions/Captions tabs.
   - Sideload from file/folder (unverified banner) and dev-mode "load unpacked" with hot reload.
   - Empty/offline/error states; keyboard accessible.
+  - Settings → Plugins is the Plugins page of WP-1M.11's frame; it adds "Update plugins automatically" (off), "Allow installing plugins from files" (off; UI-only) and "Developer mode: load unpacked plugins" (off) (catalog `docs/reference/settings.md`).
 - **Interfaces:** consumes `plugin.*`; i18n `plugins.*`.
 - **Acceptance criteria:** a user installs a first-party effect pack in ≤ 3 clicks and sees it in the Effects tab immediately; offline mode shows installed list + clear offline state.
 - **Tests:** Playwright install/update/rollback/sideload; visual regression; axe-core.
@@ -1231,6 +1233,7 @@ Three long chains run in parallel; the **eval chain is the longest** because it 
   - **Proposal layer** on the timeline (ghost/outlined items for pending adds/changes/deletes), diff list with per-edit accept/reject, preview toggle (before/after) rendered from the open proposal tx, accept all (one undo step) / reject all (rollback); items locked by the proposal show a lock indicator to other actors.
   - Confirmation dialogs for paid (estimate, remaining budget, model), destructive (what/how many, undoable?) and external (publish target, account) actions — **tokens issued only from this UI**, never from chat text.
   - Settings: providers/keys link (5F), budgets (per session/task), autonomy defaults, memory/privacy statement ("what is sent to the model"), data/audit viewer.
+  - The copilot settings are the Copilot page of Settings (WP-1M.11's frame): models (a smart one and a fast one), autonomy (propose or apply), spending per task, memory on or off (catalog `docs/reference/settings.md`).
 - **Interfaces:** consumes `edit.propose|accept|reject`, `policy.*`.
 - **Acceptance criteria:** a 6-edit proposal can be partially accepted (3/6) and the result matches expected doc; a paid action cannot proceed without clicking confirm in the dialog (e2e); timeline proposal rendering holds ≥ 55 fps on the 5k-item benchmark.
 - **Tests:** Playwright e2e; timeline unit tests for ghost rendering; visual regression.
