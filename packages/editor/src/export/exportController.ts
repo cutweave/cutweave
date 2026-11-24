@@ -6,9 +6,11 @@
 //
 // Every engine call goes over the editor's own connection; nothing here touches the document.
 
+import { defaultPreferences, type PreferenceKey, type PreferenceMap } from "@cutweave/preferences";
 import type {
   ExportHw,
   ExportPreset,
+  ExportQuality,
   JobInfo,
   Project,
   RpcClient,
@@ -16,6 +18,7 @@ import type {
 } from "@cutweave/protocol";
 import type { StoreApi } from "zustand";
 import type { EngineStoreState } from "../engine/engineStore.ts";
+import type { PreferencesClient } from "../prefs/prefsStore.ts";
 import type { DesktopBridge } from "../session/desktop.ts";
 import { asRpcError } from "../session/errors.ts";
 import type { SessionStore } from "../session/sessionStore.ts";
@@ -24,8 +27,9 @@ import type { ToastStore } from "../state/toastStore.ts";
 import type { Translate } from "../timeline/errors.ts";
 import {
   baseName,
-  defaultOutputPath,
+  dirName,
   hardwareEncoders,
+  proposedOutputPath,
   type SequenceFacts,
   sequenceFacts,
 } from "./exportSettings.ts";
@@ -40,6 +44,8 @@ export interface ExportControllerDeps {
   readonly toasts: StoreApi<ToastStore>;
   readonly t: Translate;
   readonly desktop: DesktopBridge | null;
+  /** The person's export defaults (Settings > Export); without it the schema's defaults stand. */
+  readonly prefs?: Pick<PreferencesClient, "get" | "set">;
 }
 
 /** The sequence an export takes (the project's first), with the facts the dialog shows. */
@@ -123,12 +129,29 @@ export class ExportController {
     return exportSource(this.#deps.project())?.hasItems === true;
   }
 
-  /** Where the file goes unless the person picks another place. */
+  #pref<K extends PreferenceKey>(key: K): PreferenceMap[K] {
+    return this.#deps.prefs?.get(key) ?? defaultPreferences()[key];
+  }
+
+  /** The quality and hardware choice a new dialog starts at (Settings > Export). */
+  formDefaults(): { readonly quality: ExportQuality; readonly hardware: boolean } {
+    return { quality: this.#pref("export.quality"), hardware: this.#pref("export.hw") === "auto" };
+  }
+
+  /**
+   * Where the file goes unless the person picks another place: in the project's folder, the
+   * last folder used or the chosen one (Settings > Export), as the person set it.
+   */
   defaultPath(): string {
     const { session, project } = this.#deps;
     const named = project()?.meta.name;
     const name = named !== undefined && named !== "" ? named : session.getState().name || "Export";
-    return defaultOutputPath(session.getState().path, name);
+    return proposedOutputPath(
+      this.#pref("export.folder"),
+      { last: this.#pref("export.last_folder"), chosen: this.#pref("export.folder_path") },
+      session.getState().path,
+      name,
+    );
   }
 
   /** The native "save as" for the file: the chosen path, or `null` (cancelled or no desktop). */
@@ -136,7 +159,13 @@ export class ExportController {
     const pick = this.#deps.desktop?.dialog.chooseExportFile;
     if (pick === undefined) return null;
     try {
-      return await pick(current === "" ? this.defaultPath() : current);
+      const picked = await pick(current === "" ? this.defaultPath() : current);
+      // Another folder in the dialog is "the last folder used"; the chosen one stays as set.
+      const folder = picked === null ? null : dirName(picked);
+      if (folder !== null && folder !== this.#pref("export.last_folder")) {
+        void this.#deps.prefs?.set("export.last_folder", folder).catch(() => undefined);
+      }
+      return picked;
     } catch {
       return null;
     }

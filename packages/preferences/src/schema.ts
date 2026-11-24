@@ -30,6 +30,15 @@ export const AUTOSAVE_INTERVALS_S = [30, 60, 120, 300] as const;
 /** "Backups to keep". */
 export const AUTOSAVE_BACKUPS = [5, 10, 20] as const;
 
+/** Where File > Export… proposes to save: next to the project, where the last export went, or a chosen folder. */
+export const EXPORT_FOLDER_CHOICES = ["project", "last", "chosen"] as const;
+export type ExportFolderChoice = (typeof EXPORT_FOLDER_CHOICES)[number];
+export const EXPORT_QUALITIES = ["low", "medium", "high"] as const;
+export type ExportQualityChoice = (typeof EXPORT_QUALITIES)[number];
+/** Hardware encoders: let the engine pick one, or software only. */
+export const EXPORT_HW_CHOICES = ["auto", "off"] as const;
+export type ExportHwChoice = (typeof EXPORT_HW_CHOICES)[number];
+
 /** "Don't ask again" choices dialogs remember, by dialog id. */
 export type DialogChoices = Record<string, string>;
 
@@ -44,6 +53,14 @@ export interface PreferenceValues {
   "saving.autosave": boolean;
   "saving.interval": (typeof AUTOSAVE_INTERVALS_S)[number];
   "saving.backups": (typeof AUTOSAVE_BACKUPS)[number];
+  // Export (WP-1M.13)
+  "export.folder": ExportFolderChoice;
+  /** The folder "chosen" means; `""` is "not chosen yet" (the project folder applies). */
+  "export.folder_path": string;
+  /** The folder the last export was saved to from the dialog; `""` is none yet. */
+  "export.last_folder": string;
+  "export.quality": ExportQualityChoice;
+  "export.hw": ExportHwChoice;
 }
 
 export type PreferenceKey = keyof PreferenceValues;
@@ -83,6 +100,17 @@ export const PREFERENCES: { readonly [K in PreferenceKey]: PreferenceDef } = {
   "saving.autosave": { type: "boolean", scope: "app", default: true },
   "saving.interval": { type: "enum", scope: "app", options: AUTOSAVE_INTERVALS_S, default: 30 },
   "saving.backups": { type: "enum", scope: "app", options: AUTOSAVE_BACKUPS, default: 10 },
+  // Export (WP-1M.13)
+  "export.folder": {
+    type: "enum",
+    scope: "app",
+    options: EXPORT_FOLDER_CHOICES,
+    default: "project",
+  },
+  "export.folder_path": { type: "path", scope: "app", default: "" },
+  "export.last_folder": { type: "path", scope: "app", default: "" },
+  "export.quality": { type: "enum", scope: "app", options: EXPORT_QUALITIES, default: "medium" },
+  "export.hw": { type: "enum", scope: "app", options: EXPORT_HW_CHOICES, default: "auto" },
 };
 
 export const PREFERENCE_KEYS = Object.keys(PREFERENCES) as PreferenceKey[];

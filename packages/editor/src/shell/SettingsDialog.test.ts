@@ -20,6 +20,8 @@ import { preferences, prefsStore } from "../prefs/prefsStore.ts";
 import type { PrefsBridge } from "../session/desktop.ts";
 import { sessionUiStore } from "../session/sessionUiStore.ts";
 import { openSettings, settingsStore } from "../settings/settingsStore.ts";
+import { BINDING_GROUPS, listBindings } from "../shortcuts/bindings.ts";
+import { menuPlatform } from "./appMenu.ts";
 import { SettingsDialog } from "./SettingsDialog.tsx";
 
 beforeAll(() => {
@@ -109,10 +111,21 @@ describe("Settings: the frame", () => {
     const tabs = within(within(settings).getByRole("tablist", { name: "Settings pages" }))
       .getAllByRole("tab")
       .map((t) => `${t.textContent}:${t.getAttribute("aria-selected")}`);
-    expect(tabs).toEqual([
+    // Pages of later work packages come in between: look at the ones this test knows.
+    const known = [
+      "General",
+      "Appearance",
+      "Export",
+      "Saving and backups",
+      "Keyboard shortcuts",
+      "Advanced",
+    ];
+    expect(tabs.filter((t) => known.includes(t.split(":")[0] ?? ""))).toEqual([
       "General:true",
       "Appearance:false",
+      "Export:false",
       "Saving and backups:false",
+      "Keyboard shortcuts:false",
       "Advanced:false",
     ]);
     expect(within(settings).getByText("Preferences")).toBeTruthy();
@@ -245,7 +258,8 @@ describe("Settings: search", () => {
     expect(within(group).getByRole("radiogroup", { name: "Save at least every" })).toBeTruthy();
     expect(within(group).getByRole("radiogroup", { name: "Backups to keep" })).toBeTruthy();
     expect(within(group).getByText("auto", { selector: "mark" })).toBeTruthy();
-    expect(within(settings).getByText("3 found")).toBeTruthy();
+    // Other pages with "auto" in a row (Export's hardware encoders) add to the count.
+    expect(within(settings).getByText(/^\d+ found$/)).toBeTruthy();
     expect(within(settings).getByRole("heading", { name: "Results for “auto”" })).toBeTruthy();
     // No page is selected while the results show.
     for (const tab of within(settings).getAllByRole("tab")) {
@@ -442,7 +456,14 @@ describe("Settings: accessibility", () => {
     const user = userEvent.setup();
     render_();
     const settings = await dialog();
-    for (const page of ["General", "Appearance", "Saving and backups", "Advanced"]) {
+    for (const page of [
+      "General",
+      "Appearance",
+      "Export",
+      "Saving and backups",
+      "Keyboard shortcuts",
+      "Advanced",
+    ]) {
       await user.click(within(settings).getByRole("tab", { name: page }));
       const results = await axe.run(document.body, {
         rules: { "color-contrast": { enabled: false } },
@@ -452,5 +473,101 @@ describe("Settings: accessibility", () => {
         page,
       ).toEqual([]);
     }
+  });
+});
+
+describe("Settings > Export (WP-1M.13)", () => {
+  it("shows the defaults and writes each choice through the store", async () => {
+    const user = userEvent.setup();
+    render_();
+    const settings = await dialog();
+    await user.click(within(settings).getByRole("tab", { name: "Export" }));
+    const quality = within(settings).getByRole("radiogroup", { name: "Default quality" });
+    expect(radios(quality)).toEqual(["Low:false", "Medium:true", "High:false"]);
+    const hw = within(settings).getByRole("radiogroup", { name: "Hardware encoders" });
+    expect(radios(hw)).toEqual(["Auto:true", "Off:false"]);
+    // The chosen folder only counts when exports go to a chosen folder.
+    expect(within(settings).getByRole("textbox", { name: "Chosen folder" })).toBeTruthy();
+
+    await user.click(within(quality).getByRole("radio", { name: "High" }));
+    await user.click(within(hw).getByRole("radio", { name: "Off" }));
+    await user.selectOptions(within(settings).getByLabelText("Save exports in"), "chosen");
+    await waitFor(() => expect(prefsStore.getState().values["export.folder"]).toBe("chosen"));
+    expect(prefsStore.getState().values["export.quality"]).toBe("high");
+    expect(prefsStore.getState().values["export.hw"]).toBe("off");
+    expect(current.calls).toContainEqual(["set", "export.quality", "high"]);
+  });
+
+  it("forgets the last folder used", async () => {
+    const user = userEvent.setup();
+    render_();
+    const settings = await dialog();
+    await user.click(within(settings).getByRole("tab", { name: "Export" }));
+    expect(within(settings).getByRole("button", { name: "Forget" }).hasAttribute("disabled")).toBe(
+      true,
+    );
+    expect(within(settings).getByText("None yet")).toBeTruthy();
+    await act(() => preferences.set("export.last_folder", "D:\\Renders"));
+    expect(within(settings).getByText("D:\\Renders")).toBeTruthy();
+    await user.click(within(settings).getByRole("button", { name: "Forget" }));
+    await waitFor(() => expect(prefsStore.getState().values["export.last_folder"]).toBe(""));
+  });
+});
+
+describe("Settings > Keyboard shortcuts (WP-1M.13)", () => {
+  const open = async () => {
+    const user = userEvent.setup();
+    render_();
+    const settings = await dialog();
+    await user.click(within(settings).getByRole("tab", { name: "Keyboard shortcuts" }));
+    return { user, settings };
+  };
+
+  it("lists every binding, under the group where it works, with a read-only note", async () => {
+    const { settings } = await open();
+    expect(
+      within(settings).getByText(/Changing them arrives with the shortcut editor/),
+    ).toBeTruthy();
+    for (const group of BINDING_GROUPS) {
+      expect(within(settings).getByRole("region", { name: i18n.t(group.title) })).toBeTruthy();
+    }
+    for (const binding of listBindings(menuPlatform(navigator.platform))) {
+      const row = settings.querySelector(`[data-setting="shortcuts.${binding.id}"]`);
+      expect(row, binding.id).not.toBeNull();
+      expect(
+        within(row as HTMLElement).getByRole("group", {
+          name: new RegExp(`^${i18n.t(binding.label)}: `),
+        }),
+        binding.id,
+      ).toBeTruthy();
+    }
+  });
+
+  it("finds a binding from the page's own field: split finds S", async () => {
+    const { user, settings } = await open();
+    const find = within(settings).getByRole("searchbox", { name: "Find a shortcut" });
+    await user.type(find, "split");
+    expect(within(settings).getByRole("group", { name: "Split at the playhead: S" })).toBeTruthy();
+    expect(within(settings).queryByRole("group", { name: /^Save: / })).toBeNull();
+    await user.clear(find);
+    await user.type(find, "zzz");
+    expect(within(settings).getByText("No shortcut matches “zzz”")).toBeTruthy();
+  });
+
+  it("finds a binding from the dialog's search too, by its name or by its keys", async () => {
+    const user = userEvent.setup();
+    render_();
+    const settings = await dialog();
+    const field = within(settings).getByRole("searchbox", { name: "Search settings" });
+    await user.type(field, "split");
+    const results = within(settings).getByRole("region", { name: "Search results" });
+    expect(within(results).getByRole("group", { name: "Split at the playhead: S" })).toBeTruthy();
+    await user.clear(field);
+    await user.type(field, "ctrl+shift+s");
+    expect(
+      within(within(settings).getByRole("region", { name: "Search results" })).getByRole("group", {
+        name: /^Save as…: Ctrl\+Shift\+S$/,
+      }),
+    ).toBeTruthy();
   });
 });

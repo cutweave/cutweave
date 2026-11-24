@@ -73,10 +73,12 @@ function SettingsForm() {
   const source = useMemo(() => exportSource(project), [project]);
   const probe = useExportStore((s) => s.probe);
   const [path, setPath] = useState(() => controller.defaultPath());
+  // Settings > Export decides where the form starts; it is read once, as the dialog opens.
+  const [defaults] = useState(() => controller.formDefaults());
   const [draft, setDraft] = useState<FormatDraft | null>(() =>
-    source === null ? null : defaultDraft(source.facts),
+    source === null ? null : defaultDraft(source.facts, defaults.quality),
   );
-  const [hardware, setHardware] = useState(true);
+  const [hardware, setHardware] = useState(defaults.hardware);
   const [stage, setStage] = useState<Stage>("form");
   const [submitted, setSubmitted] = useState(false);
   const [starting, setStarting] = useState(false);

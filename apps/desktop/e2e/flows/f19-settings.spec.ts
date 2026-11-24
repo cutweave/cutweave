@@ -1,9 +1,11 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
-// F19 Settings (docs/user-flows.md; WP-1M.11), as a person does it: open Settings with Ctrl+, and
-// from the File menu; search "auto"; change the theme and "On startup"; reset a row; export the
-// settings to a file; Reset all; import the file; look at the folders; quit and relaunch. The
-// export defaults and the shortcut list are WP-1M.13's part of the flow.
-import { readFileSync } from "node:fs";
+// F19 Settings (docs/user-flows.md; WP-1M.11, WP-1M.13), as a person does it: open Settings with
+// Ctrl+, and from the File menu; search "auto"; change the theme and "On startup"; reset a row;
+// export the settings to a file; Reset all; import the file; look at the folders; quit and
+// relaunch. The second test is WP-1M.13's part: the export defaults (High, hardware Off, a chosen
+// folder) reach File > Export…, a folder picked there becomes the last one used, and the shortcut
+// list finds S for "split".
+import { mkdirSync, readFileSync } from "node:fs";
 import path from "node:path";
 import type { ElectronApplication, Locator, Page } from "@playwright/test";
 import { expect, test } from "../fixtures.ts";
@@ -11,8 +13,12 @@ import {
   chooseMenu,
   closeSettings,
   createProject,
+  dropCard,
+  editorCaughtUp,
   hasRealEngine,
+  importWithButton,
   launchFlowApp,
+  layout,
   openSettings,
   pickFiles,
   pickSavePath,
@@ -72,7 +78,9 @@ test.describe("F19 settings", () => {
       await expect(pages.getByRole("tab")).toHaveText([
         "General",
         "Appearance",
+        "Export",
         "Saving and backups",
+        "Keyboard shortcuts",
         "Advanced",
       ]);
       await expect(settings.getByText("Preferences", { exact: true })).toBeVisible();
@@ -217,6 +225,117 @@ test.describe("F19 settings", () => {
         await closeSettings(again);
       } finally {
         await second.close();
+      }
+    } finally {
+      work.remove();
+      removeDir(home);
+    }
+  });
+
+  test("export defaults reach the Export dialog, and the shortcut list finds S", async () => {
+    const info = test.info();
+    const work = workspace();
+    const home = profileDir();
+    const chosen = path.join(work.dir, "renders");
+    const elsewhere = path.join(work.dir, "elsewhere");
+    mkdirSync(chosen);
+    mkdirSync(elsewhere);
+    const norm = (p: string) => p.replace(/\\/g, "/").toLowerCase();
+    try {
+      const { app, page, close } = await launchFlowApp(work, home);
+      try {
+        // Something to export: one clip on the timeline.
+        await createProject(app, page, "Defaults", work.dir);
+        await importWithButton(app, page, [work.file("interview.mp4")]);
+        await dropCard(page, "interview.mp4", "V1", 0);
+        await expect.poll(() => layout(page)).toHaveLength(2);
+        await editorCaughtUp(page);
+
+        // Settings > Export: the defaults, then High quality, hardware encoders Off and a
+        // chosen folder (the OS folder picker is the one stub).
+        const settings = await openSettings(page, app);
+        await settings.getByRole("tab", { name: "Export" }).click();
+        const quality = settings.getByRole("radiogroup", { name: "Default quality" });
+        const hardware = settings.getByRole("radiogroup", { name: "Hardware encoders" });
+        const where = settings.getByLabel("Save exports in", { exact: true });
+        await expect(radio(quality, "Medium")).toHaveAttribute("aria-checked", "true");
+        await expect(radio(hardware, "Auto")).toHaveAttribute("aria-checked", "true");
+        await expect(where).toHaveValue("project");
+        await radio(quality, "High").click();
+        await radio(hardware, "Off").click();
+        await where.selectOption({ label: "A folder I choose" });
+        await pickFiles(app, [chosen]);
+        await settings.getByRole("button", { name: "Choose…" }).click();
+        await expect(settings.getByRole("textbox", { name: "Chosen folder" })).toHaveValue(chosen);
+        await opaque(settings);
+        await snapshot(page, info, "settings export");
+        await closeSettings(settings);
+
+        // File > Export… starts from them: High, the hardware switch off, a path in that folder.
+        await chooseMenu(page, app, "File", "Export…");
+        const dialog = page.getByRole("dialog", { name: "Export video" });
+        await expect(dialog).toBeVisible();
+        await expect(
+          radio(dialog.getByRole("radiogroup", { name: "Export quality" }), "High"),
+        ).toHaveAttribute("aria-checked", "true");
+        await expect(dialog.getByRole("switch", { name: "Use hardware encoder" })).toHaveAttribute(
+          "aria-checked",
+          "false",
+        );
+        expect(norm(await dialog.getByLabel("Save to").inputValue())).toBe(
+          norm(path.join(chosen, "Defaults.mp4")),
+        );
+
+        // Another folder, picked in the dialog (the OS save dialog is stubbed), becomes "the
+        // last folder used" and leaves the chosen folder as it was.
+        await pickSavePath(app, path.join(elsewhere, "x.mp4"));
+        await dialog.getByRole("button", { name: "Choose…" }).click();
+        await expect(dialog.getByLabel("Save to")).toHaveValue(path.join(elsewhere, "x.mp4"));
+        await dialog.getByRole("button", { name: "Cancel" }).click();
+        await expect(dialog).toBeHidden();
+        const again = await openSettings(page, app);
+        await again.getByRole("tab", { name: "Export" }).click();
+        await expect(again.getByText(elsewhere)).toBeVisible();
+        await expect(again.getByRole("textbox", { name: "Chosen folder" })).toHaveValue(chosen);
+        await expect(again.getByLabel("Save exports in", { exact: true })).toHaveValue("chosen");
+
+        // Keyboard shortcuts: every group, and "split" finds S, from the page's field and from
+        // the dialog's search.
+        await again.getByRole("tab", { name: "Keyboard shortcuts" }).click();
+        for (const group of [
+          "Menu bar",
+          "Playback",
+          "Timeline",
+          "Media bin",
+          "Dialogs and text fields",
+        ]) {
+          await expect(again.getByRole("region", { name: group })).toBeVisible();
+        }
+        await expect(again.getByRole("group", { name: "Save as…: Ctrl+Shift+S" })).toBeVisible();
+        await opaque(again);
+        await snapshot(page, info, "settings shortcuts");
+        const find = again.getByRole("searchbox", { name: "Find a shortcut" });
+        await find.fill("split");
+        await expect(again.getByRole("group", { name: "Split at the playhead: S" })).toBeVisible();
+        await expect(again.getByRole("group", { name: /^Save: / })).toHaveCount(0);
+        await find.fill("");
+        await again.getByRole("searchbox", { name: "Search settings" }).fill("split");
+        const results = again.getByRole("region", { name: "Search results" });
+        await expect(
+          results.getByRole("group", { name: "Split at the playhead: S" }),
+        ).toBeVisible();
+
+        // Tidy up as a person would: everything back to the defaults.
+        await again.getByRole("searchbox", { name: "Search settings" }).fill("");
+        await again.getByRole("tab", { name: "Advanced" }).click();
+        await again.getByRole("button", { name: "Reset all settings…" }).click();
+        await page
+          .getByRole("dialog", { name: "Reset all settings?" })
+          .getByRole("button", { name: "Reset all settings" })
+          .click();
+        await closeSettings(again);
+      } finally {
+        await close();
       }
     } finally {
       work.remove();

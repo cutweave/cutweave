@@ -59,6 +59,7 @@ import { useJobStore } from "../state/jobStore.ts";
 import { toastStore } from "../state/toastStore.ts";
 import { useViewStore, viewStore } from "../state/viewStore.ts";
 import { translator } from "../timeline/errors.ts";
+import { binKeyAction } from "./binKeys.ts";
 import { EmptyState } from "./EmptyState.tsx";
 
 type MediaLayout = "grid" | "list";
@@ -412,43 +413,42 @@ export function MediaPanel() {
   const selectedCard = cards.find((c) => c.id === selectedId);
 
   const onKeyDown = (e: KeyboardEvent<HTMLDivElement>) => {
-    if (e.ctrlKey || e.metaKey || e.altKey) return;
+    // The keys are the table in binKeys.ts (Settings > Keyboard shortcuts lists the same one).
     const cols = layout === "list" ? 1 : Math.max(metrics.cols, 1);
     const last = cards.length - 1;
     let next: number | null = null;
-    switch (e.key) {
-      case "ArrowRight":
+    switch (binKeyAction(e)) {
+      case "moveNext":
         next = layout === "list" ? null : activeIndex + 1;
         break;
-      case "ArrowLeft":
+      case "movePrevious":
         next = layout === "list" ? null : activeIndex - 1;
         break;
-      case "ArrowDown":
+      case "moveDown":
         next = activeIndex + cols;
         break;
-      case "ArrowUp":
+      case "moveUp":
         next = activeIndex - cols;
         break;
-      case "Home":
+      case "first":
         next = 0;
         break;
-      case "End":
+      case "last":
         next = last;
         break;
-      case "Enter": {
+      case "insert": {
         const card = cards[activeIndex];
         if (card !== undefined) insert(card);
         e.preventDefault();
         return;
       }
-      case " ": {
+      case "select": {
         const card = cards[activeIndex];
         if (card !== undefined) select(card.id);
         e.preventDefault();
         return;
       }
-      case "Delete":
-      case "Backspace":
+      case "remove":
         requestRemove(cards[activeIndex]);
         e.preventDefault();
         return;
@@ -464,8 +464,7 @@ export function MediaPanel() {
   pickRef.current = importer.pickAndImport;
   useEffect(() => {
     const onKey = (e: globalThis.KeyboardEvent) => {
-      if (!(e.ctrlKey || e.metaKey) || e.altKey || e.shiftKey || e.key.toLowerCase() !== "i")
-        return;
+      if (binKeyAction(e) !== "import") return;
       if (e.defaultPrevented || isTextEntry(e.target)) return;
       e.preventDefault();
       void pickRef.current();
@@ -508,8 +507,7 @@ export function MediaPanel() {
   // Ctrl/Cmd+F focuses the search field while the Assets panel has focus.
   useEffect(() => {
     const onKey = (e: globalThis.KeyboardEvent) => {
-      if (!(e.ctrlKey || e.metaKey) || e.altKey || e.shiftKey || e.key.toLowerCase() !== "f")
-        return;
+      if (binKeyAction(e) !== "search") return;
       const root = sectionRef.current?.closest(".cw-assets") ?? sectionRef.current;
       if (e.defaultPrevented || root === null || !root.contains(document.activeElement)) return;
       e.preventDefault();

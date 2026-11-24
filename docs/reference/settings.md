@@ -152,6 +152,8 @@ The dialog is a side tab list of these pages, in this order, with one search fie
 | Key | Setting | Default | Scope | Applied by | Agents | Ships in |
 |---|---|---|---|---|---|---|
 | `export.folder` | Save exports in: the project folder, the last folder used, or a chosen folder | Project folder | App | Renderer (export dialog) | — | WP-1M.13 |
+| `export.folder_path` | The chosen folder (used when `export.folder` is "chosen"; the project folder applies until one is picked) | None | App | Renderer (export dialog) | — | WP-1M.13 |
+| `export.last_folder` | The folder last picked in the Export dialog (a different folder there updates this one only; "Forget" clears it) | None | App | Renderer (export dialog) | — | WP-1M.13 |
 | `export.quality` | Default quality: low, medium, high | Medium | App | Renderer | — | WP-1M.13 |
 | `export.hw` | Use hardware encoders: auto or off | Auto | App | Renderer (`export.start{hw}`) | — | WP-1M.13 |
 | `export.preset` | Default preset | Last used | App | Renderer | — | WP-2G.04 |

@@ -83,7 +83,10 @@ export function searchSettings(
     for (const row of page.rows) {
       const label = t(row.label);
       const description = t(row.description);
-      const keywords = row.keywords === undefined ? "" : t(row.keywords);
+      const keywords = [
+        row.keywords === undefined ? "" : t(row.keywords),
+        row.keywordsText?.() ?? "",
+      ].join(" ");
       const haystack = fold(`${label}\n${description}\n${keywords}\n${title}`);
       if (!matches(words, haystack)) continue;
       rows.push({

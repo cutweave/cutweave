@@ -116,7 +116,7 @@ export function shortcutLabel(command: AppCommand, platform: MenuPlatform): stri
  * Commands whose keys the page never takes: Chromium already cuts, copies, pastes and selects
  * all on Windows and Linux, in text fields and on the page, exactly as the menu item does.
  */
-const BROWSER_KEYS: ReadonlySet<AppCommand> = new Set(["cut", "copy", "paste", "selectAll"]);
+export const BROWSER_KEYS: ReadonlySet<AppCommand> = new Set(["cut", "copy", "paste", "selectAll"]);
 
 /** Commands a focused text field keeps for itself (its own undo history). */
 const FIELD_KEYS: ReadonlySet<AppCommand> = new Set(["undo", "redo"]);
@@ -135,7 +135,7 @@ export interface ShortcutEvent {
 }
 
 /** Commands the page may run from a key (not the browser's own clipboard keys). */
-const KEYED: readonly AppCommand[] = [
+export const KEYED: readonly AppCommand[] = [
   "new",
   "open",
   "save",

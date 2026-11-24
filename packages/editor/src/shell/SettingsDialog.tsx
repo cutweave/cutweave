@@ -13,7 +13,7 @@ import {
   type SettingsPageGroup,
   SettingsResultGroup,
 } from "@cutweave/ui";
-import { useEffect, useMemo, useRef, useState } from "react";
+import { Fragment, useEffect, useMemo, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { useStore } from "zustand";
 import { useEngineReady } from "../engine/engineStore.ts";
@@ -21,16 +21,18 @@ import type { TKey } from "../i18n/index.ts";
 import { preferences, usePrefs } from "../prefs/prefsStore.ts";
 import { desktopFromWindow } from "../session/desktop.ts";
 import "../settings/core.ts";
+import "../settings/featurePages.tsx";
 import {
   type ConfirmSpec,
   pageKeys,
   SETTINGS_GROUPS,
+  type SettingRowDef,
   type SettingsContext,
   type SettingsPageDef,
   settingsRegistry,
 } from "../settings/registry.ts";
 import { SettingRowView } from "../settings/SettingsControls.tsx";
-import { countMatches, searchSettings } from "../settings/search.ts";
+import { countMatches, searchSettings, type TextPart } from "../settings/search.ts";
 import { openSettings, settingsStore, useSettingsOpen } from "../settings/settingsStore.ts";
 
 /** Every page that has at least one row, in order. */
@@ -58,6 +60,80 @@ function focusRow(id: string): void {
     ?.focus();
 }
 
+interface PageBodyProps {
+  page: SettingsPageDef;
+  highlight: string | undefined;
+  filter: string;
+  onFilter(value: string): void;
+  ctx: SettingsContext;
+  engineReady: boolean;
+}
+
+/** One page: its note, its own find field when it has one, and its rows under their sections. */
+function PageBody({ page, highlight, filter, onFilter, ctx, engineReady }: PageBodyProps) {
+  const { t } = useTranslation();
+  const filtering = page.filterable === true && filter.trim() !== "";
+  const hits = useMemo(
+    () =>
+      filtering
+        ? (searchSettings([page], filter, (key) => t(key as TKey) as string)[0]?.rows ?? [])
+        : null,
+    [filtering, page, filter, t],
+  );
+  const rows: { row: SettingRowDef; label?: TextPart[]; description?: TextPart[] }[] =
+    hits === null ? page.rows.map((row) => ({ row })) : hits;
+  // Consecutive rows with the same section share one heading.
+  const sections: { section: TKey | undefined; rows: typeof rows }[] = [];
+  for (const entry of rows) {
+    const last = sections[sections.length - 1];
+    if (last !== undefined && last.section === entry.row.section) last.rows.push(entry);
+    else sections.push({ section: entry.row.section, rows: [entry] });
+  }
+  const draw = (entry: (typeof rows)[number]) => (
+    <SettingRowView
+      key={entry.row.id}
+      row={entry.row}
+      highlighted={entry.row.id === highlight}
+      {...(entry.label === undefined ? {} : { labelParts: entry.label })}
+      {...(entry.description === undefined ? {} : { descriptionParts: entry.description })}
+      ctx={ctx}
+      engineReady={engineReady}
+    />
+  );
+  return (
+    <>
+      {page.note === undefined ? null : (
+        <p className="cw-settings__note caption">{t(page.note as TKey)}</p>
+      )}
+      {page.filterable === true ? (
+        <div className="cw-settings__filter">
+          <SearchField
+            value={filter}
+            onChange={onFilter}
+            label={t("shortcuts.filter")}
+            clearLabel={t("shortcuts.clearFilter")}
+          />
+        </div>
+      ) : null}
+      {filtering && rows.length === 0 ? (
+        <p className="cw-settings__empty body">
+          {t("shortcuts.noMatch", { query: filter.trim() })}
+        </p>
+      ) : (
+        sections.map((group, index) =>
+          group.section === undefined ? (
+            <Fragment key={`plain-${index}`}>{group.rows.map(draw)}</Fragment>
+          ) : (
+            <SettingsResultGroup key={group.section} label={t(group.section as TKey)}>
+              {group.rows.map(draw)}
+            </SettingsResultGroup>
+          ),
+        )
+      )}
+    </>
+  );
+}
+
 function SettingsContent() {
   const { t } = useTranslation();
   const pages = useSettingsPages();
@@ -74,6 +150,8 @@ function SettingsContent() {
     return byRow?.id ?? pages.find((p) => p.id === target.page)?.id ?? pages[0]?.id ?? "";
   });
   const [query, setQuery] = useState("");
+  /** The find field of a filterable page (the shortcut list). */
+  const [pageQuery, setPageQuery] = useState("");
   const [highlight, setHighlight] = useState<string | undefined>(target.row);
   const [status, setStatus] = useState("");
   const [confirm, setConfirm] = useState<ConfirmRequest | null>(null);
@@ -181,6 +259,7 @@ function SettingsContent() {
         activeId={searching ? null : (page?.id ?? null)}
         onSelect={(id) => {
           setPageId(id);
+          setPageQuery("");
           setHighlight(undefined);
         }}
         heading={
@@ -227,15 +306,14 @@ function SettingsContent() {
               </SettingsResultGroup>
             ))
           )
-        ) : (
-          page?.rows.map((row) => (
-            <SettingRowView
-              key={row.id}
-              row={row}
-              highlighted={row.id === highlight}
-              {...rowProps}
-            />
-          ))
+        ) : page === undefined ? null : (
+          <PageBody
+            page={page}
+            highlight={highlight}
+            filter={pageQuery}
+            onFilter={setPageQuery}
+            {...rowProps}
+          />
         )}
       </SettingsLayout>
       {confirm === null ? null : (

@@ -2,6 +2,7 @@
 import { readdirSync, readFileSync, statSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
+import { isPreferenceKey } from "@cutweave/preferences";
 import { describe, expect, it } from "vitest";
 import { createI18n } from "./index.ts";
 import en from "./locales/en.json";
@@ -42,6 +43,8 @@ describe("i18n catalog", () => {
 
   it("covers every key the code references", () => {
     const missing = [...referenced].filter((key) => {
+      // A preference key (`export.hw`) is not a translation key, even where it shares a root.
+      if (isPreferenceKey(key)) return false;
       // Only dotted strings under a catalog root count as translation keys.
       const root = key.split(".")[0] as string;
       return root in en && !catalogKeys.includes(key);

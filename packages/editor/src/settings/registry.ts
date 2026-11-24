@@ -96,6 +96,10 @@ export interface SettingRowDef {
   description: TKey;
   /** Extra words that find the row, comma separated, in the UI language. */
   keywords?: TKey;
+  /** More words that find the row, worked out when searching (the keys of a shortcut). */
+  keywordsText?: () => string;
+  /** A heading the page groups this row under: consecutive rows with the same one share it. */
+  section?: TKey;
   control: ControlSpec;
   applies?: AppliedBy;
   /** The row cannot be changed now (the host says why in its note when it is the engine). */
@@ -111,6 +115,10 @@ export interface SettingsPageDef {
   group: SettingsGroupId;
   /** Position among the pages of the group. */
   order: number;
+  /** A line under the page's heading. */
+  note?: TKey;
+  /** The page has its own "find" field above its rows (a long page, like the shortcut list). */
+  filterable?: boolean;
   rows: readonly SettingRowDef[];
 }
 

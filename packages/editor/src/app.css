@@ -748,6 +748,28 @@ body {
   justify-content: space-between;
   gap: var(--space-2);
 }
+.cw-settings__filter {
+  margin-bottom: var(--space-3);
+}
+.cw-settings__note {
+  margin: 0 0 var(--space-3);
+  color: var(--text-secondary);
+}
+.cw-settings__keys {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: flex-end;
+  gap: var(--space-1);
+}
+.cw-settings__combo {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-1);
+}
+.cw-settings__or {
+  color: var(--text-muted);
+}
 .cw-settings__itemlabel {
   min-width: 0;
   overflow-wrap: anywhere;

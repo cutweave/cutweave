@@ -821,18 +821,40 @@ function aborted(state: InteractionState): Transition {
   return to(state, IDLE, m.guide === null ? NONE : [{ kind: "snap-guides", times: [] }]);
 }
 
+/** What a key does in the timeline panel. */
+export type TimelineKeyAction = "cancel" | "split" | "delete" | "toggle-snapping";
+
+/**
+ * The timeline's own keys, as one table: `onKey` below reads it, and the editor's list of
+ * shortcuts (Settings > Keyboard shortcuts) is generated from it, so the two cannot drift.
+ * `keys` are `KeyboardEvent.key` values; a letter matches either case. None takes a modifier.
+ */
+export const TIMELINE_KEYS: readonly {
+  readonly action: TimelineKeyAction;
+  readonly keys: readonly string[];
+}[] = [
+  { action: "cancel", keys: ["Escape"] },
+  { action: "split", keys: ["s"] },
+  { action: "delete", keys: ["Delete", "Backspace"] },
+  { action: "toggle-snapping", keys: ["n"] },
+];
+
+/** The action a key press names in {@link TIMELINE_KEYS}, or `null`. */
+export function timelineKeyAction(key: string): TimelineKeyAction | null {
+  const lower = key.length === 1 ? key.toLowerCase() : key;
+  return TIMELINE_KEYS.find((entry) => entry.keys.includes(lower))?.action ?? null;
+}
+
 function onKey(state: InteractionState, e: KeyInput): Transition {
-  if (e.key === "Escape") return cancel(state);
+  const action = timelineKeyAction(e.key);
+  if (action === "cancel") return cancel(state);
   if (e.ctrlKey === true || e.metaKey === true || e.altKey === true) return same(state);
-  switch (e.key) {
-    case "s":
-    case "S":
+  switch (action) {
+    case "split":
       return split(state);
-    case "Delete":
-    case "Backspace":
+    case "delete":
       return remove(state);
-    case "n":
-    case "N":
+    case "toggle-snapping":
       return toggleSnapping(state);
     default:
       return same(state);
