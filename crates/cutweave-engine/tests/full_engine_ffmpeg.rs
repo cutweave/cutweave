@@ -262,7 +262,7 @@ fn real_probe_data_and_capabilities() {
     let clocks = Clocks::new();
     let (engine, _) = engine(t.path(), &clocks);
     let conn = agent(&engine);
-    call(&conn, "project.new", json!({ "name": "Probe" })).unwrap();
+    let project = call(&conn, "project.new", json!({ "name": "Probe" })).unwrap();
     let paths: Vec<String> = files
         .iter()
         .map(|p| p.to_string_lossy().into_owned())
@@ -285,6 +285,29 @@ fn real_probe_data_and_capabilities() {
     // A quarter turn (the display matrix says which way).
     assert_eq!(phone.probe.rotation % 180, 90, "{:?}", phone.probe);
     assert!(phone.probe.vfr, "{:?}", phone.probe);
+
+    // Every clip renders: the HEVC 10-bit one decodes in a layout the compositor does not read
+    // (`yuv420p10le`) and is converted; the phone clip turns upright (its size swaps).
+    let (seq, track) = (project["sequence"].clone(), project["video_track"].clone());
+    let mut at = 0;
+    for media in [&hevc, &phone] {
+        let inserted = call(
+            &conn,
+            "timeline.insert",
+            json!({ "sequence": seq, "track": track, "media": media.id, "at": at, "duration": "2s" }),
+        )
+        .unwrap();
+        let item = inserted["clips"][0].clone();
+        let frame = call(
+            &conn,
+            "render.frame",
+            json!({ "t": at + SEC, "max_size": 320, "format": "png" }),
+        )
+        .unwrap();
+        assert_eq!(frame["items_visible"][0]["item"], item, "{frame}");
+        assert_eq!(frame["notes"], json!([]), "{frame}");
+        at += 2 * SEC;
+    }
     let caps = call(&conn, "media.capabilities", json!({})).unwrap();
     assert_eq!(caps["available"], json!(true));
     let h264 = caps["codecs"]

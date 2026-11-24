@@ -211,6 +211,8 @@ struct Started {
     stages: Arc<AnalysisStages>,
     probe: Option<Arc<dyn MediaProbe>>,
     lost_reported: Arc<AtomicBool>,
+    /// Warms the backend's capabilities (joined at shutdown).
+    caps_thread: Option<JoinHandle<()>>,
 }
 
 /// Playback of the open document.
@@ -570,6 +572,27 @@ impl FullSubsystems {
         }
     }
 
+    /// Asks the backend for its capabilities on a worker thread, so the per-process hardware
+    /// probes (encoders, WP-1E.02; decoders, WP-1D.04: seconds) run before the first import,
+    /// scrub or export dialog needs them (`media.capabilities` then answers from the cache).
+    fn warm_capabilities(&self) -> Option<JoinHandle<()>> {
+        let backend = Arc::clone(self.inner.config.media.as_ref()?);
+        std::thread::Builder::new()
+            .name("cw-media-caps".into())
+            .spawn(move || {
+                let began = std::time::Instant::now();
+                let caps = backend.capabilities();
+                tracing::info!(
+                    hw_encode = caps.hw_encode.len(),
+                    hw_decode = caps.hw_decode.len(),
+                    elapsed_ms = u64::try_from(began.elapsed().as_millis()).unwrap_or(u64::MAX),
+                    "media capabilities probed"
+                );
+            })
+            .map_err(|e| tracing::warn!(error = %e, "cannot probe media capabilities early"))
+            .ok()
+    }
+
     /// The analysis stages over `caches`: `index` → `thumbnails`, and `waveform`.
     fn analysis(&self, caches: &Caches) -> Arc<AnalysisStages> {
         let mut stages = AnalysisStages::new();
@@ -716,6 +739,7 @@ impl Subsystems for FullSubsystems {
             stages,
             probe,
             lost_reported: Arc::new(AtomicBool::new(false)),
+            caps_thread: self.warm_capabilities(),
         };
         if let Some(doc) = self.inner.doc.handle() {
             self.attach(&mut started, &doc);
@@ -870,6 +894,7 @@ impl Subsystems for FullSubsystems {
             renderer,
             gpu,
             gpu_thread,
+            caps_thread,
             audio,
             sink_home,
             clock_writer,
@@ -884,10 +909,12 @@ impl Subsystems for FullSubsystems {
         *lock(&self.inner.ring) = None;
         // 4. Decoders, GPU (a device still opening is waited for), caches.
         frames.clear();
-        if let Some(thread) = gpu_thread
-            && thread.join().is_err()
-        {
-            tracing::error!("the GPU thread panicked");
+        for (name, thread) in [("GPU", gpu_thread), ("capabilities", caps_thread)] {
+            if let Some(thread) = thread
+                && thread.join().is_err()
+            {
+                tracing::error!("the {name} thread panicked");
+            }
         }
         drop(renderer);
         gpu.close();

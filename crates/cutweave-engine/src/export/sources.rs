@@ -22,7 +22,7 @@ use std::path::PathBuf;
 use std::sync::{Arc, Mutex, PoisonError};
 
 use cutweave_audio::{PcmFormat, PcmSource, SourceError, SourceFactory, SourceRequest};
-use cutweave_media::{AudioDecoder, DecodeOpts, MediaBackend, MediaError, VideoDecoder};
+use cutweave_media::{AudioDecoder, DecodeOpts, HwMode, MediaBackend, MediaError, VideoDecoder};
 use cutweave_model::{FLICKS_PER_SECOND, MediaId, Project, Time};
 use cutweave_render::{FrameError, FrameId, FrameRequest, FrameSource, VideoFrame};
 
@@ -95,11 +95,43 @@ struct Asset {
     /// Hash of the content hash (or path): part of every frame id, so the GPU decode cache
     /// never mixes up two files that one asset id named at different times.
     identity: u64,
+    /// The layout to decode into when the decoder's own is not one the compositor reads.
+    target: Option<cutweave_media::PixelFormat>,
 }
 
 /// The identity of a media file in frame ids: a hash of its content hash (or path).
 pub(crate) fn media_identity(key: &str) -> u64 {
     Fnv::new().bytes(key.as_bytes()).0
+}
+
+/// The layout to convert `format` into for the compositor, which reads `Nv12`, `P010`,
+/// `Yuv420p` and `Rgba8`: 10-bit planar to `P010`, 8-bit 4:2:2 to `Yuv420p` (the decoder
+/// converts with swscale). `None`: the compositor reads it as is.
+pub(crate) fn compositor_target(
+    format: cutweave_media::PixelFormat,
+) -> Option<cutweave_media::PixelFormat> {
+    use cutweave_media::PixelFormat as M;
+    match format {
+        M::Yuv420p10 | M::Yuv422p10 => Some(M::P010),
+        M::Yuv422p => Some(M::Yuv420p),
+        _ => None,
+    }
+}
+
+/// [`compositor_target`] for a software decoder of a stream whose FFmpeg pixel format is
+/// `name` (as the probe reports it): 10/12-bit Y'CbCr to `P010`, 8-bit 4:2:2 and 4:4:4 to
+/// `Yuv420p` (the decoder returns those in layouts the compositor does not read).
+pub(crate) fn target_for_pixel_format(name: &str) -> Option<cutweave_media::PixelFormat> {
+    use cutweave_media::PixelFormat as M;
+    let name = name.to_ascii_lowercase();
+    let yuv = name.starts_with("yuv");
+    if yuv && (name.contains("p10") || name.contains("p12")) {
+        Some(M::P010)
+    } else if yuv && (name.contains("422") || name.contains("444") || name.contains("411")) {
+        Some(M::Yuv420p)
+    } else {
+        None
+    }
 }
 
 fn assets(doc: &Project) -> HashMap<MediaId, Asset> {
@@ -108,11 +140,19 @@ fn assets(doc: &Project) -> HashMap<MediaId, Asset> {
         .filter_map(|m| {
             let path = m.path_abs.as_ref()?;
             let key = m.content_hash.as_deref().unwrap_or(path);
+            let target = m
+                .probe
+                .streams
+                .iter()
+                .find(|s| s.kind == cutweave_model::StreamKind::Video)
+                .and_then(|s| s.pixel_format.as_deref())
+                .and_then(target_for_pixel_format);
             Some((
                 m.id,
                 Asset {
                     path: PathBuf::from(path),
                     identity: media_identity(key),
+                    target,
                 },
             ))
         })
@@ -167,6 +207,20 @@ struct Stream {
     ahead: Option<cutweave_media::VideoFrame>,
     /// `next_frame` reported the end of the stream.
     ended: bool,
+}
+
+/// How exports decode: in **software** (`HwMode::Off`), so an export is the same file on every
+/// machine (hardware decoders are not bit-exact across vendors) and matches `render.frame`,
+/// which decodes the same way; into a layout the compositor reads (`target`).
+fn export_decode_opts(target: Option<cutweave_media::PixelFormat>) -> DecodeOpts {
+    let mut opts = DecodeOpts {
+        hw: HwMode::Off,
+        ..DecodeOpts::default()
+    };
+    if let Some(target) = target {
+        opts = opts.with_target(target);
+    }
+    opts
 }
 
 /// The compositor's frame source for one export (see the module docs).
@@ -282,7 +336,7 @@ impl FrameSource for DecoderFrameSource {
                 // the GPU converts (arch §7).
                 let decoder = self
                     .backend
-                    .open_decoder(&asset.path, &DecodeOpts::default())
+                    .open_decoder(&asset.path, &export_decode_opts(asset.target))
                     .map_err(|err| unavailable(request.media, &err))?;
                 e.insert(Stream {
                     decoder,

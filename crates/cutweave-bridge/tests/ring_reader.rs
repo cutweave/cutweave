@@ -427,12 +427,13 @@ fn clock_scheduled_choice_picks_the_newest_frame_not_after_the_clock() {
     assert!(check_pattern(&buf[..m.layout.len()], 3));
     // The same frame is not delivered twice; later frames wait for the clock.
     assert!(s.read_at_clock(0, &mut buf).unwrap().is_none());
-    // Clock at frame 5 (pts 4 * 11.76M). With 20 ms (14_112_000 flicks) of latency the target
-    // is 32.9M flicks: only frame 3 qualifies, and it was delivered already.
+    // Playing at frame 5 (pts 4 * 11.76M; rate 0 holds the sample still for the test). With
+    // 20 ms (14_112_000 flicks) of latency the target is 32.9M flicks: only frame 3 qualifies,
+    // and it was delivered already.
     assert!(w.publish(&ClockSample::now(
         Time::from_flicks(4 * 11_760_000).unwrap(),
-        ClockState::Stopped,
-        1000
+        ClockState::Playing,
+        0
     )));
     assert!(s.read_at_clock(14_112_000, &mut buf).unwrap().is_none());
     // 5 ms of latency (target 43.5M) admits frame 4 (35.28M) ...
@@ -441,4 +442,25 @@ fn clock_scheduled_choice_picks_the_newest_frame_not_after_the_clock() {
     // ... and no latency admits frame 5 (47.04M).
     let (m, _) = s.read_at_clock(0, &mut buf).unwrap().unwrap();
     assert_eq!(m.seq, 5);
+}
+
+/// Stopped (paused, stepped, after a seek), the frame for the playhead is due whatever the
+/// latency: a step to a frame's start shows that frame (WP-1I.05).
+#[test]
+fn stopped_clocks_present_the_playhead_frame_without_latency() {
+    let mut p = FramePublisher::create(&config(16, 16, 1)).unwrap();
+    let layout = p.preview_layout().unwrap();
+    for i in 0..3 {
+        publish(&mut p, &layout, i * 11_760_000);
+    }
+    let mut s = RingSession::open(p.name().as_str(), p.epoch()).unwrap();
+    let w = p.clock_writer();
+    assert!(w.publish(&ClockSample::now(
+        Time::from_flicks(2 * 11_760_000).unwrap(),
+        ClockState::Stopped,
+        1000
+    )));
+    let mut buf = Vec::new();
+    let (m, _) = s.read_at_clock(14_112_000, &mut buf).unwrap().unwrap();
+    assert_eq!((m.seq, m.pts), (3, 2 * 11_760_000));
 }

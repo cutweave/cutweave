@@ -14,6 +14,13 @@
 //!   thread's cancel token ([`MediaFrames::scoped`]: the playback render's epoch) stops a pending
 //!   seek. Frames arrive in coded orientation; the render graph rotates them from the probe
 //!   (`FrameRequest::rotation`).
+//! - **Preview against agent frames.** Preview renders ([`MediaFrames::scoped`]) decode with
+//!   hardware when the machine has it (`HwMode::Auto`, WP-1D.04) and use the frame cache.
+//!   `render.frame` (no scope) decodes in software and bypasses the cache, exactly as exports
+//!   do, so an agent frame is bit-identical to the exported one (arch §8).
+//! - **Layouts.** A frame in a layout the compositor does not read (10-bit planar, 4:2:2: a
+//!   software decoder, or a hardware decoder that fell back) makes the media decode into
+//!   `P010` / `Yuv420p` from then on (swscale in the decoder).
 //! - **Damage.** A frame that stood in for an undecodable one (`damaged`) is shown; the asset is
 //!   logged once.
 
@@ -24,13 +31,14 @@ use std::sync::{Arc, Mutex, PoisonError};
 
 use cutweave_cache::{CacheDb, ContentHash, FrameCache, FrameKey};
 use cutweave_media::{
-    CancelToken, DecodeMode, DecodeOpts, DecoderPool, MediaBackend, MediaError, VideoDecoder,
+    CancelToken, DecodeMode, DecodeOpts, DecoderPool, HwMode, MediaBackend, MediaError,
+    PixelFormat, VideoDecoder,
 };
 use cutweave_model::{MediaId, Time};
 use cutweave_render::{FrameError, FrameRequest, FrameSource, VideoFrame};
 
 use super::media::{CurrentDoc, MediaFile};
-use crate::export::sources::{compositor_frame, media_identity};
+use crate::export::sources::{compositor_frame, compositor_target, media_identity};
 
 thread_local! {
     /// The cancel token and decode mode of the render running on this thread.
@@ -52,6 +60,8 @@ pub struct MediaFrames {
     db: Option<Arc<CacheDb>>,
     pools: Mutex<HashMap<MediaId, Pooled>>,
     damaged: Mutex<HashSet<MediaId>>,
+    /// Media whose frames must be converted for the compositor, and into what.
+    targets: Mutex<HashMap<MediaId, PixelFormat>>,
 }
 
 impl std::fmt::Debug for MediaFrames {
@@ -83,6 +93,7 @@ impl MediaFrames {
             db,
             pools: Mutex::new(HashMap::new()),
             damaged: Mutex::new(HashSet::new()),
+            targets: Mutex::new(HashMap::new()),
         }
     }
 
@@ -134,6 +145,10 @@ impl MediaFrames {
             pooled.pool.trim();
         }
         drop(pools);
+        self.targets
+            .lock()
+            .unwrap_or_else(PoisonError::into_inner)
+            .clear();
     }
 
     /// The pool of `file` (created on first use, with the stored frame index if any).
@@ -183,48 +198,52 @@ impl MediaFrames {
         t: Time,
     ) -> Result<Arc<cutweave_media::VideoFrame>, FrameError> {
         let pool = self.pool(backend, file);
-        // The frame shown at `t` is known from the index: look it up first.
-        let shown = pool.index().and_then(|index| {
-            let last = index.frame_count().checked_sub(1)?;
-            let n = index.frame_at(t).min(last);
-            index.time_of(n)
-        });
-        if let (Some(hash), Some(pts)) = (file.hash, shown)
+        let scope = SCOPE.with(|s| s.borrow().clone());
+        // Preview uses the frame cache; agent frames decode exactly like exports.
+        let cached = scope.is_some() && file.hash.is_some();
+        if cached
+            && let Some(hash) = file.hash
+            // The frame shown at `t` is known from the index: look it up first.
+            && let Some(pts) = pool.index().and_then(|index| {
+                let last = index.frame_count().checked_sub(1)?;
+                index.time_of(index.frame_at(t).min(last))
+            })
             && let Some(frame) = self.cache.get(&FrameKey { hash, stream, pts })
         {
             return Ok(frame);
         }
-        let (cancel, mode) = SCOPE
-            .with(|s| s.borrow().clone())
-            .unwrap_or_else(|| (CancelToken::new(), DecodeMode::Seek));
-        let opts = DecodeOpts::default().with_mode(mode);
-        let mut lease = pool
-            .checkout(&opts, Some(t), &cancel)
-            .map_err(|e| unavailable(file.id, &e))?;
-        let frame = match lease.seek_exact(t) {
-            Ok(frame) => frame,
-            // Past the last frame (a clip outlasting its media): show the last one.
-            Err(MediaError::OutOfRange { .. }) => {
-                let index = lease.index();
-                let last = index
-                    .frame_count()
-                    .checked_sub(1)
-                    .and_then(|n| index.time_of(n))
-                    .ok_or_else(|| {
-                        FrameError::Unavailable(format!("media {} has no frames", file.id))
-                    })?;
-                lease
-                    .seek_exact(last)
-                    .map_err(|e| unavailable(file.id, &e))?
-            }
-            Err(e) => return Err(unavailable(file.id, &e)),
+        let (cancel, opts) = match scope {
+            Some((cancel, mode)) => (cancel, DecodeOpts::default().with_mode(mode)),
+            None => (
+                CancelToken::new(),
+                DecodeOpts {
+                    hw: HwMode::Off,
+                    ..DecodeOpts::default()
+                },
+            ),
         };
-        drop(lease);
+        let target = self
+            .targets
+            .lock()
+            .unwrap_or_else(PoisonError::into_inner)
+            .get(&file.id)
+            .copied();
+        let mut frame = Self::seek(&pool, file, &opts, target, t, &cancel)?;
+        if target.is_none()
+            && let Some(target) = compositor_target(frame.format)
+        {
+            // A layout the compositor does not read: convert this media's frames from now on.
+            self.targets
+                .lock()
+                .unwrap_or_else(PoisonError::into_inner)
+                .insert(file.id, target);
+            frame = Self::seek(&pool, file, &opts, Some(target), t, &cancel)?;
+        }
         if frame.damaged {
             self.flag_damaged(file);
         }
         let frame = Arc::new(frame);
-        if let Some(hash) = file.hash {
+        if cached && let Some(hash) = file.hash {
             self.cache.insert(
                 FrameKey {
                     hash,
@@ -235,6 +254,40 @@ impl MediaFrames {
             );
         }
         Ok(frame)
+    }
+
+    /// Seeks a decoder of `pool` (opened with `opts`, converting to `target`) to `t`.
+    fn seek(
+        pool: &DecoderPool,
+        file: &MediaFile,
+        opts: &DecodeOpts,
+        target: Option<PixelFormat>,
+        t: Time,
+        cancel: &CancelToken,
+    ) -> Result<cutweave_media::VideoFrame, FrameError> {
+        let opts = match target {
+            Some(target) => opts.clone().with_target(target),
+            None => opts.clone(),
+        };
+        let mut lease = pool
+            .checkout(&opts, Some(t), cancel)
+            .map_err(|e| unavailable(file.id, &e))?;
+        match lease.seek_exact(t) {
+            Ok(frame) => Ok(frame),
+            // Past the last frame (a clip outlasting its media): show the last one.
+            Err(MediaError::OutOfRange { .. }) => {
+                let index = lease.index();
+                let last = index
+                    .frame_count()
+                    .checked_sub(1)
+                    .and_then(|n| index.time_of(n))
+                    .ok_or_else(|| {
+                        FrameError::Unavailable(format!("media {} has no frames", file.id))
+                    })?;
+                lease.seek_exact(last).map_err(|e| unavailable(file.id, &e))
+            }
+            Err(e) => Err(unavailable(file.id, &e)),
+        }
     }
 }
 

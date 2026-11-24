@@ -266,18 +266,29 @@ impl RingSession {
     }
 
     /// Like [`read`](Self::read), restricted to `pts <= clock(now) - latency_flicks`: the
-    /// clock-scheduled choice of arch §10 step 3. Without an audio clock sample (null clock)
-    /// it reads the newest frame.
+    /// clock-scheduled choice of arch §10 step 3. The latency only applies while the clock
+    /// plays: stopped or scrubbing, the frame for the playhead itself (`pts <= clock`) is due,
+    /// so a pause, a step or a seek to a frame's start shows that frame (WP-1I.05). Without an
+    /// audio clock sample (null clock) it reads the newest frame.
     pub fn read_at_clock(
         &mut self,
         latency_flicks: i64,
         buffer: &mut impl FrameBuffer,
     ) -> Result<Option<(SlotMeta, Arc<RingReader>)>, BridgeError> {
+        let now = now_ns();
         let target = self
             .reader
             .as_ref()
-            .and_then(|r| r.clock_at(now_ns()))
-            .map(|c| c.saturating_sub(latency_flicks));
+            .and_then(|r| r.clock())
+            .filter(|c| c.host_ns != 0)
+            .map(|c| {
+                let at = c.extrapolate(now);
+                if c.state == cutweave_playback::shm::ClockState::Playing {
+                    at.saturating_sub(latency_flicks)
+                } else {
+                    at
+                }
+            });
         self.read(target, buffer)
     }
 
