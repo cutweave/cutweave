@@ -210,6 +210,7 @@ async fn every_tool_has_the_right_annotations() {
         ("clip_split", false, false, false),
         ("clip_trim", false, false, true),
         ("edit_undo", false, false, false),
+        ("export_start", false, true, false),
         ("item_delete", false, true, false),
         ("item_move", false, false, true),
         ("item_set_props", false, false, true),
@@ -428,6 +429,19 @@ async fn each_core_tool_returns_the_engine_output() {
         same!("item_delete", json!({ "items": [split["right"]] }));
         same!("edit_undo", json!({}));
         same!("timeline_get", json!({ "sequence": seq, "depth": 2 }));
+        // export_start: these engines run without the media subsystem, so both validate the
+        // export and refuse it the same way (`unsupported`).
+        let out = |h: &Harness| h.dir.path().join("out.mp4").to_string_lossy().into_owned();
+        let mcp = client.err("export_start", json!({ "path": out(&a) })).await;
+        let engine = direct
+            .call(cutweave_engine::Call::new(
+                "export.start",
+                json!({ "path": out(&b) }),
+            ))
+            .expect_err("export.start without a media subsystem");
+        assert_eq!(mcp["error"]["code"], json!(engine.code()), "{mcp}");
+        assert_eq!(engine.code(), "unsupported");
+        step("export_start");
         // project_open: save each document as a project, close it, open it again.
         for (h, conn) in [(&a, a.direct("mcp")), (&b, b.direct("mcp"))] {
             let folder = h.dir.path().join("saved").to_string_lossy().into_owned();
