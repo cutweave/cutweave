@@ -6,11 +6,18 @@
   },
   "topbar": {
     "toolbarLabel": "Project actions",
+    "new": "New",
     "open": "Open",
     "save": "Save",
+    "saveAs": "Save as…",
+    "recent": "Recent projects",
+    "recentEmpty": "No recent projects yet",
     "export": "Export",
     "undo": "Undo",
     "redo": "Redo",
+    "undoAction": "Undo {{label}}",
+    "redoAction": "Redo {{label}}",
+    "unsaved": "Unsaved changes",
     "workspaceLabel": "Workspace",
     "themeLabel": "Theme"
   },
@@ -175,7 +182,143 @@
     "frameRate": "Frame rate",
     "frameRateValue": "30 fps",
     "duration": "Duration",
-    "durationValue": "00:00:00:00"
+    "durationValue": "00:00:00:00",
+    "clip": "Clip",
+    "timing": "Timing",
+    "transform": "Transform",
+    "audio": "Audio",
+    "mixed": "Mixed",
+    "multiple": "{{count}} clips selected. Mixed values stay as they are until you change them.",
+    "multipleTime": "Select one clip to change its start or duration.",
+    "fields": {
+      "name": "Name",
+      "start": "Start",
+      "duration": "Duration",
+      "opacity": "Opacity",
+      "positionX": "Position X",
+      "positionY": "Position Y",
+      "scale": "Scale",
+      "rotation": "Rotation",
+      "gain": "Gain"
+    },
+    "history": {
+      "name": "Rename clip",
+      "opacity": "Change opacity",
+      "positionX": "Change position",
+      "positionY": "Change position",
+      "scale": "Change scale",
+      "rotation": "Change rotation",
+      "gain": "Change gain",
+      "start": "Move clip",
+      "duration": "Trim clip"
+    },
+    "time": {
+      "invalid": "Not a time. Try 00:00:02:00, 2.5s or f:60.",
+      "needsRate": "This clip's sequence has no frame rate yet. Use seconds, like 2.5s.",
+      "range": "That time is out of range.",
+      "frames": "That frame does not exist at this frame rate."
+    },
+    "failed": "Change not applied",
+    "media": {
+      "title": "Media",
+      "kind": "Type",
+      "kinds": {
+        "video": "Video",
+        "audio": "Audio",
+        "image": "Image",
+        "sequence": "Sequence"
+      },
+      "duration": "Duration",
+      "resolution": "Resolution",
+      "frameRate": "Frame rate",
+      "video": "Video",
+      "audioStream": "Audio",
+      "audioValue": "{{rate}} Hz, {{channels}} ch",
+      "path": "File",
+      "placeholder": "Placeholder data. The FFmpeg backend is not installed, so this probe is made up."
+    }
+  },
+  "history": {
+    "setProps": "Edit properties",
+    "register": "Import media",
+    "remove": "Remove media",
+    "new": "New project",
+    "rename": "Rename project",
+    "insert": "Insert clip",
+    "delete": "Delete clip",
+    "trackAdd": "Add track",
+    "trackRemove": "Remove track",
+    "trackSet": "Change track",
+    "restore": "Restore checkpoint"
+  },
+  "projectUi": {
+    "untitled": "Untitled project",
+    "windowTitle": "{{name}} — Cutweave",
+    "windowTitleDirty": "• {{name}} — Cutweave",
+    "readOnlyTitle": "Read-only project",
+    "readOnlyBody": "This project was saved by a newer version of Cutweave, so editing is off. Use Save as to keep an editable copy.",
+    "new": {
+      "title": "New project",
+      "saveAsTitle": "Save project as",
+      "name": "Name",
+      "namePlaceholder": "My film",
+      "location": "Location",
+      "locationNone": "No folder chosen",
+      "choose": "Choose folder…",
+      "hint": "Cutweave creates a folder named {{name}} there and saves the project in it.",
+      "create": "Create project",
+      "save": "Save project",
+      "cancel": "Cancel",
+      "errors": {
+        "nameEmpty": "Give the project a name.",
+        "nameInvalid": "Names cannot contain / \\ : * ? \" < > | or start or end with a dot.",
+        "nameLong": "Keep the name under 200 characters.",
+        "locationMissing": "Choose the folder to create it in."
+      }
+    },
+    "unsaved": {
+      "title": "Save changes to {{name}}?",
+      "body": "You have unsaved changes. If you discard them, they stay in the recovery journal and can be offered the next time you open this project.",
+      "save": "Save",
+      "discard": "Discard changes",
+      "cancel": "Cancel"
+    },
+    "recovery": {
+      "title": "Restore unsaved changes?",
+      "body": "Cutweave closed before {{name}} was saved. {{count}} edits from {{time}} can be restored.",
+      "bodyOne": "Cutweave closed before {{name}} was saved. 1 edit from {{time}} can be restored.",
+      "damaged": "The journal ends with a damaged entry. Everything before it can be restored.",
+      "restoreCount": "Restore unsaved changes ({{count}} edits, last at {{time}})",
+      "discard": "Discard",
+      "note": "Discard keeps the project as you last saved it. The discarded edits are kept in the project's backups folder."
+    },
+    "failed": {
+      "open": "Project not opened",
+      "save": "Project not saved",
+      "create": "Project not created",
+      "recover": "Changes not restored",
+      "discard": "Changes not discarded",
+      "undo": "Nothing was undone",
+      "redo": "Nothing was redone"
+    },
+    "reason": {
+      "locked": "It is open in another Cutweave window. Close it there, then try again.",
+      "missing": "Cutweave could not find that project. Choose the project folder or its .cutweave file.",
+      "exists": "That folder already holds a project. Choose another name or location.",
+      "readOnly": "This project is read-only. Use Save as to keep an editable copy.",
+      "other": "The engine said: {{message}}"
+    },
+    "recovered": {
+      "title": "Changes restored",
+      "body": "{{count}} unsaved edits are back. They are not saved to the project file yet."
+    },
+    "missingMedia": "{{count}} media files are offline. Relink them to keep editing.",
+    "missingMediaOne": "1 media file is offline. Relink it to keep editing.",
+    "missingMediaTitle": "Media offline",
+    "migratedTitle": "Project updated",
+    "migrated": "{{name}} was converted from format {{from}}. Saving writes the new format.",
+    "autosaveFailedTitle": "Autosave failed",
+    "autosaveFailed": "{{message}} Save the project yourself, or free up disk space."
   },
   "timeline": {
     "toolbarLabel": "Timeline tools",

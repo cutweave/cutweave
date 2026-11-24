@@ -29,6 +29,29 @@ export {
   startEngineRuntime,
 } from "./engine/runtime.ts";
 export { createI18n, i18n, type TKey } from "./i18n/index.ts";
+export { InspectorEditor, type InspectorEditorDeps } from "./inspector/editor.ts";
+export {
+  FIELDS,
+  type FieldDef,
+  type FieldId,
+  type SelectedClip,
+} from "./inspector/fields.ts";
+export { type DesktopBridge, desktopFromWindow } from "./session/desktop.ts";
+export { historyLabel } from "./session/historyLabels.ts";
+export { ProjectController, type ProjectControllerDeps } from "./session/projectController.ts";
+export {
+  createSessionStore,
+  type SessionStore,
+  sessionStore,
+  type UndoStacks,
+  useSessionStore,
+} from "./session/sessionStore.ts";
+export { SessionSync } from "./session/sessionSync.ts";
+export {
+  createSessionUiStore,
+  type SessionUiStore,
+  sessionUiStore,
+} from "./session/sessionUiStore.ts";
 export { EditorShell } from "./shell/EditorShell.tsx";
 export { createDocStore, type DocStore, docSink, docStore, useDocStore } from "./state/docStore.ts";
 export {
@@ -70,6 +93,7 @@ export {
   type WorkspaceId,
 } from "./state/viewStore.ts";
 export { VIEW_SYNC_DEBOUNCE_MS, ViewSync } from "./state/viewSync.ts";
+export { type ParsedTime, parseTimeInput, type TimeInputError } from "./time/timeInput.ts";
 export {
   TimelineController,
   type TimelineControllerDeps,

@@ -4,8 +4,10 @@ import { useEffect } from "react";
 import { I18nextProvider, useTranslation } from "react-i18next";
 import { Dock } from "../dock/Dock.tsx";
 import { i18n } from "../i18n/index.ts";
+import { useProjectWiring, useWindowTitle } from "../session/useProject.ts";
 import { useViewStore } from "../state/viewStore.ts";
 import { EngineNotices } from "./EngineNotices.tsx";
+import { ProjectDialogs, ReadOnlyBanner } from "./ProjectDialogs.tsx";
 import { Toasts } from "./Toasts.tsx";
 import { TopBar } from "./TopBar.tsx";
 
@@ -21,19 +23,24 @@ function Shell() {
 
   useEffect(() => {
     document.documentElement.lang = instance.language;
-    document.title = t("app.windowTitle");
-  }, [instance.language, t]);
+  }, [instance.language]);
+
+  // Project actions: native menu, shortcuts, the window-close handshake and the title (WP-1M.07).
+  useProjectWiring();
+  useWindowTitle();
 
   return (
     <TooltipProvider>
       <ToastProvider label={t("app.notifications")}>
         <div className="cw-app">
           <TopBar />
+          <ReadOnlyBanner />
           <main className="cw-app__dock">
             <Dock />
           </main>
         </div>
         <EngineNotices />
+        <ProjectDialogs />
         <Toasts />
       </ToastProvider>
     </TooltipProvider>

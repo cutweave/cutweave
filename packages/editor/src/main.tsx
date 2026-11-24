@@ -8,11 +8,14 @@ import { createRoot } from "react-dom/client";
 import { engineStore } from "./engine/engineStore.ts";
 import { bridgeFromWindow, startEngineRuntime } from "./engine/runtime.ts";
 import { appBridgeFromWindow, installTestHandleIfEnabled } from "./engine/testHandle.ts";
+import { i18n } from "./i18n/index.ts";
 import { mediaStore } from "./media/mediaStore.ts";
+import { sessionStore } from "./session/sessionStore.ts";
 import { EditorShell } from "./shell/EditorShell.tsx";
 import { docStore } from "./state/docStore.ts";
 import { jobStore } from "./state/jobStore.ts";
 import { playbackStore } from "./state/playbackStore.ts";
+import { toastStore } from "./state/toastStore.ts";
 import { viewStore } from "./state/viewStore.ts";
 
 const root = document.getElementById("root");
@@ -34,8 +37,17 @@ if (bridge) {
     jobs: jobStore,
     media: mediaStore,
     engine: engineStore,
+    session: sessionStore,
   };
-  const runtime = startEngineRuntime(bridge, stores);
+  const runtime = startEngineRuntime(bridge, stores, {
+    // The engine could not autosave: say what it said and what to do (WP-1C.03, WP-1M.07).
+    onAutosaveFailed: (message) =>
+      toastStore.getState().push({
+        tone: "warning",
+        title: i18n.t("projectUi.autosaveFailedTitle"),
+        message: i18n.t("projectUi.autosaveFailed", { message }),
+      }),
+  });
   // The e2e suites drive the editor's connection; only when the desktop app enables its hooks.
   void installTestHandleIfEnabled(appBridgeFromWindow(), runtime, stores);
 }

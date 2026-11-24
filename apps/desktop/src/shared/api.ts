@@ -82,7 +82,7 @@ export interface EngineConnection {
 }
 
 /** Commands native menu accelerators send to the renderer (validated, allowlisted). */
-export const MENU_COMMANDS = ["undo", "redo", "save", "open", "export"] as const;
+export const MENU_COMMANDS = ["undo", "redo", "save", "saveAs", "new", "open", "export"] as const;
 export type MenuCommand = (typeof MENU_COMMANDS)[number];
 
 export interface AppInfo {
@@ -250,6 +250,22 @@ export interface CutweaveApi {
      * it sends on to `media.import`; the engine decides what it may read.
      */
     pathForFile(file: File): string;
+  };
+  /** Recent projects, newest first, kept by main (WP-1M.07). Paths are absolute. */
+  readonly recent: {
+    list(): Promise<readonly string[]>;
+    add(path: string): Promise<void>;
+    remove(path: string): Promise<void>;
+  };
+  /**
+   * Closing the window with unsaved changes (WP-1M.07): the editor reports whether the project is
+   * dirty; main then holds a close request, asks the editor (`onCloseRequested`) and closes only
+   * after `confirmClose`.
+   */
+  readonly window: {
+    setDirty(dirty: boolean): Promise<void>;
+    onCloseRequested(listener: () => void): Unsubscribe;
+    confirmClose(): Promise<void>;
   };
   readonly shell: {
     showItemInFolder(path: string): Promise<void>;

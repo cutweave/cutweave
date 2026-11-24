@@ -15,10 +15,26 @@ describe("buildMenuTemplate", () => {
       buildMenuTemplate({ platform: "win32", appName: "Cutweave", isDev: false, send }),
     );
     const byAccel = new Map(items.filter((i) => i.accelerator).map((i) => [i.accelerator, i]));
-    for (const accel of ["CmdOrCtrl+Z", "Ctrl+Y", "CmdOrCtrl+S", "CmdOrCtrl+O", "CmdOrCtrl+M"]) {
+    for (const accel of [
+      "CmdOrCtrl+Z",
+      "Ctrl+Y",
+      "CmdOrCtrl+S",
+      "CmdOrCtrl+Shift+S",
+      "CmdOrCtrl+N",
+      "CmdOrCtrl+O",
+      "CmdOrCtrl+M",
+    ]) {
       byAccel.get(accel)?.click?.({} as never, undefined, {} as never);
     }
-    expect(send.mock.calls.map((c) => c[0])).toEqual(["undo", "redo", "save", "open", "export"]);
+    expect(send.mock.calls.map((c) => c[0])).toEqual([
+      "undo",
+      "redo",
+      "save",
+      "saveAs",
+      "new",
+      "open",
+      "export",
+    ]);
   });
 
   it("has a File menu first and dev tools only in dev", () => {
