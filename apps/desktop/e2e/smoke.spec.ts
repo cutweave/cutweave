@@ -24,7 +24,18 @@ test("the page main world has no Node access, only window.cutweave", async ({ pa
     module: "undefined",
     buffer: "undefined",
     ipcRenderer: "undefined",
-    cutweave: ["app", "dialog", "engine", "files", "menu", "preview", "recent", "shell", "window"],
+    cutweave: [
+      "app",
+      "dialog",
+      "edit",
+      "engine",
+      "files",
+      "menu",
+      "preview",
+      "recent",
+      "shell",
+      "window",
+    ],
   });
 });
 

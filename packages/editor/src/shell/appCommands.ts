@@ -1,0 +1,187 @@
+// SPDX-License-Identifier: GPL-3.0-or-later
+// Running the application menu's commands (WP-1M.09), from the menu bar and from the keyboard.
+// Project commands go to `ProjectController`; quit, full screen, the edit commands, reload and
+// the developer tools are main's (allowlisted IPC); About opens the editor's own dialog.
+//
+// On macOS the desktop app keeps the native menu, which delivers its accelerators itself, so the
+// page takes no shortcuts there (`hasNativeMenu`).
+
+import { useEffect, useMemo, useRef, useState } from "react";
+import { useTranslation } from "react-i18next";
+import { useStore } from "zustand";
+import { createStore } from "zustand/vanilla";
+import { useEngineReady } from "../engine/engineStore.ts";
+import { type DesktopBridge, desktopFromWindow, hasNativeMenu } from "../session/desktop.ts";
+import { historyLabel } from "../session/historyLabels.ts";
+import type { ProjectController } from "../session/projectController.ts";
+import { projectFileName, useSessionStore } from "../session/sessionStore.ts";
+import { useSessionUiStore } from "../session/sessionUiStore.ts";
+import { isTextEntry } from "../session/useProject.ts";
+import { translator } from "../timeline/errors.ts";
+import {
+  type AppCommand,
+  type AppMenu,
+  buildAppMenu,
+  commandForKey,
+  isEnabled,
+  type MenuPlatform,
+  menuPlatform,
+} from "./appMenu.ts";
+
+/** Help > About is showing. */
+export interface AboutState {
+  readonly open: boolean;
+  setOpen(open: boolean): void;
+}
+
+export const aboutStore = createStore<AboutState>()((set) => ({
+  open: false,
+  setOpen: (open) => set({ open }),
+}));
+
+export function useAboutOpen(): boolean {
+  return useStore(aboutStore, (s) => s.open);
+}
+
+export interface AppCommandDeps {
+  readonly controller: ProjectController;
+  readonly desktop: DesktopBridge | null;
+}
+
+const ignore = (): undefined => undefined;
+
+/** Runs one menu command. */
+export function runAppCommand(command: AppCommand, deps: AppCommandDeps): void {
+  const { controller, desktop } = deps;
+  switch (command) {
+    case "new":
+    case "open":
+    case "save":
+    case "saveAs":
+    case "undo":
+    case "redo":
+      void controller.runMenuCommand(command);
+      return;
+    case "export":
+      // The export dialog arrives with WP-1M.08; until then the item is disabled.
+      return;
+    case "quit":
+      void desktop?.app?.quit().catch(ignore);
+      return;
+    case "cut":
+    case "copy":
+    case "paste":
+    case "selectAll":
+      // Main runs them on the focused element, as the native edit roles do; the page alone
+      // (plain `vite` dev) can still cut, copy and select.
+      if (desktop?.edit !== undefined) void desktop.edit.run(command).catch(ignore);
+      else document.execCommand(command);
+      return;
+    case "toggleFullScreen":
+      void desktop?.window?.toggleFullScreen?.().catch(ignore);
+      return;
+    case "reload":
+      void desktop?.window?.reload?.().catch(ignore);
+      return;
+    case "toggleDevTools":
+      void desktop?.window?.toggleDevTools?.().catch(ignore);
+      return;
+    case "about":
+      aboutStore.getState().setOpen(true);
+      return;
+  }
+}
+
+/** The platform the page runs on, as the menus name it. */
+export function currentMenuPlatform(): MenuPlatform {
+  return menuPlatform(typeof navigator === "undefined" ? "" : navigator.platform);
+}
+
+/** Whether this is an unpackaged desktop build (`app.getInfo().dev`); false until known. */
+function useDevBuild(desktop: DesktopBridge | null): boolean {
+  const [dev, setDev] = useState(false);
+  useEffect(() => {
+    let alive = true;
+    desktop?.app
+      ?.getInfo()
+      .then((info) => {
+        if (alive) setDev(info.dev === true);
+      })
+      .catch(ignore);
+    return () => {
+      alive = false;
+    };
+  }, [desktop]);
+  return dev;
+}
+
+/** File, Edit, View and Help as the app's state has them now. */
+export function useAppMenus(desktop: DesktopBridge | null = desktopFromWindow()): AppMenu[] {
+  const { t } = useTranslation();
+  const ready = useEngineReady();
+  const known = useSessionStore((s) => s.known);
+  const readOnly = useSessionStore((s) => s.readOnly !== null);
+  const recovering = useSessionStore((s) => s.recovery !== null);
+  const stacks = useSessionStore((s) => s.stacks);
+  const busy = useSessionUiStore((s) => s.busy);
+  const recent = useSessionUiStore((s) => s.recent);
+  const dev = useDevBuild(desktop);
+  return useMemo(() => {
+    const translate = translator(t);
+    return buildAppMenu(
+      {
+        platform: currentMenuPlatform(),
+        desktop: desktop !== null,
+        dev,
+        live: ready && known && !busy,
+        readOnly,
+        recovering,
+        canUndo: stacks.undoDepth > 0,
+        canRedo: stacks.redoDepth > 0,
+        undoLabel:
+          stacks.nextUndo === null
+            ? translate("topbar.undo")
+            : translate("topbar.undoAction", { label: historyLabel(stacks.nextUndo, translate) }),
+        redoLabel:
+          stacks.nextRedo === null
+            ? translate("topbar.redo")
+            : translate("topbar.redoAction", { label: historyLabel(stacks.nextRedo, translate) }),
+        recent: recent.map((path) => ({ path, label: projectFileName(path) })),
+        exportAvailable: false,
+      },
+      translate,
+    );
+  }, [t, desktop, dev, ready, known, busy, readOnly, recovering, stacks, recent]);
+}
+
+/**
+ * The menu shortcuts, window-wide (not on macOS, whose native menu has them). A command runs
+ * only while its menu item is enabled; `beforeRun` closes an open menu first.
+ */
+export function useAppShortcuts(
+  menus: readonly AppMenu[],
+  deps: AppCommandDeps,
+  beforeRun: () => void = () => {},
+): void {
+  const latest = useRef({ menus, deps, beforeRun });
+  latest.current = { menus, deps, beforeRun };
+  const dev = menus.some((m) =>
+    m.items.some((i) => i.kind === "command" && i.command === "reload"),
+  );
+  useEffect(() => {
+    if (hasNativeMenu(latest.current.deps.desktop)) return;
+    const platform = currentMenuPlatform();
+    const onKey = (event: KeyboardEvent): void => {
+      if (event.defaultPrevented) return;
+      const command = commandForKey(event, platform, { typing: isTextEntry(event.target), dev });
+      if (command === null) return;
+      event.preventDefault();
+      const now = latest.current;
+      if (!isEnabled(now.menus, command)) return;
+      now.beforeRun();
+      runAppCommand(command, now.deps);
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [dev]);
+}

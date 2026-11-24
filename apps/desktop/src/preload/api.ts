@@ -112,7 +112,11 @@ export function createCutweaveApi(
   };
 
   return {
-    app: { getInfo: () => invoke("app:getInfo") },
+    app: {
+      getInfo: () => invoke("app:getInfo"),
+      about: () => invoke("app:about"),
+      quit: () => invoke("app:quit"),
+    },
     engine: {
       getConnection: () => invoke("engine:getConnection"),
       getStatus: () => invoke("engine:getStatus"),
@@ -168,6 +172,13 @@ export function createCutweaveApi(
           if (value === true) listener();
         }),
       confirmClose: () => invoke("window:confirmClose"),
+      toggleFullScreen: () => invoke("window:toggleFullScreen"),
+      setTheme: (theme) => invoke("window:setTheme", theme),
+      reload: () => invoke("window:reload"),
+      toggleDevTools: () => invoke("window:toggleDevTools"),
+    },
+    edit: {
+      run: (action) => invoke("edit:run", action),
     },
     files: {
       pathForFile: (file) => {

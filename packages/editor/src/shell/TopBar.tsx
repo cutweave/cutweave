@@ -11,6 +11,7 @@ import {
 } from "@cutweave/ui";
 import { useTranslation } from "react-i18next";
 import { useEngineReady } from "../engine/engineStore.ts";
+import { hasNativeMenu } from "../session/desktop.ts";
 import { historyLabel } from "../session/historyLabels.ts";
 import { projectFileName, useSessionStore } from "../session/sessionStore.ts";
 import { useSessionUiStore } from "../session/sessionUiStore.ts";
@@ -26,6 +27,7 @@ import {
   type WorkspaceId,
 } from "../state/viewStore.ts";
 import { translator } from "../timeline/errors.ts";
+import { AppMenuBar } from "./AppMenuBar.tsx";
 import { EngineStatusChip } from "./EngineNotices.tsx";
 
 /** The modifier key cap: ⌘ on macOS, Ctrl elsewhere. */
@@ -56,8 +58,11 @@ function RecentMenu({ disabled }: { disabled: boolean }) {
 }
 
 /**
- * Top bar: project actions and undo/redo (WP-1M.07; disabled until the engine connects), the
- * workspace switcher and the theme switch. The brand sits left, export right.
+ * Top bar, which is also the window's title bar (WP-1M.09): the brand and the application menu
+ * bar (File, Edit, View, Help; macOS keeps its native menu instead), project actions and
+ * undo/redo (WP-1M.07; disabled until the engine connects), the workspace switcher and the theme
+ * switch, export right. Its empty areas drag the window and a double-click maximizes it; the
+ * OS draws the window controls over its right end (left on macOS), which the layout leaves free.
  */
 export function TopBar() {
   const { t } = useTranslation();
@@ -86,6 +91,7 @@ export function TopBar() {
     <header className="cw-topbar">
       <div className="cw-topbar__group">
         <span className="cw-topbar__brand heading">{t("app.name")}</span>
+        {hasNativeMenu() ? null : <AppMenuBar />}
         <Toolbar aria-label={t("topbar.toolbarLabel")} className="cw-topbar__actions">
           <Tooltip label={t("topbar.new")} keys={[mod, "N"]}>
             <Button
@@ -94,7 +100,7 @@ export function TopBar() {
               disabled={!live}
               onClick={() => void controller.newProject()}
             >
-              {t("topbar.new")}
+              <span className="cw-topbar__label">{t("topbar.new")}</span>
             </Button>
           </Tooltip>
           <Tooltip label={t("topbar.open")} keys={[mod, "O"]}>
@@ -104,7 +110,7 @@ export function TopBar() {
               disabled={!live}
               onClick={() => void controller.open()}
             >
-              {t("topbar.open")}
+              <span className="cw-topbar__label">{t("topbar.open")}</span>
             </Button>
           </Tooltip>
           <RecentMenu disabled={!live} />

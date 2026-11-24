@@ -1,0 +1,304 @@
+// SPDX-License-Identifier: GPL-3.0-or-later
+// The application menu model (WP-1M.09): what File, Edit, View and Help hold, which commands are
+// enabled, the shortcut of each, and which key press runs which command. Pure and unit-tested;
+// `AppMenuBar` draws it with `@cutweave/ui`'s `MenuBar` and `useAppShortcuts` listens for the keys.
+//
+// It holds exactly what the native menu had (apps/desktop `menu.ts`, kept for macOS), plus Open
+// recent. The shortcuts match Electron's native roles on Windows and Linux:
+//
+//   File  New project… Ctrl+N · Open project… Ctrl+O · Open recent ▸ · Save Ctrl+S ·
+//         Save as… Ctrl+Shift+S · Export… Ctrl+M · Exit (Windows: the OS's Alt+F4) / Quit Ctrl+Q (Linux)
+//   Edit  Undo Ctrl+Z · Redo Ctrl+Y (also Ctrl+Shift+Z) · Cut Ctrl+X · Copy Ctrl+C · Paste Ctrl+V ·
+//         Select all Ctrl+A
+//   View  Toggle full screen F11 · dev builds: Reload Ctrl+R · Toggle developer tools Ctrl+Shift+I
+//   Help  About Cutweave
+//
+// Keys while typing in a text field: Undo, Redo, Cut, Copy, Paste and Select all belong to the
+// field (Chromium handles them; the page never takes Ctrl+C/X/V/A at all). Every other shortcut
+// runs from a field too, as the native menu's accelerators did.
+
+import type { TKey } from "../i18n/index.ts";
+
+export type AppCommand =
+  | "new"
+  | "open"
+  | "save"
+  | "saveAs"
+  | "export"
+  | "quit"
+  | "undo"
+  | "redo"
+  | "cut"
+  | "copy"
+  | "paste"
+  | "selectAll"
+  | "toggleFullScreen"
+  | "reload"
+  | "toggleDevTools"
+  | "about";
+
+/** Where the menu bar is drawn: Windows and Linux differ only in Exit/Quit. */
+export type MenuPlatform = "windows" | "linux" | "mac";
+
+export function menuPlatform(platform: string): MenuPlatform {
+  if (/^mac|darwin/i.test(platform)) return "mac";
+  if (/^win/i.test(platform)) return "windows";
+  return "linux";
+}
+
+/** A key with modifiers. `mod` is Ctrl (Cmd on macOS). */
+export interface Chord {
+  readonly key: string;
+  readonly mod?: boolean;
+  readonly shift?: boolean;
+}
+
+/** The chords of each command; the first is the one the menu shows. */
+export function chordsFor(command: AppCommand, platform: MenuPlatform): readonly Chord[] {
+  const mod = (key: string, shift = false): Chord => ({ key, mod: true, shift });
+  switch (command) {
+    case "new":
+      return [mod("N")];
+    case "open":
+      return [mod("O")];
+    case "save":
+      return [mod("S")];
+    case "saveAs":
+      return [mod("S", true)];
+    case "export":
+      return [mod("M")];
+    case "quit":
+      // Windows closes with the OS's Alt+F4; Linux (and the native role) use Ctrl+Q.
+      return platform === "linux" ? [mod("Q")] : [];
+    case "undo":
+      return [mod("Z")];
+    case "redo":
+      return platform === "mac" ? [mod("Z", true)] : [mod("Y"), mod("Z", true)];
+    case "cut":
+      return [mod("X")];
+    case "copy":
+      return [mod("C")];
+    case "paste":
+      return [mod("V")];
+    case "selectAll":
+      return [mod("A")];
+    case "toggleFullScreen":
+      return [{ key: "F11" }];
+    case "reload":
+      return [mod("R")];
+    case "toggleDevTools":
+      return [mod("I", true)];
+    case "about":
+      return [];
+  }
+}
+
+/** How a menu shows a chord: `Ctrl+Shift+S`, `F11` (`⌘` for Ctrl on macOS). */
+export function chordLabel(chord: Chord, platform: MenuPlatform): string {
+  const parts: string[] = [];
+  if (chord.mod) parts.push(platform === "mac" ? "⌘" : "Ctrl");
+  if (chord.shift) parts.push("Shift");
+  parts.push(chord.key);
+  return parts.join("+");
+}
+
+/** The shortcut text a menu shows for `command`, if it has one. */
+export function shortcutLabel(command: AppCommand, platform: MenuPlatform): string | undefined {
+  const first = chordsFor(command, platform)[0];
+  return first === undefined ? undefined : chordLabel(first, platform);
+}
+
+/**
+ * Commands whose keys the page never takes: Chromium already cuts, copies, pastes and selects
+ * all on Windows and Linux, in text fields and on the page, exactly as the menu item does.
+ */
+const BROWSER_KEYS: ReadonlySet<AppCommand> = new Set(["cut", "copy", "paste", "selectAll"]);
+
+/** Commands a focused text field keeps for itself (its own undo history). */
+const FIELD_KEYS: ReadonlySet<AppCommand> = new Set(["undo", "redo"]);
+
+/** Commands whose key repeats while held, as a native accelerator does; the rest act once. */
+const REPEATING: ReadonlySet<AppCommand> = new Set(["undo", "redo"]);
+
+/** The slice of a `KeyboardEvent` the shortcuts read. */
+export interface ShortcutEvent {
+  readonly key: string;
+  readonly ctrlKey: boolean;
+  readonly metaKey: boolean;
+  readonly altKey: boolean;
+  readonly shiftKey: boolean;
+  readonly repeat?: boolean;
+}
+
+/** Commands the page may run from a key (not the browser's own clipboard keys). */
+const KEYED: readonly AppCommand[] = [
+  "new",
+  "open",
+  "save",
+  "saveAs",
+  "export",
+  "quit",
+  "undo",
+  "redo",
+  "toggleFullScreen",
+  "reload",
+  "toggleDevTools",
+];
+
+function matches(chord: Chord, e: ShortcutEvent, platform: MenuPlatform): boolean {
+  const modDown = platform === "mac" ? e.metaKey && !e.ctrlKey : e.ctrlKey && !e.metaKey;
+  const noMod = !e.ctrlKey && !e.metaKey;
+  if (e.altKey) return false;
+  if ((chord.mod ?? false) ? !modDown : !noMod) return false;
+  if ((chord.shift ?? false) !== e.shiftKey) return false;
+  return e.key.toLowerCase() === chord.key.toLowerCase();
+}
+
+/**
+ * The command a key press runs, or `null`. `typing`: a text field has the focus (it keeps its
+ * own undo and redo). `options.dev` adds Reload and the developer tools.
+ */
+export function commandForKey(
+  e: ShortcutEvent,
+  platform: MenuPlatform,
+  options: { readonly typing: boolean; readonly dev: boolean },
+): AppCommand | null {
+  for (const command of KEYED) {
+    if ((command === "reload" || command === "toggleDevTools") && !options.dev) continue;
+    if (!chordsFor(command, platform).some((chord) => matches(chord, e, platform))) continue;
+    if (options.typing && FIELD_KEYS.has(command)) return null;
+    if (e.repeat === true && !REPEATING.has(command)) return null;
+    return command;
+  }
+  return null;
+}
+
+/** Whether the page leaves `command`'s key to the browser (see `BROWSER_KEYS`). */
+export function isBrowserKey(command: AppCommand): boolean {
+  return BROWSER_KEYS.has(command);
+}
+
+// ---- the menus ---------------------------------------------------------------------------------
+
+/** What the menus depend on. */
+export interface AppMenuState {
+  readonly platform: MenuPlatform;
+  /** Inside the desktop app: quit, full screen and the edit commands are main's to run. */
+  readonly desktop: boolean;
+  /** An unpackaged (development) desktop build: Reload and developer tools appear. */
+  readonly dev: boolean;
+  /** The engine is connected, the project known, and no project action is running. */
+  readonly live: boolean;
+  readonly readOnly: boolean;
+  readonly recovering: boolean;
+  readonly canUndo: boolean;
+  readonly canRedo: boolean;
+  /** "Undo Split clip" when the history names the step, else "Undo". */
+  readonly undoLabel: string;
+  readonly redoLabel: string;
+  /** Recent projects, newest first: the label to show and the path to open. */
+  readonly recent: readonly { readonly path: string; readonly label: string }[];
+  /** File > Export… opens the export dialog (WP-1M.08); disabled until then. */
+  readonly exportAvailable: boolean;
+}
+
+export type AppMenuId = "file" | "edit" | "view" | "help";
+
+export type AppMenuEntry =
+  | {
+      readonly kind: "command";
+      readonly command: AppCommand;
+      readonly label: string;
+      readonly shortcut?: string | undefined;
+      readonly enabled: boolean;
+    }
+  | { readonly kind: "separator"; readonly id: string }
+  | {
+      readonly kind: "recent";
+      readonly label: string;
+      readonly enabled: boolean;
+      readonly emptyLabel: string;
+      readonly items: readonly { readonly path: string; readonly label: string }[];
+    };
+
+export interface AppMenu {
+  readonly id: AppMenuId;
+  readonly label: string;
+  readonly items: readonly AppMenuEntry[];
+}
+
+/** Translation of a catalog key (`translator(t)`). */
+export type MenuTranslate = (key: TKey, vars?: Readonly<Record<string, string>>) => string;
+
+/** File, Edit, View and Help for `state`. */
+export function buildAppMenu(state: AppMenuState, t: MenuTranslate): AppMenu[] {
+  const { platform } = state;
+  const command = (
+    cmd: AppCommand,
+    label: string,
+    enabled: boolean,
+  ): Extract<AppMenuEntry, { kind: "command" }> => ({
+    kind: "command",
+    command: cmd,
+    label,
+    shortcut: shortcutLabel(cmd, platform),
+    enabled,
+  });
+  const sep = (id: string): AppMenuEntry => ({ kind: "separator", id });
+  const { live, readOnly, recovering, desktop } = state;
+
+  const file: AppMenuEntry[] = [
+    command("new", t("menu.new"), live),
+    command("open", t("menu.open"), live),
+    {
+      kind: "recent",
+      label: t("menu.openRecent"),
+      enabled: live,
+      emptyLabel: t("topbar.recentEmpty"),
+      items: state.recent,
+    },
+    sep("file-1"),
+    command("save", t("menu.save"), live && !readOnly && !recovering),
+    command("saveAs", t("menu.saveAs"), live && !recovering),
+    sep("file-2"),
+    command("export", t("menu.export"), state.exportAvailable && live),
+    sep("file-3"),
+    command("quit", t(platform === "linux" ? "menu.quit" : "menu.exit"), desktop),
+  ];
+  const edit: AppMenuEntry[] = [
+    command("undo", state.undoLabel, live && !readOnly && state.canUndo),
+    command("redo", state.redoLabel, live && !readOnly && state.canRedo),
+    sep("edit-1"),
+    command("cut", t("menu.cut"), true),
+    command("copy", t("menu.copy"), true),
+    command("paste", t("menu.paste"), true),
+    command("selectAll", t("menu.selectAll"), true),
+  ];
+  const view: AppMenuEntry[] = [
+    command("toggleFullScreen", t("menu.toggleFullScreen"), desktop),
+    ...(desktop && state.dev
+      ? [
+          sep("view-1"),
+          command("reload", t("menu.reload"), true),
+          command("toggleDevTools", t("menu.toggleDevTools"), true),
+        ]
+      : []),
+  ];
+  const help: AppMenuEntry[] = [command("about", t("menu.about", { name: t("app.name") }), true)];
+  return [
+    { id: "file", label: t("menu.file"), items: file },
+    { id: "edit", label: t("menu.edit"), items: edit },
+    { id: "view", label: t("menu.view"), items: view },
+    { id: "help", label: t("menu.help"), items: help },
+  ];
+}
+
+/** Whether `command` is offered and enabled in `menus` (shortcuts follow the menu). */
+export function isEnabled(menus: readonly AppMenu[], command: AppCommand): boolean {
+  for (const menu of menus) {
+    for (const entry of menu.items) {
+      if (entry.kind === "command" && entry.command === command) return entry.enabled;
+    }
+  }
+  return false;
+}

@@ -320,6 +320,26 @@ test.describe("IPC", () => {
     expect(message).toMatch(/expected string, received number/);
   });
 
+  test("the title bar's channels take only a known theme and edit action (WP-1M.09)", async ({
+    page,
+  }) => {
+    const refusals = await page.evaluate(async () => {
+      const outcome = (call: Promise<unknown>) =>
+        call.then(
+          () => "accepted",
+          (err: Error) => err.message,
+        );
+      return {
+        theme: await outcome(window.cutweave.window.setTheme("neon" as never)),
+        edit: await outcome(window.cutweave.edit.run("openDevTools" as never)),
+        ok: await outcome(window.cutweave.window.setTheme("dark")),
+      };
+    });
+    expect(refusals.theme).toMatch(/IpcValidationError: invalid IPC call on window:setTheme/);
+    expect(refusals.edit).toMatch(/IpcValidationError: invalid IPC call on edit:run/);
+    expect(refusals.ok).toBe("accepted");
+  });
+
   test("the bridge exposes named functions only (no generic invoke)", async ({ page }) => {
     const surface = await page.evaluate(() => {
       const walk = (value: unknown, prefix: string): string[] =>
@@ -331,9 +351,12 @@ test.describe("IPC", () => {
       return walk(window.cutweave, "cutweave").sort();
     });
     expect(surface).toEqual([
+      "cutweave.app.about",
       "cutweave.app.getInfo",
+      "cutweave.app.quit",
       "cutweave.dialog.openProjectFolder",
       "cutweave.dialog.pickMediaFiles",
+      "cutweave.edit.run",
       "cutweave.engine.getConnection",
       "cutweave.engine.getStatus",
       "cutweave.engine.onStatus",
@@ -359,7 +382,11 @@ test.describe("IPC", () => {
       "cutweave.shell.showItemInFolder",
       "cutweave.window.confirmClose",
       "cutweave.window.onCloseRequested",
+      "cutweave.window.reload",
       "cutweave.window.setDirty",
+      "cutweave.window.setTheme",
+      "cutweave.window.toggleDevTools",
+      "cutweave.window.toggleFullScreen",
     ]);
   });
 

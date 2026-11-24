@@ -15,7 +15,7 @@ import type { EngineStoreState } from "../engine/engineStore.ts";
 import type { DocStore } from "../state/docStore.ts";
 import type { ToastStore } from "../state/toastStore.ts";
 import type { Translate } from "../timeline/errors.ts";
-import { type DesktopBridge, isSessionCommand } from "./desktop.ts";
+import { type DesktopBridge, isSessionCommand, type SessionMenuCommand } from "./desktop.ts";
 import { asRpcError, describeProjectError } from "./errors.ts";
 import { hasUnsavedWork, type SessionStore } from "./sessionStore.ts";
 import {
@@ -64,13 +64,7 @@ export class ProjectController {
       if (desktop.menu !== undefined) {
         this.#offs.push(
           desktop.menu.onCommand((command) => {
-            if (!isSessionCommand(command)) return;
-            // A text field that has the focus keeps Ctrl+Z for its own text.
-            if ((command === "undo" || command === "redo") && textFieldFocused()) {
-              document.execCommand(command);
-              return;
-            }
-            void this.run(command);
+            if (isSessionCommand(command)) void this.runMenuCommand(command);
           }),
         );
       }
@@ -98,6 +92,19 @@ export class ProjectController {
   detach(): void {
     for (const off of this.#offs) off();
     this.#offs = [];
+  }
+
+  /**
+   * Runs a command chosen from a menu (the native menu on macOS, the title bar's menu bar
+   * elsewhere) or its shortcut. A text field that has the focus keeps Undo and Redo for its own
+   * text, as it would with a native menu.
+   */
+  runMenuCommand(command: SessionMenuCommand): Promise<unknown> {
+    if ((command === "undo" || command === "redo") && textFieldFocused()) {
+      document.execCommand(command);
+      return Promise.resolve(false);
+    }
+    return this.run(command);
   }
 
   /** Runs a command a menu item, shortcut or button names. */

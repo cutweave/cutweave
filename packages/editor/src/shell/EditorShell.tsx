@@ -4,9 +4,11 @@ import { useEffect } from "react";
 import { I18nextProvider, useTranslation } from "react-i18next";
 import { Dock } from "../dock/Dock.tsx";
 import { i18n } from "../i18n/index.ts";
+import { desktopFromWindow } from "../session/desktop.ts";
 import { useProjectWiring, useWindowTitle } from "../session/useProject.ts";
 import { useViewStore } from "../state/viewStore.ts";
 import { useTransportWiring } from "../transport/useTransport.ts";
+import { AboutDialog } from "./AboutDialog.tsx";
 import { EngineNotices } from "./EngineNotices.tsx";
 import { ProjectDialogs, ReadOnlyBanner } from "./ProjectDialogs.tsx";
 import { Toasts } from "./Toasts.tsx";
@@ -20,13 +22,18 @@ function Shell() {
   useEffect(() => {
     document.documentElement.dataset.theme = theme;
     document.documentElement.dataset.density = "compact";
+    // The OS window controls over the title bar take the same theme (Windows, Linux).
+    void desktopFromWindow()
+      ?.window?.setTheme?.(theme)
+      .catch(() => undefined);
   }, [theme]);
 
   useEffect(() => {
     document.documentElement.lang = instance.language;
   }, [instance.language]);
 
-  // Project actions: native menu, shortcuts, the window-close handshake and the title (WP-1M.07).
+  // Project actions: the native menu (macOS), the window-close handshake and the title
+  // (WP-1M.07). The menu bar in the top bar has the shortcuts elsewhere (WP-1M.09).
   useProjectWiring();
   useWindowTitle();
   // Transport keys through the keymap; the timeline's playhead follows playback (WP-1M.04).
@@ -44,6 +51,7 @@ function Shell() {
         </div>
         <EngineNotices />
         <ProjectDialogs />
+        <AboutDialog />
         <Toasts />
       </ToastProvider>
     </TooltipProvider>

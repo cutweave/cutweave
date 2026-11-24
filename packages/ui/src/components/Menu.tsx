@@ -44,6 +44,23 @@ export interface MenuProps {
 
 type MenuKit = typeof RadixContextMenu | typeof RadixDropdownMenu;
 
+/** Class names of one command row (shared with `MenuBar`). */
+export function menuItemClass(entry: Pick<MenuItem, "variant">): string {
+  return cx("cw-menu__item body", entry.variant && `cw-menu__item--${entry.variant}`);
+}
+
+/** Icon, label and shortcut of one command row (shared with `MenuBar`). */
+export function MenuItemBody({ entry }: { entry: MenuItem }) {
+  const icon = entry.icon ?? (entry.variant === "agent" ? "sparkles" : undefined);
+  return (
+    <>
+      {icon ? <Icon name={icon} size="md" /> : null}
+      <span className="cw-menu__label">{entry.label}</span>
+      {entry.shortcut ? <span className="cw-menu__kbd numeric">{entry.shortcut}</span> : null}
+    </>
+  );
+}
+
 /** Floating command list. Focus is trapped while open and restored to the anchor on close. */
 export function Menu({
   items,
@@ -73,23 +90,15 @@ export function Menu({
           if (entry.kind === "separator") {
             return <kit.Separator key={entry.id ?? `sep-${index}`} className="cw-menu__sep" />;
           }
-          const icon = entry.icon ?? (entry.variant === "agent" ? "sparkles" : undefined);
           return (
             <kit.Item
               key={entry.id}
               textValue={entry.label}
               disabled={entry.disabled}
               onSelect={() => entry.onSelect?.()}
-              className={cx(
-                "cw-menu__item body",
-                entry.variant && `cw-menu__item--${entry.variant}`,
-              )}
+              className={menuItemClass(entry)}
             >
-              {icon ? <Icon name={icon} size="md" /> : null}
-              <span className="cw-menu__label">{entry.label}</span>
-              {entry.shortcut ? (
-                <span className="cw-menu__kbd numeric">{entry.shortcut}</span>
-              ) : null}
+              <MenuItemBody entry={entry} />
             </kit.Item>
           );
         })}

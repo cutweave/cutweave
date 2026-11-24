@@ -1,5 +1,8 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
-// Native menu skeleton. Accelerators route to the renderer as validated `menu:command` events.
+// The native application menu: macOS only (WP-1M.09). There it stays at the top of the screen and
+// its accelerators reach the renderer as validated `menu:command` events. On Windows and Linux
+// the window has no native menu bar: the editor draws File, Edit, View and Help in its title bar
+// and handles the shortcuts itself, and main-process actions go through allowlisted IPC.
 
 import type { MenuItemConstructorOptions } from "electron";
 import type { MenuCommand } from "../shared/api.ts";
@@ -12,6 +15,15 @@ export interface MenuDeps {
   send(command: MenuCommand): void;
 }
 
+/**
+ * The application menu for `deps.platform`: the macOS template, or `null` on Windows and Linux,
+ * where `Menu.setApplicationMenu(null)` removes the native menu bar from the window.
+ */
+export function applicationMenuTemplate(deps: MenuDeps): MenuItemConstructorOptions[] | null {
+  return deps.platform === "darwin" ? buildMenuTemplate(deps) : null;
+}
+
+/** The native menu template (macOS uses it; kept platform-aware for its unit test). */
 export function buildMenuTemplate(deps: MenuDeps): MenuItemConstructorOptions[] {
   const { send, platform } = deps;
   const mac = platform === "darwin";

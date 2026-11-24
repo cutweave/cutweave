@@ -106,7 +106,7 @@ test.describe("F7 undo and redo", () => {
       await expect.poll(clips).toEqual([[1, 10]]);
       await expect(f.start).toHaveValue("00:00:01:00");
       // The fourth from the menu: Edit > Undo.
-      await chooseMenu(page, app, "Edit", "Undo");
+      await chooseMenu(page, app, "Edit", /^Undo\b/);
       await expect.poll(clips).toEqual([]);
       await expect(page.getByText("Nothing selected")).toBeVisible();
       await expect(undo).toHaveAccessibleName("Undo Import media");
@@ -115,7 +115,7 @@ test.describe("F7 undo and redo", () => {
       // Ctrl+Y, then Edit > Redo: the insert and the move come back.
       await shortcut(app, "Control+Y");
       await expect.poll(clips).toEqual([[1, 10]]);
-      await chooseMenu(page, app, "Edit", "Redo");
+      await chooseMenu(page, app, "Edit", /^Redo\b/);
       await expect.poll(clips).toEqual([[3, 10]]);
       await expect(redo).toHaveAccessibleName("Redo Change opacity");
       // The Redo button twice: the opacity and the trim.
@@ -141,11 +141,15 @@ test.describe("F7 undo and redo", () => {
 
   test("Ctrl+Z right after typing a value in the inspector undoes that edit", async () => {
     // App bug found by this flow (WP-1O.05): after a value is typed into an inspector field and
-    // committed, the first Ctrl+Z does nothing the person can see, even with the focus back on the
-    // timeline. Chromium's own text-editing undo (one undo stack per page) takes the key press to
-    // undo the typing in the field, so the native menu's accelerator never fires; only a second
-    // Ctrl+Z undoes the edit. Owner: packages/editor (WP-1M.07 shortcut wiring).
-    test.fixme(true, "the first Ctrl+Z after typing in a field is swallowed (see the note)");
+    // committed, the first Ctrl+Z did nothing the person could see, even with the focus back on
+    // the timeline. Chromium's own text-editing undo (one undo stack per page) took the key press
+    // to undo the typing in the field, so the native menu's accelerator never fired. Since
+    // WP-1M.09 the editor's menu bar takes Ctrl+Z outside text fields on Windows and Linux; macOS
+    // still has the native menu.
+    test.fixme(
+      process.platform === "darwin",
+      "on macOS the first Ctrl+Z after typing in a field is swallowed (see the note)",
+    );
     const work = workspace();
     const { app, page, close } = await launchFlowApp(work);
     try {
@@ -159,7 +163,8 @@ test.describe("F7 undo and redo", () => {
       // Back on the timeline, one Ctrl+Z.
       await clickClip(page, id);
       await shortcut(app, "Control+Z");
-      await expect.poll(async () => (await item(page, id)).name).toBeNull();
+      // An unnamed item has no `name` in `item.get`.
+      await expect.poll(async () => (await item(page, id)).name ?? null).toBeNull();
       await expect(f.name).toHaveValue("");
     } finally {
       await close();

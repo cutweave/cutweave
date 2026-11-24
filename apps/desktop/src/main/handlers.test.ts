@@ -2,6 +2,7 @@
 import { describe, expect, it, vi } from "vitest";
 import {
   createHandlers,
+  DevOnlyError,
   MAX_MEDIA_PATHS,
   MEDIA_FILE_FILTERS,
   validMediaPaths,
@@ -18,6 +19,19 @@ describe("createHandlers", () => {
     chooseMediaFiles: vi.fn(async (): Promise<readonly string[] | null> => ["/m/a.mp4"]),
     showItemInFolder: vi.fn(),
     openExternal: vi.fn(async () => {}),
+    about: () => ({
+      name: "Cutweave",
+      version: "1",
+      electron: "45.4.1",
+      chrome: "1",
+      node: "24",
+      v8: "1",
+      platform: "linux x64",
+    }),
+    quit: vi.fn(),
+    toggleFullScreen: vi.fn(),
+    setTheme: vi.fn(),
+    editCommand: vi.fn(),
   };
 
   it("returns no connection until the engine is ready", async () => {
@@ -59,6 +73,32 @@ describe("createHandlers", () => {
     expect(base.recentProjects.remove).toHaveBeenCalledWith("/a");
     expect(base.setWindowDirty).toHaveBeenCalledWith(true);
     expect(base.confirmWindowClose).toHaveBeenCalledTimes(1);
+  });
+
+  it("delegates the title bar and menu bar actions (WP-1M.09)", async () => {
+    const dev = { reload: vi.fn(), toggleDevTools: vi.fn() };
+    const h = createHandlers({ ...base, engineCredentials: () => null, dev });
+    expect(await h["app:about"]()).toMatchObject({ name: "Cutweave", electron: "45.4.1" });
+    await h["app:quit"]();
+    await h["window:toggleFullScreen"]();
+    await h["window:setTheme"]("light");
+    await h["edit:run"]("selectAll");
+    await h["window:reload"]();
+    await h["window:toggleDevTools"]();
+    expect(base.quit).toHaveBeenCalledTimes(1);
+    expect(base.toggleFullScreen).toHaveBeenCalledTimes(1);
+    expect(base.setTheme).toHaveBeenCalledWith("light");
+    expect(base.editCommand).toHaveBeenCalledWith("selectAll");
+    expect(dev.reload).toHaveBeenCalledTimes(1);
+    expect(dev.toggleDevTools).toHaveBeenCalledTimes(1);
+  });
+
+  it("refuses Reload and developer tools in packaged builds", () => {
+    const h = createHandlers({ ...base, engineCredentials: () => null });
+    expect(() => h["window:reload"]()).toThrow(DevOnlyError);
+    expect(() => h["window:toggleDevTools"]()).toThrow(
+      /window:toggleDevTools is only available in development builds/,
+    );
   });
 
   it("answers the media picker with validated absolute paths, or null when cancelled", async () => {

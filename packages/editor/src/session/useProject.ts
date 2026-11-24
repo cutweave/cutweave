@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
-// Binds `ProjectController` to the app: one controller on the global stores, the keyboard
-// shortcuts (undo, redo, save, open, new) when there is no native menu to deliver them, and the
-// window title.
+// Binds `ProjectController` to the app: one controller on the global stores, the desktop shell
+// (macOS's native menu commands, the recent list, the window-close handshake) and the window
+// title. The keyboard shortcuts belong to the application menu (`shell/appCommands.ts`).
 import { useEffect } from "react";
 import { useTranslation } from "react-i18next";
 import { engineStore } from "../engine/engineStore.ts";
@@ -37,42 +37,18 @@ export function resetProjectController(): void {
 }
 
 /** Keys typed into a field belong to the field (its own undo, its own Enter). */
-function isTextEntry(target: EventTarget | null): boolean {
+export function isTextEntry(target: EventTarget | null): boolean {
   const el = target as HTMLElement | null;
   if (el === null || typeof el.tagName !== "string") return false;
   return el.isContentEditable || el.tagName === "INPUT" || el.tagName === "TEXTAREA";
 }
 
 /**
- * Wires the controller to the desktop shell and, without one, to the keyboard. Mount once in the
- * shell. In the desktop app the menu's accelerators deliver the same commands; a text field that
- * has the focus keeps Ctrl+Z for its own text.
+ * Wires the controller to the desktop shell: the native menu's commands (macOS), the recent
+ * list and the window-close handshake. Mount once in the shell.
  */
 export function useProjectWiring(): void {
-  useEffect(() => {
-    const controller = projectController();
-    const detach = controller.attach();
-    const native = desktopFromWindow()?.menu !== undefined;
-    const onKey = (event: KeyboardEvent): void => {
-      if (native || event.defaultPrevented) return;
-      if (!(event.ctrlKey || event.metaKey) || event.altKey) return;
-      const key = event.key.toLowerCase();
-      const typing = isTextEntry(event.target);
-      let handled = true;
-      if (key === "z" && !typing) void (event.shiftKey ? controller.redo() : controller.undo());
-      else if (key === "y" && !typing && !event.metaKey) void controller.redo();
-      else if (key === "s") void (event.shiftKey ? controller.saveAs() : controller.save());
-      else if (key === "o") void controller.open();
-      else if (key === "n") void controller.newProject();
-      else handled = false;
-      if (handled) event.preventDefault();
-    };
-    window.addEventListener("keydown", onKey);
-    return () => {
-      window.removeEventListener("keydown", onKey);
-      detach();
-    };
-  }, []);
+  useEffect(() => projectController().attach(), []);
 }
 
 /** Whether leaving now would lose work: the dot next to Save and in the window title. */

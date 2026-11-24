@@ -4,6 +4,7 @@
 // webContents in hardening.ts.
 
 import { type BrowserWindow, screen } from "electron";
+import { titleBarOptions } from "./title-bar.ts";
 import {
   DEFAULT_WINDOW_STATE,
   fitToDisplays,
@@ -36,6 +37,8 @@ export function createMainWindow(options: MainWindowOptions): BrowserWindow {
       minHeight: MIN_WINDOW.height,
       show: false,
       title: "Cutweave",
+      // No native title bar: the editor's top bar is the title bar (WP-1M.09, title-bar.ts).
+      ...titleBarOptions(process.platform),
       url: options.url,
     },
     options.factory,
