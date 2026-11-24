@@ -5,7 +5,8 @@
 // functions only; there is no generic `invoke(channel, ...)` anywhere on the bridge.
 
 import { z } from "zod";
-import { EDIT_ACTIONS, THEMES } from "../shared/api.ts";
+import { isPreferenceKey, validatePreference } from "../../../../packages/preferences/src/index.ts";
+import { APP_FOLDERS, EDIT_ACTIONS, THEMES } from "../shared/api.ts";
 import type { InvokeChannel, InvokeChannels } from "../shared/ipc-contract.ts";
 import {
   isTrustedOrigin,
@@ -43,6 +44,17 @@ const externalUrl = z
   .max(MAX_EXTERNAL_URL_LENGTH)
   .refine((u) => parseExternalUrl(u) !== null, "expected an https: URL without credentials");
 
+/**
+ * One preference write: a known key and a value of its type and range. The schema is the one the
+ * editor imports (packages/preferences), so a value the dialog cannot produce is refused here.
+ */
+const preferenceWrite = z
+  .tuple([z.string().max(128), z.unknown()])
+  .superRefine(([key, value], context) => {
+    const checked = validatePreference(key, value);
+    if (!checked.ok) context.addIssue({ code: "custom", message: `${key}: ${checked.reason}` });
+  });
+
 /** Argument schemas, one per allowlisted channel; checked against the shared contract types. */
 export const invokeSchemas = {
   "app:getInfo": noArgs,
@@ -52,6 +64,7 @@ export const invokeSchemas = {
   "recent:list": noArgs,
   "recent:add": z.tuple([filePath]),
   "recent:remove": z.tuple([filePath]),
+  "recent:clear": noArgs,
   "window:setDirty": z.tuple([z.boolean()]),
   "window:confirmClose": noArgs,
   "dialog:pickMediaFiles": noArgs,
@@ -65,6 +78,12 @@ export const invokeSchemas = {
   "window:reload": noArgs,
   "window:toggleDevTools": noArgs,
   "edit:run": z.tuple([z.enum(EDIT_ACTIONS)]),
+  "prefs:get": noArgs,
+  "prefs:set": preferenceWrite,
+  "prefs:reset": z.tuple([z.array(z.string().refine(isPreferenceKey, "unknown setting")).max(200)]),
+  "prefs:export": noArgs,
+  "prefs:import": noArgs,
+  "shell:openAppFolder": z.tuple([z.enum(APP_FOLDERS)]),
 } as const satisfies { [K in InvokeChannel]: z.ZodType<InvokeChannels[K]["args"]> };
 
 export const INVOKE_CHANNELS = Object.keys(invokeSchemas) as InvokeChannel[];

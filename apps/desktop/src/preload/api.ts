@@ -2,6 +2,7 @@
 // Builds the `window.cutweave` object from an `ipcRenderer` and the (optional) bridge addon.
 // Kept free of `electron` imports so it is unit-testable; `index.ts` wires the real ones.
 
+import type { PreferenceChanges } from "../../../../packages/preferences/src/index.ts";
 import type { AttachCanvasResult, CutweaveApi, EngineStatus, MenuCommand } from "../shared/api.ts";
 import { type InvokeChannel, type InvokeChannels, isMenuCommand } from "../shared/ipc-contract.ts";
 import type { BridgeAddon } from "./bridge-addon.ts";
@@ -165,6 +166,7 @@ export function createCutweaveApi(
       list: () => invoke("recent:list"),
       add: (path) => invoke("recent:add", path),
       remove: (path) => invoke("recent:remove", path),
+      clear: () => invoke("recent:clear"),
     },
     window: {
       setDirty: (dirty) => invoke("window:setDirty", dirty),
@@ -193,7 +195,20 @@ export function createCutweaveApi(
         }
       },
     },
+    prefs: {
+      get: () => invoke("prefs:get"),
+      set: (key, value) => invoke("prefs:set", key, value),
+      reset: (keys) => invoke("prefs:reset", [...keys]),
+      exportToFile: () => invoke("prefs:export"),
+      importFromFile: () => invoke("prefs:import"),
+      onChanged: subscribe<PreferenceChanges>("prefs:changed", (v) =>
+        typeof v === "object" && v !== null && !Array.isArray(v)
+          ? (v as PreferenceChanges)
+          : undefined,
+      ),
+    },
     shell: {
+      openAppFolder: (which) => invoke("shell:openAppFolder", which),
       showItemInFolder: (path) => invoke("shell:showItemInFolder", path),
       openExternal: (url) => invoke("shell:openExternal", url),
     },

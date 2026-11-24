@@ -71,6 +71,9 @@ tracing-subscriber = { version = "=0.3.23", default-features = false, features =
 [dev-dependencies]
 # This crate with `testing` on, so its tests (and `cargo nextest run --workspace`) include the harness.
 cutweave-engine = { path = ".", features = ["testing"] }
+# `testing`: the counting allocator that proves the preview's frame source does not allocate per
+# frame (arch §10 "Threads"; `full::preview_alloc`). Workspace crate, already a dependency.
+cutweave-audio = { path = "../cutweave-audio", default-features = false, features = ["testing"] }
 cutweave-model = { path = "../cutweave-model", features = ["testing"] }
 # The WP-1E.03 export tests render on a headless wgpu device (`GpuFrameBackend`).
 cutweave-render = { path = "../cutweave-render", features = ["gpu"] }

@@ -7,6 +7,33 @@
 // and developer tools). `null` where there is no desktop shell (plain `vite` dev, Vitest): the
 // flows then have no native dialogs and the page handles every shortcut itself.
 
+import type { PreferenceChanges, PreferenceMap, SkippedSetting } from "@cutweave/preferences";
+
+/** "Export settings…": where main wrote the file, or that the person cancelled the picker. */
+export type PrefsExportResult =
+  | { readonly status: "saved"; readonly path: string; readonly count: number }
+  | { readonly status: "cancelled" };
+
+/** "Import settings…": what was applied and what was skipped, or why nothing was. */
+export type PrefsImportResult =
+  | {
+      readonly status: "imported";
+      readonly applied: readonly string[];
+      readonly skipped: readonly SkippedSetting[];
+    }
+  | { readonly status: "invalid"; readonly reason: "unreadable" | "not-settings" | "newer" }
+  | { readonly status: "cancelled" };
+
+/** The preferences store main keeps (`window.cutweave.prefs`, WP-1M.11). */
+export interface PrefsBridge {
+  get(): Promise<{ readonly values: PreferenceMap; readonly defaults: PreferenceMap }>;
+  set(key: string, value: unknown): Promise<void>;
+  reset(keys: readonly string[]): Promise<void>;
+  exportToFile(): Promise<PrefsExportResult>;
+  importFromFile(): Promise<PrefsImportResult>;
+  onChanged(listener: (changes: PreferenceChanges) => void): () => void;
+}
+
 /** Menu commands main sends (a subset of the desktop `MenuCommand`). */
 export type SessionMenuCommand = "new" | "open" | "save" | "saveAs" | "undo" | "redo";
 
@@ -43,7 +70,11 @@ export interface DesktopBridge {
   /** Reveals a file in the OS file manager (WP-1M.08: "Reveal in folder" after an export). */
   readonly shell?: {
     showItemInFolder(path: string): Promise<void>;
+    /** "Open settings folder" and "Open logs folder" (WP-1M.11). */
+    openAppFolder?(which: "settings" | "logs"): Promise<void>;
   };
+  /** App preferences, kept by main in `preferences.json` (WP-1M.11). */
+  readonly prefs?: PrefsBridge;
   readonly edit?: {
     run(action: EditAction): Promise<void>;
   };
@@ -54,6 +85,8 @@ export interface DesktopBridge {
     list(): Promise<readonly string[]>;
     add(path: string): Promise<void>;
     remove(path: string): Promise<void>;
+    /** Forgets every recent project (Settings > General). */
+    clear?(): Promise<void>;
   };
   readonly window?: {
     /** Tells main whether closing needs the editor's say (unsaved changes). */

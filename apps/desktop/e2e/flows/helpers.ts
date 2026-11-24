@@ -655,6 +655,18 @@ export async function openSettings(page: Page, app: ElectronApplication): Promis
   return settings;
 }
 
+/** File > Settings…, then the page with this name in the dialog's page list. */
+export async function openSettingsPage(
+  page: Page,
+  app: ElectronApplication,
+  name: "General" | "Appearance" | "Saving and backups" | "Advanced",
+): Promise<Locator> {
+  const settings = await openSettings(page, app);
+  await settings.getByRole("tab", { name }).click();
+  await expect(settings.getByRole("heading", { name, level: 3 })).toBeVisible();
+  return settings;
+}
+
 /** Closes Settings with Done. */
 export async function closeSettings(settings: Locator): Promise<void> {
   await settings.getByRole("button", { name: "Done" }).click();
@@ -662,15 +674,15 @@ export async function closeSettings(settings: Locator): Promise<void> {
 }
 
 /**
- * File > Settings…, picks the theme and closes with Done. The theme lives in Settings, not in
- * the title bar.
+ * File > Settings… > Appearance, picks the theme and closes with Done. The theme lives in
+ * Settings, not in the title bar.
  */
 export async function chooseTheme(
   page: Page,
   app: ElectronApplication,
   theme: "Dark" | "Light",
 ): Promise<void> {
-  const settings = await openSettings(page, app);
+  const settings = await openSettingsPage(page, app, "Appearance");
   const radio = settings.getByRole("radiogroup", { name: "Theme" }).getByRole("radio", {
     name: theme,
   });

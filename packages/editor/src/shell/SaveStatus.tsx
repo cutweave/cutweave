@@ -6,10 +6,10 @@
 import { type IconName, StatusChip, type StatusTone } from "@cutweave/ui";
 import { useTranslation } from "react-i18next";
 import type { TKey } from "../i18n/index.ts";
+import { usePref } from "../prefs/prefsStore.ts";
 import { useSessionStore } from "../session/sessionStore.ts";
 import { useSessionUiStore } from "../session/sessionUiStore.ts";
 import { useUnsavedWork } from "../session/useProject.ts";
-import { useViewStore } from "../state/viewStore.ts";
 
 export type SaveState =
   | "saved"
@@ -38,7 +38,7 @@ export function useSaveState(): SaveState {
   const failed = useSessionStore((s) => s.autosaveFailed);
   const untitled = useSessionStore((s) => s.path === null);
   const saving = useSessionUiStore((s) => s.saving);
-  const automatic = useViewStore((s) => s.autosave.enabled);
+  const automatic = usePref("saving.autosave");
   if (saving) return "saving";
   if (!unsaved) return "saved";
   if (failed) return "failed";

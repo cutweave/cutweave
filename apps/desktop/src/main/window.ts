@@ -4,6 +4,7 @@
 // webContents in hardening.ts.
 
 import { type BrowserWindow, screen } from "electron";
+import type { ThemeId } from "../shared/api.ts";
 import { titleBarOptions } from "./title-bar.ts";
 import {
   DEFAULT_WINDOW_STATE,
@@ -20,6 +21,8 @@ export interface MainWindowOptions {
   /** `app://cutweave/` (or, dev only, the Vite dev server URL for HMR). */
   url: string;
   factory: WindowFactoryContext;
+  /** The theme the editor will show: the window's frame and controls open in its colors. */
+  theme?: ThemeId;
 }
 
 export function createMainWindow(options: MainWindowOptions): BrowserWindow {
@@ -38,7 +41,7 @@ export function createMainWindow(options: MainWindowOptions): BrowserWindow {
       show: false,
       title: "Cutweave",
       // No native title bar: the editor's top bar is the title bar (WP-1M.09, title-bar.ts).
-      ...titleBarOptions(process.platform),
+      ...titleBarOptions(process.platform, options.theme),
       url: options.url,
     },
     options.factory,

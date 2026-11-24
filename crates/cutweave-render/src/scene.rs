@@ -122,6 +122,16 @@ pub enum BlendMode {
     Normal,
 }
 
+impl BlendMode {
+    /// The variant's name, as `Debug` prints it (hashed into cache keys without formatting).
+    #[must_use]
+    pub const fn debug_name(self) -> &'static str {
+        match self {
+            BlendMode::Normal => "Normal",
+        }
+    }
+}
+
 /// Crop of the source picture as fractions of its size removed from each edge.
 #[derive(Clone, Copy, Debug, Default, PartialEq, Serialize)]
 pub struct Crop {

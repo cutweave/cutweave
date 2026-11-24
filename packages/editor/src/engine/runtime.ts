@@ -33,6 +33,7 @@ import {
 } from "@cutweave/protocol";
 import type { binStore } from "../media/binStore.ts";
 import type { mediaStore } from "../media/mediaStore.ts";
+import type { prefsStore } from "../prefs/prefsStore.ts";
 import { parseRingAnnouncement } from "../preview/ringPreview.ts";
 import type { sessionStore } from "../session/sessionStore.ts";
 import { SessionSync } from "../session/sessionSync.ts";
@@ -74,6 +75,8 @@ export interface RuntimeStores {
   /** The media bin's search text, cleared when another project opens (WP-1M.12); optional. */
   readonly bin?: typeof binStore;
   readonly engine: typeof engineStore;
+  /** The app preferences (WP-1M.11); the saving rows go to the engine. Optional for tests. */
+  readonly prefs?: typeof prefsStore;
   /** Project session and undo stacks (WP-1M.07); optional so older callers need not pass it. */
   readonly session?: typeof sessionStore;
 }
@@ -238,12 +241,13 @@ export function startEngineRuntime(
 
   /** Tells the engine the app's autosave preference (`project.set_autosave`, arch §17). */
   async function sendAutosave(): Promise<void> {
-    const { enabled, intervalS, keepBackups } = stores.view.getState().autosave;
+    const values = stores.prefs?.getState().values;
+    if (values === undefined) return;
     try {
       await rpc.call("project.set_autosave", {
-        enabled,
-        interval_s: intervalS,
-        keep_backups: keepBackups,
+        enabled: values["saving.autosave"],
+        interval_s: values["saving.interval"],
+        keep_backups: values["saving.backups"],
       });
     } catch (error) {
       onError(error);
@@ -316,13 +320,17 @@ export function startEngineRuntime(
 
   // A change in Settings goes to the engine at once; while disconnected, the next handshake
   // sends it.
-  offs.push(
-    stores.view.subscribe((state, previous) => {
-      if (state.autosave !== previous.autosave && connection.state === "ready") {
-        void sendAutosave();
-      }
-    }),
-  );
+  if (stores.prefs !== undefined) {
+    offs.push(
+      stores.prefs.subscribe((state, previous) => {
+        const changed =
+          state.values["saving.autosave"] !== previous.values["saving.autosave"] ||
+          state.values["saving.interval"] !== previous.values["saving.interval"] ||
+          state.values["saving.backups"] !== previous.values["saving.backups"];
+        if (changed && connection.state === "ready") void sendAutosave();
+      }),
+    );
+  }
 
   stores.engine.setState({ rpc, connection: connection.state });
   connection.connect();

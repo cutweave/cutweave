@@ -5,9 +5,22 @@
 // Security controls: WP-1L.02, see SECURITY-MODEL.md.
 // Supervision, restart and the failed dialog: WP-1L.03 (src/main/engine/supervisor.ts).
 
+import { mkdirSync, readFileSync, statSync, writeFileSync } from "node:fs";
 import path from "node:path";
-import { app, BrowserWindow, dialog, ipcMain, Menu, net, protocol, session, shell } from "electron";
-import type { EditAction, EngineStatus } from "../shared/api.ts";
+import {
+  app,
+  BrowserWindow,
+  dialog,
+  ipcMain,
+  Menu,
+  nativeTheme,
+  net,
+  protocol,
+  session,
+  shell,
+} from "electron";
+import { type PreferenceKey, resolveTheme } from "../../../../packages/preferences/src/index.ts";
+import type { EditAction, EngineStatus, ThemeId } from "../shared/api.ts";
 import {
   APP_ORIGIN,
   APP_SCHEME,
@@ -24,6 +37,7 @@ import { createHandlers, MEDIA_FILE_FILTERS } from "./handlers.ts";
 import { type HardeningContext, hardenSession, hardenWebContents } from "./hardening.ts";
 import { createSenderCheck, registerIpc } from "./ipc.ts";
 import { applicationMenuTemplate } from "./menu.ts";
+import { PreferencesStore } from "./preferences-store.ts";
 import { forcedPreviewPath } from "./preview-path.ts";
 import { RecentProjects } from "./recent-projects.ts";
 import { installTestHooks, shouldInstallTestHooks } from "./test-hooks.ts";
@@ -53,6 +67,8 @@ let mainWindow: BrowserWindow | null = null;
 const closeGuard = new CloseGuard();
 /** Recent projects; created once the profile folder is final (`app.whenReady`). */
 let recentProjects: RecentProjects | null = null;
+/** The preferences (WP-1M.11); created with the recent list, before the first window. */
+let preferences: PreferencesStore | null = null;
 let openExternal = (url: string): Promise<void> => shell.openExternal(url);
 /** Asks Restart / Quit when the engine is `failed`; the e2e hooks answer it instead. */
 let askEngineFailed = (status: EngineStatus): Promise<EngineFailedChoice> =>
@@ -93,6 +109,23 @@ function runEditCommand(action: EditAction): void {
       contents.selectAll();
       return;
   }
+}
+
+/** The person's Documents folder; `<home>/Documents` where the OS has none to give. */
+function documentsFolder(): string {
+  try {
+    return app.getPath("documents");
+  } catch {
+    return path.join(app.getPath("home"), "Documents");
+  }
+}
+
+/** The theme the editor shows for the preferences: `system` follows the OS. */
+function currentTheme(): ThemeId {
+  return resolveTheme(
+    preferences?.get("appearance.theme") ?? "dark",
+    nativeTheme.shouldUseDarkColors,
+  );
 }
 
 /** Status to every editor window (never the token: that is `engine:getConnection` only). */
@@ -156,6 +189,8 @@ function openWindow(): void {
     stateFile: path.join(app.getPath("userData"), "window-state.json"),
     url: devServerUrl ?? `${APP_ORIGIN}/`,
     factory,
+    // Read before the window exists, so its frame and controls open in the right colors.
+    theme: currentTheme(),
   });
   closeGuard.reset();
   // With unsaved changes the editor settles them first (Save / Discard / Cancel); it answers
@@ -193,7 +228,36 @@ if (!app.requestSingleInstanceLock()) {
     );
     registerPluginProtocolStub(protocol);
     const testHooks = shouldInstallTestHooks(app.isPackaged, process.env);
-    recentProjects = new RecentProjects(path.join(app.getPath("userData"), "recent-projects.json"));
+    const prefs = new PreferencesStore(path.join(app.getPath("userData"), "preferences.json"), {
+      // The one default that depends on this machine (arch §16, docs/reference/settings.md).
+      contextDefaults: {
+        "general.new_project_folder": path.join(documentsFolder(), "Cutweave"),
+      },
+      log: (message) => console.warn(`[prefs] ${message}`),
+    });
+    preferences = prefs;
+    // `Match system` follows the OS live (the page's `prefers-color-scheme` follows this).
+    nativeTheme.themeSource = prefs.get("appearance.theme");
+    recentProjects = new RecentProjects(
+      path.join(app.getPath("userData"), "recent-projects.json"),
+      undefined,
+      () => prefs.get("general.recent_count"),
+    );
+    prefs.onChange((changes) => {
+      if (changes["appearance.theme"] !== undefined) {
+        nativeTheme.themeSource = changes["appearance.theme"];
+      }
+      for (const win of windowsOfKind("editor")) win.webContents.send("prefs:changed", changes);
+    });
+    const checkSender = createSenderCheck({
+      devServerOrigin,
+      isEditorContents: (sender) => windowKindOf(sender) === "editor",
+    });
+    // The one synchronous call, from the preload before the page loads: the theme to paint, so
+    // the first frame is in the right colors. It answers `dark` or `light` and nothing else.
+    ipcMain.on("prefs:initialTheme", (event) => {
+      event.returnValue = checkSender(event) === null ? currentTheme() : "dark";
+    });
     registerIpc(
       ipcMain,
       createHandlers({
@@ -217,6 +281,7 @@ if (!app.requestSingleInstanceLock()) {
           list: () => recentProjects?.list() ?? [],
           add: (p) => recentProjects?.add(p),
           remove: (p) => recentProjects?.remove(p),
+          clear: () => recentProjects?.clear(),
         },
         setWindowDirty: (dirty) => closeGuard.setDirty(dirty),
         confirmWindowClose: () => {
@@ -260,6 +325,42 @@ if (!app.requestSingleInstanceLock()) {
           }
         },
         editCommand: runEditCommand,
+        prefs: {
+          snapshot: () => ({ values: prefs.snapshot(), defaults: prefs.defaults() }),
+          set: (key, value) => prefs.set(key, value),
+          reset: (keys: readonly PreferenceKey[]) => prefs.reset(keys),
+          exportText: () => prefs.exportText(),
+          importText: (text) => prefs.importText(text),
+        },
+        chooseSettingsExportFile: async (defaultName) => {
+          const result = await dialog.showSaveDialog({
+            defaultPath: path.join(documentsFolder(), defaultName),
+            filters: [{ name: "Cutweave settings", extensions: ["json"] }],
+            properties: ["createDirectory"],
+          });
+          return result.canceled ? null : (result.filePath ?? null);
+        },
+        chooseSettingsImportFile: async () => {
+          const result = await dialog.showOpenDialog({
+            properties: ["openFile"],
+            filters: [{ name: "Cutweave settings", extensions: ["json"] }],
+          });
+          return result.canceled ? null : (result.filePaths[0] ?? null);
+        },
+        writeTextFile: (file, text) => writeFileSync(file, text, "utf8"),
+        readTextFile: (file, maxBytes) => {
+          try {
+            if (statSync(file).size > maxBytes) return null;
+            return readFileSync(file, "utf8");
+          } catch {
+            return null;
+          }
+        },
+        openAppFolder: async (which) => {
+          const folder = app.getPath(which === "logs" ? "logs" : "userData");
+          mkdirSync(folder, { recursive: true });
+          await shell.openPath(folder);
+        },
         dev: isDev
           ? {
               reload: () => liveWindow()?.webContents.reload(),
@@ -267,10 +368,7 @@ if (!app.requestSingleInstanceLock()) {
             }
           : undefined,
       }),
-      createSenderCheck({
-        devServerOrigin,
-        isEditorContents: (sender) => windowKindOf(sender) === "editor",
-      }),
+      checkSender,
     );
     // macOS keeps its native app menu; on Windows and Linux `null` removes the menu bar (the
     // editor's title bar has its own, WP-1M.09).

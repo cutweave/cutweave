@@ -1,0 +1,41 @@
+<!-- @dsCard group="Inputs" height=420 -->
+<div class="cw-demo cw-demo--col cw-demo--on-2" style="width:var(--layer-width-lg)">
+  <div class="cw-setting">
+    <div class="cw-setting__text">
+      <label class="cw-setting__label label" for="s1">Save automatically</label>
+      <p class="cw-setting__description caption">Saves your project while you edit, and keeps backups.</p>
+    </div>
+    <div class="cw-setting__control"><button id="s1" class="cw-switch" role="switch" aria-checked="true"><span class="cw-switch__thumb"></span></button></div>
+    <div class="cw-setting__reset"></div>
+  </div>
+  <div class="cw-setting" data-modified="true">
+    <div class="cw-setting__text">
+      <span class="cw-setting__label label">On startup</span>
+      <p class="cw-setting__description caption">What Cutweave opens when it starts.</p>
+    </div>
+    <div class="cw-setting__control">
+      <div class="cw-seg" role="radiogroup" aria-label="On startup">
+        <button class="cw-seg__item body" role="radio" aria-checked="false">Empty project</button>
+        <button class="cw-seg__item body" role="radio" aria-checked="true" data-state="on">Last project</button>
+      </div>
+    </div>
+    <div class="cw-setting__reset"><button class="cw-iconbtn cw-iconbtn--sm" aria-label="Reset On startup"><svg class="cw-icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M9 14 4 9l5-5"/><path d="M4 9h10.5a5.5 5.5 0 0 1 5.5 5.5 5.5 5.5 0 0 1-5.5 5.5H11"/></svg></button></div>
+  </div>
+  <div class="cw-setting" data-disabled="true">
+    <div class="cw-setting__text">
+      <span class="cw-setting__label label">Backups to keep</span>
+      <p class="cw-setting__description caption">Older backups of each project are deleted.</p>
+      <p class="cw-setting__note caption">Needs the engine</p>
+    </div>
+    <div class="cw-setting__control"><span class="cw-setting__value caption">10</span></div>
+    <div class="cw-setting__reset"></div>
+  </div>
+  <div class="cw-setting" data-highlighted="true">
+    <div class="cw-setting__text">
+      <span class="cw-setting__label label">Save at least every</span>
+      <p class="cw-setting__description caption">While you edit. Cutweave also saves 2 s after your last change.</p>
+    </div>
+    <div class="cw-setting__control"><span class="cw-setting__value caption">30 s</span></div>
+    <div class="cw-setting__reset"></div>
+  </div>
+</div>

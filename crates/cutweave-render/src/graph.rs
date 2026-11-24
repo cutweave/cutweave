@@ -23,8 +23,12 @@
 //!
 //! Blend modes: only `Normal` exists in schema v1; the `Composite` op carries the mode so the P2
 //! core set (multiply, screen, …) slots in without changing the graph shape (arch §8).
+//!
+//! **Per-frame rebuilds allocate nothing** (arch §10 "Threads"): [`build_into`] compiles into a
+//! graph and a [`BuildScratch`] kept across frames, pass inputs are stored inline
+//! ([`PassInputs`]), and the executor's ordering helpers fill caller-owned buffers. Their
+//! capacity grows to the largest frame seen and is then reused. [`build`] is the one-shot form.
 
-use std::collections::{HashMap, VecDeque};
 use std::fmt::Write as _;
 use std::sync::Arc;
 
@@ -186,13 +190,86 @@ impl PassOp {
     }
 }
 
+/// The resources a pass reads, stored inline (at most [`PassInputs::CAPACITY`]) so graphs can be
+/// rebuilt every frame without allocating. Dereferences to a slice in reading order.
+#[derive(Clone, Copy, PartialEq, Eq, Default)]
+pub struct PassInputs {
+    ids: [ResId; PassInputs::CAPACITY],
+    len: u8,
+}
+
+impl PassInputs {
+    /// The most inputs a pass can read (a composite reads two).
+    pub const CAPACITY: usize = 4;
+
+    /// No inputs.
+    #[must_use]
+    pub const fn new() -> PassInputs {
+        PassInputs {
+            ids: [0; PassInputs::CAPACITY],
+            len: 0,
+        }
+    }
+
+    /// Inputs `ids`, in order.
+    ///
+    /// # Errors
+    ///
+    /// [`GraphError::Invalid`] for more than [`PassInputs::CAPACITY`].
+    pub fn from_slice(ids: &[ResId]) -> Result<PassInputs, GraphError> {
+        let mut inputs = PassInputs::new();
+        for &id in ids {
+            inputs.push(id)?;
+        }
+        Ok(inputs)
+    }
+
+    /// Appends `id`.
+    ///
+    /// # Errors
+    ///
+    /// [`GraphError::Invalid`] when the pass already reads [`PassInputs::CAPACITY`] resources.
+    pub fn push(&mut self, id: ResId) -> Result<(), GraphError> {
+        let slot = self
+            .ids
+            .get_mut(usize::from(self.len))
+            .ok_or_else(|| GraphError::Invalid("a pass reads too many resources".into()))?;
+        *slot = id;
+        self.len += 1;
+        Ok(())
+    }
+}
+
+impl std::ops::Deref for PassInputs {
+    type Target = [ResId];
+
+    fn deref(&self) -> &[ResId] {
+        &self.ids[..usize::from(self.len)]
+    }
+}
+
+impl<'a> IntoIterator for &'a PassInputs {
+    type Item = &'a ResId;
+    type IntoIter = std::slice::Iter<'a, ResId>;
+
+    fn into_iter(self) -> Self::IntoIter {
+        self.iter()
+    }
+}
+
+impl std::fmt::Debug for PassInputs {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_list().entries(self.iter()).finish()
+    }
+}
+
 /// One node of the DAG.
 #[derive(Clone, Debug, PartialEq)]
 pub struct Pass {
     /// The operation.
     pub op: PassOp,
     /// Resources read.
-    pub inputs: Vec<ResId>,
+    pub inputs: PassInputs,
     /// Resource written.
     pub output: ResId,
     /// Merkle key of the output.
@@ -236,10 +313,45 @@ pub struct RenderGraph {
     pub stats: BuildStats,
 }
 
+/// Working memory of the graph's ordering helpers ([`RenderGraph::prune`], the executor's
+/// topological order), kept across frames so they allocate nothing once warm.
+#[derive(Clone, Debug, Default)]
+pub struct OrderScratch {
+    producers: Vec<Option<usize>>,
+    indegree: Vec<usize>,
+    /// Consumers of each pass, flattened: those of pass `i` are
+    /// `consumers[first[i]..first[i + 1]]`, in pass order.
+    first: Vec<usize>,
+    consumers: Vec<usize>,
+    queue: Vec<usize>,
+    live: Vec<bool>,
+}
+
 impl RenderGraph {
+    /// An empty graph for `target` (no passes), to [`build_into`].
+    #[must_use]
+    pub fn new(target: Target) -> RenderGraph {
+        RenderGraph {
+            target,
+            passes: Vec::new(),
+            resources: Vec::new(),
+            output: 0,
+            frames: Vec::new(),
+            missing: Vec::new(),
+            stats: BuildStats::default(),
+        }
+    }
+
     /// Resource → index of the pass producing it. Errors on a resource written twice.
     pub fn producers(&self) -> Result<Vec<Option<usize>>, GraphError> {
-        let mut prod = vec![None; self.resources.len()];
+        let mut prod = Vec::new();
+        self.producers_into(&mut prod)?;
+        Ok(prod)
+    }
+
+    fn producers_into(&self, prod: &mut Vec<Option<usize>>) -> Result<(), GraphError> {
+        prod.clear();
+        prod.resize(self.resources.len(), None);
         for (i, p) in self.passes.iter().enumerate() {
             let slot = prod
                 .get_mut(p.output)
@@ -252,51 +364,107 @@ impl RenderGraph {
             }
             *slot = Some(i);
         }
-        Ok(prod)
+        Ok(())
     }
 
     /// Deterministic topological order (Kahn, ties broken by pass index).
     pub fn topo_order(&self) -> Result<Vec<usize>, GraphError> {
-        let prod = self.producers()?;
+        let mut order = Vec::new();
+        self.topo_order_into(&mut order, &mut OrderScratch::default())?;
+        Ok(order)
+    }
+
+    /// [`RenderGraph::topo_order`] into `order`, with `scratch` as working memory (no allocation
+    /// once both have grown to the graph's size).
+    pub fn topo_order_into(
+        &self,
+        order: &mut Vec<usize>,
+        scratch: &mut OrderScratch,
+    ) -> Result<(), GraphError> {
+        self.producers_into(&mut scratch.producers)?;
         let n = self.passes.len();
-        let mut indegree = vec![0usize; n];
-        let mut consumers: Vec<Vec<usize>> = vec![Vec::new(); n];
+        let OrderScratch {
+            producers,
+            indegree,
+            first,
+            consumers,
+            queue,
+            ..
+        } = scratch;
+        indegree.clear();
+        indegree.resize(n, 0);
+        // Count each pass's consumers, then place them (pass order within each pass).
+        first.clear();
+        first.resize(n + 1, 0);
         for (i, p) in self.passes.iter().enumerate() {
             for &r in &p.inputs {
-                let src = prod.get(r).copied().flatten().ok_or_else(|| {
+                let src = producers.get(r).copied().flatten().ok_or_else(|| {
                     GraphError::Invalid(format!(
                         "{} pass {i} reads unproduced resource {r}",
                         p.op.name()
                     ))
                 })?;
                 indegree[i] += 1;
-                consumers[src].push(i);
+                first[src + 1] += 1;
             }
         }
-        let mut ready: VecDeque<usize> = (0..n).filter(|&i| indegree[i] == 0).collect();
-        let mut order = Vec::with_capacity(n);
-        while let Some(i) = ready.pop_front() {
+        for i in 0..n {
+            first[i + 1] += first[i];
+        }
+        consumers.clear();
+        consumers.resize(first[n], 0);
+        // `queue` doubles as the fill cursor of each pass's consumer list here.
+        queue.clear();
+        queue.extend_from_slice(&first[..n]);
+        for (i, p) in self.passes.iter().enumerate() {
+            for &r in &p.inputs {
+                if let Some(src) = producers.get(r).copied().flatten() {
+                    consumers[queue[src]] = i;
+                    queue[src] += 1;
+                }
+            }
+        }
+        // FIFO queue: a vector read from `head`.
+        queue.clear();
+        queue.extend((0..n).filter(|&i| indegree[i] == 0));
+        order.clear();
+        let mut head = 0;
+        while let Some(&i) = queue.get(head) {
+            head += 1;
             order.push(i);
-            for &c in &consumers[i] {
+            for &c in &consumers[first[i]..first[i + 1]] {
                 indegree[c] -= 1;
                 if indegree[c] == 0 {
-                    ready.push_back(c);
+                    queue.push(c);
                 }
             }
         }
         if order.len() != n {
             return Err(GraphError::Invalid("cycle detected".into()));
         }
-        Ok(order)
+        Ok(())
     }
 
     /// Removes passes whose output does not reach [`RenderGraph::output`].
     pub fn prune(&mut self) -> Result<(), GraphError> {
-        let prod = self.producers()?;
-        let mut live = vec![false; self.passes.len()];
-        let mut stack = vec![self.output];
+        self.prune_with(&mut OrderScratch::default())
+    }
+
+    /// [`RenderGraph::prune`] with `scratch` as working memory.
+    fn prune_with(&mut self, scratch: &mut OrderScratch) -> Result<(), GraphError> {
+        self.producers_into(&mut scratch.producers)?;
+        let OrderScratch {
+            producers,
+            queue: stack,
+            live,
+            ..
+        } = scratch;
+        live.clear();
+        live.resize(self.passes.len(), false);
+        stack.clear();
+        stack.push(self.output);
         while let Some(r) = stack.pop() {
-            if let Some(Some(p)) = prod.get(r).copied()
+            if let Some(Some(p)) = producers.get(r).copied()
                 && !live[p]
             {
                 live[p] = true;
@@ -313,13 +481,27 @@ impl RenderGraph {
     /// For each resource, the position (in `order`) of its last reader.
     #[must_use]
     pub fn last_uses(&self, order: &[usize]) -> Vec<Option<usize>> {
-        let mut last = vec![None; self.resources.len()];
+        let mut last = Vec::new();
+        self.last_uses_into(order, &mut last);
+        last
+    }
+
+    /// [`RenderGraph::last_uses`] into `last`.
+    pub fn last_uses_into(&self, order: &[usize], last: &mut Vec<Option<usize>>) {
+        last.clear();
+        last.resize(self.resources.len(), None);
         for (pos, &p) in order.iter().enumerate() {
             for &r in &self.passes[p].inputs {
                 last[r] = Some(pos);
             }
         }
-        last
+    }
+
+    /// Drops the graph's references to source frames (they belong to the frame source: a
+    /// caller keeping the graph across frames releases them where it accounts for the source's
+    /// heap use).
+    pub fn release_frames(&mut self) {
+        self.frames.clear();
     }
 
     /// Key of the pass producing the output: identifies the frame's whole subgraph.
@@ -362,11 +544,38 @@ impl RenderGraph {
 }
 
 /// A layer that survived culling.
+#[derive(Clone, Debug)]
 struct Visible {
     index: usize,
     frame: Arc<VideoFrame>,
     geometry: LayerGeometry,
     transform: InputTransform,
+}
+
+/// Working memory of [`build_into`], kept across frames (no allocation once it has grown to the
+/// largest scene seen).
+#[derive(Clone, Debug, Default)]
+pub struct BuildScratch {
+    /// Layers that survived culling, bottom first.
+    visible: Vec<Visible>,
+    /// Each visible layer's decode slot.
+    decode_of: Vec<usize>,
+    /// The decodes: `(frame index, input transform, mips)`.
+    decodes: Vec<(usize, InputTransform, u32)>,
+    /// Decode sharing: `(frame id + transform hash, decode slot)`.
+    by_key: Vec<(u64, usize)>,
+    /// The key of each resource.
+    keys: Vec<CacheKey>,
+    /// The resource of each decode.
+    decode_res: Vec<ResId>,
+    order: OrderScratch,
+}
+
+impl BuildScratch {
+    /// Drops the source frames held from the last build (see [`RenderGraph::release_frames`]).
+    pub fn release_frames(&mut self) {
+        self.visible.clear();
+    }
 }
 
 /// Compiles `scene` for `target`, pulling frames from `source`.
@@ -376,6 +585,38 @@ pub fn build(
     source: &dyn FrameSource,
     options: &GraphOptions,
 ) -> Result<RenderGraph, GraphError> {
+    let mut graph = RenderGraph::new(target);
+    build_into(
+        &mut graph,
+        &mut BuildScratch::default(),
+        scene,
+        target,
+        source,
+        options,
+    )?;
+    Ok(graph)
+}
+
+/// [`build`] into `graph` (replacing what it held), with `scratch` as working memory: a render
+/// thread keeps both across frames and allocates nothing per frame once they have grown to the
+/// largest scene seen (arch §10 "Threads"). The graph is identical to [`build`]'s.
+pub fn build_into(
+    graph: &mut RenderGraph,
+    scratch: &mut BuildScratch,
+    scene: &SceneDescription,
+    target: Target,
+    source: &dyn FrameSource,
+    options: &GraphOptions,
+) -> Result<(), GraphError> {
+    let g = graph;
+    g.target = target;
+    g.passes.clear();
+    g.resources.clear();
+    g.output = 0;
+    g.frames.clear();
+    g.missing.clear();
+    g.stats = BuildStats::default();
+    scratch.visible.clear();
     let output = target.size();
     if output.0 == 0 || output.1 == 0 {
         return Err(GraphError::Empty {
@@ -392,22 +633,22 @@ pub fn build(
             height: canvas.1,
         });
     }
-    let mut g = RenderGraph {
-        target,
-        passes: Vec::new(),
-        resources: Vec::new(),
-        output: 0,
-        frames: Vec::new(),
-        missing: Vec::new(),
-        stats: BuildStats::default(),
-    };
 
-    let visible = cull(scene, output, source, options, &mut g);
-    let (decode_of, decodes) = plan_decodes(&visible, &mut g);
+    cull(scene, output, source, options, g, &mut scratch.visible);
+    plan_decodes(scratch, g);
 
-    let mut keys: Vec<CacheKey> = Vec::new();
-    let mut decode_res: Vec<ResId> = Vec::with_capacity(decodes.len());
-    for &(frame, transform, mip_levels) in &decodes {
+    let BuildScratch {
+        visible,
+        decode_of,
+        decodes,
+        keys,
+        decode_res,
+        order,
+        ..
+    } = scratch;
+    keys.clear();
+    decode_res.clear();
+    for &(frame, transform, mip_levels) in decodes.iter() {
         let f = &g.frames[frame];
         let size = ResourceDesc {
             width: f.width,
@@ -419,7 +660,7 @@ pub fn build(
             transform,
             mip_levels,
         });
-        decode_res.push(push_pass(&mut g, &mut keys, op, Vec::new(), size));
+        decode_res.push(push_pass(g, keys, op, PassInputs::new(), size));
     }
 
     let canvas_desc = ResourceDesc {
@@ -429,13 +670,13 @@ pub fn build(
     };
     let bg = srgb8_to_linear_premul(scene.background);
     let mut cur = push_pass(
-        &mut g,
-        &mut keys,
+        g,
+        keys,
         PassOp::Background { color: bg },
-        Vec::new(),
+        PassInputs::new(),
         canvas_desc,
     );
-    for (v, &slot) in visible.iter().zip(&decode_of) {
+    for (v, &slot) in visible.iter().zip(decode_of.iter()) {
         let layer = &scene.layers[v.index];
         let op = PassOp::Composite(CompositeOp {
             item: layer.item,
@@ -447,38 +688,38 @@ pub fn build(
             full_cover: v.geometry.covers(output),
         });
         cur = push_pass(
-            &mut g,
-            &mut keys,
+            g,
+            keys,
             op,
-            vec![cur, decode_res[slot]],
+            PassInputs::from_slice(&[cur, decode_res[slot]])?,
             canvas_desc,
         );
     }
     if let Target::Rgba8Cpu { transfer, .. } = target {
         cur = push_pass(
-            &mut g,
-            &mut keys,
+            g,
+            keys,
             PassOp::Output { transfer },
-            vec![cur],
+            PassInputs::from_slice(&[cur])?,
             canvas_desc,
         );
     }
     g.output = cur;
-    g.prune()?;
-    Ok(g)
+    g.prune_with(order)
 }
 
 /// Culls layers top-down, so that nothing under an opaque cover is ever requested from the
-/// source; returns the visible layers bottom-up.
+/// source; leaves the visible layers in `visible`, bottom-up.
 fn cull(
     scene: &SceneDescription,
     output: (u32, u32),
     source: &dyn FrameSource,
     options: &GraphOptions,
     g: &mut RenderGraph,
-) -> Vec<Visible> {
+    visible: &mut Vec<Visible>,
+) {
     let canvas = (scene.width, scene.height);
-    let mut visible = Vec::new();
+    visible.clear();
     for (index, layer) in scene.layers.iter().enumerate().rev() {
         if layer.opacity.is_nan() || layer.opacity <= 0.0 {
             g.stats.layers_culled += 1;
@@ -525,37 +766,43 @@ fn cull(
     visible.reverse();
     g.missing.reverse();
     g.stats.layers_visible = visible.len();
-    visible
 }
 
 /// One decode per distinct (frame, input transform), with the most mips any of its layers
-/// needs. Returns each visible layer's decode slot and the decodes `(frame, transform, mips)`.
-#[allow(clippy::type_complexity)]
-fn plan_decodes(
-    visible: &[Visible],
-    g: &mut RenderGraph,
-) -> (Vec<usize>, Vec<(usize, InputTransform, u32)>) {
-    let mut decode_of: Vec<usize> = Vec::with_capacity(visible.len());
-    let mut decodes: Vec<(usize, InputTransform, u32)> = Vec::new();
-    let mut by_key: HashMap<u64, usize> = HashMap::new();
-    for v in visible {
+/// needs: fills the scratch's decode slot of each visible layer and the decodes
+/// `(frame, transform, mips)`.
+fn plan_decodes(scratch: &mut BuildScratch, g: &mut RenderGraph) {
+    let BuildScratch {
+        visible,
+        decode_of,
+        decodes,
+        by_key,
+        ..
+    } = scratch;
+    decode_of.clear();
+    decodes.clear();
+    by_key.clear();
+    for v in visible.iter() {
         let mut h = Fnv::new();
         h.u64(v.frame.id.0);
         hash_transform(&v.transform, &mut h);
         let mips = mip_levels_for(v.geometry.lod(), v.frame.width, v.frame.height);
-        let slot = *by_key.entry(h.finish()).or_insert_with(|| {
+        let key = h.finish();
+        let slot = if let Some(&(_, slot)) = by_key.iter().find(|(k, _)| *k == key) {
+            slot
+        } else {
             let frame = g.frames.len();
             g.frames.push(Arc::clone(&v.frame));
             decodes.push((frame, v.transform, 1));
+            by_key.push((key, decodes.len() - 1));
             decodes.len() - 1
-        });
+        };
         if decode_of.contains(&slot) {
             g.stats.decodes_shared += 1;
         }
         decodes[slot].2 = decodes[slot].2.max(mips);
         decode_of.push(slot);
     }
-    (decode_of, decodes)
 }
 
 // `op` is moved into the graph, so it is taken by value.
@@ -564,7 +811,7 @@ fn push_pass(
     g: &mut RenderGraph,
     keys: &mut Vec<CacheKey>,
     op: PassOp,
-    inputs: Vec<ResId>,
+    inputs: PassInputs,
     size: ResourceDesc,
 ) -> ResId {
     let mut h = Fnv::new();
@@ -576,7 +823,7 @@ fn push_pass(
         PassOp::Decode(d) => {
             let f = &g.frames[d.frame];
             h.u64(f.id.0)
-                .str(&format!("{:?}", f.format))
+                .str(f.format.debug_name())
                 .f64s(&f.chroma_siting.offset())
                 .u32(d.mip_levels);
             hash_transform(&d.transform, &mut h);
@@ -590,7 +837,7 @@ fn push_pass(
                 .f64(c.opacity)
                 .f64(c.lod)
                 .u32(u32::from(c.full_cover))
-                .str(&format!("{:?}", c.blend));
+                .str(c.blend.debug_name());
             for v in c.rect {
                 h.u32(v);
             }
@@ -652,6 +899,7 @@ mod tests {
     #![allow(clippy::many_single_char_names)]
 
     use std::cell::RefCell;
+    use std::collections::HashMap;
 
     use cutweave_model::{Color, ColorTags, FrameRate, MediaId, SequenceId, Time, TrackId, Vec2};
 
@@ -953,8 +1201,64 @@ mod tests {
         assert_eq!(g.stats.passes_pruned, 1);
         // A cycle is detected.
         let last = g.passes[g.passes.len() - 1].output;
-        g.passes[0].inputs.push(last);
+        g.passes[0].inputs.push(last).unwrap();
         assert!(matches!(g.topo_order(), Err(GraphError::Invalid(_))));
+    }
+
+    #[test]
+    fn hashed_names_match_debug_so_keys_stay_stable() {
+        for f in [
+            PixelFormat::Nv12,
+            PixelFormat::P010,
+            PixelFormat::Yuv420p,
+            PixelFormat::Rgba8,
+        ] {
+            assert_eq!(f.debug_name(), format!("{f:?}"));
+        }
+        assert_eq!(
+            BlendMode::Normal.debug_name(),
+            format!("{:?}", BlendMode::Normal)
+        );
+    }
+
+    #[test]
+    fn rebuilding_into_a_kept_graph_matches_a_fresh_build() {
+        let mut graph = RenderGraph::new(Target::rgba8(1, 1));
+        let mut scratch = BuildScratch::default();
+        let mut a = layer(1, 11, (64, 36));
+        a.transform.scale = Vec2::new(0.5, 0.5);
+        let scenes = [
+            scene(vec![layer(1, 10, (64, 36))]),
+            scene(vec![a.clone(), layer(2, 12, (64, 36))]),
+            scene(vec![]),
+            scene(vec![a, layer(5, 99, (64, 36))]),
+        ];
+        for s in &scenes {
+            let fresh = build(
+                s,
+                Target::rgba8(64, 36),
+                &source(),
+                &GraphOptions::default(),
+            );
+            let kept = build_into(
+                &mut graph,
+                &mut scratch,
+                s,
+                Target::rgba8(64, 36),
+                &source(),
+                &GraphOptions::default(),
+            );
+            let fresh = fresh.unwrap();
+            kept.unwrap();
+            assert_eq!(graph.passes, fresh.passes);
+            assert_eq!(graph.resources, fresh.resources);
+            assert_eq!(graph.output, fresh.output);
+            assert_eq!(graph.frames.len(), fresh.frames.len());
+            assert_eq!(graph.missing, fresh.missing);
+            assert_eq!(graph.stats, fresh.stats);
+            assert_eq!(graph.topo_order().unwrap(), fresh.topo_order().unwrap());
+        }
+        assert!(PassInputs::from_slice(&[0; PassInputs::CAPACITY + 1]).is_err());
     }
 
     #[test]

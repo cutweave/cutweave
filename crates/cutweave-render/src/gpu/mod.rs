@@ -320,6 +320,9 @@ pub struct GpuContext {
     info: AdapterInfo,
     lost: Arc<AtomicBool>,
     errors: Arc<Mutex<Vec<String>>>,
+    /// Set after an error is pushed: lets [`GpuContext::take_errors`] skip the lock on the
+    /// render path while there is nothing to take.
+    has_errors: Arc<AtomicBool>,
 }
 
 impl std::fmt::Debug for GpuContext {
@@ -363,12 +366,14 @@ impl GpuContext {
             tracing::warn!(adapter = %name, ?reason, %message, "GPU device lost");
         });
         let errors = Arc::new(Mutex::new(Vec::new()));
-        let errors_cb = Arc::clone(&errors);
+        let has_errors = Arc::new(AtomicBool::new(false));
+        let (errors_cb, flag_cb) = (Arc::clone(&errors), Arc::clone(&has_errors));
         device.on_uncaptured_error(Arc::new(move |e: wgpu::Error| {
             errors_cb
                 .lock()
                 .unwrap_or_else(PoisonError::into_inner)
                 .push(e.to_string());
+            flag_cb.store(true, Ordering::Release);
         }));
         tracing::debug!(adapter = %info.key, driver = %info.driver, "GPU device created");
         Ok(GpuContext {
@@ -377,6 +382,7 @@ impl GpuContext {
             info,
             lost,
             errors,
+            has_errors,
         })
     }
 
@@ -423,8 +429,12 @@ impl GpuContext {
             .or_else(|_| GpuContext::new(&AdapterChoice::Index(self.info.index)))
     }
 
-    /// Takes the uncaptured errors reported since the last call, joined.
+    /// Takes the uncaptured errors reported since the last call, joined. Lock-free while there
+    /// are none (the render path calls it every frame).
     pub(crate) fn take_errors(&self) -> Option<String> {
+        if !self.has_errors.swap(false, Ordering::AcqRel) {
+            return None;
+        }
         let mut v = self.errors.lock().unwrap_or_else(PoisonError::into_inner);
         if v.is_empty() {
             None

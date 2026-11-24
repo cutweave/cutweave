@@ -47,6 +47,8 @@ pub mod frames;
 pub mod gpu;
 pub mod media;
 pub mod preview;
+#[cfg(test)]
+mod preview_alloc;
 mod watch;
 
 use std::any::TypeId;

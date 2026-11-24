@@ -11,7 +11,7 @@
 | Tokens (both themes) | [`design/tokens.json`](../design/tokens.json) | **The single source of truth.** Colors, type styles, spacing, radius, shadow, size, z-index, duration, easing |
 | Generated CSS (preview) | [`design/tokens.css`](../design/tokens.css) | Made by `design/scripts/tokens_to_css.py`. WP-0K.01 replaces it with the full pipeline |
 | Logo | [`design/assets/logos/`](../design/assets/logos/) | Mark in marigold and ink. v0, to be refined by a designer before 1.0 |
-| Component specs (27) | [`design/components/`](../design/components/) (mirrored in the artifact): live previews, `bundle.css` reference styles, per-component guidelines | The React implementations live in `packages/ui` (WP-0K.03/0K.04 and owning epics) |
+| Component specs (30) | [`design/components/`](../design/components/) (mirrored in the artifact): live previews, `bundle.css` reference styles, per-component guidelines | The React implementations live in `packages/ui` (WP-0K.03/0K.04 and owning epics) |
 
 ## Design decisions (summary)
 

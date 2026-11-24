@@ -43,6 +43,14 @@ export {
   type SegmentedControlProps,
   type SegmentedOption,
 } from "./SegmentedControl.tsx";
+export { SettingRow, type SettingRowProps } from "./SettingRow.tsx";
+export {
+  SettingsLayout,
+  type SettingsLayoutProps,
+  type SettingsPageGroup,
+  type SettingsPageItem,
+  SettingsResultGroup,
+} from "./SettingsLayout.tsx";
 export { Slider, type SliderKeyframe, type SliderProps } from "./Slider.tsx";
 export { StatusChip, type StatusChipProps, type StatusTone } from "./StatusChip.tsx";
 export { Switch, type SwitchProps } from "./Switch.tsx";

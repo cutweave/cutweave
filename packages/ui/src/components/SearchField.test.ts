@@ -4,9 +4,11 @@ import { cleanup, render, screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { createElement as h, useState } from "react";
 import { afterEach, describe, expect, it, vi } from "vitest";
+import { Dialog } from "./Dialog.tsx";
 import { FilterChip } from "./FilterChip.tsx";
 import { IconButton } from "./IconButton.tsx";
 import { SearchField } from "./SearchField.tsx";
+import { TooltipProvider } from "./Tooltip.tsx";
 
 afterEach(cleanup);
 
@@ -62,6 +64,34 @@ describe("SearchField", () => {
     expect(document.activeElement).toBe(field);
     await user.keyboard("{Escape}");
     expect(onExit).toHaveBeenCalledTimes(1);
+  });
+
+  it("still clears on Esc inside a dialog that keeps itself open (Radix prevents the default first)", async () => {
+    const user = userEvent.setup();
+    const onOpenChange = vi.fn();
+    const onExit = vi.fn();
+    render(
+      h(
+        TooltipProvider,
+        null,
+        h(Dialog, {
+          open: true,
+          onOpenChange,
+          title: "Settings",
+          // The dialog holds Esc while the field has focus (its own guard prevents the default).
+          dirty: true,
+          children: h(Harness, { initial: "abc", onExit }),
+        }),
+      ),
+    );
+    const field = screen.getByRole("searchbox") as HTMLInputElement;
+    field.focus();
+    await user.keyboard("{Escape}");
+    expect(field.value).toBe("");
+    expect(onOpenChange).not.toHaveBeenCalled();
+    await user.keyboard("{Escape}");
+    expect(onExit).toHaveBeenCalledTimes(1);
+    expect(onOpenChange).not.toHaveBeenCalled();
   });
 
   it("blurs on Esc of an empty field when the host gives no exit", async () => {

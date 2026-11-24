@@ -14,7 +14,7 @@ import {
   importWithButton,
   launchFlowApp,
   openRecent,
-  openSettings,
+  openSettingsPage,
   profileDir,
   removeDir,
   saveStatus,
@@ -74,7 +74,7 @@ test.describe("F29 autosave settings and the save status", () => {
       await expect(dirtyDot(page)).toBeHidden();
 
       // Settings > Saving: on, every 30 s and 10 backups by default. Turn it off.
-      let settings = await openSettings(page, app);
+      let settings = await openSettingsPage(page, app, "Saving and backups");
       const automatic = settings.getByRole("switch", { name: "Save automatically" });
       const interval = settings.getByRole("radiogroup", { name: "Save at least every" });
       const backups = settings.getByRole("radiogroup", { name: "Backups to keep" });
@@ -83,13 +83,16 @@ test.describe("F29 autosave settings and the save status", () => {
       await expect(radio(backups, "10")).toHaveAttribute("aria-checked", "true");
       await opaque(settings);
       await snapshot(page, info, "settings saving dark");
+      // The theme is on the Appearance page; the Saving rows are not on it.
+      await settings.getByRole("tab", { name: "Appearance" }).click();
       const theme = settings.getByRole("radiogroup", { name: "Theme" });
       await radio(theme, "Light").click();
       await expect(radio(theme, "Light")).toHaveAttribute("aria-checked", "true");
       await opaque(settings);
-      await snapshot(page, info, "settings saving light");
+      await snapshot(page, info, "settings appearance light");
       await radio(theme, "Dark").click();
       await expect(radio(theme, "Dark")).toHaveAttribute("aria-checked", "true");
+      await settings.getByRole("tab", { name: "Saving and backups" }).click();
       await automatic.click();
       await expect(automatic).not.toBeChecked();
       await expect(radio(interval, "5 min")).toBeDisabled();
@@ -105,7 +108,7 @@ test.describe("F29 autosave settings and the save status", () => {
       expect(mediaOnDisk(doc)).toBe(0);
 
       // Turn it on at 30 s: the pending edit is saved.
-      settings = await openSettings(page, app);
+      settings = await openSettingsPage(page, app, "Saving and backups");
       await automatic.click();
       await expect(automatic).toBeChecked();
       await radio(interval, "30 s").click();
@@ -117,7 +120,7 @@ test.describe("F29 autosave settings and the save status", () => {
       await snapshot(page, info, "saved");
 
       // Off again. File > Save and Ctrl+S still save, with no button.
-      settings = await openSettings(page, app);
+      settings = await openSettingsPage(page, app, "Saving and backups");
       await automatic.click();
       await expect(automatic).not.toBeChecked();
       await closeSettings(settings);
@@ -134,7 +137,7 @@ test.describe("F29 autosave settings and the save status", () => {
 
       // Choose the interval and backups while it is on (they are disabled while it is off), then
       // turn it off for the relaunch.
-      settings = await openSettings(page, app);
+      settings = await openSettingsPage(page, app, "Saving and backups");
       await automatic.click();
       await expect(automatic).toBeChecked();
       await radio(interval, "5 min").click();
@@ -153,7 +156,7 @@ test.describe("F29 autosave settings and the save status", () => {
       try {
         const page2 = second.page;
         await expect(page2).toHaveTitle("Untitled — Cutweave");
-        const again = await openSettings(page2, second.app);
+        const again = await openSettingsPage(page2, second.app, "Saving and backups");
         await expect(again.getByRole("switch", { name: "Save automatically" })).not.toBeChecked();
         await expect(
           radio(again.getByRole("radiogroup", { name: "Save at least every" }), "5 min"),

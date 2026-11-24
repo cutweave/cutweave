@@ -31,6 +31,7 @@ describe("createCutweaveApi", () => {
       "engine",
       "files",
       "menu",
+      "prefs",
       "preview",
       "recent",
       "shell",
@@ -80,6 +81,42 @@ describe("createCutweaveApi", () => {
     expect(ipc.invoke).toHaveBeenNthCalledWith(1, "engine:getConnection");
     expect(ipc.invoke).toHaveBeenNthCalledWith(2, "shell:showItemInFolder", "/x");
     expect(ipc.invoke).toHaveBeenNthCalledWith(3, "shell:openExternal", "https://cutweave.org/");
+  });
+
+  it("maps the preferences to fixed channels, one named function each (WP-1M.11)", async () => {
+    const { ipc, emit } = fakeIpc();
+    const api = createCutweaveApi(ipc, null);
+    expect(Object.keys(api.prefs).sort()).toEqual([
+      "exportToFile",
+      "get",
+      "importFromFile",
+      "onChanged",
+      "reset",
+      "set",
+    ]);
+    await api.prefs.get();
+    await api.prefs.set("appearance.theme", "light");
+    await api.prefs.reset(["saving.autosave"]);
+    await api.prefs.exportToFile();
+    await api.prefs.importFromFile();
+    await api.shell.openAppFolder("logs");
+    await api.recent.clear();
+    expect(ipc.invoke).toHaveBeenNthCalledWith(1, "prefs:get");
+    expect(ipc.invoke).toHaveBeenNthCalledWith(2, "prefs:set", "appearance.theme", "light");
+    expect(ipc.invoke).toHaveBeenNthCalledWith(3, "prefs:reset", ["saving.autosave"]);
+    expect(ipc.invoke).toHaveBeenNthCalledWith(4, "prefs:export");
+    expect(ipc.invoke).toHaveBeenNthCalledWith(5, "prefs:import");
+    expect(ipc.invoke).toHaveBeenNthCalledWith(6, "shell:openAppFolder", "logs");
+    expect(ipc.invoke).toHaveBeenNthCalledWith(7, "recent:clear");
+    // Changes arrive as objects only.
+    const seen: unknown[] = [];
+    const off = api.prefs.onChanged((changes) => seen.push(changes));
+    emit("prefs:changed", { "appearance.theme": "light" });
+    emit("prefs:changed", "nope");
+    emit("prefs:changed", null);
+    emit("prefs:changed", ["x"]);
+    expect(seen).toEqual([{ "appearance.theme": "light" }]);
+    off();
   });
 
   it("maps the recent list and the close handshake to fixed channels (WP-1M.07)", async () => {

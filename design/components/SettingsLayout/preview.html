@@ -1,0 +1,30 @@
+<!-- @dsCard group="Overlays" height=520 -->
+<div class="cw-demo" style="background:var(--surface-0);justify-content:center">
+  <div class="cw-dialog cw-w-lg" role="dialog" aria-modal="true" aria-labelledby="set-title" style="height:var(--layer-width-lg)">
+    <h2 class="cw-dialog__title" id="set-title">Settings</h2>
+    <div class="cw-settings">
+      <div class="cw-settings__side">
+        <div class="cw-search">
+          <svg class="cw-icon cw-search__icon" viewBox="0 0 24 24" aria-hidden="true"><circle cx="11" cy="11" r="7"/><path d="m20 20-3.5-3.5"/></svg>
+          <input class="cw-field cw-search__input body" type="search" aria-label="Search settings" placeholder="Search settings">
+        </div>
+        <div class="cw-settings__nav" role="tablist" aria-orientation="vertical" aria-label="Settings pages">
+          <div class="cw-settings__group">
+            <div class="cw-settings__grouplabel cw-overline">Preferences</div>
+            <button class="cw-settings__tab" role="tab" aria-selected="true"><svg class="cw-icon" viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="3"/><path d="M12 2v3M12 19v3M4.9 4.9 7 7M17 17l2.1 2.1M2 12h3M19 12h3M4.9 19.1 7 17M17 7l2.1-2.1"/></svg><span class="cw-settings__tablabel body">General</span></button>
+            <button class="cw-settings__tab" role="tab" aria-selected="false"><svg class="cw-icon" viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="3"/><path d="M12 2v3M12 19v3M4.9 4.9 7 7M17 17l2.1 2.1M2 12h3M19 12h3M4.9 19.1 7 17M17 7l2.1-2.1"/></svg><span class="cw-settings__tablabel body">Appearance</span></button>
+            <button class="cw-settings__tab" role="tab" aria-selected="false"><svg class="cw-icon" viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="3"/><path d="M12 2v3M12 19v3M4.9 4.9 7 7M17 17l2.1 2.1M2 12h3M19 12h3M4.9 19.1 7 17M17 7l2.1-2.1"/></svg><span class="cw-settings__tablabel body">Saving and backups</span></button>
+          </div>
+        </div>
+      </div>
+      <div class="cw-settings__panel" role="tabpanel">
+        <div class="cw-settings__head"><h3 class="cw-settings__heading cw-dialog__title">General</h3><button class="cw-btn cw-btn--ghost">Reset page</button></div>
+        <div class="cw-settings__rows">
+          <div class="cw-setting"><div class="cw-setting__text"><span class="cw-setting__label cw-label">On startup</span><p class="cw-setting__description cw-demo__cap">What Cutweave opens when it starts.</p></div><div class="cw-setting__control"><div class="cw-seg" role="radiogroup" aria-label="On startup"><button class="cw-seg__item body" role="radio" aria-checked="true" data-state="on">Empty project</button><button class="cw-seg__item body" role="radio" aria-checked="false">Last project</button></div></div><div class="cw-setting__reset"></div></div>
+          <div class="cw-setting"><div class="cw-setting__text"><span class="cw-setting__label cw-label">Recent projects to list</span><p class="cw-setting__description cw-demo__cap">How many projects File &gt; Open recent shows.</p></div><div class="cw-setting__control"><span class="cw-mono">10</span></div><div class="cw-setting__reset"></div></div>
+        </div>
+      </div>
+    </div>
+    <div class="cw-dialog__footer"><button class="cw-btn cw-btn--primary cw-btn--lg">Done</button></div>
+  </div>
+</div>

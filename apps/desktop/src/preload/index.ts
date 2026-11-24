@@ -7,6 +7,17 @@
 import { contextBridge, ipcRenderer, webUtils } from "electron";
 import { createCutweaveApi } from "./api.ts";
 import { loadBridgeAddon } from "./bridge-addon.ts";
+import { applyEarlyTheme } from "./early-theme.ts";
+
+// The one synchronous call (WP-1M.11): the theme main read from the preferences, so the first
+// paint is already in the right colors. It carries no argument and the answer is checked.
+applyEarlyTheme(ipcRenderer.sendSync("prefs:initialTheme"), document, (apply) => {
+  const watcher = new MutationObserver(() => {
+    apply();
+    watcher.disconnect();
+  });
+  watcher.observe(document, { childList: true });
+});
 
 contextBridge.exposeInMainWorld(
   "cutweave",
