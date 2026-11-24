@@ -1,5 +1,5 @@
 // @generated — do not edit; run cargo xtask gen
-import type { BeginTx, CancelTx, Checkpoint, CheckpointInfo, CheckpointList, ClipSplit, ClipSplitOutput, ClipTrim, ClipTrimOutput, CommitTx, GetHistory, HistoryMoved, HistoryPage, ItemDelete, ItemDeleteOutput, ItemGet, ItemGetOutput, ItemMove, ItemMoveOutput, ItemSetProps, ItemSetPropsOutput, JobCancel, JobInfo, JobList, JobListOutput, JobStatus, JobWait, ListCheckpoints, ListLocks, LockList, MediaImport, MediaImportOutput, MediaList, MediaListOutput, MediaRegister, MediaRegistered, MediaRemove, MediaRemoveOutput, ProjectClose, ProjectCloseOutput, ProjectDiscardRecovery, ProjectInfo, ProjectInfoOutput, ProjectNew, ProjectNewOutput, ProjectOpen, ProjectOpenOutput, ProjectRecover, ProjectRecoverOutput, ProjectRename, ProjectRenameOutput, ProjectSave, ProjectSaveAs, ProjectSaveOutput, Redo, Restore, Restored, TimelineGet, TimelineGetOutput, TimelineInsert, TimelineInsertOutput, TrackAdd, TrackAddOutput, TrackRemove, TrackRemoveOutput, TrackSet, TrackSetOutput, TxCancelled, TxCommitted, TxOpened, UiState, Undo, ViewGet, ViewSelect, ViewSet, ViewSetPlayhead, ViewSetZoom } from "./types.ts";
+import type { BeginTx, CancelTx, Checkpoint, CheckpointInfo, CheckpointList, ClipSplit, ClipSplitOutput, ClipTrim, ClipTrimOutput, CommitTx, ExportStart, ExportStartOutput, GetHistory, HistoryMoved, HistoryPage, ItemDelete, ItemDeleteOutput, ItemGet, ItemGetOutput, ItemMove, ItemMoveOutput, ItemSetProps, ItemSetPropsOutput, JobCancel, JobInfo, JobList, JobListOutput, JobStatus, JobWait, ListCheckpoints, ListLocks, LockList, MediaImport, MediaImportOutput, MediaList, MediaListOutput, MediaRegister, MediaRegistered, MediaRemove, MediaRemoveOutput, ProjectClose, ProjectCloseOutput, ProjectDiscardRecovery, ProjectInfo, ProjectInfoOutput, ProjectNew, ProjectNewOutput, ProjectOpen, ProjectOpenOutput, ProjectRecover, ProjectRecoverOutput, ProjectRename, ProjectRenameOutput, ProjectSave, ProjectSaveAs, ProjectSaveOutput, Redo, Restore, Restored, TimelineGet, TimelineGetOutput, TimelineInsert, TimelineInsertOutput, TrackAdd, TrackAddOutput, TrackRemove, TrackRemoveOutput, TrackSet, TrackSetOutput, TxCancelled, TxCommitted, TxOpened, UiState, Undo, ViewGet, ViewSelect, ViewSet, ViewSetPlayhead, ViewSetZoom } from "./types.ts";
 
 /** Commands and engine commands: name to input and output. */
 export type CommandMap = {
@@ -15,6 +15,7 @@ export type CommandMap = {
   "edit.redo": { input: Redo; output: HistoryMoved };
   "edit.restore": { input: Restore; output: Restored };
   "edit.undo": { input: Undo; output: HistoryMoved };
+  "export.start": { input: ExportStart; output: ExportStartOutput };
   "item.delete": { input: ItemDelete; output: ItemDeleteOutput };
   "item.move": { input: ItemMove; output: ItemMoveOutput };
   "item.set_props": { input: ItemSetProps; output: ItemSetPropsOutput };
