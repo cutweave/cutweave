@@ -39,7 +39,7 @@ FLOW_CRATES = {"cutweave-engine", "cutweave-cli"}
 # The desktop app, the editor and the packages it is built from (the UI kit among them).
 FLOW_PATHS = (
     "apps/desktop/", "packages/editor/", "packages/ui/", "packages/timeline/",
-    "packages/protocol/", "packages/tokens/", "design/",
+    "packages/protocol/", "packages/tokens/", "packages/preferences/", "design/",
 )
 FLOW_STEP = "just e2e-flows"
 
