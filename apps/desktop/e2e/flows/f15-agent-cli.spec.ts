@@ -11,6 +11,7 @@ import {
   cliBin,
   clickClip,
   createProject,
+  dirtyDot,
   editorCaughtUp,
   hasCli,
   hasRealEngine,
@@ -18,6 +19,7 @@ import {
   inspector,
   launchFlowApp,
   layout,
+  mediaCards,
   sec,
   sequence,
   shortcut,
@@ -109,6 +111,36 @@ test.describe("F15 an agent edits while the UI is open", () => {
       await importWithButton(app, page, [work.file("interview.mp4")]);
       await agentEdits(app, page, home);
       await snapshot(page, info, "agent edits");
+    } finally {
+      await close();
+      work.remove();
+    }
+  });
+
+  test("an agent opening another project switches the UI to it", async () => {
+    const info = test.info();
+    const work = workspace();
+    const { app, page, home, close } = await launchFlowApp(work);
+    try {
+      // A saved project with one clip of media, then a second, empty one in the window.
+      await createProject(app, page, "Saved by hand", work.dir);
+      await importWithButton(app, page, [work.file("interview.mp4"), work.file("logo.png")]);
+      await shortcut(app, "Control+S");
+      await expect(dirtyDot(page)).toBeHidden();
+      await createProject(app, page, "Second", work.dir);
+      await expect(mediaCards(page)).toHaveCount(0);
+
+      // The agent opens the first one: the window follows, title, bin and inspector.
+      await agent(app, home, {
+        cmd: "project.open",
+        args: { path: path.join(work.dir, "Saved by hand") },
+      });
+      await expect(page).toHaveTitle("Saved by hand — Cutweave");
+      await expect(mediaCards(page)).toHaveCount(2);
+      await editorCaughtUp(page);
+      await expect(page.getByTestId("project-resolution")).toBeVisible();
+      await expect(dirtyDot(page)).toBeHidden();
+      await snapshot(page, info, "agent opened a project");
     } finally {
       await close();
       work.remove();
