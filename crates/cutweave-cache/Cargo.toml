@@ -15,6 +15,15 @@ cutweave-model = { path = "../cutweave-model" }
 thiserror.workspace = true
 # `cache.sqlite`.
 rusqlite.workspace = true
+# The waveform PNG helper (WP-1D.06); already in the lockfile through cutweave-render.
+png = "0.18.1"
+
+[dev-dependencies]
+proptest.workspace = true
+
+[features]
+# Runs the corpus tests through the FFmpeg backend (docs/dev/ffmpeg.md); off by default.
+ffmpeg = ["cutweave-media/ffmpeg"]
 
 [lints]
 workspace = true
