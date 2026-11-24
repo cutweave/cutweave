@@ -1,8 +1,8 @@
 # ADR-0021: Agents choose among several engines by project, and default to the focused window's engine
 
-- **Status:** Proposed
+- **Status:** Accepted (product owner, 2026-11-24)
 - **Date:** 2026-11-24
-- **Deciders:** product owner (request, WP-1J.04), maintainers (accept)
+- **Deciders:** product owner (request and acceptance), WP-1J.04 (drafted), integrator (recorded)
 - **Supersedes:** none (extends the run-file of the launch protocol and the attach proxy of ADR-0009)
 - **Architecture refs:** `docs/01-architecture.md` §2, §6, §14; `docs/reference/launch-protocol.md` (The run-file); `docs/user-flows.md` F30
 
