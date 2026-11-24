@@ -6,11 +6,12 @@
 // Claude Code setup (the real `cutweave mcp --attach`) is listed under Connected agents while it is
 // connected; the folder is removed and the agents' next imports are refused with a message naming
 // the setting; the list survives a relaunch, and the relaunched engine lets agents use the folder.
-import { type ChildProcessWithoutNullStreams, execFile, spawn } from "node:child_process";
+import { type ChildProcessByStdio, execFile, spawn } from "node:child_process";
 import { copyFileSync, mkdtempSync, readdirSync, readFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { createInterface } from "node:readline";
+import type { Readable, Writable } from "node:stream";
 import { promisify } from "node:util";
 import type { ElectronApplication, Locator, Page } from "@playwright/test";
 import { expect, test } from "../fixtures.ts";
@@ -85,11 +86,11 @@ interface ToolResult {
 
 /** An MCP host's side of a stdio server: newline-delimited JSON-RPC (MCP 2025-11-25). */
 class McpAgent {
-  readonly #child: ChildProcessWithoutNullStreams;
+  readonly #child: ChildProcessByStdio<Writable, Readable, null>;
   readonly #waiting = new Map<number, (message: Record<string, unknown>) => void>();
   #next = 1;
 
-  private constructor(child: ChildProcessWithoutNullStreams) {
+  private constructor(child: ChildProcessByStdio<Writable, Readable, null>) {
     this.#child = child;
     createInterface({ input: child.stdout }).on("line", (line) => {
       const message = JSON.parse(line) as Record<string, unknown>;
