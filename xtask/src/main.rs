@@ -1,9 +1,10 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
-//! `cargo xtask <ci|check-wasm|check-deps|license-headers|tokens|fetch-corpus|corpus-verify|bench|bench-check|gen>`: developer automation (WP-0A.01).
+//! `cargo xtask <ci|check-wasm|check-deps|license-headers|tokens|fetch-corpus|corpus-verify|bench|bench-check|gen|golden|golden-projects>`: developer automation (WP-0A.01).
 
 mod bench;
 mod corpus;
 mod deps;
+mod golden;
 mod headers;
 mod schema_gen;
 mod tokens;
@@ -45,6 +46,13 @@ COMMANDS:
     bench-check   <results.json> [--baseline <results.json>]: compare against bench/budgets.toml
     tokens        generate design tokens (CSS, Tailwind, TS, Rust); `tokens --check` verifies
     gen           [--check]: generate schema/ catalogs and docs/reference/commands.md; --check fails with a diff if committed files are stale
+    golden-projects
+                  build the CLI with FFmpeg, the synthetic sources and the golden projects into target/golden/
+    golden        [--adapter CHOICE]... [--all-adapters] [--update --i-know [--reason TEXT]]
+                  render the golden projects headless (default: the software adapter) and compare
+                  with testdata/golden/expected/<adapter>/ (needs . scripts/ffmpeg/env.sh)
+    golden --check-refs [--base REV] [--pr-labels A,B]
+                  the reference-update guard alone (testdata/golden/README.md)
     help          print this message";
 
 fn workspace_root() -> PathBuf {
@@ -151,6 +159,8 @@ fn main() -> ExitCode {
         Some("bench-check") => bench::bench_check(&workspace_root(), &args[1..]),
         Some("tokens") => tokens::run(&workspace_root(), &args[1..]),
         Some("gen") => schema_gen::run(&workspace_root(), &args[1..]),
+        Some("golden") => golden::golden(&workspace_root(), &args[1..]),
+        Some("golden-projects") => golden::golden_projects(&workspace_root(), &args[1..]),
         Some("help" | "--help" | "-h") | None => {
             println!("{HELP}");
             true
