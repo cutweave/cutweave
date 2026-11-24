@@ -224,6 +224,46 @@ describe("startEngineRuntime", () => {
     await runtime.stop();
   });
 
+  it("tells the engine this computer's cache and hardware preferences after every handshake and when they change (WP-1D.08)", async () => {
+    const { engine, timers, stores, runtime, errors } = setup();
+    const set = (change: Record<string, unknown>) =>
+      stores.prefs.setState({ values: { ...stores.prefs.getState().values, ...change } });
+    set({ "performance.hw_decode": "off", "cache.thumbnails_limit": 1_073_741_824 });
+    await runtime.connection.whenReady();
+    await flushPromises(50);
+    const sent = (index: number, method: string) =>
+      (engine.sockets[index]?.sent ?? []).filter((m) => m.method === method).map((m) => m.params);
+    expect(sent(0, "media.set_decode_policy")).toMatchObject([{ hw: "off" }]);
+    expect(sent(0, "media.set_cache_config")).toMatchObject([
+      {
+        limits: { thumbnails: 1_073_741_824, waveforms: 536_870_912 },
+        frame_cache_bytes: 0,
+      },
+    ]);
+    set({ "performance.frame_memory": 2_147_483_648 });
+    await flushPromises(50);
+    expect(sent(0, "media.set_cache_config").at(-1)).toMatchObject({
+      frame_cache_bytes: 2_147_483_648,
+    });
+    set({ "performance.hw_decode": "auto" });
+    await flushPromises(50);
+    expect(sent(0, "media.set_decode_policy").at(-1)).toMatchObject({ hw: "auto" });
+    // The cache folder is main's (a launch flag), not an engine command.
+    const before = sent(0, "media.set_cache_config").length;
+    set({ "cache.folder": "D:\\cache" });
+    await flushPromises(50);
+    expect(sent(0, "media.set_cache_config")).toHaveLength(before);
+    // A new engine launch gets all of it again.
+    engine.last.serverClose(1006);
+    timers.advance(250);
+    await runtime.connection.whenReady();
+    await flushPromises(50);
+    expect(sent(1, "media.set_decode_policy")).toMatchObject([{ hw: "auto" }]);
+    expect(sent(1, "media.set_cache_config")).toHaveLength(1);
+    expect(errors).toEqual([]);
+    await runtime.stop();
+  });
+
   it("bridgeFromWindow finds window.cutweave.engine or reports none", () => {
     const engine: EngineBridge = { getConnection: () => Promise.resolve(null) };
     expect(bridgeFromWindow({ cutweave: { engine } })).toBe(engine);

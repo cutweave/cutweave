@@ -113,9 +113,12 @@ describe("Settings: the frame", () => {
       "General:true",
       "Appearance:false",
       "Saving and backups:false",
+      "Cache and storage:false",
+      "Performance and hardware:false",
       "Advanced:false",
     ]);
     expect(within(settings).getByText("Preferences")).toBeTruthy();
+    expect(within(settings).getByText("This computer")).toBeTruthy();
     expect(within(settings).getByRole("heading", { name: "General" })).toBeTruthy();
     expect(document.activeElement).toBe(
       within(settings).getByRole("searchbox", { name: "Search settings" }),
@@ -245,7 +248,8 @@ describe("Settings: search", () => {
     expect(within(group).getByRole("radiogroup", { name: "Save at least every" })).toBeTruthy();
     expect(within(group).getByRole("radiogroup", { name: "Backups to keep" })).toBeTruthy();
     expect(within(group).getByText("auto", { selector: "mark" })).toBeTruthy();
-    expect(within(settings).getByText("3 found")).toBeTruthy();
+    // Two rows of Performance and hardware say "Auto" in their descriptions.
+    expect(within(settings).getByText("5 found")).toBeTruthy();
     expect(within(settings).getByRole("heading", { name: "Results for “auto”" })).toBeTruthy();
     // No page is selected while the results show.
     for (const tab of within(settings).getAllByRole("tab")) {
@@ -421,6 +425,202 @@ describe("Settings: General actions", () => {
   });
 });
 
+const MB = 1_048_576;
+const GB = 1_073_741_824;
+
+/** An engine that answers the "This computer" pages' reads and records what the UI asks. */
+function fakeEngine(initial: { thumbnails: number; waveforms: number; gpu?: boolean }) {
+  const used = { thumbnails: initial.thumbnails, waveforms: initial.waveforms };
+  const calls: [string, unknown][] = [];
+  const rpc = {
+    call: vi.fn(async (method: string, params: unknown) => {
+      calls.push([method, params]);
+      switch (method) {
+        case "media.cache_status":
+          return {
+            folder: "C:\\Users\\me\\AppData\\Local\\cutweave",
+            kinds: [
+              { kind: "thumbnails", bytes: used.thumbnails, limit_bytes: 2 * GB, entries: 4 },
+              { kind: "waveforms", bytes: used.waveforms, limit_bytes: 512 * MB, entries: 1 },
+            ],
+            decode_hw: "auto",
+            frame_cache_bytes: GB,
+          };
+        case "media.clear_cache":
+          for (const kind of (params as { kinds: ("thumbnails" | "waveforms")[] }).kinds) {
+            used[kind] = 0;
+          }
+          return { cleared: [] };
+        case "media.capabilities":
+          return {
+            available: true,
+            codecs: [],
+            hw_encode: [
+              { device: "cuda", codec: "h264", implementation: "h264_nvenc" },
+              { device: "amf", codec: "h264", implementation: "h264_amf" },
+            ],
+            hw_decode: [],
+            ...(initial.gpu === false
+              ? {}
+              : {
+                  gpu: {
+                    name: "Test GPU 3000",
+                    backend: "vulkan",
+                    device_type: "DiscreteGpu",
+                    software: false,
+                  },
+                }),
+          };
+        default:
+          return {};
+      }
+    }),
+  };
+  engineStore.setState({ ...initialEngineState, connection: "ready", rpc: rpc as never });
+  return { calls, rpc };
+}
+
+describe("Settings > Cache and storage and Performance and hardware (WP-1D.08)", () => {
+  async function openPage(name: string) {
+    const user = userEvent.setup();
+    render_();
+    const settings = await dialog();
+    await user.click(within(settings).getByRole("tab", { name }));
+    return { user, settings };
+  }
+
+  it("shows the cache folder, each cache's usage and limit, and clears one kind", async () => {
+    const engine = fakeEngine({ thumbnails: 5 * MB, waveforms: 300 * 1024 });
+    const { user, settings } = await openPage("Cache and storage");
+    // No folder chosen: the folder the engine is using is shown.
+    expect(
+      (within(settings).getByRole("textbox", { name: "Cache folder" }) as HTMLInputElement).value,
+    ).toBe("C:\\Users\\me\\AppData\\Local\\cutweave");
+    await waitFor(() =>
+      expect(within(settings).getByTestId("cache-usage-thumbnails").textContent).toBe(
+        "5 MB in use",
+      ),
+    );
+    expect(within(settings).getByTestId("cache-usage-waveforms").textContent).toBe("300 KB in use");
+    const limit = within(settings).getByRole("combobox", {
+      name: "Limit for Thumbnails and filmstrips",
+    }) as HTMLSelectElement;
+    expect(limit.value).toBe(String(2 * GB));
+    // Picking another limit writes the machine preference (the runtime sends it to the engine).
+    await user.selectOptions(limit, String(GB));
+    expect(prefsStore.getState().values["cache.thumbnails_limit"]).toBe(GB);
+    expect(current.calls).toContainEqual(["set", "cache.thumbnails_limit", GB]);
+    // "Clear thumbnails" empties that cache only.
+    await user.click(within(settings).getByRole("button", { name: "Clear thumbnails" }));
+    expect(engine.calls).toContainEqual(["media.clear_cache", { kinds: ["thumbnails"] }]);
+    await waitFor(() =>
+      expect(within(settings).getByTestId("cache-usage-thumbnails").textContent).toBe("Empty"),
+    );
+    expect(within(settings).getByTestId("cache-usage-waveforms").textContent).toBe("300 KB in use");
+    expect(
+      (within(settings).getByRole("button", { name: "Clear thumbnails" }) as HTMLButtonElement)
+        .disabled,
+    ).toBe(true);
+  });
+
+  it("clears every cache after a confirmation, and keeps them when the person says no", async () => {
+    const engine = fakeEngine({ thumbnails: 2 * MB, waveforms: 2 * MB });
+    const { user, settings } = await openPage("Cache and storage");
+    await user.click(within(settings).getByRole("button", { name: "Clear all caches\u2026" }));
+    await user.click(await screen.findByRole("button", { name: "Cancel" }));
+    expect(engine.calls.some(([m]) => m === "media.clear_cache")).toBe(false);
+    await user.click(within(settings).getByRole("button", { name: "Clear all caches\u2026" }));
+    await user.click(await screen.findByRole("button", { name: "Clear all caches" }));
+    await waitFor(() =>
+      expect(engine.calls).toContainEqual([
+        "media.clear_cache",
+        { kinds: ["thumbnails", "waveforms"] },
+      ]),
+    );
+    await waitFor(() =>
+      expect(within(settings).getByTestId("cache-usage-waveforms").textContent).toBe("Empty"),
+    );
+  });
+
+  it("chooses another cache folder with the OS picker and says it applies at the next start", async () => {
+    fakeEngine({ thumbnails: 0, waveforms: 0 });
+    (globalThis as { cutweave?: unknown }).cutweave = {
+      dialog: { openProjectFolder: async () => "D:\\Cutweave cache" },
+    };
+    try {
+      const { user, settings } = await openPage("Cache and storage");
+      await user.click(within(settings).getByRole("button", { name: "Choose\u2026" }));
+      await waitFor(() =>
+        expect(
+          (within(settings).getByRole("textbox", { name: "Cache folder" }) as HTMLInputElement)
+            .value,
+        ).toBe("D:\\Cutweave cache"),
+      );
+      expect(current.calls).toContainEqual(["set", "cache.folder", "D:\\Cutweave cache"]);
+      const row = settings.querySelector('[data-setting="cache.folder"]');
+      expect(row?.textContent).toContain("Applies at the next start");
+      // Back to the default folder.
+      await user.click(within(settings).getByRole("button", { name: "Reset Cache folder" }));
+      expect(prefsStore.getState().values["cache.folder"]).toBe("");
+    } finally {
+      delete (globalThis as { cutweave?: unknown }).cutweave;
+    }
+  });
+
+  it("offers hardware decoding Auto or Off and the memory for decoded frames", async () => {
+    const { user, settings } = await openPage("Performance and hardware");
+    fakeEngine({ thumbnails: 0, waveforms: 0 });
+    const hw = within(settings).getByRole("radiogroup", { name: "Hardware decoding" });
+    expect(radios(hw)).toEqual(["Auto:true", "Off:false"]);
+    await user.click(within(hw).getByRole("radio", { name: "Off" }));
+    expect(prefsStore.getState().values["performance.hw_decode"]).toBe("off");
+    expect(current.calls).toContainEqual(["set", "performance.hw_decode", "off"]);
+    const memory = within(settings).getByRole("combobox", {
+      name: "Memory for decoded frames",
+    }) as HTMLSelectElement;
+    expect([...memory.options].map((o) => o.textContent)).toEqual([
+      "Auto",
+      "512 MB",
+      "1 GB",
+      "2 GB",
+      "4 GB",
+    ]);
+    expect(memory.value).toBe("0");
+    await user.selectOptions(memory, String(2 * GB));
+    expect(prefsStore.getState().values["performance.frame_memory"]).toBe(2 * GB);
+  });
+
+  it("names the GPU in use and the hardware encoders found", async () => {
+    fakeEngine({ thumbnails: 0, waveforms: 0 });
+    const { settings } = await openPage("Performance and hardware");
+    await waitFor(() =>
+      expect(within(settings).getByTestId("gpu-name").textContent).toBe("Test GPU 3000 (vulkan)"),
+    );
+    expect(within(settings).getByTestId("hw-encode").textContent).toBe("h264_nvenc, h264_amf");
+    expect(within(settings).getByTestId("hw-decode").textContent).toBe("None found");
+  });
+
+  it("says when no graphics adapter is in use", async () => {
+    fakeEngine({ thumbnails: 0, waveforms: 0, gpu: false });
+    const { settings } = await openPage("Performance and hardware");
+    await waitFor(() =>
+      expect(within(settings).getByTestId("gpu-name").textContent).toContain("None in use"),
+    );
+  });
+
+  it("disables the engine rows and says so while no engine is connected", async () => {
+    engineStore.setState({ ...initialEngineState, connection: "none" });
+    const { settings } = await openPage("Performance and hardware");
+    const row = settings.querySelector('[data-setting="performance.hw_decode"]');
+    expect(row?.textContent).toContain("Needs the engine");
+    expect(
+      within(settings)
+        .getAllByRole("radio")
+        .every((r) => (r as HTMLButtonElement).disabled),
+    ).toBe(true);
+  });
+});
+
 describe("Settings: deep link", () => {
   it("opens on the page of a row and focuses it", async () => {
     act(() => settingsStore.getState().setOpen(false));
@@ -442,7 +642,14 @@ describe("Settings: accessibility", () => {
     const user = userEvent.setup();
     render_();
     const settings = await dialog();
-    for (const page of ["General", "Appearance", "Saving and backups", "Advanced"]) {
+    for (const page of [
+      "General",
+      "Appearance",
+      "Saving and backups",
+      "Cache and storage",
+      "Performance and hardware",
+      "Advanced",
+    ]) {
       await user.click(within(settings).getByRole("tab", { name: page }));
       const results = await axe.run(document.body, {
         rules: { "color-contrast": { enabled: false } },

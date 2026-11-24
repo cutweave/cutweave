@@ -74,7 +74,9 @@
       "general": "General",
       "appearance": "Appearance",
       "saving": "Saving and backups",
-      "advanced": "Advanced"
+      "advanced": "Advanced",
+      "cache": "Cache and storage",
+      "performance": "Performance and hardware"
     },
     "notices": {
       "unreadable": "That file could not be read.",
@@ -176,7 +178,80 @@
         "description": "Show the folder with Cutweave's log files, for bug reports.",
         "keywords": "diagnostics, debug, errors, support, show, open",
         "button": "Open logs folder"
+      },
+      "cacheFolder": {
+        "label": "Cache folder",
+        "description": "Where thumbnails, filmstrips, waveforms and frame indexes are kept. Projects and their media are never stored here. The old folder is left for you to delete.",
+        "keywords": "location, directory, path, disk, drive, move, temporary, storage",
+        "choose": "Choose\u2026"
+      },
+      "thumbnailsLimit": {
+        "label": "Thumbnails and filmstrips",
+        "description": "The most disk space they may use. The oldest are deleted first, and they are drawn again when needed.",
+        "keywords": "thumbnail, filmstrip, preview images, disk, space, size, limit, cache, clear"
+      },
+      "waveformsLimit": {
+        "label": "Waveforms",
+        "description": "The most disk space the sound pictures of your clips may use. Lowering it deletes the oldest at once.",
+        "keywords": "waveform, audio, sound, peaks, disk, space, size, limit, cache, clear"
+      },
+      "clearCaches": {
+        "label": "Clear all caches",
+        "description": "Delete every thumbnail, filmstrip and waveform. Projects and generated media are not touched, and the caches fill again as you work.",
+        "keywords": "delete, empty, free space, reset, purge, cache, storage",
+        "button": "Clear all caches\u2026",
+        "confirmTitle": "Clear all caches?",
+        "confirmMessage": "Every thumbnail, filmstrip and waveform is deleted and drawn again when needed. Your projects, your media and generated media are not touched.",
+        "confirm": "Clear all caches"
+      },
+      "hwDecode": {
+        "label": "Hardware decoding",
+        "description": "Let the graphics card decode video in the preview when it can. Turn it off if the preview shows glitches. Exports always decode in software.",
+        "keywords": "gpu, nvdec, d3d11va, videotoolbox, vaapi, acceleration, decode, glitch, h264, hevc, playback",
+        "auto": "Auto",
+        "off": "Off"
+      },
+      "frameMemory": {
+        "label": "Memory for decoded frames",
+        "description": "How much memory the preview may use to keep frames it has already decoded. Auto uses the smaller of 1 GB and a quarter of this computer's memory.",
+        "keywords": "ram, memory, frame cache, preview, playback, scrub, performance",
+        "auto": "Auto"
+      },
+      "gpu": {
+        "label": "Graphics adapter",
+        "description": "The graphics card (or software renderer) Cutweave draws the preview and exports with.",
+        "keywords": "gpu, graphics, card, adapter, renderer, vulkan, dx12, metal, driver"
+      },
+      "hwEncoders": {
+        "label": "Hardware encoders found",
+        "description": "The video encoders on this computer that Export can use when hardware encoding is on.",
+        "keywords": "nvenc, amf, quick sync, videotoolbox, vaapi, encode, export, gpu"
+      },
+      "hwDecoders": {
+        "label": "Hardware decoders found",
+        "description": "The decoding paths on this computer that passed a test. The preview uses one when hardware decoding is Auto.",
+        "keywords": "nvdec, cuda, d3d11va, videotoolbox, vaapi, decode, gpu"
       }
+    },
+    "cache": {
+      "reading": "Reading\u2026",
+      "empty": "Empty",
+      "inUse": "{{used}} in use",
+      "thumbnails": "Thumbnails and filmstrips",
+      "waveforms": "Waveforms",
+      "limitOf": "Limit for {{name}}",
+      "clearThumbnails": "Clear thumbnails",
+      "clearWaveforms": "Clear waveforms",
+      "cleared": "{{name}} cleared.",
+      "clearFailed": "Could not clear {{name}}.",
+      "clearedAll": "All caches cleared.",
+      "clearAllFailed": "Could not clear all caches."
+    },
+    "performance": {
+      "reading": "Reading\u2026",
+      "noGpu": "None in use (the CPU draws, or the graphics card is still starting)",
+      "softwareGpu": "{{name}} (software rendering)",
+      "noneFound": "None found"
     },
     "resultCount": "{{count}} found"
   },

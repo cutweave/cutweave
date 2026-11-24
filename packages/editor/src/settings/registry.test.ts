@@ -54,11 +54,13 @@ describe("the registry and the catalog", () => {
     expect(new Set(ids).size).toBe(ids.length);
   });
 
-  it("ships General, Appearance, Saving and backups and Advanced, in the catalog's order", () => {
+  it("ships its pages in the catalog's order", () => {
     expect(settingsPages().map((p) => p.id)).toEqual([
       "general",
       "appearance",
       "saving",
+      "cache",
+      "performance",
       "advanced",
     ]);
   });
@@ -100,6 +102,8 @@ describe("registering pages and rows", () => {
       "appearance",
       "export",
       "saving",
+      "cache",
+      "performance",
       "advanced",
     ]);
     offs.push(
@@ -111,6 +115,8 @@ describe("registering pages and rows", () => {
       "export",
       "saving",
       "ai",
+      "cache",
+      "performance",
       "advanced",
     ]);
   });

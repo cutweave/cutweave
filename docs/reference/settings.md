@@ -248,20 +248,20 @@ Cutweave collects no usage analytics, so there is no setting for it (product bri
 
 | Key | Setting | Default | Scope | Applied by | Agents | Ships in |
 |---|---|---|---|---|---|---|
-| `cache.folder` | Cache folder (applies at the next start) | The OS cache folder | Machine | Engine at start (`--cache-dir`) | Read | WP-1D.08 |
-| `cache.thumbnails_limit` | Thumbnails and filmstrips | 2 GiB | Machine | Engine (UI-only) | Read | WP-1D.08 |
-| `cache.waveforms_limit` | Waveforms | 512 MiB | Machine | Engine (UI-only) | Read | WP-1D.08 |
+| `cache.folder` | Cache folder, chosen with the OS folder picker (applies at the next start; the old folder is left for the person to delete) | The OS cache folder | Machine | Main (`--cache-dir` at engine start) | Read (`media.cache_status`) | WP-1D.08 |
+| `cache.thumbnails_limit` | Thumbnails and filmstrips: 512 MiB, 1, 2, 5, 10 or 25 GiB (lowering it deletes the oldest at once) | 2 GiB | Machine | Engine (UI-only, `media.set_cache_config`) | Read | WP-1D.08 |
+| `cache.waveforms_limit` | Waveforms: 128, 256, 512 MiB, 1 or 2 GiB | 512 MiB | Machine | Engine (UI-only, `media.set_cache_config`) | Read | WP-1D.08 |
 | `cache.proxies_limit` | Proxies | 50 GiB | Machine | Engine (UI-only) | Read | WP-2F.03 |
 | `cache.render_limit` | Background renders | 20 GiB | Machine | Engine (UI-only) | Read | WP-2J.09 |
-| — | Usage per kind, Clear one kind, Clear all | — | — | Engine (UI-only) | Read (usage) | WP-1D.08 |
+| — | Usage per kind, Clear one kind, Clear all (asks first) | — | — | Engine (UI-only, `media.clear_cache`) | Read (usage) | WP-1D.08 |
 
 ### Performance and hardware (this computer)
 
 | Key | Setting | Default | Scope | Applied by | Agents | Ships in |
 |---|---|---|---|---|---|---|
-| `performance.hw_decode` | Hardware decoding: auto or off | Auto | Machine | Engine (UI-only) | Read | WP-1D.08 |
-| `performance.frame_memory` | Memory for decoded frames | Auto (the smaller of 1 GiB and a quarter of RAM) | Machine | Engine (UI-only) | Read | WP-1D.08 |
-| — | GPU in use and hardware encoders found (information) | — | — | — | Read | WP-1D.08 |
+| `performance.hw_decode` | Hardware decoding: auto or off (applies to decoders opened from then on; open pools reopen on their next seek) | Auto | Machine | Engine (UI-only, `media.set_decode_policy`) | Read | WP-1D.08 |
+| `performance.frame_memory` | Memory for decoded frames: Auto, 512 MiB, 1, 2 or 4 GiB | Auto (the smaller of 1 GiB and a quarter of RAM) | Machine | Engine (UI-only, `media.set_cache_config`) | Read | WP-1D.08 |
+| — | GPU in use, hardware encoders and hardware decoders found (information) | — | — | — | Read (`media.capabilities`) | WP-1D.08 |
 | `performance.proxy_jobs` | Proxy jobs at once | 2 | Machine | Engine (UI-only) | Read | WP-2F.03 |
 | `performance.background_delay` | Start background rendering after this much idle time | 1.5 s | Machine | Engine (UI-only) | Read | WP-2J.09 |
 | `performance.pause_on_battery` | Pause background work on battery | On | Machine | Engine (UI-only) | Read | WP-2J.09 |
