@@ -396,7 +396,7 @@ All surfaces live on **one local server per engine** (axum on `127.0.0.1`, rando
   - **Colour:** the pixels are sRGB-encoded while the file is tagged BT.709; that decision is still open (#110).
 - **Hardware encoders (decided in WP-1E.02 and WP-1E.03b).**
   - **Policy:** `EncodeSpec.hw` is `Auto`, `Off` or `Force(name)`; `export.start{hw}` maps `"auto"`, `"off"` and `{"force": "<implementation>"}` onto it. A forced name must be one of `Capabilities::hw_encode` (`Invalid` at `/hw/force` otherwise) and never falls back.
-  - **Order under `Auto`:** NVENC, AMF, QSV on Windows; VideoToolbox on macOS; VA-API, then NVENC, on Linux. The first encoder that opens wins. The probe runs once per process and is cached.
+  - **Order under `Auto`:** NVENC, AMF, QSV on Windows; VideoToolbox on macOS; NVENC, QSV, VA-API on Linux. The first encoder that opens wins. The probe runs once per process and is cached.
   - **Fallback:** an encoder that fails to open falls back to x264 at once. One that fails mid-stream makes the export start again in software from frame 0 (`encode_with_fallback`): progress drops to 0 once and the status says so. The final message names the encoder used. Cancelling is never retried.
   - **Quality:** the presets give a rate-control value (`Crf` 28 / 23 / 20 for low / medium / high), which `cutweave-media` maps onto each encoder's scale (NVENC `cq`, AMF `qp`, …). The mapping and measured PSNR are in [export-quality.md](reference/export-quality.md).
   - **Pipeline:** decoding, GPU rendering and encoding run on three threads joined by bounded queues (`PIPELINE_DEPTH` frames ahead). Determinism tests pin `hw: "off"` and one encoder thread.
