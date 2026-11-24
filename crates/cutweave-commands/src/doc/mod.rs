@@ -56,8 +56,8 @@ pub use history::{
     ActorStacks, CheckpointId, CheckpointInfo, DEFAULT_HISTORY_BYTES, DEFAULT_HISTORY_ENTRIES,
     DEFAULT_HISTORY_PAGE, DEFAULT_UNDO_DEPTH, EntryCause, EntryStatus, HistoryChange,
     HistoryChanged, HistoryEntry, HistoryLimits, HistoryMoved, HistoryPage, HistoryScope,
-    HistoryUsage, MAX_CHECKPOINT_NAME_CHARS, MAX_CHECKPOINT_NOTE_CHARS, MAX_CHECKPOINTS,
-    MAX_HISTORY_PAGE, MAX_NAMED_CHECKPOINTS, Restored, RevertedChanges, StackTop,
+    HistoryUsage, LatestStacks, LatestTop, MAX_CHECKPOINT_NAME_CHARS, MAX_CHECKPOINT_NOTE_CHARS,
+    MAX_CHECKPOINTS, MAX_HISTORY_PAGE, MAX_NAMED_CHECKPOINTS, Restored, RevertedChanges, StackTop,
 };
 pub use identity::{
     Actor, ActorCtx, ActorError, ConnId, MAX_AGENT_LABEL_CHARS, MAX_PLUGIN_ID_CHARS,

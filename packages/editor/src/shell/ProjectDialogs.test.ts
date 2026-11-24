@@ -4,6 +4,7 @@
 // new project, the read-only banner, the top bar's undo labels and the keyboard shortcuts. The
 // engine is a recording fake; `session/session.integration.test.ts` runs the same flows on a real
 // engine.
+import { RpcError } from "@cutweave/protocol";
 import { TooltipProvider } from "@cutweave/ui";
 import { act, cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
@@ -228,7 +229,14 @@ describe("top bar", () => {
     cleanup();
 
     sessionStore.setState({
-      stacks: { undoDepth: 2, redoDepth: 1, nextUndo: "clip.split", nextRedo: "Move clip" },
+      stacks: {
+        undoDepth: 2,
+        redoDepth: 1,
+        nextUndo: "clip.split",
+        nextRedo: "Move clip",
+        nextUndoActor: "user",
+        nextRedoActor: "user",
+      },
     });
     render(wrap(h(TopBar)));
     expect(
@@ -312,7 +320,14 @@ describe("keyboard shortcuts of the menu bar (WP-1M.09)", () => {
     setPlatform("Win32");
     sessionStore.setState({
       path: "C:\\p\\Film\\Film.cutweave",
-      stacks: { undoDepth: 1, redoDepth: 1, nextUndo: "Move clip", nextRedo: "Trim clip" },
+      stacks: {
+        undoDepth: 1,
+        redoDepth: 1,
+        nextUndo: "Move clip",
+        nextRedo: "Trim clip",
+        nextUndoActor: "user",
+        nextRedoActor: "user",
+      },
     });
     render(wrap(h(Wired)));
     fireEvent.keyDown(window, { key: "z", ctrlKey: true });
@@ -323,9 +338,82 @@ describe("keyboard shortcuts of the menu bar (WP-1M.09)", () => {
     expect(engine.names()).toEqual(["edit.undo", "edit.redo", "edit.redo", "project.save"]);
   });
 
+  it("Undo and Redo ask for anyone's latest change (ADR-0019)", async () => {
+    setPlatform("Win32");
+    sessionStore.setState({
+      path: "C:pFilmFilm.cutweave",
+      stacks: {
+        undoDepth: 1,
+        redoDepth: 1,
+        nextUndo: "Insert clip",
+        nextRedo: "Trim clip",
+        nextUndoActor: "agent:claude",
+        nextRedoActor: "user",
+      },
+    });
+    render(wrap(h(Wired)));
+    fireEvent.keyDown(window, { key: "z", ctrlKey: true });
+    fireEvent.keyDown(window, { key: "y", ctrlKey: true });
+    await waitFor(() => expect(engine.names()).toHaveLength(2));
+    expect(engine.calls.map((c) => c.input)).toEqual([{ actor: "*" }, { actor: "*" }]);
+  });
+
+  it("names the agent on the Undo button when it made the latest change", () => {
+    cleanup();
+    sessionStore.setState({
+      stacks: {
+        undoDepth: 1,
+        redoDepth: 0,
+        nextUndo: "Insert clip",
+        nextRedo: null,
+        nextUndoActor: "agent:claude",
+        nextRedoActor: null,
+      },
+    });
+    render(wrap(h(TopBar)));
+    expect(screen.getByRole("button", { name: "Undo Insert clip (Claude)" })).toBeTruthy();
+  });
+
+  it("explains a refused Undo in plain words", async () => {
+    setPlatform("Win32");
+    sessionStore.setState({
+      path: "C:pFilmFilm.cutweave",
+      stacks: {
+        undoDepth: 1,
+        redoDepth: 0,
+        nextUndo: "Import media",
+        nextRedo: null,
+        nextUndoActor: "user",
+        nextRedoActor: null,
+      },
+    });
+    engine.reject(
+      "edit.undo",
+      new RpcError("conflict", "conflict (history_target_modified): later edits", undefined, {
+        reason: "history_target_modified",
+      }),
+    );
+    render(wrap(h(Wired)));
+    fireEvent.keyDown(window, { key: "z", ctrlKey: true });
+    await waitFor(() => expect(toastStore.getState().notices).toHaveLength(1));
+    const notice = toastStore.getState().notices[0];
+    expect(notice?.title).toBe("Nothing was undone");
+    expect(notice?.message).toBe(
+      "Import media could not be undone because later edits changed the same clips or media. Undo those first.",
+    );
+    expect(notice?.message).not.toMatch(/history_target_modified/);
+  });
+
   it("leaves Ctrl+Z to a text field that has the focus", async () => {
     sessionStore.setState({
-      stacks: { undoDepth: 1, redoDepth: 0, nextUndo: "Move clip", nextRedo: null },
+      stacks: {
+        undoDepth: 1,
+        redoDepth: 0,
+        nextUndo: "Move clip",
+        nextRedo: null,
+        nextUndoActor: "user",
+        nextRedoActor: null,
+      },
     });
     render(wrap(h(Wired)));
     const field = screen.getByRole("textbox", { name: "Field" });
@@ -382,7 +470,14 @@ describe("keyboard shortcuts of the menu bar (WP-1M.09)", () => {
     resetProjectController();
     sessionStore.setState({
       path: "C:\\p\\Film\\Film.cutweave",
-      stacks: { undoDepth: 1, redoDepth: 0, nextUndo: "Move clip", nextRedo: null },
+      stacks: {
+        undoDepth: 1,
+        redoDepth: 0,
+        nextUndo: "Move clip",
+        nextRedo: null,
+        nextUndoActor: "user",
+        nextRedoActor: null,
+      },
     });
     render(wrap(h(Wired)));
     fireEvent.keyDown(window, { key: "z", ctrlKey: true });
@@ -404,7 +499,14 @@ describe("keyboard shortcuts of the menu bar (WP-1M.09)", () => {
     resetProjectController();
     sessionStore.setState({
       path: "C:\\p\\Film\\Film.cutweave",
-      stacks: { undoDepth: 1, redoDepth: 0, nextUndo: "Move clip", nextRedo: null },
+      stacks: {
+        undoDepth: 1,
+        redoDepth: 0,
+        nextUndo: "Move clip",
+        nextRedo: null,
+        nextUndoActor: "user",
+        nextRedoActor: null,
+      },
     });
     render(wrap(h(Wired)));
     fireEvent.keyDown(window, { key: "z", metaKey: true });

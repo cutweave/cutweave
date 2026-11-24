@@ -2248,6 +2248,7 @@ impl DocState {
             entries,
             next_cursor: next.map(|seq| format!("h_{seq}")),
             stacks: self.history.all_stacks(),
+            latest: self.history.latest(),
             rev: self.rev,
             committed_rev: self.committed_rev,
             usage: self.history.usage(),

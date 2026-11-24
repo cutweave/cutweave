@@ -17,6 +17,7 @@ import type { ToastStore } from "../state/toastStore.ts";
 import type { Translate } from "../timeline/errors.ts";
 import { type DesktopBridge, isSessionCommand, type SessionMenuCommand } from "./desktop.ts";
 import { asRpcError, describeProjectError } from "./errors.ts";
+import { stepName } from "./historyLabels.ts";
 import { hasUnsavedWork, type SessionStore } from "./sessionStore.ts";
 import {
   joinProjectPath,
@@ -164,6 +165,28 @@ export class ProjectController {
       tone: "danger",
       title: this.#deps.t(title),
       message: describeProjectError(failure, this.#deps.t),
+    });
+  }
+
+  /** A refused Undo or Redo: a conflict says in words what could not be done and why. */
+  #failHistory(kind: "undo" | "redo", error: unknown): void {
+    const failure = asRpcError(error);
+    if (failure.code !== "conflict" || failure.data?.reason !== "history_target_modified") {
+      this.#fail(kind === "undo" ? "projectUi.failed.undo" : "projectUi.failed.redo", error);
+      return;
+    }
+    const stacks = this.#deps.session.getState().stacks;
+    const step =
+      kind === "undo"
+        ? stepName(stacks.nextUndo ?? "", stacks.nextUndoActor, this.#deps.t)
+        : stepName(stacks.nextRedo ?? "", stacks.nextRedoActor, this.#deps.t);
+    this.#deps.toasts.getState().push({
+      tone: "danger",
+      title: this.#deps.t(kind === "undo" ? "projectUi.failed.undo" : "projectUi.failed.redo"),
+      message: this.#deps.t(
+        kind === "undo" ? "projectUi.historyConflict.undo" : "projectUi.historyConflict.redo",
+        { step },
+      ),
     });
   }
 
@@ -436,10 +459,10 @@ export class ProjectController {
   async undo(): Promise<boolean> {
     if (this.#deps.session.getState().stacks.undoDepth === 0) return false;
     try {
-      await this.#call("edit.undo", {});
+      await this.#call("edit.undo", { actor: "*" });
       return true;
     } catch (error) {
-      this.#fail("projectUi.failed.undo", error);
+      this.#failHistory("undo", error);
       return false;
     }
   }
@@ -447,10 +470,10 @@ export class ProjectController {
   async redo(): Promise<boolean> {
     if (this.#deps.session.getState().stacks.redoDepth === 0) return false;
     try {
-      await this.#call("edit.redo", {});
+      await this.#call("edit.redo", { actor: "*" });
       return true;
     } catch (error) {
-      this.#fail("projectUi.failed.redo", error);
+      this.#failHistory("redo", error);
       return false;
     }
   }

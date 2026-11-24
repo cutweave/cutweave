@@ -611,6 +611,11 @@ export type HistoryChanged = {
 	committed_rev: Rev,
 	/**  The actor's stacks afterwards. */
 	stacks: ActorStacks,
+	/**
+	 *  What `*` would undo and redo next afterwards, over every actor (ADR-0019). It can change
+	 *  whichever actor's stack moved.
+	 */
+	latest: LatestStacks,
 };
 
 /**  One logged transaction, as `edit.history` lists it. */
@@ -665,6 +670,8 @@ export type HistoryPage = {
 	next_cursor: string | null,
 	/**  Every actor with something to undo or redo. */
 	stacks: ActorStacks[],
+	/**  What `*` would undo and redo next, over every actor (ADR-0019). */
+	latest: LatestStacks,
 	/**  The live revision. */
 	rev: Rev,
 	/**  The committed revision. */
@@ -1120,6 +1127,31 @@ export type JobWait = {
  *  definition is used.
  */
 export type JsonValue = null | boolean | number | string | JsonValue[] | { [key in string]: JsonValue };
+
+/**
+ *  What `edit.undo{*}` and `edit.redo{*}` (anyone's latest change) would do: the shared view the
+ *  editor's Undo and Redo buttons use (ADR-0019).
+ */
+export type LatestStacks = {
+	/**  Entries `*` can undo, over every actor (0 disables Undo). */
+	undo_depth: number,
+	/**  Entries `*` can redo, over every actor (0 disables Redo). */
+	redo_depth: number,
+	/**  What `edit.undo{*}` would revert next. */
+	next_undo: LatestTop | null,
+	/**  What `edit.redo{*}` would re-apply next. */
+	next_redo: LatestTop | null,
+};
+
+/**  The next entry `edit.undo{*}` / `edit.redo{*}` would move, and whose it is. */
+export type LatestTop = {
+	/**  Its transaction. */
+	tx_id: TxId,
+	/**  Its label ("Undo <label>"). */
+	label: string,
+	/**  For undo, the actor that made the change; for redo, the actor that undid it. */
+	actor: Actor,
+};
 
 /**  Every checkpoint, oldest first. */
 export type ListCheckpoints = Record<string, never>;

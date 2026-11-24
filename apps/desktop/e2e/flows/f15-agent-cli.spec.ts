@@ -148,27 +148,23 @@ test.describe("F15 an agent edits while the UI is open", () => {
   });
 
   test("Ctrl+Z in the UI undoes the agent's change", async () => {
-    // Open question found by this flow (WP-1O.05), for the product owner: the flow catalog says
-    // Ctrl+Z in the UI undoes the agent's edit, but history is per actor (arch §5.2) and the
-    // editor's undo sends `edit.undo` without an actor, so it undoes the person's own last change.
-    // Here that is the import, which the agent's clip now uses: the engine refuses it and the
-    // person gets a raw conflict message ("Nothing was undone … history_target_modified …"),
-    // while the Undo button reads "Undo Import media". Needs a decision: the UI's undo takes
-    // anyone's latest change (`actor: "*"`), or a separate "undo the agent's change" action.
-    // Owner: packages/editor (WP-1M.07) with arch §5.2.
-    test.fixme(true, "the UI's Ctrl+Z only undoes the person's own changes (see the note)");
     const work = workspace();
     const { app, page, home, close } = await launchFlowApp(work);
     try {
       await createProject(app, page, "Agent undo", work.dir);
       await importWithButton(app, page, [work.file("interview.mp4")]);
       await agentEdits(app, page, home);
-      // Ctrl+Z in the UI: the agent's trim comes off, then its insert.
-      await expect(toolbar(page).getByRole("button", { name: /^Undo/ })).toBeEnabled();
+      // Ctrl+Z in the UI takes back the latest change, whoever made it (ADR-0019): the agent's
+      // trim comes off, then its insert. The Undo button names the agent before it is pressed.
+      const undo = toolbar(page).getByRole("button", { name: /^Undo/ });
+      await expect(undo).toHaveAccessibleName("Undo Trim clip (cli)");
       await shortcut(app, "Control+Z");
       await expect.poll(async () => (await layout(page))[0]?.clips).toEqual([[2, 10]]);
+      await expect(undo).toHaveAccessibleName("Undo Insert clip (cli)");
       await shortcut(app, "Control+Z");
       await expect.poll(async () => (await layout(page))[0]?.clips).toEqual([]);
+      // The person's own import is next, and nothing refuses it now that the clip is gone.
+      await expect(undo).toHaveAccessibleName("Undo Import media");
     } finally {
       await close();
       work.remove();
