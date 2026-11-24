@@ -96,6 +96,7 @@ function useConnectInfo(ctx: SettingsContext): AgentConnectInfo | null {
   const profile = ctx.values["agents.client_profile"];
   useEffect(() => {
     let live = true;
+    // Main builds the setups with the stored tool set: read them again when it changes.
     void profile;
     if (agents === undefined) {
       setInfo({ cliPath: null, setups: [] });
@@ -129,8 +130,11 @@ function AgentStatus({ ctx }: { ctx: SettingsContext }) {
   return (
     <div className="cw-agents__status" data-testid="agents-status">
       <StatusChip tone={why === null ? "success" : "warning"}>
-        {why === null ? ctx.t("settings.rows.agentStatus.ready") : why}
+        {why === null
+          ? ctx.t("settings.rows.agentStatus.chipReady")
+          : ctx.t("settings.rows.agentStatus.chipNot")}
       </StatusChip>
+      <span className="caption">{why ?? ctx.t("settings.rows.agentStatus.ready")}</span>
       {why === null ? (
         <span className="caption">{ctx.t("settings.rows.agentStatus.readyHint")}</span>
       ) : null}
