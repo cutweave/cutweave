@@ -233,7 +233,9 @@ test.describe("F20 agent folders and connections", () => {
       const copied = await app.evaluate(({ clipboard }) => clipboard.readText());
       expect(copied).toBe((await setup.textContent())?.trim());
       expect(copied.startsWith("claude mcp add cutweave -- ")).toBe(true);
-      const [command, ...args] = splitCommandLine(copied.replace("claude mcp add cutweave -- ", ""));
+      const [command, ...args] = splitCommandLine(
+        copied.replace("claude mcp add cutweave -- ", ""),
+      );
       expect(path.resolve(command ?? "")).toBe(path.resolve(cliBin));
       expect(args).toEqual(["mcp", "--attach"]);
       expect(copied).not.toMatch(/--pid|--port|token/i);
@@ -257,13 +259,17 @@ test.describe("F20 agent folders and connections", () => {
       await expect(mediaCard(page, "logo.png")).toBeVisible();
       await expectNotice(page, "Agent connected", "MCP client (agent:mcp)");
       settings = await openSettingsPage(page, app, "Agents and MCP");
-      const mcpRow = connectedList(settings).getByRole("listitem").filter({ hasText: "Agent: mcp" });
+      const mcpRow = connectedList(settings)
+        .getByRole("listitem")
+        .filter({ hasText: "Agent: mcp" });
       await expect(mcpRow).toBeVisible();
       await expect(mcpRow).toContainText("Last: media.import at");
       await snapshot(page, info, "connected agents");
 
       // The person removes the folder: the same open MCP session and the CLI are refused at once.
-      await folderList(settings).getByRole("button", { name: `Remove ${allowed}` }).click();
+      await folderList(settings)
+        .getByRole("button", { name: `Remove ${allowed}` })
+        .click();
       await expect(settings.getByText(`Agents can no longer use ${allowed}.`)).toBeVisible();
       const refused = await mcp.tool("media_import", { paths: [inFootage("music.wav")] });
       expect(refused.isError).toBe(true);
