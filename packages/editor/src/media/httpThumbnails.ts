@@ -6,8 +6,11 @@
 // - What: the poster at t = 0, 320 px wide (the one the import analysis caches, so it costs no
 //   decode), with `hash=` the asset's content hash: the URL names the content, the engine sends
 //   it as immutable, and a relink (new content) is a new URL.
-// - When: a video asks only once its frame index exists (`indexed` > 0); a still asks at once;
-//   sound has no picture and keeps the tile. Until a URL is signed the card keeps its tile.
+// - When: a video waits while its import analysis (frame index, then the poster) is running, so
+//   the poster is not decoded twice; otherwise it asks at once (the engine sends the cached poster,
+//   or decodes one), as for an asset analysed in an earlier session, where no `media.indexed`
+//   arrives. A still asks at once; sound has no picture and keeps the tile. Until a URL is signed
+//   the card keeps its tile.
 // - Signing: requests made while the panel renders are batched (256 a call); URLs are
 //   re-signed a few minutes before they expire. A failed signing waits before it is tried again.
 // - `onChange` runs when new URLs arrive, so the panel can ask again (`setThumbnailSource` with
@@ -39,6 +42,12 @@ export interface HttpThumbnailOptions {
   readonly contentHash: (id: MediaId) => string | null;
   /** New URLs arrived: the cards should ask again. */
   readonly onChange: () => void;
+  /**
+   * Whether the asset's import analysis (`index` or `thumbnails` job) is still running; a video
+   * waits for it instead of having its poster decoded twice. Without it a video waits for its
+   * first `media.indexed`.
+   */
+  readonly analysing?: (id: MediaId) => boolean;
   readonly now?: () => number;
   /** Runs the batched signing call (default: a microtask). */
   readonly schedule?: (run: () => void) => void;
@@ -70,7 +79,10 @@ export class HttpThumbnailSource implements ThumbnailSource {
 
   thumbnailFor(request: ThumbnailRequest): Thumbnail {
     if (request.kind === "audio" || request.kind === "sequence_ref") return PLACEHOLDER;
-    if (request.kind === "video" && request.indexed === 0) return PLACEHOLDER;
+    if (request.kind === "video" && request.indexed === 0) {
+      const analysing = this.#options.analysing;
+      if (analysing === undefined || analysing(request.id)) return PLACEHOLDER;
+    }
     const hash = this.#options.contentHash(request.id);
     if (hash === null) return PLACEHOLDER;
     const path = HttpThumbnailSource.path(request.id, hash);

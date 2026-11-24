@@ -80,7 +80,7 @@ describe("MediaHttp", () => {
 });
 
 describe("HttpThumbnailSource", () => {
-  function setup(hash: string | null = HASH) {
+  function setup(hash: string | null = HASH, analysing?: (id: MediaId) => boolean) {
     let now = 1_000_000;
     const sign = vi.fn(async (paths: readonly string[]) => ({
       urls: paths.map((p) => `http://e${p}&exp=1&sig=00`),
@@ -92,6 +92,7 @@ describe("HttpThumbnailSource", () => {
       contentHash: () => hash,
       onChange,
       now: () => now,
+      ...(analysing && { analysing }),
     });
     return {
       source,
@@ -118,6 +119,25 @@ describe("HttpThumbnailSource", () => {
     });
     await flush();
     expect(sign).not.toHaveBeenCalled();
+  });
+
+  it("a video analysed in an earlier session asks at once; one being analysed waits", async () => {
+    // Reopening a project: no `media.indexed` arrives for assets indexed before.
+    const busy = new Set(["v2"]);
+    const { source, sign } = setup(HASH, (id) => busy.has(id));
+    expect(source.thumbnailFor(req("v1", "video", 0))).toEqual({ kind: "placeholder" });
+    expect(source.thumbnailFor(req("v2", "video", 0))).toEqual({ kind: "placeholder" });
+    await flush();
+    expect(sign).toHaveBeenCalledTimes(1);
+    expect(sign.mock.calls[0]?.[0]).toEqual([
+      `/media/v1/thumb?t=0&w=${POSTER_WIDTH}&hash=blake3-fast%3Aabcd`,
+    ]);
+    expect(source.thumbnailFor(req("v1", "video", 0)).kind).toBe("image");
+    // Its analysis done, the other one asks too.
+    busy.clear();
+    source.thumbnailFor(req("v2", "video", 0));
+    await flush();
+    expect(sign).toHaveBeenCalledTimes(2);
   });
 
   it("signs the cached poster of every card in one call, then shows the images", async () => {

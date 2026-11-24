@@ -114,6 +114,20 @@ describe("startMediaHttp", () => {
     expect(s.loaders.getState().loaders).toBe(NO_LOADERS);
   });
 
+  it("hands the cards a fresh source when a poster's analysis ends, so a waiting card asks again", async () => {
+    const s = setup(true);
+    s.connect();
+    await flush();
+    const before = s.sources.length;
+    s.jobs.getState().applyProgress(job("job_1", "index", "running"));
+    expect(s.sources.length).toBe(before);
+    s.jobs.getState().applyProgress(job("job_1", "index", "succeeded"));
+    expect(s.sources.length).toBe(before + 1);
+    s.jobs.getState().applyProgress(job("job_2", "waveform", "succeeded"));
+    expect(s.sources.length).toBe(before + 1);
+    s.wiring.stop();
+  });
+
   it("keeps the placeholders when the engine has no media backend", async () => {
     const s = setup(false);
     s.connect();

@@ -65,6 +65,8 @@ export interface MediaWiring {
 }
 
 const ANALYSIS_LABELS = new Set(["thumbnails", "waveform"]);
+/** The jobs a card's poster waits for (the frame index, then the poster itself). */
+const POSTER_LABELS = new Set(["index", "thumbnails"]);
 
 /** The loaders' view of an asset of the open document (and of its analysis jobs). */
 export function loaderMediaOf(
@@ -109,6 +111,10 @@ export function startMediaHttp(deps: MediaWiringDeps): MediaWiring {
     http,
     contentHash: (id) => deps.doc.getState().project?.media[id]?.content_hash ?? null,
     onChange: publish,
+    analysing: (id) =>
+      Object.values(deps.jobs.getState().jobs).some(
+        (job) => job.media_id === id && POSTER_LABELS.has(job.label) && isActive(job),
+      ),
   });
   const loaders = httpMediaLoaders({
     http,
@@ -155,15 +161,18 @@ export function startMediaHttp(deps: MediaWiringDeps): MediaWiring {
 
   const offJobs = deps.jobs.subscribe((state, previous) => {
     if (!installed) return;
-    const finished = Object.values(state.jobs).some((job) => {
-      if (!ANALYSIS_LABELS.has(job.label) || isActive(job)) return false;
-      const before = previous.jobs[job.id];
-      return before === undefined || isActive(before);
-    });
-    if (finished) {
+    const finishedNow = (labels: ReadonlySet<string>) =>
+      Object.values(state.jobs).some((job) => {
+        if (!labels.has(job.label) || isActive(job)) return false;
+        const before = previous.jobs[job.id];
+        return before === undefined || isActive(before);
+      });
+    if (finishedNow(ANALYSIS_LABELS)) {
       loaders.refresh();
       handOut();
     }
+    // A card waiting for its poster asks again once the analysis is done.
+    if (finishedNow(POSTER_LABELS)) publish();
   });
 
   return {
