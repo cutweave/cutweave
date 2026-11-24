@@ -25,23 +25,12 @@ function memory(
 }
 
 describe("viewStore", () => {
-  it("starts dark, in the Short-form workspace, on the Media tab", () => {
+  it("starts in the Short-form workspace, on the Media tab", () => {
     const s = createViewStore().getState();
-    expect(s.theme).toBe("dark");
     expect(s.workspaceId).toBe("short-form");
     expect(s.assetTab).toBe("media");
     expect(s.aspect).toBe("9:16");
     expect(s.layouts).toEqual({});
-  });
-
-  it("sets and toggles the theme", () => {
-    const store = createViewStore();
-    store.getState().toggleTheme();
-    expect(store.getState().theme).toBe("light");
-    store.getState().toggleTheme();
-    expect(store.getState().theme).toBe("dark");
-    store.getState().setTheme("light");
-    expect(store.getState().theme).toBe("light");
   });
 
   it("defines exactly the two saved workspaces with distinct proportions", () => {
@@ -92,48 +81,41 @@ describe("viewStore", () => {
     expect(store.getState().aspect).toBe("4:5");
   });
 
-  it("persists theme, workspace and layouts, and restores them", () => {
+  it("persists workspace and layouts, and restores them", () => {
     const storage = memory();
     const first = createViewStore(storage);
-    first.getState().setTheme("light");
     first.getState().switchWorkspace("long-form");
     first.getState().saveLayout("long-form", layout("kept"));
     expect(storage.data.has(VIEW_STORAGE_KEY)).toBe(true);
 
     const second = createViewStore(storage);
-    expect(second.getState().theme).toBe("light");
     expect(second.getState().workspaceId).toBe("long-form");
     expect(second.getState().layouts["long-form"]).toEqual(layout("kept"));
     // The reset counter is session state, not persisted.
     expect(second.getState().layoutRevision).toBe(0);
   });
 
-  it("keeps the autosave preference with the theme, for every project", () => {
+  it("no longer keeps the theme or the autosave preference (they are app preferences)", () => {
     const storage = memory();
-    const first = createViewStore(storage);
-    expect(first.getState().autosave).toEqual({ enabled: true, intervalS: 30, keepBackups: 10 });
-    first.getState().setAutosave({ enabled: false });
-    first.getState().setAutosave({ intervalS: 300, keepBackups: 5 });
-    const second = createViewStore(storage);
-    expect(second.getState().autosave).toEqual({ enabled: false, intervalS: 300, keepBackups: 5 });
-  });
-
-  it("falls back to the default for an autosave value that is not one of the choices", () => {
-    const blob = JSON.stringify({
-      state: { autosave: { enabled: "yes", intervalS: 7, keepBackups: 11 } },
-      version: 1,
-    });
-    const s = createViewStore(memory({ [VIEW_STORAGE_KEY]: blob })).getState();
-    expect(s.autosave).toEqual({ enabled: true, intervalS: 30, keepBackups: 10 });
+    const store = createViewStore(storage);
+    store.getState().switchWorkspace("long-form");
+    const saved = JSON.parse(storage.data.get(VIEW_STORAGE_KEY) ?? "{}") as {
+      state: Record<string, unknown>;
+    };
+    expect(Object.keys(saved.state).sort()).toEqual([
+      "aspect",
+      "assetTab",
+      "layouts",
+      "workspaceId",
+    ]);
   });
 
   it("ignores malformed persisted values instead of breaking startup", () => {
     const blob = JSON.stringify({
-      state: { theme: "neon", workspaceId: "nope", assetTab: 7, aspect: "3:2", layouts: "x" },
+      state: { workspaceId: "nope", assetTab: 7, aspect: "3:2", layouts: "x" },
       version: 1,
     });
     const s = createViewStore(memory({ [VIEW_STORAGE_KEY]: blob })).getState();
-    expect(s.theme).toBe("dark");
     expect(s.workspaceId).toBe("short-form");
     expect(s.assetTab).toBe("media");
     expect(s.aspect).toBe("9:16");

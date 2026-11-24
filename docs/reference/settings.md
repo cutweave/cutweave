@@ -20,6 +20,13 @@ Rules:
 - **Not settings:** view state (playhead, zoom, selection, workspace layouts, the bin's layout, sort and open folder) stays per project in `.cutweave/ui-state.json` or in the editor's local storage; per-sequence settings are in the sequence dialog (WP-2B.03); clip properties are in the inspector.
 - **Every row** has a label, a one-line description and search keywords; it can be reset on its own, with its page, or with everything (Advanced). Export and import cover App rows only.
 
+### Adding a setting (for the WP that ships it)
+
+1. Add the key to `packages/preferences/src/schema.ts` (`PreferenceValues`, `PREFERENCES`: type, scope, default, range). Main and the editor both read it, so a value the dialog cannot produce is refused by main as well. A change to a key's meaning or shape adds a migration there and bumps `SCHEMA_VERSION`.
+2. Register the row with `registerSettingRow(pageId, row)` (or the whole page with `registerSettingsPage`) in `packages/editor/src/settings/`: key, label, one-line description, keywords, control (switch, segmented, select, number with unit, folder, list, action or custom) and who applies it (`now`, `engine` or `restart`). The strings go in `packages/editor/src/i18n/locales/en.json`.
+3. Add its row to the tables below in the same change. Two tests fail otherwise: every registered key must have a row here, and every key in the schema must have a registered row.
+4. Whoever applies the value reads it from the preferences store (`usePref` in the editor, `PreferencesStore` in main) or, for the engine, sends it after each handshake and on change (see `saving.*` in `engine/runtime.ts`).
+
 ## Pages
 
 The dialog is a side tab list of these pages, in this order, with one search field across all of them. A page appears once one of its rows has shipped.

@@ -1,0 +1,18 @@
+{
+  "name": "@cutweave/preferences",
+  "version": "0.0.0",
+  "private": true,
+  "description": "The preferences schema (keys, types, defaults, ranges, migrations) that Electron main and the editor both import",
+  "license": "GPL-3.0-or-later",
+  "type": "module",
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "scripts": {
+    "build": "tsc -p tsconfig.build.json",
+    "typecheck": "tsc --noEmit",
+    "test": "vitest run"
+  },
+  "devDependencies": {
+    "@types/node": "^24.19.2"
+  }
+}

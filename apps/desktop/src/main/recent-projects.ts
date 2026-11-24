@@ -8,8 +8,10 @@
 import { readFileSync, writeFileSync } from "node:fs";
 import path from "node:path";
 
-/** The list keeps this many entries. */
+/** How many entries the list shows unless the person chose another number (`general.recent_count`). */
 export const MAX_RECENT = 10;
+/** The file keeps this many, so that raising the number again brings older entries back. */
+export const MAX_STORED_RECENT = 25;
 
 export interface RecentFiles {
   read(file: string): string | null;
@@ -41,11 +43,18 @@ export function isRecentPath(value: unknown): value is string {
 export class RecentProjects {
   readonly #file: string;
   readonly #files: RecentFiles;
+  readonly #limit: () => number;
   #items: string[];
 
-  constructor(file: string, files: RecentFiles = nodeFiles) {
+  /** `limit` is read on every call: the Settings > General > Recent projects number. */
+  constructor(
+    file: string,
+    files: RecentFiles = nodeFiles,
+    limit: () => number = () => MAX_RECENT,
+  ) {
     this.#file = file;
     this.#files = files;
+    this.#limit = limit;
     this.#items = this.#load();
   }
 
@@ -55,7 +64,7 @@ export class RecentProjects {
     try {
       const parsed: unknown = JSON.parse(text);
       if (!Array.isArray(parsed)) return [];
-      return [...new Set(parsed.filter(isRecentPath))].slice(0, MAX_RECENT);
+      return [...new Set(parsed.filter(isRecentPath))].slice(0, MAX_STORED_RECENT);
     } catch {
       return [];
     }
@@ -70,13 +79,19 @@ export class RecentProjects {
   }
 
   list(): string[] {
-    return [...this.#items];
+    return this.#items.slice(0, Math.max(0, this.#limit()));
   }
 
   /** Puts `entry` first (moving it up when it is already there). */
   add(entry: string): void {
     if (!isRecentPath(entry)) return;
-    this.#items = [entry, ...this.#items.filter((p) => p !== entry)].slice(0, MAX_RECENT);
+    this.#items = [entry, ...this.#items.filter((p) => p !== entry)].slice(0, MAX_STORED_RECENT);
+    this.#save();
+  }
+
+  /** Forgets every entry, the ones beyond the shown count too. */
+  clear(): void {
+    this.#items = [];
     this.#save();
   }
 

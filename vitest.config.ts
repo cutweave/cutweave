@@ -3,6 +3,7 @@ import { fileURLToPath } from "node:url";
 import { defineConfig } from "vitest/config";
 
 const uiSrc = fileURLToPath(new URL("./packages/ui/src", import.meta.url));
+const preferencesSrc = fileURLToPath(new URL("./packages/preferences/src", import.meta.url));
 const protocolSrc = fileURLToPath(new URL("./packages/protocol/src", import.meta.url));
 const timelineSrc = fileURLToPath(new URL("./packages/timeline/src", import.meta.url));
 
@@ -12,6 +13,7 @@ export default defineConfig({
   // points at an unbuilt dist/).
   resolve: {
     alias: [
+      { find: /^@cutweave\/preferences$/, replacement: `${preferencesSrc}/index.ts` },
       { find: /^@cutweave\/protocol$/, replacement: `${protocolSrc}/index.ts` },
       { find: /^@cutweave\/protocol\/(.*)$/, replacement: `${protocolSrc}/$1` },
       { find: /^@cutweave\/timeline$/, replacement: `${timelineSrc}/index.ts` },

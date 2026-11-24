@@ -7,6 +7,7 @@ import {
   type SentMessage,
 } from "@cutweave/protocol/test-support/fake-socket";
 import { describe, expect, it } from "vitest";
+import { createPrefsStore } from "../prefs/prefsStore.ts";
 import { createDocStore } from "../state/docStore.ts";
 import { createJobStore } from "../state/jobStore.ts";
 import { createPlaybackStore } from "../state/playbackStore.ts";
@@ -21,6 +22,22 @@ import {
 
 const project = (name: string): Project =>
   ({ meta: { name }, settings: {}, media: {}, sequences: {}, custom: {} }) as unknown as Project;
+
+/** Sets the saving preferences the way the Settings dialog does (through the store). */
+function setAutosave(
+  stores: { prefs: ReturnType<typeof createPrefsStore> },
+  change: { enabled?: boolean; intervalS?: 30 | 60 | 120 | 300; keepBackups?: 5 | 10 | 20 },
+): void {
+  const values = stores.prefs.getState().values;
+  stores.prefs.setState({
+    values: {
+      ...values,
+      ...(change.enabled === undefined ? {} : { "saving.autosave": change.enabled }),
+      ...(change.intervalS === undefined ? {} : { "saving.interval": change.intervalS }),
+      ...(change.keepBackups === undefined ? {} : { "saving.backups": change.keepBackups }),
+    },
+  });
+}
 
 function setup() {
   const engine = new FakeEngine();
@@ -52,6 +69,7 @@ function setup() {
       Promise.resolve({ port, wsUrl: `ws://127.0.0.1:${port}/rpc`, token: "tok" }),
   };
   const stores = {
+    prefs: createPrefsStore(),
     doc: createDocStore(),
     view: createViewStore(),
     playback: createPlaybackStore(),
@@ -171,7 +189,7 @@ describe("startEngineRuntime", () => {
 
   it("tells the engine the autosave preference after every handshake and when it changes (WP-1M.10)", async () => {
     const { engine, timers, stores, runtime, errors } = setup();
-    stores.view.getState().setAutosave({ enabled: false, intervalS: 120, keepBackups: 20 });
+    setAutosave(stores, { enabled: false, intervalS: 120, keepBackups: 20 });
     await runtime.connection.whenReady();
     await flushPromises(50);
     const sent = (index: number) =>
@@ -183,7 +201,7 @@ describe("startEngineRuntime", () => {
     expect(methods(engine).indexOf("project.set_autosave")).toBeLessThan(
       methods(engine).indexOf("project.snapshot"),
     );
-    stores.view.getState().setAutosave({ enabled: true });
+    setAutosave(stores, { enabled: true });
     await flushPromises(50);
     expect(
       sent(0)

@@ -127,10 +127,9 @@ describe("ViewSync", () => {
     expect(sets()).toHaveLength(1);
   });
 
-  it("does not send view changes made by theme or tool changes", async () => {
+  it("does not send view changes made by tool changes", async () => {
     const { store, sync, timers, sets } = setup();
     await sync.restore();
-    store.getState().toggleTheme();
     store.getState().setToolMode("razor");
     expect(timers.pending).toBe(0);
     await settle();

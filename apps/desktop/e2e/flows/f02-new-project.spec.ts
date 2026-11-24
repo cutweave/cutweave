@@ -41,6 +41,10 @@ test.describe("F2 new project", () => {
       await expect(naming.dialog.getByRole("alert")).toContainText("Names cannot contain");
       await naming.name.fill("");
       await naming.name.pressSequentially("Coffee promo");
+      // The location starts at the folder for new projects (Settings > General); a person who
+      // clears it is told to choose one.
+      await expect(naming.location).not.toHaveValue("");
+      await naming.location.fill("");
       await naming.create.click();
       await expect(naming.dialog.getByRole("alert")).toHaveText(
         "Choose the folder to create it in.",

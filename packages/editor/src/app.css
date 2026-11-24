@@ -714,15 +714,41 @@ body {
   flex: none;
 }
 
-/* File > Settings…: a section heading above its rows, in the overline style. */
-.cw-settings__section {
+/* File > Settings…: what the dialog adds around the kit's SettingsLayout and SettingRow. */
+.cw-settings__status {
+  flex: 1;
+  min-width: 0;
   margin: 0;
   color: var(--text-secondary);
+  overflow-wrap: anywhere;
 }
-.cw-settings__section:not(:first-of-type) {
-  margin-block-start: var(--space-4);
+.cw-settings__nomatch {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: var(--space-3);
 }
-.cw-settings__hint {
+.cw-settings__list {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: var(--space-2);
+}
+.cw-settings__items {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1);
   margin: 0;
-  color: var(--text-muted);
+  padding: 0;
+  list-style: none;
+}
+.cw-settings__item {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-2);
+}
+.cw-settings__itemlabel {
+  min-width: 0;
+  overflow-wrap: anywhere;
 }

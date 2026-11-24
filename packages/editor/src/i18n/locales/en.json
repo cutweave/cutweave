@@ -51,19 +51,134 @@
   "settings": {
     "title": "Settings",
     "description": "Changes apply at once and are kept for next time.",
-    "appearance": "Appearance",
-    "theme": "Theme",
-    "saving": "Saving",
-    "autosave": "Save automatically",
-    "autosaveInterval": "Save at least every",
-    "autosaveIntervalHint": "While you edit. Cutweave also saves 2 s after your last change.",
-    "interval30s": "30 s",
-    "interval1m": "1 min",
-    "interval2m": "2 min",
-    "interval5m": "5 min",
-    "keepBackups": "Backups to keep",
-    "keepBackupsHint": "Older backups of each project are deleted.",
-    "done": "Done"
+    "search": "Search settings",
+    "clearSearch": "Clear search",
+    "pagesLabel": "Settings pages",
+    "resultsLabel": "Search results",
+    "resultsFor": "Results for “{{query}}”",
+    "noMatch": "No settings match “{{query}}”",
+    "resetPage": "Reset page",
+    "resetRow": "Reset {{name}}",
+    "needsEngine": "Needs the engine",
+    "appliesOnRestart": "Applies at the next start",
+    "done": "Done",
+    "cancel": "Cancel",
+    "groups": {
+      "preferences": "Preferences",
+      "agents": "Agents and AI",
+      "extensions": "Extensions",
+      "privacy": "Privacy and updates",
+      "machine": "This computer"
+    },
+    "pages": {
+      "general": "General",
+      "appearance": "Appearance",
+      "saving": "Saving and backups",
+      "advanced": "Advanced"
+    },
+    "notices": {
+      "unreadable": "That file could not be read.",
+      "notSettings": "That file is not a Cutweave settings file.",
+      "newer": "That file is from a newer Cutweave and was not used.",
+      "recentCleared": "Recent projects cleared.",
+      "resetAll": "All settings are back to their defaults.",
+      "exported": "Settings exported to {{path}}.",
+      "imported": "Settings imported: {{count}}.",
+      "skipped": "Skipped: {{list}}."
+    },
+    "rows": {
+      "startup": {
+        "label": "On startup",
+        "description": "What Cutweave opens when it starts.",
+        "keywords": "launch, open, begin, last project, empty, welcome",
+        "empty": "Empty project",
+        "last": "Last project"
+      },
+      "newProjectFolder": {
+        "label": "Folder for new projects",
+        "description": "New project dialogs start in this folder.",
+        "keywords": "location, directory, documents, path, create, save",
+        "choose": "Choose…"
+      },
+      "recentCount": {
+        "label": "Recent projects to list",
+        "description": "How many projects File > Open recent shows.",
+        "keywords": "history, open recent, menu, count",
+        "unit": "projects"
+      },
+      "clearRecent": {
+        "label": "Recent projects",
+        "description": "Forget the projects listed in File > Open recent.",
+        "keywords": "history, forget, erase, clear, recent",
+        "button": "Clear recent projects"
+      },
+      "dialogChoices": {
+        "label": "“Don't ask again” choices",
+        "description": "Dialogs that remembered your answer will ask again.",
+        "keywords": "confirm, prompts, warnings, remembered, reset",
+        "button": "Reset choices",
+        "none": "None stored",
+        "stored": "{{count}} stored"
+      },
+      "theme": {
+        "label": "Theme",
+        "description": "Dark, light, or follow your system.",
+        "keywords": "color, colour, dark mode, light mode, night, appearance, system, os"
+      },
+      "autosave": {
+        "label": "Save automatically",
+        "description": "Saves your project while you edit, so a crash costs little.",
+        "keywords": "autosave, automatic, auto save, backup, crash"
+      },
+      "interval": {
+        "label": "Save at least every",
+        "description": "While you edit. Cutweave also saves 2 s after your last change.",
+        "keywords": "autosave, automatic, interval, how often, frequency, time",
+        "s30": "30 s",
+        "m1": "1 min",
+        "m2": "2 min",
+        "m5": "5 min"
+      },
+      "backups": {
+        "label": "Backups to keep",
+        "description": "Older backups of each project are deleted.",
+        "keywords": "autosave, automatic, backup, copies, history, restore"
+      },
+      "exportSettings": {
+        "label": "Export settings",
+        "description": "Save your preferences to a file you can import on another computer.",
+        "keywords": "backup, share, json, copy, transfer, save",
+        "button": "Export settings…"
+      },
+      "importSettings": {
+        "label": "Import settings",
+        "description": "Apply the settings in a file. Invalid ones are skipped and listed.",
+        "keywords": "restore, load, json, transfer, open",
+        "button": "Import settings…"
+      },
+      "resetAll": {
+        "label": "Reset all settings",
+        "description": "Put every setting back to its default. Projects, recent projects, window positions and keys are not touched.",
+        "keywords": "defaults, factory, restore, clear, everything",
+        "button": "Reset all settings…",
+        "confirmTitle": "Reset all settings?",
+        "confirmMessage": "Every setting goes back to its default. Your projects, recent projects, window positions and AI keys are not touched.",
+        "confirm": "Reset all settings"
+      },
+      "openSettingsFolder": {
+        "label": "Settings folder",
+        "description": "Show the folder that holds your preferences file.",
+        "keywords": "preferences.json, profile, user data, files, show, open",
+        "button": "Open settings folder"
+      },
+      "openLogsFolder": {
+        "label": "Logs folder",
+        "description": "Show the folder with Cutweave's log files, for bug reports.",
+        "keywords": "diagnostics, debug, errors, support, show, open",
+        "button": "Open logs folder"
+      }
+    },
+    "resultCount": "{{count}} found"
   },
   "about": {
     "title": "About {{name}}",
@@ -83,7 +198,8 @@
   },
   "theme": {
     "dark": "Dark",
-    "light": "Light"
+    "light": "Light",
+    "system": "Match system"
   },
   "panel": {
     "assets": "Assets",

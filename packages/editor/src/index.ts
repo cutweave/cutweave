@@ -86,7 +86,6 @@ export {
 } from "./state/toastStore.ts";
 export {
   createViewStore,
-  type ThemeId,
   useViewStore,
   type ViewStore,
   viewStore,

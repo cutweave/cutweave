@@ -37,6 +37,26 @@ describe("RecentProjects", () => {
     expect(recent.list()).not.toContain(at(`p${MAX_RECENT + 4}`));
   });
 
+  it("shows as many entries as the setting says, and keeps the older ones for when it grows", () => {
+    let limit = 3;
+    const recent = new RecentProjects("recent.json", memory(), () => limit);
+    for (let i = 0; i < 8; i++) recent.add(at(`p${i}`));
+    expect(recent.list()).toEqual([at("p7"), at("p6"), at("p5")]);
+    limit = 5;
+    expect(recent.list()).toHaveLength(5);
+    limit = 0;
+    expect(recent.list()).toEqual([]);
+  });
+
+  it("clears everything, the entries beyond the shown count too", () => {
+    const files = memory();
+    const recent = new RecentProjects("recent.json", files, () => 2);
+    for (let i = 0; i < 5; i++) recent.add(at(`p${i}`));
+    recent.clear();
+    expect(recent.list()).toEqual([]);
+    expect(new RecentProjects("recent.json", files, () => 25).list()).toEqual([]);
+  });
+
   it("ignores relative paths and a damaged file", () => {
     const recent = new RecentProjects("recent.json", memory("not json"));
     expect(recent.list()).toEqual([]);
