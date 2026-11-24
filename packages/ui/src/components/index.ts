@@ -3,6 +3,7 @@ export { ActorBadge, type ActorBadgeProps, type ActorKind } from "./ActorBadge.t
 export { Button, type ButtonProps, type ButtonSize, type ButtonVariant } from "./Button.tsx";
 export { CostChip, type CostChipProps, formatCost } from "./CostChip.tsx";
 export { Dialog, DialogNote, type DialogNoteProps, type DialogProps } from "./Dialog.tsx";
+export { FilterChip, type FilterChipProps } from "./FilterChip.tsx";
 export { IconButton, type IconButtonProps, Toolbar, ToolbarSeparator } from "./IconButton.tsx";
 export {
   InspectorRow,
@@ -22,6 +23,7 @@ export {
   Menu,
   type MenuEntry,
   type MenuItem,
+  type MenuLabel,
   type MenuProps,
   type MenuSeparator,
 } from "./Menu.tsx";
@@ -35,6 +37,7 @@ export {
 export { NumberScrubber, type NumberScrubberProps } from "./NumberScrubber.tsx";
 export { Panel, PanelDivider, type PanelProps } from "./Panel.tsx";
 export { ProgressBar, type ProgressBarProps } from "./ProgressBar.tsx";
+export { SearchField, type SearchFieldProps } from "./SearchField.tsx";
 export {
   SegmentedControl,
   type SegmentedControlProps,

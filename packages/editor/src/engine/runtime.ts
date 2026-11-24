@@ -31,6 +31,7 @@ import {
   type SupervisorHint,
   supervisedPolicy,
 } from "@cutweave/protocol";
+import type { binStore } from "../media/binStore.ts";
 import type { mediaStore } from "../media/mediaStore.ts";
 import { parseRingAnnouncement } from "../preview/ringPreview.ts";
 import type { sessionStore } from "../session/sessionStore.ts";
@@ -70,6 +71,8 @@ export interface RuntimeStores {
   readonly jobs: typeof jobStore;
   /** Asset analysis status (`media.analysis_failed`, `media.indexed`); optional for tests. */
   readonly media?: typeof mediaStore;
+  /** The media bin's search text, cleared when another project opens (WP-1M.12); optional. */
+  readonly bin?: typeof binStore;
   readonly engine: typeof engineStore;
   /** Project session and undo stacks (WP-1M.07); optional so older callers need not pass it. */
   readonly session?: typeof sessionStore;
@@ -255,6 +258,8 @@ export function startEngineRuntime(
         rpc.on("job.progress", (info: JobInfo) => stores.jobs.getState().applyProgress(info)),
         rpc.on("media.analysis_failed", (e) => stores.media?.getState().applyAnalysisFailed(e)),
         rpc.on("media.indexed", (e) => stores.media?.getState().applyIndexed(e)),
+        rpc.on("project.opened", () => stores.bin?.getState().clearSearch()),
+        rpc.on("project.closed", () => stores.bin?.getState().clearSearch()),
         rpc.onUntyped("playback.state", (payload) =>
           stores.playback.getState().applyState(payload),
         ),

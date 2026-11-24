@@ -266,7 +266,7 @@ impl Command for SplitItem {
 ```
 
 - **Commands** mutate. Naming is `namespace.verb_object`. The namespaces are `project`, `media`, `sequence`, `track`, `timeline`, `item` (generic ops on any item kind: delete, move, set_props, duplicate, link), `clip` (media-clip specifics), `text`, `caption`, `transcript`, `effect`, `transition`, `keyframe`, `mask`, `color`, `audio`, `composition`, `template`, `font`, `asset` (packs, stickers, LUTs, library items), `analysis` (scene/beat/loudness/silence detection results), `job` (job status, wait, cancel, list), `tracking` (motion tracking; distinct from timeline `track`), `ai`, `render`, `export`, `plugin`, `edit` (undo/redo/history), `view` (UI-only state such as playhead, zoom and selection). New namespaces require an ADR.
-- **Queries** are read-only (e.g. `timeline.get`, `item.get`, `media.list`, `transcript.search`, `render.frame`). They support `depth`, `fields`, `limit` and `cursor` so responses stay small.
+- **Queries** are read-only (e.g. `timeline.get`, `item.get`, `media.list`, `transcript.search`, `render.frame`). They support `depth`, `fields`, `limit` and `cursor` so responses stay small. `media.list` also takes a `filter` (name text, kinds, length, used, problems) and a `sort`; the editor's bin runs the same predicate on its document mirror, and one fixture generated from the engine keeps the two equal (WP-1M.12).
 - **Events** are streamed to subscribers: `doc.patched{rev, actor, ops}`, `playback.state`, `job.progress`, `media.indexed`, `plugin.changed`, `catalog.updated`.
 - **Envelope & idempotency:**
   - Every command call carries a client-generated `request_id` (UUIDv7) and an optional `expected_rev`.

@@ -63,7 +63,7 @@ expression: catalog.tools_json()
     },
     {
       "name": "media_list",
-      "description": "List the project's media (paged, ordered by id)",
+      "description": "List the project's media (filter, sort, paged; default by id)",
       "inputSchema": {
         "type": "object",
         "additionalProperties": false,
@@ -83,7 +83,136 @@ expression: catalog.tools_json()
               "null"
             ],
             "pattern": "^med_[0-9a-f]{32}$",
-            "description": "`next_cursor` of the previous page; the page starts after this ID."
+            "description": "`next_cursor` of the previous page."
+          },
+          "filter": {
+            "type": [
+              "object",
+              "null"
+            ],
+            "additionalProperties": false,
+            "properties": {
+              "text": {
+                "type": [
+                  "string",
+                  "null"
+                ],
+                "description": "Terms that must all occur in the file name, ignoring case and accents."
+              },
+              "kinds": {
+                "type": [
+                  "array",
+                  "null"
+                ],
+                "items": {
+                  "description": "What a [`MediaAsset`] is.",
+                  "oneOf": [
+                    {
+                      "description": "A video file (may also carry audio).",
+                      "type": "string",
+                      "const": "video"
+                    },
+                    {
+                      "description": "An audio-only file.",
+                      "type": "string",
+                      "const": "audio"
+                    },
+                    {
+                      "description": "A still image (no duration).",
+                      "type": "string",
+                      "const": "image"
+                    },
+                    {
+                      "description": "Another sequence of this project, used as a compound clip (arch §4.3).",
+                      "type": "string",
+                      "const": "sequence_ref"
+                    }
+                  ]
+                },
+                "description": "Only these kinds."
+              },
+              "min_duration": {
+                "anyOf": [
+                  {
+                    "type": "integer",
+                    "minimum": 0,
+                    "maximum": 9007199254740991
+                  },
+                  {
+                    "type": "string",
+                    "pattern": "^-?[0-9]+(\\.[0-9]+)?s$|^-?[0-9]+$"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "description": "Shortest length (flicks), inclusive; stills never match a bound."
+              },
+              "max_duration": {
+                "anyOf": [
+                  {
+                    "type": "integer",
+                    "minimum": 0,
+                    "maximum": 9007199254740991
+                  },
+                  {
+                    "type": "string",
+                    "pattern": "^-?[0-9]+(\\.[0-9]+)?s$|^-?[0-9]+$"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "description": "Longest length (flicks), inclusive."
+              },
+              "used": {
+                "type": [
+                  "boolean",
+                  "null"
+                ],
+                "description": "Placed on a timeline of any sequence (`true`) or not (`false`)."
+              },
+              "problems": {
+                "type": [
+                  "boolean",
+                  "null"
+                ],
+                "description": "`true`: only files nothing can be read from (no streams)."
+              }
+            },
+            "description": "Keep only matching media."
+          },
+          "sort": {
+            "type": [
+              "object",
+              "null"
+            ],
+            "additionalProperties": false,
+            "properties": {
+              "by": {
+                "type": "string",
+                "enum": [
+                  "imported",
+                  "name",
+                  "duration",
+                  "kind"
+                ],
+                "description": "What to order by."
+              },
+              "order": {
+                "type": "string",
+                "enum": [
+                  "asc",
+                  "desc"
+                ],
+                "description": "Direction.",
+                "default": "asc"
+              }
+            },
+            "required": [
+              "by"
+            ],
+            "description": "Order."
           }
         }
       },

@@ -219,3 +219,48 @@ describe("Menu (context)", () => {
     expect(ripple).toHaveBeenCalledTimes(1);
   });
 });
+
+describe("Menu choices (checked rows, headings)", () => {
+  const choices = (onVideo: () => void, onNewest: () => void): MenuEntry[] => [
+    { kind: "label", id: "kind", label: "Kind" },
+    { id: "video", label: "Video", checked: true, keepOpen: true, onSelect: onVideo },
+    { id: "audio", label: "Audio", checked: false, keepOpen: true },
+    { kind: "separator", id: "s" },
+    { kind: "label", id: "sort", label: "Sort by" },
+    { id: "newest", label: "Newest first", checked: false, choice: "radio", onSelect: onNewest },
+  ];
+  const view = (onVideo: () => void, onNewest: () => void) =>
+    h(Menu, {
+      mode: "dropdown",
+      items: choices(onVideo, onNewest),
+      "aria-label": "Filters",
+      children: h("button", { type: "button" }, "Open"),
+    });
+
+  it("announces checkboxes and radios with their state and shows headings", async () => {
+    const user = userEvent.setup();
+    render(view(vi.fn(), vi.fn()));
+    await user.click(screen.getByRole("button", { name: "Open" }));
+    const video = await screen.findByRole("menuitemcheckbox", { name: "Video" });
+    expect(video.getAttribute("aria-checked")).toBe("true");
+    const audio = screen.getByRole("menuitemcheckbox", { name: "Audio" });
+    expect(audio.getAttribute("aria-checked")).toBe("false");
+    expect(screen.getByRole("menuitemradio", { name: "Newest first" })).toBeTruthy();
+    expect(screen.getByText("Kind")).toBeTruthy();
+    expect(screen.getByText("Sort by")).toBeTruthy();
+  });
+
+  it("keeps the menu open for a keepOpen row and closes for the others", async () => {
+    const onVideo = vi.fn();
+    const onNewest = vi.fn();
+    const user = userEvent.setup();
+    render(view(onVideo, onNewest));
+    await user.click(screen.getByRole("button", { name: "Open" }));
+    await user.click(await screen.findByRole("menuitemcheckbox", { name: "Video" }));
+    expect(onVideo).toHaveBeenCalledTimes(1);
+    expect(screen.getByRole("menu")).toBeTruthy();
+    await user.click(screen.getByRole("menuitemradio", { name: "Newest first" }));
+    expect(onNewest).toHaveBeenCalledTimes(1);
+    await waitFor(() => expect(screen.queryByRole("menu")).toBeNull());
+  });
+});
