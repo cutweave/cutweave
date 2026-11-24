@@ -256,7 +256,7 @@ fn cold_start(mode: EngineMode) {
     assert!(engine.port().is_some());
     assert!(handle.playing_a_document());
     println!(
-        "cold start to ready ({} full engine, empty project, gpu: {}, degraded: {:?}): {:.1} ms",
+        "cold start to ready ({} full engine, empty project, gpu open: {}, degraded: {:?}): {:.1} ms",
         mode.name(),
         handle.has_gpu(),
         handle.degraded(),

@@ -126,7 +126,11 @@ export async function launchFlowApp(
   work: Workspace,
   home?: string,
   options: {
-    /** Decode real files: the engine must be built with FFmpeg (F14). Default: stub probing. */
+    /**
+     * Decode real files: the full engine (WP-1I.05; FFmpeg when it is built with it) with
+     * playback, the preview ring and `render.frame` (F13, F14, F17). Its audio plays on the null
+     * output, so a run makes no sound. Default: stub probing.
+     */
     realMedia?: boolean;
   } = {},
 ): Promise<LaunchedApp> {
@@ -134,7 +138,15 @@ export async function launchFlowApp(
     {
       ...REAL_ENGINE_ENV,
       CUTWEAVE_DEV_STUB_MEDIA: options.realMedia === true ? "" : "1",
+      CUTWEAVE_AUDIO: "null",
       CUTWEAVE_ENGINE_ALLOW_ROOTS: work.dir,
+      // Every launch gets a fresh, empty user profile (fixtures.ts). On Windows, creating a
+      // D3D12 device in a profile without `AppData\Local` hangs in the driver (measured > 90 s on
+      // the reference laptop; Vulkan opens in about 2 s), so the engine's GPU uses Vulkan here.
+      // A real profile is not affected. `CUTWEAVE_FLOW_WGPU_BACKEND` overrides it.
+      ...(process.platform === "win32"
+        ? { WGPU_BACKEND: process.env.CUTWEAVE_FLOW_WGPU_BACKEND ?? "vulkan" }
+        : {}),
     },
     [],
     home === undefined ? {} : { home },

@@ -216,9 +216,15 @@ impl Caches {
     }
 }
 
-/// The OS cache directory (`ThumbConfig::default_dir` without its last two parts).
+/// The OS cache directory (`ThumbConfig::default_dir` without its last two parts), else the one
+/// the environment names (`WaveformCache::default_dir`: `%LOCALAPPDATA%`, `~/Library/Caches`,
+/// `$XDG_CACHE_HOME` or `~/.cache`), which also works when the shell's known folder does not
+/// exist yet (a fresh or redirected profile).
 fn dirs_cache() -> Option<PathBuf> {
-    ThumbConfig::default_dir().and_then(|d| d.parent().map(Path::to_path_buf))
+    // Both are `<cache dir>/cutweave/<what>`.
+    ThumbConfig::default_dir()
+        .or_else(WaveformCache::default_dir)
+        .and_then(|d| d.parent().and_then(Path::parent).map(Path::to_path_buf))
 }
 
 /// The machine's RAM in bytes, for the frame cache budget (`FrameCache::default_budget`).

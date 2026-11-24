@@ -41,6 +41,7 @@
 
 pub mod audio;
 pub mod frames;
+pub mod gpu;
 pub mod media;
 pub mod preview;
 mod watch;
@@ -49,6 +50,7 @@ use std::any::TypeId;
 use std::path::PathBuf;
 use std::sync::atomic::AtomicBool;
 use std::sync::{Arc, Mutex, MutexGuard, PoisonError};
+use std::thread::JoinHandle;
 
 use cutweave_cache::FrameCache;
 use cutweave_commands::{CmdError, DocHandle, Registry, RegistryError};
@@ -63,17 +65,17 @@ use cutweave_playback::transport::{
     PlaybackConfig, PlaybackEngine, PlaybackParts, PlaybackState, PlaybackStats, PublisherSink,
     RenderConfig, SystemClock, Transport,
 };
-use cutweave_render::gpu::{
-    AdapterChoice, Compositor, CompositorOptions, GpuContext, GpuFrameBackend,
-};
-use cutweave_render::query::{ReferenceBackend, RenderFrame, SharedBackend};
+use cutweave_render::gpu::AdapterChoice;
+use cutweave_render::query::{RenderFrame, SharedBackend};
 use serde_json::Value;
 
 pub use audio::AudioMode;
 pub use frames::MediaFrames;
+pub use gpu::{GPU_START_WAIT, RENDER_WAIT};
 pub use media::{BackendProbe, CurrentDoc, MediaFile, MediaState, total_ram};
 
 use self::audio::{Audio, LivePcm};
+use self::gpu::{LateGpu, LateRenderer};
 use self::media::{Caches, IndexStage, ThumbStage, WaveformStage};
 use self::preview::{CompositorSlot, PreviewSource};
 use self::watch::{DocWatcher, Targets};
@@ -199,8 +201,9 @@ struct Started {
     caches: Caches,
     frames: Arc<MediaFrames>,
     renderer: SharedBackend,
-    compositor_home: Arc<Mutex<Option<Compositor>>>,
-    gpu: Option<GpuContext>,
+    gpu: Arc<LateGpu>,
+    /// Opens the GPU (joined at shutdown).
+    gpu_thread: Option<JoinHandle<()>>,
     audio: Audio,
     /// The frame sink between documents (the ring publisher in `Gui` mode).
     sink_home: Option<Box<dyn FrameSink>>,
@@ -231,6 +234,12 @@ struct Inner {
 
 fn lock<T>(m: &Mutex<T>) -> MutexGuard<'_, T> {
     m.lock().unwrap_or_else(PoisonError::into_inner)
+}
+
+/// Records and sends `engine.degraded{subsystem, reason}`.
+fn degrade(inner: &Inner, events: &SubsystemEvents, subsystem: &str, reason: &str) {
+    lock(&inner.degraded).push((subsystem.to_owned(), reason.to_owned()));
+    events.degraded(subsystem, reason);
 }
 
 /// What starts next to the GPU: the caches, audio and the preview ring.
@@ -290,12 +299,21 @@ impl FullHandle {
         lock(&self.inner.ring).as_ref().map(|a| a.name.clone())
     }
 
-    /// Whether the engine renders on a GPU device (else the CPU reference renderer).
+    /// Whether the engine renders on a GPU device (else the CPU reference renderer, or the
+    /// device is still opening).
     #[must_use]
     pub fn has_gpu(&self) -> bool {
         lock(&self.inner.started)
             .as_ref()
-            .is_some_and(|s| s.gpu.is_some())
+            .is_some_and(|s| s.gpu.has_gpu())
+    }
+
+    /// Whether the GPU finished opening (or is known to be absent).
+    #[must_use]
+    pub fn gpu_settled(&self) -> bool {
+        lock(&self.inner.started)
+            .as_ref()
+            .is_some_and(|s| s.gpu.is_settled())
     }
 
     /// Media items with live decoder pools.
@@ -349,52 +367,61 @@ impl FullSubsystems {
     }
 
     fn degrade(&self, events: &SubsystemEvents, subsystem: &str, reason: &str) {
-        lock(&self.inner.degraded).push((subsystem.to_owned(), reason.to_owned()));
-        events.degraded(subsystem, reason);
+        degrade(&self.inner, events, subsystem, reason);
     }
 
-    /// The wgpu device per `gpu` and `mode` (see the module docs); `None`: CPU rendering.
-    fn start_gpu(
+    /// Opens the wgpu device per `gpu` and `mode` on its own thread ([`gpu`] module docs).
+    fn spawn_gpu(
         &self,
         host: &SubsystemHost,
-    ) -> Result<Option<(GpuContext, Compositor, Compositor)>, SubsystemError> {
+    ) -> Result<(Arc<LateGpu>, JoinHandle<()>), SubsystemError> {
         let choice = match host.gpu {
             GpuConfig::Software => AdapterChoice::Software,
             GpuConfig::Auto => AdapterChoice::from_env_or(AdapterChoice::Auto),
         };
-        let open = |choice: &AdapterChoice| {
-            let ctx = GpuContext::new(choice).map_err(|e| e.to_string())?;
-            let frame = Compositor::new(ctx.clone(), CompositorOptions::default())
-                .map_err(|e| e.to_string())?;
-            let preview = Compositor::new(ctx.clone(), CompositorOptions::default())
-                .map_err(|e| e.to_string())?;
-            Ok::<_, String>((ctx, frame, preview))
-        };
-        match open(&choice) {
-            Ok(gpu) => Ok(Some(gpu)),
-            Err(reason) if host.mode == EngineMode::Gui => Err(SubsystemError {
-                kind: SubsystemKind::Gpu,
-                message: reason,
-            }),
-            Err(reason) => {
-                if choice != AdapterChoice::Software
-                    && let Ok(gpu) = open(&AdapterChoice::Software)
-                {
-                    self.degrade(
-                        &host.events,
-                        "gpu",
-                        &format!("{reason}; rendering on the software adapter"),
-                    );
-                    return Ok(Some(gpu));
-                }
-                self.degrade(
-                    &host.events,
-                    "gpu",
-                    &format!("{reason}; rendering on the CPU (slow)"),
+        let late = Arc::new(LateGpu::new());
+        let gui = host.mode == EngineMode::Gui;
+        let (inner, events, gpu) = (
+            Arc::clone(&self.inner),
+            host.events.clone(),
+            Arc::clone(&late),
+        );
+        let thread = std::thread::Builder::new()
+            .name("cw-gpu-init".into())
+            .spawn(move || {
+                let began = std::time::Instant::now();
+                let opened = match gpu::open(&choice) {
+                    Ok(opened) => Some(opened),
+                    Err(reason) if gui && gpu.fail_start(&reason) => return,
+                    Err(reason) => {
+                        let software = (choice != AdapterChoice::Software)
+                            .then(|| gpu::open(&AdapterChoice::Software).ok())
+                            .flatten();
+                        let fallback = if software.is_some() {
+                            "rendering on the software adapter"
+                        } else {
+                            "rendering on the CPU (slow)"
+                        };
+                        degrade(&inner, &events, "gpu", &format!("{reason}; {fallback}"));
+                        software
+                    }
+                };
+                tracing::info!(
+                    adapter = opened.as_ref().map(|(ctx, _, _)| ctx.info().key.clone()),
+                    elapsed_ms = u64::try_from(began.elapsed().as_millis()).unwrap_or(u64::MAX),
+                    "GPU ready"
                 );
-                Ok(None)
-            }
-        }
+                gpu.settle(opened);
+                // A frame shown while the GPU was opening was black: render it again.
+                if let Some(per_doc) = lock(&inner.per_doc).as_ref() {
+                    per_doc.transport.refresh();
+                }
+            })
+            .map_err(|e| SubsystemError {
+                kind: SubsystemKind::Gpu,
+                message: format!("cannot start the GPU thread: {e}"),
+            })?;
+        Ok((late, thread))
     }
 
     /// The preview ring of a `Gui` engine, its clock writer and sink.
@@ -433,7 +460,7 @@ impl FullSubsystems {
     fn attach(&self, started: &mut Started, doc: &DocHandle) {
         let source = PreviewSource::new(
             doc.clone(),
-            CompositorSlot::take(&started.compositor_home),
+            CompositorSlot::new(Arc::clone(&started.gpu)),
             Arc::clone(&started.frames),
             started.events.clone(),
             Arc::clone(&started.lost_reported),
@@ -621,30 +648,33 @@ impl Subsystems for FullSubsystems {
     }
 
     fn start(&self, host: &SubsystemHost) -> Result<(), SubsystemError> {
-        // The GPU device takes most of the start (about a second for the driver): open it while
-        // the caches, audio and the ring start here.
-        let (gpu, rest) = std::thread::scope(|s| {
-            let gpu = std::thread::Builder::new()
-                .name("cw-gpu-init".into())
-                .spawn_scoped(s, || self.start_gpu(host));
-            let rest = self.start_devices(host);
-            let gpu = match gpu {
-                Ok(handle) => handle.join().unwrap_or_else(|_| {
-                    Err(SubsystemError {
-                        kind: SubsystemKind::Gpu,
-                        message: "GPU initialization panicked".into(),
-                    })
-                }),
-                Err(_) => self.start_gpu(host),
-            };
-            (gpu, rest)
+        // The GPU device takes most of the start (about a second for the driver, far more on a
+        // fresh user profile): it opens on its own thread while the caches, audio and the ring
+        // start here, and the start waits for it only so long (`gpu` module docs).
+        let (gpu, gpu_thread) = self.spawn_gpu(host)?;
+        let rest = self.start_devices(host);
+        let waited = gpu.wait_start(if host.mode == EngineMode::Gui {
+            GPU_START_WAIT
+        } else {
+            std::time::Duration::ZERO
         });
-        let (caches, audio, ring) = rest?;
-        let gpu = match gpu {
-            Ok(gpu) => gpu,
+        let failed = match (rest, waited) {
+            (Ok(devices), Ok(())) => Ok(devices),
+            (Err(e), _) => Err(e),
+            (Ok(devices), Err(reason)) => {
+                drop(devices);
+                Err(SubsystemError {
+                    kind: SubsystemKind::Gpu,
+                    message: reason,
+                })
+            }
+        };
+        let (caches, audio, ring) = match failed {
+            Ok(devices) => devices,
             Err(e) => {
                 *lock(&self.inner.ring) = None;
-                drop((caches, audio, ring));
+                let _ = gpu_thread.join();
+                gpu.close();
                 return Err(e);
             }
         };
@@ -654,18 +684,10 @@ impl Subsystems for FullSubsystems {
             Arc::clone(&self.inner.frame_cache),
             caches.db.clone(),
         ));
-        let compositor_home = Arc::new(Mutex::new(None));
-        let (gpu, renderer) = match gpu {
-            Some((ctx, frame, preview)) => {
-                *lock(&compositor_home) = Some(preview);
-                let renderer = GpuFrameBackend::new(frame, Arc::clone(&frames) as _).shared();
-                (Some(ctx), renderer)
-            }
-            None => (
-                None,
-                ReferenceBackend::new(Arc::clone(&frames) as _).shared(),
-            ),
-        };
+        let renderer: SharedBackend = Arc::new(Mutex::new(LateRenderer::new(
+            Arc::clone(&gpu),
+            Arc::clone(&frames),
+        )));
         let (sink_home, clock_writer) = match ring {
             Some((sink, writer)) => (Some(sink), Some(writer)),
             None => (None, None),
@@ -686,8 +708,8 @@ impl Subsystems for FullSubsystems {
             caches,
             frames,
             renderer,
-            compositor_home,
             gpu,
+            gpu_thread: Some(gpu_thread),
             audio,
             sink_home,
             clock_writer,
@@ -700,7 +722,8 @@ impl Subsystems for FullSubsystems {
         }
         tracing::info!(
             mode = started.mode.name(),
-            gpu = started.gpu.as_ref().map(|g| g.info().key.clone()),
+            gpu = started.gpu.adapter(),
+            gpu_settled = started.gpu.is_settled(),
             audio = ?started.audio,
             ring = self.handle().ring_name(),
             "media, render, audio and playback started"
@@ -845,8 +868,8 @@ impl Subsystems for FullSubsystems {
         let Started {
             frames,
             renderer,
-            compositor_home,
             gpu,
+            gpu_thread,
             audio,
             sink_home,
             clock_writer,
@@ -859,11 +882,15 @@ impl Subsystems for FullSubsystems {
         drop(clock_writer);
         drop(sink_home);
         *lock(&self.inner.ring) = None;
-        // 4. Decoders, GPU, caches.
+        // 4. Decoders, GPU (a device still opening is waited for), caches.
         frames.clear();
+        if let Some(thread) = gpu_thread
+            && thread.join().is_err()
+        {
+            tracing::error!("the GPU thread panicked");
+        }
         drop(renderer);
-        lock(&compositor_home).take();
-        drop(gpu);
+        gpu.close();
         self.inner.frame_cache.clear();
         drop(caches);
         tracing::info!("media, render, audio and playback stopped");

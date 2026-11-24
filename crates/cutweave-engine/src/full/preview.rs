@@ -14,8 +14,8 @@
 //! test covers the render loop itself (with its synthetic source). Pooled buffers for the real
 //! renderer are a follow-up (see the WP-1I.05 notes).
 
+use std::sync::Arc;
 use std::sync::atomic::{AtomicBool, Ordering};
-use std::sync::{Arc, Mutex, PoisonError};
 
 use cutweave_commands::DocHandle;
 use cutweave_media::{CancelCheck, DecodeMode};
@@ -24,11 +24,12 @@ use cutweave_playback::shm::{FrameLayout, PixelFormat};
 use cutweave_playback::transport::{
     CancelToken, FrameSource, RenderPurpose, RenderRequest, Rendered, SequenceTiming, SourceError,
 };
-use cutweave_render::gpu::{Compositor, RenderError};
+use cutweave_render::gpu::{Compositor, CompositorOptions, RenderError};
 use cutweave_render::graph::{GraphOptions, build};
 use cutweave_render::{Image, Target, evaluate};
 
 use super::frames::MediaFrames;
+use super::gpu::LateGpu;
 use crate::subsystems::SubsystemEvents;
 
 /// The first sequence of `doc` (the one the editor shows: lowest id).
@@ -46,18 +47,48 @@ pub(crate) fn timing_of(doc: &Project) -> SequenceTiming {
     }
 }
 
-/// The preview compositor, lent to one playback session at a time and returned on drop.
+/// The preview compositor, lent to one playback session at a time (taken from the GPU once it
+/// is open) and returned on drop.
 pub(crate) struct CompositorSlot {
     compositor: Option<Compositor>,
-    home: Arc<Mutex<Option<Compositor>>>,
+    gpu: Arc<LateGpu>,
+    /// The GPU settled without a device: render on the CPU.
+    cpu: bool,
+}
+
+/// How a frame can be rendered right now.
+enum Renderer<'a> {
+    Gpu(&'a mut Compositor),
+    Cpu,
+    /// The GPU is still opening.
+    Pending,
 }
 
 impl CompositorSlot {
-    /// Takes the compositor from `home` (`None` there: render on the CPU).
-    pub(crate) fn take(home: &Arc<Mutex<Option<Compositor>>>) -> CompositorSlot {
-        CompositorSlot {
-            compositor: home.lock().unwrap_or_else(PoisonError::into_inner).take(),
-            home: Arc::clone(home),
+    /// A slot for the preview compositor of `gpu` (taken when the device is open).
+    pub(crate) fn new(gpu: Arc<LateGpu>) -> CompositorSlot {
+        let mut slot = CompositorSlot {
+            compositor: None,
+            gpu,
+            cpu: false,
+        };
+        let _ = slot.renderer();
+        slot
+    }
+
+    fn renderer(&mut self) -> Renderer<'_> {
+        if self.compositor.is_none() && !self.cpu {
+            if !self.gpu.is_settled() {
+                return Renderer::Pending;
+            }
+            self.compositor = self.gpu.take_preview();
+            self.cpu = self.compositor.is_none() && !self.gpu.has_gpu();
+        }
+        match self.compositor.as_mut() {
+            Some(c) => Renderer::Gpu(c),
+            None if self.cpu => Renderer::Cpu,
+            // The device exists but another session still holds the compositor.
+            None => Renderer::Pending,
         }
     }
 }
@@ -65,7 +96,7 @@ impl CompositorSlot {
 impl Drop for CompositorSlot {
     fn drop(&mut self) {
         if let Some(c) = self.compositor.take() {
-            *self.home.lock().unwrap_or_else(PoisonError::into_inner) = Some(c);
+            self.gpu.return_preview(c);
         }
     }
 }
@@ -87,6 +118,7 @@ impl std::fmt::Debug for PreviewSource {
         f.debug_struct("PreviewSource")
             .field("timing", &self.timing)
             .field("gpu", &self.compositor.compositor.is_some())
+            .field("cpu", &self.compositor.cpu)
             .finish_non_exhaustive()
     }
 }
@@ -100,10 +132,8 @@ impl PreviewSource {
         lost_reported: Arc<AtomicBool>,
     ) -> PreviewSource {
         let timing = timing_of(&doc.snapshot().doc);
-        let options = compositor
-            .compositor
-            .as_ref()
-            .map_or_else(GraphOptions::default, |c| c.options().graph);
+        // The compositor's graph options (`CompositorOptions::default().graph`).
+        let options = CompositorOptions::default().graph;
         PreviewSource {
             doc,
             timing,
@@ -120,14 +150,26 @@ impl PreviewSource {
         scene: &cutweave_render::SceneDescription,
         graph: &cutweave_render::graph::RenderGraph,
     ) -> Result<Image, SourceError> {
-        let Some(compositor) = self.compositor.compositor.as_mut() else {
-            return cutweave_render::reference::render(
-                scene,
-                graph.target,
-                &*self.frames,
-                &self.options,
-            )
-            .map_err(|e| SourceError::Failed(e.to_string()));
+        let compositor = match self.compositor.renderer() {
+            Renderer::Gpu(c) => c,
+            Renderer::Cpu => {
+                return cutweave_render::reference::render(
+                    scene,
+                    graph.target,
+                    &*self.frames,
+                    &self.options,
+                )
+                .map_err(|e| SourceError::Failed(e.to_string()));
+            }
+            Renderer::Pending => {
+                // Black until the device is open (it then re-renders the current frame).
+                let (w, h) = graph.target.size();
+                return Ok(Image {
+                    width: w,
+                    height: h,
+                    data: [0, 0, 0, 255].repeat((w as usize) * (h as usize)),
+                });
+            }
         };
         match compositor.execute(graph) {
             Ok(frame) => frame
