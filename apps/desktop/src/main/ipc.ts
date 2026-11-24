@@ -5,6 +5,7 @@
 // functions only; there is no generic `invoke(channel, ...)` anywhere on the bridge.
 
 import { z } from "zod";
+import { EDIT_ACTIONS, THEMES } from "../shared/api.ts";
 import type { InvokeChannel, InvokeChannels } from "../shared/ipc-contract.ts";
 import {
   isTrustedOrigin,
@@ -56,6 +57,13 @@ export const invokeSchemas = {
   "dialog:pickMediaFiles": noArgs,
   "shell:showItemInFolder": z.tuple([filePath]),
   "shell:openExternal": z.tuple([externalUrl]),
+  "app:about": noArgs,
+  "app:quit": noArgs,
+  "window:toggleFullScreen": noArgs,
+  "window:setTheme": z.tuple([z.enum(THEMES)]),
+  "window:reload": noArgs,
+  "window:toggleDevTools": noArgs,
+  "edit:run": z.tuple([z.enum(EDIT_ACTIONS)]),
 } as const satisfies { [K in InvokeChannel]: z.ZodType<InvokeChannels[K]["args"]> };
 
 export const INVOKE_CHANNELS = Object.keys(invokeSchemas) as InvokeChannel[];

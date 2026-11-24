@@ -81,9 +81,35 @@ export interface EngineConnection {
   readonly generation: number;
 }
 
-/** Commands native menu accelerators send to the renderer (validated, allowlisted). */
+/**
+ * Commands the native menu sends to the renderer (validated, allowlisted). Only macOS has a
+ * native menu; on Windows and Linux the editor draws its own menu bar (WP-1M.09).
+ */
 export const MENU_COMMANDS = ["undo", "redo", "save", "saveAs", "new", "open", "export"] as const;
 export type MenuCommand = (typeof MENU_COMMANDS)[number];
+
+/** The editor's themes: the OS window-controls overlay follows the one it shows (WP-1M.09). */
+export const THEMES = ["dark", "light"] as const;
+export type ThemeId = (typeof THEMES)[number];
+
+/**
+ * Edit > Cut, Copy, Paste and Select all of the in-app menu bar: main runs them on the focused
+ * element of the editor window, as the native menu's edit roles did (WP-1M.09).
+ */
+export const EDIT_ACTIONS = ["cut", "copy", "paste", "selectAll"] as const;
+export type EditAction = (typeof EDIT_ACTIONS)[number];
+
+/** What Help > About shows (WP-1M.09). Versions only; nothing about the user or the machine. */
+export interface AboutInfo {
+  readonly name: string;
+  readonly version: string;
+  readonly electron: string;
+  readonly chrome: string;
+  readonly node: string;
+  readonly v8: string;
+  /** `win32 x64`, `darwin arm64`, … */
+  readonly platform: string;
+}
 
 export interface AppInfo {
   readonly name: string;
@@ -94,6 +120,11 @@ export interface AppInfo {
    * exposes its test handle (`window.__cutweaveEditor`). Absent otherwise.
    */
   readonly testHooks?: true;
+  /**
+   * True in unpackaged (development) runs: the View menu then offers Reload and Toggle developer
+   * tools, whose channels refuse to run in packaged builds. Absent otherwise.
+   */
+  readonly dev?: true;
   /**
    * `jpeg` when `CUTWEAVE_PREVIEW=jpeg` forces the reduced preview path (still frames from the
    * engine's `/media/frame`, used on CI machines without a GPU; WP-1M.04). Absent otherwise.
@@ -242,6 +273,10 @@ export type Unsubscribe = () => void;
 export interface CutweaveApi {
   readonly app: {
     getInfo(): Promise<AppInfo>;
+    /** Versions for Help > About (the editor draws the dialog). */
+    about(): Promise<AboutInfo>;
+    /** File > Exit: quit the app; unsaved changes are settled first (the close guard asks). */
+    quit(): Promise<void>;
   };
   readonly engine: {
     /** Null until the engine is ready (or when no engine is available). */
@@ -316,6 +351,18 @@ export interface CutweaveApi {
     setDirty(dirty: boolean): Promise<void>;
     onCloseRequested(listener: () => void): Unsubscribe;
     confirmClose(): Promise<void>;
+    /** View > Toggle full screen (F11). */
+    toggleFullScreen(): Promise<void>;
+    /** The theme the editor shows: the OS window-controls overlay takes its colors (Windows, Linux). */
+    setTheme(theme: ThemeId): Promise<void>;
+    /** View > Reload; development builds only (refused when packaged). */
+    reload(): Promise<void>;
+    /** View > Toggle developer tools; development builds only (refused when packaged). */
+    toggleDevTools(): Promise<void>;
+  };
+  /** Edit > Cut, Copy, Paste, Select all on the focused element (WP-1M.09). */
+  readonly edit: {
+    run(action: EditAction): Promise<void>;
   };
   readonly shell: {
     showItemInFolder(path: string): Promise<void>;

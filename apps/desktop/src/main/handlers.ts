@@ -3,7 +3,14 @@
 // Arguments arrive already sender-checked and zod-validated.
 
 import nodePath from "node:path";
-import type { AppInfo, EngineConnection, EngineStatus } from "../shared/api.ts";
+import type {
+  AboutInfo,
+  AppInfo,
+  EditAction,
+  EngineConnection,
+  EngineStatus,
+  ThemeId,
+} from "../shared/api.ts";
 import type { InvokeHandlers } from "./ipc.ts";
 import { parseExternalUrl } from "./origins.ts";
 
@@ -29,6 +36,26 @@ export interface HandlerDeps {
   showItemInFolder(path: string): void;
   /** `shell.openExternal`; only ever called with a validated `https:` URL. */
   openExternal(url: string): Promise<void>;
+  // The title bar and in-app menu bar (WP-1M.09).
+  /** Versions for Help > About. */
+  about(): AboutInfo;
+  /** File > Exit: `app.quit()` (the close guard settles unsaved changes first). */
+  quit(): void;
+  toggleFullScreen(): void;
+  /** Recolors the OS window-controls overlay (Windows, Linux; nothing on macOS). */
+  setTheme(theme: ThemeId): void;
+  /** `webContents.cut()` and friends on the editor window's focused element. */
+  editCommand(action: EditAction): void;
+  /** View > Reload and Toggle developer tools: present in unpackaged runs only. */
+  dev?: { reload(): void; toggleDevTools(): void } | undefined;
+}
+
+/** A development-only action asked for in a packaged build. */
+export class DevOnlyError extends Error {
+  constructor(channel: string) {
+    super(`${channel} is only available in development builds`);
+    this.name = "DevOnlyError";
+  }
 }
 
 /** File-type filters of the media picker; "All files" stays last so nothing is out of reach. */
@@ -109,6 +136,27 @@ export function createHandlers(deps: HandlerDeps): InvokeHandlers {
       const safe = parseExternalUrl(url);
       if (safe === null) throw new Error("refusing to open a non-https URL");
       await deps.openExternal(safe);
+    },
+    "app:about": () => deps.about(),
+    "app:quit": () => {
+      deps.quit();
+    },
+    "window:toggleFullScreen": () => {
+      deps.toggleFullScreen();
+    },
+    "window:setTheme": (theme) => {
+      deps.setTheme(theme);
+    },
+    "window:reload": () => {
+      if (deps.dev === undefined) throw new DevOnlyError("window:reload");
+      deps.dev.reload();
+    },
+    "window:toggleDevTools": () => {
+      if (deps.dev === undefined) throw new DevOnlyError("window:toggleDevTools");
+      deps.dev.toggleDevTools();
+    },
+    "edit:run": (action) => {
+      deps.editCommand(action);
     },
   };
 }

@@ -27,6 +27,21 @@ const handlers = (): InvokeHandlers => ({
   "dialog:pickMediaFiles": vi.fn(() => null),
   "shell:showItemInFolder": vi.fn(),
   "shell:openExternal": vi.fn(async () => undefined),
+  "app:about": () => ({
+    name: "Cutweave",
+    version: "0",
+    electron: "0",
+    chrome: "0",
+    node: "0",
+    v8: "0",
+    platform: "linux x64",
+  }),
+  "app:quit": vi.fn(),
+  "window:toggleFullScreen": vi.fn(),
+  "window:setTheme": vi.fn(),
+  "window:reload": vi.fn(),
+  "window:toggleDevTools": vi.fn(),
+  "edit:run": vi.fn(),
 });
 
 type Listener = (e: IpcEventLike, ...a: unknown[]) => unknown;
@@ -117,6 +132,47 @@ describe("ipc registry", () => {
     );
     call("dialog:pickMediaFiles", okEvent);
     expect(h["dialog:pickMediaFiles"]).toHaveBeenCalledTimes(1);
+  });
+
+  it("takes no arguments on the title bar's app and window actions (WP-1M.09)", () => {
+    const h = handlers();
+    const call = register(h);
+    for (const channel of [
+      "app:about",
+      "app:quit",
+      "window:toggleFullScreen",
+      "window:reload",
+      "window:toggleDevTools",
+    ] as const) {
+      expect(() => call(channel, okEvent, "x"), channel).toThrow(IpcValidationError);
+      expect(() => call(channel, okEvent, { force: true }), channel).toThrow(IpcValidationError);
+      call(channel, okEvent);
+    }
+    expect(h["app:quit"]).toHaveBeenCalledTimes(1);
+    expect(h["window:toggleFullScreen"]).toHaveBeenCalledTimes(1);
+    expect(h["window:reload"]).toHaveBeenCalledTimes(1);
+    expect(h["window:toggleDevTools"]).toHaveBeenCalledTimes(1);
+  });
+
+  it("accepts only a known theme and a known edit action", () => {
+    const h = handlers();
+    const call = register(h);
+    for (const bad of ["Dark", "high-contrast", "", 1, null, ["dark"], { theme: "dark" }]) {
+      expect(() => call("window:setTheme", okEvent, bad), String(bad)).toThrow(IpcValidationError);
+    }
+    expect(() => call("window:setTheme", okEvent, "dark", "light")).toThrow(IpcValidationError);
+    call("window:setTheme", okEvent, "light");
+    expect(h["window:setTheme"]).toHaveBeenCalledWith("light");
+    for (const bad of ["undo", "delete", "openDevTools", "paste\0", 3, undefined]) {
+      expect(() => call("edit:run", okEvent, bad), String(bad)).toThrow(IpcValidationError);
+    }
+    for (const action of ["cut", "copy", "paste", "selectAll"]) call("edit:run", okEvent, action);
+    expect(vi.mocked(h["edit:run"]).mock.calls).toEqual([
+      ["cut"],
+      ["copy"],
+      ["paste"],
+      ["selectAll"],
+    ]);
   });
 
   it("runs the sender check before validation and the handler", () => {

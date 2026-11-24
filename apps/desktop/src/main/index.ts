@@ -1,12 +1,13 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 // Electron main process entry. Wires: the hardened app:// protocol (CSP per response), session
-// and webContents hardening, the window factory, validated IPC, the native menu and the
-// engine supervisor. Security controls: WP-1L.02, see SECURITY-MODEL.md.
+// and webContents hardening, the window factory, validated IPC, the application menu (native on
+// macOS only; the editor draws its own on Windows and Linux, WP-1M.09) and the engine supervisor.
+// Security controls: WP-1L.02, see SECURITY-MODEL.md.
 // Supervision, restart and the failed dialog: WP-1L.03 (src/main/engine/supervisor.ts).
 
 import path from "node:path";
 import { app, BrowserWindow, dialog, ipcMain, Menu, net, protocol, session, shell } from "electron";
-import type { EngineStatus } from "../shared/api.ts";
+import type { EditAction, EngineStatus } from "../shared/api.ts";
 import {
   APP_ORIGIN,
   APP_SCHEME,
@@ -22,10 +23,11 @@ import { EngineSupervisor } from "./engine/supervisor.ts";
 import { createHandlers, MEDIA_FILE_FILTERS } from "./handlers.ts";
 import { type HardeningContext, hardenSession, hardenWebContents } from "./hardening.ts";
 import { createSenderCheck, registerIpc } from "./ipc.ts";
-import { buildMenuTemplate } from "./menu.ts";
+import { applicationMenuTemplate } from "./menu.ts";
 import { forcedPreviewPath } from "./preview-path.ts";
 import { RecentProjects } from "./recent-projects.ts";
 import { installTestHooks, shouldInstallTestHooks } from "./test-hooks.ts";
+import { hasThemedOverlay, titleBarOverlay } from "./title-bar.ts";
 import { createMainWindow } from "./window.ts";
 import { createWindow, type WindowFactoryContext, windowKindOf, windowsOfKind } from "./windows.ts";
 
@@ -67,6 +69,31 @@ const factory: WindowFactoryContext = {
 // session the permission/request policy, before any content loads.
 app.on("web-contents-created", (_event, contents) => hardenWebContents(contents, hardening));
 app.on("session-created", (ses) => hardenSession(ses, hardening));
+
+/** The editor window, while it is open and not being torn down. */
+function liveWindow(): BrowserWindow | null {
+  return mainWindow !== null && !mainWindow.isDestroyed() ? mainWindow : null;
+}
+
+/** Edit > Cut, Copy, Paste, Select all: what the native menu's edit roles call. */
+function runEditCommand(action: EditAction): void {
+  const contents = liveWindow()?.webContents;
+  if (contents === undefined) return;
+  switch (action) {
+    case "cut":
+      contents.cut();
+      return;
+    case "copy":
+      contents.copy();
+      return;
+    case "paste":
+      contents.paste();
+      return;
+    case "selectAll":
+      contents.selectAll();
+      return;
+  }
+}
 
 /** Status to every editor window (never the token: that is `engine:getConnection` only). */
 function setEngineStatus(status: EngineStatus): void {
@@ -170,6 +197,7 @@ if (!app.requestSingleInstanceLock()) {
           name: app.getName(),
           version: app.getVersion(),
           platform: process.platform,
+          ...(isDev ? { dev: true as const } : {}),
           ...(testHooks ? { testHooks: true as const } : {}),
           ...(forcedPreviewPath(process.env) === "jpeg" ? { preview: "jpeg" as const } : {}),
         },
@@ -200,22 +228,47 @@ if (!app.requestSingleInstanceLock()) {
         },
         showItemInFolder: (p) => shell.showItemInFolder(p),
         openExternal: (url) => openExternal(url),
+        about: () => ({
+          name: app.getName(),
+          version: app.getVersion(),
+          electron: process.versions.electron,
+          chrome: process.versions.chrome,
+          node: process.versions.node,
+          v8: process.versions.v8,
+          platform: `${process.platform} ${process.arch}`,
+        }),
+        quit: () => app.quit(),
+        toggleFullScreen: () => {
+          const win = liveWindow();
+          win?.setFullScreen(!win.isFullScreen());
+        },
+        setTheme: (theme) => {
+          if (hasThemedOverlay(process.platform)) {
+            liveWindow()?.setTitleBarOverlay(titleBarOverlay(theme));
+          }
+        },
+        editCommand: runEditCommand,
+        dev: isDev
+          ? {
+              reload: () => liveWindow()?.webContents.reload(),
+              toggleDevTools: () => liveWindow()?.webContents.toggleDevTools(),
+            }
+          : undefined,
       }),
       createSenderCheck({
         devServerOrigin,
         isEditorContents: (sender) => windowKindOf(sender) === "editor",
       }),
     );
-    Menu.setApplicationMenu(
-      Menu.buildFromTemplate(
-        buildMenuTemplate({
-          platform: process.platform,
-          appName: app.getName(),
-          isDev,
-          send: (command) => mainWindow?.webContents.send("menu:command", command),
-        }),
-      ),
-    );
+    // macOS keeps its native app menu; on Windows and Linux `null` removes the menu bar (the
+    // editor's title bar has its own, WP-1M.09).
+    const menuTemplate = applicationMenuTemplate({
+      platform: process.platform,
+      appName: app.getName(),
+      isDev,
+      send: (command) => mainWindow?.webContents.send("menu:command", command),
+    });
+    Menu.setApplicationMenu(menuTemplate === null ? null : Menu.buildFromTemplate(menuTemplate));
     if (testHooks) {
       installTestHooks({
         createWindow: (kind, options) => createWindow(kind, options, factory),

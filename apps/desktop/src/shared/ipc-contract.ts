@@ -4,11 +4,14 @@
 // The runtime validators (zod) live in main (src/main/ipc.ts) and are type-checked against this.
 
 import {
+  type AboutInfo,
   type AppInfo,
+  type EditAction,
   type EngineConnection,
   type EngineStatus,
   MENU_COMMANDS,
   type MenuCommand,
+  type ThemeId,
 } from "./api.ts";
 
 /** Renderer -> main request/response channels (`ipcMain.handle`). */
@@ -26,6 +29,16 @@ export interface InvokeChannels {
   "dialog:pickMediaFiles": { args: []; result: string[] | null };
   "shell:showItemInFolder": { args: [path: string]; result: undefined };
   "shell:openExternal": { args: [url: string]; result: undefined };
+  // The title bar and in-app menu bar (WP-1M.09): actions only main can take.
+  "app:about": { args: []; result: AboutInfo };
+  "app:quit": { args: []; result: undefined };
+  "window:toggleFullScreen": { args: []; result: undefined };
+  "window:setTheme": { args: [theme: ThemeId]; result: undefined };
+  /** Development builds only; refused when packaged. */
+  "window:reload": { args: []; result: undefined };
+  /** Development builds only; refused when packaged. */
+  "window:toggleDevTools": { args: []; result: undefined };
+  "edit:run": { args: [action: EditAction]; result: undefined };
 }
 
 /** Main -> renderer events (`webContents.send`). */

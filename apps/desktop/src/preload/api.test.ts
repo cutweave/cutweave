@@ -27,6 +27,7 @@ describe("createCutweaveApi", () => {
     expect(Object.keys(api).sort()).toEqual([
       "app",
       "dialog",
+      "edit",
       "engine",
       "files",
       "menu",
@@ -95,6 +96,28 @@ describe("createCutweaveApi", () => {
     expect(asked).toBe(1);
     off();
     expect(listeners.get("window:closeRequested")?.size).toBe(0);
+  });
+
+  it("maps the title bar and menu bar actions to fixed channels (WP-1M.09)", async () => {
+    const { ipc } = fakeIpc();
+    const api = createCutweaveApi(ipc, null);
+    await api.app.about();
+    await api.app.quit();
+    await api.window.toggleFullScreen();
+    await api.window.setTheme("light");
+    await api.window.reload();
+    await api.window.toggleDevTools();
+    await api.edit.run("paste");
+    expect(vi.mocked(ipc.invoke).mock.calls).toEqual([
+      ["app:about"],
+      ["app:quit"],
+      ["window:toggleFullScreen"],
+      ["window:setTheme", "light"],
+      ["window:reload"],
+      ["window:toggleDevTools"],
+      ["edit:run", "paste"],
+    ]);
+    expect(Object.keys(api.edit)).toEqual(["run"]);
   });
 
   it("filters menu events to known commands and unsubscribes", () => {
