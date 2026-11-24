@@ -738,6 +738,8 @@
   flex-direction: column;
   gap: var(--space-3);
   box-sizing: border-box;
+  /* Project names and paths in titles and notes wrap instead of overflowing. */
+  overflow-wrap: break-word;
   width: var(--layer-width-md);
   max-width: calc(100vw - var(--space-6) * 2);
   max-height: calc(100vh - var(--space-6) * 2);
@@ -767,6 +769,8 @@
   align-items: center;
   gap: var(--space-2);
   margin: 0;
+  min-width: 0;
+  overflow-wrap: anywhere;
   color: var(--text-muted);
 }
 
@@ -1004,6 +1008,8 @@
   flex-direction: column;
   gap: var(--space-1);
   min-width: 0;
+  /* Long unbroken text (a file path, a URL) wraps instead of overflowing the toast. */
+  overflow-wrap: anywhere;
 }
 .cw-toast__text {
   color: var(--text-secondary);
