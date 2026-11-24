@@ -8,6 +8,8 @@
 //! - `InputCheck` (crate-private): the input rules of the [`Encoder`](crate::Encoder) trait,
 //!   shared by `FakeBackend` and `FfmpegBackend` so that both reject the same input the same
 //!   way. A rejected frame or chunk is [`MediaError::Invalid`] and changes nothing.
+//! - [`encode_with_fallback`]: runs an encode and, when a hardware encoder fails mid-stream,
+//!   runs it again from the start in software (WP-1E.02).
 
 use std::fmt;
 use std::sync::Arc;
@@ -18,7 +20,9 @@ use cutweave_model::{
     TransferCharacteristics,
 };
 
-use crate::backend::{AudioEncodeSpec, EncodeSpec, EncodeSummary, VideoEncodeSpec};
+use crate::backend::{
+    AudioEncodeSpec, EncodeSpec, EncodeSummary, Encoder, HwEncode, MediaBackend, VideoEncodeSpec,
+};
 use crate::{AudioChunk, MediaError, PixelFormat, VideoFrame};
 
 /// How a video encoder spends bits.
@@ -350,6 +354,47 @@ fn to_duration(t: Option<Time>) -> Duration {
         .unwrap_or(Duration::ZERO)
 }
 
+/// Encodes `spec` on `backend` and finishes the output, with `produce` pushing the input; when a
+/// hardware encoder fails mid-stream, encodes everything again in software (WP-1E.02).
+///
+/// `produce` pushes every frame and chunk into the encoder it is given, propagating push errors,
+/// and returns; this function then calls [`Encoder::finish`]. Under [`HwEncode::Auto`], a
+/// [`MediaError::HwUnavailable`] from opening, `produce` or `finish` (a hardware encoder that
+/// failed after it opened; its partial output is already removed) is logged, and the whole encode
+/// runs once more with [`HwEncode::Off`]: `produce` is called again and must push the same input
+/// from the start (progress reports restart at zero, and
+/// [`Encoder::video_encoder`] tells the attempts apart). Every other error, a cancel, and any
+/// failure under `Off` or `Force` are returned as they are.
+///
+/// # Errors
+///
+/// What opening, `produce` or `finish` returned on the last attempt.
+pub fn encode_with_fallback(
+    backend: &dyn MediaBackend,
+    spec: &EncodeSpec,
+    mut produce: impl FnMut(&mut dyn Encoder) -> Result<(), MediaError>,
+) -> Result<EncodeSummary, MediaError> {
+    let attempt =
+        |spec: &EncodeSpec, produce: &mut dyn FnMut(&mut dyn Encoder) -> Result<(), MediaError>| {
+            let mut enc = backend.open_encoder(spec)?;
+            // On an error the encoder is dropped here, which removes its partial output.
+            produce(enc.as_mut())?;
+            enc.finish()
+        };
+    match attempt(spec, &mut produce) {
+        Err(MediaError::HwUnavailable { reason }) if spec.hw == HwEncode::Auto => {
+            tracing::warn!(
+                target: "cutweave_media",
+                "hardware video encoding of `{}` failed ({reason}); encoding it again from the \
+                 start in software",
+                crate::path::display(&spec.path)
+            );
+            attempt(&spec.clone().with_hw(HwEncode::Off), &mut produce)
+        }
+        other => other,
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use std::sync::Mutex;
@@ -485,6 +530,217 @@ mod tests {
         });
         assert_eq!(seen.lock().unwrap()[0].video_frames, 3);
         assert_eq!(sink, sink.clone());
+    }
+
+    /// Where [`Flaky`]'s non-`Off` encoders fail with `HwUnavailable`.
+    #[derive(Clone, Copy, Debug, PartialEq, Eq)]
+    enum FailAt {
+        Open,
+        Frame(u64),
+        Finish,
+        /// A different error at this frame (no fallback expected).
+        Cancel(u64),
+    }
+
+    /// A fake backend whose "hardware" (any `hw` but `Off`) fails at `fail_at`; records the `hw`
+    /// of every open.
+    struct Flaky {
+        inner: crate::FakeBackend,
+        fail_at: FailAt,
+        opened: Mutex<Vec<HwEncode>>,
+    }
+
+    struct FlakyEncoder {
+        inner: Box<dyn Encoder>,
+        fail_at: FailAt,
+        frames: u64,
+    }
+
+    fn hw_failed() -> MediaError {
+        MediaError::HwUnavailable {
+            reason: "test_hw: device lost (simulated)".to_owned(),
+        }
+    }
+
+    impl Encoder for FlakyEncoder {
+        fn push_video(&mut self, frame: &VideoFrame) -> Result<(), MediaError> {
+            match self.fail_at {
+                FailAt::Frame(n) if n == self.frames => return Err(hw_failed()),
+                FailAt::Cancel(n) if n == self.frames => return Err(MediaError::Cancelled),
+                _ => {}
+            }
+            self.frames += 1;
+            self.inner.push_video(frame)
+        }
+        fn push_audio(&mut self, chunk: &AudioChunk) -> Result<(), MediaError> {
+            self.inner.push_audio(chunk)
+        }
+        fn finish(self: Box<Self>) -> Result<EncodeSummary, MediaError> {
+            if self.fail_at == FailAt::Finish {
+                return Err(hw_failed());
+            }
+            self.inner.finish()
+        }
+        fn video_encoder(&self) -> Option<&str> {
+            Some("test_hw")
+        }
+    }
+
+    impl MediaBackend for Flaky {
+        fn probe(&self, path: &std::path::Path) -> Result<cutweave_model::ProbeInfo, MediaError> {
+            self.inner.probe(path)
+        }
+        fn index_media(&self, path: &std::path::Path) -> Result<crate::FrameIndex, MediaError> {
+            self.inner.index_media(path)
+        }
+        fn open_decoder(
+            &self,
+            path: &std::path::Path,
+            opts: &crate::DecodeOpts,
+        ) -> Result<Box<dyn crate::VideoDecoder>, MediaError> {
+            self.inner.open_decoder(path, opts)
+        }
+        fn open_audio_decoder(
+            &self,
+            path: &std::path::Path,
+            stream: Option<u32>,
+        ) -> Result<Box<dyn crate::AudioDecoder>, MediaError> {
+            self.inner.open_audio_decoder(path, stream)
+        }
+        fn open_encoder(&self, spec: &EncodeSpec) -> Result<Box<dyn Encoder>, MediaError> {
+            self.opened.lock().unwrap().push(spec.hw.clone());
+            if spec.hw == HwEncode::Off {
+                return self.inner.open_encoder(spec);
+            }
+            if self.fail_at == FailAt::Open {
+                return Err(hw_failed());
+            }
+            Ok(Box::new(FlakyEncoder {
+                inner: self
+                    .inner
+                    .open_encoder(&spec.clone().with_hw(HwEncode::Off))?,
+                fail_at: self.fail_at,
+                frames: 0,
+            }))
+        }
+        fn capabilities(&self) -> crate::Capabilities {
+            self.inner.capabilities()
+        }
+    }
+
+    const FRAMES: i64 = 6;
+
+    /// Runs `encode_with_fallback` on a [`Flaky`] backend with `hw`, pushing six frames; returns
+    /// the result, the `hw` of every open, and the encoder name each `produce` call saw.
+    fn fallback_run(
+        fail_at: FailAt,
+        hw: HwEncode,
+    ) -> (
+        Result<EncodeSummary, MediaError>,
+        Vec<HwEncode>,
+        Vec<String>,
+    ) {
+        let backend = Flaky {
+            inner: crate::FakeBackend::new(),
+            fail_at,
+            opened: Mutex::new(Vec::new()),
+        };
+        let spec = EncodeSpec::new("out.mp4")
+            .with_video(VideoEncodeSpec {
+                codec: crate::testing::FAKE_VIDEO_CODEC.to_owned(),
+                ..VideoEncodeSpec::h264(4, 2, FrameRate::FPS_25, PixelFormat::Nv12)
+            })
+            .with_hw(hw);
+        let mut seen = Vec::new();
+        let result = encode_with_fallback(&backend, &spec, |enc| {
+            seen.push(enc.video_encoder().unwrap_or("software").to_owned());
+            for n in 0..FRAMES {
+                enc.push_video(&frame(n))?;
+            }
+            Ok(())
+        });
+        (result, backend.opened.into_inner().unwrap(), seen)
+    }
+
+    #[test]
+    fn a_mid_stream_hardware_failure_re_encodes_everything_in_software() {
+        for fail_at in [FailAt::Frame(3), FailAt::Finish, FailAt::Open] {
+            let (result, opened, seen) = fallback_run(fail_at, HwEncode::Auto);
+            assert_eq!(
+                result.map(|s| s.video_frames),
+                Ok(6),
+                "{fail_at:?}: the software attempt pushes all frames from the start"
+            );
+            assert_eq!(opened, [HwEncode::Auto, HwEncode::Off], "{fail_at:?}");
+            let want: &[&str] = if fail_at == FailAt::Open {
+                &["software"]
+            } else {
+                &["test_hw", "software"]
+            };
+            assert_eq!(seen, want, "{fail_at:?}");
+        }
+    }
+
+    #[test]
+    fn only_auto_falls_back_and_only_for_hardware_failures() {
+        // A forced encoder or `Off` returns the failure as it is.
+        let forced = HwEncode::Force("test_hw".into());
+        let (result, opened, _) = fallback_run(FailAt::Frame(2), forced.clone());
+        assert_eq!(result, Err(hw_failed()));
+        assert_eq!(opened, [forced]);
+        // A cancel (or any other error) is not retried.
+        let (result, opened, seen) = fallback_run(FailAt::Cancel(2), HwEncode::Auto);
+        assert_eq!(result, Err(MediaError::Cancelled));
+        assert_eq!((opened.len(), seen.len()), (1, 1));
+        // Success needs one attempt.
+        let (result, opened, _) = fallback_run(FailAt::Frame(99), HwEncode::Auto);
+        assert_eq!(result.map(|s| s.video_frames), Ok(6));
+        assert_eq!(opened, [HwEncode::Auto]);
+    }
+
+    #[test]
+    fn hw_policy_defaults_to_auto_and_a_forced_name_must_not_be_empty() {
+        assert_eq!(HwEncode::default(), HwEncode::Auto);
+        assert_eq!(EncodeSpec::new("a.mp4").hw, HwEncode::Auto);
+        assert_eq!(
+            spec().with_hw(HwEncode::Off).hw,
+            HwEncode::Off,
+            "with_hw sets it"
+        );
+        assert!(
+            spec()
+                .with_hw(HwEncode::Force("h264_nvenc".into()))
+                .validate()
+                .is_ok()
+        );
+        for empty in ["", "  "] {
+            assert!(matches!(
+                spec().with_hw(HwEncode::Force(empty.into())).validate(),
+                Err(MediaError::Invalid { .. })
+            ));
+        }
+        // Without a video stream the policy is irrelevant.
+        let audio_only = EncodeSpec {
+            video: None,
+            ..spec().with_hw(HwEncode::Force(String::new()))
+        };
+        assert!(audio_only.validate().is_ok());
+    }
+
+    #[test]
+    fn the_fake_backend_has_no_hardware_encoder() {
+        let fake = crate::FakeBackend::new();
+        assert_eq!(fake.capabilities().hw_encode, Vec::new());
+        let spec = EncodeSpec::new("out.mp4").with_video(VideoEncodeSpec {
+            codec: crate::testing::FAKE_VIDEO_CODEC.to_owned(),
+            ..VideoEncodeSpec::h264(4, 2, FrameRate::FPS_25, PixelFormat::Nv12)
+        });
+        assert!(fake.open_encoder(&spec).is_ok(), "Auto encodes in software");
+        assert!(matches!(
+            fake.open_encoder(&spec.with_hw(HwEncode::Force("h264_nvenc".into())))
+                .err(),
+            Some(MediaError::HwUnavailable { .. })
+        ));
     }
 
     #[test]

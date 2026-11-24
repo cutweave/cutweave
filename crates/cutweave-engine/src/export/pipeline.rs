@@ -41,9 +41,9 @@ use std::time::Instant;
 use cutweave_audio::{Mixdown, mixdown};
 use cutweave_jobs::{CancelToken, JobError};
 use cutweave_media::{
-    AudioChunk, AudioEncodeSpec, CancelCheck, EncodeSpec, EncodeSummary, Encoder, MediaBackend,
-    MediaError, PixelFormat, Plane, ProgressSink, RateControl, SpeedPreset, VideoEncodeSpec,
-    VideoFrame,
+    AudioChunk, AudioEncodeSpec, CancelCheck, EncodeSpec, EncodeSummary, Encoder, HwEncode,
+    MediaBackend, MediaError, PixelFormat, Plane, ProgressSink, RateControl, SpeedPreset,
+    VideoEncodeSpec, VideoFrame,
 };
 use cutweave_model::{ColorTags, Project, Rounding, SampleRate, SequenceId, Time};
 use cutweave_ops::export::{ExportPlan, ExportQuality};
@@ -389,6 +389,9 @@ fn encode_spec(
     let token = cancel.clone();
     let sink = Arc::clone(written);
     EncodeSpec::new(&plan.path)
+        // Software until export maps `plan.hw` and restarts through `encode_with_fallback`
+        // (WP-1E.02 follow-up); `EncodeSpec` now defaults to `HwEncode::Auto`.
+        .with_hw(HwEncode::Off)
         .with_video(video)
         .with_audio(AudioEncodeSpec::aac(EXPORT_SAMPLE_RATE, EXPORT_CHANNELS))
         .with_cancel(CancelCheck::new(move || token.is_cancelled()))

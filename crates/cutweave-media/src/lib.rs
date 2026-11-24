@@ -18,8 +18,9 @@
 //!   FFmpeg's log into `tracing` (target `ffmpeg`). Build and run setup: docs/dev/ffmpeg.md.
 //!
 //! WP-1D.01 ships the boundary, WP-1D.02 probe, the frame index and content hashes, WP-1E.01
-//! the encoder (H.264 + AAC in MP4, [`EncodeSpec`]) and WP-1D.03 software decode, frame-exact
-//! seek and the decoder pool. Hardware decode arrives with WP-1D.04.
+//! the encoder (H.264 + AAC in MP4, [`EncodeSpec`]), WP-1E.02 hardware H.264 encoders with
+//! software fallback ([`HwEncode`], [`encode_with_fallback`]) and WP-1D.03 software decode,
+//! frame-exact seek and the decoder pool. Hardware decode arrives with WP-1D.04.
 //!
 //! **Dependency rule** (arch §3, `cargo xtask check-deps`): `cutweave-model` never depends on
 //! this crate, and `cutweave-render` / `cutweave-audio` may use only its trait half (the default
@@ -45,11 +46,14 @@ mod ffmpeg;
 
 pub use backend::{
     AudioDecoder, AudioEncodeSpec, DecodeMode, DecodeOpts, EncodeSpec, EncodeSummary, Encoder,
-    HwMode, MediaBackend, VideoDecoder, VideoEncodeSpec,
+    HwEncode, HwMode, MediaBackend, VideoDecoder, VideoEncodeSpec,
 };
 pub use cancel::CancelToken;
 pub use caps::{Capabilities, CodecSupport, HwCodec};
-pub use encode::{CancelCheck, EncodeProgress, ProgressSink, RateControl, SpeedPreset, bt709_tags};
+pub use encode::{
+    CancelCheck, EncodeProgress, ProgressSink, RateControl, SpeedPreset, bt709_tags,
+    encode_with_fallback,
+};
 pub use error::MediaError;
 pub use frame::{AudioChunk, AudioFormat, PixelFormat, Plane, VideoFrame};
 pub use hash::{ContentHash, FAST_HASH_WINDOW, HashMode, ParseHashError, content_hash};

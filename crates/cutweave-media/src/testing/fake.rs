@@ -550,6 +550,12 @@ impl MediaBackend for FakeBackend {
                 });
             }
         }
+        // No hardware here: `Auto` encodes in "software", a forced hardware encoder is missing.
+        if let (Some(_), crate::HwEncode::Force(name)) = (&spec.video, &spec.hw) {
+            return Err(MediaError::HwUnavailable {
+                reason: format!("the fake backend has no hardware encoder `{name}`"),
+            });
+        }
         Ok(Box::new(FakeEncoder {
             input: InputCheck::new(spec),
             spec: spec.clone(),
