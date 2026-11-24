@@ -1,9 +1,16 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
-// What the editor says about its engine (WP-1L.03): the top bar's status chip, the "Engine
+// What the editor says about its engine (WP-1L.03): the title bar's status icon, the "Engine
 // restarted — recovered" notice after a supervised restart, and the blocking message while
 // edits are refused (the engine failed for good, or it speaks another command schema).
 
-import { Dialog, DialogNote, StatusChip, type StatusTone, Toast } from "@cutweave/ui";
+import {
+  Dialog,
+  DialogNote,
+  type IconName,
+  StatusChip,
+  type StatusTone,
+  Toast,
+} from "@cutweave/ui";
 import { useState } from "react";
 import { useTranslation } from "react-i18next";
 import {
@@ -17,21 +24,25 @@ import type { TKey } from "../i18n/index.ts";
 /** How long the restart notice stays when everything was recovered. */
 export const RESTART_NOTICE_MS = 3000;
 
-const INDICATOR: Record<EngineIndicator, { tone: StatusTone; label: TKey }> = {
-  none: { tone: "neutral", label: "engine.status.none" },
-  connecting: { tone: "neutral", label: "engine.status.connecting" },
-  ready: { tone: "success", label: "engine.status.ready" },
-  reconnecting: { tone: "warning", label: "engine.status.reconnecting" },
-  stopped: { tone: "danger", label: "engine.status.stopped" },
-  mismatch: { tone: "danger", label: "engine.status.mismatch" },
+/** Each state has its own icon, so the icon-only chip reads without colour (design README). */
+const INDICATOR: Record<EngineIndicator, { tone: StatusTone; label: TKey; icon: IconName }> = {
+  none: { tone: "neutral", label: "engine.status.none", icon: "plug" },
+  connecting: { tone: "neutral", label: "engine.status.connecting", icon: "loader-circle" },
+  ready: { tone: "success", label: "engine.status.ready", icon: "check" },
+  reconnecting: { tone: "warning", label: "engine.status.reconnecting", icon: "loader-circle" },
+  stopped: { tone: "danger", label: "engine.status.stopped", icon: "circle-alert" },
+  mismatch: { tone: "danger", label: "engine.status.mismatch", icon: "unlink" },
 };
 
-/** The engine's state in the top bar: connected, reconnecting, stopped... */
+/**
+ * The engine's state in the title bar (connected, reconnecting, stopped...) as an icon; the
+ * words are its tooltip and its text for screen readers.
+ */
 export function EngineStatusChip() {
   const { t } = useTranslation();
-  const { tone, label } = INDICATOR[useEngineStore(engineIndicator)];
+  const { tone, label, icon } = INDICATOR[useEngineStore(engineIndicator)];
   return (
-    <StatusChip tone={tone} className="cw-engine-status">
+    <StatusChip tone={tone} icon={icon} iconOnly className="cw-engine-status">
       {t(label)}
     </StatusChip>
   );

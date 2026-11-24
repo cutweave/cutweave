@@ -64,7 +64,8 @@ body {
     [role="menubar"],
     [role="toolbar"],
     [role="radiogroup"],
-    [tabindex]
+    [tabindex],
+    .cw-status--icon
   ) {
   -webkit-app-region: no-drag;
 }
