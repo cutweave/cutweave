@@ -15,7 +15,8 @@ export interface SegmentedOption<T extends string = string> {
 
 export interface SegmentedControlProps<T extends string = string> {
   options: readonly SegmentedOption<T>[];
-  value: T;
+  /** The selected option; `null` selects none (a value that matches no option). */
+  value: T | null;
   onChange: (value: T) => void;
   /** Accessible name for the group. */
   "aria-label": string;
@@ -51,7 +52,7 @@ export function SegmentedControl<T extends string = string>({
       type="single"
       role="radiogroup"
       aria-label={ariaLabel}
-      value={value}
+      value={value ?? ""}
       onValueChange={select}
       disabled={disabled}
       className={cx("cw-seg", iconOnly && "cw-seg--icons", className)}

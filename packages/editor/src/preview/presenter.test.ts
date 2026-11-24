@@ -67,10 +67,14 @@ describe("selectFrame", () => {
     expect(selectFrame(buf, 12 * F30 - margin - 1, { rate: -1, latency: margin })?.id).toBe(11);
   });
 
-  it("stopped: the frame nearest the playhead, whatever the latency", () => {
-    const buf = frames(10, 14);
-    expect(selectFrame(buf, 13 * F30, { rate: 0, latency: F30 })?.id).toBe(14);
-    expect(selectFrame(buf, 11 * F30, { rate: 0 })?.id).toBe(10);
+  it("stopped: the frame containing the playhead, whatever the latency", () => {
+    const buf = frames(10, 12, 13, 14);
+    expect(selectFrame(buf, 12 * F30, { rate: 0, latency: F30 })?.id).toBe(12);
+    // A pause mid-frame shows that frame, never the next one.
+    expect(selectFrame(buf, 12 * F30 + F30 / 2, { rate: 0 })?.id).toBe(12);
+    expect(selectFrame(buf, 13 * F30 - 1, { rate: 0 })?.id).toBe(12);
+    // Every frame after the playhead: the nearest one.
+    expect(selectFrame(frames(14, 16), 11 * F30, { rate: 0 })?.id).toBe(14);
   });
 });
 

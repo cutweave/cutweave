@@ -136,6 +136,9 @@ describe("encoders", () => {
     expect(hardwareEncoders(answer)).toEqual(["h264_nvenc", "h264_amf"]);
     expect(hardwareEncoders({ hw_encode: [] })).toEqual([]);
     expect(hardwareEncoders({})).toBeNull();
+    expect(
+      hardwareEncoders({ available: false, hw_encode: [], hw_decode: [], codecs: [] }),
+    ).toBeNull();
     expect(hardwareEncoders(null)).toBeNull();
   });
 });

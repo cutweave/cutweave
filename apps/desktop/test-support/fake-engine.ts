@@ -410,6 +410,7 @@ function handle(client: Client, text: string): void {
       return;
     case "media.capabilities":
       ok({
+        available: true,
         hw_decode: [],
         hw_encode: (process.env.FAKE_ENGINE_ENCODERS ?? "h264_nvenc")
           .split(",")

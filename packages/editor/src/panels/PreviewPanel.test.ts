@@ -131,4 +131,37 @@ describe("PreviewPanel", () => {
     expect(outline?.style.width).toBe("100%");
     expect(document.querySelector(".cw-preview__readout")?.textContent).toBe("00:00:00:00");
   });
+
+  it("the aspect switch shows the sequence's shape, not the workspace's, and is off", () => {
+    desktop();
+    viewStore.getState().setAspect("9:16");
+    renderPanel();
+    const checked = () =>
+      screen
+        .getAllByRole("radio")
+        .filter((r) => r.getAttribute("aria-checked") === "true")
+        .map((r) => r.textContent);
+    // The fixture's sequence is 1920x1080.
+    expect(checked()).toEqual(["16:9"]);
+    expect(screen.getByRole("radio", { name: "16:9" }).hasAttribute("disabled")).toBe(true);
+    // A shape no preset matches selects none.
+    act(() => {
+      const project = docStore.getState().project;
+      if (project === null) throw new Error("no project");
+      const seq = Object.values(project.sequences)[0];
+      if (seq === undefined) throw new Error("no sequence");
+      docStore.getState().resync({
+        rev: 2,
+        committed_rev: 2,
+        project: {
+          ...project,
+          sequences: {
+            ...project.sequences,
+            [seq.id]: { ...seq, format: { ...seq.format, width: 1920, height: 800 } },
+          },
+        },
+      });
+    });
+    expect(checked()).toEqual([]);
+  });
 });

@@ -45,8 +45,9 @@ export function PreviewPanel() {
       <div className="cw-preview__bar">
         <SegmentedControl<AspectId>
           aria-label={t("preview.aspectLabel")}
-          value={aspectId}
-          // The sequence's own canvas sets the shape once there is one.
+          // The sequence's own canvas sets the shape once there is one: the control then shows
+          // that shape (none of the presets for a custom one) and is off.
+          value={aspect.fromSequence ? aspect.presetId : aspectId}
           disabled={aspect.fromSequence}
           onChange={(next) => viewStore.getState().setAspect(next)}
           options={ASPECTS.map((a) => ({ value: a.id, label: t(a.labelKey) }))}

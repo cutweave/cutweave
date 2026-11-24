@@ -29,6 +29,20 @@ function Harness({ onChange }: { onChange: (v: string) => void }) {
 }
 
 describe("SegmentedControl", () => {
+  it("selects none when the value is null", () => {
+    render(
+      h(SegmentedControl, {
+        options: OPTIONS,
+        value: null,
+        "aria-label": "Aspect ratio",
+        onChange: () => {},
+      }),
+    );
+    for (const radio of screen.getAllByRole("radio")) {
+      expect(radio.getAttribute("aria-checked")).toBe("false");
+    }
+  });
+
   it("is a named radiogroup of radios with the selected one checked", () => {
     render(h(Harness, { onChange: () => {} }));
     expect(screen.getByRole("radiogroup", { name: "Aspect ratio" })).toBeTruthy();

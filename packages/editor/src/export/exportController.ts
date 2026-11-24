@@ -156,7 +156,7 @@ export class ExportController {
     if (rpc === null) return;
     state.getState().setProbe({ status: "loading" });
     try {
-      const answer = await (rpc as unknown as UntypedRpc).call("media.capabilities", {});
+      const answer = await rpc.call("media.capabilities", {});
       const encoders = hardwareEncoders(answer);
       state
         .getState()
@@ -302,6 +302,3 @@ export class ExportController {
 }
 
 /** The client without its schema: for a query the generated map does not know yet. */
-interface UntypedRpc {
-  call(name: string, input: unknown): Promise<unknown>;
-}

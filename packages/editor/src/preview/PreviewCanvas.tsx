@@ -21,7 +21,7 @@ import { EmptyState } from "../panels/EmptyState.tsx";
 import { docStore, useDocStore } from "../state/docStore.ts";
 import { playbackStore } from "../state/playbackStore.ts";
 import { selectActiveSequenceId } from "../state/selectors.ts";
-import { ASPECTS, useViewStore, viewStore } from "../state/viewStore.ts";
+import { ASPECTS, type AspectId, useViewStore, viewStore } from "../state/viewStore.ts";
 import { canvasSurface, type FrameFetcher, httpFrameFetcher, JpegPreview } from "./jpegPreview.ts";
 import { PreviewOverlay } from "./PreviewOverlay.tsx";
 import type { PlayheadSample } from "./presenter.ts";
@@ -414,6 +414,8 @@ export function usePreviewAspect(): {
   readonly ratio: number;
   readonly style: CSSProperties;
   readonly fromSequence: boolean;
+  /** The aspect preset of that shape (the sequence's, when it has one); `null`: none matches. */
+  readonly presetId: AspectId | null;
 } {
   const aspectId = useViewStore((s) => s.aspect);
   const format = useDocStore((s) => {
@@ -432,10 +434,15 @@ export function usePreviewAspect(): {
       w = preset.width;
       h = preset.height;
     }
+    const ratio = w / h;
+    const preset = fromSequence
+      ? ASPECTS.find((a) => Math.abs(a.width / a.height - ratio) < 1e-3)
+      : ASPECTS.find((a) => a.id === aspectId);
     return {
-      ratio: w / h,
+      ratio,
       fromSequence,
-      style: { "--cw-aspect": `${w} / ${h}`, "--cw-ar": String(w / h) } as CSSProperties,
+      presetId: preset?.id ?? null,
+      style: { "--cw-aspect": `${w} / ${h}`, "--cw-ar": String(ratio) } as CSSProperties,
     };
   }, [aspectId, format]);
 }

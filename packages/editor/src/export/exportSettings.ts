@@ -179,10 +179,13 @@ export function encoderLabel(implementation: string): string {
 
 /**
  * The hardware H.264 encoders in a `media.capabilities` answer (`hw_encode[].implementation`,
- * in the order `auto` tries them), or `null` when the answer is not that shape.
+ * in the order `auto` tries them), or `null` when the engine has no media backend
+ * (`available: false`) or the answer is not that shape.
  */
 export function hardwareEncoders(answer: unknown): string[] | null {
   if (typeof answer !== "object" || answer === null) return null;
+  // An engine without a media backend answers `available: false` (and empty lists).
+  if ((answer as { available?: unknown }).available === false) return null;
   const list = (answer as { hw_encode?: unknown }).hw_encode;
   if (!Array.isArray(list)) return null;
   const names: string[] = [];

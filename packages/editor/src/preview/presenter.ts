@@ -42,7 +42,9 @@ export interface SelectOptions {
 
 /**
  * The frame due at `clock` (flicks), or `null` when none is due yet (keep the current one).
- * Stopped, the frame nearest the clock (a seek's frame may land either side of it).
+ * Stopped, the frame containing the playhead (the newest with `pts <= clock`, with no latency:
+ * the bridge's rule, so a pause mid-frame never shows the next frame), or the nearest one when
+ * every frame lies after it.
  */
 export function selectFrame<T extends Timed>(
   frames: readonly T[],
@@ -50,11 +52,16 @@ export function selectFrame<T extends Timed>(
   options: SelectOptions,
 ): T | null {
   if (options.rate === 0) {
-    let nearest: T | null = null;
+    let containing: T | null = null;
+    let after: T | null = null;
     for (const f of frames) {
-      if (nearest === null || Math.abs(f.pts - clock) < Math.abs(nearest.pts - clock)) nearest = f;
+      if (f.pts <= clock) {
+        if (containing === null || f.pts > containing.pts) containing = f;
+      } else if (after === null || f.pts < after.pts) {
+        after = f;
+      }
     }
-    return nearest;
+    return containing ?? after;
   }
   const latency = options.latency ?? 0;
   const target = options.rate < 0 ? clock + latency : clock - latency;
