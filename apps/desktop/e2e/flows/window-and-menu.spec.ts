@@ -622,7 +622,10 @@ test.describe("F18 window and menu", () => {
       expect(geometry.barRegion).toBe("drag");
       expect(geometry.controlRegions).toEqual(["no-drag"]);
 
-      test.skip(!osInputAvailable, "real OS mouse input and screen pixels: Windows only");
+      test.skip(
+        !osInputAvailable,
+        "real OS mouse input and screen pixels: Windows, with CUTWEAVE_E2E_REAL_INPUT=1 (just e2e-real-input)",
+      );
       // The person looks at the app: bring its window in front of everything else on the desktop
       // for the real-mouse steps (a window manager setting; the app itself is not changed). A
       // press over any other app's window aborts instead (`os-input.ts`).

@@ -5,7 +5,7 @@
 // caption hit-test), not by the page, so Playwright's page-level mouse cannot exercise them.
 // These helpers move the real cursor and press the real button with Win32 `SetCursorPos` /
 // `SendInput`, and read real screen pixels with GDI, the way a person's hand and eyes would.
-// Windows only (`osInputAvailable`); other platforms skip the steps that need it.
+// Windows only, and opt-in (`osInputAvailable`); otherwise the steps that need it are skipped.
 //
 // Safety: every press first checks that the window under the cursor belongs to the app under
 // test (`owner`, its main process id) and aborts otherwise, so a covered window never sends a
@@ -16,7 +16,14 @@
 import { spawnSync } from "node:child_process";
 import type { ElectronApplication } from "@playwright/test";
 
-export const osInputAvailable = process.platform === "win32";
+/**
+ * Real-cursor steps run on Windows only, and only when asked for with
+ * `CUTWEAVE_E2E_REAL_INPUT=1` (`just e2e-real-input`): they move the person's own cursor and
+ * fail whenever anything else on the desktop is in the way (the person working, another
+ * suite's windows), so the everyday gate leaves them out.
+ */
+export const osInputAvailable =
+  process.platform === "win32" && process.env.CUTWEAVE_E2E_REAL_INPUT === "1";
 
 export interface Point {
   readonly x: number;

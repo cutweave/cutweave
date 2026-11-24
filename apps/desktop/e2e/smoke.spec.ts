@@ -5,7 +5,9 @@ test("app starts and renders the editor layout from app://", async ({ page }) =>
   expect(page.url()).toMatch(/^app:\/\/cutweave\//);
   await expect(page.locator(".cw-topbar")).toBeVisible();
   await expect(page.locator(".cw-dock")).toBeVisible();
-  await expect(page).toHaveTitle("Cutweave editor");
+  // "Cutweave editor" until the engine reports its project, then "<project> — Cutweave"; which one
+  // the check sees depends on how fast the engine connects.
+  await expect(page).toHaveTitle(/^Cutweave editor$| — Cutweave$/);
 });
 
 test("the page main world has no Node access, only window.cutweave", async ({ page }) => {

@@ -92,6 +92,14 @@ e2e-flows *args:
     pnpm --filter @cutweave/desktop build:renderer
     pnpm --filter @cutweave/desktop e2e:flows {{args}}
 
+# The flows' real-cursor steps (window drag, double-click on the title, screen pixels; Windows): they move your mouse, so run them when nobody is using the machine
+e2e-real-input *args:
+    cargo build -p cutweave-engine --bin cutweave-engine-serve
+    cargo build -p cutweave-cli --bin cutweave
+    pnpm --filter @cutweave/desktop build:node
+    pnpm --filter @cutweave/desktop build:renderer
+    CUTWEAVE_E2E_REAL_INPUT=1 pnpm --filter @cutweave/desktop exec playwright test e2e/flows/window-and-menu.spec.ts {{args}}
+
 # The rmcp conformance suite and the scripted agent (both MCP revisions; stdio and HTTP). Offline; also part of `just check`.
 mcp-conformance:
     cargo nextest run -p cutweave-cli --test mcp_conformance

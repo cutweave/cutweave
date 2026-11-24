@@ -102,10 +102,19 @@ export function workspace(): Workspace {
 
 /**
  * Removes a flow's folder. Windows keeps a folder busy for a moment after the processes that
- * used it exit (a killed app's helpers, the virus scanner), so this retries for a few seconds.
+ * used it exit (a killed app's helpers, the virus scanner), so this retries for ten seconds. If
+ * it is still locked after that, the folder stays in the temp directory with a warning rather
+ * than failing a flow whose checks all passed: a process the suite really left running is
+ * caught and failed by the run-level check (`e2e/run-check.ts`).
  */
 export function removeDir(dir: string): void {
-  rmSync(dir, { recursive: true, force: true, maxRetries: 20, retryDelay: 250 });
+  try {
+    rmSync(dir, { recursive: true, force: true, maxRetries: 40, retryDelay: 250 });
+  } catch (error) {
+    const code = (error as NodeJS.ErrnoException).code;
+    if (code !== "EPERM" && code !== "EBUSY" && code !== "ENOTEMPTY") throw error;
+    console.warn(`left ${dir} in the temp directory: still locked (${code})`);
+  }
 }
 
 /**

@@ -8,6 +8,7 @@ How a flow is written:
 - **Stub only the OS.** Native file pickers return the path a user would pick, and external links are recorded. Read-only test hooks may observe state; nothing may change app behaviour.
 - **Assert what the user sees and gets.** Visible text and roles, the timeline, the inspector, the top bar's unsaved dot, the saved project on disk, and exported files checked with `ffprobe`.
 - **Wait for visible state, never sleep.** A flaky flow is a bug.
+- **Real-cursor steps are opt-in.** The window drag, double-click on the title and screen-pixel checks move the real cursor, so they run only with `just e2e-real-input` (Windows), when nobody is using the machine; the gate skips them.
 - **Teardown quits like a user** (`quitApp`). Every WP that adds or changes user-visible behaviour adds or extends a flow here and in the suite.
 
 Status: **covered** (in the suite), **planned** (possible today, not written yet), or **blocked by WP-x** (needs that WP; that WP's acceptance includes un-blocking it).
