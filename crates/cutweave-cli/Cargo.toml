@@ -36,8 +36,14 @@ insta = { workspace = true }
 tempfile = "3.27.0"
 # WP-1J.03 process-level tests of `cutweave mcp`: rmcp's client (the version cutweave-api pins)
 # over the child's stdio pipes, and tokio's process support to spawn it. Both already locked.
-rmcp = { version = "=3.11.0", default-features = false, features = ["client", "transport-async-rw"] }
+rmcp = { version = "=3.11.0", default-features = false, features = ["client", "transport-async-rw", "transport-streamable-http-client-reqwest"] }
 tokio = { version = "=1.54.1", features = ["rt-multi-thread", "macros", "process", "time", "io-util"] }
+# WP-1O.03 conformance suite (`tests/mcp_conformance`): the reqwest feature above is rmcp's
+# Streamable HTTP client (loopback only, no TLS; cutweave-api enables it for its own tests) that
+# reaches a child engine's `/mcp`. `regex` evaluates the `pattern` keyword in the suite's small
+# JSON Schema checker (no `jsonschema` crate: it would add a large tree). `regex` is already
+# locked (tracing-subscriber, insta); only this dev-dependency edge is new.
+regex = { version = "1.13.2", default-features = false, features = ["std"] }
 
 [lints]
 workspace = true

@@ -34,7 +34,8 @@
 | `just golden [--update]` | Render golden-frame projects headless and compare (update requires a human-approved PR label) |
 | `just bench [--compare main]` | Criterion + engine benchmarks against the §19 budgets |
 | `just e2e` | Playwright + Electron flows |
-| `just mcp-inspect` | Start the headless engine and run the MCP conformance/inspector suite |
+| `just mcp-conformance` | The rmcp conformance suite and scripted agent (both MCP revisions, stdio and Streamable HTTP; offline, part of `just check`). `CUTWEAVE_UPDATE_FIXTURES=1` rewrites the scripted agent's expected-timeline fixture |
+| `just mcp-inspect` | MCP Inspector CLI (version pinned in `scripts/mcp-inspect.py`) against `cutweave mcp --headless` and a headless engine's `/mcp`. Needs Node and the network, so it is not in `just check`; CI runs it on manual dispatch (`mcp-conformance.yml`) |
 | `just corpus` | Fetch the test-media corpus (not committed; checksummed) |
 | `just evals [--client claude\|codex\|…]` | Run Agent Kit eval tasks (Phase 6+) |
 

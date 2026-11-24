@@ -844,6 +844,7 @@ dependencies = [
  "cutweave-model",
  "futures-util",
  "insta",
+ "regex",
  "rmcp",
  "serde_json",
  "tempfile",
