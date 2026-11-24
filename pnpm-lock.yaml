@@ -211,6 +211,9 @@ importers:
 
   packages/editor:
     dependencies:
+      '@cutweave/preferences':
+        specifier: workspace:*
+        version: link:../preferences
       '@cutweave/protocol':
         specifier: workspace:*
         version: link:../protocol
@@ -271,6 +274,12 @@ importers:
         version: 8.3.8(@types/node@24.19.2)(esbuild@0.28.2)
 
   packages/plugin-sdk: {}
+
+  packages/preferences:
+    devDependencies:
+      '@types/node':
+        specifier: ^24.19.2
+        version: 24.19.2
 
   packages/protocol:
     devDependencies:

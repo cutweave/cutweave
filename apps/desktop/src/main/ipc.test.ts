@@ -22,6 +22,7 @@ const handlers = (): InvokeHandlers => ({
   "recent:list": () => [],
   "recent:add": vi.fn(),
   "recent:remove": vi.fn(),
+  "recent:clear": vi.fn(),
   "window:setDirty": vi.fn(),
   "window:confirmClose": vi.fn(),
   "dialog:pickMediaFiles": vi.fn(() => null),
@@ -43,6 +44,12 @@ const handlers = (): InvokeHandlers => ({
   "window:reload": vi.fn(),
   "window:toggleDevTools": vi.fn(),
   "edit:run": vi.fn(),
+  "prefs:get": vi.fn(() => ({ values: {}, defaults: {} }) as never),
+  "prefs:set": vi.fn(),
+  "prefs:reset": vi.fn(),
+  "prefs:export": vi.fn(() => ({ status: "cancelled" as const })),
+  "prefs:import": vi.fn(() => ({ status: "cancelled" as const })),
+  "shell:openAppFolder": vi.fn(),
 });
 
 type Listener = (e: IpcEventLike, ...a: unknown[]) => unknown;
@@ -122,6 +129,68 @@ describe("ipc registry", () => {
     }
     await call("shell:openExternal", okEvent, "https://cutweave.org/docs");
     expect(h["shell:openExternal"]).toHaveBeenCalledWith("https://cutweave.org/docs");
+  });
+
+  it("accepts a preference write only for a known key and a value of its type (WP-1M.11)", () => {
+    const h = handlers();
+    const call = register(h);
+    call("prefs:set", okEvent, "appearance.theme", "light");
+    call("prefs:set", okEvent, "saving.interval", 120);
+    expect(h["prefs:set"]).toHaveBeenCalledWith("appearance.theme", "light");
+    for (const [key, value] of [
+      ["appearance.theme", "purple"],
+      ["appearance.theme", 3],
+      ["saving.autosave", "yes"],
+      ["saving.interval", 45],
+      ["general.recent_count", 100],
+      ["no.such.key", true],
+      ["__proto__", {}],
+      [42, "light"],
+    ] as const) {
+      expect(
+        () => call("prefs:set", okEvent, key, value),
+        `${String(key)}=${String(value)}`,
+      ).toThrow(IpcValidationError);
+    }
+    expect(() => call("prefs:set", okEvent, "appearance.theme")).toThrow(IpcValidationError);
+    expect(h["prefs:set"]).toHaveBeenCalledTimes(2);
+  });
+
+  it("resets only known keys, and takes no arguments to read, export or import", () => {
+    const h = handlers();
+    const call = register(h);
+    call("prefs:reset", okEvent, ["saving.autosave", "appearance.theme"]);
+    expect(h["prefs:reset"]).toHaveBeenCalledWith(["saving.autosave", "appearance.theme"]);
+    expect(() => call("prefs:reset", okEvent, ["nope"])).toThrow(IpcValidationError);
+    expect(() => call("prefs:reset", okEvent, "saving.autosave")).toThrow(IpcValidationError);
+    for (const channel of ["prefs:get", "prefs:export", "prefs:import"]) {
+      expect(() => call(channel, okEvent, "/etc/passwd"), channel).toThrow(IpcValidationError);
+    }
+    expect(() => call("shell:openAppFolder", okEvent, "/etc")).toThrow(IpcValidationError);
+    call("shell:openAppFolder", okEvent, "logs");
+    expect(h["shell:openAppFolder"]).toHaveBeenCalledWith("logs");
+  });
+
+  it("rejects preference calls from another frame or window", () => {
+    const check = createSenderCheck({
+      devServerOrigin: undefined,
+      isEditorContents: (sender) => sender === editor,
+    });
+    const call = register(handlers(), check);
+    expect(() =>
+      call(
+        "prefs:set",
+        { sender: editor, senderFrame: { url: "https://evil.example/", parent: null } },
+        "appearance.theme",
+        "light",
+      ),
+    ).toThrow(IpcSenderError);
+    expect(() => call("prefs:get", { sender: { id: 2 }, senderFrame: appFrame })).toThrow(
+      IpcSenderError,
+    );
+    expect(() =>
+      call("prefs:export", { sender: editor, senderFrame: { url: appFrame.url, parent: {} } }),
+    ).toThrow(IpcSenderError);
   });
 
   it("takes no arguments on the media picker channel", () => {

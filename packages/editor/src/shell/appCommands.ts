@@ -18,6 +18,7 @@ import type { ProjectController } from "../session/projectController.ts";
 import { projectFileName, useSessionStore } from "../session/sessionStore.ts";
 import { sessionUiStore, useSessionUiStore } from "../session/sessionUiStore.ts";
 import { isTextEntry } from "../session/useProject.ts";
+import { settingsStore } from "../settings/settingsStore.ts";
 import { translator } from "../timeline/errors.ts";
 import {
   type AppCommand,
@@ -29,7 +30,7 @@ import {
   menuPlatform,
 } from "./appMenu.ts";
 
-/** Help > About (or File > Settings…) is showing. */
+/** Help > About is showing. */
 export interface AboutState {
   readonly open: boolean;
   setOpen(open: boolean): void;
@@ -44,15 +45,7 @@ export function useAboutOpen(): boolean {
   return useStore(aboutStore, (s) => s.open);
 }
 
-/** File > Settings… is showing. */
-export const settingsStore = createStore<AboutState>()((set) => ({
-  open: false,
-  setOpen: (open) => set({ open }),
-}));
-
-export function useSettingsOpen(): boolean {
-  return useStore(settingsStore, (s) => s.open);
-}
+// File > Settings… lives in `settings/settingsStore.ts` (it can open at a page and a row).
 
 export interface AppCommandDeps {
   readonly controller: ProjectController;

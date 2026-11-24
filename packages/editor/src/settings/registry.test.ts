@@ -1,0 +1,152 @@
+// SPDX-License-Identifier: GPL-3.0-or-later
+import { readFileSync } from "node:fs";
+import { PREFERENCE_KEYS } from "@cutweave/preferences";
+import { afterEach, describe, expect, it } from "vitest";
+import { i18n, type TKey } from "../i18n/index.ts";
+import "./core.ts";
+import {
+  pageKeys,
+  registeredKeys,
+  registerSettingRow,
+  registerSettingsPage,
+  type SettingRowDef,
+  type SettingsPageDef,
+  settingsPages,
+} from "./registry.ts";
+
+const CATALOG = readFileSync(
+  new URL("../../../../docs/reference/settings.md", import.meta.url),
+  "utf8",
+);
+
+/** The first-column keys of docs/reference/settings.md: `| \`general.startup\` | … |`. */
+const catalogKeys = new Set([...CATALOG.matchAll(/^\| `([a-z_.]+)`/gm)].map((m) => m[1]));
+
+const textKeys = (row: SettingRowDef): TKey[] => [
+  row.label,
+  row.description,
+  ...(row.keywords === undefined ? [] : [row.keywords]),
+];
+
+describe("the registry and the catalog", () => {
+  it("has a row in docs/reference/settings.md for every registered key", () => {
+    const keys = registeredKeys();
+    expect(keys.length).toBeGreaterThan(0);
+    for (const key of keys) expect(catalogKeys.has(key), key).toBe(true);
+  });
+
+  it("registers a row for every key the preferences schema defines", () => {
+    expect([...registeredKeys()].sort()).toEqual([...PREFERENCE_KEYS].sort());
+  });
+
+  it("gives every row a label, a description and keywords in the English catalog", () => {
+    for (const page of settingsPages()) {
+      expect(i18n.exists(page.title), page.id).toBe(true);
+      for (const row of page.rows) {
+        for (const key of textKeys(row)) expect(i18n.exists(key), `${row.id}: ${key}`).toBe(true);
+        expect(row.keywords, row.id).toBeDefined();
+      }
+    }
+  });
+
+  it("has unique row ids, across pages too", () => {
+    const ids = settingsPages().flatMap((p) => p.rows.map((r) => r.id));
+    expect(new Set(ids).size).toBe(ids.length);
+  });
+
+  it("ships General, Appearance, Saving and backups and Advanced, in the catalog's order", () => {
+    expect(settingsPages().map((p) => p.id)).toEqual([
+      "general",
+      "appearance",
+      "saving",
+      "advanced",
+    ]);
+  });
+});
+
+describe("registering pages and rows", () => {
+  const offs: (() => void)[] = [];
+  afterEach(() => {
+    for (const off of offs.splice(0)) off();
+  });
+
+  const page = (extra: Partial<SettingsPageDef> = {}): SettingsPageDef => ({
+    id: "export",
+    title: "settings.pages.general",
+    icon: "download",
+    group: "preferences",
+    order: 80,
+    rows: [],
+    ...extra,
+  });
+  const row = (id: string): SettingRowDef => ({
+    id,
+    label: "settings.rows.theme.label",
+    description: "settings.rows.theme.description",
+    control: { kind: "switch" },
+  });
+
+  it("shows a page only once it has a row", () => {
+    offs.push(registerSettingsPage(page()));
+    expect(settingsPages().map((p) => p.id)).not.toContain("export");
+    offs.push(registerSettingRow("export", row("export.folder")));
+    expect(settingsPages().map((p) => p.id)).toContain("export");
+  });
+
+  it("places a page by its group and order", () => {
+    offs.push(registerSettingsPage(page({ rows: [row("export.a")] })));
+    expect(settingsPages().map((p) => p.id)).toEqual([
+      "general",
+      "appearance",
+      "export",
+      "saving",
+      "advanced",
+    ]);
+    offs.push(
+      registerSettingsPage(page({ id: "ai", group: "agents", order: 1, rows: [row("ai.a")] })),
+    );
+    expect(settingsPages().map((p) => p.id)).toEqual([
+      "general",
+      "appearance",
+      "export",
+      "saving",
+      "ai",
+      "advanced",
+    ]);
+  });
+
+  it("adds a row to an existing page, and keeps one registered before its page", () => {
+    offs.push(registerSettingRow("later", row("later.early")));
+    offs.push(registerSettingsPage(page({ id: "later", rows: [row("later.first")] })));
+    expect(
+      settingsPages()
+        .find((p) => p.id === "later")
+        ?.rows.map((r) => r.id),
+    ).toEqual(["later.first", "later.early"]);
+    offs.push(registerSettingRow("saving", row("saving.extra")));
+    expect(
+      settingsPages()
+        .find((p) => p.id === "saving")
+        ?.rows.map((r) => r.id),
+    ).toContain("saving.extra");
+  });
+
+  it("replaces a row with the same id and removes a page it was told to", () => {
+    const off = registerSettingsPage(page({ rows: [row("export.a")] }));
+    offs.push(registerSettingRow("export", { ...row("export.a"), noRowReset: true }));
+    const rows = settingsPages().find((p) => p.id === "export")?.rows ?? [];
+    expect(rows).toHaveLength(1);
+    expect(rows[0]?.noRowReset).toBe(true);
+    off();
+    expect(settingsPages().map((p) => p.id)).not.toContain("export");
+  });
+
+  it("lists the preference keys of a page's rows", () => {
+    const saving = settingsPages().find((p) => p.id === "saving");
+    expect(saving === undefined ? [] : pageKeys(saving)).toEqual([
+      "saving.autosave",
+      "saving.interval",
+      "saving.backups",
+    ]);
+  });
+});

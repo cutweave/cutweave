@@ -2,6 +2,12 @@
 // Types of the narrow `window.cutweave` surface the preload exposes through `contextBridge`.
 // Pure types: importable from main, preload and (later) the renderer. No generic `invoke`.
 
+import type {
+  PreferenceChanges,
+  PreferenceMap,
+  SkippedSetting,
+} from "../../../../packages/preferences/src/index.ts";
+
 /**
  * Lifecycle of the supervised engine process (arch §2, WP-1L.03):
  * `starting → ready → crashed → restarting → ready …`; `failed` after a start error that a
@@ -100,6 +106,32 @@ export type MenuCommand = (typeof MENU_COMMANDS)[number];
 /** The editor's themes: the OS window-controls overlay follows the one it shows (WP-1M.09). */
 export const THEMES = ["dark", "light"] as const;
 export type ThemeId = (typeof THEMES)[number];
+
+/** The preferences as the editor first sees them (WP-1M.11): every key's value and default. */
+export interface PrefsSnapshot {
+  readonly values: PreferenceMap;
+  /** The defaults on this machine (a few depend on it, such as the Documents folder). */
+  readonly defaults: PreferenceMap;
+}
+
+/** "Export settings…": where main wrote the file, or that the person cancelled the picker. */
+export type PrefsExportResult =
+  | { readonly status: "saved"; readonly path: string; readonly count: number }
+  | { readonly status: "cancelled" };
+
+/** "Import settings…": what was applied and what was skipped, or why nothing was. */
+export type PrefsImportResult =
+  | {
+      readonly status: "imported";
+      readonly applied: readonly string[];
+      readonly skipped: readonly SkippedSetting[];
+    }
+  | { readonly status: "invalid"; readonly reason: "unreadable" | "not-settings" | "newer" }
+  | { readonly status: "cancelled" };
+
+/** The folders "Open settings folder" and "Open logs folder" show in the OS file manager. */
+export const APP_FOLDERS = ["settings", "logs"] as const;
+export type AppFolder = (typeof APP_FOLDERS)[number];
 
 /**
  * Edit > Cut, Copy, Paste and Select all of the in-app menu bar: main runs them on the focused
@@ -355,6 +387,8 @@ export interface CutweaveApi {
     list(): Promise<readonly string[]>;
     add(path: string): Promise<void>;
     remove(path: string): Promise<void>;
+    /** Forgets every recent project, including the ones the list is too short to show. */
+    clear(): Promise<void>;
   };
   /**
    * Closing the window with unsaved changes (WP-1M.07): the editor reports whether the project is
@@ -378,7 +412,25 @@ export interface CutweaveApi {
   readonly edit: {
     run(action: EditAction): Promise<void>;
   };
+  /**
+   * The preferences store (WP-1M.11): `preferences.json` in the user-data folder, owned by main.
+   * The editor reads a snapshot, writes one key at a time (main validates each against the one
+   * shared schema) and hears every change, from this window or an import.
+   */
+  readonly prefs: {
+    get(): Promise<PrefsSnapshot>;
+    set(key: string, value: unknown): Promise<void>;
+    /** Puts these keys back to their defaults. */
+    reset(keys: readonly string[]): Promise<void>;
+    /** Asks for a file with the native save dialog and writes the app preferences to it. */
+    exportToFile(): Promise<PrefsExportResult>;
+    /** Asks for a file with the native open dialog and applies its valid keys. */
+    importFromFile(): Promise<PrefsImportResult>;
+    onChanged(listener: (changes: PreferenceChanges) => void): Unsubscribe;
+  };
   readonly shell: {
+    /** "Open settings folder" and "Open logs folder": shows one of the app's own folders. */
+    openAppFolder(which: AppFolder): Promise<void>;
     showItemInFolder(path: string): Promise<void>;
     /**
      * Open an `https:` link in the OS browser. Main re-validates the URL (https only, no

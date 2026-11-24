@@ -3,16 +3,20 @@
 // Arguments arrive already sender-checked and zod-validated.
 
 import nodePath from "node:path";
+import type { PreferenceKey } from "../../../../packages/preferences/src/index.ts";
 import type {
   AboutInfo,
+  AppFolder,
   AppInfo,
   EditAction,
   EngineConnection,
   EngineStatus,
+  PrefsSnapshot,
   ThemeId,
 } from "../shared/api.ts";
 import type { InvokeHandlers } from "./ipc.ts";
 import { parseExternalUrl } from "./origins.ts";
+import type { ImportOutcome } from "./preferences-store.ts";
 
 export interface HandlerDeps {
   appInfo: AppInfo;
@@ -26,7 +30,25 @@ export interface HandlerDeps {
     list(): string[];
     add(path: string): void;
     remove(path: string): void;
+    clear(): void;
   };
+  /** The preferences store (WP-1M.11); every write is validated against the shared schema. */
+  prefs: {
+    snapshot(): PrefsSnapshot;
+    set(key: string, value: unknown): void;
+    reset(keys: readonly PreferenceKey[]): void;
+    exportText(): { text: string; count: number };
+    importText(text: string): ImportOutcome;
+  };
+  /** The native "save as" for exported settings; the chosen path or null. */
+  chooseSettingsExportFile(defaultName: string): Promise<string | null>;
+  /** The native open dialog for imported settings; the chosen path or null. */
+  chooseSettingsImportFile(): Promise<string | null>;
+  writeTextFile(file: string, text: string): void;
+  /** The file's text, or null when it is unreadable or larger than `maxBytes`. */
+  readTextFile(file: string, maxBytes: number): string | null;
+  /** Shows the app's settings folder or logs folder in the OS file manager. */
+  openAppFolder(which: AppFolder): Promise<void>;
   /** The editor's unsaved-changes flag, for the window-close guard. */
   setWindowDirty(dirty: boolean): void;
   /** The editor settled unsaved changes: close the window without asking again. */
@@ -109,6 +131,29 @@ export function validExportPath(chosen: unknown): string | null {
   return /\.mp4$/i.test(chosen) ? chosen : `${chosen}.mp4`;
 }
 
+/** The most a settings file may hold: a few hundred bytes in practice. */
+export const MAX_SETTINGS_FILE_BYTES = 256 * 1024;
+export const SETTINGS_FILE_NAME = "cutweave-settings.json";
+
+/** The `.json` file settings are exported to: absolute, bounded, ending in .json. */
+export function validSettingsExportPath(chosen: unknown): string | null {
+  if (
+    typeof chosen !== "string" ||
+    chosen.length === 0 ||
+    chosen.length > MAX_PATH_LENGTH - 5 ||
+    chosen.includes("\u0000") ||
+    !nodePath.isAbsolute(chosen)
+  ) {
+    return null;
+  }
+  return /\.json$/i.test(chosen) ? chosen : `${chosen}.json`;
+}
+
+/** The file settings are imported from: absolute, bounded, NUL-free. */
+export function validSettingsImportPath(chosen: unknown): string | null {
+  return validMediaPaths([chosen])[0] ?? null;
+}
+
 export function createHandlers(deps: HandlerDeps): InvokeHandlers {
   return {
     "app:getInfo": () => deps.appInfo,
@@ -131,6 +176,9 @@ export function createHandlers(deps: HandlerDeps): InvokeHandlers {
     },
     "recent:remove": (path) => {
       deps.recentProjects.remove(path);
+    },
+    "recent:clear": () => {
+      deps.recentProjects.clear();
     },
     "window:setDirty": (dirty) => {
       deps.setWindowDirty(dirty);
@@ -178,6 +226,32 @@ export function createHandlers(deps: HandlerDeps): InvokeHandlers {
     },
     "edit:run": (action) => {
       deps.editCommand(action);
+    },
+    "prefs:get": () => deps.prefs.snapshot(),
+    "prefs:set": (key, value) => {
+      deps.prefs.set(key, value);
+    },
+    "prefs:reset": (keys) => {
+      deps.prefs.reset(keys as PreferenceKey[]);
+    },
+    "prefs:export": async () => {
+      const chosen = validSettingsExportPath(
+        await deps.chooseSettingsExportFile(SETTINGS_FILE_NAME),
+      );
+      if (chosen === null) return { status: "cancelled" };
+      const { text, count } = deps.prefs.exportText();
+      deps.writeTextFile(chosen, text);
+      return { status: "saved", path: chosen, count };
+    },
+    "prefs:import": async () => {
+      const chosen = validSettingsImportPath(await deps.chooseSettingsImportFile());
+      if (chosen === null) return { status: "cancelled" };
+      const text = deps.readTextFile(chosen, MAX_SETTINGS_FILE_BYTES);
+      if (text === null) return { status: "invalid", reason: "unreadable" };
+      return deps.prefs.importText(text);
+    },
+    "shell:openAppFolder": async (which) => {
+      await deps.openAppFolder(which);
     },
   };
 }

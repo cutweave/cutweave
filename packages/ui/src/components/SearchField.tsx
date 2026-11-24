@@ -66,8 +66,11 @@ export const SearchField = forwardRef<HTMLInputElement, SearchFieldProps>(functi
   const counted = active && count !== undefined && count !== "";
 
   const handleKeyDown = (event: KeyboardEvent<HTMLInputElement>) => {
+    // A layer around the field (a Radix dialog) may have prevented the default of this Esc
+    // already, to keep itself open: only a veto from the host's own handler stops us.
+    const preventedBefore = event.defaultPrevented;
     onKeyDown?.(event);
-    if (event.defaultPrevented) return;
+    if (event.defaultPrevented && !preventedBefore) return;
     if (event.key === "Escape") {
       event.preventDefault();
       // The first Esc clears; keep it from also closing a dialog or panel around the field.

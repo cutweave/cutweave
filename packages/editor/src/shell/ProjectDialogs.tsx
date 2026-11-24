@@ -7,6 +7,7 @@ import { Button, Dialog, DialogNote, InspectorRow, TextField } from "@cutweave/u
 import { useId, useState } from "react";
 import { useTranslation } from "react-i18next";
 import type { TKey } from "../i18n/index.ts";
+import { preferences } from "../prefs/prefsStore.ts";
 import { clockTime } from "../session/errors.ts";
 import { type SessionStore, useSessionStore } from "../session/sessionStore.ts";
 import {
@@ -111,7 +112,10 @@ function NamingForm({ prompt }: { prompt: NamingPrompt }) {
   const nameId = useId();
   const parentId = useId();
   const [name, setName] = useState(prompt.initialName);
-  const [parent, setParent] = useState("");
+  // New projects start in the folder chosen in Settings > General; Save as starts empty.
+  const [parent, setParent] = useState(() =>
+    prompt.mode === "new" ? preferences.get("general.new_project_folder") : "",
+  );
   const [submitted, setSubmitted] = useState(false);
   const problem = projectNameProblem(name);
   const missingParent = parent.trim() === "";

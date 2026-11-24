@@ -6,6 +6,7 @@ import { useEffect } from "react";
 import { useTranslation } from "react-i18next";
 import { engineStore } from "../engine/engineStore.ts";
 import { i18n } from "../i18n/index.ts";
+import { preferences, prefsStore } from "../prefs/prefsStore.ts";
 import { docStore, useDocStore } from "../state/docStore.ts";
 import { toastStore } from "../state/toastStore.ts";
 import { translator } from "../timeline/errors.ts";
@@ -30,10 +31,36 @@ export function projectController(): ProjectController {
   return shared;
 }
 
+/** Whether this page already decided what to open at startup (it decides once per launch). */
+let startupHandled = false;
+
 /** Forgets the shared controller so the next use builds one again (tests that swap the desktop bridge). */
 export function resetProjectController(): void {
   shared?.detach();
   shared = null;
+  startupHandled = false;
+}
+
+/**
+ * "On startup" (Settings > General): once the engine is connected and has said what it holds,
+ * a launch that chose "Last project" opens the newest recent project, unless something is open
+ * already (an engine that restarted under a reloaded page keeps its project and its journal).
+ */
+function openLastProjectOnStartup(): () => void {
+  const check = (): void => {
+    if (startupHandled) return;
+    const session = sessionStore.getState();
+    if (engineStore.getState().connection !== "ready" || !session.known) return;
+    startupHandled = true;
+    if (preferences.get("general.startup") !== "last") return;
+    if (session.path !== null || session.dirty) return;
+    void projectController().openLastOnStartup();
+  };
+  check();
+  const offs = [engineStore.subscribe(check), sessionStore.subscribe(check)];
+  return () => {
+    for (const off of offs) off();
+  };
 }
 
 /** Keys typed into a field belong to the field (its own undo, its own Enter). */
@@ -49,6 +76,17 @@ export function isTextEntry(target: EventTarget | null): boolean {
  */
 export function useProjectWiring(): void {
   useEffect(() => projectController().attach(), []);
+  useEffect(openLastProjectOnStartup, []);
+  // The recent list shows as many projects as Settings > General says.
+  useEffect(
+    () =>
+      prefsStore.subscribe((state, previous) => {
+        if (state.values["general.recent_count"] !== previous.values["general.recent_count"]) {
+          void projectController().refreshRecent();
+        }
+      }),
+    [],
+  );
 }
 
 /** Whether leaving now would lose work: the dot next to Save and in the window title. */

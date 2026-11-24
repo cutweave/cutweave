@@ -3,14 +3,19 @@
 // Types plus one tiny guard only, so the preload bundle stays free of the validation library.
 // The runtime validators (zod) live in main (src/main/ipc.ts) and are type-checked against this.
 
+import type { PreferenceChanges } from "../../../../packages/preferences/src/index.ts";
 import {
   type AboutInfo,
+  type AppFolder,
   type AppInfo,
   type EditAction,
   type EngineConnection,
   type EngineStatus,
   MENU_COMMANDS,
   type MenuCommand,
+  type PrefsExportResult,
+  type PrefsImportResult,
+  type PrefsSnapshot,
   type ThemeId,
 } from "./api.ts";
 
@@ -23,6 +28,7 @@ export interface InvokeChannels {
   "recent:list": { args: []; result: string[] };
   "recent:add": { args: [path: string]; result: undefined };
   "recent:remove": { args: [path: string]; result: undefined };
+  "recent:clear": { args: []; result: undefined };
   "window:setDirty": { args: [dirty: boolean]; result: undefined };
   "window:confirmClose": { args: []; result: undefined };
   /** Native multi-file picker for media import (WP-1M.03): absolute paths, or null when cancelled. */
@@ -44,6 +50,13 @@ export interface InvokeChannels {
   /** Development builds only; refused when packaged. */
   "window:toggleDevTools": { args: []; result: undefined };
   "edit:run": { args: [action: EditAction]; result: undefined };
+  // The preferences store (WP-1M.11).
+  "prefs:get": { args: []; result: PrefsSnapshot };
+  "prefs:set": { args: [key: string, value: unknown]; result: undefined };
+  "prefs:reset": { args: [keys: string[]]; result: undefined };
+  "prefs:export": { args: []; result: PrefsExportResult };
+  "prefs:import": { args: []; result: PrefsImportResult };
+  "shell:openAppFolder": { args: [which: AppFolder]; result: undefined };
 }
 
 /** Main -> renderer events (`webContents.send`). */
@@ -52,6 +65,8 @@ export interface EventChannels {
   "menu:command": MenuCommand;
   /** The window was asked to close while the project has unsaved changes (payload: `true`). */
   "window:closeRequested": true;
+  /** The keys that changed in the preferences store, with their new values. */
+  "prefs:changed": PreferenceChanges;
 }
 
 export type InvokeChannel = keyof InvokeChannels;

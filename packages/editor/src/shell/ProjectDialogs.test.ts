@@ -12,12 +12,12 @@ import { Fragment, createElement as h, type ReactElement } from "react";
 import { I18nextProvider } from "react-i18next";
 import { afterEach, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
 import { i18n } from "../i18n/index.ts";
+import { prefsStore } from "../prefs/prefsStore.ts";
 import { EMPTY_STACKS, initialSessionState, sessionStore } from "../session/sessionStore.ts";
 import { sessionUiStore } from "../session/sessionUiStore.ts";
 import { resetProjectController, useProjectWiring } from "../session/useProject.ts";
 import { docStore } from "../state/docStore.ts";
 import { toastStore } from "../state/toastStore.ts";
-import { viewStore } from "../state/viewStore.ts";
 import { createFakeEngine, type FakeEngine } from "../testing/fakeEngine.ts";
 import { AppMenuBar } from "./AppMenuBar.tsx";
 import { ProjectDialogs, ReadOnlyBanner } from "./ProjectDialogs.tsx";
@@ -310,7 +310,7 @@ describe("the title bar's save status (WP-1M.10)", () => {
 
   beforeEach(() => {
     sessionStore.setState({ path: "C:\\p\\Film\\Film.cutweave", dirty: false });
-    viewStore.getState().setAutosave({ enabled: true });
+    prefsStore.setState({ values: { ...prefsStore.getState().values, "saving.autosave": true } });
   });
 
   it("says everything is saved, with no unsaved dot", () => {
@@ -324,7 +324,11 @@ describe("the title bar's save status (WP-1M.10)", () => {
     act(() => sessionStore.setState({ dirty: true }));
     expect(statusText()).toBe("Unsaved changes, saving automatically");
     expect(screen.getByTestId("dirty-dot")).toBeTruthy();
-    act(() => viewStore.getState().setAutosave({ enabled: false }));
+    act(() =>
+      prefsStore.setState({
+        values: { ...prefsStore.getState().values, "saving.autosave": false },
+      }),
+    );
     expect(statusText()).toBe("Unsaved changes, autosave is off");
     expect(screen.getByTestId("dirty-dot")).toBeTruthy();
   });

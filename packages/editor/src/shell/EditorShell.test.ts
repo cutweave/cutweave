@@ -1,11 +1,14 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 // @vitest-environment jsdom
+
+import { defaultPreferences } from "@cutweave/preferences";
 import { act, cleanup, render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import axe from "axe-core";
 import { createElement as h } from "react";
 import { afterEach, beforeAll, beforeEach, describe, expect, it } from "vitest";
 import { LAYOUT_SAVE_DELAY_MS } from "../dock/Dock.tsx";
+import { preferences, prefsStore } from "../prefs/prefsStore.ts";
 import { initialViewState, viewStore } from "../state/viewStore.ts";
 import { EditorShell } from "./EditorShell.tsx";
 
@@ -32,6 +35,7 @@ beforeAll(() => {
 
 beforeEach(() => {
   viewStore.setState({ ...initialViewState, layouts: {} });
+  prefsStore.setState({ values: defaultPreferences() });
 });
 
 afterEach(() => {
@@ -91,9 +95,10 @@ describe("EditorShell", () => {
     expect(screen.queryByRole("radiogroup", { name: "Theme" })).toBeNull();
     await user.keyboard("{Control>},{/Control}");
     const settings = await screen.findByRole("dialog", { name: "Settings" });
+    await user.click(within(settings).getByRole("tab", { name: "Appearance" }));
     await user.click(within(settings).getByRole("radio", { name: "Light" }));
     expect(document.documentElement.dataset.theme).toBe("light");
-    expect(viewStore.getState().theme).toBe("light");
+    expect(prefsStore.getState().values["appearance.theme"]).toBe("light");
     await user.click(within(settings).getByRole("radio", { name: "Dark" }));
     expect(document.documentElement.dataset.theme).toBe("dark");
     await user.click(within(settings).getByRole("button", { name: "Done" }));
@@ -158,7 +163,7 @@ describe("EditorShell", () => {
     render(h(EditorShell));
     await screen.findByRole("region", { name: "Timeline" });
     for (const theme of ["dark", "light"] as const) {
-      await act(async () => viewStore.getState().setTheme(theme));
+      await act(async () => preferences.set("appearance.theme", theme));
       const results = await axe.run(document.body, {
         // jsdom has no layout or computed colours, so contrast is covered by the ui axe suite.
         rules: { "color-contrast": { enabled: false } },

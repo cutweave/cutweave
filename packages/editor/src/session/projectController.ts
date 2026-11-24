@@ -305,6 +305,24 @@ export class ProjectController {
     });
   }
 
+  /**
+   * "On startup: open the last project" (Settings > General): opens the newest recent project.
+   * Resolves `false` when there is none or it cannot be opened (the person is told, as for any
+   * open).
+   */
+  async openLastOnStartup(): Promise<boolean> {
+    const recent = this.#deps.desktop?.recent;
+    if (recent === undefined) return false;
+    let list: readonly string[];
+    try {
+      list = await recent.list();
+    } catch {
+      return false;
+    }
+    const last = list[0];
+    return last === undefined ? false : this.open(last);
+  }
+
   /** Opens a project: `path` when given (the recent list), else the native folder picker. */
   async open(path?: string): Promise<boolean> {
     const chosen = path ?? (await this.chooseFolder());

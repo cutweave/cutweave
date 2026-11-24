@@ -1,14 +1,15 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
+import { resolveTheme } from "@cutweave/preferences";
 import { ToastProvider, TooltipProvider } from "@cutweave/ui";
-import { useEffect } from "react";
+import { useEffect, useSyncExternalStore } from "react";
 import { I18nextProvider, useTranslation } from "react-i18next";
 import { Dock } from "../dock/Dock.tsx";
 import { ExportDialog } from "../export/ExportDialog.tsx";
 import { useExportWiring } from "../export/useExport.ts";
 import { i18n } from "../i18n/index.ts";
+import { usePref } from "../prefs/prefsStore.ts";
 import { desktopFromWindow } from "../session/desktop.ts";
 import { useProjectWiring, useWindowTitle } from "../session/useProject.ts";
-import { useViewStore } from "../state/viewStore.ts";
 import { useTransportWiring } from "../transport/useTransport.ts";
 import { AboutDialog } from "./AboutDialog.tsx";
 import { EngineNotices } from "./EngineNotices.tsx";
@@ -17,9 +18,26 @@ import { SettingsDialog } from "./SettingsDialog.tsx";
 import { Toasts } from "./Toasts.tsx";
 import { TopBar } from "./TopBar.tsx";
 
+const DARK_QUERY = "(prefers-color-scheme: dark)";
+
+/** Whether the OS is in dark mode (Electron's `nativeTheme` follows it for `Match system`). */
+function useSystemDark(): boolean {
+  return useSyncExternalStore(
+    (notify) => {
+      const query = globalThis.matchMedia?.(DARK_QUERY);
+      query?.addEventListener("change", notify);
+      return () => query?.removeEventListener("change", notify);
+    },
+    () => globalThis.matchMedia?.(DARK_QUERY).matches ?? true,
+    () => true,
+  );
+}
+
 function Shell() {
   const { t, i18n: instance } = useTranslation();
-  const theme = useViewStore((s) => s.theme);
+  // The theme is an app preference (Settings > Appearance); `Match system` follows the OS live.
+  const choice = usePref("appearance.theme");
+  const theme = resolveTheme(choice, useSystemDark());
 
   // Tokens switch on `data-theme`; the compact density matches the reference screenshots.
   useEffect(() => {
