@@ -50,6 +50,9 @@ export {
   isGestureOpen,
   reduce,
   STILL_DROP_DURATION,
+  TIMELINE_KEYS,
+  type TimelineKeyAction,
+  timelineKeyAction,
   trimLimits,
 } from "./interaction.ts";
 export { IntervalIndex } from "./interval-index.ts";

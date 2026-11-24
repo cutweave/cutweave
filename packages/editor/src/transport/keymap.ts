@@ -147,6 +147,11 @@ export class Keymap {
     return true;
   }
 
+  /** Every binding, key (as {@link keyOf} names it) and action: the table `handle` reads. */
+  entries(): readonly (readonly [string, ActionId])[] {
+    return Object.entries(this.#bindings);
+  }
+
   /** The keys bound to `action`, as tooltips show them (`Space`, `J`, `←`). */
   keysFor(action: ActionId): string[] {
     return Object.entries(this.#bindings)

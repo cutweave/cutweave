@@ -4,6 +4,7 @@ import {
   baseName,
   defaultDraft,
   defaultOutputPath,
+  dirName,
   encoderLabel,
   formatProblem,
   fpsText,
@@ -13,9 +14,11 @@ import {
   isAbsolutePath,
   parseFps,
   parseProgressLine,
+  pathInFolder,
   percent,
   presetFor,
   presetSize,
+  proposedOutputPath,
   safeFileStem,
 } from "./exportSettings.ts";
 
@@ -97,6 +100,38 @@ describe("the output path", () => {
     );
     expect(defaultOutputPath("/home/a/Film/Film.cutweave", "Film")).toBe("/home/a/Film/Film.mp4");
     expect(defaultOutputPath(null, "Untitled project")).toBe("Untitled project.mp4");
+  });
+
+  it("finds the folder of a path and puts a file in a folder, keeping its separator", () => {
+    expect(dirName("C:\\out\\x.mp4")).toBe("C:\\out");
+    expect(dirName("/home/a/x.mp4")).toBe("/home/a");
+    expect(dirName("C:\\x.mp4")).toBe("C:\\");
+    expect(dirName("/x.mp4")).toBe("/");
+    expect(dirName("x.mp4")).toBeNull();
+    expect(pathInFolder("D:\\Renders", "Film")).toBe("D:\\Renders\\Film.mp4");
+    expect(pathInFolder("D:\\", "Film")).toBe("D:\\Film.mp4");
+    expect(pathInFolder("/home/a", "Film")).toBe("/home/a/Film.mp4");
+  });
+
+  it("proposes the chosen or last folder, and the project's when there is none", () => {
+    const folders = { last: "D:\\Last", chosen: "E:\\Chosen" };
+    const doc = "C:\\p\\Film\\Film.cutweave";
+    expect(proposedOutputPath("project", folders, doc, "Film")).toBe("C:\\p\\Film\\Film.mp4");
+    expect(proposedOutputPath("last", folders, doc, "Film")).toBe("D:\\Last\\Film.mp4");
+    expect(proposedOutputPath("chosen", folders, doc, "Film")).toBe("E:\\Chosen\\Film.mp4");
+    expect(proposedOutputPath("last", { last: "", chosen: "" }, doc, "Film")).toBe(
+      "C:\\p\\Film\\Film.mp4",
+    );
+    expect(proposedOutputPath("chosen", folders, null, "My: film")).toBe("E:\\Chosen\\My film.mp4");
+  });
+
+  it("starts the draft at the person's quality; the preset is still high quality", () => {
+    expect(defaultDraft(hd, "low").quality).toBe("low");
+    expect(defaultDraft(hd).quality).toBe("high");
+    expect(presetFor(defaultDraft(hd, "high"), hd)).toBe("h264-mp4-1080p");
+    expect(presetFor(defaultDraft(hd, "medium"), hd)).toMatchObject({
+      custom: { quality: "medium", width: 1920, height: 1080 },
+    });
   });
 
   it("makes a file name of any project name", () => {

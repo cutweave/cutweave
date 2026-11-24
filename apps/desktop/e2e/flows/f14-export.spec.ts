@@ -150,7 +150,7 @@ test.describe("F14 export", () => {
       await expect(dialog.getByLabel("Width")).toHaveValue("1920");
       await expect(dialog.getByLabel("Height")).toHaveValue("1080");
       await expect(dialog.getByLabel("Frame rate")).toHaveValue("30");
-      await expect(dialog.getByRole("radio", { name: "High" })).toBeChecked();
+      await expect(dialog.getByRole("radio", { name: "Medium" })).toBeChecked();
       await expect(dialog.getByText("Entire timeline")).toBeVisible();
       const hardware = dialog.getByRole("switch", { name: "Use hardware encoder" });
       await expect(hardware).toBeChecked();
@@ -206,7 +206,7 @@ test.describe("F14 export", () => {
       await expect(chip).toBeHidden();
       expect(existsSync(cancelled)).toBe(false);
 
-      // Export it: File > Export…, the native save dialog picks the file, the preset as it is.
+      // Export it: File > Export…, the native save dialog picks the file, the defaults as they are (Medium).
       const proposed = await pickSavePath(app, finalFile);
       await chooseMenu(page, app, "File", "Export…");
       await expect(dialog).toBeVisible();

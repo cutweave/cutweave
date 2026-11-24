@@ -48,7 +48,7 @@ test.describe("export dialog (fake engine)", () => {
       await expect(d.getByLabel("Width")).toHaveValue("1920");
       await expect(d.getByLabel("Height")).toHaveValue("1080");
       await expect(d.getByLabel("Frame rate")).toHaveValue("30");
-      await expect(d.getByRole("radio", { name: "High" })).toBeChecked();
+      await expect(d.getByRole("radio", { name: "Medium" })).toBeChecked();
       await expect(d.getByText("Entire timeline")).toBeVisible();
       await expect(d.getByRole("switch", { name: "Use hardware encoder" })).toBeChecked();
       await expect(d.getByText("Found NVIDIA NVENC, AMD AMF. Faster than software.")).toBeVisible();

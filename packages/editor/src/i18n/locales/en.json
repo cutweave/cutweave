@@ -73,6 +73,8 @@
     "pages": {
       "general": "General",
       "appearance": "Appearance",
+      "export": "Export",
+      "shortcuts": "Keyboard shortcuts",
       "saving": "Saving and backups",
       "advanced": "Advanced"
     },
@@ -124,6 +126,42 @@
         "label": "Theme",
         "description": "Dark, light, or follow your system.",
         "keywords": "color, colour, dark mode, light mode, night, appearance, system, os"
+      },
+      "exportFolder": {
+        "label": "Save exports in",
+        "description": "Where the Export dialog proposes to save the file.",
+        "keywords": "folder, directory, location, path, output, destination, video, mp4",
+        "project": "Project folder",
+        "last": "Last folder used",
+        "chosen": "A folder I choose"
+      },
+      "exportFolderPath": {
+        "label": "Chosen folder",
+        "description": "Used when exports go to a folder you choose.",
+        "keywords": "folder, directory, location, path, output, destination, browse",
+        "choose": "Choose…"
+      },
+      "exportLastFolder": {
+        "label": "Last folder used",
+        "description": "The folder you last picked in the Export dialog.",
+        "keywords": "folder, directory, location, path, recent, remembered, forget",
+        "button": "Forget",
+        "none": "None yet"
+      },
+      "exportQuality": {
+        "label": "Default quality",
+        "description": "The quality the Export dialog starts at. You can change it for one export.",
+        "keywords": "export, bitrate, size, render, video, low, medium, high",
+        "low": "Low",
+        "medium": "Medium",
+        "high": "High"
+      },
+      "exportHw": {
+        "label": "Hardware encoders",
+        "description": "Auto uses the graphics card's encoder when there is one, which is faster. Off always uses software.",
+        "keywords": "gpu, nvenc, amd, amf, quick sync, videotoolbox, acceleration, encode, render, export",
+        "auto": "Auto",
+        "off": "Off"
       },
       "autosave": {
         "label": "Save automatically",
@@ -179,6 +217,89 @@
       }
     },
     "resultCount": "{{count}} found"
+  },
+  "shortcuts": {
+    "note": "These are the shortcuts Cutweave has now. Changing them arrives with the shortcut editor.",
+    "filter": "Find a shortcut",
+    "clearFilter": "Clear filter",
+    "noMatch": "No shortcut matches “{{query}}”",
+    "keysLabel": "{{name}}: {{keys}}",
+    "or": "or",
+    "groups": {
+      "menu": "Menu bar",
+      "playback": "Playback",
+      "timeline": "Timeline",
+      "bin": "Media bin",
+      "dialogs": "Dialogs and text fields"
+    },
+    "menu": {
+      "new": "File menu. Starts a new project.",
+      "open": "File menu. Opens a project from disk.",
+      "save": "File menu. Saves the project.",
+      "saveAs": "File menu. Saves the project under a new name.",
+      "export": "File menu. Opens the Export dialog once the timeline has clips.",
+      "settings": "File menu. Opens Settings.",
+      "quit": "File menu. Closes Cutweave.",
+      "undoLabel": "Undo",
+      "undo": "Edit menu. Takes back the last edit.",
+      "redoLabel": "Redo",
+      "redo": "Edit menu. Brings back an edit you took back.",
+      "cut": "Edit menu. Cuts the selected text.",
+      "copy": "Edit menu. Copies the selected text.",
+      "paste": "Edit menu. Pastes text.",
+      "selectAll": "Edit menu. Selects all the text in a field.",
+      "fullScreen": "View menu. Fills the screen with the window.",
+      "reload": "View menu, development builds only. Reloads the window.",
+      "devTools": "View menu, development builds only. Shows the developer tools."
+    },
+    "playback": {
+      "togglePlay": "Play or pause",
+      "togglePlayHelp": "Starts or stops playback from the playhead.",
+      "reverse": "Play backwards",
+      "reverseHelp": "Plays in reverse. Each press while it plays backwards makes it faster.",
+      "pause": "Pause",
+      "pauseHelp": "Stops playback.",
+      "forward": "Play forwards",
+      "forwardHelp": "Plays forwards. Each press while it plays makes it faster.",
+      "stepBack": "Step back one frame",
+      "stepBackHelp": "Moves the playhead back by one frame.",
+      "stepForward": "Step forward one frame",
+      "stepForwardHelp": "Moves the playhead forward by one frame."
+    },
+    "timeline": {
+      "cancel": "Cancel",
+      "cancelHelp": "Timeline. Stops a drag, trim or marquee and puts everything back.",
+      "split": "Split at the playhead",
+      "splitHelp": "Timeline. Cuts the selected clips where the playhead is, or the clip under it when none is selected.",
+      "delete": "Delete",
+      "deleteHelp": "Timeline. Removes the selected clips.",
+      "snapping": "Turn snapping on or off",
+      "snappingHelp": "Timeline. Makes clips and the playhead stick to edges, or not."
+    },
+    "bin": {
+      "move": "Move between clips",
+      "moveHelp": "Media bin. Moves the focus to the next or previous clip, or up and down a row.",
+      "edges": "First or last clip",
+      "edgesHelp": "Media bin. Moves the focus to the first or the last clip.",
+      "insert": "Add to the timeline",
+      "insertHelp": "Media bin. Puts the focused clip on the timeline at the playhead.",
+      "select": "Select the clip",
+      "selectHelp": "Media bin. Selects the focused clip.",
+      "remove": "Remove from the project",
+      "removeHelp": "Media bin. Removes the focused clip, after asking when it is used.",
+      "import": "Import media",
+      "importHelp": "Opens the file picker to add media. Works anywhere in the app.",
+      "search": "Search the bin",
+      "searchHelp": "Media bin. Moves the focus to the search field."
+    },
+    "dialogs": {
+      "close": "Close or go back",
+      "closeHelp": "Closes the dialog or menu, clears a search, or puts back the text you were editing.",
+      "confirm": "Confirm",
+      "confirmHelp": "Presses the dialog's main button, or keeps the text you typed.",
+      "next": "Next or previous control",
+      "nextHelp": "Moves the focus through the buttons and fields."
+    }
   },
   "about": {
     "title": "About {{name}}",

@@ -2,6 +2,7 @@
 import { type JobInfo, type Project, RpcError } from "@cutweave/protocol";
 import { describe, expect, it, vi } from "vitest";
 import { createEngineStore } from "../engine/engineStore.ts";
+import { PreferencesClient } from "../prefs/prefsStore.ts";
 import type { DesktopBridge } from "../session/desktop.ts";
 import { createSessionStore } from "../session/sessionStore.ts";
 import { createJobStore } from "../state/jobStore.ts";
@@ -47,6 +48,7 @@ function job(patch: Partial<JobInfo>): JobInfo {
 }
 
 function setup(options: { items?: boolean; desktop?: DesktopBridge | null } = {}) {
+  const prefs = new PreferencesClient();
   const engine = createEngineStore();
   const call = vi.fn(async (name: string, _input: unknown): Promise<unknown> => {
     if (name === "export.start") {
@@ -74,9 +76,10 @@ function setup(options: { items?: boolean; desktop?: DesktopBridge | null } = {}
     toasts,
     t: (key, vars) => (vars === undefined ? key : `${key} ${JSON.stringify(vars)}`),
     desktop: options.desktop ?? null,
+    prefs,
   });
   controller.attach();
-  return { controller, engine, call, session, jobs, state, toasts };
+  return { controller, engine, call, session, jobs, state, toasts, prefs };
 }
 
 const request = {
@@ -257,6 +260,52 @@ describe("ExportController", () => {
     });
     send("export");
     expect(state.getState().dialogOpen).toBe(true);
+  });
+
+  it("starts the form at the person's quality and hardware choice (Settings > Export)", async () => {
+    const { controller, prefs } = setup();
+    expect(controller.formDefaults()).toEqual({ quality: "medium", hardware: true });
+    await prefs.set("export.quality", "low");
+    await prefs.set("export.hw", "off");
+    expect(controller.formDefaults()).toEqual({ quality: "low", hardware: false });
+  });
+
+  it("proposes the folder Settings > Export names, and the project's until it is known", async () => {
+    const { controller, prefs } = setup();
+    // Project folder is the default.
+    expect(controller.defaultPath()).toBe("C:\\p\\Film.mp4");
+    // "Last folder" with none yet, and "chosen" with none picked, fall back to the project's.
+    await prefs.set("export.folder", "last");
+    expect(controller.defaultPath()).toBe("C:\\p\\Film.mp4");
+    await prefs.set("export.last_folder", "D:\\Renders");
+    expect(controller.defaultPath()).toBe("D:\\Renders\\Film.mp4");
+    await prefs.set("export.folder", "chosen");
+    expect(controller.defaultPath()).toBe("C:\\p\\Film.mp4");
+    await prefs.set("export.folder_path", "E:\\Chosen");
+    expect(controller.defaultPath()).toBe("E:\\Chosen\\Film.mp4");
+  });
+
+  it("remembers the folder picked in the dialog as the last one and leaves the chosen one alone", async () => {
+    const choose = vi.fn(async (_: string) => "F:\\Elsewhere\\x.mp4");
+    const { controller, prefs } = setup({
+      desktop: { dialog: { openProjectFolder: async () => null, chooseExportFile: choose } },
+    });
+    await prefs.set("export.folder", "chosen");
+    await prefs.set("export.folder_path", "E:\\Chosen");
+    expect(await controller.chooseFile("")).toBe("F:\\Elsewhere\\x.mp4");
+    expect(prefs.get("export.last_folder")).toBe("F:\\Elsewhere");
+    expect(prefs.get("export.folder_path")).toBe("E:\\Chosen");
+    expect(prefs.get("export.folder")).toBe("chosen");
+  });
+
+  it("does not remember a cancelled save dialog", async () => {
+    const { controller, prefs } = setup({
+      desktop: {
+        dialog: { openProjectFolder: async () => null, chooseExportFile: async () => null },
+      },
+    });
+    expect(await controller.chooseFile("")).toBeNull();
+    expect(prefs.get("export.last_folder")).toBe("");
   });
 
   it("uses the native save dialog when there is one", async () => {

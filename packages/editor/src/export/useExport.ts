@@ -4,6 +4,7 @@
 import { useEffect } from "react";
 import { engineStore } from "../engine/engineStore.ts";
 import { i18n } from "../i18n/index.ts";
+import { preferences } from "../prefs/prefsStore.ts";
 import { desktopFromWindow } from "../session/desktop.ts";
 import { sessionStore } from "../session/sessionStore.ts";
 import { docStore, useDocStore } from "../state/docStore.ts";
@@ -26,6 +27,7 @@ export function exportController(): ExportController {
     toasts: toastStore,
     t: translator((key: string, vars?: object) => i18n.t(key as never, vars as never)),
     desktop: desktopFromWindow(),
+    prefs: preferences,
   });
   return shared;
 }

@@ -72,14 +72,23 @@ export interface FormatDraft {
   readonly quality: ExportQuality;
 }
 
-/** The draft that means "the preset": the fitted size, the sequence rate, high quality. */
-export function defaultDraft(facts: SequenceFacts): FormatDraft {
+/** The quality the "MP4 H.264 1080p" preset writes. */
+export const PRESET_QUALITY: ExportQuality = "high";
+
+/**
+ * The draft that means "the preset": the fitted size and the sequence rate. `quality` is the
+ * person's default (Settings > Export); with the preset's own quality the export is the preset.
+ */
+export function defaultDraft(
+  facts: SequenceFacts,
+  quality: ExportQuality = PRESET_QUALITY,
+): FormatDraft {
   const size = presetSize(facts);
   return {
     width: String(size.width),
     height: String(size.height),
     fps: fpsText(facts.fps),
-    quality: "high",
+    quality,
   };
 }
 
@@ -103,7 +112,7 @@ export function formatProblem(draft: FormatDraft): FormatProblem | null {
 
 /** The `preset` of the request: the named preset when nothing differs from it, else custom. */
 export function presetFor(draft: FormatDraft, facts: SequenceFacts): ExportStart["preset"] {
-  const base = defaultDraft(facts);
+  const base = defaultDraft(facts, PRESET_QUALITY);
   const rate = parseFps(draft.fps);
   const same =
     draft.width.trim() === base.width &&
@@ -147,6 +156,35 @@ export function defaultOutputPath(projectDoc: string | null, name: string): stri
   if (cut < 0) return file;
   const sep = projectDoc[cut] ?? "/";
   return `${projectDoc.slice(0, cut)}${sep}${file}`;
+}
+
+/** The folder a file path is in (no trailing separator, except a root); `null` for a bare name. */
+export function dirName(path: string): string | null {
+  const cut = Math.max(path.lastIndexOf("/"), path.lastIndexOf("\\"));
+  if (cut < 0) return null;
+  return cut === 0 || path[cut - 1] === ":" ? path.slice(0, cut + 1) : path.slice(0, cut);
+}
+
+/** `<folder>/<name>.mp4`, with the folder's own separator. */
+export function pathInFolder(folder: string, name: string): string {
+  const file = `${safeFileStem(name)}.mp4`;
+  if (/[\\/]$/.test(folder)) return `${folder}${file}`;
+  const sep = folder.includes("\\") && !folder.includes("/") ? "\\" : "/";
+  return `${folder}${sep}${file}`;
+}
+
+/**
+ * Where the dialog proposes to save: in the folder Settings > Export names (`mode`), or next to
+ * the project when that folder is not known yet.
+ */
+export function proposedOutputPath(
+  mode: "project" | "last" | "chosen",
+  folders: { readonly last: string; readonly chosen: string },
+  projectDoc: string | null,
+  name: string,
+): string {
+  const folder = mode === "last" ? folders.last : mode === "chosen" ? folders.chosen : "";
+  return folder === "" ? defaultOutputPath(projectDoc, name) : pathInFolder(folder, name);
 }
 
 /** Whether a path is one `export.start` takes: absolute. */

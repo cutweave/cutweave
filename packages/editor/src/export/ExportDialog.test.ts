@@ -11,6 +11,7 @@ import { I18nextProvider } from "react-i18next";
 import { afterEach, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
 import { engineStore, initialEngineState } from "../engine/engineStore.ts";
 import { i18n } from "../i18n/index.ts";
+import { preferences } from "../prefs/prefsStore.ts";
 import { initialSessionState, sessionStore } from "../session/sessionStore.ts";
 import { docStore } from "../state/docStore.ts";
 import { jobStore } from "../state/jobStore.ts";
@@ -67,7 +68,8 @@ const mount = () =>
     h(I18nextProvider, { i18n }, h(TooltipProvider, null, h(ExportDialog), h(ExportStatusChip))),
   );
 
-beforeEach(() => {
+beforeEach(async () => {
+  await preferences.resetAll();
   resetExportController();
   call = vi.fn(async (name: string) => {
     if (name === "media.capabilities") return { hw_encode: [{ implementation: "h264_amf" }] };
@@ -114,7 +116,61 @@ describe("ExportDialog", () => {
     expect(await within(dialog).findByText("Found AMD AMF. Faster than software.")).toBeTruthy();
   });
 
-  it("sends the preset by default and a custom export once a value changes", async () => {
+  it("starts at the export defaults of Settings > Export: quality, hardware and folder", async () => {
+    await preferences.set("export.quality", "low");
+    await preferences.set("export.hw", "off");
+    await preferences.set("export.folder", "chosen");
+    await preferences.set("export.folder_path", "D:\\Renders");
+    const user = userEvent.setup();
+    mount();
+    act(() => exportController().open());
+    const dialog = await screen.findByRole("dialog", { name: "Export video" });
+    expect(within(dialog).getByLabelText("Save to")).toHaveProperty(
+      "value",
+      "D:\\Renders\\Film.mp4",
+    );
+    expect(within(dialog).getByRole("radio", { name: "Low" }).getAttribute("aria-checked")).toBe(
+      "true",
+    );
+    expect(
+      within(dialog)
+        .getByRole("switch", { name: "Use hardware encoder" })
+        .getAttribute("aria-checked"),
+    ).toBe("false");
+    await user.click(within(dialog).getByRole("button", { name: "Export" }));
+    await waitFor(() =>
+      expect(call).toHaveBeenLastCalledWith(
+        "export.start",
+        expect.objectContaining({
+          hw: "off",
+          path: "D:\\Renders\\Film.mp4",
+          preset: { custom: expect.objectContaining({ quality: "low" }) },
+        }),
+      ),
+    );
+  });
+
+  it("sends a custom Medium export by default, since the preset is High", async () => {
+    const user = userEvent.setup();
+    mount();
+    act(() => exportController().open());
+    const dialog = await screen.findByRole("dialog", { name: "Export video" });
+    expect(within(dialog).getByRole("radio", { name: "Medium" }).getAttribute("aria-checked")).toBe(
+      "true",
+    );
+    await user.click(within(dialog).getByRole("button", { name: "Export" }));
+    await waitFor(() =>
+      expect(call).toHaveBeenLastCalledWith(
+        "export.start",
+        expect.objectContaining({
+          preset: { custom: expect.objectContaining({ quality: "medium", width: 1920 }) },
+        }),
+      ),
+    );
+  });
+
+  it("sends the preset when the default is High and a custom export once a value changes", async () => {
+    await preferences.set("export.quality", "high");
     const user = userEvent.setup();
     mount();
     act(() => exportController().open());
