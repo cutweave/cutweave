@@ -122,6 +122,18 @@ def clips() -> list[tuple[str, str, str, list[str]]]:
         f"-f lavfi -i \"{pattern(1920, 1080, '25', 4, '')}\" -c:v prores_ks -profile:v 3 -pix_fmt yuv422p10le "
         f"-vendor apl0 {{out}}",
     ]))
+    # Hardware-decode fallback cases (WP-0E.02). H.264 High 10: libavcodec offers no hwaccel
+    # format for 10-bit H.264 (D3D11VA, NVDEC, VA-API, VideoToolbox), so `get_format` only sees
+    # software formats. HEVC Main 4:2:2 10: libavcodec offers some hwaccels (NVDEC, VA-API,
+    # Vulkan) whose initialisation fails on hardware without 4:2:2 decode (NVIDIA before RTX 50).
+    c.append(("h264_high10_720p30.mp4", "video", "barcode=1;gop=30;bitdepth=10;hw=fallback", [
+        f"-f lavfi -i \"{pattern(1280, 720, '30', 2, '')}\" -c:v libx264 -preset veryfast -profile:v high10 "
+        f"-pix_fmt yuv420p10le -bf 3 -sc_threshold 0 -g 30 -keyint_min 30 -x264-params {X264P} -b:v 8M {{out}}",
+    ]))
+    c.append(("hevc_main422_10_720p30.mp4", "video", "barcode=1;gop=30;bitdepth=10;hw=fallback", [
+        f"-f lavfi -i \"{pattern(1280, 720, '30', 2, '')}\" -c:v libx265 -preset ultrafast -pix_fmt yuv422p10le "
+        f"-tag:v hvc1 -g 30 -keyint_min 30 -b:v 8M -x265-params \"bframes=4:scenecut=0:log-level=error\" {{out}}",
+    ]))
 
     # Intra proxies of the 4K long-GOP clip (same frames and timestamps, <= 960 wide).
     c.append(("proxy_prores_540p.mov", "proxy", "barcode=1;gop=1;proxy_of=h264_2160p30_gop250.mp4", [

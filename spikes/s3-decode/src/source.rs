@@ -12,6 +12,7 @@
 //!    The first frame with pts == T is the answer; a frame past T is an `Overshoot` error.
 
 use std::path::{Path, PathBuf};
+use std::sync::atomic::Ordering;
 
 use ffmpeg::codec::threading;
 use ffmpeg::util::error::EAGAIN;
@@ -19,6 +20,7 @@ use ffmpeg_next as ffmpeg;
 
 use crate::error::{Error, Result, ff};
 use crate::ffi;
+use crate::hw::{self, HwSpec, HwStatus};
 use crate::index::FrameIndex;
 
 /// Decoder threading.
@@ -84,6 +86,9 @@ pub struct Options {
     /// Keep decoding forward instead of seeking when the decoder is already inside the target's
     /// reach (scrubbing). Off for pure seek measurements.
     pub forward_continue: bool,
+    /// Hardware decode (WP-0E.02): `None` = software. Falls back to software when the device or
+    /// the hwaccel for this stream is unavailable (see `hw.rs`).
+    pub hw: Option<HwSpec>,
 }
 
 impl Default for Options {
@@ -92,7 +97,41 @@ impl Default for Options {
             threads: Threads::Frame(0),
             skip_nonref: true,
             forward_continue: false,
+            hw: None,
         }
+    }
+}
+
+impl Options {
+    /// `threads[+skip]`, prefixed with `hw/` for hardware decode (`d3d11va:1/single+skip`).
+    pub fn label(&self) -> String {
+        let t = format!(
+            "{}{}",
+            self.threads.label(),
+            if self.skip_nonref { "+skip" } else { "" }
+        );
+        match self.hw {
+            Some(h) => format!("{}/{t}", h.label()),
+            None => t,
+        }
+    }
+
+    /// Parses a label written by [`Options::label`] (`forward_continue` off).
+    pub fn parse(s: &str) -> std::result::Result<Self, String> {
+        let (hw, rest) = match s.split_once('/') {
+            Some((h, r)) => (HwSpec::parse(h)?, r),
+            None => (None, s),
+        };
+        let (t, skip) = rest
+            .split_once('+')
+            .map_or((rest, false), |(t, s)| (t, s == "skip"));
+        let threads = Threads::parse(t).ok_or(format!("bad threads in {s}"))?;
+        Ok(Options {
+            threads,
+            skip_nonref: skip,
+            forward_continue: false,
+            hw,
+        })
     }
 }
 
@@ -112,6 +151,12 @@ pub struct Stats {
     pub decode_errors: u64,
     pub demux_errors: u64,
     pub index_mismatches: u64,
+    /// Returned frames that were hardware surfaces (copied to system memory).
+    pub hw_frames: u64,
+    /// Returned frames that came out of the decoder in a software format.
+    pub sw_frames: u64,
+    /// Time spent in `av_hwframe_transfer_data` for returned frames.
+    pub transfer_ns: u64,
 }
 
 /// What a decode step is looking for.
@@ -128,9 +173,22 @@ const MAX_PACKETS_PER_REQUEST: u64 = 200_000;
 pub struct VideoSource {
     path: PathBuf,
     input: ffmpeg::format::context::Input,
+    // Field order matters: the decoder points at `negotiation` (`AVCodecContext.opaque`) and
+    // holds a reference to `hw_device`, so it is declared (and dropped) first.
     decoder: ffmpeg::decoder::Video,
+    negotiation: Option<Box<hw::Negotiation>>,
+    hw_device: Option<hw::Device>,
+    hw_status: HwStatus,
     pub index: FrameIndex,
+    /// The frame as decoded (a hardware surface on the hw path).
     frame: ffmpeg::frame::Video,
+    /// The returned frame copied to system memory, when `frame` is a hardware surface.
+    sysmem: ffmpeg::frame::Video,
+    /// `frame()` returns `sysmem` (the last returned frame was a hardware surface).
+    returned_hw: bool,
+    /// Copy returned hardware frames to system memory (off for the zero-copy experiment, which
+    /// reads `decoded_frame()` on the GPU).
+    transfer: bool,
     opts: Options,
     /// A packet already read from the demuxer but not yet sent (the landing keyframe).
     pending: Option<ffmpeg::Packet>,
@@ -144,6 +202,8 @@ pub struct VideoSource {
     pub stats: Stats,
     /// `S3_TRACE=1`: log every packet sent and frame received to stderr.
     trace: bool,
+    /// `S3_START_EARLIER=1`: start seeks one keyframe before the computed start keyframe.
+    start_earlier: bool,
 }
 
 impl VideoSource {
@@ -155,13 +215,31 @@ impl VideoSource {
 
     /// Opens `path` with an index built earlier.
     pub fn open_with_index(path: &Path, index: FrameIndex, opts: Options) -> Result<Self> {
-        let (input, decoder) = open_decoder(path, index.stream, opts.threads)?;
+        // Fallback 1: no device -> software decode, recorded in `hw_status`.
+        let (hw_device, mut hw_status) = match opts.hw {
+            None => (None, HwStatus::Off),
+            Some(spec) => match hw::Device::create(spec) {
+                Ok(d) => (Some(d), HwStatus::Off),
+                Err(reason) => (None, HwStatus::NoDevice { spec, reason }),
+            },
+        };
+        let (input, decoder, negotiation, status) =
+            open_decoder(path, index.stream, opts.threads, hw_device.as_ref())?;
+        if let Some(s) = status {
+            hw_status = s;
+        }
         Ok(VideoSource {
             path: path.to_path_buf(),
             input,
             decoder,
+            negotiation,
+            hw_device,
+            hw_status,
             index,
             frame: ffmpeg::frame::Video::empty(),
+            sysmem: ffmpeg::frame::Video::empty(),
+            returned_hw: false,
+            transfer: true,
             opts,
             pending: None,
             next_idx: Some(0),
@@ -170,6 +248,7 @@ impl VideoSource {
             last_pts: None,
             stats: Stats::default(),
             trace: std::env::var_os("S3_TRACE").is_some(),
+            start_earlier: std::env::var_os("S3_START_EARLIER").is_some(),
         })
     }
 
@@ -200,9 +279,82 @@ impl VideoSource {
         self.reposition(first_key)
     }
 
-    /// The most recently decoded frame.
+    /// The most recently returned frame, in system memory (copied from the GPU on the hw path).
     pub fn frame(&self) -> &ffmpeg::frame::Video {
+        if self.returned_hw {
+            &self.sysmem
+        } else {
+            &self.frame
+        }
+    }
+
+    /// The most recently returned frame as the decoder produced it: a hardware surface on the hw
+    /// path (what a zero-copy importer consumes), else the same as [`VideoSource::frame`].
+    pub fn decoded_frame(&self) -> &ffmpeg::frame::Video {
         &self.frame
+    }
+
+    /// How the hwaccel setup went (device, decoder config).
+    pub fn hw_status(&self) -> &HwStatus {
+        &self.hw_status
+    }
+
+    /// The hardware device context, when one is open.
+    pub fn hw_device(&self) -> Option<&hw::Device> {
+        self.hw_device.as_ref()
+    }
+
+    /// `get_format` outcomes so far: (hw format picked, software format picked). A software pick
+    /// with a device attached means the stream fell back (profile/bit depth not offered, or
+    /// hwaccel initialisation failed and libavcodec asked again).
+    pub fn negotiation(&self) -> (u32, u32) {
+        self.negotiation.as_ref().map_or((0, 0), |n| {
+            (
+                n.hw_picks.load(Ordering::Relaxed),
+                n.sw_picks.load(Ordering::Relaxed),
+            )
+        })
+    }
+
+    /// One-line hw summary: status, `get_format` picks and returned frame counts.
+    pub fn hw_summary(&self) -> String {
+        let (h, s) = self.negotiation();
+        match &self.hw_status {
+            HwStatus::Attached { .. } => format!(
+                "{}; get_format hw {h} sw {s}; frames hw {} sw {}",
+                self.hw_status.show(),
+                self.stats.hw_frames,
+                self.stats.sw_frames
+            ),
+            other => other.show(),
+        }
+    }
+
+    /// Turns the copy of returned hardware frames to system memory on or off. Off, `frame()` is
+    /// the hardware surface itself (zero-copy experiment).
+    pub fn set_transfer(&mut self, transfer: bool) {
+        self.transfer = transfer;
+    }
+
+    /// Copies the frame about to be returned to system memory when it is a hardware surface.
+    fn finish_frame(&mut self) -> Result<()> {
+        let hw_fmt = self.negotiation.as_ref().map(|n| n.hw_format());
+        let is_hw = hw_fmt.is_some_and(|f| hw::is_hw_frame(&self.frame, f));
+        self.returned_hw = is_hw && self.transfer;
+        if is_hw && !self.transfer {
+            self.stats.hw_frames += 1;
+        } else if self.returned_hw {
+            let t = std::time::Instant::now();
+            hw::transfer(&self.frame, &mut self.sysmem).map_err(|err| Error::Ffmpeg {
+                op: "av_hwframe_transfer_data",
+                err,
+            })?;
+            self.stats.transfer_ns += t.elapsed().as_nanos() as u64;
+            self.stats.hw_frames += 1;
+        } else {
+            self.stats.sw_frames += 1;
+        }
+        Ok(())
     }
 
     /// Decodes the next frame in presentation order into `frame()`; false at the end of the stream.
@@ -220,14 +372,24 @@ impl VideoSource {
         if self.last_pts == Some(target.pts) && self.positioned {
             return Ok(());
         }
+        // Experiment knob (WP-0E.02, finding H10): `S3_START_EARLIER=1` starts every seek one
+        // keyframe earlier, so an open-GOP keyframe's leading pictures have their references.
+        let start = if self.start_earlier {
+            self.index
+                .keys_before(target.start_idx)
+                .next()
+                .unwrap_or(target.start_idx)
+        } else {
+            target.start_idx
+        };
         let reachable = self.positioned
             && !self.eof_sent
             && self.last_pts.is_none_or(|p| p < target.pts)
-            && self.next_idx.is_some_and(|n| target.start_idx <= n);
+            && self.next_idx.is_some_and(|n| start <= n);
         if self.opts.forward_continue && reachable {
             self.stats.continued += 1;
         } else {
-            self.reposition(target.start_idx)?;
+            self.reposition(start)?;
         }
         self.decode(Want::Pts(target.pts))
     }
@@ -251,9 +413,17 @@ impl VideoSource {
         }
         // Last resort: reopen the file and read from the start.
         self.stats.reopens += 1;
-        let (input, decoder) = open_decoder(&self.path, self.index.stream, self.opts.threads)?;
+        let (input, decoder, negotiation, _) = open_decoder(
+            &self.path,
+            self.index.stream,
+            self.opts.threads,
+            self.hw_device.as_ref(),
+        )?;
         self.input = input;
+        // The old decoder (pointing at the old negotiation box) goes first, then the old box.
         self.decoder = decoder;
+        self.negotiation = negotiation;
+        self.returned_hw = false;
         if self.land_at(k)? {
             return Ok(());
         }
@@ -340,6 +510,7 @@ impl VideoSource {
     /// The decode loop shared by sequential decoding and seeking.
     fn decode(&mut self, want: Want) -> Result<()> {
         let mut packets = 0u64;
+        self.returned_hw = false;
         loop {
             // Drain everything the decoder has ready.
             loop {
@@ -360,8 +531,9 @@ impl VideoSource {
                             eprintln!("  out  pts {pts}");
                         }
                         match want {
-                            Want::Next => return Ok(()),
-                            Want::Pts(t) if pts == t => return Ok(()),
+                            // Only the returned frame is copied off the GPU (hw path).
+                            Want::Next => return self.finish_frame(),
+                            Want::Pts(t) if pts == t => return self.finish_frame(),
                             Want::Pts(t) if pts > t => {
                                 return Err(Error::Overshoot {
                                     wanted: t,
@@ -477,12 +649,23 @@ fn want_pts(w: Want) -> Option<i64> {
     }
 }
 
-/// Opens the container and a decoder for stream `stream`.
+/// What `open_decoder` returns: the container, the decoder, the `get_format` state (hw path
+/// only; must outlive the decoder) and the hw status when a device was given.
+type Opened = (
+    ffmpeg::format::context::Input,
+    ffmpeg::decoder::Video,
+    Option<Box<hw::Negotiation>>,
+    Option<HwStatus>,
+);
+
+/// Opens the container and a decoder for stream `stream`, attaching `hw` when the decoder has a
+/// hwaccel for that device type (else fallback 2: software, reported in the status).
 fn open_decoder(
     path: &Path,
     stream: usize,
     threads: Threads,
-) -> Result<(ffmpeg::format::context::Input, ffmpeg::decoder::Video)> {
+    hw: Option<&hw::Device>,
+) -> Result<Opened> {
     let p = path.to_str().ok_or(Error::NonUtf8Path)?;
     let input = ffmpeg::format::input(p).map_err(ff("avformat_open_input"))?;
     let st = input.stream(stream).ok_or(Error::NoVideoStream)?;
@@ -490,8 +673,30 @@ fn open_decoder(
     let mut ctx = ffmpeg::codec::Context::from_parameters(st.parameters())
         .map_err(ff("avcodec_parameters_to_context"))?;
     ctx.set_threading(threads.config());
+    let mut negotiation = None;
+    let mut status = None;
+    if let Some(dev) = hw {
+        let codec = ffmpeg::decoder::find(ctx.id()).ok_or(Error::NoVideoStream)?;
+        match dev.pix_fmt_for(&codec) {
+            Some(fmt) => {
+                let neg = Box::new(hw::Negotiation::new(fmt));
+                hw::attach(&mut ctx, dev, &neg);
+                negotiation = Some(neg);
+                status = Some(HwStatus::Attached {
+                    spec: dev.spec,
+                    pix_fmt: hw::pix_fmt_name(fmt),
+                });
+            }
+            None => {
+                status = Some(HwStatus::NoHwConfig {
+                    spec: dev.spec,
+                    codec: codec.name().to_string(),
+                });
+            }
+        }
+    }
     let mut dec = ctx.decoder();
     dec.set_packet_time_base(tb);
     let video = dec.video().map_err(|_| Error::NoVideoStream)?;
-    Ok((input, video))
+    Ok((input, video, negotiation, status))
 }

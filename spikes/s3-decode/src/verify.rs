@@ -9,12 +9,17 @@
 //! 3. **edges**: first and last four frames, every keyframe and its neighbours, every open-GOP leading
 //!    frame, forward and then in reverse (backward scrubbing);
 //! 4. **scrub**: a forward sweep and single-frame stepping with `forward_continue` on.
+//!
+//! On the hardware path (`Options::hw`, WP-0E.02) the Y CRC is replaced by a comparison with the
+//! software decode of the same frame: bit-exact on all three planes, or PSNR >= 50 dB. pts and
+//! the barcode are checked exactly as before.
 
 use std::path::Path;
 
 use crate::error::Result;
 use crate::frame_check::Luma;
 use crate::index::FrameIndex;
+use crate::planes::Planes;
 use crate::source::{Options, Stats, VideoSource};
 use crate::truth::{self, Truth};
 use crate::util::{Crc32, Rng};
@@ -85,6 +90,16 @@ pub struct Report {
     pub barcode_checked: bool,
     pub stats: Stats,
     pub failures: Vec<String>,
+    /// Decoder configuration label (`d3d11va:1/single+skip`, `frame+skip`).
+    pub config: String,
+    /// Hardware path: setup outcome, `get_format` picks and returned hw/sw frame counts.
+    pub hw: String,
+    /// Hardware path: frames whose three planes equal the software decode bit for bit.
+    pub hw_bit_exact: Tally,
+    /// Hardware path: lowest PSNR of a frame that was not bit-exact (infinite if all were).
+    pub hw_psnr_min: f64,
+    /// Hardware path: frames compared by PSNR (not bit-exact).
+    pub hw_psnr_frames: usize,
 }
 
 impl Report {
@@ -106,16 +121,33 @@ impl Report {
     }
 }
 
+/// Hardware-path comparison against the software decode of the same frames (WP-0E.02).
+///
+/// A software pre-pass stores the CRC of each frame's three canonical planes (`planes.rs`). A
+/// hardware frame with the same three CRCs is bit-exact; any other frame is decoded again in
+/// software (a cold seek on a second source) and must reach [`PSNR_MIN_DB`].
+struct HwCompare {
+    sw_crcs: Vec<[u32; 3]>,
+    sw: VideoSource,
+    bit_exact: Tally,
+    psnr_min: f64,
+    psnr_frames: usize,
+}
+
+/// WBS WP-0E.02: hardware frames must be within 50 dB PSNR of the software frame.
+pub const PSNR_MIN_DB: f64 = 50.0;
+
 struct Checker<'a> {
     truth: &'a Truth,
     crc: Crc32,
     barcode: bool,
+    hw: Option<HwCompare>,
 }
 
 impl Checker<'_> {
     /// Checks the frame the source returned for presentation index `pi`. Returns a reason on failure.
     fn check(
-        &self,
+        &mut self,
         index: &FrameIndex,
         pi: usize,
         frame: &ffmpeg_next::frame::Video,
@@ -132,16 +164,43 @@ impl Checker<'_> {
         }
         let luma = Luma::of(frame)
             .ok_or_else(|| format!("frame {pi}: unsupported pixel format {:?}", frame.format()))?;
-        match self.truth.crcs.get(pi) {
-            Some(&(_, crc)) => {
-                let c = luma.crc(&self.crc);
-                if c != crc {
+        // Hardware path: bit-exact vs the software decode, else PSNR >= 50 dB. Frames outside the
+        // 4:2:0 layouts the comparison knows (a software fallback of a 4:2:2 stream) take the
+        // software check below.
+        let hw_planes = self.hw.as_ref().and_then(|_| Planes::of(frame));
+        if let (Some(hw), Some(planes)) = (self.hw.as_mut(), hw_planes) {
+            let exact = hw.sw_crcs.get(pi) == Some(&planes.crcs(&self.crc));
+            hw.bit_exact.add(exact);
+            if !exact {
+                hw.sw
+                    .seek_frame(pi)
+                    .map_err(|e| format!("frame {pi}: software reference seek: {e}"))?;
+                let reference = Planes::of(hw.sw.frame())
+                    .ok_or_else(|| format!("frame {pi}: no software planes"))?;
+                let p = planes
+                    .psnr(&reference)
+                    .ok_or_else(|| format!("frame {pi}: hw/sw frame size or depth differ"))?;
+                hw.psnr_frames += 1;
+                hw.psnr_min = hw.psnr_min.min(p.all);
+                if p.all < PSNR_MIN_DB {
                     return Err(format!(
-                        "frame {pi} (pts {want}): Y crc {c:08x} != ffmpeg {crc:08x}"
+                        "frame {pi}: PSNR {:.2} dB vs software (Y {:.2}, max diff {}) < {PSNR_MIN_DB}",
+                        p.all, p.y, p.max_diff
                     ));
                 }
             }
-            None => return Err(format!("frame {pi}: no reference CRC")),
+        } else {
+            match self.truth.crcs.get(pi) {
+                Some(&(_, crc)) => {
+                    let c = luma.crc(&self.crc);
+                    if c != crc {
+                        return Err(format!(
+                            "frame {pi} (pts {want}): Y crc {c:08x} != ffmpeg {crc:08x}"
+                        ));
+                    }
+                }
+                None => return Err(format!("frame {pi}: no reference CRC")),
+            }
         }
         if self.barcode {
             match luma.barcode() {
@@ -151,6 +210,34 @@ impl Checker<'_> {
         }
         Ok(())
     }
+}
+
+/// Software pre-pass for the hardware comparison: per-frame canonical plane CRCs, with each
+/// frame's Y CRC checked against the ffmpeg CLI first (so the reference itself is exact).
+fn software_reference(path: &Path, index: &FrameIndex, truth: &Truth) -> Result<HwCompare> {
+    let opts = Options::default();
+    let crc = Crc32::default();
+    let mut seq = VideoSource::open_with_index(path, index.clone(), opts)?;
+    seq.rewind()?;
+    let mut sw_crcs = Vec::with_capacity(index.frames.len());
+    for pi in 0..index.frames.len() {
+        if !seq.next_frame()? {
+            break;
+        }
+        let f = seq.frame();
+        let y_ok = Luma::of(f)
+            .zip(truth.crcs.get(pi))
+            .is_some_and(|(l, &(_, c))| l.crc(&crc) == c);
+        let planes = Planes::of(f).filter(|_| y_ok);
+        sw_crcs.push(planes.map_or([0; 3], |p| p.crcs(&crc)));
+    }
+    Ok(HwCompare {
+        sw_crcs,
+        sw: VideoSource::open_with_index(path, index.clone(), opts)?,
+        bit_exact: Tally::default(),
+        psnr_min: f64::INFINITY,
+        psnr_frames: 0,
+    })
 }
 
 /// Verifies `path` (video stream picked by `av_find_best_stream`).
@@ -189,10 +276,16 @@ pub fn verify(out_dir: &Path, path: &Path, cfg: Config) -> Result<Report> {
     let leading = leading_frames(&index);
     r.open_gop_leading = leading.len();
 
-    let checker = Checker {
+    r.config = cfg.opts.label();
+    let hw = match cfg.opts.hw {
+        Some(_) => Some(software_reference(path, &index, &truth)?),
+        None => None,
+    };
+    let mut checker = Checker {
         truth: &truth,
         crc: Crc32::default(),
         barcode: cfg.barcode,
+        hw,
     };
     let mut src = VideoSource::open_with_index(
         path,
@@ -235,7 +328,7 @@ pub fn verify(out_dir: &Path, path: &Path, cfg: Config) -> Result<Report> {
     let mut rng = Rng::new(cfg.seed);
     for _ in 0..cfg.seeks {
         let pi = rng.below(r.frames);
-        let res = seek_check(&mut src, &checker, pi);
+        let res = seek_check(&mut src, &mut checker, pi);
         r.random.add(res.is_ok());
         if let Err(m) = res {
             r.fail(format!("random: {m}"));
@@ -247,7 +340,7 @@ pub fn verify(out_dir: &Path, path: &Path, cfg: Config) -> Result<Report> {
     let rev: Vec<usize> = edges.iter().rev().copied().collect();
     edges.extend(rev);
     for pi in edges {
-        let res = seek_check(&mut src, &checker, pi);
+        let res = seek_check(&mut src, &mut checker, pi);
         r.edges.add(res.is_ok());
         if let Err(m) = res {
             r.fail(format!("edge: {m}"));
@@ -263,19 +356,27 @@ pub fn verify(out_dir: &Path, path: &Path, cfg: Config) -> Result<Report> {
         .chain(mid..(mid + 45).min(r.frames))
         .collect();
     for pi in sweep {
-        let res = seek_check(&mut src, &checker, pi);
+        let res = seek_check(&mut src, &mut checker, pi);
         r.scrub.add(res.is_ok());
         if let Err(m) = res {
             r.fail(format!("scrub: {m}"));
         }
     }
     r.stats = src.stats;
+    if cfg.opts.hw.is_some() {
+        r.hw = src.hw_summary();
+    }
+    if let Some(hw) = checker.hw {
+        r.hw_bit_exact = hw.bit_exact;
+        r.hw_psnr_min = hw.psnr_min;
+        r.hw_psnr_frames = hw.psnr_frames;
+    }
     Ok(r)
 }
 
 fn seek_check(
     src: &mut VideoSource,
-    checker: &Checker<'_>,
+    checker: &mut Checker<'_>,
     pi: usize,
 ) -> std::result::Result<(), String> {
     src.seek_frame(pi).map_err(|e| format!("seek {pi}: {e}"))?;
