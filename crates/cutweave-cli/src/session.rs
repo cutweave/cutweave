@@ -9,7 +9,8 @@ use cutweave_api::Credential;
 use cutweave_api::mcp::execute::{check_step_refs, resolve_refs};
 use cutweave_commands::{CmdError, EntryKind, Registry, Rev, TxId};
 use cutweave_engine::{
-    Call, Connection, DevStubMedia, Engine, EngineConfig, EngineMode, Subsystems,
+    AudioConfig, Call, Connection, DevStubMedia, Engine, EngineConfig, EngineMode, FullSubsystems,
+    Subsystems,
 };
 use serde_json::{Map, Value, json};
 
@@ -90,9 +91,14 @@ impl Session {
                 config.project = spawn.project;
                 config.deterministic_ids = spawn.deterministic_ids;
                 config.allowed_roots = spawn.allow_roots;
-                if spawn.dev_stub_media {
-                    config.subsystems = Some(Box::new(DevStubMedia) as Box<dyn Subsystems>);
-                }
+                // The full engine on the null audio output (see `cutweave mcp --headless`);
+                // `--dev-stub-media` keeps the stub.
+                config.audio = AudioConfig::Null;
+                config.subsystems = Some(if spawn.dev_stub_media {
+                    Box::new(DevStubMedia) as Box<dyn Subsystems>
+                } else {
+                    Box::new(FullSubsystems::native())
+                });
                 let engine =
                     Engine::start(config).map_err(|e| Failure::error(e.code(), e.to_string()))?;
                 let conn = engine

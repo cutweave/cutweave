@@ -10,7 +10,7 @@ use std::sync::Arc;
 
 use cutweave_api::mcp::{self, Dispatch, DispatchCall, DispatchConn, DispatchReply, McpOptions};
 use cutweave_api::media::MediaOptions;
-use cutweave_api::rpc::RpcConfig;
+use cutweave_api::rpc::{RpcConfig, RpcEvents};
 use cutweave_api::{Credential, Mounts};
 use cutweave_commands::{CmdError, Registry};
 
@@ -53,6 +53,10 @@ impl Dispatch for EngineHandle {
 
     fn connect(&self, credential: &Credential) -> Result<Arc<dyn DispatchConn>, CmdError> {
         Ok(Arc::new(EngineHandle::connect(self, credential)?))
+    }
+
+    fn events(&self) -> Box<dyn RpcEvents> {
+        crate::rpc_backend::events(self)
     }
 }
 

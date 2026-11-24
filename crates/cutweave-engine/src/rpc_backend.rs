@@ -41,7 +41,7 @@ impl RpcBackend for EngineHandle {
     }
 
     fn subscribe(&self) -> Box<dyn RpcEvents> {
-        Box::new(Events(EngineHandle::subscribe(self)))
+        events(self)
     }
 
     fn status(&self) -> Result<RpcStatus, CmdError> {
@@ -106,6 +106,12 @@ impl RpcConnection for Connection {
             })
         })
     }
+}
+
+/// A subscription to the engine's event fan-out (the RPC hub's, and MCP's resource
+/// notifications).
+pub(crate) fn events(handle: &EngineHandle) -> Box<dyn RpcEvents> {
+    Box::new(Events(EngineHandle::subscribe(handle)))
 }
 
 /// The event fan-out as the RPC hub reads it.

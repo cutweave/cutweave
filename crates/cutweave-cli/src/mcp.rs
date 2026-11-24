@@ -19,7 +19,8 @@ use cutweave_api::mcp::proxy::{self, ProxyEnd, Upstream};
 use cutweave_api::mcp::{Catalog, CutweaveMcp, Dispatch, Profile as McpProfile, stdio};
 use cutweave_engine::logging::{self, LogGuard};
 use cutweave_engine::{
-    AudioConfig, DevStubMedia, Engine, EngineConfig, EngineMode, GpuConfig, LogConfig, Subsystems,
+    AudioConfig, DevStubMedia, Engine, EngineConfig, EngineMode, FullSubsystems, LogConfig,
+    Subsystems,
 };
 use serde_json::json;
 
@@ -131,11 +132,15 @@ fn serve_headless(cmd: &McpCmd, spawn: SpawnPlan) -> Result<i32, Failure> {
     config.project = spawn.project;
     config.deterministic_ids = spawn.deterministic_ids;
     config.allowed_roots = spawn.allow_roots;
+    // The full engine (FFmpeg media when this build has it, the GPU compositor, playback) on the
+    // null audio output: `render_frame` and real imports work. `--dev-stub-media` opts into the
+    // stub (made-up probing, no decoding).
     config.audio = AudioConfig::Null;
-    config.gpu = GpuConfig::Software;
-    if spawn.dev_stub_media {
-        config.subsystems = Some(Box::new(DevStubMedia) as Box<dyn Subsystems>);
-    }
+    config.subsystems = Some(if spawn.dev_stub_media {
+        Box::new(DevStubMedia) as Box<dyn Subsystems>
+    } else {
+        Box::new(FullSubsystems::native())
+    });
     let engine = Engine::start(config).map_err(|e| Failure::error(e.code(), e.to_string()))?;
     if spawn.dev_stub_media {
         eprintln!("cutweave mcp: warning: dev stub media is on (fake media probing, dev only)");

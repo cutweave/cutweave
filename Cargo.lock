@@ -800,6 +800,7 @@ dependencies = [
  "cutweave-commands",
  "cutweave-engine",
  "cutweave-jobs",
+ "cutweave-media",
  "cutweave-model",
  "cutweave-ops",
  "form_urlencoded",

@@ -152,7 +152,7 @@ impl Agent {
             stderr,
         } = self;
         let _ = service.cancel().await;
-        let status = tokio::time::timeout(Duration::from_secs(15), child.wait())
+        let status = tokio::time::timeout(Duration::from_secs(60), child.wait())
             .await
             .expect("cutweave mcp exits when its stdin closes")
             .expect("wait");
@@ -219,6 +219,46 @@ async fn scripted_edit(agent: &Agent, clip: &str) {
 }
 
 // ----- headless -----------------------------------------------------------------------------
+
+/// WP-1J.02: without `--dev-stub-media`, `cutweave mcp --headless` runs the full engine: 20
+/// tools within the P1 gate (`render_frame` joins the registry's 15 core tools and the 4 generic
+/// ones), and `render_frame` answers with one image block. (No FFmpeg is needed: an empty
+/// sequence renders its background.)
+#[tokio::test]
+async fn headless_runs_the_full_engine_and_renders_a_frame() {
+    for revision in Revision::ALL {
+        let dir = tempfile::tempdir().unwrap();
+        let root = dir.path().to_str().unwrap().to_owned();
+        let agent =
+            Agent::start(&["--headless", "--allow-root", &root, "--no-log"], revision).await;
+        let tools = agent.tools().await;
+        assert_eq!(tools.len(), 20, "{revision:?}");
+        assert!(tools.iter().any(|t| t.name == "render_frame"));
+        let size = ListSize::of(&tools);
+        assert!(P1_GATE.fits(size), "{size:?}");
+        agent
+            .ok(
+                "cutweave_execute",
+                json!({ "steps": [{ "cmd": "project.new", "args": { "name": "Empty" } }] }),
+            )
+            .await;
+        let result = agent
+            .try_call("render_frame", json!({ "t": "0s", "max_size": 128 }))
+            .await
+            .expect("tools/call");
+        assert_ne!(result.is_error, Some(true), "{result:?}");
+        let images = result
+            .content
+            .iter()
+            .filter(|c| matches!(c, ContentBlock::Image(_)))
+            .count();
+        assert_eq!(images, 1, "{revision:?}");
+        let meta = result.structured_content.unwrap();
+        assert_eq!(meta["items_visible"], json!([]));
+        let (code, stderr) = agent.close().await;
+        assert_eq!(code, Some(0), "{stderr}");
+    }
+}
 
 /// Acceptance 1: `cutweave mcp --headless` lists the standard profile (19 tools within the P1
 /// gate) and runs the scripted session, on both revisions; the path policy confines it.

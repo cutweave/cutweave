@@ -68,6 +68,8 @@ pub(crate) struct ExecError {
     pub failed_step: Option<usize>,
     /// The failing step's args (resolved when the step ran), to locate a missing id.
     pub args: Option<Value>,
+    /// What to do about it, when more specific than the error kind's hint.
+    pub hint: Option<&'static str>,
 }
 
 /// A batch result; the error is boxed (it is large and rare).
@@ -79,6 +81,7 @@ impl ExecError {
             error,
             failed_step: None,
             args: None,
+            hint: None,
         })
     }
 
@@ -87,6 +90,7 @@ impl ExecError {
             error: error.under(&format!("/steps/{index}/args")),
             failed_step: Some(index),
             args: Some(args),
+            hint: None,
         })
     }
 
@@ -95,6 +99,7 @@ impl ExecError {
             error,
             failed_step: Some(index),
             args: None,
+            hint: None,
         })
     }
 }
@@ -145,6 +150,7 @@ pub(crate) fn parse(catalog: &Catalog, args: Value) -> ExecResult<Batch> {
         .map(|(i, step)| parse_step(catalog, i, step))
         .collect::<ExecResult<Vec<Step>>>()?;
     check_engine_steps(&steps, dry_run)?;
+    check_render_steps(&steps)?;
     Ok(Batch {
         steps,
         dry_run,
@@ -191,6 +197,29 @@ fn parse_step(catalog: &Catalog, i: usize, step: Value) -> ExecResult<Step> {
         kind: entry.meta.kind,
         args,
     })
+}
+
+/// `render.*` queries render the committed document on the engine's renderer, which a
+/// transaction's working document cannot use: refused before anything runs, with advice
+/// ([`frame::TRANSACTION_HINT`]). This is the smaller of the two fixes (rendering a
+/// transaction's view would put GPU work on the doc actor's thread).
+fn check_render_steps(steps: &[Step]) -> ExecResult<()> {
+    let Some((i, step)) = steps
+        .iter()
+        .enumerate()
+        .find(|(_, s)| s.name.starts_with("render."))
+    else {
+        return Ok(());
+    };
+    Err(Box::new(ExecError {
+        error: CmdError::unsupported(format!(
+            "`{}` cannot run inside a cutweave_execute transaction",
+            step.name
+        )),
+        failed_step: Some(i),
+        args: None,
+        hint: Some(crate::mcp::frame::TRANSACTION_HINT),
+    }))
 }
 
 /// Engine commands cannot join a transaction (or be dry-run): refused before anything runs.

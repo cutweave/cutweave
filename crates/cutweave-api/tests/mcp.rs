@@ -91,7 +91,8 @@ async fn current_rev(client: &Client) -> u64 {
 // ----- catalog ------------------------------------------------------------------------------
 
 /// Acceptance 1: `/mcp` lists exactly the registry's core tools plus the 4 generic tools (19 in
-/// P1 since `export_start`, WP-1E.03; `render_frame` arrives with WP-1J.02), within the P1
+/// P1 since `export_start`, WP-1E.03; the core engine has no renderer, so no `render_frame`: the
+/// full engine lists 20, tests/mcp_frames.rs), within the P1
 /// gate, on both revisions.
 #[tokio::test]
 async fn mcp_lists_the_core_and_generic_tools_within_the_p1_gate() {
@@ -255,6 +256,13 @@ fn validation_only(schema: &Value) -> Value {
             for (key, value) in map {
                 if matches!(key.as_str(), "description" | "title")
                     || (key == "default" && value.is_null())
+                    // `format: "uint32"` names a Rust width; it does not validate.
+                    || (key == "format"
+                        && value.as_str().is_some_and(|f| {
+                            ["uint", "int", "float", "double"]
+                                .iter()
+                                .any(|p| f.starts_with(p))
+                        }))
                 {
                     continue;
                 }

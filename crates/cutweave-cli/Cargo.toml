@@ -8,6 +8,12 @@ repository.workspace = true
 rust-version.workspace = true
 publish = false
 
+[features]
+# The FFmpeg media backend of the engines this binary runs in process (`cutweave mcp --headless`,
+# one-shot `--headless` sessions): forwards cutweave-engine's `ffmpeg`. Off by default like the
+# engine's own; without it those engines have no decoder and clips render as missing.
+ffmpeg = ["cutweave-engine/ffmpeg"]
+
 [lib]
 name = "cutweave_cli"
 path = "src/lib.rs"

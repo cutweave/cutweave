@@ -45,9 +45,8 @@ expression: catalog.tools_json()
               "integer",
               "null"
             ],
-            "format": "uint32",
-            "minimum": 0,
-            "description": "How long to wait in milliseconds (default 30000; values above 60000 are capped; 0\nreturns the current state)."
+            "description": "How long to wait in milliseconds (default 30000; values above 60000 are capped; 0\nreturns the current state).",
+            "minimum": 0
           }
         },
         "required": [
@@ -73,9 +72,8 @@ expression: catalog.tools_json()
               "integer",
               "null"
             ],
-            "format": "uint32",
-            "minimum": 0,
-            "description": "Page size, `1..=500` (default 50)."
+            "description": "Page size, `1..=500` (default 50).",
+            "minimum": 0
           },
           "cursor": {
             "type": [
@@ -108,24 +106,20 @@ expression: catalog.tools_json()
                   "description": "What a [`MediaAsset`] is.",
                   "oneOf": [
                     {
-                      "description": "A video file (may also carry audio).",
-                      "type": "string",
-                      "const": "video"
+                      "const": "video",
+                      "type": "string"
                     },
                     {
-                      "description": "An audio-only file.",
-                      "type": "string",
-                      "const": "audio"
+                      "const": "audio",
+                      "type": "string"
                     },
                     {
-                      "description": "A still image (no duration).",
-                      "type": "string",
-                      "const": "image"
+                      "const": "image",
+                      "type": "string"
                     },
                     {
-                      "description": "Another sequence of this project, used as a compound clip (arch §4.3).",
-                      "type": "string",
-                      "const": "sequence_ref"
+                      "const": "sequence_ref",
+                      "type": "string"
                     }
                   ]
                 },
@@ -254,10 +248,9 @@ expression: catalog.tools_json()
               "integer",
               "null"
             ],
-            "format": "uint8",
+            "description": "Detail level `0..=2` (default 1).",
             "minimum": 0,
-            "maximum": 255,
-            "description": "Detail level `0..=2` (default 1)."
+            "maximum": 255
           },
           "fields": {
             "type": [

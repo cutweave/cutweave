@@ -37,7 +37,7 @@ The thinnest end-to-end product through every architectural layer, with producti
 | **1G** Audio playback v0 | Mixer, cpal output, master clock, volume, offline mixdown |
 | **1H** Playback & SHM preview | Transport, scrub scheduler, JKL, SHM ring publisher, napi bridge reader |
 | **1I** Local API server | axum server, credential classes (UI/agent), Host/Origin, run-file, WS JSON-RPC + events, media HTTP, engine root + subsystem wiring |
-| **1J** MCP v0 | rmcp server (HTTP + stdio attach/headless), 15 core + 4 generic tools (19 listed), `render_frame`, `job_wait`, `cutweave_execute`, per-endpoint profiles, agent targeting and the Agents and MCP settings |
+| **1J** MCP v0 | rmcp server (HTTP + stdio attach/headless), 16 core + 4 generic tools (20 listed, R33), `render_frame`, `job_wait`, `cutweave_execute`, per-endpoint profiles, agent targeting and the Agents and MCP settings |
 | **1K** CLI | `cutweave engine | mcp | exec | query | render` |
 | **1L** Electron shell & supervision | Hardened Electron app, engine spawn/supervise/restart/resync |
 | **1M** Editor UI v0 | Layout, stores, media bin (with search), preview, Canvas2D timeline, inspector, undo/redo, save/open, export dialog, settings framework |
@@ -832,13 +832,13 @@ Human gates: PR review of `1B.01`, `1B.03`/`1B.09` (concurrency + ownership core
   - `media_import` returns `media_ids` synchronously (1D.07); agents then call `job_wait` on the returned analysis job ids if they need thumbnails/index; `export_start` returns `job_id` and `job_wait` blocks up to `timeout_ms` (<= 60 s) so agents need no polling loops.
   - **4 generic tools:** `cutweave_search_commands{query}` (fuzzy over name/summary), `cutweave_describe_command{name}` (full JSON Schema), `cutweave_execute{steps[{cmd,args}], dry_run?, expected_rev?}` — **transactional batch** (one tx → one undo step; `$ref` between steps like `{"$ref":"steps[0].output.left"}`; on any step error the whole tx rolls back and the error names the failing step index), `cutweave_query{name,args}`.
   - Tool results: structured content (JSON) + short text summary; errors as MCP tool errors with `code`, `message`, `path`, `hint`.
-  - **Tool profiles are per endpoint, never per connection:** `/mcp` (standard = the 19 above in P1), `/mcp/minimal` (<= 12 tools: `project_info`, `media_list`, `timeline_get`, `render_frame`, `job_wait`, `edit_undo` + the 4 generic tools), `/mcp/full` (standard + search-based long tail; identical to standard in P1); stdio servers take `--profile minimal|standard|full`.
-  - **Tool-list budgets (single source):** minimal <= 12 tools / <= 3k tokens; standard <= 36 tools / <= 8k tokens; full = standard + search-based long tail; **P1 gate: `/mcp` lists <= 19 tools and <= 5k tokens** (tokens estimated as ceil(bytes of compact `tools/list` JSON / 4), method documented). CI fails when exceeded.
+  - **Tool profiles are per endpoint, never per connection:** `/mcp` (standard = the 20 above in P1, R33), `/mcp/minimal` (<= 12 tools: `project_info`, `media_list`, `timeline_get`, `render_frame`, `job_wait`, `edit_undo` + the 4 generic tools), `/mcp/full` (standard + search-based long tail; identical to standard in P1); stdio servers take `--profile minimal|standard|full`.
+  - **Tool-list budgets (single source):** minimal <= 12 tools / <= 3k tokens; standard <= 36 tools / <= 8k tokens; full = standard + search-based long tail; **P1 gate: `/mcp` lists <= 20 tools and <= 5k tokens (R33)** (tokens estimated as ceil(bytes of compact `tools/list` JSON / 4), method documented). CI fails when exceeded.
   - Transcripts/metadata strings in results wrapped `{"untrusted": true, ...}` per arch §14.
   - Actor for MCP calls = `agent:<token label>` (credential-derived, 1I.01); MCP session end/disconnect rolls back that connection's open tx (1B.09).
 - **Interfaces:** MCP tool names above; `cutweave_execute` schema.
 - **Acceptance criteria:**
-  - An rmcp client test on `/mcp` lists exactly the 19 tools (15 core + 4 generic; `render_frame` arrives with 1J.02, so this WP's gate lists 18 and 1J.02 raises it to 19), within the 5k-token/19-tool gate; `/mcp/minimal` lists <= 12 tools and <= 3k tokens; each core tool call returns the same output as the RPC call for the same args (spot-checked by 1O.02 parity).
+  - An rmcp client test on `/mcp` lists exactly the registry's core tools plus the 4 generic ones (18 here, as `render_frame` arrives with 1J.02, which raises the gate to 20, R33), within the 5k-token gate; `/mcp/minimal` lists <= 12 tools and <= 3k tokens; each core tool call returns the same output as the RPC call for the same args (spot-checked by 1O.02 parity).
   - `cutweave_execute` with 3 steps where step 3 fails leaves the doc and rev unchanged and returns `failed_step: 2`; with `dry_run: true` the doc is unchanged and the response lists predicted ops.
   - Tools have correct annotations: `clip_split` not read-only; `timeline_get` read-only (test per tool).
 - **Tests:** rmcp client integration (HTTP), snapshot of `tools/list` (insta) — becomes the committed MCP catalog snapshot.
@@ -856,7 +856,7 @@ Human gates: PR review of `1B.01`, `1B.03`/`1B.09` (concurrency + ownership core
 - **Interfaces:** tool `render_frame`; resources above.
 - **Acceptance criteria:**
   - MCP client test calls `render_frame` on the 3-clip fixture at t=2 s: result has exactly one image content block, valid JPEG ≤ 768 px, metadata `items_visible` contains the expected item ID.
-  - Under **each** of the two MCP revisions (rmcp client configured per revision), subscribing to `cutweave://project` and then running `clip_split` produces an update notification within 200 ms; `tools/list` now has 19 tools.
+  - Under **each** of the two MCP revisions (rmcp client configured per revision), subscribing to `cutweave://project` and then running `clip_split` produces an update notification within 200 ms; `tools/list` now has 20 tools (R33).
 - **Tests:** rmcp client integration.
 - **Out of scope:** `render_contact_sheet`, `media_filmstrip`, `audio_waveform` (P2).
 
@@ -1367,7 +1367,7 @@ Human gates: PR review of `1B.01`, `1B.03`/`1B.09` (concurrency + ownership core
 - **Size:** S
 - **Executor:** sonnet
 - **Scope:**
-  - CI job running **MCP Inspector CLI** (`npx @modelcontextprotocol/inspector --cli …`, version pinned) against both stdio (`cutweave mcp --headless`) and Streamable HTTP (engine with token) transports: `tools/list` (asserts <= 19 tools / <= 5k tokens), call of each core tool on the fixture project (including `media_import` -> `job_wait`), `resources/list`/`read`, ping; assertions on result shapes (JSON schema validation of tool outputs vs output schemas).
+  - CI job running **MCP Inspector CLI** (`npx @modelcontextprotocol/inspector --cli …`, version pinned) against both stdio (`cutweave mcp --headless`) and Streamable HTTP (engine with token) transports: `tools/list` (asserts <= 20 tools / <= 5k tokens), call of each core tool on the fixture project (including `media_import` -> `job_wait`), `resources/list`/`read`, ping; assertions on result shapes (JSON schema validation of tool outputs vs output schemas).
   - **Scripted-agent e2e**: a deterministic TS/Rust client script (not an LLM) "imports 3 clips (`media_import` returns `media_ids`; `job_wait` for analysis), arranges, trims, splits, renders a frame, exports (`export_start` + `job_wait`)" over stdio headless using only MCP tools (this is the M1 exit-2 flow): asserts no non-protocol stdout, final timeline structure equals expected JSON, `render_frame` image decodes.
   - Tool-list budget assertion (1J.01 limit) and `tools/list` insta snapshot gate.
 - **Interfaces:** CI job `mcp-conformance`.
@@ -1468,7 +1468,7 @@ Status per item after the two integrator rounds.
 2. **RESOLVED: epics for `cutweave-jobs` / `cutweave-engine`.** Jobs in 1D.07; engine root in 1I.04 and subsystem wiring in 1I.05 (split so the document-only engine unblocks the UI spine).
 3. **RESOLVED: `view` namespace.** Not undoable, not journaled, persisted in `.cutweave/ui-state.json` (1C.04).
 4. **RESOLVED: idempotency (exit 3).** `request_id` (UUIDv7) journaled with a persisted wall-clock timestamp (10-min window survives restart): 1B.03, 1C.02, 1I.02, 1L.03.
-5. **RESOLVED: MCP P1 tool set.** 15 core tools (incl. `job_wait` and `render_frame`) + 4 generic = 19 listed; P1 gate <= 19 tools / <= 5k tokens; minimal <= 12 / 3k, standard <= 36 / 8k; profiles per endpoint (`/mcp`, `/mcp/minimal`, `/mcp/full`) or `--profile`, never per connection. 1J.01 now depends on 1D.07 and 1E.03.
+5. **RESOLVED: MCP P1 tool set.** 15 core tools (incl. `job_wait` and `render_frame`) + 4 generic = 19 listed (R33 raised it to 20: 16 core with `item_set_props` and `export_start`); P1 gate <= 20 tools / <= 5k tokens; minimal <= 12 / 3k, standard <= 36 / 8k; profiles per endpoint (`/mcp`, `/mcp/minimal`, `/mcp/full`) or `--profile`, never per connection. 1J.01 now depends on 1D.07 and 1E.03.
 6. **RESOLVED: `Time` wire format** (ADR-015): 1A.01, 1N.02, 1M.07.
 7. **RESOLVED: FFmpeg distribution** (0A.06 + `just ffmpeg-fetch`); 1D.01 depends on 0A.06.
 8. **RESOLVED: golden frames.** Tolerance policy single source (bit-identical preview vs export; SSIM >= 0.995 AND PSNR >= 40 dB vs stored per-adapter reference; PSNR > 45 dB for spike references); references per adapter; macOS goldens on `ref-mac-m1` if hosted Metal is unusable.
