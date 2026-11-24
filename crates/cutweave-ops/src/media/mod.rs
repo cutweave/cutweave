@@ -34,7 +34,10 @@ pub use find::{
     Keyed, Matcher, MediaFilter, MediaSort, MediaSortBy, MediaSortOrder, asset_name, compare, fold,
     is_problem, used_media,
 };
-pub use policy::{AllowedRoots, DEFAULT_PROBE_PARALLELISM, DEFAULT_PROBE_TIMEOUT, ImportPolicy};
+pub use policy::{
+    AllowedRoots, DEFAULT_PROBE_PARALLELISM, DEFAULT_PROBE_TIMEOUT, ImportPolicy,
+    OUTSIDE_ROOTS_HINT,
+};
 pub use probe::{FakeProbe, MediaProbe, ProbeError, Probed};
 
 use crate::util::check_abs_path;
@@ -381,7 +384,7 @@ impl MediaImport {
                     pointer,
                     format!(
                         "`{path}` is outside the folders you may import from (the project folder \
-                         and folders the user approved); ask the user to approve its folder"
+                         and the folders the user allowed); {OUTSIDE_ROOTS_HINT}"
                     ),
                 ));
             }

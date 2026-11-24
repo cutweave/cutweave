@@ -27,7 +27,7 @@ use cutweave_model::{
     Duration, EntityKind, FrameRate, Project, Rounding, Sequence, SequenceId, Time, TimeInput,
 };
 
-use crate::media::AllowedRoots;
+use crate::media::{AllowedRoots, OUTSIDE_ROOTS_HINT};
 use crate::util::{check_abs_path, resolve_frame_time};
 
 /// The preset's bounding box: 1920×1080 for landscape sequences (1080×1920 for portrait).
@@ -489,7 +489,7 @@ fn check_output(
             "/path",
             format!(
                 "`{path}` is outside the folders you may write to (the project folder and \
-                 folders the user approved); ask the user to approve its folder"
+                 the folders the user allowed); {OUTSIDE_ROOTS_HINT}"
             ),
         ));
     }

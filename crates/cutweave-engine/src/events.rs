@@ -23,6 +23,7 @@ use serde::Serialize;
 use serde_json::{Map, Value};
 use tokio::sync::broadcast;
 
+use crate::agents::AgentConnection;
 use crate::autosave::ProjectEvent;
 use crate::session::ProjectStatus;
 
@@ -36,6 +37,14 @@ pub const SESSION_EVENTS: &[(&str, &str)] = &[
     (
         "project.opened",
         "The open project changed (opened, saved under a new path, recovery decided); payload: its status",
+    ),
+    (
+        "project.connection_opened",
+        "An agent connected to this engine (WP-1J.05); payload: the connection as project.connections lists it",
+    ),
+    (
+        "project.connection_closed",
+        "An agent connection closed; payload: the connection with its last command",
     ),
 ];
 
@@ -57,6 +66,12 @@ pub enum SessionEvent {
     /// `project.closed`.
     #[serde(rename = "project.closed")]
     Closed(ProjectClosed),
+    /// `project.connection_opened`: an agent connected (WP-1J.05).
+    #[serde(rename = "project.connection_opened")]
+    ConnectionOpened(AgentConnection),
+    /// `project.connection_closed`: an agent connection closed.
+    #[serde(rename = "project.connection_closed")]
+    ConnectionClosed(AgentConnection),
 }
 
 /// One event of the fan-out.
@@ -69,7 +84,8 @@ pub enum EngineEvent {
     /// A project file event (`project.dirty`, `project.saved`, `project.recovery_available`,
     /// `project.autosave_failed`).
     Project(ProjectEvent),
-    /// A session change (`project.opened`, `project.closed`).
+    /// A session change (`project.opened`, `project.closed`) or an agent connection opening or
+    /// closing (`project.connection_opened`, `project.connection_closed`).
     Session(SessionEvent),
     /// `job.progress`.
     Job(JobEvent),
@@ -101,6 +117,8 @@ impl EngineEvent {
             EngineEvent::Project(e) => e.name(),
             EngineEvent::Session(SessionEvent::Opened(_)) => "project.opened",
             EngineEvent::Session(SessionEvent::Closed(_)) => "project.closed",
+            EngineEvent::Session(SessionEvent::ConnectionOpened(_)) => "project.connection_opened",
+            EngineEvent::Session(SessionEvent::ConnectionClosed(_)) => "project.connection_closed",
             EngineEvent::Job(_) => "job.progress",
             EngineEvent::Media(MediaEvent::Indexed(_)) => "media.indexed",
             EngineEvent::Media(MediaEvent::AnalysisFailed(_)) => "media.analysis_failed",

@@ -29,13 +29,21 @@ pub const DEFAULT_PROBE_PARALLELISM: usize = 4;
 ///
 /// A path is allowed when it lies inside a root, compared component by component (ASCII
 /// case-insensitively on Windows). Paths with `..` are refused outright. When the root exists,
-/// the path is also compared after resolving symlinks: the path itself if it exists, otherwise
-/// its deepest existing ancestor with the rest appended (a folder about to be created), so a
-/// link inside a root cannot reach outside it.
+/// its real location decides: the path is compared after resolving symlinks (the path itself if
+/// it exists, otherwise its deepest existing ancestor with the rest appended, a folder about to
+/// be created) with the root's real path, so a link inside a root cannot reach outside it, and
+/// another spelling of a folder inside the root (an 8.3 name, `/var` for `/private/var`, a link
+/// into the root) is still inside it. The desktop app's roots are stored resolved (WP-1J.05).
 #[derive(Clone, Debug, Default, PartialEq, Eq)]
 pub struct AllowedRoots {
     roots: Vec<PathBuf>,
 }
+
+/// What to do about a path outside the allowed folders, for the `Invalid` error that refuses it
+/// (WP-1J.05): the person adds the folder in the desktop app, a headless engine takes
+/// `--allow-root`.
+pub const OUTSIDE_ROOTS_HINT: &str = "ask the user to add its folder in Cutweave's Settings > \
+    Agents and MCP (a headless engine: start it with --allow-root)";
 
 impl AllowedRoots {
     /// The given roots (absolute folders).
@@ -56,6 +64,10 @@ impl AllowedRoots {
     #[must_use]
     pub fn allows(&self, path: &str) -> bool {
         let path = Path::new(path);
+        // A relative path would resolve against the process's working directory.
+        if !path.has_root() {
+            return false;
+        }
         let Some(lexical) = components(path) else {
             return false;
         };
@@ -64,15 +76,13 @@ impl AllowedRoots {
             let Some(root_parts) = components(root) else {
                 return false;
             };
-            if !starts_with(&lexical, &root_parts) {
-                return false;
-            }
             match (&canonical, std::fs::canonicalize(root).ok()) {
+                // Both exist: where they really are decides.
                 (Some(real), Some(real_root)) => match (components(real), components(&real_root)) {
                     (Some(r), Some(rr)) => starts_with(&r, &rr),
                     _ => false,
                 },
-                _ => true,
+                _ => starts_with(&lexical, &root_parts),
             }
         })
     }
@@ -324,7 +334,28 @@ mod tests {
             // Lexically inside the root, really outside it.
             assert!(!roots.allows(&link.join("new").to_string_lossy()));
             assert!(!roots.allows(&link.to_string_lossy()));
+            // Lexically outside a root, really inside it: its real location decides (WP-1J.05).
+            let outside_roots = AllowedRoots::new([outside.clone()]);
+            assert!(outside_roots.allows(&link.join("clip.mp4").to_string_lossy()));
         }
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn another_spelling_of_a_resolved_root_is_inside_it() {
+        let dir = std::env::temp_dir().join(format!("cutweave-roots-real-{}", std::process::id()));
+        let footage = dir.join("Footage");
+        std::fs::create_dir_all(&footage).unwrap_or_default();
+        let file = footage.join("clip.mp4");
+        std::fs::write(&file, b"x").unwrap_or_default();
+        // The desktop app stores the folder resolved; agents may spell it as the OS gave it to
+        // them (a temp folder under an 8.3 name or `/var` for `/private/var`).
+        let real = std::fs::canonicalize(&footage).unwrap_or_else(|_| footage.clone());
+        let roots = AllowedRoots::new([real]);
+        assert!(roots.allows(&file.to_string_lossy()));
+        assert!(roots.allows(&footage.join("new.mp4").to_string_lossy()));
+        assert!(!roots.allows(&dir.join("other.mp4").to_string_lossy()));
+        assert!(!roots.allows("Footage/clip.mp4"), "relative");
         let _ = std::fs::remove_dir_all(&dir);
     }
 }

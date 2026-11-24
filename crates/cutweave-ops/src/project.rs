@@ -164,6 +164,10 @@ pub struct ProjectInfoOutput {
     pub media_count: u32,
     /// The sequences, ordered by ID.
     pub sequences: Vec<SequenceBrief>,
+    /// The folders agents may name in a path right now (import media from, open projects in,
+    /// save into): the folders the user allowed in Settings > Agents and MCP (or `--allow-root`)
+    /// and the project folders. Filled by the engine; empty outside one.
+    pub allowed_roots: Vec<String>,
 }
 
 fn count(n: usize) -> u32 {
@@ -206,6 +210,7 @@ impl Query for ProjectInfo {
             default_format: doc.settings.default_format.clone(),
             media_count: count(doc.media.len()),
             sequences,
+            allowed_roots: Vec::new(),
         })
     }
 }

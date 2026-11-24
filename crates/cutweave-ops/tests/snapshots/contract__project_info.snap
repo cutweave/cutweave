@@ -243,6 +243,13 @@ expression: "json!({\n    \"meta\": serde_json::to_value(meta).unwrap(), \"input
             ]
           },
           "description": "The sequences, ordered by ID."
+        },
+        "allowed_roots": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          },
+          "description": "The folders agents may name in a path right now (import media from, open projects in,\nsave into): the folders the user allowed in Settings > Agents and MCP (or `--allow-root`)\nand the project folders. Filled by the engine; empty outside one."
         }
       },
       "required": [
@@ -251,7 +258,8 @@ expression: "json!({\n    \"meta\": serde_json::to_value(meta).unwrap(), \"input
         "created",
         "default_format",
         "media_count",
-        "sequences"
+        "sequences",
+        "allowed_roots"
       ],
       "description": "Result of `project.info`.",
       "title": "ProjectInfoOutput"
@@ -482,6 +490,13 @@ expression: "json!({\n    \"meta\": serde_json::to_value(meta).unwrap(), \"input
           ]
         },
         "description": "The sequences, ordered by ID."
+      },
+      "allowed_roots": {
+        "type": "array",
+        "items": {
+          "type": "string"
+        },
+        "description": "The folders agents may name in a path right now (import media from, open projects in,\nsave into): the folders the user allowed in Settings > Agents and MCP (or `--allow-root`)\nand the project folders. Filled by the engine; empty outside one."
       }
     },
     "required": [
@@ -490,7 +505,8 @@ expression: "json!({\n    \"meta\": serde_json::to_value(meta).unwrap(), \"input
       "created",
       "default_format",
       "media_count",
-      "sequences"
+      "sequences",
+      "allowed_roots"
     ],
     "description": "Result of `project.info`.",
     "title": "ProjectInfoOutput"

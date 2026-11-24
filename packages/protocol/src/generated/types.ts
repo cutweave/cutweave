@@ -22,6 +22,26 @@ export type ActorStacks = {
 	next_redo: StackTop | null,
 };
 
+/**
+ *  One agent connection open on the engine (`project.connections`, and the payload of
+ *  `project.connection_opened` and `project.connection_closed`).
+ */
+export type AgentConnection = {
+	/**  The connection's number on this engine (never reused). */
+	id: number,
+	/**
+	 *  Who it is: `agent:<label>` (`agent:mcp` for MCP clients, `agent:cli` for the command
+	 *  line) or `plugin:<id>`.
+	 */
+	actor: Actor,
+	/**  When it opened, in milliseconds since the Unix epoch. */
+	connected_at: WallTime,
+	/**  The last command or query it called (also one it was refused), if any. */
+	last_command: string | null,
+	/**  When it called it. */
+	last_command_at: WallTime | null,
+};
+
 /**  Format of the main audio stream. */
 export type AudioInfo = {
 	/**  Samples per second. */
@@ -1580,6 +1600,19 @@ export type ProjectClosed = {
 	path: string,
 };
 
+/**
+ *  Lists the agent connections open on this engine: who (`agent:mcp`, `agent:cli`), since
+ *  when, and the last command each called and when. The person's own editor is not listed.
+ *  `project.connection_opened` and `project.connection_closed` announce changes. Read-only.
+ */
+export type ProjectConnections = Record<string, never>;
+
+/**  Result of `project.connections`. */
+export type ProjectConnectionsOutput = {
+	/**  The open agent connections, oldest first. */
+	connections: AgentConnection[],
+};
+
 /**  Payload of `project.dirty`. */
 export type ProjectDirty = {
 	/**  Whether the committed revision differs from the last saved one. */
@@ -1610,6 +1643,12 @@ export type ProjectInfoOutput = {
 	media_count: number,
 	/**  The sequences, ordered by ID. */
 	sequences: SequenceBrief[],
+	/**
+	 *  The folders agents may name in a path right now (import media from, open projects in,
+	 *  save into): the folders the user allowed in Settings > Agents and MCP (or `--allow-root`)
+	 *  and the project folders. Filled by the engine; empty outside one.
+	 */
+	allowed_roots: string[],
 };
 
 /**  Document metadata. */
@@ -1759,11 +1798,37 @@ export type ProjectSaved = {
 };
 
 /**
+ *  Sets the folders agents and other non-UI callers may use (import media from, open projects
+ *  in, save projects and exports into) besides the open project's folder: the desktop app's
+ *  Settings > Agents and MCP. The list replaces the engine's approved folders, those given with
+ *  `--allow-root` included, and applies at once, also to agent connections that are already
+ *  open. Each folder must be an absolute path without `..` that names an existing folder; it is
+ *  stored canonical, with symlinks resolved (`project.info` reports the result as
+ *  `allowed_roots`). UI credential only: agents get `forbidden`. Not undoable, not journaled,
+ *  never marks the project dirty.
+ */
+export type ProjectSetAllowedRoots = {
+	/**  Absolute paths of existing folders (at most 64); an empty list leaves only the project. */
+	roots: string[],
+};
+
+/**  Result of `project.set_allowed_roots`. */
+export type ProjectSetAllowedRootsOutput = {
+	/**
+	 *  The approved folders now in force: canonical (symlinks resolved), in the order given,
+	 *  without duplicates.
+	 */
+	roots: string[],
+};
+
+/**
  *  Sets how this engine autosaves, for the open project and every project it opens later: the
  *  editor's own preference wins over the project's `settings.autosave` (arch §17). It takes
  *  effect at once, also for a project that is already dirty, and the 2 s idle save stays.
  *  Not undoable, not journaled and never marks the project dirty; it is not written to the
  *  project. An engine nobody sent it to keeps the project's own setting, then the defaults.
+ *  UI credential only (ADR-0016): it is the app applying the person's preference to its own
+ *  engine, which an agent must not override (agents get `forbidden`).
  */
 export type ProjectSetAutosave = {
 	/**  Save automatically (the idle save and the interval save), or not at all. */

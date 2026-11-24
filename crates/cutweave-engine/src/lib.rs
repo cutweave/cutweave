@@ -25,6 +25,7 @@
 //! - [`autosave`] (WP-1C.03): idle and periodic autosave of the committed revision, rotating
 //!   backups and the project file events.
 
+pub mod agents;
 pub mod autosave;
 pub mod config;
 #[cfg(feature = "testing")]
@@ -48,6 +49,7 @@ pub mod session;
 pub mod subsystems;
 pub mod ui_state;
 
+pub use agents::{AgentConnection, MAX_ALLOWED_ROOTS};
 pub use config::{ApiOptions, AudioConfig, EngineConfig, EngineMode, GpuConfig, MountFactory};
 pub use dev_media::{DEV_STUB_MEDIA_ENV, DevStubMedia, StubMediaBackend};
 pub use dispatch::{Call, Connection, Reply};
@@ -98,6 +100,8 @@ mod tests {
             "project.recover",
             "project.discard_recovery",
             "project.set_autosave",
+            "project.set_allowed_roots",
+            "project.connections",
             "media.capabilities",
         ] {
             assert!(registry.get(name).is_some(), "{name} is not registered");

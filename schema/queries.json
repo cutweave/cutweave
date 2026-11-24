@@ -635,6 +635,13 @@
         "additionalProperties": false,
         "description": "Result of `project.info`.",
         "properties": {
+          "allowed_roots": {
+            "description": "The folders agents may name in a path right now (import media from, open projects in,\nsave into): the folders the user allowed in Settings > Agents and MCP (or `--allow-root`)\nand the project folders. Filled by the engine; empty outside one.",
+            "items": {
+              "type": "string"
+            },
+            "type": "array"
+          },
           "created": {
             "description": "Creation time (RFC 3339 UTC), if recorded.",
             "type": [
@@ -858,7 +865,8 @@
           "created",
           "default_format",
           "media_count",
-          "sequences"
+          "sequences",
+          "allowed_roots"
         ],
         "title": "ProjectInfoOutput",
         "type": "object"
