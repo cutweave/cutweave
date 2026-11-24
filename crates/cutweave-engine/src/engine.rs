@@ -37,6 +37,7 @@ use cutweave_commands::{
 };
 use cutweave_jobs::JobManager;
 use cutweave_model::SeededGen;
+use cutweave_ops::export::ExportCtx;
 use cutweave_ops::media::{AllowedRoots, AnalysisStages, Analyzer, ImportCtx, ImportPolicy};
 use cutweave_ops::view::ViewCtx;
 use serde_json::Value;
@@ -46,6 +47,7 @@ use tokio::sync::broadcast::error::RecvError as BroadcastRecvError;
 use crate::config::{EngineConfig, EngineMode};
 use crate::dispatch::{Connection, Reply};
 use crate::events::{EngineEvent, EventBus, EventReceiver};
+use crate::export::{ActiveExports, Starter};
 use crate::import::{BusAnalysisSink, ImportSink, NoMediaBackend, ctx_for};
 use crate::journal::{IdState, StopReason};
 use crate::logging::{self, LogGuard};
@@ -182,6 +184,8 @@ pub(crate) struct Core {
     next_conn: AtomicU64,
     stopping: AtomicBool,
     pub(crate) has_ui: bool,
+    /// Output files of queued and running exports.
+    exports: ActiveExports,
 }
 
 fn state_code(s: SessionState) -> u8 {
@@ -285,6 +289,9 @@ impl Core {
         }
         if context == TypeId::of::<ImportCtx>() {
             return self.import(ctx, name, params);
+        }
+        if context == TypeId::of::<ExportCtx>() {
+            return self.export(ctx, name, params);
         }
         if context == TypeId::of::<ViewCtx>() {
             return self.view(ctx, name, params);
@@ -392,6 +399,37 @@ impl Core {
         drop(import);
         drop(guard);
         result.map(|output| self.reply(output))
+    }
+
+    /// `export.start` against the committed document of the moment (later edits never change
+    /// an export), with the caller's write allowlist ([`path_roots`](Self::path_roots)) and
+    /// the subsystems' export services.
+    fn export(&self, ctx: &ActorCtx, name: &str, params: Value) -> Result<Reply, CmdError> {
+        let (snapshot, allowed_roots) = {
+            let guard = self.session()?;
+            let Some(session) = guard.as_ref() else {
+                return Err(stopped());
+            };
+            (
+                session.handle().committed_snapshot(),
+                self.path_roots(ctx, session),
+            )
+        };
+        let starter = Starter::new(
+            self.deps.jobs.clone(),
+            self.deps.subsystems.export_services(),
+            self.exports.clone(),
+        );
+        let mut export = ExportCtx {
+            snapshot,
+            allowed_roots,
+            starter: Box::new(starter),
+        };
+        let output =
+            self.deps
+                .registry
+                .invoke_engine_json(name, params, &mut export, ctx.access())?;
+        Ok(self.reply(output))
     }
 
     /// A `view.*` command against the session's view state; `view.changed` goes to the other
@@ -803,6 +841,7 @@ impl Engine {
             stopping: AtomicBool::new(false),
             has_ui: config.mode == EngineMode::Gui,
             session: RwLock::new(None),
+            exports: ActiveExports::default(),
             deps,
         });
         core.settle_state(&first);

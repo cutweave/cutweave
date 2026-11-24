@@ -45,6 +45,18 @@
         "openWorldHint": false,
         "readOnlyHint": false
       },
+      "command": "export.start",
+      "description": "Export a sequence to an MP4 file (H.264 + AAC) as a background job; returns job_id",
+      "kind": "engine",
+      "name": "export_start"
+    },
+    {
+      "annotations": {
+        "destructiveHint": true,
+        "idempotentHint": false,
+        "openWorldHint": false,
+        "readOnlyHint": false
+      },
       "command": "item.delete",
       "description": "Delete items and their linked partners (no ripple; fails if a track is locked)",
       "kind": "command",

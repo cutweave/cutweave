@@ -90,9 +90,9 @@ async fn current_rev(client: &Client) -> u64 {
 
 // ----- catalog ------------------------------------------------------------------------------
 
-/// Acceptance 1: `/mcp` lists exactly the registry's core tools plus the 4 generic tools (18 in
-/// P1: `render_frame` arrives with WP-1J.02, `export_start` with WP-1E.03), within the P1 gate,
-/// on both revisions.
+/// Acceptance 1: `/mcp` lists exactly the registry's core tools plus the 4 generic tools (19 in
+/// P1 since `export_start`, WP-1E.03; `render_frame` arrives with WP-1J.02), within the P1
+/// gate, on both revisions.
 #[tokio::test]
 async fn mcp_lists_the_core_and_generic_tools_within_the_p1_gate() {
     let h = Harness::start(None);
@@ -101,7 +101,7 @@ async fn mcp_lists_the_core_and_generic_tools_within_the_p1_gate() {
         .map(|t| t["name"].as_str().unwrap().to_owned())
         .collect();
     expected.extend(catalog::GENERIC_TOOLS.map(str::to_owned));
-    assert_eq!(expected.len(), 18);
+    assert_eq!(expected.len(), 19);
     for revision in Revision::ALL {
         let client = h.client(Profile::Standard, revision).await;
         assert_eq!(client.negotiated(), revision.version());
@@ -210,6 +210,7 @@ async fn every_tool_has_the_right_annotations() {
         ("clip_split", false, false, false),
         ("clip_trim", false, false, true),
         ("edit_undo", false, false, false),
+        ("export_start", false, true, false),
         ("item_delete", false, true, false),
         ("item_move", false, false, true),
         ("item_set_props", false, false, true),
@@ -428,6 +429,19 @@ async fn each_core_tool_returns_the_engine_output() {
         same!("item_delete", json!({ "items": [split["right"]] }));
         same!("edit_undo", json!({}));
         same!("timeline_get", json!({ "sequence": seq, "depth": 2 }));
+        // export_start: these engines run without the media subsystem, so both validate the
+        // export and refuse it the same way (`unsupported`).
+        let out = |h: &Harness| h.dir.path().join("out.mp4").to_string_lossy().into_owned();
+        let mcp = client.err("export_start", json!({ "path": out(&a) })).await;
+        let engine = direct
+            .call(cutweave_engine::Call::new(
+                "export.start",
+                json!({ "path": out(&b) }),
+            ))
+            .expect_err("export.start without a media subsystem");
+        assert_eq!(mcp["error"]["code"], json!(engine.code()), "{mcp}");
+        assert_eq!(engine.code(), "unsupported");
+        step("export_start");
         // project_open: save each document as a project, close it, open it again.
         for (h, conn) in [(&a, a.direct("mcp")), (&b, b.direct("mcp"))] {
             let folder = h.dir.path().join("saved").to_string_lossy().into_owned();

@@ -347,6 +347,21 @@ export type ConflictReason =
  */
 "item_in_gesture";
 
+/**  Custom output settings; absent fields take the sequence's value (quality: high). */
+export type CustomExport = {
+	/**  Frame width in pixels: even, 16-8192. */
+	width?: number | null,
+	/**  Frame height in pixels: even, 16-8192. */
+	height?: number | null,
+	/**
+	 *  Frame rate, e.g. {"num": 30, "den": 1}: at most 240 fps, a whole number of flicks per
+	 *  frame.
+	 */
+	fps?: FrameRate | null,
+	/**  "low", "medium" or "high". */
+	quality?: ExportQuality | null,
+};
+
 /**
  *  A change of the live document, broadcast in revision order (`doc.patched`, arch §5.1).
  * 
@@ -432,6 +447,92 @@ export type EntryStatus =
 "applied" | 
 /**  Undone. */
 "undone";
+
+/**  Whether to use a hardware video encoder. */
+export type ExportHw = 
+/**
+ *  A hardware H.264 encoder when the machine has one, else software (x264). Hardware
+ *  encoding is not available yet: software is used.
+ */
+"auto" | 
+/**  Software (x264) only. */
+"off";
+
+/**  What to make: the preset, or custom settings. */
+export type ExportPreset = 
+/**
+ *  MP4, H.264 + AAC 48 kHz stereo, at the sequence frame rate, fit into 1920x1080
+ *  (1080x1920 when portrait) without upscaling, high quality.
+ */
+"h264-mp4-1080p" | 
+/**  MP4, H.264 + AAC at a custom size, frame rate and quality. */
+{ custom: CustomExport };
+
+/**  How hard the encoder works for picture quality (and file size). */
+export type ExportQuality = 
+/**  Small files, visible compression. */
+"low" | 
+/**  Balanced. */
+"medium" | 
+/**  Close to the original (the default). */
+"high";
+
+/**  The part of the sequence to export: `[in, out)`, both snapped to the nearest frame. */
+export type ExportRange = {
+	/**  Start: flicks, "2.5s", "f:60" or a timecode. */
+	in: TimeInput,
+	/**  End, exclusive: at most the sequence end. */
+	out: TimeInput,
+};
+
+/**
+ *  Exports a sequence (or a range of it) to an MP4 file (H.264 video, AAC audio) as a
+ *  background job and returns the job id at once; wait with `job.wait`, stop with
+ *  `job.cancel` (the partial file is deleted). The export uses the project as it is now; later
+ *  edits do not change it. Agents and headless callers may only write inside the project
+ *  folder and folders the user approved. An existing file is replaced only with
+ *  `overwrite: true`.
+ */
+export type ExportStart = {
+	/**  Sequence; optional when the project has one. */
+	sequence?: SequenceId | null,
+	/**  Absolute path of the output file (`.mp4`). */
+	path: string,
+	/**  Part of the sequence to export (default: all of it). */
+	range?: ExportRange | null,
+	/**  "h264-mp4-1080p" (default) or {"custom": {width, height, fps, quality}}. */
+	preset?: ExportPreset | null,
+	/**  Hardware encoder: "auto" (default) or "off". */
+	hw?: ExportHw | null,
+	/**  Replace an existing file at `path` (default false). */
+	overwrite?: boolean | null,
+};
+
+/**  Result of `export.start`: the job and what it will write. */
+export type ExportStartOutput = {
+	/**  The export job: follow it with `job.wait` or `job.status`, stop it with `job.cancel`. */
+	job_id: JobId,
+	/**  The output file. */
+	path: string,
+	/**  The exported sequence. */
+	sequence: SequenceId,
+	/**  Exported range start (sequence time, flicks). */
+	in: Time,
+	/**  Exported range end, exclusive. */
+	out: Time,
+	/**  Frame width in pixels. */
+	width: number,
+	/**  Frame height in pixels. */
+	height: number,
+	/**  Frame rate of the file. */
+	frame_rate: FrameRate,
+	/**  Video frames the file will hold. */
+	frames: number,
+	/**  Length of the file. */
+	duration: Duration,
+	/**  The document revision exported (edits made later are not in the file). */
+	rev: Rev,
+};
 
 /**
  *  The format of the first sequence and of new sequences. Absent fields keep the default

@@ -284,8 +284,13 @@ fn the_engine_process_serves_mcp_to_the_run_file_agent_token() {
         let client = ().serve(connect("/mcp")).await.expect("initialize");
         let tools = client.list_tools(None).await.unwrap().tools;
         let names: Vec<&str> = tools.iter().map(|t| t.name.as_ref()).collect();
-        assert_eq!(names.len(), 18, "{names:?}");
-        for name in ["clip_split", "timeline_get", "cutweave_execute"] {
+        assert_eq!(names.len(), 19, "{names:?}");
+        for name in [
+            "clip_split",
+            "timeline_get",
+            "export_start",
+            "cutweave_execute",
+        ] {
             assert!(names.contains(&name), "{name} missing from {names:?}");
         }
         let info = client

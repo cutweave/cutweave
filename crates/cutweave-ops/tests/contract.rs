@@ -211,6 +211,16 @@ const CONTRACT: &[Row] = &[
         true,
         false,
     ),
+    // WP-1E.03: starts a job (not journaled); may replace an existing file (`overwrite`).
+    (
+        "export.start",
+        EntryKind::Engine,
+        McpExposure::Core,
+        false,
+        true,
+        false,
+        false,
+    ),
 ];
 
 fn registry() -> Registry {
@@ -282,6 +292,7 @@ fn the_arch_14_core_tools_of_this_wp_are_core_and_named_with_underscores() {
         "item_set_props",
         "job_status",
         "job_wait",
+        "export_start",
     ] {
         assert!(
             core.contains(&tool.to_owned()),
@@ -360,6 +371,7 @@ fn optional_params_are_not_required_in_the_input_schema() {
     assert_eq!(required("job.wait"), ["job_id"]);
     assert_eq!(required("job.cancel"), ["id"]);
     assert_eq!(required("job.list"), Vec::<String>::new());
+    assert_eq!(required("export.start"), ["path"]);
 }
 
 #[test]
@@ -368,6 +380,9 @@ fn job_cancel_is_not_journaled_and_analysis_writes_no_document_command() {
     // Job state is not persisted, so there is nothing to replay (WP-1D.07).
     let cancel = &registry.get("job.cancel").unwrap().meta;
     assert!(!cancel.journaled && !cancel.is_journaled());
+    // An export is a job, not a document change: nothing to replay (WP-1E.03).
+    let export = &registry.get("export.start").unwrap().meta;
+    assert!(!export.journaled && !export.is_journaled());
     for name in ["media.import", "media.register", "clip.split"] {
         assert!(registry.get(name).unwrap().meta.journaled, "{name}");
     }
