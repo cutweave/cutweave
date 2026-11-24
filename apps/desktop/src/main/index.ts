@@ -169,6 +169,10 @@ function openWindow(): void {
       win.webContents.send("window:closeRequested", true);
     }
   });
+  // The engine records when its window last had the focus, so an agent that does not name an
+  // engine gets the one the person is looking at (WP-1J.04).
+  mainWindow.on("focus", () => supervisor?.setWindowFocused(true));
+  mainWindow.on("blur", () => supervisor?.setWindowFocused(false));
   mainWindow.on("closed", () => {
     mainWindow = null;
   });
@@ -308,6 +312,7 @@ if (!app.requestSingleInstanceLock()) {
     openWindow();
     if (launch !== null && enginePort !== null) {
       supervisor = superviseEngine(launch, enginePort);
+      supervisor.setWindowFocused(mainWindow?.isFocused() ?? false);
       await supervisor.start();
     }
 

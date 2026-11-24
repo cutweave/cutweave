@@ -194,6 +194,8 @@ export class EngineSupervisor {
   #project: string | null;
   /** A recovery decision was pending in the editor when the engine went down. */
   #recoveryPending = false;
+  /** Whether the app window has the focus; a new engine is told at once (WP-1J.04). */
+  #windowFocused = false;
 
   constructor(options: SupervisorOptions) {
     this.#o = options;
@@ -227,6 +229,26 @@ export class EngineSupervisor {
   onStatus(listener: StatusListener): () => void {
     this.#listeners.add(listener);
     return () => this.#listeners.delete(listener);
+  }
+
+  /**
+   * The window gained or lost the focus. Gaining it is reported to the engine
+   * (`project.report_focus`, UI credential only), which records the time in its run-file: an
+   * agent that does not say which engine it means gets the one whose window was focused last
+   * (WP-1J.04). An engine that starts, or restarts, under a focused window is told as soon as
+   * main is connected.
+   */
+  setWindowFocused(focused: boolean): void {
+    this.#windowFocused = focused;
+    if (focused) this.#reportFocus();
+  }
+
+  #reportFocus(): void {
+    const rpc = this.#rpc;
+    if (rpc === null) return;
+    rpc
+      .call("project.report_focus", { _meta: { request_id: uuidv7() } })
+      .catch((err: unknown) => this.#log(`reporting the window focus failed: ${errorText(err)}`));
   }
 
   /** Resolves with the next `ready`, `failed` or `stopped` status. */
@@ -454,6 +476,7 @@ export class EngineSupervisor {
       }
       if (!live()) return;
       await this.#refreshProject(rpc);
+      if (this.#windowFocused) this.#reportFocus();
     } catch (err) {
       if (!live()) return;
       // The engine runs; only main's bookkeeping is missing (no project tracking or recovery).
