@@ -228,7 +228,11 @@ describe("timeline loaders", () => {
       async (_s: ImageBitmap, sx: number, sy: number, sw: number, sh: number) =>
         ({ width: sw, height: sh, sx, sy, close() {} }) as unknown as ImageBitmap,
     );
-    const media = { hash: HASH as string | null, sampleRate: 48_000 as number | null };
+    const media = {
+      hash: HASH as string | null,
+      sampleRate: 48_000 as number | null,
+      makingFilmstrip: false,
+    };
     const loaders = httpMediaLoaders({
       http,
       media: () => media,
@@ -313,6 +317,16 @@ describe("timeline loaders", () => {
     );
     expect(calls[0]?.init?.signal).toBe(controller.signal);
     expect(peaks?.max.length).toBe(1);
+  });
+
+  it("wait for the import analysis instead of making the strip a second time", async () => {
+    const { loaders, calls, media } = loaderSetup(stripResponse);
+    media.makingFilmstrip = true;
+    const signal = new AbortController().signal;
+    expect(await loaders.filmstripTile?.(tile(0, SEC), signal)).toBeNull();
+    expect(calls).toHaveLength(0);
+    media.makingFilmstrip = false;
+    expect(await loaders.filmstripTile?.(tile(0, SEC), signal)).not.toBeNull();
   });
 
   it("load nothing for an asset without a content hash", async () => {

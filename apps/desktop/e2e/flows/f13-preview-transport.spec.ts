@@ -124,7 +124,7 @@ test.describe("F13 preview and transport", () => {
       test.skip(
         path !== "gpu",
         `the preview fell back to still frames (${await surface.getAttribute("data-reason")}); ` +
-          "the JPEG path needs /media/frame (WP-1I.03)",
+          "the playback and step checks are for the frame ring",
       );
       await expect(surface).toHaveAttribute("data-live", "true", { timeout: 30_000 });
       await expect(play).toBeEnabled();

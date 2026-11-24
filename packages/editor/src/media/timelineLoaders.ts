@@ -38,6 +38,11 @@ export interface LoaderMedia {
   readonly hash: string | null;
   /** Sample rate of its main audio stream, if known. */
   readonly sampleRate: number | null;
+  /**
+   * Its import analysis is making the filmstrip right now: wait for it (the route would make
+   * the same strip a second time) instead of asking. The host refreshes the loaders after.
+   */
+  readonly makingFilmstrip?: boolean;
 }
 
 /** The layout of a filmstrip sprite (the engine's `x-cutweave-filmstrip` manifest). */
@@ -203,7 +208,7 @@ export function httpMediaLoaders(options: HttpLoaderOptions): HttpMediaLoaders {
     signal: AbortSignal,
   ): Promise<ImageBitmap | null> {
     const media = options.media(req.mediaId as MediaId);
-    if (media === null || media.hash === null) return null;
+    if (media === null || media.hash === null || media.makingFilmstrip === true) return null;
     const strip = await sprite(req.mediaId as MediaId, media.hash);
     signal.throwIfAborted();
     if (strip === null) return null;

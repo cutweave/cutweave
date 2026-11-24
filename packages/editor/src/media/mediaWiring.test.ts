@@ -1,13 +1,18 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 // WP-1I.03: the editor installs the real thumbnail source and timeline loaders only when the
 // connected engine has media, and hands the timeline fresh loaders when an analysis finishes.
-import type { JobInfo, RpcClient } from "@cutweave/protocol";
+import type { JobInfo, MediaId, RpcClient } from "@cutweave/protocol";
 import { describe, expect, it, vi } from "vitest";
 import { createStore } from "zustand/vanilla";
 import { createEngineStore } from "../engine/engineStore.ts";
 import { createDocStore } from "../state/docStore.ts";
 import { createJobStore } from "../state/jobStore.ts";
-import { type MediaLoadersState, NO_LOADERS, startMediaHttp } from "./mediaWiring.ts";
+import {
+  loaderMediaOf,
+  type MediaLoadersState,
+  NO_LOADERS,
+  startMediaHttp,
+} from "./mediaWiring.ts";
 import { placeholderThumbnails, type ThumbnailSource } from "./thumbnails.ts";
 
 const flush = () => new Promise<void>((r) => setTimeout(r, 0));
@@ -47,6 +52,36 @@ const job = (id: string, label: string, state: JobInfo["state"]): JobInfo =>
     error: null,
   }) as unknown as JobInfo;
 
+describe("loaderMediaOf", () => {
+  it("says when the import analysis is making an asset's filmstrip", () => {
+    const doc = createDocStore();
+    doc.setState({
+      project: {
+        media: {
+          med_1: {
+            kind: "video",
+            content_hash: "blake3-fast:ab",
+            probe: { streams: [{ kind: "audio", sample_rate: 44_100 }], audio: null },
+          },
+        },
+      },
+    } as never);
+    const jobs = createJobStore();
+    const id = "med_1" as MediaId;
+    expect(loaderMediaOf(doc, jobs, id)).toEqual({
+      kind: "video",
+      hash: "blake3-fast:ab",
+      sampleRate: 44_100,
+      makingFilmstrip: false,
+    });
+    jobs.getState().applyProgress(job("job_1", "thumbnails", "running"));
+    expect(loaderMediaOf(doc, jobs, id)?.makingFilmstrip).toBe(true);
+    jobs.getState().applyProgress(job("job_1", "thumbnails", "succeeded"));
+    expect(loaderMediaOf(doc, jobs, id)?.makingFilmstrip).toBe(false);
+    expect(loaderMediaOf(doc, jobs, "med_2" as MediaId)).toBeNull();
+  });
+});
+
 describe("startMediaHttp", () => {
   it("installs the thumbnail source and the timeline loaders when the engine has media", async () => {
     const s = setup(true);
@@ -69,6 +104,10 @@ describe("startMediaHttp", () => {
     expect(fresh).not.toBe(loaders);
     s.jobs.getState().applyProgress(job("job_2", "index", "succeeded"));
     expect(s.loaders.getState().loaders).toBe(fresh);
+    // A failed waveform ends too: ask again (the route says what is missing).
+    s.jobs.getState().applyProgress(job("job_3", "waveform", "running"));
+    s.jobs.getState().applyProgress(job("job_3", "waveform", "failed"));
+    expect(s.loaders.getState().loaders).not.toBe(fresh);
 
     s.wiring.stop();
     expect(s.sources.at(-1)).toBe(placeholderThumbnails);

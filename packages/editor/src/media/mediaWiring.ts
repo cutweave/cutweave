@@ -8,15 +8,16 @@
 //
 // - Every handshake asks again: a restarted engine signs with a new key, so the signed URLs are
 //   dropped (`reset`), and it may have media where the last one had none.
-// - A finished `thumbnails` or `waveform` analysis job hands the timeline fresh loaders, so tiles
-//   and peaks that were not there yet are asked for again.
+// - While an asset's `thumbnails` analysis job runs, its filmstrip is not asked for (the route
+//   would generate the same strip a second time, competing with playback for the CPU); when
+//   a `thumbnails` or `waveform` job ends the timeline gets fresh loaders and asks again.
 import type { MediaId, MediaKind } from "@cutweave/protocol";
 import type { MediaLoaders } from "@cutweave/timeline";
 import { useStore } from "zustand";
 import { createStore } from "zustand/vanilla";
 import type { engineStore } from "../engine/engineStore.ts";
 import type { docStore } from "../state/docStore.ts";
-import type { jobStore } from "../state/jobStore.ts";
+import { isActive, type jobStore } from "../state/jobStore.ts";
 import { HttpThumbnailSource } from "./httpThumbnails.ts";
 import { MediaHttp } from "./mediaHttp.ts";
 import { placeholderThumbnails, setThumbnailSource, type ThumbnailSource } from "./thumbnails.ts";
@@ -65,18 +66,23 @@ export interface MediaWiring {
 
 const ANALYSIS_LABELS = new Set(["thumbnails", "waveform"]);
 
-/** The loaders' view of an asset of the open document. */
+/** The loaders' view of an asset of the open document (and of its analysis jobs). */
 export function loaderMediaOf(
   doc: typeof docStore,
+  jobs: typeof jobStore,
   id: MediaId,
 ): (LoaderMedia & { readonly kind: MediaKind }) | null {
   const asset = doc.getState().project?.media[id];
   if (asset === undefined) return null;
   const stream = asset.probe.streams?.find((s) => s.kind === "audio");
+  const making = Object.values(jobs.getState().jobs).some(
+    (job) => job.media_id === id && job.label === "thumbnails" && isActive(job),
+  );
   return {
     kind: asset.kind,
     hash: asset.content_hash ?? null,
     sampleRate: asset.probe.audio?.rate ?? stream?.sample_rate ?? null,
+    makingFilmstrip: making,
   };
 }
 
@@ -101,12 +107,12 @@ export function startMediaHttp(deps: MediaWiringDeps): MediaWiring {
   };
   const thumbs = new HttpThumbnailSource({
     http,
-    contentHash: (id) => loaderMediaOf(deps.doc, id)?.hash ?? null,
+    contentHash: (id) => deps.doc.getState().project?.media[id]?.content_hash ?? null,
     onChange: publish,
   });
   const loaders = httpMediaLoaders({
     http,
-    media: (id) => loaderMediaOf(deps.doc, id),
+    media: (id) => loaderMediaOf(deps.doc, deps.jobs, id),
     ...(deps.decode && { decode: deps.decode }),
     ...(deps.crop && { crop: deps.crop }),
   });
@@ -149,12 +155,11 @@ export function startMediaHttp(deps: MediaWiringDeps): MediaWiring {
 
   const offJobs = deps.jobs.subscribe((state, previous) => {
     if (!installed) return;
-    const finished = Object.values(state.jobs).some(
-      (job) =>
-        job.state === "succeeded" &&
-        ANALYSIS_LABELS.has(job.label) &&
-        previous.jobs[job.id]?.state !== "succeeded",
-    );
+    const finished = Object.values(state.jobs).some((job) => {
+      if (!ANALYSIS_LABELS.has(job.label) || isActive(job)) return false;
+      const before = previous.jobs[job.id];
+      return before === undefined || isActive(before);
+    });
     if (finished) {
       loaders.refresh();
       handOut();
