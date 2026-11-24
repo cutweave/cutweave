@@ -5,7 +5,7 @@ expression: "json!({\n    \"meta\": serde_json::to_value(meta).unwrap(), \"input
 {
   "meta": {
     "name": "media.list",
-    "summary": "List the project's media (paged, ordered by id)",
+    "summary": "List the project's media (filter, sort, paged; default by id)",
     "kind": "query",
     "undoable": false,
     "view": false,
@@ -38,11 +38,158 @@ expression: "json!({\n    \"meta\": serde_json::to_value(meta).unwrap(), \"input
             "null"
           ],
           "pattern": "^med_[0-9a-f]{32}$",
-          "description": "`next_cursor` of the previous page; the page starts after this ID.",
+          "description": "`next_cursor` of the previous page.",
+          "default": null
+        },
+        "filter": {
+          "type": [
+            "object",
+            "null"
+          ],
+          "additionalProperties": false,
+          "properties": {
+            "text": {
+              "type": [
+                "string",
+                "null"
+              ],
+              "description": "Terms that must all occur in the file name, ignoring case and accents.",
+              "default": null
+            },
+            "kinds": {
+              "type": [
+                "array",
+                "null"
+              ],
+              "items": {
+                "description": "What a [`MediaAsset`] is.",
+                "oneOf": [
+                  {
+                    "description": "A video file (may also carry audio).",
+                    "type": "string",
+                    "const": "video"
+                  },
+                  {
+                    "description": "An audio-only file.",
+                    "type": "string",
+                    "const": "audio"
+                  },
+                  {
+                    "description": "A still image (no duration).",
+                    "type": "string",
+                    "const": "image"
+                  },
+                  {
+                    "description": "Another sequence of this project, used as a compound clip (arch §4.3).",
+                    "type": "string",
+                    "const": "sequence_ref"
+                  }
+                ]
+              },
+              "description": "Only these kinds.",
+              "default": null
+            },
+            "min_duration": {
+              "anyOf": [
+                {
+                  "description": "A non-negative duration in flicks (1/705600000 s) as an integer, or a string: seconds (\"62.5s\") or raw flicks (\"123\").",
+                  "anyOf": [
+                    {
+                      "type": "integer",
+                      "minimum": 0,
+                      "maximum": 9007199254740991
+                    },
+                    {
+                      "type": "string",
+                      "pattern": "^-?[0-9]+(\\.[0-9]+)?s$|^-?[0-9]+$"
+                    }
+                  ]
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "Shortest length (flicks), inclusive; stills never match a bound.",
+              "default": null
+            },
+            "max_duration": {
+              "anyOf": [
+                {
+                  "description": "A non-negative duration in flicks (1/705600000 s) as an integer, or a string: seconds (\"62.5s\") or raw flicks (\"123\").",
+                  "anyOf": [
+                    {
+                      "type": "integer",
+                      "minimum": 0,
+                      "maximum": 9007199254740991
+                    },
+                    {
+                      "type": "string",
+                      "pattern": "^-?[0-9]+(\\.[0-9]+)?s$|^-?[0-9]+$"
+                    }
+                  ]
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "Longest length (flicks), inclusive.",
+              "default": null
+            },
+            "used": {
+              "type": [
+                "boolean",
+                "null"
+              ],
+              "description": "Placed on a timeline of any sequence (`true`) or not (`false`).",
+              "default": null
+            },
+            "problems": {
+              "type": [
+                "boolean",
+                "null"
+              ],
+              "description": "`true`: only files nothing can be read from (no streams).",
+              "default": null
+            }
+          },
+          "description": "Keep only matching media.",
+          "default": null
+        },
+        "sort": {
+          "type": [
+            "object",
+            "null"
+          ],
+          "additionalProperties": false,
+          "properties": {
+            "by": {
+              "type": "string",
+              "enum": [
+                "imported",
+                "name",
+                "duration",
+                "kind"
+              ],
+              "description": "What to order by."
+            },
+            "order": {
+              "type": "string",
+              "enum": [
+                "asc",
+                "desc"
+              ],
+              "description": "Direction.",
+              "default": "asc"
+            }
+          },
+          "required": [
+            "by"
+          ],
+          "description": "Order.",
           "default": null
         }
       },
-      "description": "Lists the media of the project, ordered by ID, one page at a time.",
+      "description": "Lists the media of the project, filtered and ordered, one page at a time.",
       "title": "MediaList"
     },
     "output_schema": {
@@ -120,7 +267,7 @@ expression: "json!({\n    \"meta\": serde_json::to_value(meta).unwrap(), \"input
               "has_audio"
             ]
           },
-          "description": "The page, ordered by ID."
+          "description": "The page, in the requested order (default: by ID)."
         },
         "next_cursor": {
           "type": [
@@ -135,12 +282,19 @@ expression: "json!({\n    \"meta\": serde_json::to_value(meta).unwrap(), \"input
           "format": "uint32",
           "minimum": 0,
           "description": "Number of assets in the project."
+        },
+        "matched": {
+          "type": "integer",
+          "format": "uint32",
+          "minimum": 0,
+          "description": "Number of assets that pass `filter` (all of them without one)."
         }
       },
       "required": [
         "media",
         "next_cursor",
-        "total"
+        "total",
+        "matched"
       ],
       "description": "Result of `media.list`.",
       "title": "MediaListOutput"
@@ -166,11 +320,158 @@ expression: "json!({\n    \"meta\": serde_json::to_value(meta).unwrap(), \"input
           "null"
         ],
         "pattern": "^med_[0-9a-f]{32}$",
-        "description": "`next_cursor` of the previous page; the page starts after this ID.",
+        "description": "`next_cursor` of the previous page.",
+        "default": null
+      },
+      "filter": {
+        "type": [
+          "object",
+          "null"
+        ],
+        "additionalProperties": false,
+        "properties": {
+          "text": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Terms that must all occur in the file name, ignoring case and accents.",
+            "default": null
+          },
+          "kinds": {
+            "type": [
+              "array",
+              "null"
+            ],
+            "items": {
+              "description": "What a [`MediaAsset`] is.",
+              "oneOf": [
+                {
+                  "description": "A video file (may also carry audio).",
+                  "type": "string",
+                  "const": "video"
+                },
+                {
+                  "description": "An audio-only file.",
+                  "type": "string",
+                  "const": "audio"
+                },
+                {
+                  "description": "A still image (no duration).",
+                  "type": "string",
+                  "const": "image"
+                },
+                {
+                  "description": "Another sequence of this project, used as a compound clip (arch §4.3).",
+                  "type": "string",
+                  "const": "sequence_ref"
+                }
+              ]
+            },
+            "description": "Only these kinds.",
+            "default": null
+          },
+          "min_duration": {
+            "anyOf": [
+              {
+                "description": "A non-negative duration in flicks (1/705600000 s) as an integer, or a string: seconds (\"62.5s\") or raw flicks (\"123\").",
+                "anyOf": [
+                  {
+                    "type": "integer",
+                    "minimum": 0,
+                    "maximum": 9007199254740991
+                  },
+                  {
+                    "type": "string",
+                    "pattern": "^-?[0-9]+(\\.[0-9]+)?s$|^-?[0-9]+$"
+                  }
+                ]
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Shortest length (flicks), inclusive; stills never match a bound.",
+            "default": null
+          },
+          "max_duration": {
+            "anyOf": [
+              {
+                "description": "A non-negative duration in flicks (1/705600000 s) as an integer, or a string: seconds (\"62.5s\") or raw flicks (\"123\").",
+                "anyOf": [
+                  {
+                    "type": "integer",
+                    "minimum": 0,
+                    "maximum": 9007199254740991
+                  },
+                  {
+                    "type": "string",
+                    "pattern": "^-?[0-9]+(\\.[0-9]+)?s$|^-?[0-9]+$"
+                  }
+                ]
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Longest length (flicks), inclusive.",
+            "default": null
+          },
+          "used": {
+            "type": [
+              "boolean",
+              "null"
+            ],
+            "description": "Placed on a timeline of any sequence (`true`) or not (`false`).",
+            "default": null
+          },
+          "problems": {
+            "type": [
+              "boolean",
+              "null"
+            ],
+            "description": "`true`: only files nothing can be read from (no streams).",
+            "default": null
+          }
+        },
+        "description": "Keep only matching media.",
+        "default": null
+      },
+      "sort": {
+        "type": [
+          "object",
+          "null"
+        ],
+        "additionalProperties": false,
+        "properties": {
+          "by": {
+            "type": "string",
+            "enum": [
+              "imported",
+              "name",
+              "duration",
+              "kind"
+            ],
+            "description": "What to order by."
+          },
+          "order": {
+            "type": "string",
+            "enum": [
+              "asc",
+              "desc"
+            ],
+            "description": "Direction.",
+            "default": "asc"
+          }
+        },
+        "required": [
+          "by"
+        ],
+        "description": "Order.",
         "default": null
       }
     },
-    "description": "Lists the media of the project, ordered by ID, one page at a time.",
+    "description": "Lists the media of the project, filtered and ordered, one page at a time.",
     "title": "MediaList"
   },
   "output": {
@@ -248,7 +549,7 @@ expression: "json!({\n    \"meta\": serde_json::to_value(meta).unwrap(), \"input
             "has_audio"
           ]
         },
-        "description": "The page, ordered by ID."
+        "description": "The page, in the requested order (default: by ID)."
       },
       "next_cursor": {
         "type": [
@@ -263,12 +564,19 @@ expression: "json!({\n    \"meta\": serde_json::to_value(meta).unwrap(), \"input
         "format": "uint32",
         "minimum": 0,
         "description": "Number of assets in the project."
+      },
+      "matched": {
+        "type": "integer",
+        "format": "uint32",
+        "minimum": 0,
+        "description": "Number of assets that pass `filter` (all of them without one)."
       }
     },
     "required": [
       "media",
       "next_cursor",
-      "total"
+      "total",
+      "matched"
     ],
     "description": "Result of `media.list`.",
     "title": "MediaListOutput"
