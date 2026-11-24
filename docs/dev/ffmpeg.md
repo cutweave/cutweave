@@ -136,7 +136,12 @@ Without `FFMPEG_DIR` it falls back to vcpkg (Windows), then pkg-config. The `bui
   process before `main` with `STATUS_DLL_NOT_FOUND` (0xC0000135). Git Bash misreports this as a
   missing `api-ms-win-crt-*.dll`. The closure is `avutil-60`, `avcodec-62`, `avformat-62`,
   `swscale-9` and `swresample-6`, plus Windows/UCRT DLLs. Releases put them next to `cutweave.exe`
-  (packaging, P7).
+  (packaging, P7). Dev builds do the same: with the `ffmpeg` feature, `cutweave-media`'s build
+  script hard-links those five DLLs from `$FFMPEG_DIR/bin` into `target/<profile>/` (a copy when
+  the bundle is on another volume). So the engine, the CLI and `cutweave-engine-serve` start from
+  any shell, the desktop app, the e2e suite or an MCP client without the env script. Test
+  executables still need it: cargo keeps them under `target/<profile>/build/`, where the DLLs are
+  not placed.
 - **macOS** (expected). The bundle's dylibs are `@rpath/libavX.N.dylib`. Dev runs use
   `DYLD_FALLBACK_LIBRARY_PATH`. A shipped binary needs an `LC_RPATH` such as
   `@executable_path/../Frameworks`. SIP strips `DYLD_*` only for system binaries.
@@ -209,6 +214,7 @@ never trigger them.
 | Symptom | Cause and fix |
 |---|---|
 | Test binary exits with `0xc0000135` / `STATUS_DLL_NOT_FOUND`, or Git Bash says `api-ms-win-crt-…: cannot open shared object file` | The bundle's `bin/` is not on `PATH`: source the env script |
+| The engine, the CLI or `cutweave-engine-serve` exits with `0xC0000135`, or the desktop app says "a DLL it needs is missing" | The binary was built with `ffmpeg` but its DLLs are not next to it in `target/<profile>/` (deleted, or the build ran without `FFMPEG_DIR`): rebuild with the env script sourced |
 | `MediaError::RuntimeMismatch` at start-up | The loaded libraries are not the ones built against (see [the version lock](#the-version-lock)) |
 | `Unable to find libclang` | Install LLVM and set `LIBCLANG_PATH` (Windows: `C:/Program Files/LLVM/bin`) |
 | `ffmpeg-sys-next` cannot find FFmpeg | `FFMPEG_DIR` unset or wrong: run `just ffmpeg-fetch`, then source the env script |
