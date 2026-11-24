@@ -15,14 +15,14 @@ A genuinely usable everyday editor for both long-form and short-form (M2 Dogfood
 
 | Epic | Goal |
 |---|---|
-| **2A Timeline editing** | Unlimited tracks with auto-created overlay tracks, magnetic main track, linked clips, ripple/roll/slip/slide, replace clip, snapping, markers, clipboard, multi-select, gesture soft-locks; a specified, property-tested edit-semantics core and a fast Canvas2D timeline UI; the Editing and Timeline settings pages. |
+| **2A Timeline editing** | Unlimited tracks with auto-created overlay tracks, magnetic main track, linked clips, ripple/roll/slip/slide, replace clip, snapping, markers, clipboard, multi-select, gesture soft-locks; a specified, property-tested edit-semantics core and a fast Canvas2D timeline UI; the Editing and Timeline settings pages; source marks and three-point editing from the Source view. |
 | **2B Sequences & canvas** | Many sequences per project, aspect presets (16:9, 9:16, 1:1, 4:5, 21:9), sequence settings, background fill (color, blur, image), compound clips (nested sequences as media). |
-| **2C Clip properties & keyframes** | Transform/crop/opacity/flip/blend on clips, keyframes on every animatable property with easing, keyframe lanes, curve editor and bezier graph editor; keyframe/easing/time/snapping math shared with the UI as wasm. |
+| **2C Clip properties & keyframes** | Transform/crop/opacity/flip/blend on clips, keyframes on every animatable property with easing, keyframe lanes, curve editor and bezier graph editor; keyframe/easing/time/snapping math shared with the UI as wasm; layouts for several clips (side by side, top and bottom, picture in picture, grids). |
 | **2D Speed basics** | Constant speed with pitch preservation, reverse, freeze frame. |
 | **2E Audio features** | Fades, keyframed volume, pan, track buses, master limiter, loudness normalization, auto-ducking, basic voice effects, voiceover recording, extract audio, audio UI, the Audio settings page. |
 | **2F Media management** | Proxy pipeline (auto + manual), relink, collect & archive, image and image-sequence import, bin tags/smart collections, media folders (ADR-0020) and importing folders with their structure. |
-| **2G Export presets & queue** | Presets (YouTube, Shorts/Reels/TikTok, GIF, audio-only, ProRes), HEVC/AV1, advanced encode controls (CBR/VBR/CRF, GOP, color tags, audio codec/bitrate), background queue, range/marker-set export. |
-| **2H Workspace UI** | Dockable Short-form/Long-form workspaces, schema-driven inspector, command palette, shortcut editor with NLE and CapCut presets, preview overlays, i18n scaffold, the Project settings dialog, the Appearance and Playback settings pages. |
+| **2G Export presets & queue** | Presets (YouTube, Shorts, Instagram Reels/Stories/feed, TikTok, X with dated platform limits and safe areas; GIF, audio-only, ProRes), HEVC/AV1, advanced encode controls (CBR/VBR/CRF, GOP, color tags, audio codec/bitrate), background queue, range/marker-set export. |
+| **2H Workspace UI** | Dockable Short-form/Long-form workspaces, schema-driven inspector, command palette, shortcut editor with NLE and CapCut presets, preview overlays, i18n scaffold, the Project settings dialog, the Appearance and Playback settings pages, closing and reopening panels (View > Panels), a History panel. |
 | **2I MCP core tool set** | ~30 core tools complete, `view_get`/`view_set`, contact sheet, filmstrip, waveform image, checkpoints, `expected_rev`, per-endpoint tool profiles (`/mcp/minimal`, `/mcp`, `/mcp/full`), scripted-agent e2e. |
 | **2J Performance, reliability & dogfood** | Benchmarks in CI against §19, background render cache, crash-injection harness, and the dogfood exit review (human). |
 
@@ -326,6 +326,25 @@ Schedule note: the roadmap gives 9 weeks. Total effort here is about 162 agent-d
 - **Tests:** unit, Vitest, user flow.
 - **Out of scope:** per-sequence overrides of these defaults; the rows other WPs own (listed above).
 
+### WP-2A.14 — Source marks and three-point editing: in and out on a source, insert and overwrite, match frame
+- **Area:** packages/editor (Source view marks, insert and overwrite actions and keys, match frame, marks on bin cards), crates/cutweave-engine (`source_marks` in the view state and `ui-state.json`), generated schema and TS types, docs/spec/edit-semantics.md (three-point rules), apps/desktop/e2e/flows, docs/user-flows.md
+- **Depends on:** WP-1M.15, WP-2A.01, WP-2A.03, WP-2A.10
+- **Size:** M
+- **Executor:** sonnet
+- **Scope:** (product owner request, 2026-11-24, the editing half of "preview without adding to timeline"; P1's WP-1M.15 plays a source and places the whole asset)
+  - **Marks:** I and O set in and out on the source at its playhead (the same keys as on the timeline, by focus), "Clear in and out" clears both. Marks show on the Source view's scrub bar and as a range bar on the asset's bin card. They are kept per asset in the view state (`view.set{source_marks}`, persisted in `ui-state.json` by WP-1C.04's store; not undoable, not journaled), so they survive a reopen.
+  - **Insert** (`,`) and **Overwrite** (`.`) place the marked range (or the whole asset) at the timeline playhead on the target track: `timeline.insert{source_in, duration}` and WP-2A.03's overwrite. Three-point rules follow `edit-semantics.md`: with timeline in and out set, the timeline in wins and the duration comes from the source marks. Each placement is one undo step.
+  - **Drag from the Source view** places the marked range. Dragging only its picture or only its sound icon places video only or audio only.
+  - **Match frame** (F) with a timeline clip under the playhead: opens the clip's media in the Source view at the matching source frame, with the clip's source range as its marks.
+- **Interfaces:** `view.set{source_marks}` (additive view state); the Source view's Insert and Overwrite actions and keys (in `listBindings()`).
+- **Acceptance criteria:**
+  - Vitest: the three-point placement math agrees with the `edit-semantics.md` fixtures (source marks only, timeline marks only, both).
+  - Parity: the item that Insert from the Source view creates is the one `timeline.insert{source_in, duration}` creates through the CLI on the same project (normalized structure).
+  - **A user flow (ADR-0018, F31 extended):** play the interview in the Source view, mark in at 2 s and out at 5 s, press `,`: a 3 s clip lands at the playhead starting at source 2 s; press `.` over an existing clip: it is overwritten; reopen the project: the marks are still on the card; F on the placed clip opens it in the Source view at the matching frame.
+  - axe: 0 violations on the Source view with marks; visual baselines of the marked scrub bar and card.
+- **Tests:** Vitest, parity script, user flow.
+- **Out of scope:** four-point editing and fit to fill; subclips; source and timeline viewers side by side (ADR-0022, option 2).
+
 ---
 
 # Epic 2B — Sequences & canvas
@@ -461,7 +480,7 @@ Schedule note: the roadmap gives 9 weeks. Total effort here is about 162 agent-d
 - **Out of scope:** UI.
 
 ### WP-2C.03 — Keyframe and property commands (with retiming rules)
-- **Area:** crates/cutweave-ops/src/{keyframe,item}/
+- **Area:** crates/cutweave-ops/src/{keyframe,item}/, crates/cutweave-model (`VisualProps` crop, flip, blend mode; migration and goldens), generated schema and TS types
 - **Depends on:** WP-2C.02, WP-2A.04
 - **Size:** M
 - **Executor:** sonnet
@@ -470,7 +489,9 @@ Schedule note: the roadmap gives 9 weeks. Total effort here is about 162 agent-d
   - Hook the keyframe split/trim/ripple/duplicate rules from 2C.01 into 2A commands (boundary keyframe insertion on split; optional prune).
   - Batch support for multi-select: `items[]`.
   - MCP core: `keyframe_set`, `item_set_props`. Catalog for the rest.
-- **Interfaces:** commands above. `item.get` returns animatable props with keyframes (`fields` filtering).
+  - (product owner request, 2026-11-24: "place 2 videos side by side")
+    - **The model gap:** the P1 model's `VisualProps` has only `transform` and `opacity` (the P1 `item.set_props` takes name, enabled, opacity, audio_gain and transform), while arch §4.2 and WP-2C.04 expect `crop`, `flip` and `blend_mode`, and no other WP adds them to `cutweave-model`. This WP adds them: crop as four edges in fractions of the source frame (animatable), flip H/V (hold) and the blend mode. Older documents migrate with the defaults (no crop, no flip, normal); the migration chains after WP-2F.07's v2 in merge order (N18). `item.set_props` takes the new fields, so agents crop with the same command the Inspector and WP-2H.06's handles use.
+- **Interfaces:** commands above. `item.get` returns animatable props with keyframes (`fields` filtering). `VisualProps.{crop, flip, blend_mode}`.
 - **Acceptance criteria:**
   - Splitting a clip with keyframes: evaluating each half at any matching timeline time equals the original value within 1e-6 (proptest, 1,000 cases).
   - Setting a keyframe at an occupied `t` replaces it. Moving past a neighbour is rejected with `Invalid` or reorders (per spec; one behaviour, tested).
@@ -552,6 +573,38 @@ Schedule note: the roadmap gives 9 weeks. Total effort here is about 162 agent-d
   - Keyboard operable (arrows nudge, Delete removes); axe 0 violations.
 - **Tests:** Vitest for geometry, Playwright, visual snapshots.
 - **Out of scope:** expression-driven curves, motion paths in the preview (P4).
+
+### WP-2C.08 — Layouts for several clips: side by side, top and bottom, picture in picture, grids
+- **Area:** crates/cutweave-ops/src/item/ (`item.apply_layout`, the layout table as data), generated schema and TS types, packages/editor (a Layout menu in the Inspector, the timeline's clip menu and the bin), apps/desktop/e2e/flows, docs/user-flows.md
+- **Depends on:** WP-2C.03, WP-2C.04, WP-2H.03, WP-2A.10, WP-2B.01
+- **Size:** M
+- **Executor:** sonnet
+- **Scope:** (product owner request, 2026-11-24: "if I want to place 2 videos side by side on the timeline, will it be possible?") Today this is possible by hand. A second clip dropped at the same time goes to a new track, then Scale 50 % and Position X ±480 in the Inspector. The clips are letterboxed, though, because P1 has no crop. Crop arrives with WP-2C.03, WP-2C.04 and WP-2H.03, and transform handles and snapping with WP-2H.06. This WP makes the arrangement one action.
+  - **`item.apply_layout{items[], layout, fill: crop|fit, gap?, order?}`** sets each item's transform and crop as ordinary `VisualProps` values in one undoable step. MCP catalog: agents arrange clips with the same command the UI uses, and the result is plain properties that anyone can adjust afterwards.
+    - `crop` fills each cell with a centred crop; `fit` scales to fit inside the cell.
+    - `gap` is a spacing in sequence pixels.
+    - `order` lists the items for the cells; without it, the top track comes first.
+    - A property that is already animated gets a keyframe at the playhead (2C.03's auto-key rule).
+    - The cells come from the sequence's canvas size (WP-2B.01).
+  - **Layouts** (data, so packs can add more later):
+    - two clips: side by side (left and right), top and bottom;
+    - picture in picture: a small clip in any corner, 30 % of the width, inset by the title-safe margin;
+    - three clips: three columns, one large and two small;
+    - four clips: a 2 × 2 grid.
+    - Too few or too many visual items give `Invalid`, with the counts the layout accepts.
+  - **UI:**
+    - With 2–4 video clips selected, the Inspector shows a Layout row of small diagrams, and the timeline's clip menu has Layout ▸.
+    - In the bin, selecting 2–4 video assets offers "Place side by side…", which inserts them at the playhead on new tracks and applies the layout in one undo step.
+    - "Swap" reverses the order of a two-clip layout.
+- **Interfaces:** `item.apply_layout`; the layout table (`layouts.json` in the ops crate's data, schema-validated).
+- **Acceptance criteria:**
+  - Unit: each layout puts every clip's visible rectangle exactly on its cell (within 0.5 sequence px) on 16:9, 9:16 and 1:1 canvases with 16:9 and 9:16 sources, for `crop` and `fit`; undo restores every property; an animated scale gets a keyframe, not a static value.
+  - Parity: `item.apply_layout` through the CLI, MCP and RPC gives byte-identical documents (`--deterministic-ids`).
+  - Golden frame: two colour-bar clips side by side with `crop` render each half filled, with no letterbox.
+  - **A user flow (ADR-0018, F36):** select two clips in the bin, "Place side by side…": both are on the timeline at the playhead on two tracks, and the preview frame shows the two pictures filling the left and right halves; Swap reverses them; Ctrl+Z undoes the layout, then the insert; select both clips, choose Picture in picture in the Inspector: the second clip sits small in a corner.
+  - axe: 0 violations on the Layout row; visual baselines of the row in dark and light.
+- **Tests:** unit, parity, golden, Vitest, user flow.
+- **Out of scope:** animated transitions between layouts; split-screen as an effect on one clip (Split Screen Grid, WP-4C.06); templates with slots such as the picture-in-picture reaction template (WP-6D.11); borders and rounded corners on cells (P4 effects).
 
 ---
 
@@ -956,9 +1009,15 @@ Schedule note: the roadmap gives 9 weeks. Total effort here is about 162 agent-d
   - Commands: `export.list_presets`, `export.save_preset`, `export.delete_preset`; `export.start` accepts `preset` plus overrides.
   - Platform limits are warnings, not errors (duration, size, aspect mismatch).
   - MCP: `export_start` core takes preset id (list via `export.list_presets` in `cutweave_query`).
-- **Interfaces:** `ExportPreset` JSON Schema; commands above.
+  - (product owner request, 2026-11-24: "Are we supporting export presets (for ex: instagram, youtube, and so on)")
+    - **Platform set:** YouTube (1080p, 4K), YouTube Shorts, Instagram Reels, Instagram Stories, Instagram feed (4:5 and 1:1), TikTok, and X (landscape and portrait). Each preset gives the resolution and aspect, a frame-rate rule (the sequence's rate, capped at the platform's maximum), the video bitrate or CRF, the audio codec and bitrate, and the platform's duration and file-size limits.
+    - **Dated values:** platform limits change. The Shorts "≤ 60 s" above is already out of date, so do not copy it. Every platform preset carries `platform{name, spec_url, checked: <date>}`, filled at implementation from the platform's published upload specs. Values that cannot be verified are marked `unverified`, as N7 does for shortcuts.
+    - **Safe areas:** each portrait preset names its UI-safe zone from WP-2H.06's data pack (`overlays/safe-areas.json`, one shared ID per platform, Stories included). The preview can then show the safe area of the preset chosen in the export dialog or the sequence settings.
+    - **Platform presets are H.264 + AAC MP4**, so they need nothing from WP-2G.02 and can ship before it.
+- **Interfaces:** `ExportPreset` JSON Schema (with `platform` and `safe_area`); commands above.
 - **Acceptance criteria:**
   - All presets validate against the schema in CI (`cargo test -p cutweave-ops presets`); a snapshot lists their ids.
+  - Every platform preset has a `spec_url` and a `checked` date, and its `safe_area` (when present) exists in the safe-area data (CI check).
   - Resolving the "TikTok" preset on a 16:9 sequence returns a warning code `AspectMismatch` and does not change the sequence.
   - Presets referencing unavailable codecs (e.g., no HW encoder) fall back documented per the preset `hw_preferred` flag.
 - **Tests:** schema validation, snapshot.
@@ -1006,7 +1065,7 @@ Schedule note: the roadmap gives 9 weeks. Total effort here is about 162 agent-d
 - **Out of scope:** distributed export, `cutweave worker` parallel chunking (P7/post-1.0), publishing.
 
 ### WP-2G.04 — Export dialog and queue panel
-- **Area:** packages/editor/src/export/
+- **Area:** packages/editor/src/export/, apps/desktop/e2e/flows, docs/user-flows.md
 - **Depends on:** WP-2G.03, WP-2G.05, WP-2H.02, E1M
 - **Size:** M
 - **Executor:** sonnet
@@ -1015,9 +1074,11 @@ Schedule note: the roadmap gives 9 weeks. Total effort here is about 162 agent-d
   - Queue panel (dockable): list with progress, ETA, cancel/retry/reorder (drag), reveal-in-folder, open file, errors with the machine code and human message; desktop notification on completion.
   - Save-as-preset flow.
   - Settings (catalog `docs/reference/settings.md`): Settings > Export gains the default preset (last used) and the file name pattern (`{project}`; tokens project, sequence, date, preset) next to WP-1M.13's rows; Settings > Notifications gains "Notify when an export finishes while Cutweave is in the background" (on; an OS notification from main) and "Play a sound when an export finishes" (off).
+  - (product owner request, 2026-11-24) The preset picker groups platform presets under each platform with its logo-free name and a one-line summary (for example "1080 × 1920, up to the platform's limit"). It puts the presets that match the sequence's aspect first. A preset whose aspect does not match says what will happen (fit with bars) and offers "Make a 9:16 copy of the sequence" when WP-2B.01's aspect presets exist. Over-limit duration or size is an inline warning, never a block.
 - **Interfaces:** consumes `export.*` commands/queries and the `job.progress` events.
 - **Acceptance criteria:**
   - Playwright: export a YouTube 1080p preset of the fixture project through the UI and verify the output with ffprobe; queue 2 exports, cancel one.
+  - **A user flow (ADR-0018, F34):** on a 9:16 sequence, File > Export…: the portrait platform presets come first; choose Instagram Reels: the summary shows 1080 × 1920 and a timeline longer than the preset's limit shows the warning; export: `ffprobe` reads 1080 × 1920 H.264 + AAC; choose YouTube 1080p on the same sequence: the dialog says it will fit with bars.
   - Progress updates ≥ 4 Hz without re-rendering unrelated panels (React profiler assertion: queue panel only).
   - axe: 0 violations in the dialog.
 - **Tests:** Playwright, axe.
@@ -1046,7 +1107,7 @@ Schedule note: the roadmap gives 9 weeks. Total effort here is about 162 agent-d
 # Epic 2H — Workspace UI
 
 ### WP-2H.01 — Dockable workspace, Short-form/Long-form layouts, i18n scaffold
-- **Area:** packages/editor/src/workspace/, packages/editor/src/i18n/
+- **Area:** packages/editor/src/workspace/, packages/editor/src/dock/, packages/editor/src/i18n/, packages/editor/src/shell/ (View > Panels in the menu model), apps/desktop/e2e/flows, docs/user-flows.md
 - **Depends on:** E1M, E1L
 - **Size:** M
 - **Executor:** sonnet
@@ -1056,9 +1117,18 @@ Schedule note: the roadmap gives 9 weeks. Total effort here is about 162 agent-d
   - Built-in workspaces: **Long-form** (wide preview, large timeline, media left, inspector right) and **Short-form** (9:16 preview centered and tall, timeline compact at the bottom, inspector right). Workspace switcher in the title bar, "Save layout as…", "Reset layout". Selecting a sequence with 9:16 aspect suggests (not forces) Short-form once per project.
   - Settings > General: "Workspace for new projects": last used (default), Long-form, Short-form (`general.workspace`, catalog `docs/reference/settings.md`).
   - i18n scaffold: `i18next` (or `lingui`), message extraction script, `en` catalog with ICU plurals, locale detection, lint rule failing on user-visible hard-coded strings in `packages/editor` and `packages/ui` (allowlist file). Command names/descriptions come from the registry (English now, translation keys reserved).
-- **Interfaces:** `registerPanel({id,title,component,defaultDock})`, `workspace.*` view commands (UI-only).
+  - **Already in P1:** the workspace switcher, layouts saved per workspace, "Reset layout" in the top bar (WP-1M.01, F16) and the i18n scaffold (WP-1M.01). This WP builds on them and does not replace them.
+  - (product owner request, 2026-11-24: "Option to remove and re-add panels")
+    - **Close a panel:** a close button on each panel's tab (P1's tabs have none) and "Close panel" in the tab's menu.
+    - **Get it back:** View > Panels lists every registered panel (Assets, Preview, Inspector, Timeline, and later History, Mixer, Export queue, plugin panels) with a checkmark on the open ones. Choosing a panel toggles it: a closed panel reopens where it was last docked in this workspace, or at its default dock. Each item is a command, so it can be bound to a key (WP-2H.05) and run from the palette (WP-2H.04).
+    - **Reset:** View > Reset layout resets the current workspace (as the top bar's button does), and "Reset all workspaces" resets them all.
+    - **Every panel closed:** the dock shows an empty state with "Reopen panels" and "Reset layout".
+    - **State survives closing:** a panel keeps its state when closed and reopened (the bin's search and sort, the timeline's zoom and scroll), because that state lives in stores, not in the panel's component.
+    - **Per workspace:** closed panels are part of the workspace's saved layout, so each workspace keeps its own set, and a relaunch keeps them closed.
+- **Interfaces:** `registerPanel({id,title,component,defaultDock})`, `workspace.*` view commands (UI-only); View > Panels and Reset layout.
 - **Acceptance criteria:**
   - Playwright: switch Long→Short, drag the inspector to float, restart the app, the layout restores; corrupt `workspaces.json` → app starts with the default and a toast.
+  - **A user flow (ADR-0018, F33):** close the Inspector with its tab's close button: the Preview widens and View > Panels shows Inspector unchecked; choose it: it comes back where it was. Close Assets in Long-form, switch to Short-form (Assets open there) and back (still closed). Close every panel: the empty state shows, and Reset layout brings all four back. Relaunch: a panel closed before quitting stays closed.
   - Layout change with the playback running causes no dropped preview frames (> 2 per 10 s) — measured by the playback probe.
   - `pnpm i18n:extract` is idempotent in CI; lint blocks a hard-coded string in a sample PR (test fixture).
 - **Tests:** Playwright, lint test.
@@ -1119,7 +1189,7 @@ Schedule note: the roadmap gives 9 weeks. Total effort here is about 162 agent-d
 - **Out of scope:** plugin-contributed menu items (P6).
 
 ### WP-2H.05 — Keymap engine, shortcut editor, NLE and CapCut presets
-- **Area:** packages/editor/src/keymap/, apps/desktop (global shortcut conflicts)
+- **Area:** packages/editor/src/keymap/ (and the editor's existing key tables: `shell/appMenu.ts`, `transport/keymap.ts`, `panels/binKeys.ts`, `shortcuts/`), packages/timeline (`TIMELINE_KEYS` becomes a context of the keymap), packages/preferences (`shortcuts.*`), apps/desktop (global shortcut conflicts), docs/reference/settings.md, apps/desktop/e2e/flows, docs/user-flows.md
 - **Depends on:** WP-2H.04, E1M, WP-1M.13
 - **Size:** M
 - **Executor:** sonnet
@@ -1128,10 +1198,18 @@ Schedule note: the roadmap gives 9 weeks. Total effort here is about 162 agent-d
   - Shortcut editor UI as the Keyboard shortcuts page of Settings (it replaces WP-1M.13's read-only list in WP-1M.11's frame; its search also answers the dialog's search): searchable command list, record-a-shortcut, conflict warning with reassign/cancel, per-command reset, import/export JSON, preset switcher. Bindings and the preset are app preferences (`shortcuts.*`, catalog `docs/reference/settings.md`), included in Export settings….
   - Presets (L0 data files `keymaps/nle.json`, `keymaps/capcut.json`, plus `default`= NLE): NLE: J/K/L, I/O, B razor, A select, V, Q/W ripple trim previous/next, Home/End, Ctrl+Z/Shift+Ctrl+Z, M marker, comma/period nudge, Del / Shift+Del ripple delete. CapCut: Ctrl+B split, Del delete, Ctrl+Z, Ctrl+Shift+Z, Space, `[`/`]` trim to playhead, Ctrl+D... derived from research/01-capcut-features.md; any binding not verifiable is marked `unverified` in the file and in Notes N7.
   - Every command bindable (palette listing = bindable list).
+  - (product owner request, 2026-11-24: "We need keyboard shortcut mapping in settings")
+    - **One keymap for every handler.** The four tables WP-1M.13 lists today (the menu bar's `chordsFor`, the transport keymap, `TIMELINE_KEYS`, `BIN_KEYS`) become bindings of this engine with contexts, and `listBindings()` keeps listing them, so the page and the handlers still cannot drift.
+    - **Undo and Redo:** Windows and Linux bind Redo to both Ctrl+Shift+Z and Ctrl+Y today, but the Edit menu shows only Ctrl+Y. A person can choose which binding the menu shows. The CapCut preset puts Ctrl+Shift+Z first, and macOS stays ⇧⌘Z.
+    - **Any keyboard layout:** today letters match `KeyboardEvent.key`, so a shortcut can miss when a non-Latin layout is active (Hebrew, Russian). Letters fall back to the physical key (`KeyboardEvent.code`) then, as the native menu's accelerators do. Record-a-shortcut stores what the person pressed and shows it in their layout.
+    - **Reserved keys** cannot be bound, and the editor says why: the menu bar's Alt access keys and F10, Alt+F4, the clipboard keys inside text fields, Esc and Enter in dialogs.
+    - **Storage:** only the differences from the chosen preset are stored (`shortcuts.bindings` holds overrides and removals), so a preset fixed in an update reaches people who changed other keys. "Reset all shortcuts" is next to the preset switcher.
 - **Interfaces:** keymap JSON schema; `keymap.*` view commands.
 - **Acceptance criteria:**
   - Both presets load with 0 conflicts (CI check script) and cover ≥ 30 commands each.
   - Playwright: switch preset NLE→CapCut and `Ctrl+B` splits at the playhead; rebinding persists across restart; typing in the inspector's text field does not trigger shortcuts.
+  - Vitest: with a Hebrew and a Russian layout simulated (`key` non-Latin, `code` `KeyZ`), Ctrl+Z still undoes; a reserved key is refused with its reason; the stored preferences hold only the overrides.
+  - **A user flow (ADR-0018, F35):** Settings > Keyboard shortcuts: rebind Split to Ctrl+K and see it split on the timeline; bind it to Ctrl+Z and answer the conflict prompt with Cancel; make Ctrl+Shift+Z the Redo the menu shows and see it in Edit; export the shortcuts to a file (picker stubbed), reset all, import them back; relaunch: the bindings persist.
   - Keymap lookup < 0.2 ms.
 - **Tests:** Vitest, Playwright, conflict check script.
 - **Out of scope:** per-workspace keymaps, gamepad/MIDI controllers.
@@ -1144,12 +1222,15 @@ Schedule note: the roadmap gives 9 weeks. Total effort here is about 162 agent-d
 - **Scope:**
   - DOM/SVG overlay over the WebGPU canvas (same page, no z-order issues, §10): transform box with move/scale (corner = uniform, Shift = free)/rotate handles + anchor point; crop mode (edge/corner handles); multi-selection bounding box; snapping to canvas center/edges/other layers' edges with guides; arrow-key nudges (1 px / 10 px with Shift).
   - Overlay toggles: safe areas (action 90%/title 80% plus platform-specific UI-safe zones for 9:16 Shorts/Reels/TikTok as data), rule-of-thirds grid, center cross, custom grid, aspect-ratio frame guide, pixel-ratio display.
-  - Gestures use `gesture` tx and `item.set_props{auto_key}` so the preview updates live; on animated props, dragging with auto-key creates a keyframe at the playhead.
+  - (product owner requests, 2026-11-24)
+    - The safe-area pack uses one ID per platform, shared with WP-2G.01's platform presets (Instagram Stories added), so the preview can show the zone of the chosen export preset.
+    - For two videos side by side, snapping also catches the canvas halves and quarters and the neighbouring clip's edges. Shift-dragging a crop edge crops the opposite edge too. WP-2C.08's layouts are the one-click way to get the same result.  - Gestures use `gesture` tx and `item.set_props{auto_key}` so the preview updates live; on animated props, dragging with auto-key creates a keyframe at the playhead.
   - Coordinates: conversions between overlay CSS px ↔ sequence px ↔ normalized, accounting for the preview scale and the object-fit; unit-tested.
 - **Interfaces:** `<PreviewOverlay>`; safe-area data pack `overlays/safe-areas.json`.
 - **Acceptance criteria:**
   - Playwright: drag-move a clip 100 sequence px: `position` changes by 100 ± 0.5 px at any preview zoom (25%/50%/100%); rotate by 15° ± 0.5°; undo returns to the original.
   - 9:16 manual reframe task: scale to fill and pan a 16:9 clip so a subject is centered, in ≤ 10 UI actions (used in dogfood B).
+  - Side-by-side task: two 16:9 clips on a 16:9 sequence arranged to fill the left and right halves with handles and crop, in ≤ 12 UI actions, with each clip filling its half within 1 px.
   - Overlay stays aligned with the video during live resize (pixel diff on a test pattern < 1 px).
   - Overlay interaction latency (pointer move → preview update) p95 < 50 ms.
 - **Tests:** Vitest for transforms, Playwright.
@@ -1220,6 +1301,33 @@ Schedule note: the roadmap gives 9 weeks. Total effort here is about 162 agent-d
   - **A user flow (ADR-0018, F28):** turn "go back to where it started" on, play and stop: the playhead returns; turn Loop on and play past the end: playback wraps; set quality while playing to Half: the transport's quality indicator says Half while playing; relaunch: the values persist.
 - **Tests:** Vitest, user flow.
 - **Out of scope:** pre-roll and post-roll; shuttle speed presets.
+
+### WP-2H.11 — History panel: every undo step, who made it, go back to any step
+- **Area:** packages/editor (History panel in WP-2H.01's panel registry, Edit > History), crates/cutweave-commands (`steps` on `edit.undo` and `edit.redo`), generated schema and TS types, apps/desktop/e2e/flows, docs/user-flows.md
+- **Depends on:** WP-2H.01, WP-1M.07, WP-1B.04
+- **Size:** M
+- **Executor:** sonnet
+- **Scope:** (product owner request, 2026-11-24: "History panel") a dockable panel listing the project's undo history as ADR-0019 defines it: the editor's Undo and Redo cover every actor and name who made each step.
+  - **Rows** come from `edit.history` (paged with `cursor`, virtualized) and follow `edit.history_changed`.
+    - One row per change (cause `edit` or `restore`), oldest at the top, with a marker under the current state. Undone changes that can still be redone sit below the marker, dimmed.
+    - Each row shows the step's name as the Undo button says it ("Split clip"), who made it (You, the agent's label, a plugin) with agent rows in agent blue (design/README.md), and when ("2 min ago", with the exact time in the tooltip).
+    - Undo and redo records are not rows; they move the marker. Changes that can no longer be redone (after a new edit) disappear.
+  - **Click a row to go back to it.**
+    - Every change after it is undone, newest first, as `*` steps (ADR-0019). Clicking a dimmed row redoes up to it.
+    - `edit.undo{actor:"*", steps}` and `edit.redo{actor:"*", steps}` (additive, at most 100) apply them in one turn of the doc actor, so no other actor's command lands in between.
+    - Each step stays its own history record, so Ctrl+Z and Ctrl+Y keep working one step at a time.
+    - A refused step (`Conflict{history_target_modified}`, arch §5.2) stops the jump there and returns `done`, the steps already applied. The panel shows the engine's message naming the later change and its actor.
+  - **Filter:** All, You, Agents (dims the rest; jumps still follow the shared order). Keyboard: ↑/↓ move between rows, Enter goes to the row. Empty state: "No changes yet".
+  - **Opening it:** View > Panels (WP-2H.01) and Edit > History. It is not in the default layouts; it opens as a tab next to the Inspector.
+- **Interfaces:** `edit.undo{actor?, steps?}`, `edit.redo{actor?, steps?}` (additive; output gains `done`); the panel registered as `history`.
+- **Acceptance criteria:**
+  - Unit: `edit.undo{actor:"*", steps:3}` gives the same document and the same history records as three single `*` undos; a conflict at the second step leaves the first applied and reports `done: 1`; the undo property harness covers `steps`.
+  - Parity: the CLI, MCP and RPC give byte-identical documents for a script with `steps`.
+  - Vitest: rows from a history fixture with user, agent and plugin steps, undone tails and a restore; the marker follows `edit.history_changed`; rows that can no longer be redone are gone.
+  - **A user flow (ADR-0018, F32):** import a clip, make four edits (insert, move, opacity, trim) and let an agent (`cutweave exec`) trim a clip. The History panel lists the import, the four edits and the agent's trim, the agent's row named and in agent blue. Click the move's row: the timeline shows the state after the move and three rows are dimmed. Ctrl+Y redoes the opacity change. A new edit removes the remaining dimmed rows.
+  - axe: 0 violations; visual baselines of the panel (a mixed history, the empty state) in dark and light.
+- **Tests:** unit, property harness, parity, Vitest, user flow.
+- **Out of scope:** a branching history tree; clearing the history; showing what a step changed (a diff view); history across sessions beyond what the engine keeps (arch §5.2).
 
 ---
 
@@ -1508,13 +1616,15 @@ Schedule note: the roadmap gives 9 weeks. Total effort here is about 162 agent-d
 | Timeline: track lock, mute, solo and hide | 2A.02, 2A.09, 2A.10, 2E.02 |
 | Timeline: zoom/scroll performance | 2A.09, 2J.02 |
 | Timeline: replace clip | 2A.11 |
+| (product owner request, 2026-11-24) Source marks, insert and overwrite from the Source view, match frame | 2A.14 (after P1's 1H.04, 1M.14, 1M.15) |
 | Timeline: compound clips (nested sequences) | 2B.04, 2B.05 |
 | Timeline: auto-create tracks on overlap | 2A.01, 2A.03 |
 | Timeline: gesture soft-locks (§5.2) | 2A.12, 2A.08 |
 | Sequences: multiple per project | 2B.01, 2B.03 |
 | Sequences: settings with aspect presets | 2B.01, 2B.03 |
 | Sequences: background fill (color, blur, image) | 2B.02, 2B.03 |
-| Clip properties: transform, crop, opacity, flip, core blend modes (§8) | 2C.04, 2H.03, 2H.06 |
+| Clip properties: transform, crop, opacity, flip, core blend modes (§8) | 2C.03 (model fields), 2C.04, 2H.03, 2H.06 |
+| (product owner request, 2026-11-24) Two or more videos side by side, top and bottom, picture in picture, grids | 2C.08 (with 2C.03, 2C.04, 2H.03, 2H.06) |
 | Keyframes for all animatable props with easing | 2C.01, 2C.02, 2C.03 |
 | Keyframe lanes in the timeline | 2C.05 |
 | Bezier graph editor | 2C.07 |
@@ -1535,12 +1645,13 @@ Schedule note: the roadmap gives 9 weeks. Total effort here is about 162 agent-d
 | Media: bin search, tags, smart collections | 1M.12 (search, filters, sort), 2F.06 |
 | Media: folders and importing folder structure (product owner request, ADR-0020) | 2F.07, 2F.08, 2F.09 |
 | Settings: Editing, Timeline, Playback, Audio and Appearance pages; Project settings (product owner request; catalog `docs/reference/settings.md`) | 2A.13, 2H.10, 2E.08, 2H.09, 2H.08 |
-| Export: presets (YouTube 1080p/4K, Shorts/Reels/TikTok, GIF, audio-only, ProRes) | 2G.01, 2G.02, 2G.04 |
+| Export: presets (YouTube 1080p/4K, Shorts/Reels/TikTok, GIF, audio-only, ProRes; product owner request: Instagram Stories and feed, X, dated limits, safe areas) | 2G.01, 2G.02, 2G.04, 2H.06 |
 | Export: HEVC/AV1 | 2G.02 |
 | Export: advanced controls (CBR/VBR/CRF, GOP, color tags, audio codec/bitrate) | 2G.05, 2G.04 |
 | Export: background queue | 2G.03, 2G.04 |
 | Export: range or marker set | 2G.03, 2G.04 |
 | UI: dockable workspace, Short-form/Long-form | 2H.01 |
+| (product owner requests, 2026-11-24) UI: close and reopen panels (View > Panels); History panel | 2H.01, 2H.11 |
 | UI: schema-driven inspector | 2H.02, 2H.03 |
 | UI: command palette | 2H.04 |
 | UI: shortcut editor (NLE + CapCut presets) | 2H.05 |
@@ -1590,3 +1701,8 @@ Contradictions, ambiguities and missing decisions found while writing this phase
 - **N16. RESOLVED.** Compound clips are in P2 scope: nested sequence as media, cycle detection, recursive render (WP-2B.04, UI 2B.05).
 - **N17. New open decisions from the added scope.** (a) Voice effects (2E.07) are rendered by a job and cached, so they are not live-adjustable; confirm "offline DSP" means this. (b) The render cache (2J.09) is preview-only in P2; export reuse is deferred for determinism. (c) `Track.role` (voice/music/sfx) is added for auto-ducking; confirm it belongs in the §4.2 Track model. (d) Compound clips need an ADR on `sequence.duplicate` semantics (shared vs deep-copied inner sequences); default chosen is shared.
 - **N18. Settings, folders and bin search (planned 2026-11-24, product owner requests).** Every setting, with its default, scope, storage, agent access and owning WP, is in the catalog [docs/reference/settings.md](../reference/settings.md); P2 adds the Editing and Timeline (2A.13), Audio (2E.08), Appearance (2H.09) and Playback (2H.10) pages and the Project settings dialog (2H.08), and existing WPs add rows (2E.04, 2E.05, 2F.03, 2F.04, 2F.05, 2G.04, 2H.01, 2H.05, 2J.09). Folders are 2F.07 to 2F.09 under ADR-0020 (Proposed). 2F.06 is re-scoped: its search box and the name/kind/duration filters moved to 1M.12 (P1), `media.search` became filters on `media.list`, `collection.*` became `media.*` commands (no new namespace), and FTS5 is dropped unless the 10,000-asset target fails. Schema versions: 2F.07 takes v2; any other P2 migration (2F.06, 2A.02) chains after it in merge order.
+- **N19. Product owner requests after using the app (planned 2026-11-24, second batch).** Verdicts and recommended phases are in P1's Notes for integrator, item 23. In this phase:
+  - extended: WP-2H.05 (shortcut editor), WP-2G.01 and WP-2G.04 (platform presets: Instagram Stories and feed, X, dated limits, safe areas), WP-2H.01 (close and reopen panels), WP-2H.06 (safe areas shared with the presets, half and quarter guides), WP-2C.03 (adds `crop`, `flip` and `blend_mode` to `VisualProps`, which no WP owned);
+  - new: WP-2A.14 (source marks and three-point editing, after P1's source preview, ADR-0022 Proposed), WP-2C.08 (layouts for several clips: `item.apply_layout`) and WP-2H.11 (History panel, `edit.undo`/`edit.redo` `{steps}`);
+  - recommended pull: WP-2G.01 into P1 (S, dependencies merged, H.264 + AAC presets only).
+  - Schema versions: 2C.03's `VisualProps` migration joins the chain after 2F.07's v2 (N18).

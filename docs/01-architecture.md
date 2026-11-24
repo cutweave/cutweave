@@ -385,7 +385,7 @@ All surfaces live on **one local server per engine** (axum on `127.0.0.1`, rando
 - **Encode/export:**
   - Containers: MP4, MOV, MKV, WebM, GIF, audio-only (WAV/MP3/AAC/FLAC/Opus), PNG/JPEG sequence.
   - Codecs: H.264, HEVC and AV1, each with a hardware encoder (NVENC/AMF/QSV/VideoToolbox/VA-API) or a software one (x264/x265/SVT-AV1), plus ProRes.
-  - Presets cover TikTok/Reels/Shorts, YouTube 1080p/4K, archive and GIF.
+  - Presets cover TikTok/Reels/Shorts, YouTube 1080p/4K, archive and GIF. Platform presets (YouTube, Shorts, Instagram Reels, Stories and feed, TikTok, X) record the platform's published limits with their source and check date, and name the safe area the preview shows (WP-2G.01, product owner request 2026-11-24).
 - **Decoding (decided in WP-1D.03).**
   - **Pool:** one `DecoderPool` per media item, four live decoders by default with LRU eviction. Each pooled decoder runs on its own thread, so a `CancelToken` stops a pending seek in well under 10 ms; a frame-threaded FFmpeg flush can't be interrupted.
   - **Threads:** seek and scrub decoders use one thread; `DecodeMode::Sequential` uses frame threads for playback and export.
@@ -532,6 +532,8 @@ flowchart LR
     - The readback is copied straight from the mapped buffer into the ring slot (`Compositor::execute_with`).
     - The preview keeps the last picture of each media item, so a still or paused frame takes no lock.
   - **The bridge** subtracts its presentation latency only while the clock plays, so a stopped preview shows the playhead's own frame.
+
+**Source preview (planned in WP-1H.04; ADR-0022, Proposed).** The document's transport can also play one media asset outside any sequence, through a transient one-clip timeline that the engine builds from the probe and never stores. `view.set_source{media?}` switches the target and `playback.state.source` reports it; the sequence keeps its own playhead, and nothing is written to the document, the journal or the undo history. The editor shows it as the Preview's Source view and in the Inspector (WP-1M.15).
 
 The upgrade path, behind a feature flag once proven, is zero-copy GPU texture sharing into Chromium via Electron's shared-texture import. **Fallback** is JPEG frames over `/media/frame`: for remote or non-Electron clients, and locally when WebGPU is unavailable or fails, when no ring is announced, or when `CUTWEAVE_PREVIEW=jpeg` forces it (CI without a GPU). The client polls at ≤ 15 fps and shows a reduced-mode banner (WP-1M.04).
 
@@ -770,7 +772,8 @@ Cutweave is also a **harness for video-creation agents**. MCP gives agents hands
   - Center: preview with an aspect switcher.
   - Right: a context inspector (schema-driven).
   - Bottom: the timeline.
-  - The layout is fully dockable; saved workspaces are "Short-form" and "Long-form".
+  - The layout is fully dockable; saved workspaces are "Short-form" and "Long-form". Panels can be closed and reopened from View > Panels (WP-2H.01); optional panels include the History panel (WP-2H.11).
+  - The preview shows the timeline or, as its Source view, one media asset (§10, WP-1M.15); the bin's cards hover-scrub and the Inspector previews a selected asset (WP-1M.14).
 - **Schema-driven inspector:** one renderer turns any JSON Schema with UI hints (slider, color, angle, font, curve, enum, asset-ref, keyframeable) into controls. It is used by core props, effects, compositions, AI model forms and plugins alike.
 - **Keyboard-first:** every command can be bound, and the defaults match common NLEs (J/K/L, I/O, B, A, Q/W ripple trims) plus CapCut's shortcuts. Shortcut presets can be switched.
 - **Accessibility:** Radix primitives, focus management, screen-reader labels on all controls, reduced-motion respect, and high-contrast tokens.
@@ -924,6 +927,11 @@ MyVideo/                    ← project folder (user-chosen location)
 | 015 | Wire protocol: `request_id` idempotency, flicks as JSON integers, deterministic-ID test mode (§4.1, §5.1) | Accepted |
 | 016 | Credential classes: UI (never on disk) / agent (run-file) / plugin; actor derived from credential; UI-only scopes (§6) | Accepted |
 | 017 | Transaction kinds (`gesture`, `proposal`), connection-owned transactions, committed-only saves (§5.2) | Accepted |
+| 018 | User-flow e2e suite (real app, real input, real dialogs) as the regression gate | **Accepted** (product owner, 2026-11-24) |
+| 019 | The editor's Undo and Redo cover every actor's changes (`edit.undo{actor:"*"}`) (§5.2) | **Accepted** (product owner, 2026-11-24) |
+| 020 | Media folders: a folder tree in the project document, one folder per asset, schema v2 | Proposed: before WP-2F.07 |
+| 021 | Agents choose among several engines by project; default is the focused window's engine (§2, §14) | **Accepted** (product owner, 2026-11-24) |
+| 022 | Source preview: the preview plays a media item outside any sequence (`view.set_source`) (§10) | **Accepted** (product owner, 2026-11-24) |
 
 ## 24. Open questions (tracked; none block Phase 0)
 

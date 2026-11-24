@@ -1,7 +1,7 @@
 {
   "version": 1,
   "generated_by": "scripts/wbs-to-issues",
-  "count": 499,
+  "count": 505,
   "work_packages": [
     {
       "id": "WP-0A.01",
@@ -2512,11 +2512,48 @@
       "out_of_scope": "perf counters, WebGPU drawing (1M.04)."
     },
     {
+      "id": "WP-1H.04",
+      "title": "Source preview: play one media item outside any sequence",
+      "source": {
+        "file": "docs/wbs/P1-skeleton.md",
+        "line": 720
+      },
+      "phase": "P1",
+      "epic": "1H",
+      "area": "`crates/cutweave-playback` (transport target, `view.*` transport commands, `playback.state`), `crates/cutweave-engine` (`full/preview.rs` and `full/audio.rs`: the source's frames and sound), generated schema and TS types, `docs/01-architecture.md` §10 (the decided paragraph), `docs/adr/0022-source-preview.md` (status once accepted)",
+      "size": "M",
+      "executor": "opus",
+      "executor_note": "",
+      "depends_raw": "WP-1H.01, WP-1I.05, WP-1N.01",
+      "depends_wps": [
+        "WP-1H.01",
+        "WP-1I.05",
+        "WP-1N.01"
+      ],
+      "depends_epics": [],
+      "depends": [
+        "WP-1H.01",
+        "WP-1I.05",
+        "WP-1N.01"
+      ],
+      "scope": "(product owner request, 2026-11-24: \"I don't have a way to preview without adding to timeline\") the preview transport plays a media asset on its own, as ADR-0022 decides (Accepted by the product owner, 2026-11-24).\n- **One transport, two targets.** The document's `PlaybackEngine` plays either the active sequence (as today) or one media asset. `view.set_source{media?}` makes the asset the target; without `media` it returns to the sequence. Nothing touches the document: no item, no sequence, no undo step, no journal record, no unsaved state.\n- **The source is a transient one-clip timeline** built from the probe: the asset's video and its audio, at its own frame rate (audio-only assets on a 30 fps grid over a blank picture), fitted into the preview size with the asset's aspect. It is indexed and rendered through the same `PreviewSource` path (compositor, quality ladder, hardware decode, proxies once WP-2F.02 lands) and its sound goes through the mixer on the master clock, so A/V sync, JKL, steps and scrubbing behave as on the sequence.\n- **Playheads.** `view.play`, `view.pause`, `view.seek`, `view.step` and `view.set_rate` act on the current target, in its time. Each asset's source playhead is kept for the session; the sequence's playhead does not move while a source plays, and returning shows its frame exactly.\n- **Events.** `playback.state` gains `source: {media, duration, fps} | null` (additive). After `view.set_source` returns, no frame of the old target reaches the ring (the transport's exact latest-wins rule), so the ring format does not change.\n- **Ending.** Removing the asset, opening another project or `doc.reset` returns to the sequence with `source: null`. Timeline edits during a source session re-index the sequence as today and do not interrupt the source.\n- **Agents and headless engines.** `view.set_source` is a `view` command (not undoable, not journaled, MCP catalog like the other `view` commands, not in `tools/list`); a headless engine plays into its null sink. Agents keep seeing media frames through `/media/{id}/thumb` and, in P2, `media_filmstrip`.",
+      "interfaces": "`view.set_source{media?: MediaId}` → `{source}`; `playback.state.source`; a `PlaybackTarget` (sequence or media) in `cutweave-playback`.",
+      "acceptance": [
+        "With `FakeBackend` and `ManualClock`: a 10 s 25 fps asset plays 250 frames in order with A/V offset ≤ 1 frame; switching back mid-play shows the sequence's frame at its unchanged playhead; over 100 random switches and seeks, no frame of an old target is delivered after `view.set_source` returns.",
+        "The project stays clean, and `edit.history`, the journal and the saved document are byte-identical before and after a source session (test).",
+        "The engine's `preview_alloc` counting-allocator test passes with a source target (no per-frame allocation of our own).",
+        "Real media (corpus): an H.264 1080p30 and a HEVC 10-bit clip each play as a source for 10 s with 0 dropped frames on the dev machine (recorded); an audio-only asset plays its sound.",
+        "Removing the asset while it plays returns to the sequence (test)."
+      ],
+      "tests": "unit with the fake clock, engine integration, alloc test, corpus.",
+      "out_of_scope": "the UI (WP-1M.15); in/out marks and inserting from a source (WP-2A.14); a second viewer playing at the same time (ADR-0022, option 2)."
+    },
+    {
       "id": "WP-1I.01",
       "title": "axum server skeleton: auth, Host/Origin, run-file",
       "source": {
         "file": "docs/wbs/P1-skeleton.md",
-        "line": 724
+        "line": 746
       },
       "phase": "P1",
       "epic": "1I",
@@ -2550,7 +2587,7 @@
       "title": "JSON-RPC over WebSocket + event subscriptions",
       "source": {
         "file": "docs/wbs/P1-skeleton.md",
-        "line": 744
+        "line": 766
       },
       "phase": "P1",
       "epic": "1I",
@@ -2587,7 +2624,7 @@
       "title": "Media HTTP endpoints",
       "source": {
         "file": "docs/wbs/P1-skeleton.md",
-        "line": 765
+        "line": 787
       },
       "phase": "P1",
       "epic": "1I",
@@ -2626,7 +2663,7 @@
       "title": "`cutweave-engine` root: doc actor, project, jobs, API, launch protocol",
       "source": {
         "file": "docs/wbs/P1-skeleton.md",
-        "line": 782
+        "line": 804
       },
       "phase": "P1",
       "epic": "1I",
@@ -2664,7 +2701,7 @@
       "title": "Engine subsystem wiring: media, render, audio, playback",
       "source": {
         "file": "docs/wbs/P1-skeleton.md",
-        "line": 803
+        "line": 825
       },
       "phase": "P1",
       "epic": "1I",
@@ -2707,7 +2744,7 @@
       "title": "rmcp server: registry-derived tools, `cutweave_execute`, annotations",
       "source": {
         "file": "docs/wbs/P1-skeleton.md",
-        "line": 824
+        "line": 846
       },
       "phase": "P1",
       "epic": "1J",
@@ -2746,7 +2783,7 @@
       "title": "`render_frame` image content + resources",
       "source": {
         "file": "docs/wbs/P1-skeleton.md",
-        "line": 847
+        "line": 869
       },
       "phase": "P1",
       "epic": "1J",
@@ -2780,7 +2817,7 @@
       "title": "stdio transports: `attach` proxy and `headless`",
       "source": {
         "file": "docs/wbs/P1-skeleton.md",
-        "line": 863
+        "line": 885
       },
       "phase": "P1",
       "epic": "1J",
@@ -2815,7 +2852,7 @@
       "title": "Agent targeting with several engines: list, choose by project, last-focused default",
       "source": {
         "file": "docs/wbs/P1-skeleton.md",
-        "line": 881
+        "line": 903
       },
       "phase": "P1",
       "epic": "1J",
@@ -2850,7 +2887,7 @@
       "title": "Settings > Agents and MCP: connect a client, folders agents may use, who is connected",
       "source": {
         "file": "docs/wbs/P1-skeleton.md",
-        "line": 900
+        "line": 922
       },
       "phase": "P1",
       "epic": "1J",
@@ -2886,7 +2923,7 @@
       "title": "`cutweave` binary: engine | mcp | exec | query | render",
       "source": {
         "file": "docs/wbs/P1-skeleton.md",
-        "line": 925
+        "line": 947
       },
       "phase": "P1",
       "epic": "1K",
@@ -2919,7 +2956,7 @@
       "title": "Electron app scaffold (main, preload, Vite renderer, dev/packaging)",
       "source": {
         "file": "docs/wbs/P1-skeleton.md",
-        "line": 950
+        "line": 972
       },
       "phase": "P1",
       "epic": "1L",
@@ -2954,7 +2991,7 @@
       "title": "Electron security hardening (arch §18)",
       "source": {
         "file": "docs/wbs/P1-skeleton.md",
-        "line": 969
+        "line": 991
       },
       "phase": "P1",
       "epic": "1L",
@@ -2986,7 +3023,7 @@
       "title": "Engine supervision, restart and UI resync",
       "source": {
         "file": "docs/wbs/P1-skeleton.md",
-        "line": 991
+        "line": 1013
       },
       "phase": "P1",
       "epic": "1L",
@@ -3028,7 +3065,7 @@
       "title": "Design-system base, app layout, dock skeleton",
       "source": {
         "file": "docs/wbs/P1-skeleton.md",
-        "line": 1015
+        "line": 1037
       },
       "phase": "P1",
       "epic": "1M",
@@ -3060,7 +3097,7 @@
       "title": "Protocol client wiring and Zustand stores",
       "source": {
         "file": "docs/wbs/P1-skeleton.md",
-        "line": 1031
+        "line": 1053
       },
       "phase": "P1",
       "epic": "1M",
@@ -3095,7 +3132,7 @@
       "title": "Media bin: import, drag-drop, thumbnails",
       "source": {
         "file": "docs/wbs/P1-skeleton.md",
-        "line": 1049
+        "line": 1071
       },
       "phase": "P1",
       "epic": "1M",
@@ -3129,7 +3166,7 @@
       "title": "Preview panel: SHM → WebGPU canvas, transport controls, overlay shell",
       "source": {
         "file": "docs/wbs/P1-skeleton.md",
-        "line": 1066
+        "line": 1088
       },
       "phase": "P1",
       "epic": "1M",
@@ -3164,7 +3201,7 @@
       "title": "Timeline v0: Canvas2D virtualized renderer (`packages/timeline`)",
       "source": {
         "file": "docs/wbs/P1-skeleton.md",
-        "line": 1085
+        "line": 1107
       },
       "phase": "P1",
       "epic": "1M",
@@ -3199,7 +3236,7 @@
       "title": "Timeline interactions: select, move, trim, split, delete, snapping",
       "source": {
         "file": "docs/wbs/P1-skeleton.md",
-        "line": 1103
+        "line": 1125
       },
       "phase": "P1",
       "epic": "1M",
@@ -3238,7 +3275,7 @@
       "title": "Inspector, undo/redo UI, save/open, recovery dialog",
       "source": {
         "file": "docs/wbs/P1-skeleton.md",
-        "line": 1122
+        "line": 1144
       },
       "phase": "P1",
       "epic": "1M",
@@ -3275,7 +3312,7 @@
       "title": "Export dialog and progress",
       "source": {
         "file": "docs/wbs/P1-skeleton.md",
-        "line": 1141
+        "line": 1163
       },
       "phase": "P1",
       "epic": "1M",
@@ -3307,7 +3344,7 @@
       "title": "Schema emission + snapshot gate",
       "source": {
         "file": "docs/wbs/P1-skeleton.md",
-        "line": 1161
+        "line": 1183
       },
       "phase": "P1",
       "epic": "1N",
@@ -3339,7 +3376,7 @@
       "title": "TS protocol package: generated types and typed RPC client",
       "source": {
         "file": "docs/wbs/P1-skeleton.md",
-        "line": 1177
+        "line": 1199
       },
       "phase": "P1",
       "epic": "1N",
@@ -3374,7 +3411,7 @@
       "title": "Custom title bar: native window controls, in-app menu bar",
       "source": {
         "file": "docs/wbs/P1-skeleton.md",
-        "line": 1199
+        "line": 1221
       },
       "phase": "P1",
       "epic": "1M",
@@ -3408,7 +3445,7 @@
       "title": "Autosave settings and the title bar's save status",
       "source": {
         "file": "docs/wbs/P1-skeleton.md",
-        "line": 1232
+        "line": 1254
       },
       "phase": "P1",
       "epic": "1M",
@@ -3445,7 +3482,7 @@
       "title": "Settings framework: tabbed pages, search, preferences store, reset, import and export",
       "source": {
         "file": "docs/wbs/P1-skeleton.md",
-        "line": 1250
+        "line": 1272
       },
       "phase": "P1",
       "epic": "1M",
@@ -3483,7 +3520,7 @@
       "title": "Find media in the bin: search, filters, sort",
       "source": {
         "file": "docs/wbs/P1-skeleton.md",
-        "line": 1284
+        "line": 1306
       },
       "phase": "P1",
       "epic": "1M",
@@ -3518,7 +3555,7 @@
       "title": "Settings pages for existing features: Export defaults, Keyboard shortcuts (read-only)",
       "source": {
         "file": "docs/wbs/P1-skeleton.md",
-        "line": 1312
+        "line": 1334
       },
       "phase": "P1",
       "epic": "1M",
@@ -3547,11 +3584,84 @@
       "out_of_scope": "export presets and file-name patterns (WP-2G.04); editing shortcuts, presets and conflicts (WP-2H.05)."
     },
     {
+      "id": "WP-1M.14",
+      "title": "See media before placing it: hover-scrub on bin cards and a scrubbable picture in the Inspector",
+      "source": {
+        "file": "docs/wbs/P1-skeleton.md",
+        "line": 1350
+      },
+      "phase": "P1",
+      "epic": "1M",
+      "area": "`packages/editor` (media cards, the Inspector's media section, the Media and import settings row), `packages/ui` (a scrub-bar component if `design/components/` has none; spec added there), `packages/preferences` and `docs/reference/settings.md` (`media.hover_scrub`), `apps/desktop/e2e/flows`, `docs/user-flows.md`",
+      "size": "M",
+      "executor": "sonnet",
+      "executor_note": "",
+      "depends_raw": "WP-1M.03, WP-1M.07, WP-1I.03, WP-1M.11",
+      "depends_wps": [
+        "WP-1M.03",
+        "WP-1M.07",
+        "WP-1I.03",
+        "WP-1M.11"
+      ],
+      "depends_epics": [],
+      "depends": [
+        "WP-1I.03",
+        "WP-1M.03",
+        "WP-1M.07",
+        "WP-1M.11"
+      ],
+      "scope": "(product owner request, 2026-11-24: \"We need both the asset item to be playable + preview inside inspector\") the picture half, with no engine change: frames come from `/media/{id}/thumb?t=&w=` (WP-1I.03), which floors `t` to the media's frame grid and caches. Playing with sound is WP-1M.15.\n- **Hover-scrub on bin cards:** moving the pointer across a video card shows the frame at that fraction of its duration, with a position line and the time; leaving restores the poster. Requests are latest-wins (a request in flight is aborted when a newer one starts), at most one per animation frame, at the card's width. Audio cards show a position line over their waveform. Settings > Media and import can turn it off (`media.hover_scrub`, on).\n- **Inspector preview:** when a bin asset is selected, the Inspector's media section starts with a picture of the asset (its aspect, the panel's width) above the probe facts, and a scrub bar under it: click or drag to see any frame; ←/→ step one frame at the asset's rate and Home/End go to the ends while the bar has the focus; the time shows as timecode at the asset's rate. Audio-only assets show their waveform with the same bar.\n- **Keyboard and screen readers:** the scrub bar is a slider (`aria-valuetext` in timecode); hover-scrub on cards is pointer-only, and the Inspector gives the keyboard path.",
+      "interfaces": "a media scrub component over the `ThumbnailSource` seam; preference `media.hover_scrub`.",
+      "acceptance": [
+        "Vitest: pointer position maps to media time on the frame grid at 9 fractions; an aborted or late response never paints over a newer frame (fake source answering out of order).",
+        "Hover-scrubbing across a card sends at most one thumbnail request per animation frame and none after the pointer leaves (test).",
+        "**A user flow (ADR-0018, F31):** import the corpus clips; hover across the HEVC card: its picture and time change; select it: the Inspector shows its picture; drag the scrub bar to the middle: the picture is the frame at half its duration (compared with `/media/{id}/thumb` at that time); turn hover-scrub off in Settings: hovering leaves the poster.",
+        "axe: 0 violations on the bin and on the Inspector with an asset selected; visual baselines of a card mid-scrub and of the Inspector preview, in dark and light."
+      ],
+      "tests": "Vitest, visual, user flow.",
+      "out_of_scope": "playback with sound (WP-1H.04, WP-1M.15); in/out marks (WP-2A.14); proxies for thumbnails."
+    },
+    {
+      "id": "WP-1M.15",
+      "title": "Play media before placing it: a Source view in the Preview, play from the bin and the Inspector",
+      "source": {
+        "file": "docs/wbs/P1-skeleton.md",
+        "line": 1368
+      },
+      "phase": "P1",
+      "epic": "1M",
+      "area": "`packages/editor` (Preview panel Source view, transport bar and keymap targets, play control on media cards, Inspector preview playback, bin key table), `apps/desktop/e2e/flows`, `docs/user-flows.md`",
+      "size": "M",
+      "executor": "sonnet",
+      "executor_note": "",
+      "depends_raw": "WP-1H.04, WP-1M.14, WP-1M.04",
+      "depends_wps": [
+        "WP-1H.04",
+        "WP-1M.14",
+        "WP-1M.04"
+      ],
+      "depends_epics": [],
+      "depends": [
+        "WP-1H.04",
+        "WP-1M.04",
+        "WP-1M.14"
+      ],
+      "scope": "(product owner request, 2026-11-24) the \"playable asset\" half, on WP-1H.04's source target (ADR-0022).\n- **Play from the bin:** a play button on a hovered or selected card, and Space while a card has the focus (it selects the card, as today, then plays or pauses it). The bin's key table (`BIN_KEYS`, listed by `listBindings()`) gains the play key. Double-click and Enter still insert at the playhead.\n- **Source view in the Preview panel:** while a source is shown, the Preview has a \"Source\" header with the asset's name, its own timecode and duration at its rate, and \"Back to timeline\" (also Esc in the Preview, clicking the timeline, or moving the timeline's playhead). The transport bar and its keys (Space, J/K/L, arrows, step and go-to buttons) act on the source, and the Preview's scrubbing seeks it. Back on the timeline, its playhead and frame are as they were.\n- **Play in the Inspector:** WP-1M.14's Inspector preview gains play and pause. It plays the same source target and draws the ring's frames in its own picture, reporting its size with `view.set_preview_size` while it shows them; the Preview keeps showing the timeline's frame. Starting a source from the bin moves it to the Preview. One source plays at a time.\n- **Place from the Source view:** Enter, or its Insert button, places the whole asset at the timeline playhead, as the bin's Enter does; dragging from the Source view's picture onto the timeline drops it like a card. Marks and placing part of a clip are WP-2A.14.\n- The source ends when another project opens or the asset is removed (WP-1H.04's `playback.state`), and the Preview returns to the timeline.",
+      "interfaces": "a `SourceView` in the Preview panel; `playbackStore.source`; the bin's play binding.",
+      "acceptance": [
+        "Vitest: the transport bar's buttons and keys address the source while it is shown and the sequence after \"Back to timeline\"; the bindings test finds the bin's play key.",
+        "**A user flow (ADR-0018, F31 extended), real engine and corpus:** press play on the phone clip's card: the Preview says \"Source\" and its timecode runs from 0; `playback.state` reports the source playing and the master clock advances; J, K, L and → act on the source; \"Back to timeline\" shows the timeline frame at its unchanged playhead; play from the Inspector: the Inspector's picture changes while the Preview's does not; Enter in the Source view places the clip at the playhead; the undo history holds only that insert and the project was clean before it.",
+        "axe: 0 violations on the Preview in Source view; visual baselines of the Source header in dark and light."
+      ],
+      "tests": "Vitest, visual, user flow (real media).",
+      "out_of_scope": "in/out marks, inserting or overwriting a marked range, match frame (WP-2A.14); source and timeline playing side by side (ADR-0022, option 2)."
+    },
+    {
       "id": "WP-1O.01",
       "title": "Golden-frame test infrastructure",
       "source": {
         "file": "docs/wbs/P1-skeleton.md",
-        "line": 1328
+        "line": 1387
       },
       "phase": "P1",
       "epic": "1O",
@@ -3590,7 +3700,7 @@
       "title": "CLI = MCP = RPC parity test",
       "source": {
         "file": "docs/wbs/P1-skeleton.md",
-        "line": 1347
+        "line": 1406
       },
       "phase": "P1",
       "epic": "1O",
@@ -3624,7 +3734,7 @@
       "title": "MCP conformance + scripted-agent e2e",
       "source": {
         "file": "docs/wbs/P1-skeleton.md",
-        "line": 1364
+        "line": 1423
       },
       "phase": "P1",
       "epic": "1O",
@@ -3653,7 +3763,7 @@
       "title": "M1 exit acceptance suite (UI + MCP + crash)",
       "source": {
         "file": "docs/wbs/P1-skeleton.md",
-        "line": 1378
+        "line": 1437
       },
       "phase": "P1",
       "epic": "1O",
@@ -3696,7 +3806,7 @@
       "title": "User-flow e2e suite (real app, real input, real dialogs)",
       "source": {
         "file": "docs/wbs/P1-skeleton.md",
-        "line": 1394
+        "line": 1453
       },
       "phase": "P1",
       "epic": "1O",
@@ -3987,6 +4097,8 @@
         "WP-1M.11",
         "WP-1M.12",
         "WP-1M.13",
+        "WP-1M.14",
+        "WP-1M.15",
         "WP-2A.01",
         "WP-2C.06"
       ],
@@ -4079,6 +4191,8 @@
         "WP-1M.11",
         "WP-1M.12",
         "WP-1M.13",
+        "WP-1M.14",
+        "WP-1M.15",
         "WP-2A.02"
       ],
       "scope": "- Canvas2D virtualized renderer: ruler (timecode and frames), tracks with headers, items, selection, playhead, markers, in/out range, snap guides, linked-group badge, lock/mute/hidden styling, collapsed track heights.\n- Thumbnails and filmstrips come from `/media/{id}/filmstrip` and the waveform from `/media/{id}/waveform?lod=` via a bitmap cache (LRU, bounded to 256 MB) and LOD selection by zoom. Draws placeholders immediately and never blocks a frame on a fetch.\n- Horizontal zoom range from 1 frame/≥ 100 px up to 4 hours fit. Zoom is anchored at the cursor. Smooth wheel/pinch. Vertical scroll with sticky track headers.\n- Spatial index (interval tree) for hit-testing: `hitTest(x,y) → {item, part: body|left-edge|right-edge|fade-handle|keyframe, trackId}`.\n- Redraw is dirty-rect or full-frame only when needed (`requestAnimationFrame` coalescing).",
@@ -4129,6 +4243,8 @@
         "WP-1M.11",
         "WP-1M.12",
         "WP-1M.13",
+        "WP-1M.14",
+        "WP-1M.15",
         "WP-2A.05",
         "WP-2A.06",
         "WP-2A.08",
@@ -4263,11 +4379,49 @@
       "out_of_scope": "per-sequence overrides of these defaults; the rows other WPs own (listed above)."
     },
     {
+      "id": "WP-2A.14",
+      "title": "Source marks and three-point editing: in and out on a source, insert and overwrite, match frame",
+      "source": {
+        "file": "docs/wbs/P2-core-editor.md",
+        "line": 329
+      },
+      "phase": "P2",
+      "epic": "2A",
+      "area": "packages/editor (Source view marks, insert and overwrite actions and keys, match frame, marks on bin cards), crates/cutweave-engine (`source_marks` in the view state and `ui-state.json`), generated schema and TS types, docs/spec/edit-semantics.md (three-point rules), apps/desktop/e2e/flows, docs/user-flows.md",
+      "size": "M",
+      "executor": "sonnet",
+      "executor_note": "",
+      "depends_raw": "WP-1M.15, WP-2A.01, WP-2A.03, WP-2A.10",
+      "depends_wps": [
+        "WP-1M.15",
+        "WP-2A.01",
+        "WP-2A.03",
+        "WP-2A.10"
+      ],
+      "depends_epics": [],
+      "depends": [
+        "WP-1M.15",
+        "WP-2A.01",
+        "WP-2A.03",
+        "WP-2A.10"
+      ],
+      "scope": "(product owner request, 2026-11-24, the editing half of \"preview without adding to timeline\"; P1's WP-1M.15 plays a source and places the whole asset)\n- **Marks:** I and O set in and out on the source at its playhead (the same keys as on the timeline, by focus), \"Clear in and out\" clears both. Marks show on the Source view's scrub bar and as a range bar on the asset's bin card. They are kept per asset in the view state (`view.set{source_marks}`, persisted in `ui-state.json` by WP-1C.04's store; not undoable, not journaled), so they survive a reopen.\n- **Insert** (`,`) and **Overwrite** (`.`) place the marked range (or the whole asset) at the timeline playhead on the target track: `timeline.insert{source_in, duration}` and WP-2A.03's overwrite. Three-point rules follow `edit-semantics.md`: with timeline in and out set, the timeline in wins and the duration comes from the source marks. Each placement is one undo step.\n- **Drag from the Source view** places the marked range. Dragging only its picture or only its sound icon places video only or audio only.\n- **Match frame** (F) with a timeline clip under the playhead: opens the clip's media in the Source view at the matching source frame, with the clip's source range as its marks.",
+      "interfaces": "`view.set{source_marks}` (additive view state); the Source view's Insert and Overwrite actions and keys (in `listBindings()`).",
+      "acceptance": [
+        "Vitest: the three-point placement math agrees with the `edit-semantics.md` fixtures (source marks only, timeline marks only, both).",
+        "Parity: the item that Insert from the Source view creates is the one `timeline.insert{source_in, duration}` creates through the CLI on the same project (normalized structure).",
+        "**A user flow (ADR-0018, F31 extended):** play the interview in the Source view, mark in at 2 s and out at 5 s, press `,`: a 3 s clip lands at the playhead starting at source 2 s; press `.` over an existing clip: it is overwritten; reopen the project: the marks are still on the card; F on the placed clip opens it in the Source view at the matching frame.",
+        "axe: 0 violations on the Source view with marks; visual baselines of the marked scrub bar and card."
+      ],
+      "tests": "Vitest, parity script, user flow.",
+      "out_of_scope": "four-point editing and fit to fill; subclips; source and timeline viewers side by side (ADR-0022, option 2)."
+    },
+    {
       "id": "WP-2B.01",
       "title": "Multi-sequence commands, aspect presets, sequence settings",
       "source": {
         "file": "docs/wbs/P2-core-editor.md",
-        "line": 333
+        "line": 352
       },
       "phase": "P2",
       "epic": "2B",
@@ -4314,7 +4468,7 @@
       "title": "Background fill: color, blur, image",
       "source": {
         "file": "docs/wbs/P2-core-editor.md",
-        "line": 353
+        "line": 372
       },
       "phase": "P2",
       "epic": "2B",
@@ -4351,7 +4505,7 @@
       "title": "Sequence UI: tabs, settings dialog, aspect switcher",
       "source": {
         "file": "docs/wbs/P2-core-editor.md",
-        "line": 371
+        "line": 390
       },
       "phase": "P2",
       "epic": "2B",
@@ -4385,7 +4539,7 @@
       "title": "Compound clips: nested sequences as media",
       "source": {
         "file": "docs/wbs/P2-core-editor.md",
-        "line": 386
+        "line": 405
       },
       "phase": "P2",
       "epic": "2B",
@@ -4430,7 +4584,7 @@
       "title": "Compound clip UI: create, enter, breadcrumb",
       "source": {
         "file": "docs/wbs/P2-core-editor.md",
-        "line": 408
+        "line": 427
       },
       "phase": "P2",
       "epic": "2B",
@@ -4464,7 +4618,7 @@
       "title": "Spec: keyframe and easing model",
       "source": {
         "file": "docs/wbs/P2-core-editor.md",
-        "line": 426
+        "line": 445
       },
       "phase": "P2",
       "epic": "2C",
@@ -4496,7 +4650,7 @@
       "title": "Interpolation core",
       "source": {
         "file": "docs/wbs/P2-core-editor.md",
-        "line": 445
+        "line": 464
       },
       "phase": "P2",
       "epic": "2C",
@@ -4528,11 +4682,11 @@
       "title": "Keyframe and property commands (with retiming rules)",
       "source": {
         "file": "docs/wbs/P2-core-editor.md",
-        "line": 463
+        "line": 482
       },
       "phase": "P2",
       "epic": "2C",
-      "area": "crates/cutweave-ops/src/{keyframe,item}/",
+      "area": "crates/cutweave-ops/src/{keyframe,item}/, crates/cutweave-model (`VisualProps` crop, flip, blend mode; migration and goldens), generated schema and TS types",
       "size": "M",
       "executor": "sonnet",
       "executor_note": "",
@@ -4546,8 +4700,8 @@
         "WP-2A.04",
         "WP-2C.02"
       ],
-      "scope": "- Commands: `keyframe.set{item, prop, t, value, interp?}`, `keyframe.delete`, `keyframe.move{…, to_t}`, `keyframe.set_interp`, `keyframe.clear{prop}` (flatten to static at the value at `t` or the first), `keyframe.copy/paste` (in the same module as the clipboard payload), `item.set_props{item, props, auto_key?, at?}` (typed partial update of `VisualProps`, volume, pan; one command for UI inspector and agents), `clip.reset_props`.\n- Hook the keyframe split/trim/ripple/duplicate rules from 2C.01 into 2A commands (boundary keyframe insertion on split; optional prune).\n- Batch support for multi-select: `items[]`.\n- MCP core: `keyframe_set`, `item_set_props`. Catalog for the rest.",
-      "interfaces": "commands above. `item.get` returns animatable props with keyframes (`fields` filtering).",
+      "scope": "- Commands: `keyframe.set{item, prop, t, value, interp?}`, `keyframe.delete`, `keyframe.move{…, to_t}`, `keyframe.set_interp`, `keyframe.clear{prop}` (flatten to static at the value at `t` or the first), `keyframe.copy/paste` (in the same module as the clipboard payload), `item.set_props{item, props, auto_key?, at?}` (typed partial update of `VisualProps`, volume, pan; one command for UI inspector and agents), `clip.reset_props`.\n- Hook the keyframe split/trim/ripple/duplicate rules from 2C.01 into 2A commands (boundary keyframe insertion on split; optional prune).\n- Batch support for multi-select: `items[]`.\n- MCP core: `keyframe_set`, `item_set_props`. Catalog for the rest.\n- (product owner request, 2026-11-24: \"place 2 videos side by side\")\n  - **The model gap:** the P1 model's `VisualProps` has only `transform` and `opacity` (the P1 `item.set_props` takes name, enabled, opacity, audio_gain and transform), while arch §4.2 and WP-2C.04 expect `crop`, `flip` and `blend_mode`, and no other WP adds them to `cutweave-model`. This WP adds them: crop as four edges in fractions of the source frame (animatable), flip H/V (hold) and the blend mode. Older documents migrate with the defaults (no crop, no flip, normal); the migration chains after WP-2F.07's v2 in merge order (N18). `item.set_props` takes the new fields, so agents crop with the same command the Inspector and WP-2H.06's handles use.",
+      "interfaces": "commands above. `item.get` returns animatable props with keyframes (`fields` filtering). `VisualProps.{crop, flip, blend_mode}`.",
       "acceptance": [
         "Splitting a clip with keyframes: evaluating each half at any matching timeline time equals the original value within 1e-6 (proptest, 1,000 cases).",
         "Setting a keyframe at an occupied `t` replaces it. Moving past a neighbour is rejected with `Invalid` or reorders (per spec; one behaviour, tested).",
@@ -4562,7 +4716,7 @@
       "title": "Render: transform, crop, opacity, flip, core blend modes",
       "source": {
         "file": "docs/wbs/P2-core-editor.md",
-        "line": 482
+        "line": 503
       },
       "phase": "P2",
       "epic": "2C",
@@ -4599,7 +4753,7 @@
       "title": "Timeline keyframe lanes and curve editor",
       "source": {
         "file": "docs/wbs/P2-core-editor.md",
-        "line": 502
+        "line": 523
       },
       "phase": "P2",
       "epic": "2C",
@@ -4636,7 +4790,7 @@
       "title": "Shared wasm module: keyframe, easing, time and snapping math",
       "source": {
         "file": "docs/wbs/P2-core-editor.md",
-        "line": 519
+        "line": 540
       },
       "phase": "P2",
       "epic": "2C",
@@ -4672,7 +4826,7 @@
       "title": "Bezier graph editor panel",
       "source": {
         "file": "docs/wbs/P2-core-editor.md",
-        "line": 538
+        "line": 559
       },
       "phase": "P2",
       "epic": "2C",
@@ -4703,11 +4857,52 @@
       "out_of_scope": "expression-driven curves, motion paths in the preview (P4)."
     },
     {
+      "id": "WP-2C.08",
+      "title": "Layouts for several clips: side by side, top and bottom, picture in picture, grids",
+      "source": {
+        "file": "docs/wbs/P2-core-editor.md",
+        "line": 577
+      },
+      "phase": "P2",
+      "epic": "2C",
+      "area": "crates/cutweave-ops/src/item/ (`item.apply_layout`, the layout table as data), generated schema and TS types, packages/editor (a Layout menu in the Inspector, the timeline's clip menu and the bin), apps/desktop/e2e/flows, docs/user-flows.md",
+      "size": "M",
+      "executor": "sonnet",
+      "executor_note": "",
+      "depends_raw": "WP-2C.03, WP-2C.04, WP-2H.03, WP-2A.10, WP-2B.01",
+      "depends_wps": [
+        "WP-2C.03",
+        "WP-2C.04",
+        "WP-2H.03",
+        "WP-2A.10",
+        "WP-2B.01"
+      ],
+      "depends_epics": [],
+      "depends": [
+        "WP-2A.10",
+        "WP-2B.01",
+        "WP-2C.03",
+        "WP-2C.04",
+        "WP-2H.03"
+      ],
+      "scope": "(product owner request, 2026-11-24: \"if I want to place 2 videos side by side on the timeline, will it be possible?\") Today this is possible by hand. A second clip dropped at the same time goes to a new track, then Scale 50 % and Position X ±480 in the Inspector. The clips are letterboxed, though, because P1 has no crop. Crop arrives with WP-2C.03, WP-2C.04 and WP-2H.03, and transform handles and snapping with WP-2H.06. This WP makes the arrangement one action.\n- **`item.apply_layout{items[], layout, fill: crop|fit, gap?, order?}`** sets each item's transform and crop as ordinary `VisualProps` values in one undoable step. MCP catalog: agents arrange clips with the same command the UI uses, and the result is plain properties that anyone can adjust afterwards.\n  - `crop` fills each cell with a centred crop; `fit` scales to fit inside the cell.\n  - `gap` is a spacing in sequence pixels.\n  - `order` lists the items for the cells; without it, the top track comes first.\n  - A property that is already animated gets a keyframe at the playhead (2C.03's auto-key rule).\n  - The cells come from the sequence's canvas size (WP-2B.01).\n- **Layouts** (data, so packs can add more later):\n  - two clips: side by side (left and right), top and bottom;\n  - picture in picture: a small clip in any corner, 30 % of the width, inset by the title-safe margin;\n  - three clips: three columns, one large and two small;\n  - four clips: a 2 × 2 grid.\n  - Too few or too many visual items give `Invalid`, with the counts the layout accepts.\n- **UI:**\n  - With 2–4 video clips selected, the Inspector shows a Layout row of small diagrams, and the timeline's clip menu has Layout ▸.\n  - In the bin, selecting 2–4 video assets offers \"Place side by side…\", which inserts them at the playhead on new tracks and applies the layout in one undo step.\n  - \"Swap\" reverses the order of a two-clip layout.",
+      "interfaces": "`item.apply_layout`; the layout table (`layouts.json` in the ops crate's data, schema-validated).",
+      "acceptance": [
+        "Unit: each layout puts every clip's visible rectangle exactly on its cell (within 0.5 sequence px) on 16:9, 9:16 and 1:1 canvases with 16:9 and 9:16 sources, for `crop` and `fit`; undo restores every property; an animated scale gets a keyframe, not a static value.",
+        "Parity: `item.apply_layout` through the CLI, MCP and RPC gives byte-identical documents (`--deterministic-ids`).",
+        "Golden frame: two colour-bar clips side by side with `crop` render each half filled, with no letterbox.",
+        "**A user flow (ADR-0018, F36):** select two clips in the bin, \"Place side by side…\": both are on the timeline at the playhead on two tracks, and the preview frame shows the two pictures filling the left and right halves; Swap reverses them; Ctrl+Z undoes the layout, then the insert; select both clips, choose Picture in picture in the Inspector: the second clip sits small in a corner.",
+        "axe: 0 violations on the Layout row; visual baselines of the row in dark and light."
+      ],
+      "tests": "unit, parity, golden, Vitest, user flow.",
+      "out_of_scope": "animated transitions between layouts; split-screen as an effect on one clip (Split Screen Grid, WP-4C.06); templates with slots such as the picture-in-picture reaction template (WP-6D.11); borders and rounded corners on cells (P4 effects)."
+    },
+    {
       "id": "WP-2D.01",
       "title": "Speed model, reverse, freeze frame, source time mapping",
       "source": {
         "file": "docs/wbs/P2-core-editor.md",
-        "line": 560
+        "line": 613
       },
       "phase": "P2",
       "epic": "2D",
@@ -4749,7 +4944,7 @@
       "title": "Audio for speed and reverse (pitch-preserving)",
       "source": {
         "file": "docs/wbs/P2-core-editor.md",
-        "line": 581
+        "line": 634
       },
       "phase": "P2",
       "epic": "2D",
@@ -4785,7 +4980,7 @@
       "title": "Fades, keyframed volume, pan",
       "source": {
         "file": "docs/wbs/P2-core-editor.md",
-        "line": 604
+        "line": 657
       },
       "phase": "P2",
       "epic": "2E",
@@ -4822,7 +5017,7 @@
       "title": "Track buses, master limiter, meters",
       "source": {
         "file": "docs/wbs/P2-core-editor.md",
-        "line": 622
+        "line": 675
       },
       "phase": "P2",
       "epic": "2E",
@@ -4854,7 +5049,7 @@
       "title": "Loudness normalization and extract audio",
       "source": {
         "file": "docs/wbs/P2-core-editor.md",
-        "line": 641
+        "line": 694
       },
       "phase": "P2",
       "epic": "2E",
@@ -4898,7 +5093,7 @@
       "title": "Voiceover recording",
       "source": {
         "file": "docs/wbs/P2-core-editor.md",
-        "line": 661
+        "line": 714
       },
       "phase": "P2",
       "epic": "2E",
@@ -4925,6 +5120,7 @@
         "WP-1H.01",
         "WP-1H.02",
         "WP-1H.03",
+        "WP-1H.04",
         "WP-2E.02"
       ],
       "scope": "- cpal input stream (device selection, sample rate negotiation, mono/stereo) writing a lossless WAV (32-bit float or 24-bit) into `generated/recordings/` with crash-safe incremental header finalization (write size on stop and every 5 s so a crash leaves a recoverable file).\n- Commands: `audio.record_start{device?, track?, count_in?}`, `audio.record_stop → {media, item}`, `audio.list_devices` query. Records while the timeline plays (monitor timeline mix to output; latency compensation: measured round-trip offset setting, default from device reported latency) and on stop inserts the clip at the record start position on a (new) audio track, overwriting per mode.\n- Level meter during recording; mic permission handling (macOS `NSMicrophoneUsageDescription`, Windows privacy toggle detection → typed error `PermissionDenied`).\n- UI: record button in timeline toolbar, countdown 3-2-1, live level meter. The input device chooser, count-in, monitoring and latency rows are on Settings > Audio (WP-2E.08).\n- MCP: catalog (agents rarely record); marked `destructive=false`.",
@@ -4942,7 +5138,7 @@
       "title": "Audio UI: waveforms, fade and volume handles, mixer panel",
       "source": {
         "file": "docs/wbs/P2-core-editor.md",
-        "line": 680
+        "line": 733
       },
       "phase": "P2",
       "epic": "2E",
@@ -4979,7 +5175,7 @@
       "title": "Auto-ducking (sidechain from voice tracks)",
       "source": {
         "file": "docs/wbs/P2-core-editor.md",
-        "line": 697
+        "line": 750
       },
       "phase": "P2",
       "epic": "2E",
@@ -5013,7 +5209,7 @@
       "title": "Basic voice effects (offline DSP)",
       "source": {
         "file": "docs/wbs/P2-core-editor.md",
-        "line": 718
+        "line": 771
       },
       "phase": "P2",
       "epic": "2E",
@@ -5051,7 +5247,7 @@
       "title": "Settings: Audio page (output and input devices, buffer, recording, loudness target)",
       "source": {
         "file": "docs/wbs/P2-core-editor.md",
-        "line": 737
+        "line": 790
       },
       "phase": "P2",
       "epic": "2E",
@@ -5090,7 +5286,7 @@
       "title": "Proxy generation pipeline and policy",
       "source": {
         "file": "docs/wbs/P2-core-editor.md",
-        "line": 758
+        "line": 811
       },
       "phase": "P2",
       "epic": "2F",
@@ -5144,7 +5340,7 @@
       "title": "Proxy-aware preview/export source selection",
       "source": {
         "file": "docs/wbs/P2-core-editor.md",
-        "line": 778
+        "line": 831
       },
       "phase": "P2",
       "epic": "2F",
@@ -5167,6 +5363,7 @@
         "WP-1H.01",
         "WP-1H.02",
         "WP-1H.03",
+        "WP-1H.04",
         "WP-2F.01"
       ],
       "scope": "- `MediaResolver::open(media, purpose)` where `purpose = Preview(quality) | Export | Thumbnail | Analysis`. Export and Analysis always use the original; Preview uses the proxy when present and ready and quality ≤ proxy resolution scaling rule (full-res preview that needs more than the proxy provides uses the original, per quality ladder §8).\n- Hot-swap when a proxy finishes while a file is open (next seek uses it; no visible glitch).\n- Setting `preview.use_proxies` (default on) toggle in the transport bar. The preview status chip shows \"Proxy\" or \"Original\".\n- Missing/evicted proxy gracefully falls back to the original.",
@@ -5184,7 +5381,7 @@
       "title": "Relink missing media (hash-based) and media bin UI for health",
       "source": {
         "file": "docs/wbs/P2-core-editor.md",
-        "line": 796
+        "line": 849
       },
       "phase": "P2",
       "epic": "2F",
@@ -5228,6 +5425,8 @@
         "WP-1M.11",
         "WP-1M.12",
         "WP-1M.13",
+        "WP-1M.14",
+        "WP-1M.15",
         "WP-2F.01"
       ],
       "scope": "- Detect missing media on open and on file-watch events (status `ok|missing|changed`). Offline media renders as a \"media offline\" slate (render pipeline fallback frame plus silent audio) and never crashes export (export refuses with a typed error listing missing assets unless `allow_offline`).\n- `media.relink{media, path}` (single), `media.relink_folder{folder, recursive}` (search the folder, match by content hash first, then by filename+size+duration), `media.find_missing` query. Hash is computed lazily with a fast partial hash (first/last/middle 1 MB + size) and full hash only on ambiguity. Path rewrite preserves `path_rel` when under the project folder.\n- UI: a relink dialog on open (\"N files missing\"), per-asset badges in the bin, proxy status badges, and \"Regenerate proxies\" in the bin's context menu.\n- Proxy settings where the settings catalog (`docs/reference/settings.md`) puts them: Settings > Media and import (proxies for new projects: off / auto / all; proxy size 540p / 720p / 960p, a machine value), Settings > Cache and storage (proxy limit, 50 GiB), Settings > Performance and hardware (proxy jobs at once, 2). The machine values are applied through UI-only engine commands as in WP-1D.08; the project's own policy is edited in File > Project settings… (WP-2H.08).\n- MCP: `media_relink` catalog. `media_list` core includes `status`.",
@@ -5245,7 +5444,7 @@
       "title": "Collect and archive",
       "source": {
         "file": "docs/wbs/P2-core-editor.md",
-        "line": 815
+        "line": 868
       },
       "phase": "P2",
       "epic": "2F",
@@ -5283,7 +5482,7 @@
       "title": "Image and image-sequence import, still duration defaults",
       "source": {
         "file": "docs/wbs/P2-core-editor.md",
-        "line": 836
+        "line": 889
       },
       "phase": "P2",
       "epic": "2F",
@@ -5328,7 +5527,7 @@
       "title": "Media bin tags, ratings, notes, collections and the bin sidebar",
       "source": {
         "file": "docs/wbs/P2-core-editor.md",
-        "line": 856
+        "line": 909
       },
       "phase": "P2",
       "epic": "2F",
@@ -5369,6 +5568,8 @@
         "WP-1M.11",
         "WP-1M.12",
         "WP-1M.13",
+        "WP-1M.14",
+        "WP-1M.15",
         "WP-2F.03",
         "WP-2F.07",
         "WP-2F.08"
@@ -5389,7 +5590,7 @@
       "title": "Media folders: model, commands and migration (ADR-0020)",
       "source": {
         "file": "docs/wbs/P2-core-editor.md",
-        "line": 877
+        "line": 930
       },
       "phase": "P2",
       "epic": "2F",
@@ -5439,7 +5640,7 @@
       "title": "Media folders in the bin: browse, organize, drag and drop",
       "source": {
         "file": "docs/wbs/P2-core-editor.md",
-        "line": 903
+        "line": 956
       },
       "phase": "P2",
       "epic": "2F",
@@ -5469,6 +5670,8 @@
         "WP-1M.11",
         "WP-1M.12",
         "WP-1M.13",
+        "WP-1M.14",
+        "WP-1M.15",
         "WP-2F.07"
       ],
       "scope": "(product owner request, 2026-11-24) folders in the Media tab, built on WP-2F.07's commands.\n- **Browse:** the tab shows the open folder: its subfolders first as folder tiles (name, item count), then its assets. A breadcrumb above the grid (\"Media › Interviews › Day 1\"), each segment a button and a drop target. Double-click or Enter opens a folder; Backspace or Alt+↑ goes up. The open folder is kept per project with the panel's view state.\n- **Organize:** New folder (toolbar button, Ctrl/Cmd+Shift+N in the bin, context menu) creates it in the open folder and starts renaming; F2 or a slow click on the name renames a folder or an asset (WP-2F.07 display names); a context menu on tiles and on empty space: New folder, Rename, Move to… (a folder picker), Delete, Reveal in Explorer / Finder (assets).\n- **Multi-select:** Ctrl/Cmd-click, Shift-click ranges, Ctrl/Cmd+A in the bin; Delete on a selection removes the assets in one undo step (used ones refused with the engine's message, as today) and asks about folders.\n- **Drag and drop:** dragging selected tiles onto a folder tile, a breadcrumb segment or the top level moves them (`media.move{on_conflict:\"rename\"}`, one undo step, a toast when something was renamed). Dragging assets to the timeline works from inside folders as today. Import (button, Ctrl/Cmd+I) and OS files dropped on the bin import into the open folder; dropped on a folder tile, into that folder.\n- **Delete a folder:** a dialog that says what it holds (\"Delete \"B-roll\" and its 30 media? 5 are used on the timeline and will move to \"Interviews\".\"). Buttons: Delete folder and media (`remove`), Keep media (`move_up`), Cancel. An empty folder deletes without asking. Undo restores everything.\n- **Search and folders:** WP-1M.12's field gets a scope switch, All media (default) or This folder (with subfolders). In All media, results are flat with the folder path under each name, and folders whose names match come first.\n- **Accessibility:** folder tiles are options in the same listbox, announced as \"folder, N items\"; the breadcrumb is a `nav` with `aria-current`.",
@@ -5487,7 +5690,7 @@
       "title": "Import folders with their structure",
       "source": {
         "file": "docs/wbs/P2-core-editor.md",
-        "line": 925
+        "line": 978
       },
       "phase": "P2",
       "epic": "2F",
@@ -5523,7 +5726,7 @@
       "title": "Export preset system (L0 data) and built-in presets",
       "source": {
         "file": "docs/wbs/P2-core-editor.md",
-        "line": 948
+        "line": 1001
       },
       "phase": "P2",
       "epic": "2G",
@@ -5551,10 +5754,11 @@
         "WP-1E.02",
         "WP-1E.03"
       ],
-      "scope": "- Preset schema (JSON, versioned): `{id, name, container, video{codec, rate_control(crf|cbr|vbr), bitrate|crf, profile, preset, pix_fmt, hw_preferred}, audio{codec, bitrate, sample_rate, channels}, size{width,height|follow_sequence}, fps, loudness?, loop?, limits{max_duration, max_size}}`. Loaded from L0 packs; user presets saved in user config.\n- Built-in set (data): YouTube 1080p, YouTube 4K, YouTube Shorts (9:16, ≤ 60 s warning), Instagram Reels, TikTok, Instagram feed 4:5, GIF (palette, 15 fps, ≤ 480 px), audio-only (WAV, MP3, AAC, FLAC, Opus), ProRes 422 HQ (MOV), Archive (HEVC high quality), H.264 draft.\n- Commands: `export.list_presets`, `export.save_preset`, `export.delete_preset`; `export.start` accepts `preset` plus overrides.\n- Platform limits are warnings, not errors (duration, size, aspect mismatch).\n- MCP: `export_start` core takes preset id (list via `export.list_presets` in `cutweave_query`).",
-      "interfaces": "`ExportPreset` JSON Schema; commands above.",
+      "scope": "- Preset schema (JSON, versioned): `{id, name, container, video{codec, rate_control(crf|cbr|vbr), bitrate|crf, profile, preset, pix_fmt, hw_preferred}, audio{codec, bitrate, sample_rate, channels}, size{width,height|follow_sequence}, fps, loudness?, loop?, limits{max_duration, max_size}}`. Loaded from L0 packs; user presets saved in user config.\n- Built-in set (data): YouTube 1080p, YouTube 4K, YouTube Shorts (9:16, ≤ 60 s warning), Instagram Reels, TikTok, Instagram feed 4:5, GIF (palette, 15 fps, ≤ 480 px), audio-only (WAV, MP3, AAC, FLAC, Opus), ProRes 422 HQ (MOV), Archive (HEVC high quality), H.264 draft.\n- Commands: `export.list_presets`, `export.save_preset`, `export.delete_preset`; `export.start` accepts `preset` plus overrides.\n- Platform limits are warnings, not errors (duration, size, aspect mismatch).\n- MCP: `export_start` core takes preset id (list via `export.list_presets` in `cutweave_query`).\n- (product owner request, 2026-11-24: \"Are we supporting export presets (for ex: instagram, youtube, and so on)\")\n  - **Platform set:** YouTube (1080p, 4K), YouTube Shorts, Instagram Reels, Instagram Stories, Instagram feed (4:5 and 1:1), TikTok, and X (landscape and portrait). Each preset gives the resolution and aspect, a frame-rate rule (the sequence's rate, capped at the platform's maximum), the video bitrate or CRF, the audio codec and bitrate, and the platform's duration and file-size limits.\n  - **Dated values:** platform limits change. The Shorts \"≤ 60 s\" above is already out of date, so do not copy it. Every platform preset carries `platform{name, spec_url, checked: <date>}`, filled at implementation from the platform's published upload specs. Values that cannot be verified are marked `unverified`, as N7 does for shortcuts.\n  - **Safe areas:** each portrait preset names its UI-safe zone from WP-2H.06's data pack (`overlays/safe-areas.json`, one shared ID per platform, Stories included). The preview can then show the safe area of the preset chosen in the export dialog or the sequence settings.\n  - **Platform presets are H.264 + AAC MP4**, so they need nothing from WP-2G.02 and can ship before it.",
+      "interfaces": "`ExportPreset` JSON Schema (with `platform` and `safe_area`); commands above.",
       "acceptance": [
         "All presets validate against the schema in CI (`cargo test -p cutweave-ops presets`); a snapshot lists their ids.",
+        "Every platform preset has a `spec_url` and a `checked` date, and its `safe_area` (when present) exists in the safe-area data (CI check).",
         "Resolving the \"TikTok\" preset on a 16:9 sequence returns a warning code `AspectMismatch` and does not change the sequence.",
         "Presets referencing unavailable codecs (e.g., no HW encoder) fall back documented per the preset `hw_preferred` flag."
       ],
@@ -5566,7 +5770,7 @@
       "title": "Codecs: HEVC, AV1, ProRes, GIF, audio-only, sequences",
       "source": {
         "file": "docs/wbs/P2-core-editor.md",
-        "line": 967
+        "line": 1026
       },
       "phase": "P2",
       "epic": "2G",
@@ -5603,7 +5807,7 @@
       "title": "Background export queue, range and marker-set export",
       "source": {
         "file": "docs/wbs/P2-core-editor.md",
-        "line": 986
+        "line": 1045
       },
       "phase": "P2",
       "epic": "2G",
@@ -5643,11 +5847,11 @@
       "title": "Export dialog and queue panel",
       "source": {
         "file": "docs/wbs/P2-core-editor.md",
-        "line": 1008
+        "line": 1067
       },
       "phase": "P2",
       "epic": "2G",
-      "area": "packages/editor/src/export/",
+      "area": "packages/editor/src/export/, apps/desktop/e2e/flows, docs/user-flows.md",
       "size": "M",
       "executor": "sonnet",
       "executor_note": "",
@@ -5674,14 +5878,17 @@
         "WP-1M.11",
         "WP-1M.12",
         "WP-1M.13",
+        "WP-1M.14",
+        "WP-1M.15",
         "WP-2G.03",
         "WP-2G.05",
         "WP-2H.02"
       ],
-      "scope": "- Export dialog (schema-driven form from the preset schema): preset picker grouped by platform, summary (resolution/codec/estimated size from bitrate × duration), range selector (whole sequence / in-out / marker set), output path picker with template, filename tokens, advanced section. Platform warnings inline. Buttons: Export, Add to queue.\n- Queue panel (dockable): list with progress, ETA, cancel/retry/reorder (drag), reveal-in-folder, open file, errors with the machine code and human message; desktop notification on completion.\n- Save-as-preset flow.\n- Settings (catalog `docs/reference/settings.md`): Settings > Export gains the default preset (last used) and the file name pattern (`{project}`; tokens project, sequence, date, preset) next to WP-1M.13's rows; Settings > Notifications gains \"Notify when an export finishes while Cutweave is in the background\" (on; an OS notification from main) and \"Play a sound when an export finishes\" (off).",
+      "scope": "- Export dialog (schema-driven form from the preset schema): preset picker grouped by platform, summary (resolution/codec/estimated size from bitrate × duration), range selector (whole sequence / in-out / marker set), output path picker with template, filename tokens, advanced section. Platform warnings inline. Buttons: Export, Add to queue.\n- Queue panel (dockable): list with progress, ETA, cancel/retry/reorder (drag), reveal-in-folder, open file, errors with the machine code and human message; desktop notification on completion.\n- Save-as-preset flow.\n- Settings (catalog `docs/reference/settings.md`): Settings > Export gains the default preset (last used) and the file name pattern (`{project}`; tokens project, sequence, date, preset) next to WP-1M.13's rows; Settings > Notifications gains \"Notify when an export finishes while Cutweave is in the background\" (on; an OS notification from main) and \"Play a sound when an export finishes\" (off).\n- (product owner request, 2026-11-24) The preset picker groups platform presets under each platform with its logo-free name and a one-line summary (for example \"1080 × 1920, up to the platform's limit\"). It puts the presets that match the sequence's aspect first. A preset whose aspect does not match says what will happen (fit with bars) and offers \"Make a 9:16 copy of the sequence\" when WP-2B.01's aspect presets exist. Over-limit duration or size is an inline warning, never a block.",
       "interfaces": "consumes `export.*` commands/queries and the `job.progress` events.",
       "acceptance": [
         "Playwright: export a YouTube 1080p preset of the fixture project through the UI and verify the output with ffprobe; queue 2 exports, cancel one.",
+        "**A user flow (ADR-0018, F34):** on a 9:16 sequence, File > Export…: the portrait platform presets come first; choose Instagram Reels: the summary shows 1080 × 1920 and a timeline longer than the preset's limit shows the warning; export: `ffprobe` reads 1080 × 1920 H.264 + AAC; choose YouTube 1080p on the same sequence: the dialog says it will fit with bars.",
         "Progress updates ≥ 4 Hz without re-rendering unrelated panels (React profiler assertion: queue panel only).",
         "axe: 0 violations in the dialog."
       ],
@@ -5693,7 +5900,7 @@
       "title": "Advanced export controls",
       "source": {
         "file": "docs/wbs/P2-core-editor.md",
-        "line": 1026
+        "line": 1087
       },
       "phase": "P2",
       "epic": "2G",
@@ -5726,11 +5933,11 @@
       "title": "Dockable workspace, Short-form/Long-form layouts, i18n scaffold",
       "source": {
         "file": "docs/wbs/P2-core-editor.md",
-        "line": 1048
+        "line": 1109
       },
       "phase": "P2",
       "epic": "2H",
-      "area": "packages/editor/src/workspace/, packages/editor/src/i18n/",
+      "area": "packages/editor/src/workspace/, packages/editor/src/dock/, packages/editor/src/i18n/, packages/editor/src/shell/ (View > Panels in the menu model), apps/desktop/e2e/flows, docs/user-flows.md",
       "size": "M",
       "executor": "sonnet",
       "executor_note": "",
@@ -5756,12 +5963,15 @@
         "WP-1M.10",
         "WP-1M.11",
         "WP-1M.12",
-        "WP-1M.13"
+        "WP-1M.13",
+        "WP-1M.14",
+        "WP-1M.15"
       ],
-      "scope": "- `dockview` integration: all panels (Media, Preview, Timeline, Inspector, Mixer, Export queue, Effects placeholder) registered in a typed panel registry (contribution-point shaped so L3 plugins can register later). Drag/dock/float/tab/maximize, per-panel minimum size.\n- Layout serialization to user config (`~/.cutweave/workspaces.json`) with schema version and recovery from corrupt layouts (falls back to the default and notes it).\n- Built-in workspaces: **Long-form** (wide preview, large timeline, media left, inspector right) and **Short-form** (9:16 preview centered and tall, timeline compact at the bottom, inspector right). Workspace switcher in the title bar, \"Save layout as…\", \"Reset layout\". Selecting a sequence with 9:16 aspect suggests (not forces) Short-form once per project.\n- Settings > General: \"Workspace for new projects\": last used (default), Long-form, Short-form (`general.workspace`, catalog `docs/reference/settings.md`).\n- i18n scaffold: `i18next` (or `lingui`), message extraction script, `en` catalog with ICU plurals, locale detection, lint rule failing on user-visible hard-coded strings in `packages/editor` and `packages/ui` (allowlist file). Command names/descriptions come from the registry (English now, translation keys reserved).",
-      "interfaces": "`registerPanel({id,title,component,defaultDock})`, `workspace.*` view commands (UI-only).",
+      "scope": "- `dockview` integration: all panels (Media, Preview, Timeline, Inspector, Mixer, Export queue, Effects placeholder) registered in a typed panel registry (contribution-point shaped so L3 plugins can register later). Drag/dock/float/tab/maximize, per-panel minimum size.\n- Layout serialization to user config (`~/.cutweave/workspaces.json`) with schema version and recovery from corrupt layouts (falls back to the default and notes it).\n- Built-in workspaces: **Long-form** (wide preview, large timeline, media left, inspector right) and **Short-form** (9:16 preview centered and tall, timeline compact at the bottom, inspector right). Workspace switcher in the title bar, \"Save layout as…\", \"Reset layout\". Selecting a sequence with 9:16 aspect suggests (not forces) Short-form once per project.\n- Settings > General: \"Workspace for new projects\": last used (default), Long-form, Short-form (`general.workspace`, catalog `docs/reference/settings.md`).\n- i18n scaffold: `i18next` (or `lingui`), message extraction script, `en` catalog with ICU plurals, locale detection, lint rule failing on user-visible hard-coded strings in `packages/editor` and `packages/ui` (allowlist file). Command names/descriptions come from the registry (English now, translation keys reserved).\n- **Already in P1:** the workspace switcher, layouts saved per workspace, \"Reset layout\" in the top bar (WP-1M.01, F16) and the i18n scaffold (WP-1M.01). This WP builds on them and does not replace them.\n- (product owner request, 2026-11-24: \"Option to remove and re-add panels\")\n  - **Close a panel:** a close button on each panel's tab (P1's tabs have none) and \"Close panel\" in the tab's menu.\n  - **Get it back:** View > Panels lists every registered panel (Assets, Preview, Inspector, Timeline, and later History, Mixer, Export queue, plugin panels) with a checkmark on the open ones. Choosing a panel toggles it: a closed panel reopens where it was last docked in this workspace, or at its default dock. Each item is a command, so it can be bound to a key (WP-2H.05) and run from the palette (WP-2H.04).\n  - **Reset:** View > Reset layout resets the current workspace (as the top bar's button does), and \"Reset all workspaces\" resets them all.\n  - **Every panel closed:** the dock shows an empty state with \"Reopen panels\" and \"Reset layout\".\n  - **State survives closing:** a panel keeps its state when closed and reopened (the bin's search and sort, the timeline's zoom and scroll), because that state lives in stores, not in the panel's component.\n  - **Per workspace:** closed panels are part of the workspace's saved layout, so each workspace keeps its own set, and a relaunch keeps them closed.",
+      "interfaces": "`registerPanel({id,title,component,defaultDock})`, `workspace.*` view commands (UI-only); View > Panels and Reset layout.",
       "acceptance": [
         "Playwright: switch Long→Short, drag the inspector to float, restart the app, the layout restores; corrupt `workspaces.json` → app starts with the default and a toast.",
+        "**A user flow (ADR-0018, F33):** close the Inspector with its tab's close button: the Preview widens and View > Panels shows Inspector unchecked; choose it: it comes back where it was. Close Assets in Long-form, switch to Short-form (Assets open there) and back (still closed). Close every panel: the empty state shows, and Reset layout brings all four back. Relaunch: a panel closed before quitting stays closed.",
         "Layout change with the playback running causes no dropped preview frames (> 2 per 10 s) — measured by the playback probe.",
         "`pnpm i18n:extract` is idempotent in CI; lint blocks a hard-coded string in a sample PR (test fixture)."
       ],
@@ -5773,7 +5983,7 @@
       "title": "Schema-driven inspector renderer",
       "source": {
         "file": "docs/wbs/P2-core-editor.md",
-        "line": 1067
+        "line": 1137
       },
       "phase": "P2",
       "epic": "2H",
@@ -5801,6 +6011,8 @@
         "WP-1M.11",
         "WP-1M.12",
         "WP-1M.13",
+        "WP-1M.14",
+        "WP-1M.15",
         "WP-1N.01",
         "WP-1N.02"
       ],
@@ -5821,7 +6033,7 @@
       "title": "Inspector wiring: clip, track, sequence, audio, export panels",
       "source": {
         "file": "docs/wbs/P2-core-editor.md",
-        "line": 1087
+        "line": 1157
       },
       "phase": "P2",
       "epic": "2H",
@@ -5860,7 +6072,7 @@
       "title": "Command palette and registry-driven menus",
       "source": {
         "file": "docs/wbs/P2-core-editor.md",
-        "line": 1105
+        "line": 1175
       },
       "phase": "P2",
       "epic": "2H",
@@ -5895,11 +6107,11 @@
       "title": "Keymap engine, shortcut editor, NLE and CapCut presets",
       "source": {
         "file": "docs/wbs/P2-core-editor.md",
-        "line": 1121
+        "line": 1191
       },
       "phase": "P2",
       "epic": "2H",
-      "area": "packages/editor/src/keymap/, apps/desktop (global shortcut conflicts)",
+      "area": "packages/editor/src/keymap/ (and the editor's existing key tables: `shell/appMenu.ts`, `transport/keymap.ts`, `panels/binKeys.ts`, `shortcuts/`), packages/timeline (`TIMELINE_KEYS` becomes a context of the keymap), packages/preferences (`shortcuts.*`), apps/desktop (global shortcut conflicts), docs/reference/settings.md, apps/desktop/e2e/flows, docs/user-flows.md",
       "size": "M",
       "executor": "sonnet",
       "executor_note": "",
@@ -5925,13 +6137,17 @@
         "WP-1M.11",
         "WP-1M.12",
         "WP-1M.13",
+        "WP-1M.14",
+        "WP-1M.15",
         "WP-2H.04"
       ],
-      "scope": "- Keymap engine: bindings `{key|chord, command, args?, when?}`, contexts (timeline focus, preview focus, text input suppresses), platform modifier mapping, chords (e.g. `Ctrl+K Ctrl+S`), conflict detection, key repeat rules (JKL shuttle), IME safety.\n- Shortcut editor UI as the Keyboard shortcuts page of Settings (it replaces WP-1M.13's read-only list in WP-1M.11's frame; its search also answers the dialog's search): searchable command list, record-a-shortcut, conflict warning with reassign/cancel, per-command reset, import/export JSON, preset switcher. Bindings and the preset are app preferences (`shortcuts.*`, catalog `docs/reference/settings.md`), included in Export settings….\n- Presets (L0 data files `keymaps/nle.json`, `keymaps/capcut.json`, plus `default`= NLE): NLE: J/K/L, I/O, B razor, A select, V, Q/W ripple trim previous/next, Home/End, Ctrl+Z/Shift+Ctrl+Z, M marker, comma/period nudge, Del / Shift+Del ripple delete. CapCut: Ctrl+B split, Del delete, Ctrl+Z, Ctrl+Shift+Z, Space, `[`/`]` trim to playhead, Ctrl+D... derived from research/01-capcut-features.md; any binding not verifiable is marked `unverified` in the file and in Notes N7.\n- Every command bindable (palette listing = bindable list).",
+      "scope": "- Keymap engine: bindings `{key|chord, command, args?, when?}`, contexts (timeline focus, preview focus, text input suppresses), platform modifier mapping, chords (e.g. `Ctrl+K Ctrl+S`), conflict detection, key repeat rules (JKL shuttle), IME safety.\n- Shortcut editor UI as the Keyboard shortcuts page of Settings (it replaces WP-1M.13's read-only list in WP-1M.11's frame; its search also answers the dialog's search): searchable command list, record-a-shortcut, conflict warning with reassign/cancel, per-command reset, import/export JSON, preset switcher. Bindings and the preset are app preferences (`shortcuts.*`, catalog `docs/reference/settings.md`), included in Export settings….\n- Presets (L0 data files `keymaps/nle.json`, `keymaps/capcut.json`, plus `default`= NLE): NLE: J/K/L, I/O, B razor, A select, V, Q/W ripple trim previous/next, Home/End, Ctrl+Z/Shift+Ctrl+Z, M marker, comma/period nudge, Del / Shift+Del ripple delete. CapCut: Ctrl+B split, Del delete, Ctrl+Z, Ctrl+Shift+Z, Space, `[`/`]` trim to playhead, Ctrl+D... derived from research/01-capcut-features.md; any binding not verifiable is marked `unverified` in the file and in Notes N7.\n- Every command bindable (palette listing = bindable list).\n- (product owner request, 2026-11-24: \"We need keyboard shortcut mapping in settings\")\n  - **One keymap for every handler.** The four tables WP-1M.13 lists today (the menu bar's `chordsFor`, the transport keymap, `TIMELINE_KEYS`, `BIN_KEYS`) become bindings of this engine with contexts, and `listBindings()` keeps listing them, so the page and the handlers still cannot drift.\n  - **Undo and Redo:** Windows and Linux bind Redo to both Ctrl+Shift+Z and Ctrl+Y today, but the Edit menu shows only Ctrl+Y. A person can choose which binding the menu shows. The CapCut preset puts Ctrl+Shift+Z first, and macOS stays ⇧⌘Z.\n  - **Any keyboard layout:** today letters match `KeyboardEvent.key`, so a shortcut can miss when a non-Latin layout is active (Hebrew, Russian). Letters fall back to the physical key (`KeyboardEvent.code`) then, as the native menu's accelerators do. Record-a-shortcut stores what the person pressed and shows it in their layout.\n  - **Reserved keys** cannot be bound, and the editor says why: the menu bar's Alt access keys and F10, Alt+F4, the clipboard keys inside text fields, Esc and Enter in dialogs.\n  - **Storage:** only the differences from the chosen preset are stored (`shortcuts.bindings` holds overrides and removals), so a preset fixed in an update reaches people who changed other keys. \"Reset all shortcuts\" is next to the preset switcher.",
       "interfaces": "keymap JSON schema; `keymap.*` view commands.",
       "acceptance": [
         "Both presets load with 0 conflicts (CI check script) and cover ≥ 30 commands each.",
         "Playwright: switch preset NLE→CapCut and `Ctrl+B` splits at the playhead; rebinding persists across restart; typing in the inspector's text field does not trigger shortcuts.",
+        "Vitest: with a Hebrew and a Russian layout simulated (`key` non-Latin, `code` `KeyZ`), Ctrl+Z still undoes; a reserved key is refused with its reason; the stored preferences hold only the overrides.",
+        "**A user flow (ADR-0018, F35):** Settings > Keyboard shortcuts: rebind Split to Ctrl+K and see it split on the timeline; bind it to Ctrl+Z and answer the conflict prompt with Cancel; make Ctrl+Shift+Z the Redo the menu shows and see it in Edit; export the shortcuts to a file (picker stubbed), reset all, import them back; relaunch: the bindings persist.",
         "Keymap lookup < 0.2 ms."
       ],
       "tests": "Vitest, Playwright, conflict check script.",
@@ -5942,7 +6158,7 @@
       "title": "Preview overlays: transform handles, crop, safe areas, grid",
       "source": {
         "file": "docs/wbs/P2-core-editor.md",
-        "line": 1139
+        "line": 1217
       },
       "phase": "P2",
       "epic": "2H",
@@ -5963,15 +6179,17 @@
         "WP-1H.01",
         "WP-1H.02",
         "WP-1H.03",
+        "WP-1H.04",
         "WP-2C.03",
         "WP-2C.04",
         "WP-2H.02"
       ],
-      "scope": "- DOM/SVG overlay over the WebGPU canvas (same page, no z-order issues, §10): transform box with move/scale (corner = uniform, Shift = free)/rotate handles + anchor point; crop mode (edge/corner handles); multi-selection bounding box; snapping to canvas center/edges/other layers' edges with guides; arrow-key nudges (1 px / 10 px with Shift).\n- Overlay toggles: safe areas (action 90%/title 80% plus platform-specific UI-safe zones for 9:16 Shorts/Reels/TikTok as data), rule-of-thirds grid, center cross, custom grid, aspect-ratio frame guide, pixel-ratio display.\n- Gestures use `gesture` tx and `item.set_props{auto_key}` so the preview updates live; on animated props, dragging with auto-key creates a keyframe at the playhead.\n- Coordinates: conversions between overlay CSS px ↔ sequence px ↔ normalized, accounting for the preview scale and the object-fit; unit-tested.",
+      "scope": "- DOM/SVG overlay over the WebGPU canvas (same page, no z-order issues, §10): transform box with move/scale (corner = uniform, Shift = free)/rotate handles + anchor point; crop mode (edge/corner handles); multi-selection bounding box; snapping to canvas center/edges/other layers' edges with guides; arrow-key nudges (1 px / 10 px with Shift).\n- Overlay toggles: safe areas (action 90%/title 80% plus platform-specific UI-safe zones for 9:16 Shorts/Reels/TikTok as data), rule-of-thirds grid, center cross, custom grid, aspect-ratio frame guide, pixel-ratio display.\n- (product owner requests, 2026-11-24)\n  - The safe-area pack uses one ID per platform, shared with WP-2G.01's platform presets (Instagram Stories added), so the preview can show the zone of the chosen export preset.\n  - For two videos side by side, snapping also catches the canvas halves and quarters and the neighbouring clip's edges. Shift-dragging a crop edge crops the opposite edge too. WP-2C.08's layouts are the one-click way to get the same result.  - Gestures use `gesture` tx and `item.set_props{auto_key}` so the preview updates live; on animated props, dragging with auto-key creates a keyframe at the playhead.\n- Coordinates: conversions between overlay CSS px ↔ sequence px ↔ normalized, accounting for the preview scale and the object-fit; unit-tested.",
       "interfaces": "`<PreviewOverlay>`; safe-area data pack `overlays/safe-areas.json`.",
       "acceptance": [
         "Playwright: drag-move a clip 100 sequence px: `position` changes by 100 ± 0.5 px at any preview zoom (25%/50%/100%); rotate by 15° ± 0.5°; undo returns to the original.",
         "9:16 manual reframe task: scale to fill and pan a 16:9 clip so a subject is centered, in ≤ 10 UI actions (used in dogfood B).",
+        "Side-by-side task: two 16:9 clips on a 16:9 sequence arranged to fill the left and right halves with handles and crop, in ≤ 12 UI actions, with each clip filling its half within 1 px.",
         "Overlay stays aligned with the video during live resize (pixel diff on a test pattern < 1 px).",
         "Overlay interaction latency (pointer move → preview update) p95 < 50 ms."
       ],
@@ -5983,7 +6201,7 @@
       "title": "UX design review gate (human)",
       "source": {
         "file": "docs/wbs/P2-core-editor.md",
-        "line": 1158
+        "line": 1239
       },
       "phase": "P2",
       "epic": "2H",
@@ -6021,7 +6239,7 @@
       "title": "Project settings: `project.set_settings` and File > Project settings…",
       "source": {
         "file": "docs/wbs/P2-core-editor.md",
-        "line": 1171
+        "line": 1252
       },
       "phase": "P2",
       "epic": "2H",
@@ -6058,7 +6276,7 @@
       "title": "Settings: Appearance page (interface scale, density, reduce motion)",
       "source": {
         "file": "docs/wbs/P2-core-editor.md",
-        "line": 1189
+        "line": 1270
       },
       "phase": "P2",
       "epic": "2H",
@@ -6094,7 +6312,7 @@
       "title": "Settings: Playback page (preview quality, proxies, scrub audio, loop)",
       "source": {
         "file": "docs/wbs/P2-core-editor.md",
-        "line": 1208
+        "line": 1289
       },
       "phase": "P2",
       "epic": "2H",
@@ -6114,6 +6332,7 @@
         "WP-1H.01",
         "WP-1H.02",
         "WP-1H.03",
+        "WP-1H.04",
         "WP-1M.11",
         "WP-2F.02"
       ],
@@ -6127,11 +6346,48 @@
       "out_of_scope": "pre-roll and post-roll; shuttle speed presets."
     },
     {
+      "id": "WP-2H.11",
+      "title": "History panel: every undo step, who made it, go back to any step",
+      "source": {
+        "file": "docs/wbs/P2-core-editor.md",
+        "line": 1305
+      },
+      "phase": "P2",
+      "epic": "2H",
+      "area": "packages/editor (History panel in WP-2H.01's panel registry, Edit > History), crates/cutweave-commands (`steps` on `edit.undo` and `edit.redo`), generated schema and TS types, apps/desktop/e2e/flows, docs/user-flows.md",
+      "size": "M",
+      "executor": "sonnet",
+      "executor_note": "",
+      "depends_raw": "WP-2H.01, WP-1M.07, WP-1B.04",
+      "depends_wps": [
+        "WP-2H.01",
+        "WP-1M.07",
+        "WP-1B.04"
+      ],
+      "depends_epics": [],
+      "depends": [
+        "WP-1B.04",
+        "WP-1M.07",
+        "WP-2H.01"
+      ],
+      "scope": "(product owner request, 2026-11-24: \"History panel\") a dockable panel listing the project's undo history as ADR-0019 defines it: the editor's Undo and Redo cover every actor and name who made each step.\n- **Rows** come from `edit.history` (paged with `cursor`, virtualized) and follow `edit.history_changed`.\n  - One row per change (cause `edit` or `restore`), oldest at the top, with a marker under the current state. Undone changes that can still be redone sit below the marker, dimmed.\n  - Each row shows the step's name as the Undo button says it (\"Split clip\"), who made it (You, the agent's label, a plugin) with agent rows in agent blue (design/README.md), and when (\"2 min ago\", with the exact time in the tooltip).\n  - Undo and redo records are not rows; they move the marker. Changes that can no longer be redone (after a new edit) disappear.\n- **Click a row to go back to it.**\n  - Every change after it is undone, newest first, as `*` steps (ADR-0019). Clicking a dimmed row redoes up to it.\n  - `edit.undo{actor:\"*\", steps}` and `edit.redo{actor:\"*\", steps}` (additive, at most 100) apply them in one turn of the doc actor, so no other actor's command lands in between.\n  - Each step stays its own history record, so Ctrl+Z and Ctrl+Y keep working one step at a time.\n  - A refused step (`Conflict{history_target_modified}`, arch §5.2) stops the jump there and returns `done`, the steps already applied. The panel shows the engine's message naming the later change and its actor.\n- **Filter:** All, You, Agents (dims the rest; jumps still follow the shared order). Keyboard: ↑/↓ move between rows, Enter goes to the row. Empty state: \"No changes yet\".\n- **Opening it:** View > Panels (WP-2H.01) and Edit > History. It is not in the default layouts; it opens as a tab next to the Inspector.",
+      "interfaces": "`edit.undo{actor?, steps?}`, `edit.redo{actor?, steps?}` (additive; output gains `done`); the panel registered as `history`.",
+      "acceptance": [
+        "Unit: `edit.undo{actor:\"*\", steps:3}` gives the same document and the same history records as three single `*` undos; a conflict at the second step leaves the first applied and reports `done: 1`; the undo property harness covers `steps`.",
+        "Parity: the CLI, MCP and RPC give byte-identical documents for a script with `steps`.",
+        "Vitest: rows from a history fixture with user, agent and plugin steps, undone tails and a restore; the marker follows `edit.history_changed`; rows that can no longer be redone are gone.",
+        "**A user flow (ADR-0018, F32):** import a clip, make four edits (insert, move, opacity, trim) and let an agent (`cutweave exec`) trim a clip. The History panel lists the import, the four edits and the agent's trim, the agent's row named and in agent blue. Click the move's row: the timeline shows the state after the move and three rows are dimmed. Ctrl+Y redoes the opacity change. A new edit removes the remaining dimmed rows.",
+        "axe: 0 violations; visual baselines of the panel (a mixed history, the empty state) in dark and light."
+      ],
+      "tests": "unit, property harness, parity, Vitest, user flow.",
+      "out_of_scope": "a branching history tree; clearing the history; showing what a step changed (a diff view); history across sessions beyond what the engine keeps (arch §5.2)."
+    },
+    {
       "id": "WP-2I.01",
       "title": "Core tool set: mapping, annotations and completion (~30 tools)",
       "source": {
         "file": "docs/wbs/P2-core-editor.md",
-        "line": 1228
+        "line": 1336
       },
       "phase": "P2",
       "epic": "2I",
@@ -6182,7 +6438,7 @@
       "title": "Visual tools: contact sheet, filmstrip, waveform image",
       "source": {
         "file": "docs/wbs/P2-core-editor.md",
-        "line": 1248
+        "line": 1356
       },
       "phase": "P2",
       "epic": "2I",
@@ -6234,7 +6490,7 @@
       "title": "Checkpoints: edit.checkpoint / edit.restore",
       "source": {
         "file": "docs/wbs/P2-core-editor.md",
-        "line": 1269
+        "line": 1377
       },
       "phase": "P2",
       "epic": "2I",
@@ -6279,7 +6535,7 @@
       "title": "Optimistic concurrency: expected_rev everywhere",
       "source": {
         "file": "docs/wbs/P2-core-editor.md",
-        "line": 1288
+        "line": 1396
       },
       "phase": "P2",
       "epic": "2I",
@@ -6332,7 +6588,7 @@
       "title": "Tool profiles, change notifications and tools/list budget",
       "source": {
         "file": "docs/wbs/P2-core-editor.md",
-        "line": 1305
+        "line": 1413
       },
       "phase": "P2",
       "epic": "2I",
@@ -6363,7 +6619,7 @@
       "title": "Scripted-agent e2e: YouTube edit and 9:16 short via MCP only",
       "source": {
         "file": "docs/wbs/P2-core-editor.md",
-        "line": 1323
+        "line": 1431
       },
       "phase": "P2",
       "epic": "2I",
@@ -6406,7 +6662,7 @@
       "title": "Benchmark fixtures and Rust criterion suite",
       "source": {
         "file": "docs/wbs/P2-core-editor.md",
-        "line": 1345
+        "line": 1453
       },
       "phase": "P2",
       "epic": "2J",
@@ -6463,7 +6719,7 @@
       "title": "UI benchmarks: timeline pan/zoom and UI command RTT",
       "source": {
         "file": "docs/wbs/P2-core-editor.md",
-        "line": 1362
+        "line": 1470
       },
       "phase": "P2",
       "epic": "2J",
@@ -6497,7 +6753,7 @@
       "title": "Playback, scrub and A/V sync benchmarks",
       "source": {
         "file": "docs/wbs/P2-core-editor.md",
-        "line": 1377
+        "line": 1485
       },
       "phase": "P2",
       "epic": "2J",
@@ -6519,6 +6775,7 @@
         "WP-1H.01",
         "WP-1H.02",
         "WP-1H.03",
+        "WP-1H.04",
         "WP-2C.04",
         "WP-2E.02",
         "WP-2F.01",
@@ -6538,7 +6795,7 @@
       "title": "CI benchmark gate and trend dashboard",
       "source": {
         "file": "docs/wbs/P2-core-editor.md",
-        "line": 1392
+        "line": 1500
       },
       "phase": "P2",
       "epic": "2J",
@@ -6579,7 +6836,7 @@
       "title": "Crash-injection harness: 20 forced crashes, no data loss",
       "source": {
         "file": "docs/wbs/P2-core-editor.md",
-        "line": 1408
+        "line": 1516
       },
       "phase": "P2",
       "epic": "2J",
@@ -6623,7 +6880,7 @@
       "title": "Dogfood edit A: 10-min YouTube video with B-roll (human)",
       "source": {
         "file": "docs/wbs/P2-core-editor.md",
-        "line": 1426
+        "line": 1534
       },
       "phase": "P2",
       "epic": "2J",
@@ -6663,7 +6920,7 @@
       "title": "Dogfood edit B: 9:16 short with manual reframe, music and fades (human)",
       "source": {
         "file": "docs/wbs/P2-core-editor.md",
-        "line": 1441
+        "line": 1549
       },
       "phase": "P2",
       "epic": "2J",
@@ -6701,7 +6958,7 @@
       "title": "M2 exit review (human)",
       "source": {
         "file": "docs/wbs/P2-core-editor.md",
-        "line": 1455
+        "line": 1563
       },
       "phase": "P2",
       "epic": "2J",
@@ -6739,7 +6996,7 @@
       "title": "Background render cache (smart pre-render while idle)",
       "source": {
         "file": "docs/wbs/P2-core-editor.md",
-        "line": 1468
+        "line": 1576
       },
       "phase": "P2",
       "epic": "2J",
@@ -6766,6 +7023,7 @@
         "WP-1H.01",
         "WP-1H.02",
         "WP-1H.03",
+        "WP-1H.04",
         "WP-2C.04",
         "WP-2F.01",
         "WP-2J.03"
@@ -6821,7 +7079,8 @@
         "WP-2C.04",
         "WP-2C.05",
         "WP-2C.06",
-        "WP-2C.07"
+        "WP-2C.07",
+        "WP-2C.08"
       ],
       "scope": "`RichText { runs: Vec<Run{text, style_override?}> }`; `TextStyle` { font{family,weight,italic,axes}, size, fill: Solid|Linear|Radial gradient, strokes[] (width, join, colour, order), shadows[] (offset, blur, colour), glow{radius,colour,intensity}, background box {colour, padding, radius, mode: block|per-line}, letter_spacing, line_height, align, v_align, case_transform, auto_fit: none|shrink|grow_box, direction: auto|ltr|rtl }; `Item::Text` gets `box`, `style: TextStyleRef|inline`, `animation{in,out,loop}: Option<AnimRef>` (null until 3C); `text` track kind; schema_version bump + migration + golden fixture; commands `text.add`, `text.set_content`, `text.set_style` (merge-patch), `text.set_run_style{range,…}`, `text.set_box`, `text.add_emoji`; queries `text.get`, `text.styles.list`.",
       "interfaces": "`cutweave_model::text::{RichText,TextStyle,TextBox}`; MCP core tool `text_add`; all visual props animatable via existing `Animatable<T>` (E2C).",
@@ -7030,6 +7289,8 @@
         "WP-1M.11",
         "WP-1M.12",
         "WP-1M.13",
+        "WP-1M.14",
+        "WP-1M.15",
         "WP-2H.01",
         "WP-2H.02",
         "WP-2H.03",
@@ -7040,6 +7301,7 @@
         "WP-2H.08",
         "WP-2H.09",
         "WP-2H.10",
+        "WP-2H.11",
         "WP-3A.01",
         "WP-3A.03",
         "WP-3A.05"
@@ -7230,6 +7492,8 @@
         "WP-1M.11",
         "WP-1M.12",
         "WP-1M.13",
+        "WP-1M.14",
+        "WP-1M.15",
         "WP-3B.01",
         "WP-3B.03",
         "WP-3B.04"
@@ -7692,6 +7956,7 @@
         "WP-2H.08",
         "WP-2H.09",
         "WP-2H.10",
+        "WP-2H.11",
         "WP-3D.01",
         "WP-3D.05"
       ],
@@ -7739,6 +8004,7 @@
         "WP-2A.11",
         "WP-2A.12",
         "WP-2A.13",
+        "WP-2A.14",
         "WP-2D.01",
         "WP-2D.02",
         "WP-3D.01",
@@ -8075,6 +8341,7 @@
         "WP-2H.08",
         "WP-2H.09",
         "WP-2H.10",
+        "WP-2H.11",
         "WP-3D.06",
         "WP-3E.01",
         "WP-3E.03",
@@ -8188,6 +8455,7 @@
         "WP-2A.11",
         "WP-2A.12",
         "WP-2A.13",
+        "WP-2A.14",
         "WP-2E.01",
         "WP-2E.02",
         "WP-2E.03",
@@ -8409,6 +8677,7 @@
         "WP-2C.05",
         "WP-2C.06",
         "WP-2C.07",
+        "WP-2C.08",
         "WP-3A.06",
         "WP-3G.01"
       ],
@@ -8512,6 +8781,7 @@
         "WP-2H.08",
         "WP-2H.09",
         "WP-2H.10",
+        "WP-2H.11",
         "WP-3G.01",
         "WP-3G.02"
       ],
@@ -8971,6 +9241,7 @@
         "WP-2C.05",
         "WP-2C.06",
         "WP-2C.07",
+        "WP-2C.08",
         "WP-4A.02"
       ],
       "scope": "`EffectInstance` evaluation at `t` (params `Animatable` → uniform ring buffer); pass allocation from a texture pool (scale/format); fusion of compatible single-pass pointwise effects into one pass; `history` taps served from the frame cache (deterministic; effect disabled gracefully if frames unavailable); effect order/enable; per-effect param-hash in render-graph cache keys; resolution-independent unit scaling for the quality ladder; effects on clips (adjustment layers in 4G.05, transitions in 4A.04).",
@@ -9015,6 +9286,7 @@
         "WP-2A.11",
         "WP-2A.12",
         "WP-2A.13",
+        "WP-2A.14",
         "WP-4A.03"
       ],
       "scope": "`Transition{a,b,kind,duration,alignment(center|start|end),params}` evaluation: render `from`/`to` to textures, run the transition pass with eased `progress`; **handles policy** when media beyond the cut is unavailable: `freeze|clamp` (shorten to available handle); single-clip in/out transitions (against transparent/black); max duration ≤ min(a,b) adjusted automatically; alpha-aware; speed-change aware; automatic audio crossfade (equal-power) with `audio: crossfade|none`.",
@@ -9179,6 +9451,7 @@
         "WP-2H.08",
         "WP-2H.09",
         "WP-2H.10",
+        "WP-2H.11",
         "WP-4A.06",
         "WP-4A.08"
       ],
@@ -9906,6 +10179,7 @@
         "WP-2C.05",
         "WP-2C.06",
         "WP-2C.07",
+        "WP-2C.08",
         "WP-3B.01",
         "WP-4A.03"
       ],
@@ -10187,6 +10461,7 @@
         "WP-1H.01",
         "WP-1H.02",
         "WP-1H.03",
+        "WP-1H.04",
         "WP-4F.01"
       ],
       "scope": "wgpu compute passes on the final (or per-clip) frame sampled to ≤ 960 px wide: luma waveform, RGB parade, vectorscope (CbCr density, graticule, skin-tone line), RGB+luma histogram; scale modes (0–100% / 0–255); query `scopes.get{sequence,t,kind,size}` returning an image (MCP image content) **plus numeric summary** `{min,max,mean per channel, clipping %, black/white point}` so agents can judge exposure without vision; throttled UI streaming (≤ 15 Hz, ≤ 5 ms GPU per update on iGPU; paused during full-rate playback unless enabled).",
@@ -10231,6 +10506,7 @@
         "WP-2H.08",
         "WP-2H.09",
         "WP-2H.10",
+        "WP-2H.11",
         "WP-4F.02",
         "WP-4F.03",
         "WP-4F.04",
@@ -10272,6 +10548,7 @@
         "WP-2C.05",
         "WP-2C.06",
         "WP-2C.07",
+        "WP-2C.08",
         "WP-4A.03"
       ],
       "scope": "`Mask{id,shape: Rect{radius}|Ellipse|Polygon{points}|Bezier{nodes+handles},feather,expansion,invert,opacity,mode: add|subtract|intersect|difference}` on clips (list, ordered); transform (position/scale/rotation) and path points all `Animatable` (same node count for point animation); coverage via bounded-loop analytic signed-distance in WGSL (paths flattened to ≤ 256 segments), feather = smoothstep on distance; static masks cached as textures; commands `mask.add`, `mask.set`, `mask.set_points`, `mask.remove`, `mask.reorder`; mask applies to clip alpha before clip effects and transitions.",
@@ -10433,6 +10710,7 @@
         "WP-2C.05",
         "WP-2C.06",
         "WP-2C.07",
+        "WP-2C.08",
         "WP-2D.01",
         "WP-2D.02"
       ],
@@ -10722,6 +11000,7 @@
         "WP-2C.05",
         "WP-2C.06",
         "WP-2C.07",
+        "WP-2C.08",
         "WP-4I.02",
         "WP-4I.03",
         "WP-4I.04"
@@ -12136,6 +12415,7 @@
         "WP-2H.08",
         "WP-2H.09",
         "WP-2H.10",
+        "WP-2H.11",
         "WP-5A.10",
         "WP-5B.02"
       ],
@@ -12178,6 +12458,7 @@
         "WP-2H.08",
         "WP-2H.09",
         "WP-2H.10",
+        "WP-2H.11",
         "WP-5F.01"
       ],
       "scope": "form generated from the model's params JSON Schema + `x-cutweave` hints using the **existing inspector renderer** (no second renderer); prompt and negative-prompt boxes; asset slots by role (first frame, last frame, reference images up to the manifest limit, source video) fed by drag from bin/timeline or \"use current frame\"; duration/aspect/resolution controls clamped to model limits; seed lock; variants count with cost multiplier; **camera-controls widget**: native enum when the model declares native controls, otherwise inserts camera phrases into the prompt with a live preview (vocabulary from 5J.02, fallback built-in list); inline validation from the schema; \"copy as MCP call / JSON recipe\"; keyboard-accessible; per-project draft persistence in view state (not the doc).",
@@ -12296,6 +12577,7 @@
         "WP-2A.11",
         "WP-2A.12",
         "WP-2A.13",
+        "WP-2A.14",
         "WP-2D.01",
         "WP-2D.02",
         "WP-5A.10",
@@ -12448,6 +12730,7 @@
         "WP-2H.08",
         "WP-2H.09",
         "WP-2H.10",
+        "WP-2H.11",
         "WP-5D.09",
         "WP-5F.05"
       ],
@@ -12594,6 +12877,7 @@
         "WP-2H.08",
         "WP-2H.09",
         "WP-2H.10",
+        "WP-2H.11",
         "WP-4G.01",
         "WP-4G.02",
         "WP-4G.03",
@@ -12652,6 +12936,7 @@
         "WP-2C.05",
         "WP-2C.06",
         "WP-2C.07",
+        "WP-2C.08",
         "WP-3D.01",
         "WP-3D.02",
         "WP-3D.03",
@@ -13017,6 +13302,7 @@
         "WP-2A.11",
         "WP-2A.12",
         "WP-2A.13",
+        "WP-2A.14",
         "WP-2E.01",
         "WP-2E.02",
         "WP-2E.03",
@@ -13241,6 +13527,7 @@
         "WP-2H.08",
         "WP-2H.09",
         "WP-2H.10",
+        "WP-2H.11",
         "WP-5H.02",
         "WP-5H.03"
       ],
@@ -13381,6 +13668,7 @@
         "WP-1H.01",
         "WP-1H.02",
         "WP-1H.03",
+        "WP-1H.04",
         "WP-5A.02",
         "WP-5A.05",
         "WP-5I.01"
@@ -14196,6 +14484,7 @@
         "WP-2H.08",
         "WP-2H.09",
         "WP-2H.10",
+        "WP-2H.11",
         "WP-6A.05"
       ],
       "scope": "- Serve plugin UI from custom protocol `cutweave-ext://<plugin-id>/` (Electron `protocol.handle`); each panel in a sandboxed iframe with **opaque origin** (`sandbox=\"allow-scripts\"`, no `allow-same-origin`), strict CSP (`default-src 'none'`; `connect-src 'none'` unless a granted network permission is proxied via host), no Node, no top navigation, no popups.\n- Plugin JS never runs in the main window context. Reconcile with §18 CSP (main window: connect only to engine origin): extension frames get their own CSP; main CSP unchanged.\n- Lifecycle: load/unload/reload on `plugin.changed`; frame crash does not affect the editor.",
@@ -14297,6 +14586,7 @@
         "WP-2H.08",
         "WP-2H.09",
         "WP-2H.10",
+        "WP-2H.11",
         "WP-6A.05"
       ],
       "scope": "- Install-review dialog: metadata, SPDX license (+ \"proprietary\" label), verified/unverified banner, permissions in plain language (domains, file scopes, secret names, paid AI with cap), contributed items, plugin-supplied text shown verbatim marked untrusted, plugin-exception notice.\n- Permission diff on update; revoke in Settings → Plugins; per-plugin audit-log viewer.\n- Error UX: toast + badge when a plugin is auto-disabled (trap, timeout, GPU budget); \"Copy crash report\" / \"Open prefilled GitHub issue\" (nothing auto-sent); re-enable.\n- Accessible (focus trap, labels) — feeds 7C.",
@@ -14756,6 +15046,7 @@
         "WP-2H.08",
         "WP-2H.09",
         "WP-2H.10",
+        "WP-2H.11",
         "WP-6D.02"
       ],
       "scope": "- \"Templates\" tab in the asset browser: grid with hover-play previews, filters (category, aspect, duration, slots count, source: built-in/installed/user), search, favorites, \"Apply to new sequence / at playhead\".\n- Apply wizard: slot fill UI (drag from media bin, record-free text fields, color/font pickers, caption style gallery), live preview before commit, aspect variant switch.\n- \"Smart fill\" button hook (6D.05); empty/offline states; lazy thumbnail loading.",
@@ -15174,7 +15465,8 @@
         "WP-2A.10",
         "WP-2A.11",
         "WP-2A.12",
-        "WP-2A.13"
+        "WP-2A.13",
+        "WP-2A.14"
       ],
       "scope": "- Own implementation (no Python dependency) of OTIO JSON: `Timeline`, `Stack`, `Track` (video/audio), `Clip` with `ExternalReference`, `Gap`, `Transition`, markers, `time_range` ↔ flicks (rational-exact), effects (best effort: speed, opacity → properties; unknown → metadata + warning report).\n- Export: sequence → OTIO with media references (absolute + relative); Import: OTIO → new sequence, relink prompts for missing media.\n- Fidelity report (what was dropped/approximated) returned as structured warnings.",
       "interfaces": "commands `project.export_otio`, `project.import_otio`; library API in `cutweave-interchange`.",
@@ -15219,7 +15511,8 @@
         "WP-2A.10",
         "WP-2A.11",
         "WP-2A.12",
-        "WP-2A.13"
+        "WP-2A.13",
+        "WP-2A.14"
       ],
       "scope": "- CMX 3600 EDL export (video + audio tracks, cuts, dissolves, reel names, drop-frame option, source TC).\n- FCPXML 1.10/1.11 export: asset resources, spine with clips/gaps/transitions, titles as basic title elements, markers, audio roles; documented limitations list.\n- Export-only (import deferred; see Notes #4).",
       "interfaces": "`project.export_edl`, `project.export_fcpxml`.",
@@ -16949,6 +17242,7 @@
         "WP-2H.08",
         "WP-2H.09",
         "WP-2H.10",
+        "WP-2H.11",
         "WP-6I.01"
       ],
       "scope": "- Dockable Copilot panel: message stream (markdown, token streaming), **plan as live checklist** (items tick), tool-call chips (expandable args/results), thumbnails/contact sheets inline (downscaled), running **cost ticker** vs budget, cancel button, jobs strip for long renders/generations, \"Undo agent turn\" button, model/provider picker with cheap/smart slots, autonomy mode switch (suggest / apply-with-undo / auto-within-budget), attachments (drop media/selection as context), `@`-mentions of clips/markers, slash prompts (the 13 MCP prompts).\n- Keyboard accessible; reduced-motion respects; i18n.",
@@ -17597,6 +17891,7 @@
         "WP-2H.08",
         "WP-2H.09",
         "WP-2H.10",
+        "WP-2H.11",
         "WP-6B.04",
         "WP-6C.05",
         "WP-6D.04",
@@ -17644,6 +17939,7 @@
         "WP-2A.11",
         "WP-2A.12",
         "WP-2A.13",
+        "WP-2A.14",
         "WP-7C.01"
       ],
       "scope": "- **Timeline (Canvas2D) alternative:** a parallel accessible representation (virtualized ARIA tree/grid \"Timeline outline\": tracks → items with name, start, duration, selected state) kept in sync with selection; full keyboard editing (move/trim/split/delete/snap by arrow keys with step sizes, announce results via live region); satisfies 2.5.7 (every drag has a non-drag alternative: nudge/command/inspector fields).\n- Visual criteria: contrast ≥ 4.5:1 text / 3:1 UI components in all themes (token audit script), high-contrast theme, `prefers-reduced-motion` and `prefers-contrast`, 200% zoom/reflow of dialogs, 24 px minimum targets, no color-only meaning (e.g. track colors, error states), caption-style preview not relied upon for UI.\n- Performance guard: accessible tree must not regress timeline budget (≥ 55 fps at 5k items — virtualized to visible region).\n- The high-contrast theme is a third option of Settings > Appearance > Theme (WP-1M.11).",
@@ -17714,6 +18010,7 @@
         "WP-2H.08",
         "WP-2H.09",
         "WP-2H.10",
+        "WP-2H.11",
         "WP-7C.01"
       ],
       "scope": "- ICU MessageFormat (plurals, select, gender), string extraction + CI (fail on hard-coded UI strings, missing keys, unused keys, unbalanced placeholders), pseudo-locale (accents + 40% expansion + RTL pseudo) used in visual regression to catch truncation.\n- Locale-aware date/time/number/duration formatting; engine error **codes** → localized messages in UI (engine never ships display strings the UI cannot translate); locale switch without restart; CJK/Arabic/Hebrew/Devanagari font fallback in chrome.\n- **RTL:** logical CSS properties throughout, mirrored icons list, `dir` handling in dialogs/panels; **timeline time axis stays LTR** (documented decision; Notes #8), transport controls not mirrored; bidi text in inspector/text fields; captions/text engine bidi verified via 3A (shaping tests with Arabic/Hebrew samples).\n- Settings > General gains \"Language\" (default: the OS language when Cutweave has it, else English), applied without a restart, main's menus included (catalog `docs/reference/settings.md`).",
@@ -17982,6 +18279,7 @@
         "WP-2H.08",
         "WP-2H.09",
         "WP-2H.10",
+        "WP-2H.11",
         "WP-3E.01",
         "WP-3E.02",
         "WP-3E.03",
