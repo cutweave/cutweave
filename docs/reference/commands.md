@@ -2,7 +2,7 @@
 
 # Command reference
 
-Every command and query the engine registers (47 in total), generated from the registry. The full JSON Schemas are in `schema/commands.json` and `schema/queries.json`.
+Every command and query the engine registers (51 in total), generated from the registry. The full JSON Schemas are in `schema/commands.json` and `schema/queries.json`.
 
 MCP exposure: `core` commands are always listed as tools (`item.move` is `item_move`), `catalog` ones are reachable through the catalog tools, `hidden` ones are not exposed.
 
@@ -29,11 +29,15 @@ MCP exposure: `core` commands are always listed as tools (`item.move` is `item_m
 | job | `job.list` | List background jobs, newest first (filter by media, state or kind) | engine, read-only, idempotent | catalog |
 | job | `job.status` | Get a background job's state, progress and error (analysis, export) | engine, read-only, idempotent | core |
 | job | `job.wait` | Wait up to timeout_ms (max 60 s) for a background job to finish; returns its state | engine, read-only, idempotent | core |
+| media | `media.cache_status` | Show the media caches: folder, usage and limits, hardware decoding, frame memory | engine, read-only, idempotent | catalog |
 | media | `media.capabilities` | List the codecs and hardware encoders/decoders the media backend supports | engine, read-only, idempotent | catalog |
+| media | `media.clear_cache` | Delete everything in the named media caches (they rebuild on demand) | engine, destructive, idempotent, ui-only | catalog |
 | media | `media.import` | Import media files: probe and register them now, return media ids and analysis job ids | engine, idempotent | core |
 | media | `media.list` | List the project's media (filter, sort, paged; default by id) | query | core |
 | media | `media.register` | Register a probed media file (used by import; deduplicates by content hash) | command, undoable, idempotent | hidden |
 | media | `media.remove` | Remove an unused media asset from the project | command, undoable, destructive | catalog |
+| media | `media.set_cache_config` | Set the cache limits and the memory for decoded frames | engine, destructive, idempotent, ui-only | catalog |
+| media | `media.set_decode_policy` | Choose hardware or software decoding for the preview | engine, idempotent, ui-only | catalog |
 | project | `project.close` | Close the open project (saving first if asked or if autosave is on) | engine, idempotent | catalog |
 | project | `project.discard_recovery` | Discard unsaved changes from a crashed session and keep the saved project | engine, destructive | catalog |
 | project | `project.info` | Get project name, default format and a summary of its sequences | query | core |

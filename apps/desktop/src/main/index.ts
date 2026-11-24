@@ -30,7 +30,7 @@ import {
 import { CloseGuard } from "./close-guard.ts";
 import { appResponseHeaders, buildCsp } from "./csp.ts";
 import { type EngineFailedChoice, showEngineFailedDialog } from "./engine/failed-dialog.ts";
-import { devEngineArgs, resolveEngineLaunch } from "./engine/launch.ts";
+import { devEngineArgs, preferenceEngineArgs, resolveEngineLaunch } from "./engine/launch.ts";
 import { pickFreePort } from "./engine/ports.ts";
 import { EngineSupervisor } from "./engine/supervisor.ts";
 import { createHandlers, MEDIA_FILE_FILTERS } from "./handlers.ts";
@@ -160,6 +160,8 @@ function superviseEngine(
       APP_ORIGIN,
       ...(devServerOrigin === undefined ? [] : ["--allow-origin", devServerOrigin]),
       ...devEngineArgs(process.env, app.isPackaged),
+      // This computer's preferences that are launch flags (the cache folder, WP-1D.08).
+      ...preferenceEngineArgs({ cacheFolder: preferences?.get("cache.folder") ?? "" }),
     ],
     clientVersion: app.getVersion(),
     onPortChange: (next) => {

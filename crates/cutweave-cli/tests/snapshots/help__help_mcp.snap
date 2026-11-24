@@ -48,6 +48,9 @@ Spawned engine:
       --allow-root <DIR>
           A folder the spawned engine lets this command import from or save into (repeatable; implies --headless). The project folder is always allowed
 
+      --cache-dir <DIR>
+          The folder the spawned engine keeps its thumbnail, waveform and frame-index caches in (implies --headless). `CUTWEAVE_CACHE_DIR` does the same; the default is `<OS cache folder>/cutweave`
+
       --dev-stub-media
           Dev only: fake media probing in the spawned engine (implies --headless). `CUTWEAVE_DEV_STUB_MEDIA=1` does the same
 

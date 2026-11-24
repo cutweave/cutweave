@@ -38,6 +38,18 @@ export type ExportQualityChoice = (typeof EXPORT_QUALITIES)[number];
 /** Hardware encoders: let the engine pick one, or software only. */
 export const EXPORT_HW_CHOICES = ["auto", "off"] as const;
 export type ExportHwChoice = (typeof EXPORT_HW_CHOICES)[number];
+const MIB = 1_048_576;
+const GIB = 1_073_741_824;
+
+/** "Thumbnails and filmstrips" cache limits (WP-1D.08), in bytes: 512 MiB to 25 GiB. */
+export const THUMBNAIL_LIMITS = [512 * MIB, 1 * GIB, 2 * GIB, 5 * GIB, 10 * GIB, 25 * GIB] as const;
+/** "Waveforms" cache limits, in bytes: 128 MiB to 2 GiB. */
+export const WAVEFORM_LIMITS = [128 * MIB, 256 * MIB, 512 * MIB, 1 * GIB, 2 * GIB] as const;
+/** "Memory for decoded frames": 0 is Auto (the smaller of 1 GiB and a quarter of the RAM). */
+export const FRAME_MEMORY_CHOICES = [0, 512 * MIB, 1 * GIB, 2 * GIB, 4 * GIB] as const;
+/** "Hardware decoding". */
+export const HW_DECODE_CHOICES = ["auto", "off"] as const;
+export type HwDecodeChoice = (typeof HW_DECODE_CHOICES)[number];
 
 /** "Don't ask again" choices dialogs remember, by dialog id. */
 export type DialogChoices = Record<string, string>;
@@ -61,6 +73,12 @@ export interface PreferenceValues {
   "export.last_folder": string;
   "export.quality": ExportQualityChoice;
   "export.hw": ExportHwChoice;
+  /** `""` is the OS cache folder. Main passes the value to the engine as `--cache-dir`. */
+  "cache.folder": string;
+  "cache.thumbnails_limit": (typeof THUMBNAIL_LIMITS)[number];
+  "cache.waveforms_limit": (typeof WAVEFORM_LIMITS)[number];
+  "performance.hw_decode": HwDecodeChoice;
+  "performance.frame_memory": (typeof FRAME_MEMORY_CHOICES)[number];
 }
 
 export type PreferenceKey = keyof PreferenceValues;
@@ -111,6 +129,32 @@ export const PREFERENCES: { readonly [K in PreferenceKey]: PreferenceDef } = {
   "export.last_folder": { type: "path", scope: "app", default: "" },
   "export.quality": { type: "enum", scope: "app", options: EXPORT_QUALITIES, default: "medium" },
   "export.hw": { type: "enum", scope: "app", options: EXPORT_HW_CHOICES, default: "auto" },
+  // This computer (WP-1D.08): never exported, applied to the engine by the app.
+  "cache.folder": { type: "path", scope: "machine", default: "" },
+  "cache.thumbnails_limit": {
+    type: "enum",
+    scope: "machine",
+    options: THUMBNAIL_LIMITS,
+    default: 2 * GIB,
+  },
+  "cache.waveforms_limit": {
+    type: "enum",
+    scope: "machine",
+    options: WAVEFORM_LIMITS,
+    default: 512 * MIB,
+  },
+  "performance.hw_decode": {
+    type: "enum",
+    scope: "machine",
+    options: HW_DECODE_CHOICES,
+    default: "auto",
+  },
+  "performance.frame_memory": {
+    type: "enum",
+    scope: "machine",
+    options: FRAME_MEMORY_CHOICES,
+    default: 0,
+  },
 };
 
 export const PREFERENCE_KEYS = Object.keys(PREFERENCES) as PreferenceKey[];

@@ -66,7 +66,16 @@ describe("the registry and the catalog", () => {
   });
 
   it("ships its pages in the catalog's order (later work packages add theirs in between)", () => {
-    const shipped = ["general", "appearance", "export", "saving", "shortcuts", "advanced"];
+    const shipped = [
+      "general",
+      "appearance",
+      "export",
+      "saving",
+      "shortcuts",
+      "cache",
+      "performance",
+      "advanced",
+    ];
     const ids = settingsPages().map((p) => p.id);
     expect(ids.filter((id) => shipped.includes(id))).toEqual(shipped);
   });

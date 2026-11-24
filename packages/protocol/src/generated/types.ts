@@ -57,6 +57,33 @@ export type BeginTx = {
 	label: string,
 };
 
+/**  A kind of disk cache. */
+export type CacheKind = 
+/**  Thumbnails and filmstrips (JPEG files, accounted in `cache.sqlite`). */
+"thumbnails" | 
+/**  Waveform pyramids (one file per audio stream). */
+"waveforms";
+
+/**  One disk cache's usage and limit. */
+export type CacheKindStatus = {
+	/**  Which cache. */
+	kind: CacheKind,
+	/**  Bytes it holds. */
+	bytes: number,
+	/**  Bytes it may hold before the least recently used entries are deleted. */
+	limit_bytes: number,
+	/**  Entries it holds. */
+	entries: number,
+};
+
+/**  The limits `media.set_cache_config` changes; a kind that is absent keeps its limit. */
+export type CacheLimits = {
+	/**  Cap on thumbnails and filmstrips, in bytes. */
+	thumbnails: number | null,
+	/**  Cap on waveforms, in bytes. */
+	waveforms: number | null,
+};
+
 /**
  *  Cancels this connection's open transaction and rolls back its live changes (nothing is
  *  committed, journaled or added to the history).
@@ -101,6 +128,16 @@ export type CheckpointInfo = {
 export type CheckpointList = {
 	/**  Oldest first. */
 	checkpoints: CheckpointInfo[],
+};
+
+/**  What clearing one kind removed. */
+export type ClearedKind = {
+	/**  Which cache. */
+	kind: CacheKind,
+	/**  Entries deleted. */
+	removed: number,
+	/**  Bytes freed. */
+	freed_bytes: number,
 };
 
 /**
@@ -374,6 +411,13 @@ export type CustomExport = {
 	quality?: ExportQuality | null,
 };
 
+/**  Whether decoders may use the hardware. */
+export type DecodeHw = 
+/**  A verified hardware decoder when the machine has one for the stream (the default). */
+"auto" | 
+/**  Software decoding only. */
+"off";
+
 /**
  *  A change of the live document, broadcast in revision order (`doc.patched`, arch §5.1).
  * 
@@ -589,6 +633,18 @@ export type GetHistory = {
 	cursor?: string | null,
 	/**  Only this actor's entries. */
 	actor?: Actor | null,
+};
+
+/**  The graphics adapter the renderer runs on. */
+export type GpuAdapterInfo = {
+	/**  The adapter's name (`NVIDIA GeForce RTX 3060`). */
+	name: string,
+	/**  The graphics API (`dx12`, `vulkan`, `metal`). */
+	backend: string,
+	/**  `DiscreteGpu`, `IntegratedGpu`, `VirtualGpu`, `Cpu` or `Other`. */
+	device_type: string,
+	/**  Whether this is a software rasterizer (WARP, lavapipe). */
+	software: boolean,
 };
 
 /**
@@ -1241,9 +1297,32 @@ export type MediaAsset = {
 } & { [key in string]: unknown };
 
 /**
+ *  Returns the media caches: the folder they live in, each disk cache's usage and limit, the
+ *  hardware decoding policy and the memory the decoded-frame cache may use. Agents may read it;
+ *  changing any of it is the desktop app's.
+ */
+export type MediaCacheStatus = Record<string, never>;
+
+/**  What `media.cache_status` and `media.set_cache_config` report. */
+export type MediaCacheStatusOutput = {
+	/**
+	 *  The folder the caches live in (`--cache-dir`, else the OS cache folder); `null` when
+	 *  the engine has none.
+	 */
+	folder: string | null,
+	/**  Each disk cache, in a fixed order (thumbnails, waveforms). */
+	kinds: CacheKindStatus[],
+	/**  The hardware decoding policy in force. */
+	decode_hw: DecodeHw,
+	/**  Bytes of decoded frames the RAM frame cache may hold. */
+	frame_cache_bytes: number,
+};
+
+/**
  *  Returns what this engine's media backend can decode and encode: software codecs with their
  *  implementations, the hardware encoders in the order `export.start{hw: "auto"}` tries them,
- *  and the hardware decode paths. `available` is false when the engine has no media backend.
+ *  and the hardware decode paths, and the graphics adapter in use (`gpu`). `available` is
+ *  false when the engine has no media backend.
  */
 export type MediaCapabilities = Record<string, never>;
 
@@ -1257,6 +1336,27 @@ export type MediaCapabilitiesOutput = {
 	hw_encode: HwCodecInfo[],
 	/**  Hardware decode paths verified on this machine. */
 	hw_decode: HwCodecInfo[],
+	/**
+	 *  The graphics adapter the renderer runs on; absent while the device is still opening and
+	 *  when the engine renders on the CPU.
+	 */
+	gpu?: GpuAdapterInfo | null,
+};
+
+/**
+ *  Deletes every entry of the named caches. Projects and `generated/` media are never touched:
+ *  only files the engine can rebuild from the media. Not undoable, not journaled, never marks
+ *  the project dirty; UI credential only.
+ */
+export type MediaClearCache = {
+	/**  The caches to empty (`thumbnails`, `waveforms`). */
+	kinds: CacheKind[],
+};
+
+/**  Result of `media.clear_cache`. */
+export type MediaClearCacheOutput = {
+	/**  What each requested kind lost. */
+	cleared: ClearedKind[],
 };
 
 /**  Which media to list; every part that is absent or empty lets everything through. */
@@ -1392,6 +1492,38 @@ export type MediaRemove = {
 export type MediaRemoveOutput = {
 	/**  The removed asset. */
 	media_id: MediaId,
+};
+
+/**
+ *  Sets the disk cache limits and the memory for decoded frames. A lower limit deletes the
+ *  least recently used entries at once. Not undoable, not journaled, never marks the project
+ *  dirty; UI credential only (the desktop app applies the person's machine preferences).
+ */
+export type MediaSetCacheConfig = {
+	/**  New limits in bytes (`0` to `16 TiB`); a kind left out keeps its limit. */
+	limits?: CacheLimits | null,
+	/**
+	 *  Memory for decoded frames in bytes (64 MiB to 64 GiB), or `0` for Auto (the smaller of
+	 *  1 GiB and a quarter of the machine's RAM). Left out: unchanged.
+	 */
+	frame_cache_bytes?: number | null,
+};
+
+/**
+ *  Sets whether decoders may use the hardware. It applies to decoders opened from now on; idle
+ *  decoders are closed and the open pools reopen on their next seek. Exports and `render.frame`
+ *  always decode in software. Not undoable, not journaled, never marks the project dirty; UI
+ *  credential only.
+ */
+export type MediaSetDecodePolicy = {
+	/**  `auto` (a verified hardware decoder when there is one) or `off` (software only). */
+	hw: DecodeHw,
+};
+
+/**  Result of `media.set_decode_policy`. */
+export type MediaSetDecodePolicyOutput = {
+	/**  The policy now in force. */
+	hw: DecodeHw,
 };
 
 /**  How to order the list; without one, by ID ascending. */

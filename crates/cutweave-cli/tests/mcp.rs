@@ -269,6 +269,43 @@ async fn headless_runs_the_full_engine_and_renders_a_frame() {
     }
 }
 
+/// WP-1D.08: over MCP an agent reads `media.cache_status` through `cutweave_execute`, and the
+/// three commands that change the caches (UI credential only) come back `forbidden`. The cache
+/// commands are in the catalog, not in the core tool list: the list is the same size.
+#[tokio::test]
+async fn headless_agents_read_the_cache_status_but_cannot_change_the_caches() {
+    for revision in Revision::ALL {
+        let dir = tempfile::tempdir().unwrap();
+        let root = dir.path().to_str().unwrap().to_owned();
+        let agent =
+            Agent::start(&["--headless", "--allow-root", &root, "--no-log"], revision).await;
+        assert_eq!(agent.tools().await.len(), 20, "{revision:?}");
+        let status = agent
+            .ok(
+                "cutweave_execute",
+                json!({ "steps": [{ "cmd": "media.cache_status", "args": {} }] }),
+            )
+            .await;
+        let text = status.to_string();
+        assert!(text.contains("decode_hw"), "{revision:?}: {text}");
+        for step in [
+            json!({ "cmd": "media.set_cache_config", "args": { "frame_cache_bytes": 0 } }),
+            json!({ "cmd": "media.clear_cache", "args": { "kinds": ["thumbnails"] } }),
+            json!({ "cmd": "media.set_decode_policy", "args": { "hw": "off" } }),
+        ] {
+            let e = agent
+                .err("cutweave_execute", json!({ "steps": [step.clone()] }))
+                .await;
+            assert!(
+                e.to_string().contains("forbidden"),
+                "{revision:?} {step}: {e}"
+            );
+        }
+        let (code, stderr) = agent.close().await;
+        assert_eq!(code, Some(0), "{stderr}");
+    }
+}
+
 /// Acceptance 1: `cutweave mcp --headless` lists the standard profile (19 tools within the P1
 /// gate) and runs the scripted session, on both revisions; the path policy confines it.
 #[tokio::test]

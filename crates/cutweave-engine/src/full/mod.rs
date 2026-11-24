@@ -59,7 +59,7 @@ use std::thread::JoinHandle;
 
 use cutweave_cache::FrameCache;
 use cutweave_commands::{CmdError, DocHandle, Registry, RegistryError};
-use cutweave_media::MediaBackend;
+use cutweave_media::{HwMode, MediaBackend};
 use cutweave_ops::media::{AnalysisStages, MediaProbe};
 use cutweave_ops::view::UiState;
 use cutweave_playback::shm::{
@@ -75,6 +75,7 @@ use cutweave_render::query::{RenderFrame, SharedBackend};
 use serde_json::Value;
 
 pub use audio::AudioMode;
+use frames::DecodePolicy;
 pub use frames::MediaFrames;
 pub use gpu::{GPU_START_WAIT, RENDER_WAIT};
 pub use media::{BackendProbe, CurrentDoc, MediaFile, MediaState, total_ram};
@@ -86,11 +87,18 @@ use self::preview::{CompositorSlot, PreviewSource};
 use self::watch::{DocWatcher, Targets};
 use crate::config::{EngineMode, GpuConfig};
 use crate::export::{DecoderSources, ExportServices};
+use crate::media_cache::{
+    CacheControl, CacheKind, CacheKindStatus, CacheLimits, ClearedKind, DecodeHw,
+    MediaCacheStatusOutput,
+};
 use crate::project_io::ProjectLayout;
 use crate::subsystems::{
     EngineLink, SubsystemCall, SubsystemError, SubsystemEvents, SubsystemHost, SubsystemKind,
     Subsystems,
 };
+
+/// The environment variable equivalent of `--cache-dir`: the folder the caches live in.
+pub const CACHE_DIR_ENV: &str = "CUTWEAVE_CACHE_DIR";
 
 /// Default size of a headless engine's preview frames (they are rendered and dropped).
 pub const HEADLESS_PREVIEW: (u32, u32) = (640, 360);
@@ -152,7 +160,14 @@ impl FullConfig {
     /// `ffmpeg`), otherwise no media backend.
     #[must_use]
     pub fn native() -> FullConfig {
-        let mut config = FullConfig::default();
+        // `CUTWEAVE_CACHE_DIR` moves the caches (the `--cache-dir` flag, applied after this,
+        // wins).
+        let mut config = FullConfig {
+            cache_dir: std::env::var_os(CACHE_DIR_ENV)
+                .filter(|v| !v.is_empty())
+                .map(PathBuf::from),
+            ..FullConfig::default()
+        };
         #[cfg(feature = "ffmpeg")]
         match cutweave_media::FfmpegBackend::new() {
             Ok(backend) => config.media = Some(Arc::new(backend)),
@@ -164,6 +179,13 @@ impl FullConfig {
                 Some("this engine was built without FFmpeg (feature `ffmpeg`)".into());
         }
         config
+    }
+
+    /// With the caches under `dir` (`--cache-dir`) instead of `<OS cache dir>/cutweave`.
+    #[must_use]
+    pub fn with_cache_dir(mut self, dir: impl Into<PathBuf>) -> FullConfig {
+        self.cache_dir = Some(dir.into());
+        self
     }
 
     /// With `backend` decoding, probing and encoding.
@@ -233,6 +255,8 @@ struct Inner {
     doc: CurrentDoc,
     pcm: Arc<LivePcm>,
     frame_cache: Arc<FrameCache>,
+    /// Hardware or software preview decoding (`media.set_decode_policy`).
+    decode: Arc<DecodePolicy>,
     started: Mutex<Option<Started>>,
     per_doc: Mutex<Option<PerDoc>>,
     ring: Arc<Mutex<Option<Announced>>>,
@@ -349,6 +373,7 @@ impl FullSubsystems {
             inner: Arc::new(Inner {
                 pcm: Arc::new(LivePcm::new(config.media.clone())),
                 frame_cache: Arc::new(FrameCache::new(budget)),
+                decode: Arc::default(),
                 config,
                 doc: CurrentDoc::default(),
                 started: Mutex::new(None),
@@ -667,6 +692,145 @@ impl FullSubsystems {
     }
 }
 
+/// The cache commands' view of the running subsystems (WP-1D.08).
+struct FullCacheControl {
+    inner: Arc<Inner>,
+}
+
+impl FullCacheControl {
+    /// The open caches, once the subsystems run.
+    fn caches(&self) -> Option<Caches> {
+        lock(&self.inner.started).as_ref().map(|s| s.caches.clone())
+    }
+}
+
+fn cache_failure(what: &str, e: &cutweave_cache::CacheError) -> CmdError {
+    CmdError::internal(format!("{what}: {e}"))
+}
+
+fn bytes(n: usize) -> u64 {
+    u64::try_from(n).unwrap_or(u64::MAX)
+}
+
+impl CacheControl for FullCacheControl {
+    fn status(&self) -> MediaCacheStatusOutput {
+        let caches = self.caches().unwrap_or_default();
+        let mut kinds = Vec::new();
+        if let Some(thumbs) = &caches.thumbs {
+            let disk = thumbs.disk();
+            let usage = disk.usage().unwrap_or_else(|e| {
+                tracing::warn!(error = %e, "cannot read the thumbnail cache usage");
+                cutweave_cache::CacheUsage::default()
+            });
+            kinds.push(CacheKindStatus {
+                kind: CacheKind::Thumbnails,
+                bytes: usage.bytes,
+                limit_bytes: disk.max_bytes(),
+                entries: usage.entries,
+            });
+        }
+        if let Some(waveforms) = &caches.waveforms {
+            let usage = waveforms.usage().unwrap_or_else(|e| {
+                tracing::warn!(error = %e, "cannot read the waveform cache usage");
+                cutweave_cache::CacheUsage::default()
+            });
+            kinds.push(CacheKindStatus {
+                kind: CacheKind::Waveforms,
+                bytes: usage.bytes,
+                limit_bytes: waveforms.max_bytes(),
+                entries: usage.entries,
+            });
+        }
+        MediaCacheStatusOutput {
+            folder: caches.root.map(|p| p.to_string_lossy().into_owned()),
+            kinds,
+            decode_hw: if self.inner.decode.hw() == HwMode::Off {
+                DecodeHw::Off
+            } else {
+                DecodeHw::Auto
+            },
+            frame_cache_bytes: bytes(self.inner.frame_cache.budget()),
+        }
+    }
+
+    fn set_config(
+        &self,
+        limits: &CacheLimits,
+        frame_cache_bytes: Option<u64>,
+    ) -> Result<MediaCacheStatusOutput, CmdError> {
+        let caches = self
+            .caches()
+            .ok_or_else(|| CmdError::unsupported("the media subsystems are not running"))?;
+        if let (Some(limit), Some(thumbs)) = (limits.thumbnails, &caches.thumbs) {
+            thumbs
+                .disk()
+                .shrink_to(limit)
+                .map_err(|e| cache_failure("thumbnail cache", &e))?;
+        }
+        if let (Some(limit), Some(waveforms)) = (limits.waveforms, &caches.waveforms) {
+            waveforms
+                .shrink_to(limit)
+                .map_err(|e| cache_failure("waveform cache", &e))?;
+        }
+        if let Some(wanted) = frame_cache_bytes {
+            let budget = if wanted == 0 {
+                FrameCache::default_budget(total_ram())
+            } else {
+                usize::try_from(wanted).unwrap_or(usize::MAX)
+            };
+            self.inner.frame_cache.set_budget(budget);
+        }
+        Ok(self.status())
+    }
+
+    fn clear(&self, kinds: &[CacheKind]) -> Result<Vec<ClearedKind>, CmdError> {
+        let caches = self
+            .caches()
+            .ok_or_else(|| CmdError::unsupported("the media subsystems are not running"))?;
+        let mut out = Vec::new();
+        for kind in kinds {
+            let cleared = match kind {
+                CacheKind::Thumbnails => caches.thumbs.as_ref().map(|t| {
+                    t.disk()
+                        .clear()
+                        .map_err(|e| cache_failure("thumbnails", &e))
+                }),
+                CacheKind::Waveforms => caches
+                    .waveforms
+                    .as_ref()
+                    .map(|w| w.clear().map_err(|e| cache_failure("waveforms", &e))),
+            };
+            if let Some(eviction) = cleared {
+                let eviction = eviction?;
+                out.push(ClearedKind {
+                    kind: *kind,
+                    removed: eviction.removed,
+                    freed_bytes: eviction.freed,
+                });
+            }
+        }
+        tracing::info!(kinds = ?kinds, "media caches cleared");
+        Ok(out)
+    }
+
+    fn set_decode_hw(&self, hw: DecodeHw) -> Result<(), CmdError> {
+        let mode = match hw {
+            DecodeHw::Auto => HwMode::Auto,
+            DecodeHw::Off => HwMode::Off,
+        };
+        if self.inner.decode.set(mode)
+            && let Some(started) = lock(&self.inner.started).as_ref()
+        {
+            started.frames.reopen_decoders();
+            if let Some(thumbs) = &started.caches.thumbs {
+                thumbs.set_hw_mode(mode);
+            }
+        }
+        tracing::info!(hw = ?hw, "hardware decoding policy set");
+        Ok(())
+    }
+}
+
 impl Subsystems for FullSubsystems {
     fn register(&self, registry: &mut Registry) -> Result<(), RegistryError> {
         cutweave_playback::transport::register(registry)?;
@@ -711,6 +875,7 @@ impl Subsystems for FullSubsystems {
             self.inner.doc.clone(),
             Arc::clone(&self.inner.frame_cache),
             caches.db.clone(),
+            Arc::clone(&self.inner.decode),
         ));
         let renderer: SharedBackend = Arc::new(Mutex::new(LateRenderer::new(
             Arc::clone(&gpu),
@@ -882,6 +1047,24 @@ impl Subsystems for FullSubsystems {
             .media
             .as_ref()
             .map(|backend| backend.capabilities())
+    }
+
+    fn gpu_adapter(&self) -> Option<crate::media_caps::GpuAdapterInfo> {
+        let info = lock(&self.inner.started)
+            .as_ref()
+            .and_then(|s| s.gpu.adapter_info())?;
+        Some(crate::media_caps::GpuAdapterInfo {
+            name: info.name,
+            backend: info.backend,
+            device_type: info.device_type,
+            software: info.software,
+        })
+    }
+
+    fn cache_control(&self) -> Option<Arc<dyn CacheControl>> {
+        Some(Arc::new(FullCacheControl {
+            inner: Arc::clone(&self.inner),
+        }))
     }
 
     fn shutdown(&self) {

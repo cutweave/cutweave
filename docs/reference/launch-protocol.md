@@ -8,7 +8,7 @@ How a supervisor (Electron main's `EngineSupervisor`, the CLI, a test) starts an
 cutweave engine [--headless] --port N [--token-stdin] [--project P] [--run-dir D]
                 [--allow-origin O]... [--allow-root R]... [--deterministic-ids SEED]
                 [--i-know-this-is-a-test] [--log-dir D | --no-log] [--handshake-timeout-ms MS]
-                [--dev-stub-media]
+                [--cache-dir D] [--dev-stub-media]
 ```
 
 `cutweave engine` (WP-1K.01, [cli.md](cli.md)) calls `cutweave_engine::launch::run`. The `cutweave-engine-serve` binary of `cutweave-engine` is the same entry point without the other subcommands; the integration tests of the engine and of `@cutweave/protocol` still spawn it.
@@ -26,6 +26,7 @@ cutweave engine [--headless] --port N [--token-stdin] [--project P] [--run-dir D
 | `--i-know-this-is-a-test` | Lets a Gui engine run with deterministic ids. Ignored otherwise. |
 | `--log-dir D` / `--no-log` | Log directory (default `~/.cutweave/logs`), or no log file. |
 | `--handshake-timeout-ms MS` | How long a Gui engine waits for the handshake line (default 5000; tests shorten it). |
+| `--cache-dir D` | The folder the engine keeps its caches in: `cache.sqlite` (frame indexes and the thumbnail accounting), `media-cache/` (thumbnails and filmstrips) and `waveforms/`. Default: `<OS cache folder>/cutweave` (`%LOCALAPPDATA%`, `~/Library/Caches`, `$XDG_CACHE_HOME` or `~/.cache`). The environment variable `CUTWEAVE_CACHE_DIR=D` does the same; the flag wins. The desktop app passes its machine preference "Cache folder" here when it starts the engine, so a new choice applies the next time Cutweave starts and the old folder is left for the person to delete. The folder is created when it does not exist; one that cannot be created or opened makes the engine report `engine.degraded{subsystem: "cache"}` and run without those caches. |
 | `--dev-stub-media` | **Dev only.** Attaches a stand-in media prober instead of the full engine (FFmpeg media, the GPU, audio and playback; WP-1I.05), so tests and UI work without the FFmpeg bundle can `media.import` files and put clips on the timeline. Any existing, readable file is "probed" from its extension alone: video (`mp4 mov mkv webm m4v avi`) is 1920x1080, 30 fps, 10 s with a 48 kHz stereo audio stream; audio (`wav mp3 aac m4a flac ogg opus`) is 48 kHz stereo, 10 s; images (`png jpg jpeg webp gif`) are 1920x1080 stills. Other extensions go to `failed[]` (`unsupported`), missing files to `failed[]` (`not_found`). Nothing is decoded, so there is no preview or export of real pixels. The data is marked as made up: every stream's codec is `"stub"` and the asset's probe carries `"stub": true`. The content hash is SHA-256 over the file length and its first and last 64 KiB (`stub-sha256:...`). The environment variable `CUTWEAVE_DEV_STUB_MEDIA=1` does the same (the flag wins); the engine logs a warning at startup when it is on. Without the flag nothing changes: imports report every file as unreadable. |
 
 ## Sequence
@@ -103,6 +104,8 @@ A server engine (not a one-shot) writes `<run-dir>/<pid>.json` when it is ready 
 - **No telemetry:** the engine opens no outbound connection; it only listens on `127.0.0.1`.
 
 ## Supervision (Electron main)
+
+The app also reads this computer's preference "Cache folder" (Settings > Cache and storage, WP-1D.08) when it starts the engine and passes a chosen folder as `--cache-dir`; nothing is passed while the preference is empty. The other machine preferences (cache limits, hardware decoding, memory for decoded frames) reach the engine after each handshake as the UI-only commands `media.set_cache_config` and `media.set_decode_policy`, and `media.clear_cache` empties a cache; an agent token calling any of them gets `forbidden`, while `media.cache_status` answers everyone.
 
 Dev builds of the desktop app (not packaged) add `--allow-root` for every folder in `CUTWEAVE_ENGINE_ALLOW_ROOTS` (a `;`-separated list on Windows, `:` elsewhere), so agents attached to a dev engine can import from and save into those folders. `CUTWEAVE_DEV_STUB_MEDIA=1` is inherited by the engine and turns on the stub media backend. Two more variables reach the engine: `CUTWEAVE_GPU` (`auto`, `software` or an adapter name) picks the GPU, and `CUTWEAVE_AUDIO` (`null`, `default` or a device name) picks a Gui engine's audio output. A headless engine always plays on the null clock.
 

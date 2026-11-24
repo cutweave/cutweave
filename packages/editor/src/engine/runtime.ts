@@ -222,7 +222,10 @@ export function startEngineRuntime(
     // The project status first: the events that follow (dirty, saved) are newer than the hello.
     sessionSync?.applyHello(hello);
     // How this editor wants its engine to save (File > Settings… > Saving), for every project.
-    if (!mismatch) await sendAutosave();
+    if (!mismatch) {
+      await sendAutosave();
+      await sendMachineSettings();
+    }
     // The preview frame ring of this engine launch (WP-1M.04); `null` when it publishes none.
     stores.engine.setState({ previewRing: parseRingAnnouncement(hello.shm) });
     try {
@@ -248,6 +251,28 @@ export function startEngineRuntime(
         enabled: values["saving.autosave"],
         interval_s: values["saving.interval"],
         keep_backups: values["saving.backups"],
+      });
+    } catch (error) {
+      onError(error);
+    }
+  }
+
+  /**
+   * Tells the engine this computer's cache and hardware preferences (`media.set_decode_policy`,
+   * `media.set_cache_config`; UI-only commands, WP-1D.08). The cache folder is not sent: main
+   * passes it as `--cache-dir` when it starts the engine.
+   */
+  async function sendMachineSettings(): Promise<void> {
+    const values = stores.prefs?.getState().values;
+    if (values === undefined) return;
+    try {
+      await rpc.call("media.set_decode_policy", { hw: values["performance.hw_decode"] });
+      await rpc.call("media.set_cache_config", {
+        limits: {
+          thumbnails: values["cache.thumbnails_limit"],
+          waveforms: values["cache.waveforms_limit"],
+        },
+        frame_cache_bytes: values["performance.frame_memory"],
       });
     } catch (error) {
       onError(error);
@@ -328,6 +353,13 @@ export function startEngineRuntime(
           state.values["saving.interval"] !== previous.values["saving.interval"] ||
           state.values["saving.backups"] !== previous.values["saving.backups"];
         if (changed && connection.state === "ready") void sendAutosave();
+        const machineChanged =
+          state.values["performance.hw_decode"] !== previous.values["performance.hw_decode"] ||
+          state.values["performance.frame_memory"] !==
+            previous.values["performance.frame_memory"] ||
+          state.values["cache.thumbnails_limit"] !== previous.values["cache.thumbnails_limit"] ||
+          state.values["cache.waveforms_limit"] !== previous.values["cache.waveforms_limit"];
+        if (machineChanged && connection.state === "ready") void sendMachineSettings();
       }),
     );
   }

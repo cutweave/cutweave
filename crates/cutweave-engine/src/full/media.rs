@@ -28,8 +28,6 @@ use cutweave_model::{MediaId, MediaKind, ProbeInfo, StreamKind};
 use cutweave_ops::media::{AnalysisInput, AnalysisStage, MediaProbe, ProbeError, Probed};
 use cutweave_render::query::SharedBackend;
 
-/// Cap of the waveform files (they are not in `cache.sqlite`'s accounting yet, WP-1D.06).
-pub const WAVEFORM_CACHE_BYTES: u64 = 512 << 20;
 /// Cap of the frame indexes in `cache.sqlite`.
 pub const INDEX_CACHE_BYTES: u64 = 256 << 20;
 
@@ -162,6 +160,8 @@ impl MediaState {
 /// The disk caches (any of them may be missing when the cache directory is unusable).
 #[derive(Clone, Default)]
 pub(crate) struct Caches {
+    /// The folder the caches live in (also when it could not be created).
+    pub(crate) root: Option<PathBuf>,
     pub(crate) db: Option<Arc<CacheDb>>,
     pub(crate) thumbs: Option<Arc<ThumbCache>>,
     pub(crate) waveforms: Option<Arc<WaveformCache>>,
@@ -185,7 +185,10 @@ impl Caches {
         };
         if let Err(e) = std::fs::create_dir_all(&root) {
             return (
-                Caches::default(),
+                Caches {
+                    root: Some(root.clone()),
+                    ..Caches::default()
+                },
                 Some(format!("cannot create {}: {e}", root.display())),
             );
         }
@@ -207,6 +210,7 @@ impl Caches {
         let waveforms = Some(Arc::new(WaveformCache::new(root.join("waveforms"))));
         (
             Caches {
+                root: Some(root),
                 db,
                 thumbs,
                 waveforms,
@@ -431,7 +435,7 @@ impl AnalysisStage for WaveformStage {
             Ok(_) | Err(CacheError::Media(MediaError::NoStream { .. })) => {}
             Err(e) => return Err(cache_failure(e)),
         }
-        if let Err(e) = self.waveforms.evict_lru(WAVEFORM_CACHE_BYTES) {
+        if let Err(e) = self.waveforms.enforce_limit() {
             tracing::debug!(error = %e, "waveform eviction failed");
         }
         Ok(())

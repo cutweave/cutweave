@@ -172,6 +172,7 @@ impl Rig {
             current,
             Arc::new(FrameCache::new(256 << 20)),
             None,
+            Arc::default(),
         ));
         let source = PreviewSource::new(
             doc,

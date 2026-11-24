@@ -259,6 +259,19 @@ pub trait Subsystems: Send + Sync {
         None
     }
 
+    /// The graphics adapter the renderer runs on, once it is open (`media.capabilities`);
+    /// `None`: not open (yet), or the CPU renderer.
+    fn gpu_adapter(&self) -> Option<crate::media_caps::GpuAdapterInfo> {
+        None
+    }
+
+    /// The media caches and decoding policy the cache commands act on (`media.cache_status`
+    /// and the UI-only `media.set_cache_config`, `media.clear_cache`,
+    /// `media.set_decode_policy`; WP-1D.08); `None`: this engine has none.
+    fn cache_control(&self) -> Option<Arc<dyn crate::media_cache::CacheControl>> {
+        None
+    }
+
     /// Runs an engine command whose context this implementation owns; `None` if it does not.
     fn invoke(&self, call: SubsystemCall<'_>) -> Option<Result<Value, CmdError>> {
         let _ = call;

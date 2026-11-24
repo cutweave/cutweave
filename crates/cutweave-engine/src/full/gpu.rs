@@ -106,6 +106,11 @@ impl LateGpu {
         self.lock().ctx.as_ref().map(|c| c.info().key.clone())
     }
 
+    /// The adapter in use, once open (`media.capabilities`).
+    pub(crate) fn adapter_info(&self) -> Option<cutweave_render::gpu::AdapterInfo> {
+        self.lock().ctx.as_ref().map(|c| c.info().clone())
+    }
+
     /// Records a failure while `start` still waits (`true`: `start` fails with it); `false`
     /// when `start` stopped waiting (fall back instead).
     pub(crate) fn fail_start(&self, reason: &str) -> bool {

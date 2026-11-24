@@ -139,6 +139,12 @@ export async function launchFlowApp(
       ...REAL_ENGINE_ENV,
       CUTWEAVE_DEV_STUB_MEDIA: options.realMedia === true ? "" : "1",
       CUTWEAVE_AUDIO: "null",
+      // Real-media flows write thumbnails, filmstrips and waveforms: into a throwaway folder of
+      // the workspace, never the real user's cache (the engine's default is the OS cache folder).
+      // A cache folder chosen in Settings (`--cache-dir`) wins over this default.
+      ...(options.realMedia === true
+        ? { CUTWEAVE_CACHE_DIR: path.join(work.dir, "default-cache") }
+        : {}),
       CUTWEAVE_ENGINE_ALLOW_ROOTS: work.dir,
       // Every launch gets a fresh, empty user profile (fixtures.ts). On Windows, creating a
       // D3D12 device in a profile without `AppData\Local` hangs in the driver (measured > 90 s on
@@ -665,6 +671,8 @@ export async function openSettingsPage(
     | "Export"
     | "Saving and backups"
     | "Keyboard shortcuts"
+    | "Cache and storage"
+    | "Performance and hardware"
     | "Advanced",
 ): Promise<Locator> {
   const settings = await openSettings(page, app);

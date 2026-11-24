@@ -56,6 +56,7 @@ use crate::full::MediaState;
 use crate::import::{BusAnalysisSink, ImportSink, NoMediaBackend, ctx_for};
 use crate::journal::{IdState, StopReason};
 use crate::logging::{self, LogGuard};
+use crate::media_cache::CacheCall;
 use crate::media_caps::CapabilitiesCall;
 use crate::project_io::{LockInfo, ProjectIoError, ProjectStore};
 use crate::session::{
@@ -309,6 +310,14 @@ impl Core {
         if context == TypeId::of::<CapabilitiesCall>() {
             let mut call = CapabilitiesCall {
                 caps: self.deps.subsystems.media_capabilities(),
+                gpu: self.deps.subsystems.gpu_adapter(),
+            };
+            let output = registry.invoke_engine_json(name, params, &mut call, ctx.access())?;
+            return Ok(self.reply(output));
+        }
+        if context == TypeId::of::<CacheCall>() {
+            let mut call = CacheCall {
+                control: self.deps.subsystems.cache_control(),
             };
             let output = registry.invoke_engine_json(name, params, &mut call, ctx.access())?;
             return Ok(self.reply(output));
@@ -905,6 +914,7 @@ pub fn build_registry() -> Result<Registry, RegistryError> {
     cutweave_commands::edit::register(&mut registry)?;
     session::register(&mut registry)?;
     crate::media_caps::register(&mut registry)?;
+    crate::media_cache::register(&mut registry)?;
     Ok(registry)
 }
 

@@ -37,13 +37,18 @@ describe("settings search", () => {
 
   it("groups the rows by page, in page order, and counts them", () => {
     const found = find("auto");
-    expect(found.map((m) => m.page.id)).toEqual(["saving"]);
+    // Saving first; two rows of a page of this computer also say "Auto" in their descriptions.
+    expect(found.map((m) => m.page.id)).toEqual(["saving", "performance"]);
     expect(found[0]?.rows.map((r) => r.row.id)).toEqual([
       "saving.autosave",
       "saving.interval",
       "saving.backups",
     ]);
-    expect(countMatches(found)).toBe(3);
+    expect(found[1]?.rows.map((r) => r.row.id)).toEqual([
+      "performance.frame_memory",
+      "performance.hw_decoders",
+    ]);
+    expect(countMatches(found)).toBe(5);
   });
 
   it("matches on the page title, so a page name finds its rows", () => {

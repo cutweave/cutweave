@@ -40,6 +40,7 @@ pub mod journal;
 pub mod launch;
 pub mod logging;
 pub mod mcp_backend;
+pub mod media_cache;
 pub mod media_caps;
 pub mod media_http;
 pub mod project_io;
@@ -58,6 +59,7 @@ pub use full::{AudioMode, FullConfig, FullHandle, FullSubsystems, MediaState};
 pub use import::NoMediaBackend;
 pub use logging::LogConfig;
 pub use mcp_backend::{api_mounts, mcp_mounts};
+pub use media_cache::{CacheControl, CacheKind, DecodeHw};
 pub use media_http::media_mounts;
 pub use rpc_backend::rpc_mounts;
 pub use session::{ProjectStatus, RecoveryInfo, SessionState};
@@ -99,6 +101,10 @@ mod tests {
             "project.discard_recovery",
             "project.set_autosave",
             "media.capabilities",
+            "media.cache_status",
+            "media.set_cache_config",
+            "media.clear_cache",
+            "media.set_decode_policy",
         ] {
             assert!(registry.get(name).is_some(), "{name} is not registered");
         }

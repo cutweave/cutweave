@@ -21,10 +21,7 @@ use cutweave_api::mcp::switch::Directory;
 use cutweave_api::mcp::{Catalog, CutweaveMcp, Dispatch, Profile as McpProfile, stdio};
 use cutweave_api::{Credential, RunFileContents};
 use cutweave_engine::logging::{self, LogGuard};
-use cutweave_engine::{
-    AudioConfig, DevStubMedia, Engine, EngineConfig, EngineMode, FullSubsystems, LogConfig,
-    Subsystems,
-};
+use cutweave_engine::{AudioConfig, Engine, EngineConfig, EngineMode, LogConfig};
 use serde_json::json;
 
 use crate::cli::{McpCmd, Profile};
@@ -164,6 +161,7 @@ fn headless(cmd: &McpCmd, spawn: SpawnPlan) -> Result<i32, Failure> {
 }
 
 fn serve_headless(cmd: &McpCmd, spawn: SpawnPlan) -> Result<i32, Failure> {
+    let subsystems = spawn.subsystems();
     let mut config = EngineConfig::new(EngineMode::Headless);
     config.project = spawn.project;
     config.deterministic_ids = spawn.deterministic_ids;
@@ -172,11 +170,7 @@ fn serve_headless(cmd: &McpCmd, spawn: SpawnPlan) -> Result<i32, Failure> {
     // null audio output: `render_frame` and real imports work. `--dev-stub-media` opts into the
     // stub (made-up probing, no decoding).
     config.audio = AudioConfig::Null;
-    config.subsystems = Some(if spawn.dev_stub_media {
-        Box::new(DevStubMedia) as Box<dyn Subsystems>
-    } else {
-        Box::new(FullSubsystems::native())
-    });
+    config.subsystems = Some(subsystems);
     let engine = Engine::start(config).map_err(|e| Failure::error(e.code(), e.to_string()))?;
     if spawn.dev_stub_media {
         eprintln!("cutweave mcp: warning: dev stub media is on (fake media probing, dev only)");

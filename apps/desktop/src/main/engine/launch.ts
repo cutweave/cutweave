@@ -48,6 +48,16 @@ export function devEngineArgs(
   return roots.flatMap((r) => ["--allow-root", r]);
 }
 
+/**
+ * The engine arguments this computer's preferences decide (WP-1D.08): the cache folder becomes
+ * `--cache-dir`; `""` (not chosen) leaves the engine its default, the OS cache folder
+ * (`CUTWEAVE_CACHE_DIR` still applies then). Read when the app starts the engine, so a new
+ * choice applies the next time Cutweave starts.
+ */
+export function preferenceEngineArgs(prefs: { readonly cacheFolder: string }): string[] {
+  return prefs.cacheFolder === "" ? [] : ["--cache-dir", prefs.cacheFolder];
+}
+
 export function resolveEngineLaunch(options: ResolveOptions): EngineLaunch | null {
   const { env, isPackaged, platform } = options;
   const exists = options.exists ?? existsSync;

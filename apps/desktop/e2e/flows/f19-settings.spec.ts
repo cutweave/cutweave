@@ -81,9 +81,12 @@ test.describe("F19 settings", () => {
         "Export",
         "Saving and backups",
         "Keyboard shortcuts",
+        "Cache and storage",
+        "Performance and hardware",
         "Advanced",
       ]);
       await expect(settings.getByText("Preferences", { exact: true })).toBeVisible();
+      await expect(settings.getByText("This computer", { exact: true })).toBeVisible();
       await expect(pages.getByRole("tab", { name: "General" })).toHaveAttribute(
         "aria-selected",
         "true",

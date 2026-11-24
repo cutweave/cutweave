@@ -104,6 +104,12 @@ impl Subsystems for Spy {
     fn media_capabilities(&self) -> Option<cutweave_media::Capabilities> {
         self.inner.media_capabilities()
     }
+    fn gpu_adapter(&self) -> Option<cutweave_engine::media_caps::GpuAdapterInfo> {
+        self.inner.gpu_adapter()
+    }
+    fn cache_control(&self) -> Option<Arc<dyn cutweave_engine::CacheControl>> {
+        self.inner.cache_control()
+    }
     fn shutdown(&self) {
         self.inner.shutdown();
     }

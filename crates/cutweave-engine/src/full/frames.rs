@@ -39,6 +39,7 @@
 use std::cell::RefCell;
 use std::collections::{HashMap, HashSet};
 use std::path::PathBuf;
+use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, Mutex, PoisonError};
 
 use cutweave_cache::{CacheDb, ContentHash, FrameCache, FrameIndex, FrameKey};
@@ -54,6 +55,31 @@ use cutweave_render::{FrameError, FrameRequest, FrameSource, VideoFrame};
 use super::media::{CurrentDoc, MediaFile};
 use crate::export::sources::{compositor_frame, compositor_target, media_identity};
 
+/// Whether the preview's decoders may use the hardware (`media.set_decode_policy`, WP-1D.08).
+/// Read by every preview decode, so a change reaches decoders opened from then on; exports and
+/// agent frames decode in software whatever it says.
+#[derive(Debug, Default)]
+pub(crate) struct DecodePolicy {
+    software_only: AtomicBool,
+}
+
+impl DecodePolicy {
+    /// The hardware mode preview decoders are opened with.
+    pub(crate) fn hw(&self) -> HwMode {
+        if self.software_only.load(Ordering::Relaxed) {
+            HwMode::Off
+        } else {
+            HwMode::Auto
+        }
+    }
+
+    /// Sets the mode; returns whether it changed.
+    pub(crate) fn set(&self, hw: HwMode) -> bool {
+        let off = hw == HwMode::Off;
+        self.software_only.swap(off, Ordering::Relaxed) != off
+    }
+}
+
 /// One media item's decoders.
 struct Pooled {
     path: PathBuf,
@@ -67,6 +93,7 @@ pub struct MediaFrames {
     doc: CurrentDoc,
     cache: Arc<FrameCache>,
     db: Option<Arc<CacheDb>>,
+    policy: Arc<DecodePolicy>,
     pools: Mutex<HashMap<MediaId, Pooled>>,
     damaged: Mutex<HashSet<MediaId>>,
     /// Media whose frames must be converted for the compositor, and into what.
@@ -118,12 +145,14 @@ impl MediaFrames {
         doc: CurrentDoc,
         cache: Arc<FrameCache>,
         db: Option<Arc<CacheDb>>,
+        policy: Arc<DecodePolicy>,
     ) -> MediaFrames {
         MediaFrames {
             backend,
             doc,
             cache,
             db,
+            policy,
             pools: Mutex::new(HashMap::new()),
             damaged: Mutex::new(HashSet::new()),
             targets: Mutex::new(HashMap::new()),
@@ -160,6 +189,16 @@ impl MediaFrames {
             self.cache.remove_media(hash);
         }
         stale
+    }
+
+    /// Closes every idle decoder, so the next seek of each media item opens one under the
+    /// current [`DecodePolicy`] (decoders checked out now are not found again: the pool matches
+    /// decoders by their options).
+    pub(crate) fn reopen_decoders(&self) {
+        let pools = self.pools.lock().unwrap_or_else(PoisonError::into_inner);
+        for pooled in pools.values() {
+            pooled.pool.trim();
+        }
     }
 
     /// Closes every decoder and empties the pools (the document closed, or shutdown).
@@ -233,7 +272,12 @@ impl MediaFrames {
             return Ok(frame);
         }
         let (cancel, opts) = match scope {
-            Some((cancel, mode)) => (cancel, DecodeOpts::default().with_mode(mode)),
+            Some((cancel, mode)) => (
+                cancel,
+                DecodeOpts::default()
+                    .with_mode(mode)
+                    .with_hw(self.policy.hw()),
+            ),
             None => (
                 AGENT_CANCEL
                     .with(|c| c.borrow().clone())

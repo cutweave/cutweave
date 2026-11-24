@@ -30,13 +30,14 @@
 
 use std::path::PathBuf;
 use std::sync::Arc;
+use std::sync::atomic::{AtomicBool, Ordering};
 
 use cutweave_jobs::{JobCtx, JobError, JobHandle, JobKind, JobManager, JobSpec};
 use cutweave_media::{
     CancelCheck, CancelToken, ContentHash, DecoderLease, DecoderPool, FrameIndex, HashMode,
     MediaBackend, PixelFormat, VideoDecoder, VideoFrame, content_hash,
 };
-use cutweave_media::{DecodeOpts, MediaError};
+use cutweave_media::{DecodeOpts, HwMode, MediaError};
 use cutweave_model::{Duration, MediaId, Time};
 use cutweave_render::Image;
 use cutweave_render::encode::{DEFAULT_JPEG_QUALITY, encode_jpeg};
@@ -257,6 +258,8 @@ pub struct ThumbCache {
     db: Arc<CacheDb>,
     disk: DiskCache,
     quality: u8,
+    /// Decode in software only (the person turned hardware decoding off, WP-1D.08).
+    software_only: AtomicBool,
 }
 
 impl std::fmt::Debug for ThumbCache {
@@ -282,7 +285,15 @@ impl ThumbCache {
             backend,
             db,
             quality: config.jpeg_quality.clamp(1, 100),
+            software_only: AtomicBool::new(false),
         }
+    }
+
+    /// Whether decoders opened from now on may use the hardware ([`HwMode::Auto`], the
+    /// default) or not.
+    pub fn set_hw_mode(&self, hw: HwMode) {
+        self.software_only
+            .store(hw == HwMode::Off, Ordering::Relaxed);
     }
 
     /// The disk cache (usage, cap, [`remove_media`](DiskCache::remove_media)).
@@ -540,7 +551,14 @@ impl ThumbCache {
         // One decoder; the pool dies with the lease, closing the file.
         let pool = DecoderPool::with_max_live(Arc::clone(&self.backend), &media.path, 1)
             .with_index(Arc::clone(index));
-        let opts = DecodeOpts::default().with_target(PixelFormat::Rgba8);
+        let hw = if self.software_only.load(Ordering::Relaxed) {
+            HwMode::Off
+        } else {
+            HwMode::Auto
+        };
+        let opts = DecodeOpts::default()
+            .with_target(PixelFormat::Rgba8)
+            .with_hw(hw);
         let mut lease = pool.checkout(&opts, Some(near), cancel)?;
         lease.set_cancel(Some(cancel.clone()));
         Ok(lease)
@@ -791,6 +809,30 @@ mod tests {
             .thumb(&r.media, at(1), 1000, &CancelToken::new())
             .expect("thumb");
         assert_eq!((big.width, big.height), (320, 180));
+    }
+
+    #[test]
+    fn lowering_the_cap_evicts_at_once_and_clear_empties_the_cache() {
+        let r = rig("thumb-shrink", 64, 36, 4, u64::MAX);
+        let cancel = CancelToken::new();
+        for s in 0..4 {
+            r.cache.thumb(&r.media, at(s), 32, &cancel).expect("thumb");
+        }
+        let full = r.cache.disk().usage().expect("usage");
+        assert_eq!(full.entries, 4);
+        let ev = r.cache.disk().shrink_to(full.bytes / 2).expect("shrink");
+        assert!(ev.removed >= 1, "{ev:?}");
+        let now = r.cache.disk().usage().expect("usage");
+        assert!(now.bytes <= full.bytes / 2, "{now:?} vs {full:?}");
+        assert_eq!(r.cache.disk().max_bytes(), full.bytes / 2);
+        let ev = r.cache.disk().clear().expect("clear");
+        assert_eq!(ev.removed, now.entries);
+        assert_eq!(r.cache.disk().usage().expect("usage").entries, 0);
+        // The files and their folders are gone; the cache regenerates on demand.
+        assert!(!r.cache_dir.join("thumbs").exists());
+        let again = r.cache.thumb(&r.media, at(1), 32, &cancel).expect("thumb");
+        assert_ne!(again.jpeg.len(), 0);
+        assert_eq!(r.cache.disk().usage().expect("usage").entries, 1);
     }
 
     #[test]

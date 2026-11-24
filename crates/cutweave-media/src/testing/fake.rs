@@ -338,6 +338,8 @@ struct Shared {
     decoded_frames: AtomicU64,
     index_scans: AtomicU64,
     decoders_opened: AtomicU64,
+    /// Decoders opened on the pretend hardware path ([`FakeBackend::with_pseudo_hw_decode`]).
+    hw_decoders_opened: AtomicU64,
     encodes: Mutex<Vec<(PathBuf, EncodeSummary)>>,
     /// Finished encodes, readable back.
     outputs: Mutex<BTreeMap<PathBuf, FakeMedia>>,
@@ -351,6 +353,8 @@ pub struct FakeBackend {
     media: BTreeMap<PathBuf, Entry>,
     caps: Capabilities,
     frame_cost: Wall,
+    /// Decoders opened with [`HwMode::Auto`](crate::HwMode::Auto) pretend to be hardware ones.
+    pseudo_hw: bool,
     shared: Arc<Shared>,
 }
 
@@ -377,6 +381,7 @@ impl FakeBackend {
                 codec(FAKE_AUDIO_CODEC, StreamKind::Audio),
             ]),
             frame_cost: Wall::ZERO,
+            pseudo_hw: false,
             shared: Arc::default(),
         }
     }
@@ -389,6 +394,22 @@ impl FakeBackend {
     pub fn with_frame_cost(mut self, cost: Wall) -> FakeBackend {
         self.frame_cost = cost;
         self
+    }
+
+    /// Makes every decoder opened with [`HwMode::Auto`](crate::HwMode::Auto) report itself as a
+    /// hardware decoder ([`VideoDecoder::is_hw`]) and count in
+    /// [`hw_decoders_opened`](Self::hw_decoders_opened): the decoder-kind probe of tests of
+    /// the hardware decoding setting. The pixels are the same.
+    #[must_use]
+    pub fn with_pseudo_hw_decode(mut self) -> FakeBackend {
+        self.pseudo_hw = true;
+        self
+    }
+
+    /// Video decoders opened on the pretend hardware path.
+    #[must_use]
+    pub fn hw_decoders_opened(&self) -> u64 {
+        self.shared.hw_decoders_opened.load(Ordering::Relaxed)
     }
 
     /// Frame indexes built so far (`index_media` calls and decoders opened without an index).
@@ -504,7 +525,14 @@ impl MediaBackend for FakeBackend {
             });
         }
         self.shared.decoders_opened.fetch_add(1, Ordering::Relaxed);
+        let hw = self.pseudo_hw && opts.hw == crate::HwMode::Auto;
+        if hw {
+            self.shared
+                .hw_decoders_opened
+                .fetch_add(1, Ordering::Relaxed);
+        }
         Ok(Box::new(FakeVideoDecoder {
+            hw,
             format: opts.target_pixfmt.unwrap_or(video.format),
             video,
             index,
@@ -571,6 +599,8 @@ impl MediaBackend for FakeBackend {
 }
 
 struct FakeVideoDecoder {
+    /// A pretend hardware decoder.
+    hw: bool,
     video: FakeVideo,
     format: PixelFormat,
     index: Arc<FrameIndex>,
@@ -648,6 +678,10 @@ impl VideoDecoder for FakeVideoDecoder {
 
     fn set_cancel(&mut self, cancel: Option<CancelToken>) {
         self.cancel = cancel;
+    }
+
+    fn is_hw(&self) -> bool {
+        self.hw
     }
 }
 

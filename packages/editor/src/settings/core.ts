@@ -6,6 +6,8 @@
 
 import { AUTOSAVE_BACKUPS, AUTOSAVE_INTERVALS_S, RECENT_COUNT_MAX } from "@cutweave/preferences";
 import { sessionUiStore } from "../session/sessionUiStore.ts";
+// The "This computer" pages register themselves (WP-1D.08).
+import "./machine.tsx";
 import {
   type ChoiceOption,
   registerSettingsPage,

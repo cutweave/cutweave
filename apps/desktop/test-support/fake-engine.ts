@@ -408,6 +408,18 @@ function handle(client: Client, text: string): void {
     case "job.list":
       ok({ jobs: [...jobs.values()].map(jobInfo), active: 0 });
       return;
+    // The cache and hardware preferences the editor sends after every handshake (WP-1D.08).
+    case "media.set_decode_policy":
+    case "media.set_cache_config":
+    case "media.cache_status":
+      ok({
+        folder: null,
+        kinds: [],
+        decode_hw: "auto",
+        frame_cache_bytes: 0,
+        hw: "auto",
+      });
+      return;
     case "media.capabilities":
       ok({
         available: true,

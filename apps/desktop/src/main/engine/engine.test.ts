@@ -9,7 +9,7 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { afterEach, describe, expect, it } from "vitest";
 import type { EngineStatus } from "../../shared/api.ts";
-import { devEngineArgs, resolveEngineLaunch } from "./launch.ts";
+import { devEngineArgs, preferenceEngineArgs, resolveEngineLaunch } from "./launch.ts";
 import { isPortFree, pickFreePort } from "./ports.ts";
 import { parseEngineLine, parseReadyLine, readCrashMarker } from "./protocol.ts";
 import { connectEngineRpc, EngineRpcError, uuidv7 } from "./rpc-client.ts";
@@ -124,6 +124,19 @@ describe("devEngineArgs", () => {
   it("adds nothing when unset or when packaged", () => {
     expect(devEngineArgs({}, false, ";")).toEqual([]);
     expect(devEngineArgs({ CUTWEAVE_ENGINE_ALLOW_ROOTS: "/a" }, true, ";")).toEqual([]);
+  });
+});
+
+describe("preferenceEngineArgs", () => {
+  it("passes a chosen cache folder as --cache-dir", () => {
+    expect(preferenceEngineArgs({ cacheFolder: "D:\\Cutweave cache" })).toEqual([
+      "--cache-dir",
+      "D:\\Cutweave cache",
+    ]);
+  });
+
+  it("leaves the engine its default when no folder is chosen", () => {
+    expect(preferenceEngineArgs({ cacheFolder: "" })).toEqual([]);
   });
 });
 
