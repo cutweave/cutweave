@@ -7,6 +7,9 @@
 //!   constant and variable frame rates), built by [`MediaBackend::index_media`] and serialized for
 //!   `cutweave-cache`. [`content_hash`]: BLAKE3 fast and full hashes of media files.
 //! - [`VideoFrame`] / [`AudioChunk`]: decoded media with exact pts in flicks (ADR-0004).
+//! - [`VideoDecoder`]: frame-exact seek through the index and sequential decode;
+//!   [`AudioDecoder`]: sample ranges at the native rate. [`DecoderPool`]: the bounded, reused
+//!   decoders of one file; [`CancelToken`] cancels pending requests.
 //! - [`MediaError`]: typed failures; bad or damaged files never panic.
 //! - [`testing`]: [`FakeBackend`] (synthetic pictures and tones, no FFmpeg) and the backend
 //!   contract ([`backend_contract!`]) every backend passes.
@@ -14,16 +17,16 @@
 //!   unless the loaded libav* libraries equal the headers it was built against, and routes
 //!   FFmpeg's log into `tracing` (target `ffmpeg`). Build and run setup: docs/dev/ffmpeg.md.
 //!
-//! WP-1D.01 ships the boundary, WP-1D.02 probe, the frame index and content hashes, and WP-1E.01
-//! the encoder (H.264 + AAC in MP4, [`EncodeSpec`]). Decode arrives with WP-1D.03 and hardware
-//! decode with WP-1D.04; until then the FFmpeg backend opens and validates files and answers
-//! [`MediaError::NotImplemented`] past that point.
+//! WP-1D.01 ships the boundary, WP-1D.02 probe, the frame index and content hashes, WP-1E.01
+//! the encoder (H.264 + AAC in MP4, [`EncodeSpec`]) and WP-1D.03 software decode, frame-exact
+//! seek and the decoder pool. Hardware decode arrives with WP-1D.04.
 //!
 //! **Dependency rule** (arch §3, `cargo xtask check-deps`): `cutweave-model` never depends on
 //! this crate, and `cutweave-render` / `cutweave-audio` may use only its trait half (the default
 //! features): never the `ffmpeg` feature, never `ffmpeg-next` directly.
 
 mod backend;
+mod cancel;
 mod caps;
 mod encode;
 mod error;
@@ -33,6 +36,7 @@ mod index;
 #[cfg(any(feature = "ffmpeg", test))]
 mod log_filter;
 mod path;
+mod pool;
 pub mod testing;
 mod version;
 
@@ -40,9 +44,10 @@ mod version;
 mod ffmpeg;
 
 pub use backend::{
-    AudioDecoder, AudioEncodeSpec, DecodeOpts, EncodeSpec, EncodeSummary, Encoder, HwMode,
-    MediaBackend, VideoDecoder, VideoEncodeSpec,
+    AudioDecoder, AudioEncodeSpec, DecodeMode, DecodeOpts, EncodeSpec, EncodeSummary, Encoder,
+    HwMode, MediaBackend, VideoDecoder, VideoEncodeSpec,
 };
+pub use cancel::CancelToken;
 pub use caps::{Capabilities, CodecSupport, HwCodec};
 pub use encode::{CancelCheck, EncodeProgress, ProgressSink, RateControl, SpeedPreset, bt709_tags};
 pub use error::MediaError;
@@ -52,6 +57,7 @@ pub use index::{
     BLOB_VERSION, FrameEntry, FrameIndex, Gop, IndexEntry, IndexError, ScanInfo, TimeBase,
     is_vfr_range,
 };
+pub use pool::{DecoderLease, DecoderPool};
 pub use testing::FakeBackend;
 pub use version::{LibVersion, LinkedLibrary, PINNED_FFMPEG, Release};
 

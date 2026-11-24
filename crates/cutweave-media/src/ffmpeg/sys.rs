@@ -466,6 +466,200 @@ impl Scaler {
     }
 }
 
+// ===== WP-1D.03: decode (everything below up to the test module is this work package's) =====
+//
+// Per-stream seek (S3 finding F2.1), stream discard flags, pixel-format descriptors and the
+// color fields of decoded frames, which `ffmpeg-next` 9.1 does not expose (or exposes only by
+// transmuting C enums). As in the WP-1D.02 section, enum-typed fields a file can influence
+// (frame color tags) are read as plain integers.
+
+use ffmpeg_next::format::Pixel;
+use ffmpeg_next::format::context::Input;
+
+/// `avformat_seek_file` on one stream, in that stream's time base, landing at or before `ts`.
+///
+/// `Input::seek` in ffmpeg-next always passes stream index -1, so FFmpeg reads the timestamp in
+/// `AV_TIME_BASE` (microseconds); rescaling a 1/90000 or 1/30720 timestamp to microseconds and
+/// back can round across a frame boundary (S3 F2.1).
+pub(super) fn seek_stream(
+    input: &mut Input,
+    stream: usize,
+    ts: i64,
+) -> Result<(), ffmpeg_next::Error> {
+    let index = c_int::try_from(stream).map_err(|_| ffmpeg_next::Error::StreamNotFound)?;
+    if stream >= input.nb_streams() as usize {
+        return Err(ffmpeg_next::Error::StreamNotFound);
+    }
+    // SAFETY: `input` owns a valid, open AVFormatContext for the duration of the call (from
+    // `avformat_open_input`, freed only by `Input`'s Drop) and `index` was checked against
+    // `nb_streams` above. `avformat_seek_file` does not retain the pointer.
+    let ret = unsafe { ffi::avformat_seek_file(input.as_mut_ptr(), index, i64::MIN, ts, ts, 0) };
+    if ret < 0 {
+        Err(ffmpeg_next::Error::from(ret))
+    } else {
+        Ok(())
+    }
+}
+
+/// Marks every stream but `keep` `AVDISCARD_ALL`, so the demuxer skips their packets (MP4/MOV do
+/// not even read them): a decoder reads only its own stream.
+pub(super) fn discard_other_streams(input: &mut Input, keep: usize) {
+    let n = input.nb_streams() as usize;
+    for i in (0..n).filter(|&i| i != keep) {
+        // SAFETY: `input` owns a valid AVFormatContext whose `streams` array holds `nb_streams`
+        // valid AVStream pointers; `i < nb_streams`. Writing a valid `AVDiscard` constant into
+        // `discard` is what `-map`/`-vn` do in the CLI; nothing else holds a reference to the
+        // stream during the write.
+        unsafe {
+            let ctx = input.as_mut_ptr();
+            let st = *(*ctx).streams.add(i);
+            if let Some(st) = st.as_mut() {
+                st.discard = ffi::AVDiscard::AVDISCARD_ALL;
+            }
+        }
+    }
+}
+
+/// The layout facts of a pixel format that `ffmpeg-next`'s descriptor does not expose.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub(super) struct PixDesc {
+    /// Bits per sample of the first component.
+    pub depth: u8,
+    /// Horizontal chroma subsampling as a shift (1 = half width).
+    pub log2_chroma_w: u8,
+    /// Vertical chroma subsampling as a shift (1 = half height).
+    pub log2_chroma_h: u8,
+    /// Number of components (1 gray, 2 gray + alpha, 3 colour, 4 colour + alpha).
+    pub components: u8,
+    /// RGB rather than Y'CbCr (or gray).
+    pub rgb: bool,
+    /// Has an alpha channel.
+    pub alpha: bool,
+    /// A hardware surface or a bitstream format, not samples in memory.
+    pub opaque: bool,
+}
+
+/// The descriptor of `format`, `None` for `Pixel::None`.
+pub(super) fn pix_desc(format: Pixel) -> Option<PixDesc> {
+    // SAFETY: av_pix_fmt_desc_get range-checks its argument and returns NULL or a pointer into
+    // libavutil's static, immutable descriptor table (valid for the process lifetime). The
+    // `AVPixelFormat` comes from ffmpeg-next's `Pixel`, so it is a valid enum value.
+    let desc = unsafe { ffi::av_pix_fmt_desc_get(format.into()).as_ref() }?;
+    let flags = desc.flags;
+    let flag = |f: c_int| flags & u64::from(f.cast_unsigned()) != 0;
+    Some(PixDesc {
+        depth: u8::try_from(desc.comp[0].depth).unwrap_or(u8::MAX),
+        log2_chroma_w: desc.log2_chroma_w,
+        log2_chroma_h: desc.log2_chroma_h,
+        components: desc.nb_components,
+        rgb: flag(ffi::AV_PIX_FMT_FLAG_RGB),
+        alpha: flag(ffi::AV_PIX_FMT_FLAG_ALPHA),
+        opaque: flag(ffi::AV_PIX_FMT_FLAG_HWACCEL) || flag(ffi::AV_PIX_FMT_FLAG_BITSTREAM),
+    })
+}
+
+/// The color tags a decoded frame carries, by FFmpeg name (`None` when unspecified).
+#[derive(Clone, Debug, Default, PartialEq, Eq)]
+pub(super) struct FrameColor {
+    pub primaries: Option<String>,
+    pub transfer: Option<String>,
+    pub matrix: Option<String>,
+    pub range: Option<ColorRange>,
+}
+
+/// The color tags of `frame`.
+pub(super) fn frame_color(frame: &ffmpeg_next::frame::Video) -> FrameColor {
+    // SAFETY: `as_ptr` is the AVFrame `frame` owns, valid while it is borrowed. The four
+    // enum-typed fields are read through `*const c_int` casts of their addresses (C enums are
+    // `int`-sized), never as the bindings' Rust enums, so an out-of-range value from a stream
+    // header cannot be materialized as an invalid enum (see the WP-1D.02 section).
+    let (primaries, transfer, matrix, range) = unsafe {
+        let f = frame.as_ptr();
+        let int_at = |field: *const c_int| field.read();
+        (
+            int_at(ptr::addr_of!((*f).color_primaries).cast()),
+            int_at(ptr::addr_of!((*f).color_trc).cast()),
+            int_at(ptr::addr_of!((*f).colorspace).cast()),
+            int_at(ptr::addr_of!((*f).color_range).cast()),
+        )
+    };
+    FrameColor {
+        primaries: color_name(primaries, av_color_primaries_name),
+        transfer: color_name(transfer, av_color_transfer_name),
+        matrix: color_name(matrix, av_color_space_name),
+        // AVCOL_RANGE_MPEG = 1 (limited), AVCOL_RANGE_JPEG = 2 (full).
+        range: match range {
+            1 => Some(ColorRange::Limited),
+            2 => Some(ColorRange::Full),
+            _ => None,
+        },
+    }
+}
+
+/// Copies `rows` rows of `row_bytes` bytes of plane `plane` of a decoded `frame` into a tight
+/// buffer. Works with negative line sizes (bottom-up pictures, which `ffmpeg-next`'s `data()`
+/// cannot describe). `None` when the plane does not exist or is smaller than asked for.
+pub(super) fn copy_plane(
+    frame: &ffmpeg_next::frame::Video,
+    plane: usize,
+    row_bytes: usize,
+    rows: usize,
+) -> Option<Vec<u8>> {
+    // The plane's height for the frame's own layout (av_image_fill_plane_sizes' rule: planes 1
+    // and 2 are chroma).
+    let desc = pix_desc(frame.format())?;
+    let height = frame.height() as usize;
+    let plane_rows = if plane == 1 || plane == 2 {
+        height.div_ceil(1 << desc.log2_chroma_h)
+    } else {
+        height
+    };
+    if plane >= 8 || rows > plane_rows {
+        return None;
+    }
+    // SAFETY: `as_ptr` is the AVFrame `frame` owns, valid while it is borrowed; `plane` is below
+    // AV_NUM_DATA_POINTERS (8). Plain pointer and int fields are read.
+    let (data, linesize) = unsafe {
+        let f = frame.as_ptr();
+        ((*f).data[plane], (*f).linesize[plane])
+    };
+    let step = isize::try_from(linesize).ok()?;
+    if data.is_null() || (linesize.unsigned_abs() as usize) < row_bytes {
+        return None;
+    }
+    let mut out = Vec::with_capacity(row_bytes.checked_mul(rows)?);
+    for r in 0..rows {
+        let offset = isize::try_from(r).ok()?.checked_mul(step)?;
+        // SAFETY: a decoded frame's plane `plane` holds `plane_rows` rows of `|linesize|` bytes,
+        // row `r` starting at `data + r × linesize` (for a negative linesize `data` points at
+        // the bottom row in memory and rows go backwards); FFmpeg allocates the buffers that
+        // way for every frame it returns. `r < rows <= plane_rows` and
+        // `row_bytes <= |linesize|`, so the slice lies inside the plane. The frame is borrowed
+        // for the whole copy, so its buffers stay alive.
+        let row =
+            unsafe { std::slice::from_raw_parts(data.offset(offset).cast_const(), row_bytes) };
+        out.extend_from_slice(row);
+    }
+    Some(out)
+}
+
+/// `AVCodecParameters.seek_preroll`: samples an audio decoder must decode after a seek before
+/// its output is exact (Opus: 80 ms); 0 when unknown.
+pub(super) fn seek_preroll(par: &Parameters) -> u32 {
+    // SAFETY: `as_ptr` returns the AVCodecParameters `par` refers to; it is checked for NULL and
+    // only the plain `c_int` field is read, while `par` is borrowed.
+    unsafe {
+        let p = par.as_ptr();
+        if p.is_null() {
+            0
+        } else {
+            (*p).seek_preroll.max(0).cast_unsigned()
+        }
+    }
+}
+
+// ===== end of WP-1D.03 section ==============================================================
+
 #[cfg(test)]
 pub(super) mod test_support {
     //! Test-only access to `av_log` (C-variadic, so it cannot be wrapped safely in general).

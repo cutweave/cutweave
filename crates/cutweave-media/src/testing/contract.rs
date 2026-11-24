@@ -7,8 +7,11 @@
 //! The cases need no media files: the fixtures are a missing path, an empty file, a file of
 //! garbage and a directory, created in a fresh temporary directory per test. The encode cases
 //! (WP-1E.01) push small synthetic pictures and tones ([`small_encode_spec`]) and check the
-//! summary, progress, the input rules, cancellation and that nothing is left behind. Probe and
-//! decode cases on real media join with WP-1D.02/1D.03, which generate or fetch it.
+//! summary, progress, the input rules, cancellation and that nothing is left behind. The decode
+//! cases (WP-1D.03) encode a 1 s clip with the backend's own encoder and decode it back: frame
+//! count and exact pts, seeks equal to sequential decode, cancellation, audio ranges that join
+//! and seek exactly, missing streams. Corpus checks (frame-exactness against the FFmpeg CLI)
+//! live in the FFmpeg-only tests.
 //!
 //! These are test-support functions: they panic with a message when the backend breaks the
 //! contract.
@@ -18,15 +21,15 @@ use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
 use std::sync::{Arc, Mutex, PoisonError};
 
-use cutweave_model::{Duration, FrameRate, SampleRate, Time};
+use cutweave_model::{Duration, FrameRate, SampleRate, StreamKind, Time};
 
 use crate::backend::{
-    AudioEncodeSpec, DecodeOpts, EncodeSpec, Encoder, MediaBackend, VideoEncodeSpec,
+    AudioEncodeSpec, DecodeOpts, EncodeSpec, Encoder, MediaBackend, VideoDecoder, VideoEncodeSpec,
 };
 use crate::testing::{FAKE_AUDIO_CODEC, FAKE_VIDEO_CODEC, FakeAudio, FakeVideo};
 use crate::{
-    AudioChunk, CancelCheck, EncodeProgress, MediaError, PixelFormat, ProgressSink, RateControl,
-    VideoFrame,
+    AudioChunk, CancelCheck, CancelToken, EncodeProgress, MediaError, PixelFormat, ProgressSink,
+    RateControl, VideoFrame,
 };
 
 /// A temporary directory removed on drop (no extra dependency for test support).
@@ -647,6 +650,345 @@ pub fn unknown_codecs_are_unsupported(b: &dyn MediaBackend, fx: &Fixtures) {
     assert_eq!(entries(&dir), Vec::<String>::new());
 }
 
+// ---------------------------------------------------------------------------------------------
+// Decode (WP-1D.03). The clips are written by the backend's own encoder (the fake's encoder
+// registers its outputs, which then read back), so the cases need no media files.
+// ---------------------------------------------------------------------------------------------
+
+/// Frames of the decode cases' clip (1 s at 30 fps).
+const CLIP_FRAMES: u64 = 30;
+
+/// How far a sample read after a seek may differ from the same sample read sequentially:
+/// −80 dBFS (see [`audio_ranges_join_and_seek_exactly`]).
+pub const AUDIO_SEEK_TOLERANCE: f32 = 1e-4;
+
+/// Encodes a 1 s 64×36 30 fps clip with 48 kHz stereo audio into `dir/name` with the backend's
+/// own encoder; `video` / `audio` false leave that stream out.
+fn encoded_clip(b: &dyn MediaBackend, dir: &Path, name: &str, video: bool, audio: bool) -> PathBuf {
+    let path = dir.join(name);
+    let mut spec = small_encode_spec(b, &path);
+    if !video {
+        spec.video = None;
+    }
+    if !audio {
+        spec.audio = None;
+    }
+    let mut enc = open(b, &spec);
+    for n in 0..CLIP_FRAMES {
+        if video {
+            enc.push_video(&picture(n))
+                .unwrap_or_else(|e| panic!("push_video({n}): {e}"));
+        }
+        if audio {
+            enc.push_audio(&sound(n * SAMPLES_PER_FRAME, SAMPLES_PER_FRAME))
+                .unwrap_or_else(|e| panic!("push_audio({n}): {e}"));
+        }
+    }
+    enc.finish()
+        .unwrap_or_else(|e| panic!("finish {}: {e}", path.display()));
+    path
+}
+
+fn open_video(b: &dyn MediaBackend, path: &Path, opts: &DecodeOpts) -> Box<dyn VideoDecoder> {
+    b.open_decoder(path, opts)
+        .unwrap_or_else(|e| panic!("open_decoder({}): {e}", path.display()))
+}
+
+/// Every frame of `path`, decoded in order.
+fn decode_all(b: &dyn MediaBackend, path: &Path) -> Vec<VideoFrame> {
+    let mut d = open_video(b, path, &DecodeOpts::default());
+    let mut frames = Vec::new();
+    while let Some(f) = d
+        .next_frame()
+        .unwrap_or_else(|e| panic!("next_frame {}: {e}", frames.len()))
+    {
+        frames.push(f);
+        assert!(
+            frames.len() as u64 <= 10 * CLIP_FRAMES,
+            "next_frame never ends"
+        );
+    }
+    frames
+}
+
+fn frame_time(n: usize) -> Time {
+    ENCODE_RATE
+        .frame_to_time(i64::try_from(n).unwrap_or(i64::MAX))
+        .unwrap_or_else(|e| panic!("frame {n}: {e}"))
+}
+
+/// The backend decodes what it encoded: every frame once, in order, with pts `n / 30 s` exactly,
+/// at the encoded size in a 4:2:0 layout, undamaged; the end stays the end; the index has the
+/// same frames.
+pub fn encoded_clips_decode_back(b: &dyn MediaBackend, fx: &Fixtures) {
+    let dir = output_dir(fx, "decode");
+    let clip = encoded_clip(b, &dir, "clip.mp4", true, true);
+    let mut d = open_video(b, &clip, &DecodeOpts::default());
+    assert!(!d.is_hw(), "software decode");
+    let index = d.index();
+    assert_eq!(index.frame_count() as u64, CLIP_FRAMES, "index frames");
+    let mut n = 0usize;
+    while let Some(f) = d
+        .next_frame()
+        .unwrap_or_else(|e| panic!("next_frame {n}: {e}"))
+    {
+        assert_eq!(f.pts, frame_time(n), "pts of frame {n}");
+        assert_eq!(index.time_of(n), Some(f.pts), "index time of frame {n}");
+        assert_eq!((f.width, f.height), ENCODE_SIZE, "size of frame {n}");
+        assert_eq!(f.format, PixelFormat::Yuv420p, "layout of frame {n}");
+        assert!(!f.damaged, "frame {n} flagged damaged");
+        f.validate()
+            .unwrap_or_else(|e| panic!("frame {n} planes: {e}"));
+        n += 1;
+        assert!(n as u64 <= CLIP_FRAMES, "more frames than encoded");
+    }
+    assert_eq!(n as u64, CLIP_FRAMES, "frames decoded");
+    assert!(matches!(d.next_frame(), Ok(None)), "the end stays the end");
+}
+
+/// `seek_exact` returns exactly the frame sequential decoding gives for every on-screen time
+/// (on a frame, between frames, before the first), in any order, forward and backward;
+/// `next_frame` continues after it; times at or past the end are out of range. A decoder opened
+/// with the first one's index agrees, and an RGBA target keeps the size.
+pub fn seeks_equal_sequential_decode(b: &dyn MediaBackend, fx: &Fixtures) {
+    let dir = output_dir(fx, "seek");
+    let clip = encoded_clip(b, &dir, "clip.mp4", true, false);
+    let all = decode_all(b, &clip);
+    assert_eq!(all.len() as u64, CLIP_FRAMES);
+    let mut d = open_video(b, &clip, &DecodeOpts::default());
+    let half = frame_time(1).flicks() / 2;
+    let order: [usize; 17] = [0, 29, 15, 14, 16, 3, 28, 1, 0, 29, 10, 11, 12, 20, 5, 5, 6];
+    for (i, &n) in order.iter().enumerate() {
+        let on = frame_time(n);
+        let between = Time::from_flicks(on.flicks() + half).unwrap_or(on);
+        let t = if i % 2 == 0 { on } else { between };
+        let f = d
+            .seek_exact(t)
+            .unwrap_or_else(|e| panic!("seek_exact({t:?}) for frame {n}: {e}"));
+        assert!(
+            f == all[n],
+            "seek to frame {n} ({t:?}) differs from sequential decode"
+        );
+    }
+    let before = Time::from_flicks(-1).unwrap_or(Time::ZERO);
+    assert!(
+        d.seek_exact(before).ok().as_ref() == Some(&all[0]),
+        "a time before the first frame shows the first frame"
+    );
+    // next_frame continues after the sought frame.
+    d.seek_exact(frame_time(7))
+        .unwrap_or_else(|e| panic!("seek 7: {e}"));
+    for (n, want) in all.iter().enumerate().take(12).skip(8) {
+        let f = d
+            .next_frame()
+            .unwrap_or_else(|e| panic!("next_frame after seek: {e}"));
+        assert!(
+            f.as_ref() == Some(want),
+            "next_frame after seek 7 is not frame {n}"
+        );
+    }
+    // The last frame lasts until the end; nothing is on screen from there on.
+    let end = frame_time(all.len());
+    let last = Time::from_flicks(end.flicks() - 1).unwrap_or(Time::ZERO);
+    assert!(
+        d.seek_exact(last).ok().as_ref() == Some(&all[29]),
+        "the end of the last frame"
+    );
+    for t in [end, frame_time(all.len() + 100)] {
+        assert_eq!(
+            d.seek_exact(t).err(),
+            Some(MediaError::OutOfRange { t }),
+            "seek_exact({t:?}) past the end"
+        );
+    }
+    // A decoder opened with a known index agrees.
+    let opts = DecodeOpts::default().with_index(d.index());
+    let mut e = open_video(b, &clip, &opts);
+    assert!(
+        e.seek_exact(frame_time(17)).ok().as_ref() == Some(&all[17]),
+        "with an index"
+    );
+    // The RGBA thumbnail path.
+    let mut rgba = open_video(
+        b,
+        &clip,
+        &DecodeOpts::default().with_target(PixelFormat::Rgba8),
+    );
+    let f = rgba
+        .seek_exact(frame_time(4))
+        .unwrap_or_else(|e| panic!("RGBA seek: {e}"));
+    assert_eq!(
+        (f.format, f.width, f.height, f.pts),
+        (PixelFormat::Rgba8, 64, 36, frame_time(4))
+    );
+    f.validate().unwrap_or_else(|e| panic!("RGBA planes: {e}"));
+}
+
+/// A cancelled token makes every decoder call return [`MediaError::Cancelled`]; without it the
+/// decoder works on, still exact.
+pub fn cancelled_decoders_return_cancelled(b: &dyn MediaBackend, fx: &Fixtures) {
+    let dir = output_dir(fx, "cancel-decode");
+    let clip = encoded_clip(b, &dir, "clip.mp4", true, true);
+    let all = decode_all(b, &clip);
+    let token = CancelToken::new();
+    token.cancel();
+    let mut d = open_video(b, &clip, &DecodeOpts::default());
+    d.set_cancel(Some(token.clone()));
+    assert_eq!(
+        d.seek_exact(frame_time(9)).err(),
+        Some(MediaError::Cancelled),
+        "seek"
+    );
+    assert_eq!(
+        d.next_frame().err(),
+        Some(MediaError::Cancelled),
+        "next_frame"
+    );
+    d.set_cancel(None);
+    assert!(
+        d.seek_exact(frame_time(9)).ok().as_ref() == Some(&all[9]),
+        "after the cancel"
+    );
+    let mut a = b
+        .open_audio_decoder(&clip, None)
+        .unwrap_or_else(|e| panic!("open_audio_decoder: {e}"));
+    a.set_cancel(Some(token));
+    let tenth = Duration::from_flicks(ENCODE_RATE.frame_to_time(3).map_or(1, Time::flicks))
+        .unwrap_or(Duration::ZERO);
+    assert_eq!(
+        a.decode_range(Time::ZERO, tenth).err(),
+        Some(MediaError::Cancelled),
+        "decode_range"
+    );
+}
+
+/// The audio stream decodes at its native format; consecutive ranges join into exactly the
+/// whole; a range read after a seek (forward or back) has exactly the same placement as in the
+/// whole and the same samples within [`AUDIO_SEEK_TOLERANCE`]; ranges past the end are empty;
+/// every chunk's pts is its first sample's time.
+#[allow(clippy::cast_possible_truncation)] // sample counts of a 1 s clip
+pub fn audio_ranges_join_and_seek_exactly(b: &dyn MediaBackend, fx: &Fixtures) {
+    let dir = output_dir(fx, "audio");
+    let clip = encoded_clip(b, &dir, "clip.mp4", true, true);
+    let open_audio = || {
+        b.open_audio_decoder(&clip, None)
+            .unwrap_or_else(|e| panic!("open_audio_decoder: {e}"))
+    };
+    let rate = ENCODE_SAMPLE_RATE;
+    let at = |n: usize| {
+        rate.samples_to_time(i64::try_from(n).unwrap_or(i64::MAX))
+            .unwrap_or_else(|e| panic!("sample {n}: {e}"))
+    };
+    let span = |n: usize| Duration::try_from(at(n)).unwrap_or(Duration::ZERO);
+    let mut a = open_audio();
+    assert_eq!(a.format(), crate::AudioFormat { rate, channels: 2 });
+    let whole = a
+        .decode_range(Time::ZERO, span(3 * 48_000))
+        .unwrap_or_else(|e| panic!("whole: {e}"));
+    whole.validate().unwrap_or_else(|e| panic!("whole: {e}"));
+    assert_eq!(whole.pts, Time::ZERO);
+    let pushed = (CLIP_FRAMES * SAMPLES_PER_FRAME) as usize;
+    assert!(
+        (pushed..pushed + 4096).contains(&whole.frames()),
+        "{} samples decoded for {pushed} encoded",
+        whole.frames()
+    );
+    let slice = |from: usize, to: usize| -> Vec<Vec<f32>> {
+        whole
+            .planes
+            .iter()
+            .map(|p| p[from.min(p.len())..to.min(p.len())].to_vec())
+            .collect()
+    };
+    // 10 ms pieces join without gaps or overlaps.
+    let mut a = open_audio();
+    let mut joined: Vec<Vec<f32>> = vec![Vec::new(); 2];
+    for k in 0..120 {
+        let chunk = a
+            .decode_range(at(k * 480), span(480))
+            .unwrap_or_else(|e| panic!("piece {k}: {e}"));
+        if chunk.frames() > 0 {
+            assert_eq!(chunk.pts, at(k * 480), "pts of piece {k}");
+        }
+        for (j, p) in joined.iter_mut().zip(&chunk.planes) {
+            j.extend_from_slice(p);
+        }
+    }
+    assert!(
+        joined == whole.planes,
+        "10 ms pieces differ from one whole read"
+    );
+    // Random access: forward, then back, then forward again. Placement is exact; the samples
+    // match to the noise floor (lossy codecs with noise substitution, such as AAC PNS, draw
+    // their noise from decoder state that a seek resets: about −100 dBFS here).
+    let mut a = open_audio();
+    for (first, len) in [(24_000, 4_800), (12_000, 2_400), (40_000, 1_000), (0, 100)] {
+        let chunk = a
+            .decode_range(at(first), span(len))
+            .unwrap_or_else(|e| panic!("range at {first}: {e}"));
+        assert_eq!(chunk.pts, at(first), "pts of the range at {first}");
+        let want = slice(first, first + len);
+        assert_eq!(
+            chunk.frames(),
+            want[0].len(),
+            "length of the range at {first}"
+        );
+        let worst = chunk
+            .planes
+            .iter()
+            .zip(&want)
+            .flat_map(|(got, want)| got.iter().zip(want).map(|(g, w)| (g - w).abs()))
+            .fold(0.0_f32, f32::max);
+        assert!(
+            worst <= AUDIO_SEEK_TOLERANCE,
+            "samples {first}..{} after a seek differ from the whole read by up to {worst}",
+            first + len
+        );
+    }
+    let past = a
+        .decode_range(at(5 * 48_000), span(48_000))
+        .unwrap_or_else(|e| panic!("past the end: {e}"));
+    assert_eq!(past.frames(), 0, "a range past the end is empty");
+}
+
+/// A file without pictures has no video stream to decode and one without sound no audio
+/// stream ([`MediaError::NoStream`]); asking for a stream index that is not audio is the same.
+pub fn missing_streams_are_no_stream(b: &dyn MediaBackend, fx: &Fixtures) {
+    let dir = output_dir(fx, "streams");
+    let video_only = encoded_clip(b, &dir, "video.mp4", true, false);
+    let audio_only = encoded_clip(b, &dir, "audio.mp4", false, true);
+    let err = b.open_audio_decoder(&video_only, None).err();
+    assert!(
+        matches!(
+            err,
+            Some(MediaError::NoStream {
+                kind: StreamKind::Audio,
+                ..
+            })
+        ),
+        "audio decoder on a video-only file: {err:?}"
+    );
+    let err = b.open_decoder(&audio_only, &DecodeOpts::default()).err();
+    assert!(
+        matches!(
+            err,
+            Some(MediaError::NoStream {
+                kind: StreamKind::Video,
+                ..
+            })
+        ),
+        "video decoder on an audio-only file: {err:?}"
+    );
+    let both = encoded_clip(b, &dir, "both.mp4", true, true);
+    for index in [Some(0), Some(7)] {
+        let err = b.open_audio_decoder(&both, index).err();
+        assert!(
+            matches!(err, Some(MediaError::NoStream { kind: StreamKind::Audio, index: i, .. }) if i == index),
+            "audio decoder on stream {index:?}: {err:?}"
+        );
+    }
+}
+
 /// The backend can be shared across threads: concurrent calls agree with serial ones.
 pub fn backend_is_shareable_across_threads(b: &Arc<dyn MediaBackend>, fx: &Fixtures) {
     let want_caps = b.capabilities();
@@ -753,6 +1095,31 @@ macro_rules! backend_contract {
             #[test]
             fn backend_is_shareable_across_threads() {
                 c::backend_is_shareable_across_threads(&backend(), &c::Fixtures::new());
+            }
+
+            #[test]
+            fn encoded_clips_decode_back() {
+                c::encoded_clips_decode_back(&*backend(), &c::Fixtures::new());
+            }
+
+            #[test]
+            fn seeks_equal_sequential_decode() {
+                c::seeks_equal_sequential_decode(&*backend(), &c::Fixtures::new());
+            }
+
+            #[test]
+            fn cancelled_decoders_return_cancelled() {
+                c::cancelled_decoders_return_cancelled(&*backend(), &c::Fixtures::new());
+            }
+
+            #[test]
+            fn audio_ranges_join_and_seek_exactly() {
+                c::audio_ranges_join_and_seek_exactly(&*backend(), &c::Fixtures::new());
+            }
+
+            #[test]
+            fn missing_streams_are_no_stream() {
+                c::missing_streams_are_no_stream(&*backend(), &c::Fixtures::new());
             }
         }
     };
