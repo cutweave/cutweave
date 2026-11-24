@@ -130,6 +130,36 @@ describe("playbackStore", () => {
     }
     expect(store.getState()).toBe(before);
     expect(parsePlaybackState({ quality: "huge" })).toEqual({});
+    for (const source of [3, "med_x", { media: "med_x" }, { media: "m", duration: 1, fps: {} }]) {
+      expect(parsePlaybackState({ source })).toEqual({});
+    }
+  });
+
+  it("types playback.state.source and keeps the timeline's playhead while a source plays", () => {
+    let now = 1;
+    const store = createPlaybackStore(() => now);
+    store.getState().applyState({ state: "stopped", playing: false, t: 705_600_000, source: null });
+    expect(store.getState()).toMatchObject({ playhead: 705_600_000, source: null, sampledAt: 1 });
+    // `view.set_source{media}` answers with the source's state (ADR-0022).
+    now = 2;
+    const source = { media: "med_01", duration: 7_056_000_000, fps: { num: 25, den: 1 } };
+    store.getState().applyState({ state: "stopped", playing: false, rate: 0, t: 0, source });
+    expect(store.getState()).toMatchObject({ source, sourcePlayhead: 0, playhead: 705_600_000 });
+    // Its playback.state events move the source's playhead, never the timeline's.
+    store
+      .getState()
+      .applyState({ state: "playing", playing: true, rate: 1, t: 28_224_000, source });
+    store.getState().applyState({ t: 56_448_000 });
+    expect(store.getState()).toMatchObject({
+      mode: "playing",
+      playhead: 705_600_000,
+      sourcePlayhead: 56_448_000,
+      sampledAt: 1,
+    });
+    // Back on the timeline (`view.set_source{}`, or the asset was removed).
+    now = 3;
+    store.getState().applyState({ state: "stopped", playing: false, t: 705_600_000, source: null });
+    expect(store.getState()).toMatchObject({ source: null, playhead: 705_600_000, sampledAt: 3 });
   });
 });
 
