@@ -6,6 +6,7 @@
 use std::path::PathBuf;
 
 use cutweave_api::Credential;
+use cutweave_api::engines::{SelectError, Selector};
 use cutweave_api::mcp::execute::{check_step_refs, resolve_refs};
 use cutweave_commands::{CmdError, EntryKind, Registry, Rev, TxId};
 use cutweave_engine::{
@@ -40,8 +41,11 @@ pub enum Plan {
     Attach {
         /// The run-file directory (`None`: the default).
         run_dir: Option<PathBuf>,
-        /// The engine's process id, when chosen.
-        pid: Option<u32>,
+        /// Which engine: `--pid`, `--project`, or neither (the app's focused engine).
+        selector: Selector,
+        /// With `--project <path>` and no engine that has it open: open it in a one-shot
+        /// engine instead (what `--project` did before engines could be chosen by project).
+        fallback: Option<SpawnPlan>,
     },
     /// Start a one-shot engine in this process.
     Spawn(SpawnPlan),
@@ -81,10 +85,19 @@ impl Session {
     /// (for example `project_locked`).
     pub fn open(plan: Plan) -> Result<Session, Failure> {
         match plan {
-            Plan::Attach { run_dir, pid } => {
-                let engine = remote::discover(run_dir.as_deref(), pid)?;
-                Ok(Session::Remote(Remote::connect(&engine)?))
-            }
+            Plan::Attach {
+                run_dir,
+                selector,
+                fallback,
+            } => match remote::find(run_dir.as_deref(), &selector) {
+                Ok(engine) => Ok(Session::Remote(Remote::connect(&engine)?)),
+                Err(miss) => match (fallback, miss.why) {
+                    (Some(spawn), SelectError::NoEngine | SelectError::NoMatch) => {
+                        Session::open(Plan::Spawn(spawn))
+                    }
+                    _ => Err(miss.failure),
+                },
+            },
             Plan::Spawn(spawn) => {
                 let mut config = EngineConfig::new(EngineMode::Oneshot);
                 config.project = spawn.project;

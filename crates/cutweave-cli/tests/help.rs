@@ -36,6 +36,11 @@ fn help_query() {
 }
 
 #[test]
+fn help_engines() {
+    insta::assert_snapshot!(help(&["engines"]));
+}
+
+#[test]
 fn help_commands() {
     insta::assert_snapshot!(help(&["commands"]));
 }
@@ -73,7 +78,7 @@ fn every_subcommand_has_a_snapshot_and_a_reference_section() {
     assert_eq!(
         names,
         [
-            "engine", "exec", "query", "commands", "describe", "render", "mcp", "worker"
+            "engine", "exec", "query", "engines", "commands", "describe", "render", "mcp", "worker"
         ]
     );
     for name in names {

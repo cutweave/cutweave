@@ -36,6 +36,8 @@ pub enum Sub {
     Exec(ExecCmd),
     /// Run a query and print the result.
     Query(QueryCmd),
+    /// List the running engines: pid, mode, project, port, start and last focus.
+    Engines(EnginesCmd),
     /// List the registered commands and queries.
     Commands(CommandsCmd),
     /// Print one command's description and JSON Schemas.
@@ -60,17 +62,23 @@ pub enum Sub {
 
 /// How `exec`, `query`, `render` and `mcp` find their engine.
 ///
-/// With neither `--headless` nor `--project` the command attaches to a running engine. With
-/// either one (or any of the spawn-only flags) it starts a one-shot engine in the process.
+/// The command attaches to a running engine: the one with `--project` open, the one with
+/// `--pid`, or else the app's engine whose window had the focus last. With `--headless` or any
+/// of the spawn-only flags it starts a one-shot engine in the process instead.
 #[derive(Debug, Args, Default)]
 pub struct Target {
     /// Start a one-shot engine in this process instead of attaching to a running one.
     #[arg(long, help_heading = "Engine selection")]
     pub headless: bool,
-    /// Open this project folder or `.cutweave` file in the spawned engine (implies --headless).
-    #[arg(long, value_name = "PATH", help_heading = "Engine selection")]
-    pub project: Option<PathBuf>,
-    /// Attach to the engine with this process id when several are running.
+    /// Attach to the running engine that has this project open: a project name (any case) or
+    /// the path of a project folder or `.cutweave` file. When none has it and the path exists,
+    /// a one-shot engine opens it. With --headless or a spawn-only flag, always the one-shot
+    /// engine.
+    #[arg(long, value_name = "NAME|PATH", help_heading = "Engine selection")]
+    pub project: Option<String>,
+    /// Attach to the engine with this process id. Without --project and --pid the command
+    /// takes the app's engine whose window had the focus last (`cutweave engines` lists them);
+    /// with several headless engines and no app, it exits 3.
     #[arg(long, value_name = "PID", help_heading = "Engine selection")]
     pub pid: Option<u32>,
     /// Directory holding the engines' run-files (default `~/.cutweave/run`).
@@ -220,6 +228,17 @@ pub struct QueryCmd {
     pub target: Target,
 }
 
+/// `cutweave engines`.
+#[derive(Debug, Args)]
+pub struct EnginesCmd {
+    /// Print a JSON array instead of a table.
+    #[arg(long)]
+    pub json: bool,
+    /// Directory holding the engines' run-files (default `~/.cutweave/run`).
+    #[arg(long, value_name = "DIR")]
+    pub run_dir: Option<PathBuf>,
+}
+
 /// `cutweave commands`.
 #[derive(Debug, Args)]
 pub struct CommandsCmd {
@@ -284,7 +303,7 @@ pub struct McpCmd {
     /// Proxy to a running engine's MCP endpoint (`/mcp`, `/mcp/minimal` or `/mcp/full` for
     /// --profile) with its run-file's `mcp` agent token, so the agent edits the document the
     /// desktop app shows. This is the default when no spawn flag is given.
-    #[arg(long, conflicts_with_all = ["headless", "project"])]
+    #[arg(long, conflicts_with_all = ["headless"])]
     pub attach: bool,
     /// The tool profile: the same catalogs and budgets as the engine's HTTP endpoints.
     #[arg(long, value_enum, default_value = "standard")]
@@ -294,7 +313,7 @@ pub struct McpCmd {
         long,
         value_name = "PATH",
         requires = "attach",
-        conflicts_with_all = ["pid", "run_dir"]
+        conflicts_with_all = ["pid", "run_dir", "project"]
     )]
     pub run_file: Option<PathBuf>,
     /// Which engine to talk to.

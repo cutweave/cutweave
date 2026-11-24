@@ -6,9 +6,11 @@
 //! The server does not make up request ids for RPC clients, and a mutating call without one is
 //! `invalid` at `/_meta/request_id`: every call here carries a fresh UUIDv7.
 
+use std::path::{Path, PathBuf};
 use std::time::Duration;
 
-use cutweave_api::{RunFile, RunFileContents};
+use cutweave_api::RunFileContents;
+use cutweave_api::engines::{self, SelectError, Selector};
 use cutweave_commands::RequestId;
 use cutweave_model::Uuid7Gen;
 use futures_util::{SinkExt, StreamExt};
@@ -36,53 +38,77 @@ pub struct Remote {
     next_id: u64,
 }
 
-/// Picks the engine to attach to from the run-files in `dir`.
+/// Why no engine was chosen: the reason, and the failure to print (exit 3).
+#[derive(Debug)]
+pub struct Miss {
+    /// What went wrong.
+    pub why: SelectError,
+    /// The failure the command ends with.
+    pub failure: Failure,
+}
+
+/// The run-file directory: `dir`, or `~/.cutweave/run`.
 ///
 /// # Errors
-/// Exit 3: no engine, or several without `--pid`.
-pub fn discover(
-    dir: Option<&std::path::Path>,
-    pid: Option<u32>,
-) -> Result<RunFileContents, Failure> {
-    let dir = match dir {
-        Some(dir) => dir.to_path_buf(),
-        None => RunFile::default_dir().ok_or_else(|| {
-            Failure::no_engine(
-                "no_engine",
-                "cannot find the run-file directory (no home directory); pass --run-dir",
-                Value::Null,
-            )
-        })?,
-    };
-    let mut found = RunFile::discover(&dir);
-    if let Some(pid) = pid {
-        found.retain(|c| c.pid == pid);
-        return found.into_iter().next().ok_or_else(|| {
-            Failure::no_engine(
-                "no_engine",
-                format!("no running engine with pid {pid} in {}", dir.display()),
-                Value::Null,
-            )
-        });
-    }
-    match found.len() {
-        0 => Err(Failure::no_engine(
+/// Exit 3 when there is no home directory.
+pub fn run_dir(dir: Option<&Path>) -> Result<PathBuf, Failure> {
+    engines::run_dir(dir).ok_or_else(|| {
+        Failure::no_engine(
             "no_engine",
-            format!(
-                "no running engine found in {} (start one with `cutweave engine`, or pass \
-                 --headless to run a one-shot engine in this process)",
-                dir.display()
-            ),
+            "cannot find the run-file directory (no home directory); pass --run-dir",
             Value::Null,
-        )),
-        1 => Ok(found.remove(0)),
-        _ => Err(Failure::no_engine(
-            "ambiguous_engine",
-            "several engines are running; pass --pid to choose one",
-            json!({"engines": found.iter().map(|c| json!({
-                "pid": c.pid, "port": c.port, "project": c.project, "version": c.version,
-            })).collect::<Vec<_>>()}),
-        )),
+        )
+    })
+}
+
+/// Picks the engine to attach to from the run-files in `dir`: the one `selector` names, or
+/// without a selector the app's engine whose window had the focus last (`engines::select`).
+///
+/// # Errors
+/// Exit 3: no engine, none matches, or several headless ones without a selector.
+pub fn find(dir: Option<&Path>, selector: &Selector) -> Result<RunFileContents, Miss> {
+    let dir = run_dir(dir).map_err(|failure| Miss {
+        why: SelectError::NoEngine,
+        failure,
+    })?;
+    let found = engines::list(&dir);
+    let listing = engines::describe_all(&found);
+    engines::select(found, selector).map_err(|why| {
+        let failure = match &why {
+            SelectError::NoEngine => Failure::no_engine(
+                "no_engine",
+                format!(
+                    "no running engine found in {} (start one with `cutweave engine`, or pass \
+                     --headless to run a one-shot engine in this process)",
+                    dir.display()
+                ),
+                Value::Null,
+            ),
+            SelectError::NoMatch => Failure::no_engine(
+                "no_engine",
+                format!(
+                    "no running engine matches {} (`cutweave engines` lists them)",
+                    describe_selector(selector)
+                ),
+                json!({"engines": listing}),
+            ),
+            SelectError::Ambiguous => Failure::no_engine(
+                "ambiguous_engine",
+                "several headless engines are running and no app: choose one with \
+                 --project <name or path> or --pid <pid>",
+                json!({"engines": listing}),
+            ),
+        };
+        Miss { why, failure }
+    })
+}
+
+fn describe_selector(selector: &Selector) -> String {
+    match (&selector.pid, &selector.project) {
+        (Some(pid), Some(project)) => format!("pid {pid} with project `{project}`"),
+        (Some(pid), None) => format!("pid {pid}"),
+        (None, Some(project)) => format!("project `{project}`"),
+        (None, None) => "the request".to_owned(),
     }
 }
 

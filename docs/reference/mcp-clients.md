@@ -9,11 +9,23 @@ Any MCP client can drive Cutweave: it starts `cutweave mcp` as a stdio MCP serve
 | **Attach** | `cutweave mcp --attach` | The desktop app (or `cutweave engine`) is running. The agent edits the project you have open and you watch it happen; its changes are in the same undo history, as `agent:mcp`. |
 | **Headless** | `cutweave mcp --headless --allow-root <folder>` | No GUI: CI, servers, scripted runs. The engine runs inside the MCP server process. |
 
-- **Attach** finds the running engine through its run-file in `~/.cutweave/run`. With several engines running, add `--pid <pid>`; `--run-file <path>` names one directly.
+- **Attach** finds the running engine through its run-file in `~/.cutweave/run`. With several engines running it takes the app's engine whose window had the focus last, so the config needs no pid; see [Several engines](#several-engines). `--project <name or path>`, `--pid <pid>` and `--run-file <path>` name one directly.
 - **Headless** confines the agent to the `--allow-root` folders and the project folder (`--project <folder>` opens one at start); paths elsewhere fail with `invalid`. Without `--allow-root` or `--project` the agent cannot import media or save a project. Until the FFmpeg backend lands, add `--dev-stub-media` to import files with made-up probe data (dev only).
 - **Profiles:** `--profile minimal` lists at most 12 tools for small context windows; `standard` (the default) lists the core editing tools plus `cutweave_search_commands`, `cutweave_describe_command`, `cutweave_execute` and `cutweave_query`, which reach every other command.
 
 `cutweave` must be on your `PATH`; otherwise put the binary's absolute path in `command` (a dev build is `target/debug/cutweave`).
+
+## Several engines
+
+The app, and every `cutweave engine --headless` a script starts, is an engine with its own project. `cutweave engines` lists them (pid, mode, project, last focus). One config serves them all, with no pid in it:
+
+```sh
+claude mcp add cutweave -- cutweave mcp --attach
+```
+
+- **Which engine you get.** Without `--project` or `--pid`: the app's engine whose window was focused last (the project the person is looking at). If only headless engines run, the only one; with several, the server exits 3 and its error lists them.
+- **Pin one in the config** with `--project <name or path>` (a name matches in any case; a path is the project folder or its `.cutweave` file) or `--pid <pid>`.
+- **Switch while the session runs.** The attach proxy adds two tools to the engine's list: `engines_list` (the engines, the one in use marked `current`) and `engine_attach` with `project` or `pid`. After a switch every later tool acts on the new engine's project. A client that follows `notifications/tools/list_changed` re-reads the tool list if the new engine's differs. These two tools are the proxy's, not the engine's: the engine's `/mcp` endpoint and `--headless` do not have them, and they are outside the engine's tool budget.
 
 ## Claude Code
 

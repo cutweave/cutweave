@@ -11,12 +11,15 @@
 //! Stdout belongs to the protocol from the first byte: errors before the session starts are
 //! JSON on stderr ([`Failure`]), and nothing else here prints to stdout.
 
+use std::path::Path;
 use std::sync::Arc;
 
-use cutweave_api::Credential;
+use cutweave_api::engines::{SelectError, Selector};
 use cutweave_api::launch::shutdown_signal;
 use cutweave_api::mcp::proxy::{self, ProxyEnd, Upstream};
+use cutweave_api::mcp::switch::Directory;
 use cutweave_api::mcp::{Catalog, CutweaveMcp, Dispatch, Profile as McpProfile, stdio};
+use cutweave_api::{Credential, RunFileContents};
 use cutweave_engine::logging::{self, LogGuard};
 use cutweave_engine::{
     AudioConfig, DevStubMedia, Engine, EngineConfig, EngineMode, GpuConfig, LogConfig, Subsystems,
@@ -25,7 +28,7 @@ use serde_json::json;
 
 use crate::cli::{McpCmd, Profile};
 use crate::failure::{EXIT_OK, Failure};
-use crate::remote;
+use crate::remote::{self, Miss};
 use crate::session::{Plan, SpawnPlan};
 
 /// The agent token label (and actor `agent:mcp`) of MCP clients.
@@ -34,7 +37,18 @@ const MCP_AGENT: &str = "mcp";
 /// Runs `cutweave mcp` with the engine `plan` chose and returns the exit code.
 pub fn run(cmd: &McpCmd, plan: Plan) -> i32 {
     let result = match plan {
-        Plan::Attach { run_dir, pid } => attach(cmd, run_dir.as_deref(), pid),
+        Plan::Attach {
+            run_dir,
+            selector,
+            fallback,
+        } => match find_engine(cmd, run_dir.as_deref(), &selector) {
+            Ok(engine) => attach(cmd, &engine, run_dir.as_deref()),
+            // `--project <path>` that no engine has open: the one-shot engine it always was.
+            Err(miss) => match (fallback, miss.why) {
+                (Some(spawn), SelectError::NoEngine | SelectError::NoMatch) => headless(cmd, spawn),
+                _ => Err(miss.failure),
+            },
+        },
         Plan::Spawn(spawn) => headless(cmd, spawn),
     };
     match result {
@@ -62,18 +76,28 @@ fn runtime() -> Result<tokio::runtime::Runtime, Failure> {
         .map_err(|e| Failure::error("internal", format!("cannot start the runtime: {e}")))
 }
 
-/// `--attach`: proxies stdio to the engine's MCP endpoint until stdin closes (exit 0) or the
-/// engine is gone (exit 3).
-fn attach(
+/// The engine to attach to: the one `--run-file` names, else the one `selector` chooses (the
+/// app's focused engine without `--project` and `--pid`).
+fn find_engine(
     cmd: &McpCmd,
-    run_dir: Option<&std::path::Path>,
-    pid: Option<u32>,
-) -> Result<i32, Failure> {
-    let engine = match &cmd.run_file {
-        Some(path) => remote::read_run_file(path)?,
-        None => remote::discover(run_dir, pid)?,
-    };
-    let token = remote::agent_token(&engine, MCP_AGENT)?.to_owned();
+    run_dir: Option<&Path>,
+    selector: &Selector,
+) -> Result<RunFileContents, Miss> {
+    match &cmd.run_file {
+        Some(path) => remote::read_run_file(path).map_err(|failure| Miss {
+            why: SelectError::NoEngine,
+            failure,
+        }),
+        None => remote::find(run_dir, selector),
+    }
+}
+
+/// `--attach`: proxies stdio to the engine's MCP endpoint until stdin closes (exit 0) or the
+/// engine is gone (exit 3). The agent can list the engines and move to another one with the
+/// proxy's `engines_list` and `engine_attach` tools; they look in the run-file directory of
+/// `--run-dir`, or the folder of `--run-file`.
+fn attach(cmd: &McpCmd, engine: &RunFileContents, run_dir: Option<&Path>) -> Result<i32, Failure> {
+    let token = remote::agent_token(engine, MCP_AGENT)?.to_owned();
     let pid = engine.pid;
     let upstream = Upstream {
         url: Upstream::endpoint(engine.port, profile(cmd.profile)),
@@ -81,8 +105,20 @@ fn attach(
         pid,
         alive: Arc::new(move || cutweave_api::runfile::process_alive(pid)),
     };
+    let directory = match &cmd.run_file {
+        Some(file) => file.parent().map(Path::to_path_buf),
+        None => cutweave_api::engines::run_dir(run_dir),
+    }
+    .map(|run_dir| Directory {
+        run_dir,
+        profile: profile(cmd.profile),
+    });
     let rt = runtime()?;
-    let end = rt.block_on(proxy::proxy_stdio(upstream, shutdown_signal()));
+    let end = rt.block_on(proxy::proxy_stdio_with(
+        upstream,
+        directory,
+        shutdown_signal(),
+    ));
     // A stdin read may still be pending on the blocking pool: do not wait for it.
     rt.shutdown_background();
     match end {
