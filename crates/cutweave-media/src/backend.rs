@@ -21,12 +21,16 @@ use crate::{
     VideoFrame,
 };
 
-/// Whether a decoder may use hardware acceleration.
+/// Whether a decoder may use hardware acceleration (WP-1D.04).
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Hash)]
 #[non_exhaustive]
 pub enum HwMode {
-    /// Use a hardware decoder when the machine has one for the codec; fall back to software
-    /// otherwise, or when hardware init or decode fails (WP-1D.04).
+    /// Use a hardware decoder when the machine has a verified one for the stream (listed in
+    /// [`Capabilities::hw_decode`](crate::Capabilities::hw_decode)); software otherwise. With
+    /// `FfmpegBackend`, the eligible streams are long-GOP H.264 (8-bit 4:2:0) and HEVC (8/10-bit
+    /// 4:2:0) of at least 144 pixels each way, and `CUTWEAVE_HW=off` turns hardware decode off
+    /// for the process. A hardware decoder that fails to initialise or while decoding goes over
+    /// to software at once, transparently ([`VideoDecoder::hw_failed`]).
     #[default]
     Auto,
     /// Software only.
@@ -72,8 +76,9 @@ pub enum DecodeMode {
 /// How to open a video decoder.
 #[derive(Clone, Debug, Default, PartialEq, Eq)]
 pub struct DecodeOpts {
-    /// Hardware acceleration policy. WP-1D.03 decodes in software either way; hardware decode
-    /// arrives with WP-1D.04.
+    /// Hardware acceleration policy ([`HwMode::Auto`] unless set). Hardware decoders return
+    /// `Nv12` / `P010` where software returns `Yuv420p` / `Yuv420p10` for the same stream, so
+    /// frames of one file can arrive in either layout.
     pub hw: HwMode,
     /// Convert frames to this layout; `None` keeps the decoder's native layout (the GPU converts,
     /// arch §7; layouts outside [`PixelFormat`] are converted to the nearest one).
@@ -108,6 +113,13 @@ impl DecodeOpts {
     #[must_use]
     pub fn with_mode(mut self, mode: DecodeMode) -> DecodeOpts {
         self.mode = mode;
+        self
+    }
+
+    /// The same options with hardware policy `hw`.
+    #[must_use]
+    pub fn with_hw(mut self, hw: HwMode) -> DecodeOpts {
+        self.hw = hw;
         self
     }
 
@@ -410,9 +422,25 @@ pub trait VideoDecoder: Send {
     /// Makes every following call poll `cancel` (`None` stops polling).
     fn set_cancel(&mut self, cancel: Option<CancelToken>);
 
-    /// Whether frames come from a hardware decoder (WP-1D.04).
+    /// Whether frames come from a hardware decoder (WP-1D.04): `true` from open while a
+    /// hardware decoder is in use, `false` in software and after a fallback.
     fn is_hw(&self) -> bool {
         false
+    }
+
+    /// Whether this decoder started on a hardware decoder that then failed (to initialise for
+    /// the stream, while decoding, or copying a frame to memory), so it went over to software
+    /// (WP-1D.04). The request in progress was run again in software, so no caller saw the
+    /// failure; the backend logged it as a warning. Stays `true` for the decoder's life.
+    /// [`DecoderPool::hw_failed`](crate::DecoderPool::hw_failed) keeps it for the media.
+    fn hw_failed(&self) -> bool {
+        false
+    }
+
+    /// The hardware decoder in use (`h264_nvdec`, `hevc_d3d11va`), for logs and diagnostics;
+    /// `None` in software.
+    fn hw_decoder(&self) -> Option<&str> {
+        None
     }
 }
 

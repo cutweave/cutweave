@@ -13,8 +13,8 @@ use std::thread;
 use std::time::{Duration as Wall, Instant};
 
 use cutweave_media::{
-    CancelToken, DecodeOpts, DecoderPool, FfmpegBackend, FrameIndex, MediaBackend, MediaError,
-    VideoDecoder, VideoFrame,
+    CancelToken, DecodeOpts, DecoderPool, FfmpegBackend, FrameIndex, HwMode, MediaBackend,
+    MediaError, PixelFormat, VideoDecoder, VideoFrame,
 };
 use cutweave_model::Time;
 
@@ -56,13 +56,16 @@ pub fn cancel_latencies(name: &str, d: &mut Box<dyn VideoDecoder>, rounds: u64) 
 }
 
 /// Cancel latencies of pending seeks on the 4K H.264 and the HEVC 10-bit clips, `rounds` each:
-/// `(direct decoders, pooled leases)`. `None` without the corpus.
+/// `(direct decoders, pooled leases)`. `None` without the corpus. Software decoders (the CPU
+/// path, frame threads): a hardware decoder can finish the HEVC seek before the later cancels.
 pub fn pending_4k_cancels(rounds: u64) -> Option<(Vec<f64>, Vec<f64>)> {
     let (mut direct, mut pooled) = (Vec::new(), Vec::new());
     for name in ["h264_4k30_longgop.mp4", "hevc_10bit_sdr.mp4"] {
         let path = corpus_file(name)?;
         let index = Arc::new(backend().index_media(&path).unwrap());
-        let opts = DecodeOpts::default().with_index(Arc::clone(&index));
+        let opts = DecodeOpts::default()
+            .with_index(Arc::clone(&index))
+            .with_hw(HwMode::Off);
         let mut d = backend().open_decoder(&path, &opts).unwrap();
         direct.extend(cancel_latencies(name, &mut d, rounds));
         let pool = DecoderPool::new(Arc::new(backend()), &path).with_index(index);
@@ -419,14 +422,75 @@ impl Crc32 {
     }
 
     /// CRC of plane 0's rows without stride padding (what `extractplanes=y` + rawvideo hash).
+    /// P010 samples (hardware decoders, WP-1D.04) are hashed as the CLI's `yuv420p10le` gray
+    /// plane: the value in the low 10 bits, so the same picture gives the same CRC in either
+    /// layout.
     pub fn y_plane(&self, frame: &VideoFrame) -> u32 {
         let (_, h, _) = frame.format.plane_layout(0, frame.width, frame.height);
         let mut s = 0xFFFF_FFFF;
+        let mut low = Vec::new();
         for y in 0..h {
-            s = self.update(s, frame.row(0, y).expect("row"));
+            let row = frame.row(0, y).expect("row");
+            if frame.format == PixelFormat::P010 {
+                low.clear();
+                for px in row.as_chunks::<2>().0 {
+                    low.extend_from_slice(&(u16::from_le_bytes(*px) >> 6).to_le_bytes());
+                }
+                s = self.update(s, &low);
+            } else {
+                s = self.update(s, row);
+            }
         }
         s ^ 0xFFFF_FFFF
     }
+}
+
+/// The Y samples of `frame` as integers on its bit depth's scale (P010 shifted down to 10 bits).
+pub fn y_samples(frame: &VideoFrame) -> Vec<u32> {
+    let (w, h, bpt) = frame.format.plane_layout(0, frame.width, frame.height);
+    let mut out = Vec::with_capacity(w as usize * h as usize);
+    for y in 0..h {
+        let row = frame.row(0, y).expect("row");
+        if bpt == 1 {
+            out.extend(row.iter().map(|&v| u32::from(v)));
+        } else {
+            let shift = if frame.format == PixelFormat::P010 {
+                6
+            } else {
+                0
+            };
+            out.extend(
+                row.as_chunks::<2>()
+                    .0
+                    .iter()
+                    .map(|px| u32::from(u16::from_le_bytes(*px) >> shift)),
+            );
+        }
+    }
+    out
+}
+
+/// PSNR (dB) of the Y planes of two frames of the same picture size and bit depth; infinite when
+/// they are equal.
+#[allow(clippy::cast_precision_loss)]
+pub fn y_psnr(a: &VideoFrame, b: &VideoFrame) -> f64 {
+    assert_eq!((a.width, a.height), (b.width, b.height), "frame sizes");
+    assert_eq!(a.format.bit_depth(), b.format.bit_depth(), "bit depths");
+    let (ya, yb) = (y_samples(a), y_samples(b));
+    let sse: f64 = ya
+        .iter()
+        .zip(&yb)
+        .map(|(&p, &q)| {
+            let d = f64::from(p) - f64::from(q);
+            d * d
+        })
+        .sum();
+    if sse == 0.0 {
+        return f64::INFINITY;
+    }
+    let peak = f64::from((1u32 << a.format.bit_depth()) - 1);
+    let mse = sse / ya.len() as f64;
+    10.0 * (peak * peak / mse).log10()
 }
 
 /// SplitMix64: seeded and reproducible across platforms (failing seeks can be replayed).

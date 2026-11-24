@@ -2,6 +2,7 @@
 //! The FFmpeg [`VideoDecoder`] (WP-1D.03): frame-exact seek from the packet-scan index, software
 //! decode to the decoder's own planes, damage handling and cancellation. The port of the
 //! validated Spike S3 source (`spikes/s3-decode/src/source.rs`, findings F3, F4, F5, F7).
+//! Hardware decode with software fallback is WP-1D.04 (see **Hardware** below and `hwdec`).
 //!
 //! **Seek to frame T** (start keyframe K from the index, ADR-0003):
 //!
@@ -26,6 +27,18 @@
 //! **Layout**: frames keep the decoder's planes when [`PixelFormat`] has them (no CPU
 //! conversion, arch §7); other layouts, and an explicit `target_pixfmt` (`Rgba8` thumbnails),
 //! go through swscale with the stream's matrix and range.
+//!
+//! **Hardware** (WP-1D.04, S3 H1-H10): under [`HwMode::Auto`] an eligible stream decodes with a
+//! device `hwdec` verified for its codec, on one thread (S3 H3: frame threads only add delay with
+//! a hwaccel). The hwaccel only replaces slice decoding inside libavcodec, so the seek rule,
+//! landing checks, NONREF skipping and drain-before-flush above apply unchanged. Frames dropped
+//! on the way to T never leave the GPU; the one returned is copied to system memory as NV12 or
+//! P010. Any hardware failure (the device or hwaccel does not initialise, a decode call fails,
+//! frames come out in software, the copy fails) makes the decoder log a warning, set
+//! `hw_failed`, reopen its codec in software with the software threading, and run the request
+//! again from its keyframe; sequential decoding resumes after the last frame it returned. So
+//! does a seek that lands on an H.264 keyframe that is not an IDR picture on a device not known
+//! to be exact from one (S3 H10, `hwdec`).
 
 use std::ffi::c_int;
 use std::path::{Path, PathBuf};
@@ -37,12 +50,13 @@ use ffmpeg_next::format::Pixel;
 use ffmpeg_next::format::context::Input;
 use ffmpeg_next::media::Type;
 use ffmpeg_next::util::error::EAGAIN;
-use ffmpeg_next::{Discard, Error, Packet, decoder, frame};
+use ffmpeg_next::{Discard, Error, Packet, Rational, decoder, frame};
 
 use super::error::media_error;
-use super::sys::{self, Scaler};
+use super::hwdec::{self, Backing, Choice, StreamClass};
+use super::sys::{self, HwDecode, Scaler};
 use super::{index, input, probe};
-use crate::backend::{DecodeMode, DecodeOpts, VideoDecoder};
+use crate::backend::{DecodeMode, DecodeOpts, HwMode, VideoDecoder};
 use crate::cancel;
 use crate::path::display as shown;
 use crate::{CancelToken, FrameIndex, MediaError, PixelFormat, Plane, VideoFrame};
@@ -57,36 +71,113 @@ const MAX_DEMUX_ERRORS: u32 = 10_000;
 const LANDING_RETRIES: usize = 3;
 /// Decode errors one request tolerates (FFmpeg conceals and goes on).
 const MAX_DECODE_ERRORS: u64 = 10_000;
+/// Hardware decoders use one thread (S3 H3).
+const HW_THREADS: threading::Config = threading::Config {
+    kind: threading::Type::Frame,
+    count: 1,
+};
 
-/// Opens a decoder for the main video stream of `path`.
-pub(super) fn open(path: &Path, opts: &DecodeOpts) -> Result<Box<dyn VideoDecoder>, MediaError> {
+/// Opens a decoder for the main video stream of `path`, in hardware when `opts.hw` and `policy`
+/// allow it and the stream is eligible (`hwdec`).
+pub(super) fn open(
+    path: &Path,
+    opts: &DecodeOpts,
+    policy: &hwdec::Policy,
+) -> Result<Box<dyn VideoDecoder>, MediaError> {
     let index = match &opts.index {
         Some(index) => Arc::clone(index),
         None => Arc::new(index::index_media(path)?),
     };
-    let threads = threading_for(opts, &index);
-    let opened = open_stream(path, &index, threads)?;
+    let (input, stream, info) = open_input(path, &index)?;
+    let choice = match opts.hw {
+        HwMode::Off => None,
+        HwMode::Auto => {
+            let mut class = info.class.clone();
+            class.intra_only = index.max_decode_distance() <= 1;
+            match hwdec::choose(policy, &class) {
+                Ok(choice) => Some(choice),
+                Err(why) => {
+                    tracing::debug!(
+                        target: "cutweave_media",
+                        "{}: software decode: {why}",
+                        shown(path)
+                    );
+                    None
+                }
+            }
+        }
+    };
+    open_opened(path, opts, index, (input, stream, info), choice)
+}
+
+/// Tests: a decoder on `choice` whatever the stream's eligibility (real init failures).
+#[cfg(test)]
+pub(super) fn open_with_choice(
+    path: &Path,
+    opts: &DecodeOpts,
+    choice: Choice,
+) -> Result<Box<dyn VideoDecoder>, MediaError> {
+    let index = match &opts.index {
+        Some(index) => Arc::clone(index),
+        None => Arc::new(index::index_media(path)?),
+    };
+    let opened = open_input(path, &index)?;
+    open_opened(path, opts, index, opened, Some(choice))
+}
+
+/// The decoder on an opened input, in hardware on `choice` if given.
+fn open_opened(
+    path: &Path,
+    opts: &DecodeOpts,
+    index: Arc<FrameIndex>,
+    (input, stream, info): (Input, usize, StreamInfo),
+    choice: Option<Choice>,
+) -> Result<Box<dyn VideoDecoder>, MediaError> {
+    let sw_threads = threading_for(opts, &index);
     let end = index.end_time();
-    Ok(Box::new(FfmpegVideoDecoder {
+    let mut d = FfmpegVideoDecoder {
         path: path.to_path_buf(),
-        input: opened.input,
-        decoder: opened.decoder,
-        stream: opened.stream,
-        threads,
+        input,
+        codec: None,
+        stream,
+        time_base: info.time_base,
+        nal_length: info.nal_length,
+        sw_threads,
+        hw: choice,
+        hw_failed: false,
         end,
         index,
         frame: frame::Video::empty(),
         scratch: frame::Video::empty(),
+        sw: frame::Video::empty(),
         out: Output::new(opts.target_pixfmt),
-        stream_color: opened.color,
+        stream_color: info.color,
         pending: None,
         next_idx: Some(0),
         positioned: true,
         eof_sent: false,
         last_pts: None,
+        returned: None,
+        sent: 0,
         cancel: None,
         stats: Stats::default(),
-    }))
+    };
+    d.codec = Some(d.open_codec()?);
+    if let Some(c) = &d.hw {
+        tracing::debug!(
+            target: "cutweave_media",
+            "{}: hardware decode with {} on {}{}",
+            shown(path),
+            c.implementation,
+            c.device,
+            if c.idr_starts_only {
+                " (seeks must land on IDR pictures)"
+            } else {
+                ""
+            }
+        );
+    }
+    Ok(Box::new(d))
 }
 
 /// Frame threads for throughput and long-GOP seeks; slice threads for seeks in intra-only
@@ -103,19 +194,18 @@ fn threading_for(opts: &DecodeOpts, index: &FrameIndex) -> threading::Config {
     }
 }
 
-struct Opened {
-    input: Input,
-    decoder: decoder::Video,
-    stream: usize,
+/// What opening a decoder needs to know about its stream.
+struct StreamInfo {
+    time_base: Rational,
     color: ColorTags,
+    class: StreamClass,
+    /// H.264 `avcC` NAL length size (`None`: Annex B, or not H.264).
+    nal_length: Option<usize>,
 }
 
-/// Opens the container and a decoder for the index's stream.
-fn open_stream(
-    path: &Path,
-    index: &FrameIndex,
-    threads: threading::Config,
-) -> Result<Opened, MediaError> {
+/// Opens the container, checks the index's stream against it and makes the demuxer skip every
+/// other stream.
+fn open_input(path: &Path, index: &FrameIndex) -> Result<(Input, usize, StreamInfo), MediaError> {
     let mut input = input::open(path)?;
     let stream = usize::try_from(index.stream()).unwrap_or(usize::MAX);
     let not_this_file = || MediaError::Invalid {
@@ -127,7 +217,7 @@ fn open_stream(
             index.time_base().den
         ),
     };
-    let (ctx, time_base, color) = {
+    let info = {
         let st = input.stream(stream).ok_or_else(not_this_file)?;
         let par = st.parameters();
         let tb = st.time_base();
@@ -138,18 +228,74 @@ fn open_stream(
             return Err(not_this_file());
         }
         let p = sys::stream_params(&par);
-        let color = color_tags(
-            p.primaries.as_deref(),
-            p.transfer.as_deref(),
-            p.matrix.as_deref(),
-            p.range,
-        );
-        let ctx = codec::Context::from_parameters(par).map_err(|e| media_error(path, e))?;
-        (ctx, tb, color)
+        let nal_length = if p.codec.as_deref() == Some("h264") {
+            sys::avc_nal_length_size(&par)
+        } else {
+            None
+        };
+        StreamInfo {
+            time_base: tb,
+            nal_length,
+            color: color_tags(
+                p.primaries.as_deref(),
+                p.transfer.as_deref(),
+                p.matrix.as_deref(),
+                p.range,
+            ),
+            class: StreamClass {
+                codec: p.codec,
+                pixel_format: p.pixel_format,
+                width: p.width,
+                height: p.height,
+                intra_only: false,
+            },
+        }
     };
     sys::discard_other_streams(&mut input, stream);
-    let mut ctx = ctx;
+    Ok((input, stream, info))
+}
+
+/// An open libavcodec decoder and, in hardware, the state its `get_format` callback reads. The
+/// decoder is declared first so it is dropped before that state.
+struct Codec {
+    decoder: decoder::Video,
+    hw: Option<HwDecode>,
+}
+
+/// Opens a decoder for `stream` of `input`, with `hw`'s device attached when it has one.
+fn open_codec(
+    path: &Path,
+    input: &Input,
+    stream: usize,
+    time_base: Rational,
+    threads: threading::Config,
+    hw: Option<&Choice>,
+) -> Result<Codec, MediaError> {
+    let st = input.stream(stream).ok_or_else(|| MediaError::Backend {
+        message: format!("`{}`: stream {stream} went away", shown(path)),
+    })?;
+    let mut ctx =
+        codec::Context::from_parameters(st.parameters()).map_err(|e| media_error(path, e))?;
     ctx.set_threading(threads);
+    let hw = match hw.map(|c| &c.backing) {
+        Some(Backing::Device {
+            device,
+            surface_format,
+        }) => Some(
+            HwDecode::attach(&mut ctx, device, *surface_format).map_err(|e| {
+                MediaError::Backend {
+                    message: format!("attaching the hardware device failed: {e}"),
+                }
+            })?,
+        ),
+        #[cfg(test)]
+        Some(Backing::Pseudo(faults)) if faults.open => {
+            return Err(MediaError::Backend {
+                message: "the hardware device did not open (injected)".to_owned(),
+            });
+        }
+        _ => None,
+    };
     let mut dec = ctx.decoder();
     dec.set_packet_time_base(time_base);
     let decoder = dec.video().map_err(|e| match e {
@@ -158,12 +304,7 @@ fn open_stream(
         },
         e => media_error(path, e),
     })?;
-    Ok(Opened {
-        input,
-        decoder,
-        stream,
-        color,
-    })
+    Ok(Codec { decoder, hw })
 }
 
 /// Color tags from FFmpeg names (unknown names are kept, never an error).
@@ -188,6 +329,31 @@ enum Want {
     Pts(i64),
 }
 
+/// Why a decode step failed: an error for the caller, or the hardware decoder, which the
+/// caller handles by going over to software and trying again.
+enum Fail {
+    Media(MediaError),
+    Hardware(String),
+}
+
+impl From<MediaError> for Fail {
+    fn from(e: MediaError) -> Fail {
+        Fail::Media(e)
+    }
+}
+
+impl Fail {
+    /// The error for the caller (a hardware failure after the fallback is a backend fault).
+    fn into_media(self) -> MediaError {
+        match self {
+            Fail::Media(e) => e,
+            Fail::Hardware(why) => MediaError::Backend {
+                message: format!("hardware decode failed after the software fallback: {why}"),
+            },
+        }
+    }
+}
+
 /// Counters for the debug log.
 #[derive(Clone, Copy, Debug, Default)]
 struct Stats {
@@ -203,9 +369,18 @@ struct Stats {
 struct FfmpegVideoDecoder {
     path: PathBuf,
     input: Input,
-    decoder: decoder::Video,
+    /// Always `Some` once opened (an `Option` only so `open` can build it with `self`).
+    codec: Option<Codec>,
     stream: usize,
-    threads: threading::Config,
+    time_base: Rational,
+    /// H.264 `avcC` NAL length size (`None`: Annex B, or not H.264).
+    nal_length: Option<usize>,
+    /// Threading of a software decoder for this stream and mode.
+    sw_threads: threading::Config,
+    /// The hardware decoder in use; `None` in software.
+    hw: Option<Choice>,
+    /// The decoder went over from hardware to software after a failure.
+    hw_failed: bool,
     index: Arc<FrameIndex>,
     /// Seeks at or past this are out of range (`None`: a single picture, never).
     end: Option<Time>,
@@ -213,6 +388,8 @@ struct FfmpegVideoDecoder {
     frame: frame::Video,
     /// Receive target, swapped with `frame` on success (a failed receive unrefs its target).
     scratch: frame::Video,
+    /// The system-memory copy of a hardware `frame` (buffers reused from copy to copy).
+    sw: frame::Video,
     out: Output,
     /// The stream's tags, for fields a frame leaves unspecified.
     stream_color: ColorTags,
@@ -225,6 +402,10 @@ struct FfmpegVideoDecoder {
     eof_sent: bool,
     /// pts (ticks) of `frame`.
     last_pts: Option<i64>,
+    /// pts (ticks) of the last frame returned.
+    returned: Option<i64>,
+    /// Packets sent to a decoder since open.
+    sent: u64,
     cancel: Option<CancelToken>,
     stats: Stats,
 }
@@ -241,10 +422,98 @@ impl FfmpegVideoDecoder {
         }
     }
 
+    fn codec(&mut self) -> Result<&mut Codec, MediaError> {
+        self.codec.as_mut().ok_or_else(not_open)
+    }
+
+    /// A codec for the decoder's stream: in hardware while `hw` is set, else in software. A
+    /// hardware open that fails goes over to software (see [`fall_back`](Self::fall_back)).
+    fn open_codec(&mut self) -> Result<Codec, MediaError> {
+        if let Some(choice) = &self.hw {
+            match open_codec(
+                &self.path,
+                &self.input,
+                self.stream,
+                self.time_base,
+                HW_THREADS,
+                Some(choice),
+            ) {
+                Ok(codec) => return Ok(codec),
+                Err(e) => self.mark_failed(&e.to_string()),
+            }
+        }
+        open_codec(
+            &self.path,
+            &self.input,
+            self.stream,
+            self.time_base,
+            self.sw_threads,
+            None,
+        )
+    }
+
+    /// Leaves hardware decoding for good: logs why and sets `hw_failed`.
+    fn mark_failed(&mut self, why: &str) {
+        let Some(choice) = self.hw.take() else {
+            return;
+        };
+        self.hw_failed = true;
+        tracing::warn!(
+            target: "cutweave_media",
+            "{}: hardware decode ({} on {}) failed: {why}; decoding in software from here",
+            shown(&self.path),
+            choice.implementation,
+            choice.device
+        );
+    }
+
+    /// After a hardware failure: a software codec in place of the hardware one, the decoder
+    /// unpositioned (the next request seeks).
+    fn fall_back(&mut self, why: &str) -> Result<(), MediaError> {
+        if self.hw.is_none() {
+            return Err(Fail::Hardware(why.to_owned()).into_media());
+        }
+        self.mark_failed(why);
+        // The hardware decoder goes first, then its frames.
+        self.codec = None;
+        self.frame = frame::Video::empty();
+        self.scratch = frame::Video::empty();
+        self.codec = Some(self.open_codec()?);
+        self.pending = None;
+        self.positioned = false;
+        self.eof_sent = false;
+        self.last_pts = None;
+        self.next_idx = None;
+        Ok(())
+    }
+
+    /// On a device that must start H.264 decoding at IDR pictures (S3 H10): the keyframe a
+    /// reposition just landed on (`pending`) must be one.
+    fn check_idr_landing(&self) -> Result<(), Fail> {
+        if !self.hw.as_ref().is_some_and(|c| c.idr_starts_only) {
+            return Ok(());
+        }
+        let idr = self
+            .pending
+            .as_ref()
+            .and_then(|p| p.data())
+            .and_then(|data| hwdec::h264_idr(data, self.nal_length));
+        if idr == Some(false) {
+            return Err(Fail::Hardware(
+                "the stream has H.264 keyframes that are not IDR pictures, which this GPU \
+                 decoder does not decode exactly after a seek (S3 H10)"
+                    .to_owned(),
+            ));
+        }
+        Ok(())
+    }
+
     /// Frame-exact seek to presentation index `n`.
-    fn seek_frame(&mut self, n: usize) -> Result<VideoFrame, MediaError> {
+    fn seek_frame(&mut self, n: usize) -> Result<VideoFrame, Fail> {
         let Some(&target) = self.index.frames().get(n) else {
-            return Err(self.corrupt(format!("frame {n} is not in the index")));
+            return Err(self
+                .corrupt(format!("frame {n} is not in the index"))
+                .into());
         };
         if self.last_pts == Some(target.pts) {
             return self.output(false);
@@ -257,13 +526,16 @@ impl FfmpegVideoDecoder {
             self.stats.continued += 1;
         } else {
             self.reposition(target.start_idx)?;
+            self.check_idr_landing()?;
         }
         match self.decode(Want::Pts(target.pts))? {
             Some(frame) => Ok(frame),
-            None => Err(self.corrupt(format!(
-                "frame {n} (pts {}) could not be decoded and no frame precedes it",
-                target.pts
-            ))),
+            None => Err(self
+                .corrupt(format!(
+                    "frame {n} (pts {}) could not be decoded and no frame precedes it",
+                    target.pts
+                ))
+                .into()),
         }
     }
 
@@ -287,9 +559,10 @@ impl FfmpegVideoDecoder {
             "{}: demuxer seeks never landed at or before keyframe packet {k}; reading from the start",
             shown(&self.path)
         );
-        let opened = open_stream(&self.path, &self.index, self.threads)?;
-        self.input = opened.input;
-        self.decoder = opened.decoder;
+        let (input, _, _) = open_input(&self.path, &self.index)?;
+        self.codec = None;
+        self.input = input;
+        self.codec = Some(self.open_codec()?);
         self.eof_sent = false;
         if self.land_at(k)? {
             return Ok(());
@@ -307,12 +580,13 @@ impl FfmpegVideoDecoder {
             // `avcodec_flush_buffers` and emits it after the next seek (S3 F7): drain first.
             for _ in 0..1024 {
                 self.cancelled()?;
-                if self.decoder.receive_frame(&mut self.scratch).is_err() {
+                let codec = self.codec.as_mut().ok_or_else(not_open)?;
+                if codec.decoder.receive_frame(&mut self.scratch).is_err() {
                     break;
                 }
             }
         }
-        self.decoder.flush();
+        self.codec()?.decoder.flush();
         self.pending = None;
         self.positioned = false;
         self.eof_sent = false;
@@ -371,16 +645,70 @@ impl FfmpegVideoDecoder {
         }
     }
 
+    /// A decode call failing with `e`: in hardware a hardware failure (damaged data, which both
+    /// paths report as `InvalidData`, is handled by the caller), else an error.
+    fn decode_failure(&self, e: Error) -> Fail {
+        if self.hw.is_some() {
+            Fail::Hardware(format!("decoding failed: {e}"))
+        } else {
+            Fail::Media(media_error(&self.path, e))
+        }
+    }
+
+    /// In hardware: whether libavcodec went over to software for this stream on its own (the
+    /// hwaccel did not initialise, or the stream's format has none).
+    fn check_negotiation(&self) -> Result<(), Fail> {
+        match self.codec.as_ref().and_then(|c| c.hw.as_ref()) {
+            Some(hw) if hw.fell_back() => Err(Fail::Hardware(
+                if hw.was_offered() {
+                    "the hardware decoder did not initialise for this stream"
+                } else {
+                    "the hardware has no decoder for this stream's format"
+                }
+                .to_owned(),
+            )),
+            _ => Ok(()),
+        }
+    }
+
+    /// In hardware: `scratch` (just received) must be a hardware surface.
+    fn check_surface(&self) -> Result<(), Fail> {
+        match self.codec.as_ref().and_then(|c| c.hw.as_ref()) {
+            Some(hw) if !hw.is_surface(&self.scratch) => Err(Fail::Hardware(
+                "frames came out of the hardware decoder in software".to_owned(),
+            )),
+            _ => Ok(()),
+        }
+    }
+
+    /// Tests: a pseudo hardware decoder failing at this packet.
+    #[cfg(test)]
+    fn injected_packet_fault(&self) -> Result<(), Fail> {
+        match &self.hw {
+            Some(Choice {
+                backing: Backing::Pseudo(f),
+                ..
+            }) if f.packet == Some(self.sent) => Err(Fail::Hardware(format!(
+                "device lost at packet {} (injected)",
+                self.sent
+            ))),
+            _ => Ok(()),
+        }
+    }
+
     /// The decode loop of sequential decoding and seeking. `Ok(None)`: the stream ended (for a
     /// seek: with no frame before the target to stand in for it).
-    fn decode(&mut self, want: Want) -> Result<Option<VideoFrame>, MediaError> {
+    fn decode(&mut self, want: Want) -> Result<Option<VideoFrame>, Fail> {
         let mut packets = 0u64;
         let mut errors = 0u64;
         loop {
             // Everything the decoder has ready.
             loop {
-                match self.decoder.receive_frame(&mut self.scratch) {
+                let codec = self.codec.as_mut().ok_or_else(not_open)?;
+                let received = codec.decoder.receive_frame(&mut self.scratch);
+                match received {
                     Ok(()) => {
+                        self.check_surface()?;
                         let Some(pts) = self.scratch.pts().or_else(|| self.scratch.timestamp())
                         else {
                             continue; // a frame that cannot be placed is no answer
@@ -403,14 +731,8 @@ impl FfmpegVideoDecoder {
                     }
                     Err(Error::Other { errno }) if errno == EAGAIN => break,
                     Err(Error::Eof) => return self.end_of_stream(want),
-                    Err(Error::InvalidData) => {
-                        self.stats.decode_errors += 1;
-                        errors += 1;
-                        if errors > MAX_DECODE_ERRORS {
-                            return Err(self.corrupt("too many decode errors".to_owned()));
-                        }
-                    }
-                    Err(e) => return Err(media_error(&self.path, e)),
+                    Err(Error::InvalidData) => self.damaged_data(&mut errors)?,
+                    Err(e) => return Err(self.decode_failure(e)),
                 }
             }
             if self.eof_sent {
@@ -420,7 +742,9 @@ impl FfmpegVideoDecoder {
             self.cancelled()?;
             packets += 1;
             if packets > MAX_PACKETS_PER_REQUEST {
-                return Err(self.corrupt(format!("no frame after {packets} packets")));
+                return Err(self
+                    .corrupt(format!("no frame after {packets} packets"))
+                    .into());
             }
             let pkt = match self.pending.take() {
                 Some(p) => Some(p),
@@ -429,9 +753,9 @@ impl FfmpegVideoDecoder {
             let Some(pkt) = pkt else {
                 self.eof_sent = true;
                 self.next_idx = None;
-                match self.decoder.send_eof() {
+                match self.codec()?.decoder.send_eof() {
                     Ok(()) | Err(Error::Eof) => {}
-                    Err(e) => return Err(media_error(&self.path, e)),
+                    Err(e) => return Err(self.decode_failure(e)),
                 }
                 continue;
             };
@@ -446,28 +770,45 @@ impl FfmpegVideoDecoder {
                 Want::Pts(t) => pkt.pts().or(pkt.dts()).is_some_and(|p| p < t),
                 Want::Next => false,
             };
-            self.decoder.skip_frame(if skip {
-                Discard::NonReference
-            } else {
-                Discard::Default
-            });
-            match self.decoder.send_packet(&pkt) {
-                Ok(()) => {}
-                Err(Error::Other { errno }) if errno == EAGAIN => self.pending = Some(pkt),
-                // Damaged data: FFmpeg conceals and goes on.
-                Err(_) => {
-                    self.stats.decode_errors += 1;
-                    errors += 1;
-                    if errors > MAX_DECODE_ERRORS {
-                        return Err(self.corrupt("too many decode errors".to_owned()));
-                    }
-                }
-            }
+            self.send(pkt, skip, &mut errors)?;
         }
     }
 
+    /// Sends `pkt` to the decoder, skipping non-reference pictures when `skip`; a packet the
+    /// decoder refuses for now is kept for the next call.
+    fn send(&mut self, pkt: Packet, skip: bool, errors: &mut u64) -> Result<(), Fail> {
+        #[cfg(test)]
+        self.injected_packet_fault()?;
+        self.sent += 1;
+        let decoder = &mut self.codec()?.decoder;
+        decoder.skip_frame(if skip {
+            Discard::NonReference
+        } else {
+            Discard::Default
+        });
+        match decoder.send_packet(&pkt) {
+            Ok(()) => {}
+            Err(Error::Other { errno }) if errno == EAGAIN => self.pending = Some(pkt),
+            // Damaged data: FFmpeg conceals and goes on (in both paths).
+            Err(Error::InvalidData) => self.damaged_data(errors)?,
+            Err(e) if self.hw.is_some() => return Err(self.decode_failure(e)),
+            Err(_) => self.damaged_data(errors)?,
+        }
+        self.check_negotiation()
+    }
+
+    /// Counts a decode error on damaged data (FFmpeg conceals it); too many end the request.
+    fn damaged_data(&mut self, errors: &mut u64) -> Result<(), Fail> {
+        self.stats.decode_errors += 1;
+        *errors += 1;
+        if *errors > MAX_DECODE_ERRORS {
+            return Err(self.corrupt("too many decode errors".to_owned()).into());
+        }
+        Ok(())
+    }
+
     /// The stream ended before `want` was found.
-    fn end_of_stream(&mut self, want: Want) -> Result<Option<VideoFrame>, MediaError> {
+    fn end_of_stream(&mut self, want: Want) -> Result<Option<VideoFrame>, Fail> {
         self.positioned = false;
         match (want, self.last_pts) {
             (Want::Pts(t), Some(p)) if p < t => {
@@ -482,8 +823,9 @@ impl FfmpegVideoDecoder {
         }
     }
 
-    /// `frame` as a [`VideoFrame`]; `substituted` when it stands in for another frame.
-    fn output(&mut self, substituted: bool) -> Result<VideoFrame, MediaError> {
+    /// `frame` as a [`VideoFrame`]; `substituted` when it stands in for another frame. A
+    /// hardware surface is copied to system memory first.
+    fn output(&mut self, substituted: bool) -> Result<VideoFrame, Fail> {
         let ticks = self
             .last_pts
             .ok_or_else(|| self.corrupt("no decoded frame".to_owned()))?;
@@ -493,9 +835,6 @@ impl FfmpegVideoDecoder {
             .to_time(ticks)
             .ok_or_else(|| self.corrupt(format!("pts {ticks} is out of range")))?;
         let damaged = substituted || self.frame.is_corrupt() || self.frame.has_decode_errors();
-        if damaged {
-            self.stats.damaged += 1;
-        }
         let fc = sys::frame_color(&self.frame);
         let own = color_tags(
             fc.primaries.as_deref(),
@@ -511,19 +850,72 @@ impl FfmpegVideoDecoder {
             matrix: own.matrix.or_else(|| self.stream_color.matrix.clone()),
             range: own.range.or(self.stream_color.range),
         };
-        self.out
-            .convert(&self.frame, pts, color, damaged)
+        #[cfg(test)]
+        if let Some(Choice {
+            backing: Backing::Pseudo(f),
+            ..
+        }) = &self.hw
+            && f.transfer
+        {
+            return Err(Fail::Hardware(
+                "copying the frame to memory failed (injected)".to_owned(),
+            ));
+        }
+        let surface = self
+            .codec
+            .as_ref()
+            .and_then(|c| c.hw.as_ref())
+            .is_some_and(|hw| hw.is_surface(&self.frame));
+        if surface {
+            sys::transfer_surface(&self.frame, &mut self.sw)
+                .map_err(|e| Fail::Hardware(format!("copying the frame to memory failed: {e}")))?;
+        }
+        let src = if surface { &self.sw } else { &self.frame };
+        let frame = self
+            .out
+            .convert(src, pts, color, damaged)
             .map_err(|e| match e {
                 Fault::Ffmpeg(e) => media_error(&self.path, e),
                 Fault::Media(e) => e,
-            })
+            })?;
+        if damaged {
+            self.stats.damaged += 1;
+        }
+        self.returned = Some(ticks);
+        Ok(frame)
+    }
+
+    /// After a hardware failure in sequential decoding: the frame after the last one returned,
+    /// decoded in software (`None` past the end).
+    fn resume(&mut self) -> Result<Option<VideoFrame>, MediaError> {
+        let n = match self.returned {
+            None => 0,
+            Some(p) => match self.index.frame_by_pts(p) {
+                Some(i) => i + 1,
+                None => self
+                    .index
+                    .time_base()
+                    .to_time(p)
+                    .map_or(0, |t| self.index.frame_at(t) + 1),
+            },
+        };
+        if n >= self.index.frame_count() {
+            return Ok(None);
+        }
+        self.seek_frame(n).map(Some).map_err(Fail::into_media)
     }
 }
 
 impl VideoDecoder for FfmpegVideoDecoder {
     fn next_frame(&mut self) -> Result<Option<VideoFrame>, MediaError> {
         self.cancelled()?;
-        self.decode(Want::Next)
+        match self.decode(Want::Next) {
+            Err(Fail::Hardware(why)) => {
+                self.fall_back(&why)?;
+                self.resume()
+            }
+            other => other.map_err(Fail::into_media),
+        }
     }
 
     fn seek_exact(&mut self, t: Time) -> Result<VideoFrame, MediaError> {
@@ -532,7 +924,13 @@ impl VideoDecoder for FfmpegVideoDecoder {
             return Err(MediaError::OutOfRange { t });
         }
         let n = self.index.frame_at(t);
-        self.seek_frame(n)
+        match self.seek_frame(n) {
+            Err(Fail::Hardware(why)) => {
+                self.fall_back(&why)?;
+                self.seek_frame(n).map_err(Fail::into_media)
+            }
+            other => other.map_err(Fail::into_media),
+        }
     }
 
     fn index(&self) -> Arc<FrameIndex> {
@@ -541,6 +939,18 @@ impl VideoDecoder for FfmpegVideoDecoder {
 
     fn set_cancel(&mut self, cancel: Option<CancelToken>) {
         self.cancel = cancel;
+    }
+
+    fn is_hw(&self) -> bool {
+        self.hw.is_some()
+    }
+
+    fn hw_failed(&self) -> bool {
+        self.hw_failed
+    }
+
+    fn hw_decoder(&self) -> Option<&str> {
+        self.hw.as_ref().map(|c| c.implementation.as_str())
     }
 }
 
@@ -551,7 +961,7 @@ impl Drop for FfmpegVideoDecoder {
             tracing::debug!(
                 target: "cutweave_media",
                 "{}: {} seeks ({} continued), {} landing retries, {} reopens, {} index \
-                 mismatches, {} decode errors, {} damaged frames",
+                 mismatches, {} decode errors, {} damaged frames, {}",
                 shown(&self.path),
                 s.seeks,
                 s.continued,
@@ -559,9 +969,23 @@ impl Drop for FfmpegVideoDecoder {
                 s.reopens,
                 s.index_mismatches,
                 s.decode_errors,
-                s.damaged
+                s.damaged,
+                match (&self.hw, self.hw_failed) {
+                    (Some(c), _) => format!("hardware ({})", c.implementation),
+                    (None, true) => "software after a hardware failure".to_owned(),
+                    (None, false) => "software".to_owned(),
+                }
             );
         }
+        // Close the decoder before the frames it handed out.
+        self.codec = None;
+    }
+}
+
+/// The error for a decoder whose codec is missing (only between a close and a reopen).
+fn not_open() -> MediaError {
+    MediaError::Backend {
+        message: "the decoder is not open".to_owned(),
     }
 }
 

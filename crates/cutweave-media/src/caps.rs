@@ -24,11 +24,15 @@ pub struct CodecSupport {
 #[derive(Clone, Debug, PartialEq, Eq, Hash, PartialOrd, Ord)]
 pub struct HwCodec {
     /// FFmpeg hardware device type (`d3d11va`, `cuda`, `amf`, `videotoolbox`, `vaapi`, `qsv`).
+    /// Decoders that pick a GPU by vendor name it too (`d3d11va:nvidia`, `d3d11va:amd`): the
+    /// spelling `CUTWEAVE_HW` and `FfmpegBackend::with_hw_decoders` take.
     pub device: String,
     /// Codec-id name (`h264`).
     pub codec: String,
     /// The FFmpeg implementation: for encoders the name [`HwEncode::Force`](crate::HwEncode::Force)
-    /// takes (`h264_nvenc`, `h264_amf`, `h264_qsv`, `h264_videotoolbox`, `h264_vaapi`).
+    /// takes (`h264_nvenc`, `h264_amf`, `h264_qsv`, `h264_videotoolbox`, `h264_vaapi`); for
+    /// decoders the codec and hwaccel (`h264_nvdec`, `hevc_d3d11va`, `h264_videotoolbox`,
+    /// `hevc_vaapi`), as [`VideoDecoder::hw_decoder`](crate::VideoDecoder::hw_decoder) reports.
     pub implementation: String,
 }
 
@@ -37,7 +41,10 @@ pub struct HwCodec {
 #[derive(Clone, Debug, Default, PartialEq, Eq)]
 #[non_exhaustive]
 pub struct Capabilities {
-    /// Hardware decode paths verified on this machine (empty until WP-1D.04 probes devices).
+    /// Hardware decoders verified on this machine (WP-1D.04): each device opened and decoded a
+    /// test stream of the codec bit-exactly like software. Probed once per process on first use,
+    /// in the order [`HwMode::Auto`](crate::HwMode::Auto) tries the devices. Empty without one,
+    /// and with hardware decode off.
     pub hw_decode: Vec<HwCodec>,
     /// Hardware encoders that completed a 256×256 test encode on this machine (probed once per
     /// process, WP-1E.02), in the order [`HwEncode::Auto`](crate::HwEncode::Auto) tries them.

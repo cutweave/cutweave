@@ -17,8 +17,8 @@ use std::sync::Arc;
 use std::time::Instant;
 
 use cutweave_media::{
-    CancelToken, DecodeOpts, DecoderPool, MediaBackend, MediaError, PixelFormat, VideoDecoder,
-    VideoFrame,
+    CancelToken, DecodeOpts, DecoderPool, HwMode, MediaBackend, MediaError, PixelFormat,
+    VideoDecoder, VideoFrame,
 };
 use cutweave_model::{
     ColorPrimaries, ColorRange, Duration, MatrixCoefficients, SampleRate, StreamKind, Time,
@@ -42,6 +42,8 @@ fn middle(d: &mut dyn VideoDecoder) -> VideoFrame {
     d.seek_exact(t).unwrap()
 }
 
+/// The software decoders' native layouts (hardware decoders return NV12 / P010 instead:
+/// `hw_decode.rs`).
 #[test]
 fn native_layouts_and_color_tags_per_file() {
     let bt709 = (
@@ -94,7 +96,7 @@ fn native_layouts_and_color_tags_per_file() {
         let Some(path) = support::corpus_file(name) else {
             continue;
         };
-        let mut d = open(&path, &DecodeOpts::default());
+        let mut d = open(&path, &DecodeOpts::default().with_hw(HwMode::Off));
         let f = middle(&mut *d);
         assert_eq!(f.format, format, "{name}: layout");
         assert_eq!((f.width, f.height), size, "{name}: size");
@@ -167,23 +169,12 @@ fn rgba_thumbnails_keep_the_picture() {
         assert_eq!(rgba.color.matrix, Some(MatrixCoefficients::Rgb));
         assert_eq!(rgba.color.range, Some(ColorRange::Full));
         rgba.validate().unwrap();
-        // Mean luma through the RGB matrix equals the mean of the Y plane (8-bit scale).
+        // Mean luma through the RGB matrix equals the mean of the Y plane (8-bit scale). The
+        // native frame is P010 (high-aligned) from a hardware decoder, else low-aligned.
         let shift = u32::from(native.format.bit_depth() - 8);
-        let (mut y_sum, mut y_n) = (0.0, 0.0);
-        for y in 0..native.height {
-            let row = native.row(0, y).unwrap();
-            if shift == 0 {
-                y_sum += row.iter().map(|&v| f64::from(v)).sum::<f64>();
-            } else {
-                y_sum += row
-                    .as_chunks::<2>()
-                    .0
-                    .iter()
-                    .map(|s| f64::from(u16::from_le_bytes(*s) >> shift))
-                    .sum::<f64>();
-            }
-            y_n += f64::from(native.width);
-        }
+        let samples = support::y_samples(&native);
+        let y_sum: f64 = samples.iter().map(|&v| f64::from(v >> shift)).sum();
+        let y_n = samples.len() as f64;
         let (mut c_sum, mut c_n) = (0.0, 0.0);
         for y in 0..rgba.height {
             for px in rgba.row(0, y).unwrap().as_chunks::<4>().0 {

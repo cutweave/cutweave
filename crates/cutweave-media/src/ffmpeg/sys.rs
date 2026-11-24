@@ -4,7 +4,8 @@
 //! block carries a `// SAFETY:` comment. WP-1D.02 appended the codec-parameter, seek-index and
 //! packet-flag reads (its section is delimited at the end); WP-1D.03 adds per-stream seek and
 //! pixel-format descriptors here (S3 finding F2.1); WP-1E.02 the GPU-surface pool for hardware
-//! encoders (its own delimited section).
+//! encoders (its own delimited section); WP-1D.04 hardware decode devices, `get_format` and the
+//! copy of decoded surfaces to system memory (its own delimited section).
 
 use std::cell::Cell;
 use std::ffi::{CStr, c_char, c_int, c_void};
@@ -840,6 +841,298 @@ pub(super) fn seek_preroll(par: &Parameters) -> u32 {
 }
 
 // ===== end of WP-1D.03 section ==============================================================
+
+// ===== WP-1D.04: hardware decode (this section is this work package's) ======================
+//
+// Path (a) of Spike S3 (`spikes/s3-decode/src/hw.rs`, findings H1-H10): libavcodec's own H.264
+// and HEVC decoders with a hardware device attached (`hw_device_ctx`) and a `get_format`
+// callback that picks the device's surface format when libavcodec offers it. Frames come out as
+// GPU surfaces; only the frame a request returns is copied to system memory (NV12 / P010) with
+// `av_hwframe_transfer_data`. `ffmpeg-next` 9.1 wraps none of this. Pixel formats are handled
+// as C ints (see the WP-1D.02 section), so no value from FFmpeg is materialized as a Rust enum.
+
+use std::sync::atomic::{AtomicU32, Ordering};
+
+/// A hardware device context (`AVHWDeviceContext`), shared by every decoder that uses it.
+pub(super) struct HwDevice {
+    /// Our reference to the device context.
+    buf: ptr::NonNull<ffi::AVBufferRef>,
+    kind: ffi::AVHWDeviceType,
+}
+
+// SAFETY: a device context is reference-counted heap state that is immutable once
+// `av_hwdevice_ctx_create` has initialised it. FFmpeg shares one device between decoders on
+// different threads (the CLI does): each decoder takes its own reference (atomic refcount), and
+// the device types used here serialise access to the GPU context internally (D3D11VA's device
+// lock, CUDA context push/pop, VA-API's display lock). We only take references and read it.
+unsafe impl Send for HwDevice {}
+// SAFETY: as above; `&HwDevice` only hands out new references and reads immutable fields.
+unsafe impl Sync for HwDevice {}
+
+impl HwDevice {
+    /// Opens a device of FFmpeg type `kind` (`cuda`, `d3d11va`, `vaapi`, `videotoolbox`):
+    /// `device` is the type's device string (a DRM node for VA-API), `vendor` a PCI vendor id
+    /// for D3D11VA's `vendor_id` option (never an adapter index: S3 finding H7).
+    pub(super) fn create(
+        kind: &CStr,
+        device: Option<&CStr>,
+        vendor: Option<u16>,
+    ) -> Result<HwDevice, ffmpeg_next::Error> {
+        // SAFETY: `kind` is a NUL-terminated string; the call only reads it and returns
+        // AV_HWDEVICE_TYPE_NONE for a name this build does not have.
+        let ty = unsafe { ffi::av_hwdevice_find_type_by_name(kind.as_ptr()) };
+        if ty == ffi::AVHWDeviceType::AV_HWDEVICE_TYPE_NONE {
+            return Err(errno(ffmpeg_next::error::ENOSYS));
+        }
+        let mut opts: *mut ffi::AVDictionary = ptr::null_mut();
+        if let Some(v) = vendor {
+            let value = std::ffi::CString::new(format!("0x{v:04x}"))
+                .map_err(|_| errno(ffmpeg_next::error::EINVAL))?;
+            // SAFETY: `opts` starts NULL (av_dict_set allocates it); both strings are valid
+            // NUL-terminated C strings, copied by FFmpeg. Freed below.
+            unsafe { ffi::av_dict_set(&raw mut opts, c"vendor_id".as_ptr(), value.as_ptr(), 0) };
+        }
+        let mut buf: *mut ffi::AVBufferRef = ptr::null_mut();
+        // SAFETY: `buf` is a valid out-pointer; `device` (if any) outlives the call; `opts` is
+        // NULL or the dictionary built above, which FFmpeg only reads and we free right after.
+        // On success `buf` holds one new reference we own (released in Drop).
+        let ret = unsafe {
+            let r = ffi::av_hwdevice_ctx_create(
+                &raw mut buf,
+                ty,
+                device.map_or(ptr::null(), CStr::as_ptr),
+                opts,
+                0,
+            );
+            ffi::av_dict_free(&raw mut opts);
+            r
+        };
+        if ret < 0 {
+            return Err(ffmpeg_next::Error::from(ret));
+        }
+        let buf = ptr::NonNull::new(buf).ok_or(errno(ffmpeg_next::error::ENOMEM))?;
+        Ok(HwDevice { buf, kind: ty })
+    }
+
+    /// The surface format (as a C int) libavcodec's `codec` decodes to on this device type, if
+    /// that decoder has a hwaccel for it that takes a device context. ProRes, MJPEG and most
+    /// intra codecs have none.
+    pub(super) fn surface_format(&self, codec: &ffmpeg_next::Codec) -> Option<c_int> {
+        for i in 0.. {
+            // SAFETY: `codec` wraps a static AVCodec of the loaded library; the call returns
+            // NULL past the last entry and a pointer into static data otherwise.
+            let cfg = unsafe { ffi::avcodec_get_hw_config(codec.as_ptr(), i) };
+            // SAFETY: NULL or a pointer to a static AVCodecHWConfig. Its `pix_fmt` is read
+            // through a `*const c_int` cast (an `int`-sized C enum), never as the Rust enum.
+            let (pix_fmt, methods, device_type) = unsafe {
+                let cfg = cfg.as_ref()?;
+                (
+                    ptr::addr_of!(cfg.pix_fmt).cast::<c_int>().read(),
+                    cfg.methods,
+                    cfg.device_type,
+                )
+            };
+            // A bindgen enum of flag values (1, 2, 4, 8): the cast is the C value.
+            let by_device = methods & (ffi::AV_CODEC_HW_CONFIG_METHOD_HW_DEVICE_CTX as c_int) != 0;
+            if device_type == self.kind && by_device {
+                return Some(pix_fmt);
+            }
+        }
+        None
+    }
+}
+
+impl Drop for HwDevice {
+    fn drop(&mut self) {
+        let mut reference = self.buf.as_ptr();
+        // SAFETY: releases our one reference (decoders keep theirs) and NULLs the local.
+        unsafe { ffi::av_buffer_unref(&raw mut reference) };
+    }
+}
+
+/// The `get_format` state of one hardware decoder (`AVCodecContext.opaque`).
+struct Negotiation {
+    /// The surface format to pick.
+    want: c_int,
+    /// `get_format` calls that picked it.
+    hw_picks: AtomicU32,
+    /// `get_format` calls where it was not offered (the stream's profile or bit depth has no
+    /// hwaccel) or was withdrawn because the hwaccel failed to initialise, so a software format
+    /// was picked.
+    sw_picks: AtomicU32,
+}
+
+/// The hardware side of one decoder: owns the state its `get_format` callback reads. It must
+/// outlive the codec context it was attached to, so the decoder is declared (and dropped)
+/// before it.
+pub(super) struct HwDecode {
+    negotiation: Box<Negotiation>,
+}
+
+/// `AVCodecContext.get_format`: the wanted surface format if offered, else the first software
+/// format (libavcodec then decodes this stream in software).
+unsafe extern "C" fn get_format(
+    ctx: *mut ffi::AVCodecContext,
+    fmts: *const ffi::AVPixelFormat,
+) -> ffi::AVPixelFormat {
+    // SAFETY: libavcodec passes the context it decodes with; `opaque` was set by
+    // `HwDecode::attach` to a `Negotiation` that outlives the context (see `HwDecode`).
+    let neg = unsafe { (*ctx).opaque.cast::<Negotiation>().cast_const().as_ref() };
+    let Some(neg) = neg else {
+        return ffi::AVPixelFormat::AV_PIX_FMT_NONE;
+    };
+    let ints = fmts.cast::<c_int>();
+    let none = ffi::AVPixelFormat::AV_PIX_FMT_NONE as c_int;
+    let mut first_sw = None;
+    for i in 0..1024 {
+        // SAFETY: `fmts` is an AV_PIX_FMT_NONE-terminated array from libavcodec; we stop at the
+        // terminator. Elements are read as C ints (an `int`-sized enum).
+        let v = unsafe { ints.add(i).read() };
+        if v == none {
+            break;
+        }
+        if v == neg.want {
+            neg.hw_picks.fetch_add(1, Ordering::Relaxed);
+            // SAFETY: the same element read as the enum: libavcodec of the version-locked build
+            // listed it, so it is one of the enum's values.
+            return unsafe { fmts.add(i).read() };
+        }
+        // SAFETY: `av_pix_fmt_desc_get` range-checks its argument and returns NULL or a pointer
+        // into a static table. The element is passed as the enum it came as.
+        let desc = unsafe { ffi::av_pix_fmt_desc_get(fmts.add(i).read()).as_ref() };
+        let hwaccel = u64::from(ffi::AV_PIX_FMT_FLAG_HWACCEL.cast_unsigned());
+        if first_sw.is_none() && desc.is_some_and(|d| d.flags & hwaccel == 0) {
+            first_sw = Some(i);
+        }
+    }
+    neg.sw_picks.fetch_add(1, Ordering::Relaxed);
+    match first_sw {
+        // SAFETY: an element before the terminator, as above.
+        Some(i) => unsafe { fmts.add(i).read() },
+        None => ffi::AVPixelFormat::AV_PIX_FMT_NONE,
+    }
+}
+
+impl HwDecode {
+    /// Attaches `device` to the not yet opened codec context `ctx`, with a `get_format` that
+    /// picks surface format `want` (from [`HwDevice::surface_format`]). The surface pools keep
+    /// FFmpeg's default slack for frames the caller holds (D3D11VA: 4 surfaces); a decoder here
+    /// holds at most two.
+    pub(super) fn attach(
+        ctx: &mut ffmpeg_next::codec::Context,
+        device: &HwDevice,
+        want: c_int,
+    ) -> Result<HwDecode, ffmpeg_next::Error> {
+        let negotiation = Box::new(Negotiation {
+            want,
+            hw_picks: AtomicU32::new(0),
+            sw_picks: AtomicU32::new(0),
+        });
+        // SAFETY: `device.buf` is a live device reference; av_buffer_ref returns a new one or
+        // NULL.
+        let reference = unsafe { ffi::av_buffer_ref(device.buf.as_ptr()) };
+        if reference.is_null() {
+            return Err(errno(ffmpeg_next::error::ENOMEM));
+        }
+        // SAFETY: `as_mut_ptr` is the live codec context `ctx` owns, not opened yet and not
+        // shared. The context takes the device reference (freed by avcodec_free_context; a
+        // previous one is released first). `opaque` points into the boxed `Negotiation`, whose
+        // heap address never moves and which the caller keeps alive past the context (see
+        // `HwDecode`); only `get_format` reads it.
+        unsafe {
+            let c = ctx.as_mut_ptr();
+            ffi::av_buffer_unref(&raw mut (*c).hw_device_ctx);
+            (*c).hw_device_ctx = reference;
+            (*c).opaque = ptr::from_ref::<Negotiation>(&negotiation)
+                .cast_mut()
+                .cast::<c_void>();
+            (*c).get_format = Some(get_format);
+        }
+        Ok(HwDecode { negotiation })
+    }
+
+    /// Whether `get_format` ever picked a software format: the hardware is not decoding (all of)
+    /// this stream.
+    pub(super) fn fell_back(&self) -> bool {
+        self.negotiation.sw_picks.load(Ordering::Relaxed) > 0
+    }
+
+    /// Whether `get_format` picked the surface format at least once (the hwaccel was offered).
+    pub(super) fn was_offered(&self) -> bool {
+        self.negotiation.hw_picks.load(Ordering::Relaxed) > 0
+    }
+
+    /// Whether `frame` is a hardware surface of this decoder.
+    pub(super) fn is_surface(&self, frame: &ffmpeg_next::frame::Video) -> bool {
+        // SAFETY: reads the plain int `format` field of the AVFrame `frame` owns.
+        unsafe { (*frame.as_ptr()).format == self.negotiation.want }
+    }
+}
+
+/// Copies hardware surface `surface` into system memory in the device's software layout (NV12
+/// for 8-bit, P010 for 10-bit 4:2:0). Only the planes are copied: timestamps and colour stay on
+/// `surface`. `out` keeps its buffers from the previous copy when it has the same layout and
+/// size, so sequential decoding does not allocate a frame per copy.
+pub(super) fn transfer_surface(
+    surface: &ffmpeg_next::frame::Video,
+    out: &mut ffmpeg_next::frame::Video,
+) -> Result<(), ffmpeg_next::Error> {
+    // SAFETY: both frames are valid AVFrames owned by the caller, `surface` a hardware frame
+    // (the caller checked `is_surface`), whose `hw_frames_ctx` data is its AVHWFramesContext
+    // (allocated by av_mallocz, so aligned). `out` is either unreferenced first, so
+    // av_hwframe_transfer_data allocates fresh buffers in the frames context's software format,
+    // or reused only when it already holds writable buffers of exactly that format and size
+    // (from the previous transfer of this decoder). Plain int fields are read.
+    #[allow(clippy::cast_ptr_alignment)] // see above: FFmpeg's allocation is aligned
+    unsafe {
+        let src = surface.as_ptr();
+        let dst = out.as_mut_ptr();
+        let frames = (*src).hw_frames_ctx;
+        let sw_format = if frames.is_null() {
+            None
+        } else {
+            let ctx = (*frames).data.cast::<ffi::AVHWFramesContext>();
+            Some(ptr::addr_of!((*ctx).sw_format).cast::<c_int>().read())
+        };
+        let reuse = !(*dst).buf[0].is_null()
+            && Some((*dst).format) == sw_format
+            && (*dst).width == (*src).width
+            && (*dst).height == (*src).height
+            && ffi::av_frame_is_writable(dst) > 0;
+        if reuse && ffi::av_hwframe_transfer_data(dst, src, 0) >= 0 {
+            return Ok(());
+        }
+        ffi::av_frame_unref(dst);
+        let ret = ffi::av_hwframe_transfer_data(dst, src, 0);
+        if ret < 0 {
+            return Err(ffmpeg_next::Error::from(ret));
+        }
+    }
+    Ok(())
+}
+
+/// The NAL length-prefix size of an H.264 stream stored as `avcC` (MP4, MOV, Matroska): 1, 2
+/// or 4 bytes, from its extradata. `None` for Annex B streams (MPEG-TS, raw), whose extradata, if
+/// any, does not start with `avcC` version 1.
+pub(super) fn avc_nal_length_size(par: &Parameters) -> Option<usize> {
+    // SAFETY: `as_ptr` returns the AVCodecParameters `par` refers to, valid while it is borrowed
+    // (checked for NULL). `extradata` is NULL or points to `extradata_size` bytes owned by the
+    // parameters (plus padding), which are only read here, while `par` is borrowed.
+    let header = unsafe {
+        let p = par.as_ptr();
+        if p.is_null() || (*p).extradata.is_null() {
+            return None;
+        }
+        let size = usize::try_from((*p).extradata_size).ok()?;
+        std::slice::from_raw_parts((*p).extradata.cast_const(), size.min(5))
+    };
+    match header {
+        [1, _, _, _, last, ..] => Some(usize::from(last & 3) + 1),
+        _ => None,
+    }
+}
+
+// ===== end of WP-1D.04 section ==============================================================
 
 #[cfg(test)]
 pub(super) mod test_support {
