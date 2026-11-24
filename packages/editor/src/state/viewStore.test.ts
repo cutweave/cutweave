@@ -108,6 +108,25 @@ describe("viewStore", () => {
     expect(second.getState().layoutRevision).toBe(0);
   });
 
+  it("keeps the autosave preference with the theme, for every project", () => {
+    const storage = memory();
+    const first = createViewStore(storage);
+    expect(first.getState().autosave).toEqual({ enabled: true, intervalS: 30, keepBackups: 10 });
+    first.getState().setAutosave({ enabled: false });
+    first.getState().setAutosave({ intervalS: 300, keepBackups: 5 });
+    const second = createViewStore(storage);
+    expect(second.getState().autosave).toEqual({ enabled: false, intervalS: 300, keepBackups: 5 });
+  });
+
+  it("falls back to the default for an autosave value that is not one of the choices", () => {
+    const blob = JSON.stringify({
+      state: { autosave: { enabled: "yes", intervalS: 7, keepBackups: 11 } },
+      version: 1,
+    });
+    const s = createViewStore(memory({ [VIEW_STORAGE_KEY]: blob })).getState();
+    expect(s.autosave).toEqual({ enabled: true, intervalS: 30, keepBackups: 10 });
+  });
+
   it("ignores malformed persisted values instead of breaking startup", () => {
     const blob = JSON.stringify({
       state: { theme: "neon", workspaceId: "nope", assetTab: 7, aspect: "3:2", layouts: "x" },

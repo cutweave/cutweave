@@ -76,6 +76,31 @@ impl Default for AutosaveSettings {
     }
 }
 
+/// The app's own autosave preference (`project.set_autosave`, arch §17): when an editor has
+/// set one, it wins over the project's `settings.autosave` for every project that engine opens.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct AutosavePreference {
+    /// Whether autosave runs.
+    pub enabled: bool,
+    /// The longest time, in seconds, a dirty document goes unsaved during continuous edits.
+    pub interval_s: u32,
+    /// Backups kept in `.cutweave/backups/`.
+    pub keep_backups: u32,
+}
+
+impl AutosaveConfig {
+    /// This configuration with the app's preference applied (idle, poll and retry stay).
+    #[must_use]
+    pub fn with_preference(self, pref: AutosavePreference) -> AutosaveConfig {
+        AutosaveConfig {
+            enabled: pref.enabled,
+            interval: Duration::from_secs(u64::from(pref.interval_s.max(1))),
+            keep_backups: usize::try_from(pref.keep_backups.max(1)).unwrap_or(usize::MAX),
+            ..self
+        }
+    }
+}
+
 /// Autosave timing and retention.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub struct AutosaveConfig {
@@ -225,6 +250,13 @@ impl AutosaveService {
     /// Replaces the timing and retention (`settings.autosave` changed).
     pub fn set_config(&self, config: AutosaveConfig) {
         *lock(&self.inner.config) = config;
+    }
+
+    /// Applies the app's preference to the running configuration at once: an interval change
+    /// counts for the current dirty period, disabling stops further autosaves.
+    pub fn apply_preference(&self, pref: AutosavePreference) {
+        let mut cfg = lock(&self.inner.config);
+        *cfg = cfg.with_preference(pref);
     }
 
     /// The current configuration.

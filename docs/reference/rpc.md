@@ -65,7 +65,7 @@ Reserved methods (not registry entries):
 
 There is **no actor field**: the actor is always the connection credential's. An `actor` key (or any other unknown key) in `_meta` is ignored.
 
-Deduplication and `expected_rev` are the document actor's (WP-1B.03). They cover the document commands, the `edit.*` commands and queries inside a transaction. **Engine commands that run outside the document actor are not deduplicated by `request_id` and ignore `expected_rev`**: `job.*`, `media.import`, `view.*`, the session commands (`project.open`, `project.close`, `project.save`, `project.save_as`, `project.recover`, `project.discard_recovery`) and subsystem commands. `request_id` is still required on the mutating ones, so clients need no special cases and the engine can deduplicate them later without a protocol change.
+Deduplication and `expected_rev` are the document actor's (WP-1B.03). They cover the document commands, the `edit.*` commands and queries inside a transaction. **Engine commands that run outside the document actor are not deduplicated by `request_id` and ignore `expected_rev`**: `job.*`, `media.import`, `view.*`, the session commands (`project.open`, `project.close`, `project.save`, `project.save_as`, `project.recover`, `project.discard_recovery`, `project.set_autosave`) and subsystem commands. `request_id` is still required on the mutating ones, so clients need no special cases and the engine can deduplicate them later without a protocol change.
 
 ## Ordering and concurrency
 

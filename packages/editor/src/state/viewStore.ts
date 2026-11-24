@@ -11,6 +11,24 @@ export type ThemeId = (typeof THEMES)[number];
 export const DEFAULT_THEME: ThemeId = "dark";
 export const THEME_LABEL_KEYS: Record<ThemeId, TKey> = { dark: "theme.dark", light: "theme.light" };
 
+/**
+ * How the editor wants its engine to save (File > Settings… > Saving). An app-wide preference
+ * kept with the theme, so it applies to every project; the editor sends it to its engine after
+ * every handshake and whenever it changes (`project.set_autosave`, arch §17).
+ */
+export interface AutosavePrefs {
+  /** Save automatically (after 2 s without edits, and at least every `intervalS` while editing). */
+  enabled: boolean;
+  intervalS: number;
+  keepBackups: number;
+}
+
+/** "Save at least every": 30 s, 1 min, 2 min, 5 min. */
+export const AUTOSAVE_INTERVALS_S = [30, 60, 120, 300] as const;
+/** "Backups to keep". */
+export const AUTOSAVE_BACKUPS = [5, 10, 20] as const;
+export const DEFAULT_AUTOSAVE: AutosavePrefs = { enabled: true, intervalS: 30, keepBackups: 10 };
+
 export const WORKSPACES = ["short-form", "long-form"] as const;
 export type WorkspaceId = (typeof WORKSPACES)[number];
 
@@ -118,6 +136,7 @@ export interface ViewState extends EngineViewState {
   /** Session only: safe-area guides over the preview (WP-1M.04). */
   safeAreas: boolean;
   theme: ThemeId;
+  autosave: AutosavePrefs;
   workspaceId: WorkspaceId;
   assetTab: AssetTabId;
   aspect: AspectId;
@@ -130,6 +149,7 @@ export interface ViewState extends EngineViewState {
 export interface ViewActions {
   setTheme: (theme: ThemeId) => void;
   toggleTheme: () => void;
+  setAutosave: (change: Partial<AutosavePrefs>) => void;
   switchWorkspace: (id: WorkspaceId) => void;
   saveLayout: (id: WorkspaceId, layout: SerializedDockview) => void;
   resetWorkspace: (id: WorkspaceId) => void;
@@ -163,6 +183,7 @@ export const initialViewState: ViewState = {
   muted: false,
   safeAreas: false,
   theme: DEFAULT_THEME,
+  autosave: DEFAULT_AUTOSAVE,
   workspaceId: "short-form",
   assetTab: "media",
   aspect: WORKSPACE_DEFS["short-form"].defaultAspect,
@@ -175,12 +196,27 @@ export const VIEW_STORAGE_KEY = "cutweave.view";
 const isOneOf = <T extends string>(list: readonly T[], value: unknown): value is T =>
   typeof value === "string" && (list as readonly string[]).includes(value);
 
+const isOneOfNumber = <T extends number>(list: readonly T[], value: unknown): value is T =>
+  typeof value === "number" && (list as readonly number[]).includes(value);
+
 /** Keeps only well-formed persisted values so a stale or hand-edited blob cannot break startup. */
 function sanitize(persisted: unknown): Partial<ViewState> {
   if (typeof persisted !== "object" || persisted === null) return {};
   const p = persisted as Record<string, unknown>;
   const out: Partial<ViewState> = {};
   if (isOneOf(THEMES, p.theme)) out.theme = p.theme;
+  if (typeof p.autosave === "object" && p.autosave !== null) {
+    const a = p.autosave as Record<string, unknown>;
+    out.autosave = {
+      enabled: typeof a.enabled === "boolean" ? a.enabled : DEFAULT_AUTOSAVE.enabled,
+      intervalS: isOneOfNumber(AUTOSAVE_INTERVALS_S, a.intervalS)
+        ? a.intervalS
+        : DEFAULT_AUTOSAVE.intervalS,
+      keepBackups: isOneOfNumber(AUTOSAVE_BACKUPS, a.keepBackups)
+        ? a.keepBackups
+        : DEFAULT_AUTOSAVE.keepBackups,
+    };
+  }
   if (isOneOf(WORKSPACES, p.workspaceId)) out.workspaceId = p.workspaceId;
   if (isOneOf(ASSET_TABS, p.assetTab)) out.assetTab = p.assetTab;
   if (typeof p.aspect === "string" && ASPECTS.some((a) => a.id === p.aspect)) {
@@ -264,6 +300,7 @@ export function createViewStore(storage?: StateStorage) {
         ...initialViewState,
         setTheme: (theme) => set(() => ({ theme })),
         toggleTheme: () => set((s) => ({ theme: s.theme === "dark" ? "light" : "dark" })),
+        setAutosave: (change) => set((s) => ({ autosave: { ...s.autosave, ...change } })),
         switchWorkspace: (id) =>
           set((s) =>
             s.workspaceId === id
@@ -313,6 +350,7 @@ export function createViewStore(storage?: StateStorage) {
         storage: createJSONStorage(() => medium),
         partialize: (s) => ({
           theme: s.theme,
+          autosave: s.autosave,
           workspaceId: s.workspaceId,
           assetTab: s.assetTab,
           aspect: s.aspect,

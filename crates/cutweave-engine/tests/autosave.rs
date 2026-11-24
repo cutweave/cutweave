@@ -21,8 +21,8 @@ use std::time::{Duration, Instant};
 
 use cutweave_commands::{Clock, DocActor, DocConfig, DocHandle, ManualClock, Rev, Submit, TxKind};
 use cutweave_engine::autosave::{
-    AutosaveConfig, AutosaveService, AutosaveSettings, PROJECT_EVENTS, ProjectEvent, TickOutcome,
-    list_backups,
+    AutosaveConfig, AutosavePreference, AutosaveService, AutosaveSettings, PROJECT_EVENTS,
+    ProjectEvent, TickOutcome, list_backups,
 };
 use cutweave_engine::project_io::ProjectStore;
 use journal_support::{
@@ -566,4 +566,71 @@ fn autosave_during_a_command_burst_does_not_stall_acks() {
     // The bench asserts the 5 ms budget; this is a coarse bound that survives a loaded machine.
     assert!(p95 < Duration::from_millis(50), "p95 {p95:?}");
     drop(actor);
+}
+
+// ----- the app's preference (WP-1M.10) ---------------------------------------------------------
+
+fn pref(enabled: bool, interval_s: u32, keep_backups: u32) -> AutosavePreference {
+    AutosavePreference {
+        enabled,
+        interval_s,
+        keep_backups,
+    }
+}
+
+#[test]
+fn a_new_interval_applies_to_the_current_dirty_period() {
+    let t = TempDir::new("pref-interval");
+    let r = rig(&t, "PrefInterval");
+    // Edits every second at the default 30 s: nothing is saved while they continue.
+    r.rename("n0");
+    assert_eq!(r.tick(), TickOutcome::Waiting);
+    for i in 1..=5 {
+        r.clock.advance(SEC);
+        r.rename(&format!("n{i}"));
+        assert_eq!(r.tick(), TickOutcome::Waiting, "at {i} s");
+    }
+    // The user picks 5 s: the dirty period already is 5 s old, so it is due at once.
+    r.svc.apply_preference(pref(true, 5, 10));
+    assert_eq!(r.svc.config().interval, Duration::from_secs(5));
+    assert_eq!(r.svc.config().idle, Duration::from_secs(2), "idle stays");
+    assert!(is_saved(r.tick()));
+}
+
+#[test]
+fn disabling_through_the_preference_stops_autosaves() {
+    let t = TempDir::new("pref-off");
+    let r = rig(&t, "PrefOff");
+    r.svc.apply_preference(pref(false, 30, 10));
+    r.rename("A");
+    r.tick();
+    r.clock.advance(Duration::from_secs(120));
+    assert_eq!(r.tick(), TickOutcome::Disabled);
+    assert!(r.svc.is_dirty());
+    assert_eq!(r.backups().len(), 0);
+    r.svc.apply_preference(pref(true, 30, 10));
+    assert!(is_saved(r.tick()));
+}
+
+#[test]
+fn the_preference_sets_the_number_of_backups_kept() {
+    let t = TempDir::new("pref-backups");
+    let r = rig(&t, "PrefBackups");
+    r.svc.apply_preference(pref(true, 30, 5));
+    for i in 0..8 {
+        r.rename(&format!("v{i}"));
+        r.tick();
+        r.clock.advance(Duration::from_secs(3));
+        assert!(is_saved(r.tick()));
+    }
+    assert_eq!(r.backups().len(), 5);
+    // Raising it keeps more from then on.
+    r.svc.apply_preference(pref(true, 30, 20));
+    for i in 8..12 {
+        r.rename(&format!("v{i}"));
+        r.tick();
+        r.clock.advance(Duration::from_secs(3));
+        assert!(is_saved(r.tick()));
+    }
+    assert_eq!(r.backups().len(), 9);
 }

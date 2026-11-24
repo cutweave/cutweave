@@ -625,27 +625,41 @@ export async function openRecent(page: Page, fileName: string): Promise<void> {
   await expect(recent).toBeHidden();
 }
 
+/** File > Settings… (Ctrl+,; ⌘, in the macOS app menu): the open dialog. */
+export async function openSettings(page: Page, app: ElectronApplication): Promise<Locator> {
+  if (process.platform === "darwin") await shortcut(app, "Control+,");
+  else await chooseMenu(page, app, "File", "Settings…");
+  const settings = page.getByRole("dialog", { name: "Settings" });
+  await expect(settings).toBeVisible();
+  return settings;
+}
+
+/** Closes Settings with Done. */
+export async function closeSettings(settings: Locator): Promise<void> {
+  await settings.getByRole("button", { name: "Done" }).click();
+  await expect(settings).toBeHidden();
+}
+
 /**
- * File > Settings… (Ctrl+,; ⌘, in the macOS app menu), picks the theme and closes with Done.
- * The theme lives in Settings, not in the title bar.
+ * File > Settings…, picks the theme and closes with Done. The theme lives in Settings, not in
+ * the title bar.
  */
 export async function chooseTheme(
   page: Page,
   app: ElectronApplication,
   theme: "Dark" | "Light",
 ): Promise<void> {
-  if (process.platform === "darwin") await shortcut(app, "Control+,");
-  else await chooseMenu(page, app, "File", "Settings…");
-  const settings = page.getByRole("dialog", { name: "Settings" });
-  await expect(settings).toBeVisible();
+  const settings = await openSettings(page, app);
   const radio = settings.getByRole("radiogroup", { name: "Theme" }).getByRole("radio", {
     name: theme,
   });
   await radio.click();
   await expect(radio).toHaveAttribute("aria-checked", "true");
-  await settings.getByRole("button", { name: "Done" }).click();
-  await expect(settings).toBeHidden();
+  await closeSettings(settings);
 }
+
+/** The title bar's save status (WP-1M.10): its words are its tooltip and its text for readers. */
+export const saveStatus = (page: Page): Locator => page.getByTestId("save-status");
 
 /** The crash-recovery dialog (WP-1M.07). */
 export function recoveryDialog(page: Page) {

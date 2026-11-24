@@ -36,10 +36,13 @@ export interface SessionUiStore {
   readonly recent: readonly string[];
   /** A project action is running (open, save, create): buttons wait instead of racing it. */
   readonly busy: boolean;
+  /** An explicit save (File > Save, Ctrl+S) is running: the title bar says "Saving…". */
+  readonly saving: boolean;
   setUnsaved(prompt: UnsavedPrompt | null): void;
   setNaming(prompt: NamingPrompt | null): void;
   setRecent(recent: readonly string[]): void;
   setBusy(busy: boolean): void;
+  setSaving(saving: boolean): void;
 }
 
 export function createSessionUiStore() {
@@ -48,10 +51,12 @@ export function createSessionUiStore() {
     naming: null,
     recent: [],
     busy: false,
+    saving: false,
     setUnsaved: (unsaved) => set({ unsaved }),
     setNaming: (naming) => set({ naming }),
     setRecent: (recent) => set({ recent }),
     setBusy: (busy) => set({ busy }),
+    setSaving: (saving) => set({ saving }),
   }));
 }
 

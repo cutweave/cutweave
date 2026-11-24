@@ -48,8 +48,8 @@ use cutweave_model::Project;
 use cutweave_ops::view::ViewCtx;
 
 use crate::autosave::{
-    AutosaveConfig, AutosaveService, AutosaveSettings, AutosaveTask, ProjectEvent, ProjectSaved,
-    SharedStore,
+    AutosaveConfig, AutosavePreference, AutosaveService, AutosaveSettings, AutosaveTask,
+    ProjectEvent, ProjectSaved, SharedStore,
 };
 use crate::events::{EngineEvent, EventBus, ProjectClosed, SessionEvent};
 use crate::journal::{
@@ -144,6 +144,9 @@ pub(crate) struct Deps {
     pub(crate) seed: Option<u64>,
     pub(crate) journal_sync: SyncPolicy,
     pub(crate) autosave: Option<AutosaveConfig>,
+    /// The editor's autosave preference (`project.set_autosave`); wins over the project's
+    /// `settings.autosave` for every session this engine builds (arch §17).
+    pub(crate) autosave_pref: Mutex<Option<AutosavePreference>>,
     pub(crate) events: EventBus,
     pub(crate) subsystems: Arc<dyn Subsystems>,
     pub(crate) jobs: JobManager,
@@ -455,6 +458,17 @@ impl Session {
         Ok((rev, project.layout.document.to_string_lossy().into_owned()))
     }
 
+    /// `project.set_autosave`: applies the preference to the running autosave, if there is one.
+    pub(crate) fn apply_autosave(&self, pref: AutosavePreference) {
+        if let Some(OpenProject {
+            phase: Phase::Editing(e),
+            ..
+        }) = &self.project
+        {
+            e.autosave.apply_preference(pref);
+        }
+    }
+
     /// `project.save_as` of a journaled project: the store, its journal and its lock move to
     /// `folder`; the document and its history continue.
     pub(crate) fn save_as_in_place(&mut self, deps: &Deps, folder: &Path) -> Result<Rev, CmdError> {
@@ -745,9 +759,12 @@ fn start_editing(
         .with_journal(journal.sink());
     let running = spawn_doc(deps, config, view)?;
     let settings = autosave_settings(&recovered.project);
-    let config = deps
+    let mut config = deps
         .autosave
         .unwrap_or_else(|| AutosaveConfig::from(settings));
+    if let Some(pref) = *lock(&deps.autosave_pref) {
+        config = config.with_preference(pref);
+    }
     let autosave = AutosaveService::new(
         running.handle.clone(),
         Arc::clone(store),

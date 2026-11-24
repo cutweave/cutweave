@@ -6,7 +6,6 @@
   },
   "topbar": {
     "toolbarLabel": "Project actions",
-    "save": "Save",
     "saveAs": "Save as…",
     "recent": "Recent projects",
     "recentEmpty": "No recent projects yet",
@@ -15,7 +14,6 @@
     "redo": "Redo",
     "undoAction": "Undo {{label}}",
     "redoAction": "Redo {{label}}",
-    "unsaved": "Unsaved changes",
     "workspaceLabel": "Workspace"
   },
   "menu": {
@@ -42,11 +40,29 @@
     "toggleDevTools": "Toggle developer tools",
     "about": "About {{name}}"
   },
+  "saveStatus": {
+    "saved": "All changes saved",
+    "unsavedAuto": "Unsaved changes, saving automatically",
+    "unsavedManual": "Unsaved changes, autosave is off",
+    "unsavedUntitled": "Unsaved changes, save the project to keep them",
+    "saving": "Saving…",
+    "failed": "Autosave failed"
+  },
   "settings": {
     "title": "Settings",
     "description": "Changes apply at once and are kept for next time.",
     "appearance": "Appearance",
     "theme": "Theme",
+    "saving": "Saving",
+    "autosave": "Save automatically",
+    "autosaveInterval": "Save at least every",
+    "autosaveIntervalHint": "While you edit. Cutweave also saves 2 s after your last change.",
+    "interval30s": "30 s",
+    "interval1m": "1 min",
+    "interval2m": "2 min",
+    "interval5m": "5 min",
+    "keepBackups": "Backups to keep",
+    "keepBackupsHint": "Older backups of each project are deleted.",
     "done": "Done"
   },
   "about": {

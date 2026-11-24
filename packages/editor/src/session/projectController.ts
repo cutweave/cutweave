@@ -377,12 +377,15 @@ export class ProjectController {
     }
     if (state.path === null) return this.saveAs();
     return this.#busy(async () => {
+      this.#deps.ui.getState().setSaving(true);
       try {
         await this.#call("project.save", {});
         return true;
       } catch (error) {
         this.#fail("projectUi.failed.save", error);
         return false;
+      } finally {
+        this.#deps.ui.getState().setSaving(false);
       }
     });
   }

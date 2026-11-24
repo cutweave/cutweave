@@ -27,7 +27,7 @@
 use std::any::TypeId;
 use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicBool, AtomicU8, AtomicU64, Ordering};
-use std::sync::{Arc, PoisonError, RwLock, RwLockReadGuard, RwLockWriteGuard};
+use std::sync::{Arc, Mutex, PoisonError, RwLock, RwLockReadGuard, RwLockWriteGuard};
 use std::time::{Duration, Instant};
 
 use cutweave_api::{ApiConfig, ApiError, ApiServer, Credential, Credentials, RunningServer};
@@ -44,6 +44,7 @@ use serde_json::Value;
 use tokio::runtime::Runtime;
 use tokio::sync::broadcast::error::RecvError as BroadcastRecvError;
 
+use crate::autosave::AutosavePreference;
 use crate::config::{EngineConfig, EngineMode};
 use crate::dispatch::{Connection, Reply};
 use crate::events::{EngineEvent, EventBus, EventReceiver};
@@ -539,6 +540,19 @@ impl Core {
         })
     }
 
+    pub(crate) fn set_autosave(&self, pref: AutosavePreference) -> Result<(), CmdError> {
+        *self
+            .deps
+            .autosave_pref
+            .lock()
+            .unwrap_or_else(PoisonError::into_inner) = Some(pref);
+        let guard = self.session()?;
+        if let Some(session) = guard.as_ref() {
+            session.apply_autosave(pref);
+        }
+        Ok(())
+    }
+
     pub(crate) fn save_project(&self) -> Result<ProjectSaveOutput, CmdError> {
         let guard = self.session()?;
         let Some(session) = guard.as_ref() else {
@@ -816,6 +830,7 @@ impl Engine {
             seed,
             journal_sync: config.journal_sync,
             autosave: config.autosave,
+            autosave_pref: Mutex::new(None),
             events: EventBus::new(config.event_capacity),
             subsystems,
             jobs,

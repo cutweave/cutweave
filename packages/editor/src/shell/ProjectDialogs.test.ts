@@ -17,6 +17,7 @@ import { sessionUiStore } from "../session/sessionUiStore.ts";
 import { resetProjectController, useProjectWiring } from "../session/useProject.ts";
 import { docStore } from "../state/docStore.ts";
 import { toastStore } from "../state/toastStore.ts";
+import { viewStore } from "../state/viewStore.ts";
 import { createFakeEngine, type FakeEngine } from "../testing/fakeEngine.ts";
 import { AppMenuBar } from "./AppMenuBar.tsx";
 import { ProjectDialogs, ReadOnlyBanner } from "./ProjectDialogs.tsx";
@@ -247,21 +248,22 @@ describe("top bar", () => {
     ).toBe(false);
   });
 
-  it("shows the unsaved dot, and Save sends project.save for a titled project", async () => {
-    sessionStore.setState({ path: "C:\\p\\Film\\Film.cutweave", dirty: false });
+  it("has no Save button: File > Save sends project.save for a titled project", async () => {
+    sessionStore.setState({ path: "C:\\p\\Film\\Film.cutweave", dirty: true });
     render(wrap(h(TopBar)));
-    expect(screen.queryByTestId("dirty-dot")).toBeNull();
-    sessionStore.setState({ dirty: true });
-    expect(await screen.findByRole("img", { name: "Unsaved changes" })).toBeTruthy();
-    const save = screen.getByRole("button", { name: /^Save\s*Unsaved changes$/ });
-    await userEvent.setup().click(save);
+    expect(screen.queryByRole("button", { name: /^Save/ })).toBeNull();
+    const user = userEvent.setup();
+    await user.click(screen.getByRole("menuitem", { name: "File" }));
+    await user.click(await screen.findByRole("menuitem", { name: /^Save(?! as)/ }));
     await waitFor(() => expect(engine.names()).toEqual(["project.save"]));
   });
 
-  it("Save on an untitled project asks where to save it", async () => {
+  it("File > Save on an untitled project asks where to save it", async () => {
     sessionStore.setState({ path: null });
     render(wrap(h(TopBar)));
-    await userEvent.setup().click(screen.getByRole("button", { name: /^Save$/ }));
+    const user = userEvent.setup();
+    await user.click(screen.getByRole("menuitem", { name: "File" }));
+    await user.click(await screen.findByRole("menuitem", { name: /^Save(?! as)/ }));
     await waitFor(() => expect(sessionUiStore.getState().naming?.mode).toBe("saveAs"));
     expect(engine.calls).toEqual([]);
   });
@@ -292,14 +294,53 @@ describe("top bar", () => {
     await waitFor(() => expect(sessionStore.getState().name).toBe("Short"));
   });
 
-  it("disables the project actions until the engine is connected", () => {
+  it("disables the project actions until the engine is connected", async () => {
     engine.uninstall();
     render(wrap(h(TopBar)));
-    expect((screen.getByRole("button", { name: /^Save$/ }) as HTMLButtonElement).disabled).toBe(
-      true,
-    );
-    // New and Open are in the File menu now (their states: appMenu.test.ts).
+    const user = userEvent.setup();
+    await user.click(screen.getByRole("menuitem", { name: "File" }));
+    const save = await screen.findByRole("menuitem", { name: /^Save(?! as)/ });
+    expect(save.getAttribute("aria-disabled")).toBe("true");
     expect(screen.queryByRole("button", { name: /^(New|Open)$/ })).toBeNull();
+  });
+});
+
+describe("the title bar's save status (WP-1M.10)", () => {
+  const statusText = () => screen.getByTestId("save-status").textContent;
+
+  beforeEach(() => {
+    sessionStore.setState({ path: "C:\\p\\Film\\Film.cutweave", dirty: false });
+    viewStore.getState().setAutosave({ enabled: true });
+  });
+
+  it("says everything is saved, with no unsaved dot", () => {
+    render(wrap(h(TopBar)));
+    expect(statusText()).toBe("All changes saved");
+    expect(screen.queryByTestId("dirty-dot")).toBeNull();
+  });
+
+  it("says unsaved changes, and whether autosave will save them", () => {
+    render(wrap(h(TopBar)));
+    act(() => sessionStore.setState({ dirty: true }));
+    expect(statusText()).toBe("Unsaved changes, saving automatically");
+    expect(screen.getByTestId("dirty-dot")).toBeTruthy();
+    act(() => viewStore.getState().setAutosave({ enabled: false }));
+    expect(statusText()).toBe("Unsaved changes, autosave is off");
+    expect(screen.getByTestId("dirty-dot")).toBeTruthy();
+  });
+
+  it("says Saving… while a save runs, and Autosave failed after project.autosave_failed", () => {
+    render(wrap(h(TopBar)));
+    act(() => sessionStore.setState({ dirty: true }));
+    act(() => sessionUiStore.setState({ saving: true }));
+    expect(statusText()).toBe("Saving…");
+    act(() => sessionUiStore.setState({ saving: false }));
+    act(() => sessionStore.setState({ autosaveFailed: true }));
+    expect(statusText()).toBe("Autosave failed");
+    expect(screen.getByTestId("dirty-dot")).toBeTruthy();
+    // A save clears it.
+    act(() => sessionStore.setState({ dirty: false, autosaveFailed: false }));
+    expect(statusText()).toBe("All changes saved");
   });
 });
 

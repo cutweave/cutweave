@@ -16,6 +16,7 @@ use cutweave_commands::{
 use cutweave_model::MediaId;
 
 use super::ProjectStatus;
+use crate::autosave::AutosavePreference;
 use crate::engine::Core;
 
 /// Registers the session commands.
@@ -26,7 +27,8 @@ pub fn register(registry: &mut Registry) -> Result<(), RegistryError> {
         .register::<ProjectSaveAs>()?
         .register::<ProjectClose>()?
         .register::<ProjectRecover>()?
-        .register::<ProjectDiscardRecovery>()?;
+        .register::<ProjectDiscardRecovery>()?
+        .register::<ProjectSetAutosave>()?;
     Ok(())
 }
 
@@ -259,5 +261,71 @@ impl EngineCommand for ProjectDiscardRecovery {
 
     fn run(&self, s: &mut SessionCall) -> Result<ProjectRecoverOutput, CmdError> {
         s.core.decide_recovery(true)
+    }
+}
+
+// ----- project.set_autosave ----------------------------------------------------------------------
+
+/// Result of `project.set_autosave`: the preference now in force.
+#[wire]
+pub struct ProjectSetAutosaveOutput {
+    /// Whether autosave runs.
+    pub enabled: bool,
+    /// The longest time, in seconds, a dirty project goes unsaved while edits continue.
+    pub interval_s: u32,
+    /// Backups kept in the project's `.cutweave/backups/` folder.
+    pub keep_backups: u32,
+}
+
+/// Sets how this engine autosaves, for the open project and every project it opens later: the
+/// editor's own preference wins over the project's `settings.autosave` (arch §17). It takes
+/// effect at once, also for a project that is already dirty, and the 2 s idle save stays.
+/// Not undoable, not journaled and never marks the project dirty; it is not written to the
+/// project. An engine nobody sent it to keeps the project's own setting, then the defaults.
+#[command(
+    name = "project.set_autosave",
+    summary = "Set whether, how often and with how many backups the engine autosaves",
+    engine,
+    undoable = false,
+    journaled = false,
+    mcp = "catalog",
+    annotations(destructive = false, idempotent = true)
+)]
+pub struct ProjectSetAutosave {
+    /// Save automatically (the idle save and the interval save), or not at all.
+    pub enabled: bool,
+    /// Save at least this often, in seconds, while edits continue (1 to 86400).
+    pub interval_s: u32,
+    /// Backups to keep in `.cutweave/backups/` (1 to 100).
+    pub keep_backups: u32,
+}
+
+impl EngineCommand for ProjectSetAutosave {
+    type Context = SessionCall;
+    type Output = ProjectSetAutosaveOutput;
+
+    fn run(&self, s: &mut SessionCall) -> Result<ProjectSetAutosaveOutput, CmdError> {
+        if !(1..=86_400).contains(&self.interval_s) {
+            return Err(CmdError::invalid(
+                "/interval_s",
+                "must be between 1 and 86400 seconds",
+            ));
+        }
+        if !(1..=100).contains(&self.keep_backups) {
+            return Err(CmdError::invalid(
+                "/keep_backups",
+                "must be between 1 and 100",
+            ));
+        }
+        s.core.set_autosave(AutosavePreference {
+            enabled: self.enabled,
+            interval_s: self.interval_s,
+            keep_backups: self.keep_backups,
+        })?;
+        Ok(ProjectSetAutosaveOutput {
+            enabled: self.enabled,
+            interval_s: self.interval_s,
+            keep_backups: self.keep_backups,
+        })
     }
 }

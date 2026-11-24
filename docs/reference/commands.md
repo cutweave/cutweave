@@ -2,7 +2,7 @@
 
 # Command reference
 
-Every command and query the engine registers (44 in total), generated from the registry. The full JSON Schemas are in `schema/commands.json` and `schema/queries.json`.
+Every command and query the engine registers (45 in total), generated from the registry. The full JSON Schemas are in `schema/commands.json` and `schema/queries.json`.
 
 MCP exposure: `core` commands are always listed as tools (`item.move` is `item_move`), `catalog` ones are reachable through the catalog tools, `hidden` ones are not exposed.
 
@@ -42,6 +42,7 @@ MCP exposure: `core` commands are always listed as tools (`item.move` is `item_m
 | project | `project.rename` | Rename the project | command, undoable, idempotent | catalog |
 | project | `project.save` | Save the open project's committed state to its file | engine, idempotent | catalog |
 | project | `project.save_as` | Save the document as a new project folder and continue there | engine | catalog |
+| project | `project.set_autosave` | Set whether, how often and with how many backups the engine autosaves | engine, idempotent | catalog |
 | timeline | `timeline.get` | Get a sequence: summary (depth 0), tracks (1) or tracks with items (2) | query | core |
 | timeline | `timeline.insert` | Insert a media clip at a time on a track (adds linked audio for video with sound) | command, undoable | core |
 | track | `track.add` | Add an empty video or audio track to a sequence | command, undoable | catalog |

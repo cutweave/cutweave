@@ -88,6 +88,7 @@ mod tests {
             "project.close",
             "project.recover",
             "project.discard_recovery",
+            "project.set_autosave",
         ] {
             assert!(registry.get(name).is_some(), "{name} is not registered");
         }
