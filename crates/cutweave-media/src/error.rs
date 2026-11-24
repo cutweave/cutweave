@@ -28,8 +28,8 @@ pub enum MediaError {
         /// What is wrong with it.
         reason: String,
     },
-    /// Reading the file failed (permissions, device errors).
-    #[error("could not read `{path}`: {message}")]
+    /// Reading or writing the file failed (permissions, device errors, a full disk).
+    #[error("I/O error on `{path}`: {message}")]
     Io {
         /// The path.
         path: String,
@@ -110,6 +110,10 @@ pub enum MediaError {
         /// The library's message.
         message: String,
     },
+    /// The caller cancelled the operation (an encode's
+    /// [`CancelCheck`](crate::CancelCheck)); its partial output is gone.
+    #[error("cancelled")]
+    Cancelled,
 }
 
 impl MediaError {
@@ -187,5 +191,6 @@ mod tests {
             .is_media_fault()
         );
         assert!(!MediaError::not_implemented("ffmpeg", "probe (WP-1D.02)").is_media_fault());
+        assert!(!MediaError::Cancelled.is_media_fault());
     }
 }

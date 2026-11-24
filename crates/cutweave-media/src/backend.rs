@@ -12,8 +12,9 @@
 
 use std::path::{Path, PathBuf};
 
-use cutweave_model::{Duration, FrameRate, ProbeInfo, SampleRate, Time};
+use cutweave_model::{ColorTags, Duration, FrameRate, ProbeInfo, SampleRate, Time};
 
+use crate::encode::{CancelCheck, ProgressSink, RateControl, SpeedPreset};
 use crate::{
     AudioChunk, AudioFormat, Capabilities, FrameIndex, MediaError, PixelFormat, VideoFrame,
 };
@@ -49,10 +50,46 @@ pub struct VideoEncodeSpec {
     pub width: u32,
     /// Frame height.
     pub height: u32,
-    /// Frame rate of the output.
+    /// Frame rate of the output (constant). Frame `n` must have pts `rate.frame_to_time(n)`.
     pub rate: FrameRate,
-    /// Layout of the frames that will be pushed.
+    /// Layout of the frames that will be pushed. RGB frames are converted with the output's
+    /// matrix and range; YUV frames must already be in them.
     pub input_format: PixelFormat,
+    /// How the encoder spends bits.
+    pub rate_control: RateControl,
+    /// Encoder speed against compression.
+    pub preset: SpeedPreset,
+    /// Color of the output: written to the bitstream and the container, and used to convert RGB
+    /// input. Unset fields mean BT.709 limited range ([`bt709_tags`](crate::bt709_tags)).
+    pub color: ColorTags,
+    /// Encoder threads; 0 lets the encoder choose. x264 output is identical run to run for a
+    /// given thread count, so `1` also makes it identical across machines that load the same
+    /// FFmpeg bundle (the export determinism test, WP-1E.03).
+    pub threads: u16,
+}
+
+impl VideoEncodeSpec {
+    /// H.264 at `width × height` and `rate` from `input_format` frames: CRF 20, preset
+    /// `medium`, BT.709 limited range, automatic threads.
+    #[must_use]
+    pub fn h264(
+        width: u32,
+        height: u32,
+        rate: FrameRate,
+        input_format: PixelFormat,
+    ) -> VideoEncodeSpec {
+        VideoEncodeSpec {
+            codec: "h264".to_owned(),
+            width,
+            height,
+            rate,
+            input_format,
+            rate_control: RateControl::default(),
+            preset: SpeedPreset::default(),
+            color: crate::bt709_tags(),
+            threads: 0,
+        }
+    }
 }
 
 /// An audio stream to encode.
@@ -64,9 +101,27 @@ pub struct AudioEncodeSpec {
     pub rate: SampleRate,
     /// Output channel count (pushed chunks must have this many planes).
     pub channels: u16,
+    /// Target bitrate in bits per second, for all channels together.
+    pub bitrate: u32,
 }
 
-/// What to encode and where. Codec settings (CRF, preset, bitrate) arrive with WP-1E.01.
+impl AudioEncodeSpec {
+    /// The AAC bitrate exports use unless told otherwise.
+    pub const DEFAULT_BITRATE: u32 = 192_000;
+
+    /// AAC at `rate` with `channels` channels and 192 kb/s.
+    #[must_use]
+    pub fn aac(rate: SampleRate, channels: u16) -> AudioEncodeSpec {
+        AudioEncodeSpec {
+            codec: "aac".to_owned(),
+            rate,
+            channels,
+            bitrate: AudioEncodeSpec::DEFAULT_BITRATE,
+        }
+    }
+}
+
+/// What to encode and where, and the hooks the encoder calls while it works.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct EncodeSpec {
     /// Output file. The container follows from the extension unless `container` is set.
@@ -77,12 +132,59 @@ pub struct EncodeSpec {
     pub video: Option<VideoEncodeSpec>,
     /// The audio stream, if any.
     pub audio: Option<AudioEncodeSpec>,
+    /// Polled while encoding; once it answers `true` the encoder stops with
+    /// [`MediaError::Cancelled`] and removes its partial output.
+    pub cancel: Option<CancelCheck>,
+    /// Receives progress while encoding.
+    pub progress: Option<ProgressSink>,
 }
 
 impl EncodeSpec {
+    /// An output at `path` with no streams and no hooks yet.
+    #[must_use]
+    pub fn new(path: impl Into<PathBuf>) -> EncodeSpec {
+        EncodeSpec {
+            path: path.into(),
+            container: None,
+            video: None,
+            audio: None,
+            cancel: None,
+            progress: None,
+        }
+    }
+
+    /// The same output with a video stream.
+    #[must_use]
+    pub fn with_video(mut self, video: VideoEncodeSpec) -> EncodeSpec {
+        self.video = Some(video);
+        self
+    }
+
+    /// The same output with an audio stream.
+    #[must_use]
+    pub fn with_audio(mut self, audio: AudioEncodeSpec) -> EncodeSpec {
+        self.audio = Some(audio);
+        self
+    }
+
+    /// The same output, cancelled by `cancel`.
+    #[must_use]
+    pub fn with_cancel(mut self, cancel: CancelCheck) -> EncodeSpec {
+        self.cancel = Some(cancel);
+        self
+    }
+
+    /// The same output, reporting to `progress`.
+    #[must_use]
+    pub fn with_progress(mut self, progress: ProgressSink) -> EncodeSpec {
+        self.progress = Some(progress);
+        self
+    }
+
     /// Checks what every backend requires before opening an output: at least one stream,
-    /// non-empty codec names, a non-empty video size, at least one audio channel and a syntactically
-    /// valid path. Backends call it first, so they reject bad specs the same way.
+    /// non-empty codec names, a non-empty video size, a CRF on the 0–51 scale, non-zero
+    /// bitrates, at least one audio channel and a syntactically valid path. Backends call it
+    /// first, so they reject bad specs the same way.
     pub fn validate(&self) -> Result<(), MediaError> {
         let invalid = |message: &str| {
             Err(MediaError::Invalid {
@@ -100,6 +202,13 @@ impl EncodeSpec {
             if v.width == 0 || v.height == 0 {
                 return invalid("the video size is empty");
             }
+            match v.rate_control {
+                RateControl::Crf(q) if q > RateControl::MAX_CRF => {
+                    return invalid("the CRF is above 51");
+                }
+                RateControl::Bitrate(0) => return invalid("the video bitrate is zero"),
+                _ => {}
+            }
         }
         if let Some(a) = &self.audio {
             if a.codec.is_empty() {
@@ -107,6 +216,9 @@ impl EncodeSpec {
             }
             if a.channels == 0 {
                 return invalid("the audio stream has no channels");
+            }
+            if a.bitrate == 0 {
+                return invalid("the audio bitrate is zero");
             }
         }
         Ok(())
@@ -192,11 +304,24 @@ pub trait AudioDecoder: Send {
 }
 
 /// An encoder writing one output file.
+///
+/// The file appears at the spec's path only when [`finish`](Self::finish) succeeds (an existing
+/// file there is replaced then). Cancelling ([`EncodeSpec::cancel`]), a failure and dropping the
+/// encoder before `finish` remove the partial output and leave an existing file untouched.
+///
+/// **Input.** Video frames match the stream's size and layout, and frame `n` has pts
+/// `rate.frame_to_time(n)`: frames start at zero and follow each other on the output's frame
+/// grid (constant frame rate; flicks become the codec's time base only inside the encoder, arch
+/// §4.1). YUV frames carry no matrix or range tag that contradicts the output's. Audio chunks
+/// match the stream's rate and channel count and continue it without gaps from sample zero.
+/// Push audio and video in step, a second or so apart at most: the muxer interleaves them, and
+/// buffers whatever runs ahead. Every backend rejects other input with
+/// [`MediaError::Invalid`] and then accepts the next valid frame or chunk.
 pub trait Encoder: Send {
-    /// Appends a video frame. Frames must match the spec and have increasing pts.
+    /// Appends video frame `n`: it matches the spec and has pts `rate.frame_to_time(n)`.
     fn push_video(&mut self, frame: &VideoFrame) -> Result<(), MediaError>;
 
-    /// Appends audio. Chunks must match the spec and follow each other without gaps.
+    /// Appends audio. Chunks must match the spec and follow each other without gaps from 0.
     fn push_audio(&mut self, chunk: &AudioChunk) -> Result<(), MediaError>;
 
     /// Flushes and closes the output.

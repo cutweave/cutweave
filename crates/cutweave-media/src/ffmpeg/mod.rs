@@ -12,8 +12,10 @@
 //!
 //! Paths are validated before FFmpeg sees them (ffmpeg-next panics on non-UTF-8 paths and
 //! interior NULs, S3 F2.2), and open failures map to typed errors. Probe/index (WP-1D.02),
-//! decode (WP-1D.03), hardware decode (WP-1D.04) and encode (WP-1E.01) build on [`input`].
+//! decode (WP-1D.03) and hardware decode (WP-1D.04) build on [`input`]; the encoder (WP-1E.01)
+//! is in `encode`.
 
+mod encode;
 mod error;
 mod index;
 mod log;
@@ -192,10 +194,7 @@ impl MediaBackend for FfmpegBackend {
 
     fn open_encoder(&self, spec: &EncodeSpec) -> Result<Box<dyn Encoder>, MediaError> {
         spec.validate()?;
-        Err(MediaError::not_implemented(
-            BACKEND,
-            "open_encoder (WP-1E.01)",
-        ))
+        encode::open(spec)
     }
 
     fn capabilities(&self) -> Capabilities {
