@@ -981,10 +981,16 @@ dependencies = [
 name = "cutweave-playback"
 version = "0.0.0"
 dependencies = [
+ "cutweave-audio",
+ "cutweave-commands",
  "cutweave-model",
+ "cutweave-playback",
+ "cutweave-render",
  "getrandom 0.4.3",
  "libc",
+ "serde_json",
  "thiserror 2.0.21",
+ "tracing",
  "windows-sys",
 ]
 

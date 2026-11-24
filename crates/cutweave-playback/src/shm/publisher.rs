@@ -388,6 +388,15 @@ impl FramePublisher {
         )
     }
 
+    /// The layout of a frame rendered at `config` ([`fitted`](PreviewConfig::fitted)) with this
+    /// ring's row alignment: frames other than the current preview size, such as the
+    /// transport's reduced-resolution scrub frames (WP-1H.01). It fits the slots whenever it
+    /// is no larger than the current configuration.
+    pub fn layout_for(&self, config: PreviewConfig) -> Result<FrameLayout, LayoutError> {
+        let c = config.fitted();
+        FrameLayout::aligned(c.width, c.height, c.format, self.row_align)
+    }
+
     /// Frames committed so far (the `seq` of the newest frame).
     #[must_use]
     pub fn write_index(&self) -> u64 {

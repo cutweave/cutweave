@@ -38,7 +38,7 @@ mod publisher;
 mod ring;
 
 #[cfg(test)]
-mod reader;
+pub(crate) mod reader;
 #[cfg(test)]
 mod tests;
 
