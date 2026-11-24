@@ -15,7 +15,9 @@
 //! decode (WP-1D.03), hardware decode (WP-1D.04) and encode (WP-1E.01) build on [`input`].
 
 mod error;
+mod index;
 mod log;
+mod probe;
 // Justification: FFmpeg FFI that ffmpeg-next does not wrap (version getters, the C-variadic log
 // callback, codec enumeration), ADR-0003 and AGENTS.md ("no unsafe outside the crates that need
 // it for FFI"). The rest of the crate stays `unsafe`-free; every block in `sys` has a
@@ -31,7 +33,7 @@ use cutweave_model::ProbeInfo;
 
 use crate::backend::{AudioDecoder, DecodeOpts, EncodeSpec, Encoder, MediaBackend, VideoDecoder};
 use crate::version::{self, LinkedLibrary, Release};
-use crate::{Capabilities, MediaError};
+use crate::{Capabilities, FrameIndex, MediaError};
 
 const BACKEND: &str = "ffmpeg";
 
@@ -157,8 +159,11 @@ pub(crate) mod input {
 
 impl MediaBackend for FfmpegBackend {
     fn probe(&self, path: &Path) -> Result<ProbeInfo, MediaError> {
-        let _input = input::open(path)?;
-        Err(MediaError::not_implemented(BACKEND, "probe (WP-1D.02)"))
+        probe::probe(path)
+    }
+
+    fn index_media(&self, path: &Path) -> Result<FrameIndex, MediaError> {
+        index::index_media(path)
     }
 
     fn open_decoder(

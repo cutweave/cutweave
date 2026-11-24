@@ -1,7 +1,8 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 //! The FFmpeg calls `ffmpeg-next` 9.1 does not wrap: library versions, build strings, the log
 //! callback and codec enumeration. This is the only `unsafe` in the crate (ADR-0003); every
-//! block carries a `// SAFETY:` comment. WP-1D.02/1D.03 add per-stream seek, raw packet flags and
+//! block carries a `// SAFETY:` comment. WP-1D.02 appended the codec-parameter, seek-index and
+//! packet-flag reads (its section is delimited at the end); WP-1D.03 adds per-stream seek and
 //! pixel-format descriptors here (S3 finding F2.1).
 
 use std::cell::Cell;
@@ -232,6 +233,165 @@ pub(super) fn install_log_callback() {
     // only) and never unwinds.
     unsafe { ffi::av_log_set_callback(Some(log_callback)) };
 }
+
+// ===== WP-1D.02: probe and frame index (everything below is this work package's) =============
+//
+// Reads of `AVCodecParameters` and of the demuxer's seek index, which `ffmpeg-next` 9.1 does not
+// expose. Values that FFmpeg stores in C enums (pixel format, color code points, codec id) are
+// read as plain integers and looked up through the matching `*_name` functions, declared below
+// with `c_int` parameters (an enum is an `int` in the C ABI): the bindings' enums are Rust enums,
+// and a value outside them would be undefined behaviour to even materialize, which a hostile
+// file's header could provoke. The functions themselves range-check their argument.
+
+use cutweave_model::ColorRange;
+use ffmpeg_next::Packet;
+use ffmpeg_next::codec::Parameters;
+use ffmpeg_next::format::stream::Stream;
+use ffmpeg_next::packet::Ref;
+
+#[allow(clashing_extern_declarations)] // same symbols as the bindings', `int` for the enum
+unsafe extern "C" {
+    fn av_get_pix_fmt_name(pix_fmt: c_int) -> *const c_char;
+    fn av_color_primaries_name(primaries: c_int) -> *const c_char;
+    fn av_color_transfer_name(transfer: c_int) -> *const c_char;
+    fn av_color_space_name(space: c_int) -> *const c_char;
+    fn avcodec_get_name(id: c_int) -> *const c_char;
+    fn avcodec_profile_name(id: c_int, profile: c_int) -> *const c_char;
+}
+
+/// `AVCOL_PRI_UNSPECIFIED`, `AVCOL_TRC_UNSPECIFIED` and `AVCOL_SPC_UNSPECIFIED` are all 2.
+const COLOR_UNSPECIFIED: c_int = 2;
+
+/// What the demuxer knows about one stream's codec (`AVCodecParameters`), as plain values.
+#[derive(Clone, Debug, Default)]
+pub(super) struct StreamParams {
+    /// Codec name (`h264`), `None` for an unknown codec.
+    pub codec: Option<String>,
+    /// Codec profile name (`High`, `Main 10`), `None` when not reported.
+    pub profile: Option<String>,
+    pub width: u32,
+    pub height: u32,
+    /// Pixel format name (`yuv420p10le`); video only.
+    pub pixel_format: Option<String>,
+    pub sample_rate: u32,
+    pub channels: u32,
+    /// Color tags by FFmpeg name (video only); `None` when unspecified.
+    pub primaries: Option<String>,
+    pub transfer: Option<String>,
+    pub matrix: Option<String>,
+    pub range: Option<ColorRange>,
+}
+
+/// `Some(name)` for a non-NULL C string.
+fn name_of(s: *const c_char) -> Option<String> {
+    (!s.is_null()).then(|| owned(s))
+}
+
+/// `name(v)` for a color code point, `None` when unspecified or unknown.
+fn color_name(v: c_int, name: unsafe extern "C" fn(c_int) -> *const c_char) -> Option<String> {
+    if v == COLOR_UNSPECIFIED {
+        return None;
+    }
+    // SAFETY: the `*_name` functions range-check their argument and return a static string or
+    // NULL.
+    name_of(unsafe { name(v) })
+}
+
+/// The codec parameters of a stream as plain values.
+pub(super) fn stream_params(par: &Parameters) -> StreamParams {
+    // SAFETY: `as_ptr` returns the AVCodecParameters the stream owns; for a stream of an open
+    // input it is non-NULL (checked below) and stays valid while `par` is borrowed.
+    let p = unsafe { par.as_ptr() };
+    if p.is_null() {
+        return StreamParams::default();
+    }
+    let is_video = matches!(par.medium(), ffmpeg_next::media::Type::Video);
+    // SAFETY (all raw reads below): `p` is a valid, aligned AVCodecParameters (see above). Plain
+    // `c_int` fields are read as such. Enum-typed fields (`codec_id`, `color_*`) are read through
+    // a `*const c_int` cast of the field's address, never as the bindings' enum types (see the
+    // section comment): sound because those C enums are `int`-sized.
+    unsafe {
+        let int_at = |field: *const c_int| field.read();
+        let codec_id = int_at(ptr::addr_of!((*p).codec_id).cast());
+        let primaries = int_at(ptr::addr_of!((*p).color_primaries).cast());
+        let transfer = int_at(ptr::addr_of!((*p).color_trc).cast());
+        let matrix = int_at(ptr::addr_of!((*p).color_space).cast());
+        let range = int_at(ptr::addr_of!((*p).color_range).cast());
+        let format = (*p).format;
+        StreamParams {
+            codec: name_of(avcodec_get_name(codec_id)).filter(|n| n != "none"),
+            profile: name_of(avcodec_profile_name(codec_id, (*p).profile)),
+            width: (*p).width.max(0).cast_unsigned(),
+            height: (*p).height.max(0).cast_unsigned(),
+            // Only video streams store a pixel format here; audio streams store a sample format.
+            pixel_format: if is_video && format >= 0 {
+                name_of(av_get_pix_fmt_name(format))
+            } else {
+                None
+            },
+            sample_rate: (*p).sample_rate.max(0).cast_unsigned(),
+            channels: (*p).ch_layout.nb_channels.max(0).cast_unsigned(),
+            primaries: if is_video {
+                color_name(primaries, av_color_primaries_name)
+            } else {
+                None
+            },
+            transfer: if is_video {
+                color_name(transfer, av_color_transfer_name)
+            } else {
+                None
+            },
+            matrix: if is_video {
+                color_name(matrix, av_color_space_name)
+            } else {
+                None
+            },
+            // AVCOL_RANGE_MPEG = 1 (limited), AVCOL_RANGE_JPEG = 2 (full).
+            range: match range {
+                1 if is_video => Some(ColorRange::Limited),
+                2 if is_video => Some(ColorRange::Full),
+                _ => None,
+            },
+        }
+    }
+}
+
+/// The timestamps (stream time base) of the demuxer's seek index for `stream`, in index order.
+/// MP4/MOV, AVI and similar demuxers fill it for every sample while reading the header; Matroska
+/// keeps only sparse cue points and MPEG-TS none. `None` when the index is empty.
+pub(super) fn seek_index_timestamps(stream: &Stream<'_>) -> Option<Vec<i64>> {
+    // SAFETY: `as_ptr` is the stream of an open input, valid while `stream` is borrowed.
+    let st = unsafe { stream.as_ptr() };
+    // SAFETY: the argument is that valid AVStream; the getter only reads it.
+    let count = unsafe { ffi::avformat_index_get_entries_count(st) };
+    if count <= 0 {
+        return None;
+    }
+    let mut out = Vec::with_capacity(count.cast_unsigned() as usize);
+    for i in 0..count {
+        // SAFETY: `i` is below the entry count just read; the function takes a non-const
+        // AVStream* for historical reasons but does not modify it. The returned entry is read
+        // immediately, before any other call that takes the stream.
+        let entry = unsafe { ffi::avformat_index_get_entry(st.cast_mut(), i) };
+        // SAFETY: a non-NULL result points to a valid AVIndexEntry (see above).
+        let Some(entry) = (unsafe { entry.as_ref() }) else {
+            break;
+        };
+        out.push(entry.timestamp);
+    }
+    Some(out)
+}
+
+/// `AV_PKT_FLAG_DISCARD`: the demuxer wants the decoder to decode this packet but drop its frame
+/// (MP4/MOV edit lists). `ffmpeg-next`'s `packet::Flags` only knows KEY and CORRUPT and
+/// truncates the rest, so the raw flag word is read.
+pub(super) fn packet_is_discard(packet: &Packet) -> bool {
+    // SAFETY: `as_ptr` points at the AVPacket owned by `packet`, which is borrowed for the read.
+    let flags = unsafe { (*packet.as_ptr()).flags };
+    flags & ffi::AV_PKT_FLAG_DISCARD != 0
+}
+
+// ===== end of WP-1D.02 section ==============================================================
 
 #[cfg(test)]
 pub(super) mod test_support {
