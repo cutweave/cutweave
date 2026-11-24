@@ -246,9 +246,13 @@ fn an_occupied_port_exits_12() {
 #[test]
 fn a_gui_engine_without_a_usable_gpu_exits_11_and_a_headless_one_falls_back() {
     let t = TempDir::new("gpu");
+    // One wgpu backend keeps the adapter search short. A search that outlasts the Gui engine's
+    // 4 s GPU wait (all backends, on a machine busy with other GPU work) would make it report
+    // ready and fall back to software, by design, instead of exiting 11.
     let no_gpu = [
         ("CUTWEAVE_GPU", "no-adapter-is-called-this"),
         ("CUTWEAVE_AUDIO", "null"),
+        ("WGPU_BACKEND", "vulkan"),
     ];
     let mut gui = Engine::spawn_with_env(t.path(), &["--port", "0", "--token-stdin"], &no_gpu);
     gui.handshake(UI);
