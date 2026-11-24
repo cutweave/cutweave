@@ -15,6 +15,15 @@ Any MCP client can drive Cutweave: it starts `cutweave mcp` as a stdio MCP serve
 
 `cutweave` must be on your `PATH`; otherwise put the binary's absolute path in `command` (a dev build is `target/debug/cutweave`).
 
+## From the app: Settings > Agents and MCP
+
+The desktop app has the setups ready to copy (WP-1J.05): File > Settings… > Agents and MCP.
+
+- **Connection** says whether agents can connect to this window, or why not (the engine is not running, or the build has no command-line tool).
+- **Folders agents can use.** Agents may import media from, open projects in and save into the open project's folder (always) and the folders listed here. "Add folder…" opens the OS folder picker; the folder is stored resolved (symlinks followed) on this computer only, never exported with the settings. Removing one stops every agent at once, also a session that is already open; its next import fails with `invalid` and a message naming Settings > Agents and MCP. `project_info` tells an agent the folders in effect (`allowed_roots`). Agents cannot change the list (`project.set_allowed_roots` is UI-only).
+- **Connect a client.** Pick Claude Code, Claude Desktop, Cursor, Codex or "Other (stdio)" and press Copy: the setup runs the app's own CLI by its absolute path, `<cli> mcp --attach`, with the tool set of "Tools in copied setups" (`--profile minimal` or `full`; Standard needs no flag). It never holds a pid, a port or a token: the attach proxy reads the run-file and takes the window you used last.
+- **Connected agents** lists the agent connections open on this window's engine (`agent:mcp`, `agent:cli`), when each connected and the last command it called (`project.connections`). A notice names an agent when it connects and when it has been gone for a few seconds (Settings > Notifications turns it off).
+
 ## Several engines
 
 The app, and every `cutweave engine --headless` a script starts, is an engine with its own project. `cutweave engines` lists them (pid, mode, project, last focus). One config serves them all, with no pid in it:

@@ -659,7 +659,13 @@ export async function openSettings(page: Page, app: ElectronApplication): Promis
 export async function openSettingsPage(
   page: Page,
   app: ElectronApplication,
-  name: "General" | "Appearance" | "Saving and backups" | "Advanced",
+  name:
+    | "General"
+    | "Appearance"
+    | "Saving and backups"
+    | "Notifications"
+    | "Agents and MCP"
+    | "Advanced",
 ): Promise<Locator> {
   const settings = await openSettings(page, app);
   await settings.getByRole("tab", { name }).click();

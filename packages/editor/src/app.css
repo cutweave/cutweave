@@ -775,6 +775,8 @@ body {
 }
 .cw-agents__code {
   margin: 0;
+  /* Shown as typed: `--` must not read as a dash. */
+  font-variant-ligatures: none;
   white-space: pre-wrap;
   overflow-wrap: anywhere;
   user-select: text;
