@@ -96,6 +96,10 @@ flowchart TB
   - The **main editor window** uses a non-sandboxed preload with `contextIsolation`, no `nodeIntegration`, a narrow `contextBridge` API, local `app://` content only and a strict CSP.
   - All other windows and plugin iframes are sandboxed and get no preload.
   - The alternative is the addon in a utility process that sends frames over `MessagePort`. Spike 1 measures both, and ADR-001 records the choice.
+- **Desktop shell: title bar and menus per OS (WP-1M.09).** The editor's top bar is the window's title bar. The OS still draws the window controls, so Snap Layouts, Aero snap and the controls' accessibility keep working; the app never draws its own caption buttons.
+  - **Windows and Linux:** `titleBarStyle: "hidden"` with a window-controls overlay whose color and symbol color come from the design tokens of the theme the editor shows (`window:setTheme`), as tall as the top bar (`toolbar` token). There is no native menu bar (`Menu.setApplicationMenu(null)`). The editor draws File, Edit, View and Help (`MenuBar` in `packages/ui`), handles their shortcuts, and opens them with Alt, F10 and Alt+letter. Actions only main can take go through allowlisted, zod-validated IPC: `app:quit`, `app:about`, `window:toggleFullScreen`, `window:setTheme`, `edit:run` (cut, copy, paste, select all), and the development-only `window:reload` and `window:toggleDevTools`.
+  - **macOS:** `titleBarStyle: "hiddenInset"` keeps the traffic lights over the top bar, and the native app menu stays at the top of the screen; its accelerators reach the editor as `menu:command`. The in-app menu bar is not shown.
+  - **Every OS:** the top bar's empty areas drag the window and a double-click maximizes it; its controls opt out (`-webkit-app-region: no-drag`). The Window Controls Overlay API (`env(titlebar-area-*)`) tells the layout where the OS controls are, so nothing sits under them. The project name and unsaved state stay in `document.title` for the taskbar and Alt+Tab.
 
 ---
 
