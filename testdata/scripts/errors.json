@@ -1,0 +1,73 @@
+{
+  "description": "Error cases: invalid arguments (range, missing, unknown and mistyped fields), unknown ids and commands, overlap, a locked track (single calls and a batch that rolls back), a failed import entry with untrusted text, and engine-state errors.",
+  "steps": [
+    { "cmd": "project.new", "args": { "name": "Parity" } },
+    { "cmd": "media.import", "args": { "paths": [{ "$media": "a.mp4" }, { "$media": "notes.txt" }] } },
+    {
+      "cmd": "timeline.insert",
+      "args": {
+        "sequence": { "$ref": "steps[0].output.sequence" },
+        "track": { "$ref": "steps[0].output.video_track" },
+        "media": { "$ref": "steps[1].output.media_ids[0]" },
+        "at": 0
+      }
+    },
+    {
+      "cmd": "timeline.insert",
+      "args": {
+        "sequence": { "$ref": "steps[0].output.sequence" },
+        "track": { "$ref": "steps[0].output.video_track" },
+        "media": { "$ref": "steps[1].output.media_ids[0]" },
+        "at": "5s"
+      },
+      "expect": { "error": "invalid" }
+    },
+    { "cmd": "clip.split", "args": { "item": { "$ref": "steps[2].output.clips[0]" }, "at": "20s" }, "expect": { "error": "invalid" } },
+    { "cmd": "clip.split", "args": { "item": { "$ref": "steps[2].output.clips[0]" } }, "expect": { "error": "invalid" } },
+    { "cmd": "clip.split", "args": { "item": { "$ref": "steps[2].output.clips[0]" }, "at": "2s", "bogus": 1 }, "expect": { "error": "invalid" } },
+    { "cmd": "clip.split", "args": { "item": { "$ref": "steps[2].output.clips[0]" }, "at": true }, "expect": { "error": "invalid" } },
+    { "cmd": "clip.split", "args": { "item": "itm_0000000000000000000000000000beef", "at": "1s" }, "expect": { "error": "not_found" } },
+    { "cmd": "clip.splice", "args": { "item": { "$ref": "steps[2].output.clips[0]" } }, "expect": { "error": "not_found" } },
+    { "cmd": "track.set", "args": { "track": { "$ref": "steps[0].output.video_track" }, "locked": true } },
+    { "cmd": "clip.split", "args": { "item": { "$ref": "steps[2].output.clips[0]" }, "at": "2s" }, "expect": { "error": "locked" } },
+    { "cmd": "item.delete", "args": { "items": [{ "$ref": "steps[2].output.clips[0]" }] }, "expect": { "error": "locked" } },
+    {
+      "cmd": "timeline.insert",
+      "args": {
+        "sequence": { "$ref": "steps[0].output.sequence" },
+        "track": { "$ref": "steps[0].output.video_track" },
+        "media": { "$ref": "steps[1].output.media_ids[0]" },
+        "at": "30s"
+      },
+      "expect": { "error": "locked" }
+    },
+    {
+      "batch": [
+        { "cmd": "project.rename", "args": { "name": "Renamed by a failed batch" } },
+        { "cmd": "clip.trim", "args": { "item": { "$script": "steps[2].output.clips[0]" }, "edge": "end", "delta": "-1s" } }
+      ],
+      "expect": { "error": "locked", "failed_step": 1 }
+    },
+    { "cmd": "project.info" },
+    { "cmd": "track.set", "args": { "track": { "$ref": "steps[0].output.video_track" }, "locked": false } },
+    { "cmd": "clip.split", "args": { "item": { "$ref": "steps[2].output.clips[0]" }, "at": "2s" } },
+    { "cmd": "job.wait", "args": { "job_id": "job_0000000000000000000000000000beef", "timeout_ms": 0 }, "expect": { "error": "not_found" } },
+    { "cmd": "project.save", "expect": { "error": "invalid" } },
+    { "cmd": "project.new", "args": { "name": "Again" }, "expect": { "error": "invalid" } },
+    { "cmd": "edit.restore", "args": { "checkpoint": "never-made" }, "expect": { "error": "not_found" } },
+    { "cmd": "edit.redo", "expect": { "error": "invalid" } },
+    { "batch": [{ "cmd": "edit.redo" }], "expect": { "error": "invalid", "failed_step": 0 } },
+    {
+      "batch": [{ "cmd": "clip.split", "args": { "item": { "$script": "steps[2].output.clips[0]" }, "at": "20s" } }],
+      "expect": { "error": "invalid", "failed_step": 0 }
+    },
+    {
+      "batch": [
+        { "cmd": "project.rename", "args": { "name": "Renamed by a failed batch" } },
+        { "cmd": "clip.split", "args": { "item": { "$ref": "steps[0].output.nope" }, "at": "1s" } }
+      ],
+      "expect": { "error": "invalid", "failed_step": 1 }
+    },
+    { "cmd": "timeline.get", "args": { "sequence": { "$ref": "steps[0].output.sequence" }, "depth": 2 } }
+  ]
+}

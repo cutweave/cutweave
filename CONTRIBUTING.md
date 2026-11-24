@@ -38,7 +38,7 @@ Changes to a command schema, a WIT interface, the project file format, the plugi
 
 ## Sign-off (DCO)
 
-Cutweave uses the [Developer Certificate of Origin](https://developercertificate.org/) instead of a CLA. Every commit must carry a `Signed-off-by:` line, which certifies that you wrote the change or have the right to submit it under the project's license:
+Cutweave uses the [Developer Certificate of Origin](https://developercertificate.org/) instead of a CLA. Every commit must carry a `Signed-off-by:` line, which certifies that you wrote the change or have the right to submit it under the license indicated in each file you change (see [Licensing](#licensing)):
 
 ```sh
 git commit -s -m "feat(model): add clip speed field"
@@ -58,9 +58,13 @@ Much of Cutweave is built with AI agents, and contributions that use them are we
 
 ## Licensing
 
-The core is **GPL-3.0-or-later** (see [LICENSE](LICENSE)). The plugin SDK, WIT interfaces and composition runtime (`packages/plugin-sdk`, `wit/`, `packages/compose-runtime`) are intended to be **MIT OR Apache-2.0**, and contributions to those directories are made under both licenses. A **plugin exception** is being drafted so that plugins using only Cutweave's published interfaces may use any license; see [LICENSE-PLUGIN-EXCEPTION.md](LICENSE-PLUGIN-EXCEPTION.md). It is a draft pending legal review and is not yet in effect.
+The core is **GPL-3.0-or-later** (see [LICENSE](LICENSE)). The WIT interfaces, the plugin SDK and the composition runtime (`wit/`, `packages/plugin-sdk`, `packages/compose-runtime`) are **MIT OR Apache-2.0**, with the license texts in each directory. Every source file carries an SPDX header that says which applies; files without one are covered by [REUSE.toml](REUSE.toml). A **plugin exception** is being drafted so that plugins using only Cutweave's published interfaces may use any license; see [LICENSE-PLUGIN-EXCEPTION.md](LICENSE-PLUGIN-EXCEPTION.md). It is a draft pending legal review and is not yet in effect. None of these licenses grants rights to the Cutweave name or logo.
 
-**Inbound licensing for the planned exception (pending legal review).** An additional permission such as the plugin exception can only cover code whose authors agreed to it. By submitting a contribution, you agree that it is licensed under GPL-3.0-or-later and that Cutweave may also distribute it under the additional permission in LICENSE-PLUGIN-EXCEPTION.md once that text is adopted. If you do not agree, say so in your pull request before it is merged. The maintainers will replace this paragraph with counsel-reviewed wording before the first external contribution is merged.
+**Your sign-off and the license in the file.** Your `Signed-off-by:` certifies, under the DCO, that you may submit your change under the license indicated in each file you change, which is its SPDX header (or `REUSE.toml` for files without one). Do not change a file's license header unless a maintainer asks you to.
+
+**The permissive directories.** Unless you explicitly state otherwise, any contribution intentionally submitted for inclusion in `wit/`, `packages/plugin-sdk` or `packages/compose-runtime`, as defined in the Apache-2.0 license, is licensed as above (MIT OR Apache-2.0), without any additional terms or conditions. Code may move from those directories into GPL-licensed parts of Cutweave (keep its notices), but not the other way: do not copy GPL-licensed code, or code generated from it, into them unless every author of that code agrees in writing.
+
+**The plugin exception (pending legal review).** An additional permission such as the plugin exception covers only code whose authors agreed to it. By signing off a contribution to a GPL-licensed part of Cutweave, you also agree that it may be distributed under GPL-3.0-or-later together with the plugin exception in LICENSE-PLUGIN-EXCEPTION.md, as adopted by the maintainers after legal review. Any adopted version may only add permissions for works that use Cutweave's published interfaces; it never removes rights the GPL gives. The maintainers do not accept contributions to GPL-licensed parts of Cutweave on other terms, and will replace this paragraph with counsel-reviewed wording, and adopt the exception, before the first external contribution is merged. The reasoning is in [docs/legal/first-pass-review-2026-11-23.md](docs/legal/first-pass-review-2026-11-23.md).
 
 New dependencies must be GPL-3.0-compatible and pass `cargo-deny` and the JS license check (policy: [docs/01-architecture.md](docs/01-architecture.md) §21).
 

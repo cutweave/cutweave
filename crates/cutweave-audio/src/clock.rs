@@ -52,16 +52,26 @@ const NANOS_PER_SECOND: i128 = 1_000_000_000;
 const FLOOR_MARGIN_NS: u64 = 5_000;
 
 /// What the clock is doing.
+///
+/// With [`AudioOutput`](crate::AudioOutput), while playing, a (re)started stream goes
+/// `Stopped` → `Priming` (its first callback) → `Running` (its second callback, one device period
+/// later). A restart after a device change reads: `Running` (the old stream, for the few
+/// milliseconds of its teardown; never past the audio it had been handed) → `Stopped` →
+/// `Priming` → `Running`. [`OutputState::Running`](crate::OutputState::Running) is reported only
+/// from the first callback on, so the clock is never `Stopped` while the output reports
+/// `Running`.
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Hash)]
 pub enum ClockState {
-    /// No output stream runs (not started yet, restarting after a device change, or stopped).
-    /// The position holds.
+    /// No stream is calling back: before the first callback of a (re)started stream (a device
+    /// can take tens of milliseconds to start), during a restart, while waiting for a device,
+    /// and after the output stopped. The position holds.
     #[default]
     Stopped,
     /// The output is paused. The position holds.
     Paused,
-    /// Waiting for audio to become audible: right after the stream (re)started, or while the
-    /// mixer primes after a seek. The position holds.
+    /// Waiting for audio to become audible: the first callback of a (re)started stream (it
+    /// fills an empty device buffer before the device clock runs, S2 finding 3), or while the
+    /// mixer primes after a seek (at most its prime timeout, 1 s by default). The position holds.
     Priming,
     /// The device is playing the mix: the position advances with the device clock.
     Running,

@@ -313,44 +313,79 @@ fn device_smoke() {
     assert!(report.drift_ms.abs() < 30.0, "{report:?}");
 }
 
-/// Watches the clock and the output state until `until` returns true or `limit` passes:
-/// returns every outage (time the output was not running) and checks the clock never goes
-/// back.
-fn watch(
-    run: &Playing,
-    limit: StdDuration,
-    mut until: impl FnMut(&Playing) -> bool,
-) -> Vec<StdDuration> {
+/// What [`watch`] saw.
+#[derive(Debug, Default)]
+struct Watched {
+    /// Every stretch in which the output was not running or the clock was not `Running`.
+    outages: Vec<StdDuration>,
+    /// Longest stretch in which the output reported `Running` (the mix plays) but the clock was
+    /// not `Running`.
+    longest_not_running: StdDuration,
+    /// Readings where the output reported `Running` while the clock was `Stopped`.
+    running_while_stopped: usize,
+}
+
+impl Watched {
+    /// After every (re)start the clock runs again within 1 s of the output running, and the
+    /// output never reports `Running` while the clock is `Stopped` (WP-1G.02 follow-up).
+    fn assert_clock_recovers(&self) {
+        assert!(
+            self.longest_not_running < StdDuration::from_secs(1),
+            "the clock stayed off Running for {:?} while the output ran",
+            self.longest_not_running
+        );
+        assert_eq!(
+            self.running_while_stopped, 0,
+            "the output reported Running while the clock was Stopped"
+        );
+    }
+}
+
+/// Watches the output state and the clock until `until` returns true or `limit` passes (the
+/// mix plays throughout): prints every change of either state, checks the clock never goes back
+/// within a generation, and measures outages and how long the clock stayed off `Running` while
+/// the output ran.
+fn watch(run: &Playing, limit: StdDuration, mut until: impl FnMut(&Playing) -> bool) -> Watched {
     let start = Instant::now();
-    let mut prev: Option<ClockReading> = None;
-    let mut outages = Vec::new();
+    let mut w = Watched::default();
+    let mut prev: Option<(OutputState, ClockReading)> = None;
     let mut down_since: Option<Instant> = None;
-    let mut last_state = OutputState::Running;
+    let mut off_since: Option<Instant> = None;
     while start.elapsed() < limit && !until(run) {
+        // The output state first: once it reads `Running`, the clock already left `Stopped`.
+        let state = run.output.stats().state;
         let r = run.clock.read();
-        if let Some(p) = prev {
+        if let Some((_, p)) = prev {
             assert!(
                 r.generation != p.generation || r.position >= p.position,
                 "the clock went back: {p:?} -> {r:?}"
             );
         }
-        prev = Some(r);
-        let state = run.output.stats().state;
-        if state != last_state {
+        if prev.is_none_or(|(s, p)| s != state || p.state != r.state) {
             eprintln!(
-                "{:>8.3} s  output {state:?}, clock {:?} at {}, device {:?}",
+                "{:>8.3} s  output {state:?}, clock {:?} at {} (generation {}), device {:?}",
                 start.elapsed().as_secs_f64(),
                 r.state,
                 r.position,
+                r.generation,
                 run.output.info().map(|i| i.device)
             );
-            last_state = state;
         }
-        let up = state == OutputState::Running && r.is_running();
-        match (up, down_since) {
+        prev = Some((state, r));
+        let output_up = state == OutputState::Running;
+        if output_up && r.state == ClockState::Stopped {
+            w.running_while_stopped += 1;
+        }
+        if output_up && !r.is_running() {
+            let since = *off_since.get_or_insert_with(Instant::now);
+            w.longest_not_running = w.longest_not_running.max(since.elapsed());
+        } else {
+            off_since = None;
+        }
+        match (output_up && r.is_running(), down_since) {
             (false, None) => down_since = Some(Instant::now()),
             (true, Some(t)) => {
-                outages.push(t.elapsed());
+                w.outages.push(t.elapsed());
                 down_since = None;
             }
             _ => {}
@@ -358,11 +393,10 @@ fn watch(
         std::thread::sleep(StdDuration::from_millis(1));
     }
     if let Some(t) = down_since {
-        outages.push(t.elapsed());
+        w.outages.push(t.elapsed());
     }
-    outages
+    w
 }
-
 /// A stream restart on the real backend (the device-change path without unplugging anything):
 /// the mixer comes back from the cpal thread, a new stream opens, the clock resumes without
 /// going back, well within 2 s.
@@ -378,21 +412,19 @@ fn device_restart_recovers() {
     let before = run.clock.position();
     run.output.restart();
     let mut restarted = false;
-    let outages = watch(&run, StdDuration::from_secs(3), |r| {
+    let seen = watch(&run, StdDuration::from_secs(3), |r| {
         restarted |= r.output.stats().restarts == 1;
         restarted && r.clock.is_running() && r.clock.position() > before
     });
     let stats = run.output.stats();
-    eprintln!(
-        "restart on {:?}: outages {outages:?}; {stats:?}",
-        run.output.info()
-    );
+    eprintln!("restart on {:?}: {seen:?}; {stats:?}", run.output.info());
     assert_eq!(stats.restarts, 1);
     assert_eq!(stats.rt_heap_ops, 0);
     assert!(
-        outages.iter().all(|d| *d < StdDuration::from_secs(2)),
-        "{outages:?}"
+        seen.outages.iter().all(|d| *d < StdDuration::from_secs(2)),
+        "{seen:?}"
     );
+    seen.assert_clock_recovers();
     assert!(run.clock.position() > before);
     run.finish();
 }
@@ -459,9 +491,10 @@ fn device_soak() {
 ///    panel), wait a few seconds, plug it back in.
 ///
 /// Expected: the sound moves to the new default within 2 s each time and plays on; while no
-/// device exists the output waits and resumes when one appears. The test prints every state
-/// change and fails if an outage with a device present lasted 2 s or more, if the clock ever
-/// went back, or if nothing restarted.
+/// device exists the output waits and resumes when one appears. The test prints every change of
+/// the output or clock state and fails if an outage with a device present lasted 2 s or more,
+/// if the clock ever went back, if it stayed off `Running` for 1 s or more while the output ran
+/// (or was `Stopped` while the output reported `Running`), or if nothing restarted.
 #[test]
 #[ignore = "manual: change or unplug the output device while it plays"]
 fn device_change_manual() {
@@ -474,14 +507,20 @@ fn device_change_manual() {
         .unwrap_or(60.0);
     let run = Playing::start(config, seconds, audible()).expect("the device output failed");
     eprintln!("playing for {seconds} s: change the default output device and unplug it now");
-    let outages = watch(&run, StdDuration::from_secs_f64(seconds), |_| false);
+    let seen = watch(&run, StdDuration::from_secs_f64(seconds), |_| false);
     let stats = run.output.stats();
-    eprintln!("outages {outages:?}\n{stats:?}");
+    eprintln!("{seen:?}\n{stats:?}");
     assert!(stats.restarts >= 1, "no device change happened");
     assert_eq!(run.output.stats().state, OutputState::Running);
     assert!(
-        outages.iter().all(|d| *d < StdDuration::from_secs(2)),
-        "an outage lasted 2 s or more: {outages:?} (expected only while no device existed)"
+        run.clock.is_running(),
+        "the clock is not running at the end"
     );
+    assert!(
+        seen.outages.iter().all(|d| *d < StdDuration::from_secs(2)),
+        "an outage lasted 2 s or more: {:?} (expected only while no device existed)",
+        seen.outages
+    );
+    seen.assert_clock_recovers();
     run.finish();
 }
