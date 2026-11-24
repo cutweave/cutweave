@@ -1,7 +1,7 @@
 {
   "version": 1,
   "generated_by": "scripts/wbs-to-issues",
-  "count": 484,
+  "count": 485,
   "work_packages": [
     {
       "id": "WP-0A.01",
@@ -2771,11 +2771,46 @@
       "out_of_scope": "multi-project headless, auto-config installers (`agent-kit install`, P6)."
     },
     {
+      "id": "WP-1J.04",
+      "title": "Agent targeting with several engines: list, choose by project, last-focused default",
+      "source": {
+        "file": "docs/wbs/P1-skeleton.md",
+        "line": 862
+      },
+      "phase": "P1",
+      "epic": "1J",
+      "area": "`crates/cutweave-cli`, `crates/cutweave-api` (attach proxy), `crates/cutweave-engine` (run-file fields), `apps/desktop` (window focus report), `docs/reference/cli.md`, `docs/reference/mcp-clients.md`, `docs/reference/launch-protocol.md`, `docs/user-flows.md` and `apps/desktop/e2e/flows`",
+      "size": "M",
+      "executor": "sonnet",
+      "executor_note": "",
+      "depends_raw": "WP-1J.03, WP-1K.01, WP-1I.05",
+      "depends_wps": [
+        "WP-1J.03",
+        "WP-1K.01",
+        "WP-1I.05"
+      ],
+      "depends_epics": [],
+      "depends": [
+        "WP-1I.05",
+        "WP-1J.03",
+        "WP-1K.01"
+      ],
+      "scope": "(product owner request, 2026-11-24) when several engines run (the app plus headless engines from scripts, today; one per window later), an agent must be able to see them and pick one without a process id in its config.\n- **The run-file says what a chooser needs:** the open project (name and path, or none), mode (GUI or headless), start time, and for GUI engines when its window last had focus. Main reports window focus to its engine; run-file writes stay atomic and stale files keep being ignored by the pid check.\n- **`cutweave engines`** lists the running engines (pid, mode, project, port, started, last focused), newest focus first; `--json` for scripts.\n- **Choosing:** `mcp --attach`, `exec` and `query` take `--project <name or path>` (a name matches case-insensitively; a path matches the project folder or document). Without `--project` or `--pid` and with several engines, they pick the GUI engine focused most recently (the window the person is looking at). If no GUI engine runs and several headless ones do, they fail with exit 3, listing the engines and how to choose.\n- **MCP on the attach proxy:** proxy-level tools `engines_list` and `engine_attach{project|pid}` switch the upstream engine without restarting the client; the proxy sends `notifications/tools/list_changed` when the catalog differs.\n- Docs: the CLI reference, the MCP client guide (with a config that needs no pid), and the run-file fields in the launch protocol.",
+      "interfaces": "run-file fields `project`, `mode`, `started`, `focused_at`; `cutweave engines [--json]`; `--project` on `mcp --attach`, `exec`, `query`; MCP tools `engines_list`, `engine_attach`.",
+      "acceptance": [
+        "Integration: two headless engines on projects A and B plus a GUI-mode engine on C. `cutweave engines --json` lists all three with their projects. `exec --project B` edits only B. With no flags the GUI engine is chosen. With only the two headless engines, no flags exits 3 and lists both.",
+        "MCP: a scripted client on `mcp --attach` calls `engines_list`, then `engine_attach{project:\"B\"}`, then `timeline_get`, and gets B's timeline.",
+        "**A user flow (ADR-0018):** with the app open and a headless engine running, an agent attaching without flags edits the app's project, and the edit shows in the window."
+      ],
+      "tests": "process-level integration, user flow.",
+      "out_of_scope": "several windows in one app (one engine per window), engines on other machines."
+    },
+    {
       "id": "WP-1K.01",
       "title": "`cutweave` binary: engine | mcp | exec | query | render",
       "source": {
         "file": "docs/wbs/P1-skeleton.md",
-        "line": 866
+        "line": 885
       },
       "phase": "P1",
       "epic": "1K",
@@ -2808,7 +2843,7 @@
       "title": "Electron app scaffold (main, preload, Vite renderer, dev/packaging)",
       "source": {
         "file": "docs/wbs/P1-skeleton.md",
-        "line": 891
+        "line": 910
       },
       "phase": "P1",
       "epic": "1L",
@@ -2843,7 +2878,7 @@
       "title": "Electron security hardening (arch §18)",
       "source": {
         "file": "docs/wbs/P1-skeleton.md",
-        "line": 910
+        "line": 929
       },
       "phase": "P1",
       "epic": "1L",
@@ -2875,7 +2910,7 @@
       "title": "Engine supervision, restart and UI resync",
       "source": {
         "file": "docs/wbs/P1-skeleton.md",
-        "line": 932
+        "line": 951
       },
       "phase": "P1",
       "epic": "1L",
@@ -2917,7 +2952,7 @@
       "title": "Design-system base, app layout, dock skeleton",
       "source": {
         "file": "docs/wbs/P1-skeleton.md",
-        "line": 956
+        "line": 975
       },
       "phase": "P1",
       "epic": "1M",
@@ -2949,7 +2984,7 @@
       "title": "Protocol client wiring and Zustand stores",
       "source": {
         "file": "docs/wbs/P1-skeleton.md",
-        "line": 972
+        "line": 991
       },
       "phase": "P1",
       "epic": "1M",
@@ -2984,7 +3019,7 @@
       "title": "Media bin: import, drag-drop, thumbnails",
       "source": {
         "file": "docs/wbs/P1-skeleton.md",
-        "line": 990
+        "line": 1009
       },
       "phase": "P1",
       "epic": "1M",
@@ -3018,7 +3053,7 @@
       "title": "Preview panel: SHM → WebGPU canvas, transport controls, overlay shell",
       "source": {
         "file": "docs/wbs/P1-skeleton.md",
-        "line": 1007
+        "line": 1026
       },
       "phase": "P1",
       "epic": "1M",
@@ -3053,7 +3088,7 @@
       "title": "Timeline v0: Canvas2D virtualized renderer (`packages/timeline`)",
       "source": {
         "file": "docs/wbs/P1-skeleton.md",
-        "line": 1026
+        "line": 1045
       },
       "phase": "P1",
       "epic": "1M",
@@ -3088,7 +3123,7 @@
       "title": "Timeline interactions: select, move, trim, split, delete, snapping",
       "source": {
         "file": "docs/wbs/P1-skeleton.md",
-        "line": 1044
+        "line": 1063
       },
       "phase": "P1",
       "epic": "1M",
@@ -3127,7 +3162,7 @@
       "title": "Inspector, undo/redo UI, save/open, recovery dialog",
       "source": {
         "file": "docs/wbs/P1-skeleton.md",
-        "line": 1063
+        "line": 1082
       },
       "phase": "P1",
       "epic": "1M",
@@ -3164,7 +3199,7 @@
       "title": "Export dialog and progress",
       "source": {
         "file": "docs/wbs/P1-skeleton.md",
-        "line": 1082
+        "line": 1101
       },
       "phase": "P1",
       "epic": "1M",
@@ -3196,7 +3231,7 @@
       "title": "Schema emission + snapshot gate",
       "source": {
         "file": "docs/wbs/P1-skeleton.md",
-        "line": 1102
+        "line": 1121
       },
       "phase": "P1",
       "epic": "1N",
@@ -3228,7 +3263,7 @@
       "title": "TS protocol package: generated types and typed RPC client",
       "source": {
         "file": "docs/wbs/P1-skeleton.md",
-        "line": 1118
+        "line": 1137
       },
       "phase": "P1",
       "epic": "1N",
@@ -3263,7 +3298,7 @@
       "title": "Custom title bar: native window controls, in-app menu bar",
       "source": {
         "file": "docs/wbs/P1-skeleton.md",
-        "line": 1140
+        "line": 1159
       },
       "phase": "P1",
       "epic": "1M",
@@ -3297,7 +3332,7 @@
       "title": "Golden-frame test infrastructure",
       "source": {
         "file": "docs/wbs/P1-skeleton.md",
-        "line": 1173
+        "line": 1192
       },
       "phase": "P1",
       "epic": "1O",
@@ -3336,7 +3371,7 @@
       "title": "CLI = MCP = RPC parity test",
       "source": {
         "file": "docs/wbs/P1-skeleton.md",
-        "line": 1192
+        "line": 1211
       },
       "phase": "P1",
       "epic": "1O",
@@ -3370,7 +3405,7 @@
       "title": "MCP conformance + scripted-agent e2e",
       "source": {
         "file": "docs/wbs/P1-skeleton.md",
-        "line": 1209
+        "line": 1228
       },
       "phase": "P1",
       "epic": "1O",
@@ -3399,7 +3434,7 @@
       "title": "M1 exit acceptance suite (UI + MCP + crash)",
       "source": {
         "file": "docs/wbs/P1-skeleton.md",
-        "line": 1223
+        "line": 1242
       },
       "phase": "P1",
       "epic": "1O",
@@ -3442,7 +3477,7 @@
       "title": "User-flow e2e suite (real app, real input, real dialogs)",
       "source": {
         "file": "docs/wbs/P1-skeleton.md",
-        "line": 1239
+        "line": 1258
       },
       "phase": "P1",
       "epic": "1O",
@@ -5531,6 +5566,7 @@
         "WP-1J.01",
         "WP-1J.02",
         "WP-1J.03",
+        "WP-1J.04",
         "WP-2A.03",
         "WP-2A.04",
         "WP-2B.01",
@@ -5586,6 +5622,7 @@
         "WP-1J.01",
         "WP-1J.02",
         "WP-1J.03",
+        "WP-1J.04",
         "WP-2I.01"
       ],
       "scope": "- `render_contact_sheet{sequence?, from, to, count|every, columns, max_size, labels}`: renders N frames (evenly or at given times, or at marker/cut points `at: \"cuts\"`), composes a labelled grid (timecode burned-in under each cell, item/track hints) into one JPEG ≤ `max_size` (default 768 px long edge, hard cap 2048), returns image content + metadata JSON `{frames:[{t, items_visible[], captions?}], rev}`. Frames rendered through `render.frame` at preview quality, parallel in the render thread within a total budget: 12 frames at 1080p < 1.5 s on the reference machine.\n- `media_filmstrip{media, from, to, count, max_size}` (from the thumbnail/filmstrip cache; falls back to decode). Returns one strip image.\n- `audio_waveform{target: media|item|range, from, to, width, height, channels, scale_db}`: renders a PNG waveform image (peak pyramid) with a time ruler and, optionally, silence/loudness annotation (LUFS short-term sparkline) as metadata. `audio_levels` data in `structuredContent`.\n- Large results beyond a size threshold returned as resource links via the `/media/…` endpoints with hashed ETags.\n- Prompt-injection hygiene: item names/captions in metadata are labeled `untrusted`.\n- These are `mcp = core`, `readOnly`.",
@@ -5683,6 +5720,7 @@
         "WP-1J.01",
         "WP-1J.02",
         "WP-1J.03",
+        "WP-1J.04",
         "WP-1K.01"
       ],
       "scope": "- Uniform `expected_rev` optional field on every mutating command envelope (not in each command struct: in the transport envelope) for RPC, MCP tools (injected into every mutating tool's schema through the generator), `cutweave_execute` (already per §14), and the CLI (`--expected-rev`).\n- On mismatch: `Conflict{current_rev, expected_rev, changed_since: summary}` where `changed_since` lists a compact list of item ids touched between revs (from retained patch metadata, bounded to the last 200 revs; otherwise `unknown`). MCP error text suggests re-reading `timeline_get`.\n- All successful mutating results include the new `rev`.",
@@ -10370,6 +10408,7 @@
         "WP-1J.01",
         "WP-1J.02",
         "WP-1J.03",
+        "WP-1J.04",
         "WP-1L.01",
         "WP-1L.02",
         "WP-1L.03",
@@ -10457,6 +10496,7 @@
         "WP-1J.01",
         "WP-1J.02",
         "WP-1J.03",
+        "WP-1J.04",
         "WP-1N.01",
         "WP-1N.02",
         "WP-2I.01",
@@ -13334,6 +13374,7 @@
         "WP-1J.01",
         "WP-1J.02",
         "WP-1J.03",
+        "WP-1J.04",
         "WP-1N.01",
         "WP-1N.02",
         "WP-6A.05"
@@ -15143,6 +15184,7 @@
         "WP-1J.01",
         "WP-1J.02",
         "WP-1J.03",
+        "WP-1J.04",
         "WP-6G.01"
       ],
       "scope": "- Prompt registry loaded from `agent-kit/prompts/*.toml` (name, title, description, typed arguments with enums/defaults, `skill`, message template); served via MCP `prompts/list` + `prompts/get`, with argument completion where supported.\n- Each prompt returns a user message that (a) names the matching skill, (b) states constraints (budget, confirm protocol, undo group), (c) embeds arguments safely (escaped, untrusted markers for free-text).\n- **Fallbacks** for clients without skills/prompts: resources `cutweave://skills/{name}` (+ `references/*`), `cutweave://eval-rubrics`, and a `skill_load(name)` tool in the `standard` profile (counted in the tool budget 6J.02).\n- CLI: `cutweave agent-kit prompts list|render <name> --arg k=v`.",
@@ -15468,6 +15510,7 @@
         "WP-1J.01",
         "WP-1J.02",
         "WP-1J.03",
+        "WP-1J.04",
         "WP-6G.01"
       ],
       "scope": "- Task spec (YAML): fixture project, media recipes (ffmpeg-synthesized color bars/tones/TTS speech; no copyrighted media), prompt (+ prompt-invocation variant), allowed tools/skills, budget, seeds, model/client matrix, assertions (typed DSL), oracle script, rubric id, tags.\n- Scoring layers: (1) **state assertions** over doc JSON + command log (counts, durations ± tol, no overlaps/gaps, caption inside safe area, loudness range, aspect, single undo group exists, spend ≤ budget); (2) render checks (ffprobe duration/res/streams, black-frame and silence detectors); (3) **vision-rubric judge** (6H.04); (4) efficiency (tool calls, tokens, cost, wall time); (5) safety.\n- Result schema (JSONL) and **success definition**: task success = all hard assertions pass AND rubric ≥ threshold where rubric applies; suite success = mean pass@1 over N=3 seeds.\n- Matrix: {client × skills on/off × tool-search on/off}; ADR-016 pins judge model + rubric versioning policy.",
@@ -15973,6 +16016,7 @@
         "WP-1J.01",
         "WP-1J.02",
         "WP-1J.03",
+        "WP-1J.04",
         "WP-5A.01",
         "WP-5A.02",
         "WP-5A.03",
@@ -16351,6 +16395,7 @@
         "WP-1J.01",
         "WP-1J.02",
         "WP-1J.03",
+        "WP-1J.04",
         "WP-1O.01",
         "WP-1O.02",
         "WP-1O.03",
@@ -16427,6 +16472,7 @@
         "WP-1J.01",
         "WP-1J.02",
         "WP-1J.03",
+        "WP-1J.04",
         "WP-6J.02"
       ],
       "scope": "- MCP Inspector (CLI mode) against stdio and Streamable HTTP in CI; official conformance suite if available.\n- **Two scripted client personas:** stateless **2026-07-28** (no handshake) and legacy **2025-11-25** (initialize handshake, sessions) — both run the same e2e scenario (import → cut → caption → render frame → export) and must produce identical doc state; rmcp pinned and its legacy mode tested.\n- Cases: auth failures (401/403, bad Origin/Host), tool-change notification on plugin load via each persona's mechanism (2025-11-25 `resources/subscribe`, 2026-07-28 `subscriptions/listen`), resource subscriptions, long-running jobs with and without the tasks extension (fallback `job_id` + `job_wait{job_id, timeout_ms}`/`job_status`), `confirm_token` fallback where elicitation is unsupported, image content + resource-link outputs, stdio hygiene (stdout protocol-only, CRLF on Windows).",

@@ -859,6 +859,25 @@ Human gates: PR review of `1B.01`, `1B.03`/`1B.09` (concurrency + ownership core
 - **Tests:** process-level integration.
 - **Out of scope:** multi-project headless, auto-config installers (`agent-kit install`, P6).
 
+### WP-1J.04 — Agent targeting with several engines: list, choose by project, last-focused default
+- **Area:** `crates/cutweave-cli`, `crates/cutweave-api` (attach proxy), `crates/cutweave-engine` (run-file fields), `apps/desktop` (window focus report), `docs/reference/cli.md`, `docs/reference/mcp-clients.md`, `docs/reference/launch-protocol.md`, `docs/user-flows.md` and `apps/desktop/e2e/flows`
+- **Depends on:** WP-1J.03, WP-1K.01, WP-1I.05
+- **Size:** M
+- **Executor:** sonnet
+- **Scope:** (product owner request, 2026-11-24) when several engines run (the app plus headless engines from scripts, today; one per window later), an agent must be able to see them and pick one without a process id in its config.
+  - **The run-file says what a chooser needs:** the open project (name and path, or none), mode (GUI or headless), start time, and for GUI engines when its window last had focus. Main reports window focus to its engine; run-file writes stay atomic and stale files keep being ignored by the pid check.
+  - **`cutweave engines`** lists the running engines (pid, mode, project, port, started, last focused), newest focus first; `--json` for scripts.
+  - **Choosing:** `mcp --attach`, `exec` and `query` take `--project <name or path>` (a name matches case-insensitively; a path matches the project folder or document). Without `--project` or `--pid` and with several engines, they pick the GUI engine focused most recently (the window the person is looking at). If no GUI engine runs and several headless ones do, they fail with exit 3, listing the engines and how to choose.
+  - **MCP on the attach proxy:** proxy-level tools `engines_list` and `engine_attach{project|pid}` switch the upstream engine without restarting the client; the proxy sends `notifications/tools/list_changed` when the catalog differs.
+  - Docs: the CLI reference, the MCP client guide (with a config that needs no pid), and the run-file fields in the launch protocol.
+- **Interfaces:** run-file fields `project`, `mode`, `started`, `focused_at`; `cutweave engines [--json]`; `--project` on `mcp --attach`, `exec`, `query`; MCP tools `engines_list`, `engine_attach`.
+- **Acceptance criteria:**
+  - Integration: two headless engines on projects A and B plus a GUI-mode engine on C. `cutweave engines --json` lists all three with their projects. `exec --project B` edits only B. With no flags the GUI engine is chosen. With only the two headless engines, no flags exits 3 and lists both.
+  - MCP: a scripted client on `mcp --attach` calls `engines_list`, then `engine_attach{project:"B"}`, then `timeline_get`, and gets B's timeline.
+  - **A user flow (ADR-0018):** with the app open and a headless engine running, an agent attaching without flags edits the app's project, and the edit shows in the window.
+- **Tests:** process-level integration, user flow.
+- **Out of scope:** several windows in one app (one engine per window), engines on other machines.
+
 ---
 
 ## 1K — CLI
