@@ -25,6 +25,13 @@ export {
   type MenuProps,
   type MenuSeparator,
 } from "./Menu.tsx";
+export {
+  MenuBar,
+  type MenuBarEntry,
+  type MenuBarMenu,
+  type MenuBarProps,
+  type MenuBarSubmenu,
+} from "./MenuBar.tsx";
 export { NumberScrubber, type NumberScrubberProps } from "./NumberScrubber.tsx";
 export { Panel, PanelDivider, type PanelProps } from "./Panel.tsx";
 export { ProgressBar, type ProgressBarProps } from "./ProgressBar.tsx";

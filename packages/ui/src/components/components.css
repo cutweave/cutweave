@@ -721,6 +721,47 @@
 .cw-menu__item[data-disabled][data-highlighted] {
   background: transparent;
 }
+/* A submenu's row stays lit while its list is open. */
+.cw-menu__item[data-state="open"] {
+  background: var(--surface-3);
+}
+
+/* ---------- MenuBar (the in-app application menu of the title bar) ---------- */
+.cw-menubar {
+  display: flex;
+  align-items: center;
+  gap: var(--space-0-5);
+}
+.cw-menubar__trigger {
+  display: inline-flex;
+  align-items: center;
+  box-sizing: border-box;
+  height: var(--control-md);
+  min-width: var(--hit-min);
+  padding: 0 var(--space-2);
+  border: 0;
+  border-radius: var(--radius-sm);
+  background: transparent;
+  color: var(--text-secondary);
+  white-space: nowrap;
+  cursor: default;
+  outline: none;
+}
+.cw-menubar__trigger:hover,
+.cw-menubar__trigger[data-highlighted],
+.cw-menubar__trigger[data-state="open"] {
+  background: var(--surface-3);
+  color: var(--text-primary);
+}
+.cw-menubar__trigger:focus-visible {
+  outline: var(--border-thick) solid var(--focus-ring);
+  outline-offset: -1px;
+}
+/* Access letters show while the keyboard drives the bar (Alt, F10), as in a native menu. */
+.cw-menubar[data-access-keys] .cw-menubar__key {
+  text-decoration: underline;
+  text-underline-offset: var(--space-0-5);
+}
 
 /* ---------- Dialog ---------- */
 .cw-scrim {
@@ -1030,7 +1071,8 @@
   .cw-switch::before,
   .cw-tabs__tab,
   .cw-section__toggle,
-  .cw-menu__item {
+  .cw-menu__item,
+  .cw-menubar__trigger {
     transition:
       background-color var(--duration-fast) var(--easing-standard),
       border-color var(--duration-fast) var(--easing-standard),
