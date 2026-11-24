@@ -199,10 +199,13 @@ Item (enum, common: id, track, start, duration, enabled, linked_group?, name, co
 
 Transition { id, track, a: ItemId, b: ItemId, kind (plugin ref), duration, alignment(center|start|end), params }
 
-VisualProps { transform{position, scale, rotation, anchor}, crop, opacity, blend_mode, flip, background_fill? }
-             — every field is Animatable<T>
+VisualProps { transform{position, scale, rotation, anchor}, crop{left, top, right, bottom}, opacity,
+               flip{horizontal, vertical}, blend_mode, background_fill? }
+             — every field is Animatable<T> except blend_mode (a static enum; keyframes spec §7)
 
-Animatable<T> = Static(T) | Keyframes(Vec<Keyframe<T>{ t (item-relative flicks), value, interp(hold|linear|bezier{…}|spring{…}) }>)
+Animatable<T> = Static(T) | Keyframes(Vec<Keyframe<T>{ t (item-relative flicks), value,
+                interp(hold|linear|bezier{x1,y1,x2,y2}|spring{stiffness,damping,mass,bounce}) }>)
+                — wire: bare T or {"keyframes": [...]}; rules in docs/spec/keyframes.md (ADR-0023, Proposed)
 
 EffectInstance { id, effect: PluginRef("cutweave.fx.gaussian-blur@1"), enabled, params: Map<ParamId, Animatable<Value>> }
 
@@ -223,6 +226,10 @@ Provenance { origin(import|record|ai), provider?, model?, prompt?, seed?, params
   - Linked groups move, trim, split and delete together. `unlink: true` on `item.move` and `clip.trim` edits only that item and removes it from its group. A group never keeps a single member: when an edit (`unlink: true`, `track.remove`) leaves one item alone in its group, that item is unlinked in the same transaction. If that item sits on a locked track the edit fails with `Locked` instead (it never leaves a lone member behind).
   - `item.move` takes `start` and accepts `overlap: "new_track"` like `timeline.insert`. Edits never ripple, and trims never push a neighbour.
   - An edit touching any locked track (partners' tracks included) fails with `Locked` and applies nothing.
+- **Keyframes (specified in WP-2C.01; [ADR-0023](adr/0023-keyframes.md), Proposed):** the full rules are in [docs/spec/keyframes.md](spec/keyframes.md).
+  - Keys are addressed by `(item, prop, t)`, with `t` in item-relative flicks.
+  - Each key's interpolation shapes the segment to the next key.
+  - Edits never change a rendered frame. A split keeps each half's keys plus one key on each side. A head trim shifts keys so they stay on the timeline. Trims keep keys outside the item unless `prune_keyframes` is set. Slips, moves, ripples, speed changes and duplicates leave keys alone.
 - **Compound clips** are nested sequences referenced as media (`MediaAsset.kind = sequence-ref`). They render recursively and may not reference themselves; cycle detection is enforced.
 - **Normalized, ID-addressed.** Nothing refers to anything by index. Agents and the UI address by ID, which is stable across sessions.
 - **CapCut magnetic main track** is a track flag: `magnetic: true` gives ripple-by-default semantics. Linked items ("attached to main clip") move with their parent via `linked_group`.
@@ -457,6 +464,7 @@ flowchart LR
   - Caching rendered frames by `(subgraph hash, t)`.
   - **Parallel chunked export** across `cutweave worker` processes.
   - Reproducible bug reports and golden-frame tests.
+- **Animated values** are evaluated at the item-relative time by the pure keyframe evaluator ([docs/spec/keyframes.md](spec/keyframes.md) §6; ADR-0023, Proposed). It works in f64, is exact at keys and never yields NaN or infinity. Hold and linear are bit-exact on every platform; bezier, spring and colour agree within 1e-9 across native and wasm. Property clamps (opacity, crop, gain, pan) apply after interpolation, and conversion to f32 happens only at the GPU boundary.
 - **Color:**
   - Composite in **linear light, `Rgba16Float`** working space (scene-linear Rec.709 primaries in v1).
   - Input transforms come from probe tags (matrix, range, transfer, primaries), and output transforms are per export.
@@ -932,6 +940,7 @@ MyVideo/                    ← project folder (user-chosen location)
 | 020 | Media folders: a folder tree in the project document, one folder per asset, schema v2 | Proposed: before WP-2F.07 |
 | 021 | Agents choose among several engines by project; default is the focused window's engine (§2, §14) | **Accepted** (product owner, 2026-11-24) |
 | 022 | Source preview: the preview plays a media item outside any sequence (`view.set_source`) (§10) | **Accepted** (product owner, 2026-11-24) |
+| 023 | Keyframes: item-relative flicks, per-segment easing, exact split and trim rules, `keyframe.*` commands (§4.2, §4.3, §8; [spec](spec/keyframes.md)) | Proposed: review of WP-2C.01 |
 
 ## 24. Open questions (tracked; none block Phase 0)
 
