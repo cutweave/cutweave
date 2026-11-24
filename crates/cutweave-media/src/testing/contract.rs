@@ -21,7 +21,7 @@ use std::sync::{Arc, Mutex, PoisonError};
 use cutweave_model::{Duration, FrameRate, SampleRate, Time};
 
 use crate::backend::{
-    AudioEncodeSpec, DecodeOpts, EncodeSpec, Encoder, MediaBackend, VideoEncodeSpec,
+    AudioEncodeSpec, DecodeOpts, EncodeSpec, Encoder, HwEncode, MediaBackend, VideoEncodeSpec,
 };
 use crate::testing::{FAKE_AUDIO_CODEC, FAKE_VIDEO_CODEC, FakeAudio, FakeVideo};
 use crate::{
@@ -647,6 +647,33 @@ pub fn unknown_codecs_are_unsupported(b: &dyn MediaBackend, fx: &Fixtures) {
     assert_eq!(entries(&dir), Vec::<String>::new());
 }
 
+/// Forcing a hardware encoder the backend does not have is [`MediaError::HwUnavailable`] (no
+/// software fallback) and creates no file; an empty forced name is [`MediaError::Invalid`]
+/// (WP-1E.02).
+pub fn forced_missing_hw_encoders_are_unavailable(b: &dyn MediaBackend, fx: &Fixtures) {
+    let dir = output_dir(fx, "forced-hw");
+    let spec = small_encode_spec(b, &dir.join("out.mp4"));
+    let err = b
+        .open_encoder(
+            &spec
+                .clone()
+                .with_hw(HwEncode::Force("no-such-hw-encoder".into())),
+        )
+        .err();
+    assert!(
+        matches!(err, Some(MediaError::HwUnavailable { .. })),
+        "open_encoder(Force(no-such-hw-encoder)) = {err:?}, want HwUnavailable"
+    );
+    let err = b
+        .open_encoder(&spec.with_hw(HwEncode::Force(String::new())))
+        .err();
+    assert!(
+        matches!(err, Some(MediaError::Invalid { .. })),
+        "open_encoder(Force(\"\")) = {err:?}, want Invalid"
+    );
+    assert_eq!(entries(&dir), Vec::<String>::new());
+}
+
 /// The backend can be shared across threads: concurrent calls agree with serial ones.
 pub fn backend_is_shareable_across_threads(b: &Arc<dyn MediaBackend>, fx: &Fixtures) {
     let want_caps = b.capabilities();
@@ -748,6 +775,11 @@ macro_rules! backend_contract {
             #[test]
             fn unknown_codecs_are_unsupported() {
                 c::unknown_codecs_are_unsupported(&*backend(), &c::Fixtures::new());
+            }
+
+            #[test]
+            fn forced_missing_hw_encoders_are_unavailable() {
+                c::forced_missing_hw_encoders_are_unavailable(&*backend(), &c::Fixtures::new());
             }
 
             #[test]

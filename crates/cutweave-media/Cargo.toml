@@ -14,7 +14,7 @@ default = []
 # time (`FFMPEG_DIR`, libclang, a C compiler) and its libraries on the loader path at run time:
 # see docs/dev/ffmpeg.md and `just test-ffmpeg`. Off by default so the workspace builds and tests
 # without FFmpeg; the trait, the frame types and `FakeBackend` never need it.
-ffmpeg = ["dep:ffmpeg-next", "dep:tracing"]
+ffmpeg = ["dep:ffmpeg-next"]
 
 [dependencies]
 # `ProbeInfo`, `ColorTags`, `Time` and `SampleRate`: the media layer speaks the model's types.
@@ -22,8 +22,9 @@ cutweave-model = { path = "../cutweave-model" }
 thiserror.workspace = true
 # Content hash and the frame-index blob checksum (pure Rust API, FFmpeg-free).
 blake3.workspace = true
-# Routes FFmpeg's log and the start-up banner (FFmpeg backend only).
-tracing = { workspace = true, optional = true }
+# Logs: FFmpeg's own log, the start-up banner and hardware-encoder choices (FFmpeg backend), and
+# the software re-encode of `encode_with_fallback` (backend-agnostic, WP-1E.02).
+tracing.workspace = true
 # Only what the engine links (S3 finding F6): demux, decode/encode, swscale for the RGBA fallback
 # path and swresample, which avcodec imports anyway. No avfilter/avdevice. The version is pinned
 # exactly in the root manifest, because the start-up check ties the loaded libraries to the

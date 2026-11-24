@@ -14,10 +14,11 @@
 //!   unless the loaded libav* libraries equal the headers it was built against, and routes
 //!   FFmpeg's log into `tracing` (target `ffmpeg`). Build and run setup: docs/dev/ffmpeg.md.
 //!
-//! WP-1D.01 ships the boundary, WP-1D.02 probe, the frame index and content hashes, and WP-1E.01
-//! the encoder (H.264 + AAC in MP4, [`EncodeSpec`]). Decode arrives with WP-1D.03 and hardware
-//! decode with WP-1D.04; until then the FFmpeg backend opens and validates files and answers
-//! [`MediaError::NotImplemented`] past that point.
+//! WP-1D.01 ships the boundary, WP-1D.02 probe, the frame index and content hashes, WP-1E.01
+//! the encoder (H.264 + AAC in MP4, [`EncodeSpec`]) and WP-1E.02 hardware H.264 encoders with
+//! software fallback ([`HwEncode`], [`encode_with_fallback`]). Decode arrives with WP-1D.03 and
+//! hardware decode with WP-1D.04; until then the FFmpeg backend opens and validates files and
+//! answers [`MediaError::NotImplemented`] past that point.
 //!
 //! **Dependency rule** (arch §3, `cargo xtask check-deps`): `cutweave-model` never depends on
 //! this crate, and `cutweave-render` / `cutweave-audio` may use only its trait half (the default
@@ -40,11 +41,14 @@ mod version;
 mod ffmpeg;
 
 pub use backend::{
-    AudioDecoder, AudioEncodeSpec, DecodeOpts, EncodeSpec, EncodeSummary, Encoder, HwMode,
-    MediaBackend, VideoDecoder, VideoEncodeSpec,
+    AudioDecoder, AudioEncodeSpec, DecodeOpts, EncodeSpec, EncodeSummary, Encoder, HwEncode,
+    HwMode, MediaBackend, VideoDecoder, VideoEncodeSpec,
 };
 pub use caps::{Capabilities, CodecSupport, HwCodec};
-pub use encode::{CancelCheck, EncodeProgress, ProgressSink, RateControl, SpeedPreset, bt709_tags};
+pub use encode::{
+    CancelCheck, EncodeProgress, ProgressSink, RateControl, SpeedPreset, bt709_tags,
+    encode_with_fallback,
+};
 pub use error::MediaError;
 pub use frame::{AudioChunk, AudioFormat, PixelFormat, Plane, VideoFrame};
 pub use hash::{ContentHash, FAST_HASH_WINDOW, HashMode, ParseHashError, content_hash};
