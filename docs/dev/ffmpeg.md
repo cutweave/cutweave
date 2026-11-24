@@ -1,0 +1,201 @@
+# FFmpeg for developers
+
+How `cutweave-media` finds, links and loads FFmpeg, per OS, and how to run its FFmpeg-backed
+tests. The decision is [ADR-0003](../adr/0003-media-backend-ffmpeg.md) (FFmpeg 8.1 through
+`ffmpeg-next` 9.1 behind the `MediaBackend` trait); the bundle itself is built by
+[scripts/ffmpeg](../../scripts/ffmpeg/README.md) (WP-0A.06); the measurements behind it are in
+the [S3 spike](../../spikes/s3-decode/README.md).
+
+## What needs FFmpeg
+
+Only `cutweave-media` with its **`ffmpeg` feature**, which is **off by default**. The workspace
+gate (`just check`, `just check-affected`) builds and tests everything without FFmpeg: the
+`MediaBackend` trait, the frame types and `FakeBackend` (synthetic pictures and tones in
+`cutweave_media::testing`) are plain Rust. Crates other than the engine's composition root use the
+trait half only; `cargo xtask check-deps` rejects `cutweave-render`, `cutweave-audio` or
+`cutweave-model` depending on `ffmpeg-next` or enabling the `ffmpeg` feature
+([architecture §3](../01-architecture.md)).
+
+| Pin | Where |
+|---|---|
+| FFmpeg **8.1.3** (`8.1.x` series) | `scripts/ffmpeg/versions.toml`; `cutweave_media::PINNED_FFMPEG` follows it (a unit test keeps them equal) |
+| `ffmpeg-next` **=9.1.0**, `ffmpeg-sys-next` 9.1.1 | root `Cargo.toml` (`default-features = false`) |
+| Linked libraries | `avutil`, `avcodec`, `avformat`, `swscale`, `swresample` (features `codec`, `format`, `software-scaling`, `software-resampling`); never `avfilter` or `avdevice` |
+
+## Get a bundle
+
+```sh
+just ffmpeg-fetch            # bash scripts/ffmpeg/fetch.sh; PowerShell: pwsh scripts/ffmpeg/fetch.ps1
+```
+
+`ffmpeg-fetch` uses a bundle that is **already set up** and downloads nothing. It looks, in order, at:
+
+1. `$FFMPEG_DIR`;
+2. `FFMPEG_DIR` in `third_party/ffmpeg/ffmpeg.env` of this checkout;
+3. the same file in the **main checkout**, so every git worktree shares one bundle.
+
+The first directory that contains `include/libavcodec/avcodec.h` wins. The script prints its
+`ffmpeg -version` line and warns when it is not the pinned version. `--update` (`-Update`) ignores
+it and fetches the newest CI bundle; `--run <id>` and `--force` also go to CI.
+
+The CI bundle is the one releases ship. Until the FFmpeg workflow has published one, a
+**dev bundle** with the same layout (`include/`, `lib/`, `bin/`) works: on Windows the BtbN
+`ffmpeg-n8.1-latest-win64-gpl-shared` build (8.1.3-39, used by Spike S3), unpacked under
+`third_party/ffmpeg/` with an `ffmpeg.env` next to it:
+
+```sh
+# third_party/ffmpeg/ffmpeg.env (git-ignored)
+FFMPEG_DIR="D:/path/to/Cutweave/third_party/ffmpeg/btbn-n8.1-win64-gpl-shared"
+PKG_CONFIG_PATH="D:/path/to/Cutweave/third_party/ffmpeg/btbn-n8.1-win64-gpl-shared/lib/pkgconfig"
+```
+
+Homebrew (`brew install ffmpeg`) or distro `libav*-dev` packages are fine for quick hacking
+([dev process §2](../06-dev-process.md)), but only the pinned 8.1.x series is supported: the
+backend logs a warning on any other release, and the FFmpeg-backed tests fail on it.
+
+## Set up the shell
+
+```sh
+. scripts/ffmpeg/env.sh          # bash, zsh, Git Bash
+```
+
+```powershell
+. scripts/ffmpeg/env.ps1         # PowerShell
+```
+
+Both find the bundle the same way as `ffmpeg-fetch` (or take it as an argument) and set:
+
+- `FFMPEG_DIR` and `PKG_CONFIG_PATH`, for `ffmpeg-sys-next`'s build script;
+- `LIBCLANG_PATH` on Windows when LLVM is in `C:/Program Files/LLVM/bin` (bindgen);
+- the **run-time library path**: the bundle's `bin/` on `PATH` (Windows),
+  `DYLD_FALLBACK_LIBRARY_PATH` (macOS) or `LD_LIBRARY_PATH` (Linux).
+
+`.cargo/config.toml` deliberately does not set `FFMPEG_DIR`: the bundle path differs per OS and
+per checkout (worktrees use the main checkout's bundle), and cargo's `[env]` cannot extend `PATH`
+for the test executables anyway.
+
+## Run the FFmpeg-backed tests
+
+```sh
+just test-ffmpeg                 # = . scripts/ffmpeg/env.sh && cargo nextest run -p cutweave-media --features ffmpeg
+```
+
+Without `just`:
+
+```powershell
+. scripts/ffmpeg/env.ps1
+$env:CARGO_BUILD_JOBS = 4        # shared machines
+cargo nextest run -p cutweave-media --features ffmpeg
+cargo clippy -p cutweave-media --features ffmpeg --all-targets -- -D warnings
+```
+
+They run the backend contract (`backend_contract!`) against `FfmpegBackend` as well as
+`FakeBackend`, check the version lock and that the loaded release equals the pin, list the bundle's
+codecs, and check the log routing. They need no media files.
+
+**The first build takes 6 to 13 minutes:** bindgen runs over the FFmpeg headers (a 9 MB
+`bindings.rs`), and the build script compiles a small C program (`cl.exe` on Windows) to read the
+version macros. sccache caches the Rust side; changing `FFMPEG_DIR` rebuilds it.
+
+## Build prerequisites
+
+| OS | Needs | Status |
+|---|---|---|
+| Windows 11 x64 | MSVC Build Tools (`cl.exe`, `link.exe`), LLVM (`libclang.dll`), target `x86_64-pc-windows-msvc` | **Verified** (WP-0E.01, WP-1D.01) with the BtbN 8.1.3 dev bundle |
+| macOS arm64 | Xcode command-line tools (clang, libclang) | Expected; not run yet (WP-0E.03) |
+| Linux x64 (Ubuntu 22.04/24.04) | `clang libclang-dev pkg-config` | Expected; not run yet (WP-0E.03) |
+
+## How linking and loading work
+
+**Build time.** With `FFMPEG_DIR` set, `ffmpeg-sys-next` adds `$FFMPEG_DIR/lib` to the link search
+path, runs bindgen on `$FFMPEG_DIR/include` and links each library as a `dylib`:
+
+- MSVC links the import libraries `avcodec.lib` and so on;
+- macOS and Linux link `libavcodec.dylib` / `libavcodec.so`.
+
+Without `FFMPEG_DIR` it falls back to vcpkg (Windows), then pkg-config. The `build` feature
+(compiling FFmpeg from source, with downloads) is never used.
+
+**Run time.** The libraries are found by the OS loader before `main` runs:
+
+- **Windows.** Search order: the executable's directory, then `PATH`. A missing DLL kills the
+  process before `main` with `STATUS_DLL_NOT_FOUND` (0xC0000135). Git Bash misreports this as a
+  missing `api-ms-win-crt-*.dll`. The closure is `avutil-60`, `avcodec-62`, `avformat-62`,
+  `swscale-9` and `swresample-6`, plus Windows/UCRT DLLs. Releases put them next to `cutweave.exe`
+  (packaging, P7).
+- **macOS** (expected). The bundle's dylibs are `@rpath/libavX.N.dylib`. Dev runs use
+  `DYLD_FALLBACK_LIBRARY_PATH`. A shipped binary needs an `LC_RPATH` such as
+  `@executable_path/../Frameworks`. SIP strips `DYLD_*` only for system binaries.
+- **Linux** (expected). The bundle's `.so` files carry `$ORIGIN` rpaths among themselves. Dev runs
+  use `LD_LIBRARY_PATH`; a shipped binary needs `-Wl,-rpath,$ORIGIN/../lib` or wherever packaging
+  puts them.
+
+## The version lock
+
+`FfmpegBackend::new()` compares each loaded library (`avcodec_version()` and friends) with the
+header version the engine was compiled against, and returns
+`MediaError::RuntimeMismatch { library, built, loaded }` unless they are **exactly** equal.
+
+The check exists because the bindings turn C enums into Rust enums. A newer libavcodec can return
+an enum value the headers did not have (a new pixel format or codec id), which is undefined
+behaviour in Rust rather than an error (S3 finding F2.3). So the headers you build against and the
+libraries you load must come from the **same bundle**. If you see this error, the `PATH` (or
+`DYLD_*`/`LD_*`) points at a different FFmpeg than `FFMPEG_DIR` did at build time: re-source the
+env script, or rebuild.
+
+On success, the backend logs the `ffmpeg -version` banner of the loaded libraries at `info`
+(target `cutweave_media`), for example
+`FFmpeg n8.1.3-39-g660b5aa7db (libavutil 60.26.103, libavcodec 62.28.103, …), GPL version 3 or later`.
+
+## FFmpeg's log
+
+`av_log` is routed into `tracing` under target **`ffmpeg`**:
+
+| FFmpeg level | `tracing` level |
+|---|---|
+| `PANIC`, `FATAL` | `error` |
+| `ERROR`, `WARNING` | `warn` (FFmpeg reports recoverable stream damage as errors; real failures reach callers as `MediaError`) |
+| `INFO` | `info` |
+| `VERBOSE` | `debug` |
+| `DEBUG`, `TRACE` | `trace` |
+
+- **Threshold.** FFmpeg's own threshold (`av_log_set_level`, default `INFO`) applies first.
+- **Formatting.** Lines are formatted only if a subscriber wants that level.
+- **Rate limit.** Repeated lines are limited: the first 3 occurrences of a line, then only the
+  4th, 8th, 16th and so on, with a count. The context address (`[h264 @ 0x…]`) is ignored when
+  comparing lines. The `mmco: unref short failure` flood of open-GOP seeks therefore costs a
+  handful of records.
+
+## Licensing
+
+- **Bindings.** `ffmpeg-next` and `ffmpeg-sys-next` are WTFPL, which `deny.toml` allows (the FSF
+  lists it as GPL-compatible). `cargo deny` scans the `ffmpeg`-enabled graph (`[graph] features`).
+- **The bundle.** It is GPL-3.0-or-later as a whole (`--enable-gpl --enable-version3`), which is
+  compatible with Cutweave's GPL-3.0-or-later.
+- **Redistribution.** Anyone redistributing a bundle or a build containing its libraries must
+  ship the license texts and the corresponding source
+  ([scripts/ffmpeg/README.md](../../scripts/ffmpeg/README.md#licensing-obligations),
+  [architecture §21](../01-architecture.md)).
+- **Local builds.** Fetching a bundle for local builds creates no obligations.
+
+## CI
+
+The cloud CI has **no FFmpeg job yet**: the `ffmpeg` feature is off in `ci.yml`, so the default
+gate needs no bundle. The intended job, per OS:
+
+1. restore the bundle from the cache, keyed on `scripts/ffmpeg/versions.toml`;
+2. install libclang;
+3. run `just test-ffmpeg`.
+
+Wiring it up belongs to the integrator. Workflows are only dispatched by maintainers; agents
+never trigger them.
+
+## Troubleshooting
+
+| Symptom | Cause and fix |
+|---|---|
+| Test binary exits with `0xc0000135` / `STATUS_DLL_NOT_FOUND`, or Git Bash says `api-ms-win-crt-…: cannot open shared object file` | The bundle's `bin/` is not on `PATH`: source the env script |
+| `MediaError::RuntimeMismatch` at start-up | The loaded libraries are not the ones built against (see [the version lock](#the-version-lock)) |
+| `Unable to find libclang` | Install LLVM and set `LIBCLANG_PATH` (Windows: `C:/Program Files/LLVM/bin`) |
+| `ffmpeg-sys-next` cannot find FFmpeg | `FFMPEG_DIR` unset or wrong: run `just ffmpeg-fetch`, then source the env script |
+| Warning "not the pinned 8.1.3 series" | A non-pinned FFmpeg (Homebrew, distro) is loaded; fine for hacking, unsupported otherwise |
