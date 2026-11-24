@@ -28,8 +28,10 @@ use cutweave_render::{FrameSource, Image, SceneDescription};
 
 use super::frames::MediaFrames;
 
-/// How long `start` waits for the GPU before the engine reports ready without it.
-pub const GPU_START_WAIT: Duration = Duration::from_secs(2);
+/// How long a `Gui` engine's `start` waits for the GPU before it reports ready without it: long
+/// enough for a failing adapter search to end in exit 11 on a busy machine, short enough for the
+/// supervisor's 10 s ready timeout.
+pub const GPU_START_WAIT: Duration = Duration::from_secs(4);
 /// How long a `render.frame` or export waits for a GPU that is still opening.
 pub const RENDER_WAIT: Duration = Duration::from_secs(60);
 

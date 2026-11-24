@@ -11,12 +11,13 @@
 //!   [`MediaState`] is what the `/media` HTTP endpoints (WP-1I.03) serve.
 //! - **Frames** ([`frames`]): one `DecoderPool` per media item and the RAM `FrameCache`
 //!   (budget: the smaller of 1 GiB and a quarter of RAM), shared by preview and `render.frame`.
-//! - **Render**: a wgpu device per `EngineConfig::gpu` (`auto`: the best adapter, honouring
-//!   `CUTWEAVE_GPU`; `software`: WARP / lavapipe). One compositor serves `render.frame` and
-//!   export (its lock is the GPU budget), a second one preview. A GPU failure exits with code 11
-//!   in `Gui` mode; a headless engine falls back to the software adapter, then to the CPU
-//!   reference renderer, and says so with `engine.degraded{subsystem: "gpu"}`. A device lost
-//!   for good is reported the same way.
+//! - **Render** ([`gpu`]): a wgpu device per `EngineConfig::gpu` (`auto`: the best adapter,
+//!   honouring `CUTWEAVE_GPU`; `software`: WARP / lavapipe), opened on its own thread while the
+//!   rest starts. One compositor serves `render.frame` and export (its lock is the GPU budget), a
+//!   second one preview. A GPU that fails within [`GPU_START_WAIT`] exits a `Gui` engine with
+//!   code 11; otherwise (headless, or a device still opening) the engine falls back to the
+//!   software adapter, then to the CPU reference renderer, and says so with
+//!   `engine.degraded{subsystem: "gpu"}`. A device lost for good is reported the same way.
 //! - **Audio** ([`audio`]): the mixer over the current document's clips, on the output
 //!   `EngineConfig::audio` names (`CUTWEAVE_AUDIO` picks the device); when the device fails the
 //!   mixer plays on the null clock and `engine.degraded{subsystem: "audio"}` is sent.
@@ -28,7 +29,8 @@
 //!   view's playhead in step, and opening a project seeks the transport to its saved playhead.
 //!   `playback.state` goes to every client at most 30 times a second.
 //! - **Commands**: `render.frame` (with this engine's renderer current on the dispatching
-//!   thread) and the `view.*` transport commands; `export.start` gets [`ExportServices`].
+//!   thread) and the `view.*` transport commands; `export.start` gets [`ExportServices`];
+//!   `media.capabilities` answers from the backend (probed on a worker thread at start).
 //!
 //! # Lifecycle
 //!
@@ -37,7 +39,8 @@
 //! detaches it ([`on_document_closing`](Subsystems::on_document_closing): the watcher, the clock
 //! pump, the playback threads, decoders; the ring and the compositor are kept for the next
 //! document) and attaches it to the new one. [`shutdown`](Subsystems::shutdown) stops
-//! playback, then audio (output before mixer), closes the ring, the decoders and the caches.
+//! playback, then audio (output before mixer), closes the ring and the decoders, waits for the
+//! GPU and capabilities threads, then drops the device and the caches.
 
 pub mod audio;
 pub mod frames;
