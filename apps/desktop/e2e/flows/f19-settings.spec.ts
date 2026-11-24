@@ -73,6 +73,8 @@ test.describe("F19 settings", () => {
         "General",
         "Appearance",
         "Saving and backups",
+        "Notifications",
+        "Agents and MCP",
         "Advanced",
       ]);
       await expect(settings.getByText("Preferences", { exact: true })).toBeVisible();
