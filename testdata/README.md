@@ -1,6 +1,6 @@
 # testdata/
 
-Media corpus manifest (the corpus itself is fetched by `just corpus`, never committed), golden frames (`testdata/golden/`, stored in LFS) and the command scripts of the CLI = MCP = RPC parity test ([`scripts/`](scripts/README.md), WP-1O.02).
+Media corpus manifest (the corpus itself is fetched by `just corpus`, never committed), golden frames ([`golden/`](golden/README.md), PNGs in LFS, WP-1O.01; their sources are generated into `target/golden/`, not into the corpus) and the command scripts of the CLI = MCP = RPC parity test ([`scripts/`](scripts/README.md), WP-1O.02).
 
 ## Corpus (WP-0I.01)
 
