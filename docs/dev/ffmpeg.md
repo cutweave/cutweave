@@ -106,6 +106,7 @@ codecs, and check the log routing.
   - They check frames against the `ffmpeg` CLI. They also generate the clips the corpus lacks (odd sizes, open GOP, CRA/RASL, MPEG-TS) into the test's temporary folder.
   - From inside a worktree they find the main checkout's corpus.
 - **Export tests** (WP-1E.03, `cargo nextest run -p cutweave-engine --features ffmpeg`) export through `export.start` and check the MP4 with `ffprobe` and `ffmpeg`. They need a wgpu adapter and skip without one.
+- **Hardware encoder tests** (WP-1E.02, WP-1E.03b) are ignored by default, because they need the machine's GPU encoders and take minutes. Run them with `CUTWEAVE_HW_TESTS=1 cargo nextest run -p cutweave-media -p cutweave-engine --features cutweave-engine/ffmpeg --run-ignored all`. They encode with every hardware encoder found, check the files with `ffprobe` and PSNR, and assert an export of at least 2× realtime. A pretend hardware encoder that fails mid-stream tests the software restart on any machine, without the variable.
 
 **The first build takes 6 to 13 minutes:** bindgen runs over the FFmpeg headers (a 9 MB
 `bindings.rs`), and the build script compiles a small C program (`cl.exe` on Windows) to read the

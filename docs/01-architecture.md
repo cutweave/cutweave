@@ -394,6 +394,12 @@ All surfaces live on **one local server per engine** (axum on `127.0.0.1`, rando
   - **Missing media** is drawn as missing (an absent layer, silent audio) and counted in the final message; it doesn't fail the export.
   - **Files:** one export per output path at a time. Replacing an existing file needs `overwrite: true`. Cancel stops within a second and leaves no file.
   - **Colour:** the pixels are sRGB-encoded while the file is tagged BT.709; that decision is still open (#110).
+- **Hardware encoders (decided in WP-1E.02 and WP-1E.03b).**
+  - **Policy:** `EncodeSpec.hw` is `Auto`, `Off` or `Force(name)`; `export.start{hw}` maps `"auto"`, `"off"` and `{"force": "<implementation>"}` onto it. A forced name must be one of `Capabilities::hw_encode` (`Invalid` at `/hw/force` otherwise) and never falls back.
+  - **Order under `Auto`:** NVENC, AMF, QSV on Windows; VideoToolbox on macOS; VA-API, then NVENC, on Linux. The first encoder that opens wins. The probe runs once per process and is cached.
+  - **Fallback:** an encoder that fails to open falls back to x264 at once. One that fails mid-stream makes the export start again in software from frame 0 (`encode_with_fallback`): progress drops to 0 once and the status says so. The final message names the encoder used. Cancelling is never retried.
+  - **Quality:** the presets give a rate-control value (`Crf` 28 / 23 / 20 for low / medium / high), which `cutweave-media` maps onto each encoder's scale (NVENC `cq`, AMF `qp`, …). The mapping and measured PSNR are in [export-quality.md](reference/export-quality.md).
+  - **Pipeline:** decoding, GPU rendering and encoding run on three threads joined by bounded queues (`PIPELINE_DEPTH` frames ahead). Determinism tests pin `hw: "off"` and one encoder thread.
 - **Thumbnails, filmstrips and the frame cache (decided in WP-1D.05).**
   - **Frame cache:** `FrameCache` holds decoded frames in RAM, keyed by `(content hash, stream, pts)`. Its budget is the smaller of 1 GiB and a quarter of RAM, with LRU eviction. Thumbnail generation does not go through it, so thumbnail decodes never evict scrub frames.
   - **Disk cache:** thumbnails and filmstrips are JPEG files in the OS cache directory (`<cache>/cutweave/media-cache`), never in the project. Each file is a row of `disk_entries` in `cache.sqlite` (migration 2), capped at 2 GiB by default with LRU eviction. Deleting the folder loses nothing: a row whose file is missing is a miss.
@@ -778,7 +784,7 @@ MyVideo/                    ← project folder (user-chosen location)
 | Playback 1080p60: 3 video layers + 2 effects + animated captions on an iGPU (M1 / Intel Xe) | 0 dropped frames over 60 s |
 | Timeline pan/zoom with 5,000 items | ≥ 55 fps |
 | A/V sync offset | < 40 ms, drift < 1 frame / 30 min |
-| Export 1080p H.264 (simple timeline, HW encode) | ≥ 2× realtime |
+| Export 1080p H.264 (simple timeline, HW encode) | ≥ 2× realtime. Measured (WP-1E.03b, debug engine, loaded machine): 20 s of 1080p30 in 6.6 s with NVENC (3.0×) and 7.0 s with AMF (2.9×); the encoders alone reach 6× (NVENC) and 5.7–7.6× (AMF) realtime (WP-1E.02). The blocking GPU readback limits the pipeline at about 75–90 fps |
 | Idle memory with a 1-hour 1080p project | < 1.5 GB |
 
 ---
