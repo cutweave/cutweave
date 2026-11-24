@@ -11,7 +11,7 @@ use std::path::Path;
 use std::sync::Arc;
 
 use cutweave_commands::{
-    ActorCtx, CmdError, EngineCommand, Registry, RegistryError, Rev, command, wire,
+    ActorCtx, CmdError, EngineCommand, Registry, RegistryError, Rev, WallTime, command, wire,
 };
 use cutweave_model::MediaId;
 
@@ -28,7 +28,8 @@ pub fn register(registry: &mut Registry) -> Result<(), RegistryError> {
         .register::<ProjectClose>()?
         .register::<ProjectRecover>()?
         .register::<ProjectDiscardRecovery>()?
-        .register::<ProjectSetAutosave>()?;
+        .register::<ProjectSetAutosave>()?
+        .register::<ProjectReportFocus>()?;
     Ok(())
 }
 
@@ -327,5 +328,42 @@ impl EngineCommand for ProjectSetAutosave {
             interval_s: self.interval_s,
             keep_backups: self.keep_backups,
         })
+    }
+}
+
+// ----- project.report_focus -----------------------------------------------------------------------
+
+/// Result of `project.report_focus`.
+#[wire]
+pub struct ProjectReportFocusOutput {
+    /// When the engine recorded the focus, milliseconds since the Unix epoch (the run-file's
+    /// `focused_at`).
+    pub focused_at: WallTime,
+}
+
+/// The desktop app reports that its window gained the focus. The engine records the time in
+/// its run-file (`focused_at`), so an agent that does not say which engine it means gets the
+/// one the person is looking at (`cutweave engines`, `docs/reference/launch-protocol.md`).
+/// UI credential only and never an MCP tool: it is the app applying its own state to the
+/// engine (ADR-0016). Not undoable, not journaled, never marks the project dirty.
+#[command(
+    name = "project.report_focus",
+    summary = "The window gained the focus: record it for agent engine choice",
+    engine,
+    scope = "ui",
+    undoable = false,
+    journaled = false,
+    mcp = "hidden",
+    annotations(destructive = false, idempotent = true)
+)]
+pub struct ProjectReportFocus {}
+
+impl EngineCommand for ProjectReportFocus {
+    type Context = SessionCall;
+    type Output = ProjectReportFocusOutput;
+
+    fn run(&self, s: &mut SessionCall) -> Result<ProjectReportFocusOutput, CmdError> {
+        let focused_at = WallTime::from_millis(s.core.report_focus());
+        Ok(ProjectReportFocusOutput { focused_at })
     }
 }

@@ -8,6 +8,7 @@
 //! [`Mounts`] by later work packages; [`rpc`] is the JSON-RPC WebSocket (WP-1I.02).
 
 pub mod creds;
+pub mod engines;
 pub mod launch;
 /// The MCP server mounted at `/mcp` (WP-1J.01).
 pub mod mcp;
@@ -16,7 +17,7 @@ pub mod runfile;
 mod server;
 
 pub use creds::{AgentToken, Credential, Credentials, CredentialsError, Token, TokenError};
-pub use runfile::{RunFile, RunFileContents, RunFileToken};
+pub use runfile::{RunFile, RunFileContents, RunFileProject, RunFileToken, RunMode};
 pub use server::{
     ApiConfig, ApiError, ApiServer, Authenticated, EXIT_PORT_IN_USE, Mounts, RequestId,
     RunningServer, ShutdownHandle, WS_TOKEN_SUBPROTOCOL_PREFIX, require_scope,

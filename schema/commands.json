@@ -4710,6 +4710,48 @@
       },
       "input_schema": {
         "additionalProperties": false,
+        "description": "The desktop app reports that its window gained the focus. The engine records the time in\nits run-file (`focused_at`), so an agent that does not say which engine it means gets the\none the person is looking at (`cutweave engines`, `docs/reference/launch-protocol.md`).\nUI credential only and never an MCP tool: it is the app applying its own state to the\nengine (ADR-0016). Not undoable, not journaled, never marks the project dirty.",
+        "title": "ProjectReportFocus",
+        "type": "object"
+      },
+      "journaled": false,
+      "kind": "engine",
+      "mcp": "hidden",
+      "mcp_tool": null,
+      "name": "project.report_focus",
+      "namespace": "project",
+      "output_schema": {
+        "additionalProperties": false,
+        "description": "Result of `project.report_focus`.",
+        "properties": {
+          "focused_at": {
+            "description": "When the engine recorded the focus, milliseconds since the Unix epoch (the run-file's\n`focused_at`).",
+            "format": "uint64",
+            "minimum": 0,
+            "type": "integer"
+          }
+        },
+        "required": [
+          "focused_at"
+        ],
+        "title": "ProjectReportFocusOutput",
+        "type": "object"
+      },
+      "scope": "ui",
+      "secret_fields": [],
+      "summary": "The window gained the focus: record it for agent engine choice",
+      "undoable": false,
+      "view": false
+    },
+    {
+      "annotations": {
+        "destructiveHint": false,
+        "idempotentHint": true,
+        "openWorldHint": false,
+        "readOnlyHint": false
+      },
+      "input_schema": {
+        "additionalProperties": false,
         "description": "Saves the last committed state of the open project to its file (open gestures and\nproposals are not included). Fails with `Invalid` for an untitled document (use\n`project.save_as`) and `Unsupported` for a read-only project.",
         "title": "ProjectSave",
         "type": "object"

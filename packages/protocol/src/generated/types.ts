@@ -1667,6 +1667,24 @@ export type ProjectRenameOutput = {
 };
 
 /**
+ *  The desktop app reports that its window gained the focus. The engine records the time in
+ *  its run-file (`focused_at`), so an agent that does not say which engine it means gets the
+ *  one the person is looking at (`cutweave engines`, `docs/reference/launch-protocol.md`).
+ *  UI credential only and never an MCP tool: it is the app applying its own state to the
+ *  engine (ADR-0016). Not undoable, not journaled, never marks the project dirty.
+ */
+export type ProjectReportFocus = Record<string, never>;
+
+/**  Result of `project.report_focus`. */
+export type ProjectReportFocusOutput = {
+	/**
+	 *  When the engine recorded the focus, milliseconds since the Unix epoch (the run-file's
+	 *  `focused_at`).
+	 */
+	focused_at: WallTime,
+};
+
+/**
  *  Saves the last committed state of the open project to its file (open gestures and
  *  proposals are not included). Fails with `Invalid` for an untitled document (use
  *  `project.save_as`) and `Unsupported` for a read-only project.
