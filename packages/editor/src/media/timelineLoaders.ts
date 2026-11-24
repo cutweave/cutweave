@@ -127,7 +127,7 @@ export function tileIndex(manifest: FilmstripManifest, t: number): number {
   return Math.min(manifest.count - 1, Math.max(0, i));
 }
 
-function parseManifest(header: string | null): FilmstripManifest | null {
+export function parseManifest(header: string | null): FilmstripManifest | null {
   if (header === null) return null;
   try {
     const m = JSON.parse(header) as Partial<FilmstripManifest>;

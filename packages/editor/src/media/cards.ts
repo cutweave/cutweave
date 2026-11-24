@@ -2,7 +2,7 @@
 // What a media card shows, read from the engine document (the project mirror holds the probe
 // results, so no `media.list` round trip is needed; `selectMedia` already reads the same data).
 import type { MediaAsset, MediaId, Project } from "@cutweave/protocol";
-import { FLICKS_PER_SECOND } from "@cutweave/timeline";
+import { FLICKS_PER_SECOND, type FrameRate } from "@cutweave/timeline";
 import { mediaName } from "../state/selectors.ts";
 
 export interface MediaCard {
@@ -16,6 +16,8 @@ export interface MediaCard {
   readonly height: number | null;
   /** Frames per second, e.g. `29.97`; `null` when unknown. */
   readonly fps: number | null;
+  /** The same rate as a ratio (for frame math); `null` when unknown. */
+  readonly rate: FrameRate | null;
   /** Codec of the main stream (video, else audio), upper-cased: `H264`. */
   readonly codec: string | null;
   /** A file kind whose probe found no streams: nothing can be read from it. */
@@ -37,6 +39,7 @@ function toCard(asset: MediaAsset): MediaCard {
     width: video?.width ?? null,
     height: video?.height ?? null,
     fps: fps === null || fps.den === 0 ? null : Math.round((fps.num / fps.den) * 100) / 100,
+    rate: fps === null || fps.den === 0 || fps.num === 0 ? null : { num: fps.num, den: fps.den },
     codec: codec === null ? null : codec.toUpperCase(),
     broken: asset.kind !== "sequence_ref" && asset.probe.streams.length === 0,
   };

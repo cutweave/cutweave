@@ -106,6 +106,26 @@ const exportPage: SettingsPageDef = {
   ],
 };
 
+// ---- Media and import (WP-1M.14) --------------------------------------------------------------
+
+const mediaPage: SettingsPageDef = {
+  id: "media",
+  title: "settings.pages.media",
+  icon: "film",
+  group: "preferences",
+  order: 70,
+  rows: [
+    {
+      id: "media.hover_scrub",
+      key: "media.hover_scrub",
+      label: "settings.rows.hoverScrub.label",
+      description: "settings.rows.hoverScrub.description",
+      keywords: "settings.rows.hoverScrub.keywords",
+      control: { kind: "switch" },
+    },
+  ],
+};
+
 // ---- Keyboard shortcuts -----------------------------------------------------------------------
 
 /** The platform's own modifier names: `Ctrl` on Windows and Linux, `⌘` on macOS. */
@@ -182,7 +202,7 @@ const shortcutsPage: SettingsPageDef = {
 };
 
 /** The pages of this work package. */
-export const FEATURE_PAGES: readonly SettingsPageDef[] = [exportPage, shortcutsPage];
+export const FEATURE_PAGES: readonly SettingsPageDef[] = [mediaPage, exportPage, shortcutsPage];
 
 /** Registers them (idempotent). */
 export function registerFeaturePages(): void {

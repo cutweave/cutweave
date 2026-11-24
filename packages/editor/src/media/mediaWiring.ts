@@ -6,6 +6,7 @@
 // waveforms on audio clips. An engine without media (`--dev-stub-media`, an engine built without
 // FFmpeg) keeps the placeholders.
 //
+// - The same engine feeds the scrubbing of cards and of the Inspector (`ScrubSource`, WP-1M.14).
 // - Every handshake asks again: a restarted engine signs with a new key, so the signed URLs are
 //   dropped (`reset`), and it may have media where the last one had none.
 // - While an asset's `thumbnails` analysis job runs, its filmstrip is not asked for (the route
@@ -20,6 +21,7 @@ import type { docStore } from "../state/docStore.ts";
 import { isActive, type jobStore } from "../state/jobStore.ts";
 import { HttpThumbnailSource } from "./httpThumbnails.ts";
 import { MediaHttp } from "./mediaHttp.ts";
+import { ScrubSource, setScrubSource } from "./scrubSource.ts";
 import { placeholderThumbnails, setThumbnailSource, type ThumbnailSource } from "./thumbnails.ts";
 import { type HttpLoaderOptions, httpMediaLoaders, type LoaderMedia } from "./timelineLoaders.ts";
 
@@ -123,11 +125,23 @@ export function startMediaHttp(deps: MediaWiringDeps): MediaWiring {
     ...(deps.crop && { crop: deps.crop }),
   });
   const handOut = () => loadersStore.setState({ loaders: { ...loaders } });
+  // What the cards and the Inspector scrub with (WP-1M.14): the same engine, the same hashes.
+  const scrub = new ScrubSource({
+    http,
+    media: (id) => {
+      const media = loaderMediaOf(deps.doc, deps.jobs, id);
+      return media === null
+        ? null
+        : { hash: media.hash, makingFilmstrip: media.makingFilmstrip === true };
+    },
+    ...(deps.decode && { decode: deps.decode }),
+  });
 
   function install(): void {
     installed = true;
     thumbs.reset();
     handOut();
+    setScrubSource(scrub);
   }
 
   function uninstall(): void {
@@ -136,6 +150,7 @@ export function startMediaHttp(deps: MediaWiringDeps): MediaWiring {
     if (was || stopped) {
       setSource(placeholderThumbnails);
       loadersStore.setState({ loaders: NO_LOADERS });
+      setScrubSource(null);
     }
   }
 
@@ -186,6 +201,7 @@ export function startMediaHttp(deps: MediaWiringDeps): MediaWiring {
       offJobs();
       uninstall();
       loaders.dispose();
+      scrub.dispose();
     },
   };
 }

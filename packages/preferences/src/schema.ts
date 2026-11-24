@@ -95,6 +95,9 @@ export interface PreferenceValues {
    */
   "agents.allowed_folders": readonly string[];
   "agents.client_profile": ClientProfile;
+  // Media and import (WP-1M.14)
+  /** Show a video's frames while the pointer moves across its card in the bin. */
+  "media.hover_scrub": boolean;
 }
 
 export type PreferenceKey = keyof PreferenceValues;
@@ -197,6 +200,8 @@ export const PREFERENCES: { readonly [K in PreferenceKey]: PreferenceDef } = {
     options: CLIENT_PROFILES,
     default: "standard",
   },
+  // Media and import (WP-1M.14)
+  "media.hover_scrub": { type: "boolean", scope: "app", default: true },
 };
 
 export const PREFERENCE_KEYS = Object.keys(PREFERENCES) as PreferenceKey[];
