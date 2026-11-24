@@ -4,7 +4,7 @@
 //! discards the audio, so the mixer and the clock advance at the real-time rate.
 
 use std::sync::Arc;
-use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
 use std::thread::JoinHandle;
 use std::time::{Duration as StdDuration, Instant};
 
@@ -23,6 +23,9 @@ pub(crate) struct Faults {
     pub unplugged: AtomicBool,
     /// The stream stops calling back without reporting anything.
     pub stalled: AtomicBool,
+    /// Delay before a new stream's first callback (ms), like a device that takes a while to
+    /// start (WASAPI: tens of milliseconds after `Start`).
+    pub start_delay_ms: AtomicU64,
 }
 
 /// One virtual stream: a thread calling the callback every `period` frames.
@@ -55,6 +58,15 @@ impl VirtualStream {
             .spawn(move || {
                 let mut buf = vec![0.0f32; period_frames as usize * channels];
                 let mut reported = false;
+                let delay = faults
+                    .as_ref()
+                    .map_or(0, |f| f.start_delay_ms.load(Ordering::Acquire));
+                let started = Instant::now();
+                while started.elapsed() < StdDuration::from_millis(delay)
+                    && !thread_stop.load(Ordering::Acquire)
+                {
+                    std::thread::sleep(StdDuration::from_millis(1));
+                }
                 let mut deadline = Instant::now();
                 while !thread_stop.load(Ordering::Acquire) {
                     let unplugged = faults

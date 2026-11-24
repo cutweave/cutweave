@@ -240,7 +240,9 @@ impl Player {
     fn account(&self, frames: usize, t: Timing, exit_ns: u64) {
         let s = &*self.shared;
         let frames32 = u32::try_from(frames).unwrap_or(u32::MAX);
-        s.callbacks.fetch_add(1, Ordering::Relaxed);
+        // Release: the supervisor reports `Running` once it sees this, and whoever sees that
+        // must see the clock state this callback published.
+        s.callbacks.fetch_add(1, Ordering::Release);
         s.frames.fetch_add(frames as u64, Ordering::Relaxed);
         s.min_frames.fetch_min(frames32, Ordering::Relaxed);
         s.max_frames.fetch_max(frames32, Ordering::Relaxed);

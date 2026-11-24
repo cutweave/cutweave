@@ -9,11 +9,12 @@ use std::sync::atomic::AtomicBool;
 use std::sync::{Arc, Mutex};
 use std::time::{Duration as StdDuration, Instant};
 
-use cutweave_model::{SampleRate, Time};
+use cutweave_model::{Duration, ItemId, MediaId, SampleRate, Time, TrackId};
+use cutweave_render::AudioSegment;
 
 use super::virtual_device::{Faults, VirtualStream};
 use super::*;
-use crate::{ClockReading, MixerConfig, MixerHandle, ToneFactory};
+use crate::{ClockReading, MixerConfig, MixerHandle, PcmFormat, Tone, ToneFactory, ToneSpec};
 
 const RATE: SampleRate = SampleRate::HZ_48_000;
 
@@ -124,13 +125,53 @@ fn start(
     device: OutputDevice,
 ) -> Result<(AudioOutput, MixerHandle), StartError> {
     let (m, h) = mixer();
+    Ok((start_mixer(host, device, m)?, h))
+}
+
+fn start_mixer(
+    host: &Arc<FakeHost>,
+    device: OutputDevice,
+    mixer: Mixer,
+) -> Result<AudioOutput, StartError> {
     let host = host.clone();
-    let out = AudioOutput::start_with(
-        m,
+    AudioOutput::start_with(
+        mixer,
         config(device),
         Box::new(move || Box::new(FakeBackend(host)) as Box<dyn Backend>),
-    )?;
-    Ok((out, h))
+    )
+}
+
+/// A mixer playing a 60 s tone on one track (so seeks really prime), and its segments.
+fn tone_mixer() -> (Mixer, MixerHandle, Vec<AudioSegment>) {
+    let mut sources = ToneFactory::new();
+    let media = MediaId::from_u128(1);
+    sources.insert(
+        media,
+        ToneSpec::new(
+            Tone::Sine {
+                freq_hz: 440.0,
+                amplitude: 0.1,
+                phase: 0.0,
+            },
+            PcmFormat::new(RATE, 2),
+        ),
+    );
+    let (m, h) = Mixer::new(MixerConfig::new(RATE), Arc::new(sources)).unwrap();
+    let segment = AudioSegment {
+        item: ItemId::from_u128(1),
+        track: TrackId::from_u128(1),
+        media,
+        stream: Some(0),
+        dst_start: Time::ZERO,
+        dst_duration: Duration::from_secs(60).unwrap(),
+        src_start: Time::ZERO,
+        clip_gain_db: 0.0,
+        track_gain_db: 0.0,
+        reverse: false,
+        speed: (1, 1),
+        sample_rate: RATE,
+    };
+    (m, h, vec![segment])
 }
 
 fn wait_until(what: &str, timeout: StdDuration, mut cond: impl FnMut() -> bool) -> StdDuration {
@@ -145,31 +186,86 @@ fn wait_until(what: &str, timeout: StdDuration, mut cond: impl FnMut() -> bool) 
     t0.elapsed()
 }
 
-/// Reads the clock every millisecond on its own thread and checks it never goes back within a
-/// generation.
+/// What a [`Watcher`] saw.
+#[derive(Debug, Default)]
+struct Watched {
+    readings: usize,
+    /// (time, output state, clock reading) at every change of either state.
+    transitions: Vec<(StdDuration, OutputState, ClockReading)>,
+    /// Longest time the output was running and playing while the clock was not `Running`.
+    longest_not_running: StdDuration,
+    /// Readings where the output reported `Running` while the clock was `Stopped`.
+    running_while_stopped: usize,
+}
+
+impl Watched {
+    fn print(&self, label: &str) {
+        eprintln!("{label}: {} readings", self.readings);
+        for (t, output, clock) in &self.transitions {
+            eprintln!(
+                "  {:>8.3} s  output {output:?}, clock {:?} at {} (generation {})",
+                t.as_secs_f64(),
+                clock.state,
+                clock.position,
+                clock.generation
+            );
+        }
+        eprintln!(
+            "  longest playing-but-not-running stretch {:?}; output Running with clock Stopped in {} readings",
+            self.longest_not_running, self.running_while_stopped
+        );
+    }
+}
+
+/// Reads the clock and the output state every millisecond on its own thread: checks the clock
+/// never goes back within a generation, and records how long the clock stayed off `Running`
+/// while the output ran and played.
 struct Watcher {
     stop: Arc<AtomicBool>,
-    thread: Option<std::thread::JoinHandle<Vec<ClockReading>>>,
+    thread: Option<std::thread::JoinHandle<Watched>>,
 }
 
 impl Watcher {
-    fn new(clock: AudioClock) -> Watcher {
+    fn new(out: &AudioOutput) -> Watcher {
+        let (clock, shared) = (out.clock(), out.shared.clone());
         let stop = Arc::new(AtomicBool::new(false));
         let s = stop.clone();
         let thread = std::thread::spawn(move || {
-            let mut seen: Vec<ClockReading> = Vec::new();
+            let start = Instant::now();
+            let mut w = Watched::default();
+            let mut prev: Option<(OutputState, ClockReading)> = None;
+            let mut off_since: Option<Instant> = None;
             while !s.load(Ordering::Relaxed) {
+                // The output state first: once it reads `Running`, the clock already left
+                // `Stopped` (read in the other order, a transition in between looks like one).
+                let state = OutputState::from_u8(shared.state.load(Ordering::Acquire));
+                let playing = shared.playing.load(Ordering::Acquire);
                 let r = clock.read();
-                if let Some(prev) = seen.last() {
+                if let Some((p_state, p)) = prev {
                     assert!(
-                        r.generation != prev.generation || r.position >= prev.position,
-                        "clock went back: {prev:?} -> {r:?}"
+                        r.generation != p.generation || r.position >= p.position,
+                        "clock went back: {p:?} -> {r:?}"
                     );
+                    if p_state != state || p.state != r.state {
+                        w.transitions.push((start.elapsed(), state, r));
+                    }
+                } else {
+                    w.transitions.push((start.elapsed(), state, r));
                 }
-                seen.push(r);
+                if state == OutputState::Running && r.state == ClockState::Stopped {
+                    w.running_while_stopped += 1;
+                }
+                if state == OutputState::Running && playing && !r.is_running() {
+                    let since = *off_since.get_or_insert_with(Instant::now);
+                    w.longest_not_running = w.longest_not_running.max(since.elapsed());
+                } else {
+                    off_since = None;
+                }
+                prev = Some((state, r));
+                w.readings += 1;
                 std::thread::sleep(StdDuration::from_millis(1));
             }
-            seen
+            w
         });
         Watcher {
             stop,
@@ -177,10 +273,23 @@ impl Watcher {
         }
     }
 
-    fn finish(mut self) -> Vec<ClockReading> {
+    fn finish(mut self) -> Watched {
         self.stop.store(true, Ordering::Relaxed);
         self.thread.take().unwrap().join().unwrap()
     }
+}
+/// After every (re)start while playing, the clock is `Running` again within 1 s of the output
+/// running, and the output never reports `Running` while the clock is `Stopped`.
+fn assert_recovered(w: &Watched) {
+    assert!(
+        w.longest_not_running < StdDuration::from_secs(1),
+        "the clock stayed off Running for {:?} while the output ran and played",
+        w.longest_not_running
+    );
+    assert_eq!(
+        w.running_while_stopped, 0,
+        "the output reported Running while the clock was Stopped"
+    );
 }
 
 fn running(out: &AudioOutput) -> bool {
@@ -198,7 +307,7 @@ fn restarts_on_device_removal_within_two_seconds() {
     out.play();
     wait_until("running", StdDuration::from_secs(2), || running(&out));
     assert_eq!(device(&out).as_deref(), Some("A"));
-    let watcher = Watcher::new(out.clock());
+    let watcher = Watcher::new(&out);
     std::thread::sleep(StdDuration::from_millis(100));
     let before = out.clock().position();
 
@@ -209,6 +318,8 @@ fn restarts_on_device_removal_within_two_seconds() {
     });
     std::thread::sleep(StdDuration::from_millis(100));
     let seen = watcher.finish();
+    seen.print("device removal");
+    assert_recovered(&seen);
     let stats = out.stats();
     eprintln!("device removal: restarted on B after {took:?}; {stats:?}");
     assert_eq!(stats.restarts, 1);
@@ -216,12 +327,13 @@ fn restarts_on_device_removal_within_two_seconds() {
     assert!(stats.stream_errors <= 1);
     assert!(out.clock().position() > before);
     assert!(
-        seen.iter().all(|r| r.generation == 0),
+        seen.transitions.iter().all(|(_, _, r)| r.generation == 0),
         "a restart is not a seek"
     );
     assert!(
-        seen.iter()
-            .any(|r| r.state == ClockState::Stopped || r.state == ClockState::Priming)
+        seen.transitions
+            .iter()
+            .any(|(_, _, r)| r.state != ClockState::Running)
     );
 }
 
@@ -231,13 +343,15 @@ fn restarts_when_the_default_device_changes() {
     let (out, _h) = start(&host, OutputDevice::Default).unwrap();
     out.play();
     wait_until("running", StdDuration::from_secs(2), || running(&out));
-    let watcher = Watcher::new(out.clock());
+    let watcher = Watcher::new(&out);
     // No stream error: only the default changes (the supervisor polls it).
     host.set_default(Some("B"));
     let took = wait_until("restart on B", StdDuration::from_secs(2), || {
         running(&out) && device(&out).as_deref() == Some("B")
     });
-    watcher.finish();
+    let seen = watcher.finish();
+    seen.print("default change");
+    assert_recovered(&seen);
     eprintln!("default change: restarted on B after {took:?}");
     assert_eq!(out.stats().restarts, 1);
     assert_eq!(out.stats().stream_errors, 0);
@@ -261,7 +375,7 @@ fn restarts_a_stalled_stream() {
     let (out, _h) = start(&host, OutputDevice::Default).unwrap();
     out.play();
     wait_until("running", StdDuration::from_secs(2), || running(&out));
-    let watcher = Watcher::new(out.clock());
+    let watcher = Watcher::new(&out);
     let faults = host.faults("A");
     faults.stalled.store(true, Ordering::Release);
     wait_until("watchdog restart", StdDuration::from_secs(2), || {
@@ -269,7 +383,9 @@ fn restarts_a_stalled_stream() {
     });
     faults.stalled.store(false, Ordering::Release);
     wait_until("running again", StdDuration::from_secs(2), || running(&out));
-    watcher.finish();
+    let seen = watcher.finish();
+    seen.print("stalled stream");
+    assert_eq!(seen.running_while_stopped, 0);
     assert_eq!(out.stats().stream_errors, 0);
 }
 
@@ -279,7 +395,7 @@ fn waits_for_a_device_then_resumes() {
     let (out, _h) = start(&host, OutputDevice::Default).unwrap();
     out.play();
     wait_until("running", StdDuration::from_secs(2), || running(&out));
-    let watcher = Watcher::new(out.clock());
+    let watcher = Watcher::new(&out);
     host.unplug("A");
     host.set_default(None);
     wait_until("waiting", StdDuration::from_secs(2), || {
@@ -301,9 +417,76 @@ fn waits_for_a_device_then_resumes() {
     let took = wait_until("running on C", StdDuration::from_secs(2), || {
         running(&out) && device(&out).as_deref() == Some("C")
     });
-    watcher.finish();
+    let seen = watcher.finish();
+    seen.print("device came back");
+    assert_recovered(&seen);
     eprintln!("device came back after {took:?}");
     assert!(out.clock().position() > held.position);
+}
+
+/// The WP-1G.02 follow-up: after any restart while playing, however restarts land, the clock
+/// returns to `Running`. Seven restarts in a few seconds: a plain one, one before the reopened
+/// stream's first callback (devices that take 40 ms to start), one while the mixer primes after
+/// a seek, a default-device change, a device removal, and one while paused.
+#[test]
+fn back_to_back_restarts_always_return_the_clock_to_running() {
+    let host = FakeHost::with(&["A", "B", "C"], Some("A"));
+    host.faults("A").start_delay_ms.store(40, Ordering::Release);
+    host.faults("B").start_delay_ms.store(20, Ordering::Release);
+    let (mixer, handle, segments) = tone_mixer();
+    let out = start_mixer(&host, OutputDevice::Default, mixer).unwrap();
+    handle.set_segments(&segments).unwrap();
+    handle.seek(Time::ZERO);
+    out.play();
+    wait_until("running", StdDuration::from_secs(2), || running(&out));
+    let watcher = Watcher::new(&out);
+    let t0 = Instant::now();
+    let restarted = |n: u64| {
+        wait_until(&format!("restart {n}"), StdDuration::from_secs(2), || {
+            out.stats().restarts >= n && running(&out)
+        })
+    };
+
+    out.restart();
+    restarted(1);
+    // A restart before the reopened stream's first callback.
+    out.restart();
+    wait_until("reopened", StdDuration::from_secs(2), || {
+        out.stats().restarts >= 2 && out.info().is_some()
+    });
+    out.restart();
+    restarted(3);
+    // A restart while the mixer primes after a seek.
+    handle.seek(Time::from_secs(5).unwrap());
+    out.restart();
+    restarted(4);
+    // The default device changes (found by the poll), then the device in use disappears.
+    host.set_default(Some("B"));
+    restarted(5);
+    host.unplug("B");
+    host.set_default(Some("C"));
+    restarted(6);
+    assert_eq!(device(&out).as_deref(), Some("C"));
+    // A restart while paused: the clock holds Paused, then runs on play.
+    out.pause();
+    out.restart();
+    wait_until("restart 7, paused", StdDuration::from_secs(2), || {
+        out.stats().restarts >= 7
+            && out.stats().state == OutputState::Running
+            && out.clock().state() == ClockState::Paused
+    });
+    out.play();
+    wait_until("running after play", StdDuration::from_secs(1), || {
+        out.clock().is_running()
+    });
+    let elapsed = t0.elapsed();
+    std::thread::sleep(StdDuration::from_millis(50));
+    let seen = watcher.finish();
+    seen.print("back-to-back restarts");
+    assert_recovered(&seen);
+    assert_eq!(out.stats().restarts, 7);
+    assert!(elapsed < StdDuration::from_secs(6), "{elapsed:?}");
+    assert!(out.clock().position() > Time::from_secs(5).unwrap());
 }
 
 #[test]
