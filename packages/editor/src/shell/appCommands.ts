@@ -11,6 +11,7 @@ import { useTranslation } from "react-i18next";
 import { useStore } from "zustand";
 import { createStore } from "zustand/vanilla";
 import { useEngineReady } from "../engine/engineStore.ts";
+import { exportController, useTimelineHasItems } from "../export/useExport.ts";
 import { type DesktopBridge, desktopFromWindow, hasNativeMenu } from "../session/desktop.ts";
 import { historyLabel } from "../session/historyLabels.ts";
 import type { ProjectController } from "../session/projectController.ts";
@@ -63,7 +64,7 @@ export function runAppCommand(command: AppCommand, deps: AppCommandDeps): void {
       void controller.runMenuCommand(command);
       return;
     case "export":
-      // The export dialog arrives with WP-1M.08; until then the item is disabled.
+      exportController().open();
       return;
     case "quit":
       void desktop?.app?.quit().catch(ignore);
@@ -124,6 +125,7 @@ export function useAppMenus(desktop: DesktopBridge | null = desktopFromWindow())
   const recovering = useSessionStore((s) => s.recovery !== null);
   const stacks = useSessionStore((s) => s.stacks);
   const busy = useSessionUiStore((s) => s.busy);
+  const hasItems = useTimelineHasItems();
   const recent = useSessionUiStore((s) => s.recent);
   const dev = useDevBuild(desktop);
   return useMemo(() => {
@@ -147,11 +149,11 @@ export function useAppMenus(desktop: DesktopBridge | null = desktopFromWindow())
             ? translate("topbar.redo")
             : translate("topbar.redoAction", { label: historyLabel(stacks.nextRedo, translate) }),
         recent: recent.map((path) => ({ path, label: projectFileName(path) })),
-        exportAvailable: false,
+        exportAvailable: hasItems,
       },
       translate,
     );
-  }, [t, desktop, dev, ready, known, busy, readOnly, recovering, stacks, recent]);
+  }, [t, desktop, dev, ready, known, busy, readOnly, recovering, stacks, recent, hasItems]);
 }
 
 /** Project commands a shortcut may press while another project operation is still running. */

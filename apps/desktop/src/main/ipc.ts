@@ -55,6 +55,7 @@ export const invokeSchemas = {
   "window:setDirty": z.tuple([z.boolean()]),
   "window:confirmClose": noArgs,
   "dialog:pickMediaFiles": noArgs,
+  "dialog:chooseExportFile": z.tuple([filePath]),
   "shell:showItemInFolder": z.tuple([filePath]),
   "shell:openExternal": z.tuple([externalUrl]),
   "app:about": noArgs,

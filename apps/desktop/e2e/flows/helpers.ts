@@ -113,11 +113,18 @@ export function removeDir(dir: string): void {
  * the workspace allowed as an engine root, and waits until the editor shows "Engine connected".
  * Pass `home` to relaunch on the same profile (settings, recent projects).
  */
-export async function launchFlowApp(work: Workspace, home?: string): Promise<LaunchedApp> {
+export async function launchFlowApp(
+  work: Workspace,
+  home?: string,
+  options: {
+    /** Decode real files: the engine must be built with FFmpeg (F14). Default: stub probing. */
+    realMedia?: boolean;
+  } = {},
+): Promise<LaunchedApp> {
   const launched = await launchApp(
     {
       ...REAL_ENGINE_ENV,
-      CUTWEAVE_DEV_STUB_MEDIA: "1",
+      CUTWEAVE_DEV_STUB_MEDIA: options.realMedia === true ? "" : "1",
       CUTWEAVE_ENGINE_ALLOW_ROOTS: work.dir,
     },
     [],
@@ -306,6 +313,37 @@ export async function pickFiles(
     }) as typeof dialog.showOpenDialog;
   }, answers);
   return () => app.evaluate(() => globalThis.__cutweaveFlowPicker?.asked ?? []);
+}
+
+declare global {
+  /** Main-process state of the stubbed save dialog (installed by `pickSavePath`). */
+  var __cutweaveFlowSave:
+    | { answers: (string | null)[]; asked: { defaultPath: string | undefined }[] }
+    | undefined;
+}
+
+/**
+ * The next native "save as" dialogs answer with these paths, in order (`null`: the person
+ * cancels). Stubs `dialog.showSaveDialog` in main: the OS dialog the app does not own. Returns a
+ * reader of the default path the app proposed each time.
+ */
+export async function pickSavePath(
+  app: ElectronApplication,
+  ...answers: (string | null)[]
+): Promise<() => Promise<(string | undefined)[]>> {
+  await app.evaluate(({ dialog }, answers) => {
+    globalThis.__cutweaveFlowSave ??= { answers: [], asked: [] };
+    const state = globalThis.__cutweaveFlowSave;
+    state.answers.push(...answers);
+    dialog.showSaveDialog = (async (...args: unknown[]) => {
+      const options = (args.length > 1 ? args[1] : args[0]) as { defaultPath?: string };
+      state.asked.push({ defaultPath: options?.defaultPath });
+      const next = state.answers.shift() ?? null;
+      return next === null ? { canceled: true, filePath: "" } : { canceled: false, filePath: next };
+    }) as typeof dialog.showSaveDialog;
+  }, answers);
+  return () =>
+    app.evaluate(() => (globalThis.__cutweaveFlowSave?.asked ?? []).map((a) => a.defaultPath));
 }
 
 // ---- reading the document back -------------------------------------------------------------

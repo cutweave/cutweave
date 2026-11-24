@@ -354,6 +354,7 @@ test.describe("IPC", () => {
       "cutweave.app.about",
       "cutweave.app.getInfo",
       "cutweave.app.quit",
+      "cutweave.dialog.chooseExportFile",
       "cutweave.dialog.openProjectFolder",
       "cutweave.dialog.pickMediaFiles",
       "cutweave.edit.run",

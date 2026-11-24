@@ -33,6 +33,8 @@ export interface HandlerDeps {
   confirmWindowClose(): void;
   /** Shows the native multi-file picker; resolves to the chosen paths or null when cancelled. */
   chooseMediaFiles(): Promise<readonly string[] | null>;
+  /** Shows the native "save as" for the export at `defaultPath`; the chosen path or null. */
+  chooseExportFile(defaultPath: string): Promise<string | null>;
   showItemInFolder(path: string): void;
   /** `shell.openExternal`; only ever called with a validated `https:` URL. */
   openExternal(url: string): Promise<void>;
@@ -93,6 +95,20 @@ export function validMediaPaths(paths: readonly unknown[]): string[] {
   return [...out];
 }
 
+/** The video file the export dialog may send to the engine: absolute, bounded, ending in .mp4. */
+export function validExportPath(chosen: unknown): string | null {
+  if (
+    typeof chosen !== "string" ||
+    chosen.length === 0 ||
+    chosen.length > MAX_PATH_LENGTH - 4 ||
+    chosen.includes("\u0000") ||
+    !nodePath.isAbsolute(chosen)
+  ) {
+    return null;
+  }
+  return /\.mp4$/i.test(chosen) ? chosen : `${chosen}.mp4`;
+}
+
 export function createHandlers(deps: HandlerDeps): InvokeHandlers {
   return {
     "app:getInfo": () => deps.appInfo,
@@ -127,6 +143,11 @@ export function createHandlers(deps: HandlerDeps): InvokeHandlers {
       if (chosen === null) return null;
       // Re-check what comes back from the dialog layer: only plain, bounded, absolute paths leave.
       return validMediaPaths(chosen);
+    },
+    "dialog:chooseExportFile": async (defaultPath) => {
+      const chosen = await deps.chooseExportFile(defaultPath);
+      // Re-check what comes back from the dialog layer: one bounded, absolute path, as .mp4.
+      return validExportPath(chosen);
     },
     "shell:showItemInFolder": (path) => {
       deps.showItemInFolder(path);

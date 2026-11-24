@@ -3,6 +3,8 @@ import { ToastProvider, TooltipProvider } from "@cutweave/ui";
 import { useEffect } from "react";
 import { I18nextProvider, useTranslation } from "react-i18next";
 import { Dock } from "../dock/Dock.tsx";
+import { ExportDialog } from "../export/ExportDialog.tsx";
+import { useExportWiring } from "../export/useExport.ts";
 import { i18n } from "../i18n/index.ts";
 import { desktopFromWindow } from "../session/desktop.ts";
 import { useProjectWiring, useWindowTitle } from "../session/useProject.ts";
@@ -35,6 +37,8 @@ function Shell() {
   // Project actions: the native menu (macOS), the window-close handshake and the title
   // (WP-1M.07). The menu bar in the top bar has the shortcuts elsewhere (WP-1M.09).
   useProjectWiring();
+  // Export jobs, their toasts and the native Export… command (WP-1M.08).
+  useExportWiring();
   useWindowTitle();
   // Transport keys through the keymap; the timeline's playhead follows playback (WP-1M.04).
   useTransportWiring();
@@ -51,6 +55,7 @@ function Shell() {
         </div>
         <EngineNotices />
         <ProjectDialogs />
+        <ExportDialog />
         <AboutDialog />
         <Toasts />
       </ToastProvider>

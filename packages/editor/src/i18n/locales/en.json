@@ -437,5 +437,81 @@
       "mismatchTitle": "This editor does not match the engine",
       "mismatchBody": "Editing is off so nothing changes by mistake. Install matching versions of Cutweave and its engine. Engine {{version}}."
     }
+  },
+  "export": {
+    "title": "Export video",
+    "description": "Writes the whole timeline to one MP4 file.",
+    "output": "Save to",
+    "outputPlaceholder": "Choose where to save the file",
+    "choose": "Choose…",
+    "preset": "Preset",
+    "presetValue": "MP4 H.264 1080p",
+    "sequence": "The timeline is {{width}} × {{height}} at {{fps}} fps. The preset fits it into 1080p and never enlarges it.",
+    "width": "Width",
+    "height": "Height",
+    "fps": "Frame rate",
+    "quality": "Quality",
+    "qualityLabel": "Export quality",
+    "low": "Low",
+    "medium": "Medium",
+    "high": "High",
+    "range": "Range",
+    "rangeAll": "Entire timeline",
+    "hardware": "Use hardware encoder",
+    "hardwareChecking": "Checking this computer's encoders…",
+    "hardwareFound": "Found {{names}}. Faster than software.",
+    "hardwareNone": "No hardware encoder found. The export uses software.",
+    "hardwareAuto": "Uses a hardware encoder when this computer has one.",
+    "hardwareOff": "Software only: slower, works on any computer.",
+    "start": "Export",
+    "starting": "Starting…",
+    "cancel": "Cancel",
+    "errors": {
+      "path": "Choose where to save the file.",
+      "pathFull": "Type the full path of the file, or use Choose…",
+      "pathExtension": "The file name must end in .mp4.",
+      "width": "Width must be an even number from 16 to 8192.",
+      "height": "Height must be an even number from 16 to 8192.",
+      "fps": "Frame rate must be above 0 and at most 240.",
+      "start": "The export did not start: {{message}}"
+    },
+    "exists": {
+      "title": "Replace {{name}}?",
+      "body": "A file with that name is already there. Replacing it cannot be undone.",
+      "back": "Back",
+      "replace": "Replace"
+    },
+    "progress": {
+      "title": "Exporting {{name}}",
+      "label": "Export progress",
+      "starting": "Starting…",
+      "fps": "{{fps}} fps",
+      "eta": "about {{eta}} left",
+      "hint": "You can hide this and keep editing. The export continues.",
+      "hide": "Hide",
+      "cancel": "Cancel export",
+      "cancelling": "Cancelling…",
+      "restarted": "The hardware encoder failed, so the export started again in software."
+    },
+    "chip": {
+      "label": "Exporting {{percent}}%",
+      "tooltip": "Exporting {{name}}: {{percent}}%. Click for details."
+    },
+    "done": {
+      "title": "Export complete",
+      "reveal": "Reveal in folder"
+    },
+    "failed": {
+      "title": "Export failed",
+      "unknown": "The engine gave no reason."
+    },
+    "cancelled": {
+      "title": "Export cancelled",
+      "message": "No file was written."
+    },
+    "lost": {
+      "title": "Export stopped",
+      "message": "The engine restarted. Start the export again."
+    }
   }
 }

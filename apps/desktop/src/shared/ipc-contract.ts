@@ -27,6 +27,11 @@ export interface InvokeChannels {
   "window:confirmClose": { args: []; result: undefined };
   /** Native multi-file picker for media import (WP-1M.03): absolute paths, or null when cancelled. */
   "dialog:pickMediaFiles": { args: []; result: string[] | null };
+  /**
+   * Native "save as" for the exported video (WP-1M.08): starts at the default path (or file
+   * name); resolves to an absolute `.mp4` path, or null when cancelled.
+   */
+  "dialog:chooseExportFile": { args: [defaultPath: string]; result: string | null };
   "shell:showItemInFolder": { args: [path: string]; result: undefined };
   "shell:openExternal": { args: [url: string]; result: undefined };
   // The title bar and in-app menu bar (WP-1M.09): actions only main can take.

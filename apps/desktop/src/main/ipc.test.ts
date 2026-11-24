@@ -25,6 +25,7 @@ const handlers = (): InvokeHandlers => ({
   "window:setDirty": vi.fn(),
   "window:confirmClose": vi.fn(),
   "dialog:pickMediaFiles": vi.fn(() => null),
+  "dialog:chooseExportFile": vi.fn(() => null),
   "shell:showItemInFolder": vi.fn(),
   "shell:openExternal": vi.fn(async () => undefined),
   "app:about": () => ({
@@ -132,6 +133,20 @@ describe("ipc registry", () => {
     );
     call("dialog:pickMediaFiles", okEvent);
     expect(h["dialog:pickMediaFiles"]).toHaveBeenCalledTimes(1);
+  });
+
+  it("takes one bounded path on the export file picker channel (WP-1M.08)", () => {
+    const h = handlers();
+    const call = register(h);
+    expect(() => call("dialog:chooseExportFile", okEvent)).toThrow(IpcValidationError);
+    expect(() => call("dialog:chooseExportFile", okEvent, 7)).toThrow(IpcValidationError);
+    expect(() => call("dialog:chooseExportFile", okEvent, "")).toThrow(IpcValidationError);
+    expect(() => call("dialog:chooseExportFile", okEvent, "a\0b.mp4")).toThrow(/NUL/);
+    expect(() => call("dialog:chooseExportFile", okEvent, "a.mp4", "b")).toThrow(
+      IpcValidationError,
+    );
+    call("dialog:chooseExportFile", okEvent, "C:/p/film.mp4");
+    expect(h["dialog:chooseExportFile"]).toHaveBeenCalledWith("C:/p/film.mp4");
   });
 
   it("takes no arguments on the title bar's app and window actions (WP-1M.09)", () => {
