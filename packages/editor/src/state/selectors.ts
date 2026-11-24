@@ -31,6 +31,32 @@ export function selectActiveSequenceId(project: Project | null): SequenceId | nu
   return (ids[0] as SequenceId | undefined) ?? null;
 }
 
+/** The active sequence's canvas, edit rate and length, for the inspector's Project section. */
+export interface SequenceSummary {
+  readonly width: number;
+  readonly height: number;
+  readonly frameRate: Sequence["format"]["frame_rate"];
+  /** Flicks from 0 to the end of the last item on any track (0 when it is empty). */
+  readonly duration: number;
+}
+
+/** The active sequence's summary, or `null` without a project or a sequence. */
+export function selectSequenceSummary(project: Project | null): SequenceSummary | null {
+  const id = selectActiveSequenceId(project);
+  const sequence = id === null ? undefined : project?.sequences[id];
+  if (sequence === undefined) {
+    return null;
+  }
+  let duration = 0;
+  for (const track of Object.values(sequence.tracks)) {
+    for (const item of Object.values(track.items)) {
+      duration = Math.max(duration, item.start + item.duration);
+    }
+  }
+  const { width, height, frame_rate } = sequence.format;
+  return { width, height, frameRate: frame_rate, duration };
+}
+
 const TRACK_KIND: Readonly<Record<EngineTrackKind, TrackKind>> = {
   video: "media",
   audio: "audio",

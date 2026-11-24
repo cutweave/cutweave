@@ -20,6 +20,7 @@ import {
   type TimeField,
 } from "../inspector/fields.ts";
 import { useDocStore } from "../state/docStore.ts";
+import { selectSequenceSummary } from "../state/selectors.ts";
 import { toastStore } from "../state/toastStore.ts";
 import { useViewStore } from "../state/viewStore.ts";
 import { parseTimeInput, type TimeInputError } from "../time/timeInput.ts";
@@ -385,6 +386,12 @@ function MediaInfo({ media }: { readonly media: MediaAsset }) {
 function ProjectInspector() {
   const { t } = useTranslation();
   const [expanded, setExpanded] = useState(true);
+  const project = useDocStore((s) => s.project);
+  const summary = useMemo(() => selectSequenceSummary(project), [project]);
+  const rate =
+    summary === null
+      ? null
+      : Math.round((summary.frameRate.num / summary.frameRate.den) * 1000) / 1000;
   return (
     <div className="cw-inspector">
       <EmptyState
@@ -392,21 +399,29 @@ function ProjectInspector() {
         title={t("inspector.emptyTitle")}
         body={t("inspector.emptyBody")}
       />
-      <InspectorSection
-        label={t("inspector.project")}
-        expanded={expanded}
-        onExpandedChange={setExpanded}
-      >
-        <InspectorRow label={t("inspector.resolution")}>
-          <span className="numeric">{t("inspector.resolutionValue")}</span>
-        </InspectorRow>
-        <InspectorRow label={t("inspector.frameRate")}>
-          <span className="numeric">{t("inspector.frameRateValue")}</span>
-        </InspectorRow>
-        <InspectorRow label={t("inspector.duration")}>
-          <span className="numeric">{t("inspector.durationValue")}</span>
-        </InspectorRow>
-      </InspectorSection>
+      {summary === null ? null : (
+        <InspectorSection
+          label={t("inspector.project")}
+          expanded={expanded}
+          onExpandedChange={setExpanded}
+        >
+          <InspectorRow label={t("inspector.resolution")}>
+            <span className="numeric" data-testid="project-resolution">
+              {t("inspector.resolutionValue", { width: summary.width, height: summary.height })}
+            </span>
+          </InspectorRow>
+          <InspectorRow label={t("inspector.frameRate")}>
+            <span className="numeric" data-testid="project-frame-rate">
+              {t("inspector.frameRateValue", { fps: rate })}
+            </span>
+          </InspectorRow>
+          <InspectorRow label={t("inspector.duration")}>
+            <span className="numeric" data-testid="project-duration">
+              {formatTimecode(summary.duration, summary.frameRate)}
+            </span>
+          </InspectorRow>
+        </InspectorSection>
+      )}
     </div>
   );
 }
