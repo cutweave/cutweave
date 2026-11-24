@@ -43,6 +43,16 @@ specta-serde = "=0.0.15"
 thiserror = "2"
 # JSON-path context for document load errors ("sequences.seq_….tracks…: missing field").
 serde_path_to_error = "0.1.20"
+# cutweave-media / cutweave-cache (WP-1D.02, arch §7).
+# Content hash for relinking (BLAKE3: fast hash over head + tail + size, optional full hash) and
+# the frame-index blob checksum. CC0-1.0 OR Apache-2.0; no network, no runtime dependencies beyond
+# its own SIMD code (default features; `rayon` stays off).
+blake3 = "1.8.7"
+# `cache.sqlite` (frame index now; thumbnails, waveforms and LRU accounting later). `bundled`
+# compiles SQLite into the binary so every platform ships the same, known version and needs no
+# system library. MIT (SQLite itself is public domain).
+rusqlite = { version = "0.43", features = ["bundled"] }
+
 # Time-ordered UUIDv7 ids (native only: wasm32-unknown-unknown has no OS entropy or wall clock).
 uuid = { version = "1.29", default-features = false, features = ["std", "v7"] }
 # Property tests (dev and the `cutweave-model/testing` feature only).

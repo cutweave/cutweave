@@ -20,6 +20,8 @@ ffmpeg = ["dep:ffmpeg-next", "dep:tracing"]
 # `ProbeInfo`, `ColorTags`, `Time` and `SampleRate`: the media layer speaks the model's types.
 cutweave-model = { path = "../cutweave-model" }
 thiserror.workspace = true
+# Content hash and the frame-index blob checksum (pure Rust API, FFmpeg-free).
+blake3.workspace = true
 # Routes FFmpeg's log and the start-up banner (FFmpeg backend only).
 tracing = { workspace = true, optional = true }
 # Only what the engine links (S3 finding F6): demux, decode/encode, swscale for the RGBA fallback
@@ -32,6 +34,10 @@ ffmpeg-next = { workspace = true, optional = true, features = [
   "software-scaling",
   "software-resampling",
 ] }
+
+[dev-dependencies]
+# Reads ffprobe -of json output in the corpus comparison tests (feature ).
+serde_json.workspace = true
 
 [lints]
 workspace = true

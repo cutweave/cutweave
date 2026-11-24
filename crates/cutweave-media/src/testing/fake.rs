@@ -30,13 +30,19 @@ use crate::backend::{
 };
 use crate::path;
 use crate::{
-    AudioChunk, AudioFormat, Capabilities, CodecSupport, MediaError, PixelFormat, Plane, VideoFrame,
+    AudioChunk, AudioFormat, Capabilities, CodecSupport, FrameIndex, IndexEntry, MediaError,
+    PixelFormat, Plane, ScanInfo, TimeBase, VideoFrame,
 };
 
 /// Codec name the fake reports for its pictures.
 pub const FAKE_VIDEO_CODEC: &str = "rawvideo";
 /// Codec name the fake reports for its tones.
 pub const FAKE_AUDIO_CODEC: &str = "pcm_f32le";
+
+/// Frames per group of pictures in the fake's index (a keyframe every this many frames).
+pub const FAKE_GOP_FRAMES: u64 = 12;
+/// Bytes per packet in the fake's index (`pos` of frame `n` is `n × this`).
+const FAKE_PACKET_BYTES: u64 = 1000;
 
 /// A synthetic video stream.
 #[derive(Clone, Debug, PartialEq)]
@@ -234,6 +240,31 @@ impl FakeMedia {
         u32::from(self.video.is_some())
     }
 
+    /// What [`MediaBackend::index_media`] reports: one packet per frame in presentation order
+    /// (no B-frames), pts and dts equal to the frame's time in flicks (time base
+    /// [`TimeBase::FLICKS`]), a keyframe every [`FAKE_GOP_FRAMES`] frames.
+    pub fn index(&self, p: &Path) -> Result<FrameIndex, MediaError> {
+        let v = self.video.as_ref().ok_or_else(|| MediaError::NoStream {
+            path: path::display(p),
+            kind: StreamKind::Video,
+            index: None,
+        })?;
+        let entries = (0..v.frames)
+            .map(|n| {
+                let flicks = v.pts(n)?.flicks();
+                Ok(IndexEntry {
+                    pts: Some(flicks),
+                    dts: Some(flicks),
+                    is_key: n % FAKE_GOP_FRAMES == 0,
+                    discard: false,
+                    pos: i64::try_from(n * FAKE_PACKET_BYTES).unwrap_or(-1),
+                })
+            })
+            .collect::<Result<Vec<_>, MediaError>>()?;
+        FrameIndex::from_entries(0, TimeBase::FLICKS, entries, ScanInfo::default())
+            .map_err(|e| e.into_media(p))
+    }
+
     /// What [`MediaBackend::probe`] reports for this media.
     pub fn probe(&self) -> Result<ProbeInfo, MediaError> {
         let mut info = ProbeInfo::default();
@@ -388,6 +419,10 @@ impl FakeBackend {
 impl MediaBackend for FakeBackend {
     fn probe(&self, path: &Path) -> Result<ProbeInfo, MediaError> {
         self.lookup(path)?.probe()
+    }
+
+    fn index_media(&self, path: &Path) -> Result<FrameIndex, MediaError> {
+        self.lookup(path)?.index(path)
     }
 
     fn open_decoder(

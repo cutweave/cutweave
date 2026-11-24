@@ -12,6 +12,6 @@ pub mod contract;
 mod fake;
 
 pub use fake::{
-    FAKE_AUDIO_CODEC, FAKE_VIDEO_CODEC, FakeAudio, FakeBackend, FakeMedia, FakeVideo,
-    fake_frame_number,
+    FAKE_AUDIO_CODEC, FAKE_GOP_FRAMES, FAKE_VIDEO_CODEC, FakeAudio, FakeBackend, FakeMedia,
+    FakeVideo, fake_frame_number,
 };

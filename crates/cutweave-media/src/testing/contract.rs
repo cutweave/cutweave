@@ -117,10 +117,11 @@ impl Default for Fixtures {
     }
 }
 
-/// The error of each opening call on `path`: probe, video decoder, audio decoder.
-fn open_errors(b: &dyn MediaBackend, path: &Path) -> [(&'static str, Option<MediaError>); 3] {
+/// The error of each opening call on `path`: probe, frame index, video decoder, audio decoder.
+fn open_errors(b: &dyn MediaBackend, path: &Path) -> [(&'static str, Option<MediaError>); 4] {
     [
         ("probe", b.probe(path).err()),
+        ("index_media", b.index_media(path).err()),
         (
             "open_decoder",
             b.open_decoder(path, &DecodeOpts::default()).err(),
@@ -212,6 +213,38 @@ pub fn empty_files_are_corrupt(b: &dyn MediaBackend, fx: &Fixtures) {
             matches!(err, Some(MediaError::Corrupt { .. })),
             "{call}(empty) = {err:?}, want Corrupt"
         );
+    }
+}
+
+/// Hostile inputs (container headers with nothing behind them, zeros, text, absurd box sizes)
+/// make `probe` and `index_media` fail with a media fault (damaged, unsupported or without
+/// streams), never panic or hang, and never succeed with an empty answer.
+pub fn hostile_files_are_media_faults(b: &dyn MediaBackend, fx: &Fixtures) {
+    let mut ftyp = Vec::new();
+    ftyp.extend_from_slice(&24u32.to_be_bytes());
+    ftyp.extend_from_slice(b"ftypisom\0\0\x02\0isomiso2");
+    let mut huge_moov = ftyp.clone();
+    huge_moov.extend_from_slice(&u32::MAX.to_be_bytes());
+    huge_moov.extend_from_slice(b"moov");
+    let cases: [(&str, Vec<u8>); 5] = [
+        ("ftyp-only.mp4", ftyp),
+        ("huge-moov.mp4", huge_moov),
+        ("zeros.mov", vec![0; 1 << 20]),
+        ("text.mkv", b"this is not a video\n".repeat(500)),
+        ("riff-only.wav", b"RIFF\0\0\0\0WAVE".to_vec()),
+    ];
+    for (name, bytes) in cases {
+        let path = fx.dir().join(name);
+        fs::write(&path, bytes).unwrap_or_else(|e| panic!("cannot write {name}: {e}"));
+        for (call, err) in [
+            ("probe", b.probe(&path).err()),
+            ("index_media", b.index_media(&path).err()),
+        ] {
+            assert!(
+                err.as_ref().is_some_and(MediaError::is_media_fault),
+                "{call}({name}) = {err:?}, want a media fault"
+            );
+        }
     }
 }
 
@@ -360,6 +393,11 @@ macro_rules! backend_contract {
             #[test]
             fn empty_files_are_corrupt() {
                 c::empty_files_are_corrupt(&*backend(), &c::Fixtures::new());
+            }
+
+            #[test]
+            fn hostile_files_are_media_faults() {
+                c::hostile_files_are_media_faults(&*backend(), &c::Fixtures::new());
             }
 
             #[test]

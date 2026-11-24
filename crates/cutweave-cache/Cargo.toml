@@ -8,5 +8,13 @@ repository.workspace = true
 rust-version.workspace = true
 publish = false
 
+[dependencies]
+# `FrameIndex` and the `MediaBackend` that builds it (default features: the trait half only).
+cutweave-media = { path = "../cutweave-media" }
+cutweave-model = { path = "../cutweave-model" }
+thiserror.workspace = true
+# `cache.sqlite`.
+rusqlite.workspace = true
+
 [lints]
 workspace = true

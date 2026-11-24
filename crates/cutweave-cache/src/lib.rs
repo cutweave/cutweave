@@ -1,20 +1,23 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
-//! `cutweave-cache`: frame cache, thumbnails, waveform pyramids, proxy manager and SQLite index.
+//! `cutweave-cache`: frame cache, thumbnails, waveform pyramids, proxy manager and the SQLite
+//! index (arch §7).
 //!
-//! Stub crate created by WP-0A.01; real content arrives in later work packages.
+//! WP-1D.02 ships the part everything else keys on:
+//!
+//! - [`CacheDb`]: `cache.sqlite`, opened with a versioned schema and ordered migrations, holding
+//!   the [`FrameIndex`] of every analysed media file (table `frame_index`, keyed by content hash
+//!   and stream) and accounting for its size with a least-recently-used eviction
+//!   ([`CacheDb::evict_lru`]). Thumbnails, filmstrips and waveforms (WP-1D.05/1D.06) add their
+//!   tables as further migrations and share the accounting.
+//! - [`FrameIndex`] (from `cutweave-media`, re-exported): the packet-scan index that makes seeks
+//!   frame-exact and maps VFR time to frames.
+//!
+//! The cache is disposable: everything in it can be rebuilt from the media, so a damaged or
+//! too-new database is moved aside ([`CacheDb::open_or_reset`]) rather than repaired.
 
-/// Returns the crate name; placeholder until real content lands.
-#[must_use]
-pub const fn crate_name() -> &'static str {
-    "cutweave-cache"
-}
+mod db;
+mod error;
 
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn smoke() {
-        assert_eq!(crate_name(), "cutweave-cache");
-    }
-}
+pub use cutweave_media::{ContentHash, FrameIndex, HashMode};
+pub use db::{CacheDb, CacheUsage, Eviction, SCHEMA_VERSION};
+pub use error::CacheError;

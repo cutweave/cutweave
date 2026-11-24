@@ -14,7 +14,9 @@ use std::path::{Path, PathBuf};
 
 use cutweave_model::{Duration, FrameRate, ProbeInfo, SampleRate, Time};
 
-use crate::{AudioChunk, AudioFormat, Capabilities, MediaError, PixelFormat, VideoFrame};
+use crate::{
+    AudioChunk, AudioFormat, Capabilities, FrameIndex, MediaError, PixelFormat, VideoFrame,
+};
 
 /// Whether a decoder may use hardware acceleration.
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Hash)]
@@ -129,6 +131,15 @@ pub trait MediaBackend: Send + Sync {
     /// Errors: [`MediaError::NotFound`], [`MediaError::InvalidPath`], [`MediaError::Corrupt`],
     /// [`MediaError::Unsupported`], [`MediaError::Io`]. Never panics on bad input.
     fn probe(&self, path: &Path) -> Result<ProbeInfo, MediaError>;
+
+    /// The frame index of the main video stream of `path`: a packet scan, no decoding (arch §7).
+    /// Time-consuming for long files (it reads the whole container), so run it on a worker
+    /// thread.
+    ///
+    /// Errors as for [`probe`](Self::probe), plus [`MediaError::NoStream`] for a file without
+    /// pictures and [`MediaError::Corrupt`] for a stream whose packets carry no usable
+    /// timestamps or no keyframe.
+    fn index_media(&self, path: &Path) -> Result<FrameIndex, MediaError>;
 
     /// Opens a decoder for the main video stream of `path`.
     fn open_decoder(

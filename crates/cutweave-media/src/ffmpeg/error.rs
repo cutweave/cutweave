@@ -13,7 +13,13 @@ use crate::path::display;
 /// Maps a failure to open or read `path`.
 pub(super) fn media_error(path: &Path, e: Error) -> MediaError {
     let path = display(path);
-    let message = e.to_string();
+    // ffmpeg-next's own text for the AVERROR_* codes is empty on some builds.
+    let message = match (e.to_string(), e) {
+        (m, _) if !m.trim().is_empty() => m,
+        (_, Error::InvalidData) => "invalid data found when processing input".to_owned(),
+        (_, Error::Eof) => "unexpected end of file".to_owned(),
+        (_, other) => format!("FFmpeg error {other:?}"),
+    };
     match e {
         // Garbage, truncated headers, missing moov: damaged or not media at all.
         Error::InvalidData | Error::Eof => MediaError::Corrupt { path, message },
@@ -41,6 +47,17 @@ pub(super) fn media_error(path: &Path, e: Error) -> MediaError {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn corrupt_messages_are_never_empty() {
+        let p = Path::new("clip.mp4");
+        for e in [Error::InvalidData, Error::Eof] {
+            let MediaError::Corrupt { message, .. } = media_error(p, e) else {
+                panic!("not corrupt");
+            };
+            assert!(!message.trim().is_empty(), "{e:?}");
+        }
+    }
 
     #[test]
     fn open_failures_map_to_typed_errors() {
