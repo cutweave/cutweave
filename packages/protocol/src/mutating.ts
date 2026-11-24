@@ -17,6 +17,7 @@ export const READ_ONLY_METHODS: ReadonlySet<string> = new Set([
   "job.wait",
   "media.capabilities",
   "media.list",
+  "project.connections",
   "project.info",
   "project.snapshot",
   "rpc.hello",
