@@ -65,6 +65,37 @@ pub struct Item {
     pub url_verified: bool,
     pub sha256: String,
     pub size: u64,
+    /// Properties `ffprobe` must report for the file (generated items; see `corpus_probe`).
+    pub expect: Option<Expect>,
+}
+
+/// What a generated file must look like. Every field is optional; only the ones given are checked.
+#[derive(Debug, Clone, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct Expect {
+    /// Width and height of the first video stream.
+    pub width: Option<u32>,
+    pub height: Option<u32>,
+    /// Nominal frame rate (ffprobe `r_frame_rate`) of the first video stream.
+    pub fps: Option<f64>,
+    /// True for variable frame rate (uneven packet timestamps), false for constant.
+    pub vfr: Option<bool>,
+    /// Display rotation in degrees clockwise (0, 90, 180, 270), the engine's convention.
+    pub rotation: Option<u16>,
+    pub pix_fmt: Option<String>,
+    pub color_transfer: Option<String>,
+    /// Distinct decoded frame sizes (`WxH`) of the video stream, in order of first appearance.
+    pub frame_sizes: Option<Vec<String>>,
+    /// Whether the file has an audio stream, and its layout.
+    pub audio: Option<bool>,
+    pub channels: Option<u32>,
+    pub sample_rate: Option<u32>,
+    /// Container duration in seconds, within `duration_tolerance` (default 0.25 s).
+    pub duration: Option<f64>,
+    pub duration_tolerance: Option<f64>,
+    /// The file is deliberately corrupt: ffprobe must fail to read any stream.
+    #[serde(default)]
+    pub broken: bool,
 }
 
 impl Item {
@@ -240,6 +271,66 @@ fn curl_download(url: &str, part: &Path) -> Result<(), String> {
     Err(format!("download failed: {url}"))
 }
 
+/// Forward slashes: Git Bash and native ffmpeg both accept `E:/a/b`, while bash reads `E:\a\b` as one name.
+fn slashes(p: &Path) -> String {
+    p.display().to_string().replace('\\', "/")
+}
+
+/// True for the WSL launcher and the Store stub (`C:\Windows\System32\bash.exe`, `...\WindowsApps\bash.exe`),
+/// which run a Linux distribution with its own file system instead of the generators' environment.
+fn is_wsl_launcher(p: &Path) -> bool {
+    let s = p
+        .display()
+        .to_string()
+        .to_ascii_lowercase()
+        .replace('/', "\\");
+    s.contains("\\windows\\system32\\")
+        || s.contains("\\windows\\sysnative\\")
+        || s.contains("\\windowsapps\\")
+}
+
+/// The bash that runs the generator recipes. `CUTWEAVE_BASH` wins. On Windows prefer Git Bash (the bash next
+/// to the `git` on PATH, then the usual install folders), then any other bash on PATH that is not the WSL
+/// launcher; elsewhere the first `bash` on PATH.
+fn bash_program() -> PathBuf {
+    if let Some(b) = std::env::var_os("CUTWEAVE_BASH").filter(|b| !b.is_empty()) {
+        return PathBuf::from(b);
+    }
+    if !cfg!(windows) {
+        return PathBuf::from("bash");
+    }
+    let path: Vec<PathBuf> =
+        std::env::var_os("PATH").map_or_else(Vec::new, |p| std::env::split_paths(&p).collect());
+    let mut candidates: Vec<PathBuf> = Vec::new();
+    // `<git>\cmd\git.exe`, `<git>\bin\git.exe`, `<git>\mingw64\bin\git.exe`: look upward for `bin\bash.exe`.
+    for dir in &path {
+        if dir.join("git.exe").is_file() {
+            for up in dir.ancestors().take(3) {
+                candidates.push(up.join("bin").join("bash.exe"));
+            }
+        }
+    }
+    for var in ["ProgramFiles", "ProgramW6432", "ProgramFiles(x86)"] {
+        if let Some(d) = std::env::var_os(var) {
+            candidates.push(PathBuf::from(d).join("Git").join("bin").join("bash.exe"));
+        }
+    }
+    if let Some(d) = std::env::var_os("LOCALAPPDATA") {
+        candidates.push(
+            PathBuf::from(d)
+                .join("Programs")
+                .join("Git")
+                .join("bin")
+                .join("bash.exe"),
+        );
+    }
+    candidates.extend(path.iter().map(|d| d.join("bash.exe")));
+    candidates
+        .into_iter()
+        .find(|c| c.is_file() && !is_wsl_launcher(c))
+        .unwrap_or_else(|| PathBuf::from("bash"))
+}
+
 fn have_ffmpeg() -> bool {
     Command::new("ffmpeg")
         .arg("-version")
@@ -261,16 +352,22 @@ pub fn fetch_item(root: &Path, dir: &Path, it: &Item) -> Result<Outcome, String>
         );
         fs::remove_file(&dest).map_err(|e| e.to_string())?;
     }
-    let part = dir.join(format!("{}.part", it.file));
+    // A recipe lets ffmpeg pick the muxer from the output extension, so a generated file keeps its own
+    // extension (`gen-<file>`); a download is `<file>.part` (resumable with curl).
+    let part = if it.generate.is_some() {
+        dir.join(format!("gen-{}", it.file))
+    } else {
+        dir.join(format!("{}.part", it.file))
+    };
     if let Some(url) = &it.source_url {
         curl_download(url, &part)?;
     } else if let Some(recipe) = &it.generate {
         if !have_ffmpeg() {
             return Ok(Outcome::Skipped("needs ffmpeg on PATH".into()));
         }
-        let ok = Command::new("bash")
-            .arg(root.join(recipe))
-            .arg(&part)
+        let ok = Command::new(bash_program())
+            .arg(slashes(&root.join(recipe)))
+            .arg(slashes(&part))
             .current_dir(root)
             .status()
             .is_ok_and(|s| s.success());
@@ -298,6 +395,18 @@ struct Opts {
     dir: PathBuf,
     pin: bool,
     allow_unpinned: bool,
+    /// `--verify` (fetch-corpus): run the verification after fetching.
+    verify: bool,
+    /// `--no-probe` skips the ffprobe check against `expect`; `--probe` makes a missing ffprobe an error.
+    probe: Probe,
+}
+
+#[derive(Clone, Copy, PartialEq, Eq)]
+enum Probe {
+    /// Probe when ffprobe is on PATH, otherwise say so and carry on.
+    IfAvailable,
+    Required,
+    Off,
 }
 
 fn parse_opts(root: &Path, args: &[String]) -> Result<Opts, String> {
@@ -307,6 +416,8 @@ fn parse_opts(root: &Path, args: &[String]) -> Result<Opts, String> {
         dir: corpus_dir(root),
         pin: false,
         allow_unpinned: false,
+        verify: false,
+        probe: Probe::IfAvailable,
     };
     let mut it = args.iter();
     while let Some(a) = it.next() {
@@ -323,6 +434,9 @@ fn parse_opts(root: &Path, args: &[String]) -> Result<Opts, String> {
             "--dir" => o.dir = PathBuf::from(val("--dir")?),
             "--pin" => o.pin = true,
             "--allow-unpinned" => o.allow_unpinned = true,
+            "--verify" => o.verify = true,
+            "--probe" => o.probe = Probe::Required,
+            "--no-probe" => o.probe = Probe::Off,
             other => return Err(format!("unknown option `{other}`")),
         }
     }
@@ -368,6 +482,16 @@ pub fn fetch(root: &Path, args: &[String]) -> bool {
                 "{unpinned} item(s) have no pinned sha256; re-run with --pin to record them in the manifest"
             );
         }
+        if o.verify && !failed {
+            // The manifest may just have been pinned; `--allow-unpinned` keeps this check about the probe.
+            let mut a: Vec<String> = args
+                .iter()
+                .filter(|a| *a != "--verify" && *a != "--pin")
+                .cloned()
+                .collect();
+            a.push("--allow-unpinned".into());
+            return Ok(verify(root, &a));
+        }
         Ok(!failed)
     };
     run().unwrap_or_else(|e| {
@@ -382,6 +506,17 @@ pub fn verify(root: &Path, args: &[String]) -> bool {
         let o = parse_opts(root, args)?;
         let (_, m) = load(&o.manifest)?;
         let mut ok = true;
+        let probing = match o.probe {
+            Probe::Off => false,
+            Probe::IfAvailable | Probe::Required if crate::corpus_probe::have_ffprobe() => true,
+            Probe::Required => return Err("--probe needs ffprobe on PATH".into()),
+            Probe::IfAvailable => {
+                println!(
+                    "ffprobe not on PATH: skipping the check of generated items against `expect`"
+                );
+                false
+            }
+        };
         for it in m.item.iter().filter(|i| o.tier.includes(i.tier)) {
             let p = o.dir.join(&it.file);
             if !p.is_file() {
@@ -392,6 +527,21 @@ pub fn verify(root: &Path, args: &[String]) -> bool {
                     ok = false;
                 }
                 continue;
+            }
+            if let (Some(exp), true) = (&it.expect, probing) {
+                match crate::corpus_probe::check(it, exp, &p) {
+                    Ok(bad) if bad.is_empty() => println!("{}: probe ok", it.id),
+                    Ok(bad) => {
+                        for b in bad {
+                            eprintln!("{}: probe mismatch, {b}", it.id);
+                        }
+                        ok = false;
+                    }
+                    Err(e) => {
+                        eprintln!("{}: probe failed, {e}", it.id);
+                        ok = false;
+                    }
+                }
             }
             if it.pending() {
                 if o.allow_unpinned {
@@ -475,6 +625,34 @@ mod tests {
                 "required item `{id}` missing"
             );
         }
+    }
+
+    #[test]
+    fn every_generated_item_declares_what_it_must_probe_as() {
+        let root = crate::workspace_root();
+        let (_, m) = load(&root.join("testdata/corpus.toml")).unwrap();
+        for it in m.item.iter().filter(|i| i.generate.is_some()) {
+            assert!(
+                it.expect.is_some(),
+                "{}: generated item without `expect`",
+                it.id
+            );
+        }
+    }
+
+    #[test]
+    fn the_wsl_launcher_is_never_chosen() {
+        assert!(is_wsl_launcher(Path::new(
+            "C:\\Windows\\System32\\bash.exe"
+        )));
+        assert!(is_wsl_launcher(Path::new("C:/WINDOWS/system32/bash.exe")));
+        assert!(is_wsl_launcher(Path::new(
+            "C:\\Users\\a\\AppData\\Local\\Microsoft\\WindowsApps\\bash.exe"
+        )));
+        assert!(!is_wsl_launcher(Path::new(
+            "C:\\Program Files\\Git\\bin\\bash.exe"
+        )));
+        assert_eq!(slashes(Path::new("E:\\a\\b.part")), "E:/a/b.part");
     }
 
     #[test]
