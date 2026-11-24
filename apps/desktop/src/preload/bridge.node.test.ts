@@ -285,7 +285,12 @@ describe("cutweave-bridge addon against the Rust writer", () => {
   it("picks frames by the audio clock: pts <= clock - latency, once each", async () => {
     const fx = await start(["--width", "160", "--height", "90", "--fps", "60"]);
     const ring = native.openRing(fx.ready.name, fx.ready.epoch);
-    const first = await until("a clock sample", 3000, () => ring.audioClock());
+    // The fixture publishes a stopped clock before it starts playing; under load the first
+    // sample can still be that one, so wait for the playing clock rather than the first sample.
+    const first = await until("a playing clock sample", 3000, () => {
+      const sample = ring.audioClock();
+      return sample?.state === "playing" ? sample : null;
+    });
     expect(first.state).toBe("playing");
     expect(first.rateMilli).toBe(1000);
     let lastSeq = 0;

@@ -394,6 +394,9 @@ describe("save, dirty, close and reopen against the real engine", () => {
       await untitledAndEmpty(s);
       expect(await s.controller.open(path)).toBe(true);
       await until(() => s.stores.session.getState().path === path);
+      // The session store learns the path before the document store takes the reopened
+      // document; an edit before that selects nothing and never makes the project dirty.
+      await until(() => select(s, clip).length === 1, 30_000, "the reopened document");
       const reopened = await s.rpc.call("timeline.get", { sequence, depth: 2 });
       expect(reopened).toEqual(saved);
       expect(s.stores.session.getState().recovery).toBeNull();
