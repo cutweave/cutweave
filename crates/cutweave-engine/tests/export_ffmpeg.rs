@@ -2,7 +2,8 @@
 //! WP-1E.03 acceptance with real output: a 3-clip 20 s 1080p30 timeline (`FakeBackend` clips:
 //! 1080p30 4:2:0, 720p30 NV12 scaled up, 1080p25 with 44.1 kHz audio; their pictures repainted
 //! with smooth moving content, see [`Canvas`]) exported through the engine (`export.start`) on a
-//! headless wgpu device with the FFmpeg encoder:
+//! headless wgpu device with the FFmpeg encoder (`hw: "auto"`, so a hardware encoder where the
+//! machine has one):
 //!
 //! - the MP4 is clean for `ffprobe` / `ffmpeg`, holds exactly 600 frames at 30/1 fps, lasts the
 //!   timeline ±1 frame, and has its AAC track;
@@ -10,12 +11,16 @@
 //!   bit-identical to `render.frame` (registry query, PNG) on the same adapter;
 //! - the frame at t = 5 s decoded from the MP4 is within PSNR ≥ 38 dB of `render.frame`;
 //! - cancelling at 50 % ends the job `Cancelled` within a second and leaves no file;
-//! - two exports of one snapshot with one x264 thread decode to identical frames
-//!   (`ffmpeg -f framemd5`).
+//! - two exports of one snapshot in software (`hw: "off"`) with one x264 thread decode to
+//!   identical frames (`ffmpeg -f framemd5`);
+//! - a hardware encoder failing mid-export (a pretend one, so on any machine) makes the export
+//!   start over with x264 and leaves one clean file;
+//! - (`#[ignore]`d, `CUTWEAVE_HW_TESTS=1`) each hardware encoder of the machine exports the
+//!   timeline at ≥ 2× realtime (arch §19) within the same PSNR allowance.
 //!
 //! Needs the FFmpeg bundle (`. scripts/ffmpeg/env.sh`; `ffmpeg`/`ffprobe` from
 //! `$FFMPEG_DIR/bin`) and a wgpu adapter (`CUTWEAVE_GPU` picks one; default: the best). Without
-//! an adapter the tests skip with a message unless `CUTWEAVE_GPU_REQUIRED=1`.
+//! an adapter the GPU tests skip with a message unless `CUTWEAVE_GPU_REQUIRED=1`.
 #![cfg(feature = "ffmpeg")]
 #![allow(clippy::unwrap_used, clippy::expect_used, clippy::too_many_lines)]
 
@@ -43,8 +48,8 @@ use cutweave_render::gpu::{
 };
 use cutweave_render::query::SharedBackend;
 use export_support::{
-    LateSource, SEC, TempDir, agent, assert_succeeded, clip, engine, insert, job, must,
-    new_project, register, wait, wait_until,
+    LateSource, PSEUDO_HW, ProbeRenderer, PseudoHw, SEC, TempDir, agent, assert_succeeded, clip,
+    engine, insert, job, must, new_project, register, wait, wait_until,
 };
 use serde_json::{Value, json};
 
@@ -416,6 +421,11 @@ impl Rig {
         must(&self.conn, "export.start", params)
     }
 
+    /// PSNR (dB) of frame `n` decoded from `out` against `render.frame` at that frame.
+    fn psnr_at(&self, out: &Path, n: u32) -> f64 {
+        psnr(&decoded_rgb(out, n), &rgb(&self.render_frame(n)))
+    }
+
     fn close(self) {
         drop(self.conn);
         self.engine.shutdown();
@@ -520,10 +530,15 @@ fn ffmpeg(args: &[&str]) -> Vec<u8> {
 }
 
 /// Frame `n` of the MP4 as RGB24, decoded with the BT.709 limited-range matrix the export
-/// writes.
+/// writes. `setparams` pins the frame's colour tags first: FFmpeg 8 negotiates colour spaces in
+/// filter graphs, so a stream whose tags differ from what the graph expects (hardware encoders
+/// and x264 tag alike, but the comparison must not depend on it) would be converted again and
+/// lose about 25 dB (docs/reference/export-quality.md). The reference side is `render.frame`'s
+/// PNG, decoded in Rust.
 fn decoded_rgb(path: &Path, n: u32) -> Vec<u8> {
     let filter = format!(
-        "select=eq(n\\,{n}),scale=in_color_matrix=bt709:in_range=tv:out_range=pc:\
+        "select=eq(n\\,{n}),setparams=range=tv:colorspace=bt709:color_primaries=bt709:\
+         color_trc=bt709,scale=in_color_matrix=bt709:in_range=tv:out_range=pc:\
          flags=accurate_rnd+full_chroma_int,format=rgb24"
     );
     ffmpeg(&[
@@ -603,6 +618,18 @@ fn a_three_clip_1080p_export_is_a_clean_mp4_that_matches_render_frame() {
 
     // ffprobe: H.264 1920x1080 at exactly 30/1, 600 frames, 20 s ±1 frame, AAC stereo 48 kHz.
     let out = Path::new(&path);
+    assert_clean_mp4(out, (1920, 1080), 600, 20.0);
+
+    // The decoded frame at t = 5 s is within the H.264 loss allowance of `render.frame`.
+    let db = rig.psnr_at(out, 150);
+    println!("PSNR at t = 5 s (frame 150): {db:.2} dB");
+    assert!(db >= 38.0, "PSNR {db:.2} dB < 38 dB");
+    rig.close();
+}
+
+/// ffprobe: H.264 `size` at exactly 30/1 with `frames` frames, `seconds` ±1 frame long, AAC
+/// stereo 48 kHz, BT.709; and `ffmpeg` decodes it without a complaint.
+fn assert_clean_mp4(out: &Path, size: (u32, u32), frames: u32, seconds: f64) {
     let info = probe(out, &["-count_frames"]);
     let (v, a) = if get(&info, "streams_stream_0_codec_type") == "video" {
         ("streams_stream_0_", "streams_stream_1_")
@@ -624,29 +651,164 @@ fn a_three_clip_1080p_export_is_a_clean_mp4_that_matches_render_frame() {
     );
     assert_eq!(get(&info, "format_nb_streams"), "2");
     assert_eq!(get(&info, &key(v, "codec_name")), "h264");
-    assert_eq!(get(&info, &key(v, "width")), "1920");
-    assert_eq!(get(&info, &key(v, "height")), "1080");
+    assert_eq!(get(&info, &key(v, "width")), size.0.to_string());
+    assert_eq!(get(&info, &key(v, "height")), size.1.to_string());
     assert_eq!(get(&info, &key(v, "r_frame_rate")), "30/1");
-    assert_eq!(get(&info, &key(v, "nb_read_frames")), "600");
+    assert_eq!(get(&info, &key(v, "nb_read_frames")), frames.to_string());
     assert_eq!(get(&info, &key(v, "color_space")), "bt709");
     assert_eq!(get(&info, &key(a, "codec_name")), "aac");
     assert_eq!(get(&info, &key(a, "sample_rate")), "48000");
     assert_eq!(get(&info, &key(a, "channels")), "2");
     let duration: f64 = get(&info, "format_duration").parse().unwrap();
     assert!(
-        (duration - 20.0).abs() <= 1.0 / 30.0,
-        "duration {duration} s is not 20 s ±1 frame"
+        (duration - seconds).abs() <= 1.0 / 30.0,
+        "duration {duration} s is not {seconds} s ±1 frame"
     );
-    // Decodes without a single complaint.
-    ffmpeg(&["-i", &path, "-f", "null", "-"]);
+    ffmpeg(&["-i", &out.to_string_lossy(), "-f", "null", "-"]);
+}
 
-    // The decoded frame at t = 5 s is within the H.264 loss allowance of `render.frame`.
-    let decoded = decoded_rgb(out, 150);
-    let reference = rig.render_frame(150);
-    let db = psnr(&decoded, &rgb(&reference));
-    println!("PSNR at t = 5 s (frame 150): {db:.2} dB");
-    assert!(db >= 38.0, "PSNR {db:.2} dB < 38 dB");
+/// The hardware H.264 encoders FFmpeg's probe found here, in `auto` order.
+fn hardware_encoders() -> Vec<String> {
+    FfmpegBackend::new()
+        .expect("the loaded FFmpeg matches the build")
+        .capabilities()
+        .hw_encode
+        .into_iter()
+        .filter(|c| c.codec == "h264")
+        .map(|c| c.implementation)
+        .collect()
+}
+
+/// WP-1E.02 with export (arch §19: ≥ 2× realtime with hardware encoding): the 20 s 1080p30
+/// timeline through each hardware encoder this machine has, forced, then `auto`. Reference
+/// machines only: `CUTWEAVE_HW_TESTS=1 … --run-ignored all`.
+#[test]
+#[ignore = "needs a hardware H.264 encoder; run with CUTWEAVE_HW_TESTS=1 and --run-ignored all"]
+fn hardware_exports_run_at_least_twice_realtime() {
+    if std::env::var("CUTWEAVE_HW_TESTS").as_deref() != Ok("1") {
+        eprintln!("skipping: set CUTWEAVE_HW_TESTS=1 on a machine with a hardware encoder");
+        return;
+    }
+    let encoders = hardware_encoders();
+    println!("hardware encoders here: {encoders:?}");
+    assert!(
+        !encoders.is_empty(),
+        "no hardware H.264 encoder passed the probe"
+    );
+    let Some(rig) = Rig::new("hw-speed", 0) else {
+        return;
+    };
+    let runs = encoders
+        .iter()
+        .map(|name| (name.clone(), json!({ "force": name })))
+        .chain([("auto".to_owned(), json!("auto"))]);
+    for (label, hw) in runs {
+        let path = rig.dir.file(&format!("hw-{label}.mp4"));
+        let started_at = Instant::now();
+        let started = rig.export(json!({ "path": path, "hw": hw }));
+        let info = wait(&rig.conn, &started["job_id"], WAIT);
+        assert_succeeded(&info);
+        let elapsed = started_at.elapsed().as_secs_f64();
+        let message = info.progress.message.unwrap_or_default();
+        let realtime = 20.0 / elapsed;
+        let db = rig.psnr_at(Path::new(&path), 150);
+        println!(
+            "{label}: 20 s of 1080p30 in {elapsed:.2} s: {:.1} fps, {realtime:.2}x realtime, \
+             PSNR at 5 s {db:.2} dB ({message})",
+            600.0 / elapsed
+        );
+        let used = if label == "auto" {
+            &encoders[0]
+        } else {
+            &label
+        };
+        assert!(message.ends_with(&format!("with {used}")), "{message}");
+        assert_clean_mp4(Path::new(&path), (1920, 1080), 600, 20.0);
+        assert!(db >= 38.0, "{label}: PSNR {db:.2} dB < 38 dB");
+        assert!(
+            realtime >= 2.0,
+            "{label}: {realtime:.2}x realtime is below the 2x export budget"
+        );
+    }
     rig.close();
+}
+
+/// A hardware encoder failing mid-export, on any machine: the pretend hardware encoder fails
+/// after 45 frames, the export starts over with x264 from frame 0, and exactly one clean file
+/// remains (no partial file of the failed attempt).
+#[test]
+fn a_hardware_failure_mid_export_leaves_one_clean_software_file() {
+    let dir = TempDir::new("hw-fallback");
+    let paths = [dir.file("a.mp4"), dir.file("b.mp4"), dir.file("c.mp4")];
+    let fake = FakeBackend::new()
+        .with_media(
+            &paths[0],
+            clip(
+                3,
+                (320, 180),
+                FrameRate::FPS_30,
+                PixelFormat::Yuv420p,
+                440.0,
+                SampleRate::HZ_48_000,
+            ),
+        )
+        .with_media(
+            &paths[1],
+            clip(
+                3,
+                (320, 180),
+                FrameRate::FPS_30,
+                PixelFormat::Nv12,
+                660.0,
+                SampleRate::HZ_48_000,
+            ),
+        );
+    let pseudo = PseudoHw::new(
+        FfmpegBackend::new().expect("the loaded FFmpeg matches the build"),
+        Some(45),
+    );
+    let services = ExportServices::new(
+        Arc::new(pseudo.clone()),
+        Arc::new(DecoderSources::new(Arc::new(fake.clone()))),
+        ProbeRenderer::new(Arc::new(LateSource::default()) as _).shared(),
+    );
+    let engine = engine(dir.path(), Some(services));
+    let conn = agent(&engine);
+    let (seq, video, _) = new_project(&conn);
+    let ids: Vec<_> = paths[..2]
+        .iter()
+        .map(|p| register(&conn, &fake, p))
+        .collect();
+    insert(&conn, &seq, &video, ids[0], "0s", "2s", "0s");
+    insert(&conn, &seq, &video, ids[1], "2s", "1s", "1s");
+    let path = dir.file("out.mp4");
+    let started = must(
+        &conn,
+        "export.start",
+        json!({ "path": path, "preset": {"custom": {"width": 320, "height": 180}} }),
+    );
+    let info = wait(&conn, &started["job_id"], WAIT);
+    assert_succeeded(&info);
+    let message = info.progress.message.unwrap_or_default();
+    println!("{message}");
+    assert_eq!(
+        message,
+        format!(
+            "exported 90 frames (3.00 s) with libx264 ({PSEUDO_HW} failed during the export, so \
+             it was encoded again in software)"
+        )
+    );
+    assert_eq!(
+        pseudo.opened(),
+        [
+            cutweave_media::HwEncode::Auto,
+            cutweave_media::HwEncode::Off
+        ]
+    );
+    assert_eq!(dir.entries(), ["out.mp4"], "only the finished file remains");
+    assert_clean_mp4(Path::new(&path), (320, 180), 90, 3.0);
+    drop(conn);
+    engine.shutdown();
 }
 
 #[test]
@@ -694,7 +856,9 @@ fn two_exports_of_one_snapshot_decode_to_identical_frames() {
     let mut revs = Vec::new();
     for name in ["first.mp4", "second.mp4"] {
         let path = rig.dir.file(name);
-        let started = rig.export(json!({ "path": path, "range": range }));
+        // x264 with one thread (the rig's services): identical output run to run. Hardware
+        // encoders promise no such thing, so `hw` is off explicitly.
+        let started = rig.export(json!({ "path": path, "range": range, "hw": "off" }));
         assert_eq!(started["frames"], json!(150));
         assert_eq!(started["in"], json!(4 * SEC));
         revs.push(started["rev"].clone());

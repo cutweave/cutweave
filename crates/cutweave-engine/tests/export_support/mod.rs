@@ -23,8 +23,8 @@ use cutweave_engine::{Call, Connection, Engine, EngineConfig, EngineMode, Subsys
 use cutweave_jobs::{JobInfo, JobState};
 use cutweave_media::testing::{FakeAudio, FakeBackend, FakeMedia, FakeVideo};
 use cutweave_media::{
-    AudioDecoder, Capabilities, CodecSupport, DecodeOpts, EncodeSpec, Encoder, FrameIndex,
-    MediaBackend, MediaError, PixelFormat, VideoDecoder,
+    AudioDecoder, Capabilities, CodecSupport, DecodeOpts, EncodeSpec, Encoder, FrameIndex, HwCodec,
+    HwEncode, MediaBackend, MediaError, PixelFormat, VideoDecoder,
 };
 use cutweave_model::{
     Duration, FrameRate, MediaId, ProbeInfo, Project, SampleRate, StreamKind, Time,
@@ -232,6 +232,15 @@ pub fn wait_until(
     }
 }
 
+/// Every event queued now.
+pub fn drain(rx: &mut cutweave_engine::EventReceiver) -> Vec<cutweave_engine::EngineEvent> {
+    let mut out = Vec::new();
+    while let Ok(e) = rx.try_recv() {
+        out.push(e);
+    }
+    out
+}
+
 /// Asserts the job succeeded.
 #[track_caller]
 pub fn assert_succeeded(info: &JobInfo) {
@@ -432,6 +441,127 @@ impl FrameBackend for ProbeRenderer {
         let layers = u8::try_from(scene.layers.len()).unwrap_or(u8::MAX);
         #[allow(clippy::cast_possible_truncation)]
         Ok(Image::filled(w, h, [n as u8, (n >> 8) as u8, layers, 255]))
+    }
+}
+
+// ----- a pretend hardware encoder ----------------------------------------------------------------
+
+/// The pretend hardware encoder's name.
+pub const PSEUDO_HW: &str = "test_hw";
+
+/// `inner` with a pretend hardware H.264 encoder [`PSEUDO_HW`] (listed in `hw_encode`): under
+/// `HwEncode::Auto` and `Force("test_hw")` the video goes to `inner`'s software encoder under
+/// that name and fails with `HwUnavailable` once `fail_after` frames were pushed (dropping the
+/// encoder removes its partial output, as a real one does); `Off` is `inner` unchanged. Every
+/// open's policy is recorded. `cutweave-media`'s own pseudo encoder is private to its tests.
+#[derive(Clone)]
+pub struct PseudoHw<B> {
+    pub inner: B,
+    pub fail_after: Option<u64>,
+    pub opened: Arc<Mutex<Vec<HwEncode>>>,
+}
+
+impl<B> PseudoHw<B> {
+    pub fn new(inner: B, fail_after: Option<u64>) -> PseudoHw<B> {
+        PseudoHw {
+            inner,
+            fail_after,
+            opened: Arc::default(),
+        }
+    }
+
+    pub fn opened(&self) -> Vec<HwEncode> {
+        self.opened.lock().unwrap().clone()
+    }
+}
+
+struct PseudoEncoder {
+    inner: Box<dyn Encoder>,
+    fail_after: Option<u64>,
+    pushed: u64,
+}
+
+impl Encoder for PseudoEncoder {
+    fn push_video(&mut self, frame: &cutweave_media::VideoFrame) -> Result<(), MediaError> {
+        if self.fail_after.is_some_and(|n| self.pushed >= n) {
+            return Err(MediaError::HwUnavailable {
+                reason: format!("{PSEUDO_HW}: device lost (simulated)"),
+            });
+        }
+        self.inner.push_video(frame)?;
+        self.pushed += 1;
+        Ok(())
+    }
+
+    fn push_audio(&mut self, chunk: &cutweave_media::AudioChunk) -> Result<(), MediaError> {
+        self.inner.push_audio(chunk)
+    }
+
+    fn video_encoder(&self) -> Option<&str> {
+        Some(PSEUDO_HW)
+    }
+
+    fn finish(self: Box<Self>) -> Result<cutweave_media::EncodeSummary, MediaError> {
+        self.inner.finish()
+    }
+}
+
+impl<B: MediaBackend> MediaBackend for PseudoHw<B> {
+    fn probe(&self, path: &Path) -> Result<ProbeInfo, MediaError> {
+        self.inner.probe(path)
+    }
+
+    fn index_media(&self, path: &Path) -> Result<FrameIndex, MediaError> {
+        self.inner.index_media(path)
+    }
+
+    fn open_decoder(
+        &self,
+        path: &Path,
+        opts: &DecodeOpts,
+    ) -> Result<Box<dyn VideoDecoder>, MediaError> {
+        self.inner.open_decoder(path, opts)
+    }
+
+    fn open_audio_decoder(
+        &self,
+        path: &Path,
+        stream: Option<u32>,
+    ) -> Result<Box<dyn AudioDecoder>, MediaError> {
+        self.inner.open_audio_decoder(path, stream)
+    }
+
+    fn open_encoder(&self, spec: &EncodeSpec) -> Result<Box<dyn Encoder>, MediaError> {
+        self.opened.lock().unwrap().push(spec.hw.clone());
+        let hardware = match &spec.hw {
+            HwEncode::Auto => true,
+            HwEncode::Force(name) if name == PSEUDO_HW => true,
+            HwEncode::Force(name) => {
+                return Err(MediaError::HwUnavailable {
+                    reason: format!("no hardware encoder `{name}`"),
+                });
+            }
+            _ => false,
+        };
+        let software = spec.clone().with_hw(HwEncode::Off);
+        if !hardware {
+            return self.inner.open_encoder(&software);
+        }
+        Ok(Box::new(PseudoEncoder {
+            inner: self.inner.open_encoder(&software)?,
+            fail_after: self.fail_after,
+            pushed: 0,
+        }))
+    }
+
+    fn capabilities(&self) -> Capabilities {
+        let mut caps = self.inner.capabilities();
+        caps.hw_encode = vec![HwCodec {
+            device: "test".into(),
+            codec: "h264".into(),
+            implementation: PSEUDO_HW.into(),
+        }];
+        caps
     }
 }
 

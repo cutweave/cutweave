@@ -321,12 +321,25 @@ expression: catalog.tools_json()
                   {
                     "type": "string",
                     "const": "auto",
-                    "description": "A hardware H.264 encoder when the machine has one, else software (x264). Hardware\nencoding is not available yet: software is used."
+                    "description": "The first hardware H.264 encoder that works here, else software (x264); if it fails\nduring the export, the export starts again in software."
                   },
                   {
                     "type": "string",
                     "const": "off",
                     "description": "Software (x264) only."
+                  },
+                  {
+                    "type": "object",
+                    "properties": {
+                      "force": {
+                        "type": "string"
+                      }
+                    },
+                    "required": [
+                      "force"
+                    ],
+                    "additionalProperties": false,
+                    "description": "This hardware encoder and no other, e.g. \"h264_nvenc\" (the `implementation` names of\nthe machine's hardware encoders); fails instead of falling back."
                   }
                 ]
               },
@@ -334,7 +347,7 @@ expression: catalog.tools_json()
                 "type": "null"
               }
             ],
-            "description": "Hardware encoder: \"auto\" (default) or \"off\"."
+            "description": "Hardware encoder: \"auto\" (default), \"off\", or {\"force\": \"h264_nvenc\"}."
           },
           "overwrite": {
             "type": [

@@ -109,15 +109,43 @@ pub enum ExportPreset {
 
 /// Whether to use a hardware video encoder.
 #[wire]
-#[derive(Copy, Default, Eq, Hash)]
+#[derive(Default, Eq, Hash)]
 #[serde(rename_all = "snake_case")]
 pub enum ExportHw {
-    /// A hardware H.264 encoder when the machine has one, else software (x264). Hardware
-    /// encoding is not available yet: software is used.
+    /// The first hardware H.264 encoder that works here, else software (x264); if it fails
+    /// during the export, the export starts again in software.
     #[default]
     Auto,
     /// Software (x264) only.
     Off,
+    /// This hardware encoder and no other, e.g. "h264_nvenc" (the `implementation` names of
+    /// the machine's hardware encoders); fails instead of falling back.
+    Force(String),
+}
+
+/// Longest accepted encoder name of `hw: {"force": …}`.
+pub const MAX_ENCODER_NAME_CHARS: usize = 64;
+
+impl ExportHw {
+    /// Checks the encoder name of `Force` (lowercase letters, digits and `_`).
+    fn check(&self) -> Result<(), CmdError> {
+        if let ExportHw::Force(name) = self
+            && (name.is_empty()
+                || name.len() > MAX_ENCODER_NAME_CHARS
+                || !name
+                    .bytes()
+                    .all(|b| b.is_ascii_lowercase() || b.is_ascii_digit() || b == b'_'))
+        {
+            return Err(CmdError::invalid(
+                "/hw/force",
+                format!(
+                    "`{name}` is not an encoder name (1..={MAX_ENCODER_NAME_CHARS} lowercase \
+                     letters, digits and `_`, e.g. `h264_nvenc`)"
+                ),
+            ));
+        }
+        Ok(())
+    }
 }
 
 /// Result of `export.start`: the job and what it will write.
@@ -173,7 +201,7 @@ pub struct ExportStart {
     pub range: Option<ExportRange>,
     /// "h264-mp4-1080p" (default) or {"custom": {width, height, fps, quality}}.
     pub preset: Option<ExportPreset>,
-    /// Hardware encoder: "auto" (default) or "off".
+    /// Hardware encoder: "auto" (default), "off", or {"force": "h264_nvenc"}.
     pub hw: Option<ExportHw>,
     /// Replace an existing file at `path` (default false).
     pub overwrite: Option<bool>,
@@ -228,8 +256,9 @@ impl ExportPlan {
 /// Queues export jobs: the engine implements it (rendering, mixing, encoding).
 pub trait ExportStarter: Send {
     /// Queues the export of `plan` and returns its job. Fails with `Unsupported` when this
-    /// engine cannot export (no media backend, renderer or encoder) and with `Invalid` at
-    /// `/path` when another export is already writing that file.
+    /// engine cannot export (no media backend, renderer or encoder), with `Invalid` at `/path`
+    /// when another export is already writing that file and with `Invalid` at `/hw/force` when
+    /// the forced hardware encoder is not one this machine has.
     fn start(&mut self, plan: ExportPlan) -> Result<JobId, CmdError>;
 }
 
@@ -544,6 +573,8 @@ impl ExportStart {
             .duration_since(start)
             .map_err(|e| CmdError::invalid("/range", e.to_string()))?;
         let (frames, duration) = frame_count(length, frame_rate)?;
+        let hw = self.hw.clone().unwrap_or_default();
+        hw.check()?;
         let overwrite = self.overwrite.unwrap_or(false);
         let path = check_output(doc, &self.path, overwrite, roots)?;
         Ok(ExportPlan {
@@ -559,7 +590,7 @@ impl ExportStart {
             frames,
             duration,
             quality,
-            hw: self.hw.unwrap_or_default(),
+            hw,
         })
     }
 }
