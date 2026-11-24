@@ -89,7 +89,22 @@ test.describe("F6 inspector", () => {
 
       // Opacity: drag the slider's thumb to the middle of its rail, then one step down by key.
       const rail = f.panel.locator(".cw-slider__track");
-      const box = await rail.boundingBox();
+      // The inspector may still be re-laying out after the edits above (the error note closing):
+      // drag only once the rail stays where it is, as a person would aim at what they see.
+      let box = await rail.boundingBox();
+      await expect
+        .poll(async () => {
+          const next = await rail.boundingBox();
+          const steady =
+            next !== null &&
+            box !== null &&
+            Math.abs(next.x - box.x) < 0.5 &&
+            Math.abs(next.y - box.y) < 0.5 &&
+            Math.abs(next.width - box.width) < 0.5;
+          box = next;
+          return steady;
+        })
+        .toBe(true);
       const thumb = await f.opacity.boundingBox();
       if (box === null || thumb === null) throw new Error("no opacity slider");
       await page.mouse.move(thumb.x + thumb.width / 2, thumb.y + thumb.height / 2);
