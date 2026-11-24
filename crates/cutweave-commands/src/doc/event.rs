@@ -27,8 +27,10 @@ pub struct DocSnapshot {
 }
 
 impl DocSnapshot {
-    /// Whether this is a committed state: no open gesture or proposal had changes in it.
-    /// (`rev == committed_rev` implies it; the converse can fail right after a rollback.)
+    /// Whether `rev == committed_rev`, which means this is the committed document: no open
+    /// gesture or proposal has changes in it. Not conversely: a rollback bumps `rev` but not
+    /// `committed_rev`, so after a cancel this is `false` although the document equals the
+    /// committed one, until the next commit. To compare contents, read the committed snapshot.
     #[must_use]
     pub fn is_committed(&self) -> bool {
         self.rev == self.committed_rev
