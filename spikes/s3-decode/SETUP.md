@@ -90,6 +90,31 @@ Observations:
   (thumbnails, RGBA for agent frames) and `software-resampling` (audio), but probably not
   `device`.
 
+## Hardware decode and GPU upload (WP-0E.02)
+
+Nothing extra is linked for hardware decode: the hwaccels are inside the FFmpeg DLLs, and the
+spike reaches them through `ffmpeg-sys-next`'s raw bindings (`hwcontext.h`, `hwcontext_d3d11va.h`
+are in its bindings). What a machine needs is a GPU driver:
+
+| Hwaccel (`--hw`) | Needs | Device argument |
+|---|---|---|
+| `d3d11va[:N]` | Windows 8+, any DX11 GPU driver | DXGI adapter index (`s3 hwinfo` lists which opens; here 0 = Radeon iGPU, 1 = RTX 3080) |
+| `d3d12va[:N]` | Windows 10 2004+, DX12 video driver | DXGI adapter index |
+| `cuda[:N]` | NVIDIA driver (`nvcuda.dll`, `nvcuvid.dll`); no CUDA toolkit | CUDA device index |
+| `vulkan[:N]` | Vulkan driver with `VK_KHR_video_decode_*` | Vulkan physical device index |
+| `videotoolbox` | macOS | none |
+| `vaapi[:/dev/dri/renderDN]` | Linux, Mesa `va` driver (`radeonsi`, `iHD`) or `nvidia-vaapi-driver`; the user in group `render` | DRM render node |
+
+The wgpu side (`gpu` feature, default on) uses the same pinned `wgpu` 30.0.2 as `cutweave-render`.
+The `zero-copy` feature adds the `windows` 0.62 crate (D3D11/D3D12/DXGI bindings; same line as
+wgpu-hal's, already in the root lockfile). Both resolve offline from the registry cache.
+
+```powershell
+cargo build --release                       # path (a): hw decode + CPU upload (default features)
+cargo build --release --features zero-copy  # + path (b) experiment (Windows)
+.\target\release\s3.exe hwinfo              # which hwaccel devices open, wgpu adapters
+```
+
 ## macOS arm64 (expected; run in WP-0E.03)
 
 ```sh

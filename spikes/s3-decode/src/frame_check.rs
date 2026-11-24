@@ -17,12 +17,14 @@ pub struct Luma<'a> {
     /// Bytes per sample (1 for 8-bit, 2 for 9..16-bit little-endian).
     pub bytes: usize,
     pub depth: u32,
+    /// Right shift that LSB-aligns a sample (6 for P010 from hardware decode, else 0).
+    pub shift: u32,
 }
 
 impl<'a> Luma<'a> {
     /// The Y plane of a decoded frame; `None` for packed or unknown formats.
     pub fn of(frame: &'a ffmpeg::frame::Video) -> Option<Self> {
-        let (depth, bytes, planar) = ffi::luma_layout(frame.format())?;
+        let (depth, bytes, planar, shift) = ffi::luma_layout(frame.format())?;
         if !planar || frame.planes() == 0 {
             return None;
         }
@@ -33,6 +35,7 @@ impl<'a> Luma<'a> {
             height: frame.height() as usize,
             bytes,
             depth,
+            shift,
         })
     }
 
@@ -48,15 +51,29 @@ impl<'a> Luma<'a> {
         if self.bytes == 1 {
             u32::from(self.data[o])
         } else {
-            u32::from(u16::from_le_bytes([self.data[o], self.data[o + 1]]))
+            u32::from(u16::from_le_bytes([self.data[o], self.data[o + 1]])) >> self.shift
         }
     }
 
-    /// CRC-32 over the rows (what `extractplanes=y` + rawvideo + framehash hashes).
+    /// CRC-32 over the rows (what `extractplanes=y` + rawvideo + framehash hashes). MSB-aligned
+    /// samples (P010) are shifted down first, so they hash like `yuv420p10le`'s gray10le plane.
     pub fn crc(&self, crc: &Crc32) -> u32 {
         let mut s = 0xFFFF_FFFF;
+        let mut buf = Vec::new();
         for y in 0..self.height {
-            s = crc.update(s, self.row(y));
+            if self.shift == 0 {
+                s = crc.update(s, self.row(y));
+            } else {
+                buf.clear();
+                buf.extend(
+                    self.row(y)
+                        .as_chunks::<2>()
+                        .0
+                        .iter()
+                        .flat_map(|c| (u16::from_le_bytes(*c) >> self.shift).to_le_bytes()),
+                );
+                s = crc.update(s, &buf);
+            }
         }
         s ^ 0xFFFF_FFFF
     }
@@ -146,6 +163,7 @@ mod tests {
                     height: h,
                     bytes,
                     depth,
+                    shift: 0,
                 };
                 assert_eq!(l.barcode(), Some(n), "n={n} depth={depth}");
             }
@@ -162,8 +180,36 @@ mod tests {
             height: 360,
             bytes: 1,
             depth: 8,
+            shift: 0,
         };
         assert_eq!(l.barcode(), None);
+    }
+
+    #[test]
+    fn msb_aligned_samples_hash_like_lsb_aligned() {
+        // Two 10-bit samples, 700 and 3: P010 (<< 6) and yuv420p10le layouts give one CRC.
+        let c = Crc32::default();
+        let lsb: Vec<u8> = [700u16, 3].iter().flat_map(|v| v.to_le_bytes()).collect();
+        let msb: Vec<u8> = [700u16 << 6, 3 << 6]
+            .iter()
+            .flat_map(|v| v.to_le_bytes())
+            .collect();
+        let a = Luma {
+            data: &lsb,
+            stride: 4,
+            width: 2,
+            height: 1,
+            bytes: 2,
+            depth: 10,
+            shift: 0,
+        };
+        let b = Luma {
+            data: &msb,
+            shift: 6,
+            ..a
+        };
+        assert_eq!(a.crc(&c), b.crc(&c));
+        assert_eq!(b.sample(0, 0), 700);
     }
 
     #[test]
@@ -177,6 +223,7 @@ mod tests {
             height: 2,
             bytes: 1,
             depth: 8,
+            shift: 0,
         };
         assert_eq!(l.crc(&c), c.checksum(&[1, 2, 3, 4, 5, 6]));
     }

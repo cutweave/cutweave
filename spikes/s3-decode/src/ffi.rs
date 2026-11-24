@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
-//! The only `unsafe` in the spike: three small FFmpeg calls that `ffmpeg-next` 9.1 does not expose
-//! safely. Each one is a finding for the `MediaBackend` FFmpeg module (WP-1D.01).
+//! Small FFmpeg calls that `ffmpeg-next` 9.1 does not expose safely. Each one is a finding for the
+//! `MediaBackend` FFmpeg module (WP-1D.01). WP-0E.02 adds the hwaccel FFI in `hw.rs`, a process
+//! CPU-time probe here, and the zero-copy experiment in `zerocopy.rs`.
 
 use ffmpeg::codec::packet::Ref as _;
 use ffmpeg::ffi;
@@ -38,17 +39,48 @@ pub fn packet_is_discard(packet: &ffmpeg::Packet) -> bool {
     flags & ffi::AV_PKT_FLAG_DISCARD != 0
 }
 
-/// Luma layout of a pixel format: `(bit depth, bytes per sample, is planar luma)`.
+/// Luma layout of a pixel format: `(bit depth, bytes per sample, is planar luma, shift)`.
 ///
 /// ffmpeg-next's `Descriptor` exposes the component count and chroma shifts but not the
-/// per-component depth/step, which the Y-plane CRC and barcode reader need.
-pub fn luma_layout(format: ffmpeg::format::Pixel) -> Option<(u32, usize, bool)> {
+/// per-component depth/step/shift, which the Y-plane CRC and barcode reader need. `shift` is
+/// non-zero for MSB-aligned formats such as P010 (hardware decode output, WP-0E.02).
+pub fn luma_layout(format: ffmpeg::format::Pixel) -> Option<(u32, usize, bool, u32)> {
     let desc = format.descriptor()?;
     // SAFETY: `descriptor()` returned a non-null pointer into FFmpeg's static, immutable
     // pixel-format descriptor table (`av_pix_fmt_desc_get`), valid for the process lifetime.
     let comp = unsafe { (*desc.as_ptr()).comp[0] };
     let depth = u32::try_from(comp.depth).ok()?;
-    let bytes = if depth > 8 { 2 } else { 1 };
+    let shift = u32::try_from(comp.shift).ok()?;
+    let bytes = if depth + shift > 8 { 2 } else { 1 };
     let planar = comp.plane == 0 && comp.offset == 0 && usize::try_from(comp.step).ok()? == bytes;
-    Some((depth, bytes, planar))
+    Some((depth, bytes, planar, shift))
+}
+
+/// Process CPU time (user + kernel) so far, for CPU% per benchmark phase. Windows only: other
+/// platforms return `None` (wrap the run in `/usr/bin/time -v` there, WP-0E.03).
+pub fn process_cpu_time() -> Option<std::time::Duration> {
+    #[cfg(windows)]
+    {
+        #[link(name = "kernel32")]
+        unsafe extern "system" {
+            fn GetCurrentProcess() -> *mut std::ffi::c_void;
+            fn GetProcessTimes(
+                process: *mut std::ffi::c_void,
+                creation: *mut u64,
+                exit: *mut u64,
+                kernel: *mut u64,
+                user: *mut u64,
+            ) -> i32;
+        }
+        let (mut c, mut e, mut k, mut u) = (0u64, 0u64, 0u64, 0u64);
+        // SAFETY: `GetCurrentProcess` returns a pseudo-handle that needs no closing. The four
+        // out-pointers are valid, writable u64s; a FILETIME is two little-endian u32 halves, the
+        // same 8 bytes as a u64 counting 100 ns units.
+        let ok = unsafe { GetProcessTimes(GetCurrentProcess(), &mut c, &mut e, &mut k, &mut u) };
+        (ok != 0).then(|| std::time::Duration::from_nanos((k + u) * 100))
+    }
+    #[cfg(not(windows))]
+    {
+        None
+    }
 }

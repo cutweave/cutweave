@@ -45,6 +45,7 @@ pub struct FrameEntry {
 }
 
 /// The packet-scan index of one video stream.
+#[derive(Clone)]
 pub struct FrameIndex {
     pub stream: usize,
     /// Stream time base (num, den).
