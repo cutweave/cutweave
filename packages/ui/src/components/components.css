@@ -169,6 +169,12 @@
   color: var(--text-secondary);
   cursor: pointer;
 }
+.cw-seg__item:has(> svg) {
+  gap: var(--space-1-5);
+}
+.cw-seg__item--icon {
+  padding: 0 var(--space-1-5);
+}
 .cw-seg__item:first-child {
   border-start-start-radius: inherit;
   border-end-start-radius: inherit;

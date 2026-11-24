@@ -2,6 +2,7 @@
 import {
   Button,
   IconButton,
+  type IconName,
   Menu,
   type MenuEntry,
   SegmentedControl,
@@ -29,6 +30,12 @@ import {
 import { translator } from "../timeline/errors.ts";
 import { AppMenuBar } from "./AppMenuBar.tsx";
 import { EngineStatusChip } from "./EngineNotices.tsx";
+
+/** The workspace switcher shows icons (every pixel of the title bar counts); names are tooltips. */
+const WORKSPACE_ICONS: Record<WorkspaceId, IconName> = {
+  "short-form": "smartphone",
+  "long-form": "monitor",
+};
 
 /** The modifier key cap: ⌘ on macOS, Ctrl elsewhere. */
 function modifierKey(): string {
@@ -164,7 +171,12 @@ export function TopBar() {
           aria-label={t("topbar.workspaceLabel")}
           value={workspaceId}
           onChange={(id) => viewStore.getState().switchWorkspace(id)}
-          options={WORKSPACES.map((id) => ({ value: id, label: t(WORKSPACE_DEFS[id].labelKey) }))}
+          iconOnly
+          options={WORKSPACES.map((id) => ({
+            value: id,
+            label: t(WORKSPACE_DEFS[id].labelKey),
+            icon: WORKSPACE_ICONS[id],
+          }))}
         />
         <Tooltip label={t("workspace.reset")}>
           <IconButton

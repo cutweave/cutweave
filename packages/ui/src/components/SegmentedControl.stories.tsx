@@ -49,3 +49,33 @@ function Demo() {
 }
 
 export const States = { render: () => <Demo /> };
+
+function IconsDemo() {
+  const [workspace, setWorkspace] = useState("short-form");
+  return (
+    <div style={pad}>
+      <SegmentedControl
+        aria-label="Workspace"
+        iconOnly
+        options={[
+          { value: "short-form", label: "Short-form", icon: "smartphone" },
+          { value: "long-form", label: "Long-form", icon: "monitor" },
+        ]}
+        value={workspace}
+        onChange={setWorkspace}
+      />
+      <SegmentedControl
+        aria-label="Workspace"
+        options={[
+          { value: "short-form", label: "Short-form", icon: "smartphone" },
+          { value: "long-form", label: "Long-form", icon: "monitor" },
+        ]}
+        value={workspace}
+        onChange={setWorkspace}
+      />
+    </div>
+  );
+}
+
+/** Icons only (with tooltips, for tight bars such as the top bar), and icons with labels. */
+export const Icons = { render: () => <IconsDemo /> };

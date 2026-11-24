@@ -73,3 +73,45 @@ describe("SegmentedControl", () => {
     expect(onChange).not.toHaveBeenCalled();
   });
 });
+
+describe("SegmentedControl iconOnly", () => {
+  const WORKSPACES: SegmentedOption[] = [
+    { value: "short", label: "Short-form", icon: "smartphone" },
+    { value: "long", label: "Long-form", icon: "monitor" },
+  ];
+
+  it("shows icons only, keeps each label as the radio's name and as a tooltip", async () => {
+    const onChange = vi.fn();
+    render(
+      h(SegmentedControl, {
+        options: WORKSPACES,
+        value: "short",
+        "aria-label": "Workspace",
+        iconOnly: true,
+        onChange,
+      }),
+    );
+    const long = screen.getByRole("radio", { name: "Long-form" });
+    expect(long.textContent).toBe("");
+    expect(long.querySelector("svg")).not.toBeNull();
+    const user = userEvent.setup();
+    await user.hover(long);
+    expect(await screen.findByRole("tooltip", { name: "Long-form" })).toBeTruthy();
+    await user.click(long);
+    expect(onChange).toHaveBeenCalledWith("long");
+  });
+
+  it("without iconOnly shows the icon next to the label", () => {
+    render(
+      h(SegmentedControl, {
+        options: WORKSPACES,
+        value: "short",
+        "aria-label": "Workspace",
+        onChange: () => {},
+      }),
+    );
+    const short = screen.getByRole("radio", { name: "Short-form" });
+    expect(short.textContent).toBe("Short-form");
+    expect(short.querySelector("svg")).not.toBeNull();
+  });
+});
