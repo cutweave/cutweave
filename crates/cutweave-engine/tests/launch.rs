@@ -29,6 +29,10 @@ struct Engine {
 
 impl Engine {
     fn spawn(dir: &Path, args: &[&str]) -> Engine {
+        Engine::spawn_with_env(dir, args, &[])
+    }
+
+    fn spawn_with_env(dir: &Path, args: &[&str], env: &[(&str, &str)]) -> Engine {
         let mut child = Command::new(env!("CARGO_BIN_EXE_cutweave-engine-serve"))
             .arg("engine")
             .args(args)
@@ -36,6 +40,7 @@ impl Engine {
             .arg(dir.join("run"))
             .arg("--log-dir")
             .arg(dir.join("logs"))
+            .envs(env.iter().copied())
             .stdin(Stdio::piped())
             .stdout(Stdio::piped())
             .stderr(Stdio::null())
@@ -236,6 +241,30 @@ fn an_occupied_port_exits_12() {
     drop(ProjectStore::open(&folder).unwrap());
 }
 
+/// WP-1I.05: a `Gui` engine whose GPU cannot start exits 11 with a JSON error line; a headless
+/// engine falls back to the software adapter (or the CPU) and serves.
+#[test]
+fn a_gui_engine_without_a_usable_gpu_exits_11_and_a_headless_one_falls_back() {
+    let t = TempDir::new("gpu");
+    let no_gpu = [
+        ("CUTWEAVE_GPU", "no-adapter-is-called-this"),
+        ("CUTWEAVE_AUDIO", "null"),
+    ];
+    let mut gui = Engine::spawn_with_env(t.path(), &["--port", "0", "--token-stdin"], &no_gpu);
+    gui.handshake(UI);
+    let line = gui.line();
+    assert_eq!(gui.wait().code(), Some(11), "{line}");
+    assert_eq!(line["event"], "error");
+    assert_eq!(line["code"], "gpu_init_failed");
+    assert_eq!(line["exit_code"], 11);
+    assert_eq!(files_under(&t.path().join("run")), Vec::<PathBuf>::new());
+
+    let mut headless = Engine::spawn_with_env(t.path(), &["--headless", "--port", "0"], &no_gpu);
+    let ready = headless.line();
+    assert_eq!(ready["event"], "ready", "{ready}");
+    drop(headless.stdin.take());
+}
+
 #[test]
 fn usage_errors_exit_2() {
     let t = TempDir::new("usage");
@@ -284,11 +313,15 @@ fn the_engine_process_serves_mcp_to_the_run_file_agent_token() {
         let client = ().serve(connect("/mcp")).await.expect("initialize");
         let tools = client.list_tools(None).await.unwrap().tools;
         let names: Vec<&str> = tools.iter().map(|t| t.name.as_ref()).collect();
-        assert_eq!(names.len(), 19, "{names:?}");
+        // 16 core tools (`render_frame` arrives with the full engine's renderer, WP-1I.05) and
+        // the 4 generic ones. NOTE for the integrator: one above the P1 gate of 19
+        // (`cutweave_api::mcp::P1_GATE`); WP-1J.02 decides (see the WP-1I.05 report).
+        assert_eq!(names.len(), 20, "{names:?}");
         for name in [
             "clip_split",
             "timeline_get",
             "export_start",
+            "render_frame",
             "cutweave_execute",
         ] {
             assert!(names.contains(&name), "{name} missing from {names:?}");
@@ -332,7 +365,8 @@ fn the_engine_process_serves_mcp_to_the_run_file_agent_token() {
         let _ = client.cancel().await;
 
         let minimal = ().serve(connect("/mcp/minimal")).await.expect("initialize");
-        assert_eq!(minimal.list_tools(None).await.unwrap().tools.len(), 9);
+        // `render_frame` is one of the minimal profile's tools.
+        assert_eq!(minimal.list_tools(None).await.unwrap().tools.len(), 10);
         let _ = minimal.cancel().await;
     });
 }

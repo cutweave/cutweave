@@ -54,7 +54,9 @@ function runFile(home: string, pid: number): { agent_tokens: { token: string }[]
 
 /**
  * No file contains a token. While the engine runs, Windows refuses reads of the OS-locked
- * project `lock.guard` (EBUSY; it is empty); only that file may be skipped, unless `all` is set.
+ * project `lock.guard` (EBUSY; it is empty) and of the GPU driver's shader caches, which the
+ * engine's device (WP-1I.05) makes the driver keep under the test profile's `AppData`
+ * (`NVIDIA/GLCache`, `D3DSCache`); only those may be skipped, unless `all` is set.
  */
 function expectNoToken(files: string[], tokens: string[], all = false): void {
   for (const file of files) {
@@ -63,6 +65,7 @@ function expectNoToken(files: string[], tokens: string[], all = false): void {
       bytes = readFileSync(file);
     } catch (err) {
       if (!all && path.basename(file) === "lock.guard") continue;
+      if (!all && /[\\/]appdata[\\/]/i.test(file)) continue;
       throw new Error(`cannot read ${file}: ${err instanceof Error ? err.message : err}`);
     }
     for (const token of tokens) expect(bytes.includes(token), file).toBe(false);

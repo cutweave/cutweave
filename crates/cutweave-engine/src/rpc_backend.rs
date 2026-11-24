@@ -52,8 +52,9 @@ impl RpcBackend for EngineHandle {
             committed_rev: snap.committed_rev,
             project: serde_json::to_value(status)
                 .map_err(|e| CmdError::internal(format!("project status: {e}")))?,
-            // The playback subsystem publishes the preview ring (WP-1I.05).
-            shm: None,
+            // The preview ring of the playback subsystem (WP-1I.05): its announcement JSON
+            // `{name, epoch, layout_version, mapping_size}` (the client also takes an object).
+            shm: EngineHandle::preview_ring(self),
         })
     }
 

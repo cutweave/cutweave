@@ -13,6 +13,9 @@
 //! - [`export`] (WP-1E.03): `export.start` as a job: render every frame like `render.frame`,
 //!   mix the range down and encode H.264 + AAC into an MP4, with what the subsystems provide
 //!   ([`ExportServices`]).
+//! - [`full`] (WP-1I.05): [`FullSubsystems`], the media, render, audio and playback the real
+//!   engine attaches: FFmpeg decoding and the caches, the wgpu compositor (`render.frame`,
+//!   export, preview), the mixer and audio output, the transport and the preview ring.
 //! - [`project_io`] (WP-1C.01): the project folder format, atomic save/open and the
 //!   single-writer lock (arch §17, ADR-0006).
 //! - [`journal`] (WP-1C.02): the append-only command journal written before every
@@ -30,11 +33,13 @@ pub mod dispatch;
 mod engine;
 pub mod events;
 pub mod export;
+pub mod full;
 mod import;
 pub mod journal;
 pub mod launch;
 pub mod logging;
 pub mod mcp_backend;
+pub mod media_caps;
 pub mod project_io;
 pub mod rpc_backend;
 pub mod session;
@@ -47,14 +52,15 @@ pub use dispatch::{Call, Connection, Reply};
 pub use engine::{Engine, EngineHandle, JOB_ID_STREAM, StartError, VERSION, build_registry};
 pub use events::{EngineEvent, EventReceiver, SESSION_EVENTS};
 pub use export::{DecoderSources, ExportServices, ExportSources};
+pub use full::{AudioMode, FullConfig, FullHandle, FullSubsystems, MediaState};
 pub use import::NoMediaBackend;
 pub use logging::LogConfig;
 pub use mcp_backend::{api_mounts, mcp_mounts};
 pub use rpc_backend::rpc_mounts;
 pub use session::{ProjectStatus, RecoveryInfo, SessionState};
 pub use subsystems::{
-    CoreOnly, SubsystemCall, SubsystemError, SubsystemEvents, SubsystemHost, SubsystemKind,
-    Subsystems,
+    CoreOnly, DEGRADED_EVENT, EngineLink, SUBSYSTEM_EVENTS, SubsystemCall, SubsystemError,
+    SubsystemEvents, SubsystemHost, SubsystemKind, Subsystems,
 };
 
 /// Returns the crate name.
@@ -89,6 +95,7 @@ mod tests {
             "project.recover",
             "project.discard_recovery",
             "project.set_autosave",
+            "media.capabilities",
         ] {
             assert!(registry.get(name).is_some(), "{name} is not registered");
         }

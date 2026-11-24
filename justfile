@@ -84,13 +84,14 @@ bridge *args:
 e2e:
     @echo "e2e: not implemented yet (arrives in Phase 1)"
 
-# The user-flow suite (ADR-0018, docs/user-flows.md): builds the engine, the CLI and the app, then drives it like a person (`just e2e-flows -g F8` runs one flow)
+# The user-flow suite (ADR-0018, docs/user-flows.md): builds the engine (with FFmpeg when the bundle is set up, so the real-media flows F13, F14 and F17 run; without it they skip), the CLI, the preview addon and the app, then drives it like a person (`just e2e-flows -g F8` runs one flow)
 e2e-flows *args:
-    cargo build -p cutweave-engine --bin cutweave-engine-serve
+    if . scripts/ffmpeg/env.sh 2>/dev/null; then cargo build -p cutweave-engine --bin cutweave-engine-serve --features ffmpeg; else echo "e2e-flows: no FFmpeg bundle (just ffmpeg-fetch): the engine is built without FFmpeg and the real-media flows skip"; cargo build -p cutweave-engine --bin cutweave-engine-serve; fi
     cargo build -p cutweave-cli --bin cutweave
+    pnpm --filter @cutweave/desktop build:bridge
     pnpm --filter @cutweave/desktop build:node
     pnpm --filter @cutweave/desktop build:renderer
-    pnpm --filter @cutweave/desktop e2e:flows {{args}}
+    { . scripts/ffmpeg/env.sh 2>/dev/null || true; } && pnpm --filter @cutweave/desktop e2e:flows {{args}}
 
 # The flows' real-cursor steps (window drag, double-click on the title, screen pixels; Windows): they move your mouse, so run them when nobody is using the machine
 e2e-real-input *args:

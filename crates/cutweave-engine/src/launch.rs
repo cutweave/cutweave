@@ -7,7 +7,9 @@
 //!                 [--allow-origin O]... [--allow-root R]... [--deterministic-ids SEED]
 //!                 [--i-know-this-is-a-test] [--log-dir D | --no-log] [--handshake-timeout-ms MS]
 //!                 [--dev-stub-media]
-//! env    : CUTWEAVE_DETERMINISTIC_IDS=SEED (the flag wins), CUTWEAVE_DEV_STUB_MEDIA=1
+//! env    : CUTWEAVE_DETERMINISTIC_IDS=SEED (the flag wins), CUTWEAVE_DEV_STUB_MEDIA=1,
+//!          CUTWEAVE_GPU=auto|software|... (the adapter), CUTWEAVE_AUDIO=null|default|<device>
+//!          (the GUI engine's output; a headless engine always plays on the null clock)
 //! stdin : Gui mode: first line = the UI credential (never argv, env, disk or logs);
 //!          EOF afterwards = stop (orphan prevention)
 //! stdout : JSON lines only: {"event":"ready","port":P,"pid":N,"version":"..."} once serving,
@@ -315,6 +317,40 @@ fn mcp_options(args: &EngineArgs) -> McpOptions {
     options
 }
 
+/// The engine process's configuration.
+fn engine_config(args: &EngineArgs, mode: EngineMode, ui_token: Option<Token>) -> EngineConfig {
+    // The full engine (WP-1I.05): FFmpeg media when built with it, the GPU, audio and
+    // playback. `--dev-stub-media` keeps the dev stub (made-up probing, no decoding) instead.
+    let subsystems: Box<dyn crate::Subsystems> = if args.dev_stub_media {
+        Box::new(crate::DevStubMedia)
+    } else {
+        Box::new(crate::FullSubsystems::native())
+    };
+    EngineConfig {
+        mode,
+        project: args.base.project.as_ref().map(PathBuf::from),
+        port: Some(args.base.port),
+        ui_token,
+        deterministic_ids: args.deterministic_ids,
+        allowed_roots: args.allow_roots.clone(),
+        // A headless server has nobody listening: the null clock (`CUTWEAVE_AUDIO` is read
+        // by the GUI engine's default output).
+        audio: match mode {
+            EngineMode::Gui => crate::AudioConfig::Default,
+            _ => crate::AudioConfig::Null,
+        },
+        subsystems: Some(subsystems),
+        api: ApiOptions {
+            run_dir: args.base.run_dir.clone(),
+            allowed_origins: args.base.allowed_origins.clone(),
+            // `/rpc` (WP-1I.02) and `/mcp`, `/mcp/minimal`, `/mcp/full` (WP-1J.01).
+            mounts: Some(crate::api_mounts(RpcConfig::default(), mcp_options(args))),
+            ..ApiOptions::default()
+        },
+        ..EngineConfig::default()
+    }
+}
+
 fn run_logged(
     args: &EngineArgs,
     mode: EngineMode,
@@ -356,26 +392,7 @@ fn run_logged(
         drop(stdin);
         None
     };
-    let config = EngineConfig {
-        mode,
-        project: args.base.project.as_ref().map(PathBuf::from),
-        port: Some(args.base.port),
-        ui_token,
-        deterministic_ids: args.deterministic_ids,
-        allowed_roots: args.allow_roots.clone(),
-        subsystems: args
-            .dev_stub_media
-            .then(|| Box::new(crate::DevStubMedia) as Box<dyn crate::Subsystems>),
-        api: ApiOptions {
-            run_dir: args.base.run_dir.clone(),
-            allowed_origins: args.base.allowed_origins.clone(),
-            // `/rpc` (WP-1I.02) and `/mcp`, `/mcp/minimal`, `/mcp/full` (WP-1J.01).
-            mounts: Some(crate::api_mounts(RpcConfig::default(), mcp_options(args))),
-            ..ApiOptions::default()
-        },
-        ..EngineConfig::default()
-    };
-    let engine = match Engine::start(config) {
+    let engine = match Engine::start(engine_config(args, mode, ui_token)) {
         Ok(engine) => engine,
         Err(e) => {
             let extra = match &e {
@@ -390,7 +407,8 @@ fn run_logged(
     if args.dev_stub_media {
         tracing::warn!(
             "DEV ONLY: stub media backend enabled; imported files get made-up probe data and \
-             nothing can be decoded (real media needs the FFmpeg backend, WP-1I.05)"
+             nothing can be decoded or played (without --dev-stub-media the engine runs the \
+             FFmpeg backend, playback and rendering)"
         );
         eprintln!("cutweave engine: warning: dev stub media is on (fake media probing, dev only)");
     }

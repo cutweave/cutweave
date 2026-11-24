@@ -257,10 +257,16 @@ mod test_crash_hook {
     }
 }
 
-/// A query on the calling thread against the live snapshot.
+/// A query on the calling thread against the live snapshot, with the subsystems' renderer
+/// current for the `render.*` queries (`cutweave_render::query`).
 fn query(core: &Core, ctx: &ActorCtx, name: &str, params: Value) -> Result<Reply, CmdError> {
     let snap = core.doc()?.snapshot();
     let qctx = QueryCtx::new(&snap.doc, ctx.access()).with_rev(snap.rev);
+    let _renderer = name
+        .starts_with("render.")
+        .then(|| core.deps.subsystems.frame_backend())
+        .flatten()
+        .map(cutweave_render::query::enter);
     let output = core.deps.registry.query_json(name, params, &qctx)?;
     Ok(Reply {
         output,

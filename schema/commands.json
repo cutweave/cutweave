@@ -3055,6 +3055,169 @@
         "destructiveHint": false,
         "idempotentHint": true,
         "openWorldHint": false,
+        "readOnlyHint": true
+      },
+      "input_schema": {
+        "additionalProperties": false,
+        "description": "Returns what this engine's media backend can decode and encode: software codecs with their\nimplementations, the hardware encoders in the order `export.start{hw: \"auto\"}` tries them,\nand the hardware decode paths. `available` is false when the engine has no media backend.",
+        "title": "MediaCapabilities",
+        "type": "object"
+      },
+      "kind": "engine",
+      "mcp": "catalog",
+      "mcp_tool": "media_capabilities",
+      "name": "media.capabilities",
+      "namespace": "media",
+      "output_schema": {
+        "additionalProperties": false,
+        "description": "Result of `media.capabilities`.",
+        "properties": {
+          "available": {
+            "description": "Whether the engine has a media backend at all.",
+            "type": "boolean"
+          },
+          "codecs": {
+            "description": "Software codecs, sorted by name.",
+            "items": {
+              "additionalProperties": false,
+              "description": "A software codec and its implementations.",
+              "properties": {
+                "decoders": {
+                  "description": "Decoder implementations (empty: cannot decode).",
+                  "items": {
+                    "type": "string"
+                  },
+                  "type": "array"
+                },
+                "encoders": {
+                  "description": "Encoder implementations (empty: cannot encode).",
+                  "items": {
+                    "type": "string"
+                  },
+                  "type": "array"
+                },
+                "kind": {
+                  "description": "What it carries.",
+                  "oneOf": [
+                    {
+                      "const": "video",
+                      "description": "Pictures.",
+                      "type": "string"
+                    },
+                    {
+                      "const": "audio",
+                      "description": "Sound.",
+                      "type": "string"
+                    },
+                    {
+                      "const": "subtitle",
+                      "description": "Subtitles or captions.",
+                      "type": "string"
+                    },
+                    {
+                      "const": "data",
+                      "description": "Timed metadata or other data.",
+                      "type": "string"
+                    },
+                    {
+                      "const": "attachment",
+                      "description": "Attached files (fonts, cover art).",
+                      "type": "string"
+                    }
+                  ]
+                },
+                "name": {
+                  "description": "Codec name (`h264`, `hevc`, `aac`), as the probe reports it.",
+                  "type": "string"
+                }
+              },
+              "required": [
+                "name",
+                "kind",
+                "decoders",
+                "encoders"
+              ],
+              "type": "object"
+            },
+            "type": "array"
+          },
+          "hw_decode": {
+            "description": "Hardware decode paths verified on this machine.",
+            "items": {
+              "additionalProperties": false,
+              "description": "A codec a hardware API handles on this machine.",
+              "properties": {
+                "codec": {
+                  "description": "Codec name (`h264`).",
+                  "type": "string"
+                },
+                "device": {
+                  "description": "Hardware device type (`d3d11va`, `cuda`, `amf`, `videotoolbox`, `vaapi`, `qsv`).",
+                  "type": "string"
+                },
+                "implementation": {
+                  "description": "The implementation, as `export.start{hw: {force}}` takes it (`h264_nvenc`).",
+                  "type": "string"
+                }
+              },
+              "required": [
+                "device",
+                "codec",
+                "implementation"
+              ],
+              "type": "object"
+            },
+            "type": "array"
+          },
+          "hw_encode": {
+            "description": "Hardware encoders that passed a test encode, in the order `auto` tries them.",
+            "items": {
+              "additionalProperties": false,
+              "description": "A codec a hardware API handles on this machine.",
+              "properties": {
+                "codec": {
+                  "description": "Codec name (`h264`).",
+                  "type": "string"
+                },
+                "device": {
+                  "description": "Hardware device type (`d3d11va`, `cuda`, `amf`, `videotoolbox`, `vaapi`, `qsv`).",
+                  "type": "string"
+                },
+                "implementation": {
+                  "description": "The implementation, as `export.start{hw: {force}}` takes it (`h264_nvenc`).",
+                  "type": "string"
+                }
+              },
+              "required": [
+                "device",
+                "codec",
+                "implementation"
+              ],
+              "type": "object"
+            },
+            "type": "array"
+          }
+        },
+        "required": [
+          "available",
+          "codecs",
+          "hw_encode",
+          "hw_decode"
+        ],
+        "title": "MediaCapabilitiesOutput",
+        "type": "object"
+      },
+      "scope": "any",
+      "secret_fields": [],
+      "summary": "List the codecs and hardware encoders/decoders the media backend supports",
+      "undoable": false,
+      "view": false
+    },
+    {
+      "annotations": {
+        "destructiveHint": false,
+        "idempotentHint": true,
+        "openWorldHint": false,
         "readOnlyHint": false
       },
       "input_schema": {

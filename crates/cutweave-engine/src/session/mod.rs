@@ -589,6 +589,8 @@ impl Session {
                 committed_rev: snap.committed_rev,
             }))));
         deps.subsystems.on_document(&self.handle, layout);
+        let view = lock(&self.view).with_ctx(|vc| vc.state().clone());
+        deps.subsystems.on_view(&view, true);
     }
 
     /// Saves before closing when `save` says so, or by default (`None`) when autosave is on

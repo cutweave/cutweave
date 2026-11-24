@@ -15,22 +15,35 @@
 //!   mode exits with code 11) and stopped in order before it goes down
 //!   ([`shutdown`](Subsystems::shutdown));
 //! - per-project hooks: the new document handle after every document swap, teardown before a
-//!   project closes.
+//!   project closes, and the view state ([`on_view`](Subsystems::on_view): master volume, the
+//!   saved playhead);
+//! - the renderer the `render.*` queries run on ([`frame_backend`](Subsystems::frame_backend)),
+//!   the preview ring to announce ([`preview_ring`](Subsystems::preview_ring)) and the state
+//!   the media HTTP endpoints serve ([`media_state`](Subsystems::media_state), WP-1I.03).
+//!
+//! The full engine's implementation is [`FullSubsystems`](crate::full::FullSubsystems)
+//! (WP-1I.05).
 //!
 //! Methods take `&self` and are called from any thread (implementations use interior
 //! mutability); no engine lock is held while they run, except the session lock during the
-//! per-project hooks (they must not call back into the engine's dispatch).
+//! per-project hooks (they must not call back into the engine's dispatch, nor use the
+//! [`EngineLink`]).
 
 use std::any::TypeId;
-use std::sync::Arc;
+use std::sync::{Arc, Weak};
 
-use cutweave_commands::{ActorCtx, CmdError, DocHandle, Registry, RegistryError};
+use cutweave_commands::{ActorCtx, CmdError, ConnId, DocHandle, Registry, RegistryError};
+use cutweave_model::Time;
 use cutweave_ops::media::{AnalysisStages, MediaProbe};
+use cutweave_ops::view::UiState;
+use cutweave_render::query::SharedBackend;
 use serde_json::Value;
 
 use crate::config::{AudioConfig, EngineMode, GpuConfig};
-use crate::events::{EngineEvent, EventBus};
+use crate::engine::Core;
+use crate::events::{EngineEvent, EventBus, EventReceiver};
 use crate::export::ExportServices;
+use crate::full::MediaState;
 use crate::project_io::ProjectLayout;
 
 /// Which subsystem failed.
@@ -69,7 +82,18 @@ pub struct SubsystemHost {
     pub events: SubsystemEvents,
     /// The engine runtime (for async work; never block its workers).
     pub runtime: tokio::runtime::Handle,
+    /// What a subsystem may ask of the engine later (never from the per-project hooks).
+    pub link: EngineLink,
 }
+
+/// The `engine.degraded` event: a subsystem runs in a reduced mode (arch §8, §9; WP-1I.05).
+pub const DEGRADED_EVENT: &str = "engine.degraded";
+
+/// The events subsystems emit, as `(name, summary)` (for the generated events catalog).
+pub const SUBSYSTEM_EVENTS: &[(&str, &str)] = &[(
+    DEGRADED_EVENT,
+    "A subsystem runs in a reduced mode (audio on the null clock, software rendering); payload: {subsystem, reason}",
+)];
 
 /// Publishes subsystem events into the engine fan-out.
 #[derive(Clone, Debug)]
@@ -79,6 +103,62 @@ impl SubsystemEvents {
     /// Sends `name` with `payload` (a JSON object) to every subscriber.
     pub fn publish(&self, name: &'static str, payload: Value) {
         self.0.publish(EngineEvent::Subsystem { name, payload });
+    }
+
+    /// Sends `engine.degraded{subsystem, reason}` (and logs it as a warning).
+    pub fn degraded(&self, subsystem: &str, reason: &str) {
+        tracing::warn!(subsystem, reason, "engine degraded");
+        self.publish(
+            DEGRADED_EVENT,
+            serde_json::json!({ "subsystem": subsystem, "reason": reason }),
+        );
+    }
+
+    /// A subscription to the whole engine fan-out (document, job, view and subsystem events),
+    /// starting with the next event.
+    #[must_use]
+    pub fn subscribe(&self) -> EventReceiver {
+        self.0.subscribe()
+    }
+}
+
+/// What a running subsystem may ask of the engine: held weakly, so calls after the engine
+/// stopped do nothing. Never call it from the per-project hooks (they run under the session
+/// lock).
+#[derive(Clone)]
+pub struct EngineLink {
+    pub(crate) core: Weak<Core>,
+}
+
+impl std::fmt::Debug for EngineLink {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("EngineLink")
+            .field("alive", &(self.core.strong_count() > 0))
+            .finish()
+    }
+}
+
+impl EngineLink {
+    /// A link to nothing (tests of a subsystem outside an engine).
+    #[must_use]
+    pub fn detached() -> EngineLink {
+        EngineLink { core: Weak::new() }
+    }
+
+    /// Moves the view state's playhead to `t` with the registered `view.set_playhead`
+    /// command, announcing `view.changed` to every client but `origin`.
+    pub fn set_playhead(&self, t: Time, origin: Option<ConnId>) -> Result<(), CmdError> {
+        match self.core.upgrade() {
+            Some(core) => core.set_view_playhead(t, origin),
+            None => Ok(()),
+        }
+    }
+
+    /// The preview ring moved: the run-file's `shm` is rewritten (off the calling thread).
+    pub fn preview_ring_changed(&self) {
+        if let Some(core) = self.core.upgrade() {
+            core.preview_ring_changed();
+        }
     }
 }
 
@@ -143,6 +223,41 @@ pub trait Subsystems: Send + Sync {
     /// The current document is about to be replaced or closed (stop playback, drop
     /// per-project caches).
     fn on_document_closing(&self) {}
+
+    /// The view state: `opened` right after a document was installed (and once after
+    /// [`start`](Self::start)), else after a `view.*` command changed it. Called under the
+    /// session lock when `opened`.
+    fn on_view(&self, view: &UiState, opened: bool) {
+        let _ = (view, opened);
+    }
+
+    /// The renderer the `render.*` queries use on the dispatching thread
+    /// (`cutweave_render::query::enter`); `None`: they fail with `Unsupported`.
+    fn frame_backend(&self) -> Option<SharedBackend> {
+        None
+    }
+
+    /// The preview ring to announce in `rpc.hello` (`shm`): its announcement as JSON text
+    /// `{name, epoch, layout_version, mapping_size}`; `None` without a ring.
+    fn preview_ring(&self) -> Option<String> {
+        None
+    }
+
+    /// The name of the preview ring, for the run-file's `shm`.
+    fn preview_ring_name(&self) -> Option<String> {
+        None
+    }
+
+    /// The media services the `/media` HTTP endpoints serve (WP-1I.03); `None` without them.
+    fn media_state(&self) -> Option<MediaState> {
+        None
+    }
+
+    /// What the media backend can decode and encode (`media.capabilities`); `None`: no
+    /// backend.
+    fn media_capabilities(&self) -> Option<cutweave_media::Capabilities> {
+        None
+    }
 
     /// Runs an engine command whose context this implementation owns; `None` if it does not.
     fn invoke(&self, call: SubsystemCall<'_>) -> Option<Result<Value, CmdError>> {
