@@ -1137,6 +1137,39 @@ Human gates: PR review of `1B.01`, `1B.03`/`1B.09` (concurrency + ownership core
 
 ## 1O — CI quality gates
 
+### WP-1M.09 — Custom title bar: native window controls, in-app menu bar
+- **Area:** `apps/desktop` (window options, menu, IPC), `packages/editor` (top bar), `packages/ui` (menu bar component, tokens), `apps/desktop/e2e/flows` (window and menu flow), `docs/user-flows.md`, `docs/01-architecture.md` (desktop shell note)
+- **Depends on:** WP-1M.01, WP-1M.07
+- **Size:** M
+- **Executor:** opus
+- **Scope:**
+  - **Remove the native title bar and menu bar on Windows and Linux** (`titleBarStyle: "hidden"` with `titleBarOverlay`).
+    - The OS still draws its own minimize, maximize/restore and close buttons over the app: Windows 11 Snap Layouts on maximize hover, Aero snap by dragging, keyboard and screen-reader access all keep working.
+    - The overlay's color and symbol color follow the theme (dark/light) through design tokens.
+    - Its height matches the top bar token.
+  - **The top bar becomes the title bar.**
+    - Its empty areas are the drag region (`-webkit-app-region: drag`); every control in it is `no-drag`.
+    - Double-click on the drag region maximizes or restores.
+    - The layout reserves the overlay's area through `env(titlebar-area-*)` / `navigator.windowControlsOverlay`.
+    - The window title (project name and unsaved state) stays in `document.title` for the taskbar and Alt+Tab.
+  - **An in-app menu bar** (File, Edit, View, Help) built from the `packages/ui` menu components, with exactly what the native menu has today:
+    - File: New Project, Open Project, Open Recent, Save, Save As, Export, Exit;
+    - Edit: Undo, Redo, Cut, Copy, Paste, Select All;
+    - View: Toggle Full Screen, plus Reload and Toggle Developer Tools in dev builds only;
+    - Help: About Cutweave.
+    - Shortcuts work with or without the menu open: Ctrl+N/O/S/Shift+S/M, Ctrl+Z/Y, F11.
+    - Alt (or F10) focuses the menu bar and the arrow keys move through it, as in a native Windows menu.
+    - Main-process actions (quit, full screen, dev tools, about) go through new allowlisted, zod-validated IPC channels. `SECURITY-MODEL.md` gets a row for them.
+  - **macOS keeps the native app menu** at the top of the screen and the traffic lights (`hiddenInset`); the in-app menu bar is hidden there. Record the per-OS behaviour in arch §1/§2 (desktop shell).
+- **Interfaces:** `<TitleBar>`/top-bar drag region; `<MenuBar>` in `packages/ui`; IPC `app:quit`, `window:toggleFullScreen`, `app:about` (and dev-only `window:toggleDevTools`, `window:reload`).
+- **Acceptance criteria:**
+  - On Windows the native title bar and menu bar are gone. The overlay controls are visible, follow the theme and match the top bar's height. Snap Layouts appear on maximize hover (manual check, recorded with a screenshot in the PR).
+  - **A user flow (`e2e/flows`, ADR-0018)** drives every menu item through the in-app menu bar with real clicks and with its shortcut, and checks the outcome: project created, opened, saved, exported where available, undone, full screen toggled, About shown, the app quits through File > Exit answering the unsaved-changes dialog. It also checks that dragging and double-clicking the title area moves and maximizes the window, by reading the window's bounds and state back.
+  - Visual baselines for the menu bar (closed, open, keyboard focus) in dark and light; axe clean.
+  - No regression in the existing e2e and user-flow suites.
+- **Tests:** unit (menu model, IPC validation), Storybook visual, e2e user flow.
+- **Out of scope:** a command palette (P2); custom-drawn window buttons (the OS draws them).
+
 ### WP-1O.01 — Golden-frame test infrastructure
 - **Area:** `crates/cutweave-render/tests`, `testdata/golden`, `xtask`, `.github/workflows`
 - **Depends on:** WP-1F.03, WP-0J.02, WP-0F.03 (adapter behaviour notes), WP-0I.01, WP-0I.04 (macOS reference runner)

@@ -1,7 +1,7 @@
 {
   "version": 1,
   "generated_by": "scripts/wbs-to-issues",
-  "count": 483,
+  "count": 484,
   "work_packages": [
     {
       "id": "WP-0A.01",
@@ -3259,11 +3259,45 @@
       "out_of_scope": "`@cutweave/sdk` plugin client (P6)."
     },
     {
+      "id": "WP-1M.09",
+      "title": "Custom title bar: native window controls, in-app menu bar",
+      "source": {
+        "file": "docs/wbs/P1-skeleton.md",
+        "line": 1140
+      },
+      "phase": "P1",
+      "epic": "1M",
+      "area": "`apps/desktop` (window options, menu, IPC), `packages/editor` (top bar), `packages/ui` (menu bar component, tokens), `apps/desktop/e2e/flows` (window and menu flow), `docs/user-flows.md`, `docs/01-architecture.md` (desktop shell note)",
+      "size": "M",
+      "executor": "opus",
+      "executor_note": "",
+      "depends_raw": "WP-1M.01, WP-1M.07",
+      "depends_wps": [
+        "WP-1M.01",
+        "WP-1M.07"
+      ],
+      "depends_epics": [],
+      "depends": [
+        "WP-1M.01",
+        "WP-1M.07"
+      ],
+      "scope": "- **Remove the native title bar and menu bar on Windows and Linux** (`titleBarStyle: \"hidden\"` with `titleBarOverlay`).\n  - The OS still draws its own minimize, maximize/restore and close buttons over the app: Windows 11 Snap Layouts on maximize hover, Aero snap by dragging, keyboard and screen-reader access all keep working.\n  - The overlay's color and symbol color follow the theme (dark/light) through design tokens.\n  - Its height matches the top bar token.\n- **The top bar becomes the title bar.**\n  - Its empty areas are the drag region (`-webkit-app-region: drag`); every control in it is `no-drag`.\n  - Double-click on the drag region maximizes or restores.\n  - The layout reserves the overlay's area through `env(titlebar-area-*)` / `navigator.windowControlsOverlay`.\n  - The window title (project name and unsaved state) stays in `document.title` for the taskbar and Alt+Tab.\n- **An in-app menu bar** (File, Edit, View, Help) built from the `packages/ui` menu components, with exactly what the native menu has today:\n  - File: New Project, Open Project, Open Recent, Save, Save As, Export, Exit;\n  - Edit: Undo, Redo, Cut, Copy, Paste, Select All;\n  - View: Toggle Full Screen, plus Reload and Toggle Developer Tools in dev builds only;\n  - Help: About Cutweave.\n  - Shortcuts work with or without the menu open: Ctrl+N/O/S/Shift+S/M, Ctrl+Z/Y, F11.\n  - Alt (or F10) focuses the menu bar and the arrow keys move through it, as in a native Windows menu.\n  - Main-process actions (quit, full screen, dev tools, about) go through new allowlisted, zod-validated IPC channels. `SECURITY-MODEL.md` gets a row for them.\n- **macOS keeps the native app menu** at the top of the screen and the traffic lights (`hiddenInset`); the in-app menu bar is hidden there. Record the per-OS behaviour in arch §1/§2 (desktop shell).",
+      "interfaces": "`<TitleBar>`/top-bar drag region; `<MenuBar>` in `packages/ui`; IPC `app:quit`, `window:toggleFullScreen`, `app:about` (and dev-only `window:toggleDevTools`, `window:reload`).",
+      "acceptance": [
+        "On Windows the native title bar and menu bar are gone. The overlay controls are visible, follow the theme and match the top bar's height. Snap Layouts appear on maximize hover (manual check, recorded with a screenshot in the PR).",
+        "**A user flow (`e2e/flows`, ADR-0018)** drives every menu item through the in-app menu bar with real clicks and with its shortcut, and checks the outcome: project created, opened, saved, exported where available, undone, full screen toggled, About shown, the app quits through File > Exit answering the unsaved-changes dialog. It also checks that dragging and double-clicking the title area moves and maximizes the window, by reading the window's bounds and state back.",
+        "Visual baselines for the menu bar (closed, open, keyboard focus) in dark and light; axe clean.",
+        "No regression in the existing e2e and user-flow suites."
+      ],
+      "tests": "unit (menu model, IPC validation), Storybook visual, e2e user flow.",
+      "out_of_scope": "a command palette (P2); custom-drawn window buttons (the OS draws them)."
+    },
+    {
       "id": "WP-1O.01",
       "title": "Golden-frame test infrastructure",
       "source": {
         "file": "docs/wbs/P1-skeleton.md",
-        "line": 1140
+        "line": 1173
       },
       "phase": "P1",
       "epic": "1O",
@@ -3302,7 +3336,7 @@
       "title": "CLI = MCP = RPC parity test",
       "source": {
         "file": "docs/wbs/P1-skeleton.md",
-        "line": 1159
+        "line": 1192
       },
       "phase": "P1",
       "epic": "1O",
@@ -3336,7 +3370,7 @@
       "title": "MCP conformance + scripted-agent e2e",
       "source": {
         "file": "docs/wbs/P1-skeleton.md",
-        "line": 1176
+        "line": 1209
       },
       "phase": "P1",
       "epic": "1O",
@@ -3365,7 +3399,7 @@
       "title": "M1 exit acceptance suite (UI + MCP + crash)",
       "source": {
         "file": "docs/wbs/P1-skeleton.md",
-        "line": 1190
+        "line": 1223
       },
       "phase": "P1",
       "epic": "1O",
@@ -3408,7 +3442,7 @@
       "title": "User-flow e2e suite (real app, real input, real dialogs)",
       "source": {
         "file": "docs/wbs/P1-skeleton.md",
-        "line": 1206
+        "line": 1239
       },
       "phase": "P1",
       "epic": "1O",
@@ -3694,6 +3728,7 @@
         "WP-1M.06",
         "WP-1M.07",
         "WP-1M.08",
+        "WP-1M.09",
         "WP-2A.01",
         "WP-2C.06"
       ],
@@ -3780,6 +3815,7 @@
         "WP-1M.06",
         "WP-1M.07",
         "WP-1M.08",
+        "WP-1M.09",
         "WP-2A.02"
       ],
       "scope": "- Canvas2D virtualized renderer: ruler (timecode and frames), tracks with headers, items, selection, playhead, markers, in/out range, snap guides, linked-group badge, lock/mute/hidden styling, collapsed track heights.\n- Thumbnails and filmstrips come from `/media/{id}/filmstrip` and the waveform from `/media/{id}/waveform?lod=` via a bitmap cache (LRU, bounded to 256 MB) and LOD selection by zoom. Draws placeholders immediately and never blocks a frame on a fetch.\n- Horizontal zoom range from 1 frame/≥ 100 px up to 4 hours fit. Zoom is anchored at the cursor. Smooth wheel/pinch. Vertical scroll with sticky track headers.\n- Spatial index (interval tree) for hit-testing: `hitTest(x,y) → {item, part: body|left-edge|right-edge|fade-handle|keyframe, trackId}`.\n- Redraw is dirty-rect or full-frame only when needed (`requestAnimationFrame` coalescing).",
@@ -3825,6 +3861,7 @@
         "WP-1M.06",
         "WP-1M.07",
         "WP-1M.08",
+        "WP-1M.09",
         "WP-2A.05",
         "WP-2A.06",
         "WP-2A.08",
@@ -4837,6 +4874,7 @@
         "WP-1M.06",
         "WP-1M.07",
         "WP-1M.08",
+        "WP-1M.09",
         "WP-2F.01"
       ],
       "scope": "- Detect missing media on open and on file-watch events (status `ok|missing|changed`). Offline media renders as a \"media offline\" slate (render pipeline fallback frame plus silent audio) and never crashes export (export refuses with a typed error listing missing assets unless `allow_offline`).\n- `media.relink{media, path}` (single), `media.relink_folder{folder, recursive}` (search the folder, match by content hash first, then by filename+size+duration), `media.find_missing` query. Hash is computed lazily with a fast partial hash (first/last/middle 1 MB + size) and full hash only on ambiguity. Path rewrite preserves `path_rel` when under the project folder.\n- UI: a relink dialog on open (\"N files missing\"), per-asset badges in the bin, proxy status badges and a proxy settings pane (policy, cache size cap, regenerate).\n- MCP: `media_relink` catalog. `media_list` core includes `status`.",
@@ -4968,6 +5006,7 @@
         "WP-1M.06",
         "WP-1M.07",
         "WP-1M.08",
+        "WP-1M.09",
         "WP-2F.03"
       ],
       "scope": "- Model: `MediaAsset.tags: Vec<String>` (case-insensitive, trimmed, ≤ 64 chars), `rating`, `note`; `Project.collections: Vec<Collection {id, name, kind: manual{media_ids[]} | smart{rule}}>`. Schema migration and fixture.\n- Commands: `media.add_tags{media[], tags[]}`, `media.remove_tags`, `media.set_note`, `media.set_rating`, `collection.create/rename/delete/add_items/remove_items`, `collection.set_rule`; queries `media.search{text?, tags[]?, kind?, duration{min,max}?, resolution?, has_audio?, fps?, status?, used?, collection?, sort, limit, cursor}` and `collection.list`.\n- Search: SQLite FTS5 index in `cache.sqlite` over name, tags, note, path, and transcript text when present (P3 hook, none required now); rebuilt incrementally on `doc.patched` and on index completion; works for 10,000 assets.\n- Smart collection rule: JSON predicate tree (`and/or/not` over the same filters as `media.search`, plus \"unused in any sequence\" and \"imported in last N days\"), evaluated live (membership computed, not stored).\n- UI: search box with filter chips, tag editor (multi-select assign), smart-collection builder (schema-driven form), saved views in the bin sidebar, sort/group, \"used/unused\" badge.\n- MCP: `media_list` (core) gains `query`/`tags`/`collection` parameters; the rest catalog.",
@@ -5132,6 +5171,7 @@
         "WP-1M.06",
         "WP-1M.07",
         "WP-1M.08",
+        "WP-1M.09",
         "WP-2G.03",
         "WP-2G.05",
         "WP-2H.02"
@@ -5209,7 +5249,8 @@
         "WP-1M.05",
         "WP-1M.06",
         "WP-1M.07",
-        "WP-1M.08"
+        "WP-1M.08",
+        "WP-1M.09"
       ],
       "scope": "- `dockview` integration: all panels (Media, Preview, Timeline, Inspector, Mixer, Export queue, Effects placeholder) registered in a typed panel registry (contribution-point shaped so L3 plugins can register later). Drag/dock/float/tab/maximize, per-panel minimum size.\n- Layout serialization to user config (`~/.cutweave/workspaces.json`) with schema version and recovery from corrupt layouts (falls back to the default and notes it).\n- Built-in workspaces: **Long-form** (wide preview, large timeline, media left, inspector right) and **Short-form** (9:16 preview centered and tall, timeline compact at the bottom, inspector right). Workspace switcher in the title bar, \"Save layout as…\", \"Reset layout\". Selecting a sequence with 9:16 aspect suggests (not forces) Short-form once per project.\n- i18n scaffold: `i18next` (or `lingui`), message extraction script, `en` catalog with ICU plurals, locale detection, lint rule failing on user-visible hard-coded strings in `packages/editor` and `packages/ui` (allowlist file). Command names/descriptions come from the registry (English now, translation keys reserved).",
       "interfaces": "`registerPanel({id,title,component,defaultDock})`, `workspace.*` view commands (UI-only).",
@@ -5249,6 +5290,7 @@
         "WP-1M.06",
         "WP-1M.07",
         "WP-1M.08",
+        "WP-1M.09",
         "WP-1N.01",
         "WP-1N.02"
       ],
@@ -5367,6 +5409,7 @@
         "WP-1M.06",
         "WP-1M.07",
         "WP-1M.08",
+        "WP-1M.09",
         "WP-2H.04"
       ],
       "scope": "- Keymap engine: bindings `{key|chord, command, args?, when?}`, contexts (timeline focus, preview focus, text input suppresses), platform modifier mapping, chords (e.g. `Ctrl+K Ctrl+S`), conflict detection, key repeat rules (JKL shuttle), IME safety.\n- Shortcut editor UI (settings page): searchable command list, record-a-shortcut, conflict warning with reassign/cancel, per-command reset, import/export JSON, preset switcher.\n- Presets (L0 data files `keymaps/nle.json`, `keymaps/capcut.json`, plus `default`= NLE): NLE: J/K/L, I/O, B razor, A select, V, Q/W ripple trim previous/next, Home/End, Ctrl+Z/Shift+Ctrl+Z, M marker, comma/period nudge, Del / Shift+Del ripple delete. CapCut: Ctrl+B split, Del delete, Ctrl+Z, Ctrl+Shift+Z, Space, `[`/`]` trim to playhead, Ctrl+D... derived from research/01-capcut-features.md; any binding not verifiable is marked `unverified` in the file and in Notes N7.\n- Every command bindable (palette listing = bindable list).",
@@ -6348,6 +6391,7 @@
         "WP-1M.06",
         "WP-1M.07",
         "WP-1M.08",
+        "WP-1M.09",
         "WP-2H.01",
         "WP-2H.02",
         "WP-2H.03",
@@ -6540,6 +6584,7 @@
         "WP-1M.06",
         "WP-1M.07",
         "WP-1M.08",
+        "WP-1M.09",
         "WP-3B.01",
         "WP-3B.03",
         "WP-3B.04"
