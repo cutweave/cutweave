@@ -904,6 +904,22 @@
 .cw-status[data-tone="danger"] {
   --tone: var(--danger);
 }
+/* Icon only (title bar): a round chip around the icon; the words are the tooltip. */
+.cw-status--icon {
+  justify-content: center;
+  width: var(--control-sm);
+  padding: 0;
+}
+
+/* Text for screen readers (and the DOM) that takes no space on screen. */
+.cw-visually-hidden {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip-path: inset(50%);
+  white-space: nowrap;
+}
 
 /* ---------- CostChip ---------- */
 .cw-cost {

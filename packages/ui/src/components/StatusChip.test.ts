@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 // @vitest-environment jsdom
 import { cleanup, render, screen } from "@testing-library/react";
+import userEvent from "@testing-library/user-event";
 import { createElement as h } from "react";
 import { afterEach, describe, expect, it } from "vitest";
 import { StatusChip, type StatusTone } from "./StatusChip.tsx";
@@ -29,5 +30,24 @@ describe("StatusChip", () => {
     const chip = screen.getByText("Exported");
     expect(chip.hasAttribute("tabindex")).toBe(false);
     expect(chip.getAttribute("role")).toBeNull();
+  });
+
+  it("icon only: its own icon, the words hidden on screen but in the text, and as a tooltip", async () => {
+    render(
+      h(StatusChip, {
+        tone: "warning",
+        icon: "loader-circle",
+        iconOnly: true,
+        children: "Reconnecting",
+      }),
+    );
+    const words = screen.getByText("Reconnecting");
+    expect(words.className).toContain("cw-visually-hidden");
+    const chip = words.parentElement as HTMLElement;
+    expect(chip.className).toContain("cw-status--icon");
+    expect(chip.textContent).toBe("Reconnecting");
+    expect(chip.querySelector("svg")?.getAttribute("data-icon")).toBe("loader-circle");
+    await userEvent.setup().hover(chip);
+    expect(await screen.findByRole("tooltip", { name: "Reconnecting" })).toBeTruthy();
   });
 });
