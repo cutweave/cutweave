@@ -4,7 +4,10 @@
 //! probe renderer), every frame and sample reaches the encoder, clips decode sequentially, the
 //! export renders the snapshot it was started on, a cancel stops it within a second, one
 //! output path is written by one export at a time, and the core engine (no media subsystem)
-//! refuses exports with `Unsupported`. The MP4 output itself is checked in `export_ffmpeg.rs`.
+//! refuses exports with `Unsupported`. With a pretend hardware encoder (WP-1E.02): `hw` reaches
+//! the encoder, a mid-export hardware failure starts the export over in software from frame 0,
+//! and a forced encoder never falls back. The MP4 output itself is checked in
+//! `export_ffmpeg.rs`.
 
 #![allow(clippy::unwrap_used, clippy::expect_used, clippy::too_many_lines)]
 
@@ -18,12 +21,13 @@ use cutweave_engine::Call;
 use cutweave_engine::export::FrameTap;
 use cutweave_jobs::{JobKind, JobState};
 use cutweave_media::testing::FakeBackend;
-use cutweave_media::{MediaBackend, PixelFormat};
+use cutweave_media::{HwEncode, MediaBackend, PixelFormat};
 use cutweave_model::{FrameRate, SampleRate, Time};
 use cutweave_render::Image;
 use export_support::{
-    Counting, Gate, LateSource, ProbeRenderer, SEC, TempDir, agent, assert_succeeded, clip, engine,
-    export_capabilities, insert, job, must, new_project, register, services, wait, wait_until,
+    Counting, Gate, LateSource, PSEUDO_HW, ProbeRenderer, PseudoHw, SEC, TempDir, agent,
+    assert_succeeded, clip, engine, export_capabilities, insert, job, must, new_project, register,
+    services, wait, wait_until,
 };
 use serde_json::{Value, json};
 
@@ -399,6 +403,182 @@ fn engines_without_an_encoder_refuse_exports_after_validating_them() {
         other => panic!("expected Unsupported, got {other:?}"),
     }
     assert_eq!(dir.entries(), Vec::<String>::new());
+    drop(conn);
+    e.shutdown();
+}
+
+// ----- hardware encoders (WP-1E.02) ----------------------------------------------------------
+
+/// An engine exporting with `backend` (a `PseudoHw` over `FakeBackend`), the probe renderer and
+/// a tap.
+fn hw_engine(
+    dir: &TempDir,
+    backend: PseudoHw<FakeBackend>,
+    seen: &Seen,
+) -> cutweave_engine::Engine {
+    let late = Arc::new(LateSource::default());
+    let svc = services(Arc::new(backend), ProbeRenderer::new(late as _).shared())
+        .with_frame_tap(tap(seen));
+    engine(dir.path(), Some(svc))
+}
+
+#[test]
+fn the_hw_param_picks_the_video_encoder() {
+    let dir = TempDir::new("hw-policy");
+    let (fake, paths) = media(&dir);
+    let pseudo = PseudoHw::new(fake.clone(), None);
+    let seen: Seen = Arc::default();
+    let e = hw_engine(&dir, pseudo.clone(), &seen);
+    let conn = agent(&e);
+    timeline(&conn, &fake, &paths);
+    let mut messages = Vec::new();
+    for (i, hw) in [
+        Value::Null,
+        json!("auto"),
+        json!("off"),
+        json!({ "force": PSEUDO_HW }),
+    ]
+    .into_iter()
+    .enumerate()
+    {
+        let mut params = small(&dir.file(&format!("out{i}.mp4")));
+        params["hw"] = hw;
+        let started = must(&conn, "export.start", params);
+        let info = wait(&conn, &started["job_id"], WAIT);
+        assert_succeeded(&info);
+        messages.push(info.progress.message.unwrap_or_default());
+    }
+    assert_eq!(
+        pseudo.opened(),
+        [
+            HwEncode::Auto,
+            HwEncode::Auto,
+            HwEncode::Off,
+            HwEncode::Force(PSEUDO_HW.into())
+        ]
+    );
+    // The closing message names the encoder (`FakeBackend`'s own does not name itself).
+    assert_eq!(messages[0], "exported 150 frames (5.00 s) with test_hw");
+    assert_eq!(messages[2], "exported 150 frames (5.00 s)");
+    assert_eq!(messages[3], "exported 150 frames (5.00 s) with test_hw");
+
+    // A forced encoder must be one this machine has.
+    let mut params = small(&dir.file("qsv.mp4"));
+    params["hw"] = json!({ "force": "h264_qsv" });
+    match conn.call(Call::new("export.start", params)) {
+        Err(CmdError::Invalid { path, msg }) => {
+            assert_eq!(path, "/hw/force");
+            assert!(msg.contains("test_hw"), "{msg}");
+        }
+        other => panic!("expected Invalid at /hw/force, got {other:?}"),
+    }
+    drop(conn);
+    e.shutdown();
+
+    // Without hardware encoders there is nothing to force.
+    let plain = engine(
+        dir.path(),
+        Some(services(
+            Arc::new(fake.clone()),
+            ProbeRenderer::new(Arc::new(LateSource::default()) as _).shared(),
+        )),
+    );
+    let conn = agent(&plain);
+    timeline(&conn, &fake, &paths);
+    let mut params = small(&dir.file("nvenc.mp4"));
+    params["hw"] = json!({ "force": "h264_nvenc" });
+    match conn.call(Call::new("export.start", params)) {
+        Err(CmdError::Invalid { path, msg }) => {
+            assert_eq!(path, "/hw/force");
+            assert!(msg.contains("no hardware"), "{msg}");
+        }
+        other => panic!("expected Invalid at /hw/force, got {other:?}"),
+    }
+    drop(conn);
+    plain.shutdown();
+}
+
+#[test]
+fn a_hardware_failure_mid_export_starts_over_in_software() {
+    let dir = TempDir::new("hw-fallback");
+    let (fake, paths) = media(&dir);
+    let pseudo = PseudoHw::new(fake.clone(), Some(60));
+    let seen: Seen = Arc::default();
+    let e = hw_engine(&dir, pseudo.clone(), &seen);
+    let mut events = e.handle().subscribe();
+    let conn = agent(&e);
+    timeline(&conn, &fake, &paths);
+    let started = must(&conn, "export.start", small(&dir.file("out.mp4")));
+    let info = wait(&conn, &started["job_id"], WAIT);
+    assert_succeeded(&info);
+    assert_eq!(
+        info.progress.message.as_deref(),
+        Some(
+            "exported 150 frames (5.00 s) (test_hw failed during the export, so it was encoded \
+             again in software)"
+        )
+    );
+    assert_eq!(pseudo.opened(), [HwEncode::Auto, HwEncode::Off]);
+
+    // Rendered again from frame 0: the hardware attempt saw frames 0..=60 (it failed pushing
+    // frame 60), the software one all 150.
+    let indices: Vec<u32> = seen.lock().unwrap().iter().map(|s| s.0).collect();
+    let restart = indices
+        .windows(2)
+        .position(|w| w[1] <= w[0])
+        .expect("the frames start over")
+        + 1;
+    assert_eq!(indices[..restart], (0..=60).collect::<Vec<u32>>()[..]);
+    assert_eq!(indices[restart..], (0..150).collect::<Vec<u32>>()[..]);
+    // Only the software attempt finished a file, with everything in it.
+    let encodes = fake.encodes();
+    assert_eq!(encodes.len(), 1);
+    assert_eq!(encodes[0].1.video_frames, 150);
+    assert_eq!(encodes[0].1.audio_samples, 5 * 48_000);
+
+    // Progress went back to the start, saying why.
+    let id = started["job_id"].as_str().unwrap().to_owned();
+    let progress: Vec<(f64, String)> = export_support::drain(&mut events)
+        .into_iter()
+        .filter_map(|event| match event {
+            cutweave_engine::EngineEvent::Job(j) if j.job().id.to_string() == id => {
+                let p = &j.job().progress;
+                Some((p.fraction, p.message.clone().unwrap_or_default()))
+            }
+            _ => None,
+        })
+        .collect();
+    let again = progress
+        .iter()
+        .position(|(_, m)| m.contains("again in software: test_hw failed"))
+        .expect("a retry status line");
+    assert!(
+        progress[..again].iter().any(|(f, _)| *f >= 0.3),
+        "{progress:?}"
+    );
+    assert!(progress[again].0 < 0.05, "{progress:?}");
+    drop(conn);
+    e.shutdown();
+}
+
+#[test]
+fn a_forced_hardware_encoder_that_fails_does_not_fall_back() {
+    let dir = TempDir::new("hw-forced");
+    let (fake, paths) = media(&dir);
+    let pseudo = PseudoHw::new(fake.clone(), Some(30));
+    let seen: Seen = Arc::default();
+    let e = hw_engine(&dir, pseudo.clone(), &seen);
+    let conn = agent(&e);
+    timeline(&conn, &fake, &paths);
+    let mut params = small(&dir.file("out.mp4"));
+    params["hw"] = json!({ "force": PSEUDO_HW });
+    let started = must(&conn, "export.start", params);
+    let info = wait(&conn, &started["job_id"], WAIT);
+    assert_eq!(info.state, JobState::Failed, "{info:?}");
+    let error = info.error.unwrap_or_default();
+    assert!(error.contains("device lost"), "{error}");
+    assert_eq!(pseudo.opened(), [HwEncode::Force(PSEUDO_HW.into())]);
+    assert_eq!(fake.encodes().len(), 0);
     drop(conn);
     e.shutdown();
 }

@@ -15,6 +15,12 @@
 //!
 //! An output path is claimed while its export is queued or running ([`ActiveExports`]): a
 //! second export to the same file fails with `Invalid` at `/path` instead of racing it.
+//!
+//! The video encoder follows `export.start{hw}` (WP-1E.02): `auto` (the first hardware H.264
+//! encoder that works, else x264, restarting in software when a hardware encoder fails during
+//! the export), `off` (x264) or `{"force": "<implementation>"}`, which must name one of the
+//! machine's `Capabilities::hw_encode` entries (`Invalid` at `/hw/force` otherwise) and never
+//! falls back.
 
 pub mod pipeline;
 pub mod sources;
@@ -25,11 +31,12 @@ use std::sync::{Arc, Mutex, PoisonError};
 
 use cutweave_commands::CmdError;
 use cutweave_jobs::{JobId, JobKind, JobManager, JobSpec};
-use cutweave_ops::export::{ExportPlan, ExportStarter};
+use cutweave_media::Capabilities;
+use cutweave_ops::export::{ExportHw, ExportPlan, ExportStarter};
 
 pub use pipeline::{
     EXPORT_CHANNELS, EXPORT_SAMPLE_RATE, ExportError, ExportServices, ExportSummary, FrameTap,
-    PIPELINE_DEPTH, crf, render_frame, run_export,
+    PIPELINE_DEPTH, hw_encode, rate_control, render_frame, run_export,
 };
 pub use sources::{
     DecoderFrameSource, DecoderPcmFactory, DecoderSources, ExportSources, FORWARD_DECODE_LIMIT,
@@ -128,6 +135,28 @@ impl Starter {
     }
 }
 
+/// `Invalid` at `/hw/force` unless `name` is one of the machine's hardware H.264 encoders.
+fn check_forced(caps: &Capabilities, name: &str) -> Result<(), CmdError> {
+    let available: Vec<&str> = caps
+        .hw_encode
+        .iter()
+        .filter(|c| c.codec == "h264")
+        .map(|c| c.implementation.as_str())
+        .collect();
+    if available.contains(&name) {
+        return Ok(());
+    }
+    let msg = if available.is_empty() {
+        format!("`{name}` is not available: this machine has no hardware H.264 encoder")
+    } else {
+        format!(
+            "`{name}` is not available here; the hardware encoders are: {}",
+            available.join(", ")
+        )
+    };
+    Err(CmdError::invalid("/hw/force", msg))
+}
+
 impl ExportStarter for Starter {
     fn start(&mut self, plan: ExportPlan) -> Result<JobId, CmdError> {
         let services = self.services.clone().ok_or_else(|| {
@@ -143,6 +172,9 @@ impl ExportStarter for Starter {
                     "this engine's media backend has no `{codec}` encoder"
                 )));
             }
+        }
+        if let ExportHw::Force(name) = &plan.hw {
+            check_forced(&caps, name)?;
         }
         let claim = self.active.claim(&plan.path)?;
         let handle = self
