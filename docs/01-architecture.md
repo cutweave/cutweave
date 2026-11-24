@@ -296,7 +296,7 @@ impl Command for SplitItem {
     - `gesture` transactions auto-cancel after 30 s without updates.
     - `proposal` transactions (copilot, §14b) have no idle timeout and are cancellable.
   - **Saves and autosaves persist only the last *committed* revision**, never in-flight ephemeral edits. A minimal soft-lock ships in P1; P2 adds retry semantics and UI feedback.
-- **Actors & optimistic concurrency.** Every tx is tagged with an actor (`user`, `agent:<label>`, `plugin:<id>`, `system`). The actor is **derived server-side from the credential** (§6), never asserted by the client. Clients may pass `expected_rev`; a stale rev fails with `Conflict`. History is per actor, so you can "undo the agent's last change" without touching your own edits.
+- **Actors & optimistic concurrency.** Every tx is tagged with an actor (`user`, `agent:<label>`, `plugin:<id>`, `system`). The actor is **derived server-side from the credential** (§6), never asserted by the client. Clients may pass `expected_rev`; a stale rev fails with `Conflict`. History is per actor, so an agent (or the copilot) can undo only its own changes with `edit.undo{actor}`. The editor's Undo and Redo act on anyone's latest change (`edit.undo{actor:"*"}`), and its labels name the step and who made it (ADR-0019).
 - **Revisions (decided in WP-1B.03):**
   - `rev` bumps on every live change, including ephemeral edits; `committed_rev` tracks committed state. A snapshot is committed exactly when `rev == committed_rev`.
   - Implicit (single) commands run against the committed document. One that overlaps an open transaction's items fails with `Conflict{item_in_gesture}`.
