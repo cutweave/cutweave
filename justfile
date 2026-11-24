@@ -101,6 +101,10 @@ evals *args:
 ffmpeg-fetch *args:
     bash scripts/ffmpeg/fetch.sh {{args}}
 
+# cutweave-media against the FFmpeg bundle (feature `ffmpeg`: backend contract, version lock, log routing; docs/dev/ffmpeg.md)
+test-ffmpeg *args:
+    . scripts/ffmpeg/env.sh && cargo nextest run -p cutweave-media --features ffmpeg {{args}}
+
 # Everything CI checks that this machine can run: the fast gate plus Storybook visual regression,
 # axe and offline-fonts tests against this OS's baselines. Run before merging to main.
 ci-local:

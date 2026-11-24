@@ -5,11 +5,17 @@
 # third_party/ffmpeg/ and prints the FFMPEG_DIR to use. Idempotent: an up-to-date bundle is not
 # downloaded again. Needs the GitHub CLI (`gh auth login`), tar and zstd (or a libarchive tar).
 #
-# Usage: scripts/ffmpeg/fetch.sh [--repo OWNER/NAME] [--branch BRANCH] [--run RUN_ID] [--force]
+# A bundle that is already set up wins and nothing is downloaded (WP-1D.01): $FFMPEG_DIR, then
+# FFMPEG_DIR from third_party/ffmpeg/ffmpeg.env of this checkout or of the main checkout (git
+# worktrees share it), whichever first has include/libavcodec/avcodec.h. --update, --run or
+# --force look for a CI bundle instead. docs/dev/ffmpeg.md has the details.
+#
+# Usage: scripts/ffmpeg/fetch.sh [--repo OWNER/NAME] [--branch BRANCH] [--run RUN_ID] [--update] [--force]
 #   --repo    repository whose "FFmpeg bundle" workflow built the bundle
 #             (default: $CUTWEAVE_FFMPEG_REPO or cutweave/cutweave)
 #   --branch  only take bundles built from this branch (default: main)
 #   --run     take the bundle from this workflow run instead of the newest one
+#   --update  ignore an existing bundle and fetch the newest CI bundle (if it is newer)
 #   --force   download again even if the same bundle is already unpacked
 #
 # The bundle is chosen by exact artifact name, cutweave-ffmpeg-<version>-<os>-<arch>.tar.zst,
@@ -28,13 +34,15 @@ repo="${CUTWEAVE_FFMPEG_REPO:-cutweave/cutweave}"
 branch="main"
 run_id=""
 force=0
+update=0
 while [ $# -gt 0 ]; do
   case "$1" in
     --repo) repo="${2:?--repo needs OWNER/NAME}"; shift 2 ;;
     --branch) branch="${2:?--branch needs a name}"; shift 2 ;;
     --run) run_id="${2:?--run needs a run id}"; shift 2 ;;
     --force) force=1; shift ;;
-    -h | --help) sed -n '3,18p' "${BASH_SOURCE[0]}" | sed 's/^# \{0,1\}//'; exit 0 ;;
+    --update) update=1; shift ;;
+    -h | --help) sed -n '3,24p' "${BASH_SOURCE[0]}" | sed 's/^# \{0,1\}//'; exit 0 ;;
     *) die "unknown argument: $1 (see --help)" ;;
   esac
 done
@@ -55,10 +63,73 @@ case "$os-$arch" in
   *) die "no CI bundle is built for $os-$arch (only windows-x64, macos-arm64, linux-x64)" ;;
 esac
 
-command -v gh >/dev/null 2>&1 || die "needs the GitHub CLI: https://cli.github.com (then 'gh auth login')"
 version="$(sed -n '/^\[ffmpeg\]/,/^\[/ s/^version *= *"\([^"]*\)".*/\1/p' \
   "$root/scripts/ffmpeg/versions.toml" | head -n 1)"
 [ -n "$version" ] || die "cannot read the FFmpeg version from scripts/ffmpeg/versions.toml"
+
+# The run-time library path hint for a bundle directory ($1, forward slashes on Windows).
+runtime_hint() {
+  case "$os" in
+    windows) echo "PATH=\"$1/bin;\$PATH\"" ;;
+    macos) echo "DYLD_FALLBACK_LIBRARY_PATH=\"$1/lib\"" ;;
+    linux) echo "LD_LIBRARY_PATH=\"$1/lib\"" ;;
+  esac
+}
+
+# An existing bundle wins unless a CI bundle was asked for (see the header).
+has_bundle() { [ -n "$1" ] && [ -f "$1/include/libavcodec/avcodec.h" ]; }
+env_file_dir() { [ -f "$1" ] && sed -n 's/^FFMPEG_DIR="\(.*\)"/\1/p' "$1" | head -n 1; }
+if [ "$force" = 0 ] && [ "$update" = 0 ] && [ -z "$run_id" ]; then
+  existing=""
+  origin=""
+  if has_bundle "${FFMPEG_DIR:-}"; then
+    existing="$FFMPEG_DIR"
+    origin="FFMPEG_DIR"
+  else
+    main_root="$(cd "$root" && git rev-parse --path-format=absolute --git-common-dir 2>/dev/null \
+      | sed 's#/\.git$##' || true)"
+    for r in "$root" "$main_root"; do
+      [ -n "$r" ] || continue
+      d="$(env_file_dir "$r/third_party/ffmpeg/ffmpeg.env" || true)"
+      if has_bundle "$d"; then
+        existing="$d"
+        origin="$r/third_party/ffmpeg/ffmpeg.env"
+        break
+      fi
+    done
+  fi
+  if [ -n "$existing" ]; then
+    echo "ffmpeg-fetch: using the bundle already set up ($origin); nothing downloaded."
+    echo "ffmpeg-fetch: --update fetches the newest CI bundle instead."
+    banner=""
+    for exe in "$existing/bin/ffmpeg" "$existing/bin/ffmpeg.exe"; do
+      if [ -x "$exe" ]; then
+        banner="$("$exe" -hide_banner -version 2>/dev/null | head -n 1 || true)"
+        break
+      fi
+    done
+    if [ -n "$banner" ]; then
+      echo "ffmpeg-fetch: $banner"
+      case "$banner" in
+        *" version $version"* | *" version n$version"*) ;;
+        *) echo "ffmpeg-fetch: warning: the pinned version is $version (scripts/ffmpeg/versions.toml)" >&2 ;;
+      esac
+    fi
+    cat <<EOF
+
+FFMPEG_DIR=$existing
+
+  bash/zsh:    . scripts/ffmpeg/env.sh      (sets FFMPEG_DIR and the run-time library path)
+  PowerShell:  . scripts/ffmpeg/env.ps1
+
+Running binaries that link it also needs the shared libraries on the loader path, e.g.
+  $(runtime_hint "$existing")
+EOF
+    exit 0
+  fi
+fi
+
+command -v gh >/dev/null 2>&1 || die "needs the GitHub CLI: https://cli.github.com (then 'gh auth login')"
 name="cutweave-ffmpeg-$version-$os-$arch"
 artifact="$name.tar.zst"
 dest="$root/third_party/ffmpeg"
@@ -106,11 +177,7 @@ fi
 
 ffmpeg_dir="$bundle"
 [ "$os" != windows ] || ffmpeg_dir="$(cygpath -m "$bundle")"
-case "$os" in
-  windows) runtime="PATH=\"$ffmpeg_dir/bin;\$PATH\"" ;;
-  macos) runtime="DYLD_FALLBACK_LIBRARY_PATH=\"$ffmpeg_dir/lib\"" ;;
-  linux) runtime="LD_LIBRARY_PATH=\"$ffmpeg_dir/lib\"" ;;
-esac
+runtime="$(runtime_hint "$ffmpeg_dir")"
 {
   echo "# Written by scripts/ffmpeg/fetch.sh; source it or copy the values."
   echo "FFMPEG_DIR=\"$ffmpeg_dir\""
