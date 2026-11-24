@@ -327,7 +327,9 @@ mod tests {
         let banners: Vec<&str> = events
             .iter()
             .filter(|(target, level, m)| {
-                target == "cutweave_media" && *level == Level::INFO && m.starts_with("media backend: ")
+                target == "cutweave_media"
+                    && *level == Level::INFO
+                    && m.starts_with("media backend: ")
             })
             .map(|(_, _, m)| m.as_str())
             .collect();
