@@ -66,7 +66,7 @@ Commands:
   engines   List the running engines: pid, mode, project, port, start and last focus
   commands  List the registered commands and queries
   describe  Print one command's description and JSON Schemas
-  render    Export a sequence to a media file (needs the media backend; not available yet)
+  render    Export a sequence to a media file (not available yet), or write still frames as PNG files (--frames)
   mcp       Serve MCP over stdio to an agent: attach to a running engine, or run one in the process
   worker    Reserved: the sandboxed worker process
   help      Print this message or the help of the given subcommand(s)
@@ -281,16 +281,16 @@ Options:
 ### `cutweave render`
 
 ```text
-Export a sequence to a media file (needs the media backend; not available yet)
+Export a sequence to a media file (not available yet), or write still frames as PNG files (--frames)
 
-Usage: cutweave render [OPTIONS] --project <PATH> --sequence <ID> --out <PATH>
+Usage: cutweave render [OPTIONS] --project <PATH>
 
 Options:
       --project <PATH>
-          The project to render
+          The project to render (a project folder or its `.cutweave` file)
 
       --sequence <ID>
-          The sequence to render (`seq_...`)
+          The sequence to render (`seq_...`); optional when the project has one
 
       --out <PATH>
           The output file
@@ -310,11 +310,24 @@ Options:
       --allow-root <DIR>
           A folder the render may read from or write to (repeatable)
 
+      --cache-dir <DIR>
+          The folder the engine keeps its thumbnail, waveform and frame-index caches in. `CUTWEAVE_CACHE_DIR` does the same; the default is `<OS cache folder>/cutweave`
+
       --dev-stub-media
           Dev only: fake media probing
 
   -h, --help
           Print help
+
+Still frames:
+      --frames <T1,T2,...>
+          Write still frames instead of exporting: times separated by commas (`f:45`, `1.5s`, a timecode or flicks), each rendered by `render.frame` at the sequence size and written as `f<frame>.png` (5 digits) into --out-dir. The adapter is the one `CUTWEAVE_GPU` picks
+
+      --out-dir <DIR>
+          The folder the --frames PNGs go to (created if missing)
+
+      --check-determinism
+          Also render every frame a second time with `render.frame` and once through the export pipeline's readback (on a compositor of its own, on the same adapter), and fail unless all three are bit-identical. The result then names the adapter (golden frames, docs/01-architecture.md §20)
 ```
 
 ### `cutweave mcp`

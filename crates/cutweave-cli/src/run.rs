@@ -373,11 +373,14 @@ fn describe(cmd: &DescribeCmd) -> Result<Value, Failure> {
     serde_json::to_value(&entry.meta).map_err(|e| Failure::error("internal", e.to_string()))
 }
 
-fn render(_cmd: &RenderCmd) -> Result<Value, Failure> {
+fn render(cmd: &RenderCmd) -> Result<Value, Failure> {
+    if let (Some(frames), Some(out_dir)) = (&cmd.frames, &cmd.out_dir) {
+        return crate::render::frames(cmd, frames, out_dir);
+    }
     Err(Failure::error(
         "unsupported",
-        "`cutweave render` needs the media backend (WP-1I.05, WP-1E.03), which this build does \
-         not have yet",
+        "`cutweave render` to a media file needs the media backend (WP-1I.05, WP-1E.03), which \
+         this build does not have yet; `--frames` writes still frames",
     ))
 }
 

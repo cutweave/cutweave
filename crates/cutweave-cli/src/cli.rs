@@ -42,7 +42,8 @@ pub enum Sub {
     Commands(CommandsCmd),
     /// Print one command's description and JSON Schemas.
     Describe(DescribeCmd),
-    /// Export a sequence to a media file (needs the media backend; not available yet).
+    /// Export a sequence to a media file (not available yet), or write still frames as PNG files
+    /// (--frames).
     Render(RenderCmd),
     /// Serve MCP over stdio to an agent: attach to a running engine, or run one in the process.
     #[command(
@@ -267,23 +268,28 @@ pub struct DescribeCmd {
 /// `cutweave render`.
 #[derive(Debug, Args)]
 pub struct RenderCmd {
-    /// The project to render.
+    /// The project to render (a project folder or its `.cutweave` file).
     #[arg(long, value_name = "PATH")]
     pub project: PathBuf,
-    /// The sequence to render (`seq_...`).
+    /// The sequence to render (`seq_...`); optional when the project has one.
     #[arg(long, value_name = "ID")]
-    pub sequence: String,
+    pub sequence: Option<String>,
     /// The output file.
-    #[arg(long, value_name = "PATH")]
-    pub out: PathBuf,
+    #[arg(
+        long,
+        value_name = "PATH",
+        required_unless_present = "frames",
+        conflicts_with = "frames"
+    )]
+    pub out: Option<PathBuf>,
     /// Render only this range, `in:out` (timecode, `62.5s` or flicks).
-    #[arg(long, value_name = "IN:OUT")]
+    #[arg(long, value_name = "IN:OUT", conflicts_with = "frames")]
     pub range: Option<String>,
     /// The export preset.
-    #[arg(long, value_name = "NAME")]
+    #[arg(long, value_name = "NAME", conflicts_with = "frames")]
     pub preset: Option<String>,
     /// Software encoding only.
-    #[arg(long)]
+    #[arg(long, conflicts_with = "frames")]
     pub sw: bool,
     /// Seed the engine's ids (tests).
     #[arg(long, value_name = "SEED")]
@@ -291,9 +297,37 @@ pub struct RenderCmd {
     /// A folder the render may read from or write to (repeatable).
     #[arg(long, value_name = "DIR")]
     pub allow_root: Vec<PathBuf>,
+    /// The folder the engine keeps its thumbnail, waveform and frame-index caches in.
+    /// `CUTWEAVE_CACHE_DIR` does the same; the default is `<OS cache folder>/cutweave`.
+    #[arg(long, value_name = "DIR")]
+    pub cache_dir: Option<PathBuf>,
     /// Dev only: fake media probing.
-    #[arg(long)]
+    #[arg(long, conflicts_with = "frames")]
     pub dev_stub_media: bool,
+    /// Write still frames instead of exporting: times separated by commas (`f:45`, `1.5s`, a
+    /// timecode or flicks), each rendered by `render.frame` at the sequence size and written as
+    /// `f<frame>.png` (5 digits) into --out-dir. The adapter is the one `CUTWEAVE_GPU` picks.
+    #[arg(
+        long,
+        value_name = "T1,T2,...",
+        requires = "out_dir",
+        help_heading = "Still frames"
+    )]
+    pub frames: Option<String>,
+    /// The folder the --frames PNGs go to (created if missing).
+    #[arg(
+        long,
+        value_name = "DIR",
+        requires = "frames",
+        help_heading = "Still frames"
+    )]
+    pub out_dir: Option<PathBuf>,
+    /// Also render every frame a second time with `render.frame` and once through the export
+    /// pipeline's readback (on a compositor of its own, on the same adapter), and fail unless
+    /// all three are bit-identical. The result then names the adapter (golden frames,
+    /// docs/01-architecture.md §20).
+    #[arg(long, requires = "frames", help_heading = "Still frames")]
+    pub check_determinism: bool,
 }
 
 /// The MCP tool profile (arch §14).

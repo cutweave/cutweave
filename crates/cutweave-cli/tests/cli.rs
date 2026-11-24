@@ -356,6 +356,68 @@ fn reserved_subcommands() {
     );
 }
 
+/// `render --frames` (WP-1O.01) is the still-frame mode: it excludes the export flags, needs an
+/// output folder and times, and checks the project before starting an engine. Rendering itself
+/// needs a GPU and FFmpeg: `cargo xtask golden` runs it (testdata/golden/README.md).
+#[test]
+fn render_frames_checks_its_arguments() {
+    let dir = tempfile::tempdir().expect("tempdir");
+    let out_dir = dir.path().join("frames");
+    let out_dir = out_dir.to_str().expect("utf8");
+    // `--frames` without `--out-dir`, with `--out`, or with an export flag is a usage error.
+    for args in [
+        &["render", "--project", "p", "--frames", "f:0"][..],
+        &[
+            "render",
+            "--project",
+            "p",
+            "--frames",
+            "f:0",
+            "--out-dir",
+            out_dir,
+            "--out",
+            "o.mp4",
+        ],
+        &[
+            "render",
+            "--project",
+            "p",
+            "--frames",
+            "f:0",
+            "--out-dir",
+            out_dir,
+            "--sw",
+        ],
+        &["render", "--project", "p", "--out-dir", out_dir],
+    ] {
+        let out = cutweave(args);
+        assert_eq!(out.status.code(), Some(2), "{args:?}: {out:?}");
+        assert_eq!(stderr_json(&out)["code"], "usage", "{args:?}");
+    }
+    // No times, or no project: usage errors before any engine starts.
+    let missing = dir.path().join("missing.cutweave");
+    let missing = missing.to_str().expect("utf8");
+    for (frames, project) in [(" , ", missing), ("f:0,f:30", missing)] {
+        let out = cutweave(&[
+            "render",
+            "--project",
+            project,
+            "--frames",
+            frames,
+            "--out-dir",
+            out_dir,
+        ]);
+        assert_eq!(out.status.code(), Some(2), "{out:?}");
+        let e = stderr_json(&out);
+        assert_eq!(e["code"], "usage");
+        let message = e["message"].as_str().unwrap_or_default();
+        assert!(
+            message.contains("--frames needs") || message.contains("no project at"),
+            "{message}"
+        );
+    }
+}
+
 #[test]
 fn a_gui_engine_refuses_deterministic_ids() {
     let out = cutweave(&["engine", "--deterministic-ids", "1", "--no-log"]);
