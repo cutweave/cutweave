@@ -1,4 +1,5 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
+import { spawnSync } from "node:child_process";
 import { existsSync, mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
@@ -115,6 +116,92 @@ export interface LaunchedApp {
   close(): Promise<void>;
 }
 
+/** Apps launched and not yet closed; the auto fixture closes whatever a test leaves open. */
+const openApps = new Set<LaunchedApp>();
+
+/** How long quitting may take, prompt included, before it counts as a hang. */
+const CLOSE_TIMEOUT_MS = 20_000;
+
+/** Resolves true once `promise` settles, or false after `ms`. */
+const settleWithin = <T>(promise: Promise<T>, ms: number): Promise<boolean> =>
+  new Promise((resolve) => {
+    const timer = setTimeout(() => resolve(false), ms);
+    const done = () => {
+      clearTimeout(timer);
+      resolve(true);
+    };
+    promise.then(done, done);
+  });
+
+/** Kill the app and everything it started (the engine included). */
+function killTree(pid: number | undefined): void {
+  if (pid === undefined) return;
+  if (process.platform === "win32") {
+    spawnSync("taskkill", ["/PID", String(pid), "/T", "/F"], { stdio: "ignore" });
+    return;
+  }
+  spawnSync("pkill", ["-KILL", "-P", String(pid)], { stdio: "ignore" });
+  try {
+    process.kill(pid, "SIGKILL");
+  } catch {
+    // already gone
+  }
+}
+
+/** What to answer when quitting asks about unsaved changes. */
+export type UnsavedAnswer = "save" | "discard" | "cancel";
+
+/** The editor's "Save changes to …?" prompt (WP-1M.07) and its buttons. */
+export function unsavedPrompt(page: Page) {
+  const dialog = page.getByRole("dialog", { name: /^Save changes to / });
+  return {
+    dialog,
+    save: dialog.getByRole("button", { name: "Save", exact: true }),
+    discard: dialog.getByRole("button", { name: "Discard changes" }),
+    cancel: dialog.getByRole("button", { name: "Cancel" }),
+  };
+}
+
+/**
+ * Quit the app the way a person does: ask it to quit, and when the editor asks about unsaved
+ * changes, press `answer` in that dialog ("discard" by default, so a test's leftovers don't
+ * pile up; tests that care about the outcome pass "save"). Resolves once the app has exited.
+ * An app that is still running after CLOSE_TIMEOUT_MS is a hang: it is killed (so no window is
+ * left on screen) and the error fails the test.
+ */
+export async function quitApp(
+  app: ElectronApplication,
+  page: Page,
+  answer: Exclude<UnsavedAnswer, "cancel"> = "discard",
+): Promise<void> {
+  let child: ReturnType<ElectronApplication["process"]>;
+  try {
+    child = app.process();
+  } catch {
+    // Playwright disposes an application once it has closed: nothing is left to quit.
+    return;
+  }
+  const exited = new Promise<void>((resolve) => {
+    if (child.exitCode !== null || child.signalCode !== null) resolve();
+    else child.once("exit", () => resolve());
+  });
+  // Quit, as File > Exit / Alt+F4 would; with unsaved changes main holds it and the editor asks.
+  void app.close().catch(() => {});
+  const prompt = unsavedPrompt(page);
+  const deadline = Date.now() + CLOSE_TIMEOUT_MS;
+  while (Date.now() < deadline) {
+    if (await settleWithin(exited, 250)) return;
+    if (page.isClosed()) continue;
+    if (await prompt.dialog.isVisible().catch(() => false)) {
+      await prompt[answer].click({ timeout: 2_000 }).catch(() => {});
+    }
+  }
+  killTree(child.pid);
+  throw new Error(
+    `the app did not quit within ${CLOSE_TIMEOUT_MS / 1000} s (killed so no window stays open)`,
+  );
+}
+
 /**
  * Launch the built app (`dist/`) with a throwaway HOME / user-data dir, the fake engine
  * (test-support) standing in for `cutweave engine`, and the main-process test hooks enabled.
@@ -151,18 +238,29 @@ export async function launchApp(
     });
   });
   await page.waitForLoadState("domcontentloaded");
-  return {
+  let closing: Promise<void> | null = null;
+  const launched: LaunchedApp = {
     app,
     page,
     home,
     mainLog,
     documents,
-    close: async () => {
-      // A test may already have closed the app to inspect what it left behind.
-      await app.close().catch(() => {});
-      rmSync(home, { recursive: true, force: true, maxRetries: 5, retryDelay: 200 });
+    // Idempotent: a test's own `finally` and the auto fixture may both call it. A test may also
+    // have closed the app already to inspect what it left behind.
+    close: () => {
+      closing ??= (async () => {
+        openApps.delete(launched);
+        try {
+          await quitApp(app, page);
+        } finally {
+          rmSync(home, { recursive: true, force: true, maxRetries: 5, retryDelay: 200 });
+        }
+      })();
+      return closing;
     },
   };
+  openApps.add(launched);
+  return launched;
 }
 
 /**
@@ -187,7 +285,17 @@ interface Fixtures {
   mainLog: string[];
 }
 
-export const test = base.extend<Fixtures>({
+export const test = base.extend<Fixtures & { closeLeftovers: undefined }>({
+  // Runs after every test, also one that timed out or threw before its own cleanup: closes any
+  // app the test launched and left open, so no window (or unsaved-changes prompt) outlives it.
+  closeLeftovers: [
+    // biome-ignore lint/correctness/noEmptyPattern: Playwright requires a destructured first argument
+    async ({}, use) => {
+      await use(undefined);
+      await Promise.all([...openApps].map((launched) => launched.close()));
+    },
+    { auto: true },
+  ],
   // biome-ignore lint/correctness/noEmptyPattern: Playwright requires a destructured first argument
   launched: async ({}, use) => {
     const launched = await launchApp();

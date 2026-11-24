@@ -9,6 +9,11 @@ export class CloseGuard {
   #dirty = false;
   #confirmed = false;
 
+  /** Whether the editor last reported unsaved changes. */
+  get dirty(): boolean {
+    return this.#dirty;
+  }
+
   setDirty(dirty: boolean): void {
     this.#dirty = dirty;
     // New unsaved work after a confirmation (a window that stayed open) asks again.

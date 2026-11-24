@@ -230,6 +230,7 @@ if (!app.requestSingleInstanceLock()) {
         captureEngineDialog: (ask) => {
           askEngineFailed = ask;
         },
+        windowDirty: () => closeGuard.dirty,
       });
     }
 

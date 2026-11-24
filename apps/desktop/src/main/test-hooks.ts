@@ -31,6 +31,8 @@ export interface TestHookDeps {
   engine(): EngineSupervisor | null;
   /** Replace the engine-failed dialog (tests answer it instead of a native message box). */
   captureEngineDialog(ask: (status: EngineStatus) => Promise<EngineFailedChoice>): void;
+  /** Whether the editor has told main it has unsaved changes (read-only). */
+  windowDirty(): boolean;
 }
 
 export interface CutweaveTestHooks {
@@ -61,6 +63,11 @@ export interface CutweaveTestHooks {
   engineDialogs(): EngineStatus[];
   /** Answer the oldest unanswered engine-failed dialog; false when none is open. */
   answerEngineDialog(choice: EngineFailedChoice): boolean;
+  /**
+   * Whether main knows the editor has unsaved changes, so quitting will ask first. Read-only:
+   * tests wait for it before quitting instead of racing the editor's report.
+   */
+  windowDirty(): boolean;
 }
 
 declare global {
@@ -105,6 +112,7 @@ export function installTestHooks(deps: TestHookDeps): void {
     enginePid: () => deps.engine()?.pid ?? null,
     killEngine: () => deps.engine()?.kill() ?? null,
     resetEngineCrashCount: () => deps.engine()?.resetCrashHistory(),
+    windowDirty: () => deps.windowDirty(),
     engineProject: () => deps.engine()?.project ?? null,
     captureEngineDialog: () =>
       deps.captureEngineDialog(
