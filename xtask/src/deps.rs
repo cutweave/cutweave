@@ -119,14 +119,12 @@ pub fn graph_from_metadata(json: &str) -> Result<DepGraph, String> {
         .and_then(serde_json::Value::as_array)
         .ok_or("metadata has no `packages` array")?;
     let strings = |v: Option<&serde_json::Value>| -> Vec<String> {
-        v.and_then(serde_json::Value::as_array)
-            .map(|a| {
-                a.iter()
-                    .filter_map(serde_json::Value::as_str)
-                    .map(str::to_owned)
-                    .collect()
-            })
-            .unwrap_or_default()
+        v.and_then(serde_json::Value::as_array).map_or_default(|a| {
+            a.iter()
+                .filter_map(serde_json::Value::as_str)
+                .map(str::to_owned)
+                .collect()
+        })
     };
     let mut graph = DepGraph::new();
     for pkg in packages {
@@ -150,8 +148,7 @@ pub fn graph_from_metadata(json: &str) -> Result<DepGraph, String> {
         let feature_values = pkg
             .get("features")
             .and_then(serde_json::Value::as_object)
-            .map(|table| table.values().flat_map(|v| strings(Some(v))).collect())
-            .unwrap_or_default();
+            .map_or_default(|table| table.values().flat_map(|v| strings(Some(v))).collect());
         graph.insert(
             name.to_owned(),
             Package {
