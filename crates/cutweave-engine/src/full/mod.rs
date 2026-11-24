@@ -789,6 +789,14 @@ impl Subsystems for FullSubsystems {
         })
     }
 
+    fn media_capabilities(&self) -> Option<cutweave_media::Capabilities> {
+        self.inner
+            .config
+            .media
+            .as_ref()
+            .map(|backend| backend.capabilities())
+    }
+
     fn shutdown(&self) {
         // 1. Playback (watcher, clock pump, render and status threads).
         let started = {

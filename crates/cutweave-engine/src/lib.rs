@@ -39,6 +39,7 @@ pub mod journal;
 pub mod launch;
 pub mod logging;
 pub mod mcp_backend;
+pub mod media_caps;
 pub mod project_io;
 pub mod rpc_backend;
 pub mod session;
@@ -94,6 +95,7 @@ mod tests {
             "project.recover",
             "project.discard_recovery",
             "project.set_autosave",
+            "media.capabilities",
         ] {
             assert!(registry.get(name).is_some(), "{name} is not registered");
         }

@@ -199,12 +199,44 @@ fn render_frame_and_imports_use_the_full_engine() {
         frame["notes"]
     );
     assert!(handle.decoder_pools() >= 1);
+    // `media.capabilities` answers from the backend (the export dialog's encoder list).
+    let caps = call(&conn, "media.capabilities", json!({})).unwrap();
+    assert_eq!(caps["available"], json!(true), "{caps}");
+    assert!(
+        caps["codecs"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .any(|c| c["name"] == "rawvideo"),
+        "{caps}"
+    );
+    assert_eq!(caps["hw_encode"], json!([]));
     // The media HTTP state (WP-1I.03) resolves the asset.
     let state = engine.handle().media_state().unwrap();
     let media_id = serde_json::from_value(imported["media_ids"][0].clone()).unwrap();
     let file = state.media(media_id).unwrap();
     assert_eq!(file.path, clip);
     assert!(file.hash.is_some());
+    drop(conn);
+    engine.shutdown();
+}
+
+/// Without a media backend `media.capabilities` says so instead of failing.
+#[test]
+fn media_capabilities_without_a_backend_report_unavailable() {
+    let t = TempDir::new("nocaps");
+    let config = engine_config(
+        t.path(),
+        EngineMode::Oneshot,
+        Box::new(cutweave_engine::DevStubMedia),
+    );
+    let engine = Engine::start(config).unwrap();
+    let conn = agent(&engine);
+    let caps = call(&conn, "media.capabilities", json!({})).unwrap();
+    assert_eq!(
+        caps,
+        json!({ "available": false, "codecs": [], "hw_encode": [], "hw_decode": [] })
+    );
     drop(conn);
     engine.shutdown();
 }

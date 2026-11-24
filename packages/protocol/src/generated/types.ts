@@ -267,6 +267,18 @@ msg: string;
 /**  Human message. */
 message: string };
 
+/**  A software codec and its implementations. */
+export type CodecInfo = {
+	/**  Codec name (`h264`, `hevc`, `aac`), as the probe reports it. */
+	name: string,
+	/**  What it carries. */
+	kind: StreamKind,
+	/**  Decoder implementations (empty: cannot decode). */
+	decoders: string[],
+	/**  Encoder implementations (empty: cannot encode). */
+	encoders: string[],
+};
+
 /**  An sRGB color with straight alpha, written `#rrggbb` (opaque) or `#rrggbbaa`. */
 export type Color = string;
 
@@ -700,6 +712,16 @@ export type HistoryUsage = {
 	max_bytes: number,
 	/**  Entries evicted so far. */
 	evicted: number,
+};
+
+/**  A codec a hardware API handles on this machine. */
+export type HwCodecInfo = {
+	/**  Hardware device type (`d3d11va`, `cuda`, `amf`, `videotoolbox`, `vaapi`, `qsv`). */
+	device: string,
+	/**  Codec name (`h264`). */
+	codec: string,
+	/**  The implementation, as `export.start{hw: {force}}` takes it (`h264_nvenc`). */
+	implementation: string,
 };
 
 /**  A file that was not imported (no asset was created for it). */
@@ -1217,6 +1239,25 @@ export type MediaAsset = {
 	/**  Plugin data (arch §4.3). */
 	custom: { [key in string]: JsonValue },
 } & { [key in string]: unknown };
+
+/**
+ *  Returns what this engine's media backend can decode and encode: software codecs with their
+ *  implementations, the hardware encoders in the order `export.start{hw: "auto"}` tries them,
+ *  and the hardware decode paths. `available` is false when the engine has no media backend.
+ */
+export type MediaCapabilities = Record<string, never>;
+
+/**  Result of `media.capabilities`. */
+export type MediaCapabilitiesOutput = {
+	/**  Whether the engine has a media backend at all. */
+	available: boolean,
+	/**  Software codecs, sorted by name. */
+	codecs: CodecInfo[],
+	/**  Hardware encoders that passed a test encode, in the order `auto` tries them. */
+	hw_encode: HwCodecInfo[],
+	/**  Hardware decode paths verified on this machine. */
+	hw_decode: HwCodecInfo[],
+};
 
 /**
  *  The ID of a `MediaAsset`: `med_…`.

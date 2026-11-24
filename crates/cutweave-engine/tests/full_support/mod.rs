@@ -101,6 +101,9 @@ impl Subsystems for Spy {
     fn media_state(&self) -> Option<MediaState> {
         self.inner.media_state()
     }
+    fn media_capabilities(&self) -> Option<cutweave_media::Capabilities> {
+        self.inner.media_capabilities()
+    }
     fn shutdown(&self) {
         self.inner.shutdown();
     }

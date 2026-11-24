@@ -253,6 +253,12 @@ pub trait Subsystems: Send + Sync {
         None
     }
 
+    /// What the media backend can decode and encode (`media.capabilities`); `None`: no
+    /// backend.
+    fn media_capabilities(&self) -> Option<cutweave_media::Capabilities> {
+        None
+    }
+
     /// Runs an engine command whose context this implementation owns; `None` if it does not.
     fn invoke(&self, call: SubsystemCall<'_>) -> Option<Result<Value, CmdError>> {
         let _ = call;
