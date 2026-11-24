@@ -1109,7 +1109,11 @@ fn export_start(p: &Pools) -> BoxedStrategy<Value> {
         one_of(p.seqs.clone()),
         option::weighted(0.4, range),
         preset,
-        option::of(select(vec!["auto", "off"])),
+        option::of(select(vec![
+            json!("auto"),
+            json!("off"),
+            json!({"force": "h264_nvenc"}),
+        ])),
         option::of(any::<bool>()),
     )
         .prop_map(move |(sequence, range, preset, hw, overwrite)| {
@@ -1131,6 +1135,8 @@ fn export_start(p: &Pools) -> BoxedStrategy<Value> {
         Just(json!({"path": path, "preset": {"custom": {"fps": {"num": 1000, "den": 1}}}})),
         Just(json!({"path": path, "range": {"in": "2s", "out": "1s"}})),
         Just(json!({"path": path, "preset": "h265-mkv"})),
+        Just(json!({"path": path, "hw": {"force": "H264 NVENC"}})),
+        Just(json!({"path": path, "hw": "nvenc"})),
     ]
     .boxed();
     mix(valid, invalid)

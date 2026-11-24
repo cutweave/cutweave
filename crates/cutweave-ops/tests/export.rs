@@ -201,7 +201,26 @@ fn custom_settings_override_the_sequence_format() {
         (1280, 720, FrameRate::FPS_25)
     );
     assert_eq!(plan.frames, 125);
-    assert_eq!((plan.quality, plan.hw), (ExportQuality::Low, ExportHw::Off));
+    assert_eq!(
+        (plan.quality, &plan.hw),
+        (ExportQuality::Low, &ExportHw::Off)
+    );
+
+    // A forced hardware encoder (the engine checks that the machine has it).
+    let (out, plans) = export(
+        &h,
+        json!({ "path": path, "hw": {"force": "h264_nvenc"} }),
+        None,
+    );
+    out.unwrap();
+    assert_eq!(plans[0].hw, ExportHw::Force("h264_nvenc".into()));
+    let hw = |v: Value| export(&h, json!({ "path": path, "hw": v }), None).0;
+    assert_invalid(hw(json!({"force": ""})), "/hw/force");
+    assert_invalid(hw(json!({"force": "H264 NVENC"})), "/hw/force");
+    assert_invalid(hw(json!({"force": "x".repeat(65)})), "/hw/force");
+    assert_code(hw(json!("nvenc")), "invalid");
+    assert_code(hw(json!({"force": 1})), "invalid");
+    assert!(hw(json!("auto")).is_ok());
 
     // Absent fields come from the sequence.
     let (_, plans) = export(

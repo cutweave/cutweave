@@ -451,12 +451,17 @@ export type EntryStatus =
 /**  Whether to use a hardware video encoder. */
 export type ExportHw = 
 /**
- *  A hardware H.264 encoder when the machine has one, else software (x264). Hardware
- *  encoding is not available yet: software is used.
+ *  The first hardware H.264 encoder that works here, else software (x264); if it fails
+ *  during the export, the export starts again in software.
  */
 "auto" | 
 /**  Software (x264) only. */
-"off";
+"off" | 
+/**
+ *  This hardware encoder and no other, e.g. "h264_nvenc" (the `implementation` names of
+ *  the machine's hardware encoders); fails instead of falling back.
+ */
+{ force: string };
 
 /**  What to make: the preset, or custom settings. */
 export type ExportPreset = 
@@ -502,7 +507,7 @@ export type ExportStart = {
 	range?: ExportRange | null,
 	/**  "h264-mp4-1080p" (default) or {"custom": {width, height, fps, quality}}. */
 	preset?: ExportPreset | null,
-	/**  Hardware encoder: "auto" (default) or "off". */
+	/**  Hardware encoder: "auto" (default), "off", or {"force": "h264_nvenc"}. */
 	hw?: ExportHw | null,
 	/**  Replace an existing file at `path` (default false). */
 	overwrite?: boolean | null,
