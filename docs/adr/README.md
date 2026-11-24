@@ -10,7 +10,7 @@ ADRs record architectural decisions in [MADR](https://adr.github.io/madr/) style
 |---|---|---|---|
 | [0001](0001-desktop-shell.md) | Desktop shell: Electron + React, separate Rust engine, preview via SHM; GPUI plan B | Proposed | Spike S1 (WP-0C.04, WP-0J.02) |
 | [0002](0002-single-binary-headless-engine.md) | Single `cutweave` binary, headless-first engine, one command bus | Accepted | n/a (2026-11-22) |
-| [0003](0003-media-backend-ffmpeg.md) | Media: FFmpeg via `ffmpeg-next` behind `MediaBackend`; CPU upload first | Proposed | Spike S3 (WP-0E.03) |
+| [0003](0003-media-backend-ffmpeg.md) | Media: FFmpeg via `ffmpeg-next` behind `MediaBackend`; CPU upload first | Accepted with fallback | Spike S3 (WP-0E.01); HW decode and other OSes pending (0E.02, 0E.03) |
 | [0004](0004-flicks-time-unit.md) | Time unit: flicks (`i64`) | Accepted | n/a (2026-11-22) |
 | [0005](0005-doc-actor-persistent-snapshots-patches.md) | State: single-writer doc actor, `imbl` snapshots, invertible patches; CRDT later | Accepted | n/a (2026-11-22) |
 | [0006](0006-project-format.md) | Project format: folder + JSON doc + journal + backups | Accepted | n/a (2026-11-22) |

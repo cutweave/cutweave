@@ -1,8 +1,8 @@
 # ADR-0003: Media layer: FFmpeg via `ffmpeg-next` behind `MediaBackend`; CPU upload first, zero-copy later
 
-- **Status:** Proposed
+- **Status:** Accepted with fallback (2026-11-24)
 - **Date:** 2026-11-22
-- **Deciders:** Cutweave maintainers (decision pending Spike S3)
+- **Deciders:** the integrator, under the owner's delegation of go/no-go decisions (2026-11-23), from the WP-0E.01 report
 - **Supersedes:** none
 - **Architecture refs:** `docs/01-architecture.md` §7, §19, §21, §22
 
@@ -27,7 +27,31 @@ Scrubbing, frame-exact seeking and export depend on the media layer. Cutweave is
 
 ## Decision
 
-**Decided by: Spike S3** (WP-0E.03) with these pass criteria: **100% frame-exact on 500 random seeks** across H.264 4K30, HEVC 10-bit, ProRes and a VFR phone clip; **4K long-GOP scrub p95 < 150 ms** (proxy path < 33 ms); and **path (a), hardware decode with CPU upload to wgpu, works on every target OS**. On pass, Accepted as hypothesized (with (b) deferred). On partial pass, **ship (a) only and defer zero-copy** (Accepted with fallback). Not decided here.
+We will decode, probe and seek media with **FFmpeg 8.1.x** (pinned shared build, `just ffmpeg-fetch`) through **`ffmpeg-next` 9.1 / `ffmpeg-sys-next` 9.1**, behind the `MediaBackend` trait in `cutweave-media`. The crate's FFmpeg module is the only place with FFmpeg `unsafe`: per-stream seek, raw packet flags, pixel-format descriptors, `av_log` routing to `tracing`, and a start-up check that the loaded libav* versions equal the headers the engine was built against.
+
+**Frame-exact seek works from a packet-scan index.** Frames are addressed by pts, never by `n / fps`. A seek starts at the latest keyframe K with `decode(K) <= decode(T)` and `pts(K) <= pts(T)` (open-GOP leading frames need the second condition), verifies where the demuxer landed against the index, and decodes forward with non-reference frames before T skipped. The index, not container metadata, defines frame count and duration. Damaged media resolves to the nearest following frame and is flagged, never blocks.
+
+**v1 uploads decoded planes from the CPU (path a).** Hardware decode is used where WP-0E.02 shows it frame-exact. Zero-copy interop (path b) is deferred behind a feature flag. **Long-GOP media above 1080p is scrubbed through intra proxies** (arch §7 auto-proxy) unless hardware decode meets the 150 ms budget on that machine; the CPU-only long-GOP scrub number is reported, not gated.
+
+**Decoder pool:** frame threads for long-GOP seek and scrub decoders, slice threads for intra and proxy decoders, a separate playback decoder, `skip_frame = NONREF` before the target, and "drain to EOF before flush" after any EOF (an FFmpeg 8.1 HEVC quirk otherwise returns a stale frame after a seek).
+
+**Status: Accepted with fallback** under this record's own partial-pass rule. S3 met the frame-exact criterion and missed the CPU 4K long-GOP budget, which the proxy path covers.
+
+### Spike S3 evidence (WP-0E.01, Windows 11 dev machine, CPU decode, under 70-90 % background load)
+
+| Criterion | Result |
+|---|---|
+| 100 % frame-exact on 500 random seeks | **Pass.** 16/16 generated files 500/500, checked bit-exactly against the FFmpeg CLI (pts, Y-plane CRC, burned-in barcode); also every edge and open-GOP leading frame; 0 landing retries. Files: H.264 1080p at 5 rates and 4 containers, 4K30 1 s and 8.3 s GOP, VFR phone-like and segmented MKV, rotation, HEVC Main10 4K open GOP and 1080p HDR10, ProRes 422 HQ |
+| 4K long-GOP scrub p95 < 150 ms | **Fail on CPU:** 282 ms (H.264, 1 s GOP), 428 ms (HEVC Main10, 2 s GOP), 804 ms (H.264, 8.3 s GOP) |
+| Proxy scrub p95 < 33 ms | **Pass:** ProRes Proxy 540p 0.20 ms, MJPEG 540p 1.0 ms |
+| Path (a) works on every target OS | **Windows only so far.** Hardware decode: WP-0E.02. macOS and Linux: WP-0E.03 |
+| Robustness | 0 panics, crashes or hangs on 7 broken files and 200 fuzz cases. H.264 damage is concealed silently (per-frame flags only); HEVC drops damaged frames |
+
+Report and reproducible harness: [spikes/s3-decode/README.md](../../spikes/s3-decode/README.md).
+
+### Revisit triggers
+
+Reopen this record if WP-0E.02 finds hardware decode cannot be made frame-exact on a target OS, if WP-0E.03 finds `ffmpeg-next` 9.1 unusable on macOS or Linux, or if proxies cannot be generated fast enough for the import flow. Until 0E.02 and 0E.03 report, the per-OS and hardware rows above stay open; Epic 1D proceeds on this decision.
 
 ## Consequences
 
@@ -45,7 +69,9 @@ Scrubbing, frame-exact seeking and export depend on the media layer. Cutweave is
 
 **Follow-ups**
 
-- WP-0E.01-0E.03 (spike); WP-0J.02 (accept and record numbers); Epic 1D (media pipeline).
+- WP-0E.02 (hardware decode, measured with the S3 harness) and WP-0E.03 (macOS, Linux) fill the open rows above.
+- WP-1D.01: allow `WTFPL` (the license of `ffmpeg-next` and `ffmpeg-sys-next`, GPL-compatible) in `deny.toml`, and allow `unsafe` in `cutweave-media` for the FFI layer.
+- Epic 1D (media pipeline) reuses the spike's seek algorithm and index rules.
 
 ## Links
 

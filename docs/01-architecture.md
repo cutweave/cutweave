@@ -742,7 +742,7 @@ MyVideo/                    ← project folder (user-chosen location)
 | Open a 1-hour, 400-item project | < 2 s to interactive |
 | Command round-trip (UI → engine → patch → UI) | p95 < 16 ms |
 | Scrub latency (proxy or intra codec) | p95 < 80 ms |
-| Scrub latency (4K long-GOP, no proxy) | p95 < 150 ms |
+| Scrub latency (4K long-GOP, no proxy) | p95 < 150 ms with hardware decode (ADR-0003). CPU-only: measured, not gated; over-1080p long-GOP media scrubs through proxies by default |
 | Playback 1080p60: 3 video layers + 2 effects + animated captions on an iGPU (M1 / Intel Xe) | 0 dropped frames over 60 s |
 | Timeline pan/zoom with 5,000 items | ≥ 55 fps |
 | A/V sync offset | < 40 ms, drift < 1 frame / 30 min |
