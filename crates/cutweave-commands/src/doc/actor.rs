@@ -108,7 +108,8 @@ enum Request {
 /// 3. its events are queued for every subscriber (never blocking on a slow one);
 /// 4. the reply is sent.
 ///
-/// So a caller that got `Applied{rev}` back always reads a snapshot at `rev` or later, and a
+/// So a caller that got `Applied{rev, committed_rev}` back always reads a snapshot at `rev` or
+/// later and a committed snapshot at `committed_rev` or later, already journaled; and a
 /// subscriber that received an event for `rev` can read a snapshot that contains it. Readers
 /// never take a lock: [`DocHandle::snapshot`] is a lock-free load.
 pub struct DocActor {

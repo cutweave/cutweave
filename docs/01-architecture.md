@@ -298,7 +298,7 @@ impl Command for SplitItem {
   - **Saves and autosaves persist only the last *committed* revision**, never in-flight ephemeral edits. A minimal soft-lock ships in P1; P2 adds retry semantics and UI feedback.
 - **Actors & optimistic concurrency.** Every tx is tagged with an actor (`user`, `agent:<label>`, `plugin:<id>`, `system`). The actor is **derived server-side from the credential** (§6), never asserted by the client. Clients may pass `expected_rev`; a stale rev fails with `Conflict`. History is per actor, so an agent (or the copilot) can undo only its own changes with `edit.undo{actor}`. The editor's Undo and Redo act on anyone's latest change (`edit.undo{actor:"*"}`), and its labels name the step and who made it (ADR-0019).
 - **Revisions (decided in WP-1B.03):**
-  - `rev` bumps on every live change, including ephemeral edits; `committed_rev` tracks committed state. A snapshot is committed exactly when `rev == committed_rev`.
+  - `rev` bumps on every live change, including ephemeral edits; `committed_rev` tracks committed state. `rev == committed_rev` implies the live document is the committed one, but not conversely: a rollback bumps `rev` too, so after a cancel the live document equals the committed one while `rev` stays ahead until the next commit.
   - Implicit (single) commands run against the committed document. One that overlaps an open transaction's items fails with `Conflict{item_in_gesture}`.
   - The doc actor is a dedicated OS thread, not a tokio task; readers use arc-swap and never lock.
   - After crash recovery in deterministic-ID mode, the seeded ID generator state must be restored from the journal (WP-1C.02).

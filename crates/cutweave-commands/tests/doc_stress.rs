@@ -9,6 +9,7 @@
 mod doc_support;
 
 use std::{
+    ops::Range,
     sync::{
         Arc, Mutex,
         atomic::{AtomicBool, AtomicU64, Ordering},
@@ -18,10 +19,10 @@ use std::{
 };
 
 use cutweave_commands::{
-    ActorCtx, Applied, CommitRecord, ConnId, DocActor, DocState, Patch, RecvError, Rev, Submit,
-    TxKind,
+    ActorCtx, Applied, CommitRecord, ConnId, DocActor, DocHandle, DocState, Patch, PatchCause,
+    RecvError, Rev, Submit, TxKind,
 };
-use cutweave_model::ItemId;
+use cutweave_model::{ItemId, TrackId};
 use doc_support::{Mirror, config, drain, project, replay, spawn_with_capacity};
 use serde_json::{Value, json};
 
@@ -201,11 +202,71 @@ fn eight_writers_ten_thousand_commands_equal_a_sequential_replay() {
     });
 }
 
+/// The test's journal: every commit's revision and patch, in commit order.
+type Journal = Arc<Mutex<Vec<(Rev, Patch)>>>;
+
+/// What recovery and resync rely on (ADR-0017, WP-1L.03): once a commit is acknowledged, the
+/// journal has it and the committed snapshot includes it. The actor journals a commit before
+/// applying it, publishes the live and committed snapshots together in one atomic swap, and
+/// only then replies.
+fn assert_acknowledged(h: &DocHandle, journal: &Journal, committed_rev: Rev) {
+    assert!(
+        h.committed_snapshot().rev >= committed_rev,
+        "commit {committed_rev} acknowledged before the committed snapshot had it"
+    );
+    assert!(h.snapshot().committed_rev >= committed_rev);
+    assert!(
+        journal
+            .lock()
+            .unwrap()
+            .last()
+            .is_some_and(|(rev, _)| *rev >= committed_rev),
+        "commit {committed_rev} acknowledged before it was journaled"
+    );
+}
+
+/// `rounds` gestures by `ctx` on its own track, five appended clips each: cancelled when
+/// `round % 3 == 0`, committed otherwise.
+fn gesture_rounds(
+    h: &DocHandle,
+    ctx: &ActorCtx,
+    track: TrackId,
+    rounds: Range<usize>,
+    journal: &Journal,
+    progress: &Progress,
+) {
+    for round in rounds {
+        let tx = h.begin_tx(ctx, TxKind::Gesture, "drag").wait().unwrap().id;
+        for step in 0..5 {
+            h.submit(
+                Submit::new(
+                    ctx.clone(),
+                    "timeline.append_clip",
+                    json!({"track": track, "frames": 1 + step}),
+                )
+                .in_tx(tx),
+            )
+            .wait()
+            .unwrap();
+            progress.tick();
+        }
+        if round % 3 == 0 {
+            h.cancel_tx(ctx, tx).wait().unwrap();
+        } else {
+            let closed = h.commit_tx(ctx, tx).wait().unwrap();
+            assert_acknowledged(h, journal, closed.committed_rev);
+        }
+    }
+}
+
+/// Gesturers and direct editors in parallel, then the end states pinned exactly (issue #142).
+/// The run ends deterministically: the concurrent phase's last live change is always a commit,
+/// and the gesturers' final, cancelled rounds run only after it.
 #[test]
 fn gestures_and_implicit_commands_interleave_consistently() {
     watchdog(|progress| {
         let (doc, tracks, _) = project(6);
-        let journal: Arc<Mutex<Vec<(Rev, Patch)>>> = Arc::default();
+        let journal: Journal = Arc::default();
         let sink = {
             let journal = Arc::clone(&journal);
             move |r: &CommitRecord<'_>| {
@@ -216,40 +277,22 @@ fn gestures_and_implicit_commands_interleave_consistently() {
         let actor = DocActor::spawn(config(doc.clone()).with_journal(Box::new(sink))).unwrap();
         let h = actor.handle();
         let mut events = h.subscribe();
+        let gesturer = |g: usize| ActorCtx::ui(ConnId::new(100 + g as u64));
 
-        // Two connections run gestures on their own tracks; four others edit theirs directly.
+        // Two connections run gestures on their own tracks while four others edit theirs
+        // directly. Each gesturer's last round here (38) commits, so whatever the interleaving,
+        // the last live change of this phase is a commit with no gesture left open.
         let gesturers: Vec<_> = (0..2)
             .map(|g| {
-                let (h, track, progress) = (h.clone(), tracks[g], Arc::clone(&progress));
-                thread::spawn(move || {
-                    let ctx = ActorCtx::ui(ConnId::new(100 + g as u64));
-                    for round in 0..40 {
-                        let tx = h.begin_tx(&ctx, TxKind::Gesture, "drag").wait().unwrap().id;
-                        for step in 0..5 {
-                            h.submit(
-                                Submit::new(
-                                    ctx.clone(),
-                                    "timeline.append_clip",
-                                    json!({"track": track, "frames": 1 + step}),
-                                )
-                                .in_tx(tx),
-                            )
-                            .wait()
-                            .unwrap();
-                            progress.tick();
-                        }
-                        if round % 3 == 0 {
-                            h.cancel_tx(&ctx, tx).wait().unwrap();
-                        } else {
-                            h.commit_tx(&ctx, tx).wait().unwrap();
-                        }
-                    }
-                })
+                let (h, ctx, track) = (h.clone(), gesturer(g), tracks[g]);
+                let (journal, progress) = (Arc::clone(&journal), Arc::clone(&progress));
+                thread::spawn(move || gesture_rounds(&h, &ctx, track, 0..39, &journal, &progress))
             })
             .collect();
         let editors: Vec<_> = (2..6)
             .map(|e| {
                 let (h, track, progress) = (h.clone(), tracks[e], Arc::clone(&progress));
+                let journal = Arc::clone(&journal);
                 thread::spawn(move || {
                     let ctx =
                         ActorCtx::agent(ConnId::new(200 + e as u64), format!("e{e}")).unwrap();
@@ -263,10 +306,8 @@ fn gestures_and_implicit_commands_interleave_consistently() {
                             .wait()
                             .unwrap();
                         progress.tick();
-                        let snap = h.snapshot();
-                        assert!(
-                            snap.rev >= applied.rev && snap.committed_rev >= applied.committed_rev
-                        );
+                        assert!(h.snapshot().rev >= applied.rev);
+                        assert_acknowledged(&h, &journal, applied.committed_rev);
                     }
                 })
             })
@@ -274,27 +315,60 @@ fn gestures_and_implicit_commands_interleave_consistently() {
         for t in gesturers.into_iter().chain(editors) {
             t.join().unwrap();
         }
-
         h.run(|s| s.verify()).wait().unwrap().unwrap();
+        let settled = h.snapshot();
+        assert!(settled.is_committed());
+        assert_eq!(*h.committed_snapshot(), *settled);
+
+        // Then each gesturer's last round (39) is cancelled, concurrently. A rollback is a live
+        // change, so `rev` moves 2 × (5 steps + 1 rollback) past `committed_rev` while the live
+        // document returns to the committed one: `is_committed()` is false by design (arch
+        // §5.2). The test used to assert it at the very end, which failed (#142) whenever a
+        // cancel happened to come last.
+        let finals: Vec<_> = (0..2)
+            .map(|g| {
+                let (h, ctx, track) = (h.clone(), gesturer(g), tracks[g]);
+                let (journal, progress) = (Arc::clone(&journal), Arc::clone(&progress));
+                thread::spawn(move || gesture_rounds(&h, &ctx, track, 39..40, &journal, &progress))
+            })
+            .collect();
+        for t in finals {
+            t.join().unwrap();
+        }
+        h.run(|s| s.verify()).wait().unwrap().unwrap();
+        assert_eq!(h.locks(&gesturer(0)).wait().unwrap().transactions.len(), 0);
         let live = h.snapshot();
-        assert!(live.is_committed());
-        assert_eq!(h.committed_snapshot().doc, live.doc);
+        let committed = h.committed_snapshot();
+        assert_eq!(committed.rev, settled.rev);
+        assert_eq!(
+            (live.rev, live.committed_rev),
+            (Rev(settled.rev.0 + 12), settled.rev)
+        );
+        assert!(!live.is_committed());
+        assert_eq!(live.doc, settled.doc);
+        assert_eq!(committed.doc, live.doc);
         // 4 × 300 direct + 2 × (40 − 14 cancelled) × 5 committed clips.
         assert_eq!(live.doc.item_count(), 4 * 300 + 2 * 26 * 5);
 
         // The journal replays to the committed document, in revision order.
         let journal = journal.lock().unwrap();
         assert!(journal.windows(2).all(|w| w[0].0 < w[1].0));
+        assert_eq!(journal.last().unwrap().0, committed.rev);
         let patches: Vec<Patch> = journal.iter().map(|(_, p)| p.clone()).collect();
-        assert_eq!(replay(&doc, &patches), live.doc);
+        assert_eq!(replay(&doc, &patches), committed.doc);
 
-        // The events replay to the live document.
+        // The events replay to the live document, and end with a rollback.
         let mut mirror = Mirror::new(&doc, Rev(0));
+        let mut last = None;
         for e in drain(&mut events) {
             mirror.apply(&e);
+            if let Some(p) = e.as_patched() {
+                last = Some(p.cause);
+            }
         }
         mirror.assert_matches(&live.doc);
         assert_eq!(mirror.rev, live.rev);
+        assert_eq!(last, Some(PatchCause::Rollback));
     });
 }
 
