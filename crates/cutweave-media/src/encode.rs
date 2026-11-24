@@ -387,6 +387,7 @@ mod tests {
                 },
             ],
             color: ColorTags::default(),
+            damaged: false,
         }
     }
 

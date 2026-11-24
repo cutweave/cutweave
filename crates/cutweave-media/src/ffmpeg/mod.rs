@@ -12,9 +12,11 @@
 //!
 //! Paths are validated before FFmpeg sees them (ffmpeg-next panics on non-UTF-8 paths and
 //! interior NULs, S3 F2.2), and open failures map to typed errors. Probe/index (WP-1D.02),
-//! decode (WP-1D.03) and hardware decode (WP-1D.04) build on [`input`]; the encoder (WP-1E.01)
-//! is in `encode`.
+//! decode (WP-1D.03: `decode` for video, `audio`) and hardware decode (WP-1D.04) build on
+//! [`input`]; the encoder (WP-1E.01) is in `encode`.
 
+mod audio;
+mod decode;
 mod encode;
 mod error;
 mod index;
@@ -36,8 +38,6 @@ use cutweave_model::ProbeInfo;
 use crate::backend::{AudioDecoder, DecodeOpts, EncodeSpec, Encoder, MediaBackend, VideoDecoder};
 use crate::version::{self, LinkedLibrary, Release};
 use crate::{Capabilities, FrameIndex, MediaError};
-
-const BACKEND: &str = "ffmpeg";
 
 /// What FFmpeg the process loaded.
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -171,25 +171,17 @@ impl MediaBackend for FfmpegBackend {
     fn open_decoder(
         &self,
         path: &Path,
-        _opts: &DecodeOpts,
+        opts: &DecodeOpts,
     ) -> Result<Box<dyn VideoDecoder>, MediaError> {
-        let _input = input::open(path)?;
-        Err(MediaError::not_implemented(
-            BACKEND,
-            "open_decoder (WP-1D.03)",
-        ))
+        decode::open(path, opts)
     }
 
     fn open_audio_decoder(
         &self,
         path: &Path,
-        _stream: Option<u32>,
+        stream: Option<u32>,
     ) -> Result<Box<dyn AudioDecoder>, MediaError> {
-        let _input = input::open(path)?;
-        Err(MediaError::not_implemented(
-            BACKEND,
-            "open_audio_decoder (WP-1D.03)",
-        ))
+        audio::open(path, stream)
     }
 
     fn open_encoder(&self, spec: &EncodeSpec) -> Result<Box<dyn Encoder>, MediaError> {

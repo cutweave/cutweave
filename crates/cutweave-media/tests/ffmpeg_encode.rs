@@ -341,6 +341,7 @@ fn rgb_colors_survive_as_bt709_limited_range() {
                     stride: 4 * w,
                 }],
                 color: ColorTags::default(),
+                damaged: false,
             })
             .expect("push");
         }

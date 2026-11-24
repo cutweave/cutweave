@@ -965,6 +965,7 @@ mod tests {
             format,
             planes,
             color: ColorTags::default(),
+            damaged: false,
         }
     }
 
@@ -1036,6 +1037,7 @@ mod tests {
                 },
             ],
             color: ColorTags::default(),
+            damaged: false,
         };
         let planar = VideoFrame {
             format: PixelFormat::Yuv420p,
