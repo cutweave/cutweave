@@ -1,0 +1,8 @@
+file,bytes,stage,error,frames_indexed,frames_decoded,seeks_ok,seeks_err,decode_errors,demux_errors,panic,ms,corrupt_frames
+broken_zero.mp4,0,open,ffmpeg: avformat_open_input: Invalid data found when processing input,0,0,0,0,0,0,,3.0,0
+broken_garbage.mp4,1048576,open,ffmpeg: avformat_open_input: Invalid data found when processing input,0,0,0,0,0,0,,138.6,0
+broken_truncated_moov_at_end.mp4,12182281,open,ffmpeg: avformat_open_input: Invalid data found when processing input,0,0,0,0,0,0,,3.7,0
+broken_truncated_faststart.mp4,12182281,done,end_of_stream: stream ended before pts Some(151151),149,148,24,1,2,0,,4983.1,0
+broken_header_only.mp4,1024,open,ffmpeg: avformat_open_input: End of file,0,0,0,0,0,0,,3.1,0
+broken_bitflips.mkv,19804549,done,,250,250,25,0,0,0,,5426.7,160
+broken_truncated.ts,8222445,done,,104,104,25,0,0,0,,3468.2,2

@@ -1,0 +1,41 @@
+source,file,bytes,stage,error,frames_indexed,frames_decoded,seeks_ok,seeks_err,decode_errors,demux_errors,panic,ms,corrupt_frames
+hevc_main10_pq_1080p24.mp4,000 truncate@4837990,4837990,open,ffmpeg: avformat_open_input: Invalid data found when processing input,0,0,0,0,0,0,,2.0,0
+hevc_main10_pq_1080p24.mp4,001 bitflip x18,9091850,done,,144,144,25,0,0,0,,1968.5,0
+hevc_main10_pq_1080p24.mp4,002 zero 40873B @3673617,9091850,done,,144,144,25,0,0,0,,2883.2,0
+hevc_main10_pq_1080p24.mp4,003 header garbage 2814B,9091850,open,ffmpeg: avformat_open_input: Invalid data found when processing input,0,0,0,0,0,0,,82.7,0
+hevc_main10_pq_1080p24.mp4,004 swap 4KiB @7946470<->425366,9091850,done,,144,144,25,0,0,0,,2779.8,0
+hevc_main10_pq_1080p24.mp4,005 truncate@1135700,1135700,open,ffmpeg: avformat_open_input: Invalid data found when processing input,0,0,0,0,0,0,,1.5,0
+hevc_main10_pq_1080p24.mp4,006 bitflip x37,9091850,done,,144,144,25,0,0,0,,1917.0,0
+hevc_main10_pq_1080p24.mp4,007 zero 25942B @1416582,9091850,done,overshoot: decoder skipped pts 13824 (next was 24576),144,122,21,4,6,0,,1733.2,0
+hevc_main10_pq_1080p24.mp4,008 header garbage 253B,9091850,open,ffmpeg: avformat_open_input: Invalid data found when processing input,0,0,0,0,0,0,,43.6,0
+hevc_main10_pq_1080p24.mp4,009 swap 4KiB @7537251<->2441756,9091850,done,,144,144,25,0,0,0,,1715.8,0
+hevc_main10_pq_1080p24.mp4,010 truncate@1951110,1951110,open,ffmpeg: avformat_open_input: Invalid data found when processing input,0,0,0,0,0,0,,1.7,0
+hevc_main10_pq_1080p24.mp4,011 bitflip x10,9091850,done,,144,144,25,0,0,0,,1812.0,0
+hevc_main10_pq_1080p24.mp4,012 zero 13320B @1632872,9091850,done,,144,144,25,0,0,0,,1739.4,0
+hevc_main10_pq_1080p24.mp4,013 header garbage 893B,9091850,open,ffmpeg: avformat_open_input: Invalid data found when processing input,0,0,0,0,0,0,,42.2,0
+hevc_main10_pq_1080p24.mp4,014 swap 4KiB @4872807<->3073678,9091850,done,,144,144,25,0,0,0,,1988.3,0
+hevc_main10_pq_1080p24.mp4,015 truncate@3592783,3592783,open,ffmpeg: avformat_open_input: Invalid data found when processing input,0,0,0,0,0,0,,1.8,0
+hevc_main10_pq_1080p24.mp4,016 bitflip x38,9091850,done,,144,144,25,0,0,0,,1941.8,0
+hevc_main10_pq_1080p24.mp4,017 zero 30269B @875832,9091850,done,,144,144,25,0,0,0,,1881.4,0
+hevc_main10_pq_1080p24.mp4,018 header garbage 2904B,9091850,open,ffmpeg: avformat_open_input: Invalid data found when processing input,0,0,0,0,0,0,,42.8,0
+hevc_main10_pq_1080p24.mp4,019 swap 4KiB @7227862<->3219095,9091850,done,,144,144,25,0,0,0,,1893.1,0
+hevc_main10_pq_1080p24.mp4,020 truncate@4044306,4044306,open,ffmpeg: avformat_open_input: Invalid data found when processing input,0,0,0,0,0,0,,1.6,0
+hevc_main10_pq_1080p24.mp4,021 bitflip x40,9091850,done,,144,144,25,0,0,0,,1659.9,0
+hevc_main10_pq_1080p24.mp4,022 zero 13626B @7604554,9091850,done,,144,143,25,0,6,0,,1630.5,0
+hevc_main10_pq_1080p24.mp4,023 header garbage 2656B,9091850,open,ffmpeg: avformat_open_input: Invalid data found when processing input,0,0,0,0,0,0,,67.7,0
+hevc_main10_pq_1080p24.mp4,024 swap 4KiB @8722581<->3323266,9091850,done,,144,144,25,0,0,0,,1735.1,0
+hevc_main10_pq_1080p24.mp4,025 truncate@8343227,8343227,open,ffmpeg: avformat_open_input: Invalid data found when processing input,0,0,0,0,0,0,,1.8,0
+hevc_main10_pq_1080p24.mp4,026 bitflip x15,9091850,done,,144,144,25,0,0,0,,1819.9,0
+hevc_main10_pq_1080p24.mp4,027 zero 13266B @6776884,9091850,done,end_of_stream: stream ended before pts Some(57344),144,107,17,8,10,0,,1542.6,0
+hevc_main10_pq_1080p24.mp4,028 header garbage 4093B,9091850,open,ffmpeg: avformat_open_input: Invalid data found when processing input,0,0,0,0,0,0,,45.7,0
+hevc_main10_pq_1080p24.mp4,029 swap 4KiB @6888838<->3216846,9091850,done,,144,144,25,0,0,0,,5951.5,0
+hevc_main10_pq_1080p24.mp4,030 truncate@2896172,2896172,open,ffmpeg: avformat_open_input: Invalid data found when processing input,0,0,0,0,0,0,,1.7,0
+hevc_main10_pq_1080p24.mp4,031 bitflip x36,9091850,done,,144,144,25,0,0,0,,1563.0,0
+hevc_main10_pq_1080p24.mp4,032 zero 43418B @7868664,9091850,done,overshoot: decoder skipped pts 62464 (next was 62976),144,143,24,1,6,0,,1753.2,0
+hevc_main10_pq_1080p24.mp4,033 header garbage 481B,9091850,open,ffmpeg: avformat_open_input: Invalid data found when processing input,0,0,0,0,0,0,,43.3,0
+hevc_main10_pq_1080p24.mp4,034 swap 4KiB @3739503<->8057416,9091850,done,,144,144,25,0,0,0,,1671.6,0
+hevc_main10_pq_1080p24.mp4,035 truncate@3651559,3651559,open,ffmpeg: avformat_open_input: Invalid data found when processing input,0,0,0,0,0,0,,1.8,0
+hevc_main10_pq_1080p24.mp4,036 bitflip x39,9091850,done,,144,144,25,0,0,0,,1658.6,0
+hevc_main10_pq_1080p24.mp4,037 zero 36922B @688128,9091850,done,,144,143,25,0,10,0,,1660.3,0
+hevc_main10_pq_1080p24.mp4,038 header garbage 1632B,9091850,open,ffmpeg: avformat_open_input: Invalid data found when processing input,0,0,0,0,0,0,,43.2,0
+hevc_main10_pq_1080p24.mp4,039 swap 4KiB @3859129<->2153809,9091850,done,overshoot: decoder skipped pts 24064 (next was 24576),144,133,22,3,4,0,,1749.3,0

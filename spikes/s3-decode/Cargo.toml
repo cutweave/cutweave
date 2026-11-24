@@ -1,0 +1,41 @@
+[package]
+name = "s3-decode"
+version = "0.0.0"
+edition = "2024"
+rust-version = "1.100"
+license = "GPL-3.0-or-later"
+publish = false
+description = "Spike S3 (WP-0E.01): ffmpeg-next decode, packet-scan frame index, frame-exact seek. Throwaway."
+
+# Own workspace: spikes are excluded from the root workspace (spikes/README.md) and are throwaway.
+[workspace]
+
+[lib]
+name = "s3"
+path = "src/lib.rs"
+
+[[bin]]
+name = "s3"
+path = "src/main.rs"
+
+[dependencies]
+# Pinned exactly: the spike measures this release. Same version the root workspace already pins
+# for `cutweave-media` (feature `ffmpeg`), and the first ffmpeg-next line whose build script
+# detects FFmpeg 8.1 (`ffmpeg_8_1`, lavc 62.28). Only demux + decode are needed: no swscale,
+# swresample, avfilter or avdevice, so only avformat/avcodec/avutil are linked.
+ffmpeg-next = { version = "=9.1.0", default-features = false, features = ["codec", "format"] }
+
+[lints.rust]
+unsafe_op_in_unsafe_fn = "deny"
+
+[lints.clippy]
+unwrap_used = "warn"
+dbg_macro = "warn"
+todo = "warn"
+
+[profile.dev]
+# Decode-forward and CRC loops are slow at opt-level 0; FFmpeg itself is prebuilt either way.
+opt-level = 2
+
+[profile.release]
+debug = "line-tables-only"
