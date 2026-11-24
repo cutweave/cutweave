@@ -1,0 +1,593 @@
+// SPDX-License-Identifier: GPL-3.0-or-later
+// Shared helpers of the user-flow suite (ADR-0018, docs/user-flows.md). A flow drives the built
+// app the way a person does: pointer clicks and drags on real elements, typing, shortcuts, the
+// app's menus and its own dialogs. What these helpers may and may not do:
+//
+// - Stub only the OS boundary: the native file pickers (`dialog.showOpenDialog`, in main) return
+//   the paths a person would pick. Nothing inside the app is bypassed.
+// - Read state, never change it: `editorCall` is used only to read the document back
+//   (`timeline.get`, `project.info`, `view.get`, `item.get`) or for setup a flow does not test.
+// - Menus: every menu action goes through `chooseMenu()`, the one place that knows how the menu
+//   is drawn (the native menu today, WP-1M.09's in-app menu bar later).
+// - Menu accelerators (Ctrl+S, Ctrl+Z, ...) are native today: Playwright's page keyboard never
+//   reaches them. `shortcut()` sends the key press to the window from main
+//   (`webContents.sendInputEvent`), the input path a real key press takes: the page sees it first,
+//   then the menu's accelerator handles it. Editor-level keys (Space, J/K/L, arrows, timeline keys,
+//   Ctrl+I) go through `page.keyboard`.
+// - Wait for visible state, never sleep.
+import {
+  copyFileSync,
+  existsSync,
+  mkdirSync,
+  mkdtempSync,
+  readdirSync,
+  rmSync,
+  writeFileSync,
+} from "node:fs";
+import { tmpdir } from "node:os";
+import path from "node:path";
+import type { ElectronApplication, Locator, Page, TestInfo } from "@playwright/test";
+import {
+  desktopDir,
+  editorCall,
+  editorHandle,
+  editorState,
+  expect,
+  type LaunchedApp,
+  launchApp,
+  REAL_ENGINE_ENV,
+} from "../fixtures.ts";
+
+export { hasRealEngine } from "../fixtures.ts";
+
+/** Flicks per second (ADR-0004): every time on the wire is flicks. */
+export const FLICKS = 705_600_000;
+export const sec = (s: number): number => Math.round(s * FLICKS);
+/** One frame at the default 30 fps sequence. */
+export const FRAME = FLICKS / 30;
+
+/** The `cutweave` CLI (`cargo build -p cutweave-cli`): F15 attaches it to the app's engine. */
+export const cliBin =
+  process.env.CUTWEAVE_CLI_BIN ??
+  path.join(
+    desktopDir,
+    "..",
+    "..",
+    "target",
+    "debug",
+    process.platform === "win32" ? "cutweave.exe" : "cutweave",
+  );
+export const hasCli = existsSync(cliBin);
+
+/** The demo media (`cutweave-demo/media`); placeholders stand in when it is not on this machine. */
+const DEMO_MEDIA = process.env.CUTWEAVE_DEMO_MEDIA ?? "E:/projects/cutweave-demo/media";
+export const DEMO_FILES = [
+  "interview.mp4",
+  "broll-city.mp4",
+  "broll-coffee.mp4",
+  "music.wav",
+  "logo.png",
+] as const;
+export type DemoFile = (typeof DEMO_FILES)[number];
+
+/** A throwaway folder for one flow: `media/` holds the demo files, projects go next to it. */
+export interface Workspace {
+  readonly dir: string;
+  readonly media: string;
+  file(name: DemoFile): string;
+  remove(): void;
+}
+
+/**
+ * Copies the demo media into a fresh folder. The engine runs with `--dev-stub-media` until
+ * WP-1I.05, which probes by extension, so on a machine without the demo folder small placeholder
+ * files of the same names stand in (nothing is committed, nothing is decoded).
+ */
+export function workspace(): Workspace {
+  const dir = mkdtempSync(path.join(tmpdir(), "cutweave-flow-"));
+  const media = path.join(dir, "media");
+  mkdirSync(media);
+  const demo = existsSync(DEMO_MEDIA) ? new Set(readdirSync(DEMO_MEDIA)) : new Set<string>();
+  for (const name of DEMO_FILES) {
+    if (demo.has(name)) copyFileSync(path.join(DEMO_MEDIA, name), path.join(media, name));
+    else writeFileSync(path.join(media, name), `placeholder for ${name} (Cutweave e2e)\n`);
+  }
+  return {
+    dir,
+    media,
+    file: (name) => path.join(media, name),
+    remove: () => removeDir(dir),
+  };
+}
+
+/**
+ * Removes a flow's folder. Windows keeps a folder busy for a moment after the processes that
+ * used it exit (a killed app's helpers, the virus scanner), so this retries for a few seconds.
+ */
+export function removeDir(dir: string): void {
+  rmSync(dir, { recursive: true, force: true, maxRetries: 20, retryDelay: 250 });
+}
+
+/**
+ * Launches the built app with the real engine (`cutweave-engine-serve`), stub media probing and
+ * the workspace allowed as an engine root, and waits until the editor shows "Engine connected".
+ * Pass `home` to relaunch on the same profile (settings, recent projects).
+ */
+export async function launchFlowApp(work: Workspace, home?: string): Promise<LaunchedApp> {
+  const launched = await launchApp(
+    {
+      ...REAL_ENGINE_ENV,
+      CUTWEAVE_DEV_STUB_MEDIA: "1",
+      CUTWEAVE_ENGINE_ALLOW_ROOTS: work.dir,
+    },
+    [],
+    home === undefined ? {} : { home },
+  );
+  await editorHandle(launched.page);
+  await expect.poll(async () => (await editorState(launched.page)).connection).toBe("ready");
+  await expect(engineChip(launched.page)).toHaveText("Engine connected");
+  return launched;
+}
+
+/** A fresh HOME that survives the app (a relaunch reuses it); remove it when the flow ends. */
+export function profileDir(): string {
+  return mkdtempSync(path.join(tmpdir(), "cutweave-flow-home-"));
+}
+
+// ---- what the user sees ----------------------------------------------------------------------
+
+export const engineChip = (page: Page): Locator => page.locator(".cw-engine-status");
+export const dirtyDot = (page: Page): Locator => page.getByTestId("dirty-dot");
+export const toolbar = (page: Page): Locator =>
+  page.getByRole("toolbar", { name: "Project actions" });
+export const mediaCards = (page: Page): Locator =>
+  page.getByRole("listbox", { name: "Media files" }).getByRole("option");
+export const mediaCard = (page: Page, name: string): Locator =>
+  mediaCards(page).filter({ hasText: name });
+export const timelineCanvas = (page: Page): Locator =>
+  page.getByRole("application", { name: "Timeline" });
+export const timelineTools = (page: Page): Locator =>
+  page.getByRole("toolbar", { name: "Timeline tools" });
+export const timecode = (page: Page): Locator => page.getByLabel("Current time", { exact: true });
+/** A toast by its title (the toast itself, not Radix's live-region copy of its text). */
+export const toast = (page: Page, title: string | RegExp): Locator =>
+  page.locator(".cw-toast", { hasText: title });
+
+/**
+ * Screenshot of the window at a key step of the flow: kept in the test's output folder and
+ * attached to the report, for a person to look at (not compared against a baseline).
+ */
+export async function snapshot(page: Page, info: TestInfo, name: string): Promise<void> {
+  const file = info.outputPath(`${name.replace(/[^a-z0-9]+/gi, "-")}.png`);
+  await page.screenshot({ path: file });
+  await info.attach(name, { path: file, contentType: "image/png" });
+}
+
+/** Main-process log lines that report a problem (the stub-media warning is expected). */
+export function logProblems(mainLog: readonly string[]): string[] {
+  return mainLog.filter(
+    (line) =>
+      /\b(error|panic|panicked|uncaught|unhandled|exception|fatal)\b/i.test(line) &&
+      !/dev stub media is on/.test(line),
+  );
+}
+
+// ---- keyboard and menus ----------------------------------------------------------------------
+
+/** `Control+S` style chords for `shortcut()`; `Control` is Cmd on macOS (`CmdOrCtrl`). */
+export type Chord = `${"Control+" | "Control+Shift+" | ""}${string}`;
+
+/**
+ * Presses a menu accelerator (`Control+S`, `Control+Shift+S`, `Control+Z`, ...) on the editor
+ * window. The key goes in through main (`webContents.sendInputEvent`), as a key press on the
+ * window does, so the native menu's accelerator runs the same menu item a click would.
+ *
+ * Keys only reach a focused window (Electron drops `sendInputEvent` otherwise), and another
+ * app's window can take the focus while the suite runs. A person's keys go to the window they
+ * are looking at, so this brings the editor to the front first and waits until it has the focus.
+ */
+export async function shortcut(app: ElectronApplication, chord: Chord): Promise<void> {
+  const parts = chord.split("+");
+  const key = parts.pop() ?? "";
+  const mac = process.platform === "darwin";
+  const modifiers = parts.map((m) =>
+    m === "Control" ? (mac ? "meta" : "control") : m.toLowerCase(),
+  );
+  const focused = () =>
+    app.evaluate(({ BrowserWindow }) => {
+      const win = BrowserWindow.getAllWindows()[0];
+      if (win === undefined) throw new Error("no window to type into");
+      if (win.isFocused() && win.webContents.isFocused()) return true;
+      win.focus();
+      win.webContents.focus();
+      return false;
+    });
+  await expect.poll(focused, { message: "the editor window never got the focus" }).toBe(true);
+  await app.evaluate(
+    ({ BrowserWindow }, { key, modifiers }) => {
+      const win = BrowserWindow.getAllWindows()[0];
+      if (win === undefined) throw new Error("no window to type into");
+      const mods = modifiers as ("control" | "meta" | "shift")[];
+      win.webContents.sendInputEvent({ type: "keyDown", keyCode: key, modifiers: mods });
+      win.webContents.sendInputEvent({ type: "keyUp", keyCode: key, modifiers: mods });
+    },
+    { key, modifiers },
+  );
+}
+
+/**
+ * Chooses a menu item (`File` > `New Project…`). Every menu action of the flows goes through
+ * here, so only this helper changes when the menu does. Today it is the native menu: the item of
+ * `Menu.getApplicationMenu()` runs the handler a click on it runs (Playwright cannot open a
+ * native menu). Once WP-1M.09's in-app menu bar replaces it on Windows and Linux, this becomes a
+ * real click on that menu bar in `page`.
+ */
+export async function chooseMenu(
+  // Unused until the in-app menu bar (WP-1M.09) lands; the call sites already pass it.
+  _page: Page,
+  app: ElectronApplication,
+  menu: "File" | "Edit" | "View" | "Help",
+  item: string,
+): Promise<void> {
+  const found = await app.evaluate(
+    ({ Menu, app }, { menu, item }) => {
+      const plain = (label: string) => label.replace(/&/g, "");
+      const top = Menu.getApplicationMenu()?.items.find((i) => plain(i.label) === menu);
+      const entry = top?.submenu?.items.find((i) => plain(i.label) === item);
+      if (entry === undefined) return false;
+      if (entry.role === "quit") {
+        // A role item has no click handler of ours: Exit is `app.quit()`.
+        app.quit();
+        return true;
+      }
+      entry.click();
+      return true;
+    },
+    { menu, item },
+  );
+  if (!found) throw new Error(`no menu item ${menu} > ${item}`);
+}
+
+// ---- the OS file pickers ---------------------------------------------------------------------
+
+declare global {
+  /** Main-process state of the stubbed file pickers (installed by `pickFiles`). */
+  var __cutweaveFlowPicker:
+    | { answers: (string[] | null)[]; asked: { properties: string[] }[] }
+    | undefined;
+}
+
+/**
+ * The next native file pickers answer with these paths, in order (`null`: the person cancels).
+ * Stubs `dialog.showOpenDialog` in main: the OS dialog the app does not own. Returns a reader
+ * of what the app asked the OS for (the picker's `properties`).
+ */
+export async function pickFiles(
+  app: ElectronApplication,
+  ...answers: (string[] | null)[]
+): Promise<() => Promise<{ properties: string[] }[]>> {
+  await app.evaluate(({ dialog }, answers) => {
+    globalThis.__cutweaveFlowPicker ??= { answers: [], asked: [] };
+    const state = globalThis.__cutweaveFlowPicker;
+    state.answers.push(...answers);
+    dialog.showOpenDialog = (async (...args: unknown[]) => {
+      const options = (args.length > 1 ? args[1] : args[0]) as { properties?: string[] };
+      state.asked.push({ properties: [...(options?.properties ?? [])] });
+      const next = state.answers.shift() ?? null;
+      return next === null
+        ? { canceled: true, filePaths: [] }
+        : { canceled: false, filePaths: next };
+    }) as typeof dialog.showOpenDialog;
+  }, answers);
+  return () => app.evaluate(() => globalThis.__cutweaveFlowPicker?.asked ?? []);
+}
+
+// ---- reading the document back -------------------------------------------------------------
+
+export interface ItemView {
+  id: string;
+  start: number;
+  duration: number;
+  media: string;
+  linked_group: string | null;
+  enabled: boolean;
+}
+export interface TrackView {
+  id: string;
+  kind: "video" | "audio";
+  name: string;
+  items: ItemView[];
+}
+export interface SequenceView {
+  id: string;
+  tracks: TrackView[];
+}
+
+/** The project's first sequence with its tracks (top to bottom) and items, from the engine. */
+export async function sequence(page: Page): Promise<SequenceView> {
+  const info = await editorCall<{ sequences: { id: string }[] }>(page, "project.info");
+  const id = info.sequences[0]?.id;
+  if (id === undefined) throw new Error("the project has no sequence");
+  const seq = await editorCall<SequenceView>(page, "timeline.get", { sequence: id, depth: 2 });
+  for (const track of seq.tracks) track.items.sort((a, b) => a.start - b.start);
+  return seq;
+}
+
+/** Item starts and durations per track, in seconds (ids left out): what the person sees. */
+export async function layout(page: Page): Promise<{ track: string; clips: [number, number][] }[]> {
+  const seq = await sequence(page);
+  return seq.tracks.map((t) => ({
+    track: t.name,
+    clips: t.items.map((i) => [i.start / FLICKS, i.duration / FLICKS] as [number, number]),
+  }));
+}
+
+const baseName = (p: string | null): string => (p ?? "").split(/[\\/]/).pop() ?? "";
+
+/** The project's media (`media.list`): id and file name. */
+async function mediaList(page: Page): Promise<{ id: string; name: string }[]> {
+  const out = await editorCall<{ media: { id: string; path: string | null }[] }>(
+    page,
+    "media.list",
+    {},
+  );
+  return out.media.map((m) => ({ id: m.id, name: baseName(m.path) }));
+}
+
+/** The project's media, by file name. */
+export async function mediaNames(page: Page): Promise<string[]> {
+  return (await mediaList(page)).map((m) => m.name).sort();
+}
+
+/** Media names of the clips on a track, in timeline order. */
+export async function clipNames(page: Page, trackName: string): Promise<string[]> {
+  const [seq, media] = await Promise.all([sequence(page), mediaList(page)]);
+  const names = new Map(media.map((m) => [m.id, m.name]));
+  const track = seq.tracks.find((t) => t.name === trackName);
+  return (track?.items ?? []).map((i) => names.get(i.media) ?? i.media);
+}
+
+/**
+ * Waits until the editor's own document has caught up with the engine (the timeline draws from
+ * it): the item count the engine reports is what the editor holds.
+ */
+export async function editorCaughtUp(page: Page): Promise<void> {
+  await expect
+    .poll(async () => {
+      const seq = await sequence(page).catch(() => null);
+      const engineItems = seq?.tracks.reduce((n, t) => n + t.items.length, 0) ?? -1;
+      return (await editorState(page)).items === engineItems;
+    })
+    .toBe(true);
+}
+
+// ---- the timeline canvas ---------------------------------------------------------------------
+
+/**
+ * Where things are drawn on the timeline canvas, from the same tokens and view state the
+ * renderer uses (`@cutweave/timeline` TimelineView/TimelineLayout): header `4 × space-12` wide,
+ * ruler `control-md` tall, each lane `track-md + 2 × space-1` tall.
+ */
+export interface TimelineGeometry {
+  readonly box: { x: number; y: number; width: number; height: number };
+  readonly headerWidth: number;
+  readonly rulerHeight: number;
+  readonly laneHeight: number;
+  readonly pxPerSec: number;
+  readonly scrollX: number;
+  readonly scrollY: number;
+  readonly tracks: readonly TrackView[];
+}
+
+export async function timelineGeometry(page: Page): Promise<TimelineGeometry> {
+  const box = await timelineCanvas(page).boundingBox();
+  if (box === null) throw new Error("the timeline canvas is not visible");
+  const tokens = await page.evaluate(() => {
+    const cs = getComputedStyle(document.documentElement);
+    const px = (name: string) => Number.parseFloat(cs.getPropertyValue(name));
+    return {
+      space12: px("--space-12"),
+      controlMd: px("--control-md"),
+      trackMd: px("--track-md"),
+      space1: px("--space-1"),
+    };
+  });
+  const view = await editorCall<{ zoom: number | null; scroll: { x: number; y: number } }>(
+    page,
+    "view.get",
+  );
+  const seq = await sequence(page);
+  return {
+    box,
+    headerWidth: 4 * tokens.space12,
+    rulerHeight: tokens.controlMd,
+    laneHeight: tokens.trackMd + 2 * tokens.space1,
+    pxPerSec: view.zoom ?? 100,
+    scrollX: view.scroll.x,
+    scrollY: view.scroll.y,
+    tracks: seq.tracks,
+  };
+}
+
+/** Page x of timeline time `t` (flicks). */
+export const xAt = (g: TimelineGeometry, t: number): number =>
+  g.box.x + g.headerWidth + ((t - g.scrollX) * g.pxPerSec) / FLICKS;
+
+/** Page y of the middle of a track's lane. */
+export function laneY(g: TimelineGeometry, trackName: string): number {
+  const index = g.tracks.findIndex((t) => t.name === trackName);
+  if (index < 0) throw new Error(`no track ${trackName}`);
+  return g.box.y + g.rulerHeight + index * g.laneHeight - g.scrollY + g.laneHeight / 2;
+}
+
+/** Page y of the ruler. */
+export const rulerY = (g: TimelineGeometry): number => g.box.y + g.rulerHeight / 2;
+
+/** The page rectangle of a clip. */
+export function clipBox(g: TimelineGeometry, itemId: string) {
+  for (const track of g.tracks) {
+    const item = track.items.find((i) => i.id === itemId);
+    if (item === undefined) continue;
+    const x = xAt(g, item.start);
+    const w = (item.duration * g.pxPerSec) / FLICKS;
+    return { x, w, y: laneY(g, track.name), track: track.name, item };
+  }
+  throw new Error(`no item ${itemId} on the timeline`);
+}
+
+/** The clip on `trackName` that starts at `startSec` (to the frame). */
+export function clipAt(g: TimelineGeometry, trackName: string, startSec: number): ItemView {
+  const track = g.tracks.find((t) => t.name === trackName);
+  const item = track?.items.find((i) => Math.abs(i.start - sec(startSec)) < FRAME / 2);
+  if (item === undefined) throw new Error(`no clip at ${startSec} s on ${trackName}`);
+  return item;
+}
+
+/** A pointer drag with the left button, in small steps like a hand moving the mouse. */
+export async function drag(
+  page: Page,
+  from: { x: number; y: number },
+  to: { x: number; y: number },
+): Promise<void> {
+  await page.mouse.move(from.x, from.y);
+  await page.mouse.down();
+  await page.mouse.move(from.x + Math.sign(to.x - from.x) * 4, from.y, { steps: 2 });
+  await page.mouse.move(to.x, to.y, { steps: 12 });
+  await page.mouse.up();
+}
+
+/** Drags a media card from the bin onto a track at `atSec` (HTML drag and drop, as a hand does). */
+export async function dropCard(
+  page: Page,
+  name: string,
+  trackName: string,
+  atSec: number,
+  offsetPx = 0,
+): Promise<void> {
+  const g = await timelineGeometry(page);
+  await mediaCard(page, name).dragTo(timelineCanvas(page), {
+    targetPosition: {
+      x: xAt(g, sec(atSec)) + offsetPx - g.box.x,
+      y: laneY(g, trackName) - g.box.y,
+    },
+  });
+}
+
+// ---- project actions -------------------------------------------------------------------------
+
+/** The "New project" / "Save project as" dialog. */
+export function namingDialog(page: Page, title: "New project" | "Save project as" = "New project") {
+  const dialog = page.getByRole("dialog", { name: title });
+  return {
+    dialog,
+    name: dialog.getByLabel("Name"),
+    location: dialog.getByLabel("Location"),
+    choose: dialog.getByRole("button", { name: "Choose folder…" }),
+    create: dialog.getByRole("button", {
+      name: title === "New project" ? "Create project" : "Save project",
+    }),
+    cancel: dialog.getByRole("button", { name: "Cancel" }),
+  };
+}
+
+/** The project's `.cutweave` document for a project folder `<parent>/<name>`. */
+export const projectDoc = (parent: string, name: string): string =>
+  path.join(parent, name, `${name}.cutweave`);
+
+/**
+ * File > New Project (Ctrl+N): types the name and the location into the dialog and creates it.
+ * Resolves once the window title names it and nothing is unsaved.
+ */
+export async function createProject(
+  app: ElectronApplication,
+  page: Page,
+  name: string,
+  parent: string,
+): Promise<string> {
+  await shortcut(app, "Control+N");
+  const naming = namingDialog(page);
+  await expect(naming.dialog).toBeVisible();
+  await naming.name.fill(name);
+  await naming.location.fill(parent);
+  await naming.create.click();
+  await expect(naming.dialog).toBeHidden();
+  await expect(page).toHaveTitle(`${name} — Cutweave`);
+  await expect(dirtyDot(page)).toBeHidden();
+  await expect(timelineCanvas(page)).toBeVisible();
+  return projectDoc(parent, name);
+}
+
+/**
+ * Imports files with the media bin's Import button (the OS picker returns `files`). Resolves
+ * once the bin shows them and the editor holds them.
+ */
+export async function importWithButton(
+  app: ElectronApplication,
+  page: Page,
+  files: readonly string[],
+): Promise<void> {
+  const before = await mediaCards(page).count();
+  await pickFiles(app, [...files]);
+  await page.getByRole("button", { name: "Import", exact: true }).click();
+  await expect(mediaCards(page)).toHaveCount(before + files.length);
+}
+
+/** Opens the top bar's Recent menu and picks a project by its file name. */
+export async function openRecent(page: Page, fileName: string): Promise<void> {
+  await toolbar(page).getByRole("button", { name: "Recent projects" }).click();
+  await page.getByRole("menuitem", { name: fileName }).click();
+}
+
+/** The crash-recovery dialog (WP-1M.07). */
+export function recoveryDialog(page: Page) {
+  const dialog = page.getByRole("dialog", { name: "Restore unsaved changes?" });
+  return {
+    dialog,
+    restore: dialog.getByRole("button", { name: /^Restore unsaved changes/ }),
+    discard: dialog.getByRole("button", { name: "Discard", exact: true }),
+  };
+}
+
+/** Whether main knows the editor has unsaved changes (read-only test hook). */
+export async function windowDirty(app: ElectronApplication): Promise<boolean> {
+  return app.evaluate(() => globalThis.__cutweaveTest?.windowDirty() ?? false);
+}
+
+/** Selects a clip by clicking its body on the timeline; waits for the inspector to show it. */
+export async function clickClip(page: Page, itemId: string): Promise<void> {
+  const g = await timelineGeometry(page);
+  const box = clipBox(g, itemId);
+  await page.mouse.click(box.x + Math.min(box.w / 2, 60), box.y);
+  await expect(page.getByTestId("clip-inspector")).toBeVisible();
+}
+
+/** The inspector's fields for the selected clip. */
+export function inspector(page: Page) {
+  const panel = page.getByTestId("clip-inspector");
+  return {
+    panel,
+    name: panel.getByLabel("Name"),
+    start: panel.getByLabel("Start"),
+    duration: panel.getByLabel("Duration"),
+    opacity: panel.getByRole("slider", { name: "Opacity" }),
+    positionX: panel.getByRole("spinbutton", { name: "Position X" }),
+    positionY: panel.getByRole("spinbutton", { name: "Position Y" }),
+    scale: panel.getByRole("spinbutton", { name: "Scale" }),
+    rotation: panel.getByRole("spinbutton", { name: "Rotation" }),
+    gain: panel.getByRole("spinbutton", { name: "Gain" }),
+  };
+}
+
+/** The item as the engine has it (`item.get`). */
+export async function item(page: Page, id: string) {
+  return editorCall<{
+    item: { id: string; start: number; duration: number };
+    name: string | null;
+    linked: string[];
+    visual: {
+      opacity: number;
+      transform: { position: { x: number; y: number }; scale: { x: number }; rotation: number };
+    };
+    audio: { gain: number };
+  }>(page, "item.get", { item: id });
+}
