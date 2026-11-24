@@ -20,7 +20,7 @@ use cutweave_media::ContentHash;
 use rusqlite::{OptionalExtension, params};
 
 use crate::db::next_access;
-use crate::{CacheDb, CacheError, CacheUsage};
+use crate::{CacheDb, CacheError, CacheUsage, Eviction};
 
 /// What a disk entry is (stored as a number: append new kinds, never renumber).
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
@@ -91,9 +91,57 @@ impl DiskCache {
         self.max_bytes.load(Ordering::Relaxed)
     }
 
-    /// Changes the cap; takes effect at the next write.
+    /// Changes the cap; takes effect at the next write ([`shrink_to`](Self::shrink_to) also
+    /// evicts now).
     pub fn set_max_bytes(&self, max_bytes: u64) {
         self.max_bytes.store(max_bytes, Ordering::Relaxed);
+    }
+
+    /// Changes the cap and evicts least-recently-used entries at once until the total fits it
+    /// (the settings page lowering a limit, WP-1D.08).
+    pub fn shrink_to(&self, max_bytes: u64) -> Result<Eviction, CacheError> {
+        self.set_max_bytes(max_bytes);
+        self.evict_to(max_bytes)
+    }
+
+    /// Deletes every entry (files and rows), keeping the cap. Everything in it can be
+    /// regenerated from the media.
+    pub fn clear(&self) -> Result<Eviction, CacheError> {
+        let out = self.evict_to(0)?;
+        // Directories left empty (`<kind>/<hash>`), best effort; a non-empty one stays.
+        for kind in [DiskKind::Thumb, DiskKind::Filmstrip] {
+            let dir = self.root.join(kind.dir());
+            if let Ok(rd) = fs::read_dir(&dir) {
+                for entry in rd.flatten() {
+                    let _ = fs::remove_dir(entry.path());
+                }
+            }
+            let _ = fs::remove_dir(&dir);
+        }
+        Ok(out)
+    }
+
+    /// Evicts oldest-first until at most `budget` bytes remain.
+    fn evict_to(&self, budget: u64) -> Result<Eviction, CacheError> {
+        let victims = {
+            let mut conn = self.db.lock();
+            let tx = conn.transaction()?;
+            let victims = evict_rows(&tx, budget)?;
+            tx.commit()?;
+            victims
+        };
+        Ok(self.remove_victims(victims))
+    }
+
+    /// Deletes the files of evicted rows; counts them.
+    fn remove_victims(&self, victims: Vec<(String, u64)>) -> Eviction {
+        let mut out = Eviction::default();
+        for (path, bytes) in victims {
+            let _ = fs::remove_file(self.file(&path));
+            out.removed += 1;
+            out.freed += bytes;
+        }
+        out
     }
 
     fn rel(kind: DiskKind, hash: &ContentHash, name: &str) -> String {
@@ -186,13 +234,11 @@ impl DiskCache {
                  VALUES (?1, ?2, ?3, ?4, ?5, ?6)",
                 params![rel, hash.to_string(), kind.code(), meta, size, seq],
             )?;
-            let victims = evict(&tx, self.max_bytes())?;
+            let victims = evict_rows(&tx, self.max_bytes())?;
             tx.commit()?;
             victims
         };
-        for v in victims {
-            let _ = fs::remove_file(self.file(&v));
-        }
+        self.remove_victims(victims);
         Ok(())
     }
 
@@ -228,8 +274,11 @@ impl DiskCache {
     }
 }
 
-/// Deletes the oldest rows until at most `budget` bytes remain; returns their paths.
-fn evict(tx: &rusqlite::Transaction<'_>, budget: u64) -> Result<Vec<String>, CacheError> {
+/// Deletes the oldest rows until at most `budget` bytes remain; returns their paths and sizes.
+fn evict_rows(
+    tx: &rusqlite::Transaction<'_>,
+    budget: u64,
+) -> Result<Vec<(String, u64)>, CacheError> {
     let mut total: i64 = tx.query_row(
         "SELECT COALESCE(SUM(bytes), 0) FROM disk_entries",
         [],
@@ -244,11 +293,11 @@ fn evict(tx: &rusqlite::Transaction<'_>, budget: u64) -> Result<Vec<String>, Cac
             let Some(row) = rows.next()? else { break };
             let (path, bytes): (String, i64) = (row.get(0)?, row.get(1)?);
             total -= bytes;
-            victims.push(path);
+            victims.push((path, bytes.unsigned_abs()));
         }
     }
-    for v in &victims {
-        tx.execute("DELETE FROM disk_entries WHERE path = ?1", params![v])?;
+    for (path, _) in &victims {
+        tx.execute("DELETE FROM disk_entries WHERE path = ?1", params![path])?;
     }
     Ok(victims)
 }

@@ -38,6 +38,7 @@ pub struct WaveformRequest {
 #[derive(Debug)]
 pub struct WaveformCache {
     dir: PathBuf,
+    max_bytes: AtomicU64,
     recent: Mutex<Vec<(PathBuf, Arc<Waveform>)>>,
 }
 
@@ -50,8 +51,35 @@ impl WaveformCache {
     pub fn new(dir: impl Into<PathBuf>) -> WaveformCache {
         WaveformCache {
             dir: dir.into(),
+            max_bytes: AtomicU64::new(WaveformCache::DEFAULT_MAX_BYTES),
             recent: Mutex::new(Vec::new()),
         }
+    }
+
+    /// The default cap on the stored pyramids: 512 MiB.
+    pub const DEFAULT_MAX_BYTES: u64 = 512 << 20;
+
+    /// The byte cap [`enforce_limit`](Self::enforce_limit) keeps the files under.
+    #[must_use]
+    pub fn max_bytes(&self) -> u64 {
+        self.max_bytes.load(Ordering::Relaxed)
+    }
+
+    /// Changes the cap and deletes the least recently read pyramids at once until the files fit
+    /// it (the settings page lowering a limit, WP-1D.08).
+    pub fn shrink_to(&self, max_bytes: u64) -> Result<Eviction, CacheError> {
+        self.max_bytes.store(max_bytes, Ordering::Relaxed);
+        self.enforce_limit()
+    }
+
+    /// Evicts down to the current cap (called after each pyramid is stored).
+    pub fn enforce_limit(&self) -> Result<Eviction, CacheError> {
+        self.evict_lru(self.max_bytes())
+    }
+
+    /// Deletes every stored pyramid; they are rebuilt from the media when asked for.
+    pub fn clear(&self) -> Result<Eviction, CacheError> {
+        self.evict_lru(0)
     }
 
     /// `<OS cache dir>/cutweave/waveforms`: `%LOCALAPPDATA%` on Windows, `~/Library/Caches` on
@@ -675,6 +703,39 @@ mod tests {
                 .entries,
             0
         );
+    }
+
+    #[test]
+    fn a_lower_cap_evicts_at_once_and_clear_deletes_everything() {
+        let dir = TempDir::new("wf-cap");
+        let c = WaveformCache::new(dir.path().join("w"));
+        assert_eq!(c.max_bytes(), WaveformCache::DEFAULT_MAX_BYTES);
+        let mut fixtures = Vec::new();
+        for i in 0..3_u8 {
+            let fx = fixture(
+                &format!("wf-cap-{i}"),
+                FakeMedia::clip(secs(1 + i64::from(i)), FrameRate::FPS_30),
+            );
+            c.ensure(
+                &fx.backend,
+                &fx.path,
+                &fx.hash,
+                &req(3),
+                &CancelToken::new(),
+                &mut |_| {},
+            )
+            .expect("ensure");
+            fixtures.push(fx);
+            std::thread::sleep(std::time::Duration::from_millis(20));
+        }
+        let total = c.usage().expect("usage").bytes;
+        let ev = c.shrink_to(total - 1).expect("shrink");
+        assert_eq!(ev.removed, 1);
+        assert_eq!(c.max_bytes(), total - 1);
+        assert!(c.usage().expect("usage").bytes < total);
+        let ev = c.clear().expect("clear");
+        assert_eq!(ev.removed, 2);
+        assert_eq!(c.usage().expect("usage").entries, 0);
     }
 
     #[test]
