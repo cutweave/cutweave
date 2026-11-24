@@ -378,6 +378,22 @@ All surfaces live on **one local server per engine** (axum on `127.0.0.1`, rando
   - Containers: MP4, MOV, MKV, WebM, GIF, audio-only (WAV/MP3/AAC/FLAC/Opus), PNG/JPEG sequence.
   - Codecs: H.264, HEVC and AV1, each with a hardware encoder (NVENC/AMF/QSV/VideoToolbox/VA-API) or a software one (x264/x265/SVT-AV1), plus ProRes.
   - Presets cover TikTok/Reels/Shorts, YouTube 1080p/4K, archive and GIF.
+- **Decoding (decided in WP-1D.03).**
+  - **Pool:** one `DecoderPool` per media item, four live decoders by default with LRU eviction. Each pooled decoder runs on its own thread, so a `CancelToken` stops a pending seek in well under 10 ms; a frame-threaded FFmpeg flush can't be interrupted.
+  - **Threads:** seek and scrub decoders use one thread; `DecodeMode::Sequential` uses frame threads for playback and export.
+  - **Seeking:** follows ADR-0003 (index seek rule, NONREF skip, drain before flush).
+  - **Output:** frames come in coded orientation (rotation comes from the probe) as NV12, P010 or planar YUV (`Yuv420p10`, `Yuv422p`, `Yuv422p10` added). Layouts without a match are converted to the nearest one.
+  - **Damage:** a frame that stood in for an undecodable one carries `damaged = true`.
+  - **Measured on the CPU path:** 4K long-GOP random seek p95 is about 0.5 s; hardware decode or proxies cover the 150 ms budget.
+- **Export (decided in WP-1E.03).**
+  - **Command:** `export.start` starts an `Export` job. It is undoable = false and journaled = false; a core MCP tool that is marked destructive.
+  - **Snapshot:** the job renders the **committed** document snapshot from when it started; later edits don't affect it.
+  - **Frames:** each frame is rendered on headless wgpu to the same sRGB RGBA8 target as `render.frame`, and is bit-identical to it before encoding.
+  - **Audio:** the offline mixdown is fixed at 48 kHz stereo. A timeline with no audio still gets a silent track.
+  - **Preset:** `h264-mp4-1080p` fits the sequence into 1920×1080, or 1080×1920 for portrait, without upscaling. Quality maps to x264 CRF 28 / 23 / 20.
+  - **Missing media** is drawn as missing (an absent layer, silent audio) and counted in the final message; it doesn't fail the export.
+  - **Files:** one export per output path at a time. Replacing an existing file needs `overwrite: true`. Cancel stops within a second and leaves no file.
+  - **Colour:** the pixels are sRGB-encoded while the file is tagged BT.709; that decision is still open (#110).
 - **Corpus:** a test-media manifest (VFR phone footage, HEVC 10-bit HDR, ProRes, rotated, odd sample rates, broken files) is fetched in CI to gate decode correctness.
 
 ---
