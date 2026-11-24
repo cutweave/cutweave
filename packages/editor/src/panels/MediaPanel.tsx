@@ -4,9 +4,13 @@ import type { MediaDrag } from "@cutweave/timeline";
 import {
   Button,
   Dialog,
+  FilterChip,
   Icon,
   IconButton,
   type IconName,
+  Menu,
+  type MenuEntry,
+  SearchField,
   SegmentedControl,
   StatusChip,
   Tooltip,
@@ -27,12 +31,24 @@ import { createStore } from "zustand/vanilla";
 import { engineStore, useEngineStore } from "../engine/engineStore.ts";
 import type { TKey } from "../i18n/index.ts";
 import {
+  activeFilterCount,
+  BIN_KINDS,
+  type BinKind,
+  binStore,
+  DURATION_BUCKET_IDS,
+  type DurationBucket,
+  SORT_CHOICES,
+  toMediaFilter,
+  useBinStore,
+} from "../media/binStore.ts";
+import {
   formatDuration,
   type MediaCard,
   selectMediaCards,
   selectMediaUsage,
 } from "../media/cards.ts";
 import { dragStore, MEDIA_DRAG_TYPE } from "../media/dragStore.ts";
+import { findMedia } from "../media/find.ts";
 import { insertAtPlayhead } from "../media/insert.ts";
 import { useMediaStore } from "../media/mediaStore.ts";
 import { removeMedia } from "../media/remove.ts";
@@ -70,6 +86,28 @@ const KIND_KEY: Record<MediaCard["kind"], TKey> = {
   audio: "mediaBin.kind.audio",
   image: "mediaBin.kind.image",
   sequence_ref: "mediaBin.kind.sequenceRef",
+};
+
+const DURATION_KEY: Record<DurationBucket, TKey> = {
+  under10s: "mediaBin.filters.under10s",
+  "10sTo1m": "mediaBin.filters.10sTo1m",
+  "1To5m": "mediaBin.filters.1To5m",
+  over5m: "mediaBin.filters.over5m",
+};
+
+const USE_KEY: Record<"used" | "unused", TKey> = {
+  used: "mediaBin.filters.used",
+  unused: "mediaBin.filters.unused",
+};
+
+const SORT_KEY: Record<string, TKey> = {
+  "imported-desc": "mediaBin.sort.importedDesc",
+  "imported-asc": "mediaBin.sort.importedAsc",
+  "name-asc": "mediaBin.sort.nameAsc",
+  "name-desc": "mediaBin.sort.nameDesc",
+  "duration-asc": "mediaBin.sort.durationAsc",
+  "duration-desc": "mediaBin.sort.durationDesc",
+  "kind-asc": "mediaBin.sort.kindAsc",
 };
 
 /** Cards drawn beyond the visible rows, so scrolling never shows a gap. */
@@ -222,8 +260,19 @@ function CardView({
 export function MediaPanel() {
   const { t } = useTranslation();
   const project = useDocStore((s) => s.project);
-  const cards = useMemo(() => selectMediaCards(project), [project]);
+  const allCards = useMemo(() => selectMediaCards(project), [project]);
   const usage = useMemo(() => selectMediaUsage(project), [project]);
+  const text = useBinStore((s) => s.text);
+  const filters = useBinStore((s) => s.filters);
+  const sort = useBinStore((s) => s.sort);
+  // The bin shows what the engine's `media.list` would list for the same filter and sort (the
+  // same predicate, run on the mirror: no round trip per keystroke).
+  const cards = useMemo(
+    () => findMedia(allCards, usage, toMediaFilter({ text, filters }), sort).cards,
+    [allCards, usage, text, filters, sort],
+  );
+  const filterCount = activeFilterCount(filters);
+  const searching = text.trim() !== "" || filterCount > 0;
   const selection = useViewStore((s) => s.selection);
   const selectedId = (selection.find((r) => r.kind === "media")?.id ?? null) as MediaId | null;
   const layout = useStore(layoutStore, (s) => s.layout);
@@ -452,9 +501,143 @@ export function MediaPanel() {
     void importer.importPaths(paths);
   };
 
+  // ---- search, filters, sort ---------------------------------------------------------------
+  const searchRef = useRef<HTMLInputElement>(null);
+  const sectionRef = useRef<HTMLElement>(null);
+
+  // Ctrl/Cmd+F focuses the search field while the Assets panel has focus.
+  useEffect(() => {
+    const onKey = (e: globalThis.KeyboardEvent) => {
+      if (!(e.ctrlKey || e.metaKey) || e.altKey || e.shiftKey || e.key.toLowerCase() !== "f")
+        return;
+      const root = sectionRef.current?.closest(".cw-assets") ?? sectionRef.current;
+      if (e.defaultPrevented || root === null || !root.contains(document.activeElement)) return;
+      e.preventDefault();
+      searchRef.current?.focus();
+      searchRef.current?.select();
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, []);
+
+  const bin = binStore.getState();
+  const durationLabel = (id: DurationBucket) => t(DURATION_KEY[id]);
+  const kindLabel = (kind: BinKind) => t(KIND_KEY[kind]);
+  const useLabel = (use: "used" | "unused") => t(USE_KEY[use]);
+
+  const filterItems: MenuEntry[] = [
+    { kind: "label", id: "kind-h", label: t("mediaBin.filters.kindHeading") },
+    ...BIN_KINDS.map(
+      (kind): MenuEntry => ({
+        id: `kind-${kind}`,
+        label: kindLabel(kind),
+        checked: filters.kinds.includes(kind),
+        keepOpen: true,
+        onSelect: () => bin.toggleKind(kind),
+      }),
+    ),
+    { kind: "separator", id: "sep-duration" },
+    { kind: "label", id: "duration-h", label: t("mediaBin.filters.durationHeading") },
+    {
+      id: "duration-any",
+      label: t("mediaBin.filters.durationAny"),
+      checked: filters.duration === null,
+      choice: "radio",
+      keepOpen: true,
+      onSelect: () => bin.setDuration(null),
+    },
+    ...DURATION_BUCKET_IDS.map(
+      (id): MenuEntry => ({
+        id: `duration-${id}`,
+        label: durationLabel(id),
+        checked: filters.duration === id,
+        choice: "radio",
+        keepOpen: true,
+        onSelect: () => bin.setDuration(id),
+      }),
+    ),
+    { kind: "separator", id: "sep-use" },
+    { kind: "label", id: "use-h", label: t("mediaBin.filters.useHeading") },
+    {
+      id: "use-any",
+      label: t("mediaBin.filters.useAny"),
+      checked: filters.use === null,
+      choice: "radio",
+      keepOpen: true,
+      onSelect: () => bin.setUse(null),
+    },
+    ...(["used", "unused"] as const).map(
+      (use): MenuEntry => ({
+        id: `use-${use}`,
+        label: useLabel(use),
+        checked: filters.use === use,
+        choice: "radio",
+        keepOpen: true,
+        onSelect: () => bin.setUse(use),
+      }),
+    ),
+    { kind: "separator", id: "sep-problems" },
+    {
+      id: "problems",
+      label: t("mediaBin.filters.problems"),
+      checked: filters.problems,
+      keepOpen: true,
+      onSelect: () => bin.setProblems(!filters.problems),
+    },
+  ];
+
+  const sortItems: MenuEntry[] = [
+    { kind: "label", id: "sort-h", label: t("mediaBin.sort.heading") },
+    ...SORT_CHOICES.map(
+      (choice): MenuEntry => ({
+        id: `sort-${choice.by}-${choice.order}`,
+        label: t(SORT_KEY[`${choice.by}-${choice.order}`] as TKey),
+        checked: sort.by === choice.by && sort.order === choice.order,
+        choice: "radio",
+        onSelect: () => bin.setSort(choice),
+      }),
+    ),
+  ];
+
+  // One chip per active filter, each removable; the search text has its own clear button.
+  const chips: { id: string; label: string; remove: () => void }[] = [
+    ...filters.kinds.map((kind) => ({
+      id: `kind-${kind}`,
+      label: kindLabel(kind),
+      remove: () => bin.toggleKind(kind),
+    })),
+    ...(filters.duration === null
+      ? []
+      : [
+          {
+            id: "duration",
+            label: durationLabel(filters.duration),
+            remove: () => bin.setDuration(null),
+          },
+        ]),
+    ...(filters.use === null
+      ? []
+      : [{ id: "use", label: useLabel(filters.use), remove: () => bin.setUse(null) }]),
+    ...(filters.problems
+      ? [
+          {
+            id: "problems",
+            label: t("mediaBin.filters.problems"),
+            remove: () => bin.setProblems(false),
+          },
+        ]
+      : []),
+  ];
+
   const importLabel = t("mediaBin.importButton");
+  const filtersLabel =
+    filterCount > 0
+      ? t("mediaBin.filters.buttonActive", { count: filterCount })
+      : t("mediaBin.filters.button");
+  const sortLabel = t("mediaBin.sort.button");
   return (
     <section
+      ref={sectionRef}
       className="cw-media"
       aria-label={t("mediaBin.panelLabel")}
       data-drop-active={fileOver ? "true" : undefined}
@@ -463,6 +646,18 @@ export function MediaPanel() {
       onDragLeave={onDragLeave}
       onDrop={onDrop}
     >
+      {allCards.length > 0 ? (
+        <div className="cw-media__search">
+          <SearchField
+            ref={searchRef}
+            value={text}
+            onChange={(next) => bin.setText(next)}
+            label={t("mediaBin.search.label")}
+            clearLabel={t("mediaBin.search.clear")}
+            onArrowDown={() => goTo(0)}
+          />
+        </div>
+      ) : null}
       <div className="cw-media__tools">
         {/* Icons with tooltips: the panel is narrow and its toolbar is for doing, not reading. */}
         <Tooltip label={importLabel} keys={[modifierKey(), "I"]}>
@@ -483,6 +678,31 @@ export function MediaPanel() {
             onClick={() => requestRemove(selectedCard)}
           />
         </Tooltip>
+        <span className="cw-media__spacer" />
+        {allCards.length > 0 ? (
+          <>
+            {searching ? (
+              <span className="cw-media__count caption numeric" role="status">
+                {t("mediaBin.count", { shown: cards.length, total: allCards.length })}
+              </span>
+            ) : null}
+            <Menu mode="dropdown" items={filterItems} aria-label={t("mediaBin.filters.menuLabel")}>
+              <Tooltip label={filtersLabel}>
+                <IconButton
+                  size="sm"
+                  icon="sliders-horizontal"
+                  label={filtersLabel}
+                  badge={filterCount}
+                />
+              </Tooltip>
+            </Menu>
+            <Menu mode="dropdown" items={sortItems} aria-label={t("mediaBin.sort.menuLabel")}>
+              <Tooltip label={sortLabel}>
+                <IconButton size="sm" icon="arrow-up-down" label={sortLabel} />
+              </Tooltip>
+            </Menu>
+          </>
+        ) : null}
         <SegmentedControl
           className="cw-media__layout"
           aria-label={t("mediaBin.layout.label")}
@@ -495,13 +715,53 @@ export function MediaPanel() {
           onChange={(next) => layoutStore.getState().set(next)}
         />
       </div>
-      {cards.length === 0 ? (
+      {chips.length > 0 ? (
+        <fieldset className="cw-media__chips" aria-label={t("mediaBin.filters.chipsLabel")}>
+          {chips.map((chip) => (
+            <FilterChip
+              key={chip.id}
+              label={chip.label}
+              removeLabel={t("mediaBin.filters.removeChip", { filter: chip.label })}
+              onRemove={chip.remove}
+            />
+          ))}
+          <Button variant="ghost" size="sm" onClick={() => bin.clearFilters()}>
+            {t("mediaBin.filters.clearAll")}
+          </Button>
+        </fieldset>
+      ) : null}
+      {allCards.length === 0 ? (
         <div className="cw-media__scroll">
           <EmptyState
             icon="film"
             title={t("assets.empty.media.title")}
             body={t("assets.empty.media.body")}
           />
+        </div>
+      ) : cards.length === 0 ? (
+        <div className="cw-media__scroll">
+          <EmptyState
+            icon="search"
+            title={
+              text.trim() === ""
+                ? t("mediaBin.noMatch.titleFilters")
+                : t("mediaBin.noMatch.titleText", { text: text.trim() })
+            }
+            body={t("mediaBin.noMatch.body")}
+          >
+            <div className="cw-media__empty-actions">
+              {text.trim() === "" ? null : (
+                <Button variant="secondary" size="sm" onClick={() => bin.setText("")}>
+                  {t("mediaBin.noMatch.clearSearch")}
+                </Button>
+              )}
+              {filterCount === 0 ? null : (
+                <Button variant="secondary" size="sm" onClick={() => bin.clearFilters()}>
+                  {t("mediaBin.noMatch.clearFilters")}
+                </Button>
+              )}
+            </div>
+          </EmptyState>
         </div>
       ) : (
         <div ref={scroller} className="cw-media__scroll" onScroll={measure}>

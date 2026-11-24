@@ -8,9 +8,18 @@ import userEvent from "@testing-library/user-event";
 import axe from "axe-core";
 import { createElement as h } from "react";
 import { I18nextProvider } from "react-i18next";
-import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
 import { engineStore } from "../engine/engineStore.ts";
 import { i18n } from "../i18n/index.ts";
+import {
+  BIN_STORAGE_KEY,
+  binStore,
+  createBinStore,
+  DEFAULT_BIN_SORT,
+  initialBinState,
+  NO_FILTERS,
+  toMediaFilter,
+} from "../media/binStore.ts";
 import { dragStore, MEDIA_DRAG_TYPE } from "../media/dragStore.ts";
 import { mediaStore } from "../media/mediaStore.ts";
 import {
@@ -142,12 +151,26 @@ function bridge(extra: object = {}): void {
 const view = () => render(h(I18nextProvider, { i18n }, h(MediaPanel)));
 const notices = () => toastStore.getState().notices;
 
+beforeAll(() => {
+  // Radix menus measure with ResizeObserver and scroll items into view; jsdom has neither.
+  globalThis.ResizeObserver ??= class {
+    observe() {}
+    unobserve() {}
+    disconnect() {}
+  };
+  Element.prototype.scrollIntoView ??= () => {};
+  Element.prototype.hasPointerCapture ??= () => false;
+  Element.prototype.releasePointerCapture ??= () => {};
+});
+
 beforeEach(() => {
   viewStore.setState({ ...initialViewState, layouts: {} });
   docStore.setState({ status: "empty", rev: 0, committedRev: 0, project: null });
   engineStore.setState({ rpc: null, connection: "none" });
   jobStore.getState().reset([]);
   mediaStore.getState().reset();
+  // The cards read in import order here; the default (newest first) has its own tests below.
+  binStore.setState({ ...initialBinState, sort: { by: "imported", order: "asc" } });
   toastStore.getState().clear();
   dragStore.getState().end();
   setThumbnailSource(placeholderThumbnails);
@@ -544,5 +567,283 @@ describe("MediaPanel accessibility", () => {
     expect((await axe.run(grid.container)).violations).toEqual([]);
     await userEvent.click(screen.getByRole("radio", { name: "List" }));
     expect((await axe.run(grid.container)).violations).toEqual([]);
+  });
+});
+
+// ---- WP-1M.12: search, filters, sort -----------------------------------------------------------
+
+// `hidden`: an open menu hides the rest of the page from the accessibility tree.
+const names = () =>
+  screen
+    .queryAllByRole("option", { hidden: true })
+    .map((o) => o.querySelector(".cw-media__name")?.textContent ?? "");
+const searchBox = () => screen.getByRole("searchbox", { name: "Search media" });
+const toolbarCount = () => document.querySelector(".cw-media__count")?.textContent ?? null;
+
+async function openMenu(name: string) {
+  await userEvent.click(screen.getByRole("button", { name }));
+}
+
+describe("MediaPanel search, filters and sort", () => {
+  it("opens newest first, and a longer search text only narrows the cards", async () => {
+    load(project());
+    binStore.setState(initialBinState);
+    view();
+    expect(names()).toEqual(["logo.png", "music.wav", "beach.mp4"]);
+    expect(toolbarCount()).toBeNull();
+    await userEvent.type(searchBox(), "be");
+    expect(names()).toEqual(["beach.mp4"]);
+    expect(toolbarCount()).toBe("1 of 3");
+    await userEvent.type(searchBox(), "zz");
+    expect(names()).toEqual([]);
+  });
+
+  it("ignores case and accents and wants every word", async () => {
+    load(project());
+    view();
+    await userEvent.type(searchBox(), "MÜSIC wav");
+    expect(names()).toEqual(["music.wav"]);
+  });
+
+  it("Esc clears the text and a second Esc leaves the field", async () => {
+    load(project());
+    view();
+    await userEvent.type(searchBox(), "beach");
+    await userEvent.keyboard("{Escape}");
+    expect((searchBox() as HTMLInputElement).value).toBe("");
+    expect(names()).toHaveLength(3);
+    expect(document.activeElement).toBe(searchBox());
+    await userEvent.keyboard("{Escape}");
+    expect(document.activeElement).not.toBe(searchBox());
+  });
+
+  it("Ctrl+F focuses the search while the assets panel has focus, and only then", async () => {
+    load(project());
+    render(
+      h(
+        I18nextProvider,
+        { i18n },
+        h(
+          "div",
+          { className: "cw-assets" },
+          h("button", { type: "button" }, "inside"),
+          h(MediaPanel),
+        ),
+        h("button", { type: "button" }, "outside"),
+      ),
+    );
+    screen.getByRole("button", { name: "outside" }).focus();
+    await userEvent.keyboard("{Control>}f{/Control}");
+    expect(document.activeElement).not.toBe(searchBox());
+    screen.getByRole("button", { name: "inside" }).focus();
+    await userEvent.keyboard("{Control>}f{/Control}");
+    expect(document.activeElement).toBe(searchBox());
+  });
+
+  it("Arrow Down goes to the first result and Enter inserts it at the playhead", async () => {
+    connect();
+    load(project());
+    call.mockResolvedValue({ at: 0, duration: 0, clips: ["itm_9"] });
+    viewStore.getState().setSelection([{ kind: "track", id: "trk_v" as never }]);
+    view();
+    await userEvent.type(searchBox(), "beach");
+    await userEvent.keyboard("{ArrowDown}");
+    expect(document.activeElement).toBe(screen.getAllByRole("option")[0]);
+    await userEvent.keyboard("{Enter}");
+    await waitFor(() => expect(call).toHaveBeenCalledTimes(1));
+    expect(call.mock.calls[0]?.[1]).toMatchObject({ media: "med_a", track: "trk_v" });
+  });
+
+  it("filters by kind from the Filters menu, with a badge, a chip and Clear all", async () => {
+    load(project());
+    view();
+    expect(screen.getByRole("button", { name: "Filters" })).toBeTruthy();
+    await openMenu("Filters");
+    await userEvent.click(await screen.findByRole("menuitemcheckbox", { name: "Audio" }));
+    // The menu stays open to set more, and the cards already follow.
+    expect(screen.getByRole("menu")).toBeTruthy();
+    expect(names()).toEqual(["music.wav"]);
+    await userEvent.keyboard("{Escape}");
+    expect(screen.getByRole("button", { name: "Filters, 1 active" })).toBeTruthy();
+    expect(toolbarCount()).toBe("1 of 3");
+    const chips = screen.getByRole("group", { name: "Active filters" });
+    expect(within(chips).getByText("Audio")).toBeTruthy();
+    await userEvent.click(within(chips).getByRole("button", { name: "Clear all" }));
+    expect(names()).toHaveLength(3);
+    expect(screen.queryByRole("group", { name: "Active filters" })).toBeNull();
+  });
+
+  it("a chip's remove button drops just that filter", async () => {
+    load(project([clipOf("itm_1", "med_a")]));
+    view();
+    await openMenu("Filters");
+    await userEvent.click(await screen.findByRole("menuitemradio", { name: "Not used" }));
+    await userEvent.click(screen.getByRole("menuitemcheckbox", { name: "Video" }));
+    await userEvent.keyboard("{Escape}");
+    // The video is on the timeline: Video + Not used leaves nothing.
+    expect(names()).toEqual([]);
+    await userEvent.click(screen.getByRole("button", { name: "Remove filter Video" }));
+    expect(names()).toEqual(["music.wav", "logo.png"]);
+    expect(binStore.getState().filters.use).toBe("unused");
+  });
+
+  it("filters by length and by problems", async () => {
+    const p = project();
+    const media = p.media as unknown as Record<string, { probe: { streams: unknown[] } }>;
+    (media.med_c as { probe: { streams: unknown[] } }).probe.streams = [];
+    load(p);
+    view();
+    await openMenu("Filters");
+    await userEvent.click(await screen.findByRole("menuitemradio", { name: "Over 5 min" }));
+    expect(names()).toEqual([]);
+    await userEvent.click(screen.getByRole("menuitemradio", { name: "10 s to 1 min" }));
+    expect(names()).toEqual(["beach.mp4"]);
+    await userEvent.click(screen.getByRole("menuitemradio", { name: "Any length" }));
+    await userEvent.click(
+      screen.getByRole("menuitemcheckbox", { name: "Only media with problems" }),
+    );
+    expect(names()).toEqual(["logo.png"]);
+  });
+
+  it("sorts from the Sort menu and marks the current choice", async () => {
+    binStore.setState(initialBinState);
+    load(project());
+    view();
+    await openMenu("Sort");
+    expect(
+      (await screen.findByRole("menuitemradio", { name: "Newest first" })).getAttribute(
+        "aria-checked",
+      ),
+    ).toBe("true");
+    await userEvent.click(screen.getByRole("menuitemradio", { name: "Name, A to Z" }));
+    expect(names()).toEqual(["beach.mp4", "logo.png", "music.wav"]);
+    await openMenu("Sort");
+    await userEvent.click(await screen.findByRole("menuitemradio", { name: "Longest first" }));
+    expect(names()).toEqual(["music.wav", "beach.mp4", "logo.png"]);
+    expect(binStore.getState().sort).toEqual({ by: "duration", order: "desc" });
+  });
+
+  it("shows the no-match empty state, and Clear search brings everything back", async () => {
+    load(project());
+    view();
+    await userEvent.type(searchBox(), "nothing here");
+    expect(screen.getByText('No media matches "nothing here"')).toBeTruthy();
+    expect(screen.queryByRole("button", { name: "Clear filters" })).toBeNull();
+    // Both the field's own clear button and the empty state's say "Clear search".
+    const buttons = screen.getAllByRole("button", { name: "Clear search" });
+    await userEvent.click(buttons[buttons.length - 1] as HTMLElement);
+    expect(names()).toHaveLength(3);
+  });
+
+  it("offers Clear filters when filters are on, and the empty import state is unchanged", async () => {
+    load(project());
+    view();
+    await openMenu("Filters");
+    await userEvent.click(await screen.findByRole("menuitemcheckbox", { name: "Image" }));
+    await userEvent.click(screen.getByRole("menuitemradio", { name: "Over 5 min" }));
+    await userEvent.keyboard("{Escape}");
+    expect(screen.getByText("No media matches these filters")).toBeTruthy();
+    await userEvent.click(screen.getByRole("button", { name: "Clear filters" }));
+    expect(names()).toHaveLength(3);
+    cleanup();
+    load(null);
+    view();
+    expect(screen.getByText("No media yet")).toBeTruthy();
+    expect(screen.queryByRole("searchbox")).toBeNull();
+  });
+
+  it("keeps a selected asset that the filter hides selected", async () => {
+    load(project());
+    view();
+    await userEvent.click(screen.getByRole("option", { name: /beach\.mp4/ }));
+    await userEvent.type(searchBox(), "music");
+    expect(names()).toEqual(["music.wav"]);
+    expect(viewStore.getState().selection).toEqual([{ kind: "media", id: "med_a" }]);
+    await userEvent.clear(searchBox());
+    expect(screen.getByRole("option", { name: /beach\.mp4/ }).getAttribute("aria-selected")).toBe(
+      "true",
+    );
+  });
+
+  it("drags and arrow keys work on the results", async () => {
+    load(project());
+    view();
+    await userEvent.type(searchBox(), "wav");
+    const card = screen.getByRole("option", { name: /music\.wav/ });
+    fireEvent.dragStart(card, { dataTransfer: { setData: vi.fn(), effectAllowed: "" } });
+    expect(dragStore.getState().session?.id).toBe("med_b");
+  });
+});
+
+describe("the bin's view state", () => {
+  it("clears the search text for a new project and keeps the filters and sort", () => {
+    const store = createBinStore();
+    store.getState().setText("beach");
+    store.getState().toggleKind("audio");
+    store.getState().setSort({ by: "name", order: "asc" });
+    store.getState().clearSearch();
+    expect(store.getState().text).toBe("");
+    expect(store.getState().filters.kinds).toEqual(["audio"]);
+    expect(store.getState().sort.by).toBe("name");
+  });
+
+  it("persists filters and sort, never the text, and ignores a damaged blob", () => {
+    const data = new Map<string, string>();
+    const storage = {
+      getItem: (k: string) => data.get(k) ?? null,
+      setItem: (k: string, v: string) => void data.set(k, v),
+      removeItem: (k: string) => void data.delete(k),
+    };
+    const first = createBinStore(storage);
+    first.getState().setText("beach");
+    first.getState().setDuration("1To5m");
+    first.getState().setUse("unused");
+    first.getState().setSort({ by: "duration", order: "desc" });
+    const saved = JSON.parse(data.get(BIN_STORAGE_KEY) as string).state;
+    expect(saved.text).toBeUndefined();
+    const second = createBinStore(storage);
+    expect(second.getState().filters.duration).toBe("1To5m");
+    expect(second.getState().filters.use).toBe("unused");
+    expect(second.getState().sort).toEqual({ by: "duration", order: "desc" });
+    expect(second.getState().text).toBe("");
+
+    data.set(
+      BIN_STORAGE_KEY,
+      JSON.stringify({ state: { filters: { kinds: ["x"], use: 3 }, sort: 7 }, version: 1 }),
+    );
+    const third = createBinStore(storage);
+    expect(third.getState().filters).toEqual(NO_FILTERS);
+    expect(third.getState().sort).toEqual(DEFAULT_BIN_SORT);
+  });
+
+  it("states the engine's filter for the same text", () => {
+    expect(toMediaFilter({ text: "  ", filters: NO_FILTERS })).toEqual({});
+    expect(
+      toMediaFilter({
+        text: "beach",
+        filters: { kinds: ["audio"], duration: "10sTo1m", use: "unused", problems: true },
+      }),
+    ).toEqual({
+      text: "beach",
+      kinds: ["audio"],
+      min_duration: 10 * F,
+      max_duration: 60 * F - 1,
+      used: false,
+      problems: true,
+    });
+  });
+});
+
+describe("MediaPanel search accessibility", () => {
+  it("has no axe violations with the toolbar, chips and the no-match state", async () => {
+    load(project([clipOf("itm_1", "med_a")]));
+    const { container } = view();
+    await userEvent.type(searchBox(), "m");
+    await openMenu("Filters");
+    await userEvent.click(await screen.findByRole("menuitemcheckbox", { name: "Audio" }));
+    await userEvent.keyboard("{Escape}");
+    expect((await axe.run(container)).violations).toEqual([]);
+    await userEvent.type(searchBox(), "zzz");
+    expect((await axe.run(container)).violations).toEqual([]);
   });
 });

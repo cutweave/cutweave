@@ -166,6 +166,50 @@
       "grid": "Grid",
       "list": "List"
     },
+    "search": {
+      "label": "Search media",
+      "clear": "Clear search"
+    },
+    "count": "{{shown}} of {{total}}",
+    "filters": {
+      "button": "Filters",
+      "buttonActive": "Filters, {{count}} active",
+      "menuLabel": "Filter media",
+      "chipsLabel": "Active filters",
+      "removeChip": "Remove filter {{filter}}",
+      "clearAll": "Clear all",
+      "kindHeading": "Kind",
+      "durationHeading": "Length",
+      "durationAny": "Any length",
+      "under10s": "Under 10 s",
+      "10sTo1m": "10 s to 1 min",
+      "1To5m": "1 to 5 min",
+      "over5m": "Over 5 min",
+      "useHeading": "Use",
+      "useAny": "Any",
+      "used": "On the timeline",
+      "unused": "Not used",
+      "problems": "Only media with problems"
+    },
+    "sort": {
+      "button": "Sort",
+      "menuLabel": "Sort media",
+      "heading": "Sort by",
+      "importedDesc": "Newest first",
+      "importedAsc": "Oldest first",
+      "nameAsc": "Name, A to Z",
+      "nameDesc": "Name, Z to A",
+      "durationAsc": "Shortest first",
+      "durationDesc": "Longest first",
+      "kindAsc": "Kind"
+    },
+    "noMatch": {
+      "titleText": "No media matches \"{{text}}\"",
+      "titleFilters": "No media matches these filters",
+      "body": "Check the spelling, or loosen the filters.",
+      "clearSearch": "Clear search",
+      "clearFilters": "Clear filters"
+    },
     "status": {
       "analyzing": "Analyzing",
       "analysisFailed": "Analysis failed",

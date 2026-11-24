@@ -2,7 +2,7 @@
 // WP-1M.12 budget: filtering 10,000 assets takes < 8 ms (p95) per keystroke. The measured call is
 // what the bin does on a key press: the next search text over cards that are already indexed, in
 // a sort that is already built. (Under load, rerun this file alone before reading a failure.)
-import type { MediaAsset, MediaId, Project } from "@cutweave/protocol";
+import type { MediaId, Project } from "@cutweave/protocol";
 import { describe, expect, it } from "vitest";
 import { selectMediaCards, selectMediaUsage } from "./cards.ts";
 import { findMedia } from "./find.ts";
@@ -26,7 +26,7 @@ function library(): Project {
         duration: kind === "image" ? null : (1 + (n % 600)) * 705_600_000,
         fps: null,
       },
-    } satisfies Partial<MediaAsset> & { id: string };
+    };
   }
   return { media, sequences: {} } as unknown as Project;
 }
@@ -52,7 +52,9 @@ describe("finding media in 10,000 assets", () => {
     }
     times.sort((a, b) => a - b);
     const p95 = times[Math.floor((times.length - 1) * 0.95)] as number;
-    console.info(`findMedia over ${COUNT}: p50 ${times[times.length >> 1]?.toFixed(2)} ms, p95 ${p95.toFixed(2)} ms`);
+    console.info(
+      `findMedia over ${COUNT}: p50 ${times[times.length >> 1]?.toFixed(2)} ms, p95 ${p95.toFixed(2)} ms`,
+    );
     expect(p95).toBeLessThan(BUDGET_MS);
   });
 
