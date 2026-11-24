@@ -588,7 +588,9 @@ fn deterministic_ids_hold_end_to_end() {
 /// One frame at 25 fps, in flicks.
 const FRAME_25: i64 = SEC / 25;
 
-/// A headless engine on the manual clocks with `fake`'s media.
+/// A headless engine on the manual clocks with `fake`'s media, its GPU open (a headless engine
+/// opens it in the background and re-renders the current frame when it is ready, which would
+/// count as a frame of its own).
 fn manual_engine(
     dir: &Path,
     fake: FakeBackend,
@@ -598,6 +600,7 @@ fn manual_engine(
     let full = FullSubsystems::new(config);
     let handle = full.handle();
     let engine = Engine::start(engine_config(dir, EngineMode::Headless, Box::new(full))).unwrap();
+    eventually("the GPU", || handle.gpu_settled().then_some(()));
     (engine, handle)
 }
 
@@ -644,12 +647,13 @@ fn play_to_the_end(
     assert_eq!(state["playing"], json!(true), "{state}");
     let mut worst = 0;
     for i in 1..frames {
-        let before = delivered(handle);
         clocks.advance(frame);
-        eventually("the next frame", || {
-            (delivered(handle) > before).then_some(())
+        // A re-render of the frame before (a refresh) is not the next one: wait for this one.
+        let shown = eventually("the next frame", || {
+            let last = last_frame(handle);
+            (last >= i).then_some(last)
         });
-        assert_eq!(last_frame(handle), i, "in order, none skipped");
+        assert_eq!(shown, i, "in order, none skipped");
         let offset = (clocks.audio.clock().position().flicks() - i * frame).abs();
         worst = worst.max(offset);
         assert!(offset <= frame, "frame {i}: A/V offset {offset} flicks");

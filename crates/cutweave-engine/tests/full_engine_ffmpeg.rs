@@ -362,6 +362,8 @@ fn corpus_clips_play_as_sources_frame_by_frame() {
     let t = TempDir::new("corpus-sources");
     let clocks = Clocks::new();
     let (engine, handle) = engine(t.path(), &clocks);
+    // The GPU opens in the background and re-renders the current frame when it is ready.
+    full_support::eventually("the GPU", || handle.gpu_settled().then_some(()));
     let conn = agent(&engine);
     call(&conn, "project.new", json!({ "name": "Sources" })).unwrap();
     let media = import_all(&conn, &files);
@@ -383,16 +385,13 @@ fn corpus_clips_play_as_sources_frame_by_frame() {
             .count();
         let frames = i64::try_from(frames).unwrap();
         for n in 1..frames {
-            let before = delivered(&handle);
             clocks.advance(frame_start(&fps, n) - clocks.audio.clock().position().flicks());
-            full_support::eventually("the next source frame", || {
-                (delivered(&handle) > before).then_some(())
+            // A re-render of the frame before (a refresh) is not the next one: wait for this one.
+            let shown = full_support::eventually("the next source frame", || {
+                let last = handle.playback_stats()?.last_frame;
+                (last >= n).then_some(last)
             });
-            assert_eq!(
-                handle.playback_stats().unwrap().last_frame,
-                n,
-                "{name}: in order, none skipped"
-            );
+            assert_eq!(shown, n, "{name}: in order, none skipped");
         }
         let state = handle.playback_state().unwrap();
         assert!(state.playing, "{name}: {state:?}");
