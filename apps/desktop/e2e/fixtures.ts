@@ -133,8 +133,11 @@ const settleWithin = <T>(promise: Promise<T>, ms: number): Promise<boolean> =>
     promise.then(done, done);
   });
 
-/** Kill the app and everything it started (the engine included). */
-function killTree(pid: number | undefined): void {
+/**
+ * Kill the app and everything it started (the engine included). Teardown uses it for a hung
+ * app; the crash flows use it as fault injection (the whole app dying at once).
+ */
+export function killTree(pid: number | undefined): void {
   if (pid === undefined) return;
   if (process.platform === "win32") {
     spawnSync("taskkill", ["/PID", String(pid), "/T", "/F"], { stdio: "ignore" });
@@ -173,6 +176,8 @@ export async function quitApp(
   app: ElectronApplication,
   page: Page,
   answer: Exclude<UnsavedAnswer, "cancel"> = "discard",
+  /** The main process's output (`LaunchedApp.mainLog`): its last lines go with a hang report. */
+  mainLog: readonly string[] = [],
 ): Promise<void> {
   let child: ReturnType<ElectronApplication["process"]>;
   try {
@@ -186,20 +191,80 @@ export async function quitApp(
     else child.once("exit", () => resolve());
   });
   // Quit, as File > Exit / Alt+F4 would; with unsaved changes main holds it and the editor asks.
+  const started = Date.now();
+  const at = () => `${((Date.now() - started) / 1000).toFixed(1)} s`;
   void app.close().catch(() => {});
   const prompt = unsavedPrompt(page);
-  const deadline = Date.now() + CLOSE_TIMEOUT_MS;
+  const deadline = started + CLOSE_TIMEOUT_MS;
+  let answered = 0;
+  let windowClosed: string | null = null;
   while (Date.now() < deadline) {
     if (await settleWithin(exited, 250)) return;
-    if (page.isClosed()) continue;
+    if (page.isClosed()) {
+      windowClosed ??= at();
+      continue;
+    }
     if (await prompt.dialog.isVisible().catch(() => false)) {
+      answered += 1;
       await prompt[answer].click({ timeout: 2_000 }).catch(() => {});
     }
   }
+  // What was on screen and still running, for the hunt (a hang is a bug, not something to retry).
+  const dialogs = page.isClosed()
+    ? `the window had closed (at ${windowClosed ?? "?"})`
+    : await page
+        .getByRole("dialog")
+        .allInnerTexts()
+        .then((texts) => (texts.length === 0 ? "no dialog open" : texts.join(" | ")))
+        .catch(() => "unknown");
+  const running = processTree(child.pid);
+  // How late it is: a slow exit and a stuck one need different fixes.
+  const late = (await settleWithin(exited, CLOSE_TIMEOUT_MS))
+    ? `it exited at ${at()}`
+    : `still running at ${at()}`;
   killTree(child.pid);
   throw new Error(
-    `the app did not quit within ${CLOSE_TIMEOUT_MS / 1000} s (killed so no window stays open)`,
+    `the app did not quit within ${CLOSE_TIMEOUT_MS / 1000} s (killed so no window stays open); ` +
+      `answered the unsaved-changes prompt ${answered} time(s); on screen: ${dialogs}; ` +
+      `processes: ${running}; ${late}` +
+      (mainLog.length === 0 ? "" : `\nmain log (last lines):\n${mainLog.slice(-20).join("\n")}`),
   );
+}
+
+/** `name(pid)` of a process and its descendants (Windows; elsewhere "n/a"): hang diagnostics. */
+function processTree(pid: number | undefined): string {
+  if (pid === undefined || process.platform !== "win32") return "n/a";
+  const out = spawnSync(
+    "powershell",
+    [
+      "-NoProfile",
+      "-NonInteractive",
+      "-Command",
+      'Get-CimInstance Win32_Process | ForEach-Object { "$($_.ProcessId) $($_.ParentProcessId) $($_.Name)" }',
+    ],
+    { encoding: "utf8", maxBuffer: 16 * 1024 * 1024 },
+  );
+  const rows = (out.stdout ?? "")
+    .split(/\r?\n/)
+    .map((line) => line.trim().split(" "))
+    .filter((parts) => parts.length >= 3)
+    .map(([id, parent, ...name]) => ({
+      pid: Number(id),
+      ppid: Number(parent),
+      name: name.join(" "),
+    }));
+  const found: string[] = [];
+  const walk = (id: number, depth: number): void => {
+    for (const row of rows.filter((r) => r.ppid === id)) {
+      found.push(`${row.name}(${row.pid})`);
+      if (depth < 4) walk(row.pid, depth + 1);
+    }
+  };
+  const root = rows.find((r) => r.pid === pid);
+  walk(pid, 0);
+  return `${root === undefined ? "the app process is gone" : `${root.name}(${pid})`}; children: ${
+    found.join(", ") || "none"
+  }`;
 }
 
 /**
@@ -210,8 +275,17 @@ export async function launchApp(
   env: Record<string, string> = {},
   /** Extra Chromium switches, e.g. `--force-device-scale-factor=1.5`. */
   switches: string[] = [],
+  options: {
+    /**
+     * Reuse this HOME (and its user data) instead of a fresh one: a relaunch finds the settings,
+     * recent projects and run-files the previous launch left. The caller removes it; `close()`
+     * keeps it.
+     */
+    home?: string;
+  } = {},
 ): Promise<LaunchedApp> {
-  const home = mkdtempSync(path.join(tmpdir(), "cutweave-e2e-"));
+  const home = options.home ?? mkdtempSync(path.join(tmpdir(), "cutweave-e2e-"));
+  const ownsHome = options.home === undefined;
   const app = await electron.launch({
     args: [...(process.platform === "linux" ? ["--no-sandbox"] : []), ...switches, desktopDir],
     env: {
@@ -251,9 +325,11 @@ export async function launchApp(
       closing ??= (async () => {
         openApps.delete(launched);
         try {
-          await quitApp(app, page);
+          await quitApp(app, page, "discard", mainLog);
         } finally {
-          rmSync(home, { recursive: true, force: true, maxRetries: 5, retryDelay: 200 });
+          if (ownsHome) {
+            rmSync(home, { recursive: true, force: true, maxRetries: 5, retryDelay: 200 });
+          }
         }
       })();
       return closing;

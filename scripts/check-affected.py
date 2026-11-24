@@ -6,7 +6,9 @@
 to workspace crates and packages, adds every crate that depends on a changed crate (normal,
 dev and build edges, transitively, from `cargo metadata`), and runs the same steps as
 `just check` restricted to that set. Changes to shared configuration (root Cargo.toml,
-Cargo.lock, toolchain, justfile, this script) fall back to the full gate.
+Cargo.lock, toolchain, justfile, this script) fall back to the full gate. When the desktop app,
+the editor (or a package it is built from, the UI kit among them), the engine or the CLI is
+affected, the user-flow suite runs last (`just e2e-flows`, ADR-0018); the full gate runs it too.
 
 Base commit:
   * on `main`: the first parent of HEAD (the pre-merge main after a merge commit);
@@ -31,6 +33,15 @@ GEN_INPUT_CRATES = {
 }
 # Crates the Electron bridge fixture build depends on.
 BRIDGE_CRATES = {"cutweave-bridge", "cutweave-playback", "cutweave-model"}
+# The user-flow suite (ADR-0018) runs the app against the engine and the CLI; a change to either
+# (or to any crate they depend on, through `affected`) runs it.
+FLOW_CRATES = {"cutweave-engine", "cutweave-cli"}
+# The desktop app, the editor and the packages it is built from (the UI kit among them).
+FLOW_PATHS = (
+    "apps/desktop/", "packages/editor/", "packages/ui/", "packages/timeline/",
+    "packages/protocol/", "packages/tokens/", "design/",
+)
+FLOW_STEP = "just e2e-flows"
 
 # Any change here can affect everything: run the full gate.
 FULL_GATE_FILES = {
@@ -112,7 +123,10 @@ def plan(files: list[str]) -> tuple[list[tuple[str, str]], str]:
     if "Cargo.lock" in files and not any(f.endswith("/Cargo.toml") for f in files):
         full.append("Cargo.lock (without a crate manifest change)")
     if full:
-        return [("just check", f"shared config changed: {', '.join(full)}")], "full gate"
+        return [
+            ("just check", f"shared config changed: {', '.join(full)}"),
+            (FLOW_STEP, "full gate: the app, the editor and the engine are all affected"),
+        ], "full gate"
 
     dirs, rdeps, libs = workspace_graph()
     changed_crates = {c for f in files if (c := crate_of(f, dirs))}
@@ -184,6 +198,11 @@ def plan(files: list[str]) -> tuple[list[tuple[str, str]], str]:
         steps.append(("python scripts/run-vitest.py", "TS/JS sources or config changed"))
     if gen:
         steps.append(("cargo xtask gen --check", "schema/codegen inputs affected"))
+    flow_paths = sorted({f.split("/")[0] + "/" + f.split("/")[1] for f in files
+                         if f.startswith(FLOW_PATHS) and not f.endswith(".md")})
+    if affected & FLOW_CRATES or flow_paths:
+        why = ", ".join(sorted(affected & FLOW_CRATES) + flow_paths)
+        steps.append((FLOW_STEP, f"user flows affected: {why}"))
     return steps, f"{len(affected)} crate(s) affected"
 
 

@@ -33,9 +33,9 @@ export const WINDOWS_LOADER_EXITS = {
 const WINDOWS_STATUS_TEXT: Readonly<Record<number, string>> = {
   [WINDOWS_LOADER_EXITS.dllNotFound]: "a DLL it needs is missing",
   [WINDOWS_LOADER_EXITS.entryPointNotFound]: "a DLL it loaded is the wrong version",
-  0xc0000005: "access violation",
-  0xc00000fd: "stack overflow",
-  0xc0000409: "it aborted",
+  [0xc0000005]: "access violation",
+  [0xc00000fd]: "stack overflow",
+  [0xc0000409]: "it aborted",
 };
 
 /**

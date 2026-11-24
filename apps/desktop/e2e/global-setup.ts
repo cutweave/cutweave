@@ -10,8 +10,8 @@ import { realEngine } from "./fixtures.ts";
 
 /** Exit codes from the OS loader, not from the engine (which exits with 0-13). */
 const LOADER_EXITS: Readonly<Record<number, string>> = {
-  0xc0000135: "a DLL it needs is missing (STATUS_DLL_NOT_FOUND)",
-  0xc0000139: "a DLL it loaded is the wrong version (STATUS_ENTRYPOINT_NOT_FOUND)",
+  [0xc0000135]: "a DLL it needs is missing (STATUS_DLL_NOT_FOUND)",
+  [0xc0000139]: "a DLL it loaded is the wrong version (STATUS_ENTRYPOINT_NOT_FOUND)",
   127: "a shared library it needs is missing",
 };
 

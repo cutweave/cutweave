@@ -14,7 +14,8 @@
     "build:renderer": "vite build ../../packages/editor --outDir ../../apps/desktop/dist/renderer --emptyOutDir",
     "typecheck": "tsc --noEmit",
     "test": "vitest run",
-    "e2e": "node scripts/ensure-electron.ts && node scripts/build-bridge.ts --fixture && playwright test"
+    "e2e": "node scripts/ensure-electron.ts && node scripts/build-bridge.ts --fixture && playwright test",
+    "e2e:flows": "node scripts/ensure-electron.ts && playwright test e2e/flows"
   },
   "devDependencies": {
     "@electron/fuses": "2.1.3",
