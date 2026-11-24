@@ -76,6 +76,17 @@ impl PixelFormat {
     pub const fn is_opaque(self) -> bool {
         self.is_yuv()
     }
+
+    /// The variant's name, as `Debug` prints it (hashed into cache keys without formatting).
+    #[must_use]
+    pub const fn debug_name(self) -> &'static str {
+        match self {
+            PixelFormat::Nv12 => "Nv12",
+            PixelFormat::P010 => "P010",
+            PixelFormat::Yuv420p => "Yuv420p",
+            PixelFormat::Rgba8 => "Rgba8",
+        }
+    }
 }
 
 /// Where 4:2:0 chroma samples sit relative to luma (H.273 `chroma_sample_loc_type`).

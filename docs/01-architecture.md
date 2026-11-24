@@ -510,11 +510,20 @@ flowchart LR
 - **Exact latest-wins.** Every control request starts a new epoch, which cancels in-flight renders through their `CancelToken`. A frame commits only while its epoch is current, and the render side never waits; the control side waits out one in-progress commit. Once a request returns, no frame from an older request can be delivered.
 - **Scrubbing** goes cache → quarter-resolution frame flagged `LOWRES` → full frame after 100 ms without a newer seek.
 - **Wire.** `playback.state` is sent at most 30 times a second. The `view.play`, `view.pause`, `view.seek`, `view.set_rate`, `view.step` and `view.set_preview_size` engine commands drive the transport; `view.set_preview_size` is hidden from MCP.
-- **Threads.** The render thread takes no locks and makes no per-frame heap allocation (a counting-allocator test enforces this). Its frames come through the `FrameSource` seam (synthetic frames in the transport tests). The real renderer behind it (WP-1I.05) still allocates per frame (evaluation, graph building, wgpu); pooling those buffers is follow-up work.
+- **Threads.** Our code on the render thread takes no locks and makes no per-frame heap allocation. Its frames come through the `FrameSource` seam. Counting-allocator tests enforce the rule twice: the transport's test over synthetic frames, and the engine's `preview_alloc` test over the real `FrameSource` (two clips on the software adapter, for playback, replay, a repeated still and scrubbing). Heap use is counted per scope (`cutweave_render::alloc_scope`):
+  - **Our code:** none per steady-state frame (see the engine wiring below).
+  - **wgpu** (the command encoder and passes, queue writes, submission, the map callback and the device poll): bounded at 1,000 heap operations per frame. On WARP a two-layer playback frame makes about 500, and a frame whose textures are cached about 170.
+  - **The media layer:** a source picture the preview does not hold yet is decoded, or fetched from the RAM frame cache, on the render thread. That locks and allocates, about 50 heap operations per two-layer playback frame. A still or paused frame needs none. Decoding ahead on workers with a lock-free hand-off is follow-up work (#127).
+  - **Exceptions:** the first frame after an edit re-indexes the sequence. Offline media and render errors allocate their messages, and the CPU fallback renderer allocates.
 - **Engine wiring (decided in WP-1I.05).**
   - **One transport per document:** each open document gets its own `PlaybackEngine` fed by the real renderer. A Gui engine publishes into the preview ring; a headless engine uses a null sink.
   - **The ring:** it carries **RGBA8 only** in P1 (NV12 later). It is announced in `rpc.hello`'s `shm` (see [rpc.md](reference/rpc.md)) and by name in the run-file's `shm`.
   - **The playhead:** pause, seek and step keep the view playhead in step, and opening a project seeks to its saved playhead. Every edit refreshes the timing and re-feeds the mixer.
+  - **The render path reuses everything across frames:**
+    - The active sequence is indexed once per document revision (`TimelineIndex`), into a scene and render graph that are kept between frames (`build_into`, `BuildScratch`).
+    - The compositor makes texture views, bind groups and uniform buffers once per pooled texture or pass slot. Its decoded-frame cache evicts textures of the size it needs first, so playback cycles through the same textures.
+    - The readback is copied straight from the mapped buffer into the ring slot (`Compositor::execute_with`).
+    - The preview keeps the last picture of each media item, so a still or paused frame takes no lock.
   - **The bridge** subtracts its presentation latency only while the clock plays, so a stopped preview shows the playhead's own frame.
 
 The upgrade path, behind a feature flag once proven, is zero-copy GPU texture sharing into Chromium via Electron's shared-texture import. **Fallback** is JPEG frames over `/media/frame`: for remote or non-Electron clients, and locally when WebGPU is unavailable or fails, when no ring is announced, or when `CUTWEAVE_PREVIEW=jpeg` forces it (CI without a GPU). The client polls at ≤ 15 fps and shows a reduced-mode banner (WP-1M.04).

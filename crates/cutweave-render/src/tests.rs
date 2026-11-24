@@ -13,7 +13,7 @@ use cutweave_model::{
 };
 use proptest::prelude::*;
 
-use crate::{EvalError, SceneDescription, evaluate, evaluate_audio};
+use crate::{EvalError, SceneDescription, TimelineIndex, evaluate, evaluate_audio};
 
 const S: i64 = 705_600_000;
 
@@ -498,6 +498,20 @@ fn five_thousand_items_evaluate_quickly() {
     }
     let per_eval = start.elapsed() / 100;
     eprintln!("5000-item evaluate: {per_eval:?} per call ({visible} layers in 100 calls)");
+    // The index (multi-node trees here) agrees, on and between clips.
+    let index = TimelineIndex::new(&f.project, f.seq).unwrap();
+    for flicks in [
+        0,
+        S / 2,
+        S,
+        1000 * S + 17,
+        1999 * S,
+        2003 * S,
+        2004 * S,
+        10_000 * S,
+    ] {
+        assert_eq!(index.evaluate(t(flicks)), f.at(t(flicks)), "at {flicks}");
+    }
     assert!(
         per_eval < std::time::Duration::from_millis(5),
         "{per_eval:?}"
@@ -530,6 +544,23 @@ proptest! {
                 let a = evaluate(&project, *seq, time).unwrap();
                 let b = evaluate(&project.clone(), *seq, time).unwrap();
                 prop_assert_eq!(a, b);
+            }
+        }
+    }
+
+    #[test]
+    fn the_timeline_index_evaluates_like_evaluate((project, times) in project_and_times()) {
+        for seq in project.sequences.keys() {
+            let index = TimelineIndex::new(&project, *seq).unwrap();
+            prop_assert_eq!(index.sequence(), *seq);
+            // One reused scene across times, as the preview keeps it.
+            let mut reused = index.evaluate(Time::ZERO);
+            for &time in &times {
+                let time = Time::from_flicks(time).unwrap();
+                let expected = evaluate(&project, *seq, time).unwrap();
+                index.evaluate_into(time, &mut reused);
+                prop_assert_eq!(&reused, &expected);
+                prop_assert_eq!(index.evaluate(time), expected);
             }
         }
     }
