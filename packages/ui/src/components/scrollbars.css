@@ -1,0 +1,36 @@
+/* SPDX-License-Identifier: GPL-3.0-or-later */
+/* Scrollbars. Every scrollable area uses the design-system scrollbar instead of the OS default:
+   a transparent gutter of --scrollbar with a rounded thumb inset by --border-thick, so it reads
+   6px wide on any surface and turns --scrollbar-thumb-hover under the pointer or while dragged.
+   These are Chromium pseudo-elements; Electron and Storybook both run Chromium. An element that
+   sets the standard `scrollbar-width` or `scrollbar-color` opts out of these rules (Chromium then
+   ignores them for it), which is how a strip hides its scrollbar with `scrollbar-width: none`. */
+
+::-webkit-scrollbar {
+  width: var(--scrollbar);
+  height: var(--scrollbar);
+  background: transparent;
+}
+
+::-webkit-scrollbar-track,
+::-webkit-scrollbar-corner {
+  background: transparent;
+}
+
+::-webkit-scrollbar-button {
+  display: none;
+}
+
+::-webkit-scrollbar-thumb {
+  min-width: var(--hit-min);
+  min-height: var(--hit-min);
+  border: var(--border-thick) solid transparent;
+  border-radius: var(--radius-full);
+  background-color: var(--scrollbar-thumb);
+  background-clip: padding-box;
+}
+
+::-webkit-scrollbar-thumb:hover,
+::-webkit-scrollbar-thumb:active {
+  background-color: var(--scrollbar-thumb-hover);
+}

@@ -58,8 +58,7 @@ body {
   font-weight: 700;
 }
 .cw-topbar__actions.cw-toolbar,
-.cw-transport__bar.cw-toolbar,
-.cw-timeline__tools.cw-toolbar {
+.cw-transport__bar.cw-toolbar {
   height: auto;
   padding: 0;
   background: transparent;
@@ -178,9 +177,8 @@ body {
   min-height: 0;
   background: var(--surface-1);
 }
-.cw-assets .cw-tabs {
+.cw-assets .cw-tabsbar {
   flex: none;
-  scrollbar-width: none;
 }
 .cw-assets__panel {
   flex: 1;
@@ -396,6 +394,9 @@ body {
 
 /* ---------- Inspector ---------- */
 .cw-inspector {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
   height: 100%;
   min-height: 0;
   overflow: auto;
@@ -412,9 +413,16 @@ body {
   min-height: 0;
   background: var(--surface-1);
 }
-.cw-timeline__tools {
-  padding: var(--space-1) var(--space-2);
+/* A full-width strip, not a floating toolbar: no box, but padding on every side so the tools
+   don't touch the panel edge or the ruler. */
+.cw-timeline__tools.cw-toolbar {
+  display: flex;
+  height: auto;
+  padding: var(--space-1-5) var(--space-3);
+  background: transparent;
+  border: 0;
   border-bottom: var(--border-thin) solid var(--border-subtle);
+  border-radius: 0;
 }
 .cw-timeline__body {
   position: relative;
@@ -512,7 +520,7 @@ body {
 }
 
 .cw-inspector__note {
-  margin: 0 0 var(--space-2);
+  margin: 0;
   color: var(--text-secondary);
 }
 

@@ -4,6 +4,7 @@ import "../src/tokens/tokens.css";
 import "../src/fonts/fonts.css";
 // Component styles: stories import components directly, so the package entry (src/index.ts) is not loaded here.
 import "../src/components/components.css";
+import "../src/components/scrollbars.css";
 import "./preview.css";
 
 export const THEMES = ["dark", "light"] as const;

@@ -137,13 +137,14 @@
 }
 
 /* ---------- SegmentedControl ---------- */
+/* Segments sit flush, with no gap, so spacing comes only from each segment's padding. The
+   container draws the outline (::after); the selected segment draws its own marigold outline
+   above it, so at the first and last segment the two coincide instead of doubling up. */
 .cw-seg {
   position: relative;
   display: inline-flex;
-  gap: var(--space-1);
   box-sizing: border-box;
   height: var(--control-sm);
-  padding: 0 var(--space-0-5);
   background: var(--surface-2);
   border-radius: var(--radius-sm);
 }
@@ -163,16 +164,26 @@
   height: 100%;
   padding: 0 var(--space-2);
   border: 0;
-  border-radius: var(--radius-xs);
+  border-radius: 0;
   background: transparent;
   color: var(--text-secondary);
   cursor: pointer;
+}
+.cw-seg__item:first-child {
+  border-start-start-radius: inherit;
+  border-end-start-radius: inherit;
+}
+.cw-seg__item:last-child {
+  border-start-end-radius: inherit;
+  border-end-end-radius: inherit;
 }
 .cw-seg__item:hover:not(:disabled) {
   background: var(--surface-3);
   color: var(--text-primary);
 }
 .cw-seg__item[aria-checked="true"] {
+  position: relative;
+  z-index: 1;
   background: var(--marigold-subtle);
   color: var(--text-primary);
   box-shadow: inset 0 0 0 var(--border-thin) var(--marigold);
@@ -470,14 +481,53 @@
 .cw-tabsroot {
   display: contents;
 }
+/* The bar holds the scrolling list and, when tabs overflow, a chevron button over each edge that
+   hides tabs. The list scrolls without a visible scrollbar: the wheel scrolls it sideways. */
+.cw-tabsbar {
+  position: relative;
+  display: flex;
+  min-width: 0;
+}
 .cw-tabs {
   display: flex;
+  flex: 1 1 auto;
   align-items: stretch;
   gap: var(--space-1);
   box-sizing: border-box;
+  min-width: 0;
   height: var(--panel-header);
   border-bottom: var(--border-thin) solid var(--border-subtle);
   overflow-x: auto;
+  scrollbar-width: none;
+  /* Keeps a tab scrolled into view clear of the edge buttons. */
+  scroll-padding-inline: var(--hit-min);
+}
+.cw-tabsbar__scroll {
+  position: absolute;
+  top: 0;
+  bottom: var(--border-thin);
+  z-index: 1;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: var(--hit-min);
+  padding: 0;
+  border: 0;
+  background: var(--surface-2);
+  color: var(--text-secondary);
+  cursor: pointer;
+}
+.cw-tabsbar__scroll:hover {
+  background: var(--surface-3);
+  color: var(--text-primary);
+}
+.cw-tabsbar__scroll--start {
+  left: 0;
+  box-shadow: var(--border-thin) 0 0 var(--border-subtle);
+}
+.cw-tabsbar__scroll--end {
+  right: 0;
+  box-shadow: calc(var(--border-thin) * -1) 0 0 var(--border-subtle);
 }
 .cw-tabs__tab {
   position: relative;
@@ -510,6 +560,9 @@
 .cw-tabs__tab:disabled {
   color: var(--text-disabled);
   cursor: not-allowed;
+}
+.cw-panel__header .cw-tabsbar {
+  height: 100%;
 }
 .cw-panel__header .cw-tabs {
   height: 100%;
@@ -556,6 +609,11 @@
   flex-direction: column;
   gap: var(--space-2);
   padding: var(--space-1) var(--space-3) var(--space-3);
+}
+/* Collapsed: Radix keeps the content mounted with `hidden`, which `display: flex` above would
+   otherwise override, leaving an empty padded strip under the header. */
+.cw-section__body[hidden] {
+  display: none;
 }
 .cw-row__control {
   display: inline-flex;

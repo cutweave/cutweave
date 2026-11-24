@@ -57,6 +57,16 @@ pub mod dark {
         srgb: [110, 110, 110, 255],
         linear: [0.15592647, 0.15592647, 0.15592647, 1.0],
     };
+    /// `scrollbar-thumb`: #464646
+    pub const SCROLLBAR_THUMB: Color = Color {
+        srgb: [70, 70, 70, 255],
+        linear: [0.061246052, 0.061246052, 0.061246052, 1.0],
+    };
+    /// `scrollbar-thumb-hover`: #6e6e6e
+    pub const SCROLLBAR_THUMB_HOVER: Color = Color {
+        srgb: [110, 110, 110, 255],
+        linear: [0.15592647, 0.15592647, 0.15592647, 1.0],
+    };
     /// `text-primary`: #ececec
     pub const TEXT_PRIMARY: Color = Color {
         srgb: [236, 236, 236, 255],
@@ -240,6 +250,8 @@ pub mod dark {
         ("border-subtle", BORDER_SUBTLE),
         ("border-default", BORDER_DEFAULT),
         ("border-control", BORDER_CONTROL),
+        ("scrollbar-thumb", SCROLLBAR_THUMB),
+        ("scrollbar-thumb-hover", SCROLLBAR_THUMB_HOVER),
         ("text-primary", TEXT_PRIMARY),
         ("text-secondary", TEXT_SECONDARY),
         ("text-muted", TEXT_MUTED),
@@ -330,6 +342,16 @@ pub mod light {
     pub const BORDER_CONTROL: Color = Color {
         srgb: [130, 130, 130, 255],
         linear: [0.22322796, 0.22322796, 0.22322796, 1.0],
+    };
+    /// `scrollbar-thumb`: #bdbdbd
+    pub const SCROLLBAR_THUMB: Color = Color {
+        srgb: [189, 189, 189, 255],
+        linear: [0.50888133, 0.50888133, 0.50888133, 1.0],
+    };
+    /// `scrollbar-thumb-hover`: #8f8f8f
+    pub const SCROLLBAR_THUMB_HOVER: Color = Color {
+        srgb: [143, 143, 143, 255],
+        linear: [0.2746773, 0.2746773, 0.2746773, 1.0],
     };
     /// `text-primary`: #161616
     pub const TEXT_PRIMARY: Color = Color {
@@ -514,6 +536,8 @@ pub mod light {
         ("border-subtle", BORDER_SUBTLE),
         ("border-default", BORDER_DEFAULT),
         ("border-control", BORDER_CONTROL),
+        ("scrollbar-thumb", SCROLLBAR_THUMB),
+        ("scrollbar-thumb-hover", SCROLLBAR_THUMB_HOVER),
         ("text-primary", TEXT_PRIMARY),
         ("text-secondary", TEXT_SECONDARY),
         ("text-muted", TEXT_MUTED),

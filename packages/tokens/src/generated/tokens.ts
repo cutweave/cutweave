@@ -20,6 +20,8 @@ export const colors = {
     "border-subtle": "#262626",
     "border-default": "#363636",
     "border-control": "#6e6e6e",
+    "scrollbar-thumb": "#464646",
+    "scrollbar-thumb-hover": "#6e6e6e",
     "text-primary": "#ececec",
     "text-secondary": "#a9a9a9",
     "text-muted": "#979797",
@@ -66,6 +68,8 @@ export const colors = {
     "border-subtle": "#e0e0e0",
     "border-default": "#d0d0d0",
     "border-control": "#828282",
+    "scrollbar-thumb": "#bdbdbd",
+    "scrollbar-thumb-hover": "#8f8f8f",
     "text-primary": "#161616",
     "text-secondary": "#4c4c4c",
     "text-muted": "#636363",
@@ -113,6 +117,8 @@ export type ColorTokenName =
   | "border-subtle"
   | "border-default"
   | "border-control"
+  | "scrollbar-thumb"
+  | "scrollbar-thumb-hover"
   | "text-primary"
   | "text-secondary"
   | "text-muted"
@@ -207,6 +213,7 @@ export type RadiusTokenName =
 /** `size` tokens (theme independent). */
 export const size = {
   "hit-min": "24px",
+  "scrollbar": "10px",
   "control-sm": "24px",
   "control-md": "28px",
   "control-lg": "32px",
@@ -225,6 +232,7 @@ export const size = {
 } as const;
 export type SizeTokenName =
   | "hit-min"
+  | "scrollbar"
   | "control-sm"
   | "control-md"
   | "control-lg"
