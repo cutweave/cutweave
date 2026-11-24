@@ -3,7 +3,7 @@
 **The open-source video editor for creators and their AI agents.**
 CapCut-class speed and ease for short-form *and* long-form video. Fully drivable over MCP, open to plugins everywhere, and connected to the leading AI models with your own keys.
 
-**Website:** [cutweave.github.io](https://cutweave.github.io)
+**Website:** [cutweave.app](https://cutweave.app)
 
 > **Status: pre-alpha. Phase 1 (walking skeleton) is in progress.** Phase 0 passed with a provisional go ([M0](docs/milestones/M0-go-no-go.md)); the FFmpeg decode spike is still blocked. The document model, the command bus with undo, atomic project saves, the editor shell and the timeline renderer are in. Media import, playback, export, the MCP server and the CLI come next. Nothing is ready to use yet.
 

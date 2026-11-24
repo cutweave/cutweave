@@ -803,7 +803,7 @@ MyVideo/                    ← project folder (user-chosen location)
   - Flatpak uses the codecs extension.
   - Seek a legal review before 1.0.
 - **Dependency & model license policy** (enforced by `cargo-deny`, the JS license check and catalog metadata):
-  - **Allowed in the GPL-3.0 host:** MIT, BSD, Apache-2.0, ISC, Zlib, MPL-2.0, LGPL-2.1+/3.0, GPL-2.0-*or-later*, GPL-3.0, CC0/CC-BY (data/models).
+  - **Allowed in the GPL-3.0 host:** MIT, BSD, Apache-2.0, ISC, Zlib, MPL-2.0, LGPL-2.1+/3.0, GPL-2.0-*or-later*, GPL-3.0, WTFPL (the `ffmpeg-next` bindings, ADR-0003), CC0/CC-BY (data/models).
   - **Not allowed:** GPL-2.0-*only* (incompatible with GPL-3.0); AGPL (policy: network clause); non-commercial or research-only (CC-BY-NC, custom "model licenses" with use restrictions); unlicensed weights.
   - Components under GPL are **not** traps for the host. The traps listed in research/04 apply only to NC, AGPL and unclear licenses, and to anything meant for the MIT/Apache SDK packages.
 - **Third-party notices** are generated at build time (`cargo-about` + a JS license collector). Model weights are downloaded on demand with their license shown, never bundled silently.

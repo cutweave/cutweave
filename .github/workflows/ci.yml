@@ -1,7 +1,8 @@
 name: CI
 
 # WP-0A.03. Job names are stable: they are the branch-protection required checks
-# (see .github/workflows/README.md). The `ffmpeg` cargo feature stays off here until WP-0A.06.
+# (see .github/workflows/README.md). The `ffmpeg` cargo feature stays off here: building it needs the
+# pinned FFmpeg bundle and libclang, so `just test-ffmpeg` runs locally (docs/dev/ffmpeg.md).
 
 on:
   # No push trigger: maintainers run `just ci-local` before every merge to main (saves Actions minutes).
