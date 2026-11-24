@@ -98,7 +98,7 @@ are in its bindings). What a machine needs is a GPU driver:
 
 | Hwaccel (`--hw`) | Needs | Device argument |
 |---|---|---|
-| `d3d11va[:N]` | Windows 8+, any DX11 GPU driver | DXGI adapter index (`s3 hwinfo` lists which opens; here 0 = Radeon iGPU, 1 = RTX 3080) |
+| `d3d11va[:N]`, `d3d11va:nvidia` | Windows 8+, any DX11 GPU driver | DXGI adapter index, or a vendor (`nvidia`, `amd`, `intel`: FFmpeg's `vendor_id` option). Prefer the vendor: indexes flip inside a process on hybrid laptops (README H7) |
 | `d3d12va[:N]` | Windows 10 2004+, DX12 video driver | DXGI adapter index |
 | `cuda[:N]` | NVIDIA driver (`nvcuda.dll`, `nvcuvid.dll`); no CUDA toolkit | CUDA device index |
 | `vulkan[:N]` | Vulkan driver with `VK_KHR_video_decode_*` | Vulkan physical device index |

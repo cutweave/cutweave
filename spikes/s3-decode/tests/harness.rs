@@ -4,7 +4,7 @@
 
 use std::path::{Path, PathBuf};
 
-use s3::hw::{HwSpec, HwStatus};
+use s3::hw::{HwKind, HwSpec, HwStatus};
 use s3::manifest;
 use s3::robust;
 use s3::source::{Options, Threads, VideoSource};
@@ -95,9 +95,24 @@ fn hw_decode_is_frame_exact_and_close_to_software() {
 fn hw_failures_fall_back_to_software_cleanly() {
     s3::init(true);
     let spec = hw_specs()[0];
-    let missing = HwSpec {
-        device: Some(9),
-        ..spec
+    // A device that cannot open: a GPU vendor that is not present (D3D11VA; a missing adapter
+    // *index* is not an error there, FFmpeg falls back to the default adapter), a missing DRM
+    // render node (VA-API), a missing CUDA device. VideoToolbox has no device to get wrong.
+    let missing = match spec.kind {
+        HwKind::Vaapi => HwSpec {
+            render_node: Some(199),
+            ..spec
+        },
+        HwKind::D3d11va => HwSpec {
+            device: None,
+            vendor: Some(0xdead),
+            ..spec
+        },
+        _ => HwSpec {
+            device: Some(9),
+            vendor: None,
+            ..spec
+        },
     };
     let check = |name: &str, opts: Options| {
         let cfg = Config {
@@ -118,9 +133,11 @@ fn hw_failures_fall_back_to_software_cleanly() {
     // Forced off.
     let r = check("h264_2160p30_gop30.mp4", Options::default());
     assert!(r.hw.is_empty());
-    // No such device (adapter 9; VA-API render node 9 on Linux).
-    let r = check("hevc_main10_pq_1080p24.mp4", hw_opts(missing));
-    assert!(r.hw.contains("device failed"), "{}", r.hw);
+    // No such device.
+    if spec.kind != HwKind::VideoToolbox {
+        let r = check("hevc_main10_pq_1080p24.mp4", hw_opts(missing));
+        assert!(r.hw.contains("device failed"), "{}", r.hw);
+    }
     // Decoder without a hwaccel.
     let r = check("prores_hq_1080p25.mov", hw_opts(spec));
     assert!(r.hw.contains("has no"), "{}", r.hw);

@@ -1,0 +1,4 @@
+file,adapter,decoder,seek_decode_p50_ms,seek_decode_p95_ms,seek_import_p50_ms,seek_import_p95_ms,seek_texture_ready_p50_ms,seek_texture_ready_p95_ms,play_decode_p50_ms,play_decode_p95_ms,play_import_p50_ms,play_import_p95_ms,play_frame_p50_ms,play_frame_p95_ms,play_fps,check
+h264_2160p30_gop30.mp4,AMD Radeon(TM) Graphics (Dx12),d3d11va:0,12.66,29.95,75.15,109.92,87.26,137.51,0.51,3.97,11.59,26.34,12.57,30.08,61.3,true
+h264_2160p30_gop250.mp4,AMD Radeon(TM) Graphics (Dx12),d3d11va:0,231.16,605.21,96.59,113.97,321.26,718.05,0.54,3.91,12.10,24.55,13.05,27.89,61.6,true
+hevc_main10_2160p30_gop60.mp4,AMD Radeon(TM) Graphics (Dx12),d3d11va:0,8.31,85.86,131.15,137.07,139.57,217.69,0.56,3.49,14.38,32.63,14.90,35.21,51.9,true

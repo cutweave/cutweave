@@ -202,6 +202,8 @@ pub struct VideoSource {
     pub stats: Stats,
     /// `S3_TRACE=1`: log every packet sent and frame received to stderr.
     trace: bool,
+    /// `S3_START_EARLIER=1`: start seeks one keyframe before the computed start keyframe.
+    start_earlier: bool,
 }
 
 impl VideoSource {
@@ -246,6 +248,7 @@ impl VideoSource {
             last_pts: None,
             stats: Stats::default(),
             trace: std::env::var_os("S3_TRACE").is_some(),
+            start_earlier: std::env::var_os("S3_START_EARLIER").is_some(),
         })
     }
 
@@ -369,14 +372,24 @@ impl VideoSource {
         if self.last_pts == Some(target.pts) && self.positioned {
             return Ok(());
         }
+        // Experiment knob (WP-0E.02, finding H10): `S3_START_EARLIER=1` starts every seek one
+        // keyframe earlier, so an open-GOP keyframe's leading pictures have their references.
+        let start = if self.start_earlier {
+            self.index
+                .keys_before(target.start_idx)
+                .next()
+                .unwrap_or(target.start_idx)
+        } else {
+            target.start_idx
+        };
         let reachable = self.positioned
             && !self.eof_sent
             && self.last_pts.is_none_or(|p| p < target.pts)
-            && self.next_idx.is_some_and(|n| target.start_idx <= n);
+            && self.next_idx.is_some_and(|n| start <= n);
         if self.opts.forward_continue && reachable {
             self.stats.continued += 1;
         } else {
-            self.reposition(target.start_idx)?;
+            self.reposition(start)?;
         }
         self.decode(Want::Pts(target.pts))
     }

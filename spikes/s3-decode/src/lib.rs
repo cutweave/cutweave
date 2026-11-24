@@ -24,11 +24,14 @@ pub mod verify;
 pub mod zerocopy;
 
 /// Initialises FFmpeg once and silences its log below errors (corrupt-file tests are noisy).
+/// `S3_FFLOG=verbose` raises it (FFmpeg then names the adapter each hw device opens on).
 pub fn init(quiet: bool) {
+    use ffmpeg_next::util::log::{Level, set_level};
     let _ = ffmpeg_next::init();
-    ffmpeg_next::util::log::set_level(if quiet {
-        ffmpeg_next::util::log::Level::Fatal
-    } else {
-        ffmpeg_next::util::log::Level::Error
+    set_level(match std::env::var("S3_FFLOG").as_deref() {
+        Ok("verbose") => Level::Verbose,
+        Ok("info") => Level::Info,
+        _ if quiet => Level::Fatal,
+        _ => Level::Error,
     });
 }

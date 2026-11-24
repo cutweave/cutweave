@@ -1,0 +1,4 @@
+file,adapter,decoder,seek_decode_p50_ms,seek_decode_p95_ms,seek_import_p50_ms,seek_import_p95_ms,seek_texture_ready_p50_ms,seek_texture_ready_p95_ms,play_decode_p50_ms,play_decode_p95_ms,play_import_p50_ms,play_import_p95_ms,play_frame_p50_ms,play_frame_p95_ms,play_fps,check
+h264_2160p30_gop30.mp4,NVIDIA GeForce RTX 3080 Laptop GPU (Dx12),d3d11va:1,14.00,19.21,66.34,107.44,79.67,124.91,0.35,0.82,6.10,8.23,6.44,8.84,136.3,true
+h264_2160p30_gop250.mp4,NVIDIA GeForce RTX 3080 Laptop GPU (Dx12),d3d11va:1,198.76,580.38,104.13,116.05,303.34,694.35,0.29,0.50,6.07,7.56,6.36,8.01,141.5,true
+hevc_main10_2160p30_gop60.mp4,NVIDIA GeForce RTX 3080 Laptop GPU (Dx12),d3d11va:1,6.80,27.12,44.87,53.76,52.24,80.69,0.34,0.54,3.25,3.40,3.60,3.89,239.1,true

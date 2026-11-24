@@ -610,10 +610,14 @@ pub fn run(
     }
     let spec = match hw {
         Some(s) => s,
+        // The DXGI index of wgpu's adapter, looked up in this process just before FFmpeg opens
+        // it (indexes can change within a process on hybrid laptops, H7); the LUID check in
+        // `ZeroCopy::new` confirms the match.
         None => HwSpec {
             kind: HwKind::D3d11va,
             device: dxgi_index(wgpu_luid(&g)?),
             render_node: None,
+            vendor: None,
         },
     };
     println!(

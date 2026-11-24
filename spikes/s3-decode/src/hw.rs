@@ -68,8 +68,8 @@ impl HwKind {
     }
 }
 
-/// A requested hwaccel: device type plus an optional device (adapter index, or a DRM node for
-/// VA-API such as `vaapi:/dev/dri/renderD128`).
+/// A requested hwaccel: device type plus an optional device (adapter index, a GPU vendor, or a
+/// DRM node for VA-API such as `vaapi:/dev/dri/renderD128`).
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub struct HwSpec {
     pub kind: HwKind,
@@ -77,11 +77,34 @@ pub struct HwSpec {
     pub device: Option<u8>,
     /// VA-API render node (`/dev/dri/renderD128` = 128); ignored by other types.
     pub render_node: Option<u8>,
+    /// PCI vendor id (`d3d11va:nvidia` = 0x10de): FFmpeg's `vendor_id` device option. DXGI
+    /// adapter indexes are not stable on hybrid laptops (finding H7), vendors are.
+    pub vendor: Option<u16>,
+}
+
+fn vendor_id(name: &str) -> Option<u16> {
+    match name {
+        "nvidia" => Some(0x10de),
+        "amd" => Some(0x1002),
+        "intel" => Some(0x8086),
+        _ => name
+            .strip_prefix("vendor=0x")
+            .and_then(|h| u16::from_str_radix(h, 16).ok()),
+    }
+}
+
+fn vendor_name(id: u16) -> String {
+    match id {
+        0x10de => "nvidia".into(),
+        0x1002 => "amd".into(),
+        0x8086 => "intel".into(),
+        _ => format!("vendor=0x{id:04x}"),
+    }
 }
 
 impl HwSpec {
-    /// Parses `d3d11va`, `d3d11va:1`, `cuda:0`, `vaapi:/dev/dri/renderD129`, ...; `off`, `none`
-    /// and `sw` mean "software decode" (`Ok(None)`).
+    /// Parses `d3d11va`, `d3d11va:1`, `d3d11va:nvidia`, `cuda:0`, `vaapi:/dev/dri/renderD129`, ...;
+    /// `off`, `none` and `sw` mean "software decode" (`Ok(None)`).
     pub fn parse(s: &str) -> Result<Option<Self>, String> {
         if matches!(s, "off" | "none" | "sw") {
             return Ok(None);
@@ -92,6 +115,7 @@ impl HwSpec {
             kind,
             device: None,
             render_node: None,
+            vendor: None,
         };
         match dev {
             None => {}
@@ -101,6 +125,7 @@ impl HwSpec {
                     return Err(format!("bad render node {d}"));
                 }
             }
+            Some(d) if vendor_id(d).is_some() => spec.vendor = vendor_id(d),
             Some(d) => {
                 spec.device = Some(d.parse().map_err(|_| format!("bad device index {d}"))?);
             }
@@ -108,12 +133,13 @@ impl HwSpec {
         Ok(Some(spec))
     }
 
-    /// `d3d11va`, `d3d11va:1`, `vaapi:/dev/dri/renderD128`.
+    /// `d3d11va`, `d3d11va:1`, `d3d11va:nvidia`, `vaapi:/dev/dri/renderD128`.
     pub fn label(self) -> String {
-        match (self.device, self.render_node) {
-            (_, Some(n)) => format!("{}:/dev/dri/renderD{n}", self.kind.name()),
-            (Some(d), None) => format!("{}:{d}", self.kind.name()),
-            (None, None) => self.kind.name().to_string(),
+        match (self.device, self.render_node, self.vendor) {
+            (_, Some(n), _) => format!("{}:/dev/dri/renderD{n}", self.kind.name()),
+            (Some(d), None, _) => format!("{}:{d}", self.kind.name()),
+            (None, None, Some(v)) => format!("{}:{}", self.kind.name(), vendor_name(v)),
+            (None, None, None) => self.kind.name().to_string(),
         }
     }
 
@@ -183,16 +209,31 @@ impl Device {
             .transpose()
             .map_err(|e| e.to_string())?;
         let mut buf: *mut ffi::AVBufferRef = ptr::null_mut();
-        // SAFETY: `buf` is a valid out-pointer; `dev` (if any) outlives the call; no options
-        // dictionary is passed. On success FFmpeg hands us one reference, released in Drop.
+        let mut opts: *mut ffi::AVDictionary = ptr::null_mut();
+        // FFmpeg's d3d11va reads `vendor_id` only when no device string is given. (An index that
+        // does not exist is not an error there: it silently opens the default adapter, H6.)
+        if let (Some(v), None) = (spec.vendor, spec.device_arg()) {
+            let (k, val) = (
+                c"vendor_id",
+                CString::new(format!("0x{v:04x}")).map_err(|e| e.to_string())?,
+            );
+            // SAFETY: `opts` starts NULL (av_dict_set allocates it); both strings are valid
+            // NUL-terminated C strings copied by FFmpeg.
+            unsafe { ffi::av_dict_set(&mut opts, k.as_ptr(), val.as_ptr(), 0) };
+        }
+        // SAFETY: `buf` is a valid out-pointer; `dev` (if any) outlives the call; `opts` is NULL
+        // or a dictionary we own and free below. On success FFmpeg hands us one reference,
+        // released in Drop.
         let ret = unsafe {
-            ffi::av_hwdevice_ctx_create(
+            let r = ffi::av_hwdevice_ctx_create(
                 &mut buf,
                 ty,
                 dev.as_ref().map_or(ptr::null(), |d| d.as_ptr()),
-                ptr::null_mut(),
+                opts,
                 0,
-            )
+            );
+            ffi::av_dict_free(&mut opts);
+            r
         };
         if ret < 0 || buf.is_null() {
             return Err(ffmpeg::Error::from(ret).to_string());
@@ -395,6 +436,14 @@ mod tests {
         assert_eq!(
             s.map(HwSpec::label).as_deref(),
             Some("vaapi:/dev/dri/renderD129")
+        );
+        let s = HwSpec::parse("d3d11va:nvidia").ok().flatten();
+        assert_eq!(s.and_then(|s| s.vendor), Some(0x10de));
+        assert_eq!(s.map(HwSpec::label).as_deref(), Some("d3d11va:nvidia"));
+        let s = HwSpec::parse("d3d11va:vendor=0x1af4").ok().flatten();
+        assert_eq!(
+            s.map(HwSpec::label).as_deref(),
+            Some("d3d11va:vendor=0x1af4")
         );
         assert!(HwSpec::parse("bogus").is_err());
         assert!(HwSpec::parse("cuda:x").is_err());
