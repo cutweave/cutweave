@@ -38,7 +38,7 @@
 use std::collections::HashMap;
 use std::sync::atomic::{AtomicU8, Ordering};
 use std::sync::{Arc, PoisonError};
-use std::time::Duration;
+use std::time::{Duration, Instant};
 
 use cutweave_model::ItemId;
 
@@ -69,6 +69,9 @@ const UNIFORM_SIZE: u64 = 256;
 const POOL_PER_KEY: usize = 4;
 
 /// States of the blocking readback's map callback.
+/// How long a blocking readback waits for its map callback once the device poll returned (the
+/// callback may run on another thread's poll).
+const MAP_CALLBACK_WAIT: Duration = Duration::from_secs(10);
 const MAP_PENDING: u8 = 0;
 const MAP_DONE: u8 = 1;
 const MAP_FAILED: u8 = 2;
@@ -1343,17 +1346,27 @@ impl Compositor {
         });
         self.check()?;
         poll.map_err(|e| GpuError::Readback(format!("poll: {e}")))?;
-        match state.load(Ordering::Acquire) {
-            MAP_DONE => {}
-            MAP_FAILED => {
-                return Err(GpuError::Readback(
-                    "map: the buffer could not be mapped".into(),
-                ));
-            }
-            _ => {
-                return Err(GpuError::Readback(
-                    "map: the readback did not complete".into(),
-                ));
+        // The GPU work is done, but wgpu runs the map callback on whichever thread polls the
+        // device: another compositor's thread (preview against `render.frame` or export) may be
+        // running it right now. Wait for the callback itself, polling, without allocating.
+        let deadline = Instant::now() + MAP_CALLBACK_WAIT;
+        loop {
+            match state.load(Ordering::Acquire) {
+                MAP_DONE => break,
+                MAP_FAILED => {
+                    return Err(GpuError::Readback(
+                        "map: the buffer could not be mapped".into(),
+                    ));
+                }
+                _ if Instant::now() >= deadline => {
+                    return Err(GpuError::Readback(
+                        "map: the readback did not complete".into(),
+                    ));
+                }
+                _ => {
+                    let _ = in_wgpu(|| self.ctx.device().poll(wgpu::PollType::Poll));
+                    std::thread::yield_now();
+                }
             }
         }
         let range = in_wgpu(|| map.get_mapped_range(..bytes))
