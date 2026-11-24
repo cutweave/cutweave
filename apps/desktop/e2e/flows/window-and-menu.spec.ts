@@ -28,6 +28,7 @@ import {
   test,
   unsavedPrompt,
 } from "../fixtures.ts";
+import { chooseMenu } from "./helpers.ts";
 import {
   osClick,
   osDoubleClick,
@@ -110,13 +111,6 @@ async function openMenu(page: Page, menu: string): Promise<Locator> {
   const list = page.getByRole("menu", { name: menu });
   await expect(list).toBeVisible();
   return list;
-}
-
-/** Clicks `menu` > `label` in the menu bar, as a person does. */
-async function chooseMenu(page: Page, menu: string, label: string | RegExp): Promise<void> {
-  const list = await openMenu(page, menu);
-  await item(list, label).click();
-  await expect(list).toBeHidden();
 }
 
 /** The naming dialog of New project / Save as. */
@@ -259,7 +253,7 @@ test.describe("F18 window and menu", () => {
     const { app, page, close } = await launchFlow(work.dir);
     try {
       // New project… by click; the place comes from the OS folder picker.
-      await chooseMenu(page, "File", "New project…");
+      await chooseMenu(page, app, "File", "New project…");
       const alphaNaming = namingDialog(page, "New project");
       await alphaNaming.name.fill("Alpha");
       await pickPaths(app, [work.projects]);
@@ -279,7 +273,7 @@ test.describe("F18 window and menu", () => {
 
       // Open project… by click and by Ctrl+O (the OS picker returns the folder).
       await pickPaths(app, [path.dirname(alpha)]);
-      await chooseMenu(page, "File", "Open project…");
+      await chooseMenu(page, app, "File", "Open project…");
       await expect(page).toHaveTitle("Alpha — Cutweave");
       await projectActionsReady(page);
       await pickPaths(app, [path.dirname(beta)]);
@@ -307,7 +301,7 @@ test.describe("F18 window and menu", () => {
       await expect(dirtyDot(page)).toBeVisible();
 
       // Save by click: the dot goes and the clip is in the document on disk.
-      await chooseMenu(page, "File", "Save");
+      await chooseMenu(page, app, "File", "Save");
       await expect(dirtyDot(page)).toBeHidden();
       await projectActionsReady(page);
       expect(onDisk(alpha)).toEqual({ items: inserted, media: 1 });
@@ -323,7 +317,7 @@ test.describe("F18 window and menu", () => {
 
       // Save as… by click, then by Ctrl+Shift+S: the project continues in the new folder,
       // which Open recent now lists first.
-      await chooseMenu(page, "File", "Save as…");
+      await chooseMenu(page, app, "File", "Save as…");
       const gamma = await nameProject(page, "Save project as", "Gamma", work.projects);
       expect(onDisk(gamma).media).toBe(1);
       await page.keyboard.press("Control+Shift+S");
@@ -376,7 +370,7 @@ test.describe("F18 window and menu", () => {
       await expect(item(edit, /^Redo/)).toHaveAttribute("aria-disabled", "true");
       await item(edit, /^Undo \S/).click();
       await expect.poll(() => timelineItems(page)).toBe(0);
-      await chooseMenu(page, "Edit", /^Redo \S/);
+      await chooseMenu(page, app, "Edit", /^Redo \S/);
       await expect.poll(() => timelineItems(page)).toBe(inserted);
       await page.keyboard.press("Control+Z");
       await expect.poll(() => timelineItems(page)).toBe(0);
@@ -400,22 +394,22 @@ test.describe("F18 window and menu", () => {
       await expect(nameField).toHaveValue(name);
 
       // Select all, Copy, Paste and Cut from the menu act on the field that had the focus.
-      await chooseMenu(page, "Edit", "Select all");
+      await chooseMenu(page, app, "Edit", "Select all");
       await expect
         .poll(() => focusedField(page))
         .toEqual({ tag: "INPUT", value: name, start: 0, end: name.length });
       await putOnClipboard(app, "something else");
-      await chooseMenu(page, "Edit", "Copy");
+      await chooseMenu(page, app, "Edit", "Copy");
       await expect.poll(() => clipboardText(app)).toBe(name);
       await page.keyboard.press("End");
-      await chooseMenu(page, "Edit", "Paste");
+      await chooseMenu(page, app, "Edit", "Paste");
       await expect(nameField).toHaveValue(`${name}${name}`);
       // Escape puts the clip's name back without renaming it.
       await page.keyboard.press("Escape");
       await expect(nameField).toHaveValue(name);
-      await chooseMenu(page, "Edit", "Select all");
+      await chooseMenu(page, app, "Edit", "Select all");
       await putOnClipboard(app, "something else");
-      await chooseMenu(page, "Edit", "Cut");
+      await chooseMenu(page, app, "Edit", "Cut");
       await expect(nameField).toHaveValue("");
       await expect.poll(() => clipboardText(app)).toBe(name);
       await page.keyboard.press("Escape");
@@ -464,13 +458,13 @@ test.describe("F18 window and menu", () => {
     const { app, page, close } = await launchFlow(work.dir);
     try {
       // Toggle full screen by click, then F11.
-      await chooseMenu(page, "View", "Toggle full screen");
+      await chooseMenu(page, app, "View", "Toggle full screen");
       await expect.poll(async () => (await windowState(app)).fullScreen).toBe(true);
       await page.keyboard.press("F11");
       await expect.poll(async () => (await windowState(app)).fullScreen).toBe(false);
 
       // Toggle developer tools (a development build) by click, then Ctrl+Shift+I.
-      await chooseMenu(page, "View", "Toggle developer tools");
+      await chooseMenu(page, app, "View", "Toggle developer tools");
       await expect.poll(async () => (await windowState(app)).devTools).toBe(true);
       await page.keyboard.press("Control+Shift+I");
       await expect.poll(async () => (await windowState(app)).devTools).toBe(false);
@@ -478,7 +472,7 @@ test.describe("F18 window and menu", () => {
       // Reload by click, then Ctrl+R: the page loads again and reconnects to the engine.
       for (const how of ["click", "key"] as const) {
         const loaded = page.waitForEvent("load");
-        if (how === "click") await chooseMenu(page, "View", "Reload");
+        if (how === "click") await chooseMenu(page, app, "View", "Reload");
         else await page.keyboard.press("Control+R");
         await loaded;
         await editorHandle(page);
@@ -491,7 +485,7 @@ test.describe("F18 window and menu", () => {
         version: a.getVersion(),
         electron: process.versions.electron,
       }));
-      await chooseMenu(page, "Help", "About Cutweave");
+      await chooseMenu(page, app, "Help", "About Cutweave");
       const about = page.getByRole("dialog", { name: "About Cutweave" });
       await expect(about).toBeVisible();
       await expect(about.getByTestId("about-versions")).toContainText(versions.version);
@@ -561,7 +555,7 @@ test.describe("F18 window and menu", () => {
       expect(onDisk(doc).media).toBe(0);
 
       // Exit, then Cancel: the app stays with its unsaved change.
-      await chooseMenu(page, "File", "Exit");
+      await chooseMenu(page, app, "File", "Exit");
       const prompt = unsavedPrompt(page);
       await expect(prompt.dialog).toBeVisible();
       await prompt.cancel.click();
@@ -573,7 +567,7 @@ test.describe("F18 window and menu", () => {
       const exited = new Promise<number | null>((resolve) =>
         app.process().once("exit", (code) => resolve(code)),
       );
-      await chooseMenu(page, "File", "Exit");
+      await chooseMenu(page, app, "File", "Exit");
       await expect(prompt.dialog).toBeVisible();
       await prompt.save.click();
       expect(await exited).toBe(0);

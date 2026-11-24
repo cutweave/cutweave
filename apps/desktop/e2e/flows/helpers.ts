@@ -8,12 +8,12 @@
 // - Read state, never change it: `editorCall` is used only to read the document back
 //   (`timeline.get`, `project.info`, `view.get`, `item.get`) or for setup a flow does not test.
 // - Menus: every menu action goes through `chooseMenu()`, the one place that knows how the menu
-//   is drawn (the native menu today, WP-1M.09's in-app menu bar later).
-// - Menu accelerators (Ctrl+S, Ctrl+Z, ...) are native today: Playwright's page keyboard never
-//   reaches them. `shortcut()` sends the key press to the window from main
-//   (`webContents.sendInputEvent`), the input path a real key press takes: the page sees it first,
-//   then the menu's accelerator handles it. Editor-level keys (Space, J/K/L, arrows, timeline keys,
-//   Ctrl+I) go through `page.keyboard`.
+//   is drawn: the menu bar in the title bar on Windows and Linux (WP-1M.09), the native app menu
+//   on macOS.
+// - Menu shortcuts (Ctrl+S, Ctrl+Z, ...): `shortcut()` sends the key press to the window from main
+//   (`webContents.sendInputEvent`), the input path a real key press takes. On Windows and Linux
+//   the editor's menu bar handles it; on macOS the native menu's accelerator does. Editor-level
+//   keys (Space, J/K/L, arrows, timeline keys, Ctrl+I) go through `page.keyboard`.
 // - Wait for visible state, never sleep.
 import {
   copyFileSync,
@@ -178,9 +178,9 @@ export function logProblems(mainLog: readonly string[]): string[] {
 export type Chord = `${"Control+" | "Control+Shift+" | ""}${string}`;
 
 /**
- * Presses a menu accelerator (`Control+S`, `Control+Shift+S`, `Control+Z`, ...) on the editor
+ * Presses a menu shortcut (`Control+S`, `Control+Shift+S`, `Control+Z`, ...) on the editor
  * window. The key goes in through main (`webContents.sendInputEvent`), as a key press on the
- * window does, so the native menu's accelerator runs the same menu item a click would.
+ * window does, so the menu runs the same command a click on its item would.
  *
  * Keys only reach a focused window (Electron drops `sendInputEvent` otherwise), and another
  * app's window can take the focus while the suite runs. A person's keys go to the window they
@@ -216,36 +216,62 @@ export async function shortcut(app: ElectronApplication, chord: Chord): Promise<
 }
 
 /**
- * Chooses a menu item (`File` > `New Project…`). Every menu action of the flows goes through
- * here, so only this helper changes when the menu does. Today it is the native menu: the item of
- * `Menu.getApplicationMenu()` runs the handler a click on it runs (Playwright cannot open a
- * native menu). Once WP-1M.09's in-app menu bar replaces it on Windows and Linux, this becomes a
- * real click on that menu bar in `page`.
+ * Chooses a menu item (`File` > `New project…`) like a person: on Windows and Linux it clicks the
+ * menu in the title bar's menu bar (WP-1M.09), then the item, and waits for the menu to close.
+ * Every menu action of the flows goes through here, so only this helper changes when the menu
+ * does. `item` is the item's label (its shortcut may follow it), or a pattern for labels that
+ * name the step (`/^Undo/` matches "Undo Move clip"). On macOS the native app menu stays, and
+ * Playwright cannot open it: the item's handler runs as a click on it would.
  */
 export async function chooseMenu(
-  // Unused until the in-app menu bar (WP-1M.09) lands; the call sites already pass it.
-  _page: Page,
+  page: Page,
   app: ElectronApplication,
   menu: "File" | "Edit" | "View" | "Help",
-  item: string,
+  item: string | RegExp,
 ): Promise<void> {
-  const found = await app.evaluate(
-    ({ Menu, app }, { menu, item }) => {
-      const plain = (label: string) => label.replace(/&/g, "");
-      const top = Menu.getApplicationMenu()?.items.find((i) => plain(i.label) === menu);
-      const entry = top?.submenu?.items.find((i) => plain(i.label) === item);
-      if (entry === undefined) return false;
-      if (entry.role === "quit") {
-        // A role item has no click handler of ours: Exit is `app.quit()`.
-        app.quit();
+  if (process.platform === "darwin") {
+    const pattern = typeof item === "string" ? null : { source: item.source, flags: item.flags };
+    const label = typeof item === "string" ? item : null;
+    const found = await app.evaluate(
+      ({ Menu, app }, { menu, label, pattern }) => {
+        const plain = (text: string) => text.replace(/&/g, "");
+        const matches = (text: string) =>
+          pattern !== null
+            ? new RegExp(pattern.source, pattern.flags).test(plain(text))
+            : plain(text).toLowerCase() === label?.toLowerCase();
+        const top = Menu.getApplicationMenu()?.items.find((i) => plain(i.label) === menu);
+        const entry = top?.submenu?.items.find((i) => matches(i.label));
+        if (entry === undefined) return false;
+        if (entry.role === "quit" || entry.role === "close") {
+          // A role item has no click handler of ours: Exit is `app.quit()`.
+          app.quit();
+          return true;
+        }
+        entry.click();
         return true;
-      }
-      entry.click();
-      return true;
-    },
-    { menu, item },
-  );
-  if (!found) throw new Error(`no menu item ${menu} > ${item}`);
+      },
+      { menu, label, pattern },
+    );
+    if (!found) throw new Error(`no menu item ${menu} > ${String(item)}`);
+    return;
+  }
+  await page
+    .getByRole("menubar", { name: "Application menu" })
+    .getByRole("menuitem", { name: menu, exact: true })
+    .click();
+  const list = page.getByRole("menu", { name: menu });
+  await expect(list).toBeVisible();
+  const name =
+    typeof item === "string"
+      ? new RegExp(`^${item.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}(?:\\s+\\S+)?$`)
+      : item;
+  await list.getByRole("menuitem", { name }).click();
+  // File > Exit can close the window before the menu is seen to close.
+  await expect(list)
+    .toBeHidden()
+    .catch((error: unknown) => {
+      if (!page.isClosed()) throw error;
+    });
 }
 
 // ---- the OS file pickers ---------------------------------------------------------------------

@@ -51,7 +51,7 @@ test.describe("F10 unsaved changes on New/Open", () => {
 
       // File > New Project… this time, and Discard: the naming dialog follows, and the new
       // project opens empty.
-      await chooseMenu(page, app, "File", "New Project…");
+      await chooseMenu(page, app, "File", "New project…");
       await prompt.discard.click();
       const naming = namingDialog(page);
       await expect(naming.dialog).toBeVisible();
@@ -90,7 +90,7 @@ test.describe("F10 unsaved changes on New/Open", () => {
       // File > Open Project…: the OS picker returns Other's folder, then the editor asks about
       // Current.
       await pickFiles(app, [path.join(work.dir, "Other")]);
-      await chooseMenu(page, app, "File", "Open Project…");
+      await chooseMenu(page, app, "File", "Open project…");
       const prompt = unsavedPrompt(page);
       await expect(prompt.dialog).toHaveAccessibleName("Save changes to Current?");
       await prompt.save.click();
