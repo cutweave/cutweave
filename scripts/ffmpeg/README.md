@@ -11,7 +11,8 @@ Cutweave links a pinned FFmpeg 8.1.x as **shared libraries** ([ADR-0003](../../d
 | [build-ffmpeg.sh](build-ffmpeg.sh) | Configures and builds FFmpeg (shared), records `configure.txt` |
 | [package.sh](package.sh) | Lays out the relocatable bundle, collects licenses, writes `BUILD_INFO.txt`, packs `.tar.zst` |
 | [verify.sh](verify.sh) | Acceptance checks (below); runs the bundle's own `ffmpeg` |
-| [fetch.sh](fetch.sh), [fetch.ps1](fetch.ps1) | Download the newest CI bundle for this OS (`just ffmpeg-fetch` runs `fetch.sh`) |
+| [fetch.sh](fetch.sh), [fetch.ps1](fetch.ps1) | Download the newest CI bundle for this OS (`just ffmpeg-fetch` runs `fetch.sh`), unless a bundle is already set up |
+| [env.sh](env.sh), [env.ps1](env.ps1) | Source to build and run against the bundle: `FFMPEG_DIR`, libclang, the run-time library path ([docs/dev/ffmpeg.md](../../docs/dev/ffmpeg.md)) |
 | [lib.sh](lib.sh) | Shared shell helpers and environment |
 
 ## What a bundle contains
@@ -52,7 +53,9 @@ gh auth login            # once; any account that can read the repository
 just ffmpeg-fetch        # or: bash scripts/ffmpeg/fetch.sh, pwsh scripts/ffmpeg/fetch.ps1
 ```
 
-This finds the newest unexpired artifact named `cutweave-ffmpeg-<version>-<os>-<arch>.tar.zst` (version from `versions.toml`) built from `main`, downloads it with `gh run download`, unpacks it to `third_party/ffmpeg/<name>/` and prints the `FFMPEG_DIR` to export (also written to `third_party/ffmpeg/ffmpeg.env`). Running it again is a no-op until a newer run exists. Options: `--run <id>` (a specific workflow run), `--branch <name>`, `--repo <owner/name>` (forks; or `CUTWEAVE_FFMPEG_REPO`), `--force`.
+This finds the newest unexpired artifact named `cutweave-ffmpeg-<version>-<os>-<arch>.tar.zst` (version from `versions.toml`) built from `main`, downloads it with `gh run download`, unpacks it to `third_party/ffmpeg/<name>/` and prints the `FFMPEG_DIR` to export (also written to `third_party/ffmpeg/ffmpeg.env`). Running it again is a no-op until a newer run exists. Options: `--run <id>` (a specific workflow run), `--branch <name>`, `--repo <owner/name>` (forks; or `CUTWEAVE_FFMPEG_REPO`), `--update`, `--force`.
+
+A bundle that is already set up wins, and nothing is downloaded: `$FFMPEG_DIR`, then the `ffmpeg.env` of this checkout, then that of the main checkout (git worktrees share it). `--update`, `--run` and `--force` go to CI instead. This is how a dev bundle (for example a BtbN 8.1 build while no CI bundle is published) is used; see [docs/dev/ffmpeg.md](../../docs/dev/ffmpeg.md).
 
 Using the bundle:
 

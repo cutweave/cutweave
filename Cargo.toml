@@ -14,8 +14,10 @@ rust-version = "1.100"
 # Skeleton: shared dependency versions are declared here and inherited with `workspace = true`.
 # Every addition needs a justification in the PR and must pass cargo-deny (AGENTS.md).
 [workspace.dependencies]
-# Media I/O, used only behind the non-default `ffmpeg` feature of cutweave-media.
-ffmpeg-next = "9.1.0"
+# Media I/O, used only behind the non-default `ffmpeg` feature of cutweave-media (ADR-0003). Pinned
+# exactly: Spike S3 validated 9.1.0 (ffmpeg-sys-next 9.1.1) against FFmpeg 8.1.3. WTFPL (deny.toml).
+# Default features off: cutweave-media enables only the libraries it links.
+ffmpeg-next = { version = "=9.1.0", default-features = false }
 # Used by xtask to read `cargo metadata` output (dependency-rule checker).
 # preserve_order everywhere: one map ordering in every build, so serialized JSON (schemas, project docs,
 # parity/golden comparisons) never depends on which crates happen to be compiled together.
@@ -67,7 +69,8 @@ loom = { version = "0.7.3", features = ["futures"] }
 criterion = { version = "0.8.2", default-features = false, features = ["cargo_bench_support"] }
 
 [workspace.lints.rust]
-# Allowed (with justification) only in cutweave-bridge, cutweave-playback and cutweave-audio.
+# Allowed (with justification) only in cutweave-bridge, cutweave-playback, cutweave-audio and
+# cutweave-media (its FFmpeg FFI module only, ADR-0003).
 unsafe_code = "deny"
 missing_docs = "warn"
 # `cutweave_loom`: loom model tests (`RUSTFLAGS="--cfg cutweave_loom" cargo test -p cutweave-commands --test doc_loom`).

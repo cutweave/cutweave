@@ -941,7 +941,10 @@ dependencies = [
 name = "cutweave-media"
 version = "0.0.0"
 dependencies = [
+ "cutweave-model",
  "ffmpeg-next",
+ "thiserror 2.0.21",
+ "tracing",
 ]
 
 [[package]]

@@ -22,6 +22,8 @@ just dev      # engine + Electron with HMR
 just check    # everything CI runs on a PR; must pass before you open one
 ```
 
+None of that needs FFmpeg: only `cutweave-media`'s `ffmpeg` feature links it. To work on the media backend, set up the FFmpeg bundle and run `just test-ffmpeg` as described in [docs/dev/ffmpeg.md](docs/dev/ffmpeg.md).
+
 ## Workflow
 
 1. Pick (or create) an issue. Planned work is one issue per work package, generated from `docs/wbs/`. Read the WP's scope and acceptance criteria; if it is ambiguous or larger than about 4 agent-days, say so on the issue instead of guessing.

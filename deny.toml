@@ -1,7 +1,9 @@
 # cargo-deny policy (WP-0A.04; docs/01-architecture.md §21). Run: `cargo deny check`.
 
 [graph]
-# Phase 0 builds on these; the FFmpeg-enabled graph is checked once WP-0A.06 lands.
+# The FFmpeg-enabled graph is checked too (cutweave-media's `ffmpeg` feature is off by default, so
+# without this its dependencies would never be scanned). Resolving it needs no FFmpeg install.
+features = ["cutweave-media/ffmpeg"]
 targets = [
   "x86_64-pc-windows-msvc",
   "aarch64-apple-darwin",
@@ -35,6 +37,10 @@ allow = [
   "LGPL-2.1-or-later",
   "LGPL-3.0-only",
   "LGPL-3.0-or-later",
+  # ffmpeg-next and ffmpeg-sys-next, the FFmpeg bindings behind cutweave-media's `ffmpeg` feature
+  # (ADR-0003, WP-1D.01). The FSF lists the WTFPL as a free license compatible with the GPL; it
+  # imposes no conditions, so the combined work stays GPL-3.0-or-later.
+  "WTFPL",
 ]
 confidence-threshold = 0.9
 unused-allowed-license = "allow"

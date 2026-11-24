@@ -13,6 +13,11 @@
   with <version> from scripts/ffmpeg/versions.toml; an artifact only exists when that OS's build
   passed its acceptance checks.
 
+  A bundle that is already set up wins and nothing is downloaded (WP-1D.01): $env:FFMPEG_DIR,
+  then FFMPEG_DIR from third_party/ffmpeg/ffmpeg.env of this checkout or of the main checkout (git
+  worktrees share it), whichever first has include/libavcodec/avcodec.h. -Update, -Run or -Force
+  look for a CI bundle instead. docs/dev/ffmpeg.md has the details.
+
 .PARAMETER Repo
   Repository whose "FFmpeg bundle" workflow built the bundle
   (default: $env:CUTWEAVE_FFMPEG_REPO or cutweave/cutweave).
@@ -20,6 +25,8 @@
   Only take bundles built from this branch (default: main).
 .PARAMETER Run
   Take the bundle from this workflow run instead of the newest one.
+.PARAMETER Update
+  Ignore an existing bundle and fetch the newest CI bundle (if it is newer).
 .PARAMETER Force
   Download again even if the same bundle is already unpacked.
 
@@ -31,6 +38,7 @@ param(
     [string]$Repo = $(if ($env:CUTWEAVE_FFMPEG_REPO) { $env:CUTWEAVE_FFMPEG_REPO } else { 'cutweave/cutweave' }),
     [string]$Branch = 'main',
     [string]$Run = '',
+    [switch]$Update,
     [switch]$Force
 )
 
@@ -53,10 +61,6 @@ $arch = switch ([System.Runtime.InteropServices.RuntimeInformation]::OSArchitect
 if (@('windows-x64', 'macos-arm64', 'linux-x64') -notcontains "$os-$arch") {
     Stop-Fetch "no CI bundle is built for $os-$arch (only windows-x64, macos-arm64, linux-x64)"
 }
-if (-not (Get-Command gh -ErrorAction SilentlyContinue)) {
-    Stop-Fetch "needs the GitHub CLI: https://cli.github.com (then 'gh auth login')"
-}
-
 # version = "..." inside the [ffmpeg] table of versions.toml
 $version = $null
 $inFfmpeg = $false
@@ -65,6 +69,80 @@ foreach ($line in Get-Content (Join-Path $root 'scripts/ffmpeg/versions.toml')) 
     if ($inFfmpeg -and $line -match '^version\s*=\s*"([^"]+)"') { $version = $Matches[1]; break }
 }
 if (-not $version) { Stop-Fetch 'cannot read the FFmpeg version from scripts/ffmpeg/versions.toml' }
+
+function Test-Bundle([string]$Dir) {
+    return $Dir -and (Test-Path (Join-Path $Dir 'include/libavcodec/avcodec.h'))
+}
+
+function Read-EnvFileDir([string]$Root) {
+    if (-not $Root) { return $null }
+    $file = Join-Path $Root 'third_party/ffmpeg/ffmpeg.env'
+    if (-not (Test-Path $file)) { return $null }
+    $line = Select-String -Path $file -Pattern '^FFMPEG_DIR="(.*)"' | Select-Object -First 1
+    if ($line) { return $line.Matches[0].Groups[1].Value }
+    return $null
+}
+
+function Get-RuntimeHint([string]$Dir) {
+    switch ($os) {
+        'windows' { "`$env:PATH = `"$Dir/bin;`$env:PATH`"" }
+        'macos' { "export DYLD_FALLBACK_LIBRARY_PATH=`"$Dir/lib`"" }
+        default { "export LD_LIBRARY_PATH=`"$Dir/lib`"" }
+    }
+}
+
+# An existing bundle wins unless a CI bundle was asked for (see the description).
+if (-not $Force -and -not $Update -and -not $Run) {
+    $existing = $null
+    $origin = $null
+    if (Test-Bundle $env:FFMPEG_DIR) {
+        $existing = $env:FFMPEG_DIR
+        $origin = 'FFMPEG_DIR'
+    } else {
+        Push-Location $root
+        try {
+            $mainRoot = (& git rev-parse --path-format=absolute --git-common-dir 2>$null) -replace '[\\/]\.git$', ''
+        } finally {
+            Pop-Location
+        }
+        foreach ($r in @($root, $mainRoot)) {
+            $d = Read-EnvFileDir $r
+            if (Test-Bundle $d) {
+                $existing = $d
+                $origin = Join-Path $r 'third_party/ffmpeg/ffmpeg.env'
+                break
+            }
+        }
+    }
+    if ($existing) {
+        Write-Host "ffmpeg-fetch: using the bundle already set up ($origin); nothing downloaded."
+        Write-Host 'ffmpeg-fetch: -Update fetches the newest CI bundle instead.'
+        $exe = @('bin/ffmpeg.exe', 'bin/ffmpeg') | ForEach-Object { Join-Path $existing $_ } |
+            Where-Object { Test-Path $_ } | Select-Object -First 1
+        if ($exe) {
+            $banner = (& $exe -hide_banner -version 2>$null | Select-Object -First 1)
+            if ($banner) {
+                Write-Host "ffmpeg-fetch: $banner"
+                if ($banner -notmatch " version n?$([regex]::Escape($version))") {
+                    Write-Warning "ffmpeg-fetch: the pinned version is $version (scripts/ffmpeg/versions.toml)"
+                }
+            }
+        }
+        Write-Host ''
+        Write-Host "FFMPEG_DIR=$existing"
+        Write-Host ''
+        Write-Host '  PowerShell:  . scripts/ffmpeg/env.ps1   (sets FFMPEG_DIR and the run-time library path)'
+        Write-Host '  bash/zsh:    . scripts/ffmpeg/env.sh'
+        Write-Host ''
+        Write-Host 'Running binaries that link it also needs the shared libraries on the loader path, e.g.'
+        Write-Host "  $(Get-RuntimeHint $existing)"
+        exit 0
+    }
+}
+
+if (-not (Get-Command gh -ErrorAction SilentlyContinue)) {
+    Stop-Fetch "needs the GitHub CLI: https://cli.github.com (then 'gh auth login')"
+}
 
 $name = "cutweave-ffmpeg-$version-$os-$arch"
 $artifact = "$name.tar.zst"
@@ -121,11 +199,7 @@ if ($onWindows) { $ffmpegDir = $ffmpegDir -replace '\\', '/' }
     "PKG_CONFIG_PATH=`"$ffmpegDir/lib/pkgconfig`"") |
     Set-Content -Encoding ascii (Join-Path $dest 'ffmpeg.env')
 
-$runtime = switch ($os) {
-    'windows' { "`$env:PATH = `"$ffmpegDir/bin;`$env:PATH`"" }
-    'macos' { "export DYLD_FALLBACK_LIBRARY_PATH=`"$ffmpegDir/lib`"" }
-    default { "export LD_LIBRARY_PATH=`"$ffmpegDir/lib`"" }
-}
+$runtime = Get-RuntimeHint $ffmpegDir
 Write-Host ''
 Write-Host "FFMPEG_DIR=$ffmpegDir"
 Write-Host ''
