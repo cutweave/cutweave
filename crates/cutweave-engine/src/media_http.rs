@@ -388,6 +388,8 @@ struct PreparedWaveform {
     id: String,
     request: WaveformRequest,
     range: std::ops::Range<Time>,
+    /// What the ETag hashes besides the content hash.
+    params: String,
     etag: Option<String>,
 }
 
@@ -425,32 +427,34 @@ fn prepare_waveform(
     if end <= start {
         return Err(invalid("end", "must be after `start`"));
     }
-    let etag = media.reference.as_ref().map(|reference| {
-        let track = match r.track {
-            WaveformTrack::Mix => "mix".to_owned(),
-            WaveformTrack::Channel(c) => format!("ch{c}"),
-        };
-        let format = match r.format {
-            WaveformFormat::Peaks => "peaks".to_owned(),
-            WaveformFormat::Png { width, height } => format!("png{width}x{height}"),
-        };
-        let stream = r
-            .stream
-            .map_or_else(|| "main".to_owned(), |s| s.to_string());
-        let params = format!(
-            "waveform/v1/{stream}/lod{}/{}/{}/{track}/{format}",
-            r.lod,
-            start.flicks(),
-            end.flicks()
-        );
-        format!("{}-{}", reference.hash, params_hash(&params))
-    });
+    let track = match r.track {
+        WaveformTrack::Mix => "mix".to_owned(),
+        WaveformTrack::Channel(c) => format!("ch{c}"),
+    };
+    let format = match r.format {
+        WaveformFormat::Peaks => "peaks".to_owned(),
+        WaveformFormat::Png { width, height } => format!("png{width}x{height}"),
+    };
+    let stream = r
+        .stream
+        .map_or_else(|| "main".to_owned(), |s| s.to_string());
+    let params = format!(
+        "waveform/v1/{stream}/lod{}/{}/{}/{track}/{format}",
+        r.lod,
+        start.flicks(),
+        end.flicks()
+    );
+    let etag = media
+        .reference
+        .as_ref()
+        .map(|reference| format!("{}-{}", reference.hash, params_hash(&params)));
     Ok(Box::new(PreparedWaveform {
         waveforms,
         media,
         id: r.media.clone(),
         request: r,
         range: start..end,
+        params,
         etag,
     }))
 }
@@ -505,7 +509,7 @@ impl PreparedMedia for PreparedWaveform {
         if cancel.is_cancelled() {
             return Err(MediaError::Cancelled);
         }
-        let etag = format!("{hash}-{}", params_hash(&format!("{:?}", self.request)));
+        let etag = format!("{hash}-{}", params_hash(&self.params));
         Ok(match r.format {
             WaveformFormat::Peaks => MediaBody {
                 bytes: peaks.to_bytes(),

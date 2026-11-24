@@ -446,6 +446,13 @@ fn filmstrips_waveforms_and_frames() {
     // 4 s at 48 kHz in bins of 4096 samples.
     assert_eq!(bins, (4 * 48_000_u32).div_ceil(4096));
     assert_eq!(peaks.body.len(), 32 + 4 * bins as usize);
+    let tag = peaks.header("etag").unwrap();
+    assert!(tag.starts_with(&format!("\"{}-", f.hash)), "{tag}");
+    let again = s.get(
+        &format!("/media/{}/waveform?lod=2", f.media),
+        &[("if-none-match", tag.as_str())],
+    );
+    assert_eq!(again.status, 304);
     let png = s.get(
         &format!("/media/{}/waveform?fmt=png&w=200&h=40", f.media),
         &[],

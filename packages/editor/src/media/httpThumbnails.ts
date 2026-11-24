@@ -8,7 +8,7 @@
 //   it as immutable, and a relink (new content) is a new URL.
 // - When: a video asks only once its frame index exists (`indexed` > 0); a still asks at once;
 //   sound has no picture and keeps the tile. Until a URL is signed the card keeps its tile.
-// - Signing: requests made while the panel renders are batched into one call; URLs are
+// - Signing: requests made while the panel renders are batched (256 a call); URLs are
 //   re-signed a few minutes before they expire. A failed signing waits before it is tried again.
 // - `onChange` runs when new URLs arrive, so the panel can ask again (`setThumbnailSource` with
 //   a fresh wrapper).
@@ -23,6 +23,8 @@ export const POSTER_WIDTH = 320;
 export const RESIGN_MARGIN_MS = 5 * 60_000;
 /** Wait this long after a failed signing. */
 export const SIGN_RETRY_MS = 5_000;
+/** Most paths one `POST /media/sign` takes (the engine's limit). */
+export const SIGN_BATCH = 256;
 
 const PLACEHOLDER: Thumbnail = { kind: "placeholder" };
 
@@ -108,12 +110,15 @@ export class HttpThumbnailSource implements ThumbnailSource {
     const epoch = this.#epoch;
     for (const p of paths) this.#pending.add(p);
     try {
-      const { urls, expires } = await this.#options.http.sign(paths);
-      if (epoch !== this.#epoch) return;
-      paths.forEach((path, i) => {
-        const url = urls[i];
-        if (url !== undefined) this.#signed.set(path, { url, expires });
-      });
+      for (let start = 0; start < paths.length; start += SIGN_BATCH) {
+        const batch = paths.slice(start, start + SIGN_BATCH);
+        const { urls, expires } = await this.#options.http.sign(batch);
+        if (epoch !== this.#epoch) return;
+        batch.forEach((path, i) => {
+          const url = urls[i];
+          if (url !== undefined) this.#signed.set(path, { url, expires });
+        });
+      }
       this.#options.onChange();
     } catch {
       if (epoch === this.#epoch) {

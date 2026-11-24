@@ -142,6 +142,14 @@ describe("HttpThumbnailSource", () => {
     expect(sign).toHaveBeenCalledTimes(1);
   });
 
+  it("signs a large bin in batches the engine accepts", async () => {
+    const { source, sign } = setup();
+    for (let i = 0; i < 300; i++) source.thumbnailFor(req(`v${i}`, "video", 1));
+    await flush();
+    expect(sign.mock.calls.map((c) => c[0].length)).toEqual([256, 44]);
+    expect(source.thumbnailFor(req("v299", "video", 1)).kind).toBe("image");
+  });
+
   it("re-signs before a URL expires and forgets every URL on reset", async () => {
     const { source, sign, advance, onChange } = setup();
     source.thumbnailFor(req("v", "video", 1));
