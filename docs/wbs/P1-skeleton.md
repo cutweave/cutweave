@@ -31,16 +31,16 @@ The thinnest end-to-end product through every architectural layer, with producti
 | **1A** Domain model | `cutweave-model` v1: IDs, flicks time, entities (project/media/sequence/track/clip), schema v1 + migrations |
 | **1B** Command bus, tx & undo | `cutweave-commands`/`-derive`/`cutweave-ops`: registry, doc actor, invertible patches, undo/redo, actors, revisions, tx ownership + soft-locks, deterministic IDs, v1 command set, property tests |
 | **1C** Persistence & recovery | Project folder, atomic save, journal, autosave, backups, lock file, crash recovery |
-| **1D** Media layer | `MediaBackend`/FFmpeg: probe, index, decode (CPU + HW), caches, thumbnails, waveforms, minimal job manager |
+| **1D** Media layer | `MediaBackend`/FFmpeg: probe, index, decode (CPU + HW), caches, thumbnails, waveforms, minimal job manager, cache and hardware settings |
 | **1E** Export | H.264/AAC MP4 export (HW + software) through the render pipeline as a job |
 | **1F** Render pipeline v0 | Timeline eval → single-layer wgpu compositor, linear light, quality ladder, frame readback |
 | **1G** Audio playback v0 | Mixer, cpal output, master clock, volume, offline mixdown |
 | **1H** Playback & SHM preview | Transport, scrub scheduler, JKL, SHM ring publisher, napi bridge reader |
 | **1I** Local API server | axum server, credential classes (UI/agent), Host/Origin, run-file, WS JSON-RPC + events, media HTTP, engine root + subsystem wiring |
-| **1J** MCP v0 | rmcp server (HTTP + stdio attach/headless), 15 core + 4 generic tools (19 listed), `render_frame`, `job_wait`, `cutweave_execute`, per-endpoint profiles |
+| **1J** MCP v0 | rmcp server (HTTP + stdio attach/headless), 15 core + 4 generic tools (19 listed), `render_frame`, `job_wait`, `cutweave_execute`, per-endpoint profiles, agent targeting and the Agents and MCP settings |
 | **1K** CLI | `cutweave engine | mcp | exec | query | render` |
 | **1L** Electron shell & supervision | Hardened Electron app, engine spawn/supervise/restart/resync |
-| **1M** Editor UI v0 | Layout, stores, media bin, preview, Canvas2D timeline, inspector, undo/redo, save/open, export dialog |
+| **1M** Editor UI v0 | Layout, stores, media bin (with search), preview, Canvas2D timeline, inspector, undo/redo, save/open, export dialog, settings framework |
 | **1N** Codegen & protocol | JSON Schema + TS types + typed client generated, snapshot-gated in CI |
 | **1O** CI quality gates | Golden frames, CLI=MCP=RPC parity, MCP conformance, M1 exit e2e |
 
@@ -486,6 +486,25 @@ Human gates: PR review of `1B.01`, `1B.03`/`1B.09` (concurrency + ownership core
 - **Tests:** unit with `FakeBackend`; integration with corpus.
 - **Out of scope:** persistent resumption, AI jobs.
 
+### WP-1D.08 — Settings pages for this computer: Cache and storage, Performance and hardware
+- **Area:** `crates/cutweave-cache` (limits, usage, clear), `crates/cutweave-media` (decode policy), `crates/cutweave-engine` (`--cache-dir`, engine commands, UI-only scopes), `crates/cutweave-cli` (headless flag), generated schema and TS types, `apps/desktop` (launch flag from the preference), `packages/editor` (the two pages), `docs/reference/launch-protocol.md`, `docs/reference/settings.md`, `apps/desktop/e2e/flows`, `docs/user-flows.md`
+- **Depends on:** WP-1M.11, WP-1D.04, WP-1D.05, WP-1D.06, WP-1I.05
+- **Size:** M
+- **Executor:** sonnet
+- **Scope:** (product owner request, 2026-11-24: settings cover everything users can customize) the "This computer" pages of the settings catalog (`docs/reference/settings.md`) for the caches and hardware P1 already has. Values are machine preferences (WP-1M.11's `machine` group: never exported).
+  - **Cache and storage page:** the cache folder (folder picker; default the OS cache folder; main passes it as `--cache-dir` at engine start, so the row says "Applies the next time Cutweave starts" and the old folder is left for the person to delete); for thumbnails and filmstrips (2 GiB default, WP-1D.05) and waveforms (512 MiB default, now enforced with WP-1D.06's LRU) the usage and a limit; "Clear" per kind and "Clear all" (confirm). Clearing never touches projects or `generated/` media; caches rebuild on demand. Later WPs add their rows to this page: proxies (WP-2F.03), background renders (WP-2J.09).
+  - **Performance and hardware page:** hardware decoding Auto or Off (WP-1D.04's policy; applies to decoders opened after the change, and open pools reopen on their next seek); memory for decoded frames, Auto (the smaller of 1 GiB and a quarter of RAM) or 512 MiB / 1 / 2 / 4 GiB; read-only information: the GPU adapter in use and the hardware encoders found (`media.capabilities`). The hardware encoding default is on the Export page (WP-1M.13).
+  - **Engine surface:** query `media.cache_status` → `{folder, kinds:[{kind, bytes, limit_bytes, entries}], decode_hw, frame_cache_bytes}` (readable by agents); commands `media.set_cache_config{limits?, frame_cache_bytes?}`, `media.clear_cache{kinds}` and `media.set_decode_policy{hw: auto|off}`: engine commands, not undoable, not journaled, never dirty the project, and **UI-only scope** (ADR-0016; an agent token gets `forbidden`). A lower limit shrinks the cache at once (LRU). The editor applies the preferences after every handshake, like WP-1M.10.
+  - **Headless engines** take `--cache-dir` (and `CUTWEAVE_CACHE_DIR`) and the defaults; documented in the launch protocol and the CLI reference.
+- **Interfaces:** `media.cache_status` (query), `media.set_cache_config`, `media.clear_cache`, `media.set_decode_policy` (UI-only engine commands); `--cache-dir`; preference keys `cache.*`, `performance.hw_decode`, `performance.frame_memory`.
+- **Acceptance criteria:**
+  - Integration: setting a 50 MB thumbnail limit shrinks the disk cache below it within 1 s; `media.clear_cache{kinds:["thumbnails"]}` empties it and the next thumbnail request regenerates the image.
+  - Integration: an agent token calling `media.set_cache_config`, `media.clear_cache` or `media.set_decode_policy` over RPC, MCP (`cutweave_execute`) and the CLI gets `forbidden`; `media.cache_status` answers agents.
+  - With hardware decoding Off, a newly opened decoder is the CPU one (decoder-kind probe in the integration test).
+  - **A user flow (ADR-0018, F23):** Settings > Cache and storage lists each cache kind with its usage and limit; after the bin has drawn thumbnails of the demo media (real decode), "Clear" on thumbnails drops their usage to zero; choose another cache folder (OS picker stubbed), relaunch: the page shows the new folder and the engine writes there. Performance and hardware shows the GPU name and the hardware decoding choice survives the relaunch.
+- **Tests:** integration (engine, cache), unit (launch args), Vitest (pages), user flow.
+- **Out of scope:** choosing the GPU adapter, per-project cache folders (Resolve-style working folders), moving an old cache, proxy and render-cache rows (their WPs).
+
 ---
 
 ## 1E — Export (H.264/AAC MP4)
@@ -878,6 +897,27 @@ Human gates: PR review of `1B.01`, `1B.03`/`1B.09` (concurrency + ownership core
 - **Tests:** process-level integration, user flow.
 - **Out of scope:** several windows in one app (one engine per window), engines on other machines.
 
+### WP-1J.05 — Settings > Agents and MCP: connect a client, folders agents may use, who is connected
+- **Area:** `crates/cutweave-engine` (allowed roots at runtime, connections query and events, UI-only scopes), `crates/cutweave-ops` only if `project.info` must change there, generated schema and TS types, `apps/desktop` (folders passed as `--allow-root` on every engine start), `packages/editor` (Agents and MCP page, Notifications row, connect notices), `docs/reference/launch-protocol.md`, `docs/reference/mcp-clients.md`, `docs/reference/settings.md`, `apps/desktop/e2e/flows`, `docs/user-flows.md`
+- **Depends on:** WP-1M.11, WP-1J.04, WP-1I.05
+- **Size:** M
+- **Executor:** opus (security review by human)
+- **Scope:** (product owner request, 2026-11-24) agents attached to the app can only touch the open project's folder today (the GUI engine gets `--allow-root` only from a development variable), and nothing in the app says how to connect an agent or which agents are connected.
+  - **Folders agents can use** (preference `agents.allowed_folders`): the open project's folder is always listed and cannot be removed; "Add folder…" (native folder picker) and remove. Main passes the list as `--allow-root` on every engine start and supervised restart, in production builds (the development variable stays for tests). Changes apply at once through a new engine command `project.set_allowed_roots{roots}`: not undoable, not journaled, never dirties the project, and a **UI-only scope** (ADR-0016 lists "changing filesystem allowlists"), so an agent token gets `forbidden`. Paths are canonicalized (symlinks resolved, `..` refused, existing folders only). Removing a folder stops access at once, also for connections already open.
+  - `project.info` returns the roots in effect (`allowed_roots`), so an agent can tell where it may import, open and save; the `Invalid` error for a path outside them says to add the folder in Settings > Agents and MCP.
+  - **Also UI-only:** WP-1M.10's autosave command, so an agent cannot override the person's preference until the next handshake. (Every later "apply a preference to the engine" command follows the same rule; see WP-1M.11's arch paragraph.)
+  - **Connect a client:** a status line ("Agents can connect to this window" or why not) and copyable setups for Claude Code (`claude mcp add …`), Claude Desktop and Cursor (JSON), Codex and a generic stdio client. Each runs `cutweave mcp --attach` with the bundled CLI's absolute path and **no pid** (WP-1J.04 picks this window's engine), with the tool set from `agents.client_profile` (Standard by default; Minimal, Full). No token or port is ever shown; the attach proxy reads the run-file.
+  - **Connected agents:** the agent connections open on this engine (actor label, connected since, last command and when), from a new read-only engine query (for example `project.connections`) and events when a connection opens or closes. Read-only: no disconnect button.
+  - **Notifications page** (first row): "Show a notice when an agent connects or disconnects" (`notify.agent_connected`, on), a toast naming the agent.
+- **Interfaces:** preferences `agents.allowed_folders`, `agents.client_profile`, `notify.agent_connected`; engine command `project.set_allowed_roots{roots}` (UI-only); `project.info.allowed_roots`; query `project.connections` and its events; the Agents and MCP page.
+- **Acceptance criteria:**
+  - Integration: an agent token calling `project.set_allowed_roots` or WP-1M.10's autosave command, over RPC, MCP (`cutweave_execute`) and the CLI, gets `forbidden`.
+  - Integration: with folder D allowed, an attached agent imports a file from D; after D is removed, the same import on the same open connection fails with `Invalid` naming Settings > Agents and MCP.
+  - Unit: main passes every stored folder as `--allow-root` on start and after a supervised restart; a folder that no longer exists is skipped with a warning in the main log.
+  - **A user flow (ADR-0018, F20):** in Settings > Agents and MCP add a folder (OS picker stubbed); `cutweave exec` attached to the app imports a file from it and its card appears in the bin; a notice names the agent and it is listed under Connected agents while connected; remove the folder and the agent's next import is refused with the message; the list survives a relaunch. "Copy" for Claude Code puts a command on the clipboard that names the CLI's path and no pid, port or token.
+- **Tests:** engine integration, launch-args unit, Vitest, user flow.
+- **Out of scope:** per-agent permissions and spending budgets (P5: WP-5A.08, WP-5F.07 put the budget rows on this page); disconnecting or blocking an agent; remote agents; `cutweave agent-kit install` (P6).
+
 ---
 
 ## 1K — CLI
@@ -1207,6 +1247,84 @@ Human gates: PR review of `1B.01`, `1B.03`/`1B.09` (concurrency + ownership core
 - **Tests:** unit, Vitest, user flow.
 - **Out of scope:** cloud sync, version history UI (backups stay files in `.cutweave/backups/`).
 
+### WP-1M.11 — Settings framework: tabbed pages, search, preferences store, reset, import and export
+- **Area:** `apps/desktop` (preferences store and IPC in main, values main needs before the window exists), `packages/editor` (settings dialog, page registry, theme migration), `packages/ui` (`SettingsLayout`, `SettingRow`; specs in `design/components/`), one preferences schema module that main and the editor both import (a small `packages/preferences` workspace package, or another single home; justify it in the PR), `docs/reference/settings.md`, `apps/desktop/e2e/flows`, `docs/user-flows.md`
+- **Depends on:** WP-1M.10, WP-1M.09, WP-1M.12
+- **Size:** M
+- **Executor:** sonnet
+- **Scope:** (product owner request, 2026-11-24: "tabbed with categories … everything that can be customizable, will be") turn the quick File > Settings… (one Theme row) into the frame that every settings page plugs into. The full inventory (every setting with its default, scope, storage, agent access and owning WP) is the catalog `docs/reference/settings.md`; this WP builds the frame and the pages whose features exist with no new engine work. The other P1 pages are WP-1M.13 (Export, Keyboard shortcuts), WP-1J.05 (Agents and MCP, Notifications) and WP-1D.08 (Cache and storage, Performance and hardware); later pages come with their features.
+  - **Three homes** (arch paragraph below): *app preferences* (the person's, every project), *this computer* (machine values: the same file, a `machine` group that export and import skip), and *project settings* (in the document, undoable, agents read and change them; edited in File > Project settings…, WP-2H.08, not in this dialog). Secrets never go in preferences: keys go to the keychain through write-only `ai.set_key` (arch §13).
+  - **Preferences store in main:** `<userData>/preferences.json` next to `recent-projects.json` and `window-state.json`. One versioned schema (keys, types, defaults, ranges); a damaged or partly invalid file never blocks startup (bad keys fall back to their defaults, the file is rewritten clean, a warning goes to the main log); atomic writes (temp file, fsync, rename); schema migrations like the project's. The renderer gets the snapshot before first paint and subscribes to changes; it writes one key at a time through new allowlisted, zod-validated IPC (`prefs:get`, `prefs:set`, `prefs:reset`, event `prefs:changed`), with a row in `SECURITY-MODEL.md`.
+  - **Apply plumbing:** each key says who applies it: the renderer, main, the engine through a UI-only command after each handshake and on change (WP-1M.10's pattern), or main at engine start (a flag). Rows that need the engine are disabled with "Needs the engine" while it is disconnected; rows that apply at the next start say so.
+  - **Moves what exists onto the store:** the theme (read once from the renderer's old `localStorage` value, then removed there) and WP-1M.10's Saving rows. Main reads the theme before it creates the window, so the window background and the title-bar overlay open in the right colors with no flash.
+  - **The frame:** a large modal dialog in the main window (other windows are sandboxed with no preload and cannot reach the engine, arch §2): a vertical side tab list of pages grouped as in the catalog (Preferences; Agents and AI; Extensions; Privacy and updates; This computer; Advanced), one page per category, and a search field above the tabs (focused on open). Each page is a list of `SettingRow`s: label, control, one-line description, and a reset button when the value differs from its default. Changes apply at once; "Done" closes. A page appears once it has a shipped row.
+  - **Page registry:** pages and rows are data (`{id, title, icon, group, order, rows: [{key, label, description, keywords, control, applies}]}`, controls: switch, segmented, select, number with unit, folder, list, action, custom). Later WPs register a page or a row with no change to the frame. A test checks that every registered key has a row in `docs/reference/settings.md`.
+  - **Search** across every page: matches labels, descriptions and keywords in the UI language, shows the matching rows grouped by page with the match marked, and "No settings match "x"" otherwise; Esc clears it and returns to the page that was open.
+  - **Reset:** per row; "Reset page"; "Reset all settings…" (confirmed) in Advanced. Resets never touch recent projects, window positions or keys.
+  - **Import and export** in Advanced: "Export settings…" writes App rows only (no machine values, keys, recent projects or window state) as JSON with the schema version; "Import settings…" validates every key, applies the valid ones and reports what it skipped. Also "Open settings folder" and "Open logs folder".
+  - **Deep links:** `openSettings(page, key?)` opens the dialog at a row (for example from the title bar's save-status tooltip to Saving and backups). The command palette (WP-2H.04) lists pages and rows through it.
+  - **Pages in this WP:**
+    - General: on startup (open the last project or start with an empty project; the welcome screen option arrives with WP-3I.02); default folder for new projects (used by File > New project…); recent projects to list, and "Clear recent projects"; "Reset 'Don't ask again' choices" (the mechanism dialogs use to remember a choice).
+    - Appearance: theme Dark / Light / Match system (`nativeTheme`, follows OS changes live).
+    - Saving and backups: WP-1M.10's rows on the store.
+    - Advanced: as above.
+  - **Placement:** File > Settings… (Ctrl+,) on Windows and Linux; Cutweave > Settings… (⌘,) in the macOS app menu (already wired); one dialog at a time.
+  - **Proposed arch paragraph** (§16 UI architecture, with a pointer from §17; for the integrator to place): "**Settings (WP-1M.11).** Settings have three homes. *App preferences* are the person's choices for every project (theme, startup, saving, editing defaults, shortcuts, agents' folders, AI routing); *this computer's settings* belong to the installation (cache folder and limits, hardware, audio devices). Both live in `preferences.json` in the app's user-data folder, owned by Electron main, which validates every write against one versioned schema shared with the editor and broadcasts changes; export and import carry app preferences only. *Project settings* live in the document (`project.settings`) and change only through undoable commands, so agents read and change them like any edit. Defaults for new projects are preferences that `project.new` copies into the document; after that the project's value rules. A preference that changes engine behaviour is applied by the app to its own engine, at spawn as a flag or after each handshake through an engine command in a UI-only scope (ADR-0016); headless engines take flags, environment variables and project settings instead. Agents read the effective values (`project.info`, `media.cache_status`) but never change preferences. No secret is stored in preferences: keys go to the OS keychain through write-only `ai.set_key` (§13). The catalog of every setting is `docs/reference/settings.md`."
+- **Interfaces:** `preferences.json` schema v1; IPC `prefs:get`, `prefs:set`, `prefs:reset`, `prefs:changed`, `prefs:export`, `prefs:import`; `registerSettingsPage`, `registerSettingRow`, `openSettings(page, key?)`; `<SettingsLayout>`, `<SettingRow>` in `packages/ui`.
+- **Acceptance criteria:**
+  - Unit (main): a damaged file, an unknown key, a wrong type and an out-of-range value each start with defaults for that key and a warning; writes are atomic (a kill between temp write and rename leaves the old file); a v0 fixture migrates.
+  - Unit (IPC): unknown keys, wrong types and calls from another frame are rejected; export never contains `machine` values, recent projects or window state; import skips invalid keys and reports them.
+  - The registry test: every registered key has a row in `docs/reference/settings.md`.
+  - **A user flow (ADR-0018, F19):** open Settings with Ctrl+, and from File; type "auto" and the Saving and backups rows show; change the theme to Light and "On startup" to open the last project; reset the startup row and see its default; export to a file (OS save picker stubbed); Reset all; import the file: the theme comes back; relaunch: the values persist and the window opens in the chosen theme.
+  - F16 keeps passing on the store; a profile holding only the old `localStorage` theme keeps that theme after the update.
+  - axe: 0 violations; visual baselines of the dialog (General page, a search result, the empty search) in dark and light.
+- **Tests:** unit (store, migration, IPC), Vitest (registry, search, reset, dialog), visual, user flow.
+- **Out of scope:** project settings (WP-2H.08); the pages listed in the catalog for other WPs; settings sync between machines; per-workspace preferences.
+
+### WP-1M.12 — Find media in the bin: search, filters, sort
+- **Area:** `crates/cutweave-ops` (`media.list` filter and sort), generated schema and TS types, `packages/editor` (media panel), `packages/ui` (`SearchField`; spec in `design/components/`), `apps/desktop/e2e/flows`, `docs/user-flows.md`
+- **Depends on:** WP-1M.03, WP-1D.07
+- **Size:** M
+- **Executor:** sonnet
+- **Scope:** (product owner request, 2026-11-24) a fast way to find media by name, kind, length and use, the same way for people and agents. Tags, notes, ratings and saved searches stay in WP-2F.06; the folder scope arrives with WP-2F.08.
+  - **One filter, two implementations, one fixture.** `MediaFilter{text?, kinds?, min_duration?, max_duration?, used?, problems?}` and `MediaSort{by: imported|name|duration|kind, order: asc|desc}`.
+    - `text`: every whitespace-separated term must occur in the asset's name (the file name until assets can be renamed, WP-2F.07), ignoring case and accents.
+    - `used`: placed on a timeline of any sequence (or not).
+    - `problems`: assets nothing can be read from (no streams; offline media joins with WP-2F.03). Analysis failures are events, not document state (arch §7), so they stay a badge, not a filter.
+    - Durations are flicks; stills have none and match only when no duration bound is set. "Imported" order is ID order (UUIDv7 IDs are time-ordered).
+    - The engine's `media.list` (a core MCP tool, so no new tool and no tool-list growth) gains optional `filter` and `sort`; paging keeps `cursor` = the last asset's ID, read in the requested order.
+    - The editor filters its document mirror with the TS predicate, with no round trip per keystroke. A fixture file of documents, filters and expected IDs, generated by a Rust test, is checked by both implementations (as the timecode parser's fixtures are).
+  - **Search field** at the top of the Media tab ("Search media", a clear button): Esc clears, a second Esc leaves the field; ↓ moves to the first result; Ctrl/Cmd+F focuses it while the Assets panel has focus (rebindable with WP-2H.05).
+  - **Filters** button with a count badge, opening a popover: Kind (Video, Audio, Image), Duration (any, under 10 s, 10 s–1 min, 1–5 min, over 5 min), Use (any, on the timeline, not used), and "Only media with problems". Active filters show as removable chips under the field, with "Clear all".
+  - **Sort** menu: date imported (newest first, the default, or oldest first), name, duration, kind. Sort and filters persist with the panel's view state; the search text is kept for the session and cleared when another project opens.
+  - **Results** use the existing grid and list with "12 of 340" in the toolbar; arrow keys, Enter-to-insert and dragging to the timeline work on the results; a selected asset the filter hides stays selected.
+  - **Empty states:** no media yet (unchanged); "No media matches "x"" with "Clear search"; with filters on, "Clear filters" too.
+- **Interfaces:** `media.list{limit?, cursor?, filter?, sort?}` (additive, backward compatible); `MediaFilter`, `MediaSort`; `<SearchField>` in `packages/ui` (WP-1M.11 reuses it).
+- **Acceptance criteria:**
+  - The Rust and TS predicates agree on the shared fixture (at least 40 cases: accents, several terms, stills with duration bounds, used and unused across two sequences, every sort, paging under each sort).
+  - Filtering 10,000 assets in the editor takes < 8 ms p95 per keystroke (Vitest bench); `media.list` with a filter over 10,000 assets < 20 ms p95 (Rust bench).
+  - MCP: `media_list` with `filter.text` returns the IDs the bin shows for the same text (scripted client on the fixture).
+  - **A user flow (ADR-0018, F21):** import the demo media; type part of a name: only matching cards remain and the count says so; add Kind = Audio, then Not used after placing one clip; sort by name; a search with no match shows the empty state and "Clear search" brings everything back; ↓ and Enter insert a result at the playhead.
+  - axe: 0 violations; visual baselines of the toolbar with chips in dark and light.
+- **Tests:** Rust unit and fixture generation, Vitest (predicate, fixture, panel), benches, user flow.
+- **Out of scope:** tags, notes, ratings, saved searches and smart collections (WP-2F.06); the folder scope (WP-2F.08); transcript text (P3) and content search (P5); offline status (WP-2F.03).
+
+### WP-1M.13 — Settings pages for existing features: Export defaults, Keyboard shortcuts (read-only)
+- **Area:** `packages/editor` (Export and Keyboard shortcuts pages, export dialog defaults, the keymap and menu tables as one listable source), `docs/reference/settings.md`, `apps/desktop/e2e/flows`, `docs/user-flows.md`
+- **Depends on:** WP-1M.11, WP-1M.08
+- **Size:** S
+- **Executor:** sonnet
+- **Scope:** (product owner request, 2026-11-24) the catalog's P1 pages for features that already exist and need no engine change.
+  - **Export page:** save exports in the project folder (default), the last folder used, or a chosen folder; default quality Low / Medium (default) / High; use hardware encoders Auto (default) / Off. The export dialog (WP-1M.08) starts from these; choosing a different folder in the dialog updates "last folder used" only.
+  - **Keyboard shortcuts page (read-only until WP-2H.05):** every shortcut the app has (menu bar, transport, timeline, bin, dialogs), grouped by where it works, searchable from the page and from the dialog's search, with the OS's modifier names. The list is generated from the same tables the handlers use (the menu model and the keymap module), so it cannot drift; a note says rebinding arrives with the shortcut editor.
+- **Interfaces:** preference keys `export.folder`, `export.quality`, `export.hw`; one exported table of bindings (`listBindings()`).
+- **Acceptance criteria:**
+  - Vitest: every key handler registered by the editor appears in `listBindings()` (a test walks the handlers' table), and the page renders them all.
+  - **A user flow (ADR-0018, F19 extended):** set the export quality to High, hardware encoders Off and a chosen folder (picker stubbed); File > Export… opens with High, the hardware toggle off and a path in that folder. On the Keyboard shortcuts page, searching "split" finds S.
+  - axe: 0 violations on both pages.
+- **Tests:** Vitest, user flow.
+- **Out of scope:** export presets and file-name patterns (WP-2G.04); editing shortcuts, presets and conflicts (WP-2H.05).
+
 ### WP-1O.01 — Golden-frame test infrastructure
 - **Area:** `crates/cutweave-render/tests`, `testdata/golden`, `xtask`, `.github/workflows`
 - **Depends on:** WP-1F.03, WP-0J.02, WP-0F.03 (adapter behaviour notes), WP-0I.01, WP-0I.04 (macOS reference runner)
@@ -1367,3 +1485,4 @@ Status per item after the two integrator rounds.
 19. **OPEN (minor): CI without GPU/audio.** `CUTWEAVE_AUDIO=null`, `CUTWEAVE_GPU=software`, `CUTWEAVE_PREVIEW=jpeg`; HW tests on the self-hosted reference runners (0I.04).
 20. **OPEN (minor): spike coupling.** If S1 lands a GPUI fallback, 1L, 1M and 1H.03 change materially.
 21. **OPEN (minor): phase size.** 60 WPs, ~10 weeks; first merge candidates: 1D.06 into 1D.05, 1K.01 into 1J.03.
+22. **PLANNED (product owner requests, 2026-11-24): settings, bin search, folders.** Settings: WP-1M.11 (framework: tabbed pages, search, preferences store in main, reset, import and export; General, Appearance, Saving and backups, Advanced), WP-1M.13 (Export, Keyboard shortcuts read-only), WP-1J.05 (Agents and MCP, Notifications), WP-1D.08 (Cache and storage, Performance and hardware). Every setting, its default, scope, storage, agent access and owning WP is in the catalog [docs/reference/settings.md](../reference/settings.md); later pages are owned by their feature WPs (noted in each). Bin search: WP-1M.12 (`media.list` filter and sort, shared with the editor's predicate). Folders are P2 (WP-2F.07 to WP-2F.09, ADR-0020 Proposed). For the integrator: (a) place WP-1M.11's proposed arch paragraph in §16 with a pointer from §17; (b) the "apply a preference to the engine" commands are UI-only scopes (ADR-0016's mechanism): `project.set_autosave` (WP-1M.10; made UI-only in WP-1J.05), `project.set_allowed_roots`, `media.set_cache_config`, `media.clear_cache`, `media.set_decode_policy`; (c) these commands use the existing `project` and `media` namespaces; no new namespace.

@@ -122,6 +122,7 @@ Longest single chain ≈ 8 weeks if 3A, 3B and 3D start in week 1.
 - **Size:** M
 - **Executor:** sonnet
 - **Scope:** Text tab "Add text" (title/subtitle/body defaults); schema-driven inspector extended with custom controls: font picker (search, preview, categories, recents), colour/gradient picker, stroke/shadow/glow list editors, background box, spacing, alignment, auto-fit; on-canvas editing overlay (DOM caret/selection positioned from `text.layout`), transform box; keyboard (Enter = newline, Esc = commit); all edits through commands with ephemeral transactions while dragging.
+  - Settings > Editing: duration of new text (`editing.text_duration`, 5 s); "Add text" uses it (catalog `docs/reference/settings.md`).
 - **Interfaces:** consumes `text.*`, `font.list`, `text.layout`; registers a panel in the left-tab registry (see Notes).
 - **Acceptance criteria:** Playwright e2e: add text → type → change font/colour/stroke → undo ×3 restores; caret position matches rendered glyph within 1 px at 100% zoom; IME composition (CJK) input works; every control has an aria-label.
 - **Tests:** Vitest stores; Playwright-Electron e2e; visual regression for the inspector.
@@ -331,7 +332,8 @@ Longest single chain ≈ 8 weeks if 3A, 3B and 3D start in week 1.
 - **Depends on:** WP-3D.01, WP-3D.05, E2H
 - **Size:** M
 - **Executor:** sonnet
-- **Scope:** Transcript panel: virtualised word list grouped by speaker, click word → seek, playhead-follow highlight, search with next/prev, low-confidence underline, inline word edit, speaker rename/colour; "Generate transcript" dialog (provider, language, diarize, cost estimate, progress, cancel); Settings → AI Providers: masked key entry via `ai.key_set`, status badge, local model list with download/remove/progress/licence.
+- **Scope:** Transcript panel: virtualised word list grouped by speaker, click word → seek, playhead-follow highlight, search with next/prev, low-confidence underline, inline word edit, speaker rename/colour; "Generate transcript" dialog (provider, language, diarize, cost estimate, progress, cancel); Settings > AI providers: masked key entry via `ai.set_key` (write-only, arch §13), status badge, local model list with download/remove/progress/licence.
+  - This WP creates the AI providers page in WP-1M.11's settings frame (keys and local models; WP-5F.07 extends it) and adds Settings > Media and import: "Transcribe speech in new media" (`media.transcribe_on_import`, off) (catalog `docs/reference/settings.md`).
 - **Interfaces:** consumes `transcript.*`, `ai.*`; dockview panel registration.
 - **Acceptance criteria:** Playwright e2e with mock STT: generate → words appear → click seeks within one frame → edit word → undo; 10k-word transcript scrolls ≥ 55 fps; key never shown after save; keyboard accessible.
 - **Tests:** Vitest, Playwright-Electron, visual regression.
@@ -457,6 +459,7 @@ Longest single chain ≈ 8 weeks if 3A, 3B and 3D start in week 1.
 - **Size:** M
 - **Executor:** sonnet
 - **Scope:** Captions tab: generate dialog (source clip/range, language, provider, chunking preset incl. "short-form", cost estimate); style gallery grid with animated thumbnails (pre-rendered webp, on-demand fallback), search/tags/vibe filter, apply-to-all / apply-to-selected; caption list with inline text editing; style-override inspector (font, size, colours, highlight colour, position drag on preview with safe-zone guides); "Re-chunk" and "Resync" buttons; hooks for bilingual toggle.
+  - Settings > Editing: characters per line and lines per caption for new captions (32, 2) and the caption style for new captions (`editing.caption_lines`, `editing.caption_style`); the generate dialog starts from them (catalog `docs/reference/settings.md`).
 - **Interfaces:** consumes `caption.*`, `transcript.generate`.
 - **Acceptance criteria:** Playwright e2e (mock STT): generate → pick style → change highlight colour → drag position → export a frame matching GF; gallery of 28 loads thumbnails < 1 s warm; every action undoable in one step.
 - **Tests:** Playwright-Electron, Vitest, visual regression.
@@ -682,6 +685,7 @@ Longest single chain ≈ 8 weeks if 3A, 3B and 3D start in week 1.
 - **Size:** M
 - **Executor:** sonnet
 - **Scope:** first-run dialog (GPU adapter diagnostics with fallback message; choose STT: paste cloud key or download local model; telemetry-off statement; opt-in crash-reporting prompt, default off, see 3I.05); "Make a short" checklist overlay (import → transcribe → captions → clean up → music → export); "Alpha" banner + "Report issue" (opens prefilled GitHub issue; `cutweave doctor` zips logs without media; nothing sent automatically); sample project with a CC0 talking-head clip (1 min bundled, 3 min downloadable); 9:16 default workspace; docs: `docs/alpha/README.md`, `KNOWN_ISSUES.md`, per-OS install notes.
+  - The first-run choices are written to the preferences store (WP-1M.11) and stay changeable in Settings; Settings > General's "On startup" gains "Show the welcome screen".
 - **Interfaces:** `cutweave doctor` CLI subcommand.
 - **Acceptance criteria:** fresh profile reaches a captioned sample in ≤ 8 clicks (Playwright count); `cutweave doctor` bundle contains no media paths beyond file names (test); docs lint (links valid).
 - **Tests:** Playwright-Electron, CLI test.
@@ -720,6 +724,7 @@ Longest single chain ≈ 8 weeks if 3A, 3B and 3D start in week 1.
   - Strictly opt-in: first-run prompt (3I.02) and Settings toggle, default off; per-report preview of what would be sent with "send / don't send / always"; one-click delete of the install id's reports.
   - Self-hosted collector: a minimal open-source service (container + docs; Sentry-compatible-minidump or Crashpad-compatible endpoint) the project runs on its own infrastructure; no third-party SaaS; endpoint configurable so forks/enterprises can point elsewhere or disable at build time.
   - Redaction test harness shared with 5A.03 (secrets never appear in dumps or logs).
+  - The switch lives on the Privacy page of Settings (WP-1M.11's frame), with a plain statement of what leaves this computer: crash reports when on, AI requests to the providers the person set up, update checks (catalog `docs/reference/settings.md`).
 - **Interfaces:** setting `privacy.crash_reports: off|ask|always`; `cutweave doctor --crash-preview`; collector HTTP API (documented).
 - **Acceptance criteria:** with the setting off, a forced crash sends zero network requests (test with a blocking proxy); with it on, a forced crash on each of Windows/macOS/Ubuntu yields a symbolicated report on the collector within 5 min; grep/redaction test finds no paths, usernames or key material in 20 sampled reports; clean-exit sessions are counted for crash-free-session stats; privacy doc reviewed by the maintainers.
 - **Tests:** forced-crash integration on 3 OSes, network-blocking test, redaction test, collector container smoke.

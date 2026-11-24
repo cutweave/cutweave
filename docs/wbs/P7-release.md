@@ -125,6 +125,7 @@ The roadmap defines **eight 1.0 gates** (04-roadmap.md, Phase 7 exit); the gates
   - `electron-updater` feeds per channel (stable, beta, nightly) hosted as static files (GitHub Releases + Pages mirror); update **signature verification** (platform code-signing check + published Ed25519 manifest signature, fail-closed); differential/blockmap updates where supported.
   - **Staged rollout:** feed percentage (e.g. 5% → 25% → 100% over 72 h) using a stable hashed client bucket (no identifiers sent); a **halt/rollback switch** (publish previous version, `minimumVersion` guard); channel switching UI; "skip this version"; updates never interrupt an export/active job (deferred until idle).
   - Respects global "disable update checks" (zero requests when off); linux .deb/.rpm/Flatpak/AppImage behaviors documented (package managers handle theirs; AppImage self-updates).
+  - The Updates page of Settings (WP-1M.11's frame): channel (stable), download automatically (on), check now, skipped versions; the "Check for updates" switch sits on the Privacy page (catalog `docs/reference/settings.md`).
 - **Interfaces:** `latest*.yml` feeds + signature files; settings → Updates.
 - **Acceptance criteria:** N-1 → N update succeeds on win/mac/AppImage in the matrix; tampered feed or artifact is rejected; staged rollout buckets verified at 5/25/100% over a simulated 10k-client population (±2%); pulling a release stops further rollout within one feed refresh; update during an active export is deferred.
 - **Tests:** local feed-server integration tests; tamper tests; bucket distribution unit test.
@@ -236,6 +237,7 @@ The roadmap defines **eight 1.0 gates** (04-roadmap.md, Phase 7 exit); the gates
   - **Timeline (Canvas2D) alternative:** a parallel accessible representation (virtualized ARIA tree/grid "Timeline outline": tracks → items with name, start, duration, selected state) kept in sync with selection; full keyboard editing (move/trim/split/delete/snap by arrow keys with step sizes, announce results via live region); satisfies 2.5.7 (every drag has a non-drag alternative: nudge/command/inspector fields).
   - Visual criteria: contrast ≥ 4.5:1 text / 3:1 UI components in all themes (token audit script), high-contrast theme, `prefers-reduced-motion` and `prefers-contrast`, 200% zoom/reflow of dialogs, 24 px minimum targets, no color-only meaning (e.g. track colors, error states), caption-style preview not relied upon for UI.
   - Performance guard: accessible tree must not regress timeline budget (≥ 55 fps at 5k items — virtualized to visible region).
+  - The high-contrast theme is a third option of Settings > Appearance > Theme (WP-1M.11).
 - **Interfaces:** `TimelineA11yTree` component; token contrast report.
 - **Acceptance criteria:** a user can perform select/move/trim/split/delete with keyboard only and hear/read results in NVDA, VoiceOver and Orca; token contrast script reports 0 failures; timeline benchmark unchanged (±5%).
 - **Tests:** Playwright keyboard e2e on timeline; contrast script in CI; benchmark guard.
@@ -261,6 +263,7 @@ The roadmap defines **eight 1.0 gates** (04-roadmap.md, Phase 7 exit); the gates
   - ICU MessageFormat (plurals, select, gender), string extraction + CI (fail on hard-coded UI strings, missing keys, unused keys, unbalanced placeholders), pseudo-locale (accents + 40% expansion + RTL pseudo) used in visual regression to catch truncation.
   - Locale-aware date/time/number/duration formatting; engine error **codes** → localized messages in UI (engine never ships display strings the UI cannot translate); locale switch without restart; CJK/Arabic/Hebrew/Devanagari font fallback in chrome.
   - **RTL:** logical CSS properties throughout, mirrored icons list, `dir` handling in dialogs/panels; **timeline time axis stays LTR** (documented decision; Notes #8), transport controls not mirrored; bidi text in inspector/text fields; captions/text engine bidi verified via 3A (shaping tests with Arabic/Hebrew samples).
+  - Settings > General gains "Language" (default: the OS language when Cutweave has it, else English), applied without a restart, main's menus included (catalog `docs/reference/settings.md`).
 - **Interfaces:** `locales/<lang>/*.json` (ICU), `cutweave i18n check`; docs for translators.
 - **Acceptance criteria:** pseudo-locale and RTL-pseudo e2e screenshots show no clipped/overlapping text in the 12 core screens (visual diff review recorded); string-lint passes; Arabic text renders shaped (no disconnected letters) in the Text tool preview and export golden.
 - **Tests:** string lint, visual regression in pseudo/RTL locales, text-engine bidi golden tests.
@@ -542,6 +545,7 @@ The roadmap defines **eight 1.0 gates** (04-roadmap.md, Phase 7 exit); the gates
   - ≥ 5 sample projects with CC0/permissively licensed media (and SPDX credits): (1) 9:16 captioned short (talking head), (2) 10-min-style long-form with chapters and B-roll (short excerpt), (3) template-driven promo, (4) audio-polish/podcast, (5) an agent-ready project with `AGENTS.md` and notes for MCP/copilot demos; each opens from the Welcome screen ("Open sample") with media included or lazily downloaded (hash verified, size shown).
   - Used by docs screenshots, website demos and install-matrix smoke tests (7A.08).
   - First-run welcome: workspace choice (short-form/long-form), shortcut preset (NLE/CapCut), update/crash/telemetry choices explained, optional guided tour (skippable, accessible).
+  - The welcome choices write the same preferences as Settings (WP-1M.11's store) and can be changed there later.
 - **Interfaces:** `samples/<id>/`, Welcome screen.
 - **Acceptance criteria:** all samples open, play and export on 3 OSes in CI (golden frames); total download ≤ 150 MB (lazy); every media file has license metadata (notices job passes); welcome flow keyboard accessible.
 - **Tests:** CI sample-export job; Playwright e2e of first-run.
