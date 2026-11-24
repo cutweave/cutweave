@@ -28,13 +28,16 @@ test.describe("preview bridge", () => {
       process: "undefined",
       addon: "undefined",
       preview: [
+        "attachCanvas",
         "close",
+        "detachCanvas",
         "getClock",
         "getLatestFrame",
         "getPresentStats",
         "getStatus",
         "isAvailable",
         "open",
+        "redraw",
         "startPresenting",
         "stopPresenting",
         "waitForFrame",
@@ -131,9 +134,16 @@ test.describe("preview bridge", () => {
       "lastPts",
       "lastSeq",
       "lastWidth",
+      "longTicks",
       "presentFps",
+      "presenter",
+      "presenterError",
+      "presenterErrors",
+      "presenterLost",
       "running",
       "seqGaps",
+      "tickFps",
+      "ticks",
     ]);
     console.log(`[bridge e2e] present loop: ${JSON.stringify(stats)}`);
     await page.evaluate(() => window.cutweave.preview.stopPresenting());

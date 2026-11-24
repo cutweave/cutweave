@@ -51,6 +51,8 @@ export interface EditorState {
   recoveredApplied: number | null;
   docRev: number;
   outbox: string[];
+  /** Timeline items in the editor's document. */
+  items: number;
 }
 
 /** Waits until the editor installed its e2e handle (after `app.getInfo()` reports test hooks). */
@@ -117,10 +119,14 @@ export interface LaunchedApp {
  * Launch the built app (`dist/`) with a throwaway HOME / user-data dir, the fake engine
  * (test-support) standing in for `cutweave engine`, and the main-process test hooks enabled.
  */
-export async function launchApp(env: Record<string, string> = {}): Promise<LaunchedApp> {
+export async function launchApp(
+  env: Record<string, string> = {},
+  /** Extra Chromium switches, e.g. `--force-device-scale-factor=1.5`. */
+  switches: string[] = [],
+): Promise<LaunchedApp> {
   const home = mkdtempSync(path.join(tmpdir(), "cutweave-e2e-"));
   const app = await electron.launch({
-    args: [...(process.platform === "linux" ? ["--no-sandbox"] : []), desktopDir],
+    args: [...(process.platform === "linux" ? ["--no-sandbox"] : []), ...switches, desktopDir],
     env: {
       ...process.env,
       HOME: home,

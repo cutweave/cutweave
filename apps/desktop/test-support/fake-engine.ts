@@ -13,12 +13,17 @@
 // FAKE_ENGINE_EXIT=<code> prints the protocol's error line and exits with it after the
 // handshake; FAKE_ENGINE_RECOVERY=1 makes a `--project` start report unsaved work to recover;
 // FAKE_ENGINE_SCHEMA_HASH=<h> reports another schema hash (the editor must refuse to edit).
+// Preview (WP-1M.04, fake-preview.ts): the `view.*` transport, `playback.state`, a frame ring
+// (FAKE_ENGINE_RING), still frames on `GET /media/frame`, and FAKE_ENGINE_PROJECT=three-clips.
 
 import { createHash } from "node:crypto";
 import { createServer, type IncomingMessage } from "node:http";
+import { tmpdir } from "node:os";
+import path from "node:path";
 import { createInterface } from "node:readline";
 import type { Duplex } from "node:stream";
 import { SCHEMA_HASH } from "../../../packages/protocol/src/generated/schema-hash.ts";
+import { FakePreview, framePng } from "./fake-preview.ts";
 
 const args = process.argv.slice(2);
 const argValue = (name: string): string | null => {
@@ -41,7 +46,13 @@ const ERROR_CODES: Record<number, string> = {
   13: "bad_handshake",
 };
 
-let project: string | null = argValue("--project");
+// The three-clip project is an open, saved project (an untitled document with clips would hold
+// the window open behind the unsaved-changes guard).
+let project: string | null =
+  argValue("--project") ??
+  (process.env.FAKE_ENGINE_PROJECT === "three-clips"
+    ? path.join(tmpdir(), "cutweave-fake", "three-clips")
+    : null);
 let recoveryPending = project !== null && process.env.FAKE_ENGINE_RECOVERY === "1";
 
 const input = createInterface({ input: process.stdin });
@@ -59,6 +70,7 @@ input.once("line", (line) => {
     return;
   }
   if (mode === "no-ready") return;
+  preview = new FakePreview(broadcast);
 
   const server = createServer((req, res) => {
     // The editor origin may read responses (CORS), as the real engine allows for `app://cutweave`.
@@ -66,10 +78,32 @@ input.once("line", (line) => {
       "content-type": "application/json",
       "access-control-allow-origin": "app://cutweave",
     };
-    // Like the real engine, /rpc needs the UI token (arch §6); there is no token in a URL.
-    if (req.url?.startsWith("/rpc") && req.headers.authorization !== `Bearer ${token}`) {
+    // A CORS preflight (the editor's frame fetch sends an Authorization header) carries no token.
+    if (req.method === "OPTIONS") {
+      res.writeHead(204, {
+        ...headers,
+        "access-control-allow-methods": "GET, POST, OPTIONS",
+        "access-control-allow-headers": "authorization, content-type",
+      });
+      res.end();
+      return;
+    }
+    const authorized = req.headers.authorization === `Bearer ${token}`;
+    // Like the real engine, /rpc and /media need the UI token (arch §6); never in a URL.
+    if ((req.url?.startsWith("/rpc") || req.url?.startsWith("/media")) && !authorized) {
       res.writeHead(401, headers);
       res.end(JSON.stringify({ error: "unauthorized" }));
+      return;
+    }
+    if (req.url?.startsWith("/media/frame")) {
+      const q = new URL(req.url, "http://127.0.0.1").searchParams;
+      const png = framePng(
+        Number(q.get("t") ?? 0),
+        Number(q.get("w") ?? 2),
+        Number(q.get("h") ?? 2),
+      );
+      res.writeHead(200, { ...headers, "content-type": "image/png", "cache-control": "no-store" });
+      res.end(png);
       return;
     }
     res.writeHead(200, headers);
@@ -77,15 +111,19 @@ input.once("line", (line) => {
   });
   server.on("upgrade", (req, socket) => upgrade(req, socket));
   server.once("error", () => process.exit(12));
-  server.listen(port, "127.0.0.1", () => {
-    const address = server.address();
-    const bound = typeof address === "object" && address !== null ? address.port : port;
-    process.stdout.write(
-      `${JSON.stringify({ event: "ready", port: bound, pid: process.pid, version: "fake" })}\n`,
-    );
-    if (mode === "crash-after-ready") setTimeout(() => process.exit(70), 50);
-  });
+  void preview.ready().then(() =>
+    server.listen(port, "127.0.0.1", () => {
+      const address = server.address();
+      const bound = typeof address === "object" && address !== null ? address.port : port;
+      process.stdout.write(
+        `${JSON.stringify({ event: "ready", port: bound, pid: process.pid, version: "fake" })}\n`,
+      );
+      if (mode === "crash-after-ready") setTimeout(() => process.exit(70), 50);
+    }),
+  );
 });
+let preview: FakePreview | null = null;
+process.on("exit", () => preview?.stop());
 input.once("close", () => {
   if (token === null) process.exit(13);
   process.exit(0);
@@ -236,6 +274,8 @@ function handle(client: Client, text: string): void {
         committed_rev: 0,
         actor: "user",
         project: projectStatus(),
+        // The preview frame ring, when one runs (RING.md `RingAnnouncement`).
+        ...(preview?.shm() === undefined ? {} : { shm: preview.shm() }),
       });
       return;
     case "rpc.subscribe": {
@@ -255,7 +295,13 @@ function handle(client: Client, text: string): void {
       ok({
         rev: 0,
         committed_rev: 0,
-        project: { meta: { name: "fake" }, settings: {}, media: {}, sequences: {}, custom: {} },
+        project: preview?.project ?? {
+          meta: { name: "fake" },
+          settings: {},
+          media: {},
+          sequences: {},
+          custom: {},
+        },
       });
       return;
     case "view.get":
@@ -282,7 +328,15 @@ function handle(client: Client, text: string): void {
       broadcast("doc.reset", {});
       return;
     }
-    default:
+    default: {
+      const answer =
+        typeof method === "string" && method.startsWith("view.")
+          ? preview?.handle(method, params)
+          : undefined;
+      if (answer !== undefined) {
+        ok(answer);
+        return;
+      }
       if (id === undefined) return;
       send(client, {
         jsonrpc: "2.0",
@@ -293,5 +347,6 @@ function handle(client: Client, text: string): void {
           data: { code: "not_found", message: "no such method" },
         },
       });
+    }
   }
 }
