@@ -768,7 +768,7 @@ body {
   width: 100%;
   margin: 0;
   padding: var(--space-2);
-  border: 1px solid var(--border-subtle);
+  border: var(--border-thin) solid var(--border-subtle);
   border-radius: var(--radius-sm);
   background: var(--surface-2);
   color: var(--text-primary);
