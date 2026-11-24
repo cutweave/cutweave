@@ -1,5 +1,5 @@
 // @generated — do not edit; run cargo xtask gen
-import type { BeginTx, CancelTx, Checkpoint, CheckpointInfo, CheckpointList, ClipSplit, ClipSplitOutput, ClipTrim, ClipTrimOutput, CommitTx, ExportStart, ExportStartOutput, GetHistory, HistoryMoved, HistoryPage, ItemDelete, ItemDeleteOutput, ItemGet, ItemGetOutput, ItemMove, ItemMoveOutput, ItemSetProps, ItemSetPropsOutput, JobCancel, JobInfo, JobList, JobListOutput, JobStatus, JobWait, ListCheckpoints, ListLocks, LockList, MediaCacheStatus, MediaCacheStatusOutput, MediaCapabilities, MediaCapabilitiesOutput, MediaClearCache, MediaClearCacheOutput, MediaImport, MediaImportOutput, MediaList, MediaListOutput, MediaRegister, MediaRegistered, MediaRemove, MediaRemoveOutput, MediaSetCacheConfig, MediaSetDecodePolicy, MediaSetDecodePolicyOutput, ProjectClose, ProjectCloseOutput, ProjectDiscardRecovery, ProjectInfo, ProjectInfoOutput, ProjectNew, ProjectNewOutput, ProjectOpen, ProjectOpenOutput, ProjectRecover, ProjectRecoverOutput, ProjectRename, ProjectRenameOutput, ProjectReportFocus, ProjectReportFocusOutput, ProjectSave, ProjectSaveAs, ProjectSaveOutput, ProjectSetAutosave, ProjectSetAutosaveOutput, Redo, Restore, Restored, TimelineGet, TimelineGetOutput, TimelineInsert, TimelineInsertOutput, TrackAdd, TrackAddOutput, TrackRemove, TrackRemoveOutput, TrackSet, TrackSetOutput, TxCancelled, TxCommitted, TxOpened, UiState, Undo, ViewGet, ViewSelect, ViewSet, ViewSetPlayhead, ViewSetZoom } from "./types.ts";
+import type { BeginTx, CancelTx, Checkpoint, CheckpointInfo, CheckpointList, ClipSplit, ClipSplitOutput, ClipTrim, ClipTrimOutput, CommitTx, ExportStart, ExportStartOutput, GetHistory, HistoryMoved, HistoryPage, ItemDelete, ItemDeleteOutput, ItemGet, ItemGetOutput, ItemMove, ItemMoveOutput, ItemSetProps, ItemSetPropsOutput, JobCancel, JobInfo, JobList, JobListOutput, JobStatus, JobWait, ListCheckpoints, ListLocks, LockList, MediaCacheStatus, MediaCacheStatusOutput, MediaCapabilities, MediaCapabilitiesOutput, MediaClearCache, MediaClearCacheOutput, MediaImport, MediaImportOutput, MediaList, MediaListOutput, MediaRegister, MediaRegistered, MediaRemove, MediaRemoveOutput, MediaSetCacheConfig, MediaSetDecodePolicy, MediaSetDecodePolicyOutput, ProjectClose, ProjectCloseOutput, ProjectConnections, ProjectConnectionsOutput, ProjectDiscardRecovery, ProjectInfo, ProjectInfoOutput, ProjectNew, ProjectNewOutput, ProjectOpen, ProjectOpenOutput, ProjectRecover, ProjectRecoverOutput, ProjectRename, ProjectRenameOutput, ProjectReportFocus, ProjectReportFocusOutput, ProjectSave, ProjectSaveAs, ProjectSaveOutput, ProjectSetAllowedRoots, ProjectSetAllowedRootsOutput, ProjectSetAutosave, ProjectSetAutosaveOutput, Redo, Restore, Restored, TimelineGet, TimelineGetOutput, TimelineInsert, TimelineInsertOutput, TrackAdd, TrackAddOutput, TrackRemove, TrackRemoveOutput, TrackSet, TrackSetOutput, TxCancelled, TxCommitted, TxOpened, UiState, Undo, ViewGet, ViewSelect, ViewSet, ViewSetPlayhead, ViewSetZoom } from "./types.ts";
 
 /** Commands and engine commands: name to input and output. */
 export type CommandMap = {
@@ -32,6 +32,7 @@ export type CommandMap = {
   "media.set_cache_config": { input: MediaSetCacheConfig; output: MediaCacheStatusOutput };
   "media.set_decode_policy": { input: MediaSetDecodePolicy; output: MediaSetDecodePolicyOutput };
   "project.close": { input: ProjectClose; output: ProjectCloseOutput };
+  "project.connections": { input: ProjectConnections; output: ProjectConnectionsOutput };
   "project.discard_recovery": { input: ProjectDiscardRecovery; output: ProjectRecoverOutput };
   "project.new": { input: ProjectNew; output: ProjectNewOutput };
   "project.open": { input: ProjectOpen; output: ProjectOpenOutput };
@@ -40,6 +41,7 @@ export type CommandMap = {
   "project.report_focus": { input: ProjectReportFocus; output: ProjectReportFocusOutput };
   "project.save": { input: ProjectSave; output: ProjectSaveOutput };
   "project.save_as": { input: ProjectSaveAs; output: ProjectSaveOutput };
+  "project.set_allowed_roots": { input: ProjectSetAllowedRoots; output: ProjectSetAllowedRootsOutput };
   "project.set_autosave": { input: ProjectSetAutosave; output: ProjectSetAutosaveOutput };
   "timeline.insert": { input: TimelineInsert; output: TimelineInsertOutput };
   "track.add": { input: TrackAdd; output: TrackAddOutput };

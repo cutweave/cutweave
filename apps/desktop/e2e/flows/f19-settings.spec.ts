@@ -81,6 +81,8 @@ test.describe("F19 settings", () => {
         "Export",
         "Saving and backups",
         "Keyboard shortcuts",
+        "Notifications",
+        "Agents and MCP",
         "Cache and storage",
         "Performance and hardware",
         "Advanced",

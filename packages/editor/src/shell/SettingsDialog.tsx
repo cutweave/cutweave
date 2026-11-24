@@ -22,6 +22,7 @@ import { preferences, usePrefs } from "../prefs/prefsStore.ts";
 import { desktopFromWindow } from "../session/desktop.ts";
 import "../settings/core.ts";
 import "../settings/featurePages.tsx";
+import "../settings/agents.tsx";
 import {
   type ConfirmSpec,
   pageKeys,

@@ -41,12 +41,15 @@ use cutweave_commands::{
 use cutweave_jobs::JobManager;
 use cutweave_model::{SeededGen, Time};
 use cutweave_ops::export::ExportCtx;
-use cutweave_ops::media::{AllowedRoots, AnalysisStages, Analyzer, ImportCtx, ImportPolicy};
+use cutweave_ops::media::{
+    AllowedRoots, AnalysisStages, Analyzer, ImportCtx, ImportPolicy, OUTSIDE_ROOTS_HINT,
+};
 use cutweave_ops::view::{UiState, ViewCtx};
 use serde_json::Value;
 use tokio::runtime::Runtime;
 use tokio::sync::broadcast::error::RecvError as BroadcastRecvError;
 
+use crate::agents::Connections;
 use crate::autosave::AutosavePreference;
 use crate::config::{EngineConfig, EngineMode};
 use crate::dispatch::{Connection, Reply};
@@ -186,7 +189,15 @@ impl StartError {
 pub(crate) struct Core {
     pub(crate) mode: EngineMode,
     pub(crate) deps: Deps,
-    allowed_roots: Vec<PathBuf>,
+    /// The folders agents and other non-UI callers may use besides the project folders: the
+    /// `--allow-root` ones until `project.set_allowed_roots` replaces them (WP-1J.05). Read on
+    /// every call that takes a path, so a change applies at once, also to open connections.
+    approved_roots: RwLock<Vec<PathBuf>>,
+    /// The folder of the project the engine was started with: usable for the engine's lifetime
+    /// (the launcher chose it), also after it is closed.
+    start_root: Option<PathBuf>,
+    /// The agent connections open now (`project.connections`).
+    pub(crate) connections: Connections,
     pub(crate) runtime: tokio::runtime::Handle,
     session: RwLock<Option<Session>>,
     state: AtomicU8,
@@ -349,17 +360,45 @@ impl Core {
 
     /// The folders `ctx` may name in a path (arch §14, §18): `None` (anything) for the UI
     /// credential, which only passes what the user picked; for agent, CLI, plugin and internal
-    /// callers the approved roots (`--allow-root`), the folder of the project the engine was
-    /// started with, and the open project's folder.
+    /// callers [`agent_roots`](Self::agent_roots).
     fn path_roots(&self, ctx: &ActorCtx, session: &Session) -> Option<AllowedRoots> {
         if ctx.access() == Access::UI {
             return None;
         }
-        let mut roots = self.allowed_roots.clone();
-        if let Some(root) = session.project_root() {
-            roots.push(root.to_path_buf());
-        }
-        Some(AllowedRoots::new(roots))
+        Some(AllowedRoots::new(self.agent_roots(session)))
+    }
+
+    /// The folders every caller but the UI may name in a path, as they are right now: the
+    /// approved roots (`--allow-root`, or what `project.set_allowed_roots` set last), the
+    /// folder of the project the engine was started with, and the open project's folder.
+    fn agent_roots(&self, session: &Session) -> Vec<PathBuf> {
+        let mut roots = self
+            .approved_roots
+            .read()
+            .unwrap_or_else(PoisonError::into_inner)
+            .clone();
+        roots.extend(self.start_root.iter().cloned());
+        roots.extend(session.project_root().map(Path::to_path_buf));
+        roots
+    }
+
+    /// `project.info`'s `allowed_roots`: [`agent_roots`](Self::agent_roots), without
+    /// duplicates.
+    pub(crate) fn allowed_roots_now(&self) -> Result<Vec<String>, CmdError> {
+        let guard = self.session()?;
+        let Some(session) = guard.as_ref() else {
+            return Err(stopped());
+        };
+        Ok(crate::agents::distinct(self.agent_roots(session)))
+    }
+
+    /// `project.set_allowed_roots`: replaces the approved roots (already canonical).
+    pub(crate) fn set_approved_roots(&self, roots: Vec<PathBuf>) {
+        tracing::info!(count = roots.len(), "the folders agents may use changed");
+        *self
+            .approved_roots
+            .write()
+            .unwrap_or_else(PoisonError::into_inner) = roots;
     }
 
     /// `Invalid` at `pointer` unless `ctx` may use `path` ([`path_roots`](Self::path_roots);
@@ -379,7 +418,7 @@ impl Core {
                 pointer,
                 format!(
                     "`{path}` is outside the folders you may use (the open project's folder and \
-                     folders the user approved); ask the user to approve its folder"
+                     the folders the user allowed); {OUTSIDE_ROOTS_HINT}"
                 ),
             )),
             _ => Ok(()),
@@ -913,6 +952,7 @@ pub fn build_registry() -> Result<Registry, RegistryError> {
     cutweave_ops::register(&mut registry)?;
     cutweave_commands::edit::register(&mut registry)?;
     session::register(&mut registry)?;
+    crate::agents::register(&mut registry)?;
     crate::media_caps::register(&mut registry)?;
     crate::media_cache::register(&mut registry)?;
     Ok(registry)
@@ -1045,11 +1085,11 @@ impl Engine {
         };
         // The project the engine was started with stays usable for agents after it is closed
         // (the launcher chose it); nothing else is without `--allow-root`.
-        let mut allowed_roots = config.allowed_roots.clone();
-        allowed_roots.extend(first.project_root().map(Path::to_path_buf));
         let core = Arc::new(Core {
             mode: config.mode,
-            allowed_roots,
+            approved_roots: RwLock::new(config.allowed_roots.clone()),
+            start_root: first.project_root().map(Path::to_path_buf),
+            connections: Connections::default(),
             runtime: rt,
             state: AtomicU8::new(0),
             next_conn: AtomicU64::new(FIRST_CONN),

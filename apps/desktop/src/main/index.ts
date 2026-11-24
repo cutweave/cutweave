@@ -10,6 +10,7 @@ import path from "node:path";
 import {
   app,
   BrowserWindow,
+  clipboard,
   dialog,
   ipcMain,
   Menu,
@@ -22,6 +23,13 @@ import {
 import { type PreferenceKey, resolveTheme } from "../../../../packages/preferences/src/index.ts";
 import type { EditAction, EngineStatus, ThemeId } from "../shared/api.ts";
 import {
+  addFolder,
+  clientSetups,
+  engineAllowRoots,
+  resolveChosenFolder,
+  resolveCliPath,
+} from "./agents.ts";
+import {
   APP_ORIGIN,
   APP_SCHEME,
   registerAppProtocol,
@@ -30,7 +38,7 @@ import {
 import { CloseGuard } from "./close-guard.ts";
 import { appResponseHeaders, buildCsp } from "./csp.ts";
 import { type EngineFailedChoice, showEngineFailedDialog } from "./engine/failed-dialog.ts";
-import { devEngineArgs, preferenceEngineArgs, resolveEngineLaunch } from "./engine/launch.ts";
+import { devAllowRoots, preferenceEngineArgs, resolveEngineLaunch } from "./engine/launch.ts";
 import { pickFreePort } from "./engine/ports.ts";
 import { EngineSupervisor } from "./engine/supervisor.ts";
 import { createHandlers, MEDIA_FILE_FILTERS } from "./handlers.ts";
@@ -149,6 +157,7 @@ async function chooseInitialPort(): Promise<number> {
 function superviseEngine(
   launch: NonNullable<ReturnType<typeof resolveEngineLaunch>>,
   port: number,
+  allowRoots: () => readonly string[],
 ): EngineSupervisor {
   let reloadOnReady = false;
   const sup = new EngineSupervisor({
@@ -159,10 +168,13 @@ function superviseEngine(
       "--allow-origin",
       APP_ORIGIN,
       ...(devServerOrigin === undefined ? [] : ["--allow-origin", devServerOrigin]),
-      ...devEngineArgs(process.env, app.isPackaged),
-      // This computer's preferences that are launch flags (the cache folder, WP-1D.08).
+      // This computer's preferences that are launch flags (the cache folder, WP-1D.08). The
+      // development folders of CUTWEAVE_ENGINE_ALLOW_ROOTS go with the person's folders through
+      // `allowRoots` below (WP-1J.05), so they are not repeated here.
       ...preferenceEngineArgs({ cacheFolder: preferences?.get("cache.folder") ?? "" }),
     ],
+    // Folders agents may use (WP-1J.05): `--allow-root` at every start and restart.
+    allowRoots,
     clientVersion: app.getVersion(),
     onPortChange: (next) => {
       enginePort = next;
@@ -245,9 +257,30 @@ if (!app.requestSingleInstanceLock()) {
       undefined,
       () => prefs.get("general.recent_count"),
     );
+    // The folders agents may use (WP-1J.05): the development ones, then the person's that still
+    // exist. Read at every engine start and restart, and sent to the engine when they change.
+    const devRoots = devAllowRoots(process.env, app.isPackaged);
+    const agentRoots = (): string[] =>
+      engineAllowRoots(devRoots, prefs.get("agents.allowed_folders"), {
+        platform: process.platform,
+        log: (message) => console.warn(`[agents] ${message}`),
+      });
+    /** The engine's answer to the latest change of the folders. */
+    let rootsApplied: Promise<void> = Promise.resolve();
+    // The bundled CLI agents run (Settings > Agents and MCP shows its setups).
+    const cliPath = resolveCliPath({
+      env: process.env,
+      isPackaged: app.isPackaged,
+      resourcesPath: process.resourcesPath,
+      repoRoot: path.resolve(__dirname, "..", "..", "..", ".."),
+      platform: process.platform,
+    });
     prefs.onChange((changes) => {
       if (changes["appearance.theme"] !== undefined) {
         nativeTheme.themeSource = changes["appearance.theme"];
+      }
+      if (changes["agents.allowed_folders"] !== undefined) {
+        rootsApplied = supervisor?.applyAllowedRoots() ?? Promise.resolve();
       }
       for (const win of windowsOfKind("editor")) win.webContents.send("prefs:changed", changes);
     });
@@ -363,6 +396,30 @@ if (!app.requestSingleInstanceLock()) {
           mkdirSync(folder, { recursive: true });
           await shell.openPath(folder);
         },
+        agents: {
+          chooseFolder: async () => {
+            const result = await dialog.showOpenDialog({
+              title: "Choose a folder agents can use",
+              properties: ["openDirectory"],
+            });
+            return result.canceled ? null : (result.filePaths[0] ?? null);
+          },
+          resolveFolder: (chosen) => resolveChosenFolder(chosen),
+          folders: () => prefs.get("agents.allowed_folders"),
+          add: (folders, folder) => addFolder(folders, folder, process.platform),
+          store: async (folders) => {
+            prefs.set("agents.allowed_folders", folders);
+            await rootsApplied;
+          },
+          connectInfo: () => ({
+            cliPath,
+            setups:
+              cliPath === null
+                ? []
+                : clientSetups(cliPath, prefs.get("agents.client_profile"), process.platform),
+          }),
+          writeClipboard: (text) => clipboard.writeText(text),
+        },
         dev: isDev
           ? {
               reload: () => liveWindow()?.webContents.reload(),
@@ -411,7 +468,7 @@ if (!app.requestSingleInstanceLock()) {
 
     openWindow();
     if (launch !== null && enginePort !== null) {
-      supervisor = superviseEngine(launch, enginePort);
+      supervisor = superviseEngine(launch, enginePort, agentRoots);
       supervisor.setWindowFocused(mainWindow?.isFocused() ?? false);
       await supervisor.start();
     }

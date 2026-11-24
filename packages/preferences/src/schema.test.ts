@@ -4,10 +4,13 @@ import { describe, expect, it } from "vitest";
 import {
   defaultPreferences,
   exportPreferences,
+  isRendererWritable,
   loadPreferences,
+  MAX_AGENT_FOLDERS,
   PREFERENCE_KEYS,
   parseImport,
   SCHEMA_VERSION,
+  samePreferenceValue,
   serializePreferences,
   validatePreference,
 } from "./schema.ts";
@@ -176,5 +179,55 @@ describe("export and import", () => {
       ok: false,
       reason: "newer",
     });
+  });
+});
+
+describe("agents and notifications (WP-1J.05)", () => {
+  it("defaults to no extra folders, the standard tool set and connection notices on", () => {
+    const values = defaultPreferences();
+    expect(values["agents.allowed_folders"]).toEqual([]);
+    expect(values["agents.client_profile"]).toBe("standard");
+    expect(values["notify.agent_connected"]).toBe(true);
+  });
+
+  it("takes a short list of distinct absolute folders", () => {
+    expect(validatePreference("agents.allowed_folders", ["C:\\Footage", "/media/b"]).ok).toBe(true);
+    expect(validatePreference("agents.allowed_folders", []).ok).toBe(true);
+    for (const bad of [
+      "C:\\Footage",
+      ["relative/dir"],
+      [""],
+      ["/a", "/a"],
+      [1],
+      ["/a\u0000b"],
+      Array.from({ length: MAX_AGENT_FOLDERS + 1 }, (_, i) => `/f${i}`),
+    ]) {
+      expect(validatePreference("agents.allowed_folders", bad).ok, JSON.stringify(bad)).toBe(false);
+    }
+    expect(validatePreference("agents.client_profile", "full").ok).toBe(true);
+    expect(validatePreference("agents.client_profile", "huge").ok).toBe(false);
+  });
+
+  it("lets only main write the folders, and never exports or imports them", () => {
+    expect(isRendererWritable("agents.allowed_folders")).toBe(false);
+    expect(isRendererWritable("agents.client_profile")).toBe(true);
+    expect(isRendererWritable("notify.agent_connected")).toBe(true);
+    expect(isRendererWritable("ghost")).toBe(false);
+    const values = { ...defaultPreferences(), "agents.allowed_folders": ["D:\\Footage"] };
+    const text = serializePreferences(values);
+    expect(JSON.parse(text).machine).toEqual({ "agents.allowed_folders": ["D:\\Footage"] });
+    expect(loadPreferences(text).values["agents.allowed_folders"]).toEqual(["D:\\Footage"]);
+    expect(exportPreferences(values).text).not.toContain("allowed_folders");
+    const parsed = parseImport(
+      JSON.stringify({ version: 1, app: { "agents.allowed_folders": ["C:\\Users"] } }),
+    );
+    expect(parsed.ok && parsed.applied).toEqual({});
+    expect(parsed.ok && parsed.skipped[0]?.reason).toBe("belongs to this computer");
+  });
+
+  it("compares folder lists by their items", () => {
+    expect(samePreferenceValue(["/a", "/b"], ["/a", "/b"])).toBe(true);
+    expect(samePreferenceValue(["/a", "/b"], ["/b", "/a"])).toBe(false);
+    expect(samePreferenceValue([], [])).toBe(true);
   });
 });

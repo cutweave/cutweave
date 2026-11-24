@@ -31,6 +31,7 @@ import {
   type SupervisorHint,
   supervisedPolicy,
 } from "@cutweave/protocol";
+import type { agentsStore } from "../agents/agentsStore.ts";
 import type { binStore } from "../media/binStore.ts";
 import type { mediaStore } from "../media/mediaStore.ts";
 import type { prefsStore } from "../prefs/prefsStore.ts";
@@ -79,6 +80,8 @@ export interface RuntimeStores {
   readonly prefs?: typeof prefsStore;
   /** Project session and undo stacks (WP-1M.07); optional so older callers need not pass it. */
   readonly session?: typeof sessionStore;
+  /** The agent connections open on the engine (WP-1J.05); optional for tests. */
+  readonly agents?: typeof agentsStore;
 }
 
 export interface EngineRuntime {
@@ -235,11 +238,23 @@ export function startEngineRuntime(
       if (!mismatch) connection.flushOutbox();
     }
     const [, list] = await Promise.all([
-      Promise.all([viewSync.restore(), sessionSync?.refreshStacks()]),
+      Promise.all([viewSync.restore(), sessionSync?.refreshStacks(), refreshAgents()]),
       rpc.call("job.list", {}).then((out) => out.jobs),
     ]);
     stores.jobs.getState().reset(list);
     if (restarted) await showRestartNotice();
+  }
+
+  /** The agent connections open now (WP-1J.05): a new baseline after every handshake. */
+  async function refreshAgents(): Promise<void> {
+    if (stores.agents === undefined) return;
+    try {
+      const out = await rpc.call("project.connections", {});
+      stores.agents.getState().reset(out.connections);
+    } catch (error) {
+      // An engine from before WP-1J.05 has no such command: no list, nothing else breaks.
+      onError(error);
+    }
   }
 
   /** Tells the engine the app's autosave preference (`project.set_autosave`, arch §17). */
@@ -289,6 +304,8 @@ export function startEngineRuntime(
         rpc.on("media.indexed", (e) => stores.media?.getState().applyIndexed(e)),
         rpc.on("project.opened", () => stores.bin?.getState().clearSearch()),
         rpc.on("project.closed", () => stores.bin?.getState().clearSearch()),
+        rpc.on("project.connection_opened", (c) => stores.agents?.getState().opened(c)),
+        rpc.on("project.connection_closed", (c) => stores.agents?.getState().closed(c)),
         rpc.onUntyped("playback.state", (payload) =>
           stores.playback.getState().applyState(payload),
         ),

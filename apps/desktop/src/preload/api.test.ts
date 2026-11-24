@@ -25,6 +25,7 @@ describe("createCutweaveApi", () => {
   it("exposes only named, narrow members (no generic invoke or ipcRenderer)", () => {
     const api = createCutweaveApi(fakeIpc().ipc, null);
     expect(Object.keys(api).sort()).toEqual([
+      "agents",
       "app",
       "dialog",
       "edit",
@@ -39,6 +40,25 @@ describe("createCutweaveApi", () => {
     ]);
     expect(Object.keys(api.engine).sort()).toEqual(["getConnection", "getStatus", "onStatus"]);
     expect("invoke" in api).toBe(false);
+  });
+
+  it("names no folder when adding one for agents, and only a client to copy (WP-1J.05)", async () => {
+    const { ipc } = fakeIpc();
+    const api = createCutweaveApi(ipc, null);
+    expect(Object.keys(api.agents).sort()).toEqual([
+      "addFolder",
+      "connectInfo",
+      "copySetup",
+      "removeFolder",
+    ]);
+    await api.agents.addFolder();
+    expect(ipc.invoke).toHaveBeenLastCalledWith("agents:addFolder");
+    await api.agents.removeFolder("D:/Footage");
+    expect(ipc.invoke).toHaveBeenLastCalledWith("agents:removeFolder", "D:/Footage");
+    await api.agents.copySetup("codex");
+    expect(ipc.invoke).toHaveBeenLastCalledWith("agents:copySetup", "codex");
+    await api.agents.connectInfo();
+    expect(ipc.invoke).toHaveBeenLastCalledWith("agents:connectInfo");
   });
 
   it("asks main for the media picker over its own channel", async () => {

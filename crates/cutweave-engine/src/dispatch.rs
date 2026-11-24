@@ -113,7 +113,22 @@ impl Drop for Inner {
         if let Ok(doc) = self.core.doc() {
             drop(doc.close_connection(self.ctx.conn()));
         }
+        self.core
+            .connections
+            .closed(&self.ctx, &self.core.deps.events);
     }
+}
+
+/// `project.info`, whose `allowed_roots` the engine fills in: the document does not know them.
+const PROJECT_INFO: &str = "project.info";
+
+/// Puts the folders agents may use right now into a `project.info` reply (WP-1J.05).
+fn fill_allowed_roots(core: &Core, reply: &mut Reply) -> Result<(), CmdError> {
+    let roots = core.allowed_roots_now()?;
+    if let Value::Object(map) = &mut reply.output {
+        map.insert("allowed_roots".into(), Value::from(roots));
+    }
+    Ok(())
 }
 
 /// A client connection: the credential-derived caller ([`ActorCtx`]) on a connection id of
@@ -132,7 +147,11 @@ impl std::fmt::Debug for Connection {
 }
 
 impl Connection {
+    /// A new connection of `ctx`. An agent's is listed in `project.connections` (and announced
+    /// with `project.connection_opened`) until its last clone drops (WP-1J.05).
     pub(crate) fn new(core: Arc<Core>, ctx: ActorCtx) -> Connection {
+        core.connections
+            .opened(&ctx, core.deps.clock.now(), &core.deps.events);
         Connection {
             inner: Arc::new(Inner { core, ctx }),
         }
@@ -147,6 +166,15 @@ impl Connection {
     /// Runs `call` and waits for the result (blocking: never call it on an async worker; use
     /// [`call_async`](Self::call_async) there).
     pub fn call(&self, call: Call) -> Result<Reply, CmdError> {
+        let project_info = call.name == PROJECT_INFO;
+        let mut reply = self.dispatch(call)?;
+        if project_info {
+            fill_allowed_roots(&self.inner.core, &mut reply)?;
+        }
+        Ok(reply)
+    }
+
+    fn dispatch(&self, call: Call) -> Result<Reply, CmdError> {
         let core = &self.inner.core;
         let ctx = &self.inner.ctx;
         let Call {
@@ -160,6 +188,10 @@ impl Connection {
         let entry = registry
             .get(&name)
             .ok_or_else(|| CmdError::not_found(ResourceKind::Command, &name))?;
+        // What the person sees under Connected agents (WP-1J.05): the last thing each agent
+        // asked for, also when it is refused.
+        core.connections
+            .called(ctx, entry.meta.name, core.deps.clock.now());
         ctx.access().check(&entry.meta)?;
         let params = if params.is_null() {
             Value::Object(Map::new())

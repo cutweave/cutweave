@@ -124,7 +124,8 @@ pub struct EngineConfig {
     /// set.
     pub deterministic_ids: Option<u64>,
     /// Folders agents and headless callers may import media from, besides the open project's
-    /// folder (arch §14, §18).
+    /// folder (arch §14, §18): `--allow-root`. The engine's approved folders until
+    /// `project.set_allowed_roots` (UI credential only, WP-1J.05) replaces them.
     pub allowed_roots: Vec<PathBuf>,
     /// Audio output (WP-1I.05).
     pub audio: AudioConfig,
