@@ -61,5 +61,5 @@ Cutweave is an open-source desktop video editor and agent-native video environme
 
 ## Where things are
 
-`crates/` engine (arch §3) · `apps/desktop` Electron · `packages/` TS (`protocol` and `schema/` generated) · `wit/` plugin interfaces · `design/` tokens and design system · `spikes/` throwaway Phase 0 prototypes (never depend on them) · `xtask/` automation · `docs/adr/` decisions. The public website is a separate repo, [cutweave/cutweave.github.io](https://github.com/cutweave/cutweave.github.io).
+`crates/` engine (arch §3) · `apps/desktop` Electron · `packages/` TS (`protocol` and `schema/` generated) · `wit/` plugin interfaces · `design/` tokens and design system · `spikes/` throwaway Phase 0 prototypes (never depend on them) · `xtask/` automation · `docs/adr/` decisions. The public website, https://cutweave.app, is built from a separate repo, [cutweave/cutweave.github.io](https://github.com/cutweave/cutweave.github.io).
 - **CI minutes:** never trigger, dispatch or re-run GitHub Actions workflows. Verify locally with `just ci-local` (see docs/06-dev-process.md §8).
