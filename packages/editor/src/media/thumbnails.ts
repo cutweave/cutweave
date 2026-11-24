@@ -1,13 +1,13 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 // Where a media card gets its picture (WP-1M.03). The panel never builds a thumbnail URL itself:
 // it asks the current `ThumbnailSource`, which says either "draw the design-system placeholder
-// tile" or "load this image". Until the media HTTP endpoints exist (WP-1I.03, blocked behind the
-// FFmpeg hold, R27/R28) the source is `placeholderThumbnails`, so every card shows its tile.
+// tile" or "load this image". Without an engine that serves media the source is
+// `placeholderThumbnails`, so every card shows its tile.
 //
-// How WP-1I.03 plugs in: call `setThumbnailSource(source)` once the engine connection is up
-// (the source closes over the engine's HTTP origin and whatever credential that endpoint takes),
-// where `thumbnailFor` returns `{ kind: "image", src }` for `GET /media/{id}/thumb`. `src` must
-// not carry the UI token (api.ts: never in a URL); use the scoped URL the endpoint defines.
+// WP-1I.03 plugs in `HttpThumbnailSource` (httpThumbnails.ts) with `setThumbnailSource(source)`
+// once the engine connection is up and the engine has media (mediaWiring.ts): `thumbnailFor`
+// returns `{ kind: "image", src }` for `GET /media/{id}/thumb` with a signed URL (`POST
+// /media/sign`); `src` never carries the UI token (api.ts: never in a URL).
 // `request.indexed` changes when `media.indexed` arrives, so a source can answer "placeholder"
 // before the frame index exists and the real URL afterwards (the panel re-asks on every change);
 // `request.width` is the card's CSS width, for picking a size. `onError` falls the card back to
