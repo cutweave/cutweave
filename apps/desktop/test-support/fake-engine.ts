@@ -13,10 +13,15 @@
 // FAKE_ENGINE_EXIT=<code> prints the protocol's error line and exits with it after the
 // handshake; FAKE_ENGINE_RECOVERY=1 makes a `--project` start report unsaved work to recover;
 // FAKE_ENGINE_SCHEMA_HASH=<h> reports another schema hash (the editor must refuse to edit).
+// Export (WP-1M.08): `media.capabilities` (FAKE_ENGINE_ENCODERS=h264_nvenc,h264_amf, default one),
+// `export.start` (a path with "fail" fails at 30%, one with "restart" drops to 0 once as a failed
+// hardware encoder restarts in software; an existing file needs `overwrite`), `job.cancel`; the
+// job ramps up over about 2 s with `job.progress` events and writes a small file on success.
 // Preview (WP-1M.04, fake-preview.ts): the `view.*` transport, `playback.state`, a frame ring
 // (FAKE_ENGINE_RING), still frames on `GET /media/frame`, and FAKE_ENGINE_PROJECT=three-clips.
 
 import { createHash } from "node:crypto";
+import { existsSync, mkdirSync, rmSync, writeFileSync } from "node:fs";
 import { createServer, type IncomingMessage } from "node:http";
 import { tmpdir } from "node:os";
 import path from "node:path";
@@ -253,6 +258,88 @@ function broadcast(event: string, params: unknown): void {
   }
 }
 
+// ----- export (WP-1M.08) -----------------------------------------------------------------------
+
+interface FakeJob {
+  id: string;
+  path: string;
+  state: "running" | "succeeded" | "failed" | "cancelled";
+  fraction: number;
+  message: string | null;
+  error: string | null;
+  cancelRequested: boolean;
+  timer: ReturnType<typeof setInterval> | null;
+  restarted: boolean;
+}
+const jobs = new Map<string, FakeJob>();
+let jobCounter = 0;
+
+const jobInfo = (job: FakeJob) => ({
+  id: job.id,
+  kind: "export",
+  label: "export",
+  media_id: null,
+  state: job.state,
+  progress: { fraction: job.fraction, message: job.message },
+  cancel_requested: job.cancelRequested,
+  error: job.error,
+});
+
+function finishJob(job: FakeJob, state: FakeJob["state"], error: string | null = null): void {
+  if (job.timer !== null) clearInterval(job.timer);
+  job.timer = null;
+  job.state = state;
+  job.error = error;
+  if (state === "succeeded") {
+    job.fraction = 1;
+    job.message = "exported 60 frames (2.00 s) with libx264";
+    mkdirSync(path.dirname(job.path), { recursive: true });
+    writeFileSync(job.path, "fake mp4");
+  } else {
+    rmSync(job.path, { force: true });
+  }
+  broadcast("job.progress", jobInfo(job));
+}
+
+function startFakeJob(file: string): FakeJob {
+  jobCounter += 1;
+  const job: FakeJob = {
+    id: `job_fake${jobCounter}`,
+    path: file,
+    state: "running",
+    fraction: 0,
+    message: null,
+    error: null,
+    cancelRequested: false,
+    timer: null,
+    restarted: false,
+  };
+  jobs.set(job.id, job);
+  job.timer = setInterval(() => {
+    if (job.cancelRequested) {
+      finishJob(job, "cancelled", "cancelled");
+      return;
+    }
+    job.fraction = Math.min(1, job.fraction + 0.05);
+    if (file.includes("restart") && !job.restarted && job.fraction >= 0.4) {
+      job.restarted = true;
+      job.fraction = 0;
+    }
+    const frame = Math.round(job.fraction * 60);
+    job.message = `frame ${frame} of 60, 24.5 fps, about 0:01 left${job.restarted ? " (again in software: h264_nvenc failed)" : ""}`;
+    if (file.includes("fail") && job.fraction >= 0.3) {
+      finishJob(job, "failed", "the encoder stopped: the disk is full");
+      return;
+    }
+    if (job.fraction >= 1) {
+      finishJob(job, "succeeded");
+      return;
+    }
+    broadcast("job.progress", jobInfo(job));
+  }, 100);
+  return job;
+}
+
 function handle(client: Client, text: string): void {
   let msg: { id?: unknown; method?: unknown; params?: Record<string, unknown> };
   try {
@@ -319,8 +406,51 @@ function handle(client: Client, text: string): void {
       ok({});
       return;
     case "job.list":
-      ok({ jobs: [], active: 0 });
+      ok({ jobs: [...jobs.values()].map(jobInfo), active: 0 });
       return;
+    case "media.capabilities":
+      ok({
+        hw_decode: [],
+        hw_encode: (process.env.FAKE_ENGINE_ENCODERS ?? "h264_nvenc")
+          .split(",")
+          .filter((n) => n !== "")
+          .map((implementation) => ({ device: "fake", codec: "h264", implementation })),
+        codecs: [],
+      });
+      return;
+    case "export.start": {
+      const file = typeof params?.path === "string" ? params.path : "";
+      const refuse = (code: string, message: string, at?: string) => {
+        if (id === undefined) return;
+        send(client, {
+          jsonrpc: "2.0",
+          id,
+          error: { code: -32000, message, data: { code, message, ...(at ? { path: at } : {}) } },
+        });
+      };
+      if (!file.toLowerCase().endsWith(".mp4")) {
+        refuse("invalid", "the output must be an .mp4 file", "/path");
+        return;
+      }
+      if (existsSync(file) && params?.overwrite !== true) {
+        refuse("invalid", `${file} already exists; pass overwrite to replace it`, "/overwrite");
+        return;
+      }
+      const job = startFakeJob(file);
+      ok({ job_id: job.id, path: file, frames: 60 });
+      broadcast("job.progress", jobInfo(job));
+      return;
+    }
+    case "job.cancel": {
+      const job = jobs.get(String(params?.id));
+      if (job === undefined) {
+        ok({});
+        return;
+      }
+      job.cancelRequested = true;
+      ok(jobInfo(job));
+      return;
+    }
     case "project.recover": {
       const applied = recoveryPending ? 3 : 0;
       recoveryPending = false;

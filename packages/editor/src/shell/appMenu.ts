@@ -198,7 +198,7 @@ export interface AppMenuState {
   readonly redoLabel: string;
   /** Recent projects, newest first: the label to show and the path to open. */
   readonly recent: readonly { readonly path: string; readonly label: string }[];
-  /** File > Export… opens the export dialog (WP-1M.08); disabled until then. */
+  /** File > Export… opens the export dialog (WP-1M.08); off while the timeline is empty. */
   readonly exportAvailable: boolean;
 }
 

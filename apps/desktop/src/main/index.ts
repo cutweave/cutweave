@@ -226,6 +226,14 @@ if (!app.requestSingleInstanceLock()) {
           });
           return result.canceled ? null : result.filePaths;
         },
+        chooseExportFile: async (defaultPath) => {
+          const result = await dialog.showSaveDialog({
+            defaultPath,
+            filters: [{ name: "MP4 video", extensions: ["mp4"] }],
+            properties: ["createDirectory"],
+          });
+          return result.canceled ? null : (result.filePath ?? null);
+        },
         showItemInFolder: (p) => shell.showItemInFolder(p),
         openExternal: (url) => openExternal(url),
         about: () => ({

@@ -34,6 +34,15 @@ export interface DesktopBridge {
   readonly dialog: {
     /** Native folder picker; `null` when cancelled. */
     openProjectFolder(): Promise<string | null>;
+    /**
+     * Native "save as" picker for the exported video (WP-1M.08): starts at `defaultPath`
+     * (a full path or just a file name); resolves to the chosen `.mp4` path, `null` when cancelled.
+     */
+    chooseExportFile?(defaultPath: string): Promise<string | null>;
+  };
+  /** Reveals a file in the OS file manager (WP-1M.08: "Reveal in folder" after an export). */
+  readonly shell?: {
+    showItemInFolder(path: string): Promise<void>;
   };
   readonly edit?: {
     run(action: EditAction): Promise<void>;

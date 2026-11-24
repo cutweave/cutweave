@@ -12,6 +12,8 @@ import {
 } from "@cutweave/ui";
 import { useTranslation } from "react-i18next";
 import { useEngineReady } from "../engine/engineStore.ts";
+import { ExportStatusChip } from "../export/ExportChip.tsx";
+import { exportController, useTimelineHasItems } from "../export/useExport.ts";
 import { hasNativeMenu } from "../session/desktop.ts";
 import { historyLabel } from "../session/historyLabels.ts";
 import { projectFileName, useSessionStore } from "../session/sessionStore.ts";
@@ -68,7 +70,7 @@ function RecentMenu({ disabled }: { disabled: boolean }) {
  * Top bar, which is also the window's title bar (WP-1M.09): the brand and the application menu
  * bar (File, Edit, View, Help; macOS keeps its native menu instead), project actions and
  * undo/redo (WP-1M.07; disabled until the engine connects), the workspace switcher and the theme
- * switch, export right. Its empty areas drag the window and a double-click maximizes it; the
+ * switch, export right (WP-1M.08: opens the export dialog once the timeline has clips). Its empty areas drag the window and a double-click maximizes it; the
  * OS draws the window controls over its right end (left on macOS), which the layout leaves free.
  */
 export function TopBar() {
@@ -82,6 +84,7 @@ export function TopBar() {
   const recovering = useSessionStore((s) => s.recovery !== null);
   const stacks = useSessionStore((s) => s.stacks);
   const busy = useSessionUiStore((s) => s.busy);
+  const hasItems = useTimelineHasItems();
   const controller = projectController();
   const live = ready && known && !busy;
   const mod = modifierKey();
@@ -188,6 +191,7 @@ export function TopBar() {
         </Tooltip>
       </div>
       <div className="cw-topbar__group cw-topbar__group--end">
+        <ExportStatusChip />
         <EngineStatusChip />
         <SegmentedControl<ThemeId>
           aria-label={t("topbar.themeLabel")}
@@ -195,9 +199,16 @@ export function TopBar() {
           onChange={(id) => viewStore.getState().setTheme(id)}
           options={THEMES.map((id) => ({ value: id, label: t(THEME_LABEL_KEYS[id]) }))}
         />
-        <Button variant="primary" icon="upload" disabled>
-          {t("topbar.export")}
-        </Button>
+        <Tooltip label={t("topbar.export")} keys={[mod, "M"]}>
+          <Button
+            variant="primary"
+            icon="upload"
+            disabled={!live || recovering || !hasItems}
+            onClick={() => exportController().open()}
+          >
+            {t("topbar.export")}
+          </Button>
+        </Tooltip>
       </div>
     </header>
   );

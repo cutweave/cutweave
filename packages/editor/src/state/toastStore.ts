@@ -12,6 +12,10 @@ export interface Notice {
   readonly title: string;
   /** Why, and the next step. */
   readonly message?: string;
+  /** Buttons on the toast ("Reveal in folder"); the toast closes after one is pressed. */
+  readonly actions?: readonly { readonly label: string; readonly onClick: () => void }[];
+  /** Milliseconds before it goes away, instead of the tone's default. */
+  readonly duration?: number;
 }
 
 /** Older notices are dropped beyond this many, so repeated refusals cannot pile up. */

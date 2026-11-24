@@ -327,6 +327,11 @@ export interface CutweaveApi {
      * user chose (at most 256) or null when cancelled; the paths are then sent to `media.import`.
      */
     pickMediaFiles(): Promise<string[] | null>;
+    /**
+     * Native "save as" for the exported video (WP-1M.08), starting at `defaultPath` (a full path
+     * or a file name). Resolves to the chosen absolute `.mp4` path, or null when cancelled.
+     */
+    chooseExportFile(defaultPath: string): Promise<string | null>;
   };
   readonly files: {
     /**

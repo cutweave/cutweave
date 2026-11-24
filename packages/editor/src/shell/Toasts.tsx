@@ -15,6 +15,8 @@ export function Toasts() {
           tone={n.tone}
           title={n.title}
           message={n.message}
+          actions={n.actions}
+          duration={n.duration}
           onOpenChange={(open) => {
             if (!open) dismiss(n.id);
           }}

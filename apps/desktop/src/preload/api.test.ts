@@ -46,6 +46,12 @@ describe("createCutweaveApi", () => {
     expect(ipc.invoke).toHaveBeenCalledWith("dialog:pickMediaFiles");
   });
 
+  it("asks main for the export file picker with the default path", async () => {
+    const { ipc } = fakeIpc();
+    await createCutweaveApi(ipc, null).dialog.chooseExportFile("C:/p/film.mp4");
+    expect(ipc.invoke).toHaveBeenCalledWith("dialog:chooseExportFile", "C:/p/film.mp4");
+  });
+
   it("resolves a dropped File to its path through Electron, and to nothing otherwise", () => {
     const { ipc } = fakeIpc();
     const getPath = vi.fn((f: File) => `/drop/${f.name}`);
