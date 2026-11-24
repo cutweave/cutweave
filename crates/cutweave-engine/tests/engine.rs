@@ -812,3 +812,86 @@ fn without_the_dev_stub_an_existing_mp4_still_fails_to_import() {
     assert_eq!(out["media_ids"], json!([]));
     engine.shutdown();
 }
+
+// ----- project.set_autosave (WP-1M.10) --------------------------------------------------------
+
+fn fast_autosave(t: &TempDir) -> EngineConfig {
+    let mut config = oneshot(t.path());
+    config.autosave = Some(AutosaveConfig {
+        idle: Duration::from_millis(100),
+        poll: Duration::from_millis(20),
+        ..AutosaveConfig::default()
+    });
+    config
+}
+
+#[test]
+fn set_autosave_never_dirties_and_off_stops_autosaves_across_projects() {
+    let t = TempDir::new("set-autosave");
+    let a = empty_project(t.path(), "A");
+    let b = empty_project(t.path(), "B");
+    let engine = Engine::start(fast_autosave(&t)).unwrap();
+    let h = engine.handle();
+    let conn = h.connect(&agent("cli")).unwrap();
+    let mut events = h.subscribe();
+    must(&conn, "project.open", json!({ "path": path_str(&a) }));
+    assert!(!h.status().unwrap().dirty);
+
+    let out = must(
+        &conn,
+        "project.set_autosave",
+        json!({ "enabled": false, "interval_s": 60, "keep_backups": 5 }),
+    );
+    assert_eq!(out["interval_s"], 60);
+    // Not an edit: the project stays clean, nothing is journaled, the document revision holds.
+    let status = h.status().unwrap();
+    assert!(!status.dirty);
+    let rev = status.rev;
+    must(
+        &conn,
+        "project.set_autosave",
+        json!({ "enabled": false, "interval_s": 60, "keep_backups": 5 }),
+    );
+    assert_eq!(h.status().unwrap().rev, rev);
+    assert!(!h.status().unwrap().dirty);
+    for bad in [
+        json!({ "enabled": true, "interval_s": 0, "keep_backups": 5 }),
+        json!({ "enabled": true, "interval_s": 30, "keep_backups": 0 }),
+    ] {
+        let err = conn
+            .call(Call::new("project.set_autosave", bad))
+            .unwrap_err();
+        assert_eq!(err.code(), "invalid");
+    }
+
+    must(&conn, "project.rename", json!({ "name": "Edited" }));
+    std::thread::sleep(Duration::from_millis(600));
+    assert!(h.status().unwrap().dirty, "autosave is off");
+    assert!(
+        !std::fs::read_to_string(a.join("A.cutweave"))
+            .unwrap()
+            .contains("Edited")
+    );
+
+    // The preference also holds for the next project the engine opens (a session swap).
+    must(&conn, "project.close", json!({ "save": false }));
+    must(&conn, "project.open", json!({ "path": path_str(&b) }));
+    must(&conn, "project.rename", json!({ "name": "Edited B" }));
+    std::thread::sleep(Duration::from_millis(600));
+    assert!(h.status().unwrap().dirty);
+
+    // Turning it on saves the pending edit.
+    must(
+        &conn,
+        "project.set_autosave",
+        json!({ "enabled": true, "interval_s": 30, "keep_backups": 10 }),
+    );
+    wait_for(&mut events, 10 * SEC, |e| {
+        matches!(e, EngineEvent::Project(ProjectEvent::Saved(_)))
+    });
+    engine.shutdown();
+    assert_eq!(
+        ProjectStore::open(&b).unwrap().project.meta.name,
+        "Edited B"
+    );
+}

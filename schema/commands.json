@@ -4644,6 +4644,83 @@
     {
       "annotations": {
         "destructiveHint": false,
+        "idempotentHint": true,
+        "openWorldHint": false,
+        "readOnlyHint": false
+      },
+      "input_schema": {
+        "additionalProperties": false,
+        "description": "Sets how this engine autosaves, for the open project and every project it opens later: the\neditor's own preference wins over the project's `settings.autosave` (arch §17). It takes\neffect at once, also for a project that is already dirty, and the 2 s idle save stays.\nNot undoable, not journaled and never marks the project dirty; it is not written to the\nproject. An engine nobody sent it to keeps the project's own setting, then the defaults.",
+        "properties": {
+          "enabled": {
+            "description": "Save automatically (the idle save and the interval save), or not at all.",
+            "type": "boolean"
+          },
+          "interval_s": {
+            "description": "Save at least this often, in seconds, while edits continue (1 to 86400).",
+            "format": "uint32",
+            "minimum": 0,
+            "type": "integer"
+          },
+          "keep_backups": {
+            "description": "Backups to keep in `.cutweave/backups/` (1 to 100).",
+            "format": "uint32",
+            "minimum": 0,
+            "type": "integer"
+          }
+        },
+        "required": [
+          "enabled",
+          "interval_s",
+          "keep_backups"
+        ],
+        "title": "ProjectSetAutosave",
+        "type": "object"
+      },
+      "journaled": false,
+      "kind": "engine",
+      "mcp": "catalog",
+      "mcp_tool": "project_set_autosave",
+      "name": "project.set_autosave",
+      "namespace": "project",
+      "output_schema": {
+        "additionalProperties": false,
+        "description": "Result of `project.set_autosave`: the preference now in force.",
+        "properties": {
+          "enabled": {
+            "description": "Whether autosave runs.",
+            "type": "boolean"
+          },
+          "interval_s": {
+            "description": "The longest time, in seconds, a dirty project goes unsaved while edits continue.",
+            "format": "uint32",
+            "minimum": 0,
+            "type": "integer"
+          },
+          "keep_backups": {
+            "description": "Backups kept in the project's `.cutweave/backups/` folder.",
+            "format": "uint32",
+            "minimum": 0,
+            "type": "integer"
+          }
+        },
+        "required": [
+          "enabled",
+          "interval_s",
+          "keep_backups"
+        ],
+        "title": "ProjectSetAutosaveOutput",
+        "type": "object"
+      },
+      "scope": "any",
+      "secret_fields": [],
+      "summary": "Set whether, how often and with how many backups the engine autosaves",
+      "undoable": false,
+      "view": false
+    },
+    {
+      "annotations": {
+        "destructiveHint": false,
         "idempotentHint": false,
         "openWorldHint": false,
         "readOnlyHint": false

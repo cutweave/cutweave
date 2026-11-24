@@ -617,13 +617,9 @@ body {
 }
 
 /* ---------- Project: unsaved dot, read-only banner (WP-1M.07) ---------- */
-.cw-topbar__dirty {
-  display: inline-block;
-  width: var(--space-2);
-  height: var(--space-2);
-  margin-inline-start: var(--space-1);
-  border-radius: 50%;
-  background: var(--text-secondary);
+/* The save status (WP-1M.10): wrappers that carry the test ids hold the chip's own box. */
+.cw-save-status__wrap {
+  display: inline-flex;
 }
 
 .cw-banner {
@@ -694,4 +690,11 @@ body {
 .cw-settings__section {
   margin: 0;
   color: var(--text-secondary);
+}
+.cw-settings__section:not(:first-of-type) {
+  margin-block-start: var(--space-4);
+}
+.cw-settings__hint {
+  margin: 0;
+  color: var(--text-muted);
 }

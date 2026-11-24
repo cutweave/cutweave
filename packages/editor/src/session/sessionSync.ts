@@ -46,7 +46,11 @@ export class SessionSync {
       rpc.on("project.closed", () => state().applyClosed()),
       rpc.on("project.dirty", ({ dirty }) => state().setDirty(dirty)),
       rpc.on("project.recovery_available", (payload) => state().setRecovery(payload)),
-      rpc.on("project.autosave_failed", ({ message }) => this.#options.onAutosaveFailed?.(message)),
+      rpc.on("project.autosave_failed", ({ message }) => {
+        state().setAutosaveFailed(true);
+        this.#options.onAutosaveFailed?.(message);
+      }),
+      rpc.on("project.saved", () => state().setAutosaveFailed(false)),
       // Whichever actor's stack moved, the shared view (`latest`) may have changed.
       rpc.on("edit.history_changed", ({ latest }) => state().setStacks(stacksOf(latest))),
       rpc.on("doc.reset", () => void this.refreshStacks()),

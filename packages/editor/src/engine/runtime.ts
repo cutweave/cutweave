@@ -215,6 +215,8 @@ export function startEngineRuntime(
     }
     // The project status first: the events that follow (dirty, saved) are newer than the hello.
     sessionSync?.applyHello(hello);
+    // How this editor wants its engine to save (File > Settings… > Saving), for every project.
+    if (!mismatch) await sendAutosave();
     // The preview frame ring of this engine launch (WP-1M.04); `null` when it publishes none.
     stores.engine.setState({ previewRing: parseRingAnnouncement(hello.shm) });
     try {
@@ -229,6 +231,20 @@ export function startEngineRuntime(
     ]);
     stores.jobs.getState().reset(list);
     if (restarted) await showRestartNotice();
+  }
+
+  /** Tells the engine the app's autosave preference (`project.set_autosave`, arch §17). */
+  async function sendAutosave(): Promise<void> {
+    const { enabled, intervalS, keepBackups } = stores.view.getState().autosave;
+    try {
+      await rpc.call("project.set_autosave", {
+        enabled,
+        interval_s: intervalS,
+        keep_backups: keepBackups,
+      });
+    } catch (error) {
+      onError(error);
+    }
   }
 
   async function syncDocument(): Promise<void> {
@@ -292,6 +308,16 @@ export function startEngineRuntime(
       if (status === null) onStatus(initial);
     })
     .catch(onError);
+
+  // A change in Settings goes to the engine at once; while disconnected, the next handshake
+  // sends it.
+  offs.push(
+    stores.view.subscribe((state, previous) => {
+      if (state.autosave !== previous.autosave && connection.state === "ready") {
+        void sendAutosave();
+      }
+    }),
+  );
 
   stores.engine.setState({ rpc, connection: connection.state });
   connection.connect();

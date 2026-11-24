@@ -169,6 +169,43 @@ describe("startEngineRuntime", () => {
     expect(stores.engine.getState()).toMatchObject({ connection: "none", rpc: null });
   });
 
+  it("tells the engine the autosave preference after every handshake and when it changes (WP-1M.10)", async () => {
+    const { engine, timers, stores, runtime, errors } = setup();
+    stores.view.getState().setAutosave({ enabled: false, intervalS: 120, keepBackups: 20 });
+    await runtime.connection.whenReady();
+    await flushPromises(50);
+    const sent = (index: number) =>
+      (engine.sockets[index]?.sent ?? []).filter((m) => m.method === "project.set_autosave");
+    expect(sent(0).map((m) => m.params)).toMatchObject([
+      { enabled: false, interval_s: 120, keep_backups: 20 },
+    ]);
+    // Before the document is read: an engine that saves must know how before edits arrive.
+    expect(methods(engine).indexOf("project.set_autosave")).toBeLessThan(
+      methods(engine).indexOf("project.snapshot"),
+    );
+    stores.view.getState().setAutosave({ enabled: true });
+    await flushPromises(50);
+    expect(
+      sent(0)
+        .map((m) => m.params)
+        .at(-1),
+    ).toMatchObject({
+      enabled: true,
+      interval_s: 120,
+      keep_backups: 20,
+    });
+    // A new engine launch (reconnect) gets it again.
+    engine.last.serverClose(1006);
+    timers.advance(250);
+    await runtime.connection.whenReady();
+    await flushPromises(50);
+    expect(sent(1).map((m) => m.params)).toMatchObject([
+      { enabled: true, interval_s: 120, keep_backups: 20 },
+    ]);
+    expect(errors).toEqual([]);
+    await runtime.stop();
+  });
+
   it("bridgeFromWindow finds window.cutweave.engine or reports none", () => {
     const engine: EngineBridge = { getConnection: () => Promise.resolve(null) };
     expect(bridgeFromWindow({ cutweave: { engine } })).toBe(engine);

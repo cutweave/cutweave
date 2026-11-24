@@ -46,6 +46,8 @@ export interface SessionState {
   /** Unsaved work from a crashed session, waiting for Restore / Discard. */
   readonly recovery: RecoveryInfo | null;
   readonly stacks: UndoStacks;
+  /** The engine's last autosave failed and nothing was saved since (`project.autosave_failed`). */
+  readonly autosaveFailed: boolean;
 }
 
 export interface SessionStore extends SessionState {
@@ -57,6 +59,7 @@ export interface SessionStore extends SessionState {
   setDirty(dirty: boolean): void;
   setRecovery(recovery: RecoveryInfo | null): void;
   setStacks(stacks: UndoStacks): void;
+  setAutosaveFailed(failed: boolean): void;
 }
 
 export const initialSessionState: SessionState = {
@@ -67,6 +70,7 @@ export const initialSessionState: SessionState = {
   readOnly: null,
   recovery: null,
   stacks: EMPTY_STACKS,
+  autosaveFailed: false,
 };
 
 export function createSessionStore() {
@@ -80,13 +84,22 @@ export function createSessionStore() {
         dirty: s.dirty,
         readOnly: s.read_only,
         recovery: s.recovery,
+        autosaveFailed: false,
       }),
     applyClosed: () =>
-      set({ known: true, path: null, dirty: false, readOnly: null, recovery: null }),
-    applySaved: (path) => set({ known: true, path, dirty: false }),
+      set({
+        known: true,
+        path: null,
+        dirty: false,
+        readOnly: null,
+        recovery: null,
+        autosaveFailed: false,
+      }),
+    applySaved: (path) => set({ known: true, path, dirty: false, autosaveFailed: false }),
     setDirty: (dirty) => set({ dirty }),
     setRecovery: (recovery) => set({ recovery }),
     setStacks: (stacks) => set({ stacks }),
+    setAutosaveFailed: (autosaveFailed) => set({ autosaveFailed }),
   }));
 }
 

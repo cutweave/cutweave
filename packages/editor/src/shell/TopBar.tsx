@@ -18,7 +18,7 @@ import { hasNativeMenu } from "../session/desktop.ts";
 import { redoText, undoText } from "../session/historyLabels.ts";
 import { projectFileName, useSessionStore } from "../session/sessionStore.ts";
 import { useSessionUiStore } from "../session/sessionUiStore.ts";
-import { projectController, useUnsavedWork } from "../session/useProject.ts";
+import { projectController } from "../session/useProject.ts";
 import {
   useViewStore,
   viewStore,
@@ -29,6 +29,7 @@ import {
 import { translator } from "../timeline/errors.ts";
 import { AppMenuBar } from "./AppMenuBar.tsx";
 import { EngineStatusChip } from "./EngineNotices.tsx";
+import { SaveStatusChip } from "./SaveStatus.tsx";
 
 /** The workspace switcher shows icons (every pixel of the title bar counts); names are tooltips. */
 const WORKSPACE_ICONS: Record<WorkspaceId, IconName> = {
@@ -65,19 +66,19 @@ function RecentMenu({ disabled }: { disabled: boolean }) {
 
 /**
  * Top bar, which is also the window's title bar (WP-1M.09): the brand and the application menu
- * bar (File, Edit, View, Help; macOS keeps its native menu instead), Save with the unsaved dot
- * and undo/redo (WP-1M.07; disabled until the engine connects), the workspace switcher, and the
- * export and engine status with Export at the right (WP-1M.08). Every pixel here counts: New,
- * Open, Save as and the theme are in the menus and Settings. Its empty areas drag the window and
- * a double-click maximizes it; the OS draws the window controls over its right end (left on
- * macOS), which the layout leaves free.
+ * bar (File, Edit, View, Help; macOS keeps its native menu instead), undo/redo (WP-1M.07;
+ * disabled until the engine connects), the workspace switcher, and the export, save and engine
+ * status with Export at the right (WP-1M.08, WP-1M.10). Saving is automatic and has no button
+ * here: File > Save and Ctrl+S remain, and the save status says whether everything is saved.
+ * Every pixel here counts: New, Open, Save as and the theme are in the menus and Settings. Its
+ * empty areas drag the window and a double-click maximizes it; the OS draws the window controls
+ * over its right end (left on macOS), which the layout leaves free.
  */
 export function TopBar() {
   const { t } = useTranslation();
   const workspaceId = useViewStore((s) => s.workspaceId);
   const ready = useEngineReady();
   const known = useSessionStore((s) => s.known);
-  const dirty = useUnsavedWork();
   const readOnly = useSessionStore((s) => s.readOnly !== null);
   const recovering = useSessionStore((s) => s.recovery !== null);
   const stacks = useSessionStore((s) => s.stacks);
@@ -97,25 +98,12 @@ export function TopBar() {
         <Toolbar aria-label={t("topbar.toolbarLabel")} className="cw-topbar__actions">
           {/* New, Open, Open recent and Save as live in the File menu with their shortcuts. macOS
               keeps the native menu, which has no Open recent, so its list stays here. */}
-          {hasNativeMenu() ? <RecentMenu disabled={!live} /> : null}
-          <Tooltip label={t("topbar.save")} keys={[mod, "S"]}>
-            <Button
-              variant="ghost"
-              disabled={!live || readOnly || recovering}
-              onClick={() => void controller.save()}
-            >
-              {t("topbar.save")}
-              {dirty ? (
-                <span
-                  className="cw-topbar__dirty"
-                  role="img"
-                  aria-label={t("topbar.unsaved")}
-                  data-testid="dirty-dot"
-                />
-              ) : null}
-            </Button>
-          </Tooltip>
-          <ToolbarSeparator />
+          {hasNativeMenu() ? (
+            <>
+              <RecentMenu disabled={!live} />
+              <ToolbarSeparator />
+            </>
+          ) : null}
           <Tooltip label={undoName} keys={[mod, "Z"]}>
             <IconButton
               icon="undo-2"
@@ -157,6 +145,7 @@ export function TopBar() {
       </div>
       <div className="cw-topbar__group cw-topbar__group--end">
         <ExportStatusChip />
+        <SaveStatusChip />
         <EngineStatusChip />
         <Tooltip label={t("topbar.export")} keys={[mod, "M"]}>
           <Button

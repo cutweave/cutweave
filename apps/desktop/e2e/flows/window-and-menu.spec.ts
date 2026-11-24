@@ -147,13 +147,17 @@ async function nameProject(
 }
 
 /**
- * Waits until no project action is running: the toolbar's Save is enabled again (the menu's
- * project commands, and their shortcuts, are disabled while one runs).
+ * Waits until no project action is running, as a person sees it: File > New project… is enabled
+ * again (the menu's project commands, and their shortcuts, are disabled while one runs). Opens
+ * the File menu and closes it with Escape.
  */
 async function projectActionsReady(page: Page): Promise<void> {
-  await expect(
-    page.getByRole("toolbar", { name: "Project actions" }).getByRole("button", { name: /^Save/ }),
-  ).toBeEnabled();
+  const bar = page.getByRole("menubar", { name: "Application menu" });
+  await bar.getByRole("menuitem", { name: "File", exact: true }).click();
+  const menu = page.getByRole("menu", { name: "File" });
+  await expect(menu.getByRole("menuitem", { name: /^New project/ })).toBeEnabled();
+  await page.keyboard.press("Escape");
+  await expect(menu).toBeHidden();
 }
 
 /** Items and media in a saved project document. */

@@ -1660,6 +1660,32 @@ export type ProjectSaved = {
 	path: string,
 };
 
+/**
+ *  Sets how this engine autosaves, for the open project and every project it opens later: the
+ *  editor's own preference wins over the project's `settings.autosave` (arch §17). It takes
+ *  effect at once, also for a project that is already dirty, and the 2 s idle save stays.
+ *  Not undoable, not journaled and never marks the project dirty; it is not written to the
+ *  project. An engine nobody sent it to keeps the project's own setting, then the defaults.
+ */
+export type ProjectSetAutosave = {
+	/**  Save automatically (the idle save and the interval save), or not at all. */
+	enabled: boolean,
+	/**  Save at least this often, in seconds, while edits continue (1 to 86400). */
+	interval_s: number,
+	/**  Backups to keep in `.cutweave/backups/` (1 to 100). */
+	keep_backups: number,
+};
+
+/**  Result of `project.set_autosave`: the preference now in force. */
+export type ProjectSetAutosaveOutput = {
+	/**  Whether autosave runs. */
+	enabled: boolean,
+	/**  The longest time, in seconds, a dirty project goes unsaved while edits continue. */
+	interval_s: number,
+	/**  Backups kept in the project's `.cutweave/backups/` folder. */
+	keep_backups: number,
+};
+
 /**  Project-wide settings (arch §4.2 `settings`, v1 subset). */
 export type ProjectSettings = {
 	/**  Format of new sequences. */
