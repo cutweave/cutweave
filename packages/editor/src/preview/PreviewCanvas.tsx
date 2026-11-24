@@ -363,6 +363,9 @@ export function PreviewCanvas({ onPath, jpegFetcher }: PreviewCanvasProps) {
     if (forced) setPath({ kind: "jpeg", reason: "forced" });
     else if (desktop()?.preview?.isAvailable() !== true)
       setPath({ kind: "jpeg", reason: "no-addon" });
+    // No ring to present: do not even create a GPU device.
+    else if (engineStore.getState().previewRing === null)
+      setPath({ kind: "jpeg", reason: "no-ring" });
     else setPath({ kind: "gpu" });
   }, [path.kind, forced, ready, ringKnown]);
 
