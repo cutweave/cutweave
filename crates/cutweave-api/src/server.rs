@@ -2,10 +2,10 @@
 //! The axum server: loopback listener, middleware stack, run-file lifecycle, shutdown.
 //!
 //! Request flow (outermost first): request id + tracing, Host/Origin validation (DNS-rebinding
-//! defense, answers CORS preflights), bearer authentication (for `/rpc`, `/mcp`), routes.
-//! `/health` needs no token but still passes the Host/Origin check. `/media` sits behind
-//! Host/Origin only: `<img>`/`<video>` cannot send headers, so WP-1I.03 authenticates it with
-//! signed URLs.
+//! defense, answers CORS preflights), authentication, routes. `/rpc` and `/mcp` take a bearer
+//! token. `/media` (WP-1I.03) takes a bearer token too, or, for `GET` and `HEAD`, a URL signed by
+//! `POST /media/sign` (an `<img>` cannot send headers, and tokens never go in URLs; see
+//! [`crate::media::sign`]). `/health` needs no token but still passes the Host/Origin check.
 
 use std::{
     net::{Ipv4Addr, SocketAddr},
@@ -33,6 +33,7 @@ use tracing::Instrument;
 
 use crate::{
     creds::{Credential, Credentials, CredentialsError, Token, hex},
+    media::sign::{SIGNATURE_PARAM, SignError, UrlSigner},
     runfile::{RunFile, RunFileContents, RunFileToken},
 };
 
@@ -48,15 +49,17 @@ const SHUTDOWN_GRACE: Duration = Duration::from_secs(5);
 
 /// Handlers mounted under `/rpc`, `/mcp` and `/media` by later work packages.
 ///
-/// `/rpc` and `/mcp` sit behind authentication and receive an [`Authenticated`] request
-/// extension. Unset mounts answer `501`.
+/// Every mount sits behind authentication. `/rpc` and `/mcp` receive an [`Authenticated`]
+/// request extension; `/media` receives it for bearer requests (with the server's
+/// `Arc<UrlSigner>` for `POST /media/sign`), and nothing for a signed URL. Unset mounts
+/// answer `501`.
 #[derive(Default)]
 pub struct Mounts {
     /// JSON-RPC over WebSocket (WP-1I.02).
     pub rpc: Option<Router>,
     /// MCP streamable HTTP (WP-1J.01).
     pub mcp: Option<Router>,
-    /// Media endpoints (WP-1I.03); authenticate with signed URLs, not bearer tokens.
+    /// Media endpoints (WP-1I.03, [`crate::media::router`]): a bearer token, or a signed URL.
     pub media: Option<Router>,
 }
 
@@ -165,6 +168,8 @@ pub fn require_scope(ctx: &ActorCtx, scope: Scope) -> Result<(), Box<Response>> 
 
 struct Shared {
     creds: Credentials,
+    /// Signs and checks `/media` URLs with a per-launch key (WP-1I.03).
+    signer: Arc<UrlSigner>,
     port: u16,
     allowed_origins: Vec<String>,
     next_conn: AtomicU64,
@@ -234,8 +239,10 @@ impl ApiServer {
         };
         let run_file = RunFile::write(&run_dir, &contents).map_err(ApiError::RunFile)?;
 
+        let signer = UrlSigner::generate().map_err(CredentialsError::from)?;
         let shared = Arc::new(Shared {
             creds,
+            signer: Arc::new(signer),
             port,
             allowed_origins: config.allowed_origins,
             next_conn: AtomicU64::new(1),
@@ -368,11 +375,18 @@ fn build_router(shared: &Arc<Shared>, mounts: Mounts, test_routes: bool) -> Rout
         Arc::clone(shared),
         authenticate,
     ));
+    // Layered outside the nest, so the middleware sees the full path the URL was signed for.
+    let media = Router::new()
+        .nest("/media", mounts.media.unwrap_or_else(placeholder))
+        .layer(middleware::from_fn_with_state(
+            Arc::clone(shared),
+            authenticate_media,
+        ));
 
     Router::new()
         .route("/health", get(health))
         .merge(authed)
-        .nest("/media", mounts.media.unwrap_or_else(placeholder))
+        .merge(media)
         .fallback(not_found)
         .layer(middleware::from_fn_with_state(
             Arc::clone(shared),
@@ -460,9 +474,10 @@ async fn request_context(mut req: Request, next: Next) -> Response {
     response
 }
 
-const CORS_ALLOW_HEADERS: &str =
-    "authorization, content-type, mcp-protocol-version, mcp-session-id, last-event-id";
-const CORS_EXPOSE_HEADERS: &str = "x-request-id, mcp-session-id";
+const CORS_ALLOW_HEADERS: &str = "authorization, content-type, if-none-match, \
+                                  mcp-protocol-version, mcp-session-id, last-event-id";
+const CORS_EXPOSE_HEADERS: &str =
+    "x-request-id, mcp-session-id, etag, x-cutweave-filmstrip, x-cutweave-rev";
 
 /// Rejects requests whose `Host` is not this loopback listener or whose `Origin` is not
 /// absent / configured / the engine's own origin (DNS-rebinding defense, arch §6/§14).
@@ -595,4 +610,78 @@ async fn authenticate(State(shared): State<Arc<Shared>>, mut req: Request, next:
     req.extensions_mut()
         .insert(Authenticated { ctx, credential });
     next.run(req).await
+}
+
+fn unauthorized(code: &str, message: &str, rid: Option<&str>) -> Response {
+    let mut response = error_response(StatusCode::UNAUTHORIZED, code, message, rid);
+    response
+        .headers_mut()
+        .insert(header::WWW_AUTHENTICATE, HeaderValue::from_static("Bearer"));
+    response
+}
+
+/// `/media` (WP-1I.03): a bearer token as for `/rpc` (the request also gets the URL signer, for
+/// `POST /media/sign`), or, for `GET` and `HEAD`, a valid unexpired signature over the path and
+/// query. A presented but unknown token is refused even when the URL is signed.
+async fn authenticate_media(
+    State(shared): State<Arc<Shared>>,
+    mut req: Request,
+    next: Next,
+) -> Response {
+    let rid = request_id_of(&req);
+    if let Some(token) = presented_token(req.headers()) {
+        let Some(credential) = shared.creds.authenticate(token) else {
+            return unauthorized(
+                "unauthorized",
+                "missing or invalid bearer token",
+                rid.as_deref(),
+            );
+        };
+        let conn = ConnId::new(shared.next_conn.fetch_add(1, Ordering::Relaxed));
+        let Ok(ctx) = credential.actor_ctx(conn) else {
+            return error_response(
+                StatusCode::INTERNAL_SERVER_ERROR,
+                "internal",
+                "credential has no valid actor",
+                rid.as_deref(),
+            );
+        };
+        req.extensions_mut()
+            .insert(Authenticated { ctx, credential });
+        req.extensions_mut().insert(Arc::clone(&shared.signer));
+        return next.run(req).await;
+    }
+    let signed = req
+        .uri()
+        .query()
+        .is_some_and(|q| q.contains(&format!("{SIGNATURE_PARAM}=")));
+    if !signed {
+        return unauthorized(
+            "unauthorized",
+            "send a bearer token, or use a URL from POST /media/sign",
+            rid.as_deref(),
+        );
+    }
+    if !matches!(*req.method(), Method::GET | Method::HEAD) {
+        return unauthorized(
+            "bad_signature",
+            "signed URLs are for GET and HEAD only",
+            rid.as_deref(),
+        );
+    }
+    let now = SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .map_or(0, |d| d.as_secs());
+    match shared
+        .signer
+        .verify(req.uri().path(), req.uri().query(), now)
+    {
+        Ok(()) => next.run(req).await,
+        Err(SignError::Expired) => unauthorized(
+            "expired_signature",
+            &SignError::Expired.to_string(),
+            rid.as_deref(),
+        ),
+        Err(e) => unauthorized("bad_signature", &e.to_string(), rid.as_deref()),
+    }
 }

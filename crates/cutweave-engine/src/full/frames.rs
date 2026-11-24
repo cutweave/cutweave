@@ -17,7 +17,8 @@
 //! - **Preview against agent frames.** Preview renders ([`MediaFrames::scoped`]) decode with
 //!   hardware when the machine has it (`HwMode::Auto`, WP-1D.04) and use the frame cache.
 //!   `render.frame` (no scope) decodes in software and bypasses the cache, exactly as exports
-//!   do, so an agent frame is bit-identical to the exported one (arch §8).
+//!   do, so an agent frame is bit-identical to the exported one (arch §8). `/media/frame`
+//!   ([`MediaFrames::agent_scoped`], WP-1I.03) decodes the same way, with a cancel token.
 //! - **Layouts.** A frame in a layout the compositor does not read (10-bit planar, 4:2:2: a
 //!   software decoder, or a hardware decoder that fell back) makes the media decode into
 //!   `P010` / `Yuv420p` from then on (swscale in the decoder).
@@ -40,9 +41,19 @@ use cutweave_render::{FrameError, FrameRequest, FrameSource, VideoFrame};
 use super::media::{CurrentDoc, MediaFile};
 use crate::export::sources::{compositor_frame, compositor_target, media_identity};
 
+/// How the render running on this thread decodes.
+#[derive(Clone)]
+struct Scope {
+    /// Stops its decodes.
+    cancel: CancelToken,
+    /// `Some(mode)`: a preview render (hardware decode when the machine has it, the frame
+    /// cache). `None`: an agent frame (software decode, no cache), as without a scope.
+    preview: Option<DecodeMode>,
+}
+
 thread_local! {
-    /// The cancel token and decode mode of the render running on this thread.
-    static SCOPE: RefCell<Option<(CancelToken, DecodeMode)>> = const { RefCell::new(None) };
+    /// The scope of the render running on this thread.
+    static SCOPE: RefCell<Option<Scope>> = const { RefCell::new(None) };
 }
 
 /// One media item's decoders.
@@ -100,7 +111,30 @@ impl MediaFrames {
     /// Runs `f` (a render graph build on this thread) with `cancel` stopping its decodes, which
     /// use `mode` (`Sequential` for playback, `Seek` for scrubbing and stills).
     pub(crate) fn scoped<R>(cancel: CancelToken, mode: DecodeMode, f: impl FnOnce() -> R) -> R {
-        let previous = SCOPE.with(|s| s.borrow_mut().replace((cancel, mode)));
+        Self::with_scope(
+            Scope {
+                cancel,
+                preview: Some(mode),
+            },
+            f,
+        )
+    }
+
+    /// Runs `f` (a `render.frame` render on this thread) with `cancel` stopping its decodes,
+    /// which decode in software and skip the frame cache exactly as without a scope, so the
+    /// pixels are `render.frame`'s (`/media/frame`, WP-1I.03).
+    pub(crate) fn agent_scoped<R>(cancel: CancelToken, f: impl FnOnce() -> R) -> R {
+        Self::with_scope(
+            Scope {
+                cancel,
+                preview: None,
+            },
+            f,
+        )
+    }
+
+    fn with_scope<R>(scope: Scope, f: impl FnOnce() -> R) -> R {
+        let previous = SCOPE.with(|s| s.borrow_mut().replace(scope));
         let out = f();
         SCOPE.with(|s| *s.borrow_mut() = previous);
         out
@@ -199,8 +233,9 @@ impl MediaFrames {
     ) -> Result<Arc<cutweave_media::VideoFrame>, FrameError> {
         let pool = self.pool(backend, file);
         let scope = SCOPE.with(|s| s.borrow().clone());
+        let preview = scope.as_ref().and_then(|s| s.preview);
         // Preview uses the frame cache; agent frames decode exactly like exports.
-        let cached = scope.is_some() && file.hash.is_some();
+        let cached = preview.is_some() && file.hash.is_some();
         if cached
             && let Some(hash) = file.hash
             // The frame shown at `t` is known from the index: look it up first.
@@ -212,15 +247,13 @@ impl MediaFrames {
         {
             return Ok(frame);
         }
-        let (cancel, opts) = match scope {
-            Some((cancel, mode)) => (cancel, DecodeOpts::default().with_mode(mode)),
-            None => (
-                CancelToken::new(),
-                DecodeOpts {
-                    hw: HwMode::Off,
-                    ..DecodeOpts::default()
-                },
-            ),
+        let cancel = scope.map_or_else(CancelToken::new, |s| s.cancel);
+        let opts = match preview {
+            Some(mode) => DecodeOpts::default().with_mode(mode),
+            None => DecodeOpts {
+                hw: HwMode::Off,
+                ..DecodeOpts::default()
+            },
         };
         let target = self
             .targets

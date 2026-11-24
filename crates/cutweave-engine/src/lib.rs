@@ -9,7 +9,8 @@
 //!   `project.*` session commands. [`launch`] is the process launch protocol (readiness line,
 //!   handshake, exit codes) and [`logging`] the JSON log file and crash marker.
 //!   [`rpc_backend`] puts the engine behind `cutweave-api`'s JSON-RPC endpoint (WP-1I.02),
-//!   [`mcp_backend`] behind its MCP endpoints (WP-1J.01).
+//!   [`mcp_backend`] behind its MCP endpoints (WP-1J.01) and [`media_http`] behind its `/media`
+//!   HTTP endpoints (WP-1I.03).
 //! - [`export`] (WP-1E.03): `export.start` as a job: render every frame like `render.frame`,
 //!   mix the range down and encode H.264 + AAC into an MP4, with what the subsystems provide
 //!   ([`ExportServices`]).
@@ -40,6 +41,7 @@ pub mod launch;
 pub mod logging;
 pub mod mcp_backend;
 pub mod media_caps;
+pub mod media_http;
 pub mod project_io;
 pub mod rpc_backend;
 pub mod session;
@@ -56,6 +58,7 @@ pub use full::{AudioMode, FullConfig, FullHandle, FullSubsystems, MediaState};
 pub use import::NoMediaBackend;
 pub use logging::LogConfig;
 pub use mcp_backend::{api_mounts, mcp_mounts};
+pub use media_http::media_mounts;
 pub use rpc_backend::rpc_mounts;
 pub use session::{ProjectStatus, RecoveryInfo, SessionState};
 pub use subsystems::{

@@ -5,12 +5,14 @@
 //! WP-1I.01 ships the skeleton: loopback axum server ([`ApiServer`]), credential classes and
 //! actor derivation ([`creds`]), Host/Origin validation, the run-file ([`runfile`]) and the
 //! spawn handshake ([`launch`]). Handlers for `/rpc`, `/mcp` and `/media` are mounted through
-//! [`Mounts`] by later work packages; [`rpc`] is the JSON-RPC WebSocket (WP-1I.02).
+//! [`Mounts`] by later work packages; [`rpc`] is the JSON-RPC WebSocket (WP-1I.02), [`mcp`] the
+//! MCP server (WP-1J.01) and [`media`] the media HTTP endpoints with signed URLs (WP-1I.03).
 
 pub mod creds;
 pub mod launch;
 /// The MCP server mounted at `/mcp` (WP-1J.01).
 pub mod mcp;
+pub mod media;
 pub mod rpc;
 pub mod runfile;
 mod server;

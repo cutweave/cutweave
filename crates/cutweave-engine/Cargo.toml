@@ -81,6 +81,11 @@ png = "0.18.1"
 rmcp = { version = "=3.11.0", default-features = false, features = ["client", "transport-streamable-http-client-reqwest"] }
 criterion.workspace = true
 proptest.workspace = true
+# WP-1I.03 media HTTP tests: an HTTP client (the version and features cutweave-api's rmcp client
+# already locks; no TLS, loopback only) and a JPEG decoder for the thumbnails (the version
+# cutweave-render's and cutweave-cache's tests pin). No crate outside Cargo.lock.
+reqwest = { version = "=0.13.5", default-features = false, features = ["json"] }
+zune-jpeg = "=0.5.15"
 
 [[bench]]
 name = "journal"
