@@ -29,4 +29,4 @@ ADRs record architectural decisions in [MADR](https://adr.github.io/madr/) style
 | [0019](0019-ui-undo-covers-every-actor.md) | The editor's Undo and Redo cover every actor's changes (`edit.undo{actor:"*"}`) | Accepted | Product owner (2026-11-24) |
 | [0020](0020-media-folders.md) | Media folders: a folder tree in the project document, one folder per asset, `media.*` folder commands, schema v2 | Proposed | Product owner and maintainers, before WP-2F.07 |
 | [0021](0021-agent-engine-targeting.md) | Agents choose among several engines by project; default is the focused window's engine; `engines_list` and `engine_attach` on the attach proxy | Accepted | Product owner (2026-11-24) |
-| [0022](0022-source-preview.md) | The preview plays a media item outside any sequence: one transport per document with a sequence or source target (`view.set_source`, `playback.state.source`) | Proposed | Product owner and maintainers, before WP-1H.04 |
+| [0022](0022-source-preview.md) | The preview plays a media item outside any sequence: one transport per document with a sequence or source target (`view.set_source`, `playback.state.source`) | Accepted | Product owner (2026-11-24) |

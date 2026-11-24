@@ -1,8 +1,8 @@
 # ADR-0022: The preview plays a media item outside any sequence (source preview)
 
-- **Status:** Proposed
+- **Status:** Accepted (product owner, 2026-11-24)
 - **Date:** 2026-11-24
-- **Deciders:** product owner and Cutweave maintainers (drafted by the planner for the integrator)
+- **Deciders:** product owner (acceptance), planner (drafted), integrator (recorded)
 - **Supersedes:** none (extends arch §10 "one transport per document", which today plays only the active sequence)
 - **Architecture refs:** `docs/01-architecture.md` §5.1, §9, §10, §16
 
