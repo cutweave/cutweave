@@ -482,6 +482,15 @@ impl<'s> Harness<'s> {
             .invoke_engine_json("export.start", params.clone(), &mut ctx_any, ctx.access())
     }
 
+    /// Runs an export preset command (WP-2G.01) against the committed document and the
+    /// harness's in-memory preset store.
+    fn preset(&self, ctx: &ActorCtx, name: &str, params: &Value) -> Result<Value, CmdError> {
+        let snapshot = Arc::new(self.lock().committed_snapshot());
+        let mut call = testing::preset_ctx(Arc::clone(&self.presets), snapshot);
+        self.registry
+            .invoke_engine_json(name, params.clone(), &mut call, ctx.access())
+    }
+
     /// Runs a proxy command (WP-2F.01) against a service that makes none: proxies are cache
     /// state, so the document never changes.
     fn proxy(&self, ctx: &ActorCtx, name: &str, params: &Value) -> Result<Value, CmdError> {
@@ -555,6 +564,7 @@ impl<'s> Harness<'s> {
     }
 
     /// Runs one request and checks properties 3–6 (and 1–2 at the patch level).
+    #[allow(clippy::too_many_lines)]
     fn exec(
         &mut self,
         ctx: &ActorCtx,
@@ -597,14 +607,10 @@ impl<'s> Harness<'s> {
                 })
             }
             Some(c) if c == TypeId::of::<PresetCtx>() => {
-                let snapshot = Arc::new(self.lock().committed_snapshot());
-                let mut call = testing::preset_ctx(Arc::clone(&self.presets), snapshot);
-                self.registry
-                    .invoke_engine_json(name, params.clone(), &mut call, ctx.access())
-                    .map(|output| Done {
-                        output,
-                        applied: None,
-                    })
+                self.preset(ctx, name, params).map(|output| Done {
+                    output,
+                    applied: None,
+                })
             }
             Some(c) if c == TypeId::of::<ProxyCall>() => {
                 self.proxy(ctx, name, params).map(|output| Done {

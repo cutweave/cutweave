@@ -3,6 +3,8 @@
 //! preset names its source and date, safe areas exist, a mismatching aspect is a warning that
 //! changes nothing, hardware falls back by `hw_preferred`, and the four commands work.
 
+#![allow(clippy::unwrap_used, clippy::expect_used)]
+
 mod common;
 
 use std::sync::{Arc, Mutex};
@@ -510,10 +512,10 @@ fn user_presets_save_list_replace_delete_and_persist() {
     assert_eq!(e.code(), "invalid");
     // A second store on the same folder reads the saved preset back.
     let reopened = PresetStore::open(Some(dir.clone()));
-    assert!(reopened.problems().is_empty());
+    assert_eq!(reopened.problems(), &[] as &[String]);
     assert!(reopened.get("mine-a").is_some());
-    let list = run(&h, &store, "export.list_presets", json!({})).unwrap();
-    let last = list["presets"].as_array().unwrap().last().unwrap();
+    let entries = run(&h, &store, "export.list_presets", json!({})).unwrap();
+    let last = entries["presets"].as_array().unwrap().last().unwrap();
     assert_eq!(
         (last["source"].clone(), last["preset"]["id"].clone()),
         (json!("user"), json!("mine-a"))

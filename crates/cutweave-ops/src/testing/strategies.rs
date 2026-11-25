@@ -287,7 +287,9 @@ pub(super) fn args_for(name: &str, p: &Pools) -> Option<(u32, BoxedStrategy<Valu
     Some(match name {
         "project.new" => (if empty { 12 } else { 1 }, project_new()),
         "project.rename" => (1, project_rename()),
-        "project.info" | "edit.locks" | "edit.list_checkpoints" => (1, no_params()),
+        "project.info" | "edit.locks" | "edit.list_checkpoints" | "export.list_presets" => {
+            (1, no_params())
+        }
         "media.register" => (if no_media { 4 } else { 2 }, media_register(p)),
         "media.import" => (if no_media { 4 } else { 2 }, media_import()),
         "media.list" => (1, media_list(p)),
@@ -328,7 +330,6 @@ pub(super) fn args_for(name: &str, p: &Pools) -> Option<(u32, BoxedStrategy<Valu
         "job.list" => (1, job_list(p)),
         "job.wait" => (1, job_wait()),
         "export.start" => (1, export_start(p)),
-        "export.list_presets" => (1, no_params()),
         "export.resolve_preset" => (1, preset_ref("preset")),
         "export.save_preset" => (1, preset_save()),
         "export.delete_preset" => (1, preset_ref("id")),

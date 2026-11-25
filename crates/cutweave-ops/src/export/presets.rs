@@ -327,18 +327,19 @@ fn is_slug(s: &str) -> bool {
 }
 
 /// `YYYY-MM-DD` with plausible month and day.
-fn is_date(s: &str) -> bool {
-    let b = s.as_bytes();
-    if b.len() != 10 || b[4] != b'-' || b[7] != b'-' {
+fn is_date(text: &str) -> bool {
+    let bytes = text.as_bytes();
+    if bytes.len() != 10 || bytes[4] != b'-' || bytes[7] != b'-' {
         return false;
     }
-    let num = |r: std::ops::Range<usize>| s.get(r).and_then(|p| p.parse::<u32>().ok());
+    let num = |r: std::ops::Range<usize>| text.get(r).and_then(|p| p.parse::<u32>().ok());
     matches!((num(0..4), num(5..7), num(8..10)),
-        (Some(y), Some(m), Some(d)) if y >= 2000 && (1..=12).contains(&m) && (1..=31).contains(&d))
+        (Some(year), Some(month), Some(day))
+            if year >= 2000 && (1..=12).contains(&month) && (1..=31).contains(&day))
 }
 
 fn check_box(pointer: &str, w: u32, h: u32) -> Result<(), CmdError> {
-    let ok = |v: u32| (16..=8192).contains(&v) && v % 2 == 0;
+    let ok = |v: u32| (16..=8192).contains(&v) && v.is_multiple_of(2);
     if !ok(w) || !ok(h) {
         return Err(bad(
             pointer,
@@ -392,7 +393,7 @@ impl ExportPresetSpec {
         }
         self.check_codecs()?;
         if let Some(v) = &self.video {
-            self.check_rate_control(v)?;
+            Self::check_rate_control(v)?;
         }
         if let Some(a) = &self.audio {
             if !(8_000..=192_000).contains(&a.sample_rate) {
@@ -434,7 +435,7 @@ impl ExportPresetSpec {
             return Err(bad("/loudness/target_lufs", "must be -70..=0"));
         }
         if let Some(p) = &self.platform {
-            self.check_platform(p)?;
+            Self::check_platform(p)?;
         } else if self.safe_area.is_some() {
             return Err(bad(
                 "/safe_area",
@@ -509,7 +510,7 @@ impl ExportPresetSpec {
         Ok(())
     }
 
-    fn check_rate_control(&self, v: &VideoSpec) -> Result<(), CmdError> {
+    fn check_rate_control(v: &VideoSpec) -> Result<(), CmdError> {
         let coded = matches!(v.codec, VideoCodec::H264 | VideoCodec::Hevc);
         match v.rate_control {
             RateControlSpec::Crf { crf } if coded && crf <= 51 => Ok(()),
@@ -527,7 +528,7 @@ impl ExportPresetSpec {
         }
     }
 
-    fn check_platform(&self, p: &PlatformInfo) -> Result<(), CmdError> {
+    fn check_platform(p: &PlatformInfo) -> Result<(), CmdError> {
         if !is_slug(&p.id) {
             return Err(bad("/platform/id", "not a platform id"));
         }
@@ -630,6 +631,7 @@ pub const fn manifest_json() -> &'static str {
 }
 
 /// The safe-area ids the pack's platform presets may name.
+#[must_use]
 pub fn known_safe_areas() -> Vec<String> {
     serde_json::from_str::<serde_json::Value>(MANIFEST_JSON)
         .ok()
@@ -907,10 +909,85 @@ fn secs(d: Duration) -> f64 {
 }
 
 fn check_side(pointer: &str, v: u32) -> Result<u32, CmdError> {
-    if !(16..=8192).contains(&v) || v % 2 != 0 {
+    if !(16..=8192).contains(&v) || !v.is_multiple_of(2) {
         return Err(bad(pointer, "must be an even number of pixels, 16..=8192"));
     }
     Ok(v)
+}
+
+/// The output size the preset's size rule gives for a sequence format.
+fn resolve_size(
+    spec: &ExportPresetSpec,
+    fmt: &cutweave_model::SequenceFormat,
+    warnings: &mut Vec<PresetWarning>,
+) -> (u32, u32) {
+    match &spec.size {
+        PresetSize::FollowSequence => (even(u64::from(fmt.width)), even(u64::from(fmt.height))),
+        PresetSize::Fit { width, height } => {
+            let (bw, bh) = if fmt.height > fmt.width && width > height {
+                (*height, *width)
+            } else {
+                (*width, *height)
+            };
+            fit_size(fmt.width, fmt.height, bw, bh, false)
+        }
+        PresetSize::Fixed { width, height } => {
+            if same_aspect(fmt.width, fmt.height, *width, *height) {
+                (*width, *height)
+            } else {
+                let fitted = fit_size(fmt.width, fmt.height, *width, *height, true);
+                warnings.push(PresetWarning {
+                    code: PresetWarningCode::AspectMismatch,
+                    message: format!(
+                        "The sequence is {} ({}x{}) but {} wants {} ({width}x{height}). The file \
+                         keeps the sequence's shape ({}x{}) instead of stretching it.",
+                        ratio(fmt.width, fmt.height),
+                        fmt.width,
+                        fmt.height,
+                        spec.platform
+                            .as_ref()
+                            .map_or(spec.name.as_str(), |p| &p.name),
+                        ratio(*width, *height),
+                        fitted.0,
+                        fitted.1,
+                    ),
+                });
+                fitted
+            }
+        }
+    }
+}
+
+/// The output frame rate the preset's rule gives for a sequence running at `own`.
+fn resolve_fps(
+    spec: &ExportPresetSpec,
+    own: FrameRate,
+    warnings: &mut Vec<PresetWarning>,
+) -> FrameRate {
+    match &spec.fps {
+        PresetFps::Fixed { rate } => *rate,
+        PresetFps::FollowSequence { max } => match max {
+            Some(m) if rate_above(own, *m) => {
+                let half = FrameRate::new(own.num(), own.den().saturating_mul(2))
+                    .ok()
+                    .filter(|h| h.is_exact() && !rate_above(*h, *m));
+                let used = half.unwrap_or(*m);
+                warnings.push(PresetWarning {
+                    code: PresetWarningCode::FrameRateCapped,
+                    message: format!(
+                        "The sequence runs at {:.2} fps; {} takes at most {:.2}, so the file \
+                             uses {:.2} fps.",
+                        own.as_f64(),
+                        spec.name,
+                        m.as_f64(),
+                        used.as_f64()
+                    ),
+                });
+                used
+            }
+            _ => own,
+        },
+    }
 }
 
 /// Resolves `spec` for `seq` and an export of `length`, with the caller's `overrides` (size,
@@ -923,67 +1000,8 @@ pub fn plan_preset(
 ) -> Result<PresetPlan, CmdError> {
     let fmt = &seq.format;
     let mut warnings = Vec::new();
-    let (mut width, mut height) =
-        match &spec.size {
-            PresetSize::FollowSequence => (even(u64::from(fmt.width)), even(u64::from(fmt.height))),
-            PresetSize::Fit { width, height } => {
-                let (bw, bh) = if fmt.height > fmt.width && width > height {
-                    (*height, *width)
-                } else {
-                    (*width, *height)
-                };
-                fit_size(fmt.width, fmt.height, bw, bh, false)
-            }
-            PresetSize::Fixed { width, height } => {
-                if same_aspect(fmt.width, fmt.height, *width, *height) {
-                    (*width, *height)
-                } else {
-                    let fitted = fit_size(fmt.width, fmt.height, *width, *height, true);
-                    warnings.push(PresetWarning {
-                    code: PresetWarningCode::AspectMismatch,
-                    message: format!(
-                        "The sequence is {} ({}x{}) but {} wants {} ({width}x{height}). The file \
-                         keeps the sequence's shape ({}x{}) instead of stretching it.",
-                        ratio(fmt.width, fmt.height),
-                        fmt.width,
-                        fmt.height,
-                        spec.platform.as_ref().map_or(spec.name.as_str(), |p| &p.name),
-                        ratio(*width, *height),
-                        fitted.0,
-                        fitted.1,
-                    ),
-                });
-                    fitted
-                }
-            }
-        };
-    let mut frame_rate = match &spec.fps {
-        PresetFps::Fixed { rate } => *rate,
-        PresetFps::FollowSequence { max } => {
-            let own = fmt.frame_rate;
-            match max {
-                Some(m) if rate_above(own, *m) => {
-                    let half = FrameRate::new(own.num(), own.den().saturating_mul(2))
-                        .ok()
-                        .filter(|h| h.is_exact() && !rate_above(*h, *m));
-                    let used = half.unwrap_or(*m);
-                    warnings.push(PresetWarning {
-                        code: PresetWarningCode::FrameRateCapped,
-                        message: format!(
-                            "The sequence runs at {:.2} fps; {} takes at most {:.2}, so the file \
-                             uses {:.2} fps.",
-                            own.as_f64(),
-                            spec.name,
-                            m.as_f64(),
-                            used.as_f64()
-                        ),
-                    });
-                    used
-                }
-                _ => own,
-            }
-        }
-    };
+    let (mut width, mut height) = resolve_size(spec, fmt, &mut warnings);
+    let mut frame_rate = resolve_fps(spec, fmt.frame_rate, &mut warnings);
     let mut rate = spec.video.as_ref().and_then(|v| match v.rate_control {
         RateControlSpec::Crf { crf } => Some(PlanRate::Crf(crf)),
         RateControlSpec::Cbr { bitrate_kbps } | RateControlSpec::Vbr { bitrate_kbps } => {
