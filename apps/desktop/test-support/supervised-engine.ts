@@ -6,13 +6,13 @@
 
 import { EngineSupervisor } from "../src/main/engine/supervisor.ts";
 
-const [command, port] = process.argv.slice(2);
+const [command, port, ...engineArgs] = process.argv.slice(2);
 if (command === undefined || port === undefined) process.exit(2);
 
 const supervisor = new EngineSupervisor({
   launch: { command, args: ["engine"] },
   port: Number(port),
-  extraArgs: ["--no-log"],
+  extraArgs: ["--no-log", ...engineArgs],
   log: () => {},
 });
 const status = await supervisor.start();

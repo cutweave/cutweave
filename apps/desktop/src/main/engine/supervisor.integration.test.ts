@@ -80,6 +80,16 @@ async function trackCount(rpc: EngineRpc, sequence: string): Promise<number> {
   return Object.keys(snap.project.sequences[sequence]?.tracks ?? {}).length;
 }
 
+/**
+ * These tests are about the supervisor and the process lifecycle (restart, recovery, credentials,
+ * orphans), not about the GPU, audio or FFmpeg. The full engine opens the GPU (up to 4 s) and
+ * probes media capabilities at start, which on a machine starved by parallel builds can take
+ * longer than the supervisor's 10 s ready budget and made these tests fail with "not ready". The
+ * stub-media engine skips all of that and still runs the same launch protocol, journal and
+ * server; the full engine's start is covered by the user flows and the engine's own tests.
+ */
+const CHEAP_ENGINE = ["--dev-stub-media"] as const;
+
 interface Spawned {
   args: readonly string[];
   env: NodeJS.ProcessEnv;
@@ -129,7 +139,7 @@ describe.skipIf(!available)("EngineSupervisor with the real engine", { retry: 1 
       launch: { command: engineBin, args: ["engine"] },
       port: await pickFreePort(),
       env: { HOME: home, USERPROFILE: home },
-      extraArgs: ["--allow-origin", "app://cutweave"],
+      extraArgs: ["--allow-origin", "app://cutweave", ...CHEAP_ENGINE],
       spawn: recordingSpawn,
       log: () => {},
     });
@@ -252,6 +262,7 @@ describe.skipIf(!available)("EngineSupervisor with the real engine", { retry: 1 
       launch: { command: engineBin, args: ["engine"] },
       port: await pickFreePort(),
       env: { HOME: home, USERPROFILE: home, CUTWEAVE_TEST_CRASH_AFTER: "3" },
+      extraArgs: [...CHEAP_ENGINE],
       log: () => {},
     });
     await sup.start();
@@ -289,7 +300,7 @@ describe.skipIf(!available)("EngineSupervisor with the real engine", { retry: 1 
     const harness = path.join(desktopDir, "test-support", "supervised-engine.ts");
     const parent: ChildProcess = spawn(
       process.execPath,
-      [harness, engineBin, String(await pickFreePort())],
+      [harness, engineBin, String(await pickFreePort()), ...CHEAP_ENGINE],
       {
         stdio: ["ignore", "pipe", "inherit"],
         env: { ...process.env, HOME: home, USERPROFILE: home },

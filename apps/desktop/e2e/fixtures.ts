@@ -119,8 +119,22 @@ export interface LaunchedApp {
 /** Apps launched and not yet closed; the auto fixture closes whatever a test leaves open. */
 const openApps = new Set<LaunchedApp>();
 
-/** How long quitting may take, prompt included, before it counts as a hang. */
-const CLOSE_TIMEOUT_MS = 20_000;
+/**
+ * How long quitting may take, prompt included, before it counts as a hang. Quitting is the app's
+ * own engine stop (at most KILL_GRACE_MS, then a kill) followed by Chromium tearing down its
+ * renderer, GPU and utility processes and flushing its stores; on a machine whose CPUs are
+ * taken by other builds that took 25 to 50 s, yet always ended. A process that is still
+ * running after this is stuck, not slow. The time a quit really took is reported on every run
+ * (an annotation of the test, and a console line above SLOW_QUIT_MS) so a creeping exit shows
+ * up before it hits this bound.
+ */
+const CLOSE_TIMEOUT_MS = 90_000;
+
+/** After the bound, how much longer to watch before killing, to tell a slow exit from a stuck one. */
+const LATE_EXIT_MS = 15_000;
+
+/** A quit slower than this is reported as slow, though it is not a failure. */
+const SLOW_QUIT_MS = 15_000;
 
 /** Resolves true once `promise` settles, or false after `ms`. */
 const settleWithin = <T>(promise: Promise<T>, ms: number): Promise<boolean> =>
@@ -193,13 +207,24 @@ export async function quitApp(
   // Quit, as File > Exit / Alt+F4 would; with unsaved changes main holds it and the editor asks.
   const started = Date.now();
   const at = () => `${((Date.now() - started) / 1000).toFixed(1)} s`;
+  // A quit allowed CLOSE_TIMEOUT_MS must not be cut short by the test's own timeout (which would
+  // end it without the hang report and the kill below): extend that by the same amount.
+  try {
+    const info = test.info();
+    info.setTimeout(info.timeout + CLOSE_TIMEOUT_MS);
+  } catch {
+    // not inside a test (a standalone script): no timeout to extend
+  }
   void app.close().catch(() => {});
   const prompt = unsavedPrompt(page);
   const deadline = started + CLOSE_TIMEOUT_MS;
   let answered = 0;
   let windowClosed: string | null = null;
   while (Date.now() < deadline) {
-    if (await settleWithin(exited, 250)) return;
+    if (await settleWithin(exited, 250)) {
+      reportQuit(Date.now() - started, windowClosed, answered);
+      return;
+    }
     if (page.isClosed()) {
       windowClosed ??= at();
       continue;
@@ -219,7 +244,7 @@ export async function quitApp(
         .catch(() => "unknown");
   const running = processTree(child.pid);
   // How late it is: a slow exit and a stuck one need different fixes.
-  const late = (await settleWithin(exited, CLOSE_TIMEOUT_MS))
+  const late = (await settleWithin(exited, LATE_EXIT_MS))
     ? `it exited at ${at()}`
     : `still running at ${at()}`;
   killTree(child.pid);
@@ -229,6 +254,20 @@ export async function quitApp(
       `processes: ${running}; ${late}` +
       (mainLog.length === 0 ? "" : `\nmain log (last lines):\n${mainLog.slice(-20).join("\n")}`),
   );
+}
+
+/** Records how long a quit took: an annotation of the running test, and a line when it is slow. */
+function reportQuit(took: number, windowClosed: string | null, answered: number): void {
+  const text =
+    `quit took ${(took / 1000).toFixed(1)} s` +
+    (windowClosed === null ? "" : ` (window closed at ${windowClosed})`) +
+    (answered === 0 ? "" : `, unsaved-changes prompt answered ${answered} time(s)`);
+  try {
+    test.info().annotations.push({ type: "quit-time", description: text });
+  } catch {
+    // outside a test
+  }
+  if (took >= SLOW_QUIT_MS) console.warn(`[e2e] slow quit: ${text}`);
 }
 
 /** `name(pid)` of a process and its descendants (Windows; elsewhere "n/a"): hang diagnostics. */

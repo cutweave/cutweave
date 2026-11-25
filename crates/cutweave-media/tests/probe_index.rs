@@ -527,7 +527,11 @@ fn long_clip() -> Option<PathBuf> {
         return None;
     };
     eprintln!("generating {} (60 s of 4K30)", path.display());
-    let tmp = path.with_extension("part.mp4");
+    // Generate under a name that no scan of the corpus folder matches (its extension is not a
+    // media one) and that is unique to this process, then publish it with one rename: a test
+    // process listing the folder never sees a half-written clip, and two processes generating at
+    // once (nextest runs every test in its own process) do not write the same file.
+    let tmp = path.with_extension(format!("mp4.{}.part", std::process::id()));
     let status = Command::new(ffmpeg)
         .args(["-y", "-hide_banner", "-loglevel", "error"])
         .args([
@@ -555,16 +559,21 @@ fn long_clip() -> Option<PathBuf> {
             "-shortest",
             "-bitexact",
         ])
-        .args(["-movflags", "+faststart"])
+        .args(["-movflags", "+faststart", "-f", "mp4"])
         .arg(&tmp)
         .status()
         .ok()?;
     if !status.success() {
+        let _ = std::fs::remove_file(&tmp);
         eprintln!("skipping: ffmpeg could not generate the clip");
         return None;
     }
-    std::fs::rename(&tmp, &path).ok()?;
-    Some(path)
+    // Renaming over an existing file fails on Windows: another process won the race, which is
+    // fine, its clip is identical (`-bitexact`).
+    if std::fs::rename(&tmp, &path).is_err() {
+        let _ = std::fs::remove_file(&tmp);
+    }
+    path.is_file().then_some(path)
 }
 
 #[test]

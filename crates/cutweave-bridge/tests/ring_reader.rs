@@ -119,6 +119,7 @@ fn nv12_planes_survive() {
 
 #[test]
 fn no_torn_frames_under_a_fast_writer() {
+    const WANTED: u64 = 200;
     // 4 slots (the minimum) and a writer that never waits: the reader is lapped constantly.
     let mut cfg = config(640, 360, 1);
     cfg.slot_count = 4;
@@ -139,8 +140,10 @@ fn no_torn_frames_under_a_fast_writer() {
         })
     };
     let (mut buf, mut last, mut frames) = (Vec::new(), 0u64, 0u64);
-    let end = Instant::now() + StdDuration::from_millis(1500);
-    while Instant::now() < end {
+    // Correctness does not depend on throughput: read a fixed number of frames, with a generous
+    // deadline that only a stuck reader or writer can reach (a loaded machine just takes longer).
+    let deadline = Instant::now() + StdDuration::from_secs(60);
+    while frames < WANTED && Instant::now() < deadline {
         if let Some(m) = r.read(last, None, &mut buf).unwrap() {
             assert!(m.seq > last, "seq goes forward");
             assert!(
@@ -154,7 +157,10 @@ fn no_torn_frames_under_a_fast_writer() {
     }
     stop.store(true, Ordering::Relaxed);
     let p = writer.join().unwrap();
-    assert!(frames > 50, "only {frames} frames read");
+    assert!(
+        frames >= WANTED,
+        "only {frames} frames read before the deadline"
+    );
     assert!(last <= p.write_index());
     eprintln!(
         "{frames} frames of {} published read, {} slot copies discarded by the seqlock",

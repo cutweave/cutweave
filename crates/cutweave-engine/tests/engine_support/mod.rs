@@ -287,3 +287,23 @@ pub fn sockets_of(pid: u32) -> Option<Vec<Socket>> {
             .collect(),
     )
 }
+
+/// Runs `attempt` (which asserts its own correctness every time and returns how long the timed
+/// thing took) up to `attempts` times, stopping at the first within `budget`, and returns the
+/// best time with the number of attempts made. For budgets that contention only inflates (a
+/// descheduled thread, Defender scanning a fresh binary): a real regression is over the budget
+/// on every attempt, so the best of a few still catches it, and the first attempt (the truly
+/// cold one) is what a quiet machine reports.
+pub fn best_within(
+    budget: Duration,
+    attempts: u32,
+    mut attempt: impl FnMut() -> Duration,
+) -> (Duration, u32) {
+    let mut best = Duration::MAX;
+    let mut made = 0;
+    while made < attempts && best >= budget {
+        best = best.min(attempt());
+        made += 1;
+    }
+    (best, made)
+}
