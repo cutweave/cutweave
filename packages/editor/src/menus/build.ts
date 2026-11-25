@@ -96,7 +96,7 @@ function resolveRow(
         ? { key: labelKey, vars: { count: ctx.ids.length } }
         : spec(row.label, ctx),
     );
-  const shortcut = services.keysFor(command);
+  const shortcut = row.noHint === true ? undefined : services.keysFor(command);
   const entry: MenuItem = {
     id: row.id ?? command,
     label,
@@ -105,7 +105,10 @@ function resolveRow(
     disabled: enabled ? undefined : true,
     disabledReason: !enabled && reason !== undefined ? services.t({ key: reason }) : undefined,
     variant: row.variant ?? (danger ? "danger" : undefined),
-    ...(row.checked !== undefined && { checked: row.checked(ctx) }),
+    ...(row.checked !== undefined && {
+      checked: row.checked(ctx),
+      ...(row.radio === true && { choice: "radio" as const }),
+    }),
     onSelect: () => {
       choose(() => execute(services, row, ctx));
     },

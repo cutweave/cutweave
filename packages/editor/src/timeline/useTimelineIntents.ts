@@ -15,6 +15,7 @@ import { toastStore } from "../state/toastStore.ts";
 import { viewStore } from "../state/viewStore.ts";
 import { transportController } from "../transport/useTransport.ts";
 import { TimelineController, type TimelineOverlay } from "./controller.ts";
+import { setActiveTimelineController } from "./controllerRegistry.ts";
 import { type Translate, translator } from "./errors.ts";
 
 export interface TimelineIntents {
@@ -62,6 +63,12 @@ export function useTimelineIntents(): TimelineIntents {
       }),
     [],
   );
+
+  // The track header's context menu starts the in-place rename through this controller.
+  useEffect(() => {
+    setActiveTimelineController(controller);
+    return () => setActiveTimelineController(null);
+  }, [controller]);
 
   // Losing the window mid-drag cancels the gesture (the pointer-up may never arrive).
   useEffect(() => {

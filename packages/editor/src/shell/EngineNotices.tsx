@@ -20,6 +20,7 @@ import {
   useEngineStore,
 } from "../engine/engineStore.ts";
 import type { TKey } from "../i18n/index.ts";
+import { ContextSurface } from "../menus/host.tsx";
 
 /** How long the restart notice stays when everything was recovered. */
 export const RESTART_NOTICE_MS = 3000;
@@ -42,9 +43,11 @@ export function EngineStatusChip() {
   const { t } = useTranslation();
   const { tone, label, icon } = INDICATOR[useEngineStore(engineIndicator)];
   return (
-    <StatusChip tone={tone} icon={icon} iconOnly className="cw-engine-status">
-      {t(label)}
-    </StatusChip>
+    <ContextSurface surface="chrome.engine" className="cw-context-surface">
+      <StatusChip tone={tone} icon={icon} iconOnly className="cw-engine-status">
+        {t(label)}
+      </StatusChip>
+    </ContextSurface>
   );
 }
 

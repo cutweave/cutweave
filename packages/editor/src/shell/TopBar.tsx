@@ -14,6 +14,7 @@ import { useTranslation } from "react-i18next";
 import { useEngineReady } from "../engine/engineStore.ts";
 import { ExportStatusChip } from "../export/ExportChip.tsx";
 import { exportController, useTimelineHasItems } from "../export/useExport.ts";
+import { ContextSurface } from "../menus/host.tsx";
 import { hasNativeMenu } from "../session/desktop.ts";
 import { redoText, undoText } from "../session/historyLabels.ts";
 import { projectFileName, useSessionStore } from "../session/sessionStore.ts";
@@ -105,25 +106,30 @@ export function TopBar() {
               <ToolbarSeparator />
             </>
           ) : null}
-          <Tooltip label={undoName} keys={[mod, "Z"]}>
-            <IconButton
-              icon="undo-2"
-              label={undoName}
-              disabled={!live || readOnly || stacks.undoDepth === 0}
-              onClick={() => void controller.undo()}
-            />
-          </Tooltip>
-          <Tooltip label={redoName} keys={[mod, "Shift", "Z"]}>
-            <IconButton
-              icon="redo-2"
-              label={redoName}
-              disabled={!live || readOnly || stacks.redoDepth === 0}
-              onClick={() => void controller.redo()}
-            />
-          </Tooltip>
+          <ContextSurface surface="chrome.history" className="cw-context-surface">
+            <Tooltip label={undoName} keys={[mod, "Z"]}>
+              <IconButton
+                icon="undo-2"
+                label={undoName}
+                disabled={!live || readOnly || stacks.undoDepth === 0}
+                onClick={() => void controller.undo()}
+              />
+            </Tooltip>
+            <Tooltip label={redoName} keys={[mod, "Shift", "Z"]}>
+              <IconButton
+                icon="redo-2"
+                label={redoName}
+                disabled={!live || readOnly || stacks.redoDepth === 0}
+                onClick={() => void controller.redo()}
+              />
+            </Tooltip>
+          </ContextSurface>
         </Toolbar>
       </div>
-      <div className="cw-topbar__group cw-topbar__group--center">
+      <ContextSurface
+        surface="chrome.workspace"
+        className="cw-topbar__group cw-topbar__group--center"
+      >
         <SegmentedControl<WorkspaceId>
           aria-label={t("topbar.workspaceLabel")}
           value={workspaceId}
@@ -143,21 +149,23 @@ export function TopBar() {
             onClick={() => runWorkspaceCommand("workspace.reset_layout")}
           />
         </Tooltip>
-      </div>
+      </ContextSurface>
       <div className="cw-topbar__group cw-topbar__group--end">
         <ExportStatusChip />
         <SaveStatusChip />
         <EngineStatusChip />
-        <Tooltip label={t("topbar.export")} keys={[mod, "M"]}>
-          <Button
-            variant="primary"
-            icon="upload"
-            disabled={!live || recovering || !hasItems}
-            onClick={() => exportController().open()}
-          >
-            {t("topbar.export")}
-          </Button>
-        </Tooltip>
+        <ContextSurface surface="chrome.export" className="cw-context-surface">
+          <Tooltip label={t("topbar.export")} keys={[mod, "M"]}>
+            <Button
+              variant="primary"
+              icon="upload"
+              disabled={!live || recovering || !hasItems}
+              onClick={() => exportController().open()}
+            >
+              {t("topbar.export")}
+            </Button>
+          </Tooltip>
+        </ContextSurface>
       </div>
     </header>
   );

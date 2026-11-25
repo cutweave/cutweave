@@ -72,8 +72,12 @@ export interface MenuRow {
   readonly args?: (ctx: MenuContext) => unknown;
   /** Overrides the command's label, to name the object ("Delete 3 clips"). */
   readonly label?: LabelSpec | ((ctx: MenuContext) => LabelSpec);
+  /** The row does something else with the command (Append is an Insert elsewhere): no key hint. */
+  readonly noHint?: boolean;
   /** A check item (Mute, Lock): the row shows its state. */
   readonly checked?: (ctx: MenuContext) => boolean;
+  /** With `checked`: one of a group of choices (Sort by, Quality), shown as a radio. */
+  readonly radio?: boolean;
   readonly variant?: "danger" | "agent";
   /** A nested list of command rows (one level). */
   readonly submenu?: { readonly label: LabelSpec; readonly rows: readonly MenuRow[] };

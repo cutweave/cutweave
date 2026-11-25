@@ -6,6 +6,7 @@ import { useMemo } from "react";
 import { useTranslation } from "react-i18next";
 import { useEngineStore } from "../engine/engineStore.ts";
 import type { TKey } from "../i18n/index.ts";
+import { useContextMenu } from "../menus/host.tsx";
 import { useDocStore } from "../state/docStore.ts";
 import { usePlaybackStore } from "../state/playbackStore.ts";
 import { selectActiveSequenceId } from "../state/selectors.ts";
@@ -58,10 +59,15 @@ export function TransportBar() {
   const off = !live;
   const volume = Math.round(gain * 100);
   const playLabel = playing ? t("transport.pause") : t("transport.play");
+  // Right-click or the Menu key: Copy timecode, the volume's Mute and Reset, the quality choices.
+  const timeRef = useContextMenu<HTMLOutputElement>("transport.time", () => ({}));
+  const volumeRef = useContextMenu<HTMLDivElement>("transport.volume", () => ({}));
+  const qualityRef = useContextMenu<HTMLOutputElement>("transport.quality", () => ({}));
 
   return (
     <div className="cw-transport">
       <output
+        ref={timeRef}
         className="cw-transport__time timecode-lg"
         aria-label={t("transport.timecode")}
         data-source={source !== null}
@@ -116,8 +122,9 @@ export function TransportBar() {
           <IconButton icon="repeat" label={t("transport.loop")} pressed={false} disabled />
         </Tooltip>
       </Toolbar>
-      <div className="cw-transport__side">
+      <div ref={volumeRef} className="cw-transport__side">
         <output
+          ref={qualityRef}
           className="cw-transport__quality label"
           aria-label={t("transport.qualityValue", { quality: t(QUALITY_LABEL[quality]) })}
         >

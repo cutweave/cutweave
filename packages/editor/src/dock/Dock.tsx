@@ -4,14 +4,14 @@ import {
   type DockviewApi,
   DockviewReact,
   type DockviewReadyEvent,
-  type GetTabContextMenuItemsParams,
   type IDockviewHeaderActionsProps,
   type IDockviewPanelHeaderProps,
   type IWatermarkPanelProps,
 } from "dockview-react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
-import { i18n, type TKey } from "../i18n/index.ts";
+import type { TKey } from "../i18n/index.ts";
+import { ContextSurface, useContextMenu } from "../menus/host.tsx";
 import { EmptyState } from "../panels/EmptyState.tsx";
 import { useViewStore, viewStore } from "../state/viewStore.ts";
 import "../workspace/builtinPanels.ts";
@@ -25,9 +25,16 @@ import { dockTheme } from "./theme.ts";
 export const LAYOUT_SAVE_DELAY_MS = 200;
 
 /** A panel's tab: its title, which is also the drag handle. */
-function PanelTab({ params }: IDockviewPanelHeaderProps<{ titleKey: TKey }>) {
+function PanelTab({ api, params }: IDockviewPanelHeaderProps<{ titleKey: TKey }>) {
   const { t } = useTranslation();
-  return <div className="cw-dock-tab heading">{t(params.titleKey)}</div>;
+  const title = t(params.titleKey);
+  // Right-click or the Menu key opens the tab's menu: close, maximize, float, move (WP-2H.13).
+  const ref = useContextMenu<HTMLDivElement>("dock.tab", () => ({ ids: [api.id], name: title }));
+  return (
+    <div ref={ref} className="cw-dock-tab heading">
+      {title}
+    </div>
+  );
 }
 
 /**
@@ -55,7 +62,7 @@ function CloseActivePanel({ activePanel }: IDockviewHeaderActionsProps) {
 function EmptyDock(_props: IWatermarkPanelProps) {
   const { t } = useTranslation();
   return (
-    <div className="cw-dock-empty">
+    <ContextSurface surface="dock.empty" className="cw-dock-empty">
       <EmptyState icon="layout-grid" title={t("dock.empty.title")} body={t("dock.empty.body")}>
         <div className="cw-dock-empty__actions">
           <Button variant="primary" onClick={() => runWorkspaceCommand("workspace.reopen_panels")}>
@@ -66,26 +73,13 @@ function EmptyDock(_props: IWatermarkPanelProps) {
           </Button>
         </div>
       </EmptyState>
-    </div>
+    </ContextSurface>
   );
 }
 
 const tabComponents = {
   [PANEL_TAB_COMPONENT]: PanelTab as (p: IDockviewPanelHeaderProps) => React.JSX.Element,
 };
-
-/** The tab's right-click menu: close, maximize, float. */
-function tabMenu({ panel }: GetTabContextMenuItemsParams) {
-  return [
-    {
-      label: i18n.t("panel.close"),
-      action: () => runWorkspaceCommand("workspace.close_panel", { panel: panel.id }),
-    },
-    "separator" as const,
-    "maximize" as const,
-    "float" as const,
-  ];
-}
 
 /**
  * The dockable panel area. The active workspace's saved layout is restored when it is selected
@@ -159,7 +153,6 @@ export function Dock() {
       watermarkComponent={EmptyDock}
       theme={dockTheme()}
       singleTabMode="fullwidth"
-      getTabContextMenuItems={tabMenu}
       onReady={onReady}
     />
   );

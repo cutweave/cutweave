@@ -1,9 +1,17 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 import { IconButton, SegmentedControl, Tooltip } from "@cutweave/ui";
-import { type DragEvent, type KeyboardEvent, useCallback, useState } from "react";
+import {
+  type DragEvent,
+  type KeyboardEvent,
+  useCallback,
+  useEffect,
+  useRef,
+  useState,
+} from "react";
 import { useTranslation } from "react-i18next";
 import { useEngineStore } from "../engine/engineStore.ts";
 import { dragStore, MEDIA_DRAG_TYPE } from "../media/dragStore.ts";
+import { registerContextSurface } from "../menus/host.tsx";
 import {
   PreviewCanvas,
   type PreviewPath,
@@ -49,6 +57,18 @@ export function PreviewPanel() {
   const frozen = usePreviewFrozen();
   const asset = useSourceAsset();
   const insertSource = useInsertSource();
+
+  // The picture's menu (WP-2H.13): the timeline's frame, or the Source view while one plays.
+  const stageRef = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    const stage = stageRef.current;
+    if (stage === null) return undefined;
+    return registerContextSurface(
+      stage,
+      () => ({ surface: showsSource ? "source.view" : "preview.canvas" }),
+      { name: "preview.canvas" },
+    );
+  }, [showsSource]);
 
   // Esc goes back to the timeline and Enter places the clip (a focused button keeps its Enter).
   const onKeyDown = (e: KeyboardEvent<HTMLDivElement>) => {
@@ -99,6 +119,7 @@ export function PreviewPanel() {
       </div>
       {engine ? <ReducedBanner path={path} /> : null}
       <div
+        ref={stageRef}
         className="cw-preview__stage"
         {...(showsSource && {
           role: "group",

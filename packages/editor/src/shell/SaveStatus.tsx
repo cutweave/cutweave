@@ -6,6 +6,7 @@
 import { type IconName, StatusChip, type StatusTone } from "@cutweave/ui";
 import { useTranslation } from "react-i18next";
 import type { TKey } from "../i18n/index.ts";
+import { useContextMenu } from "../menus/host.tsx";
 import { usePref } from "../prefs/prefsStore.ts";
 import { useSessionStore } from "../session/sessionStore.ts";
 import { useSessionUiStore } from "../session/sessionUiStore.ts";
@@ -51,13 +52,20 @@ export function SaveStatusChip() {
   const state = useSaveState();
   const unsaved = useUnsavedWork();
   const { tone, icon, label } = STATES[state];
+  // Right-click or the Menu key: Save now, Autosave settings… (WP-2H.13).
+  const menuRef = useContextMenu<HTMLSpanElement>("chrome.save", () => ({}));
   const chip = (
     <StatusChip tone={tone} icon={icon} iconOnly className="cw-save-status">
       {t(label)}
     </StatusChip>
   );
   return (
-    <span className="cw-save-status__wrap" data-testid="save-status" data-state={state}>
+    <span
+      ref={menuRef}
+      className="cw-save-status__wrap"
+      data-testid="save-status"
+      data-state={state}
+    >
       {unsaved ? (
         // The flows and the window title look for the unsaved marker by this id; it stays until
         // the save has finished, also while the status says "Saving…".

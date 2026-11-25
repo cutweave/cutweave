@@ -1033,3 +1033,8 @@ body {
   flex: 1 1 auto;
   min-width: 0;
 }
+
+/* A wrapper that only marks a context-menu surface: no box of its own (WP-2H.13). */
+.cw-context-surface {
+  display: contents;
+}
