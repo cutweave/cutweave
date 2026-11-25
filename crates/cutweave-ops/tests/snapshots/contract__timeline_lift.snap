@@ -1,20 +1,19 @@
 ---
 source: crates/cutweave-ops/tests/contract.rs
-assertion_line: 488
 expression: "json!({\n    \"meta\": serde_json::to_value(meta).unwrap(), \"input\": meta.input_schema,\n    \"output\": meta.output_schema,\n})"
 ---
 {
   "meta": {
-    "name": "timeline.insert",
-    "summary": "Insert a media clip at a time on a track (adds linked audio for video with sound)",
+    "name": "timeline.lift",
+    "summary": "Cut time ranges out of tracks, leaving gaps (the magnetic main track closes)",
     "kind": "command",
     "undoable": true,
     "view": false,
     "scope": "any",
-    "mcp": "core",
+    "mcp": "catalog",
     "annotations": {
       "readOnlyHint": false,
-      "destructiveHint": false,
+      "destructiveHint": true,
       "idempotentHint": false,
       "openWorldHint": false
     },
@@ -28,210 +27,103 @@ expression: "json!({\n    \"meta\": serde_json::to_value(meta).unwrap(), \"input
           "pattern": "^seq_[0-9a-f]{32}$",
           "description": "The sequence."
         },
-        "track": {
-          "type": "string",
-          "pattern": "^trk_[0-9a-f]{32}$",
-          "description": "The target track (of that sequence): a video track for pictures, an audio track for\nsound."
-        },
-        "media": {
-          "type": "string",
-          "pattern": "^med_[0-9a-f]{32}$",
-          "description": "The media to place."
-        },
-        "at": {
-          "description": "Timeline position of the clip's first frame, `>= 0` (snapped to the frame grid; on the\nmagnetic main track clamped to its end).",
-          "anyOf": [
-            {
-              "type": "integer",
-              "minimum": -9007199254740991,
-              "maximum": 9007199254740991
-            },
-            {
-              "type": "string",
-              "pattern": "^-?[0-9]+(\\.[0-9]+)?s$|^-?[0-9]+$|^f:[0-9]+$|^[0-9]+[:;][0-9]+[:;][0-9]+[:;][0-9]+$"
-            }
-          ]
-        },
-        "source_in": {
-          "anyOf": [
-            {
-              "description": "A time: integer flicks (1/705600000 s), or a string: seconds (\"62.5s\"), a frame (\"f:1500\") or a timecode (\"00:01:02:03\", drop-frame \"00:01:02;03\"). Frames and timecodes use the frame rate of the target's sequence.",
-              "anyOf": [
-                {
-                  "type": "integer",
-                  "minimum": -9007199254740991,
-                  "maximum": 9007199254740991
-                },
-                {
-                  "type": "string",
-                  "pattern": "^-?[0-9]+(\\.[0-9]+)?s$|^-?[0-9]+$|^f:[0-9]+$|^[0-9]+[:;][0-9]+[:;][0-9]+[:;][0-9]+$"
-                }
-              ]
-            },
-            {
-              "type": "null"
-            }
-          ],
-          "description": "Position in the media to start from (default 0).",
-          "default": null
-        },
-        "duration": {
-          "anyOf": [
-            {
-              "description": "A time: integer flicks (1/705600000 s), or a string: seconds (\"62.5s\"), a frame (\"f:1500\") or a timecode (\"00:01:02:03\", drop-frame \"00:01:02;03\"). Frames and timecodes use the frame rate of the target's sequence.",
-              "anyOf": [
-                {
-                  "type": "integer",
-                  "minimum": -9007199254740991,
-                  "maximum": 9007199254740991
-                },
-                {
-                  "type": "string",
-                  "pattern": "^-?[0-9]+(\\.[0-9]+)?s$|^-?[0-9]+$|^f:[0-9]+$|^[0-9]+[:;][0-9]+[:;][0-9]+[:;][0-9]+$"
-                }
-              ]
-            },
-            {
-              "type": "null"
-            }
-          ],
-          "description": "Clip length, `> 0` (snapped to whole frames, at least one).",
-          "default": null
-        },
-        "overlap": {
-          "anyOf": [
-            {
-              "oneOf": [
-                {
-                  "type": "string",
-                  "const": "reject",
-                  "description": "Fail with `Invalid` (default on free tracks)."
-                },
-                {
-                  "type": "string",
-                  "const": "new_track",
-                  "description": "Create a new track of the same kind directly above the target and place there."
-                }
-              ],
-              "description": "What to do when an item would overlap another one on its target track: the P1 `overlap`\nparam, an alias of the placement `mode` (spec INV-40)."
-            },
-            {
-              "type": "null"
-            }
-          ],
-          "description": "Overlap handling, the P1 alias of `mode` (`reject` or `new_track`).",
-          "default": null
-        },
-        "link": {
+        "ranges": {
           "type": [
-            "boolean",
+            "array",
             "null"
           ],
-          "description": "Also insert the audio of a video file as a linked clip (default `true`).",
-          "default": null
-        },
-        "mode": {
-          "anyOf": [
-            {
-              "oneOf": [
-                {
-                  "type": "string",
-                  "const": "insert",
-                  "description": "Split the item under the start, ripple the rest of the track (and its partners' tracks)\nlater by the placed length, then place (default on the magnetic main track)."
-                },
-                {
-                  "type": "string",
-                  "const": "overwrite",
-                  "description": "Cut the range out of the track (trimming or splitting what is there), then place. Nothing\nripples."
-                },
-                {
-                  "type": "string",
-                  "const": "new_track",
-                  "description": "Place on the target track if the range is free, otherwise on a new track of the same\nkind directly above it."
-                },
-                {
-                  "type": "string",
-                  "const": "reject",
-                  "description": "Place if the range is free, otherwise fail with `Invalid` naming the item in the way\n(default on free tracks)."
-                }
-              ],
-              "description": "How a placement treats what is already on the target range (timeline spec §3.6)."
-            },
-            {
-              "type": "null"
-            }
-          ],
-          "description": "Placement mode: `insert`, `overwrite`, `new_track` or `reject` (default `insert` on the\nmagnetic main track, `reject` elsewhere).",
-          "default": null
-        },
-        "audio_track": {
-          "type": [
-            "string",
-            "null"
-          ],
-          "pattern": "^trk_[0-9a-f]{32}$",
-          "description": "The audio track for the linked sound (it must be free over the range); default: the\nfirst unlocked audio track that is.",
-          "default": null
-        },
-        "ripple_all_tracks": {
-          "type": [
-            "boolean",
-            "null"
-          ],
-          "description": "With `insert`, ripple every track of the sequence instead of the target and the tracks\nof linked partners of what shifts (default `false`).",
-          "default": null
-        }
-      },
-      "required": [
-        "sequence",
-        "track",
-        "media",
-        "at"
-      ],
-      "description": "Inserts a media clip on a track at a time. `source_in` is the position in the media the clip\nstarts from and `duration` its length (defaults: the start of the media and the rest of it,\nfloored to whole frames; stills last five seconds). Times accept flicks, `\"1.5s\"`, `\"f:45\"`\nand timecodes, snapped to the sequence's frame grid (the result states the values used;\n`source_in` is a media position and is not snapped). `mode` decides what happens to what is\nalready there: `insert` (default on the magnetic main track) splits and ripples, `overwrite`\ncuts the range out, `new_track` goes to a new track above, `reject` (default elsewhere)\nfails; `overlap` is the P1 alias of `mode`. A video with sound also places its audio,\nlinked. Fails with `Locked` if the placement would change a locked track.",
-      "title": "TimelineInsert"
-    },
-    "output_schema": {
-      "type": "object",
-      "additionalProperties": false,
-      "properties": {
-        "at": {
-          "description": "The start that was used: snapped to the frame grid, clamped on the magnetic track.",
-          "type": "integer",
-          "minimum": -9007199254740991,
-          "maximum": 9007199254740991
-        },
-        "duration": {
-          "description": "The clip length that was used, a whole number of frames.",
-          "type": "integer",
-          "minimum": 0,
-          "maximum": 9007199254740991
-        },
-        "clips": {
-          "type": "array",
           "items": {
-            "description": "A Item id: `^itm_[0-9a-f]{32}$`.",
-            "type": "string",
-            "pattern": "^itm_[0-9a-f]{32}$"
+            "description": "A time range in the params: `[start, end)`, `end > start`.",
+            "type": "object",
+            "properties": {
+              "start": {
+                "description": "Start of the range, `>= 0`.",
+                "anyOf": [
+                  {
+                    "type": "integer",
+                    "minimum": -9007199254740991,
+                    "maximum": 9007199254740991
+                  },
+                  {
+                    "type": "string",
+                    "pattern": "^-?[0-9]+(\\.[0-9]+)?s$|^-?[0-9]+$|^f:[0-9]+$|^[0-9]+[:;][0-9]+[:;][0-9]+[:;][0-9]+$"
+                  }
+                ]
+              },
+              "end": {
+                "description": "End of the range (exclusive), after `start`.",
+                "anyOf": [
+                  {
+                    "type": "integer",
+                    "minimum": -9007199254740991,
+                    "maximum": 9007199254740991
+                  },
+                  {
+                    "type": "string",
+                    "pattern": "^-?[0-9]+(\\.[0-9]+)?s$|^-?[0-9]+$|^f:[0-9]+$|^[0-9]+[:;][0-9]+[:;][0-9]+[:;][0-9]+$"
+                  }
+                ]
+              }
+            },
+            "additionalProperties": false,
+            "required": [
+              "start",
+              "end"
+            ]
           },
-          "description": "The inserted clips: the one on the target track first, then the linked audio clip."
+          "description": "The ranges to cut (default: the sequence in/out range).",
+          "default": null
         },
-        "linked_group": {
+        "tracks": {
           "type": [
-            "string",
+            "array",
             "null"
           ],
-          "pattern": "^grp_[0-9a-f]{32}$",
-          "description": "The group shared by the clips when audio was linked."
-        },
-        "created_tracks": {
-          "type": "array",
           "items": {
             "description": "A Track id: `^trk_[0-9a-f]{32}$`.",
             "type": "string",
             "pattern": "^trk_[0-9a-f]{32}$"
           },
-          "description": "Tracks created by the placement, in creation order."
+          "description": "The tracks to cut on (default: every track of the sequence).",
+          "default": null
+        }
+      },
+      "required": [
+        "sequence"
+      ],
+      "description": "Lifts time ranges out of tracks and leaves the space empty: items inside a range are\nremoved, items across an edge are trimmed to it, an item across a whole range is split\naround it, and linked partners get the same cut (also on tracks not listed). On the magnetic\nmain track the space closes (its partners' tracks follow). `ranges` default to the sequence\nin/out range, `tracks` to every track. Fails with `Locked` if it would change a locked\ntrack (pass `tracks` to leave one out).",
+      "title": "TimelineLift"
+    },
+    "output_schema": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "ranges": {
+          "type": "array",
+          "items": {
+            "description": "A time range of a sequence, as used: `[start, end)` on the frame grid.",
+            "type": "object",
+            "properties": {
+              "start": {
+                "description": "First frame of the range.",
+                "type": "integer",
+                "minimum": -9007199254740991,
+                "maximum": 9007199254740991
+              },
+              "end": {
+                "description": "End of the range (exclusive).",
+                "type": "integer",
+                "minimum": -9007199254740991,
+                "maximum": 9007199254740991
+              }
+            },
+            "additionalProperties": false,
+            "required": [
+              "start",
+              "end"
+            ]
+          },
+          "description": "The ranges used: snapped to the frame grid, sorted, overlapping and touching ones\nmerged."
         },
         "report": {
           "type": "object",
@@ -470,15 +362,11 @@ expression: "json!({\n    \"meta\": serde_json::to_value(meta).unwrap(), \"input
         }
       },
       "required": [
-        "at",
-        "duration",
-        "clips",
-        "linked_group",
-        "created_tracks",
+        "ranges",
         "report"
       ],
-      "description": "Result of `timeline.insert` and `timeline.overwrite`.",
-      "title": "TimelineInsertOutput"
+      "description": "Result of `timeline.lift` and `timeline.extract`.",
+      "title": "TimelineRangesOutput"
     }
   },
   "input": {
@@ -490,210 +378,103 @@ expression: "json!({\n    \"meta\": serde_json::to_value(meta).unwrap(), \"input
         "pattern": "^seq_[0-9a-f]{32}$",
         "description": "The sequence."
       },
-      "track": {
-        "type": "string",
-        "pattern": "^trk_[0-9a-f]{32}$",
-        "description": "The target track (of that sequence): a video track for pictures, an audio track for\nsound."
-      },
-      "media": {
-        "type": "string",
-        "pattern": "^med_[0-9a-f]{32}$",
-        "description": "The media to place."
-      },
-      "at": {
-        "description": "Timeline position of the clip's first frame, `>= 0` (snapped to the frame grid; on the\nmagnetic main track clamped to its end).",
-        "anyOf": [
-          {
-            "type": "integer",
-            "minimum": -9007199254740991,
-            "maximum": 9007199254740991
-          },
-          {
-            "type": "string",
-            "pattern": "^-?[0-9]+(\\.[0-9]+)?s$|^-?[0-9]+$|^f:[0-9]+$|^[0-9]+[:;][0-9]+[:;][0-9]+[:;][0-9]+$"
-          }
-        ]
-      },
-      "source_in": {
-        "anyOf": [
-          {
-            "description": "A time: integer flicks (1/705600000 s), or a string: seconds (\"62.5s\"), a frame (\"f:1500\") or a timecode (\"00:01:02:03\", drop-frame \"00:01:02;03\"). Frames and timecodes use the frame rate of the target's sequence.",
-            "anyOf": [
-              {
-                "type": "integer",
-                "minimum": -9007199254740991,
-                "maximum": 9007199254740991
-              },
-              {
-                "type": "string",
-                "pattern": "^-?[0-9]+(\\.[0-9]+)?s$|^-?[0-9]+$|^f:[0-9]+$|^[0-9]+[:;][0-9]+[:;][0-9]+[:;][0-9]+$"
-              }
-            ]
-          },
-          {
-            "type": "null"
-          }
-        ],
-        "description": "Position in the media to start from (default 0).",
-        "default": null
-      },
-      "duration": {
-        "anyOf": [
-          {
-            "description": "A time: integer flicks (1/705600000 s), or a string: seconds (\"62.5s\"), a frame (\"f:1500\") or a timecode (\"00:01:02:03\", drop-frame \"00:01:02;03\"). Frames and timecodes use the frame rate of the target's sequence.",
-            "anyOf": [
-              {
-                "type": "integer",
-                "minimum": -9007199254740991,
-                "maximum": 9007199254740991
-              },
-              {
-                "type": "string",
-                "pattern": "^-?[0-9]+(\\.[0-9]+)?s$|^-?[0-9]+$|^f:[0-9]+$|^[0-9]+[:;][0-9]+[:;][0-9]+[:;][0-9]+$"
-              }
-            ]
-          },
-          {
-            "type": "null"
-          }
-        ],
-        "description": "Clip length, `> 0` (snapped to whole frames, at least one).",
-        "default": null
-      },
-      "overlap": {
-        "anyOf": [
-          {
-            "oneOf": [
-              {
-                "type": "string",
-                "const": "reject",
-                "description": "Fail with `Invalid` (default on free tracks)."
-              },
-              {
-                "type": "string",
-                "const": "new_track",
-                "description": "Create a new track of the same kind directly above the target and place there."
-              }
-            ],
-            "description": "What to do when an item would overlap another one on its target track: the P1 `overlap`\nparam, an alias of the placement `mode` (spec INV-40)."
-          },
-          {
-            "type": "null"
-          }
-        ],
-        "description": "Overlap handling, the P1 alias of `mode` (`reject` or `new_track`).",
-        "default": null
-      },
-      "link": {
+      "ranges": {
         "type": [
-          "boolean",
+          "array",
           "null"
         ],
-        "description": "Also insert the audio of a video file as a linked clip (default `true`).",
-        "default": null
-      },
-      "mode": {
-        "anyOf": [
-          {
-            "oneOf": [
-              {
-                "type": "string",
-                "const": "insert",
-                "description": "Split the item under the start, ripple the rest of the track (and its partners' tracks)\nlater by the placed length, then place (default on the magnetic main track)."
-              },
-              {
-                "type": "string",
-                "const": "overwrite",
-                "description": "Cut the range out of the track (trimming or splitting what is there), then place. Nothing\nripples."
-              },
-              {
-                "type": "string",
-                "const": "new_track",
-                "description": "Place on the target track if the range is free, otherwise on a new track of the same\nkind directly above it."
-              },
-              {
-                "type": "string",
-                "const": "reject",
-                "description": "Place if the range is free, otherwise fail with `Invalid` naming the item in the way\n(default on free tracks)."
-              }
-            ],
-            "description": "How a placement treats what is already on the target range (timeline spec §3.6)."
-          },
-          {
-            "type": "null"
-          }
-        ],
-        "description": "Placement mode: `insert`, `overwrite`, `new_track` or `reject` (default `insert` on the\nmagnetic main track, `reject` elsewhere).",
-        "default": null
-      },
-      "audio_track": {
-        "type": [
-          "string",
-          "null"
-        ],
-        "pattern": "^trk_[0-9a-f]{32}$",
-        "description": "The audio track for the linked sound (it must be free over the range); default: the\nfirst unlocked audio track that is.",
-        "default": null
-      },
-      "ripple_all_tracks": {
-        "type": [
-          "boolean",
-          "null"
-        ],
-        "description": "With `insert`, ripple every track of the sequence instead of the target and the tracks\nof linked partners of what shifts (default `false`).",
-        "default": null
-      }
-    },
-    "required": [
-      "sequence",
-      "track",
-      "media",
-      "at"
-    ],
-    "description": "Inserts a media clip on a track at a time. `source_in` is the position in the media the clip\nstarts from and `duration` its length (defaults: the start of the media and the rest of it,\nfloored to whole frames; stills last five seconds). Times accept flicks, `\"1.5s\"`, `\"f:45\"`\nand timecodes, snapped to the sequence's frame grid (the result states the values used;\n`source_in` is a media position and is not snapped). `mode` decides what happens to what is\nalready there: `insert` (default on the magnetic main track) splits and ripples, `overwrite`\ncuts the range out, `new_track` goes to a new track above, `reject` (default elsewhere)\nfails; `overlap` is the P1 alias of `mode`. A video with sound also places its audio,\nlinked. Fails with `Locked` if the placement would change a locked track.",
-    "title": "TimelineInsert"
-  },
-  "output": {
-    "type": "object",
-    "additionalProperties": false,
-    "properties": {
-      "at": {
-        "description": "The start that was used: snapped to the frame grid, clamped on the magnetic track.",
-        "type": "integer",
-        "minimum": -9007199254740991,
-        "maximum": 9007199254740991
-      },
-      "duration": {
-        "description": "The clip length that was used, a whole number of frames.",
-        "type": "integer",
-        "minimum": 0,
-        "maximum": 9007199254740991
-      },
-      "clips": {
-        "type": "array",
         "items": {
-          "description": "A Item id: `^itm_[0-9a-f]{32}$`.",
-          "type": "string",
-          "pattern": "^itm_[0-9a-f]{32}$"
+          "description": "A time range in the params: `[start, end)`, `end > start`.",
+          "type": "object",
+          "properties": {
+            "start": {
+              "description": "Start of the range, `>= 0`.",
+              "anyOf": [
+                {
+                  "type": "integer",
+                  "minimum": -9007199254740991,
+                  "maximum": 9007199254740991
+                },
+                {
+                  "type": "string",
+                  "pattern": "^-?[0-9]+(\\.[0-9]+)?s$|^-?[0-9]+$|^f:[0-9]+$|^[0-9]+[:;][0-9]+[:;][0-9]+[:;][0-9]+$"
+                }
+              ]
+            },
+            "end": {
+              "description": "End of the range (exclusive), after `start`.",
+              "anyOf": [
+                {
+                  "type": "integer",
+                  "minimum": -9007199254740991,
+                  "maximum": 9007199254740991
+                },
+                {
+                  "type": "string",
+                  "pattern": "^-?[0-9]+(\\.[0-9]+)?s$|^-?[0-9]+$|^f:[0-9]+$|^[0-9]+[:;][0-9]+[:;][0-9]+[:;][0-9]+$"
+                }
+              ]
+            }
+          },
+          "additionalProperties": false,
+          "required": [
+            "start",
+            "end"
+          ]
         },
-        "description": "The inserted clips: the one on the target track first, then the linked audio clip."
+        "description": "The ranges to cut (default: the sequence in/out range).",
+        "default": null
       },
-      "linked_group": {
+      "tracks": {
         "type": [
-          "string",
+          "array",
           "null"
         ],
-        "pattern": "^grp_[0-9a-f]{32}$",
-        "description": "The group shared by the clips when audio was linked."
-      },
-      "created_tracks": {
-        "type": "array",
         "items": {
           "description": "A Track id: `^trk_[0-9a-f]{32}$`.",
           "type": "string",
           "pattern": "^trk_[0-9a-f]{32}$"
         },
-        "description": "Tracks created by the placement, in creation order."
+        "description": "The tracks to cut on (default: every track of the sequence).",
+        "default": null
+      }
+    },
+    "required": [
+      "sequence"
+    ],
+    "description": "Lifts time ranges out of tracks and leaves the space empty: items inside a range are\nremoved, items across an edge are trimmed to it, an item across a whole range is split\naround it, and linked partners get the same cut (also on tracks not listed). On the magnetic\nmain track the space closes (its partners' tracks follow). `ranges` default to the sequence\nin/out range, `tracks` to every track. Fails with `Locked` if it would change a locked\ntrack (pass `tracks` to leave one out).",
+    "title": "TimelineLift"
+  },
+  "output": {
+    "type": "object",
+    "additionalProperties": false,
+    "properties": {
+      "ranges": {
+        "type": "array",
+        "items": {
+          "description": "A time range of a sequence, as used: `[start, end)` on the frame grid.",
+          "type": "object",
+          "properties": {
+            "start": {
+              "description": "First frame of the range.",
+              "type": "integer",
+              "minimum": -9007199254740991,
+              "maximum": 9007199254740991
+            },
+            "end": {
+              "description": "End of the range (exclusive).",
+              "type": "integer",
+              "minimum": -9007199254740991,
+              "maximum": 9007199254740991
+            }
+          },
+          "additionalProperties": false,
+          "required": [
+            "start",
+            "end"
+          ]
+        },
+        "description": "The ranges used: snapped to the frame grid, sorted, overlapping and touching ones\nmerged."
       },
       "report": {
         "type": "object",
@@ -932,14 +713,10 @@ expression: "json!({\n    \"meta\": serde_json::to_value(meta).unwrap(), \"input
       }
     },
     "required": [
-      "at",
-      "duration",
-      "clips",
-      "linked_group",
-      "created_tracks",
+      "ranges",
       "report"
     ],
-    "description": "Result of `timeline.insert` and `timeline.overwrite`.",
-    "title": "TimelineInsertOutput"
+    "description": "Result of `timeline.lift` and `timeline.extract`.",
+    "title": "TimelineRangesOutput"
   }
 }

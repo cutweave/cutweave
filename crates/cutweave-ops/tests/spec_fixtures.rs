@@ -388,9 +388,11 @@ fn run(id: &str) {
             "{id}: report"
         );
     }
-    // INV-21 for every fixture: the report is the difference.
-    cutweave_ops::testing::check_edit_report(command, &out, &doc, &h.doc())
-        .unwrap_or_else(|e| panic!("{id}: {e}"));
+    // INV-21 for every fixture whose command reports: the report is the difference.
+    if out.get("report").is_some_and(Value::is_object) {
+        cutweave_ops::testing::check_edit_report(command, &out, &doc, &h.doc())
+            .unwrap_or_else(|e| panic!("{id}: {e}"));
+    }
 }
 
 macro_rules! fixtures {
@@ -472,6 +474,9 @@ fixtures! {
     split_locked_partner => "split-locked-partner",
     split_magnetic_linked_child => "split-magnetic-linked-child",
     split_still => "split-still",
+    // `clip.trim` is WP-2A.04's; this one checks the magnetic ripple trim this WP routes
+    // through the core (INV-203). `trim-magnetic-end-ripples` also needs `applied_delta`.
+    trim_magnetic_start => "trim-magnetic-start",
 }
 
 #[test]

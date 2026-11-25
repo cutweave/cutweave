@@ -23,12 +23,29 @@ expression: "json!({\n    \"meta\": serde_json::to_value(meta).unwrap(), \"input
       "additionalProperties": false,
       "properties": {
         "item": {
-          "type": "string",
+          "type": [
+            "string",
+            "null"
+          ],
           "pattern": "^itm_[0-9a-f]{32}$",
-          "description": "The clip."
+          "description": "The clip (give `item` or `items`).",
+          "default": null
+        },
+        "items": {
+          "type": [
+            "array",
+            "null"
+          ],
+          "items": {
+            "description": "A Item id: `^itm_[0-9a-f]{32}$`.",
+            "type": "string",
+            "pattern": "^itm_[0-9a-f]{32}$"
+          },
+          "description": "Several clips to split at the same time.",
+          "default": null
         },
         "at": {
-          "description": "Timeline time to split at: strictly inside the clip.",
+          "description": "Timeline time to split at: strictly inside every clip.",
           "anyOf": [
             {
               "type": "integer",
@@ -40,13 +57,20 @@ expression: "json!({\n    \"meta\": serde_json::to_value(meta).unwrap(), \"input
               "pattern": "^-?[0-9]+(\\.[0-9]+)?s$|^-?[0-9]+$|^f:[0-9]+$|^[0-9]+[:;][0-9]+[:;][0-9]+[:;][0-9]+$"
             }
           ]
+        },
+        "fine": {
+          "type": [
+            "boolean",
+            "null"
+          ],
+          "description": "Snap `at` to the audio sample grid instead of frames; only for audio clips not linked\nto video (default `false`).",
+          "default": null
         }
       },
       "required": [
-        "item",
         "at"
       ],
-      "description": "Splits a clip into two at a timeline time that lies strictly inside it (`Invalid{path:\"/at\"}`\nat or beyond the edges). The halves are contiguous: durations sum to the original and the\nright half's `source_in` continues where the left half ends. Linked partners that contain\nthe time are split too. `at` is snapped to the sequence's frame grid. `Locked` if the clip's\ntrack or a partner's track is locked.",
+      "description": "Splits a clip (`item`), or several (`items`), into two at a timeline time that lies strictly\ninside each (`Invalid{path:\"/at\"}` at or beyond the edges). The halves are contiguous:\ndurations sum to the original and the right half's `source_in` continues where the left\nhalf ends. Linked partners are split too, and children attached at or after the time move\nto the right half. `at` is snapped to the sequence's frame grid (`fine: true`: the audio\nsample grid, for audio clips not linked to video). `Locked` if a track involved is locked.",
       "title": "ClipSplit"
     },
     "output_schema": {
@@ -56,15 +80,15 @@ expression: "json!({\n    \"meta\": serde_json::to_value(meta).unwrap(), \"input
         "left": {
           "type": "string",
           "pattern": "^itm_[0-9a-f]{32}$",
-          "description": "The left half of the requested item (keeps its ID)."
+          "description": "The left half of the (first) requested clip (keeps its ID)."
         },
         "right": {
           "type": "string",
           "pattern": "^itm_[0-9a-f]{32}$",
-          "description": "The right half of the requested item (new ID)."
+          "description": "The right half of the (first) requested clip (new ID)."
         },
         "at": {
-          "description": "The time that was split at, snapped to the frame grid.",
+          "description": "The time that was split at, snapped to the frame grid (or the sample grid, `fine`).",
           "type": "integer",
           "minimum": -9007199254740991,
           "maximum": 9007199254740991
@@ -92,7 +116,7 @@ expression: "json!({\n    \"meta\": serde_json::to_value(meta).unwrap(), \"input
               "right"
             ]
           },
-          "description": "The linked partners that were split too."
+          "description": "The other clips that were split: the first clip's linked partners, then the other\nrequested clips each followed by its partners."
         },
         "right_group": {
           "type": [
@@ -100,7 +124,242 @@ expression: "json!({\n    \"meta\": serde_json::to_value(meta).unwrap(), \"input
             "null"
           ],
           "pattern": "^grp_[0-9a-f]{32}$",
-          "description": "The new group shared by the right halves, if there were partners."
+          "description": "The new group shared by the first clip's right halves, if it is linked."
+        },
+        "report": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "created": {
+              "type": "array",
+              "items": {
+                "description": "A Item id: `^itm_[0-9a-f]{32}$`.",
+                "type": "string",
+                "pattern": "^itm_[0-9a-f]{32}$"
+              },
+              "description": "New items, other than the right halves of splits."
+            },
+            "removed": {
+              "type": "array",
+              "items": {
+                "description": "A Item id: `^itm_[0-9a-f]{32}$`.",
+                "type": "string",
+                "pattern": "^itm_[0-9a-f]{32}$"
+              },
+              "description": "Items that no longer exist."
+            },
+            "split": {
+              "type": "array",
+              "items": {
+                "description": "A split: `right` is new, `left` keeps its ID; `at` is the cut time before the edit.",
+                "type": "object",
+                "properties": {
+                  "left": {
+                    "description": "The left half (keeps the original ID).",
+                    "type": "string",
+                    "pattern": "^itm_[0-9a-f]{32}$"
+                  },
+                  "right": {
+                    "description": "The right half (new).",
+                    "type": "string",
+                    "pattern": "^itm_[0-9a-f]{32}$"
+                  },
+                  "at": {
+                    "description": "The cut time.",
+                    "type": "integer",
+                    "minimum": -9007199254740991,
+                    "maximum": 9007199254740991
+                  }
+                },
+                "additionalProperties": false,
+                "required": [
+                  "left",
+                  "right",
+                  "at"
+                ]
+              },
+              "description": "Splits, sorted by `(left, at)`."
+            },
+            "moved": {
+              "type": "array",
+              "items": {
+                "description": "An item whose track or start changed (duration and source did not).",
+                "type": "object",
+                "properties": {
+                  "item": {
+                    "description": "The item.",
+                    "type": "string",
+                    "pattern": "^itm_[0-9a-f]{32}$"
+                  },
+                  "track": {
+                    "description": "Its track now.",
+                    "type": "string",
+                    "pattern": "^trk_[0-9a-f]{32}$"
+                  },
+                  "start": {
+                    "description": "Its start now.",
+                    "type": "integer",
+                    "minimum": -9007199254740991,
+                    "maximum": 9007199254740991
+                  }
+                },
+                "additionalProperties": false,
+                "required": [
+                  "item",
+                  "track",
+                  "start"
+                ]
+              },
+              "description": "Items whose track or start changed."
+            },
+            "trimmed": {
+              "type": "array",
+              "items": {
+                "description": "An item whose duration or `source_in` changed (its start may have too).",
+                "type": "object",
+                "properties": {
+                  "item": {
+                    "description": "The item.",
+                    "type": "string",
+                    "pattern": "^itm_[0-9a-f]{32}$"
+                  },
+                  "start": {
+                    "description": "Its start now.",
+                    "type": "integer",
+                    "minimum": -9007199254740991,
+                    "maximum": 9007199254740991
+                  },
+                  "duration": {
+                    "description": "Its duration now.",
+                    "type": "integer",
+                    "minimum": 0,
+                    "maximum": 9007199254740991
+                  },
+                  "source_in": {
+                    "description": "Its `source_in` now (`0` for items that play no media).",
+                    "type": "integer",
+                    "minimum": -9007199254740991,
+                    "maximum": 9007199254740991
+                  }
+                },
+                "additionalProperties": false,
+                "required": [
+                  "item",
+                  "start",
+                  "duration",
+                  "source_in"
+                ]
+              },
+              "description": "Items whose duration or source position changed."
+            },
+            "relinked": {
+              "type": "array",
+              "items": {
+                "description": "An item whose `linked_group` or `attached_to` changed.",
+                "type": "object",
+                "properties": {
+                  "item": {
+                    "description": "The item.",
+                    "type": "string",
+                    "pattern": "^itm_[0-9a-f]{32}$"
+                  },
+                  "linked_group": {
+                    "description": "Its linked group now.",
+                    "type": [
+                      "string",
+                      "null"
+                    ],
+                    "pattern": "^grp_[0-9a-f]{32}$"
+                  },
+                  "attached_to": {
+                    "description": "The item it is attached to now.",
+                    "type": [
+                      "string",
+                      "null"
+                    ],
+                    "pattern": "^itm_[0-9a-f]{32}$"
+                  }
+                },
+                "additionalProperties": false,
+                "required": [
+                  "item",
+                  "linked_group",
+                  "attached_to"
+                ]
+              },
+              "description": "Items whose link or attachment changed."
+            },
+            "replaced": {
+              "type": "array",
+              "items": {
+                "description": "An item whose media changed (`clip.replace`).",
+                "type": "object",
+                "properties": {
+                  "item": {
+                    "description": "The item.",
+                    "type": "string",
+                    "pattern": "^itm_[0-9a-f]{32}$"
+                  },
+                  "media": {
+                    "description": "Its media now.",
+                    "type": "string",
+                    "pattern": "^med_[0-9a-f]{32}$"
+                  }
+                },
+                "additionalProperties": false,
+                "required": [
+                  "item",
+                  "media"
+                ]
+              },
+              "description": "Items whose media changed."
+            },
+            "toggled": {
+              "type": "array",
+              "items": {
+                "description": "An item whose `enabled` flag changed.",
+                "type": "object",
+                "properties": {
+                  "item": {
+                    "description": "The item.",
+                    "type": "string",
+                    "pattern": "^itm_[0-9a-f]{32}$"
+                  },
+                  "enabled": {
+                    "description": "Its flag now.",
+                    "type": "boolean"
+                  }
+                },
+                "additionalProperties": false,
+                "required": [
+                  "item",
+                  "enabled"
+                ]
+              },
+              "description": "Items whose `enabled` flag changed."
+            },
+            "created_tracks": {
+              "type": "array",
+              "items": {
+                "description": "A Track id: `^trk_[0-9a-f]{32}$`.",
+                "type": "string",
+                "pattern": "^trk_[0-9a-f]{32}$"
+              },
+              "description": "Tracks created, in creation order."
+            }
+          },
+          "required": [
+            "created",
+            "removed",
+            "split",
+            "moved",
+            "trimmed",
+            "relinked",
+            "replaced",
+            "toggled",
+            "created_tracks"
+          ],
+          "description": "What changed (timeline spec §3.1)."
         }
       },
       "required": [
@@ -108,7 +367,8 @@ expression: "json!({\n    \"meta\": serde_json::to_value(meta).unwrap(), \"input
         "right",
         "at",
         "linked",
-        "right_group"
+        "right_group",
+        "report"
       ],
       "description": "Result of `clip.split`.",
       "title": "ClipSplitOutput"
@@ -119,12 +379,29 @@ expression: "json!({\n    \"meta\": serde_json::to_value(meta).unwrap(), \"input
     "additionalProperties": false,
     "properties": {
       "item": {
-        "type": "string",
+        "type": [
+          "string",
+          "null"
+        ],
         "pattern": "^itm_[0-9a-f]{32}$",
-        "description": "The clip."
+        "description": "The clip (give `item` or `items`).",
+        "default": null
+      },
+      "items": {
+        "type": [
+          "array",
+          "null"
+        ],
+        "items": {
+          "description": "A Item id: `^itm_[0-9a-f]{32}$`.",
+          "type": "string",
+          "pattern": "^itm_[0-9a-f]{32}$"
+        },
+        "description": "Several clips to split at the same time.",
+        "default": null
       },
       "at": {
-        "description": "Timeline time to split at: strictly inside the clip.",
+        "description": "Timeline time to split at: strictly inside every clip.",
         "anyOf": [
           {
             "type": "integer",
@@ -136,13 +413,20 @@ expression: "json!({\n    \"meta\": serde_json::to_value(meta).unwrap(), \"input
             "pattern": "^-?[0-9]+(\\.[0-9]+)?s$|^-?[0-9]+$|^f:[0-9]+$|^[0-9]+[:;][0-9]+[:;][0-9]+[:;][0-9]+$"
           }
         ]
+      },
+      "fine": {
+        "type": [
+          "boolean",
+          "null"
+        ],
+        "description": "Snap `at` to the audio sample grid instead of frames; only for audio clips not linked\nto video (default `false`).",
+        "default": null
       }
     },
     "required": [
-      "item",
       "at"
     ],
-    "description": "Splits a clip into two at a timeline time that lies strictly inside it (`Invalid{path:\"/at\"}`\nat or beyond the edges). The halves are contiguous: durations sum to the original and the\nright half's `source_in` continues where the left half ends. Linked partners that contain\nthe time are split too. `at` is snapped to the sequence's frame grid. `Locked` if the clip's\ntrack or a partner's track is locked.",
+    "description": "Splits a clip (`item`), or several (`items`), into two at a timeline time that lies strictly\ninside each (`Invalid{path:\"/at\"}` at or beyond the edges). The halves are contiguous:\ndurations sum to the original and the right half's `source_in` continues where the left\nhalf ends. Linked partners are split too, and children attached at or after the time move\nto the right half. `at` is snapped to the sequence's frame grid (`fine: true`: the audio\nsample grid, for audio clips not linked to video). `Locked` if a track involved is locked.",
     "title": "ClipSplit"
   },
   "output": {
@@ -152,15 +436,15 @@ expression: "json!({\n    \"meta\": serde_json::to_value(meta).unwrap(), \"input
       "left": {
         "type": "string",
         "pattern": "^itm_[0-9a-f]{32}$",
-        "description": "The left half of the requested item (keeps its ID)."
+        "description": "The left half of the (first) requested clip (keeps its ID)."
       },
       "right": {
         "type": "string",
         "pattern": "^itm_[0-9a-f]{32}$",
-        "description": "The right half of the requested item (new ID)."
+        "description": "The right half of the (first) requested clip (new ID)."
       },
       "at": {
-        "description": "The time that was split at, snapped to the frame grid.",
+        "description": "The time that was split at, snapped to the frame grid (or the sample grid, `fine`).",
         "type": "integer",
         "minimum": -9007199254740991,
         "maximum": 9007199254740991
@@ -188,7 +472,7 @@ expression: "json!({\n    \"meta\": serde_json::to_value(meta).unwrap(), \"input
             "right"
           ]
         },
-        "description": "The linked partners that were split too."
+        "description": "The other clips that were split: the first clip's linked partners, then the other\nrequested clips each followed by its partners."
       },
       "right_group": {
         "type": [
@@ -196,7 +480,242 @@ expression: "json!({\n    \"meta\": serde_json::to_value(meta).unwrap(), \"input
           "null"
         ],
         "pattern": "^grp_[0-9a-f]{32}$",
-        "description": "The new group shared by the right halves, if there were partners."
+        "description": "The new group shared by the first clip's right halves, if it is linked."
+      },
+      "report": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "created": {
+            "type": "array",
+            "items": {
+              "description": "A Item id: `^itm_[0-9a-f]{32}$`.",
+              "type": "string",
+              "pattern": "^itm_[0-9a-f]{32}$"
+            },
+            "description": "New items, other than the right halves of splits."
+          },
+          "removed": {
+            "type": "array",
+            "items": {
+              "description": "A Item id: `^itm_[0-9a-f]{32}$`.",
+              "type": "string",
+              "pattern": "^itm_[0-9a-f]{32}$"
+            },
+            "description": "Items that no longer exist."
+          },
+          "split": {
+            "type": "array",
+            "items": {
+              "description": "A split: `right` is new, `left` keeps its ID; `at` is the cut time before the edit.",
+              "type": "object",
+              "properties": {
+                "left": {
+                  "description": "The left half (keeps the original ID).",
+                  "type": "string",
+                  "pattern": "^itm_[0-9a-f]{32}$"
+                },
+                "right": {
+                  "description": "The right half (new).",
+                  "type": "string",
+                  "pattern": "^itm_[0-9a-f]{32}$"
+                },
+                "at": {
+                  "description": "The cut time.",
+                  "type": "integer",
+                  "minimum": -9007199254740991,
+                  "maximum": 9007199254740991
+                }
+              },
+              "additionalProperties": false,
+              "required": [
+                "left",
+                "right",
+                "at"
+              ]
+            },
+            "description": "Splits, sorted by `(left, at)`."
+          },
+          "moved": {
+            "type": "array",
+            "items": {
+              "description": "An item whose track or start changed (duration and source did not).",
+              "type": "object",
+              "properties": {
+                "item": {
+                  "description": "The item.",
+                  "type": "string",
+                  "pattern": "^itm_[0-9a-f]{32}$"
+                },
+                "track": {
+                  "description": "Its track now.",
+                  "type": "string",
+                  "pattern": "^trk_[0-9a-f]{32}$"
+                },
+                "start": {
+                  "description": "Its start now.",
+                  "type": "integer",
+                  "minimum": -9007199254740991,
+                  "maximum": 9007199254740991
+                }
+              },
+              "additionalProperties": false,
+              "required": [
+                "item",
+                "track",
+                "start"
+              ]
+            },
+            "description": "Items whose track or start changed."
+          },
+          "trimmed": {
+            "type": "array",
+            "items": {
+              "description": "An item whose duration or `source_in` changed (its start may have too).",
+              "type": "object",
+              "properties": {
+                "item": {
+                  "description": "The item.",
+                  "type": "string",
+                  "pattern": "^itm_[0-9a-f]{32}$"
+                },
+                "start": {
+                  "description": "Its start now.",
+                  "type": "integer",
+                  "minimum": -9007199254740991,
+                  "maximum": 9007199254740991
+                },
+                "duration": {
+                  "description": "Its duration now.",
+                  "type": "integer",
+                  "minimum": 0,
+                  "maximum": 9007199254740991
+                },
+                "source_in": {
+                  "description": "Its `source_in` now (`0` for items that play no media).",
+                  "type": "integer",
+                  "minimum": -9007199254740991,
+                  "maximum": 9007199254740991
+                }
+              },
+              "additionalProperties": false,
+              "required": [
+                "item",
+                "start",
+                "duration",
+                "source_in"
+              ]
+            },
+            "description": "Items whose duration or source position changed."
+          },
+          "relinked": {
+            "type": "array",
+            "items": {
+              "description": "An item whose `linked_group` or `attached_to` changed.",
+              "type": "object",
+              "properties": {
+                "item": {
+                  "description": "The item.",
+                  "type": "string",
+                  "pattern": "^itm_[0-9a-f]{32}$"
+                },
+                "linked_group": {
+                  "description": "Its linked group now.",
+                  "type": [
+                    "string",
+                    "null"
+                  ],
+                  "pattern": "^grp_[0-9a-f]{32}$"
+                },
+                "attached_to": {
+                  "description": "The item it is attached to now.",
+                  "type": [
+                    "string",
+                    "null"
+                  ],
+                  "pattern": "^itm_[0-9a-f]{32}$"
+                }
+              },
+              "additionalProperties": false,
+              "required": [
+                "item",
+                "linked_group",
+                "attached_to"
+              ]
+            },
+            "description": "Items whose link or attachment changed."
+          },
+          "replaced": {
+            "type": "array",
+            "items": {
+              "description": "An item whose media changed (`clip.replace`).",
+              "type": "object",
+              "properties": {
+                "item": {
+                  "description": "The item.",
+                  "type": "string",
+                  "pattern": "^itm_[0-9a-f]{32}$"
+                },
+                "media": {
+                  "description": "Its media now.",
+                  "type": "string",
+                  "pattern": "^med_[0-9a-f]{32}$"
+                }
+              },
+              "additionalProperties": false,
+              "required": [
+                "item",
+                "media"
+              ]
+            },
+            "description": "Items whose media changed."
+          },
+          "toggled": {
+            "type": "array",
+            "items": {
+              "description": "An item whose `enabled` flag changed.",
+              "type": "object",
+              "properties": {
+                "item": {
+                  "description": "The item.",
+                  "type": "string",
+                  "pattern": "^itm_[0-9a-f]{32}$"
+                },
+                "enabled": {
+                  "description": "Its flag now.",
+                  "type": "boolean"
+                }
+              },
+              "additionalProperties": false,
+              "required": [
+                "item",
+                "enabled"
+              ]
+            },
+            "description": "Items whose `enabled` flag changed."
+          },
+          "created_tracks": {
+            "type": "array",
+            "items": {
+              "description": "A Track id: `^trk_[0-9a-f]{32}$`.",
+              "type": "string",
+              "pattern": "^trk_[0-9a-f]{32}$"
+            },
+            "description": "Tracks created, in creation order."
+          }
+        },
+        "required": [
+          "created",
+          "removed",
+          "split",
+          "moved",
+          "trimmed",
+          "relinked",
+          "replaced",
+          "toggled",
+          "created_tracks"
+        ],
+        "description": "What changed (timeline spec §3.1)."
       }
     },
     "required": [
@@ -204,7 +723,8 @@ expression: "json!({\n    \"meta\": serde_json::to_value(meta).unwrap(), \"input
       "right",
       "at",
       "linked",
-      "right_group"
+      "right_group",
+      "report"
     ],
     "description": "Result of `clip.split`.",
     "title": "ClipSplitOutput"

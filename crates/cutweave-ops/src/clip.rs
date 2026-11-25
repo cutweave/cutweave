@@ -24,8 +24,8 @@ use cutweave_model::{
 
 use crate::{
     item::{
-        Located, conflict, duration, ensure_not_magnetic, ensure_orphans_unlockable,
-        ensure_unlocked, members, time, unlink_orphans,
+        Located, conflict, duration, ensure_orphans_unlockable, ensure_unlocked, members, time,
+        unlink_orphans,
     },
     report::EditReport,
     timeline::{
@@ -385,7 +385,6 @@ impl ClipTrim {
                 ));
             }
         };
-        ensure_not_magnetic(doc, &group)?;
         ensure_unlocked(doc, &group)?;
         if unlink {
             let first = &group[0].item;
@@ -429,14 +428,124 @@ impl ClipTrim {
     }
 }
 
+impl ClipTrim {
+    /// A trim of a clip whose group has a member on the magnetic main track: a ripple trim
+    /// (timeline spec INV-203, §4.10) on the placement core, so the track stays gap-free. The
+    /// clip's start stays; what follows on the tracks of the trimmed clips (and their partners'
+    /// tracks) moves by the change of its end. `None` when no member is on the magnetic track.
+    /// The `clamp` and `applied_delta` fields of the trim family are WP-2A.04's.
+    fn magnetic_plan(
+        &self,
+        doc: &Project,
+        ids: &mut dyn Ids,
+    ) -> Result<Option<(Plan, Vec<TrimmedClip>)>, CmdError> {
+        let unlink = self.unlink.unwrap_or(false);
+        let (sequence, group) = members(doc, self.item, !unlink)?;
+        let seq = &doc.sequences[&sequence];
+        if !group
+            .iter()
+            .any(|m| seq.track(&m.track).is_some_and(|t| t.magnetic))
+        {
+            return Ok(None);
+        }
+        let rate = seq.format.frame_rate;
+        clip_of(&group[0].item)?;
+        let (s0, e0) = span(&group[0].item);
+        let (pointer, delta) = match (self.to, self.delta) {
+            (Some(to), None) => {
+                let to = resolve_frame_time("/to", to, rate)?.flicks();
+                (
+                    "/to",
+                    to - if self.edge == TrimEdge::Start { s0 } else { e0 },
+                )
+            }
+            (None, Some(d)) => ("/delta", resolve_frame_time("/delta", d, rate)?.flicks()),
+            _ => {
+                return Err(CmdError::invalid(
+                    "",
+                    "give exactly one of `to` (edge time) or `delta` (edge offset)",
+                ));
+            }
+        };
+        for m in &group {
+            if let Some(t) = seq.track(&m.track) {
+                check_editable_kind("/item", t.kind)?;
+            }
+            clip_of(&m.item)?;
+        }
+        let mut e = Edit::new(doc, sequence, pointer)?;
+        let mut out = Vec::with_capacity(group.len());
+        let mut tracks = Vec::new();
+        for (n, m) in group.iter().enumerate() {
+            let c = clip_of(&m.item)?;
+            let media = media_of(doc, c)?;
+            let who = format!("clip `{}`", c.id);
+            let (start, len, src) = (c.start.flicks(), c.duration.flicks(), c.source_in.flicks());
+            let (new_len, new_src) = match self.edge {
+                TrimEdge::End => (len + delta, src),
+                TrimEdge::Start if is_still(media) => (len - delta, src),
+                TrimEdge::Start => (len - delta, src + delta),
+            };
+            if new_len <= 0 {
+                e.defer(e.invalid(format!("{who} would become empty")));
+            } else if new_src < 0 {
+                e.defer(e.invalid(format!(
+                    "{who} cannot start before the beginning of its media"
+                )));
+            } else if let Some(total) = media_bound(media)
+                && i128::from(new_src) + i128::from(new_len) > i128::from(total)
+            {
+                e.defer(e.invalid(format!("{who} would read past the end of its media")));
+            }
+            e.retime(c.id, start, new_len, new_src);
+            if unlink
+                && n == 0
+                && let Some(g) = c.linked_group
+            {
+                e.update(c.id, |i| i.set_linked_group(None));
+                e.mark_left(g);
+            }
+            if !tracks.contains(&m.track) {
+                tracks.push(m.track);
+            }
+            out.push(TrimmedClip {
+                item: c.id,
+                start: c.start,
+                duration: cutweave_model::Duration::from_flicks(new_len.max(0))
+                    .unwrap_or(c.duration),
+                source_in: time(pointer, new_src.max(0))?,
+            });
+        }
+        let shift = match self.edge {
+            TrimEdge::End => delta,
+            TrimEdge::Start => -delta,
+        };
+        if shift != 0 {
+            e.ripple(&tracks, false, e0, &move |_| shift);
+        }
+        Ok(Some((e.finish(ids)?, out)))
+    }
+}
+
 impl Command for ClipTrim {
     type Output = ClipTrimOutput;
 
     fn validate(&self, ctx: &QueryCtx<'_>) -> Result<(), CmdError> {
+        if self
+            .magnetic_plan(ctx.doc(), &mut DryIds::default())?
+            .is_some()
+        {
+            return Ok(());
+        }
         self.plan(ctx.doc()).map(drop)
     }
 
     fn apply(&self, tx: &mut Tx<'_>) -> Result<ClipTrimOutput, CmdError> {
+        let doc = tx.doc().clone();
+        if let Some((plan, items)) = self.magnetic_plan(&doc, tx)? {
+            plan.commit(tx)?;
+            return Ok(ClipTrimOutput { items });
+        }
         let plan = self.plan(tx.doc())?;
         let mut items = Vec::with_capacity(plan.clips.len());
         for (i, (_, after)) in plan.clips.iter().enumerate() {

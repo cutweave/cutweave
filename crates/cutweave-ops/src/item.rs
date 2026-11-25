@@ -135,30 +135,6 @@ pub(crate) fn ensure_unlocked(doc: &Project, members: &[Located]) -> Result<(), 
     Ok(())
 }
 
-/// `Unsupported` if `track` is the magnetic main track. The P1 edit commands do not ripple, so
-/// they would leave a gap on it (spec INV-7); they gain the magnetic behaviour with the
-/// placement work package (WP-2A.03, spec §3.6). Until then the magnet has to be turned off
-/// (`track.set_magnetic`) to edit its items with these commands.
-pub(crate) fn ensure_free_track(track: &cutweave_model::Track) -> Result<(), CmdError> {
-    if track.magnetic {
-        return Err(CmdError::unsupported(format!(
-            "`{}` is the magnetic main track; this edit does not ripple yet (WP-2A.03).              Turn the magnet off with track.set_magnetic first",
-            track.name
-        )));
-    }
-    Ok(())
-}
-
-/// [`ensure_free_track`] for the track of every member.
-pub(crate) fn ensure_not_magnetic(doc: &Project, members: &[Located]) -> Result<(), CmdError> {
-    for m in members {
-        if let Some(track) = doc.sequences.values().find_map(|s| s.track(&m.track)) {
-            ensure_free_track(track)?;
-        }
-    }
-    Ok(())
-}
-
 pub(crate) fn time(pointer: &str, flicks: i64) -> Result<Time, CmdError> {
     Time::from_flicks(flicks).map_err(|e| CmdError::invalid(pointer, e.to_string()))
 }

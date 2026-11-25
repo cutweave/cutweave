@@ -522,8 +522,15 @@ impl<'d> Edit<'d> {
         });
         self.insert(track, r);
         self.retimed.insert(id);
+        // A part of a part (an item cut by several ranges) is reported as a split of the item
+        // that existed before the edit (INV-21: a split's left half keeps its ID).
+        let left = self
+            .splits
+            .iter()
+            .find(|s| s.right == id)
+            .map_or(id, |s| s.left);
         self.splits.push(SplitReport {
-            left: id,
+            left,
             right,
             at: time(u),
         });
@@ -539,6 +546,19 @@ impl<'d> Edit<'d> {
         for c in children {
             self.update(c, |i| i.set_attached_to(Some(right)));
         }
+    }
+
+    /// A trim: sets an item's start, length and (for a clip) source position, and notes that
+    /// its extent changed (its children are clamped into it, INV-36).
+    pub(crate) fn retime(&mut self, id: ItemId, start: i64, len: i64, source_in: i64) {
+        self.update(id, |i| {
+            i.set_start(time(start));
+            i.set_duration(dur(len));
+            if let Some(c) = i.as_clip_mut() {
+                c.source_in = time(source_in);
+            }
+        });
+        self.retimed.insert(id);
     }
 
     /// The end of `id` moves to `t` (keeps its start).
