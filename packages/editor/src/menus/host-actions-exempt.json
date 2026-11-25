@@ -18,6 +18,22 @@
       "reason": "Select all in a text field runs main's `edit:run` on the focused element. It changes the field's selection, which is page state, not project state."
     },
     {
+      "id": "host.copy_text",
+      "reason": "Copy path, Copy timecode, Copy value, Copy setting key, Copy message and Copy diagnostics put a line of text on the OS clipboard through the renderer. It is the person's clipboard, not project state; an agent reads the same facts from the project, so it has nothing to call."
+    },
+    {
+      "id": "host.reveal_path",
+      "reason": "Reveal in Explorer, Finder or the file manager shows a media file in the OS file manager through `shell:showItemInFolder`, which main validates. It changes nothing in the project, and an agent has no screen to show a folder on."
+    },
+    {
+      "id": "host.open_logs_folder",
+      "reason": "Open logs folder shows the app's own logs folder in the OS file manager through `shell:openAppFolder`, which main allowlists (settings or logs). It has no project effect and no agent twin."
+    },
+    {
+      "id": "bin.import",
+      "reason": "Import… opens the OS file picker (`dialog:pickMediaFiles`) and then sends the chosen paths as one `media.import`, the command the CLI and MCP call with paths of their own. Only the picker is host; the document change is the catalog command."
+    },
+    {
       "id": "palette.copy_id",
       "reason": "Copy command id in the command palette's row menu writes the command's id (`clip.split`) to the OS clipboard through the page's clipboard API. It is the person's clipboard, not project state."
     },

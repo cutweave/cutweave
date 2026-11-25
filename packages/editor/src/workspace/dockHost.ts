@@ -194,6 +194,40 @@ export function reopenAllPanels(): void {
   for (const id of [...openPanelsStore.getState().closed]) openPanel(id);
 }
 
+/** Whether the panel's group fills the dock. */
+export function isPanelMaximized(id: PanelId): boolean {
+  return api?.getPanel(id)?.api.isMaximized() === true;
+}
+
+/** Maximizes the panel's group, or puts it back when it already fills the dock. */
+export function toggleMaximizePanel(id: PanelId): void {
+  const panel = api?.getPanel(id);
+  if (panel === undefined) return;
+  if (panel.api.isMaximized()) panel.api.exitMaximized();
+  else panel.api.maximize();
+}
+
+/** Lifts the panel out of the layout into a floating window over it. */
+export function floatPanel(id: PanelId): void {
+  const dock = api;
+  const panel = dock?.getPanel(id);
+  if (dock === null || panel === undefined) return;
+  dock.addFloatingGroup(panel);
+  saveLayoutNow();
+}
+
+/** Docks the panel again at an edge of the dock: the left, the right or the bottom. */
+export function movePanel(id: PanelId, side: "left" | "right" | "below"): void {
+  const dock = api;
+  const def = getPanelDef(id);
+  const panel = dock?.getPanel(id);
+  if (dock === null || def === undefined || panel === undefined) return;
+  dock.removePanel(panel);
+  addAt(dock, def, { ref: null, direction: side });
+  refresh();
+  saveLayoutNow();
+}
+
 /** Test seam: forget the attached dock. */
 export function resetDockHost(): void {
   attachDock(null);

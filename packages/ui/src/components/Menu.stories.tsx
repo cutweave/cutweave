@@ -123,6 +123,78 @@ export const AtAPoint = {
   ),
 };
 
+const BIN_CARD_ITEMS: MenuEntry[] = [
+  { id: "insert", label: "Insert at playhead", shortcut: "Enter", onSelect: noop },
+  { id: "append", label: "Append to timeline", onSelect: noop },
+  { kind: "separator", id: "s1" },
+  { id: "play", label: "Play in Source view", icon: "play", shortcut: "Space", onSelect: noop },
+  { kind: "separator", id: "s2" },
+  { id: "reveal", label: "Reveal in Explorer", icon: "folder-open", onSelect: noop },
+  { id: "copy", label: "Copy path", icon: "copy", onSelect: noop },
+  { kind: "separator", id: "s3" },
+  {
+    id: "remove",
+    label: "Remove from project",
+    icon: "trash-2",
+    variant: "danger",
+    shortcut: "Delete",
+    onSelect: noop,
+  },
+];
+
+/** The media bin's card menu as the editor builds it (WP-2H.13). */
+export const BinCardActions = {
+  render: () => (
+    <div style={stage}>
+      <Menu
+        mode="point"
+        open
+        anchor={{ x: 48, y: 48 }}
+        items={BIN_CARD_ITEMS}
+        aria-label="Media actions for interview_A.mov"
+      />
+    </div>
+  ),
+};
+
+const TIMELINE_CLIP_ITEMS: MenuEntry[] = [
+  { id: "split", label: "Split at playhead", icon: "scissors", shortcut: "S", onSelect: noop },
+  {
+    id: "delete",
+    label: "Delete clip",
+    icon: "trash-2",
+    variant: "danger",
+    shortcut: "Delete",
+    onSelect: noop,
+  },
+  { kind: "separator", id: "s1" },
+  { id: "disable", label: "Disable clip", onSelect: noop },
+  {
+    id: "rename",
+    label: "Rename…",
+    disabled: true,
+    disabledReason: "Select one clip",
+  },
+  { kind: "separator", id: "s2" },
+  { id: "reveal", label: "Reveal in media bin", icon: "film", onSelect: noop },
+  { id: "copy", label: "Copy path", icon: "copy", onSelect: noop },
+];
+
+/** The timeline clip's menu as the editor builds it (WP-2H.13), with a row that says why not. */
+export const TimelineClipActions = {
+  render: () => (
+    <div style={stage}>
+      <Menu
+        mode="point"
+        open
+        anchor={{ x: 48, y: 48 }}
+        items={TIMELINE_CLIP_ITEMS}
+        aria-label="Clip actions for interview_A.mov"
+      />
+    </div>
+  ),
+};
+
 export const DisabledItems = {
   render: () => (
     <div style={stage}>

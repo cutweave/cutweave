@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 import * as RadixToast from "@radix-ui/react-toast";
-import type { ReactNode } from "react";
+import type { ReactNode, Ref } from "react";
 import { Icon, type IconName } from "../icons/index.ts";
 import { Button } from "./Button.tsx";
 import { cx } from "./cx.ts";
@@ -68,6 +68,8 @@ export interface ToastProps {
   /** Milliseconds before auto-dismiss; defaults by tone. Hover or focus pauses it. */
   duration?: number | undefined;
   className?: string | undefined;
+  /** The toast's element, for a host that attaches behavior to it (the editor's context menu). */
+  rootRef?: Ref<HTMLLIElement> | undefined;
 }
 
 /**
@@ -86,10 +88,12 @@ export function Toast({
   cancelLabel = "Cancel job",
   duration,
   className,
+  rootRef,
 }: ToastProps) {
   const showCancel = tone === "job" && onCancel !== undefined;
   return (
     <RadixToast.Root
+      ref={rootRef}
       open={open}
       onOpenChange={onOpenChange}
       duration={duration ?? AUTO_DISMISS_MS[tone]}
