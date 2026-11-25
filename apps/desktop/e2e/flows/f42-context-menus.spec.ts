@@ -194,23 +194,35 @@ test.describe("F42 context menus", () => {
       // A track header: Mute (the menu then reads Unmute, checked), Lock, and a drag is refused.
       g = await timelineGeometry(page);
       const header = { x: g.box.x + 12, y: laneY(g, "V1") };
-      await page.mouse.click(header.x, header.y, { button: "right" });
-      const trackMenu = page.getByRole("menu", { name: "Track actions for V1" });
-      await expect(trackMenu).toBeVisible();
-      await trackMenu.getByRole("menuitemcheckbox", { name: /^Mute/ }).click();
+      // Mute is the audio track's; Lock is V1's.
+      const audioHeader = { x: header.x, y: laneY(g, "A1") };
+      await page.mouse.click(audioHeader.x, audioHeader.y, { button: "right" });
+      const audioMenu = page.getByRole("menu", { name: "Track actions for A1" });
+      await expect(audioMenu).toBeVisible();
+      await audioMenu.getByRole("menuitemcheckbox", { name: /^Mute/ }).click();
+      await expect(menu).toHaveCount(0); // the chosen command runs once the menu has closed
       // The menu shows the engine's answer: reopen it until the new state has come back.
-      const reopenWith = async (row: RegExp) => {
+      const reopenWith = async (
+        at: { x: number; y: number },
+        menuOf: typeof audioMenu,
+        row: RegExp,
+      ) => {
         await expect(async () => {
           await page.keyboard.press("Escape");
-          await page.mouse.click(header.x, header.y, { button: "right" });
-          await expect(trackMenu.getByRole("menuitemcheckbox", { name: row })).toBeChecked({
+          await page.mouse.click(at.x, at.y, { button: "right" });
+          await expect(menuOf.getByRole("menuitemcheckbox", { name: row })).toBeChecked({
             timeout: 1500,
           });
         }).toPass();
       };
-      await reopenWith(/^Unmute/);
+      await reopenWith(audioHeader, audioMenu, /^Unmute/);
+      await page.keyboard.press("Escape");
+      await page.mouse.click(header.x, header.y, { button: "right" });
+      const trackMenu = page.getByRole("menu", { name: "Track actions for V1" });
+      await expect(trackMenu).toBeVisible();
       await trackMenu.getByRole("menuitemcheckbox", { name: /^Lock/ }).click();
-      await reopenWith(/^Unlock/);
+      await expect(menu).toHaveCount(0); // the chosen command runs once the menu has closed
+      await reopenWith(header, trackMenu, /^Unlock/);
       await page.keyboard.press("Escape");
       await expect(menu).toHaveCount(0);
       const before = await layout(page);
