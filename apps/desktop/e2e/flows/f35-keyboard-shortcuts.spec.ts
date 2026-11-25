@@ -98,8 +98,13 @@ async function find(settings: Locator, query: string): Promise<void> {
 /** Presses Add shortcut on a command's row and then the keys. */
 async function record(settings: Locator, page: Page, name: string, chord: string): Promise<void> {
   const add = settings.getByRole("button", { name: `Add a shortcut for ${name}`, exact: true });
+  // The Add control is an icon button: no text on it, its tooltip says what it does (#169).
+  await expect(add).toHaveText("");
+  await add.hover();
+  await expect(page.getByRole("tooltip").filter({ hasText: "Add shortcut" }).first()).toBeVisible();
   await add.click();
-  await expect(add).toHaveText("Press the keys…");
+  await expect(add).toHaveAttribute("aria-pressed", "true");
+  await expect(settings.getByText("Press the keys…")).toBeVisible();
   await page.keyboard.press(chord);
 }
 

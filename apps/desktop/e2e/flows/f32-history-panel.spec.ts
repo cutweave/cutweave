@@ -193,6 +193,42 @@ test.describe("F32 history panel", () => {
           "Move clip, You",
         ]);
       await snapshot(page, info, "after a new edit");
+
+      // The header's sort button lists the steps newest first (#171); it is remembered per user.
+      await page.getByRole("button", { name: "Show newest first" }).click();
+      await expect
+        .poll(() => labels(page))
+        .toEqual([
+          "Move clip, You",
+          "Change opacity, You",
+          "Move clip, You",
+          "Insert clip, You",
+          "Import media, You",
+        ]);
+      // Going back to "Change opacity" dims the newer move above the marker.
+      await rows(page).nth(1).click();
+      await expect.poll(clips).toEqual([[3, 10]]);
+      await expect(rows(page).nth(0)).toHaveAttribute("data-state", "undone");
+      await expect(page.locator('[data-state="undone"]')).toHaveCount(1);
+      const marker = page.locator(".cw-history__marker");
+      await expect(marker.locator("xpath=preceding-sibling::li[1]//button")).toHaveAttribute(
+        "data-state",
+        "undone",
+      );
+      // The arrow keys follow the list on screen: Down is the next older step.
+      await rows(page).nth(1).focus();
+      await page.keyboard.press("ArrowDown");
+      await expect(rows(page).nth(2)).toBeFocused();
+      await page.getByRole("button", { name: "Show oldest first" }).click();
+      await expect
+        .poll(() => labels(page))
+        .toEqual([
+          "Import media, You",
+          "Insert clip, You",
+          "Move clip, You",
+          "Change opacity, You",
+          "Move clip, You",
+        ]);
     } finally {
       await close();
       work.remove();

@@ -1219,10 +1219,12 @@
 }
 
 /* ---------- SettingsLayout and SettingRow ---------- */
-/* The large Settings dialog: a page list on the left, the open page on the right. */
+/* The large Settings dialog: a page list on the left, the open page on the right. At most 60% of
+   the window tall (#170): the page list and the open page scroll inside, as the palette does. */
 .cw-dialog.cw-dialog--settings {
   width: calc(var(--layer-width-lg) + var(--layer-width-sm));
-  height: calc(100vh - var(--space-6) * 4);
+  height: 60vh;
+  max-height: 60vh;
   overflow: hidden;
 }
 .cw-settings {

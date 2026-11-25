@@ -140,6 +140,7 @@ The dialog is a side tab list of these pages, in this order, with one search fie
 | Key | Setting | Default | Scope | Applied by | Agents | Ships in |
 |---|---|---|---|---|---|---|
 | `media.hover_scrub` | Show a video's frames while the pointer moves across its card in the bin | On | App | Renderer | — | WP-1M.14 |
+| `history.order` | History panel order: oldest first or newest first | Oldest first | App | Renderer (History panel) | — | #171 |
 | `media.proxy_policy` | Proxies for new projects: off, auto, all | Auto | App, copied to the project | `project.new` | Read and change the project's value | WP-2F.03 |
 | `media.proxy_size` | Proxy size: 540p, 720p, 960p | 960p | Machine | Engine (UI-only) | Read | WP-2F.03 |
 | `media.keep_structure` | Keep folder structure when importing folders | On | App | Renderer (passes it to `media.import`) | — | WP-2F.09 |

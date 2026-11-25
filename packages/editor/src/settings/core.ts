@@ -148,6 +148,20 @@ const general: SettingsPageDef = {
       },
     },
     {
+      id: "history.order",
+      key: "history.order",
+      label: "settings.rows.historyOrder.label",
+      description: "settings.rows.historyOrder.description",
+      keywords: "settings.rows.historyOrder.keywords",
+      control: {
+        kind: "segmented",
+        options: [
+          { value: "oldest", label: "settings.rows.historyOrder.oldest" },
+          { value: "newest", label: "settings.rows.historyOrder.newest" },
+        ],
+      },
+    },
+    {
       id: "general.clear_recent",
       label: "settings.rows.clearRecent.label",
       description: "settings.rows.clearRecent.description",

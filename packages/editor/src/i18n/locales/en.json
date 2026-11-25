@@ -109,6 +109,13 @@
         "keywords": "layout, panels, short-form, long-form, vertical, horizontal, new project",
         "last": "Last used"
       },
+      "historyOrder": {
+        "label": "History order",
+        "description": "Whether the History panel lists the oldest or the newest step first. The button in the panel changes the same setting.",
+        "keywords": "history, undo, steps, sort, newest, oldest, order, panel",
+        "oldest": "Oldest first",
+        "newest": "Newest first"
+      },
       "newProjectFolder": {
         "label": "Folder for new projects",
         "description": "New project dialogs start in this folder.",
@@ -529,7 +536,9 @@
       "addLabel": "Add a shortcut for {{name}}",
       "recording": "Press the keys…",
       "remove": "Remove {{keys}} from {{name}}",
+      "removeTip": "Remove shortcut",
       "reset": "Reset {{name}} to the preset",
+      "resetTip": "Reset to preset",
       "unverified": "Unverified",
       "fixed": "Fixed",
       "conflict": "{{keys}} already runs {{name}}. Reassign it here?",
@@ -962,6 +971,8 @@
     "panel": {
       "label": "Project history",
       "filterLabel": "Show changes by",
+      "sortNewest": "Show newest first",
+      "sortOldest": "Show oldest first",
       "filter": {
         "all": "All",
         "user": "You",
