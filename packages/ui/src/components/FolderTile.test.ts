@@ -18,7 +18,7 @@ describe("FolderTile", () => {
         kindLabel: "Folder",
       }),
     );
-    const tile = screen.getByRole("option", { name: /^Folder, Interviews.*3 items$/ });
+    const tile = screen.getByRole("option", { name: /^Folder,s*Interviews.*3 items$/ });
     expect(tile.getAttribute("aria-selected")).toBe("true");
     expect(tile.getAttribute("tabindex")).toBe("-1");
   });
