@@ -867,7 +867,7 @@ impl Core {
         if doc.meta.name == session::UNTITLED
             && let Some(name) = folder.file_name().and_then(|n| n.to_str())
         {
-            doc.meta.name = name.to_owned();
+            name.clone_into(&mut doc.meta.name);
         }
         let store =
             ProjectStore::create(folder, &doc).map_err(|e| session::io_error(&e, "/path"))?;
