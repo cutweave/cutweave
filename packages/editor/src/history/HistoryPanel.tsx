@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
-// The History panel (WP-2H.11, ADR-0019): every change to the project, oldest at the top, who
-// made it and when, a marker under the current state and the undone changes dimmed below it.
+// The History panel (WP-2H.11, ADR-0019): every change to the project, oldest at the top (or
+// newest, a per-user choice, #171), who made it and when, a marker under the current state and the undone changes dimmed below it.
 // Click a row to go back (or forward) to the state right after it. Agent rows are agent blue
 // (design/README.md). The list is windowed: only the rows in view are in the page.
 
@@ -19,6 +19,7 @@ import { useEngineStore } from "../engine/engineStore.ts";
 import type { TKey } from "../i18n/index.ts";
 import { useContextMenu } from "../menus/host.tsx";
 import { EmptyState } from "../panels/EmptyState.tsx";
+import { preferences, usePref } from "../prefs/prefsStore.ts";
 import { actorDisplayName, historyLabel } from "../session/historyLabels.ts";
 import { type Translate, translator } from "../timeline/errors.ts";
 import { goToStep, HistoryFeed } from "./historyFeed.ts";
@@ -158,7 +159,13 @@ export function HistoryPanel() {
   useEffect(() => () => historyStore.getState().setNotice(null), []);
 
   const rows = useMemo(() => buildRows(entries), [entries]);
-  const items = useMemo(() => itemsOf(rows), [rows]);
+  const order = usePref("history.order");
+  const newestFirst = order === "newest";
+  // The marker moves with the rows: newest first, the undone tail is on top and the marker under it.
+  const items = useMemo(() => {
+    const list = itemsOf(rows);
+    return newestFirst ? list.reverse() : list;
+  }, [rows, newestFirst]);
   const markerAt = useMemo(() => items.findIndex((i) => i.kind === "marker"), [items]);
 
   // ---- windowing ----
@@ -210,7 +217,11 @@ export function HistoryPanel() {
   });
 
   // ---- keyboard ----
-  const rowIds = useMemo(() => rows.map((r) => r.txId), [rows]);
+  // In the order on screen: the arrow keys follow the list, Home and End are its first and last row.
+  const rowIds = useMemo(
+    () => items.flatMap((i) => (i.kind === "row" ? [i.row.txId] : [])),
+    [items],
+  );
   const fallbackActive = useMemo(() => {
     const at = markerIndex(rows);
     return rows[Math.max(0, at - 1)]?.txId ?? null;
@@ -268,6 +279,7 @@ export function HistoryPanel() {
     );
   }
   const shown = items.slice(first, last);
+  const sortLabel = newestFirst ? t("history.panel.sortOldest") : t("history.panel.sortNewest");
   return (
     <div className="cw-history">
       <div className="cw-history__tools">
@@ -281,6 +293,14 @@ export function HistoryPanel() {
             { value: "agent", label: t("history.panel.filter.agent") },
           ]}
         />
+        <Tooltip label={sortLabel}>
+          <IconButton
+            size="sm"
+            icon="arrow-up-down"
+            label={sortLabel}
+            onClick={() => void preferences.set("history.order", newestFirst ? "oldest" : "newest")}
+          />
+        </Tooltip>
       </div>
       {notice !== null ? (
         <div className="cw-history__notice" role="status">

@@ -65,6 +65,10 @@ export type ClientProfile = (typeof CLIENT_PROFILES)[number];
 /** The most folders "Folders agents can use" holds (the engine takes no more, WP-1J.05). */
 export const MAX_AGENT_FOLDERS = 64;
 
+/** The History panel lists its steps newest first or oldest first (#171). */
+export const HISTORY_ORDERS = ["oldest", "newest"] as const;
+export type HistoryOrder = (typeof HISTORY_ORDERS)[number];
+
 /** "Keyboard shortcuts" presets (WP-2H.05): the NLE-style keys, or CapCut's. */
 export const SHORTCUT_PRESETS = ["nle", "capcut"] as const;
 export type ShortcutPreset = (typeof SHORTCUT_PRESETS)[number];
@@ -118,6 +122,8 @@ export interface PreferenceValues {
   "media.hover_scrub": boolean;
   /** Folders in an import keep their directories as bin folders (WP-2F.09). */
   "media.keep_structure": boolean;
+  /** The History panel's sort order (#171), the person's, not the project's. */
+  "history.order": HistoryOrder;
   // Keyboard shortcuts (WP-2H.05)
   "shortcuts.preset": ShortcutPreset;
   "shortcuts.bindings": ShortcutOverrides;
@@ -237,6 +243,7 @@ export const PREFERENCES: { readonly [K in PreferenceKey]: PreferenceDef } = {
   "media.hover_scrub": { type: "boolean", scope: "app", default: true },
   "media.keep_structure": { type: "boolean", scope: "app", default: true },
   // Keyboard shortcuts (WP-2H.05)
+  "history.order": { type: "enum", scope: "app", options: HISTORY_ORDERS, default: "oldest" },
   "shortcuts.preset": { type: "enum", scope: "app", options: SHORTCUT_PRESETS, default: "nle" },
   "shortcuts.bindings": { type: "bindings", scope: "app", default: {} },
 };

@@ -9,7 +9,7 @@
 // for the result and stores what differs from the preset (`shortcuts.bindings`).
 
 import { SHORTCUT_PRESETS, type ShortcutOverrides } from "@cutweave/preferences";
-import { Button, IconButton } from "@cutweave/ui";
+import { Button, IconButton, Tooltip } from "@cutweave/ui";
 import { Fragment, type ReactNode, useEffect, useRef, useState } from "react";
 import { i18n, type TKey } from "../i18n/index.ts";
 import { KEY_COMMANDS } from "../keymap/commands.ts";
@@ -106,11 +106,7 @@ function KeyCaps({
           : ctx.t("shortcuts.keysLabel", { name, keys: text })
       }
     >
-      {combos.length === 0 ? (
-        <span className="caption cw-settings__or" aria-hidden="true">
-          {ctx.t("shortcuts.cell.none")}
-        </span>
-      ) : null}
+      {combos.length === 0 ? <span className="cw-settings__keyslot" aria-hidden="true" /> : null}
       {combos.map((combo, index) => {
         const label = comboText(combo, where);
         return (
@@ -136,12 +132,14 @@ function KeyCaps({
                     ))}
               </span>
               {onRemove === undefined ? null : (
-                <IconButton
-                  size="sm"
-                  icon="x"
-                  label={ctx.t("shortcuts.cell.remove", { keys: label, name })}
-                  onClick={() => onRemove(combo)}
-                />
+                <Tooltip label={ctx.t("shortcuts.cell.removeTip")}>
+                  <IconButton
+                    size="sm"
+                    icon="x"
+                    label={ctx.t("shortcuts.cell.remove", { keys: label, name })}
+                    onClick={() => onRemove(combo)}
+                  />
+                </Tooltip>
               )}
             </span>
           </Fragment>
@@ -245,22 +243,30 @@ function ShortcutCell({
         {unverified ? <span className="caption">{ctx.t("shortcuts.cell.unverified")}</span> : null}
         {fixed ? <span className="caption">{ctx.t("shortcuts.cell.fixed")}</span> : null}
         {changed && !fixed ? (
-          <IconButton
-            size="sm"
-            icon="undo-2"
-            label={ctx.t("shortcuts.cell.reset", { name })}
-            onClick={() => store(withPresetKeys(model, model.effective(), id))}
-          />
+          <Tooltip label={ctx.t("shortcuts.cell.resetTip")}>
+            <IconButton
+              size="sm"
+              icon="undo-2"
+              label={ctx.t("shortcuts.cell.reset", { name })}
+              onClick={() => store(withPresetKeys(model, model.effective(), id))}
+            />
+          </Tooltip>
         ) : null}
         {fixed ? null : (
-          <Button
-            size="sm"
-            aria-label={ctx.t("shortcuts.cell.addLabel", { name })}
-            aria-pressed={recording}
-            onClick={() => setMode(recording ? { kind: "idle" } : { kind: "recording" })}
-          >
-            {recording ? ctx.t("shortcuts.cell.recording") : ctx.t("shortcuts.cell.add")}
-          </Button>
+          <>
+            {recording ? (
+              <span className="caption">{ctx.t("shortcuts.cell.recording")}</span>
+            ) : null}
+            <Tooltip label={ctx.t("shortcuts.cell.add")}>
+              <IconButton
+                size="sm"
+                icon="plus"
+                label={ctx.t("shortcuts.cell.addLabel", { name })}
+                pressed={recording}
+                onClick={() => setMode(recording ? { kind: "idle" } : { kind: "recording" })}
+              />
+            </Tooltip>
+          </>
         )}
       </span>
       {mode.kind === "conflict" ? (

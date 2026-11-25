@@ -12,6 +12,7 @@ import { I18nextProvider } from "react-i18next";
 import { afterEach, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
 import { engineStore } from "../engine/engineStore.ts";
 import { i18n } from "../i18n/index.ts";
+import { preferences } from "../prefs/prefsStore.ts";
 import { entry, mixedHistory } from "../testing/historyFixtures.ts";
 import { HistoryPanel } from "./HistoryPanel.tsx";
 import { historyStore, initialHistoryState } from "./historyStore.ts";
@@ -63,6 +64,7 @@ beforeAll(() => {
 
 beforeEach(() => {
   historyStore.setState({ ...initialHistoryState });
+  void preferences.set("history.order", "oldest");
   entries = mixedHistory();
   connect();
 });
@@ -85,6 +87,7 @@ describe("History panel", () => {
     expect(items[5]?.textContent).toContain("Current state");
     const names = screen
       .getAllByRole("button")
+      .filter((b) => b.dataset.tx !== undefined)
       .map((b) => b.getAttribute("aria-label") ?? "")
       .filter((l) => l !== "")
       .map((l) => l.split(", ").slice(0, 2).join(", "));
@@ -229,6 +232,44 @@ describe("History panel", () => {
     expect(document.activeElement?.getAttribute("aria-label")).toMatch(/^Insert clip/);
     await user.keyboard("{Enter}");
     expect(calls("edit.undo")).toEqual([["edit.undo", { actor: "*", steps: 3 }]]);
+  });
+
+  it("lists newest first with the sort button, keeping the marker, dimmed rows, jumps and keys (#171)", async () => {
+    const user = userEvent.setup();
+    await preferences.set("history.order", "oldest");
+    view();
+    await screen.findByRole("list", { name: "Project history" });
+    await user.click(screen.getByRole("button", { name: "Show newest first" }));
+    expect(preferences.store.getState().values["history.order"]).toBe("newest");
+    const items = within(screen.getByRole("list", { name: "Project history" })).getAllByRole(
+      "listitem",
+    );
+    // The undone tail (two rows) is on top, then the marker, then the applied rows, newest first.
+    expect(items).toHaveLength(8);
+    expect(items[2]?.getAttribute("aria-current")).toBe("step");
+    const rows = screen.getAllByRole("button").filter((b) => b.dataset.tx !== undefined);
+    expect(rows.map((r) => r.dataset.state)).toEqual([
+      "undone",
+      "undone",
+      "applied",
+      "applied",
+      "applied",
+      "applied",
+      "applied",
+    ]);
+    expect(rows[2]?.getAttribute("aria-label")).toMatch(/^Edit properties/);
+    // Click-to-jump still goes by the shared order.
+    await user.click(rowOf(/^Insert clip, You/));
+    expect(calls("edit.undo")).toEqual([["edit.undo", { actor: "*", steps: 3 }]]);
+    // The keys follow the list on screen: Down from Insert clip is the older Import media.
+    await user.keyboard("{ArrowDown}");
+    expect(document.activeElement?.getAttribute("aria-label")).toMatch(/^Import media/);
+    await user.keyboard("{ArrowUp}{ArrowUp}");
+    expect(document.activeElement?.getAttribute("aria-label")).toMatch(/^Move clip, You/);
+    // And back.
+    await user.click(screen.getByRole("button", { name: "Show oldest first" }));
+    expect(preferences.store.getState().values["history.order"]).toBe("oldest");
+    await preferences.set("history.order", "oldest");
   });
 
   it("says there are no changes yet", async () => {

@@ -23,6 +23,7 @@ The lock file is `$CUTWEAVE_GPU_LOCK_FILE` if set, else `<system temp dir>/cutwe
 
 import os
 import re
+import shutil
 import subprocess
 import sys
 import tempfile
@@ -94,6 +95,11 @@ def main() -> int:
         return 2
     if os.name == "nt" and args[0] in ("bash", "sh", "bash.exe") and os.path.isfile(GIT_BASH):
         args = [GIT_BASH, *args[1:]]
+    elif os.name == "nt":
+        # `pnpm`, `npx` and friends are .cmd shims that CreateProcess finds only by their full path.
+        found = shutil.which(args[0])
+        if found:
+            args = [found, *args[1:]]
     joined = " ".join(args)
     # LOCK was resolved from the system temp dir above; only what we start moves to `.tmp`.
     use_repo_temp(Path(__file__).resolve().parent.parent)
