@@ -1,19 +1,26 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 //! [`Transport`]: the control handle behind the `view.*` transport commands.
 //!
-//! Control calls (play, pause, seek, rate, step) are serialised by one lock that only the
-//! control path takes: the calling thread updates the state machine, drives the audio
+//! Control calls (play, pause, seek, rate, step, target) are serialised by one lock that only
+//! the control path takes: the calling thread updates the state machine, drives the audio
 //! ([`AudioControl`]), starts a new epoch ([`EpochGate::advance`], which cancels in-flight
 //! renders) and publishes the new state through a seqlock. The render thread, the ring clock
 //! pump and the status pump only read that snapshot and the audio clock, lock-free.
+//!
+//! **Targets (ADR-0022).** The transport plays the sequence or one media asset (a source,
+//! [`Transport::set_source`]). The snapshot always describes the target: its frame grid, its
+//! extent and its playhead. The sequence's grid and its playhead wait behind the control lock
+//! while a source plays (edits still update the grid), and every source's playhead is kept
+//! there for the session.
 
+use std::collections::HashMap;
 use std::sync::atomic::{AtomicI64, AtomicU8, AtomicU64, Ordering};
 use std::sync::{Arc, Mutex, MutexGuard, OnceLock, PoisonError};
 use std::thread::Thread;
 
 use cutweave_audio::{AudioClock, ClockReading};
-use cutweave_commands::Rev;
-use cutweave_model::Time;
+use cutweave_commands::{CmdError, Rev};
+use cutweave_model::{MediaId, Time};
 
 use crate::shm::{ClockSample, ClockState, PixelFormat, PreviewConfig};
 use crate::transport::audio::AudioControl;
@@ -23,6 +30,7 @@ use crate::transport::source::SequenceTiming;
 use crate::transport::state::{
     FrameQuality, PlaybackState, Rate, Shuttle, Snapshot, SnapshotCell, TransportMode, shuttle,
 };
+use crate::transport::target::{PlaybackTarget, SourceInfo, SourceResolver};
 
 /// Counters of the render loop since playback attached.
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
@@ -37,6 +45,8 @@ pub struct PlaybackStats {
     pub errors: u64,
     /// Sequence number the sink gave the newest frame.
     pub last_seq: u64,
+    /// Index of the newest delivered frame on its target's grid (−1 before the first).
+    pub last_frame: i64,
 }
 
 /// Render-loop counters, written by the render thread only (atomics, no locks).
@@ -76,6 +86,12 @@ pub(crate) struct Control {
     audio: Box<dyn AudioControl>,
     /// The published state (the writer's copy of the snapshot).
     snap: Snapshot,
+    /// The sequence's frame grid and extent (also the snapshot's while it is the target).
+    sequence: SequenceTiming,
+    /// The sequence's playhead while a source plays (it does not move meanwhile).
+    sequence_anchor: i64,
+    /// Where each source shown this session was left (flicks, in its own time).
+    sources: HashMap<MediaId, i64>,
 }
 
 /// Everything the transport shares with its threads.
@@ -90,6 +106,8 @@ pub(crate) struct Shared {
     pub preview_request: AtomicU64,
     pub render_thread: OnceLock<Thread>,
     pub status_thread: OnceLock<Thread>,
+    /// Finds the media `view.set_source` names.
+    sources: Option<Arc<dyn SourceResolver>>,
 }
 
 const PREVIEW_VALID: u64 = 1 << 63;
@@ -143,6 +161,7 @@ impl Shared {
             rev: Rev(self.stats.last_rev.load(Ordering::Relaxed)),
             quality: FrameQuality::from_u8(self.stats.last_quality.load(Ordering::Relaxed)),
             dropped: u32::try_from(self.stats.dropped.load(Ordering::Relaxed)).unwrap_or(u32::MAX),
+            source: snap.source(),
         }
     }
 }
@@ -166,17 +185,25 @@ impl std::fmt::Debug for Transport {
 
 impl Transport {
     /// A stopped transport at 0 over `audio` for a sequence with `timing`; `host` times
-    /// everything that is not the audio clock.
+    /// everything that is not the audio clock; `sources` finds the media `view.set_source`
+    /// names.
     pub(crate) fn new(
         audio: Box<dyn AudioControl>,
         timing: SequenceTiming,
         host: Arc<dyn HostClock>,
+        sources: Option<Arc<dyn SourceResolver>>,
     ) -> Transport {
         let snap = Snapshot::new(timing);
         let clock = audio.clock();
         Transport {
             shared: Arc::new(Shared {
-                control: Mutex::new(Control { audio, snap }),
+                control: Mutex::new(Control {
+                    audio,
+                    snap,
+                    sequence: timing,
+                    sequence_anchor: 0,
+                    sources: HashMap::new(),
+                }),
                 snapshot: SnapshotCell::new(&snap),
                 gate: Arc::new(EpochGate::new()),
                 host,
@@ -185,6 +212,7 @@ impl Transport {
                 preview_request: AtomicU64::new(0),
                 render_thread: OnceLock::new(),
                 status_thread: OnceLock::new(),
+                sources,
             }),
         }
     }
@@ -339,7 +367,7 @@ impl Transport {
         self.publish(&mut c, next)
     }
 
-    /// Pauses and moves `frames` frames along the sequence grid (`view.step`; negative steps
+    /// Pauses and moves `frames` frames along the target's grid (`view.step`; negative steps
     /// back), clamped to the content. The frame renders at full quality.
     pub fn step(&self, frames: i64) -> PlaybackState {
         let mut c = self.lock();
@@ -367,16 +395,49 @@ impl Transport {
     /// continues; a stopped frame refines straight to full quality.
     pub fn refresh(&self) -> PlaybackState {
         let mut c = self.lock();
+        self.refresh_in(&mut c)
+    }
+
+    fn refresh_in(&self, c: &mut Control) -> PlaybackState {
         let mut next = c.snap;
         next.content = next.content.wrapping_add(1);
         next.scrub = false;
-        self.publish(&mut c, next)
+        self.publish(c, next)
     }
 
-    /// Changes the sequence's frame grid or extent (the document changed) and refreshes. The
-    /// playhead is clamped to the new content.
+    /// Changes the sequence's frame grid or extent (the document changed). While the sequence
+    /// plays it refreshes and the playhead is clamped to the new content; while a source plays
+    /// the new timing waits for the sequence's return (the source is not interrupted).
     pub fn set_timing(&self, timing: SequenceTiming) -> PlaybackState {
         let mut c = self.lock();
+        c.sequence = timing;
+        if c.snap.target != PlaybackTarget::Sequence {
+            return self.unchanged(&c);
+        }
+        self.retime(&mut c, timing)
+    }
+
+    /// The document changed (the engine's document watcher): `timing` is the sequence's grid
+    /// and extent now. While the sequence plays, this is [`set_timing`](Self::set_timing) when
+    /// the timing changed and [`refresh`](Self::refresh) otherwise; while a source plays, the
+    /// timing is kept for the sequence's return and the source is not interrupted. Atomic with
+    /// respect to target changes.
+    pub fn sequence_edited(&self, timing: SequenceTiming) -> PlaybackState {
+        let mut c = self.lock();
+        c.sequence = timing;
+        if c.snap.target != PlaybackTarget::Sequence {
+            return self.unchanged(&c);
+        }
+        if timing == c.snap.timing() {
+            self.refresh_in(&mut c)
+        } else {
+            self.retime(&mut c, timing)
+        }
+    }
+
+    /// Gives the target a new frame grid or extent and refreshes; the playhead is clamped to
+    /// the new content and playback continues.
+    fn retime(&self, c: &mut Control, timing: SequenceTiming) -> PlaybackState {
         let cur = c.snap;
         let now = self.now();
         let pos = cur.position(&self.shared.clock.read(), now);
@@ -393,7 +454,94 @@ impl Transport {
                 next.anchor_ns = now;
             }
         }
-        self.publish(&mut c, next)
+        self.publish(c, next)
+    }
+
+    /// Plays `source` instead of what plays now, or the sequence again with `None`
+    /// (`view.set_source`, ADR-0022). The transport stops on the new target's own playhead:
+    /// where that source was left this session (0 the first time), or the sequence's, which did
+    /// not move while sources played. Audio pauses and plays the new target's sound from the
+    /// next `play` ([`AudioControl::set_target`]). Once this returns, every frame delivered is
+    /// the new target's (latest wins). The same source again changes nothing.
+    pub fn set_source(&self, source: Option<SourceInfo>) -> PlaybackState {
+        let mut c = self.lock();
+        self.retarget(&mut c, source)
+    }
+
+    /// [`set_source`](Self::set_source) of the media asset `media`, found by the
+    /// [`SourceResolver`] playback was configured with, or of the sequence with `None`.
+    ///
+    /// # Errors
+    /// The resolver's (`NotFound`, `Invalid`), or `Unsupported` without a resolver.
+    pub fn set_source_media(&self, media: Option<MediaId>) -> Result<PlaybackState, CmdError> {
+        let source = match media {
+            None => None,
+            Some(id) => {
+                let resolver = self.shared.sources.as_ref().ok_or_else(|| {
+                    CmdError::unsupported("this playback cannot play media on its own")
+                })?;
+                Some(resolver.resolve(id)?)
+            }
+        };
+        Ok(self.set_source(source))
+    }
+
+    /// The asset of the source `media` changed in the document (the engine's document
+    /// watcher). `None` (it is gone, or can no longer play) ends the source: the sequence
+    /// plays again, as with `set_source(None)`. A new length or grid applies like
+    /// [`set_timing`](Self::set_timing) does to the sequence (playback continues, clamped);
+    /// the same ones re-render the current frame (a relinked file). Nothing happens unless
+    /// `media` is the target.
+    pub fn source_changed(&self, media: MediaId, source: Option<SourceInfo>) -> PlaybackState {
+        let mut c = self.lock();
+        if c.snap.target != PlaybackTarget::Media(media) {
+            return self.unchanged(&c);
+        }
+        match source {
+            None => self.retarget(&mut c, None),
+            Some(info) if info.timing() == c.snap.timing() => self.refresh_in(&mut c),
+            Some(info) => self.retime(&mut c, info.timing()),
+        }
+    }
+
+    fn retarget(&self, c: &mut Control, source: Option<SourceInfo>) -> PlaybackState {
+        let cur = c.snap;
+        let (target, timing) = match source {
+            Some(info) => (info.target(), info.timing()),
+            None => (PlaybackTarget::Sequence, c.sequence),
+        };
+        if cur.target == target && cur.timing() == timing {
+            return self.unchanged(c);
+        }
+        let now = self.now();
+        // Remember where the old target was left.
+        let pos = cur.position(&self.shared.clock.read(), now);
+        match cur.target {
+            PlaybackTarget::Sequence => c.sequence_anchor = pos,
+            PlaybackTarget::Media(id) => {
+                c.sources.insert(id, pos);
+            }
+        }
+        if cur.rate().is_some_and(Rate::follows_audio) {
+            c.audio.pause();
+        }
+        if cur.target != target {
+            c.audio.set_target(target);
+        }
+        let anchor = match target {
+            PlaybackTarget::Sequence => c.sequence_anchor,
+            PlaybackTarget::Media(id) => c.sources.get(&id).copied().unwrap_or(0),
+        };
+        let mut next = cur;
+        next.target = target;
+        next.set_timing(timing);
+        // Frames of the old target never count as on screen for the new one.
+        next.content = next.content.wrapping_add(1);
+        next.rate_milli = 0;
+        next.scrub = false;
+        next.anchor = anchor.clamp(0, next.end.max(0));
+        next.anchor_ns = now;
+        self.publish(c, next)
     }
 
     /// Requests a new preview size in pixels (`view.set_preview_size`; the sink keeps its
@@ -454,10 +602,41 @@ impl Transport {
         self.shared.snapshot.load().rate()
     }
 
-    /// The sequence's frame grid and extent.
+    /// The frame grid and extent of what plays: the sequence's, or the source's.
     #[must_use]
     pub fn timing(&self) -> SequenceTiming {
         self.shared.snapshot.load().timing()
+    }
+
+    /// What plays: the sequence or a source.
+    #[must_use]
+    pub fn target(&self) -> PlaybackTarget {
+        self.shared.snapshot.load().target
+    }
+
+    /// The source playing (`playback.state.source`); `None` while the sequence plays.
+    #[must_use]
+    pub fn source(&self) -> Option<SourceInfo> {
+        self.shared.snapshot.load().source()
+    }
+
+    /// The sequence's frame grid and extent, whatever plays (takes the control lock).
+    #[must_use]
+    pub fn sequence_timing(&self) -> SequenceTiming {
+        self.lock().sequence
+    }
+
+    /// The sequence's playhead: the live one while it plays, else where it was left when a
+    /// source took over (clamped to its current extent). Takes the control lock.
+    #[must_use]
+    pub fn sequence_playhead(&self) -> Time {
+        let c = self.lock();
+        let at = if c.snap.target == PlaybackTarget::Sequence {
+            c.snap.position(&self.shared.clock.read(), self.now())
+        } else {
+            c.sequence_anchor.clamp(0, c.sequence.end.flicks().max(0))
+        };
+        Time::from_flicks(at).unwrap_or(Time::ZERO)
     }
 
     /// The current request epoch (every control change starts a new one).
@@ -483,11 +662,13 @@ impl Transport {
     pub fn stats(&self) -> PlaybackStats {
         let s = &self.shared.stats;
         PlaybackStats {
-            delivered: s.delivered.load(Ordering::Relaxed),
+            // Acquire: the newest frame's fields below were stored before it was counted.
+            delivered: s.delivered.load(Ordering::Acquire),
             dropped: s.dropped.load(Ordering::Relaxed),
             cancelled: s.cancelled.load(Ordering::Relaxed),
             errors: s.errors.load(Ordering::Relaxed),
             last_seq: s.last_seq.load(Ordering::Relaxed),
+            last_frame: s.last_frame.load(Ordering::Relaxed),
         }
     }
 

@@ -9,7 +9,7 @@
 //! `registry.invoke_engine_json(name, params, &mut transport, caller.access())`.
 
 use cutweave_commands::{CmdError, EngineCommand, Registry, RegistryError, command, wire};
-use cutweave_model::{Time, TimeInput};
+use cutweave_model::{MediaId, Time, TimeInput};
 
 use crate::shm::{PixelFormat, PreviewConfig};
 use crate::transport::control::Transport;
@@ -63,8 +63,8 @@ impl EngineCommand for ViewPause {
     annotations(destructive = false, idempotent = true)
 )]
 pub struct ViewSeek {
-    /// Where: flicks, "2.5s", "f:60" or timecode "00:00:02:12" at the sequence rate; `>= 0`,
-    /// clamped to the end of the content.
+    /// Where: flicks, "2.5s", "f:60" or timecode "00:00:02:12" at the rate of what plays (the
+    /// sequence's, or a source's own); `>= 0`, clamped to the end of the content.
     pub t: TimeInput,
 }
 
@@ -111,8 +111,8 @@ impl EngineCommand for ViewSetRate {
     }
 }
 
-/// Pauses and moves the playhead by whole frames of the sequence grid (negative steps back),
-/// clamped to the content. The frame renders at full quality.
+/// Pauses and moves the playhead by whole frames of the grid of what plays (negative steps
+/// back), clamped to the content. The frame renders at full quality.
 #[command(
     name = "view.step",
     summary = "Pause and step the playhead by frames",
@@ -130,6 +130,33 @@ impl EngineCommand for ViewStep {
     type Output = PlaybackState;
     fn run(&self, transport: &mut Transport) -> Result<PlaybackState, CmdError> {
         Ok(transport.step(i64::from(self.frames)))
+    }
+}
+
+/// Plays one media asset on its own in the preview (a source), or the timeline again without
+/// `media` (ADR-0022). Playback stops on the new target's own playhead: where that asset was
+/// left this session (its start the first time), or the timeline's, which does not move while
+/// a source plays. `view.play`, `view.pause`, `view.seek`, `view.step` and `view.set_rate` then
+/// act on the source, in its own time; the source ends by itself when its asset is removed or
+/// another project opens. Nothing is written to the project: no item, no undo step. Returns
+/// the playback state (`source` says what plays).
+#[command(
+    name = "view.set_source",
+    summary = "Play a media item on its own in the preview, or the timeline again",
+    view,
+    mcp = "catalog",
+    annotations(destructive = false, idempotent = true)
+)]
+pub struct ViewSetSource {
+    /// The media to play; omit it to return to the timeline.
+    pub media: Option<MediaId>,
+}
+
+impl EngineCommand for ViewSetSource {
+    type Context = Transport;
+    type Output = PlaybackState;
+    fn run(&self, transport: &mut Transport) -> Result<PlaybackState, CmdError> {
+        transport.set_source_media(self.media)
     }
 }
 
@@ -192,6 +219,7 @@ pub fn register(registry: &mut Registry) -> Result<(), RegistryError> {
         .register::<ViewSeek>()?
         .register::<ViewSetRate>()?
         .register::<ViewStep>()?
+        .register::<ViewSetSource>()?
         .register::<ViewSetPreviewSize>()?;
     Ok(())
 }

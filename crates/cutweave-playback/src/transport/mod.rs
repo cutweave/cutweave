@@ -9,11 +9,14 @@
 //! # Pieces
 //!
 //! * [`Transport`]: the control handle (`view.play`, `view.pause`, `view.seek`,
-//!   `view.set_rate`, `view.step`, [`commands`]) and lock-free reads of the live state.
-//!   States: `Stopped | Playing{rate} | Scrubbing` ([`TransportMode`]); JKL rates ±1×/±2×/±4×
-//!   ([`Rate`], [`shuttle`]). 1× forward plays audio and follows the audio clock
+//!   `view.set_rate`, `view.step`, `view.set_source`, [`commands`]) and lock-free reads of the
+//!   live state. States: `Stopped | Playing{rate} | Scrubbing` ([`TransportMode`]); JKL rates
+//!   ±1×/±2×/±4× ([`Rate`], [`shuttle`]). 1× forward plays audio and follows the audio clock
 //!   ([`cutweave_audio::AudioClock`]); 2×/4× and every reverse rate are video-only in P1
 //!   (audio muted) and step through the frame grid on the host clock.
+//! * [`PlaybackTarget`]: what plays (ADR-0022), the sequence or one media asset on its own (a
+//!   source, [`SourceInfo`], found by a [`SourceResolver`]). Each target has its own playhead;
+//!   every transport command acts on the current one, in its time.
 //! * [`RenderLoop`]: the render thread's body: A/V sync, skip-frames, prefetch hints, the
 //!   latest-wins scrub scheduler (cache → quarter → full after 100 ms idle) and the quality
 //!   policy ([`cutweave_render::AutoQuality`]).
@@ -73,6 +76,7 @@ pub mod source;
 mod state;
 mod status;
 mod synthetic;
+mod target;
 
 #[cfg(test)]
 mod tests;
@@ -93,6 +97,7 @@ pub use source::{
 pub use state::{FrameQuality, PlaybackState, Rate, Shuttle, TransportMode, shuttle};
 pub use status::{MAX_STATE_HZ, PLAYBACK_STATE_EVENT, StateSink, StatusPoll, StatusPump};
 pub use synthetic::{MARKER_LEN, SyntheticSource, decode_frame_number};
+pub use target::{PlaybackTarget, SourceInfo, SourceResolver};
 
 /// The events this module emits, as `(name, summary)` (for the generated events catalog).
 pub const EVENTS: &[(&str, &str)] = &[(

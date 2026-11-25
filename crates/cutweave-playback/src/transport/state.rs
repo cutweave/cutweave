@@ -7,10 +7,11 @@ use std::sync::atomic::{AtomicI32, AtomicI64, AtomicU32, AtomicU64, Ordering, fe
 
 use cutweave_audio::ClockReading;
 use cutweave_commands::{Rev, wire};
-use cutweave_model::{FLICKS_PER_SECOND, FrameRate, Time};
+use cutweave_model::{Duration, FLICKS_PER_SECOND, FrameRate, MediaId, Time};
 use cutweave_render::Scale;
 
 use crate::transport::source::SequenceTiming;
+use crate::transport::target::{PlaybackTarget, SourceInfo};
 
 /// One of the JKL playback rates: ±1×, ±2×, ±4× (in thousandths, the ring's `rate_milli`).
 ///
@@ -182,7 +183,8 @@ pub struct PlaybackState {
     pub playing: bool,
     /// Playback rate: 1 normal, 2 and 4 fast forward, −1, −2 and −4 reverse; 0 when stopped.
     pub rate: f64,
-    /// The live playhead in flicks (at 1× the audio clock: the audio audible now).
+    /// The live playhead in flicks (at 1× the audio clock: the audio audible now), in the time
+    /// of what plays: the sequence's, or the source's own (from 0) while `source` is set.
     pub t: Time,
     /// Document revision of the newest delivered frame.
     pub rev: Rev,
@@ -190,6 +192,9 @@ pub struct PlaybackState {
     pub quality: FrameQuality,
     /// Frames skipped since playback attached because rendering fell behind (saturates).
     pub dropped: u32,
+    /// The media asset playing instead of the sequence (`view.set_source`); `null` while the
+    /// sequence plays. The sequence's playhead does not move while a source plays.
+    pub source: Option<SourceInfo>,
 }
 
 /// Flicks per nanosecond as a ratio: `ns * FLICKS_PER_SECOND / 1e9`.
@@ -226,12 +231,14 @@ pub(crate) struct Snapshot {
     /// 1×: the audio clock generation before the seek; the position holds at `anchor` until
     /// the clock moves past it.
     pub audio_gen: u64,
-    /// Sequence end (flicks, exclusive).
+    /// End of the target's content (flicks, exclusive).
     pub end: i64,
-    /// Sequence frame rate.
+    /// The target's frame rate.
     pub fps_num: u32,
-    /// Sequence frame rate.
+    /// The target's frame rate.
     pub fps_den: u32,
+    /// What plays: the sequence, or a source (`end` and the rate are then the source's).
+    pub target: PlaybackTarget,
 }
 
 impl Snapshot {
@@ -247,7 +254,19 @@ impl Snapshot {
             end: timing.end.flicks(),
             fps_num: timing.rate.num(),
             fps_den: timing.rate.den(),
+            target: PlaybackTarget::Sequence,
         }
+    }
+
+    /// The source playing (`playback.state.source`), if the target is one.
+    pub(crate) fn source(&self) -> Option<SourceInfo> {
+        let media = self.target.media()?;
+        let timing = self.timing();
+        Some(SourceInfo {
+            media,
+            duration: Duration::from_flicks(timing.end.flicks()).unwrap_or(Duration::ZERO),
+            fps: timing.rate,
+        })
     }
 
     pub(crate) fn timing(&self) -> SequenceTiming {
@@ -319,9 +338,24 @@ pub(crate) struct SnapshotCell {
     end: AtomicI64,
     fps_num: AtomicU32,
     fps_den: AtomicU32,
+    /// The source's media id (high and low halves) when `FLAG_SOURCE` is set.
+    media_hi: AtomicU64,
+    media_lo: AtomicU64,
 }
 
 const FLAG_SCRUB: u32 = 1;
+const FLAG_SOURCE: u32 = 2;
+
+/// A media id as two words.
+#[allow(clippy::cast_possible_truncation)] // the halves of a u128
+fn split(id: MediaId) -> (u64, u64) {
+    let raw = id.as_u128();
+    ((raw >> 64) as u64, raw as u64)
+}
+
+fn join(hi: u64, lo: u64) -> MediaId {
+    MediaId::from_u128((u128::from(hi) << 64) | u128::from(lo))
+}
 
 impl SnapshotCell {
     pub(crate) fn new(s: &Snapshot) -> SnapshotCell {
@@ -337,6 +371,8 @@ impl SnapshotCell {
             end: AtomicI64::new(0),
             fps_num: AtomicU32::new(0),
             fps_den: AtomicU32::new(0),
+            media_hi: AtomicU64::new(0),
+            media_lo: AtomicU64::new(0),
         };
         cell.store(s);
         cell
@@ -349,16 +385,23 @@ impl SnapshotCell {
         self.seq.store(seq.wrapping_add(1), r);
         // Orders the odd sequence number before the field stores (seqlock writer).
         fence(Ordering::Release);
+        let (source, (hi, lo)) = match s.target {
+            PlaybackTarget::Sequence => (0, (0, 0)),
+            PlaybackTarget::Media(id) => (FLAG_SOURCE, split(id)),
+        };
         self.epoch.store(s.epoch, r);
         self.content.store(s.content, r);
         self.rate_milli.store(s.rate_milli, r);
-        self.flags.store(if s.scrub { FLAG_SCRUB } else { 0 }, r);
+        self.flags
+            .store(if s.scrub { FLAG_SCRUB } else { 0 } | source, r);
         self.anchor.store(s.anchor, r);
         self.anchor_ns.store(s.anchor_ns, r);
         self.audio_gen.store(s.audio_gen, r);
         self.end.store(s.end, r);
         self.fps_num.store(s.fps_num, r);
         self.fps_den.store(s.fps_den, r);
+        self.media_hi.store(hi, r);
+        self.media_lo.store(lo, r);
         self.seq.store(seq.wrapping_add(2), Ordering::Release);
     }
 
@@ -370,17 +413,24 @@ impl SnapshotCell {
         loop {
             let s1 = self.seq.load(Ordering::Acquire);
             if s1 & 1 == 0 {
+                let flags = self.flags.load(r);
+                let (hi, lo) = (self.media_hi.load(r), self.media_lo.load(r));
                 let s = Snapshot {
                     epoch: self.epoch.load(r),
                     content: self.content.load(r),
                     rate_milli: self.rate_milli.load(r),
-                    scrub: self.flags.load(r) & FLAG_SCRUB != 0,
+                    scrub: flags & FLAG_SCRUB != 0,
                     anchor: self.anchor.load(r),
                     anchor_ns: self.anchor_ns.load(r),
                     audio_gen: self.audio_gen.load(r),
                     end: self.end.load(r),
                     fps_num: self.fps_num.load(r),
                     fps_den: self.fps_den.load(r),
+                    target: if flags & FLAG_SOURCE == 0 {
+                        PlaybackTarget::Sequence
+                    } else {
+                        PlaybackTarget::Media(join(hi, lo))
+                    },
                 };
                 fence(Ordering::Acquire);
                 if self.seq.load(r) == s1 {
@@ -478,7 +528,7 @@ mod tests {
     #[test]
     fn readers_never_see_a_torn_snapshot() {
         let timing = SequenceTiming::new(FrameRate::FPS_30, Time::from_secs(10).unwrap());
-        let make = |e: u64| {
+        let make = move |e: u64| {
             let mut s = Snapshot::new(timing);
             s.epoch = e;
             s.content = e * 3;
@@ -486,6 +536,12 @@ mod tests {
             s.anchor_ns = e + 1;
             s.audio_gen = e ^ 0x55;
             s.scrub = e % 2 == 1;
+            // Media ids whose halves both change with the counter.
+            s.target = if e.is_multiple_of(3) {
+                PlaybackTarget::Sequence
+            } else {
+                PlaybackTarget::Media(MediaId::from_u128((u128::from(e) << 64) | u128::from(!e)))
+            };
             s
         };
         let cell = Arc::new(SnapshotCell::new(&make(0)));
@@ -505,6 +561,7 @@ mod tests {
                         assert_eq!(s.anchor_ns, e + 1);
                         assert_eq!(s.audio_gen, e ^ 0x55);
                         assert_eq!(s.scrub, e % 2 == 1);
+                        assert_eq!(s, make(e));
                         reads.fetch_add(1, Ordering::Relaxed);
                     }
                 })

@@ -28,6 +28,13 @@
 //!   (headless). The `view.*` transport commands run against it; pauses, seeks and steps keep the
 //!   view's playhead in step, and opening a project seeks the transport to its saved playhead.
 //!   `playback.state` goes to every client at most 30 times a second.
+//! - **Source preview** (ADR-0022, WP-1H.04): `view.set_source{media}` makes the transport play
+//!   one media asset on its own, through the same [`preview::PreviewSource`] (a transient
+//!   one-clip timeline, [`preview::source_timeline`]) and the same mixer ([`audio::AudioFeed`]),
+//!   and `view.set_source{}` the sequence again. The view's playhead stays the timeline's while
+//!   a source plays; the source ends when its asset is removed, and with the document (every
+//!   project swap attaches a new transport, which plays the sequence). Nothing is written to the
+//!   document.
 //! - **Commands**: `render.frame` (with this engine's renderer current on the dispatching
 //!   thread) and the `view.*` transport commands; `export.start` gets [`ExportServices`];
 //!   `media.capabilities` answers from the backend (probed on a worker thread at start).
@@ -80,10 +87,10 @@ pub use frames::MediaFrames;
 pub use gpu::{GPU_START_WAIT, RENDER_WAIT};
 pub use media::{BackendProbe, CurrentDoc, MediaFile, MediaState, total_ram};
 
-use self::audio::{Audio, LivePcm};
+use self::audio::{Audio, AudioFeed, LivePcm, TargetedAudio};
 use self::gpu::{LateGpu, LateRenderer};
 use self::media::{Caches, IndexStage, ThumbStage, WaveformStage};
-use self::preview::{CompositorSlot, PreviewSource};
+use self::preview::{CompositorSlot, DocSources, PreviewSource};
 use self::watch::{DocWatcher, Targets};
 use crate::config::{EngineMode, GpuConfig};
 use crate::export::{DecoderSources, ExportServices};
@@ -360,6 +367,25 @@ impl FullHandle {
     pub fn playing_a_document(&self) -> bool {
         lock(&self.inner.per_doc).is_some()
     }
+
+    /// The audio output's counters and meters (`None` without an output: manual audio).
+    #[must_use]
+    pub fn audio_output_stats(&self) -> Option<cutweave_audio::OutputStats> {
+        match &lock(&self.inner.started).as_ref()?.audio {
+            Audio::Output { output, .. } => Some(output.stats()),
+            Audio::Manual { .. } => None,
+        }
+    }
+
+    /// The mixer's counters (`None` without an output: manual audio).
+    #[must_use]
+    pub fn mixer_stats(&self) -> Option<cutweave_audio::MixerStats> {
+        lock(&self.inner.started)
+            .as_ref()?
+            .audio
+            .mixer()
+            .map(|m| m.stats())
+    }
 }
 
 impl FullSubsystems {
@@ -511,9 +537,13 @@ impl FullSubsystems {
                 Arc::new(host.clone()),
             ),
         };
+        // The mixer plays the sound of what the transport plays (ADR-0022).
+        let feed = Arc::new(AudioFeed::new(started.audio.mixer().cloned(), doc.clone()));
+        let audio = Box::new(TargetedAudio::new(audio, Arc::clone(&feed)));
         let config = PlaybackConfig {
             render: RenderConfig::default(),
             host,
+            sources: Some(Arc::new(DocSources::new(doc.clone()))),
         };
         let parts = match PlaybackParts::new(Box::new(source), audio, sink, config) {
             Ok(parts) => parts,
@@ -545,7 +575,7 @@ impl FullSubsystems {
         let transport = playback.transport().clone();
         let targets = Targets {
             transport: transport.clone(),
-            mixer: started.audio.mixer().cloned(),
+            feed,
             pcm: Arc::clone(&self.inner.pcm),
             frames: Arc::clone(&started.frames),
             thumbs: started.caches.thumbs.clone(),
@@ -991,22 +1021,43 @@ impl Subsystems for FullSubsystems {
         // The document watcher follows edits asynchronously; a command right after an edit
         // (insert, then play) must already see the new extent.
         let timing = preview::timing_of(&call.doc.snapshot().doc);
-        if timing != transport.timing() {
+        if timing != transport.sequence_timing() {
             transport.set_timing(timing);
         }
         let seek = call.name == "view.seek";
+        let retarget = call.name == "view.set_source";
         let result = call.registry.invoke_engine_json(
             call.name,
             call.params,
             &mut transport,
             call.caller.access(),
         );
-        // Keep the view's playhead where playback stopped (pause, step, seek, end).
-        if let Ok(output) = &result
-            && let Ok(state) = serde_json::from_value::<PlaybackState>(output.clone())
-            && (seek || !state.playing)
+        let Ok(output) = &result else {
+            return Some(result);
+        };
+        let Ok(state) = serde_json::from_value::<PlaybackState>(output.clone()) else {
+            return Some(result);
+        };
+        if retarget
+            && let Some(source) = state.source
+            && preview::source_info(&call.doc.snapshot().doc, source.media).is_err()
+        {
+            // Removed while it was being set (the watcher had already looked): it ends now.
+            let ended = transport.source_changed(source.media, None);
+            return Some(
+                serde_json::to_value(ended).map_err(|e| CmdError::internal(e.to_string())),
+            );
+        }
+        // Keep the view's playhead (the timeline's) where the sequence stopped: pause, step,
+        // seek, end, or a source taking over. A source's own playhead never moves it.
+        let playhead = if retarget {
+            Some(transport.sequence_playhead())
+        } else {
+            (state.source.is_none() && (seek || !state.playing)).then_some(state.t)
+        };
+        if let Some(t) = playhead
             && let Some(link) = lock(&self.inner.started).as_ref().map(|s| s.link.clone())
-            && let Err(e) = link.set_playhead(state.t, Some(call.caller.conn()))
+            && let Err(e) = link.set_playhead(t, Some(call.caller.conn()))
         {
             tracing::debug!(error = %e, "cannot move the view playhead with the transport");
         }

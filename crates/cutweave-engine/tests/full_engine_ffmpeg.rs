@@ -6,6 +6,10 @@
 //! renders `render.frame`, plays 2 s on the manual clock, exports 1 s (checked with `ffprobe`)
 //! and shuts down with no leaked threads or shared-memory objects. Also: real probe data for
 //! H.264, HEVC 10-bit and the rotated VFR phone clip, and `media.capabilities` from FFmpeg.
+//!
+//! WP-1H.04 (ADR-0022): corpus clips play as sources (`view.set_source`), frame by frame on the
+//! manual clock without touching the document, and in real time on the null output (a
+//! measurement for an idle machine: `--run-ignored only -E 'test(real_time)'`).
 
 #![cfg(feature = "ffmpeg")]
 #![allow(clippy::unwrap_used, clippy::expect_used)]
@@ -321,4 +325,208 @@ fn real_probe_data_and_capabilities() {
     println!("hardware encoders: {}", caps["hw_encode"]);
     drop(conn);
     engine.shutdown();
+}
+
+// ----- WP-1H.04: media items on their own (ADR-0022) -----------------------------------------
+
+/// The start of frame `n` at `fps` (`{num, den}` as `playback.state.source` gives it).
+fn frame_start(fps: &Value, n: i64) -> i64 {
+    let rate = cutweave_model::FrameRate::new(
+        u32::try_from(fps["num"].as_u64().unwrap()).unwrap(),
+        u32::try_from(fps["den"].as_u64().unwrap()).unwrap(),
+    )
+    .unwrap();
+    rate.frame_to_time(n).unwrap().flicks()
+}
+
+/// Imports `paths` and waits for their analysis; returns the media ids in order.
+fn import_all(conn: &Connection, paths: &[std::path::PathBuf]) -> Vec<Value> {
+    let paths: Vec<String> = paths
+        .iter()
+        .map(|p| p.to_string_lossy().into_owned())
+        .collect();
+    let imported = call(conn, "media.import", json!({ "paths": paths })).unwrap();
+    assert_eq!(imported["failed"], json!([]), "{imported}");
+    wait_jobs(conn, &imported["job_ids"]);
+    imported["media_ids"].as_array().unwrap().clone()
+}
+
+/// The H.264 1080p clip (60 fps, with AAC) and the HEVC 10-bit 1080p30 clip play as sources on
+/// the manual clock: every frame of their first 2 s in order while the master clock advances,
+/// none dropped, the document untouched, the timeline's playhead where it was.
+#[test]
+fn corpus_clips_play_as_sources_frame_by_frame() {
+    let names = ["h264_1080p60.mp4", "hevc_10bit_sdr.mp4"];
+    let files: Option<Vec<_>> = names.iter().map(|n| corpus_file(n)).collect();
+    let Some(files) = files else { return };
+    let t = TempDir::new("corpus-sources");
+    let clocks = Clocks::new();
+    let (engine, handle) = engine(t.path(), &clocks);
+    // The GPU opens in the background and re-renders the current frame when it is ready.
+    full_support::eventually("the GPU", || handle.gpu_settled().then_some(()));
+    let conn = agent(&engine);
+    call(&conn, "project.new", json!({ "name": "Sources" })).unwrap();
+    let media = import_all(&conn, &files);
+    let rev = engine.handle().snapshot().unwrap().rev;
+    for (name, id) in names.iter().zip(&media) {
+        let started = Instant::now();
+        let s = call(&conn, "view.set_source", json!({ "media": id })).unwrap();
+        let fps = s["source"]["fps"].clone();
+        assert_eq!(s["source"]["media"], *id, "{s}");
+        full_support::eventually("the source's first frame", || {
+            (handle.playback_stats()?.last_frame == 0).then_some(())
+        });
+        let state = call(&conn, "view.play", json!({})).unwrap();
+        assert_eq!(state["playing"], json!(true), "{state}");
+        // Playing seeked the master clock to the source's 0: it runs in the source's time.
+        assert_eq!(clocks.audio.clock().position().flicks(), 0);
+        // The frames that start in the first 2 s.
+        let frames = (0..1_000)
+            .take_while(|n| frame_start(&fps, *n) < 2 * SEC)
+            .count();
+        let frames = i64::try_from(frames).unwrap();
+        for n in 1..frames {
+            clocks.advance(frame_start(&fps, n) - clocks.audio.clock().position().flicks());
+            // A re-render of the frame before (a refresh) is not the next one: wait for this one.
+            let shown = full_support::eventually("the next source frame", || {
+                let last = handle.playback_stats()?.last_frame;
+                (last >= n).then_some(last)
+            });
+            assert_eq!(shown, n, "{name}: in order, none skipped");
+        }
+        let state = handle.playback_state().unwrap();
+        assert!(state.playing, "{name}: {state:?}");
+        assert_eq!(state.t.flicks(), frame_start(&fps, frames - 1));
+        let counters = handle.playback_stats().unwrap();
+        assert_eq!(
+            (counters.dropped, counters.errors),
+            (0, 0),
+            "{name}: {counters:?}"
+        );
+        call(&conn, "view.pause", json!({})).unwrap();
+        println!(
+            "{name} as a source: {frames} frames at {}/{} fps in order, 0 dropped, {:.0} ms",
+            fps["num"],
+            fps["den"],
+            started.elapsed().as_secs_f64() * 1000.0
+        );
+    }
+    let back = call(&conn, "view.set_source", json!({})).unwrap();
+    assert_eq!(
+        (back["source"].clone(), back["t"].clone()),
+        (json!(null), json!(0))
+    );
+    assert_eq!(
+        engine.handle().snapshot().unwrap().rev,
+        rev,
+        "the document did not change"
+    );
+    drop(conn);
+    engine.shutdown();
+}
+
+/// Plays what the transport targets for 10 s of wall clock (from its start again when it ends);
+/// returns the frames delivered and dropped meanwhile.
+fn play_ten_seconds(conn: &Connection, handle: &cutweave_engine::FullHandle) -> (u64, u64) {
+    let before = handle.playback_stats().unwrap();
+    let started = Instant::now();
+    call(conn, "view.play", json!({})).unwrap();
+    while started.elapsed() < std::time::Duration::from_secs(10) {
+        std::thread::sleep(std::time::Duration::from_millis(20));
+        if !handle.playback_state().unwrap().playing {
+            // It ended: play it again from its start.
+            call(conn, "view.play", json!({})).unwrap();
+        }
+    }
+    call(conn, "view.pause", json!({})).unwrap();
+    let after = handle.playback_stats().unwrap();
+    (
+        after.delivered - before.delivered,
+        after.dropped - before.dropped,
+    )
+}
+
+/// The dev-machine measurement (WP-1H.04 acceptance): the H.264 1080p clip and the HEVC 10-bit
+/// clip each play as a source for 10 s in real time (on the null output's wall clock; replayed
+/// from the start when they end) with 0 dropped frames, and the WAV's sound reaches the master
+/// meter. For comparison it also plays the H.264 clip on the timeline (same decode and render
+/// path). Real time on an idle machine, so not a gate: run it alone with
+/// `cargo nextest run -p cutweave-engine --features ffmpeg --run-ignored only -E 'test(real_time)'`.
+#[test]
+#[ignore = "real-time measurement on an idle machine; run alone (see the doc comment)"]
+fn corpus_sources_play_in_real_time_without_drops() {
+    let names = ["h264_1080p60.mp4", "hevc_10bit_sdr.mp4", "audio_48000.wav"];
+    let files: Option<Vec<_>> = names.iter().map(|n| corpus_file(n)).collect();
+    let Some(files) = files else { return };
+    let t = TempDir::new("corpus-real-time");
+    let config = FullConfig {
+        cache_dir: Some(t.path().join("cache")),
+        audio: cutweave_engine::AudioMode::FromEngine,
+        ..FullConfig::native()
+    };
+    let full = FullSubsystems::new(config);
+    let handle = full.handle();
+    let mut config = engine_config(t.path(), EngineMode::Headless, Box::new(full));
+    config.allowed_roots.extend(full_support::corpus_dir());
+    config.gpu = cutweave_engine::GpuConfig::Auto;
+    let engine = Engine::start(config).unwrap();
+    let conn = agent(&engine);
+    // A 60 fps timeline: the baseline renders as many frames as the 60 fps source.
+    let project = call(
+        &conn,
+        "project.new",
+        json!({ "name": "Real time", "format": { "frame_rate": { "num": 60, "den": 1 } } }),
+    )
+    .unwrap();
+    let media = import_all(&conn, &files);
+    // Let the GPU open before measuring.
+    full_support::eventually("the GPU", || handle.gpu_settled().then_some(()));
+    let mut report = Vec::new();
+    for (name, id) in names.iter().zip(&media).take(2) {
+        call(&conn, "view.set_source", json!({ "media": id })).unwrap();
+        let (frames, dropped) = play_ten_seconds(&conn, &handle);
+        println!(
+            "{name}: 10 s in real time as a source: {frames} frames delivered, {dropped} dropped \
+             (gpu: {}, degraded: {:?})",
+            handle.has_gpu(),
+            handle.degraded()
+        );
+        report.push((*name, frames, dropped));
+    }
+    // The WAV: its sound reaches the master meter while the master clock runs.
+    call(&conn, "view.set_source", json!({ "media": media[2] })).unwrap();
+    call(&conn, "view.play", json!({})).unwrap();
+    let peak = full_support::eventually("the WAV in the master meter", || {
+        let out = handle.audio_output_stats()?;
+        (out.master_peak[0] > 0.01).then_some(out.master_peak)
+    });
+    let moved = full_support::eventually("the master clock to move", || {
+        let s = handle.playback_state()?;
+        (s.t.flicks() > SEC / 2).then_some(s.t)
+    });
+    let mixer = handle.mixer_stats().unwrap();
+    println!("audio_48000.wav as a source: master peak {peak:?} at {moved:?}, {mixer:?}");
+    assert_eq!(mixer.source_errors, 0, "{mixer:?}");
+    call(&conn, "view.pause", json!({})).unwrap();
+    // The baseline: the H.264 clip on the timeline, on the same machine at the same time.
+    call(&conn, "view.set_source", json!({})).unwrap();
+    call(
+        &conn,
+        "timeline.insert",
+        json!({
+            "sequence": project["sequence"], "track": project["video_track"],
+            "media": media[0], "at": 0,
+        }),
+    )
+    .unwrap();
+    let (frames, dropped) = play_ten_seconds(&conn, &handle);
+    println!(
+        "h264_1080p60.mp4 on a 60 fps timeline (baseline): {frames} frames delivered, {dropped} dropped"
+    );
+    drop(conn);
+    engine.shutdown();
+    for (name, frames, dropped) in report {
+        assert!(frames > 0, "{name}: nothing played");
+        assert_eq!(dropped, 0, "{name}: {dropped} frames dropped in 10 s");
+    }
 }

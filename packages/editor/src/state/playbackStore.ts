@@ -1,9 +1,21 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
-import type { PreviewQuality } from "@cutweave/protocol";
+import type { FrameRate, MediaId, PreviewQuality } from "@cutweave/protocol";
 import { useStore } from "zustand";
 import { createStore } from "zustand/vanilla";
 
 export type PlaybackMode = "stopped" | "playing" | "scrubbing";
+
+/**
+ * A media item the engine plays on its own instead of the timeline (`playback.state.source`,
+ * `view.set_source`, ADR-0022).
+ */
+export interface PlaybackSource {
+  media: MediaId;
+  /** Its length in flicks: the source's own time runs from 0 to here. */
+  duration: number;
+  /** Its frame grid (the asset's own rate; 30 fps for audio-only media). */
+  fps: FrameRate;
+}
 
 /**
  * Whether the engine runs the transport (`view.play`, `view.seek`, ...): `unknown` until the
@@ -23,8 +35,18 @@ export interface PlaybackState {
   playing: boolean;
   /** Playback rate: 1 = normal, 2 and 4 fast forward, negative = reverse, 0 when stopped. */
   rate: number;
-  /** The live playhead in flicks (the audio clock while playing at 1x). */
+  /**
+   * The timeline's live playhead in flicks (the audio clock while playing at 1x). It does not
+   * move while a `source` plays.
+   */
   playhead: number;
+  /**
+   * The media item playing instead of the timeline, or `null`. While it is set, `mode`,
+   * `playing` and `rate` describe the source, and its playhead is `sourcePlayhead`.
+   */
+  source: PlaybackSource | null;
+  /** The source's playhead in flicks, in its own time (meaningful while `source` is set). */
+  sourcePlayhead: number;
   /** Resolution of the newest delivered frame. */
   quality: PreviewQuality;
   /** Frames the engine skipped because rendering fell behind (since playback attached). */
@@ -55,6 +77,8 @@ export const initialPlaybackState: PlaybackState = {
   playing: false,
   rate: 1,
   playhead: 0,
+  source: null,
+  sourcePlayhead: 0,
   quality: "full",
   dropped: 0,
   sampledAt: 0,
@@ -65,12 +89,42 @@ export const initialPlaybackState: PlaybackState = {
 const MODES: readonly string[] = ["stopped", "playing", "scrubbing"];
 const QUALITIES: readonly string[] = ["full", "half", "quarter"];
 
-type Parsed = Partial<Omit<PlaybackState, "sampledAt" | "transport" | "holdPlayhead">>;
+type Parsed = Partial<
+  Omit<PlaybackState, "sampledAt" | "transport" | "holdPlayhead" | "sourcePlayhead">
+>;
+
+const isCount = (v: unknown): v is number => typeof v === "number" && Number.isInteger(v) && v >= 0;
+
+/** `playback.state.source`: `null`, a source, or `undefined` when unusable. */
+function parseSource(value: unknown): PlaybackSource | null | undefined {
+  if (value === null) return null;
+  if (typeof value !== "object") return undefined;
+  const v = value as Record<string, unknown>;
+  const fps = v.fps as Record<string, unknown> | null | undefined;
+  if (
+    typeof v.media !== "string" ||
+    !isCount(v.duration) ||
+    typeof fps !== "object" ||
+    fps === null ||
+    !isCount(fps.num) ||
+    !isCount(fps.den) ||
+    fps.num === 0 ||
+    fps.den === 0
+  ) {
+    return undefined;
+  }
+  return {
+    media: v.media as MediaId,
+    duration: v.duration,
+    fps: { num: fps.num, den: fps.den },
+  };
+}
 
 /**
  * Reads the fields of a `playback.state` payload it understands: `state` (or `mode`),
  * `playing`, `rate` (or `rate_milli`, 1000 = 1x), `t` (or `playhead` / `pts`, flicks),
- * `quality` and `dropped`.
+ * `quality`, `dropped` and `source` (ADR-0022). `playhead` is the time of what plays: the
+ * timeline's, or the source's when `source` is set.
  */
 export function parsePlaybackState(payload: unknown): Parsed {
   if (typeof payload !== "object" || payload === null) {
@@ -93,8 +147,12 @@ export function parsePlaybackState(payload: unknown): Parsed {
   if (typeof p.quality === "string" && QUALITIES.includes(p.quality)) {
     out.quality = p.quality as PreviewQuality;
   }
-  if (typeof p.dropped === "number" && Number.isInteger(p.dropped) && p.dropped >= 0) {
+  if (isCount(p.dropped)) {
     out.dropped = p.dropped;
+  }
+  if ("source" in p) {
+    const source = parseSource(p.source);
+    if (source !== undefined) out.source = source;
   }
   return out;
 }
@@ -105,8 +163,15 @@ export function createPlaybackStore(now: () => number = () => performance.now())
     ...initialPlaybackState,
     applyState: (payload) => {
       const { playhead, ...rest } = parsePlaybackState(payload);
-      const keep = playhead === undefined || get().holdPlayhead;
-      const next = keep ? rest : { ...rest, playhead, sampledAt: now() };
+      // A payload without `source` describes what already plays.
+      const source = rest.source !== undefined ? rest.source : get().source;
+      let next: Partial<PlaybackState> = rest;
+      if (playhead !== undefined && source !== null) {
+        // A source's time never moves the timeline's playhead.
+        next = { ...rest, sourcePlayhead: playhead };
+      } else if (playhead !== undefined && !get().holdPlayhead) {
+        next = { ...rest, playhead, sampledAt: now() };
+      }
       if (Object.keys(next).length === 0) return;
       set(next);
     },

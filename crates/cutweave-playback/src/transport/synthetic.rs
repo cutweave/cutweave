@@ -160,6 +160,7 @@ mod tests {
 
     fn request(frame: i64, layout: FrameLayout) -> RenderRequest {
         RenderRequest {
+            target: crate::transport::PlaybackTarget::Sequence,
             frame,
             t: Time::ZERO,
             quality: Quality::FULL,
