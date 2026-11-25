@@ -100,9 +100,10 @@ Schedule note: the roadmap gives 9 weeks. Total effort here is about 162 agent-d
   - Schema version bump (v2) with migration and golden fixture from a v1 project.
   - Track commands: `track.add{kind, index?}`, `track.remove`, `track.reorder`, `track.rename`, `track.set_flags{muted,hidden,locked,solo}`, `track.set_magnetic`, `track.set_height` (UI hint, `view`-like but persisted).
   - Marker/range commands: `timeline.add_marker`, `timeline.move_marker`, `timeline.remove_marker`, `timeline.set_in_out`, `timeline.clear_in_out`.
-  - MCP: `track.add`, `track.set_flags`, `timeline.add_marker` core; the rest catalog.
-  - **Context menu (product owner request, 2026-11-25; framework WP-2H.12, plan in [09-context-menus.md](../research/09-context-menus.md)):** adds the two commands the timeline menus need and nothing else: `timeline.update_marker{id, label?, color?, duration?}` (the marker menu's Edit) and `item.set_label_color{items, color}` (the clip menu's Color label). The menus themselves are WP-2A.10's.
-- **Interfaces:** commands above; queries `track.list`, `marker.list`.
+  - MCP: all catalog (ADR-0023 R33: no new core MCP tools).
+  - **As built (spec §11, arch §5.1):** renaming and the flags stay in the P1 `track.set` (it is the "set_flags" core tool; `track.rename` and `track.set_flags` do not exist), `track.set_magnetic` follows spec §4.17 and returns an `EditReport`, and the marker query is `timeline.list_markers` because `marker` is not a command namespace (arch §5.1). The model additions share one schema v2 with WP-2F.07 (arch §17, "One v2").
+  - **Context menu (product owner request, 2026-11-25; framework WP-2H.12, plan in [09-context-menus.md](../research/09-context-menus.md)):** adds the two commands the timeline menus need and nothing else: `timeline.update_marker{id, label?, color?, duration?}` (the marker menu's Edit) and `item.set_label_color{items, color}` (the clip menu's Color label). The menus themselves are WP-2A.10's. *(Not built in WP-2A.02, which merged first: the timeline menus' WP adds these two commands.)*
+- **Interfaces:** commands above; queries `track.list`, `timeline.list_markers`.
 - **Acceptance criteria:**
   - A v1 fixture migrates to v2 and round-trips (insta snapshot); newer-schema projects still open read-only.
   - Property test: for 1,000 random sequences of track/marker commands, `undo(apply(doc)) == doc` and serialize round-trip holds.
@@ -634,6 +635,7 @@ Schedule note: the roadmap gives 9 weeks. Total effort here is about 162 agent-d
 - **Size:** M
 - **Executor:** opus
 - **Scope:**
+  - (product owner, 2026-11-25, ADR-0024) `clip.set_speed` takes `keyframes: "keep" | "scale"`, default `keep`: keys stay at their times unless the caller asks to scale them with the speed (`scale_times`, [keyframes spec](../spec/keyframes.md) §8.1); the editor offers "Scale keyframes" in the speed control.
   - Use `Speed::Constant(r)`, r in [0.1, 100], rational stored as `{num,den}` (not f64) to keep frame math exact; `reverse: bool`; `freeze: Option<{at_source}>`.
   - Commands: `clip.set_speed{item, speed, keep: duration|in_point, ripple}`, `clip.reverse`, `clip.freeze_frame{item, at}` (splits the item and inserts a still-duration clip of the freeze frame per CapCut behaviour, default 3 s duration: configurable setting `freeze.default_duration`), `clip.reset_speed`.
   - Source-time mapping function `source_time(item, t)` is the single canonical mapping used by render, audio, thumbnails and export. Frame-nearest sampling in v1 (no blending; blending arrives P4). Reverse requires decoder support for backwards GOP traversal: use GOP-cache decode-forward then reorder; for sources without proxy and long GOP a warning plus automatic proxy request (2F.01).
@@ -837,7 +839,7 @@ Schedule note: the roadmap gives 9 weeks. Total effort here is about 162 agent-d
 - **Scope:**
   - Proxy job: transcode to an intra-frame codec at ≤ 960 px on the long edge (ProRes Proxy via `prores_ks`/videotoolbox where present, DNxHR LB fallback, MJPEG last), audio copied to PCM. Keeps frame count and timestamps identical to the source (VFR sources are conformed through the media index to CFR with a stored `pts_map` so that proxy frame *n* equals source frame *n*, essential for frame-exact edits).
   - Content-addressed in the global cache (`cache.sqlite` entry keyed by `content_hash + proxy_profile`), size-capped LRU, resumable job (partial files finalized atomically), progress events, cancel, concurrency limit (default 2; ≤ 1 while exporting), CPU/GPU niceness.
-  - Policy in `project.settings.proxy_policy`: `off | auto | all`. `auto` triggers on import for long-GOP codecs (H.264/HEVC) with long edge > 1920 px or fps > 60 or HEVC 10-bit (documented). Per-media `media.set_proxy_mode{auto|force|off}`.
+  - Policy in `project.settings.proxy_policy`: `off | auto | all`. `auto` triggers on import for long-GOP codecs (H.264/HEVC) with long edge > 1920 px or fps > 60 or HEVC 10-bit (documented). Per-media `media.set_proxy_mode{auto|force|off}`. (2026-11-25: the two project-format fields and their commands wait for [ADR-0027](../adr/0027-proxy-policy-in-the-project.md), Proposed; WP-2F.01 shipped with `auto` for every project, arch §7.)
   - Commands: `media.generate_proxy{media[]}`, `media.delete_proxy`, `media.set_proxy_policy`, `media.proxy_status` query. Jobs resumed after engine restart.
   - MCP: catalog; `media_import` reports `proxy: queued|none`.
 - **Interfaces:** `ProxyRef {path, profile, status}`; `job.progress` events; queries above.
@@ -957,7 +959,7 @@ Schedule note: the roadmap gives 9 weeks. Total effort here is about 162 agent-d
 - **Depends on:** E1A, E1B, WP-1M.12, WP-1O.02
 - **Size:** M
 - **Executor:** opus
-- **Scope:** (product owner request, 2026-11-24) organize the project's media into folders, as decided in ADR-0020 (Proposed; it must be Accepted before this WP starts).
+- **Scope:** (product owner request, 2026-11-24) organize the project's media into folders, as decided in ADR-0020 (Accepted by the product owner, 2026-11-25).
   - Model: `Project.folders: Map<FolderId, MediaFolder{id, name, parent?: FolderId, custom}>` with IDs `fld_…` (deterministic under `--deterministic-ids`), `MediaAsset.folder?: FolderId` (absent = top level) and `MediaAsset.name?: String` (display name; absent = the file name).
   - Invariants in `Project::validate`: parents and asset folders exist; no cycles; depth ≤ 32; folder names 1–255 characters, no `/` or control characters, unique among siblings ignoring case.
   - Commands in the `media` namespace, all undoable as one step, MCP catalog:
@@ -967,8 +969,9 @@ Schedule note: the roadmap gives 9 weeks. Total effort here is about 162 agent-d
     - `media.delete_folder{folder, contents: move_up|remove}`: `move_up` lifts everything one level; `remove` removes the folder, its subfolders and every asset no timeline uses, and moves the used ones to the deleted folder's parent; the result lists `removed` and `kept`. Timelines never change; files on disk are never touched.
     - `media.import` and `media.register` take an optional `folder`.
   - Queries: `media.list`'s filter gains `folder` and `recursive` (no folder: the whole project; a folder: one level unless `recursive`), and each summary carries `name` and `folder`; new `media.list_folders` returns the tree (id, name, parent, path, asset and subfolder counts). WP-1M.12's `text` matches the display name.
+  - **Joins WP-2A.02's v2 (integrator resolution, 2026-11-25).** WP-2A.02 already bumped `CURRENT_SCHEMA_VERSION` to 2 and wrote `migrate/v1_to_v2.rs` as an ordered list of steps (`STEPS`); nothing is released between the two work packages, so this WP **appends a step** to that list (and its fixtures to `tests/fixtures/v2/`) and makes no v3 (arch §17, "One v2"). Its golden fixtures extend the existing v2 ones; the model types it adds go next to the timeline additions.
   - Migration v1→v2 adds `folders: {}`, `folder: null` and `name: null`; golden fixtures under `v2/` (nested folders, renamed assets); every v1 fixture migrates; v1 apps open v2 files read-only (the existing rule). Strategies for every new command in the registry property harness (`testing/strategies.rs`).
-- **Interfaces:** `FolderId`, `MediaFolder`, `MediaAsset.{folder, name}`; the commands and queries above; `CURRENT_SCHEMA_VERSION` = 2.
+- **Interfaces:** `FolderId`, `MediaFolder`, `MediaAsset.{folder, name}`; the commands and queries above; `CURRENT_SCHEMA_VERSION` is already 2 (WP-2A.02).
 - **Acceptance criteria:**
   - The registry property harness covers every new command: undo/redo identity, failure atomicity, and the invariants after random sequences of create, rename, move and delete (no cycle, no orphan, unique sibling names).
   - `media.delete_folder{remove}` on a fixture of 30 assets, 5 of them on a timeline, removes 25, keeps 5 in the parent, changes no timeline item; one undo restores the tree, the 25 assets and their folders exactly.

@@ -1,5 +1,5 @@
 // @generated — do not edit; run cargo xtask gen
-import type { BeginTx, CancelTx, Checkpoint, CheckpointInfo, CheckpointList, ClipSplit, ClipSplitOutput, ClipTrim, ClipTrimOutput, CommitTx, DeleteCheckpoint, ExportStart, ExportStartOutput, GetHistory, HistoryMoved, HistoryPage, ItemDelete, ItemDeleteOutput, ItemGet, ItemGetOutput, ItemMove, ItemMoveOutput, ItemSetProps, ItemSetPropsOutput, JobCancel, JobInfo, JobList, JobListOutput, JobStatus, JobWait, ListCheckpoints, ListLocks, LockList, MediaCacheStatus, MediaCacheStatusOutput, MediaCapabilities, MediaCapabilitiesOutput, MediaClearCache, MediaClearCacheOutput, MediaImport, MediaImportOutput, MediaList, MediaListOutput, MediaRegister, MediaRegistered, MediaRemove, MediaRemoveOutput, MediaSetCacheConfig, MediaSetDecodePolicy, MediaSetDecodePolicyOutput, ProjectClose, ProjectCloseOutput, ProjectConnections, ProjectConnectionsOutput, ProjectDiscardRecovery, ProjectInfo, ProjectInfoOutput, ProjectNew, ProjectNewOutput, ProjectOpen, ProjectOpenOutput, ProjectRecover, ProjectRecoverOutput, ProjectRename, ProjectRenameOutput, ProjectReportFocus, ProjectReportFocusOutput, ProjectSave, ProjectSaveAs, ProjectSaveOutput, ProjectSetAllowedRoots, ProjectSetAllowedRootsOutput, ProjectSetAutosave, ProjectSetAutosaveOutput, Redo, Restore, Restored, TimelineGet, TimelineGetOutput, TimelineInsert, TimelineInsertOutput, TrackAdd, TrackAddOutput, TrackRemove, TrackRemoveOutput, TrackSet, TrackSetOutput, TxCancelled, TxCommitted, TxOpened, UiState, Undo, ViewGet, ViewSelect, ViewSet, ViewSetPlayhead, ViewSetZoom } from "./types.ts";
+import type { BeginTx, CancelTx, Checkpoint, CheckpointInfo, CheckpointList, ClipSplit, ClipSplitOutput, ClipTrim, ClipTrimOutput, CommitTx, DeleteCheckpoint, ExportStart, ExportStartOutput, GetHistory, HistoryMoved, HistoryPage, ItemDelete, ItemDeleteOutput, ItemGet, ItemGetOutput, ItemMove, ItemMoveOutput, ItemSetProps, ItemSetPropsOutput, JobCancel, JobInfo, JobList, JobListOutput, JobStatus, JobWait, ListCheckpoints, ListLocks, LockList, MediaCacheStatus, MediaCacheStatusOutput, MediaCapabilities, MediaCapabilitiesOutput, MediaClearCache, MediaClearCacheOutput, MediaDeleteProxy, MediaGenerateProxy, MediaImport, MediaImportOutput, MediaList, MediaListOutput, MediaProxyStatus, MediaRegister, MediaRegistered, MediaRemove, MediaRemoveOutput, MediaSetCacheConfig, MediaSetDecodePolicy, MediaSetDecodePolicyOutput, ProjectClose, ProjectCloseOutput, ProjectConnections, ProjectConnectionsOutput, ProjectDiscardRecovery, ProjectInfo, ProjectInfoOutput, ProjectNew, ProjectNewOutput, ProjectOpen, ProjectOpenOutput, ProjectRecover, ProjectRecoverOutput, ProjectRename, ProjectRenameOutput, ProjectReportFocus, ProjectReportFocusOutput, ProjectSave, ProjectSaveAs, ProjectSaveOutput, ProjectSetAllowedRoots, ProjectSetAllowedRootsOutput, ProjectSetAutosave, ProjectSetAutosaveOutput, ProxiesOutput, Redo, Restore, Restored, TimelineAddMarker, TimelineAddMarkerOutput, TimelineClearInOut, TimelineClearInOutOutput, TimelineGet, TimelineGetOutput, TimelineInsert, TimelineInsertOutput, TimelineListMarkers, TimelineListMarkersOutput, TimelineMoveMarker, TimelineMoveMarkerOutput, TimelineRemoveMarker, TimelineRemoveMarkerOutput, TimelineSetInOut, TimelineSetInOutOutput, TrackAdd, TrackAddOutput, TrackList, TrackListOutput, TrackRemove, TrackRemoveOutput, TrackReorder, TrackReorderOutput, TrackSet, TrackSetHeight, TrackSetHeightOutput, TrackSetMagnetic, TrackSetMagneticOutput, TrackSetOutput, TxCancelled, TxCommitted, TxOpened, UiState, Undo, ViewGet, ViewSelect, ViewSet, ViewSetPlayhead, ViewSetZoom } from "./types.ts";
 
 /** Commands and engine commands: name to input and output. */
 export type CommandMap = {
@@ -27,7 +27,10 @@ export type CommandMap = {
   "media.cache_status": { input: MediaCacheStatus; output: MediaCacheStatusOutput };
   "media.capabilities": { input: MediaCapabilities; output: MediaCapabilitiesOutput };
   "media.clear_cache": { input: MediaClearCache; output: MediaClearCacheOutput };
+  "media.delete_proxy": { input: MediaDeleteProxy; output: ProxiesOutput };
+  "media.generate_proxy": { input: MediaGenerateProxy; output: ProxiesOutput };
   "media.import": { input: MediaImport; output: MediaImportOutput };
+  "media.proxy_status": { input: MediaProxyStatus; output: ProxiesOutput };
   "media.register": { input: MediaRegister; output: MediaRegistered };
   "media.remove": { input: MediaRemove; output: MediaRemoveOutput };
   "media.set_cache_config": { input: MediaSetCacheConfig; output: MediaCacheStatusOutput };
@@ -44,10 +47,18 @@ export type CommandMap = {
   "project.save_as": { input: ProjectSaveAs; output: ProjectSaveOutput };
   "project.set_allowed_roots": { input: ProjectSetAllowedRoots; output: ProjectSetAllowedRootsOutput };
   "project.set_autosave": { input: ProjectSetAutosave; output: ProjectSetAutosaveOutput };
+  "timeline.add_marker": { input: TimelineAddMarker; output: TimelineAddMarkerOutput };
+  "timeline.clear_in_out": { input: TimelineClearInOut; output: TimelineClearInOutOutput };
   "timeline.insert": { input: TimelineInsert; output: TimelineInsertOutput };
+  "timeline.move_marker": { input: TimelineMoveMarker; output: TimelineMoveMarkerOutput };
+  "timeline.remove_marker": { input: TimelineRemoveMarker; output: TimelineRemoveMarkerOutput };
+  "timeline.set_in_out": { input: TimelineSetInOut; output: TimelineSetInOutOutput };
   "track.add": { input: TrackAdd; output: TrackAddOutput };
   "track.remove": { input: TrackRemove; output: TrackRemoveOutput };
+  "track.reorder": { input: TrackReorder; output: TrackReorderOutput };
   "track.set": { input: TrackSet; output: TrackSetOutput };
+  "track.set_height": { input: TrackSetHeight; output: TrackSetHeightOutput };
+  "track.set_magnetic": { input: TrackSetMagnetic; output: TrackSetMagneticOutput };
   "view.get": { input: ViewGet; output: UiState };
   "view.select": { input: ViewSelect; output: UiState };
   "view.set": { input: ViewSet; output: UiState };
@@ -61,6 +72,8 @@ export type QueryMap = {
   "media.list": { input: MediaList; output: MediaListOutput };
   "project.info": { input: ProjectInfo; output: ProjectInfoOutput };
   "timeline.get": { input: TimelineGet; output: TimelineGetOutput };
+  "timeline.list_markers": { input: TimelineListMarkers; output: TimelineListMarkersOutput };
+  "track.list": { input: TrackList; output: TrackListOutput };
 };
 
 /** Everything callable over RPC. */

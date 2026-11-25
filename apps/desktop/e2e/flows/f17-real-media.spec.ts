@@ -192,7 +192,8 @@ test.describe("F17 real media", () => {
       await snapshot(page, info, "imported");
 
       // The engine indexed and thumbnailed every file in the background, and measured the
-      // sound of those that have some (the HEVC clip is silent: no waveform job).
+      // sound of those that have some (the HEVC clip is silent: no waveform job). Its proxy
+      // job (10-bit HEVC, WP-2F.01) is not analysis: F41 follows proxies.
       const media = await editorCall<{ media: { id: string; path: string }[] }>(page, "media.list");
       expect(media.media).toHaveLength(3);
       for (const asset of media.media) {
@@ -204,6 +205,7 @@ test.describe("F17 real media", () => {
             async () => {
               const { jobs } = await editorCall<{ jobs: JobView[] }>(page, "job.list", {
                 media_id: asset.id,
+                kind: "analysis",
               });
               return jobs
                 .map((j) => `${j.label}:${j.state}`)

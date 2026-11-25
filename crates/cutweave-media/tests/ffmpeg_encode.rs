@@ -538,9 +538,10 @@ fn unsupported_specs(dir: &Path) -> Vec<(&'static str, EncodeSpec)> {
     vec![
         ("MKV", at("out.mkv").with_video(h264.clone())),
         (
-            "MOV container",
+            // MOV is written since WP-2F.01 (proxies); a named WebM container is not.
+            "WebM container",
             EncodeSpec {
-                container: Some("mov".into()),
+                container: Some("webm".into()),
                 ..at("out.mp4").with_video(h264.clone())
             },
         ),

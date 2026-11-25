@@ -153,6 +153,10 @@ pub struct EngineCmd {
     /// `CUTWEAVE_DEV_STUB_MEDIA=1` does the same.
     #[arg(long)]
     pub dev_stub_media: bool,
+    /// Print `{"event":"starting",...}` lines on stdout until the ready line: one as soon as
+    /// the engine runs, then one a second (a supervisor tells a slow start from a hung one).
+    #[arg(long)]
+    pub progress: bool,
 }
 
 impl EngineCmd {
@@ -169,6 +173,7 @@ impl EngineCmd {
         flag(self.i_know_this_is_a_test, "--i-know-this-is-a-test");
         flag(self.no_log, "--no-log");
         flag(self.dev_stub_media, "--dev-stub-media");
+        flag(self.progress, "--progress");
         let mut value = |name: &str, v: Option<String>| {
             if let Some(v) = v {
                 out.extend([name.to_owned(), v]);

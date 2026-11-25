@@ -28,6 +28,8 @@ const clip = (id: string, start: number, group: string | null = null) => ({
   duration: 2 * F,
   enabled: true,
   linked_group: group,
+  attached_to: null,
+  markers: {},
   media: "med_a",
   source_in: 0,
   audio: { gain: 0 },
@@ -45,6 +47,7 @@ const track = (id: string, kind: string, items: object[]) => ({
   locked: false,
   solo: false,
   magnetic: false,
+  height: null,
   gain: 0,
   custom: {},
 });
@@ -61,6 +64,8 @@ const PROJECT = {
       name: "Main",
       format: { width: 1920, height: 1080, frame_rate: { num: 30, den: 1 } },
       track_order: ["trk_v", "trk_a"],
+      markers: {},
+      in_out: null,
       tracks: {
         trk_v: track("trk_v", "video", [clip("itm_a", F, "grp_1"), clip("itm_b", 5 * F)]),
         trk_a: track("trk_a", "audio", [clip("itm_a2", F, "grp_1")]),

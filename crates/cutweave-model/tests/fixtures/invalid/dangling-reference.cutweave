@@ -1,6 +1,6 @@
 {
   "meta": {
-    "schema_version": 1,
+    "schema_version": 2,
     "name": "Invalid fixture",
     "created": null,
     "app_version": null
@@ -95,6 +95,8 @@
               "duration": 1411200000,
               "enabled": true,
               "linked_group": null,
+              "attached_to": null,
+              "markers": {},
               "media": "med_0000000000017000800000000000a001",
               "source_in": 0,
               "audio": {
@@ -128,6 +130,8 @@
               "duration": 705600000,
               "enabled": true,
               "linked_group": null,
+              "attached_to": null,
+              "markers": {},
               "media": "med_0000000000017000800000000000a009",
               "source_in": 705600000,
               "audio": {
@@ -159,6 +163,7 @@
           "locked": false,
           "solo": false,
           "magnetic": false,
+          "height": null,
           "gain": 0.0,
           "custom": {}
         },
@@ -172,6 +177,7 @@
           "locked": false,
           "solo": false,
           "magnetic": false,
+          "height": null,
           "gain": 0.0,
           "custom": {}
         }
@@ -180,6 +186,8 @@
         "trk_0000000000017000800000000000c001",
         "trk_0000000000017000800000000000c002"
       ],
+      "markers": {},
+      "in_out": null,
       "custom": {}
     }
   },

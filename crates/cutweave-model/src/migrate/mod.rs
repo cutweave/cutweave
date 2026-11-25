@@ -28,6 +28,7 @@
 //! ```
 
 mod v0_to_v1;
+mod v1_to_v2;
 
 use std::fmt;
 
@@ -36,13 +37,13 @@ use serde_json::{Map, Value};
 use crate::Project;
 
 /// The schema version this build reads, edits and writes.
-pub const CURRENT_SCHEMA_VERSION: u32 = 1;
+pub const CURRENT_SCHEMA_VERSION: u32 = 2;
 
 /// The oldest schema version that can still be migrated (v0 is the pre-release draft format).
 pub const OLDEST_SCHEMA_VERSION: u32 = 0;
 
 /// The migration chain, ordered: entry `i` reads version `OLDEST_SCHEMA_VERSION + i`.
-pub static MIGRATIONS: &[&dyn Migration] = &[&v0_to_v1::V0ToV1];
+pub static MIGRATIONS: &[&dyn Migration] = &[&v0_to_v1::V0ToV1, &v1_to_v2::V1ToV2];
 
 /// One step of the chain: rewrites a raw JSON document from [`Migration::source_version`] to the
 /// next version.

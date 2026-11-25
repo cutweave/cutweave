@@ -1,0 +1,114 @@
+---
+source: crates/cutweave-ops/tests/contract.rs
+expression: "json!({\n    \"meta\": serde_json::to_value(meta).unwrap(), \"input\": meta.input_schema,\n    \"output\": meta.output_schema,\n})"
+---
+{
+  "meta": {
+    "name": "track.reorder",
+    "summary": "Move a track to another position in the track stack",
+    "kind": "command",
+    "undoable": true,
+    "view": false,
+    "scope": "any",
+    "mcp": "catalog",
+    "annotations": {
+      "readOnlyHint": false,
+      "destructiveHint": false,
+      "idempotentHint": true,
+      "openWorldHint": false
+    },
+    "secret_fields": [],
+    "input_schema": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "track": {
+          "type": "string",
+          "pattern": "^trk_[0-9a-f]{32}$",
+          "description": "The track."
+        },
+        "index": {
+          "type": "integer",
+          "format": "uint32",
+          "minimum": 0,
+          "description": "Its new display position, 0 = top (clamped to the end)."
+        }
+      },
+      "required": [
+        "track",
+        "index"
+      ],
+      "description": "Moves a track to another display position (0 = top, clamped to the end). Upper video\ntracks composite over lower ones, so this changes what is on top. Items are not touched,\nso it also works on a locked track.",
+      "title": "TrackReorder"
+    },
+    "output_schema": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "track": {
+          "type": "string",
+          "pattern": "^trk_[0-9a-f]{32}$",
+          "description": "The track."
+        },
+        "index": {
+          "type": "integer",
+          "format": "uint32",
+          "minimum": 0,
+          "description": "Its display position now (0 = top)."
+        }
+      },
+      "required": [
+        "track",
+        "index"
+      ],
+      "description": "Result of `track.reorder`.",
+      "title": "TrackReorderOutput"
+    }
+  },
+  "input": {
+    "type": "object",
+    "additionalProperties": false,
+    "properties": {
+      "track": {
+        "type": "string",
+        "pattern": "^trk_[0-9a-f]{32}$",
+        "description": "The track."
+      },
+      "index": {
+        "type": "integer",
+        "format": "uint32",
+        "minimum": 0,
+        "description": "Its new display position, 0 = top (clamped to the end)."
+      }
+    },
+    "required": [
+      "track",
+      "index"
+    ],
+    "description": "Moves a track to another display position (0 = top, clamped to the end). Upper video\ntracks composite over lower ones, so this changes what is on top. Items are not touched,\nso it also works on a locked track.",
+    "title": "TrackReorder"
+  },
+  "output": {
+    "type": "object",
+    "additionalProperties": false,
+    "properties": {
+      "track": {
+        "type": "string",
+        "pattern": "^trk_[0-9a-f]{32}$",
+        "description": "The track."
+      },
+      "index": {
+        "type": "integer",
+        "format": "uint32",
+        "minimum": 0,
+        "description": "Its display position now (0 = top)."
+      }
+    },
+    "required": [
+      "track",
+      "index"
+    ],
+    "description": "Result of `track.reorder`.",
+    "title": "TrackReorderOutput"
+  }
+}

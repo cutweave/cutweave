@@ -5,11 +5,17 @@
 //! It never contains the UI credential. It is created with user-only permissions (POSIX
 //! `0600`; on Windows the DACL is reduced to the current user), removed on exit, and stale
 //! files left by a crashed engine are ignored by [`RunFile::discover`] and reaped at startup.
+//!
+//! Restricting a file on Windows starts `whoami` and `icacls`: seconds on a busy machine
+//! (issue #143). [`RunFile::prepare`] does that ahead of the first write, on a spare thread
+//! while the engine starts, so the write that precedes the ready line only fills the file.
 
 use std::{
+    collections::HashMap,
     fmt, fs,
     io::{self, Write},
     path::{Path, PathBuf},
+    sync::{Arc, LazyLock, Mutex, MutexGuard, PoisonError},
 };
 
 use serde::{Deserialize, Serialize};
@@ -193,8 +199,12 @@ impl RunFile {
         create_private_dir(dir)?;
         let path = dir.join(format!("{}.json", contents.pid));
         let tmp = dir.join(format!("{}.tmp", contents.pid));
-        let _ = fs::remove_file(&tmp);
-        let mut file = create_private_file(&tmp)?;
+        let mut file = if let Some(prepared) = take_prepared(&tmp) {
+            prepared
+        } else {
+            let _ = fs::remove_file(&tmp);
+            create_private_file(&tmp)?
+        };
         let result = serde_json::to_vec_pretty(contents)
             .map_err(io::Error::other)
             .and_then(|bytes| file.write_all(&bytes))
@@ -205,6 +215,45 @@ impl RunFile {
             return Err(e);
         }
         Ok(RunFile { path })
+    }
+
+    /// Makes this process's first [`write`](Self::write) into `dir` fast: creates the folder and
+    /// the private, still empty `<pid>.tmp` the write fills (on Windows restricting it runs
+    /// `whoami` and `icacls`). Call it early, on a spare thread: a write that comes while the
+    /// preparation still runs waits for it and uses its file. Failures are left to the write,
+    /// which tries again (and reports them).
+    pub fn prepare(dir: &Path) {
+        let tmp = dir.join(format!("{}.tmp", std::process::id()));
+        let cell = Arc::new(Mutex::new(None));
+        // Held until the file is ready: a write that takes the cell meanwhile waits on it.
+        let mut slot = lock(&cell);
+        {
+            let mut prepared = lock(&PREPARED);
+            // Prepared already, or written: a write may be using `<pid>.tmp` right now.
+            if prepared.contains_key(&tmp) {
+                return;
+            }
+            prepared.insert(tmp.clone(), Some(Arc::clone(&cell)));
+        }
+        let made = create_private_dir(dir).and_then(|()| {
+            let _ = fs::remove_file(&tmp);
+            create_private_file(&tmp)
+        });
+        match made {
+            Ok(file) => *slot = Some(file),
+            Err(e) => {
+                tracing::debug!(error = %e, dir = %dir.display(), "cannot prepare the run-file");
+            }
+        }
+    }
+
+    /// Drops what [`prepare`](Self::prepare) made in `dir` when no run-file will be written
+    /// after all (the engine failed to start): removes the empty `<pid>.tmp`.
+    pub fn discard_prepared(dir: &Path) {
+        let tmp = dir.join(format!("{}.tmp", std::process::id()));
+        if take_prepared(&tmp).is_some() {
+            let _ = fs::remove_file(&tmp);
+        }
     }
 
     /// Reads the run-file at `path`, applies `change` and writes it back atomically. A
@@ -257,15 +306,38 @@ impl RunFile {
         found
     }
 
-    /// Removes run-files whose engine is dead; returns how many were removed.
+    /// Removes run-files whose engine is dead (and the `<pid>.tmp` such an engine prepared or
+    /// was writing); returns how many run-files were removed. On Windows every pid checked
+    /// costs a `tasklist`, so the server reaps in the background.
     #[must_use]
     pub fn reap_stale(dir: &Path) -> usize {
-        entries(dir)
+        entries_with(dir, &["json", "tmp"])
             .into_iter()
             .filter(|(_, pid)| *pid != std::process::id() && !process_alive(*pid))
             .filter(|(path, _)| fs::remove_file(path).is_ok())
+            .filter(|(path, _)| path.extension().is_some_and(|e| e == "json"))
             .count()
     }
+}
+
+/// A run-file being prepared ([`RunFile::prepare`]): the cell is locked while the file is made,
+/// then holds it until the first write takes it.
+type Prepared = Arc<Mutex<Option<fs::File>>>;
+
+/// Preparations by `<pid>.tmp` path; `None` once a write (or a discard) took the path over, so
+/// a preparation that comes late never touches a temp file a write is using.
+static PREPARED: LazyLock<Mutex<HashMap<PathBuf, Option<Prepared>>>> =
+    LazyLock::new(|| Mutex::new(HashMap::new()));
+
+fn lock<T>(m: &Mutex<T>) -> MutexGuard<'_, T> {
+    m.lock().unwrap_or_else(PoisonError::into_inner)
+}
+
+/// Takes `tmp` over for a write (or a discard): its prepared file, after waiting for a
+/// preparation that still runs, or `None`.
+fn take_prepared(tmp: &Path) -> Option<fs::File> {
+    let cell = lock(&PREPARED).insert(tmp.to_path_buf(), None).flatten()?;
+    lock(&cell).take()
 }
 
 /// Renames `from` over `to`. On Windows a reader that has the target open can make the first
@@ -284,13 +356,19 @@ fn replace_file(from: &Path, to: &Path) -> io::Result<()> {
 
 /// `<pid>.json` files in `dir` as `(path, pid)`.
 fn entries(dir: &Path) -> Vec<(PathBuf, u32)> {
+    entries_with(dir, &["json"])
+}
+
+/// `<pid>.<ext>` files in `dir` with one of `extensions`, as `(path, pid)`.
+fn entries_with(dir: &Path, extensions: &[&str]) -> Vec<(PathBuf, u32)> {
     let Ok(read) = fs::read_dir(dir) else {
         return Vec::new();
     };
     read.filter_map(Result::ok)
         .filter_map(|e| {
             let path = e.path();
-            if path.extension()? != "json" {
+            let ext = path.extension()?.to_str()?;
+            if !extensions.contains(&ext) {
                 return None;
             }
             let pid = path.file_stem()?.to_str()?.parse::<u32>().ok()?;
@@ -451,9 +529,61 @@ mod tests {
         )
         .unwrap();
         fs::write(dir.path().join("garbage.json"), b"{").unwrap();
+        // A dead engine's half-written (or prepared) file goes too; it is not a run-file.
+        fs::write(dir.path().join(format!("{dead}.tmp")), b"").unwrap();
         assert!(RunFile::discover(dir.path()).is_empty());
         assert_eq!(RunFile::reap_stale(dir.path()), 1);
         assert!(!dir.path().join(format!("{dead}.json")).exists());
+        assert!(!dir.path().join(format!("{dead}.tmp")).exists());
+    }
+
+    #[test]
+    fn the_first_write_fills_the_prepared_file() {
+        let dir = tempfile::tempdir().unwrap();
+        let run = dir.path().join("run");
+        let pid = std::process::id();
+        RunFile::prepare(&run);
+        let tmp = run.join(format!("{pid}.tmp"));
+        assert!(
+            tmp.exists(),
+            "the folder and the empty private file exist before the write"
+        );
+        assert_eq!(fs::metadata(&tmp).unwrap().len(), 0);
+        // Preparing again while one is ready changes nothing.
+        RunFile::prepare(&run);
+        let rf = RunFile::write(&run, &sample(pid)).unwrap();
+        assert!(!tmp.exists());
+        assert_eq!(RunFile::discover(&run)[0].port, 1234);
+        rf.remove();
+        // Nothing is prepared any more: a discard changes nothing, a write makes its own file.
+        RunFile::discard_prepared(&run);
+        let again = RunFile::write(&run, &sample(pid)).unwrap();
+        assert_eq!(fs::read_dir(&run).unwrap().count(), 1);
+        again.remove();
+    }
+
+    #[test]
+    fn a_discarded_preparation_leaves_no_file() {
+        let dir = tempfile::tempdir().unwrap();
+        RunFile::prepare(dir.path());
+        RunFile::discard_prepared(dir.path());
+        assert_eq!(fs::read_dir(dir.path()).unwrap().count(), 0);
+    }
+
+    #[test]
+    fn a_write_during_a_preparation_still_leaves_one_run_file() {
+        let dir = tempfile::tempdir().unwrap();
+        let run = dir.path().to_path_buf();
+        let preparing = std::thread::spawn({
+            let run = run.clone();
+            move || RunFile::prepare(&run)
+        });
+        let rf = RunFile::write(&run, &sample(std::process::id())).unwrap();
+        preparing.join().unwrap();
+        // The write used the prepared file, or the preparation came too late and did nothing.
+        assert_eq!(fs::read_dir(&run).unwrap().count(), 1);
+        assert_eq!(RunFile::discover(&run).len(), 1);
+        rf.remove();
     }
 
     #[test]

@@ -11,8 +11,8 @@ use std::{sync::Arc, time::Duration};
 
 use cutweave_jobs::{JobConfig, JobCtx, JobError, JobId, JobKind, JobManager, JobSpec};
 use cutweave_model::{
-    EntityId, FrameRate, ItemId, MediaId, MediaKind, ProbeInfo, Project, SampleRate, SeededGen,
-    SequenceId, TrackId, TrackKind, Vec2,
+    EntityId, FrameRate, ItemId, MarkerId, MediaId, MediaKind, ProbeInfo, Project, SampleRate,
+    SeededGen, SequenceId, TrackId, TrackKind, Vec2,
 };
 use proptest::{
     collection::vec,
@@ -201,6 +201,9 @@ struct Med {
 #[derive(Clone, Debug, Default)]
 pub(super) struct Pools {
     seqs: Vec<SequenceId>,
+    /// Each sequence with its flicks per frame.
+    seq_fpf: Vec<(SequenceId, i64)>,
+    markers: Vec<MarkerId>,
     tracks: Vec<Trk>,
     items: Vec<Itm>,
     media: Vec<Med>,
@@ -220,6 +223,8 @@ impl Pools {
             let frames = |flicks: i64| flicks.div_euclid(fpf);
             let seq_end = frames(s.duration().flicks());
             pools.seqs.push(s.id);
+            pools.seq_fpf.push((s.id, fpf));
+            pools.markers.extend(s.markers.keys().copied());
             for t in s.tracks_in_order() {
                 pools.tracks.push(Trk {
                     id: t.id,
@@ -239,6 +244,7 @@ impl Pools {
                         seq_end,
                     });
                     used.extend(i.media());
+                    pools.markers.extend(i.markers().keys().copied());
                 }
             }
         }
@@ -286,9 +292,21 @@ pub(super) fn args_for(name: &str, p: &Pools) -> Option<(u32, BoxedStrategy<Valu
         "media.import" => (if no_media { 4 } else { 2 }, media_import()),
         "media.list" => (1, media_list(p)),
         "media.remove" => (1, media_remove(p)),
+        "media.generate_proxy" | "media.delete_proxy" => (1, proxy_media(p, false)),
+        "media.proxy_status" => (1, proxy_media(p, true)),
         "track.add" => (2, track_add(p)),
         "track.remove" => (1, track_remove(p)),
         "track.set" => (2, track_set(p)),
+        "track.reorder" => (1, track_reorder(p)),
+        "track.set_height" => (1, track_set_height(p)),
+        "track.set_magnetic" => (2, track_set_magnetic(p)),
+        "track.list" => (1, track_list(p)),
+        "timeline.add_marker" => (2, timeline_add_marker(p)),
+        "timeline.move_marker" => (1, timeline_move_marker(p)),
+        "timeline.remove_marker" => (1, timeline_remove_marker(p)),
+        "timeline.set_in_out" => (1, timeline_set_in_out(p)),
+        "timeline.clear_in_out" => (1, timeline_clear_in_out(p)),
+        "timeline.list_markers" => (1, timeline_list_markers(p)),
         "timeline.insert" => (if p.seqs.is_empty() { 1 } else { 8 }, timeline_insert(p)),
         "timeline.get" => (1, timeline_get(p)),
         "clip.split" => (edits, clip_split(p)),
@@ -548,6 +566,24 @@ fn media_remove(p: &Pools) -> BoxedStrategy<Value> {
     )
 }
 
+/// `{media: [ids]}` for the proxy commands (WP-2F.01): known or unknown assets, an empty or
+/// repeated list; `media.proxy_status` may leave the list out.
+fn proxy_media(p: &Pools, optional: bool) -> BoxedStrategy<Value> {
+    let valid = vec(one_of(p.media_ids()), 1..=3)
+        .prop_map(|ids| json!({ "media": ids }))
+        .boxed();
+    let invalid = prop_oneof![
+        Just(json!({ "media": [] })),
+        one_of(p.media_ids()).prop_map(|id| json!({ "media": [id.clone(), id] })),
+    ]
+    .boxed();
+    if optional {
+        prop_oneof![8 => mix(valid, invalid), 2 => Just(json!({}))].boxed()
+    } else {
+        mix(valid, invalid)
+    }
+}
+
 // ----- tracks, timeline ----------------------------------------------------------------------
 
 fn track_add(p: &Pools) -> BoxedStrategy<Value> {
@@ -614,6 +650,204 @@ fn track_set(p: &Pools) -> BoxedStrategy<Value> {
             v["track"] = track;
             v
         })
+        .boxed();
+    mix(valid, invalid)
+}
+
+fn track_reorder(p: &Pools) -> BoxedStrategy<Value> {
+    let valid = (one_of(p.track_ids()), 0..=count(p.tracks.len()) + 1)
+        .prop_map(|(track, index)| json!({"track": track, "index": index}))
+        .boxed();
+    let invalid = (fresh::<TrackId>(), 0..3_u32)
+        .prop_map(|(track, index)| json!({"track": track, "index": index}))
+        .boxed();
+    mix(valid, invalid)
+}
+
+fn track_set_height(p: &Pools) -> BoxedStrategy<Value> {
+    let valid = (
+        one_of(p.track_ids()),
+        option::weighted(0.8, prop_oneof![Just(8_u32), Just(512), 8..=512_u32]),
+    )
+        .prop_map(|(track, height)| json!({"track": track, "height": height}))
+        .boxed();
+    let invalid = (
+        one_of(p.track_ids()),
+        prop_oneof![Just(0_u32), Just(7), Just(513), Just(100_000)],
+    )
+        .prop_map(|(track, height)| json!({"track": track, "height": height}))
+        .boxed();
+    mix(valid, invalid)
+}
+
+fn track_set_magnetic(p: &Pools) -> BoxedStrategy<Value> {
+    let valid = (
+        one_of(p.track_ids()),
+        prop_oneof![3 => Just(true), 1 => Just(false)],
+        option::weighted(0.6, any::<bool>()),
+    )
+        .prop_map(|(track, magnetic, close_gaps)| {
+            json!({"track": track, "magnetic": magnetic, "close_gaps": close_gaps})
+        })
+        .boxed();
+    let invalid = (fresh::<TrackId>(), any::<bool>())
+        .prop_map(|(track, magnetic)| json!({"track": track, "magnetic": magnetic}))
+        .boxed();
+    mix(valid, invalid)
+}
+
+fn track_list(p: &Pools) -> BoxedStrategy<Value> {
+    mix(
+        one_of(p.seqs.clone())
+            .prop_map(|sequence| json!({"sequence": sequence}))
+            .boxed(),
+        fresh::<SequenceId>()
+            .prop_map(|sequence| json!({"sequence": sequence}))
+            .boxed(),
+    )
+}
+
+const LABELS: [&str; 4] = ["", "Intro", "Beat \u{266a}", "  Chapter 1  "];
+
+fn timeline_add_marker(p: &Pools) -> BoxedStrategy<Value> {
+    let invalid_seq = fresh::<SequenceId>()
+        .prop_map(|sequence| json!({"sequence": sequence, "t": 0}))
+        .boxed();
+    if p.seq_fpf.is_empty() {
+        return mix(invalid_seq.clone(), invalid_seq);
+    }
+    let items = p.items.clone();
+    let valid = select(p.seq_fpf.clone())
+        .prop_flat_map(move |(seq, fpf)| {
+            let mine: Vec<ItemId> = items
+                .iter()
+                .filter(|i| i.seq == seq)
+                .map(|i| i.id)
+                .collect();
+            let item = if mine.is_empty() {
+                Just(None).boxed()
+            } else {
+                option::weighted(0.4, select(mine)).boxed()
+            };
+            (
+                Just((seq, fpf)),
+                item,
+                0..200_i64,
+                any::<(u8, u32)>(),
+                option::weighted(0.3, 1..60_i64),
+                option::weighted(0.6, select(LABELS.to_vec())),
+                option::weighted(0.3, Just("#336699")),
+                option::weighted(0.4, select(vec!["user", "beat", "chapter"])),
+            )
+        })
+        .prop_map(
+            |((seq, fpf), item, frame, (form, jitter), dur, label, color, kind)| {
+                json!({
+                    "sequence": seq, "item": item, "t": time_json(fpf, frame, form, jitter),
+                    "duration": dur.map(|d| time_json(fpf, d, form, 0)),
+                    "label": label, "color": color, "kind": kind,
+                })
+            },
+        )
+        .boxed();
+    let seq = select(p.seq_fpf.clone()).prop_map(|(s, _)| s);
+    let invalid = (
+        seq,
+        prop_oneof![
+            Just(json!({"t": "-1.0s"})),
+            Just(json!({"t": 0, "duration": 0})),
+            Just(json!({"t": 0, "label": "x".repeat(201)})),
+            Just(json!({"t": 0, "label": "tab\there"})),
+            Just(json!({"t": 0, "color": "red"})),
+            Just(json!({"t": 0, "kind": "bar"})),
+        ],
+    )
+        .prop_map(|(sequence, mut v)| {
+            v["sequence"] = json!(sequence);
+            v
+        })
+        .boxed();
+    mix(valid, prop_oneof![3 => invalid, 1 => invalid_seq].boxed())
+}
+
+fn timeline_move_marker(p: &Pools) -> BoxedStrategy<Value> {
+    let valid = (one_of(p.markers.clone()), 0..200_i64, any::<(u8, u32)>())
+        .prop_map(|(marker, frame, (form, jitter))| {
+            json!({"marker": marker, "t": time_json(FPF_30, frame, form, jitter)})
+        })
+        .boxed();
+    let invalid = (one_of(p.markers.clone()), Just("-2.0s"))
+        .prop_map(|(marker, t)| json!({"marker": marker, "t": t}))
+        .boxed();
+    mix(valid, invalid)
+}
+
+fn timeline_remove_marker(p: &Pools) -> BoxedStrategy<Value> {
+    mix(
+        one_of(p.markers.clone())
+            .prop_map(|marker| json!({"marker": marker}))
+            .boxed(),
+        fresh::<MarkerId>()
+            .prop_map(|marker| json!({"marker": marker}))
+            .boxed(),
+    )
+}
+
+fn timeline_set_in_out(p: &Pools) -> BoxedStrategy<Value> {
+    if p.seq_fpf.is_empty() {
+        let bad = fresh::<SequenceId>()
+            .prop_map(|sequence| json!({"sequence": sequence, "start": 0, "end": 10}))
+            .boxed();
+        return mix(bad.clone(), bad);
+    }
+    let valid = (
+        select(p.seq_fpf.clone()),
+        0..150_i64,
+        1..100_i64,
+        any::<(u8, u32)>(),
+    )
+        .prop_map(|((seq, fpf), start, len, (form, jitter))| {
+            json!({"sequence": seq,
+                   "start": time_json(fpf, start, form, jitter),
+                   "end": time_json(fpf, start + len, form, 0)})
+        })
+        .boxed();
+    let invalid = (
+        select(p.seq_fpf.clone()),
+        prop_oneof![
+            Just(json!({"start": 30, "end": 30})),
+            Just(json!({"start": 30, "end": 10})),
+            Just(json!({"start": "-1.0s", "end": 10})),
+        ],
+    )
+        .prop_map(|((sequence, _), mut v)| {
+            v["sequence"] = json!(sequence);
+            v
+        })
+        .boxed();
+    mix(valid, invalid)
+}
+
+fn timeline_clear_in_out(p: &Pools) -> BoxedStrategy<Value> {
+    mix(
+        one_of(p.seqs.clone())
+            .prop_map(|sequence| json!({"sequence": sequence}))
+            .boxed(),
+        fresh::<SequenceId>()
+            .prop_map(|sequence| json!({"sequence": sequence}))
+            .boxed(),
+    )
+}
+
+fn timeline_list_markers(p: &Pools) -> BoxedStrategy<Value> {
+    let valid = (
+        one_of(p.seqs.clone()),
+        option::weighted(0.3, one_of(p.item_ids())),
+    )
+        .prop_map(|(sequence, item)| json!({"sequence": sequence, "item": item}))
+        .boxed();
+    let invalid = fresh::<SequenceId>()
+        .prop_map(|sequence| json!({"sequence": sequence}))
         .boxed();
     mix(valid, invalid)
 }
@@ -1157,6 +1391,48 @@ fn export_start(p: &Pools) -> BoxedStrategy<Value> {
 
 /// The job id [`export_ctx`]'s starter returns for every export it is given.
 pub const EXPORT_JOB_ID: JobId = JobId::from_u128(0xE0);
+
+/// A proxy service that makes none (the engine context of the proxy commands in a harness,
+/// WP-2F.01): every asset reports `none`, and generating or deleting changes nothing.
+#[derive(Debug, Default)]
+pub struct NoProxies;
+
+impl crate::media::ProxyService for NoProxies {
+    fn status(
+        &self,
+        _doc: &cutweave_model::Project,
+        media: &[cutweave_model::MediaId],
+    ) -> Vec<crate::media::proxy::ProxyInfo> {
+        media
+            .iter()
+            .map(|id| crate::media::proxy::ProxyInfo::none(*id))
+            .collect()
+    }
+
+    fn generate(
+        &self,
+        doc: &cutweave_model::Project,
+        media: &[cutweave_model::MediaId],
+    ) -> Result<Vec<crate::media::proxy::ProxyInfo>, cutweave_commands::CmdError> {
+        Ok(self.status(doc, media))
+    }
+
+    fn delete(
+        &self,
+        doc: &cutweave_model::Project,
+        media: &[cutweave_model::MediaId],
+    ) -> Result<Vec<crate::media::proxy::ProxyInfo>, cutweave_commands::CmdError> {
+        Ok(self.status(doc, media))
+    }
+
+    fn imported(
+        &self,
+        _media: cutweave_model::MediaId,
+        _after: &[JobId],
+    ) -> crate::media::ImportProxy {
+        crate::media::ImportProxy::None
+    }
+}
 
 /// Takes export plans and queues nothing (see [`export_ctx`]).
 struct QueueNothing;

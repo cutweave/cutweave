@@ -165,7 +165,7 @@ cutweave/
 - **Wire format:** `Time` serializes as a JSON **integer** (flicks) and maps to TS `number`. It is validated as a safe integer (|t| < 2⁵³ flicks ≈ 147 days, far beyond any timeline). Inputs also accept timecode strings (`"00:01:02:03"`, `"62.5s"`, `"f:1500"`), which are normalized on parse. Frame-based forms (`HH:MM:SS:FF`, `f:N`) resolve against the frame rate of the sequence that owns the command's target, at validation time. Commands with no sequence context accept only flicks or seconds (`"62.5s"`). *(Decided after Spike S5.)* The specta export uses a type override for the `Time` newtype.
 - Media source times stay in the **stream timebase** until mapped. VFR sources are mapped through the media index (§7), never by assuming a constant fps.
 
-### 4.2 Entities (all IDs are UUIDv7 strings with type prefixes: `med_…`, `seq_…`, `trk_…`, `itm_…`)
+### 4.2 Entities (all IDs are UUIDv7 strings with type prefixes: `med_…`, `seq_…`, `trk_…`, `itm_…`, `grp_…`, `mrk_…`)
 
 ```text
 Project
@@ -183,12 +183,16 @@ MediaAsset { id, kind(video|audio|image|sequence-ref), path_abs, path_rel, conte
              proxy?: ProxyRef, analysis{scenes?, beats?, loudness?, waveform_ref}, provenance?: Provenance }
 
 Sequence { id, name, format{width,height,frame_rate,sample_rate,color_space,background},
-           tracks: Vec<TrackId> (top→bottom), main_track?: TrackId (magnetic), markers, in_out? }
+           tracks: Vec<TrackId> (top→bottom; stored as `tracks` by ID plus `track_order`),
+           markers: Map<MarkerId, Marker>, in_out?: {start, end} }
+           # the main track is the track with `magnetic: true` (at most one, a video track; schema v2)
+
+Marker { id (mrk_…), t, duration?, label, color, kind(user|beat|chapter) }   # sequence time; item markers: item-relative
 
 Track { id, kind(video|audio|text|caption|adjustment), items (sorted by start), name,
-        muted, hidden, locked, solo, gain, magnetic: bool }
+        muted, hidden, locked, solo, gain, magnetic: bool, height?: px (UI hint, saved) }
 
-Item (enum, common: id, track, start, duration, enabled, linked_group?, name, color_label)
+Item (enum, common: id, track, start, duration, enabled, linked_group?, attached_to?: ItemId, markers, name, color_label)
  ├─ Clip { media, source_in, speed: Speed(Constant|Curve), reverse, freeze?, audio{gain,pan,fade_in,fade_out,eq…},
  │         visual: VisualProps, effects: Vec<EffectInstance>, masks: Vec<Mask> }
  ├─ Text { content: RichText, style: TextStyleRef|inline, box, animation{in,out,loop}: AnimRef, visual }
@@ -205,7 +209,7 @@ VisualProps { transform{position, scale, rotation, anchor}, crop{left, top, righ
 
 Animatable<T> = Static(T) | Keyframes(Vec<Keyframe<T>{ t (item-relative flicks), value,
                 interp(hold|linear|bezier{x1,y1,x2,y2}|spring{stiffness,damping,mass,bounce}) }>)
-                — wire: bare T or {"keyframes": [...]}; rules in docs/spec/keyframes.md (ADR-0024, Proposed)
+                — wire: bare T or {"keyframes": [...]}; rules in docs/spec/keyframes.md (ADR-0024, Accepted)
 
 EffectInstance { id, effect: PluginRef("cutweave.fx.gaussian-blur@1"), enabled, params: Map<ParamId, Animatable<Value>> }
 
@@ -227,7 +231,7 @@ Provenance { origin(import|record|ai), provider?, model?, prompt?, seed?, params
   - `item.move` takes `start` and accepts `overlap: "new_track"` like `timeline.insert`. Edits never ripple, and trims never push a neighbour.
   - An edit touching any locked track (partners' tracks included) fails with `Locked` and applies nothing.
 - **Phase 2 edit semantics** are specified in [docs/spec/timeline-edit-semantics.md](spec/timeline-edit-semantics.md) (WP-2A.01): the magnetic main track, placement modes (`insert`, `overwrite`, `new_track`, `reject`), ripple scope, attachments, the trim family, `EditReport`, snapping and selection, with executable fixtures (`cargo xtask check-fixtures`). Its contract changes are in [ADR-0023](adr/0023-timeline-edit-semantics.md) (**Proposed**); until that is accepted, the P1 rules above hold.
-- **Keyframes (specified in WP-2C.01; [ADR-0024](adr/0024-keyframes.md), Proposed):** the full rules are in [docs/spec/keyframes.md](spec/keyframes.md).
+- **Keyframes (specified in WP-2C.01; [ADR-0024](adr/0024-keyframes.md), Accepted):** the full rules are in [docs/spec/keyframes.md](spec/keyframes.md).
   - Keys are addressed by `(item, prop, t)`, with `t` in item-relative flicks.
   - Each key's interpolation shapes the segment to the next key.
   - Edits never change a rendered frame. A split keeps each half's keys plus one key on each side. A head trim shifts keys so they stay on the timeline. Trims keep keys outside the item unless `prune_keyframes` is set. Slips, moves, ripples, speed changes and duplicates leave keys alone.
@@ -235,7 +239,8 @@ Provenance { origin(import|record|ai), provider?, model?, prompt?, seed?, params
 - **Normalized, ID-addressed.** Nothing refers to anything by index. Agents and the UI address by ID, which is stable across sessions.
 - **CapCut magnetic main track** is a track flag: `magnetic: true` gives ripple-by-default semantics. Linked items ("attached to main clip") move with their parent via `linked_group`. (The P2 spec proposes a separate one-way `attached_to` relation for these, spec §1.4, ADR-0023.)
 - **Plugin data** goes only into namespaced `custom` maps, so it can never corrupt core fields.
-- **Schema versioning:** `schema_version` plus ordered migrations (`vN → vN+1`) with golden fixture tests. Projects from newer app versions open read-only with a warning.
+- **Schema versioning:** `schema_version` plus ordered migrations (`vN → vN+1`) with golden fixture tests. Projects from newer app versions open read-only with a warning. Contract changes inside one unreleased version share its migration (§17, "One v2").
+- **Model v2 (WP-2A.02, [ADR-0023](adr/0023-timeline-edit-semantics.md), spec §1.5, §2):** `Project::validate` enforces INV-6 (at most one magnetic track per sequence, a video track), INV-7 (the magnetic track is gap-free from 0), INV-8 (linked groups have at least two members with identical `start` and `duration`) and INV-9 (attachments: one level deep, same sequence, another track, the child starts inside the parent, linked partners follow the same parent). Markers and `in_out` are metadata: no edit moves them, and sequence markers and the in/out range never move with a ripple (INV-34). `track.set_magnetic` is the only command that sets the flag; until WP-2A.03 ripples, the P1 edits `item.move`, `item.delete`, `clip.trim` and `timeline.insert` answer `Unsupported` on a magnetic track instead of leaving a gap.
 
 ---
 
@@ -319,7 +324,7 @@ impl Command for SplitItem {
   - Another actor's change to a locked item fails with `Conflict{item_in_gesture, retry_after_ms}`. The hint is the time left until the gesture's idle deadline, at least 250 ms; proposals give none. The holder's own actor is not blocked.
   - `edit.locks` lists open transactions with their locked items and deadlines. Events: `tx.opened`, `tx.locked`, `tx.closed`.
   - A closed connection ID can never open transactions again, so the API server (WP-1I.02) must not reuse connection IDs. A `holder` field on the error would be a contract change (ADR).
-- **P2 gesture updates (proposed in ADR-0023, spec §5):** each update of a gesture carries `_meta.replace: true` and replaces the previous one atomically, so a gesture commits the effect of its last command; its soft-lock set is the union of the items each update's `EditReport` names, and `Conflict{item_in_gesture}` gains `holder` (WP-2A.12).
+- **P2 gesture updates (ADR-0023, spec §5):** each update of a gesture carries `_meta.replace: true` and replaces the previous one atomically, so a gesture commits the effect of its last command; its soft-lock set is the union of the items each update's `EditReport` names, and `Conflict{item_in_gesture}` gains `holder` (WP-2A.12).
 - **Checkpoints:** `edit.checkpoint{name}` and `edit.restore{checkpoint}` (cheap, thanks to persistent snapshots) let agents try something and roll back.
 - **Checkpoints (decided in WP-2I.03):**
   - `edit.checkpoint{name?, note?}` keeps an O(1) snapshot of the committed document; at most 50 are kept, 20 of them named, least recently used (made or restored) first out. Reusing a name moves it. Ids (`cp_<n>`) are never reused, also across restarts. `edit.list_checkpoints` lists them and `edit.delete_checkpoint` deletes one. Nothing is created automatically except one per `cutweave_execute{checkpoint: true}` call (§14).
@@ -364,6 +369,7 @@ All surfaces live on **one local server per engine** (axum on `127.0.0.1`, rando
   - `Engine::start(EngineConfig)` wires the doc actor, project store, journal, autosave, job manager and API server; media, render, audio and playback attach later through the `Subsystems` trait (WP-1I.05).
   - Surfaces mount on an in-process dispatch API: `EngineHandle::connect(&Credential)` gives each client connection its own never-reused connection ID, and dropping it rolls back that connection's open transaction. Events reach clients through one `EngineEvent` fan-out.
   - In `Gui` mode the UI credential is the first stdin line; the engine prints a ready line (no tokens) or a JSON error line and exits with 0 clean, 1 internal, 2 usage, 10 project locked, 11 GPU init, 12 port bind, 13 handshake.
+  - The ready line means serving; optional slow work (a GPU still opening, the capabilities probe) continues after it. With `--progress` the engine prints `starting` lines until then, and Electron main judges a start by them: silent for 10 s or still starting after 60 s is hung (ADR-0025, Proposed; issue #143).
   - **Path policy:** the UI credential is unrestricted. Every other credential can only open, save or import under the `--allow-root` folders, the start project's folder and the open project's folder (symlinks resolved, `..` refused); otherwise the call fails with `Invalid`.
 - **Media HTTP (decided in WP-1I.03):** specified in [http-media.md](reference/http-media.md).
   - **Auth:** a bearer token (UI or agent), or for `GET`/`HEAD` a URL signed by `POST /media/sign`: HMAC-SHA256 over the path and query up to an `exp`, with a per-launch 256-bit key held only in the engine. A signature opens exactly one resource and expires (an hour by default); `<img src>` uses it, so tokens never appear in URLs. A bad or expired signature is 401.
@@ -391,7 +397,7 @@ All surfaces live on **one local server per engine** (axum on `127.0.0.1`, rando
   - A GOP cache handles scrubbing.
   - Hardware decode uses D3D11VA/NVDEC on Windows, VideoToolbox on macOS and VA-API on Linux.
 - **GPU upload:** v1 uploads NV12/P010 planes from the CPU to wgpu and converts colorspace in a shader. **Zero-copy interop** (DX12 shared handles, IOSurface/Metal, dmabuf→Vulkan) is a later optimization behind a feature flag. **[Spike 3]**
-- **Proxies:** auto-proxy policy for long-GOP or over-1080p media (configurable). Proxies are intra-frame (ProRes Proxy / DNxHR LB, or MJPEG fallback) at ≤ 960p and live in the global cache. Preview uses proxies; export always uses the originals.
+- **Proxies:** auto-proxy policy for long-GOP or over-1080p media (configurable). Proxies are intra-frame (ProRes Proxy / DNxHR LB, or MJPEG fallback) at ≤ 960 px on the long side and live in the global cache. Preview uses proxies; export always uses the originals (decided in WP-2F.01, below).
 - **Caches (global, content-addressed, size-capped LRU, in the OS cache dir):** decoded frame cache (RAM), GPU texture cache (VRAM budget), thumbnails/filmstrips (disk), waveform pyramids (disk) and proxies (disk). The index lives in `cache.sqlite`.
 - **Index, hash and cache (decided in WP-1D.02).** `MediaBackend::index_media` builds the frame index from a packet scan, so `FakeBackend` serves indexes too. `FrameIndex` and the content hash live in `cutweave-media`; `cutweave-cache` depends on media and re-exports them (decoding for thumbnails needs that direction). The content hash is BLAKE3 over the first and last MiB plus the size (`blake3-fast:<hex>`; `blake3-full:<hex>` hashes everything), and keys every cache entry. `cache.sqlite` evolves through append-only migrations (`PRAGMA user_version`). An index is stored as a versioned, delta-coded packet blob with a BLAKE3 checksum; frames and GOPs are rebuilt on load, and a damaged or older blob is a cache miss.
 - **Encode/export:**
@@ -447,6 +453,14 @@ All surfaces live on **one local server per engine** (axum on `127.0.0.1`, rando
   - **Limits and clearing:** a lower limit evicts least-recently-used entries at once (thumbnails through the `disk_entries` accounting, waveforms by file time). `media.clear_cache` deletes only cache files and rows, never a project or `generated/` media; every cache rebuilds on demand. `frame_cache_bytes: 0` means Auto, the smaller of 1 GiB and a quarter of RAM (the Windows RAM probe still falls back to 1 GiB, #127).
   - **Hardware decoding Off:** decoders opened from then on are software ones (the preview's and the thumbnail generator's; exports and `render.frame` already are). Idle decoders are closed, and an open pool reopens a software decoder at its next seek, because a pool only reuses decoders opened with the same options.
   - **GPU and encoders:** `media.capabilities` also names the adapter in use (`gpu`: name, backend, device type, software), absent while the device is opening and when the CPU renders.
+- **Proxies (decided in WP-2F.01).**
+  - **What:** ProRes 422 Proxy when the backend has an encoder for it (`prores_ks` in the bundle), else DNxHR LB, else MJPEG, in MOV with the original's sound as 16-bit PCM; at most 960 px on the long side (never larger than the original), even sides; the original's color tags as they are. Profile key `prores_proxy-960`.
+  - **Frames:** proxy frame `n` is original frame `n`: the proxy has the original's frame count at a constant rate, and the original's frame index is stored with it (the `pts_map`), so variable-frame-rate sources are conformed and frame-exact edits map through the index. A frame the decoder drops is filled with the previous one.
+  - **Generation:** a `proxy` job (`JobKind::Proxy`: two at a time, at most one starts while an export runs) decodes sequentially with hardware where verified, scales in the decoder's swscale pass (`DecodeOpts::target_size`) and encodes parts of 600 frames, each complete under its name or not at all; parts are joined by packet copy (`MediaBackend::concat`) and indexed. A cancelled, failed or killed generation keeps its finished parts and the next one resumes after them. Decoders use at most half the cores and encoders a quarter.
+  - **Cache:** `<cache>/proxies/<hash>/<profile>/` with a `proxies` row in `cache.sqlite` (migration 3) keyed by content hash and profile: `building` → `ready` → `evicted` (or `failed`). Ready proxies form an LRU capped at 50 GiB (`media.set_cache_config{limits.proxies}`); a new proxy or a lower limit evicts the least recently used, the preview's use marks one used. `media.cache_status` lists the `proxies` kind; `media.clear_cache{kinds:["proxies"]}` evicts them all. Evicted and failed proxies are made again only on request, so a cache too small never thrashes.
+  - **When:** `media.import` queues the proxies the policy wants after each asset's `index` job and reports `proxy: none | queued | ready` per file. Attaching a document (engine start, `project.open`) queues wanted proxies never made or interrupted. `media.generate_proxy{media[]}`, `media.delete_proxy{media[]}` and the read-only `media.proxy_status{media?}` are engine commands (not undoable, not journaled) in the MCP catalog; agents may use all three.
+  - **Policy:** `auto` makes proxies of long-GOP H.264 or HEVC larger than 1920 px, faster than 60 fps, or HEVC 10-bit; `all` of every video; `off` of none. Every project follows `auto` until ADR-0027 (Proposed) stores the policy and a per-asset mode in the project.
+  - **Selection:** the preview serves a layer from its asset's ready proxy when the request accepts one (`FrameRequest::proxy`): scrub frames (`RenderPurpose::Scrub`, the low-resolution frame of §10 step 5) and the quality ladder's proxy rungs. The frame shown at a source time comes from the stored index; layout uses the original's probed size. The preview holds the proxy it resolved until the store's generation counter moves (one atomic load per frame), so a proxy finished while the file is open is used from the next scrub frame. Paused and refined frames, `render.frame`, `/media/frame`, thumbnails and exports use the originals, decoded as before. MediaResolver purposes, the full-resolution rule and the preview toggle are WP-2F.02's.
 - **Corpus:** a test-media manifest (VFR phone footage, HEVC 10-bit HDR, ProRes, rotated, odd sample rates, broken files) is fetched in CI to gate decode correctness.
 
 ---
@@ -469,7 +483,7 @@ flowchart LR
   - Caching rendered frames by `(subgraph hash, t)`.
   - **Parallel chunked export** across `cutweave worker` processes.
   - Reproducible bug reports and golden-frame tests.
-- **Animated values** are evaluated at the item-relative time by the pure keyframe evaluator ([docs/spec/keyframes.md](spec/keyframes.md) §6; ADR-0024, Proposed). It works in f64, is exact at keys and never yields NaN or infinity. Hold and linear are bit-exact on every platform; bezier, spring and colour agree within 1e-9 across native and wasm. Property clamps (opacity, crop, gain, pan) apply after interpolation, and conversion to f32 happens only at the GPU boundary.
+- **Animated values** are evaluated at the item-relative time by the pure keyframe evaluator ([docs/spec/keyframes.md](spec/keyframes.md) §6; ADR-0024, Accepted). It works in f64, is exact at keys and never yields NaN or infinity. Hold and linear are bit-exact on every platform; bezier, spring and colour agree within 1e-9 across native and wasm. Property clamps (opacity, crop, gain, pan) apply after interpolation, and conversion to f32 happens only at the GPU boundary.
 - **Color:**
   - Composite in **linear light, `Rgba16Float`** working space (scene-linear Rec.709 primaries in v1).
   - Input transforms come from probe tags (matrix, range, transfer, primaries), and output transforms are per export.
@@ -482,7 +496,7 @@ flowchart LR
   - All blending is done in linear light.
 - **No hidden state in effects.** Effects cannot keep persistent feedback buffers across frames, because that would break determinism. Temporal effects (echo, trails, motion blur, datamosh-style) declare **`history` taps** (input frames t−1…t−N, N ≤ 8). The render graph provides these from the frame cache, so the output stays a pure function of the inputs.
 - **Golden references are stored per GPU adapter class** (software WARP/lavapipe for CI, plus reference machines), with a perceptual tolerance.
-- **GPU device (decided in WP-1I.05).** The engine opens the wgpu device on its own thread at start (`CUTWEAVE_GPU` picks the adapter). A Gui engine waits up to 4 s for it and exits 11 if it fails in that window; a headless engine does not wait, and `render.frame` waits up to 60 s for a device that is still opening. A device that fails later falls back to the software adapter, then to the CPU reference renderer, and the engine sends `engine.degraded{subsystem, reason}`. One compositor serves `render.frame` and export; a second serves the preview.
+- **GPU device (decided in WP-1I.05).** The engine opens the wgpu device on its own thread at start (`CUTWEAVE_GPU` picks the adapter). A Gui engine waits for it until 4 s after it began to open (the caches, audio and preview ring start inside that window) and exits 11 if it fails in that window; a headless engine does not wait, and `render.frame` waits up to 60 s for a device that is still opening. A device that fails later falls back to the software adapter, then to the CPU reference renderer, and the engine sends `engine.degraded{subsystem, reason}`. One compositor serves `render.frame` and export; a second serves the preview.
 - **Effects & transitions** are WGSL effect packages (§15 L1). The built-ins are first-party packages. Effects declare passes, inputs and params, and the render graph fuses compatible passes.
 - **Masks:** shape masks (rect, ellipse, polygon, bezier) with feather and invert, plus **matte masks** from AI segmentation (alpha video produced by a job) and chroma key.
 - **Text (`cutweave-text`):**
@@ -703,7 +717,7 @@ flowchart LR
   - A filesystem allowlist applies (project folder plus user-approved roots).
   - Destructive, irreversible or **paid** actions follow the three-tier authority model (§13). Dry-run `confirm_token`s never authorize spending beyond the user-set agent budget, and human-only approvals are minted only by the UI.
   - Transcript and metadata text returned to agents is marked as untrusted content (prompt-injection hygiene).
-- **Parity guarantee:** a CI test enumerates the command registry and asserts that every non-`view` command is reachable via MCP, with a listed input schema that accepts exactly the same values as the RPC one. (Decided in WP-1J.01: listed schemas drop documentation such as titles and nullable wrappers to fit the tool-list budget; `cutweave_describe_command` returns the verbatim schema.)
+- **Parity guarantee:** a CI test enumerates the command registry and asserts that every non-`view` command is reachable via MCP, with a listed input schema that accepts exactly the same values as the RPC one. (Decided in WP-1J.01: listed schemas drop documentation such as titles and nullable wrappers to fit the tool-list budget; `cutweave_describe_command` returns the full input schema and the output schema of the MCP result: untrusted strings as their wrapper, no `render_frame` picture; ADR-0028, Proposed.)
 - **Hardening learned in Spike S5** *(feeds ADR-009)*:
   - `outputSchema` is about 45% of `tools/list`, so it's listed only on `/mcp/full` (in P1 not even there; `/mcp/full` equals the standard profile). Other profiles return structured content without advertising its schema.
   - Origin/Host validation must be enabled explicitly in rmcp; it is off by default.
@@ -827,6 +841,7 @@ MyVideo/                    ← project folder (user-chosen location)
   - Recovery drops a torn last record, restores undo history and the 10-minute dedup window, and resumes ID generation. `#[secret]` params are redacted again at the sink.
   - **Checkpoints (format 2, WP-2I.03):** a `checkpoint` record follows the transaction it captured: the checkpoint made (metadata only), the ids removed, the highest id issued and the request (for dedup). Recovery rebuilds a checkpoint as the replayed document at its revision. A save carries the checkpoints made before it into the new segment as patches from the saved document, so they survive saves and reopening. Records of unknown types are skipped.
   - `project.recover` / `project.discard_recovery` are `ProjectStore` methods; the engine root (WP-1I.04) registers them as commands.
+- **One v2 (decided with WP-2A.02, 2026-11-25).** The timeline epic (WP-2A.02, ADR-0023) and the media folders (WP-2F.07, ADR-0020) both change the project format, and nothing is released between them, so they **share one `v1 → v2` migration**: `crates/cutweave-model/src/migrate/v1_to_v2.rs` runs an ordered list of steps (`STEPS`, each a function over the raw JSON). WP-2A.02 contributes four steps: the timeline fields (`Sequence.markers`, `Sequence.in_out`, `Track.height`, `Item.attached_to`, `Item.markers`), flooring clip durations to whole frames, dissolving misaligned or single-member linked groups, and keeping one magnetic track. WP-2F.07 **appends** its step (`Project.folders`, `MediaAsset.folder`, `MediaAsset.name`) to `STEPS`, extends the v2 golden fixtures (`tests/fixtures/v2/`, blessed with `CUTWEAVE_BLESS_FIXTURES=1`) and the frozen v1 fixtures that must migrate to them, and does not bump `CURRENT_SCHEMA_VERSION` again. A format change after a release, or by a WP that merges once v2 has shipped, is a v3 with its own file. The v1 fixtures never change; `tests/fixtures/v1/legacy-needs-fixes.cutweave` pins what the repair steps do (insta snapshot).
 - Media is referenced by absolute path, relative path and content hash. Relinking searches the moved folder and matches by hash. **Collect & archive** copies all media into the folder for portability.
 - The global caches (proxies, thumbnails, waveforms, frame index) live outside the project and can be rebuilt.
 - **Interchange:** OTIO JSON import/export (own implementation), SRT/VTT/ASS, FCPXML/EDL (v2), CapCut draft import (stretch goal; best-effort).
@@ -852,6 +867,7 @@ MyVideo/                    ← project folder (user-chosen location)
 | Metric | Budget |
 |---|---|
 | App start to an editable empty project | < 2.5 s |
+| Engine spawn to ready line (Gui, full engine) | At most the GPU window (4 s after the device began to open, §8) plus the process load; other slow work goes on after ready ([launch protocol](reference/launch-protocol.md), issue #143). Measured, debug build on Windows with 16 CPU hogs: 4.3–5.1 s (6.7–16 s before the audio, the caches and the run-file's `whoami`/`icacls` left the path after the window). The supervisor judges a start by liveness (`starting` lines), not by this number |
 | Open a 1-hour, 400-item project | < 2 s to interactive |
 | Command round-trip (UI → engine → patch → UI) | p95 < 16 ms |
 | Scrub latency (proxy or intra codec) | p95 < 80 ms |
@@ -951,11 +967,15 @@ MyVideo/                    ← project folder (user-chosen location)
 | 017 | Transaction kinds (`gesture`, `proposal`), connection-owned transactions, committed-only saves (§5.2) | Accepted |
 | 018 | User-flow e2e suite (real app, real input, real dialogs) as the regression gate | **Accepted** (product owner, 2026-11-24) |
 | 019 | The editor's Undo and Redo cover every actor's changes (`edit.undo{actor:"*"}`) (§5.2) | **Accepted** (product owner, 2026-11-24) |
-| 020 | Media folders: a folder tree in the project document, one folder per asset, schema v2 | Proposed: before WP-2F.07 |
+| 020 | Media folders: a folder tree in the project document, one folder per asset, schema v2 | **Accepted** (product owner, 2026-11-25) |
 | 021 | Agents choose among several engines by project; default is the focused window's engine (§2, §14) | **Accepted** (product owner, 2026-11-24) |
 | 022 | Source preview: the preview plays a media item outside any sequence (`view.set_source`) (§10) | **Accepted** (product owner, 2026-11-24) |
-| 023 | Timeline edit semantics for P2: magnetic main track, placement modes, attachments, `EditReport`, replacing gesture updates (§4.3, §5.2; [spec](spec/timeline-edit-semantics.md)) | Proposed: review of WP-2A.01 |
-| 024 | Keyframes: item-relative flicks, per-segment easing, exact split and trim rules, `keyframe.*` commands (§4.2, §4.3, §8; [spec](spec/keyframes.md)) | Proposed: review of WP-2C.01 |
+| 023 | Timeline edit semantics for P2: magnetic main track, placement modes, attachments, `EditReport`, replacing gesture updates (§4.3, §5.2; [spec](spec/timeline-edit-semantics.md)) | **Accepted** (product owner, 2026-11-25) |
+| 024 | Keyframes: item-relative flicks, per-segment easing, exact split and trim rules, `keyframe.*` commands (§4.2, §4.3, §8; [spec](spec/keyframes.md)) | **Accepted** (product owner, 2026-11-25) |
+| 025 | Engine readiness: the ready line means serving, `--progress` `starting` lines, the supervisor judges a start by liveness (§2, §8, §19; [launch protocol](reference/launch-protocol.md)) | Proposed: review of the issue #143 fix |
+| 026 | Context menus: in-app on every platform, built from commands per named surface, plugins contribute to the same surfaces (§10; [research](research/09-context-menus.md)) | **Accepted** (product owner, 2026-11-25) |
+| 027 | Proxy policy in the project (`settings.proxy_policy`) and a proxy mode per asset, as optional fields without a schema bump (§4.2, §7) | Proposed: review of WP-2F.01 |
+| 028 | MCP result schemas: `cutweave_describe_command` serves the output schema of the MCP result (untrusted-text wrappers, no `render_frame` picture), generated from the wrapping rules (§14) | **Accepted** (product owner, 2026-11-25) |
 
 ## 24. Open questions (tracked; none block Phase 0)
 

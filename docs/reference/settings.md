@@ -286,7 +286,7 @@ Stored in the document, changed with undoable commands (`project.set_settings`, 
 | `meta.name` | Project name | Chosen at creation | Read and change (`project.rename`) | Exists (P1) |
 | `default_format` | Format of new sequences | 1920 × 1080, 30 fps, 48 kHz | Read and change | WP-2H.08 (field exists since WP-1A.02) |
 | `still_duration` | Still image duration | The app default (5 s) | Read and change | WP-2F.05 |
-| `proxy_policy` | Proxies: off, auto, all | The app default (auto) | Read and change | WP-2F.01 |
+| `proxy_policy` | Proxies: off, auto, all | The app default (auto) | Read and change | WP-2F.01 follow-up ([ADR-0027](../adr/0027-proxy-policy-in-the-project.md), Proposed; every project is `auto` until then) |
 | `render_cache.enabled` | Render heavy parts in the background | On | Read and change | WP-2J.09 |
 | `autosave` | Autosave for engines without the app (headless, agents) | On, every 30 s | Read and change | WP-1C.03 (dialog row: WP-2H.08) |
 | `ai_budget` | AI spending cap for this project | None | Read only (changing budgets is UI-only, ADR-0016) | WP-5A.07 (dialog row: WP-2H.08) |

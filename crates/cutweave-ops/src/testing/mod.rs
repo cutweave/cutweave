@@ -14,6 +14,7 @@
 //! - [`job_manager`] / [`analyzer`]: the engine context of the `job.*` commands (seeded job IDs
 //!   the strategies can name, with jobs already in several states) and the analysis jobs a
 //!   harness's `media.import` queues (WP-1D.07).
+//! - [`NoProxies`]: the proxy service of the proxy commands in a harness (WP-2F.01).
 //! - [`export_ctx`]: the engine context of `export.start` (WP-1E.03), with a starter that
 //!   queues nothing.
 //!
@@ -44,7 +45,7 @@ pub use invariants::{check_invariants, check_linked_edit};
 pub use mirror::{JsonMirror, ReplayError, replay_events};
 pub use strategies::{
     AGENT_LABEL, BROKEN_IMPORT_PATH, CHECKPOINT_NAMES, EXPORT_FILE_NAME, EXPORT_JOB_ID,
-    IMPORT_PATHS, JOB_ID_SEED, analyzer, export_ctx, fake_probe, job_manager,
+    IMPORT_PATHS, JOB_ID_SEED, NoProxies, analyzer, export_ctx, fake_probe, job_manager,
 };
 
 use strategies::{Pools, args_for};
@@ -95,6 +96,35 @@ pub fn arb_command_from(registry: &Registry, doc: &Project) -> BoxedStrategy<(St
     let pools = Pools::of(doc);
     let arms: Vec<(u32, BoxedStrategy<(String, Value)>)> = covered(registry)
         .map(|entry| {
+            let name = entry.name();
+            let Some((weight, params)) = args_for(name, &pools) else {
+                panic!("missing property strategy for {name}");
+            };
+            let arm = params.prop_map(move |p| (name.to_owned(), p)).boxed();
+            (weight, arm)
+        })
+        .collect();
+    Union::new_weighted(arms).boxed()
+}
+
+/// [`arb_command_from`] restricted to the entries called `names`: for a focused property test
+/// of a few commands (WP-2A.02 drives the track and marker commands this way).
+///
+/// # Panics
+///
+/// If a name is not registered or has no strategy.
+pub fn arb_command_among(
+    registry: &Registry,
+    doc: &Project,
+    names: &[&str],
+) -> BoxedStrategy<(String, Value)> {
+    let pools = Pools::of(doc);
+    let arms: Vec<(u32, BoxedStrategy<(String, Value)>)> = names
+        .iter()
+        .map(|name| {
+            let Some(entry) = registry.get(name) else {
+                panic!("{name} is not registered");
+            };
             let name = entry.name();
             let Some((weight, params)) = args_for(name, &pools) else {
                 panic!("missing property strategy for {name}");

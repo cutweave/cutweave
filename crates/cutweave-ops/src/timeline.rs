@@ -30,12 +30,14 @@ use crate::{
 /// Length of a still image when `duration` is omitted: five seconds.
 pub const DEFAULT_STILL_SECS: i64 = 5;
 
+pub mod markers;
+
 /// Registers the `timeline.*` commands and queries.
 pub fn register(registry: &mut Registry) -> Result<(), RegistryError> {
     registry
         .register::<TimelineInsert>()?
         .register::<TimelineGet>()?;
-    Ok(())
+    markers::register(registry)
 }
 
 // ----- timeline.insert -----------------------------------------------------------------------
@@ -225,6 +227,7 @@ impl TimelineInsert {
                 format!("a {} track cannot play {} media", track.kind, media.kind),
             ));
         }
+        crate::item::ensure_free_track(track)?;
         if track.locked {
             return Err(CmdError::locked(EntityKind::Track, track.id));
         }
@@ -385,6 +388,10 @@ pub struct TrackSummary {
     pub locked: bool,
     /// Solo.
     pub solo: bool,
+    /// The magnetic main track.
+    pub magnetic: bool,
+    /// Row height in pixels; `None` is the default.
+    pub height: Option<u32>,
     /// Gain in dB.
     pub gain: f64,
     /// Number of items.
@@ -498,6 +505,8 @@ impl Query for TimelineGet {
                     hidden: t.hidden,
                     locked: t.locked,
                     solo: t.solo,
+                    magnetic: t.magnetic,
+                    height: t.height,
                     gain: t.gain,
                     item_count: count(t.items.len()),
                     end: t.items.end(),

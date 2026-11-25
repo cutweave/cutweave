@@ -86,13 +86,16 @@ e2e:
     @echo "e2e: not implemented yet (arrives in Phase 1)"
 
 # The user-flow suite (ADR-0018, docs/user-flows.md): builds the engine (with FFmpeg when the bundle is set up, so the real-media flows F13, F14 and F17 run; without it they skip), the CLI, the preview addon and the app, then drives it like a person (`just e2e-flows -g F8` runs one flow)
-e2e-flows *args:
+e2e-flows *args: e2e-build
+    { . scripts/ffmpeg/env.sh 2>/dev/null || true; } && pnpm --filter @cutweave/desktop e2e:flows {{args}}
+
+# Everything the user flows run against: the engine (with FFmpeg when the bundle is there), the CLI, the preview addon and the app
+e2e-build:
     if . scripts/ffmpeg/env.sh 2>/dev/null; then cargo build -p cutweave-engine --bin cutweave-engine-serve --features ffmpeg; else echo "e2e-flows: no FFmpeg bundle (just ffmpeg-fetch): the engine is built without FFmpeg and the real-media flows skip"; cargo build -p cutweave-engine --bin cutweave-engine-serve; fi
     cargo build -p cutweave-cli --bin cutweave
     pnpm --filter @cutweave/desktop build:bridge
     pnpm --filter @cutweave/desktop build:node
     pnpm --filter @cutweave/desktop build:renderer
-    { . scripts/ffmpeg/env.sh 2>/dev/null || true; } && pnpm --filter @cutweave/desktop e2e:flows {{args}}
 
 # The flows' real-cursor steps (window drag, double-click on the title, screen pixels; Windows): they move your mouse, so run them when nobody is using the machine
 e2e-real-input *args:
@@ -128,7 +131,15 @@ ffmpeg-fetch *args:
 test-ffmpeg *args:
     . scripts/ffmpeg/env.sh && cargo nextest run -p cutweave-media --features ffmpeg {{args}}
 
-# The M1 exit gate (WP-1O.04, docs/milestones/M1-exit.md): builds the engine and CLI with FFmpeg and the app, then runs the M1 acceptance suite (UI cut and export, the same cut by an MCP agent compared with it, crash trials, golden frames, parity) and reports pass or fail per exit criterion into target/m1/ (`--trials N`, `--full` adds `just check`, `--evidence DIR`, `--criteria 1,2`)
+# The M1 demo video (`just m1-demo`): runs the M1 UI test (e2e/m1/m1-exit.spec.ts, real media: needs the FFmpeg bundle and the corpus) with Playwright's video recording on and copies the main window's video to target/m1/demo/m1-demo.webm
+m1-demo: e2e-build
+    rm -rf target/m1/demo target/m1/demo-raw && mkdir -p target/m1/demo target/m1/demo-raw
+    { . scripts/ffmpeg/env.sh 2>/dev/null || true; } && CUTWEAVE_E2E_VIDEO_DIR="$PWD/target/m1/demo-raw" pnpm --filter @cutweave/desktop exec playwright test e2e/m1/m1-exit.spec.ts
+    cp target/m1/demo-raw/main-window-1.webm target/m1/demo/m1-demo.webm
+    rm -rf target/m1/demo-raw
+    @ls -l target/m1/demo/m1-demo.webm
+
+# The M1 exit gate (WP-1O.04, docs/milestones/M1-exit.md; the demo video is `just m1-demo`): builds the engine and CLI with FFmpeg and the app, then runs the M1 acceptance suite (UI cut and export, the same cut by an MCP agent compared with it, crash trials, golden frames, parity) and reports pass or fail per exit criterion into target/m1/ (`--trials N`, `--full` adds `just check`, `--evidence DIR`, `--criteria 1,2`)
 m1-gate *args:
     python scripts/m1-gate.py {{args}}
 

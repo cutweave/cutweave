@@ -16,6 +16,8 @@ const clip = (id: string, extra: object = {}) => ({
   duration: sec(4),
   enabled: true,
   linked_group: "grp_1",
+  attached_to: null,
+  markers: {},
   media: "med_a",
   source_in: 0,
   audio: { gain: 0 },
@@ -42,6 +44,7 @@ const track = (id: string, kind: string, items: object[], extra: object = {}) =>
   locked: false,
   solo: false,
   magnetic: false,
+  height: null,
   gain: 0,
   custom: {},
   ...extra,
@@ -50,7 +53,7 @@ const track = (id: string, kind: string, items: object[], extra: object = {}) =>
 /** `itm_v` (video) and `itm_a` (its linked audio); `edits` patches the clips by ID. */
 export function sampleProject(edits: Record<string, object> = {}): Project {
   return {
-    meta: { name: "Sample", schema_version: 1, created: null, app_version: null },
+    meta: { name: "Sample", schema_version: 2, created: null, app_version: null },
     settings: { default_format: {} },
     media: {
       med_a: {
@@ -94,6 +97,8 @@ export function sampleProject(edits: Record<string, object> = {}): Project {
           background: { r: 0, g: 0, b: 0, a: 1 },
         },
         track_order: ["trk_v", "trk_a"],
+        markers: {},
+        in_out: null,
         tracks: {
           trk_v: track("trk_v", "video", [clip("itm_v", edits.itm_v)]),
           trk_a: track("trk_a", "audio", [clip("itm_a", edits.itm_a)]),

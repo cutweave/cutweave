@@ -306,6 +306,9 @@ function processTree(pid: number | undefined): string {
   }`;
 }
 
+/** Launches that kept a video (`CUTWEAVE_E2E_VIDEO_DIR`). */
+let videoCount = 0;
+
 /**
  * Launch the built app (`dist/`) with a throwaway HOME / user-data dir, the fake engine
  * (test-support) standing in for `cutweave engine`, and the main-process test hooks enabled.
@@ -325,7 +328,13 @@ export async function launchApp(
 ): Promise<LaunchedApp> {
   const home = options.home ?? mkdtempSync(path.join(tmpdir(), "cutweave-e2e-"));
   const ownsHome = options.home === undefined;
+  // `just m1-demo`: Playwright's own video of every window, saved under this folder. Recording
+  // does not change what the app does.
+  const videoDir = process.env.CUTWEAVE_E2E_VIDEO_DIR;
   const app = await electron.launch({
+    ...(videoDir === undefined
+      ? {}
+      : { recordVideo: { dir: videoDir, size: { width: 1280, height: 800 } } }),
     args: [...(process.platform === "linux" ? ["--no-sandbox"] : []), ...switches, desktopDir],
     env: {
       ...process.env,
@@ -366,6 +375,15 @@ export async function launchApp(
         try {
           await quitApp(app, page, "discard", mainLog);
         } finally {
+          // Keep the first window's video under a stable name (the others stay under their own).
+          if (videoDir !== undefined) {
+            try {
+              videoCount += 1;
+              await page.video()?.saveAs(path.join(videoDir, `main-window-${videoCount}.webm`));
+            } catch {
+              // No video (the window never opened): nothing to keep.
+            }
+          }
           if (ownsHome) {
             rmSync(home, { recursive: true, force: true, maxRetries: 5, retryDelay: 200 });
           }

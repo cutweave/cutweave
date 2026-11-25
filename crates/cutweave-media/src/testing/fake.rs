@@ -22,7 +22,13 @@
 //!
 //! **Encoded files read back.** A finished encode registers its output, so probing or decoding
 //! it serves synthetic media of the same size, rate and length (frames decode as `Yuv420p`, like
-//! an H.264 file).
+//! an H.264 file). [`MediaBackend::concat`] joins registered outputs the same way. With
+//! [`FakeBackend::with_output_files`] encodes and joins also write a small text file describing
+//! the media (and only on success: a cancelled or failed encode leaves nothing), which any
+//! `FakeBackend` reads back, so outputs survive a new backend (a restarted engine in a test).
+//!
+//! **Scaling.** A decoder opened with [`DecodeOpts::target_size`] serves frames of that size
+//! (the same pattern and frame number).
 
 use std::collections::BTreeMap;
 use std::f64::consts::TAU;
@@ -37,7 +43,8 @@ use cutweave_model::{
 };
 
 use crate::backend::{
-    AudioDecoder, DecodeOpts, EncodeSpec, EncodeSummary, Encoder, MediaBackend, VideoDecoder,
+    AudioDecoder, ConcatSpec, DecodeOpts, EncodeSpec, EncodeSummary, Encoder, MediaBackend,
+    VideoDecoder,
 };
 use crate::cancel;
 use crate::encode::{InputCheck, output_color};
@@ -355,7 +362,80 @@ pub struct FakeBackend {
     frame_cost: Wall,
     /// Decoders opened with [`HwMode::Auto`](crate::HwMode::Auto) pretend to be hardware ones.
     pseudo_hw: bool,
+    /// Encodes and joins write a description file ([`FakeBackend::with_output_files`]).
+    write_files: bool,
     shared: Arc<Shared>,
+}
+
+/// The first line of a file [`FakeBackend::with_output_files`] writes.
+const FAKE_FILE_MAGIC: &str = "cutweave-fake-media 1";
+
+impl FakeMedia {
+    /// The text a [`FakeBackend::with_output_files`] output holds.
+    fn describe(&self) -> String {
+        use std::fmt::Write as _;
+        let mut text = format!("{FAKE_FILE_MAGIC}\n");
+        if let Some(v) = &self.video {
+            let _ = writeln!(
+                text,
+                "video {} {} {}/{} {} {}",
+                v.width,
+                v.height,
+                v.rate.num(),
+                v.rate.den(),
+                v.frames,
+                v.format.ffmpeg_name()
+            );
+        }
+        if let Some(a) = &self.audio {
+            let _ = writeln!(text, "audio {} {} {}", a.rate.hz(), a.channels, a.samples);
+        }
+        text
+    }
+
+    /// Reads back [`describe`](Self::describe); `None` for any other content.
+    fn parse(text: &str) -> Option<FakeMedia> {
+        let mut lines = text.lines();
+        if lines.next()? != FAKE_FILE_MAGIC {
+            return None;
+        }
+        let mut media = FakeMedia {
+            video: None,
+            audio: None,
+        };
+        for line in lines {
+            let f: Vec<&str> = line.split_whitespace().collect();
+            match f.as_slice() {
+                ["video", w, h, rate, frames, format] => {
+                    let (num, den) = rate.split_once('/')?;
+                    let rate = FrameRate::new(num.parse().ok()?, den.parse().ok()?).ok()?;
+                    let format = PixelFormat::ALL
+                        .into_iter()
+                        .find(|p| p.ffmpeg_name() == *format)?;
+                    media.video = Some(
+                        FakeVideo::new(
+                            w.parse().ok()?,
+                            h.parse().ok()?,
+                            rate,
+                            frames.parse().ok()?,
+                        )
+                        .with_format(format),
+                    );
+                }
+                ["audio", rate, channels, samples] => {
+                    let mut audio = FakeAudio::tone(
+                        SampleRate::new(rate.parse().ok()?).ok()?,
+                        channels.parse().ok()?,
+                        Duration::ZERO,
+                    );
+                    audio.samples = samples.parse().ok()?;
+                    media.audio = Some(audio);
+                }
+                _ => return None,
+            }
+        }
+        Some(media)
+    }
 }
 
 impl Default for FakeBackend {
@@ -382,8 +462,39 @@ impl FakeBackend {
             ]),
             frame_cost: Wall::ZERO,
             pseudo_hw: false,
+            write_files: false,
             shared: Arc::default(),
         }
+    }
+
+    /// Makes encodes and joins write a small file describing their output at the output path
+    /// (when they succeed), which every `FakeBackend` reads back as that media: outputs then
+    /// exist on disk, survive a new backend, and their files can be listed, sized and deleted
+    /// (proxy tests, WP-2F.01).
+    #[must_use]
+    pub fn with_output_files(mut self) -> FakeBackend {
+        self.write_files = true;
+        self
+    }
+
+    /// Registers `media` as an encoded output at `path` (and writes its file when outputs are
+    /// files).
+    fn store_output(&self, path: &Path, media: FakeMedia) -> Result<(), MediaError> {
+        if self.write_files {
+            let tmp = path.with_extension("fake-partial");
+            let io = |e: std::io::Error| MediaError::Io {
+                path: path::display(path),
+                message: e.to_string(),
+            };
+            std::fs::write(&tmp, media.describe()).map_err(io)?;
+            std::fs::rename(&tmp, path).map_err(io)?;
+        }
+        self.shared
+            .outputs
+            .lock()
+            .unwrap_or_else(PoisonError::into_inner)
+            .insert(path.to_owned(), media);
+        Ok(())
     }
 
     /// Makes every video frame a decoder decodes take `cost` of wall time (sleeping, polling its
@@ -479,6 +590,14 @@ impl FakeBackend {
                     return Ok(m);
                 }
                 path::check_file(p)?;
+                // A file another fake backend wrote ([`FakeBackend::with_output_files`]).
+                if let Some(m) = std::fs::read(p)
+                    .ok()
+                    .filter(|b| b.starts_with(FAKE_FILE_MAGIC.as_bytes()))
+                    .and_then(|b| FakeMedia::parse(&String::from_utf8_lossy(&b)))
+                {
+                    return Ok(m);
+                }
                 Err(MediaError::Corrupt {
                     path: path::display(p),
                     message: "not a media file this backend can read \
@@ -507,7 +626,7 @@ impl MediaBackend for FakeBackend {
         opts: &DecodeOpts,
     ) -> Result<Box<dyn VideoDecoder>, MediaError> {
         let media = self.lookup(p)?;
-        let video = media.video.clone().ok_or_else(|| MediaError::NoStream {
+        let mut video = media.video.clone().ok_or_else(|| MediaError::NoStream {
             path: path::display(p),
             kind: StreamKind::Video,
             index: None,
@@ -525,6 +644,10 @@ impl MediaBackend for FakeBackend {
             });
         }
         self.shared.decoders_opened.fetch_add(1, Ordering::Relaxed);
+        if let Some((width, height)) = opts.target_size.filter(|(w, h)| *w > 0 && *h > 0) {
+            video.width = width;
+            video.height = height;
+        }
         let hw = self.pseudo_hw && opts.hw == crate::HwMode::Auto;
         if hw {
             self.shared
@@ -589,8 +712,64 @@ impl MediaBackend for FakeBackend {
             spec: spec.clone(),
             bytes: 0,
             cancelled: false,
-            shared: Arc::clone(&self.shared),
+            backend: self.clone(),
         }))
+    }
+
+    fn concat(&self, spec: &ConcatSpec) -> Result<EncodeSummary, MediaError> {
+        spec.validate()?;
+        let mut joined: Option<FakeMedia> = None;
+        for part in &spec.parts {
+            if spec.cancel.as_ref().is_some_and(CancelCheck::is_cancelled) {
+                return Err(MediaError::Cancelled);
+            }
+            let media = self.lookup(part)?;
+            joined = Some(match joined {
+                None => media,
+                Some(mut j) => {
+                    let same_video = match (&j.video, &media.video) {
+                        (Some(a), Some(b)) => {
+                            (a.width, a.height, a.rate, a.format)
+                                == (b.width, b.height, b.rate, b.format)
+                        }
+                        (None, None) => true,
+                        _ => false,
+                    };
+                    let same_audio = match (&j.audio, &media.audio) {
+                        (Some(a), Some(b)) => (a.rate, a.channels) == (b.rate, b.channels),
+                        (None, None) => true,
+                        _ => false,
+                    };
+                    if !same_video || !same_audio {
+                        return Err(MediaError::Invalid {
+                            message: format!(
+                                "`{}` does not have the streams of the first part",
+                                path::display(part)
+                            ),
+                        });
+                    }
+                    if let (Some(a), Some(b)) = (&mut j.video, &media.video) {
+                        a.frames += b.frames;
+                    }
+                    if let (Some(a), Some(b)) = (&mut j.audio, &media.audio) {
+                        a.samples += b.samples;
+                    }
+                    j
+                }
+            });
+        }
+        let joined = joined.ok_or_else(|| MediaError::Invalid {
+            message: "nothing to join".to_owned(),
+        })?;
+        let video_frames = joined.video.as_ref().map_or(0, |v| v.frames);
+        let audio_samples = joined.audio.as_ref().map_or(0, |a| a.samples);
+        let duration = joined.probe()?.duration.unwrap_or(Duration::ZERO);
+        self.store_output(&spec.path, joined)?;
+        Ok(EncodeSummary {
+            video_frames,
+            audio_samples,
+            duration,
+        })
     }
 
     fn capabilities(&self) -> Capabilities {
@@ -734,7 +913,7 @@ struct FakeEncoder {
     input: InputCheck,
     bytes: u64,
     cancelled: bool,
-    shared: Arc<Shared>,
+    backend: FakeBackend,
 }
 
 impl FakeEncoder {
@@ -790,7 +969,8 @@ impl Encoder for FakeEncoder {
         self.check_cancel()?;
         let summary = self.input.summary();
         self.report();
-        self.shared
+        self.backend
+            .shared
             .encodes
             .lock()
             .unwrap_or_else(PoisonError::into_inner)
@@ -815,11 +995,7 @@ impl Encoder for FakeEncoder {
                 amplitude: 0.5,
             }),
         };
-        self.shared
-            .outputs
-            .lock()
-            .unwrap_or_else(PoisonError::into_inner)
-            .insert(self.spec.path.clone(), written);
+        self.backend.store_output(&self.spec.path, written)?;
         Ok(summary)
     }
 }
@@ -964,6 +1140,70 @@ mod tests {
             FakeVideo::lasting(8, 8, FrameRate::FPS_30, Duration::ZERO).frames,
             0
         );
+    }
+
+    #[test]
+    fn decoders_scale_and_joins_add_up_and_files_survive_a_new_backend() {
+        use crate::testing::contract::TempDir;
+        let dir = TempDir::new("fake-proxy-io");
+        let src = dir.path().join("src.mov");
+        let backend = FakeBackend::new()
+            .with_media(
+                &src,
+                FakeMedia::video(FakeVideo::new(64, 36, FrameRate::FPS_25, 30)),
+            )
+            .with_output_files();
+        // Scaled decode keeps the frame numbers.
+        let opts = DecodeOpts::default().with_size(16, 8);
+        let mut d = backend.open_decoder(&src, &opts).expect("open");
+        let f = d
+            .seek_exact(FrameRate::FPS_25.frame_to_time(7).expect("t"))
+            .expect("seek");
+        assert_eq!((f.width, f.height), (16, 8));
+        assert_eq!(fake_frame_number(&f), Some(7));
+        // Two encodes, joined: the files describe their media and read back elsewhere.
+        let mut parts = Vec::new();
+        for (i, frames) in [(0, 4_i64), (1, 6)] {
+            let path = dir.path().join(format!("part{i}.mov"));
+            let spec = EncodeSpec::new(&path).with_video(crate::VideoEncodeSpec::h264(
+                16,
+                8,
+                FrameRate::FPS_25,
+                PixelFormat::Yuv420p,
+            ));
+            let video = FakeVideo::new(16, 8, FrameRate::FPS_25, 10);
+            let mut enc = FakeBackend::new()
+                .with_capabilities(Capabilities::with_codecs([CodecSupport {
+                    name: "h264".into(),
+                    kind: StreamKind::Video,
+                    decoders: vec![],
+                    encoders: vec!["h264".into()],
+                }]))
+                .with_output_files()
+                .open_encoder(&spec)
+                .expect("encoder");
+            for n in 0..frames {
+                let mut frame = video
+                    .frame(u64::try_from(n).expect("n"), PixelFormat::Yuv420p)
+                    .expect("frame");
+                frame.pts = FrameRate::FPS_25.frame_to_time(n).expect("pts");
+                enc.push_video(&frame).expect("push");
+            }
+            enc.finish().expect("finish");
+            assert!(path.is_file());
+            parts.push(path);
+        }
+        let out = dir.path().join("joined.mov");
+        let summary = backend.concat(&ConcatSpec::new(parts, &out)).expect("join");
+        assert_eq!(summary.video_frames, 10);
+        let fresh = FakeBackend::new();
+        assert_eq!(fresh.index_media(&out).expect("index").frame_count(), 10);
+        let cancelled = backend.concat(
+            &ConcatSpec::new(vec![out.clone()], dir.path().join("c.mov"))
+                .with_cancel(CancelCheck::new(|| true)),
+        );
+        assert_eq!(cancelled, Err(MediaError::Cancelled));
+        assert!(!dir.path().join("c.mov").exists());
     }
 
     #[test]

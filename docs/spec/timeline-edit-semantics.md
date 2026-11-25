@@ -1,6 +1,6 @@
 # Timeline edit semantics (normative spec for Phase 2)
 
-> **Status:** draft for review (WP-2A.01). It becomes the contract when a maintainer approves the PR. The contract changes it implies (new commands and params, project format v2 additions, the gesture `replace` flag) are drafted in [ADR-0023](../adr/0023-timeline-edit-semantics.md) (**Proposed**); until that ADR is accepted, the P1 rules of [architecture §4.3](../01-architecture.md) stay in force.
+> **Status:** approved by the product owner on 2026-11-25 (ADR-0023 accepted); this is the contract. The contract changes it implies (new commands and params, project format v2 additions, the gesture `replace` flag) are drafted in [ADR-0023](../adr/0023-timeline-edit-semantics.md) (**Proposed**); until that ADR is accepted, the P1 rules of [architecture §4.3](../01-architecture.md) stay in force.
 > **Implemented by:** WP-2A.02 (model), 2A.03 (placement), 2A.04 (trims), 2A.05 (links), 2A.06 (clipboard), 2A.07 (snapping), 2A.08 (interaction), 2A.11 (replace), 2A.12 (gesture locks), 2A.14 (three-point editing).
 > **Executable part:** the scenario fixtures in [`fixtures/`](fixtures/) and the checker `cargo xtask check-fixtures` (§9).
 
@@ -722,6 +722,8 @@ Every fixture has `kind`, `id` (equal to its file name), `title`, `cites` (the `
 5. Coverage: every command of §4 has, for each tag, at least one fixture or an entry with a reason in [`fixture-coverage.json`](fixture-coverage.json); at least 40 `edit` fixtures exist.
 
 ## 10. Decisions and alternatives
+
+The product owner confirmed D1, D2b, D7 and D16 on 2026-11-25, when accepting ADR-0023.
 
 | # | Decision | Alternatives considered | Why |
 |---|---|---|---|

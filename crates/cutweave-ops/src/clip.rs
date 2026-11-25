@@ -20,8 +20,8 @@ use cutweave_model::{
 
 use crate::{
     item::{
-        Located, conflict, duration, ensure_orphans_unlockable, ensure_unlocked, members, time,
-        unlink_orphans,
+        Located, conflict, duration, ensure_not_magnetic, ensure_orphans_unlockable,
+        ensure_unlocked, members, time, unlink_orphans,
     },
     util::resolve_frame_time,
 };
@@ -166,12 +166,16 @@ impl Command for ClipSplit {
             right.start = at;
             right.duration = right_len;
             right.linked_group = right_group;
+            // Item markers stay with the half that plays their time (item-relative).
+            let (left_markers, right_markers) = split_markers(&clip.markers, cut);
+            right.markers = right_markers;
             if !still {
                 right.source_in = time("/at", clip.source_in.flicks() + cut)?;
             }
             let (left_id, right_id) = (clip.id, right.id);
             tx.update_item(left_id, |i| {
                 i.set_duration(left_len);
+                *i.markers_mut() = left_markers;
                 Ok(())
             })?;
             tx.insert_item(target.track, &Item::Clip(right))?;
@@ -189,6 +193,27 @@ impl Command for ClipSplit {
             right_group,
         })
     }
+}
+
+/// Splits item markers at the item-relative time `cut` (flicks): markers before it stay, the
+/// others go to the right half re-based to its start. A range marker belongs to the half it
+/// starts in.
+fn split_markers(
+    markers: &cutweave_model::Markers,
+    cut: i64,
+) -> (cutweave_model::Markers, cutweave_model::Markers) {
+    let mut left = cutweave_model::Markers::new();
+    let mut right = cutweave_model::Markers::new();
+    for m in markers.values() {
+        if m.t.flicks() < cut {
+            left.insert(m.id, m.clone());
+        } else {
+            let mut moved = m.clone();
+            moved.t = Time::from_flicks(m.t.flicks() - cut).unwrap_or(Time::ZERO);
+            right.insert(moved.id, moved);
+        }
+    }
+    (left, right)
 }
 
 // ----- clip.trim -----------------------------------------------------------------------------
@@ -343,6 +368,7 @@ impl ClipTrim {
                 ));
             }
         };
+        ensure_not_magnetic(doc, &group)?;
         ensure_unlocked(doc, &group)?;
         if unlink {
             let first = &group[0].item;

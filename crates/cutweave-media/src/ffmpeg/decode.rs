@@ -25,8 +25,9 @@
 //! threads for seek decoders on intra-only streams (every frame a keyframe in the index).
 //!
 //! **Layout**: frames keep the decoder's planes when [`PixelFormat`] has them (no CPU
-//! conversion, arch §7); other layouts, and an explicit `target_pixfmt` (`Rgba8` thumbnails),
-//! go through swscale with the stream's matrix and range.
+//! conversion, arch §7); other layouts, an explicit `target_pixfmt` (`Rgba8` thumbnails) and an
+//! explicit `target_size` (proxies, WP-2F.01) go through swscale with the stream's matrix and
+//! range.
 //!
 //! **Hardware** (WP-1D.04, S3 H1-H10): under [`HwMode::Auto`] an eligible stream decodes with a
 //! device `hwdec` verified for its codec, on one thread (S3 H3: frame threads only add delay with
@@ -150,7 +151,7 @@ fn open_opened(
         frame: frame::Video::empty(),
         scratch: frame::Video::empty(),
         sw: frame::Video::empty(),
-        out: Output::new(opts.target_pixfmt),
+        out: Output::new(opts.target_pixfmt, opts.target_size),
         stream_color: info.color,
         pending: None,
         next_idx: Some(0),
@@ -1068,23 +1069,29 @@ fn sws_matrix(matrix: Option<&MatrixCoefficients>, height: u32) -> c_int {
     c_int::try_from(cs).unwrap_or(5)
 }
 
+/// The key of a [`Converter`]: source layout and size, matrix, source range, target layout
+/// and size.
+type ConverterKey = (Pixel, (u32, u32), c_int, bool, PixelFormat, (u32, u32));
+
 /// A swscale conversion for one source layout, size and color.
 struct Converter {
-    key: (Pixel, u32, u32, c_int, bool, PixelFormat),
+    key: ConverterKey,
     scaler: Scaler,
     out: frame::Video,
 }
 
-/// How decoded frames become the returned layout.
+/// How decoded frames become the returned layout and size.
 struct Output {
     target: Option<PixelFormat>,
+    size: Option<(u32, u32)>,
     converter: Option<Converter>,
 }
 
 impl Output {
-    fn new(target: Option<PixelFormat>) -> Output {
+    fn new(target: Option<PixelFormat>, size: Option<(u32, u32)>) -> Output {
         Output {
             target,
+            size: size.filter(|(w, h)| *w > 0 && *h > 0),
             converter: None,
         }
     }
@@ -1119,20 +1126,21 @@ impl Output {
                 })
             })?,
         };
-        let planes = if native == Some(want) {
+        let out_size = self.size.unwrap_or((width, height));
+        let planes = if native == Some(want) && out_size == (width, height) {
             copy_planes(src, want)?
         } else {
             let src_full = color.range == Some(ColorRange::Full);
             let dst_full = if want.is_yuv() { src_full } else { true };
             let matrix = sws_matrix(color.matrix.as_ref(), height);
-            let key = (pixel, width, height, matrix, src_full, want);
+            let key = (pixel, (width, height), matrix, src_full, want, out_size);
             if self.converter.as_ref().is_none_or(|c| c.key != key) {
                 self.converter = Some(Converter {
                     key,
-                    scaler: Scaler::new(
+                    scaler: Scaler::scaling(
                         pixel,
                         pixel_of(want),
-                        (width, height),
+                        ((width, height), out_size),
                         matrix,
                         (src_full, dst_full),
                     )
@@ -1152,8 +1160,8 @@ impl Output {
         };
         Ok(VideoFrame {
             pts,
-            width,
-            height,
+            width: out_size.0,
+            height: out_size.1,
             format: want,
             planes,
             color,

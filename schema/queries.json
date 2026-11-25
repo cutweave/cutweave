@@ -1054,6 +1054,15 @@
                   "format": "double",
                   "type": "number"
                 },
+                "height": {
+                  "description": "Row height in pixels; `None` is the default.",
+                  "format": "uint32",
+                  "minimum": 0,
+                  "type": [
+                    "integer",
+                    "null"
+                  ]
+                },
                 "hidden": {
                   "description": "Not rendered.",
                   "type": "boolean"
@@ -1167,6 +1176,10 @@
                   "description": "Item edits fail with `Locked`.",
                   "type": "boolean"
                 },
+                "magnetic": {
+                  "description": "The magnetic main track.",
+                  "type": "boolean"
+                },
                 "muted": {
                   "description": "Silenced.",
                   "type": "boolean"
@@ -1188,6 +1201,8 @@
                 "hidden",
                 "locked",
                 "solo",
+                "magnetic",
+                "height",
                 "gain",
                 "item_count",
                 "end"
@@ -1211,6 +1226,327 @@
       "scope": "any",
       "secret_fields": [],
       "summary": "Get a sequence: summary (depth 0), tracks (1) or tracks with items (2)",
+      "undoable": false,
+      "view": false
+    },
+    {
+      "annotations": {
+        "destructiveHint": false,
+        "idempotentHint": true,
+        "openWorldHint": false,
+        "readOnlyHint": true
+      },
+      "input_schema": {
+        "additionalProperties": false,
+        "description": "Lists a sequence's markers and its in/out range, or the markers of one item.",
+        "properties": {
+          "item": {
+            "default": null,
+            "description": "List this item's markers (item-relative times) instead of the sequence's.",
+            "pattern": "^itm_[0-9a-f]{32}$",
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "sequence": {
+            "description": "The sequence.",
+            "pattern": "^seq_[0-9a-f]{32}$",
+            "type": "string"
+          }
+        },
+        "required": [
+          "sequence"
+        ],
+        "title": "TimelineListMarkers",
+        "type": "object"
+      },
+      "kind": "query",
+      "mcp": "catalog",
+      "mcp_tool": "timeline_list_markers",
+      "name": "timeline.list_markers",
+      "namespace": "timeline",
+      "output_schema": {
+        "additionalProperties": false,
+        "description": "Result of `timeline.list_markers`.",
+        "properties": {
+          "in_out": {
+            "description": "The sequence's in and out points (sequence markers only).",
+            "properties": {
+              "end": {
+                "description": "The out point (`> start`).",
+                "maximum": 9007199254740991,
+                "minimum": -9007199254740991,
+                "type": "integer"
+              },
+              "start": {
+                "description": "The in point (`>= 0`).",
+                "maximum": 9007199254740991,
+                "minimum": -9007199254740991,
+                "type": "integer"
+              }
+            },
+            "required": [
+              "start",
+              "end"
+            ],
+            "type": [
+              "object",
+              "null"
+            ]
+          },
+          "item": {
+            "description": "The item whose markers these are; absent for the sequence's own markers.",
+            "pattern": "^itm_[0-9a-f]{32}$",
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "markers": {
+            "description": "The markers by time, then ID.",
+            "items": {
+              "description": "A marker on a sequence (sequence time) or an item (item-relative time).",
+              "properties": {
+                "color": {
+                  "description": "Display color.",
+                  "pattern": "^#([0-9a-fA-F]{6}|[0-9a-fA-F]{8})$",
+                  "type": "string"
+                },
+                "duration": {
+                  "description": "The length of a range marker; `None` for a point marker.",
+                  "maximum": 9007199254740991,
+                  "minimum": 0,
+                  "type": [
+                    "integer",
+                    "null"
+                  ]
+                },
+                "id": {
+                  "description": "The marker ID (also its key in the owner's `markers`).",
+                  "pattern": "^mrk_[0-9a-f]{32}$",
+                  "type": "string"
+                },
+                "kind": {
+                  "description": "What the marker means.",
+                  "oneOf": [
+                    {
+                      "const": "user",
+                      "description": "Placed by a person or an agent.",
+                      "type": "string"
+                    },
+                    {
+                      "const": "beat",
+                      "description": "A beat found by analysis (snaps like a marker, spec §6).",
+                      "type": "string"
+                    },
+                    {
+                      "const": "chapter",
+                      "description": "A chapter start (exported to chaptered formats).",
+                      "type": "string"
+                    }
+                  ]
+                },
+                "label": {
+                  "description": "Text shown with the marker (may be empty).",
+                  "type": "string"
+                },
+                "t": {
+                  "description": "Where the marker is (`>= 0`).",
+                  "maximum": 9007199254740991,
+                  "minimum": -9007199254740991,
+                  "type": "integer"
+                }
+              },
+              "required": [
+                "id",
+                "t",
+                "duration",
+                "label",
+                "color",
+                "kind"
+              ],
+              "type": "object"
+            },
+            "type": "array"
+          },
+          "sequence": {
+            "description": "The sequence.",
+            "pattern": "^seq_[0-9a-f]{32}$",
+            "type": "string"
+          }
+        },
+        "required": [
+          "sequence",
+          "markers"
+        ],
+        "title": "TimelineListMarkersOutput",
+        "type": "object"
+      },
+      "scope": "any",
+      "secret_fields": [],
+      "summary": "List the markers of a sequence (with its in/out range) or of one item",
+      "undoable": false,
+      "view": false
+    },
+    {
+      "annotations": {
+        "destructiveHint": false,
+        "idempotentHint": true,
+        "openWorldHint": false,
+        "readOnlyHint": true
+      },
+      "input_schema": {
+        "additionalProperties": false,
+        "description": "Lists a sequence's tracks in display order with their flags, height and item counts.",
+        "properties": {
+          "sequence": {
+            "description": "The sequence.",
+            "pattern": "^seq_[0-9a-f]{32}$",
+            "type": "string"
+          }
+        },
+        "required": [
+          "sequence"
+        ],
+        "title": "TrackList",
+        "type": "object"
+      },
+      "kind": "query",
+      "mcp": "catalog",
+      "mcp_tool": "track_list",
+      "name": "track.list",
+      "namespace": "track",
+      "output_schema": {
+        "additionalProperties": false,
+        "description": "Result of `track.list`.",
+        "properties": {
+          "sequence": {
+            "description": "The sequence.",
+            "pattern": "^seq_[0-9a-f]{32}$",
+            "type": "string"
+          },
+          "tracks": {
+            "description": "Its tracks in display order, top to bottom.",
+            "items": {
+              "additionalProperties": false,
+              "description": "One track of `track.list`.",
+              "properties": {
+                "gain": {
+                  "description": "Gain in dB.",
+                  "format": "double",
+                  "type": "number"
+                },
+                "height": {
+                  "description": "Row height in pixels; `None` is the default.",
+                  "format": "uint32",
+                  "minimum": 0,
+                  "type": [
+                    "integer",
+                    "null"
+                  ]
+                },
+                "hidden": {
+                  "description": "Not rendered.",
+                  "type": "boolean"
+                },
+                "id": {
+                  "description": "The track.",
+                  "pattern": "^trk_[0-9a-f]{32}$",
+                  "type": "string"
+                },
+                "index": {
+                  "description": "Display position, 0 = top.",
+                  "format": "uint32",
+                  "minimum": 0,
+                  "type": "integer"
+                },
+                "item_count": {
+                  "description": "Number of items.",
+                  "format": "uint32",
+                  "minimum": 0,
+                  "type": "integer"
+                },
+                "kind": {
+                  "description": "What it holds.",
+                  "oneOf": [
+                    {
+                      "const": "video",
+                      "description": "Picture layers.",
+                      "type": "string"
+                    },
+                    {
+                      "const": "audio",
+                      "description": "Sound.",
+                      "type": "string"
+                    },
+                    {
+                      "const": "text",
+                      "description": "Titles (later versions).",
+                      "type": "string"
+                    },
+                    {
+                      "const": "caption",
+                      "description": "Captions (later versions).",
+                      "type": "string"
+                    },
+                    {
+                      "const": "adjustment",
+                      "description": "Adjustment layers (later versions).",
+                      "type": "string"
+                    }
+                  ]
+                },
+                "locked": {
+                  "description": "Item edits fail with `Locked`.",
+                  "type": "boolean"
+                },
+                "magnetic": {
+                  "description": "The magnetic main track.",
+                  "type": "boolean"
+                },
+                "muted": {
+                  "description": "Silenced.",
+                  "type": "boolean"
+                },
+                "name": {
+                  "description": "Display name.",
+                  "type": "string"
+                },
+                "solo": {
+                  "description": "Solo.",
+                  "type": "boolean"
+                }
+              },
+              "required": [
+                "id",
+                "kind",
+                "name",
+                "index",
+                "muted",
+                "hidden",
+                "locked",
+                "solo",
+                "magnetic",
+                "gain",
+                "height",
+                "item_count"
+              ],
+              "type": "object"
+            },
+            "type": "array"
+          }
+        },
+        "required": [
+          "sequence",
+          "tracks"
+        ],
+        "title": "TrackListOutput",
+        "type": "object"
+      },
+      "scope": "any",
+      "secret_fields": [],
+      "summary": "List a sequence's tracks (flags, height, item counts) top to bottom",
       "undoable": false,
       "view": false
     }

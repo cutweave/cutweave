@@ -20,6 +20,9 @@
 //! at 256, 1024, 4096, ... samples per bin, stored as one file per audio stream (not in SQLite;
 //! format: docs/reference/waveform-format.md).
 //!
+//! WP-2F.01 adds proxies ([`proxy`]): intra-frame copies of video files at preview size, made
+//! by background jobs, kept in a size-capped LRU (table `proxies`, migration 3).
+//!
 //! The cache is disposable: everything in it can be rebuilt from the media, so a damaged or
 //! too-new database is moved aside ([`CacheDb::open_or_reset`]) rather than repaired.
 
@@ -27,6 +30,7 @@ mod db;
 mod disk;
 mod error;
 mod frame_cache;
+pub mod proxy;
 mod thumbs;
 mod waveform;
 mod waveform_cache;

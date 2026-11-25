@@ -1,0 +1,332 @@
+---
+source: crates/cutweave-ops/tests/contract.rs
+expression: "json!({\n    \"meta\": serde_json::to_value(meta).unwrap(), \"input\": meta.input_schema,\n    \"output\": meta.output_schema,\n})"
+---
+{
+  "meta": {
+    "name": "timeline.add_marker",
+    "summary": "Add a marker (or range marker) to a sequence or one of its items",
+    "kind": "command",
+    "undoable": true,
+    "view": false,
+    "scope": "any",
+    "mcp": "catalog",
+    "annotations": {
+      "readOnlyHint": false,
+      "destructiveHint": false,
+      "idempotentHint": false,
+      "openWorldHint": false
+    },
+    "secret_fields": [],
+    "input_schema": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "sequence": {
+          "type": "string",
+          "pattern": "^seq_[0-9a-f]{32}$",
+          "description": "The sequence."
+        },
+        "item": {
+          "type": [
+            "string",
+            "null"
+          ],
+          "pattern": "^itm_[0-9a-f]{32}$",
+          "description": "Put the marker on this item of the sequence instead of on the sequence.",
+          "default": null
+        },
+        "t": {
+          "description": "Where, `>= 0` (snapped to the frame grid; relative to the item for an item marker).",
+          "anyOf": [
+            {
+              "type": "integer",
+              "minimum": -9007199254740991,
+              "maximum": 9007199254740991
+            },
+            {
+              "type": "string",
+              "pattern": "^-?[0-9]+(\\.[0-9]+)?s$|^-?[0-9]+$|^f:[0-9]+$|^[0-9]+[:;][0-9]+[:;][0-9]+[:;][0-9]+$"
+            }
+          ]
+        },
+        "duration": {
+          "anyOf": [
+            {
+              "description": "A time: integer flicks (1/705600000 s), or a string: seconds (\"62.5s\"), a frame (\"f:1500\") or a timecode (\"00:01:02:03\", drop-frame \"00:01:02;03\"). Frames and timecodes use the frame rate of the target's sequence.",
+              "anyOf": [
+                {
+                  "type": "integer",
+                  "minimum": -9007199254740991,
+                  "maximum": 9007199254740991
+                },
+                {
+                  "type": "string",
+                  "pattern": "^-?[0-9]+(\\.[0-9]+)?s$|^-?[0-9]+$|^f:[0-9]+$|^[0-9]+[:;][0-9]+[:;][0-9]+[:;][0-9]+$"
+                }
+              ]
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "description": "Length of a range marker, `> 0` (snapped to whole frames).",
+          "default": null
+        },
+        "label": {
+          "type": [
+            "string",
+            "null"
+          ],
+          "description": "Text shown with the marker (default empty), at most 200 characters.",
+          "default": null
+        },
+        "color": {
+          "description": "Display color, `#rrggbb` (default marigold).",
+          "type": [
+            "string",
+            "null"
+          ],
+          "pattern": "^#([0-9a-fA-F]{6}|[0-9a-fA-F]{8})$",
+          "default": null
+        },
+        "kind": {
+          "anyOf": [
+            {
+              "oneOf": [
+                {
+                  "type": "string",
+                  "const": "user",
+                  "description": "Placed by a person or an agent."
+                },
+                {
+                  "type": "string",
+                  "const": "beat",
+                  "description": "A beat found by analysis (snaps like a marker, spec §6)."
+                },
+                {
+                  "type": "string",
+                  "const": "chapter",
+                  "description": "A chapter start (exported to chaptered formats)."
+                }
+              ],
+              "description": "What a marker means."
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "description": "`user` (default), `beat` or `chapter`.",
+          "default": null
+        }
+      },
+      "required": [
+        "sequence",
+        "t"
+      ],
+      "description": "Adds a marker to a sequence, or to an item of it when `item` is given (then `t` is relative\nto the item's start and the marker moves with it). `duration` makes a range marker. `kind`\nis `user` (default), `beat` or `chapter`; `color` is `#rrggbb`. Times snap to the frame\ngrid. Sequence markers never move with a ripple; an item marker on a locked track fails\nwith `Locked`.",
+      "title": "TimelineAddMarker"
+    },
+    "output_schema": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "marker": {
+          "type": "string",
+          "pattern": "^mrk_[0-9a-f]{32}$",
+          "description": "The new marker."
+        },
+        "sequence": {
+          "type": "string",
+          "pattern": "^seq_[0-9a-f]{32}$",
+          "description": "The sequence it is in."
+        },
+        "item": {
+          "type": [
+            "string",
+            "null"
+          ],
+          "pattern": "^itm_[0-9a-f]{32}$",
+          "description": "The item it is on, for an item marker."
+        },
+        "t": {
+          "description": "Its time, snapped to the frame grid (item-relative for an item marker).",
+          "type": "integer",
+          "minimum": -9007199254740991,
+          "maximum": 9007199254740991
+        },
+        "duration": {
+          "description": "Its length, for a range marker.",
+          "type": [
+            "integer",
+            "null"
+          ],
+          "minimum": 0,
+          "maximum": 9007199254740991
+        }
+      },
+      "required": [
+        "marker",
+        "sequence",
+        "t"
+      ],
+      "description": "Result of `timeline.add_marker`.",
+      "title": "TimelineAddMarkerOutput"
+    }
+  },
+  "input": {
+    "type": "object",
+    "additionalProperties": false,
+    "properties": {
+      "sequence": {
+        "type": "string",
+        "pattern": "^seq_[0-9a-f]{32}$",
+        "description": "The sequence."
+      },
+      "item": {
+        "type": [
+          "string",
+          "null"
+        ],
+        "pattern": "^itm_[0-9a-f]{32}$",
+        "description": "Put the marker on this item of the sequence instead of on the sequence.",
+        "default": null
+      },
+      "t": {
+        "description": "Where, `>= 0` (snapped to the frame grid; relative to the item for an item marker).",
+        "anyOf": [
+          {
+            "type": "integer",
+            "minimum": -9007199254740991,
+            "maximum": 9007199254740991
+          },
+          {
+            "type": "string",
+            "pattern": "^-?[0-9]+(\\.[0-9]+)?s$|^-?[0-9]+$|^f:[0-9]+$|^[0-9]+[:;][0-9]+[:;][0-9]+[:;][0-9]+$"
+          }
+        ]
+      },
+      "duration": {
+        "anyOf": [
+          {
+            "description": "A time: integer flicks (1/705600000 s), or a string: seconds (\"62.5s\"), a frame (\"f:1500\") or a timecode (\"00:01:02:03\", drop-frame \"00:01:02;03\"). Frames and timecodes use the frame rate of the target's sequence.",
+            "anyOf": [
+              {
+                "type": "integer",
+                "minimum": -9007199254740991,
+                "maximum": 9007199254740991
+              },
+              {
+                "type": "string",
+                "pattern": "^-?[0-9]+(\\.[0-9]+)?s$|^-?[0-9]+$|^f:[0-9]+$|^[0-9]+[:;][0-9]+[:;][0-9]+[:;][0-9]+$"
+              }
+            ]
+          },
+          {
+            "type": "null"
+          }
+        ],
+        "description": "Length of a range marker, `> 0` (snapped to whole frames).",
+        "default": null
+      },
+      "label": {
+        "type": [
+          "string",
+          "null"
+        ],
+        "description": "Text shown with the marker (default empty), at most 200 characters.",
+        "default": null
+      },
+      "color": {
+        "description": "Display color, `#rrggbb` (default marigold).",
+        "type": [
+          "string",
+          "null"
+        ],
+        "pattern": "^#([0-9a-fA-F]{6}|[0-9a-fA-F]{8})$",
+        "default": null
+      },
+      "kind": {
+        "anyOf": [
+          {
+            "oneOf": [
+              {
+                "type": "string",
+                "const": "user",
+                "description": "Placed by a person or an agent."
+              },
+              {
+                "type": "string",
+                "const": "beat",
+                "description": "A beat found by analysis (snaps like a marker, spec §6)."
+              },
+              {
+                "type": "string",
+                "const": "chapter",
+                "description": "A chapter start (exported to chaptered formats)."
+              }
+            ],
+            "description": "What a marker means."
+          },
+          {
+            "type": "null"
+          }
+        ],
+        "description": "`user` (default), `beat` or `chapter`.",
+        "default": null
+      }
+    },
+    "required": [
+      "sequence",
+      "t"
+    ],
+    "description": "Adds a marker to a sequence, or to an item of it when `item` is given (then `t` is relative\nto the item's start and the marker moves with it). `duration` makes a range marker. `kind`\nis `user` (default), `beat` or `chapter`; `color` is `#rrggbb`. Times snap to the frame\ngrid. Sequence markers never move with a ripple; an item marker on a locked track fails\nwith `Locked`.",
+    "title": "TimelineAddMarker"
+  },
+  "output": {
+    "type": "object",
+    "additionalProperties": false,
+    "properties": {
+      "marker": {
+        "type": "string",
+        "pattern": "^mrk_[0-9a-f]{32}$",
+        "description": "The new marker."
+      },
+      "sequence": {
+        "type": "string",
+        "pattern": "^seq_[0-9a-f]{32}$",
+        "description": "The sequence it is in."
+      },
+      "item": {
+        "type": [
+          "string",
+          "null"
+        ],
+        "pattern": "^itm_[0-9a-f]{32}$",
+        "description": "The item it is on, for an item marker."
+      },
+      "t": {
+        "description": "Its time, snapped to the frame grid (item-relative for an item marker).",
+        "type": "integer",
+        "minimum": -9007199254740991,
+        "maximum": 9007199254740991
+      },
+      "duration": {
+        "description": "Its length, for a range marker.",
+        "type": [
+          "integer",
+          "null"
+        ],
+        "minimum": 0,
+        "maximum": 9007199254740991
+      }
+    },
+    "required": [
+      "marker",
+      "sequence",
+      "t"
+    ],
+    "description": "Result of `timeline.add_marker`.",
+    "title": "TimelineAddMarkerOutput"
+  }
+}

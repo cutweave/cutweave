@@ -67,7 +67,8 @@ pub fn is_jpeg(output: &Value) -> bool {
 
 fn take_image(output: &mut Value) -> Option<(String, String)> {
     let map = output.as_object_mut()?;
-    let Value::String(data) = map.remove("data")? else {
+    let Value::String(data) = map.remove(results::IMAGE_FIELDS[0].1.trim_start_matches('/'))?
+    else {
         return None;
     };
     let mime = map.get("mime")?.as_str()?.to_owned();

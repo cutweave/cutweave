@@ -1,0 +1,374 @@
+---
+source: crates/cutweave-model/tests/migrations.rs
+expression: canonical_json_pretty(&migrated)
+---
+{
+  "custom": {},
+  "media": {
+    "med_0000000000017e999cdbc20a2319b9cb": {
+      "content_hash": "xxh3:5f1d7a9c3b2e4d60",
+      "custom": {},
+      "id": "med_0000000000017e999cdbc20a2319b9cb",
+      "kind": "video",
+      "path_abs": "/media/a.mp4",
+      "path_rel": "../media/a.mp4",
+      "probe": {
+        "audio": {
+          "channels": 2,
+          "rate": 48000
+        },
+        "color": {
+          "matrix": "bt709",
+          "primaries": "bt709",
+          "range": "limited",
+          "transfer": "bt709"
+        },
+        "duration": 7056000000,
+        "fps": {
+          "den": 1,
+          "num": 30
+        },
+        "rotation": 0,
+        "streams": [
+          {
+            "channels": null,
+            "codec": "h264",
+            "height": 1080,
+            "index": 0,
+            "kind": "video",
+            "language": null,
+            "pixel_format": "yuv420p",
+            "profile": "High",
+            "sample_rate": null,
+            "width": 1920
+          },
+          {
+            "channels": 2,
+            "codec": "aac",
+            "height": null,
+            "index": 1,
+            "kind": "audio",
+            "language": "eng",
+            "pixel_format": null,
+            "profile": "LC",
+            "sample_rate": 48000,
+            "width": null
+          }
+        ],
+        "vfr": false
+      },
+      "sequence": null
+    },
+    "med_0000000000027f8989dde9c8c6ffc150": {
+      "content_hash": null,
+      "custom": {},
+      "id": "med_0000000000027f8989dde9c8c6ffc150",
+      "kind": "video",
+      "path_abs": "/media/b.mp4",
+      "path_rel": null,
+      "probe": {
+        "audio": {
+          "channels": 2,
+          "rate": 48000
+        },
+        "color": {
+          "matrix": "bt709",
+          "primaries": "bt709",
+          "range": "limited",
+          "transfer": "bt709"
+        },
+        "duration": 5644800000,
+        "fps": {
+          "den": 1,
+          "num": 30
+        },
+        "rotation": 0,
+        "streams": [
+          {
+            "channels": null,
+            "codec": "h264",
+            "height": 1080,
+            "index": 0,
+            "kind": "video",
+            "language": null,
+            "pixel_format": "yuv420p",
+            "profile": "High",
+            "sample_rate": null,
+            "width": 1920
+          },
+          {
+            "channels": 2,
+            "codec": "aac",
+            "height": null,
+            "index": 1,
+            "kind": "audio",
+            "language": "eng",
+            "pixel_format": null,
+            "profile": "LC",
+            "sample_rate": 48000,
+            "width": null
+          }
+        ],
+        "vfr": false
+      },
+      "sequence": null
+    },
+    "med_00000000000376d1902a7aa83bfaaa17": {
+      "content_hash": null,
+      "custom": {},
+      "id": "med_00000000000376d1902a7aa83bfaaa17",
+      "kind": "audio",
+      "path_abs": "/media/m.wav",
+      "path_rel": null,
+      "probe": {
+        "audio": {
+          "channels": 2,
+          "rate": 44100
+        },
+        "color": {
+          "matrix": null,
+          "primaries": null,
+          "range": null,
+          "transfer": null
+        },
+        "duration": 42336000000,
+        "fps": null,
+        "rotation": 0,
+        "streams": [],
+        "vfr": false
+      },
+      "sequence": null
+    }
+  },
+  "meta": {
+    "app_version": "0.1.0",
+    "created": "2026-11-22T09:30:00Z",
+    "name": "Legacy shapes",
+    "schema_version": 2
+  },
+  "sequences": {
+    "seq_000000000004771ba4a23020bc56afc3": {
+      "custom": {},
+      "format": {
+        "background": "#000000",
+        "color_space": "rec709",
+        "frame_rate": {
+          "den": 1,
+          "num": 30
+        },
+        "height": 1080,
+        "sample_rate": 48000,
+        "width": 1920
+      },
+      "id": "seq_000000000004771ba4a23020bc56afc3",
+      "in_out": null,
+      "markers": {},
+      "name": "Main",
+      "track_order": [
+        "trk_0000000000057d3189891744bd0efe34",
+        "trk_0000000000067e09902721405ac105a0",
+        "trk_00000000000170008000000000000b01"
+      ],
+      "tracks": {
+        "trk_00000000000170008000000000000b01": {
+          "custom": {},
+          "gain": 0.0,
+          "height": null,
+          "hidden": false,
+          "id": "trk_00000000000170008000000000000b01",
+          "items": {
+            "itm_00000000000170008000000000000c01": {
+              "attached_to": null,
+              "audio": {
+                "gain": 0.0
+              },
+              "custom": {},
+              "duration": 705600000,
+              "enabled": true,
+              "id": "itm_00000000000170008000000000000c01",
+              "kind": "clip",
+              "linked_group": null,
+              "markers": {},
+              "media": "med_0000000000027f8989dde9c8c6ffc150",
+              "name": null,
+              "source_in": 705600000,
+              "start": 3528000000,
+              "visual": {
+                "opacity": 1.0,
+                "transform": {
+                  "anchor": {
+                    "x": 0.5,
+                    "y": 0.5
+                  },
+                  "position": {
+                    "x": 0.0,
+                    "y": 0.0
+                  },
+                  "rotation": 0.0,
+                  "scale": {
+                    "x": 1.0,
+                    "y": 1.0
+                  }
+                }
+              }
+            }
+          },
+          "kind": "video",
+          "locked": false,
+          "magnetic": false,
+          "muted": false,
+          "name": "V2",
+          "solo": false
+        },
+        "trk_0000000000057d3189891744bd0efe34": {
+          "custom": {},
+          "gain": 0.0,
+          "height": null,
+          "hidden": false,
+          "id": "trk_0000000000057d3189891744bd0efe34",
+          "items": {
+            "itm_0000000000077405950ad8d9f69f2c6f": {
+              "attached_to": null,
+              "audio": {
+                "gain": 0.0
+              },
+              "custom": {},
+              "duration": 1411200000,
+              "enabled": true,
+              "id": "itm_0000000000077405950ad8d9f69f2c6f",
+              "kind": "clip",
+              "linked_group": null,
+              "markers": {},
+              "media": "med_0000000000017e999cdbc20a2319b9cb",
+              "name": null,
+              "source_in": 0,
+              "start": 0,
+              "visual": {
+                "opacity": 1.0,
+                "transform": {
+                  "anchor": {
+                    "x": 0.5,
+                    "y": 0.5
+                  },
+                  "position": {
+                    "x": 0.0,
+                    "y": 0.0
+                  },
+                  "rotation": 0.0,
+                  "scale": {
+                    "x": 1.0,
+                    "y": 1.0
+                  }
+                }
+              }
+            },
+            "itm_00000000000874918ac913f3f46b919e": {
+              "attached_to": null,
+              "audio": {
+                "gain": 0.0
+              },
+              "custom": {},
+              "duration": 2116800000,
+              "enabled": true,
+              "id": "itm_00000000000874918ac913f3f46b919e",
+              "kind": "clip",
+              "linked_group": null,
+              "markers": {},
+              "media": "med_0000000000027f8989dde9c8c6ffc150",
+              "name": null,
+              "source_in": 705600000,
+              "start": 1411200000,
+              "visual": {
+                "opacity": 1.0,
+                "transform": {
+                  "anchor": {
+                    "x": 0.5,
+                    "y": 0.5
+                  },
+                  "position": {
+                    "x": 0.0,
+                    "y": 0.0
+                  },
+                  "rotation": 0.0,
+                  "scale": {
+                    "x": 1.0,
+                    "y": 1.0
+                  }
+                }
+              }
+            }
+          },
+          "kind": "video",
+          "locked": false,
+          "magnetic": true,
+          "muted": false,
+          "name": "V1",
+          "solo": false
+        },
+        "trk_0000000000067e09902721405ac105a0": {
+          "custom": {},
+          "gain": 0.0,
+          "height": null,
+          "hidden": false,
+          "id": "trk_0000000000067e09902721405ac105a0",
+          "items": {
+            "itm_0000000000097031b0cbdfaef85bafd1": {
+              "attached_to": null,
+              "audio": {
+                "gain": -6.0
+              },
+              "custom": {},
+              "duration": 3528000000,
+              "enabled": true,
+              "id": "itm_0000000000097031b0cbdfaef85bafd1",
+              "kind": "clip",
+              "linked_group": null,
+              "markers": {},
+              "media": "med_00000000000376d1902a7aa83bfaaa17",
+              "name": null,
+              "source_in": 0,
+              "start": 0,
+              "visual": {
+                "opacity": 1.0,
+                "transform": {
+                  "anchor": {
+                    "x": 0.5,
+                    "y": 0.5
+                  },
+                  "position": {
+                    "x": 0.0,
+                    "y": 0.0
+                  },
+                  "rotation": 0.0,
+                  "scale": {
+                    "x": 1.0,
+                    "y": 1.0
+                  }
+                }
+              }
+            }
+          },
+          "kind": "audio",
+          "locked": false,
+          "magnetic": false,
+          "muted": false,
+          "name": "A1",
+          "solo": false
+        }
+      }
+    }
+  },
+  "settings": {
+    "default_format": {
+      "background": "#000000",
+      "color_space": "rec709",
+      "frame_rate": {
+        "den": 1,
+        "num": 30
+      },
+      "height": 1080,
+      "sample_rate": 48000,
+      "width": 1920
+    }
+  }
+}

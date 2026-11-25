@@ -8,7 +8,7 @@ How a supervisor (Electron main's `EngineSupervisor`, the CLI, a test) starts an
 cutweave engine [--headless] --port N [--token-stdin] [--project P] [--run-dir D]
                 [--allow-origin O]... [--allow-root R]... [--deterministic-ids SEED]
                 [--i-know-this-is-a-test] [--log-dir D | --no-log] [--handshake-timeout-ms MS]
-                [--cache-dir D] [--dev-stub-media]
+                [--cache-dir D] [--dev-stub-media] [--progress]
 ```
 
 `cutweave engine` (WP-1K.01, [cli.md](cli.md)) calls `cutweave_engine::launch::run`. The `cutweave-engine-serve` binary of `cutweave-engine` is the same entry point without the other subcommands; the integration tests of the engine and of `@cutweave/protocol` still spawn it.
@@ -27,6 +27,7 @@ cutweave engine [--headless] --port N [--token-stdin] [--project P] [--run-dir D
 | `--log-dir D` / `--no-log` | Log directory (default `~/.cutweave/logs`), or no log file. |
 | `--handshake-timeout-ms MS` | How long a Gui engine waits for the handshake line (default 5000; tests shorten it). |
 | `--cache-dir D` | The folder the engine keeps its caches in: `cache.sqlite` (frame indexes and the thumbnail accounting), `media-cache/` (thumbnails and filmstrips) and `waveforms/`. Default: `<OS cache folder>/cutweave` (`%LOCALAPPDATA%`, `~/Library/Caches`, `$XDG_CACHE_HOME` or `~/.cache`). The environment variable `CUTWEAVE_CACHE_DIR=D` does the same; the flag wins. The desktop app passes its machine preference "Cache folder" here when it starts the engine, so a new choice applies the next time Cutweave starts and the old folder is left for the person to delete. The folder is created when it does not exist; one that cannot be created or opened makes the engine report `engine.degraded{subsystem: "cache"}` and run without those caches. |
+| `--progress` | Print `starting` lines on stdout until the ready (or error) line: one as soon as the engine's own code runs, before the handshake, then one a second (see [Starting lines](#starting-lines)). A supervisor uses them to tell a slow start from a hung one. Electron main always passes it. |
 | `--dev-stub-media` | **Dev only.** Attaches a stand-in media prober instead of the full engine (FFmpeg media, the GPU, audio and playback; WP-1I.05), so tests and UI work without the FFmpeg bundle can `media.import` files and put clips on the timeline. Any existing, readable file is "probed" from its extension alone: video (`mp4 mov mkv webm m4v avi`) is 1920x1080, 30 fps, 10 s with a 48 kHz stereo audio stream; audio (`wav mp3 aac m4a flac ogg opus`) is 48 kHz stereo, 10 s; images (`png jpg jpeg webp gif`) are 1920x1080 stills. Other extensions go to `failed[]` (`unsupported`), missing files to `failed[]` (`not_found`). Nothing is decoded, so there is no preview or export of real pixels. The data is marked as made up: every stream's codec is `"stub"` and the asset's probe carries `"stub": true`. The content hash is SHA-256 over the file length and its first and last 64 KiB (`stub-sha256:...`). The environment variable `CUTWEAVE_DEV_STUB_MEDIA=1` does the same (the flag wins); the engine logs a warning at startup when it is on. Without the flag nothing changes: imports report every file as unreadable. |
 
 ## Sequence
@@ -40,6 +41,14 @@ cutweave engine [--headless] --port N [--token-stdin] [--project P] [--run-dir D
    ```
 
    It never contains a token. The supervisor then connects to `ws://127.0.0.1:<port>/rpc` with the UI credential.
+
+   **Ready means serving** (issue #143): the server accepts connections, the run-file is written and every command works. Slow work that nothing needs at once goes on in the background and announces itself when done or failed (`engine.degraded{subsystem}`):
+   - **The GPU.** It opens on its own thread from the start of the subsystems. A Gui engine waits for it until 4 s after it began to open, so a GPU that fails in that window still exits 11; the caches, the audio output and the preview ring start inside the window, not after it. A device still opening then arrives later: `render.frame` and exports wait for it, and the preview shows black frames until it comes.
+   - **The media capabilities probe** (hardware encoders and decoders: seconds) runs on a worker; `media.capabilities` waits for it.
+   - **Stale run-files** of dead engines are removed in the background.
+   - **The run-file's private file** is made while the subsystems start (on Windows restricting it runs `whoami` and `icacls`, seconds on a busy machine), so the server only fills it.
+
+   What still runs before the ready line: opening the project, the caches, the audio output (it waits for its first callback: up to 10 s on a stalled device, then the null clock) and the preview ring, all inside the GPU window. Measured (debug build, Windows, 16 CPU hogs on 16 threads): ready 4.3 to 5.1 s after the spawn, of which the GPU window is 4 s and the process load 0.2 to 1 s.
 4. **Run.** In Gui mode the engine keeps reading stdin and **stops when stdin closes** (the supervisor closed the pipe or died: no orphaned engines). Any engine also stops on Ctrl-C / SIGINT / SIGTERM.
 5. **Stop.** The server stops and the run-file is removed, the journal is synced and closed, the project lock released. **Nothing is saved implicitly**: unsaved work stays in the journal and is offered for recovery on the next open. Exit 0.
 
@@ -49,7 +58,19 @@ Stdout carries JSON lines only. A failed start prints one error line before exit
 {"event":"error","code":"project_locked","exit_code":10,"message":"the project is already open in another Cutweave process (pid 4242 on HOST, since unix time 1763900000)","holder":{"pid":4242,"host":"HOST","started":1763900000}}
 ```
 
-Human-readable diagnostics go to stderr; structured logs go to the log file.
+Human-readable diagnostics go to stderr; structured logs go to the log file. The log records where each start spent its time (`launch phases`, `engine start phases` and `subsystem start phases`, as `name=ms` pairs).
+
+### Starting lines
+
+With `--progress` the engine also prints, before its ready or error line:
+
+```json
+{"event":"starting","pid":12345,"version":"0.0.0","elapsed_ms":2000}
+```
+
+The first comes as soon as the engine's own code runs (`elapsed_ms` 0: the process has loaded), before it reads the handshake; then one every second until the ready or error line, never after it. `elapsed_ms` counts from that first line. The lines say that the engine is alive and still starting, not which step it is in.
+
+**Compatibility.** The lines are opt-in: without `--progress` stdout is exactly as before (the ready or error line first), so readers that take the first line as the ready line keep working. A supervisor that passes `--progress` to an engine that prints no `starting` lines sees an engine that is silent until its ready line, which the 10 s silence limit below treats exactly like the old 10 s ready timeout.
 
 ## Exit codes
 
@@ -59,7 +80,7 @@ Human-readable diagnostics go to stderr; structured logs go to the log file.
 | 1 | `start_failed`, `project_open_failed`, `server_failed`, `subsystem_failed` | Any other failure | Show the error, offer a restart |
 | 2 | `usage` | Bad arguments | Bug in the supervisor |
 | 10 | `project_locked` | The project is open in another process | Tell the user who holds it |
-| 11 | `gpu_init_failed` | The GPU could not be initialized within 4 s of the start (Gui mode; WP-1I.05). A later failure does not exit: the engine falls back to software rendering and sends `engine.degraded`. A headless engine never exits 11 | Show the GPU error |
+| 11 | `gpu_init_failed` | The GPU could not be initialized within 4 s after it began to open, at the start of the subsystems (Gui mode; WP-1I.05). A later failure does not exit: the engine falls back to software rendering and sends `engine.degraded`. A headless engine never exits 11 | Show the GPU error |
 | 12 | `port_in_use` | The port could not be bound | Pick a new port, update the CSP, restart |
 | 13 | `bad_handshake` | Handshake missing, late, malformed, or given to a headless engine | Bug in the supervisor |
 
@@ -93,7 +114,7 @@ A server engine (not a one-shot) writes `<run-dir>/<pid>.json` when it is ready 
 | `focused_at` | GUI engines only: when the window last gained the focus, milliseconds since the Unix epoch. Absent until it has. Written by `project.report_focus`. |
 | `shm` | Name of the preview ring (WP-1I.05), if any. |
 
-**Writes are atomic.** Every write goes to `<pid>.tmp` (user-only from the first byte) and is renamed over `<pid>.json`, so a reader sees the old file or the new one and never none or half of one. The engine serializes its rewrites (project, focus, ring) so none loses another's field, and never recreates the file once shutdown removed it. **Stale files** (an engine killed with `kill -9`) are ignored by readers when their pid is not running, and reaped at the next engine start.
+**Writes are atomic.** Every write goes to `<pid>.tmp` (user-only from the first byte) and is renamed over `<pid>.json`, so a reader sees the old file or the new one and never none or half of one. The engine makes that private `<pid>.tmp` while its subsystems start, so the write before the ready line only fills it. The engine serializes its rewrites (project, focus, ring) so none loses another's field, and never recreates the file once shutdown removed it. **Stale files** (an engine killed with `kill -9`, and its `<pid>.tmp`) are ignored by readers when their pid is not running, and reaped in the background at the next engine start.
 
 **Focus.** `project.report_focus` is an engine command in the `ui` scope (UI credential only, ADR-0016) and `mcp = "hidden"`: no agent can call it or see it. Electron main sends it on every `focus` of the window, and once after the control connection opens (also after a supervised restart) if the window is focused then. The engine stamps its own clock and rewrites `focused_at`.
 
@@ -113,8 +134,9 @@ Every build of the desktop app passes the folders of Settings > Agents and MCP (
 
 `EngineSupervisor` in `apps/desktop/src/main/engine/supervisor.ts` (WP-1L.03) applies this protocol:
 
-- **Per launch:** the port main chose at app start (`--port`, so the renderer's CSP stays valid), a **new UI token for every engine process** (stdin only; the renderer fetches it again after a restart), `--allow-origin app://cutweave`, `--project` when a project was open, and an `--allow-root` for each folder agents may use, read anew at every (re)start. The ready line has 10 s.
-- **States:** `starting → ready → crashed → restarting → ready`, plus `failed` and `stopped`. An exit after the ready line is a crash: restarts follow after 0.5 s, 1 s and 2 s; a fourth crash within 60 s is `failed`, and main asks Restart / Quit. Exit 12 picks a new port, restarts at once and reloads the editor with the new CSP; before every restart the old port is checked and replaced if taken. Exits 2, 10, 11 and 13 are `failed` at once; exit 1, a signal or a missing ready line count as crashes.
+- **Per launch:** the port main chose at app start (`--port`, so the renderer's CSP stays valid), a **new UI token for every engine process** (stdin only; the renderer fetches it again after a restart), `--progress`, `--allow-origin app://cutweave`, `--project` when a project was open, and an `--allow-root` for each folder agents may use, read anew at every (re)start.
+- **Readiness by liveness** (issue #143): a starting engine must say something (a `starting` line, or its ready or error line) within 10 s of the spawn and then at least every 10 s; one that falls silent is hung. One still starting 60 s after the spawn is hung too, however alive it looks. A hung engine is killed and counts as a failed start (`ready_timeout`). A slow start that keeps reporting is never cut short before 60 s and costs nothing; main logs one line when a start passes 10 s. An engine that exits is a crash at once, whatever it reported.
+- **States:** `starting → ready → crashed → restarting → ready`, plus `failed` and `stopped`. An exit after the ready line is a crash: restarts follow after 0.5 s, 1 s and 2 s; a fourth crash within 60 s is `failed`, and main asks Restart / Quit. So is a fourth start in a row that never got ready (exits before ready and hung starts, however long each took): an engine that hangs while it reports is `failed` within about 4 minutes, a silent one within about 45 s. Exit 12 picks a new port, restarts at once and reloads the editor with the new CSP; before every restart the old port is checked and replaced if taken. Exits 2, 10, 11 and 13 are `failed` at once; exit 1, a signal or a hung start count as crashes.
 - **Main's own connection:** after the ready line main connects to `/rpc` with the UI token, subscribes to the project events and reads `rpc.hello`, so it always knows which project to reopen. The engine is reported `ready` (and the renderer gets its credentials) only after that.
 - **Window focus:** main reports each focus gain of the window with `project.report_focus` (see [The run-file](#the-run-file)), and tells a fresh engine at once when the window is already focused.
 - **Supervised restart vs. cold open:** a supervised restart reopens the project the crashed engine held and main calls `project.recover` before reporting `ready`: the journal is replayed with **no prompt**, because it holds the work of the session the user was in seconds ago. A user's cold open of a project with unsaved work (`project.open`) instead gets `project.recovery_available` and the restore/discard dialog (WP-1M.07). If that dialog was still undecided when the engine crashed, the restart leaves the decision to the user. An untitled document is not journaled; a restart brings back an empty one.

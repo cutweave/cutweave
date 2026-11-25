@@ -213,6 +213,11 @@ impl AutosaveService {
     ) -> AutosaveService {
         let now = clock.now();
         let observed_rev = doc.committed_snapshot().committed_rev;
+        // A restored document starts dirty (the journal's edits are not on disk). Clients learn
+        // that from the status the engine sends with `project.opened`, not from a `project.dirty`
+        // event, so what was published is that state: the save that clears it must then publish
+        // `dirty: false`, even when it comes before the first tick (issue #145).
+        let published_dirty = observed_rev != saved_rev;
         AutosaveService {
             inner: Arc::new(Inner {
                 doc,
@@ -224,7 +229,7 @@ impl AutosaveService {
                     observed_rev,
                     last_change: now,
                     dirty_since: None,
-                    published_dirty: false,
+                    published_dirty,
                     failed_at: None,
                     backup_dir: None,
                     last_backup_sha: None,

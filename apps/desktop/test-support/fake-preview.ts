@@ -47,6 +47,8 @@ function clip(n: number) {
     duration: CLIP_SECS * FLICKS,
     enabled: true,
     linked_group: null,
+    attached_to: null,
+    markers: {},
     media: `med_${n}`,
     source_in: 0,
     audio: { gain: 0 },
@@ -88,7 +90,7 @@ function media(n: number) {
 /** One 1920 × 1080 sequence at 30 fps: three 2 s clips back to back on a video track. */
 export function threeClipProject() {
   return {
-    meta: { name: "Three clips", schema_version: 1, created: null, app_version: null },
+    meta: { name: "Three clips", schema_version: 2, created: null, app_version: null },
     settings: { default_format: {} },
     media: Object.fromEntries([1, 2, 3].map((n) => [`med_${n}`, media(n)])),
     sequences: {
@@ -104,6 +106,8 @@ export function threeClipProject() {
           background: { r: 0, g: 0, b: 0, a: 1 },
         },
         track_order: ["trk_v"],
+        markers: {},
+        in_out: null,
         tracks: {
           trk_v: {
             id: "trk_v",
@@ -115,6 +119,7 @@ export function threeClipProject() {
             locked: false,
             solo: false,
             magnetic: false,
+            height: null,
             gain: 0,
             custom: {},
           },

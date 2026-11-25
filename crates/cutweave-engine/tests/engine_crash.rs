@@ -58,25 +58,12 @@ fn child_engine() {
     drop(engine);
 }
 
-#[test]
-fn an_engine_killed_mid_edit_recovers_through_project_recover_and_autosaves() {
-    let t = TempDir::new("crash");
-    let folder = empty_project(t.path(), "Crash");
-    {
-        let mut config = EngineConfig::new(EngineMode::Oneshot);
-        config.project = Some(folder.clone());
-        let engine = Engine::start(config).unwrap();
-        let conn = engine
-            .handle()
-            .connect(&Credential::Agent("cli".into()))
-            .unwrap();
-        must(&conn, "project.new", json!({ "name": "Saved" }));
-        must(&conn, "project.save", json!({}));
-    }
-
+/// Starts the child engine on `folder`, kills it after `KILL_AFTER` acknowledged renames and
+/// returns the last acknowledged index.
+fn crash_child_mid_edit(folder: &std::path::Path) -> usize {
     let mut child = Command::new(std::env::current_exe().unwrap())
         .args(["--exact", "child_engine", "--nocapture", "--test-threads=1"])
-        .env(CHILD_ENV, &folder)
+        .env(CHILD_ENV, folder)
         .stdout(Stdio::piped())
         .stderr(Stdio::null())
         .spawn()
@@ -103,7 +90,26 @@ fn an_engine_killed_mid_edit_recovers_through_project_recover_and_autosaves() {
             last_acked = Some(i.trim().parse().unwrap());
         }
     }
-    let last_acked = last_acked.expect("the child acknowledged nothing");
+    last_acked.expect("the child acknowledged nothing")
+}
+
+#[test]
+fn an_engine_killed_mid_edit_recovers_through_project_recover_and_autosaves() {
+    let t = TempDir::new("crash");
+    let folder = empty_project(t.path(), "Crash");
+    {
+        let mut config = EngineConfig::new(EngineMode::Oneshot);
+        config.project = Some(folder.clone());
+        let engine = Engine::start(config).unwrap();
+        let conn = engine
+            .handle()
+            .connect(&Credential::Agent("cli".into()))
+            .unwrap();
+        must(&conn, "project.new", json!({ "name": "Saved" }));
+        must(&conn, "project.save", json!({}));
+    }
+
+    let last_acked = crash_child_mid_edit(&folder);
 
     // Restart on the project: the killed engine's lock is stale and taken over; the journal
     // holds every acknowledged rename (and at most the one in flight).
@@ -154,4 +160,51 @@ fn an_engine_killed_mid_edit_recovers_through_project_recover_and_autosaves() {
         "killed after {} acknowledged renames; recovered {applied}",
         last_acked + 1
     );
+}
+
+/// Issue #145: after a crash Restore, a save must leave the engine clean and tell clients so
+/// (`project.dirty` with `dirty: false`), or the editor keeps its unsaved dot.
+#[test]
+fn a_save_after_project_recover_reports_clean() {
+    let t = TempDir::new("crash-save");
+    let folder = empty_project(t.path(), "CrashSave");
+    {
+        let mut config = EngineConfig::new(EngineMode::Oneshot);
+        config.project = Some(folder.clone());
+        let engine = Engine::start(config).unwrap();
+        let conn = engine
+            .handle()
+            .connect(&Credential::Agent("cli".into()))
+            .unwrap();
+        must(&conn, "project.new", json!({ "name": "Saved" }));
+        must(&conn, "project.save", json!({}));
+    }
+    crash_child_mid_edit(&folder);
+
+    let mut config = EngineConfig::new(EngineMode::Headless);
+    config.project = Some(folder.clone());
+    // Autosave must not save for us: only the explicit save below does.
+    config.autosave = Some(AutosaveConfig {
+        idle: Duration::from_secs(3600),
+        interval: Duration::from_secs(3600),
+        poll: Duration::from_secs(3600),
+        ..AutosaveConfig::default()
+    });
+    let engine = Engine::start(config).unwrap();
+    let h = engine.handle();
+    let conn = h.connect(&Credential::Agent("cli".into())).unwrap();
+    let mut events = h.subscribe();
+    let out = must(&conn, "project.recover", json!({}));
+    assert_eq!(out["project"]["dirty"], true);
+    // Save at once, before the first autosave tick could publish `project.dirty`: a client
+    // that follows only events (it saw `dirty: true` in the status) must be told it is clean.
+    must(&conn, "project.save", json!({}));
+    wait_for(&mut events, Duration::from_secs(10), |e| {
+        e.name() == "project.dirty" && e.payload()["dirty"] == false
+    });
+    assert!(!h.status().unwrap().dirty);
+    drop(conn);
+    engine.shutdown();
+    let reopened = ProjectStore::open(&folder).unwrap();
+    assert!(reopened.project.meta.name.starts_with("Edit "));
 }

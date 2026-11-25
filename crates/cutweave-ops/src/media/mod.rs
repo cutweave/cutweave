@@ -1,7 +1,8 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 //! The `media` namespace (WP-1B.05, WP-1D.07; arch §5.1, §7): `media.register`,
 //! `media.import`, `media.list`, `media.remove`, and the `media.indexed` /
-//! `media.analysis_failed` events of background analysis (which never mutates the document).
+//! `media.analysis_failed` events of background analysis (which never mutates the document);
+//! the proxy commands of WP-2F.01 ([`proxy`]).
 //!
 //! **Import (arch §7, R21).** `media.import` returns `media_ids` synchronously: it checks the
 //! caller's path allowlist, probes the files through a [`MediaProbe`] (in parallel, each with a
@@ -16,6 +17,7 @@ mod analysis;
 mod find;
 mod policy;
 mod probe;
+pub mod proxy;
 
 use std::{cmp::Ordering, sync::Arc};
 
@@ -39,6 +41,7 @@ pub use policy::{
     OUTSIDE_ROOTS_HINT,
 };
 pub use probe::{FakeProbe, MediaProbe, ProbeError, Probed};
+pub use proxy::{ImportProxy, ProxyService};
 
 use crate::util::check_abs_path;
 
@@ -58,7 +61,7 @@ pub fn register(registry: &mut Registry) -> Result<(), RegistryError> {
         .register::<MediaImport>()?
         .register::<MediaList>()?
         .register::<MediaRemove>()?;
-    Ok(())
+    proxy::register(registry)
 }
 
 /// The kind a probe result describes: pictures with a duration are video, pictures without
@@ -254,6 +257,8 @@ pub struct ImportCtx {
     pub policy: ImportPolicy,
     /// Queues background analysis of new assets; `None` queues nothing.
     pub analysis: Option<Analyzer>,
+    /// Queues the proxies the policy wants (WP-2F.01); `None` makes none.
+    pub proxies: Option<Arc<dyn ProxyService>>,
 }
 
 impl ImportCtx {
@@ -266,6 +271,7 @@ impl ImportCtx {
             sink,
             policy: ImportPolicy::default(),
             analysis: None,
+            proxies: None,
         }
     }
 
@@ -282,6 +288,13 @@ impl ImportCtx {
         self.analysis = Some(analyzer);
         self
     }
+
+    /// The same context, queueing proxies through `proxies`.
+    #[must_use]
+    pub fn with_proxies(mut self, proxies: Arc<dyn ProxyService>) -> ImportCtx {
+        self.proxies = Some(proxies);
+        self
+    }
 }
 
 /// One imported file.
@@ -295,6 +308,9 @@ pub struct ImportedMedia {
     pub kind: MediaKind,
     /// `true` when the content was already in the project and nothing was added.
     pub duplicate: bool,
+    /// Whether a proxy (a small copy the preview scrubs, WP-2F.01) was queued for it, or is
+    /// already in the cache.
+    pub proxy: ImportProxy,
 }
 
 /// Why a file was not imported.
@@ -478,23 +494,36 @@ impl EngineCommand for MediaImport {
             job_ids: Vec::new(),
         };
         for (register, r) in batch.into_iter().zip(results) {
+            let mut index_job = Vec::new();
             if r.created
                 && let Some(analyzer) = &ctx.analysis
             {
-                out.job_ids.extend(analyzer.spawn(AnalysisInput {
+                let stages = analyzer.spawn_stages(AnalysisInput {
                     media_id: r.media_id,
                     kind: r.kind,
                     path: register.path.clone(),
                     content_hash: register.content_hash,
                     probe: register.probe,
-                }));
+                });
+                index_job.extend(
+                    stages
+                        .iter()
+                        .filter(|(stage, _)| *stage == "index")
+                        .map(|(_, id)| *id),
+                );
+                out.job_ids.extend(stages.into_iter().map(|(_, id)| id));
             }
+            let proxy = ctx
+                .proxies
+                .as_ref()
+                .map_or(ImportProxy::None, |p| p.imported(r.media_id, &index_job));
             out.media_ids.push(r.media_id);
             out.media.push(ImportedMedia {
                 path: register.path,
                 media_id: r.media_id,
                 kind: r.kind,
                 duplicate: !r.created,
+                proxy,
             });
         }
         Ok(out)

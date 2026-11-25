@@ -18,6 +18,7 @@ export const READ_ONLY_METHODS: ReadonlySet<string> = new Set([
   "media.cache_status",
   "media.capabilities",
   "media.list",
+  "media.proxy_status",
   "project.connections",
   "project.info",
   "project.snapshot",
@@ -25,6 +26,8 @@ export const READ_ONLY_METHODS: ReadonlySet<string> = new Set([
   "rpc.subscribe",
   "rpc.unsubscribe",
   "timeline.get",
+  "timeline.list_markers",
+  "track.list",
 ]);
 
 /** Whether a call to `method` must carry a `request_id`. */

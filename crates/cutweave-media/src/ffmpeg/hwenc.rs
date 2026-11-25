@@ -155,6 +155,72 @@ pub(super) enum Choice {
     Software,
     /// A hardware encoder.
     Hardware(HwEncoder),
+    /// An intra-frame software encoder (proxies, WP-2F.01).
+    Intra(Intra),
+}
+
+/// An intra-frame video codec the encoder writes (into MOV) for proxies (WP-2F.01): every frame
+/// is a keyframe, so a seek decodes one frame. Software encoders; the input is already in the
+/// codec's layout ([`Intra::input_format`]) and keeps the source's color tags.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub(super) enum Intra {
+    /// Apple ProRes 422 Proxy (`prores_ks`, 10-bit 4:2:2).
+    ProRes,
+    /// Avid DNxHR LB (`dnxhd`, 8-bit 4:2:2).
+    DnxHr,
+    /// Motion JPEG (`mjpeg`, 8-bit 4:2:2 in limited range).
+    Mjpeg,
+}
+
+impl Intra {
+    /// The intra codec of a codec-id name (`prores`, `dnxhd`, `mjpeg`).
+    pub(super) fn of(codec: &str) -> Option<Intra> {
+        match codec {
+            "prores" => Some(Intra::ProRes),
+            "dnxhd" => Some(Intra::DnxHr),
+            "mjpeg" => Some(Intra::Mjpeg),
+            _ => None,
+        }
+    }
+
+    /// The FFmpeg encoder.
+    pub(super) const fn encoder(self) -> &'static str {
+        match self {
+            Intra::ProRes => "prores_ks",
+            Intra::DnxHr => "dnxhd",
+            Intra::Mjpeg => "mjpeg",
+        }
+    }
+
+    /// The layout frames must arrive in.
+    pub(super) const fn input_format(self) -> PixelFormat {
+        match self {
+            Intra::ProRes => PixelFormat::Yuv422p10,
+            Intra::DnxHr | Intra::Mjpeg => PixelFormat::Yuv422p,
+        }
+    }
+
+    /// The encoder options: the proxy flavour of each codec (the rate control of the spec does
+    /// not apply: the profile sets the quality).
+    fn settings(self, spec: &VideoEncodeSpec) -> Vec<(&'static str, String)> {
+        let threads = if spec.threads == 0 {
+            "auto".to_owned()
+        } else {
+            spec.threads.to_string()
+        };
+        let mut out = vec![("threads", threads)];
+        match self {
+            Intra::ProRes => out.push(("profile", "proxy".to_owned())),
+            Intra::DnxHr => out.push(("profile", "dnxhr_lb".to_owned())),
+            Intra::Mjpeg => {
+                // q 4 (2 is best, 31 worst); limited-range 4:2:2 is "unofficial" JPEG.
+                out.push(("flags", "+qscale".to_owned()));
+                out.push(("global_quality", (4 * QP2LAMBDA).to_string()));
+                out.push(("strict", "unofficial".to_owned()));
+            }
+        }
+        out
+    }
 }
 
 /// libx264, the software encoder.
@@ -166,6 +232,7 @@ impl Choice {
         match self {
             Choice::Software => X264,
             Choice::Hardware(hw) => hw.name,
+            Choice::Intra(intra) => intra.encoder(),
         }
     }
 
@@ -179,12 +246,13 @@ impl Choice {
                 ..
             }) => X264,
             Choice::Hardware(hw) => hw.name,
+            Choice::Intra(intra) => intra.encoder(),
         }
     }
 
     pub(super) fn hardware(self) -> Option<HwEncoder> {
         match self {
-            Choice::Software => None,
+            Choice::Software | Choice::Intra(_) => None,
             Choice::Hardware(hw) => Some(hw),
         }
     }
@@ -205,6 +273,7 @@ impl Choice {
         match self {
             Choice::Software => PixelFormat::Yuv420p,
             Choice::Hardware(_) => PixelFormat::Nv12,
+            Choice::Intra(intra) => intra.input_format(),
         }
     }
 
@@ -212,6 +281,7 @@ impl Choice {
     pub(super) fn settings(self, spec: &VideoEncodeSpec) -> Vec<(&'static str, String)> {
         let family = match self {
             Choice::Software => return x264_settings(spec),
+            Choice::Intra(intra) => return intra.settings(spec),
             Choice::Hardware(hw) => hw.family,
         };
         let preset = spec.preset;

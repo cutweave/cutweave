@@ -61,7 +61,7 @@ use cutweave_jobs::JobManager;
 use cutweave_model::{ItemId, OpenOutcome, Project, open_str, to_document_string};
 use cutweave_ops::{
     export::ExportCtx,
-    media::{FakeProbe, ImportCtx, MediaRegister, MediaRegistered, MediaSink},
+    media::{FakeProbe, ImportCtx, MediaRegister, MediaRegistered, MediaSink, proxy::ProxyCall},
     testing::{
         self, AGENT_LABEL, JsonMirror, analyzer, arb_command_from, check_invariants,
         check_linked_edit, export_ctx, fake_probe, job_manager, replay_events,
@@ -477,6 +477,17 @@ impl<'s> Harness<'s> {
             .invoke_engine_json("export.start", params.clone(), &mut ctx_any, ctx.access())
     }
 
+    /// Runs a proxy command (WP-2F.01) against a service that makes none: proxies are cache
+    /// state, so the document never changes.
+    fn proxy(&self, ctx: &ActorCtx, name: &str, params: &Value) -> Result<Value, CmdError> {
+        let mut call = ProxyCall {
+            service: Some(Arc::new(testing::NoProxies)),
+            doc: self.lock().snapshot().doc.clone(),
+        };
+        self.registry
+            .invoke_engine_json(name, params.clone(), &mut call, ctx.access())
+    }
+
     /// Runs a `job.*` command against the job manager.
     fn job(&self, ctx: &ActorCtx, name: &str, params: &Value) -> Result<Value, CmdError> {
         let mut jobs = self.jobs.clone();
@@ -576,6 +587,12 @@ impl<'s> Harness<'s> {
             }
             Some(c) if c == TypeId::of::<ExportCtx>() => {
                 self.export(ctx, params).map(|output| Done {
+                    output,
+                    applied: None,
+                })
+            }
+            Some(c) if c == TypeId::of::<ProxyCall>() => {
+                self.proxy(ctx, name, params).map(|output| Done {
                     output,
                     applied: None,
                 })

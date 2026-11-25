@@ -30,6 +30,16 @@ describe("launch protocol lines", () => {
     expect(parseReadyLine("garbage")).toBeNull();
   });
 
+  it("parses the starting line of --progress, which is not a ready line", () => {
+    const line = '{"event":"starting","pid":3,"version":"x","elapsed_ms":2000}';
+    expect(parseEngineLine(line)).toEqual({
+      event: "starting",
+      starting: { pid: 3, elapsedMs: 2000 },
+    });
+    expect(parseReadyLine(line)).toBeNull();
+    expect(parseEngineLine('{"event":"starting","version":"x"}')).toBeNull();
+  });
+
   it("parses the error line, with the lock holder", () => {
     expect(
       parseEngineLine(
@@ -266,7 +276,7 @@ describe("EngineSupervisor with the fake engine", () => {
       launch,
       port: await pickFreePort(),
       env: { FAKE_ENGINE_MODE: "no-ready" },
-      readyTimeoutMs: 300,
+      startSilenceMs: 300,
       backoffMs: [],
       ...quiet,
     });

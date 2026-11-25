@@ -39,11 +39,18 @@ pub enum CacheKind {
     Thumbnails,
     /// Waveform pyramids (one file per audio stream).
     Waveforms,
+    /// Proxies: small intra-frame copies of video files the preview scrubs (WP-2F.01). Clearing
+    /// them makes the preview use the originals; `media.generate_proxy` makes them again.
+    Proxies,
 }
 
 impl CacheKind {
     /// Every kind, in the order the settings page lists them.
-    pub const ALL: [CacheKind; 2] = [CacheKind::Thumbnails, CacheKind::Waveforms];
+    pub const ALL: [CacheKind; 3] = [
+        CacheKind::Thumbnails,
+        CacheKind::Waveforms,
+        CacheKind::Proxies,
+    ];
 }
 
 /// Whether decoders may use the hardware.
@@ -67,6 +74,10 @@ pub struct CacheLimits {
     /// Cap on waveforms, in bytes.
     #[specta(type = Option<specta_typescript::Number>)]
     pub waveforms: Option<u64>,
+    /// Cap on proxies, in bytes (50 GiB by default).
+    #[serde(default)]
+    #[specta(type = Option<specta_typescript::Number>)]
+    pub proxies: Option<u64>,
 }
 
 /// One disk cache's usage and limit.
@@ -91,7 +102,7 @@ pub struct MediaCacheStatusOutput {
     /// The folder the caches live in (`--cache-dir`, else the OS cache folder); `null` when
     /// the engine has none.
     pub folder: Option<String>,
-    /// Each disk cache, in a fixed order (thumbnails, waveforms).
+    /// Each disk cache, in a fixed order (thumbnails, waveforms, proxies).
     pub kinds: Vec<CacheKindStatus>,
     /// The hardware decoding policy in force.
     pub decode_hw: DecodeHw,
@@ -255,6 +266,7 @@ impl EngineCommand for MediaSetCacheConfig {
             for (path, bytes) in [
                 ("/limits/thumbnails", limits.thumbnails),
                 ("/limits/waveforms", limits.waveforms),
+                ("/limits/proxies", limits.proxies),
             ] {
                 if bytes.is_some_and(|b| b > MAX_CACHE_LIMIT_BYTES) {
                     return Err(CmdError::invalid(path, "must be at most 16 TiB"));
@@ -293,7 +305,7 @@ impl EngineCommand for MediaSetCacheConfig {
     annotations(destructive = true, idempotent = true)
 )]
 pub struct MediaClearCache {
-    /// The caches to empty (`thumbnails`, `waveforms`).
+    /// The caches to empty (`thumbnails`, `waveforms`, `proxies`).
     pub kinds: Vec<CacheKind>,
 }
 

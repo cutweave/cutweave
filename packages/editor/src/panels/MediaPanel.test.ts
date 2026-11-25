@@ -91,6 +91,7 @@ const track = (id: string, kind: string, items: object[] = []) => ({
   locked: false,
   solo: false,
   magnetic: false,
+  height: null,
   gain: 0,
   custom: {},
 });
@@ -103,6 +104,8 @@ const clipOf = (id: string, media: string) => ({
   duration: F,
   enabled: true,
   linked_group: null,
+  attached_to: null,
+  markers: {},
   media,
   source_in: 0,
   audio: { gain: 0 },
@@ -121,6 +124,8 @@ const project = (items: object[] = []): Project =>
         name: "Main",
         format: { width: 1920, height: 1080, frame_rate: { num: 30, den: 1 } },
         track_order: ["trk_v", "trk_a"],
+        markers: {},
+        in_out: null,
         tracks: { trk_v: track("trk_v", "video", items), trk_a: track("trk_a", "audio") },
         custom: {},
       },
@@ -312,8 +317,20 @@ describe("MediaPanel import", () => {
     bridge();
     call.mockResolvedValueOnce({
       media: [
-        { path: "/dropped/a.mp4", media_id: "med_a", kind: "video", duplicate: false },
-        { path: "/dropped/b.mp4", media_id: "med_b", kind: "video", duplicate: true },
+        {
+          path: "/dropped/a.mp4",
+          media_id: "med_a",
+          kind: "video",
+          duplicate: false,
+          proxy: "none",
+        },
+        {
+          path: "/dropped/b.mp4",
+          media_id: "med_b",
+          kind: "video",
+          duplicate: true,
+          proxy: "none",
+        },
       ],
       media_ids: ["med_a", "med_b"],
       failed: [],

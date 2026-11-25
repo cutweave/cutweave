@@ -1,9 +1,11 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
-//! WP-1A.03 acceptance: golden fixtures per schema version, the v0 → v1 migration, read-only
-//! newer documents and lossless round trips.
+//! WP-1A.03 and WP-2A.02 acceptance: golden fixtures per schema version, the v0 → v1 and
+//! v1 → v2 migrations, read-only newer documents and lossless round trips.
 //!
-//! The current-version fixtures are exactly what `to_document_string` writes for the projects
-//! built below. After an intended format change, regenerate them with
+//! The current-version (v2) fixtures are exactly what `to_document_string` writes for the
+//! projects built below. The v1 fixtures are the frozen v1 files of the same projects; they
+//! must migrate to them (the migration of legacy shapes is covered by `v1/legacy-needs-fixes`).
+//! After an intended format change, regenerate the v2 fixtures with
 //! `CUTWEAVE_BLESS_FIXTURES=1 cargo nextest run -p cutweave-model -E 'binary(migrations)'`.
 //! Fixtures of older versions are frozen: they must keep loading (through migrations) as the
 //! same projects forever.
@@ -106,14 +108,14 @@ fn stamp(project: &mut Project) {
     project.meta.app_version = Some("0.1.0".into());
 }
 
-/// `v1/empty.cutweave`: a fresh project.
+/// `v2/empty.cutweave` (and the frozen `v1/empty.cutweave`): a fresh project.
 fn expected_empty() -> Project {
     let mut project = Project::new("Empty");
     stamp(&mut project);
     project
 }
 
-/// `v1/three-clips.cutweave`: the M1 shape, two videos and music on one sequence.
+/// `v2/three-clips.cutweave`: the M1 shape, two videos and music on one sequence.
 fn expected_three_clips() -> Project {
     let mut ids = SeededGen::new(1);
     let mut project = Project::new("Three clips");
@@ -153,7 +155,7 @@ fn expected_three_clips() -> Project {
     project
 }
 
-/// `v1/edge-cases.cutweave`: NTSC rates, Unicode, adjacent and far-away clips, every media kind,
+/// `v2/edge-cases.cutweave`: NTSC rates, Unicode, adjacent and far-away clips, every media kind,
 /// a compound clip, linked items, every track flag, plugin data and unknown fields.
 #[allow(clippy::too_many_lines)]
 fn expected_edge_cases() -> Project {
@@ -208,9 +210,17 @@ fn expected_edge_cases() -> Project {
         SequenceFormat::new(1080, 1920, FrameRate::FPS_29_97, SampleRate::HZ_48_000);
     let mut nested = Sequence::new(ids.mint(), "Nested 9:16", nested_format);
     let mut nested_v = Track::new(ids.mint(), TrackKind::Video, "V1");
-    nested_v
-        .items
-        .insert(Clip::new(ids.mint(), still.id, Time::ZERO, span_secs(4)).into());
+    // 119 frames at 29.97 fps: the v1 file has 4 s, which the v2 migration floors to the grid.
+    let nested_frame = FrameRate::FPS_29_97.flicks_per_frame().unwrap();
+    nested_v.items.insert(
+        Clip::new(
+            ids.mint(),
+            still.id,
+            Time::ZERO,
+            Duration::from_flicks(119 * nested_frame).unwrap(),
+        )
+        .into(),
+    );
     nested.insert_track(0, nested_v);
     let compound = MediaAsset::sequence_ref(ids.mint(), nested.id);
 
@@ -386,15 +396,77 @@ fn every_fixture_migrates_to_a_valid_current_project() {
 }
 
 #[test]
-fn the_v0_fixture_migrates_to_the_v1_three_clip_project() {
+fn the_v0_fixture_migrates_to_the_current_three_clip_project() {
     let text = read(&fixtures().join("v0/three-clips.cutweave"));
     let (project, report) = editable(open_str(&text).unwrap());
     assert_eq!(project, expected_three_clips());
-    assert_eq!((report.from_version, report.to_version), (0, 1));
-    assert_eq!(report.steps.len(), 1);
+    assert_eq!((report.from_version, report.to_version), (0, 2));
+    assert_eq!(report.steps.len(), 2);
     assert!(report.steps[0].description.contains("pre-release"));
     let (migrated, _) = migrate_value(serde_json::from_str(&text).unwrap()).unwrap();
     insta::assert_snapshot!("v0_three_clips_migrated", canonical_json_pretty(&migrated));
+}
+
+/// The frozen v1 files migrate to the same projects the v2 fixtures hold.
+#[test]
+fn the_v1_fixtures_migrate_to_the_v2_projects() {
+    for (name, expected) in current_fixtures() {
+        let text = read(&fixtures().join(format!("v1/{name}.cutweave")));
+        let (project, report) = editable(open_str(&text).unwrap());
+        assert_eq!(project, expected, "{name}");
+        assert_eq!((report.from_version, report.to_version), (1, 2), "{name}");
+        assert_eq!(report.steps.len(), 1, "{name}");
+        // The migrated document is what the engine saves: the v2 fixture, byte for byte.
+        let v2 = read(&fixtures().join(format!("v2/{name}.cutweave")));
+        assert_eq!(to_document_string(&project).unwrap(), v2, "{name}");
+    }
+}
+
+/// A v1 document with every shape the v2 migration repairs: an off-grid clip duration, a
+/// misaligned and a single-member linked group, and several magnetic tracks (one of them with a
+/// gap). Pinned as a golden snapshot, with the notes the user sees.
+#[test]
+fn the_v1_migration_repairs_legacy_shapes() {
+    let text = read(&fixtures().join("v1/legacy-needs-fixes.cutweave"));
+    let (migrated, report) = migrate_value(serde_json::from_str(&text).unwrap()).unwrap();
+    assert_eq!((report.from_version, report.to_version), (1, 2));
+    let notes = &report.steps[0].notes;
+    assert_eq!(
+        notes,
+        &[
+            "floored 2 clip duration(s) to a whole number of frames",
+            "dissolved 2 linked group(s) that were not aligned",
+            "kept the first magnetic track of a sequence and cleared 1 other flag(s)",
+        ]
+    );
+    insta::assert_snapshot!(
+        "v1_legacy_needs_fixes_migrated",
+        canonical_json_pretty(&migrated)
+    );
+    let (project, _) = editable(open_str(&text).unwrap());
+    assert_eq!(project.violations(), vec![]);
+    // Durations are whole frames now (30 fps: 23,520,000 flicks per frame).
+    for track in project.sequences.values().flat_map(|s| s.tracks.values()) {
+        for item in track.items.iter() {
+            assert_eq!(item.duration().flicks() % 23_520_000, 0, "{}", item.id());
+        }
+    }
+    let to_value = to_document_string(&project).unwrap();
+    let (again, again_report) = editable(open_str(&to_value).unwrap());
+    assert_eq!(again, project, "the migrated document round-trips");
+    assert!(!again_report.migrated());
+}
+
+/// Migrating twice is the same as migrating once (a v2 document is left alone).
+#[test]
+fn the_v1_migration_is_idempotent_on_v2_documents() {
+    for (name, _) in current_fixtures() {
+        let v2: Value =
+            serde_json::from_str(&read(&fixtures().join(format!("v2/{name}.cutweave")))).unwrap();
+        let (again, report) = migrate_value(v2.clone()).unwrap();
+        assert_eq!(again, v2, "{name}");
+        assert!(!report.migrated(), "{name}");
+    }
 }
 
 #[test]
@@ -426,8 +498,10 @@ fn a_newer_document_opens_read_only_and_keeps_unknown_fields() {
 
 #[test]
 fn unknown_fields_survive_open_and_save() {
-    let mut doc: Value =
-        serde_json::from_str(&read(&fixtures().join("v1/three-clips.cutweave"))).unwrap();
+    let mut doc: Value = serde_json::from_str(&read(
+        &fixtures().join(format!("v{CURRENT_SCHEMA_VERSION}/three-clips.cutweave")),
+    ))
+    .unwrap();
     doc["x_plugin_index"] = json!({"b": 1, "a": 2});
     let seq = doc["sequences"]
         .as_object()
@@ -452,7 +526,7 @@ fn opening_rejects_documents_that_are_not_projects() {
         open(json!({"meta": {}})).unwrap_err(),
         MigrationError::MissingVersion
     );
-    let err = open(json!({"meta": {"schema_version": 1}})).unwrap_err();
+    let err = open(json!({"meta": {"schema_version": 2}})).unwrap_err();
     assert!(matches!(err, MigrationError::Malformed { .. }), "{err:?}");
     let mut doc: Value =
         serde_json::from_str(&read(&fixtures().join("v0/three-clips.cutweave"))).unwrap();

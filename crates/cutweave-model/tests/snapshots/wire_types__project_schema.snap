@@ -1,6 +1,5 @@
 ---
 source: crates/cutweave-model/tests/wire_types.rs
-assertion_line: 90
 expression: "cutweave_model::canonical_json_pretty(&schema)"
 ---
 {
@@ -46,6 +45,14 @@ expression: "cutweave_model::canonical_json_pretty(&schema)"
     "Clip": {
       "description": "A media clip: a range of a `MediaAsset` placed on a track.\n\nThe clip occupies `[start, start + duration)` on the timeline and plays the source range\n`[source_in, source_in + duration)` (speed 1 in schema v1).",
       "properties": {
+        "attached_to": {
+          "description": "The item this one follows when it moves (schema v2, timeline spec §1.4): an overlay\nattached to a main-track clip. `None` when free.",
+          "pattern": "^itm_[0-9a-f]{32}$",
+          "type": [
+            "string",
+            "null"
+          ]
+        },
         "audio": {
           "$ref": "#/$defs/AudioProps",
           "description": "Audio properties."
@@ -88,6 +95,16 @@ expression: "cutweave_model::canonical_json_pretty(&schema)"
             "string",
             "null"
           ]
+        },
+        "markers": {
+          "additionalProperties": false,
+          "description": "Markers in item-relative time; they move with the item.",
+          "patternProperties": {
+            "^mrk_[0-9a-f]{32}$": {
+              "$ref": "#/$defs/Marker"
+            }
+          },
+          "type": "object"
         },
         "media": {
           "description": "The media this clip plays.",
@@ -139,6 +156,7 @@ expression: "cutweave_model::canonical_json_pretty(&schema)"
         "start",
         "duration",
         "enabled",
+        "markers",
         "media",
         "source_in",
         "audio",
@@ -272,6 +290,44 @@ expression: "cutweave_model::canonical_json_pretty(&schema)"
       ],
       "type": "object"
     },
+    "InOut": {
+      "description": "The sequence's in and out points: the half-open range `[start, end)` that lift, extract and\nthree-point edits use. Both ends or neither (`Sequence::in_out` is `None` when unset).",
+      "properties": {
+        "end": {
+          "anyOf": [
+            {
+              "maximum": 9007199254740991,
+              "minimum": -9007199254740991,
+              "type": "integer"
+            },
+            {
+              "pattern": "^-?[0-9]+(\\.[0-9]+)?s$|^-?[0-9]+$",
+              "type": "string"
+            }
+          ],
+          "description": "The out point (`> start`)."
+        },
+        "start": {
+          "anyOf": [
+            {
+              "maximum": 9007199254740991,
+              "minimum": -9007199254740991,
+              "type": "integer"
+            },
+            {
+              "pattern": "^-?[0-9]+(\\.[0-9]+)?s$|^-?[0-9]+$",
+              "type": "string"
+            }
+          ],
+          "description": "The in point (`>= 0`)."
+        }
+      },
+      "required": [
+        "start",
+        "end"
+      ],
+      "type": "object"
+    },
     "Item": {
       "description": "Anything placed on a track (arch §4.2). Schema v1 has only [`Clip`]; matching code outside\nthis crate needs a wildcard arm for the kinds still to come.\n\nSerialized as the variant's object plus a `\"kind\"` tag (`{\"kind\": \"clip\", …}`).",
       "oneOf": [
@@ -288,6 +344,93 @@ expression: "cutweave_model::canonical_json_pretty(&schema)"
             "kind"
           ],
           "type": "object"
+        }
+      ]
+    },
+    "Marker": {
+      "description": "A marker on a sequence (sequence time) or an item (item-relative time).",
+      "properties": {
+        "color": {
+          "description": "Display color.",
+          "pattern": "^#([0-9a-fA-F]{6}|[0-9a-fA-F]{8})$",
+          "type": "string"
+        },
+        "duration": {
+          "anyOf": [
+            {
+              "anyOf": [
+                {
+                  "maximum": 9007199254740991,
+                  "minimum": 0,
+                  "type": "integer"
+                },
+                {
+                  "pattern": "^-?[0-9]+(\\.[0-9]+)?s$|^-?[0-9]+$",
+                  "type": "string"
+                }
+              ],
+              "description": "A non-negative duration in flicks (1/705600000 s) as an integer, or a string: seconds (\"62.5s\") or raw flicks (\"123\")."
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "description": "The length of a range marker; `None` for a point marker."
+        },
+        "id": {
+          "description": "The marker ID (also its key in the owner's `markers`).",
+          "pattern": "^mrk_[0-9a-f]{32}$",
+          "type": "string"
+        },
+        "kind": {
+          "$ref": "#/$defs/MarkerKind",
+          "description": "What the marker means."
+        },
+        "label": {
+          "description": "Text shown with the marker (may be empty).",
+          "type": "string"
+        },
+        "t": {
+          "anyOf": [
+            {
+              "maximum": 9007199254740991,
+              "minimum": -9007199254740991,
+              "type": "integer"
+            },
+            {
+              "pattern": "^-?[0-9]+(\\.[0-9]+)?s$|^-?[0-9]+$",
+              "type": "string"
+            }
+          ],
+          "description": "Where the marker is (`>= 0`)."
+        }
+      },
+      "required": [
+        "id",
+        "t",
+        "label",
+        "color",
+        "kind"
+      ],
+      "type": "object"
+    },
+    "MarkerKind": {
+      "description": "What a marker means.",
+      "oneOf": [
+        {
+          "const": "user",
+          "description": "Placed by a person or an agent.",
+          "type": "string"
+        },
+        {
+          "const": "beat",
+          "description": "A beat found by analysis (snaps like a marker, spec §6).",
+          "type": "string"
+        },
+        {
+          "const": "chapter",
+          "description": "A chapter start (exported to chaptered formats).",
+          "type": "string"
         }
       ]
     },
@@ -523,6 +666,27 @@ expression: "cutweave_model::canonical_json_pretty(&schema)"
           "pattern": "^seq_[0-9a-f]{32}$",
           "type": "string"
         },
+        "in_out": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/InOut"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "description": "The in and out points; both ends or neither."
+        },
+        "markers": {
+          "additionalProperties": false,
+          "description": "Markers in sequence time, keyed by ID. They never move with a ripple (spec INV-34).",
+          "patternProperties": {
+            "^mrk_[0-9a-f]{32}$": {
+              "$ref": "#/$defs/Marker"
+            }
+          },
+          "type": "object"
+        },
         "name": {
           "description": "Display name.",
           "type": "string"
@@ -553,6 +717,7 @@ expression: "cutweave_model::canonical_json_pretty(&schema)"
         "format",
         "tracks",
         "track_order",
+        "markers",
         "custom"
       ],
       "type": "object"
@@ -733,6 +898,15 @@ expression: "cutweave_model::canonical_json_pretty(&schema)"
           "format": "double",
           "type": "number"
         },
+        "height": {
+          "description": "Row height in the timeline, in pixels: a persisted UI hint (`None` = the default).\nChanging it never touches items.",
+          "format": "uint32",
+          "minimum": 0,
+          "type": [
+            "integer",
+            "null"
+          ]
+        },
         "hidden": {
           "description": "Not rendered (video).",
           "type": "boolean"
@@ -761,7 +935,7 @@ expression: "cutweave_model::canonical_json_pretty(&schema)"
           "type": "boolean"
         },
         "magnetic": {
-          "description": "Magnetic main track: ripple-by-default editing (arch §4.3; behaviour in P2).",
+          "description": "The magnetic main track: ripple-by-default editing, gap-free from 0 (timeline spec\n§1.2). At most one video track per sequence has it (`Project::validate`).",
           "type": "boolean"
         },
         "muted": {

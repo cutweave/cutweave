@@ -27,6 +27,8 @@ const PROJECT = {
       name: "Main",
       format: { width: 1920, height: 1080, frame_rate: { num: 30, den: 1 } },
       track_order: ["trk_v"],
+      markers: {},
+      in_out: null,
       tracks: {
         trk_v: {
           id: "trk_v",
@@ -38,6 +40,7 @@ const PROJECT = {
           locked: false,
           solo: false,
           magnetic: false,
+          height: null,
           gain: 0,
           custom: {},
         },

@@ -43,6 +43,8 @@ use crate::{
 pub const DEFAULT_EVENT_CAPACITY: usize = 1024;
 /// Default number of concurrent export jobs.
 pub const DEFAULT_EXPORT_SLOTS: usize = 1;
+/// Default number of concurrent proxy jobs (WP-2F.01); one fewer while an export runs.
+pub const DEFAULT_PROXY_SLOTS: usize = 2;
 /// Smallest progress change that is broadcast (message changes always are).
 pub const PROGRESS_EVENT_STEP: f64 = 0.01;
 
@@ -59,6 +61,10 @@ pub struct JobConfig {
     pub decode_slots: usize,
     /// Concurrent [`Budget::Export`] jobs (default 1).
     pub export_slots: usize,
+    /// Concurrent [`Budget::Proxy`] jobs (default 2). While an export runs, only one proxy job
+    /// starts at a time: the export holds the other slots (a proxy job already running is not
+    /// stopped; the next one waits).
+    pub proxy_slots: usize,
     /// Capacity of the `job.progress` broadcast.
     pub event_capacity: usize,
     /// Finished jobs kept by the default in-memory history.
@@ -70,6 +76,7 @@ impl Default for JobConfig {
         JobConfig {
             decode_slots: default_decode_slots(),
             export_slots: DEFAULT_EXPORT_SLOTS,
+            proxy_slots: DEFAULT_PROXY_SLOTS,
             event_capacity: DEFAULT_EVENT_CAPACITY,
             history_capacity: DEFAULT_HISTORY_CAPACITY,
         }
@@ -99,6 +106,7 @@ struct Shared {
     ids: Mutex<Box<dyn IdGen + Send>>,
     decode: Arc<Semaphore>,
     export: Arc<Semaphore>,
+    proxy: Arc<Semaphore>,
     config: JobConfig,
 }
 
@@ -116,6 +124,7 @@ impl Shared {
         match budget {
             Budget::Decode => &self.decode,
             Budget::Export => &self.export,
+            Budget::Proxy => &self.proxy,
         }
     }
 
@@ -346,6 +355,8 @@ async fn run(
     if !shared.try_start(id) {
         return;
     }
+    // An export holds all proxy slots but one while it runs (WP-2F.01).
+    let reserved = (budget == Budget::Export).then(|| reserve_proxy_slots(&shared));
     let ctx = JobCtx {
         id,
         token: token.clone(),
@@ -355,6 +366,7 @@ async fn run(
         tokio::task::spawn_blocking(move || panic::catch_unwind(AssertUnwindSafe(|| body(&ctx))))
             .await;
     drop(permit);
+    drop(reserved);
     let (state, error) = match result {
         Ok(Ok(Ok(()))) => (JobState::Succeeded, None),
         Ok(Ok(Err(JobError::Cancelled))) => (JobState::Cancelled, None),
@@ -373,6 +385,45 @@ async fn run(
         ),
     };
     shared.finish(id, state, error);
+}
+
+/// Holds the proxy slots an export takes while it runs: `proxy_slots - 1` of them, so at most
+/// one proxy job runs next to an export. The semaphore is fair, so once the reservation waits,
+/// proxy jobs queued after it wait too; a proxy job already running finishes undisturbed and its
+/// slot goes to the reservation. Dropping the guard (the export ended) gives the slots back, or
+/// stops waiting for them.
+struct ProxyReservation(Option<tokio::sync::oneshot::Sender<()>>);
+
+impl Drop for ProxyReservation {
+    fn drop(&mut self) {
+        // The receiver sees the sender go and releases the permits (or stops waiting).
+        drop(self.0.take());
+    }
+}
+
+fn reserve_proxy_slots(shared: &Arc<Shared>) -> ProxyReservation {
+    let wanted = shared.config.proxy_slots.max(1) - 1;
+    let Ok(wanted) = u32::try_from(wanted) else {
+        return ProxyReservation(None);
+    };
+    if wanted == 0 {
+        return ProxyReservation(None);
+    }
+    let (done, mut ended) = tokio::sync::oneshot::channel::<()>();
+    let semaphore = Arc::clone(&shared.proxy);
+    tokio::spawn(async move {
+        tokio::select! {
+            biased;
+            _ = &mut ended => {}
+            permits = semaphore.acquire_many_owned(wanted) => {
+                if let Ok(permits) = permits {
+                    let _ = ended.await;
+                    drop(permits);
+                }
+            }
+        }
+    });
+    ProxyReservation(Some(done))
 }
 
 /// What a running job body gets: its ID, its cancel token and a progress reporter.
@@ -491,6 +542,7 @@ impl Drop for Owner {
         self.shared.cancel_all();
         self.shared.decode.close();
         self.shared.export.close();
+        self.shared.proxy.close();
         let runtime = self
             .runtime
             .get_mut()
@@ -578,6 +630,7 @@ impl JobManagerBuilder {
             ids: Mutex::new(ids.unwrap_or_else(|| Box::new(Uuid7Gen))),
             decode: Arc::new(Semaphore::new(config.decode_slots.max(1))),
             export: Arc::new(Semaphore::new(config.export_slots.max(1))),
+            proxy: Arc::new(Semaphore::new(config.proxy_slots.max(1))),
             config,
         });
         Ok(JobManager {

@@ -1,0 +1,95 @@
+name: M1 gate
+
+# Manual dispatch ONLY, for ONE recorded run. The product owner approved a single run of the M1
+# exit gate (`scripts/m1-gate.py`, `just m1-gate`) on windows-latest to record CI evidence for M1
+# (docs/milestones/M1-exit.md, sign-off notes). Actions minutes are short, so there is no push,
+# pull_request or schedule trigger and nothing re-runs it. Dispatch it once from main
+# (`gh workflow run m1-gate.yml`), then link the run from docs/milestones/M1-exit.md. The job is
+# ci.yml's Windows setup (toolchain, caches, pnpm, FFmpeg bundle, corpus) plus the gate itself.
+# It needs an unexpired FFmpeg bundle artifact built from main (the "FFmpeg bundle" workflow).
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  # scripts/ffmpeg/fetch.sh downloads the CI-built FFmpeg bundle (a workflow artifact).
+  actions: read
+
+concurrency:
+  group: m1-gate-${{ github.ref }}
+  cancel-in-progress: false
+
+env:
+  CARGO_TERM_COLOR: always
+  CARGO_INCREMENTAL: "0"
+  RUST_BACKTRACE: "1"
+
+jobs:
+  m1-gate:
+    name: m1-gate (windows-latest)
+    runs-on: windows-latest
+    timeout-minutes: 120
+    defaults:
+      run:
+        shell: bash
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          # Git LFS: the screenshot and golden-frame baselines. Full history: the golden frames'
+          # reference-update guard diffs against origin/main.
+          lfs: true
+          fetch-depth: 0
+      - uses: dtolnay/rust-toolchain@683b588c487a69d01f6c6ddf40f036ff682cc2c8 # v1
+        with:
+          toolchain: "1.100.0"
+          components: rustfmt, clippy
+          targets: wasm32-unknown-unknown
+      - uses: Swatinem/rust-cache@d1527c8f67ef9af357290475d4af4b0fab8f12e0 # v2.9.3
+        with:
+          key: m1-gate
+      - uses: taiki-e/install-action@fe3acb53a98b62c772db35de75ce0e4595e7ca8c # v2.90.8
+        with:
+          tool: cargo-nextest,just
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version-file: .nvmrc
+      # pnpm is pinned by the `packageManager` field in package.json.
+      - name: Enable pnpm (corepack)
+        run: corepack enable
+      - name: Resolve pnpm store path
+        id: pnpm-store
+        run: echo "path=$(pnpm store path --silent)" >> "$GITHUB_OUTPUT"
+      - uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: ${{ steps.pnpm-store.outputs.path }}
+          key: pnpm-store-${{ runner.os }}-${{ hashFiles('pnpm-lock.yaml') }}
+          restore-keys: pnpm-store-${{ runner.os }}-
+      - run: pnpm install --frozen-lockfile
+      - name: FFmpeg bundle
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: just ffmpeg-fetch --repo "${{ github.repository }}"
+      # The corpus clips are generated with the bundle's ffmpeg (testdata/generate/*.sh), so the
+      # bundle goes on the PATH first. The small tier holds the three M1 clips.
+      - name: Test corpus (small tier)
+        run: |
+          . scripts/ffmpeg/env.sh
+          just corpus --tier small
+      - name: M1 gate
+        run: python scripts/m1-gate.py --golden-base origin/main --evidence target/m1/evidence
+      # The report and the text evidence only: target/m1/ui, mcp and crash hold project folders
+      # with exported media, which stay out of the artifact.
+      - name: Upload the report and text evidence (no media)
+        if: always()
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: m1-gate-report
+          path: |
+            target/m1/evidence/
+            target/m1/logs/
+            target/m1/report.md
+            target/m1/report.json
+            target/m1/compare.json
+            target/m1/validate-mp4.json
+          if-no-files-found: ignore

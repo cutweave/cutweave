@@ -16,10 +16,12 @@
 //   keys (Space, J/K/L, arrows, timeline keys, Ctrl+I) go through `page.keyboard`.
 // - Wait for visible state, never sleep.
 import {
+  closeSync,
   copyFileSync,
   existsSync,
   mkdirSync,
   mkdtempSync,
+  openSync,
   readdirSync,
   rmSync,
   writeFileSync,
@@ -719,6 +721,26 @@ export function recoveryDialog(page: Page) {
     restore: dialog.getByRole("button", { name: /^Restore unsaved changes/ }),
     discard: dialog.getByRole("button", { name: "Discard", exact: true }),
   };
+}
+
+/**
+ * Resolves once no process of an app killed on profile `home` holds Chromium's single-instance
+ * lock (`<userData>/lockfile`, opened exclusively and deleted when its holder exits). The killed
+ * app's last helper process keeps it for a moment after the main process has gone, and a
+ * relaunch that races it quits at once (issue #147).
+ */
+export async function waitProfileFree(home: string): Promise<void> {
+  const lock = path.join(home, "userData", "lockfile");
+  const free = (): boolean => {
+    if (!existsSync(lock)) return true;
+    try {
+      closeSync(openSync(lock, "r+"));
+      return true;
+    } catch {
+      return false;
+    }
+  };
+  await expect.poll(free, { timeout: 30_000, message: "the profile stays locked" }).toBe(true);
 }
 
 /** Whether main knows the editor has unsaved changes (read-only test hook). */

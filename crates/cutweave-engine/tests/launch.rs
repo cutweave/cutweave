@@ -171,6 +171,40 @@ fn gui_engine_handshakes_reports_ready_and_stops_when_stdin_closes() {
     }
 }
 
+/// Issue #143: with `--progress` the engine says it is starting as soon as it runs and every
+/// second until the ready line, and never after it (the supervisor's liveness check).
+#[test]
+fn a_progress_engine_reports_starting_until_it_is_ready() {
+    let t = TempDir::new("progress");
+    let mut e = Engine::spawn(t.path(), &["--port", "0", "--token-stdin", "--progress"]);
+    let first = e.line();
+    assert_eq!(first["event"], "starting", "{first}");
+    assert_eq!(first["pid"], e.child.id());
+    assert_eq!(first["version"], cutweave_engine::VERSION);
+    assert_eq!(first["elapsed_ms"], 0);
+    e.handshake(UI);
+    let mut last = 0;
+    let ready = loop {
+        let line = e.line();
+        if line["event"] != "starting" {
+            break line;
+        }
+        let elapsed = line["elapsed_ms"].as_u64().unwrap();
+        assert!(elapsed >= last, "{line}");
+        last = elapsed;
+    };
+    assert_eq!(ready["event"], "ready", "{ready}");
+    assert_eq!(files_under(&t.path().join("run")).len(), 1);
+    drop(e.stdin.take());
+    assert_eq!(e.wait().code(), Some(0));
+    // Nothing after the ready line until the stdout pipe closes with the process.
+    let mut rest = Vec::new();
+    while let Ok(line) = e.lines.recv_timeout(WAIT) {
+        rest.push(line);
+    }
+    assert!(rest.is_empty(), "{rest:?}");
+}
+
 #[test]
 fn bad_handshakes_exit_13() {
     let t = TempDir::new("handshake");
