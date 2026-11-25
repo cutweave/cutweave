@@ -63,7 +63,7 @@ fn child_engine() {
 fn crash_child_mid_edit(folder: &std::path::Path) -> usize {
     let mut child = Command::new(std::env::current_exe().unwrap())
         .args(["--exact", "child_engine", "--nocapture", "--test-threads=1"])
-        .env(CHILD_ENV, &folder)
+        .env(CHILD_ENV, folder)
         .stdout(Stdio::piped())
         .stderr(Stdio::null())
         .spawn()
@@ -90,8 +90,7 @@ fn crash_child_mid_edit(folder: &std::path::Path) -> usize {
             last_acked = Some(i.trim().parse().unwrap());
         }
     }
-    let last_acked = last_acked.expect("the child acknowledged nothing");
-    last_acked
+    last_acked.expect("the child acknowledged nothing")
 }
 
 #[test]
@@ -180,7 +179,7 @@ fn a_save_after_project_recover_reports_clean() {
         must(&conn, "project.new", json!({ "name": "Saved" }));
         must(&conn, "project.save", json!({}));
     }
-    let last_acked = crash_child_mid_edit(&folder);
+    crash_child_mid_edit(&folder);
 
     let mut config = EngineConfig::new(EngineMode::Headless);
     config.project = Some(folder.clone());
@@ -208,5 +207,4 @@ fn a_save_after_project_recover_reports_clean() {
     engine.shutdown();
     let reopened = ProjectStore::open(&folder).unwrap();
     assert!(reopened.project.meta.name.starts_with("Edit "));
-    let _ = last_acked;
 }
