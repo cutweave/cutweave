@@ -14,13 +14,19 @@
 //! are journaled once, on commit, as their collapsed patch; cancelled ones and `view.*`
 //! commands never reach the journal (they never commit a document change).
 //!
+//! Changes of the checkpoints (WP-2I.03) are journaled the same way, as [`CheckpointEntry`]
+//! markers: the checkpoint made (metadata only: recovery rebuilds its document by replaying to
+//! its revision), the ones removed, the highest id issued and the request. A save carries the
+//! checkpoints made before it into the new segment ([`Carry`]) as patches from the saved
+//! document, so they survive saves, crashes and reopening the project.
+//!
 //! # Format
 //!
 //! `.cutweave/journal/<base-rev>.jnl` segments of length-prefixed, CRC-32-checked JSON
 //! entries (see [`format`](self::format) for the byte layout). Each segment starts with a
 //! [`SegmentHeader`] naming the saved document it continues (its committed revision and the
-//! SHA-256 of its bytes), then the requests carried over from before the save, then the
-//! transactions.
+//! SHA-256 of its bytes), then what it carries over from before the save (requests,
+//! checkpoints), then the transactions and checkpoint markers.
 //!
 //! # Durability ([`SyncPolicy`])
 //!
@@ -60,7 +66,8 @@
 //! invariants), and stops at the first record that fails: a torn tail after a crash (never an
 //! acknowledged transaction) or corruption, reported in [`ReplayReport`]. The [`Recovered`]
 //! state rebuilds the doc actor ([`Recovered::configure`]): document and revision, undo
-//! history ([`DocConfig::with_recovered_history`]), the dedup table with each request's
+//! history ([`DocConfig::with_recovered_history`]), checkpoints
+//! ([`DocConfig::with_recovered_checkpoints`]), the dedup table with each request's
 //! persisted wall-clock time (a resend within 10 minutes of the original still returns the
 //! original result after a restart), and the deterministic id streams.
 

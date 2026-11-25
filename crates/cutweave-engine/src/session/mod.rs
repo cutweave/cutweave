@@ -696,11 +696,23 @@ fn stop_doc(actor: Option<DocActor>, forwarder: Option<JoinHandle<()>>) {
     }
 }
 
-/// A commit sink that refuses every commit with `Unsupported(message)`.
+/// A commit sink that refuses every commit and checkpoint change with `Unsupported(message)`:
+/// a checkpoint made then would vanish with the recovery decision (WP-2I.03).
 fn refusing(message: String) -> Box<dyn cutweave_commands::CommitSink> {
-    Box::new(move |_: &CommitRecord<'_>| -> Result<(), CmdError> {
-        Err(CmdError::unsupported(message.clone()))
-    })
+    struct Refusing(String);
+    impl cutweave_commands::CommitSink for Refusing {
+        fn commit(&mut self, _: &CommitRecord<'_>) -> Result<(), CmdError> {
+            Err(CmdError::unsupported(self.0.clone()))
+        }
+
+        fn checkpoint(
+            &mut self,
+            _: &cutweave_commands::CheckpointRecord<'_>,
+        ) -> Result<(), CmdError> {
+            Err(CmdError::unsupported(self.0.clone()))
+        }
+    }
+    Box::new(Refusing(message))
 }
 
 /// `meta.created` for a new document: the engine clock as `YYYY-MM-DDTHH:MM:SSZ`. Under

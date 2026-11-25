@@ -57,7 +57,8 @@ pub const JOB_ID_SEED: u64 = 7;
 /// jobs [`job_manager`] starts with, then analysis jobs of the first imports.
 const KNOWN_JOBS: usize = 8;
 
-/// Checkpoint names the `edit.checkpoint` and `edit.restore` strategies share.
+/// Checkpoint names the `edit.checkpoint`, `edit.restore` and `edit.delete_checkpoint`
+/// strategies share.
 pub const CHECKPOINT_NAMES: [&str; 3] = ["alpha", "beta", "gamma"];
 
 /// The label of the second actor (`agent:prop`) the strategies name in history scopes.

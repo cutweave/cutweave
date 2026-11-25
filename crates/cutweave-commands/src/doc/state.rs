@@ -2375,7 +2375,7 @@ impl DocState {
             .checkpoints
             .resolve(checkpoint)
             .ok_or_else(|| CmdError::not_found(ResourceKind::Checkpoint, checkpoint))?;
-        let removed: Vec<CheckpointId> = vec![id];
+        let removed = [id];
         let info = self
             .checkpoints
             .list()
