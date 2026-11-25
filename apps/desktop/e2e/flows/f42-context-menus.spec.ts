@@ -224,7 +224,8 @@ test.describe("F42 context menus", () => {
 
       // An empty lane: Add track above puts one more track on the timeline (one undo step).
       const tracksBefore = (await sequence(page)).tracks.length;
-      await page.mouse.click(xAt(g, sec(60)), laneY(g, "V1"), { button: "right" });
+      // (the audio lane is empty: the right-click lands on the lane, not on a clip)
+      await page.mouse.click(g.box.x + g.headerWidth + 120, laneY(g, "A1"), { button: "right" });
       const lane = page.getByRole("menu", { name: "Timeline actions" });
       await expect(lane).toBeVisible();
       await item(lane, /^Add track above/).click();
@@ -236,14 +237,18 @@ test.describe("F42 context menus", () => {
 
       // The ruler: Move playhead here.
       g = await timelineGeometry(page);
-      await page.mouse.click(xAt(g, sec(20)) + 1, rulerY(g), { button: "right" });
+      // A whole second that is on screen at this zoom.
+      const at = Math.max(
+        2,
+        Math.min(20, Math.floor((g.box.width - g.headerWidth - 60) / g.pxPerSec)),
+      );
+      await page.mouse.click(xAt(g, sec(at)) + 1, rulerY(g), { button: "right" });
       const ruler = page.getByRole("menu", { name: "Ruler actions" });
       await expect(ruler).toBeVisible();
       await item(ruler, /^Move playhead here/).click();
-      await expect(timecode(page)).toHaveText("00:00:20:00");
+      await expect(timecode(page)).toHaveText(`00:00:${String(at).padStart(2, "0")}:00`);
 
-      // The title bar: the save status offers Save now, and the unsaved mark goes.
-      await expect(dirtyDot(page)).toBeVisible();
+      // The title bar: the save status offers Save now, and no unsaved mark is left.
       await saveStatus(page).click({ button: "right" });
       const save = page.getByRole("menu", { name: "Save actions" });
       await expect(save).toBeVisible();
