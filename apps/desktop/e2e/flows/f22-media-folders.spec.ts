@@ -12,6 +12,7 @@ import { expect, test } from "../fixtures.ts";
 import {
   chooseMenu,
   createProject,
+  DEMO_FILES,
   dirtyDot,
   editorCaughtUp,
   hasRealEngine,
@@ -52,9 +53,7 @@ test.describe("F22 organize media in folders", () => {
       await importWithButton(
         app,
         page,
-        ["interview.mp4", "broll-city.mp4", "broll-coffee.mp4", "music.wav", "logo.png"].map((f) =>
-          work.file(f),
-        ),
+        DEMO_FILES.map((f) => work.file(f)),
       );
       // The list layout keeps every tile in view of the small panel, so a drag needs no scrolling.
       await page.getByRole("radio", { name: "List" }).click();
