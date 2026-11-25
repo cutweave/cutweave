@@ -8,9 +8,9 @@ import { Menu } from "@cutweave/ui";
 import { type ReactNode, type RefCallback, useCallback, useEffect, useRef } from "react";
 import { useStore } from "zustand";
 import { createStore } from "zustand/vanilla";
+import { desktopFromWindow } from "../session/desktop.ts";
 import { buildMenu, type ResolvedMenu } from "./build.ts";
 import { menuServices } from "./defaults.ts";
-import { desktopFromWindow } from "../session/desktop.ts";
 import { type MenuServices, setDevBuild } from "./services.ts";
 import { applyTargetRules } from "./target.ts";
 import { fieldRequest, textFieldOf } from "./textField.ts";
@@ -47,7 +47,10 @@ let pending: (() => void | Promise<void>) | null = null;
  * Opens the menu of `request.surface` at `request.point`, after applying the selection rules.
  * Returns `false` (and shows nothing) for a surface with no table or no rows.
  */
-export function openContextMenu(request: OpenRequest, services: MenuServices = menuServices): boolean {
+export function openContextMenu(
+  request: OpenRequest,
+  services: MenuServices = menuServices,
+): boolean {
   const def = services.surfaces.get(request.surface);
   if (def === undefined) {
     closeContextMenu();
@@ -183,6 +186,23 @@ function lowerLeft(el: Element): ScreenPoint {
   return { x: Math.round(r.left), y: Math.round(r.bottom) };
 }
 
+const FOCUSABLE =
+  'button, a[href], input, select, textarea, summary, [tabindex]:not([tabindex="-1"])';
+
+/**
+ * Where the focus goes when a menu opened on `surface` closes: what the right-click focused
+ * (a button takes focus on press), else the surface's first focusable part, else the surface.
+ */
+function focusReturn(doc: Document, surface: HTMLElement): HTMLElement {
+  const active = doc.activeElement;
+  if (active instanceof HTMLElement && active !== doc.body && surface.contains(active)) {
+    return active;
+  }
+  return surface.matches(FOCUSABLE)
+    ? surface
+    : (surface.querySelector<HTMLElement>(FOCUSABLE) ?? surface);
+}
+
 function activeElement(doc: Document): Element | null {
   let active: Element | null = doc.activeElement;
   // Into an open shadow root or iframe-less composition: keep it simple, the editor has none.
@@ -203,12 +223,13 @@ export function installContextMenuHandlers(
   doc: Document,
   services: MenuServices = menuServices,
 ): () => void {
-  const duplicateOfKey = (element: Element | null): boolean => {
+  const duplicateOfKey = (surface: Element): boolean => {
     const open = contextMenuStore.getState().open;
     return (
       open !== null &&
       open.via === "keyboard" &&
-      open.element === element &&
+      open.element !== null &&
+      surface.contains(open.element) &&
       services.now() - open.openedAt < DUPLICATE_WINDOW_MS
     );
   };
@@ -232,7 +253,12 @@ export function installContextMenuHandlers(
       const hit = found.entry.resolve({ via: "pointer", point, source });
       if (hit !== null) {
         openContextMenu(
-          { ...hit, point: hit.point ?? point, element: found.element, via: "pointer" },
+          {
+            ...hit,
+            point: hit.point ?? point,
+            element: focusReturn(doc, found.element),
+            via: "pointer",
+          },
           services,
         );
         return;
@@ -293,7 +319,6 @@ export function installContextMenuHandlers(
   };
 }
 
-
 // ---- the component ---------------------------------------------------------------------------------
 
 /** Mounted once in `EditorShell`. */
@@ -317,6 +342,8 @@ export function ContextMenuHost({ services = menuServices }: { services?: MenuSe
     (event: Event) => {
       // Focus goes back to the surface, not the zero-size anchor.
       event.preventDefault();
+      // A menu replaced by another (a second right-click) leaves the focus to its successor.
+      if (contextMenuStore.getState().open !== null) return;
       shown?.element?.focus({ preventScroll: true });
       const run = pending;
       pending = null;
@@ -339,7 +366,8 @@ export function ContextMenuHost({ services = menuServices }: { services?: MenuSe
       items={shown.menu.entries}
       aria-label={shown.menu.name}
       onOpenChange={(next) => {
-        if (!next) closeContextMenu();
+        // A replaced menu closing as it unmounts must not close its successor.
+        if (!next && contextMenuStore.getState().open?.id === shown.id) closeContextMenu();
       }}
       onCloseAutoFocus={onCloseAutoFocus}
     />

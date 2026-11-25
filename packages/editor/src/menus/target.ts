@@ -14,7 +14,10 @@ export interface ResolvedTarget {
 }
 
 /** Pure: what the target becomes and whether the selection changes. */
-export function resolveTarget(target: MenuTarget, adapter: SelectionAdapter | undefined): ResolvedTarget {
+export function resolveTarget(
+  target: MenuTarget,
+  adapter: SelectionAdapter | undefined,
+): ResolvedTarget {
   if (adapter === undefined) return { target, select: null };
   const selected = adapter.current();
   const hit = target.ids;

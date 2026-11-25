@@ -20,9 +20,9 @@ export {
 } from "./commands.ts";
 export { menuServices } from "./defaults.ts";
 export {
-  closeContextMenu,
   ContextMenuHost,
   ContextSurface,
+  closeContextMenu,
   contextMenuStore,
   installContextMenuHandlers,
   isMenuKey,

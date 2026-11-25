@@ -39,7 +39,8 @@ export function plainLabel(raw: string): string {
   for (const ch of noMarkup) {
     const code = ch.codePointAt(0) ?? 0;
     // Control characters, line and paragraph separators become spaces (then one line).
-    const control = code < 0x20 || (code >= 0x7f && code <= 0x9f) || code === 0x2028 || code === 0x2029;
+    const control =
+      code < 0x20 || (code >= 0x7f && code <= 0x9f) || code === 0x2028 || code === 0x2029;
     text += control ? " " : ch;
   }
   text = text.replace(/\s+/g, " ").trim();

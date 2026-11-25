@@ -2,8 +2,9 @@
 // Shortcut hints for menu rows (WP-2H.12): `keysFor(command)` reads today's binding tables
 // (`shortcuts/bindings.ts`) through a map from command to binding. When the keymap engine
 // (WP-2H.05) lands it replaces this body, not its callers.
-import { type Binding, comboLabel, distinctCombos, listBindings } from "../shortcuts/bindings.ts";
+
 import type { MenuPlatform } from "../shell/appMenu.ts";
+import { type Binding, comboLabel, distinctCombos, listBindings } from "../shortcuts/bindings.ts";
 
 /** Command (catalog or UI) to the binding that runs it from the keyboard. */
 const BINDING_OF: Record<string, string> = {

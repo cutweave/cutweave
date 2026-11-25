@@ -4,11 +4,12 @@
 // field is missed. Electron has no default text menu, so without this a field has none. The four
 // clipboard actions are the existing `edit:run` IPC (main runs them on the focused element); Undo
 // is the page's own. Spelling suggestions are out (they need Electron's `context-menu` event).
-import { desktopFromWindow, type EditAction } from "../session/desktop.ts";
-import type { OpenRequest } from "./host.tsx";
-import type { MenuSurfaceDef, MenuContext, ScreenPoint, OpenVia } from "./types.ts";
-import type { UiCommand } from "./commands.ts";
+
 import type { TKey } from "../i18n/index.ts";
+import { desktopFromWindow, type EditAction } from "../session/desktop.ts";
+import type { UiCommand } from "./commands.ts";
+import type { OpenRequest } from "./host.tsx";
+import type { MenuContext, MenuSurfaceDef, OpenVia, ScreenPoint } from "./types.ts";
 
 /** Input types that hold text. Everything else (checkbox, range, button...) has no text menu. */
 const TEXT_INPUT_TYPES = new Set([
@@ -56,7 +57,8 @@ export function fieldState(field: TextField): FieldState {
   const selection = field.ownerDocument.getSelection();
   return {
     readOnly: false,
-    hasSelection: selection !== null && !selection.isCollapsed && field.contains(selection.anchorNode),
+    hasSelection:
+      selection !== null && !selection.isCollapsed && field.contains(selection.anchorNode),
     hasValue: (field.textContent ?? "").length > 0,
   };
 }

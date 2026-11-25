@@ -2,8 +2,9 @@
 // Turns a surface's table, the contributions to it and a resolved target into the entries the
 // design system's `Menu` draws (WP-2H.12). Pure but for the callbacks it wires: nothing here
 // mutates the document; a chosen row runs its command through `services.call`.
-import type { MenuEntry, MenuItem, MenuLeaf } from "@cutweave/ui";
+
 import { needsRequestId } from "@cutweave/protocol";
+import type { MenuEntry, MenuItem, MenuLeaf } from "@cutweave/ui";
 import type { TKey } from "../i18n/index.ts";
 import { guardedCall, type RunContext } from "./commands.ts";
 import { clampOrder, MAX_PLUGIN_ITEMS, ORDER_MAX } from "./registry.ts";

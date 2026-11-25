@@ -206,7 +206,9 @@ function test(node: Node, ctx: ContextValues, source: string): boolean {
     }
     default: {
       const v = value(node, ctx, source);
-      return v === true || (typeof v === "number" && v !== 0) || (typeof v === "string" && v !== "");
+      return (
+        v === true || (typeof v === "number" && v !== 0) || (typeof v === "string" && v !== "")
+      );
     }
   }
 }

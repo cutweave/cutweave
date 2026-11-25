@@ -2,7 +2,7 @@
 // What the framework itself registers (WP-2H.12): how the registry commands the first menus use
 // read in a menu, the text-field menu, and the development-only "Inspect element". Surfaces for
 // the rest of the editor are WP-2H.13's, each in its own table under `menus/surfaces/`.
-import { type CommandInfo } from "./commands.ts";
+import type { CommandInfo } from "./commands.ts";
 import type { MenuServices } from "./services.ts";
 import { FIELD_COMMANDS, FIELD_SURFACE, INSPECT_COMMAND, INSPECT_SURFACE } from "./textField.ts";
 

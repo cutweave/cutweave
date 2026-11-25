@@ -7,8 +7,8 @@ import { readFileSync } from "node:fs";
 import { join } from "node:path";
 import type { MenuEntry, MenuItem, MenuSubmenu } from "@cutweave/ui";
 import { describe, expect, it, vi } from "vitest";
-import en from "../i18n/locales/en.json";
 import { i18n, type TKey } from "../i18n/index.ts";
+import en from "../i18n/locales/en.json";
 import { listBindings } from "../shortcuts/bindings.ts";
 import { buildMenu } from "./build.ts";
 import { COMMAND_INFO, registerBuiltinMenus } from "./builtins.ts";
@@ -40,7 +40,10 @@ function hasKey(key: string): boolean {
     node = (node as Record<string, unknown>)[part];
   }
   if (typeof node === "string") return true;
-  const parent = key.split(".").slice(0, -1).reduce<unknown>((n, p) => (n as never)[p], en);
+  const parent = key
+    .split(".")
+    .slice(0, -1)
+    .reduce<unknown>((n, p) => (n as never)[p], en);
   const leaf = key.split(".").at(-1) ?? "";
   return typeof parent === "object" && parent !== null && `${leaf}_other` in parent;
 }
@@ -91,7 +94,12 @@ describe("a fixture command with menu and when hints", () => {
 
     const open = buildMenu(
       services,
-      { surface: "fixture.surface", ids: ["itm_a"], name: "a.mov", keys: { "track.locked": false } },
+      {
+        surface: "fixture.surface",
+        ids: ["itm_a"],
+        name: "a.mov",
+        keys: { "track.locked": false },
+      },
       () => {},
     );
     expect(open?.name).toBe("Text actions for a.mov");
@@ -148,7 +156,9 @@ describe("a fixture command with menu and when hints", () => {
       ],
     };
     readOnly.surfaces.register(surface);
-    const a = items(buildMenu(readOnly, { surface: "fixture.surface", ids: [] }, () => {})?.entries ?? []);
+    const a = items(
+      buildMenu(readOnly, { surface: "fixture.surface", ids: [] }, () => {})?.entries ?? [],
+    );
     expect(a[0]?.disabled).toBe(true);
     expect(a[0]?.disabledReason).toBe("The project is read-only");
     expect(a[1]?.disabled).toBeUndefined(); // view state is not an edit
@@ -157,7 +167,9 @@ describe("a fixture command with menu and when hints", () => {
       baseKeys: () => ({ "engine.live": false, "project.readOnly": false }),
     });
     noEngine.surfaces.register(surface);
-    const b = items(buildMenu(noEngine, { surface: "fixture.surface", ids: [] }, () => {})?.entries ?? []);
+    const b = items(
+      buildMenu(noEngine, { surface: "fixture.surface", ids: [] }, () => {})?.entries ?? [],
+    );
     expect(b[0]?.disabledReason).toBe("The engine is not running");
   });
 
@@ -170,7 +182,11 @@ describe("a fixture command with menu and when hints", () => {
     const one = buildMenu(services, { surface: "fixture.surface", ids: ["a"] }, () => {});
     expect(items(one?.entries ?? [])[0]?.label).toBe("Delete clip");
     expect(items(one?.entries ?? [])[0]?.variant).toBe("danger");
-    const three = buildMenu(services, { surface: "fixture.surface", ids: ["a", "b", "c"] }, () => {});
+    const three = buildMenu(
+      services,
+      { surface: "fixture.surface", ids: ["a", "b", "c"] },
+      () => {},
+    );
     expect(items(three?.entries ?? [])[0]?.label).toBe("Delete 3 clips");
   });
 
@@ -222,7 +238,8 @@ describe("surface-table walk", () => {
     expect(rows.length).toBeGreaterThan(0);
     for (const { surface, row } of rows) {
       const command = row.command as string;
-      const known = services.commands.get(command) !== undefined || services.ui.get(command) !== undefined;
+      const known =
+        services.commands.get(command) !== undefined || services.ui.get(command) !== undefined;
       expect(known, `${surface}: ${command}`).toBe(true);
     }
   });
@@ -262,7 +279,8 @@ describe("surface-table walk", () => {
     for (const id of hintBindingIds()) expect(bindings.has(id), id).toBe(true);
     // Every hinted command is one a menu can name.
     for (const command of hintedCommands()) {
-      const known = services.commands.get(command) !== undefined || services.ui.get(command) !== undefined;
+      const known =
+        services.commands.get(command) !== undefined || services.ui.get(command) !== undefined;
       expect(known, command).toBe(true);
     }
   });
@@ -281,7 +299,7 @@ describe("surface-table walk", () => {
   });
 
   it("rejects a closure that would apply two mutating commands (one composite is required)", async () => {
-    const real = vi.fn(async () => ({}));
+    const real = vi.fn(async (_name: string, _args?: unknown) => ({}));
     const call = guardedCall(real);
     await call("view.select", { selection: [] }); // view state is free
     await call("timeline.get"); // reads are free
@@ -291,7 +309,7 @@ describe("surface-table walk", () => {
   });
 
   it("applies the guard to a UI command's run (a choice is one undo step)", async () => {
-    const real = vi.fn(async () => ({}));
+    const real = vi.fn(async (_name: string, _args?: unknown) => ({}));
     const svc = fixtureServices({ call: real });
     svc.ui.register({
       id: "fixture.two_edits",
@@ -386,8 +404,11 @@ describe("target rules", () => {
     });
     const open = (trackId: string) =>
       items(
-        buildMenu(services, { surface: "fixture.surface", ids: ["a"], place: { trackId } }, () => {})
-          ?.entries ?? [],
+        buildMenu(
+          services,
+          { surface: "fixture.surface", ids: ["a"], place: { trackId } },
+          () => {},
+        )?.entries ?? [],
       )[0];
     expect(open("trk_free")?.disabled).toBeUndefined();
     expect(open("trk_locked")?.disabled).toBe(true);
@@ -531,7 +552,8 @@ describe("row kinds", () => {
         { command: "edit.undo", group: "b", order: 0 },
       ],
     });
-    const entries = buildMenu(services, { surface: "fixture.surface", ids: [] }, () => {})?.entries ?? [];
+    const entries =
+      buildMenu(services, { surface: "fixture.surface", ids: [] }, () => {})?.entries ?? [];
     expect(entries.map((e) => e.kind ?? "item")).toEqual(["item", "separator", "item"]);
     expect((entries[0] as MenuItem).checked).toBe(true);
   });
