@@ -306,13 +306,16 @@ impl Command for SplitItem {
   - An undo is a *new* transaction that applies the inverse patch to the current document, so it carries past later edits to unrelated fields.
   - It is refused with `Conflict{history_target_modified}`, naming the later changes and their actors, when any targeted field changed since, or when the result would violate a model invariant.
   - `edit.undo{actor}` / `edit.redo{actor}` take `*` for "anyone's latest". A commit is refused when later commits invalidated the transaction.
-  - In P1, checkpoints are in memory only; journal persistence comes later.
 - **Soft-lock (decided in WP-1B.09):**
   - `gesture` and `proposal` transactions lock every item they touch, including items they create and changes above them (for example removing the item's track). `batch` transactions lock nothing, but their commit waits.
   - Another actor's change to a locked item fails with `Conflict{item_in_gesture, retry_after_ms}`. The hint is the time left until the gesture's idle deadline, at least 250 ms; proposals give none. The holder's own actor is not blocked.
   - `edit.locks` lists open transactions with their locked items and deadlines. Events: `tx.opened`, `tx.locked`, `tx.closed`.
   - A closed connection ID can never open transactions again, so the API server (WP-1I.02) must not reuse connection IDs. A `holder` field on the error would be a contract change (ADR).
 - **Checkpoints:** `edit.checkpoint{name}` and `edit.restore{checkpoint}` (cheap, thanks to persistent snapshots) let agents try something and roll back.
+- **Checkpoints (decided in WP-2I.03):**
+  - `edit.checkpoint{name?, note?}` keeps an O(1) snapshot of the committed document; at most 50 are kept, 20 of them named, least recently used (made or restored) first out. Reusing a name moves it. Ids (`cp_<n>`) are never reused, also across restarts. `edit.list_checkpoints` lists them and `edit.delete_checkpoint` deletes one. Nothing is created automatically except one per `cutweave_execute{checkpoint: true}` call (§14).
+  - `edit.restore{checkpoint, force?}` commits the diff to the checkpointed document as one new undoable transaction by the caller (history stays linear). Without `force` it refuses to revert other actors' changes or changes the history no longer holds, and reports `reverted[{actor, txs}]` and `reverted_unknown`. Other connections' open transactions are rebased; a restore that would overwrite one, or touch an item in another actor's gesture, is refused with `Conflict`.
+  - **Persistence:** every change of the checkpoints is journaled as a marker before it is acknowledged (§17). Checkpoints survive a crash, any number of saves and reopening the project. After a restart the history holds only the transactions since the last save, so restoring an older checkpoint needs `force`. A checkpoint the journal cannot rebuild is gone (`NotFound`).
 - **Future collaboration:** patch ops are designed to map onto a CRDT (Loro) later; no CRDT in v1 *(ADR-005)*.
 
 ### 5.3 Generated artifacts (build step, CI-enforced)
@@ -659,7 +662,7 @@ flowchart LR
   - **~30 core tools** are always listed, with rich annotations (`readOnly`, `destructive`, `idempotent`). Examples: `project_open`, `project_info`, `media_import`, `media_list`, `timeline_get`, `timeline_insert`, `clip_split`, `clip_trim`, `clip_move`, `item_delete`, `item_set_props`, `text_add`, `caption_generate`, `caption_style`, `effect_add`, `transition_add`, `keyframe_set`, `audio_set`, `render_frame`, `render_contact_sheet`, `export_start`, `job_status`, `job_wait`, `edit_undo`, `edit_checkpoint`, `ai_generate`, `ai_models`, `composition_create`.
   - **4 generic tools** cover the long tail:
     - `cutweave_search_commands(query)` and `cutweave_describe_command(name)` return the JSON Schema.
-    - `cutweave_execute(steps[], dry_run?, expected_rev?)` runs a transactional batch with `$ref` between steps.
+    - `cutweave_execute(steps[], dry_run?, expected_rev?, checkpoint?)` runs a transactional batch with `$ref` between steps. `checkpoint: true` saves one checkpoint before it and returns its id (WP-2I.03).
     - `cutweave_query(name, args)`.
 
     Every registered command, including plugin commands, is reachable this way.
@@ -805,6 +808,7 @@ MyVideo/                    ← project folder (user-chosen location)
   - Segments are `.cutweave/journal/<base-rev>.jnl`. Each record is length + JSON + CRC-32. The header names the saved document it continues (rev and SHA-256), then the requests carried over the save, then one record per committed transaction: redacted steps, patch, and the deterministic ID-generator state.
   - Every record reaches the OS before the ack, so a killed engine loses no acknowledged op. A background thread fsyncs within 50 ms, which bounds the power-loss window to about 50 ms.
   - Recovery drops a torn last record, restores undo history and the 10-minute dedup window, and resumes ID generation. `#[secret]` params are redacted again at the sink.
+  - **Checkpoints (format 2, WP-2I.03):** a `checkpoint` record follows the transaction it captured: the checkpoint made (metadata only), the ids removed, the highest id issued and the request (for dedup). Recovery rebuilds a checkpoint as the replayed document at its revision. A save carries the checkpoints made before it into the new segment as patches from the saved document, so they survive saves and reopening. Records of unknown types are skipped.
   - `project.recover` / `project.discard_recovery` are `ProjectStore` methods; the engine root (WP-1I.04) registers them as commands.
 - Media is referenced by absolute path, relative path and content hash. Relinking searches the moved folder and matches by hash. **Collect & archive** copies all media into the folder for portability.
 - The global caches (proxies, thumbnails, waveforms, frame index) live outside the project and can be rebuilt.
