@@ -5,7 +5,7 @@
 // project as last saved.
 import { readFileSync } from "node:fs";
 import type { ElectronApplication, Page } from "@playwright/test";
-import { expect, killTree, quitApp, test, unsavedPrompt } from "../fixtures.ts";
+import { expect, killTree, quitApp, test } from "../fixtures.ts";
 import {
   chooseMenu,
   clickClip,
@@ -166,9 +166,13 @@ test.describe("F12 app crash and recovery", () => {
           .toBe(1);
 
         // Quitting does not ask to save again: the editor's prompt never shows and the app exits.
+        const child = second.app.process();
+        const exited = new Promise<void>((resolve) => {
+          if (child.exitCode !== null || child.signalCode !== null) resolve();
+          else child.once("exit", () => resolve());
+        });
         await chooseMenu(second.page, second.app, "File", "Exit");
-        await expect.poll(() => second.app.process().exitCode, { timeout: 30_000 }).not.toBeNull();
-        await expect(unsavedPrompt(second.page).dialog).toBeHidden();
+        await exited;
       } finally {
         await quitApp(second.app, second.page, "discard", second.mainLog);
         await second.close();
