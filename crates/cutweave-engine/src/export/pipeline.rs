@@ -16,7 +16,10 @@
 //!   `rasterize`, with the backend's graph options. On the same adapter the frame handed to the
 //!   encoder is bit-identical to `render.frame` at that time (the "preview matches export"
 //!   guarantee). The [`SharedBackend`] lock is the GPU budget shared with preview and agent
-//!   frames: it is held for one frame at a time.
+//!   frames: it is held for one frame at a time. The preview comes first (WP-2G.03a): before
+//!   each frame the render thread asks the services' [`ExportPacer`], which in the full engine
+//!   waits [`EXPORT_YIELD`] while the preview is serving pictures, so an export never takes the
+//!   GPU from playback or scrubbing (it slows down instead).
 //! - **Decode-ahead.** Decoding and GPU rendering run on threads of their own, each up to
 //!   [`PIPELINE_DEPTH`] frames ahead of the next stage, so an export runs at the speed of its
 //!   slowest stage rather than their sum; clips decode sequentially
@@ -37,19 +40,22 @@
 //!   [`CancelCheck`], on every push, muxed packet and 32 KiB written (so `finish` stops too).
 //!   A cancelled or failed export removes its partial file and leaves an existing file alone;
 //!   a cancel is never retried.
+//! - **Progress** ([`JobProgress`]): the done fraction (the encoded length over the range),
+//!   frames handed to the encoder, speed, time left and bytes written, reported when the
+//!   fraction moved by 1 % or [`PROGRESS_INTERVAL`] passed (4 Hz for the queue panel).
 //! - **Determinism.** Output depends only on the snapshot, the plan, the adapter and the
 //!   encoder settings; in software (`hw: "off"`) with one encoder thread
 //!   ([`ExportServices::with_encoder_threads`]) two exports of the same snapshot decode to
 //!   identical frames. The only clock here measures the speed shown in progress messages.
 
 use std::fmt::Write as _;
-use std::sync::atomic::{AtomicI64, Ordering};
+use std::sync::atomic::{AtomicI64, AtomicU64, Ordering};
 use std::sync::mpsc::{Receiver, SyncSender, sync_channel};
 use std::sync::{Arc, PoisonError};
-use std::time::Instant;
+use std::time::{Duration as StdDuration, Instant};
 
 use cutweave_audio::{Mixdown, mixdown};
-use cutweave_jobs::{CancelToken, JobError};
+use cutweave_jobs::{CancelToken, JobError, JobProgress};
 use cutweave_media::{
     AudioChunk, AudioEncodeSpec, CancelCheck, EncodeSpec, EncodeSummary, Encoder, HwEncode,
     MediaBackend, MediaError, PixelFormat, Plane, ProgressSink, RateControl, SpeedPreset,
@@ -72,6 +78,18 @@ pub const PIPELINE_DEPTH: usize = 3;
 pub const EXPORT_SAMPLE_RATE: SampleRate = SampleRate::HZ_48_000;
 /// Channels of exported audio.
 pub const EXPORT_CHANNELS: u16 = 2;
+/// Longest time between two progress reports while frames are pushed.
+pub const PROGRESS_INTERVAL: StdDuration = StdDuration::from_millis(250);
+/// How long the export waits before a frame while the preview is busy (the full engine's
+/// [`ExportPacer`]): at most about 50 exported frames a second during playback or scrubbing.
+pub const EXPORT_YIELD: StdDuration = StdDuration::from_millis(20);
+
+/// Paces an export's GPU work behind the preview (arch §7: preview above export).
+pub trait ExportPacer: Send + Sync {
+    /// Called by the render thread before each frame it renders; may wait to leave the GPU to
+    /// the preview, returning early once `cancel` is cancelled.
+    fn before_frame(&self, cancel: &CancelToken);
+}
 
 /// The rate control of each quality: one value on the x264 CRF scale (`high` is the encoder
 /// default, 20). `cutweave-media` maps it onto every encoder's own constant-quality mode with
@@ -121,6 +139,8 @@ pub struct ExportServices {
     pub speed: SpeedPreset,
     /// Sees every frame before it is encoded (tests).
     pub frame_tap: Option<FrameTap>,
+    /// Waits before each frame while the preview needs the GPU (WP-2G.03a).
+    pub pacer: Option<Arc<dyn ExportPacer>>,
 }
 
 impl std::fmt::Debug for ExportServices {
@@ -129,6 +149,7 @@ impl std::fmt::Debug for ExportServices {
             .field("encoder_threads", &self.encoder_threads)
             .field("speed", &self.speed)
             .field("frame_tap", &self.frame_tap.is_some())
+            .field("pacer", &self.pacer.is_some())
             .finish_non_exhaustive()
     }
 }
@@ -148,6 +169,7 @@ impl ExportServices {
             encoder_threads: 0,
             speed: SpeedPreset::default(),
             frame_tap: None,
+            pacer: None,
         }
     }
 
@@ -169,6 +191,13 @@ impl ExportServices {
     #[must_use]
     pub fn with_frame_tap(mut self, tap: FrameTap) -> ExportServices {
         self.frame_tap = Some(tap);
+        self
+    }
+
+    /// The same services, pacing their GPU work with `pacer`.
+    #[must_use]
+    pub fn with_pacer(mut self, pacer: Arc<dyn ExportPacer>) -> ExportServices {
+        self.pacer = Some(pacer);
         self
     }
 }
@@ -342,6 +371,7 @@ struct RenderInputs<'a> {
     source: &'a (dyn FrameSource + Send + Sync),
     options: GraphOptions,
     cancel: &'a CancelToken,
+    pacer: Option<&'a dyn ExportPacer>,
 }
 
 impl RenderInputs<'_> {
@@ -388,6 +418,12 @@ impl RenderInputs<'_> {
         while let Ok(prepared) = input.recv() {
             if self.cancel.is_cancelled() {
                 return;
+            }
+            if let Some(pacer) = self.pacer {
+                pacer.before_frame(self.cancel);
+                if self.cancel.is_cancelled() {
+                    return;
+                }
             }
             let picture = prepared.and_then(|p| {
                 rasterize_frame(self.backend, &p.scene, &p.graph).map(|(image, missing)| Picture {
@@ -480,12 +516,14 @@ impl AudioFeed {
 }
 
 /// The encode spec of `plan`: H.264 from RGBA8 frames + AAC with the plan's encoder policy and
-/// quality, cancelled by `cancel`, reporting the encoded length into `written` (flicks).
+/// quality, cancelled by `cancel`, reporting the encoded length into `written` (flicks) and the
+/// file size into `bytes`.
 fn encode_spec(
     plan: &ExportPlan,
     services: &ExportServices,
     cancel: &CancelToken,
     written: &Arc<AtomicI64>,
+    bytes: &Arc<AtomicU64>,
 ) -> EncodeSpec {
     let mut video =
         VideoEncodeSpec::h264(plan.width, plan.height, plan.frame_rate, PixelFormat::Rgba8);
@@ -499,6 +537,7 @@ fn encode_spec(
     video.threads = services.encoder_threads;
     let token = cancel.clone();
     let sink = Arc::clone(written);
+    let size = Arc::clone(bytes);
     EncodeSpec::new(&plan.path)
         .with_hw(hw_encode(&plan.hw))
         .with_video(video)
@@ -506,6 +545,7 @@ fn encode_spec(
         .with_cancel(CancelCheck::new(move || token.is_cancelled()))
         .with_progress(ProgressSink::new(move |p| {
             sink.store(p.encoded.flicks(), Ordering::Relaxed);
+            size.store(p.bytes, Ordering::Relaxed);
         }))
 }
 
@@ -516,28 +556,54 @@ fn clock(secs: f64) -> String {
     format!("{}:{:02}", s / 60, s % 60)
 }
 
-/// The progress fraction and status line of one attempt while frames are pushed.
+/// Receives an export's progress (see the module docs).
+pub type ProgressReport<'a> = &'a dyn Fn(JobProgress);
+
+/// The progress of one attempt while frames are pushed.
 struct Progress<'a> {
-    report: &'a dyn Fn(f64, &str),
+    report: ProgressReport<'a>,
     started: Instant,
     total: u32,
     duration: f64,
     written: Arc<AtomicI64>,
+    bytes: Arc<AtomicU64>,
     last: f64,
+    last_at: Instant,
     /// Appended to every status line (the retry after a hardware failure).
     note: String,
 }
 
 impl Progress<'_> {
-    /// Reports after frame `pushed` when the encoded fraction moved by at least 1 %.
+    /// A report of `fraction` with `message` after `frame` frames.
+    fn send(&self, fraction: f64, message: String, frame: u32, speed: Option<(f64, f64)>) {
+        let (fps, eta) = speed.unzip();
+        #[allow(clippy::cast_possible_truncation, clippy::cast_sign_loss)]
+        let eta_ms = eta.map(|secs: f64| (secs.max(0.0) * 1000.0).round() as u64);
+        (self.report)(JobProgress {
+            fraction,
+            message: Some(message),
+            frame: Some(u64::from(frame)),
+            frames: Some(u64::from(self.total)),
+            fps,
+            eta_ms,
+            bytes: Some(self.bytes.load(Ordering::Relaxed)),
+        });
+    }
+
+    /// Reports after frame `pushed` when the encoded fraction moved by at least 1 % or
+    /// [`PROGRESS_INTERVAL`] passed.
     #[allow(clippy::cast_precision_loss)]
     fn frame(&mut self, pushed: u32) {
         let done = self.written.load(Ordering::Relaxed) as f64 / self.duration;
         let fraction = done.clamp(0.0, 0.99);
-        if fraction - self.last < 0.01 && pushed != self.total {
+        if fraction - self.last < 0.01
+            && pushed != self.total
+            && self.last_at.elapsed() < PROGRESS_INTERVAL
+        {
             return;
         }
         self.last = fraction;
+        self.last_at = Instant::now();
         let elapsed = self.started.elapsed().as_secs_f64();
         let fps = if elapsed > 0.0 {
             f64::from(pushed) / elapsed
@@ -555,7 +621,7 @@ impl Progress<'_> {
             clock(eta),
             self.note
         );
-        (self.report)(fraction, &msg);
+        self.send(fraction, msg, pushed, Some((fps, eta)));
     }
 }
 
@@ -646,12 +712,13 @@ fn push_everything(
     plan: &ExportPlan,
     services: &ExportServices,
     cancel: &CancelToken,
-    report: &dyn Fn(f64, &str),
-    written: &Arc<AtomicI64>,
+    report: ProgressReport<'_>,
+    (written, bytes): (&Arc<AtomicI64>, &Arc<AtomicU64>),
     note: &str,
     sink: &mut dyn Encoder,
 ) -> Result<Pushed, Stop> {
     written.store(0, Ordering::Relaxed);
+    bytes.store(0, Ordering::Relaxed);
     let source = services.sources.video(&plan.snapshot.doc);
     let inputs = RenderInputs {
         plan,
@@ -663,6 +730,7 @@ fn push_everything(
             .unwrap_or_else(PoisonError::into_inner)
             .graph_options(),
         cancel,
+        pacer: services.pacer.as_deref(),
     };
     #[allow(clippy::cast_precision_loss)]
     let mut side = EncodeSide {
@@ -676,11 +744,14 @@ fn push_everything(
             total: plan.frames,
             duration: (plan.duration.flicks() as f64).max(1.0),
             written: Arc::clone(written),
+            bytes: Arc::clone(bytes),
             last: -1.0,
+            last_at: Instant::now(),
             note: note.to_owned(),
         },
     };
-    report(0.0, &format!("frame 0 of {}{note}", plan.frames));
+    side.progress
+        .send(0.0, format!("frame 0 of {}{note}", plan.frames), 0, None);
     let missing = std::thread::scope(|scope| {
         let (prepared_tx, prepared_rx) = sync_channel(PIPELINE_DEPTH);
         let (picture_tx, picture_rx) = sync_channel(PIPELINE_DEPTH);
@@ -703,7 +774,8 @@ fn push_everything(
         side.run(&picture_rx, sink)
     })?;
     side.audio.push_until(i64::MAX, sink)?;
-    report(0.99, &format!("finishing the file{note}"));
+    side.progress
+        .send(0.99, format!("finishing the file{note}"), plan.frames, None);
     Ok(Pushed {
         missing,
         audio_source_errors: side.audio.mix.source_errors(),
@@ -711,14 +783,14 @@ fn push_everything(
 }
 
 /// Runs the export of `plan` (see the module docs): renders, mixes and encodes it into
-/// `plan.path`, reporting `(fraction, status line)` to `report`, until done or `cancel`.
-/// After a mid-stream hardware-encoder failure (`hw: auto`) it starts over in software from
-/// frame 0, reporting from zero again.
+/// `plan.path`, reporting its progress to `report`, until done or `cancel`. After a mid-stream
+/// hardware-encoder failure (`hw: auto`) it starts over in software from frame 0, reporting
+/// from zero again.
 pub fn run_export(
     plan: &ExportPlan,
     services: &ExportServices,
     cancel: &CancelToken,
-    report: &dyn Fn(f64, &str),
+    report: ProgressReport<'_>,
 ) -> Result<ExportSummary, ExportError> {
     let started = Instant::now();
     if cancel.is_cancelled() {
@@ -732,7 +804,8 @@ pub fn run_export(
         )));
     }
     let written = Arc::new(AtomicI64::new(0));
-    let spec = encode_spec(plan, services, cancel, &written);
+    let bytes = Arc::new(AtomicU64::new(0));
+    let spec = encode_spec(plan, services, cancel, &written, &bytes);
     tracing::info!(
         path = %plan.path.display(),
         frames = plan.frames,
@@ -762,7 +835,15 @@ pub fn run_export(
             }
         };
         encoders.push(encoder);
-        match push_everything(plan, services, cancel, report, &written, &note, sink) {
+        match push_everything(
+            plan,
+            services,
+            cancel,
+            report,
+            (&written, &bytes),
+            &note,
+            sink,
+        ) {
             Ok(p) => {
                 pushed = Some(p);
                 Ok(())

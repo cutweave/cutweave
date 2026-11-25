@@ -272,6 +272,17 @@ impl Session {
         self.project.as_ref().map(|p| p.layout.root.as_path())
     }
 
+    /// Where the export queue of this session is kept (WP-2G.03a): the project's `.cutweave`
+    /// folder, unless the project is read-only (or there is none: an untitled document's queue
+    /// lives in memory).
+    pub(crate) fn export_meta_dir(&self) -> Option<PathBuf> {
+        let project = self.project.as_ref()?;
+        if matches!(project.phase, Phase::ReadOnly(_)) {
+            return None;
+        }
+        Some(project.layout.meta_dir())
+    }
+
     /// Whether `path` (a folder or `.cutweave` file) is the open project.
     pub(crate) fn is_project(&self, path: &Path) -> bool {
         let Some(p) = &self.project else {

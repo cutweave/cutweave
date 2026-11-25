@@ -17,9 +17,10 @@
 //!   was running when the engine stopped or was killed is queued again from the beginning (its
 //!   runner cleans up the partial output). Nothing starts before [`start`](ExportQueue::start).
 //! - **Switching stores** (another project opened): the current jobs either move into the new
-//!   store and keep running (`Attach::Carry`, an untitled project's queue) or stay in the old
-//!   one (`Attach::Suspend`): its running jobs stop there and start again from the beginning
-//!   when that project is opened again.
+//!   store and keep running (`Attach::Carry`: an untitled project's queue, or a project saved
+//!   under another name; the old store forgets them) or stay in the old one
+//!   (`Attach::Suspend`): its running jobs stop there and start again from the beginning when
+//!   that project is opened again.
 //! - **Shutdown** ([`shutdown`](ExportQueue::shutdown)): the queue stops writing, so the jobs the
 //!   engine then cancels keep their stored state and run again next time.
 //!
@@ -45,6 +46,9 @@ use crate::{
     manager::{JobCtx, JobManager, Submit, SubmitError},
     types::{JobError, JobInfo, JobKind, JobProgress, JobSpec, JobState},
 };
+
+/// How long [`ExportQueue::attach`] waits for the suspended jobs to stop.
+pub const SUSPEND_WAIT: std::time::Duration = std::time::Duration::from_secs(2);
 
 /// Encodes a queue's jobs for its store.
 pub trait TaskCodec<T>: Send + Sync {
@@ -665,7 +669,17 @@ impl<T: Send + Sync + 'static> ExportQueue<T> {
                 return Vec::new();
             }
             let carried: Vec<Entry<T>> = match mode {
-                Attach::Carry => std::mem::take(&mut inner.entries),
+                Attach::Carry => {
+                    // They move: the old store (a project saved under another name) forgets
+                    // them.
+                    let carried = std::mem::take(&mut inner.entries);
+                    for e in &carried {
+                        if let Err(err) = inner.store.remove(e.id) {
+                            tracing::warn!(job = %e.id, error = %err, "cannot move an export out of the old queue");
+                        }
+                    }
+                    carried
+                }
                 Attach::Suspend => {
                     stop = inner
                         .entries
@@ -697,8 +711,13 @@ impl<T: Send + Sync + 'static> ExportQueue<T> {
             interrupted
         };
         // Outside the lock: their callbacks belong to the old generation and are ignored.
+        for id in &stop {
+            let _ = self.shared.jobs.cancel(*id);
+        }
+        // A running export stops within a second; wait for that (briefly), so the same job
+        // can be queued again if its store is attached again right away.
         for id in stop {
-            let _ = self.shared.jobs.cancel(id);
+            let _ = self.shared.jobs.wait(id, SUSPEND_WAIT);
         }
         interrupted
     }

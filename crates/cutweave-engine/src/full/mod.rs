@@ -1051,11 +1051,16 @@ impl Subsystems for FullSubsystems {
         let started = lock(&self.inner.started);
         let started = started.as_ref()?;
         let backend = self.inner.config.media.as_ref()?;
-        Some(ExportServices::new(
+        let services = ExportServices::new(
             Arc::clone(backend),
             Arc::new(DecoderSources::new(Arc::clone(backend))),
             Arc::clone(&started.renderer),
-        ))
+        );
+        // The preview comes first: exports wait a little per frame while it is busy.
+        Some(match &started.proxies {
+            Some(proxies) => services.with_pacer(proxies.activity()),
+            None => services,
+        })
     }
 
     fn on_document(&self, doc: &DocHandle, project: Option<&ProjectLayout>) {

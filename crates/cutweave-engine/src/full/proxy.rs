@@ -19,7 +19,8 @@
 //!   blocking pool, cancelled and joined with it.
 //! - **Yielding.** A generation takes its next frame only when the preview has served no
 //!   picture for [`IDLE_BEFORE_PROXIES`] (playback, scrub, Source view; issue 153); finished
-//!   parts stay, so a pause loses nothing.
+//!   parts stay, so a pause loses nothing. Exports yield too, less: while the preview is busy
+//!   each exported frame waits [`EXPORT_YIELD`](crate::export::EXPORT_YIELD) (WP-2G.03a).
 //! - **Policy.** [`DEFAULT_POLICY`] (`auto`) for every project until ADR-0027 stores one in
 //!   the project.
 
@@ -117,6 +118,16 @@ impl Activity {
                 let idle = u64::try_from(self.idle_after.as_millis()).unwrap_or(u64::MAX);
                 self.clock.now_ms().saturating_add(1).saturating_sub(t) < idle
             }
+        }
+    }
+}
+
+/// Exports give the preview the GPU (WP-2G.03a): while it is busy, each exported frame waits
+/// [`EXPORT_YIELD`](crate::export::EXPORT_YIELD) first.
+impl crate::export::ExportPacer for Activity {
+    fn before_frame(&self, cancel: &cutweave_jobs::CancelToken) {
+        if self.busy() && !cancel.is_cancelled() {
+            std::thread::sleep(crate::export::EXPORT_YIELD);
         }
     }
 }
@@ -250,6 +261,11 @@ impl FullProxies {
     /// Records that the preview is serving a picture: proxy jobs wait for it to go quiet.
     pub(crate) fn note_preview_activity(&self) {
         self.activity.touch();
+    }
+
+    /// The preview's activity, which also paces exports.
+    pub(crate) fn activity(&self) -> Arc<Activity> {
+        Arc::clone(&self.activity)
     }
 
     /// The store.
