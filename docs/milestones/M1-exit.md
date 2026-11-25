@@ -106,5 +106,6 @@ None of these loses an edit or breaks a criterion; each is for a Phase 2 work pa
 
 - Accepted on the Windows evidence above (R34); macOS and Linux run the same `just m1-gate` when those machines exist.
 - CI evidence: one manual-dispatch run of the M1 gate on `windows-latest` (approved for this one run), linked here when it finishes; the local gates remain the record otherwise. The workflow exists as `.github/workflows/m1-gate.yml`, for that one recorded run (link: to be added by the integrator).
+  - Not dispatched yet (integrator, 2026-11-25): the runner needs an FFmpeg bundle, and the repo has no "FFmpeg bundle" artifact yet (WP-0A.06, #6); its `windows-latest` machine also has no GPU for the flows' Vulkan backend. Dispatching now would spend the one approved run on a known failure. Next step for the owner: build the bundle once (#6), or switch the workflow to the BtbN download with software rendering, then dispatch.
 - Demo video: recorded automatically from the M1 UI test (Playwright video), not by hand. `just m1-demo` makes it (`target/m1/demo/m1-demo.webm`).
 - Findings: #145, #147 and #148 are fixed as P1 bugs; #146 (MCP output schemas) is fixed early in Phase 2 with an ADR.
