@@ -515,7 +515,7 @@ impl PendingJournal {
                         .map(|s| s.path.clone())
                         .collect(),
                     next_generation,
-                    checkpoints: plan.checkpoints,
+                    checkpoints: Box::new(plan.checkpoints),
                 }
             }
         };

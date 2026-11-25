@@ -118,7 +118,7 @@ async fn checkpoints_are_catalog_commands_reachable_through_the_generic_tools() 
             json!({ "steps": [{ "cmd": "edit.delete_checkpoint", "args": { "checkpoint": "safe" } }] }),
         )
         .await;
-    assert!(checkpoints(&client).await.is_empty());
+    assert_eq!(checkpoints(&client).await.len(), 0);
     let missing = client
         .err(
             "cutweave_execute",

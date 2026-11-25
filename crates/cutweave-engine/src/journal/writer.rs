@@ -187,8 +187,18 @@ pub(crate) enum Start {
         retained: Vec<PathBuf>,
         next_generation: u64,
         /// The checkpoints the recovery rebuilt (to carry over the next save).
-        checkpoints: CheckpointLedger,
+        checkpoints: Box<CheckpointLedger>,
     },
+}
+
+impl Start {
+    /// The checkpoints to start with (none for a new segment).
+    fn take_checkpoints(&mut self) -> CheckpointLedger {
+        match self {
+            Start::Fresh { .. } => CheckpointLedger::new(),
+            Start::Resume { checkpoints, .. } => std::mem::take(&mut **checkpoints),
+        }
+    }
 }
 
 /// The append-only command journal of one open project (WP-1C.02; arch §5.1, §17).
@@ -442,6 +452,32 @@ fn carried_patches(
     }
 }
 
+/// What a new segment over `base_rev` (the document `base`, when given) carries over: the
+/// remembered requests and the checkpoints made at or before `base_rev` (their patches in
+/// `patches`, completed here for ones made since they were computed).
+fn carry_over(
+    st: &State,
+    base_rev: Rev,
+    base: Option<&Project>,
+    patches: &mut BTreeMap<CheckpointId, Option<Patch>>,
+) -> Carry {
+    match base {
+        Some(base) => carried_patches(&st.checkpoints, base_rev, base, patches),
+        None if st.checkpoints.iter().any(|e| e.info.rev <= base_rev) => {
+            tracing::warn!(
+                %base_rev,
+                "journal rotated without the saved document: older checkpoints are not carried over"
+            );
+        }
+        None => {}
+    }
+    Carry {
+        requests: st.requests.iter().cloned().collect(),
+        checkpoints: carried(&st.checkpoints, base_rev, patches),
+        checkpoints_issued: st.checkpoints.issued(),
+    }
+}
+
 /// The checkpoints of `ledger` to carry into a segment over `base_rev`, from `patches`.
 fn carried(
     ledger: &CheckpointLedger,
@@ -542,11 +578,12 @@ impl Journal {
     /// Starts appending (see [`Start`]).
     pub(crate) fn start(
         dir: &Path,
-        start: Start,
+        mut start: Start,
         config: JournalConfig,
     ) -> Result<Journal, JournalError> {
         let now = config.clock.now();
-        let (seg, chain, retained, next_generation, last_rev, requests, checkpoints) = match start {
+        let checkpoints = start.take_checkpoints();
+        let (seg, chain, retained, next_generation, last_rev, requests) = match start {
             Start::Fresh {
                 base_rev,
                 doc_sha256,
@@ -575,7 +612,6 @@ impl Journal {
                     generation + 1,
                     base_rev,
                     requests,
-                    CheckpointLedger::new(),
                 )
             }
             Start::Resume {
@@ -588,18 +624,10 @@ impl Journal {
                 chain,
                 retained,
                 next_generation,
-                checkpoints,
+                ..
             } => {
                 let seg = resume_segment(path, header, valid_len, revs)?;
-                (
-                    seg,
-                    chain,
-                    retained,
-                    next_generation,
-                    last_rev,
-                    requests,
-                    checkpoints,
-                )
+                (seg, chain, retained, next_generation, last_rev, requests)
             }
         };
         let mut seg = seg;
@@ -855,22 +883,7 @@ impl Journal {
             ids: shared.ids.as_ref().map(IdTracker::state),
         };
         st.remember(std::iter::empty(), now, shared.window);
-        let requests: Vec<DedupRecord> = st.requests.iter().cloned().collect();
-        match base {
-            Some(base) => carried_patches(&st.checkpoints, base_rev, base, &mut patches),
-            None if st.checkpoints.iter().any(|e| e.info.rev <= base_rev) => {
-                tracing::warn!(
-                    %base_rev,
-                    "journal rotated without the saved document: older checkpoints are not carried over"
-                );
-            }
-            None => {}
-        }
-        let carry = Carry {
-            requests,
-            checkpoints: carried(&st.checkpoints, base_rev, &patches),
-            checkpoints_issued: st.checkpoints.issued(),
-        };
+        let carry = carry_over(&st, base_rev, base, &mut patches);
         let mut bytes = segment_prefix(&header, carry)?;
         let prefix = bytes.len() as u64;
         let first = st.seg.revs.partition_point(|(rev, _)| *rev <= base_rev);

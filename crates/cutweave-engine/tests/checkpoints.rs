@@ -231,7 +231,7 @@ fn markers_are_journal_entries_and_a_resent_request_is_deduplicated() {
         "edit.checkpoint",
         json!({"name": "once", "note": "a note"}),
     )
-    .with_request_id(cutweave_commands::RequestId::from_u128(0xC0FFEE));
+    .with_request_id(cutweave_commands::RequestId::from_u128(0x00C0_FFEE));
     let first = h.submit(request.clone()).wait().unwrap();
     // A request without an id draws one from the deterministic stream.
     let unnamed = ok(&h, &ui(), "edit.checkpoint", json!({})).output;

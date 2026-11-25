@@ -435,21 +435,20 @@ impl CheckpointLedger {
         if let Some(info) = created {
             self.seen.insert(info.checkpoint);
             self.issued = self.issued.max(info.checkpoint.get());
-            match doc {
-                Some(doc) => {
-                    self.entries.insert(
-                        info.checkpoint,
-                        LedgerEntry {
-                            info: info.clone(),
-                            doc: doc.clone(),
-                        },
-                    );
-                }
-                None => tracing::warn!(
+            if let Some(doc) = doc {
+                self.entries.insert(
+                    info.checkpoint,
+                    LedgerEntry {
+                        info: info.clone(),
+                        doc: doc.clone(),
+                    },
+                );
+            } else {
+                tracing::warn!(
                     checkpoint = %info.checkpoint,
                     rev = %info.rev,
                     "a checkpoint's document cannot be rebuilt from the journal; it is dropped"
-                ),
+                );
             }
         }
         true

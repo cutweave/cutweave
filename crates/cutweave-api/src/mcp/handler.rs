@@ -279,9 +279,9 @@ impl CutweaveMcp {
                     format!("{}: done; document at rev {rev}", batch.steps[0].name)
                 };
                 if let Some(cp) = out.get("checkpoint").and_then(Value::as_str) {
-                    summary.push_str(&format!(
-                        "; checkpoint {cp} saved before it (edit.restore reverts to it)"
-                    ));
+                    summary.push_str("; checkpoint ");
+                    summary.push_str(cp);
+                    summary.push_str(" saved before it (edit.restore reverts to it)");
                 }
                 results::success(summary, out, None)
             }

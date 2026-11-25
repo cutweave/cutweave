@@ -191,14 +191,14 @@ fn every_change_is_journaled_as_a_marker_before_it_takes_effect() {
     );
     assert_eq!(deleted["checkpoint"], json!("cp_2"));
     assert_eq!(deleted["name"], json!("a"));
-    assert!(names(&mut s).is_empty());
+    assert_eq!(names(&mut s).len(), 0);
 
     let markers = journal.markers();
     assert_eq!(markers.len(), 3);
     let first = &markers[0];
     assert_eq!(first.rev, Rev(1));
     assert_eq!(first.created.as_ref().unwrap().note.as_deref(), Some("n"));
-    assert!(first.removed.is_empty());
+    assert_eq!(first.removed.len(), 0);
     assert_eq!(first.issued, 1);
     // The request rides along, with the result a resend gets.
     assert_eq!(first.steps[0].command, "edit.checkpoint");
@@ -270,7 +270,7 @@ fn deleting_an_unknown_checkpoint_is_not_found() {
     )
     .unwrap_err();
     assert_eq!(err.code(), "not_found");
-    assert!(journal.markers().is_empty());
+    assert_eq!(journal.markers().len(), 0);
 }
 
 // ----- after a restart ---------------------------------------------------------------------------
@@ -539,7 +539,7 @@ fn arb_op() -> impl Strategy<Value = Op> {
 }
 
 fn apply_op(s: &mut DocState, tracks: &[TrackId], op: &Op, n: usize) {
-    let actor = if n % 3 == 0 { agent() } else { ui() };
+    let actor = if n.is_multiple_of(3) { agent() } else { ui() };
     let all = items(s.committed_doc());
     let pick = |i: usize| (!all.is_empty()).then(|| all[i % all.len()]);
     let _ = match op {
