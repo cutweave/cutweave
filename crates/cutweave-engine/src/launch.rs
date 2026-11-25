@@ -6,7 +6,7 @@
 //! cutweave engine [--headless] --port N [--token-stdin] [--project P] [--run-dir D]
 //!                 [--allow-origin O]... [--allow-root R]... [--deterministic-ids SEED]
 //!                 [--i-know-this-is-a-test] [--log-dir D | --no-log] [--handshake-timeout-ms MS]
-//!                 [--cache-dir D] [--dev-stub-media]
+//!                 [--cache-dir D] [--dev-stub-media] [--progress]
 //! env    : CUTWEAVE_DETERMINISTIC_IDS=SEED (the flag wins), CUTWEAVE_DEV_STUB_MEDIA=1,
 //!          CUTWEAVE_CACHE_DIR=D (the cache folder; the flag wins),
 //!          CUTWEAVE_GPU=auto|software|... (the adapter), CUTWEAVE_AUDIO=null|default|<device>
@@ -14,7 +14,9 @@
 //! stdin : Gui mode: first line = the UI credential (never argv, env, disk or logs);
 //!          EOF afterwards = stop (orphan prevention)
 //! stdout : JSON lines only: {"event":"ready","port":P,"pid":N,"version":"..."} once serving,
-//!          or {"event":"error","code":"...","exit_code":N,"message":"..."} before exiting
+//!          or {"event":"error","code":"...","exit_code":N,"message":"..."} before exiting;
+//!          with --progress, {"event":"starting","pid":N,"version":"...","elapsed_ms":T} as soon
+//!          as the engine runs and every second until then
 //! exit   : 0 clean · 1 other failure · 2 usage · 10 project locked · 11 GPU init failed ·
 //!          12 port bind error · 13 bad or missing handshake
 //! ```
@@ -24,8 +26,8 @@
 
 use std::io::{BufRead, BufReader, Read, Write};
 use std::path::PathBuf;
-use std::sync::mpsc;
-use std::time::Duration;
+use std::sync::{Mutex, PoisonError, mpsc};
+use std::time::{Duration, Instant};
 
 use cutweave_api::Token;
 use cutweave_api::launch::{LaunchArgs, ready_line};
@@ -58,6 +60,9 @@ pub const DETERMINISTIC_IDS_ENV: &str = "CUTWEAVE_DETERMINISTIC_IDS";
 /// How long a `Gui` engine waits for the handshake line.
 pub const DEFAULT_HANDSHAKE_TIMEOUT: Duration = Duration::from_secs(5);
 
+/// How often an engine started with `--progress` says it is still starting.
+pub const PROGRESS_INTERVAL: Duration = Duration::from_secs(1);
+
 /// The longest handshake line read (a token is at most 512 characters).
 const MAX_HANDSHAKE_BYTES: u64 = 1024;
 
@@ -65,10 +70,11 @@ const MAX_HANDSHAKE_BYTES: u64 = 1024;
 pub const USAGE: &str = "usage: engine [--headless] [--port N] [--token-stdin] [--project P] \
 [--run-dir D] [--allow-origin O]... [--allow-root R]... [--deterministic-ids SEED] \
 [--i-know-this-is-a-test] [--log-dir D | --no-log] [--handshake-timeout-ms MS] \
-[--cache-dir D] [--dev-stub-media]";
+[--cache-dir D] [--dev-stub-media] [--progress]";
 
 /// Parsed launch arguments: WP-1I.01's [`LaunchArgs`] plus the engine's own flags.
 #[derive(Debug, PartialEq, Eq)]
+#[allow(clippy::struct_excessive_bools)] // independent command-line switches
 pub struct EngineArgs {
     /// `--port`, `--token-stdin`, `--headless`, `--project`, `--run-dir`, `--allow-origin`.
     pub base: LaunchArgs,
@@ -89,6 +95,9 @@ pub struct EngineArgs {
     /// `--cache-dir D`: the folder the thumbnail, waveform and frame-index caches live in
     /// (default `CUTWEAVE_CACHE_DIR`, else `<OS cache folder>/cutweave`; WP-1D.08).
     pub cache_dir: Option<PathBuf>,
+    /// `--progress`: `starting` lines on stdout until the ready line, so a supervisor can tell a
+    /// slow start from a hung one (issue #143).
+    pub progress: bool,
 }
 
 impl EngineArgs {
@@ -105,6 +114,7 @@ impl EngineArgs {
             handshake_timeout: DEFAULT_HANDSHAKE_TIMEOUT,
             dev_stub_media: false,
             cache_dir: None,
+            progress: false,
         };
         let mut it = args.into_iter();
         while let Some(arg) = it.next() {
@@ -129,6 +139,7 @@ impl EngineArgs {
                     out.cache_dir = Some(PathBuf::from(dir));
                 }
                 "--dev-stub-media" => out.dev_stub_media = true,
+                "--progress" => out.progress = true,
                 "--handshake-timeout-ms" => {
                     let ms: u64 = value("--handshake-timeout-ms")?
                         .parse()
@@ -206,6 +217,71 @@ fn emit(stdout: &mut impl Write, line: &Value) -> std::io::Result<()> {
     stdout.flush()
 }
 
+/// `{"event":"starting","pid":N,"version":"...","elapsed_ms":T}` (`--progress`).
+fn starting_line(elapsed: Duration) -> Value {
+    json!({
+        "event": "starting",
+        "pid": std::process::id(),
+        "version": VERSION,
+        "elapsed_ms": crate::startup::ms(elapsed),
+    })
+}
+
+/// Runs `start`, then `answer` with its result (the ready or error line). With `since`
+/// (`--progress`) a ticker prints a `starting` line `every` so often ([`PROGRESS_INTERVAL`])
+/// until then. `answer` writes under the ticker's lock, after marking the start done, so no
+/// `starting` line ever follows it, and it never waits for the ticker thread to wake up and end
+/// (on a busy machine that can take a second).
+fn with_progress<W: Write + Send, T, R>(
+    since: Option<Instant>,
+    every: Duration,
+    stdout: &mut W,
+    start: impl FnOnce() -> T,
+    answer: impl FnOnce(&mut W, T) -> R,
+) -> R {
+    let Some(since) = since else {
+        let started = start();
+        return answer(stdout, started);
+    };
+    // `true` once the start is answered: the ticker writes nothing more.
+    let out = Mutex::new((false, stdout));
+    let (stop, stopped) = mpsc::channel::<()>();
+    std::thread::scope(|scope| {
+        let out = &out;
+        let ticker = std::thread::Builder::new()
+            .name("cutweave-progress".into())
+            .spawn_scoped(scope, move || {
+                while let Err(mpsc::RecvTimeoutError::Timeout) = stopped.recv_timeout(every) {
+                    let mut guard = out.lock().unwrap_or_else(PoisonError::into_inner);
+                    let (answered, stdout) = &mut *guard;
+                    if *answered {
+                        break;
+                    }
+                    let _ = emit(&mut **stdout, &starting_line(since.elapsed()));
+                }
+            });
+        if let Err(e) = ticker {
+            tracing::warn!(error = %e, "cannot start the progress ticker");
+        }
+        let started = start();
+        let answered = {
+            let mut guard = out.lock().unwrap_or_else(PoisonError::into_inner);
+            guard.0 = true;
+            answer(&mut *guard.1, started)
+        };
+        drop(stop);
+        answered
+    })
+}
+
+/// Why the start failed: the protocol's error line.
+struct StartFailure {
+    code: &'static str,
+    exit_code: i32,
+    message: String,
+    extra: Value,
+}
+
 /// The error line of the protocol (stdout) plus a human line on stderr; returns `exit_code`.
 fn fail(stdout: &mut impl Write, code: &str, exit_code: i32, message: &str, extra: Value) -> i32 {
     let mut line = json!({
@@ -271,7 +347,16 @@ fn read_stdin(stdin: impl Read + Send + 'static, tx: mpsc::Sender<Input>) {
 
 /// Runs an engine process to completion and returns its exit code: handshake (`Gui`), start,
 /// readiness line, then wait for stdin EOF (`Gui`) or a signal, then shut down.
-pub fn run(args: &EngineArgs, stdin: impl Read + Send + 'static, stdout: &mut impl Write) -> i32 {
+pub fn run(
+    args: &EngineArgs,
+    stdin: impl Read + Send + 'static,
+    stdout: &mut (impl Write + Send),
+) -> i32 {
+    let began = Began::now();
+    if args.progress {
+        // The loader is done and the engine's own code runs.
+        let _ = emit(stdout, &starting_line(Duration::ZERO));
+    }
     let mode = args.mode();
     if let Err(message) = args.check_deterministic_ids() {
         return fail(stdout, "usage", EXIT_USAGE, &message, Value::Null);
@@ -295,7 +380,7 @@ pub fn run(args: &EngineArgs, stdin: impl Read + Send + 'static, stdout: &mut im
     } else {
         None
     };
-    let code = run_logged(args, mode, stdin, stdout);
+    let code = run_logged(args, mode, &began, stdin, stdout);
     if let Some(log) = log {
         if code == EXIT_OK {
             logging::remove_crash_marker(log.dir());
@@ -367,17 +452,75 @@ fn engine_config(args: &EngineArgs, mode: EngineMode, ui_token: Option<Token>) -
     }
 }
 
-fn run_logged(
+/// When [`run`] began: the start of the engine's own code (what the OS loader took before it
+/// is [`unix_ms`](Self::unix_ms) minus the supervisor's spawn time).
+struct Began {
+    at: Instant,
+    unix_ms: u64,
+}
+
+impl Began {
+    fn now() -> Began {
+        Began {
+            at: Instant::now(),
+            unix_ms: std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .map_or(0, crate::startup::ms),
+        }
+    }
+}
+
+/// The handshake (`Gui`), the media backend and [`Engine::start`].
+fn start_engine(
     args: &EngineArgs,
     mode: EngineMode,
     stdin: impl Read + Send + 'static,
-    stdout: &mut impl Write,
+    tx: &mpsc::Sender<Input>,
+    rx: &mpsc::Receiver<Input>,
+    phases: &mut crate::startup::Phases,
+) -> Result<Engine, StartFailure> {
+    let ui_token = if mode == EngineMode::Gui {
+        read_stdin(stdin, tx.clone());
+        let token = handshake(rx, args.handshake_timeout).map_err(|message| StartFailure {
+            code: "bad_handshake",
+            exit_code: EXIT_HANDSHAKE,
+            message,
+            extra: Value::Null,
+        })?;
+        Some(token)
+    } else {
+        drop(stdin);
+        None
+    };
+    phases.mark("handshake");
+    let config = engine_config(args, mode, ui_token);
+    phases.mark("media_backend");
+    Engine::start(config).map_err(|e| StartFailure {
+        code: e.code(),
+        exit_code: e.exit_code(),
+        message: e.to_string(),
+        extra: match &e {
+            crate::engine::StartError::ProjectLocked {
+                holder: Some(h), ..
+            } => json!({"holder": {"pid": h.pid, "host": h.host, "started": h.started}}),
+            _ => Value::Null,
+        },
+    })
+}
+
+fn run_logged(
+    args: &EngineArgs,
+    mode: EngineMode,
+    began: &Began,
+    stdin: impl Read + Send + 'static,
+    stdout: &mut (impl Write + Send),
 ) -> i32 {
     tracing::info!(
         mode = mode.name(),
         port = args.base.port,
         pid = std::process::id(),
         version = VERSION,
+        progress = args.progress,
         "engine starting"
     );
     if mode == EngineMode::Headless && args.base.token_stdin {
@@ -390,36 +533,47 @@ fn run_logged(
         );
     }
     let (tx, rx) = mpsc::channel();
-    let ui_token = if mode == EngineMode::Gui {
-        read_stdin(stdin, tx.clone());
-        match handshake(&rx, args.handshake_timeout) {
-            Ok(token) => Some(token),
-            Err(message) => {
-                return fail(
-                    stdout,
-                    "bad_handshake",
-                    EXIT_HANDSHAKE,
-                    &message,
-                    Value::Null,
-                );
-            }
-        }
-    } else {
-        drop(stdin);
-        None
-    };
-    let engine = match Engine::start(engine_config(args, mode, ui_token)) {
-        Ok(engine) => engine,
-        Err(e) => {
-            let extra = match &e {
-                crate::engine::StartError::ProjectLocked {
-                    holder: Some(h), ..
-                } => json!({"holder": {"pid": h.pid, "host": h.host, "started": h.started}}),
-                _ => Value::Null,
+    let since = args.progress.then_some(began.at);
+    let (answered, phases) = with_progress(
+        since,
+        PROGRESS_INTERVAL,
+        stdout,
+        || {
+            let mut phases = crate::startup::Phases::new();
+            let started = start_engine(args, mode, stdin, &tx, &rx, &mut phases);
+            phases.mark("engine");
+            (started, phases)
+        },
+        |stdout, (started, mut phases)| {
+            let answered = match started {
+                Ok(engine) => {
+                    let ready = ready_line(engine.port().unwrap_or(0), std::process::id(), VERSION);
+                    if writeln!(stdout, "{ready}")
+                        .and_then(|()| stdout.flush())
+                        .is_ok()
+                    {
+                        Ok(engine)
+                    } else {
+                        engine.shutdown();
+                        Err(EXIT_FAILURE)
+                    }
+                }
+                Err(f) => Err(fail(stdout, f.code, f.exit_code, &f.message, f.extra)),
             };
-            return fail(stdout, e.code(), e.exit_code(), &e.to_string(), extra);
-        }
+            phases.mark("ready_line");
+            (answered, phases)
+        },
+    );
+    let engine = match answered {
+        Ok(engine) => engine,
+        Err(code) => return code,
     };
+    tracing::info!(
+        phases = %phases,
+        since_run_ms = crate::startup::ms(began.at.elapsed()),
+        run_at_unix_ms = began.unix_ms,
+        "launch phases"
+    );
     if args.dev_stub_media {
         tracing::warn!(
             "DEV ONLY: stub media backend enabled; imported files get made-up probe data and \
@@ -427,15 +581,6 @@ fn run_logged(
              FFmpeg backend, playback and rendering)"
         );
         eprintln!("cutweave engine: warning: dev stub media is on (fake media probing, dev only)");
-    }
-    let port = engine.port().unwrap_or(0);
-    let ready = ready_line(port, std::process::id(), VERSION);
-    if writeln!(stdout, "{ready}")
-        .and_then(|()| stdout.flush())
-        .is_err()
-    {
-        engine.shutdown();
-        return EXIT_FAILURE;
     }
     let signals = tx;
     engine.handle().runtime().spawn(async move {
@@ -524,7 +669,72 @@ mod tests {
         assert_eq!(a.log_dir, Some(PathBuf::from("/l")));
         assert_eq!(a.handshake_timeout, Duration::from_millis(250));
         assert_eq!(a.base.allowed_origins, vec!["app://cutweave".to_owned()]);
+        assert!(!a.progress);
         assert_eq!(parse("--headless").unwrap().mode(), EngineMode::Headless);
+        assert!(parse("--port 0 --progress").unwrap().progress);
+    }
+
+    fn json_lines(out: &[u8]) -> Vec<Value> {
+        String::from_utf8(out.to_vec())
+            .unwrap()
+            .lines()
+            .map(|l| serde_json::from_str(l).unwrap())
+            .collect()
+    }
+
+    #[test]
+    fn progress_lines_tick_while_the_engine_starts_and_stop_before_it_answers() {
+        let mut out = Vec::new();
+        let answer = with_progress(
+            Some(Instant::now()),
+            Duration::from_millis(10),
+            &mut out,
+            || {
+                std::thread::sleep(Duration::from_millis(500));
+                42
+            },
+            |out: &mut Vec<u8>, n| {
+                out.extend_from_slice(b"{\"event\":\"ready\"}\n");
+                n + 1
+            },
+        );
+        assert_eq!(answer, 43);
+        let mut lines = json_lines(&out);
+        // The answer is the last line: no starting line follows it.
+        assert_eq!(lines.pop().unwrap()["event"], "ready");
+        assert!(!lines.is_empty(), "no starting line in 500 ms");
+        let mut last = 0;
+        for line in &lines {
+            assert_eq!(line["event"], "starting", "{line}");
+            assert_eq!(line["pid"], std::process::id());
+            assert_eq!(line["version"], VERSION);
+            let elapsed = line["elapsed_ms"].as_u64().unwrap();
+            assert!(elapsed >= last, "{lines:?}");
+            last = elapsed;
+        }
+        // Without --progress nothing is printed.
+        let mut quiet = Vec::new();
+        with_progress(
+            None,
+            Duration::from_millis(1),
+            &mut quiet,
+            || std::thread::sleep(Duration::from_millis(50)),
+            |_, ()| (),
+        );
+        assert_eq!(quiet, Vec::<u8>::new());
+    }
+
+    #[test]
+    fn a_progress_engine_says_it_is_starting_before_anything_else() {
+        let args = parse("--port 0 --no-log --deterministic-ids 42 --progress").unwrap();
+        let mut out = Vec::new();
+        assert_eq!(run(&args, std::io::empty(), &mut out), EXIT_USAGE);
+        let lines = json_lines(&out);
+        assert_eq!(lines.len(), 2, "{lines:?}");
+        assert_eq!(lines[0]["event"], "starting");
+        assert_eq!(lines[0]["elapsed_ms"], 0);
+        assert_eq!(lines[1]["event"], "error");
+        assert_eq!(lines[1]["code"], "usage");
     }
 
     #[test]

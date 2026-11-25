@@ -364,6 +364,7 @@ All surfaces live on **one local server per engine** (axum on `127.0.0.1`, rando
   - `Engine::start(EngineConfig)` wires the doc actor, project store, journal, autosave, job manager and API server; media, render, audio and playback attach later through the `Subsystems` trait (WP-1I.05).
   - Surfaces mount on an in-process dispatch API: `EngineHandle::connect(&Credential)` gives each client connection its own never-reused connection ID, and dropping it rolls back that connection's open transaction. Events reach clients through one `EngineEvent` fan-out.
   - In `Gui` mode the UI credential is the first stdin line; the engine prints a ready line (no tokens) or a JSON error line and exits with 0 clean, 1 internal, 2 usage, 10 project locked, 11 GPU init, 12 port bind, 13 handshake.
+  - The ready line means serving; optional slow work (a GPU still opening, the capabilities probe) continues after it. With `--progress` the engine prints `starting` lines until then, and Electron main judges a start by them: silent for 10 s or still starting after 60 s is hung (ADR-0025, Proposed; issue #143).
   - **Path policy:** the UI credential is unrestricted. Every other credential can only open, save or import under the `--allow-root` folders, the start project's folder and the open project's folder (symlinks resolved, `..` refused); otherwise the call fails with `Invalid`.
 - **Media HTTP (decided in WP-1I.03):** specified in [http-media.md](reference/http-media.md).
   - **Auth:** a bearer token (UI or agent), or for `GET`/`HEAD` a URL signed by `POST /media/sign`: HMAC-SHA256 over the path and query up to an `exp`, with a per-launch 256-bit key held only in the engine. A signature opens exactly one resource and expires (an hour by default); `<img src>` uses it, so tokens never appear in URLs. A bad or expired signature is 401.
@@ -482,7 +483,7 @@ flowchart LR
   - All blending is done in linear light.
 - **No hidden state in effects.** Effects cannot keep persistent feedback buffers across frames, because that would break determinism. Temporal effects (echo, trails, motion blur, datamosh-style) declare **`history` taps** (input frames t−1…t−N, N ≤ 8). The render graph provides these from the frame cache, so the output stays a pure function of the inputs.
 - **Golden references are stored per GPU adapter class** (software WARP/lavapipe for CI, plus reference machines), with a perceptual tolerance.
-- **GPU device (decided in WP-1I.05).** The engine opens the wgpu device on its own thread at start (`CUTWEAVE_GPU` picks the adapter). A Gui engine waits up to 4 s for it and exits 11 if it fails in that window; a headless engine does not wait, and `render.frame` waits up to 60 s for a device that is still opening. A device that fails later falls back to the software adapter, then to the CPU reference renderer, and the engine sends `engine.degraded{subsystem, reason}`. One compositor serves `render.frame` and export; a second serves the preview.
+- **GPU device (decided in WP-1I.05).** The engine opens the wgpu device on its own thread at start (`CUTWEAVE_GPU` picks the adapter). A Gui engine waits for it until 4 s after it began to open (the caches, audio and preview ring start inside that window) and exits 11 if it fails in that window; a headless engine does not wait, and `render.frame` waits up to 60 s for a device that is still opening. A device that fails later falls back to the software adapter, then to the CPU reference renderer, and the engine sends `engine.degraded{subsystem, reason}`. One compositor serves `render.frame` and export; a second serves the preview.
 - **Effects & transitions** are WGSL effect packages (§15 L1). The built-ins are first-party packages. Effects declare passes, inputs and params, and the render graph fuses compatible passes.
 - **Masks:** shape masks (rect, ellipse, polygon, bezier) with feather and invert, plus **matte masks** from AI segmentation (alpha video produced by a job) and chroma key.
 - **Text (`cutweave-text`):**
@@ -852,6 +853,7 @@ MyVideo/                    ← project folder (user-chosen location)
 | Metric | Budget |
 |---|---|
 | App start to an editable empty project | < 2.5 s |
+| Engine spawn to ready line (Gui, full engine) | At most the GPU window (4 s after the device began to open, §8) plus the process load; other slow work goes on after ready ([launch protocol](reference/launch-protocol.md), issue #143). Measured, debug build on Windows with 16 CPU hogs: 4.3–5.1 s (6.7–16 s before the audio, the caches and the run-file's `whoami`/`icacls` left the path after the window). The supervisor judges a start by liveness (`starting` lines), not by this number |
 | Open a 1-hour, 400-item project | < 2 s to interactive |
 | Command round-trip (UI → engine → patch → UI) | p95 < 16 ms |
 | Scrub latency (proxy or intra codec) | p95 < 80 ms |
@@ -956,6 +958,7 @@ MyVideo/                    ← project folder (user-chosen location)
 | 022 | Source preview: the preview plays a media item outside any sequence (`view.set_source`) (§10) | **Accepted** (product owner, 2026-11-24) |
 | 023 | Timeline edit semantics for P2: magnetic main track, placement modes, attachments, `EditReport`, replacing gesture updates (§4.3, §5.2; [spec](spec/timeline-edit-semantics.md)) | Proposed: review of WP-2A.01 |
 | 024 | Keyframes: item-relative flicks, per-segment easing, exact split and trim rules, `keyframe.*` commands (§4.2, §4.3, §8; [spec](spec/keyframes.md)) | Proposed: review of WP-2C.01 |
+| 025 | Engine readiness: the ready line means serving, `--progress` `starting` lines, the supervisor judges a start by liveness (§2, §8, §19; [launch protocol](reference/launch-protocol.md)) | Proposed: review of the issue #143 fix |
 
 ## 24. Open questions (tracked; none block Phase 0)
 

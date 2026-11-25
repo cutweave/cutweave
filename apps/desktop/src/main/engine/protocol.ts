@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 // The supervisor's side of the engine launch protocol (docs/reference/launch-protocol.md,
-// WP-1I.04): exit codes, the stdout JSON lines (ready / error) and the crash marker.
+// WP-1I.04): exit codes, the stdout JSON lines (ready / error / starting) and the crash marker.
 
 import { readFileSync } from "node:fs";
 import path from "node:path";
@@ -65,14 +65,25 @@ export interface EngineErrorLine {
   readonly holder?: { readonly pid: number; readonly host: string; readonly started: number };
 }
 
+/**
+ * `{"event":"starting","pid","version","elapsed_ms"}`: an engine started with `--progress` prints
+ * one as soon as it runs, then one a second until its ready or error line (issue #143).
+ */
+export interface EngineStarting {
+  readonly pid: number;
+  /** Milliseconds since the engine's own code began. */
+  readonly elapsedMs: number;
+}
+
 export type EngineLine =
   | { readonly event: "ready"; readonly ready: EngineReady }
-  | { readonly event: "error"; readonly error: EngineErrorLine };
+  | { readonly event: "error"; readonly error: EngineErrorLine }
+  | { readonly event: "starting"; readonly starting: EngineStarting };
 
 const isObject = (v: unknown): v is Record<string, unknown> =>
   typeof v === "object" && v !== null && !Array.isArray(v);
 
-/** Parse one stdout line; null for anything that is not a well-formed ready or error event. */
+/** Parse one stdout line; null for anything that is not a well-formed ready, error or starting event. */
 export function parseEngineLine(line: string): EngineLine | null {
   let data: unknown;
   try {
@@ -81,6 +92,11 @@ export function parseEngineLine(line: string): EngineLine | null {
     return null;
   }
   if (!isObject(data)) return null;
+  if (data.event === "starting") {
+    if (typeof data.pid !== "number") return null;
+    const elapsedMs = typeof data.elapsed_ms === "number" ? data.elapsed_ms : 0;
+    return { event: "starting", starting: { pid: data.pid, elapsedMs } };
+  }
   if (data.event === "ready") {
     if (typeof data.port !== "number" || typeof data.pid !== "number") return null;
     const version = typeof data.version === "string" ? data.version : "";

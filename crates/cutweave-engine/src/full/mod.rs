@@ -99,6 +99,7 @@ use crate::media_cache::{
     MediaCacheStatusOutput,
 };
 use crate::project_io::ProjectLayout;
+use crate::startup::Phases;
 use crate::subsystems::{
     EngineLink, SubsystemCall, SubsystemError, SubsystemEvents, SubsystemHost, SubsystemKind,
     Subsystems,
@@ -689,7 +690,11 @@ impl FullSubsystems {
     }
 
     /// The caches, audio and (in `Gui` mode) the preview ring.
-    fn start_devices(&self, host: &SubsystemHost) -> Result<Devices, SubsystemError> {
+    fn start_devices(
+        &self,
+        host: &SubsystemHost,
+        phases: &mut Phases,
+    ) -> Result<Devices, SubsystemError> {
         let config = &self.inner.config;
         if let Some(problem) = &config.media_problem {
             self.degrade(&host.events, "media", problem);
@@ -705,13 +710,16 @@ impl FullSubsystems {
             }
             None => Caches::default(),
         };
+        phases.mark("caches");
         // Audio.
         let (audio, degraded) = audio::start(&config.audio, host.audio, &self.inner.pcm)?;
         if let Some(reason) = degraded {
             self.degrade(&host.events, "audio", &reason);
         }
+        phases.mark("audio");
         // Preview ring (Gui).
         let ring = self.start_ring(host);
+        phases.mark("ring");
         Ok((caches, audio, ring))
     }
 
@@ -871,15 +879,20 @@ impl Subsystems for FullSubsystems {
 
     fn start(&self, host: &SubsystemHost) -> Result<(), SubsystemError> {
         // The GPU device takes most of the start (about a second for the driver, far more on a
-        // fresh user profile): it opens on its own thread while the caches, audio and the ring
-        // start here, and the start waits for it only so long (`gpu` module docs).
+        // fresh user profile or a busy machine): it opens on its own thread while the caches,
+        // audio and the ring start here, and the start waits for it only until
+        // `GPU_START_WAIT` after it began to open (`gpu` module docs).
+        let mut phases = Phases::new();
         let (gpu, gpu_thread) = self.spawn_gpu(host)?;
-        let rest = self.start_devices(host);
+        phases.mark("gpu_spawn");
+        let rest = self.start_devices(host, &mut phases);
+        // The window counts from the GPU thread's start: the devices above ran inside it.
         let waited = gpu.wait_start(if host.mode == EngineMode::Gui {
             GPU_START_WAIT
         } else {
             std::time::Duration::ZERO
         });
+        phases.mark("gpu_wait");
         let failed = match (rest, waited) {
             (Ok(devices), Ok(())) => Ok(devices),
             (Err(e), _) => Err(e),
@@ -941,9 +954,12 @@ impl Subsystems for FullSubsystems {
             lost_reported: Arc::new(AtomicBool::new(false)),
             caps_thread: self.warm_capabilities(),
         };
+        phases.mark("frames");
         if let Some(doc) = self.inner.doc.handle() {
             self.attach(&mut started, &doc);
         }
+        phases.mark("playback");
+        tracing::info!(phases = %phases, "subsystem start phases");
         tracing::info!(
             mode = started.mode.name(),
             gpu = started.gpu.adapter(),
