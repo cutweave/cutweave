@@ -16,7 +16,7 @@ git add -A
 ```
 
 ## Decision tables: keep every row, in number order
-`docs/adr/README.md` (`| [00NN](…) | … | Status | Decided by |`) and `docs/01-architecture.md`
+`docs/adr/README.md` (`| [00NN](the ADR file) | … | Status | Decided by |`) and `docs/01-architecture.md`
 §23 (`| 0NN | … | Status |`). Resolve with a script (UTF-8, LF), then check each row's status:
 ```python
 import pathlib, re
