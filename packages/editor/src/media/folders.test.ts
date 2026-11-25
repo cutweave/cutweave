@@ -24,7 +24,7 @@ import {
   selectAllTiles,
   type Tile,
 } from "./folders.ts";
-import { countText, folderAriaLabel, folderDeleteText } from "./folderText.ts";
+import { countText, folderDeleteText } from "./folderText.ts";
 
 const f = (n: number) => `fld_${n}` as FolderId;
 const m = (n: number) => `med_${n}` as MediaId;
@@ -372,8 +372,5 @@ describe("the delete dialog", () => {
     expect(countText(0, t)).toBe("Empty");
     expect(countText(1, t)).toBe("1 item");
     expect(countText(12, t)).toBe("12 items");
-    expect(folderAriaLabel("Interviews", 3, t)).toBe("Interviews, folder, 3 items");
-    expect(folderAriaLabel("Interviews", 1, t)).toBe("Interviews, folder, 1 item");
-    expect(folderAriaLabel("Interviews", 0, t)).toBe("Interviews, folder, empty");
   });
 });

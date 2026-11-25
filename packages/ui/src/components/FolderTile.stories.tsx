@@ -3,8 +3,6 @@ import { FolderTile } from "./FolderTile.tsx";
 
 export default { title: "Media/FolderTile", component: FolderTile, tags: ["autodocs"] };
 
-const noop = () => {};
-
 const grid = {
   padding: "var(--space-4)",
   display: "grid",
@@ -13,26 +11,13 @@ const grid = {
   background: "var(--surface-1)",
 } as const;
 
-/** Default, selected, a drop target (something dragged over it) and being renamed. */
+/** Default, selected and a drop target (something dragged over it). Renaming is the InlineRename story. */
 export const States = {
   render: () => (
     <div role="listbox" aria-label="Folders" style={grid}>
-      <FolderTile
-        name="Interviews"
-        countLabel="12 items"
-        active
-        aria-label="Interviews, folder, 12 items"
-      />
-      <FolderTile name="B-roll" countLabel="1 item" selected aria-label="B-roll, folder, 1 item" />
-      <FolderTile name="Music" countLabel="Empty" dropTarget aria-label="Music, folder, empty" />
-      <FolderTile
-        name="Day 1"
-        countLabel="3 items"
-        renaming
-        renameLabel="Folder name"
-        onRename={noop}
-        onCancelRename={noop}
-      />
+      <FolderTile name="Interviews" countLabel="12 items" active kindLabel="Folder" />
+      <FolderTile name="B-roll" countLabel="1 item" selected kindLabel="Folder" />
+      <FolderTile name="Music" countLabel="Empty" dropTarget kindLabel="Folder" />
     </div>
   ),
 };
@@ -41,12 +26,7 @@ export const States = {
 export const WithPath = {
   render: () => (
     <div role="listbox" aria-label="Folders" style={grid}>
-      <FolderTile
-        name="Interviews"
-        path="Media / Day 1"
-        countLabel="4 items"
-        aria-label="Interviews, folder, 4 items"
-      />
+      <FolderTile name="Interviews" path="Media / Day 1" countLabel="4 items" kindLabel="Folder" />
     </div>
   ),
 };

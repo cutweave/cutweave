@@ -69,10 +69,7 @@ test.describe("F22 organize media in folders", () => {
       await page.keyboard.press("Enter");
       await expect(nameField(page)).toBeHidden();
       await expect(tile(page, "Interviews")).toBeVisible();
-      await expect(tile(page, "Interviews")).toHaveAttribute(
-        "aria-label",
-        "Interviews, folder, empty",
-      );
+      await expect(tile(page, "Interviews")).toContainText("Empty");
       // Folders come first, then the assets; the breadcrumb is there now.
       expect((await names(page))[0]).toBe("Interviews");
       await expect(crumb(page, "Media")).toHaveAttribute("aria-current", "page");
@@ -129,10 +126,7 @@ test.describe("F22 organize media in folders", () => {
       await expect(mediaCards(page).and(page.locator('[aria-selected="true"]'))).toHaveCount(3);
       await tile(page, "broll-coffee.mp4").dragTo(tile(page, "Interviews"));
       await expect(tile(page, "interview.mp4")).toBeHidden();
-      await expect(tile(page, "Interviews")).toHaveAttribute(
-        "aria-label",
-        "Interviews, folder, 4 items",
-      );
+      await expect(tile(page, "Interviews")).toContainText("4 items");
       await snapshot(page, info, "clips moved into Interviews");
 
       // Inside Interviews: Day one and the three clips. The same three go onto Day one.

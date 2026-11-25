@@ -174,10 +174,10 @@ describe("browsing folders", () => {
       "clip2.mp4",
       "clip3.mp4",
     ]);
-    expect(tile("B-roll").getAttribute("aria-label")).toBe("B-roll, folder, 2 items");
-    expect(tile("Empty").getAttribute("aria-label")).toBe("Empty, folder, empty");
-    // Interviews holds one asset and the folder Day 1.
-    expect(tile("Interviews").getAttribute("aria-label")).toBe("Interviews, folder, 2 items");
+    // Read as "Folder, B-roll 2 items"; Interviews holds one asset and the folder Day 1.
+    expect(tile("B-roll").textContent).toBe("Folder, B-roll2 items");
+    expect(tile("Empty").textContent).toBe("Folder, EmptyEmpty");
+    expect(tile("Interviews").textContent).toBe("Folder, Interviews2 items");
   });
 
   it("opens a folder with a double-click and shows Media > Interviews in the breadcrumb", async () => {

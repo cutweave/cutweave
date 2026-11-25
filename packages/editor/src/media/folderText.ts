@@ -13,14 +13,6 @@ export function countText(items: number, t: Translate): string {
     : t("mediaBin.folder.countMany", { count: String(items) });
 }
 
-/** What a screen reader hears for a folder tile: "Interviews, folder, 3 items". */
-export function folderAriaLabel(name: string, items: number, t: Translate): string {
-  if (items === 0) return t("mediaBin.folder.ariaEmpty", { name });
-  return items === 1
-    ? t("mediaBin.folder.ariaOne", { name })
-    : t("mediaBin.folder.ariaMany", { name, count: String(items) });
-}
-
 export interface FolderDeleteText {
   /** The question: Delete "B-roll" and its 30 media? */
   readonly title: string;

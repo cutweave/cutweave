@@ -22,8 +22,8 @@ export interface FolderTileProps
   renameLabel?: string | undefined;
   onRename?: ((name: string) => void) | undefined;
   onCancelRename?: (() => void) | undefined;
-  /** Names a folder tile in the grid: "Interviews, folder, 3 items". */
-  "aria-label"?: string | undefined;
+  /** The word that says what the tile is, read before the name: "Folder". */
+  kindLabel?: string | undefined;
   /** Path under the name, for search results across folders: "Interviews / Day 1". */
   path?: string | undefined;
 }
@@ -45,6 +45,7 @@ export const FolderTile = forwardRef<HTMLDivElement, FolderTileProps>(function F
     onRename,
     onCancelRename,
     path,
+    kindLabel,
     className,
     ...rest
   },
@@ -53,8 +54,9 @@ export const FolderTile = forwardRef<HTMLDivElement, FolderTileProps>(function F
   return (
     <div
       ref={ref}
-      role="option"
-      aria-selected={selected}
+      // A tile being renamed holds a text field, which an option may not contain.
+      role={renaming ? "group" : "option"}
+      {...(renaming ? {} : { "aria-selected": selected })}
       tabIndex={active ? 0 : -1}
       data-drop-target={dropTarget ? "true" : undefined}
       className={cx("cw-foldertile", className)}
@@ -72,7 +74,12 @@ export const FolderTile = forwardRef<HTMLDivElement, FolderTileProps>(function F
             onCancel={() => onCancelRename?.()}
           />
         ) : (
-          <span className="cw-foldertile__name body-strong">{name}</span>
+          <>
+            {kindLabel === undefined ? null : (
+              <span className="cw-visually-hidden">{kindLabel}, </span>
+            )}
+            <span className="cw-foldertile__name body-strong">{name}</span>
+          </>
         )}
         <span className="cw-foldertile__meta caption">
           {path === undefined ? null : <span className="cw-foldertile__path">{path}</span>}

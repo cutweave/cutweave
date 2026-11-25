@@ -15,10 +15,10 @@ describe("FolderTile", () => {
         name: "Interviews",
         countLabel: "3 items",
         selected: true,
-        "aria-label": "Interviews, folder, 3 items",
+        kindLabel: "Folder",
       }),
     );
-    const tile = screen.getByRole("option", { name: "Interviews, folder, 3 items" });
+    const tile = screen.getByRole("option", { name: "Folder, Interviews 3 items" });
     expect(tile.getAttribute("aria-selected")).toBe("true");
     expect(tile.getAttribute("tabindex")).toBe("-1");
   });
@@ -28,6 +28,12 @@ describe("FolderTile", () => {
     const tile = screen.getByRole("option");
     expect(tile.getAttribute("tabindex")).toBe("0");
     expect(tile.getAttribute("data-drop-target")).toBe("true");
+  });
+
+  it("is a group, not an option, while its name is edited", () => {
+    render(h(FolderTile, { name: "X", countLabel: "Empty", renaming: true }));
+    expect(screen.queryByRole("option")).toBeNull();
+    expect(screen.getByRole("group")).toBeTruthy();
   });
 
   it("renames in place: Enter commits, Escape cancels", () => {

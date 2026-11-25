@@ -57,7 +57,7 @@ import {
   type Tile,
   type TileSelection,
 } from "../media/folders.ts";
-import { countText, folderAriaLabel } from "../media/folderText.ts";
+import { countText } from "../media/folderText.ts";
 import {
   currentOpenFolder,
   folderUiStore,
@@ -401,7 +401,7 @@ function FolderView({
       ref={menuRef}
       name={folder.name}
       countLabel={countText(folder.items, translate)}
-      aria-label={renaming ? undefined : folderAriaLabel(folder.name, folder.items, translate)}
+      kindLabel={t("mediaBin.folder.kind")}
       selected={selected}
       active={active}
       dropTarget={dropTarget}
