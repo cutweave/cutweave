@@ -102,4 +102,9 @@ None of these loses an edit or breaks a criterion; each is for a Phase 2 work pa
 
 ## Product-owner sign-off
 
-☐ GO ☐ GO with changes ☐ NO-GO (date, notes)
+☑ **GO** ☐ GO with changes ☐ NO-GO: product owner, 2026-11-25.
+
+- Accepted on the Windows evidence above (R34); macOS and Linux run the same `just m1-gate` when those machines exist.
+- CI evidence: one manual-dispatch run of the M1 gate on `windows-latest` (approved for this one run), linked here when it finishes; the local gates remain the record otherwise.
+- Demo video: recorded automatically from the M1 UI test (Playwright video), not by hand.
+- Findings: #145, #147 and #148 are fixed as P1 bugs; #146 (MCP output schemas) is fixed early in Phase 2 with an ADR.

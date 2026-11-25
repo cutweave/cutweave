@@ -959,11 +959,11 @@ MyVideo/                    ← project folder (user-chosen location)
 | 017 | Transaction kinds (`gesture`, `proposal`), connection-owned transactions, committed-only saves (§5.2) | Accepted |
 | 018 | User-flow e2e suite (real app, real input, real dialogs) as the regression gate | **Accepted** (product owner, 2026-11-24) |
 | 019 | The editor's Undo and Redo cover every actor's changes (`edit.undo{actor:"*"}`) (§5.2) | **Accepted** (product owner, 2026-11-24) |
-| 020 | Media folders: a folder tree in the project document, one folder per asset, schema v2 | Proposed: before WP-2F.07 |
+| 020 | Media folders: a folder tree in the project document, one folder per asset, schema v2 | **Accepted** (product owner, 2026-11-25) |
 | 021 | Agents choose among several engines by project; default is the focused window's engine (§2, §14) | **Accepted** (product owner, 2026-11-24) |
 | 022 | Source preview: the preview plays a media item outside any sequence (`view.set_source`) (§10) | **Accepted** (product owner, 2026-11-24) |
-| 023 | Timeline edit semantics for P2: magnetic main track, placement modes, attachments, `EditReport`, replacing gesture updates (§4.3, §5.2; [spec](spec/timeline-edit-semantics.md)) | Proposed: review of WP-2A.01 |
-| 024 | Keyframes: item-relative flicks, per-segment easing, exact split and trim rules, `keyframe.*` commands (§4.2, §4.3, §8; [spec](spec/keyframes.md)) | Proposed: review of WP-2C.01 |
+| 023 | Timeline edit semantics for P2: magnetic main track, placement modes, attachments, `EditReport`, replacing gesture updates (§4.3, §5.2; [spec](spec/timeline-edit-semantics.md)) | **Accepted** (product owner, 2026-11-25) |
+| 024 | Keyframes: item-relative flicks, per-segment easing, exact split and trim rules, `keyframe.*` commands (§4.2, §4.3, §8; [spec](spec/keyframes.md)) | **Accepted** (product owner, 2026-11-25) |
 | 025 | Proxy policy in the project (`settings.proxy_policy`) and a proxy mode per asset, as optional fields without a schema bump (§4.2, §7) | Proposed: review of WP-2F.01 |
 
 ## 24. Open questions (tracked; none block Phase 0)

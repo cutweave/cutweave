@@ -1,6 +1,6 @@
 # ADR-0020: Media folders: a folder tree in the project, one folder per asset
 
-- **Status:** Proposed
+- **Status:** Accepted (product owner, 2026-11-25)
 - **Date:** 2026-11-24
 - **Deciders:** product owner and Cutweave maintainers (drafted by the planner for the integrator)
 - **Supersedes:** none (extends the media model of arch §4.2; narrows the "folders/bins" exclusion of WP-1M.03 and WP-2F.06)

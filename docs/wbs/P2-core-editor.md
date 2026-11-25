@@ -634,6 +634,7 @@ Schedule note: the roadmap gives 9 weeks. Total effort here is about 162 agent-d
 - **Size:** M
 - **Executor:** opus
 - **Scope:**
+  - (product owner, 2026-11-25, ADR-0024) `clip.set_speed` takes `keyframes: "keep" | "scale"`, default `keep`: keys stay at their times unless the caller asks to scale them with the speed (`scale_times`, [keyframes spec](../spec/keyframes.md) §8.1); the editor offers "Scale keyframes" in the speed control.
   - Use `Speed::Constant(r)`, r in [0.1, 100], rational stored as `{num,den}` (not f64) to keep frame math exact; `reverse: bool`; `freeze: Option<{at_source}>`.
   - Commands: `clip.set_speed{item, speed, keep: duration|in_point, ripple}`, `clip.reverse`, `clip.freeze_frame{item, at}` (splits the item and inserts a still-duration clip of the freeze frame per CapCut behaviour, default 3 s duration: configurable setting `freeze.default_duration`), `clip.reset_speed`.
   - Source-time mapping function `source_time(item, t)` is the single canonical mapping used by render, audio, thumbnails and export. Frame-nearest sampling in v1 (no blending; blending arrives P4). Reverse requires decoder support for backwards GOP traversal: use GOP-cache decode-forward then reorder; for sources without proxy and long GOP a warning plus automatic proxy request (2F.01).
