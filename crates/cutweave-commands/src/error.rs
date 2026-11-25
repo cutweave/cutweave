@@ -145,6 +145,10 @@ pub enum ConflictReason {
     /// The item is soft-locked by another actor's open gesture or proposal transaction
     /// (arch §5.2, ADR-0017); retry after `retry_after_ms`.
     ItemInGesture,
+    /// Opening or closing a project would drop the open document's unsaved changes, and the
+    /// caller did not say to (`discard_unsaved: true` / `save: false`, ADR-0029). The detail
+    /// names the project.
+    UnsavedChanges,
 }
 
 impl ConflictReason {
@@ -156,6 +160,7 @@ impl ConflictReason {
             ConflictReason::RequestIdReused => "request_id_reused",
             ConflictReason::HistoryTargetModified => "history_target_modified",
             ConflictReason::ItemInGesture => "item_in_gesture",
+            ConflictReason::UnsavedChanges => "unsaved_changes",
         }
     }
 }

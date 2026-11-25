@@ -35,8 +35,8 @@ use cutweave_api::{
     RunFileProject, RunningServer,
 };
 use cutweave_commands::{
-    Access, ActorCtx, Clock, CmdError, ConnId, DocHandle, DocSnapshot, ManualClock, Registry,
-    RegistryError, Rev, SystemClock, WallTime,
+    Access, Actor, ActorCtx, Clock, CmdError, ConnId, DocHandle, DocSnapshot, ManualClock,
+    Registry, RegistryError, Rev, SystemClock, WallTime,
 };
 use cutweave_jobs::JobManager;
 use cutweave_model::{SeededGen, Time};
@@ -82,6 +82,12 @@ const FIRST_CONN: u64 = 1 << 32;
 
 /// How long the runtime waits for blocking tasks when the engine stops.
 const RUNTIME_SHUTDOWN: Duration = Duration::from_secs(5);
+
+/// What a refused `project.open` can pass instead (ADR-0029).
+const OPEN_ANYWAY: &str = "pass discard_unsaved: true to drop them";
+
+/// What a refused `project.close` can pass instead (ADR-0029).
+const CLOSE_ANYWAY: &str = "pass save: false to drop them";
 
 /// The engine version (the readiness line, the run-file).
 pub const VERSION: &str = env!("CARGO_PKG_VERSION");
@@ -731,29 +737,57 @@ impl Core {
         Ok((closed, status))
     }
 
+    /// `project.open` (ADR-0029): refuses to drop unsaved changes unless `discard_unsaved`, and
+    /// announces the open (`project.opening`, then `project.opened` or `project.open_failed`).
     pub(crate) fn open_project(
         self: &Arc<Self>,
         path: &Path,
+        discard_unsaved: bool,
+        actor: &Actor,
     ) -> Result<ProjectOpenOutput, CmdError> {
+        // Discarding closes as `project.close` with `save: false` does: no save, not even
+        // autosave's, so what the person chose not to keep is not written.
+        let save = discard_unsaved.then_some(false);
         {
-            // Opening the project that is already open changes nothing.
             let guard = self.session()?;
-            if let Some(current) = guard.as_ref()
-                && current.is_project(path)
-            {
-                return Ok(ProjectOpenOutput {
-                    project: current.status(),
-                    missing_media: Vec::new(),
-                    migrated_from: None,
-                });
+            if let Some(current) = guard.as_ref() {
+                // Opening the project that is already open changes nothing.
+                if current.is_project(path) {
+                    return Ok(ProjectOpenOutput {
+                        project: current.status(),
+                        missing_media: Vec::new(),
+                        migrated_from: None,
+                    });
+                }
+                // Refused before anything is read or locked; the app tells the person.
+                if let Err(e) = current.guard_unsaved(save, OPEN_ANYWAY) {
+                    session::announce_open_failed(&self.deps, path, actor, &e);
+                    return Err(e);
+                }
             }
         }
+        session::announce_opening(&self.deps, path, actor);
+        let result = self.open_announced(path, save);
+        if let Err(e) = &result {
+            session::announce_open_failed(&self.deps, path, actor, e);
+        }
+        result
+    }
+
+    /// The open itself, after `project.opening`.
+    fn open_announced(
+        self: &Arc<Self>,
+        path: &Path,
+        save: Option<bool>,
+    ) -> Result<ProjectOpenOutput, CmdError> {
         let opened = session::open_store(path).map_err(|e| session::io_error(&e, "/path"))?;
         let missing_media = opened.report.missing_media.iter().map(|m| m.id).collect();
         let migrated_from = opened.report.migration.as_ref().map(|m| m.from_version);
         let mut slot = self.session_mut()?;
         if let Some(current) = slot.as_ref() {
-            current.save_before_close(None)?;
+            // Checked again under the write lock: an edit may have landed since.
+            current.guard_unsaved(save, OPEN_ANYWAY)?;
+            current.save_before_close(save)?;
         }
         let (_, status) =
             self.swap_session(&mut slot, |deps, ids| Session::open(deps, opened, ids))?;
@@ -772,6 +806,7 @@ impl Core {
     ) -> Result<ProjectCloseOutput, CmdError> {
         let mut slot = self.session_mut()?;
         if let Some(current) = slot.as_ref() {
+            current.guard_unsaved(save, CLOSE_ANYWAY)?;
             current.save_before_close(save)?;
         }
         let (closed, status) = self.swap_session(&mut slot, Session::untitled)?;

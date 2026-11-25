@@ -40,8 +40,8 @@ use std::thread::JoinHandle;
 use std::time::{Duration, Instant};
 
 use cutweave_commands::{
-    ActorOptions, Clock, CmdError, CommitRecord, DocActor, DocConfig, DocEvent, DocHandle,
-    DocReset, RecvError, Registry, Rev, WallTime, wire,
+    Actor, ActorOptions, Clock, CmdError, CommitRecord, ConflictReason, DocActor, DocConfig,
+    DocEvent, DocHandle, DocReset, RecvError, Registry, Rev, WallTime, wire,
 };
 use cutweave_jobs::JobManager;
 use cutweave_model::Project;
@@ -51,7 +51,9 @@ use crate::autosave::{
     AutosaveConfig, AutosavePreference, AutosaveService, AutosaveSettings, AutosaveTask,
     ProjectEvent, ProjectSaved, SharedStore,
 };
-use crate::events::{EngineEvent, EventBus, ProjectClosed, SessionEvent};
+use crate::events::{
+    EngineEvent, EventBus, ProjectClosed, ProjectOpenFailed, ProjectOpening, SessionEvent,
+};
 use crate::journal::{
     IdState, IdTracker, JournalConfig, JournalError, RecoverOptions, Recovered, RecoveryAvailable,
     SyncPolicy,
@@ -615,6 +617,39 @@ impl Session {
         Ok(())
     }
 
+    /// Refuses a close that would leave changes unsaved without the caller saying so (ADR-0029):
+    /// `Conflict{reason: unsaved_changes}` naming the project, with `how` (what the caller can
+    /// pass instead) in the detail. `save: Some(false)` is that say-so and passes. Otherwise an
+    /// untitled document with changes is refused (it has no file to save to), and so is a
+    /// project with changes that the close would not save (`save` absent and autosave off). A
+    /// read-only project or one awaiting a recovery decision has nothing unsaved to lose.
+    pub(crate) fn guard_unsaved(&self, save: Option<bool>, how: &str) -> Result<(), CmdError> {
+        if save == Some(false) {
+            return Ok(());
+        }
+        let status = self.status();
+        let at_risk = match &self.project {
+            None => status.dirty,
+            Some(OpenProject {
+                phase: Phase::Editing(e),
+                ..
+            }) => status.dirty && !save.unwrap_or_else(|| e.autosave.config().enabled),
+            Some(_) => false,
+        };
+        if !at_risk {
+            return Ok(());
+        }
+        let detail = if self.project.is_none() {
+            format!(
+                "\"{}\" has unsaved changes and no file yet; save it with project.save_as, or {how}",
+                status.name
+            )
+        } else {
+            format!("\"{}\" has unsaved changes; save them with project.save, or {how}", status.name)
+        };
+        Err(CmdError::conflict(ConflictReason::UnsavedChanges, detail))
+    }
+
     /// Stops everything the session runs and closes its project (no save). Returns the closed
     /// project's document path.
     pub(crate) fn close(mut self, deps: &Deps) -> Option<PathBuf> {
@@ -647,6 +682,32 @@ impl Session {
 pub(crate) fn announce_opened(deps: &Deps, status: ProjectStatus) {
     deps.events
         .publish(EngineEvent::Session(SessionEvent::Opened(status)));
+}
+
+/// Publishes `project.opening`: `actor` starts opening `path` (ADR-0029).
+pub(crate) fn announce_opening(deps: &Deps, path: &Path, actor: &Actor) {
+    deps.events
+        .publish(EngineEvent::Session(SessionEvent::Opening(ProjectOpening {
+            path: path.to_string_lossy().into_owned(),
+            actor: actor.to_string(),
+        })));
+}
+
+/// Publishes `project.open_failed`: `actor`'s open of `path` failed with `error`, or was
+/// refused before it started (ADR-0029).
+pub(crate) fn announce_open_failed(deps: &Deps, path: &Path, actor: &Actor, error: &CmdError) {
+    let reason = match error {
+        CmdError::Conflict { reason, .. } => Some(reason.name().to_owned()),
+        _ => None,
+    };
+    deps.events
+        .publish(EngineEvent::Session(SessionEvent::OpenFailed(ProjectOpenFailed {
+            path: path.to_string_lossy().into_owned(),
+            actor: actor.to_string(),
+            code: error.code().to_owned(),
+            reason,
+            message: error.message(),
+        })));
 }
 
 /// Publishes `project.closed`.
