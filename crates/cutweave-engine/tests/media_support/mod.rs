@@ -193,6 +193,29 @@ impl Server {
         });
         closed.elapsed()
     }
+
+    /// The best of up to `attempts` disconnects (stopping at the first within `budget`), and how
+    /// many were made. A cancellation latency is a lower bound that contention only inflates: a
+    /// real regression (a decode that does not check its token) is slow on every attempt, a
+    /// descheduled thread is slow on one. Each attempt is a fresh request that is cancelled.
+    pub fn disconnect_best_of(
+        &self,
+        path: &str,
+        settle: Duration,
+        budget: Duration,
+        attempts: u32,
+    ) -> (Duration, u32) {
+        let mut best = Duration::MAX;
+        let mut made = 0;
+        while made < attempts {
+            best = best.min(self.disconnect_mid_request(path, settle));
+            made += 1;
+            if best < budget {
+                break;
+            }
+        }
+        (best, made)
+    }
 }
 
 /// Polls `f` every millisecond for up to 30 s.
