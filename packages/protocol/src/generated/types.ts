@@ -208,16 +208,13 @@ export type Clip = {
  *  sample grid, for audio clips not linked to video). `Locked` if a track involved is locked.
  */
 export type ClipSplit = {
-	/**  The clip (give `item` or `items`). */
+	/**  The clip (or `items`). */
 	item?: ItemId | null,
-	/**  Several clips to split at the same time. */
+	/**  Clips to split at once. */
 	items?: ItemId[] | null,
-	/**  Timeline time to split at: strictly inside every clip. */
+	/**  Timeline time to split at: strictly inside the clip. */
 	at: TimeInput,
-	/**
-	 *  Snap `at` to the audio sample grid instead of frames; only for audio clips not linked
-	 *  to video (default `false`).
-	 */
+	/**  Audio sample grid. */
 	fine?: boolean | null,
 };
 
@@ -1180,37 +1177,25 @@ export type ItemId = string & { readonly __brand: "ItemId" };
  *  snap to the frame grid (`fine: true`: the audio sample grid, audio-only moves).
  */
 export type ItemMove = {
-	/**  The item to move (give `item` or `items`). */
+	/**  The item (or `items`). */
 	item?: ItemId | null,
-	/**  Several items to move; the first is the primary. */
+	/**  Items; the first leads. */
 	items?: ItemId[] | null,
-	/**  New start of the primary item, `>= 0` (give `start` or `delta`). */
+	/**  New start, `>= 0` (or `delta`). */
 	start?: TimeInput | null,
-	/**  Offset from the primary item's start (negative: earlier; use seconds or flicks). */
+	/**  Offset of the start. */
 	delta?: TimeInput | null,
-	/**
-	 *  Target track for the primary's track's items, of the same sequence and kind (default:
-	 *  stay).
-	 */
+	/**  Target track (default: stay). */
 	to_track?: TrackId | null,
-	/**  Move only the given items and take them out of their linked groups (default `false`). */
+	/**  Move only the given items, unlinked. */
 	unlink?: boolean | null,
-	/**  Overlap handling, the P1 alias of `mode` (`reject` or `new_track`). */
+	/**  Alias of `mode`. */
 	overlap?: OverlapPolicy | null,
-	/**
-	 *  Placement mode: `insert`, `overwrite`, `new_track` or `reject` (default `insert` on the
-	 *  magnetic main track, `reject` elsewhere).
-	 */
+	/**  Default: `insert` on the main track, else `reject`. */
 	mode?: PlacementMode | null,
-	/**
-	 *  Ripple every track of the sequence when the magnetic track closes or opens (default
-	 *  `false`).
-	 */
+	/**  Ripples reach every track. */
 	ripple_all_tracks?: boolean | null,
-	/**
-	 *  Snap to the audio sample grid instead of frames; only for audio items not linked to
-	 *  video (default `false`).
-	 */
+	/**  Audio sample grid. */
 	fine?: boolean | null,
 };
 
@@ -1816,13 +1801,11 @@ export type MovedReport = {
 
 /**
  *  What to do when an item would overlap another one on its target track: the P1 `overlap`
- *  param, an alias of the placement `mode` (spec INV-40).
+ *  param, an alias of the placement `mode` (spec INV-40). `reject` fails with `Invalid`
+ *  (default on free tracks); `new_track` places on a new track of the same kind directly above
+ *  the target.
  */
-export type OverlapPolicy = 
-/**  Fail with `Invalid` (default on free tracks). */
-"reject" | 
-/**  Create a new track of the same kind directly above the target and place there. */
-"new_track";
+export type OverlapPolicy = "reject" | "new_track";
 
 /**  An ordered list of [`PatchOp`]s, applied first to last. Serialized as a JSON array. */
 export type Patch = PatchOp[];
@@ -1885,28 +1868,19 @@ path: string };
  */
 export type PatchValue = null | boolean | number | string | PatchValue[] | { [key in string]: PatchValue };
 
-/**  How a placement treats what is already on the target range (timeline spec §3.6). */
-export type PlacementMode = 
 /**
- *  Split the item under the start, ripple the rest of the track (and its partners' tracks)
- *  later by the placed length, then place (default on the magnetic main track).
+ *  How a placement treats what is already on the target range (timeline spec §3.6):
+ * 
+ *  - `insert`: split the item under the start, ripple the rest of the track (and its partners'
+ *    tracks) later by the placed length, then place (default on the magnetic main track);
+ *  - `overwrite`: cut the range out of the track (trimming or splitting what is there), then
+ *    place; nothing ripples;
+ *  - `new_track`: place on the target track if the range is free, otherwise on a new track of
+ *    the same kind directly above it;
+ *  - `reject`: place if the range is free, otherwise fail with `Invalid` naming the item in the
+ *    way (default on free tracks).
  */
-"insert" | 
-/**
- *  Cut the range out of the track (trimming or splitting what is there), then place. Nothing
- *  ripples.
- */
-"overwrite" | 
-/**
- *  Place on the target track if the range is free, otherwise on a new track of the same
- *  kind directly above it.
- */
-"new_track" | 
-/**
- *  Place if the range is free, otherwise fail with `Invalid` naming the item in the way
- *  (default on free tracks).
- */
-"reject";
+export type PlacementMode = "insert" | "overwrite" | "new_track" | "reject";
 
 /**  Preview resolution (arch §8 quality ladder). */
 export type PreviewQuality = 
@@ -2769,40 +2743,25 @@ export type TimelineGetOutput = {
 export type TimelineInsert = {
 	/**  The sequence. */
 	sequence: SequenceId,
-	/**
-	 *  The target track (of that sequence): a video track for pictures, an audio track for
-	 *  sound.
-	 */
+	/**  The target track: video for pictures, audio for sound. */
 	track: TrackId,
 	/**  The media to place. */
 	media: MediaId,
-	/**
-	 *  Timeline position of the clip's first frame, `>= 0` (snapped to the frame grid; on the
-	 *  magnetic main track clamped to its end).
-	 */
+	/**  Timeline position of the clip's first frame, `>= 0`. */
 	at: TimeInput,
 	/**  Position in the media to start from (default 0). */
 	source_in?: TimeInput | null,
-	/**  Clip length, `> 0` (snapped to whole frames, at least one). */
+	/**  Clip length, `> 0` (default: the rest of the media). */
 	duration?: TimeInput | null,
-	/**  Overlap handling, the P1 alias of `mode` (`reject` or `new_track`). */
+	/**  Alias of `mode`. */
 	overlap?: OverlapPolicy | null,
-	/**  Also insert the audio of a video file as a linked clip (default `true`). */
+	/**  Also place a video's sound, linked (default `true`). */
 	link?: boolean | null,
-	/**
-	 *  Placement mode: `insert`, `overwrite`, `new_track` or `reject` (default `insert` on the
-	 *  magnetic main track, `reject` elsewhere).
-	 */
+	/**  Default: `insert` on the main track, else `reject`. */
 	mode?: PlacementMode | null,
-	/**
-	 *  The audio track for the linked sound (it must be free over the range); default: the
-	 *  first unlocked audio track that is.
-	 */
+	/**  Track for the linked sound. */
 	audio_track?: TrackId | null,
-	/**
-	 *  With `insert`, ripple every track of the sequence instead of the target and the tracks
-	 *  of linked partners of what shifts (default `false`).
-	 */
+	/**  `insert` ripples every track. */
 	ripple_all_tracks?: boolean | null,
 };
 

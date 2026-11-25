@@ -228,15 +228,13 @@ const CONTRACT: &[Row] = &[
         true,
         true,
     ),
-    // WP-2A.03: `delta` moves are not idempotent, so the hint is off (a client must not retry
-    // them blindly).
     (
         "item.move",
         EntryKind::Command,
         McpExposure::Core,
         false,
         false,
-        false,
+        true,
         true,
     ),
     (

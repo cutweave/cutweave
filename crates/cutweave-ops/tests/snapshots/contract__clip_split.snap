@@ -28,7 +28,7 @@ expression: "json!({\n    \"meta\": serde_json::to_value(meta).unwrap(), \"input
             "null"
           ],
           "pattern": "^itm_[0-9a-f]{32}$",
-          "description": "The clip (give `item` or `items`).",
+          "description": "The clip (or `items`).",
           "default": null
         },
         "items": {
@@ -41,11 +41,11 @@ expression: "json!({\n    \"meta\": serde_json::to_value(meta).unwrap(), \"input
             "type": "string",
             "pattern": "^itm_[0-9a-f]{32}$"
           },
-          "description": "Several clips to split at the same time.",
+          "description": "Clips to split at once.",
           "default": null
         },
         "at": {
-          "description": "Timeline time to split at: strictly inside every clip.",
+          "description": "Timeline time to split at: strictly inside the clip.",
           "anyOf": [
             {
               "type": "integer",
@@ -63,7 +63,7 @@ expression: "json!({\n    \"meta\": serde_json::to_value(meta).unwrap(), \"input
             "boolean",
             "null"
           ],
-          "description": "Snap `at` to the audio sample grid instead of frames; only for audio clips not linked\nto video (default `false`).",
+          "description": "Audio sample grid.",
           "default": null
         }
       },
@@ -384,7 +384,7 @@ expression: "json!({\n    \"meta\": serde_json::to_value(meta).unwrap(), \"input
           "null"
         ],
         "pattern": "^itm_[0-9a-f]{32}$",
-        "description": "The clip (give `item` or `items`).",
+        "description": "The clip (or `items`).",
         "default": null
       },
       "items": {
@@ -397,11 +397,11 @@ expression: "json!({\n    \"meta\": serde_json::to_value(meta).unwrap(), \"input
           "type": "string",
           "pattern": "^itm_[0-9a-f]{32}$"
         },
-        "description": "Several clips to split at the same time.",
+        "description": "Clips to split at once.",
         "default": null
       },
       "at": {
-        "description": "Timeline time to split at: strictly inside every clip.",
+        "description": "Timeline time to split at: strictly inside the clip.",
         "anyOf": [
           {
             "type": "integer",
@@ -419,7 +419,7 @@ expression: "json!({\n    \"meta\": serde_json::to_value(meta).unwrap(), \"input
           "boolean",
           "null"
         ],
-        "description": "Snap `at` to the audio sample grid instead of frames; only for audio clips not linked\nto video (default `false`).",
+        "description": "Audio sample grid.",
         "default": null
       }
     },

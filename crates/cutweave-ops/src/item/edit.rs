@@ -78,35 +78,31 @@ pub struct ItemMoveOutput {
 /// snap to the frame grid (`fine: true`: the audio sample grid, audio-only moves).
 #[command(
     name = "item.move",
-    summary = "Move items in time and/or to another track (linked partners follow; the main track stays gap-free)",
+    summary = "Move items in time and/or to another track (linked partners follow)",
     undoable,
     mcp = "core",
-    annotations(destructive = false, idempotent = false)
+    annotations(destructive = false, idempotent = true)
 )]
 pub struct ItemMove {
-    /// The item to move (give `item` or `items`).
+    /// The item (or `items`).
     pub item: Option<ItemId>,
-    /// Several items to move; the first is the primary.
+    /// Items; the first leads.
     pub items: Option<Vec<ItemId>>,
-    /// New start of the primary item, `>= 0` (give `start` or `delta`).
+    /// New start, `>= 0` (or `delta`).
     pub start: Option<TimeInput>,
-    /// Offset from the primary item's start (negative: earlier; use seconds or flicks).
+    /// Offset of the start.
     pub delta: Option<TimeInput>,
-    /// Target track for the primary's track's items, of the same sequence and kind (default:
-    /// stay).
+    /// Target track (default: stay).
     pub to_track: Option<TrackId>,
-    /// Move only the given items and take them out of their linked groups (default `false`).
+    /// Move only the given items, unlinked.
     pub unlink: Option<bool>,
-    /// Overlap handling, the P1 alias of `mode` (`reject` or `new_track`).
+    /// Alias of `mode`.
     pub overlap: Option<OverlapPolicy>,
-    /// Placement mode: `insert`, `overwrite`, `new_track` or `reject` (default `insert` on the
-    /// magnetic main track, `reject` elsewhere).
+    /// Default: `insert` on the main track, else `reject`.
     pub mode: Option<PlacementMode>,
-    /// Ripple every track of the sequence when the magnetic track closes or opens (default
-    /// `false`).
+    /// Ripples reach every track.
     pub ripple_all_tracks: Option<bool>,
-    /// Snap to the audio sample grid instead of frames; only for audio items not linked to
-    /// video (default `false`).
+    /// Audio sample grid.
     pub fine: Option<bool>,
 }
 
@@ -383,7 +379,7 @@ pub struct ItemDeleteOutput {
 /// `NotFound`; repeated IDs are deleted once; all items must be in one sequence.
 #[command(
     name = "item.delete",
-    summary = "Delete items and their linked partners (the magnetic main track closes the space)",
+    summary = "Delete items and their linked partners (the main track closes up)",
     undoable,
     mcp = "core",
     annotations(destructive = true, idempotent = false)

@@ -109,14 +109,13 @@ pub struct ClipSplitOutput {
     annotations(destructive = false, idempotent = false)
 )]
 pub struct ClipSplit {
-    /// The clip (give `item` or `items`).
+    /// The clip (or `items`).
     pub item: Option<ItemId>,
-    /// Several clips to split at the same time.
+    /// Clips to split at once.
     pub items: Option<Vec<ItemId>>,
-    /// Timeline time to split at: strictly inside every clip.
+    /// Timeline time to split at: strictly inside the clip.
     pub at: TimeInput,
-    /// Snap `at` to the audio sample grid instead of frames; only for audio clips not linked
-    /// to video (default `false`).
+    /// Audio sample grid.
     pub fine: Option<bool>,
 }
 

@@ -57,22 +57,26 @@ use crate::{
 
 // ----- placement modes ---------------------------------------------------------------------
 
-/// How a placement treats what is already on the target range (timeline spec §3.6).
+/// How a placement treats what is already on the target range (timeline spec §3.6):
+///
+/// - `insert`: split the item under the start, ripple the rest of the track (and its partners'
+///   tracks) later by the placed length, then place (default on the magnetic main track);
+/// - `overwrite`: cut the range out of the track (trimming or splitting what is there), then
+///   place; nothing ripples;
+/// - `new_track`: place on the target track if the range is free, otherwise on a new track of
+///   the same kind directly above it;
+/// - `reject`: place if the range is free, otherwise fail with `Invalid` naming the item in the
+///   way (default on free tracks).
+// The variants are documented above, not one by one: undocumented variants keep the schema a
+// plain string `enum`, which the MCP core tools list on a token budget (R33).
+#[allow(missing_docs)]
 #[wire]
 #[derive(Copy, Eq)]
 #[serde(rename_all = "snake_case")]
 pub enum PlacementMode {
-    /// Split the item under the start, ripple the rest of the track (and its partners' tracks)
-    /// later by the placed length, then place (default on the magnetic main track).
     Insert,
-    /// Cut the range out of the track (trimming or splitting what is there), then place. Nothing
-    /// ripples.
     Overwrite,
-    /// Place on the target track if the range is free, otherwise on a new track of the same
-    /// kind directly above it.
     NewTrack,
-    /// Place if the range is free, otherwise fail with `Invalid` naming the item in the way
-    /// (default on free tracks).
     Reject,
 }
 

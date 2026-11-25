@@ -5,7 +5,7 @@ expression: "json!({\n    \"meta\": serde_json::to_value(meta).unwrap(), \"input
 {
   "meta": {
     "name": "item.move",
-    "summary": "Move items in time and/or to another track (linked partners follow; the main track stays gap-free)",
+    "summary": "Move items in time and/or to another track (linked partners follow)",
     "kind": "command",
     "undoable": true,
     "view": false,
@@ -14,7 +14,7 @@ expression: "json!({\n    \"meta\": serde_json::to_value(meta).unwrap(), \"input
     "annotations": {
       "readOnlyHint": false,
       "destructiveHint": false,
-      "idempotentHint": false,
+      "idempotentHint": true,
       "openWorldHint": false
     },
     "secret_fields": [],
@@ -28,7 +28,7 @@ expression: "json!({\n    \"meta\": serde_json::to_value(meta).unwrap(), \"input
             "null"
           ],
           "pattern": "^itm_[0-9a-f]{32}$",
-          "description": "The item to move (give `item` or `items`).",
+          "description": "The item (or `items`).",
           "default": null
         },
         "items": {
@@ -41,7 +41,7 @@ expression: "json!({\n    \"meta\": serde_json::to_value(meta).unwrap(), \"input
             "type": "string",
             "pattern": "^itm_[0-9a-f]{32}$"
           },
-          "description": "Several items to move; the first is the primary.",
+          "description": "Items; the first leads.",
           "default": null
         },
         "start": {
@@ -64,7 +64,7 @@ expression: "json!({\n    \"meta\": serde_json::to_value(meta).unwrap(), \"input
               "type": "null"
             }
           ],
-          "description": "New start of the primary item, `>= 0` (give `start` or `delta`).",
+          "description": "New start, `>= 0` (or `delta`).",
           "default": null
         },
         "delta": {
@@ -87,7 +87,7 @@ expression: "json!({\n    \"meta\": serde_json::to_value(meta).unwrap(), \"input
               "type": "null"
             }
           ],
-          "description": "Offset from the primary item's start (negative: earlier; use seconds or flicks).",
+          "description": "Offset of the start.",
           "default": null
         },
         "to_track": {
@@ -96,7 +96,7 @@ expression: "json!({\n    \"meta\": serde_json::to_value(meta).unwrap(), \"input
             "null"
           ],
           "pattern": "^trk_[0-9a-f]{32}$",
-          "description": "Target track for the primary's track's items, of the same sequence and kind (default:\nstay).",
+          "description": "Target track (default: stay).",
           "default": null
         },
         "unlink": {
@@ -104,65 +104,35 @@ expression: "json!({\n    \"meta\": serde_json::to_value(meta).unwrap(), \"input
             "boolean",
             "null"
           ],
-          "description": "Move only the given items and take them out of their linked groups (default `false`).",
+          "description": "Move only the given items, unlinked.",
           "default": null
         },
         "overlap": {
-          "anyOf": [
-            {
-              "oneOf": [
-                {
-                  "type": "string",
-                  "const": "reject",
-                  "description": "Fail with `Invalid` (default on free tracks)."
-                },
-                {
-                  "type": "string",
-                  "const": "new_track",
-                  "description": "Create a new track of the same kind directly above the target and place there."
-                }
-              ],
-              "description": "What to do when an item would overlap another one on its target track: the P1 `overlap`\nparam, an alias of the placement `mode` (spec INV-40)."
-            },
-            {
-              "type": "null"
-            }
+          "type": [
+            "string",
+            "null"
           ],
-          "description": "Overlap handling, the P1 alias of `mode` (`reject` or `new_track`).",
+          "enum": [
+            "reject",
+            "new_track",
+            null
+          ],
+          "description": "Alias of `mode`.",
           "default": null
         },
         "mode": {
-          "anyOf": [
-            {
-              "oneOf": [
-                {
-                  "type": "string",
-                  "const": "insert",
-                  "description": "Split the item under the start, ripple the rest of the track (and its partners' tracks)\nlater by the placed length, then place (default on the magnetic main track)."
-                },
-                {
-                  "type": "string",
-                  "const": "overwrite",
-                  "description": "Cut the range out of the track (trimming or splitting what is there), then place. Nothing\nripples."
-                },
-                {
-                  "type": "string",
-                  "const": "new_track",
-                  "description": "Place on the target track if the range is free, otherwise on a new track of the same\nkind directly above it."
-                },
-                {
-                  "type": "string",
-                  "const": "reject",
-                  "description": "Place if the range is free, otherwise fail with `Invalid` naming the item in the way\n(default on free tracks)."
-                }
-              ],
-              "description": "How a placement treats what is already on the target range (timeline spec §3.6)."
-            },
-            {
-              "type": "null"
-            }
+          "type": [
+            "string",
+            "null"
           ],
-          "description": "Placement mode: `insert`, `overwrite`, `new_track` or `reject` (default `insert` on the\nmagnetic main track, `reject` elsewhere).",
+          "enum": [
+            "insert",
+            "overwrite",
+            "new_track",
+            "reject",
+            null
+          ],
+          "description": "Default: `insert` on the main track, else `reject`.",
           "default": null
         },
         "ripple_all_tracks": {
@@ -170,7 +140,7 @@ expression: "json!({\n    \"meta\": serde_json::to_value(meta).unwrap(), \"input
             "boolean",
             "null"
           ],
-          "description": "Ripple every track of the sequence when the magnetic track closes or opens (default\n`false`).",
+          "description": "Ripples reach every track.",
           "default": null
         },
         "fine": {
@@ -178,7 +148,7 @@ expression: "json!({\n    \"meta\": serde_json::to_value(meta).unwrap(), \"input
             "boolean",
             "null"
           ],
-          "description": "Snap to the audio sample grid instead of frames; only for audio items not linked to\nvideo (default `false`).",
+          "description": "Audio sample grid.",
           "default": null
         }
       },
@@ -485,7 +455,7 @@ expression: "json!({\n    \"meta\": serde_json::to_value(meta).unwrap(), \"input
           "null"
         ],
         "pattern": "^itm_[0-9a-f]{32}$",
-        "description": "The item to move (give `item` or `items`).",
+        "description": "The item (or `items`).",
         "default": null
       },
       "items": {
@@ -498,7 +468,7 @@ expression: "json!({\n    \"meta\": serde_json::to_value(meta).unwrap(), \"input
           "type": "string",
           "pattern": "^itm_[0-9a-f]{32}$"
         },
-        "description": "Several items to move; the first is the primary.",
+        "description": "Items; the first leads.",
         "default": null
       },
       "start": {
@@ -521,7 +491,7 @@ expression: "json!({\n    \"meta\": serde_json::to_value(meta).unwrap(), \"input
             "type": "null"
           }
         ],
-        "description": "New start of the primary item, `>= 0` (give `start` or `delta`).",
+        "description": "New start, `>= 0` (or `delta`).",
         "default": null
       },
       "delta": {
@@ -544,7 +514,7 @@ expression: "json!({\n    \"meta\": serde_json::to_value(meta).unwrap(), \"input
             "type": "null"
           }
         ],
-        "description": "Offset from the primary item's start (negative: earlier; use seconds or flicks).",
+        "description": "Offset of the start.",
         "default": null
       },
       "to_track": {
@@ -553,7 +523,7 @@ expression: "json!({\n    \"meta\": serde_json::to_value(meta).unwrap(), \"input
           "null"
         ],
         "pattern": "^trk_[0-9a-f]{32}$",
-        "description": "Target track for the primary's track's items, of the same sequence and kind (default:\nstay).",
+        "description": "Target track (default: stay).",
         "default": null
       },
       "unlink": {
@@ -561,65 +531,35 @@ expression: "json!({\n    \"meta\": serde_json::to_value(meta).unwrap(), \"input
           "boolean",
           "null"
         ],
-        "description": "Move only the given items and take them out of their linked groups (default `false`).",
+        "description": "Move only the given items, unlinked.",
         "default": null
       },
       "overlap": {
-        "anyOf": [
-          {
-            "oneOf": [
-              {
-                "type": "string",
-                "const": "reject",
-                "description": "Fail with `Invalid` (default on free tracks)."
-              },
-              {
-                "type": "string",
-                "const": "new_track",
-                "description": "Create a new track of the same kind directly above the target and place there."
-              }
-            ],
-            "description": "What to do when an item would overlap another one on its target track: the P1 `overlap`\nparam, an alias of the placement `mode` (spec INV-40)."
-          },
-          {
-            "type": "null"
-          }
+        "type": [
+          "string",
+          "null"
         ],
-        "description": "Overlap handling, the P1 alias of `mode` (`reject` or `new_track`).",
+        "enum": [
+          "reject",
+          "new_track",
+          null
+        ],
+        "description": "Alias of `mode`.",
         "default": null
       },
       "mode": {
-        "anyOf": [
-          {
-            "oneOf": [
-              {
-                "type": "string",
-                "const": "insert",
-                "description": "Split the item under the start, ripple the rest of the track (and its partners' tracks)\nlater by the placed length, then place (default on the magnetic main track)."
-              },
-              {
-                "type": "string",
-                "const": "overwrite",
-                "description": "Cut the range out of the track (trimming or splitting what is there), then place. Nothing\nripples."
-              },
-              {
-                "type": "string",
-                "const": "new_track",
-                "description": "Place on the target track if the range is free, otherwise on a new track of the same\nkind directly above it."
-              },
-              {
-                "type": "string",
-                "const": "reject",
-                "description": "Place if the range is free, otherwise fail with `Invalid` naming the item in the way\n(default on free tracks)."
-              }
-            ],
-            "description": "How a placement treats what is already on the target range (timeline spec §3.6)."
-          },
-          {
-            "type": "null"
-          }
+        "type": [
+          "string",
+          "null"
         ],
-        "description": "Placement mode: `insert`, `overwrite`, `new_track` or `reject` (default `insert` on the\nmagnetic main track, `reject` elsewhere).",
+        "enum": [
+          "insert",
+          "overwrite",
+          "new_track",
+          "reject",
+          null
+        ],
+        "description": "Default: `insert` on the main track, else `reject`.",
         "default": null
       },
       "ripple_all_tracks": {
@@ -627,7 +567,7 @@ expression: "json!({\n    \"meta\": serde_json::to_value(meta).unwrap(), \"input
           "boolean",
           "null"
         ],
-        "description": "Ripple every track of the sequence when the magnetic track closes or opens (default\n`false`).",
+        "description": "Ripples reach every track.",
         "default": null
       },
       "fine": {
@@ -635,7 +575,7 @@ expression: "json!({\n    \"meta\": serde_json::to_value(meta).unwrap(), \"input
           "boolean",
           "null"
         ],
-        "description": "Snap to the audio sample grid instead of frames; only for audio items not linked to\nvideo (default `false`).",
+        "description": "Audio sample grid.",
         "default": null
       }
     },

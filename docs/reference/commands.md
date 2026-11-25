@@ -22,10 +22,10 @@ MCP exposure: `core` commands are always listed as tools (`item.move` is `item_m
 | edit | `edit.restore` | Restore a checkpoint as one undoable change | engine, undoable, idempotent | catalog |
 | edit | `edit.undo` | Undo your last change, or another actor's (`actor`; `*` = anyone's latest) | engine | core |
 | export | `export.start` | Export a sequence to an MP4 file (H.264 + AAC) as a background job; returns job_id | engine, destructive | core |
-| item | `item.delete` | Delete items and their linked partners (the magnetic main track closes the space) | command, undoable, destructive | core |
+| item | `item.delete` | Delete items and their linked partners (the main track closes up) | command, undoable, destructive | core |
 | item | `item.duplicate` | Duplicate items and their linked partners after the selection (inserted on the main track) | command, undoable | catalog |
 | item | `item.get` | Get one item: summary, track, source, audio and visual properties | query | catalog |
-| item | `item.move` | Move items in time and/or to another track (linked partners follow; the main track stays gap-free) | command, undoable | core |
+| item | `item.move` | Move items in time and/or to another track (linked partners follow) | command, undoable, idempotent | core |
 | item | `item.set_props` | Set an item's name, enabled, opacity, audio_gain or transform (partial) | command, undoable, idempotent | core |
 | job | `job.cancel` | Cancel a background job (stops within 500 ms; no effect once it finished) | engine, idempotent | catalog |
 | job | `job.list` | List background jobs, newest first (filter by media, state or kind) | engine, read-only, idempotent | catalog |

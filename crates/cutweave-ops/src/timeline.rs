@@ -45,15 +45,17 @@ pub fn register(registry: &mut Registry) -> Result<(), RegistryError> {
 }
 
 /// What to do when an item would overlap another one on its target track: the P1 `overlap`
-/// param, an alias of the placement `mode` (spec INV-40).
+/// param, an alias of the placement `mode` (spec INV-40). `reject` fails with `Invalid`
+/// (default on free tracks); `new_track` places on a new track of the same kind directly above
+/// the target.
+// Variants documented above: a plain string `enum` keeps the MCP core tools small (R33).
+#[allow(missing_docs)]
 #[wire]
 #[derive(Copy, Eq, Default)]
 #[serde(rename_all = "snake_case")]
 pub enum OverlapPolicy {
-    /// Fail with `Invalid` (default on free tracks).
     #[default]
     Reject,
-    /// Create a new track of the same kind directly above the target and place there.
     NewTrack,
 }
 

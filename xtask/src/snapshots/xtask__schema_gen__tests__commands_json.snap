@@ -27,11 +27,11 @@ expression: text
                 "type": "string"
               }
             ],
-            "description": "Timeline time to split at: strictly inside every clip."
+            "description": "Timeline time to split at: strictly inside the clip."
           },
           "fine": {
             "default": null,
-            "description": "Snap `at` to the audio sample grid instead of frames; only for audio clips not linked\nto video (default `false`).",
+            "description": "Audio sample grid.",
             "type": [
               "boolean",
               "null"
@@ -39,7 +39,7 @@ expression: text
           },
           "item": {
             "default": null,
-            "description": "The clip (give `item` or `items`).",
+            "description": "The clip (or `items`).",
             "pattern": "^itm_[0-9a-f]{32}$",
             "type": [
               "string",
@@ -48,7 +48,7 @@ expression: text
           },
           "items": {
             "default": null,
-            "description": "Several clips to split at the same time.",
+            "description": "Clips to split at once.",
             "items": {
               "description": "A Item id: `^itm_[0-9a-f]{32}$`.",
               "pattern": "^itm_[0-9a-f]{32}$",
@@ -2603,7 +2603,7 @@ expression: text
       },
       "scope": "any",
       "secret_fields": [],
-      "summary": "Delete items and their linked partners (the magnetic main track closes the space)",
+      "summary": "Delete items and their linked partners (the main track closes up)",
       "undoable": true,
       "view": false
     },
@@ -2628,38 +2628,19 @@ expression: text
             "type": "array"
           },
           "mode": {
-            "anyOf": [
-              {
-                "description": "How a placement treats what is already on the target range (timeline spec §3.6).",
-                "oneOf": [
-                  {
-                    "const": "insert",
-                    "description": "Split the item under the start, ripple the rest of the track (and its partners' tracks)\nlater by the placed length, then place (default on the magnetic main track).",
-                    "type": "string"
-                  },
-                  {
-                    "const": "overwrite",
-                    "description": "Cut the range out of the track (trimming or splitting what is there), then place. Nothing\nripples.",
-                    "type": "string"
-                  },
-                  {
-                    "const": "new_track",
-                    "description": "Place on the target track if the range is free, otherwise on a new track of the same\nkind directly above it.",
-                    "type": "string"
-                  },
-                  {
-                    "const": "reject",
-                    "description": "Place if the range is free, otherwise fail with `Invalid` naming the item in the way\n(default on free tracks).",
-                    "type": "string"
-                  }
-                ]
-              },
-              {
-                "type": "null"
-              }
-            ],
             "default": null,
-            "description": "Placement mode for the copies (default `insert` with main-track items, else `reject`)."
+            "description": "Placement mode for the copies (default `insert` with main-track items, else `reject`).",
+            "enum": [
+              "insert",
+              "overwrite",
+              "new_track",
+              "reject",
+              null
+            ],
+            "type": [
+              "string",
+              "null"
+            ]
           },
           "offset": {
             "anyOf": [
@@ -2987,7 +2968,7 @@ expression: text
     {
       "annotations": {
         "destructiveHint": false,
-        "idempotentHint": false,
+        "idempotentHint": true,
         "openWorldHint": false,
         "readOnlyHint": false
       },
@@ -3016,11 +2997,11 @@ expression: text
               }
             ],
             "default": null,
-            "description": "Offset from the primary item's start (negative: earlier; use seconds or flicks)."
+            "description": "Offset of the start."
           },
           "fine": {
             "default": null,
-            "description": "Snap to the audio sample grid instead of frames; only for audio items not linked to\nvideo (default `false`).",
+            "description": "Audio sample grid.",
             "type": [
               "boolean",
               "null"
@@ -3028,7 +3009,7 @@ expression: text
           },
           "item": {
             "default": null,
-            "description": "The item to move (give `item` or `items`).",
+            "description": "The item (or `items`).",
             "pattern": "^itm_[0-9a-f]{32}$",
             "type": [
               "string",
@@ -3037,7 +3018,7 @@ expression: text
           },
           "items": {
             "default": null,
-            "description": "Several items to move; the first is the primary.",
+            "description": "Items; the first leads.",
             "items": {
               "description": "A Item id: `^itm_[0-9a-f]{32}$`.",
               "pattern": "^itm_[0-9a-f]{32}$",
@@ -3049,66 +3030,36 @@ expression: text
             ]
           },
           "mode": {
-            "anyOf": [
-              {
-                "description": "How a placement treats what is already on the target range (timeline spec §3.6).",
-                "oneOf": [
-                  {
-                    "const": "insert",
-                    "description": "Split the item under the start, ripple the rest of the track (and its partners' tracks)\nlater by the placed length, then place (default on the magnetic main track).",
-                    "type": "string"
-                  },
-                  {
-                    "const": "overwrite",
-                    "description": "Cut the range out of the track (trimming or splitting what is there), then place. Nothing\nripples.",
-                    "type": "string"
-                  },
-                  {
-                    "const": "new_track",
-                    "description": "Place on the target track if the range is free, otherwise on a new track of the same\nkind directly above it.",
-                    "type": "string"
-                  },
-                  {
-                    "const": "reject",
-                    "description": "Place if the range is free, otherwise fail with `Invalid` naming the item in the way\n(default on free tracks).",
-                    "type": "string"
-                  }
-                ]
-              },
-              {
-                "type": "null"
-              }
-            ],
             "default": null,
-            "description": "Placement mode: `insert`, `overwrite`, `new_track` or `reject` (default `insert` on the\nmagnetic main track, `reject` elsewhere)."
+            "description": "Default: `insert` on the main track, else `reject`.",
+            "enum": [
+              "insert",
+              "overwrite",
+              "new_track",
+              "reject",
+              null
+            ],
+            "type": [
+              "string",
+              "null"
+            ]
           },
           "overlap": {
-            "anyOf": [
-              {
-                "description": "What to do when an item would overlap another one on its target track: the P1 `overlap`\nparam, an alias of the placement `mode` (spec INV-40).",
-                "oneOf": [
-                  {
-                    "const": "reject",
-                    "description": "Fail with `Invalid` (default on free tracks).",
-                    "type": "string"
-                  },
-                  {
-                    "const": "new_track",
-                    "description": "Create a new track of the same kind directly above the target and place there.",
-                    "type": "string"
-                  }
-                ]
-              },
-              {
-                "type": "null"
-              }
-            ],
             "default": null,
-            "description": "Overlap handling, the P1 alias of `mode` (`reject` or `new_track`)."
+            "description": "Alias of `mode`.",
+            "enum": [
+              "reject",
+              "new_track",
+              null
+            ],
+            "type": [
+              "string",
+              "null"
+            ]
           },
           "ripple_all_tracks": {
             "default": null,
-            "description": "Ripple every track of the sequence when the magnetic track closes or opens (default\n`false`).",
+            "description": "Ripples reach every track.",
             "type": [
               "boolean",
               "null"
@@ -3135,11 +3086,11 @@ expression: text
               }
             ],
             "default": null,
-            "description": "New start of the primary item, `>= 0` (give `start` or `delta`)."
+            "description": "New start, `>= 0` (or `delta`)."
           },
           "to_track": {
             "default": null,
-            "description": "Target track for the primary's track's items, of the same sequence and kind (default:\nstay).",
+            "description": "Target track (default: stay).",
             "pattern": "^trk_[0-9a-f]{32}$",
             "type": [
               "string",
@@ -3148,7 +3099,7 @@ expression: text
           },
           "unlink": {
             "default": null,
-            "description": "Move only the given items and take them out of their linked groups (default `false`).",
+            "description": "Move only the given items, unlinked.",
             "type": [
               "boolean",
               "null"
@@ -3454,7 +3405,7 @@ expression: text
       },
       "scope": "any",
       "secret_fields": [],
-      "summary": "Move items in time and/or to another track (linked partners follow; the main track stays gap-free)",
+      "summary": "Move items in time and/or to another track (linked partners follow)",
       "undoable": true,
       "view": false
     },
@@ -7782,11 +7733,11 @@ expression: text
                 "type": "string"
               }
             ],
-            "description": "Timeline position of the clip's first frame, `>= 0` (snapped to the frame grid; on the\nmagnetic main track clamped to its end)."
+            "description": "Timeline position of the clip's first frame, `>= 0`."
           },
           "audio_track": {
             "default": null,
-            "description": "The audio track for the linked sound (it must be free over the range); default: the\nfirst unlocked audio track that is.",
+            "description": "Track for the linked sound.",
             "pattern": "^trk_[0-9a-f]{32}$",
             "type": [
               "string",
@@ -7814,11 +7765,11 @@ expression: text
               }
             ],
             "default": null,
-            "description": "Clip length, `> 0` (snapped to whole frames, at least one)."
+            "description": "Clip length, `> 0` (default: the rest of the media)."
           },
           "link": {
             "default": null,
-            "description": "Also insert the audio of a video file as a linked clip (default `true`).",
+            "description": "Also place a video's sound, linked (default `true`).",
             "type": [
               "boolean",
               "null"
@@ -7830,66 +7781,36 @@ expression: text
             "type": "string"
           },
           "mode": {
-            "anyOf": [
-              {
-                "description": "How a placement treats what is already on the target range (timeline spec §3.6).",
-                "oneOf": [
-                  {
-                    "const": "insert",
-                    "description": "Split the item under the start, ripple the rest of the track (and its partners' tracks)\nlater by the placed length, then place (default on the magnetic main track).",
-                    "type": "string"
-                  },
-                  {
-                    "const": "overwrite",
-                    "description": "Cut the range out of the track (trimming or splitting what is there), then place. Nothing\nripples.",
-                    "type": "string"
-                  },
-                  {
-                    "const": "new_track",
-                    "description": "Place on the target track if the range is free, otherwise on a new track of the same\nkind directly above it.",
-                    "type": "string"
-                  },
-                  {
-                    "const": "reject",
-                    "description": "Place if the range is free, otherwise fail with `Invalid` naming the item in the way\n(default on free tracks).",
-                    "type": "string"
-                  }
-                ]
-              },
-              {
-                "type": "null"
-              }
-            ],
             "default": null,
-            "description": "Placement mode: `insert`, `overwrite`, `new_track` or `reject` (default `insert` on the\nmagnetic main track, `reject` elsewhere)."
+            "description": "Default: `insert` on the main track, else `reject`.",
+            "enum": [
+              "insert",
+              "overwrite",
+              "new_track",
+              "reject",
+              null
+            ],
+            "type": [
+              "string",
+              "null"
+            ]
           },
           "overlap": {
-            "anyOf": [
-              {
-                "description": "What to do when an item would overlap another one on its target track: the P1 `overlap`\nparam, an alias of the placement `mode` (spec INV-40).",
-                "oneOf": [
-                  {
-                    "const": "reject",
-                    "description": "Fail with `Invalid` (default on free tracks).",
-                    "type": "string"
-                  },
-                  {
-                    "const": "new_track",
-                    "description": "Create a new track of the same kind directly above the target and place there.",
-                    "type": "string"
-                  }
-                ]
-              },
-              {
-                "type": "null"
-              }
-            ],
             "default": null,
-            "description": "Overlap handling, the P1 alias of `mode` (`reject` or `new_track`)."
+            "description": "Alias of `mode`.",
+            "enum": [
+              "reject",
+              "new_track",
+              null
+            ],
+            "type": [
+              "string",
+              "null"
+            ]
           },
           "ripple_all_tracks": {
             "default": null,
-            "description": "With `insert`, ripple every track of the sequence instead of the target and the tracks\nof linked partners of what shifts (default `false`).",
+            "description": "`insert` ripples every track.",
             "type": [
               "boolean",
               "null"
@@ -7924,7 +7845,7 @@ expression: text
             "description": "Position in the media to start from (default 0)."
           },
           "track": {
-            "description": "The target track (of that sequence): a video track for pictures, an audio track for\nsound.",
+            "description": "The target track: video for pictures, audio for sound.",
             "pattern": "^trk_[0-9a-f]{32}$",
             "type": "string"
           }

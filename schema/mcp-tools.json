@@ -58,19 +58,19 @@
         "readOnlyHint": false
       },
       "command": "item.delete",
-      "description": "Delete items and their linked partners (the magnetic main track closes the space)",
+      "description": "Delete items and their linked partners (the main track closes up)",
       "kind": "command",
       "name": "item_delete"
     },
     {
       "annotations": {
         "destructiveHint": false,
-        "idempotentHint": false,
+        "idempotentHint": true,
         "openWorldHint": false,
         "readOnlyHint": false
       },
       "command": "item.move",
-      "description": "Move items in time and/or to another track (linked partners follow; the main track stays gap-free)",
+      "description": "Move items in time and/or to another track (linked partners follow)",
       "kind": "command",
       "name": "item_move"
     },

@@ -55,35 +55,16 @@ expression: "json!({\n    \"meta\": serde_json::to_value(meta).unwrap(), \"input
           "default": null
         },
         "mode": {
-          "anyOf": [
-            {
-              "oneOf": [
-                {
-                  "type": "string",
-                  "const": "insert",
-                  "description": "Split the item under the start, ripple the rest of the track (and its partners' tracks)\nlater by the placed length, then place (default on the magnetic main track)."
-                },
-                {
-                  "type": "string",
-                  "const": "overwrite",
-                  "description": "Cut the range out of the track (trimming or splitting what is there), then place. Nothing\nripples."
-                },
-                {
-                  "type": "string",
-                  "const": "new_track",
-                  "description": "Place on the target track if the range is free, otherwise on a new track of the same\nkind directly above it."
-                },
-                {
-                  "type": "string",
-                  "const": "reject",
-                  "description": "Place if the range is free, otherwise fail with `Invalid` naming the item in the way\n(default on free tracks)."
-                }
-              ],
-              "description": "How a placement treats what is already on the target range (timeline spec §3.6)."
-            },
-            {
-              "type": "null"
-            }
+          "type": [
+            "string",
+            "null"
+          ],
+          "enum": [
+            "insert",
+            "overwrite",
+            "new_track",
+            "reject",
+            null
           ],
           "description": "Placement mode for the copies (default `insert` with main-track items, else `reject`).",
           "default": null
@@ -415,35 +396,16 @@ expression: "json!({\n    \"meta\": serde_json::to_value(meta).unwrap(), \"input
         "default": null
       },
       "mode": {
-        "anyOf": [
-          {
-            "oneOf": [
-              {
-                "type": "string",
-                "const": "insert",
-                "description": "Split the item under the start, ripple the rest of the track (and its partners' tracks)\nlater by the placed length, then place (default on the magnetic main track)."
-              },
-              {
-                "type": "string",
-                "const": "overwrite",
-                "description": "Cut the range out of the track (trimming or splitting what is there), then place. Nothing\nripples."
-              },
-              {
-                "type": "string",
-                "const": "new_track",
-                "description": "Place on the target track if the range is free, otherwise on a new track of the same\nkind directly above it."
-              },
-              {
-                "type": "string",
-                "const": "reject",
-                "description": "Place if the range is free, otherwise fail with `Invalid` naming the item in the way\n(default on free tracks)."
-              }
-            ],
-            "description": "How a placement treats what is already on the target range (timeline spec §3.6)."
-          },
-          {
-            "type": "null"
-          }
+        "type": [
+          "string",
+          "null"
+        ],
+        "enum": [
+          "insert",
+          "overwrite",
+          "new_track",
+          "reject",
+          null
         ],
         "description": "Placement mode for the copies (default `insert` with main-track items, else `reject`).",
         "default": null

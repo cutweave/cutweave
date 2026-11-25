@@ -12,9 +12,24 @@ expression: catalog.tools_json()
         "additionalProperties": false,
         "properties": {
           "item": {
-            "type": "string",
+            "type": [
+              "string",
+              "null"
+            ],
             "pattern": "^itm_[0-9a-f]{32}$",
-            "description": "The clip."
+            "description": "The clip (or `items`)."
+          },
+          "items": {
+            "type": [
+              "array",
+              "null"
+            ],
+            "items": {
+              "description": "A Item id: `^itm_[0-9a-f]{32}$`.",
+              "type": "string",
+              "pattern": "^itm_[0-9a-f]{32}$"
+            },
+            "description": "Clips to split at once."
           },
           "at": {
             "description": "Timeline time to split at: strictly inside the clip.",
@@ -29,10 +44,16 @@ expression: catalog.tools_json()
                 "pattern": "^-?[0-9]+(\\.[0-9]+)?s$|^-?[0-9]+$|^f:[0-9]+$|^[0-9]+[:;][0-9]+[:;][0-9]+[:;][0-9]+$"
               }
             ]
+          },
+          "fine": {
+            "type": [
+              "boolean",
+              "null"
+            ],
+            "description": "Audio sample grid."
           }
         },
         "required": [
-          "item",
           "at"
         ]
       },
@@ -360,7 +381,7 @@ expression: catalog.tools_json()
     },
     {
       "name": "item_delete",
-      "description": "Delete items and their linked partners (no ripple; fails if a track is locked)",
+      "description": "Delete items and their linked partners (the main track closes up)",
       "inputSchema": {
         "type": "object",
         "additionalProperties": false,
@@ -388,18 +409,32 @@ expression: catalog.tools_json()
     },
     {
       "name": "item_move",
-      "description": "Move an item in time and/or to another track (linked partners follow)",
+      "description": "Move items in time and/or to another track (linked partners follow)",
       "inputSchema": {
         "type": "object",
         "additionalProperties": false,
         "properties": {
           "item": {
-            "type": "string",
+            "type": [
+              "string",
+              "null"
+            ],
             "pattern": "^itm_[0-9a-f]{32}$",
-            "description": "The item."
+            "description": "The item (or `items`)."
+          },
+          "items": {
+            "type": [
+              "array",
+              "null"
+            ],
+            "items": {
+              "description": "A Item id: `^itm_[0-9a-f]{32}$`.",
+              "type": "string",
+              "pattern": "^itm_[0-9a-f]{32}$"
+            },
+            "description": "Items; the first leads."
           },
           "start": {
-            "description": "New timeline position of the item's first frame, `>= 0`.",
             "anyOf": [
               {
                 "type": "integer",
@@ -409,8 +444,29 @@ expression: catalog.tools_json()
               {
                 "type": "string",
                 "pattern": "^-?[0-9]+(\\.[0-9]+)?s$|^-?[0-9]+$|^f:[0-9]+$|^[0-9]+[:;][0-9]+[:;][0-9]+[:;][0-9]+$"
+              },
+              {
+                "type": "null"
               }
-            ]
+            ],
+            "description": "New start, `>= 0` (or `delta`)."
+          },
+          "delta": {
+            "anyOf": [
+              {
+                "type": "integer",
+                "minimum": -9007199254740991,
+                "maximum": 9007199254740991
+              },
+              {
+                "type": "string",
+                "pattern": "^-?[0-9]+(\\.[0-9]+)?s$|^-?[0-9]+$|^f:[0-9]+$|^[0-9]+[:;][0-9]+[:;][0-9]+[:;][0-9]+$"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Offset of the start."
           },
           "to_track": {
             "type": [
@@ -418,40 +474,56 @@ expression: catalog.tools_json()
               "null"
             ],
             "pattern": "^trk_[0-9a-f]{32}$",
-            "description": "Target track of the same sequence and kind (default: stay on the current track)."
+            "description": "Target track (default: stay)."
           },
           "unlink": {
             "type": [
               "boolean",
               "null"
             ],
-            "description": "Move only this item and remove it from its linked group (default `false`)."
+            "description": "Move only the given items, unlinked."
           },
           "overlap": {
-            "anyOf": [
-              {
-                "oneOf": [
-                  {
-                    "type": "string",
-                    "const": "reject"
-                  },
-                  {
-                    "type": "string",
-                    "const": "new_track"
-                  }
-                ]
-              },
-              {
-                "type": "null"
-              }
+            "type": [
+              "string",
+              "null"
             ],
-            "description": "Overlap handling (default `reject`)."
+            "enum": [
+              "reject",
+              "new_track",
+              null
+            ],
+            "description": "Alias of `mode`."
+          },
+          "mode": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "enum": [
+              "insert",
+              "overwrite",
+              "new_track",
+              "reject",
+              null
+            ],
+            "description": "Default: `insert` on the main track, else `reject`."
+          },
+          "ripple_all_tracks": {
+            "type": [
+              "boolean",
+              "null"
+            ],
+            "description": "Ripples reach every track."
+          },
+          "fine": {
+            "type": [
+              "boolean",
+              "null"
+            ],
+            "description": "Audio sample grid."
           }
-        },
-        "required": [
-          "item",
-          "start"
-        ]
+        }
       },
       "annotations": {
         "readOnlyHint": false,
@@ -937,7 +1009,7 @@ expression: catalog.tools_json()
           "track": {
             "type": "string",
             "pattern": "^trk_[0-9a-f]{32}$",
-            "description": "The target track (of that sequence): a video track for pictures, an audio track for\nsound."
+            "description": "The target track: video for pictures, audio for sound."
           },
           "media": {
             "type": "string",
@@ -945,7 +1017,7 @@ expression: catalog.tools_json()
             "description": "The media to place."
           },
           "at": {
-            "description": "Timeline position of the clip's first frame, `>= 0` (snapped to the frame grid).",
+            "description": "Timeline position of the clip's first frame, `>= 0`.",
             "anyOf": [
               {
                 "type": "integer",
@@ -990,34 +1062,55 @@ expression: catalog.tools_json()
                 "type": "null"
               }
             ],
-            "description": "Clip length, `> 0` (snapped to whole frames, at least one)."
+            "description": "Clip length, `> 0` (default: the rest of the media)."
           },
           "overlap": {
-            "anyOf": [
-              {
-                "oneOf": [
-                  {
-                    "type": "string",
-                    "const": "reject"
-                  },
-                  {
-                    "type": "string",
-                    "const": "new_track"
-                  }
-                ]
-              },
-              {
-                "type": "null"
-              }
+            "type": [
+              "string",
+              "null"
             ],
-            "description": "Overlap handling (default `reject`)."
+            "enum": [
+              "reject",
+              "new_track",
+              null
+            ],
+            "description": "Alias of `mode`."
           },
           "link": {
             "type": [
               "boolean",
               "null"
             ],
-            "description": "Also insert the audio of a video file as a linked clip (default `true`)."
+            "description": "Also place a video's sound, linked (default `true`)."
+          },
+          "mode": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "enum": [
+              "insert",
+              "overwrite",
+              "new_track",
+              "reject",
+              null
+            ],
+            "description": "Default: `insert` on the main track, else `reject`."
+          },
+          "audio_track": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "pattern": "^trk_[0-9a-f]{32}$",
+            "description": "Track for the linked sound."
+          },
+          "ripple_all_tracks": {
+            "type": [
+              "boolean",
+              "null"
+            ],
+            "description": "`insert` ripples every track."
           }
         },
         "required": [

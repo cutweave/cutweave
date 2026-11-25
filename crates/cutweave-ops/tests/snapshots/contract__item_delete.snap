@@ -5,7 +5,7 @@ expression: "json!({\n    \"meta\": serde_json::to_value(meta).unwrap(), \"input
 {
   "meta": {
     "name": "item.delete",
-    "summary": "Delete items and their linked partners (the magnetic main track closes the space)",
+    "summary": "Delete items and their linked partners (the main track closes up)",
     "kind": "command",
     "undoable": true,
     "view": false,

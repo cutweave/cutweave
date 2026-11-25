@@ -73,30 +73,25 @@ pub struct TimelineInsertOutput {
 pub struct TimelineInsert {
     /// The sequence.
     pub sequence: SequenceId,
-    /// The target track (of that sequence): a video track for pictures, an audio track for
-    /// sound.
+    /// The target track: video for pictures, audio for sound.
     pub track: TrackId,
     /// The media to place.
     pub media: MediaId,
-    /// Timeline position of the clip's first frame, `>= 0` (snapped to the frame grid; on the
-    /// magnetic main track clamped to its end).
+    /// Timeline position of the clip's first frame, `>= 0`.
     pub at: TimeInput,
     /// Position in the media to start from (default 0).
     pub source_in: Option<TimeInput>,
-    /// Clip length, `> 0` (snapped to whole frames, at least one).
+    /// Clip length, `> 0` (default: the rest of the media).
     pub duration: Option<TimeInput>,
-    /// Overlap handling, the P1 alias of `mode` (`reject` or `new_track`).
+    /// Alias of `mode`.
     pub overlap: Option<OverlapPolicy>,
-    /// Also insert the audio of a video file as a linked clip (default `true`).
+    /// Also place a video's sound, linked (default `true`).
     pub link: Option<bool>,
-    /// Placement mode: `insert`, `overwrite`, `new_track` or `reject` (default `insert` on the
-    /// magnetic main track, `reject` elsewhere).
+    /// Default: `insert` on the main track, else `reject`.
     pub mode: Option<PlacementMode>,
-    /// The audio track for the linked sound (it must be free over the range); default: the
-    /// first unlocked audio track that is.
+    /// Track for the linked sound.
     pub audio_track: Option<TrackId>,
-    /// With `insert`, ripple every track of the sequence instead of the target and the tracks
-    /// of linked partners of what shifts (default `false`).
+    /// `insert` ripples every track.
     pub ripple_all_tracks: Option<bool>,
 }
 
