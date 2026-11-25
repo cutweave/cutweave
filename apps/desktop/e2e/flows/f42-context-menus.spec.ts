@@ -198,9 +198,20 @@ test.describe("F42 context menus", () => {
       const trackMenu = page.getByRole("menu", { name: "Track actions for V1" });
       await expect(trackMenu).toBeVisible();
       await trackMenu.getByRole("menuitemcheckbox", { name: /^Mute/ }).click();
-      await page.mouse.click(header.x, header.y, { button: "right" });
-      await expect(trackMenu.getByRole("menuitemcheckbox", { name: /^Unmute/ })).toBeChecked();
+      // The menu shows the engine's answer: reopen it until the new state has come back.
+      const reopenWith = async (row: RegExp) => {
+        await expect(async () => {
+          await page.keyboard.press("Escape");
+          await page.mouse.click(header.x, header.y, { button: "right" });
+          await expect(trackMenu.getByRole("menuitemcheckbox", { name: row })).toBeChecked({
+            timeout: 1500,
+          });
+        }).toPass();
+      };
+      await reopenWith(/^Unmute/);
       await trackMenu.getByRole("menuitemcheckbox", { name: /^Lock/ }).click();
+      await reopenWith(/^Unlock/);
+      await page.keyboard.press("Escape");
       await expect(menu).toHaveCount(0);
       const before = await layout(page);
       box = clipBox(g, clipId);
@@ -211,10 +222,7 @@ test.describe("F42 context menus", () => {
       );
       await expect(toast(page, "Clip not moved")).toBeVisible();
       expect(await layout(page)).toEqual(before);
-      await page.mouse.click(header.x, header.y, { button: "right" });
-      await expect(trackMenu.getByRole("menuitemcheckbox", { name: /^Unlock/ })).toBeChecked();
       // A locked track disables the editing rows of its clips, with the reason.
-      await page.keyboard.press("Escape");
       await page.mouse.click(box.x + Math.min(box.w / 2, 60), box.y, { button: "right" });
       await expect(item(clipMenu, /^Delete clip/)).toBeDisabled();
       await expect(clipMenu.getByText("Track is locked").first()).toBeAttached();
