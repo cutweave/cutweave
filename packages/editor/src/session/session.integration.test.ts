@@ -21,6 +21,9 @@ import { i18n } from "../i18n/index.ts";
 import { selectSelectedClips } from "../inspector/clips.ts";
 import { InspectorEditor } from "../inspector/editor.ts";
 import { FIELDS, type FieldDef, type SelectedClip } from "../inspector/fields.ts";
+import { type PropEdit } from "../inspector/editor.ts";
+import { commandCatalog } from "../palette/catalog.ts";
+import { propsPatch, propsSchema } from "../inspector/video.ts";
 import { createDocStore } from "../state/docStore.ts";
 import { createJobStore } from "../state/jobStore.ts";
 import { createPlaybackStore } from "../state/playbackStore.ts";
@@ -167,6 +170,27 @@ const field = (id: string): FieldDef => {
   return found;
 };
 
+/** A property edit as the Video sections build it, for `path` (dot path into `props`). */
+function propEdit(
+  clips: SelectedClip[],
+  path: string,
+  value: unknown,
+  current: unknown,
+  at = 0,
+): PropEdit {
+  const input = commandCatalog.getState().commands.find((c) => c.name === "item.set_props");
+  if (input === undefined) throw new Error("item.set_props is not in the catalog");
+  return {
+    clips,
+    path,
+    value,
+    props: propsPatch(propsSchema(input.inputSchema as never), path, value),
+    at,
+    name: path.split(".").at(-1) ?? path,
+    current: clips.map(() => current),
+  };
+}
+
 /** Answers the naming prompt the way the dialog does, then waits for the flow. */
 async function createProject(s: Session, name: string): Promise<string> {
   const flow = s.controller.newProject();
@@ -248,13 +272,12 @@ describe("the inspector, undo and redo against the real engine", () => {
       const { clip } = await seedClip(s);
       const clips = select(s, clip);
       const before = (await history(s)).length;
-      const opacity = field("opacity");
 
-      for (const v of [95, 90, 80, 70, 60, 50]) {
-        s.editor.live(opacity, clips, v);
+      for (const v of [0.95, 0.9, 0.8, 0.7, 0.6, 0.5]) {
+        s.editor.liveProp(propEdit(clips, "opacity", v, 1));
         await sleep(25);
       }
-      await s.editor.commit(opacity, clips, 50);
+      await s.editor.commitProp(propEdit(clips, "opacity", 0.5, 1));
       await until(() => itemOf(s, clip).visual.opacity === 0.5);
 
       const entries = await history(s);
@@ -282,10 +305,9 @@ describe("the inspector, undo and redo against the real engine", () => {
       const { clip } = await seedClip(s);
       const clips = select(s, clip);
       const before = (await history(s)).length;
-      const rotation = field("rotation");
-      s.editor.live(rotation, clips, 20);
+      s.editor.liveProp(propEdit(clips, "transform.rotation", 20, 0));
       await sleep(40);
-      s.editor.live(rotation, clips, 0); // Escape in the scrubber reports the start value
+      s.editor.liveProp(propEdit(clips, "transform.rotation", 0, 0)); // Escape reports the start value
       await until(() => !s.editor.dragging, 3000, "the drag to cancel itself");
       await s.editor.settled();
       expect(itemOf(s, clip).visual.transform.rotation).toBe(0);
@@ -318,7 +340,7 @@ describe("the inspector, undo and redo against the real engine", () => {
 
         // Both clips at once: one entry, both change.
         const before = (await history(s)).length;
-        await s.editor.apply(field("rotation"), select(s, clip, partner), 15);
+        await s.editor.applyProp(propEdit(select(s, clip, partner), "transform.rotation", 15, 0));
         await until(() => itemOf(s, partner).visual.transform.rotation === 15);
         expect(itemOf(s, clip).visual.transform.rotation).toBe(15);
         expect((await history(s)).length).toBe(before + 1);
@@ -371,7 +393,7 @@ describe("save, dirty, close and reopen against the real engine", () => {
       await until(() => !s.stores.session.getState().dirty, 5000, "the dirty flag to clear");
 
       // Closing with unsaved changes: Cancel stays.
-      await s.editor.apply(field("rotation"), select(s, clip), 10);
+      await s.editor.applyProp(propEdit(select(s, clip), "transform.rotation", 10, 0));
       await until(() => s.stores.session.getState().dirty);
       let settled = s.controller.settleUnsaved();
       await until(() => s.ui.getState().unsaved !== null, 5000, "the unsaved prompt");
@@ -402,7 +424,7 @@ describe("save, dirty, close and reopen against the real engine", () => {
       expect(s.stores.session.getState().recovery).toBeNull();
 
       // Discard closes without saving; the work stays in the journal for the next open.
-      await s.editor.apply(field("rotation"), select(s, clip), 33);
+      await s.editor.applyProp(propEdit(select(s, clip), "transform.rotation", 33, 0));
       await until(() => s.stores.session.getState().dirty);
       settled = s.controller.settleUnsaved();
       await until(() => s.ui.getState().unsaved !== null);
@@ -428,9 +450,9 @@ describe("crash recovery against real engines", () => {
     const saved = await a.rpc.call("timeline.get", { sequence, depth: 2 });
 
     // Edits that autosave has not written yet (it waits 2 s of quiet).
-    await a.editor.apply(field("opacity"), select(a, clip), 40);
+    await a.editor.applyProp(propEdit(select(a, clip), "opacity", 0.4, 1));
     await a.editor.apply(field("start"), select(a, clip), sec(2));
-    await a.editor.apply(field("rotation"), select(a, clip, partner), 7);
+    await a.editor.applyProp(propEdit(select(a, clip, partner), "transform.rotation", 7, 0));
     await a.editor.apply(field("name"), select(a, clip), "Unsaved");
     await until(() => itemOf(a, clip).name === "Unsaved");
     // `project.dirty` follows the first commit within the autosave poll (250 ms); the save itself
