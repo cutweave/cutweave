@@ -102,6 +102,16 @@ doc_markdown = "allow"
 missing_errors_doc = "allow"
 missing_panics_doc = "allow"
 
+# Dev builds keep file:line for panics and backtraces but no full debug info, and none for
+# third-party crates: smaller objects and PDBs, much faster links. Measured 2026-11-25 on
+# cutweave-engine and its 20 test binaries: an edit-rebuild went 38 s -> 13 s (with rust-lld).
+# Need a debugger with locals? Override locally: CARGO_PROFILE_DEV_DEBUG=full.
+[profile.dev]
+debug = "line-tables-only"
+
+[profile.dev.package."*"]
+debug = false
+
 # Pixel loops are ~20x slower at opt-level 0, so hot crates are optimized even in dev builds.
 # Command-bus hot path (WP-1B.03 measured Tx commit 490 µs → 42 µs at opt-level 2 in dev builds).
 [profile.dev.package.cutweave-commands]
