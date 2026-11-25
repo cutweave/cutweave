@@ -111,3 +111,33 @@ function KeyboardFocusDemo() {
 }
 
 export const KeyboardFocus = { render: () => <KeyboardFocusDemo /> };
+
+/** View opened: panels as checkable items (WP-2H.01's View > Panels), unchecked when closed. */
+const VIEW_MENUS: MenuBarMenu[] = MENUS.map((menu) =>
+  menu.id !== "view"
+    ? menu
+    : {
+        ...menu,
+        items: [
+          { id: "assets", label: "Assets", checked: true, onSelect: noop },
+          { id: "preview", label: "Preview", checked: true, onSelect: noop },
+          { id: "inspector", label: "Inspector", checked: false, onSelect: noop },
+          { id: "timeline", label: "Timeline", checked: true, onSelect: noop },
+          { kind: "separator", id: "s1" },
+          { id: "resetLayout", label: "Reset layout", onSelect: noop },
+          { id: "resetAll", label: "Reset all workspaces", onSelect: noop },
+          { kind: "separator", id: "s2" },
+          { id: "fullScreen", label: "Toggle full screen", shortcut: "F11", onSelect: noop },
+        ],
+      },
+);
+
+export const CheckableItems = {
+  render: () => (
+    <div style={stage}>
+      <div style={bar}>
+        <MenuBar aria-label="Application menu" menus={VIEW_MENUS} defaultValue="view" />
+      </div>
+    </div>
+  ),
+};
