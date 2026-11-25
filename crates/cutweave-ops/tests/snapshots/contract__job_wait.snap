@@ -130,6 +130,50 @@ expression: "json!({\n    \"meta\": serde_json::to_value(meta).unwrap(), \"input
                 "null"
               ],
               "description": "What it is doing, for status lines."
+            },
+            "frame": {
+              "type": [
+                "integer",
+                "null"
+              ],
+              "format": "uint64",
+              "minimum": 0,
+              "description": "Units done so far (an export: frames handed to the encoder)."
+            },
+            "frames": {
+              "type": [
+                "integer",
+                "null"
+              ],
+              "format": "uint64",
+              "minimum": 0,
+              "description": "Units in all (an export: frames in the file)."
+            },
+            "fps": {
+              "type": [
+                "number",
+                "null"
+              ],
+              "format": "double",
+              "description": "Speed in units per second."
+            },
+            "eta_ms": {
+              "type": [
+                "integer",
+                "null"
+              ],
+              "format": "uint64",
+              "minimum": 0,
+              "description": "Estimated time left, in milliseconds."
+            },
+            "bytes": {
+              "type": [
+                "integer",
+                "null"
+              ],
+              "format": "uint64",
+              "minimum": 0,
+              "description": "Bytes written so far."
             }
           },
           "required": [
@@ -276,6 +320,50 @@ expression: "json!({\n    \"meta\": serde_json::to_value(meta).unwrap(), \"input
               "null"
             ],
             "description": "What it is doing, for status lines."
+          },
+          "frame": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "format": "uint64",
+            "minimum": 0,
+            "description": "Units done so far (an export: frames handed to the encoder)."
+          },
+          "frames": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "format": "uint64",
+            "minimum": 0,
+            "description": "Units in all (an export: frames in the file)."
+          },
+          "fps": {
+            "type": [
+              "number",
+              "null"
+            ],
+            "format": "double",
+            "description": "Speed in units per second."
+          },
+          "eta_ms": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "format": "uint64",
+            "minimum": 0,
+            "description": "Estimated time left, in milliseconds."
+          },
+          "bytes": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "format": "uint64",
+            "minimum": 0,
+            "description": "Bytes written so far."
           }
         },
         "required": [

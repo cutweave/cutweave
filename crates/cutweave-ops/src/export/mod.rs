@@ -1,11 +1,13 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
-//! The `export` namespace (WP-1E.03; arch §5.1, §7, §8, §14): `export.start`.
+//! The `export` namespace (WP-1E.03; arch §5.1, §7, §8, §14): `export.start`, and the export
+//! queue's commands ([`queue`], WP-2G.03a).
 //!
 //! `export.start` checks the request against the **committed** document of the moment
 //! ([`ExportCtx::snapshot`]: later edits never change an export), resolves it into an
 //! [`ExportPlan`] (sequence, frame-aligned range, output size, frame rate, frame count,
-//! quality) and hands the plan to an [`ExportStarter`], which queues the export job and returns
-//! its id. Rendering, mixing and encoding belong to the engine (`cutweave-engine`, module
+//! quality) and hands the plan to an [`ExportStarter`], which adds it to the engine's export
+//! queue (resuming a paused queue) and returns its job id; `export.enqueue` adds it without
+//! resuming. Rendering, mixing and encoding belong to the engine (`cutweave-engine`, module
 //! `export`); this crate knows neither the GPU nor the media backend. `export.status` is
 //! `job.status` on the returned job.
 //!
@@ -28,6 +30,7 @@ use cutweave_model::{
 };
 
 pub mod presets;
+pub mod queue;
 
 use crate::media::{AllowedRoots, OUTSIDE_ROOTS_HINT};
 use crate::util::{check_abs_path, resolve_frame_time};
@@ -44,10 +47,11 @@ pub const MAX_EXPORT_SIDE: u32 = 8192;
 /// Fastest output frame rate.
 pub const MAX_EXPORT_FPS: u32 = 240;
 
-/// Registers `export.start`.
+/// Registers `export.start`, the preset commands and the queue commands.
 pub fn register(registry: &mut Registry) -> Result<(), RegistryError> {
     registry.register::<ExportStart>()?;
     presets::register(registry)?;
+    queue::register(registry)?;
     Ok(())
 }
 
@@ -190,9 +194,10 @@ pub struct ExportStartOutput {
 
 /// Exports a sequence (or a range of it) to an MP4 file (H.264 video, AAC audio) as a
 /// background job and returns the job id at once; wait with `job.wait`, stop with
-/// `job.cancel` (the partial file is deleted). The export uses the project as it is now; later
-/// edits do not change it. Agents and headless callers may only write inside the project
-/// folder and folders the user approved. An existing file is replaced only with
+/// `job.cancel` (the partial file is deleted). Exports queue and run one at a time; this one
+/// also resumes a paused queue (`export.queue` lists it). The export uses the project as it is
+/// now; later edits do not change it. Agents and headless callers may only write inside the
+/// project folder and folders the user approved. An existing file is replaced only with
 /// `overwrite: true`.
 #[command(
     name = "export.start",
@@ -269,13 +274,27 @@ impl ExportPlan {
     }
 }
 
-/// Queues export jobs: the engine implements it (rendering, mixing, encoding).
+/// Queues export jobs: the engine implements it (its export queue; rendering, mixing,
+/// encoding).
 pub trait ExportStarter: Send {
-    /// Queues the export of `plan` and returns its job. Fails with `Unsupported` when this
-    /// engine cannot export (no media backend, renderer or encoder), with `Invalid` at `/path`
-    /// when another export is already writing that file and with `Invalid` at `/hw/force` when
-    /// the forced hardware encoder is not one this machine has.
+    /// `export.start`: adds the export of `plan` to the queue, resumes a paused queue and
+    /// returns its job. Fails with `Unsupported` when this engine cannot export (no media
+    /// backend, renderer or encoder), with `Invalid` at `/path` when another queued or running
+    /// export writes that file and with `Invalid` at `/hw/force` when the forced hardware
+    /// encoder is not one this machine has.
     fn start(&mut self, plan: ExportPlan) -> Result<JobId, CmdError>;
+
+    /// `export.enqueue`: like [`start`](Self::start) without resuming a paused queue. The
+    /// default starts (for starters without a queue).
+    fn enqueue(&mut self, plan: ExportPlan) -> Result<JobId, CmdError> {
+        self.start(plan)
+    }
+
+    /// The export queue the queue commands work on; `Unsupported` by default (an engine
+    /// without one).
+    fn queue(&mut self) -> Result<cutweave_jobs::ExportQueue<ExportPlan>, CmdError> {
+        Err(CmdError::unsupported("this engine has no export queue"))
+    }
 }
 
 /// What `export.start` runs against (the [`EngineCommand::Context`]); the engine builds one
@@ -640,32 +659,36 @@ impl ExportStart {
     }
 }
 
+impl ExportStartOutput {
+    /// What `plan` will write, with a placeholder job id (the caller fills it in).
+    #[must_use]
+    pub fn of(plan: &ExportPlan) -> ExportStartOutput {
+        ExportStartOutput {
+            job_id: JobId::from_u128(0),
+            path: plan.path.to_string_lossy().into_owned(),
+            sequence: plan.sequence,
+            start: plan.start,
+            end: plan.end,
+            width: plan.width,
+            height: plan.height,
+            frame_rate: plan.frame_rate,
+            frames: plan.frames,
+            duration: plan.duration,
+            rev: plan.snapshot.rev,
+            warnings: plan.warnings.clone(),
+        }
+    }
+}
+
 impl EngineCommand for ExportStart {
     type Context = ExportCtx;
     type Output = ExportStartOutput;
 
     fn run(&self, ctx: &mut ExportCtx) -> Result<ExportStartOutput, CmdError> {
         let plan = self.plan(&ctx.snapshot, ctx.allowed_roots.as_ref(), &ctx.presets)?;
-        let path = plan.path.to_string_lossy().into_owned();
-        let (sequence, start, end) = (plan.sequence, plan.start, plan.end);
-        let (width, height, frame_rate) = (plan.width, plan.height, plan.frame_rate);
-        let (frames, duration, rev) = (plan.frames, plan.duration, plan.snapshot.rev);
-        let warnings = plan.warnings.clone();
+        let output = ExportStartOutput::of(&plan);
         let job_id = ctx.starter.start(plan)?;
-        Ok(ExportStartOutput {
-            job_id,
-            path,
-            sequence,
-            start,
-            end,
-            width,
-            height,
-            frame_rate,
-            frames,
-            duration,
-            rev,
-            warnings,
-        })
+        Ok(ExportStartOutput { job_id, ..output })
     }
 }
 

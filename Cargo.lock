@@ -972,6 +972,7 @@ name = "cutweave-jobs"
 version = "0.0.0"
 dependencies = [
  "cutweave-model",
+ "rusqlite",
  "schemars",
  "serde",
  "serde_json",

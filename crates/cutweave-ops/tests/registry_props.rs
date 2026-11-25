@@ -57,17 +57,17 @@ use cutweave_commands::{
     EntryKind, ManualClock, Registry, Rev, Submit, Tx, TxKind, WallTime, apply_patch, command,
     diff, wire,
 };
-use cutweave_jobs::JobManager;
+use cutweave_jobs::{ExportQueue, JobManager};
 use cutweave_model::{ItemId, OpenOutcome, Project, open_str, to_document_string};
 use cutweave_ops::{
     export::{
-        ExportCtx,
+        ExportCtx, ExportPlan,
         presets::{PresetCtx, PresetStore},
     },
     media::{FakeProbe, ImportCtx, MediaRegister, MediaRegistered, MediaSink, proxy::ProxyCall},
     testing::{
         self, AGENT_LABEL, JsonMirror, analyzer, arb_command_from, check_invariants,
-        check_linked_edit, export_ctx, fake_probe, job_manager, replay_events,
+        check_linked_edit, fake_probe, job_manager, replay_events,
     },
 };
 use proptest::{
@@ -316,6 +316,8 @@ struct Harness<'s> {
     state: Arc<Mutex<DocState>>,
     /// The `job.*` context, also running the analysis jobs of imports (never the document).
     jobs: JobManager,
+    /// The `export.*` queue (never started: exports wait in line), on `jobs`.
+    exports: ExportQueue<ExportPlan>,
     presets: Arc<PresetStore>,
     clock: Arc<ManualClock>,
     initial: Project,
@@ -359,10 +361,13 @@ impl<'s> Harness<'s> {
         let clock = Arc::new(ManualClock::new(WallTime::UNIX_EPOCH));
         let config = DocConfig::deterministic(Arc::clone(&REGISTRY), initial.clone(), SEED)
             .with_clock(Arc::clone(&clock) as Arc<dyn cutweave_commands::Clock>);
+        let jobs = job_manager();
+        let exports = testing::export_queue(&jobs);
         let mut h = Harness {
             registry: Arc::clone(&REGISTRY),
             state: Arc::new(Mutex::new(DocState::new(config))),
-            jobs: job_manager(),
+            jobs,
+            exports,
             presets: Arc::default(),
             clock,
             mirror: JsonMirror::new(&initial, Rev::ZERO),
@@ -475,11 +480,11 @@ impl<'s> Harness<'s> {
     }
 
     /// Runs `export.start` against the committed document (the starter queues nothing).
-    fn export(&self, ctx: &ActorCtx, params: &Value) -> Result<Value, CmdError> {
+    fn export(&self, ctx: &ActorCtx, name: &str, params: &Value) -> Result<Value, CmdError> {
         let snapshot = Arc::new(self.lock().committed_snapshot());
-        let mut ctx_any = export_ctx(snapshot);
+        let mut ctx_any = testing::queue_ctx(snapshot, &self.exports);
         self.registry
-            .invoke_engine_json("export.start", params.clone(), &mut ctx_any, ctx.access())
+            .invoke_engine_json(name, params.clone(), &mut ctx_any, ctx.access())
     }
 
     /// Runs an export preset command (WP-2G.01) against the committed document and the
@@ -601,7 +606,7 @@ impl<'s> Harness<'s> {
                 })
             }
             Some(c) if c == TypeId::of::<ExportCtx>() => {
-                self.export(ctx, params).map(|output| Done {
+                self.export(ctx, name, params).map(|output| Done {
                     output,
                     applied: None,
                 })

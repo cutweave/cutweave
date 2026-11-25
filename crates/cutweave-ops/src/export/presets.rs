@@ -834,8 +834,9 @@ pub struct PresetWarning {
     pub message: String,
 }
 
-/// The rate control the encoder gets from a preset.
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+/// The rate control the encoder gets from a preset (stored with queued exports, WP-2G.03a).
+#[derive(Clone, Copy, Debug, PartialEq, Eq, serde::Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
 pub enum PlanRate {
     /// Constant quality, x264 CRF scale.
     Crf(u8),
