@@ -1,0 +1,9 @@
+$ C:\Users\Administrator\AppData\Roaming\npm\pnpm.CMD --filter @cutweave/desktop exec playwright test e2e/m1/m1-crash.spec.ts
+
+
+Running 2 tests using 1 worker
+
+  ok 1 e2e\m1\m1-crash.spec.ts:360:3 › M1 exit 3: crash recovery trials › the engine killed mid-edit, or mid-drag: every command lands once (28.3s)
+  ok 2 e2e\m1\m1-crash.spec.ts:479:3 › M1 exit 3: crash recovery trials › the whole app killed after k edits: Restore brings back every acknowledged edit (43.7s)
+
+  2 passed (1.2m)

@@ -1,0 +1,28 @@
+{
+  "file": "M1 cut.mp4",
+  "decode_errors": [],
+  "max_volume_db": -14.8,
+  "render": {
+    "exit": 0,
+    "stdout": "{\"project\":\"E:\\\\projects\\\\Vidai\\\\.claude\\\\worktrees\\\\agent-a382025a449707578\\\\target\\\\m1\\\\ui\\\\M1 cut\",\"sequence\":\"seq_01a21136733f7163aa925c50c83a62bc\",\"width\":1920,\"height\":1080,\"adapter\":null,\"degraded\":[],\"frames\":[{\"t\":\"f:30\",\"time\":705600000,\"frame\":30,\"timecode\":\"00:00:01:00\",\"file\":\"E:\\\\projects\\\\Vidai\\\\.claude\\\\worktrees\\\\agent-a382025a449707578\\\\target\\\\m1\\\\validate\\\\render\\\\f00030.png\",\"bytes\":334469,\"visible\":1,\"unavailable\":0,\"notes\":[]},{\"t\":\"f:150\",\"time\":3528000000,\"frame\":150,\"timecode\":\"00:00:05:00\",\"file\":\"E:\\\\projects\\\\Vidai\\\\.claude\\\\worktrees\\\\agent-a382025a449707578\\\\target\\\\m1\\\\validate\\\\render\\\\f00150.png\",\"bytes\":423893,\"visible\":1,\"unavailable\":0,\"notes\":[]},{\"t\":\"f:255\",\"time\":5997600000,\"frame\":255,\"timecode\":\"00:00:08:15\",\"file\":\"E:\\\\projects\\\\Vidai\\\\.claude\\\\worktrees\\\\agent-a382025a449707578\\\\target\\\\m1\\\\validate\\\\render\\\\f00255.png\",\"bytes\":361041,\"visible\":1,\"unavailable\":0,\"notes\":[]}]}",
+    "stderr": ""
+  },
+  "frames": [
+    {
+      "frame": 30,
+      "yuv_db": 48.9,
+      "rgb_db": 37.46
+    },
+    {
+      "frame": 150,
+      "yuv_db": 48.93,
+      "rgb_db": 37.27
+    },
+    {
+      "frame": 255,
+      "yuv_db": 47.7,
+      "rgb_db": 35.26
+    }
+  ],
+  "ok": true
+}

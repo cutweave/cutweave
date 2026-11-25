@@ -1,0 +1,22 @@
+$ C:\Users\Administrator\.cargo\bin\cargo.EXE nextest run -p cutweave-cli --features ffmpeg --test mcp_conformance --no-fail-fast
+
+   Compiling cutweave-audio v0.0.0 (E:\projects\Vidai\.claude\worktrees\agent-a382025a449707578\crates\cutweave-audio)
+   Compiling cutweave-ops v0.0.0 (E:\projects\Vidai\.claude\worktrees\agent-a382025a449707578\crates\cutweave-ops)
+   Compiling cutweave-api v0.0.0 (E:\projects\Vidai\.claude\worktrees\agent-a382025a449707578\crates\cutweave-api)
+   Compiling cutweave-cache v0.0.0 (E:\projects\Vidai\.claude\worktrees\agent-a382025a449707578\crates\cutweave-cache)
+   Compiling cutweave-playback v0.0.0 (E:\projects\Vidai\.claude\worktrees\agent-a382025a449707578\crates\cutweave-playback)
+   Compiling cutweave-engine v0.0.0 (E:\projects\Vidai\.claude\worktrees\agent-a382025a449707578\crates\cutweave-engine)
+   Compiling cutweave-cli v0.0.0 (E:\projects\Vidai\.claude\worktrees\agent-a382025a449707578\crates\cutweave-cli)
+    Finished `test` profile [unoptimized + debuginfo] target(s) in 27.93s
+────────────
+ Nextest run ID 2f8a2763-6b50-466a-a71d-d03f1aadb8f4 with nextest profile: default
+    Starting 7 tests across 1 binary
+        PASS [   1.049s] (1/7) cutweave-cli::mcp_conformance a_broken_output_schema_fails_the_suite_naming_the_tool
+        PASS [   1.314s] (2/7) cutweave-cli::mcp_conformance conformance_stdio_2025_11_25
+        PASS [   1.334s] (3/7) cutweave-cli::mcp_conformance conformance_stdio_2026_07_28
+        PASS [   1.357s] (4/7) cutweave-cli::mcp_conformance scripted_agent_edits_over_stdio_with_mcp_tools_only
+        PASS [   1.369s] (5/7) cutweave-cli::mcp_conformance conformance_http_2025_11_25
+        PASS [   1.394s] (6/7) cutweave-cli::mcp_conformance conformance_http_2026_07_28
+        PASS [   7.945s] (7/7) cutweave-cli::mcp_conformance m1::m1_exit_2_an_agent_cuts_and_exports_three_corpus_clips
+────────────
+     Summary [   7.946s] 7 tests run: 7 passed, 0 skipped

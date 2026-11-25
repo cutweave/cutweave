@@ -1,0 +1,286 @@
+{
+  "project": "M1 cut/M1 cut.cutweave",
+  "export": "M1 cut/M1 cut.mp4",
+  "timeline": {
+    "id": "seq_000000000001728ea8c5c5607e51aeb3",
+    "name": "Sequence 1",
+    "format": {
+      "width": 1920,
+      "height": 1080,
+      "frame_rate": {
+        "num": 30,
+        "den": 1
+      },
+      "sample_rate": 48000,
+      "color_space": "rec709",
+      "background": "#000000"
+    },
+    "duration": 8467200000,
+    "track_count": 2,
+    "item_count": 7,
+    "tracks": [
+      {
+        "id": "trk_00000000000275fdb7ee40b8a0cac642",
+        "kind": "video",
+        "name": "V1",
+        "muted": false,
+        "hidden": false,
+        "locked": false,
+        "solo": false,
+        "gain": 0.0,
+        "item_count": 4,
+        "end": 8467200000,
+        "items": [
+          {
+            "id": "itm_0000000000087cc89c1cf78003a798ed",
+            "kind": "clip",
+            "start": 0,
+            "duration": 1411200000,
+            "media": "med_000000000004709b90035e27460a4efb",
+            "linked_group": "grp_0000000000077cbb900f1e596bc68105",
+            "enabled": true
+          },
+          {
+            "id": "itm_00000000000a76b5b5b4fdda2666ec6c",
+            "kind": "clip",
+            "start": 2822400000,
+            "duration": 2116800000,
+            "media": "med_0000000000057329a83277ed2c8d146c",
+            "linked_group": null,
+            "enabled": true
+          },
+          {
+            "id": "itm_00000000000c7daca6804fbeede9026f",
+            "kind": "clip",
+            "start": 4939200000,
+            "duration": 2116800000,
+            "media": "med_00000000000674b5a94a9f653c219f74",
+            "linked_group": "grp_00000000000b7dcebeed528dcb35d6d9",
+            "enabled": true
+          },
+          {
+            "id": "itm_00000000000f7ee6b98ddbc50dc83133",
+            "kind": "clip",
+            "start": 7056000000,
+            "duration": 1411200000,
+            "media": "med_000000000004709b90035e27460a4efb",
+            "linked_group": "grp_00000000000e7ea6b5028b60cd054f49",
+            "enabled": true
+          }
+        ]
+      },
+      {
+        "id": "trk_00000000000376549cec3098cb8b0e21",
+        "kind": "audio",
+        "name": "A1",
+        "muted": false,
+        "hidden": false,
+        "locked": false,
+        "solo": false,
+        "gain": 0.0,
+        "item_count": 3,
+        "end": 8467200000,
+        "items": [
+          {
+            "id": "itm_000000000009738ab9233f0ca6296043",
+            "kind": "clip",
+            "start": 0,
+            "duration": 1411200000,
+            "media": "med_000000000004709b90035e27460a4efb",
+            "linked_group": "grp_0000000000077cbb900f1e596bc68105",
+            "enabled": true
+          },
+          {
+            "id": "itm_00000000000d78518d3390284386bea3",
+            "kind": "clip",
+            "start": 4939200000,
+            "duration": 2116800000,
+            "media": "med_00000000000674b5a94a9f653c219f74",
+            "linked_group": "grp_00000000000b7dcebeed528dcb35d6d9",
+            "enabled": true
+          },
+          {
+            "id": "itm_00000000001071a883620bb1a6ba772d",
+            "kind": "clip",
+            "start": 7056000000,
+            "duration": 1411200000,
+            "media": "med_000000000004709b90035e27460a4efb",
+            "linked_group": "grp_00000000000e7ea6b5028b60cd054f49",
+            "enabled": true
+          }
+        ]
+      }
+    ]
+  },
+  "export_start": {
+    "job_id": "job_0000000000097ffbb8fda73cb1839eed",
+    "path": "C:\\Users\\ADMINI~1\\AppData\\Local\\Temp\\.tmp9ZLF7O\\M1 cut\\M1 cut.mp4",
+    "sequence": "seq_000000000001728ea8c5c5607e51aeb3",
+    "in": 0,
+    "out": 8467200000,
+    "width": 1920,
+    "height": 1080,
+    "frame_rate": {
+      "num": 30,
+      "den": 1
+    },
+    "frames": 360,
+    "duration": 8467200000,
+    "rev": 0
+  },
+  "job": {
+    "id": "job_0000000000097ffbb8fda73cb1839eed",
+    "kind": "export",
+    "label": "export",
+    "media_id": null,
+    "state": "succeeded",
+    "progress": {
+      "fraction": 1.0,
+      "message": {
+        "untrusted": true,
+        "text": "exported 360 frames (12.00 s) with libx264"
+      }
+    },
+    "cancel_requested": false,
+    "error": null
+  },
+  "ffprobe": {
+    "streams": [
+      {
+        "index": 0,
+        "codec_name": "h264",
+        "codec_long_name": "H.264 / AVC / MPEG-4 AVC / MPEG-4 part 10",
+        "profile": "High",
+        "codec_type": "video",
+        "codec_tag_string": "avc1",
+        "codec_tag": "0x31637661",
+        "mime_codec_string": "avc1.640028",
+        "width": 1920,
+        "height": 1080,
+        "coded_width": 1920,
+        "coded_height": 1080,
+        "has_b_frames": 2,
+        "sample_aspect_ratio": "1:1",
+        "display_aspect_ratio": "16:9",
+        "pix_fmt": "yuv420p",
+        "level": 40,
+        "color_range": "tv",
+        "color_space": "bt709",
+        "color_transfer": "bt709",
+        "color_primaries": "bt709",
+        "chroma_location": "left",
+        "field_order": "progressive",
+        "is_avc": "true",
+        "nal_length_size": "4",
+        "id": "0x1",
+        "r_frame_rate": "30/1",
+        "avg_frame_rate": "30/1",
+        "time_base": "1/15360",
+        "start_pts": 0,
+        "start_time": "0.000000",
+        "duration_ts": 184320,
+        "duration": "12.000000",
+        "bit_rate": "3829972",
+        "bits_per_raw_sample": "8",
+        "nb_frames": "360",
+        "extradata_size": 51,
+        "disposition": {
+          "default": 1,
+          "dub": 0,
+          "original": 0,
+          "comment": 0,
+          "lyrics": 0,
+          "karaoke": 0,
+          "forced": 0,
+          "hearing_impaired": 0,
+          "visual_impaired": 0,
+          "clean_effects": 0,
+          "attached_pic": 0,
+          "timed_thumbnails": 0,
+          "non_diegetic": 0,
+          "captions": 0,
+          "descriptions": 0,
+          "metadata": 0,
+          "dependent": 0,
+          "still_image": 0,
+          "multilayer": 0
+        },
+        "tags": {
+          "language": "und",
+          "handler_name": "VideoHandler"
+        }
+      },
+      {
+        "index": 1,
+        "codec_name": "aac",
+        "codec_long_name": "AAC (Advanced Audio Coding)",
+        "profile": "LC",
+        "codec_type": "audio",
+        "codec_tag_string": "mp4a",
+        "codec_tag": "0x6134706d",
+        "mime_codec_string": "mp4a.40.2",
+        "sample_fmt": "fltp",
+        "sample_rate": "48000",
+        "channels": 2,
+        "channel_layout": "stereo",
+        "bits_per_sample": 0,
+        "initial_padding": 0,
+        "id": "0x2",
+        "r_frame_rate": "0/0",
+        "avg_frame_rate": "0/0",
+        "time_base": "1/48000",
+        "start_pts": 0,
+        "start_time": "0.000000",
+        "duration_ts": 576000,
+        "duration": "12.000000",
+        "bit_rate": "98592",
+        "nb_frames": "564",
+        "extradata_size": 5,
+        "disposition": {
+          "default": 1,
+          "dub": 0,
+          "original": 0,
+          "comment": 0,
+          "lyrics": 0,
+          "karaoke": 0,
+          "forced": 0,
+          "hearing_impaired": 0,
+          "visual_impaired": 0,
+          "clean_effects": 0,
+          "attached_pic": 0,
+          "timed_thumbnails": 0,
+          "non_diegetic": 0,
+          "captions": 0,
+          "descriptions": 0,
+          "metadata": 0,
+          "dependent": 0,
+          "still_image": 0,
+          "multilayer": 0
+        },
+        "tags": {
+          "language": "und",
+          "handler_name": "SoundHandler"
+        }
+      }
+    ],
+    "format": {
+      "filename": "C:\\Users\\ADMINI~1\\AppData\\Local\\Temp\\.tmp9ZLF7O\\M1 cut\\M1 cut.mp4",
+      "nb_streams": 2,
+      "nb_programs": 0,
+      "nb_stream_groups": 0,
+      "format_name": "mov,mp4,m4a,3gp,3g2,mj2",
+      "format_long_name": "QuickTime / MOV",
+      "start_time": "0.000000",
+      "duration": "12.000000",
+      "size": "5907413",
+      "bit_rate": "3938275",
+      "probe_score": 100,
+      "tags": {
+        "major_brand": "isom",
+        "minor_version": "512",
+        "compatible_brands": "isomiso2avc1mp41",
+        "encoder": "Lavf62.12.103"
+      }
+    }
+  }
+}

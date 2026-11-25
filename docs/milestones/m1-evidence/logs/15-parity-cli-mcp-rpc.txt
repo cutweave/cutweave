@@ -1,0 +1,25 @@
+$ C:\Users\Administrator\.cargo\bin\cargo.EXE nextest run -p cutweave-api --test parity
+
+   Compiling cutweave-commands v0.0.0 (E:\projects\Vidai\.claude\worktrees\agent-a382025a449707578\crates\cutweave-commands)
+   Compiling cutweave-render v0.0.0 (E:\projects\Vidai\.claude\worktrees\agent-a382025a449707578\crates\cutweave-render)
+   Compiling cutweave-api v0.0.0 (E:\projects\Vidai\.claude\worktrees\agent-a382025a449707578\crates\cutweave-api)
+   Compiling cutweave-ops v0.0.0 (E:\projects\Vidai\.claude\worktrees\agent-a382025a449707578\crates\cutweave-ops)
+   Compiling cutweave-audio v0.0.0 (E:\projects\Vidai\.claude\worktrees\agent-a382025a449707578\crates\cutweave-audio)
+   Compiling cutweave-cache v0.0.0 (E:\projects\Vidai\.claude\worktrees\agent-a382025a449707578\crates\cutweave-cache)
+   Compiling cutweave-playback v0.0.0 (E:\projects\Vidai\.claude\worktrees\agent-a382025a449707578\crates\cutweave-playback)
+   Compiling cutweave-engine v0.0.0 (E:\projects\Vidai\.claude\worktrees\agent-a382025a449707578\crates\cutweave-engine)
+   Compiling cutweave-cli v0.0.0 (E:\projects\Vidai\.claude\worktrees\agent-a382025a449707578\crates\cutweave-cli)
+    Finished `test` profile [unoptimized + debuginfo] target(s) in 1m 06s
+────────────
+ Nextest run ID eddd49fa-aa96-4eae-a465-d3dbffab7d2f with nextest profile: default
+    Starting 8 tests across 1 binary
+        PASS [   0.018s] (1/8) cutweave-api::parity enumeration::the_exemption_file_format_is_strict
+        PASS [   0.023s] (2/8) cutweave-api::parity script::script_references_parse_and_resolve
+        PASS [   0.034s] (3/8) cutweave-api::parity cli_child
+        PASS [   0.041s] (4/8) cutweave-api::parity enumeration::the_validation_form_drops_annotations_only
+        PASS [   0.063s] (5/8) cutweave-api::parity enumeration::stale_or_unknown_exemptions_fail
+        PASS [   0.080s] (6/8) cutweave-api::parity enumeration::a_hidden_command_without_an_exemption_fails_naming_it
+        PASS [   1.588s] (7/8) cutweave-api::parity every_registry_entry_is_reachable_with_the_registry_schema
+        PASS [   9.642s] (8/8) cutweave-api::parity every_script_is_byte_identical_on_cli_mcp_and_rpc
+────────────
+     Summary [   9.643s] 8 tests run: 8 passed, 0 skipped

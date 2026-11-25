@@ -1,0 +1,64 @@
+{
+  "project": "M1 cut/M1 cut.cutweave",
+  "export": "M1 cut/M1 cut.mp4",
+  "layout": [
+    {
+      "track": "V1",
+      "clips": [
+        [
+          0,
+          2
+        ],
+        [
+          4,
+          3
+        ],
+        [
+          7,
+          3
+        ],
+        [
+          10,
+          2
+        ]
+      ]
+    },
+    {
+      "track": "A1",
+      "clips": [
+        [
+          0,
+          2
+        ],
+        [
+          7,
+          3
+        ],
+        [
+          10,
+          2
+        ]
+      ]
+    }
+  ],
+  "ffprobe": {
+    "formatName": "mov,mp4,m4a,3gp,3g2,mj2",
+    "duration": 12,
+    "video": {
+      "codec": "h264",
+      "width": 1920,
+      "height": 1080,
+      "frameRate": 30
+    },
+    "audio": {
+      "codec": "aac"
+    }
+  },
+  "chromium": {
+    "readyState": 4,
+    "videoWidth": 1920,
+    "videoHeight": 1080,
+    "duration": 12,
+    "error": null
+  }
+}

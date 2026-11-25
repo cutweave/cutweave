@@ -1,0 +1,13 @@
+$ C:\Users\Administrator\AppData\Roaming\npm\pnpm.CMD --filter @cutweave/desktop build:node
+
+$ vite build --config vite.node.config.ts
+vite v8.3.8 building client environment for production...
+transforming...
+✓ 132 modules transformed.
+rendering chunks...
+computing gzip size...
+dist/api-Dpq4iPxg.cjs     2.71 kB │ gzip:  1.12 kB │ map:  20.72 kB
+dist/preload/index.cjs   20.21 kB │ gzip:  6.90 kB │ map:  51.84 kB
+dist/main/index.cjs     252.24 kB │ gzip: 65.91 kB │ map: 735.22 kB
+
+✓ built in 75ms

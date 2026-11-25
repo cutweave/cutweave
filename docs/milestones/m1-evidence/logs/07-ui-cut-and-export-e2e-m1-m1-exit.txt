@@ -1,0 +1,8 @@
+$ C:\Users\Administrator\AppData\Roaming\npm\pnpm.CMD --filter @cutweave/desktop exec playwright test e2e/m1/m1-exit.spec.ts
+
+
+Running 1 test using 1 worker
+
+  ok 1 e2e\m1\m1-exit.spec.ts:102:3 › M1 exit 1 and 2 (UI) › import the three M1 clips, cut them with exact inputs, export a 1080p MP4 that plays (14.4s)
+
+  1 passed (16.2s)

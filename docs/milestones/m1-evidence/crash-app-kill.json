@@ -1,0 +1,185 @@
+{
+  "trials": 20,
+  "rows": [
+    {
+      "trial": 1,
+      "edits": 14,
+      "lastCommand": "rename clip 0",
+      "offered": "Restore unsaved changes (15 edits, last at 07:40)",
+      "equal": true,
+      "savedToDisk": true,
+      "dirtyAfterSave": true
+    },
+    {
+      "trial": 2,
+      "edits": 25,
+      "lastCommand": "trim clip 2 by -0.25 s",
+      "offered": "Restore unsaved changes (26 edits, last at 07:40)",
+      "equal": true,
+      "savedToDisk": true,
+      "dirtyAfterSave": true
+    },
+    {
+      "trial": 3,
+      "edits": 8,
+      "lastCommand": "trim clip 1 by -0.25 s",
+      "offered": "Restore unsaved changes (9 edits, last at 07:40)",
+      "equal": true,
+      "savedToDisk": true,
+      "dirtyAfterSave": true
+    },
+    {
+      "trial": 4,
+      "edits": 19,
+      "lastCommand": "rename clip 1",
+      "offered": "Restore unsaved changes (20 edits, last at 07:40)",
+      "equal": true,
+      "savedToDisk": true,
+      "dirtyAfterSave": true
+    },
+    {
+      "trial": 5,
+      "edits": 30,
+      "lastCommand": "trim clip 2 by -0.25 s",
+      "offered": "Restore unsaved changes (31 edits, last at 07:40)",
+      "equal": true,
+      "savedToDisk": true,
+      "dirtyAfterSave": true
+    },
+    {
+      "trial": 6,
+      "edits": 13,
+      "lastCommand": "add a video track",
+      "offered": "Restore unsaved changes (14 edits, last at 07:40)",
+      "equal": true,
+      "savedToDisk": true,
+      "dirtyAfterSave": true
+    },
+    {
+      "trial": 7,
+      "edits": 24,
+      "lastCommand": "split clip 2 at 47 s",
+      "offered": "Restore unsaved changes (25 edits, last at 07:40)",
+      "equal": true,
+      "savedToDisk": true,
+      "dirtyAfterSave": true
+    },
+    {
+      "trial": 8,
+      "edits": 7,
+      "lastCommand": "move clip 2 to 42 s",
+      "offered": "Restore unsaved changes (8 edits, last at 07:40)",
+      "equal": true,
+      "savedToDisk": true,
+      "dirtyAfterSave": true
+    },
+    {
+      "trial": 9,
+      "edits": 18,
+      "lastCommand": "add a audio track",
+      "offered": "Restore unsaved changes (19 edits, last at 07:40)",
+      "equal": true,
+      "savedToDisk": true,
+      "dirtyAfterSave": true
+    },
+    {
+      "trial": 10,
+      "edits": 29,
+      "lastCommand": "rename clip 0",
+      "offered": "Restore unsaved changes (30 edits, last at 07:40)",
+      "equal": true,
+      "savedToDisk": true,
+      "dirtyAfterSave": true
+    },
+    {
+      "trial": 11,
+      "edits": 12,
+      "lastCommand": "trim clip 2 by -0.25 s",
+      "offered": "Restore unsaved changes (13 edits, last at 07:40)",
+      "equal": true,
+      "savedToDisk": true,
+      "dirtyAfterSave": true
+    },
+    {
+      "trial": 12,
+      "edits": 23,
+      "lastCommand": "rename clip 2",
+      "offered": "Restore unsaved changes (24 edits, last at 07:40)",
+      "equal": true,
+      "savedToDisk": true,
+      "dirtyAfterSave": true
+    },
+    {
+      "trial": 13,
+      "edits": 6,
+      "lastCommand": "rename clip 1",
+      "offered": "Restore unsaved changes (7 edits, last at 07:40)",
+      "equal": true,
+      "savedToDisk": true,
+      "dirtyAfterSave": true
+    },
+    {
+      "trial": 14,
+      "edits": 17,
+      "lastCommand": "trim clip 0 by -0.25 s",
+      "offered": "Restore unsaved changes (18 edits, last at 07:40)",
+      "equal": true,
+      "savedToDisk": true,
+      "dirtyAfterSave": true
+    },
+    {
+      "trial": 15,
+      "edits": 28,
+      "lastCommand": "trim clip 1 by -0.25 s",
+      "offered": "Restore unsaved changes (29 edits, last at 07:40)",
+      "equal": true,
+      "savedToDisk": true,
+      "dirtyAfterSave": true
+    },
+    {
+      "trial": 16,
+      "edits": 11,
+      "lastCommand": "move clip 0 to 1 s",
+      "offered": "Restore unsaved changes (12 edits, last at 07:40)",
+      "equal": true,
+      "savedToDisk": true,
+      "dirtyAfterSave": true
+    },
+    {
+      "trial": 17,
+      "edits": 22,
+      "lastCommand": "move clip 2 to 44 s",
+      "offered": "Restore unsaved changes (23 edits, last at 07:40)",
+      "equal": true,
+      "savedToDisk": true,
+      "dirtyAfterSave": true
+    },
+    {
+      "trial": 18,
+      "edits": 5,
+      "lastCommand": "add a video track",
+      "offered": "Restore unsaved changes (6 edits, last at 07:40)",
+      "equal": true,
+      "savedToDisk": true,
+      "dirtyAfterSave": true
+    },
+    {
+      "trial": 19,
+      "edits": 16,
+      "lastCommand": "split clip 0 at 4 s",
+      "offered": "Restore unsaved changes (17 edits, last at 07:40)",
+      "equal": true,
+      "savedToDisk": true,
+      "dirtyAfterSave": true
+    },
+    {
+      "trial": 20,
+      "edits": 27,
+      "lastCommand": "trim clip 0 by -0.25 s",
+      "offered": "Restore unsaved changes (28 edits, last at 07:40)",
+      "equal": true,
+      "savedToDisk": true,
+      "dirtyAfterSave": true
+    }
+  ]
+}

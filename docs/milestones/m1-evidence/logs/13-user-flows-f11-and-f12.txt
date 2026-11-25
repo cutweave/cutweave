@@ -1,0 +1,9 @@
+$ C:\Users\Administrator\AppData\Roaming\npm\pnpm.CMD --filter @cutweave/desktop exec playwright test e2e/flows/f11-engine-crash.spec.ts e2e/flows/f12-app-crash-recovery.spec.ts
+
+
+Running 2 tests using 1 worker
+
+  ok 1 e2e\flows\f11-engine-crash.spec.ts:37:3 › F11 engine crash mid-edit › the editor reconnects; edits before, during and after the crash each land once (3.0s)
+  ok 2 e2e\flows\f12-app-crash-recovery.spec.ts:52:3 › F12 app crash and recovery › after a crash, Restore brings the unsaved edits back; after another, Discard does not (4.1s)
+
+  2 passed (8.7s)
