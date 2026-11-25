@@ -92,6 +92,9 @@ impl Work {
     }
 }
 
+/// Two items of one track that the ripple would make overlap: `(track, first, second)`.
+type Collision = (TrackId, ItemId, ItemId);
+
 /// The first gap of a track's items (sorted by start), as `[from, to)`.
 fn first_gap(items: &[Work]) -> Option<(i64, i64)> {
     let mut expected = 0;
@@ -106,10 +109,7 @@ fn first_gap(items: &[Work]) -> Option<(i64, i64)> {
 
 /// The shifts that close every gap of `track`, and the first collision (INV-32) if the
 /// ripple cannot be applied.
-fn close_gaps(
-    sequence: &Sequence,
-    track: &Track,
-) -> (Vec<(ItemId, Time)>, Option<(TrackId, ItemId, ItemId)>) {
+fn close_gaps(sequence: &Sequence, track: &Track) -> (Vec<(ItemId, Time)>, Option<Collision>) {
     let mut work: BTreeMap<TrackId, Vec<Work>> = sequence
         .tracks
         .values()

@@ -10,7 +10,7 @@ expression: "json!({\n    \"meta\": serde_json::to_value(meta).unwrap(), \"input
     "undoable": true,
     "view": false,
     "scope": "any",
-    "mcp": "catalog",
+    "mcp": "core",
     "annotations": {
       "readOnlyHint": false,
       "destructiveHint": false,
@@ -91,10 +91,32 @@ expression: "json!({\n    \"meta\": serde_json::to_value(meta).unwrap(), \"input
           "type": "string",
           "pattern": "^trk_[0-9a-f]{32}$",
           "description": "The new track."
+        },
+        "index": {
+          "type": "integer",
+          "format": "uint32",
+          "minimum": 0,
+          "description": "Where it is in the display order now (0 = top)."
+        },
+        "track_count": {
+          "type": "integer",
+          "format": "uint32",
+          "minimum": 0,
+          "description": "How many tracks the sequence has now."
+        },
+        "warnings": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          },
+          "description": "Soft warnings (more than [`SOFT_TRACK_LIMIT`] tracks), empty normally."
         }
       },
       "required": [
-        "track"
+        "track",
+        "index",
+        "track_count",
+        "warnings"
       ],
       "description": "Result of `track.add`.",
       "title": "TrackAddOutput"
@@ -173,10 +195,32 @@ expression: "json!({\n    \"meta\": serde_json::to_value(meta).unwrap(), \"input
         "type": "string",
         "pattern": "^trk_[0-9a-f]{32}$",
         "description": "The new track."
+      },
+      "index": {
+        "type": "integer",
+        "format": "uint32",
+        "minimum": 0,
+        "description": "Where it is in the display order now (0 = top)."
+      },
+      "track_count": {
+        "type": "integer",
+        "format": "uint32",
+        "minimum": 0,
+        "description": "How many tracks the sequence has now."
+      },
+      "warnings": {
+        "type": "array",
+        "items": {
+          "type": "string"
+        },
+        "description": "Soft warnings (more than [`SOFT_TRACK_LIMIT`] tracks), empty normally."
       }
     },
     "required": [
-      "track"
+      "track",
+      "index",
+      "track_count",
+      "warnings"
     ],
     "description": "Result of `track.add`.",
     "title": "TrackAddOutput"

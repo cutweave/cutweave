@@ -164,7 +164,7 @@ fn move_marker_snaps_keeps_the_rest_and_reports_the_previous_time() {
     );
     // Moving to where it is changes nothing.
     h.ok("timeline.move_marker", json!({"marker": m, "t": "f:20"}));
-    assert!(h.last.as_ref().unwrap().patch.0.is_empty());
+    assert_eq!(h.last.as_ref().unwrap().patch.0.len(), 0);
     assert_code(
         h.run(
             "timeline.move_marker",
@@ -329,7 +329,7 @@ fn set_and_clear_in_out() {
         h.ok("timeline.clear_in_out", json!({"sequence": p.sequence}))["cleared"],
         false
     );
-    assert!(h.last.as_ref().unwrap().patch.0.is_empty());
+    assert_eq!(h.last.as_ref().unwrap().patch.0.len(), 0);
 }
 
 #[test]

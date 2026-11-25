@@ -198,7 +198,8 @@ fn dissolve_misaligned_groups(
     root: &mut JsonObject,
     notes: &mut Vec<String>,
 ) -> Result<(), MigrationError> {
-    let mut groups: std::collections::BTreeMap<String, Vec<Member>> = Default::default();
+    let mut groups: std::collections::BTreeMap<String, Vec<Member>> =
+        std::collections::BTreeMap::new();
     for (path, seq) in sequences(root)? {
         for (track_path, track) in tracks(seq, &path)? {
             for (item_path, item) in items(track, &track_path)? {
@@ -252,13 +253,12 @@ fn display_order(seq: &JsonObject) -> Vec<String> {
     let mut order: Vec<String> = seq
         .get("track_order")
         .and_then(Value::as_array)
-        .map(|a| {
+        .map_or_else(Vec::new, |a| {
             a.iter()
                 .filter_map(Value::as_str)
                 .map(str::to_owned)
                 .collect()
-        })
-        .unwrap_or_default();
+        });
     if let Some(tracks) = seq.get("tracks").and_then(Value::as_object) {
         for key in tracks.keys() {
             if !order.contains(key) {
@@ -348,6 +348,7 @@ mod tests {
         (doc, notes)
     }
 
+    #[allow(clippy::needless_pass_by_value)] // call sites pass `json!` temporaries
     fn seq(tracks: Value, order: Value) -> Value {
         json!({"sequences": {"seq_1": {
             "format": {"frame_rate": {"num": 30, "den": 1}},

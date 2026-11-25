@@ -165,7 +165,7 @@ cutweave/
 - **Wire format:** `Time` serializes as a JSON **integer** (flicks) and maps to TS `number`. It is validated as a safe integer (|t| < 2⁵³ flicks ≈ 147 days, far beyond any timeline). Inputs also accept timecode strings (`"00:01:02:03"`, `"62.5s"`, `"f:1500"`), which are normalized on parse. Frame-based forms (`HH:MM:SS:FF`, `f:N`) resolve against the frame rate of the sequence that owns the command's target, at validation time. Commands with no sequence context accept only flicks or seconds (`"62.5s"`). *(Decided after Spike S5.)* The specta export uses a type override for the `Time` newtype.
 - Media source times stay in the **stream timebase** until mapped. VFR sources are mapped through the media index (§7), never by assuming a constant fps.
 
-### 4.2 Entities (all IDs are UUIDv7 strings with type prefixes: `med_…`, `seq_…`, `trk_…`, `itm_…`)
+### 4.2 Entities (all IDs are UUIDv7 strings with type prefixes: `med_…`, `seq_…`, `trk_…`, `itm_…`, `grp_…`, `mrk_…`)
 
 ```text
 Project
@@ -183,12 +183,16 @@ MediaAsset { id, kind(video|audio|image|sequence-ref), path_abs, path_rel, conte
              proxy?: ProxyRef, analysis{scenes?, beats?, loudness?, waveform_ref}, provenance?: Provenance }
 
 Sequence { id, name, format{width,height,frame_rate,sample_rate,color_space,background},
-           tracks: Vec<TrackId> (top→bottom), main_track?: TrackId (magnetic), markers, in_out? }
+           tracks: Vec<TrackId> (top→bottom; stored as `tracks` by ID plus `track_order`),
+           markers: Map<MarkerId, Marker>, in_out?: {start, end} }
+           # the main track is the track with `magnetic: true` (at most one, a video track; schema v2)
+
+Marker { id (mrk_…), t, duration?, label, color, kind(user|beat|chapter) }   # sequence time; item markers: item-relative
 
 Track { id, kind(video|audio|text|caption|adjustment), items (sorted by start), name,
-        muted, hidden, locked, solo, gain, magnetic: bool }
+        muted, hidden, locked, solo, gain, magnetic: bool, height?: px (UI hint, saved) }
 
-Item (enum, common: id, track, start, duration, enabled, linked_group?, name, color_label)
+Item (enum, common: id, track, start, duration, enabled, linked_group?, attached_to?: ItemId, markers, name, color_label)
  ├─ Clip { media, source_in, speed: Speed(Constant|Curve), reverse, freeze?, audio{gain,pan,fade_in,fade_out,eq…},
  │         visual: VisualProps, effects: Vec<EffectInstance>, masks: Vec<Mask> }
  ├─ Text { content: RichText, style: TextStyleRef|inline, box, animation{in,out,loop}: AnimRef, visual }
@@ -235,7 +239,8 @@ Provenance { origin(import|record|ai), provider?, model?, prompt?, seed?, params
 - **Normalized, ID-addressed.** Nothing refers to anything by index. Agents and the UI address by ID, which is stable across sessions.
 - **CapCut magnetic main track** is a track flag: `magnetic: true` gives ripple-by-default semantics. Linked items ("attached to main clip") move with their parent via `linked_group`. (The P2 spec proposes a separate one-way `attached_to` relation for these, spec §1.4, ADR-0023.)
 - **Plugin data** goes only into namespaced `custom` maps, so it can never corrupt core fields.
-- **Schema versioning:** `schema_version` plus ordered migrations (`vN → vN+1`) with golden fixture tests. Projects from newer app versions open read-only with a warning.
+- **Schema versioning:** `schema_version` plus ordered migrations (`vN → vN+1`) with golden fixture tests. Projects from newer app versions open read-only with a warning. Contract changes inside one unreleased version share its migration (§17, "One v2").
+- **Model v2 (WP-2A.02, [ADR-0023](adr/0023-timeline-edit-semantics.md), spec §1.5, §2):** `Project::validate` enforces INV-6 (at most one magnetic track per sequence, a video track), INV-7 (the magnetic track is gap-free from 0), INV-8 (linked groups have at least two members with identical `start` and `duration`) and INV-9 (attachments: one level deep, same sequence, another track, the child starts inside the parent, linked partners follow the same parent). Markers and `in_out` are metadata: no edit moves them, and sequence markers and the in/out range never move with a ripple (INV-34). `track.set_magnetic` is the only command that sets the flag; until WP-2A.03 ripples, the P1 edits `item.move`, `item.delete`, `clip.trim` and `timeline.insert` answer `Unsupported` on a magnetic track instead of leaving a gap.
 
 ---
 
@@ -827,6 +832,7 @@ MyVideo/                    ← project folder (user-chosen location)
   - Recovery drops a torn last record, restores undo history and the 10-minute dedup window, and resumes ID generation. `#[secret]` params are redacted again at the sink.
   - **Checkpoints (format 2, WP-2I.03):** a `checkpoint` record follows the transaction it captured: the checkpoint made (metadata only), the ids removed, the highest id issued and the request (for dedup). Recovery rebuilds a checkpoint as the replayed document at its revision. A save carries the checkpoints made before it into the new segment as patches from the saved document, so they survive saves and reopening. Records of unknown types are skipped.
   - `project.recover` / `project.discard_recovery` are `ProjectStore` methods; the engine root (WP-1I.04) registers them as commands.
+- **One v2 (decided with WP-2A.02, 2026-11-25).** The timeline epic (WP-2A.02, ADR-0023) and the media folders (WP-2F.07, ADR-0020) both change the project format, and nothing is released between them, so they **share one `v1 → v2` migration**: `crates/cutweave-model/src/migrate/v1_to_v2.rs` runs an ordered list of steps (`STEPS`, each a function over the raw JSON). WP-2A.02 contributes four steps: the timeline fields (`Sequence.markers`, `Sequence.in_out`, `Track.height`, `Item.attached_to`, `Item.markers`), flooring clip durations to whole frames, dissolving misaligned or single-member linked groups, and keeping one magnetic track. WP-2F.07 **appends** its step (`Project.folders`, `MediaAsset.folder`, `MediaAsset.name`) to `STEPS`, extends the v2 golden fixtures (`tests/fixtures/v2/`, blessed with `CUTWEAVE_BLESS_FIXTURES=1`) and the frozen v1 fixtures that must migrate to them, and does not bump `CURRENT_SCHEMA_VERSION` again. A format change after a release, or by a WP that merges once v2 has shipped, is a v3 with its own file. The v1 fixtures never change; `tests/fixtures/v1/legacy-needs-fixes.cutweave` pins what the repair steps do (insta snapshot).
 - Media is referenced by absolute path, relative path and content hash. Relinking searches the moved folder and matches by hash. **Collect & archive** copies all media into the folder for portability.
 - The global caches (proxies, thumbnails, waveforms, frame index) live outside the project and can be rebuilt.
 - **Interchange:** OTIO JSON import/export (own implementation), SRT/VTT/ASS, FCPXML/EDL (v2), CapCut draft import (stretch goal; best-effort).

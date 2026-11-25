@@ -370,8 +370,7 @@ fn markers_and_in_out_are_checked() {
         .violations()
         .into_iter()
         .map(|v| match v {
-            Invariant::InvalidValue { path, .. } => path,
-            Invariant::KeyMismatch { path, .. } => path,
+            Invariant::InvalidValue { path, .. } | Invariant::KeyMismatch { path, .. } => path,
             other => panic!("{other:?}"),
         })
         .collect();

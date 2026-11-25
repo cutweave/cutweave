@@ -1,0 +1,308 @@
+---
+source: crates/cutweave-ops/tests/contract.rs
+expression: "json!({\n    \"meta\": serde_json::to_value(meta).unwrap(), \"input\": meta.input_schema,\n    \"output\": meta.output_schema,\n})"
+---
+{
+  "meta": {
+    "name": "track.list",
+    "summary": "List a sequence's tracks (flags, height, item counts) top to bottom",
+    "kind": "query",
+    "undoable": false,
+    "view": false,
+    "scope": "any",
+    "mcp": "catalog",
+    "annotations": {
+      "readOnlyHint": true,
+      "destructiveHint": false,
+      "idempotentHint": true,
+      "openWorldHint": false
+    },
+    "secret_fields": [],
+    "input_schema": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "sequence": {
+          "type": "string",
+          "pattern": "^seq_[0-9a-f]{32}$",
+          "description": "The sequence."
+        }
+      },
+      "required": [
+        "sequence"
+      ],
+      "description": "Lists a sequence's tracks in display order with their flags, height and item counts.",
+      "title": "TrackList"
+    },
+    "output_schema": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "sequence": {
+          "type": "string",
+          "pattern": "^seq_[0-9a-f]{32}$",
+          "description": "The sequence."
+        },
+        "tracks": {
+          "type": "array",
+          "items": {
+            "description": "One track of `track.list`.",
+            "type": "object",
+            "properties": {
+              "id": {
+                "description": "The track.",
+                "type": "string",
+                "pattern": "^trk_[0-9a-f]{32}$"
+              },
+              "kind": {
+                "description": "What it holds.",
+                "oneOf": [
+                  {
+                    "description": "Picture layers.",
+                    "type": "string",
+                    "const": "video"
+                  },
+                  {
+                    "description": "Sound.",
+                    "type": "string",
+                    "const": "audio"
+                  },
+                  {
+                    "description": "Titles (later versions).",
+                    "type": "string",
+                    "const": "text"
+                  },
+                  {
+                    "description": "Captions (later versions).",
+                    "type": "string",
+                    "const": "caption"
+                  },
+                  {
+                    "description": "Adjustment layers (later versions).",
+                    "type": "string",
+                    "const": "adjustment"
+                  }
+                ]
+              },
+              "name": {
+                "description": "Display name.",
+                "type": "string"
+              },
+              "index": {
+                "description": "Display position, 0 = top.",
+                "type": "integer",
+                "format": "uint32",
+                "minimum": 0
+              },
+              "muted": {
+                "description": "Silenced.",
+                "type": "boolean"
+              },
+              "hidden": {
+                "description": "Not rendered.",
+                "type": "boolean"
+              },
+              "locked": {
+                "description": "Item edits fail with `Locked`.",
+                "type": "boolean"
+              },
+              "solo": {
+                "description": "Solo.",
+                "type": "boolean"
+              },
+              "magnetic": {
+                "description": "The magnetic main track.",
+                "type": "boolean"
+              },
+              "gain": {
+                "description": "Gain in dB.",
+                "type": "number",
+                "format": "double"
+              },
+              "height": {
+                "description": "Row height in pixels; `None` is the default.",
+                "type": [
+                  "integer",
+                  "null"
+                ],
+                "format": "uint32",
+                "minimum": 0
+              },
+              "item_count": {
+                "description": "Number of items.",
+                "type": "integer",
+                "format": "uint32",
+                "minimum": 0
+              }
+            },
+            "additionalProperties": false,
+            "required": [
+              "id",
+              "kind",
+              "name",
+              "index",
+              "muted",
+              "hidden",
+              "locked",
+              "solo",
+              "magnetic",
+              "gain",
+              "height",
+              "item_count"
+            ]
+          },
+          "description": "Its tracks in display order, top to bottom."
+        }
+      },
+      "required": [
+        "sequence",
+        "tracks"
+      ],
+      "description": "Result of `track.list`.",
+      "title": "TrackListOutput"
+    }
+  },
+  "input": {
+    "type": "object",
+    "additionalProperties": false,
+    "properties": {
+      "sequence": {
+        "type": "string",
+        "pattern": "^seq_[0-9a-f]{32}$",
+        "description": "The sequence."
+      }
+    },
+    "required": [
+      "sequence"
+    ],
+    "description": "Lists a sequence's tracks in display order with their flags, height and item counts.",
+    "title": "TrackList"
+  },
+  "output": {
+    "type": "object",
+    "additionalProperties": false,
+    "properties": {
+      "sequence": {
+        "type": "string",
+        "pattern": "^seq_[0-9a-f]{32}$",
+        "description": "The sequence."
+      },
+      "tracks": {
+        "type": "array",
+        "items": {
+          "description": "One track of `track.list`.",
+          "type": "object",
+          "properties": {
+            "id": {
+              "description": "The track.",
+              "type": "string",
+              "pattern": "^trk_[0-9a-f]{32}$"
+            },
+            "kind": {
+              "description": "What it holds.",
+              "oneOf": [
+                {
+                  "description": "Picture layers.",
+                  "type": "string",
+                  "const": "video"
+                },
+                {
+                  "description": "Sound.",
+                  "type": "string",
+                  "const": "audio"
+                },
+                {
+                  "description": "Titles (later versions).",
+                  "type": "string",
+                  "const": "text"
+                },
+                {
+                  "description": "Captions (later versions).",
+                  "type": "string",
+                  "const": "caption"
+                },
+                {
+                  "description": "Adjustment layers (later versions).",
+                  "type": "string",
+                  "const": "adjustment"
+                }
+              ]
+            },
+            "name": {
+              "description": "Display name.",
+              "type": "string"
+            },
+            "index": {
+              "description": "Display position, 0 = top.",
+              "type": "integer",
+              "format": "uint32",
+              "minimum": 0
+            },
+            "muted": {
+              "description": "Silenced.",
+              "type": "boolean"
+            },
+            "hidden": {
+              "description": "Not rendered.",
+              "type": "boolean"
+            },
+            "locked": {
+              "description": "Item edits fail with `Locked`.",
+              "type": "boolean"
+            },
+            "solo": {
+              "description": "Solo.",
+              "type": "boolean"
+            },
+            "magnetic": {
+              "description": "The magnetic main track.",
+              "type": "boolean"
+            },
+            "gain": {
+              "description": "Gain in dB.",
+              "type": "number",
+              "format": "double"
+            },
+            "height": {
+              "description": "Row height in pixels; `None` is the default.",
+              "type": [
+                "integer",
+                "null"
+              ],
+              "format": "uint32",
+              "minimum": 0
+            },
+            "item_count": {
+              "description": "Number of items.",
+              "type": "integer",
+              "format": "uint32",
+              "minimum": 0
+            }
+          },
+          "additionalProperties": false,
+          "required": [
+            "id",
+            "kind",
+            "name",
+            "index",
+            "muted",
+            "hidden",
+            "locked",
+            "solo",
+            "magnetic",
+            "gain",
+            "height",
+            "item_count"
+          ]
+        },
+        "description": "Its tracks in display order, top to bottom."
+      }
+    },
+    "required": [
+      "sequence",
+      "tracks"
+    ],
+    "description": "Result of `track.list`.",
+    "title": "TrackListOutput"
+  }
+}

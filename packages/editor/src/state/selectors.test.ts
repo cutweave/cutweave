@@ -19,6 +19,8 @@ const clip = (id: string, start: number, duration: number, extra: object = {}) =
   duration,
   enabled: true,
   linked_group: null,
+  attached_to: null,
+  markers: {},
   media: "med_a",
   source_in: 10,
   audio: { gain: 0 },
@@ -37,6 +39,7 @@ const track = (id: string, kind: string, items: object[], extra: object = {}) =>
   locked: false,
   solo: false,
   magnetic: false,
+  height: null,
   gain: 0,
   custom: {},
   ...extra,
@@ -57,12 +60,23 @@ const project = (): Project =>
       med_b: { id: "med_b", kind: "audio", path_abs: null, path_rel: "audio/song.wav", probe: {} },
     },
     sequences: {
-      seq_2: { id: "seq_2", name: "Later", tracks: {}, track_order: [], format: fmt(), custom: {} },
+      seq_2: {
+        id: "seq_2",
+        name: "Later",
+        tracks: {},
+        track_order: [],
+        markers: {},
+        in_out: null,
+        format: fmt(),
+        custom: {},
+      },
       seq_1: {
         id: "seq_1",
         name: "Main",
         format: fmt(),
         track_order: ["v2", "v1", "a1"],
+        markers: {},
+        in_out: null,
         tracks: {
           v1: track("v1", "video", [clip("itm_2", 500, 100), clip("itm_1", 0, 400)], {
             magnetic: true,

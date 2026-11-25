@@ -31,7 +31,7 @@ expression: "json!({\n    \"meta\": serde_json::to_value(meta).unwrap(), \"input
       "required": [
         "track"
       ],
-      "description": "Removes a track together with its items. Fails with `Locked` if the track is locked, or\nif a linked partner that would be left alone in its group is on a locked track. Linked\npartners of the removed items stay; a partner left alone in its group is unlinked.",
+      "description": "Removes a track together with its items. Fails with `Locked` if the track is locked, if a\nlinked partner that would be left alone in its group is on a locked track, or if an item\nattached to a removed item is on a locked track. Linked partners of the removed items stay;\na partner left alone in its group is unlinked. Items attached to a removed item are\ndetached and keep their place (spec INV-38).",
       "title": "TrackRemove"
     },
     "output_schema": {
@@ -71,7 +71,7 @@ expression: "json!({\n    \"meta\": serde_json::to_value(meta).unwrap(), \"input
     "required": [
       "track"
     ],
-    "description": "Removes a track together with its items. Fails with `Locked` if the track is locked, or\nif a linked partner that would be left alone in its group is on a locked track. Linked\npartners of the removed items stay; a partner left alone in its group is unlinked.",
+    "description": "Removes a track together with its items. Fails with `Locked` if the track is locked, if a\nlinked partner that would be left alone in its group is on a locked track, or if an item\nattached to a removed item is on a locked track. Linked partners of the removed items stay;\na partner left alone in its group is unlinked. Items attached to a removed item are\ndetached and keep their place (spec INV-38).",
     "title": "TrackRemove"
   },
   "output": {

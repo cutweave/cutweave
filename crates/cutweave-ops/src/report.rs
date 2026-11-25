@@ -251,7 +251,7 @@ mod tests {
             .unwrap()
             .items
             .update(&ItemId::from_u128(1), |i| {
-                i.set_start(Time::from_flicks(500).unwrap())
+                i.set_start(Time::from_flicks(500).unwrap());
             });
         let two = after
             .track_mut(&a)
@@ -304,7 +304,7 @@ mod tests {
                 enabled: false
             }]
         );
-        assert!(report.replaced.is_empty());
+        assert_eq!(report.replaced.len(), 0);
         assert_eq!(report.created_tracks, [b]);
     }
 }

@@ -38,6 +38,8 @@ const clip = (id: string, start: number) => ({
   duration: 705_600_000,
   enabled: true,
   linked_group: null,
+  attached_to: null,
+  markers: {},
   media: "med_a",
   source_in: 0,
   audio: { gain: 0 },
@@ -56,6 +58,8 @@ const project = (items: object[]): Project =>
         name: "Main",
         format: { width: 1920, height: 1080, frame_rate: { num: 30, den: 1 } },
         track_order: ["trk_v"],
+        markers: {},
+        in_out: null,
         tracks: {
           trk_v: {
             id: "trk_v",
@@ -67,6 +71,7 @@ const project = (items: object[]): Project =>
             locked: false,
             solo: false,
             magnetic: false,
+            height: null,
             gain: 0,
             custom: {},
           },

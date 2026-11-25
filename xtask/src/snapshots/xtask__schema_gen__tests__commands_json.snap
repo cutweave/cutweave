@@ -1,5 +1,6 @@
 ---
 source: xtask/src/schema_gen.rs
+assertion_line: 531
 expression: text
 ---
 {
@@ -5641,6 +5642,234 @@ expression: text
       },
       "input_schema": {
         "additionalProperties": false,
+        "description": "Adds a marker to a sequence, or to an item of it when `item` is given (then `t` is relative\nto the item's start and the marker moves with it). `duration` makes a range marker. `kind`\nis `user` (default), `beat` or `chapter`; `color` is `#rrggbb`. Times snap to the frame\ngrid. Sequence markers never move with a ripple; an item marker on a locked track fails\nwith `Locked`.",
+        "properties": {
+          "color": {
+            "default": null,
+            "description": "Display color, `#rrggbb` (default marigold).",
+            "pattern": "^#([0-9a-fA-F]{6}|[0-9a-fA-F]{8})$",
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "duration": {
+            "anyOf": [
+              {
+                "anyOf": [
+                  {
+                    "maximum": 9007199254740991,
+                    "minimum": -9007199254740991,
+                    "type": "integer"
+                  },
+                  {
+                    "pattern": "^-?[0-9]+(\\.[0-9]+)?s$|^-?[0-9]+$|^f:[0-9]+$|^[0-9]+[:;][0-9]+[:;][0-9]+[:;][0-9]+$",
+                    "type": "string"
+                  }
+                ],
+                "description": "A time: integer flicks (1/705600000 s), or a string: seconds (\"62.5s\"), a frame (\"f:1500\") or a timecode (\"00:01:02:03\", drop-frame \"00:01:02;03\"). Frames and timecodes use the frame rate of the target's sequence."
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "description": "Length of a range marker, `> 0` (snapped to whole frames)."
+          },
+          "item": {
+            "default": null,
+            "description": "Put the marker on this item of the sequence instead of on the sequence.",
+            "pattern": "^itm_[0-9a-f]{32}$",
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "kind": {
+            "anyOf": [
+              {
+                "description": "What a marker means.",
+                "oneOf": [
+                  {
+                    "const": "user",
+                    "description": "Placed by a person or an agent.",
+                    "type": "string"
+                  },
+                  {
+                    "const": "beat",
+                    "description": "A beat found by analysis (snaps like a marker, spec §6).",
+                    "type": "string"
+                  },
+                  {
+                    "const": "chapter",
+                    "description": "A chapter start (exported to chaptered formats).",
+                    "type": "string"
+                  }
+                ]
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "description": "`user` (default), `beat` or `chapter`."
+          },
+          "label": {
+            "default": null,
+            "description": "Text shown with the marker (default empty), at most 200 characters.",
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "sequence": {
+            "description": "The sequence.",
+            "pattern": "^seq_[0-9a-f]{32}$",
+            "type": "string"
+          },
+          "t": {
+            "anyOf": [
+              {
+                "maximum": 9007199254740991,
+                "minimum": -9007199254740991,
+                "type": "integer"
+              },
+              {
+                "pattern": "^-?[0-9]+(\\.[0-9]+)?s$|^-?[0-9]+$|^f:[0-9]+$|^[0-9]+[:;][0-9]+[:;][0-9]+[:;][0-9]+$",
+                "type": "string"
+              }
+            ],
+            "description": "Where, `>= 0` (snapped to the frame grid; relative to the item for an item marker)."
+          }
+        },
+        "required": [
+          "sequence",
+          "t"
+        ],
+        "title": "TimelineAddMarker",
+        "type": "object"
+      },
+      "kind": "command",
+      "mcp": "core",
+      "mcp_tool": "timeline_add_marker",
+      "name": "timeline.add_marker",
+      "namespace": "timeline",
+      "output_schema": {
+        "additionalProperties": false,
+        "description": "Result of `timeline.add_marker`.",
+        "properties": {
+          "duration": {
+            "description": "Its length, for a range marker.",
+            "maximum": 9007199254740991,
+            "minimum": 0,
+            "type": [
+              "integer",
+              "null"
+            ]
+          },
+          "item": {
+            "description": "The item it is on, for an item marker.",
+            "pattern": "^itm_[0-9a-f]{32}$",
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "marker": {
+            "description": "The new marker.",
+            "pattern": "^mrk_[0-9a-f]{32}$",
+            "type": "string"
+          },
+          "sequence": {
+            "description": "The sequence it is in.",
+            "pattern": "^seq_[0-9a-f]{32}$",
+            "type": "string"
+          },
+          "t": {
+            "description": "Its time, snapped to the frame grid (item-relative for an item marker).",
+            "maximum": 9007199254740991,
+            "minimum": -9007199254740991,
+            "type": "integer"
+          }
+        },
+        "required": [
+          "marker",
+          "sequence",
+          "t"
+        ],
+        "title": "TimelineAddMarkerOutput",
+        "type": "object"
+      },
+      "scope": "any",
+      "secret_fields": [],
+      "summary": "Add a marker (or range marker) to a sequence or one of its items",
+      "undoable": true,
+      "view": false
+    },
+    {
+      "annotations": {
+        "destructiveHint": false,
+        "idempotentHint": true,
+        "openWorldHint": false,
+        "readOnlyHint": false
+      },
+      "input_schema": {
+        "additionalProperties": false,
+        "description": "Clears the sequence's in and out points (nothing happens if none are set).",
+        "properties": {
+          "sequence": {
+            "description": "The sequence.",
+            "pattern": "^seq_[0-9a-f]{32}$",
+            "type": "string"
+          }
+        },
+        "required": [
+          "sequence"
+        ],
+        "title": "TimelineClearInOut",
+        "type": "object"
+      },
+      "kind": "command",
+      "mcp": "catalog",
+      "mcp_tool": "timeline_clear_in_out",
+      "name": "timeline.clear_in_out",
+      "namespace": "timeline",
+      "output_schema": {
+        "additionalProperties": false,
+        "description": "Result of `timeline.clear_in_out`.",
+        "properties": {
+          "cleared": {
+            "description": "Whether there was a range to clear.",
+            "type": "boolean"
+          },
+          "sequence": {
+            "description": "The sequence.",
+            "pattern": "^seq_[0-9a-f]{32}$",
+            "type": "string"
+          }
+        },
+        "required": [
+          "sequence",
+          "cleared"
+        ],
+        "title": "TimelineClearInOutOutput",
+        "type": "object"
+      },
+      "scope": "any",
+      "secret_fields": [],
+      "summary": "Clear the sequence's in and out points",
+      "undoable": true,
+      "view": false
+    },
+    {
+      "annotations": {
+        "destructiveHint": false,
+        "idempotentHint": false,
+        "openWorldHint": false,
+        "readOnlyHint": false
+      },
+      "input_schema": {
+        "additionalProperties": false,
         "description": "Inserts a media clip on a track at a time. `source_in` is the position in the media the clip\nstarts from and `duration` its length (defaults: the start of the media and the rest of it;\nstills default to five seconds). Times accept flicks, `\"1.5s\"`, `\"f:45\"` and timecodes,\nresolved against the sequence's frame rate. `at` and `duration` snap to the frame grid\n(nearest frame, ties later; at least one frame) and the result states the values used;\n`source_in` is a position in the media and is not snapped, nor is a default duration\n(the rest of the media, or five seconds for a still). See the module docs for overlap and linked\naudio behaviour. Fails with `Locked` if the target track is locked.",
         "properties": {
           "at": {
@@ -5827,6 +6056,229 @@ expression: text
     {
       "annotations": {
         "destructiveHint": false,
+        "idempotentHint": true,
+        "openWorldHint": false,
+        "readOnlyHint": false
+      },
+      "input_schema": {
+        "additionalProperties": false,
+        "description": "Moves a marker to another time (snapped to the frame grid; relative to the item for an\nitem marker). Its label, color, kind and length stay.",
+        "properties": {
+          "marker": {
+            "description": "The marker (on a sequence or on an item).",
+            "pattern": "^mrk_[0-9a-f]{32}$",
+            "type": "string"
+          },
+          "t": {
+            "anyOf": [
+              {
+                "maximum": 9007199254740991,
+                "minimum": -9007199254740991,
+                "type": "integer"
+              },
+              {
+                "pattern": "^-?[0-9]+(\\.[0-9]+)?s$|^-?[0-9]+$|^f:[0-9]+$|^[0-9]+[:;][0-9]+[:;][0-9]+[:;][0-9]+$",
+                "type": "string"
+              }
+            ],
+            "description": "The new time, `>= 0`."
+          }
+        },
+        "required": [
+          "marker",
+          "t"
+        ],
+        "title": "TimelineMoveMarker",
+        "type": "object"
+      },
+      "kind": "command",
+      "mcp": "catalog",
+      "mcp_tool": "timeline_move_marker",
+      "name": "timeline.move_marker",
+      "namespace": "timeline",
+      "output_schema": {
+        "additionalProperties": false,
+        "description": "Result of `timeline.move_marker`.",
+        "properties": {
+          "marker": {
+            "description": "The marker.",
+            "pattern": "^mrk_[0-9a-f]{32}$",
+            "type": "string"
+          },
+          "previous": {
+            "description": "Where it was.",
+            "maximum": 9007199254740991,
+            "minimum": -9007199254740991,
+            "type": "integer"
+          },
+          "t": {
+            "description": "Its time now, snapped to the frame grid.",
+            "maximum": 9007199254740991,
+            "minimum": -9007199254740991,
+            "type": "integer"
+          }
+        },
+        "required": [
+          "marker",
+          "t",
+          "previous"
+        ],
+        "title": "TimelineMoveMarkerOutput",
+        "type": "object"
+      },
+      "scope": "any",
+      "secret_fields": [],
+      "summary": "Move a marker to another time",
+      "undoable": true,
+      "view": false
+    },
+    {
+      "annotations": {
+        "destructiveHint": true,
+        "idempotentHint": false,
+        "openWorldHint": false,
+        "readOnlyHint": false
+      },
+      "input_schema": {
+        "additionalProperties": false,
+        "description": "Removes a marker.",
+        "properties": {
+          "marker": {
+            "description": "The marker (on a sequence or on an item).",
+            "pattern": "^mrk_[0-9a-f]{32}$",
+            "type": "string"
+          }
+        },
+        "required": [
+          "marker"
+        ],
+        "title": "TimelineRemoveMarker",
+        "type": "object"
+      },
+      "kind": "command",
+      "mcp": "catalog",
+      "mcp_tool": "timeline_remove_marker",
+      "name": "timeline.remove_marker",
+      "namespace": "timeline",
+      "output_schema": {
+        "additionalProperties": false,
+        "description": "Result of `timeline.remove_marker`.",
+        "properties": {
+          "marker": {
+            "description": "The removed marker.",
+            "pattern": "^mrk_[0-9a-f]{32}$",
+            "type": "string"
+          }
+        },
+        "required": [
+          "marker"
+        ],
+        "title": "TimelineRemoveMarkerOutput",
+        "type": "object"
+      },
+      "scope": "any",
+      "secret_fields": [],
+      "summary": "Remove a marker",
+      "undoable": true,
+      "view": false
+    },
+    {
+      "annotations": {
+        "destructiveHint": false,
+        "idempotentHint": true,
+        "openWorldHint": false,
+        "readOnlyHint": false
+      },
+      "input_schema": {
+        "additionalProperties": false,
+        "description": "Sets the sequence's in and out points: the half-open range `[start, end)` that lift,\nextract and three-point edits act on. Both ends are given (a range always has both). Times\nsnap to the frame grid and `end` must follow `start`. The range never moves with a ripple.",
+        "properties": {
+          "end": {
+            "anyOf": [
+              {
+                "maximum": 9007199254740991,
+                "minimum": -9007199254740991,
+                "type": "integer"
+              },
+              {
+                "pattern": "^-?[0-9]+(\\.[0-9]+)?s$|^-?[0-9]+$|^f:[0-9]+$|^[0-9]+[:;][0-9]+[:;][0-9]+[:;][0-9]+$",
+                "type": "string"
+              }
+            ],
+            "description": "The out point, after the in point."
+          },
+          "sequence": {
+            "description": "The sequence.",
+            "pattern": "^seq_[0-9a-f]{32}$",
+            "type": "string"
+          },
+          "start": {
+            "anyOf": [
+              {
+                "maximum": 9007199254740991,
+                "minimum": -9007199254740991,
+                "type": "integer"
+              },
+              {
+                "pattern": "^-?[0-9]+(\\.[0-9]+)?s$|^-?[0-9]+$|^f:[0-9]+$|^[0-9]+[:;][0-9]+[:;][0-9]+[:;][0-9]+$",
+                "type": "string"
+              }
+            ],
+            "description": "The in point, `>= 0`."
+          }
+        },
+        "required": [
+          "sequence",
+          "start",
+          "end"
+        ],
+        "title": "TimelineSetInOut",
+        "type": "object"
+      },
+      "kind": "command",
+      "mcp": "catalog",
+      "mcp_tool": "timeline_set_in_out",
+      "name": "timeline.set_in_out",
+      "namespace": "timeline",
+      "output_schema": {
+        "additionalProperties": false,
+        "description": "Result of `timeline.set_in_out`.",
+        "properties": {
+          "end": {
+            "description": "The out point, snapped to the frame grid.",
+            "maximum": 9007199254740991,
+            "minimum": -9007199254740991,
+            "type": "integer"
+          },
+          "sequence": {
+            "description": "The sequence.",
+            "pattern": "^seq_[0-9a-f]{32}$",
+            "type": "string"
+          },
+          "start": {
+            "description": "The in point, snapped to the frame grid.",
+            "maximum": 9007199254740991,
+            "minimum": -9007199254740991,
+            "type": "integer"
+          }
+        },
+        "required": [
+          "sequence",
+          "start",
+          "end"
+        ],
+        "title": "TimelineSetInOutOutput",
+        "type": "object"
+      },
+      "scope": "any",
+      "secret_fields": [],
+      "summary": "Set the sequence's in and out points",
+      "undoable": true,
+      "view": false
+    },
+    {
+      "annotations": {
+        "destructiveHint": false,
         "idempotentHint": false,
         "openWorldHint": false,
         "readOnlyHint": false
@@ -5897,7 +6349,7 @@ expression: text
         "type": "object"
       },
       "kind": "command",
-      "mcp": "catalog",
+      "mcp": "core",
       "mcp_tool": "track_add",
       "name": "track.add",
       "namespace": "track",
@@ -5905,14 +6357,36 @@ expression: text
         "additionalProperties": false,
         "description": "Result of `track.add`.",
         "properties": {
+          "index": {
+            "description": "Where it is in the display order now (0 = top).",
+            "format": "uint32",
+            "minimum": 0,
+            "type": "integer"
+          },
           "track": {
             "description": "The new track.",
             "pattern": "^trk_[0-9a-f]{32}$",
             "type": "string"
+          },
+          "track_count": {
+            "description": "How many tracks the sequence has now.",
+            "format": "uint32",
+            "minimum": 0,
+            "type": "integer"
+          },
+          "warnings": {
+            "description": "Soft warnings (more than [`SOFT_TRACK_LIMIT`] tracks), empty normally.",
+            "items": {
+              "type": "string"
+            },
+            "type": "array"
           }
         },
         "required": [
-          "track"
+          "track",
+          "index",
+          "track_count",
+          "warnings"
         ],
         "title": "TrackAddOutput",
         "type": "object"
@@ -5932,7 +6406,7 @@ expression: text
       },
       "input_schema": {
         "additionalProperties": false,
-        "description": "Removes a track together with its items. Fails with `Locked` if the track is locked, or\nif a linked partner that would be left alone in its group is on a locked track. Linked\npartners of the removed items stay; a partner left alone in its group is unlinked.",
+        "description": "Removes a track together with its items. Fails with `Locked` if the track is locked, if a\nlinked partner that would be left alone in its group is on a locked track, or if an item\nattached to a removed item is on a locked track. Linked partners of the removed items stay;\na partner left alone in its group is unlinked. Items attached to a removed item are\ndetached and keep their place (spec INV-38).",
         "properties": {
           "track": {
             "description": "The track.",
@@ -5977,6 +6451,70 @@ expression: text
       "scope": "any",
       "secret_fields": [],
       "summary": "Remove a track and the items on it (fails if the track is locked)",
+      "undoable": true,
+      "view": false
+    },
+    {
+      "annotations": {
+        "destructiveHint": false,
+        "idempotentHint": true,
+        "openWorldHint": false,
+        "readOnlyHint": false
+      },
+      "input_schema": {
+        "additionalProperties": false,
+        "description": "Moves a track to another display position (0 = top, clamped to the end). Upper video\ntracks composite over lower ones, so this changes what is on top. Items are not touched,\nso it also works on a locked track.",
+        "properties": {
+          "index": {
+            "description": "Its new display position, 0 = top (clamped to the end).",
+            "format": "uint32",
+            "minimum": 0,
+            "type": "integer"
+          },
+          "track": {
+            "description": "The track.",
+            "pattern": "^trk_[0-9a-f]{32}$",
+            "type": "string"
+          }
+        },
+        "required": [
+          "track",
+          "index"
+        ],
+        "title": "TrackReorder",
+        "type": "object"
+      },
+      "kind": "command",
+      "mcp": "catalog",
+      "mcp_tool": "track_reorder",
+      "name": "track.reorder",
+      "namespace": "track",
+      "output_schema": {
+        "additionalProperties": false,
+        "description": "Result of `track.reorder`.",
+        "properties": {
+          "index": {
+            "description": "Its display position now (0 = top).",
+            "format": "uint32",
+            "minimum": 0,
+            "type": "integer"
+          },
+          "track": {
+            "description": "The track.",
+            "pattern": "^trk_[0-9a-f]{32}$",
+            "type": "string"
+          }
+        },
+        "required": [
+          "track",
+          "index"
+        ],
+        "title": "TrackReorderOutput",
+        "type": "object"
+      },
+      "scope": "any",
+      "secret_fields": [],
+      "summary": "Move a track to another position in the track stack",
       "undoable": true,
       "view": false
     },
@@ -6053,7 +6591,7 @@ expression: text
         "type": "object"
       },
       "kind": "command",
-      "mcp": "catalog",
+      "mcp": "core",
       "mcp_tool": "track_set",
       "name": "track.set",
       "namespace": "track",
@@ -6107,6 +6645,388 @@ expression: text
       "scope": "any",
       "secret_fields": [],
       "summary": "Set a track's name, mute, hide, lock, solo or gain",
+      "undoable": true,
+      "view": false
+    },
+    {
+      "annotations": {
+        "destructiveHint": false,
+        "idempotentHint": true,
+        "openWorldHint": false,
+        "readOnlyHint": false
+      },
+      "input_schema": {
+        "additionalProperties": false,
+        "description": "Sets the track's row height in the timeline (a persisted UI hint, not a `view` setting:\nit is saved with the project and undoable). `null` restores the default. Works on a\nlocked track and never touches items.",
+        "properties": {
+          "height": {
+            "default": null,
+            "description": "Height in pixels, `8..=512`; `null` for the default.",
+            "format": "uint32",
+            "minimum": 0,
+            "type": [
+              "integer",
+              "null"
+            ]
+          },
+          "track": {
+            "description": "The track.",
+            "pattern": "^trk_[0-9a-f]{32}$",
+            "type": "string"
+          }
+        },
+        "required": [
+          "track"
+        ],
+        "title": "TrackSetHeight",
+        "type": "object"
+      },
+      "kind": "command",
+      "mcp": "catalog",
+      "mcp_tool": "track_set_height",
+      "name": "track.set_height",
+      "namespace": "track",
+      "output_schema": {
+        "additionalProperties": false,
+        "description": "Result of `track.set_height`.",
+        "properties": {
+          "height": {
+            "description": "Its row height in pixels now; `None` is the default height.",
+            "format": "uint32",
+            "minimum": 0,
+            "type": [
+              "integer",
+              "null"
+            ]
+          },
+          "track": {
+            "description": "The track.",
+            "pattern": "^trk_[0-9a-f]{32}$",
+            "type": "string"
+          }
+        },
+        "required": [
+          "track",
+          "height"
+        ],
+        "title": "TrackSetHeightOutput",
+        "type": "object"
+      },
+      "scope": "any",
+      "secret_fields": [],
+      "summary": "Set a track's row height in the timeline (a saved UI hint)",
+      "undoable": true,
+      "view": false
+    },
+    {
+      "annotations": {
+        "destructiveHint": false,
+        "idempotentHint": true,
+        "openWorldHint": false,
+        "readOnlyHint": false
+      },
+      "input_schema": {
+        "additionalProperties": false,
+        "description": "Makes a video track the main (magnetic) track, or turns the magnet off. Making a track the\nmain track clears the flag of the previous one in the same step. A track with gaps (or that\ndoes not start at 0) cannot become the main track unless `close_gaps` is set, which closes\nevery gap from left to right; linked partners ripple with their items. Turning the magnet\noff only clears the flag and also works on a locked track. Closing gaps on a locked track,\nor on a track the ripple reaches, fails with `Locked`.",
+        "properties": {
+          "close_gaps": {
+            "default": null,
+            "description": "Close gaps (and the space before the first item) when making the track magnetic,\ninstead of failing (default `false`).",
+            "type": [
+              "boolean",
+              "null"
+            ]
+          },
+          "magnetic": {
+            "description": "`true` makes it the main track, `false` clears its flag.",
+            "type": "boolean"
+          },
+          "track": {
+            "description": "The track.",
+            "pattern": "^trk_[0-9a-f]{32}$",
+            "type": "string"
+          }
+        },
+        "required": [
+          "track",
+          "magnetic"
+        ],
+        "title": "TrackSetMagnetic",
+        "type": "object"
+      },
+      "kind": "command",
+      "mcp": "catalog",
+      "mcp_tool": "track_set_magnetic",
+      "name": "track.set_magnetic",
+      "namespace": "track",
+      "output_schema": {
+        "additionalProperties": false,
+        "description": "Result of `track.set_magnetic`.",
+        "properties": {
+          "magnetic": {
+            "description": "Whether it is the main track now.",
+            "type": "boolean"
+          },
+          "previous": {
+            "description": "The track that was the main track and no longer is, if any.",
+            "pattern": "^trk_[0-9a-f]{32}$",
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "report": {
+            "additionalProperties": false,
+            "description": "What changed (items moved by closing gaps).",
+            "properties": {
+              "created": {
+                "description": "New items, other than the right halves of splits.",
+                "items": {
+                  "description": "A Item id: `^itm_[0-9a-f]{32}$`.",
+                  "pattern": "^itm_[0-9a-f]{32}$",
+                  "type": "string"
+                },
+                "type": "array"
+              },
+              "created_tracks": {
+                "description": "Tracks created, in creation order.",
+                "items": {
+                  "description": "A Track id: `^trk_[0-9a-f]{32}$`.",
+                  "pattern": "^trk_[0-9a-f]{32}$",
+                  "type": "string"
+                },
+                "type": "array"
+              },
+              "moved": {
+                "description": "Items whose track or start changed.",
+                "items": {
+                  "additionalProperties": false,
+                  "description": "An item whose track or start changed (duration and source did not).",
+                  "properties": {
+                    "item": {
+                      "description": "The item.",
+                      "pattern": "^itm_[0-9a-f]{32}$",
+                      "type": "string"
+                    },
+                    "start": {
+                      "description": "Its start now.",
+                      "maximum": 9007199254740991,
+                      "minimum": -9007199254740991,
+                      "type": "integer"
+                    },
+                    "track": {
+                      "description": "Its track now.",
+                      "pattern": "^trk_[0-9a-f]{32}$",
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "item",
+                    "track",
+                    "start"
+                  ],
+                  "type": "object"
+                },
+                "type": "array"
+              },
+              "relinked": {
+                "description": "Items whose link or attachment changed.",
+                "items": {
+                  "additionalProperties": false,
+                  "description": "An item whose `linked_group` or `attached_to` changed.",
+                  "properties": {
+                    "attached_to": {
+                      "description": "The item it is attached to now.",
+                      "pattern": "^itm_[0-9a-f]{32}$",
+                      "type": [
+                        "string",
+                        "null"
+                      ]
+                    },
+                    "item": {
+                      "description": "The item.",
+                      "pattern": "^itm_[0-9a-f]{32}$",
+                      "type": "string"
+                    },
+                    "linked_group": {
+                      "description": "Its linked group now.",
+                      "pattern": "^grp_[0-9a-f]{32}$",
+                      "type": [
+                        "string",
+                        "null"
+                      ]
+                    }
+                  },
+                  "required": [
+                    "item",
+                    "linked_group",
+                    "attached_to"
+                  ],
+                  "type": "object"
+                },
+                "type": "array"
+              },
+              "removed": {
+                "description": "Items that no longer exist.",
+                "items": {
+                  "description": "A Item id: `^itm_[0-9a-f]{32}$`.",
+                  "pattern": "^itm_[0-9a-f]{32}$",
+                  "type": "string"
+                },
+                "type": "array"
+              },
+              "replaced": {
+                "description": "Items whose media changed.",
+                "items": {
+                  "additionalProperties": false,
+                  "description": "An item whose media changed (`clip.replace`).",
+                  "properties": {
+                    "item": {
+                      "description": "The item.",
+                      "pattern": "^itm_[0-9a-f]{32}$",
+                      "type": "string"
+                    },
+                    "media": {
+                      "description": "Its media now.",
+                      "pattern": "^med_[0-9a-f]{32}$",
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "item",
+                    "media"
+                  ],
+                  "type": "object"
+                },
+                "type": "array"
+              },
+              "split": {
+                "description": "Splits, sorted by `(left, at)`.",
+                "items": {
+                  "additionalProperties": false,
+                  "description": "A split: `right` is new, `left` keeps its ID; `at` is the cut time before the edit.",
+                  "properties": {
+                    "at": {
+                      "description": "The cut time.",
+                      "maximum": 9007199254740991,
+                      "minimum": -9007199254740991,
+                      "type": "integer"
+                    },
+                    "left": {
+                      "description": "The left half (keeps the original ID).",
+                      "pattern": "^itm_[0-9a-f]{32}$",
+                      "type": "string"
+                    },
+                    "right": {
+                      "description": "The right half (new).",
+                      "pattern": "^itm_[0-9a-f]{32}$",
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "left",
+                    "right",
+                    "at"
+                  ],
+                  "type": "object"
+                },
+                "type": "array"
+              },
+              "toggled": {
+                "description": "Items whose `enabled` flag changed.",
+                "items": {
+                  "additionalProperties": false,
+                  "description": "An item whose `enabled` flag changed.",
+                  "properties": {
+                    "enabled": {
+                      "description": "Its flag now.",
+                      "type": "boolean"
+                    },
+                    "item": {
+                      "description": "The item.",
+                      "pattern": "^itm_[0-9a-f]{32}$",
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "item",
+                    "enabled"
+                  ],
+                  "type": "object"
+                },
+                "type": "array"
+              },
+              "trimmed": {
+                "description": "Items whose duration or source position changed.",
+                "items": {
+                  "additionalProperties": false,
+                  "description": "An item whose duration or `source_in` changed (its start may have too).",
+                  "properties": {
+                    "duration": {
+                      "description": "Its duration now.",
+                      "maximum": 9007199254740991,
+                      "minimum": 0,
+                      "type": "integer"
+                    },
+                    "item": {
+                      "description": "The item.",
+                      "pattern": "^itm_[0-9a-f]{32}$",
+                      "type": "string"
+                    },
+                    "source_in": {
+                      "description": "Its `source_in` now (`0` for items that play no media).",
+                      "maximum": 9007199254740991,
+                      "minimum": -9007199254740991,
+                      "type": "integer"
+                    },
+                    "start": {
+                      "description": "Its start now.",
+                      "maximum": 9007199254740991,
+                      "minimum": -9007199254740991,
+                      "type": "integer"
+                    }
+                  },
+                  "required": [
+                    "item",
+                    "start",
+                    "duration",
+                    "source_in"
+                  ],
+                  "type": "object"
+                },
+                "type": "array"
+              }
+            },
+            "required": [
+              "created",
+              "removed",
+              "split",
+              "moved",
+              "trimmed",
+              "relinked",
+              "replaced",
+              "toggled",
+              "created_tracks"
+            ],
+            "type": "object"
+          },
+          "track": {
+            "description": "The track.",
+            "pattern": "^trk_[0-9a-f]{32}$",
+            "type": "string"
+          }
+        },
+        "required": [
+          "track",
+          "magnetic",
+          "report"
+        ],
+        "title": "TrackSetMagneticOutput",
+        "type": "object"
+      },
+      "scope": "any",
+      "secret_fields": [],
+      "summary": "Make a video track the magnetic main track (gap-free from 0), or turn the magnet off",
       "undoable": true,
       "view": false
     },

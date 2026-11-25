@@ -161,6 +161,18 @@
     {
       "annotations": {
         "destructiveHint": false,
+        "idempotentHint": false,
+        "openWorldHint": false,
+        "readOnlyHint": false
+      },
+      "command": "timeline.add_marker",
+      "description": "Add a marker (or range marker) to a sequence or one of its items",
+      "kind": "command",
+      "name": "timeline_add_marker"
+    },
+    {
+      "annotations": {
+        "destructiveHint": false,
         "idempotentHint": true,
         "openWorldHint": false,
         "readOnlyHint": true
@@ -181,6 +193,30 @@
       "description": "Insert a media clip at a time on a track (adds linked audio for video with sound)",
       "kind": "command",
       "name": "timeline_insert"
+    },
+    {
+      "annotations": {
+        "destructiveHint": false,
+        "idempotentHint": false,
+        "openWorldHint": false,
+        "readOnlyHint": false
+      },
+      "command": "track.add",
+      "description": "Add an empty video or audio track to a sequence",
+      "kind": "command",
+      "name": "track_add"
+    },
+    {
+      "annotations": {
+        "destructiveHint": false,
+        "idempotentHint": true,
+        "openWorldHint": false,
+        "readOnlyHint": false
+      },
+      "command": "track.set",
+      "description": "Set a track's name, mute, hide, lock, solo or gain",
+      "kind": "command",
+      "name": "track_set"
     }
   ]
 }

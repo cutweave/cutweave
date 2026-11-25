@@ -262,7 +262,11 @@ fn decorate(sequence: &mut Sequence, count: u8, frame: i64, ids: &mut SeededGen)
     for n in 0..i64::from(count) {
         let mut marker = Marker::new(ids.mint(), flicks(n * 7 * frame));
         marker.label = format!("Marker {n}");
-        marker.kind = [MarkerKind::User, MarkerKind::Beat, MarkerKind::Chapter][n as usize % 3];
+        marker.kind = match n % 3 {
+            0 => MarkerKind::User,
+            1 => MarkerKind::Beat,
+            _ => MarkerKind::Chapter,
+        };
         if n == 1 {
             marker.duration = Some(span(5 * frame));
         }

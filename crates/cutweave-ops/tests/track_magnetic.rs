@@ -271,8 +271,9 @@ fn turning_the_magnet_off_clears_only_the_flag_even_when_locked() {
         json!({"track": p.video, "magnetic": false}),
     );
     assert_eq!(h.commits(), commits + 1, "a no-op still answers");
-    assert!(
-        h.last.as_ref().unwrap().patch.0.is_empty(),
+    assert_eq!(
+        h.last.as_ref().unwrap().patch.0.len(),
+        0,
         "but changes nothing"
     );
 }
@@ -383,7 +384,7 @@ fn reorder_moves_a_track_and_clamps() {
     assert_eq!(names(&h, p.sequence), ["V2", "V1", "A2", "A1"]);
     // Same place: no change.
     h.ok("track.reorder", json!({"track": p.audio, "index": 3}));
-    assert!(h.last.as_ref().unwrap().patch.0.is_empty());
+    assert_eq!(h.last.as_ref().unwrap().patch.0.len(), 0);
     assert_code(
         h.run(
             "track.reorder",
