@@ -616,21 +616,27 @@ expression: catalog.tools_json()
                   "number",
                   "null"
                 ],
-                "description": "Opacity `0.0..=1.0`."
+                "maximum": 1.0,
+                "description": "Opacity `0.0..=1.0`.",
+                "minimum": 0.0
               },
               "audio_gain": {
                 "type": [
                   "number",
                   "null"
                 ],
-                "description": "Clip gain in dB, `-144..=48` (0 = unchanged)."
+                "maximum": 48.0,
+                "description": "Clip gain in dB, `-144..=48` (0 = unchanged).",
+                "minimum": -144.0
               },
               "audio_pan": {
                 "type": [
                   "number",
                   "null"
                 ],
-                "description": "Stereo position, `-1` (left) to `1` (right)."
+                "maximum": 1.0,
+                "description": "Stereo position, `-1` (left) to `1` (right).",
+                "minimum": -1.0
               },
               "transform": {
                 "type": [
@@ -727,28 +733,36 @@ expression: catalog.tools_json()
                       "number",
                       "null"
                     ],
-                    "description": "Fraction removed from the left edge."
+                    "maximum": 1.0,
+                    "description": "Fraction removed from the left edge.",
+                    "minimum": 0.0
                   },
                   "top": {
                     "type": [
                       "number",
                       "null"
                     ],
-                    "description": "Fraction removed from the top edge."
+                    "maximum": 1.0,
+                    "description": "Fraction removed from the top edge.",
+                    "minimum": 0.0
                   },
                   "right": {
                     "type": [
                       "number",
                       "null"
                     ],
-                    "description": "Fraction removed from the right edge."
+                    "maximum": 1.0,
+                    "description": "Fraction removed from the right edge.",
+                    "minimum": 0.0
                   },
                   "bottom": {
                     "type": [
                       "number",
                       "null"
                     ],
-                    "description": "Fraction removed from the bottom edge."
+                    "maximum": 1.0,
+                    "description": "Fraction removed from the bottom edge.",
+                    "minimum": 0.0
                   }
                 },
                 "description": "Edges of the source picture cut away (partial)."

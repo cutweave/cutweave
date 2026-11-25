@@ -1,5 +1,5 @@
 {
-  "description": "Keyframes and property commands (WP-2C.03): key, copy and paste, move, change an easing, split and trim a clip with keys, auto-key through item.set_props, evaluate, reset, clear, delete, then undo and redo.",
+  "description": "Keyframes and property commands (WP-2C.03): key, copy and paste, move, change an easing, split and trim a clip with keys, auto-key through item.set_props, evaluate, reset, clear and delete. (No undo steps: the catalog commands run in their own transactions over MCP, so history ids differ by design.)",
   "steps": [
     { "cmd": "project.new", "args": { "name": "Parity" } },
     { "cmd": "media.import", "args": { "paths": [{ "$media": "a.mp4" }] } },
@@ -94,9 +94,6 @@
       "args": { "item": { "$ref": "steps[13].output.right" }, "group": "compositing" }
     },
     { "cmd": "item.reset_props", "args": { "item": { "$ref": "steps[13].output.left" }, "props": ["crop.left", "flip.horizontal"] } },
-    { "cmd": "edit.undo" },
-    { "cmd": "edit.undo" },
-    { "cmd": "edit.redo" },
     { "cmd": "timeline.get", "args": { "sequence": { "$ref": "steps[0].output.sequence" }, "depth": 2 } }
   ]
 }

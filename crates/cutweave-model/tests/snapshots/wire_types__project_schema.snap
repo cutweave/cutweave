@@ -81,49 +81,18 @@ expression: "cutweave_model::canonical_json_pretty(&schema)"
       "type": "object"
     },
     "BlendMode": {
-      "description": "How an item's picture combines with what is below it (arch §8's core set). Not animatable.",
-      "oneOf": [
-        {
-          "const": "normal",
-          "description": "The picture covers what is below, by its opacity.",
-          "type": "string"
-        },
-        {
-          "const": "multiply",
-          "description": "Darkens: the product of both.",
-          "type": "string"
-        },
-        {
-          "const": "screen",
-          "description": "Lightens: the inverse of the product of the inverses.",
-          "type": "string"
-        },
-        {
-          "const": "overlay",
-          "description": "Multiply in the shadows, screen in the highlights, by what is below.",
-          "type": "string"
-        },
-        {
-          "const": "darken",
-          "description": "The darker of both, per channel.",
-          "type": "string"
-        },
-        {
-          "const": "lighten",
-          "description": "The lighter of both, per channel.",
-          "type": "string"
-        },
-        {
-          "const": "add",
-          "description": "The sum of both, clipped.",
-          "type": "string"
-        },
-        {
-          "const": "soft_light",
-          "description": "A gentle overlay.",
-          "type": "string"
-        }
-      ]
+      "description": "How an item combines with what is below it (arch §8's core set).",
+      "enum": [
+        "normal",
+        "multiply",
+        "screen",
+        "overlay",
+        "darken",
+        "lighten",
+        "add",
+        "soft_light"
+      ],
+      "type": "string"
     },
     "Clip": {
       "description": "A media clip: a range of a `MediaAsset` placed on a track.\n\nThe clip occupies `[start, start + duration)` on the timeline and plays the source range\n`[source_in, source_in + duration)` (speed 1 in schema v1).",
