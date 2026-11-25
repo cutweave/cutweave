@@ -155,7 +155,8 @@
               "media": "med_0000000000017000800000000000a001",
               "source_in": 0,
               "audio": {
-                "gain": 0.0
+                "gain": 0.0,
+                "pan": 0.0
               },
               "visual": {
                 "transform": {
@@ -173,7 +174,18 @@
                     "y": 0.5
                   }
                 },
-                "opacity": 1.0
+                "opacity": 1.0,
+                "crop": {
+                  "left": 0.0,
+                  "top": 0.0,
+                  "right": 0.0,
+                  "bottom": 0.0
+                },
+                "flip": {
+                  "horizontal": false,
+                  "vertical": false
+                },
+                "blend_mode": "normal"
               },
               "custom": {}
             },
@@ -190,7 +202,8 @@
               "media": "med_0000000000017000800000000000a00b",
               "source_in": 705600000,
               "audio": {
-                "gain": 0.0
+                "gain": 0.0,
+                "pan": 0.0
               },
               "visual": {
                 "transform": {
@@ -208,7 +221,18 @@
                     "y": 0.5
                   }
                 },
-                "opacity": 1.0
+                "opacity": 1.0,
+                "crop": {
+                  "left": 0.0,
+                  "top": 0.0,
+                  "right": 0.0,
+                  "bottom": 0.0
+                },
+                "flip": {
+                  "horizontal": false,
+                  "vertical": false
+                },
+                "blend_mode": "normal"
               },
               "custom": {}
             }
@@ -278,7 +302,8 @@
               "media": "med_0000000000017000800000000000a00a",
               "source_in": 0,
               "audio": {
-                "gain": 0.0
+                "gain": 0.0,
+                "pan": 0.0
               },
               "visual": {
                 "transform": {
@@ -296,7 +321,18 @@
                     "y": 0.5
                   }
                 },
-                "opacity": 1.0
+                "opacity": 1.0,
+                "crop": {
+                  "left": 0.0,
+                  "top": 0.0,
+                  "right": 0.0,
+                  "bottom": 0.0
+                },
+                "flip": {
+                  "horizontal": false,
+                  "vertical": false
+                },
+                "blend_mode": "normal"
               },
               "custom": {}
             }

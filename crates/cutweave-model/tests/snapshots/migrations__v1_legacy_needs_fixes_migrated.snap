@@ -187,7 +187,8 @@ expression: canonical_json_pretty(&migrated)
             "itm_00000000000170008000000000000c01": {
               "attached_to": null,
               "audio": {
-                "gain": 0.0
+                "gain": 0.0,
+                "pan": 0.0
               },
               "custom": {},
               "duration": 705600000,
@@ -201,6 +202,17 @@ expression: canonical_json_pretty(&migrated)
               "source_in": 705600000,
               "start": 3528000000,
               "visual": {
+                "blend_mode": "normal",
+                "crop": {
+                  "bottom": 0.0,
+                  "left": 0.0,
+                  "right": 0.0,
+                  "top": 0.0
+                },
+                "flip": {
+                  "horizontal": false,
+                  "vertical": false
+                },
                 "opacity": 1.0,
                 "transform": {
                   "anchor": {
@@ -237,7 +249,8 @@ expression: canonical_json_pretty(&migrated)
             "itm_0000000000077405950ad8d9f69f2c6f": {
               "attached_to": null,
               "audio": {
-                "gain": 0.0
+                "gain": 0.0,
+                "pan": 0.0
               },
               "custom": {},
               "duration": 1411200000,
@@ -251,6 +264,17 @@ expression: canonical_json_pretty(&migrated)
               "source_in": 0,
               "start": 0,
               "visual": {
+                "blend_mode": "normal",
+                "crop": {
+                  "bottom": 0.0,
+                  "left": 0.0,
+                  "right": 0.0,
+                  "top": 0.0
+                },
+                "flip": {
+                  "horizontal": false,
+                  "vertical": false
+                },
                 "opacity": 1.0,
                 "transform": {
                   "anchor": {
@@ -272,7 +296,8 @@ expression: canonical_json_pretty(&migrated)
             "itm_00000000000874918ac913f3f46b919e": {
               "attached_to": null,
               "audio": {
-                "gain": 0.0
+                "gain": 0.0,
+                "pan": 0.0
               },
               "custom": {},
               "duration": 2116800000,
@@ -286,6 +311,17 @@ expression: canonical_json_pretty(&migrated)
               "source_in": 705600000,
               "start": 1411200000,
               "visual": {
+                "blend_mode": "normal",
+                "crop": {
+                  "bottom": 0.0,
+                  "left": 0.0,
+                  "right": 0.0,
+                  "top": 0.0
+                },
+                "flip": {
+                  "horizontal": false,
+                  "vertical": false
+                },
                 "opacity": 1.0,
                 "transform": {
                   "anchor": {
@@ -322,7 +358,8 @@ expression: canonical_json_pretty(&migrated)
             "itm_0000000000097031b0cbdfaef85bafd1": {
               "attached_to": null,
               "audio": {
-                "gain": -6.0
+                "gain": -6.0,
+                "pan": 0.0
               },
               "custom": {},
               "duration": 3528000000,
@@ -336,6 +373,17 @@ expression: canonical_json_pretty(&migrated)
               "source_in": 0,
               "start": 0,
               "visual": {
+                "blend_mode": "normal",
+                "crop": {
+                  "bottom": 0.0,
+                  "left": 0.0,
+                  "right": 0.0,
+                  "top": 0.0
+                },
+                "flip": {
+                  "horizontal": false,
+                  "vertical": false
+                },
                 "opacity": 1.0,
                 "transform": {
                   "anchor": {

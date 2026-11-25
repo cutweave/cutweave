@@ -59,7 +59,9 @@ pub use id::{
     EntityId, EntityKind, FolderId, GroupId, IdError, IdGen, ItemId, MarkerId, MediaId, SeededGen,
     SequenceId, TrackId,
 };
-pub use item::{AudioProps, Clip, Item, Transform, Vec2, VisualProps};
+pub use item::{
+    AudioProps, BlendMode, Clip, Crop, Flip, Item, PropMut, PropRef, Transform, Vec2, VisualProps,
+};
 pub use marker::{InOut, Marker, MarkerKind, MarkerKindError, Markers};
 pub use media::{
     AudioInfo, ColorPrimaries, ColorRange, ColorTags, MatrixCoefficients, MediaAsset, MediaKind,

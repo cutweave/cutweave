@@ -407,3 +407,54 @@ fn track_heights_are_bounded() {
         );
     }
 }
+
+/// WP-2C.03 (keyframes KF-4): every key is range-checked against its property, not just the
+/// first; crop edges and pan have ranges too.
+#[test]
+fn every_key_is_range_checked() {
+    use cutweave_model::Animatable;
+    use serde_json::json;
+    let keyed = |values: [f64; 2]| -> Animatable<f64> {
+        Animatable::from_json(&json!({"keyframes": [
+            {"t": 0, "value": values[0], "interp": {"kind": "linear"}},
+            {"t": 10, "value": values[1], "interp": {"kind": "linear"}}
+        ]}))
+        .unwrap()
+    };
+    let mut d = Doc::new();
+    let item = d.clip(d.v1, d.video, 0, 30);
+    d.edit_item(d.v1, item, |i| {
+        let clip = i.as_clip_mut().unwrap();
+        clip.visual.opacity = keyed([0.0, 1.0]);
+        clip.visual.crop.left = keyed([0.0, 0.5]);
+        clip.audio.pan = keyed([-1.0, 1.0]);
+    });
+    assert_eq!(d.violations(), vec![]);
+    d.edit_item(d.v1, item, |i| {
+        let clip = i.as_clip_mut().unwrap();
+        clip.visual.opacity = keyed([0.5, 1.5]);
+        clip.visual.crop.top = 1.25.into();
+        clip.audio.pan = keyed([0.0, -1.5]);
+        clip.audio.gain = (-200.0).into();
+    });
+    let paths: Vec<String> = d
+        .violations()
+        .into_iter()
+        .map(|v| match v {
+            Invariant::InvalidValue { path, .. } => path,
+            other => panic!("{other:?}"),
+        })
+        .collect();
+    for suffix in [
+        "/visual/opacity",
+        "/visual/crop/top",
+        "/audio/pan",
+        "/audio/gain",
+    ] {
+        assert!(
+            paths.iter().any(|p| p.ends_with(suffix)),
+            "{suffix}: {paths:?}"
+        );
+    }
+    assert_eq!(paths.len(), 4, "{paths:?}");
+}

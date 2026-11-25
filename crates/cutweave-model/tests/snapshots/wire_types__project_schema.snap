@@ -4,6 +4,40 @@ expression: "cutweave_model::canonical_json_pretty(&schema)"
 ---
 {
   "$defs": {
+    "Animatable_Vec2": {
+      "description": "A static value, or keyed values over item time (keyframes §3.1).",
+      "oneOf": [
+        {
+          "$ref": "#/$defs/Vec2"
+        },
+        {
+          "$ref": "#/$defs/Keyframes_Vec2"
+        }
+      ]
+    },
+    "Animatable_boolean": {
+      "description": "A static value, or keyed values over item time (keyframes §3.1).",
+      "oneOf": [
+        {
+          "type": "boolean"
+        },
+        {
+          "$ref": "#/$defs/Keyframes_boolean"
+        }
+      ]
+    },
+    "Animatable_double": {
+      "description": "A static value, or keyed values over item time (keyframes §3.1).",
+      "oneOf": [
+        {
+          "format": "double",
+          "type": "number"
+        },
+        {
+          "$ref": "#/$defs/Keyframes_double"
+        }
+      ]
+    },
     "AudioInfo": {
       "additionalProperties": false,
       "description": "Format of the main audio stream.",
@@ -32,15 +66,64 @@ expression: "cutweave_model::canonical_json_pretty(&schema)"
       "description": "Audio properties of an item (arch §4.2 `audio{…}`, v1 subset).",
       "properties": {
         "gain": {
-          "description": "Gain in decibels (0.0 = unchanged).",
-          "format": "double",
-          "type": "number"
+          "$ref": "#/$defs/Animatable_double",
+          "description": "Gain in decibels (0.0 = unchanged)."
+        },
+        "pan": {
+          "$ref": "#/$defs/Animatable_double",
+          "description": "Stereo position, -1.0 (left) to 1.0 (right), 0.0 = centre."
         }
       },
       "required": [
-        "gain"
+        "gain",
+        "pan"
       ],
       "type": "object"
+    },
+    "BlendMode": {
+      "description": "How an item's picture combines with what is below it (arch §8's core set). Not animatable.",
+      "oneOf": [
+        {
+          "const": "normal",
+          "description": "The picture covers what is below, by its opacity.",
+          "type": "string"
+        },
+        {
+          "const": "multiply",
+          "description": "Darkens: the product of both.",
+          "type": "string"
+        },
+        {
+          "const": "screen",
+          "description": "Lightens: the inverse of the product of the inverses.",
+          "type": "string"
+        },
+        {
+          "const": "overlay",
+          "description": "Multiply in the shadows, screen in the highlights, by what is below.",
+          "type": "string"
+        },
+        {
+          "const": "darken",
+          "description": "The darker of both, per channel.",
+          "type": "string"
+        },
+        {
+          "const": "lighten",
+          "description": "The lighter of both, per channel.",
+          "type": "string"
+        },
+        {
+          "const": "add",
+          "description": "The sum of both, clipped.",
+          "type": "string"
+        },
+        {
+          "const": "soft_light",
+          "description": "A gentle overlay.",
+          "type": "string"
+        }
+      ]
     },
     "Clip": {
       "description": "A media clip: a range of a `MediaAsset` placed on a track.\n\nThe clip occupies `[start, start + duration)` on the timeline and plays the source range\n`[source_in, source_in + duration)` (speed 1 in schema v1).",
@@ -267,6 +350,52 @@ expression: "cutweave_model::canonical_json_pretty(&schema)"
       },
       "type": "object"
     },
+    "Crop": {
+      "description": "How much of each edge of the upright source picture is cut away, as fractions of the\nsource frame (`0.0..=1.0` each; keyframes §7). Each edge animates on its own, so each is\nvalidated on its own: when `left + right >= 1` or `top + bottom >= 1` nothing is visible.",
+      "properties": {
+        "bottom": {
+          "$ref": "#/$defs/Animatable_double",
+          "description": "Fraction removed from the bottom edge."
+        },
+        "left": {
+          "$ref": "#/$defs/Animatable_double",
+          "description": "Fraction removed from the left edge."
+        },
+        "right": {
+          "$ref": "#/$defs/Animatable_double",
+          "description": "Fraction removed from the right edge."
+        },
+        "top": {
+          "$ref": "#/$defs/Animatable_double",
+          "description": "Fraction removed from the top edge."
+        }
+      },
+      "required": [
+        "left",
+        "top",
+        "right",
+        "bottom"
+      ],
+      "type": "object"
+    },
+    "Flip": {
+      "description": "Mirroring of an item about its centre, after the crop (keyframes §7). Hold-only: a keyed\nflip switches at its keys.",
+      "properties": {
+        "horizontal": {
+          "$ref": "#/$defs/Animatable_boolean",
+          "description": "Mirror left-right."
+        },
+        "vertical": {
+          "$ref": "#/$defs/Animatable_boolean",
+          "description": "Mirror top-bottom."
+        }
+      },
+      "required": [
+        "horizontal",
+        "vertical"
+      ],
+      "type": "object"
+    },
     "FrameRate": {
       "additionalProperties": false,
       "description": "A frame rate as an exact fraction of frames per second, e.g. {\"num\": 30000, \"den\": 1001} for 29.97 fps.",
@@ -328,6 +457,144 @@ expression: "cutweave_model::canonical_json_pretty(&schema)"
       ],
       "type": "object"
     },
+    "Interp": {
+      "description": "How the segment that starts at a key moves to the next key (keyframes §4). It is a closed\nset: a new kind is a schema change.\n\nEvery kind except `hold` is an easing `p(u)` with `p(0) = 0` and `p(u) → 1` as `u → 1`,\nfed into one lerp per value type (§5). On the wire it is an object tagged by `kind`\n(`{\"kind\": \"bezier\", \"x1\": 0.42, \"y1\": 0, \"x2\": 0.58, \"y2\": 1, \"preset\": \"ease_in_out\"}`)\nwith exactly its fields; construction checks their ranges (KF-5) and the hint (KF-7).",
+      "oneOf": [
+        {
+          "additionalProperties": false,
+          "description": "The key's value until the next key, then a jump (§4.2).",
+          "properties": {
+            "kind": {
+              "const": "hold",
+              "type": "string"
+            }
+          },
+          "required": [
+            "kind"
+          ],
+          "type": "object"
+        },
+        {
+          "additionalProperties": false,
+          "description": "`p = u` (§4.3).",
+          "properties": {
+            "kind": {
+              "const": "linear",
+              "type": "string"
+            }
+          },
+          "required": [
+            "kind"
+          ],
+          "type": "object"
+        },
+        {
+          "additionalProperties": false,
+          "description": "A CSS-style cubic Bézier from (0, 0) to (1, 1), normalized to the segment (§4.4).\n(`x1`, `y1`) shapes the speed leaving the key, (`x2`, `y2`) the speed arriving at the\nnext one.",
+          "properties": {
+            "kind": {
+              "const": "bezier",
+              "type": "string"
+            },
+            "preset": {
+              "description": "The preset these numbers came from, a hint for the UI and agents (§4.6). Never read\nby evaluation.",
+              "pattern": "^[a-z][a-z0-9_]{0,63}$",
+              "type": [
+                "string",
+                "null"
+              ]
+            },
+            "x1": {
+              "description": "First control point, time axis, in `[0, 1]`.",
+              "format": "double",
+              "maximum": 1.0,
+              "minimum": 0.0,
+              "type": "number"
+            },
+            "x2": {
+              "description": "Second control point, time axis, in `[0, 1]`.",
+              "format": "double",
+              "maximum": 1.0,
+              "minimum": 0.0,
+              "type": "number"
+            },
+            "y1": {
+              "description": "First control point, progress axis, in `[−10, 10]` (beyond `[0, 1]` overshoots).",
+              "format": "double",
+              "maximum": 10.0,
+              "minimum": -10.0,
+              "type": "number"
+            },
+            "y2": {
+              "description": "Second control point, progress axis, in `[−10, 10]`.",
+              "format": "double",
+              "maximum": 10.0,
+              "minimum": -10.0,
+              "type": "number"
+            }
+          },
+          "required": [
+            "kind",
+            "x1",
+            "y1",
+            "x2",
+            "y2"
+          ],
+          "type": "object"
+        },
+        {
+          "additionalProperties": false,
+          "description": "A damped spring in real seconds, released from rest, plus a residual that lands it\nexactly on the next key (§4.5).",
+          "properties": {
+            "bounce": {
+              "description": "A hard stop at the target: the motion reflects instead of passing it.",
+              "type": "boolean"
+            },
+            "damping": {
+              "description": "Damping, N·s/m, in `[0, 1000]` (0 never settles).",
+              "format": "double",
+              "maximum": 1000.0,
+              "minimum": 0.0,
+              "type": "number"
+            },
+            "kind": {
+              "const": "spring",
+              "type": "string"
+            },
+            "mass": {
+              "description": "Mass, kg, in `[0.1, 100]`.",
+              "format": "double",
+              "maximum": 100.0,
+              "minimum": 0.1,
+              "type": "number"
+            },
+            "preset": {
+              "description": "The preset these numbers came from (§4.6). Never read by evaluation.",
+              "pattern": "^[a-z][a-z0-9_]{0,63}$",
+              "type": [
+                "string",
+                "null"
+              ]
+            },
+            "stiffness": {
+              "description": "Stiffness, N/m, in `[1, 10000]`.",
+              "format": "double",
+              "maximum": 10000.0,
+              "minimum": 1.0,
+              "type": "number"
+            }
+          },
+          "required": [
+            "kind",
+            "stiffness",
+            "damping",
+            "mass",
+            "bounce"
+          ],
+          "type": "object"
+        }
+      ]
+    },
     "Item": {
       "description": "Anything placed on a track (arch §4.2). Schema v1 has only [`Clip`]; matching code outside\nthis crate needs a wildcard arm for the kinds still to come.\n\nSerialized as the variant's object plus a `\"kind\"` tag (`{\"kind\": \"clip\", …}`).",
       "oneOf": [
@@ -346,6 +613,127 @@ expression: "cutweave_model::canonical_json_pretty(&schema)"
           "type": "object"
         }
       ]
+    },
+    "Keyframe_Vec2": {
+      "description": "A key: a value at an item-relative time (flicks), and the easing of the segment to the next key (keyframes §3.1).",
+      "properties": {
+        "interp": {
+          "$ref": "#/$defs/Interp"
+        },
+        "t": {
+          "description": "Item-relative time in flicks (1/705600000 s); 0 is the item's first frame.",
+          "maximum": 9007199254740991,
+          "minimum": -9007199254740991,
+          "type": "integer"
+        },
+        "value": {
+          "$ref": "#/$defs/Vec2"
+        }
+      },
+      "required": [
+        "t",
+        "value",
+        "interp"
+      ],
+      "type": "object"
+    },
+    "Keyframe_boolean": {
+      "description": "A key: a value at an item-relative time (flicks), and the easing of the segment to the next key (keyframes §3.1).",
+      "properties": {
+        "interp": {
+          "$ref": "#/$defs/Interp"
+        },
+        "t": {
+          "description": "Item-relative time in flicks (1/705600000 s); 0 is the item's first frame.",
+          "maximum": 9007199254740991,
+          "minimum": -9007199254740991,
+          "type": "integer"
+        },
+        "value": {
+          "type": "boolean"
+        }
+      },
+      "required": [
+        "t",
+        "value",
+        "interp"
+      ],
+      "type": "object"
+    },
+    "Keyframe_double": {
+      "description": "A key: a value at an item-relative time (flicks), and the easing of the segment to the next key (keyframes §3.1).",
+      "properties": {
+        "interp": {
+          "$ref": "#/$defs/Interp"
+        },
+        "t": {
+          "description": "Item-relative time in flicks (1/705600000 s); 0 is the item's first frame.",
+          "maximum": 9007199254740991,
+          "minimum": -9007199254740991,
+          "type": "integer"
+        },
+        "value": {
+          "format": "double",
+          "type": "number"
+        }
+      },
+      "required": [
+        "t",
+        "value",
+        "interp"
+      ],
+      "type": "object"
+    },
+    "Keyframes_Vec2": {
+      "description": "A keyed (animated) value: keys sorted by strictly increasing t (keyframes §3).",
+      "properties": {
+        "keyframes": {
+          "items": {
+            "$ref": "#/$defs/Keyframe_Vec2"
+          },
+          "maxItems": 100000,
+          "minItems": 1,
+          "type": "array"
+        }
+      },
+      "required": [
+        "keyframes"
+      ],
+      "type": "object"
+    },
+    "Keyframes_boolean": {
+      "description": "A keyed (animated) value: keys sorted by strictly increasing t (keyframes §3).",
+      "properties": {
+        "keyframes": {
+          "items": {
+            "$ref": "#/$defs/Keyframe_boolean"
+          },
+          "maxItems": 100000,
+          "minItems": 1,
+          "type": "array"
+        }
+      },
+      "required": [
+        "keyframes"
+      ],
+      "type": "object"
+    },
+    "Keyframes_double": {
+      "description": "A keyed (animated) value: keys sorted by strictly increasing t (keyframes §3).",
+      "properties": {
+        "keyframes": {
+          "items": {
+            "$ref": "#/$defs/Keyframe_double"
+          },
+          "maxItems": 100000,
+          "minItems": 1,
+          "type": "array"
+        }
+      },
+      "required": [
+        "keyframes"
+      ],
+      "type": "object"
     },
     "Marker": {
       "description": "A marker on a sequence (sequence time) or an item (item-relative time).",
@@ -1051,20 +1439,19 @@ expression: "cutweave_model::canonical_json_pretty(&schema)"
       "description": "Where and how a visual item is placed on the sequence canvas.\n\nCoordinates are resolution-independent: `position` is the offset of the item's anchor from\nthe canvas center in canvas units (1.0 = the canvas width horizontally and the canvas height\nvertically; +y is down); `anchor` is a point of the item in item units ((0, 0) top-left,\n(0.5, 0.5) center); `scale` multiplies the aspect-fit size; `rotation` is in degrees,\nclockwise.",
       "properties": {
         "anchor": {
-          "$ref": "#/$defs/Vec2",
+          "$ref": "#/$defs/Animatable_Vec2",
           "description": "The item point that `position` places and rotation turns around, in item units."
         },
         "position": {
-          "$ref": "#/$defs/Vec2",
+          "$ref": "#/$defs/Animatable_Vec2",
           "description": "Offset of the anchor from the canvas center, in canvas units."
         },
         "rotation": {
-          "description": "Clockwise rotation in degrees.",
-          "format": "double",
-          "type": "number"
+          "$ref": "#/$defs/Animatable_double",
+          "description": "Clockwise rotation in degrees."
         },
         "scale": {
-          "$ref": "#/$defs/Vec2",
+          "$ref": "#/$defs/Animatable_Vec2",
           "description": "Size multiplier per axis (1.0 = aspect-fit)."
         }
       },
@@ -1098,12 +1485,23 @@ expression: "cutweave_model::canonical_json_pretty(&schema)"
       "type": "object"
     },
     "VisualProps": {
-      "description": "Visual properties of an item (arch §4.2 `VisualProps`, v1 subset).",
+      "description": "Visual properties of an item (arch §4.2 `VisualProps`; keyframes §7).",
       "properties": {
+        "blend_mode": {
+          "$ref": "#/$defs/BlendMode",
+          "description": "How the item combines with what is below."
+        },
+        "crop": {
+          "$ref": "#/$defs/Crop",
+          "description": "Edges of the source picture cut away."
+        },
+        "flip": {
+          "$ref": "#/$defs/Flip",
+          "description": "Mirroring."
+        },
         "opacity": {
-          "description": "Opacity, 0.0 (transparent) to 1.0 (opaque).",
-          "format": "double",
-          "type": "number"
+          "$ref": "#/$defs/Animatable_double",
+          "description": "Opacity, 0.0 (transparent) to 1.0 (opaque)."
         },
         "transform": {
           "$ref": "#/$defs/Transform",
@@ -1112,7 +1510,10 @@ expression: "cutweave_model::canonical_json_pretty(&schema)"
       },
       "required": [
         "transform",
-        "opacity"
+        "opacity",
+        "crop",
+        "flip",
+        "blend_mode"
       ],
       "type": "object"
     }

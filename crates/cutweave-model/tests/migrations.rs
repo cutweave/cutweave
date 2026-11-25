@@ -6,7 +6,8 @@
 //! projects built below. The v1 fixtures are the frozen v1 files of the same projects; they
 //! must migrate to them (the migration of legacy shapes is covered by `v1/legacy-needs-fixes`).
 //! `v2/folders` holds what v1 cannot express (nested media folders and renamed assets,
-//! ADR-0020), so it has no v1 counterpart.
+//! ADR-0020), and `v2/animated` keyed values, crop, flip, blend mode and pan (WP-2C.03,
+//! ADR-0024); neither has a v1 counterpart.
 //! After an intended format change, regenerate the v2 fixtures with
 //! `CUTWEAVE_BLESS_FIXTURES=1 cargo nextest run -p cutweave-model -E 'binary(migrations)'`.
 //! Fixtures of older versions are frozen: they must keep loading (through migrations) as the
@@ -371,6 +372,55 @@ fn expected_folders() -> Project {
     project
 }
 
+/// `v2/animated.cutweave` (WP-2C.03, ADR-0024): keyed values of every type (scalar, vec2,
+/// flip), every interpolation kind, a key outside the clip, crop, flip, blend mode and pan.
+fn expected_animated() -> Project {
+    let mut ids = SeededGen::new(4);
+    let mut project = Project::new("Animated");
+    stamp(&mut project);
+    let media = MediaAsset::file(
+        ids.mint(),
+        MediaKind::Video,
+        "/media/a.mp4",
+        video_probe(10),
+    );
+    let mut sequence = Sequence::new(ids.mint(), "Main", SequenceFormat::default());
+    let mut v1 = Track::new(ids.mint(), TrackKind::Video, "V1");
+    let clip = Clip::new(ids.mint(), media.id, Time::ZERO, span_secs(4));
+    let keyed = |value: Value| -> Value { json!({ "keyframes": value }) };
+    let s = 705_600_000_i64;
+    let mut doc = serde_json::to_value(&clip).unwrap();
+    doc["visual"]["opacity"] = keyed(json!([
+        {"t": 0, "value": 0.0, "interp": {"kind": "bezier", "x1": 0.42, "y1": 0.0, "x2": 0.58, "y2": 1.0, "preset": "ease_in_out"}},
+        {"t": s, "value": 1.0, "interp": {"kind": "linear"}},
+        {"t": 3 * s, "value": 0.5, "interp": {"kind": "hold"}},
+        {"t": 5 * s, "value": 0.25, "interp": {"kind": "linear"}}
+    ]));
+    doc["visual"]["transform"]["position"] = keyed(json!([
+        {"t": 0, "value": {"x": 0.0, "y": 0.0}, "interp": {"kind": "spring", "stiffness": 170.0, "damping": 26.0, "mass": 1.0, "bounce": false, "preset": "spring"}},
+        {"t": 2 * s, "value": {"x": 0.25, "y": -0.125}, "interp": {"kind": "linear"}}
+    ]));
+    doc["visual"]["crop"] = json!({
+        "left": keyed(json!([{"t": -s, "value": 0.5, "interp": {"kind": "linear"}}])),
+        "top": 0.125, "right": 0.25, "bottom": 0.0
+    });
+    doc["visual"]["flip"]["horizontal"] = keyed(json!([
+        {"t": 0, "value": false, "interp": {"kind": "hold"}},
+        {"t": s, "value": true, "interp": {"kind": "hold"}}
+    ]));
+    doc["visual"]["blend_mode"] = json!("soft_light");
+    doc["audio"]["pan"] = keyed(json!([
+        {"t": 0, "value": -1.0, "interp": {"kind": "linear"}},
+        {"t": 4 * s, "value": 1.0, "interp": {"kind": "linear"}}
+    ]));
+    let clip: Clip = serde_json::from_value(doc).unwrap();
+    v1.items.insert(clip.into());
+    sequence.insert_track(0, v1);
+    project.media.insert(media.id, media);
+    project.sequences.insert(sequence.id, sequence);
+    project
+}
+
 /// The current fixtures that are the migrated form of a frozen v1 file.
 fn migrated_fixtures() -> [(&'static str, Project); 3] {
     [
@@ -383,6 +433,7 @@ fn migrated_fixtures() -> [(&'static str, Project); 3] {
 fn current_fixtures() -> Vec<(&'static str, Project)> {
     let mut all: Vec<_> = migrated_fixtures().into();
     all.push(("folders", expected_folders()));
+    all.push(("animated", expected_animated()));
     all
 }
 

@@ -22,6 +22,10 @@
 //! 5. **Media folders** (`add_media_folders`, WP-2F.07, ADR-0020): `Project.folders` (`{}`),
 //!    `MediaAsset.name` (`null`, the bin shows the file name) and `MediaAsset.folder` (`null`,
 //!    the top level).
+//! 6. **Crop, flip, blend mode and pan** (`add_visual_props`, WP-2C.03, ADR-0024): every clip
+//!    gets `visual.crop` (no edge cut), `visual.flip` (not mirrored), `visual.blend_mode`
+//!    (`"normal"`) and `audio.pan` (`0.0`). Keyed values need no step: a v1 value is the bare
+//!    static form, which stays valid.
 //!
 //! Adding a step for another work package: write `fn(&mut Value, &mut Vec<String>) ->
 //! Result<(), MigrationError>`, append it to [`STEPS`], extend `tests/fixtures/v2/` through
@@ -44,6 +48,7 @@ const STEPS: &[Step] = &[
     dissolve_misaligned_groups,
     normalize_magnetic,
     add_media_folders,
+    add_visual_props,
 ];
 
 /// The v1 → v2 migration.
@@ -358,6 +363,43 @@ fn add_media_folders(
         };
         asset.entry("name").or_insert(Value::Null);
         asset.entry("folder").or_insert(Value::Null);
+    }
+    Ok(())
+}
+
+/// WP-2C.03: the properties the render and audio WPs expect, at their defaults.
+fn add_visual_props(root: &mut JsonObject, _notes: &mut Vec<String>) -> Result<(), MigrationError> {
+    for (path, seq) in sequences(root)? {
+        for (track_path, track) in tracks(seq, &path)? {
+            for (item_path, item) in items(track, &track_path)? {
+                if let Some(Value::Object(visual)) = item.get_mut("visual") {
+                    visual.entry("crop").or_insert_with(|| {
+                        serde_json::json!({"left": 0.0, "top": 0.0, "right": 0.0, "bottom": 0.0})
+                    });
+                    visual.entry("flip").or_insert_with(
+                        || serde_json::json!({"horizontal": false, "vertical": false}),
+                    );
+                    visual
+                        .entry("blend_mode")
+                        .or_insert_with(|| Value::from("normal"));
+                } else if item.contains_key("visual") {
+                    return Err(MigrationError::step(
+                        FROM,
+                        format!("{item_path}/visual"),
+                        "expected an object",
+                    ));
+                }
+                if let Some(Value::Object(audio)) = item.get_mut("audio") {
+                    audio.entry("pan").or_insert_with(|| Value::from(0.0));
+                } else if item.contains_key("audio") {
+                    return Err(MigrationError::step(
+                        FROM,
+                        format!("{item_path}/audio"),
+                        "expected an object",
+                    ));
+                }
+            }
+        }
     }
     Ok(())
 }
