@@ -3,9 +3,11 @@
 // window and the engine at once: fault injection, a forced kill of the process tree), relaunch.
 // Opening the project offers the unsaved edits back: Restore brings them, Discard keeps the
 // project as last saved.
+import { readFileSync } from "node:fs";
 import type { ElectronApplication, Page } from "@playwright/test";
-import { expect, killTree, test } from "../fixtures.ts";
+import { expect, killTree, quitApp, test, unsavedPrompt } from "../fixtures.ts";
 import {
+  chooseMenu,
   clickClip,
   clipAt,
   createProject,
@@ -21,12 +23,16 @@ import {
   mediaCards,
   openRecent,
   profileDir,
+  projectDoc,
   recoveryDialog,
   removeDir,
   sequence,
+  shortcut,
   snapshot,
   timelineGeometry,
   toast,
+  waitProfileFree,
+  windowDirty,
   workspace,
 } from "./helpers.ts";
 
@@ -72,6 +78,7 @@ test.describe("F12 app crash and recovery", () => {
       await first.close();
 
       // Relaunch, open it from Recent: the editor offers the three edits back.
+      await waitProfileFree(home);
       const second = await launchFlowApp(work, home);
       await openRecent(second.page, "Crashy.cutweave");
       const recovery = recoveryDialog(second.page);
@@ -100,6 +107,7 @@ test.describe("F12 app crash and recovery", () => {
       // Crash again before saving; this time Discard: the project as it was last saved.
       await crash(second.app);
       await second.close();
+      await waitProfileFree(home);
       const third = await launchFlowApp(work, home);
       try {
         await openRecent(third.page, "Crashy.cutweave");
@@ -119,6 +127,51 @@ test.describe("F12 app crash and recovery", () => {
         await expect(dirtyDot(third.page)).toBeHidden();
       } finally {
         await third.close();
+      }
+    } finally {
+      work.remove();
+      removeDir(home);
+    }
+  });
+
+  test("after Restore, Save clears the unsaved dot and quitting does not ask to save again", async () => {
+    const work = workspace();
+    const home = profileDir();
+    try {
+      const first = await launchFlowApp(work, home);
+      const doc = projectDoc(work.dir, "Saved after");
+      await createProject(first.app, first.page, "Saved after", work.dir);
+      await importWithButton(first.app, first.page, [work.file("interview.mp4")]);
+      await expect(dirtyDot(first.page)).toBeVisible();
+      await crash(first.app);
+      await first.close();
+
+      await waitProfileFree(home);
+      const second = await launchFlowApp(work, home);
+      try {
+        await openRecent(second.page, "Saved after.cutweave");
+        const recovery = recoveryDialog(second.page);
+        await expect(recovery.dialog).toBeVisible();
+        await recovery.restore.click();
+        await expect(recovery.dialog).toBeHidden();
+        await expect(dirtyDot(second.page)).toBeVisible();
+        await expect.poll(() => windowDirty(second.app)).toBe(true);
+
+        // Ctrl+S writes the restored edits; the dot goes and main no longer holds the window.
+        await shortcut(second.app, "Control+S");
+        await expect(dirtyDot(second.page)).toBeHidden();
+        await expect.poll(() => windowDirty(second.app)).toBe(false);
+        await expect
+          .poll(() => Object.keys(JSON.parse(readFileSync(doc, "utf8")).media).length)
+          .toBe(1);
+
+        // Quitting does not ask to save again: the editor's prompt never shows and the app exits.
+        await chooseMenu(second.page, second.app, "File", "Exit");
+        await expect.poll(() => second.app.process().exitCode, { timeout: 30_000 }).not.toBeNull();
+        await expect(unsavedPrompt(second.page).dialog).toBeHidden();
+      } finally {
+        await quitApp(second.app, second.page, "discard", second.mainLog);
+        await second.close();
       }
     } finally {
       work.remove();
