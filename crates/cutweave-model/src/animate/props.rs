@@ -103,11 +103,7 @@ impl ValueType {
     /// linear otherwise.
     #[must_use]
     pub const fn default_interp(self) -> Interp {
-        if self.is_discrete() {
-            Interp::Hold
-        } else {
-            Interp::Linear
-        }
+        Interp::default_for(self.is_discrete())
     }
 }
 

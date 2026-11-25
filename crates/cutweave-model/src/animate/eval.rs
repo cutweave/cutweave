@@ -17,7 +17,7 @@ use crate::Time;
 enum Place {
     /// At a key, before the first key or after the last: the key's value, exactly (§6, step 3).
     Key(usize),
-    /// Strictly inside segment `k`, `[t_k, t_{k+1})`.
+    /// Strictly inside segment `k`: `t_k < t < t_{k+1}`.
     Inside(usize),
 }
 

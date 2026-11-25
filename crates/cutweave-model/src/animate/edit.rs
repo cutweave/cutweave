@@ -148,11 +148,11 @@ impl<T: AnimValue> Animatable<T> {
     /// is [`KeyframeError::NotFound`].
     pub fn delete_keys(&self, ts: &[Time]) -> Result<Animatable<T>, KeyframeError> {
         let keys = self.keyed()?;
-        missing(keys, ts)?;
+        let ts = addressed(keys, ts)?;
         let left: Vec<Keyframe<T>> = keys
             .keys()
             .iter()
-            .filter(|k| !ts.contains(&k.t))
+            .filter(|k| ts.binary_search(&k.t).is_err())
             .cloned()
             .collect();
         if left.is_empty() {
@@ -167,10 +167,15 @@ impl<T: AnimValue> Animatable<T> {
     /// property is [`KeyframeError::NotFound`].
     pub fn move_keys(&self, ts: &[Time], delta: Time) -> Result<Animatable<T>, KeyframeError> {
         let keys = self.keyed()?;
-        missing(keys, ts)?;
-        let (moving, staying): (Vec<_>, Vec<_>) =
-            keys.keys().iter().cloned().partition(|k| ts.contains(&k.t));
-        let mut out = staying;
+        let ts = addressed(keys, ts)?;
+        // Both halves stay sorted; the moved keys keep distinct times (one shared delta), so a
+        // collision can only be with a key that stays.
+        let (moving, mut out): (Vec<_>, Vec<_>) = keys
+            .keys()
+            .iter()
+            .cloned()
+            .partition(|k| ts.binary_search(&k.t).is_ok());
+        let mut moved = Vec::with_capacity(moving.len());
         for key in moving {
             let to = offset(key.t, delta).ok_or_else(|| {
                 KeyframeError::Invalid(format!(
@@ -179,14 +184,15 @@ impl<T: AnimValue> Animatable<T> {
                     delta.flicks()
                 ))
             })?;
-            if out.iter().any(|k| k.t == to) {
+            if out.binary_search_by(|k| k.t.cmp(&to)).is_ok() {
                 return Err(KeyframeError::Invalid(format!(
                     "a keyframe already exists at t = {}",
                     to.flicks()
                 )));
             }
-            out.push(key.at(to));
+            moved.push(key.at(to));
         }
+        out.extend(moved);
         out.sort_by_key(|k| k.t);
         keys.with_keys(out).map(Animatable::Keyframes)
     }
@@ -210,18 +216,124 @@ impl<T: AnimValue> Animatable<T> {
     }
 }
 
-/// `NotFound` for the first time in `ts` with no key.
-fn missing<T>(keys: &super::Keyframes<T>, ts: &[Time]) -> Result<(), KeyframeError> {
-    match ts.iter().find(|t| keys.index_of(**t).is_none()) {
-        Some(t) => Err(KeyframeError::NotFound(format!(
+/// The addressed key times, sorted and deduplicated; `NotFound` for the first one with no key.
+fn addressed<T>(keys: &super::Keyframes<T>, ts: &[Time]) -> Result<Vec<Time>, KeyframeError> {
+    if let Some(t) = ts.iter().find(|t| keys.index_of(**t).is_none()) {
+        return Err(KeyframeError::NotFound(format!(
             "no keyframe at t = {}",
             t.flicks()
-        ))),
-        None => Ok(()),
+        )));
     }
+    let mut sorted = ts.to_vec();
+    sorted.sort_unstable();
+    sorted.dedup();
+    Ok(sorted)
 }
 
 /// `−t` (always in range: times are symmetric around zero).
 fn negate(t: Time) -> Result<Time, KeyframeError> {
     Time::from_flicks(-t.flicks()).map_err(|e| KeyframeError::Invalid(e.to_string()))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::{MAX_SAFE_FLICKS, animate::Keyframes};
+
+    fn t(flicks: i64) -> Time {
+        Time::from_flicks(flicks).unwrap()
+    }
+
+    fn anim(times: &[i64]) -> Animatable<f64> {
+        #[allow(clippy::cast_precision_loss)]
+        let keys = times
+            .iter()
+            .map(|&f| Keyframe::new(t(f), f as f64, Interp::Linear))
+            .collect();
+        Animatable::Keyframes(Keyframes::new(keys).unwrap())
+    }
+
+    fn times(a: &Animatable<f64>) -> Vec<i64> {
+        a.sample_times().map(Time::flicks).collect()
+    }
+
+    const ANY: ValueRange = ValueRange::ANY;
+
+    #[test]
+    fn moved_keys_may_land_where_another_moved_key_was() {
+        let a = anim(&[0, 10, 30]);
+        let moved = a.move_keys(&[t(0), t(10), t(0)], t(10)).unwrap();
+        assert_eq!(times(&moved), vec![10, 20, 30]);
+        assert_eq!(
+            moved.eval(t(10)).to_bits(),
+            0.0_f64.to_bits(),
+            "the key from 0 keeps its value"
+        );
+        let onto = a.move_keys(&[t(10)], t(20)).unwrap_err();
+        assert_eq!(onto.code(), "Invalid", "landing on a key that stays");
+        let edge = anim(&[MAX_SAFE_FLICKS]);
+        let out = edge.move_keys(&[t(MAX_SAFE_FLICKS)], t(1)).unwrap_err();
+        assert_eq!(out.code(), "Invalid");
+        assert_eq!(a.move_keys(&[t(5)], t(1)).unwrap_err().code(), "NotFound");
+        let stat = Animatable::from(1.0);
+        assert_eq!(
+            stat.move_keys(&[t(0)], t(1)).unwrap_err().code(),
+            "NotFound"
+        );
+    }
+
+    #[test]
+    fn delete_and_clear() {
+        let a = anim(&[0, 10, 20]);
+        assert_eq!(times(&a.delete_keys(&[t(10), t(10)]).unwrap()), vec![0, 20]);
+        let all = a.delete_keys(&[t(0), t(10), t(20)]).unwrap();
+        assert_eq!(all, Animatable::from(0.0));
+        assert_eq!(a.cleared(Some(t(5)), ANY), Animatable::from(5.0));
+        let unit = ValueRange::new(0.0, 1.0);
+        assert_eq!(a.cleared(Some(t(5)), unit), Animatable::from(1.0));
+        assert_eq!(a.cleared(None, ANY), Animatable::from(0.0));
+        let stat = Animatable::from(3.0);
+        assert_eq!(stat.cleared(Some(t(1)), ANY), stat);
+    }
+
+    #[test]
+    fn set_key_rules() {
+        let stat = Animatable::from(0.5);
+        let one = stat.set_key(t(7), None, None, ANY, ANY).unwrap();
+        let first = one.keyframes().map(|k| k.first().clone());
+        assert_eq!(
+            first,
+            Some(Keyframe::new(t(7), 0.5, Interp::Linear)),
+            "the static value"
+        );
+        let flip = Animatable::from(false);
+        let held = flip.set_key(t(0), Some(true), None, ANY, ANY).unwrap();
+        let interp = held.keyframes().map(|k| k.first().interp.clone());
+        assert_eq!(interp, Some(Interp::Hold));
+        let bad = Interp::Bezier {
+            x1: 0.0,
+            y1: 0.0,
+            x2: 1.0,
+            y2: 1.0,
+            preset: Some("No".into()),
+        };
+        let err = stat.set_key(t(0), Some(0.1), Some(bad), ANY, ANY);
+        assert_eq!(err.unwrap_err().code(), "KF-7");
+        let err = stat.set_key(t(0), Some(f64::NAN), None, ANY, ANY);
+        assert_eq!(err.unwrap_err().code(), "KF-4");
+    }
+
+    #[test]
+    fn retime_keeps_static_values() {
+        let s = Animatable::from(0.25);
+        let d = Duration::from_flicks(100).unwrap();
+        assert_eq!(s.split(t(50), d).unwrap(), (s.clone(), s.clone()));
+        assert_eq!(s.trim_start(t(10), d, true).unwrap(), s);
+        assert_eq!(s.trim_end(d, true), s);
+        let a = anim(&[-50, 0, 50, 150]);
+        let extended = a.trim_start(t(-20), d, true).unwrap();
+        assert_eq!(times(&extended), vec![-30, 20, 70, 170]);
+        let trimmed = a.trim_start(t(60), d, true).unwrap();
+        assert_eq!(times(&trimmed), vec![-10, 90]);
+    }
 }

@@ -527,7 +527,7 @@ impl Easing {
     /// as the hint; `hold` and `linear` without one.
     #[must_use]
     pub fn interp(self) -> Interp {
-        let preset = Some(self.name().to_owned());
+        let preset = || Some(self.name().to_owned());
         match self.params() {
             None if self == Easing::Hold => Interp::Hold,
             None => Interp::Linear,
@@ -536,14 +536,14 @@ impl Easing {
                 y1,
                 x2,
                 y2,
-                preset,
+                preset: preset(),
             },
             Some(Params::Spring(stiffness, damping, mass, bounce)) => Interp::Spring {
                 stiffness,
                 damping,
                 mass,
                 bounce,
-                preset,
+                preset: preset(),
             },
         }
     }

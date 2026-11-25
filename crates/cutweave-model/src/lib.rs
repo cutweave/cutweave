@@ -12,6 +12,9 @@
 //!   the schema v1 document, held in persistent `imbl` collections so snapshots are O(1)
 //!   (ADR-0005), with [`Project::validate`] checking the [`Invariant`]s of arch §4.3. Plugin
 //!   data lives only in namespaced [`Custom`] maps; unknown fields survive in [`Extra`].
+//! - **Keyframes** ([`Animatable`], [`Keyframes`], [`Interp`], [`Easing`], [`Evaluator`],
+//!   [`PropId`]): the pure, deterministic evaluator of every animated property
+//!   (`docs/spec/keyframes.md`, ADR-0024), shared with the UI through wasm (arch §16).
 //! - **Versioning** ([`CURRENT_SCHEMA_VERSION`], [`open`], [`migrate_to_current`],
 //!   [`Migration`], [`OpenOutcome`]): ordered `vN → vN+1` migrations on the raw JSON with golden
 //!   fixtures; documents from newer versions open read-only (arch §4.3, ADR-0006).
