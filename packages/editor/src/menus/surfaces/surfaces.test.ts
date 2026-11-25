@@ -584,12 +584,12 @@ describe("the other surfaces", () => {
       keys: [{ at: 5 * F }],
     });
     // Animated, with a key at the playhead: it can be removed, not added.
-    const state = docStore.getState().project as unknown as {
+    const keyed = structuredClone(docStore.getState().project) as unknown as {
       sequences: Record<string, { tracks: Record<string, { items: Record<string, object> }> }>;
     };
-    const keyed = structuredClone(state);
-    keyed.sequences[SEQ].tracks[V1].items[C1] = {
-      ...keyed.sequences[SEQ].tracks[V1].items[C1],
+    const items = keyed.sequences[SEQ]?.tracks[V1]?.items ?? {};
+    items[C1] = {
+      ...items[C1],
       visual: {
         transform: {},
         opacity: { keyframes: [{ t: 5 * F, value: 0.5, interp: { kind: "linear" } }] },
