@@ -662,6 +662,20 @@ impl FullSubsystems {
     }
 
     /// The analysis stages over `caches`: `index` → `thumbnails`, and `waveform`.
+    /// The proxy service (WP-2F.01), when there is a media backend and a cache to keep proxies in.
+    fn proxies(&self, caches: &Caches, host: &SubsystemHost) -> Option<Arc<FullProxies>> {
+        match (&self.inner.config.media, &caches.db, &caches.root) {
+            (Some(backend), Some(db), Some(root)) => Some(Arc::new(FullProxies::new(
+                backend,
+                Arc::clone(db),
+                root.join("proxies"),
+                self.inner.doc.clone(),
+                host.link.clone(),
+            ))),
+            _ => None,
+        }
+    }
+
     fn analysis(&self, caches: &Caches) -> Arc<AnalysisStages> {
         let mut stages = AnalysisStages::new();
         let config = &self.inner.config;
@@ -963,16 +977,7 @@ impl Subsystems for FullSubsystems {
                 return Err(e);
             }
         };
-        let proxies = match (&self.inner.config.media, &caches.db, &caches.root) {
-            (Some(backend), Some(db), Some(root)) => Some(Arc::new(FullProxies::new(
-                backend,
-                Arc::clone(db),
-                root.join("proxies"),
-                self.inner.doc.clone(),
-                host.link.clone(),
-            ))),
-            _ => None,
-        };
+        let proxies = self.proxies(&caches, host);
         let frames = Arc::new(
             MediaFrames::new(
                 self.inner.config.media.clone(),
