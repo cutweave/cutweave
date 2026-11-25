@@ -41,6 +41,8 @@ export interface TimelineGeometry {
   itemsInRect(rect: Rect): string[];
   /** What is under canvas point `(x, y)`: the drop target of a dragged media card. */
   hitTest(x: number, y: number): HitResult;
+  /** Canvas rect of a track's name in its header (where the rename input goes). */
+  trackNameRect?(trackId: string): Rect | null;
 }
 
 /** Transient drawing the timeline shows while a gesture runs. */
@@ -70,11 +72,29 @@ interface OpenGesture {
 
 const NO_GUIDES: readonly number[] = [];
 
+/** The track whose name is being edited in place (`trackId`), and why the last commit was refused. */
+export interface RenameState {
+  readonly trackId: string | null;
+  /** The reason the typed name was refused (shown next to the input), or `null`. */
+  readonly reason: string | null;
+}
+
+/** How a rename ended: `renamed` sent `track.set`; the others sent nothing. */
+export type RenameOutcome = "renamed" | "unchanged" | "refused" | "failed";
+
+const trackRef = (id: string): SelectionRef => ({ kind: "track", id: id as TrackId });
+
 export class TimelineController {
   /** Snap guides and the marquee, for the canvas. */
   readonly overlay: StoreApi<TimelineOverlay> = createStore<TimelineOverlay>(() => ({
     snapGuides: NO_GUIDES,
     marquee: null,
+  }));
+
+  /** The in-place track rename (WP-2H.x, issue 149): the panel draws the input while it is open. */
+  readonly rename: StoreApi<RenameState> = createStore<RenameState>(() => ({
+    trackId: null,
+    reason: null,
   }));
 
   readonly #deps: TimelineControllerDeps;
@@ -113,6 +133,23 @@ export class TimelineController {
 
   /** A pointer event from `TimelineView.onPointer`. */
   handlePointer(e: TimelinePointerEvent): void {
+    const trackId = e.hit.trackId;
+    if (trackId !== null && e.hit.zone === "header-name") {
+      if (e.type === "dblclick") {
+        this.beginRename(trackId);
+        return;
+      }
+    }
+    // A press on a track header selects the track (F2 then renames it).
+    if (
+      e.type === "down" &&
+      e.button === 0 &&
+      trackId !== null &&
+      e.hit.zone.startsWith("header")
+    ) {
+      if (e.hit.zone !== "header-toggle")
+        this.#deps.view.getState().setSelection([trackRef(trackId)]);
+    }
     const event = fromPointerEvent(e);
     if (event !== null) this.send(event);
   }
@@ -132,6 +169,85 @@ export class TimelineController {
 
   split(): void {
     this.send({ type: "split" });
+  }
+
+  // ---- track rename (issue 149) --------------------------------------------------------------
+  // `beginRename(trackId)` is the entry point for every way to start a rename: the header's
+  // double-click and F2 call it, and the track header's context menu (WP-2H.12/2H.13) will too.
+
+  /** Opens the in-place name input for `trackId`. A locked track can be renamed: lock guards clips. */
+  beginRename(trackId: string): void {
+    const model = selectTimelineModel(this.#deps.doc.getState().project);
+    if (!model.tracks.some((t) => t.id === trackId)) return;
+    this.rename.setState({ trackId, reason: null });
+  }
+
+  /** F2: renames the selected track, or the track of the selected clip. */
+  renameSelectedTrack(): void {
+    const { selection } = this.#deps.view.getState();
+    const model = selectTimelineModel(this.#deps.doc.getState().project);
+    const picked = selection.find((r) => r.kind === "track");
+    if (picked !== undefined) {
+      this.beginRename(picked.id);
+      return;
+    }
+    const item = selection.find((r) => r.kind === "item");
+    const owner = item === undefined ? undefined : model.items.find((i) => i.id === item.id);
+    if (owner !== undefined) this.beginRename(owner.trackId);
+  }
+
+  /** Esc: closes the input, the old name stays. */
+  cancelRename(): void {
+    this.rename.setState({ trackId: null, reason: null });
+  }
+
+  /** The name currently shown for the track being renamed (the input's starting text). */
+  renameTarget(): { readonly trackId: string; readonly name: string } | null {
+    const { trackId } = this.rename.getState();
+    if (trackId === null) return null;
+    const model = selectTimelineModel(this.#deps.doc.getState().project);
+    const track = model.tracks.find((t) => t.id === trackId);
+    return track === undefined ? null : { trackId, name: track.name };
+  }
+
+  /**
+   * Enter or blur: `track.set{track, name}` with the trimmed name (one undo step). An empty name is
+   * refused and nothing is sent: on Enter the input stays open with the reason (`inline`), on blur it
+   * closes and the reason is a toast. The same name sends nothing.
+   */
+  async commitRename(raw: string, how: "enter" | "blur"): Promise<RenameOutcome> {
+    const target = this.renameTarget();
+    if (target === null) return "unchanged";
+    const { t, toasts } = this.#deps;
+    const name = raw.trim();
+    if (name === "") {
+      const reason = t("timeline.rename.empty", { name: target.name });
+      if (how === "enter") {
+        this.rename.setState({ reason });
+      } else {
+        this.cancelRename();
+        toasts
+          .getState()
+          .push({ tone: "warning", title: t("timeline.failed.rename"), message: reason });
+      }
+      return "refused";
+    }
+    this.cancelRename();
+    if (name === target.name) return "unchanged";
+    const rpc = this.#rpc();
+    if (rpc === null) return "failed";
+    try {
+      await rpc.call("track.set", { track: target.trackId as TrackId, name });
+      return "renamed";
+    } catch (error) {
+      this.#notify("rename", error);
+      return "failed";
+    }
+  }
+
+  /** The canvas rect of a track's name (the input goes over it), or `null` while it is off screen. */
+  trackNameRect(trackId: string): Rect | null {
+    return this.#geometry?.trackNameRect?.(trackId) ?? null;
   }
 
   deleteSelection(): void {
@@ -286,6 +402,9 @@ export class TimelineController {
         return;
       case "set-snapping":
         view.setSnapping(intent.on);
+        return;
+      case "rename-track":
+        this.renameSelectedTrack();
         return;
     }
   }

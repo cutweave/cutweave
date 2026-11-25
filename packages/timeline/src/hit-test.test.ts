@@ -1,5 +1,6 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 import { describe, expect, it } from "vitest";
+import { nameRect, toggleRect } from "./geometry.ts";
 import { type HitContext, type HitZone, hitTest } from "./hit-test.ts";
 import { TimelineLayout } from "./layout.ts";
 import type { TimelineItem, TimelineModel } from "./model.ts";
@@ -112,6 +113,24 @@ describe("hitTest", () => {
     for (const [k, v] of Object.entries(expected)) {
       expect(hit[k as keyof typeof hit]).toBe(v);
     }
+  });
+
+  it("hits the track name between the kind icon and the toggles (header-name)", () => {
+    // A wide header leaves room for the name; the same zone is what a double-click renames.
+    const wide = ctx(vp({ headerWidth: 400 }));
+    const n = nameRect(wide.vp, th, 28, th.trackMd);
+    expect(n.w).toBeGreaterThan(0);
+    const mid = n.x + n.w / 2;
+    expect(hitTest(wide, mid, 50)).toMatchObject({ zone: "header-name", trackId: "V" });
+    expect(hitTest(wide, n.x + n.w - 1, 50).zone).toBe("header-name");
+    // The kind icon, the toggles and the lane stay what they were.
+    expect(hitTest(wide, n.x - 1, 50).zone).toBe("header");
+    expect(hitTest(wide, n.x + n.w + 1, 50).zone).toBe("header");
+    const lock = toggleRect(wide.vp, th, 28, th.trackMd, 0);
+    expect(hitTest(wide, lock.x + 1, 50).zone).toBe("header-toggle");
+    expect(hitTest(wide, 450, 50).zone).not.toBe("header-name");
+    // A lower track's name is found by its own lane.
+    expect(hitTest(wide, mid, 100)).toMatchObject({ zone: "header-name", trackId: "A" });
   });
 
   it("reports the time under the pointer in integer flicks", () => {

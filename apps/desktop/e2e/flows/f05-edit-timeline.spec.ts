@@ -18,6 +18,8 @@ import {
   layout,
   rulerY,
   sec,
+  sequence,
+  shortcut,
   snapshot,
   timecode,
   timelineCanvas,
@@ -218,6 +220,102 @@ test.describe("F5 edit on the timeline", () => {
       for (const tool of ["Razor", "Ripple", "Zoom in", "Zoom out"]) {
         await expect(timelineTools(page).getByRole("button", { name: tool })).toBeDisabled();
       }
+    } finally {
+      await close();
+      work.remove();
+    }
+  });
+
+  test("rename a track: double-click its name or F2, Enter commits, Esc keeps, one Ctrl+Z undoes", async () => {
+    const info = test.info();
+    const work = workspace();
+    const { app, page, close } = await launchFlowApp(work);
+    try {
+      await createProject(app, page, "Rename", work.dir);
+      await importWithButton(app, page, [work.file("interview.mp4")]);
+      await dropCard(page, "interview.mp4", "V1", 1);
+      await expect
+        .poll(() => layout(page))
+        .toEqual([
+          { track: "V1", clips: [[1, 10]] },
+          { track: "A1", clips: [[1, 10]] },
+        ]);
+      await editorCaughtUp(page);
+      const names = async () => (await sequence(page)).tracks.map((t) => t.name);
+      const field = page.getByRole("textbox", { name: "Track name" });
+      const undo = toolbar(page).getByRole("button", { name: /^Undo/ });
+
+      // A point inside a track's name in its header (right of the kind icon, left of the toggles).
+      const onName = async (trackName: string) => {
+        const g = await timelineGeometry(page);
+        const tokens = await page.evaluate(() => {
+          const cs = getComputedStyle(document.documentElement);
+          const px = (name: string) => Number.parseFloat(cs.getPropertyValue(name));
+          return { space2: px("--space-2"), iconSm: px("--icon-sm") };
+        });
+        const nameX = tokens.space2 + tokens.iconSm + tokens.space2;
+        return { x: g.box.x + nameX + 6, y: laneY(g, trackName) };
+      };
+
+      // Double-click V1's name, type B-roll, Enter: the header shows it.
+      let at = await onName("V1");
+      await page.mouse.dblclick(at.x, at.y);
+      await expect(field).toBeFocused();
+      await expect(field).toHaveValue("V1");
+      await page.keyboard.type("B-roll");
+      await snapshot(page, info, "renaming V1");
+      await page.keyboard.press("Enter");
+      await expect(field).toBeHidden();
+      await expect.poll(names).toEqual(["B-roll", "A1"]);
+      await editorCaughtUp(page);
+      await expect(undo).toHaveAccessibleName("Undo Change track");
+      await snapshot(page, info, "V1 renamed to B-roll");
+
+      // One Ctrl+Z restores V1 (the rename was one undo step).
+      await shortcut(app, "Control+Z");
+      await expect.poll(names).toEqual(["V1", "A1"]);
+      await editorCaughtUp(page);
+
+      // Esc in the middle of typing keeps the old name; no timeline key fired while typing.
+      at = await onName("V1");
+      await page.mouse.dblclick(at.x, at.y);
+      await expect(field).toBeFocused();
+      await page.keyboard.type("Draft s");
+      await expect(field).toHaveValue("Draft s");
+      await page.keyboard.press("Escape");
+      await expect(field).toBeHidden();
+      expect(await names()).toEqual(["V1", "A1"]);
+      expect(await layout(page)).toEqual([
+        { track: "V1", clips: [[1, 10]] },
+        { track: "A1", clips: [[1, 10]] },
+      ]);
+
+      // A blank name is refused: the input stays, says why, and Esc leaves the old name.
+      at = await onName("V1");
+      await page.mouse.dblclick(at.x, at.y);
+      await expect(field).toBeFocused();
+      await page.keyboard.press("Control+A");
+      await page.keyboard.type("   ");
+      await page.keyboard.press("Enter");
+      await expect(
+        page.getByRole("alert").filter({ hasText: "A track needs a name" }),
+      ).toBeVisible();
+      await expect(field).toHaveValue("V1");
+      await page.keyboard.press("Escape");
+      await expect(field).toBeHidden();
+      expect(await names()).toEqual(["V1", "A1"]);
+
+      // F2 on a selected track opens the same input: click A1's header, F2, rename, Enter.
+      at = await onName("A1");
+      await page.mouse.click(at.x, at.y);
+      await page.keyboard.press("F2");
+      await expect(field).toBeFocused();
+      await expect(field).toHaveValue("A1");
+      await page.keyboard.press("Control+A");
+      await page.keyboard.type("  Music ");
+      await page.keyboard.press("Enter");
+      await expect(field).toBeHidden();
+      await expect.poll(names).toEqual(["V1", "Music"]);
     } finally {
       await close();
       work.remove();

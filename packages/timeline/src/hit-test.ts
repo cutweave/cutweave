@@ -9,6 +9,7 @@ import {
   KEYFRAME_MIN_PX,
   keyframeRowY,
   MIN_HIT_PX,
+  nameRect,
   showsKeyframes,
   toggleRect,
 } from "./geometry.ts";
@@ -32,6 +33,8 @@ export type HitZone =
   | "ruler"
   /** A track header (`trackId`). */
   | "header"
+  /** The track name in a header (`trackId`): double-click renames the track. */
+  | "header-name"
   /** A header toggle button (`toggle`). */
   | "header-toggle"
   /** Empty lane space on a track (`trackId`, `time`): drop and marquee target. */
@@ -58,7 +61,10 @@ export interface HitContext {
   readonly layout: TimelineLayout;
   readonly vp: Viewport;
   readonly playhead: number;
-  readonly theme: Pick<Theme, "controlSm" | "space1" | "space1_5" | "space2" | "trackSm">;
+  readonly theme: Pick<
+    Theme,
+    "controlSm" | "iconSm" | "space1" | "space1_5" | "space2" | "trackSm"
+  >;
   /** Half width of the playhead flag in CSS px (as last drawn). */
   readonly flagHalfWidth: number;
   /** Reused candidate buffer; pass the same array every call to avoid allocation. */
@@ -122,6 +128,10 @@ export function hitTest(ctx: HitContext, x: number, y: number): HitResult {
           toggle: HEADER_TOGGLES[i] ?? null,
         });
       }
+    }
+    const n = nameRect(vp, theme, laneTop, laneH);
+    if (x >= n.x && x < n.x + n.w && y >= n.y && y < n.y + n.h) {
+      return result({ zone: "header-name", time, trackId, trackIndex: ti });
     }
     return result({ zone: "header", time, trackId, trackIndex: ti });
   }

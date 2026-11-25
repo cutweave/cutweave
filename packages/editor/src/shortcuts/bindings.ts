@@ -189,6 +189,10 @@ const TIMELINE_TEXT: Readonly<Record<TimelineKeyAction, { label: TKey; descripti
     label: "shortcuts.timeline.snapping",
     description: "shortcuts.timeline.snappingHelp",
   },
+  "rename-track": {
+    label: "shortcuts.timeline.renameTrack",
+    description: "shortcuts.timeline.renameTrackHelp",
+  },
 };
 
 function timelineBindings(): Binding[] {
