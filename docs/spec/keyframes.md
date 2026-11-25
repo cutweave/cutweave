@@ -496,9 +496,9 @@ item.set_props {
 - **WP-2C.03:** `keyframe.set` takes `keys[]` and `replace`. `item.set_props` takes bare values only. `audio.pan` joins WP-2C.03's model migration (§7).
 - **Arch §4.2** said every `VisualProps` field is animatable; `blend_mode` is static (D8). Arch §4.2 and §8 now point here.
 
-## 15. Open questions for the owner
+## 15. Owner decisions
 
-The spec decides both of these so work can proceed; either answer changes one rule, not the model.
+Decided by the product owner on 2026-11-25, both as the spec proposed: keys stay where they are on a speed change, with an opt-in `scale` (WP-2D.01 adds `clip.set_speed{keyframes: "keep" | "scale"}`, default `keep`); a split leaves no key at the cut. The original questions, for the record:
 
 1. **Should a speed change stretch keys with the clip?** The spec keeps them where they are (§8.1, as the WBS says). Then a zoom animated over a whole clip stops halfway when the clip is sped up to 2×, because its last key now lies beyond the end. The alternative is `clip.set_speed{keyframes: "keep" | "scale"}` with the `scale_times` mapping of §8.1. WP-2D.01 can add it whichever is the default.
 2. **Should a split leave a visible key at the cut?** The spec keeps the neighbouring keys outside each half instead (§8.3): it is exact, and the lanes show the curve entering from the edge. Some editors show a key at the cut. Adding one is exact only for hold and linear segments, so it would be an option for those.

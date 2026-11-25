@@ -1,6 +1,6 @@
 # ADR-0023: Timeline edit semantics for Phase 2: magnetic main track, placement modes, attachments, edit reports and replacing gesture updates
 
-- **Status:** Proposed
+- **Status:** Accepted (product owner, 2026-11-25)
 - **Date:** 2026-11-25
 - **Deciders:** Cutweave maintainers (decision); drafted by the WP-2A.01 agent
 - **Supersedes:** none (extends the P1 edit semantics of WP-1B.05/1B.06 recorded in arch §4.3)
@@ -25,6 +25,8 @@ Phase 2 turns the P1 walking-skeleton timeline into an everyday editor: a CapCut
 4. **Keep accumulating gesture updates (P1) and make every command path-independent.** Rejected: magnetic reorders, ripples and auto-created tracks do not compose; drags would leave stray tracks and drift.
 
 ## Decision
+
+**Accepted by the product owner on 2026-11-25**, with the spec's choices confirmed: at most one magnetic main track, which can be turned off (D1); J and L cuts by trimming one member with `unlink` (linked groups stay aligned, D7); deleting a parent keeps and detaches its children (D16); replacing with media that has no sound mutes the old audio (D2b).
 
 Proposed, not decided. **Decided by:** a maintainer's approval of the WP-2A.01 pull request (spec review), before WP-2A.02 and WP-2A.03 start. Pass criteria: the spec's fixtures pass `cargo xtask check-fixtures`, and the reviewer accepts each change below. If a change is rejected, the spec is amended and the affected WPs follow the amended spec; the fallback for every item is the P1 behaviour.
 

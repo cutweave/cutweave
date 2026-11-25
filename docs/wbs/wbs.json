@@ -4934,7 +4934,7 @@
         "WP-1F.03",
         "WP-2A.04"
       ],
-      "scope": "- Use `Speed::Constant(r)`, r in [0.1, 100], rational stored as `{num,den}` (not f64) to keep frame math exact; `reverse: bool`; `freeze: Option<{at_source}>`.\n- Commands: `clip.set_speed{item, speed, keep: duration|in_point, ripple}`, `clip.reverse`, `clip.freeze_frame{item, at}` (splits the item and inserts a still-duration clip of the freeze frame per CapCut behaviour, default 3 s duration: configurable setting `freeze.default_duration`), `clip.reset_speed`.\n- Source-time mapping function `source_time(item, t)` is the single canonical mapping used by render, audio, thumbnails and export. Frame-nearest sampling in v1 (no blending; blending arrives P4). Reverse requires decoder support for backwards GOP traversal: use GOP-cache decode-forward then reorder; for sources without proxy and long GOP a warning plus automatic proxy request (2F.01).\n- Speed change on a magnetic track ripples; on a free track it keeps start and may be blocked by a neighbour (`Conflict`, with option `ripple`).\n- MCP core: none (catalog `clip_set_speed`, `clip_freeze_frame`); note in the MCP map (2I.01).\n- **Context menu (product owner request, 2026-11-25; framework WP-2H.12, plan in [09-context-menus.md](../research/09-context-menus.md)):** Speed ▸ (Normal, 0.5x, 2x, Custom…), Reverse and Freeze frame are items of `timeline.clip` (left out for audio-only, image and text clips as the kind rules say).",
+      "scope": "- (product owner, 2026-11-25, ADR-0024) `clip.set_speed` takes `keyframes: \"keep\" | \"scale\"`, default `keep`: keys stay at their times unless the caller asks to scale them with the speed (`scale_times`, [keyframes spec](../spec/keyframes.md) §8.1); the editor offers \"Scale keyframes\" in the speed control.\n- Use `Speed::Constant(r)`, r in [0.1, 100], rational stored as `{num,den}` (not f64) to keep frame math exact; `reverse: bool`; `freeze: Option<{at_source}>`.\n- Commands: `clip.set_speed{item, speed, keep: duration|in_point, ripple}`, `clip.reverse`, `clip.freeze_frame{item, at}` (splits the item and inserts a still-duration clip of the freeze frame per CapCut behaviour, default 3 s duration: configurable setting `freeze.default_duration`), `clip.reset_speed`.\n- Source-time mapping function `source_time(item, t)` is the single canonical mapping used by render, audio, thumbnails and export. Frame-nearest sampling in v1 (no blending; blending arrives P4). Reverse requires decoder support for backwards GOP traversal: use GOP-cache decode-forward then reorder; for sources without proxy and long GOP a warning plus automatic proxy request (2F.01).\n- Speed change on a magnetic track ripples; on a free track it keeps start and may be blocked by a neighbour (`Conflict`, with option `ripple`).\n- MCP core: none (catalog `clip_set_speed`, `clip_freeze_frame`); note in the MCP map (2I.01).\n- **Context menu (product owner request, 2026-11-25; framework WP-2H.12, plan in [09-context-menus.md](../research/09-context-menus.md)):** Speed ▸ (Normal, 0.5x, 2x, Custom…), Reverse and Freeze frame are items of `timeline.clip` (left out for audio-only, image and text clips as the kind rules say).",
       "interfaces": "`Speed`, `source_time`, commands above.",
       "acceptance": [
         "Unit test: 2× over a 10 s clip gives duration 5 s exactly in flicks; 1/3× is exact (rational), no drift over 1,000 round trips (`set_speed(a)` then `set_speed(1/a)` restores duration±0).",
@@ -4951,7 +4951,7 @@
       "title": "Audio for speed and reverse (pitch-preserving)",
       "source": {
         "file": "docs/wbs/P2-core-editor.md",
-        "line": 654
+        "line": 655
       },
       "phase": "P2",
       "epic": "2D",
@@ -4987,7 +4987,7 @@
       "title": "Fades, keyframed volume, pan",
       "source": {
         "file": "docs/wbs/P2-core-editor.md",
-        "line": 677
+        "line": 678
       },
       "phase": "P2",
       "epic": "2E",
@@ -5024,7 +5024,7 @@
       "title": "Track buses, master limiter, meters",
       "source": {
         "file": "docs/wbs/P2-core-editor.md",
-        "line": 695
+        "line": 696
       },
       "phase": "P2",
       "epic": "2E",
@@ -5056,7 +5056,7 @@
       "title": "Loudness normalization and extract audio",
       "source": {
         "file": "docs/wbs/P2-core-editor.md",
-        "line": 714
+        "line": 715
       },
       "phase": "P2",
       "epic": "2E",
@@ -5100,7 +5100,7 @@
       "title": "Voiceover recording",
       "source": {
         "file": "docs/wbs/P2-core-editor.md",
-        "line": 735
+        "line": 736
       },
       "phase": "P2",
       "epic": "2E",
@@ -5145,7 +5145,7 @@
       "title": "Audio UI: waveforms, fade and volume handles, mixer panel",
       "source": {
         "file": "docs/wbs/P2-core-editor.md",
-        "line": 754
+        "line": 755
       },
       "phase": "P2",
       "epic": "2E",
@@ -5182,7 +5182,7 @@
       "title": "Auto-ducking (sidechain from voice tracks)",
       "source": {
         "file": "docs/wbs/P2-core-editor.md",
-        "line": 772
+        "line": 773
       },
       "phase": "P2",
       "epic": "2E",
@@ -5216,7 +5216,7 @@
       "title": "Basic voice effects (offline DSP)",
       "source": {
         "file": "docs/wbs/P2-core-editor.md",
-        "line": 793
+        "line": 794
       },
       "phase": "P2",
       "epic": "2E",
@@ -5254,7 +5254,7 @@
       "title": "Settings: Audio page (output and input devices, buffer, recording, loudness target)",
       "source": {
         "file": "docs/wbs/P2-core-editor.md",
-        "line": 812
+        "line": 813
       },
       "phase": "P2",
       "epic": "2E",
@@ -5293,7 +5293,7 @@
       "title": "Proxy generation pipeline and policy",
       "source": {
         "file": "docs/wbs/P2-core-editor.md",
-        "line": 833
+        "line": 834
       },
       "phase": "P2",
       "epic": "2F",
@@ -5347,7 +5347,7 @@
       "title": "Proxy-aware preview/export source selection",
       "source": {
         "file": "docs/wbs/P2-core-editor.md",
-        "line": 853
+        "line": 854
       },
       "phase": "P2",
       "epic": "2F",
@@ -5388,7 +5388,7 @@
       "title": "Relink missing media (hash-based) and media bin UI for health",
       "source": {
         "file": "docs/wbs/P2-core-editor.md",
-        "line": 871
+        "line": 872
       },
       "phase": "P2",
       "epic": "2F",
@@ -5451,7 +5451,7 @@
       "title": "Collect and archive",
       "source": {
         "file": "docs/wbs/P2-core-editor.md",
-        "line": 891
+        "line": 892
       },
       "phase": "P2",
       "epic": "2F",
@@ -5489,7 +5489,7 @@
       "title": "Image and image-sequence import, still duration defaults",
       "source": {
         "file": "docs/wbs/P2-core-editor.md",
-        "line": 912
+        "line": 913
       },
       "phase": "P2",
       "epic": "2F",
@@ -5535,7 +5535,7 @@
       "title": "Media bin tags, ratings, notes, collections and the bin sidebar",
       "source": {
         "file": "docs/wbs/P2-core-editor.md",
-        "line": 934
+        "line": 935
       },
       "phase": "P2",
       "epic": "2F",
@@ -5598,7 +5598,7 @@
       "title": "Media folders: model, commands and migration (ADR-0020)",
       "source": {
         "file": "docs/wbs/P2-core-editor.md",
-        "line": 956
+        "line": 957
       },
       "phase": "P2",
       "epic": "2F",
@@ -5648,7 +5648,7 @@
       "title": "Media folders in the bin: browse, organize, drag and drop",
       "source": {
         "file": "docs/wbs/P2-core-editor.md",
-        "line": 983
+        "line": 984
       },
       "phase": "P2",
       "epic": "2F",
@@ -5698,7 +5698,7 @@
       "title": "Import folders with their structure",
       "source": {
         "file": "docs/wbs/P2-core-editor.md",
-        "line": 1006
+        "line": 1007
       },
       "phase": "P2",
       "epic": "2F",
@@ -5734,7 +5734,7 @@
       "title": "Export preset system (L0 data) and built-in presets",
       "source": {
         "file": "docs/wbs/P2-core-editor.md",
-        "line": 1029
+        "line": 1030
       },
       "phase": "P2",
       "epic": "2G",
@@ -5778,7 +5778,7 @@
       "title": "Codecs: HEVC, AV1, ProRes, GIF, audio-only, sequences",
       "source": {
         "file": "docs/wbs/P2-core-editor.md",
-        "line": 1054
+        "line": 1055
       },
       "phase": "P2",
       "epic": "2G",
@@ -5815,7 +5815,7 @@
       "title": "Background export queue, range and marker-set export",
       "source": {
         "file": "docs/wbs/P2-core-editor.md",
-        "line": 1073
+        "line": 1074
       },
       "phase": "P2",
       "epic": "2G",
@@ -5855,7 +5855,7 @@
       "title": "Export dialog and queue panel",
       "source": {
         "file": "docs/wbs/P2-core-editor.md",
-        "line": 1095
+        "line": 1096
       },
       "phase": "P2",
       "epic": "2G",
@@ -5908,7 +5908,7 @@
       "title": "Advanced export controls",
       "source": {
         "file": "docs/wbs/P2-core-editor.md",
-        "line": 1116
+        "line": 1117
       },
       "phase": "P2",
       "epic": "2G",
@@ -5941,7 +5941,7 @@
       "title": "Dockable workspace, Short-form/Long-form layouts, i18n scaffold",
       "source": {
         "file": "docs/wbs/P2-core-editor.md",
-        "line": 1138
+        "line": 1139
       },
       "phase": "P2",
       "epic": "2H",
@@ -5991,7 +5991,7 @@
       "title": "Schema-driven inspector renderer",
       "source": {
         "file": "docs/wbs/P2-core-editor.md",
-        "line": 1168
+        "line": 1169
       },
       "phase": "P2",
       "epic": "2H",
@@ -6041,7 +6041,7 @@
       "title": "Inspector wiring: clip, track, sequence, audio, export panels",
       "source": {
         "file": "docs/wbs/P2-core-editor.md",
-        "line": 1188
+        "line": 1189
       },
       "phase": "P2",
       "epic": "2H",
@@ -6080,7 +6080,7 @@
       "title": "Command palette and registry-driven menus",
       "source": {
         "file": "docs/wbs/P2-core-editor.md",
-        "line": 1206
+        "line": 1207
       },
       "phase": "P2",
       "epic": "2H",
@@ -6118,7 +6118,7 @@
       "title": "Keymap engine, shortcut editor, NLE and CapCut presets",
       "source": {
         "file": "docs/wbs/P2-core-editor.md",
-        "line": 1224
+        "line": 1225
       },
       "phase": "P2",
       "epic": "2H",
@@ -6170,7 +6170,7 @@
       "title": "Preview overlays: transform handles, crop, safe areas, grid",
       "source": {
         "file": "docs/wbs/P2-core-editor.md",
-        "line": 1252
+        "line": 1253
       },
       "phase": "P2",
       "epic": "2H",
@@ -6213,7 +6213,7 @@
       "title": "UX design review gate (human)",
       "source": {
         "file": "docs/wbs/P2-core-editor.md",
-        "line": 1275
+        "line": 1276
       },
       "phase": "P2",
       "epic": "2H",
@@ -6251,7 +6251,7 @@
       "title": "Project settings: `project.set_settings` and File > Project settings…",
       "source": {
         "file": "docs/wbs/P2-core-editor.md",
-        "line": 1288
+        "line": 1289
       },
       "phase": "P2",
       "epic": "2H",
@@ -6288,7 +6288,7 @@
       "title": "Settings: Appearance page (interface scale, density, reduce motion)",
       "source": {
         "file": "docs/wbs/P2-core-editor.md",
-        "line": 1306
+        "line": 1307
       },
       "phase": "P2",
       "epic": "2H",
@@ -6324,7 +6324,7 @@
       "title": "Settings: Playback page (preview quality, proxies, scrub audio, loop)",
       "source": {
         "file": "docs/wbs/P2-core-editor.md",
-        "line": 1325
+        "line": 1326
       },
       "phase": "P2",
       "epic": "2H",
@@ -6362,7 +6362,7 @@
       "title": "History panel: every undo step, who made it, go back to any step",
       "source": {
         "file": "docs/wbs/P2-core-editor.md",
-        "line": 1341
+        "line": 1342
       },
       "phase": "P2",
       "epic": "2H",
@@ -6399,7 +6399,7 @@
       "title": "Context-menu framework: host, surfaces, command-derived items, keyboard and touch, contributions",
       "source": {
         "file": "docs/wbs/P2-core-editor.md",
-        "line": 1369
+        "line": 1370
       },
       "phase": "P2",
       "epic": "2H",
@@ -6450,7 +6450,7 @@
       "title": "Context menus for today's surfaces: bin, preview, timeline basics, inspector, chrome",
       "source": {
         "file": "docs/wbs/P2-core-editor.md",
-        "line": 1396
+        "line": 1397
       },
       "phase": "P2",
       "epic": "2H",
@@ -6500,7 +6500,7 @@
       "title": "Core tool set: mapping, annotations and completion (~30 tools)",
       "source": {
         "file": "docs/wbs/P2-core-editor.md",
-        "line": 1424
+        "line": 1425
       },
       "phase": "P2",
       "epic": "2I",
@@ -6551,7 +6551,7 @@
       "title": "Visual tools: contact sheet, filmstrip, waveform image",
       "source": {
         "file": "docs/wbs/P2-core-editor.md",
-        "line": 1444
+        "line": 1445
       },
       "phase": "P2",
       "epic": "2I",
@@ -6603,7 +6603,7 @@
       "title": "Checkpoints: edit.checkpoint / edit.restore",
       "source": {
         "file": "docs/wbs/P2-core-editor.md",
-        "line": 1465
+        "line": 1466
       },
       "phase": "P2",
       "epic": "2I",
@@ -6648,7 +6648,7 @@
       "title": "Optimistic concurrency: expected_rev everywhere",
       "source": {
         "file": "docs/wbs/P2-core-editor.md",
-        "line": 1484
+        "line": 1485
       },
       "phase": "P2",
       "epic": "2I",
@@ -6701,7 +6701,7 @@
       "title": "Tool profiles, change notifications and tools/list budget",
       "source": {
         "file": "docs/wbs/P2-core-editor.md",
-        "line": 1501
+        "line": 1502
       },
       "phase": "P2",
       "epic": "2I",
@@ -6732,7 +6732,7 @@
       "title": "Scripted-agent e2e: YouTube edit and 9:16 short via MCP only",
       "source": {
         "file": "docs/wbs/P2-core-editor.md",
-        "line": 1519
+        "line": 1520
       },
       "phase": "P2",
       "epic": "2I",
@@ -6775,7 +6775,7 @@
       "title": "Benchmark fixtures and Rust criterion suite",
       "source": {
         "file": "docs/wbs/P2-core-editor.md",
-        "line": 1541
+        "line": 1542
       },
       "phase": "P2",
       "epic": "2J",
@@ -6832,7 +6832,7 @@
       "title": "UI benchmarks: timeline pan/zoom and UI command RTT",
       "source": {
         "file": "docs/wbs/P2-core-editor.md",
-        "line": 1558
+        "line": 1559
       },
       "phase": "P2",
       "epic": "2J",
@@ -6866,7 +6866,7 @@
       "title": "Playback, scrub and A/V sync benchmarks",
       "source": {
         "file": "docs/wbs/P2-core-editor.md",
-        "line": 1573
+        "line": 1574
       },
       "phase": "P2",
       "epic": "2J",
@@ -6908,7 +6908,7 @@
       "title": "CI benchmark gate and trend dashboard",
       "source": {
         "file": "docs/wbs/P2-core-editor.md",
-        "line": 1588
+        "line": 1589
       },
       "phase": "P2",
       "epic": "2J",
@@ -6949,7 +6949,7 @@
       "title": "Crash-injection harness: 20 forced crashes, no data loss",
       "source": {
         "file": "docs/wbs/P2-core-editor.md",
-        "line": 1604
+        "line": 1605
       },
       "phase": "P2",
       "epic": "2J",
@@ -6993,7 +6993,7 @@
       "title": "Dogfood edit A: 10-min YouTube video with B-roll (human)",
       "source": {
         "file": "docs/wbs/P2-core-editor.md",
-        "line": 1622
+        "line": 1623
       },
       "phase": "P2",
       "epic": "2J",
@@ -7033,7 +7033,7 @@
       "title": "Dogfood edit B: 9:16 short with manual reframe, music and fades (human)",
       "source": {
         "file": "docs/wbs/P2-core-editor.md",
-        "line": 1637
+        "line": 1638
       },
       "phase": "P2",
       "epic": "2J",
@@ -7071,7 +7071,7 @@
       "title": "M2 exit review (human)",
       "source": {
         "file": "docs/wbs/P2-core-editor.md",
-        "line": 1651
+        "line": 1652
       },
       "phase": "P2",
       "epic": "2J",
@@ -7109,7 +7109,7 @@
       "title": "Background render cache (smart pre-render while idle)",
       "source": {
         "file": "docs/wbs/P2-core-editor.md",
-        "line": 1664
+        "line": 1665
       },
       "phase": "P2",
       "epic": "2J",
