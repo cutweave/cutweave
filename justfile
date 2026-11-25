@@ -131,7 +131,15 @@ ffmpeg-fetch *args:
 test-ffmpeg *args:
     . scripts/ffmpeg/env.sh && cargo nextest run -p cutweave-media --features ffmpeg {{args}}
 
-# The M1 exit gate (WP-1O.04, docs/milestones/M1-exit.md): builds the engine and CLI with FFmpeg and the app, then runs the M1 acceptance suite (UI cut and export, the same cut by an MCP agent compared with it, crash trials, golden frames, parity) and reports pass or fail per exit criterion into target/m1/ (`--trials N`, `--full` adds `just check`, `--evidence DIR`, `--criteria 1,2`)
+# The M1 demo video (`just m1-demo`): runs the M1 UI test (e2e/m1/m1-exit.spec.ts, real media: needs the FFmpeg bundle and the corpus) with Playwright's video recording on and copies the main window's video to target/m1/demo/m1-demo.webm
+m1-demo: e2e-build
+    rm -rf target/m1/demo target/m1/demo-raw && mkdir -p target/m1/demo target/m1/demo-raw
+    { . scripts/ffmpeg/env.sh 2>/dev/null || true; } && CUTWEAVE_E2E_VIDEO_DIR="$PWD/target/m1/demo-raw" pnpm --filter @cutweave/desktop exec playwright test e2e/m1/m1-exit.spec.ts
+    cp target/m1/demo-raw/main-window-1.webm target/m1/demo/m1-demo.webm
+    rm -rf target/m1/demo-raw
+    @ls -l target/m1/demo/m1-demo.webm
+
+# The M1 exit gate (WP-1O.04, docs/milestones/M1-exit.md; the demo video is `just m1-demo`): builds the engine and CLI with FFmpeg and the app, then runs the M1 acceptance suite (UI cut and export, the same cut by an MCP agent compared with it, crash trials, golden frames, parity) and reports pass or fail per exit criterion into target/m1/ (`--trials N`, `--full` adds `just check`, `--evidence DIR`, `--criteria 1,2`)
 m1-gate *args:
     python scripts/m1-gate.py {{args}}
 
