@@ -128,6 +128,10 @@ ffmpeg-fetch *args:
 test-ffmpeg *args:
     . scripts/ffmpeg/env.sh && cargo nextest run -p cutweave-media --features ffmpeg {{args}}
 
+# The M1 exit gate (WP-1O.04, docs/milestones/M1-exit.md): builds the engine and CLI with FFmpeg and the app, then runs the M1 acceptance suite (UI cut and export, the same cut by an MCP agent compared with it, crash trials, golden frames, parity) and reports pass or fail per exit criterion into target/m1/ (`--trials N`, `--full` adds `just check`, `--evidence DIR`, `--criteria 1,2`)
+m1-gate *args:
+    python scripts/m1-gate.py {{args}}
+
 # Everything CI checks that this machine can run: the fast gate, Storybook visual regression,
 # axe and offline-fonts tests against this OS's baselines, and the golden frames on the software
 # adapter. Run before merging to main.
