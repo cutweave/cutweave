@@ -16,6 +16,7 @@
 //!   [`Migration`], [`OpenOutcome`]): ordered `vN → vN+1` migrations on the raw JSON with golden
 //!   fixtures; documents from newer versions open read-only (arch §4.3, ADR-0006).
 
+mod animate;
 mod custom;
 mod id;
 mod item;
@@ -33,6 +34,12 @@ mod time;
 mod timecode;
 mod validate;
 
+pub use animate::{
+    AnimValue, Animatable, BEZIER_Y_LIMIT, Easing, Evaluator, Interp, Keyframe, KeyframeError,
+    KeyframeRule, Keyframes, LinearRgba, MAX_KEYFRAMES, PRESET_PATTERN, PropId, PropSpec,
+    PropValue, SPRING_DAMPING, SPRING_MASS, SPRING_STIFFNESS, ShortestAngle, UnknownEasing,
+    UnknownProp, ValueRange, ValueType, is_preset_name, sample_times,
+};
 pub use custom::{
     Custom, Extra, NAMESPACE_PATTERN, NamespaceError, canonical_json_pretty, is_valid_namespace,
 };
@@ -42,7 +49,7 @@ pub use id::{
     EntityId, EntityKind, GroupId, IdError, IdGen, ItemId, MarkerId, MediaId, SeededGen,
     SequenceId, TrackId,
 };
-pub use item::{Animatable, AudioProps, Clip, Item, Keyframes, Transform, Vec2, VisualProps};
+pub use item::{AudioProps, Clip, Item, Transform, Vec2, VisualProps};
 pub use marker::{InOut, Marker, MarkerKind, MarkerKindError, Markers};
 pub use media::{
     AudioInfo, ColorPrimaries, ColorRange, ColorTags, MatrixCoefficients, MediaAsset, MediaKind,

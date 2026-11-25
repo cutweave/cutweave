@@ -9,9 +9,9 @@ use std::collections::{BTreeMap, BTreeSet};
 use serde::Serialize;
 
 use crate::{
-    CURRENT_SCHEMA_VERSION, Clip, Custom, Duration, EntityKind, GroupId, Item, ItemId,
+    Animatable, CURRENT_SCHEMA_VERSION, Clip, Custom, Duration, EntityKind, GroupId, Item, ItemId,
     MAX_SAFE_FLICKS, MediaId, MediaKind, Project, Sequence, SequenceFormat, SequenceId, Time,
-    TrackId, TrackKind, Vec2, item::Animatable,
+    TrackId, TrackKind, Vec2,
 };
 
 /// Largest canvas side accepted by validation.

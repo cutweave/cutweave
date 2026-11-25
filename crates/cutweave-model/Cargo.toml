@@ -24,6 +24,10 @@ specta.workspace = true
 # Only for the `Time` -> TS `number` override (`specta_typescript::Number`); no exporter runs here.
 specta-typescript.workspace = true
 thiserror.workspace = true
+# Keyframe easing (WP-2C.02, keyframes §6): pure-Rust exp/sin/cos/pow, so spring and colour curves
+# are bit-identical on every platform and in the wasm module (WP-2C.06). Platform libms differ in
+# the last bits. MIT; no dependencies; already in the lockfile (through num-traits and naga).
+libm = "0.2.16"
 proptest = { workspace = true, optional = true }
 
 # Real UUIDv7 needs OS entropy and a wall clock, which wasm32-unknown-unknown lacks. There the
@@ -32,11 +36,17 @@ proptest = { workspace = true, optional = true }
 uuid.workspace = true
 
 [dev-dependencies]
+criterion.workspace = true
 insta.workspace = true
 proptest.workspace = true
 specta.workspace = true
 specta-serde.workspace = true
 specta-typescript.workspace = true
+
+# Keyframe evaluation budget (WP-2C.02): 30 animated properties at one time, 50k-key lookup.
+[[bench]]
+name = "animate"
+harness = false
 
 [lints]
 workspace = true
