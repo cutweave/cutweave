@@ -4,6 +4,7 @@
     {
       "after": {
         "custom": {},
+        "folders": {},
         "media": {},
         "meta": {
           "app_version": null,
@@ -81,6 +82,7 @@
       },
       "before": {
         "custom": {},
+        "folders": {},
         "media": {},
         "meta": {
           "app_version": null,
@@ -245,12 +247,15 @@
     {
       "after": {
         "custom": {},
+        "folders": {},
         "media": {
           "med_000000000004771ba4a23020bc56afc3": {
             "content_hash": "fake:/media/interview.mp4",
             "custom": {},
+            "folder": null,
             "id": "med_000000000004771ba4a23020bc56afc3",
             "kind": "video",
+            "name": null,
             "path_abs": "/media/interview.mp4",
             "path_rel": null,
             "probe": {
@@ -377,6 +382,7 @@
       },
       "before": {
         "custom": {},
+        "folders": {},
         "media": {},
         "meta": {
           "app_version": null,
@@ -460,8 +466,10 @@
           "value": {
             "content_hash": "fake:/media/interview.mp4",
             "custom": {},
+            "folder": null,
             "id": "med_000000000004771ba4a23020bc56afc3",
             "kind": "video",
+            "name": null,
             "path_abs": "/media/interview.mp4",
             "path_rel": null,
             "probe": {
@@ -567,8 +575,10 @@
           "old": {
             "content_hash": "fake:/media/interview.mp4",
             "custom": {},
+            "folder": null,
             "id": "med_000000000004771ba4a23020bc56afc3",
             "kind": "video",
+            "name": null,
             "path_abs": "/media/interview.mp4",
             "path_rel": null,
             "probe": {
@@ -632,12 +642,15 @@
     {
       "after": {
         "custom": {},
+        "folders": {},
         "media": {
           "med_000000000004771ba4a23020bc56afc3": {
             "content_hash": "fake:/media/interview.mp4",
             "custom": {},
+            "folder": null,
             "id": "med_000000000004771ba4a23020bc56afc3",
             "kind": "video",
+            "name": null,
             "path_abs": "/media/interview.mp4",
             "path_rel": null,
             "probe": {
@@ -779,12 +792,15 @@
       },
       "before": {
         "custom": {},
+        "folders": {},
         "media": {
           "med_000000000004771ba4a23020bc56afc3": {
             "content_hash": "fake:/media/interview.mp4",
             "custom": {},
+            "folder": null,
             "id": "med_000000000004771ba4a23020bc56afc3",
             "kind": "video",
+            "name": null,
             "path_abs": "/media/interview.mp4",
             "path_rel": null,
             "probe": {
@@ -992,12 +1008,15 @@
     {
       "after": {
         "custom": {},
+        "folders": {},
         "media": {
           "med_000000000004771ba4a23020bc56afc3": {
             "content_hash": "fake:/media/interview.mp4",
             "custom": {},
+            "folder": null,
             "id": "med_000000000004771ba4a23020bc56afc3",
             "kind": "video",
+            "name": null,
             "path_abs": "/media/interview.mp4",
             "path_rel": null,
             "probe": {
@@ -1211,12 +1230,15 @@
       },
       "before": {
         "custom": {},
+        "folders": {},
         "media": {
           "med_000000000004771ba4a23020bc56afc3": {
             "content_hash": "fake:/media/interview.mp4",
             "custom": {},
+            "folder": null,
             "id": "med_000000000004771ba4a23020bc56afc3",
             "kind": "video",
+            "name": null,
             "path_abs": "/media/interview.mp4",
             "path_rel": null,
             "probe": {
@@ -1538,12 +1560,15 @@
     {
       "after": {
         "custom": {},
+        "folders": {},
         "media": {
           "med_000000000004771ba4a23020bc56afc3": {
             "content_hash": "fake:/media/interview.mp4",
             "custom": {},
+            "folder": null,
             "id": "med_000000000004771ba4a23020bc56afc3",
             "kind": "video",
+            "name": null,
             "path_abs": "/media/interview.mp4",
             "path_rel": null,
             "probe": {
@@ -1827,12 +1852,15 @@
       },
       "before": {
         "custom": {},
+        "folders": {},
         "media": {
           "med_000000000004771ba4a23020bc56afc3": {
             "content_hash": "fake:/media/interview.mp4",
             "custom": {},
+            "folder": null,
             "id": "med_000000000004771ba4a23020bc56afc3",
             "kind": "video",
+            "name": null,
             "path_abs": "/media/interview.mp4",
             "path_rel": null,
             "probe": {
@@ -2250,12 +2278,15 @@
     {
       "after": {
         "custom": {},
+        "folders": {},
         "media": {
           "med_000000000004771ba4a23020bc56afc3": {
             "content_hash": "fake:/media/interview.mp4",
             "custom": {},
+            "folder": null,
             "id": "med_000000000004771ba4a23020bc56afc3",
             "kind": "video",
+            "name": null,
             "path_abs": "/media/interview.mp4",
             "path_rel": null,
             "probe": {
@@ -2539,12 +2570,15 @@
       },
       "before": {
         "custom": {},
+        "folders": {},
         "media": {
           "med_000000000004771ba4a23020bc56afc3": {
             "content_hash": "fake:/media/interview.mp4",
             "custom": {},
+            "folder": null,
             "id": "med_000000000004771ba4a23020bc56afc3",
             "kind": "video",
+            "name": null,
             "path_abs": "/media/interview.mp4",
             "path_rel": null,
             "probe": {
@@ -2879,12 +2913,15 @@
     {
       "after": {
         "custom": {},
+        "folders": {},
         "media": {
           "med_000000000004771ba4a23020bc56afc3": {
             "content_hash": "fake:/media/interview.mp4",
             "custom": {},
+            "folder": null,
             "id": "med_000000000004771ba4a23020bc56afc3",
             "kind": "video",
+            "name": null,
             "path_abs": "/media/interview.mp4",
             "path_rel": null,
             "probe": {
@@ -3168,12 +3205,15 @@
       },
       "before": {
         "custom": {},
+        "folders": {},
         "media": {
           "med_000000000004771ba4a23020bc56afc3": {
             "content_hash": "fake:/media/interview.mp4",
             "custom": {},
+            "folder": null,
             "id": "med_000000000004771ba4a23020bc56afc3",
             "kind": "video",
+            "name": null,
             "path_abs": "/media/interview.mp4",
             "path_rel": null,
             "probe": {
@@ -3490,12 +3530,15 @@
     {
       "after": {
         "custom": {},
+        "folders": {},
         "media": {
           "med_000000000004771ba4a23020bc56afc3": {
             "content_hash": "fake:/media/interview.mp4",
             "custom": {},
+            "folder": null,
             "id": "med_000000000004771ba4a23020bc56afc3",
             "kind": "video",
+            "name": null,
             "path_abs": "/media/interview.mp4",
             "path_rel": null,
             "probe": {
@@ -3779,12 +3822,15 @@
       },
       "before": {
         "custom": {},
+        "folders": {},
         "media": {
           "med_000000000004771ba4a23020bc56afc3": {
             "content_hash": "fake:/media/interview.mp4",
             "custom": {},
+            "folder": null,
             "id": "med_000000000004771ba4a23020bc56afc3",
             "kind": "video",
+            "name": null,
             "path_abs": "/media/interview.mp4",
             "path_rel": null,
             "probe": {
@@ -4094,12 +4140,15 @@
     {
       "after": {
         "custom": {},
+        "folders": {},
         "media": {
           "med_000000000004771ba4a23020bc56afc3": {
             "content_hash": "fake:/media/interview.mp4",
             "custom": {},
+            "folder": null,
             "id": "med_000000000004771ba4a23020bc56afc3",
             "kind": "video",
+            "name": null,
             "path_abs": "/media/interview.mp4",
             "path_rel": null,
             "probe": {
@@ -4368,12 +4417,15 @@
       },
       "before": {
         "custom": {},
+        "folders": {},
         "media": {
           "med_000000000004771ba4a23020bc56afc3": {
             "content_hash": "fake:/media/interview.mp4",
             "custom": {},
+            "folder": null,
             "id": "med_000000000004771ba4a23020bc56afc3",
             "kind": "video",
+            "name": null,
             "path_abs": "/media/interview.mp4",
             "path_rel": null,
             "probe": {
@@ -4734,12 +4786,15 @@
     {
       "after": {
         "custom": {},
+        "folders": {},
         "media": {
           "med_000000000004771ba4a23020bc56afc3": {
             "content_hash": "fake:/media/interview.mp4",
             "custom": {},
+            "folder": null,
             "id": "med_000000000004771ba4a23020bc56afc3",
             "kind": "video",
+            "name": null,
             "path_abs": "/media/interview.mp4",
             "path_rel": null,
             "probe": {
@@ -5023,12 +5078,15 @@
       },
       "before": {
         "custom": {},
+        "folders": {},
         "media": {
           "med_000000000004771ba4a23020bc56afc3": {
             "content_hash": "fake:/media/interview.mp4",
             "custom": {},
+            "folder": null,
             "id": "med_000000000004771ba4a23020bc56afc3",
             "kind": "video",
+            "name": null,
             "path_abs": "/media/interview.mp4",
             "path_rel": null,
             "probe": {
