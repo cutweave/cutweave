@@ -26,7 +26,7 @@ fn update(
     })
 }
 
-fn clip_of<'a>(doc: &'a Project, id: ItemId) -> Result<&'a Clip, CmdError> {
+fn clip_of(doc: &Project, id: ItemId) -> Result<&Clip, CmdError> {
     doc.find_item(&id)
         .and_then(|at| at.item.as_clip())
         .ok_or_else(|| CmdError::unsupported("only clips have animatable properties"))

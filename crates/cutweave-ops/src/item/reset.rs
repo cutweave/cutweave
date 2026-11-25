@@ -104,7 +104,7 @@ impl ItemResetProps {
         }
     }
 
-    fn reset(&self, clip: &mut Clip, what: &(Vec<PropId>, bool)) -> Vec<String> {
+    fn reset(clip: &mut Clip, what: &(Vec<PropId>, bool)) -> Vec<String> {
         let mut changed = Vec::new();
         for id in &what.0 {
             if keyframe::set_static(clip, *id, &default_value(*id)) {
@@ -145,7 +145,7 @@ impl Command for ItemResetProps {
                 let clip = item
                     .as_clip_mut()
                     .ok_or_else(|| CmdError::unsupported("only clips have these properties"))?;
-                Ok(self.reset(clip, &what))
+                Ok(ItemResetProps::reset(clip, &what))
             })?;
             for c in done {
                 if !changed.contains(&c) {

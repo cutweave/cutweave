@@ -6,7 +6,12 @@
     clippy::unwrap_used,
     clippy::expect_used,
     clippy::many_single_char_names,
-    clippy::float_cmp
+    clippy::float_cmp,
+    clippy::too_many_lines,
+    clippy::needless_pass_by_value,
+    clippy::map_unwrap_or,
+    clippy::cast_possible_truncation,
+    clippy::cast_precision_loss
 )]
 
 mod common;

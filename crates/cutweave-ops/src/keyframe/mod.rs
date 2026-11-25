@@ -607,11 +607,12 @@ pub(crate) fn check_value_type(
     id: PropId,
     value: &KeyValue,
 ) -> Result<(), CmdError> {
-    let ok = match (id.spec().value_type, value) {
-        (ValueType::Vec2, KeyValue::Vec2(_)) | (ValueType::Bool, KeyValue::Bool(_)) => true,
-        (ValueType::Scalar | ValueType::Angle, KeyValue::Number(_)) => true,
-        _ => false,
-    };
+    let ok = matches!(
+        (id.spec().value_type, value),
+        (ValueType::Vec2, KeyValue::Vec2(_))
+            | (ValueType::Bool, KeyValue::Bool(_))
+            | (ValueType::Scalar | ValueType::Angle, KeyValue::Number(_))
+    );
     if ok {
         Ok(())
     } else {

@@ -715,6 +715,7 @@ pub struct ClipRippleTrim {
 }
 
 /// An edge trim, rippling or not (the params `clip.trim` and `clip.ripple_trim` share).
+#[allow(clippy::struct_excessive_bools)] // the independent flags of the two commands
 struct EdgeTrim {
     item: ItemId,
     edge: TrimEdge,
