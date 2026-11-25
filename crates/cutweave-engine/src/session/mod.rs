@@ -645,7 +645,10 @@ impl Session {
                 status.name
             )
         } else {
-            format!("\"{}\" has unsaved changes; save them with project.save, or {how}", status.name)
+            format!(
+                "\"{}\" has unsaved changes; save them with project.save, or {how}",
+                status.name
+            )
         };
         Err(CmdError::conflict(ConflictReason::UnsavedChanges, detail))
     }
@@ -687,10 +690,12 @@ pub(crate) fn announce_opened(deps: &Deps, status: ProjectStatus) {
 /// Publishes `project.opening`: `actor` starts opening `path` (ADR-0029).
 pub(crate) fn announce_opening(deps: &Deps, path: &Path, actor: &Actor) {
     deps.events
-        .publish(EngineEvent::Session(SessionEvent::Opening(ProjectOpening {
-            path: path.to_string_lossy().into_owned(),
-            actor: actor.to_string(),
-        })));
+        .publish(EngineEvent::Session(SessionEvent::Opening(
+            ProjectOpening {
+                path: path.to_string_lossy().into_owned(),
+                actor: actor.to_string(),
+            },
+        )));
 }
 
 /// Publishes `project.open_failed`: `actor`'s open of `path` failed with `error`, or was
@@ -701,13 +706,15 @@ pub(crate) fn announce_open_failed(deps: &Deps, path: &Path, actor: &Actor, erro
         _ => None,
     };
     deps.events
-        .publish(EngineEvent::Session(SessionEvent::OpenFailed(ProjectOpenFailed {
-            path: path.to_string_lossy().into_owned(),
-            actor: actor.to_string(),
-            code: error.code().to_owned(),
-            reason,
-            message: error.message(),
-        })));
+        .publish(EngineEvent::Session(SessionEvent::OpenFailed(
+            ProjectOpenFailed {
+                path: path.to_string_lossy().into_owned(),
+                actor: actor.to_string(),
+                code: error.code().to_owned(),
+                reason,
+                message: error.message(),
+            },
+        )));
 }
 
 /// Publishes `project.closed`.

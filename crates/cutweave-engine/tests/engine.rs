@@ -397,9 +397,7 @@ fn an_open_saves_a_projects_changes_with_autosave_on_and_refuses_with_it_off() {
         );
         assert!(err.to_string().contains("project.save"), "{err}");
     }
-    let err = cli
-        .call(Call::new("project.close", json!({})))
-        .unwrap_err();
+    let err = cli.call(Call::new("project.close", json!({}))).unwrap_err();
     assert_eq!(err.code(), "conflict");
     assert_eq!(h.status().unwrap().name, "B edited");
     // `save: true` saves them, so it closes.
