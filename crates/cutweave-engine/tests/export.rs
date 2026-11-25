@@ -205,8 +205,8 @@ fn an_export_with_a_preset_id_uses_its_size_rate_and_warns_without_failing() {
     let started = must(
         &conn,
         "export.start",
-        json!({"path": out_path, "preset": "tiktok",
-               "overrides": {"width": 64, "height": 36}}),
+        json!({"path": out_path, "preset": {"custom": {"preset": "tiktok",
+               "width": 64, "height": 36}}}),
     );
     assert_eq!(started["warnings"][0]["code"], json!("AspectMismatch"));
     assert_eq!(

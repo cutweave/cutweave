@@ -95,21 +95,23 @@ pub struct CustomExport {
     /// "low", "medium" or "high".
     #[serde(default)]
     pub quality: Option<ExportQuality>,
+    /// Base preset id; the other fields replace its values.
+    #[serde(default)]
+    pub preset: Option<String>,
 }
 
 /// What to make: the preset, or custom settings.
 #[wire]
 #[derive(Default)]
 pub enum ExportPreset {
-    /// MP4, H.264 + AAC 48 kHz stereo, at the sequence frame rate, fit into 1920x1080
-    /// (1080x1920 when portrait) without upscaling, high quality.
+    /// MP4, H.264 + AAC, fit into 1920x1080 (1080x1920 portrait), not upscaled, high quality.
     #[default]
     #[serde(rename = "h264-mp4-1080p")]
     H264Mp4Hd,
     /// MP4, H.264 + AAC at a custom size, frame rate and quality.
     #[serde(rename = "custom")]
     Custom(CustomExport),
-    /// A preset by id (`export.list_presets`): "youtube-1080p", "tiktok", a preset of your own.
+    /// A preset id (export.list_presets).
     #[serde(untagged)]
     Id(String),
 }
@@ -208,11 +210,9 @@ pub struct ExportStart {
     pub path: String,
     /// Part of the sequence to export (default: all of it).
     pub range: Option<ExportRange>,
-    /// "h264-mp4-1080p" (default), a preset id from export.list_presets ("youtube-1080p",
-    /// "tiktok", ...) or {"custom": {width, height, fps, quality}}.
+    /// "h264-mp4-1080p" (default), a preset id ("youtube-1080p") or {"custom": {width, height,
+    /// fps, quality, preset}}.
     pub preset: Option<ExportPreset>,
-    /// With a preset id: size, frame rate or quality to use instead of the preset's.
-    pub overrides: Option<CustomExport>,
     /// Hardware encoder: "auto" (default), "off", or {"force": "h264_nvenc"}.
     pub hw: Option<ExportHw>,
     /// Replace an existing file at `path` (default false).
@@ -594,8 +594,12 @@ impl ExportStart {
         let mut rate = None;
         let mut warnings = Vec::new();
         let mut preset_hw = None;
-        let (width, height, frame_rate, quality) = if let Some(ExportPreset::Id(id)) = &self.preset
-        {
+        let named = match &self.preset {
+            Some(ExportPreset::Id(id)) => Some((id, None)),
+            Some(ExportPreset::Custom(c)) => c.preset.as_ref().map(|id| (id, Some(c))),
+            _ => None,
+        };
+        let (width, height, frame_rate, quality) = if let Some((id, overrides)) = named {
             let spec = presets.get(id).ok_or_else(|| {
                 CmdError::invalid(
                     "/preset",
@@ -603,18 +607,12 @@ impl ExportStart {
                 )
             })?;
             spec.engine_support().map_err(CmdError::unsupported)?;
-            let p = presets::plan_preset(&spec, seq, length, self.overrides.as_ref())?;
+            let p = presets::plan_preset(&spec, seq, length, overrides)?;
             rate = p.rate;
             warnings = p.warnings;
             preset_hw = Some(p.hw);
             (p.width, p.height, p.frame_rate, p.quality)
         } else {
-            if self.overrides.is_some() {
-                return Err(CmdError::invalid(
-                    "/overrides",
-                    "overrides go with a preset id; the custom preset has its own fields",
-                ));
-            }
             resolve_preset(self.preset.as_ref(), seq)?
         };
         let (frames, duration) = frame_count(length, frame_rate)?;

@@ -488,6 +488,8 @@ export type CustomExport = {
 	fps?: FrameRate | null,
 	/**  "low", "medium" or "high". */
 	quality?: ExportQuality | null,
+	/**  Base preset id; the other fields replace its values. */
+	preset?: string | null,
 };
 
 /**  Whether decoders may use the hardware. */
@@ -651,14 +653,11 @@ export type ExportHw =
 
 /**  What to make: the preset, or custom settings. */
 export type ExportPreset = 
-/**
- *  MP4, H.264 + AAC 48 kHz stereo, at the sequence frame rate, fit into 1920x1080
- *  (1080x1920 when portrait) without upscaling, high quality.
- */
+/**  MP4, H.264 + AAC, fit into 1920x1080 (1080x1920 portrait), not upscaled, high quality. */
 "h264-mp4-1080p" | 
 /**  MP4, H.264 + AAC at a custom size, frame rate and quality. */
 { custom: CustomExport } | 
-/**  A preset by id (`export.list_presets`): "youtube-1080p", "tiktok", a preset of your own. */
+/**  A preset id (export.list_presets). */
 string;
 
 /**  A preset in a listing. */
@@ -738,12 +737,10 @@ export type ExportStart = {
 	/**  Part of the sequence to export (default: all of it). */
 	range?: ExportRange | null,
 	/**
-	 *  "h264-mp4-1080p" (default), a preset id from export.list_presets ("youtube-1080p",
-	 *  "tiktok", ...) or {"custom": {width, height, fps, quality}}.
+	 *  "h264-mp4-1080p" (default), a preset id ("youtube-1080p") or {"custom": {width, height,
+	 *  fps, quality, preset}}.
 	 */
 	preset?: ExportPreset | null,
-	/**  With a preset id: size, frame rate or quality to use instead of the preset's. */
-	overrides?: CustomExport | null,
 	/**  Hardware encoder: "auto" (default), "off", or {"force": "h264_nvenc"}. */
 	hw?: ExportHw | null,
 	/**  Replace an existing file at `path` (default false). */

@@ -1012,13 +1012,13 @@ pub fn plan_preset(
     let mut quality = ExportQuality::default();
     if let Some(o) = overrides {
         if let Some(w) = o.width {
-            width = check_side("/overrides/width", w)?;
+            width = check_side("/preset/custom/width", w)?;
         }
         if let Some(h) = o.height {
-            height = check_side("/overrides/height", h)?;
+            height = check_side("/preset/custom/height", h)?;
         }
         if let Some(f) = o.fps {
-            check_rate("/overrides/fps", f)?;
+            check_rate("/preset/custom/fps", f)?;
             frame_rate = f;
         }
         if let Some(q) = o.quality {

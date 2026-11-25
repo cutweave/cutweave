@@ -86,7 +86,7 @@ expression: "json!({\n    \"meta\": serde_json::to_value(meta).unwrap(), \"input
                 {
                   "type": "string",
                   "const": "h264-mp4-1080p",
-                  "description": "MP4, H.264 + AAC 48 kHz stereo, at the sequence frame rate, fit into 1920x1080\n(1080x1920 when portrait) without upscaling, high quality."
+                  "description": "MP4, H.264 + AAC, fit into 1920x1080 (1080x1920 portrait), not upscaled, high quality."
                 },
                 {
                   "type": "object",
@@ -170,6 +170,14 @@ expression: "json!({\n    \"meta\": serde_json::to_value(meta).unwrap(), \"input
                             }
                           ],
                           "default": null
+                        },
+                        "preset": {
+                          "description": "Base preset id; the other fields replace its values.",
+                          "type": [
+                            "string",
+                            "null"
+                          ],
+                          "default": null
                         }
                       },
                       "additionalProperties": false
@@ -183,7 +191,7 @@ expression: "json!({\n    \"meta\": serde_json::to_value(meta).unwrap(), \"input
                 },
                 {
                   "type": "string",
-                  "description": "A preset by id (`export.list_presets`): \"youtube-1080p\", \"tiktok\", a preset of your own."
+                  "description": "A preset id (export.list_presets)."
                 }
               ],
               "description": "What to make: the preset, or custom settings."
@@ -192,94 +200,7 @@ expression: "json!({\n    \"meta\": serde_json::to_value(meta).unwrap(), \"input
               "type": "null"
             }
           ],
-          "description": "\"h264-mp4-1080p\" (default), a preset id from export.list_presets (\"youtube-1080p\",\n\"tiktok\", ...) or {\"custom\": {width, height, fps, quality}}.",
-          "default": null
-        },
-        "overrides": {
-          "type": [
-            "object",
-            "null"
-          ],
-          "additionalProperties": false,
-          "properties": {
-            "width": {
-              "type": [
-                "integer",
-                "null"
-              ],
-              "format": "uint32",
-              "minimum": 0,
-              "description": "Frame width in pixels: even, 16-8192.",
-              "default": null
-            },
-            "height": {
-              "type": [
-                "integer",
-                "null"
-              ],
-              "format": "uint32",
-              "minimum": 0,
-              "description": "Frame height in pixels: even, 16-8192.",
-              "default": null
-            },
-            "fps": {
-              "description": "Frame rate, e.g. {\"num\": 30, \"den\": 1}: at most 240 fps, a whole number of flicks per\nframe.",
-              "type": [
-                "object",
-                "null"
-              ],
-              "properties": {
-                "num": {
-                  "type": "integer",
-                  "minimum": 1,
-                  "maximum": 4294967295,
-                  "description": "Frames."
-                },
-                "den": {
-                  "type": "integer",
-                  "minimum": 1,
-                  "maximum": 4294967295,
-                  "description": "Seconds."
-                }
-              },
-              "required": [
-                "num",
-                "den"
-              ],
-              "additionalProperties": false,
-              "default": null
-            },
-            "quality": {
-              "anyOf": [
-                {
-                  "oneOf": [
-                    {
-                      "type": "string",
-                      "const": "low",
-                      "description": "Small files, visible compression."
-                    },
-                    {
-                      "type": "string",
-                      "const": "medium",
-                      "description": "Balanced."
-                    },
-                    {
-                      "type": "string",
-                      "const": "high",
-                      "description": "Close to the original (the default)."
-                    }
-                  ],
-                  "description": "How hard the encoder works for picture quality (and file size)."
-                },
-                {
-                  "type": "null"
-                }
-              ],
-              "description": "\"low\", \"medium\" or \"high\".",
-              "default": null
-            }
-          },
-          "description": "With a preset id: size, frame rate or quality to use instead of the preset's.",
+          "description": "\"h264-mp4-1080p\" (default), a preset id (\"youtube-1080p\") or {\"custom\": {width, height,\nfps, quality, preset}}.",
           "default": null
         },
         "hw": {
@@ -547,7 +468,7 @@ expression: "json!({\n    \"meta\": serde_json::to_value(meta).unwrap(), \"input
               {
                 "type": "string",
                 "const": "h264-mp4-1080p",
-                "description": "MP4, H.264 + AAC 48 kHz stereo, at the sequence frame rate, fit into 1920x1080\n(1080x1920 when portrait) without upscaling, high quality."
+                "description": "MP4, H.264 + AAC, fit into 1920x1080 (1080x1920 portrait), not upscaled, high quality."
               },
               {
                 "type": "object",
@@ -631,6 +552,14 @@ expression: "json!({\n    \"meta\": serde_json::to_value(meta).unwrap(), \"input
                           }
                         ],
                         "default": null
+                      },
+                      "preset": {
+                        "description": "Base preset id; the other fields replace its values.",
+                        "type": [
+                          "string",
+                          "null"
+                        ],
+                        "default": null
                       }
                     },
                     "additionalProperties": false
@@ -644,7 +573,7 @@ expression: "json!({\n    \"meta\": serde_json::to_value(meta).unwrap(), \"input
               },
               {
                 "type": "string",
-                "description": "A preset by id (`export.list_presets`): \"youtube-1080p\", \"tiktok\", a preset of your own."
+                "description": "A preset id (export.list_presets)."
               }
             ],
             "description": "What to make: the preset, or custom settings."
@@ -653,94 +582,7 @@ expression: "json!({\n    \"meta\": serde_json::to_value(meta).unwrap(), \"input
             "type": "null"
           }
         ],
-        "description": "\"h264-mp4-1080p\" (default), a preset id from export.list_presets (\"youtube-1080p\",\n\"tiktok\", ...) or {\"custom\": {width, height, fps, quality}}.",
-        "default": null
-      },
-      "overrides": {
-        "type": [
-          "object",
-          "null"
-        ],
-        "additionalProperties": false,
-        "properties": {
-          "width": {
-            "type": [
-              "integer",
-              "null"
-            ],
-            "format": "uint32",
-            "minimum": 0,
-            "description": "Frame width in pixels: even, 16-8192.",
-            "default": null
-          },
-          "height": {
-            "type": [
-              "integer",
-              "null"
-            ],
-            "format": "uint32",
-            "minimum": 0,
-            "description": "Frame height in pixels: even, 16-8192.",
-            "default": null
-          },
-          "fps": {
-            "description": "Frame rate, e.g. {\"num\": 30, \"den\": 1}: at most 240 fps, a whole number of flicks per\nframe.",
-            "type": [
-              "object",
-              "null"
-            ],
-            "properties": {
-              "num": {
-                "type": "integer",
-                "minimum": 1,
-                "maximum": 4294967295,
-                "description": "Frames."
-              },
-              "den": {
-                "type": "integer",
-                "minimum": 1,
-                "maximum": 4294967295,
-                "description": "Seconds."
-              }
-            },
-            "required": [
-              "num",
-              "den"
-            ],
-            "additionalProperties": false,
-            "default": null
-          },
-          "quality": {
-            "anyOf": [
-              {
-                "oneOf": [
-                  {
-                    "type": "string",
-                    "const": "low",
-                    "description": "Small files, visible compression."
-                  },
-                  {
-                    "type": "string",
-                    "const": "medium",
-                    "description": "Balanced."
-                  },
-                  {
-                    "type": "string",
-                    "const": "high",
-                    "description": "Close to the original (the default)."
-                  }
-                ],
-                "description": "How hard the encoder works for picture quality (and file size)."
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "description": "\"low\", \"medium\" or \"high\".",
-            "default": null
-          }
-        },
-        "description": "With a preset id: size, frame rate or quality to use instead of the preset's.",
+        "description": "\"h264-mp4-1080p\" (default), a preset id (\"youtube-1080p\") or {\"custom\": {width, height,\nfps, quality, preset}}.",
         "default": null
       },
       "hw": {

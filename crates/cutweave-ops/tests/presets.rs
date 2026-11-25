@@ -358,8 +358,8 @@ fn export_start_with_a_preset_id_plans_size_rate_and_hardware() {
     let (_, plans) = export(
         &h,
         &store,
-        json!({"path": out_path(), "preset": "youtube-1080p", "overwrite": true,
-               "hw": "off", "overrides": {"quality": "low", "width": 1280, "height": 720}}),
+        json!({"path": out_path(), "overwrite": true, "hw": "off", "preset": {"custom": {"preset": "youtube-1080p",
+                "quality": "low", "width": 1280, "height": 720}}}),
     );
     let plan = &plans[0];
     assert_eq!(plan.hw, ExportHw::Off);
@@ -413,7 +413,7 @@ fn presets_this_build_cannot_encode_fail_with_unsupported_and_list_as_such() {
             .unwrap()
             .contains("WP-2G.02")
     );
-    // Unknown ids and overrides without an id are invalid.
+    // Unknown ids, also as the base of a custom preset, are invalid.
     let (out, _) = export(
         &h,
         &store,
@@ -423,7 +423,7 @@ fn presets_this_build_cannot_encode_fail_with_unsupported_and_list_as_such() {
     let (out, _) = export(
         &h,
         &store,
-        json!({"path": out_path(), "overrides": {"quality": "low"}, "overwrite": true}),
+        json!({"path": out_path(), "preset": {"custom": {"preset": "nope"}}, "overwrite": true}),
     );
     assert_eq!(out.unwrap_err().code(), "invalid");
 }

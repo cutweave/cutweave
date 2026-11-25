@@ -2482,6 +2482,14 @@
                   "null"
                 ]
               },
+              "preset": {
+                "default": null,
+                "description": "Base preset id; the other fields replace its values.",
+                "type": [
+                  "string",
+                  "null"
+                ]
+              },
               "quality": {
                 "anyOf": [
                   {
@@ -3385,93 +3393,6 @@
             "default": null,
             "description": "Hardware encoder: \"auto\" (default), \"off\", or {\"force\": \"h264_nvenc\"}."
           },
-          "overrides": {
-            "additionalProperties": false,
-            "default": null,
-            "description": "With a preset id: size, frame rate or quality to use instead of the preset's.",
-            "properties": {
-              "fps": {
-                "additionalProperties": false,
-                "default": null,
-                "description": "Frame rate, e.g. {\"num\": 30, \"den\": 1}: at most 240 fps, a whole number of flicks per\nframe.",
-                "properties": {
-                  "den": {
-                    "description": "Seconds.",
-                    "maximum": 4294967295,
-                    "minimum": 1,
-                    "type": "integer"
-                  },
-                  "num": {
-                    "description": "Frames.",
-                    "maximum": 4294967295,
-                    "minimum": 1,
-                    "type": "integer"
-                  }
-                },
-                "required": [
-                  "num",
-                  "den"
-                ],
-                "type": [
-                  "object",
-                  "null"
-                ]
-              },
-              "height": {
-                "default": null,
-                "description": "Frame height in pixels: even, 16-8192.",
-                "format": "uint32",
-                "minimum": 0,
-                "type": [
-                  "integer",
-                  "null"
-                ]
-              },
-              "quality": {
-                "anyOf": [
-                  {
-                    "description": "How hard the encoder works for picture quality (and file size).",
-                    "oneOf": [
-                      {
-                        "const": "low",
-                        "description": "Small files, visible compression.",
-                        "type": "string"
-                      },
-                      {
-                        "const": "medium",
-                        "description": "Balanced.",
-                        "type": "string"
-                      },
-                      {
-                        "const": "high",
-                        "description": "Close to the original (the default).",
-                        "type": "string"
-                      }
-                    ]
-                  },
-                  {
-                    "type": "null"
-                  }
-                ],
-                "default": null,
-                "description": "\"low\", \"medium\" or \"high\"."
-              },
-              "width": {
-                "default": null,
-                "description": "Frame width in pixels: even, 16-8192.",
-                "format": "uint32",
-                "minimum": 0,
-                "type": [
-                  "integer",
-                  "null"
-                ]
-              }
-            },
-            "type": [
-              "object",
-              "null"
-            ]
-          },
           "overwrite": {
             "default": null,
             "description": "Replace an existing file at `path` (default false).",
@@ -3490,7 +3411,7 @@
                 "anyOf": [
                   {
                     "const": "h264-mp4-1080p",
-                    "description": "MP4, H.264 + AAC 48 kHz stereo, at the sequence frame rate, fit into 1920x1080\n(1080x1920 when portrait) without upscaling, high quality.",
+                    "description": "MP4, H.264 + AAC, fit into 1920x1080 (1080x1920 portrait), not upscaled, high quality.",
                     "type": "string"
                   },
                   {
@@ -3535,6 +3456,14 @@
                             "minimum": 0,
                             "type": [
                               "integer",
+                              "null"
+                            ]
+                          },
+                          "preset": {
+                            "default": null,
+                            "description": "Base preset id; the other fields replace its values.",
+                            "type": [
+                              "string",
                               "null"
                             ]
                           },
@@ -3587,7 +3516,7 @@
                     "type": "object"
                   },
                   {
-                    "description": "A preset by id (`export.list_presets`): \"youtube-1080p\", \"tiktok\", a preset of your own.",
+                    "description": "A preset id (export.list_presets).",
                     "type": "string"
                   }
                 ],
@@ -3598,7 +3527,7 @@
               }
             ],
             "default": null,
-            "description": "\"h264-mp4-1080p\" (default), a preset id from export.list_presets (\"youtube-1080p\",\n\"tiktok\", ...) or {\"custom\": {width, height, fps, quality}}."
+            "description": "\"h264-mp4-1080p\" (default), a preset id (\"youtube-1080p\") or {\"custom\": {width, height,\nfps, quality, preset}}."
           },
           "range": {
             "additionalProperties": false,
