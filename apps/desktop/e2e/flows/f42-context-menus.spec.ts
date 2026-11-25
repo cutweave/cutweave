@@ -208,7 +208,6 @@ test.describe("F42 context menus", () => {
         row: RegExp,
       ) => {
         await expect(async () => {
-          await page.keyboard.press("Escape");
           await page.mouse.click(at.x, at.y, { button: "right" });
           await expect(menuOf.getByRole("menuitemcheckbox", { name: row })).toBeChecked({
             timeout: 1500,
