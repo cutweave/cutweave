@@ -89,18 +89,22 @@ pub struct JobProgress {
     pub message: Option<String>,
     /// Units done so far (an export: frames handed to the encoder).
     #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[specta(type = Option<specta_typescript::Number>)]
     pub frame: Option<u64>,
     /// Units in all (an export: frames in the file).
     #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[specta(type = Option<specta_typescript::Number>)]
     pub frames: Option<u64>,
     /// Speed in units per second.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub fps: Option<f64>,
     /// Estimated time left, in milliseconds.
     #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[specta(type = Option<specta_typescript::Number>)]
     pub eta_ms: Option<u64>,
     /// Bytes written so far.
     #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[specta(type = Option<specta_typescript::Number>)]
     pub bytes: Option<u64>,
 }
 
