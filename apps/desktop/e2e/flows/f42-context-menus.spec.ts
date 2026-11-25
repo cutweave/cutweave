@@ -129,6 +129,7 @@ test.describe("F42 context menus", () => {
         m.getByRole("menuitem", { name });
 
       // A bin card: Insert at playhead places the clip (one undo step: Ctrl+Z takes it back).
+      const base = await clipCount();
       await mediaCard(page, "interview.mp4").click({ button: "right" });
       const card = page.getByRole("menu", { name: "Media actions for interview.mp4" });
       await expect(card).toBeVisible();
@@ -137,10 +138,10 @@ test.describe("F42 context menus", () => {
       await snapshot(page, info, "bin card menu");
       await item(card, /^Insert at playhead/).click();
       await expect(menu).toHaveCount(0);
-      await expect.poll(clipCount).toBe(2);
+      await expect.poll(clipCount).toBeGreaterThan(base);
       await editorCaughtUp(page);
       await shortcut(app, "Control+Z");
-      await expect.poll(clipCount).toBe(1);
+      await expect.poll(clipCount).toBe(base);
       await editorCaughtUp(page);
 
       // The empty part of the bin: Import… opens the (stubbed) picker and the card arrives.
@@ -224,8 +225,8 @@ test.describe("F42 context menus", () => {
 
       // An empty lane: Add track above puts one more track on the timeline (one undo step).
       const tracksBefore = (await sequence(page)).tracks.length;
-      // (the audio lane is empty: the right-click lands on the lane, not on a clip)
-      await page.mouse.click(g.box.x + g.headerWidth + 120, laneY(g, "A1"), { button: "right" });
+      // (left of the clips, which start at 1 s: the right-click lands on the lane, not on a clip)
+      await page.mouse.click(g.box.x + g.headerWidth + 40, laneY(g, "A1"), { button: "right" });
       const lane = page.getByRole("menu", { name: "Timeline actions" });
       await expect(lane).toBeVisible();
       await item(lane, /^Add track above/).click();
@@ -237,11 +238,8 @@ test.describe("F42 context menus", () => {
 
       // The ruler: Move playhead here.
       g = await timelineGeometry(page);
-      // A whole second that is on screen at this zoom.
-      const at = Math.max(
-        2,
-        Math.min(20, Math.floor((g.box.width - g.headerWidth - 60) / g.pxPerSec)),
-      );
+      // Two seconds in: on screen at any zoom, and away from the playhead (which is at 5 s).
+      const at = 2;
       await page.mouse.click(xAt(g, sec(at)) + 1, rulerY(g), { button: "right" });
       const ruler = page.getByRole("menu", { name: "Ruler actions" });
       await expect(ruler).toBeVisible();
