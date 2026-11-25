@@ -12,6 +12,7 @@ import { LAYOUT_SAVE_DELAY_MS } from "../dock/Dock.tsx";
 import { binStore, initialBinState } from "../media/binStore.ts";
 import { prefsStore } from "../prefs/prefsStore.ts";
 import { EditorShell } from "../shell/EditorShell.tsx";
+import { docStore } from "../state/docStore.ts";
 import { toastStore } from "../state/toastStore.ts";
 import { initialViewState, viewStore } from "../state/viewStore.ts";
 import { listWorkspaceCommands, runWorkspaceCommand } from "./commands.ts";
@@ -19,6 +20,7 @@ import { openPanelsStore, resetDockHost } from "./dockHost.ts";
 import { readLayoutMeta } from "./layoutMeta.ts";
 import { applyNewProjectWorkspace, workspaceForNewProject } from "./newProject.ts";
 import { registeredPanels } from "./panelRegistry.ts";
+import { forgetSuggestions, suggestShortForm } from "./suggestShortForm.ts";
 
 beforeAll(() => {
   class ResizeObserverStub {
@@ -119,6 +121,50 @@ describe("Settings > General > Workspace for new projects", () => {
     });
     applyNewProjectWorkspace();
     expect(viewStore.getState().workspaceId).toBe("long-form");
+  });
+});
+
+describe("suggesting Short-form for a vertical sequence", () => {
+  const text = { title: "Vertical", message: "Short-form?", action: "Switch" };
+  const sequence = (width: number, height: number) =>
+    ({
+      meta: { name: "P" },
+      media: {},
+      sequences: {
+        seq: { id: "seq", name: "S", tracks: {}, track_order: [], format: { width, height, frame_rate: { num: 30, den: 1 } } },
+      },
+    }) as never;
+
+  beforeEach(() => {
+    forgetSuggestions();
+    docStore.setState({ project: null });
+  });
+  afterEach(() => docStore.setState({ project: null }));
+
+  it("offers it once per project, only in Long-form, and never switches by itself", () => {
+    docStore.setState({ project: sequence(1080, 1920) });
+    viewStore.getState().switchWorkspace("short-form");
+    expect(suggestShortForm("C:/p/a.cutweave", text)).toBe(false);
+
+    viewStore.getState().switchWorkspace("long-form");
+    expect(suggestShortForm("C:/p/a.cutweave", text)).toBe(true);
+    expect(toastStore.getState().notices.map((n) => n.title)).toEqual(["Vertical"]);
+    expect(viewStore.getState().workspaceId).toBe("long-form");
+    // Once per project; another project is asked on its own.
+    expect(suggestShortForm("C:/p/a.cutweave", text)).toBe(false);
+    expect(suggestShortForm("C:/p/b.cutweave", text)).toBe(true);
+
+    // Its button is the only way it switches.
+    toastStore.getState().notices.at(-1)?.actions?.[0]?.onClick();
+    expect(viewStore.getState().workspaceId).toBe("short-form");
+  });
+
+  it("stays quiet for a horizontal or a missing sequence", () => {
+    viewStore.getState().switchWorkspace("long-form");
+    expect(suggestShortForm("C:/p/c.cutweave", text)).toBe(false);
+    docStore.setState({ project: sequence(1920, 1080) });
+    expect(suggestShortForm("C:/p/c.cutweave", text)).toBe(false);
+    expect(toastStore.getState().notices).toEqual([]);
   });
 });
 

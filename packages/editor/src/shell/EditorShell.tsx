@@ -11,6 +11,7 @@ import { usePref } from "../prefs/prefsStore.ts";
 import { desktopFromWindow } from "../session/desktop.ts";
 import { useProjectWiring, useWindowTitle } from "../session/useProject.ts";
 import { useTransportWiring } from "../transport/useTransport.ts";
+import { useSuggestShortForm } from "../workspace/suggestShortForm.ts";
 import { AboutDialog } from "./AboutDialog.tsx";
 import { EngineNotices } from "./EngineNotices.tsx";
 import { ProjectDialogs, ReadOnlyBanner } from "./ProjectDialogs.tsx";
@@ -61,6 +62,8 @@ function Shell() {
   useWindowTitle();
   // Transport keys through the keymap; the timeline's playhead follows playback (WP-1M.04).
   useTransportWiring();
+  // A vertical sequence in Long-form: offer Short-form, once per project (WP-2H.01).
+  useSuggestShortForm();
 
   return (
     <TooltipProvider>

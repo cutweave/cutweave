@@ -490,6 +490,11 @@
       "title": "Layout reset",
       "body": "The saved panel layout could not be restored, so the default layout is showing."
     },
+    "suggest": {
+      "title": "This is a vertical video",
+      "body": "Short-form puts a tall preview in the middle and the timeline underneath.",
+      "action": "Switch to Short-form"
+    },
     "commands": {
       "openPanel": "Open panel",
       "closePanel": "Close panel",
