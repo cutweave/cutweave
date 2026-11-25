@@ -97,7 +97,8 @@ const KEY_HINTS: Readonly<Record<string, string>> = {
 /** Puts the surface tables, UI commands, command texts and hints into `services`. */
 export function registerSurfaceMenus(services: MenuServices): void {
   for (const info of SURFACE_COMMAND_INFO) services.commands.register(info);
-  for (const command of UI_COMMANDS) services.ui.register(command);
+  // Menu-only: they take their arguments from the menu's target, so the palette does not list them.
+  for (const command of UI_COMMANDS) services.ui.register({ ...command, hidden: true });
   for (const surface of SURFACES) services.surfaces.register(surface);
   for (const [command, binding] of Object.entries(KEY_HINTS)) registerKeyHint(command, binding);
 }
