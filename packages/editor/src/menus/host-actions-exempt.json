@@ -18,6 +18,10 @@
       "reason": "Select all in a text field runs main's `edit:run` on the focused element. It changes the field's selection, which is page state, not project state."
     },
     {
+      "id": "palette.copy_id",
+      "reason": "Copy command id in the command palette's row menu writes the command's id (`clip.split`) to the OS clipboard through the page's clipboard API. It is the person's clipboard, not project state."
+    },
+    {
       "id": "host.inspect_element",
       "reason": "Opens the page's developer tools at a point (Shift+right-click on dead space) through `window:inspectElement`, which main refuses in packaged builds. A contributor's debugging aid with no project effect."
     }
