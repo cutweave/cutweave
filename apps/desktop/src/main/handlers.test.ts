@@ -162,7 +162,7 @@ describe("createHandlers", () => {
   });
 
   it("delegates the title bar and menu bar actions (WP-1M.09)", async () => {
-    const dev = { reload: vi.fn(), toggleDevTools: vi.fn() };
+    const dev = { reload: vi.fn(), toggleDevTools: vi.fn(), inspectElement: vi.fn() };
     const h = createHandlers({ ...base, engineCredentials: () => null, dev });
     expect(await h["app:about"]()).toMatchObject({ name: "Cutweave", electron: "45.4.1" });
     await h["app:quit"]();
@@ -171,12 +171,14 @@ describe("createHandlers", () => {
     await h["edit:run"]("selectAll");
     await h["window:reload"]();
     await h["window:toggleDevTools"]();
+    await h["window:inspectElement"](12, 34);
     expect(base.quit).toHaveBeenCalledTimes(1);
     expect(base.toggleFullScreen).toHaveBeenCalledTimes(1);
     expect(base.setTheme).toHaveBeenCalledWith("light");
     expect(base.editCommand).toHaveBeenCalledWith("selectAll");
     expect(dev.reload).toHaveBeenCalledTimes(1);
     expect(dev.toggleDevTools).toHaveBeenCalledTimes(1);
+    expect(dev.inspectElement).toHaveBeenCalledWith(12, 34);
   });
 
   it("refuses Reload and developer tools in packaged builds", () => {
@@ -185,6 +187,7 @@ describe("createHandlers", () => {
     expect(() => h["window:toggleDevTools"]()).toThrow(
       /window:toggleDevTools is only available in development builds/,
     );
+    expect(() => h["window:inspectElement"](1, 2)).toThrow(DevOnlyError);
   });
 
   it("answers the media picker with validated absolute paths, or null when cancelled", async () => {

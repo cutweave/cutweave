@@ -394,6 +394,7 @@ test.describe("IPC", () => {
       "cutweave.shell.openExternal",
       "cutweave.shell.showItemInFolder",
       "cutweave.window.confirmClose",
+      "cutweave.window.inspectElement",
       "cutweave.window.onCloseRequested",
       "cutweave.window.reload",
       "cutweave.window.setDirty",

@@ -435,6 +435,8 @@ export interface CutweaveApi {
     reload(): Promise<void>;
     /** View > Toggle developer tools; development builds only (refused when packaged). */
     toggleDevTools(): Promise<void>;
+    /** "Inspect element" of the context-menu host at a point of the page; development builds only. */
+    inspectElement(x: number, y: number): Promise<void>;
   };
   /** Edit > Cut, Copy, Paste, Select all on the focused element (WP-1M.09). */
   readonly edit: {

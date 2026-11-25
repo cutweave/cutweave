@@ -87,6 +87,7 @@ export const invokeSchemas = {
   "window:setTheme": z.tuple([z.enum(THEMES)]),
   "window:reload": noArgs,
   "window:toggleDevTools": noArgs,
+  "window:inspectElement": z.tuple([z.number().int().min(0).max(100_000), z.number().int().min(0).max(100_000)]),
   "edit:run": z.tuple([z.enum(EDIT_ACTIONS)]),
   "prefs:get": noArgs,
   "prefs:set": preferenceWrite,

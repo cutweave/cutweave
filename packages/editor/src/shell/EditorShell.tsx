@@ -8,6 +8,7 @@ import { ExportDialog } from "../export/ExportDialog.tsx";
 import { useExportWiring } from "../export/useExport.ts";
 import { i18n } from "../i18n/index.ts";
 import { usePref } from "../prefs/prefsStore.ts";
+import { ContextMenuHost } from "../menus/host.tsx";
 import { desktopFromWindow } from "../session/desktop.ts";
 import { useProjectWiring, useWindowTitle } from "../session/useProject.ts";
 import { useTransportWiring } from "../transport/useTransport.ts";
@@ -81,6 +82,7 @@ function Shell() {
         <AboutDialog />
         <SettingsDialog />
         <Toasts />
+        <ContextMenuHost />
       </ToastProvider>
     </TooltipProvider>
   );
