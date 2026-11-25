@@ -169,8 +169,7 @@ describe("importMedia: progress and the summary", () => {
   const deps = () => ({
     engine: engineStore,
     toasts: toastStore,
-    t: (key: string, vars?: Record<string, string>) =>
-      i18n.t(key as never, vars as never) as string,
+    t: (key: string, vars?: Record<string, string>) => String(i18n.t(key as never, vars as never)),
   });
 
   it("shows how far the engine is while it probes, then replaces the toast with the summary", async () => {
