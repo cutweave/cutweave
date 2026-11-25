@@ -1,6 +1,6 @@
 # ADR-0028: Described output schemas describe the MCP result
 
-- **Status:** Proposed
+- **Status:** Accepted (product owner, 2026-11-25)
 - **Date:** 2026-11-25
 - **Deciders:** Cutweave maintainers (drafted by the issue #146 fix)
 - **Supersedes:** none (amends the MCP surface of ADR-009, arch §14 and §23)

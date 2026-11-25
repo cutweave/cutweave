@@ -958,7 +958,7 @@ MyVideo/                    ← project folder (user-chosen location)
 | 022 | Source preview: the preview plays a media item outside any sequence (`view.set_source`) (§10) | **Accepted** (product owner, 2026-11-24) |
 | 023 | Timeline edit semantics for P2: magnetic main track, placement modes, attachments, `EditReport`, replacing gesture updates (§4.3, §5.2; [spec](spec/timeline-edit-semantics.md)) | Proposed: review of WP-2A.01 |
 | 024 | Keyframes: item-relative flicks, per-segment easing, exact split and trim rules, `keyframe.*` commands (§4.2, §4.3, §8; [spec](spec/keyframes.md)) | Proposed: review of WP-2C.01 |
-| 028 | MCP result schemas: `cutweave_describe_command` serves the output schema of the MCP result (untrusted-text wrappers, no `render_frame` picture), generated from the wrapping rules (§14) | Proposed: issue #146 |
+| 028 | MCP result schemas: `cutweave_describe_command` serves the output schema of the MCP result (untrusted-text wrappers, no `render_frame` picture), generated from the wrapping rules (§14) | **Accepted** (product owner, 2026-11-25) |
 | 025 | Engine readiness: the ready line means serving, `--progress` `starting` lines, the supervisor judges a start by liveness (§2, §8, §19; [launch protocol](reference/launch-protocol.md)) | Proposed: review of the issue #143 fix |
 
 ## 24. Open questions (tracked; none block Phase 0)
