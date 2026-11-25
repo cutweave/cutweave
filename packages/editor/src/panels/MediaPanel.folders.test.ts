@@ -391,6 +391,30 @@ describe("importing into folders", () => {
   });
 });
 
+describe("double-clicking the empty body imports (#162)", () => {
+  it("opens the picker into the open folder, but a folder tile and a card keep their own", async () => {
+    load(project());
+    connect();
+    const pick = vi.fn(async () => ["/x/a.mp4"]);
+    (globalThis as { cutweave?: unknown }).cutweave = { dialog: { pickMediaFiles: pick } };
+    call.mockResolvedValue({ media: [], media_ids: [], failed: [], jobs: [] });
+    binStore.getState().openFolder("C:/p/film.cutweave", EMPTY);
+    view();
+    await userEvent.dblClick(screen.getByText("This folder is empty"));
+    await vi.waitFor(() =>
+      expect(call).toHaveBeenCalledWith("media.import", { paths: ["/x/a.mp4"], folder: EMPTY }),
+    );
+    cleanup();
+    call.mockClear();
+    pick.mockClear();
+    binStore.getState().openFolder("C:/p/film.cutweave", null);
+    view();
+    await userEvent.dblClick(tile("Interviews"));
+    expect(pick).not.toHaveBeenCalled();
+    expect(optionNames()).toEqual(["Day 1", "inside.mp4"]);
+  });
+});
+
 describe("search and folders", () => {
   it("All media is flat, with the folder path under each name and matching folders first", async () => {
     load(project());

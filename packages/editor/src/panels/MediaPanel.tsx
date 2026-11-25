@@ -1088,6 +1088,15 @@ export function MediaPanel() {
       aria-label={t("mediaBin.panelLabel")}
       data-drop-active={fileOver ? "true" : undefined}
       onKeyDown={onPanelKeyDown}
+      onDoubleClick={(e) => {
+        // A double-click on the empty body of the panel imports, as the Import button does.
+        const target = e.target as HTMLElement;
+        const inBody = target.closest(".cw-media__scroll") !== null;
+        const onControl = target.closest("[role=option], button, input, a") !== null;
+        if (inBody && !onControl && ready && !importer.busy) {
+          void importer.pickAndImport(open);
+        }
+      }}
       onDragOver={onDragOver}
       onDragEnter={onDragOver}
       onDragLeave={onDragLeave}
@@ -1267,6 +1276,11 @@ export function MediaPanel() {
             data-layout={layout}
             className="cw-media__list"
             onKeyDown={onKeyDown}
+            // A double-click is not a slow click: it opens or inserts instead of renaming.
+            onDoubleClickCapture={() => {
+              if (slowRename.current !== null) window.clearTimeout(slowRename.current);
+              slowRename.current = null;
+            }}
             onFocus={(e) => {
               const el = e.target as HTMLElement;
               const media = el.closest("[data-media-id]")?.getAttribute("data-media-id");

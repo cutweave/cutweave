@@ -19,10 +19,12 @@ import {
   launchFlowApp,
   mediaCards,
   openRecent,
+  pickFiles,
   profileDir,
   removeDir,
   shortcut,
   snapshot,
+  toast,
   workspace,
 } from "./helpers.ts";
 
@@ -54,6 +56,8 @@ test.describe("F22 organize media in folders", () => {
           work.file(f),
         ),
       );
+      // The list layout keeps every tile in view of the small panel, so a drag needs no scrolling.
+      await page.getByRole("radio", { name: "List" }).click();
       // Without folders the bin looks as it always did: no breadcrumb.
       await expect(crumbs(page)).toBeHidden();
 
@@ -77,6 +81,12 @@ test.describe("F22 organize media in folders", () => {
       // makes "Day 1" inside it.
       await tile(page, "Interviews").dblclick();
       await expect(crumb(page, "Interviews")).toHaveAttribute("aria-current", "page");
+      await expect(page.getByText("This folder is empty")).toBeVisible();
+      // Double-clicking the empty body of the panel opens the import dialog (the OS picker is
+      // stubbed) and imports into the open folder; a file already in the project is reported.
+      await pickFiles(app, [work.file("music.wav")]);
+      await page.locator(".cw-media .cw-empty").dblclick();
+      await expect(toast(page, "Import finished").first()).toBeVisible();
       await expect(page.getByText("This folder is empty")).toBeVisible();
       await page.locator(".cw-media .cw-empty").click({ button: "right" });
       const menu = page.getByRole("menu", { name: "Media bin actions" });
