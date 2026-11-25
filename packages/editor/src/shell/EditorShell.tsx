@@ -7,8 +7,9 @@ import { Dock } from "../dock/Dock.tsx";
 import { ExportDialog } from "../export/ExportDialog.tsx";
 import { useExportWiring } from "../export/useExport.ts";
 import { i18n } from "../i18n/index.ts";
+import { useKeymapDispatcher } from "../keymap/dispatch.ts";
 import { ContextMenuHost } from "../menus/host.tsx";
-import { CommandPalette, usePaletteShortcut } from "../palette/index.ts";
+import { CommandPalette } from "../palette/index.ts";
 import { usePref } from "../prefs/prefsStore.ts";
 import { desktopFromWindow } from "../session/desktop.ts";
 import { useProjectWiring, useWindowTitle } from "../session/useProject.ts";
@@ -67,7 +68,7 @@ function Shell() {
   // A vertical sequence in Long-form: offer Short-form, once per project (WP-2H.01).
   useSuggestShortForm();
   // Ctrl/Cmd+K opens the command palette (WP-2H.04).
-  usePaletteShortcut();
+  useKeymapDispatcher();
 
   return (
     <TooltipProvider>

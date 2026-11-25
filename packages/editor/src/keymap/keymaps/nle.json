@@ -1,0 +1,206 @@
+{
+  "id": "nle",
+  "name": "Cutweave (NLE)",
+  "note": "J/K/L shuttle, S splits, Delete removes. Keys for razor, ripple trim, markers and nudge arrive with their commands.",
+  "bindings": [
+    {
+      "command": "project.new",
+      "keys": ["Mod+N"]
+    },
+    {
+      "command": "project.open",
+      "keys": ["Mod+O"]
+    },
+    {
+      "command": "project.save",
+      "keys": ["Mod+S"]
+    },
+    {
+      "command": "project.save_as",
+      "keys": ["Mod+Shift+S"]
+    },
+    {
+      "command": "export.start",
+      "keys": ["Mod+M"]
+    },
+    {
+      "command": "app.open_settings",
+      "keys": ["Mod+,"]
+    },
+    {
+      "command": "app.quit",
+      "keys": ["Mod+Q"],
+      "platforms": ["linux"]
+    },
+    {
+      "command": "edit.undo",
+      "keys": ["Mod+Z"]
+    },
+    {
+      "command": "edit.redo",
+      "keys": ["Mod+Y", "Mod+Shift+Z"],
+      "platforms": ["windows", "linux"]
+    },
+    {
+      "command": "edit.redo",
+      "keys": ["Mod+Shift+Z"],
+      "platforms": ["mac"]
+    },
+    {
+      "command": "edit.text.cut",
+      "keys": ["Mod+X"]
+    },
+    {
+      "command": "edit.text.copy",
+      "keys": ["Mod+C"]
+    },
+    {
+      "command": "edit.text.paste",
+      "keys": ["Mod+V"]
+    },
+    {
+      "command": "edit.text.select_all",
+      "keys": ["Mod+A"]
+    },
+    {
+      "command": "window.toggle_full_screen",
+      "keys": ["F11"]
+    },
+    {
+      "command": "window.reload",
+      "keys": ["Mod+R"]
+    },
+    {
+      "command": "window.toggle_dev_tools",
+      "keys": ["Mod+Shift+I"]
+    },
+    {
+      "command": "palette.open",
+      "keys": ["Mod+K"]
+    },
+    {
+      "command": "workspace.toggle_panel.assets",
+      "keys": ["Alt+1"]
+    },
+    {
+      "command": "workspace.toggle_panel.preview",
+      "keys": ["Alt+2"]
+    },
+    {
+      "command": "workspace.toggle_panel.inspector",
+      "keys": ["Alt+3"]
+    },
+    {
+      "command": "workspace.toggle_panel.timeline",
+      "keys": ["Alt+4"]
+    },
+    {
+      "command": "transport.toggle_play",
+      "keys": ["Space"]
+    },
+    {
+      "command": "transport.reverse",
+      "keys": ["J"]
+    },
+    {
+      "command": "transport.pause",
+      "keys": ["K"]
+    },
+    {
+      "command": "transport.forward",
+      "keys": ["L"]
+    },
+    {
+      "command": "transport.step_back",
+      "keys": ["ArrowLeft"]
+    },
+    {
+      "command": "transport.step_forward",
+      "keys": ["ArrowRight"]
+    },
+    {
+      "command": "source.back",
+      "keys": ["Escape"]
+    },
+    {
+      "command": "source.insert",
+      "keys": ["Enter"]
+    },
+    {
+      "command": "clip.split",
+      "keys": ["S"]
+    },
+    {
+      "command": "item.delete",
+      "keys": ["Delete", "Backspace"]
+    },
+    {
+      "command": "timeline.cancel",
+      "keys": ["Escape"]
+    },
+    {
+      "command": "timeline.toggle_snapping",
+      "keys": ["N"]
+    },
+    {
+      "command": "track.rename",
+      "keys": ["F2"]
+    },
+    {
+      "command": "bin.move_next",
+      "keys": ["ArrowRight"]
+    },
+    {
+      "command": "bin.move_previous",
+      "keys": ["ArrowLeft"]
+    },
+    {
+      "command": "bin.move_down",
+      "keys": ["ArrowDown"]
+    },
+    {
+      "command": "bin.move_up",
+      "keys": ["ArrowUp"]
+    },
+    {
+      "command": "bin.first",
+      "keys": ["Home"]
+    },
+    {
+      "command": "bin.last",
+      "keys": ["End"]
+    },
+    {
+      "command": "bin.insert",
+      "keys": ["Enter"]
+    },
+    {
+      "command": "bin.play",
+      "keys": ["Space"]
+    },
+    {
+      "command": "media.remove",
+      "keys": ["Delete", "Backspace"]
+    },
+    {
+      "command": "bin.import",
+      "keys": ["Mod+I"]
+    },
+    {
+      "command": "bin.search",
+      "keys": ["Mod+F"]
+    },
+    {
+      "command": "dialogs.close",
+      "keys": ["Escape"]
+    },
+    {
+      "command": "dialogs.confirm",
+      "keys": ["Enter"]
+    },
+    {
+      "command": "dialogs.next",
+      "keys": ["Tab", "Shift+Tab"]
+    }
+  ]
+}

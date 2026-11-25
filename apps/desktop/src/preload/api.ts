@@ -200,8 +200,10 @@ export function createCutweaveApi(
       get: () => invoke("prefs:get"),
       set: (key, value) => invoke("prefs:set", key, value),
       reset: (keys) => invoke("prefs:reset", [...keys]),
-      exportToFile: () => invoke("prefs:export"),
-      importFromFile: () => invoke("prefs:import"),
+      exportToFile: (only) =>
+        only === undefined ? invoke("prefs:export") : invoke("prefs:export", only),
+      importFromFile: (only) =>
+        only === undefined ? invoke("prefs:import") : invoke("prefs:import", only),
       onChanged: subscribe<PreferenceChanges>("prefs:changed", (v) =>
         typeof v === "object" && v !== null && !Array.isArray(v)
           ? (v as PreferenceChanges)

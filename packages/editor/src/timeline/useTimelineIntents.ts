@@ -6,6 +6,7 @@ import { type DragEvent, useCallback, useEffect, useMemo, useRef } from "react";
 import { useTranslation } from "react-i18next";
 import { useStore } from "zustand";
 import { engineStore } from "../engine/engineStore.ts";
+import { timelineActionOf } from "../keymap/timeline.ts";
 import { dragStore } from "../media/dragStore.ts";
 import { requestForCanvasEvent } from "../menus/canvas.ts";
 import { closeContextMenu, openContextMenu } from "../menus/host.tsx";
@@ -123,7 +124,17 @@ export function useTimelineIntents(): TimelineIntents {
       if (el === null) return undefined;
       const onKey = (e: KeyboardEvent): void => {
         if (e.defaultPrevented || isTextEntry(e.target)) return;
-        if (controller.handleKey(e)) e.preventDefault();
+        // The keys are the keymap's `timeline` context (Settings > Keyboard shortcuts).
+        const action = timelineActionOf(e);
+        const handled = controller.handleKey({
+          key: e.key,
+          shiftKey: e.shiftKey,
+          altKey: e.altKey,
+          ctrlKey: e.ctrlKey,
+          metaKey: e.metaKey,
+          action,
+        });
+        if (handled) e.preventDefault();
       };
       el.addEventListener("keydown", onKey);
       return () => el.removeEventListener("keydown", onKey);

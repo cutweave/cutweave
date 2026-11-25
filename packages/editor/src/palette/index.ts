@@ -19,4 +19,4 @@ export { type CatalogCommand, commandCatalog } from "./catalog.ts";
 export { buildEntries, type PaletteEntry, type PaletteEnv } from "./entries.ts";
 export { appPaletteEnv } from "./env.ts";
 export { closePalette, openPalette, paletteStore, usePaletteOpen } from "./paletteStore.ts";
-export { usePaletteShortcut } from "./shortcut.ts";
+export { togglePalette } from "./shortcut.ts";

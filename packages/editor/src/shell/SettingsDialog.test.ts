@@ -732,11 +732,13 @@ describe("Settings > Keyboard shortcuts (WP-1M.13)", () => {
     return { user, settings };
   };
 
-  it("lists every binding, under the group where it works, with a read-only note", async () => {
+  it("lists every binding, under the group where it works, with the preset and file controls", async () => {
     const { settings } = await open();
-    expect(
-      within(settings).getByText(/Changing them arrives with the shortcut editor/),
-    ).toBeTruthy();
+    expect(within(settings).getByText(/Every shortcut in Cutweave/)).toBeTruthy();
+    expect(within(settings).getByRole("radiogroup", { name: "Shortcut preset" })).toBeTruthy();
+    for (const name of ["Reset all shortcuts", "Export shortcuts…", "Import shortcuts…"]) {
+      expect(within(settings).getByRole("button", { name }), name).toBeTruthy();
+    }
     for (const group of BINDING_GROUPS) {
       expect(within(settings).getByRole("region", { name: i18n.t(group.title) })).toBeTruthy();
     }

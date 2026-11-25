@@ -164,6 +164,7 @@ export class TimelineController {
       altKey: e.altKey === true,
       ctrlKey: e.ctrlKey === true,
       metaKey: e.metaKey === true,
+      ...(e.action !== undefined && { action: e.action }),
     });
   }
 
