@@ -522,7 +522,7 @@ def write_report(steps: list[Step], verdicts: dict[str, str], info: dict, args) 
         "steps": [{"criterion": s.criterion, "name": s.name, "status": s.status,
                    "seconds": round(s.seconds, 1), "detail": s.detail, "log": s.log} for s in steps],
     }
-    (OUT / "report.json").write_text(json.dumps(report, indent=2) + "\n", encoding="utf-8")
+    (OUT / "report.json").write_text(json.dumps(report, indent=2) + "\n", encoding="utf-8", newline="\n")
     lines = ["# M1 exit gate", "",
              f"- Commit: `{info['commit']}`", f"- Machine: {info['os']}; {info['cpu']}",
              f"- GPUs: {', '.join(info.get('gpus', [])) or 'unknown'}",
@@ -533,7 +533,7 @@ def write_report(steps: list[Step], verdicts: dict[str, str], info: dict, args) 
     lines += ["", "| Criterion | Step | Result | Time | Detail |", "|---|---|---|---|---|"]
     lines += [f"| {s.criterion} | {s.name} | {s.status} | {s.seconds:.0f} s | "
               f"{s.detail.replace('|', '/')[:200]} |" for s in steps]
-    (OUT / "report.md").write_text("\n".join(lines) + "\n", encoding="utf-8")
+    (OUT / "report.md").write_text("\n".join(lines) + "\n", encoding="utf-8", newline="\n")
 
 
 def write_evidence(dest: Path, steps: list[Step]) -> None:
@@ -544,7 +544,7 @@ def write_evidence(dest: Path, steps: list[Step]) -> None:
         src = OUT / rel
         if src.is_file():
             target = dest / rel.replace("/", "-")
-            target.write_text(src.read_text(encoding="utf-8"), encoding="utf-8")
+            target.write_text(src.read_text(encoding="utf-8"), encoding="utf-8", newline="\n")
     logs = dest / "logs"
     shutil.rmtree(logs, ignore_errors=True)
     logs.mkdir()
@@ -554,7 +554,7 @@ def write_evidence(dest: Path, steps: list[Step]) -> None:
         text = (OUT / s.log).read_text(encoding="utf-8", errors="replace").splitlines()
         # Progress bars and compiler chatter are not evidence: keep the end of each log.
         tail = [re.sub(r"\x1b\[[0-9;]*m", "", line) for line in text[-80:]]
-        (logs / Path(s.log).name.replace(".log", ".txt")).write_text("\n".join(tail) + "\n", encoding="utf-8")
+        (logs / Path(s.log).name.replace(".log", ".txt")).write_text("\n".join(tail) + "\n", encoding="utf-8", newline="\n")
 
 
 def gate(args) -> int:
@@ -600,7 +600,7 @@ def gate(args) -> int:
         work.mkdir(parents=True, exist_ok=True)
         project = OUT / "ui" / PROJECT
         validated.update(validate_mp4(project, project / f"{PROJECT}.mp4", env, work))
-        (OUT / "validate-mp4.json").write_text(json.dumps(validated, indent=2) + "\n", encoding="utf-8")
+        (OUT / "validate-mp4.json").write_text(json.dumps(validated, indent=2) + "\n", encoding="utf-8", newline="\n")
         frames = ", ".join(f"f{f['frame']} {f['yuv_db']:.1f} dB (RGB {f['rgb_db']:.1f})"
                            if f["yuv_db"] is not None else f"f{f['frame']} missing"
                            for f in validated["frames"])
@@ -609,7 +609,7 @@ def gate(args) -> int:
 
     def check_compare():
         compared.update(compare_runs(OUT / "ui", OUT / "mcp", env))
-        (OUT / "compare.json").write_text(json.dumps(compared, indent=2) + "\n", encoding="utf-8")
+        (OUT / "compare.json").write_text(json.dumps(compared, indent=2) + "\n", encoding="utf-8", newline="\n")
         e = compared["export"]
         frames = ("decoded frames identical" if e["frame_hashes_equal"]
                   else f"PSNR {e['psnr_db']:.2f} dB")
