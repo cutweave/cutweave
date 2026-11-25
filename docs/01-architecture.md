@@ -956,6 +956,7 @@ MyVideo/                    ← project folder (user-chosen location)
 | 022 | Source preview: the preview plays a media item outside any sequence (`view.set_source`) (§10) | **Accepted** (product owner, 2026-11-24) |
 | 023 | Timeline edit semantics for P2: magnetic main track, placement modes, attachments, `EditReport`, replacing gesture updates (§4.3, §5.2; [spec](spec/timeline-edit-semantics.md)) | Proposed: review of WP-2A.01 |
 | 024 | Keyframes: item-relative flicks, per-segment easing, exact split and trim rules, `keyframe.*` commands (§4.2, §4.3, §8; [spec](spec/keyframes.md)) | Proposed: review of WP-2C.01 |
+| 026 | Context menus: in-app on every platform, built from commands per named surface, plugins contribute to the same surfaces (§10; [research](research/09-context-menus.md)) | **Accepted** (product owner, 2026-11-25) |
 
 ## 24. Open questions (tracked; none block Phase 0)
 

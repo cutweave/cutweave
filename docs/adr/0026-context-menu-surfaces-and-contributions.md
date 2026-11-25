@@ -1,6 +1,6 @@
 # ADR-0026: Context menus are built from commands, per named surface, and plugins contribute to the same surfaces
 
-- **Status:** Proposed
+- **Status:** Accepted (product owner, 2026-11-25, after WP-2H.12 met its pass criteria)
 - **Date:** 2026-11-25
 - **Deciders:** Cutweave maintainers (drafted from the context-menu research for the integrator)
 - **Supersedes:** none
