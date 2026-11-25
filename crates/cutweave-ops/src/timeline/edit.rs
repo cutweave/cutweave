@@ -10,7 +10,9 @@
 use std::collections::BTreeSet;
 
 use cutweave_commands::{CmdError, Command, QueryCtx, Tx, command, wire};
-use cutweave_model::{EntityKind, Item, ItemId, Project, SequenceId, Time, TimeInput, TrackId};
+use cutweave_model::{
+    EntityKind, Item, ItemId, Project, Sequence, SequenceId, Time, TimeInput, TrackId,
+};
 
 use super::placement::{DryIds, Edit, Ids, Plan, closing, span, time};
 use crate::{
@@ -109,12 +111,15 @@ pub(crate) fn given_items(
     Ok((sequence, out))
 }
 
+/// Items taken out of a sequence, with the tracks they were on.
+pub(crate) type Removed = Vec<(TrackId, Item)>;
+
 /// Removes `given` and their partners from the edit: `(deleted in output order, removed items
 /// with their tracks)`. `Unsupported` for items on tracks that are not editable.
 pub(crate) fn remove_with_partners(
     e: &mut Edit<'_>,
     given: &[ItemId],
-) -> Result<(Vec<ItemId>, Vec<(TrackId, Item)>), CmdError> {
+) -> Result<(Vec<ItemId>, Removed), CmdError> {
     let mut deleted = Vec::new();
     let mut partners = Vec::new();
     let mut removed = Vec::new();
@@ -264,18 +269,12 @@ pub struct TimelineExtract {
 /// The longest `ranges` and `tracks` lists.
 const MAX_RANGES: usize = 1_000;
 
-fn plan_ranges(
-    doc: &Project,
-    sequence: SequenceId,
+/// The ranges of a request (or the in/out range), snapped, sorted and merged where they
+/// overlap or touch.
+fn ranges_of(
+    seq: &Sequence,
     ranges: Option<&[TimelineRange]>,
-    tracks: Option<&[TrackId]>,
-    extract: bool,
-    ids: &mut dyn Ids,
-) -> Result<(Plan, Vec<UsedRange>), CmdError> {
-    let seq = doc
-        .sequences
-        .get(&sequence)
-        .ok_or_else(|| CmdError::not_found(EntityKind::Sequence, sequence))?;
+) -> Result<Vec<(i64, i64)>, CmdError> {
     let rate = seq.format.frame_rate;
     let mut spans: Vec<(i64, i64)> = match ranges {
         Some([]) => return Err(CmdError::invalid("/ranges", "give at least one range")),
@@ -324,8 +323,17 @@ fn plan_ranges(
             _ => merged.push((s, e)),
         }
     }
-    let targets: Vec<TrackId> = match tracks {
-        Some([]) => return Err(CmdError::invalid("/tracks", "give at least one track")),
+    Ok(merged)
+}
+
+/// The target tracks of a request in display order (default: every editable track).
+fn targets_of(
+    doc: &Project,
+    seq: &Sequence,
+    tracks: Option<&[TrackId]>,
+) -> Result<Vec<TrackId>, CmdError> {
+    match tracks {
+        Some([]) => Err(CmdError::invalid("/tracks", "give at least one track")),
         Some(list) => {
             let mut out = Vec::new();
             for (n, t) in list.iter().enumerate() {
@@ -333,7 +341,7 @@ fn plan_ranges(
                     if doc.sequences.values().any(|s| s.track(t).is_some()) {
                         return Err(CmdError::invalid(
                             format!("/tracks/{n}"),
-                            format!("track `{t}` is not in sequence `{sequence}`"),
+                            format!("track `{t}` is not in sequence `{}`", seq.id),
                         ));
                     }
                     return Err(CmdError::not_found(EntityKind::Track, *t));
@@ -344,18 +352,35 @@ fn plan_ranges(
                 }
             }
             // Display order, so new IDs do not depend on the order of the list.
-            seq.track_order
+            Ok(seq
+                .track_order
                 .iter()
                 .filter(|t| out.contains(t))
                 .copied()
-                .collect()
+                .collect())
         }
-        None => seq
+        None => Ok(seq
             .tracks_in_order()
             .filter(|t| check_editable_kind("/tracks", t.kind).is_ok())
             .map(|t| t.id)
-            .collect(),
-    };
+            .collect()),
+    }
+}
+
+fn plan_ranges(
+    doc: &Project,
+    sequence: SequenceId,
+    ranges: Option<&[TimelineRange]>,
+    tracks: Option<&[TrackId]>,
+    extract: bool,
+    ids: &mut dyn Ids,
+) -> Result<(Plan, Vec<UsedRange>), CmdError> {
+    let seq = doc
+        .sequences
+        .get(&sequence)
+        .ok_or_else(|| CmdError::not_found(EntityKind::Sequence, sequence))?;
+    let merged = ranges_of(seq, ranges)?;
+    let targets = targets_of(doc, seq, tracks)?;
     let mut e = Edit::new(doc, sequence, "/ranges")?;
     for track in &targets {
         for &(s, u) in &merged {

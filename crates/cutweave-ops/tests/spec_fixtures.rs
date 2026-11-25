@@ -52,7 +52,7 @@ fn fixtures_dir() -> PathBuf {
 
 fn load(id: &str) -> Value {
     let path = fixtures_dir().join(format!("{id}.json"));
-    let text = std::fs::read_to_string(&path).unwrap_or_else(|e| panic!("{path:?}: {e}"));
+    let text = std::fs::read_to_string(&path).unwrap_or_else(|e| panic!("{}: {e}", path.display()));
     serde_json::from_str(&text).unwrap()
 }
 
@@ -80,20 +80,19 @@ impl Names {
 
     /// Binds a new name (`+x`) to an actual ID, or checks an earlier binding.
     fn bind(&mut self, name: &str, actual: &str, what: &str) {
-        match self.ids.get(name) {
-            Some(id) => assert_eq!(
+        if let Some(id) = self.ids.get(name) {
+            assert_eq!(
                 id, actual,
                 "{what}: `{name}` is bound to {id}, got {actual}"
-            ),
-            None => {
-                assert!(name.starts_with('+'), "{what}: unknown name `{name}`");
-                assert!(
-                    !self.ids.values().any(|v| v == actual),
-                    "{what}: new `{name}` is an existing entity {actual}"
-                );
-                self.ids.insert(name.to_owned(), actual.to_owned());
-            }
+            );
+            return;
         }
+        assert!(name.starts_with('+'), "{what}: unknown name `{name}`");
+        assert!(
+            !self.ids.values().any(|v| v == actual),
+            "{what}: new `{name}` is an existing entity {actual}"
+        );
+        self.ids.insert(name.to_owned(), actual.to_owned());
     }
 }
 

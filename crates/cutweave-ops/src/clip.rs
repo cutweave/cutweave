@@ -25,7 +25,6 @@ use cutweave_model::{
 use crate::{
     item::{
         Located, conflict, duration, ensure_orphans_unlockable, ensure_unlocked, members, time,
-        unlink_orphans,
     },
     report::EditReport,
     timeline::{
@@ -527,6 +526,43 @@ impl ClipTrim {
     }
 }
 
+impl ClipTrim {
+    /// A trim on free tracks (P1 semantics and checks, [`ClipTrim::plan`]), written through the
+    /// placement core so attached children are clamped into a trimmed parent (INV-36, INV-37).
+    fn free_plan(
+        &self,
+        doc: &Project,
+        ids: &mut dyn Ids,
+    ) -> Result<(Plan, Vec<TrimmedClip>), CmdError> {
+        let trim = self.plan(doc)?;
+        let (sequence, _) = members(doc, self.item, false)?;
+        let pointer = if self.to.is_some() { "/to" } else { "/delta" };
+        let mut e = Edit::new(doc, sequence, pointer)?;
+        let mut items = Vec::with_capacity(trim.clips.len());
+        for (i, (_, after)) in trim.clips.iter().enumerate() {
+            e.retime(
+                after.id,
+                after.start.flicks(),
+                after.duration.flicks(),
+                after.source_in.flicks(),
+            );
+            if trim.unlink && i == 0 {
+                e.update(after.id, |item| item.set_linked_group(None));
+                if let Some(g) = trim.leaves {
+                    e.mark_left(g);
+                }
+            }
+            items.push(TrimmedClip {
+                item: after.id,
+                start: after.start,
+                duration: after.duration,
+                source_in: after.source_in,
+            });
+        }
+        Ok((e.finish(ids)?, items))
+    }
+}
+
 impl Command for ClipTrim {
     type Output = ClipTrimOutput;
 
@@ -537,38 +573,16 @@ impl Command for ClipTrim {
         {
             return Ok(());
         }
-        self.plan(ctx.doc()).map(drop)
+        self.free_plan(ctx.doc(), &mut DryIds::default()).map(drop)
     }
 
     fn apply(&self, tx: &mut Tx<'_>) -> Result<ClipTrimOutput, CmdError> {
         let doc = tx.doc().clone();
-        if let Some((plan, items)) = self.magnetic_plan(&doc, tx)? {
-            plan.commit(tx)?;
-            return Ok(ClipTrimOutput { items });
-        }
-        let plan = self.plan(tx.doc())?;
-        let mut items = Vec::with_capacity(plan.clips.len());
-        for (i, (_, after)) in plan.clips.iter().enumerate() {
-            let unlink = plan.unlink && i == 0;
-            tx.update_item(after.id, |item| {
-                if let Some(c) = item.as_clip_mut() {
-                    c.start = after.start;
-                    c.duration = after.duration;
-                    c.source_in = after.source_in;
-                    if unlink {
-                        c.linked_group = None;
-                    }
-                }
-                Ok(())
-            })?;
-            items.push(TrimmedClip {
-                item: after.id,
-                start: after.start,
-                duration: after.duration,
-                source_in: after.source_in,
-            });
-        }
-        unlink_orphans(tx, plan.leaves)?;
+        let (plan, items) = match self.magnetic_plan(&doc, tx)? {
+            Some(planned) => planned,
+            None => self.free_plan(&doc, tx)?,
+        };
+        plan.commit(tx)?;
         Ok(ClipTrimOutput { items })
     }
 }

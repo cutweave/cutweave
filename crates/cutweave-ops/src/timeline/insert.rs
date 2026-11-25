@@ -28,7 +28,7 @@ use cutweave_model::{
 use super::{
     DEFAULT_STILL_SECS, OverlapPolicy,
     magnetic::clamp_to_end,
-    placement::{DryIds, Edit, Ids, PlacementMode, Plan, mint, resolve_mode, span, time},
+    placement::{DryIds, Edit, Ids, PlacementMode, Plan, resolve_mode, span, time},
 };
 use crate::{
     media::has_audio_stream,
@@ -235,6 +235,7 @@ struct Planned {
     group: Option<GroupId>,
 }
 
+#[allow(clippy::too_many_lines)] // resolve, then the phases of spec §4.1 in order
 fn plan(cmd: &TimelineInsert, doc: &Project, ids: &mut dyn Ids) -> Result<Planned, CmdError> {
     let sequence = doc
         .sequences
@@ -332,7 +333,7 @@ fn plan(cmd: &TimelineInsert, doc: &Project, ids: &mut dyn Ids) -> Result<Planne
             None
         };
 
-    let group = audio.map(|_| mint::<GroupId>(ids));
+    let group = audio.map(|_| e.mint::<GroupId>(ids));
     let mut clips = Vec::new();
     for slot in std::iter::once(Some(main))
         .chain(std::iter::once(audio))
@@ -342,7 +343,7 @@ fn plan(cmd: &TimelineInsert, doc: &Project, ids: &mut dyn Ids) -> Result<Planne
             Slot::Existing(t) => t,
             Slot::New { above } => e.new_track_above(ids, above),
         };
-        let id: ItemId = mint(ids);
+        let id: ItemId = e.mint(ids);
         let mut clip = Clip::new(id, media.id, time(at), duration);
         clip.source_in = source_in;
         clip.linked_group = group;

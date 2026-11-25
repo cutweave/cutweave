@@ -46,7 +46,7 @@ use std::collections::{BTreeMap, BTreeSet};
 use cutweave_commands::{CmdError, Tx, wire};
 use cutweave_model::{
     Duration, EntityId, EntityKind, FrameRate, GroupId, Item, ItemId, MediaKind, Project, Sequence,
-    SequenceId, Time, Track, TrackId, TrackKind,
+    SequenceId, Time, Track, TrackId, TrackItems, TrackKind,
 };
 
 use crate::{
@@ -150,11 +150,6 @@ impl Ids for DryIds {
     }
 }
 
-/// A fresh typed ID from `ids`.
-pub(crate) fn mint<I: EntityId>(ids: &mut dyn Ids) -> I {
-    I::from_u128(ids.next_raw())
-}
-
 // ----- small conversions -------------------------------------------------------------------
 
 /// A time from flicks, saturating at the representable range.
@@ -246,6 +241,11 @@ pub(crate) struct Edit<'d> {
     followers: BTreeSet<ItemId>,
     /// Groups that lost members by `unlink`.
     left_groups: BTreeSet<GroupId>,
+    /// Raw values of the IDs this edit minted (checked for collisions in `finish`).
+    minted: Vec<(EntityKind, u128)>,
+    /// Whether any item is (or may now be) attached to another: without children the
+    /// attachment rules have nothing to do.
+    children: bool,
 }
 
 impl<'d> Edit<'d> {
@@ -261,6 +261,10 @@ impl<'d> Edit<'d> {
             .get(&sequence)
             .ok_or_else(|| CmdError::not_found(EntityKind::Sequence, sequence))?
             .clone();
+        let children = seq
+            .tracks
+            .values()
+            .any(|t| t.items.iter_by_id().any(|(_, i)| i.attached_to().is_some()));
         Ok(Edit {
             doc,
             frame: frame_flicks(seq.format.frame_rate),
@@ -275,7 +279,16 @@ impl<'d> Edit<'d> {
             retimed: BTreeSet::new(),
             followers: BTreeSet::new(),
             left_groups: BTreeSet::new(),
+            minted: Vec::new(),
+            children,
         })
+    }
+
+    /// A fresh ID from `ids`, recorded so `finish` can refuse one already in use.
+    pub(crate) fn mint<I: EntityId>(&mut self, ids: &mut dyn Ids) -> I {
+        let raw = ids.next_raw();
+        self.minted.push((I::KIND, raw));
+        I::from_u128(raw)
     }
 
     /// `Invalid` at the edit's pointer.
@@ -355,6 +368,7 @@ impl<'d> Edit<'d> {
 
     /// Puts an item on a track of the working copy.
     pub(crate) fn insert(&mut self, track: TrackId, item: Item) {
+        self.children |= item.attached_to().is_some();
         if let Some(t) = self.seq.track_mut(&track) {
             t.items.insert(item);
         }
@@ -407,7 +421,7 @@ impl<'d> Edit<'d> {
     /// A new track of `above`'s kind directly above it (INV-42), named like P1, never magnetic.
     pub(crate) fn new_track_above(&mut self, ids: &mut dyn Ids, above: TrackId) -> TrackId {
         let kind = self.seq.track(&above).map_or(TrackKind::Video, |t| t.kind);
-        let id: TrackId = mint(ids);
+        let id: TrackId = self.mint(ids);
         let name = next_track_name(&self.seq, kind);
         let index = self.seq.track_order.index_of(&above).unwrap_or(0);
         self.seq.insert_track(index, Track::new(id, kind, name));
@@ -478,23 +492,24 @@ impl<'d> Edit<'d> {
         if members.is_empty() {
             return Vec::new();
         }
-        let group = (members.len() > 1).then(|| mint::<GroupId>(ids));
+        let group = (members.len() > 1).then(|| self.mint::<GroupId>(ids));
         let mut pairs = Vec::with_capacity(members.len());
         for &(track, id) in members {
-            let right: ItemId = mint(ids);
+            let right: ItemId = self.mint(ids);
             self.carve(track, id, t, u, right, group);
             pairs.push((id, right));
         }
         pairs
     }
 
-    /// One item cut into `[start, t)` and `[u, end)`; the right part is `right` in `group`.
+    /// One item cut into `[start, cut)` and `[resume, end)`; the right part is `right` in
+    /// `group`.
     fn carve(
         &mut self,
         track: TrackId,
         id: ItemId,
-        t: i64,
-        u: i64,
+        cut: i64,
+        resume: i64,
         right: ItemId,
         group: Option<GroupId>,
     ) {
@@ -503,36 +518,37 @@ impl<'d> Edit<'d> {
         };
         let item = item.clone();
         let still = self.is_still(&item);
-        let (s, e) = span(&item);
-        let (left_markers, right_markers) = split_markers(item.markers(), t - s, u - s);
-        let mut r = item.clone();
-        if let Item::Clip(c) = &mut r {
+        let (start, end) = span(&item);
+        let (left_markers, right_markers) =
+            split_markers(item.markers(), cut - start, resume - start);
+        let mut part = item.clone();
+        if let Item::Clip(c) = &mut part {
             c.id = right;
-            c.start = time(u);
-            c.duration = dur(e - u);
+            c.start = time(resume);
+            c.duration = dur(end - resume);
             c.linked_group = group;
             c.markers = right_markers;
             if !still {
-                c.source_in = time(c.source_in.flicks() + (u - s));
+                c.source_in = time(c.source_in.flicks() + (resume - start));
             }
         }
         self.update(id, |i| {
-            i.set_duration(dur(t - s));
+            i.set_duration(dur(cut - start));
             *i.markers_mut() = left_markers;
         });
-        self.insert(track, r);
+        self.insert(track, part);
         self.retimed.insert(id);
         // A part of a part (an item cut by several ranges) is reported as a split of the item
         // that existed before the edit (INV-21: a split's left half keeps its ID).
         let left = self
             .splits
             .iter()
-            .find(|s| s.right == id)
-            .map_or(id, |s| s.left);
+            .find(|sp| sp.right == id)
+            .map_or(id, |sp| sp.left);
         self.splits.push(SplitReport {
             left,
             right,
-            at: time(u),
+            at: time(resume),
         });
         // INV-39: children at or after the right part's start follow it.
         let children: Vec<ItemId> = self
@@ -540,7 +556,7 @@ impl<'d> Edit<'d> {
             .tracks
             .values()
             .flat_map(|tr| tr.items.iter())
-            .filter(|c| c.attached_to() == Some(id) && c.start().flicks() >= u)
+            .filter(|c| c.attached_to() == Some(id) && c.start().flicks() >= resume)
             .map(Item::id)
             .collect();
         for c in children {
@@ -643,87 +659,65 @@ impl<'d> Edit<'d> {
         } else {
             ripple_tracks.iter().copied().collect()
         };
-        let shifts = |item: &Item| f(item.start().flicks()) != 0;
-        if !all {
-            let mut group_tracks: BTreeMap<GroupId, BTreeSet<TrackId>> = BTreeMap::new();
-            for t in self.seq.tracks.values() {
-                for item in t.items.iter() {
-                    if let Some(g) = item.linked_group() {
-                        group_tracks.entry(g).or_default().insert(t.id);
-                    }
-                }
-            }
-            let mut queue: Vec<TrackId> = rippled.iter().copied().collect();
-            while let Some(tid) = queue.pop() {
-                let Some(track) = self.seq.track(&tid) else {
-                    continue;
-                };
-                let reached: Vec<TrackId> = track
-                    .items
-                    .iter()
-                    .rev()
-                    .take_while(|i| i.start().flicks() >= theta)
-                    .filter(|i| shifts(i))
-                    .filter_map(Item::linked_group)
-                    .flat_map(|g| group_tracks.get(&g).into_iter().flatten().copied())
-                    .collect();
-                for t in reached {
-                    if rippled.insert(t) {
-                        queue.push(t);
-                    }
-                }
-            }
-        }
-        if let Some(mag) = self.magnetic()
-            && rippled.contains(&mag)
-            && !ripple_tracks.contains(&mag)
-            && self.seq.track(&mag).is_some_and(|t| {
-                t.items
-                    .iter()
-                    .rev()
-                    .take_while(|i| i.start().flicks() >= theta)
-                    .any(|i| shifts(i))
-            })
-        {
-            let name = self.track_name(mag);
-            self.defer(self.invalid(format!(
-                "the main track `{name}` cannot open or close a gap here; edit on the main \
-                 track instead"
-            )));
-        }
+        let mut queue: Vec<TrackId> = rippled.iter().copied().collect();
+        let mag = self.magnetic();
+        // Attachments are rare: without children nothing follows, and `moved` only matters
+        // for children.
+        let children = self.has_children();
         let mut deltas: BTreeMap<ItemId, i64> = BTreeMap::new();
-        for tid in &rippled {
-            let Some(track) = self.seq.track(tid) else {
+        // INV-31 as a fixpoint: shifting a track's items, the groups of what shifts reach the
+        // tracks of their other members (aligned, INV-8: they start at or after `theta` too).
+        let mut groups: BTreeSet<GroupId> = BTreeSet::new();
+        while let Some(tid) = queue.pop() {
+            let Some(track) = self.seq.track_mut(&tid) else {
                 continue;
             };
-            let shifted: Vec<(ItemId, i64)> = track
-                .items
-                .iter()
-                .rev()
-                .take_while(|i| i.start().flicks() >= theta)
-                .filter_map(|i| {
-                    let d = f(i.start().flicks());
-                    (d != 0).then(|| (i.id(), d))
-                })
-                .collect();
-            if shifted.is_empty() {
-                continue;
+            let shifted = shift_items(&mut track.items, theta, f);
+            if Some(tid) == mag && !ripple_tracks.contains(&tid) && !shifted.is_empty() {
+                let name = self.track_name(tid);
+                self.defer(self.invalid(format!(
+                    "the main track `{name}` cannot open or close a gap here; edit on the main \
+                     track instead"
+                )));
             }
-            if let Some(t) = self.seq.track_mut(tid) {
-                for (id, d) in &shifted {
-                    t.items.update(id, |i| {
-                        let s = i.start().flicks();
-                        i.set_start(time(s + d));
-                    });
+            let known = groups.len();
+            for s in shifted {
+                if let Some(g) = s.group {
+                    groups.insert(g);
+                }
+                if children {
+                    deltas.insert(s.id, s.delta);
+                    if s.child {
+                        self.moved.insert(s.id);
+                    }
                 }
             }
-            for (id, d) in shifted {
-                deltas.insert(id, d);
-                self.moved.insert(id);
+            if all || groups.len() == known {
+                continue;
             }
+            for t in self.seq.tracks.values() {
+                if !rippled.contains(&t.id)
+                    && t.items
+                        .iter()
+                        .rev()
+                        .take_while(|i| i.start().flicks() >= theta)
+                        .any(|i| i.linked_group().is_some_and(|g| groups.contains(&g)))
+                {
+                    queue.push(t.id);
+                }
+            }
+            rippled.extend(queue.iter().copied());
         }
-        self.follow(&deltas, &rippled, &BTreeSet::new());
+        if children {
+            self.follow(&deltas, &rippled, &BTreeSet::new());
+        }
         rippled
+    }
+
+    /// Whether any item of the sequence may be attached to another (known when the edit
+    /// starts; items it inserts update it).
+    fn has_children(&self) -> bool {
+        self.children
     }
 
     /// INV-36: children of items translated in one phase by `deltas` translate with them,
@@ -743,7 +737,7 @@ impl<'d> Edit<'d> {
             if decided_tracks.contains(&t.id) {
                 continue;
             }
-            for item in t.items.iter() {
+            for (_, item) in t.items.iter_by_id() {
                 let Some(parent) = item.attached_to() else {
                     continue;
                 };
@@ -817,13 +811,12 @@ impl<'d> Edit<'d> {
             movers.iter().map(|l| (l.item.id(), l.dest)).collect();
         match mode {
             PlacementMode::Insert => {
-                let (track, opening) = match (mag, block_range) {
-                    (Some(m), Some(r)) => (m, Some(r)),
-                    _ => {
-                        let on_target: Vec<&Landing> =
-                            movers.iter().filter(|l| l.dest == target).collect();
-                        (target, range(&on_target))
-                    }
+                let (track, opening) = if let (Some(m), Some(r)) = (mag, block_range) {
+                    (m, Some(r))
+                } else {
+                    let on_target: Vec<&Landing> =
+                        movers.iter().filter(|l| l.dest == target).collect();
+                    (target, range(&on_target))
                 };
                 if let Some((s, e)) = opening {
                     self.split_at(ids, track, s);
@@ -900,6 +893,7 @@ impl<'d> Edit<'d> {
             return Err(e);
         }
         self.check_layout()?;
+        self.check_new_ids()?;
         let after = self.seq;
         let splits = self
             .splits
@@ -917,10 +911,13 @@ impl<'d> Edit<'d> {
 
     /// INV-36 to INV-38 after the phases (module docs).
     fn settle_children(&mut self, ids: &mut dyn Ids) {
+        if !self.children {
+            return;
+        }
         let mut detach = Vec::new();
         let mut clamp = Vec::new();
         for t in self.seq.tracks.values() {
-            for c in t.items.iter() {
+            for (_, c) in t.items.iter_by_id() {
                 let Some(p) = c.attached_to() else {
                     continue;
                 };
@@ -996,7 +993,7 @@ impl<'d> Edit<'d> {
                 .seq
                 .tracks
                 .values()
-                .flat_map(|t| t.items.iter())
+                .flat_map(|t| t.items.iter_by_id().map(|(_, i)| i))
                 .filter(|i| i.linked_group() == Some(g))
                 .map(Item::id)
                 .collect();
@@ -1020,6 +1017,29 @@ impl<'d> Edit<'d> {
         Ok(())
     }
 
+    /// INV-10: the IDs the edit minted are not in use (the plan writes the sequence as a whole,
+    /// so the per-insert check of the transaction does not run; a generator restarted with the
+    /// same seed on a saved document would otherwise overwrite an item).
+    fn check_new_ids(&self) -> Result<(), CmdError> {
+        let mut seen: BTreeSet<(EntityKind, u128)> = BTreeSet::new();
+        for &(kind, raw) in &self.minted {
+            let taken = match kind {
+                EntityKind::Item => self.doc.find_item(&ItemId::from_u128(raw)).is_some(),
+                EntityKind::Track => {
+                    let id = TrackId::from_u128(raw);
+                    self.doc.sequences.values().any(|s| s.track(&id).is_some())
+                }
+                _ => false,
+            };
+            if !seen.insert((kind, raw)) || taken {
+                return Err(CmdError::internal(format!(
+                    "the ID generator returned a {kind} ID that is in use"
+                )));
+            }
+        }
+        Ok(())
+    }
+
     /// INV-1/INV-2/INV-32 (no overlaps, no item before 0) and INV-7 (the magnetic track is
     /// gap-free) on the tracks the edit changed.
     fn check_layout(&self) -> Result<(), CmdError> {
@@ -1031,29 +1051,37 @@ impl<'d> Edit<'d> {
             {
                 continue;
             }
-            if let Some((a, b)) = t.items.first_overlap() {
-                return Err(self.invalid(format!(
-                    "the edit would make item `{a}` overlap item `{b}` on track `{}`",
-                    t.name
-                )));
-            }
-            if let Some(i) = t.items.iter().next()
-                && i.start() < Time::ZERO
-            {
-                return Err(self.invalid(format!(
-                    "the edit would make item `{}` start before zero on track `{}`",
-                    i.id(),
-                    t.name
-                )));
-            }
-            if t.magnetic
-                && let Some((from, to)) = first_gap(t)
-            {
-                return Err(self.invalid(format!(
-                    "the main track `{}` cannot open or close a gap here (from {from} to {to} \
-                     flicks); edit on the main track instead",
-                    t.name
-                )));
+            // One pass in start order: the furthest end so far finds overlaps and gaps.
+            let mut furthest: Option<(i64, ItemId)> = None;
+            for item in t.items.iter() {
+                let (s, e) = span(item);
+                if s < 0 {
+                    return Err(self.invalid(format!(
+                        "the edit would make item `{}` start before zero on track `{}`",
+                        item.id(),
+                        t.name
+                    )));
+                }
+                let reached = furthest.map_or(0, |(end, _)| end);
+                if let Some((end, other)) = furthest
+                    && s < end
+                {
+                    return Err(self.invalid(format!(
+                        "the edit would make item `{other}` overlap item `{}` on track `{}`",
+                        item.id(),
+                        t.name
+                    )));
+                }
+                if t.magnetic && s > reached {
+                    return Err(self.invalid(format!(
+                        "the main track `{}` cannot open or close a gap here (from {reached} to \
+                         {s} flicks); edit on the main track instead",
+                        t.name
+                    )));
+                }
+                if furthest.is_none_or(|(end, _)| e > end) {
+                    furthest = Some((e, item.id()));
+                }
             }
         }
         Ok(())
@@ -1074,6 +1102,40 @@ impl Landing {
     fn end(&self) -> i64 {
         self.start + self.item.duration().flicks()
     }
+}
+
+/// One item a ripple shifted.
+struct Shifted {
+    id: ItemId,
+    delta: i64,
+    group: Option<GroupId>,
+    child: bool,
+}
+
+/// Moves every item of `items` that starts at or after `theta` by `f(start)` (when not 0) and
+/// returns what it shifted.
+fn shift_items(items: &mut TrackItems, theta: i64, f: &dyn Fn(i64) -> i64) -> Vec<Shifted> {
+    let shifted: Vec<Shifted> = items
+        .iter()
+        .rev()
+        .take_while(|i| i.start().flicks() >= theta)
+        .filter_map(|i| {
+            let delta = f(i.start().flicks());
+            (delta != 0).then(|| Shifted {
+                id: i.id(),
+                delta,
+                group: i.linked_group(),
+                child: i.attached_to().is_some(),
+            })
+        })
+        .collect();
+    for s in &shifted {
+        items.update(&s.id, |i| {
+            let start = i.start().flicks();
+            i.set_start(time(start + s.delta));
+        });
+    }
+    shifted
 }
 
 /// The first gap of a track (the space before its first item counts), as `(from, to)` flicks.

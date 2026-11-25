@@ -277,13 +277,16 @@ fn has_magnetic(doc: &Project) -> bool {
 
 fn moved_together(params: &Value, before: &Project, after: &Project) -> Result<(), String> {
     let targets = given(params)?;
-    let single = targets.len() == 1 && params.get("items").is_none_or(Value::is_null);
+    // P1: a single unlinked move on free tracks (`reject` or `new_track`) leaves the partners
+    // as they were; otherwise a ripple or a cut may change them, so only the group rule holds.
+    let p1 = targets.len() == 1
+        && params.get("items").is_none_or(Value::is_null)
+        && !matches!(params["mode"].as_str(), Some("insert" | "overwrite"))
+        && !has_magnetic(before);
     for target in targets {
         let (_, was) = found(before, target, "before the move")?;
         if unlinked(params) {
-            // P1: a single unlinked move on free tracks leaves the partners as they were;
-            // otherwise a ripple may move them, so only the group rule is checked.
-            if single && !has_magnetic(before) {
+            if p1 {
                 return only_item_unlinked(target, &was, before, after);
             }
             let (_, now) = found(after, target, "after the move")?;

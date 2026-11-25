@@ -309,8 +309,7 @@ pub(super) fn args_for(name: &str, p: &Pools) -> Option<(u32, BoxedStrategy<Valu
         "timeline.list_markers" => (1, timeline_list_markers(p)),
         "timeline.insert" => (if p.seqs.is_empty() { 1 } else { 8 }, timeline_insert(p)),
         "timeline.overwrite" => (if p.seqs.is_empty() { 1 } else { 3 }, timeline_overwrite(p)),
-        "timeline.lift" => (edits.div_ceil(3), timeline_ranges(p)),
-        "timeline.extract" => (edits.div_ceil(3), timeline_ranges(p)),
+        "timeline.lift" | "timeline.extract" => (edits.div_ceil(3), timeline_ranges(p)),
         "timeline.ripple_delete" => (edits.div_ceil(2), ripple_delete(p)),
         "timeline.delete_gap" => (edits.div_ceil(3), delete_gap(p)),
         "timeline.get" => (1, timeline_get(p)),
@@ -1077,7 +1076,7 @@ fn item_duplicate(p: &Pools) -> BoxedStrategy<Value> {
 
 /// A relative time of `frames` 30 fps frames: flicks, or `"f:N"` when not negative.
 fn offset_json(frames: i64, form: u8) -> Value {
-    if frames >= 0 && form % 2 == 0 {
+    if frames >= 0 && form.is_multiple_of(2) {
         Value::from(format!("f:{frames}"))
     } else {
         Value::from(frames * FPF_30)
@@ -1278,7 +1277,7 @@ fn item_move(p: &Pools) -> BoxedStrategy<Value> {
                 0..12_u8,
                 option::weighted(0.1, any::<bool>()),
                 option::weighted(0.1, any::<bool>()),
-                select(others.to_vec()),
+                select(others.clone()),
             )
         })
         .prop_map(
@@ -1306,7 +1305,7 @@ fn item_move(p: &Pools) -> BoxedStrategy<Value> {
                 match shape {
                     1 | 3..=5 => {
                         let frames = start - it.start;
-                        v["delta"] = if frames >= 0 && form % 2 == 0 {
+                        v["delta"] = if frames >= 0 && form.is_multiple_of(2) {
                             json!(format!("f:{frames}"))
                         } else {
                             json!(frames * it.fpf)

@@ -37,7 +37,7 @@ use crate::{
         OverlapPolicy, PlacementMode,
         edit::{given_items, remove_with_partners},
         magnetic::{BlockItem, Unit, block_end, clamp_to_end, offset_in_block, pack},
-        placement::{DryIds, Edit, Ids, Landing, Plan, mint, resolve_mode, span},
+        placement::{DryIds, Edit, Ids, Landing, Plan, resolve_mode, span},
     },
     track::check_editable_kind,
     util::{resolve_frame_time, resolve_sample_time},
@@ -232,7 +232,7 @@ fn plan_move(cmd: &ItemMove, doc: &Project, ids: &mut dyn Ids) -> Result<MovePla
     let rate = seq.format.frame_rate;
     let resolved = if fine {
         let mut tracks: Vec<TrackId> = dests.values().copied().collect();
-        tracks.extend(movers.iter().filter_map(|m| track_of(m)));
+        tracks.extend(movers.iter().filter_map(track_of));
         check_fine(&e, &given, &tracks)?;
         resolve_sample_time(pointer, input, rate, seq.format.sample_rate)?
     } else {
@@ -534,13 +534,13 @@ fn plan_duplicate(
     for (t, src) in &sources {
         let group = src
             .linked_group()
-            .map(|g| *groups.entry(g).or_insert_with(|| mint(ids)));
-        let id: ItemId = mint(ids);
+            .map(|g| *groups.entry(g).or_insert_with(|| e.mint(ids)));
+        let id: ItemId = e.mint(ids);
         let mut copy = src.clone();
         if let Item::Clip(c) = &mut copy {
             c.id = id;
             c.linked_group = group;
-            c.markers = remint(&c.markers, ids);
+            c.markers = remint(&c.markers, &mut e, ids);
         }
         copy_of.insert(src.id(), id);
         copies.push((*t, src.clone(), copy));
@@ -598,11 +598,11 @@ fn plan_duplicate(
 }
 
 /// Copies of item markers with fresh IDs (in marker-ID order).
-fn remint(markers: &Markers, ids: &mut dyn Ids) -> Markers {
+fn remint(markers: &Markers, e: &mut Edit<'_>, ids: &mut dyn Ids) -> Markers {
     let mut out = Markers::new();
     for m in markers.values() {
         let mut copy = m.clone();
-        copy.id = mint::<MarkerId>(ids);
+        copy.id = e.mint::<MarkerId>(ids);
         out.insert(copy.id, copy);
     }
     out
