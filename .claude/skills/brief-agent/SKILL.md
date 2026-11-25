@@ -26,6 +26,8 @@ and propose a split.
 - Every mutation is a registered `#[command]` via `Tx`, with UI/MCP/CLI parity. Time is flicks.
   Address entities by ID.
 - UI: `packages/ui` components and tokens only (`just lint-literals`); strings through i18n.
+  Compact controls and row actions are icon buttons with tooltips, not text buttons; dialogs stay
+  compact (at most 60% of the window height). The owner rejects text-labelled row actions.
 - Contracts change only via an ADR (draft it as **Proposed** and stop at its spike).
 - `git commit -s`, conventional commits, NO AI attribution trailer; commit early (the machine has restarted before).
 - No GitHub Actions (never trigger them, never edit workflows unless that is the task).
