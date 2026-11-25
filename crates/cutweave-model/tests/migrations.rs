@@ -725,3 +725,33 @@ fn saving_is_deterministic_and_ends_with_a_newline() {
     assert!(a.ends_with("}\n"));
     assert!(!a.contains('\r'));
 }
+
+/// #168: a v2 document written before the folders and the visual fields existed still opens,
+/// and saving it twice gives the same bytes.
+#[test]
+fn an_old_v2_document_opens_and_saves_idempotently() {
+    let mut v: Value =
+        serde_json::from_str(&read(&fixtures().join("v2/three-clips.cutweave"))).unwrap();
+    v.as_object_mut().unwrap().remove("folders");
+    for asset in v["media"].as_object_mut().unwrap().values_mut() {
+        let a = asset.as_object_mut().unwrap();
+        a.remove("name");
+        a.remove("folder");
+    }
+    for seq in v["sequences"].as_object_mut().unwrap().values_mut() {
+        for track in seq["tracks"].as_object_mut().unwrap().values_mut() {
+            for item in track["items"].as_object_mut().unwrap().values_mut() {
+                item["visual"].as_object_mut().unwrap().remove("crop");
+                item["visual"].as_object_mut().unwrap().remove("flip");
+                item["visual"].as_object_mut().unwrap().remove("blend_mode");
+                item["audio"].as_object_mut().unwrap().remove("pan");
+            }
+        }
+    }
+    let (project, _) = editable(open(v).unwrap());
+    assert_eq!(project, expected_three_clips());
+    let once = to_document_string(&project).unwrap();
+    let (again, report) = editable(open_str(&once).unwrap());
+    assert!(!report.migrated());
+    assert_eq!(to_document_string(&again).unwrap(), once);
+}

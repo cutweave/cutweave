@@ -76,6 +76,20 @@ impl Migration for V1ToV2 {
     }
 }
 
+/// The steps that only add missing fields, for documents already at v2 (#168): v2 was one
+/// version for several work packages, so a v2 file written by an earlier build lacks the fields
+/// a later one added. Every step is `or_insert`-style, so a complete document is untouched.
+pub(super) fn fill_in_v2(doc: &mut Value) -> Result<(), MigrationError> {
+    let Value::Object(root) = doc else {
+        return Ok(());
+    };
+    let mut notes = Vec::new();
+    for step in [add_timeline_fields, add_media_folders, add_visual_props] {
+        step(root, &mut notes)?;
+    }
+    Ok(())
+}
+
 /// Every sequence of the document with its JSON Pointer (`/sequences/<id>`).
 fn sequences(root: &mut JsonObject) -> Result<Vec<(String, &mut JsonObject)>, MigrationError> {
     let Some(map) = object_field(FROM, root, "sequences", "")? else {
@@ -410,6 +424,23 @@ mod tests {
     use serde_json::json;
 
     use super::*;
+
+    #[test]
+    fn a_v2_document_from_an_earlier_build_is_filled_in_and_stays_idempotent() {
+        let mut doc = json!({"meta": {"schema_version": 2}, "media": {"m": {}},
+            "sequences": {"s": {"tracks": {"t": {"items": {"i": {
+                "kind": "clip", "visual": {"opacity": 1.0}, "audio": {"gain": 0.0}}}}}}}});
+        fill_in_v2(&mut doc).unwrap();
+        assert_eq!(doc["folders"], json!({}));
+        assert_eq!(doc["media"]["m"]["folder"], json!(null));
+        let item = &doc["sequences"]["s"]["tracks"]["t"]["items"]["i"];
+        assert_eq!(item["visual"]["blend_mode"], "normal");
+        assert_eq!(item["visual"]["crop"]["left"], 0.0);
+        assert_eq!(item["audio"]["pan"], 0.0);
+        let once = doc.clone();
+        fill_in_v2(&mut doc).unwrap();
+        assert_eq!(doc, once);
+    }
 
     fn run(doc: Value) -> (Value, Vec<String>) {
         let mut doc = doc;

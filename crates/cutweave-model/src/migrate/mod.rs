@@ -260,6 +260,11 @@ impl<'a> Migrator<'a> {
                 oldest: self.oldest,
             });
         }
+        if from_version == self.current && self.current == 2 {
+            // v2 was one version for several work packages (#168): fill in what a v2 file
+            // written by an earlier build lacks. Nothing changes in a complete document.
+            v1_to_v2::fill_in_v2(&mut doc)?;
+        }
         let mut steps = Vec::new();
         for migration in self
             .chain
