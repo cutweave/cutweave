@@ -313,21 +313,37 @@ export class TimelineView {
 
   // ---- canvas, theme, render loop ---------------------------------------------------------
 
-  /** Size the canvas (CSS px) at the given device pixel ratio. */
+  /**
+   * Size the canvas (CSS px) at the given device pixel ratio, and draw it at once (#163).
+   *
+   * Setting the canvas size clears it, and the `ResizeObserver` that calls this runs between
+   * layout and paint: drawing on the next frame would show the cleared canvas for every frame
+   * of a splitter drag. So a resize draws synchronously, and a size that did not change touches
+   * nothing (assigning the same size would still clear the canvas).
+   */
   resize(cssWidth: number, cssHeight: number, dpr = 1): void {
     const w = Math.max(1, Math.floor(cssWidth));
     const h = Math.max(1, Math.floor(cssHeight));
+    const bw = Math.max(1, Math.round(w * dpr));
+    const bh = Math.max(1, Math.round(h * dpr));
+    const backingChanged = this.canvas.width !== bw || this.canvas.height !== bh;
+    const cssChanged = this.vp.width !== w || this.vp.height !== h;
+    if (!backingChanged && !cssChanged && this.dpr === dpr) return;
     this.dpr = dpr;
-    this.canvas.width = Math.max(1, Math.round(w * dpr));
-    this.canvas.height = Math.max(1, Math.round(h * dpr));
-    if (this.canvas.style) {
+    if (backingChanged) {
+      this.canvas.width = bw;
+      this.canvas.height = bh;
+    }
+    if (cssChanged && this.canvas.style) {
       this.canvas.style.width = `${w}px`;
       this.canvas.style.height = `${h}px`;
     }
     this.vp.width = w;
     this.vp.height = h;
     this.applyScroll();
-    this.invalidate();
+    this.dirtyFull = true;
+    this.dirty = null;
+    this.flush();
   }
 
   /** Re-read the design tokens (call on theme change; `bind()` does this automatically). */
