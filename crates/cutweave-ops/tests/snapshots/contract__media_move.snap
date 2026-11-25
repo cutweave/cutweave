@@ -1,0 +1,294 @@
+---
+source: crates/cutweave-ops/tests/contract.rs
+expression: "json!({\n    \"meta\": serde_json::to_value(meta).unwrap(), \"input\": meta.input_schema,\n    \"output\": meta.output_schema,\n})"
+---
+{
+  "meta": {
+    "name": "media.move",
+    "summary": "Move media assets and folders into a folder of the bin, or to its top level",
+    "kind": "command",
+    "undoable": true,
+    "view": false,
+    "scope": "any",
+    "mcp": "catalog",
+    "annotations": {
+      "readOnlyHint": false,
+      "destructiveHint": false,
+      "idempotentHint": true,
+      "openWorldHint": false
+    },
+    "secret_fields": [],
+    "input_schema": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "media": {
+          "type": [
+            "array",
+            "null"
+          ],
+          "items": {
+            "description": "A Media id: `^med_[0-9a-f]{32}$`.",
+            "type": "string",
+            "pattern": "^med_[0-9a-f]{32}$"
+          },
+          "description": "Assets to move.",
+          "default": null
+        },
+        "folders": {
+          "type": [
+            "array",
+            "null"
+          ],
+          "items": {
+            "description": "A Folder id: `^fld_[0-9a-f]{32}$`.",
+            "type": "string",
+            "pattern": "^fld_[0-9a-f]{32}$"
+          },
+          "description": "Folders to move, with their contents.",
+          "default": null
+        },
+        "to": {
+          "type": [
+            "string",
+            "null"
+          ],
+          "pattern": "^fld_[0-9a-f]{32}$",
+          "description": "The destination folder; absent: the top level.",
+          "default": null
+        },
+        "on_conflict": {
+          "anyOf": [
+            {
+              "oneOf": [
+                {
+                  "type": "string",
+                  "const": "fail",
+                  "description": "Fail with `Invalid` (the default)."
+                },
+                {
+                  "type": "string",
+                  "const": "rename",
+                  "description": "Use the next free name: \"Day 1 2\", \"Day 1 3\", …"
+                }
+              ],
+              "description": "What to do when a folder's name is already taken where it goes."
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "description": "When a moved folder's name is taken in `to`: `fail` (default) or `rename`.",
+          "default": null
+        }
+      },
+      "description": "Moves assets and folders (with everything inside them) into a folder, or to the top level\nwithout `to`. Moving a folder into itself or one of its subfolders, or so deep that\nsomething would be nested more than 32 levels, fails with `Invalid`. A moved folder whose\nname the destination already has, ignoring case, fails with `Invalid` unless `on_conflict`\nis `rename`. Timelines and files on disk never change.",
+      "title": "MediaMove"
+    },
+    "output_schema": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "to": {
+          "type": [
+            "string",
+            "null"
+          ],
+          "pattern": "^fld_[0-9a-f]{32}$",
+          "description": "Where everything went; absent: the top level."
+        },
+        "media": {
+          "type": "array",
+          "items": {
+            "description": "A Media id: `^med_[0-9a-f]{32}$`.",
+            "type": "string",
+            "pattern": "^med_[0-9a-f]{32}$"
+          },
+          "description": "The assets that changed folder (those already there are left out)."
+        },
+        "folders": {
+          "type": "array",
+          "items": {
+            "description": "A Folder id: `^fld_[0-9a-f]{32}$`.",
+            "type": "string",
+            "pattern": "^fld_[0-9a-f]{32}$"
+          },
+          "description": "The folders that changed parent (those already there are left out)."
+        },
+        "renamed": {
+          "type": "array",
+          "items": {
+            "description": "A folder that got a new name because its name was taken where it went.",
+            "type": "object",
+            "properties": {
+              "folder": {
+                "description": "The folder.",
+                "type": "string",
+                "pattern": "^fld_[0-9a-f]{32}$"
+              },
+              "from": {
+                "description": "Its name before.",
+                "type": "string"
+              },
+              "to": {
+                "description": "Its name now.",
+                "type": "string"
+              }
+            },
+            "additionalProperties": false,
+            "required": [
+              "folder",
+              "from",
+              "to"
+            ]
+          },
+          "description": "Folders renamed because their name was taken (`on_conflict: rename`)."
+        }
+      },
+      "required": [
+        "to",
+        "media",
+        "folders",
+        "renamed"
+      ],
+      "description": "Result of `media.move`.",
+      "title": "MediaMoved"
+    }
+  },
+  "input": {
+    "type": "object",
+    "additionalProperties": false,
+    "properties": {
+      "media": {
+        "type": [
+          "array",
+          "null"
+        ],
+        "items": {
+          "description": "A Media id: `^med_[0-9a-f]{32}$`.",
+          "type": "string",
+          "pattern": "^med_[0-9a-f]{32}$"
+        },
+        "description": "Assets to move.",
+        "default": null
+      },
+      "folders": {
+        "type": [
+          "array",
+          "null"
+        ],
+        "items": {
+          "description": "A Folder id: `^fld_[0-9a-f]{32}$`.",
+          "type": "string",
+          "pattern": "^fld_[0-9a-f]{32}$"
+        },
+        "description": "Folders to move, with their contents.",
+        "default": null
+      },
+      "to": {
+        "type": [
+          "string",
+          "null"
+        ],
+        "pattern": "^fld_[0-9a-f]{32}$",
+        "description": "The destination folder; absent: the top level.",
+        "default": null
+      },
+      "on_conflict": {
+        "anyOf": [
+          {
+            "oneOf": [
+              {
+                "type": "string",
+                "const": "fail",
+                "description": "Fail with `Invalid` (the default)."
+              },
+              {
+                "type": "string",
+                "const": "rename",
+                "description": "Use the next free name: \"Day 1 2\", \"Day 1 3\", …"
+              }
+            ],
+            "description": "What to do when a folder's name is already taken where it goes."
+          },
+          {
+            "type": "null"
+          }
+        ],
+        "description": "When a moved folder's name is taken in `to`: `fail` (default) or `rename`.",
+        "default": null
+      }
+    },
+    "description": "Moves assets and folders (with everything inside them) into a folder, or to the top level\nwithout `to`. Moving a folder into itself or one of its subfolders, or so deep that\nsomething would be nested more than 32 levels, fails with `Invalid`. A moved folder whose\nname the destination already has, ignoring case, fails with `Invalid` unless `on_conflict`\nis `rename`. Timelines and files on disk never change.",
+    "title": "MediaMove"
+  },
+  "output": {
+    "type": "object",
+    "additionalProperties": false,
+    "properties": {
+      "to": {
+        "type": [
+          "string",
+          "null"
+        ],
+        "pattern": "^fld_[0-9a-f]{32}$",
+        "description": "Where everything went; absent: the top level."
+      },
+      "media": {
+        "type": "array",
+        "items": {
+          "description": "A Media id: `^med_[0-9a-f]{32}$`.",
+          "type": "string",
+          "pattern": "^med_[0-9a-f]{32}$"
+        },
+        "description": "The assets that changed folder (those already there are left out)."
+      },
+      "folders": {
+        "type": "array",
+        "items": {
+          "description": "A Folder id: `^fld_[0-9a-f]{32}$`.",
+          "type": "string",
+          "pattern": "^fld_[0-9a-f]{32}$"
+        },
+        "description": "The folders that changed parent (those already there are left out)."
+      },
+      "renamed": {
+        "type": "array",
+        "items": {
+          "description": "A folder that got a new name because its name was taken where it went.",
+          "type": "object",
+          "properties": {
+            "folder": {
+              "description": "The folder.",
+              "type": "string",
+              "pattern": "^fld_[0-9a-f]{32}$"
+            },
+            "from": {
+              "description": "Its name before.",
+              "type": "string"
+            },
+            "to": {
+              "description": "Its name now.",
+              "type": "string"
+            }
+          },
+          "additionalProperties": false,
+          "required": [
+            "folder",
+            "from",
+            "to"
+          ]
+        },
+        "description": "Folders renamed because their name was taken (`on_conflict: rename`)."
+      }
+    },
+    "required": [
+      "to",
+      "media",
+      "folders",
+      "renamed"
+    ],
+    "description": "Result of `media.move`.",
+    "title": "MediaMoved"
+  }
+}

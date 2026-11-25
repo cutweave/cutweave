@@ -8,6 +8,12 @@ import { KEY_COMMANDS } from "../keymap/commands.ts";
 import { COMMAND_INFO } from "../menus/builtins.ts";
 import { ZONE_SURFACE } from "../menus/canvas.ts";
 import { hintBindingIds } from "../menus/keys.ts";
+import {
+  HINT_BINDING_IDS,
+  SURFACE_COMMAND_INFO,
+  SURFACE_IDS,
+  UI_COMMAND_IDS,
+} from "../menus/surfaces/index.ts";
 import { CONTEXT_KEYS } from "../menus/when.ts";
 import { createI18n, detectLanguage } from "./index.ts";
 import en from "./locales/en.json";
@@ -49,6 +55,10 @@ const MENU_IDS: ReadonlySet<string> = new Set([
   "shortcuts.import",
   "shortcuts.reset_all",
   "app.about",
+  ...HINT_BINDING_IDS,
+  ...SURFACE_IDS,
+  ...UI_COMMAND_IDS,
+  ...SURFACE_COMMAND_INFO.map((c) => c.name),
   ...Object.values(ZONE_SURFACE).filter((id): id is string => id !== null),
   "timeline.canvas",
   // The command palette's row surface and its row command, and its shortcut's binding id (WP-2H.04).

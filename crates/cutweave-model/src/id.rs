@@ -45,6 +45,8 @@ pub enum EntityKind {
     Group,
     /// A timeline or item marker (`mrk_`).
     Marker,
+    /// A folder of the media bin (`fld_`, ADR-0020).
+    Folder,
 }
 
 impl EntityKind {
@@ -58,6 +60,7 @@ impl EntityKind {
             EntityKind::Item => "itm",
             EntityKind::Group => "grp",
             EntityKind::Marker => "mrk",
+            EntityKind::Folder => "fld",
         }
     }
 
@@ -71,6 +74,7 @@ impl EntityKind {
             EntityKind::Item => "item",
             EntityKind::Group => "group",
             EntityKind::Marker => "marker",
+            EntityKind::Folder => "folder",
         }
     }
 }
@@ -96,7 +100,8 @@ mod sealed {
 }
 
 /// Implemented by every typed ID ([`MediaId`], [`SequenceId`], [`TrackId`], [`ItemId`],
-/// [`GroupId`], [`MarkerId`]). Sealed: the set of ID kinds is part of the project format.
+/// [`GroupId`], [`MarkerId`], [`FolderId`]). Sealed: the set of ID kinds is part of the project
+/// format.
 pub trait EntityId:
     Copy
     + Eq
@@ -276,6 +281,12 @@ entity_id!(
     Marker,
     "^mrk_[0-9a-f]{32}$"
 );
+entity_id!(
+    /// The ID of a folder of the media bin (ADR-0020): `fld_…`.
+    FolderId,
+    Folder,
+    "^fld_[0-9a-f]{32}$"
+);
 
 /// A source of fresh 128-bit UUIDv7(-shaped) values for new IDs.
 ///
@@ -445,10 +456,15 @@ mod tests {
             EntityKind::Item,
             EntityKind::Group,
             EntityKind::Marker,
+            EntityKind::Folder,
         ];
         let prefixes: std::collections::BTreeSet<_> = kinds.iter().map(|k| k.prefix()).collect();
         assert_eq!(prefixes.len(), kinds.len());
         assert_eq!(MediaId::KIND.prefix(), "med");
+        assert_eq!(
+            FolderId::from_u128(2).to_string(),
+            "fld_00000000000000000000000000000002"
+        );
         assert_eq!(
             GroupId::from_u128(1).to_string(),
             "grp_00000000000000000000000000000001"

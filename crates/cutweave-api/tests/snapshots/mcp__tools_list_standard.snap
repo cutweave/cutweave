@@ -12,9 +12,23 @@ expression: catalog.tools_json()
         "additionalProperties": false,
         "properties": {
           "item": {
-            "type": "string",
+            "type": [
+              "string",
+              "null"
+            ],
             "pattern": "^itm_[0-9a-f]{32}$",
-            "description": "The clip."
+            "description": "The clip (or `items`)."
+          },
+          "items": {
+            "type": [
+              "array",
+              "null"
+            ],
+            "items": {
+              "pattern": "^itm_[0-9a-f]{32}$",
+              "type": "string"
+            },
+            "description": "Clips to split at once."
           },
           "at": {
             "description": "Timeline time to split at: strictly inside the clip.",
@@ -29,10 +43,16 @@ expression: catalog.tools_json()
                 "pattern": "^-?[0-9]+(\\.[0-9]+)?s$|^-?[0-9]+$|^f:[0-9]+$|^[0-9]+[:;][0-9]+[:;][0-9]+[:;][0-9]+$"
               }
             ]
+          },
+          "fine": {
+            "type": [
+              "boolean",
+              "null"
+            ],
+            "description": "Audio sample grid."
           }
         },
         "required": [
-          "item",
           "at"
         ]
       },
@@ -71,13 +91,7 @@ expression: catalog.tools_json()
           "to": {
             "anyOf": [
               {
-                "type": "integer",
-                "minimum": -9007199254740991,
-                "maximum": 9007199254740991
-              },
-              {
-                "type": "string",
-                "pattern": "^-?[0-9]+(\\.[0-9]+)?s$|^-?[0-9]+$|^f:[0-9]+$|^[0-9]+[:;][0-9]+[:;][0-9]+[:;][0-9]+$"
+                "$ref": "#/$defs/time"
               },
               {
                 "type": "null"
@@ -88,13 +102,7 @@ expression: catalog.tools_json()
           "delta": {
             "anyOf": [
               {
-                "type": "integer",
-                "minimum": -9007199254740991,
-                "maximum": 9007199254740991
-              },
-              {
-                "type": "string",
-                "pattern": "^-?[0-9]+(\\.[0-9]+)?s$|^-?[0-9]+$|^f:[0-9]+$|^[0-9]+[:;][0-9]+[:;][0-9]+[:;][0-9]+$"
+                "$ref": "#/$defs/time"
               },
               {
                 "type": "null"
@@ -113,7 +121,22 @@ expression: catalog.tools_json()
         "required": [
           "item",
           "edge"
-        ]
+        ],
+        "$defs": {
+          "time": {
+            "anyOf": [
+              {
+                "type": "integer",
+                "minimum": -9007199254740991,
+                "maximum": 9007199254740991
+              },
+              {
+                "type": "string",
+                "pattern": "^-?[0-9]+(\\.[0-9]+)?s$|^-?[0-9]+$|^f:[0-9]+$|^[0-9]+[:;][0-9]+[:;][0-9]+[:;][0-9]+$"
+              }
+            ]
+          }
+        }
       },
       "annotations": {
         "readOnlyHint": false,
@@ -174,31 +197,11 @@ expression: catalog.tools_json()
             "properties": {
               "in": {
                 "description": "Start: flicks, \"2.5s\", \"f:60\" or a timecode.",
-                "anyOf": [
-                  {
-                    "type": "integer",
-                    "minimum": -9007199254740991,
-                    "maximum": 9007199254740991
-                  },
-                  {
-                    "type": "string",
-                    "pattern": "^-?[0-9]+(\\.[0-9]+)?s$|^-?[0-9]+$|^f:[0-9]+$|^[0-9]+[:;][0-9]+[:;][0-9]+[:;][0-9]+$"
-                  }
-                ]
+                "$ref": "#/$defs/time"
               },
               "out": {
                 "description": "End, exclusive: at most the sequence end.",
-                "anyOf": [
-                  {
-                    "type": "integer",
-                    "minimum": -9007199254740991,
-                    "maximum": 9007199254740991
-                  },
-                  {
-                    "type": "string",
-                    "pattern": "^-?[0-9]+(\\.[0-9]+)?s$|^-?[0-9]+$|^f:[0-9]+$|^[0-9]+[:;][0-9]+[:;][0-9]+[:;][0-9]+$"
-                  }
-                ]
+                "$ref": "#/$defs/time"
               }
             },
             "required": [
@@ -210,101 +213,109 @@ expression: catalog.tools_json()
           "preset": {
             "anyOf": [
               {
-                "oneOf": [
-                  {
-                    "type": "string",
-                    "const": "h264-mp4-1080p"
-                  },
-                  {
+                "type": "string",
+                "const": "h264-mp4-1080p",
+                "description": "MP4, H.264 + AAC, fit into 1920x1080 (1080x1920 portrait), not upscaled, high quality."
+              },
+              {
+                "type": "object",
+                "properties": {
+                  "custom": {
+                    "description": "Custom output settings; absent fields take the sequence's value (quality: high).",
                     "type": "object",
                     "properties": {
-                      "custom": {
-                        "description": "Custom output settings; absent fields take the sequence's value (quality: high).",
-                        "type": "object",
+                      "width": {
+                        "description": "Frame width in pixels: even, 16-8192.",
+                        "type": [
+                          "integer",
+                          "null"
+                        ],
+                        "minimum": 0
+                      },
+                      "height": {
+                        "description": "Frame height in pixels: even, 16-8192.",
+                        "type": [
+                          "integer",
+                          "null"
+                        ],
+                        "minimum": 0
+                      },
+                      "fps": {
+                        "description": "Frame rate, e.g. {\"num\": 30, \"den\": 1}: at most 240 fps, a whole number of flicks per\nframe.",
+                        "type": [
+                          "object",
+                          "null"
+                        ],
                         "properties": {
-                          "width": {
-                            "description": "Frame width in pixels: even, 16-8192.",
-                            "type": [
-                              "integer",
-                              "null"
-                            ],
-                            "minimum": 0
+                          "num": {
+                            "description": "Frames.",
+                            "type": "integer",
+                            "minimum": 1,
+                            "maximum": 4294967295
                           },
-                          "height": {
-                            "description": "Frame height in pixels: even, 16-8192.",
-                            "type": [
-                              "integer",
-                              "null"
-                            ],
-                            "minimum": 0
-                          },
-                          "fps": {
-                            "description": "Frame rate, e.g. {\"num\": 30, \"den\": 1}: at most 240 fps, a whole number of flicks per\nframe.",
-                            "type": [
-                              "object",
-                              "null"
-                            ],
-                            "properties": {
-                              "num": {
-                                "description": "Frames.",
-                                "type": "integer",
-                                "minimum": 1,
-                                "maximum": 4294967295
-                              },
-                              "den": {
-                                "description": "Seconds.",
-                                "type": "integer",
-                                "minimum": 1,
-                                "maximum": 4294967295
-                              }
-                            },
-                            "required": [
-                              "num",
-                              "den"
-                            ],
-                            "additionalProperties": false
-                          },
-                          "quality": {
-                            "description": "\"low\", \"medium\" or \"high\".",
-                            "anyOf": [
-                              {
-                                "oneOf": [
-                                  {
-                                    "const": "low",
-                                    "type": "string"
-                                  },
-                                  {
-                                    "const": "medium",
-                                    "type": "string"
-                                  },
-                                  {
-                                    "const": "high",
-                                    "type": "string"
-                                  }
-                                ]
-                              },
-                              {
-                                "type": "null"
-                              }
-                            ]
+                          "den": {
+                            "description": "Seconds.",
+                            "type": "integer",
+                            "minimum": 1,
+                            "maximum": 4294967295
                           }
                         },
+                        "required": [
+                          "num",
+                          "den"
+                        ],
                         "additionalProperties": false
+                      },
+                      "quality": {
+                        "description": "\"low\", \"medium\" or \"high\".",
+                        "anyOf": [
+                          {
+                            "oneOf": [
+                              {
+                                "const": "low",
+                                "type": "string"
+                              },
+                              {
+                                "const": "medium",
+                                "type": "string"
+                              },
+                              {
+                                "const": "high",
+                                "type": "string"
+                              }
+                            ]
+                          },
+                          {
+                            "type": "null"
+                          }
+                        ]
+                      },
+                      "preset": {
+                        "description": "Base preset id; the other fields replace its values.",
+                        "type": [
+                          "string",
+                          "null"
+                        ]
                       }
                     },
-                    "required": [
-                      "custom"
-                    ],
-                    "additionalProperties": false,
-                    "description": "MP4, H.264 + AAC at a custom size, frame rate and quality."
+                    "additionalProperties": false
                   }
-                ]
+                },
+                "required": [
+                  "custom"
+                ],
+                "additionalProperties": false,
+                "description": "MP4, H.264 + AAC at a custom size, frame rate and quality."
+              },
+              {
+                "type": "string",
+                "description": "A preset id (export.list_presets)."
               },
               {
                 "type": "null"
               }
             ],
-            "description": "\"h264-mp4-1080p\" (default) or {\"custom\": {width, height, fps, quality}}."
+            "description": "\"h264-mp4-1080p\" (default), a preset id (\"youtube-1080p\") or {\"custom\": {width, height,\nfps, quality, preset}}."
           },
           "hw": {
             "anyOf": [
@@ -349,7 +360,22 @@ expression: catalog.tools_json()
         },
         "required": [
           "path"
-        ]
+        ],
+        "$defs": {
+          "time": {
+            "anyOf": [
+              {
+                "type": "integer",
+                "minimum": -9007199254740991,
+                "maximum": 9007199254740991
+              },
+              {
+                "type": "string",
+                "pattern": "^-?[0-9]+(\\.[0-9]+)?s$|^-?[0-9]+$|^f:[0-9]+$|^[0-9]+[:;][0-9]+[:;][0-9]+[:;][0-9]+$"
+              }
+            ]
+          }
+        }
       },
       "annotations": {
         "readOnlyHint": false,
@@ -360,7 +386,7 @@ expression: catalog.tools_json()
     },
     {
       "name": "item_delete",
-      "description": "Delete items and their linked partners (no ripple; fails if a track is locked)",
+      "description": "Delete items and their linked partners (the main track closes up)",
       "inputSchema": {
         "type": "object",
         "additionalProperties": false,
@@ -368,9 +394,8 @@ expression: catalog.tools_json()
           "items": {
             "type": "array",
             "items": {
-              "description": "A Item id: `^itm_[0-9a-f]{32}$`.",
-              "type": "string",
-              "pattern": "^itm_[0-9a-f]{32}$"
+              "pattern": "^itm_[0-9a-f]{32}$",
+              "type": "string"
             },
             "description": "The items to delete, at least one."
           }
@@ -388,18 +413,110 @@ expression: catalog.tools_json()
     },
     {
       "name": "item_move",
-      "description": "Move an item in time and/or to another track (linked partners follow)",
+      "description": "Move items in time and/or to another track (linked partners follow)",
       "inputSchema": {
         "type": "object",
         "additionalProperties": false,
         "properties": {
           "item": {
-            "type": "string",
+            "type": [
+              "string",
+              "null"
+            ],
             "pattern": "^itm_[0-9a-f]{32}$",
-            "description": "The item."
+            "description": "The item (or `items`)."
+          },
+          "items": {
+            "type": [
+              "array",
+              "null"
+            ],
+            "items": {
+              "pattern": "^itm_[0-9a-f]{32}$",
+              "type": "string"
+            },
+            "description": "Items; the first leads."
           },
           "start": {
-            "description": "New timeline position of the item's first frame, `>= 0`.",
+            "anyOf": [
+              {
+                "$ref": "#/$defs/time"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "New start, `>= 0` (or `delta`)."
+          },
+          "delta": {
+            "anyOf": [
+              {
+                "$ref": "#/$defs/time"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Offset of the start."
+          },
+          "to_track": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "pattern": "^trk_[0-9a-f]{32}$",
+            "description": "Target track (default: stay)."
+          },
+          "unlink": {
+            "type": [
+              "boolean",
+              "null"
+            ],
+            "description": "Move only the given items, unlinked."
+          },
+          "overlap": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "enum": [
+              "reject",
+              "new_track",
+              null
+            ],
+            "description": "Alias of `mode`."
+          },
+          "mode": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "enum": [
+              "insert",
+              "overwrite",
+              "new_track",
+              "reject",
+              null
+            ],
+            "description": "Default: `insert` on the main track, else `reject`."
+          },
+          "ripple_all_tracks": {
+            "type": [
+              "boolean",
+              "null"
+            ],
+            "description": "Ripples reach every track."
+          },
+          "fine": {
+            "type": [
+              "boolean",
+              "null"
+            ],
+            "description": "Audio sample grid."
+          }
+        },
+        "$defs": {
+          "time": {
             "anyOf": [
               {
                 "type": "integer",
@@ -411,52 +528,13 @@ expression: catalog.tools_json()
                 "pattern": "^-?[0-9]+(\\.[0-9]+)?s$|^-?[0-9]+$|^f:[0-9]+$|^[0-9]+[:;][0-9]+[:;][0-9]+[:;][0-9]+$"
               }
             ]
-          },
-          "to_track": {
-            "type": [
-              "string",
-              "null"
-            ],
-            "pattern": "^trk_[0-9a-f]{32}$",
-            "description": "Target track of the same sequence and kind (default: stay on the current track)."
-          },
-          "unlink": {
-            "type": [
-              "boolean",
-              "null"
-            ],
-            "description": "Move only this item and remove it from its linked group (default `false`)."
-          },
-          "overlap": {
-            "anyOf": [
-              {
-                "oneOf": [
-                  {
-                    "type": "string",
-                    "const": "reject"
-                  },
-                  {
-                    "type": "string",
-                    "const": "new_track"
-                  }
-                ]
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "description": "Overlap handling (default `reject`)."
           }
-        },
-        "required": [
-          "item",
-          "start"
-        ]
+        }
       },
       "annotations": {
         "readOnlyHint": false,
         "destructiveHint": false,
-        "idempotentHint": true,
+        "idempotentHint": false,
         "openWorldHint": false
       }
     },
@@ -672,6 +750,14 @@ expression: catalog.tools_json()
               "type": "string"
             },
             "description": "Absolute paths of the files (1..=256, no repeats)."
+          },
+          "folder": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "pattern": "^fld_[0-9a-f]{32}$",
+            "description": "Bin folder (default: top level)."
           }
         },
         "required": [
@@ -720,7 +806,7 @@ expression: catalog.tools_json()
                   "string",
                   "null"
                 ],
-                "description": "Terms that must all occur in the file name, ignoring case and accents."
+                "description": "Terms that must all occur in the name, ignoring case and accents."
               },
               "kinds": {
                 "type": [
@@ -728,7 +814,6 @@ expression: catalog.tools_json()
                   "null"
                 ],
                 "items": {
-                  "description": "What a [`MediaAsset`] is.",
                   "oneOf": [
                     {
                       "const": "video",
@@ -753,13 +838,7 @@ expression: catalog.tools_json()
               "min_duration": {
                 "anyOf": [
                   {
-                    "type": "integer",
-                    "minimum": 0,
-                    "maximum": 9007199254740991
-                  },
-                  {
-                    "type": "string",
-                    "pattern": "^-?[0-9]+(\\.[0-9]+)?s$|^-?[0-9]+$"
+                    "$ref": "#/$defs/shared1"
                   },
                   {
                     "type": "null"
@@ -770,13 +849,7 @@ expression: catalog.tools_json()
               "max_duration": {
                 "anyOf": [
                   {
-                    "type": "integer",
-                    "minimum": 0,
-                    "maximum": 9007199254740991
-                  },
-                  {
-                    "type": "string",
-                    "pattern": "^-?[0-9]+(\\.[0-9]+)?s$|^-?[0-9]+$"
+                    "$ref": "#/$defs/shared1"
                   },
                   {
                     "type": "null"
@@ -797,6 +870,21 @@ expression: catalog.tools_json()
                   "null"
                 ],
                 "description": "`true`: only files nothing can be read from (no streams)."
+              },
+              "folder": {
+                "type": [
+                  "string",
+                  "null"
+                ],
+                "pattern": "^fld_[0-9a-f]{32}$",
+                "description": "Only this bin folder."
+              },
+              "recursive": {
+                "type": [
+                  "boolean",
+                  "null"
+                ],
+                "description": "With subfolders (default: true without folder)."
               }
             },
             "description": "Keep only matching media."
@@ -832,6 +920,21 @@ expression: catalog.tools_json()
               "by"
             ],
             "description": "Order."
+          }
+        },
+        "$defs": {
+          "shared1": {
+            "anyOf": [
+              {
+                "type": "integer",
+                "minimum": 0,
+                "maximum": 9007199254740991
+              },
+              {
+                "type": "string",
+                "pattern": "^-?[0-9]+(\\.[0-9]+)?s$|^-?[0-9]+$"
+              }
+            ]
           }
         }
       },
@@ -937,7 +1040,7 @@ expression: catalog.tools_json()
           "track": {
             "type": "string",
             "pattern": "^trk_[0-9a-f]{32}$",
-            "description": "The target track (of that sequence): a video track for pictures, an audio track for\nsound."
+            "description": "The target track: video for pictures, audio for sound."
           },
           "media": {
             "type": "string",
@@ -945,7 +1048,88 @@ expression: catalog.tools_json()
             "description": "The media to place."
           },
           "at": {
-            "description": "Timeline position of the clip's first frame, `>= 0` (snapped to the frame grid).",
+            "description": "Timeline position of the clip's first frame, `>= 0`.",
+            "$ref": "#/$defs/time"
+          },
+          "source_in": {
+            "anyOf": [
+              {
+                "$ref": "#/$defs/time"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Position in the media to start from (default 0)."
+          },
+          "duration": {
+            "anyOf": [
+              {
+                "$ref": "#/$defs/time"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Clip length, `> 0` (default: the rest of the media)."
+          },
+          "overlap": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "enum": [
+              "reject",
+              "new_track",
+              null
+            ],
+            "description": "Alias of `mode`."
+          },
+          "link": {
+            "type": [
+              "boolean",
+              "null"
+            ],
+            "description": "Also place a video's sound, linked (default `true`)."
+          },
+          "mode": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "enum": [
+              "insert",
+              "overwrite",
+              "new_track",
+              "reject",
+              null
+            ],
+            "description": "Default: `insert` on the main track, else `reject`."
+          },
+          "audio_track": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "pattern": "^trk_[0-9a-f]{32}$",
+            "description": "Track for the linked sound."
+          },
+          "ripple_all_tracks": {
+            "type": [
+              "boolean",
+              "null"
+            ],
+            "description": "`insert` ripples every track."
+          }
+        },
+        "required": [
+          "sequence",
+          "track",
+          "media",
+          "at"
+        ],
+        "$defs": {
+          "time": {
             "anyOf": [
               {
                 "type": "integer",
@@ -957,75 +1141,8 @@ expression: catalog.tools_json()
                 "pattern": "^-?[0-9]+(\\.[0-9]+)?s$|^-?[0-9]+$|^f:[0-9]+$|^[0-9]+[:;][0-9]+[:;][0-9]+[:;][0-9]+$"
               }
             ]
-          },
-          "source_in": {
-            "anyOf": [
-              {
-                "type": "integer",
-                "minimum": -9007199254740991,
-                "maximum": 9007199254740991
-              },
-              {
-                "type": "string",
-                "pattern": "^-?[0-9]+(\\.[0-9]+)?s$|^-?[0-9]+$|^f:[0-9]+$|^[0-9]+[:;][0-9]+[:;][0-9]+[:;][0-9]+$"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "description": "Position in the media to start from (default 0)."
-          },
-          "duration": {
-            "anyOf": [
-              {
-                "type": "integer",
-                "minimum": -9007199254740991,
-                "maximum": 9007199254740991
-              },
-              {
-                "type": "string",
-                "pattern": "^-?[0-9]+(\\.[0-9]+)?s$|^-?[0-9]+$|^f:[0-9]+$|^[0-9]+[:;][0-9]+[:;][0-9]+[:;][0-9]+$"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "description": "Clip length, `> 0` (snapped to whole frames, at least one)."
-          },
-          "overlap": {
-            "anyOf": [
-              {
-                "oneOf": [
-                  {
-                    "type": "string",
-                    "const": "reject"
-                  },
-                  {
-                    "type": "string",
-                    "const": "new_track"
-                  }
-                ]
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "description": "Overlap handling (default `reject`)."
-          },
-          "link": {
-            "type": [
-              "boolean",
-              "null"
-            ],
-            "description": "Also insert the audio of a video file as a linked clip (default `true`)."
           }
-        },
-        "required": [
-          "sequence",
-          "track",
-          "media",
-          "at"
-        ]
+        }
       },
       "annotations": {
         "readOnlyHint": false,

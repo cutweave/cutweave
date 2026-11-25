@@ -82,11 +82,11 @@ expression: "json!({\n    \"meta\": serde_json::to_value(meta).unwrap(), \"input
         "preset": {
           "anyOf": [
             {
-              "oneOf": [
+              "anyOf": [
                 {
                   "type": "string",
                   "const": "h264-mp4-1080p",
-                  "description": "MP4, H.264 + AAC 48 kHz stereo, at the sequence frame rate, fit into 1920x1080\n(1080x1920 when portrait) without upscaling, high quality."
+                  "description": "MP4, H.264 + AAC, fit into 1920x1080 (1080x1920 portrait), not upscaled, high quality."
                 },
                 {
                   "type": "object",
@@ -170,6 +170,14 @@ expression: "json!({\n    \"meta\": serde_json::to_value(meta).unwrap(), \"input
                             }
                           ],
                           "default": null
+                        },
+                        "preset": {
+                          "description": "Base preset id; the other fields replace its values.",
+                          "type": [
+                            "string",
+                            "null"
+                          ],
+                          "default": null
                         }
                       },
                       "additionalProperties": false
@@ -180,6 +188,10 @@ expression: "json!({\n    \"meta\": serde_json::to_value(meta).unwrap(), \"input
                   ],
                   "additionalProperties": false,
                   "description": "MP4, H.264 + AAC at a custom size, frame rate and quality."
+                },
+                {
+                  "type": "string",
+                  "description": "A preset id (export.list_presets)."
                 }
               ],
               "description": "What to make: the preset, or custom settings."
@@ -188,7 +200,7 @@ expression: "json!({\n    \"meta\": serde_json::to_value(meta).unwrap(), \"input
               "type": "null"
             }
           ],
-          "description": "\"h264-mp4-1080p\" (default) or {\"custom\": {width, height, fps, quality}}.",
+          "description": "\"h264-mp4-1080p\" (default), a preset id (\"youtube-1080p\") or {\"custom\": {width, height,\nfps, quality, preset}}.",
           "default": null
         },
         "hw": {
@@ -325,6 +337,50 @@ expression: "json!({\n    \"meta\": serde_json::to_value(meta).unwrap(), \"input
           "format": "uint64",
           "minimum": 0,
           "description": "The document revision exported (edits made later are not in the file)."
+        },
+        "warnings": {
+          "type": "array",
+          "items": {
+            "description": "One warning about a preset on a sequence.",
+            "type": "object",
+            "properties": {
+              "code": {
+                "description": "What kind.",
+                "oneOf": [
+                  {
+                    "description": "The sequence's aspect is not the preset's.",
+                    "type": "string",
+                    "const": "AspectMismatch"
+                  },
+                  {
+                    "description": "The exported part is longer than the platform accepts.",
+                    "type": "string",
+                    "const": "DurationOverLimit"
+                  },
+                  {
+                    "description": "The estimated file is larger than the platform accepts.",
+                    "type": "string",
+                    "const": "SizeOverLimit"
+                  },
+                  {
+                    "description": "The sequence's frame rate is above the platform's maximum, so the file uses a lower one.",
+                    "type": "string",
+                    "const": "FrameRateCapped"
+                  }
+                ]
+              },
+              "message": {
+                "description": "A sentence for the person.",
+                "type": "string"
+              }
+            },
+            "additionalProperties": false,
+            "required": [
+              "code",
+              "message"
+            ]
+          },
+          "description": "Platform-limit and fit warnings of a preset (never errors; the export runs)."
         }
       },
       "required": [
@@ -338,7 +394,8 @@ expression: "json!({\n    \"meta\": serde_json::to_value(meta).unwrap(), \"input
         "frame_rate",
         "frames",
         "duration",
-        "rev"
+        "rev",
+        "warnings"
       ],
       "description": "Result of `export.start`: the job and what it will write.",
       "title": "ExportStartOutput"
@@ -407,11 +464,11 @@ expression: "json!({\n    \"meta\": serde_json::to_value(meta).unwrap(), \"input
       "preset": {
         "anyOf": [
           {
-            "oneOf": [
+            "anyOf": [
               {
                 "type": "string",
                 "const": "h264-mp4-1080p",
-                "description": "MP4, H.264 + AAC 48 kHz stereo, at the sequence frame rate, fit into 1920x1080\n(1080x1920 when portrait) without upscaling, high quality."
+                "description": "MP4, H.264 + AAC, fit into 1920x1080 (1080x1920 portrait), not upscaled, high quality."
               },
               {
                 "type": "object",
@@ -495,6 +552,14 @@ expression: "json!({\n    \"meta\": serde_json::to_value(meta).unwrap(), \"input
                           }
                         ],
                         "default": null
+                      },
+                      "preset": {
+                        "description": "Base preset id; the other fields replace its values.",
+                        "type": [
+                          "string",
+                          "null"
+                        ],
+                        "default": null
                       }
                     },
                     "additionalProperties": false
@@ -505,6 +570,10 @@ expression: "json!({\n    \"meta\": serde_json::to_value(meta).unwrap(), \"input
                 ],
                 "additionalProperties": false,
                 "description": "MP4, H.264 + AAC at a custom size, frame rate and quality."
+              },
+              {
+                "type": "string",
+                "description": "A preset id (export.list_presets)."
               }
             ],
             "description": "What to make: the preset, or custom settings."
@@ -513,7 +582,7 @@ expression: "json!({\n    \"meta\": serde_json::to_value(meta).unwrap(), \"input
             "type": "null"
           }
         ],
-        "description": "\"h264-mp4-1080p\" (default) or {\"custom\": {width, height, fps, quality}}.",
+        "description": "\"h264-mp4-1080p\" (default), a preset id (\"youtube-1080p\") or {\"custom\": {width, height,\nfps, quality, preset}}.",
         "default": null
       },
       "hw": {
@@ -650,6 +719,50 @@ expression: "json!({\n    \"meta\": serde_json::to_value(meta).unwrap(), \"input
         "format": "uint64",
         "minimum": 0,
         "description": "The document revision exported (edits made later are not in the file)."
+      },
+      "warnings": {
+        "type": "array",
+        "items": {
+          "description": "One warning about a preset on a sequence.",
+          "type": "object",
+          "properties": {
+            "code": {
+              "description": "What kind.",
+              "oneOf": [
+                {
+                  "description": "The sequence's aspect is not the preset's.",
+                  "type": "string",
+                  "const": "AspectMismatch"
+                },
+                {
+                  "description": "The exported part is longer than the platform accepts.",
+                  "type": "string",
+                  "const": "DurationOverLimit"
+                },
+                {
+                  "description": "The estimated file is larger than the platform accepts.",
+                  "type": "string",
+                  "const": "SizeOverLimit"
+                },
+                {
+                  "description": "The sequence's frame rate is above the platform's maximum, so the file uses a lower one.",
+                  "type": "string",
+                  "const": "FrameRateCapped"
+                }
+              ]
+            },
+            "message": {
+              "description": "A sentence for the person.",
+              "type": "string"
+            }
+          },
+          "additionalProperties": false,
+          "required": [
+            "code",
+            "message"
+          ]
+        },
+        "description": "Platform-limit and fit warnings of a preset (never errors; the export runs)."
       }
     },
     "required": [
@@ -663,7 +776,8 @@ expression: "json!({\n    \"meta\": serde_json::to_value(meta).unwrap(), \"input
       "frame_rate",
       "frames",
       "duration",
-      "rev"
+      "rev",
+      "warnings"
     ],
     "description": "Result of `export.start`: the job and what it will write.",
     "title": "ExportStartOutput"

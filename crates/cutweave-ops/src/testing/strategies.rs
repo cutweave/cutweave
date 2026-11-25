@@ -11,8 +11,8 @@ use std::{sync::Arc, time::Duration};
 
 use cutweave_jobs::{JobConfig, JobCtx, JobError, JobId, JobKind, JobManager, JobSpec};
 use cutweave_model::{
-    EntityId, FrameRate, ItemId, MarkerId, MediaId, MediaKind, ProbeInfo, Project, SampleRate,
-    SeededGen, SequenceId, TrackId, TrackKind, Vec2,
+    EntityId, FolderId, FrameRate, ItemId, MarkerId, MediaId, MediaKind, ProbeInfo, Project,
+    SampleRate, SeededGen, SequenceId, TrackId, TrackKind, Vec2,
 };
 use proptest::{
     collection::vec,
@@ -179,6 +179,7 @@ struct Trk {
 struct Itm {
     id: ItemId,
     seq: SequenceId,
+    track: TrackId,
     kind: TrackKind,
     fpf: i64,
     /// Start and length in frames.
@@ -207,6 +208,8 @@ pub(super) struct Pools {
     tracks: Vec<Trk>,
     items: Vec<Itm>,
     media: Vec<Med>,
+    /// Media folders (ADR-0020).
+    folders: Vec<FolderId>,
 }
 
 impl Pools {
@@ -237,6 +240,7 @@ impl Pools {
                     pools.items.push(Itm {
                         id: i.id(),
                         seq: s.id,
+                        track: t.id,
                         kind: t.kind,
                         fpf,
                         start: frames(i.start().flicks()),
@@ -262,6 +266,7 @@ impl Pools {
                 used: used.contains(&m.id),
             })
             .collect();
+        pools.folders = doc.folders.keys().copied().collect();
         pools
     }
 
@@ -281,19 +286,31 @@ impl Pools {
 /// The weight and the param strategy of `name` against `p`, or `None` if this table has no
 /// strategy for it.
 pub(super) fn args_for(name: &str, p: &Pools) -> Option<(u32, BoxedStrategy<Value>)> {
-    let edits = if p.items.is_empty() { 1 } else { 6 };
+    let edits: u32 = if p.items.is_empty() { 1 } else { 6 };
     let empty = p.seqs.is_empty() && p.media.is_empty();
     let no_media = p.media.is_empty();
     Some(match name {
         "project.new" => (if empty { 12 } else { 1 }, project_new()),
         "project.rename" => (1, project_rename()),
-        "project.info" | "edit.locks" | "edit.list_checkpoints" => (1, no_params()),
+        "project.info"
+        | "edit.locks"
+        | "edit.list_checkpoints"
+        | "export.list_presets"
+        | "media.list_folders" => (1, no_params()),
         "media.register" => (if no_media { 4 } else { 2 }, media_register(p)),
-        "media.import" => (if no_media { 4 } else { 2 }, media_import()),
+        "media.import" => (if no_media { 4 } else { 2 }, media_import(p)),
         "media.list" => (1, media_list(p)),
         "media.remove" => (1, media_remove(p)),
         "media.generate_proxy" | "media.delete_proxy" => (1, proxy_media(p, false)),
         "media.proxy_status" => (1, proxy_media(p, true)),
+        "media.create_folder" => (
+            if p.folders.is_empty() { 4 } else { 2 },
+            media_create_folder(p),
+        ),
+        "media.rename_folder" => (1, media_rename_folder(p)),
+        "media.rename" => (1, media_rename(p)),
+        "media.move" => (if p.folders.is_empty() { 1 } else { 3 }, media_move(p)),
+        "media.delete_folder" => (1, media_delete_folder(p)),
         "track.add" => (2, track_add(p)),
         "track.remove" => (1, track_remove(p)),
         "track.set" => (2, track_set(p)),
@@ -308,11 +325,16 @@ pub(super) fn args_for(name: &str, p: &Pools) -> Option<(u32, BoxedStrategy<Valu
         "timeline.clear_in_out" => (1, timeline_clear_in_out(p)),
         "timeline.list_markers" => (1, timeline_list_markers(p)),
         "timeline.insert" => (if p.seqs.is_empty() { 1 } else { 8 }, timeline_insert(p)),
+        "timeline.overwrite" => (if p.seqs.is_empty() { 1 } else { 3 }, timeline_overwrite(p)),
+        "timeline.lift" | "timeline.extract" => (edits.div_ceil(3), timeline_ranges(p)),
+        "timeline.ripple_delete" => (edits.div_ceil(2), ripple_delete(p)),
+        "timeline.delete_gap" => (edits.div_ceil(3), delete_gap(p)),
         "timeline.get" => (1, timeline_get(p)),
         "clip.split" => (edits, clip_split(p)),
         "clip.trim" => (edits, clip_trim(p)),
         "item.move" => (edits, item_move(p)),
         "item.delete" => (edits.div_ceil(2), item_delete(p)),
+        "item.duplicate" => (edits.div_ceil(2), item_duplicate(p)),
         "item.set_props" => (edits.div_ceil(2), item_set_props(p)),
         "item.get" => (1, item_get(p)),
         "edit.begin_tx" => (2, begin_tx()),
@@ -328,8 +350,46 @@ pub(super) fn args_for(name: &str, p: &Pools) -> Option<(u32, BoxedStrategy<Valu
         "job.list" => (1, job_list(p)),
         "job.wait" => (1, job_wait()),
         "export.start" => (1, export_start(p)),
+        "export.resolve_preset" => (1, preset_ref("preset")),
+        "export.save_preset" => (1, preset_save()),
+        "export.delete_preset" => (1, preset_ref("id")),
         _ => return None,
     })
+}
+
+/// `{<key>: preset id}`: built-in ids, ids a save may have made, and unknown ones.
+fn preset_ref(key: &'static str) -> BoxedStrategy<Value> {
+    select(vec![
+        "youtube-1080p",
+        "tiktok",
+        "h264-draft",
+        "prores-422-hq",
+        "mine-a",
+        "mine-b",
+        "missing",
+        "Bad Id",
+    ])
+    .prop_map(move |id| json!({ key: id }))
+    .boxed()
+}
+
+/// `export.save_preset` of a small H.264 preset under one of a few ids, sometimes invalid.
+fn preset_save() -> BoxedStrategy<Value> {
+    (
+        select(vec!["mine-a", "mine-b", "youtube-1080p", "Bad Id"]),
+        select(vec![20_u32, 28, 99]),
+    )
+        .prop_map(|(id, crf)| {
+            json!({"preset": {
+                "schema_version": 1, "id": id, "name": "Mine", "container": "mp4",
+                "video": {"codec": "h264", "rate_control": {"mode": "crf", "crf": crf},
+                          "hw_preferred": true},
+                "audio": {"codec": "aac", "bitrate_kbps": 192, "sample_rate": 48000, "channels": 2},
+                "size": {"kind": "fit", "width": 1280, "height": 720},
+                "fps": {"kind": "follow_sequence"}
+            }})
+        })
+        .boxed()
 }
 
 // ----- building blocks -----------------------------------------------------------------------
@@ -490,11 +550,18 @@ fn media_register(p: &Pools) -> BoxedStrategy<Value> {
         1 => fresh::<MediaId>(),
         1 => one_of(p.media_ids()),
     ];
-    let valid = (0..40_u32, 0..3_u8, 1..=90_i64, any::<bool>(), media_id)
-        .prop_map(|(n, kind, secs, audio, media_id)| {
+    let valid = (
+        0..40_u32,
+        0..3_u8,
+        1..=90_i64,
+        any::<bool>(),
+        media_id,
+        option::weighted(0.3, one_of(p.folders.clone())),
+    )
+        .prop_map(|(n, kind, secs, audio, media_id, folder)| {
             let (path, probed) = probed_file(n, kind, secs, audio);
             json!({"media_id": media_id, "path": path, "probe": probed.probe,
-                   "content_hash": probed.content_hash})
+                   "content_hash": probed.content_hash, "folder": folder})
         })
         .boxed();
     let invalid = (0..40_u32, 0..6_u8)
@@ -516,7 +583,7 @@ fn media_register(p: &Pools) -> BoxedStrategy<Value> {
     mix(valid, invalid)
 }
 
-fn media_import() -> BoxedStrategy<Value> {
+fn media_import(p: &Pools) -> BoxedStrategy<Value> {
     // Unreadable files are not errors: the import reports them in `failed[]` and registers
     // the rest (WP-1D.07), so they belong with the valid requests.
     let unreadable = prop_oneof![
@@ -524,15 +591,19 @@ fn media_import() -> BoxedStrategy<Value> {
         1 => Just(Some(BROKEN_IMPORT_PATH)),
         1 => Just(Some("/import/missing.mp4")),
     ];
-    let valid = (vec(select(IMPORT_PATHS.to_vec()), 1..=3), unreadable)
-        .prop_map(|(paths, unreadable)| {
+    let valid = (
+        vec(select(IMPORT_PATHS.to_vec()), 1..=3),
+        unreadable,
+        option::weighted(0.3, one_of(p.folders.clone())),
+    )
+        .prop_map(|(paths, unreadable, folder)| {
             let mut unique: Vec<&str> = Vec::new();
             for p in paths.into_iter().chain(unreadable) {
                 if !unique.contains(&p) {
                     unique.push(p);
                 }
             }
-            json!({"paths": unique})
+            json!({"paths": unique, "folder": folder})
         })
         .boxed();
     let invalid = prop_oneof![
@@ -545,10 +616,163 @@ fn media_import() -> BoxedStrategy<Value> {
 }
 
 fn media_list(p: &Pools) -> BoxedStrategy<Value> {
-    let valid = (option::of(1..=8_u32), option::of(one_of(p.media_ids())))
-        .prop_map(|(limit, cursor)| json!({"limit": limit, "cursor": cursor}))
+    let filter = (
+        option::weighted(0.5, one_of(p.folders.clone())),
+        option::of(any::<bool>()),
+        option::weighted(0.2, select(vec!["clip", "Clip 1", "interview"])),
+    )
+        .prop_map(|(folder, recursive, text)| {
+            json!({"folder": folder, "recursive": recursive, "text": text})
+        });
+    let valid = (
+        option::of(1..=8_u32),
+        option::of(one_of(p.media_ids())),
+        option::weighted(0.4, filter),
+    )
+        .prop_map(
+            |(limit, cursor, filter)| json!({"limit": limit, "cursor": cursor, "filter": filter}),
+        )
         .boxed();
-    let invalid = prop_oneof![Just(json!({"limit": 0})), Just(json!({"limit": 501}))].boxed();
+    let invalid = prop_oneof![
+        Just(json!({"limit": 0})),
+        Just(json!({"limit": 501})),
+        fresh::<FolderId>().prop_map(|folder| json!({"filter": {"folder": folder}})),
+    ]
+    .boxed();
+    mix(valid, invalid)
+}
+
+// ----- media folders (WP-2F.07) --------------------------------------------------------------
+
+/// Folder names that clash often (case-insensitively) and cover Unicode and padding.
+const FOLDER_NAMES: [&str; 7] = [
+    "B-roll",
+    "b-ROLL",
+    "Interviews",
+    "Day 1",
+    "Día 1 ✂",
+    "  Padded  ",
+    "New folder",
+];
+
+fn folder_name() -> BoxedStrategy<String> {
+    prop_oneof![
+        4 => select(FOLDER_NAMES.to_vec()).prop_map(str::to_owned),
+        1 => (select(FOLDER_NAMES.to_vec()), 2..5_u32).prop_map(|(w, n)| format!("{w} {n}")),
+    ]
+    .boxed()
+}
+
+fn bad_folder_name() -> BoxedStrategy<String> {
+    prop_oneof![
+        Just(String::new()),
+        Just("   ".to_owned()),
+        Just("B-roll/Drone".to_owned()),
+        Just("tab\tname".to_owned()),
+        Just("x".repeat(256)),
+    ]
+    .boxed()
+}
+
+fn on_conflict() -> BoxedStrategy<Option<&'static str>> {
+    option::of(select(vec!["fail", "rename"])).boxed()
+}
+
+fn media_create_folder(p: &Pools) -> BoxedStrategy<Value> {
+    let valid = (
+        option::weighted(0.6, one_of(p.folders.clone())),
+        option::weighted(0.8, folder_name()),
+        on_conflict(),
+    )
+        .prop_map(|(parent, name, on_conflict)| {
+            json!({"parent": parent, "name": name, "on_conflict": on_conflict})
+        })
+        .boxed();
+    let invalid = prop_oneof![
+        bad_folder_name().prop_map(|name| json!({"name": name})),
+        fresh::<FolderId>().prop_map(|parent| json!({"parent": parent})),
+        Just(json!({"on_conflict": "merge"})),
+    ]
+    .boxed();
+    mix(valid, invalid)
+}
+
+fn media_rename_folder(p: &Pools) -> BoxedStrategy<Value> {
+    let valid = (one_of(p.folders.clone()), folder_name())
+        .prop_map(|(folder, name)| json!({"folder": folder, "name": name}))
+        .boxed();
+    let invalid = (one_of(p.folders.clone()), bad_folder_name())
+        .prop_map(|(folder, name)| json!({"folder": folder, "name": name}))
+        .boxed();
+    mix(valid, invalid)
+}
+
+fn media_rename(p: &Pools) -> BoxedStrategy<Value> {
+    let display = prop_oneof![
+        Just("Interview A".to_owned()),
+        Just("Take 1/2 ✂".to_owned()),
+        Just("  Padded  ".to_owned()),
+    ];
+    let valid = (one_of(p.media_ids()), option::weighted(0.7, display))
+        .prop_map(|(media, name)| json!({"media": media, "name": name}))
+        .boxed();
+    let invalid = (
+        one_of(p.media_ids()),
+        prop_oneof![
+            Just(String::new()),
+            Just("line\nbreak".to_owned()),
+            Just("x".repeat(256)),
+        ],
+    )
+        .prop_map(|(media, name)| json!({"media": media, "name": name}))
+        .boxed();
+    mix(valid, invalid)
+}
+
+fn media_move(p: &Pools) -> BoxedStrategy<Value> {
+    let valid = (
+        vec(one_of(p.media_ids()), 0..=3),
+        vec(one_of(p.folders.clone()), 0..=2),
+        option::weighted(0.6, one_of(p.folders.clone())),
+        on_conflict(),
+    )
+        .prop_map(|(media, folders, to, on_conflict)| {
+            let unique = |ids: Vec<Value>| {
+                let mut out: Vec<Value> = Vec::new();
+                for id in ids {
+                    if !out.contains(&id) {
+                        out.push(id);
+                    }
+                }
+                out
+            };
+            let (media, folders) = (unique(media), unique(folders));
+            json!({"media": media, "folders": folders, "to": to, "on_conflict": on_conflict})
+        })
+        .boxed();
+    let invalid = prop_oneof![
+        Just(json!({})),
+        Just(json!({"media": [], "folders": []})),
+        one_of(p.media_ids()).prop_map(|m| json!({"media": [m.clone(), m]})),
+        one_of(p.folders.clone()).prop_map(|f| json!({"folders": [f.clone()], "to": f})),
+        fresh::<FolderId>().prop_map(|to| json!({"media": [], "folders": [], "to": to})),
+    ]
+    .boxed();
+    mix(valid, invalid)
+}
+
+fn media_delete_folder(p: &Pools) -> BoxedStrategy<Value> {
+    let valid = (
+        one_of(p.folders.clone()),
+        prop_oneof![Just("move_up"), Just("remove")],
+    )
+        .prop_map(|(folder, contents)| json!({"folder": folder, "contents": contents}))
+        .boxed();
+    let invalid = prop_oneof![
+        fresh::<FolderId>().prop_map(|folder| json!({"folder": folder, "contents": "remove"})),
+        one_of(p.folders.clone()).prop_map(|folder| json!({"folder": folder, "contents": "keep"})),
+    ]
+    .boxed();
     mix(valid, invalid)
 }
 
@@ -882,35 +1106,218 @@ fn timeline_insert(p: &Pools) -> BoxedStrategy<Value> {
     if targets.is_empty() {
         return mix(invalid.clone(), invalid);
     }
-    let valid = select(targets)
-        .prop_flat_map(|t| {
+    let audio: Vec<TrackId> = p
+        .tracks
+        .iter()
+        .filter(|t| t.kind == TrackKind::Audio)
+        .map(|t| t.id)
+        .collect();
+    let audio_track = if audio.is_empty() {
+        Just(None).boxed()
+    } else {
+        option::weighted(0.15, select(audio)).boxed()
+    };
+    let valid = (select(targets), audio_track)
+        .prop_flat_map(|(t, audio_track)| {
             let max = t.frames.unwrap_or(300);
             (
-                Just(t.clone()),
+                Just((t.clone(), audio_track)),
                 prop_oneof![3 => t.end..t.end + 30, 1 => 0..t.end + 60],
                 option::weighted(0.3, 0..max),
                 option::weighted(0.6, 1..=max),
                 any::<(u8, u8, u8, u32)>(),
-                option::weighted(0.4, prop_oneof![Just("reject"), Just("new_track")]),
+                option::weighted(0.2, prop_oneof![Just("reject"), Just("new_track")]),
                 option::weighted(0.2, any::<bool>()),
+                option::weighted(0.4, select(MODES.to_vec())),
+                option::weighted(0.15, any::<bool>()),
             )
         })
-        .prop_map(|(t, at, src, dur, (fa, fs, fd, jitter), overlap, link)| {
-            // Keep both given ends inside the media most of the time.
-            let dur = match (src, dur, t.frames) {
-                (Some(s), Some(d), Some(m)) if s + d > m => Some((m - s).max(1)),
-                (_, d, _) => d,
+        .prop_map(
+            |((t, audio_track), at, src, dur, (fa, fs, fd, jitter), overlap, link, mode, all)| {
+                // Keep both given ends inside the media most of the time.
+                let dur = match (src, dur, t.frames) {
+                    (Some(s), Some(d), Some(m)) if s + d > m => Some((m - s).max(1)),
+                    (_, d, _) => d,
+                };
+                json!({
+                    "sequence": t.seq, "track": t.track, "media": t.media,
+                    "at": time_json(t.fpf, at, fa, jitter),
+                    "source_in": src.map(|s| time_json(t.fpf, s, fs, 0)),
+                    "duration": dur.map(|d| time_json(t.fpf, d, fd, jitter)),
+                    "overlap": overlap, "link": link, "mode": mode,
+                    "audio_track": audio_track, "ripple_all_tracks": all,
+                })
+            },
+        )
+        .boxed();
+    mix(valid, invalid)
+}
+
+/// The placement modes (timeline spec §3.6).
+const MODES: [&str; 4] = ["insert", "overwrite", "new_track", "reject"];
+
+/// `timeline.overwrite`: `timeline.insert`'s params without the mode and its alias.
+fn timeline_overwrite(p: &Pools) -> BoxedStrategy<Value> {
+    timeline_insert(p)
+        .prop_map(|mut v| {
+            if let Value::Object(map) = &mut v {
+                for key in ["overlap", "mode", "ripple_all_tracks"] {
+                    map.remove(key);
+                }
+            }
+            v
+        })
+        .boxed()
+}
+
+/// `timeline.lift` and `timeline.extract`: ranges around the items, some tracks, or the in/out.
+fn timeline_ranges(p: &Pools) -> BoxedStrategy<Value> {
+    let invalid_seq = fresh::<SequenceId>()
+        .prop_map(|sequence| json!({"sequence": sequence, "ranges": [{"start": 0, "end": 10}]}))
+        .boxed();
+    if p.seq_fpf.is_empty() {
+        return mix(invalid_seq.clone(), invalid_seq);
+    }
+    let tracks: Arc<[Trk]> = p.tracks.clone().into();
+    let valid = select(p.seq_fpf.clone())
+        .prop_flat_map(move |(seq, fpf)| {
+            let mine: Vec<TrackId> = tracks
+                .iter()
+                .filter(|t| t.seq == seq)
+                .map(|t| t.id)
+                .collect();
+            let end = tracks
+                .iter()
+                .filter(|t| t.seq == seq)
+                .map(|t| t.end)
+                .max()
+                .unwrap_or(0);
+            let pick = if mine.is_empty() {
+                Just(None).boxed()
+            } else {
+                option::weighted(0.4, subsequence(mine.clone(), 1..=mine.len())).boxed()
             };
-            json!({
-                "sequence": t.seq, "track": t.track, "media": t.media,
-                "at": time_json(t.fpf, at, fa, jitter),
-                "source_in": src.map(|s| time_json(t.fpf, s, fs, 0)),
-                "duration": dur.map(|d| time_json(t.fpf, d, fd, jitter)),
-                "overlap": overlap, "link": link,
-            })
+            (
+                Just((seq, fpf)),
+                option::weighted(0.85, vec((0..end + 20, 1..40_i64), 1..=3)),
+                pick,
+                any::<(u8, u32)>(),
+            )
+        })
+        .prop_map(|((seq, fpf), ranges, tracks, (form, jitter))| {
+            let ranges = ranges.map(|rs| {
+                rs.into_iter()
+                    .map(|(s, len)| {
+                        json!({"start": time_json(fpf, s, form, jitter),
+                               "end": time_json(fpf, s + len, form, 0)})
+                    })
+                    .collect::<Vec<_>>()
+            });
+            json!({"sequence": seq, "ranges": ranges, "tracks": tracks})
+        })
+        .boxed();
+    let invalid = (
+        select(p.seq_fpf.clone()),
+        prop_oneof![
+            Just(json!({"ranges": []})),
+            Just(json!({"ranges": [{"start": 30, "end": 30}]})),
+            Just(json!({"ranges": [{"start": "-1.0s", "end": 10}]})),
+            Just(json!({"tracks": []})),
+            fresh::<TrackId>().prop_map(|t| json!({"tracks": [t]})),
+        ],
+    )
+        .prop_map(|((sequence, _), mut v)| {
+            v["sequence"] = json!(sequence);
+            v
+        })
+        .boxed();
+    mix(valid, prop_oneof![3 => invalid, 1 => invalid_seq].boxed())
+}
+
+fn ripple_delete(p: &Pools) -> BoxedStrategy<Value> {
+    let invalid = prop_oneof![
+        Just(json!({"items": []})),
+        fresh::<ItemId>().prop_map(|item| json!({"items": [item]})),
+        vec(one_of(p.item_ids()), 2..=3).prop_map(|items| json!({"items": items})),
+    ]
+    .boxed();
+    if p.items.is_empty() {
+        return mix(invalid.clone(), invalid);
+    }
+    // Items of one track: one item, or a few of the same track.
+    let by_track: Vec<Vec<ItemId>> = p
+        .tracks
+        .iter()
+        .map(|t| {
+            p.items
+                .iter()
+                .filter(|i| i.track == t.id)
+                .map(|i| i.id)
+                .collect::<Vec<_>>()
+        })
+        .filter(|v| !v.is_empty())
+        .collect();
+    let valid = (select(by_track), option::weighted(0.2, any::<bool>()))
+        .prop_flat_map(|(items, all)| {
+            let n = items.len();
+            (subsequence(items, 1..=n.min(3)), Just(all))
+        })
+        .prop_map(|(items, all)| json!({"items": items, "ripple_all_tracks": all}))
+        .boxed();
+    mix(valid, invalid)
+}
+
+fn delete_gap(p: &Pools) -> BoxedStrategy<Value> {
+    let invalid = (fresh::<TrackId>(), 0..50_i64)
+        .prop_map(|(track, at)| json!({"track": track, "at": time_json(FPF_30, at, 0, 0)}))
+        .boxed();
+    if p.tracks.is_empty() {
+        return mix(invalid.clone(), invalid);
+    }
+    let valid = (
+        select(p.tracks.clone()),
+        any::<(u8, u32)>(),
+        option::weighted(0.2, any::<bool>()),
+    )
+        .prop_flat_map(|(t, form, all)| (Just((t.clone(), form, all)), 0..t.end + 10))
+        .prop_map(|((t, (form, jitter), all), at)| {
+            json!({"track": t.id, "at": time_json(t.fpf, at, form, jitter),
+                   "ripple_all_tracks": all})
         })
         .boxed();
     mix(valid, invalid)
+}
+
+fn item_duplicate(p: &Pools) -> BoxedStrategy<Value> {
+    let invalid = prop_oneof![
+        Just(json!({"items": []})),
+        fresh::<ItemId>().prop_map(|item| json!({"items": [item]})),
+    ]
+    .boxed();
+    if p.items.is_empty() {
+        return mix(invalid.clone(), invalid);
+    }
+    let valid = (
+        vec(one_of(p.item_ids()), 1..=2),
+        option::weighted(0.3, (-60..120_i64, any::<u8>())),
+        option::weighted(0.4, select(MODES.to_vec())),
+    )
+        .prop_map(|(items, offset, mode)| {
+            json!({"items": items,
+                   "offset": offset.map(|(o, form)| offset_json(o, form)),
+                   "mode": mode})
+        })
+        .boxed();
+    mix(valid, invalid)
+}
+
+/// A relative time of `frames` 30 fps frames: flicks, or `"f:N"` when not negative.
+fn offset_json(frames: i64, form: u8) -> Value {
+    if frames >= 0 && form.is_multiple_of(2) {
+        Value::from(format!("f:{frames}"))
+    } else {
+        Value::from(frames * FPF_30)
+    }
 }
 
 /// `timeline.insert` with unrelated sequence, track and media (mostly invalid).
@@ -1004,10 +1411,23 @@ fn clip_split(p: &Pools) -> BoxedStrategy<Value> {
                 1 => Just(it.start + it.len),
                 1 => it.start - 5..it.start + it.len + 5,
             ];
-            (Just(it), at, any::<u8>(), any::<u32>())
+            (
+                Just(it),
+                at,
+                any::<u8>(),
+                any::<u32>(),
+                0..10_u8,
+                option::weighted(0.1, any::<bool>()),
+            )
         })
-        .prop_map(|(it, at, form, jitter)| {
-            json!({"item": it.id, "at": time_json(it.fpf, at, form, jitter)})
+        .prop_map(|(it, at, form, jitter, shape, fine)| {
+            let at = time_json(it.fpf, at, form, jitter);
+            // Mostly `item`; sometimes `items` (the WP-2A.03 form), or both (`Invalid`).
+            match shape {
+                0 => json!({"items": [it.id], "at": at, "fine": fine}),
+                1 if form % 4 == 0 => json!({"item": it.id, "items": [it.id], "at": at}),
+                _ => json!({"item": it.id, "at": at, "fine": fine}),
+            }
         })
         .boxed();
     mix(valid, unknown_item("at"))
@@ -1059,8 +1479,14 @@ fn item_move(p: &Pools) -> BoxedStrategy<Value> {
         return mix(invalid.clone(), invalid);
     }
     let tracks: Arc<[Trk]> = p.tracks.clone().into();
+    let items: Arc<[Itm]> = p.items.clone().into();
     let valid = select(p.items.clone())
         .prop_flat_map(move |it| {
+            let others: Vec<ItemId> = items
+                .iter()
+                .filter(|o| o.seq == it.seq)
+                .map(|o| o.id)
+                .collect();
             let lanes: Vec<Value> = tracks
                 .iter()
                 .filter(|t| t.seq == it.seq && t.kind == it.kind)
@@ -1084,12 +1510,49 @@ fn item_move(p: &Pools) -> BoxedStrategy<Value> {
                 to_track,
                 option::weighted(0.3, any::<bool>()),
                 overlap,
+                option::weighted(0.3, select(MODES.to_vec())),
+                0..12_u8,
+                option::weighted(0.1, any::<bool>()),
+                option::weighted(0.1, any::<bool>()),
+                select(others.clone()),
             )
         })
-        .prop_map(|(it, start, (form, jitter), to_track, unlink, overlap)| {
-            json!({"item": it.id, "start": time_json(it.fpf, start, form, jitter),
-                   "to_track": to_track, "unlink": unlink, "overlap": overlap})
-        })
+        .prop_map(
+            |(
+                it,
+                start,
+                (form, jitter),
+                to_track,
+                unlink,
+                overlap,
+                mode,
+                shape,
+                all,
+                fine,
+                other,
+            )| {
+                let mut v = json!({"to_track": to_track, "unlink": unlink, "overlap": overlap,
+                                   "mode": mode, "ripple_all_tracks": all, "fine": fine});
+                // The WP-2A.03 forms: `items` (with another item) and `delta`.
+                match shape {
+                    0 | 1 => v["items"] = json!([it.id, other]),
+                    2 => v["items"] = json!([it.id]),
+                    _ => v["item"] = json!(it.id),
+                }
+                match shape {
+                    1 | 3..=5 => {
+                        let frames = start - it.start;
+                        v["delta"] = if frames >= 0 && form.is_multiple_of(2) {
+                            json!(format!("f:{frames}"))
+                        } else {
+                            json!(frames * it.fpf)
+                        };
+                    }
+                    _ => v["start"] = time_json(it.fpf, start, form, jitter),
+                }
+                v
+            },
+        )
         .boxed();
     mix(valid, invalid)
 }
@@ -1443,6 +1906,18 @@ impl ExportStarter for QueueNothing {
     }
 }
 
+/// The engine context of the preset commands in a harness: `store` and `snapshot`.
+#[must_use]
+pub fn preset_ctx(
+    store: Arc<crate::export::presets::PresetStore>,
+    snapshot: Arc<DocSnapshot>,
+) -> crate::export::presets::PresetCtx {
+    crate::export::presets::PresetCtx {
+        store,
+        snapshot: Some(snapshot),
+    }
+}
+
 /// The engine context of `export.start` in a harness: `snapshot` (the committed document), no
 /// path allowlist, and a starter that queues nothing and answers [`EXPORT_JOB_ID`].
 #[must_use]
@@ -1451,5 +1926,6 @@ pub fn export_ctx(snapshot: Arc<DocSnapshot>) -> ExportCtx {
         snapshot,
         allowed_roots: None,
         starter: Box::new(QueueNothing),
+        presets: Arc::default(),
     }
 }

@@ -95,7 +95,7 @@ expression: catalog.tools_json()
                   "string",
                   "null"
                 ],
-                "description": "Terms that must all occur in the file name, ignoring case and accents."
+                "description": "Terms that must all occur in the name, ignoring case and accents."
               },
               "kinds": {
                 "type": [
@@ -103,7 +103,6 @@ expression: catalog.tools_json()
                   "null"
                 ],
                 "items": {
-                  "description": "What a [`MediaAsset`] is.",
                   "oneOf": [
                     {
                       "const": "video",
@@ -128,13 +127,7 @@ expression: catalog.tools_json()
               "min_duration": {
                 "anyOf": [
                   {
-                    "type": "integer",
-                    "minimum": 0,
-                    "maximum": 9007199254740991
-                  },
-                  {
-                    "type": "string",
-                    "pattern": "^-?[0-9]+(\\.[0-9]+)?s$|^-?[0-9]+$"
+                    "$ref": "#/$defs/shared1"
                   },
                   {
                     "type": "null"
@@ -145,13 +138,7 @@ expression: catalog.tools_json()
               "max_duration": {
                 "anyOf": [
                   {
-                    "type": "integer",
-                    "minimum": 0,
-                    "maximum": 9007199254740991
-                  },
-                  {
-                    "type": "string",
-                    "pattern": "^-?[0-9]+(\\.[0-9]+)?s$|^-?[0-9]+$"
+                    "$ref": "#/$defs/shared1"
                   },
                   {
                     "type": "null"
@@ -172,6 +159,21 @@ expression: catalog.tools_json()
                   "null"
                 ],
                 "description": "`true`: only files nothing can be read from (no streams)."
+              },
+              "folder": {
+                "type": [
+                  "string",
+                  "null"
+                ],
+                "pattern": "^fld_[0-9a-f]{32}$",
+                "description": "Only this bin folder."
+              },
+              "recursive": {
+                "type": [
+                  "boolean",
+                  "null"
+                ],
+                "description": "With subfolders (default: true without folder)."
               }
             },
             "description": "Keep only matching media."
@@ -207,6 +209,21 @@ expression: catalog.tools_json()
               "by"
             ],
             "description": "Order."
+          }
+        },
+        "$defs": {
+          "shared1": {
+            "anyOf": [
+              {
+                "type": "integer",
+                "minimum": 0,
+                "maximum": 9007199254740991
+              },
+              {
+                "type": "string",
+                "pattern": "^-?[0-9]+(\\.[0-9]+)?s$|^-?[0-9]+$"
+              }
+            ]
           }
         }
       },

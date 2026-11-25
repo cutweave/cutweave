@@ -9,6 +9,7 @@ import { Button, IconButton, SegmentedControl, SettingRow, Switch, TextField } f
 import { type ReactNode, useEffect, useState } from "react";
 import { useTranslation } from "react-i18next";
 import type { TKey } from "../i18n/index.ts";
+import { ContextSurface } from "../menus/host.tsx";
 import {
   type ChoiceOption,
   type ControlSpec,
@@ -261,7 +262,7 @@ export function SettingRowView({
     if (key === undefined) return;
     void ctx.client.set(key, next as never).catch(() => undefined);
   };
-  return (
+  const view = (
     <SettingRow
       id={row.id}
       label={label}
@@ -290,5 +291,17 @@ export function SettingRowView({
         write={write}
       />
     </SettingRow>
+  );
+  // A setting's menu (WP-2H.13): Reset to default, Copy setting key. Rows with no setting behind
+  // them (an action) have none.
+  if (key === undefined) return view;
+  return (
+    <ContextSurface
+      surface="settings.row"
+      className="cw-context-surface"
+      target={() => ({ name: label, data: { key, modified } })}
+    >
+      {view}
+    </ContextSurface>
   );
 }

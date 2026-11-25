@@ -139,7 +139,17 @@ fn json_layout_is_stable_and_sorted() {
         .filter(|l| l.starts_with("  \"") && !l.starts_with("   "))
         .map(|l| l.trim_start().split('"').nth(1).unwrap())
         .collect();
-    assert_eq!(top, ["meta", "settings", "media", "sequences", "custom"]);
+    assert_eq!(
+        top,
+        [
+            "meta",
+            "settings",
+            "media",
+            "folders",
+            "sequences",
+            "custom"
+        ]
+    );
 }
 
 #[test]
@@ -182,7 +192,7 @@ fn the_base_of_the_corrupt_fixtures_is_valid() {
 #[test]
 fn validate_rejects_each_corrupt_fixture_with_the_expected_variant() {
     type Check = fn(&Invariant) -> bool;
-    let cases: [(&str, Check); 13] = [
+    let cases: [(&str, Check); 17] = [
         ("overlap", |v| matches!(v, Invariant::Overlap { .. })),
         ("dangling-reference", |v| {
             matches!(v, Invariant::DanglingReference { .. })
@@ -217,6 +227,18 @@ fn validate_rejects_each_corrupt_fixture_with_the_expected_variant() {
         }),
         ("invalid-media", |v| {
             matches!(v, Invariant::InvalidMedia { .. })
+        }),
+        ("folder-cycle", |v| {
+            matches!(v, Invariant::FolderCycle { .. })
+        }),
+        ("folder-too-deep", |v| {
+            matches!(v, Invariant::FolderTooDeep { depth: 33, .. })
+        }),
+        ("invalid-folder-name", |v| {
+            matches!(v, Invariant::InvalidFolderName { .. })
+        }),
+        ("duplicate-folder-name", |v| {
+            matches!(v, Invariant::DuplicateFolderName { .. })
         }),
     ];
     for (name, expected) in cases {

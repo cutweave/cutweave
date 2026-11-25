@@ -1,0 +1,45 @@
+{
+  "description": "Media folders (WP-2F.07, ADR-0020): build a folder tree, import into a folder, rename an asset, move media and folders (failing, then renaming on a name clash), delete a folder both ways, and read the tree and a folder back.",
+  "steps": [
+    { "cmd": "project.new", "args": { "name": "Folders" } },
+    { "cmd": "media.create_folder", "args": { "name": "B-roll" } },
+    { "cmd": "media.create_folder", "args": { "name": "Drone", "parent": { "$ref": "steps[1].output.folder_id" } } },
+    { "cmd": "media.create_folder" },
+    { "cmd": "media.import", "args": { "paths": [{ "$media": "a.mp4" }, { "$media": "b.wav" }], "folder": { "$ref": "steps[2].output.folder_id" } } },
+    { "cmd": "media.import", "args": { "paths": [{ "$media": "c.png" }, { "$media": "d.mov" }] } },
+    { "cmd": "media.rename", "args": { "media": { "$ref": "steps[4].output.media_ids[0]" }, "name": "Coastline aerial" } },
+    { "cmd": "media.create_folder", "args": { "name": "drone", "parent": { "$ref": "steps[3].output.folder_id" } } },
+    {
+      "cmd": "timeline.insert",
+      "args": {
+        "sequence": { "$ref": "steps[0].output.sequence" },
+        "track": { "$ref": "steps[0].output.video_track" },
+        "media": { "$ref": "steps[5].output.media_ids[1]" },
+        "at": 0
+      }
+    },
+    {
+      "cmd": "media.move",
+      "args": { "media": [{ "$ref": "steps[5].output.media_ids[0]" }, { "$ref": "steps[5].output.media_ids[1]" }], "to": { "$ref": "steps[7].output.folder_id" } }
+    },
+    {
+      "cmd": "media.move",
+      "args": { "folders": [{ "$ref": "steps[7].output.folder_id" }], "to": { "$ref": "steps[1].output.folder_id" } },
+      "expect": { "error": "invalid" }
+    },
+    {
+      "cmd": "media.move",
+      "args": { "folders": [{ "$ref": "steps[7].output.folder_id" }], "to": { "$ref": "steps[1].output.folder_id" }, "on_conflict": "rename" }
+    },
+    {
+      "batch": [
+        { "cmd": "media.rename_folder", "args": { "folder": { "$script": "steps[3].output.folder_id" }, "name": "Archive" } },
+        { "cmd": "media.delete_folder", "args": { "folder": { "$script": "steps[3].output.folder_id" }, "contents": "move_up" } }
+      ]
+    },
+    { "cmd": "media.delete_folder", "args": { "folder": { "$ref": "steps[7].output.folder_id" }, "contents": "remove" } },
+    { "cmd": "media.list_folders" },
+    { "cmd": "media.list", "args": { "filter": { "folder": { "$ref": "steps[1].output.folder_id" }, "recursive": true } } },
+    { "cmd": "media.list", "args": { "filter": { "recursive": false } } }
+  ]
+}

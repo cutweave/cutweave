@@ -25,7 +25,14 @@ import { listBindings } from "../shortcuts/bindings.ts";
 import { listWorkspaceCommands } from "../workspace/commands.ts";
 import type { PanelDef } from "../workspace/panelRegistry.ts";
 import { registerPaletteAction } from "./actions.ts";
-import { fieldsOf, fullyPrefilled, initialValues, prefillFor, toArguments } from "./argForm.ts";
+import {
+  fieldsOf,
+  fullyPrefilled,
+  initialValues,
+  needsArguments,
+  prefillFor,
+  toArguments,
+} from "./argForm.ts";
 import { CommandPalette, MAX_ROWS, visibleEntries } from "./CommandPalette.tsx";
 import { type CatalogCommand, commandCatalog, listedCatalog } from "./catalog.ts";
 import { registerPaletteCommands } from "./commands.ts";
@@ -348,9 +355,12 @@ describe("the argument form", () => {
 
   it("makes one field per property from the input schema, required ones first", () => {
     const fields = fieldsOf(splitSchema ?? {});
+    // `item` or `items`: the form asks for `item`, and `items` given instead also does.
     expect(fields.map((f) => [f.name, f.required])).toEqual([
       ["at", true],
       ["item", true],
+      ["fine", false],
+      ["items", false],
     ]);
     expect(fields[0]?.numeric).toBe(true); // a time: a number of flicks or a timecode text
   });
@@ -380,7 +390,41 @@ describe("the argument form", () => {
       item: "palette.form.required",
       at: "palette.form.required",
     });
-    expect(initialValues(fields, { item: "itm_x" })).toEqual({ item: "itm_x", at: "" });
+    expect(initialValues(fields, { item: "itm_x" })).toEqual({
+      item: "itm_x",
+      at: "",
+      fine: false,
+      items: "",
+    });
+  });
+
+  it("takes one of a command's alternatives: item or items, start or delta", () => {
+    const schema = splitSchema ?? {};
+    const several = prefillFor(schema, { items: ["itm_x", "itm_y"], playhead: 77 });
+    expect(several).toEqual({ items: ["itm_x", "itm_y"], at: 77 });
+    expect(fullyPrefilled(schema, several)).toBe(true);
+    const fields = fieldsOf(schema);
+    expect(toArguments(fields, { item: "", items: '["itm_x"]', at: "5" })).toEqual({
+      ok: true,
+      args: { items: ["itm_x"], at: 5 },
+    });
+
+    const move = commandCatalog.getState().commands.find((c) => c.name === "item.move")
+      ?.inputSchema ?? { properties: {} };
+    expect(needsArguments(move)).toBe(true);
+    const prefilled = prefillFor(move, { items: ["itm_x"], playhead: 77 });
+    expect(prefilled).toEqual({ item: "itm_x" });
+    expect(fullyPrefilled(move, prefilled)).toBe(false);
+    expect(
+      fieldsOf(move)
+        .filter((f) => f.required)
+        .map((f) => [f.name, f.alternative]),
+    ).toEqual([
+      ["item", "items"],
+      ["start", "delta"],
+    ]);
+    const moved = toArguments(fieldsOf(move), { item: "itm_x", delta: "10" });
+    expect(moved).toEqual({ ok: true, args: { item: "itm_x", delta: 10 } });
   });
 
   it("reads enums, booleans, whole numbers and JSON", () => {

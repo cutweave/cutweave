@@ -1,0 +1,106 @@
+---
+source: crates/cutweave-ops/tests/contract.rs
+expression: "json!({\n    \"meta\": serde_json::to_value(meta).unwrap(), \"input\": meta.input_schema,\n    \"output\": meta.output_schema,\n})"
+---
+{
+  "meta": {
+    "name": "media.rename_folder",
+    "summary": "Rename a folder of the media bin",
+    "kind": "command",
+    "undoable": true,
+    "view": false,
+    "scope": "any",
+    "mcp": "catalog",
+    "annotations": {
+      "readOnlyHint": false,
+      "destructiveHint": false,
+      "idempotentHint": true,
+      "openWorldHint": false
+    },
+    "secret_fields": [],
+    "input_schema": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "folder": {
+          "type": "string",
+          "pattern": "^fld_[0-9a-f]{32}$",
+          "description": "The folder."
+        },
+        "name": {
+          "type": "string",
+          "description": "The new name: 1 to 255 characters, no `/` or control characters (trimmed)."
+        }
+      },
+      "required": [
+        "folder",
+        "name"
+      ],
+      "description": "Renames a folder of the media bin. Fails with `Invalid` when a sibling already has the\nname, ignoring case (changing only the case of the folder's own name is fine).",
+      "title": "MediaRenameFolder"
+    },
+    "output_schema": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "folder_id": {
+          "type": "string",
+          "pattern": "^fld_[0-9a-f]{32}$",
+          "description": "The folder."
+        },
+        "name": {
+          "type": "string",
+          "description": "Its name now."
+        }
+      },
+      "required": [
+        "folder_id",
+        "name"
+      ],
+      "description": "Result of `media.rename_folder`.",
+      "title": "MediaFolderRenamed"
+    }
+  },
+  "input": {
+    "type": "object",
+    "additionalProperties": false,
+    "properties": {
+      "folder": {
+        "type": "string",
+        "pattern": "^fld_[0-9a-f]{32}$",
+        "description": "The folder."
+      },
+      "name": {
+        "type": "string",
+        "description": "The new name: 1 to 255 characters, no `/` or control characters (trimmed)."
+      }
+    },
+    "required": [
+      "folder",
+      "name"
+    ],
+    "description": "Renames a folder of the media bin. Fails with `Invalid` when a sibling already has the\nname, ignoring case (changing only the case of the folder's own name is fine).",
+    "title": "MediaRenameFolder"
+  },
+  "output": {
+    "type": "object",
+    "additionalProperties": false,
+    "properties": {
+      "folder_id": {
+        "type": "string",
+        "pattern": "^fld_[0-9a-f]{32}$",
+        "description": "The folder."
+      },
+      "name": {
+        "type": "string",
+        "description": "Its name now."
+      }
+    },
+    "required": [
+      "folder_id",
+      "name"
+    ],
+    "description": "Result of `media.rename_folder`.",
+    "title": "MediaFolderRenamed"
+  }
+}

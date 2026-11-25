@@ -56,7 +56,6 @@ export function openContextMenu(
     closeContextMenu();
     return false;
   }
-  pending = null;
   const target = applyTargetRules(
     { ids: [], ...request.target, surface: request.surface },
     def.selection,
@@ -342,11 +341,13 @@ export function ContextMenuHost({ services = menuServices }: { services?: MenuSe
     (event: Event) => {
       // Focus goes back to the surface, not the zero-size anchor.
       event.preventDefault();
-      // A menu replaced by another (a second right-click) leaves the focus to its successor.
-      if (contextMenuStore.getState().open !== null) return;
-      shown?.element?.focus({ preventScroll: true });
+      // The choice made in this menu runs even when a second right-click already opened another.
       const run = pending;
       pending = null;
+      // A menu replaced by another leaves the focus to its successor.
+      if (contextMenuStore.getState().open === null) {
+        shown?.element?.focus({ preventScroll: true });
+      }
       if (run !== null) {
         void Promise.resolve()
           .then(run)

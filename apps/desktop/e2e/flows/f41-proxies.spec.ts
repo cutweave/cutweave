@@ -59,19 +59,28 @@ async function previewHash(page: Page): Promise<string> {
   return createHash("sha1").update(png).digest("hex");
 }
 
-/** Resolves once `read` gives the same answer twice in a row. */
+/** The preview refines from the proxy frame to the original's after a stop; this outlasts it. */
+const STABLE_MS = 2_000;
+
+/**
+ * Resolves once `read` has given the same answer for STABLE_MS (the refinement has landed),
+ * polling, within a bounded 20 s. Two equal reads in a row are not enough under load.
+ */
 async function settled<T>(read: () => Promise<T>): Promise<T> {
-  let last: T | undefined;
   let value: T | undefined;
+  let since = 0;
   await expect
     .poll(
       async () => {
-        value = await read();
-        const same = value === last;
-        last = value;
-        return same;
+        const next = await read();
+        const now = Date.now();
+        if (since === 0 || next !== value) {
+          value = next;
+          since = now;
+        }
+        return now - since >= STABLE_MS;
       },
-      { intervals: [150, 250, 400] },
+      { intervals: [200], timeout: 20_000 },
     )
     .toBe(true);
   return value as T;

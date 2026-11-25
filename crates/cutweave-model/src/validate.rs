@@ -9,9 +9,10 @@ use std::collections::{BTreeMap, BTreeSet};
 use serde::Serialize;
 
 use crate::{
-    CURRENT_SCHEMA_VERSION, Clip, Custom, Duration, EntityKind, GroupId, Item, ItemId,
-    MAX_SAFE_FLICKS, MediaId, MediaKind, Project, Sequence, SequenceFormat, SequenceId, Time,
-    TrackId, TrackKind, Vec2, item::Animatable,
+    CURRENT_SCHEMA_VERSION, Clip, Custom, Duration, EntityKind, FolderId, GroupId, Item, ItemId,
+    MAX_FOLDER_DEPTH, MAX_SAFE_FLICKS, MediaId, MediaKind, Project, Sequence, SequenceFormat,
+    SequenceId, Time, TrackId, TrackKind, Vec2, folder_name_key, folder_name_problem,
+    item::Animatable, media_name_problem,
 };
 
 /// Largest canvas side accepted by validation.
@@ -199,6 +200,46 @@ pub enum Invariant {
         /// What is wrong.
         reason: String,
     },
+    /// Media folders whose parents form a cycle (ADR-0020).
+    #[error("media folders form a cycle: {}", display_cycle(cycle))]
+    FolderCycle {
+        /// The folders on the cycle, each followed by its parent; the first is repeated at the
+        /// end.
+        cycle: Vec<FolderId>,
+    },
+    /// A media folder nested deeper than `MAX_FOLDER_DEPTH` levels (ADR-0020).
+    #[error(
+        "media folder `{folder}` is nested {depth} levels deep; at most {MAX_FOLDER_DEPTH} are allowed"
+    )]
+    FolderTooDeep {
+        /// The folder.
+        folder: FolderId,
+        /// Its depth (1 at the top level).
+        depth: u32,
+    },
+    /// A media folder name that is empty, too long, or holds `/` or control characters
+    /// (ADR-0020).
+    #[error("media folder `{folder}` has an invalid name: {reason}")]
+    InvalidFolderName {
+        /// The folder.
+        folder: FolderId,
+        /// What is wrong.
+        reason: String,
+    },
+    /// Two folders of one parent whose names are equal ignoring case (ADR-0020).
+    #[error(
+        "media folders `{first}` and `{second}` have the same parent and the name `{name}` (ignoring case)"
+    )]
+    DuplicateFolderName {
+        /// The parent; absent at the top level.
+        parent: Option<FolderId>,
+        /// The folder with the lower ID.
+        first: FolderId,
+        /// Another folder with the same name.
+        second: FolderId,
+        /// The name of `second`.
+        name: String,
+    },
     /// Plugin data under a key that is not a namespace (arch §4.3).
     #[error(
         "custom data key `{key}` at `{path}` is not a plugin namespace such as `com.example.plugin`"
@@ -211,7 +252,7 @@ pub enum Invariant {
     },
 }
 
-fn display_cycle(cycle: &[SequenceId]) -> String {
+fn display_cycle<T: std::fmt::Display>(cycle: &[T]) -> String {
     cycle
         .iter()
         .map(ToString::to_string)
@@ -221,7 +262,7 @@ fn display_cycle(cycle: &[SequenceId]) -> String {
 
 impl Project {
     /// Checks every document invariant and returns the first violation, in a deterministic
-    /// order (media, then sequences, by ID).
+    /// order (media, folders, then sequences, by ID).
     pub fn validate(&self) -> Result<(), Invariant> {
         match self.violations().into_iter().next() {
             Some(violation) => Err(violation),
@@ -246,6 +287,7 @@ impl Project {
             &mut out,
         );
         self.check_media(&mut out);
+        self.check_folders(&mut out);
         let mut groups = BTreeMap::new();
         for (key, sequence) in &self.sequences {
             let path = format!("/sequences/{key}");
@@ -404,7 +446,113 @@ impl Project {
             if !matches!(media.probe.rotation, 0 | 90 | 180 | 270) {
                 out.push(invalid("probe rotation must be 0, 90, 180 or 270"));
             }
+            if let Some(reason) = media.name.as_deref().and_then(media_name_problem) {
+                out.push(invalid(reason));
+            }
+            if let Some(folder) = media.folder
+                && !self.folders.contains_key(&folder)
+            {
+                out.push(Invariant::DanglingReference {
+                    path: format!("{path}/folder"),
+                    kind: EntityKind::Folder,
+                    id: folder.to_string(),
+                });
+            }
             check_custom(&path, &media.custom, out);
+        }
+    }
+
+    /// ADR-0020: keys match IDs, parents exist, names are valid and unique among siblings
+    /// ignoring case, there is no cycle and nothing is nested deeper than `MAX_FOLDER_DEPTH`.
+    fn check_folders(&self, out: &mut Vec<Invariant>) {
+        use std::collections::btree_map::Entry;
+
+        let mut names: BTreeMap<(Option<FolderId>, String), FolderId> = BTreeMap::new();
+        for (key, folder) in &self.folders {
+            let path = format!("/folders/{key}");
+            if *key != folder.id {
+                out.push(Invariant::KeyMismatch {
+                    path: "/folders".into(),
+                    key: key.to_string(),
+                    id: folder.id.to_string(),
+                });
+            }
+            if let Some(reason) = folder_name_problem(&folder.name) {
+                out.push(Invariant::InvalidFolderName {
+                    folder: *key,
+                    reason: reason.to_owned(),
+                });
+            }
+            if let Some(parent) = folder.parent
+                && !self.folders.contains_key(&parent)
+            {
+                out.push(Invariant::DanglingReference {
+                    path: format!("{path}/parent"),
+                    kind: EntityKind::Folder,
+                    id: parent.to_string(),
+                });
+            }
+            match names.entry((folder.parent, folder_name_key(&folder.name))) {
+                Entry::Vacant(slot) => {
+                    slot.insert(*key);
+                }
+                Entry::Occupied(first) => out.push(Invariant::DuplicateFolderName {
+                    parent: folder.parent,
+                    first: *first.get(),
+                    second: *key,
+                    name: folder.name.clone(),
+                }),
+            }
+            check_custom(&path, &folder.custom, out);
+        }
+        self.check_folder_tree(out);
+    }
+
+    /// Walks every folder up to the top level once: reports each cycle once and every folder
+    /// deeper than `MAX_FOLDER_DEPTH`. A missing parent counts as the top level (it is reported
+    /// as a dangling reference).
+    fn check_folder_tree(&self, out: &mut Vec<Invariant>) {
+        #[derive(Clone, Copy)]
+        enum Depth {
+            At(usize),
+            OnCycle,
+        }
+        let mut known: BTreeMap<FolderId, Depth> = BTreeMap::new();
+        for start in self.folders.keys() {
+            let mut chain: Vec<FolderId> = Vec::new();
+            let mut cur = *start;
+            let base = loop {
+                if let Some(depth) = known.get(&cur) {
+                    break match depth {
+                        Depth::At(d) => *d,
+                        Depth::OnCycle => 0,
+                    };
+                }
+                if let Some(at) = chain.iter().position(|f| *f == cur) {
+                    let mut cycle = chain[at..].to_vec();
+                    cycle.push(cur);
+                    out.push(Invariant::FolderCycle { cycle });
+                    for f in chain.drain(at..) {
+                        known.insert(f, Depth::OnCycle);
+                    }
+                    break 0;
+                }
+                chain.push(cur);
+                match self.folders.get(&cur).and_then(|f| f.parent) {
+                    Some(parent) if self.folders.contains_key(&parent) => cur = parent,
+                    _ => break 0,
+                }
+            };
+            for (above, folder) in chain.iter().rev().enumerate() {
+                let depth = base + above + 1;
+                known.insert(*folder, Depth::At(depth));
+                if depth > MAX_FOLDER_DEPTH {
+                    out.push(Invariant::FolderTooDeep {
+                        folder: *folder,
+                        depth: u32::try_from(depth).unwrap_or(u32::MAX),
+                    });
+                }
+            }
         }
     }
 

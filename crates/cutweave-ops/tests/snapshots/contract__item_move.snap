@@ -5,7 +5,7 @@ expression: "json!({\n    \"meta\": serde_json::to_value(meta).unwrap(), \"input
 {
   "meta": {
     "name": "item.move",
-    "summary": "Move an item in time and/or to another track (linked partners follow)",
+    "summary": "Move items in time and/or to another track (linked partners follow)",
     "kind": "command",
     "undoable": true,
     "view": false,
@@ -14,7 +14,7 @@ expression: "json!({\n    \"meta\": serde_json::to_value(meta).unwrap(), \"input
     "annotations": {
       "readOnlyHint": false,
       "destructiveHint": false,
-      "idempotentHint": true,
+      "idempotentHint": false,
       "openWorldHint": false
     },
     "secret_fields": [],
@@ -23,23 +23,72 @@ expression: "json!({\n    \"meta\": serde_json::to_value(meta).unwrap(), \"input
       "additionalProperties": false,
       "properties": {
         "item": {
-          "type": "string",
+          "type": [
+            "string",
+            "null"
+          ],
           "pattern": "^itm_[0-9a-f]{32}$",
-          "description": "The item."
+          "description": "The item (or `items`).",
+          "default": null
+        },
+        "items": {
+          "type": [
+            "array",
+            "null"
+          ],
+          "items": {
+            "description": "A Item id: `^itm_[0-9a-f]{32}$`.",
+            "type": "string",
+            "pattern": "^itm_[0-9a-f]{32}$"
+          },
+          "description": "Items; the first leads.",
+          "default": null
         },
         "start": {
-          "description": "New timeline position of the item's first frame, `>= 0`.",
           "anyOf": [
             {
-              "type": "integer",
-              "minimum": -9007199254740991,
-              "maximum": 9007199254740991
+              "description": "A time: integer flicks (1/705600000 s), or a string: seconds (\"62.5s\"), a frame (\"f:1500\") or a timecode (\"00:01:02:03\", drop-frame \"00:01:02;03\"). Frames and timecodes use the frame rate of the target's sequence.",
+              "anyOf": [
+                {
+                  "type": "integer",
+                  "minimum": -9007199254740991,
+                  "maximum": 9007199254740991
+                },
+                {
+                  "type": "string",
+                  "pattern": "^-?[0-9]+(\\.[0-9]+)?s$|^-?[0-9]+$|^f:[0-9]+$|^[0-9]+[:;][0-9]+[:;][0-9]+[:;][0-9]+$"
+                }
+              ]
             },
             {
-              "type": "string",
-              "pattern": "^-?[0-9]+(\\.[0-9]+)?s$|^-?[0-9]+$|^f:[0-9]+$|^[0-9]+[:;][0-9]+[:;][0-9]+[:;][0-9]+$"
+              "type": "null"
             }
-          ]
+          ],
+          "description": "New start, `>= 0` (or `delta`).",
+          "default": null
+        },
+        "delta": {
+          "anyOf": [
+            {
+              "description": "A time: integer flicks (1/705600000 s), or a string: seconds (\"62.5s\"), a frame (\"f:1500\") or a timecode (\"00:01:02:03\", drop-frame \"00:01:02;03\"). Frames and timecodes use the frame rate of the target's sequence.",
+              "anyOf": [
+                {
+                  "type": "integer",
+                  "minimum": -9007199254740991,
+                  "maximum": 9007199254740991
+                },
+                {
+                  "type": "string",
+                  "pattern": "^-?[0-9]+(\\.[0-9]+)?s$|^-?[0-9]+$|^f:[0-9]+$|^[0-9]+[:;][0-9]+[:;][0-9]+[:;][0-9]+$"
+                }
+              ]
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "description": "Offset of the start.",
+          "default": null
         },
         "to_track": {
           "type": [
@@ -47,7 +96,7 @@ expression: "json!({\n    \"meta\": serde_json::to_value(meta).unwrap(), \"input
             "null"
           ],
           "pattern": "^trk_[0-9a-f]{32}$",
-          "description": "Target track of the same sequence and kind (default: stay on the current track).",
+          "description": "Target track (default: stay).",
           "default": null
         },
         "unlink": {
@@ -55,39 +104,55 @@ expression: "json!({\n    \"meta\": serde_json::to_value(meta).unwrap(), \"input
             "boolean",
             "null"
           ],
-          "description": "Move only this item and remove it from its linked group (default `false`).",
+          "description": "Move only the given items, unlinked.",
           "default": null
         },
         "overlap": {
-          "anyOf": [
-            {
-              "oneOf": [
-                {
-                  "type": "string",
-                  "const": "reject",
-                  "description": "Fail with `Invalid{path:\"/at\"}` (default)."
-                },
-                {
-                  "type": "string",
-                  "const": "new_track",
-                  "description": "Create a new track of the same kind directly above the target and insert there."
-                }
-              ],
-              "description": "What to do when the clip would overlap another clip on the target track."
-            },
-            {
-              "type": "null"
-            }
+          "type": [
+            "string",
+            "null"
           ],
-          "description": "Overlap handling (default `reject`).",
+          "enum": [
+            "reject",
+            "new_track",
+            null
+          ],
+          "description": "Alias of `mode`.",
+          "default": null
+        },
+        "mode": {
+          "type": [
+            "string",
+            "null"
+          ],
+          "enum": [
+            "insert",
+            "overwrite",
+            "new_track",
+            "reject",
+            null
+          ],
+          "description": "Default: `insert` on the main track, else `reject`.",
+          "default": null
+        },
+        "ripple_all_tracks": {
+          "type": [
+            "boolean",
+            "null"
+          ],
+          "description": "Ripples reach every track.",
+          "default": null
+        },
+        "fine": {
+          "type": [
+            "boolean",
+            "null"
+          ],
+          "description": "Audio sample grid.",
           "default": null
         }
       },
-      "required": [
-        "item",
-        "start"
-      ],
-      "description": "Moves an item to a new start, optionally onto another track of the same kind and sequence.\nThe item's linked partners move by the same amount on their own tracks (`unlink: true`\nmoves only this item and removes it from its group). Overlap is `Invalid{path:\"/start\"}`\nby default; `overlap: \"new_track\"` puts the item on a new track directly above the target.\n`Locked` if the source, the target or a partner's track is locked. `start` is snapped to\nthe sequence's frame grid and must be `>= 0`.",
+      "description": "Moves items to a new start (`start`, or `delta` from where the first one is), optionally\nonto another track of the same kind and sequence. Give `item`, or `items` (the first is the\nprimary; the others keep their offsets to it). Linked partners move by the same amount on\ntheir own tracks (`unlink: true` moves only the given items and takes them out of their\ngroups). On the magnetic main track the space an item leaves closes, and an item moved onto\nit is inserted (default; the start is read after the lift and clamped to the track's end).\nElsewhere an overlap is `Invalid` by default; `mode` (or its alias `overlap`) picks\n`new_track`, `overwrite` or `insert`. Children attached to a moved item follow it. Times\nsnap to the frame grid (`fine: true`: the audio sample grid, audio-only moves).",
       "title": "ItemMove"
     },
     "output_schema": {
@@ -124,7 +189,7 @@ expression: "json!({\n    \"meta\": serde_json::to_value(meta).unwrap(), \"input
               "start"
             ]
           },
-          "description": "The moved items: the requested one first, then its linked partners."
+          "description": "The moved items: the given ones in order, each followed by its linked partners."
         },
         "created_tracks": {
           "type": "array",
@@ -133,12 +198,248 @@ expression: "json!({\n    \"meta\": serde_json::to_value(meta).unwrap(), \"input
             "type": "string",
             "pattern": "^trk_[0-9a-f]{32}$"
           },
-          "description": "Tracks created by `overlap: \"new_track\"`, in creation order."
+          "description": "Tracks created by the placement, in creation order."
+        },
+        "report": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "created": {
+              "type": "array",
+              "items": {
+                "description": "A Item id: `^itm_[0-9a-f]{32}$`.",
+                "type": "string",
+                "pattern": "^itm_[0-9a-f]{32}$"
+              },
+              "description": "New items, other than the right halves of splits."
+            },
+            "removed": {
+              "type": "array",
+              "items": {
+                "description": "A Item id: `^itm_[0-9a-f]{32}$`.",
+                "type": "string",
+                "pattern": "^itm_[0-9a-f]{32}$"
+              },
+              "description": "Items that no longer exist."
+            },
+            "split": {
+              "type": "array",
+              "items": {
+                "description": "A split: `right` is new, `left` keeps its ID; `at` is the cut time before the edit.",
+                "type": "object",
+                "properties": {
+                  "left": {
+                    "description": "The left half (keeps the original ID).",
+                    "type": "string",
+                    "pattern": "^itm_[0-9a-f]{32}$"
+                  },
+                  "right": {
+                    "description": "The right half (new).",
+                    "type": "string",
+                    "pattern": "^itm_[0-9a-f]{32}$"
+                  },
+                  "at": {
+                    "description": "The cut time.",
+                    "type": "integer",
+                    "minimum": -9007199254740991,
+                    "maximum": 9007199254740991
+                  }
+                },
+                "additionalProperties": false,
+                "required": [
+                  "left",
+                  "right",
+                  "at"
+                ]
+              },
+              "description": "Splits, sorted by `(left, at)`."
+            },
+            "moved": {
+              "type": "array",
+              "items": {
+                "description": "An item whose track or start changed (duration and source did not).",
+                "type": "object",
+                "properties": {
+                  "item": {
+                    "description": "The item.",
+                    "type": "string",
+                    "pattern": "^itm_[0-9a-f]{32}$"
+                  },
+                  "track": {
+                    "description": "Its track now.",
+                    "type": "string",
+                    "pattern": "^trk_[0-9a-f]{32}$"
+                  },
+                  "start": {
+                    "description": "Its start now.",
+                    "type": "integer",
+                    "minimum": -9007199254740991,
+                    "maximum": 9007199254740991
+                  }
+                },
+                "additionalProperties": false,
+                "required": [
+                  "item",
+                  "track",
+                  "start"
+                ]
+              },
+              "description": "Items whose track or start changed."
+            },
+            "trimmed": {
+              "type": "array",
+              "items": {
+                "description": "An item whose duration or `source_in` changed (its start may have too).",
+                "type": "object",
+                "properties": {
+                  "item": {
+                    "description": "The item.",
+                    "type": "string",
+                    "pattern": "^itm_[0-9a-f]{32}$"
+                  },
+                  "start": {
+                    "description": "Its start now.",
+                    "type": "integer",
+                    "minimum": -9007199254740991,
+                    "maximum": 9007199254740991
+                  },
+                  "duration": {
+                    "description": "Its duration now.",
+                    "type": "integer",
+                    "minimum": 0,
+                    "maximum": 9007199254740991
+                  },
+                  "source_in": {
+                    "description": "Its `source_in` now (`0` for items that play no media).",
+                    "type": "integer",
+                    "minimum": -9007199254740991,
+                    "maximum": 9007199254740991
+                  }
+                },
+                "additionalProperties": false,
+                "required": [
+                  "item",
+                  "start",
+                  "duration",
+                  "source_in"
+                ]
+              },
+              "description": "Items whose duration or source position changed."
+            },
+            "relinked": {
+              "type": "array",
+              "items": {
+                "description": "An item whose `linked_group` or `attached_to` changed.",
+                "type": "object",
+                "properties": {
+                  "item": {
+                    "description": "The item.",
+                    "type": "string",
+                    "pattern": "^itm_[0-9a-f]{32}$"
+                  },
+                  "linked_group": {
+                    "description": "Its linked group now.",
+                    "type": [
+                      "string",
+                      "null"
+                    ],
+                    "pattern": "^grp_[0-9a-f]{32}$"
+                  },
+                  "attached_to": {
+                    "description": "The item it is attached to now.",
+                    "type": [
+                      "string",
+                      "null"
+                    ],
+                    "pattern": "^itm_[0-9a-f]{32}$"
+                  }
+                },
+                "additionalProperties": false,
+                "required": [
+                  "item",
+                  "linked_group",
+                  "attached_to"
+                ]
+              },
+              "description": "Items whose link or attachment changed."
+            },
+            "replaced": {
+              "type": "array",
+              "items": {
+                "description": "An item whose media changed (`clip.replace`).",
+                "type": "object",
+                "properties": {
+                  "item": {
+                    "description": "The item.",
+                    "type": "string",
+                    "pattern": "^itm_[0-9a-f]{32}$"
+                  },
+                  "media": {
+                    "description": "Its media now.",
+                    "type": "string",
+                    "pattern": "^med_[0-9a-f]{32}$"
+                  }
+                },
+                "additionalProperties": false,
+                "required": [
+                  "item",
+                  "media"
+                ]
+              },
+              "description": "Items whose media changed."
+            },
+            "toggled": {
+              "type": "array",
+              "items": {
+                "description": "An item whose `enabled` flag changed.",
+                "type": "object",
+                "properties": {
+                  "item": {
+                    "description": "The item.",
+                    "type": "string",
+                    "pattern": "^itm_[0-9a-f]{32}$"
+                  },
+                  "enabled": {
+                    "description": "Its flag now.",
+                    "type": "boolean"
+                  }
+                },
+                "additionalProperties": false,
+                "required": [
+                  "item",
+                  "enabled"
+                ]
+              },
+              "description": "Items whose `enabled` flag changed."
+            },
+            "created_tracks": {
+              "type": "array",
+              "items": {
+                "description": "A Track id: `^trk_[0-9a-f]{32}$`.",
+                "type": "string",
+                "pattern": "^trk_[0-9a-f]{32}$"
+              },
+              "description": "Tracks created, in creation order."
+            }
+          },
+          "required": [
+            "created",
+            "removed",
+            "split",
+            "moved",
+            "trimmed",
+            "relinked",
+            "replaced",
+            "toggled",
+            "created_tracks"
+          ],
+          "description": "What changed (timeline spec §3.1)."
         }
       },
       "required": [
         "items",
-        "created_tracks"
+        "created_tracks",
+        "report"
       ],
       "description": "Result of `item.move`.",
       "title": "ItemMoveOutput"
@@ -149,23 +450,72 @@ expression: "json!({\n    \"meta\": serde_json::to_value(meta).unwrap(), \"input
     "additionalProperties": false,
     "properties": {
       "item": {
-        "type": "string",
+        "type": [
+          "string",
+          "null"
+        ],
         "pattern": "^itm_[0-9a-f]{32}$",
-        "description": "The item."
+        "description": "The item (or `items`).",
+        "default": null
+      },
+      "items": {
+        "type": [
+          "array",
+          "null"
+        ],
+        "items": {
+          "description": "A Item id: `^itm_[0-9a-f]{32}$`.",
+          "type": "string",
+          "pattern": "^itm_[0-9a-f]{32}$"
+        },
+        "description": "Items; the first leads.",
+        "default": null
       },
       "start": {
-        "description": "New timeline position of the item's first frame, `>= 0`.",
         "anyOf": [
           {
-            "type": "integer",
-            "minimum": -9007199254740991,
-            "maximum": 9007199254740991
+            "description": "A time: integer flicks (1/705600000 s), or a string: seconds (\"62.5s\"), a frame (\"f:1500\") or a timecode (\"00:01:02:03\", drop-frame \"00:01:02;03\"). Frames and timecodes use the frame rate of the target's sequence.",
+            "anyOf": [
+              {
+                "type": "integer",
+                "minimum": -9007199254740991,
+                "maximum": 9007199254740991
+              },
+              {
+                "type": "string",
+                "pattern": "^-?[0-9]+(\\.[0-9]+)?s$|^-?[0-9]+$|^f:[0-9]+$|^[0-9]+[:;][0-9]+[:;][0-9]+[:;][0-9]+$"
+              }
+            ]
           },
           {
-            "type": "string",
-            "pattern": "^-?[0-9]+(\\.[0-9]+)?s$|^-?[0-9]+$|^f:[0-9]+$|^[0-9]+[:;][0-9]+[:;][0-9]+[:;][0-9]+$"
+            "type": "null"
           }
-        ]
+        ],
+        "description": "New start, `>= 0` (or `delta`).",
+        "default": null
+      },
+      "delta": {
+        "anyOf": [
+          {
+            "description": "A time: integer flicks (1/705600000 s), or a string: seconds (\"62.5s\"), a frame (\"f:1500\") or a timecode (\"00:01:02:03\", drop-frame \"00:01:02;03\"). Frames and timecodes use the frame rate of the target's sequence.",
+            "anyOf": [
+              {
+                "type": "integer",
+                "minimum": -9007199254740991,
+                "maximum": 9007199254740991
+              },
+              {
+                "type": "string",
+                "pattern": "^-?[0-9]+(\\.[0-9]+)?s$|^-?[0-9]+$|^f:[0-9]+$|^[0-9]+[:;][0-9]+[:;][0-9]+[:;][0-9]+$"
+              }
+            ]
+          },
+          {
+            "type": "null"
+          }
+        ],
+        "description": "Offset of the start.",
+        "default": null
       },
       "to_track": {
         "type": [
@@ -173,7 +523,7 @@ expression: "json!({\n    \"meta\": serde_json::to_value(meta).unwrap(), \"input
           "null"
         ],
         "pattern": "^trk_[0-9a-f]{32}$",
-        "description": "Target track of the same sequence and kind (default: stay on the current track).",
+        "description": "Target track (default: stay).",
         "default": null
       },
       "unlink": {
@@ -181,39 +531,55 @@ expression: "json!({\n    \"meta\": serde_json::to_value(meta).unwrap(), \"input
           "boolean",
           "null"
         ],
-        "description": "Move only this item and remove it from its linked group (default `false`).",
+        "description": "Move only the given items, unlinked.",
         "default": null
       },
       "overlap": {
-        "anyOf": [
-          {
-            "oneOf": [
-              {
-                "type": "string",
-                "const": "reject",
-                "description": "Fail with `Invalid{path:\"/at\"}` (default)."
-              },
-              {
-                "type": "string",
-                "const": "new_track",
-                "description": "Create a new track of the same kind directly above the target and insert there."
-              }
-            ],
-            "description": "What to do when the clip would overlap another clip on the target track."
-          },
-          {
-            "type": "null"
-          }
+        "type": [
+          "string",
+          "null"
         ],
-        "description": "Overlap handling (default `reject`).",
+        "enum": [
+          "reject",
+          "new_track",
+          null
+        ],
+        "description": "Alias of `mode`.",
+        "default": null
+      },
+      "mode": {
+        "type": [
+          "string",
+          "null"
+        ],
+        "enum": [
+          "insert",
+          "overwrite",
+          "new_track",
+          "reject",
+          null
+        ],
+        "description": "Default: `insert` on the main track, else `reject`.",
+        "default": null
+      },
+      "ripple_all_tracks": {
+        "type": [
+          "boolean",
+          "null"
+        ],
+        "description": "Ripples reach every track.",
+        "default": null
+      },
+      "fine": {
+        "type": [
+          "boolean",
+          "null"
+        ],
+        "description": "Audio sample grid.",
         "default": null
       }
     },
-    "required": [
-      "item",
-      "start"
-    ],
-    "description": "Moves an item to a new start, optionally onto another track of the same kind and sequence.\nThe item's linked partners move by the same amount on their own tracks (`unlink: true`\nmoves only this item and removes it from its group). Overlap is `Invalid{path:\"/start\"}`\nby default; `overlap: \"new_track\"` puts the item on a new track directly above the target.\n`Locked` if the source, the target or a partner's track is locked. `start` is snapped to\nthe sequence's frame grid and must be `>= 0`.",
+    "description": "Moves items to a new start (`start`, or `delta` from where the first one is), optionally\nonto another track of the same kind and sequence. Give `item`, or `items` (the first is the\nprimary; the others keep their offsets to it). Linked partners move by the same amount on\ntheir own tracks (`unlink: true` moves only the given items and takes them out of their\ngroups). On the magnetic main track the space an item leaves closes, and an item moved onto\nit is inserted (default; the start is read after the lift and clamped to the track's end).\nElsewhere an overlap is `Invalid` by default; `mode` (or its alias `overlap`) picks\n`new_track`, `overwrite` or `insert`. Children attached to a moved item follow it. Times\nsnap to the frame grid (`fine: true`: the audio sample grid, audio-only moves).",
     "title": "ItemMove"
   },
   "output": {
@@ -250,7 +616,7 @@ expression: "json!({\n    \"meta\": serde_json::to_value(meta).unwrap(), \"input
             "start"
           ]
         },
-        "description": "The moved items: the requested one first, then its linked partners."
+        "description": "The moved items: the given ones in order, each followed by its linked partners."
       },
       "created_tracks": {
         "type": "array",
@@ -259,12 +625,248 @@ expression: "json!({\n    \"meta\": serde_json::to_value(meta).unwrap(), \"input
           "type": "string",
           "pattern": "^trk_[0-9a-f]{32}$"
         },
-        "description": "Tracks created by `overlap: \"new_track\"`, in creation order."
+        "description": "Tracks created by the placement, in creation order."
+      },
+      "report": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "created": {
+            "type": "array",
+            "items": {
+              "description": "A Item id: `^itm_[0-9a-f]{32}$`.",
+              "type": "string",
+              "pattern": "^itm_[0-9a-f]{32}$"
+            },
+            "description": "New items, other than the right halves of splits."
+          },
+          "removed": {
+            "type": "array",
+            "items": {
+              "description": "A Item id: `^itm_[0-9a-f]{32}$`.",
+              "type": "string",
+              "pattern": "^itm_[0-9a-f]{32}$"
+            },
+            "description": "Items that no longer exist."
+          },
+          "split": {
+            "type": "array",
+            "items": {
+              "description": "A split: `right` is new, `left` keeps its ID; `at` is the cut time before the edit.",
+              "type": "object",
+              "properties": {
+                "left": {
+                  "description": "The left half (keeps the original ID).",
+                  "type": "string",
+                  "pattern": "^itm_[0-9a-f]{32}$"
+                },
+                "right": {
+                  "description": "The right half (new).",
+                  "type": "string",
+                  "pattern": "^itm_[0-9a-f]{32}$"
+                },
+                "at": {
+                  "description": "The cut time.",
+                  "type": "integer",
+                  "minimum": -9007199254740991,
+                  "maximum": 9007199254740991
+                }
+              },
+              "additionalProperties": false,
+              "required": [
+                "left",
+                "right",
+                "at"
+              ]
+            },
+            "description": "Splits, sorted by `(left, at)`."
+          },
+          "moved": {
+            "type": "array",
+            "items": {
+              "description": "An item whose track or start changed (duration and source did not).",
+              "type": "object",
+              "properties": {
+                "item": {
+                  "description": "The item.",
+                  "type": "string",
+                  "pattern": "^itm_[0-9a-f]{32}$"
+                },
+                "track": {
+                  "description": "Its track now.",
+                  "type": "string",
+                  "pattern": "^trk_[0-9a-f]{32}$"
+                },
+                "start": {
+                  "description": "Its start now.",
+                  "type": "integer",
+                  "minimum": -9007199254740991,
+                  "maximum": 9007199254740991
+                }
+              },
+              "additionalProperties": false,
+              "required": [
+                "item",
+                "track",
+                "start"
+              ]
+            },
+            "description": "Items whose track or start changed."
+          },
+          "trimmed": {
+            "type": "array",
+            "items": {
+              "description": "An item whose duration or `source_in` changed (its start may have too).",
+              "type": "object",
+              "properties": {
+                "item": {
+                  "description": "The item.",
+                  "type": "string",
+                  "pattern": "^itm_[0-9a-f]{32}$"
+                },
+                "start": {
+                  "description": "Its start now.",
+                  "type": "integer",
+                  "minimum": -9007199254740991,
+                  "maximum": 9007199254740991
+                },
+                "duration": {
+                  "description": "Its duration now.",
+                  "type": "integer",
+                  "minimum": 0,
+                  "maximum": 9007199254740991
+                },
+                "source_in": {
+                  "description": "Its `source_in` now (`0` for items that play no media).",
+                  "type": "integer",
+                  "minimum": -9007199254740991,
+                  "maximum": 9007199254740991
+                }
+              },
+              "additionalProperties": false,
+              "required": [
+                "item",
+                "start",
+                "duration",
+                "source_in"
+              ]
+            },
+            "description": "Items whose duration or source position changed."
+          },
+          "relinked": {
+            "type": "array",
+            "items": {
+              "description": "An item whose `linked_group` or `attached_to` changed.",
+              "type": "object",
+              "properties": {
+                "item": {
+                  "description": "The item.",
+                  "type": "string",
+                  "pattern": "^itm_[0-9a-f]{32}$"
+                },
+                "linked_group": {
+                  "description": "Its linked group now.",
+                  "type": [
+                    "string",
+                    "null"
+                  ],
+                  "pattern": "^grp_[0-9a-f]{32}$"
+                },
+                "attached_to": {
+                  "description": "The item it is attached to now.",
+                  "type": [
+                    "string",
+                    "null"
+                  ],
+                  "pattern": "^itm_[0-9a-f]{32}$"
+                }
+              },
+              "additionalProperties": false,
+              "required": [
+                "item",
+                "linked_group",
+                "attached_to"
+              ]
+            },
+            "description": "Items whose link or attachment changed."
+          },
+          "replaced": {
+            "type": "array",
+            "items": {
+              "description": "An item whose media changed (`clip.replace`).",
+              "type": "object",
+              "properties": {
+                "item": {
+                  "description": "The item.",
+                  "type": "string",
+                  "pattern": "^itm_[0-9a-f]{32}$"
+                },
+                "media": {
+                  "description": "Its media now.",
+                  "type": "string",
+                  "pattern": "^med_[0-9a-f]{32}$"
+                }
+              },
+              "additionalProperties": false,
+              "required": [
+                "item",
+                "media"
+              ]
+            },
+            "description": "Items whose media changed."
+          },
+          "toggled": {
+            "type": "array",
+            "items": {
+              "description": "An item whose `enabled` flag changed.",
+              "type": "object",
+              "properties": {
+                "item": {
+                  "description": "The item.",
+                  "type": "string",
+                  "pattern": "^itm_[0-9a-f]{32}$"
+                },
+                "enabled": {
+                  "description": "Its flag now.",
+                  "type": "boolean"
+                }
+              },
+              "additionalProperties": false,
+              "required": [
+                "item",
+                "enabled"
+              ]
+            },
+            "description": "Items whose `enabled` flag changed."
+          },
+          "created_tracks": {
+            "type": "array",
+            "items": {
+              "description": "A Track id: `^trk_[0-9a-f]{32}$`.",
+              "type": "string",
+              "pattern": "^trk_[0-9a-f]{32}$"
+            },
+            "description": "Tracks created, in creation order."
+          }
+        },
+        "required": [
+          "created",
+          "removed",
+          "split",
+          "moved",
+          "trimmed",
+          "relinked",
+          "replaced",
+          "toggled",
+          "created_tracks"
+        ],
+        "description": "What changed (timeline spec §3.1)."
       }
     },
     "required": [
       "items",
-      "created_tracks"
+      "created_tracks",
+      "report"
     ],
     "description": "Result of `item.move`.",
     "title": "ItemMoveOutput"

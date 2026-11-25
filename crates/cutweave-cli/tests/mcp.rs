@@ -15,7 +15,7 @@ use std::process::{Command, Output, Stdio};
 use std::time::{Duration, Instant};
 
 use cutweave_api::mcp::switch::PROXY_TOOLS;
-use cutweave_api::mcp::{ListSize, P1_GATE};
+use cutweave_api::mcp::{ListSize, STANDARD_BUDGET};
 use rmcp::{
     ClientHandler, ClientLifecycleMode, ClientServiceExt as _, RoleClient, ServiceExt as _,
     model::{CallToolRequestParams, CallToolResult, ClientConfig, ContentBlock, ProtocolVersion},
@@ -230,7 +230,7 @@ async fn scripted_edit(agent: &Agent, clip: &str) {
 // ----- headless -----------------------------------------------------------------------------
 
 /// WP-1J.02: without `--dev-stub-media`, `cutweave mcp --headless` runs the full engine: 20
-/// tools within the P1 gate (`render_frame` joins the registry's 15 core tools and the 4 generic
+/// tools within the standard budget (R36; `render_frame` joins the registry's 15 core tools and the 4 generic
 /// ones), and `render_frame` answers with one image block. (No FFmpeg is needed: an empty
 /// sequence renders its background.)
 #[tokio::test]
@@ -244,7 +244,7 @@ async fn headless_runs_the_full_engine_and_renders_a_frame() {
         assert_eq!(tools.len(), 20, "{revision:?}");
         assert!(tools.iter().any(|t| t.name == "render_frame"));
         let size = ListSize::of(&tools);
-        assert!(P1_GATE.fits(size), "{size:?}");
+        assert!(STANDARD_BUDGET.fits(size), "{size:?}");
         agent
             .ok(
                 "cutweave_execute",
@@ -331,7 +331,7 @@ async fn headless_runs_a_scripted_session_on_both_revisions() {
         // with `export_start` (WP-1E.03), 20 once `render_frame` (WP-1J.02) joins it.
         assert_eq!(tools.len(), 19, "{revision:?}");
         let size = ListSize::of(&tools);
-        assert!(P1_GATE.fits(size), "{size:?}");
+        assert!(STANDARD_BUDGET.fits(size), "{size:?}");
         println!(
             "headless {revision:?}: negotiated {}, {} tools, ~{} tokens",
             agent.negotiated(),
@@ -598,8 +598,8 @@ async fn attach_edits_the_running_engines_document() {
     let agent = Agent::start(&["--attach", "--run-file", &run_file], Revision::Stateful).await;
     assert_eq!(agent.negotiated(), Revision::Stateful.version());
     let tools = agent.tools().await;
-    // The dev-stub engine's 19 (no renderer, so no `render_frame`; the full engine lists 20, the
-    // P1 gate) plus the proxy's own `engines_list` and `engine_attach`.
+    // The dev-stub engine's 19 (no renderer, so no `render_frame`; the full engine lists 20,
+    // within the standard budget) plus the proxy's own `engines_list` and `engine_attach`.
     assert_eq!(engine_tools(&tools), 19);
     assert_eq!(tools.len(), 19 + PROXY_TOOLS.len());
     scripted_edit(&agent, &clip).await;

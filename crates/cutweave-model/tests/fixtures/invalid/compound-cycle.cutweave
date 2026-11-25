@@ -22,6 +22,8 @@
     "med_0000000000017000800000000000a001": {
       "id": "med_0000000000017000800000000000a001",
       "kind": "video",
+      "name": null,
+      "folder": null,
       "path_abs": "/media/video.mp4",
       "path_rel": null,
       "content_hash": null,
@@ -45,6 +47,8 @@
     "med_0000000000017000800000000000a002": {
       "id": "med_0000000000017000800000000000a002",
       "kind": "audio",
+      "name": null,
+      "folder": null,
       "path_abs": "/media/music.wav",
       "path_rel": null,
       "content_hash": null,
@@ -68,6 +72,8 @@
     "med_0000000000017000800000000000a00a": {
       "id": "med_0000000000017000800000000000a00a",
       "kind": "sequence_ref",
+      "name": null,
+      "folder": null,
       "path_abs": null,
       "path_rel": null,
       "content_hash": null,
@@ -91,6 +97,8 @@
     "med_0000000000017000800000000000a00b": {
       "id": "med_0000000000017000800000000000a00b",
       "kind": "sequence_ref",
+      "name": null,
+      "folder": null,
       "path_abs": null,
       "path_rel": null,
       "content_hash": null,
@@ -112,6 +120,7 @@
       "custom": {}
     }
   },
+  "folders": {},
   "sequences": {
     "seq_0000000000017000800000000000b001": {
       "id": "seq_0000000000017000800000000000b001",

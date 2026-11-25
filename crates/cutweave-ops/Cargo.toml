@@ -44,5 +44,9 @@ proptest.workspace = true
 name = "media_list"
 harness = false
 
+[[bench]]
+name = "placement_ripple_5k"
+harness = false
+
 [lints]
 workspace = true

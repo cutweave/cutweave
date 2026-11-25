@@ -1,8 +1,8 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 //! WP-2A.02: `track.set_magnetic` (timeline spec §4.17; the `set-magnetic-*` fixtures of
 //! `docs/spec/fixtures/`), `track.reorder`, `track.set_height`, the soft track limit, and the
-//! rule that track flags never touch items (INV-29). Also the P1 edit commands' refusal to
-//! edit the magnetic track until the placement work package ripples (documented stopgap).
+//! rule that track flags never touch items (INV-29). Also the P1 edit commands on the magnetic
+//! track, which keep it gap-free since WP-2A.03 (the placement core).
 
 #![allow(clippy::unwrap_used, clippy::expect_used)]
 
@@ -316,10 +316,10 @@ fn unknown_tracks_and_malformed_params_are_reported() {
     assert_invalid(h.run("track.set_magnetic", json!({"magnetic": true})), "");
 }
 
-// ----- the P1 edits stop at the magnetic track (until WP-2A.03) ---------------------------------
+// ----- the P1 edits on the magnetic track (WP-2A.03 lifted the stopgap) -------------------------
 
 #[test]
-fn p1_edits_refuse_the_magnetic_track_instead_of_leaving_a_gap() {
+fn p1_edits_keep_the_magnetic_track_gap_free() {
     let (mut h, p, video) = setup();
     let first = item_id(
         &h.ok(
@@ -332,26 +332,27 @@ fn p1_edits_refuse_the_magnetic_track_instead_of_leaving_a_gap() {
         "track.set_magnetic",
         json!({"track": p.video, "magnetic": true}),
     );
-    for (name, params) in [
-        ("item.delete", json!({"items": [first]})),
-        ("item.move", json!({"item": first, "start": "f:5"})),
-        (
-            "clip.trim",
-            json!({"item": first, "edge": "end", "delta": "-0.2s"}),
-        ),
-        (
-            "timeline.insert",
-            json!({"sequence": p.sequence, "track": p.video, "media": video, "at": "f:30",
-                   "duration": "f:5", "link": false}),
-        ),
-    ] {
-        let before = h.doc();
-        let r = h.run(name, params);
-        assert_code(r, "unsupported");
-        assert_eq!(h.doc(), before, "{name}");
-    }
-    // Splitting keeps the track gap-free, so it still works.
+    // An insert past the end appends (INV-41); at the start it pushes the rest right.
+    let out = h.ok(
+        "timeline.insert",
+        json!({"sequence": p.sequence, "track": p.video, "media": video, "at": "f:90",
+               "duration": "f:5", "link": false}),
+    );
+    let second = item_id(&out["clips"][0]);
+    assert_eq!(out["at"], json!(30 * FRAME));
+    // A move lifts and inserts: the second clip goes first.
+    h.ok("item.move", json!({"item": second, "start": "f:0"}));
+    assert_eq!([second, first].map(|i| start_of(&h, i)), [0, 5]);
+    // A trim on the main track ripples (INV-203).
+    h.ok(
+        "clip.trim",
+        json!({"item": second, "edge": "end", "delta": "f:3"}),
+    );
+    assert_eq!(start_of(&h, first), 8);
     h.ok("clip.split", json!({"item": first, "at": "f:10"}));
+    // A delete closes the space.
+    h.ok("item.delete", json!({"items": [second]}));
+    assert_eq!(start_of(&h, first), 0);
     assert_one_magnetic(&h, p.sequence);
 }
 

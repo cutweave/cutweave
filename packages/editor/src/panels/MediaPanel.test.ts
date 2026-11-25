@@ -6,7 +6,7 @@ import { type MediaId, type Project, RpcError } from "@cutweave/protocol";
 import { cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import axe from "axe-core";
-import { createElement as h } from "react";
+import { Fragment, createElement as h } from "react";
 import { I18nextProvider } from "react-i18next";
 import { afterEach, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
 import { engineStore } from "../engine/engineStore.ts";
@@ -27,6 +27,7 @@ import {
   setThumbnailSource,
   type ThumbnailSource,
 } from "../media/thumbnails.ts";
+import { MenuDialogs } from "../menus/MenuDialogs.tsx";
 import { docStore } from "../state/docStore.ts";
 import { jobStore } from "../state/jobStore.ts";
 import { initialPlaybackState, playbackStore } from "../state/playbackStore.ts";
@@ -155,7 +156,9 @@ function bridge(extra: object = {}): void {
   };
 }
 
-const view = () => render(h(I18nextProvider, { i18n }, h(MediaPanel)));
+// The removal question belongs to the menu dialogs (WP-2H.13), mounted beside the panel.
+const view = () =>
+  render(h(I18nextProvider, { i18n }, h(Fragment, null, h(MediaPanel), h(MenuDialogs))));
 const notices = () => toastStore.getState().notices;
 
 beforeAll(() => {

@@ -6,6 +6,7 @@ import { useTranslation } from "react-i18next";
 import { engineStore } from "../engine/engineStore.ts";
 import { comboText, strokesOf } from "../keymap/store.ts";
 import { insertAtPlayhead } from "../media/insert.ts";
+import { useContextMenu } from "../menus/host.tsx";
 import { SOURCE_COMMANDS } from "../preview/sourceKeys.ts";
 import { docStore, useDocStore } from "../state/docStore.ts";
 import { usePlaybackStore } from "../state/playbackStore.ts";
@@ -68,11 +69,13 @@ export function SourceHeader() {
   const source = usePlaybackStore((s) => s.source);
   const at = usePlaybackStore((s) => s.sourcePlayhead);
   const insert = useInsertSource();
+  const menuRef = useContextMenu<HTMLElement>("source.view", () => ({}));
   if (source === null || asset === null) return null;
   const timecode = formatTimecode(at, source.fps, true);
   const length = formatTimecode(source.duration, source.fps, true);
   return (
     <section
+      ref={menuRef}
       className="cw-preview__bar cw-source__bar"
       aria-label={t("preview.source.region")}
       data-testid="source-header"

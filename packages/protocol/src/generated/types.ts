@@ -42,6 +42,19 @@ export type AgentConnection = {
 	last_command_at: WallTime | null,
 };
 
+/**  The audio codec. */
+export type AudioCodec = 
+/**  AAC-LC. */
+"aac" | 
+/**  MP3. */
+"mp3" | 
+/**  Uncompressed PCM. */
+"pcm" | 
+/**  FLAC. */
+"flac" | 
+/**  Opus. */
+"opus";
+
 /**  Format of the main audio stream. */
 export type AudioInfo = {
 	/**  Samples per second. */
@@ -55,6 +68,18 @@ export type AudioProps = {
 	/**  Gain in decibels (0.0 = unchanged). */
 	gain: number,
 } & { [key in string]: unknown };
+
+/**  Audio settings. */
+export type AudioSpec = {
+	/**  The codec. */
+	codec: AudioCodec,
+	/**  Bitrate in kilobits per second (absent for lossless codecs). */
+	bitrate_kbps?: number | null,
+	/**  Sample rate in Hz. */
+	sample_rate: number,
+	/**  Channel count. */
+	channels: number,
+};
 
 /**  Payload of `project.autosave_failed`. */
 export type AutosaveFailed = {
@@ -207,31 +232,41 @@ export type Clip = {
 } & { [key in string]: unknown };
 
 /**
- *  Splits a clip into two at a timeline time that lies strictly inside it (`Invalid{path:"/at"}`
- *  at or beyond the edges). The halves are contiguous: durations sum to the original and the
- *  right half's `source_in` continues where the left half ends. Linked partners that contain
- *  the time are split too. `at` is snapped to the sequence's frame grid. `Locked` if the clip's
- *  track or a partner's track is locked.
+ *  Splits a clip (`item`), or several (`items`), into two at a timeline time that lies strictly
+ *  inside each (`Invalid{path:"/at"}` at or beyond the edges). The halves are contiguous:
+ *  durations sum to the original and the right half's `source_in` continues where the left
+ *  half ends. Linked partners are split too, and children attached at or after the time move
+ *  to the right half. `at` is snapped to the sequence's frame grid (`fine: true`: the audio
+ *  sample grid, for audio clips not linked to video). `Locked` if a track involved is locked.
  */
 export type ClipSplit = {
-	/**  The clip. */
-	item: ItemId,
+	/**  The clip (or `items`). */
+	item?: ItemId | null,
+	/**  Clips to split at once. */
+	items?: ItemId[] | null,
 	/**  Timeline time to split at: strictly inside the clip. */
 	at: TimeInput,
+	/**  Audio sample grid. */
+	fine?: boolean | null,
 };
 
 /**  Result of `clip.split`. */
 export type ClipSplitOutput = {
-	/**  The left half of the requested item (keeps its ID). */
+	/**  The left half of the (first) requested clip (keeps its ID). */
 	left: ItemId,
-	/**  The right half of the requested item (new ID). */
+	/**  The right half of the (first) requested clip (new ID). */
 	right: ItemId,
-	/**  The time that was split at, snapped to the frame grid. */
+	/**  The time that was split at, snapped to the frame grid (or the sample grid, `fine`). */
 	at: Time,
-	/**  The linked partners that were split too. */
+	/**
+	 *  The other clips that were split: the first clip's linked partners, then the other
+	 *  requested clips each followed by its partners.
+	 */
 	linked: SplitPair[],
-	/**  The new group shared by the right halves, if there were partners. */
+	/**  The new group shared by the first clip's right halves, if it is linked. */
 	right_group: GroupId | null,
+	/**  What changed (timeline spec §3.1). */
+	report: EditReport,
 };
 
 /**
@@ -431,6 +466,25 @@ export type ConflictReason =
  */
 "item_in_gesture";
 
+/**  The file format of the output. */
+export type Container = 
+/**  MP4. */
+"mp4" | 
+/**  QuickTime MOV. */
+"mov" | 
+/**  Animated GIF. */
+"gif" | 
+/**  WAV (audio only). */
+"wav" | 
+/**  MP3 (audio only). */
+"mp3" | 
+/**  M4A (AAC audio only). */
+"m4a" | 
+/**  FLAC (audio only). */
+"flac" | 
+/**  Ogg (Opus audio only). */
+"ogg";
+
 /**  Custom output settings; absent fields take the sequence's value (quality: high). */
 export type CustomExport = {
 	/**  Frame width in pixels: even, 16-8192. */
@@ -444,6 +498,8 @@ export type CustomExport = {
 	fps?: FrameRate | null,
 	/**  "low", "medium" or "high". */
 	quality?: ExportQuality | null,
+	/**  Base preset id; the other fields replace its values. */
+	preset?: string | null,
 };
 
 /**  Whether decoders may use the hardware. */
@@ -460,6 +516,26 @@ export type DecodeHw =
 export type DeleteCheckpoint = {
 	/**  The checkpoint: its id (`cp_<n>`) or name. */
 	checkpoint: string,
+};
+
+/**  Deletes one of your export presets. Built-in presets cannot be deleted. */
+export type DeletePreset = {
+	/**  The preset id. */
+	id: string,
+};
+
+/**  Result of `export.delete_preset`. */
+export type DeletePresetOutput = {
+	/**  The deleted preset's id. */
+	id: string,
+};
+
+/**  Result of `timeline.ripple_delete`. */
+export type DeletedOutput = {
+	/**  Every deleted item: the requested ones in request order, then their linked partners. */
+	deleted: ItemId[],
+	/**  What changed (timeline spec §3.1). */
+	report: EditReport,
 };
 
 /**
@@ -501,6 +577,14 @@ export type DocReset = {
 	prev_rev: Rev,
 	/**  The last committed revision. */
 	committed_rev: Rev,
+};
+
+/**  One copy. */
+export type DuplicatedItem = {
+	/**  The copied item. */
+	source: ItemId,
+	/**  Its copy. */
+	copy: ItemId,
 };
 
 /**
@@ -552,7 +636,9 @@ export type EntityKind =
 /**  A linked group of items that edit together (`grp_`). */
 "group" | 
 /**  A timeline or item marker (`mrk_`). */
-"marker";
+"marker" | 
+/**  A folder of the media bin (`fld_`, ADR-0020). */
+"folder";
 
 /**  Why a transaction is in the history. */
 export type EntryCause = 
@@ -595,13 +681,56 @@ export type ExportHw =
 
 /**  What to make: the preset, or custom settings. */
 export type ExportPreset = 
-/**
- *  MP4, H.264 + AAC 48 kHz stereo, at the sequence frame rate, fit into 1920x1080
- *  (1080x1920 when portrait) without upscaling, high quality.
- */
+/**  MP4, H.264 + AAC, fit into 1920x1080 (1080x1920 portrait), not upscaled, high quality. */
 "h264-mp4-1080p" | 
 /**  MP4, H.264 + AAC at a custom size, frame rate and quality. */
-{ custom: CustomExport };
+{ custom: CustomExport } | 
+/**  A preset id (export.list_presets). */
+string;
+
+/**  A preset in a listing. */
+export type ExportPresetEntry = {
+	/**  Built-in or the user's. */
+	source: PresetSource,
+	/**  Whether this build can export it now. */
+	supported: boolean,
+	/**  Why not, when unsupported. */
+	unsupported_reason?: string | null,
+	/**  The preset. */
+	preset: ExportPresetSpec,
+};
+
+/**  An export preset: the data the export dialog, the CLI and agents choose from. */
+export type ExportPresetSpec = {
+	/**  The format version (1). */
+	schema_version: number,
+	/**  Stable id: lowercase letters, digits and `-`. */
+	id: string,
+	/**  Display name. */
+	name: string,
+	/**  One line for the picker. */
+	summary?: string,
+	/**  The file format. */
+	container: Container,
+	/**  Video settings; absent for audio-only presets. */
+	video?: VideoSpec | null,
+	/**  Audio settings; absent for GIF. */
+	audio?: AudioSpec | null,
+	/**  The output size rule. */
+	size: PresetSize,
+	/**  The frame-rate rule. */
+	fps: PresetFps,
+	/**  Loudness target. */
+	loudness?: LoudnessSpec | null,
+	/**  GIF loop count (0 = forever). */
+	loop?: number | null,
+	/**  Limits of the target (warnings). */
+	limits?: PresetLimits,
+	/**  Where the numbers come from (platform presets). */
+	platform?: PlatformInfo | null,
+	/**  The UI-safe zone to show in the preview: an id of WP-2H.06's `safe-areas.json`. */
+	safe_area?: string | null,
+};
 
 /**  How hard the encoder works for picture quality (and file size). */
 export type ExportQuality = 
@@ -635,7 +764,10 @@ export type ExportStart = {
 	path: string,
 	/**  Part of the sequence to export (default: all of it). */
 	range?: ExportRange | null,
-	/**  "h264-mp4-1080p" (default) or {"custom": {width, height, fps, quality}}. */
+	/**
+	 *  "h264-mp4-1080p" (default), a preset id ("youtube-1080p") or {"custom": {width, height,
+	 *  fps, quality, preset}}.
+	 */
 	preset?: ExportPreset | null,
 	/**  Hardware encoder: "auto" (default), "off", or {"force": "h264_nvenc"}. */
 	hw?: ExportHw | null,
@@ -667,6 +799,53 @@ export type ExportStartOutput = {
 	duration: Duration,
 	/**  The document revision exported (edits made later are not in the file). */
 	rev: Rev,
+	/**  Platform-limit and fit warnings of a preset (never errors; the export runs). */
+	warnings: PresetWarning[],
+};
+
+/**  What `media.delete_folder` does with a folder's contents. */
+export type FolderContents = 
+/**  Lift the folder's assets and subfolders one level, into its parent. */
+"move_up" | 
+/**
+ *  Remove its subfolders and every asset inside that no timeline uses; the used ones move
+ *  to the deleted folder's parent.
+ */
+"remove";
+
+/**
+ *  The ID of a folder of the media bin (ADR-0020): `fld_…`.
+ * 
+ *  Serialized as a string, exported to TypeScript as `string`.
+ */
+export type FolderId = string & { readonly __brand: "FolderId" };
+
+/**  A folder that got a new name because its name was taken where it went. */
+export type FolderRenamed = {
+	/**  The folder. */
+	folder: FolderId,
+	/**  Its name before. */
+	from: string,
+	/**  Its name now. */
+	to: string,
+};
+
+/**  One folder of the media bin. */
+export type FolderSummary = {
+	/**  The folder. */
+	id: FolderId,
+	/**  Its name. */
+	name: string,
+	/**  The folder it is in; absent at the top level. */
+	parent: FolderId | null,
+	/**  Names from the top level down, joined with `/` (`B-roll/Drone`). */
+	path: string,
+	/**  Nesting depth: 1 at the top level. */
+	depth: number,
+	/**  Assets directly inside. */
+	media_count: number,
+	/**  Folders directly inside. */
+	folder_count: number,
 };
 
 /**
@@ -1051,6 +1230,38 @@ item: ItemId;
 parent: ItemId; 
 /**  What is wrong. */
 reason: string } | 
+/**  Media folders whose parents form a cycle (ADR-0020). */
+{ invariant: "folder_cycle"; 
+/**
+ *  The folders on the cycle, each followed by its parent; the first is repeated at the
+ *  end.
+ */
+cycle: FolderId[] } | 
+/**  A media folder nested deeper than `MAX_FOLDER_DEPTH` levels (ADR-0020). */
+{ invariant: "folder_too_deep"; 
+/**  The folder. */
+folder: FolderId; 
+/**  Its depth (1 at the top level). */
+depth: number } | 
+/**
+ *  A media folder name that is empty, too long, or holds `/` or control characters
+ *  (ADR-0020).
+ */
+{ invariant: "invalid_folder_name"; 
+/**  The folder. */
+folder: FolderId; 
+/**  What is wrong. */
+reason: string } | 
+/**  Two folders of one parent whose names are equal ignoring case (ADR-0020). */
+{ invariant: "duplicate_folder_name"; 
+/**  The parent; absent at the top level. */
+parent: FolderId | null; 
+/**  The folder with the lower ID. */
+first: FolderId; 
+/**  Another folder with the same name. */
+second: FolderId; 
+/**  The name of `second`. */
+name: string } | 
 /**  Plugin data under a key that is not a namespace (arch §4.3). */
 { invariant: "custom_namespace"; 
 /**  The custom map. */
@@ -1071,9 +1282,11 @@ export type Item =
 } & Clip;
 
 /**
- *  Deletes items and their linked partners. Gaps stay (no ripple). All or nothing: if any
- *  affected track is locked the call fails with `Locked` and nothing is deleted. Unknown items
- *  are `NotFound`; repeated IDs are deleted once.
+ *  Deletes items and their linked partners. On free tracks the space stays; on the magnetic
+ *  main track it closes (what follows moves left, and the tracks of its linked partners
+ *  follow). Children attached to a deleted item are detached and keep their place. All or
+ *  nothing: if the edit would change a locked track it fails with `Locked`. Unknown items are
+ *  `NotFound`; repeated IDs are deleted once; all items must be in one sequence.
  */
 export type ItemDelete = {
 	/**  The items to delete, at least one. */
@@ -1084,6 +1297,40 @@ export type ItemDelete = {
 export type ItemDeleteOutput = {
 	/**  Every deleted item: the requested ones in request order, then their linked partners. */
 	deleted: ItemId[],
+	/**  What changed (timeline spec §3.1). */
+	report: EditReport,
+};
+
+/**
+ *  Duplicates items and their linked partners. Each copy goes to its original's track at its
+ *  start plus `offset` (default: the selection's span, so the copies follow the originals);
+ *  each copied group becomes a new group, markers get new IDs. Copies of magnetic main-track
+ *  items are inserted as one block right after the last copied one (`offset` is not allowed
+ *  then). A copied child stays attached to the copy of its parent when that was copied too,
+ *  to its original parent when the copy still starts inside it, and is detached otherwise.
+ *  Overlaps on free tracks are `Invalid` by default; `mode` picks `new_track`, `overwrite` or
+ *  `insert`.
+ */
+export type ItemDuplicate = {
+	/**  The items to copy, at least one, of one sequence. */
+	items: ItemId[],
+	/**
+	 *  Where the copies go relative to the originals (default: the selection's span; not
+	 *  allowed for magnetic main-track items).
+	 */
+	offset?: TimeInput | null,
+	/**  Placement mode for the copies (default `insert` with main-track items, else `reject`). */
+	mode?: PlacementMode | null,
+};
+
+/**  Result of `item.duplicate`. */
+export type ItemDuplicateOutput = {
+	/**  The copies: the given items in order, each followed by its linked partners. */
+	copies: DuplicatedItem[],
+	/**  Tracks created by the placement, in creation order. */
+	created_tracks: TrackId[],
+	/**  What changed (timeline spec §3.1). */
+	report: EditReport,
 };
 
 /**
@@ -1125,32 +1372,47 @@ export type ItemGetOutput = {
 export type ItemId = string & { readonly __brand: "ItemId" };
 
 /**
- *  Moves an item to a new start, optionally onto another track of the same kind and sequence.
- *  The item's linked partners move by the same amount on their own tracks (`unlink: true`
- *  moves only this item and removes it from its group). Overlap is `Invalid{path:"/start"}`
- *  by default; `overlap: "new_track"` puts the item on a new track directly above the target.
- *  `Locked` if the source, the target or a partner's track is locked. `start` is snapped to
- *  the sequence's frame grid and must be `>= 0`.
+ *  Moves items to a new start (`start`, or `delta` from where the first one is), optionally
+ *  onto another track of the same kind and sequence. Give `item`, or `items` (the first is the
+ *  primary; the others keep their offsets to it). Linked partners move by the same amount on
+ *  their own tracks (`unlink: true` moves only the given items and takes them out of their
+ *  groups). On the magnetic main track the space an item leaves closes, and an item moved onto
+ *  it is inserted (default; the start is read after the lift and clamped to the track's end).
+ *  Elsewhere an overlap is `Invalid` by default; `mode` (or its alias `overlap`) picks
+ *  `new_track`, `overwrite` or `insert`. Children attached to a moved item follow it. Times
+ *  snap to the frame grid (`fine: true`: the audio sample grid, audio-only moves).
  */
 export type ItemMove = {
-	/**  The item. */
-	item: ItemId,
-	/**  New timeline position of the item's first frame, `>= 0`. */
-	start: TimeInput,
-	/**  Target track of the same sequence and kind (default: stay on the current track). */
+	/**  The item (or `items`). */
+	item?: ItemId | null,
+	/**  Items; the first leads. */
+	items?: ItemId[] | null,
+	/**  New start, `>= 0` (or `delta`). */
+	start?: TimeInput | null,
+	/**  Offset of the start. */
+	delta?: TimeInput | null,
+	/**  Target track (default: stay). */
 	to_track?: TrackId | null,
-	/**  Move only this item and remove it from its linked group (default `false`). */
+	/**  Move only the given items, unlinked. */
 	unlink?: boolean | null,
-	/**  Overlap handling (default `reject`). */
+	/**  Alias of `mode`. */
 	overlap?: OverlapPolicy | null,
+	/**  Default: `insert` on the main track, else `reject`. */
+	mode?: PlacementMode | null,
+	/**  Ripples reach every track. */
+	ripple_all_tracks?: boolean | null,
+	/**  Audio sample grid. */
+	fine?: boolean | null,
 };
 
 /**  Result of `item.move`. */
 export type ItemMoveOutput = {
-	/**  The moved items: the requested one first, then its linked partners. */
+	/**  The moved items: the given ones in order, each followed by its linked partners. */
 	items: MovedItem[],
-	/**  Tracks created by `overlap: "new_track"`, in creation order. */
+	/**  Tracks created by the placement, in creation order. */
 	created_tracks: TrackId[],
+	/**  What changed (timeline spec §3.1). */
+	report: EditReport,
 };
 
 /**  Item properties to change: absent fields keep their value. */
@@ -1378,6 +1640,24 @@ export type ListCheckpoints = Record<string, never>;
  */
 export type ListLocks = Record<string, never>;
 
+/**
+ *  Lists the export presets (built-in and the user's): the platform presets (YouTube,
+ *  Instagram, TikTok, X) with their sources and `checked` dates, and the general formats. Give
+ *  `platform` to list one platform's presets. `export.start{preset: "<id>"}` exports with one.
+ */
+export type ListPresets = {
+	/**  Only the presets of this platform id (`youtube`, `instagram-reels`, `tiktok`, `x`). */
+	platform?: string | null,
+};
+
+/**  Result of `export.list_presets`. */
+export type ListPresetsOutput = {
+	/**  The presets: built-in first (pack order), then the user's by id. */
+	presets: ExportPresetEntry[],
+	/**  Problems loading the presets (a damaged user file); empty when fine. */
+	problems: string[],
+};
+
 /**  What `edit.locks` returns. */
 export type LockList = {
 	/**  Every open transaction, oldest first. */
@@ -1386,6 +1666,12 @@ export type LockList = {
 	rev: Rev,
 	/**  The committed revision. */
 	committed_rev: Rev,
+};
+
+/**  The loudness target of a preset (applied by the mixer once WP-2G.05 lands). */
+export type LoudnessSpec = {
+	/**  Integrated loudness target in LUFS (for example -14). */
+	target_lufs: number,
 };
 
 /**  A marker on a sequence (sequence time) or an item (item-relative time). */
@@ -1451,6 +1737,13 @@ export type MediaAsset = {
 	id: MediaId,
 	/**  What the media is. */
 	kind: MediaKind,
+	/**
+	 *  The name shown in the bin (ADR-0020); absent: the file name. 1 to 255 characters
+	 *  without control characters.
+	 */
+	name: string | null,
+	/**  The folder of the bin it is in (ADR-0020); absent: the top level. */
+	folder: FolderId | null,
 	/**  Absolute path of the file when it was last found (file kinds only). */
 	path_abs: string | null,
 	/**  Path relative to the project folder, used for relinking moved projects (file kinds only). */
@@ -1529,6 +1822,37 @@ export type MediaClearCacheOutput = {
 };
 
 /**
+ *  Creates a folder in the media bin, at the top level or inside `parent` (at most 32 levels
+ *  deep). Without a name it is "New folder" (or "New folder 2", … when taken). A name that a
+ *  sibling already has, ignoring case, fails with `Invalid` unless `on_conflict` is `rename`.
+ */
+export type MediaCreateFolder = {
+	/**  The folder to create it in; absent: the top level. */
+	parent?: FolderId | null,
+	/**
+	 *  Its name: 1 to 255 characters, no `/` or control characters (trimmed). Default "New
+	 *  folder".
+	 */
+	name?: string | null,
+	/**  When a sibling already has the name: `fail` (default) or `rename` ("Day 1 2"). */
+	on_conflict?: OnConflict | null,
+};
+
+/**
+ *  Deletes a folder of the media bin. `contents: move_up` lifts its assets and subfolders one
+ *  level (a subfolder whose name the parent already has gets the next free name);
+ *  `contents: remove` also removes its subfolders and every asset inside that no timeline
+ *  uses, and moves the used assets to the deleted folder's parent. Timelines and files on disk
+ *  never change; one undo restores everything.
+ */
+export type MediaDeleteFolder = {
+	/**  The folder. */
+	folder: FolderId,
+	/**  `move_up` (lift the contents one level) or `remove` (remove the unused media in it). */
+	contents: FolderContents,
+};
+
+/**
  *  Removes the proxies of video assets from the cache (cancelling a generation in progress):
  *  the preview uses the originals again. The assets and their files are untouched; a proxy is
  *  not made again automatically until `media.generate_proxy` asks for it.
@@ -1540,7 +1864,7 @@ export type MediaDeleteProxy = {
 
 /**  Which media to list; every part that is absent or empty lets everything through. */
 export type MediaFilter = {
-	/**  Terms that must all occur in the file name, ignoring case and accents. */
+	/**  Terms that must all occur in the name, ignoring case and accents. */
 	text?: string | null,
 	/**  Only these kinds. */
 	kinds?: MediaKind[] | null,
@@ -1552,6 +1876,64 @@ export type MediaFilter = {
 	used?: boolean | null,
 	/**  `true`: only files nothing can be read from (no streams). */
 	problems?: boolean | null,
+	/**  Only this bin folder. */
+	folder?: FolderId | null,
+	/**  With subfolders (default: true without folder). */
+	recursive?: boolean | null,
+};
+
+/**  A folder of the media bin (ADR-0020). */
+export type MediaFolder = {
+	/**  The folder ID (also its key in `Project::folders`). */
+	id: FolderId,
+	/**
+	 *  The name shown in the bin: 1 to 255 characters, no `/` or control characters, unique
+	 *  among its siblings ignoring case.
+	 */
+	name: string,
+	/**  The folder it is in; absent at the top level. */
+	parent: FolderId | null,
+	/**  Plugin data (arch §4.3). */
+	custom: { [key in string]: JsonValue },
+} & { [key in string]: unknown };
+
+/**  Result of `media.create_folder`. */
+export type MediaFolderCreated = {
+	/**  The new folder. */
+	folder_id: FolderId,
+	/**  Its name (the next free one with `on_conflict: rename` or without a name). */
+	name: string,
+	/**  The folder it is in; absent at the top level. */
+	parent: FolderId | null,
+};
+
+/**  Result of `media.delete_folder`. */
+export type MediaFolderDeleted = {
+	/**  The deleted folder. */
+	folder_id: FolderId,
+	/**  Where its kept contents went; absent: the top level. */
+	parent: FolderId | null,
+	/**  Every folder deleted: the folder, and with `remove` its subfolders. */
+	removed_folders: FolderId[],
+	/**  Assets removed from the project (`remove` only; the files stay on disk). */
+	removed: MediaId[],
+	/**
+	 *  Assets that were inside and are now in `parent`: with `remove` the ones a timeline uses,
+	 *  with `move_up` every asset the folder held.
+	 */
+	kept: MediaId[],
+	/**  Subfolders now in `parent` (`move_up` only). */
+	moved_folders: FolderId[],
+	/**  Subfolders renamed because `parent` already had their name. */
+	renamed: FolderRenamed[],
+};
+
+/**  Result of `media.rename_folder`. */
+export type MediaFolderRenamed = {
+	/**  The folder. */
+	folder_id: FolderId,
+	/**  Its name now. */
+	name: string,
 };
 
 /**
@@ -1585,6 +1967,8 @@ export type MediaId = string & { readonly __brand: "MediaId" };
 export type MediaImport = {
 	/**  Absolute paths of the files (1..=256, no repeats). */
 	paths: string[],
+	/**  Bin folder (default: top level). */
+	folder?: FolderId | null,
 };
 
 /**  Result of `media.import`. */
@@ -1619,7 +2003,10 @@ export type MediaKind =
 /**  Another sequence of this project, used as a compound clip (arch §4.3). */
 "sequence_ref";
 
-/**  Lists the media of the project, filtered and ordered, one page at a time. */
+/**
+ *  Lists the media of the project, filtered (also by bin folder) and ordered, one page at a
+ *  time. Each asset carries the name the bin shows and its folder.
+ */
 export type MediaList = {
 	/**  Page size, `1..=500` (default 50). */
 	limit?: number | null,
@@ -1629,6 +2016,25 @@ export type MediaList = {
 	filter?: MediaFilter | null,
 	/**  Order. */
 	sort?: MediaSort | null,
+};
+
+/**
+ *  Lists the media bin's folder tree: each folder's ID, name, parent, path and how many
+ *  assets and subfolders it holds directly.
+ */
+export type MediaListFolders = Record<string, never>;
+
+/**  Result of `media.list_folders`. */
+export type MediaListFoldersOutput = {
+	/**
+	 *  Every folder, depth first: parents before their subfolders, siblings by name ignoring
+	 *  case.
+	 */
+	folders: FolderSummary[],
+	/**  Assets at the top level of the bin (in no folder). */
+	top_level_media: number,
+	/**  Assets in the project. */
+	total_media: number,
 };
 
 /**  Result of `media.list`. */
@@ -1644,6 +2050,36 @@ export type MediaListOutput = {
 };
 
 /**
+ *  Moves assets and folders (with everything inside them) into a folder, or to the top level
+ *  without `to`. Moving a folder into itself or one of its subfolders, or so deep that
+ *  something would be nested more than 32 levels, fails with `Invalid`. A moved folder whose
+ *  name the destination already has, ignoring case, fails with `Invalid` unless `on_conflict`
+ *  is `rename`. Timelines and files on disk never change.
+ */
+export type MediaMove = {
+	/**  Assets to move. */
+	media?: MediaId[] | null,
+	/**  Folders to move, with their contents. */
+	folders?: FolderId[] | null,
+	/**  The destination folder; absent: the top level. */
+	to?: FolderId | null,
+	/**  When a moved folder's name is taken in `to`: `fail` (default) or `rename`. */
+	on_conflict?: OnConflict | null,
+};
+
+/**  Result of `media.move`. */
+export type MediaMoved = {
+	/**  Where everything went; absent: the top level. */
+	to: FolderId | null,
+	/**  The assets that changed folder (those already there are left out). */
+	media: MediaId[],
+	/**  The folders that changed parent (those already there are left out). */
+	folders: FolderId[],
+	/**  Folders renamed because their name was taken (`on_conflict: rename`). */
+	renamed: FolderRenamed[],
+};
+
+/**
  *  Shows where the proxies of video assets are: none, queued, generating (with progress),
  *  ready (path, size), incomplete, evicted or failed, and whether the policy wants one.
  */
@@ -1655,7 +2091,8 @@ export type MediaProxyStatus = {
 /**
  *  Registers a probed media file. Internal plumbing of `media.import` and the import job
  *  (WP-1D.07): the kind (video, audio or image) derives from the probe streams. If an asset
- *  with the same `content_hash` already exists it is returned unchanged (`created: false`).
+ *  with the same `content_hash` already exists it is returned unchanged (`created: false`,
+ *  and it stays in its folder).
  */
 export type MediaRegister = {
 	/**  ID for the new asset; minted by the engine when absent. Must not exist yet. */
@@ -1666,6 +2103,8 @@ export type MediaRegister = {
 	probe: ProbeInfo,
 	/**  Content hash used to relink and deduplicate (non-empty, no whitespace). */
 	content_hash: string,
+	/**  The folder of the bin to put the new asset in; absent: the top level. */
+	folder?: FolderId | null,
 };
 
 /**  Result of `media.register`. */
@@ -1691,6 +2130,41 @@ export type MediaRemove = {
 export type MediaRemoveOutput = {
 	/**  The removed asset. */
 	media_id: MediaId,
+};
+
+/**
+ *  Sets the name the media bin shows for an asset (the file on disk keeps its name). Without
+ *  a name the bin shows the file name again. Display names need not be unique.
+ */
+export type MediaRename = {
+	/**  The asset. */
+	media: MediaId,
+	/**
+	 *  The display name: 1 to 255 characters without control characters (trimmed); absent:
+	 *  the file name.
+	 */
+	name?: string | null,
+};
+
+/**
+ *  Renames a folder of the media bin. Fails with `Invalid` when a sibling already has the
+ *  name, ignoring case (changing only the case of the folder's own name is fine).
+ */
+export type MediaRenameFolder = {
+	/**  The folder. */
+	folder: FolderId,
+	/**  The new name: 1 to 255 characters, no `/` or control characters (trimmed). */
+	name: string,
+};
+
+/**  Result of `media.rename`. */
+export type MediaRenamed = {
+	/**  The asset. */
+	media_id: MediaId,
+	/**  Its display name; absent: the bin shows the file name. */
+	name: string | null,
+	/**  The name the bin shows now. */
+	display_name: string,
 };
 
 /**
@@ -1748,6 +2222,10 @@ export type MediaSummary = {
 	id: MediaId,
 	/**  What it is. */
 	kind: MediaKind,
+	/**  The name the bin shows: the display name, else the file name. */
+	name: string,
+	/**  The folder of the bin it is in; absent: the top level. */
+	folder: FolderId | null,
 	/**  Absolute path when it was last found (file kinds). */
 	path: string | null,
 	/**  Playable length, if known. */
@@ -1778,12 +2256,20 @@ export type MovedReport = {
 	start: Time,
 };
 
-/**  What to do when the clip would overlap another clip on the target track. */
-export type OverlapPolicy = 
-/**  Fail with `Invalid{path:"/at"}` (default). */
-"reject" | 
-/**  Create a new track of the same kind directly above the target and insert there. */
-"new_track";
+/**  What to do when a folder's name is already taken where it goes. */
+export type OnConflict = 
+/**  Fail with `Invalid` (the default). */
+"fail" | 
+/**  Use the next free name: "Day 1 2", "Day 1 3", … */
+"rename";
+
+/**
+ *  What to do when an item would overlap another one on its target track: the P1 `overlap`
+ *  param, an alias of the placement `mode` (spec INV-40). `reject` fails with `Invalid`
+ *  (default on free tracks); `new_track` places on a new track of the same kind directly above
+ *  the target.
+ */
+export type OverlapPolicy = "reject" | "new_track";
 
 /**  An ordered list of [`PatchOp`]s, applied first to last. Serialized as a JSON array. */
 export type Patch = PatchOp[];
@@ -1846,6 +2332,99 @@ path: string };
  */
 export type PatchValue = null | boolean | number | string | PatchValue[] | { [key in string]: PatchValue };
 
+/**
+ *  How a placement treats what is already on the target range (timeline spec §3.6):
+ * 
+ *  - `insert`: split the item under the start, ripple the rest of the track (and its partners'
+ *    tracks) later by the placed length, then place (default on the magnetic main track);
+ *  - `overwrite`: cut the range out of the track (trimming or splitting what is there), then
+ *    place; nothing ripples;
+ *  - `new_track`: place on the target track if the range is free, otherwise on a new track of
+ *    the same kind directly above it;
+ *  - `reject`: place if the range is free, otherwise fail with `Invalid` naming the item in the
+ *    way (default on free tracks).
+ */
+export type PlacementMode = "insert" | "overwrite" | "new_track" | "reject";
+
+/**  Where a platform preset's numbers come from. */
+export type PlatformInfo = {
+	/**  Platform surface id (`youtube`, `instagram-reels`); shared with the safe-area ids. */
+	id: string,
+	/**  Display name. */
+	name: string,
+	/**  The platform's published upload specification (`https://`). */
+	spec_url: string,
+	/**  The date the values were checked against it (`YYYY-MM-DD`). */
+	checked: string,
+	/**  The fields (`limits.max_duration_secs`, `size`) nobody could verify at `checked`. */
+	unverified?: string[],
+};
+
+/**  The frame-rate rule. */
+export type PresetFps = 
+/**  The sequence's rate, capped at `max` when given. */
+{ kind: "follow_sequence"; 
+/**  The platform's highest frame rate. */
+max?: FrameRate | null } | 
+/**  Always this rate. */
+{ kind: "fixed"; 
+/**  The rate. */
+rate: FrameRate };
+
+/**  Limits of the target; exceeding one is a warning. */
+export type PresetLimits = {
+	/**  Longest accepted video, in seconds. */
+	max_duration_secs?: number | null,
+	/**  Largest accepted file, in MiB (1024 x 1024 bytes). */
+	max_size_mb?: number | null,
+};
+
+/**  The output size rule. */
+export type PresetSize = 
+/**
+ *  Exactly this size for a sequence of the same aspect; a different aspect is fitted into
+ *  the frame without stretching, with an `AspectMismatch` warning.
+ */
+{ kind: "fixed"; 
+/**  Frame width in pixels. */
+width: number; 
+/**  Frame height in pixels. */
+height: number } | 
+/**  The sequence fitted into this box, never upscaled (the box turns for portrait). */
+{ kind: "fit"; 
+/**  Box width in pixels. */
+width: number; 
+/**  Box height in pixels. */
+height: number } | 
+/**  The sequence's own size. */
+{ kind: "follow_sequence" };
+
+/**  Where a listed preset comes from. */
+export type PresetSource = 
+/**  The `presets-core` pack. */
+"builtin" | 
+/**  Saved by the user. */
+"user";
+
+/**  One warning about a preset on a sequence. */
+export type PresetWarning = {
+	/**  What kind. */
+	code: PresetWarningCode,
+	/**  A sentence for the person. */
+	message: string,
+};
+
+/**  A platform-limit or fit warning: the export still runs. */
+export type PresetWarningCode = 
+/**  The sequence's aspect is not the preset's. */
+"AspectMismatch" | 
+/**  The exported part is longer than the platform accepts. */
+"DurationOverLimit" | 
+/**  The estimated file is larger than the platform accepts. */
+"SizeOverLimit" | 
+/**  The sequence's frame rate is above the platform's maximum, so the file uses a lower one. */
+"FrameRateCapped";
+
 /**  Preview resolution (arch §8 quality ladder). */
 export type PreviewQuality = 
 /**  Full resolution. */
@@ -1890,6 +2469,8 @@ export type Project = {
 	settings: ProjectSettings,
 	/**  Media, keyed by ID. */
 	media: { [key in MediaId]: MediaAsset },
+	/**  The folder tree of the media bin, keyed by ID (ADR-0020). */
+	folders: { [key in FolderId]: MediaFolder },
 	/**  Sequences, keyed by ID. */
 	sequences: { [key in SequenceId]: Sequence },
 	/**  Plugin data (arch §4.3). */
@@ -2271,6 +2852,23 @@ export type ProxyStatus =
 /**  The last generation failed (see `error`). */
 "failed";
 
+/**  How the video encoder spends bits. */
+export type RateControlSpec = 
+/**  Constant quality on the x264 CRF scale (0-51, lower is better). */
+{ mode: "crf"; 
+/**  The CRF value. */
+crf: number } | 
+/**  Constant bitrate. */
+{ mode: "cbr"; 
+/**  Video bitrate in kilobits per second. */
+bitrate_kbps: number } | 
+/**  Variable bitrate around a target. */
+{ mode: "vbr"; 
+/**  Target video bitrate in kilobits per second. */
+bitrate_kbps: number } | 
+/**  Set by the codec profile (ProRes, GIF). */
+{ mode: "profile" };
+
 /**  Unsaved work from a previous session (what a restore would bring back). */
 export type RecoveryInfo = {
 	/**  Transactions a restore would replay. */
@@ -2339,6 +2937,44 @@ export type ReplacedReport = {
  */
 export type RequestId = string & { readonly __brand: "RequestId" };
 
+/**
+ *  Shows what a preset does to a sequence without exporting: the output size, frame rate,
+ *  estimated size and the warnings (`AspectMismatch`, `DurationOverLimit`, `SizeOverLimit`,
+ *  `FrameRateCapped`). Changes nothing.
+ */
+export type ResolvePreset = {
+	/**  The preset id. */
+	preset: string,
+	/**  Sequence; optional when the project has one. */
+	sequence?: SequenceId | null,
+	/**  Part of the sequence (default: all of it). */
+	range?: ExportRange | null,
+	/**  Size, frame rate or quality to use instead of the preset's. */
+	overrides?: CustomExport | null,
+};
+
+/**  Result of `export.resolve_preset`. */
+export type ResolvePresetOutput = {
+	/**  The preset id. */
+	preset: string,
+	/**  The sequence. */
+	sequence: SequenceId,
+	/**  Output width. */
+	width: number,
+	/**  Output height. */
+	height: number,
+	/**  Output frame rate. */
+	frame_rate: FrameRate,
+	/**  Estimated file size in KiB, when the preset has a bitrate. */
+	estimated_kib: number | null,
+	/**  Whether this build can export it now. */
+	supported: boolean,
+	/**  Why not, when unsupported. */
+	unsupported_reason: string | null,
+	/**  Limit and fit warnings; the export would still run. */
+	warnings: PresetWarning[],
+};
+
 /**  What a [`CmdError::NotFound`] or [`CmdError::Locked`] refers to. */
 export type ResourceKind = 
 /**  A media asset (`med_…`). */
@@ -2353,6 +2989,8 @@ export type ResourceKind =
 "group" | 
 /**  A marker (`mrk_…`). */
 "marker" | 
+/**  A folder of the media bin (`fld_…`, ADR-0020). */
+"folder" | 
 /**  A registry entry: an unknown command or query name. */
 "command" | 
 /**  An open transaction (WP-1B.04). */
@@ -2424,6 +3062,23 @@ export type Rounding =
  *  Serialized as a JSON integer (`48000`).
  */
 export type SampleRate = number;
+
+/**
+ *  Saves an export preset of your own (a new id, or replaces your earlier one). Built-in ids
+ *  cannot be replaced; save a copy under another id.
+ */
+export type SavePreset = {
+	/**  The preset (see export.list_presets for examples). */
+	preset: ExportPresetSpec,
+};
+
+/**  Result of `export.save_preset`. */
+export type SavePresetOutput = {
+	/**  The saved preset's id. */
+	id: string,
+	/**  Whether it replaced an earlier preset of yours. */
+	replaced: boolean,
+};
 
 /**  Which credentials may invoke an entry (arch §6, ADR-0016). */
 export type Scope = 
@@ -2683,6 +3338,51 @@ export type TimelineClearInOutOutput = {
 };
 
 /**
+ *  Closes the gap of a track that contains `at`: the items from the gap's end on move left by
+ *  its length, and so do the tracks of linked partners of what moves (or every track with
+ *  `ripple_all_tracks`). A gap is the empty space between two items, or before the first one;
+ *  `at` inside an item or after the last one is `Invalid` (the magnetic main track has no
+ *  gaps). Fails with `Invalid` if the shift would make items overlap, and with `Locked` if it
+ *  would change a locked track.
+ */
+export type TimelineDeleteGap = {
+	/**  The track. */
+	track: TrackId,
+	/**  A time inside the gap. */
+	at: TimeInput,
+	/**
+	 *  Shift every track of the sequence, not only this one and its partners' tracks (default
+	 *  `false`).
+	 */
+	ripple_all_tracks?: boolean | null,
+};
+
+/**  Result of `timeline.delete_gap`. */
+export type TimelineDeleteGapOutput = {
+	/**  The gap that was closed. */
+	gap: UsedRange,
+	/**  What changed (timeline spec §3.1). */
+	report: EditReport,
+};
+
+/**
+ *  Extracts time ranges: cuts them out of the tracks like `timeline.lift`, then closes them on
+ *  every target track: whatever starts at or after a range end moves left by the length of the
+ *  ranges before it, and so do the tracks of linked partners of what moves. `ranges` default to
+ *  the sequence in/out range, `tracks` to every track. Fails with `Locked` if it would change
+ *  a locked track, and with `Invalid` if the shift would make items overlap or move the
+ *  magnetic main track when it is not a target.
+ */
+export type TimelineExtract = {
+	/**  The sequence. */
+	sequence: SequenceId,
+	/**  The ranges to cut (default: the sequence in/out range). */
+	ranges?: TimelineRange[] | null,
+	/**  The tracks to cut on (default: every track of the sequence). */
+	tracks?: TrackId[] | null,
+};
+
+/**
  *  Reads a sequence in layers: `depth` 0 is the sequence summary, 1 adds its tracks (summaries
  *  only, small), 2 adds every item. `fields` limits the sections returned (`name`, `format`,
  *  `duration`, `tracks`); the id and the counts are always included.
@@ -2719,39 +3419,43 @@ export type TimelineGetOutput = {
 
 /**
  *  Inserts a media clip on a track at a time. `source_in` is the position in the media the clip
- *  starts from and `duration` its length (defaults: the start of the media and the rest of it;
- *  stills default to five seconds). Times accept flicks, `"1.5s"`, `"f:45"` and timecodes,
- *  resolved against the sequence's frame rate. `at` and `duration` snap to the frame grid
- *  (nearest frame, ties later; at least one frame) and the result states the values used;
- *  `source_in` is a position in the media and is not snapped, nor is a default duration
- *  (the rest of the media, or five seconds for a still). See the module docs for overlap and linked
- *  audio behaviour. Fails with `Locked` if the target track is locked.
+ *  starts from and `duration` its length (defaults: the start of the media and the rest of it,
+ *  floored to whole frames; stills last five seconds). Times accept flicks, `"1.5s"`, `"f:45"`
+ *  and timecodes, snapped to the sequence's frame grid (the result states the values used;
+ *  `source_in` is a media position and is not snapped). `mode` decides what happens to what is
+ *  already there: `insert` (default on the magnetic main track) splits and ripples, `overwrite`
+ *  cuts the range out, `new_track` goes to a new track above, `reject` (default elsewhere)
+ *  fails; `overlap` is the P1 alias of `mode`. A video with sound also places its audio,
+ *  linked. Fails with `Locked` if the placement would change a locked track.
  */
 export type TimelineInsert = {
 	/**  The sequence. */
 	sequence: SequenceId,
-	/**
-	 *  The target track (of that sequence): a video track for pictures, an audio track for
-	 *  sound.
-	 */
+	/**  The target track: video for pictures, audio for sound. */
 	track: TrackId,
 	/**  The media to place. */
 	media: MediaId,
-	/**  Timeline position of the clip's first frame, `>= 0` (snapped to the frame grid). */
+	/**  Timeline position of the clip's first frame, `>= 0`. */
 	at: TimeInput,
 	/**  Position in the media to start from (default 0). */
 	source_in?: TimeInput | null,
-	/**  Clip length, `> 0` (snapped to whole frames, at least one). */
+	/**  Clip length, `> 0` (default: the rest of the media). */
 	duration?: TimeInput | null,
-	/**  Overlap handling (default `reject`). */
+	/**  Alias of `mode`. */
 	overlap?: OverlapPolicy | null,
-	/**  Also insert the audio of a video file as a linked clip (default `true`). */
+	/**  Also place a video's sound, linked (default `true`). */
 	link?: boolean | null,
+	/**  Default: `insert` on the main track, else `reject`. */
+	mode?: PlacementMode | null,
+	/**  Track for the linked sound. */
+	audio_track?: TrackId | null,
+	/**  `insert` ripples every track. */
+	ripple_all_tracks?: boolean | null,
 };
 
-/**  Result of `timeline.insert`. */
+/**  Result of `timeline.insert` and `timeline.overwrite`. */
 export type TimelineInsertOutput = {
-	/**  The start that was used, snapped to the frame grid. */
+	/**  The start that was used: snapped to the frame grid, clamped on the magnetic track. */
 	at: Time,
 	/**  The clip length that was used, a whole number of frames. */
 	duration: Duration,
@@ -2759,8 +3463,27 @@ export type TimelineInsertOutput = {
 	clips: ItemId[],
 	/**  The group shared by the clips when audio was linked. */
 	linked_group: GroupId | null,
-	/**  Tracks created by `overlap: "new_track"`, in creation order. */
+	/**  Tracks created by the placement, in creation order. */
 	created_tracks: TrackId[],
+	/**  What changed (timeline spec §3.1). */
+	report: EditReport,
+};
+
+/**
+ *  Lifts time ranges out of tracks and leaves the space empty: items inside a range are
+ *  removed, items across an edge are trimmed to it, an item across a whole range is split
+ *  around it, and linked partners get the same cut (also on tracks not listed). On the magnetic
+ *  main track the space closes (its partners' tracks follow). `ranges` default to the sequence
+ *  in/out range, `tracks` to every track. Fails with `Locked` if it would change a locked
+ *  track (pass `tracks` to leave one out).
+ */
+export type TimelineLift = {
+	/**  The sequence. */
+	sequence: SequenceId,
+	/**  The ranges to cut (default: the sequence in/out range). */
+	ranges?: TimelineRange[] | null,
+	/**  The tracks to cut on (default: every track of the sequence). */
+	tracks?: TrackId[] | null,
 };
 
 /**  Lists a sequence's markers and its in/out range, or the markers of one item. */
@@ -2804,6 +3527,51 @@ export type TimelineMoveMarkerOutput = {
 	previous: Time,
 };
 
+/**
+ *  Overwrites a range of a track with a media clip: `timeline.insert` with mode `overwrite`.
+ *  Whatever is under `[at, at + duration)` on the track is cut out first (items inside are
+ *  removed, items across an edge are trimmed, an item across the whole range is split around
+ *  it), and their linked partners get the same cut. Nothing ripples. On the magnetic main track
+ *  `at` is clamped to its end.
+ */
+export type TimelineOverwrite = {
+	/**  The sequence. */
+	sequence: SequenceId,
+	/**  The target track. */
+	track: TrackId,
+	/**  The media to place. */
+	media: MediaId,
+	/**  Timeline position of the clip's first frame, `>= 0`. */
+	at: TimeInput,
+	/**  Position in the media to start from (default 0). */
+	source_in?: TimeInput | null,
+	/**  Clip length, `> 0` (default: the rest of the media). */
+	duration?: TimeInput | null,
+	/**  Also place the audio of a video file as a linked clip (default `true`). */
+	link?: boolean | null,
+	/**  The audio track for the linked sound (default: the first unlocked free one). */
+	audio_track?: TrackId | null,
+};
+
+/**  A time range in the params: `[start, end)`, `end > start`. */
+export type TimelineRange = {
+	/**  Start of the range, `>= 0`. */
+	start: TimeInput,
+	/**  End of the range (exclusive), after `start`. */
+	end: TimeInput,
+};
+
+/**  Result of `timeline.lift` and `timeline.extract`. */
+export type TimelineRangesOutput = {
+	/**
+	 *  The ranges used: snapped to the frame grid, sorted, overlapping and touching ones
+	 *  merged.
+	 */
+	ranges: UsedRange[],
+	/**  What changed (timeline spec §3.1). */
+	report: EditReport,
+};
+
 /**  Removes a marker. */
 export type TimelineRemoveMarker = {
 	/**  The marker (on a sequence or on an item). */
@@ -2814,6 +3582,24 @@ export type TimelineRemoveMarker = {
 export type TimelineRemoveMarkerOutput = {
 	/**  The removed marker. */
 	marker: MarkerId,
+};
+
+/**
+ *  Deletes items and their linked partners and closes the space each given item leaves on its
+ *  track: what follows on that track moves left by the length deleted before it, and so do the
+ *  tracks of linked partners of what moves (or every track with `ripple_all_tracks`). All given
+ *  items must be on one track; gaps that were already there stay. Fails with `Invalid` if the
+ *  shift would make items overlap on a rippled track, and with `Locked` if it would change a
+ *  locked track. On the magnetic main track it is the same as `item.delete`.
+ */
+export type TimelineRippleDelete = {
+	/**  The items to delete, at least one, all on one track. */
+	items: ItemId[],
+	/**
+	 *  Shift every track of the sequence, not only the item's track and its partners' tracks
+	 *  (default `false`).
+	 */
+	ripple_all_tracks?: boolean | null,
 };
 
 /**
@@ -3391,12 +4177,50 @@ export type Undo = {
 	actor?: HistoryScope | null,
 };
 
+/**  A time range of a sequence, as used: `[start, end)` on the frame grid. */
+export type UsedRange = {
+	/**  First frame of the range. */
+	start: Time,
+	/**  End of the range (exclusive). */
+	end: Time,
+};
+
 /**  A 2D vector (positions, scales, anchors). */
 export type Vec2 = {
 	/**  Horizontal component. */
 	x: number,
 	/**  Vertical component (down is positive). */
 	y: number,
+};
+
+/**  The video codec. */
+export type VideoCodec = 
+/**  H.264 / AVC. */
+"h264" | 
+/**  H.265 / HEVC. */
+"hevc" | 
+/**  Apple ProRes. */
+"prores" | 
+/**  GIF (palette). */
+"gif";
+
+/**  Video settings. */
+export type VideoSpec = {
+	/**  The codec. */
+	codec: VideoCodec,
+	/**  How bits are spent. */
+	rate_control: RateControlSpec,
+	/**  Codec profile (`high`, `main10`, `422hq`). */
+	profile?: string | null,
+	/**  Encoder speed preset (`medium`, `slow`). */
+	preset?: string | null,
+	/**  Pixel format (`yuv420p`). */
+	pix_fmt?: string | null,
+	/**
+	 *  Use a hardware encoder when one works here (software otherwise); `false` always uses
+	 *  software, for quality-first presets.
+	 */
+	hw_preferred: boolean,
 };
 
 /**

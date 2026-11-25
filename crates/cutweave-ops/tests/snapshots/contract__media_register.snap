@@ -340,6 +340,15 @@ expression: "json!({\n    \"meta\": serde_json::to_value(meta).unwrap(), \"input
         "content_hash": {
           "type": "string",
           "description": "Content hash used to relink and deduplicate (non-empty, no whitespace)."
+        },
+        "folder": {
+          "type": [
+            "string",
+            "null"
+          ],
+          "pattern": "^fld_[0-9a-f]{32}$",
+          "description": "The folder of the bin to put the new asset in; absent: the top level.",
+          "default": null
         }
       },
       "required": [
@@ -347,7 +356,7 @@ expression: "json!({\n    \"meta\": serde_json::to_value(meta).unwrap(), \"input
         "probe",
         "content_hash"
       ],
-      "description": "Registers a probed media file. Internal plumbing of `media.import` and the import job\n(WP-1D.07): the kind (video, audio or image) derives from the probe streams. If an asset\nwith the same `content_hash` already exists it is returned unchanged (`created: false`).",
+      "description": "Registers a probed media file. Internal plumbing of `media.import` and the import job\n(WP-1D.07): the kind (video, audio or image) derives from the probe streams. If an asset\nwith the same `content_hash` already exists it is returned unchanged (`created: false`,\nand it stays in its folder).",
       "title": "MediaRegister"
     },
     "output_schema": {
@@ -720,6 +729,15 @@ expression: "json!({\n    \"meta\": serde_json::to_value(meta).unwrap(), \"input
       "content_hash": {
         "type": "string",
         "description": "Content hash used to relink and deduplicate (non-empty, no whitespace)."
+      },
+      "folder": {
+        "type": [
+          "string",
+          "null"
+        ],
+        "pattern": "^fld_[0-9a-f]{32}$",
+        "description": "The folder of the bin to put the new asset in; absent: the top level.",
+        "default": null
       }
     },
     "required": [
@@ -727,7 +745,7 @@ expression: "json!({\n    \"meta\": serde_json::to_value(meta).unwrap(), \"input
       "probe",
       "content_hash"
     ],
-    "description": "Registers a probed media file. Internal plumbing of `media.import` and the import job\n(WP-1D.07): the kind (video, audio or image) derives from the probe streams. If an asset\nwith the same `content_hash` already exists it is returned unchanged (`created: false`).",
+    "description": "Registers a probed media file. Internal plumbing of `media.import` and the import job\n(WP-1D.07): the kind (video, audio or image) derives from the probe streams. If an asset\nwith the same `content_hash` already exists it is returned unchanged (`created: false`,\nand it stays in its folder).",
     "title": "MediaRegister"
   },
   "output": {

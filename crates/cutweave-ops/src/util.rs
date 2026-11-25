@@ -96,6 +96,21 @@ pub(crate) fn resolve_frame_time(
         .map_err(|e| CmdError::invalid(pointer, e.to_string()))
 }
 
+/// Resolves a time param and snaps it to the nearest sample of the sequence's audio sample
+/// grid (ties later): the `fine` edits of timeline spec INV-26.
+pub(crate) fn resolve_sample_time(
+    pointer: &str,
+    input: TimeInput,
+    rate: FrameRate,
+    samples: cutweave_model::SampleRate,
+) -> Result<Time, CmdError> {
+    let t = resolve_time(pointer, input, rate)?;
+    let n = samples.time_to_samples(t, Rounding::Nearest);
+    samples
+        .samples_to_time(n)
+        .map_err(|e| CmdError::invalid(pointer, e.to_string()))
+}
+
 /// Resolves a duration param and snaps it to a whole number of frames of the owning sequence
 /// (nearest, ties later), at least one frame. A zero or negative input is still `Invalid`:
 /// only a positive length that rounds below one frame becomes one frame.
