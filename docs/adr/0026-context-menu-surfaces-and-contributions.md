@@ -1,4 +1,4 @@
-# ADR-0025: Context menus are built from commands, per named surface, and plugins contribute to the same surfaces
+# ADR-0026: Context menus are built from commands, per named surface, and plugins contribute to the same surfaces
 
 - **Status:** Proposed
 - **Date:** 2026-11-25

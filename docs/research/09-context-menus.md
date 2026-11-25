@@ -3,7 +3,7 @@
 Date: 2026-11-25. Scope: what a person can right-click in Cutweave today, what each surface should offer, and how to build it once.
 Marks: [E] = a registered command exists today; [WP] = planned by that work package; [M] = missing everywhere (needs a new command or a UI action); [H] = host or UI action with no document effect (no MCP parity needed; see section 5.3); [U] = unverified (from secondary sources or memory); [D] = decision or recommendation.
 Trigger: product owner, 2026-11-25: "feels like we are missing it. almost everything on screen should react to context menu with appropriate actions, find out which needs what".
-Plan: [section 7](#7-plan). Work packages: WP-2H.12, WP-2H.13 and bullets in 39 existing WPs ([wbs/P2-core-editor.md](../wbs/P2-core-editor.md)). Decision record: [ADR-0025](../adr/0025-context-menu-surfaces-and-contributions.md) (Proposed).
+Plan: [section 7](#7-plan). Work packages: WP-2H.12, WP-2H.13 and bullets in 39 existing WPs ([wbs/P2-core-editor.md](../wbs/P2-core-editor.md)). Decision record: [ADR-0026](../adr/0026-context-menu-surfaces-and-contributions.md) (Proposed).
 
 ## 1. Findings in one paragraph
 
@@ -173,7 +173,7 @@ A surface table row is data, not a closure:
 
 - **Label, icon, summary, undoable and the destructive flag** come from the generated catalog (`schema/commands.json`, `packages/protocol/src/generated/commands.ts`). The label is the registry's verb phrase; the surface table may override it only to add the object ("Split at playhead", "Delete 3 clips").
 - **Shortcut hint** comes from the keymap engine (WP-2H.05) through `keysFor(commandId)`; before it lands, from today's tables (`shortcuts/bindings.ts`).
-- **Enabled state** is computed from the same `when` evaluator the palette uses (WP-2H.04): a small typed context (selection count and kinds, item kind, linked, track locked, playhead inside the item, clipboard has items, media used, engine live, read-only). The evaluator and the context keys are specified in ADR-0025 because plugins will write `when` clauses against them.
+- **Enabled state** is computed from the same `when` evaluator the palette uses (WP-2H.04): a small typed context (selection count and kinds, item kind, linked, track locked, playhead inside the item, clipboard has items, media used, engine live, read-only). The evaluator and the context keys are specified in ADR-0026 because plugins will write `when` clauses against them.
 - **UI-only and host actions** (close a panel, rename in place, reveal in Explorer, copy text) are entries in an editor-side `UiCommandTable` with the same shape (id, label key, icon, run). They appear in the palette and keymap too, so "one source" holds for them. They never mutate the document.
 - **Everything that changes the document is a registered command applied through `Tx`**, so each menu choice is one undo step and an agent can do the same thing by name. A menu item that today would be a UI closure over several commands is a bug; add the composite command (section 6 lists the gaps).
 - **A test walks every surface table**: each `command` must exist in the catalog (or in `UiCommandTable`), each document-changing one must be MCP-reachable (the 1O.02 parity rule), and each label key must exist in the `en` catalog (i18n lint). A fixture command with a `menu`/`when` hint must appear in a menu with no UI code change (the 2H.04 criterion, extended to menus).
@@ -224,7 +224,7 @@ The costs are known: no OS-level spellcheck suggestions in text-field menus (the
 
 Planned already: manifest `contributes.menus` (WP-6B.03, [P6](../wbs/P6-platform.md)). What the framework must provide now so that WP is a small addition:
 
-- Surface IDs are stable strings (`timeline.clip`, `timeline.lane`, `bin.card`, `preview.canvas`, ...) listed in ADR-0025; the list is a **plugin-manifest contract** once published, so it changes only via ADR.
+- Surface IDs are stable strings (`timeline.clip`, `timeline.lane`, `bin.card`, `preview.canvas`, ...) listed in ADR-0026; the list is a **plugin-manifest contract** once published, so it changes only via ADR.
 - A `MenuContributionRegistry` with `register({surface, command, group, when, order})`. First-party feature WPs (5F.05, 3F, 4A.09, 6I.07) use the same registry, so they are the first consumers and the plugin path is exercised before P6.
 - Plugin items render in their own trailing group, below the built-in groups and above Delete when the surface allows it (the group's `order` is clamped), at most 3 per plugin before an overflow submenu "Plugin name".
 - Labels are plain text (no markup) and are length-limited; plugin-supplied strings never reach `dangerouslySetInnerHTML`. The 6B.03 abuse tests already cover XSS in menu labels.
@@ -482,7 +482,7 @@ Each bullet names the surface, the items (from section 6) and the acceptance che
 ### 7.4 Contract and ADR
 
 - **No command schema changes** are needed by the framework itself; the gaps in 6.9 are ordinary additions inside their WPs.
-- **New contract:** the surface ID list and the `when` context keys are a plugin-manifest contract (AGENTS.md: contracts change only via ADR). [ADR-0025](../adr/0025-context-menu-surfaces-and-contributions.md) records it as **Proposed**, decided by WP-2H.12 (pass criteria in the ADR) and consumed by WP-6B.03. It does not block P2.
+- **New contract:** the surface ID list and the `when` context keys are a plugin-manifest contract (AGENTS.md: contracts change only via ADR). [ADR-0026](../adr/0026-context-menu-surfaces-and-contributions.md) records it as **Proposed**, decided by WP-2H.12 (pass criteria in the ADR) and consumed by WP-6B.03. It does not block P2.
 - **Design spec:** WP-2H.12 updates [design/components/Menu/README.md](../../design/components/Menu/README.md) (submenu, disabled reason, command ids that match the real registry: its mapping uses names like `clip.rippleDelete`, which are not the registry's `timeline.ripple_delete`).
 
 ### 7.5 Risks

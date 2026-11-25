@@ -5949,10 +5949,8 @@
       "size": "M",
       "executor": "sonnet",
       "executor_note": "",
-      "depends_raw": "E1M, E1L, WP-2H.12",
-      "depends_wps": [
-        "WP-2H.12"
-      ],
+      "depends_raw": "E1M, E1L",
+      "depends_wps": [],
       "depends_epics": [
         "1M",
         "1L"
@@ -5975,10 +5973,9 @@
         "WP-1M.12",
         "WP-1M.13",
         "WP-1M.14",
-        "WP-1M.15",
-        "WP-2H.12"
+        "WP-1M.15"
       ],
-      "scope": "- `dockview` integration: all panels (Media, Preview, Timeline, Inspector, Mixer, Export queue, Effects placeholder) registered in a typed panel registry (contribution-point shaped so L3 plugins can register later). Drag/dock/float/tab/maximize, per-panel minimum size.\n- Layout serialization to user config (`~/.cutweave/workspaces.json`) with schema version and recovery from corrupt layouts (falls back to the default and notes it).\n- Built-in workspaces: **Long-form** (wide preview, large timeline, media left, inspector right) and **Short-form** (9:16 preview centered and tall, timeline compact at the bottom, inspector right). Workspace switcher in the title bar, \"Save layout as…\", \"Reset layout\". Selecting a sequence with 9:16 aspect suggests (not forces) Short-form once per project.\n- Settings > General: \"Workspace for new projects\": last used (default), Long-form, Short-form (`general.workspace`, catalog `docs/reference/settings.md`).\n- i18n scaffold: `i18next` (or `lingui`), message extraction script, `en` catalog with ICU plurals, locale detection, lint rule failing on user-visible hard-coded strings in `packages/editor` and `packages/ui` (allowlist file). Command names/descriptions come from the registry (English now, translation keys reserved).\n- **Already in P1:** the workspace switcher, layouts saved per workspace, \"Reset layout\" in the top bar (WP-1M.01, F16) and the i18n scaffold (WP-1M.01). This WP builds on them and does not replace them.\n- (product owner request, 2026-11-24: \"Option to remove and re-add panels\")\n  - **Close a panel:** a close button on each panel's tab (P1's tabs have none) and \"Close panel\" in the tab's menu.\n  - **Get it back:** View > Panels lists every registered panel (Assets, Preview, Inspector, Timeline, and later History, Mixer, Export queue, plugin panels) with a checkmark on the open ones. Choosing a panel toggles it: a closed panel reopens where it was last docked in this workspace, or at its default dock. Each item is a command, so it can be bound to a key (WP-2H.05) and run from the palette (WP-2H.04).\n  - **Reset:** View > Reset layout resets the current workspace (as the top bar's button does), and \"Reset all workspaces\" resets them all.\n  - **Every panel closed:** the dock shows an empty state with \"Reopen panels\" and \"Reset layout\".\n  - **State survives closing:** a panel keeps its state when closed and reopened (the bin's search and sort, the timeline's zoom and scroll), because that state lives in stores, not in the panel's component.\n  - **Per workspace:** closed panels are part of the workspace's saved layout, so each workspace keeps its own set, and a relaunch keeps them closed.\n- **Context menus (product owner request, 2026-11-25; framework WP-2H.12, plan in [09-context-menus.md](../research/09-context-menus.md)):** a panel tab has a menu (`dock.tab`): Close panel, Maximize or Restore, Float, Move to… (Left, Right, Bottom), Reset layout, Save layout as…; the empty dock has one (`dock.empty`): Reopen panels, Reset layout. Each item is a `workspace.*` UI command, so the palette and keymap list it too. This replaces the empty `getTabContextMenuItems` stub.",
+      "scope": "- `dockview` integration: all panels (Media, Preview, Timeline, Inspector, Mixer, Export queue, Effects placeholder) registered in a typed panel registry (contribution-point shaped so L3 plugins can register later). Drag/dock/float/tab/maximize, per-panel minimum size.\n- Layout serialization to user config (`~/.cutweave/workspaces.json`) with schema version and recovery from corrupt layouts (falls back to the default and notes it).\n- Built-in workspaces: **Long-form** (wide preview, large timeline, media left, inspector right) and **Short-form** (9:16 preview centered and tall, timeline compact at the bottom, inspector right). Workspace switcher in the title bar, \"Save layout as…\", \"Reset layout\". Selecting a sequence with 9:16 aspect suggests (not forces) Short-form once per project.\n- Settings > General: \"Workspace for new projects\": last used (default), Long-form, Short-form (`general.workspace`, catalog `docs/reference/settings.md`).\n- i18n scaffold: `i18next` (or `lingui`), message extraction script, `en` catalog with ICU plurals, locale detection, lint rule failing on user-visible hard-coded strings in `packages/editor` and `packages/ui` (allowlist file). Command names/descriptions come from the registry (English now, translation keys reserved).\n- **Already in P1:** the workspace switcher, layouts saved per workspace, \"Reset layout\" in the top bar (WP-1M.01, F16) and the i18n scaffold (WP-1M.01). This WP builds on them and does not replace them.\n- (product owner request, 2026-11-24: \"Option to remove and re-add panels\")\n  - **Close a panel:** a close button on each panel's tab (P1's tabs have none) and \"Close panel\" in the tab's menu.\n  - **Get it back:** View > Panels lists every registered panel (Assets, Preview, Inspector, Timeline, and later History, Mixer, Export queue, plugin panels) with a checkmark on the open ones. Choosing a panel toggles it: a closed panel reopens where it was last docked in this workspace, or at its default dock. Each item is a command, so it can be bound to a key (WP-2H.05) and run from the palette (WP-2H.04).\n  - **Reset:** View > Reset layout resets the current workspace (as the top bar's button does), and \"Reset all workspaces\" resets them all.\n  - **Every panel closed:** the dock shows an empty state with \"Reopen panels\" and \"Reset layout\".\n  - **State survives closing:** a panel keeps its state when closed and reopened (the bin's search and sort, the timeline's zoom and scroll), because that state lives in stores, not in the panel's component.\n  - **Per workspace:** closed panels are part of the workspace's saved layout, so each workspace keeps its own set, and a relaunch keeps them closed.\n- **Context menus:** this WP merged on 2026-11-25, before the context-menu framework (WP-2H.12), with dockview's own tab menu (Close panel, Maximize, Float). Moving the dock tab menu onto the framework, with the full item list, and the empty dock's menu, is part of WP-2H.13 (plan in [09-context-menus.md](../research/09-context-menus.md)).",
       "interfaces": "`registerPanel({id,title,component,defaultDock})`, `workspace.*` view commands (UI-only); View > Panels and Reset layout.",
       "acceptance": [
         "Playwright: switch Long→Short, drag the inspector to float, restart the app, the layout restores; corrupt `workspaces.json` → app starts with the default and a toast.",
@@ -6406,7 +6403,7 @@
       },
       "phase": "P2",
       "epic": "2H",
-      "area": "packages/ui (`Menu`: submenu entry, disabled reason, controlled open at a point), packages/editor/src/menus/ (host, surface registry, `UiCommandTable`, `when` evaluator, contribution registry), packages/timeline (a `contextmenu` and long-press event on the pointer stream), apps/desktop (allowlisted host-action IPC: reveal in the file manager, copy text), design/components/Menu/README.md, docs/adr/0025-context-menu-surfaces-and-contributions.md, apps/desktop/e2e/flows, docs/user-flows.md",
+      "area": "packages/ui (`Menu`: submenu entry, disabled reason, controlled open at a point), packages/editor/src/menus/ (host, surface registry, `UiCommandTable`, `when` evaluator, contribution registry), packages/timeline (a `contextmenu` and long-press event on the pointer stream), apps/desktop (allowlisted host-action IPC: reveal in the file manager, copy text), design/components/Menu/README.md, docs/adr/0026-context-menu-surfaces-and-contributions.md, apps/desktop/e2e/flows, docs/user-flows.md",
       "size": "M",
       "executor": "sonnet",
       "executor_note": "",
@@ -6435,15 +6432,15 @@
         "WP-1N.01",
         "WP-1N.02"
       ],
-      "scope": "(product owner request, 2026-11-25: \"almost everything on screen should react to context menu with appropriate actions\"; research in [09-context-menus.md](../research/09-context-menus.md), decision in ADR-0025, Proposed) the machinery every menu uses. It builds menus for no surface beyond a test fixture, the dock tab stub and text fields; WP-2H.13 and each owning WP add the rest.\n- **Host:** one `ContextMenuHost` in `EditorShell`; `useContextMenu(surface, target)` and `<ContextSurface>` for DOM surfaces; `openContextMenu({surface, point, target})` for the canvas, the dock tab and the keyboard. The host renders `@cutweave/ui`'s `Menu` against a zero-size anchor at the point, closes on scroll, resize and Escape, and returns the focus to the surface element.\n- **Surface tables:** per surface ID (the list in ADR-0025), ordered groups of `{command, args(ctx), when, order, label?}` as data. Label, icon, destructive and undoable come from the generated catalog (`schema/commands.json`); the shortcut hint comes from the keymap (`keysFor`, today's `shortcuts/bindings.ts` tables until WP-2H.05).\n- **`when` evaluator and context keys** (`selection.count`, `selection.kind`, `item.linked`, `track.locked`, `playhead.inItem`, `clipboard.hasItems`, `media.used`, `engine.live`, `project.readOnly`, ...; the list is in ADR-0025): a small boolean expression language shared with the palette (WP-2H.04). Disabled items carry a one-line reason (`aria-describedby`; shown as a tooltip on hover and focus); items that make no sense for the target's kind are left out.\n- **`UiCommandTable`:** editor-side actions with no document effect (`workspace.*`, rename in place, open Settings at a row, copy text, reveal) in the same shape as catalog commands, so the palette and keymap list them too. Host actions go through allowlisted, zod-validated IPC (the pattern of `edit:run`; main resolves paths itself) and are listed in an exemption file with a reason, like `schema/parity-exempt.toml`.\n- **Selection and target rules:** the target is resolved once at open, by IDs. Right-click on an unselected item selects it first (`view.select`, not undoable); on a selected item the menu acts on the whole selection and its labels count it (\"Delete 3 clips\"); on an empty timeline lane the selection is kept, on an empty bin it is cleared. Menus on the canvas use the hit-test zone (`body`, `left-edge`, `right-edge`, `keyframe`, `lane`, `header`, `ruler`, `playhead`); the right button in `interaction.ts` no longer falls through silently.\n- **Keyboard and touch:** Shift+F10 and the Menu key open the menu for the focused surface (DOM: native `contextmenu`; canvas, dock tab and Preview: the host anchors it at the selection, the playhead or the focused card). A touch or pen long-press (500 ms, cancelled by a move over 8 px) opens it on the canvas and cancels the gesture; a pen's barrel button takes the right-click path.\n- **Contributions:** `MenuContributionRegistry.register({surface, command, group, when, order})` used by first-party WPs now and by plugins in WP-6B.03: a trailing group, at most 3 items per plugin before an overflow submenu, plain-text labels, only commands the plugin may run.\n- **Text fields:** one shared menu (Undo, Cut, Copy, Paste, Select all, through the existing `edit:run` IPC) installed by a capture handler for every input, textarea and contenteditable. A right-click outside any registered surface shows nothing (and not the browser's menu); in development builds it offers \"Inspect element\".\n- **`Menu` in `packages/ui`:** a `submenu` entry kind (one level, per the design spec), an optional `disabledReason`, a controlled `open` plus `anchor` for context mode, and the spec update in `design/components/Menu/README.md` (command names that match the registry). Stories and tests for each.\n- **Dock:** replaces the empty `getTabContextMenuItems` stub with the host (the tab's items arrive with WP-2H.01).",
-      "interfaces": "`ContextMenuHost`, `useContextMenu`, `ContextSurface`, `openContextMenu`, `registerMenuSurface`, `MenuContributionRegistry`, `UiCommandTable`, `evaluateWhen`; the `Menu` additions above; host-action IPC channels; the surface ID and context key lists of ADR-0025.",
+      "scope": "(product owner request, 2026-11-25: \"almost everything on screen should react to context menu with appropriate actions\"; research in [09-context-menus.md](../research/09-context-menus.md), decision in ADR-0026, Proposed) the machinery every menu uses. It builds menus for no surface beyond a test fixture, the dock tab stub and text fields; WP-2H.13 and each owning WP add the rest.\n- **Host:** one `ContextMenuHost` in `EditorShell`; `useContextMenu(surface, target)` and `<ContextSurface>` for DOM surfaces; `openContextMenu({surface, point, target})` for the canvas, the dock tab and the keyboard. The host renders `@cutweave/ui`'s `Menu` against a zero-size anchor at the point, closes on scroll, resize and Escape, and returns the focus to the surface element.\n- **Surface tables:** per surface ID (the list in ADR-0026), ordered groups of `{command, args(ctx), when, order, label?}` as data. Label, icon, destructive and undoable come from the generated catalog (`schema/commands.json`); the shortcut hint comes from the keymap (`keysFor`, today's `shortcuts/bindings.ts` tables until WP-2H.05).\n- **`when` evaluator and context keys** (`selection.count`, `selection.kind`, `item.linked`, `track.locked`, `playhead.inItem`, `clipboard.hasItems`, `media.used`, `engine.live`, `project.readOnly`, ...; the list is in ADR-0026): a small boolean expression language shared with the palette (WP-2H.04). Disabled items carry a one-line reason (`aria-describedby`; shown as a tooltip on hover and focus); items that make no sense for the target's kind are left out.\n- **`UiCommandTable`:** editor-side actions with no document effect (`workspace.*`, rename in place, open Settings at a row, copy text, reveal) in the same shape as catalog commands, so the palette and keymap list them too. Host actions go through allowlisted, zod-validated IPC (the pattern of `edit:run`; main resolves paths itself) and are listed in an exemption file with a reason, like `schema/parity-exempt.toml`.\n- **Selection and target rules:** the target is resolved once at open, by IDs. Right-click on an unselected item selects it first (`view.select`, not undoable); on a selected item the menu acts on the whole selection and its labels count it (\"Delete 3 clips\"); on an empty timeline lane the selection is kept, on an empty bin it is cleared. Menus on the canvas use the hit-test zone (`body`, `left-edge`, `right-edge`, `keyframe`, `lane`, `header`, `ruler`, `playhead`); the right button in `interaction.ts` no longer falls through silently.\n- **Keyboard and touch:** Shift+F10 and the Menu key open the menu for the focused surface (DOM: native `contextmenu`; canvas, dock tab and Preview: the host anchors it at the selection, the playhead or the focused card). A touch or pen long-press (500 ms, cancelled by a move over 8 px) opens it on the canvas and cancels the gesture; a pen's barrel button takes the right-click path.\n- **Contributions:** `MenuContributionRegistry.register({surface, command, group, when, order})` used by first-party WPs now and by plugins in WP-6B.03: a trailing group, at most 3 items per plugin before an overflow submenu, plain-text labels, only commands the plugin may run.\n- **Text fields:** one shared menu (Undo, Cut, Copy, Paste, Select all, through the existing `edit:run` IPC) installed by a capture handler for every input, textarea and contenteditable. A right-click outside any registered surface shows nothing (and not the browser's menu); in development builds it offers \"Inspect element\".\n- **`Menu` in `packages/ui`:** a `submenu` entry kind (one level, per the design spec), an optional `disabledReason`, a controlled `open` plus `anchor` for context mode, and the spec update in `design/components/Menu/README.md` (command names that match the registry). Stories and tests for each.\n- **Dock:** replaces the empty `getTabContextMenuItems` stub with the host (the tab's items arrive with WP-2H.01).",
+      "interfaces": "`ContextMenuHost`, `useContextMenu`, `ContextSurface`, `openContextMenu`, `registerMenuSurface`, `MenuContributionRegistry`, `UiCommandTable`, `evaluateWhen`; the `Menu` additions above; host-action IPC channels; the surface ID and context key lists of ADR-0026.",
       "acceptance": [
         "Vitest: a fixture command with menu and `when` hints appears in its surface and is disabled, with the reason, when the context says so, with no UI code change; the surface-table walk test fails for a row whose command is not in the catalog or the UI table, whose label key is missing from the `en` catalog, or whose shortcut text is a literal; a closure that would call two mutating commands is rejected (one composite command is required).",
         "Vitest: the target rules (unselected, selected, several selected, empty lane, empty bin, locked track); the `when` evaluator (precedence, an unknown key is false and logged); the contribution registry limits (3 per plugin, clamped order, plain-text labels).",
         "**A user flow (ADR-0018, F41):** right-click a text field in the Inspector and choose Paste; press Shift+F10 and then the Menu key on a focused control and see the menu open at it and Escape return the focus; right-click on dead space and see nothing. (WP-2H.13 extends F41 with the surfaces it adds.)",
         "axe: 0 violations on a menu opened from a DOM surface, from the canvas and from the keyboard; the menu is named for its target (for example \"Clip actions for interview_A.mov\").",
         "The canvas open path: `contextmenu` to menu visible p95 < 50 ms with 5,000 items in the timeline (the hit-test is an index lookup).",
-        "ADR-0025's pass criteria are checked (fixture command, walk test, F41, axe) and the integrator is told, so maintainers can accept it."
+        "ADR-0026's pass criteria are checked (fixture command, walk test, F41, axe) and the integrator is told, so maintainers can accept it."
       ],
       "tests": "Vitest, Storybook visual baselines (dark and light), user flow, axe.",
       "out_of_scope": "the menus of any other surface (WP-2H.13 and the owning WPs); the palette (WP-2H.04) and the keymap (WP-2H.05), which read the same registry; plugin manifest wiring (WP-6B.03); OS spellcheck suggestions in the text-field menu; native (OS) context menus."
@@ -6486,7 +6483,7 @@
         "WP-1M.15",
         "WP-2H.12"
       ],
-      "scope": "(product owner request, 2026-11-25) menus for everything on screen today, using only commands that exist now (section 6 of [09-context-menus.md](../research/09-context-menus.md) has the item lists, their order and their status). Items whose command arrives in a later WP are added by that WP, not here.\n- **Bin card** (kind-aware; one or several selected): Insert at playhead, Append to timeline, Play in Source view, Reveal in Explorer / Finder, Copy path, Remove from project (the existing confirm dialog). **Bin background and empty bin:** Import…, Sort by and View as (the same state as the dropdowns), Show hover scrub. **Filter chip:** Remove filter, Clear all filters.\n- **Preview canvas:** Play/Pause, Go to start and end, Safe areas, quality and size choices (`view.set_preview_size`), Copy frame and Save frame as… (`render.frame` and a host save dialog). **Source view:** Back to timeline, Copy timecode. **Transport:** timecode (Copy timecode), volume (Mute, Reset to 100%), quality badge (the quality choices).\n- **Timeline** (the canvas, by hit zone): **clip:** Split at playhead, Delete, Enable/Disable, Rename…, Reveal in media bin, Copy path; **empty lane:** Move playhead here, Add track above and below, Select all clips on track; **track header:** Rename…, Mute, Solo, Hide, Lock (check items, `track.set`), Add track above and below, Delete track (confirm when it has clips); **ruler and playhead:** Move playhead here, Go to start and end, Zoom to fit, Copy timecode. Right-click selects as the target rules say. Every WP that adds a timeline command adds its item to these tables.\n- **Inspector:** section header (Collapse all, Expand all), media info path (Copy path, Reveal), media picture (Play in Source view, Copy frame), property row (Copy value). **Settings:** row (Reset to default, Copy setting key).\n- **Chrome:** save status (Save now, Autosave settings…), Export button and chip (Export…, Cancel export, Reveal file), workspace switcher and Reset layout button (Reset this workspace), Undo and Redo buttons (Undo, Redo), toast (Copy message, Copy error code, Dismiss, Dismiss all), engine status chip (Reconnect, Copy diagnostics, Open logs folder). A sash double-click resets its size (no menu).\n- **Shortcut hints** on every item come from the keymap; an item with no shortcut shows none.\n- Registers the `UiCommandTable` entries it needs (copy, reveal, collapse) and the host-action IPC channels, with their exemption entries.",
+      "scope": "(product owner request, 2026-11-25) menus for everything on screen today, using only commands that exist now (section 6 of [09-context-menus.md](../research/09-context-menus.md) has the item lists, their order and their status). Items whose command arrives in a later WP are added by that WP, not here.\n- **Dock** (moved from WP-2H.01, which merged first; it ships dockview's tab menu with Close panel, Maximize and Float): a panel tab has a menu (`dock.tab`): Close panel, Maximize or Restore, Float, Move to… (Left, Right, Bottom), Reset layout, Save layout as…; the empty dock has one (`dock.empty`): Reopen panels, Reset layout. Each item is a `workspace.*` UI command, so the palette and keymap list it too. This replaces the empty `getTabContextMenuItems` stub.\n- **Bin card** (kind-aware; one or several selected): Insert at playhead, Append to timeline, Play in Source view, Reveal in Explorer / Finder, Copy path, Remove from project (the existing confirm dialog). **Bin background and empty bin:** Import…, Sort by and View as (the same state as the dropdowns), Show hover scrub. **Filter chip:** Remove filter, Clear all filters.\n- **Preview canvas:** Play/Pause, Go to start and end, Safe areas, quality and size choices (`view.set_preview_size`), Copy frame and Save frame as… (`render.frame` and a host save dialog). **Source view:** Back to timeline, Copy timecode. **Transport:** timecode (Copy timecode), volume (Mute, Reset to 100%), quality badge (the quality choices).\n- **Timeline** (the canvas, by hit zone): **clip:** Split at playhead, Delete, Enable/Disable, Rename…, Reveal in media bin, Copy path; **empty lane:** Move playhead here, Add track above and below, Select all clips on track; **track header:** Rename…, Mute, Solo, Hide, Lock (check items, `track.set`), Add track above and below, Delete track (confirm when it has clips); **ruler and playhead:** Move playhead here, Go to start and end, Zoom to fit, Copy timecode. Right-click selects as the target rules say. Every WP that adds a timeline command adds its item to these tables.\n- **Inspector:** section header (Collapse all, Expand all), media info path (Copy path, Reveal), media picture (Play in Source view, Copy frame), property row (Copy value). **Settings:** row (Reset to default, Copy setting key).\n- **Chrome:** save status (Save now, Autosave settings…), Export button and chip (Export…, Cancel export, Reveal file), workspace switcher and Reset layout button (Reset this workspace), Undo and Redo buttons (Undo, Redo), toast (Copy message, Copy error code, Dismiss, Dismiss all), engine status chip (Reconnect, Copy diagnostics, Open logs folder). A sash double-click resets its size (no menu).\n- **Shortcut hints** on every item come from the keymap; an item with no shortcut shows none.\n- Registers the `UiCommandTable` entries it needs (copy, reveal, collapse) and the host-action IPC channels, with their exemption entries.",
       "interfaces": "the surface tables for `bin.card`, `bin.background`, `bin.chip`, `preview.canvas`, `source.view`, `timeline.clip`, `timeline.lane`, `timeline.track`, `timeline.ruler`, `timeline.playhead`, `inspector.section`, `inspector.row`, `chrome.save`, `chrome.export`, `chrome.toast`; no new engine commands.",
       "acceptance": [
         "**A user flow (ADR-0018, F41 extended):** right-click a video card in the bin: Insert at playhead places the clip; right-click an empty part of the bin: Import… opens the (stubbed) picker; right-click the timeline clip: it becomes the selection, Split at playhead splits it, and Ctrl+Z undoes it; right-click it again, Disable clip, and the preview stops showing it; right-click a track header: Mute, then Lock, and a drag on that track is refused; right-click an empty lane: Add track above; right-click the ruler: Move playhead here; press the Menu key on a focused bin card and choose Remove from project, then cancel its dialog; right-click the Export button during an export: Cancel export. Each choice is checked as an undo step or as state the person sees.",
@@ -6496,14 +6493,14 @@
         "No literal colors, sizes or strings in the new code (the existing lint rules pass)."
       ],
       "tests": "Vitest for the surface tables and target rules, user flow, parity script, axe, visual.",
-      "out_of_scope": "items that need commands from later WPs (clipboard, linking, speed, markers, keyframes, replace, folders and tags, relink), which their WPs add; the dock tab menu (WP-2H.01); plugin items (WP-6B.03); menus for panels that do not exist yet."
+      "out_of_scope": "items that need commands from later WPs (clipboard, linking, speed, markers, keyframes, replace, folders and tags, relink), which their WPs add; plugin items (WP-6B.03); menus for panels that do not exist yet."
     },
     {
       "id": "WP-2I.01",
       "title": "Core tool set: mapping, annotations and completion (~30 tools)",
       "source": {
         "file": "docs/wbs/P2-core-editor.md",
-        "line": 1420
+        "line": 1421
       },
       "phase": "P2",
       "epic": "2I",
@@ -6554,7 +6551,7 @@
       "title": "Visual tools: contact sheet, filmstrip, waveform image",
       "source": {
         "file": "docs/wbs/P2-core-editor.md",
-        "line": 1440
+        "line": 1441
       },
       "phase": "P2",
       "epic": "2I",
@@ -6606,7 +6603,7 @@
       "title": "Checkpoints: edit.checkpoint / edit.restore",
       "source": {
         "file": "docs/wbs/P2-core-editor.md",
-        "line": 1461
+        "line": 1462
       },
       "phase": "P2",
       "epic": "2I",
@@ -6651,7 +6648,7 @@
       "title": "Optimistic concurrency: expected_rev everywhere",
       "source": {
         "file": "docs/wbs/P2-core-editor.md",
-        "line": 1480
+        "line": 1481
       },
       "phase": "P2",
       "epic": "2I",
@@ -6704,7 +6701,7 @@
       "title": "Tool profiles, change notifications and tools/list budget",
       "source": {
         "file": "docs/wbs/P2-core-editor.md",
-        "line": 1497
+        "line": 1498
       },
       "phase": "P2",
       "epic": "2I",
@@ -6735,7 +6732,7 @@
       "title": "Scripted-agent e2e: YouTube edit and 9:16 short via MCP only",
       "source": {
         "file": "docs/wbs/P2-core-editor.md",
-        "line": 1515
+        "line": 1516
       },
       "phase": "P2",
       "epic": "2I",
@@ -6778,7 +6775,7 @@
       "title": "Benchmark fixtures and Rust criterion suite",
       "source": {
         "file": "docs/wbs/P2-core-editor.md",
-        "line": 1537
+        "line": 1538
       },
       "phase": "P2",
       "epic": "2J",
@@ -6835,7 +6832,7 @@
       "title": "UI benchmarks: timeline pan/zoom and UI command RTT",
       "source": {
         "file": "docs/wbs/P2-core-editor.md",
-        "line": 1554
+        "line": 1555
       },
       "phase": "P2",
       "epic": "2J",
@@ -6869,7 +6866,7 @@
       "title": "Playback, scrub and A/V sync benchmarks",
       "source": {
         "file": "docs/wbs/P2-core-editor.md",
-        "line": 1569
+        "line": 1570
       },
       "phase": "P2",
       "epic": "2J",
@@ -6911,7 +6908,7 @@
       "title": "CI benchmark gate and trend dashboard",
       "source": {
         "file": "docs/wbs/P2-core-editor.md",
-        "line": 1584
+        "line": 1585
       },
       "phase": "P2",
       "epic": "2J",
@@ -6952,7 +6949,7 @@
       "title": "Crash-injection harness: 20 forced crashes, no data loss",
       "source": {
         "file": "docs/wbs/P2-core-editor.md",
-        "line": 1600
+        "line": 1601
       },
       "phase": "P2",
       "epic": "2J",
@@ -6996,7 +6993,7 @@
       "title": "Dogfood edit A: 10-min YouTube video with B-roll (human)",
       "source": {
         "file": "docs/wbs/P2-core-editor.md",
-        "line": 1618
+        "line": 1619
       },
       "phase": "P2",
       "epic": "2J",
@@ -7036,7 +7033,7 @@
       "title": "Dogfood edit B: 9:16 short with manual reframe, music and fades (human)",
       "source": {
         "file": "docs/wbs/P2-core-editor.md",
-        "line": 1633
+        "line": 1634
       },
       "phase": "P2",
       "epic": "2J",
@@ -7074,7 +7071,7 @@
       "title": "M2 exit review (human)",
       "source": {
         "file": "docs/wbs/P2-core-editor.md",
-        "line": 1647
+        "line": 1648
       },
       "phase": "P2",
       "epic": "2J",
@@ -7112,7 +7109,7 @@
       "title": "Background render cache (smart pre-render while idle)",
       "source": {
         "file": "docs/wbs/P2-core-editor.md",
-        "line": 1660
+        "line": 1661
       },
       "phase": "P2",
       "epic": "2J",
@@ -14687,7 +14684,7 @@
       "depends": [
         "WP-6B.02"
       ],
-      "scope": "- Manifest contribution points: `panels` (left/right/bottom/floating), `inspectors`, `menus`, `commands`, `keybindings`, `settings` (schema-driven settings page). Wire into dockview, `cmdk`, shortcut editor (2H), menus.\n- Auto-inspectors for L1/L1.5 contributions from parameter schemas (reuse schema-driven inspector; no plugin UI code).\n- Example panel \"Marker Notes\" (lists markers, edits note, seeks playhead) as L3 reference + fixture.\n- L3 abuse tests: XSS via plugin strings in host chrome (titles, menu labels), oversize assets, frame spam.\n- A plugin's `settings` contribution becomes a page, or rows on an existing page, in WP-1M.11's settings frame, rendered from its schema; values are stored under `plugins.<id>.*` in the preferences, validated against that schema, included in Export settings…, and removed when the plugin is uninstalled.\n- **Context menu (product owner request, 2026-11-25; framework WP-2H.12, plan in [09-context-menus.md](../research/09-context-menus.md)):** `contributes.menus` is wired to WP-2H.12's `MenuContributionRegistry` using the surface IDs and `when` context keys of ADR-0025 (a contract once published): plugin items render in a trailing group, at most 3 per plugin before an overflow submenu, plain-text labels, only for commands the plugin may run.",
+      "scope": "- Manifest contribution points: `panels` (left/right/bottom/floating), `inspectors`, `menus`, `commands`, `keybindings`, `settings` (schema-driven settings page). Wire into dockview, `cmdk`, shortcut editor (2H), menus.\n- Auto-inspectors for L1/L1.5 contributions from parameter schemas (reuse schema-driven inspector; no plugin UI code).\n- Example panel \"Marker Notes\" (lists markers, edits note, seeks playhead) as L3 reference + fixture.\n- L3 abuse tests: XSS via plugin strings in host chrome (titles, menu labels), oversize assets, frame spam.\n- A plugin's `settings` contribution becomes a page, or rows on an existing page, in WP-1M.11's settings frame, rendered from its schema; values are stored under `plugins.<id>.*` in the preferences, validated against that schema, included in Export settings…, and removed when the plugin is uninstalled.\n- **Context menu (product owner request, 2026-11-25; framework WP-2H.12, plan in [09-context-menus.md](../research/09-context-menus.md)):** `contributes.menus` is wired to WP-2H.12's `MenuContributionRegistry` using the surface IDs and `when` context keys of ADR-0026 (a contract once published): plugin items render in a trailing group, at most 3 per plugin before an overflow submenu, plain-text labels, only for commands the plugin may run.",
       "interfaces": "manifest `contributes.panels|inspectors|menus|keybindings|settings`; dockview panel registry.",
       "acceptance": [
         "installing the example adds a dockable panel, palette command and keybinding without restart; uninstall removes all; plugin labels render as text only (escape test).",
