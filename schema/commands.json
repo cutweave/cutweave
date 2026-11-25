@@ -4265,7 +4265,7 @@
         "properties": {
           "folder": {
             "default": null,
-            "description": "Bin folder for the new assets; absent: top level.",
+            "description": "Bin folder (default: top level).",
             "pattern": "^fld_[0-9a-f]{32}$",
             "type": [
               "string",

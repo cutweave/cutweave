@@ -341,7 +341,7 @@
             "properties": {
               "folder": {
                 "default": null,
-                "description": "Only assets in this folder of the bin; absent: the whole bin, or only its top level\nwith `recursive: false`.",
+                "description": "Only this bin folder.",
                 "pattern": "^fld_[0-9a-f]{32}$",
                 "type": [
                   "string",
@@ -437,7 +437,7 @@
               },
               "recursive": {
                 "default": null,
-                "description": "Include the subfolders' assets. Default: `true` without `folder` (the whole project),\n`false` with one (that folder only); `false` without `folder` lists the top level.",
+                "description": "With subfolders (default: true without folder).",
                 "type": [
                   "boolean",
                   "null"
@@ -445,7 +445,7 @@
               },
               "text": {
                 "default": null,
-                "description": "Terms that must all occur in the file name, ignoring case and accents.",
+                "description": "Terms that must all occur in the name, ignoring case and accents.",
                 "type": [
                   "string",
                   "null"

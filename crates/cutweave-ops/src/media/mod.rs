@@ -392,7 +392,7 @@ pub struct MediaImportOutput {
 pub struct MediaImport {
     /// Absolute paths of the files (1..=256, no repeats).
     pub paths: Vec<String>,
-    /// Bin folder for the new assets; absent: top level.
+    /// Bin folder (default: top level).
     pub folder: Option<FolderId>,
 }
 

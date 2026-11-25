@@ -23,7 +23,7 @@ pub const MAX_FILTER_TEXT_CHARS: usize = 256;
 #[wire]
 #[derive(Default)]
 pub struct MediaFilter {
-    /// Terms that must all occur in the file name, ignoring case and accents.
+    /// Terms that must all occur in the name, ignoring case and accents.
     #[serde(default)]
     pub text: Option<String>,
     /// Only these kinds.
@@ -41,12 +41,13 @@ pub struct MediaFilter {
     /// `true`: only files nothing can be read from (no streams).
     #[serde(default)]
     pub problems: Option<bool>,
-    /// Only assets in this folder of the bin; absent: the whole bin, or only its top level
-    /// with `recursive: false`.
+    // Without `folder`, `recursive: false` lists the top level of the bin (the default lists
+    // the whole project); with one, the default is that folder only (ADR-0020). The doc
+    // comments are short: they count against the core MCP tool budget.
+    /// Only this bin folder.
     #[serde(default)]
     pub folder: Option<FolderId>,
-    /// Include the subfolders' assets. Default: `true` without `folder` (the whole project),
-    /// `false` with one (that folder only); `false` without `folder` lists the top level.
+    /// With subfolders (default: true without folder).
     #[serde(default)]
     pub recursive: Option<bool>,
 }

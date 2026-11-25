@@ -492,20 +492,29 @@ impl MediaMove {
             moved.push((*id, new_name));
         }
 
-        // Depth: nothing inside a moved folder may end up deeper than the limit.
-        for (i, id) in folders.iter().enumerate() {
-            let deepest = depth_of(&after, Some(*id)) + after.folder_height(*id) - 1;
-            if deepest > MAX_FOLDER_DEPTH {
-                return Err(CmdError::invalid(
-                    format!("/folders/{i}"),
-                    format!(
-                        "moving folder `{}` to {} would nest folders {deepest} levels deep; at \
-                         most {MAX_FOLDER_DEPTH} are allowed",
-                        doc.folders.get(id).map_or("", |f| f.name.as_str()),
-                        place(doc, self.to)
-                    ),
-                ));
-            }
+        // Depth: nothing may end up deeper than the limit. Nothing was before, so a folder that
+        // is too deep now is inside a moved one; the error points at that one.
+        if !moved.is_empty()
+            && let Some((deep, depth)) = after
+                .folders
+                .keys()
+                .map(|f| (*f, depth_of(&after, Some(*f))))
+                .find(|(_, d)| *d > MAX_FOLDER_DEPTH)
+        {
+            let chain = after.folder_ancestry(deep);
+            let i = folders
+                .iter()
+                .position(|f| chain.contains(f))
+                .unwrap_or_default();
+            return Err(CmdError::invalid(
+                format!("/folders/{i}"),
+                format!(
+                    "moving folder `{}` to {} would nest folders {depth} levels deep; at most \
+                     {MAX_FOLDER_DEPTH} are allowed",
+                    doc.folders.get(&folders[i]).map_or("", |f| f.name.as_str()),
+                    place(doc, self.to)
+                ),
+            ));
         }
 
         let media = media

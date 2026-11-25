@@ -672,6 +672,14 @@ expression: catalog.tools_json()
               "type": "string"
             },
             "description": "Absolute paths of the files (1..=256, no repeats)."
+          },
+          "folder": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "pattern": "^fld_[0-9a-f]{32}$",
+            "description": "Bin folder (default: top level)."
           }
         },
         "required": [
@@ -720,7 +728,7 @@ expression: catalog.tools_json()
                   "string",
                   "null"
                 ],
-                "description": "Terms that must all occur in the file name, ignoring case and accents."
+                "description": "Terms that must all occur in the name, ignoring case and accents."
               },
               "kinds": {
                 "type": [
@@ -797,6 +805,21 @@ expression: catalog.tools_json()
                   "null"
                 ],
                 "description": "`true`: only files nothing can be read from (no streams)."
+              },
+              "folder": {
+                "type": [
+                  "string",
+                  "null"
+                ],
+                "pattern": "^fld_[0-9a-f]{32}$",
+                "description": "Only this bin folder."
+              },
+              "recursive": {
+                "type": [
+                  "boolean",
+                  "null"
+                ],
+                "description": "With subfolders (default: true without folder)."
               }
             },
             "description": "Keep only matching media."

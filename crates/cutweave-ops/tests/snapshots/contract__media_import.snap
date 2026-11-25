@@ -35,7 +35,7 @@ expression: "json!({\n    \"meta\": serde_json::to_value(meta).unwrap(), \"input
             "null"
           ],
           "pattern": "^fld_[0-9a-f]{32}$",
-          "description": "Bin folder for the new assets; absent: top level.",
+          "description": "Bin folder (default: top level).",
           "default": null
         }
       },
@@ -225,7 +225,7 @@ expression: "json!({\n    \"meta\": serde_json::to_value(meta).unwrap(), \"input
           "null"
         ],
         "pattern": "^fld_[0-9a-f]{32}$",
-        "description": "Bin folder for the new assets; absent: top level.",
+        "description": "Bin folder (default: top level).",
         "default": null
       }
     },

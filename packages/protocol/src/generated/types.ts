@@ -1657,7 +1657,7 @@ export type MediaDeleteProxy = {
 
 /**  Which media to list; every part that is absent or empty lets everything through. */
 export type MediaFilter = {
-	/**  Terms that must all occur in the file name, ignoring case and accents. */
+	/**  Terms that must all occur in the name, ignoring case and accents. */
 	text?: string | null,
 	/**  Only these kinds. */
 	kinds?: MediaKind[] | null,
@@ -1669,15 +1669,9 @@ export type MediaFilter = {
 	used?: boolean | null,
 	/**  `true`: only files nothing can be read from (no streams). */
 	problems?: boolean | null,
-	/**
-	 *  Only assets in this folder of the bin; absent: the whole bin, or only its top level
-	 *  with `recursive: false`.
-	 */
+	/**  Only this bin folder. */
 	folder?: FolderId | null,
-	/**
-	 *  Include the subfolders' assets. Default: `true` without `folder` (the whole project),
-	 *  `false` with one (that folder only); `false` without `folder` lists the top level.
-	 */
+	/**  With subfolders (default: true without folder). */
 	recursive?: boolean | null,
 };
 
@@ -1766,7 +1760,7 @@ export type MediaId = string & { readonly __brand: "MediaId" };
 export type MediaImport = {
 	/**  Absolute paths of the files (1..=256, no repeats). */
 	paths: string[],
-	/**  Bin folder for the new assets; absent: top level. */
+	/**  Bin folder (default: top level). */
 	folder?: FolderId | null,
 };
 
