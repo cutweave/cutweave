@@ -143,7 +143,11 @@ export async function randomEdits(
               enabled: rnd() < 0.8,
               opacity: Math.round(rnd() * 100) / 100,
               audio_gain: null,
+              audio_pan: null,
               transform: null,
+              crop: null,
+              flip: null,
+              blend_mode: null,
             },
           });
         }

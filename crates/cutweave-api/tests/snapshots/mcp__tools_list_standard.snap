@@ -130,6 +130,13 @@ expression: catalog.tools_json()
               "null"
             ],
             "description": "Snap to the audio sample grid (audio clips only)."
+          },
+          "prune_keyframes": {
+            "type": [
+              "boolean",
+              "null"
+            ],
+            "description": "Drop keyframes the trim leaves outside the clip, keeping the ones that bracket it\n(default `false`: trims keep every key)."
           }
         },
         "required": [
@@ -562,15 +569,29 @@ expression: catalog.tools_json()
     },
     {
       "name": "item_set_props",
-      "description": "Set an item's name, enabled, opacity, audio_gain or transform (partial)",
+      "description": "Set an item's name, enabled, opacity, audio, transform, crop, flip or blend mode (partial)",
       "inputSchema": {
         "type": "object",
         "additionalProperties": false,
         "properties": {
           "item": {
-            "type": "string",
+            "type": [
+              "string",
+              "null"
+            ],
             "pattern": "^itm_[0-9a-f]{32}$",
-            "description": "The item."
+            "description": "The item (or `items`)."
+          },
+          "items": {
+            "type": [
+              "array",
+              "null"
+            ],
+            "items": {
+              "pattern": "^itm_[0-9a-f]{32}$",
+              "type": "string"
+            },
+            "description": "Items to give the same properties."
           },
           "props": {
             "type": "object",
@@ -595,14 +616,27 @@ expression: catalog.tools_json()
                   "number",
                   "null"
                 ],
-                "description": "Opacity `0.0..=1.0`."
+                "maximum": 1.0,
+                "description": "Opacity `0.0..=1.0`.",
+                "minimum": 0.0
               },
               "audio_gain": {
                 "type": [
                   "number",
                   "null"
                 ],
-                "description": "Clip gain in dB, `-144..=48` (0 = unchanged)."
+                "maximum": 48.0,
+                "description": "Clip gain in dB, `-144..=48` (0 = unchanged).",
+                "minimum": -144.0
+              },
+              "audio_pan": {
+                "type": [
+                  "number",
+                  "null"
+                ],
+                "maximum": 1.0,
+                "description": "Stereo position, `-1` (left) to `1` (right).",
+                "minimum": -1.0
               },
               "transform": {
                 "type": [
@@ -686,13 +720,124 @@ expression: catalog.tools_json()
                   }
                 },
                 "description": "Placement on the canvas (partial)."
+              },
+              "crop": {
+                "type": [
+                  "object",
+                  "null"
+                ],
+                "additionalProperties": false,
+                "properties": {
+                  "left": {
+                    "type": [
+                      "number",
+                      "null"
+                    ],
+                    "maximum": 1.0,
+                    "description": "Fraction removed from the left edge.",
+                    "minimum": 0.0
+                  },
+                  "top": {
+                    "type": [
+                      "number",
+                      "null"
+                    ],
+                    "maximum": 1.0,
+                    "description": "Fraction removed from the top edge.",
+                    "minimum": 0.0
+                  },
+                  "right": {
+                    "type": [
+                      "number",
+                      "null"
+                    ],
+                    "maximum": 1.0,
+                    "description": "Fraction removed from the right edge.",
+                    "minimum": 0.0
+                  },
+                  "bottom": {
+                    "type": [
+                      "number",
+                      "null"
+                    ],
+                    "maximum": 1.0,
+                    "description": "Fraction removed from the bottom edge.",
+                    "minimum": 0.0
+                  }
+                },
+                "description": "Edges of the source picture cut away (partial)."
+              },
+              "flip": {
+                "type": [
+                  "object",
+                  "null"
+                ],
+                "additionalProperties": false,
+                "properties": {
+                  "horizontal": {
+                    "type": [
+                      "boolean",
+                      "null"
+                    ],
+                    "description": "Mirror left-right."
+                  },
+                  "vertical": {
+                    "type": [
+                      "boolean",
+                      "null"
+                    ],
+                    "description": "Mirror top-bottom."
+                  }
+                },
+                "description": "Mirroring (partial)."
+              },
+              "blend_mode": {
+                "description": "How the item combines with what is below.",
+                "type": [
+                  "string",
+                  "null"
+                ],
+                "enum": [
+                  "normal",
+                  "multiply",
+                  "screen",
+                  "overlay",
+                  "darken",
+                  "lighten",
+                  "add",
+                  "soft_light",
+                  null
+                ]
               }
             },
             "description": "The properties to change; at least one."
+          },
+          "auto_key": {
+            "type": [
+              "boolean",
+              "null"
+            ],
+            "description": "Key animated properties at `at` (default true)."
+          },
+          "at": {
+            "anyOf": [
+              {
+                "type": "integer",
+                "minimum": -9007199254740991,
+                "maximum": 9007199254740991
+              },
+              {
+                "type": "string",
+                "pattern": "^-?[0-9]+(\\.[0-9]+)?s$|^-?[0-9]+$|^f:[0-9]+$|^[0-9]+[:;][0-9]+[:;][0-9]+[:;][0-9]+$"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Sequence time (the playhead) to key animated properties at."
           }
         },
         "required": [
-          "item",
           "props"
         ]
       },
@@ -754,6 +899,324 @@ expression: catalog.tools_json()
       },
       "annotations": {
         "readOnlyHint": true,
+        "destructiveHint": false,
+        "idempotentHint": true,
+        "openWorldHint": false
+      }
+    },
+    {
+      "name": "keyframe_set",
+      "description": "Add or replace keys on one property of an item",
+      "inputSchema": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "item": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "pattern": "^itm_[0-9a-f]{32}$",
+            "description": "The item (or `items`)."
+          },
+          "items": {
+            "type": [
+              "array",
+              "null"
+            ],
+            "items": {
+              "pattern": "^itm_[0-9a-f]{32}$",
+              "type": "string"
+            },
+            "description": "Items to give the same keys."
+          },
+          "prop": {
+            "description": "The property.",
+            "type": "string",
+            "enum": [
+              "transform.position",
+              "transform.scale",
+              "transform.rotation",
+              "transform.anchor",
+              "opacity",
+              "crop.left",
+              "crop.top",
+              "crop.right",
+              "crop.bottom",
+              "flip.horizontal",
+              "flip.vertical",
+              "audio_gain",
+              "audio_pan"
+            ]
+          },
+          "keys": {
+            "type": "array",
+            "items": {
+              "additionalProperties": false,
+              "type": "object",
+              "properties": {
+                "t": {
+                  "description": "Item time (flicks, seconds like \"1.5s\", or \"f:N\" frames from the item's start).",
+                  "anyOf": [
+                    {
+                      "$ref": "#/$defs/time"
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ]
+                },
+                "at": {
+                  "description": "Sequence time. Give `t` or `at`; both snap to frames.",
+                  "anyOf": [
+                    {
+                      "$ref": "#/$defs/time"
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ]
+                },
+                "value": {
+                  "description": "The value; omitted: the property's current value there.",
+                  "anyOf": [
+                    {
+                      "description": "A boolean.",
+                      "type": "boolean"
+                    },
+                    {
+                      "description": "A number.",
+                      "type": "number"
+                    },
+                    {
+                      "description": "A 2D vector.",
+                      "type": "object",
+                      "properties": {
+                        "x": {
+                          "description": "Horizontal component.",
+                          "type": "number"
+                        },
+                        "y": {
+                          "description": "Vertical component (down is positive).",
+                          "type": "number"
+                        }
+                      },
+                      "additionalProperties": false,
+                      "required": [
+                        "x",
+                        "y"
+                      ]
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ]
+                },
+                "interp": {
+                  "description": "Shapes the move to the next key; or use `easing`.",
+                  "anyOf": [
+                    {
+                      "oneOf": [
+                        {
+                          "description": "Jump at the next key.",
+                          "type": "object",
+                          "properties": {
+                            "kind": {
+                              "type": "string",
+                              "const": "hold"
+                            }
+                          },
+                          "required": [
+                            "kind"
+                          ],
+                          "additionalProperties": false
+                        },
+                        {
+                          "description": "Constant speed.",
+                          "type": "object",
+                          "properties": {
+                            "kind": {
+                              "type": "string",
+                              "const": "linear"
+                            }
+                          },
+                          "required": [
+                            "kind"
+                          ],
+                          "additionalProperties": false
+                        },
+                        {
+                          "description": "CSS cubic Bezier: `x1`, `x2` in 0..1, `y1`, `y2` in -10..10.",
+                          "type": "object",
+                          "properties": {
+                            "kind": {
+                              "type": "string",
+                              "const": "bezier"
+                            },
+                            "x1": {
+                              "description": "Control point 1 x.",
+                              "type": "number"
+                            },
+                            "y1": {
+                              "description": "Control point 1 y.",
+                              "type": "number"
+                            },
+                            "x2": {
+                              "description": "Control point 2 x.",
+                              "type": "number"
+                            },
+                            "y2": {
+                              "description": "Control point 2 y.",
+                              "type": "number"
+                            },
+                            "preset": {
+                              "description": "Preset name hint.",
+                              "type": [
+                                "string",
+                                "null"
+                              ]
+                            }
+                          },
+                          "additionalProperties": false,
+                          "required": [
+                            "kind",
+                            "x1",
+                            "y1",
+                            "x2",
+                            "y2"
+                          ]
+                        },
+                        {
+                          "description": "Damped spring: stiffness 1..10000, damping 0..1000, mass 0.1..100.",
+                          "type": "object",
+                          "properties": {
+                            "kind": {
+                              "type": "string",
+                              "const": "spring"
+                            },
+                            "stiffness": {
+                              "description": "Stiffness.",
+                              "type": "number"
+                            },
+                            "damping": {
+                              "description": "Damping.",
+                              "type": "number"
+                            },
+                            "mass": {
+                              "description": "Mass.",
+                              "type": "number"
+                            },
+                            "bounce": {
+                              "description": "Hard stop at the target (default false).",
+                              "type": [
+                                "boolean",
+                                "null"
+                              ]
+                            },
+                            "preset": {
+                              "description": "Preset name hint.",
+                              "type": [
+                                "string",
+                                "null"
+                              ]
+                            }
+                          },
+                          "additionalProperties": false,
+                          "required": [
+                            "kind",
+                            "stiffness",
+                            "damping",
+                            "mass"
+                          ]
+                        }
+                      ]
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ]
+                },
+                "easing": {
+                  "description": "A preset name, `linear` or `hold`.",
+                  "type": [
+                    "string",
+                    "null"
+                  ],
+                  "enum": [
+                    "hold",
+                    "linear",
+                    "ease_in",
+                    "ease_out",
+                    "ease_in_out",
+                    "sine_in",
+                    "sine_out",
+                    "sine_in_out",
+                    "cubic_in",
+                    "cubic_out",
+                    "cubic_in_out",
+                    "expo_in",
+                    "expo_out",
+                    "expo_in_out",
+                    "back_in",
+                    "back_out",
+                    "back_in_out",
+                    "spring",
+                    "spring_gentle",
+                    "spring_wobbly",
+                    "spring_stiff",
+                    "elastic",
+                    "bounce",
+                    null
+                  ]
+                },
+                "preset": {
+                  "description": "Preset name hint for `interp`.",
+                  "type": [
+                    "string",
+                    "null"
+                  ]
+                }
+              }
+            },
+            "description": "The keys, 1 to 10,000."
+          },
+          "replace": {
+            "type": [
+              "boolean",
+              "null"
+            ],
+            "description": "Make the result exactly these keys."
+          },
+          "fine": {
+            "type": [
+              "boolean",
+              "null"
+            ],
+            "description": "Snap to audio samples (audio properties)."
+          }
+        },
+        "required": [
+          "prop",
+          "keys"
+        ],
+        "$defs": {
+          "time": {
+            "anyOf": [
+              {
+                "type": "integer",
+                "minimum": -9007199254740991,
+                "maximum": 9007199254740991
+              },
+              {
+                "type": "string",
+                "pattern": "^-?[0-9]+(\\.[0-9]+)?s$|^-?[0-9]+$|^f:[0-9]+$|^[0-9]+[:;][0-9]+[:;][0-9]+[:;][0-9]+$"
+              }
+            ]
+          }
+        }
+      },
+      "annotations": {
+        "readOnlyHint": false,
         "destructiveHint": false,
         "idempotentHint": true,
         "openWorldHint": false

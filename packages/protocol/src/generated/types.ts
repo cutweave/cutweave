@@ -42,6 +42,9 @@ export type AgentConnection = {
 	last_command_at: WallTime | null,
 };
 
+/**  A static value or keyed values (keyframes §3.1); the wire form for TypeScript. */
+export type Animatable<T> = T | Keyframes<T>;
+
 /**  The audio codec. */
 export type AudioCodec = 
 /**  AAC-LC. */
@@ -66,7 +69,9 @@ export type AudioInfo = {
 /**  Audio properties of an item (arch §4.2 `audio{…}`, v1 subset). */
 export type AudioProps = {
 	/**  Gain in decibels (0.0 = unchanged). */
-	gain: number,
+	gain: Animatable<number>,
+	/**  Stereo position, -1.0 (left) to 1.0 (right), 0.0 = centre. */
+	pan: Animatable<number>,
 } & { [key in string]: unknown };
 
 /**  Audio settings. */
@@ -101,6 +106,25 @@ export type BeginTx = {
 	/**  The undo entry's label, e.g. `Move clip`. */
 	label: string,
 };
+
+/**  How an item's picture combines with what is below it (arch §8's core set). Not animatable. */
+export type BlendMode = 
+/**  The picture covers what is below, by its opacity. */
+"normal" | 
+/**  Darkens: the product of both. */
+"multiply" | 
+/**  Lightens: the inverse of the product of the inverses. */
+"screen" | 
+/**  Multiply in the shadows, screen in the highlights, by what is below. */
+"overlay" | 
+/**  The darker of both, per channel. */
+"darken" | 
+/**  The lighter of both, per channel. */
+"lighten" | 
+/**  The sum of both, clipped. */
+"add" | 
+/**  A gentle overlay. */
+"soft_light";
 
 /**  A kind of disk cache. */
 export type CacheKind = 
@@ -261,6 +285,8 @@ export type ClipRippleTrim = {
 	fine?: boolean | null,
 	/**  Move what follows on every track of the sequence (default `false`). */
 	ripple_all_tracks?: boolean | null,
+	/**  Drop keyframes the trim leaves outside the clip (default `false`). */
+	prune_keyframes?: boolean | null,
 };
 
 /**
@@ -283,6 +309,8 @@ export type ClipRoll = {
 	delta?: TimeInput | null,
 	/**  Stop at the nearest limit instead of failing (default `false`). */
 	clamp?: boolean | null,
+	/**  Drop keyframes the roll leaves outside the clips (default `false`). */
+	prune_keyframes?: boolean | null,
 };
 
 /**
@@ -302,6 +330,8 @@ export type ClipSlide = {
 	delta: TimeInput,
 	/**  Stop at the nearest limit instead of failing (default `false`). */
 	clamp?: boolean | null,
+	/**  Drop keyframes the slide leaves outside the neighbours (default `false`). */
+	prune_keyframes?: boolean | null,
 };
 
 /**
@@ -393,6 +423,11 @@ export type ClipTrim = {
 	clamp?: boolean | null,
 	/**  Snap to the audio sample grid (audio clips only). */
 	fine?: boolean | null,
+	/**
+	 *  Drop keyframes the trim leaves outside the clip, keeping the ones that bracket it
+	 *  (default `false`: trims keep every key).
+	 */
+	prune_keyframes?: boolean | null,
 };
 
 /**  Result of `clip.trim`. */
@@ -405,6 +440,18 @@ export type ClipTrimOutput = {
 	clamped: boolean,
 	/**  What changed (timeline spec §3.1). */
 	report: EditReport,
+};
+
+/**  One copied key. */
+export type ClipboardKey = {
+	/**  The property it was on. */
+	prop: PropId,
+	/**  Flicks after the earliest copied key. */
+	dt: Time,
+	/**  The value. */
+	value: KeyValue,
+	/**  How the segment that starts at the key moves to the next one (stored form). */
+	interp: Interp,
 };
 
 /**
@@ -599,6 +646,34 @@ export type Container =
 /**  Ogg (Opus audio only). */
 "ogg";
 
+/**
+ *  How much of each edge of the upright source picture is cut away, as fractions of the
+ *  source frame (`0.0..=1.0` each; keyframes §7). Each edge animates on its own, so each is
+ *  validated on its own: when `left + right >= 1` or `top + bottom >= 1` nothing is visible.
+ */
+export type Crop = {
+	/**  Fraction removed from the left edge. */
+	left: Animatable<number>,
+	/**  Fraction removed from the top edge. */
+	top: Animatable<number>,
+	/**  Fraction removed from the right edge. */
+	right: Animatable<number>,
+	/**  Fraction removed from the bottom edge. */
+	bottom: Animatable<number>,
+} & { [key in string]: unknown };
+
+/**  A partial crop: fractions `0..=1` of the upright source picture removed from each edge. */
+export type CropPatch = {
+	/**  Fraction removed from the left edge. */
+	left: number | null,
+	/**  Fraction removed from the top edge. */
+	top: number | null,
+	/**  Fraction removed from the right edge. */
+	right: number | null,
+	/**  Fraction removed from the bottom edge. */
+	bottom: number | null,
+};
+
 /**  Custom output settings; absent fields take the sequence's value (quality: high). */
 export type CustomExport = {
 	/**  Frame width in pixels: even, 16-8192. */
@@ -710,6 +785,62 @@ export type DuplicatedItem = {
 export type Duration = number;
 
 /**
+ *  A named easing (keyframes §4.6): one of the 21 presets, or `linear` or `hold`. Commands
+ *  accept it instead of an [`Interp`] (`easing: "ease_out"`) and expand it on write
+ *  ([`Easing::interp`]); documents never store the name alone.
+ * 
+ *  The table is part of the spec: changing a preset's numbers means a new name, because
+ *  documents store the expanded numbers and old projects must never change appearance.
+ */
+export type Easing = 
+/**  The key's value until the next key. */
+"hold" | 
+/**  Constant speed. */
+"linear" | 
+/**  CSS `ease-in`: bezier (0.42, 0, 1, 1). */
+"ease_in" | 
+/**  CSS `ease-out`: bezier (0, 0, 0.58, 1). */
+"ease_out" | 
+/**  CSS `ease-in-out`: bezier (0.42, 0, 0.58, 1). */
+"ease_in_out" | 
+/**  Bezier (0.12, 0, 0.39, 0). */
+"sine_in" | 
+/**  Bezier (0.61, 1, 0.88, 1). */
+"sine_out" | 
+/**  Bezier (0.37, 0, 0.63, 1). */
+"sine_in_out" | 
+/**  Bezier (0.32, 0, 0.67, 0). */
+"cubic_in" | 
+/**  Bezier (0.33, 1, 0.68, 1). */
+"cubic_out" | 
+/**  Bezier (0.65, 0, 0.35, 1). */
+"cubic_in_out" | 
+/**  Bezier (0.7, 0, 0.84, 0). */
+"expo_in" | 
+/**  Bezier (0.16, 1, 0.3, 1). */
+"expo_out" | 
+/**  Bezier (0.87, 0, 0.13, 1). */
+"expo_in_out" | 
+/**  Bezier (0.36, 0, 0.66, −0.56): pulls back before leaving. */
+"back_in" | 
+/**  Bezier (0.34, 1.56, 0.64, 1): overshoots, then settles. */
+"back_out" | 
+/**  Bezier (0.68, −0.6, 0.32, 1.6). */
+"back_in_out" | 
+/**  Spring 170 / 26 / 1 (ζ ≈ 1.00). */
+"spring" | 
+/**  Spring 120 / 14 / 1 (ζ ≈ 0.64). */
+"spring_gentle" | 
+/**  Spring 180 / 12 / 1 (ζ ≈ 0.45). */
+"spring_wobbly" | 
+/**  Spring 210 / 20 / 1 (ζ ≈ 0.69). */
+"spring_stiff" | 
+/**  Spring 200 / 6 / 1 (ζ ≈ 0.21): several decaying oscillations. */
+"elastic" | 
+/**  Spring 160 / 10 / 1 with `bounce` (ζ ≈ 0.40): each bounce about a quarter as high. */
+"bounce";
+
+/**
  *  The exact difference one edit command made to a sequence (INV-21).
  * 
  *  For every item ID: present only after means in `created` or a `split[].right` (exactly one
@@ -777,6 +908,18 @@ export type EntryStatus =
 "applied" | 
 /**  Undone. */
 "undone";
+
+/**  One evaluated sample. */
+export type EvalSample = {
+	/**  Sequence time. */
+	at: Time,
+	/**  Item time. */
+	t: Time,
+	/**  The value there: property-clamped, in the evaluated form. */
+	value: KeyValue,
+	/**  `t` lies inside the item's `[0, duration)`. */
+	in_item: boolean,
+};
 
 /**  Whether to use a hardware video encoder. */
 export type ExportHw = 
@@ -915,6 +1058,25 @@ export type ExportStartOutput = {
 	rev: Rev,
 	/**  Platform-limit and fit warnings of a preset (never errors; the export runs). */
 	warnings: PresetWarning[],
+};
+
+/**
+ *  Mirroring of an item about its centre, after the crop (keyframes §7). Hold-only: a keyed
+ *  flip switches at its keys.
+ */
+export type Flip = {
+	/**  Mirror left-right. */
+	horizontal: Animatable<boolean>,
+	/**  Mirror top-bottom. */
+	vertical: Animatable<boolean>,
+} & { [key in string]: unknown };
+
+/**  A partial flip. */
+export type FlipPatch = {
+	/**  Mirror left-right. */
+	horizontal: boolean | null,
+	/**  Mirror top-bottom. */
+	vertical: boolean | null,
 };
 
 /**  What `media.delete_folder` does with a folder's contents. */
@@ -1226,6 +1388,89 @@ export type InOut = {
 	/**  The out point (`> start`). */
 	end: Time,
 } & { [key in string]: unknown };
+
+/**
+ *  How the segment that starts at a key moves to the next key (keyframes §4). It is a closed
+ *  set: a new kind is a schema change.
+ * 
+ *  Every kind except `hold` is an easing `p(u)` with `p(0) = 0` and `p(u) → 1` as `u → 1`,
+ *  fed into one lerp per value type (§5). On the wire it is an object tagged by `kind`
+ *  (`{"kind": "bezier", "x1": 0.42, "y1": 0, "x2": 0.58, "y2": 1, "preset": "ease_in_out"}`)
+ *  with exactly its fields; construction checks their ranges (KF-5) and the hint (KF-7).
+ */
+export type Interp = 
+/**  The key's value until the next key, then a jump (§4.2). */
+{ kind: "hold" } | 
+/**  `p = u` (§4.3). */
+{ kind: "linear" } | 
+/**
+ *  A CSS-style cubic Bézier from (0, 0) to (1, 1), normalized to the segment (§4.4).
+ *  (`x1`, `y1`) shapes the speed leaving the key, (`x2`, `y2`) the speed arriving at the
+ *  next one.
+ */
+{ kind: "bezier"; 
+/**  First control point, time axis, in `[0, 1]`. */
+x1: number; 
+/**  First control point, progress axis, in `[−10, 10]` (beyond `[0, 1]` overshoots). */
+y1: number; 
+/**  Second control point, time axis, in `[0, 1]`. */
+x2: number; 
+/**  Second control point, progress axis, in `[−10, 10]`. */
+y2: number; 
+/**
+ *  The preset these numbers came from, a hint for the UI and agents (§4.6). Never read
+ *  by evaluation.
+ */
+preset?: string | null } | 
+/**
+ *  A damped spring in real seconds, released from rest, plus a residual that lands it
+ *  exactly on the next key (§4.5).
+ */
+{ kind: "spring"; 
+/**  Stiffness, N/m, in `[1, 10000]`. */
+stiffness: number; 
+/**  Damping, N·s/m, in `[0, 1000]` (0 never settles). */
+damping: number; 
+/**  Mass, kg, in `[0.1, 100]`. */
+mass: number; 
+/**  A hard stop at the target: the motion reflects instead of passing it. */
+bounce: boolean; 
+/**  The preset these numbers came from (§4.6). Never read by evaluation. */
+preset?: string | null };
+
+/**
+ *  How a key's segment moves to the next key (stored form; `bounce` may be omitted). Prefer
+ *  `easing` for the presets.
+ */
+export type InterpInput = 
+/**  Jump at the next key. */
+{ kind: "hold" } | 
+/**  Constant speed. */
+{ kind: "linear" } | 
+/**  CSS cubic Bezier: `x1`, `x2` in 0..1, `y1`, `y2` in -10..10. */
+{ kind: "bezier"; 
+/**  Control point 1 x. */
+x1: number; 
+/**  Control point 1 y. */
+y1: number; 
+/**  Control point 2 x. */
+x2: number; 
+/**  Control point 2 y. */
+y2: number; 
+/**  Preset name hint. */
+preset?: string | null } | 
+/**  Damped spring: stiffness 1..10000, damping 0..1000, mass 0.1..100. */
+{ kind: "spring"; 
+/**  Stiffness. */
+stiffness: number; 
+/**  Damping. */
+damping: number; 
+/**  Mass. */
+mass: number; 
+/**  Hard stop at the target (default false). */
+bounce?: boolean | null; 
+/**  Preset name hint. */
+preset?: string | null };
 
 /**  A broken document invariant: what [`Project::validate`] reports. */
 export type Invariant = 
@@ -1559,31 +1804,78 @@ export type ItemProps = {
 	opacity: number | null,
 	/**  Clip gain in dB, `-144..=48` (0 = unchanged). */
 	audio_gain: number | null,
+	/**  Stereo position, `-1` (left) to `1` (right). */
+	audio_pan: number | null,
 	/**  Placement on the canvas (partial). */
 	transform: TransformPatch | null,
+	/**  Edges of the source picture cut away (partial). */
+	crop: CropPatch | null,
+	/**  Mirroring (partial). */
+	flip: FlipPatch | null,
+	/**  How the item combines with what is below. */
+	blend_mode: BlendMode | null,
 };
 
 /**
- *  Changes an item's name, enabled flag, opacity, clip gain or transform; absent fields keep
- *  their value and setting a value it already has is a no-op. `Locked` if the item's track is
- *  locked.
+ *  Resets properties to their defaults: they become static (any keys are removed). Give
+ *  `group` (`transform`, `crop`, `flip`, `compositing`, `audio`) or `props` (property IDs), not
+ *  both; with neither, every animatable property and the blend mode are reset. The name and
+ *  enabled flag are never touched. `Locked` if the item's track is locked.
+ */
+export type ItemResetProps = {
+	/**  The item (or `items`). */
+	item?: ItemId | null,
+	/**  Items to reset. */
+	items?: ItemId[] | null,
+	/**  A section of the Inspector. */
+	group?: ResetGroup | null,
+	/**  Property IDs, as `keyframe.set` takes them. */
+	props?: PropId[] | null,
+};
+
+/**  Result of `item.reset_props`. */
+export type ItemResetPropsOutput = {
+	/**  The first item. */
+	item: ItemId,
+	/**
+	 *  The properties whose value changed on any item (`opacity`, `crop.left`, `blend_mode`,
+	 *  ...); empty when everything already had its default.
+	 */
+	changed: string[],
+};
+
+/**
+ *  Set item properties (partial). An animated property is keyed at `at` (sequence time,
+ *  required then). Example: `{item, props:{opacity:0.5, crop:{left:0.25}}}`.
+ * 
+ *  Absent fields keep their value; setting a value it already has is a no-op. Static properties
+ *  are set as before and `at` is ignored. With `auto_key: false` an animated property is
+ *  `Invalid`: `keyframe_clear` makes it static first. `Locked` if the track is locked.
  */
 export type ItemSetProps = {
-	/**  The item. */
-	item: ItemId,
+	/**  The item (or `items`). */
+	item?: ItemId | null,
+	/**  Items to give the same properties. */
+	items?: ItemId[] | null,
 	/**  The properties to change; at least one. */
 	props: ItemProps,
+	/**  Key animated properties at `at` (default true). */
+	auto_key?: boolean | null,
+	/**  Sequence time (the playhead) to key animated properties at. */
+	at?: TimeInput | null,
 };
 
 /**  Result of `item.set_props`. */
 export type ItemSetPropsOutput = {
-	/**  The item. */
+	/**  The item (the first of `items`). */
 	item: ItemId,
 	/**
-	 *  The props whose value actually changed (`name`, `enabled`, `opacity`, `audio_gain`,
-	 *  `transform.position`, ...); empty if everything was already as requested.
+	 *  The props whose value actually changed on any item (`name`, `enabled`, `opacity`,
+	 *  `audio_gain`, `transform.position`, ...); empty if everything was already as requested.
 	 */
 	changed: string[],
+	/**  The keys written on animated properties. */
+	keyed: KeyedProp[],
 };
 
 /**  Where a clip reads from. */
@@ -1738,6 +2030,272 @@ export type JobWait = {
  *  definition is used.
  */
 export type JsonValue = null | boolean | number | string | JsonValue[] | { [key in string]: JsonValue };
+
+/**  A key to write. */
+export type KeyInput = {
+	/**  Item time (flicks, seconds like "1.5s", or "f:N" frames from the item's start). */
+	t: TimeInput | null,
+	/**  Sequence time. Give `t` or `at`; both snap to frames. */
+	at: TimeInput | null,
+	/**  The value; omitted: the property's current value there. */
+	value: KeyValue | null,
+	/**  Shapes the move to the next key; or use `easing`. */
+	interp: InterpInput | null,
+	/**  A preset name, `linear` or `hold`. */
+	easing: Easing | null,
+	/**  Preset name hint for `interp`. */
+	preset: string | null,
+};
+
+/**  A key to address: its property and exact item time. */
+export type KeyRef = {
+	/**  The property. */
+	prop: PropId,
+	/**  The key's stored item time in flicks, as `item.get` returns it. */
+	t: Time,
+};
+
+/**
+ *  A property value: a number, `{x, y}` (position, scale, anchor) or a boolean (flip); the
+ *  property decides which.
+ */
+export type KeyValue = 
+/**  A boolean. */
+boolean | 
+/**  A number. */
+number | 
+/**  A 2D vector. */
+Vec2;
+
+/**  A key `item.set_props` wrote on an animated property. */
+export type KeyedProp = {
+	/**  The item. */
+	item: ItemId,
+	/**  The property. */
+	prop: PropId,
+	/**  Item time of the key, after snapping. */
+	t: Time,
+	/**  Sequence time of the key, after snapping. */
+	at: Time,
+};
+
+export type Keyframe<T> = {
+	/**  Item-relative flicks. */
+	t: Time,
+	value: T,
+	interp: Interp,
+};
+
+/**
+ *  Makes an animated property static: at its value at the given time (`t` item time, `at`
+ *  sequence time), or at its first key's value without one. Does nothing to a property that is
+ *  already static. `Locked` if an item's track is locked.
+ */
+export type KeyframeClear = {
+	/**  The item (or `items`). */
+	item?: ItemId | null,
+	/**  Items to clear the same property of. */
+	items?: ItemId[] | null,
+	/**  The property. */
+	prop: PropId,
+	/**  Keep the value at this item time. */
+	t?: TimeInput | null,
+	/**  Keep the value at this sequence time. */
+	at?: TimeInput | null,
+};
+
+/**  Result of `keyframe.clear`. */
+export type KeyframeClearOutput = {
+	/**  The static value the (first) item's property has now. */
+	value: KeyValue,
+	/**  The items processed. */
+	items: ItemId[],
+};
+
+/**  Copied keys, as `application/x-cutweave-keyframes+json` on the system clipboard. */
+export type KeyframeClipboard = {
+	/**  Always 1. */
+	version: number,
+	/**  The keys, by property then time. */
+	keys: ClipboardKey[],
+};
+
+/**  Reads keys into a clipboard payload (nothing changes). `NotFound` if a key does not exist. */
+export type KeyframeCopy = {
+	/**  The item. */
+	item: ItemId,
+	/**  The keys, by property and exact item time. */
+	keys: KeyRef[],
+};
+
+/**  Result of `keyframe.copy`. */
+export type KeyframeCopyOutput = {
+	/**  The payload to paste. */
+	clipboard: KeyframeClipboard,
+};
+
+/**
+ *  Removes the keys at the exact item times given. Deleting every key of a property makes it
+ *  static at its first key's value. `NotFound` if a key does not exist; `Locked` if the item's
+ *  track is locked.
+ */
+export type KeyframeDelete = {
+	/**  The item. */
+	item: ItemId,
+	/**  The keys to delete, by property and exact item time. */
+	keys: KeyRef[],
+};
+
+/**  Result of `keyframe.delete`. */
+export type KeyframeDeleteOutput = {
+	/**  The keys removed. */
+	deleted: KeyRef[],
+	/**  Properties that lost their last key and are static now (at their first key's value). */
+	now_static: PropId[],
+};
+
+/**
+ *  Evaluates one property at a sequence time `at`, or at `samples` times from `from` to `to`
+ *  (both included; 2 to 1,000 samples, `to >= from`). Times are sequence times and are not
+ *  snapped. Read-only.
+ */
+export type KeyframeEval = {
+	/**  The item. */
+	item: ItemId,
+	/**  The property. */
+	prop: PropId,
+	/**  One sample at this sequence time. */
+	at?: TimeInput | null,
+	/**  The first sample's sequence time. */
+	from?: TimeInput | null,
+	/**  The last sample's sequence time. */
+	to?: TimeInput | null,
+	/**  How many samples, 2 to 1,000. */
+	samples?: number | null,
+};
+
+/**  Result of `keyframe.eval`. */
+export type KeyframeEvalOutput = {
+	/**  The property. */
+	prop: PropId,
+	/**  The samples, from the first time to the last. */
+	samples: EvalSample[],
+};
+
+/**
+ *  Moves keys in time, by `delta`, or to `to_t` (item time) or `to_at` (sequence time) for a
+ *  single key; give exactly one. Keys keep their value and interpolation, may pass their
+ *  neighbours (the list re-sorts), and land on frames: a `delta` is rounded to whole frames
+ *  (`fine`: samples). Landing on a key that stays, or two keys on one time, is `Invalid`.
+ *  `NotFound` if a key does not exist; `Locked` if the item's track is locked.
+ */
+export type KeyframeMove = {
+	/**  The item. */
+	item: ItemId,
+	/**  The keys to move, by property and exact item time. */
+	keys: KeyRef[],
+	/**  How far to move them (negative: earlier). Use seconds or flicks for negative values. */
+	delta?: TimeInput | null,
+	/**  The new item time of the single key. */
+	to_t?: TimeInput | null,
+	/**  The new sequence time of the single key. */
+	to_at?: TimeInput | null,
+	/**  Snap to the audio sample grid (audio properties only). */
+	fine?: boolean | null,
+};
+
+/**  Result of `keyframe.move`. */
+export type KeyframeMoveOutput = {
+	/**  The keys moved. */
+	moved: MovedKey[],
+};
+
+/**
+ *  Pastes copied keys onto an item (or each of `items`): the earliest key goes to `t` (item
+ *  time) or `at` (sequence time), the others keep their distance (`dt`), each snapped to
+ *  frames; a key already at a time is replaced. `as_prop` pastes a single-property payload onto
+ *  another property of the same type (crop left keys onto crop right). Values must fit the
+ *  property; `Locked` if an item's track is locked.
+ */
+export type KeyframePaste = {
+	/**  The item (or `items`). */
+	item?: ItemId | null,
+	/**  Items to paste onto. */
+	items?: ItemId[] | null,
+	/**  What `keyframe.copy` returned. */
+	payload: KeyframeClipboard,
+	/**  Item time of the earliest key. */
+	t?: TimeInput | null,
+	/**  Sequence time of the earliest key. */
+	at?: TimeInput | null,
+	/**  Paste a single-property payload onto this property instead. */
+	as_prop?: PropId | null,
+	/**  Snap to the audio sample grid (audio properties only). */
+	fine?: boolean | null,
+};
+
+/**  Result of `keyframe.paste`. */
+export type KeyframePasteOutput = {
+	/**  The keys written. */
+	keys: PastedKey[],
+};
+
+/**
+ *  Add or replace keys on one property. `t` = item time, `at` = sequence time; both snap to
+ *  frames. A key's `easing` shapes the move to the next key. Example: `{item, prop:"opacity",
+ *  keys:[{at:"10s", value:0, easing:"ease_out"}, {at:"12s", value:1}]}`.
+ * 
+ *  A static property becomes animated with exactly these keys; a key at an occupied time is
+ *  replaced; a new key inherits the previous key's easing; `replace` makes the result exactly
+ *  these keys; `fine` snaps audio properties to samples. `Locked` if the track is locked.
+ */
+export type KeyframeSet = {
+	/**  The item (or `items`). */
+	item?: ItemId | null,
+	/**  Items to give the same keys. */
+	items?: ItemId[] | null,
+	/**  The property. */
+	prop: PropId,
+	/**  The keys, 1 to 10,000. */
+	keys: KeyInput[],
+	/**  Make the result exactly these keys. */
+	replace?: boolean | null,
+	/**  Snap to audio samples (audio properties). */
+	fine?: boolean | null,
+};
+
+/**
+ *  Sets how the segments that start at the given keys move to the next key: `interp` (stored
+ *  form) or `easing` (a preset name, `linear` or `hold`), not both. An explicit `interp`
+ *  carries no preset hint unless it gives one. Flips accept only hold. `NotFound` if a key does
+ *  not exist; `Locked` if the item's track is locked.
+ */
+export type KeyframeSetInterp = {
+	/**  The item. */
+	item: ItemId,
+	/**  The keys, by property and exact item time. */
+	keys: KeyRef[],
+	/**  The interpolation (stored form). */
+	interp?: InterpInput | null,
+	/**  A preset name, `linear` or `hold`. */
+	easing?: Easing | null,
+};
+
+/**  Result of `keyframe.set_interp`. */
+export type KeyframeSetInterpOutput = {
+	/**  The keys whose segment changed. */
+	changed: KeyRef[],
+};
+
+/**  Result of `keyframe.set`. */
+export type KeyframeSetOutput = {
+	/**  The keys written, per item and key in request order. */
+	keys: SetKey[],
+};
+
+export type Keyframes<T> = {
+	keyframes: Keyframe<T>[],
+};
 
 /**
  *  What `edit.undo{*}` and `edit.redo{*}` (anyone's latest change) would do: the shared view the
@@ -2426,6 +2984,20 @@ export type MovedItem = {
 	start: Time,
 };
 
+/**  One key that moved. */
+export type MovedKey = {
+	/**  The property. */
+	prop: PropId,
+	/**  Where the key was (item time). */
+	from_t: Time,
+	/**  Where it is now (item time). */
+	t: Time,
+	/**  Where it is now (sequence time). */
+	at: Time,
+	/**  The key lies outside the item's `[0, duration)`. */
+	outside: boolean,
+};
+
 /**  An item whose track or start changed (duration and source did not). */
 export type MovedReport = {
 	/**  The item. */
@@ -2450,6 +3022,24 @@ export type OnConflict =
  *  the target.
  */
 export type OverlapPolicy = "reject" | "new_track";
+
+/**  Where `keyframe.paste` put a key. */
+export type PastedKey = {
+	/**  The item. */
+	item: ItemId,
+	/**  The property. */
+	prop: PropId,
+	/**  Item time after snapping. */
+	t: Time,
+	/**  Sequence time after snapping. */
+	at: Time,
+	/**  The value the key holds. */
+	value: KeyValue,
+	/**  A new key (`false`: it replaced a key at that time). */
+	created: boolean,
+	/**  The key lies outside the item's `[0, duration)`. */
+	outside: boolean,
+};
 
 /**  An ordered list of [`PatchOp`]s, applied first to last. Serialized as a JSON array. */
 export type Patch = PatchOp[];
@@ -3008,6 +3598,41 @@ export type ProjectStatus = {
 	recovery: RecoveryInfo | null,
 };
 
+/**
+ *  An animatable property (keyframes §7). The IDs match `item.set_props`'s patch paths, so
+ *  `keyframe.*`, `item.set_props` and its `changed` output use the same names.
+ * 
+ *  Later properties (P3 text, P4 effect and composition parameters) register here through
+ *  their work packages.
+ */
+export type PropId = 
+/**  `visual.transform.position`: offset of the anchor from the canvas centre, canvas units. */
+"transform.position" | 
+/**  `visual.transform.scale`: multiplier of the aspect-fit size, per axis. */
+"transform.scale" | 
+/**  `visual.transform.rotation`: degrees, clockwise, accumulating. */
+"transform.rotation" | 
+/**  `visual.transform.anchor`: a point of the item in item units. */
+"transform.anchor" | 
+/**  `visual.opacity`: 0 transparent to 1 opaque. */
+"opacity" | 
+/**  `visual.crop.left`: fraction of the upright source removed from the left edge. */
+"crop.left" | 
+/**  `visual.crop.top`: fraction removed from the top edge. */
+"crop.top" | 
+/**  `visual.crop.right`: fraction removed from the right edge. */
+"crop.right" | 
+/**  `visual.crop.bottom`: fraction removed from the bottom edge. */
+"crop.bottom" | 
+/**  `visual.flip.horizontal`: mirror left-right (hold only). */
+"flip.horizontal" | 
+/**  `visual.flip.vertical`: mirror top-bottom (hold only). */
+"flip.vertical" | 
+/**  `audio.gain`: clip level in dB, interpolated in dB (UI label "Volume"). */
+"audio_gain" | 
+/**  `audio.pan`: −1 left to 1 right, 0 centre. */
+"audio_pan";
+
 /**  Result of the proxy commands. */
 export type ProxiesOutput = {
 	/**
@@ -3167,6 +3792,19 @@ export type ReplacedReport = {
  */
 export type RequestId = string & { readonly __brand: "RequestId" };
 
+/**  A group of properties, as the Inspector's sections show them. */
+export type ResetGroup = 
+/**  Position, scale, rotation and anchor. */
+"transform" | 
+/**  The four crop edges. */
+"crop" | 
+/**  Flip horizontal and vertical. */
+"flip" | 
+/**  Opacity and blend mode. */
+"compositing" | 
+/**  Clip gain and pan. */
+"audio";
+
 /**
  *  Shows what a preset does to a sequence without exporting: the output size, frame rate,
  *  estimated size and the warnings (`AspectMismatch`, `DurationOverLimit`, `SizeOverLimit`,
@@ -3228,7 +3866,9 @@ export type ResourceKind =
 /**  A checkpoint (`cp_…` or its name, `edit.checkpoint`, WP-1B.04). */
 "checkpoint" | 
 /**  A background job (`job_…`, WP-1D.07). */
-"job";
+"job" | 
+/**  A keyframe, addressed by item, property and time (`keyframe.*`, WP-2C.03). */
+"keyframe";
 
 /**
  *  Brings the document back to a checkpoint as one new, undoable change by you (history is
@@ -3433,6 +4073,24 @@ export type SessionState =
 "open" | 
 /**  The project is being closed (a swap or engine shutdown is under way). */
 "closing";
+
+/**  One key `keyframe.set` wrote. */
+export type SetKey = {
+	/**  The item. */
+	item: ItemId,
+	/**  The property. */
+	prop: PropId,
+	/**  Item time after snapping. */
+	t: Time,
+	/**  Sequence time after snapping. */
+	at: Time,
+	/**  The value the key holds. */
+	value: KeyValue,
+	/**  A new key (`false`: an existing key's value changed). */
+	created: boolean,
+	/**  The key lies outside the item's `[0, duration)`. */
+	outside: boolean,
+};
 
 /**  One split item. */
 export type SplitPair = {
@@ -4169,13 +4827,13 @@ export type TransferCharacteristics = string;
  */
 export type Transform = {
 	/**  Offset of the anchor from the canvas center, in canvas units. */
-	position: Vec2,
+	position: Animatable<Vec2>,
 	/**  Size multiplier per axis (1.0 = aspect-fit). */
-	scale: Vec2,
+	scale: Animatable<Vec2>,
 	/**  Clockwise rotation in degrees. */
-	rotation: number,
+	rotation: Animatable<number>,
 	/**  The item point that `position` places and rotation turns around, in item units. */
-	anchor: Vec2,
+	anchor: Animatable<Vec2>,
 } & { [key in string]: unknown };
 
 /**  A partial transform: absent fields keep their value. */
@@ -4536,12 +5194,18 @@ export type ViewSetZoom = {
 	zoom: number | null,
 };
 
-/**  Visual properties of an item (arch §4.2 `VisualProps`, v1 subset). */
+/**  Visual properties of an item (arch §4.2 `VisualProps`; keyframes §7). */
 export type VisualProps = {
 	/**  Placement on the canvas. */
 	transform: Transform,
 	/**  Opacity, 0.0 (transparent) to 1.0 (opaque). */
-	opacity: number,
+	opacity: Animatable<number>,
+	/**  Edges of the source picture cut away. */
+	crop: Crop,
+	/**  Mirroring. */
+	flip: Flip,
+	/**  How the item combines with what is below. */
+	blend_mode: BlendMode,
 } & { [key in string]: unknown };
 
 /**  A wall-clock instant: milliseconds since the Unix epoch. */

@@ -195,7 +195,8 @@
               "media": "med_0000000000017e999cdbc20a2319b9cb",
               "source_in": 0,
               "audio": {
-                "gain": 0.0
+                "gain": 0.0,
+                "pan": 0.0
               },
               "visual": {
                 "transform": {
@@ -213,7 +214,18 @@
                     "y": 0.5
                   }
                 },
-                "opacity": 1.0
+                "opacity": 1.0,
+                "crop": {
+                  "left": 0.0,
+                  "top": 0.0,
+                  "right": 0.0,
+                  "bottom": 0.0
+                },
+                "flip": {
+                  "horizontal": false,
+                  "vertical": false
+                },
+                "blend_mode": "normal"
               },
               "custom": {}
             },
@@ -230,7 +242,8 @@
               "media": "med_0000000000027f8989dde9c8c6ffc150",
               "source_in": 705600000,
               "audio": {
-                "gain": 0.0
+                "gain": 0.0,
+                "pan": 0.0
               },
               "visual": {
                 "transform": {
@@ -248,7 +261,18 @@
                     "y": 0.5
                   }
                 },
-                "opacity": 1.0
+                "opacity": 1.0,
+                "crop": {
+                  "left": 0.0,
+                  "top": 0.0,
+                  "right": 0.0,
+                  "bottom": 0.0
+                },
+                "flip": {
+                  "horizontal": false,
+                  "vertical": false
+                },
+                "blend_mode": "normal"
               },
               "custom": {}
             }
@@ -280,7 +304,8 @@
               "media": "med_00000000000376d1902a7aa83bfaaa17",
               "source_in": 0,
               "audio": {
-                "gain": -6.0
+                "gain": -6.0,
+                "pan": 0.0
               },
               "visual": {
                 "transform": {
@@ -298,7 +323,18 @@
                     "y": 0.5
                   }
                 },
-                "opacity": 1.0
+                "opacity": 1.0,
+                "crop": {
+                  "left": 0.0,
+                  "top": 0.0,
+                  "right": 0.0,
+                  "bottom": 0.0
+                },
+                "flip": {
+                  "horizontal": false,
+                  "vertical": false
+                },
+                "blend_mode": "normal"
               },
               "custom": {}
             }

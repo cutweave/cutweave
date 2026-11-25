@@ -4,7 +4,9 @@
 
 use std::{fmt, str::FromStr};
 
-use schemars::JsonSchema;
+use std::borrow::Cow;
+
+use schemars::{JsonSchema, Schema, SchemaGenerator, json_schema};
 use serde::{Deserialize, Serialize};
 
 use super::interp::Interp;
@@ -141,18 +143,7 @@ pub struct PropSpec {
 /// Later properties (P3 text, P4 effect and composition parameters) register here through
 /// their work packages.
 #[derive(
-    Clone,
-    Copy,
-    Debug,
-    PartialEq,
-    Eq,
-    Hash,
-    PartialOrd,
-    Ord,
-    Serialize,
-    Deserialize,
-    JsonSchema,
-    specta::Type,
+    Clone, Copy, Debug, PartialEq, Eq, Hash, PartialOrd, Ord, Serialize, Deserialize, specta::Type,
 )]
 #[non_exhaustive]
 pub enum PropId {
@@ -355,6 +346,22 @@ impl PropId {
             PropId::AudioGain => "audio_gain",
             PropId::AudioPan => "audio_pan",
         }
+    }
+}
+
+/// One flat `enum` of the IDs (see [`Easing`](super::Easing)'s schema).
+impl JsonSchema for PropId {
+    fn schema_name() -> Cow<'static, str> {
+        "PropId".into()
+    }
+
+    fn json_schema(_: &mut SchemaGenerator) -> Schema {
+        let ids: Vec<&str> = PropId::ALL.iter().map(|p| p.as_str()).collect();
+        json_schema!({
+            "description": "An animatable property of an item.",
+            "type": "string",
+            "enum": ids
+        })
     }
 }
 

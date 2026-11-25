@@ -8,6 +8,7 @@
 // path without a pointer.
 
 import type {
+  Animatable,
   Item,
   ItemId,
   ItemProps,
@@ -89,7 +90,11 @@ export function propsUpdate(item: ItemId, patch: Partial<ItemProps>): GestureUpd
         enabled: null,
         opacity: null,
         audio_gain: null,
+        audio_pan: null,
         transform: null,
+        crop: null,
+        flip: null,
+        blend_mode: null,
         ...patch,
       },
     },
@@ -103,6 +108,18 @@ function transformUpdate(item: ItemId, patch: Partial<TransformPatch>): GestureU
 }
 
 const PERCENT = 100;
+
+/**
+ * The value of a property that may be animated: the static value, or the first key's (what the
+ * engine's `Animatable::value` returns). The Inspector edits static values until WP-2H.03 wires
+ * keyframes.
+ */
+export function staticValue<T>(value: Animatable<T>): T {
+  if (typeof value === "object" && value !== null && "keyframes" in value) {
+    return (value.keyframes[0] as { value: T }).value;
+  }
+  return value as T;
+}
 
 /** The rows of the clip inspector, top to bottom. */
 export const FIELDS: readonly FieldDef[] = [
@@ -146,7 +163,7 @@ export const FIELDS: readonly FieldDef[] = [
     max: 100,
     step: 1,
     unit: "%",
-    read: (item) => Math.round(item.visual.opacity * PERCENT),
+    read: (item) => Math.round(staticValue(item.visual.opacity) * PERCENT),
     updates: ({ item }, value) => [propsUpdate(item.id, { opacity: value / PERCENT })],
   },
   {
@@ -158,9 +175,11 @@ export const FIELDS: readonly FieldDef[] = [
     min: -100_000,
     max: 100_000,
     step: 1,
-    read: (item) => item.visual.transform.position.x,
+    read: (item) => staticValue(item.visual.transform.position).x,
     updates: ({ item }, value) => [
-      transformUpdate(item.id, { position: { x: value, y: item.visual.transform.position.y } }),
+      transformUpdate(item.id, {
+        position: { x: value, y: staticValue(item.visual.transform.position).y },
+      }),
     ],
   },
   {
@@ -172,9 +191,11 @@ export const FIELDS: readonly FieldDef[] = [
     min: -100_000,
     max: 100_000,
     step: 1,
-    read: (item) => item.visual.transform.position.y,
+    read: (item) => staticValue(item.visual.transform.position).y,
     updates: ({ item }, value) => [
-      transformUpdate(item.id, { position: { x: item.visual.transform.position.x, y: value } }),
+      transformUpdate(item.id, {
+        position: { x: staticValue(item.visual.transform.position).x, y: value },
+      }),
     ],
   },
   {
@@ -188,7 +209,7 @@ export const FIELDS: readonly FieldDef[] = [
     step: 1,
     unit: "%",
     // One uniform value; the engine keeps x and y apart for later (P2 "link" toggle).
-    read: (item) => Math.round(item.visual.transform.scale.x * PERCENT),
+    read: (item) => Math.round(staticValue(item.visual.transform.scale).x * PERCENT),
     updates: ({ item }, value) => [
       transformUpdate(item.id, { scale: { x: value / PERCENT, y: value / PERCENT } }),
     ],
@@ -203,7 +224,7 @@ export const FIELDS: readonly FieldDef[] = [
     max: 3600,
     step: 1,
     unit: "°",
-    read: (item) => item.visual.transform.rotation,
+    read: (item) => staticValue(item.visual.transform.rotation),
     updates: ({ item }, value) => [transformUpdate(item.id, { rotation: value })],
   },
   {
@@ -217,7 +238,7 @@ export const FIELDS: readonly FieldDef[] = [
     step: 0.5,
     precision: 1,
     unit: "dB",
-    read: (item) => item.audio.gain,
+    read: (item) => staticValue(item.audio.gain),
     updates: ({ item }, value) => [propsUpdate(item.id, { audio_gain: value })],
   },
 ];

@@ -19,9 +19,10 @@
 //! round-to-nearest without fused multiply-add, and `exp`/`sin`/`cos`/`pow` from the pure-Rust
 //! `libm` so native and wasm agree bit for bit (§6).
 //!
-//! **Documents.** Keyed values become legal in documents with WP-2C.03's schema bump (ADR-0024).
-//! Until then [`Animatable`]'s `Deserialize` and JSON Schema still accept only the bare value;
-//! [`Animatable::from_json`] and [`Keyframes`]' own serde read the keyed form.
+//! **Documents.** Keyed values are legal in documents since WP-2C.03's schema bump (ADR-0024):
+//! [`Animatable`]'s `Deserialize` is [`Animatable::from_json`] and its JSON Schema is
+//! `oneOf: [T, Keyframes<T>]`. `Project::validate` checks every key against its property's
+//! stored range (KF-4).
 
 mod easing;
 mod edit;
@@ -36,7 +37,7 @@ mod value;
 
 use std::borrow::Cow;
 
-use schemars::{JsonSchema, Schema, SchemaGenerator};
+use schemars::{JsonSchema, Schema, SchemaGenerator, json_schema};
 use serde::{Deserialize, Deserializer, Serialize, Serializer, de};
 use serde_json::Value;
 
@@ -55,8 +56,7 @@ use crate::Time;
 /// A property that may vary over the item's time (arch §4.2, keyframes §3.1).
 ///
 /// On the wire a static value is the bare `T` (`"opacity": 1.0`) and a keyed value is
-/// `{"keyframes": [...]}` (§3.1). Until WP-2C.03's schema bump, documents may only hold the
-/// static form: `Deserialize` rejects the keyed one (see the module docs).
+/// `{"keyframes": [...]}` (§3.1).
 #[derive(Clone, Debug, PartialEq)]
 #[non_exhaustive]
 pub enum Animatable<T> {
@@ -214,44 +214,106 @@ impl<T: Serialize> Serialize for Animatable<T> {
     }
 }
 
-/// Documents hold only static values until WP-2C.03's schema bump (ADR-0024): the keyed form is
-/// rejected with a clear error.
-impl<'de, T: de::DeserializeOwned> Deserialize<'de> for Animatable<T> {
+/// The wire form (§3.1): a bare value, or an object with a `keyframes` member read through
+/// [`Animatable::from_json`], so a keyed value is validated (KF-1 to KF-7) as it is parsed. A
+/// value's stored range is checked by `Project::validate` (KF-4).
+impl<'de, T: AnimValue> Deserialize<'de> for Animatable<T> {
     fn deserialize<D: Deserializer<'de>>(d: D) -> Result<Animatable<T>, D::Error> {
-        let value = Value::deserialize(d)?;
-        if value.get("keyframes").is_some() {
-            return Err(de::Error::custom(
-                "keyframed values are not supported by this version of Cutweave (schema v1)",
-            ));
-        }
-        T::deserialize(value)
-            .map(Animatable::Static)
-            .map_err(de::Error::custom)
+        d.deserialize_any(AnimatableVisitor(std::marker::PhantomData))
     }
 }
 
-/// The bare value's schema until the schema bump (ADR-0024); then `oneOf: [T, Keyframes<T>]`.
+/// Reads a bare number without building a `Value` (most animatables are static scalars, and
+/// documents hold thousands of them); everything else goes through [`Animatable::from_json`].
+struct AnimatableVisitor<T>(std::marker::PhantomData<T>);
+
+impl<'de, T: AnimValue> de::Visitor<'de> for AnimatableVisitor<T> {
+    type Value = Animatable<T>;
+
+    fn expecting(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.write_str("a value or an object with `keyframes`")
+    }
+
+    fn visit_bool<E: de::Error>(self, v: bool) -> Result<Animatable<T>, E> {
+        Animatable::from_json(&Value::Bool(v)).map_err(E::custom)
+    }
+
+    fn visit_f64<E: de::Error>(self, v: f64) -> Result<Animatable<T>, E> {
+        let value = T::deserialize(de::value::F64Deserializer::<E>::new(v))
+            .map_err(|e| E::custom(KeyframeError::rule(KeyframeRule::Kf4, "", e.to_string())))?;
+        Animatable::Static(value)
+            .checked(ValueRange::ANY)
+            .map_err(E::custom)
+    }
+
+    fn visit_i64<E: de::Error>(self, v: i64) -> Result<Animatable<T>, E> {
+        Animatable::from_json(&Value::from(v)).map_err(E::custom)
+    }
+
+    fn visit_u64<E: de::Error>(self, v: u64) -> Result<Animatable<T>, E> {
+        Animatable::from_json(&Value::from(v)).map_err(E::custom)
+    }
+
+    fn visit_str<E: de::Error>(self, v: &str) -> Result<Animatable<T>, E> {
+        Animatable::from_json(&Value::from(v)).map_err(E::custom)
+    }
+
+    fn visit_map<A: de::MapAccess<'de>>(self, map: A) -> Result<Animatable<T>, A::Error> {
+        let value = Value::deserialize(de::value::MapAccessDeserializer::new(map))?;
+        Animatable::from_json(&value).map_err(de::Error::custom)
+    }
+}
+
+/// `oneOf: [T, Keyframes<T>]` (§3.1): the two never overlap, since a keyed value is an object
+/// with a `keyframes` member and no value type has such a field.
 impl<T: JsonSchema> JsonSchema for Animatable<T> {
     fn schema_name() -> Cow<'static, str> {
-        T::schema_name()
+        format!("Animatable_{}", T::schema_name()).into()
     }
 
     fn schema_id() -> Cow<'static, str> {
-        T::schema_id()
-    }
-
-    fn inline_schema() -> bool {
-        T::inline_schema()
+        format!("cutweave_model::Animatable<{}>", T::schema_id()).into()
     }
 
     fn json_schema(generator: &mut SchemaGenerator) -> Schema {
-        T::json_schema(generator)
+        let value = generator.subschema_for::<T>();
+        let keyed = generator.subschema_for::<Keyframes<T>>();
+        json_schema!({
+            "description": "A static value, or keyed values over item time (keyframes §3.1).",
+            "oneOf": [value, keyed]
+        })
     }
+}
+
+/// A static value or keyed values (keyframes §3.1); the wire form for TypeScript.
+#[derive(Serialize, specta::Type)]
+#[serde(rename = "Animatable", untagged)]
+#[allow(dead_code)] // describes the wire form to specta; never constructed
+enum AnimatableWire<T> {
+    Static(T),
+    Keyed(KeyedWire<T>),
+}
+
+#[derive(Serialize, specta::Type)]
+#[serde(rename = "Keyframes")]
+#[allow(dead_code)]
+struct KeyedWire<T> {
+    keyframes: Vec<KeyframeWire<T>>,
+}
+
+#[derive(Serialize, specta::Type)]
+#[serde(rename = "Keyframe")]
+#[allow(dead_code)]
+struct KeyframeWire<T> {
+    /// Item-relative flicks.
+    t: Time,
+    value: T,
+    interp: Interp,
 }
 
 impl<T: specta::Type> specta::Type for Animatable<T> {
     fn definition(types: &mut specta::Types) -> specta::datatype::DataType {
-        T::definition(types)
+        AnimatableWire::<T>::definition(types)
     }
 }
 
@@ -321,11 +383,14 @@ mod tests {
             serde_json::to_value(Animatable::from(0.5)).unwrap(),
             json!(0.5)
         );
-        // Documents still reject the keyed form until the schema bump.
+        // Documents read the keyed form, validated.
         let err = serde_json::from_value::<Animatable<f64>>(json!({"keyframes": []}))
             .unwrap_err()
             .to_string();
-        assert!(err.contains("not supported"), "{err}");
+        assert!(err.contains("KF-1"), "{err}");
+        let back: Animatable<f64> =
+            serde_json::from_value(serde_json::to_value(&a).unwrap()).unwrap();
+        assert_eq!(back, a);
         assert_eq!(
             Animatable::<f64>::from_json(&json!("x"))
                 .unwrap_err()

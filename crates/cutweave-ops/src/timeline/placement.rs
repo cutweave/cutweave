@@ -52,6 +52,7 @@ use cutweave_model::{
 };
 
 use crate::{
+    keyframe::{rekey, retime::Retime},
     report::{EditReport, SplitReport},
     timeline::OverlapPolicy,
     track::next_track_name,
@@ -365,6 +366,22 @@ impl<'d> Edit<'d> {
         }
     }
 
+    /// Applies a keyframe retiming rule (keyframes §8.1) to a clip of the working copy; a rule
+    /// that cannot apply (a key would leave the time range) is recorded as an error.
+    pub(crate) fn rekey(&mut self, id: ItemId, rule: Retime) {
+        let mut failed = None;
+        self.update(id, |i| {
+            if let Some(c) = i.as_clip_mut()
+                && let Err(e) = rekey(c, rule)
+            {
+                failed = Some(e);
+            }
+        });
+        if let Some(e) = failed {
+            self.defer(e);
+        }
+    }
+
     /// Takes an item out of the working copy.
     pub(crate) fn remove(&mut self, id: ItemId) -> Option<(TrackId, Item)> {
         let (track, _) = self.locate(id)?;
@@ -528,10 +545,21 @@ impl<'d> Edit<'d> {
         let (left_markers, right_markers) =
             split_markers(item.markers(), cut - start, resume - start);
         let mut part = item.clone();
+        let tail = dur(end - resume);
         if let Item::Clip(c) = &mut part {
+            // The right part's keys: the window of the part, shifted to its own start (§8.1).
+            if let Err(e) = rekey(
+                c,
+                Retime::Right {
+                    from: time(resume - start),
+                    to: time(end - start),
+                },
+            ) {
+                self.defer(e);
+            }
             c.id = right;
             c.start = time(resume);
-            c.duration = dur(end - resume);
+            c.duration = tail;
             c.linked_group = group;
             c.markers = right_markers;
             if !still {
@@ -542,6 +570,12 @@ impl<'d> Edit<'d> {
             i.set_duration(dur(cut - start));
             *i.markers_mut() = left_markers;
         });
+        self.rekey(
+            id,
+            Retime::Left {
+                end: time(cut - start),
+            },
+        );
         self.insert(track, part);
         self.retimed.insert(id);
         // A part of a part (an item cut by several ranges) is reported as a split of the item
@@ -595,8 +629,19 @@ impl<'d> Edit<'d> {
     /// The start of `id` moves to `u` (keeps its end; the source advances, markers re-base).
     fn trim_start(&mut self, id: ItemId, u: i64) {
         let still = self.locate(id).is_some_and(|(_, i)| self.is_still(i));
+        let Some((s, e)) = self.locate(id).map(|(_, i)| span(i)) else {
+            return;
+        };
+        // A head trim by `u - s`: keys stay on the same content (keyframes §8.1).
+        self.rekey(
+            id,
+            Retime::Head {
+                delta: time(u - s),
+                duration: dur(e - s),
+                prune: false,
+            },
+        );
         self.update(id, |i| {
-            let (s, e) = span(i);
             let cut = u - s;
             let (_, kept) = split_markers(i.markers(), cut, cut);
             *i.markers_mut() = kept;

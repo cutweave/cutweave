@@ -1,14 +1,16 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
-//! Timeline items (arch §4.2), restricted to schema v1: media clips with audio gain, transform
-//! and opacity. Text, captions, compositions, generators, adjustments, effects and masks arrive
-//! in later versions; keyed property values with WP-2C.03's schema bump ([`Animatable`] lives in
-//! `animate`).
+//! Timeline items (arch §4.2), restricted to schema v2: media clips with audio gain and pan,
+//! transform, opacity, crop, flip and blend mode. Text, captions, compositions, generators,
+//! adjustments, effects and masks arrive in later versions. Animatable properties may be keyed
+//! (WP-2C.03, [`Animatable`] lives in `animate`).
 
-use schemars::JsonSchema;
+use std::borrow::Cow;
+
+use schemars::{JsonSchema, Schema, SchemaGenerator, json_schema};
 use serde::{Deserialize, Serialize};
 
 use crate::{
-    Animatable, Custom, Duration, Extra, GroupId, ItemId, Markers, MediaId, Time, TimeError,
+    Animatable, Custom, Duration, Extra, GroupId, ItemId, Markers, MediaId, PropId, Time, TimeError,
 };
 
 /// A 2D vector (positions, scales, anchors).
@@ -58,7 +60,7 @@ pub struct Transform {
     /// Size multiplier per axis (1.0 = aspect-fit).
     pub scale: Animatable<Vec2>,
     /// Clockwise rotation in degrees.
-    #[specta(type = specta_typescript::Number)]
+    #[specta(type = Animatable<specta_typescript::Number>)]
     pub rotation: Animatable<f64>,
     /// The item point that `position` places and rotation turns around, in item units.
     pub anchor: Animatable<Vec2>,
@@ -81,14 +83,132 @@ impl Default for Transform {
     }
 }
 
-/// Visual properties of an item (arch §4.2 `VisualProps`, v1 subset).
+/// How much of each edge of the upright source picture is cut away, as fractions of the
+/// source frame (`0.0..=1.0` each; keyframes §7). Each edge animates on its own, so each is
+/// validated on its own: when `left + right >= 1` or `top + bottom >= 1` nothing is visible.
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize, JsonSchema, specta::Type)]
+pub struct Crop {
+    /// Fraction removed from the left edge.
+    #[specta(type = Animatable<specta_typescript::Number>)]
+    pub left: Animatable<f64>,
+    /// Fraction removed from the top edge.
+    #[specta(type = Animatable<specta_typescript::Number>)]
+    pub top: Animatable<f64>,
+    /// Fraction removed from the right edge.
+    #[specta(type = Animatable<specta_typescript::Number>)]
+    pub right: Animatable<f64>,
+    /// Fraction removed from the bottom edge.
+    #[specta(type = Animatable<specta_typescript::Number>)]
+    pub bottom: Animatable<f64>,
+    /// Fields unknown to this version.
+    #[serde(flatten)]
+    #[schemars(skip)]
+    pub extra: Extra,
+}
+
+/// No edge cropped.
+impl Default for Crop {
+    fn default() -> Crop {
+        Crop {
+            left: 0.0.into(),
+            top: 0.0.into(),
+            right: 0.0.into(),
+            bottom: 0.0.into(),
+            extra: Extra::new(),
+        }
+    }
+}
+
+/// Mirroring of an item about its centre, after the crop (keyframes §7). Hold-only: a keyed
+/// flip switches at its keys.
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize, JsonSchema, specta::Type)]
+pub struct Flip {
+    /// Mirror left-right.
+    pub horizontal: Animatable<bool>,
+    /// Mirror top-bottom.
+    pub vertical: Animatable<bool>,
+    /// Fields unknown to this version.
+    #[serde(flatten)]
+    #[schemars(skip)]
+    pub extra: Extra,
+}
+
+/// Not mirrored.
+impl Default for Flip {
+    fn default() -> Flip {
+        Flip {
+            horizontal: false.into(),
+            vertical: false.into(),
+            extra: Extra::new(),
+        }
+    }
+}
+
+/// How an item's picture combines with what is below it (arch §8's core set). Not animatable.
+#[derive(
+    Clone,
+    Copy,
+    Debug,
+    Default,
+    PartialEq,
+    Eq,
+    Hash,
+    PartialOrd,
+    Ord,
+    Serialize,
+    Deserialize,
+    specta::Type,
+)]
+#[serde(rename_all = "snake_case")]
+pub enum BlendMode {
+    /// The picture covers what is below, by its opacity.
+    #[default]
+    Normal,
+    /// Darkens: the product of both.
+    Multiply,
+    /// Lightens: the inverse of the product of the inverses.
+    Screen,
+    /// Multiply in the shadows, screen in the highlights, by what is below.
+    Overlay,
+    /// The darker of both, per channel.
+    Darken,
+    /// The lighter of both, per channel.
+    Lighten,
+    /// The sum of both, clipped.
+    Add,
+    /// A gentle overlay.
+    SoftLight,
+}
+
+/// One flat `enum` of the names (a tool list pays for every description).
+impl JsonSchema for BlendMode {
+    fn schema_name() -> Cow<'static, str> {
+        "BlendMode".into()
+    }
+
+    fn json_schema(_: &mut SchemaGenerator) -> Schema {
+        json_schema!({
+            "description": "How an item combines with what is below it (arch §8's core set).",
+            "type": "string",
+            "enum": ["normal", "multiply", "screen", "overlay", "darken", "lighten", "add", "soft_light"]
+        })
+    }
+}
+
+/// Visual properties of an item (arch §4.2 `VisualProps`; keyframes §7).
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize, JsonSchema, specta::Type)]
 pub struct VisualProps {
     /// Placement on the canvas.
     pub transform: Transform,
     /// Opacity, 0.0 (transparent) to 1.0 (opaque).
-    #[specta(type = specta_typescript::Number)]
+    #[specta(type = Animatable<specta_typescript::Number>)]
     pub opacity: Animatable<f64>,
+    /// Edges of the source picture cut away.
+    pub crop: Crop,
+    /// Mirroring.
+    pub flip: Flip,
+    /// How the item combines with what is below.
+    pub blend_mode: BlendMode,
     /// Fields unknown to this version.
     #[serde(flatten)]
     #[schemars(skip)]
@@ -101,6 +221,9 @@ impl Default for VisualProps {
         VisualProps {
             transform: Transform::default(),
             opacity: 1.0.into(),
+            crop: Crop::default(),
+            flip: Flip::default(),
+            blend_mode: BlendMode::Normal,
             extra: Extra::new(),
         }
     }
@@ -110,8 +233,11 @@ impl Default for VisualProps {
 #[derive(Clone, Debug, Default, PartialEq, Serialize, Deserialize, JsonSchema, specta::Type)]
 pub struct AudioProps {
     /// Gain in decibels (0.0 = unchanged).
-    #[specta(type = specta_typescript::Number)]
+    #[specta(type = Animatable<specta_typescript::Number>)]
     pub gain: Animatable<f64>,
+    /// Stereo position, -1.0 (left) to 1.0 (right), 0.0 = centre.
+    #[specta(type = Animatable<specta_typescript::Number>)]
+    pub pan: Animatable<f64>,
     /// Fields unknown to this version.
     #[serde(flatten)]
     #[schemars(skip)]
@@ -179,6 +305,72 @@ impl Clip {
             visual: VisualProps::default(),
             custom: Custom::new(),
             extra: Extra::new(),
+        }
+    }
+}
+
+/// An animatable property of a clip by registry ID, typed by its value type (see
+/// [`Clip::prop`]).
+#[derive(Clone, Copy, Debug)]
+pub enum PropRef<'a> {
+    /// A number (opacity, crop edges, rotation, gain, pan).
+    Scalar(&'a Animatable<f64>),
+    /// A 2D vector (position, scale, anchor).
+    Vec2(&'a Animatable<Vec2>),
+    /// A boolean (flip).
+    Bool(&'a Animatable<bool>),
+}
+
+/// The mutable twin of [`PropRef`] (see [`Clip::prop_mut`]).
+#[derive(Debug)]
+pub enum PropMut<'a> {
+    /// A number.
+    Scalar(&'a mut Animatable<f64>),
+    /// A 2D vector.
+    Vec2(&'a mut Animatable<Vec2>),
+    /// A boolean.
+    Bool(&'a mut Animatable<bool>),
+}
+
+impl Clip {
+    /// The animatable property with registry ID `id` (keyframes §7).
+    #[must_use]
+    pub fn prop(&self, id: PropId) -> PropRef<'_> {
+        let v = &self.visual;
+        match id {
+            PropId::TransformPosition => PropRef::Vec2(&v.transform.position),
+            PropId::TransformScale => PropRef::Vec2(&v.transform.scale),
+            PropId::TransformRotation => PropRef::Scalar(&v.transform.rotation),
+            PropId::TransformAnchor => PropRef::Vec2(&v.transform.anchor),
+            PropId::Opacity => PropRef::Scalar(&v.opacity),
+            PropId::CropLeft => PropRef::Scalar(&v.crop.left),
+            PropId::CropTop => PropRef::Scalar(&v.crop.top),
+            PropId::CropRight => PropRef::Scalar(&v.crop.right),
+            PropId::CropBottom => PropRef::Scalar(&v.crop.bottom),
+            PropId::FlipHorizontal => PropRef::Bool(&v.flip.horizontal),
+            PropId::FlipVertical => PropRef::Bool(&v.flip.vertical),
+            PropId::AudioGain => PropRef::Scalar(&self.audio.gain),
+            PropId::AudioPan => PropRef::Scalar(&self.audio.pan),
+        }
+    }
+
+    /// The mutable animatable property with registry ID `id`.
+    pub fn prop_mut(&mut self, id: PropId) -> PropMut<'_> {
+        let v = &mut self.visual;
+        match id {
+            PropId::TransformPosition => PropMut::Vec2(&mut v.transform.position),
+            PropId::TransformScale => PropMut::Vec2(&mut v.transform.scale),
+            PropId::TransformRotation => PropMut::Scalar(&mut v.transform.rotation),
+            PropId::TransformAnchor => PropMut::Vec2(&mut v.transform.anchor),
+            PropId::Opacity => PropMut::Scalar(&mut v.opacity),
+            PropId::CropLeft => PropMut::Scalar(&mut v.crop.left),
+            PropId::CropTop => PropMut::Scalar(&mut v.crop.top),
+            PropId::CropRight => PropMut::Scalar(&mut v.crop.right),
+            PropId::CropBottom => PropMut::Scalar(&mut v.crop.bottom),
+            PropId::FlipHorizontal => PropMut::Bool(&mut v.flip.horizontal),
+            PropId::FlipVertical => PropMut::Bool(&mut v.flip.vertical),
+            PropId::AudioGain => PropMut::Scalar(&mut self.audio.gain),
+            PropId::AudioPan => PropMut::Scalar(&mut self.audio.pan),
         }
     }
 }
@@ -397,25 +589,35 @@ mod tests {
     fn unknown_fields_are_kept() {
         let mut value = serde_json::to_value(Item::from(clip())).unwrap();
         value["future_field"] = json!({"b": 1, "a": [1, 2]});
-        value["visual"]["blend_mode"] = json!("screen");
+        value["visual"]["look"] = json!("screen");
         let item: Item = serde_json::from_value(value.clone()).unwrap();
         let clip = item.as_clip().unwrap();
         assert_eq!(
             clip.extra.get("future_field"),
             Some(&json!({"a": [1, 2], "b": 1}))
         );
-        assert_eq!(clip.visual.extra.get("blend_mode"), Some(&json!("screen")));
+        assert_eq!(clip.visual.extra.get("look"), Some(&json!("screen")));
         assert_eq!(serde_json::to_value(&item).unwrap(), value);
     }
 
     #[test]
-    fn keyframes_are_rejected_in_v1() {
+    fn keyed_values_round_trip_and_are_validated() {
         let mut value = serde_json::to_value(Item::from(clip())).unwrap();
+        value["visual"]["opacity"] = json!({"keyframes": [
+            {"t": 0, "value": 0.0, "interp": {"kind": "linear"}},
+            {"t": 7, "value": 1.0, "interp": {"kind": "hold"}}
+        ]});
+        value["visual"]["flip"]["horizontal"] = json!({"keyframes": [
+            {"t": 0, "value": false, "interp": {"kind": "hold"}}
+        ]});
+        let item: Item = serde_json::from_value(value.clone()).unwrap();
+        assert!(item.as_clip().unwrap().visual.opacity.is_animated());
+        assert_eq!(serde_json::to_value(&item).unwrap(), value);
         value["visual"]["opacity"] = json!({"keyframes": [{"t": 0, "value": 1.0}]});
         let err = serde_json::from_value::<Item>(value)
             .unwrap_err()
             .to_string();
-        assert!(err.contains("keyframed values are not supported"), "{err}");
+        assert!(err.contains("KF-5"), "{err}");
     }
 
     #[test]

@@ -15,6 +15,7 @@ pub mod clip;
 pub mod export;
 pub mod item;
 pub mod job;
+pub mod keyframe;
 pub mod media;
 pub mod project;
 pub mod report;
@@ -35,6 +36,7 @@ pub fn register(registry: &mut Registry) -> Result<(), RegistryError> {
     timeline::register(registry)?;
     clip::register(registry)?;
     item::register(registry)?;
+    keyframe::register(registry)?;
     job::register(registry)?;
     export::register(registry)?;
     view::register(registry)

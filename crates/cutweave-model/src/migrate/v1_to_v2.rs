@@ -22,6 +22,10 @@
 //! 5. **Media folders** (`add_media_folders`, WP-2F.07, ADR-0020): `Project.folders` (`{}`),
 //!    `MediaAsset.name` (`null`, the bin shows the file name) and `MediaAsset.folder` (`null`,
 //!    the top level).
+//! 6. **Crop, flip, blend mode and pan** (`add_visual_props`, WP-2C.03, ADR-0024): every clip
+//!    gets `visual.crop` (no edge cut), `visual.flip` (not mirrored), `visual.blend_mode`
+//!    (`"normal"`) and `audio.pan` (`0.0`). Keyed values need no step: a v1 value is the bare
+//!    static form, which stays valid.
 //!
 //! Adding a step for another work package: write `fn(&mut Value, &mut Vec<String>) ->
 //! Result<(), MigrationError>`, append it to [`STEPS`], extend `tests/fixtures/v2/` through
@@ -44,6 +48,7 @@ const STEPS: &[Step] = &[
     dissolve_misaligned_groups,
     normalize_magnetic,
     add_media_folders,
+    add_visual_props,
 ];
 
 /// The v1 → v2 migration.
@@ -69,6 +74,20 @@ impl Migration for V1ToV2 {
         }
         Ok(())
     }
+}
+
+/// The steps that only add missing fields, for documents already at v2 (#168): v2 was one
+/// version for several work packages, so a v2 file written by an earlier build lacks the fields
+/// a later one added. Every step is `or_insert`-style, so a complete document is untouched.
+pub(super) fn fill_in_v2(doc: &mut Value) -> Result<(), MigrationError> {
+    let Value::Object(root) = doc else {
+        return Ok(());
+    };
+    let mut notes = Vec::new();
+    for step in [add_timeline_fields, add_media_folders, add_visual_props] {
+        step(root, &mut notes)?;
+    }
+    Ok(())
 }
 
 /// Every sequence of the document with its JSON Pointer (`/sequences/<id>`).
@@ -362,12 +381,66 @@ fn add_media_folders(
     Ok(())
 }
 
+/// WP-2C.03: the properties the render and audio WPs expect, at their defaults.
+fn add_visual_props(root: &mut JsonObject, _notes: &mut Vec<String>) -> Result<(), MigrationError> {
+    for (path, seq) in sequences(root)? {
+        for (track_path, track) in tracks(seq, &path)? {
+            for (item_path, item) in items(track, &track_path)? {
+                if let Some(Value::Object(visual)) = item.get_mut("visual") {
+                    visual.entry("crop").or_insert_with(|| {
+                        serde_json::json!({"left": 0.0, "top": 0.0, "right": 0.0, "bottom": 0.0})
+                    });
+                    visual.entry("flip").or_insert_with(
+                        || serde_json::json!({"horizontal": false, "vertical": false}),
+                    );
+                    visual
+                        .entry("blend_mode")
+                        .or_insert_with(|| Value::from("normal"));
+                } else if item.contains_key("visual") {
+                    return Err(MigrationError::step(
+                        FROM,
+                        format!("{item_path}/visual"),
+                        "expected an object",
+                    ));
+                }
+                if let Some(Value::Object(audio)) = item.get_mut("audio") {
+                    audio.entry("pan").or_insert_with(|| Value::from(0.0));
+                } else if item.contains_key("audio") {
+                    return Err(MigrationError::step(
+                        FROM,
+                        format!("{item_path}/audio"),
+                        "expected an object",
+                    ));
+                }
+            }
+        }
+    }
+    Ok(())
+}
+
 #[cfg(test)]
 mod tests {
     #![allow(clippy::unwrap_used)]
     use serde_json::json;
 
     use super::*;
+
+    #[test]
+    fn a_v2_document_from_an_earlier_build_is_filled_in_and_stays_idempotent() {
+        let mut doc = json!({"meta": {"schema_version": 2}, "media": {"m": {}},
+            "sequences": {"s": {"tracks": {"t": {"items": {"i": {
+                "kind": "clip", "visual": {"opacity": 1.0}, "audio": {"gain": 0.0}}}}}}}});
+        fill_in_v2(&mut doc).unwrap();
+        assert_eq!(doc["folders"], json!({}));
+        assert_eq!(doc["media"]["m"]["folder"], json!(null));
+        let item = &doc["sequences"]["s"]["tracks"]["t"]["items"]["i"];
+        assert_eq!(item["visual"]["blend_mode"], "normal");
+        assert_eq!(item["visual"]["crop"]["left"], 0.0);
+        assert_eq!(item["audio"]["pan"], 0.0);
+        let once = doc.clone();
+        fill_in_v2(&mut doc).unwrap();
+        assert_eq!(doc, once);
+    }
 
     fn run(doc: Value) -> (Value, Vec<String>) {
         let mut doc = doc;

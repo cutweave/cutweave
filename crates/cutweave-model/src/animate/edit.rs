@@ -197,6 +197,39 @@ impl<T: AnimValue> Animatable<T> {
         keys.with_keys(out).map(Animatable::Keyframes)
     }
 
+    /// `keyframe.set_interp` (§9.6): the interpolation of the segments that start at the keys at
+    /// `ts` (exact item times) becomes `interp`. Discrete values accept only hold (KF-6); the
+    /// parameters are validated (KF-5, KF-7). A missing key, or a static property, is
+    /// [`KeyframeError::NotFound`].
+    pub fn set_interps(
+        &self,
+        ts: &[Time],
+        interp: &Interp,
+    ) -> Result<Animatable<T>, KeyframeError> {
+        let keys = self.keyed()?;
+        let ts = addressed(keys, ts)?;
+        if T::DISCRETE && !interp.is_hold() {
+            return Err(KeyframeError::rule(
+                KeyframeRule::Kf6,
+                "/interp/kind",
+                format!("discrete values only hold, got {}", interp.kind()),
+            ));
+        }
+        interp.validate().map_err(|e| e.under("/interp"))?;
+        let list: Vec<Keyframe<T>> = keys
+            .keys()
+            .iter()
+            .cloned()
+            .map(|mut k| {
+                if ts.binary_search(&k.t).is_ok() {
+                    k.interp = interp.clone();
+                }
+                k
+            })
+            .collect();
+        keys.with_keys(list).map(Animatable::Keyframes)
+    }
+
     /// `keyframe.clear` (§9.7): static at the value at `t` (property-clamped), or at the first
     /// key's value without a time. A static property is unchanged.
     #[must_use]

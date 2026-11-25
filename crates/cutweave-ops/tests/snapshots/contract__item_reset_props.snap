@@ -1,0 +1,262 @@
+---
+source: crates/cutweave-ops/tests/contract.rs
+expression: "json!({\n    \"meta\": serde_json::to_value(meta).unwrap(), \"input\": meta.input_schema,\n    \"output\": meta.output_schema,\n})"
+---
+{
+  "meta": {
+    "name": "item.reset_props",
+    "summary": "Reset an item's properties (a group, some properties, or all) to their defaults",
+    "kind": "command",
+    "undoable": true,
+    "view": false,
+    "scope": "any",
+    "mcp": "catalog",
+    "annotations": {
+      "readOnlyHint": false,
+      "destructiveHint": false,
+      "idempotentHint": true,
+      "openWorldHint": false
+    },
+    "secret_fields": [],
+    "input_schema": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "item": {
+          "type": [
+            "string",
+            "null"
+          ],
+          "pattern": "^itm_[0-9a-f]{32}$",
+          "description": "The item (or `items`).",
+          "default": null
+        },
+        "items": {
+          "type": [
+            "array",
+            "null"
+          ],
+          "items": {
+            "description": "A Item id: `^itm_[0-9a-f]{32}$`.",
+            "type": "string",
+            "pattern": "^itm_[0-9a-f]{32}$"
+          },
+          "description": "Items to reset.",
+          "default": null
+        },
+        "group": {
+          "anyOf": [
+            {
+              "oneOf": [
+                {
+                  "type": "string",
+                  "const": "transform",
+                  "description": "Position, scale, rotation and anchor."
+                },
+                {
+                  "type": "string",
+                  "const": "crop",
+                  "description": "The four crop edges."
+                },
+                {
+                  "type": "string",
+                  "const": "flip",
+                  "description": "Flip horizontal and vertical."
+                },
+                {
+                  "type": "string",
+                  "const": "compositing",
+                  "description": "Opacity and blend mode."
+                },
+                {
+                  "type": "string",
+                  "const": "audio",
+                  "description": "Clip gain and pan."
+                }
+              ],
+              "description": "A group of properties, as the Inspector's sections show them."
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "description": "A section of the Inspector.",
+          "default": null
+        },
+        "props": {
+          "type": [
+            "array",
+            "null"
+          ],
+          "items": {
+            "description": "An animatable property of an item.",
+            "type": "string",
+            "enum": [
+              "transform.position",
+              "transform.scale",
+              "transform.rotation",
+              "transform.anchor",
+              "opacity",
+              "crop.left",
+              "crop.top",
+              "crop.right",
+              "crop.bottom",
+              "flip.horizontal",
+              "flip.vertical",
+              "audio_gain",
+              "audio_pan"
+            ]
+          },
+          "description": "Property IDs, as `keyframe.set` takes them.",
+          "default": null
+        }
+      },
+      "description": "Resets properties to their defaults: they become static (any keys are removed). Give\n`group` (`transform`, `crop`, `flip`, `compositing`, `audio`) or `props` (property IDs), not\nboth; with neither, every animatable property and the blend mode are reset. The name and\nenabled flag are never touched. `Locked` if the item's track is locked.",
+      "title": "ItemResetProps"
+    },
+    "output_schema": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "item": {
+          "type": "string",
+          "pattern": "^itm_[0-9a-f]{32}$",
+          "description": "The first item."
+        },
+        "changed": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          },
+          "description": "The properties whose value changed on any item (`opacity`, `crop.left`, `blend_mode`,\n...); empty when everything already had its default."
+        }
+      },
+      "required": [
+        "item",
+        "changed"
+      ],
+      "description": "Result of `item.reset_props`.",
+      "title": "ItemResetPropsOutput"
+    }
+  },
+  "input": {
+    "type": "object",
+    "additionalProperties": false,
+    "properties": {
+      "item": {
+        "type": [
+          "string",
+          "null"
+        ],
+        "pattern": "^itm_[0-9a-f]{32}$",
+        "description": "The item (or `items`).",
+        "default": null
+      },
+      "items": {
+        "type": [
+          "array",
+          "null"
+        ],
+        "items": {
+          "description": "A Item id: `^itm_[0-9a-f]{32}$`.",
+          "type": "string",
+          "pattern": "^itm_[0-9a-f]{32}$"
+        },
+        "description": "Items to reset.",
+        "default": null
+      },
+      "group": {
+        "anyOf": [
+          {
+            "oneOf": [
+              {
+                "type": "string",
+                "const": "transform",
+                "description": "Position, scale, rotation and anchor."
+              },
+              {
+                "type": "string",
+                "const": "crop",
+                "description": "The four crop edges."
+              },
+              {
+                "type": "string",
+                "const": "flip",
+                "description": "Flip horizontal and vertical."
+              },
+              {
+                "type": "string",
+                "const": "compositing",
+                "description": "Opacity and blend mode."
+              },
+              {
+                "type": "string",
+                "const": "audio",
+                "description": "Clip gain and pan."
+              }
+            ],
+            "description": "A group of properties, as the Inspector's sections show them."
+          },
+          {
+            "type": "null"
+          }
+        ],
+        "description": "A section of the Inspector.",
+        "default": null
+      },
+      "props": {
+        "type": [
+          "array",
+          "null"
+        ],
+        "items": {
+          "description": "An animatable property of an item.",
+          "type": "string",
+          "enum": [
+            "transform.position",
+            "transform.scale",
+            "transform.rotation",
+            "transform.anchor",
+            "opacity",
+            "crop.left",
+            "crop.top",
+            "crop.right",
+            "crop.bottom",
+            "flip.horizontal",
+            "flip.vertical",
+            "audio_gain",
+            "audio_pan"
+          ]
+        },
+        "description": "Property IDs, as `keyframe.set` takes them.",
+        "default": null
+      }
+    },
+    "description": "Resets properties to their defaults: they become static (any keys are removed). Give\n`group` (`transform`, `crop`, `flip`, `compositing`, `audio`) or `props` (property IDs), not\nboth; with neither, every animatable property and the blend mode are reset. The name and\nenabled flag are never touched. `Locked` if the item's track is locked.",
+    "title": "ItemResetProps"
+  },
+  "output": {
+    "type": "object",
+    "additionalProperties": false,
+    "properties": {
+      "item": {
+        "type": "string",
+        "pattern": "^itm_[0-9a-f]{32}$",
+        "description": "The first item."
+      },
+      "changed": {
+        "type": "array",
+        "items": {
+          "type": "string"
+        },
+        "description": "The properties whose value changed on any item (`opacity`, `crop.left`, `blend_mode`,\n...); empty when everything already had its default."
+      }
+    },
+    "required": [
+      "item",
+      "changed"
+    ],
+    "description": "Result of `item.reset_props`.",
+    "title": "ItemResetPropsOutput"
+  }
+}

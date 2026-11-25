@@ -3,7 +3,9 @@
 
 use std::{fmt, str::FromStr};
 
-use schemars::JsonSchema;
+use std::borrow::Cow;
+
+use schemars::{JsonSchema, Schema, SchemaGenerator, json_schema};
 use serde::{Deserialize, Deserializer, Serialize, de};
 use serde_json::{Map, Value};
 
@@ -43,7 +45,7 @@ pub fn is_preset_name(s: &str) -> bool {
 /// fed into one lerp per value type (§5). On the wire it is an object tagged by `kind`
 /// (`{"kind": "bezier", "x1": 0.42, "y1": 0, "x2": 0.58, "y2": 1, "preset": "ease_in_out"}`)
 /// with exactly its fields; construction checks their ranges (KF-5) and the hint (KF-7).
-#[derive(Clone, Debug, PartialEq, Serialize, JsonSchema)]
+#[derive(Clone, Debug, PartialEq, Serialize, JsonSchema, specta::Type)]
 #[serde(tag = "kind", rename_all = "snake_case", deny_unknown_fields)]
 pub enum Interp {
     /// The key's value until the next key, then a jump (§4.2).
@@ -56,15 +58,19 @@ pub enum Interp {
     Bezier {
         /// First control point, time axis, in `[0, 1]`.
         #[schemars(range(min = 0.0, max = 1.0))]
+        #[specta(type = specta_typescript::Number)]
         x1: f64,
         /// First control point, progress axis, in `[−10, 10]` (beyond `[0, 1]` overshoots).
         #[schemars(range(min = -10.0, max = 10.0))]
+        #[specta(type = specta_typescript::Number)]
         y1: f64,
         /// Second control point, time axis, in `[0, 1]`.
         #[schemars(range(min = 0.0, max = 1.0))]
+        #[specta(type = specta_typescript::Number)]
         x2: f64,
         /// Second control point, progress axis, in `[−10, 10]`.
         #[schemars(range(min = -10.0, max = 10.0))]
+        #[specta(type = specta_typescript::Number)]
         y2: f64,
         /// The preset these numbers came from, a hint for the UI and agents (§4.6). Never read
         /// by evaluation.
@@ -77,12 +83,15 @@ pub enum Interp {
     Spring {
         /// Stiffness, N/m, in `[1, 10000]`.
         #[schemars(range(min = 1.0, max = 10_000.0))]
+        #[specta(type = specta_typescript::Number)]
         stiffness: f64,
         /// Damping, N·s/m, in `[0, 1000]` (0 never settles).
         #[schemars(range(min = 0.0, max = 1_000.0))]
+        #[specta(type = specta_typescript::Number)]
         damping: f64,
         /// Mass, kg, in `[0.1, 100]`.
         #[schemars(range(min = 0.1, max = 100.0))]
+        #[specta(type = specta_typescript::Number)]
         mass: f64,
         /// A hard stop at the target: the motion reflects instead of passing it.
         bounce: bool,
@@ -361,9 +370,7 @@ fn number(obj: &Map<String, Value>, kind: &str, field: &str) -> Result<f64, Keyf
 ///
 /// The table is part of the spec: changing a preset's numbers means a new name, because
 /// documents store the expanded numbers and old projects must never change appearance.
-#[derive(
-    Clone, Copy, Debug, PartialEq, Eq, Hash, Serialize, Deserialize, JsonSchema, specta::Type,
-)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, Serialize, Deserialize, specta::Type)]
 #[serde(rename_all = "snake_case")]
 pub enum Easing {
     /// The key's value until the next key.
@@ -561,6 +568,23 @@ impl Easing {
     #[must_use]
     pub fn to_bezier(self) -> Option<[f64; 4]> {
         self.interp().to_bezier()
+    }
+}
+
+/// One flat `enum` of the names: a `oneOf` with a description per name would cost an agent's
+/// tool list hundreds of tokens (keyframes §10).
+impl JsonSchema for Easing {
+    fn schema_name() -> Cow<'static, str> {
+        "Easing".into()
+    }
+
+    fn json_schema(_: &mut SchemaGenerator) -> Schema {
+        let names: Vec<&str> = Easing::ALL.iter().map(|e| e.name()).collect();
+        json_schema!({
+            "description": "A preset name (ease_in, ease_out, back_out, spring, bounce, ...), `linear` or `hold`.",
+            "type": "string",
+            "enum": names
+        })
     }
 }
 

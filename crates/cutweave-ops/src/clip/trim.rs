@@ -31,8 +31,12 @@
 //! Source positions follow a start edge by `round(δ × speed)` (INV-47; [`Speed`], always 1 until
 //! WP-2D.01 adds speed to the model); a still keeps its source position. Attached children of a
 //! trimmed clip keep their start unless it falls outside the clip (then they are clamped into
-//! it); children of a slid clip move with it (INV-36). Item markers and keyframes keep their
-//! item-relative times (retiming them on trims is WP-2C.03's).
+//! it); children of a slid clip move with it (INV-36). Item markers keep their item-relative times.
+//!
+//! **Keyframes** (WP-2C.03, keyframes §8.1) follow their content: a start-edge trim, a roll's
+//! right clip and a slide's right neighbour shift their keys by `−δ`, so keys stay on the same
+//! frame of the media; end-edge trims, slips and the slid clip leave keys alone. Keys outside
+//! the trimmed range are kept unless `prune_keyframes` is set.
 //!
 //! **IDs** (INV-23): none of these commands creates items; a child that would overlap after
 //! being clamped or carried gets a new track above its own (INV-37), drawn when it is created.
@@ -48,8 +52,9 @@ use cutweave_model::{
 use super::{clip_of, is_still, media_bound, media_of};
 use crate::{
     item::{Located, members},
+    keyframe::retime::Retime,
     report::EditReport,
-    timeline::placement::{DryIds, Edit, Ids, Plan, frame_flicks, span, time},
+    timeline::placement::{DryIds, Edit, Ids, Plan, dur, frame_flicks, span, time},
     track::check_editable_kind,
     util::{resolve_frame_time, resolve_sample_time},
 };
@@ -667,6 +672,9 @@ pub struct ClipTrim {
     pub clamp: Option<bool>,
     /// Snap to the audio sample grid (audio clips only).
     pub fine: Option<bool>,
+    /// Drop keyframes the trim leaves outside the clip, keeping the ones that bracket it
+    /// (default `false`: trims keep every key).
+    pub prune_keyframes: Option<bool>,
 }
 
 /// Trims an edge and closes or opens the space after the clip: the clip's start stays, and
@@ -702,9 +710,12 @@ pub struct ClipRippleTrim {
     pub fine: Option<bool>,
     /// Move what follows on every track of the sequence (default `false`).
     pub ripple_all_tracks: Option<bool>,
+    /// Drop keyframes the trim leaves outside the clip (default `false`).
+    pub prune_keyframes: Option<bool>,
 }
 
 /// An edge trim, rippling or not (the params `clip.trim` and `clip.ripple_trim` share).
+#[allow(clippy::struct_excessive_bools)] // the independent flags of the two commands
 struct EdgeTrim {
     item: ItemId,
     edge: TrimEdge,
@@ -712,6 +723,7 @@ struct EdgeTrim {
     unlink: bool,
     clamp: bool,
     fine: bool,
+    prune: bool,
     /// `Some(all)`: a ripple trim (`all`: every track ripples); `None`: `clip.trim`, which
     /// ripples only on the magnetic track.
     ripple: Option<bool>,
@@ -770,6 +782,7 @@ impl EdgeTrim {
             };
             if after != m.span {
                 e.retime(m.id, after.start, after.len, after.source_in);
+                rekey_edge(&mut e, m, self.edge, d, after.len, self.prune);
             }
         }
         if self.unlink
@@ -789,6 +802,29 @@ impl EdgeTrim {
         }
         let planned = Planned::finish(e, applied, ids, self.fine)?;
         Ok((planned, clips.iter().map(|m| m.id).collect()))
+    }
+}
+
+/// Moves the keys of a trimmed clip with its content (keyframes §8.1): a start edge shifts
+/// them by `−d`; an end edge keeps them (`prune`: drops those past the new end).
+fn rekey_edge(e: &mut Edit<'_>, m: &Member, edge: TrimEdge, d: i64, new_len: i64, prune: bool) {
+    match edge {
+        TrimEdge::Start => e.rekey(
+            m.id,
+            Retime::Head {
+                delta: time(d),
+                duration: dur(m.span.len),
+                prune,
+            },
+        ),
+        TrimEdge::End if prune => e.rekey(
+            m.id,
+            Retime::Tail {
+                duration: dur(new_len),
+                prune,
+            },
+        ),
+        TrimEdge::End => {}
     }
 }
 
@@ -878,6 +914,7 @@ impl ClipTrim {
             unlink: self.unlink.unwrap_or(false),
             clamp: self.clamp.unwrap_or(false),
             fine: self.fine.unwrap_or(false),
+            prune: self.prune_keyframes.unwrap_or(false),
             ripple: None,
         })
     }
@@ -914,6 +951,7 @@ impl ClipRippleTrim {
             unlink: self.unlink.unwrap_or(false),
             clamp: self.clamp.unwrap_or(false),
             fine: self.fine.unwrap_or(false),
+            prune: self.prune_keyframes.unwrap_or(false),
             ripple: Some(self.ripple_all_tracks.unwrap_or(false)),
         })
     }
@@ -963,6 +1001,8 @@ pub struct ClipRoll {
     pub delta: Option<TimeInput>,
     /// Stop at the nearest limit instead of failing (default `false`).
     pub clamp: Option<bool>,
+    /// Drop keyframes the roll leaves outside the clips (default `false`).
+    pub prune_keyframes: Option<bool>,
 }
 
 impl ClipRoll {
@@ -1002,13 +1042,16 @@ impl ClipRoll {
         let d = applied.delta;
         let mut e = Edit::new(doc, sequence, pointer)?;
         if d != 0 {
+            let prune = self.prune_keyframes.unwrap_or(false);
             for m in &lefts {
                 let after = m.span.tail(d);
                 e.retime(m.id, after.start, after.len, after.source_in);
+                rekey_edge(&mut e, m, TrimEdge::End, d, after.len, prune);
             }
             for m in &rights {
                 let after = m.span.head(d, false);
                 e.retime(m.id, after.start, after.len, after.source_in);
+                rekey_edge(&mut e, m, TrimEdge::Start, d, after.len, prune);
             }
         }
         Planned::finish(e, applied, ids, false)
@@ -1142,6 +1185,8 @@ pub struct ClipSlide {
     pub delta: TimeInput,
     /// Stop at the nearest limit instead of failing (default `false`).
     pub clamp: Option<bool>,
+    /// Drop keyframes the slide leaves outside the neighbours (default `false`).
+    pub prune_keyframes: Option<bool>,
 }
 
 /// The clips a slide moves: the clip's group, and the groups of the clips touching it.
@@ -1220,7 +1265,7 @@ impl ClipSlide {
         let d = applied.delta;
         let mut e = Edit::new(doc, sequence, "/delta")?;
         if d != 0 {
-            slide_by(&mut e, &parts, d);
+            slide_by(&mut e, &parts, d, self.prune_keyframes.unwrap_or(false));
         }
         Planned::finish(e, applied, ids, false)
     }
@@ -1235,14 +1280,16 @@ fn neighbours_touching_before(seq: &Sequence, m: &Member, before: &BTreeSet<Item
 
 /// Applies a slide by `d`: neighbours trimmed, the clip and its partners moved, their children
 /// carried along (INV-36).
-fn slide_by(e: &mut Edit<'_>, parts: &SlideParts, d: i64) {
+fn slide_by(e: &mut Edit<'_>, parts: &SlideParts, d: i64, prune: bool) {
     for m in &parts.before {
         let after = m.span.tail(d);
         e.retime(m.id, after.start, after.len, after.source_in);
+        rekey_edge(e, m, TrimEdge::End, d, after.len, prune);
     }
     for m in &parts.after {
         let after = m.span.head(d, false);
         e.retime(m.id, after.start, after.len, after.source_in);
+        rekey_edge(e, m, TrimEdge::Start, d, after.len, prune);
     }
     let mut deltas = std::collections::BTreeMap::new();
     for m in &parts.moving {

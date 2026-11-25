@@ -17,6 +17,8 @@ export const READ_ONLY_METHODS: ReadonlySet<string> = new Set([
   "job.list",
   "job.status",
   "job.wait",
+  "keyframe.copy",
+  "keyframe.eval",
   "media.cache_status",
   "media.capabilities",
   "media.list",

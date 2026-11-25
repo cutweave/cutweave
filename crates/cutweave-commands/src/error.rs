@@ -88,6 +88,8 @@ pub enum ResourceKind {
     Checkpoint,
     /// A background job (`job_…`, WP-1D.07).
     Job,
+    /// A keyframe, addressed by item, property and time (`keyframe.*`, WP-2C.03).
+    Keyframe,
 }
 
 impl ResourceKind {
@@ -106,6 +108,7 @@ impl ResourceKind {
             ResourceKind::Transaction => "transaction",
             ResourceKind::Checkpoint => "checkpoint",
             ResourceKind::Job => "job",
+            ResourceKind::Keyframe => "keyframe",
         }
     }
 }

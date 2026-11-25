@@ -5,7 +5,7 @@ expression: "json!({\n    \"meta\": serde_json::to_value(meta).unwrap(), \"input
 {
   "meta": {
     "name": "item.set_props",
-    "summary": "Set an item's name, enabled, opacity, audio_gain or transform (partial)",
+    "summary": "Set an item's name, enabled, opacity, audio, transform, crop, flip or blend mode (partial)",
     "kind": "command",
     "undoable": true,
     "view": false,
@@ -23,9 +23,26 @@ expression: "json!({\n    \"meta\": serde_json::to_value(meta).unwrap(), \"input
       "additionalProperties": false,
       "properties": {
         "item": {
-          "type": "string",
+          "type": [
+            "string",
+            "null"
+          ],
           "pattern": "^itm_[0-9a-f]{32}$",
-          "description": "The item."
+          "description": "The item (or `items`).",
+          "default": null
+        },
+        "items": {
+          "type": [
+            "array",
+            "null"
+          ],
+          "items": {
+            "description": "A Item id: `^itm_[0-9a-f]{32}$`.",
+            "type": "string",
+            "pattern": "^itm_[0-9a-f]{32}$"
+          },
+          "description": "Items to give the same properties.",
+          "default": null
         },
         "props": {
           "type": "object",
@@ -51,7 +68,9 @@ expression: "json!({\n    \"meta\": serde_json::to_value(meta).unwrap(), \"input
                 "null"
               ],
               "format": "double",
-              "description": "Opacity `0.0..=1.0`."
+              "description": "Opacity `0.0..=1.0`.",
+              "minimum": 0.0,
+              "maximum": 1.0
             },
             "audio_gain": {
               "type": [
@@ -59,7 +78,19 @@ expression: "json!({\n    \"meta\": serde_json::to_value(meta).unwrap(), \"input
                 "null"
               ],
               "format": "double",
-              "description": "Clip gain in dB, `-144..=48` (0 = unchanged)."
+              "description": "Clip gain in dB, `-144..=48` (0 = unchanged).",
+              "minimum": -144.0,
+              "maximum": 48.0
+            },
+            "audio_pan": {
+              "type": [
+                "number",
+                "null"
+              ],
+              "format": "double",
+              "description": "Stereo position, `-1` (left) to `1` (right).",
+              "minimum": -1.0,
+              "maximum": 1.0
             },
             "transform": {
               "type": [
@@ -150,16 +181,138 @@ expression: "json!({\n    \"meta\": serde_json::to_value(meta).unwrap(), \"input
                 }
               },
               "description": "Placement on the canvas (partial)."
+            },
+            "crop": {
+              "type": [
+                "object",
+                "null"
+              ],
+              "additionalProperties": false,
+              "properties": {
+                "left": {
+                  "type": [
+                    "number",
+                    "null"
+                  ],
+                  "format": "double",
+                  "description": "Fraction removed from the left edge.",
+                  "minimum": 0.0,
+                  "maximum": 1.0
+                },
+                "top": {
+                  "type": [
+                    "number",
+                    "null"
+                  ],
+                  "format": "double",
+                  "description": "Fraction removed from the top edge.",
+                  "minimum": 0.0,
+                  "maximum": 1.0
+                },
+                "right": {
+                  "type": [
+                    "number",
+                    "null"
+                  ],
+                  "format": "double",
+                  "description": "Fraction removed from the right edge.",
+                  "minimum": 0.0,
+                  "maximum": 1.0
+                },
+                "bottom": {
+                  "type": [
+                    "number",
+                    "null"
+                  ],
+                  "format": "double",
+                  "description": "Fraction removed from the bottom edge.",
+                  "minimum": 0.0,
+                  "maximum": 1.0
+                }
+              },
+              "description": "Edges of the source picture cut away (partial)."
+            },
+            "flip": {
+              "type": [
+                "object",
+                "null"
+              ],
+              "additionalProperties": false,
+              "properties": {
+                "horizontal": {
+                  "type": [
+                    "boolean",
+                    "null"
+                  ],
+                  "description": "Mirror left-right."
+                },
+                "vertical": {
+                  "type": [
+                    "boolean",
+                    "null"
+                  ],
+                  "description": "Mirror top-bottom."
+                }
+              },
+              "description": "Mirroring (partial)."
+            },
+            "blend_mode": {
+              "description": "How the item combines with what is below.",
+              "type": [
+                "string",
+                "null"
+              ],
+              "enum": [
+                "normal",
+                "multiply",
+                "screen",
+                "overlay",
+                "darken",
+                "lighten",
+                "add",
+                "soft_light",
+                null
+              ]
             }
           },
           "description": "The properties to change; at least one."
+        },
+        "auto_key": {
+          "type": [
+            "boolean",
+            "null"
+          ],
+          "description": "Key animated properties at `at` (default true).",
+          "default": null
+        },
+        "at": {
+          "anyOf": [
+            {
+              "description": "A time: integer flicks (1/705600000 s), or a string: seconds (\"62.5s\"), a frame (\"f:1500\") or a timecode (\"00:01:02:03\", drop-frame \"00:01:02;03\"). Frames and timecodes use the frame rate of the target's sequence.",
+              "anyOf": [
+                {
+                  "type": "integer",
+                  "minimum": -9007199254740991,
+                  "maximum": 9007199254740991
+                },
+                {
+                  "type": "string",
+                  "pattern": "^-?[0-9]+(\\.[0-9]+)?s$|^-?[0-9]+$|^f:[0-9]+$|^[0-9]+[:;][0-9]+[:;][0-9]+[:;][0-9]+$"
+                }
+              ]
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "description": "Sequence time (the playhead) to key animated properties at.",
+          "default": null
         }
       },
       "required": [
-        "item",
         "props"
       ],
-      "description": "Changes an item's name, enabled flag, opacity, clip gain or transform; absent fields keep\ntheir value and setting a value it already has is a no-op. `Locked` if the item's track is\nlocked.",
+      "description": "Set item properties (partial). An animated property is keyed at `at` (sequence time,\nrequired then). Example: `{item, props:{opacity:0.5, crop:{left:0.25}}}`.\n\nAbsent fields keep their value; setting a value it already has is a no-op. Static properties\nare set as before and `at` is ignored. With `auto_key: false` an animated property is\n`Invalid`: `keyframe_clear` makes it static first. `Locked` if the track is locked.",
       "title": "ItemSetProps"
     },
     "output_schema": {
@@ -169,19 +322,73 @@ expression: "json!({\n    \"meta\": serde_json::to_value(meta).unwrap(), \"input
         "item": {
           "type": "string",
           "pattern": "^itm_[0-9a-f]{32}$",
-          "description": "The item."
+          "description": "The item (the first of `items`)."
         },
         "changed": {
           "type": "array",
           "items": {
             "type": "string"
           },
-          "description": "The props whose value actually changed (`name`, `enabled`, `opacity`, `audio_gain`,\n`transform.position`, ...); empty if everything was already as requested."
+          "description": "The props whose value actually changed on any item (`name`, `enabled`, `opacity`,\n`audio_gain`, `transform.position`, ...); empty if everything was already as requested."
+        },
+        "keyed": {
+          "type": "array",
+          "items": {
+            "description": "A key `item.set_props` wrote on an animated property.",
+            "type": "object",
+            "properties": {
+              "item": {
+                "description": "The item.",
+                "type": "string",
+                "pattern": "^itm_[0-9a-f]{32}$"
+              },
+              "prop": {
+                "description": "The property.",
+                "type": "string",
+                "enum": [
+                  "transform.position",
+                  "transform.scale",
+                  "transform.rotation",
+                  "transform.anchor",
+                  "opacity",
+                  "crop.left",
+                  "crop.top",
+                  "crop.right",
+                  "crop.bottom",
+                  "flip.horizontal",
+                  "flip.vertical",
+                  "audio_gain",
+                  "audio_pan"
+                ]
+              },
+              "t": {
+                "description": "Item time of the key, after snapping.",
+                "type": "integer",
+                "minimum": -9007199254740991,
+                "maximum": 9007199254740991
+              },
+              "at": {
+                "description": "Sequence time of the key, after snapping.",
+                "type": "integer",
+                "minimum": -9007199254740991,
+                "maximum": 9007199254740991
+              }
+            },
+            "additionalProperties": false,
+            "required": [
+              "item",
+              "prop",
+              "t",
+              "at"
+            ]
+          },
+          "description": "The keys written on animated properties."
         }
       },
       "required": [
         "item",
-        "changed"
+        "changed",
+        "keyed"
       ],
       "description": "Result of `item.set_props`.",
       "title": "ItemSetPropsOutput"
@@ -192,9 +399,26 @@ expression: "json!({\n    \"meta\": serde_json::to_value(meta).unwrap(), \"input
     "additionalProperties": false,
     "properties": {
       "item": {
-        "type": "string",
+        "type": [
+          "string",
+          "null"
+        ],
         "pattern": "^itm_[0-9a-f]{32}$",
-        "description": "The item."
+        "description": "The item (or `items`).",
+        "default": null
+      },
+      "items": {
+        "type": [
+          "array",
+          "null"
+        ],
+        "items": {
+          "description": "A Item id: `^itm_[0-9a-f]{32}$`.",
+          "type": "string",
+          "pattern": "^itm_[0-9a-f]{32}$"
+        },
+        "description": "Items to give the same properties.",
+        "default": null
       },
       "props": {
         "type": "object",
@@ -220,7 +444,9 @@ expression: "json!({\n    \"meta\": serde_json::to_value(meta).unwrap(), \"input
               "null"
             ],
             "format": "double",
-            "description": "Opacity `0.0..=1.0`."
+            "description": "Opacity `0.0..=1.0`.",
+            "minimum": 0.0,
+            "maximum": 1.0
           },
           "audio_gain": {
             "type": [
@@ -228,7 +454,19 @@ expression: "json!({\n    \"meta\": serde_json::to_value(meta).unwrap(), \"input
               "null"
             ],
             "format": "double",
-            "description": "Clip gain in dB, `-144..=48` (0 = unchanged)."
+            "description": "Clip gain in dB, `-144..=48` (0 = unchanged).",
+            "minimum": -144.0,
+            "maximum": 48.0
+          },
+          "audio_pan": {
+            "type": [
+              "number",
+              "null"
+            ],
+            "format": "double",
+            "description": "Stereo position, `-1` (left) to `1` (right).",
+            "minimum": -1.0,
+            "maximum": 1.0
           },
           "transform": {
             "type": [
@@ -319,16 +557,138 @@ expression: "json!({\n    \"meta\": serde_json::to_value(meta).unwrap(), \"input
               }
             },
             "description": "Placement on the canvas (partial)."
+          },
+          "crop": {
+            "type": [
+              "object",
+              "null"
+            ],
+            "additionalProperties": false,
+            "properties": {
+              "left": {
+                "type": [
+                  "number",
+                  "null"
+                ],
+                "format": "double",
+                "description": "Fraction removed from the left edge.",
+                "minimum": 0.0,
+                "maximum": 1.0
+              },
+              "top": {
+                "type": [
+                  "number",
+                  "null"
+                ],
+                "format": "double",
+                "description": "Fraction removed from the top edge.",
+                "minimum": 0.0,
+                "maximum": 1.0
+              },
+              "right": {
+                "type": [
+                  "number",
+                  "null"
+                ],
+                "format": "double",
+                "description": "Fraction removed from the right edge.",
+                "minimum": 0.0,
+                "maximum": 1.0
+              },
+              "bottom": {
+                "type": [
+                  "number",
+                  "null"
+                ],
+                "format": "double",
+                "description": "Fraction removed from the bottom edge.",
+                "minimum": 0.0,
+                "maximum": 1.0
+              }
+            },
+            "description": "Edges of the source picture cut away (partial)."
+          },
+          "flip": {
+            "type": [
+              "object",
+              "null"
+            ],
+            "additionalProperties": false,
+            "properties": {
+              "horizontal": {
+                "type": [
+                  "boolean",
+                  "null"
+                ],
+                "description": "Mirror left-right."
+              },
+              "vertical": {
+                "type": [
+                  "boolean",
+                  "null"
+                ],
+                "description": "Mirror top-bottom."
+              }
+            },
+            "description": "Mirroring (partial)."
+          },
+          "blend_mode": {
+            "description": "How the item combines with what is below.",
+            "type": [
+              "string",
+              "null"
+            ],
+            "enum": [
+              "normal",
+              "multiply",
+              "screen",
+              "overlay",
+              "darken",
+              "lighten",
+              "add",
+              "soft_light",
+              null
+            ]
           }
         },
         "description": "The properties to change; at least one."
+      },
+      "auto_key": {
+        "type": [
+          "boolean",
+          "null"
+        ],
+        "description": "Key animated properties at `at` (default true).",
+        "default": null
+      },
+      "at": {
+        "anyOf": [
+          {
+            "description": "A time: integer flicks (1/705600000 s), or a string: seconds (\"62.5s\"), a frame (\"f:1500\") or a timecode (\"00:01:02:03\", drop-frame \"00:01:02;03\"). Frames and timecodes use the frame rate of the target's sequence.",
+            "anyOf": [
+              {
+                "type": "integer",
+                "minimum": -9007199254740991,
+                "maximum": 9007199254740991
+              },
+              {
+                "type": "string",
+                "pattern": "^-?[0-9]+(\\.[0-9]+)?s$|^-?[0-9]+$|^f:[0-9]+$|^[0-9]+[:;][0-9]+[:;][0-9]+[:;][0-9]+$"
+              }
+            ]
+          },
+          {
+            "type": "null"
+          }
+        ],
+        "description": "Sequence time (the playhead) to key animated properties at.",
+        "default": null
       }
     },
     "required": [
-      "item",
       "props"
     ],
-    "description": "Changes an item's name, enabled flag, opacity, clip gain or transform; absent fields keep\ntheir value and setting a value it already has is a no-op. `Locked` if the item's track is\nlocked.",
+    "description": "Set item properties (partial). An animated property is keyed at `at` (sequence time,\nrequired then). Example: `{item, props:{opacity:0.5, crop:{left:0.25}}}`.\n\nAbsent fields keep their value; setting a value it already has is a no-op. Static properties\nare set as before and `at` is ignored. With `auto_key: false` an animated property is\n`Invalid`: `keyframe_clear` makes it static first. `Locked` if the track is locked.",
     "title": "ItemSetProps"
   },
   "output": {
@@ -338,19 +698,73 @@ expression: "json!({\n    \"meta\": serde_json::to_value(meta).unwrap(), \"input
       "item": {
         "type": "string",
         "pattern": "^itm_[0-9a-f]{32}$",
-        "description": "The item."
+        "description": "The item (the first of `items`)."
       },
       "changed": {
         "type": "array",
         "items": {
           "type": "string"
         },
-        "description": "The props whose value actually changed (`name`, `enabled`, `opacity`, `audio_gain`,\n`transform.position`, ...); empty if everything was already as requested."
+        "description": "The props whose value actually changed on any item (`name`, `enabled`, `opacity`,\n`audio_gain`, `transform.position`, ...); empty if everything was already as requested."
+      },
+      "keyed": {
+        "type": "array",
+        "items": {
+          "description": "A key `item.set_props` wrote on an animated property.",
+          "type": "object",
+          "properties": {
+            "item": {
+              "description": "The item.",
+              "type": "string",
+              "pattern": "^itm_[0-9a-f]{32}$"
+            },
+            "prop": {
+              "description": "The property.",
+              "type": "string",
+              "enum": [
+                "transform.position",
+                "transform.scale",
+                "transform.rotation",
+                "transform.anchor",
+                "opacity",
+                "crop.left",
+                "crop.top",
+                "crop.right",
+                "crop.bottom",
+                "flip.horizontal",
+                "flip.vertical",
+                "audio_gain",
+                "audio_pan"
+              ]
+            },
+            "t": {
+              "description": "Item time of the key, after snapping.",
+              "type": "integer",
+              "minimum": -9007199254740991,
+              "maximum": 9007199254740991
+            },
+            "at": {
+              "description": "Sequence time of the key, after snapping.",
+              "type": "integer",
+              "minimum": -9007199254740991,
+              "maximum": 9007199254740991
+            }
+          },
+          "additionalProperties": false,
+          "required": [
+            "item",
+            "prop",
+            "t",
+            "at"
+          ]
+        },
+        "description": "The keys written on animated properties."
       }
     },
     "required": [
       "item",
-      "changed"
+      "changed",
+      "keyed"
     ],
     "description": "Result of `item.set_props`.",
     "title": "ItemSetPropsOutput"

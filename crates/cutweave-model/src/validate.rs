@@ -9,10 +9,10 @@ use std::collections::{BTreeMap, BTreeSet};
 use serde::Serialize;
 
 use crate::{
-    Animatable, CURRENT_SCHEMA_VERSION, Clip, Custom, Duration, EntityKind, FolderId, GroupId,
-    Item, ItemId, MAX_FOLDER_DEPTH, MAX_SAFE_FLICKS, MediaId, MediaKind, Project, Sequence,
-    SequenceFormat, SequenceId, Time, TrackId, TrackKind, Vec2, folder_name_key,
-    folder_name_problem, media_name_problem,
+    CURRENT_SCHEMA_VERSION, Clip, Custom, Duration, EntityKind, FolderId, GroupId, Item, ItemId,
+    MAX_FOLDER_DEPTH, MAX_SAFE_FLICKS, MediaId, MediaKind, Project, PropId, PropRef, Sequence,
+    SequenceFormat, SequenceId, Time, TrackId, TrackKind, folder_name_key, folder_name_problem,
+    media_name_problem,
 };
 
 /// Largest canvas side accepted by validation.
@@ -631,33 +631,7 @@ impl Project {
                 }
             }
         }
-        let gain = format!("{path}/audio/gain");
-        check_finite(&gain, *clip.audio.gain.value(), out);
-        let visual = &clip.visual;
-        let opacity = *visual.opacity.value();
-        if !(0.0..=1.0).contains(&opacity) {
-            out.push(Invariant::InvalidValue {
-                path: format!("{path}/visual/opacity"),
-                reason: format!("opacity must be between 0 and 1, got {opacity}"),
-            });
-        }
-        let transform = format!("{path}/visual/transform");
-        check_vec2(
-            &format!("{transform}/position"),
-            &visual.transform.position,
-            out,
-        );
-        check_vec2(&format!("{transform}/scale"), &visual.transform.scale, out);
-        check_vec2(
-            &format!("{transform}/anchor"),
-            &visual.transform.anchor,
-            out,
-        );
-        check_finite(
-            &format!("{transform}/rotation"),
-            *visual.transform.rotation.value(),
-            out,
-        );
+        check_props(path, clip, out);
     }
 
     fn check_compound_cycles(&self, out: &mut Vec<Invariant>) {
@@ -863,12 +837,22 @@ fn check_finite(path: &str, value: f64, out: &mut Vec<Invariant>) {
     }
 }
 
-fn check_vec2(path: &str, value: &Animatable<Vec2>, out: &mut Vec<Invariant>) {
-    if !value.value().is_finite() {
-        out.push(Invariant::InvalidValue {
-            path: path.to_owned(),
-            reason: "both components must be finite numbers".into(),
-        });
+/// Every animatable property against its registry row (keyframes §7, KF-4): a static value or
+/// every key must be finite and within the stored range.
+fn check_props(path: &str, clip: &crate::Clip, out: &mut Vec<Invariant>) {
+    for id in PropId::ALL {
+        let spec = id.spec();
+        let checked = match clip.prop(id) {
+            PropRef::Scalar(a) => a.check_range(spec.stored),
+            PropRef::Vec2(a) => a.check_range(spec.stored),
+            PropRef::Bool(a) => a.check_range(spec.stored),
+        };
+        if let Err(e) = checked {
+            out.push(Invariant::InvalidValue {
+                path: format!("{path}/{}", spec.path.replace('.', "/")),
+                reason: e.to_string(),
+            });
+        }
     }
 }
 

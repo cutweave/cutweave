@@ -111,6 +111,14 @@ expression: "json!({\n    \"meta\": serde_json::to_value(meta).unwrap(), \"input
           ],
           "description": "Snap to the audio sample grid (audio clips only).",
           "default": null
+        },
+        "prune_keyframes": {
+          "type": [
+            "boolean",
+            "null"
+          ],
+          "description": "Drop keyframes the trim leaves outside the clip, keeping the ones that bracket it\n(default `false`: trims keep every key).",
+          "default": null
         }
       },
       "required": [
@@ -512,6 +520,14 @@ expression: "json!({\n    \"meta\": serde_json::to_value(meta).unwrap(), \"input
           "null"
         ],
         "description": "Snap to the audio sample grid (audio clips only).",
+        "default": null
+      },
+      "prune_keyframes": {
+        "type": [
+          "boolean",
+          "null"
+        ],
+        "description": "Drop keyframes the trim leaves outside the clip, keeping the ones that bracket it\n(default `false`: trims keep every key).",
         "default": null
       }
     },

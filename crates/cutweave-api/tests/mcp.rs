@@ -95,8 +95,9 @@ async fn current_rev(client: &Client) -> u64 {
 // ----- catalog ------------------------------------------------------------------------------
 
 /// Acceptance 1: `/mcp` lists exactly the registry's core tools plus the 4 generic tools (19 in
-/// P1 since `export_start`, WP-1E.03; the core engine has no renderer, so no `render_frame`: the
-/// full engine lists 20, tests/mcp_frames.rs), within the
+/// P1 since `export_start`, WP-1E.03, 20 with `keyframe_set`, WP-2C.03; the core engine has no
+/// renderer, so no `render_frame`: the
+/// full engine lists 21, tests/mcp_frames.rs), within the
 /// standard budget (R36), on both revisions.
 #[tokio::test]
 async fn mcp_lists_the_core_and_generic_tools_within_the_standard_budget() {
@@ -106,7 +107,7 @@ async fn mcp_lists_the_core_and_generic_tools_within_the_standard_budget() {
         .map(|t| t["name"].as_str().unwrap().to_owned())
         .collect();
     expected.extend(catalog::GENERIC_TOOLS.map(str::to_owned));
-    assert_eq!(expected.len(), 19);
+    assert_eq!(expected.len(), 20);
     for revision in Revision::ALL {
         let client = h.client(Profile::Standard, revision).await;
         assert_eq!(client.negotiated(), revision.version());
@@ -223,6 +224,7 @@ async fn every_tool_has_the_right_annotations() {
         // WP-2A.03: a `delta` move repeated moves again, so `item_move` is not idempotent.
         ("item_move", false, false, false),
         ("item_set_props", false, false, true),
+        ("keyframe_set", false, false, true),
         ("job_status", true, false, true),
         ("job_wait", true, false, true),
         ("media_import", false, false, true),
@@ -474,6 +476,12 @@ async fn each_core_tool_returns_the_engine_output() {
         same!(
             "item_set_props",
             json!({ "item": split["right"], "props": { "name": "B", "opacity": 0.5 } })
+        );
+        same!(
+            "keyframe_set",
+            json!({ "item": split["right"], "prop": "opacity",
+                    "keys": [{ "at": "6s", "value": 0.0, "easing": "ease_out" },
+                             { "at": "8s", "value": 1.0 }] })
         );
         same!("item_delete", json!({ "items": [split["right"]] }));
         same!("edit_undo", json!({}));

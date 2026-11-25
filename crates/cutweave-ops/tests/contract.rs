@@ -384,6 +384,88 @@ const CONTRACT: &[Row] = &[
         true,
         false,
     ),
+    // WP-2C.03: keyframes and property resets.
+    (
+        "keyframe.set",
+        EntryKind::Command,
+        McpExposure::Core,
+        false,
+        false,
+        true,
+        true,
+    ),
+    (
+        "keyframe.delete",
+        EntryKind::Command,
+        McpExposure::Catalog,
+        false,
+        true,
+        false,
+        true,
+    ),
+    (
+        "keyframe.move",
+        EntryKind::Command,
+        McpExposure::Catalog,
+        false,
+        false,
+        false,
+        true,
+    ),
+    (
+        "keyframe.set_interp",
+        EntryKind::Command,
+        McpExposure::Catalog,
+        false,
+        false,
+        true,
+        true,
+    ),
+    (
+        "keyframe.clear",
+        EntryKind::Command,
+        McpExposure::Catalog,
+        false,
+        true,
+        true,
+        true,
+    ),
+    (
+        "keyframe.paste",
+        EntryKind::Command,
+        McpExposure::Catalog,
+        false,
+        false,
+        true,
+        true,
+    ),
+    (
+        "keyframe.copy",
+        EntryKind::Query,
+        McpExposure::Catalog,
+        true,
+        false,
+        true,
+        false,
+    ),
+    (
+        "keyframe.eval",
+        EntryKind::Query,
+        McpExposure::Catalog,
+        true,
+        false,
+        true,
+        false,
+    ),
+    (
+        "item.reset_props",
+        EntryKind::Command,
+        McpExposure::Catalog,
+        false,
+        false,
+        true,
+        true,
+    ),
     // WP-1D.07: engine-state readers are read-only engine commands (like `edit.history`).
     (
         "job.status",
@@ -594,7 +676,12 @@ fn optional_params_are_not_required_in_the_input_schema() {
     assert_eq!(required("timeline.delete_gap"), ["track", "at"]);
     assert_eq!(required("item.duplicate"), ["items"]);
     assert_eq!(required("item.delete"), ["items"]);
-    assert_eq!(required("item.set_props"), ["item", "props"]);
+    assert_eq!(required("item.set_props"), ["props"]);
+    assert_eq!(required("keyframe.set"), ["prop", "keys"]);
+    assert_eq!(required("keyframe.delete"), ["item", "keys"]);
+    assert_eq!(required("keyframe.move"), ["item", "keys"]);
+    assert_eq!(required("keyframe.eval"), ["item", "prop"]);
+    assert_eq!(required("item.reset_props"), Vec::<String>::new());
     assert_eq!(required("item.get"), ["item"]);
     assert_eq!(required("project.new"), ["name"]);
     assert_eq!(required("job.status"), ["id"]);

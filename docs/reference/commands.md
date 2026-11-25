@@ -2,7 +2,7 @@
 
 # Command reference
 
-Every command and query the engine registers (88 in total), generated from the registry. The full JSON Schemas are in `schema/commands.json` and `schema/queries.json`.
+Every command and query the engine registers (97 in total), generated from the registry. The full JSON Schemas are in `schema/commands.json` and `schema/queries.json`.
 
 MCP exposure: `core` commands are always listed as tools (`item.move` is `item_move`), `catalog` ones are reachable through the catalog tools, `hidden` ones are not exposed.
 
@@ -34,11 +34,20 @@ MCP exposure: `core` commands are always listed as tools (`item.move` is `item_m
 | item | `item.duplicate` | Duplicate items and their linked partners after the selection (inserted on the main track) | command, undoable | catalog |
 | item | `item.get` | Get one item: summary, track, source, audio and visual properties | query | catalog |
 | item | `item.move` | Move items in time and/or to another track (linked partners follow) | command, undoable | core |
-| item | `item.set_props` | Set an item's name, enabled, opacity, audio_gain or transform (partial) | command, undoable, idempotent | core |
+| item | `item.reset_props` | Reset an item's properties (a group, some properties, or all) to their defaults | command, undoable, idempotent | catalog |
+| item | `item.set_props` | Set an item's name, enabled, opacity, audio, transform, crop, flip or blend mode (partial) | command, undoable, idempotent | core |
 | job | `job.cancel` | Cancel a background job (stops within 500 ms; no effect once it finished) | engine, idempotent | catalog |
 | job | `job.list` | List background jobs, newest first (filter by media, state or kind) | engine, read-only, idempotent | catalog |
 | job | `job.status` | Get a background job's state, progress and error (analysis, export) | engine, read-only, idempotent | core |
 | job | `job.wait` | Wait up to timeout_ms (max 60 s) for a background job to finish; returns its state | engine, read-only, idempotent | core |
+| keyframe | `keyframe.clear` | Remove all keys of a property, keeping one value | command, undoable, destructive, idempotent | catalog |
+| keyframe | `keyframe.copy` | Copy keys of an item into a clipboard payload | query | catalog |
+| keyframe | `keyframe.delete` | Delete keys of an item's properties | command, undoable, destructive | catalog |
+| keyframe | `keyframe.eval` | Evaluate an item's property at a time or over a range | query | catalog |
+| keyframe | `keyframe.move` | Move keys of an item's properties in time | command, undoable | catalog |
+| keyframe | `keyframe.paste` | Paste copied keys onto an item at a time | command, undoable, idempotent | catalog |
+| keyframe | `keyframe.set` | Add or replace keys on one property of an item | command, undoable, idempotent | core |
+| keyframe | `keyframe.set_interp` | Set the easing of the segments starting at keys | command, undoable, idempotent | catalog |
 | media | `media.cache_status` | Show the media caches: folder, usage and limits, hardware decoding, frame memory | engine, read-only, idempotent | catalog |
 | media | `media.capabilities` | List the codecs and hardware encoders/decoders the media backend supports | engine, read-only, idempotent | catalog |
 | media | `media.clear_cache` | Delete everything in the named media caches (they rebuild on demand) | engine, destructive, idempotent, ui-only | catalog |

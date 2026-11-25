@@ -284,6 +284,7 @@ describe("the clip menu", () => {
       "Delete clip",
       /^Enable clip|^Disable clip/,
       "Rename…",
+      "Reset properties",
     ]) {
       const row = m.item(label);
       expect(row.disabled, String(label)).toBe(true);
@@ -297,6 +298,12 @@ describe("the clip menu", () => {
     call.mockClear();
     await menuFor("timeline.clip", { ids: [C3] }).choose("Enable clip");
     expect(call).toHaveBeenCalledWith("item.set_props", { item: C3, props: { enabled: true } });
+  });
+
+  it("resets the properties of every selected clip with item.reset_props (WP-2C.03)", async () => {
+    viewStore.getState().setSelection([C1, C2].map((id) => ({ kind: "item", id }) as never));
+    await menuFor("timeline.clip", { ids: [C1] }).choose("Reset properties");
+    expect(call).toHaveBeenCalledWith("item.reset_props", { items: [C1, C2] });
   });
 
   it("opens the rename question, and reveals the clip's media in the bin", async () => {
@@ -544,6 +551,72 @@ describe("the other surfaces", () => {
     expect(sectionsStore.getState().closed.size).toBe(0);
   });
 
+  it("resets an Inspector section's group, and says why a section without one cannot (WP-2C.03)", async () => {
+    await menuFor("inspector.section", {
+      name: "Transform",
+      ids: [C1],
+      data: { group: "transform" },
+    }).choose("Reset section");
+    expect(call).toHaveBeenCalledWith("item.reset_props", { items: [C1], group: "transform" });
+    const none = menuFor("inspector.section", { name: "Timing", ids: [C1], data: {} }).item(
+      "Reset section",
+    );
+    expect(none.disabled).toBe(true);
+    expect(none.disabledReason).toBe("Nothing to reset here");
+    const locked = menuFor("inspector.section", {
+      name: "Transform",
+      ids: [CL],
+      data: { group: "transform" },
+    }).item("Reset section");
+    expect(locked.disabledReason).toBe("Track is locked");
+  });
+
+  it("resets a property row, and adds or removes a keyframe at the playhead (WP-2C.03)", async () => {
+    const row = { name: "Opacity", ids: [C1], data: { text: "100 %", prop: "opacity" } };
+    await menuFor("inspector.row", row).choose("Reset to default");
+    expect(call).toHaveBeenCalledWith("item.reset_props", { items: [C1], props: ["opacity"] });
+    // Static: a key can be added at the playhead (inside the clip), not removed.
+    const m = menuFor("inspector.row", row);
+    expect(m.item("Remove keyframe").disabledReason).toBe("This property has no keyframes");
+    call.mockClear();
+    await m.choose("Add keyframe");
+    expect(call).toHaveBeenCalledWith("keyframe.set", {
+      item: C1,
+      prop: "opacity",
+      keys: [{ at: 5 * F }],
+    });
+    // Animated, with a key at the playhead: it can be removed, not added.
+    const keyed = structuredClone(docStore.getState().project) as unknown as {
+      sequences: Record<string, { tracks: Record<string, { items: Record<string, object> }> }>;
+    };
+    const items = keyed.sequences[SEQ]?.tracks[V1]?.items ?? {};
+    items[C1] = {
+      ...items[C1],
+      visual: {
+        transform: {},
+        opacity: { keyframes: [{ t: 5 * F, value: 0.5, interp: { kind: "linear" } }] },
+      },
+    };
+    docStore.setState({ project: keyed as unknown as Project });
+    const k = menuFor("inspector.row", row);
+    expect(k.item("Add keyframe").disabledReason).toBe("A keyframe is already here");
+    call.mockClear();
+    await k.choose("Remove keyframe");
+    expect(call).toHaveBeenCalledWith("keyframe.delete", {
+      item: C1,
+      keys: [{ prop: "opacity", t: 5 * F }],
+    });
+    // A row without an animatable property (Name) offers neither.
+    const name = menuFor("inspector.row", { name: "Name", ids: [C1], data: { text: "x" } });
+    expect(name.item("Add keyframe").disabled).toBe(true);
+    expect(name.item("Reset to default").disabled).toBe(true);
+    // The playhead outside the clip: no key can be added.
+    viewStore.setState({ playhead: 15 * F });
+    expect(menuFor("inspector.row", row).item("Add keyframe").disabledReason).toBe(
+      "The playhead is not inside the clip",
+    );
+  });
+
   it("has the dock tab's rows, and the empty dock's", () => {
     const tab = menuFor("dock.tab", { ids: ["inspector"], name: "Inspector" });
     expect(tab.menu.name).toBe("Panel actions for Inspector");
@@ -590,6 +663,8 @@ describe("every row's command and arguments", () => {
       "timeline.track": { ids: [V1] },
       "bin.card": { ids: [MED_V] },
       "chrome.history": {},
+      "inspector.section": { ids: [C1], data: { group: "transform" } },
+      "inspector.row": { ids: [C1], data: { text: "100 %", prop: "opacity" } },
     };
     let checked = 0;
     for (const [surface, target] of Object.entries(targets)) {
