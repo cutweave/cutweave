@@ -334,7 +334,7 @@ pub(super) fn args_for(name: &str, p: &Pools) -> Option<(u32, BoxedStrategy<Valu
         "clip.trim" => (edits, edge_trim(p, false)),
         "clip.ripple_trim" => (edits.div_ceil(2), edge_trim(p, true)),
         "clip.roll" => (edits.div_ceil(2), clip_roll(p)),
-        "clip.slip" => (edits.div_ceil(3), clip_shift(p, false)),
+        "clip.slip" => (edits.div_ceil(2), clip_shift(p, false)),
         "clip.slide" => (edits.div_ceil(2), clip_shift(p, true)),
         "item.move" => (edits, item_move(p)),
         "item.delete" => (edits.div_ceil(2), item_delete(p)),
@@ -1532,17 +1532,19 @@ fn clip_roll(p: &Pools) -> BoxedStrategy<Value> {
 }
 
 /// `clip.slip` (WP-2A.04) and `clip.slide` (`slide`): a clip and a delta of up to 60 frames
-/// either way, sometimes clamped; a slip sometimes on the sample grid (`fine`).
+/// either way, often clamped (a clip that plays all of its media has nothing to slip, and one
+/// between two others little room to slide); a slip sometimes on the sample grid (`fine`).
 fn clip_shift(p: &Pools, slide: bool) -> BoxedStrategy<Value> {
     let invalid = unknown_item("delta");
     if p.items.is_empty() {
         return mix(invalid.clone(), invalid);
     }
+    let clamp = prop_oneof![3 => Just(Some(true)), 1 => Just(Some(false)), 2 => Just(None)];
     let valid = (
         select(p.items.clone()),
         -60..=60_i64,
         any::<(u8, u32)>(),
-        option::weighted(0.4, any::<bool>()),
+        clamp,
         option::weighted(0.1, any::<bool>()),
     )
         .prop_map(move |(it, k, (form, jitter), clamp, fine)| {
