@@ -30,6 +30,7 @@
 //! * **Edit reports.** Every edit returns `report`: exactly what changed.
 
 pub mod edit;
+mod reset;
 
 use std::collections::{BTreeMap, BTreeSet};
 
@@ -37,9 +38,11 @@ use cutweave_commands::{
     CmdError, Command, Query, QueryCtx, Registry, RegistryError, Tx, command, query, wire,
 };
 use cutweave_model::{
-    AudioProps, EntityKind, GroupId, Item, ItemId, Project, SequenceId, Time, Track, TrackId,
-    Transform, Vec2, VisualProps,
+    AudioProps, BlendMode, EntityKind, GroupId, Item, ItemId, Project, PropId, SequenceId, Time,
+    TimeInput, Track, TrackId, Vec2, VisualProps,
 };
+
+pub use reset::{ItemResetProps, ItemResetPropsOutput, ResetGroup};
 
 pub use edit::{
     DuplicatedItem, ItemDelete, ItemDeleteOutput, ItemDuplicate, ItemDuplicateOutput, ItemMove,
@@ -47,6 +50,7 @@ pub use edit::{
 };
 
 use crate::{
+    keyframe::{self, KeyValue},
     timeline::{ItemSummary, item_summary},
     track::{MAX_TRACK_GAIN_DB, MIN_TRACK_GAIN_DB, check_editable_kind},
     util::check_name,
@@ -62,6 +66,7 @@ pub fn register(registry: &mut Registry) -> Result<(), RegistryError> {
         .register::<ItemDelete>()?
         .register::<ItemDuplicate>()?
         .register::<ItemSetProps>()?
+        .register::<ItemResetProps>()?
         .register::<ItemGet>()?;
     Ok(())
 }
@@ -179,6 +184,28 @@ pub struct TransformPatch {
     pub anchor: Option<Vec2>,
 }
 
+/// A partial crop: fractions `0..=1` of the upright source picture removed from each edge.
+#[wire]
+pub struct CropPatch {
+    /// Fraction removed from the left edge.
+    pub left: Option<f64>,
+    /// Fraction removed from the top edge.
+    pub top: Option<f64>,
+    /// Fraction removed from the right edge.
+    pub right: Option<f64>,
+    /// Fraction removed from the bottom edge.
+    pub bottom: Option<f64>,
+}
+
+/// A partial flip.
+#[wire]
+pub struct FlipPatch {
+    /// Mirror left-right.
+    pub horizontal: Option<bool>,
+    /// Mirror top-bottom.
+    pub vertical: Option<bool>,
+}
+
 /// Item properties to change: absent fields keep their value.
 #[wire]
 pub struct ItemProps {
@@ -190,35 +217,70 @@ pub struct ItemProps {
     pub opacity: Option<f64>,
     /// Clip gain in dB, `-144..=48` (0 = unchanged).
     pub audio_gain: Option<f64>,
+    /// Stereo position, `-1` (left) to `1` (right).
+    pub audio_pan: Option<f64>,
     /// Placement on the canvas (partial).
     pub transform: Option<TransformPatch>,
+    /// Edges of the source picture cut away (partial).
+    pub crop: Option<CropPatch>,
+    /// Mirroring (partial).
+    pub flip: Option<FlipPatch>,
+    /// How the item combines with what is below: `normal`, `multiply`, `screen`, `overlay`,
+    /// `darken`, `lighten`, `add` or `soft_light`.
+    pub blend_mode: Option<BlendMode>,
+}
+
+/// A key `item.set_props` wrote on an animated property.
+#[wire]
+pub struct KeyedProp {
+    /// The item.
+    pub item: ItemId,
+    /// The property.
+    pub prop: PropId,
+    /// Item time of the key, after snapping.
+    pub t: Time,
+    /// Sequence time of the key, after snapping.
+    pub at: Time,
 }
 
 /// Result of `item.set_props`.
 #[wire]
 pub struct ItemSetPropsOutput {
-    /// The item.
+    /// The item (the first of `items`).
     pub item: ItemId,
-    /// The props whose value actually changed (`name`, `enabled`, `opacity`, `audio_gain`,
-    /// `transform.position`, ...); empty if everything was already as requested.
+    /// The props whose value actually changed on any item (`name`, `enabled`, `opacity`,
+    /// `audio_gain`, `transform.position`, ...); empty if everything was already as requested.
     pub changed: Vec<String>,
+    /// The keys written on animated properties.
+    pub keyed: Vec<KeyedProp>,
 }
 
-/// Changes an item's name, enabled flag, opacity, clip gain or transform; absent fields keep
-/// their value and setting a value it already has is a no-op. `Locked` if the item's track is
+/// Changes an item's name, enabled flag, opacity, clip gain and pan, transform, crop, flip or
+/// blend mode; absent fields keep their value and setting a value it already has is a no-op.
+/// A property that is keyed (animated) gets a key at `at` (a sequence time inside the item,
+/// snapped to a frame) with the value, as `keyframe.set` would; without `at`, or with
+/// `auto_key: false`, that is `Invalid` (`keyframe.clear` makes the property static first).
+/// Static properties are set as before and `at` is ignored. `Locked` if the item's track is
 /// locked.
 #[command(
     name = "item.set_props",
-    summary = "Set an item's name, enabled, opacity, audio_gain or transform (partial)",
+    summary = "Set an item's name, enabled, opacity, audio, transform, crop, flip or blend mode (partial)",
     undoable,
     mcp = "core",
     annotations(destructive = false, idempotent = true)
 )]
 pub struct ItemSetProps {
-    /// The item.
-    pub item: ItemId,
+    /// The item (or `items`).
+    pub item: Option<ItemId>,
+    /// Items to give the same properties.
+    pub items: Option<Vec<ItemId>>,
     /// The properties to change; at least one.
     pub props: ItemProps,
+    /// Key animated properties at `at` (default `true`; `false` makes an animated property
+    /// `Invalid`).
+    pub auto_key: Option<bool>,
+    /// The sequence time (the playhead) to key animated properties at.
+    pub at: Option<TimeInput>,
 }
 
 fn finite(pointer: &str, v: f64) -> Result<f64, CmdError> {
@@ -245,25 +307,71 @@ fn vec2(pointer: &str, v: Vec2, non_negative: bool) -> Result<Vec2, CmdError> {
     Ok(v)
 }
 
+/// The order `changed` lists properties in: the P1 fields first, then the later ones.
+const SET_ORDER: [PropId; 13] = [
+    PropId::Opacity,
+    PropId::AudioGain,
+    PropId::TransformPosition,
+    PropId::TransformScale,
+    PropId::TransformRotation,
+    PropId::TransformAnchor,
+    PropId::AudioPan,
+    PropId::CropLeft,
+    PropId::CropTop,
+    PropId::CropRight,
+    PropId::CropBottom,
+    PropId::FlipHorizontal,
+    PropId::FlipVertical,
+];
+
+/// A validated request: the name change and the property values, in [`SET_ORDER`].
+struct SetPlan {
+    name: Option<String>,
+    values: Vec<(PropId, KeyValue)>,
+}
+
 impl ItemProps {
-    fn is_empty(&self) -> bool {
-        self.name.is_none()
-            && self.enabled.is_none()
-            && self.opacity.is_none()
-            && self.audio_gain.is_none()
-            && self.transform.as_ref().is_none_or(|t| {
-                t.position.is_none()
-                    && t.scale.is_none()
-                    && t.rotation.is_none()
-                    && t.anchor.is_none()
+    /// The given property values, in [`SET_ORDER`].
+    fn values(&self) -> Vec<(PropId, KeyValue)> {
+        let t = self.transform.as_ref();
+        let c = self.crop.as_ref();
+        let f = self.flip.as_ref();
+        let num = |v: Option<f64>| v.map(KeyValue::Number);
+        SET_ORDER
+            .into_iter()
+            .filter_map(|id| {
+                let v = match id {
+                    PropId::Opacity => num(self.opacity),
+                    PropId::AudioGain => num(self.audio_gain),
+                    PropId::AudioPan => num(self.audio_pan),
+                    PropId::TransformPosition => t.and_then(|t| t.position).map(KeyValue::Vec2),
+                    PropId::TransformScale => t.and_then(|t| t.scale).map(KeyValue::Vec2),
+                    PropId::TransformRotation => num(t.and_then(|t| t.rotation)),
+                    PropId::TransformAnchor => t.and_then(|t| t.anchor).map(KeyValue::Vec2),
+                    PropId::CropLeft => num(c.and_then(|c| c.left)),
+                    PropId::CropTop => num(c.and_then(|c| c.top)),
+                    PropId::CropRight => num(c.and_then(|c| c.right)),
+                    PropId::CropBottom => num(c.and_then(|c| c.bottom)),
+                    PropId::FlipHorizontal => f.and_then(|f| f.horizontal).map(KeyValue::Bool),
+                    PropId::FlipVertical => f.and_then(|f| f.vertical).map(KeyValue::Bool),
+                    _ => None,
+                };
+                v.map(|v| (id, v))
             })
+            .collect()
     }
 
-    fn check(&self) -> Result<Option<String>, CmdError> {
-        if self.is_empty() {
+    fn check(&self) -> Result<SetPlan, CmdError> {
+        let values = self.values();
+        if values.is_empty()
+            && self.name.is_none()
+            && self.enabled.is_none()
+            && self.blend_mode.is_none()
+        {
             return Err(CmdError::invalid(
                 "/props",
-                "give at least one of name, enabled, opacity, audio_gain, transform",
+                "give at least one of name, enabled, opacity, audio_gain, audio_pan, transform, \
+                 crop, flip, blend_mode",
             ));
         }
         let name = match &self.name {
@@ -271,45 +379,145 @@ impl ItemProps {
             Some(n) if n.trim().is_empty() => Some(String::new()),
             Some(n) => Some(check_name("/props/name", n)?),
         };
-        if let Some(o) = self.opacity
-            && !(0.0..=1.0).contains(&o)
-        {
-            return Err(CmdError::invalid(
-                "/props/opacity",
-                "the opacity must be between 0 and 1",
-            ));
+        for (id, v) in &values {
+            let pointer = format!("/props/{}", id.as_str().replace('.', "/"));
+            match (id, v) {
+                (PropId::Opacity, KeyValue::Number(o)) if !(0.0..=1.0).contains(o) => {
+                    return Err(CmdError::invalid(
+                        pointer,
+                        "the opacity must be between 0 and 1",
+                    ));
+                }
+                (PropId::AudioGain, KeyValue::Number(g))
+                    if !(MIN_TRACK_GAIN_DB..=MAX_TRACK_GAIN_DB).contains(g) =>
+                {
+                    return Err(CmdError::invalid(
+                        pointer,
+                        format!(
+                            "the gain must be between {MIN_TRACK_GAIN_DB} and {MAX_TRACK_GAIN_DB} dB"
+                        ),
+                    ));
+                }
+                (PropId::AudioPan, KeyValue::Number(p)) if !(-1.0..=1.0).contains(p) => {
+                    return Err(CmdError::invalid(
+                        pointer,
+                        "the pan must be between -1 (left) and 1 (right)",
+                    ));
+                }
+                (
+                    PropId::CropLeft | PropId::CropTop | PropId::CropRight | PropId::CropBottom,
+                    KeyValue::Number(c),
+                ) if !(0.0..=1.0).contains(c) => {
+                    return Err(CmdError::invalid(
+                        pointer,
+                        "a crop edge must be between 0 and 1",
+                    ));
+                }
+                (PropId::TransformScale, KeyValue::Vec2(v)) => {
+                    vec2(&pointer, *v, true)?;
+                }
+                (_, KeyValue::Vec2(v)) => {
+                    vec2(&pointer, *v, false)?;
+                }
+                (_, KeyValue::Number(n)) => {
+                    finite(&pointer, *n)?;
+                }
+                _ => {}
+            }
         }
-        if let Some(g) = self.audio_gain
-            && !(MIN_TRACK_GAIN_DB..=MAX_TRACK_GAIN_DB).contains(&g)
-        {
-            return Err(CmdError::invalid(
-                "/props/audio_gain",
-                format!("the gain must be between {MIN_TRACK_GAIN_DB} and {MAX_TRACK_GAIN_DB} dB"),
-            ));
-        }
-        if let Some(t) = &self.transform {
-            if let Some(v) = t.position {
-                vec2("/props/transform/position", v, false)?;
-            }
-            if let Some(v) = t.scale {
-                vec2("/props/transform/scale", v, true)?;
-            }
-            if let Some(v) = t.anchor {
-                vec2("/props/transform/anchor", v, false)?;
-            }
-            if let Some(r) = t.rotation {
-                finite("/props/transform/rotation", r)?;
-            }
-        }
-        Ok(name)
+        Ok(SetPlan { name, values })
     }
 }
 
+/// What one item's update did.
+#[derive(Default)]
+struct ItemChange {
+    changed: Vec<String>,
+    keyed: Vec<(PropId, Time)>,
+}
+
 impl ItemSetProps {
-    fn plan(&self, doc: &Project) -> Result<Option<String>, CmdError> {
-        let (_, group) = members(doc, self.item, false)?;
-        ensure_unlocked(doc, &group)?;
-        self.props.check()
+    fn plan(&self, doc: &Project) -> Result<(SetPlan, Vec<keyframe::Target>), CmdError> {
+        let targets = keyframe::targets(doc, self.item, self.items.as_deref())?;
+        Ok((self.props.check()?, targets))
+    }
+
+    /// Applies the request to one clip.
+    fn update_clip(
+        &self,
+        clip: &mut cutweave_model::Clip,
+        plan: &SetPlan,
+        target: &keyframe::Target,
+    ) -> Result<ItemChange, CmdError> {
+        let mut out = ItemChange::default();
+        if let Some(name) = plan.name.clone().map(|n| (!n.is_empty()).then_some(n))
+            && clip.name != name
+        {
+            clip.name = name;
+            out.changed.push("name".into());
+        }
+        if let Some(v) = self.props.enabled
+            && clip.enabled != v
+        {
+            clip.enabled = v;
+            out.changed.push("enabled".into());
+        }
+        let auto_key = self.auto_key.unwrap_or(true);
+        for (id, value) in &plan.values {
+            let pointer = format!("/props/{}", id.as_str().replace('.', "/"));
+            if keyframe::is_animated(clip, *id) {
+                if !auto_key {
+                    return Err(CmdError::invalid(
+                        "/auto_key",
+                        format!(
+                            "`{id}` is animated: set auto_key to true and give `at` to key it, \
+                             or call keyframe_clear first"
+                        ),
+                    ));
+                }
+                let Some(at) = self.at else {
+                    return Err(CmdError::invalid(
+                        "/at",
+                        format!(
+                            "`{id}` is animated: give at (sequence time) to key it, or call \
+                             keyframe_clear first"
+                        ),
+                    ));
+                };
+                let t = keyframe::TimeArg {
+                    t: None,
+                    at: Some(at),
+                    pointer: "",
+                }
+                .item_time(target, Some(*id), false)?;
+                if keyframe::outside(target, t) {
+                    return Err(CmdError::invalid(
+                        "/at",
+                        "the playhead is outside the item: key it inside the item's range",
+                    ));
+                }
+                let req = keyframe::KeyReq {
+                    t,
+                    value: Some(value.clone()),
+                    interp: None,
+                };
+                let (_, changed) =
+                    keyframe::set_keys(clip, *id, &[req], false, &|_| pointer.clone())?;
+                if changed {
+                    out.changed.push(id.to_string());
+                }
+                out.keyed.push((*id, t));
+            } else if keyframe::set_static(clip, *id, value) {
+                out.changed.push(id.to_string());
+            }
+        }
+        if let Some(mode) = self.props.blend_mode
+            && clip.visual.blend_mode != mode
+        {
+            clip.visual.blend_mode = mode;
+            out.changed.push("blend_mode".into());
+        }
+        Ok(out)
     }
 }
 
@@ -317,88 +525,47 @@ impl Command for ItemSetProps {
     type Output = ItemSetPropsOutput;
 
     fn validate(&self, ctx: &QueryCtx<'_>) -> Result<(), CmdError> {
-        self.plan(ctx.doc()).map(drop)
+        let (plan, targets) = self.plan(ctx.doc())?;
+        for target in targets {
+            let at = ctx.item(target.id)?;
+            let mut clip = at
+                .item
+                .as_clip()
+                .ok_or_else(|| CmdError::unsupported("only clips have these properties"))?
+                .clone();
+            self.update_clip(&mut clip, &plan, &target)?;
+        }
+        Ok(())
     }
 
     fn apply(&self, tx: &mut Tx<'_>) -> Result<ItemSetPropsOutput, CmdError> {
-        let name = self.plan(tx.doc())?;
-        let props = &self.props;
-        let changed = tx.update_item(self.item, |item| {
-            let Some(clip) = item.as_clip_mut() else {
-                return Err(CmdError::unsupported("only clips have these properties"));
-            };
-            let mut changed: Vec<String> = Vec::new();
-            if let Some(name) = name.map(|n| (!n.is_empty()).then_some(n))
-                && clip.name != name
-            {
-                clip.name = name;
-                changed.push("name".into());
+        let (plan, targets) = self.plan(tx.doc())?;
+        let mut changed: Vec<String> = Vec::new();
+        let mut keyed = Vec::new();
+        for target in &targets {
+            let done = tx.update_item(target.id, |item| {
+                let Some(clip) = item.as_clip_mut() else {
+                    return Err(CmdError::unsupported("only clips have these properties"));
+                };
+                self.update_clip(clip, &plan, target)
+            })?;
+            for c in done.changed {
+                if !changed.contains(&c) {
+                    changed.push(c);
+                }
             }
-            if let Some(v) = props.enabled
-                && clip.enabled != v
-            {
-                clip.enabled = v;
-                changed.push("enabled".into());
-            }
-            set_opacity(&mut clip.visual, props.opacity, &mut changed);
-            set_gain(&mut clip.audio, props.audio_gain, &mut changed);
-            if let Some(t) = &props.transform {
-                set_transform(&mut clip.visual.transform, t, &mut changed);
-            }
-            Ok(changed)
-        })?;
+            keyed.extend(done.keyed.into_iter().map(|(prop, t)| KeyedProp {
+                item: target.id,
+                prop,
+                t,
+                at: keyframe::sequence_time(target, t),
+            }));
+        }
         Ok(ItemSetPropsOutput {
-            item: self.item,
+            item: targets[0].id,
             changed,
+            keyed,
         })
-    }
-}
-
-#[allow(clippy::float_cmp)] // exact comparison: detects whether the value changes
-fn set_opacity(visual: &mut VisualProps, v: Option<f64>, changed: &mut Vec<String>) {
-    if let Some(v) = v
-        && *visual.opacity.value() != v
-    {
-        visual.opacity.set(v);
-        changed.push("opacity".into());
-    }
-}
-
-#[allow(clippy::float_cmp)] // exact comparison: detects whether the value changes
-fn set_gain(audio: &mut AudioProps, v: Option<f64>, changed: &mut Vec<String>) {
-    if let Some(v) = v
-        && *audio.gain.value() != v
-    {
-        audio.gain.set(v);
-        changed.push("audio_gain".into());
-    }
-}
-
-#[allow(clippy::float_cmp)] // exact comparison: detects whether the value changes
-fn set_transform(t: &mut Transform, p: &TransformPatch, changed: &mut Vec<String>) {
-    if let Some(v) = p.position
-        && *t.position.value() != v
-    {
-        t.position.set(v);
-        changed.push("transform.position".into());
-    }
-    if let Some(v) = p.scale
-        && *t.scale.value() != v
-    {
-        t.scale.set(v);
-        changed.push("transform.scale".into());
-    }
-    if let Some(v) = p.rotation
-        && *t.rotation.value() != v
-    {
-        t.rotation.set(v);
-        changed.push("transform.rotation".into());
-    }
-    if let Some(v) = p.anchor
-        && *t.anchor.value() != v
-    {
-        t.anchor.set(v);
-        changed.push("transform.anchor".into());
     }
 }
 
