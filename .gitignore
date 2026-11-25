@@ -20,6 +20,8 @@ Thumbs.db
 # Tooling
 .claude/settings.local.json
 *.log
+# Test temp files on Windows (scripts/repo_temp.py)
+/.tmp/
 # Media & caches (test corpus is fetched, never committed)
 /testdata/corpus/
 /third_party/ffmpeg/
