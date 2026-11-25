@@ -6,15 +6,17 @@
 //!   transaction on a connection of its own** (same actor as the caller), so the import is one
 //!   undo step and never collides with a transaction the caller has open. The connection is
 //!   closed afterwards (a failure rolls back).
+//!   With folders (WP-2F.09) it submits one `media.register_tree` instead, in the same kind of
+//!   transaction.
 //! - [`BusAnalysisSink`]: forwards `media.indexed` / `media.analysis_failed` from analysis jobs
-//!   into the event fan-out.
+//!   and `media.import_progress` from the import itself into the event fan-out.
 //! - [`NoMediaBackend`]: the prober of a core engine without the media subsystem (WP-1I.05):
 //!   every file is reported in `failed[]`.
 
 use cutweave_commands::{Actor, ActorCtx, CmdError, ConnId, DocHandle, Submit, TxKind};
 use cutweave_ops::media::{
-    AnalysisSink, MediaEvent, MediaProbe, MediaRegister, MediaRegistered, MediaSink, ProbeError,
-    Probed,
+    AnalysisSink, MediaEvent, MediaProbe, MediaRegister, MediaRegisterTree, MediaRegistered,
+    MediaSink, MediaTreeRegistered, ProbeError, Probed,
 };
 
 use crate::events::{EngineEvent, EventBus};
@@ -85,9 +87,43 @@ impl ImportSink {
     }
 }
 
+impl ImportSink {
+    /// `media.register_tree` (the files and their bin folders) in one transaction.
+    fn register_folders(&self, tree: &MediaRegisterTree) -> Result<MediaTreeRegistered, CmdError> {
+        let tx = self
+            .handle
+            .begin_tx(&self.ctx, TxKind::Batch, "Import folder")
+            .wait()?
+            .id;
+        let params = serde_json::to_value(tree)
+            .map_err(|e| CmdError::internal(format!("cannot encode media.register_tree: {e}")))?;
+        let submit = Submit::new(self.ctx.clone(), "media.register_tree", params).in_tx(tx);
+        let registered = self
+            .handle
+            .submit(submit)
+            .wait()
+            .and_then(|applied| {
+                serde_json::from_value(applied.output).map_err(|e| {
+                    CmdError::internal(format!("unexpected media.register_tree output: {e}"))
+                })
+            })
+            .and_then(|out: MediaTreeRegistered| {
+                self.handle.commit_tx(&self.ctx, tx).wait().map(|_| out)
+            });
+        if registered.is_err() {
+            let _ = self.handle.cancel_tx(&self.ctx, tx).wait();
+        }
+        registered
+    }
+}
+
 impl MediaSink for ImportSink {
     fn register(&mut self, batch: Vec<MediaRegister>) -> Result<Vec<MediaRegistered>, CmdError> {
         self.register_all(&batch)
+    }
+
+    fn register_tree(&mut self, tree: MediaRegisterTree) -> Result<MediaTreeRegistered, CmdError> {
+        self.register_folders(&tree)
     }
 }
 

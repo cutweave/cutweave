@@ -138,7 +138,7 @@ fn place(doc: &Project, folder: Option<FolderId>) -> String {
 }
 
 /// How deep `folder` is (0 for the top level).
-fn depth_of(doc: &Project, folder: Option<FolderId>) -> usize {
+pub(super) fn depth_of(doc: &Project, folder: Option<FolderId>) -> usize {
     folder.map_or(0, |f| doc.folder_depth(f).unwrap_or(MAX_FOLDER_DEPTH))
 }
 
