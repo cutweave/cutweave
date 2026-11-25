@@ -219,7 +219,47 @@ impl<T: Serialize> Serialize for Animatable<T> {
 /// value's stored range is checked by `Project::validate` (KF-4).
 impl<'de, T: AnimValue> Deserialize<'de> for Animatable<T> {
     fn deserialize<D: Deserializer<'de>>(d: D) -> Result<Animatable<T>, D::Error> {
-        let value = Value::deserialize(d)?;
+        d.deserialize_any(AnimatableVisitor(std::marker::PhantomData))
+    }
+}
+
+/// Reads a bare number without building a `Value` (most animatables are static scalars, and
+/// documents hold thousands of them); everything else goes through [`Animatable::from_json`].
+struct AnimatableVisitor<T>(std::marker::PhantomData<T>);
+
+impl<'de, T: AnimValue> de::Visitor<'de> for AnimatableVisitor<T> {
+    type Value = Animatable<T>;
+
+    fn expecting(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.write_str("a value or an object with `keyframes`")
+    }
+
+    fn visit_bool<E: de::Error>(self, v: bool) -> Result<Animatable<T>, E> {
+        Animatable::from_json(&Value::Bool(v)).map_err(E::custom)
+    }
+
+    fn visit_f64<E: de::Error>(self, v: f64) -> Result<Animatable<T>, E> {
+        let value = T::deserialize(de::value::F64Deserializer::<E>::new(v))
+            .map_err(|e| E::custom(KeyframeError::rule(KeyframeRule::Kf4, "", e.to_string())))?;
+        Animatable::Static(value)
+            .checked(ValueRange::ANY)
+            .map_err(E::custom)
+    }
+
+    fn visit_i64<E: de::Error>(self, v: i64) -> Result<Animatable<T>, E> {
+        Animatable::from_json(&Value::from(v)).map_err(E::custom)
+    }
+
+    fn visit_u64<E: de::Error>(self, v: u64) -> Result<Animatable<T>, E> {
+        Animatable::from_json(&Value::from(v)).map_err(E::custom)
+    }
+
+    fn visit_str<E: de::Error>(self, v: &str) -> Result<Animatable<T>, E> {
+        Animatable::from_json(&Value::from(v)).map_err(E::custom)
+    }
+
+    fn visit_map<A: de::MapAccess<'de>>(self, map: A) -> Result<Animatable<T>, A::Error> {
+        let value = Value::deserialize(de::value::MapAccessDeserializer::new(map))?;
         Animatable::from_json(&value).map_err(de::Error::custom)
     }
 }
