@@ -351,3 +351,168 @@ pub struct AudioSegment {
     /// Sample rate of the sequence the segment is mixed into.
     pub sample_rate: SampleRate,
 }
+
+#[cfg(test)]
+mod tests {
+    #![allow(clippy::float_cmp)]
+
+    use proptest::prelude::*;
+
+    use super::BlendMode;
+
+    const MODES: [BlendMode; 8] = BlendMode::ALL;
+
+    fn close(a: f64, b: f64) -> bool {
+        (a - b).abs() < 1e-12
+    }
+
+    #[test]
+    fn each_formula_at_known_points() {
+        use BlendMode::{Add, Darken, Lighten, Multiply, Normal, Overlay, Screen, SoftLight};
+        // (mode, Cb, Cs, B) worked by hand from the formulas in the type's docs.
+        let rows = [
+            (Normal, 0.2, 0.7, 0.7),
+            (Normal, 0.2, 1.5, 1.5),
+            (Multiply, 0.5, 0.4, 0.2),
+            (Screen, 0.5, 0.4, 0.7),
+            (Overlay, 0.25, 0.6, 0.3),
+            (Overlay, 0.75, 0.6, 0.8),
+            (Overlay, 0.5, 0.6, 0.6),
+            (Darken, 0.3, 0.6, 0.3),
+            (Lighten, 0.3, 0.6, 0.6),
+            (Add, 0.3, 0.6, 0.9),
+            (Add, 0.7, 0.6, 1.0),
+            // Cs ≤ ½: Cb − (1 − 2Cs)·Cb·(1 − Cb) = 0.4 − 0.6·0.4·0.6.
+            (SoftLight, 0.4, 0.2, 0.256),
+            // Cs > ½, Cb ≤ ¼: D = ((16·0.2 − 12)·0.2 + 4)·0.2 = 0.448; 0.2 + 0.6·0.248.
+            (SoftLight, 0.2, 0.8, 0.3488),
+            // Cs > ½, Cb > ¼: D = √0.64 = 0.8; 0.64 + 0.6·0.16.
+            (SoftLight, 0.64, 0.8, 0.736),
+            // Out-of-range inputs are clamped for every mode but normal.
+            (Multiply, 1.5, -0.2, 0.0),
+            (Screen, 2.0, 0.5, 1.0),
+            (SoftLight, -0.1, 0.9, 0.0),
+        ];
+        for (mode, cb, cs, want) in rows {
+            let got = mode.blend(cb, cs);
+            assert!(
+                close(got, want),
+                "{mode:?}({cb}, {cs}) = {got}, want {want}"
+            );
+        }
+    }
+
+    #[test]
+    fn neutral_sources_leave_the_backdrop_unchanged() {
+        for i in 0..=20 {
+            let cb = f64::from(i) / 20.0;
+            assert!(close(BlendMode::Multiply.blend(cb, 1.0), cb));
+            assert!(close(BlendMode::Screen.blend(cb, 0.0), cb));
+            assert!(close(BlendMode::Darken.blend(cb, 1.0), cb));
+            assert!(close(BlendMode::Lighten.blend(cb, 0.0), cb));
+            assert!(close(BlendMode::Add.blend(cb, 0.0), cb));
+            assert!(close(BlendMode::SoftLight.blend(cb, 0.5), cb));
+            // Overlay is hard light with the layers swapped: a mid-grey backdrop shows the
+            // source, and black and white backdrops stay.
+            assert!(close(BlendMode::Overlay.blend(0.5, cb), cb));
+            assert!(close(BlendMode::Overlay.blend(0.0, cb), 0.0));
+            assert!(close(BlendMode::Overlay.blend(1.0, cb), 1.0));
+        }
+    }
+
+    #[test]
+    fn soft_light_is_continuous_at_its_seams() {
+        let m = BlendMode::SoftLight;
+        for i in 0..=10 {
+            let cb = f64::from(i) / 10.0;
+            assert!((m.blend(cb, 0.5) - m.blend(cb, 0.5 + 1e-12)).abs() < 1e-9);
+        }
+        // D(Cb) meets √Cb at ¼.
+        assert!((m.blend(0.25, 1.0) - m.blend(0.25 + 1e-12, 1.0)).abs() < 1e-9);
+    }
+
+    #[test]
+    fn opaque_layers_show_b_and_transparent_sides_pass_through() {
+        let dst = [0.3, 0.6, 0.9, 1.0];
+        let src = [0.5, 0.2, 0.8, 1.0];
+        for mode in MODES {
+            let out = mode.composite(src, dst);
+            for c in 0..3 {
+                assert!(close(out[c], mode.blend(dst[c], src[c])), "{mode:?}");
+            }
+            assert_eq!(out[3], 1.0);
+            // A transparent source changes nothing; a transparent backdrop shows the source.
+            assert_eq!(mode.composite([0.0; 4], dst), dst, "{mode:?}");
+            let clear = [0.0; 4];
+            assert_eq!(mode.composite(src, clear), src, "{mode:?}");
+        }
+    }
+
+    #[test]
+    fn normal_is_premultiplied_over() {
+        let dst = [0.2, 0.3, 0.1, 0.8];
+        let src = [0.25, 0.1, 0.05, 0.5];
+        let out = BlendMode::Normal.composite(src, dst);
+        for c in 0..4 {
+            assert!(close(out[c], src[c] + dst[c] * 0.5));
+        }
+    }
+
+    #[test]
+    fn model_modes_map_one_to_one() {
+        use cutweave_model::BlendMode as M;
+        let model = [
+            M::Normal,
+            M::Multiply,
+            M::Screen,
+            M::Overlay,
+            M::Darken,
+            M::Lighten,
+            M::Add,
+            M::SoftLight,
+        ];
+        for (m, mode) in model.into_iter().zip(MODES) {
+            assert_eq!(BlendMode::from(m), mode);
+            // The same snake_case names on the wire.
+            assert_eq!(
+                serde_json::to_value(m).unwrap(),
+                serde_json::to_value(mode).unwrap()
+            );
+            assert_eq!(mode.debug_name(), format!("{mode:?}"));
+        }
+        let mut ids: Vec<u32> = MODES.iter().map(|m| m.shader_id()).collect();
+        ids.dedup();
+        assert_eq!(ids, (0..8).collect::<Vec<u32>>());
+    }
+
+    fn rgba() -> impl Strategy<Value = [f64; 4]> {
+        (0.0f64..=1.0, 0.0f64..=1.0, 0.0f64..=1.0, 0.0f64..=1.0)
+            .prop_map(|(r, g, b, a)| [r * a, g * a, b * a, a])
+    }
+
+    proptest! {
+        /// Coverage × opacity `k` scales the layer before blending; the result is the backdrop
+        /// plus `k` times the full blend's change (what the GPU's "over" stage relies on).
+        #[test]
+        fn blending_is_linear_in_coverage_times_opacity(
+            src in rgba(), dst in rgba(), k in 0.0f64..=1.0, m in 0usize..8,
+        ) {
+            let mode = MODES[m];
+            let full = mode.composite(src, dst);
+            let scaled = mode.composite(src.map(|c| c * k), dst);
+            for c in 0..4 {
+                prop_assert!((scaled[c] - (dst[c] + k * (full[c] - dst[c]))).abs() < 1e-12);
+            }
+        }
+
+        /// Premultiplied inputs give premultiplied outputs in range.
+        #[test]
+        fn results_stay_premultiplied_and_in_range(src in rgba(), dst in rgba(), m in 0usize..8) {
+            let out = MODES[m].composite(src, dst);
+            prop_assert!((0.0..=1.0 + 1e-12).contains(&out[3]));
+            for c in 0..3 {
+                prop_assert!(out[c] >= -1e-12 && out[c] <= out[3] + 1e-12, "{out:?}");
+            }
+        }
+    }
+}

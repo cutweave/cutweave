@@ -83,6 +83,10 @@ expression: "[f.at(sec(1)), f.at(t(5 * S / 2)), f.at(sec(4))]"
           "right": 0.0,
           "bottom": 0.0
         },
+        "flip": {
+          "horizontal": false,
+          "vertical": false
+        },
         "effects": []
       }
     ],

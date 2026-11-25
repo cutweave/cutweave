@@ -1976,74 +1976,89 @@ impl Compositor {
             });
         }
         let target = self.dev.full_view(&canvas.texture, canvas.key);
-        let mut load = canvas
+        let load = canvas
             .clear
             .take()
             .map_or(wgpu::LoadOp::Load, wgpu::LoadOp::Clear);
-        let pipes = &self.dev.pipes;
         let canvas_texture = &canvas.texture;
         in_wgpu(|| {
-            let mut start = 0;
-            // Render passes split before every draw that reads the canvas below it.
-            loop {
-                let end = draws[start..]
-                    .iter()
-                    .enumerate()
-                    .skip(1)
-                    .find(|(_, d)| d.backdrop && !empty(d.rect))
-                    .map_or(draws.len(), |(i, _)| start + i);
-                if let (Some(first), Some((backdrop, _))) = (draws.get(start), &backdrop)
-                    && first.backdrop
-                    && !empty(first.rect)
-                {
-                    if let wgpu::LoadOp::Clear(_) = load {
-                        // The canvas has to hold its background before it is copied.
-                        drop(composite_pass(&mut f.encoder, &target, load));
-                        load = wgpu::LoadOp::Load;
-                    }
-                    let [x0, y0, x1, y1] = first.rect;
-                    let at = |texture| wgpu::TexelCopyTextureInfo {
-                        texture,
-                        mip_level: 0,
-                        origin: wgpu::Origin3d { x: x0, y: y0, z: 0 },
-                        aspect: wgpu::TextureAspect::All,
-                    };
-                    f.encoder.copy_texture_to_texture(
-                        at(canvas_texture),
-                        at(backdrop),
-                        extent(x1 - x0, y1 - y0),
-                    );
-                }
-                let mut rp = composite_pass(&mut f.encoder, &target, load);
-                load = wgpu::LoadOp::Load;
-                let mut bound: Option<bool> = None;
-                for d in draws.get(start..end).unwrap_or(&[]) {
-                    if empty(d.rect) {
-                        continue;
-                    }
-                    if bound != Some(d.ext) {
-                        let pipe = if d.ext {
-                            &pipes.composite_ext
-                        } else {
-                            &pipes.composite
-                        };
-                        rp.set_pipeline(&pipe.pipeline);
-                        bound = Some(d.ext);
-                    }
-                    rp.set_bind_group(0, &d.bind, &[]);
-                    rp.draw(0..6, 0..1);
-                }
-                drop(rp);
-                if end >= draws.len() {
-                    break;
-                }
-                start = end;
-            }
+            encode_draws(
+                &mut f.encoder,
+                (canvas_texture, &target),
+                backdrop.as_ref().map(|(t, _)| t),
+                load,
+                &draws,
+                &self.dev.pipes,
+            );
         });
         // The bind groups stay cached; the list keeps its capacity for the next run.
         draws.clear();
         f.scratch.draws = draws;
         Ok(())
+    }
+}
+
+/// Encodes a run's draws onto the canvas (`texture` and its render `target` view), starting
+/// with `load`. Render passes split before every draw that reads the canvas below it, whose
+/// output rectangle is first copied into `backdrop`.
+fn encode_draws(
+    encoder: &mut wgpu::CommandEncoder,
+    (canvas, target): (&wgpu::Texture, &wgpu::TextureView),
+    backdrop: Option<&wgpu::Texture>,
+    mut load: wgpu::LoadOp<wgpu::Color>,
+    draws: &[Draw],
+    pipes: &Pipelines,
+) {
+    let mut start = 0;
+    loop {
+        let end = draws[start..]
+            .iter()
+            .enumerate()
+            .skip(1)
+            .find(|(_, d)| d.backdrop && !empty(d.rect))
+            .map_or(draws.len(), |(i, _)| start + i);
+        if let (Some(first), Some(backdrop)) = (draws.get(start), backdrop)
+            && first.backdrop
+            && !empty(first.rect)
+        {
+            if matches!(load, wgpu::LoadOp::Clear(_)) {
+                // The canvas has to hold its background before it is copied.
+                drop(composite_pass(encoder, target, load));
+                load = wgpu::LoadOp::Load;
+            }
+            let [x0, y0, x1, y1] = first.rect;
+            let at = |texture| wgpu::TexelCopyTextureInfo {
+                texture,
+                mip_level: 0,
+                origin: wgpu::Origin3d { x: x0, y: y0, z: 0 },
+                aspect: wgpu::TextureAspect::All,
+            };
+            encoder.copy_texture_to_texture(at(canvas), at(backdrop), extent(x1 - x0, y1 - y0));
+        }
+        let mut rp = composite_pass(encoder, target, load);
+        load = wgpu::LoadOp::Load;
+        let mut bound: Option<bool> = None;
+        for d in draws.get(start..end).unwrap_or(&[]) {
+            if empty(d.rect) {
+                continue;
+            }
+            if bound != Some(d.ext) {
+                let pipe = if d.ext {
+                    &pipes.composite_ext
+                } else {
+                    &pipes.composite
+                };
+                rp.set_pipeline(&pipe.pipeline);
+                bound = Some(d.ext);
+            }
+            rp.set_bind_group(0, &d.bind, &[]);
+            rp.draw(0..6, 0..1);
+        }
+        drop(rp);
+        if end >= draws.len() {
+            return;
+        }
+        start = end;
     }
 }
 

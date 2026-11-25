@@ -76,7 +76,7 @@ fn tags(
     }
 }
 
-fn bt709(range: ColorRange) -> ColorTags {
+pub(super) fn bt709(range: ColorRange) -> ColorTags {
     tags(
         MatrixCoefficients::Bt709,
         range,
@@ -85,7 +85,7 @@ fn bt709(range: ColorRange) -> ColorTags {
     )
 }
 
-fn identity() -> LayerTransform {
+pub(super) fn identity() -> LayerTransform {
     LayerTransform {
         position: Vec2::ZERO,
         scale: Vec2::ONE,
@@ -94,7 +94,7 @@ fn identity() -> LayerTransform {
     }
 }
 
-fn layer(item: u128, media: u128, size: (u32, u32)) -> Layer {
+pub(super) fn layer(item: u128, media: u128, size: (u32, u32)) -> Layer {
     Layer {
         item: ItemId::from_u128(item),
         track: TrackId::from_u128(item),
@@ -117,7 +117,7 @@ fn layer(item: u128, media: u128, size: (u32, u32)) -> Layer {
     }
 }
 
-fn scene(w: u32, h: u32, background: Color, layers: Vec<Layer>) -> SceneDescription {
+pub(super) fn scene(w: u32, h: u32, background: Color, layers: Vec<Layer>) -> SceneDescription {
     SceneDescription {
         sequence: SequenceId::from_u128(1),
         time: Time::ZERO,
@@ -130,17 +130,22 @@ fn scene(w: u32, h: u32, background: Color, layers: Vec<Layer>) -> SceneDescript
     }
 }
 
-fn render(c: &mut Compositor, s: &SceneDescription, src: &SyntheticSource, t: Target) -> Image {
+pub(super) fn render(
+    c: &mut Compositor,
+    s: &SceneDescription,
+    src: &SyntheticSource,
+    t: Target,
+) -> Image {
     let f = c.render(s, src, t).expect("render");
     f.into_image().expect("CPU target")
 }
 
-fn cpu(s: &SceneDescription, src: &SyntheticSource, t: Target) -> Image {
+pub(super) fn cpu(s: &SceneDescription, src: &SyntheticSource, t: Target) -> Image {
     reference::render(s, t, src, &GraphOptions::default()).expect("reference")
 }
 
-const W: u32 = 384;
-const H: u32 = 216;
+pub(super) const W: u32 = 384;
+pub(super) const H: u32 = 216;
 
 /// The 3+2 tagged sources of the colour acceptance test.
 fn tagged_sources() -> Vec<(&'static str, TestCard)> {
@@ -580,6 +585,9 @@ fn golden_scenes() -> Vec<(&'static str, SceneDescription, SyntheticSource)> {
     for (name, s, src) in transform_cases() {
         out.push((name, s, src));
     }
+    // WP-2C.04: the eight blend modes, flips with a display rotation, the 1 px grid at
+    // quarter-pixel steps.
+    out.extend(super::composite_tests::golden_cases());
     out
 }
 

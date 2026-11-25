@@ -57,6 +57,10 @@ expression: "[f.at(t(boundary.flicks() - 1)), f.at(boundary)]"
           "right": 0.0,
           "bottom": 0.0
         },
+        "flip": {
+          "horizontal": false,
+          "vertical": false
+        },
         "effects": []
       }
     ],
@@ -115,6 +119,10 @@ expression: "[f.at(t(boundary.flicks() - 1)), f.at(boundary)]"
           "top": 0.0,
           "right": 0.0,
           "bottom": 0.0
+        },
+        "flip": {
+          "horizontal": false,
+          "vertical": false
         },
         "effects": []
       }

@@ -186,10 +186,10 @@ fn decode(frame: &VideoFrame, it: &InputTransform) -> Level {
 fn cubic_weights(f: f64) -> [f64; 4] {
     let (f2, f3) = (f * f, f * f * f);
     [
-        0.5 * (2.0 * f2 - f3 - f),
-        0.5 * (3.0 * f3 - 5.0 * f2 + 2.0),
-        0.5 * (4.0 * f2 - 3.0 * f3 + f),
-        0.5 * (f3 - f2),
+        f2 - 0.5 * f3 - 0.5 * f,
+        1.5 * f3 - 2.5 * f2 + 1.0,
+        2.0 * f2 - 1.5 * f3 + 0.5 * f,
+        0.5 * f3 - 0.5 * f2,
     ]
 }
 
@@ -482,8 +482,89 @@ mod tests {
         let levels = vec![base, one];
         // Texel centre (0.5, 0.5) of level 0 is exactly texel 0; LOD 0.5 blends halfway to 0.5.
         assert_eq!(sample(&levels, [0.5, 0.5], 0.0, Filter::Bilinear), [0.0; 4]);
-        assert_eq!(sample(&levels, [0.5, 0.5], 0.5, Filter::Bilinear), [0.25; 4]);
+        assert_eq!(
+            sample(&levels, [0.5, 0.5], 0.5, Filter::Bilinear),
+            [0.25; 4]
+        );
         // Beyond the chain, the last level is used.
         assert_eq!(sample(&levels, [0.5, 0.5], 7.3, Filter::Bilinear), [0.5; 4]);
+    }
+
+    #[test]
+    fn bicubic_reproduces_texels_and_linear_ramps() {
+        let ramp = Level {
+            w: 8,
+            h: 8,
+            px: (0..64)
+                .map(|i| {
+                    let (x, y) = (f64::from(i % 8), f64::from(i / 8));
+                    [0.05 * x, 0.04 * y, 0.02 * (x + y), 1.0]
+                })
+                .collect(),
+        };
+        let weights = cubic_weights(0.0);
+        assert_eq!(weights, [0.0, 1.0, 0.0, 0.0]);
+        for f in [0.1, 0.25, 0.5, 0.9] {
+            assert!((cubic_weights(f).iter().sum::<f64>() - 1.0).abs() < 1e-15);
+        }
+        // At texel centres: the texel, exactly.
+        assert_eq!(ramp.bicubic([3.5, 4.5]), ramp.px[4 * 8 + 3]);
+        // Catmull-Rom reproduces linear functions away from the clamped edges.
+        for t in [[3.25, 4.75], [2.6, 3.1], [4.0, 4.0]] {
+            let (x, y) = (t[0] - 0.5, t[1] - 0.5);
+            let want = [0.05 * x, 0.04 * y, 0.02 * (x + y), 1.0];
+            let got = ramp.bicubic(t);
+            for c in 0..4 {
+                assert!((got[c] - want[c]).abs() < 1e-12, "{t:?}: {got:?}");
+            }
+        }
+        // Ringing at a hard edge is clamped: no negative light, alpha within [0, 1].
+        let edge = Level {
+            w: 4,
+            h: 1,
+            px: vec![[0.0, 0.0, 0.0, 0.0], [0.0; 4], [1.0; 4], [1.0; 4]],
+        };
+        let rung = edge.bicubic([1.75, 0.5]);
+        assert!(rung.iter().all(|&c| c >= 0.0) && rung[3] <= 1.0, "{rung:?}");
+        let over = edge.bicubic([3.25, 0.5]);
+        assert!(over[3] <= 1.0, "{over:?}");
+    }
+
+    #[test]
+    fn blend_modes_of_solid_layers_are_the_formulas_in_linear_light() {
+        // RGBA8 sRGB cards: codes 64 (backdrop) and 192 (layer); linear = sRGB EOTF(code / 255).
+        let solid = |v: f64| {
+            TestCard::new(
+                8,
+                8,
+                Pattern::Solid([v; 3]),
+                PixelFormat::Rgba8,
+                ColorTags::default(),
+            )
+        };
+        let src = SyntheticSource::new()
+            .with(MediaId::from_u128(1), solid(64.0 / 255.0))
+            .with(MediaId::from_u128(2), solid(192.0 / 255.0));
+        let lin = |code: f64| crate::color::to_linear(code / 255.0, Transfer::Srgb);
+        let (cb, cs) = (lin(64.0), lin(192.0));
+        for mode in BlendMode::ALL {
+            for opacity in [1.0, 0.4] {
+                let mut top = layer(2, (8, 8));
+                top.blend = mode;
+                top.opacity = opacity;
+                let s = scene(8, 8, vec![layer(1, (8, 8)), top]);
+                let px = render_linear(&s, (8, 8), &src, &GraphOptions::default()).unwrap();
+                let want = cb + opacity * (mode.blend(cb, cs) - cb);
+                for p in &px {
+                    assert!((p[0] - want).abs() < 1e-12, "{mode:?} {opacity}: {p:?}");
+                    assert!((p[3] - 1.0).abs() < 1e-12);
+                }
+            }
+        }
+        // Spot values: multiply is the product, screen its complement.
+        let m = BlendMode::Multiply.blend(cb, cs);
+        assert!((m - cb * cs).abs() < 1e-15);
+        let sc = BlendMode::Screen.blend(cb, cs);
+        assert!((sc - (1.0 - (1.0 - cb) * (1.0 - cs))).abs() < 1e-15);
     }
 }
