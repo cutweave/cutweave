@@ -1,6 +1,6 @@
 # ADR-0029: Opening or closing a project never drops unsaved work unasked, and says that it is opening
 
-- **Status:** Proposed
+- **Status:** Accepted (product owner, 2026-11-25)
 - **Date:** 2026-11-25
 - **Deciders:** Cutweave maintainers (drafted by the issue #161 fix)
 - **Supersedes:** none (amends `project.open` and `project.close`, WP-1I.04, and the session events of arch §17)
@@ -27,6 +27,8 @@ Nothing told the app that an open had started either: the engine sent `doc.reset
 4. **Refuse agents only, let the UI credential through.** Rejected: two behaviours for one command breaks parity, and the app's own Open must not lose work either.
 
 ## Decision
+
+Accepted by the product owner on 2026-11-25 as proposed: refuse unless the caller opts in (`discard_unsaved: true` / `save: false`), both commands destructive, and the `project.opening` / `project.open_failed` events with the app's opening state.
 
 We will make `project.open` and `project.close` refuse, with `Conflict{reason: "unsaved_changes"}` and a message naming the project, any close that would leave changes unsaved without the caller saying so. Changes are at risk when the document is untitled and has committed changes (it has no file), or when a project has changes the close would not save (`save` absent and autosave off). Autosave on saves them first, as before. A read-only project, or one awaiting a recovery decision, has nothing unsaved to lose.
 
