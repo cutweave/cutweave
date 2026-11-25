@@ -54,12 +54,13 @@ test.describe("F42 context menus", () => {
       await name.click({ button: "right" });
       const fieldMenu = page.getByRole("menu", { name: "Text actions for Name" });
       await expect(fieldMenu).toBeVisible();
+      // Each row reads its name, then (when it cannot run) why, then its key.
       await expect(fieldMenu.getByRole("menuitem")).toHaveText([
-        "Undo",
-        "Cut",
-        "Copy",
-        "Paste",
-        "Select all",
+        /^Undo/,
+        /^Cut/,
+        /^Copy/,
+        /^Paste/,
+        /^Select all/,
       ]);
       await snapshot(page, info, "text field menu");
       await fieldMenu.getByRole("menuitem", { name: "Paste" }).click();
