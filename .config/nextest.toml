@@ -13,5 +13,5 @@ fail-fast = false
 # every attempt, and nextest reports retried tests as flaky. Budgets proper are enforced on the
 # reference machines (docs/reference-machines.md).
 [[profile.default.overrides]]
-filter = 'test(/under_a_second|within_500_ms|within_timeout_plus_100_ms|syncs_within_the_window/) | (package(cutweave-render) & test(/^gpu::/)) | binary_id(cutweave-engine::launch)'
+filter = 'test(/under_a_second|within_500_ms|within_timeout_plus_100_ms|syncs_within_the_window|round_trip_p95|takes_under_|plays_its_sound|interrupted_proxy_resumes/) | (package(cutweave-render) & test(/^gpu::/)) | binary_id(cutweave-engine::launch)'
 retries = 2

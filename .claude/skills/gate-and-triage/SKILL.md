@@ -35,6 +35,7 @@ CI does not run on pushes (Actions-minutes policy). The local gate is the merge 
 4. **A test that hangs for minutes:** an unbounded wait. Tell the owner, stop it, and have the test bounded.
 
 ## Known load-sensitive tests (2026-11-25)
+Most of these retry on their own now: nextest's override in `.config/nextest.toml` and `{ retry: 2 }` on the Vitest timing tests. A real regression fails every attempt; a test that keeps showing up here joins that list.
 - `full_engine_ffmpeg … shut_down_cleanly` (thread count): it now excludes the Windows thread pool.
 - `find.perf.test.ts` (8 ms p95), `menus/host.test.ts` (50 ms p95), `workspace.test.ts` timeouts.
 - `full_engine an_audio_only_media_item_plays_its_sound` (60 s), launch `…exits_11/12`, playback `shm` timing tests.

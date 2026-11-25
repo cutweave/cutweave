@@ -630,6 +630,7 @@ describe("performance", () => {
   }
 
   it("the row chrome of 40 fields costs under 8 ms over the bare controls", {
+    retry: 2,
     timeout: 60_000,
   }, () => {
     const nodes = compileSchema(schema);
@@ -670,7 +671,7 @@ describe("performance", () => {
     expect(overhead).toBeLessThan(8);
   });
 
-  it("re-rendering 40 fields after one edit takes under 8 ms", () => {
+  it("re-rendering 40 fields after one edit takes under 8 ms", { retry: 2 }, () => {
     const durations: number[] = [];
     const onRender = (_id: string, phase: string, actual: number) => {
       if (phase === "update") durations.push(actual);

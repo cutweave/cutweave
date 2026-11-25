@@ -854,7 +854,7 @@ describe("F2 renames the track", () => {
 // ---- responsiveness -----------------------------------------------------------------------
 
 describe("responsiveness on a 5,000-clip timeline", () => {
-  it("starts a drag and handles 60 moves well under 50 ms each", () => {
+  it("starts a drag and handles 60 moves well under 50 ms each", { retry: 2 }, () => {
     const model = generateTimeline();
     const item = model.items[2500] as TimelineItem;
     const s0 = initialState({ model, pxPerSec: 20, playhead: item.start });

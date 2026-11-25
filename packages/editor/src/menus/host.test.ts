@@ -396,7 +396,10 @@ describe("the canvas path", () => {
     }
   });
 
-  it("opens p95 < 50 ms with 5,000 items in the timeline (hit-test is an index lookup)", async () => {
+  it("opens p95 < 50 ms with 5,000 items in the timeline (hit-test is an index lookup)", {
+    retry: 2,
+    timeout: 30_000,
+  }, async () => {
     const svc = setup();
     svc.surfaces.register({ ...CARD, id: "timeline.clip" });
     render(page(svc));
@@ -436,7 +439,7 @@ describe("the canvas path", () => {
     } finally {
       harness.done();
     }
-  }, 30_000);
+  });
 
   it("long-press by touch opens it and cancels the gesture it began", () => {
     vi.useFakeTimers();

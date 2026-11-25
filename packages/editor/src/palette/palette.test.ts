@@ -321,7 +321,7 @@ describe("search", () => {
 });
 
 describe("speed with 400 commands", () => {
-  it("builds the list in under 100 ms and ranks a keystroke in under 16 ms", () => {
+  it("builds the list in under 100 ms and ranks a keystroke in under 16 ms", { retry: 2 }, () => {
     const services = makeServices();
     const many: CatalogCommand[] = Array.from({ length: 400 }, (_, i) => ({
       ...FIXTURE,
