@@ -55,7 +55,6 @@ use std::process::{Command, Stdio};
 use std::sync::{Arc, Mutex};
 use std::time::Duration;
 
-use cutweave_api::mcp::results::UNTRUSTED_FIELDS;
 use cutweave_api::mcp::{ListSize, P1_GATE};
 use rmcp::{
     ClientHandler, ClientLifecycleMode, ClientServiceExt as _, RoleClient, ServiceExt as _,
@@ -453,9 +452,10 @@ fn text_of(result: &CallToolResult) -> String {
 /// Edits the output schema of a command before it is used (the negative test's fixture).
 type Tamper = fn(command: &str, schema: &mut Value);
 
-/// Calls tools and validates what they return against the command's `output_schema`, which it
-/// asks the server for with `cutweave_describe_command` (cached). A violation panics with the
-/// tool name.
+/// Calls tools and validates what they return, as they are, against the command's
+/// `output_schema`, which it asks the server for with `cutweave_describe_command` (cached; it
+/// describes the MCP shape: untrusted-text wrappers, no `render_frame` picture; ADR-0028). A
+/// violation panics with the tool name.
 struct Checker<'a> {
     session: &'a Session,
     tamper: Option<Tamper>,
@@ -466,45 +466,6 @@ struct Checker<'a> {
 /// `clip_split` -> `clip.split` (no namespace contains an underscore).
 fn command_of(tool: &str) -> String {
     tool.replacen('_', ".", 1)
-}
-
-/// MCP results wrap text that comes from media files (analysis messages, probe errors) as
-/// `{"untrusted": true, "text": "..."}` at the pointers of `results::UNTRUSTED_FIELDS` (arch §14,
-/// §18), while `cutweave_describe_command` serves the registry's output schema, where those
-/// fields are plain strings. This checks each wrapper's shape and puts the plain string back, so
-/// the rest of the result is checked against the served schema. (Seen first with real analysis
-/// jobs, WP-1O.04: `job_wait` on an `index` job.)
-fn unwrap_untrusted(command: &str, output: &Value) -> Value {
-    fn walk(value: &mut Value, tokens: &[&str], at: &str) {
-        let Some((first, rest)) = tokens.split_first() else {
-            if let Value::Object(wrapper) = value {
-                assert!(
-                    wrapper.len() == 2
-                        && wrapper.get("untrusted") == Some(&Value::Bool(true))
-                        && wrapper.get("text").is_some_and(Value::is_string),
-                    "{at}: an untrusted field must be {{\"untrusted\": true, \"text\": \"...\"}}, \
-                     got {value}"
-                );
-                *value = wrapper["text"].clone();
-            }
-            return;
-        };
-        match (value, *first) {
-            (Value::Array(items), "*") => items.iter_mut().for_each(|v| walk(v, rest, at)),
-            (Value::Object(map), key) => {
-                if let Some(v) = map.get_mut(key) {
-                    walk(v, rest, at);
-                }
-            }
-            _ => {}
-        }
-    }
-    let mut out = output.clone();
-    for (_, pointer) in UNTRUSTED_FIELDS.iter().filter(|(c, _)| *c == command) {
-        let tokens: Vec<&str> = pointer.split('/').skip(1).collect();
-        walk(&mut out, &tokens, &format!("{command} {pointer}"));
-    }
-    out
 }
 
 impl<'a> Checker<'a> {
@@ -544,7 +505,6 @@ impl<'a> Checker<'a> {
     /// Validates `output` as the result of `tool` (command `command`).
     async fn validate(&self, tool: &str, command: &str, output: &Value) {
         let schema = self.output_schema(command).await;
-        let output = &unwrap_untrusted(command, output);
         if let Err(violations) = schema::check(&schema, output) {
             panic!(
                 "output schema violation in tool `{tool}` (command `{command}`) on {}: \
@@ -736,6 +696,14 @@ async fn exercise(session: &Session, tamper: Option<Tamper>) {
         project["video_track"].clone(),
         project["audio_track"].clone(),
     );
+    // The described schema of a command with untrusted text accepts the wrapper and refuses a
+    // plain string (the stub engine queues no jobs, so no real result carries one).
+    let job_wait = c.output_schema("job.wait").await;
+    let error = &job_wait["properties"]["error"];
+    let wrapped = json!({ "untrusted": true, "text": "x" });
+    assert!(schema::check(error, &wrapped).is_ok(), "{error}");
+    assert!(schema::check(error, &Value::Null).is_ok(), "{error}");
+    assert!(schema::check(error, &json!("x")).is_err(), "{error}");
     let info = c.tool("project_info", json!({})).await;
     assert_eq!(info["name"], "Conformance", "{info}");
 
