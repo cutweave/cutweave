@@ -3,7 +3,7 @@
 //! clip context menu): properties go back to their defaults, keys removed, in one undo step.
 
 use cutweave_commands::{CmdError, Command, QueryCtx, Tx, command, wire};
-use cutweave_model::{BlendMode, Clip, ItemId, Project, PropId, PropValue};
+use cutweave_model::{BlendMode, Clip, Fade, ItemId, Project, PropId, PropValue};
 
 use crate::keyframe::{self, KeyValue};
 
@@ -20,7 +20,7 @@ pub enum ResetGroup {
     Flip,
     /// Opacity and blend mode.
     Compositing,
-    /// Clip gain and pan.
+    /// Clip gain, pan and fades.
     Audio,
 }
 
@@ -88,23 +88,27 @@ fn default_value(id: PropId) -> KeyValue {
 }
 
 impl ItemResetProps {
-    /// The properties to reset and whether the blend mode is among them.
-    fn what(&self) -> Result<(Vec<PropId>, bool), CmdError> {
+    /// The properties to reset, whether the blend mode is among them and whether the fades are.
+    fn what(&self) -> Result<(Vec<PropId>, bool, bool), CmdError> {
         match (self.group, &self.props) {
             (Some(_), Some(_)) => Err(CmdError::invalid(
                 "/props",
                 "give either `group` or `props`, not both",
             )),
-            (Some(g), None) => Ok((g.props().to_vec(), g == ResetGroup::Compositing)),
+            (Some(g), None) => Ok((
+                g.props().to_vec(),
+                g == ResetGroup::Compositing,
+                g == ResetGroup::Audio,
+            )),
             (None, Some(list)) if list.is_empty() => {
                 Err(CmdError::invalid("/props", "give at least one property"))
             }
-            (None, Some(list)) => Ok((list.clone(), false)),
-            (None, None) => Ok((PropId::ALL.to_vec(), true)),
+            (None, Some(list)) => Ok((list.clone(), false, false)),
+            (None, None) => Ok((PropId::ALL.to_vec(), true, true)),
         }
     }
 
-    fn reset(clip: &mut Clip, what: &(Vec<PropId>, bool)) -> Vec<String> {
+    fn reset(clip: &mut Clip, what: &(Vec<PropId>, bool, bool)) -> Vec<String> {
         let mut changed = Vec::new();
         for id in &what.0 {
             if keyframe::set_static(clip, *id, &default_value(*id)) {
@@ -114,6 +118,16 @@ impl ItemResetProps {
         if what.1 && clip.visual.blend_mode != BlendMode::Normal {
             clip.visual.blend_mode = BlendMode::Normal;
             changed.push("blend_mode".into());
+        }
+        if what.2 {
+            if clip.audio.fade_in != Fade::default() {
+                clip.audio.fade_in = Fade::default();
+                changed.push("audio.fade_in".into());
+            }
+            if clip.audio.fade_out != Fade::default() {
+                clip.audio.fade_out = Fade::default();
+                changed.push("audio.fade_out".into());
+            }
         }
         changed
     }

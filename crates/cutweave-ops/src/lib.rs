@@ -11,6 +11,7 @@
 
 use cutweave_commands::{Registry, RegistryError};
 
+pub mod audio;
 pub mod clip;
 pub mod export;
 pub mod item;
@@ -36,6 +37,7 @@ pub fn register(registry: &mut Registry) -> Result<(), RegistryError> {
     timeline::register(registry)?;
     clip::register(registry)?;
     item::register(registry)?;
+    audio::register(registry)?;
     keyframe::register(registry)?;
     job::register(registry)?;
     export::register(registry)?;
