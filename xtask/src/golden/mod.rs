@@ -755,9 +755,10 @@ mod tests {
     }
 
     #[test]
-    fn eighteen_known_frames() {
+    fn twenty_four_known_frames() {
         let known = known_frames();
-        assert_eq!(known.len(), 18);
+        assert_eq!(known.len(), 24);
         assert!(known.contains("cut_at_45/f00045.png"));
+        assert!(known.contains("flipped_phone/f00110.png"));
     }
 }

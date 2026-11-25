@@ -68,7 +68,7 @@ wbs-json:
 wbs-sync *args:
     python scripts/wbs-to-issues/wbs_to_issues.py --sync {{args}}
 
-# Golden frames (testdata/golden/README.md): the reference-update guard, then build the CLI with FFmpeg, render the six golden projects headless on the software adapter and compare with that adapter's references (`--adapter key:<set>`, `--all-adapters`, `--update --i-know --reason "..."`)
+# Golden frames (testdata/golden/README.md): the reference-update guard, then build the CLI with FFmpeg, render the golden projects headless on the software adapter and compare with that adapter's references (`--adapter key:<set>`, `--all-adapters`, `--update --i-know --reason "..."`)
 golden *args:
     . scripts/ffmpeg/env.sh && cargo xtask golden {{args}}
 

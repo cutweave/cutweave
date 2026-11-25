@@ -5,13 +5,14 @@
 // pipeline's shader stays exactly as it was. Written independently of the f64 CPU reference
 // (src/reference.rs, src/scene.rs `BlendMode::blend`).
 //
-// Blend modes read the canvas below the layer from `backdrop`, a copy of the layer's output
-// rectangle made just before the draw. With src the layer's premultiplied sample, k = coverage
-// x opacity and dst the backdrop, the W3C separable formula in linear light is
-//   x = src.rgb * (1 - dst.a) + src.a * dst.a * B(dst.rgb / dst.a, src.rgb / src.a)
-// and the fragment outputs (x, src.a) * k, which fixed-function "over" turns into
-//   dst + k * (x + dst.rgb * (1 - src.a) - dst):
-// the full blend, scaled by coverage x opacity. Normal mode (B = Cs) gives x = src.rgb.
+// The fragment composites in the shader and replaces the canvas pixel (no fixed-function
+// blending): it reads the canvas below the layer from `backdrop`, a copy of the layer's output
+// rectangle made just before the draw. With s the layer's premultiplied sample scaled by
+// coverage x opacity and d the backdrop, the W3C separable formula in linear light is
+//   rgb = s.rgb * (1 - d.a) + d.rgb * (1 - s.a) + s.a * d.a * B(d.rgb / d.a, s.rgb / s.a)
+//   a   = s.a + d.a * (1 - s.a)
+// (normal, B = Cs: "over"), rounded to the nearest half float so the store is exact on every
+// adapter. A pixel the layer does not cover gets the backdrop back, bit for bit.
 
 @group(0) @binding(2) var backdrop: texture_2d<f32>;
 
@@ -122,6 +123,7 @@ fn blend_channel(mode: u32, cb: f32, cs: f32) -> f32 {
 
 @fragment
 fn fs_ext(@builtin(position) frag: vec4<f32>) -> @location(0) vec4<f32> {
+  let d = textureLoad(backdrop, vec2<i32>(frag.xy), 0);
   let c = vec3<f32>(frag.xy, 1.0);
   let u = vec2<f32>(dot(P.inv0.xyz, c), dot(P.inv1.xyz, c));
   var cov = 1.0;
@@ -130,33 +132,29 @@ fn fs_ext(@builtin(position) frag: vec4<f32>) -> @location(0) vec4<f32> {
     let dy = min(u.y - P.visible.y, P.visible.w - u.y) / P.inv1.w;
     cov = clamp(dx + 0.5, 0.0, 1.0) * clamp(dy + 0.5, 0.0, 1.0);
     if (cov <= 0.0) {
-      return vec4<f32>(0.0);
+      return d;
     }
   }
   let u1 = vec3<f32>(u, 1.0);
   let t = vec2<f32>(dot(P.tex0.xyz, u1), dot(P.tex1.xyz, u1));
-  var src: vec4<f32>;
+  var sample: vec4<f32>;
   if (P.flags.w == 1u) {
-    src = sample_bicubic(t);
+    sample = sample_bicubic(t);
   } else {
-    src = sample_content(t);
+    sample = sample_content(t);
   }
-  let k = cov * P.view.z;
+  let s = sample * (cov * P.view.z);
   let mode = P.flags.z;
-  if (mode == 0u || src.a <= 0.0) {
-    return src * k;
+  if (mode == 0u || s.a <= 0.0 || d.a <= 0.0) {
+    return round_half4(s + d * (1.0 - s.a));
   }
-  let dst = textureLoad(backdrop, vec2<i32>(frag.xy), 0);
-  if (dst.a <= 0.0) {
-    return src * k;
-  }
-  let cs = src.rgb / src.a;
-  let cb = dst.rgb / dst.a;
+  let cs = s.rgb / s.a;
+  let cb = d.rgb / d.a;
   let b = vec3<f32>(
     blend_channel(mode, cb.r, cs.r),
     blend_channel(mode, cb.g, cs.g),
     blend_channel(mode, cb.b, cs.b),
   );
-  let x = src.rgb * (1.0 - dst.a) + (src.a * dst.a) * b;
-  return vec4<f32>(x, src.a) * k;
+  let rgb = s.rgb * (1.0 - d.a) + d.rgb * (1.0 - s.a) + (s.a * d.a) * b;
+  return round_half4(vec4<f32>(rgb, s.a + d.a * (1.0 - s.a)));
 }

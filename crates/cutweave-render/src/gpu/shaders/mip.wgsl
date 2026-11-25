@@ -1,5 +1,6 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
-// One mip level: the 2x2 box average of the level above (edges clamped), size max(1, size >> 1).
+// One mip level: the 2x2 box average of the level above (edges clamped), size max(1, size >> 1),
+// rounded to the nearest half float (common.wgsl round_half).
 
 @group(0) @binding(0) var src: texture_2d<f32>;
 @group(0) @binding(1) var dst: texture_storage_2d<rgba16float, write>;
@@ -16,5 +17,5 @@ fn main(@builtin(global_invocation_id) gid: vec3<u32>) {
   let b = textureLoad(src, min(p + vec2<i32>(1, 0), last), 0);
   let c = textureLoad(src, min(p + vec2<i32>(0, 1), last), 0);
   let e = textureLoad(src, min(p + vec2<i32>(1, 1), last), 0);
-  textureStore(dst, vec2<i32>(gid.xy), (a + b + c + e) * 0.25);
+  textureStore(dst, vec2<i32>(gid.xy), round_half4((a + b + c + e) * 0.25));
 }

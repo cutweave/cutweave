@@ -34,14 +34,16 @@ use crate::scene::{BlendMode, Crop, SceneDescription};
 use crate::testcard::{Alpha, Pattern, SyntheticSource, TestCard};
 use crate::{TimelineIndex, evaluate};
 
-/// The acceptance bound of the blend modes against the analytic reference, linear light: the
-/// GPU rounds the decoded picture, the canvas and each composite to half floats (about
-/// 2.4e-4 each near 1.0); the reference does not round.
+/// The acceptance bound of the blend modes against the analytic reference on the gradient
+/// chart, linear light: the GPU rounds each decoded picture and each composite to half floats
+/// (at most 2.4e-4 each below 1.0), and the reference does not round.
 const LINEAR_MAX_ABS: f32 = 1e-3;
 
-/// The bound for minified layers: each mip level of the chain is one more half-float
-/// rounding of a box average.
-const LINEAR_MAX_ABS_MIPS: f32 = 2e-3;
+/// The bound of the busier scenes: partially transparent layers carry the half-float error of
+/// their premultiplied colour *and* alpha into the straight colour the modes read (doubled by
+/// the slope-2 modes: overlay, soft light), and each mip level of a minified layer is one more
+/// rounded box average.
+const LINEAR_MAX_ABS_BUSY: f32 = 2e-3;
 
 /// Converts an IEEE half to `f32` (the readback of `Rgba16Float`).
 fn half(h: u16) -> f32 {
@@ -176,6 +178,22 @@ fn blend_sources() -> SyntheticSource {
                 bt709(ColorRange::Limited),
             ),
         )
+        .with(
+            MediaId::from_u128(23),
+            rgba(H, W, Pattern::Gradient, Alpha::Opaque),
+        )
+}
+
+/// The gradient test chart: a chart blended at `opacity` over the same chart turned a quarter
+/// (a portrait chart with a 90° display rotation filling the canvas texel for pixel), so every
+/// pair of backdrop and source levels in `[0, 1]` meets somewhere.
+fn chart_scene(mode: BlendMode, opacity: f64) -> SceneDescription {
+    let bottom = layer(1, 20, (W, H));
+    let mut top = layer(2, 23, (H, W));
+    top.request.rotation = 90;
+    top.blend = mode;
+    top.opacity = opacity;
+    scene(W, H, background(), vec![bottom, top])
 }
 
 /// A blend layer over a gradient chart and bars: the top chart turned 90° (so the two
@@ -276,7 +294,7 @@ fn grid_source() -> SyntheticSource {
 pub(super) fn golden_cases() -> Vec<(&'static str, SceneDescription, SyntheticSource)> {
     let mut out = Vec::new();
     for (mode, name) in BlendMode::ALL.into_iter().zip(BLEND_NAMES) {
-        out.push((name, blend_scene(mode), blend_sources()));
+        out.push((name, chart_scene(mode, 0.8), blend_sources()));
     }
     let crop = Crop {
         left: 0.1,
@@ -315,17 +333,16 @@ fn blend_modes_match_the_analytic_reference_in_linear_light() {
     let src = blend_sources();
     let options = GraphOptions::default();
     for mode in BlendMode::ALL {
-        for (s, bound) in [
-            (blend_scene(mode), LINEAR_MAX_ABS),
-            (minified_blend_scene(mode), LINEAR_MAX_ABS_MIPS),
+        for (what, s, bound) in [
+            ("chart", chart_scene(mode, 1.0), LINEAR_MAX_ABS),
+            ("chart at 60%", chart_scene(mode, 0.6), LINEAR_MAX_ABS),
+            ("alpha, crop, flip", blend_scene(mode), LINEAR_MAX_ABS_BUSY),
+            ("minified", minified_blend_scene(mode), LINEAR_MAX_ABS_BUSY),
         ] {
             let gpu = gpu_linear(&mut c, &s, &src, (W, H), &options);
             let want = reference::render_linear(&s, (W, H), &src, &options).unwrap();
             let (worst, at) = max_linear_diff(&gpu, &want, W);
-            eprintln!(
-                "{mode:?} ({} layers): max |GPU − reference| = {worst:.2e} at {at:?} (linear)",
-                s.layers.len()
-            );
+            eprintln!("{mode:?} {what}: max |GPU − reference| = {worst:.2e} at {at:?} (linear)");
             assert!(
                 worst <= bound,
                 "{mode:?}: {worst:e} at {at:?}: GPU {:?}, reference {:?}",
@@ -539,7 +556,7 @@ fn bicubic_matches_the_cpu_reference() {
         ),
         (
             scene(W, H, background(), vec![magnified, minified]),
-            LINEAR_MAX_ABS_MIPS,
+            LINEAR_MAX_ABS_BUSY,
         ),
     ] {
         let gpu = gpu_linear(&mut c, &s, &src, (W, H), &options);

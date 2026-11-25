@@ -18,6 +18,24 @@ const HLG_A: f32 = 0.17883277;
 const HLG_B: f32 = 0.28466892;
 const HLG_C: f32 = 0.55991073;
 
+// Rounds to the nearest half float (ties to even), so that a store into an Rgba16Float texture
+// is exact whatever rounding the adapter's own conversion uses (WARP truncates: up to a whole
+// half-float step, 4.9e-4 just below 1.0, instead of half of one). Values in the half-float
+// subnormal range (below 2^-14, steps of 2^-24) and non-finite ones pass unchanged. WP-2C.04.
+fn round_half(x: f32) -> f32 {
+  let bits = bitcast<u32>(x);
+  let e = (bits >> 23u) & 0xffu;
+  if (e < 113u || e == 255u) {
+    return x;
+  }
+  let rounded = bits + 0x0fffu + ((bits >> 13u) & 1u);
+  return bitcast<f32>(rounded & 0xffffe000u);
+}
+
+fn round_half4(v: vec4<f32>) -> vec4<f32> {
+  return vec4<f32>(round_half(v.x), round_half(v.y), round_half(v.z), round_half(v.w));
+}
+
 fn safe_pow(x: f32, y: f32) -> f32 {
   if (x <= 0.0) {
     return 0.0;

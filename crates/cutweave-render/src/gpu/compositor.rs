@@ -5,15 +5,17 @@
 //!   arch §7) and converted to premultiplied linear Rec.709 `Rgba16Float`; when a layer is
 //!   minified, a mip chain follows (2×2 box compute passes). Decoded textures live in a
 //!   VRAM-budgeted LRU keyed by the pass's Merkle key, so stills and paused frames are uploaded
-//!   once.
+//!   once. Both passes round to the nearest half float before they store (adapters' own
+//!   conversions may truncate, WARP's does).
 //! * **Composite** (one render pass per run of consecutive layers): each layer draws a quad over
 //!   its output-pixel bounds onto the canvas with fixed-function premultiplied "over"; the
 //!   canvas is cleared to the background colour by the pass's load op. Cost follows the layer
-//!   area, not the canvas area (S4 finding 5a). Normal-blend bilinear layers use the plain
-//!   pipeline (`composite.wgsl`); bicubic layers and the other blend modes use the extended one
-//!   (`composite_ext.wgsl`). A non-normal blend reads the canvas below: the render pass ends
-//!   before such a layer, its output rectangle is copied into a pooled backdrop texture, and a
-//!   new pass draws it (one extra pass and a rectangle copy per blend layer).
+//!   area, not the canvas area (S4 finding 5a). Normal-blend bilinear layers use this plain
+//!   pipeline (`composite.wgsl`). The other blend modes and bicubic layers use the extended one
+//!   (`composite_ext.wgsl`, WP-2C.04), which composites in the shader and replaces the pixel:
+//!   the render pass ends before such a layer, its output rectangle is copied into a pooled
+//!   backdrop texture the shader reads, and a new pass draws it (one extra pass and a
+//!   rectangle copy per extended layer).
 //! * **Output** (compute): un-premultiply, encode, explicit round-half-up quantisation into a
 //!   storage buffer, then readback: blocking ([`Compositor::render`] / [`Compositor::execute`],
 //!   or [`Compositor::execute_with`], which hands the mapped pixels to the caller; one reused
@@ -300,21 +302,23 @@ fn create_pipelines(device: &wgpu::Device) -> Result<Pipelines, GpuError> {
         &[(0, Uniform), (1, TexF), (2, Buffer)],
     );
 
-    // The plain pipeline's module is exactly the pre-WP-2C.04 shader: normal-blend bilinear
-    // layers keep their bits.
+    // Normal-blend bilinear layers: fixed-function premultiplied "over" (the P1 shader).
     let composite = render_pipe(
         device,
         "composite",
         &format!("{COMMON_WGSL}\n{COMPOSITE_WGSL}"),
         "fs_main",
         &[(1, TexF)],
+        Some(wgpu::BlendState::PREMULTIPLIED_ALPHA_BLENDING),
     );
+    // The rest composite in the shader from a backdrop copy and replace the pixel.
     let composite_ext = render_pipe(
         device,
         "composite_ext",
         &format!("{COMMON_WGSL}\n{COMPOSITE_WGSL}\n{COMPOSITE_EXT_WGSL}"),
         "fs_ext",
         &[(1, TexF), (2, TexF)],
+        None,
     );
     if let Some(e) = block_on(scope.pop()) {
         return Err(GpuError::Validation(format!("pipeline creation: {e}")));
@@ -328,14 +332,15 @@ fn create_pipelines(device: &wgpu::Device) -> Result<Pipelines, GpuError> {
     })
 }
 
-/// A composite render pipeline: uniform 0 for both stages, `textures` for the fragment stage,
-/// fixed-function premultiplied "over" into the working format.
+/// A composite render pipeline into the working format: uniform 0 for both stages, `textures`
+/// for the fragment stage, fixed-function `blend` (none: the fragment replaces the pixel).
 fn render_pipe(
     device: &wgpu::Device,
     label: &str,
     source: &str,
     fragment: &str,
     textures: &[(u32, Slot)],
+    blend: Option<wgpu::BlendState>,
 ) -> RenderPipe {
     let module = device.create_shader_module(wgpu::ShaderModuleDescriptor {
         label: Some(label),
@@ -375,7 +380,7 @@ fn render_pipe(
             compilation_options: wgpu::PipelineCompilationOptions::default(),
             targets: &[Some(wgpu::ColorTargetState {
                 format: WORKING_FORMAT,
-                blend: Some(wgpu::BlendState::PREMULTIPLIED_ALPHA_BLENDING),
+                blend,
                 write_mask: wgpu::ColorWrites::ALL,
             })],
         }),
@@ -846,11 +851,14 @@ struct Draw {
     bind: wgpu::BindGroup,
     /// Output-pixel rectangle `[x0, y0, x1, y1)`.
     rect: [u32; 4],
-    /// Drawn with the extended pipeline.
+    /// Drawn with the extended pipeline, which reads the canvas below: its rectangle is copied
+    /// into the run's backdrop texture first.
     ext: bool,
-    /// Reads the canvas below (a non-normal blend mode): its rectangle is copied into the
-    /// run's backdrop texture first.
-    backdrop: bool,
+}
+
+/// Whether a layer needs the extended pipeline: a non-normal blend mode or bicubic sampling.
+fn extended(c: &CompositeOp) -> bool {
+    c.blend != BlendMode::Normal || c.filter != Filter::Bilinear
 }
 
 /// Executes render graphs on one GPU device.
@@ -1869,7 +1877,7 @@ impl Compositor {
     }
 
     /// The extended pipeline's bind group: `content` with uniform `slot`, and `backdrop` (the
-    /// run's backdrop copy) or the placeholder.
+    /// run's backdrop copy; the placeholder for a layer with nothing to draw).
     fn composite_ext_bind(
         &mut self,
         device: &wgpu::Device,
@@ -1922,11 +1930,10 @@ impl Compositor {
     ) -> Result<(), GraphError> {
         let device = self.ctx.device().clone();
         let output = graph.target.size();
-        // One backdrop texture serves every blend layer of the run (each copies its rectangle
-        // just before it draws); back to the pool after submit.
+        // One backdrop texture serves every extended layer of the run (each copies its
+        // rectangle just before it draws); back to the pool after submit.
         let needs_backdrop = run.iter().any(|&pi| {
-            matches!(&graph.passes[pi].op, PassOp::Composite(c)
-                if c.blend != BlendMode::Normal && c.rect[2] > c.rect[0] && c.rect[3] > c.rect[1])
+            matches!(&graph.passes[pi].op, PassOp::Composite(c) if extended(c) && !empty(c.rect))
         });
         let backdrop = needs_backdrop.then(|| {
             let key = TexKey {
@@ -1957,13 +1964,9 @@ impl Compositor {
             let uniform = self.dev.uniform(&device, slot);
             let u = composite_uniforms(c, content_key, output);
             in_wgpu(|| self.ctx.queue().write_buffer(&uniform, 0, u.as_bytes()));
-            let reads_backdrop = c.blend != BlendMode::Normal;
-            let ext = reads_backdrop || c.filter != Filter::Bilinear;
+            let ext = extended(c);
             let bind = if ext {
-                let backdrop = backdrop
-                    .as_ref()
-                    .filter(|_| reads_backdrop)
-                    .map(|(t, k)| (t, *k));
+                let backdrop = backdrop.as_ref().map(|(t, k)| (t, *k));
                 self.composite_ext_bind(&device, slot, (&content, content_key), backdrop, &uniform)
             } else {
                 self.composite_bind(&device, slot, &content, content_key, &uniform)
@@ -1972,7 +1975,6 @@ impl Compositor {
                 bind,
                 rect: c.rect,
                 ext,
-                backdrop: reads_backdrop,
             });
         }
         let target = self.dev.full_view(&canvas.texture, canvas.key);
@@ -2015,10 +2017,10 @@ fn encode_draws(
             .iter()
             .enumerate()
             .skip(1)
-            .find(|(_, d)| d.backdrop && !empty(d.rect))
+            .find(|(_, d)| d.ext && !empty(d.rect))
             .map_or(draws.len(), |(i, _)| start + i);
         if let (Some(first), Some(backdrop)) = (draws.get(start), backdrop)
-            && first.backdrop
+            && first.ext
             && !empty(first.rect)
         {
             if matches!(load, wgpu::LoadOp::Clear(_)) {
