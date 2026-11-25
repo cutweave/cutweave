@@ -397,6 +397,12 @@ export interface CutweaveApi {
      */
     pickMediaFiles(): Promise<string[] | null>;
     /**
+     * Native multi-folder picker for importing folders (WP-2F.09). Resolves to the absolute
+     * paths the user chose (at most 256) or null when cancelled; they are sent to `media.import`,
+     * which walks them.
+     */
+    pickMediaFolders(): Promise<string[] | null>;
+    /**
      * Native "save as" for the exported video (WP-1M.08), starting at `defaultPath` (a full path
      * or a file name). Resolves to the chosen absolute `.mp4` path, or null when cancelled.
      */

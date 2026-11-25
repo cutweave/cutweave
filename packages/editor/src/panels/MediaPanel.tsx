@@ -768,12 +768,16 @@ export function MediaPanel() {
   // Ctrl/Cmd+I is announced by the empty state: it opens the file dialog from anywhere in the app.
   const pickRef = useRef(importer.pickAndImport);
   pickRef.current = importer.pickAndImport;
+  const pickFoldersRef = useRef(importer.pickFoldersAndImport);
+  pickFoldersRef.current = importer.pickFoldersAndImport;
   useEffect(() => {
     const onKey = (e: globalThis.KeyboardEvent) => {
-      if (binKeyAction(e) !== "import") return;
+      const action = binKeyAction(e);
+      if (action !== "import" && action !== "importFolder") return;
       if (e.defaultPrevented || isTextEntry(e.target)) return;
       e.preventDefault();
-      void pickRef.current(currentOpenFolder());
+      const pick = action === "import" ? pickRef.current : pickFoldersRef.current;
+      void pick(currentOpenFolder());
     };
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
@@ -1059,6 +1063,7 @@ export function MediaPanel() {
   ];
 
   const importLabel = t("mediaBin.importButton");
+  const importFolderLabel = t("mediaBin.importFolderButton");
   const newFolderLabel = t("mediaBin.folder.newButton");
   const filtersLabel =
     filterCount > 0
@@ -1135,6 +1140,15 @@ export function MediaPanel() {
             label={importLabel}
             disabled={!ready || importer.busy}
             onClick={() => void importer.pickAndImport(open)}
+          />
+        </Tooltip>
+        <Tooltip label={importFolderLabel} keys={[modifierKey(), "Alt", "I"]}>
+          <IconButton
+            size="sm"
+            icon="folder-open"
+            label={importFolderLabel}
+            disabled={!ready || importer.busy}
+            onClick={() => void importer.pickFoldersAndImport(open)}
           />
         </Tooltip>
         <Tooltip label={newFolderLabel} keys={[modifierKey(), "Shift", "N"]}>

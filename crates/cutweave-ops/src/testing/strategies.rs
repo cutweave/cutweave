@@ -298,6 +298,7 @@ pub(super) fn args_for(name: &str, p: &Pools) -> Option<(u32, BoxedStrategy<Valu
         | "export.list_presets"
         | "media.list_folders" => (1, no_params()),
         "media.register" => (if no_media { 4 } else { 2 }, media_register(p)),
+        "media.register_tree" => (if no_media { 3 } else { 1 }, media_register_tree(p)),
         "media.import" => (if no_media { 4 } else { 2 }, media_import(p)),
         "media.list" => (1, media_list(p)),
         "media.remove" => (1, media_remove(p)),
@@ -584,6 +585,40 @@ fn media_register(p: &Pools) -> BoxedStrategy<Value> {
             v
         })
         .boxed();
+    mix(valid, invalid)
+}
+
+/// Files with the bin folders above them (`media.import` of a folder, WP-2F.09).
+fn media_register_tree(p: &Pools) -> BoxedStrategy<Value> {
+    let entry = (
+        vec(
+            select(vec!["Day 1", "day 1", "B-roll", "Audio", "Day 1 2"]),
+            0..=3,
+        ),
+        0..40_u32,
+        0..3_u8,
+        1..=90_i64,
+        any::<bool>(),
+    )
+        .prop_map(|(dirs, n, kind, secs, audio)| {
+            let (path, probed) = probed_file(n, kind, secs, audio);
+            json!({"dirs": dirs, "register": {"path": path, "probe": probed.probe,
+                   "content_hash": probed.content_hash}})
+        });
+    let valid = (
+        option::weighted(0.3, one_of(p.folders.clone())),
+        vec(entry, 1..=4),
+    )
+        .prop_map(|(folder, entries)| json!({"folder": folder, "entries": entries}))
+        .boxed();
+    let invalid = prop_oneof![
+        Just(json!({"entries": []})),
+        Just(json!({"entries": [{"dirs": ["a/b"], "register": {
+            "path": "/m/a.mp4", "probe": ProbeInfo::default(), "content_hash": "h"}}]})),
+        Just(json!({"entries": [{"dirs": [], "register": {
+            "path": "relative.mp4", "probe": ProbeInfo::default(), "content_hash": "h"}}]})),
+    ]
+    .boxed();
     mix(valid, invalid)
 }
 

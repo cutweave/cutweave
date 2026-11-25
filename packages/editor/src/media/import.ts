@@ -68,46 +68,110 @@ export interface ImportSummary {
   /** Files whose content was in the project already. */
   readonly duplicates: number;
   readonly failed: readonly ImportFailure[];
+  /** Bin folders made for the directories of imported folders. */
+  readonly folders: number;
+  /** What was left out of imported folders (WP-2F.09). */
+  readonly skipped: {
+    readonly unsupported: number;
+    readonly unreadable: number;
+    readonly tooDeep: number;
+  };
+}
+
+export interface ImportOptions {
+  /**
+   * Whether folders in the paths keep their directories as bin folders (the caller passes the
+   * `media.keep_structure` setting). Only `false` is sent; the engine's default is on.
+   */
+  readonly keepStructure?: boolean;
+}
+
+/** "1 file" / "214 files". */
+function files(n: number, t: Translate): string {
+  return n === 1
+    ? t("mediaBin.import.fileOne")
+    : t("mediaBin.import.fileMany", { count: String(n) });
+}
+
+/** "1 folder" / "12 folders". */
+function folders(n: number, t: Translate): string {
+  return n === 1
+    ? t("mediaBin.import.folderOne")
+    : t("mediaBin.import.folderMany", { count: String(n) });
+}
+
+/** "9 unsupported, 2 unreadable": what the engine left out of folders; empty when nothing. */
+export function describeSkipped(skipped: ImportSummary["skipped"], t: Translate): string {
+  const parts: string[] = [];
+  if (skipped.unsupported > 0) {
+    parts.push(t("mediaBin.import.skippedUnsupported", { count: String(skipped.unsupported) }));
+  }
+  if (skipped.unreadable > 0) {
+    parts.push(t("mediaBin.import.skippedUnreadable", { count: String(skipped.unreadable) }));
+  }
+  if (skipped.tooDeep > 0) {
+    parts.push(t("mediaBin.import.skippedTooDeep", { count: String(skipped.tooDeep) }));
+  }
+  return parts.join(", ");
 }
 
 /**
- * Imports `candidates` (validated first) and reports on it with toasts: one `danger` toast per
- * refused file (no card appears for it), one `success` toast with the counts. Resolves with the
- * summary (into `folder` of the bin, else the top level), or `null` when nothing was sent (no engine, no usable path, or the call itself
- * failed, which shows its own toast).
+ * Imports `candidates` (validated first; files or folders) and reports on it with toasts: a
+ * progress toast while the engine probes, one `danger` toast per refused file (no card appears
+ * for it), one `success` toast with the counts: "Imported 214 files into 12 folders; skipped 9
+ * unsupported". Resolves with the summary (into `folder` of the bin, else the top level), or
+ * `null` when nothing was sent (no engine, no usable path, or the call itself failed, which
+ * shows its own toast).
  */
 export async function importMedia(
   deps: ImportDeps,
   candidates: readonly unknown[],
   folder: FolderId | null = null,
+  options: ImportOptions = {},
 ): Promise<ImportSummary | null> {
   const { toasts, t } = deps;
   const paths = validateImportPaths(candidates);
   const rpc = deps.engine.getState().rpc;
   if (rpc === null || paths.length === 0) return null;
 
-  const progress = toasts.getState().push({
-    tone: "info",
-    title: t(paths.length === 1 ? "mediaBin.import.workingOne" : "mediaBin.import.workingMany", {
-      count: String(paths.length),
-    }),
-  });
+  const working =
+    paths.length === 1
+      ? t("mediaBin.import.workingOne")
+      : t("mediaBin.import.workingMany", { count: String(paths.length) });
+  const progress = toasts.getState().push({ tone: "info", title: working });
+  // The engine says how far it is while it probes a folder's files (`media.import_progress`).
+  const stopProgress =
+    typeof rpc.on === "function"
+      ? rpc.on("media.import_progress", (e) =>
+          toasts.getState().update(progress, {
+            title: t("mediaBin.import.progress", { done: String(e.done), total: String(e.total) }),
+          }),
+        )
+      : () => {};
   let added = 0;
   let duplicates = 0;
+  let madeFolders = 0;
+  const skipped = { unsupported: 0, unreadable: 0, tooDeep: 0 };
   const failed: ImportFailure[] = [];
   try {
     for (let i = 0; i < paths.length; i += MAX_IMPORT_PATHS) {
       const out = await rpc.call("media.import", {
         paths: paths.slice(i, i + MAX_IMPORT_PATHS),
         ...(folder === null ? {} : { folder }),
+        ...(options.keepStructure === false ? { keep_structure: false } : {}),
       });
       for (const m of out.media) {
         if (m.duplicate) duplicates += 1;
         else added += 1;
       }
       failed.push(...out.failed);
+      madeFolders += out.folders ?? 0;
+      skipped.unsupported += out.skipped?.unsupported ?? 0;
+      skipped.unreadable += out.skipped?.unreadable ?? 0;
+      skipped.tooDeep += out.skipped?.too_deep ?? 0;
     }
   } catch (error) {
+    stopProgress();
     toasts.getState().dismiss(progress);
     toasts.getState().push({
       tone: "danger",
@@ -116,6 +180,7 @@ export async function importMedia(
     });
     return null;
   }
+  stopProgress();
   toasts.getState().dismiss(progress);
 
   for (const failure of failed) {
@@ -125,7 +190,27 @@ export async function importMedia(
       message: describeImportFailure(failure, t),
     });
   }
-  if (added > 0 || duplicates > 0) {
+  const summary: ImportSummary = { added, duplicates, failed, folders: madeFolders, skipped };
+  const left = describeSkipped(skipped, t);
+  let duplicateNote = "";
+  if (duplicates === 1) duplicateNote = t("mediaBin.import.duplicateOne");
+  else if (duplicates > 1) {
+    duplicateNote = t("mediaBin.import.duplicateMany", { count: String(duplicates) });
+  }
+  if (added > 0 && (madeFolders > 0 || left !== "")) {
+    // From a folder: say where the files went and what was left out.
+    let message =
+      madeFolders > 0
+        ? t("mediaBin.import.summaryInto", {
+            files: files(added, t),
+            folders: folders(madeFolders, t),
+          })
+        : t("mediaBin.import.summaryFlat", { files: files(added, t) });
+    if (left !== "") message += t("mediaBin.import.summarySkipped", { what: left });
+    message += ".";
+    if (duplicateNote !== "") message += ` ${duplicateNote}`;
+    toasts.getState().push({ tone: "success", title: t("mediaBin.import.doneTitle"), message });
+  } else if (added > 0 || duplicates > 0) {
     const parts: string[] = [];
     if (added > 0) {
       parts.push(
@@ -134,16 +219,16 @@ export async function importMedia(
           : t("mediaBin.import.addedMany", { count: String(added) }),
       );
     }
-    if (duplicates > 0) {
-      parts.push(
-        duplicates === 1
-          ? t("mediaBin.import.duplicateOne")
-          : t("mediaBin.import.duplicateMany", { count: String(duplicates) }),
-      );
-    }
+    if (duplicateNote !== "") parts.push(duplicateNote);
     toasts
       .getState()
       .push({ tone: "success", title: t("mediaBin.import.doneTitle"), message: parts.join(" ") });
+  } else if (left !== "") {
+    toasts.getState().push({
+      tone: "info",
+      title: t("mediaBin.import.nothingTitle"),
+      message: t("mediaBin.import.nothingBody", { what: left }),
+    });
   }
-  return { added, duplicates, failed };
+  return summary;
 }

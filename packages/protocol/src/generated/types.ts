@@ -1186,6 +1186,19 @@ export type ImportProxy =
 /**  One is already in the cache (the same content was imported before). */
 "ready";
 
+/**
+ *  Files and folders found inside imported folders that were left out, by reason. (A file you
+ *  named yourself that cannot be imported is in `failed` instead.)
+ */
+export type ImportSkipped = {
+	/**  Files that hold no playable audio, video or picture. */
+	unsupported: number,
+	/**  Files and folders that could not be read (or whose probe timed out). */
+	unreadable: number,
+	/**  Folders nested deeper than 16 levels below the one you gave, which were not entered. */
+	too_deep: number,
+};
+
 /**  One imported file. */
 export type ImportedMedia = {
 	/**  The path as requested. */
@@ -2084,12 +2097,24 @@ export type MediaId = string & { readonly __brand: "MediaId" };
  *  thumbnails, waveform) then runs as jobs whose ids are returned in `job_ids`. Agents and
  *  headless callers may only import from the project folder and user-approved folders; any
  *  other path fails the call with `Invalid` at `/paths/<i>`.
+ * 
+ *  A path may also be a folder (WP-2F.09): the engine imports the files it can read inside it
+ *  (up to 16 levels down, no links, no hidden files, at most 2,000 files per call; more fails
+ *  with `Invalid`), counts the rest in `skipped`, and with `keep_structure` (default true)
+ *  creates a bin folder for each directory that holds new media, named after it, inside
+ *  `folder`. One undo removes the media and those folders; files already in the project stay
+ *  where they are.
  */
 export type MediaImport = {
-	/**  Absolute paths of the files (1..=256, no repeats). */
+	/**  Absolute paths of files or folders (1..=256, no repeats). */
 	paths: string[],
 	/**  Bin folder (default: top level). */
 	folder?: FolderId | null,
+	/**
+	 *  For folders in `paths`: mirror their directories as bin folders (default true); false
+	 *  puts every file straight into `folder`.
+	 */
+	keep_structure?: boolean | null,
 };
 
 /**  Result of `media.import`. */
@@ -2105,6 +2130,21 @@ export type MediaImportOutput = {
 	 *  no analysis stage is installed.
 	 */
 	job_ids: JobId[],
+	/**  What was left out of the folders in the request. */
+	skipped: ImportSkipped,
+	/**  How many bin folders were created for the directories of imported folders. */
+	folders: number,
+};
+
+/**
+ *  `media.import_progress`: a `media.import` of several files (a folder, WP-2F.09) has probed
+ *  `done` of its `total` files. The call itself answers when all are done.
+ */
+export type MediaImportProgress = {
+	/**  Files probed so far. */
+	done: number,
+	/**  Files to probe in this call. */
+	total: number,
 };
 
 /**  `media.indexed`: the asset's frame index is ready. */
@@ -2226,6 +2266,17 @@ export type MediaRegister = {
 	content_hash: string,
 	/**  The folder of the bin to put the new asset in; absent: the top level. */
 	folder?: FolderId | null,
+};
+
+/**
+ *  Registers `entries` like `media.register` and puts each new asset into the bin folders named
+ *  by its `dirs`, created inside `folder` as needed. Internal plumbing of `media.import`.
+ */
+export type MediaRegisterTree = {
+	/**  The folder the tree goes into; absent: the top level. */
+	folder?: FolderId | null,
+	/**  The files (1..=2000). */
+	entries: TreeEntry[],
 };
 
 /**  Result of `media.register`. */
@@ -2355,6 +2406,14 @@ export type MediaSummary = {
 	has_video: boolean,
 	/**  Whether it has sound. */
 	has_audio: boolean,
+};
+
+/**  Result of `media.register_tree`. */
+export type MediaTreeRegistered = {
+	/**  One result per entry, in order. */
+	results: MediaRegistered[],
+	/**  How many bin folders were created. */
+	folders: number,
 };
 
 /**  Where one item ended up. */
@@ -4129,6 +4188,17 @@ export type TransformPatch = {
 	rotation: number | null,
 	/**  The item point `position` places and rotation turns around, in item units. */
 	anchor: Vec2 | null,
+};
+
+/**  One file of a tree and the directories above it. */
+export type TreeEntry = {
+	/**
+	 *  The names of the bin folders to put the file in, outermost first, inside `folder`; empty:
+	 *  straight into `folder`.
+	 */
+	dirs: string[],
+	/**  The file. Its `folder` is ignored. */
+	register: MediaRegister,
 };
 
 /**  Which edge of a clip to trim. */

@@ -17,6 +17,7 @@ export type BinKeyAction =
   | "play"
   | "remove"
   | "import"
+  | "importFolder"
   | "search"
   | "up"
   | "rename"
@@ -35,6 +36,7 @@ export const BIN_COMMANDS: Readonly<Record<Exclude<BinKeyAction, "selectAll">, s
   play: "bin.play",
   remove: "media.remove",
   import: "bin.import",
+  importFolder: "bin.import_folder",
   search: "bin.search",
   up: "bin.up",
   rename: "bin.rename",

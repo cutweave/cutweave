@@ -12,10 +12,10 @@
 use std::collections::HashMap;
 
 use cutweave_commands::{CmdError, Command, QueryCtx, Tx, command, wire};
-use cutweave_model::{FolderId, MAX_FOLDER_DEPTH, folder_name_key};
+use cutweave_model::{FolderId, MAX_FOLDER_DEPTH, folder_name_key, folder_name_problem};
 
 use super::{
-    MediaRegister, MediaRegistered, by_hash,
+    MAX_IMPORT_FILES, MediaRegister, MediaRegistered, by_hash,
     folders::{MediaCreateFolder, OnConflict, depth_of, find_folder},
 };
 
@@ -65,10 +65,21 @@ impl Command for MediaRegisterTree {
     type Output = MediaTreeRegistered;
 
     fn validate(&self, ctx: &QueryCtx<'_>) -> Result<(), CmdError> {
+        if self.entries.is_empty() || self.entries.len() > MAX_IMPORT_FILES {
+            return Err(CmdError::invalid(
+                "/entries",
+                format!("give 1..={MAX_IMPORT_FILES} entries"),
+            ));
+        }
         if let Some(folder) = self.folder {
             find_folder(ctx.doc(), folder)?;
         }
         for (i, entry) in self.entries.iter().enumerate() {
+            for (d, name) in entry.dirs.iter().enumerate() {
+                if let Some(problem) = folder_name_problem(name.trim()) {
+                    return Err(at(i, CmdError::invalid(format!("/dirs/{d}"), problem)));
+                }
+            }
             let mut register = entry.register.clone();
             register.folder = None;
             register.validate(ctx).map_err(|e| at(i, e))?;

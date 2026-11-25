@@ -20,6 +20,7 @@ describe("createHandlers", () => {
     setWindowDirty: vi.fn(),
     confirmWindowClose: vi.fn(),
     chooseMediaFiles: vi.fn(async (): Promise<readonly string[] | null> => ["/m/a.mp4"]),
+    chooseMediaFolders: vi.fn(async (): Promise<readonly string[] | null> => ["/m/Shoot"]),
     chooseExportFile: vi.fn(
       async (_defaultPath: string): Promise<string | null> => "/out/film.mp4",
     ),
@@ -205,6 +206,15 @@ describe("createHandlers", () => {
       "/m/c.wav",
     ]);
     expect(await h["dialog:pickMediaFiles"]()).toEqual(["/m/a.mp4", "/m/c.wav"]);
+  });
+
+  it("answers the media folder picker with validated absolute paths, or null when cancelled", async () => {
+    const h = createHandlers({ ...base, engineCredentials: () => null });
+    expect(await h["dialog:pickMediaFolders"]()).toEqual(["/m/Shoot"]);
+    base.chooseMediaFolders.mockResolvedValueOnce(null);
+    expect(await h["dialog:pickMediaFolders"]()).toBeNull();
+    base.chooseMediaFolders.mockResolvedValueOnce(["/m/Shoot", "/m/Shoot", "rel/dir", "", "/m/Day 2"]);
+    expect(await h["dialog:pickMediaFolders"]()).toEqual(["/m/Shoot", "/m/Day 2"]);
   });
 
   it("answers the export picker with one absolute .mp4 path, or null when cancelled", async () => {

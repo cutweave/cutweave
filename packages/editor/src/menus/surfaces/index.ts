@@ -86,6 +86,7 @@ export const SURFACES: readonly MenuSurfaceDef[] = [
 const KEY_HINTS: Readonly<Record<string, string>> = {
   "timeline.insert": "bin.insert",
   "bin.import": "bin.import",
+  "bin.import_folder": "bin.import_folder",
   "bin.play_in_source": "bin.play",
   "bin.remove_media": "media.remove",
   "bin.remove_selected": "media.remove",

@@ -330,6 +330,12 @@ if (!app.requestSingleInstanceLock()) {
           });
           return result.canceled ? null : result.filePaths;
         },
+        chooseMediaFolders: async () => {
+          const result = await dialog.showOpenDialog({
+            properties: ["openDirectory", "multiSelections"],
+          });
+          return result.canceled ? null : result.filePaths;
+        },
         chooseExportFile: async (defaultPath) => {
           const result = await dialog.showSaveDialog({
             defaultPath,

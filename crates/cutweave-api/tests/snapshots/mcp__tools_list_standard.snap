@@ -771,7 +771,7 @@ expression: catalog.tools_json()
             "items": {
               "type": "string"
             },
-            "description": "Absolute paths of the files (1..=256, no repeats)."
+            "description": "Absolute paths of files or folders (1..=256, no repeats)."
           },
           "folder": {
             "type": [
@@ -780,6 +780,13 @@ expression: catalog.tools_json()
             ],
             "pattern": "^fld_[0-9a-f]{32}$",
             "description": "Bin folder (default: top level)."
+          },
+          "keep_structure": {
+            "type": [
+              "boolean",
+              "null"
+            ],
+            "description": "For folders in `paths`: mirror their directories as bin folders (default true); false\nputs every file straight into `folder`."
           }
         },
         "required": [

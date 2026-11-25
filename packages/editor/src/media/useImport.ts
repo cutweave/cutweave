@@ -5,6 +5,7 @@ import type { FolderId } from "@cutweave/protocol";
 import { useCallback, useMemo, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { engineStore } from "../engine/engineStore.ts";
+import { preferences } from "../prefs/prefsStore.ts";
 import { toastStore } from "../state/toastStore.ts";
 import { translator } from "../timeline/errors.ts";
 import { mediaFilesBridge, pickedPaths } from "./bridge.ts";
@@ -19,6 +20,10 @@ export interface UseImport {
   importPaths(paths: readonly unknown[], folder?: FolderId | null): Promise<ImportSummary | null>;
   /** Opens the native file dialog and imports what it returns into `folder`. */
   pickAndImport(folder?: FolderId | null): Promise<ImportSummary | null>;
+  /** Whether the native folder picker exists (WP-2F.09). */
+  readonly canPickFolders: boolean;
+  /** Opens the native folder dialog and imports what it returns (folders with their structure) into `folder`. */
+  pickFoldersAndImport(folder?: FolderId | null): Promise<ImportSummary | null>;
   /** The paths of files dropped from the OS (`webUtils.getPathForFile` in the preload). */
   pathsOf(files: readonly File[]): string[] | null;
 }
@@ -41,6 +46,7 @@ export function useImport(): UseImport {
         },
         paths,
         folder ?? null,
+        { keepStructure: preferences.get("media.keep_structure") },
       );
     } finally {
       setBusy(false);
@@ -62,6 +68,21 @@ export function useImport(): UseImport {
     [bridge, importPaths],
   );
 
+  const pickFoldersAndImport = useCallback(
+    async (folder?: FolderId | null) => {
+      if (bridge.pickMediaFolders === undefined) {
+        toastStore
+          .getState()
+          .push({ tone: "info", title: translate.current("mediaBin.import.desktopOnly") });
+        return null;
+      }
+      const answer = await bridge.pickMediaFolders().catch(() => null);
+      const paths = pickedPaths(answer);
+      return paths.length === 0 ? null : importPaths(paths, folder ?? null);
+    },
+    [bridge, importPaths],
+  );
+
   const pathsOf = useCallback(
     (files: readonly File[]) =>
       bridge.pathsForDrop === undefined ? null : bridge.pathsForDrop(files),
@@ -73,6 +94,8 @@ export function useImport(): UseImport {
     canPick: bridge.pickMediaFiles !== undefined,
     importPaths,
     pickAndImport,
+    canPickFolders: bridge.pickMediaFolders !== undefined,
+    pickFoldersAndImport,
     pathsOf,
   };
 }

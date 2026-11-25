@@ -2,7 +2,7 @@
 
 # Command reference
 
-Every command and query the engine registers (87 in total), generated from the registry. The full JSON Schemas are in `schema/commands.json` and `schema/queries.json`.
+Every command and query the engine registers (88 in total), generated from the registry. The full JSON Schemas are in `schema/commands.json` and `schema/queries.json`.
 
 MCP exposure: `core` commands are always listed as tools (`item.move` is `item_move`), `catalog` ones are reachable through the catalog tools, `hidden` ones are not exposed.
 
@@ -52,6 +52,7 @@ MCP exposure: `core` commands are always listed as tools (`item.move` is `item_m
 | media | `media.move` | Move media assets and folders into a folder of the bin, or to its top level | command, undoable, idempotent | catalog |
 | media | `media.proxy_status` | Show the proxies of video assets: status, progress, file, size, policy | engine, read-only, idempotent | catalog |
 | media | `media.register` | Register a probed media file (used by import; deduplicates by content hash) | command, undoable, idempotent | hidden |
+| media | `media.register_tree` | Register probed media files into bin folders that mirror a directory tree (used by import) | command, undoable, idempotent | hidden |
 | media | `media.remove` | Remove an unused media asset from the project | command, undoable, destructive | catalog |
 | media | `media.rename` | Set the name the media bin shows for an asset, or go back to the file name | command, undoable, idempotent | catalog |
 | media | `media.rename_folder` | Rename a folder of the media bin | command, undoable, idempotent | catalog |

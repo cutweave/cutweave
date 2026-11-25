@@ -25,6 +25,8 @@ export interface ToastStore {
   readonly notices: readonly Notice[];
   /** Shows a notice; an identical one already showing is replaced. Returns its id. */
   push(notice: Omit<Notice, "id">): number;
+  /** Changes a showing notice in place (a progress toast); nothing if it is gone. */
+  update(id: number, patch: Partial<Pick<Notice, "title" | "message">>): void;
   dismiss(id: number): void;
   clear(): void;
 }
@@ -42,6 +44,9 @@ export function createToastStore() {
         return { notices: [...others, { ...notice, id }].slice(-MAX_NOTICES) };
       });
       return id;
+    },
+    update(id, patch) {
+      set((s) => ({ notices: s.notices.map((n) => (n.id === id ? { ...n, ...patch } : n)) }));
     },
     dismiss(id) {
       set((s) => ({ notices: s.notices.filter((n) => n.id !== id) }));

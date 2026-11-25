@@ -171,6 +171,13 @@ export const KEY_COMMANDS: readonly KeyCommand[] = [
   cmd("bin.play", "bin", "bin", "shortcuts.bin.play", "shortcuts.bin.playHelp"),
   cmd("media.remove", "bin", "bin", "shortcuts.bin.remove", "shortcuts.bin.removeHelp"),
   cmd("bin.import", "bin", "global", "shortcuts.bin.import", "shortcuts.bin.importHelp"),
+  cmd(
+    "bin.import_folder",
+    "bin",
+    "global",
+    "shortcuts.bin.importFolder",
+    "shortcuts.bin.importFolderHelp",
+  ),
   cmd("bin.search", "bin", "bin", "shortcuts.bin.search", "shortcuts.bin.searchHelp"),
   cmd("bin.up", "bin", "bin", "shortcuts.bin.up", "shortcuts.bin.upHelp"),
   cmd("bin.rename", "bin", "bin", "shortcuts.bin.rename", "shortcuts.bin.renameHelp"),

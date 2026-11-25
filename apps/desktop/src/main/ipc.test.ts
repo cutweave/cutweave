@@ -26,6 +26,7 @@ const handlers = (): InvokeHandlers => ({
   "window:setDirty": vi.fn(),
   "window:confirmClose": vi.fn(),
   "dialog:pickMediaFiles": vi.fn(() => null),
+  "dialog:pickMediaFolders": vi.fn(() => null),
   "dialog:chooseExportFile": vi.fn(() => null),
   "shell:showItemInFolder": vi.fn(),
   "shell:openExternal": vi.fn(async () => undefined),
@@ -242,6 +243,14 @@ describe("ipc registry", () => {
     );
     call("dialog:pickMediaFiles", okEvent);
     expect(h["dialog:pickMediaFiles"]).toHaveBeenCalledTimes(1);
+  });
+
+  it("takes no arguments on the media folder picker channel (WP-2F.09)", () => {
+    const h = handlers();
+    const call = register(h);
+    expect(() => call("dialog:pickMediaFolders", okEvent, "/etc")).toThrow(IpcValidationError);
+    call("dialog:pickMediaFolders", okEvent);
+    expect(h["dialog:pickMediaFolders"]).toHaveBeenCalledTimes(1);
   });
 
   it("takes one bounded path on the export file picker channel (WP-1M.08)", () => {

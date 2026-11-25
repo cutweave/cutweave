@@ -67,6 +67,12 @@ describe("createCutweaveApi", () => {
     expect(ipc.invoke).toHaveBeenCalledWith("dialog:pickMediaFiles");
   });
 
+  it("asks main for the media folder picker over its own channel", async () => {
+    const { ipc } = fakeIpc();
+    await createCutweaveApi(ipc, null).dialog.pickMediaFolders();
+    expect(ipc.invoke).toHaveBeenCalledWith("dialog:pickMediaFolders");
+  });
+
   it("asks main for the export file picker with the default path", async () => {
     const { ipc } = fakeIpc();
     await createCutweaveApi(ipc, null).dialog.chooseExportFile("C:/p/film.mp4");

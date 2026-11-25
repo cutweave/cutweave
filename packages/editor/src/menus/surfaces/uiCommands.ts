@@ -43,19 +43,21 @@ export async function copyText(text: string): Promise<void> {
   await navigator.clipboard.writeText(text);
 }
 
-/** The native picker, then one `media.import` for what was chosen. */
-async function pickAndImport(): Promise<void> {
+/** The native picker (files, or folders: WP-2F.09), then one `media.import` for what was chosen. */
+async function pickAndImport(what: "files" | "folders" = "files"): Promise<void> {
   const bridge = mediaFilesBridge();
-  if (bridge.pickMediaFiles === undefined) {
+  const pick = what === "files" ? bridge.pickMediaFiles : bridge.pickMediaFolders;
+  if (pick === undefined) {
     toastStore.getState().push({ tone: "info", title: i18n.t("mediaBin.import.desktopOnly") });
     return;
   }
-  const paths = pickedPaths(await bridge.pickMediaFiles().catch(() => null));
+  const paths = pickedPaths(await pick().catch(() => null));
   if (paths.length === 0) return;
   await importMedia(
     { engine: engineStore, toasts: toastStore, t: tr() },
     paths,
     currentOpenFolder(),
+    { keepStructure: preferences.get("media.keep_structure") },
   );
 }
 
@@ -144,7 +146,14 @@ export const UI_COMMANDS: readonly UiCommand[] = [
     label: "contextMenu.item.import",
     icon: "upload",
     host: true,
-    run: () => pickAndImport(),
+    run: () => pickAndImport("files"),
+  },
+  {
+    id: "bin.import_folder",
+    label: "contextMenu.item.importFolder",
+    icon: "folder-open",
+    host: true,
+    run: () => pickAndImport("folders"),
   },
   {
     id: "bin.new_folder",

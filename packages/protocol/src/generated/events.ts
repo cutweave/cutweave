@@ -1,5 +1,5 @@
 // @generated — do not edit; run cargo xtask gen
-import type { AgentConnection, AutosaveFailed, CommandPanicked, DocPatched, DocReset, HistoryChanged, JobInfo, MediaAnalysisFailed, MediaIndexed, ProjectClosed, ProjectDirty, ProjectOpenFailed, ProjectOpening, ProjectSaved, ProjectStatus, RecoveryPayload, TxActivity, TxEnded } from "./types.ts";
+import type { AgentConnection, AutosaveFailed, CommandPanicked, DocPatched, DocReset, HistoryChanged, JobInfo, MediaAnalysisFailed, MediaImportProgress, MediaIndexed, ProjectClosed, ProjectDirty, ProjectOpenFailed, ProjectOpening, ProjectSaved, ProjectStatus, RecoveryPayload, TxActivity, TxEnded } from "./types.ts";
 
 /** Event name to payload (document events and engine events). */
 export type EventMap = {
@@ -9,6 +9,7 @@ export type EventMap = {
   "edit.history_changed": HistoryChanged;
   "job.progress": JobInfo;
   "media.analysis_failed": MediaAnalysisFailed;
+  "media.import_progress": MediaImportProgress;
   "media.indexed": MediaIndexed;
   "project.autosave_failed": AutosaveFailed;
   "project.closed": ProjectClosed;

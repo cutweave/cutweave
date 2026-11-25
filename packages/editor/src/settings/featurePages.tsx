@@ -106,6 +106,14 @@ const mediaPage: SettingsPageDef = {
       keywords: "settings.rows.hoverScrub.keywords",
       control: { kind: "switch" },
     },
+    {
+      id: "media.keep_structure",
+      key: "media.keep_structure",
+      label: "settings.rows.keepStructure.label",
+      description: "settings.rows.keepStructure.description",
+      keywords: "settings.rows.keepStructure.keywords",
+      control: { kind: "switch" },
+    },
   ],
 };
 
