@@ -989,8 +989,8 @@
     },
     "track": {
       "title": "Track",
-      "name": "Name",
-      "gain": "Gain",
+      "name": "Track name",
+      "gain": "Track gain",
       "muted": "Mute",
       "hidden": "Hide",
       "locked": "Lock",
