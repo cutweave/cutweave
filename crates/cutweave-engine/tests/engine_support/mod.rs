@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 //! Shared fixtures of the WP-1I.04 engine tests: temp dirs, fixture projects, event waits, the
-//! process's thread count and its sockets (for the no-telemetry check).
+//! process's threads and its sockets (for the no-telemetry check).
 
 #![allow(
     dead_code,
@@ -10,6 +10,7 @@
     clippy::must_use_candidate
 )]
 
+use std::collections::BTreeMap;
 use std::fs;
 use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicU32, Ordering};
@@ -130,41 +131,144 @@ pub fn drain(rx: &mut EventReceiver) -> Vec<EngineEvent> {
 
 // ----- threads ---------------------------------------------------------------------------------
 
-/// The number of threads of this process.
+/// The number of this process's threads a leak check counts (see [`ThreadCensus::counted`]).
 pub fn thread_count() -> usize {
     thread_count_of(std::process::id())
 }
 
-#[cfg(target_os = "linux")]
+/// The number of threads of process `pid` a leak check counts (see [`ThreadCensus::counted`]).
 pub fn thread_count_of(pid: u32) -> usize {
-    fs::read_dir(format!("/proc/{pid}/task")).unwrap().count()
+    thread_census_of(pid).counted()
+}
+
+/// This process's threads (see [`ThreadCensus`]).
+pub fn thread_census() -> ThreadCensus {
+    thread_census_of(std::process::id())
+}
+
+/// The threads of a process: how many, and on Windows the module each one started in.
+#[derive(Clone, Debug, Default)]
+pub struct ThreadCensus {
+    pub total: usize,
+    /// Threads by the module of their start address, lowercase (Windows; empty elsewhere).
+    pub by_start: BTreeMap<String, usize>,
+}
+
+impl ThreadCensus {
+    /// Workers of the Windows thread pool: they start in `ntdll.dll` (`TppWorkerThread`).
+    pub fn os_pool(&self) -> usize {
+        self.by_start.get("ntdll.dll").copied().unwrap_or(0)
+    }
+
+    /// The threads a leak check counts: all but the Windows thread pool's workers. That pool is
+    /// the operating system's, one per process: the software rasterizer (WARP), the GPU drivers
+    /// and the loader queue work on it, and Windows adds workers under load and retires idle
+    /// ones on its own schedule (after identical engine runs it held 15 to 24, and grew while
+    /// the process was idle). No engine code starts those threads or could join them; every
+    /// thread the engine starts (std, tokio, FFmpeg's) starts elsewhere and counts.
+    pub fn counted(&self) -> usize {
+        self.total - self.os_pool()
+    }
+}
+
+impl std::fmt::Display for ThreadCensus {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "{} threads", self.total)?;
+        let mut by_count: Vec<_> = self.by_start.iter().collect();
+        by_count.sort_by(|a, b| b.1.cmp(a.1).then(a.0.cmp(b.0)));
+        for (i, (module, n)) in by_count.into_iter().enumerate() {
+            let pool = if module == "ntdll.dll" {
+                " (OS thread pool)"
+            } else {
+                ""
+            };
+            write!(f, "{} {n} {module}{pool}", if i == 0 { ":" } else { "," })?;
+        }
+        Ok(())
+    }
+}
+
+#[cfg(target_os = "linux")]
+pub fn thread_census_of(pid: u32) -> ThreadCensus {
+    ThreadCensus {
+        total: fs::read_dir(format!("/proc/{pid}/task")).unwrap().count(),
+        by_start: BTreeMap::new(),
+    }
 }
 
 #[cfg(target_os = "macos")]
-pub fn thread_count_of(pid: u32) -> usize {
+pub fn thread_census_of(pid: u32) -> ThreadCensus {
     let out = std::process::Command::new("ps")
         .args(["-M", "-p", &pid.to_string()])
         .output()
         .unwrap();
     // One header line, then one line per thread.
-    String::from_utf8_lossy(&out.stdout)
+    let total = String::from_utf8_lossy(&out.stdout)
         .lines()
         .count()
-        .saturating_sub(1)
+        .saturating_sub(1);
+    ThreadCensus {
+        total,
+        by_start: BTreeMap::new(),
+    }
 }
 
+/// The start address of a thread (`ThreadQuerySetWin32StartAddress`; 0 once it is gone), for
+/// PowerShell's `Add-Type` (passed in an environment variable: no command-line quoting).
 #[cfg(windows)]
-pub fn thread_count_of(pid: u32) -> usize {
+const THREAD_START_CS: &str = r#"
+using System;
+using System.Runtime.InteropServices;
+public static class CutweaveThreadStart {
+    [DllImport("kernel32.dll")] static extern IntPtr OpenThread(int access, bool inherit, int id);
+    [DllImport("kernel32.dll")] static extern bool CloseHandle(IntPtr handle);
+    [DllImport("ntdll.dll")] static extern int NtQueryInformationThread(
+        IntPtr thread, int infoClass, out IntPtr info, int length, IntPtr returned);
+    public static long Of(int id) {
+        IntPtr thread = OpenThread(0x0040, false, id); // THREAD_QUERY_INFORMATION
+        if (thread == IntPtr.Zero) return 0;
+        try {
+            IntPtr start;
+            return NtQueryInformationThread(thread, 9, out start, IntPtr.Size, IntPtr.Zero) == 0
+                ? start.ToInt64() : 0;
+        } finally { CloseHandle(thread); }
+    }
+}
+"#;
+
+#[cfg(windows)]
+pub fn thread_census_of(pid: u32) -> ThreadCensus {
+    // One line per live thread: the module its start address is in ("?" outside any).
+    let script = format!(
+        "Add-Type -TypeDefinition $env:CUTWEAVE_THREAD_START_CS; \
+         $p = Get-Process -Id {pid}; \
+         $m = @($p.Modules | ForEach-Object {{ ,@($_.ModuleName, $_.BaseAddress.ToInt64(), \
+           ($_.BaseAddress.ToInt64() + $_.ModuleMemorySize)) }}); \
+         foreach ($t in $p.Threads) {{ $s = [CutweaveThreadStart]::Of($t.Id); \
+           if ($s -ne 0) {{ $n = '?'; \
+             foreach ($x in $m) {{ if ($s -ge $x[1] -and $s -lt $x[2]) {{ $n = $x[0]; break }} }}; \
+             $n }} }}"
+    );
     let out = std::process::Command::new("powershell")
-        .args([
-            "-NoProfile",
-            "-NonInteractive",
-            "-Command",
-            &format!("(Get-Process -Id {pid}).Threads.Count"),
-        ])
+        .args(["-NoProfile", "-NonInteractive", "-Command", &script])
+        .env("CUTWEAVE_THREAD_START_CS", THREAD_START_CS)
         .output()
         .unwrap();
-    String::from_utf8_lossy(&out.stdout).trim().parse().unwrap()
+    let stdout = String::from_utf8_lossy(&out.stdout);
+    assert!(
+        out.status.success() && !stdout.trim().is_empty(),
+        "cannot list the threads of {pid}: {}",
+        String::from_utf8_lossy(&out.stderr)
+    );
+    let mut census = ThreadCensus::default();
+    for module in stdout.lines().map(str::trim).filter(|l| !l.is_empty()) {
+        census.total += 1;
+        *census
+            .by_start
+            .entry(module.to_ascii_lowercase())
+            .or_default() += 1;
+    }
+    census
 }
 
 /// Waits (up to 5 s) for this process's thread count to settle within `tolerance` of
