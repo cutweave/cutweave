@@ -29,6 +29,21 @@ async function box(page: Page, name: PanelName) {
   return found;
 }
 
+/** A panel's box once the dock has stopped resizing it (two reads in a row agree). */
+async function settledBox(page: Page, name: PanelName) {
+  let last = "";
+  await expect
+    .poll(async () => {
+      const b = await box(page, name);
+      const now = `${b.x}|${b.y}|${b.width}|${b.height}`;
+      const same = now === last;
+      last = now;
+      return same;
+    })
+    .toBe(true);
+  return box(page, name);
+}
+
 /** View > Panels, opened with real clicks; the submenu's list. */
 async function openPanelsMenu(page: Page): Promise<Locator> {
   await page
@@ -93,8 +108,8 @@ test.describe("F33 close and reopen panels", () => {
       await expect(panel(page, "Inspector")).toBeVisible();
 
       // Close the Inspector with its close button: the Preview widens and the menu says so.
-      const previewBefore = (await box(page, "Preview")).width;
-      const inspectorBefore = await box(page, "Inspector");
+      const previewBefore = (await settledBox(page, "Preview")).width;
+      const inspectorBefore = await settledBox(page, "Inspector");
       await closeButton(page, "Inspector").click();
       await expect(panel(page, "Inspector")).toHaveCount(0);
       await expect
@@ -110,7 +125,7 @@ test.describe("F33 close and reopen panels", () => {
       // Choosing it in the menu brings it back where it was: right of the Preview, at its width.
       await togglePanel(page, "Inspector");
       await expect(panel(page, "Inspector")).toBeVisible();
-      const inspectorAfter = await box(page, "Inspector");
+      const inspectorAfter = await settledBox(page, "Inspector");
       const preview = await box(page, "Preview");
       expect(inspectorAfter.x).toBeGreaterThan(preview.x + preview.width - 1);
       expect(Math.abs(inspectorAfter.width - inspectorBefore.width)).toBeLessThan(8);
