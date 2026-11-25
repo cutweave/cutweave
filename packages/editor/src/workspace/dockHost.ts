@@ -153,7 +153,15 @@ export function closePanel(id: PanelId): void {
     closed: [...meta.closed.filter((p) => p !== id), id],
     lastDock: spot === null ? rest : { ...rest, [id]: spot },
   };
+  // The space it frees goes to the panel it was docked beside (the Preview widens when the
+  // Inspector closes), instead of wherever the splitview happens to put it.
+  const beside = spot !== null && spot.ref !== null ? dock.getPanel(spot.ref) : undefined;
+  const horizontal = spot?.direction === "left" || spot?.direction === "right";
+  const before = horizontal ? beside?.api.width : beside?.api.height;
   dock.removePanel(panel);
+  if (beside !== undefined && spot?.size !== undefined && before !== undefined && before > 0) {
+    beside.api.setSize(horizontal ? { width: before + spot.size } : { height: before + spot.size });
+  }
   refresh();
   saveLayoutNow();
 }
