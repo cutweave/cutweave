@@ -163,6 +163,7 @@ Auto-disable (4A.05) triggers at 2× budget for 30 consecutive frames. At ½/¼ 
 - **Executor:** sonnet
 - **Scope:** shared browser component for Effects, Transitions and Filters tabs: categories, search, tags, favourites, animated hover thumbnails (pre-rendered from `pack thumbs`, on-demand `render.frame` fallback at 160 px cached); drag onto clip / edit point / gap or double-click to apply to selection; inspector "Effects" section (reorder drag, toggle, delete, reset, schema-driven params with keyframe diamonds from E2C, "disabled: over budget" badge); timeline transition handles (drag to extend, context menu: change type, apply to all, set default).
   - Settings > Editing: duration of new transitions (`editing.transition_duration`, 0.5 s); applying a transition uses it (catalog `docs/reference/settings.md`).
+  - **Context menu (product owner request, 2026-11-25; framework WP-2H.12, plan in [09-context-menus.md](../research/09-context-menus.md)):** menus on browser cards (`effects.card`: Apply to selection, Favourite, Copy settings) and on a clip's effect row (`inspector.effect`: Enable/Disable, Copy, Paste, Reset, Remove, Move up, Move down).
 - **Interfaces:** consumes `effect.*`, `transition.*`, `color.apply_filter`; registers tabs in the panel registry.
 - **Acceptance criteria:** Playwright e2e: drag "Cross Dissolve" to a cut → handle appears → drag duration → export frame matches golden; applying 5 effects and undoing 5 times restores; browser with 150 items scrolls ≥ 55 fps and shows thumbnails < 300 ms warm.
 - **Tests:** Playwright-Electron, Vitest, visual regression.
@@ -543,6 +544,7 @@ Auto-disable (4A.05) triggers at 2× budget for 30 consecutive frames. At ½/¼ 
 - **Size:** M
 - **Executor:** sonnet
 - **Scope:** Color inspector tab: Basic (sliders, double-click reset, keyframe diamonds), HSL (band picker with swatches), Curves (canvas editor: add/drag/delete points, per-channel, numeric entry, snapping), Wheels, LUT section (import `.cube`, choose, intensity, input space), Copy/Paste grade, before/after split compare (`\` key); dockable Scopes panel (tabs: waveform/parade/vectorscope/histogram) updating on scrub/playhead.
+  - **Context menu (product owner request, 2026-11-25; framework WP-2H.12, plan in [09-context-menus.md](../research/09-context-menus.md)):** menus on the colour panel (Reset wheel, Reset section, Copy grade, Paste grade) and the scopes (Choose scope ▸, Reset).
 - **Interfaces:** consumes `color.*`, `scopes.get`.
 - **Acceptance criteria:** Playwright e2e: drag exposure → preview changes and scope reacts within 100 ms; add 3 curve points → export frame matches golden; keyboard-operable sliders with aria labels; one gesture = one undo step.
 - **Tests:** Playwright-Electron, Vitest, visual regression.
@@ -569,6 +571,7 @@ Auto-disable (4A.05) triggers at 2× budget for 30 consecutive frames. At ½/¼ 
 - **Size:** M
 - **Executor:** sonnet
 - **Scope:** on-canvas mask tools (rect, ellipse, pen for bezier/polygon), node add/delete/smooth↔corner, feather and expansion handles, invert toggle, mask list with modes in inspector; keying UI: colour eyedropper from preview (`render.sample_pixel{t,x,y}` query returns linear + display values), similarity/smoothness/spill/shadow sliders, view modes Result | Matte | Spill | Original (preview-only param, never exported).
+  - **Context menu (product owner request, 2026-11-25; framework WP-2H.12, plan in [09-context-menus.md](../research/09-context-menus.md)):** a menu on a mask shape and its handles (`preview.mask`): Invert, Duplicate, Feather…, Delete mask, Delete point.
 - **Interfaces:** consumes `mask.*`, `render.sample_pixel`, key effect params.
 - **Acceptance criteria:** Playwright e2e: draw ellipse mask → feather → keyframe → export frame matches golden; eyedropper on green screen sets key colour within ΔE ≤ 3 of the clicked pixel; view mode never affects export (golden test).
 - **Tests:** Playwright-Electron, visual regression.
@@ -650,6 +653,7 @@ Auto-disable (4A.05) triggers at 2× budget for 30 consecutive frames. At ½/¼ 
 - **Size:** M
 - **Executor:** sonnet
 - **Scope:** inspector graph editor (speed vs time, bezier handles, add/delete/drag points with snapping to markers/beat markers), preset dropdown with mini-curve icons, `keep` toggle with resulting duration readout, retime quality selector, timeline clip speed ramp visualisation (stripes) and badge.
+  - **Context menu (product owner request, 2026-11-25; framework WP-2H.12, plan in [09-context-menus.md](../research/09-context-menus.md)):** a menu on a speed curve point: Smooth, Corner, Delete point, Reset curve.
 - **Interfaces:** consumes `clip.set_speed_curve`, `clip.speed_presets`, `clip.set_retime`.
 - **Acceptance criteria:** Playwright e2e: apply Hero → drag a point → preview updates ≤ 100 ms → export frame matches golden; duration readout equals engine duration; one gesture = one undo step.
 - **Tests:** Playwright-Electron, Vitest.

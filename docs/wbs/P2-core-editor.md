@@ -22,7 +22,7 @@ A genuinely usable everyday editor for both long-form and short-form (M2 Dogfood
 | **2E Audio features** | Fades, keyframed volume, pan, track buses, master limiter, loudness normalization, auto-ducking, basic voice effects, voiceover recording, extract audio, audio UI, the Audio settings page. |
 | **2F Media management** | Proxy pipeline (auto + manual), relink, collect & archive, image and image-sequence import, bin tags/smart collections, media folders (ADR-0020) and importing folders with their structure. |
 | **2G Export presets & queue** | Presets (YouTube, Shorts, Instagram Reels/Stories/feed, TikTok, X with dated platform limits and safe areas; GIF, audio-only, ProRes), HEVC/AV1, advanced encode controls (CBR/VBR/CRF, GOP, color tags, audio codec/bitrate), background queue, range/marker-set export. |
-| **2H Workspace UI** | Dockable Short-form/Long-form workspaces, schema-driven inspector, command palette, shortcut editor with NLE and CapCut presets, preview overlays, i18n scaffold, the Project settings dialog, the Appearance and Playback settings pages, closing and reopening panels (View > Panels), a History panel. |
+| **2H Workspace UI** | Dockable Short-form/Long-form workspaces, schema-driven inspector, command palette, shortcut editor with NLE and CapCut presets, preview overlays, i18n scaffold, the Project settings dialog, the Appearance and Playback settings pages, closing and reopening panels (View > Panels), a History panel, context menus on every surface (framework WP-2H.12, today's surfaces WP-2H.13). |
 | **2I MCP core tool set** | ~30 core tools complete, `view_get`/`view_set`, contact sheet, filmstrip, waveform image, checkpoints, `expected_rev`, per-endpoint tool profiles (`/mcp/minimal`, `/mcp`, `/mcp/full`), scripted-agent e2e. |
 | **2J Performance, reliability & dogfood** | Benchmarks in CI against §19, background render cache, crash-injection harness, and the dogfood exit review (human). |
 
@@ -101,6 +101,7 @@ Schedule note: the roadmap gives 9 weeks. Total effort here is about 162 agent-d
   - Track commands: `track.add{kind, index?}`, `track.remove`, `track.reorder`, `track.rename`, `track.set_flags{muted,hidden,locked,solo}`, `track.set_magnetic`, `track.set_height` (UI hint, `view`-like but persisted).
   - Marker/range commands: `timeline.add_marker`, `timeline.move_marker`, `timeline.remove_marker`, `timeline.set_in_out`, `timeline.clear_in_out`.
   - MCP: `track.add`, `track.set_flags`, `timeline.add_marker` core; the rest catalog.
+  - **Context menu (product owner request, 2026-11-25; framework WP-2H.12, plan in [09-context-menus.md](../research/09-context-menus.md)):** adds the two commands the timeline menus need and nothing else: `timeline.update_marker{id, label?, color?, duration?}` (the marker menu's Edit) and `item.set_label_color{items, color}` (the clip menu's Color label). The menus themselves are WP-2A.10's.
 - **Interfaces:** commands above; queries `track.list`, `marker.list`.
 - **Acceptance criteria:**
   - A v1 fixture migrates to v2 and round-trips (insta snapshot); newer-schema projects still open read-only.
@@ -108,6 +109,7 @@ Schedule note: the roadmap gives 9 weeks. Total effort here is about 162 agent-d
   - `track.set_magnetic` on a track with gaps fails with `Invalid{path:"track", msg}` or closes gaps; behaviour per 2A.01. Exactly one magnetic track invariant is asserted after each command.
   - Solo/mute flags affect only `audio`/render evaluation, never item positions.
   - `cargo test -p cutweave-model -p cutweave-ops` and schema snapshot gate pass.
+  - Both commands have undo identity in the property harness and an MCP catalog entry.
 - **Tests:** unit, proptest, migration golden, insta schema snapshots.
 - **Out of scope:** audio-engine honouring solo (2E.02), UI.
 
@@ -122,6 +124,7 @@ Schedule note: the roadmap gives 9 weeks. Total effort here is about 162 agent-d
   - `mode = insert|overwrite|new_track`.
   - Gesture support: `item.move` accepts being called repeatedly under a `gesture` tx.
   - MCP core: `timeline_insert`, `clip_split`, `item_move`, `item_delete`. Others catalog.
+  - **Context menu (product owner request, 2026-11-25; framework WP-2H.12, plan in [09-context-menus.md](../research/09-context-menus.md)):** Ripple delete, Overwrite, Lift, Extract and Delete gap are items of the `timeline.clip`, `timeline.lane` and in/out range bar surfaces (tables owned by WP-2A.10); each runs its command with arguments from the menu context, no UI-only variants.
 - **Interfaces:** `EditReport {moved, trimmed, split, removed, created_tracks}`. Typed errors `Locked`, `Conflict`, `Invalid`.
 - **Acceptance criteria:**
   - All spec fixtures for these commands pass (`cargo test -p cutweave-ops timeline::fixtures`).
@@ -143,6 +146,7 @@ Schedule note: the roadmap gives 9 weeks. Total effort here is about 162 agent-d
   - Linked members trim together (video+audio) unless `unlink: true`.
   - Magnetic track: ripple_trim and plain trim both close gaps; roll/slip never change track length.
   - MCP core: `clip_trim`. Others catalog.
+  - **Context menu (product owner request, 2026-11-25; framework WP-2H.12, plan in [09-context-menus.md](../research/09-context-menus.md)):** the `timeline.edge` menu (Trim to playhead, Ripple trim to playhead, Roll to playhead) runs `clip.trim`, `clip.ripple_trim` and `clip.roll` with `to` set to the playhead. If "Extend to next edit" cannot be said with `to`, add `clip.extend_to_next{item}` here.
 - **Interfaces:** `TrimOutput {applied_delta, report: EditReport}`.
 - **Acceptance criteria:**
   - Spec fixtures for the trim family pass.
@@ -161,6 +165,7 @@ Schedule note: the roadmap gives 9 weeks. Total effort here is about 162 agent-d
   - "Attach to main clip": `item.attach{child, parent}` sets a parent relationship (child follows parent start; per spec).
   - Link survives split (each half linked to the corresponding half), duplicate (new group id), copy/paste.
   - MCP: catalog for link/unlink/attach.
+  - **Context menu (product owner request, 2026-11-25; framework WP-2H.12, plan in [09-context-menus.md](../research/09-context-menus.md)):** Link, Unlink and Attach to… are items of the `timeline.clip` surface; `item.linked` is a `when` context key. Menus act on the whole linked group by default.
 - **Interfaces:** `linked_group` queries via `item.get`; `LinkReport`.
 - **Acceptance criteria:**
   - Moving, deleting, splitting, trimming one member applies to all members, with fixture tests from the spec.
@@ -181,12 +186,14 @@ Schedule note: the roadmap gives 9 weeks. Total effort here is about 162 agent-d
   - `item.duplicate{items[], offset}`, `clip.paste_attributes{from, to, which[]}` (transform, effects, audio).
   - Cross-sequence paste works (IDs remapped, media refs preserved).
   - MCP: catalog.
+  - **Context menu (product owner request, 2026-11-25; framework WP-2H.12, plan in [09-context-menus.md](../research/09-context-menus.md)):** Cut, Copy, Paste attributes… and Duplicate are items of `timeline.clip`; Paste here is an item of `timeline.lane` (`when clipboard.hasItems`, time and track from the click). Shortcut hints come from the keymap.
 - **Interfaces:** `ClipboardPayload` (versioned JSON Schema).
 - **Acceptance criteria:**
   - Copy → paste in another sequence yields structurally equal items except IDs (proptest `paste(copy(x)) ≅ x`).
   - Pasting 200 items < 20 ms.
   - Pasting over a locked track fails with `Locked` and changes nothing.
   - No ID collisions across 1,000 random pastes.
+  - Context-menu choices Copy then Paste here give the same document as `timeline.copy` and `timeline.paste` through the CLI (parity script).
 - **Tests:** unit + proptest.
 - **Out of scope:** pasting from external applications.
 
@@ -250,7 +257,7 @@ Schedule note: the roadmap gives 9 weeks. Total effort here is about 162 agent-d
 
 ### WP-2A.10 — Timeline UI wiring: tools, selection, headers, edit gestures
 - **Area:** packages/editor/src/timeline/
-- **Depends on:** WP-2A.08, WP-2A.09, WP-2A.06, WP-2A.05, E1M
+- **Depends on:** WP-2A.08, WP-2A.09, WP-2A.06, WP-2A.05, E1M, WP-2H.13
 - **Size:** M
 - **Executor:** sonnet
 - **Scope:**
@@ -260,11 +267,13 @@ Schedule note: the roadmap gives 9 weeks. Total effort here is about 162 agent-d
   - Multi-select, marquee, linked-group selection, copy/cut/paste/duplicate bindings.
   - Drag from the media bin to timeline with insert/overwrite/new_track affordances; Alt-drop (or context menu "Replace clip") onto an existing clip invokes `clip.replace`. Drop preview ghost.
   - Edits show engine errors in a non-blocking toast with machine code.
+  - **Context menu (product owner request, 2026-11-25; framework WP-2H.12, plan in [09-context-menus.md](../research/09-context-menus.md)):** replaces the one-line mention above: this WP owns the full content of the timeline surface tables `timeline.clip`, `timeline.edge`, `timeline.lane`, `timeline.track`, `timeline.ruler`, `timeline.playhead`, `timeline.marker` (items, order and disabled rules in section 6.4 of the research; WP-2H.13 seeds them with today's commands). Items from WPs that are not merged yet are omitted, not disabled. Right-click selects as WP-2H.12's target rules say.
 - **Interfaces:** commands from 2A.02–2A.06; `view.*` UI state in `viewStore`; the MCP catalog exposes `view_get`/`view_set` (playhead, selection, in/out, zoom; non-undoable, not journaled; see 2I.01).
 - **Acceptance criteria:**
   - Playwright+Electron e2e (≥ 12 scenarios): drag from bin, razor split, ripple delete on the magnetic track (no gap), roll edit, slip, slide, link toggle moves A+V together, lock prevents edit, marquee select, copy/paste across tracks, Esc cancels a drag, undo restores.
   - Command RTT UI→engine→patch→UI p95 < 16 ms measured by an in-app probe during a 100-step drag.
   - No UI mutation of `docStore` outside patch events (lint rule + test).
+  - F37, F38 and F39 are extended: one edit in each is done through the context menu (ripple delete, unlink, paste here, add marker here, lock a track from its header menu); axe: 0 violations on each timeline menu.
 - **Tests:** Playwright e2e, Vitest for store logic.
 - **Out of scope:** keyboard shortcut editor (2H.05); keyframe lane UI (2C.05).
 
@@ -278,6 +287,7 @@ Schedule note: the roadmap gives 9 weeks. Total effort here is about 162 agent-d
   - Duration policy: `keep_duration` (default) trims the new media's range to the old duration or, if the new media is shorter, shortens the clip (reported as `shortened: true`); `fit_to_source` changes the duration and ripples per track rules (magnetic: gapless).
   - Kind change rules: video→image allowed (speed fields reset, reported); audio↔video blocked with `Invalid`. Linked audio is replaced together with the video when the new media has audio, otherwise unlinked and muted per option.
   - MCP: catalog (`clip_replace`).
+  - **Context menu (product owner request, 2026-11-25; framework WP-2H.12, plan in [09-context-menus.md](../research/09-context-menus.md)):** "Replace clip…" is an item of `timeline.clip`; with a bin card selected it replaces with that media, otherwise it asks for one; the bin card menu offers "Replace selected clip" when one timeline clip is selected. Both run `clip.replace`.
 - **Interfaces:** `clip.replace → {item, report: EditReport, shortened}`.
 - **Acceptance criteria:**
   - Replacing a keyframed, effect-bearing clip: `item.get` before and after are equal except `media`, `source_in`, `duration` (fixture test).
@@ -336,6 +346,7 @@ Schedule note: the roadmap gives 9 weeks. Total effort here is about 162 agent-d
   - **Insert** (`,`) and **Overwrite** (`.`) place the marked range (or the whole asset) at the timeline playhead on the target track: `timeline.insert{source_in, duration}` and WP-2A.03's overwrite. Three-point rules follow `edit-semantics.md`: with timeline in and out set, the timeline in wins and the duration comes from the source marks. Each placement is one undo step.
   - **Drag from the Source view** places the marked range. Dragging only its picture or only its sound icon places video only or audio only.
   - **Match frame** (F) with a timeline clip under the playhead: opens the clip's media in the Source view at the matching source frame, with the clip's source range as its marks.
+  - **Context menu (product owner request, 2026-11-25; framework WP-2H.12, plan in [09-context-menus.md](../research/09-context-menus.md)):** the Source view's menu (`source.view`): Insert, Overwrite, Set in, Set out, Clear in and out, Match frame, Back to timeline; Overwrite at playhead joins `bin.card`, Match frame joins `timeline.clip`.
 - **Interfaces:** `view.set{source_marks}` (additive view state); the Source view's Insert and Overwrite actions and keys (in `listBindings()`).
 - **Acceptance criteria:**
   - Vitest: the three-point placement math agrees with the `edit-semantics.md` fixtures (source marks only, timeline marks only, both).
@@ -360,12 +371,14 @@ Schedule note: the roadmap gives 9 weeks. Total effort here is about 162 agent-d
   - Changing resolution or aspect: a `reframe` policy (`keep_scale | fit | fill | none`) applied to clip transforms. Default `fit`: preserve each clip's relative framing so it fits the new canvas; documented algorithm. Text/overlay items positions scale proportionally.
   - Changing frame rate re-snaps all item times to the new grid (rounding to nearest frame, no overlap introduced; INV tested).
   - MCP: `sequence_create`, `sequence_set_format` core. Others catalog.
+  - **Context menu (product owner request, 2026-11-25; framework WP-2H.12, plan in [09-context-menus.md](../research/09-context-menus.md)):** adds `sequence.create_from_media{media[], name?}`: a new sequence holding the assets in order (the bin card menu's "New timeline from selection", as in Resolve's "Create timeline using selected clips").
 - **Interfaces:** `AspectPreset`, `ReframePolicy`, commands above.
 - **Acceptance criteria:**
   - Duplicate sequence creates deep copy with new IDs and shared media; modifying the copy never changes the original (proptest).
   - Changing 16:9→9:16 with `fit` leaves every clip's full frame visible (unit test on computed transform bounds).
   - Frame-rate change 30→24 preserves overlap-freeness and magnetic gaplessness (proptest, 1,000 cases).
   - Undo identity for all commands.
+  - The command has undo identity and a CLI/MCP parity test like the others.
 - **Tests:** unit, proptest, snapshot of preset table.
 - **Out of scope:** background fill rendering (2B.02), UI (2B.03).
 
@@ -395,6 +408,7 @@ Schedule note: the roadmap gives 9 weeks. Total effort here is about 162 agent-d
 - **Scope:**
   - Sequence tabs above the timeline (open, close, reorder, duplicate, rename via double-click). Aspect switcher in the preview toolbar offering the presets plus custom. A settings dialog (schema-driven form) with a reframe policy selector. Background picker (color picker, blur slider, image picker from bin).
   - Active sequence persisted in `viewStore` and the project's `ui` state.
+  - **Context menu (product owner request, 2026-11-25; framework WP-2H.12, plan in [09-context-menus.md](../research/09-context-menus.md)):** a menu on the sequence tab (`sequence.tab`): Rename, Duplicate, Settings…, Aspect ▸ (the presets), Close, Close others.
 - **Interfaces:** consumes 2B.01/02 commands.
 - **Acceptance criteria:**
   - Playwright: create a 9:16 sequence, switch aspect, the preview canvas changes aspect within one frame of the patch event; the tab state survives save/reopen.
@@ -431,6 +445,7 @@ Schedule note: the roadmap gives 9 weeks. Total effort here is about 162 agent-d
 - **Executor:** sonnet
 - **Scope:**
   - Context menu and shortcut "Compound clip" / "Break apart"; compound items drawn with a distinct badge and a mini-structure preview. Double-click enters the inner sequence (opens its tab with a breadcrumb "Outer > Compound"), Esc or breadcrumb click returns. Sequence list shows reference counts and warns before deleting a referenced sequence.
+  - **Context menu (product owner request, 2026-11-25; framework WP-2H.12, plan in [09-context-menus.md](../research/09-context-menus.md)):** Compound clip, Break apart and Enter compound are items of `timeline.clip` (the existing mention above is built on WP-2H.12's host, not on a menu of its own).
 - **Interfaces:** `view.enter_compound`, consumes 2B.04 commands.
 - **Acceptance criteria:**
   - Playwright: select 3 clips, create compound, enter, trim an inner clip, exit; the outer duration updates; undo reverses; the cycle attempt (drop a sequence onto itself) shows the typed error toast.
@@ -491,12 +506,14 @@ Schedule note: the roadmap gives 9 weeks. Total effort here is about 162 agent-d
   - MCP core: `keyframe_set`, `item_set_props`. Catalog for the rest.
   - (product owner request, 2026-11-24: "place 2 videos side by side")
     - **The model gap:** the P1 model's `VisualProps` has only `transform` and `opacity` (the P1 `item.set_props` takes name, enabled, opacity, audio_gain and transform), while arch §4.2 and WP-2C.04 expect `crop`, `flip` and `blend_mode`, and no other WP adds them to `cutweave-model`. This WP adds them: crop as four edges in fractions of the source frame (animatable), flip H/V (hold) and the blend mode. Older documents migrate with the defaults (no crop, no flip, normal); the migration chains after WP-2F.07's v2 in merge order (N18). `item.set_props` takes the new fields, so agents crop with the same command the Inspector and WP-2H.06's handles use.
+  - **Context menu (product owner request, 2026-11-25; framework WP-2H.12, plan in [09-context-menus.md](../research/09-context-menus.md)):** adds `item.reset_props{items, group? | props?}` (reset to defaults, one undo step): the Inspector section and row resets exist as buttons with nothing behind them, and the clip menu, `inspector.section` and `inspector.row` menus need it. The row menu also offers Add and Remove keyframe (`keyframe.*`).
 - **Interfaces:** commands above. `item.get` returns animatable props with keyframes (`fields` filtering). `VisualProps.{crop, flip, blend_mode}`.
 - **Acceptance criteria:**
   - Splitting a clip with keyframes: evaluating each half at any matching timeline time equals the original value within 1e-6 (proptest, 1,000 cases).
   - Setting a keyframe at an occupied `t` replaces it. Moving past a neighbour is rejected with `Invalid` or reorders (per spec; one behaviour, tested).
   - Dragging a keyframe uses a `gesture` tx and yields one undo step.
   - JSON Schema describes ranges (e.g., opacity 0–1) and the parity tests pass.
+  - `item.reset_props` restores the default of every field in a group (fixture) and has undo identity.
 - **Tests:** unit, proptest, snapshots of schema.
 - **Out of scope:** UI.
 
@@ -529,6 +546,7 @@ Schedule note: the roadmap gives 9 weeks. Total effort here is about 162 agent-d
   - Expandable keyframe lanes under a selected item (one lane per animated property, with a diamond per keyframe, interpolation shown by glyph), drawn by the renderer from `item.get` data and kept within the 5,000-item / 50k-keyframe fps budget by LOD (collapse diamonds < 3 px apart).
   - Add via the inspector "◇" or by dragging on the lane. Select, multi-select, drag in time (snap to playhead/edges), copy/paste, delete. State machine gets `keyframe_dragging` handlers (extends 2A.08).
   - `@cutweave/ui` `<CurveEditor>`: bezier handle editing, preset picker, value/time axes, spring parameters, live preview curve evaluated locally via the 2C.06 wasm module; used in the inspector popover.
+  - **Context menu (product owner request, 2026-11-25; framework WP-2H.12, plan in [09-context-menus.md](../research/09-context-menus.md)):** a `timeline.keyframe` menu: Interpolation ▸ (Linear, Hold, Ease in, Ease out, Ease in-out, Bezier…), Copy, Delete keyframe, Go to keyframe.
 - **Interfaces:** `<KeyframeLane>`, `<CurveEditor value onChange presets>`.
 - **Acceptance criteria:**
   - Playwright: add 3 keyframes to opacity, drag one, change its interpolation to ease-in-out, undo twice, the doc is restored (via `timeline.get` assertion).
@@ -621,6 +639,7 @@ Schedule note: the roadmap gives 9 weeks. Total effort here is about 162 agent-d
   - Source-time mapping function `source_time(item, t)` is the single canonical mapping used by render, audio, thumbnails and export. Frame-nearest sampling in v1 (no blending; blending arrives P4). Reverse requires decoder support for backwards GOP traversal: use GOP-cache decode-forward then reorder; for sources without proxy and long GOP a warning plus automatic proxy request (2F.01).
   - Speed change on a magnetic track ripples; on a free track it keeps start and may be blocked by a neighbour (`Conflict`, with option `ripple`).
   - MCP core: none (catalog `clip_set_speed`, `clip_freeze_frame`); note in the MCP map (2I.01).
+  - **Context menu (product owner request, 2026-11-25; framework WP-2H.12, plan in [09-context-menus.md](../research/09-context-menus.md)):** Speed ▸ (Normal, 0.5x, 2x, Custom…), Reverse and Freeze frame are items of `timeline.clip` (left out for audio-only, image and text clips as the kind rules say).
 - **Interfaces:** `Speed`, `source_time`, commands above.
 - **Acceptance criteria:**
   - Unit test: 2× over a 10 s clip gives duration 5 s exactly in flicks; 1/3× is exact (rational), no drift over 1,000 round trips (`set_speed(a)` then `set_speed(1/a)` restores duration±0).
@@ -702,6 +721,7 @@ Schedule note: the roadmap gives 9 weeks. Total effort here is about 162 agent-d
   - Export option `export.normalize{target}` computes a two-pass gain over the mixed timeline.
   - `audio.extract{item, link: keep|unlink}` creates an audio item on a new/audio track from a video clip's audio, and optionally mutes the original video's audio (CapCut "extract audio"). `media.extract_audio{media, format}` writes a WAV/AAC file into `generated/` and imports it.
   - MCP: `audio_normalize` catalog (core `audio_set` per 2E.01 stays); `audio.extract` catalog.
+  - **Context menu (product owner request, 2026-11-25; framework WP-2H.12, plan in [09-context-menus.md](../research/09-context-menus.md)):** Extract audio and Normalize audio… are items of `timeline.clip` (`when item.hasAudio`).
 - **Interfaces:** commands above; job kind `analysis.loudness`.
 - **Acceptance criteria:**
   - A −30 LUFS fixture normalizes to −14 ± 0.5 LU measured on the exported file via ffmpeg `ebur128`; the true-peak stays ≤ −1 dBTP.
@@ -739,6 +759,7 @@ Schedule note: the roadmap gives 9 weeks. Total effort here is about 162 agent-d
   - Waveform rendering in audio items (peak pyramid, LOD by zoom, dB-scale option), volume line overlay with draggable keyframe points (rubber band) and fade handles at item corners (drag = `audio.set_fade` under `gesture` tx). Shows normalization/limited badges.
   - Mixer panel: per-track fader, pan knob, mute/solo, live peak meters from `playback.meters`, master fader plus limiter toggle and LUFS readout. Double-click resets.
   - Audio inspector section (volume, pan, fades, preserve pitch, normalize button) through the schema-driven inspector (2H.03). Its "Fade in" and "Fade out" buttons add a fade of the length set in Settings > Editing ("Length of a fade added with one click", `editing.audio_fade`, 0.5 s; catalog `docs/reference/settings.md`).
+  - **Context menu (product owner request, 2026-11-25; framework WP-2H.12, plan in [09-context-menus.md](../research/09-context-menus.md)):** menus for the fade handle (Linear, Logarithmic and other fade curves, Remove fade), the volume line (Reset to 0 dB, Add point here, Delete point) and the mixer fader (Reset, Mute, Solo, Bus ▸).
 - **Interfaces:** consumes 2E commands; `<Mixer/>` panel registered in the dock registry (2H.01).
 - **Acceptance criteria:**
   - Playwright: drag a fade handle to 1.0 s, the clip's `fade_in` equals 1.0 s ± 1 frame; drag the volume line creates two keyframes; undo reverts.
@@ -857,6 +878,7 @@ Schedule note: the roadmap gives 9 weeks. Total effort here is about 162 agent-d
   - UI: a relink dialog on open ("N files missing"), per-asset badges in the bin, proxy status badges, and "Regenerate proxies" in the bin's context menu.
   - Proxy settings where the settings catalog (`docs/reference/settings.md`) puts them: Settings > Media and import (proxies for new projects: off / auto / all; proxy size 540p / 720p / 960p, a machine value), Settings > Cache and storage (proxy limit, 50 GiB), Settings > Performance and hardware (proxy jobs at once, 2). The machine values are applied through UI-only engine commands as in WP-1D.08; the project's own policy is edited in File > Project settings… (WP-2H.08).
   - MCP: `media_relink` catalog. `media_list` core includes `status`.
+  - **Context menu (product owner request, 2026-11-25; framework WP-2H.12, plan in [09-context-menus.md](../research/09-context-menus.md)):** the bin card menu (`bin.card`) gets Relink… (when `media.offline`), Regenerate proxies and Reveal in Explorer; the existing mention of "Regenerate proxies in the bin's context menu" is satisfied through WP-2H.12's host.
 - **Interfaces:** commands above; `MediaAsset.status`.
 - **Acceptance criteria:**
   - Move the media folder: opening the project shows missing; `relink_folder` restores 100% of 20 test assets including renamed files (hash match) with one command; undo restores previous paths.
@@ -898,11 +920,13 @@ Schedule note: the roadmap gives 9 weeks. Total effort here is about 162 agent-d
   - Settings (catalog `docs/reference/settings.md`): the default for new projects is the preference `editing.still_duration` (Settings > Editing; `project.new` copies it, WP-2H.08), and the frame rate for image sequences is `media.image_sequence_fps` (Settings > Media and import, default: the sequence's rate); the project's own value is a row of File > Project settings… (WP-2H.08).
   - Images are unbounded in length (no source bound; per 2A.04), cached as GPU textures with VRAM budget.
   - MCP: `media_import` handles images; `media_import_sequence` catalog.
+  - **Context menu (product owner request, 2026-11-25; framework WP-2H.12, plan in [09-context-menus.md](../research/09-context-menus.md)):** adds `media.import_frame{source, at}` (save a Preview or Source frame into the bin as a still; the Preview's "Add frame to media bin"), and "Duration…" for image cards.
 - **Interfaces:** `MediaKind::{Image, ImageSequence}`; commands above.
 - **Acceptance criteria:**
   - Corpus: rotated JPEG (EXIF 6) displays upright; 16-bit PNG with alpha composites correctly over color (golden); 4000×3000 image scrub does not exceed 80 ms p95 and holds 1080p60 (textures cached).
   - A 300-frame PNG sequence imports in < 3 s (probe only; no per-frame decode up front), plays at 30 fps, and each frame is exact (frame-number burn-in).
   - Dropping an image onto a timeline creates a clip of `still_duration`; changing the setting does not alter existing clips.
+  - Importing a frame yields an image asset whose pixels match `render.frame` at that time (golden).
 - **Tests:** corpus integration, golden frames.
 - **Out of scope:** animated WebP/APNG, RAW stills, vector re-rasterization.
 
@@ -918,6 +942,7 @@ Schedule note: the roadmap gives 9 weeks. Total effort here is about 162 agent-d
   - Search stays a scan of the document shared by the engine and the editor (WP-1M.12), with no FTS5 index unless the 10,000-asset target below fails; transcript text joins through `transcript.search` in P3.
   - UI: tag editor (multi-select assign), rating stars and a note field in the media info; the Filters popover gains Tags and Rating; "Save as smart collection" from the current search and filters; a **bin sidebar** (toggle, shown when the panel is wide enough) with the folder tree (WP-2F.07 folders, each a drop target like the breadcrumb) and the collections; a "used/unused" badge.
   - MCP: `media_list` (core) takes the extended filter; the rest catalog.
+  - **Context menu (product owner request, 2026-11-25; framework WP-2H.12, plan in [09-context-menus.md](../research/09-context-menus.md)):** Add tag…, Set rating ▸ and Add to collection ▸ are items of `bin.card`; Save as smart collection is an item of `bin.background` when a filter is active.
 - **Interfaces:** commands and queries above; `Collection` JSON Schema; extended `MediaFilter`.
 - **Acceptance criteria:**
   - `media.list` with tags and text over 10,000 synthetic assets returns in < 30 ms p95; the Rust and TS predicates agree on the extended shared fixture.
@@ -966,6 +991,7 @@ Schedule note: the roadmap gives 9 weeks. Total effort here is about 162 agent-d
   - **Delete a folder:** a dialog that says what it holds ("Delete "B-roll" and its 30 media? 5 are used on the timeline and will move to "Interviews"."). Buttons: Delete folder and media (`remove`), Keep media (`move_up`), Cancel. An empty folder deletes without asking. Undo restores everything.
   - **Search and folders:** WP-1M.12's field gets a scope switch, All media (default) or This folder (with subfolders). In All media, results are flat with the folder path under each name, and folders whose names match come first.
   - **Accessibility:** folder tiles are options in the same listbox, announced as "folder, N items"; the breadcrumb is a `nav` with `aria-current`.
+  - **Context menu (product owner request, 2026-11-25; framework WP-2H.12, plan in [09-context-menus.md](../research/09-context-menus.md)):** its context menu on tiles and empty space is built on WP-2H.12's host: the items live in the `bin.card`, `bin.folder` and `bin.background` tables seeded by WP-2H.13, so F22 is extended with one folder operation done through the menu.
 - **Interfaces:** consumes WP-2F.07's commands and queries; `<MediaBreadcrumb>`; the folder variant of `AssetTile`.
 - **Acceptance criteria:**
   - **A user flow (ADR-0018, F22):** create "Interviews" and inside it "Day 1", rename it "Day one"; Ctrl-click three clips and drag them onto "Day one"; open it with a double-click and see them; go up with the breadcrumb; drag one clip back to the top level by dropping it on the breadcrumb; search "inter" in All media and see the path captions, then switch to This folder; delete "Interviews" with Keep media and see its contents lifted; Ctrl+Z brings the folder back; save, relaunch and reopen: the folders are there.
@@ -1075,6 +1101,7 @@ Schedule note: the roadmap gives 9 weeks. Total effort here is about 162 agent-d
   - Save-as-preset flow.
   - Settings (catalog `docs/reference/settings.md`): Settings > Export gains the default preset (last used) and the file name pattern (`{project}`; tokens project, sequence, date, preset) next to WP-1M.13's rows; Settings > Notifications gains "Notify when an export finishes while Cutweave is in the background" (on; an OS notification from main) and "Play a sound when an export finishes" (off).
   - (product owner request, 2026-11-24) The preset picker groups platform presets under each platform with its logo-free name and a one-line summary (for example "1080 × 1920, up to the platform's limit"). It puts the presets that match the sequence's aspect first. A preset whose aspect does not match says what will happen (fit with bars) and offers "Make a 9:16 copy of the sequence" when WP-2B.01's aspect presets exist. Over-limit duration or size is an inline warning, never a block.
+  - **Context menu (product owner request, 2026-11-25; framework WP-2H.12, plan in [09-context-menus.md](../research/09-context-menus.md)):** a menu on each queue row (`export.row`): Cancel, Retry, Move up, Move down, Reveal file, Open file, Copy error.
 - **Interfaces:** consumes `export.*` commands/queries and the `job.progress` events.
 - **Acceptance criteria:**
   - Playwright: export a YouTube 1080p preset of the fixture project through the UI and verify the output with ffprobe; queue 2 exports, cancel one.
@@ -1125,6 +1152,7 @@ Schedule note: the roadmap gives 9 weeks. Total effort here is about 162 agent-d
     - **Every panel closed:** the dock shows an empty state with "Reopen panels" and "Reset layout".
     - **State survives closing:** a panel keeps its state when closed and reopened (the bin's search and sort, the timeline's zoom and scroll), because that state lives in stores, not in the panel's component.
     - **Per workspace:** closed panels are part of the workspace's saved layout, so each workspace keeps its own set, and a relaunch keeps them closed.
+  - **Context menus:** this WP merged on 2026-11-25, before the context-menu framework (WP-2H.12), with dockview's own tab menu (Close panel, Maximize, Float). Moving the dock tab menu onto the framework, with the full item list, and the empty dock's menu, is part of WP-2H.13 (plan in [09-context-menus.md](../research/09-context-menus.md)).
 - **Interfaces:** `registerPanel({id,title,component,defaultDock})`, `workspace.*` view commands (UI-only); View > Panels and Reset layout.
 - **Acceptance criteria:**
   - Playwright: switch Long→Short, drag the inspector to float, restart the app, the layout restores; corrupt `workspaces.json` → app starts with the default and a toast.
@@ -1175,17 +1203,19 @@ Schedule note: the roadmap gives 9 weeks. Total effort here is about 162 agent-d
 
 ### WP-2H.04 — Command palette and registry-driven menus
 - **Area:** packages/editor/src/palette/, packages/editor/src/menus/
-- **Depends on:** E1N, WP-2H.01
+- **Depends on:** E1N, WP-2H.01, WP-2H.12
 - **Size:** S
 - **Executor:** sonnet
 - **Scope:**
   - `cmdk` palette (Ctrl/Cmd+K) listing every non-hidden registered command (from the generated catalog) with summary, bound shortcut, namespace chips, fuzzy search; commands with required args open an auto-generated argument form (via `SchemaForm`); `when` clauses (selection/track/playhead context) via a `ui.when` hint filter the list. Recent commands first. Palette also lists panels/workspaces, and the settings pages and rows (opened at the row with `openSettings`, WP-1M.11).
   - Application menus (File/Edit/Timeline/Clip/View) generated from `#[command(menu="Timeline/Split")]` metadata plus a small static layout file; Electron native menu mirrors it.
+  - **Context menu (product owner request, 2026-11-25; framework WP-2H.12, plan in [09-context-menus.md](../research/09-context-menus.md)):** reuses WP-2H.12's `when` evaluator and `UiCommandTable`; it does not build a second one. A command's `menu`/`when` hints are the defaults for its label and enabled state in surface tables. A palette row has its own menu (`palette.row`): Run, Copy command id, Assign shortcut….
 - **Interfaces:** `menu`/`when` attributes in the command macro; `CommandCatalog` store.
 - **Acceptance criteria:**
   - A newly registered command appears in the palette with no UI code change (test with a fixture command).
   - Palette opens in < 100 ms with 400 commands; search keystroke latency < 16 ms.
   - Playwright: run "Split at playhead" from the palette; keyboard-only operation works.
+  - A fixture command with hints appears in a context-menu surface and in the palette with no UI code change.
 - **Tests:** Vitest, Playwright.
 - **Out of scope:** plugin-contributed menu items (P6).
 
@@ -1205,6 +1235,7 @@ Schedule note: the roadmap gives 9 weeks. Total effort here is about 162 agent-d
     - **Any keyboard layout:** today letters match `KeyboardEvent.key`, so a shortcut can miss when a non-Latin layout is active (Hebrew, Russian). Letters fall back to the physical key (`KeyboardEvent.code`) then, as the native menu's accelerators do. Record-a-shortcut stores what the person pressed and shows it in their layout.
     - **Reserved keys** cannot be bound, and the editor says why: the menu bar's Alt access keys and F10, Alt+F4, the clipboard keys inside text fields, Esc and Enter in dialogs.
     - **Storage:** only the differences from the chosen preset are stored (`shortcuts.bindings` holds overrides and removals), so a preset fixed in an update reaches people who changed other keys. "Reset all shortcuts" is next to the preset switcher.
+  - **Context menu (product owner request, 2026-11-25; framework WP-2H.12, plan in [09-context-menus.md](../research/09-context-menus.md)):** Shift+F10 and the Menu key are reserved (they open the context menu and cannot be bound); a surface table's shortcut hints follow a rebinding live; the shortcut editor's row has a menu (`shortcuts.row`): Reset binding, Remove binding, Copy command id.
 - **Interfaces:** keymap JSON schema; `keymap.*` view commands.
 - **Acceptance criteria:**
   - Both presets load with 0 conflicts (CI check script) and cover ≥ 30 commands each.
@@ -1212,6 +1243,7 @@ Schedule note: the roadmap gives 9 weeks. Total effort here is about 162 agent-d
   - Vitest: with a Hebrew and a Russian layout simulated (`key` non-Latin, `code` `KeyZ`), Ctrl+Z still undoes; a reserved key is refused with its reason; the stored preferences hold only the overrides.
   - **A user flow (ADR-0018, F35):** Settings > Keyboard shortcuts: rebind Split to Ctrl+K and see it split on the timeline; bind it to Ctrl+Z and answer the conflict prompt with Cancel; make Ctrl+Shift+Z the Redo the menu shows and see it in Edit; export the shortcuts to a file (picker stubbed), reset all, import them back; relaunch: the bindings persist.
   - Keymap lookup < 0.2 ms.
+  - Rebinding Split changes the hint shown in the timeline clip menu without restarting.
 - **Tests:** Vitest, Playwright, conflict check script.
 - **Out of scope:** per-workspace keymaps, gamepad/MIDI controllers.
 
@@ -1227,6 +1259,7 @@ Schedule note: the roadmap gives 9 weeks. Total effort here is about 162 agent-d
     - The safe-area pack uses one ID per platform, shared with WP-2G.01's platform presets (Instagram Stories added), so the preview can show the zone of the chosen export preset.
     - For two videos side by side, snapping also catches the canvas halves and quarters and the neighbouring clip's edges. Shift-dragging a crop edge crops the opposite edge too. WP-2C.08's layouts are the one-click way to get the same result.  - Gestures use `gesture` tx and `item.set_props{auto_key}` so the preview updates live; on animated props, dragging with auto-key creates a keyframe at the playhead.
   - Coordinates: conversions between overlay CSS px ↔ sequence px ↔ normalized, accounting for the preview scale and the object-fit; unit-tested.
+  - **Context menu (product owner request, 2026-11-25; framework WP-2H.12, plan in [09-context-menus.md](../research/09-context-menus.md)):** `preview.item` menu on a selected clip in the Preview: Reset transform, Fit to canvas, Fill canvas, Center, Flip horizontal, Flip vertical.
 - **Interfaces:** `<PreviewOverlay>`; safe-area data pack `overlays/safe-areas.json`.
 - **Acceptance criteria:**
   - Playwright: drag-move a clip 100 sequence px: `position` changes by 100 ± 0.5 px at any preview zoom (25%/50%/100%); rotate by 15° ± 0.5°; undo returns to the original.
@@ -1242,7 +1275,7 @@ Schedule note: the roadmap gives 9 weeks. Total effort here is about 162 agent-d
 - **Depends on:** WP-2A.10, WP-2H.01, WP-2H.03, WP-2H.05, WP-2H.06
 - **Size:** S
 - **Executor:** human
-- **Scope:** structured review of the editor against research/01-capcut-features.md behaviours worth matching (magnetic track, snapping feel, aspect switch, inspector structure, keyframe workflow). Output a prioritized defect list (P0 blockers for dogfood, P1, P2), each filed as an issue with `phase:P2` label.
+- **Scope:** structured review of the editor against research/01-capcut-features.md behaviours worth matching (magnetic track, snapping feel, aspect switch, inspector structure, keyframe workflow). Also review the context menus: every surface in [09-context-menus.md](../research/09-context-menus.md) sections 2 and 6 has a menu or a stated reason for none, no menu shows more than about 12 rows, and the order follows frequency. Output a prioritized defect list (P0 blockers for dogfood, P1, P2), each filed as an issue with `phase:P2` label.
 - **Interfaces:** n/a.
 - **Acceptance criteria:**
   - Review doc committed with a checklist of ≥ 25 scenarios each marked pass/fail/N/A with notes; every fail has an issue link.
@@ -1320,6 +1353,7 @@ Schedule note: the roadmap gives 9 weeks. Total effort here is about 162 agent-d
     - A refused step (`Conflict{history_target_modified}`, arch §5.2) stops the jump there and returns `done`, the steps already applied. The panel shows the engine's message naming the later change and its actor.
   - **Filter:** All, You, Agents (dims the rest; jumps still follow the shared order). Keyboard: ↑/↓ move between rows, Enter goes to the row. Empty state: "No changes yet".
   - **Opening it:** View > Panels (WP-2H.01) and Edit > History. It is not in the default layouts; it opens as a tab next to the Inspector.
+  - **Context menu (product owner request, 2026-11-25; framework WP-2H.12, plan in [09-context-menus.md](../research/09-context-menus.md)):** a menu on a History row (`history.row`): Go to this step, Copy label; the Undo and Redo buttons' menus gain "Open History…".
 - **Interfaces:** `edit.undo{actor?, steps?}`, `edit.redo{actor?, steps?}` (additive; output gains `done`); the panel registered as `history`.
 - **Acceptance criteria:**
   - Unit: `edit.undo{actor:"*", steps:3}` gives the same document and the same history records as three single `*` undos; a conflict at the second step leaves the first applied and reports `done: 1`; the undo property harness covers `steps`.
@@ -1329,6 +1363,57 @@ Schedule note: the roadmap gives 9 weeks. Total effort here is about 162 agent-d
   - axe: 0 violations; visual baselines of the panel (a mixed history, the empty state) in dark and light.
 - **Tests:** unit, property harness, parity, Vitest, user flow.
 - **Out of scope:** a branching history tree; clearing the history; showing what a step changed (a diff view); history across sessions beyond what the engine keeps (arch §5.2).
+
+### WP-2H.12 — Context-menu framework: host, surfaces, command-derived items, keyboard and touch, contributions
+- **Area:** packages/ui (`Menu`: submenu entry, disabled reason, controlled open at a point), packages/editor/src/menus/ (host, surface registry, `UiCommandTable`, `when` evaluator, contribution registry), packages/timeline (a `contextmenu` and long-press event on the pointer stream), apps/desktop (allowlisted host-action IPC: reveal in the file manager, copy text), design/components/Menu/README.md, docs/adr/0026-context-menu-surfaces-and-contributions.md, apps/desktop/e2e/flows, docs/user-flows.md
+- **Depends on:** E1M, E1N
+- **Size:** M
+- **Executor:** sonnet
+- **Scope:** (product owner request, 2026-11-25: "almost everything on screen should react to context menu with appropriate actions"; research in [09-context-menus.md](../research/09-context-menus.md), decision in ADR-0026, Proposed) the machinery every menu uses. It builds menus for no surface beyond a test fixture, the dock tab stub and text fields; WP-2H.13 and each owning WP add the rest.
+  - **Host:** one `ContextMenuHost` in `EditorShell`; `useContextMenu(surface, target)` and `<ContextSurface>` for DOM surfaces; `openContextMenu({surface, point, target})` for the canvas, the dock tab and the keyboard. The host renders `@cutweave/ui`'s `Menu` against a zero-size anchor at the point, closes on scroll, resize and Escape, and returns the focus to the surface element.
+  - **Surface tables:** per surface ID (the list in ADR-0026), ordered groups of `{command, args(ctx), when, order, label?}` as data. Label, icon, destructive and undoable come from the generated catalog (`schema/commands.json`); the shortcut hint comes from the keymap (`keysFor`, today's `shortcuts/bindings.ts` tables until WP-2H.05).
+  - **`when` evaluator and context keys** (`selection.count`, `selection.kind`, `item.linked`, `track.locked`, `playhead.inItem`, `clipboard.hasItems`, `media.used`, `engine.live`, `project.readOnly`, ...; the list is in ADR-0026): a small boolean expression language shared with the palette (WP-2H.04). Disabled items carry a one-line reason (`aria-describedby`; shown as a tooltip on hover and focus); items that make no sense for the target's kind are left out.
+  - **`UiCommandTable`:** editor-side actions with no document effect (`workspace.*`, rename in place, open Settings at a row, copy text, reveal) in the same shape as catalog commands, so the palette and keymap list them too. Host actions go through allowlisted, zod-validated IPC (the pattern of `edit:run`; main resolves paths itself) and are listed in an exemption file with a reason, like `schema/parity-exempt.toml`.
+  - **Selection and target rules:** the target is resolved once at open, by IDs. Right-click on an unselected item selects it first (`view.select`, not undoable); on a selected item the menu acts on the whole selection and its labels count it ("Delete 3 clips"); on an empty timeline lane the selection is kept, on an empty bin it is cleared. Menus on the canvas use the hit-test zone (`body`, `left-edge`, `right-edge`, `keyframe`, `lane`, `header`, `ruler`, `playhead`); the right button in `interaction.ts` no longer falls through silently.
+  - **Keyboard and touch:** Shift+F10 and the Menu key open the menu for the focused surface (DOM: native `contextmenu`; canvas, dock tab and Preview: the host anchors it at the selection, the playhead or the focused card). A touch or pen long-press (500 ms, cancelled by a move over 8 px) opens it on the canvas and cancels the gesture; a pen's barrel button takes the right-click path.
+  - **Contributions:** `MenuContributionRegistry.register({surface, command, group, when, order})` used by first-party WPs now and by plugins in WP-6B.03: a trailing group, at most 3 items per plugin before an overflow submenu, plain-text labels, only commands the plugin may run.
+  - **Text fields:** one shared menu (Undo, Cut, Copy, Paste, Select all, through the existing `edit:run` IPC) installed by a capture handler for every input, textarea and contenteditable. A right-click outside any registered surface shows nothing (and not the browser's menu); in development builds it offers "Inspect element".
+  - **`Menu` in `packages/ui`:** a `submenu` entry kind (one level, per the design spec), an optional `disabledReason`, a controlled `open` plus `anchor` for context mode, and the spec update in `design/components/Menu/README.md` (command names that match the registry). Stories and tests for each.
+  - **Dock:** replaces the empty `getTabContextMenuItems` stub with the host (the tab's items arrive with WP-2H.01).
+- **Interfaces:** `ContextMenuHost`, `useContextMenu`, `ContextSurface`, `openContextMenu`, `registerMenuSurface`, `MenuContributionRegistry`, `UiCommandTable`, `evaluateWhen`; the `Menu` additions above; host-action IPC channels; the surface ID and context key lists of ADR-0026.
+- **Acceptance criteria:**
+  - Vitest: a fixture command with menu and `when` hints appears in its surface and is disabled, with the reason, when the context says so, with no UI code change; the surface-table walk test fails for a row whose command is not in the catalog or the UI table, whose label key is missing from the `en` catalog, or whose shortcut text is a literal; a closure that would call two mutating commands is rejected (one composite command is required).
+  - Vitest: the target rules (unselected, selected, several selected, empty lane, empty bin, locked track); the `when` evaluator (precedence, an unknown key is false and logged); the contribution registry limits (3 per plugin, clamped order, plain-text labels).
+  - **A user flow (ADR-0018, F42):** right-click a text field in the Inspector and choose Paste; press Shift+F10 and then the Menu key on a focused control and see the menu open at it and Escape return the focus; right-click on dead space and see nothing. (WP-2H.13 extends F42 with the surfaces it adds.)
+  - axe: 0 violations on a menu opened from a DOM surface, from the canvas and from the keyboard; the menu is named for its target (for example "Clip actions for interview_A.mov").
+  - The canvas open path: `contextmenu` to menu visible p95 < 50 ms with 5,000 items in the timeline (the hit-test is an index lookup).
+  - ADR-0026's pass criteria are checked (fixture command, walk test, F42, axe) and the integrator is told, so maintainers can accept it.
+- **Tests:** Vitest, Storybook visual baselines (dark and light), user flow, axe.
+- **Out of scope:** the menus of any other surface (WP-2H.13 and the owning WPs); the palette (WP-2H.04) and the keymap (WP-2H.05), which read the same registry; plugin manifest wiring (WP-6B.03); OS spellcheck suggestions in the text-field menu; native (OS) context menus.
+
+### WP-2H.13 — Context menus for today's surfaces: bin, preview, timeline basics, inspector, chrome
+- **Area:** packages/editor (media bin, preview, timeline panel, inspector, top bar, transport, toasts, settings rows, the surface tables under `menus/surfaces/`), apps/desktop/e2e/flows, docs/user-flows.md
+- **Depends on:** WP-2H.12, E1M
+- **Size:** M
+- **Executor:** sonnet
+- **Scope:** (product owner request, 2026-11-25) menus for everything on screen today, using only commands that exist now (section 6 of [09-context-menus.md](../research/09-context-menus.md) has the item lists, their order and their status). Items whose command arrives in a later WP are added by that WP, not here.
+  - **Dock** (moved from WP-2H.01, which merged first; it ships dockview's tab menu with Close panel, Maximize and Float): a panel tab has a menu (`dock.tab`): Close panel, Maximize or Restore, Float, Move to… (Left, Right, Bottom), Reset layout, Save layout as…; the empty dock has one (`dock.empty`): Reopen panels, Reset layout. Each item is a `workspace.*` UI command, so the palette and keymap list it too. This replaces the empty `getTabContextMenuItems` stub.
+  - **Bin card** (kind-aware; one or several selected): Insert at playhead, Append to timeline, Play in Source view, Reveal in Explorer / Finder, Copy path, Remove from project (the existing confirm dialog). **Bin background and empty bin:** Import…, Sort by and View as (the same state as the dropdowns), Show hover scrub. **Filter chip:** Remove filter, Clear all filters.
+  - **Preview canvas:** Play/Pause, Go to start and end, Safe areas, quality and size choices (`view.set_preview_size`), Copy frame and Save frame as… (`render.frame` and a host save dialog). **Source view:** Back to timeline, Copy timecode. **Transport:** timecode (Copy timecode), volume (Mute, Reset to 100%), quality badge (the quality choices).
+  - **Timeline** (the canvas, by hit zone): **clip:** Split at playhead, Delete, Enable/Disable, Rename…, Reveal in media bin, Copy path; **empty lane:** Move playhead here, Add track above and below, Select all clips on track; **track header:** Rename…, Mute, Solo, Hide, Lock (check items, `track.set`), Add track above and below, Delete track (confirm when it has clips); **ruler and playhead:** Move playhead here, Go to start and end, Zoom to fit, Copy timecode. Right-click selects as the target rules say. Every WP that adds a timeline command adds its item to these tables.
+  - **Inspector:** section header (Collapse all, Expand all), media info path (Copy path, Reveal), media picture (Play in Source view, Copy frame), property row (Copy value). **Settings:** row (Reset to default, Copy setting key).
+  - **Chrome:** save status (Save now, Autosave settings…), Export button and chip (Export…, Cancel export, Reveal file), workspace switcher and Reset layout button (Reset this workspace), Undo and Redo buttons (Undo, Redo), toast (Copy message, Copy error code, Dismiss, Dismiss all), engine status chip (Reconnect, Copy diagnostics, Open logs folder). A sash double-click resets its size (no menu).
+  - **Shortcut hints** on every item come from the keymap; an item with no shortcut shows none.
+  - Registers the `UiCommandTable` entries it needs (copy, reveal, collapse) and the host-action IPC channels, with their exemption entries.
+- **Interfaces:** the surface tables for `bin.card`, `bin.background`, `bin.chip`, `preview.canvas`, `source.view`, `timeline.clip`, `timeline.lane`, `timeline.track`, `timeline.ruler`, `timeline.playhead`, `inspector.section`, `inspector.row`, `chrome.save`, `chrome.export`, `chrome.toast`; no new engine commands.
+- **Acceptance criteria:**
+  - **A user flow (ADR-0018, F42 extended):** right-click a video card in the bin: Insert at playhead places the clip; right-click an empty part of the bin: Import… opens the (stubbed) picker; right-click the timeline clip: it becomes the selection, Split at playhead splits it, and Ctrl+Z undoes it; right-click it again, Disable clip, and the preview stops showing it; right-click a track header: Mute, then Lock, and a drag on that track is refused; right-click an empty lane: Add track above; right-click the ruler: Move playhead here; press the Menu key on a focused bin card and choose Remove from project, then cancel its dialog; right-click the Export button during an export: Cancel export. Each choice is checked as an undo step or as state the person sees.
+  - Parity: each menu choice that changes the document yields the same normalized document as the equivalent CLI or MCP command (the existing parity harness over a script of the menu's commands).
+  - With three timeline clips selected the clip menu reads "Delete 3 clips" and Rename is disabled with its reason; on a locked track Split and Delete are disabled with "Track is locked".
+  - axe: 0 violations on each opened menu; visual baselines of the bin card menu and the timeline clip menu in dark and light.
+  - No literal colors, sizes or strings in the new code (the existing lint rules pass).
+- **Tests:** Vitest for the surface tables and target rules, user flow, parity script, axe, visual.
+- **Out of scope:** items that need commands from later WPs (clipboard, linking, speed, markers, keyframes, replace, folders and tags, relink), which their WPs add; plugin items (WP-6B.03); menus for panels that do not exist yet.
 
 ---
 
@@ -1654,6 +1739,7 @@ Schedule note: the roadmap gives 9 weeks. Total effort here is about 162 agent-d
 | UI: dockable workspace, Short-form/Long-form | 2H.01 |
 | (product owner requests, 2026-11-24) UI: close and reopen panels (View > Panels); History panel | 2H.01, 2H.11 |
 | UI: schema-driven inspector | 2H.02, 2H.03 |
+| (product owner request, 2026-11-25) UI: context menus on every surface | 2H.12, 2H.13, plus a menu bullet in 39 WPs (research [09-context-menus.md](../research/09-context-menus.md)) |
 | UI: command palette | 2H.04 |
 | UI: shortcut editor (NLE + CapCut presets) | 2H.05 |
 | UI: preview overlays (transform handles, safe areas, grid) | 2H.06 |
@@ -1707,3 +1793,4 @@ Contradictions, ambiguities and missing decisions found while writing this phase
   - new: WP-2A.14 (source marks and three-point editing, after P1's source preview, ADR-0022 Proposed), WP-2C.08 (layouts for several clips: `item.apply_layout`) and WP-2H.11 (History panel, `edit.undo`/`edit.redo` `{steps}`);
   - recommended pull: WP-2G.01 into P1 (S, dependencies merged, H.264 + AAC presets only).
   - Schema versions: 2C.03's `VisualProps` migration joins the chain after 2F.07's v2 (N18).
+- **N20. Context menus (planned 2026-11-25, product owner request).** Nothing in the editor reacts to a right-click today; the design system's `Menu` exists (context mode) but is unused. Research, inventory and per-surface menus: [docs/research/09-context-menus.md](../research/09-context-menus.md). New: WP-2H.12 (framework) and WP-2H.13 (today's surfaces); a menu bullet in the owning WPs of P2 to P7; ADR-0026 (Proposed) fixes the surface IDs and `when` keys that plugins will depend on. Dependencies added: WP-2H.01 and WP-2H.04 depend on WP-2H.12; WP-2A.10 depends on WP-2H.13 (it is on the critical path, so merge 2H.12 and 2H.13 early, both need only P1). New small commands: `sequence.create_from_media` (2B.01), `item.set_label_color` and `timeline.update_marker` (2A.02), `item.reset_props` (2C.03), `media.import_frame` (2F.05). Host actions (reveal, copy text and image, save frame) are IPC with an exemption list, not commands. Arch §23 needs the ADR-0026 row when maintainers accept it. Owner decisions 2026-11-25 (defaults accepted): [09-context-menus.md](../research/09-context-menus.md) §7.6.
