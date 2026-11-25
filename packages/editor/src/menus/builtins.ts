@@ -12,35 +12,36 @@ import { FIELD_COMMANDS, FIELD_SURFACE, INSPECT_COMMAND, INSPECT_SURFACE } from 
  * table first names a command.
  */
 export const COMMAND_INFO: readonly CommandInfo[] = [
-  { name: "clip.split", label: "contextMenu.command.clip_split", icon: "scissors", undoable: true },
+  { name: "clip.split", label: "contextMenu.command.clipSplit", icon: "scissors", undoable: true },
   {
     name: "item.delete",
-    label: "contextMenu.command.item_delete",
+    label: "contextMenu.command.itemDelete",
+    labelMany: "contextMenu.command.itemDeleteMany",
     icon: "trash-2",
     destructive: true,
     undoable: true,
   },
-  { name: "timeline.insert", label: "contextMenu.command.timeline_insert", undoable: true },
-  { name: "track.add", label: "contextMenu.command.track_add", icon: "plus", undoable: true },
+  { name: "timeline.insert", label: "contextMenu.command.timelineInsert", undoable: true },
+  { name: "track.add", label: "contextMenu.command.trackAdd", icon: "plus", undoable: true },
   {
     name: "track.remove",
-    label: "contextMenu.command.track_remove",
+    label: "contextMenu.command.trackRemove",
     icon: "trash-2",
     destructive: true,
     undoable: true,
   },
-  { name: "track.set", label: "contextMenu.command.track_set", undoable: true },
+  { name: "track.set", label: "contextMenu.command.trackSet", undoable: true },
   {
     name: "media.remove",
-    label: "contextMenu.command.media_remove",
+    label: "contextMenu.command.mediaRemove",
     icon: "trash-2",
     destructive: true,
     undoable: true,
   },
-  { name: "edit.undo", label: "contextMenu.command.edit_undo", icon: "undo-2" },
-  { name: "edit.redo", label: "contextMenu.command.edit_redo", icon: "redo-2" },
-  { name: "view.select", label: "contextMenu.command.view_select" },
-  { name: "view.set_playhead", label: "contextMenu.command.view_set_playhead" },
+  { name: "edit.undo", label: "contextMenu.command.editUndo", icon: "undo-2" },
+  { name: "edit.redo", label: "contextMenu.command.editRedo", icon: "redo-2" },
+  { name: "view.select", label: "contextMenu.command.viewSelect" },
+  { name: "view.set_playhead", label: "contextMenu.command.viewSetPlayhead" },
 ];
 
 /** Puts the framework's own commands and surfaces into `services`. */

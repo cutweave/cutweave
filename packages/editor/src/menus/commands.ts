@@ -17,6 +17,8 @@ export interface CommandInfo {
   readonly name: string;
   /** Verb phrase for the row; a plural key gets `count`. */
   readonly label: TKey;
+  /** The label for several targets ("Delete {{count}} clips"); `count` is passed. */
+  readonly labelMany?: TKey;
   readonly icon?: IconName;
   /** Mirrors the catalog's `destructiveHint`: shown as danger and placed last. */
   readonly destructive?: boolean;

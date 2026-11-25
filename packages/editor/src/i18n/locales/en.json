@@ -1071,22 +1071,21 @@
       "noEngine": "The engine is not running",
       "fieldReadOnly": "This field is read-only",
       "noSelection": "Nothing is selected",
-      "emptyField": "The field is empty",
-      "locked": "Track is locked"
+      "emptyField": "The field is empty"
     },
     "command": {
-      "clip_split": "Split at playhead",
-      "item_delete_one": "Delete clip",
-      "item_delete_other": "Delete {{count}} clips",
-      "timeline_insert": "Insert at playhead",
-      "track_add": "Add track",
-      "track_remove": "Delete track",
-      "track_set": "Set track option",
-      "media_remove": "Remove from project",
-      "edit_undo": "Undo",
-      "edit_redo": "Redo",
-      "view_select": "Select",
-      "view_set_playhead": "Move playhead here"
+      "clipSplit": "Split at playhead",
+      "itemDelete": "Delete clip",
+      "itemDeleteMany": "Delete {{count}} clips",
+      "timelineInsert": "Insert at playhead",
+      "trackAdd": "Add track",
+      "trackRemove": "Delete track",
+      "trackSet": "Set track option",
+      "mediaRemove": "Remove from project",
+      "editUndo": "Undo",
+      "editRedo": "Redo",
+      "viewSelect": "Select",
+      "viewSetPlayhead": "Move playhead here"
     }
   }
 }

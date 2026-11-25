@@ -64,7 +64,11 @@ function resolveRow(
   const info = ui === undefined ? services.commands.get(command) : undefined;
   // A command nothing has registered (its WP has not landed) is left out, not shown broken.
   if (ui === undefined && info === undefined) return null;
-  const labelKey: TKey = (ui?.label ?? info?.label) as TKey;
+  const labelKey: TKey = (
+    ctx.ids.length > 1 && info?.labelMany !== undefined
+      ? info.labelMany
+      : (ui?.label ?? info?.label)
+  ) as TKey;
   const icon = override?.icon ?? ui?.icon ?? info?.icon;
   const danger = ui?.danger === true || info?.destructive === true;
 

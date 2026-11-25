@@ -39,13 +39,7 @@ function hasKey(key: string): boolean {
     if (typeof node !== "object" || node === null) return false;
     node = (node as Record<string, unknown>)[part];
   }
-  if (typeof node === "string") return true;
-  const parent = key
-    .split(".")
-    .slice(0, -1)
-    .reduce<unknown>((n, p) => (n as never)[p], en);
-  const leaf = key.split(".").at(-1) ?? "";
-  return typeof parent === "object" && parent !== null && `${leaf}_other` in parent;
+  return typeof node === "string";
 }
 
 const keyOf = (value: unknown): string[] => (typeof value === "string" ? [value] : []);
@@ -89,7 +83,7 @@ describe("a fixture command with menu and when hints", () => {
       group: "edit",
       order: 1,
       when: "selection.count == 1 && !track.locked",
-      reason: "contextMenu.reason.locked",
+      reason: "contextMenu.reason.noSelection",
     });
 
     const open = buildMenu(
@@ -114,7 +108,7 @@ describe("a fixture command with menu and when hints", () => {
     );
     const [disabled] = items(locked?.entries ?? []);
     expect(disabled?.disabled).toBe(true);
-    expect(disabled?.disabledReason).toBe("Track is locked");
+    expect(disabled?.disabledReason).toBe("Nothing is selected");
 
     const several = buildMenu(services, { surface: "fixture.surface", ids: ["a", "b"] }, () => {});
     expect(items(several?.entries ?? [])[0]?.disabled).toBe(true);
@@ -257,7 +251,10 @@ describe("surface-table walk", () => {
 
   it("finds every label key in the en catalog", () => {
     const keys: { where: string; key: string }[] = [];
-    for (const info of services.commands.list()) keys.push({ where: info.name, key: info.label });
+    for (const info of services.commands.list()) {
+      keys.push({ where: info.name, key: info.label });
+      if (info.labelMany !== undefined) keys.push({ where: info.name, key: info.labelMany });
+    }
     for (const ui of services.ui.list()) keys.push({ where: ui.id, key: ui.label });
     for (const { surface, row } of rowsOf(services)) {
       if (typeof row.label === "object") keys.push({ where: surface, key: row.label.key });
@@ -398,7 +395,7 @@ describe("target rules", () => {
           group: "edit",
           order: 0,
           when: "!track.locked",
-          reason: "contextMenu.reason.locked",
+          reason: "contextMenu.reason.noSelection",
         },
       ],
     });
@@ -412,7 +409,7 @@ describe("target rules", () => {
       )[0];
     expect(open("trk_free")?.disabled).toBeUndefined();
     expect(open("trk_locked")?.disabled).toBe(true);
-    expect(open("trk_locked")?.disabledReason).toBe("Track is locked");
+    expect(open("trk_locked")?.disabledReason).toBe("Nothing is selected");
   });
 });
 
