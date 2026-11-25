@@ -227,19 +227,24 @@ fn starting_line(elapsed: Duration) -> Value {
     })
 }
 
-/// Runs `start`; with `since` (`--progress`) a ticker prints a `starting` line `every` so often
-/// meanwhile ([`PROGRESS_INTERVAL`]). The ticker has stopped when this returns, so no `starting`
-/// line ever follows the ready or the error line.
-fn with_progress<T>(
+/// Runs `start`, then `answer` with its result (the ready or error line). With `since`
+/// (`--progress`) a ticker prints a `starting` line `every` so often ([`PROGRESS_INTERVAL`])
+/// until then. `answer` writes under the ticker's lock, after marking the start done, so no
+/// `starting` line ever follows it, and it never waits for the ticker thread to wake up and end
+/// (on a busy machine that can take a second).
+fn with_progress<W: Write + Send, T, R>(
     since: Option<Instant>,
     every: Duration,
-    stdout: &mut (impl Write + Send),
+    stdout: &mut W,
     start: impl FnOnce() -> T,
-) -> T {
+    answer: impl FnOnce(&mut W, T) -> R,
+) -> R {
     let Some(since) = since else {
-        return start();
+        let started = start();
+        return answer(stdout, started);
     };
-    let out = Mutex::new(stdout);
+    // `true` once the start is answered: the ticker writes nothing more.
+    let out = Mutex::new((false, stdout));
     let (stop, stopped) = mpsc::channel::<()>();
     std::thread::scope(|scope| {
         let out = &out;
@@ -247,16 +252,25 @@ fn with_progress<T>(
             .name("cutweave-progress".into())
             .spawn_scoped(scope, move || {
                 while let Err(mpsc::RecvTimeoutError::Timeout) = stopped.recv_timeout(every) {
-                    let mut out = out.lock().unwrap_or_else(PoisonError::into_inner);
-                    let _ = emit(&mut **out, &starting_line(since.elapsed()));
+                    let mut guard = out.lock().unwrap_or_else(PoisonError::into_inner);
+                    let (answered, stdout) = &mut *guard;
+                    if *answered {
+                        break;
+                    }
+                    let _ = emit(&mut **stdout, &starting_line(since.elapsed()));
                 }
             });
         if let Err(e) = ticker {
             tracing::warn!(error = %e, "cannot start the progress ticker");
         }
-        let result = start();
+        let started = start();
+        let answered = {
+            let mut guard = out.lock().unwrap_or_else(PoisonError::into_inner);
+            guard.0 = true;
+            answer(&mut *guard.1, started)
+        };
         drop(stop);
-        result
+        answered
     })
 }
 
@@ -456,6 +470,44 @@ impl Began {
     }
 }
 
+/// The handshake (`Gui`), the media backend and [`Engine::start`].
+fn start_engine(
+    args: &EngineArgs,
+    mode: EngineMode,
+    stdin: impl Read + Send + 'static,
+    tx: &mpsc::Sender<Input>,
+    rx: &mpsc::Receiver<Input>,
+    phases: &mut crate::startup::Phases,
+) -> Result<Engine, StartFailure> {
+    let ui_token = if mode == EngineMode::Gui {
+        read_stdin(stdin, tx.clone());
+        let token = handshake(rx, args.handshake_timeout).map_err(|message| StartFailure {
+            code: "bad_handshake",
+            exit_code: EXIT_HANDSHAKE,
+            message,
+            extra: Value::Null,
+        })?;
+        Some(token)
+    } else {
+        drop(stdin);
+        None
+    };
+    phases.mark("handshake");
+    let config = engine_config(args, mode, ui_token);
+    phases.mark("media_backend");
+    Engine::start(config).map_err(|e| StartFailure {
+        code: e.code(),
+        exit_code: e.exit_code(),
+        message: e.to_string(),
+        extra: match &e {
+            crate::engine::StartError::ProjectLocked {
+                holder: Some(h), ..
+            } => json!({"holder": {"pid": h.pid, "host": h.host, "started": h.started}}),
+            _ => Value::Null,
+        },
+    })
+}
+
 fn run_logged(
     args: &EngineArgs,
     mode: EngineMode,
@@ -480,46 +532,48 @@ fn run_logged(
             Value::Null,
         );
     }
-    let mut phases = crate::startup::Phases::new();
     let (tx, rx) = mpsc::channel();
     let since = args.progress.then_some(began.at);
-    let started = with_progress(since, PROGRESS_INTERVAL, stdout, || {
-        let ui_token = if mode == EngineMode::Gui {
-            read_stdin(stdin, tx.clone());
-            match handshake(&rx, args.handshake_timeout) {
-                Ok(token) => Some(token),
-                Err(message) => {
-                    return Err(StartFailure {
-                        code: "bad_handshake",
-                        exit_code: EXIT_HANDSHAKE,
-                        message,
-                        extra: Value::Null,
-                    });
+    let (answered, phases) = with_progress(
+        since,
+        PROGRESS_INTERVAL,
+        stdout,
+        || {
+            let mut phases = crate::startup::Phases::new();
+            let started = start_engine(args, mode, stdin, &tx, &rx, &mut phases);
+            phases.mark("engine");
+            (started, phases)
+        },
+        |stdout, (started, mut phases)| {
+            let answered = match started {
+                Ok(engine) => {
+                    let ready = ready_line(engine.port().unwrap_or(0), std::process::id(), VERSION);
+                    if writeln!(stdout, "{ready}")
+                        .and_then(|()| stdout.flush())
+                        .is_ok()
+                    {
+                        Ok(engine)
+                    } else {
+                        engine.shutdown();
+                        Err(EXIT_FAILURE)
+                    }
                 }
-            }
-        } else {
-            drop(stdin);
-            None
-        };
-        phases.mark("handshake");
-        let config = engine_config(args, mode, ui_token);
-        phases.mark("media_backend");
-        Engine::start(config).map_err(|e| StartFailure {
-            code: e.code(),
-            exit_code: e.exit_code(),
-            message: e.to_string(),
-            extra: match &e {
-                crate::engine::StartError::ProjectLocked {
-                    holder: Some(h), ..
-                } => json!({"holder": {"pid": h.pid, "host": h.host, "started": h.started}}),
-                _ => Value::Null,
-            },
-        })
-    });
-    let engine = match started {
+                Err(f) => Err(fail(stdout, f.code, f.exit_code, &f.message, f.extra)),
+            };
+            phases.mark("ready_line");
+            (answered, phases)
+        },
+    );
+    let engine = match answered {
         Ok(engine) => engine,
-        Err(f) => return fail(stdout, f.code, f.exit_code, &f.message, f.extra),
+        Err(code) => return code,
     };
+    tracing::info!(
+        phases = %phases,
+        since_run_ms = crate::startup::ms(began.at.elapsed()),
+        run_at_unix_ms = began.unix_ms,
+        "launch phases"
+    );
     if args.dev_stub_media {
         tracing::warn!(
             "DEV ONLY: stub media backend enabled; imported files get made-up probe data and \
@@ -528,23 +582,6 @@ fn run_logged(
         );
         eprintln!("cutweave engine: warning: dev stub media is on (fake media probing, dev only)");
     }
-    phases.mark("engine");
-    let port = engine.port().unwrap_or(0);
-    let ready = ready_line(port, std::process::id(), VERSION);
-    if writeln!(stdout, "{ready}")
-        .and_then(|()| stdout.flush())
-        .is_err()
-    {
-        engine.shutdown();
-        return EXIT_FAILURE;
-    }
-    phases.mark("ready_line");
-    tracing::info!(
-        phases = %phases,
-        since_run_ms = crate::startup::ms(began.at.elapsed()),
-        run_at_unix_ms = began.unix_ms,
-        "launch phases"
-    );
     let signals = tx;
     engine.handle().runtime().spawn(async move {
         shutdown_signal().await;
@@ -656,9 +693,15 @@ mod tests {
                 std::thread::sleep(Duration::from_millis(500));
                 42
             },
+            |out: &mut Vec<u8>, n| {
+                out.extend_from_slice(b"{\"event\":\"ready\"}\n");
+                n + 1
+            },
         );
-        assert_eq!(answer, 42);
-        let lines = json_lines(&out);
+        assert_eq!(answer, 43);
+        let mut lines = json_lines(&out);
+        // The answer is the last line: no starting line follows it.
+        assert_eq!(lines.pop().unwrap()["event"], "ready");
         assert!(!lines.is_empty(), "no starting line in 500 ms");
         let mut last = 0;
         for line in &lines {
@@ -671,9 +714,13 @@ mod tests {
         }
         // Without --progress nothing is printed.
         let mut quiet = Vec::new();
-        with_progress(None, Duration::from_millis(1), &mut quiet, || {
-            std::thread::sleep(Duration::from_millis(50));
-        });
+        with_progress(
+            None,
+            Duration::from_millis(1),
+            &mut quiet,
+            || std::thread::sleep(Duration::from_millis(50)),
+            |_, ()| (),
+        );
         assert_eq!(quiet, Vec::<u8>::new());
     }
 
