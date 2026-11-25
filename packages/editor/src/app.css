@@ -362,6 +362,66 @@ body {
   align-items: center;
   padding: var(--space-1) var(--space-2);
 }
+/* Folders (WP-2F.08): their own grid above the assets, in the same listbox. */
+.cw-media__list {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+}
+.cw-media__grid--folders {
+  gap: var(--space-3);
+}
+.cw-media__grid[data-layout="list"] .cw-foldertile {
+  flex-direction: row;
+  align-items: center;
+  padding: var(--space-1) var(--space-2);
+}
+.cw-media__grid[data-layout="list"] .cw-foldertile__glyph {
+  width: calc(var(--layer-width-sm) / 3);
+}
+.cw-media__search {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+}
+.cw-media__crumbs {
+  flex: none;
+  padding: var(--space-1) var(--space-3);
+  border-bottom: var(--border-thin) solid var(--border-subtle);
+}
+.cw-media__path {
+  overflow: hidden;
+  color: var(--text-muted);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.cw-movelist {
+  display: flex;
+  flex-direction: column;
+  max-height: calc(var(--layer-width-sm) * 1.5);
+  overflow: auto;
+  padding: var(--space-1);
+  border: var(--border-thin) solid var(--border-subtle);
+  border-radius: var(--radius-md);
+  background: var(--surface-1);
+}
+.cw-movelist__row {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  padding-block: var(--space-1);
+  padding-inline-end: var(--space-2);
+  border-radius: var(--radius-sm);
+  color: var(--text-primary);
+  cursor: pointer;
+}
+.cw-movelist__row:hover {
+  background: var(--surface-3);
+}
+.cw-movelist__row[data-disabled="true"] {
+  color: var(--text-muted);
+  cursor: default;
+}
 .cw-media__thumb {
   position: relative;
   display: flex;

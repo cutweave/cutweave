@@ -4,15 +4,18 @@
 // menu is a catalog command (`clip.split`, `track.set`...) named by the row itself, so the CLI and
 // MCP have the same call. A row that touches the OS is `host: true` and listed in
 // `host-actions-exempt.json`.
-import type { MediaId, PreviewQuality, SelectionRef } from "@cutweave/protocol";
+import type { FolderId, MediaId, PreviewQuality, SelectionRef } from "@cutweave/protocol";
 import { engineStore } from "../../engine/engineStore.ts";
 import { exportController } from "../../export/useExport.ts";
 import { i18n } from "../../i18n/index.ts";
 import { sectionsStore } from "../../inspector/sections.ts";
+import { newFolder, selectAllInBin } from "../../media/binCommands.ts";
 import { binStore } from "../../media/binStore.ts";
 import { mediaFilesBridge, pickedPaths } from "../../media/bridge.ts";
+import { currentOpenFolder, folderUiStore, openFolder } from "../../media/folderUi.ts";
 import { importMedia } from "../../media/import.ts";
 import { layoutStore, type MediaLayout } from "../../media/layoutStore.ts";
+import { requestFolderDelete, requestMediaDelete } from "../../media/requestDelete.ts";
 import { requestMediaRemoval } from "../../media/requestRemoval.ts";
 import { preferences } from "../../prefs/prefsStore.ts";
 import { desktopFromWindow } from "../../session/desktop.ts";
@@ -49,7 +52,11 @@ async function pickAndImport(): Promise<void> {
   }
   const paths = pickedPaths(await bridge.pickMediaFiles().catch(() => null));
   if (paths.length === 0) return;
-  await importMedia({ engine: engineStore, toasts: toastStore, t: tr() }, paths);
+  await importMedia(
+    { engine: engineStore, toasts: toastStore, t: tr() },
+    paths,
+    currentOpenFolder(),
+  );
 }
 
 const selectIds = (kind: SelectionRef["kind"], ids: readonly string[]): void => {
@@ -138,6 +145,67 @@ export const UI_COMMANDS: readonly UiCommand[] = [
     icon: "upload",
     host: true,
     run: () => pickAndImport(),
+  },
+  {
+    id: "bin.new_folder",
+    label: "contextMenu.item.newFolder",
+    icon: "folder-plus",
+    run: async (args) => {
+      await newFolder(arg<{ parent?: FolderId | null }>(args).parent ?? currentOpenFolder());
+    },
+  },
+  {
+    id: "bin.rename",
+    label: "contextMenu.item.renameItem",
+    run: (args) => {
+      const { folder, media } = arg<{ folder?: FolderId; media?: MediaId }>(args);
+      const ui = folderUiStore.getState();
+      if (folder !== undefined) {
+        viewStore.getState().setSelection([]);
+        ui.setFolders([folder], { kind: "folder", id: folder });
+        ui.startRename({ kind: "folder", id: folder });
+      } else if (media !== undefined) {
+        ui.setFolders([], { kind: "media", id: media });
+        selectIds("media", [media]);
+        ui.startRename({ kind: "media", id: media });
+      }
+    },
+  },
+  {
+    id: "bin.move_to",
+    label: "contextMenu.item.moveToFolder",
+    run: (args) => {
+      const { media = [], folders = [] } = arg<{ media?: string[]; folders?: string[] }>(args);
+      menuDialogStore.getState().open({ kind: "move-to", media, folders });
+    },
+  },
+  {
+    id: "bin.open_folder",
+    label: "contextMenu.item.openFolder",
+    icon: "folder-open",
+    run: (args) => openFolder(arg<{ folder: FolderId }>(args).folder),
+  },
+  {
+    id: "bin.delete_folders",
+    label: "contextMenu.item.deleteFolder",
+    icon: "trash-2",
+    danger: true,
+    run: async (args) => {
+      const [first, ...rest] = arg<{ folders: FolderId[] }>(args).folders;
+      if (first !== undefined) await requestFolderDelete(first, rest);
+    },
+  },
+  {
+    id: "bin.remove_selected",
+    label: "contextMenu.item.removeMany",
+    icon: "trash-2",
+    danger: true,
+    run: async (args) => requestMediaDelete(arg<{ ids: MediaId[] }>(args).ids),
+  },
+  {
+    id: "bin.select_all",
+    label: "contextMenu.item.selectAll",
+    run: () => selectAllInBin(),
   },
   {
     id: "bin.play_in_source",

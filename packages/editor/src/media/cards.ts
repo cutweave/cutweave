@@ -1,14 +1,17 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 // What a media card shows, read from the engine document (the project mirror holds the probe
 // results, so no `media.list` round trip is needed; `selectMedia` already reads the same data).
-import type { MediaAsset, MediaId, Project } from "@cutweave/protocol";
+import type { FolderId, MediaAsset, MediaId, Project } from "@cutweave/protocol";
 import { FLICKS_PER_SECOND, type FrameRate } from "@cutweave/timeline";
 import { mediaName } from "../state/selectors.ts";
 
 export interface MediaCard {
   readonly id: MediaId;
   readonly kind: MediaAsset["kind"];
+  /** What the bin shows: the display name (ADR-0020), else the file name. */
   readonly name: string;
+  /** The bin folder it is in; `null`: the top level. */
+  readonly folder: FolderId | null;
   /** Flicks; `null` for stills. */
   readonly duration: number | null;
   /** Pixels of the main video stream, when there is one. */
@@ -34,7 +37,8 @@ function toCard(asset: MediaAsset): MediaCard {
   return {
     id: asset.id,
     kind: asset.kind,
-    name: mediaName(asset, asset.id),
+    name: asset.name ?? mediaName(asset, asset.id),
+    folder: asset.folder ?? null,
     duration: asset.probe.duration ?? null,
     width: video?.width ?? null,
     height: video?.height ?? null,

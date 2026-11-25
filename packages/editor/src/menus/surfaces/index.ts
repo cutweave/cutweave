@@ -7,7 +7,7 @@ import type { CommandInfo } from "../commands.ts";
 import { registerKeyHint } from "../keys.ts";
 import type { MenuServices } from "../services.ts";
 import type { MenuSurfaceDef } from "../types.ts";
-import { BIN_BACKGROUND, BIN_CARD, BIN_CHIP } from "./bin.ts";
+import { BIN_BACKGROUND, BIN_CARD, BIN_CHIP, BIN_FOLDER } from "./bin.ts";
 import {
   CHROME_ENGINE,
   CHROME_EXPORT,
@@ -55,6 +55,7 @@ export const SURFACES: readonly MenuSurfaceDef[] = [
   DOCK_TAB,
   DOCK_EMPTY,
   BIN_CARD,
+  BIN_FOLDER,
   BIN_BACKGROUND,
   BIN_CHIP,
   PREVIEW_CANVAS,
@@ -87,6 +88,12 @@ const KEY_HINTS: Readonly<Record<string, string>> = {
   "bin.import": "bin.import",
   "bin.play_in_source": "bin.play",
   "bin.remove_media": "bin.remove",
+  "bin.remove_selected": "bin.remove",
+  "bin.new_folder": "bin.new-folder",
+  "bin.rename": "bin.rename",
+  "bin.select_all": "bin.select-all",
+  "bin.open_folder": "bin.insert",
+  "bin.delete_folders": "bin.remove",
   "transport.toggle_play": "playback.togglePlay",
   "source.back": "source.back",
   "chrome.save_now": "menu.save",

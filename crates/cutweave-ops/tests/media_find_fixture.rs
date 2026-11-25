@@ -20,8 +20,8 @@ use std::{fs, path::PathBuf};
 
 use common::H;
 use cutweave_model::{
-    Clip, Duration, FrameRate, MediaAsset, MediaId, MediaKind, ProbeInfo, Project, SampleRate,
-    Sequence, SequenceFormat, SequenceId, Time, Track, TrackId, TrackKind,
+    Clip, Duration, FolderId, FrameRate, MediaAsset, MediaFolder, MediaId, MediaKind, ProbeInfo,
+    Project, SampleRate, Sequence, SequenceFormat, SequenceId, Time, Track, TrackId, TrackKind,
 };
 use cutweave_ops::media::FakeProbe;
 use serde_json::{Value, json};
@@ -38,7 +38,14 @@ struct Spec {
     duration: Option<i64>,
     /// No streams: nothing can be read from the file.
     broken: bool,
+    /// The display name (ADR-0020); `None`: the file name.
+    name: Option<&'static str>,
+    /// The bin folder, by number (`folder_id`); `None`: the top level.
+    folder: Option<u128>,
 }
+
+/// A folder of a fixture document: number, name and the number of its parent.
+type FolderSpec = (u128, &'static str, Option<u128>);
 
 const fn spec(n: u128, kind: MediaKind, path: &'static str, duration: Option<i64>) -> Spec {
     Spec {
@@ -48,7 +55,16 @@ const fn spec(n: u128, kind: MediaKind, path: &'static str, duration: Option<i64
         path_rel: None,
         duration,
         broken: false,
+        name: None,
+        folder: None,
     }
+}
+
+/// `spec` with a display name and a folder.
+const fn placed(mut s: Spec, name: Option<&'static str>, folder: Option<u128>) -> Spec {
+    s.name = name;
+    s.folder = folder;
+    s
 }
 
 fn library() -> (Vec<Spec>, Vec<Vec<u128>>) {
@@ -92,12 +108,63 @@ fn ties() -> (Vec<Spec>, Vec<Vec<u128>>) {
     )
 }
 
+/// Display names and folders (ADR-0020): Interviews > Day 1, and B-roll, next to the top level.
+fn folders() -> (Vec<Spec>, Vec<Vec<u128>>, Vec<FolderSpec>) {
+    use MediaKind::{Audio, Image, Video};
+    let assets = vec![
+        placed(
+            spec(1, Video, "/m/a.mp4", Some(5 * SEC)),
+            Some("Opening"),
+            Some(1),
+        ),
+        placed(spec(2, Video, "/m/b.mp4", Some(6 * SEC)), None, Some(2)),
+        placed(
+            spec(3, Audio, "/m/c.wav", Some(7 * SEC)),
+            Some("Thème"),
+            None,
+        ),
+        placed(
+            spec(4, Video, "/m/d.mp4", Some(8 * SEC)),
+            Some("interview wide"),
+            Some(2),
+        ),
+        placed(spec(5, Image, "/m/e.png", None), None, Some(3)),
+        placed(
+            spec(6, Video, "/m/f.mp4", Some(9 * SEC)),
+            Some("A-roll"),
+            Some(3),
+        ),
+        spec(7, Video, "/m/Opening night.mp4", Some(10 * SEC)),
+    ];
+    let tree = vec![
+        (1, "Interviews", None),
+        (2, "Day 1", Some(1)),
+        (3, "B-roll", None),
+    ];
+    (assets, vec![vec![1, 4]], tree)
+}
+
+fn with_tree(
+    (assets, sequences): (Vec<Spec>, Vec<Vec<u128>>),
+) -> (Vec<Spec>, Vec<Vec<u128>>, Vec<FolderSpec>) {
+    (assets, sequences, Vec::new())
+}
+
+fn folder_id(n: u128) -> FolderId {
+    FolderId::from_u128(0x0190_0000_0000_7000_a000_0000_0000_0000 + n)
+}
+
 fn media_id(n: u128) -> MediaId {
     MediaId::from_u128(0x0190_0000_0000_7000_8000_0000_0000_0000 + n)
 }
 
-fn build(assets: &[Spec], sequences: &[Vec<u128>]) -> Project {
+fn build(assets: &[Spec], sequences: &[Vec<u128>], tree: &[FolderSpec]) -> Project {
     let mut doc = Project::new("Fixture");
+    for (n, name, parent) in tree {
+        let id = folder_id(*n);
+        doc.folders
+            .insert(id, MediaFolder::new(id, *name, parent.map(folder_id)));
+    }
     for s in assets {
         let probe = if s.broken {
             ProbeInfo {
@@ -121,6 +188,8 @@ fn build(assets: &[Spec], sequences: &[Vec<u128>]) -> Project {
         let mut asset = MediaAsset::file(media_id(s.n), s.kind, s.path_abs.unwrap_or(""), probe);
         asset.path_abs = s.path_abs.map(str::to_owned);
         asset.path_rel = s.path_rel.map(str::to_owned);
+        asset.name = s.name.map(str::to_owned);
+        asset.folder = s.folder.map(folder_id);
         if s.kind == MediaKind::SequenceRef {
             // A compound clip of the first sequence, used on the second.
             asset.sequence = Some(SequenceId::from_u128(
@@ -252,6 +321,35 @@ fn cases() -> Vec<(&'static str, Value, Value, Option<u64>)> {
         None,
     );
     add("library", f(json!({"used": true, "problems": true})), None);
+    // Display names and folders (ADR-0020): the name replaces the file name in matching and in
+    // the name sort; `folder` is one level unless `recursive`, and `recursive: false` alone is
+    // the top level.
+    let fid = |n: u128| folder_id(n);
+    add("folders", f(json!({"text": "opening"})), None);
+    add("folders", f(json!({"text": "a.mp4"})), None);
+    add("folders", f(json!({"text": "theme"})), None);
+    add("folders", f(json!({"text": "INTERVIEW"})), None);
+    add("folders", f(json!({"text": "roll"})), None);
+    add("folders", f(json!({"folder": fid(1)})), None);
+    add(
+        "folders",
+        f(json!({"folder": fid(1), "recursive": true})),
+        None,
+    );
+    add("folders", f(json!({"folder": fid(2)})), None);
+    add("folders", f(json!({"folder": fid(3), "text": "a"})), None);
+    add("folders", f(json!({"recursive": false})), None);
+    add("folders", f(json!({"recursive": true})), None);
+    add(
+        "folders",
+        f(json!({"folder": fid(1), "recursive": true, "kinds": ["video"], "used": true})),
+        None,
+    );
+    add(
+        "folders",
+        f(json!({"folder": fid(1), "recursive": false, "used": false})),
+        None,
+    );
     add("empty", f(json!({"text": "x"})), None);
     add("empty", f(json!({})), None);
     add("ties", f(json!({"text": "clip"})), None);
@@ -261,7 +359,8 @@ fn cases() -> Vec<(&'static str, Value, Value, Option<u64>)> {
             let sort = json!({"by": by, "order": order});
             add("library", (json!({}), sort.clone()), None);
             add("library", (json!({"used": false}), sort.clone()), None);
-            add("ties", (json!({}), sort), None);
+            add("ties", (json!({}), sort.clone()), None);
+            add("folders", (json!({}), sort), None);
         }
     }
     add("library", (json!({}), json!({"by": "name"})), None);
@@ -294,12 +393,13 @@ fn cases() -> Vec<(&'static str, Value, Value, Option<u64>)> {
 fn generate() -> Value {
     let mut documents = Vec::new();
     let mut harnesses = Vec::new();
-    for (name, (assets, sequences)) in [
-        ("library", library()),
-        ("empty", (Vec::new(), vec![vec![]])),
-        ("ties", ties()),
+    for (name, (assets, sequences, tree)) in [
+        ("library", with_tree(library())),
+        ("empty", (Vec::new(), vec![vec![]], Vec::new())),
+        ("ties", with_tree(ties())),
+        ("folders", folders()),
     ] {
-        let doc = build(&assets, &sequences);
+        let doc = build(&assets, &sequences, &tree);
         doc.validate().unwrap();
         documents.push(json!({
             "name": name,
@@ -310,6 +410,13 @@ fn generate() -> Value {
                 "path_rel": s.path_rel,
                 "duration": s.duration,
                 "streams": if s.broken || s.kind == MediaKind::SequenceRef { 0 } else { 1 },
+                "name": s.name,
+                "folder": s.folder.map(folder_id),
+            })).collect::<Vec<_>>(),
+            "folders": tree.iter().map(|(n, name, parent)| json!({
+                "id": folder_id(*n),
+                "name": name,
+                "parent": parent.map(folder_id),
             })).collect::<Vec<_>>(),
             "sequences": sequences.iter().map(|u| u.iter().map(|n| media_id(*n)).collect::<Vec<_>>()).collect::<Vec<_>>(),
         }));
@@ -386,7 +493,7 @@ fn the_fixture_has_enough_cases_and_they_are_not_trivial() {
 
 #[test]
 fn bad_filters_and_cursors_are_refused() {
-    let doc = build(&library().0, &library().1);
+    let doc = build(&library().0, &library().1, &[]);
     let h = H::with_doc(doc);
     let bad =
         |params: Value, path: &str| common::assert_invalid(h.query("media.list", params), path);

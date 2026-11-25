@@ -227,13 +227,30 @@ const BIN_TEXT: Readonly<Record<BinKeyAction, { label: TKey; description: TKey; 
   remove: { id: "remove", label: "shortcuts.bin.remove", description: "shortcuts.bin.removeHelp" },
   import: { id: "import", label: "shortcuts.bin.import", description: "shortcuts.bin.importHelp" },
   search: { id: "search", label: "shortcuts.bin.search", description: "shortcuts.bin.searchHelp" },
+  up: { id: "up", label: "shortcuts.bin.up", description: "shortcuts.bin.upHelp" },
+  rename: { id: "rename", label: "shortcuts.bin.rename", description: "shortcuts.bin.renameHelp" },
+  selectAll: {
+    id: "select-all",
+    label: "shortcuts.bin.selectAll",
+    description: "shortcuts.bin.selectAllHelp",
+  },
+  newFolder: {
+    id: "new-folder",
+    label: "shortcuts.bin.newFolder",
+    description: "shortcuts.bin.newFolderHelp",
+  },
 };
 
 function binBindings(): Binding[] {
   const out = new Map<string, { binding: Binding; combos: KeyCombo[] }>();
   for (const entry of BIN_KEYS) {
     const text = BIN_TEXT[entry.action];
-    const combo: KeyCombo = { key: entry.key, ...(entry.mod === true && { mod: true }) };
+    const combo: KeyCombo = {
+      key: entry.key,
+      ...(entry.mod === true && { mod: true }),
+      ...(entry.alt === true && { alt: true }),
+      ...(entry.shift === true && { shift: true }),
+    };
     const known = out.get(text.id);
     if (known !== undefined) known.combos.push(combo);
     else {

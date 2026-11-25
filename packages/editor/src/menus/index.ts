@@ -7,7 +7,7 @@
 //   registerCommandInfo(info)           how a registry command reads in a menu
 //   useContextMenu / ContextSurface     mark a DOM element as a surface
 //   openContextMenu({surface, point})   open one by hand (the canvas, a dock tab, the keyboard)
-export { itemSelection, mediaSelection, trackSelection } from "./adapters.ts";
+export { folderSelection, itemSelection, mediaSelection, trackSelection } from "./adapters.ts";
 export { requestForCanvasEvent, requestForHit, ZONE_SURFACE } from "./canvas.ts";
 export {
   type CommandInfo,

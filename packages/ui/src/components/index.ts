@@ -4,7 +4,9 @@ export { Button, type ButtonProps, type ButtonSize, type ButtonVariant } from ".
 export { CostChip, type CostChipProps, formatCost } from "./CostChip.tsx";
 export { Dialog, DialogNote, type DialogNoteProps, type DialogProps } from "./Dialog.tsx";
 export { FilterChip, type FilterChipProps } from "./FilterChip.tsx";
+export { FolderTile, type FolderTileProps } from "./FolderTile.tsx";
 export { IconButton, type IconButtonProps, Toolbar, ToolbarSeparator } from "./IconButton.tsx";
+export { InlineRename, type InlineRenameProps } from "./InlineRename.tsx";
 export {
   InspectorRow,
   type InspectorRowProps,
@@ -19,6 +21,11 @@ export {
   KeyframeToggle,
   type KeyframeToggleProps,
 } from "./KeyframeToggle.tsx";
+export {
+  type BreadcrumbSegment,
+  MediaBreadcrumb,
+  type MediaBreadcrumbProps,
+} from "./MediaBreadcrumb.tsx";
 export {
   Menu,
   type MenuEntry,

@@ -3,7 +3,12 @@
 // one `media.import` (arch §7: partial success, `failed[]` with a code per file, one undo step).
 // The engine is the authority on what it can read; this file only refuses what cannot be a path
 // (the preload and main validate their side too) and says what happened.
-import { type ImportFailure, type ImportFailureCode, RpcError } from "@cutweave/protocol";
+import {
+  type FolderId,
+  type ImportFailure,
+  type ImportFailureCode,
+  RpcError,
+} from "@cutweave/protocol";
 import type { StoreApi } from "zustand";
 import type { EngineStoreState } from "../engine/engineStore.ts";
 import type { TKey } from "../i18n/index.ts";
@@ -68,12 +73,13 @@ export interface ImportSummary {
 /**
  * Imports `candidates` (validated first) and reports on it with toasts: one `danger` toast per
  * refused file (no card appears for it), one `success` toast with the counts. Resolves with the
- * summary, or `null` when nothing was sent (no engine, no usable path, or the call itself
+ * summary (into `folder` of the bin, else the top level), or `null` when nothing was sent (no engine, no usable path, or the call itself
  * failed, which shows its own toast).
  */
 export async function importMedia(
   deps: ImportDeps,
   candidates: readonly unknown[],
+  folder: FolderId | null = null,
 ): Promise<ImportSummary | null> {
   const { toasts, t } = deps;
   const paths = validateImportPaths(candidates);
@@ -91,7 +97,10 @@ export async function importMedia(
   const failed: ImportFailure[] = [];
   try {
     for (let i = 0; i < paths.length; i += MAX_IMPORT_PATHS) {
-      const out = await rpc.call("media.import", { paths: paths.slice(i, i + MAX_IMPORT_PATHS) });
+      const out = await rpc.call("media.import", {
+        paths: paths.slice(i, i + MAX_IMPORT_PATHS),
+        ...(folder === null ? {} : { folder }),
+      });
       for (const m of out.media) {
         if (m.duplicate) duplicates += 1;
         else added += 1;

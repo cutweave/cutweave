@@ -217,12 +217,25 @@ describe("the media bin's keys", () => {
 
   it("is what the panel matches: pressing a listed key does its action", () => {
     for (const entry of BIN_KEYS) {
-      const e = event(entry.key, entry.mod === true ? { ctrlKey: true } : {});
+      const e = event(entry.key, {
+        ...(entry.mod === true && { ctrlKey: true }),
+        ...(entry.alt === true && { altKey: true }),
+        ...(entry.shift === true && { shiftKey: true }),
+      });
       expect(binKeyAction(e), entry.key).toBe(entry.action);
     }
     expect(binKeyAction(event("i"))).toBeNull();
     expect(binKeyAction(event("i", { ctrlKey: true, shiftKey: true }))).toBeNull();
     expect(binKeyAction(event("ArrowLeft", { ctrlKey: true }))).toBeNull();
+    // Folders (WP-2F.08): Backspace and Alt+Up go up, Ctrl+Shift+N is not Ctrl+N, Alt+Up is not Up.
+    expect(binKeyAction(event("Backspace"))).toBe("up");
+    expect(binKeyAction(event("ArrowUp", { altKey: true }))).toBe("up");
+    expect(binKeyAction(event("ArrowUp"))).toBe("moveUp");
+    expect(binKeyAction(event("n", { ctrlKey: true }))).toBeNull();
+    expect(binKeyAction(event("N", { ctrlKey: true, shiftKey: true }))).toBe("newFolder");
+    expect(binKeyAction(event("a", { ctrlKey: true }))).toBe("selectAll");
+    expect(binKeyAction(event("F2"))).toBe("rename");
+    expect(binKeyAction(event("Delete"))).toBe("remove");
   });
 });
 

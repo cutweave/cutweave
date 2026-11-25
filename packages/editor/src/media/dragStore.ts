@@ -7,6 +7,7 @@
 import type { MediaDrag } from "@cutweave/timeline";
 import { useStore } from "zustand";
 import { createStore } from "zustand/vanilla";
+import type { DragPayload } from "./folders.ts";
 
 /** The `dataTransfer` type a card sets (the value is the media ID). */
 export const MEDIA_DRAG_TYPE = "application/x-cutweave-media";
@@ -31,3 +32,23 @@ export const dragStore = createDragStore();
 export function useDragStore<T>(selector: (state: DragState) => T): T {
   return useStore(dragStore, selector);
 }
+
+/** The `dataTransfer` type of tiles dragged inside the bin (WP-2F.08); the value is a placeholder. */
+export const TILE_DRAG_TYPE = "application/x-cutweave-bin-tiles";
+
+export interface TileDragState {
+  /** The assets and folders being dragged inside the bin, or `null`. */
+  readonly payload: DragPayload | null;
+  begin(payload: DragPayload): void;
+  end(): void;
+}
+
+/**
+ * Tiles dragged onto folders and breadcrumb segments (WP-2F.08). Like the media session above,
+ * it lives here because Chromium hides `dataTransfer` data during `dragover`.
+ */
+export const tileDragStore = createStore<TileDragState>()((set) => ({
+  payload: null,
+  begin: (payload) => set({ payload }),
+  end: () => set({ payload: null }),
+}));
