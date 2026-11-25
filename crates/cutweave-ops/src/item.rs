@@ -225,8 +225,7 @@ pub struct ItemProps {
     pub crop: Option<CropPatch>,
     /// Mirroring (partial).
     pub flip: Option<FlipPatch>,
-    /// How the item combines with what is below: `normal`, `multiply`, `screen`, `overlay`,
-    /// `darken`, `lighten`, `add` or `soft_light`.
+    /// How the item combines with what is below.
     pub blend_mode: Option<BlendMode>,
 }
 
@@ -255,13 +254,12 @@ pub struct ItemSetPropsOutput {
     pub keyed: Vec<KeyedProp>,
 }
 
-/// Changes an item's name, enabled flag, opacity, clip gain and pan, transform, crop, flip or
-/// blend mode; absent fields keep their value and setting a value it already has is a no-op.
-/// A property that is keyed (animated) gets a key at `at` (a sequence time inside the item,
-/// snapped to a frame) with the value, as `keyframe.set` would; without `at`, or with
-/// `auto_key: false`, that is `Invalid` (`keyframe.clear` makes the property static first).
-/// Static properties are set as before and `at` is ignored. `Locked` if the item's track is
-/// locked.
+/// Set item properties (partial). An animated property is keyed at `at` (sequence time,
+/// required then). Example: `{item, props:{opacity:0.5, crop:{left:0.25}}}`.
+///
+/// Absent fields keep their value; setting a value it already has is a no-op. Static properties
+/// are set as before and `at` is ignored. With `auto_key: false` an animated property is
+/// `Invalid`: `keyframe_clear` makes it static first. `Locked` if the track is locked.
 #[command(
     name = "item.set_props",
     summary = "Set an item's name, enabled, opacity, audio, transform, crop, flip or blend mode (partial)",
@@ -276,10 +274,9 @@ pub struct ItemSetProps {
     pub items: Option<Vec<ItemId>>,
     /// The properties to change; at least one.
     pub props: ItemProps,
-    /// Key animated properties at `at` (default `true`; `false` makes an animated property
-    /// `Invalid`).
+    /// Key animated properties at `at` (default true).
     pub auto_key: Option<bool>,
-    /// The sequence time (the playhead) to key animated properties at.
+    /// Sequence time (the playhead) to key animated properties at.
     pub at: Option<TimeInput>,
 }
 

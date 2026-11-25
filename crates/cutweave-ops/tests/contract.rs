@@ -453,7 +453,7 @@ const CONTRACT: &[Row] = &[
         EntryKind::Command,
         McpExposure::Catalog,
         false,
-        true,
+        false,
         true,
         true,
     ),

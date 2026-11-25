@@ -37,17 +37,17 @@ fn clip_of<'a>(doc: &'a Project, id: ItemId) -> Result<&'a Clip, CmdError> {
 /// A key to write.
 #[wire]
 pub struct KeyInput {
-    /// Item time (flicks, seconds or frames counted from the item's start); give `t` or `at`.
+    /// Item time (flicks, seconds like "1.5s", or "f:N" frames from the item's start).
     pub t: Option<TimeInput>,
-    /// Sequence time; snapped to the frame grid.
+    /// Sequence time. Give `t` or `at`; both snap to frames.
     pub at: Option<TimeInput>,
-    /// The value; omitted: the property's current value at that time.
+    /// The value; omitted: the property's current value there.
     pub value: Option<KeyValue>,
-    /// Shapes the move to the next key (stored form; `bounce` may be omitted).
+    /// Shapes the move to the next key; or use `easing`.
     pub interp: Option<InterpInput>,
-    /// A preset name (`ease_out`, `spring`, ...), `linear` or `hold`; not with `interp`.
+    /// A preset name, `linear` or `hold`.
     pub easing: Option<Easing>,
-    /// A hint naming the preset of `interp` (for writing `item.get` keys back).
+    /// Preset name hint for `interp`.
     pub preset: Option<String>,
 }
 
@@ -77,13 +77,13 @@ pub struct KeyframeSetOutput {
     pub keys: Vec<SetKey>,
 }
 
-/// Adds or replaces keys on one property of an item (or of each of `items`). `t` is item time
-/// and `at` sequence time; both snap to frames (`fine`: audio samples, for audio properties).
-/// A key's `easing` (or `interp`) shapes the move to the next key; a new key inherits the one
-/// before it, else linear (hold for flips). A static property becomes animated with exactly
-/// these keys; a key at an occupied time replaces that key; `replace: true` makes the result
-/// exactly these keys. Omit `value` to key the current value. Values outside the property's
-/// range are `Invalid`; `Locked` if the item's track is locked.
+/// Add or replace keys on one property. `t` = item time, `at` = sequence time; both snap to
+/// frames. A key's `easing` shapes the move to the next key. Example: `{item, prop:"opacity",
+/// keys:[{at:"10s", value:0, easing:"ease_out"}, {at:"12s", value:1}]}`.
+///
+/// A static property becomes animated with exactly these keys; a key at an occupied time is
+/// replaced; a new key inherits the previous key's easing; `replace` makes the result exactly
+/// these keys; `fine` snaps audio properties to samples. `Locked` if the track is locked.
 #[command(
     name = "keyframe.set",
     summary = "Add or replace keys on one property of an item",
@@ -96,15 +96,13 @@ pub struct KeyframeSet {
     pub item: Option<ItemId>,
     /// Items to give the same keys.
     pub items: Option<Vec<ItemId>>,
-    /// The property: `transform.position`, `transform.scale`, `transform.rotation`,
-    /// `transform.anchor`, `opacity`, `crop.left|top|right|bottom`, `flip.horizontal|vertical`,
-    /// `audio_gain` or `audio_pan`.
+    /// The property.
     pub prop: PropId,
     /// The keys, 1 to 10,000.
     pub keys: Vec<KeyInput>,
-    /// Make the result exactly these keys (default `false`).
+    /// Make the result exactly these keys.
     pub replace: Option<bool>,
-    /// Snap to the audio sample grid (audio properties only).
+    /// Snap to audio samples (audio properties).
     pub fine: Option<bool>,
 }
 

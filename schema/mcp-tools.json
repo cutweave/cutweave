@@ -82,7 +82,7 @@
         "readOnlyHint": false
       },
       "command": "item.set_props",
-      "description": "Set an item's name, enabled, opacity, audio_gain or transform (partial)",
+      "description": "Set an item's name, enabled, opacity, audio, transform, crop, flip or blend mode (partial)",
       "kind": "command",
       "name": "item_set_props"
     },
@@ -109,6 +109,18 @@
       "description": "Wait up to timeout_ms (max 60 s) for a background job to finish; returns its state",
       "kind": "engine",
       "name": "job_wait"
+    },
+    {
+      "annotations": {
+        "destructiveHint": false,
+        "idempotentHint": true,
+        "openWorldHint": false,
+        "readOnlyHint": false
+      },
+      "command": "keyframe.set",
+      "description": "Add or replace keys on one property of an item",
+      "kind": "command",
+      "name": "keyframe_set"
     },
     {
       "annotations": {

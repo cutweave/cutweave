@@ -184,7 +184,7 @@ async fn stdio_serves_the_catalog_and_the_scripted_agent_on_both_revisions() {
         assert_eq!(agent.negotiated(), revision.version(), "{revision:?}");
         let tools = agent.service.list_tools(None).await.unwrap().tools;
         assert_eq!(names(&tools), expected, "{revision:?}");
-        assert_eq!(tools.len(), 19);
+        assert_eq!(tools.len(), 20);
         assert!(STANDARD_BUDGET.fits(ListSize::of(&tools)));
         scripted_edit(&h, &agent).await;
         agent.close().await;

@@ -70,6 +70,14 @@
             "pattern": "^itm_[0-9a-f]{32}$",
             "type": "string"
           },
+          "prune_keyframes": {
+            "default": null,
+            "description": "Drop keyframes the trim leaves outside the clip (default `false`).",
+            "type": [
+              "boolean",
+              "null"
+            ]
+          },
           "ripple_all_tracks": {
             "default": null,
             "description": "Move what follows on every track of the sequence (default `false`).",
@@ -433,6 +441,14 @@
             "pattern": "^itm_[0-9a-f]{32}$",
             "type": "string"
           },
+          "prune_keyframes": {
+            "default": null,
+            "description": "Drop keyframes the roll leaves outside the clips (default `false`).",
+            "type": [
+              "boolean",
+              "null"
+            ]
+          },
           "right": {
             "description": "The clip after the cut: it starts where `left` ends, on the same track.",
             "pattern": "^itm_[0-9a-f]{32}$",
@@ -775,6 +791,14 @@
             "description": "The clip.",
             "pattern": "^itm_[0-9a-f]{32}$",
             "type": "string"
+          },
+          "prune_keyframes": {
+            "default": null,
+            "description": "Drop keyframes the slide leaves outside the neighbours (default `false`).",
+            "type": [
+              "boolean",
+              "null"
+            ]
           }
         },
         "required": [
@@ -1818,6 +1842,14 @@
             "description": "The clip.",
             "pattern": "^itm_[0-9a-f]{32}$",
             "type": "string"
+          },
+          "prune_keyframes": {
+            "default": null,
+            "description": "Drop keyframes the trim leaves outside the clip, keeping the ones that bracket it\n(default `false`: trims keep every key).",
+            "type": [
+              "boolean",
+              "null"
+            ]
           },
           "to": {
             "anyOf": [
@@ -6800,12 +6832,198 @@
       },
       "input_schema": {
         "additionalProperties": false,
-        "description": "Changes an item's name, enabled flag, opacity, clip gain or transform; absent fields keep\ntheir value and setting a value it already has is a no-op. `Locked` if the item's track is\nlocked.",
+        "description": "Resets properties to their defaults: they become static (any keys are removed). Give\n`group` (`transform`, `crop`, `flip`, `compositing`, `audio`) or `props` (property IDs), not\nboth; with neither, every animatable property and the blend mode are reset. The name and\nenabled flag are never touched. `Locked` if the item's track is locked.",
         "properties": {
+          "group": {
+            "anyOf": [
+              {
+                "description": "A group of properties, as the Inspector's sections show them.",
+                "oneOf": [
+                  {
+                    "const": "transform",
+                    "description": "Position, scale, rotation and anchor.",
+                    "type": "string"
+                  },
+                  {
+                    "const": "crop",
+                    "description": "The four crop edges.",
+                    "type": "string"
+                  },
+                  {
+                    "const": "flip",
+                    "description": "Flip horizontal and vertical.",
+                    "type": "string"
+                  },
+                  {
+                    "const": "compositing",
+                    "description": "Opacity and blend mode.",
+                    "type": "string"
+                  },
+                  {
+                    "const": "audio",
+                    "description": "Clip gain and pan.",
+                    "type": "string"
+                  }
+                ]
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "description": "A section of the Inspector."
+          },
           "item": {
-            "description": "The item.",
+            "default": null,
+            "description": "The item (or `items`).",
+            "pattern": "^itm_[0-9a-f]{32}$",
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "items": {
+            "default": null,
+            "description": "Items to reset.",
+            "items": {
+              "description": "A Item id: `^itm_[0-9a-f]{32}$`.",
+              "pattern": "^itm_[0-9a-f]{32}$",
+              "type": "string"
+            },
+            "type": [
+              "array",
+              "null"
+            ]
+          },
+          "props": {
+            "default": null,
+            "description": "Property IDs, as `keyframe.set` takes them.",
+            "items": {
+              "description": "An animatable property of an item.",
+              "enum": [
+                "transform.position",
+                "transform.scale",
+                "transform.rotation",
+                "transform.anchor",
+                "opacity",
+                "crop.left",
+                "crop.top",
+                "crop.right",
+                "crop.bottom",
+                "flip.horizontal",
+                "flip.vertical",
+                "audio_gain",
+                "audio_pan"
+              ],
+              "type": "string"
+            },
+            "type": [
+              "array",
+              "null"
+            ]
+          }
+        },
+        "title": "ItemResetProps",
+        "type": "object"
+      },
+      "kind": "command",
+      "mcp": "catalog",
+      "mcp_tool": "item_reset_props",
+      "name": "item.reset_props",
+      "namespace": "item",
+      "output_schema": {
+        "additionalProperties": false,
+        "description": "Result of `item.reset_props`.",
+        "properties": {
+          "changed": {
+            "description": "The properties whose value changed on any item (`opacity`, `crop.left`, `blend_mode`,\n...); empty when everything already had its default.",
+            "items": {
+              "type": "string"
+            },
+            "type": "array"
+          },
+          "item": {
+            "description": "The first item.",
             "pattern": "^itm_[0-9a-f]{32}$",
             "type": "string"
+          }
+        },
+        "required": [
+          "item",
+          "changed"
+        ],
+        "title": "ItemResetPropsOutput",
+        "type": "object"
+      },
+      "scope": "any",
+      "secret_fields": [],
+      "summary": "Reset an item's properties (a group, some properties, or all) to their defaults",
+      "undoable": true,
+      "view": false
+    },
+    {
+      "annotations": {
+        "destructiveHint": false,
+        "idempotentHint": true,
+        "openWorldHint": false,
+        "readOnlyHint": false
+      },
+      "input_schema": {
+        "additionalProperties": false,
+        "description": "Set item properties (partial). An animated property is keyed at `at` (sequence time,\nrequired then). Example: `{item, props:{opacity:0.5, crop:{left:0.25}}}`.\n\nAbsent fields keep their value; setting a value it already has is a no-op. Static properties\nare set as before and `at` is ignored. With `auto_key: false` an animated property is\n`Invalid`: `keyframe_clear` makes it static first. `Locked` if the track is locked.",
+        "properties": {
+          "at": {
+            "anyOf": [
+              {
+                "anyOf": [
+                  {
+                    "maximum": 9007199254740991,
+                    "minimum": -9007199254740991,
+                    "type": "integer"
+                  },
+                  {
+                    "pattern": "^-?[0-9]+(\\.[0-9]+)?s$|^-?[0-9]+$|^f:[0-9]+$|^[0-9]+[:;][0-9]+[:;][0-9]+[:;][0-9]+$",
+                    "type": "string"
+                  }
+                ],
+                "description": "A time: integer flicks (1/705600000 s), or a string: seconds (\"62.5s\"), a frame (\"f:1500\") or a timecode (\"00:01:02:03\", drop-frame \"00:01:02;03\"). Frames and timecodes use the frame rate of the target's sequence."
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "description": "Sequence time (the playhead) to key animated properties at."
+          },
+          "auto_key": {
+            "default": null,
+            "description": "Key animated properties at `at` (default true).",
+            "type": [
+              "boolean",
+              "null"
+            ]
+          },
+          "item": {
+            "default": null,
+            "description": "The item (or `items`).",
+            "pattern": "^itm_[0-9a-f]{32}$",
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "items": {
+            "default": null,
+            "description": "Items to give the same properties.",
+            "items": {
+              "description": "A Item id: `^itm_[0-9a-f]{32}$`.",
+              "pattern": "^itm_[0-9a-f]{32}$",
+              "type": "string"
+            },
+            "type": [
+              "array",
+              "null"
+            ]
           },
           "props": {
             "additionalProperties": false,
@@ -6819,10 +7037,102 @@
                   "null"
                 ]
               },
+              "audio_pan": {
+                "description": "Stereo position, `-1` (left) to `1` (right).",
+                "format": "double",
+                "type": [
+                  "number",
+                  "null"
+                ]
+              },
+              "blend_mode": {
+                "description": "How the item combines with what is below.",
+                "enum": [
+                  "normal",
+                  "multiply",
+                  "screen",
+                  "overlay",
+                  "darken",
+                  "lighten",
+                  "add",
+                  "soft_light",
+                  null
+                ],
+                "type": [
+                  "string",
+                  "null"
+                ]
+              },
+              "crop": {
+                "additionalProperties": false,
+                "description": "Edges of the source picture cut away (partial).",
+                "properties": {
+                  "bottom": {
+                    "description": "Fraction removed from the bottom edge.",
+                    "format": "double",
+                    "type": [
+                      "number",
+                      "null"
+                    ]
+                  },
+                  "left": {
+                    "description": "Fraction removed from the left edge.",
+                    "format": "double",
+                    "type": [
+                      "number",
+                      "null"
+                    ]
+                  },
+                  "right": {
+                    "description": "Fraction removed from the right edge.",
+                    "format": "double",
+                    "type": [
+                      "number",
+                      "null"
+                    ]
+                  },
+                  "top": {
+                    "description": "Fraction removed from the top edge.",
+                    "format": "double",
+                    "type": [
+                      "number",
+                      "null"
+                    ]
+                  }
+                },
+                "type": [
+                  "object",
+                  "null"
+                ]
+              },
               "enabled": {
                 "description": "Rendered and heard (`true`) or kept but skipped (`false`).",
                 "type": [
                   "boolean",
+                  "null"
+                ]
+              },
+              "flip": {
+                "additionalProperties": false,
+                "description": "Mirroring (partial).",
+                "properties": {
+                  "horizontal": {
+                    "description": "Mirror left-right.",
+                    "type": [
+                      "boolean",
+                      "null"
+                    ]
+                  },
+                  "vertical": {
+                    "description": "Mirror top-bottom.",
+                    "type": [
+                      "boolean",
+                      "null"
+                    ]
+                  }
+                },
+                "type": [
+                  "object",
                   "null"
                 ]
               },
@@ -6936,7 +7246,6 @@
           }
         },
         "required": [
-          "item",
           "props"
         ],
         "title": "ItemSetProps",
@@ -6952,28 +7261,82 @@
         "description": "Result of `item.set_props`.",
         "properties": {
           "changed": {
-            "description": "The props whose value actually changed (`name`, `enabled`, `opacity`, `audio_gain`,\n`transform.position`, ...); empty if everything was already as requested.",
+            "description": "The props whose value actually changed on any item (`name`, `enabled`, `opacity`,\n`audio_gain`, `transform.position`, ...); empty if everything was already as requested.",
             "items": {
               "type": "string"
             },
             "type": "array"
           },
           "item": {
-            "description": "The item.",
+            "description": "The item (the first of `items`).",
             "pattern": "^itm_[0-9a-f]{32}$",
             "type": "string"
+          },
+          "keyed": {
+            "description": "The keys written on animated properties.",
+            "items": {
+              "additionalProperties": false,
+              "description": "A key `item.set_props` wrote on an animated property.",
+              "properties": {
+                "at": {
+                  "description": "Sequence time of the key, after snapping.",
+                  "maximum": 9007199254740991,
+                  "minimum": -9007199254740991,
+                  "type": "integer"
+                },
+                "item": {
+                  "description": "The item.",
+                  "pattern": "^itm_[0-9a-f]{32}$",
+                  "type": "string"
+                },
+                "prop": {
+                  "description": "The property.",
+                  "enum": [
+                    "transform.position",
+                    "transform.scale",
+                    "transform.rotation",
+                    "transform.anchor",
+                    "opacity",
+                    "crop.left",
+                    "crop.top",
+                    "crop.right",
+                    "crop.bottom",
+                    "flip.horizontal",
+                    "flip.vertical",
+                    "audio_gain",
+                    "audio_pan"
+                  ],
+                  "type": "string"
+                },
+                "t": {
+                  "description": "Item time of the key, after snapping.",
+                  "maximum": 9007199254740991,
+                  "minimum": -9007199254740991,
+                  "type": "integer"
+                }
+              },
+              "required": [
+                "item",
+                "prop",
+                "t",
+                "at"
+              ],
+              "type": "object"
+            },
+            "type": "array"
           }
         },
         "required": [
           "item",
-          "changed"
+          "changed",
+          "keyed"
         ],
         "title": "ItemSetPropsOutput",
         "type": "object"
       },
       "scope": "any",
       "secret_fields": [],
-      "summary": "Set an item's name, enabled, opacity, audio_gain or transform (partial)",
+      "summary": "Set an item's name, enabled, opacity, audio, transform, crop, flip or blend mode (partial)",
       "undoable": true,
       "view": false
     },
@@ -7698,6 +8061,1819 @@
       "secret_fields": [],
       "summary": "Wait up to timeout_ms (max 60 s) for a background job to finish; returns its state",
       "undoable": false,
+      "view": false
+    },
+    {
+      "annotations": {
+        "destructiveHint": true,
+        "idempotentHint": true,
+        "openWorldHint": false,
+        "readOnlyHint": false
+      },
+      "input_schema": {
+        "additionalProperties": false,
+        "description": "Makes an animated property static: at its value at the given time (`t` item time, `at`\nsequence time), or at its first key's value without one. Does nothing to a property that is\nalready static. `Locked` if an item's track is locked.",
+        "properties": {
+          "at": {
+            "anyOf": [
+              {
+                "anyOf": [
+                  {
+                    "maximum": 9007199254740991,
+                    "minimum": -9007199254740991,
+                    "type": "integer"
+                  },
+                  {
+                    "pattern": "^-?[0-9]+(\\.[0-9]+)?s$|^-?[0-9]+$|^f:[0-9]+$|^[0-9]+[:;][0-9]+[:;][0-9]+[:;][0-9]+$",
+                    "type": "string"
+                  }
+                ],
+                "description": "A time: integer flicks (1/705600000 s), or a string: seconds (\"62.5s\"), a frame (\"f:1500\") or a timecode (\"00:01:02:03\", drop-frame \"00:01:02;03\"). Frames and timecodes use the frame rate of the target's sequence."
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "description": "Keep the value at this sequence time."
+          },
+          "item": {
+            "default": null,
+            "description": "The item (or `items`).",
+            "pattern": "^itm_[0-9a-f]{32}$",
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "items": {
+            "default": null,
+            "description": "Items to clear the same property of.",
+            "items": {
+              "description": "A Item id: `^itm_[0-9a-f]{32}$`.",
+              "pattern": "^itm_[0-9a-f]{32}$",
+              "type": "string"
+            },
+            "type": [
+              "array",
+              "null"
+            ]
+          },
+          "prop": {
+            "description": "The property.",
+            "enum": [
+              "transform.position",
+              "transform.scale",
+              "transform.rotation",
+              "transform.anchor",
+              "opacity",
+              "crop.left",
+              "crop.top",
+              "crop.right",
+              "crop.bottom",
+              "flip.horizontal",
+              "flip.vertical",
+              "audio_gain",
+              "audio_pan"
+            ],
+            "type": "string"
+          },
+          "t": {
+            "anyOf": [
+              {
+                "anyOf": [
+                  {
+                    "maximum": 9007199254740991,
+                    "minimum": -9007199254740991,
+                    "type": "integer"
+                  },
+                  {
+                    "pattern": "^-?[0-9]+(\\.[0-9]+)?s$|^-?[0-9]+$|^f:[0-9]+$|^[0-9]+[:;][0-9]+[:;][0-9]+[:;][0-9]+$",
+                    "type": "string"
+                  }
+                ],
+                "description": "A time: integer flicks (1/705600000 s), or a string: seconds (\"62.5s\"), a frame (\"f:1500\") or a timecode (\"00:01:02:03\", drop-frame \"00:01:02;03\"). Frames and timecodes use the frame rate of the target's sequence."
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "description": "Keep the value at this item time."
+          }
+        },
+        "required": [
+          "prop"
+        ],
+        "title": "KeyframeClear",
+        "type": "object"
+      },
+      "kind": "command",
+      "mcp": "catalog",
+      "mcp_tool": "keyframe_clear",
+      "name": "keyframe.clear",
+      "namespace": "keyframe",
+      "output_schema": {
+        "additionalProperties": false,
+        "description": "Result of `keyframe.clear`.",
+        "properties": {
+          "items": {
+            "description": "The items processed.",
+            "items": {
+              "description": "A Item id: `^itm_[0-9a-f]{32}$`.",
+              "pattern": "^itm_[0-9a-f]{32}$",
+              "type": "string"
+            },
+            "type": "array"
+          },
+          "value": {
+            "anyOf": [
+              {
+                "description": "A boolean.",
+                "type": "boolean"
+              },
+              {
+                "description": "A number.",
+                "format": "double",
+                "type": "number"
+              },
+              {
+                "additionalProperties": false,
+                "description": "A 2D vector.",
+                "properties": {
+                  "x": {
+                    "description": "Horizontal component.",
+                    "format": "double",
+                    "type": "number"
+                  },
+                  "y": {
+                    "description": "Vertical component (down is positive).",
+                    "format": "double",
+                    "type": "number"
+                  }
+                },
+                "required": [
+                  "x",
+                  "y"
+                ],
+                "type": "object"
+              }
+            ],
+            "description": "The static value the (first) item's property has now."
+          }
+        },
+        "required": [
+          "value",
+          "items"
+        ],
+        "title": "KeyframeClearOutput",
+        "type": "object"
+      },
+      "scope": "any",
+      "secret_fields": [],
+      "summary": "Remove all keys of a property, keeping one value",
+      "undoable": true,
+      "view": false
+    },
+    {
+      "annotations": {
+        "destructiveHint": true,
+        "idempotentHint": false,
+        "openWorldHint": false,
+        "readOnlyHint": false
+      },
+      "input_schema": {
+        "additionalProperties": false,
+        "description": "Removes the keys at the exact item times given. Deleting every key of a property makes it\nstatic at its first key's value. `NotFound` if a key does not exist; `Locked` if the item's\ntrack is locked.",
+        "properties": {
+          "item": {
+            "description": "The item.",
+            "pattern": "^itm_[0-9a-f]{32}$",
+            "type": "string"
+          },
+          "keys": {
+            "description": "The keys to delete, by property and exact item time.",
+            "items": {
+              "additionalProperties": false,
+              "description": "A key to address: its property and exact item time.",
+              "properties": {
+                "prop": {
+                  "description": "The property.",
+                  "enum": [
+                    "transform.position",
+                    "transform.scale",
+                    "transform.rotation",
+                    "transform.anchor",
+                    "opacity",
+                    "crop.left",
+                    "crop.top",
+                    "crop.right",
+                    "crop.bottom",
+                    "flip.horizontal",
+                    "flip.vertical",
+                    "audio_gain",
+                    "audio_pan"
+                  ],
+                  "type": "string"
+                },
+                "t": {
+                  "anyOf": [
+                    {
+                      "maximum": 9007199254740991,
+                      "minimum": -9007199254740991,
+                      "type": "integer"
+                    },
+                    {
+                      "pattern": "^-?[0-9]+(\\.[0-9]+)?s$|^-?[0-9]+$",
+                      "type": "string"
+                    }
+                  ],
+                  "description": "The key's stored item time in flicks, as `item.get` returns it."
+                }
+              },
+              "required": [
+                "prop",
+                "t"
+              ],
+              "type": "object"
+            },
+            "type": "array"
+          }
+        },
+        "required": [
+          "item",
+          "keys"
+        ],
+        "title": "KeyframeDelete",
+        "type": "object"
+      },
+      "kind": "command",
+      "mcp": "catalog",
+      "mcp_tool": "keyframe_delete",
+      "name": "keyframe.delete",
+      "namespace": "keyframe",
+      "output_schema": {
+        "additionalProperties": false,
+        "description": "Result of `keyframe.delete`.",
+        "properties": {
+          "deleted": {
+            "description": "The keys removed.",
+            "items": {
+              "additionalProperties": false,
+              "description": "A key to address: its property and exact item time.",
+              "properties": {
+                "prop": {
+                  "description": "The property.",
+                  "enum": [
+                    "transform.position",
+                    "transform.scale",
+                    "transform.rotation",
+                    "transform.anchor",
+                    "opacity",
+                    "crop.left",
+                    "crop.top",
+                    "crop.right",
+                    "crop.bottom",
+                    "flip.horizontal",
+                    "flip.vertical",
+                    "audio_gain",
+                    "audio_pan"
+                  ],
+                  "type": "string"
+                },
+                "t": {
+                  "description": "The key's stored item time in flicks, as `item.get` returns it.",
+                  "maximum": 9007199254740991,
+                  "minimum": -9007199254740991,
+                  "type": "integer"
+                }
+              },
+              "required": [
+                "prop",
+                "t"
+              ],
+              "type": "object"
+            },
+            "type": "array"
+          },
+          "now_static": {
+            "description": "Properties that lost their last key and are static now (at their first key's value).",
+            "items": {
+              "description": "An animatable property of an item.",
+              "enum": [
+                "transform.position",
+                "transform.scale",
+                "transform.rotation",
+                "transform.anchor",
+                "opacity",
+                "crop.left",
+                "crop.top",
+                "crop.right",
+                "crop.bottom",
+                "flip.horizontal",
+                "flip.vertical",
+                "audio_gain",
+                "audio_pan"
+              ],
+              "type": "string"
+            },
+            "type": "array"
+          }
+        },
+        "required": [
+          "deleted",
+          "now_static"
+        ],
+        "title": "KeyframeDeleteOutput",
+        "type": "object"
+      },
+      "scope": "any",
+      "secret_fields": [],
+      "summary": "Delete keys of an item's properties",
+      "undoable": true,
+      "view": false
+    },
+    {
+      "annotations": {
+        "destructiveHint": false,
+        "idempotentHint": false,
+        "openWorldHint": false,
+        "readOnlyHint": false
+      },
+      "input_schema": {
+        "additionalProperties": false,
+        "description": "Moves keys in time, by `delta`, or to `to_t` (item time) or `to_at` (sequence time) for a\nsingle key; give exactly one. Keys keep their value and interpolation, may pass their\nneighbours (the list re-sorts), and land on frames: a `delta` is rounded to whole frames\n(`fine`: samples). Landing on a key that stays, or two keys on one time, is `Invalid`.\n`NotFound` if a key does not exist; `Locked` if the item's track is locked.",
+        "properties": {
+          "delta": {
+            "anyOf": [
+              {
+                "anyOf": [
+                  {
+                    "maximum": 9007199254740991,
+                    "minimum": -9007199254740991,
+                    "type": "integer"
+                  },
+                  {
+                    "pattern": "^-?[0-9]+(\\.[0-9]+)?s$|^-?[0-9]+$|^f:[0-9]+$|^[0-9]+[:;][0-9]+[:;][0-9]+[:;][0-9]+$",
+                    "type": "string"
+                  }
+                ],
+                "description": "A time: integer flicks (1/705600000 s), or a string: seconds (\"62.5s\"), a frame (\"f:1500\") or a timecode (\"00:01:02:03\", drop-frame \"00:01:02;03\"). Frames and timecodes use the frame rate of the target's sequence."
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "description": "How far to move them (negative: earlier). Use seconds or flicks for negative values."
+          },
+          "fine": {
+            "default": null,
+            "description": "Snap to the audio sample grid (audio properties only).",
+            "type": [
+              "boolean",
+              "null"
+            ]
+          },
+          "item": {
+            "description": "The item.",
+            "pattern": "^itm_[0-9a-f]{32}$",
+            "type": "string"
+          },
+          "keys": {
+            "description": "The keys to move, by property and exact item time.",
+            "items": {
+              "additionalProperties": false,
+              "description": "A key to address: its property and exact item time.",
+              "properties": {
+                "prop": {
+                  "description": "The property.",
+                  "enum": [
+                    "transform.position",
+                    "transform.scale",
+                    "transform.rotation",
+                    "transform.anchor",
+                    "opacity",
+                    "crop.left",
+                    "crop.top",
+                    "crop.right",
+                    "crop.bottom",
+                    "flip.horizontal",
+                    "flip.vertical",
+                    "audio_gain",
+                    "audio_pan"
+                  ],
+                  "type": "string"
+                },
+                "t": {
+                  "anyOf": [
+                    {
+                      "maximum": 9007199254740991,
+                      "minimum": -9007199254740991,
+                      "type": "integer"
+                    },
+                    {
+                      "pattern": "^-?[0-9]+(\\.[0-9]+)?s$|^-?[0-9]+$",
+                      "type": "string"
+                    }
+                  ],
+                  "description": "The key's stored item time in flicks, as `item.get` returns it."
+                }
+              },
+              "required": [
+                "prop",
+                "t"
+              ],
+              "type": "object"
+            },
+            "type": "array"
+          },
+          "to_at": {
+            "anyOf": [
+              {
+                "anyOf": [
+                  {
+                    "maximum": 9007199254740991,
+                    "minimum": -9007199254740991,
+                    "type": "integer"
+                  },
+                  {
+                    "pattern": "^-?[0-9]+(\\.[0-9]+)?s$|^-?[0-9]+$|^f:[0-9]+$|^[0-9]+[:;][0-9]+[:;][0-9]+[:;][0-9]+$",
+                    "type": "string"
+                  }
+                ],
+                "description": "A time: integer flicks (1/705600000 s), or a string: seconds (\"62.5s\"), a frame (\"f:1500\") or a timecode (\"00:01:02:03\", drop-frame \"00:01:02;03\"). Frames and timecodes use the frame rate of the target's sequence."
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "description": "The new sequence time of the single key."
+          },
+          "to_t": {
+            "anyOf": [
+              {
+                "anyOf": [
+                  {
+                    "maximum": 9007199254740991,
+                    "minimum": -9007199254740991,
+                    "type": "integer"
+                  },
+                  {
+                    "pattern": "^-?[0-9]+(\\.[0-9]+)?s$|^-?[0-9]+$|^f:[0-9]+$|^[0-9]+[:;][0-9]+[:;][0-9]+[:;][0-9]+$",
+                    "type": "string"
+                  }
+                ],
+                "description": "A time: integer flicks (1/705600000 s), or a string: seconds (\"62.5s\"), a frame (\"f:1500\") or a timecode (\"00:01:02:03\", drop-frame \"00:01:02;03\"). Frames and timecodes use the frame rate of the target's sequence."
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "description": "The new item time of the single key."
+          }
+        },
+        "required": [
+          "item",
+          "keys"
+        ],
+        "title": "KeyframeMove",
+        "type": "object"
+      },
+      "kind": "command",
+      "mcp": "catalog",
+      "mcp_tool": "keyframe_move",
+      "name": "keyframe.move",
+      "namespace": "keyframe",
+      "output_schema": {
+        "additionalProperties": false,
+        "description": "Result of `keyframe.move`.",
+        "properties": {
+          "moved": {
+            "description": "The keys moved.",
+            "items": {
+              "additionalProperties": false,
+              "description": "One key that moved.",
+              "properties": {
+                "at": {
+                  "description": "Where it is now (sequence time).",
+                  "maximum": 9007199254740991,
+                  "minimum": -9007199254740991,
+                  "type": "integer"
+                },
+                "from_t": {
+                  "description": "Where the key was (item time).",
+                  "maximum": 9007199254740991,
+                  "minimum": -9007199254740991,
+                  "type": "integer"
+                },
+                "outside": {
+                  "description": "The key lies outside the item's `[0, duration)`.",
+                  "type": "boolean"
+                },
+                "prop": {
+                  "description": "The property.",
+                  "enum": [
+                    "transform.position",
+                    "transform.scale",
+                    "transform.rotation",
+                    "transform.anchor",
+                    "opacity",
+                    "crop.left",
+                    "crop.top",
+                    "crop.right",
+                    "crop.bottom",
+                    "flip.horizontal",
+                    "flip.vertical",
+                    "audio_gain",
+                    "audio_pan"
+                  ],
+                  "type": "string"
+                },
+                "t": {
+                  "description": "Where it is now (item time).",
+                  "maximum": 9007199254740991,
+                  "minimum": -9007199254740991,
+                  "type": "integer"
+                }
+              },
+              "required": [
+                "prop",
+                "from_t",
+                "t",
+                "at",
+                "outside"
+              ],
+              "type": "object"
+            },
+            "type": "array"
+          }
+        },
+        "required": [
+          "moved"
+        ],
+        "title": "KeyframeMoveOutput",
+        "type": "object"
+      },
+      "scope": "any",
+      "secret_fields": [],
+      "summary": "Move keys of an item's properties in time",
+      "undoable": true,
+      "view": false
+    },
+    {
+      "annotations": {
+        "destructiveHint": false,
+        "idempotentHint": true,
+        "openWorldHint": false,
+        "readOnlyHint": false
+      },
+      "input_schema": {
+        "additionalProperties": false,
+        "description": "Pastes copied keys onto an item (or each of `items`): the earliest key goes to `t` (item\ntime) or `at` (sequence time), the others keep their distance (`dt`), each snapped to\nframes; a key already at a time is replaced. `as_prop` pastes a single-property payload onto\nanother property of the same type (crop left keys onto crop right). Values must fit the\nproperty; `Locked` if an item's track is locked.",
+        "properties": {
+          "as_prop": {
+            "default": null,
+            "description": "Paste a single-property payload onto this property instead.",
+            "enum": [
+              "transform.position",
+              "transform.scale",
+              "transform.rotation",
+              "transform.anchor",
+              "opacity",
+              "crop.left",
+              "crop.top",
+              "crop.right",
+              "crop.bottom",
+              "flip.horizontal",
+              "flip.vertical",
+              "audio_gain",
+              "audio_pan",
+              null
+            ],
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "at": {
+            "anyOf": [
+              {
+                "anyOf": [
+                  {
+                    "maximum": 9007199254740991,
+                    "minimum": -9007199254740991,
+                    "type": "integer"
+                  },
+                  {
+                    "pattern": "^-?[0-9]+(\\.[0-9]+)?s$|^-?[0-9]+$|^f:[0-9]+$|^[0-9]+[:;][0-9]+[:;][0-9]+[:;][0-9]+$",
+                    "type": "string"
+                  }
+                ],
+                "description": "A time: integer flicks (1/705600000 s), or a string: seconds (\"62.5s\"), a frame (\"f:1500\") or a timecode (\"00:01:02:03\", drop-frame \"00:01:02;03\"). Frames and timecodes use the frame rate of the target's sequence."
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "description": "Sequence time of the earliest key."
+          },
+          "fine": {
+            "default": null,
+            "description": "Snap to the audio sample grid (audio properties only).",
+            "type": [
+              "boolean",
+              "null"
+            ]
+          },
+          "item": {
+            "default": null,
+            "description": "The item (or `items`).",
+            "pattern": "^itm_[0-9a-f]{32}$",
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "items": {
+            "default": null,
+            "description": "Items to paste onto.",
+            "items": {
+              "description": "A Item id: `^itm_[0-9a-f]{32}$`.",
+              "pattern": "^itm_[0-9a-f]{32}$",
+              "type": "string"
+            },
+            "type": [
+              "array",
+              "null"
+            ]
+          },
+          "payload": {
+            "additionalProperties": false,
+            "description": "What `keyframe.copy` returned.",
+            "properties": {
+              "keys": {
+                "description": "The keys, by property then time.",
+                "items": {
+                  "additionalProperties": false,
+                  "description": "One copied key.",
+                  "properties": {
+                    "dt": {
+                      "anyOf": [
+                        {
+                          "maximum": 9007199254740991,
+                          "minimum": -9007199254740991,
+                          "type": "integer"
+                        },
+                        {
+                          "pattern": "^-?[0-9]+(\\.[0-9]+)?s$|^-?[0-9]+$",
+                          "type": "string"
+                        }
+                      ],
+                      "description": "Flicks after the earliest copied key."
+                    },
+                    "interp": {
+                      "description": "How the segment that starts at the key moves to the next one (stored form).",
+                      "oneOf": [
+                        {
+                          "additionalProperties": false,
+                          "description": "The key's value until the next key, then a jump (§4.2).",
+                          "properties": {
+                            "kind": {
+                              "const": "hold",
+                              "type": "string"
+                            }
+                          },
+                          "required": [
+                            "kind"
+                          ],
+                          "type": "object"
+                        },
+                        {
+                          "additionalProperties": false,
+                          "description": "`p = u` (§4.3).",
+                          "properties": {
+                            "kind": {
+                              "const": "linear",
+                              "type": "string"
+                            }
+                          },
+                          "required": [
+                            "kind"
+                          ],
+                          "type": "object"
+                        },
+                        {
+                          "additionalProperties": false,
+                          "description": "A CSS-style cubic Bézier from (0, 0) to (1, 1), normalized to the segment (§4.4).\n(`x1`, `y1`) shapes the speed leaving the key, (`x2`, `y2`) the speed arriving at the\nnext one.",
+                          "properties": {
+                            "kind": {
+                              "const": "bezier",
+                              "type": "string"
+                            },
+                            "preset": {
+                              "description": "The preset these numbers came from, a hint for the UI and agents (§4.6). Never read\nby evaluation.",
+                              "pattern": "^[a-z][a-z0-9_]{0,63}$",
+                              "type": [
+                                "string",
+                                "null"
+                              ]
+                            },
+                            "x1": {
+                              "description": "First control point, time axis, in `[0, 1]`.",
+                              "format": "double",
+                              "maximum": 1.0,
+                              "minimum": 0.0,
+                              "type": "number"
+                            },
+                            "x2": {
+                              "description": "Second control point, time axis, in `[0, 1]`.",
+                              "format": "double",
+                              "maximum": 1.0,
+                              "minimum": 0.0,
+                              "type": "number"
+                            },
+                            "y1": {
+                              "description": "First control point, progress axis, in `[−10, 10]` (beyond `[0, 1]` overshoots).",
+                              "format": "double",
+                              "maximum": 10.0,
+                              "minimum": -10.0,
+                              "type": "number"
+                            },
+                            "y2": {
+                              "description": "Second control point, progress axis, in `[−10, 10]`.",
+                              "format": "double",
+                              "maximum": 10.0,
+                              "minimum": -10.0,
+                              "type": "number"
+                            }
+                          },
+                          "required": [
+                            "kind",
+                            "x1",
+                            "y1",
+                            "x2",
+                            "y2"
+                          ],
+                          "type": "object"
+                        },
+                        {
+                          "additionalProperties": false,
+                          "description": "A damped spring in real seconds, released from rest, plus a residual that lands it\nexactly on the next key (§4.5).",
+                          "properties": {
+                            "bounce": {
+                              "description": "A hard stop at the target: the motion reflects instead of passing it.",
+                              "type": "boolean"
+                            },
+                            "damping": {
+                              "description": "Damping, N·s/m, in `[0, 1000]` (0 never settles).",
+                              "format": "double",
+                              "maximum": 1000.0,
+                              "minimum": 0.0,
+                              "type": "number"
+                            },
+                            "kind": {
+                              "const": "spring",
+                              "type": "string"
+                            },
+                            "mass": {
+                              "description": "Mass, kg, in `[0.1, 100]`.",
+                              "format": "double",
+                              "maximum": 100.0,
+                              "minimum": 0.1,
+                              "type": "number"
+                            },
+                            "preset": {
+                              "description": "The preset these numbers came from (§4.6). Never read by evaluation.",
+                              "pattern": "^[a-z][a-z0-9_]{0,63}$",
+                              "type": [
+                                "string",
+                                "null"
+                              ]
+                            },
+                            "stiffness": {
+                              "description": "Stiffness, N/m, in `[1, 10000]`.",
+                              "format": "double",
+                              "maximum": 10000.0,
+                              "minimum": 1.0,
+                              "type": "number"
+                            }
+                          },
+                          "required": [
+                            "kind",
+                            "stiffness",
+                            "damping",
+                            "mass",
+                            "bounce"
+                          ],
+                          "type": "object"
+                        }
+                      ]
+                    },
+                    "prop": {
+                      "description": "The property it was on.",
+                      "enum": [
+                        "transform.position",
+                        "transform.scale",
+                        "transform.rotation",
+                        "transform.anchor",
+                        "opacity",
+                        "crop.left",
+                        "crop.top",
+                        "crop.right",
+                        "crop.bottom",
+                        "flip.horizontal",
+                        "flip.vertical",
+                        "audio_gain",
+                        "audio_pan"
+                      ],
+                      "type": "string"
+                    },
+                    "value": {
+                      "anyOf": [
+                        {
+                          "description": "A boolean.",
+                          "type": "boolean"
+                        },
+                        {
+                          "description": "A number.",
+                          "format": "double",
+                          "type": "number"
+                        },
+                        {
+                          "additionalProperties": false,
+                          "description": "A 2D vector.",
+                          "properties": {
+                            "x": {
+                              "description": "Horizontal component.",
+                              "format": "double",
+                              "type": "number"
+                            },
+                            "y": {
+                              "description": "Vertical component (down is positive).",
+                              "format": "double",
+                              "type": "number"
+                            }
+                          },
+                          "required": [
+                            "x",
+                            "y"
+                          ],
+                          "type": "object"
+                        }
+                      ],
+                      "description": "The value."
+                    }
+                  },
+                  "required": [
+                    "prop",
+                    "dt",
+                    "value",
+                    "interp"
+                  ],
+                  "type": "object"
+                },
+                "type": "array"
+              },
+              "version": {
+                "description": "Always 1.",
+                "format": "uint32",
+                "minimum": 0,
+                "type": "integer"
+              }
+            },
+            "required": [
+              "version",
+              "keys"
+            ],
+            "type": "object"
+          },
+          "t": {
+            "anyOf": [
+              {
+                "anyOf": [
+                  {
+                    "maximum": 9007199254740991,
+                    "minimum": -9007199254740991,
+                    "type": "integer"
+                  },
+                  {
+                    "pattern": "^-?[0-9]+(\\.[0-9]+)?s$|^-?[0-9]+$|^f:[0-9]+$|^[0-9]+[:;][0-9]+[:;][0-9]+[:;][0-9]+$",
+                    "type": "string"
+                  }
+                ],
+                "description": "A time: integer flicks (1/705600000 s), or a string: seconds (\"62.5s\"), a frame (\"f:1500\") or a timecode (\"00:01:02:03\", drop-frame \"00:01:02;03\"). Frames and timecodes use the frame rate of the target's sequence."
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "description": "Item time of the earliest key."
+          }
+        },
+        "required": [
+          "payload"
+        ],
+        "title": "KeyframePaste",
+        "type": "object"
+      },
+      "kind": "command",
+      "mcp": "catalog",
+      "mcp_tool": "keyframe_paste",
+      "name": "keyframe.paste",
+      "namespace": "keyframe",
+      "output_schema": {
+        "additionalProperties": false,
+        "description": "Result of `keyframe.paste`.",
+        "properties": {
+          "keys": {
+            "description": "The keys written.",
+            "items": {
+              "additionalProperties": false,
+              "description": "Where `keyframe.paste` put a key.",
+              "properties": {
+                "at": {
+                  "description": "Sequence time after snapping.",
+                  "maximum": 9007199254740991,
+                  "minimum": -9007199254740991,
+                  "type": "integer"
+                },
+                "created": {
+                  "description": "A new key (`false`: it replaced a key at that time).",
+                  "type": "boolean"
+                },
+                "item": {
+                  "description": "The item.",
+                  "pattern": "^itm_[0-9a-f]{32}$",
+                  "type": "string"
+                },
+                "outside": {
+                  "description": "The key lies outside the item's `[0, duration)`.",
+                  "type": "boolean"
+                },
+                "prop": {
+                  "description": "The property.",
+                  "enum": [
+                    "transform.position",
+                    "transform.scale",
+                    "transform.rotation",
+                    "transform.anchor",
+                    "opacity",
+                    "crop.left",
+                    "crop.top",
+                    "crop.right",
+                    "crop.bottom",
+                    "flip.horizontal",
+                    "flip.vertical",
+                    "audio_gain",
+                    "audio_pan"
+                  ],
+                  "type": "string"
+                },
+                "t": {
+                  "description": "Item time after snapping.",
+                  "maximum": 9007199254740991,
+                  "minimum": -9007199254740991,
+                  "type": "integer"
+                },
+                "value": {
+                  "anyOf": [
+                    {
+                      "description": "A boolean.",
+                      "type": "boolean"
+                    },
+                    {
+                      "description": "A number.",
+                      "format": "double",
+                      "type": "number"
+                    },
+                    {
+                      "additionalProperties": false,
+                      "description": "A 2D vector.",
+                      "properties": {
+                        "x": {
+                          "description": "Horizontal component.",
+                          "format": "double",
+                          "type": "number"
+                        },
+                        "y": {
+                          "description": "Vertical component (down is positive).",
+                          "format": "double",
+                          "type": "number"
+                        }
+                      },
+                      "required": [
+                        "x",
+                        "y"
+                      ],
+                      "type": "object"
+                    }
+                  ],
+                  "description": "The value the key holds."
+                }
+              },
+              "required": [
+                "item",
+                "prop",
+                "t",
+                "at",
+                "value",
+                "created",
+                "outside"
+              ],
+              "type": "object"
+            },
+            "type": "array"
+          }
+        },
+        "required": [
+          "keys"
+        ],
+        "title": "KeyframePasteOutput",
+        "type": "object"
+      },
+      "scope": "any",
+      "secret_fields": [],
+      "summary": "Paste copied keys onto an item at a time",
+      "undoable": true,
+      "view": false
+    },
+    {
+      "annotations": {
+        "destructiveHint": false,
+        "idempotentHint": true,
+        "openWorldHint": false,
+        "readOnlyHint": false
+      },
+      "input_schema": {
+        "additionalProperties": false,
+        "description": "Add or replace keys on one property. `t` = item time, `at` = sequence time; both snap to\nframes. A key's `easing` shapes the move to the next key. Example: `{item, prop:\"opacity\",\nkeys:[{at:\"10s\", value:0, easing:\"ease_out\"}, {at:\"12s\", value:1}]}`.\n\nA static property becomes animated with exactly these keys; a key at an occupied time is\nreplaced; a new key inherits the previous key's easing; `replace` makes the result exactly\nthese keys; `fine` snaps audio properties to samples. `Locked` if the track is locked.",
+        "properties": {
+          "fine": {
+            "default": null,
+            "description": "Snap to audio samples (audio properties).",
+            "type": [
+              "boolean",
+              "null"
+            ]
+          },
+          "item": {
+            "default": null,
+            "description": "The item (or `items`).",
+            "pattern": "^itm_[0-9a-f]{32}$",
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "items": {
+            "default": null,
+            "description": "Items to give the same keys.",
+            "items": {
+              "description": "A Item id: `^itm_[0-9a-f]{32}$`.",
+              "pattern": "^itm_[0-9a-f]{32}$",
+              "type": "string"
+            },
+            "type": [
+              "array",
+              "null"
+            ]
+          },
+          "keys": {
+            "description": "The keys, 1 to 10,000.",
+            "items": {
+              "additionalProperties": false,
+              "description": "A key to write.",
+              "properties": {
+                "at": {
+                  "anyOf": [
+                    {
+                      "anyOf": [
+                        {
+                          "maximum": 9007199254740991,
+                          "minimum": -9007199254740991,
+                          "type": "integer"
+                        },
+                        {
+                          "pattern": "^-?[0-9]+(\\.[0-9]+)?s$|^-?[0-9]+$|^f:[0-9]+$|^[0-9]+[:;][0-9]+[:;][0-9]+[:;][0-9]+$",
+                          "type": "string"
+                        }
+                      ],
+                      "description": "A time: integer flicks (1/705600000 s), or a string: seconds (\"62.5s\"), a frame (\"f:1500\") or a timecode (\"00:01:02:03\", drop-frame \"00:01:02;03\"). Frames and timecodes use the frame rate of the target's sequence."
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ],
+                  "description": "Sequence time. Give `t` or `at`; both snap to frames."
+                },
+                "easing": {
+                  "description": "A preset name, `linear` or `hold`.",
+                  "enum": [
+                    "hold",
+                    "linear",
+                    "ease_in",
+                    "ease_out",
+                    "ease_in_out",
+                    "sine_in",
+                    "sine_out",
+                    "sine_in_out",
+                    "cubic_in",
+                    "cubic_out",
+                    "cubic_in_out",
+                    "expo_in",
+                    "expo_out",
+                    "expo_in_out",
+                    "back_in",
+                    "back_out",
+                    "back_in_out",
+                    "spring",
+                    "spring_gentle",
+                    "spring_wobbly",
+                    "spring_stiff",
+                    "elastic",
+                    "bounce",
+                    null
+                  ],
+                  "type": [
+                    "string",
+                    "null"
+                  ]
+                },
+                "interp": {
+                  "anyOf": [
+                    {
+                      "description": "How a key's segment moves to the next key (stored form; `bounce` may be omitted). Prefer\n`easing` for the presets.",
+                      "oneOf": [
+                        {
+                          "additionalProperties": false,
+                          "description": "Jump at the next key.",
+                          "properties": {
+                            "kind": {
+                              "const": "hold",
+                              "type": "string"
+                            }
+                          },
+                          "required": [
+                            "kind"
+                          ],
+                          "type": "object"
+                        },
+                        {
+                          "additionalProperties": false,
+                          "description": "Constant speed.",
+                          "properties": {
+                            "kind": {
+                              "const": "linear",
+                              "type": "string"
+                            }
+                          },
+                          "required": [
+                            "kind"
+                          ],
+                          "type": "object"
+                        },
+                        {
+                          "additionalProperties": false,
+                          "description": "CSS cubic Bezier: `x1`, `x2` in 0..1, `y1`, `y2` in -10..10.",
+                          "properties": {
+                            "kind": {
+                              "const": "bezier",
+                              "type": "string"
+                            },
+                            "preset": {
+                              "default": null,
+                              "description": "Preset name hint.",
+                              "type": [
+                                "string",
+                                "null"
+                              ]
+                            },
+                            "x1": {
+                              "description": "Control point 1 x.",
+                              "format": "double",
+                              "type": "number"
+                            },
+                            "x2": {
+                              "description": "Control point 2 x.",
+                              "format": "double",
+                              "type": "number"
+                            },
+                            "y1": {
+                              "description": "Control point 1 y.",
+                              "format": "double",
+                              "type": "number"
+                            },
+                            "y2": {
+                              "description": "Control point 2 y.",
+                              "format": "double",
+                              "type": "number"
+                            }
+                          },
+                          "required": [
+                            "kind",
+                            "x1",
+                            "y1",
+                            "x2",
+                            "y2"
+                          ],
+                          "type": "object"
+                        },
+                        {
+                          "additionalProperties": false,
+                          "description": "Damped spring: stiffness 1..10000, damping 0..1000, mass 0.1..100.",
+                          "properties": {
+                            "bounce": {
+                              "default": null,
+                              "description": "Hard stop at the target (default false).",
+                              "type": [
+                                "boolean",
+                                "null"
+                              ]
+                            },
+                            "damping": {
+                              "description": "Damping.",
+                              "format": "double",
+                              "type": "number"
+                            },
+                            "kind": {
+                              "const": "spring",
+                              "type": "string"
+                            },
+                            "mass": {
+                              "description": "Mass.",
+                              "format": "double",
+                              "type": "number"
+                            },
+                            "preset": {
+                              "default": null,
+                              "description": "Preset name hint.",
+                              "type": [
+                                "string",
+                                "null"
+                              ]
+                            },
+                            "stiffness": {
+                              "description": "Stiffness.",
+                              "format": "double",
+                              "type": "number"
+                            }
+                          },
+                          "required": [
+                            "kind",
+                            "stiffness",
+                            "damping",
+                            "mass"
+                          ],
+                          "type": "object"
+                        }
+                      ]
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ],
+                  "description": "Shapes the move to the next key; or use `easing`."
+                },
+                "preset": {
+                  "description": "Preset name hint for `interp`.",
+                  "type": [
+                    "string",
+                    "null"
+                  ]
+                },
+                "t": {
+                  "anyOf": [
+                    {
+                      "anyOf": [
+                        {
+                          "maximum": 9007199254740991,
+                          "minimum": -9007199254740991,
+                          "type": "integer"
+                        },
+                        {
+                          "pattern": "^-?[0-9]+(\\.[0-9]+)?s$|^-?[0-9]+$|^f:[0-9]+$|^[0-9]+[:;][0-9]+[:;][0-9]+[:;][0-9]+$",
+                          "type": "string"
+                        }
+                      ],
+                      "description": "A time: integer flicks (1/705600000 s), or a string: seconds (\"62.5s\"), a frame (\"f:1500\") or a timecode (\"00:01:02:03\", drop-frame \"00:01:02;03\"). Frames and timecodes use the frame rate of the target's sequence."
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ],
+                  "description": "Item time (flicks, seconds like \"1.5s\", or \"f:N\" frames from the item's start)."
+                },
+                "value": {
+                  "anyOf": [
+                    {
+                      "anyOf": [
+                        {
+                          "description": "A boolean.",
+                          "type": "boolean"
+                        },
+                        {
+                          "description": "A number.",
+                          "format": "double",
+                          "type": "number"
+                        },
+                        {
+                          "additionalProperties": false,
+                          "description": "A 2D vector.",
+                          "properties": {
+                            "x": {
+                              "description": "Horizontal component.",
+                              "format": "double",
+                              "type": "number"
+                            },
+                            "y": {
+                              "description": "Vertical component (down is positive).",
+                              "format": "double",
+                              "type": "number"
+                            }
+                          },
+                          "required": [
+                            "x",
+                            "y"
+                          ],
+                          "type": "object"
+                        }
+                      ],
+                      "description": "A property value: a number, `{x, y}` (position, scale, anchor) or a boolean (flip); the\nproperty decides which."
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ],
+                  "description": "The value; omitted: the property's current value there."
+                }
+              },
+              "type": "object"
+            },
+            "type": "array"
+          },
+          "prop": {
+            "description": "The property.",
+            "enum": [
+              "transform.position",
+              "transform.scale",
+              "transform.rotation",
+              "transform.anchor",
+              "opacity",
+              "crop.left",
+              "crop.top",
+              "crop.right",
+              "crop.bottom",
+              "flip.horizontal",
+              "flip.vertical",
+              "audio_gain",
+              "audio_pan"
+            ],
+            "type": "string"
+          },
+          "replace": {
+            "default": null,
+            "description": "Make the result exactly these keys.",
+            "type": [
+              "boolean",
+              "null"
+            ]
+          }
+        },
+        "required": [
+          "prop",
+          "keys"
+        ],
+        "title": "KeyframeSet",
+        "type": "object"
+      },
+      "kind": "command",
+      "mcp": "core",
+      "mcp_tool": "keyframe_set",
+      "name": "keyframe.set",
+      "namespace": "keyframe",
+      "output_schema": {
+        "additionalProperties": false,
+        "description": "Result of `keyframe.set`.",
+        "properties": {
+          "keys": {
+            "description": "The keys written, per item and key in request order.",
+            "items": {
+              "additionalProperties": false,
+              "description": "One key `keyframe.set` wrote.",
+              "properties": {
+                "at": {
+                  "description": "Sequence time after snapping.",
+                  "maximum": 9007199254740991,
+                  "minimum": -9007199254740991,
+                  "type": "integer"
+                },
+                "created": {
+                  "description": "A new key (`false`: an existing key's value changed).",
+                  "type": "boolean"
+                },
+                "item": {
+                  "description": "The item.",
+                  "pattern": "^itm_[0-9a-f]{32}$",
+                  "type": "string"
+                },
+                "outside": {
+                  "description": "The key lies outside the item's `[0, duration)`.",
+                  "type": "boolean"
+                },
+                "prop": {
+                  "description": "The property.",
+                  "enum": [
+                    "transform.position",
+                    "transform.scale",
+                    "transform.rotation",
+                    "transform.anchor",
+                    "opacity",
+                    "crop.left",
+                    "crop.top",
+                    "crop.right",
+                    "crop.bottom",
+                    "flip.horizontal",
+                    "flip.vertical",
+                    "audio_gain",
+                    "audio_pan"
+                  ],
+                  "type": "string"
+                },
+                "t": {
+                  "description": "Item time after snapping.",
+                  "maximum": 9007199254740991,
+                  "minimum": -9007199254740991,
+                  "type": "integer"
+                },
+                "value": {
+                  "anyOf": [
+                    {
+                      "description": "A boolean.",
+                      "type": "boolean"
+                    },
+                    {
+                      "description": "A number.",
+                      "format": "double",
+                      "type": "number"
+                    },
+                    {
+                      "additionalProperties": false,
+                      "description": "A 2D vector.",
+                      "properties": {
+                        "x": {
+                          "description": "Horizontal component.",
+                          "format": "double",
+                          "type": "number"
+                        },
+                        "y": {
+                          "description": "Vertical component (down is positive).",
+                          "format": "double",
+                          "type": "number"
+                        }
+                      },
+                      "required": [
+                        "x",
+                        "y"
+                      ],
+                      "type": "object"
+                    }
+                  ],
+                  "description": "The value the key holds."
+                }
+              },
+              "required": [
+                "item",
+                "prop",
+                "t",
+                "at",
+                "value",
+                "created",
+                "outside"
+              ],
+              "type": "object"
+            },
+            "type": "array"
+          }
+        },
+        "required": [
+          "keys"
+        ],
+        "title": "KeyframeSetOutput",
+        "type": "object"
+      },
+      "scope": "any",
+      "secret_fields": [],
+      "summary": "Add or replace keys on one property of an item",
+      "undoable": true,
+      "view": false
+    },
+    {
+      "annotations": {
+        "destructiveHint": false,
+        "idempotentHint": true,
+        "openWorldHint": false,
+        "readOnlyHint": false
+      },
+      "input_schema": {
+        "additionalProperties": false,
+        "description": "Sets how the segments that start at the given keys move to the next key: `interp` (stored\nform) or `easing` (a preset name, `linear` or `hold`), not both. An explicit `interp`\ncarries no preset hint unless it gives one. Flips accept only hold. `NotFound` if a key does\nnot exist; `Locked` if the item's track is locked.",
+        "properties": {
+          "easing": {
+            "default": null,
+            "description": "A preset name, `linear` or `hold`.",
+            "enum": [
+              "hold",
+              "linear",
+              "ease_in",
+              "ease_out",
+              "ease_in_out",
+              "sine_in",
+              "sine_out",
+              "sine_in_out",
+              "cubic_in",
+              "cubic_out",
+              "cubic_in_out",
+              "expo_in",
+              "expo_out",
+              "expo_in_out",
+              "back_in",
+              "back_out",
+              "back_in_out",
+              "spring",
+              "spring_gentle",
+              "spring_wobbly",
+              "spring_stiff",
+              "elastic",
+              "bounce",
+              null
+            ],
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "interp": {
+            "anyOf": [
+              {
+                "description": "How a key's segment moves to the next key (stored form; `bounce` may be omitted). Prefer\n`easing` for the presets.",
+                "oneOf": [
+                  {
+                    "additionalProperties": false,
+                    "description": "Jump at the next key.",
+                    "properties": {
+                      "kind": {
+                        "const": "hold",
+                        "type": "string"
+                      }
+                    },
+                    "required": [
+                      "kind"
+                    ],
+                    "type": "object"
+                  },
+                  {
+                    "additionalProperties": false,
+                    "description": "Constant speed.",
+                    "properties": {
+                      "kind": {
+                        "const": "linear",
+                        "type": "string"
+                      }
+                    },
+                    "required": [
+                      "kind"
+                    ],
+                    "type": "object"
+                  },
+                  {
+                    "additionalProperties": false,
+                    "description": "CSS cubic Bezier: `x1`, `x2` in 0..1, `y1`, `y2` in -10..10.",
+                    "properties": {
+                      "kind": {
+                        "const": "bezier",
+                        "type": "string"
+                      },
+                      "preset": {
+                        "default": null,
+                        "description": "Preset name hint.",
+                        "type": [
+                          "string",
+                          "null"
+                        ]
+                      },
+                      "x1": {
+                        "description": "Control point 1 x.",
+                        "format": "double",
+                        "type": "number"
+                      },
+                      "x2": {
+                        "description": "Control point 2 x.",
+                        "format": "double",
+                        "type": "number"
+                      },
+                      "y1": {
+                        "description": "Control point 1 y.",
+                        "format": "double",
+                        "type": "number"
+                      },
+                      "y2": {
+                        "description": "Control point 2 y.",
+                        "format": "double",
+                        "type": "number"
+                      }
+                    },
+                    "required": [
+                      "kind",
+                      "x1",
+                      "y1",
+                      "x2",
+                      "y2"
+                    ],
+                    "type": "object"
+                  },
+                  {
+                    "additionalProperties": false,
+                    "description": "Damped spring: stiffness 1..10000, damping 0..1000, mass 0.1..100.",
+                    "properties": {
+                      "bounce": {
+                        "default": null,
+                        "description": "Hard stop at the target (default false).",
+                        "type": [
+                          "boolean",
+                          "null"
+                        ]
+                      },
+                      "damping": {
+                        "description": "Damping.",
+                        "format": "double",
+                        "type": "number"
+                      },
+                      "kind": {
+                        "const": "spring",
+                        "type": "string"
+                      },
+                      "mass": {
+                        "description": "Mass.",
+                        "format": "double",
+                        "type": "number"
+                      },
+                      "preset": {
+                        "default": null,
+                        "description": "Preset name hint.",
+                        "type": [
+                          "string",
+                          "null"
+                        ]
+                      },
+                      "stiffness": {
+                        "description": "Stiffness.",
+                        "format": "double",
+                        "type": "number"
+                      }
+                    },
+                    "required": [
+                      "kind",
+                      "stiffness",
+                      "damping",
+                      "mass"
+                    ],
+                    "type": "object"
+                  }
+                ]
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "description": "The interpolation (stored form)."
+          },
+          "item": {
+            "description": "The item.",
+            "pattern": "^itm_[0-9a-f]{32}$",
+            "type": "string"
+          },
+          "keys": {
+            "description": "The keys, by property and exact item time.",
+            "items": {
+              "additionalProperties": false,
+              "description": "A key to address: its property and exact item time.",
+              "properties": {
+                "prop": {
+                  "description": "The property.",
+                  "enum": [
+                    "transform.position",
+                    "transform.scale",
+                    "transform.rotation",
+                    "transform.anchor",
+                    "opacity",
+                    "crop.left",
+                    "crop.top",
+                    "crop.right",
+                    "crop.bottom",
+                    "flip.horizontal",
+                    "flip.vertical",
+                    "audio_gain",
+                    "audio_pan"
+                  ],
+                  "type": "string"
+                },
+                "t": {
+                  "anyOf": [
+                    {
+                      "maximum": 9007199254740991,
+                      "minimum": -9007199254740991,
+                      "type": "integer"
+                    },
+                    {
+                      "pattern": "^-?[0-9]+(\\.[0-9]+)?s$|^-?[0-9]+$",
+                      "type": "string"
+                    }
+                  ],
+                  "description": "The key's stored item time in flicks, as `item.get` returns it."
+                }
+              },
+              "required": [
+                "prop",
+                "t"
+              ],
+              "type": "object"
+            },
+            "type": "array"
+          }
+        },
+        "required": [
+          "item",
+          "keys"
+        ],
+        "title": "KeyframeSetInterp",
+        "type": "object"
+      },
+      "kind": "command",
+      "mcp": "catalog",
+      "mcp_tool": "keyframe_set_interp",
+      "name": "keyframe.set_interp",
+      "namespace": "keyframe",
+      "output_schema": {
+        "additionalProperties": false,
+        "description": "Result of `keyframe.set_interp`.",
+        "properties": {
+          "changed": {
+            "description": "The keys whose segment changed.",
+            "items": {
+              "additionalProperties": false,
+              "description": "A key to address: its property and exact item time.",
+              "properties": {
+                "prop": {
+                  "description": "The property.",
+                  "enum": [
+                    "transform.position",
+                    "transform.scale",
+                    "transform.rotation",
+                    "transform.anchor",
+                    "opacity",
+                    "crop.left",
+                    "crop.top",
+                    "crop.right",
+                    "crop.bottom",
+                    "flip.horizontal",
+                    "flip.vertical",
+                    "audio_gain",
+                    "audio_pan"
+                  ],
+                  "type": "string"
+                },
+                "t": {
+                  "description": "The key's stored item time in flicks, as `item.get` returns it.",
+                  "maximum": 9007199254740991,
+                  "minimum": -9007199254740991,
+                  "type": "integer"
+                }
+              },
+              "required": [
+                "prop",
+                "t"
+              ],
+              "type": "object"
+            },
+            "type": "array"
+          }
+        },
+        "required": [
+          "changed"
+        ],
+        "title": "KeyframeSetInterpOutput",
+        "type": "object"
+      },
+      "scope": "any",
+      "secret_fields": [],
+      "summary": "Set the easing of the segments starting at keys",
+      "undoable": true,
       "view": false
     },
     {

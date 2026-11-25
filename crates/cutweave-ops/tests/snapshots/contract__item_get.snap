@@ -2666,49 +2666,18 @@ expression: "json!({\n    \"meta\": serde_json::to_value(meta).unwrap(), \"input
               "description": "Mirroring."
             },
             "blend_mode": {
-              "oneOf": [
-                {
-                  "type": "string",
-                  "const": "normal",
-                  "description": "The picture covers what is below, by its opacity."
-                },
-                {
-                  "type": "string",
-                  "const": "multiply",
-                  "description": "Darkens: the product of both."
-                },
-                {
-                  "type": "string",
-                  "const": "screen",
-                  "description": "Lightens: the inverse of the product of the inverses."
-                },
-                {
-                  "type": "string",
-                  "const": "overlay",
-                  "description": "Multiply in the shadows, screen in the highlights, by what is below."
-                },
-                {
-                  "type": "string",
-                  "const": "darken",
-                  "description": "The darker of both, per channel."
-                },
-                {
-                  "type": "string",
-                  "const": "lighten",
-                  "description": "The lighter of both, per channel."
-                },
-                {
-                  "type": "string",
-                  "const": "add",
-                  "description": "The sum of both, clipped."
-                },
-                {
-                  "type": "string",
-                  "const": "soft_light",
-                  "description": "A gentle overlay."
-                }
-              ],
-              "description": "How the item combines with what is below."
+              "description": "How the item combines with what is below.",
+              "type": "string",
+              "enum": [
+                "normal",
+                "multiply",
+                "screen",
+                "overlay",
+                "darken",
+                "lighten",
+                "add",
+                "soft_light"
+              ]
             }
           },
           "required": [
@@ -5388,49 +5357,18 @@ expression: "json!({\n    \"meta\": serde_json::to_value(meta).unwrap(), \"input
             "description": "Mirroring."
           },
           "blend_mode": {
-            "oneOf": [
-              {
-                "type": "string",
-                "const": "normal",
-                "description": "The picture covers what is below, by its opacity."
-              },
-              {
-                "type": "string",
-                "const": "multiply",
-                "description": "Darkens: the product of both."
-              },
-              {
-                "type": "string",
-                "const": "screen",
-                "description": "Lightens: the inverse of the product of the inverses."
-              },
-              {
-                "type": "string",
-                "const": "overlay",
-                "description": "Multiply in the shadows, screen in the highlights, by what is below."
-              },
-              {
-                "type": "string",
-                "const": "darken",
-                "description": "The darker of both, per channel."
-              },
-              {
-                "type": "string",
-                "const": "lighten",
-                "description": "The lighter of both, per channel."
-              },
-              {
-                "type": "string",
-                "const": "add",
-                "description": "The sum of both, clipped."
-              },
-              {
-                "type": "string",
-                "const": "soft_light",
-                "description": "A gentle overlay."
-              }
-            ],
-            "description": "How the item combines with what is below."
+            "description": "How the item combines with what is below.",
+            "type": "string",
+            "enum": [
+              "normal",
+              "multiply",
+              "screen",
+              "overlay",
+              "darken",
+              "lighten",
+              "add",
+              "soft_light"
+            ]
           }
         },
         "required": [

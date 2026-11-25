@@ -66,7 +66,7 @@ pub struct ItemResetPropsOutput {
     summary = "Reset an item's properties (a group, some properties, or all) to their defaults",
     undoable,
     mcp = "catalog",
-    annotations(destructive = true, idempotent = true)
+    annotations(destructive = false, idempotent = true)
 )]
 pub struct ItemResetProps {
     /// The item (or `items`).

@@ -26,6 +26,14 @@ export const COMMAND_INFO: readonly CommandInfo[] = [
     // The palette lists it with clips selected; a menu row's own clause wins over it.
     when: "selection.count > 0",
   },
+  { name: "item.reset_props", label: "contextMenu.command.itemResetProps", undoable: true },
+  { name: "keyframe.set", label: "contextMenu.command.keyframeSet", undoable: true },
+  {
+    name: "keyframe.delete",
+    label: "contextMenu.command.keyframeDelete",
+    destructive: true,
+    undoable: true,
+  },
   { name: "timeline.insert", label: "contextMenu.command.timelineInsert", undoable: true },
   { name: "track.add", label: "contextMenu.command.trackAdd", icon: "plus", undoable: true },
   {

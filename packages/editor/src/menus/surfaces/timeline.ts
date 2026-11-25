@@ -84,6 +84,16 @@ const clipRows: readonly MenuRow[] = [
     }),
   },
   {
+    id: "reset-props",
+    command: "item.reset_props",
+    group: "state",
+    order: 2,
+    enabledIf: (ctx) => ctx.ids.length > 0 && ctx.keys["track.locked"] !== true,
+    reason: LOCKED,
+    label: { key: "contextMenu.item.resetProperties" },
+    args: (ctx) => ({ items: ctx.ids }),
+  },
+  {
     command: "timeline.rename_clip",
     group: "state",
     order: 1,

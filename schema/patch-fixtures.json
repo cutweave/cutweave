@@ -1107,7 +1107,8 @@
                   "itm_0000000000077405950ad8d9f69f2c6f": {
                     "attached_to": null,
                     "audio": {
-                      "gain": 0.0
+                      "gain": 0.0,
+                      "pan": 0.0
                     },
                     "custom": {},
                     "duration": 7056000000,
@@ -1121,6 +1122,17 @@
                     "source_in": 0,
                     "start": 1411200000,
                     "visual": {
+                      "blend_mode": "normal",
+                      "crop": {
+                        "bottom": 0.0,
+                        "left": 0.0,
+                        "right": 0.0,
+                        "top": 0.0
+                      },
+                      "flip": {
+                        "horizontal": false,
+                        "vertical": false
+                      },
                       "opacity": 1.0,
                       "transform": {
                         "anchor": {
@@ -1157,7 +1169,8 @@
                   "itm_00000000000874918ac913f3f46b919e": {
                     "attached_to": null,
                     "audio": {
-                      "gain": 0.0
+                      "gain": 0.0,
+                      "pan": 0.0
                     },
                     "custom": {},
                     "duration": 7056000000,
@@ -1171,6 +1184,17 @@
                     "source_in": 0,
                     "start": 1411200000,
                     "visual": {
+                      "blend_mode": "normal",
+                      "crop": {
+                        "bottom": 0.0,
+                        "left": 0.0,
+                        "right": 0.0,
+                        "top": 0.0
+                      },
+                      "flip": {
+                        "horizontal": false,
+                        "vertical": false
+                      },
                       "opacity": 1.0,
                       "transform": {
                         "anchor": {
@@ -1386,7 +1410,8 @@
           "value": {
             "attached_to": null,
             "audio": {
-              "gain": 0.0
+              "gain": 0.0,
+              "pan": 0.0
             },
             "custom": {},
             "duration": 7056000000,
@@ -1400,6 +1425,17 @@
             "source_in": 0,
             "start": 1411200000,
             "visual": {
+              "blend_mode": "normal",
+              "crop": {
+                "bottom": 0.0,
+                "left": 0.0,
+                "right": 0.0,
+                "top": 0.0
+              },
+              "flip": {
+                "horizontal": false,
+                "vertical": false
+              },
               "opacity": 1.0,
               "transform": {
                 "anchor": {
@@ -1425,7 +1461,8 @@
           "value": {
             "attached_to": null,
             "audio": {
-              "gain": 0.0
+              "gain": 0.0,
+              "pan": 0.0
             },
             "custom": {},
             "duration": 7056000000,
@@ -1439,6 +1476,17 @@
             "source_in": 0,
             "start": 1411200000,
             "visual": {
+              "blend_mode": "normal",
+              "crop": {
+                "bottom": 0.0,
+                "left": 0.0,
+                "right": 0.0,
+                "top": 0.0
+              },
+              "flip": {
+                "horizontal": false,
+                "vertical": false
+              },
               "opacity": 1.0,
               "transform": {
                 "anchor": {
@@ -1470,7 +1518,8 @@
           "old": {
             "attached_to": null,
             "audio": {
-              "gain": 0.0
+              "gain": 0.0,
+              "pan": 0.0
             },
             "custom": {},
             "duration": 7056000000,
@@ -1484,6 +1533,17 @@
             "source_in": 0,
             "start": 1411200000,
             "visual": {
+              "blend_mode": "normal",
+              "crop": {
+                "bottom": 0.0,
+                "left": 0.0,
+                "right": 0.0,
+                "top": 0.0
+              },
+              "flip": {
+                "horizontal": false,
+                "vertical": false
+              },
               "opacity": 1.0,
               "transform": {
                 "anchor": {
@@ -1509,7 +1569,8 @@
           "old": {
             "attached_to": null,
             "audio": {
-              "gain": 0.0
+              "gain": 0.0,
+              "pan": 0.0
             },
             "custom": {},
             "duration": 7056000000,
@@ -1523,6 +1584,17 @@
             "source_in": 0,
             "start": 1411200000,
             "visual": {
+              "blend_mode": "normal",
+              "crop": {
+                "bottom": 0.0,
+                "left": 0.0,
+                "right": 0.0,
+                "top": 0.0
+              },
+              "flip": {
+                "horizontal": false,
+                "vertical": false
+              },
               "opacity": 1.0,
               "transform": {
                 "anchor": {
@@ -1673,7 +1745,8 @@
                   "itm_0000000000077405950ad8d9f69f2c6f": {
                     "attached_to": null,
                     "audio": {
-                      "gain": 0.0
+                      "gain": 0.0,
+                      "pan": 0.0
                     },
                     "custom": {},
                     "duration": 2822400000,
@@ -1687,6 +1760,17 @@
                     "source_in": 0,
                     "start": 1411200000,
                     "visual": {
+                      "blend_mode": "normal",
+                      "crop": {
+                        "bottom": 0.0,
+                        "left": 0.0,
+                        "right": 0.0,
+                        "top": 0.0
+                      },
+                      "flip": {
+                        "horizontal": false,
+                        "vertical": false
+                      },
                       "opacity": 1.0,
                       "transform": {
                         "anchor": {
@@ -1708,7 +1792,8 @@
                   "itm_00000000000a7677ac4d118e2be6e1b9": {
                     "attached_to": null,
                     "audio": {
-                      "gain": 0.0
+                      "gain": 0.0,
+                      "pan": 0.0
                     },
                     "custom": {},
                     "duration": 4233600000,
@@ -1722,6 +1807,17 @@
                     "source_in": 2822400000,
                     "start": 4233600000,
                     "visual": {
+                      "blend_mode": "normal",
+                      "crop": {
+                        "bottom": 0.0,
+                        "left": 0.0,
+                        "right": 0.0,
+                        "top": 0.0
+                      },
+                      "flip": {
+                        "horizontal": false,
+                        "vertical": false
+                      },
                       "opacity": 1.0,
                       "transform": {
                         "anchor": {
@@ -1758,7 +1854,8 @@
                   "itm_00000000000874918ac913f3f46b919e": {
                     "attached_to": null,
                     "audio": {
-                      "gain": 0.0
+                      "gain": 0.0,
+                      "pan": 0.0
                     },
                     "custom": {},
                     "duration": 2822400000,
@@ -1772,6 +1869,17 @@
                     "source_in": 0,
                     "start": 1411200000,
                     "visual": {
+                      "blend_mode": "normal",
+                      "crop": {
+                        "bottom": 0.0,
+                        "left": 0.0,
+                        "right": 0.0,
+                        "top": 0.0
+                      },
+                      "flip": {
+                        "horizontal": false,
+                        "vertical": false
+                      },
                       "opacity": 1.0,
                       "transform": {
                         "anchor": {
@@ -1793,7 +1901,8 @@
                   "itm_00000000000b7ce789996e9998b9dcff": {
                     "attached_to": null,
                     "audio": {
-                      "gain": 0.0
+                      "gain": 0.0,
+                      "pan": 0.0
                     },
                     "custom": {},
                     "duration": 4233600000,
@@ -1807,6 +1916,17 @@
                     "source_in": 2822400000,
                     "start": 4233600000,
                     "visual": {
+                      "blend_mode": "normal",
+                      "crop": {
+                        "bottom": 0.0,
+                        "left": 0.0,
+                        "right": 0.0,
+                        "top": 0.0
+                      },
+                      "flip": {
+                        "horizontal": false,
+                        "vertical": false
+                      },
                       "opacity": 1.0,
                       "transform": {
                         "anchor": {
@@ -1965,7 +2085,8 @@
                   "itm_0000000000077405950ad8d9f69f2c6f": {
                     "attached_to": null,
                     "audio": {
-                      "gain": 0.0
+                      "gain": 0.0,
+                      "pan": 0.0
                     },
                     "custom": {},
                     "duration": 7056000000,
@@ -1979,6 +2100,17 @@
                     "source_in": 0,
                     "start": 1411200000,
                     "visual": {
+                      "blend_mode": "normal",
+                      "crop": {
+                        "bottom": 0.0,
+                        "left": 0.0,
+                        "right": 0.0,
+                        "top": 0.0
+                      },
+                      "flip": {
+                        "horizontal": false,
+                        "vertical": false
+                      },
                       "opacity": 1.0,
                       "transform": {
                         "anchor": {
@@ -2015,7 +2147,8 @@
                   "itm_00000000000874918ac913f3f46b919e": {
                     "attached_to": null,
                     "audio": {
-                      "gain": 0.0
+                      "gain": 0.0,
+                      "pan": 0.0
                     },
                     "custom": {},
                     "duration": 7056000000,
@@ -2029,6 +2162,17 @@
                     "source_in": 0,
                     "start": 1411200000,
                     "visual": {
+                      "blend_mode": "normal",
+                      "crop": {
+                        "bottom": 0.0,
+                        "left": 0.0,
+                        "right": 0.0,
+                        "top": 0.0
+                      },
+                      "flip": {
+                        "horizontal": false,
+                        "vertical": false
+                      },
                       "opacity": 1.0,
                       "transform": {
                         "anchor": {
@@ -2100,7 +2244,8 @@
           "value": {
             "attached_to": null,
             "audio": {
-              "gain": 0.0
+              "gain": 0.0,
+              "pan": 0.0
             },
             "custom": {},
             "duration": 4233600000,
@@ -2114,6 +2259,17 @@
             "source_in": 2822400000,
             "start": 4233600000,
             "visual": {
+              "blend_mode": "normal",
+              "crop": {
+                "bottom": 0.0,
+                "left": 0.0,
+                "right": 0.0,
+                "top": 0.0
+              },
+              "flip": {
+                "horizontal": false,
+                "vertical": false
+              },
               "opacity": 1.0,
               "transform": {
                 "anchor": {
@@ -2145,7 +2301,8 @@
           "value": {
             "attached_to": null,
             "audio": {
-              "gain": 0.0
+              "gain": 0.0,
+              "pan": 0.0
             },
             "custom": {},
             "duration": 4233600000,
@@ -2159,6 +2316,17 @@
             "source_in": 2822400000,
             "start": 4233600000,
             "visual": {
+              "blend_mode": "normal",
+              "crop": {
+                "bottom": 0.0,
+                "left": 0.0,
+                "right": 0.0,
+                "top": 0.0
+              },
+              "flip": {
+                "horizontal": false,
+                "vertical": false
+              },
               "opacity": 1.0,
               "transform": {
                 "anchor": {
@@ -2188,7 +2356,8 @@
           "old": {
             "attached_to": null,
             "audio": {
-              "gain": 0.0
+              "gain": 0.0,
+              "pan": 0.0
             },
             "custom": {},
             "duration": 4233600000,
@@ -2202,6 +2371,17 @@
             "source_in": 2822400000,
             "start": 4233600000,
             "visual": {
+              "blend_mode": "normal",
+              "crop": {
+                "bottom": 0.0,
+                "left": 0.0,
+                "right": 0.0,
+                "top": 0.0
+              },
+              "flip": {
+                "horizontal": false,
+                "vertical": false
+              },
               "opacity": 1.0,
               "transform": {
                 "anchor": {
@@ -2233,7 +2413,8 @@
           "old": {
             "attached_to": null,
             "audio": {
-              "gain": 0.0
+              "gain": 0.0,
+              "pan": 0.0
             },
             "custom": {},
             "duration": 4233600000,
@@ -2247,6 +2428,17 @@
             "source_in": 2822400000,
             "start": 4233600000,
             "visual": {
+              "blend_mode": "normal",
+              "crop": {
+                "bottom": 0.0,
+                "left": 0.0,
+                "right": 0.0,
+                "top": 0.0
+              },
+              "flip": {
+                "horizontal": false,
+                "vertical": false
+              },
               "opacity": 1.0,
               "transform": {
                 "anchor": {
@@ -2426,7 +2618,8 @@
                   "itm_0000000000077405950ad8d9f69f2c6f": {
                     "attached_to": null,
                     "audio": {
-                      "gain": 0.0
+                      "gain": 0.0,
+                      "pan": 0.0
                     },
                     "custom": {},
                     "duration": 2822400000,
@@ -2440,6 +2633,17 @@
                     "source_in": 0,
                     "start": 21168000000,
                     "visual": {
+                      "blend_mode": "normal",
+                      "crop": {
+                        "bottom": 0.0,
+                        "left": 0.0,
+                        "right": 0.0,
+                        "top": 0.0
+                      },
+                      "flip": {
+                        "horizontal": false,
+                        "vertical": false
+                      },
                       "opacity": 1.0,
                       "transform": {
                         "anchor": {
@@ -2461,7 +2665,8 @@
                   "itm_00000000000a7677ac4d118e2be6e1b9": {
                     "attached_to": null,
                     "audio": {
-                      "gain": 0.0
+                      "gain": 0.0,
+                      "pan": 0.0
                     },
                     "custom": {},
                     "duration": 4233600000,
@@ -2475,6 +2680,17 @@
                     "source_in": 2822400000,
                     "start": 4233600000,
                     "visual": {
+                      "blend_mode": "normal",
+                      "crop": {
+                        "bottom": 0.0,
+                        "left": 0.0,
+                        "right": 0.0,
+                        "top": 0.0
+                      },
+                      "flip": {
+                        "horizontal": false,
+                        "vertical": false
+                      },
                       "opacity": 1.0,
                       "transform": {
                         "anchor": {
@@ -2511,7 +2727,8 @@
                   "itm_00000000000874918ac913f3f46b919e": {
                     "attached_to": null,
                     "audio": {
-                      "gain": 0.0
+                      "gain": 0.0,
+                      "pan": 0.0
                     },
                     "custom": {},
                     "duration": 2822400000,
@@ -2525,6 +2742,17 @@
                     "source_in": 0,
                     "start": 21168000000,
                     "visual": {
+                      "blend_mode": "normal",
+                      "crop": {
+                        "bottom": 0.0,
+                        "left": 0.0,
+                        "right": 0.0,
+                        "top": 0.0
+                      },
+                      "flip": {
+                        "horizontal": false,
+                        "vertical": false
+                      },
                       "opacity": 1.0,
                       "transform": {
                         "anchor": {
@@ -2546,7 +2774,8 @@
                   "itm_00000000000b7ce789996e9998b9dcff": {
                     "attached_to": null,
                     "audio": {
-                      "gain": 0.0
+                      "gain": 0.0,
+                      "pan": 0.0
                     },
                     "custom": {},
                     "duration": 4233600000,
@@ -2560,6 +2789,17 @@
                     "source_in": 2822400000,
                     "start": 4233600000,
                     "visual": {
+                      "blend_mode": "normal",
+                      "crop": {
+                        "bottom": 0.0,
+                        "left": 0.0,
+                        "right": 0.0,
+                        "top": 0.0
+                      },
+                      "flip": {
+                        "horizontal": false,
+                        "vertical": false
+                      },
                       "opacity": 1.0,
                       "transform": {
                         "anchor": {
@@ -2718,7 +2958,8 @@
                   "itm_0000000000077405950ad8d9f69f2c6f": {
                     "attached_to": null,
                     "audio": {
-                      "gain": 0.0
+                      "gain": 0.0,
+                      "pan": 0.0
                     },
                     "custom": {},
                     "duration": 2822400000,
@@ -2732,6 +2973,17 @@
                     "source_in": 0,
                     "start": 1411200000,
                     "visual": {
+                      "blend_mode": "normal",
+                      "crop": {
+                        "bottom": 0.0,
+                        "left": 0.0,
+                        "right": 0.0,
+                        "top": 0.0
+                      },
+                      "flip": {
+                        "horizontal": false,
+                        "vertical": false
+                      },
                       "opacity": 1.0,
                       "transform": {
                         "anchor": {
@@ -2753,7 +3005,8 @@
                   "itm_00000000000a7677ac4d118e2be6e1b9": {
                     "attached_to": null,
                     "audio": {
-                      "gain": 0.0
+                      "gain": 0.0,
+                      "pan": 0.0
                     },
                     "custom": {},
                     "duration": 4233600000,
@@ -2767,6 +3020,17 @@
                     "source_in": 2822400000,
                     "start": 4233600000,
                     "visual": {
+                      "blend_mode": "normal",
+                      "crop": {
+                        "bottom": 0.0,
+                        "left": 0.0,
+                        "right": 0.0,
+                        "top": 0.0
+                      },
+                      "flip": {
+                        "horizontal": false,
+                        "vertical": false
+                      },
                       "opacity": 1.0,
                       "transform": {
                         "anchor": {
@@ -2803,7 +3067,8 @@
                   "itm_00000000000874918ac913f3f46b919e": {
                     "attached_to": null,
                     "audio": {
-                      "gain": 0.0
+                      "gain": 0.0,
+                      "pan": 0.0
                     },
                     "custom": {},
                     "duration": 2822400000,
@@ -2817,6 +3082,17 @@
                     "source_in": 0,
                     "start": 1411200000,
                     "visual": {
+                      "blend_mode": "normal",
+                      "crop": {
+                        "bottom": 0.0,
+                        "left": 0.0,
+                        "right": 0.0,
+                        "top": 0.0
+                      },
+                      "flip": {
+                        "horizontal": false,
+                        "vertical": false
+                      },
                       "opacity": 1.0,
                       "transform": {
                         "anchor": {
@@ -2838,7 +3114,8 @@
                   "itm_00000000000b7ce789996e9998b9dcff": {
                     "attached_to": null,
                     "audio": {
-                      "gain": 0.0
+                      "gain": 0.0,
+                      "pan": 0.0
                     },
                     "custom": {},
                     "duration": 4233600000,
@@ -2852,6 +3129,17 @@
                     "source_in": 2822400000,
                     "start": 4233600000,
                     "visual": {
+                      "blend_mode": "normal",
+                      "crop": {
+                        "bottom": 0.0,
+                        "left": 0.0,
+                        "right": 0.0,
+                        "top": 0.0
+                      },
+                      "flip": {
+                        "horizontal": false,
+                        "vertical": false
+                      },
                       "opacity": 1.0,
                       "transform": {
                         "anchor": {
@@ -3083,7 +3371,8 @@
                   "itm_0000000000077405950ad8d9f69f2c6f": {
                     "attached_to": null,
                     "audio": {
-                      "gain": 0.0
+                      "gain": 0.0,
+                      "pan": 0.0
                     },
                     "custom": {},
                     "duration": 2822400000,
@@ -3097,6 +3386,17 @@
                     "source_in": 0,
                     "start": 21168000000,
                     "visual": {
+                      "blend_mode": "normal",
+                      "crop": {
+                        "bottom": 0.0,
+                        "left": 0.0,
+                        "right": 0.0,
+                        "top": 0.0
+                      },
+                      "flip": {
+                        "horizontal": false,
+                        "vertical": false
+                      },
                       "opacity": 1.0,
                       "transform": {
                         "anchor": {
@@ -3118,7 +3418,8 @@
                   "itm_00000000000a7677ac4d118e2be6e1b9": {
                     "attached_to": null,
                     "audio": {
-                      "gain": 0.0
+                      "gain": 0.0,
+                      "pan": 0.0
                     },
                     "custom": {},
                     "duration": 4233600000,
@@ -3132,6 +3433,17 @@
                     "source_in": 2822400000,
                     "start": 4233600000,
                     "visual": {
+                      "blend_mode": "normal",
+                      "crop": {
+                        "bottom": 0.0,
+                        "left": 0.0,
+                        "right": 0.0,
+                        "top": 0.0
+                      },
+                      "flip": {
+                        "horizontal": false,
+                        "vertical": false
+                      },
                       "opacity": 1.0,
                       "transform": {
                         "anchor": {
@@ -3168,7 +3480,8 @@
                   "itm_00000000000874918ac913f3f46b919e": {
                     "attached_to": null,
                     "audio": {
-                      "gain": 0.0
+                      "gain": 0.0,
+                      "pan": 0.0
                     },
                     "custom": {},
                     "duration": 2822400000,
@@ -3182,6 +3495,17 @@
                     "source_in": 0,
                     "start": 21168000000,
                     "visual": {
+                      "blend_mode": "normal",
+                      "crop": {
+                        "bottom": 0.0,
+                        "left": 0.0,
+                        "right": 0.0,
+                        "top": 0.0
+                      },
+                      "flip": {
+                        "horizontal": false,
+                        "vertical": false
+                      },
                       "opacity": 1.0,
                       "transform": {
                         "anchor": {
@@ -3203,7 +3527,8 @@
                   "itm_00000000000b7ce789996e9998b9dcff": {
                     "attached_to": null,
                     "audio": {
-                      "gain": 0.0
+                      "gain": 0.0,
+                      "pan": 0.0
                     },
                     "custom": {},
                     "duration": 4233600000,
@@ -3217,6 +3542,17 @@
                     "source_in": 2822400000,
                     "start": 4233600000,
                     "visual": {
+                      "blend_mode": "normal",
+                      "crop": {
+                        "bottom": 0.0,
+                        "left": 0.0,
+                        "right": 0.0,
+                        "top": 0.0
+                      },
+                      "flip": {
+                        "horizontal": false,
+                        "vertical": false
+                      },
                       "opacity": 1.0,
                       "transform": {
                         "anchor": {
@@ -3375,7 +3711,8 @@
                   "itm_0000000000077405950ad8d9f69f2c6f": {
                     "attached_to": null,
                     "audio": {
-                      "gain": 0.0
+                      "gain": 0.0,
+                      "pan": 0.0
                     },
                     "custom": {},
                     "duration": 2822400000,
@@ -3389,6 +3726,17 @@
                     "source_in": 0,
                     "start": 21168000000,
                     "visual": {
+                      "blend_mode": "normal",
+                      "crop": {
+                        "bottom": 0.0,
+                        "left": 0.0,
+                        "right": 0.0,
+                        "top": 0.0
+                      },
+                      "flip": {
+                        "horizontal": false,
+                        "vertical": false
+                      },
                       "opacity": 1.0,
                       "transform": {
                         "anchor": {
@@ -3410,7 +3758,8 @@
                   "itm_00000000000a7677ac4d118e2be6e1b9": {
                     "attached_to": null,
                     "audio": {
-                      "gain": 0.0
+                      "gain": 0.0,
+                      "pan": 0.0
                     },
                     "custom": {},
                     "duration": 4233600000,
@@ -3424,6 +3773,17 @@
                     "source_in": 2822400000,
                     "start": 4233600000,
                     "visual": {
+                      "blend_mode": "normal",
+                      "crop": {
+                        "bottom": 0.0,
+                        "left": 0.0,
+                        "right": 0.0,
+                        "top": 0.0
+                      },
+                      "flip": {
+                        "horizontal": false,
+                        "vertical": false
+                      },
                       "opacity": 1.0,
                       "transform": {
                         "anchor": {
@@ -3460,7 +3820,8 @@
                   "itm_00000000000874918ac913f3f46b919e": {
                     "attached_to": null,
                     "audio": {
-                      "gain": 0.0
+                      "gain": 0.0,
+                      "pan": 0.0
                     },
                     "custom": {},
                     "duration": 2822400000,
@@ -3474,6 +3835,17 @@
                     "source_in": 0,
                     "start": 21168000000,
                     "visual": {
+                      "blend_mode": "normal",
+                      "crop": {
+                        "bottom": 0.0,
+                        "left": 0.0,
+                        "right": 0.0,
+                        "top": 0.0
+                      },
+                      "flip": {
+                        "horizontal": false,
+                        "vertical": false
+                      },
                       "opacity": 1.0,
                       "transform": {
                         "anchor": {
@@ -3495,7 +3867,8 @@
                   "itm_00000000000b7ce789996e9998b9dcff": {
                     "attached_to": null,
                     "audio": {
-                      "gain": 0.0
+                      "gain": 0.0,
+                      "pan": 0.0
                     },
                     "custom": {},
                     "duration": 4233600000,
@@ -3509,6 +3882,17 @@
                     "source_in": 2822400000,
                     "start": 4233600000,
                     "visual": {
+                      "blend_mode": "normal",
+                      "crop": {
+                        "bottom": 0.0,
+                        "left": 0.0,
+                        "right": 0.0,
+                        "top": 0.0
+                      },
+                      "flip": {
+                        "horizontal": false,
+                        "vertical": false
+                      },
                       "opacity": 1.0,
                       "transform": {
                         "anchor": {
@@ -3700,7 +4084,8 @@
                   "itm_0000000000077405950ad8d9f69f2c6f": {
                     "attached_to": null,
                     "audio": {
-                      "gain": 0.0
+                      "gain": 0.0,
+                      "pan": 0.0
                     },
                     "custom": {},
                     "duration": 2822400000,
@@ -3714,6 +4099,17 @@
                     "source_in": 0,
                     "start": 21168000000,
                     "visual": {
+                      "blend_mode": "normal",
+                      "crop": {
+                        "bottom": 0.0,
+                        "left": 0.0,
+                        "right": 0.0,
+                        "top": 0.0
+                      },
+                      "flip": {
+                        "horizontal": false,
+                        "vertical": false
+                      },
                       "opacity": 1.0,
                       "transform": {
                         "anchor": {
@@ -3735,7 +4131,8 @@
                   "itm_00000000000a7677ac4d118e2be6e1b9": {
                     "attached_to": null,
                     "audio": {
-                      "gain": 0.0
+                      "gain": 0.0,
+                      "pan": 0.0
                     },
                     "custom": {},
                     "duration": 4233600000,
@@ -3749,6 +4146,17 @@
                     "source_in": 2822400000,
                     "start": 4233600000,
                     "visual": {
+                      "blend_mode": "normal",
+                      "crop": {
+                        "bottom": 0.0,
+                        "left": 0.0,
+                        "right": 0.0,
+                        "top": 0.0
+                      },
+                      "flip": {
+                        "horizontal": false,
+                        "vertical": false
+                      },
                       "opacity": 1.0,
                       "transform": {
                         "anchor": {
@@ -3785,7 +4193,8 @@
                   "itm_00000000000874918ac913f3f46b919e": {
                     "attached_to": null,
                     "audio": {
-                      "gain": 0.0
+                      "gain": 0.0,
+                      "pan": 0.0
                     },
                     "custom": {},
                     "duration": 2822400000,
@@ -3799,6 +4208,17 @@
                     "source_in": 0,
                     "start": 21168000000,
                     "visual": {
+                      "blend_mode": "normal",
+                      "crop": {
+                        "bottom": 0.0,
+                        "left": 0.0,
+                        "right": 0.0,
+                        "top": 0.0
+                      },
+                      "flip": {
+                        "horizontal": false,
+                        "vertical": false
+                      },
                       "opacity": 1.0,
                       "transform": {
                         "anchor": {
@@ -3820,7 +4240,8 @@
                   "itm_00000000000b7ce789996e9998b9dcff": {
                     "attached_to": null,
                     "audio": {
-                      "gain": 0.0
+                      "gain": 0.0,
+                      "pan": 0.0
                     },
                     "custom": {},
                     "duration": 4233600000,
@@ -3834,6 +4255,17 @@
                     "source_in": 2822400000,
                     "start": 4233600000,
                     "visual": {
+                      "blend_mode": "normal",
+                      "crop": {
+                        "bottom": 0.0,
+                        "left": 0.0,
+                        "right": 0.0,
+                        "top": 0.0
+                      },
+                      "flip": {
+                        "horizontal": false,
+                        "vertical": false
+                      },
                       "opacity": 1.0,
                       "transform": {
                         "anchor": {
@@ -3992,7 +4424,8 @@
                   "itm_0000000000077405950ad8d9f69f2c6f": {
                     "attached_to": null,
                     "audio": {
-                      "gain": 0.0
+                      "gain": 0.0,
+                      "pan": 0.0
                     },
                     "custom": {},
                     "duration": 2822400000,
@@ -4006,6 +4439,17 @@
                     "source_in": 0,
                     "start": 21168000000,
                     "visual": {
+                      "blend_mode": "normal",
+                      "crop": {
+                        "bottom": 0.0,
+                        "left": 0.0,
+                        "right": 0.0,
+                        "top": 0.0
+                      },
+                      "flip": {
+                        "horizontal": false,
+                        "vertical": false
+                      },
                       "opacity": 1.0,
                       "transform": {
                         "anchor": {
@@ -4027,7 +4471,8 @@
                   "itm_00000000000a7677ac4d118e2be6e1b9": {
                     "attached_to": null,
                     "audio": {
-                      "gain": 0.0
+                      "gain": 0.0,
+                      "pan": 0.0
                     },
                     "custom": {},
                     "duration": 4233600000,
@@ -4041,6 +4486,17 @@
                     "source_in": 2822400000,
                     "start": 4233600000,
                     "visual": {
+                      "blend_mode": "normal",
+                      "crop": {
+                        "bottom": 0.0,
+                        "left": 0.0,
+                        "right": 0.0,
+                        "top": 0.0
+                      },
+                      "flip": {
+                        "horizontal": false,
+                        "vertical": false
+                      },
                       "opacity": 1.0,
                       "transform": {
                         "anchor": {
@@ -4077,7 +4533,8 @@
                   "itm_00000000000874918ac913f3f46b919e": {
                     "attached_to": null,
                     "audio": {
-                      "gain": 0.0
+                      "gain": 0.0,
+                      "pan": 0.0
                     },
                     "custom": {},
                     "duration": 2822400000,
@@ -4091,6 +4548,17 @@
                     "source_in": 0,
                     "start": 21168000000,
                     "visual": {
+                      "blend_mode": "normal",
+                      "crop": {
+                        "bottom": 0.0,
+                        "left": 0.0,
+                        "right": 0.0,
+                        "top": 0.0
+                      },
+                      "flip": {
+                        "horizontal": false,
+                        "vertical": false
+                      },
                       "opacity": 1.0,
                       "transform": {
                         "anchor": {
@@ -4112,7 +4580,8 @@
                   "itm_00000000000b7ce789996e9998b9dcff": {
                     "attached_to": null,
                     "audio": {
-                      "gain": 0.0
+                      "gain": 0.0,
+                      "pan": 0.0
                     },
                     "custom": {},
                     "duration": 4233600000,
@@ -4126,6 +4595,17 @@
                     "source_in": 2822400000,
                     "start": 4233600000,
                     "visual": {
+                      "blend_mode": "normal",
+                      "crop": {
+                        "bottom": 0.0,
+                        "left": 0.0,
+                        "right": 0.0,
+                        "top": 0.0
+                      },
+                      "flip": {
+                        "horizontal": false,
+                        "vertical": false
+                      },
                       "opacity": 1.0,
                       "transform": {
                         "anchor": {
@@ -4309,7 +4789,8 @@
                   "itm_0000000000077405950ad8d9f69f2c6f": {
                     "attached_to": null,
                     "audio": {
-                      "gain": 0.0
+                      "gain": 0.0,
+                      "pan": 0.0
                     },
                     "custom": {},
                     "duration": 2822400000,
@@ -4323,6 +4804,17 @@
                     "source_in": 0,
                     "start": 21168000000,
                     "visual": {
+                      "blend_mode": "normal",
+                      "crop": {
+                        "bottom": 0.0,
+                        "left": 0.0,
+                        "right": 0.0,
+                        "top": 0.0
+                      },
+                      "flip": {
+                        "horizontal": false,
+                        "vertical": false
+                      },
                       "opacity": 1.0,
                       "transform": {
                         "anchor": {
@@ -4344,7 +4836,8 @@
                   "itm_00000000000a7677ac4d118e2be6e1b9": {
                     "attached_to": null,
                     "audio": {
-                      "gain": 0.0
+                      "gain": 0.0,
+                      "pan": 0.0
                     },
                     "custom": {},
                     "duration": 4233600000,
@@ -4358,6 +4851,17 @@
                     "source_in": 2822400000,
                     "start": 4233600000,
                     "visual": {
+                      "blend_mode": "normal",
+                      "crop": {
+                        "bottom": 0.0,
+                        "left": 0.0,
+                        "right": 0.0,
+                        "top": 0.0
+                      },
+                      "flip": {
+                        "horizontal": false,
+                        "vertical": false
+                      },
                       "opacity": 1.0,
                       "transform": {
                         "anchor": {
@@ -4394,7 +4898,8 @@
                   "itm_00000000000874918ac913f3f46b919e": {
                     "attached_to": null,
                     "audio": {
-                      "gain": 0.0
+                      "gain": 0.0,
+                      "pan": 0.0
                     },
                     "custom": {},
                     "duration": 2822400000,
@@ -4408,6 +4913,17 @@
                     "source_in": 0,
                     "start": 21168000000,
                     "visual": {
+                      "blend_mode": "normal",
+                      "crop": {
+                        "bottom": 0.0,
+                        "left": 0.0,
+                        "right": 0.0,
+                        "top": 0.0
+                      },
+                      "flip": {
+                        "horizontal": false,
+                        "vertical": false
+                      },
                       "opacity": 1.0,
                       "transform": {
                         "anchor": {
@@ -4429,7 +4945,8 @@
                   "itm_00000000000b7ce789996e9998b9dcff": {
                     "attached_to": null,
                     "audio": {
-                      "gain": 0.0
+                      "gain": 0.0,
+                      "pan": 0.0
                     },
                     "custom": {},
                     "duration": 4233600000,
@@ -4443,6 +4960,17 @@
                     "source_in": 2822400000,
                     "start": 4233600000,
                     "visual": {
+                      "blend_mode": "normal",
+                      "crop": {
+                        "bottom": 0.0,
+                        "left": 0.0,
+                        "right": 0.0,
+                        "top": 0.0
+                      },
+                      "flip": {
+                        "horizontal": false,
+                        "vertical": false
+                      },
                       "opacity": 1.0,
                       "transform": {
                         "anchor": {
@@ -4587,7 +5115,8 @@
                   "itm_0000000000077405950ad8d9f69f2c6f": {
                     "attached_to": null,
                     "audio": {
-                      "gain": 0.0
+                      "gain": 0.0,
+                      "pan": 0.0
                     },
                     "custom": {},
                     "duration": 2822400000,
@@ -4601,6 +5130,17 @@
                     "source_in": 0,
                     "start": 21168000000,
                     "visual": {
+                      "blend_mode": "normal",
+                      "crop": {
+                        "bottom": 0.0,
+                        "left": 0.0,
+                        "right": 0.0,
+                        "top": 0.0
+                      },
+                      "flip": {
+                        "horizontal": false,
+                        "vertical": false
+                      },
                       "opacity": 1.0,
                       "transform": {
                         "anchor": {
@@ -4622,7 +5162,8 @@
                   "itm_00000000000a7677ac4d118e2be6e1b9": {
                     "attached_to": null,
                     "audio": {
-                      "gain": 0.0
+                      "gain": 0.0,
+                      "pan": 0.0
                     },
                     "custom": {},
                     "duration": 4233600000,
@@ -4636,6 +5177,17 @@
                     "source_in": 2822400000,
                     "start": 4233600000,
                     "visual": {
+                      "blend_mode": "normal",
+                      "crop": {
+                        "bottom": 0.0,
+                        "left": 0.0,
+                        "right": 0.0,
+                        "top": 0.0
+                      },
+                      "flip": {
+                        "horizontal": false,
+                        "vertical": false
+                      },
                       "opacity": 1.0,
                       "transform": {
                         "anchor": {
@@ -4672,7 +5224,8 @@
                   "itm_00000000000874918ac913f3f46b919e": {
                     "attached_to": null,
                     "audio": {
-                      "gain": 0.0
+                      "gain": 0.0,
+                      "pan": 0.0
                     },
                     "custom": {},
                     "duration": 2822400000,
@@ -4686,6 +5239,17 @@
                     "source_in": 0,
                     "start": 21168000000,
                     "visual": {
+                      "blend_mode": "normal",
+                      "crop": {
+                        "bottom": 0.0,
+                        "left": 0.0,
+                        "right": 0.0,
+                        "top": 0.0
+                      },
+                      "flip": {
+                        "horizontal": false,
+                        "vertical": false
+                      },
                       "opacity": 1.0,
                       "transform": {
                         "anchor": {
@@ -4707,7 +5271,8 @@
                   "itm_00000000000b7ce789996e9998b9dcff": {
                     "attached_to": null,
                     "audio": {
-                      "gain": 0.0
+                      "gain": 0.0,
+                      "pan": 0.0
                     },
                     "custom": {},
                     "duration": 4233600000,
@@ -4721,6 +5286,17 @@
                     "source_in": 2822400000,
                     "start": 4233600000,
                     "visual": {
+                      "blend_mode": "normal",
+                      "crop": {
+                        "bottom": 0.0,
+                        "left": 0.0,
+                        "right": 0.0,
+                        "top": 0.0
+                      },
+                      "flip": {
+                        "horizontal": false,
+                        "vertical": false
+                      },
                       "opacity": 1.0,
                       "transform": {
                         "anchor": {
@@ -4956,7 +5532,8 @@
                   "itm_0000000000077405950ad8d9f69f2c6f": {
                     "attached_to": null,
                     "audio": {
-                      "gain": 0.0
+                      "gain": 0.0,
+                      "pan": 0.0
                     },
                     "custom": {},
                     "duration": 2822400000,
@@ -4970,6 +5547,17 @@
                     "source_in": 0,
                     "start": 21168000000,
                     "visual": {
+                      "blend_mode": "normal",
+                      "crop": {
+                        "bottom": 0.0,
+                        "left": 0.0,
+                        "right": 0.0,
+                        "top": 0.0
+                      },
+                      "flip": {
+                        "horizontal": false,
+                        "vertical": false
+                      },
                       "opacity": 1.0,
                       "transform": {
                         "anchor": {
@@ -4991,7 +5579,8 @@
                   "itm_00000000000a7677ac4d118e2be6e1b9": {
                     "attached_to": null,
                     "audio": {
-                      "gain": 0.0
+                      "gain": 0.0,
+                      "pan": 0.0
                     },
                     "custom": {},
                     "duration": 4233600000,
@@ -5005,6 +5594,17 @@
                     "source_in": 2822400000,
                     "start": 4233600000,
                     "visual": {
+                      "blend_mode": "normal",
+                      "crop": {
+                        "bottom": 0.0,
+                        "left": 0.0,
+                        "right": 0.0,
+                        "top": 0.0
+                      },
+                      "flip": {
+                        "horizontal": false,
+                        "vertical": false
+                      },
                       "opacity": 1.0,
                       "transform": {
                         "anchor": {
@@ -5041,7 +5641,8 @@
                   "itm_00000000000874918ac913f3f46b919e": {
                     "attached_to": null,
                     "audio": {
-                      "gain": 0.0
+                      "gain": 0.0,
+                      "pan": 0.0
                     },
                     "custom": {},
                     "duration": 2822400000,
@@ -5055,6 +5656,17 @@
                     "source_in": 0,
                     "start": 21168000000,
                     "visual": {
+                      "blend_mode": "normal",
+                      "crop": {
+                        "bottom": 0.0,
+                        "left": 0.0,
+                        "right": 0.0,
+                        "top": 0.0
+                      },
+                      "flip": {
+                        "horizontal": false,
+                        "vertical": false
+                      },
                       "opacity": 1.0,
                       "transform": {
                         "anchor": {
@@ -5076,7 +5688,8 @@
                   "itm_00000000000b7ce789996e9998b9dcff": {
                     "attached_to": null,
                     "audio": {
-                      "gain": 0.0
+                      "gain": 0.0,
+                      "pan": 0.0
                     },
                     "custom": {},
                     "duration": 4233600000,
@@ -5090,6 +5703,17 @@
                     "source_in": 2822400000,
                     "start": 4233600000,
                     "visual": {
+                      "blend_mode": "normal",
+                      "crop": {
+                        "bottom": 0.0,
+                        "left": 0.0,
+                        "right": 0.0,
+                        "top": 0.0
+                      },
+                      "flip": {
+                        "horizontal": false,
+                        "vertical": false
+                      },
                       "opacity": 1.0,
                       "transform": {
                         "anchor": {
@@ -5247,7 +5871,8 @@
                   "itm_0000000000077405950ad8d9f69f2c6f": {
                     "attached_to": null,
                     "audio": {
-                      "gain": 0.0
+                      "gain": 0.0,
+                      "pan": 0.0
                     },
                     "custom": {},
                     "duration": 2822400000,
@@ -5261,6 +5886,17 @@
                     "source_in": 0,
                     "start": 21168000000,
                     "visual": {
+                      "blend_mode": "normal",
+                      "crop": {
+                        "bottom": 0.0,
+                        "left": 0.0,
+                        "right": 0.0,
+                        "top": 0.0
+                      },
+                      "flip": {
+                        "horizontal": false,
+                        "vertical": false
+                      },
                       "opacity": 1.0,
                       "transform": {
                         "anchor": {
@@ -5282,7 +5918,8 @@
                   "itm_00000000000a7677ac4d118e2be6e1b9": {
                     "attached_to": null,
                     "audio": {
-                      "gain": 0.0
+                      "gain": 0.0,
+                      "pan": 0.0
                     },
                     "custom": {},
                     "duration": 4233600000,
@@ -5296,6 +5933,17 @@
                     "source_in": 2822400000,
                     "start": 4233600000,
                     "visual": {
+                      "blend_mode": "normal",
+                      "crop": {
+                        "bottom": 0.0,
+                        "left": 0.0,
+                        "right": 0.0,
+                        "top": 0.0
+                      },
+                      "flip": {
+                        "horizontal": false,
+                        "vertical": false
+                      },
                       "opacity": 1.0,
                       "transform": {
                         "anchor": {
@@ -5332,7 +5980,8 @@
                   "itm_00000000000874918ac913f3f46b919e": {
                     "attached_to": null,
                     "audio": {
-                      "gain": 0.0
+                      "gain": 0.0,
+                      "pan": 0.0
                     },
                     "custom": {},
                     "duration": 2822400000,
@@ -5346,6 +5995,17 @@
                     "source_in": 0,
                     "start": 21168000000,
                     "visual": {
+                      "blend_mode": "normal",
+                      "crop": {
+                        "bottom": 0.0,
+                        "left": 0.0,
+                        "right": 0.0,
+                        "top": 0.0
+                      },
+                      "flip": {
+                        "horizontal": false,
+                        "vertical": false
+                      },
                       "opacity": 1.0,
                       "transform": {
                         "anchor": {
@@ -5367,7 +6027,8 @@
                   "itm_00000000000b7ce789996e9998b9dcff": {
                     "attached_to": null,
                     "audio": {
-                      "gain": 0.0
+                      "gain": 0.0,
+                      "pan": 0.0
                     },
                     "custom": {},
                     "duration": 4233600000,
@@ -5381,6 +6042,17 @@
                     "source_in": 2822400000,
                     "start": 4233600000,
                     "visual": {
+                      "blend_mode": "normal",
+                      "crop": {
+                        "bottom": 0.0,
+                        "left": 0.0,
+                        "right": 0.0,
+                        "top": 0.0
+                      },
+                      "flip": {
+                        "horizontal": false,
+                        "vertical": false
+                      },
                       "opacity": 1.0,
                       "transform": {
                         "anchor": {

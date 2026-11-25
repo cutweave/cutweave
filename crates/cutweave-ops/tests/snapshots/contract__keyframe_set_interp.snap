@@ -35,72 +35,21 @@ expression: "json!({\n    \"meta\": serde_json::to_value(meta).unwrap(), \"input
             "properties": {
               "prop": {
                 "description": "The property.",
-                "oneOf": [
-                  {
-                    "description": "`visual.transform.position`: offset of the anchor from the canvas centre, canvas units.",
-                    "type": "string",
-                    "const": "transform.position"
-                  },
-                  {
-                    "description": "`visual.transform.scale`: multiplier of the aspect-fit size, per axis.",
-                    "type": "string",
-                    "const": "transform.scale"
-                  },
-                  {
-                    "description": "`visual.transform.rotation`: degrees, clockwise, accumulating.",
-                    "type": "string",
-                    "const": "transform.rotation"
-                  },
-                  {
-                    "description": "`visual.transform.anchor`: a point of the item in item units.",
-                    "type": "string",
-                    "const": "transform.anchor"
-                  },
-                  {
-                    "description": "`visual.opacity`: 0 transparent to 1 opaque.",
-                    "type": "string",
-                    "const": "opacity"
-                  },
-                  {
-                    "description": "`visual.crop.left`: fraction of the upright source removed from the left edge.",
-                    "type": "string",
-                    "const": "crop.left"
-                  },
-                  {
-                    "description": "`visual.crop.top`: fraction removed from the top edge.",
-                    "type": "string",
-                    "const": "crop.top"
-                  },
-                  {
-                    "description": "`visual.crop.right`: fraction removed from the right edge.",
-                    "type": "string",
-                    "const": "crop.right"
-                  },
-                  {
-                    "description": "`visual.crop.bottom`: fraction removed from the bottom edge.",
-                    "type": "string",
-                    "const": "crop.bottom"
-                  },
-                  {
-                    "description": "`visual.flip.horizontal`: mirror left-right (hold only).",
-                    "type": "string",
-                    "const": "flip.horizontal"
-                  },
-                  {
-                    "description": "`visual.flip.vertical`: mirror top-bottom (hold only).",
-                    "type": "string",
-                    "const": "flip.vertical"
-                  },
-                  {
-                    "description": "`audio.gain`: clip level in dB, interpolated in dB (UI label \"Volume\").",
-                    "type": "string",
-                    "const": "audio_gain"
-                  },
-                  {
-                    "description": "`audio.pan`: −1 left to 1 right, 0 centre.",
-                    "type": "string",
-                    "const": "audio_pan"
-                  }
+                "type": "string",
+                "enum": [
+                  "transform.position",
+                  "transform.scale",
+                  "transform.rotation",
+                  "transform.anchor",
+                  "opacity",
+                  "crop.left",
+                  "crop.top",
+                  "crop.right",
+                  "crop.bottom",
+                  "flip.horizontal",
+                  "flip.vertical",
+                  "audio_gain",
+                  "audio_pan"
                 ]
               },
               "t": {
@@ -142,7 +91,7 @@ expression: "json!({\n    \"meta\": serde_json::to_value(meta).unwrap(), \"input
                     "kind"
                   ],
                   "additionalProperties": false,
-                  "description": "The key's value until the next key, then a jump."
+                  "description": "Jump at the next key."
                 },
                 {
                   "type": "object",
@@ -169,29 +118,29 @@ expression: "json!({\n    \"meta\": serde_json::to_value(meta).unwrap(), \"input
                     "x1": {
                       "type": "number",
                       "format": "double",
-                      "description": "First control point, time axis, `0..=1`."
+                      "description": "Control point 1 x."
                     },
                     "y1": {
                       "type": "number",
                       "format": "double",
-                      "description": "First control point, progress axis, `-10..=10`."
+                      "description": "Control point 1 y."
                     },
                     "x2": {
                       "type": "number",
                       "format": "double",
-                      "description": "Second control point, time axis, `0..=1`."
+                      "description": "Control point 2 x."
                     },
                     "y2": {
                       "type": "number",
                       "format": "double",
-                      "description": "Second control point, progress axis, `-10..=10`."
+                      "description": "Control point 2 y."
                     },
                     "preset": {
                       "type": [
                         "string",
                         "null"
                       ],
-                      "description": "A hint naming the preset the numbers came from.",
+                      "description": "Preset name hint.",
                       "default": null
                     }
                   },
@@ -202,7 +151,7 @@ expression: "json!({\n    \"meta\": serde_json::to_value(meta).unwrap(), \"input
                     "x2",
                     "y2"
                   ],
-                  "description": "A CSS-style cubic Bezier from (0, 0) to (1, 1)."
+                  "description": "CSS cubic Bezier: `x1`, `x2` in 0..1, `y1`, `y2` in -10..10."
                 },
                 {
                   "type": "object",
@@ -215,24 +164,24 @@ expression: "json!({\n    \"meta\": serde_json::to_value(meta).unwrap(), \"input
                     "stiffness": {
                       "type": "number",
                       "format": "double",
-                      "description": "Stiffness, `1..=10000`."
+                      "description": "Stiffness."
                     },
                     "damping": {
                       "type": "number",
                       "format": "double",
-                      "description": "Damping, `0..=1000`."
+                      "description": "Damping."
                     },
                     "mass": {
                       "type": "number",
                       "format": "double",
-                      "description": "Mass, `0.1..=100`."
+                      "description": "Mass."
                     },
                     "bounce": {
                       "type": [
                         "boolean",
                         "null"
                       ],
-                      "description": "A hard stop at the target (default `false`).",
+                      "description": "Hard stop at the target (default false).",
                       "default": null
                     },
                     "preset": {
@@ -240,7 +189,7 @@ expression: "json!({\n    \"meta\": serde_json::to_value(meta).unwrap(), \"input
                         "string",
                         "null"
                       ],
-                      "description": "A hint naming the preset the numbers came from.",
+                      "description": "Preset name hint.",
                       "default": null
                     }
                   },
@@ -250,10 +199,10 @@ expression: "json!({\n    \"meta\": serde_json::to_value(meta).unwrap(), \"input
                     "damping",
                     "mass"
                   ],
-                  "description": "A damped spring."
+                  "description": "Damped spring: stiffness 1..10000, damping 0..1000, mass 0.1..100."
                 }
               ],
-              "description": "How the segment that starts at a key moves to the next key, as commands take it: the stored\nform ([`Interp`]) with `bounce` optional (default `false`)."
+              "description": "How a key's segment moves to the next key (stored form; `bounce` may be omitted). Prefer\n`easing` for the presets."
             },
             {
               "type": "null"
@@ -263,132 +212,37 @@ expression: "json!({\n    \"meta\": serde_json::to_value(meta).unwrap(), \"input
           "default": null
         },
         "easing": {
-          "anyOf": [
-            {
-              "oneOf": [
-                {
-                  "type": "string",
-                  "const": "hold",
-                  "description": "The key's value until the next key."
-                },
-                {
-                  "type": "string",
-                  "const": "linear",
-                  "description": "Constant speed."
-                },
-                {
-                  "type": "string",
-                  "const": "ease_in",
-                  "description": "CSS `ease-in`: bezier (0.42, 0, 1, 1)."
-                },
-                {
-                  "type": "string",
-                  "const": "ease_out",
-                  "description": "CSS `ease-out`: bezier (0, 0, 0.58, 1)."
-                },
-                {
-                  "type": "string",
-                  "const": "ease_in_out",
-                  "description": "CSS `ease-in-out`: bezier (0.42, 0, 0.58, 1)."
-                },
-                {
-                  "type": "string",
-                  "const": "sine_in",
-                  "description": "Bezier (0.12, 0, 0.39, 0)."
-                },
-                {
-                  "type": "string",
-                  "const": "sine_out",
-                  "description": "Bezier (0.61, 1, 0.88, 1)."
-                },
-                {
-                  "type": "string",
-                  "const": "sine_in_out",
-                  "description": "Bezier (0.37, 0, 0.63, 1)."
-                },
-                {
-                  "type": "string",
-                  "const": "cubic_in",
-                  "description": "Bezier (0.32, 0, 0.67, 0)."
-                },
-                {
-                  "type": "string",
-                  "const": "cubic_out",
-                  "description": "Bezier (0.33, 1, 0.68, 1)."
-                },
-                {
-                  "type": "string",
-                  "const": "cubic_in_out",
-                  "description": "Bezier (0.65, 0, 0.35, 1)."
-                },
-                {
-                  "type": "string",
-                  "const": "expo_in",
-                  "description": "Bezier (0.7, 0, 0.84, 0)."
-                },
-                {
-                  "type": "string",
-                  "const": "expo_out",
-                  "description": "Bezier (0.16, 1, 0.3, 1)."
-                },
-                {
-                  "type": "string",
-                  "const": "expo_in_out",
-                  "description": "Bezier (0.87, 0, 0.13, 1)."
-                },
-                {
-                  "type": "string",
-                  "const": "back_in",
-                  "description": "Bezier (0.36, 0, 0.66, −0.56): pulls back before leaving."
-                },
-                {
-                  "type": "string",
-                  "const": "back_out",
-                  "description": "Bezier (0.34, 1.56, 0.64, 1): overshoots, then settles."
-                },
-                {
-                  "type": "string",
-                  "const": "back_in_out",
-                  "description": "Bezier (0.68, −0.6, 0.32, 1.6)."
-                },
-                {
-                  "type": "string",
-                  "const": "spring",
-                  "description": "Spring 170 / 26 / 1 (ζ ≈ 1.00)."
-                },
-                {
-                  "type": "string",
-                  "const": "spring_gentle",
-                  "description": "Spring 120 / 14 / 1 (ζ ≈ 0.64)."
-                },
-                {
-                  "type": "string",
-                  "const": "spring_wobbly",
-                  "description": "Spring 180 / 12 / 1 (ζ ≈ 0.45)."
-                },
-                {
-                  "type": "string",
-                  "const": "spring_stiff",
-                  "description": "Spring 210 / 20 / 1 (ζ ≈ 0.69)."
-                },
-                {
-                  "type": "string",
-                  "const": "elastic",
-                  "description": "Spring 200 / 6 / 1 (ζ ≈ 0.21): several decaying oscillations."
-                },
-                {
-                  "type": "string",
-                  "const": "bounce",
-                  "description": "Spring 160 / 10 / 1 with `bounce` (ζ ≈ 0.40): each bounce about a quarter as high."
-                }
-              ],
-              "description": "A named easing (keyframes §4.6): one of the 21 presets, or `linear` or `hold`. Commands\naccept it instead of an [`Interp`] (`easing: \"ease_out\"`) and expand it on write\n([`Easing::interp`]); documents never store the name alone.\n\nThe table is part of the spec: changing a preset's numbers means a new name, because\ndocuments store the expanded numbers and old projects must never change appearance."
-            },
-            {
-              "type": "null"
-            }
-          ],
           "description": "A preset name, `linear` or `hold`.",
+          "type": [
+            "string",
+            "null"
+          ],
+          "enum": [
+            "hold",
+            "linear",
+            "ease_in",
+            "ease_out",
+            "ease_in_out",
+            "sine_in",
+            "sine_out",
+            "sine_in_out",
+            "cubic_in",
+            "cubic_out",
+            "cubic_in_out",
+            "expo_in",
+            "expo_out",
+            "expo_in_out",
+            "back_in",
+            "back_out",
+            "back_in_out",
+            "spring",
+            "spring_gentle",
+            "spring_wobbly",
+            "spring_stiff",
+            "elastic",
+            "bounce",
+            null
+          ],
           "default": null
         }
       },
@@ -411,72 +265,21 @@ expression: "json!({\n    \"meta\": serde_json::to_value(meta).unwrap(), \"input
             "properties": {
               "prop": {
                 "description": "The property.",
-                "oneOf": [
-                  {
-                    "description": "`visual.transform.position`: offset of the anchor from the canvas centre, canvas units.",
-                    "type": "string",
-                    "const": "transform.position"
-                  },
-                  {
-                    "description": "`visual.transform.scale`: multiplier of the aspect-fit size, per axis.",
-                    "type": "string",
-                    "const": "transform.scale"
-                  },
-                  {
-                    "description": "`visual.transform.rotation`: degrees, clockwise, accumulating.",
-                    "type": "string",
-                    "const": "transform.rotation"
-                  },
-                  {
-                    "description": "`visual.transform.anchor`: a point of the item in item units.",
-                    "type": "string",
-                    "const": "transform.anchor"
-                  },
-                  {
-                    "description": "`visual.opacity`: 0 transparent to 1 opaque.",
-                    "type": "string",
-                    "const": "opacity"
-                  },
-                  {
-                    "description": "`visual.crop.left`: fraction of the upright source removed from the left edge.",
-                    "type": "string",
-                    "const": "crop.left"
-                  },
-                  {
-                    "description": "`visual.crop.top`: fraction removed from the top edge.",
-                    "type": "string",
-                    "const": "crop.top"
-                  },
-                  {
-                    "description": "`visual.crop.right`: fraction removed from the right edge.",
-                    "type": "string",
-                    "const": "crop.right"
-                  },
-                  {
-                    "description": "`visual.crop.bottom`: fraction removed from the bottom edge.",
-                    "type": "string",
-                    "const": "crop.bottom"
-                  },
-                  {
-                    "description": "`visual.flip.horizontal`: mirror left-right (hold only).",
-                    "type": "string",
-                    "const": "flip.horizontal"
-                  },
-                  {
-                    "description": "`visual.flip.vertical`: mirror top-bottom (hold only).",
-                    "type": "string",
-                    "const": "flip.vertical"
-                  },
-                  {
-                    "description": "`audio.gain`: clip level in dB, interpolated in dB (UI label \"Volume\").",
-                    "type": "string",
-                    "const": "audio_gain"
-                  },
-                  {
-                    "description": "`audio.pan`: −1 left to 1 right, 0 centre.",
-                    "type": "string",
-                    "const": "audio_pan"
-                  }
+                "type": "string",
+                "enum": [
+                  "transform.position",
+                  "transform.scale",
+                  "transform.rotation",
+                  "transform.anchor",
+                  "opacity",
+                  "crop.left",
+                  "crop.top",
+                  "crop.right",
+                  "crop.bottom",
+                  "flip.horizontal",
+                  "flip.vertical",
+                  "audio_gain",
+                  "audio_pan"
                 ]
               },
               "t": {
@@ -519,72 +322,21 @@ expression: "json!({\n    \"meta\": serde_json::to_value(meta).unwrap(), \"input
           "properties": {
             "prop": {
               "description": "The property.",
-              "oneOf": [
-                {
-                  "description": "`visual.transform.position`: offset of the anchor from the canvas centre, canvas units.",
-                  "type": "string",
-                  "const": "transform.position"
-                },
-                {
-                  "description": "`visual.transform.scale`: multiplier of the aspect-fit size, per axis.",
-                  "type": "string",
-                  "const": "transform.scale"
-                },
-                {
-                  "description": "`visual.transform.rotation`: degrees, clockwise, accumulating.",
-                  "type": "string",
-                  "const": "transform.rotation"
-                },
-                {
-                  "description": "`visual.transform.anchor`: a point of the item in item units.",
-                  "type": "string",
-                  "const": "transform.anchor"
-                },
-                {
-                  "description": "`visual.opacity`: 0 transparent to 1 opaque.",
-                  "type": "string",
-                  "const": "opacity"
-                },
-                {
-                  "description": "`visual.crop.left`: fraction of the upright source removed from the left edge.",
-                  "type": "string",
-                  "const": "crop.left"
-                },
-                {
-                  "description": "`visual.crop.top`: fraction removed from the top edge.",
-                  "type": "string",
-                  "const": "crop.top"
-                },
-                {
-                  "description": "`visual.crop.right`: fraction removed from the right edge.",
-                  "type": "string",
-                  "const": "crop.right"
-                },
-                {
-                  "description": "`visual.crop.bottom`: fraction removed from the bottom edge.",
-                  "type": "string",
-                  "const": "crop.bottom"
-                },
-                {
-                  "description": "`visual.flip.horizontal`: mirror left-right (hold only).",
-                  "type": "string",
-                  "const": "flip.horizontal"
-                },
-                {
-                  "description": "`visual.flip.vertical`: mirror top-bottom (hold only).",
-                  "type": "string",
-                  "const": "flip.vertical"
-                },
-                {
-                  "description": "`audio.gain`: clip level in dB, interpolated in dB (UI label \"Volume\").",
-                  "type": "string",
-                  "const": "audio_gain"
-                },
-                {
-                  "description": "`audio.pan`: −1 left to 1 right, 0 centre.",
-                  "type": "string",
-                  "const": "audio_pan"
-                }
+              "type": "string",
+              "enum": [
+                "transform.position",
+                "transform.scale",
+                "transform.rotation",
+                "transform.anchor",
+                "opacity",
+                "crop.left",
+                "crop.top",
+                "crop.right",
+                "crop.bottom",
+                "flip.horizontal",
+                "flip.vertical",
+                "audio_gain",
+                "audio_pan"
               ]
             },
             "t": {
@@ -626,7 +378,7 @@ expression: "json!({\n    \"meta\": serde_json::to_value(meta).unwrap(), \"input
                   "kind"
                 ],
                 "additionalProperties": false,
-                "description": "The key's value until the next key, then a jump."
+                "description": "Jump at the next key."
               },
               {
                 "type": "object",
@@ -653,29 +405,29 @@ expression: "json!({\n    \"meta\": serde_json::to_value(meta).unwrap(), \"input
                   "x1": {
                     "type": "number",
                     "format": "double",
-                    "description": "First control point, time axis, `0..=1`."
+                    "description": "Control point 1 x."
                   },
                   "y1": {
                     "type": "number",
                     "format": "double",
-                    "description": "First control point, progress axis, `-10..=10`."
+                    "description": "Control point 1 y."
                   },
                   "x2": {
                     "type": "number",
                     "format": "double",
-                    "description": "Second control point, time axis, `0..=1`."
+                    "description": "Control point 2 x."
                   },
                   "y2": {
                     "type": "number",
                     "format": "double",
-                    "description": "Second control point, progress axis, `-10..=10`."
+                    "description": "Control point 2 y."
                   },
                   "preset": {
                     "type": [
                       "string",
                       "null"
                     ],
-                    "description": "A hint naming the preset the numbers came from.",
+                    "description": "Preset name hint.",
                     "default": null
                   }
                 },
@@ -686,7 +438,7 @@ expression: "json!({\n    \"meta\": serde_json::to_value(meta).unwrap(), \"input
                   "x2",
                   "y2"
                 ],
-                "description": "A CSS-style cubic Bezier from (0, 0) to (1, 1)."
+                "description": "CSS cubic Bezier: `x1`, `x2` in 0..1, `y1`, `y2` in -10..10."
               },
               {
                 "type": "object",
@@ -699,24 +451,24 @@ expression: "json!({\n    \"meta\": serde_json::to_value(meta).unwrap(), \"input
                   "stiffness": {
                     "type": "number",
                     "format": "double",
-                    "description": "Stiffness, `1..=10000`."
+                    "description": "Stiffness."
                   },
                   "damping": {
                     "type": "number",
                     "format": "double",
-                    "description": "Damping, `0..=1000`."
+                    "description": "Damping."
                   },
                   "mass": {
                     "type": "number",
                     "format": "double",
-                    "description": "Mass, `0.1..=100`."
+                    "description": "Mass."
                   },
                   "bounce": {
                     "type": [
                       "boolean",
                       "null"
                     ],
-                    "description": "A hard stop at the target (default `false`).",
+                    "description": "Hard stop at the target (default false).",
                     "default": null
                   },
                   "preset": {
@@ -724,7 +476,7 @@ expression: "json!({\n    \"meta\": serde_json::to_value(meta).unwrap(), \"input
                       "string",
                       "null"
                     ],
-                    "description": "A hint naming the preset the numbers came from.",
+                    "description": "Preset name hint.",
                     "default": null
                   }
                 },
@@ -734,10 +486,10 @@ expression: "json!({\n    \"meta\": serde_json::to_value(meta).unwrap(), \"input
                   "damping",
                   "mass"
                 ],
-                "description": "A damped spring."
+                "description": "Damped spring: stiffness 1..10000, damping 0..1000, mass 0.1..100."
               }
             ],
-            "description": "How the segment that starts at a key moves to the next key, as commands take it: the stored\nform ([`Interp`]) with `bounce` optional (default `false`)."
+            "description": "How a key's segment moves to the next key (stored form; `bounce` may be omitted). Prefer\n`easing` for the presets."
           },
           {
             "type": "null"
@@ -747,132 +499,37 @@ expression: "json!({\n    \"meta\": serde_json::to_value(meta).unwrap(), \"input
         "default": null
       },
       "easing": {
-        "anyOf": [
-          {
-            "oneOf": [
-              {
-                "type": "string",
-                "const": "hold",
-                "description": "The key's value until the next key."
-              },
-              {
-                "type": "string",
-                "const": "linear",
-                "description": "Constant speed."
-              },
-              {
-                "type": "string",
-                "const": "ease_in",
-                "description": "CSS `ease-in`: bezier (0.42, 0, 1, 1)."
-              },
-              {
-                "type": "string",
-                "const": "ease_out",
-                "description": "CSS `ease-out`: bezier (0, 0, 0.58, 1)."
-              },
-              {
-                "type": "string",
-                "const": "ease_in_out",
-                "description": "CSS `ease-in-out`: bezier (0.42, 0, 0.58, 1)."
-              },
-              {
-                "type": "string",
-                "const": "sine_in",
-                "description": "Bezier (0.12, 0, 0.39, 0)."
-              },
-              {
-                "type": "string",
-                "const": "sine_out",
-                "description": "Bezier (0.61, 1, 0.88, 1)."
-              },
-              {
-                "type": "string",
-                "const": "sine_in_out",
-                "description": "Bezier (0.37, 0, 0.63, 1)."
-              },
-              {
-                "type": "string",
-                "const": "cubic_in",
-                "description": "Bezier (0.32, 0, 0.67, 0)."
-              },
-              {
-                "type": "string",
-                "const": "cubic_out",
-                "description": "Bezier (0.33, 1, 0.68, 1)."
-              },
-              {
-                "type": "string",
-                "const": "cubic_in_out",
-                "description": "Bezier (0.65, 0, 0.35, 1)."
-              },
-              {
-                "type": "string",
-                "const": "expo_in",
-                "description": "Bezier (0.7, 0, 0.84, 0)."
-              },
-              {
-                "type": "string",
-                "const": "expo_out",
-                "description": "Bezier (0.16, 1, 0.3, 1)."
-              },
-              {
-                "type": "string",
-                "const": "expo_in_out",
-                "description": "Bezier (0.87, 0, 0.13, 1)."
-              },
-              {
-                "type": "string",
-                "const": "back_in",
-                "description": "Bezier (0.36, 0, 0.66, −0.56): pulls back before leaving."
-              },
-              {
-                "type": "string",
-                "const": "back_out",
-                "description": "Bezier (0.34, 1.56, 0.64, 1): overshoots, then settles."
-              },
-              {
-                "type": "string",
-                "const": "back_in_out",
-                "description": "Bezier (0.68, −0.6, 0.32, 1.6)."
-              },
-              {
-                "type": "string",
-                "const": "spring",
-                "description": "Spring 170 / 26 / 1 (ζ ≈ 1.00)."
-              },
-              {
-                "type": "string",
-                "const": "spring_gentle",
-                "description": "Spring 120 / 14 / 1 (ζ ≈ 0.64)."
-              },
-              {
-                "type": "string",
-                "const": "spring_wobbly",
-                "description": "Spring 180 / 12 / 1 (ζ ≈ 0.45)."
-              },
-              {
-                "type": "string",
-                "const": "spring_stiff",
-                "description": "Spring 210 / 20 / 1 (ζ ≈ 0.69)."
-              },
-              {
-                "type": "string",
-                "const": "elastic",
-                "description": "Spring 200 / 6 / 1 (ζ ≈ 0.21): several decaying oscillations."
-              },
-              {
-                "type": "string",
-                "const": "bounce",
-                "description": "Spring 160 / 10 / 1 with `bounce` (ζ ≈ 0.40): each bounce about a quarter as high."
-              }
-            ],
-            "description": "A named easing (keyframes §4.6): one of the 21 presets, or `linear` or `hold`. Commands\naccept it instead of an [`Interp`] (`easing: \"ease_out\"`) and expand it on write\n([`Easing::interp`]); documents never store the name alone.\n\nThe table is part of the spec: changing a preset's numbers means a new name, because\ndocuments store the expanded numbers and old projects must never change appearance."
-          },
-          {
-            "type": "null"
-          }
-        ],
         "description": "A preset name, `linear` or `hold`.",
+        "type": [
+          "string",
+          "null"
+        ],
+        "enum": [
+          "hold",
+          "linear",
+          "ease_in",
+          "ease_out",
+          "ease_in_out",
+          "sine_in",
+          "sine_out",
+          "sine_in_out",
+          "cubic_in",
+          "cubic_out",
+          "cubic_in_out",
+          "expo_in",
+          "expo_out",
+          "expo_in_out",
+          "back_in",
+          "back_out",
+          "back_in_out",
+          "spring",
+          "spring_gentle",
+          "spring_wobbly",
+          "spring_stiff",
+          "elastic",
+          "bounce",
+          null
+        ],
         "default": null
       }
     },
@@ -895,72 +552,21 @@ expression: "json!({\n    \"meta\": serde_json::to_value(meta).unwrap(), \"input
           "properties": {
             "prop": {
               "description": "The property.",
-              "oneOf": [
-                {
-                  "description": "`visual.transform.position`: offset of the anchor from the canvas centre, canvas units.",
-                  "type": "string",
-                  "const": "transform.position"
-                },
-                {
-                  "description": "`visual.transform.scale`: multiplier of the aspect-fit size, per axis.",
-                  "type": "string",
-                  "const": "transform.scale"
-                },
-                {
-                  "description": "`visual.transform.rotation`: degrees, clockwise, accumulating.",
-                  "type": "string",
-                  "const": "transform.rotation"
-                },
-                {
-                  "description": "`visual.transform.anchor`: a point of the item in item units.",
-                  "type": "string",
-                  "const": "transform.anchor"
-                },
-                {
-                  "description": "`visual.opacity`: 0 transparent to 1 opaque.",
-                  "type": "string",
-                  "const": "opacity"
-                },
-                {
-                  "description": "`visual.crop.left`: fraction of the upright source removed from the left edge.",
-                  "type": "string",
-                  "const": "crop.left"
-                },
-                {
-                  "description": "`visual.crop.top`: fraction removed from the top edge.",
-                  "type": "string",
-                  "const": "crop.top"
-                },
-                {
-                  "description": "`visual.crop.right`: fraction removed from the right edge.",
-                  "type": "string",
-                  "const": "crop.right"
-                },
-                {
-                  "description": "`visual.crop.bottom`: fraction removed from the bottom edge.",
-                  "type": "string",
-                  "const": "crop.bottom"
-                },
-                {
-                  "description": "`visual.flip.horizontal`: mirror left-right (hold only).",
-                  "type": "string",
-                  "const": "flip.horizontal"
-                },
-                {
-                  "description": "`visual.flip.vertical`: mirror top-bottom (hold only).",
-                  "type": "string",
-                  "const": "flip.vertical"
-                },
-                {
-                  "description": "`audio.gain`: clip level in dB, interpolated in dB (UI label \"Volume\").",
-                  "type": "string",
-                  "const": "audio_gain"
-                },
-                {
-                  "description": "`audio.pan`: −1 left to 1 right, 0 centre.",
-                  "type": "string",
-                  "const": "audio_pan"
-                }
+              "type": "string",
+              "enum": [
+                "transform.position",
+                "transform.scale",
+                "transform.rotation",
+                "transform.anchor",
+                "opacity",
+                "crop.left",
+                "crop.top",
+                "crop.right",
+                "crop.bottom",
+                "flip.horizontal",
+                "flip.vertical",
+                "audio_gain",
+                "audio_pan"
               ]
             },
             "t": {

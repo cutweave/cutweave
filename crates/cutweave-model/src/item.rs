@@ -4,7 +4,9 @@
 //! adjustments, effects and masks arrive in later versions. Animatable properties may be keyed
 //! (WP-2C.03, [`Animatable`] lives in `animate`).
 
-use schemars::JsonSchema;
+use std::borrow::Cow;
+
+use schemars::{JsonSchema, Schema, SchemaGenerator, json_schema};
 use serde::{Deserialize, Serialize};
 
 use crate::{
@@ -155,7 +157,6 @@ impl Default for Flip {
     Ord,
     Serialize,
     Deserialize,
-    JsonSchema,
     specta::Type,
 )]
 #[serde(rename_all = "snake_case")]
@@ -177,6 +178,21 @@ pub enum BlendMode {
     Add,
     /// A gentle overlay.
     SoftLight,
+}
+
+/// One flat `enum` of the names (a tool list pays for every description).
+impl JsonSchema for BlendMode {
+    fn schema_name() -> Cow<'static, str> {
+        "BlendMode".into()
+    }
+
+    fn json_schema(_: &mut SchemaGenerator) -> Schema {
+        json_schema!({
+            "description": "How an item combines with what is below it (arch §8's core set).",
+            "type": "string",
+            "enum": ["normal", "multiply", "screen", "overlay", "darken", "lighten", "add", "soft_light"]
+        })
+    }
 }
 
 /// Visual properties of an item (arch §4.2 `VisualProps`; keyframes §7).

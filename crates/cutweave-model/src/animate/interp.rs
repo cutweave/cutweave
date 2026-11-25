@@ -3,7 +3,9 @@
 
 use std::{fmt, str::FromStr};
 
-use schemars::JsonSchema;
+use std::borrow::Cow;
+
+use schemars::{JsonSchema, Schema, SchemaGenerator, json_schema};
 use serde::{Deserialize, Deserializer, Serialize, de};
 use serde_json::{Map, Value};
 
@@ -368,9 +370,7 @@ fn number(obj: &Map<String, Value>, kind: &str, field: &str) -> Result<f64, Keyf
 ///
 /// The table is part of the spec: changing a preset's numbers means a new name, because
 /// documents store the expanded numbers and old projects must never change appearance.
-#[derive(
-    Clone, Copy, Debug, PartialEq, Eq, Hash, Serialize, Deserialize, JsonSchema, specta::Type,
-)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, Serialize, Deserialize, specta::Type)]
 #[serde(rename_all = "snake_case")]
 pub enum Easing {
     /// The key's value until the next key.
@@ -568,6 +568,23 @@ impl Easing {
     #[must_use]
     pub fn to_bezier(self) -> Option<[f64; 4]> {
         self.interp().to_bezier()
+    }
+}
+
+/// One flat `enum` of the names: a `oneOf` with a description per name would cost an agent's
+/// tool list hundreds of tokens (keyframes §10).
+impl JsonSchema for Easing {
+    fn schema_name() -> Cow<'static, str> {
+        "Easing".into()
+    }
+
+    fn json_schema(_: &mut SchemaGenerator) -> Schema {
+        let names: Vec<&str> = Easing::ALL.iter().map(|e| e.name()).collect();
+        json_schema!({
+            "description": "A preset name (ease_in, ease_out, back_out, spring, bounce, ...), `linear` or `hold`.",
+            "type": "string",
+            "enum": names
+        })
     }
 }
 

@@ -66,8 +66,8 @@ pub fn register(registry: &mut Registry) -> Result<(), RegistryError> {
 
 // ----- wire types ------------------------------------------------------------------------------
 
-/// A property value: a number (opacity, crop edges, rotation, gain, pan), `{x, y}` (position,
-/// scale, anchor) or a boolean (flip). The property decides which; a mismatch is `Invalid`.
+/// A property value: a number, `{x, y}` (position, scale, anchor) or a boolean (flip); the
+/// property decides which.
 #[wire]
 #[serde(untagged)]
 pub enum KeyValue {
@@ -79,48 +79,48 @@ pub enum KeyValue {
     Vec2(Vec2),
 }
 
-/// How the segment that starts at a key moves to the next key, as commands take it: the stored
-/// form ([`Interp`]) with `bounce` optional (default `false`).
+/// How a key's segment moves to the next key (stored form; `bounce` may be omitted). Prefer
+/// `easing` for the presets.
 #[wire]
 #[serde(tag = "kind", rename_all = "snake_case", deny_unknown_fields)]
 pub enum InterpInput {
-    /// The key's value until the next key, then a jump.
+    /// Jump at the next key.
     Hold,
     /// Constant speed.
     Linear,
-    /// A CSS-style cubic Bezier from (0, 0) to (1, 1).
+    /// CSS cubic Bezier: `x1`, `x2` in 0..1, `y1`, `y2` in -10..10.
     Bezier {
-        /// First control point, time axis, `0..=1`.
+        /// Control point 1 x.
         #[specta(type = specta_typescript::Number)]
         x1: f64,
-        /// First control point, progress axis, `-10..=10`.
+        /// Control point 1 y.
         #[specta(type = specta_typescript::Number)]
         y1: f64,
-        /// Second control point, time axis, `0..=1`.
+        /// Control point 2 x.
         #[specta(type = specta_typescript::Number)]
         x2: f64,
-        /// Second control point, progress axis, `-10..=10`.
+        /// Control point 2 y.
         #[specta(type = specta_typescript::Number)]
         y2: f64,
-        /// A hint naming the preset the numbers came from.
+        /// Preset name hint.
         #[serde(default)]
         preset: Option<String>,
     },
-    /// A damped spring.
+    /// Damped spring: stiffness 1..10000, damping 0..1000, mass 0.1..100.
     Spring {
-        /// Stiffness, `1..=10000`.
+        /// Stiffness.
         #[specta(type = specta_typescript::Number)]
         stiffness: f64,
-        /// Damping, `0..=1000`.
+        /// Damping.
         #[specta(type = specta_typescript::Number)]
         damping: f64,
-        /// Mass, `0.1..=100`.
+        /// Mass.
         #[specta(type = specta_typescript::Number)]
         mass: f64,
-        /// A hard stop at the target (default `false`).
+        /// Hard stop at the target (default false).
         #[serde(default)]
         bounce: Option<bool>,
-        /// A hint naming the preset the numbers came from.
+        /// Preset name hint.
         #[serde(default)]
         preset: Option<String>,
     },

@@ -72,6 +72,40 @@ export function mediaPath(id: string): string | null {
   return mediaAsset(id)?.path_abs ?? null;
 }
 
+/** Where each animatable property lives in a clip (keyframes §7). */
+const PROP_PATHS: Readonly<Record<string, readonly string[]>> = {
+  "transform.position": ["visual", "transform", "position"],
+  "transform.scale": ["visual", "transform", "scale"],
+  "transform.rotation": ["visual", "transform", "rotation"],
+  "transform.anchor": ["visual", "transform", "anchor"],
+  opacity: ["visual", "opacity"],
+  "crop.left": ["visual", "crop", "left"],
+  "crop.top": ["visual", "crop", "top"],
+  "crop.right": ["visual", "crop", "right"],
+  "crop.bottom": ["visual", "crop", "bottom"],
+  "flip.horizontal": ["visual", "flip", "horizontal"],
+  "flip.vertical": ["visual", "flip", "vertical"],
+  audio_gain: ["audio", "gain"],
+  audio_pan: ["audio", "pan"],
+};
+
+/** The keys of an animated property of the clip (item times, flicks), or `null` when static. */
+export function keysOf(clip: Clip, prop: string): readonly { t: number }[] | null {
+  let value: unknown = clip;
+  for (const step of PROP_PATHS[prop] ?? []) {
+    value = (value as Record<string, unknown> | null)?.[step];
+  }
+  return (value as { keyframes?: readonly { t: number }[] } | null)?.keyframes ?? null;
+}
+
+/**
+ * The item time of the key of `prop` that sits exactly at the sequence time `at` (the playhead),
+ * or `null` when the property is static or has no key there. Times are flicks, as stored.
+ */
+export function keyAtPlayhead(clip: Clip, prop: string, at: number): number | null {
+  return keysOf(clip, prop)?.find((k) => clip.start + k.t === at)?.t ?? null;
+}
+
 /** The last time any clip of the sequence covers (where "Append to timeline" puts the next clip). */
 export function sequenceEnd(sequence: Sequence): number {
   let end = 0;
