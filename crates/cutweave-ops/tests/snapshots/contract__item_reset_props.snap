@@ -71,7 +71,7 @@ expression: "json!({\n    \"meta\": serde_json::to_value(meta).unwrap(), \"input
                 {
                   "type": "string",
                   "const": "audio",
-                  "description": "Clip gain and pan."
+                  "description": "Clip gain, pan and fades."
                 }
               ],
               "description": "A group of properties, as the Inspector's sections show them."
@@ -192,7 +192,7 @@ expression: "json!({\n    \"meta\": serde_json::to_value(meta).unwrap(), \"input
               {
                 "type": "string",
                 "const": "audio",
-                "description": "Clip gain and pan."
+                "description": "Clip gain, pan and fades."
               }
             ],
             "description": "A group of properties, as the Inspector's sections show them."

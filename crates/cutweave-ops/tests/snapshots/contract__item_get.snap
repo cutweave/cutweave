@@ -517,11 +517,103 @@ expression: "json!({\n    \"meta\": serde_json::to_value(meta).unwrap(), \"input
                   ]
                 }
               ]
+            },
+            "fade_in": {
+              "type": "object",
+              "properties": {
+                "duration": {
+                  "description": "Length of the fade.",
+                  "type": "integer",
+                  "minimum": 0,
+                  "maximum": 9007199254740991
+                },
+                "curve": {
+                  "oneOf": [
+                    {
+                      "type": "string",
+                      "const": "linear",
+                      "description": "Gain rises in a straight line (the default)."
+                    },
+                    {
+                      "type": "string",
+                      "const": "log",
+                      "description": "Gain rises quickly then flattens (`log10(1 + 9x)`): a fast, natural-sounding fade in."
+                    },
+                    {
+                      "type": "string",
+                      "const": "equal_power",
+                      "description": "Constant power with a matching fade of the same shape on the other clip: `sin(x*pi/2)`."
+                    },
+                    {
+                      "type": "string",
+                      "const": "s_curve",
+                      "description": "Gentle at both ends: `(1 - cos(x*pi)) / 2`."
+                    }
+                  ],
+                  "description": "Its shape."
+                }
+              },
+              "required": [
+                "duration",
+                "curve"
+              ],
+              "description": "Fade from silence at the start of the clip (WP-2E.01). Absent in documents written\nbefore it: no fade.",
+              "default": {
+                "duration": 0,
+                "curve": "linear"
+              }
+            },
+            "fade_out": {
+              "type": "object",
+              "properties": {
+                "duration": {
+                  "description": "Length of the fade.",
+                  "type": "integer",
+                  "minimum": 0,
+                  "maximum": 9007199254740991
+                },
+                "curve": {
+                  "oneOf": [
+                    {
+                      "type": "string",
+                      "const": "linear",
+                      "description": "Gain rises in a straight line (the default)."
+                    },
+                    {
+                      "type": "string",
+                      "const": "log",
+                      "description": "Gain rises quickly then flattens (`log10(1 + 9x)`): a fast, natural-sounding fade in."
+                    },
+                    {
+                      "type": "string",
+                      "const": "equal_power",
+                      "description": "Constant power with a matching fade of the same shape on the other clip: `sin(x*pi/2)`."
+                    },
+                    {
+                      "type": "string",
+                      "const": "s_curve",
+                      "description": "Gentle at both ends: `(1 - cos(x*pi)) / 2`."
+                    }
+                  ],
+                  "description": "Its shape."
+                }
+              },
+              "required": [
+                "duration",
+                "curve"
+              ],
+              "description": "Fade to silence at the end of the clip (WP-2E.01). Absent in older documents: no fade.",
+              "default": {
+                "duration": 0,
+                "curve": "linear"
+              }
             }
           },
           "required": [
             "gain",
-            "pan"
+            "pan",
+            "fade_in",
+            "fade_out"
           ],
           "description": "Audio properties (unless `fields` leaves them out)."
         },
@@ -3208,11 +3300,103 @@ expression: "json!({\n    \"meta\": serde_json::to_value(meta).unwrap(), \"input
                 ]
               }
             ]
+          },
+          "fade_in": {
+            "type": "object",
+            "properties": {
+              "duration": {
+                "description": "Length of the fade.",
+                "type": "integer",
+                "minimum": 0,
+                "maximum": 9007199254740991
+              },
+              "curve": {
+                "oneOf": [
+                  {
+                    "type": "string",
+                    "const": "linear",
+                    "description": "Gain rises in a straight line (the default)."
+                  },
+                  {
+                    "type": "string",
+                    "const": "log",
+                    "description": "Gain rises quickly then flattens (`log10(1 + 9x)`): a fast, natural-sounding fade in."
+                  },
+                  {
+                    "type": "string",
+                    "const": "equal_power",
+                    "description": "Constant power with a matching fade of the same shape on the other clip: `sin(x*pi/2)`."
+                  },
+                  {
+                    "type": "string",
+                    "const": "s_curve",
+                    "description": "Gentle at both ends: `(1 - cos(x*pi)) / 2`."
+                  }
+                ],
+                "description": "Its shape."
+              }
+            },
+            "required": [
+              "duration",
+              "curve"
+            ],
+            "description": "Fade from silence at the start of the clip (WP-2E.01). Absent in documents written\nbefore it: no fade.",
+            "default": {
+              "duration": 0,
+              "curve": "linear"
+            }
+          },
+          "fade_out": {
+            "type": "object",
+            "properties": {
+              "duration": {
+                "description": "Length of the fade.",
+                "type": "integer",
+                "minimum": 0,
+                "maximum": 9007199254740991
+              },
+              "curve": {
+                "oneOf": [
+                  {
+                    "type": "string",
+                    "const": "linear",
+                    "description": "Gain rises in a straight line (the default)."
+                  },
+                  {
+                    "type": "string",
+                    "const": "log",
+                    "description": "Gain rises quickly then flattens (`log10(1 + 9x)`): a fast, natural-sounding fade in."
+                  },
+                  {
+                    "type": "string",
+                    "const": "equal_power",
+                    "description": "Constant power with a matching fade of the same shape on the other clip: `sin(x*pi/2)`."
+                  },
+                  {
+                    "type": "string",
+                    "const": "s_curve",
+                    "description": "Gentle at both ends: `(1 - cos(x*pi)) / 2`."
+                  }
+                ],
+                "description": "Its shape."
+              }
+            },
+            "required": [
+              "duration",
+              "curve"
+            ],
+            "description": "Fade to silence at the end of the clip (WP-2E.01). Absent in older documents: no fade.",
+            "default": {
+              "duration": 0,
+              "curve": "linear"
+            }
           }
         },
         "required": [
           "gain",
-          "pan"
+          "pan",
+          "fade_in",
+          "fade_out"
         ],
         "description": "Audio properties (unless `fields` leaves them out)."
       },
