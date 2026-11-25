@@ -380,7 +380,8 @@ fn corpus_clips_play_as_sources_frame_by_frame() {
         assert_eq!(state["playing"], json!(true), "{state}");
         // Playing seeked the master clock to the source's 0: it runs in the source's time.
         assert_eq!(clocks.audio.clock().position().flicks(), 0);
-        let frames = (0..)
+        // The frames that start in the first 2 s.
+        let frames = (0..1_000)
             .take_while(|n| frame_start(&fps, *n) < 2 * SEC)
             .count();
         let frames = i64::try_from(frames).unwrap();
@@ -424,10 +425,32 @@ fn corpus_clips_play_as_sources_frame_by_frame() {
     engine.shutdown();
 }
 
+/// Plays what the transport targets for 10 s of wall clock (from its start again when it ends);
+/// returns the frames delivered and dropped meanwhile.
+fn play_ten_seconds(conn: &Connection, handle: &cutweave_engine::FullHandle) -> (u64, u64) {
+    let before = handle.playback_stats().unwrap();
+    let started = Instant::now();
+    call(conn, "view.play", json!({})).unwrap();
+    while started.elapsed() < std::time::Duration::from_secs(10) {
+        std::thread::sleep(std::time::Duration::from_millis(20));
+        if !handle.playback_state().unwrap().playing {
+            // It ended: play it again from its start.
+            call(conn, "view.play", json!({})).unwrap();
+        }
+    }
+    call(conn, "view.pause", json!({})).unwrap();
+    let after = handle.playback_stats().unwrap();
+    (
+        after.delivered - before.delivered,
+        after.dropped - before.dropped,
+    )
+}
+
 /// The dev-machine measurement (WP-1H.04 acceptance): the H.264 1080p clip and the HEVC 10-bit
 /// clip each play as a source for 10 s in real time (on the null output's wall clock; replayed
 /// from the start when they end) with 0 dropped frames, and the WAV's sound reaches the master
-/// meter. Real time on an idle machine, so not a gate: run it alone with
+/// meter. For comparison it also plays the H.264 clip on the timeline (same decode and render
+/// path). Real time on an idle machine, so not a gate: run it alone with
 /// `cargo nextest run -p cutweave-engine --features ffmpeg --run-ignored only -E 'test(real_time)'`.
 #[test]
 #[ignore = "real-time measurement on an idle machine; run alone (see the doc comment)"]
@@ -448,29 +471,20 @@ fn corpus_sources_play_in_real_time_without_drops() {
     config.gpu = cutweave_engine::GpuConfig::Auto;
     let engine = Engine::start(config).unwrap();
     let conn = agent(&engine);
-    call(&conn, "project.new", json!({ "name": "Real time" })).unwrap();
+    // A 60 fps timeline: the baseline renders as many frames as the 60 fps source.
+    let project = call(
+        &conn,
+        "project.new",
+        json!({ "name": "Real time", "format": { "frame_rate": { "num": 60, "den": 1 } } }),
+    )
+    .unwrap();
     let media = import_all(&conn, &files);
     // Let the GPU open before measuring.
     full_support::eventually("the GPU", || handle.gpu_settled().then_some(()));
     let mut report = Vec::new();
     for (name, id) in names.iter().zip(&media).take(2) {
         call(&conn, "view.set_source", json!({ "media": id })).unwrap();
-        let before = handle.playback_stats().unwrap();
-        let started = Instant::now();
-        call(&conn, "view.play", json!({})).unwrap();
-        while started.elapsed() < std::time::Duration::from_secs(10) {
-            std::thread::sleep(std::time::Duration::from_millis(20));
-            if !handle.playback_state().unwrap().playing {
-                // The clip ended: play it again from its start.
-                call(&conn, "view.play", json!({})).unwrap();
-            }
-        }
-        call(&conn, "view.pause", json!({})).unwrap();
-        let after = handle.playback_stats().unwrap();
-        let (frames, dropped) = (
-            after.delivered - before.delivered,
-            after.dropped - before.dropped,
-        );
+        let (frames, dropped) = play_ten_seconds(&conn, &handle);
         println!(
             "{name}: 10 s in real time as a source: {frames} frames delivered, {dropped} dropped \
              (gpu: {}, degraded: {:?})",
@@ -494,6 +508,21 @@ fn corpus_sources_play_in_real_time_without_drops() {
     println!("audio_48000.wav as a source: master peak {peak:?} at {moved:?}, {mixer:?}");
     assert_eq!(mixer.source_errors, 0, "{mixer:?}");
     call(&conn, "view.pause", json!({})).unwrap();
+    // The baseline: the H.264 clip on the timeline, on the same machine at the same time.
+    call(&conn, "view.set_source", json!({})).unwrap();
+    call(
+        &conn,
+        "timeline.insert",
+        json!({
+            "sequence": project["sequence"], "track": project["video_track"],
+            "media": media[0], "at": 0,
+        }),
+    )
+    .unwrap();
+    let (frames, dropped) = play_ten_seconds(&conn, &handle);
+    println!(
+        "h264_1080p60.mp4 on a 60 fps timeline (baseline): {frames} frames delivered, {dropped} dropped"
+    );
     drop(conn);
     engine.shutdown();
     for (name, frames, dropped) in report {
