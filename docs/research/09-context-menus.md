@@ -491,3 +491,13 @@ Each bullet names the surface, the items (from section 6) and the acceptance che
 - **A menu item that needs several commands** must be one composite command, or the menu will create several undo steps. 2H.12's parity test flags closures that call more than one mutating command.
 - **Menu length** creeps: the rule in 5.5 and the UX review (2H.07) are the brake.
 - **Keymap drift:** shortcut hints must come from `keysFor`, never from literals; the existing `shortcuts/bindings.test.ts` approach is extended to surface tables.
+
+### 7.6 Owner decisions (2026-11-25)
+
+The product owner accepted the recommended defaults ("Yes, use defaults"):
+
+1. WP-2H.12 and WP-2H.13 are scheduled early; WP-2A.10 depends on WP-2H.13 and WP-2H.04 on WP-2H.12, so timeline menus are built once.
+2. Context menus are in-app on every platform, macOS included (no OS spellcheck suggestions in text-field menus for now).
+3. Right-click on an unselected item selects it first; inside a multi-selection the menu acts on all of it; right-click on an empty timeline lane keeps the selection, on an empty bin clears it.
+4. ADR-0026 stays Proposed until WP-2H.12 passes its criteria; maintainers accept it then.
+
