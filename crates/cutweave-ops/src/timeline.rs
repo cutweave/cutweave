@@ -1,349 +1,60 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
-//! The `timeline` namespace (WP-1B.05; arch §4.3, §5.1): `timeline.insert`, `timeline.get`.
+//! The `timeline` namespace (WP-1B.05, WP-2A.02, WP-2A.03; arch §4.3, §5.1; timeline spec §4):
+//! `timeline.insert` and `timeline.overwrite` ([`insert`]), `timeline.lift`, `timeline.extract`,
+//! `timeline.ripple_delete` and `timeline.delete_gap` ([`edit`]), the marker and in/out commands
+//! ([`markers`]) and the `timeline.get` query.
 //!
-//! **Insert semantics.** `timeline.insert` places a media clip at a time on a track. Placing it
-//! where it would overlap another clip is `Invalid{path:"/at"}` by default; with
-//! `overlap: "new_track"` a new track of the same kind is created directly above the target and
-//! the clip goes there (arch §4.3). There is no ripple in P1 (the magnetic track is P2).
-//!
-//! **Linked audio.** Inserting a video file that has an audio stream onto a video track also
-//! places its audio on the first unlocked audio track that is free over the range, and gives
-//! both clips the same `linked_group`. Without such a track the video clip is inserted alone
-//! (with `overlap: "new_track"` and an unlocked audio track that is busy, a new audio track is
-//! created above it). `link: false` inserts the picture only; inserting onto an audio track
-//! inserts the sound only.
+//! Every placement command computes its result with the shared placement core
+//! ([`placement`]: ripple, cut, split, placement modes, locks, links and attachments in one
+//! place) and the magnetic main track's rules ([`magnetic`]), and returns an
+//! [`EditReport`](crate::report::EditReport) of exactly what changed.
 
-use cutweave_commands::{
-    CmdError, Command, Query, QueryCtx, Registry, RegistryError, Tx, command, query, wire,
-};
+use cutweave_commands::{CmdError, Query, QueryCtx, Registry, RegistryError, query, wire};
 use cutweave_model::{
-    Clip, Duration, EntityKind, GroupId, Item, ItemId, MediaAsset, MediaId, MediaKind, Project,
-    Sequence, SequenceFormat, SequenceId, Time, TimeInput, Track, TrackId, TrackKind,
+    Duration, GroupId, Item, ItemId, MediaId, SequenceFormat, SequenceId, Time, TrackId, TrackKind,
 };
 
-use crate::{
-    media::has_audio_stream,
-    track::{check_editable_kind, next_track_name},
-    util::{resolve_frame_duration, resolve_frame_time, resolve_time},
-};
-
-/// Length of a still image when `duration` is omitted: five seconds.
+/// Length of a still image when `duration` is omitted: five seconds (snapped to the nearest
+/// frame, INV-25).
 pub const DEFAULT_STILL_SECS: i64 = 5;
 
+pub mod edit;
+mod insert;
+pub(crate) mod magnetic;
 pub mod markers;
+pub mod placement;
+
+pub use edit::{
+    DeletedOutput, TimelineDeleteGap, TimelineDeleteGapOutput, TimelineExtract, TimelineLift,
+    TimelineRange, TimelineRangesOutput, TimelineRippleDelete, UsedRange,
+};
+pub use insert::{TimelineInsert, TimelineInsertOutput, TimelineOverwrite};
+pub use placement::PlacementMode;
 
 /// Registers the `timeline.*` commands and queries.
 pub fn register(registry: &mut Registry) -> Result<(), RegistryError> {
     registry
         .register::<TimelineInsert>()?
+        .register::<TimelineOverwrite>()?
+        .register::<TimelineLift>()?
+        .register::<TimelineExtract>()?
+        .register::<TimelineRippleDelete>()?
+        .register::<TimelineDeleteGap>()?
         .register::<TimelineGet>()?;
     markers::register(registry)
 }
 
-// ----- timeline.insert -----------------------------------------------------------------------
-
-/// What to do when the clip would overlap another clip on the target track.
+/// What to do when an item would overlap another one on its target track: the P1 `overlap`
+/// param, an alias of the placement `mode` (spec INV-40).
 #[wire]
 #[derive(Copy, Eq, Default)]
 #[serde(rename_all = "snake_case")]
 pub enum OverlapPolicy {
-    /// Fail with `Invalid{path:"/at"}` (default).
+    /// Fail with `Invalid` (default on free tracks).
     #[default]
     Reject,
-    /// Create a new track of the same kind directly above the target and insert there.
+    /// Create a new track of the same kind directly above the target and place there.
     NewTrack,
-}
-
-/// Result of `timeline.insert`.
-#[wire]
-pub struct TimelineInsertOutput {
-    /// The start that was used, snapped to the frame grid.
-    pub at: Time,
-    /// The clip length that was used, a whole number of frames.
-    pub duration: Duration,
-    /// The inserted clips: the one on the target track first, then the linked audio clip.
-    pub clips: Vec<ItemId>,
-    /// The group shared by the clips when audio was linked.
-    pub linked_group: Option<GroupId>,
-    /// Tracks created by `overlap: "new_track"`, in creation order.
-    pub created_tracks: Vec<TrackId>,
-}
-
-/// Inserts a media clip on a track at a time. `source_in` is the position in the media the clip
-/// starts from and `duration` its length (defaults: the start of the media and the rest of it;
-/// stills default to five seconds). Times accept flicks, `"1.5s"`, `"f:45"` and timecodes,
-/// resolved against the sequence's frame rate. `at` and `duration` snap to the frame grid
-/// (nearest frame, ties later; at least one frame) and the result states the values used;
-/// `source_in` is a position in the media and is not snapped, nor is a default duration
-/// (the rest of the media, or five seconds for a still). See the module docs for overlap and linked
-/// audio behaviour. Fails with `Locked` if the target track is locked.
-#[command(
-    name = "timeline.insert",
-    summary = "Insert a media clip at a time on a track (adds linked audio for video with sound)",
-    undoable,
-    mcp = "core",
-    annotations(destructive = false, idempotent = false)
-)]
-pub struct TimelineInsert {
-    /// The sequence.
-    pub sequence: SequenceId,
-    /// The target track (of that sequence): a video track for pictures, an audio track for
-    /// sound.
-    pub track: TrackId,
-    /// The media to place.
-    pub media: MediaId,
-    /// Timeline position of the clip's first frame, `>= 0` (snapped to the frame grid).
-    pub at: TimeInput,
-    /// Position in the media to start from (default 0).
-    pub source_in: Option<TimeInput>,
-    /// Clip length, `> 0` (snapped to whole frames, at least one).
-    pub duration: Option<TimeInput>,
-    /// Overlap handling (default `reject`).
-    pub overlap: Option<OverlapPolicy>,
-    /// Also insert the audio of a video file as a linked clip (default `true`).
-    pub link: Option<bool>,
-}
-
-/// Where a clip goes: an existing track, or a new one created directly above `above`.
-#[derive(Clone, Copy, Debug)]
-pub(crate) enum Slot {
-    Existing(TrackId),
-    New { above: TrackId },
-}
-
-struct Plan {
-    at: Time,
-    source_in: Time,
-    duration: Duration,
-    main_kind: TrackKind,
-    main: Slot,
-    audio: Option<Slot>,
-}
-
-pub(crate) fn overlapping(track: &Track, start: Time, end: Time) -> Option<ItemId> {
-    track.items.overlapping(start, end).next().map(Item::id)
-}
-
-impl TimelineInsert {
-    /// The resolved `(at, source_in, duration)`, checked against the sequence rate and the
-    /// media bounds.
-    fn range(
-        &self,
-        sequence: &Sequence,
-        media: &MediaAsset,
-    ) -> Result<(Time, Time, Duration), CmdError> {
-        let rate = sequence.format.frame_rate;
-        let at = resolve_frame_time("/at", self.at, rate)?;
-        if at < Time::ZERO {
-            return Err(CmdError::invalid("/at", "the time must not be negative"));
-        }
-        let source_in = match self.source_in {
-            Some(t) => resolve_time("/source_in", t, rate)?,
-            None => Time::ZERO,
-        };
-        if source_in < Time::ZERO {
-            return Err(CmdError::invalid(
-                "/source_in",
-                "the source position must not be negative",
-            ));
-        }
-        let bounded = media
-            .probe
-            .duration
-            .filter(|_| media.kind != MediaKind::Image);
-        let duration = match (self.duration, bounded) {
-            (Some(d), _) => resolve_frame_duration("/duration", d, rate)?,
-            // Defaults derived from the media are not snapped: a clip that plays the rest of
-            // its media ends exactly where the media does.
-            (None, Some(total)) => total
-                .flicks()
-                .checked_sub(source_in.flicks())
-                .and_then(|f| Duration::from_flicks(f).ok())
-                .filter(|d| !d.is_zero())
-                .ok_or_else(|| {
-                    CmdError::invalid(
-                        "/source_in",
-                        "the source position is at or past the media end",
-                    )
-                })?,
-            (None, None) if media.kind == MediaKind::Image => {
-                Duration::from_secs(DEFAULT_STILL_SECS)
-                    .map_err(|e| CmdError::internal(e.to_string()))?
-            }
-            (None, None) => {
-                return Err(CmdError::invalid(
-                    "/duration",
-                    "the media length is unknown, so a duration is required",
-                ));
-            }
-        };
-        if let Some(total) = bounded
-            && i128::from(source_in.flicks()) + i128::from(duration.flicks())
-                > i128::from(total.flicks())
-        {
-            return Err(CmdError::invalid(
-                "/duration",
-                "the clip would read past the end of the media",
-            ));
-        }
-        Ok((at, source_in, duration))
-    }
-
-    fn plan(&self, doc: &Project) -> Result<Plan, CmdError> {
-        let sequence = doc
-            .sequences
-            .get(&self.sequence)
-            .ok_or_else(|| CmdError::not_found(EntityKind::Sequence, self.sequence))?;
-        let track = match sequence.track(&self.track) {
-            Some(t) => t,
-            None if doc
-                .sequences
-                .values()
-                .any(|s| s.track(&self.track).is_some()) =>
-            {
-                return Err(CmdError::invalid(
-                    "/track",
-                    format!(
-                        "track `{}` is not in sequence `{}`",
-                        self.track, self.sequence
-                    ),
-                ));
-            }
-            None => return Err(CmdError::not_found(EntityKind::Track, self.track)),
-        };
-        let media = doc
-            .media
-            .get(&self.media)
-            .ok_or_else(|| CmdError::not_found(EntityKind::Media, self.media))?;
-        check_editable_kind("/track", track.kind)?;
-        if media.kind == MediaKind::SequenceRef {
-            return Err(CmdError::unsupported(
-                "compound clips (sequence media) cannot be inserted yet",
-            ));
-        }
-        if !track.kind.accepts(media.kind) {
-            return Err(CmdError::invalid(
-                "/track",
-                format!("a {} track cannot play {} media", track.kind, media.kind),
-            ));
-        }
-        crate::item::ensure_free_track(track)?;
-        if track.locked {
-            return Err(CmdError::locked(EntityKind::Track, track.id));
-        }
-        let (at, source_in, duration) = self.range(sequence, media)?;
-        let end = at
-            .checked_add(duration)
-            .map_err(|e| CmdError::invalid("/at", e.to_string()))?;
-        let policy = self.overlap.unwrap_or_default();
-
-        let main = match overlapping(track, at, end) {
-            None => Slot::Existing(track.id),
-            Some(other) => match policy {
-                OverlapPolicy::Reject => {
-                    return Err(CmdError::invalid(
-                        "/at",
-                        format!(
-                            "the clip would overlap item `{other}` on track `{}`; choose a free \
-                             time or use overlap \"new_track\"",
-                            track.id
-                        ),
-                    ));
-                }
-                OverlapPolicy::NewTrack => Slot::New { above: track.id },
-            },
-        };
-        let audio = if track.kind == TrackKind::Video
-            && self.link != Some(false)
-            && has_audio_stream(media)
-        {
-            audio_partner(sequence, at, end, policy)
-        } else {
-            None
-        };
-        Ok(Plan {
-            at,
-            source_in,
-            duration,
-            main_kind: track.kind,
-            main,
-            audio,
-        })
-    }
-}
-
-/// The audio track for the linked clip: the first unlocked one that is free over the range, or
-/// (under `new_track`) a new one above the first unlocked one.
-fn audio_partner(sequence: &Sequence, at: Time, end: Time, policy: OverlapPolicy) -> Option<Slot> {
-    let mut unlocked = sequence
-        .tracks_in_order()
-        .filter(|t| t.kind == TrackKind::Audio && !t.locked)
-        .peekable();
-    let first = unlocked.peek().map(|t| t.id)?;
-    if let Some(free) = unlocked.find(|t| overlapping(t, at, end).is_none()) {
-        return Some(Slot::Existing(free.id));
-    }
-    (policy == OverlapPolicy::NewTrack).then_some(Slot::New { above: first })
-}
-
-fn clip(id: ItemId, media: &MediaAsset, plan: &Plan, group: Option<GroupId>) -> Item {
-    let mut clip = Clip::new(id, media.id, plan.at, plan.duration);
-    clip.source_in = plan.source_in;
-    clip.linked_group = group;
-    clip.into()
-}
-
-pub(crate) fn materialize(
-    tx: &mut Tx<'_>,
-    sequence: SequenceId,
-    slot: Slot,
-    kind: TrackKind,
-    created: &mut Vec<TrackId>,
-) -> Result<TrackId, CmdError> {
-    match slot {
-        Slot::Existing(id) => Ok(id),
-        Slot::New { above } => {
-            let seq = tx.sequence(sequence)?;
-            let index = seq.track_order.index_of(&above).unwrap_or(0);
-            let name = next_track_name(seq, kind);
-            let track = Track::new(tx.new_id(), kind, name);
-            tx.insert_track(sequence, index, &track)?;
-            created.push(track.id);
-            Ok(track.id)
-        }
-    }
-}
-
-impl Command for TimelineInsert {
-    type Output = TimelineInsertOutput;
-
-    fn validate(&self, ctx: &QueryCtx<'_>) -> Result<(), CmdError> {
-        self.plan(ctx.doc()).map(drop)
-    }
-
-    fn apply(&self, tx: &mut Tx<'_>) -> Result<TimelineInsertOutput, CmdError> {
-        let plan = self.plan(tx.doc())?;
-        let media = tx.media(self.media)?.clone();
-        let group = plan.audio.map(|_| tx.new_id::<GroupId>());
-        let mut created = Vec::new();
-        let main = materialize(tx, self.sequence, plan.main, plan.main_kind, &mut created)?;
-        let main_id: ItemId = tx.new_id();
-        tx.insert_item(main, &clip(main_id, &media, &plan, group))?;
-        let mut clips = vec![main_id];
-        if let Some(slot) = plan.audio {
-            let audio = materialize(tx, self.sequence, slot, TrackKind::Audio, &mut created)?;
-            let id: ItemId = tx.new_id();
-            tx.insert_item(audio, &clip(id, &media, &plan, group))?;
-            clips.push(id);
-        }
-        Ok(TimelineInsertOutput {
-            at: plan.at,
-            duration: plan.duration,
-            clips,
-            linked_group: group,
-            created_tracks: created,
-        })
-    }
 }
 
 // ----- timeline.get --------------------------------------------------------------------------

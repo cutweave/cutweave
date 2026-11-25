@@ -23,6 +23,8 @@ use std::collections::BTreeMap;
 use cutweave_model::{GroupId, Item, ItemId, Project, TrackId};
 use serde_json::Value;
 
+use crate::report::EditReport;
+
 /// Checks the invariants of `doc`: [`Project::validate`] (references, timing, bounds, formats,
 /// linked groups inside one sequence, ...), no overlapping items on any track and no linked
 /// group with a single member.
@@ -50,9 +52,11 @@ pub fn check_invariants(doc: &Project) -> Result<(), String> {
     Ok(())
 }
 
-/// The linked-group rules of a successful group-aware edit (`clip.split`, `clip.trim`,
-/// `item.move`, `item.delete`) that changed `before` into `after` with `params` and returned
-/// `output`. Other commands pass.
+/// The rules of a successful edit that changed `before` into `after` with `params` and
+/// returned `output`: the linked-group rules of the group-aware edits (`clip.split`,
+/// `clip.trim`, `item.move`, `item.delete`, `timeline.ripple_delete`), and for every command
+/// (WP-2A.03) that the items of a locked track did not change (INV-28) and that a returned
+/// `report` is exactly the difference (INV-21, [`check_edit_report`]).
 pub fn check_linked_edit(
     name: &str,
     params: &Value,
@@ -60,13 +64,97 @@ pub fn check_linked_edit(
     before: &Project,
     after: &Project,
 ) -> Result<(), String> {
+    if !name.starts_with("edit.") {
+        locked_unchanged(name, before, after)?;
+    }
+    if output.get("report").is_some_and(Value::is_object) {
+        check_edit_report(name, output, before, after)?;
+    }
     match name {
-        "item.delete" => deleted_with_partners(output, before, after),
+        "item.delete" | "timeline.ripple_delete" => deleted_with_partners(output, before, after),
         "item.move" => moved_together(params, before, after),
         "clip.trim" => trimmed_together(params, before, after),
         "clip.split" => split_together(params, output, before, after),
         _ => Ok(()),
     }
+}
+
+/// Timeline spec INV-28: a command never changes the items of a track that is locked before
+/// and after it (undo, redo and restore replay history and are exempt).
+fn locked_unchanged(name: &str, before: &Project, after: &Project) -> Result<(), String> {
+    for (sid, s) in &before.sequences {
+        for t in s.tracks.values().filter(|t| t.locked) {
+            let Some(now) = after.sequences.get(sid).and_then(|s| s.track(&t.id)) else {
+                continue;
+            };
+            if now.locked && now.items != t.items {
+                return Err(format!("{name} changed the items of locked track {}", t.id));
+            }
+        }
+    }
+    Ok(())
+}
+
+/// Timeline spec INV-21: a returned `report` is exactly the difference between the documents
+/// (given the command's own splits and created tracks); its split right halves are new, its
+/// left halves existed, and its created tracks are new.
+///
+/// # Errors
+///
+/// A description of the first mismatch.
+pub fn check_edit_report(
+    name: &str,
+    output: &Value,
+    before: &Project,
+    after: &Project,
+) -> Result<(), String> {
+    let reported: EditReport = serde_json::from_value(output["report"].clone())
+        .map_err(|e| format!("{name}: the report does not parse: {e}"))?;
+    let mut derived = EditReport::default();
+    for (sid, s) in &after.sequences {
+        let Some(b) = before.sequences.get(sid) else {
+            continue;
+        };
+        let d = EditReport::diff(b, s, &reported.split, &[]);
+        derived.created.extend(d.created);
+        derived.removed.extend(d.removed);
+        derived.moved.extend(d.moved);
+        derived.trimmed.extend(d.trimmed);
+        derived.relinked.extend(d.relinked);
+        derived.replaced.extend(d.replaced);
+        derived.toggled.extend(d.toggled);
+    }
+    derived.split.clone_from(&reported.split);
+    derived.created_tracks.clone_from(&reported.created_tracks);
+    derived.created.sort();
+    derived.removed.sort();
+    derived.moved.sort_by_key(|m| m.item);
+    derived.trimmed.sort_by_key(|m| m.item);
+    derived.relinked.sort_by_key(|m| m.item);
+    derived.replaced.sort_by_key(|m| m.item);
+    derived.toggled.sort_by_key(|m| m.item);
+    if derived != reported {
+        return Err(format!(
+            "{name}: the report is not the difference of the documents:\n reported {}\n derived  {}",
+            serde_json::to_string(&reported).unwrap_or_default(),
+            serde_json::to_string(&derived).unwrap_or_default()
+        ));
+    }
+    for s in &reported.split {
+        if item(before, s.right).is_some() || item(after, s.right).is_none() {
+            return Err(format!("{name}: split right half {} is not new", s.right));
+        }
+        if item(before, s.left).is_none() {
+            return Err(format!("{name}: split left half {} did not exist", s.left));
+        }
+    }
+    for t in &reported.created_tracks {
+        let exists = |doc: &Project| doc.sequences.values().any(|s| s.track(t).is_some());
+        if exists(before) || !exists(after) {
+            return Err(format!("{name}: created track {t} is not new"));
+        }
+    }
+    Ok(())
 }
 
 fn id_at(v: &Value) -> Result<ItemId, String> {
@@ -169,27 +257,57 @@ fn deleted_with_partners(output: &Value, before: &Project, after: &Project) -> R
     Ok(())
 }
 
+/// The given items of an `item`/`items` request.
+fn given(params: &Value) -> Result<Vec<ItemId>, String> {
+    let mut out: Vec<ItemId> = match params.get("items").and_then(Value::as_array) {
+        Some(list) => list.iter().map(id_at).collect::<Result<_, _>>()?,
+        None => vec![id_at(&params["item"])?],
+    };
+    let mut seen = std::collections::BTreeSet::new();
+    out.retain(|id| seen.insert(*id));
+    Ok(out)
+}
+
+/// Whether `doc` has a magnetic track (ripples may move partners of unlinked items there).
+fn has_magnetic(doc: &Project) -> bool {
+    doc.sequences
+        .values()
+        .any(|s| s.tracks.values().any(|t| t.magnetic))
+}
+
 fn moved_together(params: &Value, before: &Project, after: &Project) -> Result<(), String> {
-    let target = id_at(&params["item"])?;
-    let (_, was) = found(before, target, "before the move")?;
-    if unlinked(params) {
-        return only_item_unlinked(target, &was, before, after);
-    }
-    let (_, now) = found(after, target, "after the move")?;
-    let delta = now.start().flicks() - was.start().flicks();
-    if now.linked_group() != was.linked_group() {
-        return Err(format!("item.move changed the group of {target}"));
-    }
-    for p in partners(before, &was) {
-        let (_, p0) = found(before, p, "before the move")?;
-        let (_, p1) = found(after, p, "after the move")?;
-        if p1.start().flicks() - p0.start().flicks() != delta
-            || p1.linked_group() != was.linked_group()
-        {
-            return Err(format!(
-                "linked partner {p} of {target} did not move with it (offset {} instead of {delta})",
-                p1.start().flicks() - p0.start().flicks()
-            ));
+    let targets = given(params)?;
+    let single = targets.len() == 1 && params.get("items").is_none_or(Value::is_null);
+    for target in targets {
+        let (_, was) = found(before, target, "before the move")?;
+        if unlinked(params) {
+            // P1: a single unlinked move on free tracks leaves the partners as they were;
+            // otherwise a ripple may move them, so only the group rule is checked.
+            if single && !has_magnetic(before) {
+                return only_item_unlinked(target, &was, before, after);
+            }
+            let (_, now) = found(after, target, "after the move")?;
+            if now.linked_group().is_some() {
+                return Err(format!("{target} is still linked after `unlink: true`"));
+            }
+            continue;
+        }
+        let (_, now) = found(after, target, "after the move")?;
+        let delta = now.start().flicks() - was.start().flicks();
+        if now.linked_group() != was.linked_group() {
+            return Err(format!("item.move changed the group of {target}"));
+        }
+        for p in partners(before, &was) {
+            let (_, p0) = found(before, p, "before the move")?;
+            let (_, p1) = found(after, p, "after the move")?;
+            if p1.start().flicks() - p0.start().flicks() != delta
+                || p1.linked_group() != was.linked_group()
+            {
+                return Err(format!(
+                    "linked partner {p} of {target} did not move with it (offset {} instead of {delta})",
+                    p1.start().flicks() - p0.start().flicks()
+                ));
+            }
         }
     }
     Ok(())
@@ -230,10 +348,10 @@ fn split_together(
     before: &Project,
     after: &Project,
 ) -> Result<(), String> {
-    let target = id_at(&params["item"])?;
+    let targets = given(params)?;
+    let first = *targets.first().ok_or("clip.split named no clip")?;
     let at = output["at"].as_i64().ok_or("clip.split returned no `at`")?;
     let right_group: Option<GroupId> = output["right_group"].as_str().and_then(|s| s.parse().ok());
-    let (_, was) = found(before, target, "before the split")?;
     let mut pairs = vec![(id_at(&output["left"])?, id_at(&output["right"])?)];
     for pair in output["linked"]
         .as_array()
@@ -241,20 +359,24 @@ fn split_together(
     {
         pairs.push((id_at(&pair["left"])?, id_at(&pair["right"])?));
     }
-    // Every partner that contained `at` (and the item itself) is a left half now. (The item
-    // comes first in both lists; the partners' order is the command's.)
-    let mut contained: Vec<ItemId> = std::iter::once(target)
-        .chain(partners(before, &was))
-        .filter(|id| {
-            item(before, *id).is_some_and(|(_, i)| {
+    // Every given clip and every partner that contained `at` is a left half now; the first
+    // given clip comes first.
+    let mut contained: Vec<ItemId> = Vec::new();
+    for target in &targets {
+        let (_, was) = found(before, *target, "before the split")?;
+        for id in std::iter::once(*target).chain(partners(before, &was)) {
+            let inside = item(before, id).is_some_and(|(_, i)| {
                 i.as_clip().is_some() && i.start().flicks() < at && at < end(&i)
-            })
-        })
-        .collect();
+            });
+            if inside && !contained.contains(&id) {
+                contained.push(id);
+            }
+        }
+    }
     let mut lefts: Vec<ItemId> = pairs.iter().map(|(l, _)| *l).collect();
     for list in [&mut contained, &mut lefts] {
-        if let Some(partners) = list.get_mut(1..) {
-            partners.sort();
+        if let Some(rest) = list.get_mut(1..) {
+            rest.sort();
         }
     }
     if contained != lefts {
@@ -262,13 +384,15 @@ fn split_together(
             "clip.split at {at} split {lefts:?}, but {contained:?} contained it"
         ));
     }
-    if (pairs.len() > 1) != right_group.is_some() {
+    let (_, first_was) = found(before, first, "before the split")?;
+    if first_was.linked_group().is_some() != right_group.is_some() {
         return Err(format!(
-            "clip.split: right group {right_group:?} for {} halves",
-            pairs.len()
+            "clip.split: right group {right_group:?} for a clip in group {:?}",
+            first_was.linked_group()
         ));
     }
     for (left, right) in pairs {
+        let (_, was) = found(before, left, "before the split")?;
         let (lt, l) = found(after, left, "after the split")?;
         let (rt, r) = found(after, right, "after the split")?;
         if end(&l) != at || r.start().flicks() != at || lt != rt {
@@ -276,9 +400,17 @@ fn split_together(
                 "{left} | {right} is not a split at {at} on one track"
             ));
         }
-        if l.linked_group() != was.linked_group() || r.linked_group() != right_group {
+        let expected = if partners(before, &first_was).contains(&left) || left == first {
+            right_group
+        } else {
+            r.linked_group()
+        };
+        if l.linked_group() != was.linked_group()
+            || r.linked_group() != expected
+            || r.linked_group().is_some() != was.linked_group().is_some()
+        {
             return Err(format!(
-                "after the split, {left} is in {:?} (expected {:?}) and {right} in {:?} (expected {right_group:?})",
+                "after the split, {left} is in {:?} (expected {:?}) and {right} in {:?} (expected {expected:?})",
                 l.linked_group(),
                 was.linked_group(),
                 r.linked_group()

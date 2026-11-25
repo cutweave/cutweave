@@ -1,11 +1,14 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
-//! The `clip` namespace (WP-1B.06; arch §5.1): the media-clip specifics `clip.split` and
-//! `clip.trim`. The edit semantics (frame grid, overlaps, locks, linked groups, no ripple) are
-//! documented once in [`crate::item`].
+//! The `clip` namespace (WP-1B.06, WP-2A.03; arch §5.1; timeline spec §4.7, §4.9): the
+//! media-clip specifics `clip.split` and `clip.trim`. The edit semantics (frame grid, overlaps,
+//! locks, linked groups, the magnetic track) are documented once in [`crate::item`].
 //!
-//! **Split.** The left half keeps the original item ID, the right half gets a new one. A linked
-//! clip's partners that contain the split time are split too; the right halves then share a
-//! *new* group, so the left pair and the right pair stay linked separately.
+//! **Split** (on the placement core). The left half keeps the original item ID, the right half
+//! gets a new one. A linked clip's partners are split too; the right halves then share a *new*
+//! group, so the left pair and the right pair stay linked separately. Children attached to the
+//! clip at or after the split time move to the right half (INV-39); item markers too. Nothing
+//! ripples. IDs (INV-23): per given clip, in order, the right halves' group (when linked), then
+//! the right halves in member order (the clip, then its partners by track ID and item ID).
 //!
 //! **Trim.** Trimming the start by `d` moves `start` and `source_in` by `d` and shortens the
 //! clip by `d`; trimming the end changes only the length. A clip never reads outside its media
@@ -16,6 +19,7 @@ use std::collections::BTreeSet;
 use cutweave_commands::{CmdError, Command, QueryCtx, Registry, RegistryError, Tx, command, wire};
 use cutweave_model::{
     Clip, EntityKind, GroupId, Item, ItemId, MediaAsset, MediaKind, Project, Time, TimeInput,
+    TrackKind,
 };
 
 use crate::{
@@ -23,7 +27,13 @@ use crate::{
         Located, conflict, duration, ensure_not_magnetic, ensure_orphans_unlockable,
         ensure_unlocked, members, time, unlink_orphans,
     },
-    util::resolve_frame_time,
+    report::EditReport,
+    timeline::{
+        edit::given_items,
+        placement::{DryIds, Edit, Ids, Plan, span},
+    },
+    track::check_editable_kind,
+    util::{resolve_frame_time, resolve_sample_time},
 };
 
 /// Registers the `clip.*` commands.
@@ -71,23 +81,27 @@ pub struct SplitPair {
 /// Result of `clip.split`.
 #[wire]
 pub struct ClipSplitOutput {
-    /// The left half of the requested item (keeps its ID).
+    /// The left half of the (first) requested clip (keeps its ID).
     pub left: ItemId,
-    /// The right half of the requested item (new ID).
+    /// The right half of the (first) requested clip (new ID).
     pub right: ItemId,
-    /// The time that was split at, snapped to the frame grid.
+    /// The time that was split at, snapped to the frame grid (or the sample grid, `fine`).
     pub at: Time,
-    /// The linked partners that were split too.
+    /// The other clips that were split: the first clip's linked partners, then the other
+    /// requested clips each followed by its partners.
     pub linked: Vec<SplitPair>,
-    /// The new group shared by the right halves, if there were partners.
+    /// The new group shared by the first clip's right halves, if it is linked.
     pub right_group: Option<GroupId>,
+    /// What changed (timeline spec §3.1).
+    pub report: EditReport,
 }
 
-/// Splits a clip into two at a timeline time that lies strictly inside it (`Invalid{path:"/at"}`
-/// at or beyond the edges). The halves are contiguous: durations sum to the original and the
-/// right half's `source_in` continues where the left half ends. Linked partners that contain
-/// the time are split too. `at` is snapped to the sequence's frame grid. `Locked` if the clip's
-/// track or a partner's track is locked.
+/// Splits a clip (`item`), or several (`items`), into two at a timeline time that lies strictly
+/// inside each (`Invalid{path:"/at"}` at or beyond the edges). The halves are contiguous:
+/// durations sum to the original and the right half's `source_in` continues where the left
+/// half ends. Linked partners are split too, and children attached at or after the time move
+/// to the right half. `at` is snapped to the sequence's frame grid (`fine: true`: the audio
+/// sample grid, for audio clips not linked to video). `Locked` if a track involved is locked.
 #[command(
     name = "clip.split",
     summary = "Split a clip (and its linked partners) at a timeline time",
@@ -96,124 +110,127 @@ pub struct ClipSplitOutput {
     annotations(destructive = false, idempotent = false)
 )]
 pub struct ClipSplit {
-    /// The clip.
-    pub item: ItemId,
-    /// Timeline time to split at: strictly inside the clip.
+    /// The clip (give `item` or `items`).
+    pub item: Option<ItemId>,
+    /// Several clips to split at the same time.
+    pub items: Option<Vec<ItemId>>,
+    /// Timeline time to split at: strictly inside every clip.
     pub at: TimeInput,
+    /// Snap `at` to the audio sample grid instead of frames; only for audio clips not linked
+    /// to video (default `false`).
+    pub fine: Option<bool>,
 }
 
 struct SplitPlan {
+    plan: Plan,
     at: Time,
-    targets: Vec<Located>,
+    pairs: Vec<(ItemId, ItemId)>,
 }
 
-impl ClipSplit {
-    fn plan(&self, doc: &Project) -> Result<SplitPlan, CmdError> {
-        let (sequence, group) = members(doc, self.item, true)?;
-        let rate = doc.sequences[&sequence].format.frame_rate;
-        let at = resolve_frame_time("/at", self.at, rate)?;
-        clip_of(&group[0].item)?;
-        ensure_unlocked(doc, &group)?;
-        let inside = |i: &Item| -> Result<bool, CmdError> {
-            let end = i
-                .end()
-                .map_err(|e| CmdError::invalid("/at", e.to_string()))?;
-            Ok(i.start() < at && at < end)
+fn plan_split(cmd: &ClipSplit, doc: &Project, ids: &mut dyn Ids) -> Result<SplitPlan, CmdError> {
+    let given = match (cmd.item, cmd.items.as_deref()) {
+        (Some(i), None) => vec![i],
+        (None, Some([])) => return Err(CmdError::invalid("/items", "give at least one clip")),
+        (None, Some(list)) => list.to_vec(),
+        _ => {
+            return Err(CmdError::invalid(
+                "",
+                "give exactly one of `item` or `items`",
+            ));
+        }
+    };
+    let (sequence, given) = given_items(doc, &given)?;
+    let seq = &doc.sequences[&sequence];
+    let mut e = Edit::new(doc, sequence, "/at")?;
+    for id in &given {
+        for (t, m) in e.members(*id) {
+            if let Some(track) = e.seq.track(&t) {
+                check_editable_kind("/item", track.kind)?;
+            }
+            if let Some((_, item)) = e.locate(m) {
+                clip_of(item)?;
+            }
+        }
+    }
+    let rate = seq.format.frame_rate;
+    let at = if cmd.fine.unwrap_or(false) {
+        let audio_only = given
+            .iter()
+            .flat_map(|id| e.members(*id))
+            .all(|(t, _)| e.seq.track(&t).is_some_and(|t| t.kind == TrackKind::Audio));
+        if !audio_only {
+            return Err(CmdError::invalid(
+                "/fine",
+                "a fine edit needs audio clips that are not linked to video",
+            ));
+        }
+        resolve_sample_time("/at", cmd.at, rate, seq.format.sample_rate)?
+    } else {
+        resolve_frame_time("/at", cmd.at, rate)?
+    };
+    let t = at.flicks();
+    for id in &given {
+        let Some((_, item)) = e.locate(*id) else {
+            continue;
         };
-        if !inside(&group[0].item)? {
-            let end = group[0]
-                .item
-                .end()
-                .map_err(|e| CmdError::invalid("/at", e.to_string()))?;
+        let (s, end) = span(item);
+        if !(s < t && t < end) {
             return Err(CmdError::invalid(
                 "/at",
                 format!(
-                    "the split time must be strictly inside the clip ({} .. {end})",
-                    group[0].item.start()
+                    "the split time must be strictly inside clip `{id}` ({} .. {end})",
+                    item.start()
                 ),
             ));
         }
-        let mut targets = vec![group[0].clone()];
-        for partner in &group[1..] {
-            if clip_of(&partner.item).is_ok() && inside(&partner.item)? {
-                targets.push(partner.clone());
-            }
-        }
-        Ok(SplitPlan { at, targets })
     }
+    let mut pairs = Vec::new();
+    let mut done = BTreeSet::new();
+    for id in &given {
+        if done.contains(id) {
+            continue;
+        }
+        let split = e.split(ids, *id, t);
+        done.extend(split.iter().map(|(l, _)| *l));
+        pairs.extend(split);
+    }
+    Ok(SplitPlan {
+        plan: e.finish(ids)?,
+        at,
+        pairs,
+    })
 }
 
 impl Command for ClipSplit {
     type Output = ClipSplitOutput;
 
     fn validate(&self, ctx: &QueryCtx<'_>) -> Result<(), CmdError> {
-        self.plan(ctx.doc()).map(drop)
+        plan_split(self, ctx.doc(), &mut DryIds::default()).map(drop)
     }
 
     fn apply(&self, tx: &mut Tx<'_>) -> Result<ClipSplitOutput, CmdError> {
-        let SplitPlan { at, targets } = self.plan(tx.doc())?;
-        let right_group = (targets.len() > 1).then(|| tx.new_id::<GroupId>());
-        let mut pairs = Vec::with_capacity(targets.len());
-        for target in &targets {
-            let clip = clip_of(&target.item)?;
-            let still = is_still(media_of(tx.doc(), clip)?);
-            let cut = at.flicks() - clip.start.flicks();
-            let end = clip.start.flicks() + clip.duration.flicks();
-            let left_len = duration("/at", cut)?;
-            let right_len = duration("/at", end - at.flicks())?;
-            let mut right = clip.clone();
-            right.id = tx.new_id();
-            right.start = at;
-            right.duration = right_len;
-            right.linked_group = right_group;
-            // Item markers stay with the half that plays their time (item-relative).
-            let (left_markers, right_markers) = split_markers(&clip.markers, cut);
-            right.markers = right_markers;
-            if !still {
-                right.source_in = time("/at", clip.source_in.flicks() + cut)?;
-            }
-            let (left_id, right_id) = (clip.id, right.id);
-            tx.update_item(left_id, |i| {
-                i.set_duration(left_len);
-                *i.markers_mut() = left_markers;
-                Ok(())
-            })?;
-            tx.insert_item(target.track, &Item::Clip(right))?;
-            pairs.push(SplitPair {
-                left: left_id,
-                right: right_id,
-            });
-        }
-        let first = pairs.remove(0);
+        let doc = tx.doc().clone();
+        let SplitPlan { plan, at, pairs } = plan_split(self, &doc, tx)?;
+        let report = plan.commit(tx)?;
+        let mut pairs = pairs.into_iter();
+        let (left, right) = pairs
+            .next()
+            .ok_or_else(|| CmdError::internal("clip.split split nothing"))?;
+        let right_group = plan
+            .after
+            .find_item(&right)
+            .and_then(|(_, i)| i.linked_group());
         Ok(ClipSplitOutput {
-            left: first.left,
-            right: first.right,
+            left,
+            right,
             at,
-            linked: pairs,
+            linked: pairs
+                .map(|(left, right)| SplitPair { left, right })
+                .collect(),
             right_group,
+            report,
         })
     }
-}
-
-/// Splits item markers at the item-relative time `cut` (flicks): markers before it stay, the
-/// others go to the right half re-based to its start. A range marker belongs to the half it
-/// starts in.
-fn split_markers(
-    markers: &cutweave_model::Markers,
-    cut: i64,
-) -> (cutweave_model::Markers, cutweave_model::Markers) {
-    let mut left = cutweave_model::Markers::new();
-    let mut right = cutweave_model::Markers::new();
-    for m in markers.values() {
-        if m.t.flicks() < cut {
-            left.insert(m.id, m.clone());
-        } else {
-            let mut moved = m.clone();
-            moved.t = Time::from_flicks(m.t.flicks() - cut).unwrap_or(Time::ZERO);
-            right.insert(moved.id, moved);
-        }
-    }
-    (left, right)
 }
 
 // ----- clip.trim -----------------------------------------------------------------------------

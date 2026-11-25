@@ -1,34 +1,35 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
-//! The `item` namespace (WP-1B.06; arch §4.3, §5.1): generic edits of any timeline item:
-//! `item.move`, `item.delete`, `item.set_props` and the query `item.get`. The media-clip
+//! The `item` namespace (WP-1B.06, WP-2A.03; arch §4.3, §5.1; timeline spec §4.2, §4.3, §4.8):
+//! generic edits of any timeline item: `item.move`, `item.delete` and `item.duplicate`
+//! ([`edit`], on the placement core), `item.set_props` and the query `item.get`. The media-clip
 //! specifics (`clip.split`, `clip.trim`) live in [`crate::clip`].
 //!
-//! # Edit semantics (the contract for the timeline UI, WP-1M.06, and for agents)
+//! # Edit semantics (the contract for the timeline UI and for agents)
+//!
+//! The normative rules are `docs/spec/timeline-edit-semantics.md` (ADR-0023). In short:
 //!
 //! * **Frame grid.** Every time param is resolved against the frame rate of the item's
 //!   sequence and snapped to the *nearest* frame boundary (ties later), so the stored result
 //!   is always frame-aligned, also at NTSC rates. The result states the time that was used.
-//! * **No overlaps.** Items on one track never overlap (arch §4.3). A command that would
-//!   create one fails with `Invalid` at the offending param, unless it accepts
-//!   `overlap: "new_track"`, which puts the item on a new track of the same kind directly
-//!   above the target (the policy of `timeline.insert`).
-//! * **Locks.** An edit that adds, removes or changes an item of a locked track fails with
-//!   `Locked` naming that track; this includes the tracks of linked partners. Nothing is
-//!   applied in that case.
-//! * **Linked groups.** Items sharing a `linked_group` (video and its audio) move, trim, split
-//!   and are deleted together. `unlink: true` on `item.move` and `clip.trim` edits only the
-//!   given item and removes it from the group. A group never keeps a single member: an item
-//!   left alone in its group by `unlink` (or by `track.remove`) is unlinked in the same
-//!   transaction. If that item sits on a locked track the edit fails with `Locked` naming that
-//!   track and applies nothing, like any edit touching a locked partner's track.
-//! * **No ripple.** Edits never shift other items; gaps stay gaps.
-//!
-//! ```text
-//! split at T            trim start to T      trim end to T        move to start S
-//! [  A     ]            [  A     ]           [  A     ]           [  A     ]
-//! [ A1 | A2 ]           [..|  A'  ]          [  A'  |..]         ..........[  A  ]
-//!      ^T                  ^T                     ^T                       ^S
-//! ```
+//! * **No overlaps.** Items on one track never overlap (arch §4.3). On free tracks a placement
+//!   that would create one fails with `Invalid` by default (`reject`); `new_track` puts the item
+//!   on a new track of the same kind directly above, `overwrite` cuts out what is there and
+//!   `insert` ripples it later.
+//! * **The magnetic main track** is gap-free from 0: placing on it inserts by default, and
+//!   deleting or moving an item off it closes the space. A ripple reaches the tracks of the
+//!   linked partners of what shifts.
+//! * **Locks.** An edit that would add, remove or change an item of a locked track fails with
+//!   `Locked` naming that track; this includes the tracks of linked partners, of rippled items
+//!   and of attached children. Nothing is applied in that case.
+//! * **Linked groups.** Items sharing a `linked_group` (video and its audio) are aligned and
+//!   move, trim, split, are deleted and duplicated together. `unlink: true` on `item.move` and
+//!   `clip.trim` edits only the given item and removes it from the group; a group never keeps a
+//!   single member.
+//! * **Attachments.** A child (`attached_to`) follows its parent's moves, is detached and stays
+//!   when its parent is deleted, and moves to the right half when its parent is split.
+//! * **Edit reports.** Every edit returns `report`: exactly what changed.
+
+pub mod edit;
 
 use std::collections::{BTreeMap, BTreeSet};
 
@@ -36,21 +37,30 @@ use cutweave_commands::{
     CmdError, Command, Query, QueryCtx, Registry, RegistryError, Tx, command, query, wire,
 };
 use cutweave_model::{
-    AudioProps, EntityKind, GroupId, Item, ItemId, Project, SequenceId, Time, TimeInput, Track,
-    TrackId, Transform, Vec2, VisualProps,
+    AudioProps, EntityKind, GroupId, Item, ItemId, Project, SequenceId, Time, Track, TrackId,
+    Transform, Vec2, VisualProps,
+};
+
+pub use edit::{
+    DuplicatedItem, ItemDelete, ItemDeleteOutput, ItemDuplicate, ItemDuplicateOutput, ItemMove,
+    ItemMoveOutput, MovedItem,
 };
 
 use crate::{
-    timeline::{ItemSummary, OverlapPolicy, Slot, item_summary, materialize},
+    timeline::{ItemSummary, item_summary},
     track::{MAX_TRACK_GAIN_DB, MIN_TRACK_GAIN_DB, check_editable_kind},
-    util::{check_name, resolve_frame_time},
+    util::check_name,
 };
+
+/// Longest `items` list of `item.delete` (and the other commands that take a list of items).
+pub const MAX_DELETE_ITEMS: usize = 10_000;
 
 /// Registers the `item.*` commands and queries.
 pub fn register(registry: &mut Registry) -> Result<(), RegistryError> {
     registry
         .register::<ItemMove>()?
         .register::<ItemDelete>()?
+        .register::<ItemDuplicate>()?
         .register::<ItemSetProps>()?
         .register::<ItemGet>()?;
     Ok(())
@@ -225,301 +235,6 @@ pub(crate) fn conflict(
         .overlapping(start, end)
         .map(Item::id)
         .find(|id| !excluded.contains(id))
-}
-
-// ----- item.move -----------------------------------------------------------------------------
-
-/// Where one item ended up.
-#[wire]
-pub struct MovedItem {
-    /// The item.
-    pub item: ItemId,
-    /// The track it is on now.
-    pub track: TrackId,
-    /// Its new start.
-    pub start: Time,
-}
-
-/// Result of `item.move`.
-#[wire]
-pub struct ItemMoveOutput {
-    /// The moved items: the requested one first, then its linked partners.
-    pub items: Vec<MovedItem>,
-    /// Tracks created by `overlap: "new_track"`, in creation order.
-    pub created_tracks: Vec<TrackId>,
-}
-
-/// Moves an item to a new start, optionally onto another track of the same kind and sequence.
-/// The item's linked partners move by the same amount on their own tracks (`unlink: true`
-/// moves only this item and removes it from its group). Overlap is `Invalid{path:"/start"}`
-/// by default; `overlap: "new_track"` puts the item on a new track directly above the target.
-/// `Locked` if the source, the target or a partner's track is locked. `start` is snapped to
-/// the sequence's frame grid and must be `>= 0`.
-#[command(
-    name = "item.move",
-    summary = "Move an item in time and/or to another track (linked partners follow)",
-    undoable,
-    mcp = "core",
-    annotations(destructive = false, idempotent = true)
-)]
-pub struct ItemMove {
-    /// The item.
-    pub item: ItemId,
-    /// New timeline position of the item's first frame, `>= 0`.
-    pub start: TimeInput,
-    /// Target track of the same sequence and kind (default: stay on the current track).
-    pub to_track: Option<TrackId>,
-    /// Move only this item and remove it from its linked group (default `false`).
-    pub unlink: Option<bool>,
-    /// Overlap handling (default `reject`).
-    pub overlap: Option<OverlapPolicy>,
-}
-
-struct MovePlan {
-    sequence: SequenceId,
-    /// The group the primary item leaves under `unlink: true`.
-    leaves: Option<GroupId>,
-    /// `(item, new start, slot)` of each moved item.
-    moves: Vec<(ItemId, Time, Slot)>,
-    unlink: bool,
-}
-
-impl ItemMove {
-    fn plan(&self, doc: &Project) -> Result<MovePlan, CmdError> {
-        let unlink = self.unlink.unwrap_or(false);
-        let (sequence, group) = members(doc, self.item, !unlink)?;
-        let seq = &doc.sequences[&sequence];
-        let rate = seq.format.frame_rate;
-        let primary = &group[0];
-        let start = resolve_frame_time("/start", self.start, rate)?;
-        if start < Time::ZERO {
-            return Err(CmdError::invalid("/start", "the time must not be negative"));
-        }
-        ensure_not_magnetic(doc, &group)?;
-        ensure_unlocked(doc, &group)?;
-        if unlink {
-            ensure_orphans_unlockable(doc, primary.item.linked_group(), primary.item.id())?;
-        }
-        let target = match self.to_track {
-            None => primary.track,
-            Some(t) => {
-                let track = match seq.track(&t) {
-                    Some(track) => track,
-                    None if doc.sequences.values().any(|s| s.track(&t).is_some()) => {
-                        return Err(CmdError::invalid(
-                            "/to_track",
-                            format!("track `{t}` is not in the item's sequence"),
-                        ));
-                    }
-                    None => return Err(CmdError::not_found(EntityKind::Track, t)),
-                };
-                let from_kind = seq.track(&primary.track).map(|x| x.kind);
-                if Some(track.kind) != from_kind {
-                    return Err(CmdError::invalid(
-                        "/to_track",
-                        format!(
-                            "a {} item cannot move to a {} track",
-                            from_kind.map_or_else(|| "?".into(), |k| k.to_string()),
-                            track.kind
-                        ),
-                    ));
-                }
-                editable_track(track)?;
-                ensure_free_track(track)?;
-                t
-            }
-        };
-        let delta = start.flicks() - primary.item.start().flicks();
-        let policy = self.overlap.unwrap_or_default();
-        let excluded: BTreeSet<ItemId> = group.iter().map(|m| m.item.id()).collect();
-        let mut placed: Vec<(TrackId, Time, Time)> = Vec::new();
-        let mut moves = Vec::new();
-        for (i, m) in group.iter().enumerate() {
-            let at = if i == 0 {
-                start
-            } else {
-                time("/start", m.item.start().flicks() + delta)
-                    .map_err(|_| partner_range(&m.item))?
-            };
-            if at < Time::ZERO {
-                return Err(partner_range(&m.item));
-            }
-            let end = at
-                .checked_add(m.item.duration())
-                .map_err(|e| CmdError::invalid("/start", e.to_string()))?;
-            let track_id = if i == 0 { target } else { m.track };
-            let track = &seq.tracks[&track_id];
-            let busy = conflict(track, at, end, &excluded).or_else(|| {
-                placed
-                    .iter()
-                    .find(|(t, s, e)| *t == track_id && *s < end && at < *e)
-                    .map(|_| m.item.id())
-            });
-            let slot = match (busy, policy) {
-                (None, _) => Slot::Existing(track_id),
-                (Some(other), OverlapPolicy::Reject) => {
-                    return Err(CmdError::invalid(
-                        "/start",
-                        format!(
-                            "item `{}` would overlap item `{other}` on track `{track_id}`; \
-                             choose a free time or use overlap \"new_track\"",
-                            m.item.id()
-                        ),
-                    ));
-                }
-                (Some(_), OverlapPolicy::NewTrack) => Slot::New { above: track_id },
-            };
-            if matches!(slot, Slot::Existing(_)) {
-                placed.push((track_id, at, end));
-            }
-            moves.push((m.item.id(), at, slot));
-        }
-        Ok(MovePlan {
-            sequence,
-            leaves: if unlink {
-                primary.item.linked_group()
-            } else {
-                None
-            },
-            moves,
-            unlink,
-        })
-    }
-}
-
-fn partner_range(item: &Item) -> CmdError {
-    CmdError::invalid(
-        "/start",
-        format!(
-            "linked item `{}` would start before zero; use unlink: true to move only this item",
-            item.id()
-        ),
-    )
-}
-
-impl Command for ItemMove {
-    type Output = ItemMoveOutput;
-
-    fn validate(&self, ctx: &QueryCtx<'_>) -> Result<(), CmdError> {
-        self.plan(ctx.doc()).map(drop)
-    }
-
-    fn apply(&self, tx: &mut Tx<'_>) -> Result<ItemMoveOutput, CmdError> {
-        let plan = self.plan(tx.doc())?;
-        let mut created = Vec::new();
-        let mut items = Vec::new();
-        for (i, (id, at, slot)) in plan.moves.iter().enumerate() {
-            let kind = {
-                let (_, track) = tx.track(match slot {
-                    Slot::Existing(t) => *t,
-                    Slot::New { above } => *above,
-                })?;
-                track.kind
-            };
-            let track = materialize(tx, plan.sequence, *slot, kind, &mut created)?;
-            tx.move_item(*id, track)?;
-            let unlink = plan.unlink && i == 0;
-            tx.update_item(*id, |item| {
-                item.set_start(*at);
-                if unlink {
-                    item.set_linked_group(None);
-                }
-                Ok(())
-            })?;
-            items.push(MovedItem {
-                item: *id,
-                track,
-                start: *at,
-            });
-        }
-        unlink_orphans(tx, plan.leaves)?;
-        Ok(ItemMoveOutput {
-            items,
-            created_tracks: created,
-        })
-    }
-}
-
-// ----- item.delete ---------------------------------------------------------------------------
-
-/// Result of `item.delete`.
-#[wire]
-pub struct ItemDeleteOutput {
-    /// Every deleted item: the requested ones in request order, then their linked partners.
-    pub deleted: Vec<ItemId>,
-}
-
-/// Longest `items` list of `item.delete`.
-pub const MAX_DELETE_ITEMS: usize = 10_000;
-
-/// Deletes items and their linked partners. Gaps stay (no ripple). All or nothing: if any
-/// affected track is locked the call fails with `Locked` and nothing is deleted. Unknown items
-/// are `NotFound`; repeated IDs are deleted once.
-#[command(
-    name = "item.delete",
-    summary = "Delete items and their linked partners (no ripple; fails if a track is locked)",
-    undoable,
-    mcp = "core",
-    annotations(destructive = true, idempotent = false)
-)]
-pub struct ItemDelete {
-    /// The items to delete, at least one.
-    pub items: Vec<ItemId>,
-}
-
-impl ItemDelete {
-    fn plan(&self, doc: &Project) -> Result<Vec<Located>, CmdError> {
-        if self.items.is_empty() {
-            return Err(CmdError::invalid("/items", "give at least one item"));
-        }
-        if self.items.len() > MAX_DELETE_ITEMS {
-            return Err(CmdError::invalid(
-                "/items",
-                format!("at most {MAX_DELETE_ITEMS} items per call"),
-            ));
-        }
-        let mut seen = BTreeSet::new();
-        let mut all = Vec::new();
-        for id in &self.items {
-            if seen.contains(id) {
-                continue;
-            }
-            let (_, group) = members(doc, *id, true)?;
-            for m in group {
-                if seen.insert(m.item.id()) {
-                    all.push(m);
-                }
-            }
-        }
-        // Requested items first, partners after (stable).
-        all.sort_by_key(|m| {
-            self.items
-                .iter()
-                .position(|i| *i == m.item.id())
-                .unwrap_or(usize::MAX)
-        });
-        ensure_not_magnetic(doc, &all)?;
-        ensure_unlocked(doc, &all)?;
-        Ok(all)
-    }
-}
-
-impl Command for ItemDelete {
-    type Output = ItemDeleteOutput;
-
-    fn validate(&self, ctx: &QueryCtx<'_>) -> Result<(), CmdError> {
-        self.plan(ctx.doc()).map(drop)
-    }
-
-    fn apply(&self, tx: &mut Tx<'_>) -> Result<ItemDeleteOutput, CmdError> {
-        let all = self.plan(tx.doc())?;
-        let mut deleted = Vec::with_capacity(all.len());
-        for m in &all {
-            tx.remove_item(m.item.id())?;
-            deleted.push(m.item.id());
-        }
-        Ok(ItemDeleteOutput { deleted })
-    }
 }
 
 // ----- item.set_props ------------------------------------------------------------------------

@@ -109,7 +109,11 @@ fn split_at_ntsc_frame_edges_is_exact() {
     assert_eq!(r.start, expected);
     assert_eq!(l.duration.flicks(), expected.flicks());
     assert_eq!(r.source_in, expected);
-    assert_eq!(l.duration.flicks() + r.duration.flicks(), 10 * FLICKS);
+    // The default length is the media floored to whole frames (spec INV-25): 299 of 299.7.
+    assert_eq!(
+        l.duration.flicks() + r.duration.flicks(),
+        rate.frame_to_time(299).unwrap().flicks()
+    );
     // A time a few flicks off the frame edge lands on the same boundary.
     let edge = rate.frame_to_time(200).unwrap().flicks();
     let out = h.ok("clip.split", json!({"item": r.id, "at": edge + 3}));

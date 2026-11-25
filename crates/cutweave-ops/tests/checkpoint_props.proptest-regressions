@@ -1,0 +1,7 @@
+# Seeds for failure cases proptest has generated in the past. It is
+# automatically read and these particular cases re-run before any
+# novel cases are generated.
+#
+# It is recommended to check this file in to source control so that
+# everyone who runs the test benefits from these saved cases.
+cc dc6973c7670eda5e8cf2aa5f5a48275b93db53c04acade3403d87430ac4069e7 # shrinks to start = Project { meta: ProjectMeta { schema_version: 2, name: "Generated 0", created: None, app_version: None, extra: Extra({}) }, settings: ProjectSettings { default_format: SequenceFormat { width: 1920, height: 1080, frame_rate: FrameRate { num: 30, den: 1 }, sample_rate: SampleRate(48000), color_space: Rec709, background: Color { r: 0, g: 0, b: 0, a: 255 }, extra: Extra({}) }, extra: Extra({}) }, media: {}, sequences: {}, custom: Custom({}), extra: Extra({}) }, before = [], after = [(0, false)], named = false
