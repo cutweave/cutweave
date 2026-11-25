@@ -435,7 +435,12 @@ fn steps_equal_singles(cmds: &[Cmd], steps: u32) {
     let (mut batched, mut single) = (build(), build());
     let u = ctx(0);
     for verb in ["edit.undo", "edit.redo"] {
-        let batch = run(&mut batched, &u, verb, json!({"actor": "*", "steps": steps}));
+        let batch = run(
+            &mut batched,
+            &u,
+            verb,
+            json!({"actor": "*", "steps": steps}),
+        );
         let mut done = 0;
         while done < steps && run(&mut single, &u, verb, json!({"actor": "*"})).is_ok() {
             done += 1;
