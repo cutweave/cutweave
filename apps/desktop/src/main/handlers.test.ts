@@ -213,7 +213,13 @@ describe("createHandlers", () => {
     expect(await h["dialog:pickMediaFolders"]()).toEqual(["/m/Shoot"]);
     base.chooseMediaFolders.mockResolvedValueOnce(null);
     expect(await h["dialog:pickMediaFolders"]()).toBeNull();
-    base.chooseMediaFolders.mockResolvedValueOnce(["/m/Shoot", "/m/Shoot", "rel/dir", "", "/m/Day 2"]);
+    base.chooseMediaFolders.mockResolvedValueOnce([
+      "/m/Shoot",
+      "/m/Shoot",
+      "rel/dir",
+      "",
+      "/m/Day 2",
+    ]);
     expect(await h["dialog:pickMediaFolders"]()).toEqual(["/m/Shoot", "/m/Day 2"]);
   });
 

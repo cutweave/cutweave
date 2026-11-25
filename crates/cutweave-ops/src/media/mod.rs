@@ -570,26 +570,39 @@ fn expand(paths: &[String], skipped: &mut ImportSkipped) -> Result<Vec<Item>, Cm
     Ok(items)
 }
 
-impl EngineCommand for MediaImport {
-    type Context = ImportCtx;
-    type Output = MediaImportOutput;
+/// What probing the files of an import gave.
+struct Probing {
+    /// The readable files, ready to register.
+    batch: Vec<MediaRegister>,
+    /// The bin folders each entry of `batch` goes into (empty: straight into the folder).
+    dirs: Vec<Vec<String>>,
+    /// The request index of each entry of `batch`.
+    origin: Vec<usize>,
+    /// The files named in the request that could not be imported.
+    failed: Vec<ImportFailure>,
+}
 
-    fn run(&self, ctx: &mut ImportCtx) -> Result<MediaImportOutput, CmdError> {
-        self.check(&ctx.policy)?;
-        let keep = self.keep_structure.unwrap_or(true);
-        let mut skipped = ImportSkipped::default();
-        let items = expand(&self.paths, &mut skipped)?;
+impl MediaImport {
+    /// Probes `items` (announcing progress) and sorts them into files to register, files named
+    /// in the request that failed, and files found in folders that were left out (counted in
+    /// `skipped`).
+    fn probe_items(
+        &self,
+        ctx: &ImportCtx,
+        items: Vec<Item>,
+        keep: bool,
+        skipped: &mut ImportSkipped,
+    ) -> Probing {
         let files: Vec<String> = items.iter().map(|item| item.path.clone()).collect();
         let total = u32::try_from(files.len()).unwrap_or(u32::MAX);
         // At most about a hundred progress events per call.
         let step = (total / 100).max(1);
         let mut done = 0_u32;
-        let events = ctx.events.clone();
         let probed = policy::probe_all(&ctx.prober, &files, &ctx.policy, &mut || {
             done += 1;
-            if let Some(events) = &events
+            if let Some(events) = &ctx.events
                 && total > 1
-                && (done % step == 0 || done == total)
+                && (done.is_multiple_of(step) || done == total)
             {
                 events.publish(MediaEvent::ImportProgress(MediaImportProgress {
                     done,
@@ -597,11 +610,12 @@ impl EngineCommand for MediaImport {
                 }));
             }
         });
-        let mut batch = Vec::with_capacity(items.len());
-        let mut dirs = Vec::with_capacity(items.len());
-        // The request index of each batch entry (failed files are not in the batch).
-        let mut origin = Vec::with_capacity(items.len());
-        let mut failed = Vec::new();
+        let mut out = Probing {
+            batch: Vec::with_capacity(items.len()),
+            dirs: Vec::with_capacity(items.len()),
+            origin: Vec::with_capacity(items.len()),
+            failed: Vec::new(),
+        };
         for (item, result) in items.into_iter().zip(probed) {
             let path = &item.path;
             let refused = match result {
@@ -615,9 +629,9 @@ impl EngineCommand for MediaImport {
                     };
                     match register.kind() {
                         Ok(_) => {
-                            batch.push(register);
-                            dirs.push(if keep { item.dirs } else { Vec::new() });
-                            origin.push(item.origin);
+                            out.batch.push(register);
+                            out.dirs.push(if keep { item.dirs } else { Vec::new() });
+                            out.origin.push(item.origin);
                             continue;
                         }
                         Err(e) => ImportFailure {
@@ -630,7 +644,7 @@ impl EngineCommand for MediaImport {
                 Err(e) => failure(path, &e),
             };
             if !item.from_folder {
-                failed.push(refused);
+                out.failed.push(refused);
             } else if matches!(
                 refused.code,
                 ImportFailureCode::Unsupported | ImportFailureCode::Invalid
@@ -640,6 +654,25 @@ impl EngineCommand for MediaImport {
                 skipped.unreadable += 1;
             }
         }
+        out
+    }
+}
+
+impl EngineCommand for MediaImport {
+    type Context = ImportCtx;
+    type Output = MediaImportOutput;
+
+    fn run(&self, ctx: &mut ImportCtx) -> Result<MediaImportOutput, CmdError> {
+        self.check(&ctx.policy)?;
+        let keep = self.keep_structure.unwrap_or(true);
+        let mut skipped = ImportSkipped::default();
+        let items = expand(&self.paths, &mut skipped)?;
+        let Probing {
+            batch,
+            dirs,
+            origin,
+            failed,
+        } = self.probe_items(ctx, items, keep, &mut skipped);
         let mut folders = 0;
         let results = if batch.is_empty() {
             Vec::new()

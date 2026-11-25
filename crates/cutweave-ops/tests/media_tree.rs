@@ -194,5 +194,5 @@ fn a_sink_that_cannot_make_folders_refuses_a_tree_and_the_error_names_the_path()
         &tree,
         json!({"paths": [tree.path("One"), "relative/dir"]}),
     );
-    assert_invalid(result.map(|v| v), "/paths/1");
+    assert_invalid(result, "/paths/1");
 }

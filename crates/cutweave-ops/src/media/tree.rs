@@ -89,9 +89,7 @@ impl Command for MediaRegisterTree {
 
     fn apply(&self, tx: &mut Tx<'_>) -> Result<MediaTreeRegistered, CmdError> {
         self.validate(&tx.query_ctx())?;
-        // The folder of each directory chain made or found so far, keyed by the chain's names.
-        let mut made: HashMap<Vec<String>, Option<FolderId>> = HashMap::new();
-        let mut folders = 0_u32;
+        let mut made = Made::default();
         let mut results = Vec::with_capacity(self.entries.len());
         for (i, entry) in self.entries.iter().enumerate() {
             let known = by_hash(tx.doc(), &entry.register.content_hash).is_some();
@@ -99,35 +97,55 @@ impl Command for MediaRegisterTree {
             register.folder = if known || entry.dirs.is_empty() {
                 self.folder
             } else {
-                let mut parent = self.folder;
-                let mut chain = Vec::with_capacity(entry.dirs.len());
-                for name in &entry.dirs {
-                    chain.push(folder_name_key(name));
-                    parent = match made.get(&chain) {
-                        Some(folder) => *folder,
-                        None => {
-                            let folder = if depth_of(tx.doc(), parent) >= MAX_FOLDER_DEPTH {
-                                parent
-                            } else {
-                                folders += 1;
-                                let created = MediaCreateFolder {
-                                    parent,
-                                    name: Some(name.clone()),
-                                    on_conflict: Some(OnConflict::Rename),
-                                }
-                                .apply(tx)
-                                .map_err(|e| at(i, e))?;
-                                Some(created.folder_id)
-                            };
-                            made.insert(chain.clone(), folder);
-                            folder
-                        }
-                    };
-                }
-                parent
+                made.folder_for(tx, self.folder, &entry.dirs)
+                    .map_err(|e| at(i, e))?
             };
             results.push(register.apply(tx).map_err(|e| at(i, e))?);
         }
-        Ok(MediaTreeRegistered { results, folders })
+        Ok(MediaTreeRegistered {
+            results,
+            folders: made.created,
+        })
+    }
+}
+
+/// The bin folders made so far for the directory chains of the tree.
+#[derive(Default)]
+struct Made {
+    /// The folder of each chain (its names, case folded); `None`: the top level.
+    by_chain: HashMap<Vec<String>, Option<FolderId>>,
+    created: u32,
+}
+
+impl Made {
+    /// The folder for the chain `dirs` below `base`, making the folders that are missing. At the
+    /// deepest level a folder can have, the files stay in the folder they reached.
+    fn folder_for(
+        &mut self,
+        tx: &mut Tx<'_>,
+        base: Option<FolderId>,
+        dirs: &[String],
+    ) -> Result<Option<FolderId>, CmdError> {
+        let mut parent = base;
+        let mut chain = Vec::with_capacity(dirs.len());
+        for name in dirs {
+            chain.push(folder_name_key(name));
+            if let Some(folder) = self.by_chain.get(&chain) {
+                parent = *folder;
+                continue;
+            }
+            if depth_of(tx.doc(), parent) < MAX_FOLDER_DEPTH {
+                let created = MediaCreateFolder {
+                    parent,
+                    name: Some(name.clone()),
+                    on_conflict: Some(OnConflict::Rename),
+                }
+                .apply(tx)?;
+                self.created += 1;
+                parent = Some(created.folder_id);
+            }
+            self.by_chain.insert(chain.clone(), parent);
+        }
+        Ok(parent)
     }
 }
