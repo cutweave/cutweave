@@ -7,8 +7,9 @@ report is docs/milestones/M1-exit.md).
   1. Through the UI: import 3 clips, arrange, trim, split, export a 1080p MP4 that plays.
      `e2e/m1/m1-exit.spec.ts` (the M1 corpus clips, exact inputs), the user flow F14 (pointer
      drags), and the UI's export checked here: it decodes without errors, its sound is not
-     silent, and its frames match `cutweave render` of the saved project (PSNR >= 38 dB, the
-     tolerance policy's bound for a lossy MP4 against a rendered frame).
+     silent, and its frames match `cutweave render` of the saved project (PSNR >= 38 dB in the
+     export's 4:2:0 colour space, the tolerance policy's bound for a lossy MP4 against a
+     rendered frame; the RGB round trip is reported too).
   2. Through MCP headless: a scripted client does the same and exports an identical-timeline file.
      The MCP conformance suite with the M1 scripted agent (`mcp_conformance`, built with FFmpeg),
      then the two saved projects compared by normalized structure (ids, machine paths and
@@ -28,7 +29,7 @@ report. Media is never written there.
 
 Usage:
   python scripts/m1-gate.py [--trials N] [--full] [--skip-build] [--criteria 1,2,3,4]
-                            [--evidence DIR]
+                            [--evidence DIR] [--golden-base REV]
   python scripts/m1-gate.py compare UI_DIR MCP_DIR   # criterion 2's comparison of two runs
   python scripts/m1-gate.py --self-test              # the normalizer's own checks
 
@@ -318,19 +319,52 @@ def audio_hash(file: Path, env: dict[str, str]) -> str | None:
 
 def psnr(a: Path, b: Path, env: dict[str, str]) -> float:
     """Average PSNR (dB) of the video of `b` against `a`, both as RGB; inf when identical."""
-    out = run_capture([ffmpeg_tool("ffmpeg", env), "-v", "info", "-nostats", "-i", str(a), "-i", str(b),
-                       "-lavfi", "[0:v]format=rgb24[a];[1:v]format=rgb24[b];[a][b]psnr",
-                       "-f", "null", "-"], env)
+    return _psnr([ffmpeg_tool("ffmpeg", env), "-v", "info", "-nostats", "-i", str(a), "-i", str(b),
+                  "-lavfi", "[0:v]format=rgb24[a];[1:v]format=rgb24[b];[a][b]psnr",
+                  "-f", "null", "-"], env)
+
+
+def _psnr(cmd: list[str], env: dict[str, str]) -> float:
+    out = run_capture(cmd, env)
     m = re.search(r"PSNR .*average:(inf|[0-9.]+)", out.stderr)
     if m is None:
-        raise RuntimeError(f"no PSNR for {a} / {b}: {out.stderr[-500:]}")
+        raise RuntimeError(f"no PSNR from {' '.join(cmd)}: {out.stderr[-500:]}")
     return float("inf") if m.group(1) == "inf" else float(m.group(1))
+
+
+# The export's colour: BT.709, limited range, 4:2:0. `setparams` pins the decoded frame's tags so
+# FFmpeg 8's colour negotiation never converts it twice (as crates/cutweave-engine/tests/
+# export_ffmpeg.rs does).
+PIN_709 = "setparams=range=tv:colorspace=bt709:color_primaries=bt709:color_trc=bt709"
+EXACT = "accurate_rnd+full_chroma_int"
+
+
+def frame_psnr(rendered: Path, export: Path, n: int, env: dict[str, str]) -> dict:
+    """Frame `n` of the export against `cutweave render`'s PNG of it, measured two ways:
+
+    - `yuv_db`, the bound: the render converted to the export's BT.709 limited-range 4:2:0, as
+      the exporter does before encoding, against the decoded frame. That is the encoder's loss,
+      which the tolerance policy's lossy-MP4 row allows for (>= 38 dB).
+    - `rgb_db`, reported: the decoded frame converted back to RGB with the BT.709 matrix (as
+      export_ffmpeg.rs does) against the render. On saturated synthetic pictures the 4:2:0 round
+      trip alone costs a few dB in red and blue, with any encoder.
+    """
+    ffmpeg = ffmpeg_tool("ffmpeg", env)
+    pick = f"select=eq(n\\,{n}),{PIN_709}"
+    yuv = _psnr([ffmpeg, "-v", "info", "-nostats", "-i", str(rendered), "-i", str(export), "-lavfi",
+                 f"[0:v]scale=out_color_matrix=bt709:out_range=tv:flags={EXACT},format=yuv420p[a];"
+                 f"[1:v]{pick},format=yuv420p[b];[a][b]psnr", "-frames:v", "1", "-f", "null", "-"], env)
+    rgb = _psnr([ffmpeg, "-v", "info", "-nostats", "-i", str(rendered), "-i", str(export), "-lavfi",
+                 f"[0:v]format=rgb24[a];[1:v]{pick},scale=in_color_matrix=bt709:in_range=tv:"
+                 f"out_range=pc:flags={EXACT},format=rgb24[b];[a][b]psnr", "-frames:v", "1",
+                 "-f", "null", "-"], env)
+    return {"frame": n, "yuv_db": round(yuv, 2), "rgb_db": round(rgb, 2)}
 
 
 def validate_mp4(project_dir: Path, file: Path, env: dict[str, str], work: Path) -> dict:
     """WP-1O.04 exit 1's checks of the UI's export beyond ffprobe (the test did that): it decodes
     to the end without an error, its sound is not silent, and frames decoded from it match the
-    same frames rendered by `cutweave render` from the saved project."""
+    same frames rendered by `cutweave render` from the saved project (`frame_psnr`)."""
     result: dict = {"file": file.name}
     decoded = run_capture([ffmpeg_tool("ffmpeg", env), "-v", "error", "-i", str(file), "-f", "null", "-"], env)
     result["decode_errors"] = decoded.stderr.strip().splitlines()
@@ -348,16 +382,13 @@ def validate_mp4(project_dir: Path, file: Path, env: dict[str, str], work: Path)
     result["frames"] = []
     for n in RENDER_FRAMES:
         png = frames_dir / f"f{n:05d}.png"
-        dec = work / f"decoded-{n:05d}.png"
-        run_capture([ffmpeg_tool("ffmpeg", env), "-v", "error", "-y", "-i", str(file), "-vf",
-                     f"select=eq(n\\,{n})", "-fps_mode", "passthrough", "-frames:v", "1", str(dec)], env)
-        value = psnr(png, dec, env) if png.is_file() and dec.is_file() else None
-        result["frames"].append({"frame": n, "psnr_db": value})
+        result["frames"].append(frame_psnr(png, file, n, env) if png.is_file()
+                                else {"frame": n, "yuv_db": None, "rgb_db": None})
     result["ok"] = (
         decoded.returncode == 0 and not result["decode_errors"]
         and result["max_volume_db"] is not None and result["max_volume_db"] > SILENT_DB
         and rendered.returncode == 0
-        and all(f["psnr_db"] is not None and f["psnr_db"] >= LOSSY_PSNR_DB for f in result["frames"])
+        and all(f["yuv_db"] is not None and f["yuv_db"] >= LOSSY_PSNR_DB for f in result["frames"])
     )
     return result
 
@@ -570,8 +601,9 @@ def gate(args) -> int:
         project = OUT / "ui" / PROJECT
         validated.update(validate_mp4(project, project / f"{PROJECT}.mp4", env, work))
         (OUT / "validate-mp4.json").write_text(json.dumps(validated, indent=2) + "\n", encoding="utf-8")
-        frames = ", ".join(f"f{f['frame']} {f['psnr_db']:.1f} dB" if f["psnr_db"] is not None
-                           else f"f{f['frame']} missing" for f in validated["frames"])
+        frames = ", ".join(f"f{f['frame']} {f['yuv_db']:.1f} dB (RGB {f['rgb_db']:.1f})"
+                           if f["yuv_db"] is not None else f"f{f['frame']} missing"
+                           for f in validated["frames"])
         return validated["ok"], (f"decode errors {len(validated['decode_errors'])}, max volume "
                                  f"{validated['max_volume_db']} dB, render vs export: {frames}")
 
@@ -610,7 +642,8 @@ def gate(args) -> int:
         ]
     if "4" in wanted:
         steps += [
-            Step("4b", "golden frames (cargo xtask golden)", [cargo, "xtask", "golden"]),
+            Step("4b", "golden frames (cargo xtask golden)", [cargo, "xtask", "golden"] + (
+                ["--base", args.golden_base] if args.golden_base else [])),
             Step("4c", "parity CLI = MCP = RPC", [cargo, "nextest", "run", "-p", "cutweave-api",
                                                   "--test", "parity"]),
         ]
@@ -671,6 +704,8 @@ def main() -> int:
     p.add_argument("--skip-build", action="store_true", help="use the binaries and app already built")
     p.add_argument("--criteria", default="1,2,3,4", help="which criteria to run, e.g. 1,2")
     p.add_argument("--evidence", help="also write the text evidence to this folder")
+    p.add_argument("--golden-base", help="the golden frames' reference-update guard base "
+                   "(default: the merge base with main)")
     p.add_argument("--self-test", action="store_true", help="check the normalizer and exit")
     args = p.parse_args()
     if args.self_test:

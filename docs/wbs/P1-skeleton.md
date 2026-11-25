@@ -1435,8 +1435,8 @@ Human gates: PR review of `1B.01`, `1B.03`/`1B.09` (concurrency + ownership core
 - **Out of scope:** LLM-in-the-loop evals (P6).
 
 ### WP-1O.04 — M1 exit acceptance suite (UI + MCP + crash)
-- **Note (ADR-0018):** the UI exits are the milestone subset of the user-flow suite built in WP-1O.05; this WP adds the M1-specific flows and the CI aggregation.
-- **Area:** `apps/desktop/e2e`, `crates/cutweave-cli/tests`, `docs/m1-acceptance.md`
+- **Note (ADR-0018):** the UI exits are the milestone subset of the user-flow suite built in WP-1O.05; this WP adds the M1-specific flows and the gate that aggregates them (`just m1-gate`).
+- **Area:** `apps/desktop/e2e`, `crates/cutweave-cli/tests`, `scripts/m1-gate.py`, `justfile` (`m1-gate`), `docs/milestones/M1-exit.md`
 - **Depends on:** WP-1M.08, WP-1L.03, WP-1M.07, WP-1O.01, WP-1O.02, WP-1O.03, WP-1B.08, WP-1B.09
 - **Size:** M
 - **Executor:** opus (human signs off the demo)
@@ -1444,9 +1444,10 @@ Human gates: PR review of `1B.01`, `1B.03`/`1B.09` (concurrency + ownership core
   - **Exit 1 (UI):** Playwright-Electron test importing the 3 corpus clips (H.264 1080p60, HEVC 10-bit, VFR phone), arranging, trimming, splitting, exporting 1080p MP4; validation script `scripts/validate-mp4.ts`/`xtask validate-mp4`: ffprobe codec/size/fps/duration (±1 frame), decode to null with no errors, frame hash comparison at 3 timestamps vs `cutweave render` golden reference (PSNR ≥ 38 dB), audio level non-silent.
   - **Exit 2 (MCP headless equivalent):** the UI path is driven through **numeric inputs** (inspector start/duration fields, split button/key, media bin Enter-to-insert), not pixel drags, using `--deterministic-ids 42` for both engines. The saved project documents are compared by **normalized structure** (ID-normalized, UI-only fields dropped via `xtask normalize-project`) and must be equal to the MCP-produced document; they are **not** required to be byte-identical (byte-identical is reserved for CLI = MCP = RPC in 1O.02). The exported MP4s must be **frame-equivalent** (decoded frame hashes equal at every 10th frame, PSNR >= 45 dB).
   - **Exit 3 (crash):** run 20 trials: mid-edit `killEngine()` (varying point in a 30-command script, also kill during a gesture-tx drag) → UI recovers, final doc equals an uninterrupted run; plus app-level SIGKILL of everything → relaunch → recovery dialog → Restore → equal to last acked state. 0 lost commands in all 40 trials.
-  - **Exit 4 (CI):** a `m1-gate` workflow aggregating required checks (rust/ts ×3 OS, golden-frames, parity, mcp-conformance, schema-snapshot, deny, e2e) and `docs/m1-acceptance.md` checklist with links to green runs; record the demo video of the flow on 1 machine per OS (human).
-- **Interfaces:** `m1-gate` workflow; acceptance checklist.
-- **Acceptance criteria:** all four exit criteria items evidenced by green CI run URLs in `docs/m1-acceptance.md`; Human reviewer signs off by checking boxes in the PR.
+  - **Exit 4 (CI):** a `m1-gate` workflow aggregating required checks (rust/ts ×3 OS, golden-frames, parity, mcp-conformance, schema-snapshot, deny, e2e) and the `docs/milestones/M1-exit.md` checklist with links to green runs; record the demo video of the flow on 1 machine per OS (human).
+  - **R34 (Windows only for now):** the suite runs on Windows with local gates: `just m1-gate` (`scripts/m1-gate.py`) aggregates the checks and reports pass or fail per criterion. No `m1-gate` workflow is added (Actions-minutes policy, owner 2026-11-25); CI wiring waits for the integrator and the owner. macOS and Linux runs are deferred, not dropped.
+- **Interfaces:** `just m1-gate`; the M1 report `docs/milestones/M1-exit.md`.
+- **Acceptance criteria:** all four exit criteria items evidenced in `docs/milestones/M1-exit.md` by a `just m1-gate` run on Windows (R34: local gates instead of CI run URLs); the product owner signs off in the report.
 - **Tests:** this WP is e2e.
 - **Out of scope:** performance budgets beyond those recorded in earlier WPs.
 

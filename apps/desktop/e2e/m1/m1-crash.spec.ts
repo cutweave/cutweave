@@ -19,7 +19,7 @@
 // crash-loop guard (four crashes in 60 s) is reset with the hook resync.spec.ts uses, since it is
 // not what is measured here. F11 and F12 cover the same journeys with a person's clicks and drags.
 // Trials per kind: `CUTWEAVE_M1_TRIALS` (the gate passes 20), else 4.
-import { readFileSync, statSync } from "node:fs";
+import { closeSync, existsSync, openSync, readFileSync, statSync } from "node:fs";
 import path from "node:path";
 import type { ElectronApplication, Page } from "@playwright/test";
 import {
@@ -301,7 +301,8 @@ async function runScript(
     recoveredMs = Date.now() - killedAt;
     if (kill.inFlight) step.keep?.(c, await reply);
     for (const d of during) d.step.keep?.(c, await d.reply);
-    expect((await editorState(page)).outbox).toEqual([]);
+    // Nothing is left waiting: the outbox drains once the editor's own resync calls are answered.
+    await expect.poll(async () => (await editorState(page)).outbox).toEqual([]);
     i += 1 + during.length;
   }
   return { recoveredMs, sentDuringOutage };
@@ -324,6 +325,21 @@ async function newProject(app: ElectronApplication, page: Page, name: string, pa
   await expect(naming.dialog).toBeHidden();
   await expect(page).toHaveTitle(`${name} — Cutweave`);
   await expect(dirtyDot(page)).toBeHidden();
+}
+
+/**
+ * Whether no process of an app killed on profile `home` still holds Chromium's single-instance
+ * lock (`<userData>/lockfile`, opened exclusively and deleted when its holder exits).
+ */
+function profileFree(home: string): boolean {
+  const lock = path.join(home, "userData", "lockfile");
+  if (!existsSync(lock)) return true;
+  try {
+    closeSync(openSync(lock, "r+"));
+    return true;
+  } catch {
+    return false;
+  }
 }
 
 /** Timeline items in the project file on disk. */
@@ -487,7 +503,8 @@ test.describe("M1 exit 3: crash recovery trials", () => {
           FILES.map((f) => work.file(f)),
         );
         const c = await context(page);
-        const k = 3 + ((t * 7) % 28);
+        // k from 3 to 30, a different k in each of the first 28 trials (11 and 28 are coprime).
+        const k = 3 + ((t * 11) % 28);
         await runScript(page, c, k);
         await editorCaughtUp(page);
         await expect(dirtyDot(page)).toBeVisible();
@@ -504,6 +521,11 @@ test.describe("M1 exit 3: crash recovery trials", () => {
         await exited;
         await launched.close();
         launched = null;
+        // A relaunch on the same profile needs Chromium's single-instance lock, which the killed
+        // app's last helper process holds for a moment after the main process has gone.
+        await expect
+          .poll(() => profileFree(home), { timeout: 30_000, message: "the profile stays locked" })
+          .toBe(true);
 
         // Relaunch, open it from Recent, Restore.
         launched = await launchFlowApp(work, home);
