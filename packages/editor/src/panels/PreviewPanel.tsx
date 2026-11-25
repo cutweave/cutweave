@@ -95,7 +95,7 @@ export function PreviewPanel() {
 
   return (
     // biome-ignore lint/a11y/noStaticElementInteractions: Esc and Enter of the Source view; the buttons keep their own keys
-    <div ref={stageRef} className="cw-preview" data-source={showsSource} onKeyDown={onKeyDown}>
+    <div className="cw-preview" data-source={showsSource} onKeyDown={onKeyDown}>
       {showsSource ? <SourceHeader /> : null}
       <div className="cw-preview__bar" hidden={showsSource}>
         <SegmentedControl<AspectId>
@@ -119,6 +119,7 @@ export function PreviewPanel() {
       </div>
       {engine ? <ReducedBanner path={path} /> : null}
       <div
+        ref={stageRef}
         className="cw-preview__stage"
         {...(showsSource && {
           role: "group",
