@@ -53,12 +53,12 @@ use std::{
     sync::Arc,
 };
 
-use cutweave_model::Project;
 use schemars::{JsonSchema, Schema, SchemaGenerator, json_schema};
 use serde::{Deserialize, Deserializer, Serialize, Serializer, de};
 use serde_json::Value;
 
 use super::{
+    checkpoint::CheckpointId,
     clock::WallTime,
     identity::Actor,
     request::{TxId, TxKind},
@@ -159,75 +159,6 @@ impl JsonSchema for HistoryScope {
             "type": "string",
             "description": "Whose history: `user`, `agent:<label>`, `plugin:<id>`, `system`, or `*` for anyone's most recent change.",
             "pattern": "^(\\*|user|system|agent:.+|plugin:[A-Za-z0-9._@-]+)$"
-        })
-    }
-}
-
-/// A checkpoint (`cp_<n>` on the wire), see `edit.checkpoint`.
-#[derive(Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, specta::Type)]
-#[specta(type = String)]
-pub struct CheckpointId(u64);
-
-impl CheckpointId {
-    /// The checkpoint with this number.
-    #[must_use]
-    pub const fn new(n: u64) -> CheckpointId {
-        CheckpointId(n)
-    }
-
-    /// The number.
-    #[must_use]
-    pub const fn get(self) -> u64 {
-        self.0
-    }
-
-    /// Parses `cp_<n>`.
-    #[must_use]
-    pub fn parse(s: &str) -> Option<CheckpointId> {
-        s.strip_prefix("cp_")
-            .filter(|n| !n.is_empty() && n.bytes().all(|b| b.is_ascii_digit()))
-            .and_then(|n| n.parse().ok())
-            .map(CheckpointId)
-    }
-}
-
-impl fmt::Display for CheckpointId {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(f, "cp_{}", self.0)
-    }
-}
-
-impl fmt::Debug for CheckpointId {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        fmt::Display::fmt(self, f)
-    }
-}
-
-impl Serialize for CheckpointId {
-    fn serialize<S: Serializer>(&self, s: S) -> Result<S::Ok, S::Error> {
-        s.collect_str(self)
-    }
-}
-
-impl<'de> Deserialize<'de> for CheckpointId {
-    fn deserialize<D: Deserializer<'de>>(d: D) -> Result<CheckpointId, D::Error> {
-        let s = std::borrow::Cow::<str>::deserialize(d)?;
-        CheckpointId::parse(&s).ok_or_else(|| {
-            de::Error::custom(format!("invalid checkpoint id `{s}`: expected `cp_<n>`"))
-        })
-    }
-}
-
-impl JsonSchema for CheckpointId {
-    fn schema_name() -> std::borrow::Cow<'static, str> {
-        "CheckpointId".into()
-    }
-
-    fn json_schema(_: &mut SchemaGenerator) -> Schema {
-        json_schema!({
-            "type": "string",
-            "pattern": "^cp_[0-9]+$",
-            "description": "A checkpoint id."
         })
     }
 }
@@ -1119,149 +1050,6 @@ impl History {
     }
 }
 
-/// The document a checkpoint captured, with its metadata.
-#[derive(Clone, Debug)]
-pub(crate) struct Checkpoint {
-    pub(crate) id: CheckpointId,
-    pub(crate) name: Option<String>,
-    pub(crate) note: Option<String>,
-    pub(crate) rev: Rev,
-    pub(crate) actor: Actor,
-    pub(crate) at: WallTime,
-    pub(crate) doc: Project,
-    /// The first history record after it.
-    pub(crate) first_seq: u64,
-    last_used: u64,
-}
-
-impl Checkpoint {
-    pub(crate) fn info(&self) -> CheckpointInfo {
-        CheckpointInfo {
-            checkpoint: self.id,
-            name: self.name.clone(),
-            note: self.note.clone(),
-            rev: self.rev,
-            actor: self.actor.clone(),
-            at: self.at,
-        }
-    }
-}
-
-/// A checkpoint, as `edit.checkpoint` and `edit.list_checkpoints` report it.
-#[derive(Clone, Debug, PartialEq, Serialize, Deserialize, schemars::JsonSchema, specta::Type)]
-pub struct CheckpointInfo {
-    /// Its id.
-    pub checkpoint: CheckpointId,
-    /// Its name, if any.
-    pub name: Option<String>,
-    /// A free-form note.
-    pub note: Option<String>,
-    /// The committed revision it captured.
-    pub rev: Rev,
-    /// Who made it.
-    pub actor: Actor,
-    /// When.
-    pub at: WallTime,
-}
-
-/// Most checkpoints kept (least recently used unnamed ones go first).
-pub const MAX_CHECKPOINTS: usize = 50;
-/// Most named checkpoints kept (least recently used go first).
-pub const MAX_NAMED_CHECKPOINTS: usize = 20;
-/// Longest checkpoint name, in characters.
-pub const MAX_CHECKPOINT_NAME_CHARS: usize = 64;
-/// Longest checkpoint note, in characters.
-pub const MAX_CHECKPOINT_NOTE_CHARS: usize = 1_000;
-
-/// In-memory checkpoints: O(1) snapshots of the committed document thanks to the persistent
-/// collections (only what changes later costs memory).
-#[derive(Debug, Default)]
-pub(crate) struct Checkpoints {
-    next: u64,
-    tick: u64,
-    map: BTreeMap<CheckpointId, Checkpoint>,
-}
-
-impl Checkpoints {
-    #[allow(clippy::too_many_arguments)]
-    pub(crate) fn create(
-        &mut self,
-        name: Option<String>,
-        note: Option<String>,
-        rev: Rev,
-        actor: Actor,
-        at: WallTime,
-        doc: Project,
-        first_seq: u64,
-    ) -> CheckpointInfo {
-        // A name moves to the new checkpoint.
-        if let Some(name) = &name {
-            self.map.retain(|_, c| c.name.as_ref() != Some(name));
-        }
-        self.next += 1;
-        self.tick += 1;
-        let id = CheckpointId(self.next);
-        let checkpoint = Checkpoint {
-            id,
-            name,
-            note,
-            rev,
-            actor,
-            at,
-            doc,
-            first_seq,
-            last_used: self.tick,
-        };
-        let info = checkpoint.info();
-        self.map.insert(id, checkpoint);
-        self.trim(id);
-        info
-    }
-
-    fn trim(&mut self, keep: CheckpointId) {
-        let lru = |map: &BTreeMap<CheckpointId, Checkpoint>, named: bool| {
-            map.values()
-                .filter(|c| c.id != keep && c.name.is_some() == named)
-                .min_by_key(|c| c.last_used)
-                .map(|c| c.id)
-        };
-        while self.map.values().filter(|c| c.name.is_some()).count() > MAX_NAMED_CHECKPOINTS {
-            match lru(&self.map, true) {
-                Some(id) => self.map.remove(&id),
-                None => break,
-            };
-        }
-        while self.map.len() > MAX_CHECKPOINTS {
-            match lru(&self.map, false).or_else(|| lru(&self.map, true)) {
-                Some(id) => self.map.remove(&id),
-                None => break,
-            };
-        }
-    }
-
-    /// The checkpoint with this id (`cp_<n>`) or name, marked as used.
-    pub(crate) fn find(&mut self, key: &str) -> Option<&Checkpoint> {
-        let id = CheckpointId::parse(key)
-            .filter(|id| self.map.contains_key(id))
-            .or_else(|| {
-                self.map
-                    .values()
-                    .find(|c| c.name.as_deref() == Some(key))
-                    .map(|c| c.id)
-            })?;
-        self.tick += 1;
-        let tick = self.tick;
-        let c = self.map.get_mut(&id)?;
-        c.last_used = tick;
-        Some(c)
-    }
-
-    /// Every checkpoint, oldest first.
-    pub(crate) fn list(&self) -> Vec<CheckpointInfo> {
-        self.map.values().map(Checkpoint::info).collect()
-    }
-}
-
 #[cfg(test)]
 mod tests {
     #![allow(clippy::unwrap_used)]
@@ -1428,39 +1216,5 @@ mod tests {
             .map(|e| e.tx_id.get())
             .collect();
         assert_eq!(all, [5, 4, 3, 2, 1]);
-    }
-
-    #[test]
-    fn checkpoint_names_move_and_lru_trims() {
-        let mut c = Checkpoints::default();
-        let doc = Project::new("x");
-        let mk = |c: &mut Checkpoints, name: Option<&str>| {
-            c.create(
-                name.map(str::to_owned),
-                None,
-                Rev(1),
-                Actor::User,
-                WallTime::UNIX_EPOCH,
-                doc.clone(),
-                1,
-            )
-            .checkpoint
-        };
-        let first = mk(&mut c, Some("a"));
-        let second = mk(&mut c, Some("a"));
-        assert_ne!(first, second);
-        assert_eq!(c.find("a").unwrap().id, second);
-        assert!(c.find(&first.to_string()).is_none());
-        for _ in 0..MAX_CHECKPOINTS + 5 {
-            mk(&mut c, None);
-        }
-        assert_eq!(c.list().len(), MAX_CHECKPOINTS);
-        // The named one survives the unnamed churn.
-        assert!(c.find("a").is_some());
-        for i in 0..MAX_NAMED_CHECKPOINTS + 3 {
-            mk(&mut c, Some(&format!("n{i}")));
-        }
-        let named = c.list().iter().filter(|i| i.name.is_some()).count();
-        assert_eq!(named, MAX_NAMED_CHECKPOINTS);
     }
 }
