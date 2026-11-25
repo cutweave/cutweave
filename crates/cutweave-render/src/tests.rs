@@ -241,6 +241,24 @@ fn muting_a_video_track_does_not_hide_it() {
 }
 
 #[test]
+fn solo_does_not_affect_video() {
+    let mut f = Fixture::new();
+    let m = f.media(1, MediaKind::Video, 60);
+    let low = f.track(10, TrackKind::Video);
+    let high = f.track(11, TrackKind::Video);
+    let audio = f.track(12, TrackKind::Audio);
+    let a = f.clip(low, m, sec(0), Duration::from_secs(1).unwrap());
+    let b = f.clip(high, m, sec(0), Duration::from_secs(1).unwrap());
+    f.clip(audio, m, sec(0), Duration::from_secs(1).unwrap());
+    let before = f.at(sec(0)).layers;
+    for track in [audio, high] {
+        f.edit_track(track, |tr| tr.solo = true);
+        assert_eq!(f.items_at(sec(0)), vec![a, b]);
+        assert_eq!(f.at(sec(0)).layers, before);
+    }
+}
+
+#[test]
 fn audio_only_media_and_missing_media_have_no_picture() {
     let mut f = Fixture::new();
     let au = f.media(1, MediaKind::Audio, 60);

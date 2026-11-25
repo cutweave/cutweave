@@ -21,9 +21,9 @@ use cutweave_commands::{DocActor, DocConfig, Registry};
 use cutweave_media::PixelFormat as MediaFormat;
 use cutweave_media::testing::{FakeBackend, FakeMedia, FakeVideo};
 use cutweave_model::{
-    Animatable, Clip, Duration, Extra, FrameRate, ItemId, MediaAsset, MediaId, MediaKind,
-    ProbeInfo, Project, SampleRate, Sequence, SequenceFormat, SequenceId, StreamInfo, StreamKind,
-    Time, Track, TrackId, TrackKind, Vec2,
+    AnimValue, Animatable, BlendMode, Clip, Duration, Extra, FrameRate, Interp, ItemId, Keyframe,
+    Keyframes, MediaAsset, MediaId, MediaKind, ProbeInfo, Project, SampleRate, Sequence,
+    SequenceFormat, SequenceId, StreamInfo, StreamKind, Time, Track, TrackId, TrackKind, Vec2,
 };
 use cutweave_playback::shm::{FrameLayout, PixelFormat};
 use cutweave_playback::transport::{
@@ -85,8 +85,21 @@ fn asset(id: MediaId, path: &str, size: (u32, u32), n: u8) -> MediaAsset {
     asset
 }
 
+/// Linear keys from `a` at 0 s to `b` at 10 s.
+fn keys<T: AnimValue>(a: T, b: T) -> Animatable<T> {
+    Animatable::Keyframes(
+        Keyframes::new(vec![
+            Keyframe::new(Time::ZERO, a, Interp::Linear),
+            Keyframe::new(Time::from_secs(10).unwrap(), b, Interp::Linear),
+        ])
+        .unwrap(),
+    )
+}
+
 /// A 640×360 @ 30 fps sequence: an NV12 clip filling the frame (V1) under a half-size 4:2:0
-/// picture-in-picture (V2), both 10 s long; and the backend that decodes them.
+/// picture-in-picture (V2), both 10 s long; and the backend that decodes them. The
+/// picture-in-picture moves and turns on keyframes, is flipped and blends in screen mode
+/// (WP-2C.04): keyframe evaluation and the blend path's backdrop copy allocate nothing either.
 fn fixture() -> (Project, FakeBackend) {
     let dir = std::env::temp_dir();
     let (pa, pb) = (
@@ -121,7 +134,10 @@ fn fixture() -> (Project, FakeBackend) {
     sequence.insert_track(0, Track::new(v2, TrackKind::Video, "V2"));
     let mut pip = Clip::new(ItemId::from_u128(32), mb, Time::ZERO, ten);
     pip.visual.transform.scale = Animatable::Static(Vec2::new(0.5, 0.5));
-    pip.visual.transform.position = Animatable::Static(Vec2::new(0.25, -0.25));
+    pip.visual.transform.position = keys(Vec2::new(0.25, -0.25), Vec2::new(-0.25, 0.25));
+    pip.visual.transform.rotation = keys(0.0, 90.0);
+    pip.visual.flip.horizontal.set(true);
+    pip.visual.blend_mode = BlendMode::Screen;
     sequence
         .track_mut(&v1)
         .unwrap()
