@@ -101,7 +101,11 @@ function theme(): Theme {
   };
 }
 
-const noopContext = new Proxy({}, { get: () => () => undefined }) as CanvasRenderingContext2D;
+// A canvas context that draws nothing; text measures 0 wide. A resize draws at once (#163).
+const noopContext = new Proxy(
+  {},
+  { get: (_t, prop) => (prop === "measureText" ? () => ({ width: 0 }) : () => undefined) },
+) as CanvasRenderingContext2D;
 const HEADER = 4 * 48; // 4 x space-12
 const RULER = 28; // control-md
 const LANE = 48 + 2 * 4; // track-md + 2 x space-1
