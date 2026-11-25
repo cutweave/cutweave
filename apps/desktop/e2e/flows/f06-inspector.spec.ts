@@ -138,7 +138,16 @@ test.describe("F6 inspector", () => {
       await expect(f.positionX).toHaveAttribute("aria-valuenow", "120");
 
       // Position Y: scrub by dragging the field to the right.
-      const y = await f.positionY.boundingBox();
+      // Aim at what is on screen: a reset button appears beside an edited row and moves the field.
+      let y = await f.positionY.boundingBox();
+      await expect
+        .poll(async () => {
+          const next = await f.positionY.boundingBox();
+          const steady = next !== null && y !== null && Math.abs(next.x - y.x) < 0.5;
+          y = next;
+          return steady;
+        })
+        .toBe(true);
       if (y === null) throw new Error("no position Y field");
       await page.mouse.move(y.x + y.width / 2, y.y + y.height / 2);
       await page.mouse.down();
@@ -246,6 +255,7 @@ test.describe("F6 inspector", () => {
       await page.keyboard.type("*2");
       await page.keyboard.press("Enter");
       await expect.poll(async () => (await item(page, videoId)).visual.transform.scale.x).toBe(2);
+      await expect(f.scale).toHaveAttribute("aria-valuenow", "200");
       await f.scale.dblclick();
       await page.keyboard.type("50%");
       await page.keyboard.press("Enter");

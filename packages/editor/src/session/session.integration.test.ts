@@ -297,6 +297,77 @@ describe("the inspector, undo and redo against the real engine", () => {
     }
   });
 
+  live("two clips take one edit as one entry, and a position keys at the playhead", async () => {
+    const s = await open();
+    try {
+      await createProject(s, "VideoEdits");
+      const { clip, partner } = await seedClip(s);
+      const both = select(s, clip, partner);
+      const before = (await history(s)).length;
+      await s.editor.applyProp(propEdit(both, "opacity", 0.5, 1));
+      await until(() => itemOf(s, clip).visual.opacity === 0.5);
+      await until(() => itemOf(s, partner).visual.opacity === 0.5);
+      expect((await history(s)).length).toBe(before + 1);
+
+      // The clip starts at 1 s: a key at 2 s is item time 1 s; typing at 4 s keys it there.
+      const one = select(s, clip);
+      await s.editor.toggleKey(one, "transform.position", sec(2), false, "position");
+      await until(() => "keyframes" in itemOf(s, clip).visual.transform.position);
+      await s.editor.applyProp(
+        propEdit(select(s, clip), "transform.position", { x: 100, y: 0 }, { x: 0, y: 0 }, sec(4)),
+      );
+      await until(() => {
+        const p = itemOf(s, clip).visual.transform.position as { keyframes?: unknown[] };
+        return p.keyframes?.length === 2;
+      });
+      const keys = (
+        itemOf(s, clip).visual.transform.position as {
+          keyframes: { t: number; value: { x: number } }[];
+        }
+      ).keyframes;
+      expect(keys.map((k) => [k.t, k.value.x])).toEqual([
+        [sec(1), 0],
+        [sec(3), 100],
+      ]);
+      // An edit to an animated property without the playhead inside the clip is refused, not lost.
+      await s.editor.applyProp(
+        propEdit(select(s, clip), "transform.position", { x: 5, y: 5 }, { x: 0, y: 0 }, sec(9)),
+      );
+      expect(s.toasts.getState().notices).toHaveLength(1);
+      // Removing the key at 2 s leaves one key, then the reset makes the property static again.
+      await s.editor.toggleKey(select(s, clip), "transform.position", sec(2), true, "position");
+      await until(() => {
+        const p = itemOf(s, clip).visual.transform.position as { keyframes?: unknown[] };
+        return p.keyframes?.length === 1;
+      });
+      await s.editor.resetProps(select(s, clip), { props: ["transform.position"] }, "position");
+      await until(() => !("keyframes" in itemOf(s, clip).visual.transform.position));
+    } finally {
+      await s.stop();
+    }
+  });
+
+  live("typing a value reaches the document within 100 ms (p95)", async () => {
+    const s = await open();
+    try {
+      await createProject(s, "Latency");
+      const { clip } = await seedClip(s);
+      const clips = select(s, clip);
+      const times: number[] = [];
+      for (let degrees = 1; degrees <= 20; degrees++) {
+        const started = performance.now();
+        await s.editor.applyProp(propEdit(clips, "transform.rotation", degrees, degrees - 1));
+        await until(() => itemOf(s, clip).visual.transform.rotation === degrees, 5000);
+        times.push(performance.now() - started);
+      }
+      times.sort((a, b) => a - b);
+      const p95 = times[Math.ceil(times.length * 0.95) - 1] ?? Number.POSITIVE_INFINITY;
+      expect(p95, `p95 of ${times.map((t) => Math.round(t)).join(", ")} ms`).toBeLessThan(100);
+    } finally {
+      await s.stop();
+    }
+  });
+
   live("a drag back to where it started leaves no undo entry", async () => {
     const s = await open();
     try {
