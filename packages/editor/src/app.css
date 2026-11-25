@@ -188,7 +188,10 @@ body {
    the close button lines up with the tab titles instead of sitting at the top. */
 .dockview-theme-cutweave .dv-pre-actions-container,
 .dockview-theme-cutweave .dv-left-actions-container,
-.dockview-theme-cutweave .dv-right-actions-container {
+.dockview-theme-cutweave .dv-right-actions-container,
+.dockview-theme-cutweave .dv-pre-actions-container > .dv-react-part,
+.dockview-theme-cutweave .dv-left-actions-container > .dv-react-part,
+.dockview-theme-cutweave .dv-right-actions-container > .dv-react-part {
   display: flex;
   align-items: center;
 }
