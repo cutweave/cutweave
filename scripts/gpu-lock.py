@@ -16,7 +16,9 @@ crashed a Windows laptop (2026-11-25). Usage:
 * Runs start at below-normal priority so the desktop stays responsive. The OS releases the lock
   when the holder exits or dies; `<lock>.holder` names the holder for anyone waiting.
 
-The lock file is `$CUTWEAVE_GPU_LOCK_FILE` if set, else `<temp dir>/cutweave-gate.lock`.
+* On Windows the command's temp dir is `<checkout>/.tmp` (see `scripts/repo_temp.py`).
+
+The lock file is `$CUTWEAVE_GPU_LOCK_FILE` if set, else `<system temp dir>/cutweave-gate.lock`.
 """
 
 import os
@@ -26,8 +28,11 @@ import sys
 import tempfile
 import time
 from datetime import datetime
+from pathlib import Path
 
-LOCK = os.environ.get("CUTWEAVE_GPU_LOCK_FILE") or os.path.join(tempfile.gettempdir(), "cutweave-gate.lock")
+from repo_temp import use_repo_temp
+
+LOCK =os.environ.get("CUTWEAVE_GPU_LOCK_FILE") or os.path.join(tempfile.gettempdir(), "cutweave-gate.lock")
 INFO = LOCK + ".holder"
 # On Windows a bare `bash` can resolve to WSL's System32\bash.exe: use Git Bash.
 GIT_BASH = r"C:\Program Files\Git\bin\bash.exe"
@@ -90,6 +95,8 @@ def main() -> int:
     if os.name == "nt" and args[0] in ("bash", "sh", "bash.exe") and os.path.isfile(GIT_BASH):
         args = [GIT_BASH, *args[1:]]
     joined = " ".join(args)
+    # LOCK was resolved from the system temp dir above; only what we start moves to `.tmp`.
+    use_repo_temp(Path(__file__).resolve().parent.parent)
     env = {**os.environ, "CUTWEAVE_GPU_LOCK_FILE": LOCK}
 
     if os.environ.get("CUTWEAVE_GPU_LOCK_HELD") == "1":  # already inside a locked run
