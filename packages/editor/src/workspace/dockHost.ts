@@ -7,10 +7,10 @@
 import type { DockviewApi } from "dockview-react";
 import { useStore } from "zustand";
 import { createStore } from "zustand/vanilla";
+import { applyDefaultLayout } from "../dock/defaultLayout.ts";
 import { i18n } from "../i18n/index.ts";
 import { toastStore } from "../state/toastStore.ts";
 import { viewStore, type WorkspaceId } from "../state/viewStore.ts";
-import { applyDefaultLayout } from "../dock/defaultLayout.ts";
 import {
   dockviewPart,
   EMPTY_META,
@@ -64,7 +64,8 @@ export function attachDock(next: DockviewApi | null): void {
 function addAt(dock: DockviewApi, def: PanelDef, spot: RememberedSpot): void {
   const options = panelOptions(def);
   const reference = spot.ref === null ? undefined : dock.getPanel(spot.ref);
-  const direction = spot.direction === "within" && reference === undefined ? "below" : spot.direction;
+  const direction =
+    spot.direction === "within" && reference === undefined ? "below" : spot.direction;
   const panel =
     dock.panels.length === 0
       ? dock.addPanel(options)

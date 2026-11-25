@@ -1,8 +1,8 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 import type { DockviewApi, IDockviewPanel } from "dockview-react";
+import { WORKSPACE_DEFS, type WorkspaceId } from "../state/viewStore.ts";
 import { panelOptions } from "../workspace/panelOptions.ts";
 import { type PanelDef, registeredPanels } from "../workspace/panelRegistry.ts";
-import { WORKSPACE_DEFS, type WorkspaceId } from "../state/viewStore.ts";
 
 /**
  * Builds a workspace's default arrangement from the panel registry: each panel docks where its

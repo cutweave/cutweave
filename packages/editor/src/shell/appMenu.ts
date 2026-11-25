@@ -206,7 +206,11 @@ export interface AppMenuState {
   /** File > Export… opens the export dialog (WP-1M.08); off while the timeline is empty. */
   readonly exportAvailable: boolean;
   /** Every registered panel, with whether it is open in the current workspace (View > Panels). */
-  readonly panels: readonly { readonly id: string; readonly label: string; readonly checked: boolean }[];
+  readonly panels: readonly {
+    readonly id: string;
+    readonly label: string;
+    readonly checked: boolean;
+  }[];
 }
 
 export type AppMenuId = "file" | "edit" | "view" | "help";

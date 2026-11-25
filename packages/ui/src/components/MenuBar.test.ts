@@ -227,3 +227,32 @@ describe("MenuBar", () => {
     expect(await screen.findByRole("menu", { name: "Help" })).toBeTruthy();
   });
 });
+
+describe("MenuBar choices", () => {
+  it("shows a check mark and menuitemcheckbox for an item with `checked`", async () => {
+    const user = userEvent.setup();
+    const toggle = vi.fn();
+    render(
+      h(MenuBar, {
+        "aria-label": "Application menu",
+        menus: [
+          {
+            id: "view",
+            label: "View",
+            items: [
+              { id: "assets", label: "Assets", checked: true, onSelect: toggle },
+              { id: "inspector", label: "Inspector", checked: false },
+            ],
+          },
+        ],
+      }),
+    );
+    await user.click(screen.getByRole("menuitem", { name: "View" }));
+    const assets = await screen.findByRole("menuitemcheckbox", { name: "Assets" });
+    expect(assets.getAttribute("aria-checked")).toBe("true");
+    const inspector = screen.getByRole("menuitemcheckbox", { name: "Inspector" });
+    expect(inspector.getAttribute("aria-checked")).toBe("false");
+    await user.click(assets);
+    expect(toggle).toHaveBeenCalledTimes(1);
+  });
+});

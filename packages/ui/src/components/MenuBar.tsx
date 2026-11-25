@@ -112,6 +112,25 @@ function Entries({
         </RadixMenubar.Sub>
       );
     }
+    if (entry.checked !== undefined) {
+      // A choice (View > Panels): a check mark and `menuitemcheckbox` / `menuitemradio`.
+      return (
+        <RadixMenubar.CheckboxItem
+          key={entry.id}
+          textValue={entry.label}
+          disabled={entry.disabled}
+          checked={entry.checked}
+          role={entry.choice === "radio" ? "menuitemradio" : "menuitemcheckbox"}
+          onSelect={() => choose(entry.onSelect)}
+          className={cx(menuItemClass(entry), "cw-menu__item--check")}
+        >
+          <span className="cw-menu__check" aria-hidden="true">
+            {entry.checked ? <Icon name="check" size="md" /> : null}
+          </span>
+          <MenuItemBody entry={entry} />
+        </RadixMenubar.CheckboxItem>
+      );
+    }
     return (
       <RadixMenubar.Item
         key={entry.id}
