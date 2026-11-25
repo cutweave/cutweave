@@ -342,6 +342,17 @@ pub struct HistoryMoved {
     pub rev: Rev,
     /// The committed revision afterwards.
     pub committed_rev: Rev,
+    /// How many steps were applied (1 without `steps`). The other fields describe the last one.
+    #[serde(default = "one")]
+    pub done: u32,
+    /// With `steps`: why the run stopped before `steps` (the engine's message, naming the later
+    /// change and its actor); absent when every step applied.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub stopped: Option<String>,
+}
+
+fn one() -> u32 {
+    1
 }
 
 /// A page of `edit.history`.

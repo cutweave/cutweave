@@ -2093,16 +2093,64 @@ impl DocState {
     /// per-actor safety rule allows it (module `history`). `Conflict{history_target_modified}`
     /// names the later changes in the way; `Invalid` means there is nothing to undo.
     pub fn undo(&mut self, ctx: &ActorCtx, scope: &HistoryScope) -> Result<HistoryMoved, CmdError> {
-        self.expire_idle();
-        let result = self.move_history(ctx, scope, Direction::Undo);
-        result.map_err(|e| e.with_rev(self.rev))
+        self.undo_steps(ctx, scope, 1)
     }
 
     /// Redoes the most recently undone entry of `scope` (see [`undo`](Self::undo)).
     pub fn redo(&mut self, ctx: &ActorCtx, scope: &HistoryScope) -> Result<HistoryMoved, CmdError> {
+        self.redo_steps(ctx, scope, 1)
+    }
+
+    /// [`undo`](Self::undo) up to `steps` times in one turn of the doc actor (nothing else lands
+    /// in between). Each step is its own history record. A refused step after the first stops
+    /// the run: the result reports `done` and the refusal in `stopped`.
+    pub fn undo_steps(
+        &mut self,
+        ctx: &ActorCtx,
+        scope: &HistoryScope,
+        steps: u32,
+    ) -> Result<HistoryMoved, CmdError> {
+        self.move_steps(ctx, scope, Direction::Undo, steps)
+    }
+
+    /// [`redo`](Self::redo) up to `steps` times (see [`undo_steps`](Self::undo_steps)).
+    pub fn redo_steps(
+        &mut self,
+        ctx: &ActorCtx,
+        scope: &HistoryScope,
+        steps: u32,
+    ) -> Result<HistoryMoved, CmdError> {
+        self.move_steps(ctx, scope, Direction::Redo, steps)
+    }
+
+    fn move_steps(
+        &mut self,
+        ctx: &ActorCtx,
+        scope: &HistoryScope,
+        dir: Direction,
+        steps: u32,
+    ) -> Result<HistoryMoved, CmdError> {
         self.expire_idle();
-        let result = self.move_history(ctx, scope, Direction::Redo);
-        result.map_err(|e| e.with_rev(self.rev))
+        let mut last = self
+            .move_history(ctx, scope, dir)
+            .map_err(|e| e.with_rev(self.rev))?;
+        for _ in 1..steps {
+            match self.move_history(ctx, scope, dir) {
+                Ok(mut next) => {
+                    next.done = last.done + 1;
+                    last = next;
+                }
+                Err(e) => {
+                    last.stopped = Some(e.to_string());
+                    break;
+                }
+            }
+        }
+        // The request's remembered result is the whole run's (a repeat returns it as is).
+        if let Some(claimed) = self.claimed.as_mut() {
+            claimed.output = crate::error::encode_output(&last)?;
+        }
+        Ok(last)
     }
 
     fn move_history(
@@ -2156,6 +2204,8 @@ impl DocState {
             label: target.label.clone(),
             rev: staged.rev,
             committed_rev: staged.committed_rev,
+            done: 1,
+            stopped: None,
         };
         let (steps, claim) = self.engine_step(&out, tx_id, &staged)?;
         let (cause, entry, history) = match dir {

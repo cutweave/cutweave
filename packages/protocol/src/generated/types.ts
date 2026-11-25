@@ -802,6 +802,13 @@ export type HistoryMoved = {
 	rev: Rev,
 	/**  The committed revision afterwards. */
 	committed_rev: Rev,
+	/**  How many steps were applied (1 without `steps`). The other fields describe the last one. */
+	done?: number,
+	/**
+	 *  With `steps`: why the run stopped before `steps` (the engine's message, naming the later
+	 *  change and its actor); absent when every step applied.
+	 */
+	stopped?: string | null,
 };
 
 /**  A page of `edit.history`. */
@@ -2310,6 +2317,11 @@ export type RecoveryPayload = {
 export type Redo = {
 	/**  Whose change (see `edit.undo`). Default: the caller's own. */
 	actor?: HistoryScope | null,
+	/**
+	 *  How many changes to redo in one go, newest first, each its own history record (1..=100,
+	 *  default 1). A refused step stops the run; the output's `done` says how many applied.
+	 */
+	steps?: number | null,
 };
 
 /**  An item whose `linked_group` or `attached_to` changed. */
@@ -3389,6 +3401,11 @@ export type Undo = {
 	 *  recent change by anyone. Default: the caller's own.
 	 */
 	actor?: HistoryScope | null,
+	/**
+	 *  How many changes to undo in one go, newest first, each its own history record (1..=100,
+	 *  default 1). A refused step stops the run; the output's `done` says how many applied.
+	 */
+	steps?: number | null,
 };
 
 /**  A 2D vector (positions, scales, anchors). */

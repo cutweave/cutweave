@@ -418,6 +418,38 @@ fn checkpoint_round_trip(before: &[Cmd], after: &[Cmd]) {
     s.verify().unwrap();
 }
 
+// ----- `steps` (WP-2H.11) ----------------------------------------------------------------------
+
+/// `edit.undo{*, steps}` and `edit.redo{*, steps}` equal as many single `*` requests: the same
+/// documents, and the same history afterwards.
+fn steps_equal_singles(cmds: &[Cmd], steps: u32) {
+    let (initial, tracks, _) = project(3);
+    let build = || {
+        let mut s = DocState::new(config(initial.clone()));
+        for cmd in cmds {
+            let (name, params) = request(cmd, &items(s.committed_doc()), &tracks);
+            s.submit(Submit::new(ctx(0), name, params)).unwrap();
+        }
+        s
+    };
+    let (mut batched, mut single) = (build(), build());
+    let u = ctx(0);
+    for verb in ["edit.undo", "edit.redo"] {
+        let batch = run(&mut batched, &u, verb, json!({"actor": "*", "steps": steps}));
+        let mut done = 0;
+        while done < steps && run(&mut single, &u, verb, json!({"actor": "*"})).is_ok() {
+            done += 1;
+        }
+        match batch {
+            Ok(out) => assert_eq!(out["done"], json!(done), "{verb}"),
+            Err(e) => assert_eq!((done, e.code()), (0, "invalid"), "{verb}"),
+        }
+        assert_eq!(batched.committed_doc(), single.committed_doc(), "{verb}");
+        assert_eq!(batched.rev(), single.rev(), "{verb}");
+    }
+    batched.verify().unwrap();
+}
+
 proptest! {
     #![proptest_config(ProptestConfig { max_shrink_iters: 2_000, ..ProptestConfig::default() })]
 
@@ -443,6 +475,14 @@ proptest! {
         ops in prop::collection::vec(arb_op(), 1..60),
     ) {
         interleavings(&ops);
+    }
+
+    #[test]
+    fn steps_equal_the_same_number_of_single_undos_and_redos(
+        cmds in prop::collection::vec(arb_cmd(), 0..30),
+        steps in 1..40_u32,
+    ) {
+        steps_equal_singles(&cmds, steps);
     }
 
     #[test]

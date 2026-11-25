@@ -1,3 +1,3 @@
 // @generated — do not edit; run cargo xtask gen
 /** sha256 of `schema/commands.json`; compare with the engine's `rpc.hello`. */
-export const SCHEMA_HASH = "31f728f308fbae0480dabdf783e9449c692bff2e6f9cb21d7f12e8945e3e09bc";
+export const SCHEMA_HASH = "8ce680a2634ef7f68e4f953d81ab3bf8c28cb2cf2beb2d6f188688bf609037f3";

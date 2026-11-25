@@ -271,6 +271,9 @@ impl EngineCommand for ListLocks {
     }
 }
 
+/// Most steps one `edit.undo` / `edit.redo` may apply.
+pub const MAX_HISTORY_STEPS: u32 = 100;
+
 /// Undoes the latest change of an actor (default: yours) as a new transaction. History is per
 /// actor: undoing the agent's change leaves your later edits alone. Refused with
 /// `Conflict{reason: history_target_modified}` when someone changed the same things since (the
@@ -287,6 +290,9 @@ pub struct Undo {
     /// Whose change: `user`, `agent:<label>`, `plugin:<id>`, `system`, or `*` for the most
     /// recent change by anyone. Default: the caller's own.
     pub actor: Option<HistoryScope>,
+    /// How many changes to undo in one go, newest first, each its own history record (1..=100,
+    /// default 1). A refused step stops the run; the output's `done` says how many applied.
+    pub steps: Option<u32>,
 }
 
 impl EngineCommand for Undo {
@@ -299,7 +305,14 @@ impl EngineCommand for Undo {
             .actor
             .clone()
             .unwrap_or_else(|| HistoryScope::Actor(ctx.actor().clone()));
-        state.undo(&ctx, &scope)
+        let steps = self.steps.unwrap_or(1);
+        if !(1..=MAX_HISTORY_STEPS).contains(&steps) {
+            return Err(CmdError::invalid(
+                "/steps",
+                format!("1 to {MAX_HISTORY_STEPS}"),
+            ));
+        }
+        state.undo_steps(&ctx, &scope, steps)
     }
 }
 
@@ -317,6 +330,9 @@ impl EngineCommand for Undo {
 pub struct Redo {
     /// Whose change (see `edit.undo`). Default: the caller's own.
     pub actor: Option<HistoryScope>,
+    /// How many changes to redo in one go, newest first, each its own history record (1..=100,
+    /// default 1). A refused step stops the run; the output's `done` says how many applied.
+    pub steps: Option<u32>,
 }
 
 impl EngineCommand for Redo {
@@ -329,7 +345,14 @@ impl EngineCommand for Redo {
             .actor
             .clone()
             .unwrap_or_else(|| HistoryScope::Actor(ctx.actor().clone()));
-        state.redo(&ctx, &scope)
+        let steps = self.steps.unwrap_or(1);
+        if !(1..=MAX_HISTORY_STEPS).contains(&steps) {
+            return Err(CmdError::invalid(
+                "/steps",
+                format!("1 to {MAX_HISTORY_STEPS}"),
+            ));
+        }
+        state.redo_steps(&ctx, &scope, steps)
     }
 }
 
