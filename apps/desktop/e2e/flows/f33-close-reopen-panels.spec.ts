@@ -54,8 +54,9 @@ async function checks(page: Page): Promise<Record<PanelName, boolean>> {
   const out = {} as Record<PanelName, boolean>;
   for (const name of NAMES) {
     out[name] =
-      (await list.getByRole("menuitemcheckbox", { name, exact: true }).getAttribute("aria-checked")) ===
-      "true";
+      (await list
+        .getByRole("menuitemcheckbox", { name, exact: true })
+        .getAttribute("aria-checked")) === "true";
   }
   await page.keyboard.press("Escape");
   await page.keyboard.press("Escape");
@@ -67,7 +68,10 @@ async function checks(page: Page): Promise<Record<PanelName, boolean>> {
 const storedClosed = (page: Page) =>
   page.evaluate(() => {
     const view = JSON.parse(localStorage.getItem("cutweave.view") ?? "{}") as {
-      state?: { workspaceId?: string; layouts?: Record<string, { cutweave?: { closed?: string[] } }> };
+      state?: {
+        workspaceId?: string;
+        layouts?: Record<string, { cutweave?: { closed?: string[] } }>;
+      };
     };
     return view.state?.layouts?.[view.state.workspaceId ?? ""]?.cutweave?.closed ?? [];
   });
@@ -93,7 +97,9 @@ test.describe("F33 close and reopen panels", () => {
       const inspectorBefore = await box(page, "Inspector");
       await closeButton(page, "Inspector").click();
       await expect(panel(page, "Inspector")).toHaveCount(0);
-      await expect.poll(async () => (await box(page, "Preview")).width).toBeGreaterThan(previewBefore);
+      await expect
+        .poll(async () => (await box(page, "Preview")).width)
+        .toBeGreaterThan(previewBefore);
       expect(await checks(page)).toEqual({
         Assets: true,
         Preview: true,

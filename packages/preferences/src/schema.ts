@@ -25,6 +25,10 @@ export function resolveTheme(choice: ThemeChoice, systemIsDark: boolean): Resolv
 export const STARTUP_CHOICES = ["empty", "last"] as const;
 export type StartupChoice = (typeof STARTUP_CHOICES)[number];
 
+/** "Workspace for new projects": the one used last, or always Long-form or Short-form (WP-2H.01). */
+export const WORKSPACE_CHOICES = ["last", "long-form", "short-form"] as const;
+export type WorkspaceChoice = (typeof WORKSPACE_CHOICES)[number];
+
 /** "Save at least every": 30 s, 1 min, 2 min, 5 min. */
 export const AUTOSAVE_INTERVALS_S = [30, 60, 120, 300] as const;
 /** "Backups to keep". */
@@ -67,6 +71,7 @@ export interface PreferenceValues {
   /** `""` is "not chosen": main's context default (Documents/Cutweave) applies. */
   "general.new_project_folder": string;
   "general.recent_count": number;
+  "general.workspace": WorkspaceChoice;
   "general.dialog_choices": DialogChoices;
   "appearance.theme": ThemeChoice;
   "saving.autosave": boolean;
@@ -143,6 +148,7 @@ export const PREFERENCES: { readonly [K in PreferenceKey]: PreferenceDef } = {
   "general.startup": { type: "enum", scope: "app", options: STARTUP_CHOICES, default: "empty" },
   "general.new_project_folder": { type: "path", scope: "app", default: "" },
   "general.recent_count": { type: "int", scope: "app", min: 0, max: RECENT_COUNT_MAX, default: 10 },
+  "general.workspace": { type: "enum", scope: "app", options: WORKSPACE_CHOICES, default: "last" },
   "general.dialog_choices": { type: "record", scope: "app", default: {} },
   "appearance.theme": { type: "enum", scope: "app", options: THEME_CHOICES, default: "dark" },
   "saving.autosave": { type: "boolean", scope: "app", default: true },

@@ -102,6 +102,12 @@
         "empty": "Empty project",
         "last": "Last project"
       },
+      "workspace": {
+        "label": "Workspace for new projects",
+        "description": "The panel layout a new project opens with. Last used keeps the workspace you were in.",
+        "keywords": "layout, panels, short-form, long-form, vertical, horizontal, new project",
+        "last": "Last used"
+      },
       "newProjectFolder": {
         "label": "Folder for new projects",
         "description": "New project dialogs start in this folder.",

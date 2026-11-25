@@ -17,6 +17,7 @@ import { initialViewState, viewStore } from "../state/viewStore.ts";
 import { listWorkspaceCommands, runWorkspaceCommand } from "./commands.ts";
 import { openPanelsStore, resetDockHost } from "./dockHost.ts";
 import { readLayoutMeta } from "./layoutMeta.ts";
+import { applyNewProjectWorkspace, workspaceForNewProject } from "./newProject.ts";
 import { registeredPanels } from "./panelRegistry.ts";
 
 beforeAll(() => {
@@ -98,6 +99,26 @@ describe("the panel registry", () => {
     expect(ids).toContain("workspace.reset_layout");
     expect(ids).toContain("workspace.reset_all");
     expect(runWorkspaceCommand("workspace.nonsense")).toBe(false);
+  });
+});
+
+describe("Settings > General > Workspace for new projects", () => {
+  it("defaults to the workspace used last and otherwise names one", () => {
+    expect(defaultPreferences()["general.workspace"]).toBe("last");
+    expect(workspaceForNewProject("last")).toBeNull();
+    expect(workspaceForNewProject("long-form")).toBe("long-form");
+    expect(workspaceForNewProject("short-form")).toBe("short-form");
+  });
+
+  it("switches the workspace for a new project when one is chosen", () => {
+    viewStore.getState().switchWorkspace("short-form");
+    applyNewProjectWorkspace();
+    expect(viewStore.getState().workspaceId).toBe("short-form");
+    prefsStore.setState({
+      values: { ...defaultPreferences(), "general.workspace": "long-form" },
+    });
+    applyNewProjectWorkspace();
+    expect(viewStore.getState().workspaceId).toBe("long-form");
   });
 });
 
