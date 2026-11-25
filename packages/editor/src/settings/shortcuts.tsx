@@ -106,9 +106,7 @@ function KeyCaps({
           : ctx.t("shortcuts.keysLabel", { name, keys: text })
       }
     >
-      {combos.length === 0 ? (
-        <span className="cw-settings__keyslot" aria-hidden="true" />
-      ) : null}
+      {combos.length === 0 ? <span className="cw-settings__keyslot" aria-hidden="true" /> : null}
       {combos.map((combo, index) => {
         const label = comboText(combo, where);
         return (
@@ -256,7 +254,9 @@ function ShortcutCell({
         ) : null}
         {fixed ? null : (
           <>
-            {recording ? <span className="caption">{ctx.t("shortcuts.cell.recording")}</span> : null}
+            {recording ? (
+              <span className="caption">{ctx.t("shortcuts.cell.recording")}</span>
+            ) : null}
             <Tooltip label={ctx.t("shortcuts.cell.add")}>
               <IconButton
                 size="sm"

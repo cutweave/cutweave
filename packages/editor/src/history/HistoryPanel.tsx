@@ -16,10 +16,10 @@ import {
 } from "react";
 import { useTranslation } from "react-i18next";
 import { useEngineStore } from "../engine/engineStore.ts";
-import { preferences, usePref } from "../prefs/prefsStore.ts";
 import type { TKey } from "../i18n/index.ts";
 import { useContextMenu } from "../menus/host.tsx";
 import { EmptyState } from "../panels/EmptyState.tsx";
+import { preferences, usePref } from "../prefs/prefsStore.ts";
 import { actorDisplayName, historyLabel } from "../session/historyLabels.ts";
 import { type Translate, translator } from "../timeline/errors.ts";
 import { goToStep, HistoryFeed } from "./historyFeed.ts";
