@@ -28,6 +28,15 @@ expression: "json!({\n    \"meta\": serde_json::to_value(meta).unwrap(), \"input
             "type": "string"
           },
           "description": "Absolute paths of the files (1..=256, no repeats)."
+        },
+        "folder": {
+          "type": [
+            "string",
+            "null"
+          ],
+          "pattern": "^fld_[0-9a-f]{32}$",
+          "description": "Bin folder for the new assets; absent: top level.",
+          "default": null
         }
       },
       "required": [
@@ -209,6 +218,15 @@ expression: "json!({\n    \"meta\": serde_json::to_value(meta).unwrap(), \"input
           "type": "string"
         },
         "description": "Absolute paths of the files (1..=256, no repeats)."
+      },
+      "folder": {
+        "type": [
+          "string",
+          "null"
+        ],
+        "pattern": "^fld_[0-9a-f]{32}$",
+        "description": "Bin folder for the new assets; absent: top level.",
+        "default": null
       }
     },
     "required": [

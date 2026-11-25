@@ -1,0 +1,276 @@
+---
+source: crates/cutweave-ops/tests/contract.rs
+expression: "json!({\n    \"meta\": serde_json::to_value(meta).unwrap(), \"input\": meta.input_schema,\n    \"output\": meta.output_schema,\n})"
+---
+{
+  "meta": {
+    "name": "media.delete_folder",
+    "summary": "Delete a media bin folder: lift its contents one level, or remove unused media in it",
+    "kind": "command",
+    "undoable": true,
+    "view": false,
+    "scope": "any",
+    "mcp": "catalog",
+    "annotations": {
+      "readOnlyHint": false,
+      "destructiveHint": true,
+      "idempotentHint": false,
+      "openWorldHint": false
+    },
+    "secret_fields": [],
+    "input_schema": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "folder": {
+          "type": "string",
+          "pattern": "^fld_[0-9a-f]{32}$",
+          "description": "The folder."
+        },
+        "contents": {
+          "oneOf": [
+            {
+              "type": "string",
+              "const": "move_up",
+              "description": "Lift the folder's assets and subfolders one level, into its parent."
+            },
+            {
+              "type": "string",
+              "const": "remove",
+              "description": "Remove its subfolders and every asset inside that no timeline uses; the used ones move\nto the deleted folder's parent."
+            }
+          ],
+          "description": "`move_up` (lift the contents one level) or `remove` (remove the unused media in it)."
+        }
+      },
+      "required": [
+        "folder",
+        "contents"
+      ],
+      "description": "Deletes a folder of the media bin. `contents: move_up` lifts its assets and subfolders one\nlevel (a subfolder whose name the parent already has gets the next free name);\n`contents: remove` also removes its subfolders and every asset inside that no timeline\nuses, and moves the used assets to the deleted folder's parent. Timelines and files on disk\nnever change; one undo restores everything.",
+      "title": "MediaDeleteFolder"
+    },
+    "output_schema": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "folder_id": {
+          "type": "string",
+          "pattern": "^fld_[0-9a-f]{32}$",
+          "description": "The deleted folder."
+        },
+        "parent": {
+          "type": [
+            "string",
+            "null"
+          ],
+          "pattern": "^fld_[0-9a-f]{32}$",
+          "description": "Where its kept contents went; absent: the top level."
+        },
+        "removed_folders": {
+          "type": "array",
+          "items": {
+            "description": "A Folder id: `^fld_[0-9a-f]{32}$`.",
+            "type": "string",
+            "pattern": "^fld_[0-9a-f]{32}$"
+          },
+          "description": "Every folder deleted: the folder, and with `remove` its subfolders."
+        },
+        "removed": {
+          "type": "array",
+          "items": {
+            "description": "A Media id: `^med_[0-9a-f]{32}$`.",
+            "type": "string",
+            "pattern": "^med_[0-9a-f]{32}$"
+          },
+          "description": "Assets removed from the project (`remove` only; the files stay on disk)."
+        },
+        "kept": {
+          "type": "array",
+          "items": {
+            "description": "A Media id: `^med_[0-9a-f]{32}$`.",
+            "type": "string",
+            "pattern": "^med_[0-9a-f]{32}$"
+          },
+          "description": "Assets that were inside and are now in `parent`: with `remove` the ones a timeline uses,\nwith `move_up` every asset the folder held."
+        },
+        "moved_folders": {
+          "type": "array",
+          "items": {
+            "description": "A Folder id: `^fld_[0-9a-f]{32}$`.",
+            "type": "string",
+            "pattern": "^fld_[0-9a-f]{32}$"
+          },
+          "description": "Subfolders now in `parent` (`move_up` only)."
+        },
+        "renamed": {
+          "type": "array",
+          "items": {
+            "description": "A folder that got a new name because its name was taken where it went.",
+            "type": "object",
+            "properties": {
+              "folder": {
+                "description": "The folder.",
+                "type": "string",
+                "pattern": "^fld_[0-9a-f]{32}$"
+              },
+              "from": {
+                "description": "Its name before.",
+                "type": "string"
+              },
+              "to": {
+                "description": "Its name now.",
+                "type": "string"
+              }
+            },
+            "additionalProperties": false,
+            "required": [
+              "folder",
+              "from",
+              "to"
+            ]
+          },
+          "description": "Subfolders renamed because `parent` already had their name."
+        }
+      },
+      "required": [
+        "folder_id",
+        "parent",
+        "removed_folders",
+        "removed",
+        "kept",
+        "moved_folders",
+        "renamed"
+      ],
+      "description": "Result of `media.delete_folder`.",
+      "title": "MediaFolderDeleted"
+    }
+  },
+  "input": {
+    "type": "object",
+    "additionalProperties": false,
+    "properties": {
+      "folder": {
+        "type": "string",
+        "pattern": "^fld_[0-9a-f]{32}$",
+        "description": "The folder."
+      },
+      "contents": {
+        "oneOf": [
+          {
+            "type": "string",
+            "const": "move_up",
+            "description": "Lift the folder's assets and subfolders one level, into its parent."
+          },
+          {
+            "type": "string",
+            "const": "remove",
+            "description": "Remove its subfolders and every asset inside that no timeline uses; the used ones move\nto the deleted folder's parent."
+          }
+        ],
+        "description": "`move_up` (lift the contents one level) or `remove` (remove the unused media in it)."
+      }
+    },
+    "required": [
+      "folder",
+      "contents"
+    ],
+    "description": "Deletes a folder of the media bin. `contents: move_up` lifts its assets and subfolders one\nlevel (a subfolder whose name the parent already has gets the next free name);\n`contents: remove` also removes its subfolders and every asset inside that no timeline\nuses, and moves the used assets to the deleted folder's parent. Timelines and files on disk\nnever change; one undo restores everything.",
+    "title": "MediaDeleteFolder"
+  },
+  "output": {
+    "type": "object",
+    "additionalProperties": false,
+    "properties": {
+      "folder_id": {
+        "type": "string",
+        "pattern": "^fld_[0-9a-f]{32}$",
+        "description": "The deleted folder."
+      },
+      "parent": {
+        "type": [
+          "string",
+          "null"
+        ],
+        "pattern": "^fld_[0-9a-f]{32}$",
+        "description": "Where its kept contents went; absent: the top level."
+      },
+      "removed_folders": {
+        "type": "array",
+        "items": {
+          "description": "A Folder id: `^fld_[0-9a-f]{32}$`.",
+          "type": "string",
+          "pattern": "^fld_[0-9a-f]{32}$"
+        },
+        "description": "Every folder deleted: the folder, and with `remove` its subfolders."
+      },
+      "removed": {
+        "type": "array",
+        "items": {
+          "description": "A Media id: `^med_[0-9a-f]{32}$`.",
+          "type": "string",
+          "pattern": "^med_[0-9a-f]{32}$"
+        },
+        "description": "Assets removed from the project (`remove` only; the files stay on disk)."
+      },
+      "kept": {
+        "type": "array",
+        "items": {
+          "description": "A Media id: `^med_[0-9a-f]{32}$`.",
+          "type": "string",
+          "pattern": "^med_[0-9a-f]{32}$"
+        },
+        "description": "Assets that were inside and are now in `parent`: with `remove` the ones a timeline uses,\nwith `move_up` every asset the folder held."
+      },
+      "moved_folders": {
+        "type": "array",
+        "items": {
+          "description": "A Folder id: `^fld_[0-9a-f]{32}$`.",
+          "type": "string",
+          "pattern": "^fld_[0-9a-f]{32}$"
+        },
+        "description": "Subfolders now in `parent` (`move_up` only)."
+      },
+      "renamed": {
+        "type": "array",
+        "items": {
+          "description": "A folder that got a new name because its name was taken where it went.",
+          "type": "object",
+          "properties": {
+            "folder": {
+              "description": "The folder.",
+              "type": "string",
+              "pattern": "^fld_[0-9a-f]{32}$"
+            },
+            "from": {
+              "description": "Its name before.",
+              "type": "string"
+            },
+            "to": {
+              "description": "Its name now.",
+              "type": "string"
+            }
+          },
+          "additionalProperties": false,
+          "required": [
+            "folder",
+            "from",
+            "to"
+          ]
+        },
+        "description": "Subfolders renamed because `parent` already had their name."
+      }
+    },
+    "required": [
+      "folder_id",
+      "parent",
+      "removed_folders",
+      "removed",
+      "kept",
+      "moved_folders",
+      "renamed"
+    ],
+    "description": "Result of `media.delete_folder`.",
+    "title": "MediaFolderDeleted"
+  }
+}

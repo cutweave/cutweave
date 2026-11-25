@@ -1,0 +1,128 @@
+---
+source: crates/cutweave-ops/tests/contract.rs
+expression: "json!({\n    \"meta\": serde_json::to_value(meta).unwrap(), \"input\": meta.input_schema,\n    \"output\": meta.output_schema,\n})"
+---
+{
+  "meta": {
+    "name": "media.rename",
+    "summary": "Set the name the media bin shows for an asset, or go back to the file name",
+    "kind": "command",
+    "undoable": true,
+    "view": false,
+    "scope": "any",
+    "mcp": "catalog",
+    "annotations": {
+      "readOnlyHint": false,
+      "destructiveHint": false,
+      "idempotentHint": true,
+      "openWorldHint": false
+    },
+    "secret_fields": [],
+    "input_schema": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "media": {
+          "type": "string",
+          "pattern": "^med_[0-9a-f]{32}$",
+          "description": "The asset."
+        },
+        "name": {
+          "type": [
+            "string",
+            "null"
+          ],
+          "description": "The display name: 1 to 255 characters without control characters (trimmed); absent:\nthe file name.",
+          "default": null
+        }
+      },
+      "required": [
+        "media"
+      ],
+      "description": "Sets the name the media bin shows for an asset (the file on disk keeps its name). Without\na name the bin shows the file name again. Display names need not be unique.",
+      "title": "MediaRename"
+    },
+    "output_schema": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "media_id": {
+          "type": "string",
+          "pattern": "^med_[0-9a-f]{32}$",
+          "description": "The asset."
+        },
+        "name": {
+          "type": [
+            "string",
+            "null"
+          ],
+          "description": "Its display name; absent: the bin shows the file name."
+        },
+        "display_name": {
+          "type": "string",
+          "description": "The name the bin shows now."
+        }
+      },
+      "required": [
+        "media_id",
+        "name",
+        "display_name"
+      ],
+      "description": "Result of `media.rename`.",
+      "title": "MediaRenamed"
+    }
+  },
+  "input": {
+    "type": "object",
+    "additionalProperties": false,
+    "properties": {
+      "media": {
+        "type": "string",
+        "pattern": "^med_[0-9a-f]{32}$",
+        "description": "The asset."
+      },
+      "name": {
+        "type": [
+          "string",
+          "null"
+        ],
+        "description": "The display name: 1 to 255 characters without control characters (trimmed); absent:\nthe file name.",
+        "default": null
+      }
+    },
+    "required": [
+      "media"
+    ],
+    "description": "Sets the name the media bin shows for an asset (the file on disk keeps its name). Without\na name the bin shows the file name again. Display names need not be unique.",
+    "title": "MediaRename"
+  },
+  "output": {
+    "type": "object",
+    "additionalProperties": false,
+    "properties": {
+      "media_id": {
+        "type": "string",
+        "pattern": "^med_[0-9a-f]{32}$",
+        "description": "The asset."
+      },
+      "name": {
+        "type": [
+          "string",
+          "null"
+        ],
+        "description": "Its display name; absent: the bin shows the file name."
+      },
+      "display_name": {
+        "type": "string",
+        "description": "The name the bin shows now."
+      }
+    },
+    "required": [
+      "media_id",
+      "name",
+      "display_name"
+    ],
+    "description": "Result of `media.rename`.",
+    "title": "MediaRenamed"
+  }
+}

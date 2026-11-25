@@ -150,6 +150,23 @@ expression: "json!({\n    \"meta\": serde_json::to_value(meta).unwrap(), \"input
               ],
               "description": "`true`: only files nothing can be read from (no streams).",
               "default": null
+            },
+            "folder": {
+              "type": [
+                "string",
+                "null"
+              ],
+              "pattern": "^fld_[0-9a-f]{32}$",
+              "description": "Only assets in this folder of the bin; absent: the whole bin, or only its top level\nwith `recursive: false`.",
+              "default": null
+            },
+            "recursive": {
+              "type": [
+                "boolean",
+                "null"
+              ],
+              "description": "Include the subfolders' assets. Default: `true` without `folder` (the whole project),\n`false` with one (that folder only); `false` without `folder` lists the top level.",
+              "default": null
             }
           },
           "description": "Keep only matching media.",
@@ -189,7 +206,7 @@ expression: "json!({\n    \"meta\": serde_json::to_value(meta).unwrap(), \"input
           "default": null
         }
       },
-      "description": "Lists the media of the project, filtered and ordered, one page at a time.",
+      "description": "Lists the media of the project, filtered (also by bin folder) and ordered, one page at a\ntime. Each asset carries the name the bin shows and its folder.",
       "title": "MediaList"
     },
     "output_schema": {
@@ -232,6 +249,18 @@ expression: "json!({\n    \"meta\": serde_json::to_value(meta).unwrap(), \"input
                   }
                 ]
               },
+              "name": {
+                "description": "The name the bin shows: the display name, else the file name.",
+                "type": "string"
+              },
+              "folder": {
+                "description": "The folder of the bin it is in; absent: the top level.",
+                "type": [
+                  "string",
+                  "null"
+                ],
+                "pattern": "^fld_[0-9a-f]{32}$"
+              },
               "path": {
                 "description": "Absolute path when it was last found (file kinds).",
                 "type": [
@@ -261,6 +290,8 @@ expression: "json!({\n    \"meta\": serde_json::to_value(meta).unwrap(), \"input
             "required": [
               "id",
               "kind",
+              "name",
+              "folder",
               "path",
               "duration",
               "has_video",
@@ -432,6 +463,23 @@ expression: "json!({\n    \"meta\": serde_json::to_value(meta).unwrap(), \"input
             ],
             "description": "`true`: only files nothing can be read from (no streams).",
             "default": null
+          },
+          "folder": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "pattern": "^fld_[0-9a-f]{32}$",
+            "description": "Only assets in this folder of the bin; absent: the whole bin, or only its top level\nwith `recursive: false`.",
+            "default": null
+          },
+          "recursive": {
+            "type": [
+              "boolean",
+              "null"
+            ],
+            "description": "Include the subfolders' assets. Default: `true` without `folder` (the whole project),\n`false` with one (that folder only); `false` without `folder` lists the top level.",
+            "default": null
           }
         },
         "description": "Keep only matching media.",
@@ -471,7 +519,7 @@ expression: "json!({\n    \"meta\": serde_json::to_value(meta).unwrap(), \"input
         "default": null
       }
     },
-    "description": "Lists the media of the project, filtered and ordered, one page at a time.",
+    "description": "Lists the media of the project, filtered (also by bin folder) and ordered, one page at a\ntime. Each asset carries the name the bin shows and its folder.",
     "title": "MediaList"
   },
   "output": {
@@ -514,6 +562,18 @@ expression: "json!({\n    \"meta\": serde_json::to_value(meta).unwrap(), \"input
                 }
               ]
             },
+            "name": {
+              "description": "The name the bin shows: the display name, else the file name.",
+              "type": "string"
+            },
+            "folder": {
+              "description": "The folder of the bin it is in; absent: the top level.",
+              "type": [
+                "string",
+                "null"
+              ],
+              "pattern": "^fld_[0-9a-f]{32}$"
+            },
             "path": {
               "description": "Absolute path when it was last found (file kinds).",
               "type": [
@@ -543,6 +603,8 @@ expression: "json!({\n    \"meta\": serde_json::to_value(meta).unwrap(), \"input
           "required": [
             "id",
             "kind",
+            "name",
+            "folder",
             "path",
             "duration",
             "has_video",

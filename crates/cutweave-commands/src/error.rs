@@ -78,6 +78,8 @@ pub enum ResourceKind {
     Group,
     /// A marker (`mrk_…`).
     Marker,
+    /// A folder of the media bin (`fld_…`, ADR-0020).
+    Folder,
     /// A registry entry: an unknown command or query name.
     Command,
     /// An open transaction (WP-1B.04).
@@ -99,6 +101,7 @@ impl ResourceKind {
             ResourceKind::Item => "item",
             ResourceKind::Group => "group",
             ResourceKind::Marker => "marker",
+            ResourceKind::Folder => "folder",
             ResourceKind::Command => "command",
             ResourceKind::Transaction => "transaction",
             ResourceKind::Checkpoint => "checkpoint",
@@ -116,6 +119,7 @@ impl From<EntityKind> for ResourceKind {
             EntityKind::Item => ResourceKind::Item,
             EntityKind::Group => ResourceKind::Group,
             EntityKind::Marker => ResourceKind::Marker,
+            EntityKind::Folder => ResourceKind::Folder,
         }
     }
 }

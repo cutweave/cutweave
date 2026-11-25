@@ -2,7 +2,8 @@
 //! The `media` namespace (WP-1B.05, WP-1D.07; arch §5.1, §7): `media.register`,
 //! `media.import`, `media.list`, `media.remove`, and the `media.indexed` /
 //! `media.analysis_failed` events of background analysis (which never mutates the document);
-//! the proxy commands of WP-2F.01 ([`proxy`]).
+//! the proxy commands of WP-2F.01 ([`proxy`]); the folders of the bin (WP-2F.07, ADR-0020:
+//! [`folders`]).
 //!
 //! **Import (arch §7, R21).** `media.import` returns `media_ids` synchronously: it checks the
 //! caller's path allowlist, probes the files through a [`MediaProbe`] (in parallel, each with a
@@ -15,6 +16,7 @@
 
 mod analysis;
 mod find;
+pub mod folders;
 mod policy;
 mod probe;
 pub mod proxy;
@@ -26,7 +28,9 @@ use cutweave_commands::{
     wire,
 };
 use cutweave_jobs::JobId;
-use cutweave_model::{Duration, MediaAsset, MediaId, MediaKind, ProbeInfo, Project, StreamKind};
+use cutweave_model::{
+    Duration, FolderId, MediaAsset, MediaId, MediaKind, ProbeInfo, Project, StreamKind,
+};
 
 pub use analysis::{
     AnalysisInput, AnalysisSink, AnalysisStage, AnalysisStages, Analyzer, EVENTS,
@@ -34,7 +38,13 @@ pub use analysis::{
 };
 pub use find::{
     Keyed, Matcher, MediaFilter, MediaSort, MediaSortBy, MediaSortOrder, asset_name, compare, fold,
-    is_problem, used_media,
+    folder_scope, is_problem, used_media,
+};
+pub use folders::{
+    FolderContents, FolderRenamed, FolderSummary, MediaCreateFolder, MediaDeleteFolder,
+    MediaFolderCreated, MediaFolderDeleted, MediaFolderRenamed, MediaListFolders,
+    MediaListFoldersOutput, MediaMove, MediaMoved, MediaRename, MediaRenameFolder, MediaRenamed,
+    OnConflict, find_folder, unique_folder_name,
 };
 pub use policy::{
     AllowedRoots, DEFAULT_PROBE_PARALLELISM, DEFAULT_PROBE_TIMEOUT, ImportPolicy,
@@ -61,6 +71,7 @@ pub fn register(registry: &mut Registry) -> Result<(), RegistryError> {
         .register::<MediaImport>()?
         .register::<MediaList>()?
         .register::<MediaRemove>()?;
+    folders::register(registry)?;
     proxy::register(registry)
 }
 
@@ -110,7 +121,8 @@ pub struct MediaRegistered {
 
 /// Registers a probed media file. Internal plumbing of `media.import` and the import job
 /// (WP-1D.07): the kind (video, audio or image) derives from the probe streams. If an asset
-/// with the same `content_hash` already exists it is returned unchanged (`created: false`).
+/// with the same `content_hash` already exists it is returned unchanged (`created: false`,
+/// and it stays in its folder).
 #[command(
     name = "media.register",
     summary = "Register a probed media file (used by import; deduplicates by content hash)",
@@ -127,6 +139,8 @@ pub struct MediaRegister {
     pub probe: ProbeInfo,
     /// Content hash used to relink and deduplicate (non-empty, no whitespace).
     pub content_hash: String,
+    /// The folder of the bin to put the new asset in; absent: the top level.
+    pub folder: Option<FolderId>,
 }
 
 fn check_hash(hash: &str) -> Result<(), CmdError> {
@@ -177,6 +191,9 @@ impl Command for MediaRegister {
 
     fn validate(&self, ctx: &QueryCtx<'_>) -> Result<(), CmdError> {
         self.kind()?;
+        if let Some(folder) = self.folder {
+            folders::find_folder(ctx.doc(), folder)?;
+        }
         if let Some(id) = self.media_id
             && ctx.doc().media.contains_key(&id)
             && by_hash(ctx.doc(), &self.content_hash).is_none_or(|m| m.id != id)
@@ -205,6 +222,7 @@ impl Command for MediaRegister {
         };
         let mut media = MediaAsset::file(id, kind, self.path.clone(), self.probe.clone());
         media.content_hash = Some(self.content_hash.clone());
+        media.folder = self.folder;
         tx.insert_media(&media)?;
         Ok(MediaRegistered {
             media_id: id,
@@ -374,6 +392,8 @@ pub struct MediaImportOutput {
 pub struct MediaImport {
     /// Absolute paths of the files (1..=256, no repeats).
     pub paths: Vec<String>,
+    /// Bin folder for the new assets; absent: top level.
+    pub folder: Option<FolderId>,
 }
 
 impl MediaImport {
@@ -459,6 +479,7 @@ impl EngineCommand for MediaImport {
                         path: path.clone(),
                         probe: probed.probe,
                         content_hash: probed.content_hash,
+                        folder: self.folder,
                     };
                     match register.kind() {
                         Ok(_) => {
@@ -539,6 +560,10 @@ pub struct MediaSummary {
     pub id: MediaId,
     /// What it is.
     pub kind: MediaKind,
+    /// The name the bin shows: the display name, else the file name.
+    pub name: String,
+    /// The folder of the bin it is in; absent: the top level.
+    pub folder: Option<FolderId>,
     /// Absolute path when it was last found (file kinds).
     pub path: Option<String>,
     /// Playable length, if known.
@@ -562,7 +587,8 @@ pub struct MediaListOutput {
     pub matched: u32,
 }
 
-/// Lists the media of the project, filtered and ordered, one page at a time.
+/// Lists the media of the project, filtered (also by bin folder) and ordered, one page at a
+/// time. Each asset carries the name the bin shows and its folder.
 #[query(
     name = "media.list",
     summary = "List the project's media (filter, sort, paged; default by id)",
@@ -585,6 +611,8 @@ fn summary(m: &MediaAsset) -> MediaSummary {
     MediaSummary {
         id: m.id,
         kind: m.kind,
+        name: asset_name(m).into_owned(),
+        folder: m.folder,
         path: m.path_abs.clone(),
         duration: m.probe.duration,
         has_video: m.has_video(),
@@ -609,7 +637,7 @@ impl Query for MediaList {
         let sort = self.sort.unwrap_or_default();
         let desc = sort.order == MediaSortOrder::Desc;
         let used = filter.used.is_some().then(|| used_media(doc));
-        let matcher = Matcher::new(&filter, used.as_ref())?;
+        let matcher = Matcher::new(&filter, used.as_ref())?.in_folders(folder_scope(doc, &filter)?);
 
         // The matching assets, in the requested order. `doc.media` iterates by ID already.
         let mut found: Vec<Keyed<'_>> = doc

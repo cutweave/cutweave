@@ -3,14 +3,17 @@
 //! same predicate in TypeScript (`packages/editor/src/media/find.ts`); both are checked against
 //! `tests/fixtures/media-find.json`, which `tests/media_find_fixture.rs` generates from this code.
 //!
-//! Text matching: the name is the asset's file name (relative path, else absolute, else the
-//! ID); terms are split on space, tab, CR and LF; every term must occur, ignoring case and
-//! accents (NFD, combining marks removed, lower case).
+//! Text matching: the name is the asset's display name (ADR-0020), else its file name (relative
+//! path, else absolute, else the ID); terms are split on space, tab, CR and LF; every term must
+//! occur, ignoring case and accents (NFD, combining marks removed, lower case).
+//!
+//! Folders (WP-2F.07): `folder` and `recursive` scope the list to one folder, a folder and its
+//! subfolders, or the top level ([`folder_scope`]).
 
 use std::{borrow::Cow, cmp::Ordering, collections::HashSet};
 
 use cutweave_commands::{CmdError, wire};
-use cutweave_model::{Duration, MediaAsset, MediaId, MediaKind, Project};
+use cutweave_model::{Duration, EntityKind, FolderId, MediaAsset, MediaId, MediaKind, Project};
 use unicode_normalization::{UnicodeNormalization, char::is_combining_mark};
 
 /// Longest accepted `filter.text`, in characters.
@@ -38,6 +41,14 @@ pub struct MediaFilter {
     /// `true`: only files nothing can be read from (no streams).
     #[serde(default)]
     pub problems: Option<bool>,
+    /// Only assets in this folder of the bin; absent: the whole bin, or only its top level
+    /// with `recursive: false`.
+    #[serde(default)]
+    pub folder: Option<FolderId>,
+    /// Include the subfolders' assets. Default: `true` without `folder` (the whole project),
+    /// `false` with one (that folder only); `false` without `folder` lists the top level.
+    #[serde(default)]
+    pub recursive: Option<bool>,
 }
 
 /// What to order by: `imported` (by ID), `name`, `duration` (stills first when ascending) or
@@ -103,9 +114,13 @@ pub fn fold(s: &str) -> Cow<'_, str> {
     )
 }
 
-/// The name of an asset: the last component of its relative or absolute path, else its ID.
+/// The name the bin shows for an asset: its display name (ADR-0020), else the last component of
+/// its relative or absolute path, else its ID.
 #[must_use]
 pub fn asset_name(media: &MediaAsset) -> Cow<'_, str> {
+    if let Some(name) = &media.name {
+        return Cow::Borrowed(name.as_str());
+    }
     match media.path_rel.as_ref().or(media.path_abs.as_ref()) {
         Some(path) => Cow::Borrowed(path.rsplit(['/', '\\']).next().unwrap_or(path.as_str())),
         None => Cow::Owned(media.id.to_string()),
@@ -133,11 +148,34 @@ pub fn is_problem(media: &MediaAsset) -> bool {
     media.kind != MediaKind::SequenceRef && media.probe.streams.is_empty()
 }
 
+/// The folders whose assets `filter` keeps (`None` inside: the top level), or `None` when it
+/// keeps every folder.
+///
+/// # Errors
+/// `NotFound` when `filter.folder` does not exist.
+pub fn folder_scope(
+    doc: &Project,
+    filter: &MediaFilter,
+) -> Result<Option<HashSet<Option<FolderId>>>, CmdError> {
+    if let Some(folder) = filter.folder
+        && !doc.folders.contains_key(&folder)
+    {
+        return Err(CmdError::not_found(EntityKind::Folder, folder));
+    }
+    let recursive = filter.recursive.unwrap_or(filter.folder.is_none());
+    Ok(match (filter.folder, recursive) {
+        (None, true) => None,
+        (folder, false) => Some(std::iter::once(folder).collect()),
+        (Some(folder), true) => Some(doc.folder_subtree(folder).into_iter().map(Some).collect()),
+    })
+}
+
 /// A filter prepared for many assets.
 pub struct Matcher<'a> {
     filter: &'a MediaFilter,
     terms: Vec<String>,
     used: Option<&'a HashSet<MediaId>>,
+    folders: Option<HashSet<Option<FolderId>>>,
 }
 
 impl<'a> Matcher<'a> {
@@ -173,13 +211,26 @@ impl<'a> Matcher<'a> {
             filter,
             terms,
             used,
+            folders: None,
         })
+    }
+
+    /// The same matcher, keeping only assets in `scope` (see [`folder_scope`]).
+    #[must_use]
+    pub fn in_folders(mut self, scope: Option<HashSet<Option<FolderId>>>) -> Matcher<'a> {
+        self.folders = scope;
+        self
     }
 
     /// Whether the asset passes every part of the filter.
     #[must_use]
     pub fn matches(&self, media: &MediaAsset) -> bool {
         let f = self.filter;
+        if let Some(scope) = &self.folders
+            && !scope.contains(&media.folder)
+        {
+            return false;
+        }
         if let Some(kinds) = &f.kinds
             && !kinds.is_empty()
             && !kinds.contains(&media.kind)
