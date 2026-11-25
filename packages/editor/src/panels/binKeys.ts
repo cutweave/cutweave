@@ -1,7 +1,10 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
-// The media bin's keys (WP-1M.04, WP-1M.12) as one table: the panel reads it to decide what a key
-// press does, and Settings > Keyboard shortcuts lists it (WP-1M.13), so the two cannot drift.
-// `key` is `KeyboardEvent.key`; `mod` means Ctrl, or Cmd on macOS.
+// The media bin's keys (WP-1M.04, WP-1M.12, WP-2H.05): what a key press does in the bin is the
+// app keymap's `bin` context (`keymap/`, Settings > Keyboard shortcuts), so a rebinding applies
+// here and the page lists the same keys the panel reads. `import` works anywhere in the app.
+
+import { matchEvent } from "../keymap/store.ts";
+import type { KeyEventLike } from "../keymap/stroke.ts";
 
 export type BinKeyAction =
   | "moveNext"
@@ -20,63 +23,49 @@ export type BinKeyAction =
   | "selectAll"
   | "newFolder";
 
-export interface BinKey {
-  readonly action: BinKeyAction;
-  readonly key: string;
-  readonly mod?: boolean;
-  /** The key needs Alt (Alt+Up goes up a folder). */
-  readonly alt?: boolean;
-  /** The key needs Shift (a plain key ignores it; Ctrl/Cmd+Shift+N is not Ctrl/Cmd+N). */
-  readonly shift?: boolean;
-  /** Works while the bin has the focus; otherwise anywhere in the app. */
-  readonly inPanel: boolean;
-}
+/** The keymap command of each bin action. */
+export const BIN_COMMANDS: Readonly<Record<Exclude<BinKeyAction, "selectAll">, string>> = {
+  moveNext: "bin.move_next",
+  movePrevious: "bin.move_previous",
+  moveDown: "bin.move_down",
+  moveUp: "bin.move_up",
+  first: "bin.first",
+  last: "bin.last",
+  insert: "bin.insert",
+  play: "bin.play",
+  remove: "media.remove",
+  import: "bin.import",
+  search: "bin.search",
+  up: "bin.up",
+  rename: "bin.rename",
+  newFolder: "bin.new_folder",
+};
 
-export const BIN_KEYS: readonly BinKey[] = [
-  { action: "moveNext", key: "ArrowRight", inPanel: true },
-  { action: "movePrevious", key: "ArrowLeft", inPanel: true },
-  { action: "moveDown", key: "ArrowDown", inPanel: true },
-  { action: "moveUp", key: "ArrowUp", inPanel: true },
-  { action: "first", key: "Home", inPanel: true },
-  { action: "last", key: "End", inPanel: true },
-  { action: "insert", key: "Enter", inPanel: true },
-  { action: "play", key: " ", inPanel: true },
-  { action: "remove", key: "Delete", inPanel: true },
-  { action: "up", key: "Backspace", inPanel: true },
-  { action: "up", key: "ArrowUp", alt: true, inPanel: true },
-  { action: "rename", key: "F2", inPanel: true },
-  { action: "selectAll", key: "a", mod: true, inPanel: true },
-  { action: "newFolder", key: "n", mod: true, shift: true, inPanel: true },
-  { action: "import", key: "i", mod: true, inPanel: false },
-  { action: "search", key: "f", mod: true, inPanel: true },
-];
+// Ctrl/Cmd+A is the fixed Select all of text fields (`edit.text.select_all`, reserved), so the bin
+// does not bind it again: in the bin, away from a text field, the same key selects every tile.
+const ACTION_OF = new Map<string, BinKeyAction>([
+  ...(Object.entries(BIN_COMMANDS) as [BinKeyAction, string][]).map(
+    ([action, id]): [string, BinKeyAction] => [id, action],
+  ),
+  ["edit.text.select_all", "selectAll"],
+]);
 
 /** The slice of a `KeyboardEvent` the bin reads. */
-export interface BinKeyEvent {
-  readonly key: string;
-  readonly ctrlKey: boolean;
-  readonly metaKey: boolean;
-  readonly altKey: boolean;
-  readonly shiftKey: boolean;
+export type BinKeyEvent = KeyEventLike;
+
+function lookup(e: BinKeyEvent): BinKeyAction | null {
+  if (typeof e.key !== "string") return null;
+  const binding = matchEvent(e, ["bin", "global"]);
+  return binding === null ? null : (ACTION_OF.get(binding.command) ?? null);
 }
 
 /**
- * What a key press does in the bin, or `null`. Plain keys ignore Shift (Shift+Arrow still
- * moves); a Ctrl/Cmd key needs the modifier, and Shift only where the table says so; Alt only
- * where the table says so.
+ * What a key press does in the bin, or `null`. A plain key ignores Shift (Shift+Arrow still
+ * moves); a Ctrl/Cmd key needs the modifier and nothing else.
  */
 export function binKeyAction(e: BinKeyEvent): BinKeyAction | null {
-  const mod = e.ctrlKey || e.metaKey;
-  const key = e.key.length === 1 ? e.key.toLowerCase() : e.key;
-  for (const entry of BIN_KEYS) {
-    if (entry.key !== key) continue;
-    if ((entry.alt === true) !== e.altKey) continue;
-    if (entry.mod === true) {
-      if (!mod || (entry.shift === true) !== e.shiftKey) continue;
-    } else if (mod || (entry.shift === true && !e.shiftKey)) {
-      continue;
-    }
-    return entry.action;
-  }
+  const found = lookup(e);
+  if (found !== null) return found;
+  if (e.shiftKey && !e.ctrlKey && !e.metaKey && !e.altKey) return lookup({ ...e, shiftKey: false });
   return null;
 }

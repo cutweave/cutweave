@@ -32,6 +32,11 @@ export interface PanelDef {
   /** Where it docks when it has no remembered spot in this workspace. */
   readonly defaultDock: DockSpot;
   /**
+   * Not in the default layouts, and not added to a layout saved before it was registered: it is
+   * a closed panel that View > Panels (and its own menu entry) opens at `defaultDock`.
+   */
+  readonly startClosed?: boolean;
+  /**
    * Minimum size in pixels, read when the panel is added (a function because the numbers come
    * from layout tokens, which are only known once the stylesheet is loaded).
    */

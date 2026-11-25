@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 // The title bar's menus and the toasts' (WP-2H.13): save status, Export, the workspace controls,
 // Undo and Redo, a toast, the engine chip. A sash double-click resets its size and has no menu.
-// TODO(WP-2H.01): Save layout as…. TODO(WP-2H.11): Open History…, Show in History.
+// TODO(WP-2H.01): Save layout as…. TODO(WP-2H.11): Show in History.
 // TODO: Reveal file after an export (the export store keeps no path once it is done), Copy error
 // code on a toast (a notice carries no code), Reconnect now (the supervisor has no such call).
 import { engineStore } from "../../engine/engineStore.ts";
@@ -95,6 +95,8 @@ export const CHROME_HISTORY: MenuSurfaceDef = {
       reason: "contextMenu.reason.nothingToRedo",
       args: () => ({ actor: "*" }),
     },
+    // WP-2H.11: the History panel's own command.
+    { command: "history.open", group: "history", order: 2 },
   ],
 };
 

@@ -997,8 +997,10 @@ dependencies = [
 name = "cutweave-model"
 version = "0.0.0"
 dependencies = [
+ "criterion",
  "imbl",
  "insta",
+ "libm",
  "proptest",
  "schemars",
  "serde",

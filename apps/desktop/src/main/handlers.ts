@@ -38,8 +38,8 @@ export interface HandlerDeps {
     snapshot(): PrefsSnapshot;
     set(key: string, value: unknown): void;
     reset(keys: readonly PreferenceKey[]): void;
-    exportText(): { text: string; count: number };
-    importText(text: string): ImportOutcome;
+    exportText(only?: string): { text: string; count: number };
+    importText(text: string, only?: string): ImportOutcome;
   };
   /** The native "save as" for exported settings; the chosen path or null. */
   chooseSettingsExportFile(defaultName: string): Promise<string | null>;
@@ -159,6 +159,9 @@ export function validExportPath(chosen: unknown): string | null {
 /** The most a settings file may hold: a few hundred bytes in practice. */
 export const MAX_SETTINGS_FILE_BYTES = 256 * 1024;
 export const SETTINGS_FILE_NAME = "cutweave-settings.json";
+/** The file "Export shortcuts…" proposes (Settings > Keyboard shortcuts, WP-2H.05). */
+export const SHORTCUTS_FILE_NAME = "cutweave-shortcuts.json";
+const SHORTCUT_KEYS = "shortcuts.";
 
 /** The `.json` file settings are exported to: absolute, bounded, ending in .json. */
 export function validSettingsExportPath(chosen: unknown): string | null {
@@ -263,21 +266,25 @@ export function createHandlers(deps: HandlerDeps): InvokeHandlers {
     "prefs:reset": (keys) => {
       deps.prefs.reset(keys as PreferenceKey[]);
     },
-    "prefs:export": async () => {
+    "prefs:export": async (only) => {
       const chosen = validSettingsExportPath(
-        await deps.chooseSettingsExportFile(SETTINGS_FILE_NAME),
+        await deps.chooseSettingsExportFile(
+          only === "shortcuts" ? SHORTCUTS_FILE_NAME : SETTINGS_FILE_NAME,
+        ),
       );
       if (chosen === null) return { status: "cancelled" };
-      const { text, count } = deps.prefs.exportText();
+      const { text, count } = deps.prefs.exportText(
+        only === "shortcuts" ? SHORTCUT_KEYS : undefined,
+      );
       deps.writeTextFile(chosen, text);
       return { status: "saved", path: chosen, count };
     },
-    "prefs:import": async () => {
+    "prefs:import": async (only) => {
       const chosen = validSettingsImportPath(await deps.chooseSettingsImportFile());
       if (chosen === null) return { status: "cancelled" };
       const text = deps.readTextFile(chosen, MAX_SETTINGS_FILE_BYTES);
       if (text === null) return { status: "invalid", reason: "unreadable" };
-      return deps.prefs.importText(text);
+      return deps.prefs.importText(text, only === "shortcuts" ? SHORTCUT_KEYS : undefined);
     },
     "shell:openAppFolder": async (which) => {
       await deps.openAppFolder(which);

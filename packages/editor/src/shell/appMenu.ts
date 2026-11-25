@@ -19,6 +19,8 @@
 // runs from a field too, as the native menu's accelerators did.
 
 import type { TKey } from "../i18n/index.ts";
+import { isComposing, keymapModelFor } from "../keymap/store.ts";
+import { type KeyCombo, spell, strokeOfEvent } from "../keymap/stroke.ts";
 
 export type AppCommand =
   | "new"
@@ -49,58 +51,45 @@ export function menuPlatform(platform: string): MenuPlatform {
 }
 
 /** A key with modifiers. `mod` is Ctrl (Cmd on macOS). */
-export interface Chord {
-  readonly key: string;
-  readonly mod?: boolean;
-  readonly shift?: boolean;
-}
+export type Chord = KeyCombo;
 
-/** The chords of each command; the first is the one the menu shows. */
+/** The keymap's id of each menu command (WP-2H.05): its keys come from the keymap, not from here. */
+export const COMMAND_IDS: Readonly<Record<AppCommand, string>> = {
+  new: "project.new",
+  open: "project.open",
+  save: "project.save",
+  saveAs: "project.save_as",
+  export: "export.start",
+  quit: "app.quit",
+  undo: "edit.undo",
+  redo: "edit.redo",
+  cut: "edit.text.cut",
+  copy: "edit.text.copy",
+  paste: "edit.text.paste",
+  selectAll: "edit.text.select_all",
+  toggleFullScreen: "window.toggle_full_screen",
+  reload: "window.reload",
+  toggleDevTools: "window.toggle_dev_tools",
+  settings: "app.open_settings",
+  about: "app.about",
+};
+
+/**
+ * The chords of each command, from the keymap (the preset and the person's changes); the first is
+ * the one the menu shows. A key sequence of two strokes is not a menu accelerator and is left out.
+ */
 export function chordsFor(command: AppCommand, platform: MenuPlatform): readonly Chord[] {
-  const mod = (key: string, shift = false): Chord => ({ key, mod: true, shift });
-  switch (command) {
-    case "new":
-      return [mod("N")];
-    case "open":
-      return [mod("O")];
-    case "save":
-      return [mod("S")];
-    case "saveAs":
-      return [mod("S", true)];
-    case "export":
-      return [mod("M")];
-    case "quit":
-      // Windows closes with the OS's Alt+F4; Linux (and the native role) use Ctrl+Q.
-      return platform === "linux" ? [mod("Q")] : [];
-    case "undo":
-      return [mod("Z")];
-    case "redo":
-      return platform === "mac" ? [mod("Z", true)] : [mod("Y"), mod("Z", true)];
-    case "cut":
-      return [mod("X")];
-    case "copy":
-      return [mod("C")];
-    case "paste":
-      return [mod("V")];
-    case "selectAll":
-      return [mod("A")];
-    case "toggleFullScreen":
-      return [{ key: "F11" }];
-    case "reload":
-      return [mod("R")];
-    case "toggleDevTools":
-      return [mod("I", true)];
-    case "settings":
-      return [mod(",")];
-    case "about":
-      return [];
-  }
+  return keymapModelFor(platform)
+    .keysOf(COMMAND_IDS[command])
+    .filter((combo) => combo.next === undefined);
 }
 
 /** How a menu shows a chord: `Ctrl+Shift+S`, `F11` (`⌘` for Ctrl on macOS). */
 export function chordLabel(chord: Chord, platform: MenuPlatform): string {
   const parts: string[] = [];
+  if (chord.ctrl) parts.push("Ctrl");
   if (chord.mod) parts.push(platform === "mac" ? "⌘" : "Ctrl");
+  if (chord.alt) parts.push("Alt");
   if (chord.shift) parts.push("Shift");
   parts.push(chord.key);
   return parts.join("+");
@@ -127,6 +116,10 @@ const REPEATING: ReadonlySet<AppCommand> = new Set(["undo", "redo"]);
 /** The slice of a `KeyboardEvent` the shortcuts read. */
 export interface ShortcutEvent {
   readonly key: string;
+  /** The physical key: a letter still matches when the layout prints another script. */
+  readonly code?: string;
+  readonly isComposing?: boolean;
+  readonly keyCode?: number;
   readonly ctrlKey: boolean;
   readonly metaKey: boolean;
   readonly altKey: boolean;
@@ -151,12 +144,9 @@ export const KEYED: readonly AppCommand[] = [
 ];
 
 function matches(chord: Chord, e: ShortcutEvent, platform: MenuPlatform): boolean {
-  const modDown = platform === "mac" ? e.metaKey && !e.ctrlKey : e.ctrlKey && !e.metaKey;
-  const noMod = !e.ctrlKey && !e.metaKey;
-  if (e.altKey) return false;
-  if ((chord.mod ?? false) ? !modDown : !noMod) return false;
-  if ((chord.shift ?? false) !== e.shiftKey) return false;
-  return e.key.toLowerCase() === chord.key.toLowerCase();
+  if (isComposing(e)) return false;
+  const stroke = strokeOfEvent(e, platform);
+  return stroke !== null && spell(stroke) === spell(chord);
 }
 
 /**
@@ -232,9 +222,11 @@ export type AppMenuEntry =
       readonly items: AppMenuState["panels"];
     }
   | {
-      /** A `workspace.*` command (View > Reset layout). */
+      /** A `workspace.*` command (View > Reset layout, Edit > History). */
       readonly kind: "workspace";
       readonly command: string;
+      /** The panel a `workspace.open_panel` entry opens. */
+      readonly panel?: string;
       readonly label: string;
       readonly enabled: boolean;
     }
@@ -296,6 +288,13 @@ export function buildAppMenu(state: AppMenuState, t: MenuTranslate): AppMenu[] {
   const edit: AppMenuEntry[] = [
     command("undo", state.undoLabel, live && !readOnly && state.canUndo),
     command("redo", state.redoLabel, live && !readOnly && state.canRedo),
+    {
+      kind: "workspace",
+      command: "workspace.open_panel",
+      panel: "history",
+      label: t("menu.history"),
+      enabled: true,
+    },
     sep("edit-1"),
     command("cut", t("menu.cut"), true),
     command("copy", t("menu.copy"), true),

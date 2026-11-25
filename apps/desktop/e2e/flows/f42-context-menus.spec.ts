@@ -9,7 +9,8 @@
 // playhead, Ctrl+Z, Disable clip), a track header (Mute, Lock, then a drag on it is refused), an
 // empty lane (Add track above), the ruler (Move playhead here), a dock tab (Reset layout), the
 // save status (Save now); press the Menu key on a bin card and choose Remove from project, then
-// cancel its dialog. A third flow right-clicks the Export chip and cancels the export (it needs
+// cancel its dialog. WP-2A.04 adds a clip's left edge: Trim to playhead, then Ctrl+Z. A third
+// flow right-clicks the Export chip and cancels the export (it needs
 // the FFmpeg engine and the corpus, like F14, and skips without them). Every choice is checked as
 // an undo step or as state the person sees. Only the OS file picker is stubbed.
 import { expect, test } from "../fixtures.ts";
@@ -190,6 +191,29 @@ test.describe("F42 context menus", () => {
       await expect(item(clipMenu, /^Enable clip/)).toBeVisible();
       await item(clipMenu, /^Enable clip/).click();
       await expect.poll(async () => (await sequence(page)).tracks[0]?.items[0]?.enabled).toBe(true);
+
+      // The clip's left edge (WP-2A.04): Trim to playhead moves the start to the playhead (5 s),
+      // with its sound; Roll says why it cannot run; Ctrl+Z puts the clip back.
+      await editorCaughtUp(page);
+      g = await timelineGeometry(page);
+      box = clipBox(g, clipId);
+      await page.mouse.click(box.x + 2, box.y, { button: "right" });
+      const edgeMenu = page.getByRole("menu", { name: "Edge actions for interview.mp4" });
+      await expect(edgeMenu).toBeVisible();
+      await expect(item(edgeMenu, /^Roll to playhead/)).toBeDisabled();
+      await expect(edgeMenu.getByText("No clip touches this edge").first()).toBeAttached();
+      await snapshot(page, info, "timeline edge menu");
+      await item(edgeMenu, /^Trim to playhead/).click();
+      await expect
+        .poll(() => layout(page))
+        .toEqual([
+          { track: "V1", clips: [[5, 6]] },
+          { track: "A1", clips: [[5, 6]] },
+        ]);
+      await editorCaughtUp(page);
+      await shortcut(app, "Control+Z");
+      await expect.poll(async () => (await layout(page))[0]?.clips).toEqual([[1, 10]]);
+      await editorCaughtUp(page);
 
       // A track header: Mute (the menu then reads Unmute, checked), Lock, and a drag is refused.
       g = await timelineGeometry(page);

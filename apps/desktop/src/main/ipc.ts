@@ -95,8 +95,9 @@ export const invokeSchemas = {
   "prefs:get": noArgs,
   "prefs:set": preferenceWrite,
   "prefs:reset": z.tuple([z.array(z.string().refine(isPreferenceKey, "unknown setting")).max(200)]),
-  "prefs:export": noArgs,
-  "prefs:import": noArgs,
+  // `"shortcuts"`: only the keyboard shortcuts (WP-2H.05).
+  "prefs:export": z.union([noArgs, z.tuple([z.literal("shortcuts")])]),
+  "prefs:import": z.union([noArgs, z.tuple([z.literal("shortcuts")])]),
   "shell:openAppFolder": z.tuple([z.enum(APP_FOLDERS)]),
   "agents:addFolder": noArgs,
   "agents:removeFolder": z.tuple([filePath]),

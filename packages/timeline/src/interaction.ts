@@ -206,6 +206,11 @@ export interface KeyInput {
   readonly altKey?: boolean;
   readonly ctrlKey?: boolean;
   readonly metaKey?: boolean;
+  /**
+   * What the host's keymap made of the key press (WP-2H.05): an action, or `null` for none. Absent,
+   * the machine reads {@link TIMELINE_KEYS}, the defaults, which take no modifier.
+   */
+  readonly action?: TimelineKeyAction | null;
 }
 
 export type InteractionEvent =
@@ -829,8 +834,9 @@ function aborted(state: InteractionState): Transition {
 export type TimelineKeyAction = "cancel" | "split" | "delete" | "toggle-snapping" | "rename-track";
 
 /**
- * The timeline's own keys, as one table: `onKey` below reads it, and the editor's list of
- * shortcuts (Settings > Keyboard shortcuts) is generated from it, so the two cannot drift.
+ * The timeline's default keys, as one table. The editor's keymap (WP-2H.05) owns the keys now
+ * (its NLE preset must agree with this table, a test holds it to that) and tells the machine
+ * which action a press is (`KeyInput.action`); this table answers when the host does not.
  * `keys` are `KeyboardEvent.key` values; a letter matches either case. None takes a modifier.
  */
 export const TIMELINE_KEYS: readonly {
@@ -851,9 +857,13 @@ export function timelineKeyAction(key: string): TimelineKeyAction | null {
 }
 
 function onKey(state: InteractionState, e: KeyInput): Transition {
-  const action = timelineKeyAction(e.key);
+  const hosted = e.action !== undefined;
+  const action = e.action !== undefined ? e.action : timelineKeyAction(e.key);
   if (action === "cancel") return cancel(state);
-  if (e.ctrlKey === true || e.metaKey === true || e.altKey === true) return same(state);
+  // The host's keymap has already matched the modifiers; the defaults take none.
+  if (!hosted && (e.ctrlKey === true || e.metaKey === true || e.altKey === true)) {
+    return same(state);
+  }
   switch (action) {
     case "split":
       return split(state);

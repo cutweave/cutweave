@@ -84,12 +84,13 @@ async function panelMenuState(user: ReturnType<typeof userEvent.setup>) {
 }
 
 describe("the panel registry", () => {
-  it("holds the four built-in panels with a default dock each", () => {
+  it("holds the built-in panels with a default dock each", () => {
     expect(registeredPanels().map((p) => p.id)).toEqual([
       "assets",
       "preview",
       "inspector",
       "timeline",
+      "history",
     ]);
   });
 
@@ -188,6 +189,7 @@ describe("closing and reopening panels (WP-2H.01)", () => {
       Preview: "true",
       Inspector: "false",
       Timeline: "true",
+      History: "false",
     });
 
     await togglePanelInMenu(user, "Inspector");

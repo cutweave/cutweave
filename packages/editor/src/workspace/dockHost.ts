@@ -44,9 +44,16 @@ let meta: LayoutMeta = EMPTY_META;
 function refresh(): void {
   const open = api === null ? [] : api.panels.map((p) => p.id);
   const known = registeredPanels().map((p) => p.id);
+  // A panel that starts closed (History) is not "closed" until someone opens and closes it: the
+  // empty dock's "Reopen panels" brings back the panels the layout has, not every panel there is.
+  const startClosed = new Set(
+    registeredPanels()
+      .filter((p) => p.startClosed)
+      .map((p) => p.id),
+  );
   openPanelsStore.setState({
     open: known.filter((id) => open.includes(id)),
-    closed: known.filter((id) => !open.includes(id)),
+    closed: known.filter((id) => !open.includes(id) && !startClosed.has(id)),
   });
 }
 
@@ -108,7 +115,11 @@ export function loadWorkspace(dock: DockviewApi, id: WorkspaceId, saved: unknown
       };
       // A panel registered since this layout was saved (History, a plugin) appears at its default.
       for (const def of registeredPanels()) {
-        if (dock.getPanel(def.id) === undefined && !meta.closed.includes(def.id)) {
+        if (
+          dock.getPanel(def.id) === undefined &&
+          def.startClosed !== true &&
+          !meta.closed.includes(def.id)
+        ) {
           addAt(dock, def, def.defaultDock);
         }
       }

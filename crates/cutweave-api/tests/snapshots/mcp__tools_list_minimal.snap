@@ -18,6 +18,14 @@ expression: catalog.tools_json()
             ],
             "description": "Whose change: `user`, `agent:<label>`, `plugin:<id>`, `system`, or `*` for the most\nrecent change by anyone. Default: the caller's own.",
             "pattern": "^(\\*|user|system|agent:.+|plugin:[A-Za-z0-9._@-]+)$"
+          },
+          "steps": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "description": "How many changes to undo in one go, newest first, each its own history record (1..=100,\ndefault 1). A refused step stops the run; the output's `done` says how many applied.",
+            "minimum": 0
           }
         }
       },

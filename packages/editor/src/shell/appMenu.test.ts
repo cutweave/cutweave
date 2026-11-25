@@ -85,6 +85,7 @@ describe("the application menu (WP-1M.09)", () => {
       Edit: [
         "Undo Split clip [Ctrl+Z]",
         "Redo [Ctrl+Y] (off)",
+        "History",
         "---",
         "Cut [Ctrl+X]",
         "Copy [Ctrl+C]",

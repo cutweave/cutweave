@@ -38,6 +38,14 @@
       "reason": "Copy command id in the command palette's row menu writes the command's id (`clip.split`) to the OS clipboard through the page's clipboard API. It is the person's clipboard, not project state."
     },
     {
+      "id": "history.copy_label",
+      "reason": "Copy label in the History panel's row menu writes the step's name (\"Split clip\") to the OS clipboard through the page's clipboard API. It is the person's clipboard, not project state."
+    },
+    {
+      "id": "shortcuts.copy_id",
+      "reason": "Copy command id in the shortcut editor's row menu writes the command's id (`clip.split`) to the OS clipboard through the page's clipboard API. It is the person's clipboard, not project state."
+    },
+    {
       "id": "host.inspect_element",
       "reason": "Opens the page's developer tools at a point (Shift+right-click on dead space) through `window:inspectElement`, which main refuses in packaged builds. A contributor's debugging aid with no project effect."
     }

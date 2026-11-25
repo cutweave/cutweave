@@ -1168,3 +1168,101 @@ fn a_transaction_that_newer_commits_made_invalid_cannot_commit() {
     s.doc().validate().unwrap();
     s.verify().unwrap();
 }
+
+// ----- `steps` (WP-2H.11) ----------------------------------------------------------------------
+
+fn moved(s: &mut DocState, name: &str, params: Value) -> Result<Value, CmdError> {
+    run(s, &ui(), name, params).map(|a| a.output)
+}
+
+/// What a history leaves behind: cause and label of every entry, newest first.
+fn trail(s: &mut DocState) -> Vec<(String, String)> {
+    history(s)
+        .entries
+        .iter()
+        .map(|e| (format!("{:?}", e.cause), e.label.clone()))
+        .collect()
+}
+
+fn three_changes() -> (DocState, ItemId) {
+    let (doc, tracks, _) = project(2);
+    let mut s = state(doc);
+    let (u, a) = (ui(), agent());
+    let x = append(&mut s, &u, tracks[0], 10);
+    rename(&mut s, &a, x, "agent's");
+    append(&mut s, &u, tracks[1], 10);
+    (s, x)
+}
+
+#[test]
+fn undo_steps_equal_the_same_number_of_single_star_undos() {
+    let (mut batched, _) = three_changes();
+    let (mut single, _) = three_changes();
+    let out = moved(&mut batched, "edit.undo", json!({"actor": "*", "steps": 3})).unwrap();
+    assert_eq!(out["done"], json!(3));
+    assert!(out.get("stopped").is_none());
+    for _ in 0..3 {
+        undo(&mut single, &ui(), Some("*")).unwrap();
+    }
+    assert_eq!(batched.committed_doc(), single.committed_doc());
+    assert_eq!(trail(&mut batched), trail(&mut single));
+    assert_eq!(
+        history(&mut batched).entries.len(),
+        6,
+        "each step is a record"
+    );
+    // Redo the same way, and one at a time afterwards.
+    let out = moved(&mut batched, "edit.redo", json!({"actor": "*", "steps": 3})).unwrap();
+    assert_eq!(out["done"], json!(3));
+    for _ in 0..3 {
+        redo(&mut single, &ui(), Some("*")).unwrap();
+    }
+    assert_eq!(batched.committed_doc(), single.committed_doc());
+    assert_eq!(trail(&mut batched), trail(&mut single));
+    batched.verify().unwrap();
+}
+
+#[test]
+fn steps_default_to_one_and_are_bounded() {
+    let (mut s, _) = three_changes();
+    let out = moved(&mut s, "edit.undo", json!({"actor": "*"})).unwrap();
+    assert_eq!(out["done"], json!(1));
+    for bad in [0, 101] {
+        let err = run(
+            &mut s,
+            &ui(),
+            "edit.undo",
+            json!({"actor": "*", "steps": bad}),
+        )
+        .unwrap_err();
+        assert_eq!(err.code(), "invalid", "{bad}");
+    }
+}
+
+#[test]
+fn a_conflict_at_the_second_step_leaves_the_first_applied_and_reports_done() {
+    let (doc, tracks, _) = project(1);
+    let mut s = state(doc);
+    let u = ui();
+    run(&mut s, &u, "project.rename", json!({"name": "A"})).unwrap();
+    // Not undoable, and it touches what the rename changed.
+    run(&mut s, &u, "project.stamp", json!({"name": "B"})).unwrap();
+    let x = append(&mut s, &u, tracks[0], 10);
+    let out = moved(&mut s, "edit.undo", json!({"actor": "*", "steps": 3})).unwrap();
+    assert_eq!(out["done"], json!(1));
+    let stopped = out["stopped"].as_str().unwrap();
+    assert!(stopped.contains("project.stamp"), "{stopped}");
+    assert!(!items(s.committed_doc()).contains(&x));
+    assert_eq!(s.committed_doc().meta.name, "B");
+    // A conflict at the very first step is the error itself.
+    let err = run(&mut s, &u, "edit.undo", json!({"actor": "*", "steps": 2})).unwrap_err();
+    assert_eq!(reason(&err), Some(ConflictReason::HistoryTargetModified));
+}
+
+#[test]
+fn running_out_of_changes_stops_the_run_with_done() {
+    let (mut s, _) = three_changes();
+    let out = moved(&mut s, "edit.undo", json!({"actor": "*", "steps": 9})).unwrap();
+    assert_eq!(out["done"], json!(3));
+    assert!(out["stopped"].as_str().unwrap().contains("nothing to undo"));
+}

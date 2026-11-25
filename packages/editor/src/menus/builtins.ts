@@ -13,6 +13,9 @@ import { FIELD_COMMANDS, FIELD_SURFACE, INSPECT_COMMAND, INSPECT_SURFACE } from 
  */
 export const COMMAND_INFO: readonly CommandInfo[] = [
   { name: "clip.split", label: "contextMenu.command.clipSplit", icon: "scissors", undoable: true },
+  { name: "clip.trim", label: "contextMenu.command.clipTrim", undoable: true },
+  { name: "clip.ripple_trim", label: "contextMenu.command.clipRippleTrim", undoable: true },
+  { name: "clip.roll", label: "contextMenu.command.clipRoll", undoable: true },
   {
     name: "item.delete",
     label: "contextMenu.command.itemDelete",

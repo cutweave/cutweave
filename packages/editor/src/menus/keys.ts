@@ -1,55 +1,45 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
-// Shortcut hints for menu rows (WP-2H.12): `keysFor(command)` reads today's binding tables
-// (`shortcuts/bindings.ts`) through a map from command to binding. When the keymap engine
-// (WP-2H.05) lands it replaces this body, not its callers.
+// Shortcut hints for menu rows and palette rows (WP-2H.12, WP-2H.05): `keysFor(command)` is the
+// first key the keymap gives the command now, so a rebinding in Settings shows in the menus at
+// once, with no restart. A row's command is the binding id; the few rows whose command is named
+// differently from the binding register an alias.
 
+import { comboText, keymapModelFor } from "../keymap/store.ts";
 import type { MenuPlatform } from "../shell/appMenu.ts";
-import { type Binding, comboLabel, distinctCombos, listBindings } from "../shortcuts/bindings.ts";
 
-/** Command (catalog or UI) to the binding that runs it from the keyboard. */
-const BINDING_OF: Record<string, string> = {
-  "clip.split": "timeline.split",
-  "item.delete": "timeline.delete",
-  "edit.undo": "menu.undo",
-  "edit.redo": "menu.redo",
-  "media.remove": "bin.remove",
-  "edit.text.cut": "menu.cut",
-  "edit.text.copy": "menu.copy",
-  "edit.text.paste": "menu.paste",
-  "edit.text.select_all": "menu.selectAll",
-};
+/** Commands the menus show a key for (the others find theirs by the same name when they have one). */
+const HINTED: readonly string[] = [
+  "clip.split",
+  "item.delete",
+  "edit.undo",
+  "edit.redo",
+  "media.remove",
+  "edit.text.cut",
+  "edit.text.copy",
+  "edit.text.paste",
+  "edit.text.select_all",
+];
 
-/** A feature WP that adds a command and its key says so here. */
+/** Command (catalog or UI) to the binding that runs it from the keyboard, when the ids differ. */
+const ALIAS: Record<string, string> = {};
+
+/** A feature WP whose command is bound under another binding's id says so here. */
 export function registerKeyHint(command: string, bindingId: string): void {
-  BINDING_OF[command] = bindingId;
-}
-
-const byPlatform = new Map<MenuPlatform, ReadonlyMap<string, Binding>>();
-
-function bindings(platform: MenuPlatform): ReadonlyMap<string, Binding> {
-  let found = byPlatform.get(platform);
-  if (found === undefined) {
-    found = new Map(listBindings(platform).map((b) => [b.id, b]));
-    byPlatform.set(platform, found);
-  }
-  return found;
+  ALIAS[command] = bindingId;
 }
 
 /** The first key of `command` as text (`Ctrl+Z`), or `undefined` when it has none. */
 export function keysFor(command: string, platform: MenuPlatform): string | undefined {
-  const id = BINDING_OF[command];
-  if (id === undefined) return undefined;
-  const binding = bindings(platform).get(id);
-  const first = binding === undefined ? undefined : distinctCombos(binding, platform)[0];
-  return first === undefined ? undefined : comboLabel(first, platform);
+  const first = keymapModelFor(platform).keysOf(ALIAS[command] ?? command)[0];
+  return first === undefined ? undefined : comboText(first, platform);
 }
 
 /** Every command that has a hint, for the walk test. */
 export function hintedCommands(): readonly string[] {
-  return Object.keys(BINDING_OF);
+  return [...HINTED, ...Object.keys(ALIAS)];
 }
 
 /** The binding ids the hints point at, for the walk test. */
 export function hintBindingIds(): readonly string[] {
-  return Object.values(BINDING_OF);
+  return [...HINTED, ...Object.values(ALIAS)];
 }

@@ -307,11 +307,103 @@ describe("the clip menu", () => {
     expect(viewStore.getState().assetTab).toBe("media");
   });
 
-  it("opens the same menu from a clip's edge, and keeps the selection on an empty lane", () => {
-    expect(menuFor("timeline.edge", { ids: [C2] }).item("Delete clip")).toBeDefined();
+  it("keeps the selection on an empty lane", () => {
     viewStore.getState().setSelection([{ kind: "item", id: C1 } as never]);
     menuFor("timeline.lane", { ids: [], place: { time: 3 * F, trackId: V1 } });
     expect(viewStore.getState().selection).toEqual([{ kind: "item", id: C1 }]);
+  });
+});
+
+describe("the edge menu (WP-2A.04)", () => {
+  const right = (id: string) => ({ ids: [id], data: { zone: "right-edge" } });
+  const left = (id: string) => ({ ids: [id], data: { zone: "left-edge" } });
+
+  it("trims, ripple trims and rolls the end of a clip to the playhead, clamped", async () => {
+    const m = menuFor("timeline.edge", right(C1));
+    expect(m.menu.name).toBe("Edge actions for interview.mp4");
+    expect(m.items.map((i) => i.label)).toEqual([
+      "Trim to playhead",
+      "Ripple trim to playhead",
+      "Roll to playhead",
+      "Extend to next clip",
+    ]);
+    await m.choose("Trim to playhead");
+    expect(call).toHaveBeenCalledWith("clip.trim", {
+      item: C1,
+      edge: "end",
+      to: 5 * F,
+      clamp: true,
+    });
+    await menuFor("timeline.edge", right(C1)).choose("Ripple trim to playhead");
+    expect(call).toHaveBeenCalledWith("clip.ripple_trim", {
+      item: C1,
+      edge: "end",
+      to: 5 * F,
+      clamp: true,
+    });
+    await menuFor("timeline.edge", right(C1)).choose("Roll to playhead");
+    expect(call).toHaveBeenCalledWith("clip.roll", { left: C1, right: C2, to: 5 * F, clamp: true });
+    expect(viewStore.getState().selection).toEqual([{ kind: "item", id: C1 }]);
+  });
+
+  it("on a start edge, trims the head and rolls the cut with the clip before it", async () => {
+    await menuFor("timeline.edge", left(C2)).choose("Trim to playhead");
+    expect(call).toHaveBeenCalledWith("clip.trim", {
+      item: C2,
+      edge: "start",
+      to: 5 * F,
+      clamp: true,
+    });
+    await menuFor("timeline.edge", left(C2)).choose("Roll to playhead");
+    expect(call).toHaveBeenCalledWith("clip.roll", { left: C1, right: C2, to: 5 * F, clamp: true });
+    expect(menuFor("timeline.edge", left(C2)).item("Extend to previous clip").disabledReason).toBe(
+      "No gap next to this edge",
+    );
+  });
+
+  it("says why a row cannot run: the playhead on the edge, no clip touching it, a locked track", () => {
+    viewStore.setState({ playhead: 10 * F });
+    let m = menuFor("timeline.edge", right(C1));
+    for (const label of ["Trim to playhead", "Ripple trim to playhead", "Roll to playhead"]) {
+      expect(m.item(label).disabledReason, label).toBe(
+        "Move the playhead to where the edge should go",
+      );
+    }
+    viewStore.setState({ playhead: 25 * F });
+    m = menuFor("timeline.edge", right(C3));
+    expect(m.item("Trim to playhead").disabled).toBeUndefined();
+    expect(m.item("Roll to playhead").disabledReason).toBe("No clip touches this edge");
+    m = menuFor("timeline.edge", right(CL));
+    for (const label of ["Trim to playhead", "Roll to playhead", "Extend to next clip"]) {
+      expect(m.item(label).disabledReason, label).toBe("Track is locked");
+    }
+  });
+
+  it("extends an edge across a gap to the next or the previous clip", async () => {
+    const p = project() as unknown as {
+      sequences: Record<string, { tracks: Record<string, { items: Record<string, object> }> }>;
+    };
+    const v2 = p.sequences[SEQ]?.tracks[V2];
+    if (v2 === undefined) throw new Error("no V2");
+    v2.items = {
+      [hex("itm", 7)]: clip(hex("itm", 7), MED_V, 0),
+      [hex("itm", 8)]: clip(hex("itm", 8), MED_V, 14),
+    };
+    docStore.setState({ project: p as unknown as Project });
+    await menuFor("timeline.edge", right(hex("itm", 7))).choose("Extend to next clip");
+    expect(call).toHaveBeenCalledWith("clip.trim", {
+      item: hex("itm", 7),
+      edge: "end",
+      to: 14 * F,
+      clamp: true,
+    });
+    await menuFor("timeline.edge", left(hex("itm", 8))).choose("Extend to previous clip");
+    expect(call).toHaveBeenCalledWith("clip.trim", {
+      item: hex("itm", 8),
+      edge: "start",
+      to: 10 * F,
+      clamp: true,
+    });
   });
 });
 

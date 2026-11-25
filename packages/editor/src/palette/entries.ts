@@ -14,7 +14,7 @@ import { guardedCall } from "../menus/commands.ts";
 import type { MenuServices } from "../menus/services.ts";
 import type { LabelSpec, MenuTarget } from "../menus/types.ts";
 import { type ContextValues, evaluateWhen } from "../menus/when.ts";
-import type { SettingsPageDef } from "../settings/registry.ts";
+import { rowDescription, rowLabel, type SettingsPageDef } from "../settings/registry.ts";
 import { WORKSPACES } from "../state/viewStore.ts";
 import type { WorkspaceCommand } from "../workspace/commands.ts";
 import { runWorkspaceCommand, TOGGLE_PANEL_PREFIX } from "../workspace/commands.ts";
@@ -171,8 +171,8 @@ export function buildEntries(env: PaletteEnv): PaletteEntry[] {
         command: "app.open_settings",
         args: { page: page.id, row: row.id },
         kind: "settings",
-        title: t(row.label),
-        summary: t(row.description),
+        title: rowLabel(row, (key) => t(key)),
+        summary: rowDescription(row, (key) => t(key)),
         chips: [t("palette.chip.settings"), pageTitle],
       });
     }

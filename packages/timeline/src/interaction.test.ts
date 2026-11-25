@@ -1034,3 +1034,27 @@ describe("dropping media from the bin (WP-1M.03)", () => {
     expect(reduce(s, move(xAt(sec(9)), { track: "v1" })).state).toBe(s);
   });
 });
+
+describe("the host's keymap decides the key (WP-2H.05)", () => {
+  it("runs the action the host names, modifiers included, and none when it names null", () => {
+    // Ctrl+K as split: the host matched it, the machine does not second-guess the modifier.
+    const split = run(start({ selection: ["a"], playhead: sec(2) }), {
+      type: "key",
+      key: "k",
+      ctrlKey: true,
+      action: "split",
+    });
+    expect(split.intents).toEqual([{ kind: "split", items: ["a"], at: sec(2) }]);
+    // The default `s` does nothing once the host says the press is no action.
+    expect(
+      run(start({ selection: ["a"], playhead: sec(2) }), { type: "key", key: "s", action: null })
+        .intents,
+    ).toEqual([]);
+    // Without a host's answer the defaults still apply, and a modifier still cancels them.
+    expect(run(start({ selection: ["a"], playhead: sec(2) }), key("s")).intents).toHaveLength(1);
+    expect(
+      run(start({ selection: ["a"], playhead: sec(2) }), { type: "key", key: "s", ctrlKey: true })
+        .intents,
+    ).toEqual([]);
+  });
+});
