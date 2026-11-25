@@ -121,7 +121,8 @@ test.describe("F44 an agent opens a project while the person has unsaved work", 
         await naming.location.fill(work.dir);
         await naming.create.click();
         await expect(naming.dialog).toBeHidden();
-        await expect(page).toHaveTitle("First — Cutweave");
+        // Saved in the folder First (the document keeps its own name): nothing is unsaved now.
+        await expect(page).toHaveTitle("Untitled — Cutweave");
         await expect(dirtyDot(page)).toBeHidden();
         await note.getByRole("button", { name: "Dismiss" }).click();
         await expect(note).toBeHidden();
