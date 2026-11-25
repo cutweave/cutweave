@@ -3,8 +3,8 @@
 - **Status:** Proposed
 - **Date:** 2026-11-25
 - **Deciders:** Cutweave maintainers (drafted by the issue #161 fix)
-- **Supersedes:** none (amends `project.open` and `project.close`, WP-1I.04, and the session events of arch §7)
-- **Architecture refs:** `docs/01-architecture.md` §5.1, §7, §14
+- **Supersedes:** none (amends `project.open` and `project.close`, WP-1I.04, and the session events of arch §17)
+- **Architecture refs:** `docs/01-architecture.md` §5.1, §14, §17
 
 ## Context
 
@@ -56,9 +56,10 @@ The app uses them: File > Open passes `discard_unsaved: true` only after the per
 
 - An in-app prompt for an agent's refused open ("Claude wants to open Film: Save / Don't save"), building on `project.open_failed`.
 - The same say-so rule for any later command that replaces the document.
+- On acceptance, the session lifecycle bullet of arch §17 names the refusal and the two events.
 
 ## Links
 
-- Architecture: `../01-architecture.md` §5.1, §7, §14
+- Architecture: `../01-architecture.md` §5.1, §14, §17 (session lifecycle)
 - Issue #161; WP-1I.04 (session commands), WP-1M.07 (the app's unsaved-changes dialog)
 - ADR-0002 (one command bus), ADR-0016 (credential classes), ADR-0018 (user flows: F44)
