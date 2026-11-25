@@ -416,13 +416,18 @@ describe("the canvas path", () => {
         for (let i = 0; i < 33; i++) {
           selected = [];
           const t0 = performance.now();
-          harness.canvas.dispatchEvent(
-            new MouseEvent("contextmenu", { bubbles: true, cancelable: true, ...at }),
-          );
-          await screen.findByRole("menu");
-          if (i >= 3) samples.push(performance.now() - t0);
-          closeContextMenu();
-          await waitFor(() => expect(screen.queryByRole("menu")).toBeNull());
+          act(() => {
+            harness.canvas.dispatchEvent(
+              new MouseEvent("contextmenu", { bubbles: true, cancelable: true, ...at }),
+            );
+          });
+          screen.getByRole("menu");
+          const elapsed = performance.now() - t0;
+          if (i >= 3) samples.push(elapsed);
+          act(() => {
+            closeContextMenu();
+          });
+          expect(screen.queryByRole("menu")).toBeNull();
         }
         samples.sort((a, b) => a - b);
         p95 = Math.min(p95, samples[Math.floor(samples.length * 0.95) - 1] ?? Number.NaN);
@@ -431,7 +436,7 @@ describe("the canvas path", () => {
     } finally {
       harness.done();
     }
-  }, 60_000);
+  }, 30_000);
 
   it("long-press by touch opens it and cancels the gesture it began", () => {
     vi.useFakeTimers();
