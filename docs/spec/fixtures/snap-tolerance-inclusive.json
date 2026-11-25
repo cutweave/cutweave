@@ -1,0 +1,16 @@
+{
+  "$schema": "../fixture.schema.json",
+  "kind": "snap",
+  "id": "snap-tolerance-inclusive",
+  "title": "A candidate exactly at the tolerance snaps",
+  "cites": ["INV-322"],
+  "fps": 25,
+  "px_per_second": 100,
+  "threshold_px": 8,
+  "offsets": [0],
+  "r": 338688000,
+  "candidates": [
+    {"kind": "edge", "t": 282240000}
+  ],
+  "expected": {"t": 282240000, "target": {"kind": "edge", "t": 282240000}}
+}

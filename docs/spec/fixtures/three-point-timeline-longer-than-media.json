@@ -1,0 +1,13 @@
+{
+  "$schema": "../fixture.schema.json",
+  "kind": "three_point",
+  "id": "three-point-timeline-longer-than-media",
+  "title": "A timeline range longer than the media is shortened to it",
+  "cites": ["INV-291"],
+  "fps": 25,
+  "media": {"kind": "video", "frames": 250, "audio": true},
+  "playhead": 0,
+  "timeline_in": 0,
+  "timeline_out": 300,
+  "expected": {"at": 0, "source_in": 0, "duration": 250, "shortened": true}
+}

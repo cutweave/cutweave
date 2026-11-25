@@ -1,0 +1,13 @@
+{
+  "$schema": "../fixture.schema.json",
+  "kind": "three_point",
+  "id": "three-point-timeline-marks",
+  "title": "Timeline marks only: the media from its start fills the timeline range",
+  "cites": ["INV-291"],
+  "fps": 25,
+  "media": {"kind": "video", "frames": 250, "audio": true},
+  "playhead": 10,
+  "timeline_in": 100,
+  "timeline_out": 150,
+  "expected": {"at": 100, "source_in": 0, "duration": 50, "shortened": false}
+}

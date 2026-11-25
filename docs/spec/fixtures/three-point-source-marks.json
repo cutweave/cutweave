@@ -1,0 +1,13 @@
+{
+  "$schema": "../fixture.schema.json",
+  "kind": "three_point",
+  "id": "three-point-source-marks",
+  "title": "Source marks only: the marked range lands at the playhead",
+  "cites": ["INV-291"],
+  "fps": 25,
+  "media": {"kind": "video", "frames": 250, "audio": true},
+  "playhead": 200,
+  "source_in": 50,
+  "source_out": 125,
+  "expected": {"at": 200, "source_in": 50, "duration": 75, "shortened": false}
+}

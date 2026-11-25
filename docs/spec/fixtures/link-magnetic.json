@@ -1,0 +1,32 @@
+{
+  "$schema": "../fixture.schema.json",
+  "kind": "edit",
+  "id": "link-magnetic",
+  "title": "A main-track clip can be linked to an aligned overlay",
+  "command": "item.link",
+  "tags": ["magnetic", "linked"],
+  "cites": ["INV-261"],
+  "fps": 25,
+  "media": {
+    "mn": {"kind": "video", "frames": 250, "audio": false}
+  },
+  "before": [
+    { "track": "V2", "kind": "video", "items": [
+      {"id": "T", "media": "mn", "start": 30, "dur": 30}
+    ] },
+    { "track": "V1", "kind": "video", "magnetic": true, "items": [
+      {"id": "A", "media": "mn", "start": 0, "dur": 30},
+      {"id": "B", "media": "mn", "start": 30, "dur": 30, "in": 30}
+    ] }
+  ],
+  "params": {"items": ["B", "T"]},
+  "after": [
+    { "track": "V2", "kind": "video", "items": [
+      {"id": "T", "media": "mn", "start": 30, "dur": 30, "group": "+g1"}
+    ] },
+    { "track": "V1", "kind": "video", "magnetic": true, "items": [
+      {"id": "A", "media": "mn", "start": 0, "dur": 30},
+      {"id": "B", "media": "mn", "start": 30, "dur": 30, "in": 30, "group": "+g1"}
+    ] }
+  ]
+}

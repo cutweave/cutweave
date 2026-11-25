@@ -1,0 +1,21 @@
+{
+  "$schema": "../fixture.schema.json",
+  "kind": "edit",
+  "id": "set-magnetic-audio-invalid",
+  "title": "Only a video track can be the main track",
+  "command": "track.set_magnetic",
+  "tags": ["free"],
+  "cites": ["INV-6"],
+  "fps": 25,
+  "media": {
+    "ma": {"kind": "audio", "frames": 500}
+  },
+  "before": [
+    { "track": "V1", "kind": "video", "items": [] },
+    { "track": "A1", "kind": "audio", "items": [
+      {"id": "M", "media": "ma", "start": 0, "dur": 20}
+    ] }
+  ],
+  "params": {"track": "A1", "magnetic": true},
+  "error": {"code": "invalid", "path": "/track"}
+}

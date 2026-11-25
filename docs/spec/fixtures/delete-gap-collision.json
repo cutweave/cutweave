@@ -1,0 +1,27 @@
+{
+  "$schema": "../fixture.schema.json",
+  "kind": "edit",
+  "id": "delete-gap-collision",
+  "title": "Deleting a gap is refused when a partner would run into unlinked music",
+  "command": "timeline.delete_gap",
+  "tags": ["free", "linked"],
+  "cites": ["INV-32", "INV-171"],
+  "fps": 25,
+  "media": {
+    "ma": {"kind": "audio", "frames": 500},
+    "mn": {"kind": "video", "frames": 250, "audio": false},
+    "mv": {"kind": "video", "frames": 250, "audio": true}
+  },
+  "before": [
+    { "track": "V2", "kind": "video", "items": [
+      {"id": "X", "media": "mn", "start": 0, "dur": 20},
+      {"id": "Y", "media": "mv", "start": 40, "dur": 20, "in": 40, "group": "gY"}
+    ] },
+    { "track": "A2", "kind": "audio", "items": [
+      {"id": "M", "media": "ma", "start": 0, "dur": 30},
+      {"id": "y", "media": "mv", "start": 40, "dur": 20, "in": 40, "group": "gY"}
+    ] }
+  ],
+  "params": {"track": "V2", "at": "f:30"},
+  "error": {"code": "invalid", "path": "/at"}
+}

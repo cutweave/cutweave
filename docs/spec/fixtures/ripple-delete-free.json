@@ -1,0 +1,27 @@
+{
+  "$schema": "../fixture.schema.json",
+  "kind": "edit",
+  "id": "ripple-delete-free",
+  "title": "Ripple delete closes exactly the deleted clip's space; other gaps stay",
+  "command": "timeline.ripple_delete",
+  "tags": ["free"],
+  "cites": ["INV-151"],
+  "fps": 25,
+  "media": {
+    "mn": {"kind": "video", "frames": 250, "audio": false}
+  },
+  "before": [
+    { "track": "V2", "kind": "video", "items": [
+      {"id": "X", "media": "mn", "start": 0, "dur": 20},
+      {"id": "Y", "media": "mn", "start": 40, "dur": 20, "in": 40},
+      {"id": "Z", "media": "mn", "start": 80, "dur": 20, "in": 80}
+    ] }
+  ],
+  "params": {"items": ["Y"]},
+  "after": [
+    { "track": "V2", "kind": "video", "items": [
+      {"id": "X", "media": "mn", "start": 0, "dur": 20},
+      {"id": "Z", "media": "mn", "start": 60, "dur": 20, "in": 80}
+    ] }
+  ]
+}

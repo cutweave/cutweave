@@ -1,0 +1,20 @@
+{
+  "$schema": "../fixture.schema.json",
+  "kind": "edit",
+  "id": "split-at-edge-invalid",
+  "title": "A split time on the clip's edge is refused (P1)",
+  "command": "clip.split",
+  "tags": ["free", "clamp"],
+  "cites": ["INV-182"],
+  "fps": 25,
+  "media": {
+    "mn": {"kind": "video", "frames": 250, "audio": false}
+  },
+  "before": [
+    { "track": "V2", "kind": "video", "items": [
+      {"id": "X", "media": "mn", "start": 10, "dur": 20}
+    ] }
+  ],
+  "params": {"item": "X", "at": "f:10"},
+  "error": {"code": "invalid", "path": "/at"}
+}

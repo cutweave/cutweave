@@ -1,0 +1,27 @@
+{
+  "$schema": "../fixture.schema.json",
+  "kind": "edit",
+  "id": "roll-free-clamp",
+  "title": "With clamp, a roll stops one frame before the right clip would vanish",
+  "command": "clip.roll",
+  "tags": ["free", "clamp"],
+  "cites": ["INV-46", "INV-221"],
+  "fps": 25,
+  "media": {
+    "mn": {"kind": "video", "frames": 250, "audio": false}
+  },
+  "before": [
+    { "track": "V2", "kind": "video", "items": [
+      {"id": "X", "media": "mn", "start": 0, "dur": 30},
+      {"id": "Y", "media": "mn", "start": 30, "dur": 30, "in": 30}
+    ] }
+  ],
+  "params": {"left": "X", "right": "Y", "delta": "1.6s", "clamp": true},
+  "after": [
+    { "track": "V2", "kind": "video", "items": [
+      {"id": "X", "media": "mn", "start": 0, "dur": 59},
+      {"id": "Y", "media": "mn", "start": 59, "dur": 1, "in": 59}
+    ] }
+  ],
+  "output": {"applied_delta": "1.16s", "clamped": true}
+}

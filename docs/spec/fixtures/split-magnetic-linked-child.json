@@ -1,0 +1,53 @@
+{
+  "$schema": "../fixture.schema.json",
+  "kind": "edit",
+  "id": "split-magnetic-linked-child",
+  "title": "Splitting a main-track clip splits its audio; a child after the cut moves to the right half",
+  "command": "clip.split",
+  "tags": ["magnetic", "linked"],
+  "cites": ["INV-181", "INV-35", "INV-39", "INV-21"],
+  "fps": 25,
+  "media": {
+    "mn": {"kind": "video", "frames": 250, "audio": false},
+    "mv": {"kind": "video", "frames": 250, "audio": true}
+  },
+  "before": [
+    { "track": "V2", "kind": "video", "items": [
+      {"id": "T", "media": "mn", "start": 50, "dur": 5, "parent": "B"}
+    ] },
+    { "track": "V1", "kind": "video", "magnetic": true, "items": [
+      {"id": "A", "media": "mv", "start": 0, "dur": 30, "group": "gA"},
+      {"id": "B", "media": "mv", "start": 30, "dur": 30, "in": 30, "group": "gB"},
+      {"id": "C", "media": "mv", "start": 60, "dur": 30, "in": 60, "group": "gC"}
+    ] },
+    { "track": "A1", "kind": "audio", "items": [
+      {"id": "a", "media": "mv", "start": 0, "dur": 30, "group": "gA"},
+      {"id": "b", "media": "mv", "start": 30, "dur": 30, "in": 30, "group": "gB"},
+      {"id": "c", "media": "mv", "start": 60, "dur": 30, "in": 60, "group": "gC"}
+    ] }
+  ],
+  "params": {"item": "B", "at": "f:45"},
+  "after": [
+    { "track": "V2", "kind": "video", "items": [
+      {"id": "T", "media": "mn", "start": 50, "dur": 5, "parent": "+B2"}
+    ] },
+    { "track": "V1", "kind": "video", "magnetic": true, "items": [
+      {"id": "A", "media": "mv", "start": 0, "dur": 30, "group": "gA"},
+      {"id": "B", "media": "mv", "start": 30, "dur": 15, "in": 30, "group": "gB"},
+      {"id": "+B2", "media": "mv", "start": 45, "dur": 15, "in": 45, "group": "+gB2"},
+      {"id": "C", "media": "mv", "start": 60, "dur": 30, "in": 60, "group": "gC"}
+    ] },
+    { "track": "A1", "kind": "audio", "items": [
+      {"id": "a", "media": "mv", "start": 0, "dur": 30, "group": "gA"},
+      {"id": "b", "media": "mv", "start": 30, "dur": 15, "in": 30, "group": "gB"},
+      {"id": "+b2", "media": "mv", "start": 45, "dur": 15, "in": 45, "group": "+gB2"},
+      {"id": "c", "media": "mv", "start": 60, "dur": 30, "in": 60, "group": "gC"}
+    ] }
+  ],
+  "output": {"left": "B", "right": "+B2", "at": "f:45", "linked": [{"left": "b", "right": "+b2"}], "right_group": "+gB2"},
+  "report": {
+    "split": [{"left": "B", "right": "+B2", "at": 45}, {"left": "b", "right": "+b2", "at": 45}],
+    "trimmed": [{"item": "B", "start": 30, "dur": 15, "in": 30}, {"item": "b", "start": 30, "dur": 15, "in": 30}],
+    "relinked": [{"item": "T", "group": null, "parent": "+B2"}]
+  }
+}

@@ -1,0 +1,29 @@
+{
+  "$schema": "../fixture.schema.json",
+  "kind": "edit",
+  "id": "duplicate-free-new-track",
+  "title": "A copy that would overlap goes to a new track with new_track",
+  "command": "item.duplicate",
+  "tags": ["free"],
+  "cites": ["INV-42", "INV-191"],
+  "fps": 25,
+  "media": {
+    "mn": {"kind": "video", "frames": 250, "audio": false}
+  },
+  "before": [
+    { "track": "V2", "kind": "video", "items": [
+      {"id": "X", "media": "mn", "start": 0, "dur": 20},
+      {"id": "Y", "media": "mn", "start": 20, "dur": 20, "in": 20}
+    ] }
+  ],
+  "params": {"items": ["X"], "mode": "new_track"},
+  "after": [
+    { "track": "+V3", "kind": "video", "items": [
+      {"id": "+X2", "media": "mn", "start": 20, "dur": 20}
+    ] },
+    { "track": "V2", "kind": "video", "items": [
+      {"id": "X", "media": "mn", "start": 0, "dur": 20},
+      {"id": "Y", "media": "mn", "start": 20, "dur": 20, "in": 20}
+    ] }
+  ]
+}

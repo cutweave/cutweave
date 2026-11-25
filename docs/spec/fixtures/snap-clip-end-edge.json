@@ -1,0 +1,16 @@
+{
+  "$schema": "../fixture.schema.json",
+  "kind": "snap",
+  "id": "snap-clip-end-edge",
+  "title": "A dragged clip snaps by whichever of its edges is nearer",
+  "cites": ["INV-321", "INV-322"],
+  "fps": 25,
+  "px_per_second": 100,
+  "threshold_px": 8,
+  "offsets": [0, 564480000],
+  "r": 874944000,
+  "candidates": [
+    {"kind": "edge", "t": 1411200000}
+  ],
+  "expected": {"t": 846720000, "target": {"kind": "edge", "t": 1411200000}}
+}

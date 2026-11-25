@@ -1,0 +1,20 @@
+{
+  "$schema": "../fixture.schema.json",
+  "kind": "edit",
+  "id": "insert-locked-target",
+  "title": "Inserting on a locked track is refused",
+  "command": "timeline.insert",
+  "tags": ["locked", "free"],
+  "cites": ["INV-27"],
+  "fps": 25,
+  "media": {
+    "mn": {"kind": "video", "frames": 250, "audio": false}
+  },
+  "before": [
+    { "track": "V1", "kind": "video", "locked": true, "items": [
+      {"id": "X", "media": "mn", "start": 0, "dur": 20}
+    ] }
+  ],
+  "params": {"sequence": "S", "track": "V1", "media": "mn", "at": "f:30", "duration": "f:10"},
+  "error": {"code": "locked", "id": "V1"}
+}

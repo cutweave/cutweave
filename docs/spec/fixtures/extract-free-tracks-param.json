@@ -1,0 +1,32 @@
+{
+  "$schema": "../fixture.schema.json",
+  "kind": "edit",
+  "id": "extract-free-tracks-param",
+  "title": "Extract on the listed tracks only; other tracks keep their place",
+  "command": "timeline.extract",
+  "tags": ["free"],
+  "cites": ["INV-162"],
+  "fps": 25,
+  "media": {
+    "mn": {"kind": "video", "frames": 250, "audio": false}
+  },
+  "before": [
+    { "track": "V3", "kind": "video", "items": [
+      {"id": "Q", "media": "mn", "start": 0, "dur": 50}
+    ] },
+    { "track": "V2", "kind": "video", "items": [
+      {"id": "X", "media": "mn", "start": 0, "dur": 20},
+      {"id": "Y", "media": "mn", "start": 30, "dur": 30, "in": 30}
+    ] }
+  ],
+  "params": {"sequence": "S", "ranges": [{"start": "f:10", "end": "f:40"}], "tracks": ["V2"]},
+  "after": [
+    { "track": "V3", "kind": "video", "items": [
+      {"id": "Q", "media": "mn", "start": 0, "dur": 50}
+    ] },
+    { "track": "V2", "kind": "video", "items": [
+      {"id": "X", "media": "mn", "start": 0, "dur": 10},
+      {"id": "Y", "media": "mn", "start": 10, "dur": 20, "in": 40}
+    ] }
+  ]
+}

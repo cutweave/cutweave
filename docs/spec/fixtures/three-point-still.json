@@ -1,0 +1,11 @@
+{
+  "$schema": "../fixture.schema.json",
+  "kind": "three_point",
+  "id": "three-point-still",
+  "title": "A still without marks lasts five seconds",
+  "cites": ["INV-292", "INV-25"],
+  "fps": 25,
+  "media": {"kind": "image"},
+  "playhead": 30,
+  "expected": {"at": 30, "source_in": 0, "duration": 125, "shortened": false}
+}

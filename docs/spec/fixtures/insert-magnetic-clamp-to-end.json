@@ -1,0 +1,30 @@
+{
+  "$schema": "../fixture.schema.json",
+  "kind": "edit",
+  "id": "insert-magnetic-clamp-to-end",
+  "title": "A time past the end of the main track appends at its end",
+  "command": "timeline.insert",
+  "tags": ["magnetic", "clamp"],
+  "cites": ["INV-41", "INV-101"],
+  "fps": 25,
+  "media": {
+    "mn": {"kind": "video", "frames": 250, "audio": false}
+  },
+  "before": [
+    { "track": "V1", "kind": "video", "magnetic": true, "items": [
+      {"id": "A", "media": "mn", "start": 0, "dur": 30},
+      {"id": "B", "media": "mn", "start": 30, "dur": 30, "in": 30},
+      {"id": "C", "media": "mn", "start": 60, "dur": 30, "in": 60}
+    ] }
+  ],
+  "params": {"sequence": "S", "track": "V1", "media": "mn", "at": "f:200", "duration": "f:20"},
+  "after": [
+    { "track": "V1", "kind": "video", "magnetic": true, "items": [
+      {"id": "A", "media": "mn", "start": 0, "dur": 30},
+      {"id": "B", "media": "mn", "start": 30, "dur": 30, "in": 30},
+      {"id": "C", "media": "mn", "start": 60, "dur": 30, "in": 60},
+      {"id": "+N", "media": "mn", "start": 90, "dur": 20}
+    ] }
+  ],
+  "output": {"at": "f:90", "duration": "f:20"}
+}

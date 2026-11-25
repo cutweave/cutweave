@@ -1,0 +1,17 @@
+{
+  "$schema": "../fixture.schema.json",
+  "kind": "snap",
+  "id": "snap-tie-goes-to-playhead",
+  "title": "At equal distance the playhead outranks an edge",
+  "cites": ["INV-321", "INV-322"],
+  "fps": 25,
+  "px_per_second": 100,
+  "threshold_px": 8,
+  "offsets": [0],
+  "r": 310464000,
+  "candidates": [
+    {"kind": "edge", "t": 282240000},
+    {"kind": "playhead", "t": 338688000}
+  ],
+  "expected": {"t": 338688000, "target": {"kind": "playhead", "t": 338688000}}
+}

@@ -1,0 +1,42 @@
+{
+  "$schema": "../fixture.schema.json",
+  "kind": "edit",
+  "id": "move-magnetic-reorder",
+  "title": "Dragging the first main-track clip after the second swaps them; the audio follows",
+  "command": "item.move",
+  "tags": ["magnetic", "linked"],
+  "cites": ["INV-122", "INV-123", "INV-31", "INV-35"],
+  "fps": 25,
+  "media": {
+    "mv": {"kind": "video", "frames": 250, "audio": true}
+  },
+  "before": [
+    { "track": "V1", "kind": "video", "magnetic": true, "items": [
+      {"id": "A", "media": "mv", "start": 0, "dur": 30, "group": "gA"},
+      {"id": "B", "media": "mv", "start": 30, "dur": 30, "in": 30, "group": "gB"},
+      {"id": "C", "media": "mv", "start": 60, "dur": 30, "in": 60, "group": "gC"}
+    ] },
+    { "track": "A1", "kind": "audio", "items": [
+      {"id": "a", "media": "mv", "start": 0, "dur": 30, "group": "gA"},
+      {"id": "b", "media": "mv", "start": 30, "dur": 30, "in": 30, "group": "gB"},
+      {"id": "c", "media": "mv", "start": 60, "dur": 30, "in": 60, "group": "gC"}
+    ] }
+  ],
+  "params": {"item": "A", "start": "f:30"},
+  "after": [
+    { "track": "V1", "kind": "video", "magnetic": true, "items": [
+      {"id": "B", "media": "mv", "start": 0, "dur": 30, "in": 30, "group": "gB"},
+      {"id": "A", "media": "mv", "start": 30, "dur": 30, "group": "gA"},
+      {"id": "C", "media": "mv", "start": 60, "dur": 30, "in": 60, "group": "gC"}
+    ] },
+    { "track": "A1", "kind": "audio", "items": [
+      {"id": "b", "media": "mv", "start": 0, "dur": 30, "in": 30, "group": "gB"},
+      {"id": "a", "media": "mv", "start": 30, "dur": 30, "group": "gA"},
+      {"id": "c", "media": "mv", "start": 60, "dur": 30, "in": 60, "group": "gC"}
+    ] }
+  ],
+  "output": {"items": [{"item": "A", "track": "V1", "start": "f:30"}, {"item": "a", "track": "A1", "start": "f:30"}]},
+  "report": {
+    "moved": [{"item": "A", "track": "V1", "start": 30}, {"item": "a", "track": "A1", "start": 30}, {"item": "B", "track": "V1", "start": 0}, {"item": "b", "track": "A1", "start": 0}]
+  }
+}

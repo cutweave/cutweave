@@ -1,0 +1,37 @@
+{
+  "$schema": "../fixture.schema.json",
+  "kind": "edit",
+  "id": "lift-free-range",
+  "title": "Lift cuts a range out of free tracks and leaves the gap; the clip is split around it",
+  "command": "timeline.lift",
+  "tags": ["free", "linked"],
+  "cites": ["INV-44", "INV-161", "INV-163"],
+  "fps": 25,
+  "media": {
+    "mv": {"kind": "video", "frames": 250, "audio": true}
+  },
+  "before": [
+    { "track": "V2", "kind": "video", "items": [
+      {"id": "X", "media": "mv", "start": 0, "dur": 40, "group": "gX"}
+    ] },
+    { "track": "A2", "kind": "audio", "items": [
+      {"id": "x", "media": "mv", "start": 0, "dur": 40, "group": "gX"}
+    ] }
+  ],
+  "params": {"sequence": "S", "ranges": [{"start": "f:10", "end": "f:20"}]},
+  "after": [
+    { "track": "V2", "kind": "video", "items": [
+      {"id": "X", "media": "mv", "start": 0, "dur": 10, "group": "gX"},
+      {"id": "+X2", "media": "mv", "start": 20, "dur": 20, "in": 20, "group": "+gX2"}
+    ] },
+    { "track": "A2", "kind": "audio", "items": [
+      {"id": "x", "media": "mv", "start": 0, "dur": 10, "group": "gX"},
+      {"id": "+x2", "media": "mv", "start": 20, "dur": 20, "in": 20, "group": "+gX2"}
+    ] }
+  ],
+  "output": {"ranges": [{"start": "f:10", "end": "f:20"}]},
+  "report": {
+    "split": [{"left": "X", "right": "+X2", "at": 20}, {"left": "x", "right": "+x2", "at": 20}],
+    "trimmed": [{"item": "X", "start": 0, "dur": 10, "in": 0}, {"item": "x", "start": 0, "dur": 10, "in": 0}]
+  }
+}

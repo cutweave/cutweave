@@ -1,0 +1,25 @@
+{
+  "$schema": "../fixture.schema.json",
+  "kind": "edit",
+  "id": "slip-clamp-at-media-end",
+  "title": "With clamp, a slip stops at the end of the media",
+  "command": "clip.slip",
+  "tags": ["free", "clamp"],
+  "cites": ["INV-46", "INV-231"],
+  "fps": 25,
+  "media": {
+    "mn": {"kind": "video", "frames": 250, "audio": false}
+  },
+  "before": [
+    { "track": "V2", "kind": "video", "items": [
+      {"id": "X", "media": "mn", "start": 0, "dur": 30, "in": 30}
+    ] }
+  ],
+  "params": {"item": "X", "delta": "10s", "clamp": true},
+  "after": [
+    { "track": "V2", "kind": "video", "items": [
+      {"id": "X", "media": "mn", "start": 0, "dur": 30, "in": 220}
+    ] }
+  ],
+  "output": {"applied_delta": "7.6s", "clamped": true}
+}

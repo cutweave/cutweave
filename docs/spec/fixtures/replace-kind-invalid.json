@@ -1,0 +1,21 @@
+{
+  "$schema": "../fixture.schema.json",
+  "kind": "edit",
+  "id": "replace-kind-invalid",
+  "title": "A sound file cannot replace a picture clip",
+  "command": "clip.replace",
+  "tags": ["free"],
+  "cites": ["INV-251", "INV-5"],
+  "fps": 25,
+  "media": {
+    "ma": {"kind": "audio", "frames": 500},
+    "mn": {"kind": "video", "frames": 250, "audio": false}
+  },
+  "before": [
+    { "track": "V2", "kind": "video", "items": [
+      {"id": "X", "media": "mn", "start": 0, "dur": 30}
+    ] }
+  ],
+  "params": {"item": "X", "media": "ma"},
+  "error": {"code": "invalid", "path": "/media"}
+}

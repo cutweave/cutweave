@@ -1,0 +1,27 @@
+{
+  "$schema": "../fixture.schema.json",
+  "kind": "edit",
+  "id": "insert-magnetic-empty-track",
+  "title": "On an empty main track a clip always lands at 0, with its sound on the first free audio track",
+  "command": "timeline.insert",
+  "tags": ["magnetic", "clamp", "linked"],
+  "cites": ["INV-41", "INV-7", "INV-45"],
+  "fps": 25,
+  "media": {
+    "mv": {"kind": "video", "frames": 250, "audio": true}
+  },
+  "before": [
+    { "track": "V1", "kind": "video", "magnetic": true, "items": [] },
+    { "track": "A1", "kind": "audio", "items": [] }
+  ],
+  "params": {"sequence": "S", "track": "V1", "media": "mv", "at": "f:50", "duration": "f:30"},
+  "after": [
+    { "track": "V1", "kind": "video", "magnetic": true, "items": [
+      {"id": "+N", "media": "mv", "start": 0, "dur": 30, "group": "+gN"}
+    ] },
+    { "track": "A1", "kind": "audio", "items": [
+      {"id": "+n", "media": "mv", "start": 0, "dur": 30, "group": "+gN"}
+    ] }
+  ],
+  "output": {"at": "f:0", "duration": "f:30"}
+}

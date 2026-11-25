@@ -1,0 +1,37 @@
+{
+  "$schema": "../fixture.schema.json",
+  "kind": "edit",
+  "id": "ripple-trim-clamp-at-collision",
+  "title": "With clamp, a shortening ripple stops where a partner would hit unlinked music",
+  "command": "clip.ripple_trim",
+  "tags": ["free", "clamp", "linked"],
+  "cites": ["INV-32", "INV-46"],
+  "fps": 25,
+  "media": {
+    "ma": {"kind": "audio", "frames": 500},
+    "mn": {"kind": "video", "frames": 250, "audio": false},
+    "mv": {"kind": "video", "frames": 250, "audio": true}
+  },
+  "before": [
+    { "track": "V2", "kind": "video", "items": [
+      {"id": "X", "media": "mn", "start": 0, "dur": 40},
+      {"id": "Y", "media": "mv", "start": 60, "dur": 20, "in": 60, "group": "gY"}
+    ] },
+    { "track": "A2", "kind": "audio", "items": [
+      {"id": "M", "media": "ma", "start": 0, "dur": 50},
+      {"id": "y", "media": "mv", "start": 60, "dur": 20, "in": 60, "group": "gY"}
+    ] }
+  ],
+  "params": {"item": "X", "edge": "end", "delta": "-1.2s", "clamp": true},
+  "after": [
+    { "track": "V2", "kind": "video", "items": [
+      {"id": "X", "media": "mn", "start": 0, "dur": 30},
+      {"id": "Y", "media": "mv", "start": 50, "dur": 20, "in": 60, "group": "gY"}
+    ] },
+    { "track": "A2", "kind": "audio", "items": [
+      {"id": "M", "media": "ma", "start": 0, "dur": 50},
+      {"id": "y", "media": "mv", "start": 50, "dur": 20, "in": 60, "group": "gY"}
+    ] }
+  ],
+  "output": {"applied_delta": "-0.4s", "clamped": true}
+}

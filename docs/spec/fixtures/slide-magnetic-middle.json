@@ -1,0 +1,38 @@
+{
+  "$schema": "../fixture.schema.json",
+  "kind": "edit",
+  "id": "slide-magnetic-middle",
+  "title": "Sliding a clip lengthens one neighbour and shortens the other, with their audio",
+  "command": "clip.slide",
+  "tags": ["magnetic", "linked"],
+  "cites": ["INV-241", "INV-35"],
+  "fps": 25,
+  "media": {
+    "mv": {"kind": "video", "frames": 250, "audio": true}
+  },
+  "before": [
+    { "track": "V1", "kind": "video", "magnetic": true, "items": [
+      {"id": "A", "media": "mv", "start": 0, "dur": 30, "group": "gA"},
+      {"id": "B", "media": "mv", "start": 30, "dur": 30, "in": 30, "group": "gB"},
+      {"id": "C", "media": "mv", "start": 60, "dur": 30, "in": 60, "group": "gC"}
+    ] },
+    { "track": "A1", "kind": "audio", "items": [
+      {"id": "a", "media": "mv", "start": 0, "dur": 30, "group": "gA"},
+      {"id": "b", "media": "mv", "start": 30, "dur": 30, "in": 30, "group": "gB"},
+      {"id": "c", "media": "mv", "start": 60, "dur": 30, "in": 60, "group": "gC"}
+    ] }
+  ],
+  "params": {"item": "B", "delta": "0.4s"},
+  "after": [
+    { "track": "V1", "kind": "video", "magnetic": true, "items": [
+      {"id": "A", "media": "mv", "start": 0, "dur": 40, "group": "gA"},
+      {"id": "B", "media": "mv", "start": 40, "dur": 30, "in": 30, "group": "gB"},
+      {"id": "C", "media": "mv", "start": 70, "dur": 20, "in": 70, "group": "gC"}
+    ] },
+    { "track": "A1", "kind": "audio", "items": [
+      {"id": "a", "media": "mv", "start": 0, "dur": 40, "group": "gA"},
+      {"id": "b", "media": "mv", "start": 40, "dur": 30, "in": 30, "group": "gB"},
+      {"id": "c", "media": "mv", "start": 70, "dur": 20, "in": 70, "group": "gC"}
+    ] }
+  ]
+}

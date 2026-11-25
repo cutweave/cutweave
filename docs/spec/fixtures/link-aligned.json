@@ -1,0 +1,34 @@
+{
+  "$schema": "../fixture.schema.json",
+  "kind": "edit",
+  "id": "link-aligned",
+  "title": "Two aligned items become one linked group",
+  "command": "item.link",
+  "tags": ["free", "linked"],
+  "cites": ["INV-261", "INV-8"],
+  "fps": 25,
+  "media": {
+    "ma": {"kind": "audio", "frames": 500},
+    "mn": {"kind": "video", "frames": 250, "audio": false}
+  },
+  "before": [
+    { "track": "V2", "kind": "video", "items": [
+      {"id": "X", "media": "mn", "start": 10, "dur": 20}
+    ] },
+    { "track": "A2", "kind": "audio", "items": [
+      {"id": "M", "media": "ma", "start": 10, "dur": 20}
+    ] }
+  ],
+  "params": {"items": ["X", "M"]},
+  "after": [
+    { "track": "V2", "kind": "video", "items": [
+      {"id": "X", "media": "mn", "start": 10, "dur": 20, "group": "+g1"}
+    ] },
+    { "track": "A2", "kind": "audio", "items": [
+      {"id": "M", "media": "ma", "start": 10, "dur": 20, "group": "+g1"}
+    ] }
+  ],
+  "report": {
+    "relinked": [{"item": "X", "group": "+g1", "parent": null}, {"item": "M", "group": "+g1", "parent": null}]
+  }
+}

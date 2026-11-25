@@ -1,0 +1,22 @@
+{
+  "description": "Which command x tag cells of the edit fixtures may stay empty, and why (spec section 9.2). `cargo xtask check-fixtures` fails when a cell has neither a fixture nor a reason here, or has both.",
+  "commands": [
+    "timeline.insert", "timeline.overwrite", "item.move", "item.delete",
+    "timeline.ripple_delete", "timeline.lift", "timeline.extract", "timeline.delete_gap",
+    "clip.split", "item.duplicate", "clip.trim", "clip.ripple_trim", "clip.roll",
+    "clip.slip", "clip.slide", "clip.replace", "item.link", "item.unlink",
+    "item.attach", "item.detach", "track.set_magnetic"
+  ],
+  "tags": ["magnetic", "free", "locked", "linked", "clamp"],
+  "not_applicable": {
+    "item.delete": { "clamp": "A delete names whole items: there is no amount to limit." },
+    "timeline.ripple_delete": { "clamp": "A delete names whole items: there is no amount to limit." },
+    "timeline.lift": { "clamp": "Ranges are snapped and merged, never limited; a range past the end cuts nothing." },
+    "timeline.extract": { "clamp": "Ranges are snapped and merged, never limited; a range past the end cuts nothing." },
+    "item.duplicate": { "clamp": "Copies never shrink; where they go is a placement-mode question (reject, new_track, insert)." },
+    "item.link": { "clamp": "Linking changes no time or range." },
+    "item.unlink": { "clamp": "Unlinking changes no time or range." },
+    "item.detach": { "clamp": "Detaching changes no time or range." },
+    "track.set_magnetic": { "clamp": "The flag has no amount; closing gaps closes them completely." }
+  }
+}

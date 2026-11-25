@@ -1,0 +1,21 @@
+{
+  "$schema": "../fixture.schema.json",
+  "kind": "edit",
+  "id": "delete-gap-magnetic-invalid",
+  "title": "The main track has no gaps to delete",
+  "command": "timeline.delete_gap",
+  "tags": ["magnetic"],
+  "cites": ["INV-171", "INV-7"],
+  "fps": 25,
+  "media": {
+    "mn": {"kind": "video", "frames": 250, "audio": false}
+  },
+  "before": [
+    { "track": "V1", "kind": "video", "magnetic": true, "items": [
+      {"id": "A", "media": "mn", "start": 0, "dur": 30},
+      {"id": "B", "media": "mn", "start": 30, "dur": 30, "in": 30}
+    ] }
+  ],
+  "params": {"track": "V1", "at": "f:45"},
+  "error": {"code": "invalid", "path": "/at"}
+}

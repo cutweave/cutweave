@@ -1,0 +1,31 @@
+{
+  "$schema": "../fixture.schema.json",
+  "kind": "edit",
+  "id": "move-out-of-magnetic",
+  "title": "Moving a clip from the main track to an overlay track closes its space on the main track",
+  "command": "item.move",
+  "tags": ["magnetic", "free"],
+  "cites": ["INV-122", "INV-121"],
+  "fps": 25,
+  "media": {
+    "mn": {"kind": "video", "frames": 250, "audio": false}
+  },
+  "before": [
+    { "track": "V2", "kind": "video", "items": [] },
+    { "track": "V1", "kind": "video", "magnetic": true, "items": [
+      {"id": "A", "media": "mn", "start": 0, "dur": 30},
+      {"id": "B", "media": "mn", "start": 30, "dur": 30, "in": 30},
+      {"id": "C", "media": "mn", "start": 60, "dur": 30, "in": 60}
+    ] }
+  ],
+  "params": {"item": "A", "start": "f:0", "to_track": "V2"},
+  "after": [
+    { "track": "V2", "kind": "video", "items": [
+      {"id": "A", "media": "mn", "start": 0, "dur": 30}
+    ] },
+    { "track": "V1", "kind": "video", "magnetic": true, "items": [
+      {"id": "B", "media": "mn", "start": 0, "dur": 30, "in": 30},
+      {"id": "C", "media": "mn", "start": 30, "dur": 30, "in": 60}
+    ] }
+  ]
+}

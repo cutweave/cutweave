@@ -1,0 +1,16 @@
+{
+  "$schema": "../fixture.schema.json",
+  "kind": "snap",
+  "id": "snap-zoom-scales-tolerance",
+  "title": "Zoomed in four times, the same distance no longer snaps",
+  "cites": ["INV-323", "INV-321"],
+  "fps": 25,
+  "px_per_second": 400,
+  "threshold_px": 8,
+  "offsets": [0],
+  "r": 299174400,
+  "candidates": [
+    {"kind": "edge", "t": 282240000}
+  ],
+  "expected": {"t": 310464000, "target": null}
+}

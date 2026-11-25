@@ -1,0 +1,28 @@
+{
+  "$schema": "../fixture.schema.json",
+  "kind": "edit",
+  "id": "ripple-delete-collision",
+  "title": "A ripple that would push a partner into unlinked music is refused",
+  "command": "timeline.ripple_delete",
+  "tags": ["free", "linked"],
+  "cites": ["INV-32", "INV-152", "INV-31"],
+  "fps": 25,
+  "media": {
+    "ma": {"kind": "audio", "frames": 500},
+    "mn": {"kind": "video", "frames": 250, "audio": false},
+    "mv": {"kind": "video", "frames": 250, "audio": true}
+  },
+  "before": [
+    { "track": "V2", "kind": "video", "items": [
+      {"id": "X", "media": "mn", "start": 0, "dur": 20},
+      {"id": "Y", "media": "mn", "start": 40, "dur": 20, "in": 40},
+      {"id": "Z", "media": "mv", "start": 80, "dur": 20, "in": 80, "group": "gZ"}
+    ] },
+    { "track": "A2", "kind": "audio", "items": [
+      {"id": "M", "media": "ma", "start": 0, "dur": 70},
+      {"id": "z", "media": "mv", "start": 80, "dur": 20, "in": 80, "group": "gZ"}
+    ] }
+  ],
+  "params": {"items": ["Y"]},
+  "error": {"code": "invalid", "path": "/items"}
+}

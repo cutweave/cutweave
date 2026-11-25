@@ -1,0 +1,21 @@
+{
+  "$schema": "../fixture.schema.json",
+  "kind": "edit",
+  "id": "insert-free-reject-overlap",
+  "title": "On a free track an overlapping insert is refused by default (P1)",
+  "command": "timeline.insert",
+  "tags": ["free"],
+  "cites": ["INV-40", "INV-104"],
+  "fps": 25,
+  "media": {
+    "mn": {"kind": "video", "frames": 250, "audio": false}
+  },
+  "before": [
+    { "track": "V2", "kind": "video", "items": [
+      {"id": "X", "media": "mn", "start": 10, "dur": 30}
+    ] },
+    { "track": "V1", "kind": "video", "items": [] }
+  ],
+  "params": {"sequence": "S", "track": "V2", "media": "mn", "at": "f:20", "duration": "f:10"},
+  "error": {"code": "invalid", "path": "/at"}
+}

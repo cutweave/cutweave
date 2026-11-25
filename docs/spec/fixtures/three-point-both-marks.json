@@ -1,0 +1,15 @@
+{
+  "$schema": "../fixture.schema.json",
+  "kind": "three_point",
+  "id": "three-point-both-marks",
+  "title": "Both: the timeline in wins and the source marks give the length",
+  "cites": ["INV-291"],
+  "fps": 25,
+  "media": {"kind": "video", "frames": 250, "audio": true},
+  "playhead": 10,
+  "timeline_in": 100,
+  "timeline_out": 150,
+  "source_in": 50,
+  "source_out": 125,
+  "expected": {"at": 100, "source_in": 50, "duration": 75, "shortened": false}
+}

@@ -1,0 +1,21 @@
+{
+  "$schema": "../fixture.schema.json",
+  "kind": "edit",
+  "id": "roll-not-adjacent",
+  "title": "Roll needs two clips that touch",
+  "command": "clip.roll",
+  "tags": ["free"],
+  "cites": ["INV-221"],
+  "fps": 25,
+  "media": {
+    "mn": {"kind": "video", "frames": 250, "audio": false}
+  },
+  "before": [
+    { "track": "V2", "kind": "video", "items": [
+      {"id": "X", "media": "mn", "start": 0, "dur": 30},
+      {"id": "Y", "media": "mn", "start": 40, "dur": 20, "in": 40}
+    ] }
+  ],
+  "params": {"left": "X", "right": "Y", "delta": "0.2s"},
+  "error": {"code": "invalid", "path": "/right"}
+}

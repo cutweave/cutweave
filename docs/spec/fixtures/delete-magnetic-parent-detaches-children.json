@@ -1,0 +1,43 @@
+{
+  "$schema": "../fixture.schema.json",
+  "kind": "edit",
+  "id": "delete-magnetic-parent-detaches-children",
+  "title": "Deleting a parent keeps its children where they are; the next clip's children follow it",
+  "command": "item.delete",
+  "tags": ["magnetic", "linked"],
+  "cites": ["INV-38", "INV-36", "INV-37"],
+  "fps": 25,
+  "media": {
+    "mn": {"kind": "video", "frames": 250, "audio": false}
+  },
+  "before": [
+    { "track": "V2", "kind": "video", "items": [
+      {"id": "T", "media": "mn", "start": 35, "dur": 10, "parent": "B"},
+      {"id": "W", "media": "mn", "start": 70, "dur": 10, "parent": "C"}
+    ] },
+    { "track": "V1", "kind": "video", "magnetic": true, "items": [
+      {"id": "A", "media": "mn", "start": 0, "dur": 30},
+      {"id": "B", "media": "mn", "start": 30, "dur": 30, "in": 30},
+      {"id": "C", "media": "mn", "start": 60, "dur": 30, "in": 60}
+    ] }
+  ],
+  "params": {"items": ["B"]},
+  "after": [
+    { "track": "+V3", "kind": "video", "items": [
+      {"id": "W", "media": "mn", "start": 40, "dur": 10, "parent": "C"}
+    ] },
+    { "track": "V2", "kind": "video", "items": [
+      {"id": "T", "media": "mn", "start": 35, "dur": 10}
+    ] },
+    { "track": "V1", "kind": "video", "magnetic": true, "items": [
+      {"id": "A", "media": "mn", "start": 0, "dur": 30},
+      {"id": "C", "media": "mn", "start": 30, "dur": 30, "in": 60}
+    ] }
+  ],
+  "report": {
+    "removed": ["B"],
+    "moved": [{"item": "C", "track": "V1", "start": 30}, {"item": "W", "track": "+V3", "start": 40}],
+    "relinked": [{"item": "T", "group": null, "parent": null}],
+    "created_tracks": ["+V3"]
+  }
+}

@@ -1,0 +1,26 @@
+{
+  "$schema": "../fixture.schema.json",
+  "kind": "edit",
+  "id": "ripple-trim-start",
+  "title": "Ripple-trimming a head keeps the clip's start and pulls the rest left",
+  "command": "clip.ripple_trim",
+  "tags": ["free"],
+  "cites": ["INV-212", "INV-211"],
+  "fps": 25,
+  "media": {
+    "mn": {"kind": "video", "frames": 250, "audio": false}
+  },
+  "before": [
+    { "track": "V2", "kind": "video", "items": [
+      {"id": "X", "media": "mn", "start": 0, "dur": 20},
+      {"id": "Y", "media": "mn", "start": 40, "dur": 20, "in": 40}
+    ] }
+  ],
+  "params": {"item": "X", "edge": "start", "delta": "0.2s"},
+  "after": [
+    { "track": "V2", "kind": "video", "items": [
+      {"id": "X", "media": "mn", "start": 0, "dur": 15, "in": 5},
+      {"id": "Y", "media": "mn", "start": 35, "dur": 20, "in": 40}
+    ] }
+  ]
+}

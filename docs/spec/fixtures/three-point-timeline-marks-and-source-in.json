@@ -1,0 +1,14 @@
+{
+  "$schema": "../fixture.schema.json",
+  "kind": "three_point",
+  "id": "three-point-timeline-marks-and-source-in",
+  "title": "Timeline in wins; a source in alone runs to the media end",
+  "cites": ["INV-291"],
+  "fps": 25,
+  "media": {"kind": "video", "frames": 250, "audio": true},
+  "playhead": 0,
+  "timeline_in": 100,
+  "timeline_out": 150,
+  "source_in": 200,
+  "expected": {"at": 100, "source_in": 200, "duration": 50, "shortened": false}
+}

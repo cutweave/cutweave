@@ -1,0 +1,30 @@
+{
+  "$schema": "../fixture.schema.json",
+  "kind": "edit",
+  "id": "move-free-linked",
+  "title": "On free tracks a clip and its audio move by the same amount (P1)",
+  "command": "item.move",
+  "tags": ["free", "linked"],
+  "cites": ["INV-121", "INV-35"],
+  "fps": 25,
+  "media": {
+    "mv": {"kind": "video", "frames": 250, "audio": true}
+  },
+  "before": [
+    { "track": "V2", "kind": "video", "items": [
+      {"id": "X", "media": "mv", "start": 0, "dur": 20, "group": "gX"}
+    ] },
+    { "track": "A2", "kind": "audio", "items": [
+      {"id": "x", "media": "mv", "start": 0, "dur": 20, "group": "gX"}
+    ] }
+  ],
+  "params": {"item": "X", "start": "f:40"},
+  "after": [
+    { "track": "V2", "kind": "video", "items": [
+      {"id": "X", "media": "mv", "start": 40, "dur": 20, "group": "gX"}
+    ] },
+    { "track": "A2", "kind": "audio", "items": [
+      {"id": "x", "media": "mv", "start": 40, "dur": 20, "group": "gX"}
+    ] }
+  ]
+}

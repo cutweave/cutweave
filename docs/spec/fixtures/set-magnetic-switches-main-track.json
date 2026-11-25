@@ -1,0 +1,32 @@
+{
+  "$schema": "../fixture.schema.json",
+  "kind": "edit",
+  "id": "set-magnetic-switches-main-track",
+  "title": "Making another track the main track clears the old one's flag",
+  "command": "track.set_magnetic",
+  "tags": ["magnetic"],
+  "cites": ["INV-281", "INV-6"],
+  "fps": 25,
+  "media": {
+    "mn": {"kind": "video", "frames": 250, "audio": false}
+  },
+  "before": [
+    { "track": "V2", "kind": "video", "magnetic": true, "items": [
+      {"id": "P", "media": "mn", "start": 0, "dur": 20}
+    ] },
+    { "track": "V1", "kind": "video", "items": [
+      {"id": "X", "media": "mn", "start": 0, "dur": 30}
+    ] }
+  ],
+  "params": {"track": "V1", "magnetic": true},
+  "after": [
+    { "track": "V2", "kind": "video", "items": [
+      {"id": "P", "media": "mn", "start": 0, "dur": 20}
+    ] },
+    { "track": "V1", "kind": "video", "magnetic": true, "items": [
+      {"id": "X", "media": "mn", "start": 0, "dur": 30}
+    ] }
+  ],
+  "output": {"track": "V1", "magnetic": true, "previous": "V2"},
+  "report": {}
+}

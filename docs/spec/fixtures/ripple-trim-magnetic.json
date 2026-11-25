@@ -1,0 +1,26 @@
+{
+  "$schema": "../fixture.schema.json",
+  "kind": "edit",
+  "id": "ripple-trim-magnetic",
+  "title": "Ripple-trimming a main-track end pushes the rest right",
+  "command": "clip.ripple_trim",
+  "tags": ["magnetic"],
+  "cites": ["INV-211", "INV-7"],
+  "fps": 25,
+  "media": {
+    "mn": {"kind": "video", "frames": 250, "audio": false}
+  },
+  "before": [
+    { "track": "V1", "kind": "video", "magnetic": true, "items": [
+      {"id": "A", "media": "mn", "start": 0, "dur": 30},
+      {"id": "B", "media": "mn", "start": 30, "dur": 30, "in": 30}
+    ] }
+  ],
+  "params": {"item": "A", "edge": "end", "delta": "0.4s"},
+  "after": [
+    { "track": "V1", "kind": "video", "magnetic": true, "items": [
+      {"id": "A", "media": "mn", "start": 0, "dur": 40},
+      {"id": "B", "media": "mn", "start": 40, "dur": 30, "in": 30}
+    ] }
+  ]
+}

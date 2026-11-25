@@ -1,0 +1,25 @@
+{
+  "$schema": "../fixture.schema.json",
+  "kind": "edit",
+  "id": "trim-free-clamp-at-media-end",
+  "title": "With clamp, an end trim stops where the media ends",
+  "command": "clip.trim",
+  "tags": ["free", "clamp"],
+  "cites": ["INV-46", "INV-4"],
+  "fps": 25,
+  "media": {
+    "mn": {"kind": "video", "frames": 250, "audio": false}
+  },
+  "before": [
+    { "track": "V2", "kind": "video", "items": [
+      {"id": "X", "media": "mn", "start": 0, "dur": 30, "in": 210}
+    ] }
+  ],
+  "params": {"item": "X", "edge": "end", "to": "f:50", "clamp": true},
+  "after": [
+    { "track": "V2", "kind": "video", "items": [
+      {"id": "X", "media": "mn", "start": 0, "dur": 40, "in": 210}
+    ] }
+  ],
+  "output": {"applied_delta": "0.4s", "clamped": true}
+}

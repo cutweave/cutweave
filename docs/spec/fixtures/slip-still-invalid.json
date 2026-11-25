@@ -1,0 +1,20 @@
+{
+  "$schema": "../fixture.schema.json",
+  "kind": "edit",
+  "id": "slip-still-invalid",
+  "title": "A still has nothing to slip",
+  "command": "clip.slip",
+  "tags": ["free"],
+  "cites": ["INV-231"],
+  "fps": 25,
+  "media": {
+    "mi": {"kind": "image"}
+  },
+  "before": [
+    { "track": "V2", "kind": "video", "items": [
+      {"id": "X", "media": "mi", "start": 0, "dur": 30}
+    ] }
+  ],
+  "params": {"item": "X", "delta": "1s"},
+  "error": {"code": "invalid", "path": "/item"}
+}

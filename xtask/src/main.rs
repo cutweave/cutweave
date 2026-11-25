@@ -1,10 +1,11 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
-//! `cargo xtask <ci|check-wasm|check-deps|license-headers|tokens|fetch-corpus|corpus-verify|bench|bench-check|gen|golden|golden-projects>`: developer automation (WP-0A.01).
+//! `cargo xtask <ci|check-wasm|check-deps|license-headers|tokens|fetch-corpus|corpus-verify|bench|bench-check|gen|golden|golden-projects|check-fixtures>`: developer automation (WP-0A.01).
 
 mod bench;
 mod corpus;
 mod corpus_probe;
 mod deps;
+mod fixtures;
 mod golden;
 mod headers;
 mod schema_gen;
@@ -55,6 +56,8 @@ COMMANDS:
                   with testdata/golden/expected/<adapter>/ (needs . scripts/ffmpeg/env.sh)
     golden --check-refs [--base REV] [--pr-labels A,B]
                   the reference-update guard alone (testdata/golden/README.md)
+    check-fixtures
+                  validate docs/spec/fixtures against the edit-semantics spec and its schema
     help          print this message";
 
 fn workspace_root() -> PathBuf {
@@ -163,6 +166,7 @@ fn main() -> ExitCode {
         Some("gen") => schema_gen::run(&workspace_root(), &args[1..]),
         Some("golden") => golden::golden(&workspace_root(), &args[1..]),
         Some("golden-projects") => golden::golden_projects(&workspace_root(), &args[1..]),
+        Some("check-fixtures") => fixtures::run(&workspace_root(), &args[1..]),
         Some("help" | "--help" | "-h") | None => {
             println!("{HELP}");
             true

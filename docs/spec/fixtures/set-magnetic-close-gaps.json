@@ -1,0 +1,34 @@
+{
+  "$schema": "../fixture.schema.json",
+  "kind": "edit",
+  "id": "set-magnetic-close-gaps",
+  "title": "close_gaps packs the track from 0; the linked audio follows",
+  "command": "track.set_magnetic",
+  "tags": ["magnetic", "linked"],
+  "cites": ["INV-281", "INV-7", "INV-31"],
+  "fps": 25,
+  "media": {
+    "mv": {"kind": "video", "frames": 250, "audio": true}
+  },
+  "before": [
+    { "track": "V1", "kind": "video", "items": [
+      {"id": "X", "media": "mv", "start": 10, "dur": 10, "group": "gX"},
+      {"id": "Y", "media": "mv", "start": 40, "dur": 10, "in": 40, "group": "gY"}
+    ] },
+    { "track": "A1", "kind": "audio", "items": [
+      {"id": "x", "media": "mv", "start": 10, "dur": 10, "group": "gX"},
+      {"id": "y", "media": "mv", "start": 40, "dur": 10, "in": 40, "group": "gY"}
+    ] }
+  ],
+  "params": {"track": "V1", "magnetic": true, "close_gaps": true},
+  "after": [
+    { "track": "V1", "kind": "video", "magnetic": true, "items": [
+      {"id": "X", "media": "mv", "start": 0, "dur": 10, "group": "gX"},
+      {"id": "Y", "media": "mv", "start": 10, "dur": 10, "in": 40, "group": "gY"}
+    ] },
+    { "track": "A1", "kind": "audio", "items": [
+      {"id": "x", "media": "mv", "start": 0, "dur": 10, "group": "gX"},
+      {"id": "y", "media": "mv", "start": 10, "dur": 10, "in": 40, "group": "gY"}
+    ] }
+  ]
+}

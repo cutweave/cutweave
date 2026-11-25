@@ -1,0 +1,17 @@
+{
+  "$schema": "../fixture.schema.json",
+  "kind": "snap",
+  "id": "snap-tie-earlier-probe",
+  "title": "At equal distance and kind the earlier probe wins",
+  "cites": ["INV-322", "INV-324"],
+  "fps": 25,
+  "px_per_second": 100,
+  "threshold_px": 8,
+  "offsets": [0, 282240000],
+  "r": 169344000,
+  "candidates": [
+    {"kind": "edge", "t": 141120000},
+    {"kind": "edge", "t": 479808000}
+  ],
+  "expected": {"t": 141120000, "target": {"kind": "edge", "t": 141120000}}
+}

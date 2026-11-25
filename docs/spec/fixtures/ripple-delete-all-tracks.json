@@ -1,0 +1,40 @@
+{
+  "$schema": "../fixture.schema.json",
+  "kind": "edit",
+  "id": "ripple-delete-all-tracks",
+  "title": "ripple_all_tracks shifts every track after the deleted clip",
+  "command": "timeline.ripple_delete",
+  "tags": ["free"],
+  "cites": ["INV-31", "INV-151"],
+  "fps": 25,
+  "media": {
+    "ma": {"kind": "audio", "frames": 500},
+    "mn": {"kind": "video", "frames": 250, "audio": false}
+  },
+  "before": [
+    { "track": "V2", "kind": "video", "items": [
+      {"id": "X", "media": "mn", "start": 0, "dur": 20},
+      {"id": "Y", "media": "mn", "start": 40, "dur": 20, "in": 40},
+      {"id": "Z", "media": "mn", "start": 80, "dur": 20, "in": 80}
+    ] },
+    { "track": "V1", "kind": "video", "items": [
+      {"id": "P", "media": "mn", "start": 70, "dur": 20, "in": 10}
+    ] },
+    { "track": "A2", "kind": "audio", "items": [
+      {"id": "M", "media": "ma", "start": 100, "dur": 50}
+    ] }
+  ],
+  "params": {"items": ["Y"], "ripple_all_tracks": true},
+  "after": [
+    { "track": "V2", "kind": "video", "items": [
+      {"id": "X", "media": "mn", "start": 0, "dur": 20},
+      {"id": "Z", "media": "mn", "start": 60, "dur": 20, "in": 80}
+    ] },
+    { "track": "V1", "kind": "video", "items": [
+      {"id": "P", "media": "mn", "start": 50, "dur": 20, "in": 10}
+    ] },
+    { "track": "A2", "kind": "audio", "items": [
+      {"id": "M", "media": "ma", "start": 80, "dur": 50}
+    ] }
+  ]
+}

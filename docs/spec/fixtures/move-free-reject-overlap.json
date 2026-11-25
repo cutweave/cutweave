@@ -1,0 +1,21 @@
+{
+  "$schema": "../fixture.schema.json",
+  "kind": "edit",
+  "id": "move-free-reject-overlap",
+  "title": "On a free track a move into another clip is refused by default (P1)",
+  "command": "item.move",
+  "tags": ["free"],
+  "cites": ["INV-40"],
+  "fps": 25,
+  "media": {
+    "mn": {"kind": "video", "frames": 250, "audio": false}
+  },
+  "before": [
+    { "track": "V2", "kind": "video", "items": [
+      {"id": "X", "media": "mn", "start": 0, "dur": 20},
+      {"id": "Y", "media": "mn", "start": 30, "dur": 20, "in": 30}
+    ] }
+  ],
+  "params": {"item": "X", "start": "f:20"},
+  "error": {"code": "invalid", "path": "/start"}
+}
