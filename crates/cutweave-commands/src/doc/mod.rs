@@ -12,7 +12,8 @@
 //!   [`Actor`], the [`ConnId`] that owns open transactions, and the [`Access`](crate::Access).
 //! - History (WP-1B.04): the linear log of committed transactions with per-actor undo/redo
 //!   stacks ([`HistoryEntry`], [`HistoryScope`], [`HistoryLimits`]), the per-actor undo safety
-//!   rule, checkpoints ([`CheckpointId`]) and `edit.history_changed` events
+//!   rule, checkpoints ([`CheckpointId`]; journaled as [`CheckpointRecord`]s and rebuilt after a
+//!   restart through a [`CheckpointLedger`], WP-2I.03) and `edit.history_changed` events
 //!   ([`HistoryChanged`]); the `edit.*` commands that drive it are in [`crate::edit`].
 //! - Ownership and soft locks (WP-1B.09): an open transaction belongs to the [`ConnId`] that
 //!   opened it, and [`DocState::close_connection`] rolls it back; an open gesture or proposal
@@ -25,6 +26,7 @@
 mod actor;
 #[cfg(not(all(target_arch = "wasm32", target_os = "unknown")))]
 mod bus;
+mod checkpoint;
 mod clock;
 mod dedup;
 mod event;
@@ -44,6 +46,11 @@ mod sync;
 pub use actor::{ActorOptions, DEFAULT_EVENT_CAPACITY, DocActor, DocHandle};
 #[cfg(not(all(target_arch = "wasm32", target_os = "unknown")))]
 pub use bus::{EventStream, RecvError, TryRecvError};
+pub use checkpoint::{
+    CheckpointId, CheckpointInfo, CheckpointLedger, CheckpointRecord, JournaledCheckpoint,
+    LedgerEntry, MAX_CHECKPOINT_NAME_CHARS, MAX_CHECKPOINT_NOTE_CHARS, MAX_CHECKPOINTS,
+    MAX_NAMED_CHECKPOINTS,
+};
 #[cfg(not(all(target_arch = "wasm32", target_os = "unknown")))]
 pub use clock::SystemClock;
 pub use clock::{Clock, ManualClock, WallTime};
@@ -53,11 +60,10 @@ pub use event::{
     PatchCause, TxActivity, TxEnded,
 };
 pub use history::{
-    ActorStacks, CheckpointId, CheckpointInfo, DEFAULT_HISTORY_BYTES, DEFAULT_HISTORY_ENTRIES,
-    DEFAULT_HISTORY_PAGE, DEFAULT_UNDO_DEPTH, EntryCause, EntryStatus, HistoryChange,
-    HistoryChanged, HistoryEntry, HistoryLimits, HistoryMoved, HistoryPage, HistoryScope,
-    HistoryUsage, LatestStacks, LatestTop, MAX_CHECKPOINT_NAME_CHARS, MAX_CHECKPOINT_NOTE_CHARS,
-    MAX_CHECKPOINTS, MAX_HISTORY_PAGE, MAX_NAMED_CHECKPOINTS, Restored, RevertedChanges, StackTop,
+    ActorStacks, DEFAULT_HISTORY_BYTES, DEFAULT_HISTORY_ENTRIES, DEFAULT_HISTORY_PAGE,
+    DEFAULT_UNDO_DEPTH, EntryCause, EntryStatus, HistoryChange, HistoryChanged, HistoryEntry,
+    HistoryLimits, HistoryMoved, HistoryPage, HistoryScope, HistoryUsage, LatestStacks, LatestTop,
+    MAX_HISTORY_PAGE, Restored, RevertedChanges, StackTop,
 };
 pub use identity::{
     Actor, ActorCtx, ActorError, ConnId, MAX_AGENT_LABEL_CHARS, MAX_PLUGIN_ID_CHARS,

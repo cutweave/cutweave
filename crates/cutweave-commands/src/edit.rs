@@ -12,9 +12,13 @@
 //! | `edit.locks{}` | lists open transactions and the items each soft-locks (read-only) |
 //! | `edit.undo{actor?}` / `edit.redo{actor?}` | undo / redo the caller's (or `actor`'s, `*` = anyone's) latest entry, under the per-actor safety rule |
 //! | `edit.history{limit?, cursor?, actor?}` | lists the log newest first, paginated, plus every actor's stacks (read-only) |
-//! | `edit.checkpoint{name?, note?}` | captures the committed document (O(1)) |
+//! | `edit.checkpoint{name?, note?}` | captures the committed document (O(1)); journaled |
 //! | `edit.restore{checkpoint, force?}` | restores a checkpoint as one undoable change |
 //! | `edit.list_checkpoints{}` | lists checkpoints (read-only) |
+//! | `edit.delete_checkpoint{checkpoint}` | deletes a checkpoint (the document is not touched) |
+//!
+//! Checkpoints are journaled (WP-2I.03, [`CheckpointRecord`](crate::CheckpointRecord)): they
+//! survive an engine crash, saves, and closing and reopening the project.
 //!
 //! The rule for undoing one actor's change while others edit is documented on
 //! [`DocState::undo`] and in the `history` module: the entry's paths must hold what it left
@@ -48,7 +52,8 @@ pub fn register(registry: &mut Registry) -> Result<(), RegistryError> {
         .register::<GetHistory>()?
         .register::<Checkpoint>()?
         .register::<Restore>()?
-        .register::<ListCheckpoints>()?;
+        .register::<ListCheckpoints>()?
+        .register::<DeleteCheckpoint>()?;
     Ok(())
 }
 
@@ -389,8 +394,9 @@ impl EngineCommand for GetHistory {
 }
 
 /// Captures the committed document as a restore point (cheap: snapshots share structure).
-/// Open transactions are not included. Kept in memory (at most 50, 20 named; least recently
-/// used first out); reusing a name moves it to the new checkpoint.
+/// Open transactions are not included. At most 50 are kept, 20 of them named (least recently
+/// used first out); reusing a name moves it to the new checkpoint. Checkpoints are saved in the
+/// project's journal: they survive a crash, saves and reopening the project.
 #[command(
     name = "edit.checkpoint",
     summary = "Save a restore point of the committed document (cheap; optional name)",
@@ -418,7 +424,10 @@ impl EngineCommand for Checkpoint {
 
 /// Brings the document back to a checkpoint as one new, undoable change by you (history is
 /// not truncated; `edit.undo` reverts the restore). Without `force`, refused with `Conflict`
-/// when it would also revert other actors' changes made since the checkpoint.
+/// when it would also revert other actors' changes made since the checkpoint, or changes the
+/// history no longer holds (after a restart: everything before the last save). Other
+/// connections' open transactions are kept; one whose changes the restore would overwrite
+/// refuses it (`Conflict`).
 #[command(
     name = "edit.restore",
     summary = "Restore a checkpoint as one undoable change",
@@ -490,5 +499,29 @@ impl EngineCommand for ListCheckpoints {
         Ok(CheckpointList {
             checkpoints: state.checkpoints(),
         })
+    }
+}
+
+/// Deletes a checkpoint. The document and the history are not touched, and it cannot be
+/// undone. Returns the deleted checkpoint.
+#[command(
+    name = "edit.delete_checkpoint",
+    summary = "Delete a checkpoint (the document is not changed)",
+    engine,
+    undoable = false,
+    mcp = "catalog",
+    annotations(destructive = false, idempotent = true)
+)]
+pub struct DeleteCheckpoint {
+    /// The checkpoint: its id (`cp_<n>`) or name.
+    pub checkpoint: String,
+}
+
+impl EngineCommand for DeleteCheckpoint {
+    type Context = DocState;
+    type Output = CheckpointInfo;
+
+    fn run(&self, state: &mut DocState) -> Result<CheckpointInfo, CmdError> {
+        state.delete_checkpoint(&self.checkpoint)
     }
 }

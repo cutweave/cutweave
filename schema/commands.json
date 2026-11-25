@@ -467,7 +467,7 @@
       },
       "input_schema": {
         "additionalProperties": false,
-        "description": "Captures the committed document as a restore point (cheap: snapshots share structure).\nOpen transactions are not included. Kept in memory (at most 50, 20 named; least recently\nused first out); reusing a name moves it to the new checkpoint.",
+        "description": "Captures the committed document as a restore point (cheap: snapshots share structure).\nOpen transactions are not included. At most 50 are kept, 20 of them named (least recently\nused first out); reusing a name moves it to the new checkpoint. Checkpoints are saved in the\nproject's journal: they survive a crash, saves and reopening the project.",
         "properties": {
           "name": {
             "default": null,
@@ -639,6 +639,90 @@
       "scope": "any",
       "secret_fields": [],
       "summary": "Commit your open transaction as one undo step",
+      "undoable": false,
+      "view": false
+    },
+    {
+      "annotations": {
+        "destructiveHint": false,
+        "idempotentHint": true,
+        "openWorldHint": false,
+        "readOnlyHint": false
+      },
+      "input_schema": {
+        "additionalProperties": false,
+        "description": "Deletes a checkpoint. The document and the history are not touched, and it cannot be\nundone. Returns the deleted checkpoint.",
+        "properties": {
+          "checkpoint": {
+            "description": "The checkpoint: its id (`cp_<n>`) or name.",
+            "type": "string"
+          }
+        },
+        "required": [
+          "checkpoint"
+        ],
+        "title": "DeleteCheckpoint",
+        "type": "object"
+      },
+      "kind": "engine",
+      "mcp": "catalog",
+      "mcp_tool": "edit_delete_checkpoint",
+      "name": "edit.delete_checkpoint",
+      "namespace": "edit",
+      "output_schema": {
+        "description": "A checkpoint, as `edit.checkpoint` and `edit.list_checkpoints` report it.",
+        "properties": {
+          "actor": {
+            "description": "Who made it.",
+            "pattern": "^(user|system|agent:.+|plugin:[A-Za-z0-9._@-]+)$",
+            "type": "string"
+          },
+          "at": {
+            "description": "When.",
+            "format": "uint64",
+            "minimum": 0,
+            "type": "integer"
+          },
+          "checkpoint": {
+            "description": "Its id.",
+            "pattern": "^cp_[0-9]+$",
+            "type": "string"
+          },
+          "name": {
+            "description": "Its name, if any.",
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "note": {
+            "description": "A free-form note.",
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "rev": {
+            "description": "The committed revision it captured.",
+            "format": "uint64",
+            "minimum": 0,
+            "type": "integer"
+          }
+        },
+        "required": [
+          "checkpoint",
+          "name",
+          "note",
+          "rev",
+          "actor",
+          "at"
+        ],
+        "title": "CheckpointInfo",
+        "type": "object"
+      },
+      "scope": "any",
+      "secret_fields": [],
+      "summary": "Delete a checkpoint (the document is not changed)",
       "undoable": false,
       "view": false
     },
@@ -1440,7 +1524,7 @@
       },
       "input_schema": {
         "additionalProperties": false,
-        "description": "Brings the document back to a checkpoint as one new, undoable change by you (history is\nnot truncated; `edit.undo` reverts the restore). Without `force`, refused with `Conflict`\nwhen it would also revert other actors' changes made since the checkpoint.",
+        "description": "Brings the document back to a checkpoint as one new, undoable change by you (history is\nnot truncated; `edit.undo` reverts the restore). Without `force`, refused with `Conflict`\nwhen it would also revert other actors' changes made since the checkpoint, or changes the\nhistory no longer holds (after a restart: everything before the last save). Other\nconnections' open transactions are kept; one whose changes the restore would overwrite\nrefuses it (`Conflict`).",
         "properties": {
           "checkpoint": {
             "description": "The checkpoint: its id (`cp_<n>`) or name.",

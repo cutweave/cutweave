@@ -57,7 +57,8 @@ pub const JOB_ID_SEED: u64 = 7;
 /// jobs [`job_manager`] starts with, then analysis jobs of the first imports.
 const KNOWN_JOBS: usize = 8;
 
-/// Checkpoint names the `edit.checkpoint` and `edit.restore` strategies share.
+/// Checkpoint names the `edit.checkpoint`, `edit.restore` and `edit.delete_checkpoint`
+/// strategies share.
 pub const CHECKPOINT_NAMES: [&str; 3] = ["alpha", "beta", "gamma"];
 
 /// The label of the second actor (`agent:prop`) the strategies name in history scopes.
@@ -304,6 +305,7 @@ pub(super) fn args_for(name: &str, p: &Pools) -> Option<(u32, BoxedStrategy<Valu
         "edit.history" => (1, history_page()),
         "edit.checkpoint" => (2, checkpoint()),
         "edit.restore" => (2, restore()),
+        "edit.delete_checkpoint" => (1, delete_checkpoint()),
         "job.status" | "job.cancel" => (1, job_ref("id")),
         "job.list" => (1, job_list(p)),
         "job.wait" => (1, job_wait()),
@@ -1002,6 +1004,17 @@ fn restore() -> BoxedStrategy<Value> {
         .prop_map(|(checkpoint, force)| json!({"checkpoint": checkpoint, "force": force}))
         .boxed();
     mix(valid, Just(json!({"checkpoint": "nope"})).boxed())
+}
+
+fn delete_checkpoint() -> BoxedStrategy<Value> {
+    let checkpoint = prop_oneof![
+        select(CHECKPOINT_NAMES.to_vec()).prop_map(str::to_owned),
+        (1..=3_u32).prop_map(|n| format!("cp_{n}")),
+    ];
+    let valid = checkpoint
+        .prop_map(|checkpoint| json!({"checkpoint": checkpoint}))
+        .boxed();
+    mix(valid, Just(json!({"checkpoint": 7})).boxed())
 }
 
 // ----- job.* ---------------------------------------------------------------------------------

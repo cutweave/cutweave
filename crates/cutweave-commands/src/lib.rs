@@ -64,17 +64,17 @@ pub use cutweave_commands_derive::{command, query, wire};
 pub use diff::diff;
 pub use doc::{
     Actor, ActorCtx, ActorError, ActorStacks, Applied, Changes, CheckpointId, CheckpointInfo,
-    Clock, CommandPanicked, CommitRecord, CommitSink, ConnId, DEDUP_CAPACITY, DEDUP_WINDOW,
-    DEFAULT_HISTORY_BYTES, DEFAULT_HISTORY_ENTRIES, DEFAULT_HISTORY_PAGE, DEFAULT_UNDO_DEPTH,
-    DedupRecord, DocConfig, DocEvent, DocPatched, DocReset, DocSnapshot, DocState, EVENT_CATALOG,
-    EntryCause, EntryStatus, EventInfo, Fingerprint, GESTURE_IDLE_TIMEOUT, HistoryChange,
-    HistoryChanged, HistoryEntry, HistoryLimits, HistoryMoved, HistoryPage, HistoryScope,
-    HistoryUsage, JournalStep, JournaledCommit, LatestStacks, LatestTop, LockList,
-    MAX_AGENT_LABEL_CHARS, MAX_CHECKPOINT_NAME_CHARS, MAX_CHECKPOINT_NOTE_CHARS, MAX_CHECKPOINTS,
-    MAX_HISTORY_PAGE, MAX_NAMED_CHECKPOINTS, MAX_PLUGIN_ID_CHARS, ManualClock, NoJournal,
-    PatchCause, RequestId, RequestIdError, Restored, RevertedChanges, SOFT_LOCK_RETRY_MS, StackTop,
-    Submit, TxActivity, TxClosed, TxEnded, TxId, TxIdError, TxInfo, TxKind, TxLocks, TxOutcome,
-    WallTime,
+    CheckpointLedger, CheckpointRecord, Clock, CommandPanicked, CommitRecord, CommitSink, ConnId,
+    DEDUP_CAPACITY, DEDUP_WINDOW, DEFAULT_HISTORY_BYTES, DEFAULT_HISTORY_ENTRIES,
+    DEFAULT_HISTORY_PAGE, DEFAULT_UNDO_DEPTH, DedupRecord, DocConfig, DocEvent, DocPatched,
+    DocReset, DocSnapshot, DocState, EVENT_CATALOG, EntryCause, EntryStatus, EventInfo,
+    Fingerprint, GESTURE_IDLE_TIMEOUT, HistoryChange, HistoryChanged, HistoryEntry, HistoryLimits,
+    HistoryMoved, HistoryPage, HistoryScope, HistoryUsage, JournalStep, JournaledCheckpoint,
+    JournaledCommit, LatestStacks, LatestTop, LedgerEntry, LockList, MAX_AGENT_LABEL_CHARS,
+    MAX_CHECKPOINT_NAME_CHARS, MAX_CHECKPOINT_NOTE_CHARS, MAX_CHECKPOINTS, MAX_HISTORY_PAGE,
+    MAX_NAMED_CHECKPOINTS, MAX_PLUGIN_ID_CHARS, ManualClock, NoJournal, PatchCause, RequestId,
+    RequestIdError, Restored, RevertedChanges, SOFT_LOCK_RETRY_MS, StackTop, Submit, TxActivity,
+    TxClosed, TxEnded, TxId, TxIdError, TxInfo, TxKind, TxLocks, TxOutcome, WallTime,
 };
 #[cfg(not(all(target_arch = "wasm32", target_os = "unknown")))]
 pub use doc::{

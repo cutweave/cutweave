@@ -115,8 +115,9 @@ export type CancelTx = {
 
 /**
  *  Captures the committed document as a restore point (cheap: snapshots share structure).
- *  Open transactions are not included. Kept in memory (at most 50, 20 named; least recently
- *  used first out); reusing a name moves it to the new checkpoint.
+ *  Open transactions are not included. At most 50 are kept, 20 of them named (least recently
+ *  used first out); reusing a name moves it to the new checkpoint. Checkpoints are saved in the
+ *  project's journal: they survive a crash, saves and reopening the project.
  */
 export type Checkpoint = {
 	/**  A name to restore it by (1..=64 characters, not `cp_<n>`). */
@@ -437,6 +438,15 @@ export type DecodeHw =
 "auto" | 
 /**  Software decoding only. */
 "off";
+
+/**
+ *  Deletes a checkpoint. The document and the history are not touched, and it cannot be
+ *  undone. Returns the deleted checkpoint.
+ */
+export type DeleteCheckpoint = {
+	/**  The checkpoint: its id (`cp_<n>`) or name. */
+	checkpoint: string,
+};
 
 /**
  *  A change of the live document, broadcast in revision order (`doc.patched`, arch §5.1).
@@ -2087,7 +2097,10 @@ export type ResourceKind =
 /**
  *  Brings the document back to a checkpoint as one new, undoable change by you (history is
  *  not truncated; `edit.undo` reverts the restore). Without `force`, refused with `Conflict`
- *  when it would also revert other actors' changes made since the checkpoint.
+ *  when it would also revert other actors' changes made since the checkpoint, or changes the
+ *  history no longer holds (after a restart: everything before the last save). Other
+ *  connections' open transactions are kept; one whose changes the restore would overwrite
+ *  refuses it (`Conflict`).
  */
 export type Restore = {
 	/**  The checkpoint: its id (`cp_<n>`) or name. */
