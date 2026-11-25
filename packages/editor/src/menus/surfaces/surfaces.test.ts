@@ -518,6 +518,31 @@ describe("every row's command and arguments", () => {
   });
 });
 
+describe("a choice is never lost", () => {
+  it("runs the chosen command even when a second right-click opens another menu before the first closed", async () => {
+    render(
+      h(I18nextProvider, { i18n }, h(TooltipProvider, null, h(ContextMenuHost, { services }))),
+    );
+    act(() => {
+      openContextMenu(
+        { surface: "timeline.track", point: { x: 10, y: 10 }, target: { ids: [A1] } },
+        services,
+      );
+    });
+    const item = await screen.findByRole("menuitemcheckbox", { name: /^Unmute/ });
+    act(() => {
+      item.click();
+      openContextMenu(
+        { surface: "timeline.track", point: { x: 10, y: 10 }, target: { ids: [V1] } },
+        services,
+      );
+    });
+    await vi.waitFor(() =>
+      expect(call).toHaveBeenCalledWith("track.set", { track: A1, muted: false }),
+    );
+  });
+});
+
 describe("accessibility", () => {
   const TARGETS: Record<string, Partial<MenuTarget>> = {
     "dock.tab": { ids: ["inspector"], name: "Inspector" },

@@ -212,7 +212,7 @@ test.describe("F42 context menus", () => {
           await expect(menuOf.getByRole("menuitemcheckbox", { name: row })).toBeChecked({
             timeout: 1500,
           });
-        }).toPass();
+        }).toPass({ timeout: 10_000 });
       };
       await reopenWith(audioHeader, audioMenu, /^Unmute/);
       await page.keyboard.press("Escape");
