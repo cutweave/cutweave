@@ -14,10 +14,13 @@
 //!   wanted proxies that were never made or were interrupted (a killed engine resumes from the
 //!   finished parts); `media.generate_proxy` queues any. Evicted and failed proxies are made
 //!   again only on request, so a cache too small for the project never thrashes.
+//! - **Threads.** A reconcile runs on its own `cw-proxy-reconcile` thread, which
+//!   [`FullProxies::stop`] joins at shutdown; generations run as jobs on the engine runtime's
+//!   blocking pool, cancelled and joined with it.
 //! - **Yielding.** A generation takes its next frame only when the preview has served no
 //!   picture for [`IDLE_BEFORE_PROXIES`] (playback, scrub, Source view; issue 153); finished
 //!   parts stay, so a pause loses nothing.
-//! - **Policy.** [`DEFAULT_POLICY`] (`auto`) for every project until ADR-0025 stores one in
+//! - **Policy.** [`DEFAULT_POLICY`] (`auto`) for every project until ADR-0027 stores one in
 //!   the project.
 
 use std::collections::HashMap;
@@ -25,6 +28,7 @@ use std::path::PathBuf;
 use std::str::FromStr;
 use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::{Arc, Mutex, PoisonError};
+use std::thread::JoinHandle;
 use std::time::{Duration as StdDuration, Instant};
 
 use cutweave_cache::proxy::{
@@ -32,7 +36,7 @@ use cutweave_cache::proxy::{
     ProxyStore, ReadyProxy, submit_proxy,
 };
 use cutweave_cache::{CacheDb, ContentHash};
-use cutweave_commands::CmdError;
+use cutweave_commands::{CmdError, DocHandle};
 use cutweave_jobs::{JobId, JobManager, JobState};
 use cutweave_media::{CancelToken, MediaBackend};
 use cutweave_model::{MediaAsset, MediaId, Project};
@@ -136,6 +140,8 @@ pub struct FullProxies {
     jobs: Arc<Mutex<HashMap<Key, JobId>>>,
     /// Interactive preview activity that pauses generations (issue 153).
     activity: Arc<Activity>,
+    /// Reconcile threads not joined yet ([`FullProxies::stop`]).
+    reconciles: Mutex<Vec<JoinHandle<()>>>,
 }
 
 impl std::fmt::Debug for FullProxies {
@@ -195,7 +201,50 @@ impl FullProxies {
             link,
             jobs: Arc::default(),
             activity,
+            reconciles: Mutex::default(),
         }
+    }
+
+    /// [`reconcile`](Self::reconcile)s `doc` on its own thread (the per-project hooks call it
+    /// under the session lock); [`stop`](Self::stop) joins the thread.
+    pub(crate) fn reconcile_in_background(self: &Arc<Self>, doc: &DocHandle) {
+        let snapshot = doc.snapshot();
+        let proxies = Arc::clone(self);
+        let spawned = std::thread::Builder::new()
+            .name("cw-proxy-reconcile".into())
+            .spawn(move || proxies.reconcile(&snapshot.doc));
+        let thread = match spawned {
+            Ok(thread) => thread,
+            Err(e) => {
+                tracing::warn!(error = %e, "cannot queue the project's proxies");
+                return;
+            }
+        };
+        let finished = {
+            let mut threads = self
+                .reconciles
+                .lock()
+                .unwrap_or_else(PoisonError::into_inner);
+            let (finished, running) = std::mem::take(&mut *threads)
+                .into_iter()
+                .partition(JoinHandle::is_finished);
+            *threads = running;
+            threads.push(thread);
+            finished
+        };
+        join_reconciles(finished);
+    }
+
+    /// Waits for the reconcile threads (engine shutdown), so none outlives the engine; they
+    /// only read the cache database and queue jobs, which the engine cancels next.
+    pub(crate) fn stop(&self) {
+        let threads = std::mem::take(
+            &mut *self
+                .reconciles
+                .lock()
+                .unwrap_or_else(PoisonError::into_inner),
+        );
+        join_reconciles(threads);
     }
 
     /// Records that the preview is serving a picture: proxy jobs wait for it to go quiet.
@@ -353,6 +402,14 @@ impl FullProxies {
         }
         if queued > 0 {
             tracing::info!(queued, "proxies queued for the open project");
+        }
+    }
+}
+
+fn join_reconciles(threads: Vec<JoinHandle<()>>) {
+    for thread in threads {
+        if thread.join().is_err() {
+            tracing::error!("a proxy reconcile panicked");
         }
     }
 }

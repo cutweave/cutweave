@@ -12,7 +12,7 @@
 //! HEVC and wider or taller than 1920 pixels, faster than 60 fps, or HEVC with 10-bit samples
 //! ([`auto_reason`]). The project's own policy and a per-asset mode (`project.settings
 //! .proxy_policy`, `MediaAsset.proxy_mode`, `media.set_proxy_policy`, `media.set_proxy_mode`)
-//! change the project format: they wait for ADR-0025 (Proposed), and every project follows
+//! change the project format: they wait for ADR-0027 (Proposed), and every project follows
 //! `auto` until then ([`DEFAULT_POLICY`]).
 //!
 //! **Import.** `media.import` reports per file whether a proxy was queued
@@ -44,7 +44,7 @@ pub enum ProxyPolicy {
     All,
 }
 
-/// The policy every project follows until ADR-0025 stores one in the project.
+/// The policy every project follows until ADR-0027 stores one in the project.
 pub const DEFAULT_POLICY: ProxyPolicy = ProxyPolicy::Auto;
 
 /// Long-GOP codecs `auto` considers (FFmpeg codec names).

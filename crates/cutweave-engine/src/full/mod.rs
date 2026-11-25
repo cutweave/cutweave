@@ -772,17 +772,10 @@ impl FullCacheControl {
 }
 
 /// Queues the proxies `doc` wants that were never made or were interrupted, off the calling
-/// thread (the per-project hooks run under the session lock).
+/// thread (the per-project hooks run under the session lock; shutdown joins the thread).
 fn reconcile_proxies(proxies: Option<&Arc<FullProxies>>, doc: &DocHandle) {
-    let Some(proxies) = proxies.cloned() else {
-        return;
-    };
-    let snapshot = doc.snapshot();
-    let spawned = std::thread::Builder::new()
-        .name("cw-proxy-reconcile".into())
-        .spawn(move || proxies.reconcile(&snapshot.doc));
-    if let Err(e) = spawned {
-        tracing::warn!(error = %e, "cannot queue the project's proxies");
+    if let Some(proxies) = proxies {
+        proxies.reconcile_in_background(doc);
     }
 }
 
@@ -1232,8 +1225,13 @@ impl Subsystems for FullSubsystems {
             sink_home,
             clock_writer,
             caches,
+            proxies,
             ..
         } = started;
+        // Proxy reconciles (they queue jobs, which the engine cancels after this).
+        if let Some(proxies) = &proxies {
+            proxies.stop();
+        }
         // 2. Audio: the output (device thread) before the mixer workers.
         audio.stop();
         // 3. The preview ring (marked closed for readers, then unmapped) and its clock.
