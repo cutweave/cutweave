@@ -209,7 +209,7 @@ VisualProps { transform{position, scale, rotation, anchor}, crop{left, top, righ
 
 Animatable<T> = Static(T) | Keyframes(Vec<Keyframe<T>{ t (item-relative flicks), value,
                 interp(hold|linear|bezier{x1,y1,x2,y2}|spring{stiffness,damping,mass,bounce}) }>)
-                — wire: bare T or {"keyframes": [...]}; rules in docs/spec/keyframes.md (ADR-0024, Proposed)
+                — wire: bare T or {"keyframes": [...]}; rules in docs/spec/keyframes.md (ADR-0024, Accepted)
 
 EffectInstance { id, effect: PluginRef("cutweave.fx.gaussian-blur@1"), enabled, params: Map<ParamId, Animatable<Value>> }
 
@@ -231,7 +231,7 @@ Provenance { origin(import|record|ai), provider?, model?, prompt?, seed?, params
   - `item.move` takes `start` and accepts `overlap: "new_track"` like `timeline.insert`. Edits never ripple, and trims never push a neighbour.
   - An edit touching any locked track (partners' tracks included) fails with `Locked` and applies nothing.
 - **Phase 2 edit semantics** are specified in [docs/spec/timeline-edit-semantics.md](spec/timeline-edit-semantics.md) (WP-2A.01): the magnetic main track, placement modes (`insert`, `overwrite`, `new_track`, `reject`), ripple scope, attachments, the trim family, `EditReport`, snapping and selection, with executable fixtures (`cargo xtask check-fixtures`). Its contract changes are in [ADR-0023](adr/0023-timeline-edit-semantics.md) (**Proposed**); until that is accepted, the P1 rules above hold.
-- **Keyframes (specified in WP-2C.01; [ADR-0024](adr/0024-keyframes.md), Proposed):** the full rules are in [docs/spec/keyframes.md](spec/keyframes.md).
+- **Keyframes (specified in WP-2C.01; [ADR-0024](adr/0024-keyframes.md), Accepted):** the full rules are in [docs/spec/keyframes.md](spec/keyframes.md).
   - Keys are addressed by `(item, prop, t)`, with `t` in item-relative flicks.
   - Each key's interpolation shapes the segment to the next key.
   - Edits never change a rendered frame. A split keeps each half's keys plus one key on each side. A head trim shifts keys so they stay on the timeline. Trims keep keys outside the item unless `prune_keyframes` is set. Slips, moves, ripples, speed changes and duplicates leave keys alone.
@@ -324,7 +324,7 @@ impl Command for SplitItem {
   - Another actor's change to a locked item fails with `Conflict{item_in_gesture, retry_after_ms}`. The hint is the time left until the gesture's idle deadline, at least 250 ms; proposals give none. The holder's own actor is not blocked.
   - `edit.locks` lists open transactions with their locked items and deadlines. Events: `tx.opened`, `tx.locked`, `tx.closed`.
   - A closed connection ID can never open transactions again, so the API server (WP-1I.02) must not reuse connection IDs. A `holder` field on the error would be a contract change (ADR).
-- **P2 gesture updates (proposed in ADR-0023, spec §5):** each update of a gesture carries `_meta.replace: true` and replaces the previous one atomically, so a gesture commits the effect of its last command; its soft-lock set is the union of the items each update's `EditReport` names, and `Conflict{item_in_gesture}` gains `holder` (WP-2A.12).
+- **P2 gesture updates (ADR-0023, spec §5):** each update of a gesture carries `_meta.replace: true` and replaces the previous one atomically, so a gesture commits the effect of its last command; its soft-lock set is the union of the items each update's `EditReport` names, and `Conflict{item_in_gesture}` gains `holder` (WP-2A.12).
 - **Checkpoints:** `edit.checkpoint{name}` and `edit.restore{checkpoint}` (cheap, thanks to persistent snapshots) let agents try something and roll back.
 - **Checkpoints (decided in WP-2I.03):**
   - `edit.checkpoint{name?, note?}` keeps an O(1) snapshot of the committed document; at most 50 are kept, 20 of them named, least recently used (made or restored) first out. Reusing a name moves it. Ids (`cp_<n>`) are never reused, also across restarts. `edit.list_checkpoints` lists them and `edit.delete_checkpoint` deletes one. Nothing is created automatically except one per `cutweave_execute{checkpoint: true}` call (§14).
@@ -475,7 +475,7 @@ flowchart LR
   - Caching rendered frames by `(subgraph hash, t)`.
   - **Parallel chunked export** across `cutweave worker` processes.
   - Reproducible bug reports and golden-frame tests.
-- **Animated values** are evaluated at the item-relative time by the pure keyframe evaluator ([docs/spec/keyframes.md](spec/keyframes.md) §6; ADR-0024, Proposed). It works in f64, is exact at keys and never yields NaN or infinity. Hold and linear are bit-exact on every platform; bezier, spring and colour agree within 1e-9 across native and wasm. Property clamps (opacity, crop, gain, pan) apply after interpolation, and conversion to f32 happens only at the GPU boundary.
+- **Animated values** are evaluated at the item-relative time by the pure keyframe evaluator ([docs/spec/keyframes.md](spec/keyframes.md) §6; ADR-0024, Accepted). It works in f64, is exact at keys and never yields NaN or infinity. Hold and linear are bit-exact on every platform; bezier, spring and colour agree within 1e-9 across native and wasm. Property clamps (opacity, crop, gain, pan) apply after interpolation, and conversion to f32 happens only at the GPU boundary.
 - **Color:**
   - Composite in **linear light, `Rgba16Float`** working space (scene-linear Rec.709 primaries in v1).
   - Input transforms come from probe tags (matrix, range, transfer, primaries), and output transforms are per export.

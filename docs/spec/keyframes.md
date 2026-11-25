@@ -1,6 +1,6 @@
 # Keyframe and easing model
 
-> **Status: draft for human review (WP-2C.01).** Normative for WP-2C.02 (interpolation core), WP-2C.03 (keyframe and property commands), WP-2C.04 (render), WP-2C.05 to WP-2C.08, WP-2E.01 and the Inspector work packages (WP-2H.02, WP-2H.03, WP-2H.06). The project-format and command-schema parts are proposed in [ADR-0024](../adr/0024-keyframes.md); until a maintainer accepts it, build only what this spec's own work packages need.
+> **Status: approved by the product owner on 2026-11-25 (ADR-0024 accepted).** Normative for WP-2C.02 (interpolation core), WP-2C.03 (keyframe and property commands), WP-2C.04 (render), WP-2C.05 to WP-2C.08, WP-2E.01 and the Inspector work packages (WP-2H.02, WP-2H.03, WP-2H.06). The project-format and command-schema parts are proposed in [ADR-0024](../adr/0024-keyframes.md); until a maintainer accepts it, build only what this spec's own work packages need.
 >
 > - It extends [arch §4.2](../01-architecture.md) (`Animatable<T>`) and relies on §4.1 (flicks), §4.3 (frame snapping), §5 (commands, undo, gestures), §8 (deterministic evaluation) and §16 (shared math via wasm).
 > - Executable parts: [keyframes-vectors.json](keyframes-vectors.json) holds the golden vectors and [keyframes_ref.py](keyframes_ref.py) is the reference evaluator that generates and checks them (§12).

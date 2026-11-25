@@ -959,7 +959,7 @@ Schedule note: the roadmap gives 9 weeks. Total effort here is about 162 agent-d
 - **Depends on:** E1A, E1B, WP-1M.12, WP-1O.02
 - **Size:** M
 - **Executor:** opus
-- **Scope:** (product owner request, 2026-11-24) organize the project's media into folders, as decided in ADR-0020 (Proposed; it must be Accepted before this WP starts).
+- **Scope:** (product owner request, 2026-11-24) organize the project's media into folders, as decided in ADR-0020 (Accepted by the product owner, 2026-11-25).
   - Model: `Project.folders: Map<FolderId, MediaFolder{id, name, parent?: FolderId, custom}>` with IDs `fld_…` (deterministic under `--deterministic-ids`), `MediaAsset.folder?: FolderId` (absent = top level) and `MediaAsset.name?: String` (display name; absent = the file name).
   - Invariants in `Project::validate`: parents and asset folders exist; no cycles; depth ≤ 32; folder names 1–255 characters, no `/` or control characters, unique among siblings ignoring case.
   - Commands in the `media` namespace, all undoable as one step, MCP catalog:
