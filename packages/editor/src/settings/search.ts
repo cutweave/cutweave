@@ -5,7 +5,7 @@
 // matching text marked. Settings search has no engine command: it filters the registry.
 
 import type { TKey } from "../i18n/index.ts";
-import type { SettingRowDef, SettingsPageDef } from "./registry.ts";
+import { rowDescription, rowLabel, type SettingRowDef, type SettingsPageDef } from "./registry.ts";
 
 type Translate = (key: TKey) => string;
 
@@ -81,8 +81,8 @@ export function searchSettings(
     const title = t(page.title);
     const rows: RowMatch[] = [];
     for (const row of page.rows) {
-      const label = t(row.label);
-      const description = t(row.description);
+      const label = rowLabel(row, t);
+      const description = rowDescription(row, t);
       const keywords = [
         row.keywords === undefined ? "" : t(row.keywords),
         row.keywordsText?.() ?? "",

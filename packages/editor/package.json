@@ -13,6 +13,7 @@
     "preview": "vite preview",
     "typecheck": "tsc --noEmit",
     "lint:i18n": "node scripts/lint-i18n.ts",
+    "check:keymaps": "node scripts/check-keymaps.ts",
     "test": "vitest run"
   },
   "dependencies": {

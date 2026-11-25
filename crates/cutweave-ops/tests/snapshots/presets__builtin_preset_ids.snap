@@ -1,0 +1,26 @@
+---
+source: crates/cutweave-ops/tests/presets.rs
+expression: ids
+---
+[
+  "youtube-1080p",
+  "youtube-4k",
+  "youtube-shorts",
+  "instagram-reels",
+  "instagram-stories",
+  "instagram-feed-4x5",
+  "instagram-feed-1x1",
+  "tiktok",
+  "x-landscape",
+  "x-portrait",
+  "h264-mp4-1080p",
+  "h264-draft",
+  "archive-hevc",
+  "prores-422-hq",
+  "gif",
+  "audio-wav",
+  "audio-mp3",
+  "audio-aac",
+  "audio-flac",
+  "audio-opus"
+]

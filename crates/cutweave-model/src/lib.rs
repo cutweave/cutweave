@@ -6,17 +6,24 @@
 //! - **Time** ([`Time`], [`Duration`], [`FrameRate`], [`SampleRate`], [`Timecode`],
 //!   [`TimeInput`]): integer flicks (1/705,600,000 s) with checked arithmetic and the only
 //!   allowed frame/sample conversions (ADR-0004); JSON integers on the wire (ADR-0015).
-//! - **IDs** ([`MediaId`], [`SequenceId`], [`TrackId`], [`ItemId`], [`GroupId`], [`MarkerId`], [`IdGen`]):
-//!   prefixed UUIDv7 strings, with a seeded generator for deterministic tests.
-//! - **Entities** ([`Project`], [`MediaAsset`], [`Sequence`], [`Track`], [`Item`], [`Clip`]):
-//!   the schema v1 document, held in persistent `imbl` collections so snapshots are O(1)
-//!   (ADR-0005), with [`Project::validate`] checking the [`Invariant`]s of arch §4.3. Plugin
-//!   data lives only in namespaced [`Custom`] maps; unknown fields survive in [`Extra`].
+//! - **IDs** ([`MediaId`], [`SequenceId`], [`TrackId`], [`ItemId`], [`GroupId`], [`MarkerId`],
+//!   [`FolderId`], [`IdGen`]): prefixed UUIDv7 strings, with a seeded generator for
+//!   deterministic tests.
+//! - **Entities** ([`Project`], [`MediaAsset`], [`MediaFolder`], [`Sequence`], [`Track`],
+//!   [`Item`], [`Clip`]): the schema v2 document, held in persistent `imbl` collections so
+//!   snapshots are O(1) (ADR-0005), with [`Project::validate`] checking the [`Invariant`]s of
+//!   arch §4.3. Plugin data lives only in namespaced [`Custom`] maps; unknown fields survive in
+//!   [`Extra`].
+//! - **Keyframes** ([`Animatable`], [`Keyframes`], [`Interp`], [`Easing`], [`Evaluator`],
+//!   [`PropId`]): the pure, deterministic evaluator of every animated property
+//!   (`docs/spec/keyframes.md`, ADR-0024), shared with the UI through wasm (arch §16).
 //! - **Versioning** ([`CURRENT_SCHEMA_VERSION`], [`open`], [`migrate_to_current`],
 //!   [`Migration`], [`OpenOutcome`]): ordered `vN → vN+1` migrations on the raw JSON with golden
 //!   fixtures; documents from newer versions open read-only (arch §4.3, ADR-0006).
 
+mod animate;
 mod custom;
+mod folder;
 mod id;
 mod item;
 mod marker;
@@ -33,16 +40,26 @@ mod time;
 mod timecode;
 mod validate;
 
+pub use animate::{
+    AnimValue, Animatable, BEZIER_Y_LIMIT, Easing, Evaluator, Interp, Keyframe, KeyframeError,
+    KeyframeRule, Keyframes, LinearRgba, MAX_KEYFRAMES, PRESET_PATTERN, PropId, PropSpec,
+    PropValue, SPRING_DAMPING, SPRING_MASS, SPRING_STIFFNESS, ShortestAngle, UnknownEasing,
+    UnknownProp, ValueRange, ValueType, is_preset_name, sample_times,
+};
 pub use custom::{
     Custom, Extra, NAMESPACE_PATTERN, NamespaceError, canonical_json_pretty, is_valid_namespace,
+};
+pub use folder::{
+    MAX_FOLDER_DEPTH, MAX_FOLDER_NAME_CHARS, MAX_MEDIA_NAME_CHARS, MediaFolder, folder_name_key,
+    folder_name_problem, media_name_problem,
 };
 #[cfg(not(all(target_arch = "wasm32", target_os = "unknown")))]
 pub use id::Uuid7Gen;
 pub use id::{
-    EntityId, EntityKind, GroupId, IdError, IdGen, ItemId, MarkerId, MediaId, SeededGen,
+    EntityId, EntityKind, FolderId, GroupId, IdError, IdGen, ItemId, MarkerId, MediaId, SeededGen,
     SequenceId, TrackId,
 };
-pub use item::{Animatable, AudioProps, Clip, Item, Keyframes, Transform, Vec2, VisualProps};
+pub use item::{AudioProps, Clip, Item, Transform, Vec2, VisualProps};
 pub use marker::{InOut, Marker, MarkerKind, MarkerKindError, Markers};
 pub use media::{
     AudioInfo, ColorPrimaries, ColorRange, ColorTags, MatrixCoefficients, MediaAsset, MediaKind,

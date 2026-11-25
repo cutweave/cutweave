@@ -4,8 +4,10 @@ import { IconButton, Tooltip } from "@cutweave/ui";
 import { useMemo } from "react";
 import { useTranslation } from "react-i18next";
 import { engineStore } from "../engine/engineStore.ts";
+import { comboText, strokesOf } from "../keymap/store.ts";
 import { insertAtPlayhead } from "../media/insert.ts";
-import { SOURCE_KEYS } from "../preview/sourceKeys.ts";
+import { useContextMenu } from "../menus/host.tsx";
+import { SOURCE_COMMANDS } from "../preview/sourceKeys.ts";
 import { docStore, useDocStore } from "../state/docStore.ts";
 import { usePlaybackStore } from "../state/playbackStore.ts";
 import { mediaName } from "../state/selectors.ts";
@@ -14,11 +16,9 @@ import { viewStore } from "../state/viewStore.ts";
 import { translator } from "../timeline/errors.ts";
 import { transportController } from "../transport/useTransport.ts";
 
-/** The key of `action` in the Source view's table, spelled for a tooltip. */
-const keyOfAction = (action: "back" | "insert"): string[] => {
-  const key = SOURCE_KEYS.find((entry) => entry.action === action)?.key;
-  return key === undefined ? [] : [key === "Escape" ? "Esc" : key];
-};
+/** The keys of `action` in the keymap, spelled for a tooltip. */
+const keyOfAction = (action: "back" | "insert"): string[] =>
+  strokesOf(SOURCE_COMMANDS[action]).map((combo) => comboText(combo));
 
 /** The asset the Source view shows, and what putting it on the timeline needs. */
 export function useSourceAsset() {
@@ -69,11 +69,13 @@ export function SourceHeader() {
   const source = usePlaybackStore((s) => s.source);
   const at = usePlaybackStore((s) => s.sourcePlayhead);
   const insert = useInsertSource();
+  const menuRef = useContextMenu<HTMLElement>("source.view", () => ({}));
   if (source === null || asset === null) return null;
   const timecode = formatTimecode(at, source.fps, true);
   const length = formatTimecode(source.duration, source.fps, true);
   return (
     <section
+      ref={menuRef}
       className="cw-preview__bar cw-source__bar"
       aria-label={t("preview.source.region")}
       data-testid="source-header"

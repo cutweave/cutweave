@@ -5,6 +5,7 @@
 
 import { Button, Tooltip } from "@cutweave/ui";
 import { useTranslation } from "react-i18next";
+import { ContextSurface } from "../menus/host.tsx";
 import { useJobStore } from "../state/jobStore.ts";
 import { percent } from "./exportSettings.ts";
 import { useExportStore } from "./exportStore.ts";
@@ -17,17 +18,19 @@ export function ExportStatusChip() {
   if (active === null) return null;
   const pct = String(percent(info?.progress.fraction ?? null));
   return (
-    <Tooltip label={t("export.chip.tooltip", { name: active.fileName, percent: pct })}>
-      <Button
-        variant="ghost"
-        size="sm"
-        icon="loader-circle"
-        className="cw-export-chip"
-        data-testid="export-chip"
-        onClick={() => exportController().open()}
-      >
-        {t("export.chip.label", { percent: pct })}
-      </Button>
-    </Tooltip>
+    <ContextSurface surface="chrome.export" className="cw-context-surface">
+      <Tooltip label={t("export.chip.tooltip", { name: active.fileName, percent: pct })}>
+        <Button
+          variant="ghost"
+          size="sm"
+          icon="loader-circle"
+          className="cw-export-chip"
+          data-testid="export-chip"
+          onClick={() => exportController().open()}
+        >
+          {t("export.chip.label", { percent: pct })}
+        </Button>
+      </Tooltip>
+    </ContextSurface>
   );
 }

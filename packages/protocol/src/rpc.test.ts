@@ -21,7 +21,8 @@ describe("RpcClient types", () => {
       void client.call("clip.split", { item: "itm_1", at });
     };
     expect(typeof typed).toBe("function");
-    expectTypeOf<CommandMap["clip.split"]["input"]["item"]>().toEqualTypeOf<ItemId>();
+    // `clip.split` takes `item` or `items` since WP-2A.03; `clip.trim` still requires `item`.
+    expectTypeOf<CommandMap["clip.trim"]["input"]["item"]>().toEqualTypeOf<ItemId>();
   });
 
   it("accepts queries and commands alike", () => {

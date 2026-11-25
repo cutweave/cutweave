@@ -3,7 +3,6 @@ import type { MediaId } from "@cutweave/protocol";
 import type { MediaDrag } from "@cutweave/timeline";
 import {
   Button,
-  Dialog,
   FilterChip,
   Icon,
   IconButton,
@@ -27,7 +26,6 @@ import {
 } from "react";
 import { useTranslation } from "react-i18next";
 import { useStore } from "zustand";
-import { createStore } from "zustand/vanilla";
 import { engineStore, useEngineStore } from "../engine/engineStore.ts";
 import type { TKey } from "../i18n/index.ts";
 import {
@@ -50,11 +48,13 @@ import {
 import { dragStore, MEDIA_DRAG_TYPE } from "../media/dragStore.ts";
 import { findMedia } from "../media/find.ts";
 import { insertAtPlayhead } from "../media/insert.ts";
+import { layoutStore } from "../media/layoutStore.ts";
 import { useMediaStore } from "../media/mediaStore.ts";
-import { removeMedia } from "../media/remove.ts";
+import { requestMediaRemoval } from "../media/requestRemoval.ts";
 import { useThumbnailSource } from "../media/thumbnails.ts";
 import { useCardScrub } from "../media/useCardScrub.ts";
 import { useImport } from "../media/useImport.ts";
+import { ContextSurface, registerContextSurface, useContextMenu } from "../menus/host.tsx";
 import { docStore, useDocStore } from "../state/docStore.ts";
 import { useJobStore } from "../state/jobStore.ts";
 import { usePlaybackStore } from "../state/playbackStore.ts";
@@ -66,18 +66,11 @@ import { transportController } from "../transport/useTransport.ts";
 import { binKeyAction } from "./binKeys.ts";
 import { EmptyState } from "./EmptyState.tsx";
 
-type MediaLayout = "grid" | "list";
-
 /** The modifier key cap for tooltips: ⌘ on macOS, Ctrl elsewhere. */
 function modifierKey(): string {
   const platform = typeof navigator === "undefined" ? "" : navigator.platform;
   return /mac/i.test(platform) ? "⌘" : "Ctrl";
 }
-
-/** Session-wide, like the other panel toggles: the layout survives switching asset tabs. */
-const layoutStore = createStore<{ layout: MediaLayout; set(layout: MediaLayout): void }>()(
-  (set) => ({ layout: "grid", set: (layout) => set({ layout }) }),
-);
 
 const KIND_ICON: Record<MediaCard["kind"], IconName> = {
   video: "film",
@@ -196,6 +189,11 @@ function CardView({
   const thumb = source.thumbnailFor({ id: card.id, kind: card.kind, width: 160, indexed });
   const image = thumb.kind === "image" && thumb.src !== failedImage ? thumb.src : null;
   const drag = dragOf(card);
+  // Right-click or the Menu key: the card's menu (WP-2H.13). The host selects the card first.
+  const menuRef = useContextMenu<HTMLDivElement>("bin.card", () => ({
+    ids: [card.id],
+    name: card.name,
+  }));
   const scrub = useCardScrub(card);
   const canPlay = playable(card);
   const playingHere = usePlaybackStore((s) => s.source?.media === card.id && s.playing);
@@ -225,6 +223,7 @@ function CardView({
   return (
     // biome-ignore lint/a11y/useKeyWithClickEvents: the listbox handles the keys (arrows, Enter, Space, Delete)
     <div
+      ref={menuRef}
       role="option"
       aria-selected={selected}
       tabIndex={active ? 0 : -1}
@@ -459,15 +458,10 @@ export function MediaPanel() {
     [actionDeps],
   );
 
-  const [confirming, setConfirming] = useState<MediaCard | null>(null);
-  const removing = async (card: MediaCard) => {
-    setConfirming(null);
-    await removeMedia(actionDeps, card.id, card.name);
-  };
+  // Removing an asset clips use asks first; the question is `menus/MenuDialogs.tsx`'s, so the bin's
+  // keys and button and its context menu ask the same one.
   const requestRemove = (card: MediaCard | undefined) => {
-    if (card === undefined) return;
-    if ((usage.get(card.id) ?? 0) > 0) setConfirming(card);
-    else void removing(card);
+    if (card !== undefined) void requestMediaRemoval(card.id);
   };
   const selectedCard = cards.find((c) => c.id === selectedId);
 
@@ -566,6 +560,31 @@ export function MediaPanel() {
   // ---- search, filters, sort ---------------------------------------------------------------
   const searchRef = useRef<HTMLInputElement>(null);
   const sectionRef = useRef<HTMLElement>(null);
+
+  // Anywhere in the panel that is not a card: Import, Sort by, View as (WP-2H.13). A right-click
+  // on the empty bin clears the selection, as the Explorer does.
+  useEffect(() => {
+    const section = sectionRef.current;
+    if (section === null) return undefined;
+    return registerContextSurface(section, () => ({ surface: "bin.background" }), {
+      name: "bin.background",
+    });
+  }, []);
+
+  // A card selected from elsewhere (the timeline's "Reveal in media bin") scrolls into view.
+  useEffect(() => {
+    const el = scroller.current;
+    if (selectedId === null || el === null || metrics.rowHeight === 0 || metrics.cols === 0) return;
+    const index = cards.findIndex((c) => c.id === selectedId);
+    if (index < 0) return;
+    const cols = layout === "list" ? 1 : metrics.cols;
+    const rowTop = Math.floor(index / cols) * metrics.rowHeight;
+    if (rowTop < el.scrollTop) el.scrollTop = rowTop;
+    else if (rowTop + metrics.rowHeight > el.scrollTop + el.clientHeight) {
+      el.scrollTop = rowTop + metrics.rowHeight - el.clientHeight;
+    }
+    // Only a change of the selection scrolls; a scroll the person made stays.
+  }, [selectedId]);
 
   // Ctrl/Cmd+F focuses the search field while the Assets panel has focus.
   useEffect(() => {
@@ -779,12 +798,18 @@ export function MediaPanel() {
       {chips.length > 0 ? (
         <fieldset className="cw-media__chips" aria-label={t("mediaBin.filters.chipsLabel")}>
           {chips.map((chip) => (
-            <FilterChip
+            <ContextSurface
               key={chip.id}
-              label={chip.label}
-              removeLabel={t("mediaBin.filters.removeChip", { filter: chip.label })}
-              onRemove={chip.remove}
-            />
+              surface="bin.chip"
+              className="cw-context-surface"
+              target={() => ({ ids: [chip.id], name: chip.label })}
+            >
+              <FilterChip
+                label={chip.label}
+                removeLabel={t("mediaBin.filters.removeChip", { filter: chip.label })}
+                onRemove={chip.remove}
+              />
+            </ContextSurface>
           ))}
           <Button variant="ghost" size="sm" onClick={() => bin.clearFilters()}>
             {t("mediaBin.filters.clearAll")}
@@ -865,32 +890,6 @@ export function MediaPanel() {
           <span className="body">{t("mediaBin.drop.body")}</span>
         </div>
       ) : null}
-      <Dialog
-        open={confirming !== null}
-        onOpenChange={(open) => {
-          if (!open) setConfirming(null);
-        }}
-        title={t("mediaBin.remove.confirmTitle", { name: confirming?.name ?? "" })}
-        description={t("mediaBin.remove.confirmBody", {
-          count: String(usage.get(confirming?.id ?? "") ?? 0),
-        })}
-        footer={
-          <>
-            <Button variant="ghost" size="lg" onClick={() => setConfirming(null)}>
-              {t("mediaBin.remove.cancel")}
-            </Button>
-            <Button
-              variant="danger"
-              size="lg"
-              onClick={() => confirming !== null && void removing(confirming)}
-            >
-              {t("mediaBin.remove.confirm")}
-            </Button>
-          </>
-        }
-      >
-        <p className="body">{t("mediaBin.remove.confirmNote")}</p>
-      </Dialog>
     </section>
   );
 }

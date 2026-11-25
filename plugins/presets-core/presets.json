@@ -1,0 +1,791 @@
+{
+  "schema_version": 1,
+  "presets": [
+    {
+      "schema_version": 1,
+      "id": "youtube-1080p",
+      "name": "YouTube 1080p",
+      "summary": "1920 x 1080, up to 60 fps, 8 Mbps",
+      "container": "mp4",
+      "video": {
+        "codec": "h264",
+        "rate_control": {
+          "mode": "vbr",
+          "bitrate_kbps": 8000
+        },
+        "profile": "high",
+        "preset": "medium",
+        "pix_fmt": "yuv420p",
+        "hw_preferred": true
+      },
+      "audio": {
+        "codec": "aac",
+        "bitrate_kbps": 384,
+        "sample_rate": 48000,
+        "channels": 2
+      },
+      "size": {
+        "kind": "fixed",
+        "width": 1920,
+        "height": 1080
+      },
+      "fps": {
+        "kind": "follow_sequence",
+        "max": {
+          "num": 60,
+          "den": 1
+        }
+      },
+      "limits": {
+        "max_duration_secs": 43200,
+        "max_size_mb": 262144
+      },
+      "platform": {
+        "id": "youtube",
+        "name": "YouTube",
+        "spec_url": "https://support.google.com/youtube/answer/1722171",
+        "checked": "2026-11-25",
+        "unverified": [
+          "limits.max_duration_secs",
+          "limits.max_size_mb"
+        ]
+      }
+    },
+    {
+      "schema_version": 1,
+      "id": "youtube-4k",
+      "name": "YouTube 4K",
+      "summary": "3840 x 2160, up to 60 fps, 40 Mbps",
+      "container": "mp4",
+      "video": {
+        "codec": "h264",
+        "rate_control": {
+          "mode": "vbr",
+          "bitrate_kbps": 40000
+        },
+        "profile": "high",
+        "preset": "medium",
+        "pix_fmt": "yuv420p",
+        "hw_preferred": true
+      },
+      "audio": {
+        "codec": "aac",
+        "bitrate_kbps": 384,
+        "sample_rate": 48000,
+        "channels": 2
+      },
+      "size": {
+        "kind": "fixed",
+        "width": 3840,
+        "height": 2160
+      },
+      "fps": {
+        "kind": "follow_sequence",
+        "max": {
+          "num": 60,
+          "den": 1
+        }
+      },
+      "limits": {
+        "max_duration_secs": 43200,
+        "max_size_mb": 262144
+      },
+      "platform": {
+        "id": "youtube",
+        "name": "YouTube",
+        "spec_url": "https://support.google.com/youtube/answer/1722171",
+        "checked": "2026-11-25",
+        "unverified": [
+          "limits.max_duration_secs",
+          "limits.max_size_mb"
+        ]
+      }
+    },
+    {
+      "schema_version": 1,
+      "id": "youtube-shorts",
+      "name": "YouTube Shorts",
+      "summary": "1080 x 1920, up to 3 minutes",
+      "container": "mp4",
+      "video": {
+        "codec": "h264",
+        "rate_control": {
+          "mode": "vbr",
+          "bitrate_kbps": 8000
+        },
+        "profile": "high",
+        "preset": "medium",
+        "pix_fmt": "yuv420p",
+        "hw_preferred": true
+      },
+      "audio": {
+        "codec": "aac",
+        "bitrate_kbps": 128,
+        "sample_rate": 48000,
+        "channels": 2
+      },
+      "size": {
+        "kind": "fixed",
+        "width": 1080,
+        "height": 1920
+      },
+      "fps": {
+        "kind": "follow_sequence",
+        "max": {
+          "num": 60,
+          "den": 1
+        }
+      },
+      "limits": {
+        "max_duration_secs": 180,
+        "max_size_mb": 262144
+      },
+      "platform": {
+        "id": "youtube-shorts",
+        "name": "YouTube Shorts",
+        "spec_url": "https://support.google.com/youtube/answer/10059070",
+        "checked": "2026-11-25",
+        "unverified": [
+          "video.rate_control",
+          "audio.bitrate_kbps",
+          "limits.max_size_mb"
+        ]
+      },
+      "safe_area": "youtube-shorts"
+    },
+    {
+      "schema_version": 1,
+      "id": "instagram-reels",
+      "name": "Instagram Reels",
+      "summary": "1080 x 1920, up to 30 fps",
+      "container": "mp4",
+      "video": {
+        "codec": "h264",
+        "rate_control": {
+          "mode": "vbr",
+          "bitrate_kbps": 5000
+        },
+        "profile": "high",
+        "preset": "medium",
+        "pix_fmt": "yuv420p",
+        "hw_preferred": true
+      },
+      "audio": {
+        "codec": "aac",
+        "bitrate_kbps": 128,
+        "sample_rate": 48000,
+        "channels": 2
+      },
+      "size": {
+        "kind": "fixed",
+        "width": 1080,
+        "height": 1920
+      },
+      "fps": {
+        "kind": "follow_sequence",
+        "max": {
+          "num": 30,
+          "den": 1
+        }
+      },
+      "limits": {
+        "max_duration_secs": 180,
+        "max_size_mb": 4096
+      },
+      "platform": {
+        "id": "instagram-reels",
+        "name": "Instagram Reels",
+        "spec_url": "https://help.instagram.com/1038071743007909",
+        "checked": "2026-11-25",
+        "unverified": [
+          "size",
+          "fps",
+          "video.rate_control",
+          "audio.bitrate_kbps",
+          "limits.max_duration_secs",
+          "limits.max_size_mb"
+        ]
+      },
+      "safe_area": "instagram-reels"
+    },
+    {
+      "schema_version": 1,
+      "id": "instagram-stories",
+      "name": "Instagram Stories",
+      "summary": "1080 x 1920, up to 30 fps, 60 s",
+      "container": "mp4",
+      "video": {
+        "codec": "h264",
+        "rate_control": {
+          "mode": "vbr",
+          "bitrate_kbps": 5000
+        },
+        "profile": "high",
+        "preset": "medium",
+        "pix_fmt": "yuv420p",
+        "hw_preferred": true
+      },
+      "audio": {
+        "codec": "aac",
+        "bitrate_kbps": 128,
+        "sample_rate": 48000,
+        "channels": 2
+      },
+      "size": {
+        "kind": "fixed",
+        "width": 1080,
+        "height": 1920
+      },
+      "fps": {
+        "kind": "follow_sequence",
+        "max": {
+          "num": 30,
+          "den": 1
+        }
+      },
+      "limits": {
+        "max_duration_secs": 60,
+        "max_size_mb": 4096
+      },
+      "platform": {
+        "id": "instagram-stories",
+        "name": "Instagram Stories",
+        "spec_url": "https://help.instagram.com/1038071743007909",
+        "checked": "2026-11-25",
+        "unverified": [
+          "size",
+          "fps",
+          "video.rate_control",
+          "audio.bitrate_kbps",
+          "limits.max_duration_secs",
+          "limits.max_size_mb"
+        ]
+      },
+      "safe_area": "instagram-stories"
+    },
+    {
+      "schema_version": 1,
+      "id": "instagram-feed-4x5",
+      "name": "Instagram feed 4:5",
+      "summary": "1080 x 1350, up to 30 fps",
+      "container": "mp4",
+      "video": {
+        "codec": "h264",
+        "rate_control": {
+          "mode": "vbr",
+          "bitrate_kbps": 5000
+        },
+        "profile": "high",
+        "preset": "medium",
+        "pix_fmt": "yuv420p",
+        "hw_preferred": true
+      },
+      "audio": {
+        "codec": "aac",
+        "bitrate_kbps": 128,
+        "sample_rate": 48000,
+        "channels": 2
+      },
+      "size": {
+        "kind": "fixed",
+        "width": 1080,
+        "height": 1350
+      },
+      "fps": {
+        "kind": "follow_sequence",
+        "max": {
+          "num": 30,
+          "den": 1
+        }
+      },
+      "limits": {
+        "max_duration_secs": 3600,
+        "max_size_mb": 4096
+      },
+      "platform": {
+        "id": "instagram-feed",
+        "name": "Instagram feed",
+        "spec_url": "https://help.instagram.com/1038071743007909",
+        "checked": "2026-11-25",
+        "unverified": [
+          "size",
+          "fps",
+          "video.rate_control",
+          "audio.bitrate_kbps",
+          "limits.max_duration_secs",
+          "limits.max_size_mb"
+        ]
+      }
+    },
+    {
+      "schema_version": 1,
+      "id": "instagram-feed-1x1",
+      "name": "Instagram feed 1:1",
+      "summary": "1080 x 1080, up to 30 fps",
+      "container": "mp4",
+      "video": {
+        "codec": "h264",
+        "rate_control": {
+          "mode": "vbr",
+          "bitrate_kbps": 5000
+        },
+        "profile": "high",
+        "preset": "medium",
+        "pix_fmt": "yuv420p",
+        "hw_preferred": true
+      },
+      "audio": {
+        "codec": "aac",
+        "bitrate_kbps": 128,
+        "sample_rate": 48000,
+        "channels": 2
+      },
+      "size": {
+        "kind": "fixed",
+        "width": 1080,
+        "height": 1080
+      },
+      "fps": {
+        "kind": "follow_sequence",
+        "max": {
+          "num": 30,
+          "den": 1
+        }
+      },
+      "limits": {
+        "max_duration_secs": 3600,
+        "max_size_mb": 4096
+      },
+      "platform": {
+        "id": "instagram-feed",
+        "name": "Instagram feed",
+        "spec_url": "https://help.instagram.com/1038071743007909",
+        "checked": "2026-11-25",
+        "unverified": [
+          "size",
+          "fps",
+          "video.rate_control",
+          "audio.bitrate_kbps",
+          "limits.max_duration_secs",
+          "limits.max_size_mb"
+        ]
+      }
+    },
+    {
+      "schema_version": 1,
+      "id": "tiktok",
+      "name": "TikTok",
+      "summary": "1080 x 1920, up to 30 fps",
+      "container": "mp4",
+      "video": {
+        "codec": "h264",
+        "rate_control": {
+          "mode": "vbr",
+          "bitrate_kbps": 6000
+        },
+        "profile": "high",
+        "preset": "medium",
+        "pix_fmt": "yuv420p",
+        "hw_preferred": true
+      },
+      "audio": {
+        "codec": "aac",
+        "bitrate_kbps": 128,
+        "sample_rate": 48000,
+        "channels": 2
+      },
+      "size": {
+        "kind": "fixed",
+        "width": 1080,
+        "height": 1920
+      },
+      "fps": {
+        "kind": "follow_sequence",
+        "max": {
+          "num": 30,
+          "den": 1
+        }
+      },
+      "limits": {
+        "max_duration_secs": 600,
+        "max_size_mb": 4096
+      },
+      "platform": {
+        "id": "tiktok",
+        "name": "TikTok",
+        "spec_url": "https://support.tiktok.com/en/using-tiktok/creating-videos",
+        "checked": "2026-11-25",
+        "unverified": [
+          "size",
+          "fps",
+          "video.rate_control",
+          "audio.bitrate_kbps",
+          "limits.max_duration_secs",
+          "limits.max_size_mb"
+        ]
+      },
+      "safe_area": "tiktok"
+    },
+    {
+      "schema_version": 1,
+      "id": "x-landscape",
+      "name": "X landscape",
+      "summary": "1920 x 1080, up to 60 fps, 2:20",
+      "container": "mp4",
+      "video": {
+        "codec": "h264",
+        "rate_control": {
+          "mode": "vbr",
+          "bitrate_kbps": 8000
+        },
+        "profile": "high",
+        "preset": "medium",
+        "pix_fmt": "yuv420p",
+        "hw_preferred": true
+      },
+      "audio": {
+        "codec": "aac",
+        "bitrate_kbps": 128,
+        "sample_rate": 48000,
+        "channels": 2
+      },
+      "size": {
+        "kind": "fixed",
+        "width": 1920,
+        "height": 1080
+      },
+      "fps": {
+        "kind": "follow_sequence",
+        "max": {
+          "num": 60,
+          "den": 1
+        }
+      },
+      "limits": {
+        "max_duration_secs": 140,
+        "max_size_mb": 512
+      },
+      "platform": {
+        "id": "x",
+        "name": "X",
+        "spec_url": "https://help.x.com/en/using-x/x-videos",
+        "checked": "2026-11-25",
+        "unverified": [
+          "size",
+          "fps",
+          "video.rate_control",
+          "audio.bitrate_kbps",
+          "limits.max_duration_secs",
+          "limits.max_size_mb"
+        ]
+      }
+    },
+    {
+      "schema_version": 1,
+      "id": "x-portrait",
+      "name": "X portrait",
+      "summary": "1080 x 1920, up to 60 fps, 2:20",
+      "container": "mp4",
+      "video": {
+        "codec": "h264",
+        "rate_control": {
+          "mode": "vbr",
+          "bitrate_kbps": 8000
+        },
+        "profile": "high",
+        "preset": "medium",
+        "pix_fmt": "yuv420p",
+        "hw_preferred": true
+      },
+      "audio": {
+        "codec": "aac",
+        "bitrate_kbps": 128,
+        "sample_rate": 48000,
+        "channels": 2
+      },
+      "size": {
+        "kind": "fixed",
+        "width": 1080,
+        "height": 1920
+      },
+      "fps": {
+        "kind": "follow_sequence",
+        "max": {
+          "num": 60,
+          "den": 1
+        }
+      },
+      "limits": {
+        "max_duration_secs": 140,
+        "max_size_mb": 512
+      },
+      "platform": {
+        "id": "x",
+        "name": "X",
+        "spec_url": "https://help.x.com/en/using-x/x-videos",
+        "checked": "2026-11-25",
+        "unverified": [
+          "size",
+          "fps",
+          "video.rate_control",
+          "audio.bitrate_kbps",
+          "limits.max_duration_secs",
+          "limits.max_size_mb"
+        ]
+      },
+      "safe_area": "x-portrait"
+    },
+    {
+      "schema_version": 1,
+      "id": "h264-mp4-1080p",
+      "name": "H.264 MP4 1080p",
+      "summary": "Fit into 1920 x 1080, sequence frame rate, high quality",
+      "container": "mp4",
+      "video": {
+        "codec": "h264",
+        "rate_control": {
+          "mode": "crf",
+          "crf": 20
+        },
+        "profile": "high",
+        "preset": "medium",
+        "pix_fmt": "yuv420p",
+        "hw_preferred": true
+      },
+      "audio": {
+        "codec": "aac",
+        "bitrate_kbps": 256,
+        "sample_rate": 48000,
+        "channels": 2
+      },
+      "size": {
+        "kind": "fit",
+        "width": 1920,
+        "height": 1080
+      },
+      "fps": {
+        "kind": "follow_sequence"
+      },
+      "limits": {}
+    },
+    {
+      "schema_version": 1,
+      "id": "h264-draft",
+      "name": "H.264 draft",
+      "summary": "Fit into 1280 x 720, small and fast",
+      "container": "mp4",
+      "video": {
+        "codec": "h264",
+        "rate_control": {
+          "mode": "crf",
+          "crf": 28
+        },
+        "profile": "main",
+        "preset": "veryfast",
+        "pix_fmt": "yuv420p",
+        "hw_preferred": true
+      },
+      "audio": {
+        "codec": "aac",
+        "bitrate_kbps": 128,
+        "sample_rate": 48000,
+        "channels": 2
+      },
+      "size": {
+        "kind": "fit",
+        "width": 1280,
+        "height": 720
+      },
+      "fps": {
+        "kind": "follow_sequence"
+      },
+      "limits": {}
+    },
+    {
+      "schema_version": 1,
+      "id": "archive-hevc",
+      "name": "Archive (HEVC)",
+      "summary": "Sequence size, high quality HEVC 10-bit in MP4",
+      "container": "mp4",
+      "video": {
+        "codec": "hevc",
+        "rate_control": {
+          "mode": "crf",
+          "crf": 16
+        },
+        "profile": "main10",
+        "preset": "slow",
+        "pix_fmt": "yuv420p10le",
+        "hw_preferred": false
+      },
+      "audio": {
+        "codec": "aac",
+        "bitrate_kbps": 320,
+        "sample_rate": 48000,
+        "channels": 2
+      },
+      "size": {
+        "kind": "follow_sequence"
+      },
+      "fps": {
+        "kind": "follow_sequence"
+      },
+      "limits": {}
+    },
+    {
+      "schema_version": 1,
+      "id": "prores-422-hq",
+      "name": "ProRes 422 HQ",
+      "summary": "Sequence size and rate, ProRes 422 HQ in MOV",
+      "container": "mov",
+      "video": {
+        "codec": "prores",
+        "rate_control": {
+          "mode": "profile"
+        },
+        "profile": "422hq",
+        "pix_fmt": "yuv422p10le",
+        "hw_preferred": false
+      },
+      "audio": {
+        "codec": "pcm",
+        "sample_rate": 48000,
+        "channels": 2
+      },
+      "size": {
+        "kind": "follow_sequence"
+      },
+      "fps": {
+        "kind": "follow_sequence"
+      },
+      "limits": {}
+    },
+    {
+      "schema_version": 1,
+      "id": "gif",
+      "name": "GIF",
+      "summary": "Up to 480 px, 15 fps, palette, loops forever",
+      "container": "gif",
+      "video": {
+        "codec": "gif",
+        "rate_control": {
+          "mode": "profile"
+        },
+        "pix_fmt": "pal8",
+        "hw_preferred": false
+      },
+      "size": {
+        "kind": "fit",
+        "width": 480,
+        "height": 480
+      },
+      "fps": {
+        "kind": "fixed",
+        "rate": {
+          "num": 15,
+          "den": 1
+        }
+      },
+      "limits": {},
+      "loop": 0
+    },
+    {
+      "schema_version": 1,
+      "id": "audio-wav",
+      "name": "Audio only (WAV)",
+      "summary": "Sound only, 48 kHz stereo",
+      "container": "wav",
+      "audio": {
+        "codec": "pcm",
+        "sample_rate": 48000,
+        "channels": 2
+      },
+      "size": {
+        "kind": "follow_sequence"
+      },
+      "fps": {
+        "kind": "follow_sequence"
+      },
+      "limits": {}
+    },
+    {
+      "schema_version": 1,
+      "id": "audio-mp3",
+      "name": "Audio only (MP3)",
+      "summary": "Sound only, 48 kHz stereo",
+      "container": "mp3",
+      "audio": {
+        "codec": "mp3",
+        "sample_rate": 48000,
+        "channels": 2,
+        "bitrate_kbps": 192
+      },
+      "size": {
+        "kind": "follow_sequence"
+      },
+      "fps": {
+        "kind": "follow_sequence"
+      },
+      "limits": {}
+    },
+    {
+      "schema_version": 1,
+      "id": "audio-aac",
+      "name": "Audio only (AAC)",
+      "summary": "Sound only, 48 kHz stereo",
+      "container": "m4a",
+      "audio": {
+        "codec": "aac",
+        "sample_rate": 48000,
+        "channels": 2,
+        "bitrate_kbps": 256
+      },
+      "size": {
+        "kind": "follow_sequence"
+      },
+      "fps": {
+        "kind": "follow_sequence"
+      },
+      "limits": {}
+    },
+    {
+      "schema_version": 1,
+      "id": "audio-flac",
+      "name": "Audio only (FLAC)",
+      "summary": "Sound only, 48 kHz stereo",
+      "container": "flac",
+      "audio": {
+        "codec": "flac",
+        "sample_rate": 48000,
+        "channels": 2
+      },
+      "size": {
+        "kind": "follow_sequence"
+      },
+      "fps": {
+        "kind": "follow_sequence"
+      },
+      "limits": {}
+    },
+    {
+      "schema_version": 1,
+      "id": "audio-opus",
+      "name": "Audio only (Opus)",
+      "summary": "Sound only, 48 kHz stereo",
+      "container": "ogg",
+      "audio": {
+        "codec": "opus",
+        "sample_rate": 48000,
+        "channels": 2,
+        "bitrate_kbps": 128
+      },
+      "size": {
+        "kind": "follow_sequence"
+      },
+      "fps": {
+        "kind": "follow_sequence"
+      },
+      "limits": {}
+    }
+  ]
+}

@@ -19,6 +19,9 @@
 //!    display order keeps the flag (INV-6). The flag is also cleared on a track that is not a
 //!    video track or not gap-free from 0 (INV-6, INV-7); P1 never sets it, so a real document
 //!    only loses it when it was hand-written.
+//! 5. **Media folders** (`add_media_folders`, WP-2F.07, ADR-0020): `Project.folders` (`{}`),
+//!    `MediaAsset.name` (`null`, the bin shows the file name) and `MediaAsset.folder` (`null`,
+//!    the top level).
 //!
 //! Adding a step for another work package: write `fn(&mut Value, &mut Vec<String>) ->
 //! Result<(), MigrationError>`, append it to [`STEPS`], extend `tests/fixtures/v2/` through
@@ -40,6 +43,7 @@ const STEPS: &[Step] = &[
     floor_durations,
     dissolve_misaligned_groups,
     normalize_magnetic,
+    add_media_folders,
 ];
 
 /// The v1 → v2 migration.
@@ -51,8 +55,9 @@ impl Migration for V1ToV2 {
     }
 
     fn description(&self) -> &'static str {
-        "adds markers, in/out range, track heights and attachments; floors clip durations to whole \
-         frames, dissolves misaligned linked groups and keeps one magnetic track"
+        "adds markers, in/out range, track heights, attachments and media folders; floors clip \
+         durations to whole frames, dissolves misaligned linked groups and keeps one magnetic \
+         track"
     }
 
     fn migrate(&self, doc: &mut Value, notes: &mut Vec<String>) -> Result<(), MigrationError> {
@@ -334,6 +339,29 @@ fn normalize_magnetic(
     Ok(())
 }
 
+/// ADR-0020: an empty folder tree; every asset at the top level, shown by its file name.
+fn add_media_folders(
+    root: &mut JsonObject,
+    _notes: &mut Vec<String>,
+) -> Result<(), MigrationError> {
+    root.entry("folders").or_insert_with(empty_object);
+    let Some(media) = object_field(FROM, root, "media", "")? else {
+        return Ok(());
+    };
+    for (key, value) in media.iter_mut() {
+        let Value::Object(asset) = value else {
+            return Err(MigrationError::step(
+                FROM,
+                format!("/media/{key}"),
+                "expected an object",
+            ));
+        };
+        asset.entry("name").or_insert(Value::Null);
+        asset.entry("folder").or_insert(Value::Null);
+    }
+    Ok(())
+}
+
 #[cfg(test)]
 mod tests {
     #![allow(clippy::unwrap_used)]
@@ -426,6 +454,24 @@ mod tests {
             notes,
             ["floored 2 clip duration(s) to a whole number of frames"]
         );
+    }
+
+    #[test]
+    fn media_folders_start_empty_and_every_asset_at_the_top_level() {
+        let (out, notes) = run(json!({"media": {
+            "med_1": {"kind": "video"},
+            "med_2": {"kind": "audio", "name": "Kept", "folder": null},
+        }}));
+        assert_eq!(out["folders"], json!({}));
+        assert_eq!(out["media"]["med_1"]["name"], json!(null));
+        assert_eq!(out["media"]["med_1"]["folder"], json!(null));
+        assert_eq!(out["media"]["med_2"]["name"], "Kept");
+        assert!(notes.is_empty(), "{notes:?}");
+        let (out, _) = run(json!({"folders": {"fld_1": {"name": "B-roll"}}}));
+        assert_eq!(out["folders"]["fld_1"]["name"], "B-roll");
+        let mut doc = json!({"media": {"med_1": 3}});
+        let err = V1ToV2.migrate(&mut doc, &mut Vec::new()).unwrap_err();
+        assert!(err.to_string().contains("/media/med_1"), "{err}");
     }
 
     #[test]

@@ -56,6 +56,7 @@ use cutweave_media::{
     VideoEncodeSpec, VideoFrame, encode_with_fallback,
 };
 use cutweave_model::{ColorTags, Project, Rounding, SampleRate, SequenceId, Time};
+use cutweave_ops::export::presets::PlanRate;
 use cutweave_ops::export::{ExportHw, ExportPlan, ExportQuality};
 use cutweave_render::graph::{GraphOptions, RenderGraph, build};
 use cutweave_render::query::SharedBackend;
@@ -488,7 +489,12 @@ fn encode_spec(
 ) -> EncodeSpec {
     let mut video =
         VideoEncodeSpec::h264(plan.width, plan.height, plan.frame_rate, PixelFormat::Rgba8);
-    video.rate_control = rate_control(plan.quality);
+    video.rate_control = match plan.rate {
+        // A preset's own rate control; an override's quality leaves `rate` empty.
+        Some(PlanRate::Crf(crf)) => RateControl::Crf(crf.min(RateControl::MAX_CRF)),
+        Some(PlanRate::BitrateKbps(kbps)) => RateControl::Bitrate(kbps.saturating_mul(1000)),
+        None => rate_control(plan.quality),
+    };
     video.preset = services.speed;
     video.threads = services.encoder_threads;
     let token = cancel.clone();

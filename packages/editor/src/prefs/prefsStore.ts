@@ -116,13 +116,13 @@ export class PreferencesClient {
   }
 
   /** Asks main to write the app preferences to a file the person picks. */
-  async exportToFile(): Promise<PrefsExportResult> {
-    return this.#bridge?.exportToFile() ?? { status: "cancelled" };
+  async exportToFile(only?: "shortcuts"): Promise<PrefsExportResult> {
+    return this.#bridge?.exportToFile(only) ?? { status: "cancelled" };
   }
 
   /** Asks main to apply the valid keys of a file the person picks. */
-  async importFromFile(): Promise<PrefsImportResult> {
-    return this.#bridge?.importFromFile() ?? { status: "cancelled" };
+  async importFromFile(only?: "shortcuts"): Promise<PrefsImportResult> {
+    return this.#bridge?.importFromFile(only) ?? { status: "cancelled" };
   }
 
   #apply(changes: PreferenceChanges): void {

@@ -2,7 +2,7 @@
 import type { MediaAsset } from "@cutweave/protocol";
 import { formatTimecode } from "@cutweave/timeline";
 import { InspectorRow, InspectorSection, NumberScrubber, Slider, TextField } from "@cutweave/ui";
-import { useEffect, useId, useMemo, useRef, useState } from "react";
+import { type ReactNode, useEffect, useId, useMemo, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { engineStore } from "../engine/engineStore.ts";
 import type { TKey } from "../i18n/index.ts";
@@ -14,12 +14,13 @@ import {
   type NumberField,
   readField,
   SECTIONS,
-  type SectionId,
   type SelectedClip,
   type TextField as TextFieldDef,
   type TimeField,
 } from "../inspector/fields.ts";
 import { MediaPreview } from "../inspector/MediaPreview.tsx";
+import { type InspectorSectionId, useSection } from "../inspector/sections.ts";
+import { ContextSurface } from "../menus/host.tsx";
 import { useDocStore } from "../state/docStore.ts";
 import { selectSequenceSummary } from "../state/selectors.ts";
 import { toastStore } from "../state/toastStore.ts";
@@ -253,10 +254,63 @@ function NumberRow({ field, clips, editor, disabled }: RowProps<NumberField>) {
   );
 }
 
+/** What "Copy value" copies for a row: the text, the timecode or the number with its unit. */
+function rowText(field: FieldDef, clips: readonly SelectedClip[]): string {
+  const only = clips.length === 1 ? clips[0] : undefined;
+  if (field.control === "time") {
+    const flicks = only === undefined ? null : field.read(only.item);
+    return only === undefined || flicks === null ? "" : formatTimecode(flicks, only.fps);
+  }
+  const current = readField(clips, field.read as (item: SelectedClip["item"]) => string | number);
+  if (current.mixed) return "";
+  const unit = "unit" in field && field.unit !== undefined ? ` ${field.unit}` : "";
+  return `${current.value}${unit}`;
+}
+
 function FieldRow({ field, ...rest }: RowProps<FieldDef>) {
-  if (field.control === "text") return <NameRow field={field} {...rest} />;
-  if (field.control === "time") return <TimeRow field={field} {...rest} />;
-  return <NumberRow field={field} {...rest} />;
+  const { t } = useTranslation();
+  const row =
+    field.control === "text" ? (
+      <NameRow field={field} {...rest} />
+    ) : field.control === "time" ? (
+      <TimeRow field={field} {...rest} />
+    ) : (
+      <NumberRow field={field} {...rest} />
+    );
+  // Right-click on the label (a field has the text menu): Copy value.
+  return (
+    <ContextSurface
+      surface="inspector.row"
+      className="cw-context-surface"
+      target={() => ({ name: t(field.label), data: { text: rowText(field, rest.clips) } })}
+    >
+      {row}
+    </ContextSurface>
+  );
+}
+
+/** A collapsible section whose header menu collapses or expands them all (WP-2H.13). */
+function Section({
+  id,
+  label,
+  children,
+}: {
+  readonly id: InspectorSectionId;
+  readonly label: string;
+  readonly children: ReactNode;
+}) {
+  const [expanded, setExpanded] = useSection(id);
+  return (
+    <ContextSurface
+      surface="inspector.section"
+      className="cw-context-surface"
+      target={() => ({ name: label })}
+    >
+      <InspectorSection label={label} expanded={expanded} onExpandedChange={setExpanded}>
+        {children}
+      </InspectorSection>
+    </ContextSurface>
+  );
 }
 
 /** The inspector of one or more selected clips. */
@@ -268,12 +322,6 @@ function ClipInspector({
   readonly editor: InspectorEditor;
 }) {
   const { t } = useTranslation();
-  const [open, setOpen] = useState<Record<SectionId, boolean>>({
-    clip: true,
-    timing: true,
-    transform: true,
-    audio: true,
-  });
   const locked = clips.some((c) => c.locked);
   return (
     <div className="cw-inspector" data-testid="clip-inspector">
@@ -286,12 +334,7 @@ function ClipInspector({
       {SECTIONS.map((section) => {
         const fields = FIELDS.filter((f) => f.section === section.id);
         return (
-          <InspectorSection
-            key={section.id}
-            label={t(section.label)}
-            expanded={open[section.id]}
-            onExpandedChange={(expanded) => setOpen((s) => ({ ...s, [section.id]: expanded }))}
-          >
+          <Section key={section.id} id={section.id} label={t(section.label)}>
             <div className="cw-inspector__rows">
               {fields.map((field) => (
                 <FieldRow
@@ -306,7 +349,7 @@ function ClipInspector({
                 <p className="cw-inspector__note label">{t("inspector.multipleTime")}</p>
               ) : null}
             </div>
-          </InspectorSection>
+          </Section>
         );
       })}
     </div>
@@ -320,7 +363,6 @@ function fileName(path: string | null): string | null {
 /** Probe facts of a media asset selected in the bin. */
 function MediaInfo({ media }: { readonly media: MediaAsset }) {
   const { t } = useTranslation();
-  const [open, setOpen] = useState(true);
   const video = media.probe.streams.find((s) => s.kind === "video");
   const fps = media.probe.fps;
   const timeBase = fps ?? { num: 30, den: 1 };
@@ -330,17 +372,25 @@ function MediaInfo({ media }: { readonly media: MediaAsset }) {
   const name = fileName(media.path_abs ?? media.path_rel);
   return (
     <div className="cw-inspector" data-testid="media-inspector">
-      <InspectorSection
-        label={t("inspector.media.title")}
-        expanded={open}
-        onExpandedChange={setOpen}
-      >
-        <MediaPreview key={media.id} media={media} />
+      <Section id="media" label={t("inspector.media.title")}>
+        <ContextSurface
+          surface="inspector.picture"
+          className="cw-context-surface"
+          target={() => ({ ids: [media.id] })}
+        >
+          <MediaPreview key={media.id} media={media} />
+        </ContextSurface>
         <div className="cw-inspector__rows">
           {name === null ? null : (
-            <InspectorRow label={t("inspector.media.path")}>
-              <span className="numeric">{name}</span>
-            </InspectorRow>
+            <ContextSurface
+              surface="inspector.path"
+              className="cw-context-surface"
+              target={() => ({ ids: [media.id] })}
+            >
+              <InspectorRow label={t("inspector.media.path")}>
+                <span className="numeric">{name}</span>
+              </InspectorRow>
+            </ContextSurface>
           )}
           <InspectorRow label={t("inspector.media.kind")}>
             <span className="body">{t(MEDIA_KIND[media.kind])}</span>
@@ -379,7 +429,7 @@ function MediaInfo({ media }: { readonly media: MediaAsset }) {
             <p className="cw-inspector__note label">{t("inspector.media.placeholder")}</p>
           ) : null}
         </div>
-      </InspectorSection>
+      </Section>
     </div>
   );
 }
@@ -387,7 +437,6 @@ function MediaInfo({ media }: { readonly media: MediaAsset }) {
 /** Nothing selected: the empty state and the project's settings. */
 function ProjectInspector() {
   const { t } = useTranslation();
-  const [expanded, setExpanded] = useState(true);
   const project = useDocStore((s) => s.project);
   const summary = useMemo(() => selectSequenceSummary(project), [project]);
   const rate =
@@ -402,11 +451,7 @@ function ProjectInspector() {
         body={t("inspector.emptyBody")}
       />
       {summary === null ? null : (
-        <InspectorSection
-          label={t("inspector.project")}
-          expanded={expanded}
-          onExpandedChange={setExpanded}
-        >
+        <Section id="project" label={t("inspector.project")}>
           <InspectorRow label={t("inspector.resolution")}>
             <span className="numeric" data-testid="project-resolution">
               {t("inspector.resolutionValue", { width: summary.width, height: summary.height })}
@@ -422,7 +467,7 @@ function ProjectInspector() {
               {formatTimecode(summary.duration, summary.frameRate)}
             </span>
           </InspectorRow>
-        </InspectorSection>
+        </Section>
       )}
     </div>
   );

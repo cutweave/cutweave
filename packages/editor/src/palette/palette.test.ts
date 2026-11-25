@@ -12,6 +12,8 @@ import { createElement as h } from "react";
 import { I18nextProvider } from "react-i18next";
 import { afterEach, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
 import { i18n, type TKey } from "../i18n/index.ts";
+import { keymapModelFor } from "../keymap/store.ts";
+import { strokeOfEvent } from "../keymap/stroke.ts";
 import { buildMenu } from "../menus/build.ts";
 import { registerBuiltinMenus } from "../menus/builtins.ts";
 import { ContextMenuHost, contextMenuStore, openContextMenu } from "../menus/host.tsx";
@@ -23,7 +25,14 @@ import { listBindings } from "../shortcuts/bindings.ts";
 import { listWorkspaceCommands } from "../workspace/commands.ts";
 import type { PanelDef } from "../workspace/panelRegistry.ts";
 import { registerPaletteAction } from "./actions.ts";
-import { fieldsOf, fullyPrefilled, initialValues, prefillFor, toArguments } from "./argForm.ts";
+import {
+  fieldsOf,
+  fullyPrefilled,
+  initialValues,
+  needsArguments,
+  prefillFor,
+  toArguments,
+} from "./argForm.ts";
 import { CommandPalette, MAX_ROWS, visibleEntries } from "./CommandPalette.tsx";
 import { type CatalogCommand, commandCatalog, listedCatalog } from "./catalog.ts";
 import { registerPaletteCommands } from "./commands.ts";
@@ -31,7 +40,6 @@ import { buildEntries, type PaletteEnv, planFor } from "./entries.ts";
 import { openPalette, paletteStore } from "./paletteStore.ts";
 import { MAX_RECENTS, recentsStore } from "./recents.ts";
 import { rank, searchable } from "./search.ts";
-import { isPaletteKey } from "./shortcut.ts";
 
 beforeAll(() => {
   globalThis.ResizeObserver ??= class {
@@ -347,9 +355,12 @@ describe("the argument form", () => {
 
   it("makes one field per property from the input schema, required ones first", () => {
     const fields = fieldsOf(splitSchema ?? {});
+    // `item` or `items`: the form asks for `item`, and `items` given instead also does.
     expect(fields.map((f) => [f.name, f.required])).toEqual([
       ["at", true],
       ["item", true],
+      ["fine", false],
+      ["items", false],
     ]);
     expect(fields[0]?.numeric).toBe(true); // a time: a number of flicks or a timecode text
   });
@@ -379,7 +390,41 @@ describe("the argument form", () => {
       item: "palette.form.required",
       at: "palette.form.required",
     });
-    expect(initialValues(fields, { item: "itm_x" })).toEqual({ item: "itm_x", at: "" });
+    expect(initialValues(fields, { item: "itm_x" })).toEqual({
+      item: "itm_x",
+      at: "",
+      fine: false,
+      items: "",
+    });
+  });
+
+  it("takes one of a command's alternatives: item or items, start or delta", () => {
+    const schema = splitSchema ?? {};
+    const several = prefillFor(schema, { items: ["itm_x", "itm_y"], playhead: 77 });
+    expect(several).toEqual({ items: ["itm_x", "itm_y"], at: 77 });
+    expect(fullyPrefilled(schema, several)).toBe(true);
+    const fields = fieldsOf(schema);
+    expect(toArguments(fields, { item: "", items: '["itm_x"]', at: "5" })).toEqual({
+      ok: true,
+      args: { items: ["itm_x"], at: 5 },
+    });
+
+    const move = commandCatalog.getState().commands.find((c) => c.name === "item.move")
+      ?.inputSchema ?? { properties: {} };
+    expect(needsArguments(move)).toBe(true);
+    const prefilled = prefillFor(move, { items: ["itm_x"], playhead: 77 });
+    expect(prefilled).toEqual({ item: "itm_x" });
+    expect(fullyPrefilled(move, prefilled)).toBe(false);
+    expect(
+      fieldsOf(move)
+        .filter((f) => f.required)
+        .map((f) => [f.name, f.alternative]),
+    ).toEqual([
+      ["item", "items"],
+      ["start", "delta"],
+    ]);
+    const moved = toArguments(fieldsOf(move), { item: "itm_x", delta: "10" });
+    expect(moved).toEqual({ ok: true, args: { item: "itm_x", delta: 10 } });
   });
 
   it("reads enums, booleans, whole numbers and JSON", () => {
@@ -422,23 +467,33 @@ describe("the palette's key", () => {
       shiftKey: false,
       ...over,
     }) as KeyboardEvent;
+  /** Whether the keymap (the NLE preset) runs `palette.open` for this press on `platform`. */
+  const opens = (e: KeyboardEvent, platform: "windows" | "linux" | "mac"): boolean => {
+    const stroke = strokeOfEvent(e, platform);
+    return (
+      stroke !== null &&
+      keymapModelFor(platform)
+        .lookup(stroke, ["global"])
+        .some((b) => b.command === "palette.open")
+    );
+  };
 
   it("is Ctrl+K on Windows and Linux and Cmd+K on macOS, and no other chord", () => {
-    expect(isPaletteKey(press({}), "windows")).toBe(true);
-    expect(isPaletteKey(press({ key: "K" }), "linux")).toBe(true);
-    expect(isPaletteKey(press({ ctrlKey: false, metaKey: true }), "mac")).toBe(true);
-    expect(isPaletteKey(press({}), "mac")).toBe(false);
-    expect(isPaletteKey(press({ shiftKey: true }), "windows")).toBe(false);
-    expect(isPaletteKey(press({ altKey: true }), "windows")).toBe(false);
-    expect(isPaletteKey(press({ key: "j", code: "KeyJ" }), "windows")).toBe(false);
+    expect(opens(press({}), "windows")).toBe(true);
+    expect(opens(press({ key: "K" }), "linux")).toBe(true);
+    expect(opens(press({ ctrlKey: false, metaKey: true }), "mac")).toBe(true);
+    expect(opens(press({}), "mac")).toBe(false);
+    expect(opens(press({ shiftKey: true }), "windows")).toBe(false);
+    expect(opens(press({ altKey: true }), "windows")).toBe(false);
+    expect(opens(press({ key: "j", code: "KeyJ" }), "windows")).toBe(false);
   });
 
   it("still opens it with a non-Latin layout (the physical key)", () => {
-    expect(isPaletteKey(press({ key: "ל" }), "windows")).toBe(true);
+    expect(opens(press({ key: "ל" }), "windows")).toBe(true);
   });
 
-  it("is in the shortcut list", () => {
-    const binding = listBindings("windows").find((b) => b.id === "menu.commandPalette");
+  it("is in the shortcut list, and a rebinding moves it", () => {
+    const binding = listBindings("windows").find((b) => b.id === "palette.open");
     expect(binding?.combos).toEqual([{ key: "K", mod: true }]);
   });
 });

@@ -4,7 +4,7 @@
 //! stateless).
 //!
 //! - catalog: `tools/list` = the registry's core tools (`schema/mcp-tools.json`) + the 4 generic
-//!   tools, within the P1 gate; the minimal and full profiles; annotations per tool; lean
+//!   tools, within the standard budget (R36); the minimal and full profiles; annotations per tool; lean
 //!   schemas; the committed `tools/list` snapshot;
 //! - parity: each core tool returns exactly what the engine call returns;
 //! - `cutweave_execute`: failure atomicity with `failed_step`, dry runs, one undo step, `$ref`;
@@ -23,7 +23,7 @@ mod mcp_support;
 use std::sync::Arc;
 use std::time::{Duration, Instant};
 
-use cutweave_api::mcp::{Catalog, ListSize, P1_GATE, Profile, catalog};
+use cutweave_api::mcp::{Catalog, ListSize, Profile, STANDARD_BUDGET, catalog};
 use cutweave_commands::Registry;
 use cutweave_engine::Call;
 use mcp_support::{Client, Harness, INJECTION, Revision, SEC, http_client, must, text_of};
@@ -92,10 +92,10 @@ async fn current_rev(client: &Client) -> u64 {
 
 /// Acceptance 1: `/mcp` lists exactly the registry's core tools plus the 4 generic tools (19 in
 /// P1 since `export_start`, WP-1E.03; the core engine has no renderer, so no `render_frame`: the
-/// full engine lists 20, tests/mcp_frames.rs), within the P1
-/// gate, on both revisions.
+/// full engine lists 20, tests/mcp_frames.rs), within the
+/// standard budget (R36), on both revisions.
 #[tokio::test]
-async fn mcp_lists_the_core_and_generic_tools_within_the_p1_gate() {
+async fn mcp_lists_the_core_and_generic_tools_within_the_standard_budget() {
     let h = Harness::start(None);
     let mut expected: Vec<String> = committed_core_tools()
         .iter()
@@ -114,10 +114,13 @@ async fn mcp_lists_the_core_and_generic_tools_within_the_p1_gate() {
             size.tools,
             size.bytes,
             size.tokens(),
-            P1_GATE.max_tools,
-            P1_GATE.max_tokens
+            STANDARD_BUDGET.max_tools,
+            STANDARD_BUDGET.max_tokens
         );
-        assert!(P1_GATE.fits(size), "{size:?} exceeds the P1 gate");
+        assert!(
+            STANDARD_BUDGET.fits(size),
+            "{size:?} exceeds the standard budget"
+        );
         assert!(Profile::Standard.budget().fits(size));
         client.close().await;
     }
@@ -213,7 +216,8 @@ async fn every_tool_has_the_right_annotations() {
         ("edit_undo", false, false, false),
         ("export_start", false, true, false),
         ("item_delete", false, true, false),
-        ("item_move", false, false, true),
+        // WP-2A.03: a `delta` move repeated moves again, so `item_move` is not idempotent.
+        ("item_move", false, false, false),
         ("item_set_props", false, false, true),
         ("job_status", true, false, true),
         ("job_wait", true, false, true),
@@ -298,6 +302,39 @@ fn validation_only(schema: &Value) -> Value {
     }
 }
 
+/// The listed schema with its shared `$defs` written back where they are referenced
+/// (`{"$ref": "#/$defs/x", ...}` becomes `x`'s keywords plus the siblings), as the registry has
+/// them. A reference to a definition that does not exist fails the test.
+fn inline_defs(schema: &Value) -> Value {
+    fn walk(value: &Value, defs: &Value) -> Value {
+        match value {
+            Value::Object(map) => {
+                let mut out = serde_json::Map::new();
+                if let Some(reference) = map.get("$ref").and_then(Value::as_str) {
+                    let name = reference
+                        .strip_prefix("#/$defs/")
+                        .unwrap_or_else(|| panic!("a non-local $ref: {reference}"));
+                    let Some(Value::Object(def)) = defs.get(name) else {
+                        panic!("$ref to a missing definition: {reference}");
+                    };
+                    for (k, v) in def {
+                        out.insert(k.clone(), walk(v, defs));
+                    }
+                }
+                for (k, v) in map {
+                    if k != "$ref" && k != "$defs" {
+                        out.insert(k.clone(), walk(v, defs));
+                    }
+                }
+                Value::Object(out)
+            }
+            Value::Array(list) => Value::Array(list.iter().map(|v| walk(v, defs)).collect()),
+            other => other.clone(),
+        }
+    }
+    walk(schema, &schema["$defs"])
+}
+
 /// Listed `inputSchema`s are the registry params schemas minus documentation: the same
 /// validation, so MCP accepts exactly what RPC accepts. The full schema is one
 /// `cutweave_describe_command` away.
@@ -312,7 +349,7 @@ fn listed_input_schemas_validate_like_the_registry_schemas() {
         };
         let listed = Value::Object(tool.input_schema.as_ref().clone());
         assert_eq!(
-            validation_only(&listed),
+            validation_only(&inline_defs(&listed)),
             validation_only(&entry.meta.input_schema),
             "{}",
             tool.name

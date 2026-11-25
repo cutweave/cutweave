@@ -1,0 +1,202 @@
+---
+source: crates/cutweave-ops/tests/contract.rs
+expression: "json!({\n    \"meta\": serde_json::to_value(meta).unwrap(), \"input\": meta.input_schema,\n    \"output\": meta.output_schema,\n})"
+---
+{
+  "meta": {
+    "name": "media.list_folders",
+    "summary": "List the media bin's folder tree with paths and counts",
+    "kind": "query",
+    "undoable": false,
+    "view": false,
+    "scope": "any",
+    "mcp": "catalog",
+    "annotations": {
+      "readOnlyHint": true,
+      "destructiveHint": false,
+      "idempotentHint": true,
+      "openWorldHint": false
+    },
+    "secret_fields": [],
+    "input_schema": {
+      "type": "object",
+      "additionalProperties": false,
+      "description": "Lists the media bin's folder tree: each folder's ID, name, parent, path and how many\nassets and subfolders it holds directly.",
+      "title": "MediaListFolders"
+    },
+    "output_schema": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "folders": {
+          "type": "array",
+          "items": {
+            "description": "One folder of the media bin.",
+            "type": "object",
+            "properties": {
+              "id": {
+                "description": "The folder.",
+                "type": "string",
+                "pattern": "^fld_[0-9a-f]{32}$"
+              },
+              "name": {
+                "description": "Its name.",
+                "type": "string"
+              },
+              "parent": {
+                "description": "The folder it is in; absent at the top level.",
+                "type": [
+                  "string",
+                  "null"
+                ],
+                "pattern": "^fld_[0-9a-f]{32}$"
+              },
+              "path": {
+                "description": "Names from the top level down, joined with `/` (`B-roll/Drone`).",
+                "type": "string"
+              },
+              "depth": {
+                "description": "Nesting depth: 1 at the top level.",
+                "type": "integer",
+                "format": "uint32",
+                "minimum": 0
+              },
+              "media_count": {
+                "description": "Assets directly inside.",
+                "type": "integer",
+                "format": "uint32",
+                "minimum": 0
+              },
+              "folder_count": {
+                "description": "Folders directly inside.",
+                "type": "integer",
+                "format": "uint32",
+                "minimum": 0
+              }
+            },
+            "additionalProperties": false,
+            "required": [
+              "id",
+              "name",
+              "parent",
+              "path",
+              "depth",
+              "media_count",
+              "folder_count"
+            ]
+          },
+          "description": "Every folder, depth first: parents before their subfolders, siblings by name ignoring\ncase."
+        },
+        "top_level_media": {
+          "type": "integer",
+          "format": "uint32",
+          "minimum": 0,
+          "description": "Assets at the top level of the bin (in no folder)."
+        },
+        "total_media": {
+          "type": "integer",
+          "format": "uint32",
+          "minimum": 0,
+          "description": "Assets in the project."
+        }
+      },
+      "required": [
+        "folders",
+        "top_level_media",
+        "total_media"
+      ],
+      "description": "Result of `media.list_folders`.",
+      "title": "MediaListFoldersOutput"
+    }
+  },
+  "input": {
+    "type": "object",
+    "additionalProperties": false,
+    "description": "Lists the media bin's folder tree: each folder's ID, name, parent, path and how many\nassets and subfolders it holds directly.",
+    "title": "MediaListFolders"
+  },
+  "output": {
+    "type": "object",
+    "additionalProperties": false,
+    "properties": {
+      "folders": {
+        "type": "array",
+        "items": {
+          "description": "One folder of the media bin.",
+          "type": "object",
+          "properties": {
+            "id": {
+              "description": "The folder.",
+              "type": "string",
+              "pattern": "^fld_[0-9a-f]{32}$"
+            },
+            "name": {
+              "description": "Its name.",
+              "type": "string"
+            },
+            "parent": {
+              "description": "The folder it is in; absent at the top level.",
+              "type": [
+                "string",
+                "null"
+              ],
+              "pattern": "^fld_[0-9a-f]{32}$"
+            },
+            "path": {
+              "description": "Names from the top level down, joined with `/` (`B-roll/Drone`).",
+              "type": "string"
+            },
+            "depth": {
+              "description": "Nesting depth: 1 at the top level.",
+              "type": "integer",
+              "format": "uint32",
+              "minimum": 0
+            },
+            "media_count": {
+              "description": "Assets directly inside.",
+              "type": "integer",
+              "format": "uint32",
+              "minimum": 0
+            },
+            "folder_count": {
+              "description": "Folders directly inside.",
+              "type": "integer",
+              "format": "uint32",
+              "minimum": 0
+            }
+          },
+          "additionalProperties": false,
+          "required": [
+            "id",
+            "name",
+            "parent",
+            "path",
+            "depth",
+            "media_count",
+            "folder_count"
+          ]
+        },
+        "description": "Every folder, depth first: parents before their subfolders, siblings by name ignoring\ncase."
+      },
+      "top_level_media": {
+        "type": "integer",
+        "format": "uint32",
+        "minimum": 0,
+        "description": "Assets at the top level of the bin (in no folder)."
+      },
+      "total_media": {
+        "type": "integer",
+        "format": "uint32",
+        "minimum": 0,
+        "description": "Assets in the project."
+      }
+    },
+    "required": [
+      "folders",
+      "top_level_media",
+      "total_media"
+    ],
+    "description": "Result of `media.list_folders`.",
+    "title": "MediaListFoldersOutput"
+  }
+}

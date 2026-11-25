@@ -11,13 +11,15 @@ import { registerHistoryCommands } from "../history/commands.ts";
 import { i18n, type TKey } from "../i18n/index.ts";
 import en from "../i18n/locales/en.json";
 import { registerPaletteCommands } from "../palette/commands.ts";
+import { registerShortcutRowMenu } from "../settings/shortcutRowMenu.ts";
 import { listBindings } from "../shortcuts/bindings.ts";
 import { buildMenu } from "./build.ts";
-import { COMMAND_INFO, registerBuiltinMenus } from "./builtins.ts";
+import { registerBuiltinMenus } from "./builtins.ts";
 import { guardedCall, MultipleMutationsError } from "./commands.ts";
 import { hintBindingIds, hintedCommands } from "./keys.ts";
 import { MAX_PLUGIN_ITEMS, plainLabel } from "./registry.ts";
 import { createMenuServices, type MenuServices } from "./services.ts";
+import { registerSurfaceMenus } from "./surfaces/index.ts";
 import { resolveTarget } from "./target.ts";
 import type { MenuRow, MenuSurfaceDef, SelectionAdapter } from "./types.ts";
 
@@ -58,8 +60,10 @@ function fixtureServices(overrides: Partial<MenuServices> = {}): MenuServices {
     ...overrides,
   });
   registerBuiltinMenus(services);
+  registerSurfaceMenus(services); // WP-2H.13: the walk below covers today's surfaces too
   registerPaletteCommands(services);
   registerHistoryCommands(services);
+  registerShortcutRowMenu(services, { reset: () => undefined, remove: () => undefined });
   return services;
 }
 
@@ -243,7 +247,7 @@ describe("surface-table walk", () => {
   });
 
   it("holds the command info to the generated catalog", () => {
-    for (const info of COMMAND_INFO) {
+    for (const info of services.commands.list()) {
       const entry = byName.get(info.name);
       expect(entry, `${info.name} is in schema/commands.json`).toBeDefined();
       expect(info.undoable ?? false, `${info.name} undoable`).toBe(entry?.undoable);

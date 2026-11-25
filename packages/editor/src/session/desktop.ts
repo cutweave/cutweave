@@ -29,8 +29,8 @@ export interface PrefsBridge {
   get(): Promise<{ readonly values: PreferenceMap; readonly defaults: PreferenceMap }>;
   set(key: string, value: unknown): Promise<void>;
   reset(keys: readonly string[]): Promise<void>;
-  exportToFile(): Promise<PrefsExportResult>;
-  importFromFile(): Promise<PrefsImportResult>;
+  exportToFile(only?: "shortcuts"): Promise<PrefsExportResult>;
+  importFromFile(only?: "shortcuts"): Promise<PrefsImportResult>;
   onChanged(listener: (changes: PreferenceChanges) => void): () => void;
 }
 

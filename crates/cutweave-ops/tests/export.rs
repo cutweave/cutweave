@@ -79,6 +79,7 @@ fn export(
             doc: h.doc(),
         }),
         allowed_roots: roots,
+        presets: Arc::default(),
         starter: Box::new(Recorder {
             plans: Arc::clone(&plans),
             fail: None,
@@ -402,6 +403,7 @@ fn starter_errors_and_unknown_params_reach_the_caller() {
             doc: h.doc(),
         }),
         allowed_roots: None,
+        presets: Arc::default(),
         starter: Box::new(Recorder {
             plans: Arc::default(),
             fail: Some(CmdError::unsupported("no media backend")),

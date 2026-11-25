@@ -183,6 +183,66 @@ fn an_export_job_encodes_every_frame_and_sample_and_decodes_clips_sequentially()
 }
 
 #[test]
+fn an_export_with_a_preset_id_uses_its_size_rate_and_warns_without_failing() {
+    let dir = TempDir::new("preset");
+    let (fake, paths) = media(&dir);
+    let late = Arc::new(LateSource::default());
+    let backend: Arc<dyn MediaBackend> = Arc::new(fake.clone());
+    let svc = services(backend, ProbeRenderer::new(Arc::clone(&late) as _).shared());
+    let e = engine(dir.path(), Some(svc));
+    let conn = agent(&e);
+    timeline(&conn, &fake, &paths);
+
+    // The commands answer through the engine; TikTok on a 16:9 sequence is a warning.
+    let list = must(&conn, "export.list_presets", json!({}));
+    assert!(list["presets"].as_array().unwrap().len() >= 20);
+    let resolved = must(&conn, "export.resolve_preset", json!({"preset": "tiktok"}));
+    assert_eq!(resolved["warnings"][0]["code"], json!("AspectMismatch"));
+
+    // A preset export with small overrides keeps the preset's frame-rate rule (the
+    // sequence's 30 fps is within TikTok's maximum) and reports the warning.
+    let out_path = dir.file("tiktok.mp4");
+    let started = must(
+        &conn,
+        "export.start",
+        json!({"path": out_path, "preset": {"custom": {"preset": "tiktok",
+               "width": 64, "height": 36}}}),
+    );
+    assert_eq!(started["warnings"][0]["code"], json!("AspectMismatch"));
+    assert_eq!(
+        (started["width"].clone(), started["height"].clone()),
+        (json!(64), json!(36))
+    );
+    assert_eq!(started["frame_rate"], json!({"num": 30, "den": 1}));
+    assert_succeeded(&wait(&conn, &started["job_id"], WAIT));
+
+    // User presets save and delete through the engine; built-ins are protected.
+    let preset = json!({
+        "schema_version": 1, "id": "mine", "name": "Mine", "container": "mp4",
+        "video": {"codec": "h264", "rate_control": {"mode": "crf", "crf": 24}, "hw_preferred": false},
+        "audio": {"codec": "aac", "sample_rate": 48000, "channels": 2},
+        "size": {"kind": "fit", "width": 64, "height": 36},
+        "fps": {"kind": "follow_sequence"}
+    });
+    must(&conn, "export.save_preset", json!({"preset": preset}));
+    let started = must(
+        &conn,
+        "export.start",
+        json!({"path": dir.file("mine.mp4"), "preset": "mine"}),
+    );
+    assert_eq!(started["warnings"], json!([]));
+    assert_succeeded(&wait(&conn, &started["job_id"], WAIT));
+    must(&conn, "export.delete_preset", json!({"id": "mine"}));
+    assert!(
+        conn.call(Call::new("export.delete_preset", json!({"id": "tiktok"})))
+            .is_err()
+    );
+    drop(conn);
+    e.shutdown();
+    drop(late);
+}
+
+#[test]
 fn an_export_renders_the_snapshot_it_was_started_on() {
     let dir = TempDir::new("snapshot");
     let (fake, paths) = media(&dir);

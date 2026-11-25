@@ -17,7 +17,7 @@ use std::sync::Arc;
 use std::time::{Duration as StdDuration, Instant};
 
 use cutweave_api::Credential;
-use cutweave_api::mcp::{ListSize, McpOptions, P1_GATE, Profile};
+use cutweave_api::mcp::{ListSize, McpOptions, Profile, STANDARD_BUDGET};
 use cutweave_engine::{
     AudioConfig, Call, Connection, Engine, EngineConfig, EngineMode, FullConfig, FullSubsystems,
     GpuConfig, LogConfig,
@@ -266,7 +266,7 @@ fn jpeg_size(bytes: &[u8]) -> Option<(u32, u32)> {
 }
 
 #[tokio::test]
-async fn the_standard_list_fits_the_p1_gate_with_render_frame() {
+async fn the_standard_list_fits_the_standard_budget_with_render_frame() {
     let h = Full::start();
     for profile in [Profile::Standard, Profile::Minimal] {
         for revision in Revision::ALL {
@@ -281,7 +281,7 @@ async fn the_standard_list_fits_the_p1_gate_with_render_frame() {
             );
             if profile == Profile::Standard {
                 assert_eq!(size.tools, 20);
-                assert!(P1_GATE.fits(size), "{size:?}");
+                assert!(STANDARD_BUDGET.fits(size), "{size:?}");
             } else {
                 assert!(profile.budget().fits(size), "{size:?}");
                 assert!(tools.iter().any(|t| t.name == "render_frame"));

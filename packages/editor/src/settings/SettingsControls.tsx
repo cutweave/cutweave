@@ -9,7 +9,15 @@ import { Button, IconButton, SegmentedControl, SettingRow, Switch, TextField } f
 import { type ReactNode, useEffect, useState } from "react";
 import { useTranslation } from "react-i18next";
 import type { TKey } from "../i18n/index.ts";
-import type { ChoiceOption, ControlSpec, SettingRowDef, SettingsContext } from "./registry.ts";
+import { ContextSurface } from "../menus/host.tsx";
+import {
+  type ChoiceOption,
+  type ControlSpec,
+  rowDescription,
+  rowLabel,
+  type SettingRowDef,
+  type SettingsContext,
+} from "./registry.ts";
 import type { TextPart } from "./search.ts";
 
 const optionText = (t: (key: TKey) => string, option: ChoiceOption): string =>
@@ -247,19 +255,19 @@ export function SettingRowView({
     : row.applies === "restart"
       ? t("settings.appliesOnRestart")
       : undefined;
-  const label = t(row.label);
+  const label = rowLabel(row, t);
   const controlId = `${row.id}-control`;
   const labelsInput = ["switch", "select", "number", "folder"].includes(row.control.kind);
   const write = (next: unknown): void => {
     if (key === undefined) return;
     void ctx.client.set(key, next as never).catch(() => undefined);
   };
-  return (
+  const view = (
     <SettingRow
       id={row.id}
       label={label}
       {...(labelParts === undefined ? {} : { labelContent: <Marked parts={labelParts} /> })}
-      description={t(row.description)}
+      description={rowDescription(row, t)}
       {...(descriptionParts === undefined
         ? {}
         : { descriptionContent: <Marked parts={descriptionParts} /> })}
@@ -283,5 +291,17 @@ export function SettingRowView({
         write={write}
       />
     </SettingRow>
+  );
+  // A setting's menu (WP-2H.13): Reset to default, Copy setting key. Rows with no setting behind
+  // them (an action) have none.
+  if (key === undefined) return view;
+  return (
+    <ContextSurface
+      surface="settings.row"
+      className="cw-context-surface"
+      target={() => ({ name: label, data: { key, modified } })}
+    >
+      {view}
+    </ContextSurface>
   );
 }

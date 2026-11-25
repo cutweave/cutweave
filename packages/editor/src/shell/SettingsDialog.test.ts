@@ -8,7 +8,7 @@ import {
   type PreferenceMap,
 } from "@cutweave/preferences";
 import { TooltipProvider } from "@cutweave/ui";
-import { act, cleanup, render, screen, waitFor, within } from "@testing-library/react";
+import { act, cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import axe from "axe-core";
 import { createElement as h } from "react";
@@ -16,6 +16,8 @@ import { I18nextProvider } from "react-i18next";
 import { afterEach, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
 import { engineStore, initialEngineState } from "../engine/engineStore.ts";
 import { i18n } from "../i18n/index.ts";
+import { menuServices } from "../menus/defaults.ts";
+import { ContextMenuHost } from "../menus/host.tsx";
 import { preferences, prefsStore } from "../prefs/prefsStore.ts";
 import type { PrefsBridge } from "../session/desktop.ts";
 import { sessionUiStore } from "../session/sessionUiStore.ts";
@@ -732,11 +734,13 @@ describe("Settings > Keyboard shortcuts (WP-1M.13)", () => {
     return { user, settings };
   };
 
-  it("lists every binding, under the group where it works, with a read-only note", async () => {
+  it("lists every binding, under the group where it works, with the preset and file controls", async () => {
     const { settings } = await open();
-    expect(
-      within(settings).getByText(/Changing them arrives with the shortcut editor/),
-    ).toBeTruthy();
+    expect(within(settings).getByText(/Every shortcut in Cutweave/)).toBeTruthy();
+    expect(within(settings).getByRole("radiogroup", { name: "Shortcut preset" })).toBeTruthy();
+    for (const name of ["Reset all shortcuts", "Export shortcuts…", "Import shortcuts…"]) {
+      expect(within(settings).getByRole("button", { name }), name).toBeTruthy();
+    }
     for (const group of BINDING_GROUPS) {
       expect(within(settings).getByRole("region", { name: i18n.t(group.title) })).toBeTruthy();
     }
@@ -778,5 +782,170 @@ describe("Settings > Keyboard shortcuts (WP-1M.13)", () => {
         name: /^Save as…: Ctrl\+Shift\+S$/,
       }),
     ).toBeTruthy();
+  });
+});
+
+describe("Settings > Keyboard shortcuts: the editor (WP-2H.05)", () => {
+  const open = async () => {
+    const user = userEvent.setup();
+    render_();
+    const settings = await dialog();
+    await user.click(within(settings).getByRole("tab", { name: "Keyboard shortcuts" }));
+    return { user, settings };
+  };
+  const rowOf = (settings: HTMLElement, id: string): HTMLElement => {
+    const row = settings.querySelector<HTMLElement>(`[data-setting="shortcuts.${id}"]`);
+    expect(row, id).not.toBeNull();
+    return row as HTMLElement;
+  };
+  const stored = () => prefsStore.getState().values["shortcuts.bindings"];
+  const addButton = (row: HTMLElement, name: string) =>
+    within(row).getByRole("button", { name: `Add a shortcut for ${name}` });
+
+  it("records a key, asks before taking it from another command, and stores only the difference", async () => {
+    const { user, settings } = await open();
+    const split = rowOf(settings, "clip.split");
+    await user.click(addButton(split, "Split at the playhead"));
+    await user.keyboard("{Control>}k{/Control}");
+    const prompt = within(split).getByRole("alertdialog", { name: "Shortcut already in use" });
+    expect(prompt.textContent).toContain("Ctrl+K already runs Command palette");
+    await user.click(within(prompt).getByRole("button", { name: "Reassign" }));
+    expect(stored()).toEqual({ "clip.split": ["Mod+K", "S"], "palette.open": [] });
+    expect(
+      within(split).getByRole("group", { name: "Split at the playhead: Ctrl+K, S" }),
+    ).toBeTruthy();
+    expect(
+      within(rowOf(settings, "palette.open")).getByRole("group", {
+        name: /Command palette: No shortcut/,
+      }),
+    ).toBeTruthy();
+    // The bridge got one write, with the differences only.
+    expect(
+      current.calls.filter((c) => c[0] === "set" && c[1] === "shortcuts.bindings"),
+    ).toHaveLength(1);
+  });
+
+  it("keeps the old binding when the person cancels the conflict prompt", async () => {
+    const { user, settings } = await open();
+    const split = rowOf(settings, "clip.split");
+    await user.click(addButton(split, "Split at the playhead"));
+    await user.keyboard("{Control>}z{/Control}");
+    const prompt = within(split).getByRole("alertdialog", { name: "Shortcut already in use" });
+    expect(prompt.textContent).toContain("Ctrl+Z already runs Undo");
+    await user.click(within(prompt).getByRole("button", { name: "Cancel" }));
+    expect(within(split).queryByRole("alertdialog")).toBeNull();
+    expect(stored()).toEqual({});
+  });
+
+  it("refuses a reserved key and says why, and Esc ends the recording", async () => {
+    const { user, settings } = await open();
+    const split = rowOf(settings, "clip.split");
+    await user.click(addButton(split, "Split at the playhead"));
+    await user.keyboard("{F10}");
+    expect(within(split).getByRole("alert").textContent).toContain(
+      "F10 cannot be used. The menu bar uses this key to open its menus.",
+    );
+    expect(stored()).toEqual({});
+    await user.click(addButton(split, "Split at the playhead"));
+    await user.keyboard("{Escape}");
+    expect(within(split).queryByRole("alert")).toBeNull();
+    // Esc ended the recording, not the dialog.
+    expect(screen.queryByRole("dialog", { name: "Settings" })).not.toBeNull();
+  });
+
+  it("makes Ctrl+Shift+Z the Redo key the Edit menu shows", async () => {
+    const { user, settings } = await open();
+    const redo = rowOf(settings, "edit.redo");
+    expect(within(redo).getByRole("group", { name: "Redo: Ctrl+Y, Ctrl+Shift+Z" })).toBeTruthy();
+    await user.click(addButton(redo, "Redo"));
+    await user.keyboard("{Control>}{Shift>}z{/Shift}{/Control}");
+    expect(stored()).toEqual({ "edit.redo": ["Mod+Shift+Z", "Mod+Y"] });
+    expect(within(redo).getByRole("group", { name: "Redo: Ctrl+Shift+Z, Ctrl+Y" })).toBeTruthy();
+  });
+
+  it("removes a key and resets a row", async () => {
+    const { user, settings } = await open();
+    const del = rowOf(settings, "item.delete");
+    await user.click(within(del).getByRole("button", { name: "Remove Backspace from Delete" }));
+    expect(stored()).toEqual({ "item.delete": ["Delete"] });
+    await user.click(within(del).getByRole("button", { name: "Reset Delete to the preset" }));
+    expect(stored()).toEqual({});
+  });
+
+  it("switches the preset to CapCut, and Reset all shortcuts puts everything back", async () => {
+    const { user, settings } = await open();
+    const preset = within(settings).getByRole("radiogroup", { name: "Shortcut preset" });
+    await user.click(within(preset).getByRole("radio", { name: "CapCut" }));
+    expect(prefsStore.getState().values["shortcuts.preset"]).toBe("capcut");
+    expect(
+      within(rowOf(settings, "clip.split")).getByRole("group", {
+        name: "Split at the playhead: Ctrl+B",
+      }),
+    ).toBeTruthy();
+    // CapCut's guesses say so.
+    expect(within(rowOf(settings, "item.delete")).getByText("Unverified")).toBeTruthy();
+    await user.click(within(settings).getByRole("button", { name: "Reset all shortcuts" }));
+    await user.click(await screen.findByRole("button", { name: "Reset shortcuts" }));
+    await waitFor(() => expect(prefsStore.getState().values["shortcuts.preset"]).toBe("nle"));
+    expect(current.calls).toContainEqual(["reset", "shortcuts.preset", "shortcuts.bindings"]);
+  });
+
+  it("exports and imports the shortcuts only, through the file pickers", async () => {
+    const { user, settings } = await open();
+    await user.click(within(settings).getByRole("button", { name: "Export shortcuts…" }));
+    expect(current.bridge.exportToFile).toHaveBeenCalledWith("shortcuts");
+    await user.click(within(settings).getByRole("button", { name: "Import shortcuts…" }));
+    expect(current.bridge.importFromFile).toHaveBeenCalledWith("shortcuts");
+  });
+
+  it("has no axe violations with a conflict prompt open", async () => {
+    const { user, settings } = await open();
+    const split = rowOf(settings, "clip.split");
+    await user.click(addButton(split, "Split at the playhead"));
+    await user.keyboard("{Control>}z{/Control}");
+    const results = await axe.run(document.body, {
+      rules: { "color-contrast": { enabled: false } },
+    });
+    expect(results.violations.map((v) => `${v.id}: ${v.nodes[0]?.html}`)).toEqual([]);
+  });
+});
+
+describe("Settings > Keyboard shortcuts: the row menu (WP-2H.05)", () => {
+  it("offers Reset binding, Remove binding and Copy command id, and they act on the row", async () => {
+    const user = userEvent.setup();
+    render(
+      h(
+        I18nextProvider,
+        { i18n },
+        h(TooltipProvider, null, h(SettingsDialog), h(ContextMenuHost, { services: menuServices })),
+      ),
+    );
+    const settings = await dialog();
+    await user.click(within(settings).getByRole("tab", { name: "Keyboard shortcuts" }));
+    const row = settings.querySelector<HTMLElement>('[data-setting="shortcuts.clip.split"]');
+    expect(row).not.toBeNull();
+    fireEvent.contextMenu(within(row as HTMLElement).getByRole("group"), {
+      clientX: 20,
+      clientY: 20,
+    });
+    const menu = await screen.findByRole("menu");
+    const names = within(menu)
+      .getAllByRole("menuitem")
+      .map((i) => i.textContent);
+    expect(names).toEqual([
+      "Reset bindingAlready the preset's keys",
+      "Remove binding",
+      "Copy command id",
+    ]);
+    // Nothing differs from the preset yet, so there is nothing to reset.
+    expect(
+      within(menu)
+        .getByRole("menuitem", { name: /Reset binding/ })
+        .getAttribute("aria-disabled"),
+    ).toBe("true");
+    await user.click(within(menu).getByRole("menuitem", { name: /Remove binding/ }));
+    await waitFor(() =>
+      expect(prefsStore.getState().values["shortcuts.bindings"]).toEqual({ "clip.split": [] }),
+    );
   });
 });

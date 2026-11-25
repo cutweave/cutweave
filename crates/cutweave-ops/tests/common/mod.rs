@@ -59,6 +59,12 @@ impl H {
         h
     }
 
+    /// Replaces the document (built by hand, e.g. with attachments no command makes yet),
+    /// keeping the ID generator, so new IDs never collide with the ones already issued.
+    pub fn replace_doc(&mut self, doc: Project) {
+        self.shared.lock().unwrap().doc = doc;
+    }
+
     /// `project.new` applied: one sequence with V1 and A1.
     pub fn project() -> (H, P) {
         let mut h = H::empty();
@@ -112,7 +118,9 @@ impl H {
                     committed.doc,
                     "{name}: redo after undo"
                 );
-                committed.doc.validate().unwrap();
+                if let Err(e) = committed.doc.validate() {
+                    panic!("{name}: the document is invalid after the command: {e}");
+                }
                 *doc = committed.doc.clone();
                 *commits += 1;
                 self.last = Some(committed);

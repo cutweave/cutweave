@@ -150,6 +150,9 @@ pub struct EngineConfig {
     pub event_capacity: usize,
     /// Media, render, audio and playback (WP-1I.05); `None` runs the core only.
     pub subsystems: Option<Box<dyn Subsystems>>,
+    /// The folder of the user's export presets (`export-presets.json`, WP-2G.01); `None` keeps
+    /// them in memory for the engine's lifetime.
+    pub presets_dir: Option<PathBuf>,
 }
 
 /// Default number of async worker threads.
@@ -177,6 +180,7 @@ impl Default for EngineConfig {
             worker_threads: DEFAULT_WORKER_THREADS,
             event_capacity: DEFAULT_EVENT_CAPACITY,
             subsystems: None,
+            presets_dir: None,
         }
     }
 }
@@ -220,6 +224,7 @@ impl std::fmt::Debug for EngineConfig {
             .field("jobs", &self.jobs)
             .field("worker_threads", &self.worker_threads)
             .field("subsystems", &self.subsystems.is_some())
+            .field("presets_dir", &self.presets_dir)
             .finish_non_exhaustive()
     }
 }

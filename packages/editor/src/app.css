@@ -922,6 +922,34 @@ body {
 .cw-settings__or {
   color: var(--text-muted);
 }
+/* Settings > Keyboard shortcuts (WP-2H.05): a row's keys, its Add button and the answers it asks for. */
+.cw-shortcut {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: var(--space-1);
+}
+.cw-shortcut__line {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: flex-end;
+  gap: var(--space-2);
+}
+.cw-shortcut__prompt {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: flex-end;
+  gap: var(--space-2);
+  padding: var(--space-2);
+  background: var(--surface-3);
+  border: var(--border-thin) solid var(--border-default);
+  border-radius: var(--radius-sm);
+}
+.cw-shortcut__refused {
+  color: var(--danger);
+}
 .cw-settings__itemlabel {
   min-width: 0;
   overflow-wrap: anywhere;
@@ -1032,6 +1060,11 @@ body {
 .cw-media-preview__row .cw-media-preview__bar {
   flex: 1 1 auto;
   min-width: 0;
+}
+
+/* A wrapper that only marks a context-menu surface: no box of its own (WP-2H.13). */
+.cw-context-surface {
+  display: contents;
 }
 
 /* Command palette (WP-2H.04): a top-anchored dialog, a search field over a list of commands. */

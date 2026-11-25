@@ -59,8 +59,8 @@ export interface InvokeChannels {
   "prefs:get": { args: []; result: PrefsSnapshot };
   "prefs:set": { args: [key: string, value: unknown]; result: undefined };
   "prefs:reset": { args: [keys: string[]]; result: undefined };
-  "prefs:export": { args: []; result: PrefsExportResult };
-  "prefs:import": { args: []; result: PrefsImportResult };
+  "prefs:export": { args: [only?: "shortcuts"]; result: PrefsExportResult };
+  "prefs:import": { args: [only?: "shortcuts"]; result: PrefsImportResult };
   "shell:openAppFolder": { args: [which: AppFolder]; result: undefined };
   // Settings > Agents and MCP (WP-1J.05).
   /** Main's folder picker; the chosen folder, resolved, joins `agents.allowed_folders`. */

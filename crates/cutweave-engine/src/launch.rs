@@ -70,7 +70,7 @@ const MAX_HANDSHAKE_BYTES: u64 = 1024;
 pub const USAGE: &str = "usage: engine [--headless] [--port N] [--token-stdin] [--project P] \
 [--run-dir D] [--allow-origin O]... [--allow-root R]... [--deterministic-ids SEED] \
 [--i-know-this-is-a-test] [--log-dir D | --no-log] [--handshake-timeout-ms MS] \
-[--cache-dir D] [--dev-stub-media] [--progress]";
+[--cache-dir D] [--presets-dir D] [--dev-stub-media] [--progress]";
 
 /// Parsed launch arguments: WP-1I.01's [`LaunchArgs`] plus the engine's own flags.
 #[derive(Debug, PartialEq, Eq)]
@@ -95,6 +95,9 @@ pub struct EngineArgs {
     /// `--cache-dir D`: the folder the thumbnail, waveform and frame-index caches live in
     /// (default `CUTWEAVE_CACHE_DIR`, else `<OS cache folder>/cutweave`; WP-1D.08).
     pub cache_dir: Option<PathBuf>,
+    /// `--presets-dir D`: the folder of the user's export presets (WP-2G.01); without it they
+    /// are kept in memory until the engine stops.
+    pub presets_dir: Option<PathBuf>,
     /// `--progress`: `starting` lines on stdout until the ready line, so a supervisor can tell a
     /// slow start from a hung one (issue #143).
     pub progress: bool,
@@ -114,6 +117,7 @@ impl EngineArgs {
             handshake_timeout: DEFAULT_HANDSHAKE_TIMEOUT,
             dev_stub_media: false,
             cache_dir: None,
+            presets_dir: None,
             progress: false,
         };
         let mut it = args.into_iter();
@@ -137,6 +141,13 @@ impl EngineArgs {
                         return Err("--cache-dir needs a folder".into());
                     }
                     out.cache_dir = Some(PathBuf::from(dir));
+                }
+                "--presets-dir" => {
+                    let dir = value("--presets-dir")?;
+                    if dir.trim().is_empty() {
+                        return Err("--presets-dir needs a folder".into());
+                    }
+                    out.presets_dir = Some(PathBuf::from(dir));
                 }
                 "--dev-stub-media" => out.dev_stub_media = true,
                 "--progress" => out.progress = true,
@@ -428,6 +439,7 @@ fn engine_config(args: &EngineArgs, mode: EngineMode, ui_token: Option<Token>) -
         Box::new(crate::FullSubsystems::new(config))
     };
     EngineConfig {
+        presets_dir: args.presets_dir.clone(),
         mode,
         project: args.base.project.as_ref().map(PathBuf::from),
         port: Some(args.base.port),

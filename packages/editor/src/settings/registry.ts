@@ -49,6 +49,14 @@ export interface SettingsContext {
   confirm(spec: ConfirmSpec): Promise<boolean>;
 }
 
+/** A row's name: its own text, or its catalog key translated. */
+export const rowLabel = (row: SettingRowDef, t: (key: TKey) => string): string =>
+  row.labelText ?? t(row.label);
+
+/** A row's description: its own text, or its catalog key translated. */
+export const rowDescription = (row: SettingRowDef, t: (key: TKey) => string): string =>
+  row.descriptionText ?? t(row.description);
+
 /** One choice: its words are a catalog key, or plain text for numbers and names. */
 export interface ChoiceOption {
   value: string | number;
@@ -94,6 +102,9 @@ export interface SettingRowDef {
   key?: PreferenceKey;
   label: TKey;
   description: TKey;
+  /** Plain words instead of the catalog keys, for a row built from data (a command's summary). */
+  labelText?: string;
+  descriptionText?: string;
   /** Extra words that find the row, comma separated, in the UI language. */
   keywords?: TKey;
   /** More words that find the row, worked out when searching (the keys of a shortcut). */

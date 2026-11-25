@@ -10,7 +10,7 @@
 //! - **`tools/call`** of a proxy tool is answered by the proxy and never reaches an engine.
 //!
 //! The proxy tools exist only here: the engine's `/mcp` lists none of them, so the engine's
-//! tool budget (`P1_GATE`) is not touched. They are lean on purpose (see
+//! tool budget (`STANDARD_BUDGET`) is not touched. They are lean on purpose (see
 //! [`proxy_tools`]); the proxy's `tools/list` is the engine's plus these two.
 //!
 //! `engine_attach` connects to the chosen engine first (replaying the client's `initialize`

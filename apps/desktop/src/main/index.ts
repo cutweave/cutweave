@@ -364,8 +364,8 @@ if (!app.requestSingleInstanceLock()) {
           snapshot: () => ({ values: prefs.snapshot(), defaults: prefs.defaults() }),
           set: (key, value) => prefs.set(key, value),
           reset: (keys: readonly PreferenceKey[]) => prefs.reset(keys),
-          exportText: () => prefs.exportText(),
-          importText: (text) => prefs.importText(text),
+          exportText: (only) => prefs.exportText(only),
+          importText: (text, only) => prefs.importText(text, only),
         },
         chooseSettingsExportFile: async (defaultName) => {
           const result = await dialog.showSaveDialog({

@@ -248,6 +248,20 @@ describe("createHandlers", () => {
     expect(await h["prefs:import"]()).toEqual({ status: "cancelled" });
   });
 
+  it("exports and imports only the shortcuts when asked (Settings > Keyboard shortcuts)", async () => {
+    const h = createHandlers({ ...base, engineCredentials: () => null });
+    base.chooseSettingsExportFile.mockClear();
+    base.prefs.exportText.mockClear();
+    expect(await h["prefs:export"]("shortcuts")).toMatchObject({ status: "saved" });
+    expect(base.chooseSettingsExportFile).toHaveBeenCalledWith("cutweave-shortcuts.json");
+    expect(base.prefs.exportText).toHaveBeenCalledWith("shortcuts.");
+    base.prefs.importText.mockClear();
+    await h["prefs:import"]("shortcuts");
+    expect(base.prefs.importText).toHaveBeenCalledWith(expect.any(String), "shortcuts.");
+    await h["prefs:import"]();
+    expect(base.prefs.importText).toHaveBeenLastCalledWith(expect.any(String), undefined);
+  });
+
   it("delegates preference reads, writes and resets, and the app folders", async () => {
     const h = createHandlers({ ...base, engineCredentials: () => null });
     await h["prefs:get"]();

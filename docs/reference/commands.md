@@ -2,7 +2,7 @@
 
 # Command reference
 
-Every command and query the engine registers (67 in total), generated from the registry. The full JSON Schemas are in `schema/commands.json` and `schema/queries.json`.
+Every command and query the engine registers (83 in total), generated from the registry. The full JSON Schemas are in `schema/commands.json` and `schema/queries.json`.
 
 MCP exposure: `core` commands are always listed as tools (`item.move` is `item_move`), `catalog` ones are reachable through the catalog tools, `hidden` ones are not exposed.
 
@@ -21,10 +21,15 @@ MCP exposure: `core` commands are always listed as tools (`item.move` is `item_m
 | edit | `edit.redo` | Redo the last undone change of yours, or of another actor (`actor`; `*` = anyone) | engine | catalog |
 | edit | `edit.restore` | Restore a checkpoint as one undoable change | engine, undoable, idempotent | catalog |
 | edit | `edit.undo` | Undo your last change, or another actor's (`actor`; `*` = anyone's latest) | engine | core |
+| export | `export.delete_preset` | Delete one of your export presets | engine, destructive, idempotent | catalog |
+| export | `export.list_presets` | List export presets (YouTube, Instagram, TikTok, X and formats) and what this build can export | engine, read-only, idempotent | catalog |
+| export | `export.resolve_preset` | Show what an export preset does to a sequence (size, rate, warnings) without exporting | engine, read-only, idempotent | catalog |
+| export | `export.save_preset` | Save your own export preset (replaces your preset with the same id) | engine, idempotent | catalog |
 | export | `export.start` | Export a sequence to an MP4 file (H.264 + AAC) as a background job; returns job_id | engine, destructive | core |
-| item | `item.delete` | Delete items and their linked partners (no ripple; fails if a track is locked) | command, undoable, destructive | core |
+| item | `item.delete` | Delete items and their linked partners (the main track closes up) | command, undoable, destructive | core |
+| item | `item.duplicate` | Duplicate items and their linked partners after the selection (inserted on the main track) | command, undoable | catalog |
 | item | `item.get` | Get one item: summary, track, source, audio and visual properties | query | catalog |
-| item | `item.move` | Move an item in time and/or to another track (linked partners follow) | command, undoable, idempotent | core |
+| item | `item.move` | Move items in time and/or to another track (linked partners follow) | command, undoable | core |
 | item | `item.set_props` | Set an item's name, enabled, opacity, audio_gain or transform (partial) | command, undoable, idempotent | core |
 | job | `job.cancel` | Cancel a background job (stops within 500 ms; no effect once it finished) | engine, idempotent | catalog |
 | job | `job.list` | List background jobs, newest first (filter by media, state or kind) | engine, read-only, idempotent | catalog |
@@ -33,13 +38,19 @@ MCP exposure: `core` commands are always listed as tools (`item.move` is `item_m
 | media | `media.cache_status` | Show the media caches: folder, usage and limits, hardware decoding, frame memory | engine, read-only, idempotent | catalog |
 | media | `media.capabilities` | List the codecs and hardware encoders/decoders the media backend supports | engine, read-only, idempotent | catalog |
 | media | `media.clear_cache` | Delete everything in the named media caches (they rebuild on demand) | engine, destructive, idempotent, ui-only | catalog |
+| media | `media.create_folder` | Create a folder in the media bin (top level or inside another folder) | command, undoable | catalog |
+| media | `media.delete_folder` | Delete a media bin folder: lift its contents one level, or remove unused media in it | command, undoable, destructive | catalog |
 | media | `media.delete_proxy` | Remove the proxies of video assets (the preview uses the originals again) | engine, destructive, idempotent | catalog |
 | media | `media.generate_proxy` | Make proxies (small intra-frame copies the preview scrubs) of video assets now | engine, idempotent | catalog |
 | media | `media.import` | Import media files: probe and register them now, return media ids and analysis job ids | engine, idempotent | core |
 | media | `media.list` | List the project's media (filter, sort, paged; default by id) | query | core |
+| media | `media.list_folders` | List the media bin's folder tree with paths and counts | query | catalog |
+| media | `media.move` | Move media assets and folders into a folder of the bin, or to its top level | command, undoable, idempotent | catalog |
 | media | `media.proxy_status` | Show the proxies of video assets: status, progress, file, size, policy | engine, read-only, idempotent | catalog |
 | media | `media.register` | Register a probed media file (used by import; deduplicates by content hash) | command, undoable, idempotent | hidden |
 | media | `media.remove` | Remove an unused media asset from the project | command, undoable, destructive | catalog |
+| media | `media.rename` | Set the name the media bin shows for an asset, or go back to the file name | command, undoable, idempotent | catalog |
+| media | `media.rename_folder` | Rename a folder of the media bin | command, undoable, idempotent | catalog |
 | media | `media.set_cache_config` | Set the cache limits and the memory for decoded frames | engine, destructive, idempotent, ui-only | catalog |
 | media | `media.set_decode_policy` | Choose hardware or software decoding for the preview | engine, idempotent, ui-only | catalog |
 | project | `project.close` | Close the open project (saving first if asked or if autosave is on) | engine, idempotent | catalog |
@@ -57,11 +68,16 @@ MCP exposure: `core` commands are always listed as tools (`item.move` is `item_m
 | project | `project.set_autosave` | Set whether, how often and with how many backups the engine autosaves | engine, idempotent, ui-only | catalog |
 | timeline | `timeline.add_marker` | Add a marker (or range marker) to a sequence or one of its items | command, undoable | catalog |
 | timeline | `timeline.clear_in_out` | Clear the sequence's in and out points | command, undoable, idempotent | catalog |
+| timeline | `timeline.delete_gap` | Close the gap of a track at a time (what follows moves left; partners follow) | command, undoable | catalog |
+| timeline | `timeline.extract` | Cut time ranges out of tracks and close them (ripple) | command, undoable, destructive | catalog |
 | timeline | `timeline.get` | Get a sequence: summary (depth 0), tracks (1) or tracks with items (2) | query | core |
 | timeline | `timeline.insert` | Insert a media clip at a time on a track (adds linked audio for video with sound) | command, undoable | core |
+| timeline | `timeline.lift` | Cut time ranges out of tracks, leaving gaps (the magnetic main track closes) | command, undoable, destructive | catalog |
 | timeline | `timeline.list_markers` | List the markers of a sequence (with its in/out range) or of one item | query | catalog |
 | timeline | `timeline.move_marker` | Move a marker to another time | command, undoable, idempotent | catalog |
+| timeline | `timeline.overwrite` | Place a media clip over a range of a track, cutting out what is there | command, undoable, destructive | catalog |
 | timeline | `timeline.remove_marker` | Remove a marker | command, undoable, destructive | catalog |
+| timeline | `timeline.ripple_delete` | Delete items on one track and close the space they leave (partners follow) | command, undoable, destructive | catalog |
 | timeline | `timeline.set_in_out` | Set the sequence's in and out points | command, undoable, idempotent | catalog |
 | track | `track.add` | Add an empty video or audio track to a sequence | command, undoable | catalog |
 | track | `track.list` | List a sequence's tracks (flags, height, item counts) top to bottom | query | catalog |

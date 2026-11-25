@@ -452,6 +452,14 @@ expression: "cutweave_model::canonical_json_pretty(&schema)"
           },
           "type": "object"
         },
+        "folder": {
+          "description": "The folder of the bin it is in (ADR-0020); absent: the top level.",
+          "pattern": "^fld_[0-9a-f]{32}$",
+          "type": [
+            "string",
+            "null"
+          ]
+        },
         "id": {
           "description": "The media ID (also its key in `Project::media`).",
           "pattern": "^med_[0-9a-f]{32}$",
@@ -460,6 +468,13 @@ expression: "cutweave_model::canonical_json_pretty(&schema)"
         "kind": {
           "$ref": "#/$defs/MediaKind",
           "description": "What the media is."
+        },
+        "name": {
+          "description": "The name shown in the bin (ADR-0020); absent: the file name. 1 to 255 characters\nwithout control characters.",
+          "type": [
+            "string",
+            "null"
+          ]
         },
         "path_abs": {
           "description": "Absolute path of the file when it was last found (file kinds only).",
@@ -492,6 +507,42 @@ expression: "cutweave_model::canonical_json_pretty(&schema)"
         "id",
         "kind",
         "probe",
+        "custom"
+      ],
+      "type": "object"
+    },
+    "MediaFolder": {
+      "description": "A folder of the media bin (ADR-0020).",
+      "properties": {
+        "custom": {
+          "additionalProperties": true,
+          "description": "Plugin data (arch §4.3).",
+          "propertyNames": {
+            "pattern": "^[a-z0-9][a-z0-9_-]*(\\.[a-z0-9][a-z0-9_-]*)+$"
+          },
+          "type": "object"
+        },
+        "id": {
+          "description": "The folder ID (also its key in `Project::folders`).",
+          "pattern": "^fld_[0-9a-f]{32}$",
+          "type": "string"
+        },
+        "name": {
+          "description": "The name shown in the bin: 1 to 255 characters, no `/` or control characters, unique\namong its siblings ignoring case.",
+          "type": "string"
+        },
+        "parent": {
+          "description": "The folder it is in; absent at the top level.",
+          "pattern": "^fld_[0-9a-f]{32}$",
+          "type": [
+            "string",
+            "null"
+          ]
+        }
+      },
+      "required": [
+        "id",
+        "name",
         "custom"
       ],
       "type": "object"
@@ -1077,6 +1128,16 @@ expression: "cutweave_model::canonical_json_pretty(&schema)"
       },
       "type": "object"
     },
+    "folders": {
+      "additionalProperties": false,
+      "description": "The folder tree of the media bin, keyed by ID (ADR-0020).",
+      "patternProperties": {
+        "^fld_[0-9a-f]{32}$": {
+          "$ref": "#/$defs/MediaFolder"
+        }
+      },
+      "type": "object"
+    },
     "media": {
       "additionalProperties": false,
       "description": "Media, keyed by ID.",
@@ -1110,6 +1171,7 @@ expression: "cutweave_model::canonical_json_pretty(&schema)"
     "meta",
     "settings",
     "media",
+    "folders",
     "sequences",
     "custom"
   ],

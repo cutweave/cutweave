@@ -2,10 +2,13 @@
 // The UI commands the palette itself adds (WP-2H.04): open a settings page or row, and the
 // palette row's own menu (`palette.row`: Run, Copy command id, Assign shortcut…). They go in the
 // same tables as every other command, so the keymap (WP-2H.05) binds them too.
+
+import { bindingId } from "../keymap/model.ts";
 import type { MenuServices } from "../menus/services.ts";
 import type { MenuSurfaceDef, MenuTarget } from "../menus/types.ts";
 import { openSettings } from "../settings/settingsStore.ts";
 import { closePalette, paletteStore } from "./paletteStore.ts";
+import { togglePalette } from "./shortcut.ts";
 
 /** What a palette row's menu acts on (`MenuTarget.data`). */
 export interface PaletteRowData {
@@ -16,6 +19,13 @@ export interface PaletteRowData {
 }
 
 const rowData = (target: MenuTarget): PaletteRowData => target.data as PaletteRowData;
+
+/** The shortcut row of a palette row: its binding id, from its command and fixed arguments. */
+export function shortcutRowOf(row: PaletteRowData): string {
+  const at = row.key.indexOf("#");
+  const args = at < 0 ? undefined : (JSON.parse(row.key.slice(at + 1)) as Record<string, unknown>);
+  return `shortcuts.${bindingId(row.command, args)}`;
+}
 
 export const PALETTE_ROW_SURFACE: MenuSurfaceDef = {
   id: "palette.row",
@@ -40,6 +50,14 @@ export function registerPaletteCommands(services: MenuServices): void {
       openSettings(page, row);
     },
   });
+  // Ctrl/Cmd+K (a keymap binding, WP-2H.05): opens the palette, or closes it when it is open.
+  ui.register({
+    id: "palette.open",
+    label: "palette.title",
+    icon: "search",
+    hidden: true,
+    run: () => togglePalette(),
+  });
   ui.register({
     id: "palette.run",
     label: "palette.menu.run",
@@ -62,10 +80,10 @@ export function registerPaletteCommands(services: MenuServices): void {
     label: "palette.menu.assignShortcut",
     icon: "keyboard",
     hidden: true,
-    run: () => {
+    run: (_args, ctx) => {
       closePalette();
-      // The shortcut editor (WP-2H.05) takes this page over; today it lists the keys.
-      openSettings("shortcuts");
+      // Settings > Keyboard shortcuts, at the command's row.
+      openSettings("shortcuts", shortcutRowOf(rowData(ctx.target)));
     },
   });
   services.surfaces.register(PALETTE_ROW_SURFACE);
