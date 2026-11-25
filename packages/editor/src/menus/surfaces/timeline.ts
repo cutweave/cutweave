@@ -6,14 +6,14 @@
 // TODO(WP-2A.03): Ripple delete, Delete gap. TODO(WP-2A.06): Cut, Copy, Paste, Paste attributes,
 // Duplicate. TODO(WP-2A.05): Link, Unlink, Group. TODO(WP-2A.11): Replace clip. TODO(WP-2D.01):
 // Speed, Reverse, Freeze frame. TODO(WP-2A.02): markers, in and out, Make magnetic, track
-// height, Move up and down, Color label. TODO(WP-2A.04): the edge menu (Trim to playhead,
-// Extend to next clip), until then a clip edge opens the clip menu. TODO(WP-2A.09): Zoom to fit
-// and Zoom to selection. TODO(WP-2C.05): the keyframe menu.
+// height, Move up and down, Color label. TODO(WP-2A.09): Zoom to fit and Zoom to selection.
+// TODO(WP-2C.05): the keyframe menu. The edge menu (WP-2A.04) trims, ripple trims and rolls the
+// edge to the playhead, and extends it to the next clip.
 import { formatTimecode } from "@cutweave/timeline";
 import { itemSelection, trackSelection } from "../adapters.ts";
 import type { LabelSpec, MenuContext, MenuRow, MenuSurfaceDef, MenuTarget } from "../types.ts";
 import type { ContextValues } from "../when.ts";
-import { clipFacts, clipLabel, mediaPath, trackFact } from "./facts.ts";
+import { type ClipFact, clipFact, clipFacts, clipLabel, mediaPath, trackFact } from "./facts.ts";
 import { sequenceRate } from "./shared.ts";
 
 const LOCKED = "contextMenu.reason.trackLocked" as const;
@@ -131,8 +131,173 @@ export const TIMELINE_CLIP: MenuSurfaceDef = {
   rows: clipRows,
 };
 
-/** A clip's edge opens the clip menu until the trim items of WP-2A.04 give it its own. */
-export const TIMELINE_EDGE: MenuSurfaceDef = { ...TIMELINE_CLIP, id: "timeline.edge" };
+// ----- a clip's edge (WP-2A.04) ------------------------------------------------------------------
+
+type Edge = "start" | "end";
+
+/** The edge a right-click on a trim handle hit: the left one is the start, the right one the end. */
+function edgeOf(ctx: MenuContext): Edge {
+  const zone = (ctx.target.data as { readonly zone?: string } | undefined)?.zone;
+  return zone === "left-edge" ? "start" : "end";
+}
+
+/** The clip whose edge the menu is on: the one hit, whatever else is selected. */
+function edgeClip(ctx: MenuContext): ClipFact | null {
+  const id = ctx.target.ids[0];
+  return id === undefined ? null : clipFact(id);
+}
+
+const endOf = (clip: { readonly start: number; readonly duration: number }) =>
+  clip.start + clip.duration;
+
+/** The nearest clip of the same track on the edge's side, and whether it touches the edge. */
+function neighbour(fact: ClipFact, edge: Edge) {
+  const items = Object.values(fact.track.items).filter((i) => i.id !== fact.clip.id);
+  const after = items
+    .filter((i) => i.start >= endOf(fact.clip))
+    .sort((a, b) => a.start - b.start)[0];
+  const before = items
+    .filter((i) => endOf(i) <= fact.clip.start)
+    .sort((a, b) => endOf(b) - endOf(a))[0];
+  const near = edge === "end" ? after : before;
+  if (near === undefined) return null;
+  const touches =
+    edge === "end" ? near.start === endOf(fact.clip) : endOf(near) === fact.clip.start;
+  return { clip: near, touches };
+}
+
+/** The playhead moves the edge somewhere: past the other edge of the clip, not onto this one. */
+function playheadMovesEdge(ctx: MenuContext, fact: ClipFact): boolean {
+  if (ctx.playhead === null) return false;
+  const p = ctx.playhead;
+  return edgeOf(ctx) === "end"
+    ? p > fact.clip.start && p !== endOf(fact.clip)
+    : p < endOf(fact.clip) && p !== fact.clip.start;
+}
+
+const trimEnabled = (ctx: MenuContext): boolean => {
+  const fact = edgeClip(ctx);
+  return fact !== null && !fact.track.locked && playheadMovesEdge(ctx, fact);
+};
+
+const trimReason = (ctx: MenuContext) =>
+  edgeClip(ctx)?.track.locked === true ? LOCKED : "contextMenu.reason.playheadAtEdge";
+
+/** The two clips of a roll on this edge, `[left, right]`, when a clip touches it. */
+function rollPair(ctx: MenuContext): readonly [string, string] | null {
+  const fact = edgeClip(ctx);
+  const next = fact === null ? null : neighbour(fact, edgeOf(ctx));
+  if (fact === null || next === null || !next.touches) return null;
+  return edgeOf(ctx) === "end" ? [fact.clip.id, next.clip.id] : [next.clip.id, fact.clip.id];
+}
+
+function rollEnabled(ctx: MenuContext): boolean {
+  const pair = rollPair(ctx);
+  const fact = edgeClip(ctx);
+  if (pair === null || fact === null || fact.track.locked || ctx.playhead === null) return false;
+  const [left, right] = pair.map((id) => clipFact(id)?.clip);
+  if (left === undefined || right === undefined) return false;
+  const p = ctx.playhead;
+  return p > left.start && p < endOf(right) && p !== endOf(left);
+}
+
+const rollReason = (ctx: MenuContext) =>
+  edgeClip(ctx)?.track.locked === true
+    ? LOCKED
+    : rollPair(ctx) === null
+      ? "contextMenu.reason.noAdjacentClip"
+      : "contextMenu.reason.playheadAtEdge";
+
+/** Where "Extend" takes the edge: the next clip's start, or the previous clip's end. */
+function extendTo(ctx: MenuContext): number | null {
+  const fact = edgeClip(ctx);
+  const next = fact === null ? null : neighbour(fact, edgeOf(ctx));
+  if (next === null || next.touches) return null;
+  return edgeOf(ctx) === "end" ? next.clip.start : endOf(next.clip);
+}
+
+const playheadOrZero = (ctx: MenuContext): number => ctx.playhead ?? 0;
+
+// Every row passes `clamp: true`: an edge stops where the media or a neighbour stops it, as when
+// it is dragged, instead of failing.
+const edgeRows: readonly MenuRow[] = [
+  {
+    id: "trim-to-playhead",
+    command: "clip.trim",
+    group: "trim",
+    order: 0,
+    label: { key: "contextMenu.item.trimToPlayhead" },
+    enabledIf: trimEnabled,
+    reason: trimReason,
+    args: (ctx) => ({
+      item: ctx.target.ids[0],
+      edge: edgeOf(ctx),
+      to: playheadOrZero(ctx),
+      clamp: true,
+    }),
+  },
+  {
+    id: "ripple-trim-to-playhead",
+    command: "clip.ripple_trim",
+    group: "trim",
+    order: 1,
+    label: { key: "contextMenu.item.rippleTrimToPlayhead" },
+    enabledIf: trimEnabled,
+    reason: trimReason,
+    args: (ctx) => ({
+      item: ctx.target.ids[0],
+      edge: edgeOf(ctx),
+      to: playheadOrZero(ctx),
+      clamp: true,
+    }),
+  },
+  {
+    id: "roll-to-playhead",
+    command: "clip.roll",
+    group: "trim",
+    order: 2,
+    label: { key: "contextMenu.item.rollToPlayhead" },
+    enabledIf: rollEnabled,
+    reason: rollReason,
+    args: (ctx) => {
+      const [left, right] = rollPair(ctx) ?? [];
+      return { left, right, to: playheadOrZero(ctx), clamp: true };
+    },
+  },
+  {
+    id: "extend",
+    command: "clip.trim",
+    group: "extend",
+    order: 0,
+    label: (ctx) => ({
+      key:
+        edgeOf(ctx) === "end"
+          ? "contextMenu.item.extendToNext"
+          : "contextMenu.item.extendToPrevious",
+    }),
+    enabledIf: (ctx) => edgeClip(ctx)?.track.locked !== true && extendTo(ctx) !== null,
+    reason: (ctx) => (edgeClip(ctx)?.track.locked === true ? LOCKED : "contextMenu.reason.noGap"),
+    args: (ctx) => ({
+      item: ctx.target.ids[0],
+      edge: edgeOf(ctx),
+      to: extendTo(ctx) ?? 0,
+      clamp: true,
+    }),
+  },
+];
+
+/** A clip's edge: trim, ripple trim or roll it to the playhead, or extend it to the next clip. */
+export const TIMELINE_EDGE: MenuSurfaceDef = {
+  id: "timeline.edge",
+  name: (target) => ({
+    key: "contextMenu.name.edge",
+    vars: { name: target.name ?? clipLabel(target.ids[0] ?? "") },
+  }),
+  groups: ["trim", "extend"],
+  selection: itemSelection,
+  keys: clipKeys,
+  rows: edgeRows,
+};
 
 /** `track.add` next to the track the menu is on: above it, or below it; the same kind. */
 const addTrack =
