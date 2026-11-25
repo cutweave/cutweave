@@ -23,8 +23,8 @@
 //!   directly; a `Node`-like enum arrives with text and compositions.
 
 use cutweave_model::{
-    Color, ColorTags, Duration, FrameRate, ItemId, MediaId, SampleRate, SequenceId, Time, TrackId,
-    Vec2,
+    Animatable, Color, ColorTags, Duration, Fade, FrameRate, ItemId, MediaId, SampleRate,
+    SequenceId, Time, TrackId, Vec2,
 };
 use serde::Serialize;
 
@@ -195,6 +195,19 @@ pub struct AudioSegment {
     pub src_start: Time,
     /// Clip gain in dB at `dst_start`.
     pub clip_gain_db: f64,
+    /// Where the whole clip starts on the timeline (`dst_start` is later when the segment is
+    /// the clip's tail), the origin of the item time the envelopes below use.
+    pub clip_start: Time,
+    /// Length of the whole clip on the timeline.
+    pub clip_duration: Duration,
+    /// The clip's gain in dB over item time (keyframed; WP-2E.01). Shared with the document.
+    pub gain: Animatable<f64>,
+    /// The clip's stereo position `-1..=1` over item time.
+    pub pan: Animatable<f64>,
+    /// Fade in at the clip's start.
+    pub fade_in: Fade,
+    /// Fade out at the clip's end.
+    pub fade_out: Fade,
     /// Track gain in dB.
     pub track_gain_db: f64,
     /// Whether the source plays backwards (source time then decreases along the segment).

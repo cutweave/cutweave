@@ -6,6 +6,7 @@ use cutweave_model::{Rounding, SampleRate};
 use rubato::audioadapter_buffers::direct::InterleavedSlice;
 use rubato::{Fft, FixedSync, Resampler};
 
+use crate::automation::Automation;
 use crate::dsp::{CHANNELS, downmix_into};
 use crate::error::SourceError;
 use crate::plan::{ClipPlan, source_time_at};
@@ -68,6 +69,9 @@ pub(crate) struct ClipVoice {
     fifo: Vec<f32>,
     fifo_at: usize,
     ended: bool,
+    /// Gain, pan and fades, and the output sample of the next frame.
+    auto: Automation,
+    pos: i64,
 }
 
 impl ClipVoice {
@@ -108,6 +112,8 @@ impl ClipVoice {
             fifo: Vec::with_capacity(SOURCE_CHUNK * 4 * CHANNELS),
             fifo_at: 0,
             ended: false,
+            auto: Automation::new(clip.env.clone(), rate, channels == 1),
+            pos: at,
         })
     }
 
@@ -146,15 +152,15 @@ impl ClipVoice {
         Ok(())
     }
 
-    /// Renders the next `out.len() / 2` frames and adds them, times `gain`, to `out`.
-    pub fn render_add(&mut self, out: &mut [f32], gain: f32) -> Result<(), SourceError> {
+    /// Renders the next `out.len() / 2` frames and adds them, through the clip's gain, pan and
+    /// fades, to `out`.
+    pub fn render_add(&mut self, out: &mut [f32]) -> Result<(), SourceError> {
         let frames = out.len() / CHANNELS;
         self.fill(frames)?;
         let src = &self.fifo[self.fifo_at..self.fifo_at + frames * CHANNELS];
-        for (o, s) in out.iter_mut().zip(src) {
-            *o += s * gain;
-        }
+        self.auto.mix(self.pos, src, out);
         self.fifo_at += frames * CHANNELS;
+        self.pos += i64::try_from(frames).unwrap_or(0);
         Ok(())
     }
 }
@@ -171,6 +177,7 @@ mod tests {
     use cutweave_model::{Duration, ItemId, MediaId, Time};
 
     use super::*;
+    use crate::automation::Envelope;
     use crate::source::PcmFormat;
     use crate::tone::{Tone, ToneFactory, ToneSpec};
 
@@ -185,7 +192,7 @@ mod tests {
             src_end: src_start
                 .checked_add(Duration::from_secs(100).unwrap())
                 .unwrap(),
-            gain: 1.0,
+            env: Envelope::flat(1.0, start, end - start),
         }
     }
 
@@ -197,16 +204,17 @@ mod tests {
                 amplitude: 0.5,
                 phase: 0.0,
             },
-            PcmFormat::new(SampleRate::HZ_48_000, 1),
+            PcmFormat::new(SampleRate::HZ_48_000, 2),
         );
         let factory = ToneFactory::new().with(MediaId::from_u128(1), spec);
         let src_start = SampleRate::HZ_48_000.samples_to_time(1000).unwrap();
-        let c = clip(500, 100_000, src_start);
+        let mut c = clip(500, 100_000, src_start);
+        c.env = Envelope::flat(2.0, 500, 99_500);
         // Opened 37 samples into the clip: source frame 1037.
         let mut v = ClipVoice::open(&factory, &c, SampleRate::HZ_48_000, 537).unwrap();
         let mut out = vec![0.0; 2 * 3000];
         for piece in out.chunks_mut(2 * 300) {
-            v.render_add(piece, 2.0).unwrap();
+            v.render_add(piece).unwrap();
         }
         for (i, f) in out.as_chunks::<2>().0.iter().enumerate() {
             let want = 2.0 * spec.sample(1037 + i as u64);
@@ -233,7 +241,7 @@ mod tests {
         )
         .unwrap();
         let mut out = vec![0.0; 2 * 2000];
-        v.render_add(&mut out, 1.0).unwrap();
+        v.render_add(&mut out).unwrap();
         assert!(out[..20].iter().all(|&s| s == 1.0));
         assert!(out[20..].iter().all(|&s| s == 0.0));
     }

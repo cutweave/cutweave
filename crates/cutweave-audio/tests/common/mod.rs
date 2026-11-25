@@ -16,7 +16,8 @@ use std::time::Duration as StdDuration;
 
 use cutweave_audio::{Mixer, PcmFormat, SourceFactory, Tone, ToneFactory, ToneSpec, mixdown};
 use cutweave_model::{
-    Duration, FLICKS_PER_SECOND, ItemId, MediaId, Rounding, SampleRate, Time, TrackId,
+    Animatable, Duration, FLICKS_PER_SECOND, Fade, ItemId, MediaId, Rounding, SampleRate, Time,
+    TrackId,
 };
 use cutweave_render::AudioSegment;
 
@@ -46,7 +47,7 @@ pub fn sine(freq_hz: f64, amplitude: f32, phase: f64, rate: SampleRate, channels
 }
 
 /// One clip as a mixer segment.
-#[derive(Clone, Copy, Debug)]
+#[derive(Clone, Debug)]
 pub struct Seg {
     pub track: u128,
     pub item: u128,
@@ -56,6 +57,10 @@ pub struct Seg {
     pub src_start: Time,
     pub clip_db: f64,
     pub track_db: f64,
+    pub gain: Option<Animatable<f64>>,
+    pub pan: Animatable<f64>,
+    pub fade_in: Fade,
+    pub fade_out: Fade,
 }
 
 impl Seg {
@@ -69,6 +74,10 @@ impl Seg {
             src_start: Time::ZERO,
             clip_db: 0.0,
             track_db: 0.0,
+            gain: None,
+            pan: Animatable::Static(0.0),
+            fade_in: Fade::default(),
+            fade_out: Fade::default(),
         }
     }
 
@@ -97,6 +106,15 @@ impl Seg {
             dst_duration: self.duration,
             src_start: self.src_start,
             clip_gain_db: self.clip_db,
+            clip_start: self.start,
+            clip_duration: self.duration,
+            gain: self
+                .gain
+                .clone()
+                .unwrap_or(Animatable::Static(self.clip_db)),
+            pan: self.pan.clone(),
+            fade_in: self.fade_in,
+            fade_out: self.fade_out,
             track_gain_db: self.track_db,
             reverse: false,
             speed: (1, 1),

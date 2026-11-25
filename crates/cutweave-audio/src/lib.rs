@@ -37,6 +37,7 @@
 //! * Master volume: [`MixerHandle::set_master_gain`] (dB) and
 //!   [`MixerHandle::set_master_gain_linear`] (the `view` state's linear `master_gain`).
 
+mod automation;
 mod clock;
 mod control;
 mod dsp;

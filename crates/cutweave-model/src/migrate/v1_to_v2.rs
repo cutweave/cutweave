@@ -434,9 +434,9 @@ fn add_audio_fades(root: &mut JsonObject, _notes: &mut Vec<String>) -> Result<()
             for (item_path, item) in items(track, &track_path)? {
                 if let Some(Value::Object(audio)) = item.get_mut("audio") {
                     for key in ["fade_in", "fade_out"] {
-                        audio
-                            .entry(key)
-                            .or_insert_with(|| serde_json::json!({"duration": 0, "curve": "linear"}));
+                        audio.entry(key).or_insert_with(
+                            || serde_json::json!({"duration": 0, "curve": "linear"}),
+                        );
                     }
                 } else if item.contains_key("audio") {
                     return Err(MigrationError::step(
