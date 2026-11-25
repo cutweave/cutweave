@@ -26,7 +26,7 @@ The editor has no context menus (research: [09-context-menus.md](../research/09-
 
 ## Decision
 
-**Decided by:** WP-2H.12 (framework), consumed by WP-6B.03. It becomes Accepted when WP-2H.12 passes: (a) a fixture command carrying menu hints appears in its surface with no UI code change; (b) the surface-table walk test finds every `command` in the catalog or the UI command table; (c) the Windows user flow F41 drives menus with real clicks and the Menu key; (d) axe reports 0 violations on each opened menu. If (c) fails because Radix cannot open at an arbitrary point on the canvas, the fallback is a synthetic `contextmenu` event dispatched on the surface element; the decision below does not change.
+**Decided by:** WP-2H.12 (framework), consumed by WP-6B.03. It becomes Accepted when WP-2H.12 passes: (a) a fixture command carrying menu hints appears in its surface with no UI code change; (b) the surface-table walk test finds every `command` in the catalog or the UI command table; (c) the Windows user flow F42 drives menus with real clicks and the Menu key; (d) axe reports 0 violations on each opened menu. If (c) fails because Radix cannot open at an arbitrary point on the canvas, the fallback is a synthetic `contextmenu` event dispatched on the surface element; the decision below does not change.
 
 We will:
 
