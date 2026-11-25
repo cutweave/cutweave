@@ -19,7 +19,7 @@
 // crash-loop guard (four crashes in 60 s) is reset with the hook resync.spec.ts uses, since it is
 // not what is measured here. F11 and F12 cover the same journeys with a person's clicks and drags.
 // Trials per kind: `CUTWEAVE_M1_TRIALS` (the gate passes 20), else 4.
-import { closeSync, existsSync, openSync, readFileSync, statSync } from "node:fs";
+import { readFileSync, statSync } from "node:fs";
 import path from "node:path";
 import type { ElectronApplication, Page } from "@playwright/test";
 import {
@@ -57,6 +57,7 @@ import {
   timelineGeometry,
   toast,
   type Workspace,
+  waitProfileFree,
   workspace,
 } from "../flows/helpers.ts";
 import { keepJson, need, trialCount } from "./m1-support.ts";
@@ -327,21 +328,6 @@ async function newProject(app: ElectronApplication, page: Page, name: string, pa
   await expect(dirtyDot(page)).toBeHidden();
 }
 
-/**
- * Whether no process of an app killed on profile `home` still holds Chromium's single-instance
- * lock (`<userData>/lockfile`, opened exclusively and deleted when its holder exits).
- */
-function profileFree(home: string): boolean {
-  const lock = path.join(home, "userData", "lockfile");
-  if (!existsSync(lock)) return true;
-  try {
-    closeSync(openSync(lock, "r+"));
-    return true;
-  } catch {
-    return false;
-  }
-}
-
 /** Timeline items in the project file on disk. */
 function itemsOnDisk(doc: string): number {
   const saved = JSON.parse(readFileSync(doc, "utf8")) as {
@@ -523,9 +509,7 @@ test.describe("M1 exit 3: crash recovery trials", () => {
         launched = null;
         // A relaunch on the same profile needs Chromium's single-instance lock, which the killed
         // app's last helper process holds for a moment after the main process has gone.
-        await expect
-          .poll(() => profileFree(home), { timeout: 30_000, message: "the profile stays locked" })
-          .toBe(true);
+        await waitProfileFree(home);
 
         // Relaunch, open it from Recent, Restore.
         launched = await launchFlowApp(work, home);
@@ -551,9 +535,13 @@ test.describe("M1 exit 3: crash recovery trials", () => {
         await shortcut(launched.app, "Control+S");
         await expect.poll(() => statSync(doc).mtimeMs).toBeGreaterThan(before);
         await expect.poll(() => itemsOnDisk(doc)).toBe(acked.tracks.flatMap((x) => x.items).length);
-        // Known defect (reported with WP-1O.04): after a restore the unsaved dot stays on after
-        // the save. Recorded, not asserted: it is not a lost edit.
-        const dirtyAfterSave = await dirtyDot(launched.page).isVisible();
+        // The save clears the unsaved dot (issue #145); it is recorded per trial and fails the run.
+        const dirtyAfterSave = !(await dirtyDot(launched.page)
+          .waitFor({ state: "hidden", timeout: 10_000 })
+          .then(
+            () => true,
+            () => false,
+          ));
         rows.push({
           trial: t,
           edits: k,
@@ -563,6 +551,7 @@ test.describe("M1 exit 3: crash recovery trials", () => {
           savedToDisk: true,
           dirtyAfterSave,
         });
+        expect(dirtyAfterSave, `trial ${t}: the unsaved dot stays on after the save`).toBe(false);
       }
     } finally {
       keepJson(path.join("crash", "app-kill.json"), { trials: TRIALS, rows });
