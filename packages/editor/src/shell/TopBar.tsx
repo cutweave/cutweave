@@ -27,6 +27,7 @@ import {
   type WorkspaceId,
 } from "../state/viewStore.ts";
 import { translator } from "../timeline/errors.ts";
+import { runWorkspaceCommand } from "../workspace/commands.ts";
 import { AppMenuBar } from "./AppMenuBar.tsx";
 import { EngineStatusChip } from "./EngineNotices.tsx";
 import { SaveStatusChip } from "./SaveStatus.tsx";
@@ -139,7 +140,7 @@ export function TopBar() {
             icon="refresh-cw"
             label={t("workspace.reset")}
             size="sm"
-            onClick={() => viewStore.getState().resetWorkspace(workspaceId)}
+            onClick={() => runWorkspaceCommand("workspace.reset_layout")}
           />
         </Tooltip>
       </div>

@@ -38,7 +38,8 @@
     "toggleFullScreen": "Toggle full screen",
     "reload": "Reload",
     "toggleDevTools": "Toggle developer tools",
-    "about": "About {{name}}"
+    "about": "About {{name}}",
+    "panels": "Panels"
   },
   "saveStatus": {
     "saved": "All changes saved",
@@ -477,7 +478,27 @@
   "workspace": {
     "short-form": "Short-form",
     "long-form": "Long-form",
-    "reset": "Reset layout"
+    "reset": "Reset layout",
+    "resetAll": "Reset all workspaces",
+    "recovered": {
+      "title": "Layout reset",
+      "body": "The saved panel layout could not be restored, so the default layout is showing."
+    },
+    "commands": {
+      "openPanel": "Open panel",
+      "closePanel": "Close panel",
+      "togglePanel": "Show or hide a panel",
+      "togglePanelNamed": "Show or hide the {{name}} panel",
+      "reopenPanels": "Reopen panels",
+      "switch": "Switch workspace"
+    }
+  },
+  "dock": {
+    "empty": {
+      "title": "Every panel is closed",
+      "body": "Reopen the panels you had, or start again from the default layout.",
+      "reopen": "Reopen panels"
+    }
   },
   "theme": {
     "dark": "Dark",
@@ -488,7 +509,9 @@
     "assets": "Assets",
     "preview": "Preview",
     "inspector": "Inspector",
-    "timeline": "Timeline"
+    "timeline": "Timeline",
+    "close": "Close panel",
+    "closeNamed": "Close {{name}} panel"
   },
   "assets": {
     "tablistLabel": "Asset browser",

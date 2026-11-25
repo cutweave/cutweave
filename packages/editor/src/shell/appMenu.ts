@@ -205,6 +205,8 @@ export interface AppMenuState {
   readonly recent: readonly { readonly path: string; readonly label: string }[];
   /** File > Export… opens the export dialog (WP-1M.08); off while the timeline is empty. */
   readonly exportAvailable: boolean;
+  /** Every registered panel, with whether it is open in the current workspace (View > Panels). */
+  readonly panels: readonly { readonly id: string; readonly label: string; readonly checked: boolean }[];
 }
 
 export type AppMenuId = "file" | "edit" | "view" | "help";
@@ -218,6 +220,20 @@ export type AppMenuEntry =
       readonly enabled: boolean;
     }
   | { readonly kind: "separator"; readonly id: string }
+  | {
+      /** View > Panels: one checkable row per registered panel (`workspace.toggle_panel.<id>`). */
+      readonly kind: "panels";
+      readonly label: string;
+      readonly enabled: boolean;
+      readonly items: AppMenuState["panels"];
+    }
+  | {
+      /** A `workspace.*` command (View > Reset layout). */
+      readonly kind: "workspace";
+      readonly command: string;
+      readonly label: string;
+      readonly enabled: boolean;
+    }
   | {
       readonly kind: "recent";
       readonly label: string;
@@ -283,6 +299,20 @@ export function buildAppMenu(state: AppMenuState, t: MenuTranslate): AppMenu[] {
     command("selectAll", t("menu.selectAll"), true),
   ];
   const view: AppMenuEntry[] = [
+    { kind: "panels", label: t("menu.panels"), enabled: true, items: state.panels },
+    {
+      kind: "workspace",
+      command: "workspace.reset_layout",
+      label: t("workspace.reset"),
+      enabled: true,
+    },
+    {
+      kind: "workspace",
+      command: "workspace.reset_all",
+      label: t("workspace.resetAll"),
+      enabled: true,
+    },
+    sep("view-0"),
     command("toggleFullScreen", t("menu.toggleFullScreen"), desktop),
     ...(desktop && state.dev
       ? [

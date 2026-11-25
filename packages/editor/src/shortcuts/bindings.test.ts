@@ -123,6 +123,7 @@ describe("the menu bar's keys", () => {
           undoLabel: "Undo",
           redoLabel: "Redo",
           recent: [],
+          panels: [],
           exportAvailable: true,
         },
         (key) => key,
