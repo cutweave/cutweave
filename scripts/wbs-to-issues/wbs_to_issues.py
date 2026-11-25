@@ -39,7 +39,8 @@ FIELDS = {
 }
 EXECUTORS = ("sonnet", "opus", "human")
 HEADING_RE = re.compile(r"^### (WP-[^\s]+)\s+[—–-]\s+(.+?)\s*$")
-ID_RE = re.compile(r"^WP-(\d)([A-Z])\.(\d{2})$")
+# A WP split after it was filed keeps its number plus a letter (WP-2G.03a, WP-2G.03b).
+ID_RE = re.compile(r"^WP-(\d)([A-Z])\.(\d{2})([a-z]?)$")
 FIELD_RE = re.compile(r"^- \*\*([A-Za-z ]+?)(?: \([^)]*\))?:\*\*\s*(.*)$")
 OPTIONAL = {"interfaces", "tests", "out_of_scope"}  # missing => warning, not error
 MARKER_RE = re.compile(r"<!-- wp:(WP-[^\s]+) -->")
@@ -163,24 +164,28 @@ def strip_parens(s: str) -> str:
 
 
 DEP_RE = re.compile(
-    r"(?:WP-)?(\d[A-Z])\.(\d+)(?:\s*[–-]\s*(?:WP-)?(?:(\d[A-Z])\.)?(\d+))?"
+    r"(?:WP-)?(\d[A-Z])\.(\d+)(?:([a-z])(?![A-Za-z])|\s*[–-]\s*(?:WP-)?(?:(\d[A-Z])\.)?(\d+))?"
     r"|\bE(\d[A-Z])\b|\b[Ee]pic\s+(\d[A-Z])\b"
 )
 
 
 def parse_deps(raw: str) -> tuple[list[str], list[str]]:
-    """Return (explicit WP ids, epic codes). Accepts WP-1A.01, bare 5A.02, ranges such as
-    `5A.02–5A.06`, and epic codes `E1B` / `epic 1B`. Parenthetical remarks are ignored."""
+    """Return (explicit WP ids, epic codes). Accepts WP-1A.01, bare 5A.02, split WPs such as
+    WP-2G.03a, ranges such as `5A.02–5A.06`, and epic codes `E1B` / `epic 1B`. Parenthetical
+    remarks are ignored."""
     s = strip_parens(raw).replace("*", "").replace("`", "")
     wps: list[str] = []
     epics: list[str] = []
     for m in DEP_RE.finditer(s):
         if m.group(1):
             ep, a = m.group(1), int(m.group(2))
-            b = int(m.group(4)) if m.group(4) and (not m.group(3) or m.group(3) == ep) else a
+            if m.group(3):
+                wps.append(f"WP-{ep}.{a:02d}{m.group(3)}")
+                continue
+            b = int(m.group(5)) if m.group(5) and (not m.group(4) or m.group(4) == ep) else a
             wps.extend(f"WP-{ep}.{n:02d}" for n in range(a, b + 1))
         else:
-            epics.append(m.group(5) or m.group(6))
+            epics.append(m.group(6) or m.group(7))
     return dedupe(wps), dedupe(epics)
 
 
@@ -200,7 +205,7 @@ def load_wbs() -> list[dict]:
 
 def wp_key(wid: str):
     m = ID_RE.match(wid)
-    return (m.group(1), m.group(2), m.group(3)) if m else (wid,)
+    return (m.group(1), m.group(2), m.group(3), m.group(4)) if m else (wid,)
 
 
 def expand_deps(wps: list[dict]) -> list[str]:

@@ -45,6 +45,13 @@ class ParseTests(unittest.TestCase):
         self.assertEqual(w.parse_deps("—"), ([], []))
         self.assertEqual(w.parse_deps("WP-1A.01 (see WP-9Z.99)"), (["WP-1A.01"], []))
 
+    def test_split_wps_keep_their_number_with_a_letter(self):
+        self.assertEqual(
+            w.parse_deps("WP-2G.03a (queue), 2G.03b, WP-2G.04"), (["WP-2G.03a", "WP-2G.03b", "WP-2G.04"], [])
+        )
+        self.assertIsNotNone(w.ID_RE.match("WP-2G.03a"))
+        self.assertIsNone(w.ID_RE.match("WP-2G.03ab"))
+
 
 class LintTests(Fixture):
     def test_valid(self):

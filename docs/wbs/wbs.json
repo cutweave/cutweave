@@ -1,7 +1,7 @@
 {
   "version": 1,
   "generated_by": "scripts/wbs-to-issues",
-  "count": 507,
+  "count": 508,
   "work_packages": [
     {
       "id": "WP-0A.01",
@@ -5811,22 +5811,21 @@
       "out_of_scope": "VP9/WebM beyond what ffmpeg already exposes (listed as optional, not preset), ProRes RAW, DNxHR."
     },
     {
-      "id": "WP-2G.03",
-      "title": "Background export queue, range and marker-set export",
+      "id": "WP-2G.03a",
+      "title": "Background export queue",
       "source": {
         "file": "docs/wbs/P2-core-editor.md",
         "line": 1074
       },
       "phase": "P2",
       "epic": "2G",
-      "area": "crates/cutweave-jobs, crates/cutweave-ops/src/export/queue.rs",
+      "area": "crates/cutweave-jobs, crates/cutweave-ops/src/export/queue.rs, crates/cutweave-engine (export job runner, queue store), docs/reference",
       "size": "M",
       "executor": "sonnet",
       "executor_note": "",
-      "depends_raw": "E1E, WP-2G.01, WP-2A.02",
+      "depends_raw": "E1E, WP-2G.01",
       "depends_wps": [
-        "WP-2G.01",
-        "WP-2A.02"
+        "WP-2G.01"
       ],
       "depends_epics": [
         "1E"
@@ -5835,27 +5834,57 @@
         "WP-1E.01",
         "WP-1E.02",
         "WP-1E.03",
-        "WP-2A.02",
         "WP-2G.01"
       ],
-      "scope": "- Persistent export queue (sqlite via cutweave-jobs): `export.enqueue{sequence, preset, range, output, overrides}` snapshots the sequence at enqueue time (immutable snapshot reference at the current `rev`, so later edits do not alter queued jobs) and runs jobs serially by default (parallel limit setting, default 1 for GPU exports). Jobs survive engine restart (interrupted job restarts from the beginning, with partial output cleaned; documented).\n- Operations: `export.start` (enqueue + start), `export.cancel`, `export.pause_queue`, `export.reorder`, `export.retry`, `export.remove`, queries `export.queue`, `job_status` (common). Progress: percent, fps, ETA, current frame, bytes. Events `job.progress`.\n- Export doesn't block editing; the preview may degrade (GPU budget `jobs` rule: preview priority above export, with a documented throttle). Offline media rules from 2F.03.\n- Range export: `range = {kind: sequence | in_out | custom{start,end} | markers{ids[]|all, pair_mode}}`: a marker-set range export renders one file per marker region (marker `duration` or pairs of consecutive markers, naming template `{seq}_{marker_label}_{n}`).\n- Output file collision policy (`rename|overwrite|fail`), disk space precheck.\n- MCP core: `export_start`, `job_status`; queue management catalog.",
+      "scope": "- (Split from WP-2G.03 on 2026-11-25; ranges, marker sets, collisions and the disk check are WP-2G.03b.)\n- Persistent export queue (sqlite via cutweave-jobs, in `<project>/.cutweave/exports.sqlite`; in memory for an untitled project; ADR-0030, Proposed): `export.enqueue{sequence, preset, range, path, overrides}` snapshots the sequence at enqueue time (immutable snapshot reference at the current `rev`, so later edits do not alter queued jobs) and runs jobs serially by default (parallel limit `JobConfig.export_slots`, default 1 for GPU exports). Jobs survive engine restart (interrupted job restarts from the beginning, with partial output cleaned; documented). Switching projects suspends the old project's exports; they resume when it is reopened.\n- Operations: `export.enqueue` (adds; waits while the queue is paused), `export.start` (adds and resumes the queue), `export.cancel`, `export.pause_queue`, `export.reorder`, `export.retry`, `export.remove`, queries `export.queue`, `job_status` (common). Progress: percent, fps, ETA, current frame, bytes. Events `job.progress`.\n- Export doesn't block editing; the preview may degrade (GPU budget `jobs` rule: preview priority above export, with a documented throttle). Offline media rules from 2F.03.\n- MCP core: `export_start`, `job_status`; queue management catalog.",
       "interfaces": "commands above; `ExportJob` state machine `queued→running→done|failed|canceled`.",
       "acceptance": [
         "Enqueue 3 jobs, kill the engine during job 2 and restart: job 1 `done`, job 2 restarts and completes, job 3 completes; outputs valid (ffprobe).",
         "Editing the timeline during an export does not change the exported output (frame hash vs. snapshot render).",
-        "Marker-set export of 4 markers produces 4 files with the right durations (±1 frame).",
         "Cancel mid-export leaves no partial file and the queue proceeds.",
-        "Editing UI command RTT p95 stays < 16 ms during an export (measured in 2J.01 harness)."
+        "Editing command RTT p95 stays < 16 ms during an export (an in-process engine test here; the gate is 2J.01's harness)."
       ],
       "tests": "integration with the kill harness, unit for the state machine.",
-      "out_of_scope": "distributed export, `cutweave worker` parallel chunking (P7/post-1.0), publishing."
+      "out_of_scope": "range kinds, marker sets, the collision policy and the disk check (WP-2G.03b); distributed export, `cutweave worker` parallel chunking (P7/post-1.0), publishing."
+    },
+    {
+      "id": "WP-2G.03b",
+      "title": "Export ranges, marker sets, file collisions and disk check",
+      "source": {
+        "file": "docs/wbs/P2-core-editor.md",
+        "line": 1094
+      },
+      "phase": "P2",
+      "epic": "2G",
+      "area": "crates/cutweave-ops/src/export/, crates/cutweave-engine/src/export/, docs/reference",
+      "size": "S",
+      "executor": "sonnet",
+      "executor_note": "",
+      "depends_raw": "WP-2G.03a, WP-2A.02",
+      "depends_wps": [
+        "WP-2G.03a",
+        "WP-2A.02"
+      ],
+      "depends_epics": [],
+      "depends": [
+        "WP-2A.02",
+        "WP-2G.03a"
+      ],
+      "scope": "- (Split from WP-2G.03 on 2026-11-25.)\n- Range export: `range = {kind: sequence | in_out | custom{start,end} | markers{ids[]|all, pair_mode}}`: a marker-set range export queues one job per marker region (marker `duration` or pairs of consecutive markers, naming template `{seq}_{marker_label}_{n}`).\n- Output file collision policy (`rename|overwrite|fail`; today's `overwrite: true` keeps working), disk space precheck.",
+      "interfaces": "the `range` and collision params of `export.start` / `export.enqueue`.",
+      "acceptance": [
+        "Marker-set export of 4 markers produces 4 files with the right durations (±1 frame).",
+        "Each collision policy is covered: `rename` picks a free name, `fail` returns `Invalid` at `/path`, `overwrite` replaces the file only when the export succeeds."
+      ],
+      "tests": "integration (ffprobe durations), unit for ranges, naming and collisions.",
+      "out_of_scope": "the queue itself (WP-2G.03a); the dialog's range selector (WP-2G.04)."
     },
     {
       "id": "WP-2G.04",
       "title": "Export dialog and queue panel",
       "source": {
         "file": "docs/wbs/P2-core-editor.md",
-        "line": 1096
+        "line": 1110
       },
       "phase": "P2",
       "epic": "2G",
@@ -5863,9 +5892,10 @@
       "size": "M",
       "executor": "sonnet",
       "executor_note": "",
-      "depends_raw": "WP-2G.03, WP-2G.05, WP-2H.02, E1M",
+      "depends_raw": "WP-2G.03a (queue panel), WP-2G.03b (range selector and the \"file exists\" choice), WP-2G.05, WP-2H.02, E1M",
       "depends_wps": [
-        "WP-2G.03",
+        "WP-2G.03a",
+        "WP-2G.03b",
         "WP-2G.05",
         "WP-2H.02"
       ],
@@ -5888,7 +5918,8 @@
         "WP-1M.13",
         "WP-1M.14",
         "WP-1M.15",
-        "WP-2G.03",
+        "WP-2G.03a",
+        "WP-2G.03b",
         "WP-2G.05",
         "WP-2H.02"
       ],
@@ -5908,7 +5939,7 @@
       "title": "Advanced export controls",
       "source": {
         "file": "docs/wbs/P2-core-editor.md",
-        "line": 1117
+        "line": 1131
       },
       "phase": "P2",
       "epic": "2G",
@@ -5941,7 +5972,7 @@
       "title": "Dockable workspace, Short-form/Long-form layouts, i18n scaffold",
       "source": {
         "file": "docs/wbs/P2-core-editor.md",
-        "line": 1139
+        "line": 1153
       },
       "phase": "P2",
       "epic": "2H",
@@ -5991,7 +6022,7 @@
       "title": "Schema-driven inspector renderer",
       "source": {
         "file": "docs/wbs/P2-core-editor.md",
-        "line": 1169
+        "line": 1183
       },
       "phase": "P2",
       "epic": "2H",
@@ -6041,7 +6072,7 @@
       "title": "Inspector wiring: clip, track, sequence, audio, export panels",
       "source": {
         "file": "docs/wbs/P2-core-editor.md",
-        "line": 1189
+        "line": 1203
       },
       "phase": "P2",
       "epic": "2H",
@@ -6080,7 +6111,7 @@
       "title": "Command palette and registry-driven menus",
       "source": {
         "file": "docs/wbs/P2-core-editor.md",
-        "line": 1207
+        "line": 1221
       },
       "phase": "P2",
       "epic": "2H",
@@ -6118,7 +6149,7 @@
       "title": "Keymap engine, shortcut editor, NLE and CapCut presets",
       "source": {
         "file": "docs/wbs/P2-core-editor.md",
-        "line": 1231
+        "line": 1245
       },
       "phase": "P2",
       "epic": "2H",
@@ -6170,7 +6201,7 @@
       "title": "Preview overlays: transform handles, crop, safe areas, grid",
       "source": {
         "file": "docs/wbs/P2-core-editor.md",
-        "line": 1259
+        "line": 1273
       },
       "phase": "P2",
       "epic": "2H",
@@ -6213,7 +6244,7 @@
       "title": "UX design review gate (human)",
       "source": {
         "file": "docs/wbs/P2-core-editor.md",
-        "line": 1282
+        "line": 1296
       },
       "phase": "P2",
       "epic": "2H",
@@ -6251,7 +6282,7 @@
       "title": "Project settings: `project.set_settings` and File > Project settings…",
       "source": {
         "file": "docs/wbs/P2-core-editor.md",
-        "line": 1295
+        "line": 1309
       },
       "phase": "P2",
       "epic": "2H",
@@ -6288,7 +6319,7 @@
       "title": "Settings: Appearance page (interface scale, density, reduce motion)",
       "source": {
         "file": "docs/wbs/P2-core-editor.md",
-        "line": 1313
+        "line": 1327
       },
       "phase": "P2",
       "epic": "2H",
@@ -6324,7 +6355,7 @@
       "title": "Settings: Playback page (preview quality, proxies, scrub audio, loop)",
       "source": {
         "file": "docs/wbs/P2-core-editor.md",
-        "line": 1332
+        "line": 1346
       },
       "phase": "P2",
       "epic": "2H",
@@ -6362,7 +6393,7 @@
       "title": "History panel: every undo step, who made it, go back to any step",
       "source": {
         "file": "docs/wbs/P2-core-editor.md",
-        "line": 1348
+        "line": 1362
       },
       "phase": "P2",
       "epic": "2H",
@@ -6399,7 +6430,7 @@
       "title": "Context-menu framework: host, surfaces, command-derived items, keyboard and touch, contributions",
       "source": {
         "file": "docs/wbs/P2-core-editor.md",
-        "line": 1376
+        "line": 1390
       },
       "phase": "P2",
       "epic": "2H",
@@ -6450,7 +6481,7 @@
       "title": "Context menus for today's surfaces: bin, preview, timeline basics, inspector, chrome",
       "source": {
         "file": "docs/wbs/P2-core-editor.md",
-        "line": 1403
+        "line": 1417
       },
       "phase": "P2",
       "epic": "2H",
@@ -6500,7 +6531,7 @@
       "title": "Core tool set: mapping, annotations and completion (~30 tools)",
       "source": {
         "file": "docs/wbs/P2-core-editor.md",
-        "line": 1431
+        "line": 1445
       },
       "phase": "P2",
       "epic": "2I",
@@ -6508,14 +6539,14 @@
       "size": "M",
       "executor": "sonnet",
       "executor_note": "",
-      "depends_raw": "E1J, WP-2A.03, WP-2A.04, WP-2B.01, WP-2C.03, WP-2E.01, WP-2G.03, WP-2F.03",
+      "depends_raw": "E1J, WP-2A.03, WP-2A.04, WP-2B.01, WP-2C.03, WP-2E.01, WP-2G.03a, WP-2F.03",
       "depends_wps": [
         "WP-2A.03",
         "WP-2A.04",
         "WP-2B.01",
         "WP-2C.03",
         "WP-2E.01",
-        "WP-2G.03",
+        "WP-2G.03a",
         "WP-2F.03"
       ],
       "depends_epics": [
@@ -6533,7 +6564,7 @@
         "WP-2C.03",
         "WP-2E.01",
         "WP-2F.03",
-        "WP-2G.03"
+        "WP-2G.03a"
       ],
       "scope": "- Reconcile the architecture §14 example core list with the commands that actually exist after P2. Implement a naming rule `namespace.verb_object → namespace_verb_object` (`.` to `_`, plus explicit aliases for `item.delete → item_delete`, etc.) and a table `mcp_core.toml` of the final ≤ 32 core tools (decision A budget: standard ≤ 36 tools / ≤ 8k tokens including the 4 generic tools and `view_get`/`view_set`): `project_open, project_info, media_import, media_list, timeline_get, timeline_insert, clip_split, clip_trim, item_move, item_delete, item_set_props, track_add, sequence_create, sequence_set_format, timeline_add_marker, keyframe_set, audio_set, render_frame, render_contact_sheet, media_filmstrip, audio_waveform, export_start, job_status, job_wait, view_get, view_set, edit_undo, edit_redo, edit_checkpoint, edit_restore, clip_set_speed`, plus the 4 generic tools (`timeline_ripple_delete` and `media_proxy_status` stay reachable via `cutweave_execute`). `media_import` returns `media_ids` synchronously; analysis/proxy work is async and agents wait with `job_wait{job_id, timeout_ms}` (decision E).\n- `view_get`/`view_set` (N3 RESOLVED): expose playhead, selection, in/out and zoom through the MCP catalog (not core commands); non-undoable and not journaled; excluded from the parity test's command list but covered by their own schema test. Text/caption/AI tools are added in P3/P5 (placeholders for `text_add`, `caption_generate`, `effect_add`, `transition_add`, `ai_*`, `composition_create` are explicitly listed as \"arrives in P3–P5\").\n- Rich annotations (`readOnlyHint`, `destructiveHint`, `idempotentHint`, `openWorldHint`) and concise descriptions ≤ 300 chars with one example each; error text always includes a recovery hint (e.g., `Locked: track trk_… is locked; call track_set_flags{locked:false}`).\n- Every structured result carries `rev` and small summary (not full dumps).\n- `timeline_get` supports `depth`, `fields`, `range`, `limit`, `cursor` and by default returns a summarized overview (tracks, counts, item ids/names/ranges) under 4k tokens for a 400-item sequence.",
       "interfaces": "`mcp_core.toml`; generated reference doc.",
@@ -6551,7 +6582,7 @@
       "title": "Visual tools: contact sheet, filmstrip, waveform image",
       "source": {
         "file": "docs/wbs/P2-core-editor.md",
-        "line": 1451
+        "line": 1465
       },
       "phase": "P2",
       "epic": "2I",
@@ -6603,7 +6634,7 @@
       "title": "Checkpoints: edit.checkpoint / edit.restore",
       "source": {
         "file": "docs/wbs/P2-core-editor.md",
-        "line": 1472
+        "line": 1486
       },
       "phase": "P2",
       "epic": "2I",
@@ -6648,7 +6679,7 @@
       "title": "Optimistic concurrency: expected_rev everywhere",
       "source": {
         "file": "docs/wbs/P2-core-editor.md",
-        "line": 1491
+        "line": 1505
       },
       "phase": "P2",
       "epic": "2I",
@@ -6701,7 +6732,7 @@
       "title": "Tool profiles, change notifications and tools/list budget",
       "source": {
         "file": "docs/wbs/P2-core-editor.md",
-        "line": 1508
+        "line": 1522
       },
       "phase": "P2",
       "epic": "2I",
@@ -6732,7 +6763,7 @@
       "title": "Scripted-agent e2e: YouTube edit and 9:16 short via MCP only",
       "source": {
         "file": "docs/wbs/P2-core-editor.md",
-        "line": 1526
+        "line": 1540
       },
       "phase": "P2",
       "epic": "2I",
@@ -6740,13 +6771,13 @@
       "size": "M",
       "executor": "sonnet",
       "executor_note": "",
-      "depends_raw": "WP-2I.01, WP-2I.02, WP-2I.03, WP-2I.04, WP-2G.03, WP-2C.03, WP-2E.03",
+      "depends_raw": "WP-2I.01, WP-2I.02, WP-2I.03, WP-2I.04, WP-2G.03a, WP-2C.03, WP-2E.03",
       "depends_wps": [
         "WP-2I.01",
         "WP-2I.02",
         "WP-2I.03",
         "WP-2I.04",
-        "WP-2G.03",
+        "WP-2G.03a",
         "WP-2C.03",
         "WP-2E.03"
       ],
@@ -6754,7 +6785,7 @@
       "depends": [
         "WP-2C.03",
         "WP-2E.03",
-        "WP-2G.03",
+        "WP-2G.03a",
         "WP-2I.01",
         "WP-2I.02",
         "WP-2I.03",
@@ -6775,7 +6806,7 @@
       "title": "Benchmark fixtures and Rust criterion suite",
       "source": {
         "file": "docs/wbs/P2-core-editor.md",
-        "line": 1548
+        "line": 1562
       },
       "phase": "P2",
       "epic": "2J",
@@ -6832,7 +6863,7 @@
       "title": "UI benchmarks: timeline pan/zoom and UI command RTT",
       "source": {
         "file": "docs/wbs/P2-core-editor.md",
-        "line": 1565
+        "line": 1579
       },
       "phase": "P2",
       "epic": "2J",
@@ -6866,7 +6897,7 @@
       "title": "Playback, scrub and A/V sync benchmarks",
       "source": {
         "file": "docs/wbs/P2-core-editor.md",
-        "line": 1580
+        "line": 1594
       },
       "phase": "P2",
       "epic": "2J",
@@ -6908,7 +6939,7 @@
       "title": "CI benchmark gate and trend dashboard",
       "source": {
         "file": "docs/wbs/P2-core-editor.md",
-        "line": 1595
+        "line": 1609
       },
       "phase": "P2",
       "epic": "2J",
@@ -6949,7 +6980,7 @@
       "title": "Crash-injection harness: 20 forced crashes, no data loss",
       "source": {
         "file": "docs/wbs/P2-core-editor.md",
-        "line": 1611
+        "line": 1625
       },
       "phase": "P2",
       "epic": "2J",
@@ -6957,10 +6988,10 @@
       "size": "M",
       "executor": "sonnet",
       "executor_note": "",
-      "depends_raw": "E1C, E1L, WP-2A.10, WP-2G.03, WP-2I.03",
+      "depends_raw": "E1C, E1L, WP-2A.10, WP-2G.03a, WP-2I.03",
       "depends_wps": [
         "WP-2A.10",
-        "WP-2G.03",
+        "WP-2G.03a",
         "WP-2I.03"
       ],
       "depends_epics": [
@@ -6976,7 +7007,7 @@
         "WP-1L.02",
         "WP-1L.03",
         "WP-2A.10",
-        "WP-2G.03",
+        "WP-2G.03a",
         "WP-2I.03"
       ],
       "scope": "- Harness that drives a scripted editing workload (mixed commands incl. trims, ripple, keyframes, audio, speed, sequence ops, export in progress) via RPC and kills the engine at randomized points (SIGKILL / `TerminateProcess`; also GPU-device-lost injection and killing during atomic save, during autosave, during journal fsync boundary, mid-ephemeral-tx, mid-export, mid-proxy job, mid-recording) 20+ times per OS; after each crash the engine restarts through the supervisor, recovery runs, and the harness compares the recovered doc with the *model of acknowledged commands* (every command whose reply was received must be present; an in-flight unacknowledged command may be absent or present but never partial/corrupt).\n- Also the Electron e2e variant: kill the engine process while the UI is open, verify the UI reconnects and resyncs, with no lost acknowledged commands.\n- Corrupt-tail journal injection (truncate last record) test; lock-file stale takeover test.\n- Extra check: proxy/export/recording artifacts left in a consistent state (partial files cleaned or recoverable).\n- Reports a pass/fail matrix; nightly CI runs 20 crashes on each OS; a failing seed is printed for reproduction (`--seed`).",
@@ -6993,7 +7024,7 @@
       "title": "Dogfood edit A: 10-min YouTube video with B-roll (human)",
       "source": {
         "file": "docs/wbs/P2-core-editor.md",
-        "line": 1629
+        "line": 1643
       },
       "phase": "P2",
       "epic": "2J",
@@ -7033,7 +7064,7 @@
       "title": "Dogfood edit B: 9:16 short with manual reframe, music and fades (human)",
       "source": {
         "file": "docs/wbs/P2-core-editor.md",
-        "line": 1644
+        "line": 1658
       },
       "phase": "P2",
       "epic": "2J",
@@ -7071,7 +7102,7 @@
       "title": "M2 exit review (human)",
       "source": {
         "file": "docs/wbs/P2-core-editor.md",
-        "line": 1658
+        "line": 1672
       },
       "phase": "P2",
       "epic": "2J",
@@ -7109,7 +7140,7 @@
       "title": "Background render cache (smart pre-render while idle)",
       "source": {
         "file": "docs/wbs/P2-core-editor.md",
-        "line": 1671
+        "line": 1685
       },
       "phase": "P2",
       "epic": "2J",
@@ -7920,7 +7951,8 @@
         "WP-1I.05",
         "WP-2G.01",
         "WP-2G.02",
-        "WP-2G.03",
+        "WP-2G.03a",
+        "WP-2G.03b",
         "WP-2G.04",
         "WP-2G.05"
       ],
@@ -8527,7 +8559,8 @@
       "depends": [
         "WP-2G.01",
         "WP-2G.02",
-        "WP-2G.03",
+        "WP-2G.03a",
+        "WP-2G.03b",
         "WP-2G.04",
         "WP-2G.05",
         "WP-3E.04",
@@ -10981,7 +11014,8 @@
         "WP-1D.08",
         "WP-2G.01",
         "WP-2G.02",
-        "WP-2G.03",
+        "WP-2G.03a",
+        "WP-2G.03b",
         "WP-2G.04",
         "WP-2G.05"
       ],
@@ -11054,7 +11088,8 @@
         "WP-1D.08",
         "WP-2G.01",
         "WP-2G.02",
-        "WP-2G.03",
+        "WP-2G.03a",
+        "WP-2G.03b",
         "WP-2G.04",
         "WP-2G.05"
       ],
@@ -11489,7 +11524,8 @@
         "WP-1E.03",
         "WP-2G.01",
         "WP-2G.02",
-        "WP-2G.03",
+        "WP-2G.03a",
+        "WP-2G.03b",
         "WP-2G.04",
         "WP-2G.05",
         "WP-5A.06"
@@ -15793,7 +15829,8 @@
         "WP-1B.09",
         "WP-2G.01",
         "WP-2G.02",
-        "WP-2G.03",
+        "WP-2G.03a",
+        "WP-2G.03b",
         "WP-2G.04",
         "WP-2G.05",
         "WP-6A.05",
@@ -16959,7 +16996,8 @@
       "depends": [
         "WP-2G.01",
         "WP-2G.02",
-        "WP-2G.03",
+        "WP-2G.03a",
+        "WP-2G.03b",
         "WP-2G.04",
         "WP-2G.05",
         "WP-6H.03",
