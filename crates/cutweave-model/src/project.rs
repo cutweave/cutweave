@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
-//! The project document root (arch §4.2), restricted to schema v1: meta, settings, media and
-//! sequences, plus plugin data.
+//! The project document root (arch §4.2), schema v2: meta, settings, media, the media folders
+//! (ADR-0020) and sequences, plus plugin data.
 
 use std::collections::BTreeMap;
 
@@ -8,8 +8,8 @@ use imbl::OrdMap;
 use serde::{Deserialize, Serialize};
 
 use crate::{
-    CURRENT_SCHEMA_VERSION, Custom, Extra, Item, ItemId, MediaAsset, MediaId, Sequence,
-    SequenceFormat, SequenceId, Track,
+    CURRENT_SCHEMA_VERSION, Custom, Extra, FolderId, Item, ItemId, MediaAsset, MediaFolder,
+    MediaId, Sequence, SequenceFormat, SequenceId, Track,
 };
 
 /// Document metadata.
@@ -62,6 +62,10 @@ pub struct Project {
     #[schemars(with = "BTreeMap<MediaId, MediaAsset>")]
     #[specta(type = BTreeMap<MediaId, MediaAsset>)]
     pub media: OrdMap<MediaId, MediaAsset>,
+    /// The folder tree of the media bin, keyed by ID (ADR-0020).
+    #[schemars(with = "BTreeMap<FolderId, MediaFolder>")]
+    #[specta(type = BTreeMap<FolderId, MediaFolder>)]
+    pub folders: OrdMap<FolderId, MediaFolder>,
     /// Sequences, keyed by ID.
     #[schemars(with = "BTreeMap<SequenceId, Sequence>")]
     #[specta(type = BTreeMap<SequenceId, Sequence>)]
@@ -99,6 +103,7 @@ impl Project {
             },
             settings: ProjectSettings::default(),
             media: OrdMap::new(),
+            folders: OrdMap::new(),
             sequences: OrdMap::new(),
             custom: Custom::new(),
             extra: Extra::new(),

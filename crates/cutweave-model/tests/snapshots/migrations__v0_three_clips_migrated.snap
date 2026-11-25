@@ -4,12 +4,15 @@ expression: canonical_json_pretty(&migrated)
 ---
 {
   "custom": {},
+  "folders": {},
   "media": {
     "med_0000000000017e999cdbc20a2319b9cb": {
       "content_hash": "xxh3:5f1d7a9c3b2e4d60",
       "custom": {},
+      "folder": null,
       "id": "med_0000000000017e999cdbc20a2319b9cb",
       "kind": "video",
+      "name": null,
       "path_abs": "/media/a.mp4",
       "path_rel": "../media/a.mp4",
       "probe": {
@@ -62,8 +65,10 @@ expression: canonical_json_pretty(&migrated)
     "med_0000000000027f8989dde9c8c6ffc150": {
       "content_hash": null,
       "custom": {},
+      "folder": null,
       "id": "med_0000000000027f8989dde9c8c6ffc150",
       "kind": "video",
+      "name": null,
       "path_abs": "/media/b.mp4",
       "path_rel": null,
       "probe": {
@@ -116,8 +121,10 @@ expression: canonical_json_pretty(&migrated)
     "med_00000000000376d1902a7aa83bfaaa17": {
       "content_hash": null,
       "custom": {},
+      "folder": null,
       "id": "med_00000000000376d1902a7aa83bfaaa17",
       "kind": "audio",
+      "name": null,
       "path_abs": "/media/m.wav",
       "path_rel": null,
       "probe": {
