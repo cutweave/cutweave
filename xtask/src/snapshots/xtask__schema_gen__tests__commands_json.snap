@@ -1457,6 +1457,16 @@ expression: text
               "string",
               "null"
             ]
+          },
+          "steps": {
+            "default": null,
+            "description": "How many changes to redo in one go, newest first, each its own history record (1..=100,\ndefault 1). A refused step stops the run; the output's `done` says how many applied.",
+            "format": "uint32",
+            "minimum": 0,
+            "type": [
+              "integer",
+              "null"
+            ]
           }
         },
         "title": "Redo",
@@ -1481,6 +1491,13 @@ expression: text
             "minimum": 0,
             "type": "integer"
           },
+          "done": {
+            "default": 1,
+            "description": "How many steps were applied (1 without `steps`). The other fields describe the last one.",
+            "format": "uint32",
+            "minimum": 0,
+            "type": "integer"
+          },
           "entry": {
             "description": "The entry undone or redone (its original transaction).",
             "pattern": "^tx_[0-9]+$",
@@ -1496,6 +1513,13 @@ expression: text
             "minimum": 0,
             "type": "integer"
           },
+          "stopped": {
+            "description": "With `steps`: why the run stopped before `steps` (the engine's message, naming the later\nchange and its actor); absent when every step applied.",
+            "type": [
+              "string",
+              "null"
+            ]
+          },
           "tx": {
             "description": "The new transaction that undid or redid it.",
             "pattern": "^tx_[0-9]+$",
@@ -1508,7 +1532,8 @@ expression: text
           "actor",
           "label",
           "rev",
-          "committed_rev"
+          "committed_rev",
+          "done"
         ],
         "title": "HistoryMoved",
         "type": "object"
@@ -1648,6 +1673,16 @@ expression: text
               "string",
               "null"
             ]
+          },
+          "steps": {
+            "default": null,
+            "description": "How many changes to undo in one go, newest first, each its own history record (1..=100,\ndefault 1). A refused step stops the run; the output's `done` says how many applied.",
+            "format": "uint32",
+            "minimum": 0,
+            "type": [
+              "integer",
+              "null"
+            ]
           }
         },
         "title": "Undo",
@@ -1672,6 +1707,13 @@ expression: text
             "minimum": 0,
             "type": "integer"
           },
+          "done": {
+            "default": 1,
+            "description": "How many steps were applied (1 without `steps`). The other fields describe the last one.",
+            "format": "uint32",
+            "minimum": 0,
+            "type": "integer"
+          },
           "entry": {
             "description": "The entry undone or redone (its original transaction).",
             "pattern": "^tx_[0-9]+$",
@@ -1687,6 +1729,13 @@ expression: text
             "minimum": 0,
             "type": "integer"
           },
+          "stopped": {
+            "description": "With `steps`: why the run stopped before `steps` (the engine's message, naming the later\nchange and its actor); absent when every step applied.",
+            "type": [
+              "string",
+              "null"
+            ]
+          },
           "tx": {
             "description": "The new transaction that undid or redid it.",
             "pattern": "^tx_[0-9]+$",
@@ -1699,7 +1748,8 @@ expression: text
           "actor",
           "label",
           "rev",
-          "committed_rev"
+          "committed_rev",
+          "done"
         ],
         "title": "HistoryMoved",
         "type": "object"
