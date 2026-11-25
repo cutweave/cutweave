@@ -72,9 +72,11 @@ export function mediaPath(id: string): string | null {
   return mediaAsset(id)?.path_abs ?? null;
 }
 
-/** The last timeline time the track's clips cover (where "Append" puts the next clip). */
-export function trackEnd(track: Track): number {
+/** The last time any clip of the sequence covers (where "Append to timeline" puts the next clip). */
+export function sequenceEnd(sequence: Sequence): number {
   let end = 0;
-  for (const item of Object.values(track.items)) end = Math.max(end, item.start + item.duration);
+  for (const track of Object.values(sequence.tracks)) {
+    for (const item of Object.values(track.items)) end = Math.max(end, item.start + item.duration);
+  }
   return end;
 }

@@ -136,6 +136,7 @@ export const UI_COMMANDS: readonly UiCommand[] = [
     id: "bin.import",
     label: "contextMenu.item.import",
     icon: "upload",
+    host: true,
     run: () => pickAndImport(),
   },
   {

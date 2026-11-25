@@ -16,7 +16,7 @@ import { viewStore } from "../../state/viewStore.ts";
 import { mediaSelection } from "../adapters.ts";
 import type { LabelSpec, MenuContext, MenuRow, MenuSurfaceDef } from "../types.ts";
 import type { ContextValues } from "../when.ts";
-import { activeSequence, mediaAsset, mediaPath, trackEnd } from "./facts.ts";
+import { activeSequence, mediaAsset, mediaPath, sequenceEnd } from "./facts.ts";
 import { revealLabel } from "./shared.ts";
 
 type Placement = "playhead" | "end";
@@ -37,7 +37,7 @@ function trackFor(kind: string): string | null {
   );
 }
 
-/** `timeline.insert` for the card: at the playhead, or after the last clip of the track. */
+/** `timeline.insert` for the card: at the playhead, or after the last clip of the sequence. */
 function insertArgs(ctx: MenuContext, at: Placement) {
   const found = activeSequence();
   const id = ctx.ids[0];
@@ -51,7 +51,7 @@ function insertArgs(ctx: MenuContext, at: Placement) {
   const when =
     at === "playhead"
       ? snapToFrame(viewStore.getState().playhead, { num: rate.num, den: rate.den })
-      : trackEnd(track);
+      : sequenceEnd(found.sequence);
   return {
     sequence: found.id,
     track: trackId,

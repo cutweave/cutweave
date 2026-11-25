@@ -11,7 +11,7 @@ import {
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 import type { TKey } from "../i18n/index.ts";
-import { ContextSurface, useContextMenu } from "../menus/host.tsx";
+import { ContextSurface, registerContextSurface } from "../menus/host.tsx";
 import { EmptyState } from "../panels/EmptyState.tsx";
 import { useViewStore, viewStore } from "../state/viewStore.ts";
 import "../workspace/builtinPanels.ts";
@@ -28,8 +28,20 @@ export const LAYOUT_SAVE_DELAY_MS = 200;
 function PanelTab({ api, params }: IDockviewPanelHeaderProps<{ titleKey: TKey }>) {
   const { t } = useTranslation();
   const title = t(params.titleKey);
-  // Right-click or the Menu key opens the tab's menu: close, maximize, float, move (WP-2H.13).
-  const ref = useContextMenu<HTMLDivElement>("dock.tab", () => ({ ids: [api.id], name: title }));
+  // Right-click or the Menu key opens the tab's menu: close, maximize, float, move (WP-2H.13). The
+  // whole tab is the surface (dockview's own element around this one), not only the title.
+  const ref = useRef<HTMLDivElement>(null);
+  const panel = api.id;
+  useEffect(() => {
+    const own = ref.current;
+    const tab = own?.closest<HTMLElement>("[role='tab']") ?? own;
+    if (tab === null || tab === undefined) return undefined;
+    return registerContextSurface(
+      tab,
+      () => ({ surface: "dock.tab", target: { ids: [panel], name: title } }),
+      { name: "dock.tab" },
+    );
+  }, [panel, title]);
   return (
     <div ref={ref} className="cw-dock-tab heading">
       {title}
