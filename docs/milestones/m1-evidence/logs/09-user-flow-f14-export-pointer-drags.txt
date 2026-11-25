@@ -1,0 +1,8 @@
+$ C:\Users\Administrator\AppData\Roaming\npm\pnpm.CMD --filter @cutweave/desktop exec playwright test e2e/flows/f14-export.spec.ts
+
+
+Running 1 test using 1 worker
+
+  ok 1 e2e\flows\f14-export.spec.ts:51:3 › F14 export › the export dialog: settings, cancel, a 1080p MP4 that plays, replace prompt (12.7s)
+
+  1 passed (14.1s)

@@ -1,0 +1,9 @@
+$ C:\Users\Administrator\.cargo\bin\cargo.EXE build -p cutweave-cli --bin cutweave --features ffmpeg
+
+   Compiling cutweave-render v0.0.0 (E:\projects\Vidai\.claude\worktrees\agent-a382025a449707578\crates\cutweave-render)
+   Compiling cutweave-audio v0.0.0 (E:\projects\Vidai\.claude\worktrees\agent-a382025a449707578\crates\cutweave-audio)
+   Compiling cutweave-cache v0.0.0 (E:\projects\Vidai\.claude\worktrees\agent-a382025a449707578\crates\cutweave-cache)
+   Compiling cutweave-playback v0.0.0 (E:\projects\Vidai\.claude\worktrees\agent-a382025a449707578\crates\cutweave-playback)
+   Compiling cutweave-engine v0.0.0 (E:\projects\Vidai\.claude\worktrees\agent-a382025a449707578\crates\cutweave-engine)
+   Compiling cutweave-cli v0.0.0 (E:\projects\Vidai\.claude\worktrees\agent-a382025a449707578\crates\cutweave-cli)
+    Finished `dev` profile [unoptimized + debuginfo] target(s) in 30.95s

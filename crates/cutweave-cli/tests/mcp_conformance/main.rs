@@ -37,7 +37,15 @@
 //!
 //! Update the fixture with `CUTWEAVE_UPDATE_FIXTURES=1 cargo test -p cutweave-cli --test
 //! mcp_conformance`. Run the suite with `just mcp-conformance`.
+//!
+//! # M1 exit 2
+//!
+//! [`m1`]: the same scripted agent on the real engine and three corpus clips, ending in an
+//! `export_start` + `job_wait` export (WP-1O.04). It needs `--features ffmpeg` and the corpus;
+//! without them it says why and passes, unless `CUTWEAVE_M1_OUT` is set (`just m1-gate`), which
+//! makes them required and keeps what it made there.
 
+mod m1;
 mod schema;
 
 use std::collections::{BTreeSet, HashMap};
@@ -47,6 +55,7 @@ use std::process::{Command, Stdio};
 use std::sync::{Arc, Mutex};
 use std::time::Duration;
 
+use cutweave_api::mcp::results::UNTRUSTED_FIELDS;
 use cutweave_api::mcp::{ListSize, P1_GATE};
 use rmcp::{
     ClientHandler, ClientLifecycleMode, ClientServiceExt as _, RoleClient, ServiceExt as _,
@@ -222,16 +231,44 @@ fn stub_media(dir: &Path) -> Vec<String> {
         .collect()
 }
 
+/// What media backend the engine runs.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+enum Media {
+    /// `--dev-stub-media`: probing by extension, no decoder, no renderer.
+    Stub,
+    /// The full engine (WP-1I.05): FFmpeg when the binary is built with `--features ffmpeg`, the
+    /// renderer and the exporter. Stdio only.
+    Real,
+}
+
 impl Session {
     /// Starts the server and connects. `extra` are more `cutweave mcp` arguments (stdio only).
     async fn start(transport: Transport, revision: Revision, extra: &[&str]) -> Session {
+        Session::start_with(transport, revision, extra, Media::Stub).await
+    }
+
+    /// [`Session::start`] with a choice of media backend.
+    async fn start_with(
+        transport: Transport,
+        revision: Revision,
+        extra: &[&str],
+        media: Media,
+    ) -> Session {
         let dir = tempfile::tempdir().unwrap();
         let root = dir.path().to_str().unwrap().to_owned();
         let handler = Versioned(revision.version());
+        assert!(
+            media == Media::Stub || transport == Transport::Stdio,
+            "real media runs over stdio only"
+        );
         let (service, child, engine, stray) = match transport {
             Transport::Stdio => {
                 let mut child = tokio::process::Command::new(BIN)
-                    .args(["mcp", "--headless", "--dev-stub-media", "--no-log"])
+                    .args(["mcp", "--headless", "--no-log"])
+                    .args(match media {
+                        Media::Stub => &["--dev-stub-media"][..],
+                        Media::Real => &[][..],
+                    })
                     .args(["--allow-root", &root])
                     .args(extra)
                     .env_remove("CUTWEAVE_DETERMINISTIC_IDS")
@@ -431,6 +468,45 @@ fn command_of(tool: &str) -> String {
     tool.replacen('_', ".", 1)
 }
 
+/// MCP results wrap text that comes from media files (analysis messages, probe errors) as
+/// `{"untrusted": true, "text": "..."}` at the pointers of `results::UNTRUSTED_FIELDS` (arch §14,
+/// §18), while `cutweave_describe_command` serves the registry's output schema, where those
+/// fields are plain strings. This checks each wrapper's shape and puts the plain string back, so
+/// the rest of the result is checked against the served schema. (Seen first with real analysis
+/// jobs, WP-1O.04: `job_wait` on an `index` job.)
+fn unwrap_untrusted(command: &str, output: &Value) -> Value {
+    fn walk(value: &mut Value, tokens: &[&str], at: &str) {
+        let Some((first, rest)) = tokens.split_first() else {
+            if let Value::Object(wrapper) = value {
+                assert!(
+                    wrapper.len() == 2
+                        && wrapper.get("untrusted") == Some(&Value::Bool(true))
+                        && wrapper.get("text").is_some_and(Value::is_string),
+                    "{at}: an untrusted field must be {{\"untrusted\": true, \"text\": \"...\"}}, \
+                     got {value}"
+                );
+                *value = wrapper["text"].clone();
+            }
+            return;
+        };
+        match (value, *first) {
+            (Value::Array(items), "*") => items.iter_mut().for_each(|v| walk(v, rest, at)),
+            (Value::Object(map), key) => {
+                if let Some(v) = map.get_mut(key) {
+                    walk(v, rest, at);
+                }
+            }
+            _ => {}
+        }
+    }
+    let mut out = output.clone();
+    for (_, pointer) in UNTRUSTED_FIELDS.iter().filter(|(c, _)| *c == command) {
+        let tokens: Vec<&str> = pointer.split('/').skip(1).collect();
+        walk(&mut out, &tokens, &format!("{command} {pointer}"));
+    }
+    out
+}
+
 impl<'a> Checker<'a> {
     fn new(session: &'a Session, tamper: Option<Tamper>) -> Self {
         Checker {
@@ -468,6 +544,7 @@ impl<'a> Checker<'a> {
     /// Validates `output` as the result of `tool` (command `command`).
     async fn validate(&self, tool: &str, command: &str, output: &Value) {
         let schema = self.output_schema(command).await;
+        let output = &unwrap_untrusted(command, output);
         if let Err(violations) = schema::check(&schema, output) {
             panic!(
                 "output schema violation in tool `{tool}` (command `{command}`) on {}: \
@@ -815,8 +892,8 @@ async fn exercise(session: &Session, tamper: Option<Tamper>) {
     // `render_frame` needs the full engine (this suite runs the dev-stub engine, which has no
     // renderer): tests/mcp.rs `headless_runs_the_full_engine_and_renders_a_frame` decodes its
     // image block, and cutweave-api's tests/mcp_frames.rs does it on the 3-clip fixture.
-    // TODO(WP-1I.05): `export_start` + `job_wait` on the fixture project once the CLI engine
-    // exports (it answers `unsupported` above until then).
+    // `export_start` + `job_wait` that really export, with both results checked against their
+    // output schemas, run on the full engine with FFmpeg: [`m1`] (WP-1O.04, M1 exit 2).
 }
 
 #[tokio::test]
@@ -1012,8 +1089,8 @@ async fn scripted_agent_edits_over_stdio_with_mcp_tools_only() {
             "{history}"
         );
 
-        // `render_frame` is not part of this stub-media session (see the note in `exercise`).
-        // TODO(WP-1I.05): `export_start` + `job_wait`; check the output file exists.
+        // `render_frame`, `export_start` and `job_wait` on an export are not part of this
+        // stub-media session: the real-media scripted agent ([`m1`]) renders and exports.
 
         // Nothing but protocol frames on stdout: rmcp would have failed on anything else; the
         // child exits 0 with only diagnostics on stderr.

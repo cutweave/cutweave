@@ -1,0 +1,2 @@
+$ C:\nvm4w\nodejs\node.EXE apps/desktop/scripts/ensure-electron.ts
+

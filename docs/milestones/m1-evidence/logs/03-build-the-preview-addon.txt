@@ -1,0 +1,5 @@
+$ C:\Users\Administrator\AppData\Roaming\npm\pnpm.CMD --filter @cutweave/desktop build:bridge
+
+$ node scripts/build-bridge.ts
+    Finished `dev` profile [unoptimized + debuginfo] target(s) in 0.92s
+build-bridge: E:\projects\Vidai\.claude\worktrees\agent-a382025a449707578\apps\desktop\native\cutweave_bridge.node (debug)

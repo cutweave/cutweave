@@ -1,0 +1,47 @@
+$ C:\Users\Administrator\.cargo\bin\cargo.EXE xtask golden
+
+golden: references unchanged since 8d844e8029
+golden: store ok: 54 reference(s), 850 KiB of 10240 KiB, sets: dx12-amd-radeon-tm-graphics, dx12-nvidia-geforce-rtx-3080-laptop-gpu, dx12-warp
++ "C:\\Users\\Administrator\\.rustup\\toolchains\\1.100.0-x86_64-pc-windows-msvc\\bin\\cargo.exe" "build" "--quiet" "-p" "cutweave-cli" "--features" "ffmpeg" "--bin" "cutweave"
+  built    (MCP engine started)   (0.1 s)
+  built    bars_100               (0.3 s)
+  built    scaled_offset          (0.2 s)
+  built    opacity_over_track     (0.1 s)
+  built    rotated_phone          (0.1 s)
+  built    color_tags             (0.2 s)
+  built    cut_at_45              (0.1 s)
+  built    scaled_offset_nudged   (0.1 s)
+  built    (MCP engine stopped)   (0.9 s)
+golden: 5 sources and 7 projects in E:\projects\Vidai\.claude\worktrees\agent-a382025a449707578\target\golden (2.1 s)
+golden: rendering on `software`
+  rendered bars_100               3 frames, each bit-identical twice and through the export readback (4.6 s)
+  rendered scaled_offset          3 frames, each bit-identical twice and through the export readback (4.8 s)
+  rendered opacity_over_track     3 frames, each bit-identical twice and through the export readback (5.4 s)
+  rendered rotated_phone          3 frames, each bit-identical twice and through the export readback (5.9 s)
+  rendered color_tags             3 frames, each bit-identical twice and through the export readback (5.3 s)
+  rendered cut_at_45              3 frames, each bit-identical twice and through the export readback (5.4 s)
+  rendered scaled_offset_nudged   3 frames, each bit-identical twice and through the export readback (4.7 s)
+golden: dx12-warp — Microsoft Basic Render Driver (10.0.26100.9818), compared with testdata/golden/expected/dx12-warp
+  bars_100/f00000.png              bit-identical
+  bars_100/f00060.png              bit-identical
+  bars_100/f00119.png              bit-identical
+  scaled_offset/f00000.png         bit-identical
+  scaled_offset/f00045.png         bit-identical
+  scaled_offset/f00110.png         bit-identical
+  opacity_over_track/f00000.png    bit-identical
+  opacity_over_track/f00045.png    bit-identical
+  opacity_over_track/f00110.png    bit-identical
+  rotated_phone/f00000.png         bit-identical
+  rotated_phone/f00045.png         bit-identical
+  rotated_phone/f00110.png         bit-identical
+  color_tags/f00000.png            bit-identical
+  color_tags/f00045.png            bit-identical
+  color_tags/f00110.png            bit-identical
+  cut_at_45/f00020.png             bit-identical
+  cut_at_45/f00044.png             bit-identical
+  cut_at_45/f00045.png             bit-identical
+  scaled_offset_nudged vs scaled_offset/f00000.png fails as it must: FAILED: PSNR 26.25 dB (min 40), SSIM 0.96521 (min 0.995), max |Δ| 255
+  scaled_offset_nudged vs scaled_offset/f00045.png fails as it must: FAILED: PSNR 25.96 dB (min 40), SSIM 0.96288 (min 0.995), max |Δ| 255
+  scaled_offset_nudged vs scaled_offset/f00110.png fails as it must: FAILED: PSNR 26.17 dB (min 40), SSIM 0.96404 (min 0.995), max |Δ| 255
+golden: dx12-warp: 18 frames: 18 bit-identical, 0 within tolerance, 0 failed, 0 missing; pass
+golden: ok in 21.3 s (report: E:\projects\Vidai\.claude\worktrees\agent-a382025a449707578\target\golden\report.json)

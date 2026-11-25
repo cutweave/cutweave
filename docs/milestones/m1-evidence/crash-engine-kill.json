@@ -1,0 +1,229 @@
+{
+  "trials": 20,
+  "rows": [
+    {
+      "trial": 1,
+      "kind": "script",
+      "killedAfter": 1,
+      "command": "insert clip 0 at 0 s",
+      "inFlight": true,
+      "sentDuringOutage": 2,
+      "recoveredMs": 1926,
+      "generation": 2,
+      "equal": true
+    },
+    {
+      "trial": 2,
+      "kind": "script",
+      "killedAfter": 3,
+      "command": "insert clip 2 at 40 s",
+      "inFlight": false,
+      "sentDuringOutage": 2,
+      "recoveredMs": 891,
+      "generation": 3,
+      "equal": true
+    },
+    {
+      "trial": 3,
+      "kind": "script",
+      "killedAfter": 5,
+      "command": "add a video track",
+      "inFlight": true,
+      "sentDuringOutage": 2,
+      "recoveredMs": 917,
+      "generation": 4,
+      "equal": true
+    },
+    {
+      "trial": 4,
+      "kind": "script",
+      "killedAfter": 7,
+      "command": "move clip 2 to 42 s",
+      "inFlight": false,
+      "sentDuringOutage": 2,
+      "recoveredMs": 907,
+      "generation": 5,
+      "equal": true
+    },
+    {
+      "trial": 5,
+      "kind": "script",
+      "killedAfter": 9,
+      "command": "add a video track",
+      "inFlight": true,
+      "sentDuringOutage": 2,
+      "recoveredMs": 896,
+      "generation": 6,
+      "equal": true
+    },
+    {
+      "trial": 6,
+      "kind": "script",
+      "killedAfter": 11,
+      "command": "move clip 0 to 1 s",
+      "inFlight": false,
+      "sentDuringOutage": 2,
+      "recoveredMs": 906,
+      "generation": 7,
+      "equal": true
+    },
+    {
+      "trial": 7,
+      "kind": "script",
+      "killedAfter": 13,
+      "command": "add a video track",
+      "inFlight": true,
+      "sentDuringOutage": 2,
+      "recoveredMs": 909,
+      "generation": 8,
+      "equal": true
+    },
+    {
+      "trial": 8,
+      "kind": "script",
+      "killedAfter": 15,
+      "command": "move clip 1 to 23 s",
+      "inFlight": false,
+      "sentDuringOutage": 2,
+      "recoveredMs": 902,
+      "generation": 9,
+      "equal": true
+    },
+    {
+      "trial": 9,
+      "kind": "script",
+      "killedAfter": 16,
+      "command": "split clip 0 at 4 s",
+      "inFlight": true,
+      "sentDuringOutage": 2,
+      "recoveredMs": 886,
+      "generation": 10,
+      "equal": true
+    },
+    {
+      "trial": 10,
+      "kind": "script",
+      "killedAfter": 18,
+      "command": "add a audio track",
+      "inFlight": false,
+      "sentDuringOutage": 2,
+      "recoveredMs": 882,
+      "generation": 11,
+      "equal": true
+    },
+    {
+      "trial": 11,
+      "kind": "script",
+      "killedAfter": 20,
+      "command": "split clip 1 at 26 s",
+      "inFlight": true,
+      "sentDuringOutage": 2,
+      "recoveredMs": 905,
+      "generation": 12,
+      "equal": true
+    },
+    {
+      "trial": 12,
+      "kind": "script",
+      "killedAfter": 22,
+      "command": "move clip 2 to 44 s",
+      "inFlight": false,
+      "sentDuringOutage": 2,
+      "recoveredMs": 907,
+      "generation": 13,
+      "equal": true
+    },
+    {
+      "trial": 13,
+      "kind": "script",
+      "killedAfter": 24,
+      "command": "split clip 2 at 47 s",
+      "inFlight": true,
+      "sentDuringOutage": 2,
+      "recoveredMs": 901,
+      "generation": 14,
+      "equal": true
+    },
+    {
+      "trial": 14,
+      "kind": "script",
+      "killedAfter": 26,
+      "command": "add a video track",
+      "inFlight": false,
+      "sentDuringOutage": 2,
+      "recoveredMs": 909,
+      "generation": 15,
+      "equal": true
+    },
+    {
+      "trial": 15,
+      "kind": "script",
+      "killedAfter": 28,
+      "command": "trim clip 1 by -0.25 s",
+      "inFlight": true,
+      "sentDuringOutage": 2,
+      "recoveredMs": 893,
+      "generation": 16,
+      "equal": true
+    },
+    {
+      "trial": 16,
+      "kind": "script",
+      "killedAfter": 30,
+      "command": "trim clip 2 by -0.25 s",
+      "inFlight": false,
+      "sentDuringOutage": 0,
+      "recoveredMs": 896,
+      "generation": 17,
+      "equal": true
+    },
+    {
+      "trial": 17,
+      "kind": "drag",
+      "rolledBack": true,
+      "recoveredMs": 961,
+      "generation": 18,
+      "notices": [
+        "Clip not moved\nThe project changed while you were editing. Try again.",
+        "Engine restarted — recovered\n2 unsaved changes restored from Drag kill 1.cutweave."
+      ],
+      "redoneOnce": true
+    },
+    {
+      "trial": 18,
+      "kind": "drag",
+      "rolledBack": true,
+      "recoveredMs": 964,
+      "generation": 19,
+      "notices": [
+        "Clip not moved\nThe project changed while you were editing. Try again.",
+        "Engine restarted — recovered\n2 unsaved changes restored from Drag kill 2.cutweave."
+      ],
+      "redoneOnce": true
+    },
+    {
+      "trial": 19,
+      "kind": "drag",
+      "rolledBack": true,
+      "recoveredMs": 953,
+      "generation": 20,
+      "notices": [
+        "Clip not moved\nThe project changed while you were editing. Try again.",
+        "Engine restarted — recovered\n2 unsaved changes restored from Drag kill 3.cutweave."
+      ],
+      "redoneOnce": true
+    },
+    {
+      "trial": 20,
+      "kind": "drag",
+      "rolledBack": true,
+      "recoveredMs": 963,
+      "generation": 21,
+      "notices": [
+        "Clip not moved\nThe project changed while you were editing. Try again.",
+        "Engine restarted — recovered\n2 unsaved changes restored from Drag kill 4.cutweave."
+      ],
+      "redoneOnce": true
+    }
+  ]
+}
