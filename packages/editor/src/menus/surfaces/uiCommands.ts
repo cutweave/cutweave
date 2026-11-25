@@ -20,7 +20,7 @@ import { projectController } from "../../session/useProject.ts";
 import { openSettings } from "../../settings/settingsStore.ts";
 import { toastStore } from "../../state/toastStore.ts";
 import { viewStore } from "../../state/viewStore.ts";
-import { activeTimelineController } from "../../timeline/controllerRegistry.ts";
+import { activeTimelineController } from "../../timeline/activeController.ts";
 import { translator } from "../../timeline/errors.ts";
 import { transportController } from "../../transport/useTransport.ts";
 import { runWorkspaceCommand } from "../../workspace/commands.ts";

@@ -9,6 +9,7 @@ import type { MenuEntry, MenuItem, MenuSubmenu } from "@cutweave/ui";
 import { describe, expect, it, vi } from "vitest";
 import { i18n, type TKey } from "../i18n/index.ts";
 import en from "../i18n/locales/en.json";
+import { registerPaletteCommands } from "../palette/commands.ts";
 import { listBindings } from "../shortcuts/bindings.ts";
 import { buildMenu } from "./build.ts";
 import { registerBuiltinMenus } from "./builtins.ts";
@@ -58,6 +59,7 @@ function fixtureServices(overrides: Partial<MenuServices> = {}): MenuServices {
   });
   registerBuiltinMenus(services);
   registerSurfaceMenus(services); // WP-2H.13: the walk below covers today's surfaces too
+  registerPaletteCommands(services);
   return services;
 }
 
