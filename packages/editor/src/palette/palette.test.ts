@@ -70,7 +70,7 @@ const PANELS: PanelDef[] = [
 ];
 
 let call: ReturnType<typeof vi.fn<(name: string, args?: unknown) => Promise<unknown>>>;
-let report: ReturnType<typeof vi.fn>;
+let report: ReturnType<typeof vi.fn<(error: unknown) => void>>;
 let keys: PaletteEnv["keys"];
 let selection: string[];
 
