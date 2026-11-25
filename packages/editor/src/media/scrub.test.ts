@@ -3,6 +3,7 @@
 import { FLICKS_PER_SECOND, frameDurationFlicks } from "@cutweave/timeline";
 import { describe, expect, it } from "vitest";
 import {
+  containRect,
   fractionOfFrame,
   frameAtFraction,
   frameGrid,
@@ -10,6 +11,24 @@ import {
   pointerFraction,
   timeOfFrame,
 } from "./scrub.ts";
+
+describe("containRect (the Inspector picture fits its box)", () => {
+  it("pillarboxes a vertical clip in a 16:9 box: full height, centred", () => {
+    // A 1080x1920 phone clip in a 320x180 box: 180 high, 101.25 wide, centred.
+    expect(containRect(320, 180, 1080, 1920)).toEqual({ x: 109.375, y: 0, w: 101.25, h: 180 });
+  });
+  it("letterboxes a wide clip: full width, centred", () => {
+    // 2400x1000 in 320x180: 320 wide, 133.33 high, 23.33 from the top.
+    const r = containRect(320, 180, 2400, 1000);
+    expect(r.x).toBe(0);
+    expect(r.w).toBe(320);
+    expect(r.h).toBeCloseTo(133.333, 3);
+    expect(r.y).toBeCloseTo(23.333, 3);
+  });
+  it("fills the box when the shapes match", () => {
+    expect(containRect(320, 180, 1920, 1080)).toEqual({ x: 0, y: 0, w: 320, h: 180 });
+  });
+});
 
 const FPS30 = { num: 30, den: 1 };
 const NTSC = { num: 30000, den: 1001 };

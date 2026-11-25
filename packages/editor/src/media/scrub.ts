@@ -115,6 +115,44 @@ export class LatestFrames<T> {
 }
 
 /**
+ * Where a `sw`×`sh` picture goes inside a `width`×`height` box so all of it shows, centred, like
+ * `object-fit: contain`: a vertical clip in a wide box is pillarboxed, a wide one letterboxed.
+ */
+export function containRect(
+  width: number,
+  height: number,
+  sw: number,
+  sh: number,
+): { x: number; y: number; w: number; h: number } {
+  const scale = Math.min(width / sw, height / sh);
+  const w = sw * scale;
+  const h = sh * scale;
+  return { x: (width - w) / 2, y: (height - h) / 2, w, h };
+}
+
+/**
+ * Draws all of `source` into `canvas`, fitted and centred like `object-fit: contain`; the rest of
+ * the canvas is left clear so the box's background shows as the bars. The canvas's bitmap is sized
+ * to its box at the device's pixel ratio.
+ */
+export function paintContain(
+  canvas: HTMLCanvasElement,
+  source: CanvasImageSource,
+  size: { readonly width: number; readonly height: number },
+): void {
+  const ratio = globalThis.devicePixelRatio || 1;
+  const width = Math.max(1, Math.round(canvas.clientWidth * ratio));
+  const height = Math.max(1, Math.round(canvas.clientHeight * ratio));
+  if (canvas.width !== width) canvas.width = width;
+  if (canvas.height !== height) canvas.height = height;
+  const ctx = canvas.getContext("2d");
+  if (ctx === null) return;
+  const { x, y, w, h } = containRect(width, height, size.width, size.height);
+  ctx.clearRect(0, 0, width, height);
+  ctx.drawImage(source, 0, 0, size.width, size.height, x, y, w, h);
+}
+
+/**
  * Draws `source` (or the `sw`×`sh` part of it at `sx`,`sy`) into `canvas`, covering it like
  * `object-fit: cover`. The canvas's bitmap is sized to its box at the device's pixel ratio.
  */

@@ -21,6 +21,7 @@ import {
   frameAtFraction,
   frameGrid,
   LatestFrames,
+  paintContain,
   paintCover,
   pointerFraction,
   timeOfFrame,
@@ -92,9 +93,10 @@ export function MediaPreview({ media }: { readonly media: MediaAsset }) {
           const canvas = canvasRef.current;
           const box = pictureRef.current;
           if (canvas !== null && box !== null) {
-            box.style.aspectRatio = `${bitmap.width} / ${bitmap.height}`;
+            // The box stays 16:9 whatever the clip's shape (a phone clip would otherwise grow
+            // taller than the panel); the whole frame is fitted inside it.
             try {
-              paintCover(canvas, bitmap, bitmap);
+              paintContain(canvas, bitmap, bitmap);
               canvas.dataset.frame = "ready";
             } catch {
               // Not drawable: the last picture stays.
