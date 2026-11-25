@@ -3,7 +3,12 @@
 //! `audio.set_gain`: fades and their clamping, volume and pan as thin wrappers over
 //! `item.set_props` (same data), undo identity (asserted by `H::run`), locks and trims.
 
-#![allow(clippy::unwrap_used, clippy::expect_used, clippy::float_cmp)]
+#![allow(
+    clippy::unwrap_used,
+    clippy::expect_used,
+    clippy::float_cmp,
+    clippy::many_single_char_names
+)]
 
 mod common;
 

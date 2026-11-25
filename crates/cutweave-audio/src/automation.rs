@@ -17,6 +17,8 @@
 //! Nothing here blocks or locks. [`Automation::new`] allocates nothing either (cloning the
 //! shared key list is O(1)), and [`Automation::mix`] only reads the evaluators' cursors.
 
+#![allow(clippy::many_single_char_names)]
+
 use cutweave_model::{Animatable, Evaluator, Fade, FadeCurve, PropId, Rounding, SampleRate, Time};
 use cutweave_render::AudioSegment;
 
@@ -257,7 +259,12 @@ pub(crate) fn pan_gains(pan: f64, mono: bool) -> [f64; 2] {
 
 #[cfg(test)]
 mod tests {
-    #![allow(clippy::float_cmp, clippy::unwrap_used, clippy::cast_precision_loss)]
+    #![allow(
+        clippy::float_cmp,
+        clippy::unwrap_used,
+        clippy::cast_precision_loss,
+        clippy::cast_possible_wrap
+    )]
 
     use cutweave_model::{Interp, Keyframe, Keyframes};
 

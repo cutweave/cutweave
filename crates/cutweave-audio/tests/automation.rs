@@ -84,7 +84,7 @@ fn fades_in_and_out_reach_silence_at_the_clip_edges() {
         assert!(left[b - 1].abs() < 0.001, "{curve:?}: ends in silence");
         assert_eq!(left[b], 0.0);
         assert!(
-            (left[(a + b) / 2] - 0.5).abs() < 1e-6,
+            (left[usize::midpoint(a, b)] - 0.5).abs() < 1e-6,
             "{curve:?}: full level between"
         );
         // No step anywhere above the ramp limit.
