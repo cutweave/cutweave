@@ -1,0 +1,19 @@
+{
+  "id": "cutweave.presets-core",
+  "name": "Core export presets",
+  "kind": "l0-data",
+  "version": "1.0.0",
+  "license": "GPL-3.0-or-later",
+  "description": "The built-in export presets (WP-2G.01): platform presets and general-purpose formats. Data only; loaded by cutweave-ops (crates/cutweave-ops/src/export/presets.rs).",
+  "provides": {
+    "export_presets": "presets.json"
+  },
+  "safe_area_ids": [
+    "youtube-shorts",
+    "instagram-reels",
+    "instagram-stories",
+    "tiktok",
+    "x-portrait"
+  ],
+  "safe_area_note": "These ids are shared with WP-2H.06's overlays/safe-areas.json (one id per platform surface). Until that pack exists, this list is the authority; a test checks the pack as well once it lands."
+}

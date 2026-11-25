@@ -60,7 +60,10 @@ use cutweave_commands::{
 use cutweave_jobs::JobManager;
 use cutweave_model::{ItemId, OpenOutcome, Project, open_str, to_document_string};
 use cutweave_ops::{
-    export::ExportCtx,
+    export::{
+        ExportCtx,
+        presets::{PresetCtx, PresetStore},
+    },
     media::{FakeProbe, ImportCtx, MediaRegister, MediaRegistered, MediaSink, proxy::ProxyCall},
     testing::{
         self, AGENT_LABEL, JsonMirror, analyzer, arb_command_from, check_invariants,
@@ -313,6 +316,7 @@ struct Harness<'s> {
     state: Arc<Mutex<DocState>>,
     /// The `job.*` context, also running the analysis jobs of imports (never the document).
     jobs: JobManager,
+    presets: Arc<PresetStore>,
     clock: Arc<ManualClock>,
     initial: Project,
     mirror: JsonMirror,
@@ -359,6 +363,7 @@ impl<'s> Harness<'s> {
             registry: Arc::clone(&REGISTRY),
             state: Arc::new(Mutex::new(DocState::new(config))),
             jobs: job_manager(),
+            presets: Arc::default(),
             clock,
             mirror: JsonMirror::new(&initial, Rev::ZERO),
             initial,
@@ -590,6 +595,16 @@ impl<'s> Harness<'s> {
                     output,
                     applied: None,
                 })
+            }
+            Some(c) if c == TypeId::of::<PresetCtx>() => {
+                let snapshot = Arc::new(self.lock().committed_snapshot());
+                let mut call = testing::preset_ctx(Arc::clone(&self.presets), snapshot);
+                self.registry
+                    .invoke_engine_json(name, params.clone(), &mut call, ctx.access())
+                    .map(|output| Done {
+                        output,
+                        applied: None,
+                    })
             }
             Some(c) if c == TypeId::of::<ProxyCall>() => {
                 self.proxy(ctx, name, params).map(|output| Done {

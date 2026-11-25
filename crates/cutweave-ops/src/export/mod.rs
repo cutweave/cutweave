@@ -27,8 +27,11 @@ use cutweave_model::{
     Duration, EntityKind, FrameRate, Project, Rounding, Sequence, SequenceId, Time, TimeInput,
 };
 
+pub mod presets;
+
 use crate::media::{AllowedRoots, OUTSIDE_ROOTS_HINT};
 use crate::util::{check_abs_path, resolve_frame_time};
+use presets::{PlanRate, PresetStore, PresetWarning};
 
 /// The preset's bounding box: 1920×1080 for landscape sequences (1080×1920 for portrait).
 pub const PRESET_LONG_SIDE: u32 = 1920;
@@ -44,6 +47,7 @@ pub const MAX_EXPORT_FPS: u32 = 240;
 /// Registers `export.start`.
 pub fn register(registry: &mut Registry) -> Result<(), RegistryError> {
     registry.register::<ExportStart>()?;
+    presets::register(registry)?;
     Ok(())
 }
 
@@ -105,6 +109,9 @@ pub enum ExportPreset {
     /// MP4, H.264 + AAC at a custom size, frame rate and quality.
     #[serde(rename = "custom")]
     Custom(CustomExport),
+    /// A preset by id (`export.list_presets`): "youtube-1080p", "tiktok", a preset of your own.
+    #[serde(untagged)]
+    Id(String),
 }
 
 /// Whether to use a hardware video encoder.
@@ -175,6 +182,8 @@ pub struct ExportStartOutput {
     pub duration: Duration,
     /// The document revision exported (edits made later are not in the file).
     pub rev: Rev,
+    /// Platform-limit and fit warnings of a preset (never errors; the export runs).
+    pub warnings: Vec<PresetWarning>,
 }
 
 /// Exports a sequence (or a range of it) to an MP4 file (H.264 video, AAC audio) as a
@@ -199,8 +208,11 @@ pub struct ExportStart {
     pub path: String,
     /// Part of the sequence to export (default: all of it).
     pub range: Option<ExportRange>,
-    /// "h264-mp4-1080p" (default) or {"custom": {width, height, fps, quality}}.
+    /// "h264-mp4-1080p" (default), a preset id from export.list_presets ("youtube-1080p",
+    /// "tiktok", ...) or {"custom": {width, height, fps, quality}}.
     pub preset: Option<ExportPreset>,
+    /// With a preset id: size, frame rate or quality to use instead of the preset's.
+    pub overrides: Option<CustomExport>,
     /// Hardware encoder: "auto" (default), "off", or {"force": "h264_nvenc"}.
     pub hw: Option<ExportHw>,
     /// Replace an existing file at `path` (default false).
@@ -238,6 +250,10 @@ pub struct ExportPlan {
     pub quality: ExportQuality,
     /// Hardware encoder policy.
     pub hw: ExportHw,
+    /// The preset's rate control, which takes the place of `quality` when present.
+    pub rate: Option<PlanRate>,
+    /// Platform-limit and fit warnings of the preset.
+    pub warnings: Vec<PresetWarning>,
 }
 
 impl ExportPlan {
@@ -272,6 +288,8 @@ pub struct ExportCtx {
     pub allowed_roots: Option<AllowedRoots>,
     /// Queues the job.
     pub starter: Box<dyn ExportStarter>,
+    /// The export presets (built-in and the user's).
+    pub presets: Arc<PresetStore>,
 }
 
 // ----- validation ------------------------------------------------------------------------------
@@ -364,6 +382,7 @@ fn resolve_preset(
             let (w, h) = preset_size(format.width, format.height);
             Ok((w, h, format.frame_rate, ExportQuality::High))
         }
+        Some(ExportPreset::Id(_)) => Err(CmdError::internal("preset ids are resolved by plan()")),
         Some(ExportPreset::Custom(c)) => {
             let width = match c.width {
                 Some(w) => check_side("/preset/custom/width", w)?,
@@ -564,16 +583,42 @@ impl ExportStart {
         &self,
         snapshot: &Arc<DocSnapshot>,
         roots: Option<&AllowedRoots>,
+        presets: &PresetStore,
     ) -> Result<ExportPlan, CmdError> {
         let doc = &snapshot.doc;
         let seq = resolve_sequence(doc, self.sequence)?;
         let (start, end) = resolve_range(self.range.as_ref(), seq)?;
-        let (width, height, frame_rate, quality) = resolve_preset(self.preset.as_ref(), seq)?;
         let length = end
             .duration_since(start)
             .map_err(|e| CmdError::invalid("/range", e.to_string()))?;
+        let mut rate = None;
+        let mut warnings = Vec::new();
+        let mut preset_hw = None;
+        let (width, height, frame_rate, quality) = if let Some(ExportPreset::Id(id)) = &self.preset
+        {
+            let spec = presets.get(id).ok_or_else(|| {
+                CmdError::invalid(
+                    "/preset",
+                    format!("there is no export preset `{id}`; list them with export.list_presets"),
+                )
+            })?;
+            spec.engine_support().map_err(CmdError::unsupported)?;
+            let p = presets::plan_preset(&spec, seq, length, self.overrides.as_ref())?;
+            rate = p.rate;
+            warnings = p.warnings;
+            preset_hw = Some(p.hw);
+            (p.width, p.height, p.frame_rate, p.quality)
+        } else {
+            if self.overrides.is_some() {
+                return Err(CmdError::invalid(
+                    "/overrides",
+                    "overrides go with a preset id; the custom preset has its own fields",
+                ));
+            }
+            resolve_preset(self.preset.as_ref(), seq)?
+        };
         let (frames, duration) = frame_count(length, frame_rate)?;
-        let hw = self.hw.clone().unwrap_or_default();
+        let hw = self.hw.clone().or(preset_hw).unwrap_or_default();
         hw.check()?;
         let overwrite = self.overwrite.unwrap_or(false);
         let path = check_output(doc, &self.path, overwrite, roots)?;
@@ -591,6 +636,8 @@ impl ExportStart {
             duration,
             quality,
             hw,
+            rate,
+            warnings,
         })
     }
 }
@@ -600,11 +647,12 @@ impl EngineCommand for ExportStart {
     type Output = ExportStartOutput;
 
     fn run(&self, ctx: &mut ExportCtx) -> Result<ExportStartOutput, CmdError> {
-        let plan = self.plan(&ctx.snapshot, ctx.allowed_roots.as_ref())?;
+        let plan = self.plan(&ctx.snapshot, ctx.allowed_roots.as_ref(), &ctx.presets)?;
         let path = plan.path.to_string_lossy().into_owned();
         let (sequence, start, end) = (plan.sequence, plan.start, plan.end);
         let (width, height, frame_rate) = (plan.width, plan.height, plan.frame_rate);
         let (frames, duration, rev) = (plan.frames, plan.duration, plan.snapshot.rev);
+        let warnings = plan.warnings.clone();
         let job_id = ctx.starter.start(plan)?;
         Ok(ExportStartOutput {
             job_id,
@@ -618,6 +666,7 @@ impl EngineCommand for ExportStart {
             frames,
             duration,
             rev,
+            warnings,
         })
     }
 }
