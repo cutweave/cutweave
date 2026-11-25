@@ -5983,7 +5983,7 @@
       "title": "Schema-driven inspector renderer",
       "source": {
         "file": "docs/wbs/P2-core-editor.md",
-        "line": 1137
+        "line": 1138
       },
       "phase": "P2",
       "epic": "2H",
@@ -6033,7 +6033,7 @@
       "title": "Inspector wiring: clip, track, sequence, audio, export panels",
       "source": {
         "file": "docs/wbs/P2-core-editor.md",
-        "line": 1157
+        "line": 1158
       },
       "phase": "P2",
       "epic": "2H",
@@ -6072,7 +6072,7 @@
       "title": "Command palette and registry-driven menus",
       "source": {
         "file": "docs/wbs/P2-core-editor.md",
-        "line": 1175
+        "line": 1176
       },
       "phase": "P2",
       "epic": "2H",
@@ -6107,7 +6107,7 @@
       "title": "Keymap engine, shortcut editor, NLE and CapCut presets",
       "source": {
         "file": "docs/wbs/P2-core-editor.md",
-        "line": 1191
+        "line": 1192
       },
       "phase": "P2",
       "epic": "2H",
@@ -6158,7 +6158,7 @@
       "title": "Preview overlays: transform handles, crop, safe areas, grid",
       "source": {
         "file": "docs/wbs/P2-core-editor.md",
-        "line": 1217
+        "line": 1218
       },
       "phase": "P2",
       "epic": "2H",
@@ -6201,7 +6201,7 @@
       "title": "UX design review gate (human)",
       "source": {
         "file": "docs/wbs/P2-core-editor.md",
-        "line": 1239
+        "line": 1240
       },
       "phase": "P2",
       "epic": "2H",
@@ -6239,7 +6239,7 @@
       "title": "Project settings: `project.set_settings` and File > Project settings…",
       "source": {
         "file": "docs/wbs/P2-core-editor.md",
-        "line": 1252
+        "line": 1253
       },
       "phase": "P2",
       "epic": "2H",
@@ -6276,7 +6276,7 @@
       "title": "Settings: Appearance page (interface scale, density, reduce motion)",
       "source": {
         "file": "docs/wbs/P2-core-editor.md",
-        "line": 1270
+        "line": 1271
       },
       "phase": "P2",
       "epic": "2H",
@@ -6312,7 +6312,7 @@
       "title": "Settings: Playback page (preview quality, proxies, scrub audio, loop)",
       "source": {
         "file": "docs/wbs/P2-core-editor.md",
-        "line": 1289
+        "line": 1290
       },
       "phase": "P2",
       "epic": "2H",
@@ -6350,7 +6350,7 @@
       "title": "History panel: every undo step, who made it, go back to any step",
       "source": {
         "file": "docs/wbs/P2-core-editor.md",
-        "line": 1305
+        "line": 1306
       },
       "phase": "P2",
       "epic": "2H",
@@ -6387,7 +6387,7 @@
       "title": "Core tool set: mapping, annotations and completion (~30 tools)",
       "source": {
         "file": "docs/wbs/P2-core-editor.md",
-        "line": 1336
+        "line": 1337
       },
       "phase": "P2",
       "epic": "2I",
@@ -6438,7 +6438,7 @@
       "title": "Visual tools: contact sheet, filmstrip, waveform image",
       "source": {
         "file": "docs/wbs/P2-core-editor.md",
-        "line": 1356
+        "line": 1357
       },
       "phase": "P2",
       "epic": "2I",
@@ -6490,7 +6490,7 @@
       "title": "Checkpoints: edit.checkpoint / edit.restore",
       "source": {
         "file": "docs/wbs/P2-core-editor.md",
-        "line": 1377
+        "line": 1378
       },
       "phase": "P2",
       "epic": "2I",
@@ -6535,7 +6535,7 @@
       "title": "Optimistic concurrency: expected_rev everywhere",
       "source": {
         "file": "docs/wbs/P2-core-editor.md",
-        "line": 1396
+        "line": 1397
       },
       "phase": "P2",
       "epic": "2I",
@@ -6588,7 +6588,7 @@
       "title": "Tool profiles, change notifications and tools/list budget",
       "source": {
         "file": "docs/wbs/P2-core-editor.md",
-        "line": 1413
+        "line": 1414
       },
       "phase": "P2",
       "epic": "2I",
@@ -6619,7 +6619,7 @@
       "title": "Scripted-agent e2e: YouTube edit and 9:16 short via MCP only",
       "source": {
         "file": "docs/wbs/P2-core-editor.md",
-        "line": 1431
+        "line": 1432
       },
       "phase": "P2",
       "epic": "2I",
@@ -6662,7 +6662,7 @@
       "title": "Benchmark fixtures and Rust criterion suite",
       "source": {
         "file": "docs/wbs/P2-core-editor.md",
-        "line": 1453
+        "line": 1454
       },
       "phase": "P2",
       "epic": "2J",
@@ -6719,7 +6719,7 @@
       "title": "UI benchmarks: timeline pan/zoom and UI command RTT",
       "source": {
         "file": "docs/wbs/P2-core-editor.md",
-        "line": 1470
+        "line": 1471
       },
       "phase": "P2",
       "epic": "2J",
@@ -6753,7 +6753,7 @@
       "title": "Playback, scrub and A/V sync benchmarks",
       "source": {
         "file": "docs/wbs/P2-core-editor.md",
-        "line": 1485
+        "line": 1486
       },
       "phase": "P2",
       "epic": "2J",
@@ -6795,7 +6795,7 @@
       "title": "CI benchmark gate and trend dashboard",
       "source": {
         "file": "docs/wbs/P2-core-editor.md",
-        "line": 1500
+        "line": 1501
       },
       "phase": "P2",
       "epic": "2J",
@@ -6836,7 +6836,7 @@
       "title": "Crash-injection harness: 20 forced crashes, no data loss",
       "source": {
         "file": "docs/wbs/P2-core-editor.md",
-        "line": 1516
+        "line": 1517
       },
       "phase": "P2",
       "epic": "2J",
@@ -6880,7 +6880,7 @@
       "title": "Dogfood edit A: 10-min YouTube video with B-roll (human)",
       "source": {
         "file": "docs/wbs/P2-core-editor.md",
-        "line": 1534
+        "line": 1535
       },
       "phase": "P2",
       "epic": "2J",
@@ -6920,7 +6920,7 @@
       "title": "Dogfood edit B: 9:16 short with manual reframe, music and fades (human)",
       "source": {
         "file": "docs/wbs/P2-core-editor.md",
-        "line": 1549
+        "line": 1550
       },
       "phase": "P2",
       "epic": "2J",
@@ -6958,7 +6958,7 @@
       "title": "M2 exit review (human)",
       "source": {
         "file": "docs/wbs/P2-core-editor.md",
-        "line": 1563
+        "line": 1564
       },
       "phase": "P2",
       "epic": "2J",
@@ -6996,7 +6996,7 @@
       "title": "Background render cache (smart pre-render while idle)",
       "source": {
         "file": "docs/wbs/P2-core-editor.md",
-        "line": 1576
+        "line": 1577
       },
       "phase": "P2",
       "epic": "2J",
