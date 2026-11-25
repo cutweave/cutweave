@@ -16,7 +16,7 @@ import { docStore } from "../state/docStore.ts";
 import { toastStore } from "../state/toastStore.ts";
 import { initialViewState, viewStore } from "../state/viewStore.ts";
 import { listWorkspaceCommands, runWorkspaceCommand } from "./commands.ts";
-import { openPanelsStore, resetDockHost } from "./dockHost.ts";
+import { currentDock, openPanelsStore, resetDockHost } from "./dockHost.ts";
 import { readLayoutMeta } from "./layoutMeta.ts";
 import { applyNewProjectWorkspace, workspaceForNewProject } from "./newProject.ts";
 import { registeredPanels } from "./panelRegistry.ts";
@@ -131,7 +131,13 @@ describe("suggesting Short-form for a vertical sequence", () => {
       meta: { name: "P" },
       media: {},
       sequences: {
-        seq: { id: "seq", name: "S", tracks: {}, track_order: [], format: { width, height, frame_rate: { num: 30, den: 1 } } },
+        seq: {
+          id: "seq",
+          name: "S",
+          tracks: {},
+          track_order: [],
+          format: { width, height, frame_rate: { num: 30, den: 1 } },
+        },
       },
     }) as never;
 
@@ -206,6 +212,34 @@ describe("closing and reopening panels (WP-2H.01)", () => {
     // Assets is left of the Preview again: it comes first in the DOM order of the groups.
     const order = screen.getAllByRole("region").map((r) => r.getAttribute("aria-label"));
     expect(order.indexOf("Assets")).toBeLessThan(order.indexOf("Preview"));
+  });
+
+  it("keeps a floated panel floating after a relaunch, and closes and reopens it", async () => {
+    const user = userEvent.setup();
+    const first = render(h(EditorShell));
+    await allPanelsShown();
+    const dock = currentDock();
+    const inspector = dock?.getPanel("inspector");
+    if (dock === null || inspector === undefined) throw new Error("no dock");
+    dock.addFloatingGroup(inspector);
+    await waitFor(
+      () => expect(viewStore.getState().layouts["short-form"]?.floatingGroups?.length).toBe(1),
+      { timeout: LAYOUT_SAVE_DELAY_MS * 10 },
+    );
+    first.unmount();
+    resetDockHost();
+
+    const persisted = JSON.parse(JSON.stringify(viewStore.getState().layouts));
+    viewStore.setState({ ...initialViewState, layouts: persisted });
+    render(h(EditorShell));
+    await allPanelsShown();
+    expect(currentDock()?.toJSON().floatingGroups?.length).toBe(1);
+
+    // A floated panel closes and comes back like any other (at its default dock).
+    await user.click(closeButton("Inspector"));
+    await waitFor(() => expect(region("Inspector")).toBeNull());
+    await togglePanelInMenu(user, "Inspector");
+    expect(await screen.findByRole("region", { name: "Inspector" })).toBeTruthy();
   });
 
   it("closes a panel from its tab's context menu", async () => {

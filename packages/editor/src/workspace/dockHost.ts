@@ -132,6 +132,11 @@ export function loadWorkspace(dock: DockviewApi, id: WorkspaceId, saved: unknown
   return saved !== undefined;
 }
 
+/** The dock being shown (tests and the later palette's "float panel"); `null` before it mounts. */
+export function currentDock(): DockviewApi | null {
+  return api;
+}
+
 export function isPanelOpen(id: PanelId): boolean {
   return api?.getPanel(id) !== undefined;
 }
