@@ -1,7 +1,7 @@
 {
   "version": 1,
   "generated_by": "scripts/wbs-to-issues",
-  "count": 507,
+  "count": 509,
   "work_packages": [
     {
       "id": "WP-0A.01",
@@ -6496,11 +6496,84 @@
       "out_of_scope": "items that need commands from later WPs (clipboard, linking, speed, markers, keyframes, replace, folders and tags, relink), which their WPs add; plugin items (WP-6B.03); menus for panels that do not exist yet."
     },
     {
+      "id": "WP-2H.14",
+      "title": "Detached panels I: popout windows, the shell and the layout",
+      "source": {
+        "file": "docs/wbs/P2-core-editor.md",
+        "line": 1431
+      },
+      "phase": "P2",
+      "epic": "2H",
+      "area": "apps/desktop/src/main (`window-policy.ts`, `windows.ts`, `hardening.ts`, `index.ts` focus wiring, a `window:setPopoutOnTop` channel in the IPC contract and `handlers.ts`), apps/desktop/src/preload (the one new bridge method), packages/editor/public/popout.html, packages/editor/src/workspace/ (`dockHost.ts`, `commands.ts`), packages/editor/src/dock/, packages/editor/src/shell/ (a window registry), packages/editor/src/menus/surfaces (the `dock.tab` items), the `en` catalog, apps/desktop/e2e (security, flows), docs/user-flows.md, docs/adr/ (the ADR, Proposed), docs/01-architecture.md §2, §16, §18",
+      "size": "M",
+      "executor": "opus",
+      "executor_note": "(it changes the window security policy and the Electron process model)",
+      "depends_raw": "WP-2H.01, WP-2H.12, WP-2H.13 (the dock tab menu), the ADR in section 9\n- **Blocked by the product owner's decision on the popout-window ADR** (research [10-detached-panels.md](../research/10-detached-panels.md) §9): popout windows run unsandboxed in the editor's process, an exception to arch §2/§18 and ADR-0001.",
+      "depends_wps": [
+        "WP-2H.01",
+        "WP-2H.12",
+        "WP-2H.13"
+      ],
+      "depends_epics": [],
+      "depends": [
+        "WP-2H.01",
+        "WP-2H.12",
+        "WP-2H.13"
+      ],
+      "scope": "- **Main process:**\n  - A `popout` window kind: the editor's process, `sandbox: false` (Electron 45 requires it to share the opener's process), no preload, the locked settings of every kind.\n  - `setWindowOpenHandler` allows only an editor window's `popout.html` on the app origin (dev: the Vite server), with dockview's frame name (`<dock>-<group>`). Everything else is denied as today.\n  - `did-create-window` registers the kind, asserts the policy, clamps the bounds to the connected displays (`fitToDisplays`), hides the menu bar and paints the theme's background.\n  - A popout's focus counts as its editor's for `project.report_focus` (ADR-0021).\n  - `window:setPopoutOnTop{frame, on}` (zod-validated) for Keep on top.\n- **Dock:**\n  - `workspace.popout_panel{panel}` and `workspace.dock_panel{panel}` (UI commands, so the palette and keymap list them).\n  - \"Move to new window\" and \"Move back to main window\" in the tab menu.\n  - Dragging a tab outside the main window opens it in a new window at the pointer. A tab drag that ends with no drop outside the window counts as that.\n  - Closing a detached window docks its panels back where they were.\n  - A failed popout (`onDidOpenPopoutWindowFail`) leaves the panel docked, with a toast.\n  - Reset layout and Reset all workspaces dock everything back. Switching workspaces closes the old workspace's windows and opens the new one's.\n- **Layout:**\n  - `popoutGroups` are saved with each workspace and restored on launch. `layoutProblem` validates their panels like the grid's.\n  - A layout saved by an older build still loads.\n- **Window registry** (`shell/windows.ts`):\n  - Holds the main window and each popout, with `onDidAddWindow` and `onDidRemoveWindow`.\n  - Mirrors `data-theme`, `data-density`, `lang` and `dir` into each popout and keeps them in sync.\n  - Titles each popout \"<Panel> - <Project> - Cutweave\".\n  - WP-2H.15 builds on it.\n- **Keep on top:** a toggle in the detached group's header.",
+      "interfaces": "the `popout` window kind and its policy; `window:setPopoutOnTop`; `workspace.popout_panel`, `workspace.dock_panel`; `popoutPanel(id)`, `dockPanel(id)` in `dockHost.ts`; the window registry (`registeredWindows()`, `onDidAddWindow`, `onDidRemoveWindow`).",
+      "acceptance": [
+        "Vitest:\n- The policy accepts a `popout` only as `sandbox: false` with no preload.\n- The handler allows only `popout.html` from an editor window with the frame-name pattern and denies everything else.\n- `dockHost` round-trips a layout with a popout and keeps a failed popout docked (jsdom fake window).",
+        "Security e2e (`security.spec.ts`): a popout has no `cutweave` global of its own and no `require`; its navigations and its own `window.open` are blocked; its document has the app CSP; the addon is loaded once.",
+        "**A new user flow, \"Detached panels\" (ADR-0018; its number is allocated at merge, since F44 is taken):**\n1. Right-click the Inspector's tab and choose Move to new window: a second window titled with the panel name shows the Inspector, and the Preview widens.\n2. Click a clip in the main timeline: the detached Inspector shows it. Change its opacity there: the engine has the new value.\n3. Switch to the light theme: the detached window follows.\n4. Close the detached window: the Inspector is docked where it was.\n5. Move it out again and relaunch: the window reopens with the Inspector.\n6. Reset layout: it docks back.\n7. `quitApp` leaves no window behind.",
+        "The engine's focus record does not change when the focus moves between the editor and its detached window."
+      ],
+      "tests": "Vitest, security e2e, the user flow.",
+      "out_of_scope": "keys, context menus, tooltips, the Preview and the Timeline inside a detached window (WP-2H.15); a full-screen program monitor on a second display; detaching plugin panels (P6)."
+    },
+    {
+      "id": "WP-2H.15",
+      "title": "Detached panels II: every panel works in its own window",
+      "source": {
+        "file": "docs/wbs/P2-core-editor.md",
+        "line": 1479
+      },
+      "phase": "P2",
+      "epic": "2H",
+      "area": "packages/editor (keymap dispatch, transport keymap, app commands, bin keys, the menu host, the palette, `preview/`, the timeline panel, scrub and gesture schedulers), packages/ui (a portal-container provider for `Menu`, `Tooltip` and `Dialog`; `Tabs`), packages/timeline (`timeline-view.ts`), apps/desktop/src/preload (`present-loop.ts`, `api.ts`: present on the canvas's window, re-attach), a lint rule (biome or a script in `just check`), apps/desktop/e2e/flows, docs/user-flows.md",
+      "size": "M",
+      "executor": "sonnet",
+      "executor_note": "",
+      "depends_raw": "WP-2H.14, WP-2H.05\n- **Blocked by the product owner's decision on the popout-window ADR** (research [10-detached-panels.md](../research/10-detached-panels.md) §9): popout windows run unsandboxed in the editor's process, an exception to arch §2/§18 and ADR-0001.",
+      "depends_wps": [
+        "WP-2H.14",
+        "WP-2H.05"
+      ],
+      "depends_epics": [],
+      "depends": [
+        "WP-2H.05",
+        "WP-2H.14"
+      ],
+      "scope": "- **Per-window helpers:** `windowOf(node)`, `documentOf(node)`, `activeDocument()` and `forEveryWindow(install)`, built on WP-2H.14's registry.\n- **Keys:** every key listener (the keymap dispatcher, the transport, the app commands, the bin) is installed on every registered window. \"Focused surface\" checks read the focused window's active element. The menu bar's Alt handling stays in the main window.\n- **Menus and tooltips:**\n  - `installContextMenuHandlers` runs on each window's document.\n  - `packages/ui` gets a portal-container context. Each panel sets it from `panel.api.getWindow()` and updates it when the panel changes window, so `Menu`, `Tooltip` and the command palette open in the window the person is in.\n  - App dialogs stay in the main window, which takes the focus.\n- **Preview:**\n  - The preload's present loop schedules on the canvas's own window. The preload API keeps its shape.\n  - The canvas is re-attached when its panel changes window only on a platform where a moved canvas loses its context. Windows does not.\n  - Size and `devicePixelRatio` come from that window, and `view.set_preview_size` follows a DPI change.\n- **Timeline:**\n  - `timeline-view.ts`, the gesture scheduler and the scrubber use their element's window for `ResizeObserver` and `requestAnimationFrame`.\n  - So do the bin, History, `Tabs` and the media preview.\n- **Realm-safe checks:** the `instanceof` sites that can see popout events or popout-created nodes become duck-typed. A lint rule bans the bare globals `document`, `window`, `ResizeObserver`, `requestAnimationFrame` and `devicePixelRatio` in panel code, outside an allowlist.",
+      "interfaces": "the helpers above; `PortalContainerProvider` in `packages/ui`; no engine or IPC change.",
+      "acceptance": [
+        "Vitest: a key pressed in a second (jsdom) window runs its binding; a right-click there opens the menu in that window's document; the helpers return the element's own window; the lint rule flags a fixture.",
+        "**The \"Detached panels\" flow, extended (ADR-0018):**\n1. Detach the Timeline and the Preview.\n2. Press Space in the detached Timeline: the timecode runs, and the detached Preview's frames change.\n3. Right-click a clip in the detached Timeline: the menu opens in that window; choose Split at playhead. Press Ctrl+Z there: the split is undone.\n4. Press Ctrl+K there: the palette opens in that window.",
+        "Vitest: the present loop, the timeline and the gesture scheduler take their frames from their canvas's window.",
+        "A manual check on Windows, macOS and Linux: a detached Preview keeps playing while the main window is minimized. The flow cannot show it, because Playwright turns throttling off.",
+        "**Opt-in real-input steps** (`just e2e-real-input`): drag a bin card from the main window onto the detached Timeline (the clip lands at the drop point); drag the detached Timeline's tab back into the main dock.",
+        "With the Preview detached, playback drops no more frames than docked (the playback probe, under 2 per 10 s).",
+        "axe finds 0 violations in a detached window."
+      ],
+      "tests": "Vitest, the user flow, the playback probe, axe.",
+      "out_of_scope": "the second-display program monitor; per-window keymaps; detached plugin panels (P6)."
+    },
+    {
       "id": "WP-2I.01",
       "title": "Core tool set: mapping, annotations and completion (~30 tools)",
       "source": {
         "file": "docs/wbs/P2-core-editor.md",
-        "line": 1431
+        "line": 1516
       },
       "phase": "P2",
       "epic": "2I",
@@ -6551,7 +6624,7 @@
       "title": "Visual tools: contact sheet, filmstrip, waveform image",
       "source": {
         "file": "docs/wbs/P2-core-editor.md",
-        "line": 1451
+        "line": 1536
       },
       "phase": "P2",
       "epic": "2I",
@@ -6603,7 +6676,7 @@
       "title": "Checkpoints: edit.checkpoint / edit.restore",
       "source": {
         "file": "docs/wbs/P2-core-editor.md",
-        "line": 1472
+        "line": 1557
       },
       "phase": "P2",
       "epic": "2I",
@@ -6648,7 +6721,7 @@
       "title": "Optimistic concurrency: expected_rev everywhere",
       "source": {
         "file": "docs/wbs/P2-core-editor.md",
-        "line": 1491
+        "line": 1576
       },
       "phase": "P2",
       "epic": "2I",
@@ -6701,7 +6774,7 @@
       "title": "Tool profiles, change notifications and tools/list budget",
       "source": {
         "file": "docs/wbs/P2-core-editor.md",
-        "line": 1508
+        "line": 1593
       },
       "phase": "P2",
       "epic": "2I",
@@ -6732,7 +6805,7 @@
       "title": "Scripted-agent e2e: YouTube edit and 9:16 short via MCP only",
       "source": {
         "file": "docs/wbs/P2-core-editor.md",
-        "line": 1526
+        "line": 1611
       },
       "phase": "P2",
       "epic": "2I",
@@ -6775,7 +6848,7 @@
       "title": "Benchmark fixtures and Rust criterion suite",
       "source": {
         "file": "docs/wbs/P2-core-editor.md",
-        "line": 1548
+        "line": 1633
       },
       "phase": "P2",
       "epic": "2J",
@@ -6832,7 +6905,7 @@
       "title": "UI benchmarks: timeline pan/zoom and UI command RTT",
       "source": {
         "file": "docs/wbs/P2-core-editor.md",
-        "line": 1565
+        "line": 1650
       },
       "phase": "P2",
       "epic": "2J",
@@ -6866,7 +6939,7 @@
       "title": "Playback, scrub and A/V sync benchmarks",
       "source": {
         "file": "docs/wbs/P2-core-editor.md",
-        "line": 1580
+        "line": 1665
       },
       "phase": "P2",
       "epic": "2J",
@@ -6908,7 +6981,7 @@
       "title": "CI benchmark gate and trend dashboard",
       "source": {
         "file": "docs/wbs/P2-core-editor.md",
-        "line": 1595
+        "line": 1680
       },
       "phase": "P2",
       "epic": "2J",
@@ -6949,7 +7022,7 @@
       "title": "Crash-injection harness: 20 forced crashes, no data loss",
       "source": {
         "file": "docs/wbs/P2-core-editor.md",
-        "line": 1611
+        "line": 1696
       },
       "phase": "P2",
       "epic": "2J",
@@ -6993,7 +7066,7 @@
       "title": "Dogfood edit A: 10-min YouTube video with B-roll (human)",
       "source": {
         "file": "docs/wbs/P2-core-editor.md",
-        "line": 1629
+        "line": 1714
       },
       "phase": "P2",
       "epic": "2J",
@@ -7033,7 +7106,7 @@
       "title": "Dogfood edit B: 9:16 short with manual reframe, music and fades (human)",
       "source": {
         "file": "docs/wbs/P2-core-editor.md",
-        "line": 1644
+        "line": 1729
       },
       "phase": "P2",
       "epic": "2J",
@@ -7071,7 +7144,7 @@
       "title": "M2 exit review (human)",
       "source": {
         "file": "docs/wbs/P2-core-editor.md",
-        "line": 1658
+        "line": 1743
       },
       "phase": "P2",
       "epic": "2J",
@@ -7109,7 +7182,7 @@
       "title": "Background render cache (smart pre-render while idle)",
       "source": {
         "file": "docs/wbs/P2-core-editor.md",
-        "line": 1671
+        "line": 1756
       },
       "phase": "P2",
       "epic": "2J",
@@ -7417,6 +7490,8 @@
         "WP-2H.11",
         "WP-2H.12",
         "WP-2H.13",
+        "WP-2H.14",
+        "WP-2H.15",
         "WP-3A.01",
         "WP-3A.03",
         "WP-3A.05"
@@ -8074,6 +8149,8 @@
         "WP-2H.11",
         "WP-2H.12",
         "WP-2H.13",
+        "WP-2H.14",
+        "WP-2H.15",
         "WP-3D.01",
         "WP-3D.05"
       ],
@@ -8461,6 +8538,8 @@
         "WP-2H.11",
         "WP-2H.12",
         "WP-2H.13",
+        "WP-2H.14",
+        "WP-2H.15",
         "WP-3D.06",
         "WP-3E.01",
         "WP-3E.03",
@@ -8903,6 +8982,8 @@
         "WP-2H.11",
         "WP-2H.12",
         "WP-2H.13",
+        "WP-2H.14",
+        "WP-2H.15",
         "WP-3G.01",
         "WP-3G.02"
       ],
@@ -9575,6 +9656,8 @@
         "WP-2H.11",
         "WP-2H.12",
         "WP-2H.13",
+        "WP-2H.14",
+        "WP-2H.15",
         "WP-4A.06",
         "WP-4A.08"
       ],
@@ -10632,6 +10715,8 @@
         "WP-2H.11",
         "WP-2H.12",
         "WP-2H.13",
+        "WP-2H.14",
+        "WP-2H.15",
         "WP-4F.02",
         "WP-4F.03",
         "WP-4F.04",
@@ -12543,6 +12628,8 @@
         "WP-2H.11",
         "WP-2H.12",
         "WP-2H.13",
+        "WP-2H.14",
+        "WP-2H.15",
         "WP-5A.10",
         "WP-5B.02"
       ],
@@ -12588,6 +12675,8 @@
         "WP-2H.11",
         "WP-2H.12",
         "WP-2H.13",
+        "WP-2H.14",
+        "WP-2H.15",
         "WP-5F.01"
       ],
       "scope": "form generated from the model's params JSON Schema + `x-cutweave` hints using the **existing inspector renderer** (no second renderer); prompt and negative-prompt boxes; asset slots by role (first frame, last frame, reference images up to the manifest limit, source video) fed by drag from bin/timeline or \"use current frame\"; duration/aspect/resolution controls clamped to model limits; seed lock; variants count with cost multiplier; **camera-controls widget**: native enum when the model declares native controls, otherwise inserts camera phrases into the prompt with a live preview (vocabulary from 5J.02, fallback built-in list); inline validation from the schema; \"copy as MCP call / JSON recipe\"; keyboard-accessible; per-project draft persistence in view state (not the doc).",
@@ -12862,6 +12951,8 @@
         "WP-2H.11",
         "WP-2H.12",
         "WP-2H.13",
+        "WP-2H.14",
+        "WP-2H.15",
         "WP-5D.09",
         "WP-5F.05"
       ],
@@ -13011,6 +13102,8 @@
         "WP-2H.11",
         "WP-2H.12",
         "WP-2H.13",
+        "WP-2H.14",
+        "WP-2H.15",
         "WP-4G.01",
         "WP-4G.02",
         "WP-4G.03",
@@ -13663,6 +13756,8 @@
         "WP-2H.11",
         "WP-2H.12",
         "WP-2H.13",
+        "WP-2H.14",
+        "WP-2H.15",
         "WP-5H.02",
         "WP-5H.03"
       ],
@@ -14622,6 +14717,8 @@
         "WP-2H.11",
         "WP-2H.12",
         "WP-2H.13",
+        "WP-2H.14",
+        "WP-2H.15",
         "WP-6A.05"
       ],
       "scope": "- Serve plugin UI from custom protocol `cutweave-ext://<plugin-id>/` (Electron `protocol.handle`); each panel in a sandboxed iframe with **opaque origin** (`sandbox=\"allow-scripts\"`, no `allow-same-origin`), strict CSP (`default-src 'none'`; `connect-src 'none'` unless a granted network permission is proxied via host), no Node, no top navigation, no popups.\n- Plugin JS never runs in the main window context. Reconcile with §18 CSP (main window: connect only to engine origin): extension frames get their own CSP; main CSP unchanged.\n- Lifecycle: load/unload/reload on `plugin.changed`; frame crash does not affect the editor.",
@@ -14727,6 +14824,8 @@
         "WP-2H.11",
         "WP-2H.12",
         "WP-2H.13",
+        "WP-2H.14",
+        "WP-2H.15",
         "WP-6A.05"
       ],
       "scope": "- Install-review dialog: metadata, SPDX license (+ \"proprietary\" label), verified/unverified banner, permissions in plain language (domains, file scopes, secret names, paid AI with cap), contributed items, plugin-supplied text shown verbatim marked untrusted, plugin-exception notice.\n- Permission diff on update; revoke in Settings → Plugins; per-plugin audit-log viewer.\n- Error UX: toast + badge when a plugin is auto-disabled (trap, timeout, GPU budget); \"Copy crash report\" / \"Open prefilled GitHub issue\" (nothing auto-sent); re-enable.\n- Accessible (focus trap, labels) — feeds 7C.",
@@ -15189,6 +15288,8 @@
         "WP-2H.11",
         "WP-2H.12",
         "WP-2H.13",
+        "WP-2H.14",
+        "WP-2H.15",
         "WP-6D.02"
       ],
       "scope": "- \"Templates\" tab in the asset browser: grid with hover-play previews, filters (category, aspect, duration, slots count, source: built-in/installed/user), search, favorites, \"Apply to new sequence / at playhead\".\n- Apply wizard: slot fill UI (drag from media bin, record-free text fields, color/font pickers, caption style gallery), live preview before commit, aspect variant switch.\n- \"Smart fill\" button hook (6D.05); empty/offline states; lazy thumbnail loading.\n- **Context menu (product owner request, 2026-11-25; framework WP-2H.12, plan in [09-context-menus.md](../research/09-context-menus.md)):** menus on a template card (`template.card`: Apply…, Preview, Reveal) and on a slot marker (Make replaceable, Edit constraints, Remove slot).",
@@ -17387,6 +17488,8 @@
         "WP-2H.11",
         "WP-2H.12",
         "WP-2H.13",
+        "WP-2H.14",
+        "WP-2H.15",
         "WP-6I.01"
       ],
       "scope": "- Dockable Copilot panel: message stream (markdown, token streaming), **plan as live checklist** (items tick), tool-call chips (expandable args/results), thumbnails/contact sheets inline (downscaled), running **cost ticker** vs budget, cancel button, jobs strip for long renders/generations, \"Undo agent turn\" button, model/provider picker with cheap/smart slots, autonomy mode switch (suggest / apply-with-undo / auto-within-budget), attachments (drop media/selection as context), `@`-mentions of clips/markers, slash prompts (the 13 MCP prompts).\n- Keyboard accessible; reduced-motion respects; i18n.",
@@ -18038,6 +18141,8 @@
         "WP-2H.11",
         "WP-2H.12",
         "WP-2H.13",
+        "WP-2H.14",
+        "WP-2H.15",
         "WP-6B.04",
         "WP-6C.05",
         "WP-6D.04",
@@ -18159,6 +18264,8 @@
         "WP-2H.11",
         "WP-2H.12",
         "WP-2H.13",
+        "WP-2H.14",
+        "WP-2H.15",
         "WP-7C.01"
       ],
       "scope": "- ICU MessageFormat (plurals, select, gender), string extraction + CI (fail on hard-coded UI strings, missing keys, unused keys, unbalanced placeholders), pseudo-locale (accents + 40% expansion + RTL pseudo) used in visual regression to catch truncation.\n- Locale-aware date/time/number/duration formatting; engine error **codes** → localized messages in UI (engine never ships display strings the UI cannot translate); locale switch without restart; CJK/Arabic/Hebrew/Devanagari font fallback in chrome.\n- **RTL:** logical CSS properties throughout, mirrored icons list, `dir` handling in dialogs/panels; **timeline time axis stays LTR** (documented decision; Notes #8), transport controls not mirrored; bidi text in inspector/text fields; captions/text engine bidi verified via 3A (shaping tests with Arabic/Hebrew samples).\n- Settings > General gains \"Language\" (default: the OS language when Cutweave has it, else English), applied without a restart, main's menus included (catalog `docs/reference/settings.md`).",
@@ -18430,6 +18537,8 @@
         "WP-2H.11",
         "WP-2H.12",
         "WP-2H.13",
+        "WP-2H.14",
+        "WP-2H.15",
         "WP-3E.01",
         "WP-3E.02",
         "WP-3E.03",

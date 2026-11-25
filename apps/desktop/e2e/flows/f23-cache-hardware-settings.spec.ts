@@ -104,7 +104,24 @@ test.describe("F23 cache and hardware settings", () => {
       );
       await snapshot(page, info, "cache and storage");
 
-      // Clear thumbnails: their usage drops to zero; the waveforms are not touched.
+      // Clear thumbnails: their usage drops to zero; the waveforms are not touched. The import's
+      // background jobs (analysis, thumbnails, proxies) finish first: one still writing after the
+      // clear would put a picture back in the cache, which is right but not what this step checks.
+      await expect
+        .poll(
+          async () => {
+            const { jobs } = await editorCall<{ jobs: { label: string; state: string }[] }>(
+              page,
+              "job.list",
+              {},
+            );
+            return jobs
+              .filter((j) => j.state === "queued" || j.state === "running")
+              .map((j) => `${j.label}:${j.state}`);
+          },
+          { timeout: 180_000, message: "the import's background jobs" },
+        )
+        .toEqual([]);
       await settings.getByRole("button", { name: "Clear thumbnails" }).click();
       await expect(usage(settings, "thumbnails")).toHaveText("Empty");
       await expect(usage(settings, "waveforms")).toContainText("in use");
