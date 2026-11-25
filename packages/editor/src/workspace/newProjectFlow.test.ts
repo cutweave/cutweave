@@ -1,0 +1,83 @@
+// SPDX-License-Identifier: GPL-3.0-or-later
+// @vitest-environment jsdom
+// Settings > General > "Workspace for new projects" (WP-2H.01): File > New project opens in the
+// chosen workspace, through the real ProjectController over the fake engine.
+import { defaultPreferences } from "@cutweave/preferences";
+import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import { prefsStore } from "../prefs/prefsStore.ts";
+import { EMPTY_STACKS, initialSessionState, sessionStore } from "../session/sessionStore.ts";
+import { sessionUiStore } from "../session/sessionUiStore.ts";
+import { projectController, resetProjectController } from "../session/useProject.ts";
+import { docStore } from "../state/docStore.ts";
+import { initialViewState, viewStore } from "../state/viewStore.ts";
+import { createFakeEngine, type FakeEngine } from "../testing/fakeEngine.ts";
+
+let engine: FakeEngine;
+
+const status = (extra: object = {}) => ({
+  state: "open",
+  path: null,
+  name: "Film",
+  rev: 1,
+  saved_rev: 1,
+  dirty: false,
+  read_only: null,
+  recovery: null,
+  ...extra,
+});
+
+beforeEach(() => {
+  engine = createFakeEngine();
+  engine.install();
+  sessionStore.setState({
+    ...initialSessionState,
+    known: true,
+    name: "Film",
+    stacks: EMPTY_STACKS,
+  });
+  sessionUiStore.setState({ unsaved: null, naming: null, recent: [], busy: false });
+  docStore.setState({ status: "empty", rev: 0, committedRev: 0, project: null });
+  viewStore.setState({ ...initialViewState, layouts: {} });
+  resetProjectController();
+  engine.answer("project.close", () => ({ project: status() }));
+  engine.answer("project.new", () => ({ project: status() }));
+  engine.answer("project.save_as", () => ({ path: "C:\\p\\Film\\Film.cutweave" }));
+});
+
+afterEach(() => {
+  engine.uninstall();
+  resetProjectController();
+  prefsStore.setState({ values: defaultPreferences() });
+});
+
+async function newProject(): Promise<boolean> {
+  const controller = projectController();
+  const flow = controller.newProject();
+  for (let i = 0; i < 100 && sessionUiStore.getState().naming === null; i++) {
+    await new Promise((r) => setTimeout(r, 10));
+  }
+  sessionUiStore.getState().naming?.resolve(controller.target("Film", "C:\\p"));
+  return flow;
+}
+
+describe("a new project opens in the workspace chosen in Settings", () => {
+  it("switches to Long-form when that is the choice", async () => {
+    prefsStore.setState({ values: { ...defaultPreferences(), "general.workspace": "long-form" } });
+    viewStore.getState().switchWorkspace("short-form");
+    expect(await newProject()).toBe(true);
+    expect(viewStore.getState().workspaceId).toBe("long-form");
+  });
+
+  it("switches to Short-form when that is the choice", async () => {
+    prefsStore.setState({ values: { ...defaultPreferences(), "general.workspace": "short-form" } });
+    viewStore.getState().switchWorkspace("long-form");
+    expect(await newProject()).toBe(true);
+    expect(viewStore.getState().workspaceId).toBe("short-form");
+  });
+
+  it("stays in the workspace in use when the choice is Last used", async () => {
+    viewStore.getState().switchWorkspace("long-form");
+    expect(await newProject()).toBe(true);
+    expect(viewStore.getState().workspaceId).toBe("long-form");
+  });
+});

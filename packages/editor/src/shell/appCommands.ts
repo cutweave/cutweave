@@ -20,6 +20,8 @@ import { sessionUiStore, useSessionUiStore } from "../session/sessionUiStore.ts"
 import { isTextEntry } from "../session/useProject.ts";
 import { settingsStore } from "../settings/settingsStore.ts";
 import { translator } from "../timeline/errors.ts";
+import { useOpenPanels } from "../workspace/dockHost.ts";
+import { useRegisteredPanels } from "../workspace/panelRegistry.ts";
 import {
   type AppCommand,
   type AppMenu,
@@ -134,6 +136,8 @@ export function useAppMenus(desktop: DesktopBridge | null = desktopFromWindow())
   const hasItems = useTimelineHasItems();
   const recent = useSessionUiStore((s) => s.recent);
   const dev = useDevBuild(desktop);
+  const registered = useRegisteredPanels();
+  const openPanels = useOpenPanels().open;
   return useMemo(() => {
     const translate = translator(t);
     return buildAppMenu(
@@ -150,10 +154,29 @@ export function useAppMenus(desktop: DesktopBridge | null = desktopFromWindow())
         redoLabel: redoText(stacks, translate),
         recent: recent.map((path) => ({ path, label: projectFileName(path) })),
         exportAvailable: hasItems,
+        panels: registered.map((p) => ({
+          id: p.id,
+          label: t(p.title),
+          checked: openPanels.includes(p.id),
+        })),
       },
       translate,
     );
-  }, [t, desktop, dev, ready, known, busy, readOnly, recovering, stacks, recent, hasItems]);
+  }, [
+    t,
+    desktop,
+    dev,
+    ready,
+    known,
+    busy,
+    readOnly,
+    recovering,
+    stacks,
+    recent,
+    hasItems,
+    registered,
+    openPanels,
+  ]);
 }
 
 /** Project commands a shortcut may press while another project operation is still running. */

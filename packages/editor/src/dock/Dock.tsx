@@ -1,49 +1,110 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
+import { Button, IconButton } from "@cutweave/ui";
 import {
   type DockviewApi,
   DockviewReact,
   type DockviewReadyEvent,
+  type GetTabContextMenuItemsParams,
+  type IDockviewHeaderActionsProps,
   type IDockviewPanelHeaderProps,
+  type IWatermarkPanelProps,
 } from "dockview-react";
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
-import type { TKey } from "../i18n/index.ts";
-import { AssetBrowserPanel } from "../panels/AssetBrowserPanel.tsx";
-import { InspectorPanel } from "../panels/InspectorPanel.tsx";
-import { PreviewPanel } from "../panels/PreviewPanel.tsx";
-import { TimelinePanel } from "../panels/TimelinePanel.tsx";
-import { useViewStore, viewStore, type WorkspaceId } from "../state/viewStore.ts";
-import { applyDefaultLayout } from "./defaultLayout.ts";
+import { i18n, type TKey } from "../i18n/index.ts";
+import { EmptyState } from "../panels/EmptyState.tsx";
+import { useViewStore, viewStore } from "../state/viewStore.ts";
+import "../workspace/builtinPanels.ts";
+import { runWorkspaceCommand } from "../workspace/commands.ts";
+import { attachDock, loadWorkspace, saveLayoutNow } from "../workspace/dockHost.ts";
+import { PANEL_TAB_COMPONENT } from "../workspace/panelOptions.ts";
+import { useRegisteredPanels } from "../workspace/panelRegistry.ts";
 import { dockTheme } from "./theme.ts";
 
 /** Saves are coalesced: a sash drag fires many layout events. */
 export const LAYOUT_SAVE_DELAY_MS = 200;
 
-const components = {
-  assets: AssetBrowserPanel,
-  preview: PreviewPanel,
-  inspector: InspectorPanel,
-  timeline: TimelinePanel,
-};
-
-/** The group header: a panel title that doubles as the drag handle. No close button. */
+/** A panel's tab: its title, which is also the drag handle. */
 function PanelTab({ params }: IDockviewPanelHeaderProps<{ titleKey: TKey }>) {
   const { t } = useTranslation();
   return <div className="cw-dock-tab heading">{t(params.titleKey)}</div>;
 }
 
-const tabComponents = { header: PanelTab as (p: IDockviewPanelHeaderProps) => React.JSX.Element };
+/**
+ * The close button at the end of a group's tab strip, for its active panel. It cannot sit inside
+ * the tab itself: a tab (`role="tab"`) may not contain a button. Closing goes through the
+ * `workspace.close_panel` command, which remembers where the panel was docked so View > Panels
+ * can bring it back there.
+ */
+function CloseActivePanel({ activePanel }: IDockviewHeaderActionsProps) {
+  const { t } = useTranslation();
+  if (activePanel === undefined) return null;
+  const title = t((activePanel.params as { titleKey: TKey }).titleKey);
+  return (
+    <IconButton
+      icon="x"
+      size="sm"
+      className="cw-dock-tab__close"
+      label={t("panel.closeNamed", { name: title })}
+      onClick={() => runWorkspaceCommand("workspace.close_panel", { panel: activePanel.id })}
+    />
+  );
+}
+
+/** The dock when every panel is closed. */
+function EmptyDock(_props: IWatermarkPanelProps) {
+  const { t } = useTranslation();
+  return (
+    <div className="cw-dock-empty">
+      <EmptyState icon="layout-grid" title={t("dock.empty.title")} body={t("dock.empty.body")}>
+        <div className="cw-dock-empty__actions">
+          <Button variant="primary" onClick={() => runWorkspaceCommand("workspace.reopen_panels")}>
+            {t("dock.empty.reopen")}
+          </Button>
+          <Button onClick={() => runWorkspaceCommand("workspace.reset_layout")}>
+            {t("workspace.reset")}
+          </Button>
+        </div>
+      </EmptyState>
+    </div>
+  );
+}
+
+const tabComponents = {
+  [PANEL_TAB_COMPONENT]: PanelTab as (p: IDockviewPanelHeaderProps) => React.JSX.Element,
+};
+
+/** The tab's right-click menu: close, maximize, float. */
+function tabMenu({ panel }: GetTabContextMenuItemsParams) {
+  return [
+    {
+      label: i18n.t("panel.close"),
+      action: () => runWorkspaceCommand("workspace.close_panel", { panel: panel.id }),
+    },
+    "separator" as const,
+    "maximize" as const,
+    "float" as const,
+  ];
+}
 
 /**
  * The dockable panel area. The active workspace's saved layout is restored when it is selected
- * (or its default is built); layout changes are written back to `viewStore` per workspace.
+ * (or its default is built); layout changes are written back to `viewStore` per workspace. The
+ * panels come from the registry (`workspace/panelRegistry.ts`); which are open is the dock
+ * host's business (`workspace/dockHost.ts`).
  */
 export function Dock() {
   const workspaceId = useViewStore((s) => s.workspaceId);
   const revision = useViewStore((s) => s.layoutRevision);
+  const registered = useRegisteredPanels();
   const [api, setApi] = useState<DockviewApi | null>(null);
-  const activeWorkspace = useRef<WorkspaceId | null>(null);
+  const activeWorkspace = useRef<string | null>(null);
   const pendingSave = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  const components = useMemo(
+    () => Object.fromEntries(registered.map((p) => [p.id, p.component])),
+    [registered],
+  );
 
   const onReady = useCallback((event: DockviewReadyEvent) => setApi(event.api), []);
 
@@ -59,8 +120,7 @@ export function Dock() {
       cancelSave();
       pendingSave.current = setTimeout(() => {
         pendingSave.current = null;
-        const id = activeWorkspace.current;
-        if (id) viewStore.getState().saveLayout(id, api.toJSON());
+        saveLayoutNow();
       }, LAYOUT_SAVE_DELAY_MS);
     });
     return () => {
@@ -69,6 +129,12 @@ export function Dock() {
     };
   }, [api, cancelSave]);
 
+  useEffect(() => {
+    if (!api) return;
+    attachDock(api);
+    return () => attachDock(null);
+  }, [api]);
+
   // Load the active workspace; `revision` forces a rebuild after a reset.
   useEffect(() => {
     if (!api) return;
@@ -76,21 +142,12 @@ export function Dock() {
     if (previous && previous !== workspaceId && pendingSave.current !== null) {
       // Switching: keep the edits made in the workspace we are leaving.
       cancelSave();
-      viewStore.getState().saveLayout(previous, api.toJSON());
+      saveLayoutNow();
     } else {
       cancelSave();
     }
     activeWorkspace.current = workspaceId;
-    const saved = viewStore.getState().layouts[workspaceId];
-    if (saved) {
-      try {
-        api.fromJSON(saved);
-        return;
-      } catch {
-        // A layout from an older build can no longer be restored; fall back to the default.
-      }
-    }
-    applyDefaultLayout(api, workspaceId);
+    loadWorkspace(api, workspaceId, viewStore.getState().layouts[workspaceId]);
   }, [api, workspaceId, revision, cancelSave]);
 
   return (
@@ -98,10 +155,11 @@ export function Dock() {
       className="cw-dock"
       components={components}
       tabComponents={tabComponents}
+      rightHeaderActionsComponent={CloseActivePanel}
+      watermarkComponent={EmptyDock}
       theme={dockTheme()}
       singleTabMode="fullwidth"
-      disableFloatingGroups
-      getTabContextMenuItems={() => []}
+      getTabContextMenuItems={tabMenu}
       onReady={onReady}
     />
   );

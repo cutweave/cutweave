@@ -4,7 +4,7 @@ import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { isPreferenceKey } from "@cutweave/preferences";
 import { describe, expect, it } from "vitest";
-import { createI18n } from "./index.ts";
+import { createI18n, detectLanguage } from "./index.ts";
 import en from "./locales/en.json";
 
 const SRC = join(dirname(fileURLToPath(import.meta.url)), "..");
@@ -62,6 +62,13 @@ describe("i18n catalog", () => {
     expect(i18n.t("topbar.export")).toBe("Export");
     expect(i18n.t("timeline.trackVideo", { n: 2 })).toBe("Video 2");
     expect(i18n.t("workspace.short-form")).toBe("Short-form");
+  });
+
+  it("picks the first preferred language that has a catalog, else English", () => {
+    expect(detectLanguage(["en-GB", "he"])).toBe("en");
+    expect(detectLanguage(["he", "fr-CA", "en-US"])).toBe("en");
+    expect(detectLanguage(["he", "fr"])).toBe("en");
+    expect(detectLanguage([])).toBe("en");
   });
 
   it("names every asset browser tab from the design brief", () => {

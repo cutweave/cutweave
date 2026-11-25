@@ -15,6 +15,7 @@ import type { EngineStoreState } from "../engine/engineStore.ts";
 import type { DocStore } from "../state/docStore.ts";
 import type { ToastStore } from "../state/toastStore.ts";
 import type { Translate } from "../timeline/errors.ts";
+import { applyNewProjectWorkspace } from "../workspace/newProject.ts";
 import { type DesktopBridge, isSessionCommand, type SessionMenuCommand } from "./desktop.ts";
 import { asRpcError, describeProjectError } from "./errors.ts";
 import { stepName } from "./historyLabels.ts";
@@ -297,6 +298,7 @@ export class ProjectController {
         };
         this.#deps.session.getState().applySaved(saved.path);
         await this.#remember(saved.path);
+        applyNewProjectWorkspace(); // Settings > General > Workspace for new projects (WP-2H.01)
         return true;
       } catch (error) {
         this.#fail("projectUi.failed.create", error);

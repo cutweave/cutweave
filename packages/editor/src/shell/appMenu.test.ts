@@ -29,6 +29,10 @@ const state = (over: Partial<AppMenuState> = {}): AppMenuState => ({
   redoLabel: "Redo",
   recent: [{ path: "C:/p/Film/Film.cutweave", label: "Film.cutweave" }],
   exportAvailable: false,
+  panels: [
+    { id: "assets", label: "Assets", checked: true },
+    { id: "inspector", label: "Inspector", checked: false },
+  ],
   ...over,
 });
 
@@ -42,6 +46,10 @@ function outline(menus: readonly AppMenu[]): Record<string, string[]> {
         if (entry.kind === "recent") {
           return `${entry.label} > ${entry.items.map((i) => i.label).join(", ") || entry.emptyLabel}${entry.enabled ? "" : " (off)"}`;
         }
+        if (entry.kind === "panels") {
+          return `${entry.label} > ${entry.items.map((i) => `${i.label}${i.checked ? " (checked)" : ""}`).join(", ")}`;
+        }
+        if (entry.kind === "workspace") return entry.label;
         return `${entry.label}${entry.shortcut ? ` [${entry.shortcut}]` : ""}${entry.enabled ? "" : " (off)"}`;
       }),
     ]),
@@ -83,13 +91,23 @@ describe("the application menu (WP-1M.09)", () => {
         "Paste [Ctrl+V]",
         "Select all [Ctrl+A]",
       ],
-      View: ["Toggle full screen [F11]"],
+      View: [
+        "Panels > Assets (checked), Inspector",
+        "Reset layout",
+        "Reset all workspaces",
+        "---",
+        "Toggle full screen [F11]",
+      ],
       Help: ["About Cutweave"],
     });
   });
 
   it("adds Reload and developer tools in development builds only", () => {
     expect(outline(buildAppMenu(state({ dev: true }), t)).View).toEqual([
+      "Panels > Assets (checked), Inspector",
+      "Reset layout",
+      "Reset all workspaces",
+      "---",
       "Toggle full screen [F11]",
       "---",
       "Reload [Ctrl+R]",
@@ -97,6 +115,10 @@ describe("the application menu (WP-1M.09)", () => {
     ]);
     // Without the desktop app there is nothing to reload or inspect through main.
     expect(outline(buildAppMenu(state({ dev: true, desktop: false }), t)).View).toEqual([
+      "Panels > Assets (checked), Inspector",
+      "Reset layout",
+      "Reset all workspaces",
+      "---",
       "Toggle full screen [F11] (off)",
     ]);
   });

@@ -133,6 +133,21 @@ const general: SettingsPageDef = {
       },
     },
     {
+      id: "general.workspace",
+      key: "general.workspace",
+      label: "settings.rows.workspace.label",
+      description: "settings.rows.workspace.description",
+      keywords: "settings.rows.workspace.keywords",
+      control: {
+        kind: "segmented",
+        options: [
+          { value: "last", label: "settings.rows.workspace.last" },
+          { value: "long-form", label: "workspace.long-form" },
+          { value: "short-form", label: "workspace.short-form" },
+        ],
+      },
+    },
+    {
       id: "general.clear_recent",
       label: "settings.rows.clearRecent.label",
       description: "settings.rows.clearRecent.description",

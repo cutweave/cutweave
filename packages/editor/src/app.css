@@ -184,6 +184,24 @@ body {
   cursor: grab;
   user-select: none;
 }
+/* The close button at the end of a group's tab strip (the active panel's). */
+.cw-dock-tab__close {
+  flex: none;
+  align-self: center;
+  margin-inline: var(--space-1);
+}
+/* Every panel closed: the dock's own empty state, centred. */
+.cw-dock-empty {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  height: 100%;
+}
+.cw-dock-empty__actions {
+  display: flex;
+  gap: var(--space-2);
+  margin-top: var(--space-3);
+}
 
 /* ---------- Shared empty state ---------- */
 .cw-empty {

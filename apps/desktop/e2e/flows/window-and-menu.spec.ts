@@ -533,7 +533,15 @@ test.describe("F18 window and menu", () => {
       await expect(about).toBeHidden();
 
       // Alt+V, Enter: full screen from the keyboard alone.
+      // View opens on Panels (WP-2H.01), then Reset layout and Reset all workspaces.
       await page.keyboard.press("Alt+V");
+      const view = page.getByRole("menu", { name: "View" });
+      await expect(item(view, "Panels")).toBeFocused();
+      await page.keyboard.press("ArrowDown");
+      await expect(item(view, "Reset layout")).toBeFocused();
+      await page.keyboard.press("ArrowDown");
+      await expect(item(view, "Reset all workspaces")).toBeFocused();
+      await page.keyboard.press("ArrowDown");
       await expect(
         item(page.getByRole("menu", { name: "View" }), "Toggle full screen"),
       ).toBeFocused();

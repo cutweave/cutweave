@@ -7,6 +7,7 @@ import { useMemo, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { desktopFromWindow } from "../session/desktop.ts";
 import { projectController } from "../session/useProject.ts";
+import { runWorkspaceCommand, TOGGLE_PANEL_PREFIX } from "../workspace/commands.ts";
 import { type AppCommandDeps, runAppCommand, useAppMenus, useAppShortcuts } from "./appCommands.ts";
 import type { AppMenu, AppMenuEntry } from "./appMenu.ts";
 
@@ -29,6 +30,26 @@ function toEntry(entry: AppMenuEntry, deps: AppCommandDeps): MenuBarEntry {
                 icon: "folder-open",
                 onSelect: () => void deps.controller.open(item.path),
               })),
+      };
+    case "panels":
+      return {
+        kind: "submenu",
+        id: "panels",
+        label: entry.label,
+        disabled: !entry.enabled,
+        items: entry.items.map((panel) => ({
+          id: `panel-${panel.id}`,
+          label: panel.label,
+          checked: panel.checked,
+          onSelect: () => void runWorkspaceCommand(`${TOGGLE_PANEL_PREFIX}${panel.id}`),
+        })),
+      };
+    case "workspace":
+      return {
+        id: entry.command,
+        label: entry.label,
+        disabled: !entry.enabled,
+        onSelect: () => void runWorkspaceCommand(entry.command),
       };
     case "command":
       return {
