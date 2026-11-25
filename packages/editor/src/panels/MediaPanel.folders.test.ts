@@ -505,6 +505,19 @@ describe("renaming and creating", () => {
     });
   });
 
+  it("Ctrl+Shift+N creates a folder from the keyboard", async () => {
+    load(project());
+    connect();
+    call.mockResolvedValue({ folder_id: "fld_k", name: "New folder", parent: null });
+    view();
+    tile("clip1.mp4").focus();
+    await userEvent.keyboard("{Control>}{Shift>}n{/Shift}{/Control}");
+    expect(call).toHaveBeenCalledWith("media.create_folder", {
+      parent: null,
+      on_conflict: "rename",
+    });
+  });
+
   it("New folder creates in the open folder and starts renaming it", async () => {
     load(project());
     connect();

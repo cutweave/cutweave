@@ -29,3 +29,17 @@ Enter or drag dispatches `timeline.insertAsset {assetId, at:playhead}`; Relink o
 - Don't use `surface-3` as the selected fill; use `marigold-subtle`.
 - Don't hide missing tiles; users need to relink.
 - Don't overlay anything but the duration and AI badge on the thumbnail.
+
+## Folder variant (`FolderTile`, WP-2F.08)
+
+A folder of the media bin, drawn as a tile of the same grid (and the same listbox) as the asset tiles: `.cw-foldertile` (`surface-2`, `border-subtle`, `radius-md`, `space-2` padding) > `__glyph` (16:9 `surface-3` block with the folder icon, `radius-lg`) > `__body` with `__name` (body-strong, ellipsis) and `__meta` (caption, `text-secondary`) holding the item count ("12 items", "1 item", "Empty") and, in search results across the whole bin, the folder's path (`__path`).
+
+**States.** Default, hover (`surface-3`), selected (`aria-selected="true"`: `marigold-subtle` fill + marigold border, as the asset tile), focus-visible, **drop target** (`data-drop-target="true"`: dashed marigold border, `marigold-subtle` fill, open-folder glyph in `marigold-text`: something dragged from the bin is over it and may be dropped), **renaming** (the name becomes an `InlineRename` field: marigold edge, Enter commits, Escape cancels, blur commits).
+
+**Behaviour.** Double-click or Enter opens it; a drop on it moves the dragged tiles into it (`media.move`); an OS file dropped on it imports into it. It is draggable like an asset tile. In list layout it is a row like the asset rows.
+
+**Accessibility.** An `option` of the bin's listbox, announced as "Interviews, folder, 3 items" (`aria-label`), `aria-selected` for the selection, a roving tab stop with the asset tiles.
+
+**`MediaBreadcrumb`.** "Media › Interviews › Day one" above the grid: a `nav` (named "Media folders") with an ordered list of buttons. Each segment goes there and is a drop target (same dashed marigold state); the last is `aria-current="page"` and `text-primary`, the others `text-secondary`. Separators are chevrons, hidden from assistive technology.
+
+**Do** keep the folder tile the same height as an asset tile so the grids line up; use marigold only for selection and the drop state. **Don't** give folders a color or an icon of their own (no folder colors in this version).
