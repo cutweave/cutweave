@@ -1,6 +1,6 @@
 # ADR-0024: Keyframes: item-relative flicks, per-segment easing, exact edit rules
 
-- **Status:** Proposed
+- **Status:** Accepted (product owner, 2026-11-25)
 - **Date:** 2026-11-25
 - **Deciders:** Cutweave maintainers (drafted in WP-2C.01 for the integrator)
 - **Supersedes:** none. It fills in arch §4.2's `Animatable<T>`, which schema v1 rejects in its keyed form, and narrows "every field is Animatable" for `blend_mode`.
@@ -99,7 +99,7 @@ We will:
 - WP-2C.02: the model types and evaluator, passing the vectors. It should use the pure-Rust `libm` crate (already in `Cargo.lock`) for native and wasm parity.
 - WP-2C.03: the commands, the `prune_keyframes` hooks, the model fields and their migration (including `audio.pan`, which WP-2E.01's Area does not cover).
 - WP-2C.06: wasm parity on the same vectors.
-- WP-2D.01: speed changes leave keys alone. Whether a speed change should stretch them instead is an open question for the product owner.
+- WP-2D.01: speed changes leave keys alone. The product owner decided (2026-11-25): keys stay by default, and `clip.set_speed` gains `keyframes: "keep" | "scale"` (default `keep`) so the editor can offer stretching. A split leaves no key at the cut.
 - The integrator should resolve the WBS deltas listed in the spec's §14, for example with an R-resolution in `docs/05-work-breakdown.md`.
 
 ## Links

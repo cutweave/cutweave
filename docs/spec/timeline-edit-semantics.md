@@ -723,6 +723,8 @@ Every fixture has `kind`, `id` (equal to its file name), `title`, `cites` (the `
 
 ## 10. Decisions and alternatives
 
+The product owner confirmed D1, D2b, D7 and D16 on 2026-11-25, when accepting ADR-0023.
+
 | # | Decision | Alternatives considered | Why |
 |---|---|---|---|
 | D1 | At most one magnetic track; a sequence may have none. | Exactly one, always (WBS wording). | P1 documents have none, and CapCut's magnet can be turned off. "Exactly one per sequence that has one" is what the property tests assert. |
