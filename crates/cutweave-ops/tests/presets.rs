@@ -275,7 +275,7 @@ fn a_matching_aspect_gives_the_preset_size_and_a_short_clip_has_no_warnings() {
     );
     assert_eq!(out["warnings"], json!([]));
     assert_eq!(out["supported"], json!(true));
-    assert!(out["estimated_bytes"].as_u64().unwrap() > 0);
+    assert!(out["estimated_kib"].as_u64().unwrap() > 0);
 }
 
 #[test]

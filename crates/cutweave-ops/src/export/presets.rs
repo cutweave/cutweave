@@ -1222,8 +1222,8 @@ pub struct ResolvePresetOutput {
     pub height: u32,
     /// Output frame rate.
     pub frame_rate: FrameRate,
-    /// Estimated file size in bytes, when the preset has a bitrate.
-    pub estimated_bytes: Option<u64>,
+    /// Estimated file size in KiB, when the preset has a bitrate.
+    pub estimated_kib: Option<u32>,
     /// Whether this build can export it now.
     pub supported: bool,
     /// Why not, when unsupported.
@@ -1272,7 +1272,9 @@ impl EngineCommand for ResolvePreset {
             width: plan.width,
             height: plan.height,
             frame_rate: plan.frame_rate,
-            estimated_bytes: plan.estimated_bytes,
+            estimated_kib: plan
+                .estimated_bytes
+                .map(|b| u32::try_from(b.div_ceil(1024)).unwrap_or(u32::MAX)),
             supported: support.is_ok(),
             unsupported_reason: support.err(),
             warnings: plan.warnings,
