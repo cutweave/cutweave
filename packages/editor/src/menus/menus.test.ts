@@ -9,6 +9,7 @@ import type { MenuEntry, MenuItem, MenuSubmenu } from "@cutweave/ui";
 import { describe, expect, it, vi } from "vitest";
 import { i18n, type TKey } from "../i18n/index.ts";
 import en from "../i18n/locales/en.json";
+import { registerPaletteCommands } from "../palette/commands.ts";
 import { listBindings } from "../shortcuts/bindings.ts";
 import { buildMenu } from "./build.ts";
 import { COMMAND_INFO, registerBuiltinMenus } from "./builtins.ts";
@@ -56,6 +57,7 @@ function fixtureServices(overrides: Partial<MenuServices> = {}): MenuServices {
     ...overrides,
   });
   registerBuiltinMenus(services);
+  registerPaletteCommands(services);
   return services;
 }
 

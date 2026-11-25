@@ -294,6 +294,8 @@ pub(super) fn args_for(name: &str, p: &Pools) -> Option<(u32, BoxedStrategy<Valu
         "media.import" => (if no_media { 4 } else { 2 }, media_import()),
         "media.list" => (1, media_list(p)),
         "media.remove" => (1, media_remove(p)),
+        "media.generate_proxy" | "media.delete_proxy" => (1, proxy_media(p, false)),
+        "media.proxy_status" => (1, proxy_media(p, true)),
         "track.add" => (2, track_add(p)),
         "track.remove" => (1, track_remove(p)),
         "track.set" => (2, track_set(p)),
@@ -569,6 +571,24 @@ fn media_remove(p: &Pools) -> BoxedStrategy<Value> {
         valid.prop_map(|id| json!({"id": id})).boxed(),
         one_of(ids(&used)).prop_map(|id| json!({"id": id})).boxed(),
     )
+}
+
+/// `{media: [ids]}` for the proxy commands (WP-2F.01): known or unknown assets, an empty or
+/// repeated list; `media.proxy_status` may leave the list out.
+fn proxy_media(p: &Pools, optional: bool) -> BoxedStrategy<Value> {
+    let valid = vec(one_of(p.media_ids()), 1..=3)
+        .prop_map(|ids| json!({ "media": ids }))
+        .boxed();
+    let invalid = prop_oneof![
+        Just(json!({ "media": [] })),
+        one_of(p.media_ids()).prop_map(|id| json!({ "media": [id.clone(), id] })),
+    ]
+    .boxed();
+    if optional {
+        prop_oneof![8 => mix(valid, invalid), 2 => Just(json!({}))].boxed()
+    } else {
+        mix(valid, invalid)
+    }
 }
 
 // ----- tracks, timeline ----------------------------------------------------------------------
@@ -1617,6 +1637,48 @@ fn export_start(p: &Pools) -> BoxedStrategy<Value> {
 
 /// The job id [`export_ctx`]'s starter returns for every export it is given.
 pub const EXPORT_JOB_ID: JobId = JobId::from_u128(0xE0);
+
+/// A proxy service that makes none (the engine context of the proxy commands in a harness,
+/// WP-2F.01): every asset reports `none`, and generating or deleting changes nothing.
+#[derive(Debug, Default)]
+pub struct NoProxies;
+
+impl crate::media::ProxyService for NoProxies {
+    fn status(
+        &self,
+        _doc: &cutweave_model::Project,
+        media: &[cutweave_model::MediaId],
+    ) -> Vec<crate::media::proxy::ProxyInfo> {
+        media
+            .iter()
+            .map(|id| crate::media::proxy::ProxyInfo::none(*id))
+            .collect()
+    }
+
+    fn generate(
+        &self,
+        doc: &cutweave_model::Project,
+        media: &[cutweave_model::MediaId],
+    ) -> Result<Vec<crate::media::proxy::ProxyInfo>, cutweave_commands::CmdError> {
+        Ok(self.status(doc, media))
+    }
+
+    fn delete(
+        &self,
+        doc: &cutweave_model::Project,
+        media: &[cutweave_model::MediaId],
+    ) -> Result<Vec<crate::media::proxy::ProxyInfo>, cutweave_commands::CmdError> {
+        Ok(self.status(doc, media))
+    }
+
+    fn imported(
+        &self,
+        _media: cutweave_model::MediaId,
+        _after: &[JobId],
+    ) -> crate::media::ImportProxy {
+        crate::media::ImportProxy::None
+    }
+}
 
 /// Takes export plans and queues nothing (see [`export_ctx`]).
 struct QueueNothing;

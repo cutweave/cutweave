@@ -41,6 +41,7 @@ use cutweave_commands::{
 use cutweave_jobs::JobManager;
 use cutweave_model::{SeededGen, Time};
 use cutweave_ops::export::ExportCtx;
+use cutweave_ops::media::proxy::ProxyCall;
 use cutweave_ops::media::{
     AllowedRoots, AnalysisStages, Analyzer, ImportCtx, ImportPolicy, OUTSIDE_ROOTS_HINT,
 };
@@ -333,6 +334,14 @@ impl Core {
             let output = registry.invoke_engine_json(name, params, &mut call, ctx.access())?;
             return Ok(self.reply(output));
         }
+        if context == TypeId::of::<ProxyCall>() {
+            let mut call = ProxyCall {
+                service: self.deps.subsystems.proxy_service(),
+                doc: self.doc()?.snapshot().doc.clone(),
+            };
+            let output = registry.invoke_engine_json(name, params, &mut call, ctx.access())?;
+            return Ok(self.reply(output));
+        }
         if context == TypeId::of::<SessionCall>() {
             let mut call = SessionCall {
                 core: Arc::clone(self),
@@ -456,6 +465,9 @@ impl Core {
         let mut import = ImportCtx::new(prober, Box::new(sink))
             .with_policy(policy)
             .with_analysis(analyzer);
+        if let Some(proxies) = self.deps.subsystems.proxy_service() {
+            import = import.with_proxies(proxies);
+        }
         let result = self
             .deps
             .registry

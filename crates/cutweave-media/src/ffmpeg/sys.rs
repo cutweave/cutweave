@@ -423,14 +423,30 @@ impl Scaler {
     pub(super) fn new(
         src: ffmpeg_next::format::Pixel,
         dst: ffmpeg_next::format::Pixel,
-        (width, height): (u32, u32),
+        size: (u32, u32),
+        colorspace: c_int,
+        ranges: (bool, bool),
+    ) -> Result<Scaler, ffmpeg_next::Error> {
+        Scaler::scaling(src, dst, (size, size), colorspace, ranges)
+    }
+
+    /// A converter from `src` frames of `src_size` to `dst` frames of `dst_size` (bilinear when
+    /// the sizes differ); otherwise as [`new`](Self::new).
+    pub(super) fn scaling(
+        src: ffmpeg_next::format::Pixel,
+        dst: ffmpeg_next::format::Pixel,
+        ((width, height), (dst_width, dst_height)): ((u32, u32), (u32, u32)),
         colorspace: c_int,
         (src_full, dst_full): (bool, bool),
     ) -> Result<Scaler, ffmpeg_next::Error> {
+        let invalid = ffmpeg_next::Error::Other {
+            errno: ffmpeg_next::error::EINVAL,
+        };
         let (Ok(w), Ok(h)) = (c_int::try_from(width), c_int::try_from(height)) else {
-            return Err(ffmpeg_next::Error::Other {
-                errno: ffmpeg_next::error::EINVAL,
-            });
+            return Err(invalid);
+        };
+        let (Ok(dw), Ok(dh)) = (c_int::try_from(dst_width), c_int::try_from(dst_height)) else {
+            return Err(invalid);
         };
         // 1 for small frames; 0 is automatic, one slice per core.
         let threads = c_int::from(u64::from(width) * u64::from(height) < THREADED_PIXELS);
@@ -456,8 +472,8 @@ impl Scaler {
             (*c).threads = threads;
             (*c).src_w = w;
             (*c).src_h = h;
-            (*c).dst_w = w;
-            (*c).dst_h = h;
+            (*c).dst_w = dw;
+            (*c).dst_h = dh;
             (*c).src_format = ffi::AVPixelFormat::from(src) as c_int;
             (*c).dst_format = ffi::AVPixelFormat::from(dst) as c_int;
             (*c).src_range = c_int::from(src_full);
@@ -485,16 +501,20 @@ impl Scaler {
         Ok(scaler)
     }
 
-    /// Converts `input` into `output` (both allocated, of the context's size and formats).
+    /// Converts `input` into `output`: `input` allocated in the context's source size and
+    /// format; `output` allocated in its destination size and format, or empty (swscale then
+    /// allocates it).
     pub(super) fn run(
         &mut self,
         input: &ffmpeg_next::frame::Video,
         output: &mut ffmpeg_next::frame::Video,
     ) -> Result<(), ffmpeg_next::Error> {
-        // SAFETY: the context is initialised and used by this one call; `output` and `input` are
-        // live frames with allocated buffers in the formats and size the context was made for
-        // (the encoder allocates both to match), so sws_scale_frame only writes `output`'s
-        // buffers and only reads `input`.
+        // SAFETY: the context is initialised and used by this one call; `input` is a live frame
+        // with allocated buffers in the source format and size the context was made for, and
+        // `output` is a live frame either allocated in its destination format and size (the
+        // encoder allocates it to match) or empty, which sws_scale_frame allocates itself with
+        // the context's destination size and format. So it only writes `output`'s buffers and
+        // only reads `input`.
         let ret =
             unsafe { ffi::sws_scale_frame(self.0.as_ptr(), output.as_mut_ptr(), input.as_ptr()) };
         if ret < 0 {

@@ -102,18 +102,21 @@ function runEdit(action: EditAction): void {
 export const FIELD_COMMANDS: readonly UiCommand[] = [
   {
     id: "edit.text.undo",
+    hidden: true,
     label: "contextMenu.field.undo",
     icon: "undo-2",
     run: () => void document.execCommand("undo"),
   },
   {
     id: "edit.text.cut",
+    hidden: true,
     label: "contextMenu.field.cut",
     host: true,
     run: () => runEdit("cut"),
   },
   {
     id: "edit.text.copy",
+    hidden: true,
     label: "contextMenu.field.copy",
     icon: "copy",
     host: true,
@@ -121,6 +124,7 @@ export const FIELD_COMMANDS: readonly UiCommand[] = [
   },
   {
     id: "edit.text.paste",
+    hidden: true,
     label: "contextMenu.field.paste",
     icon: "clipboard",
     host: true,
@@ -128,6 +132,7 @@ export const FIELD_COMMANDS: readonly UiCommand[] = [
   },
   {
     id: "edit.text.select_all",
+    hidden: true,
     label: "contextMenu.field.selectAll",
     host: true,
     run: () => runEdit("selectAll"),
@@ -187,6 +192,7 @@ export const FIELD_SURFACE: MenuSurfaceDef = {
 /** Development builds: Shift+right-click on dead space offers "Inspect element". */
 export const INSPECT_COMMAND: UiCommand = {
   id: "host.inspect_element",
+  hidden: true,
   label: "contextMenu.inspect",
   icon: "search",
   host: true,

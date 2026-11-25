@@ -5331,7 +5331,7 @@
         "WP-1D.07",
         "WP-1D.08"
       ],
-      "scope": "- Proxy job: transcode to an intra-frame codec at ≤ 960 px on the long edge (ProRes Proxy via `prores_ks`/videotoolbox where present, DNxHR LB fallback, MJPEG last), audio copied to PCM. Keeps frame count and timestamps identical to the source (VFR sources are conformed through the media index to CFR with a stored `pts_map` so that proxy frame *n* equals source frame *n*, essential for frame-exact edits).\n- Content-addressed in the global cache (`cache.sqlite` entry keyed by `content_hash + proxy_profile`), size-capped LRU, resumable job (partial files finalized atomically), progress events, cancel, concurrency limit (default 2; ≤ 1 while exporting), CPU/GPU niceness.\n- Policy in `project.settings.proxy_policy`: `off | auto | all`. `auto` triggers on import for long-GOP codecs (H.264/HEVC) with long edge > 1920 px or fps > 60 or HEVC 10-bit (documented). Per-media `media.set_proxy_mode{auto|force|off}`.\n- Commands: `media.generate_proxy{media[]}`, `media.delete_proxy`, `media.set_proxy_policy`, `media.proxy_status` query. Jobs resumed after engine restart.\n- MCP: catalog; `media_import` reports `proxy: queued|none`.",
+      "scope": "- Proxy job: transcode to an intra-frame codec at ≤ 960 px on the long edge (ProRes Proxy via `prores_ks`/videotoolbox where present, DNxHR LB fallback, MJPEG last), audio copied to PCM. Keeps frame count and timestamps identical to the source (VFR sources are conformed through the media index to CFR with a stored `pts_map` so that proxy frame *n* equals source frame *n*, essential for frame-exact edits).\n- Content-addressed in the global cache (`cache.sqlite` entry keyed by `content_hash + proxy_profile`), size-capped LRU, resumable job (partial files finalized atomically), progress events, cancel, concurrency limit (default 2; ≤ 1 while exporting), CPU/GPU niceness.\n- Policy in `project.settings.proxy_policy`: `off | auto | all`. `auto` triggers on import for long-GOP codecs (H.264/HEVC) with long edge > 1920 px or fps > 60 or HEVC 10-bit (documented). Per-media `media.set_proxy_mode{auto|force|off}`. (2026-11-25: the two project-format fields and their commands wait for [ADR-0027](../adr/0027-proxy-policy-in-the-project.md), Proposed; WP-2F.01 shipped with `auto` for every project, arch §7.)\n- Commands: `media.generate_proxy{media[]}`, `media.delete_proxy`, `media.set_proxy_policy`, `media.proxy_status` query. Jobs resumed after engine restart.\n- MCP: catalog; `media_import` reports `proxy: queued|none`.",
       "interfaces": "`ProxyRef {path, profile, status}`; `job.progress` events; queries above.",
       "acceptance": [
         "For the corpus 4K HEVC 10-min clip, proxy generation ≥ 1× realtime on the reference desktop; resumes after kill -9 and completes (test).",
@@ -5631,7 +5631,7 @@
         "WP-1M.12",
         "WP-1O.02"
       ],
-      "scope": "(product owner request, 2026-11-24) organize the project's media into folders, as decided in ADR-0020 (Proposed; it must be Accepted before this WP starts).\n- Model: `Project.folders: Map<FolderId, MediaFolder{id, name, parent?: FolderId, custom}>` with IDs `fld_…` (deterministic under `--deterministic-ids`), `MediaAsset.folder?: FolderId` (absent = top level) and `MediaAsset.name?: String` (display name; absent = the file name).\n- Invariants in `Project::validate`: parents and asset folders exist; no cycles; depth ≤ 32; folder names 1–255 characters, no `/` or control characters, unique among siblings ignoring case.\n- Commands in the `media` namespace, all undoable as one step, MCP catalog:\n  - `media.create_folder{parent?, name?}` → `{folder_id, name}` (no name: \"New folder\", \"New folder 2\", …).\n  - `media.rename_folder{folder, name}`; `media.rename{media, name?}` (no name: back to the file name).\n  - `media.move{media?, folders?, to?, on_conflict?: fail|rename}` moves assets and folders (no `to` = top level). A folder into itself or a descendant is `Invalid`; a sibling name clash fails or renames (\"Day 1 2\").\n  - `media.delete_folder{folder, contents: move_up|remove}`: `move_up` lifts everything one level; `remove` removes the folder, its subfolders and every asset no timeline uses, and moves the used ones to the deleted folder's parent; the result lists `removed` and `kept`. Timelines never change; files on disk are never touched.\n  - `media.import` and `media.register` take an optional `folder`.\n- Queries: `media.list`'s filter gains `folder` and `recursive` (no folder: the whole project; a folder: one level unless `recursive`), and each summary carries `name` and `folder`; new `media.list_folders` returns the tree (id, name, parent, path, asset and subfolder counts). WP-1M.12's `text` matches the display name.\n- **Joins WP-2A.02's v2 (integrator resolution, 2026-11-25).** WP-2A.02 already bumped `CURRENT_SCHEMA_VERSION` to 2 and wrote `migrate/v1_to_v2.rs` as an ordered list of steps (`STEPS`); nothing is released between the two work packages, so this WP **appends a step** to that list (and its fixtures to `tests/fixtures/v2/`) and makes no v3 (arch §17, \"One v2\"). Its golden fixtures extend the existing v2 ones; the model types it adds go next to the timeline additions.\n- Migration v1→v2 adds `folders: {}`, `folder: null` and `name: null`; golden fixtures under `v2/` (nested folders, renamed assets); every v1 fixture migrates; v1 apps open v2 files read-only (the existing rule). Strategies for every new command in the registry property harness (`testing/strategies.rs`).",
+      "scope": "(product owner request, 2026-11-24) organize the project's media into folders, as decided in ADR-0020 (Accepted by the product owner, 2026-11-25).\n- Model: `Project.folders: Map<FolderId, MediaFolder{id, name, parent?: FolderId, custom}>` with IDs `fld_…` (deterministic under `--deterministic-ids`), `MediaAsset.folder?: FolderId` (absent = top level) and `MediaAsset.name?: String` (display name; absent = the file name).\n- Invariants in `Project::validate`: parents and asset folders exist; no cycles; depth ≤ 32; folder names 1–255 characters, no `/` or control characters, unique among siblings ignoring case.\n- Commands in the `media` namespace, all undoable as one step, MCP catalog:\n  - `media.create_folder{parent?, name?}` → `{folder_id, name}` (no name: \"New folder\", \"New folder 2\", …).\n  - `media.rename_folder{folder, name}`; `media.rename{media, name?}` (no name: back to the file name).\n  - `media.move{media?, folders?, to?, on_conflict?: fail|rename}` moves assets and folders (no `to` = top level). A folder into itself or a descendant is `Invalid`; a sibling name clash fails or renames (\"Day 1 2\").\n  - `media.delete_folder{folder, contents: move_up|remove}`: `move_up` lifts everything one level; `remove` removes the folder, its subfolders and every asset no timeline uses, and moves the used ones to the deleted folder's parent; the result lists `removed` and `kept`. Timelines never change; files on disk are never touched.\n  - `media.import` and `media.register` take an optional `folder`.\n- Queries: `media.list`'s filter gains `folder` and `recursive` (no folder: the whole project; a folder: one level unless `recursive`), and each summary carries `name` and `folder`; new `media.list_folders` returns the tree (id, name, parent, path, asset and subfolder counts). WP-1M.12's `text` matches the display name.\n- **Joins WP-2A.02's v2 (integrator resolution, 2026-11-25).** WP-2A.02 already bumped `CURRENT_SCHEMA_VERSION` to 2 and wrote `migrate/v1_to_v2.rs` as an ordered list of steps (`STEPS`); nothing is released between the two work packages, so this WP **appends a step** to that list (and its fixtures to `tests/fixtures/v2/`) and makes no v3 (arch §17, \"One v2\"). Its golden fixtures extend the existing v2 ones; the model types it adds go next to the timeline additions.\n- Migration v1→v2 adds `folders: {}`, `folder: null` and `name: null`; golden fixtures under `v2/` (nested folders, renamed assets); every v1 fixture migrates; v1 apps open v2 files read-only (the existing rule). Strategies for every new command in the registry property harness (`testing/strategies.rs`).",
       "interfaces": "`FolderId`, `MediaFolder`, `MediaAsset.{folder, name}`; the commands and queries above; `CURRENT_SCHEMA_VERSION` is already 2 (WP-2A.02).",
       "acceptance": [
         "The registry property harness covers every new command: undo/redo identity, failure atomicity, and the invariants after random sequences of create, rename, move and delete (no cycle, no orphan, unique sibling names).",
@@ -6118,7 +6118,7 @@
       "title": "Keymap engine, shortcut editor, NLE and CapCut presets",
       "source": {
         "file": "docs/wbs/P2-core-editor.md",
-        "line": 1225
+        "line": 1231
       },
       "phase": "P2",
       "epic": "2H",
@@ -6170,7 +6170,7 @@
       "title": "Preview overlays: transform handles, crop, safe areas, grid",
       "source": {
         "file": "docs/wbs/P2-core-editor.md",
-        "line": 1253
+        "line": 1259
       },
       "phase": "P2",
       "epic": "2H",
@@ -6213,7 +6213,7 @@
       "title": "UX design review gate (human)",
       "source": {
         "file": "docs/wbs/P2-core-editor.md",
-        "line": 1276
+        "line": 1282
       },
       "phase": "P2",
       "epic": "2H",
@@ -6251,7 +6251,7 @@
       "title": "Project settings: `project.set_settings` and File > Project settings…",
       "source": {
         "file": "docs/wbs/P2-core-editor.md",
-        "line": 1289
+        "line": 1295
       },
       "phase": "P2",
       "epic": "2H",
@@ -6288,7 +6288,7 @@
       "title": "Settings: Appearance page (interface scale, density, reduce motion)",
       "source": {
         "file": "docs/wbs/P2-core-editor.md",
-        "line": 1307
+        "line": 1313
       },
       "phase": "P2",
       "epic": "2H",
@@ -6324,7 +6324,7 @@
       "title": "Settings: Playback page (preview quality, proxies, scrub audio, loop)",
       "source": {
         "file": "docs/wbs/P2-core-editor.md",
-        "line": 1326
+        "line": 1332
       },
       "phase": "P2",
       "epic": "2H",
@@ -6362,7 +6362,7 @@
       "title": "History panel: every undo step, who made it, go back to any step",
       "source": {
         "file": "docs/wbs/P2-core-editor.md",
-        "line": 1342
+        "line": 1348
       },
       "phase": "P2",
       "epic": "2H",
@@ -6399,7 +6399,7 @@
       "title": "Context-menu framework: host, surfaces, command-derived items, keyboard and touch, contributions",
       "source": {
         "file": "docs/wbs/P2-core-editor.md",
-        "line": 1370
+        "line": 1376
       },
       "phase": "P2",
       "epic": "2H",
@@ -6450,7 +6450,7 @@
       "title": "Context menus for today's surfaces: bin, preview, timeline basics, inspector, chrome",
       "source": {
         "file": "docs/wbs/P2-core-editor.md",
-        "line": 1397
+        "line": 1403
       },
       "phase": "P2",
       "epic": "2H",
@@ -6500,7 +6500,7 @@
       "title": "Core tool set: mapping, annotations and completion (~30 tools)",
       "source": {
         "file": "docs/wbs/P2-core-editor.md",
-        "line": 1425
+        "line": 1431
       },
       "phase": "P2",
       "epic": "2I",
@@ -6551,7 +6551,7 @@
       "title": "Visual tools: contact sheet, filmstrip, waveform image",
       "source": {
         "file": "docs/wbs/P2-core-editor.md",
-        "line": 1445
+        "line": 1451
       },
       "phase": "P2",
       "epic": "2I",
@@ -6603,7 +6603,7 @@
       "title": "Checkpoints: edit.checkpoint / edit.restore",
       "source": {
         "file": "docs/wbs/P2-core-editor.md",
-        "line": 1466
+        "line": 1472
       },
       "phase": "P2",
       "epic": "2I",
@@ -6648,7 +6648,7 @@
       "title": "Optimistic concurrency: expected_rev everywhere",
       "source": {
         "file": "docs/wbs/P2-core-editor.md",
-        "line": 1485
+        "line": 1491
       },
       "phase": "P2",
       "epic": "2I",
@@ -6701,7 +6701,7 @@
       "title": "Tool profiles, change notifications and tools/list budget",
       "source": {
         "file": "docs/wbs/P2-core-editor.md",
-        "line": 1502
+        "line": 1508
       },
       "phase": "P2",
       "epic": "2I",
@@ -6732,7 +6732,7 @@
       "title": "Scripted-agent e2e: YouTube edit and 9:16 short via MCP only",
       "source": {
         "file": "docs/wbs/P2-core-editor.md",
-        "line": 1520
+        "line": 1526
       },
       "phase": "P2",
       "epic": "2I",
@@ -6775,7 +6775,7 @@
       "title": "Benchmark fixtures and Rust criterion suite",
       "source": {
         "file": "docs/wbs/P2-core-editor.md",
-        "line": 1542
+        "line": 1548
       },
       "phase": "P2",
       "epic": "2J",
@@ -6832,7 +6832,7 @@
       "title": "UI benchmarks: timeline pan/zoom and UI command RTT",
       "source": {
         "file": "docs/wbs/P2-core-editor.md",
-        "line": 1559
+        "line": 1565
       },
       "phase": "P2",
       "epic": "2J",
@@ -6866,7 +6866,7 @@
       "title": "Playback, scrub and A/V sync benchmarks",
       "source": {
         "file": "docs/wbs/P2-core-editor.md",
-        "line": 1574
+        "line": 1580
       },
       "phase": "P2",
       "epic": "2J",
@@ -6908,7 +6908,7 @@
       "title": "CI benchmark gate and trend dashboard",
       "source": {
         "file": "docs/wbs/P2-core-editor.md",
-        "line": 1589
+        "line": 1595
       },
       "phase": "P2",
       "epic": "2J",
@@ -6949,7 +6949,7 @@
       "title": "Crash-injection harness: 20 forced crashes, no data loss",
       "source": {
         "file": "docs/wbs/P2-core-editor.md",
-        "line": 1605
+        "line": 1611
       },
       "phase": "P2",
       "epic": "2J",
@@ -6993,7 +6993,7 @@
       "title": "Dogfood edit A: 10-min YouTube video with B-roll (human)",
       "source": {
         "file": "docs/wbs/P2-core-editor.md",
-        "line": 1623
+        "line": 1629
       },
       "phase": "P2",
       "epic": "2J",
@@ -7033,7 +7033,7 @@
       "title": "Dogfood edit B: 9:16 short with manual reframe, music and fades (human)",
       "source": {
         "file": "docs/wbs/P2-core-editor.md",
-        "line": 1638
+        "line": 1644
       },
       "phase": "P2",
       "epic": "2J",
@@ -7071,7 +7071,7 @@
       "title": "M2 exit review (human)",
       "source": {
         "file": "docs/wbs/P2-core-editor.md",
-        "line": 1652
+        "line": 1658
       },
       "phase": "P2",
       "epic": "2J",
@@ -7109,7 +7109,7 @@
       "title": "Background render cache (smart pre-render while idle)",
       "source": {
         "file": "docs/wbs/P2-core-editor.md",
-        "line": 1665
+        "line": 1671
       },
       "phase": "P2",
       "epic": "2J",

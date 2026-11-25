@@ -22,7 +22,7 @@ use std::time::Instant;
 
 use cutweave_api::Credential;
 use cutweave_engine::{Connection, Engine, EngineMode, FullConfig, FullSubsystems};
-use engine_support::{TempDir, settle_threads, thread_count};
+use engine_support::{TempDir, settle_threads, thread_census, thread_count};
 use full_support::{
     Clocks, SEC, call, corpus_file, delivered, engine_config, ffmpeg_tool, play_frames,
 };
@@ -98,14 +98,20 @@ fn import_render_play_export_and_shut_down_cleanly_on_the_corpus() {
     let before = thread_count();
     scenario(&t, &clip, &probe_tool, 1);
     let warm = settle_threads(before, 0);
+    let warm_census = thread_census();
     scenario(&t, &clip, &probe_tool, 2);
     // The software rasterizer tears its device down asynchronously: allow a few stragglers
-    // (three runs measured 31, 31, 34 threads; an engine-sized leak is 25+).
+    // (an engine-sized leak is 25+). The count leaves out the Windows thread pool's workers,
+    // which the OS sizes by load (`ThreadCensus::counted`): in a full-suite run they went from
+    // 15 to 20 between the two runs (52 to 57 threads in all) while the counted ones stayed 37.
     let after = settle_threads(warm, 3);
+    let census = thread_census();
     println!("threads: {before} at start, {warm} after the first run, {after} after the second");
+    println!("after the first run: {warm_census}\nafter the second: {census}");
     assert!(
         after <= warm + 3,
-        "threads leaked: {warm} after the first run, {after} after the second"
+        "threads leaked: {warm} after the first run, {after} after the second\n\
+         after the first run: {warm_census}\nafter the second: {census}"
     );
 }
 

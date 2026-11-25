@@ -35,6 +35,19 @@
 //! goes to the media layer ([`Scope::Media`]: the frame cache, the decoder pool, decoding, and
 //! the conversion for the compositor), which locks and allocates; moving those decodes off the
 //! render thread (decode-ahead into a lock-free hand-off) is follow-up work.
+//!
+//! # Proxies (WP-2F.01)
+//!
+//! A layer whose request accepts a proxy ([`FrameRequest::proxy`]: scrub frames, and the
+//! quality ladder's proxy rungs) is served from the asset's ready proxy ([`FullProxies`]) when
+//! it has one: proxy frame `n` is original frame `n`, so the frame shown at a source time is
+//! found through the original's index stored with the proxy, decoded from the proxy's own pool
+//! (its frames cached under the proxy's identity, never the original's) and placed with the
+//! original's probed size, so the picture lands exactly where the original's would. The
+//! preview holds the proxy it resolved until the store's generation moves (a proxy became
+//! ready, was evicted or deleted): one atomic load per frame, so a proxy finished while the
+//! file is open is used from the next frame on. A missing or failing proxy falls back to the
+//! original. Agent frames, `/media/frame` and exports never use proxies.
 
 use std::cell::RefCell;
 use std::collections::{HashMap, HashSet};
@@ -42,17 +55,19 @@ use std::path::PathBuf;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, Mutex, PoisonError};
 
+use cutweave_cache::proxy::ReadyProxy;
 use cutweave_cache::{CacheDb, ContentHash, FrameCache, FrameIndex, FrameKey};
 use cutweave_commands::DocSnapshot;
 use cutweave_media::{
     CancelCheck, CancelToken, DecodeMode, DecodeOpts, DecoderPool, HwMode, MediaBackend,
     MediaError, PixelFormat, VideoDecoder,
 };
-use cutweave_model::{MediaId, Project, Time};
+use cutweave_model::{MediaAsset, MediaId, ProbeInfo, Project, Time};
 use cutweave_render::alloc_scope::{self, Scope};
 use cutweave_render::{FrameError, FrameRequest, FrameSource, VideoFrame};
 
 use super::media::{CurrentDoc, MediaFile};
+use super::proxy::FullProxies;
 use crate::export::sources::{compositor_frame, compositor_target, media_identity};
 
 /// Whether the preview's decoders may use the hardware (`media.set_decode_policy`, WP-1D.08).
@@ -98,6 +113,8 @@ pub struct MediaFrames {
     damaged: Mutex<HashSet<MediaId>>,
     /// Media whose frames must be converted for the compositor, and into what.
     targets: Mutex<HashMap<MediaId, PixelFormat>>,
+    /// Proxies the preview may serve (WP-2F.01).
+    proxies: Option<Arc<FullProxies>>,
 }
 
 impl std::fmt::Debug for MediaFrames {
@@ -156,7 +173,14 @@ impl MediaFrames {
             pools: Mutex::new(HashMap::new()),
             damaged: Mutex::new(HashSet::new()),
             targets: Mutex::new(HashMap::new()),
+            proxies: None,
         }
+    }
+
+    /// The same frames, serving preview layers that accept one from `proxies`.
+    pub(crate) fn with_proxies(mut self, proxies: Option<Arc<FullProxies>>) -> MediaFrames {
+        self.proxies = proxies;
+        self
     }
 
     /// Media items with a decoder pool.
@@ -420,6 +444,46 @@ struct Held {
     index: Option<Arc<FrameIndex>>,
     /// The last picture served: stream, pts and the compositor's frame.
     last: Option<(u32, Time, Arc<VideoFrame>)>,
+    /// The asset's ready proxy, as resolved at `proxy_generation` of the store.
+    proxy: Option<HeldProxy>,
+    proxy_generation: Option<u64>,
+}
+
+/// A ready proxy the preview holds for one media item.
+struct HeldProxy {
+    ready: Arc<ReadyProxy>,
+    /// The proxy file as the media layer decodes it: its own id, path and identity hash.
+    file: MediaFile,
+    pool: Arc<DecoderPool>,
+    identity: u64,
+    /// The last picture served from it: the original time it shows and the frame.
+    last: Option<(Time, Arc<VideoFrame>)>,
+}
+
+impl HeldProxy {
+    /// The preview's hold on `ready` (allocates: once per proxy).
+    fn new(backend: &Arc<dyn MediaBackend>, ready: Arc<ReadyProxy>) -> HeldProxy {
+        let digest = ready.identity.digest();
+        let mut id = [0_u8; 16];
+        id.copy_from_slice(&digest[..16]);
+        let file = MediaFile {
+            id: MediaId::from_u128(u128::from_le_bytes(id)),
+            path: ready.record.path.clone(),
+            hash: Some(ready.identity),
+            probe: ProbeInfo::default(),
+        };
+        let pool = Arc::new(
+            DecoderPool::new(Arc::clone(backend), file.path.clone())
+                .with_index(Arc::clone(&ready.index)),
+        );
+        HeldProxy {
+            identity: media_identity(&ready.identity.to_string()),
+            ready,
+            file,
+            pool,
+            last: None,
+        }
+    }
 }
 
 /// The preview render thread's front of [`MediaFrames`] (see the module docs). Not `Sync`: it
@@ -496,6 +560,8 @@ impl PreviewFrames {
             identity,
             pool,
             last: None,
+            proxy: None,
+            proxy_generation: None,
         })
     }
 }
@@ -509,6 +575,56 @@ pub(crate) struct PreviewRequest<'a> {
 }
 
 impl PreviewRequest<'_> {
+    /// The picture of `asset`'s ready proxy shown at original time `t`, if it has one (see the
+    /// module docs); `None` falls back to the original.
+    fn proxy_frame(
+        &self,
+        held: &mut Held,
+        asset: Option<&MediaAsset>,
+        t: Time,
+    ) -> Option<Arc<VideoFrame>> {
+        let proxies = self.frames.frames.proxies.as_ref()?;
+        let generation = proxies.store().generation();
+        if held.proxy_generation != Some(generation) {
+            // A proxy became ready or went away since this item was resolved (allocates).
+            held.proxy = alloc_scope::within(Scope::Media, || {
+                let backend = self.frames.frames.backend.as_ref()?;
+                let ready = proxies.ready(asset?)?;
+                Some(HeldProxy::new(backend, ready))
+            });
+            held.proxy_generation = Some(generation);
+        }
+        let proxy = held.proxy.as_mut()?;
+        let (n, shown) = proxy.ready.frame_at(t)?;
+        if let Some((pts, frame)) = &proxy.last
+            && *pts == shown
+        {
+            return Some(Arc::clone(frame));
+        }
+        let at = proxy.ready.index.time_of(n)?;
+        let token = self.cancel.clone();
+        let frames = &self.frames.frames;
+        let mode = self.mode;
+        let decoded = alloc_scope::within(Scope::Media, || {
+            let cancel = CancelToken::linked(CancelCheck::new(move || token.is_cancelled()));
+            frames
+                .decode(&proxy.pool, &proxy.file, 0, at, Some((cancel, mode)))
+                .and_then(|frame| convert(proxy.identity, &frame))
+        });
+        match decoded {
+            Ok(frame) => {
+                proxy.last = Some((shown, Arc::clone(&frame)));
+                Some(frame)
+            }
+            Err(e) => {
+                if !self.cancel.is_cancelled() {
+                    tracing::debug!(error = %e, "the proxy could not be decoded; using the original");
+                }
+                None
+            }
+        }
+    }
+
     /// A picture the preview does not hold: from the frame cache or a decode, converted.
     fn fetch(&self, held: &mut Held, stream: u32, t: Time) -> Result<Arc<VideoFrame>, FrameError> {
         let token = self.cancel.clone();
@@ -528,6 +644,10 @@ impl PreviewRequest<'_> {
 
 impl FrameSource for PreviewRequest<'_> {
     fn frame(&self, request: &FrameRequest) -> Result<Arc<VideoFrame>, FrameError> {
+        // Proxy jobs yield while pictures are being served (playback, scrub, Source view).
+        if let Some(proxies) = &self.frames.frames.proxies {
+            proxies.note_preview_activity();
+        }
         let mut map = self.frames.held.borrow_mut();
         let asset = self.doc.doc.media.get(&request.media);
         let current = |held: &Held| {
@@ -547,6 +667,11 @@ impl FrameSource for PreviewRequest<'_> {
             .ok_or_else(|| FrameError::Unavailable(format!("media {}", request.media)))?;
         let stream = request.stream.unwrap_or(0);
         let t = request_time(request);
+        if request.proxy
+            && let Some(frame) = self.proxy_frame(held, asset, t)
+        {
+            return Ok(frame);
+        }
         if held.index.is_none() {
             held.index = alloc_scope::within(Scope::Media, || held.pool.index());
         }

@@ -83,6 +83,26 @@ expression: "json!({\n    \"meta\": serde_json::to_value(meta).unwrap(), \"input
               "duplicate": {
                 "description": "`true` when the content was already in the project and nothing was added.",
                 "type": "boolean"
+              },
+              "proxy": {
+                "description": "Whether a proxy (a small copy the preview scrubs, WP-2F.01) was queued for it, or is\nalready in the cache.",
+                "oneOf": [
+                  {
+                    "description": "None is made (the policy does not want one, or the file cannot have one).",
+                    "type": "string",
+                    "const": "none"
+                  },
+                  {
+                    "description": "Its generation is queued (after the asset's analysis); `media.proxy_status` follows it.",
+                    "type": "string",
+                    "const": "queued"
+                  },
+                  {
+                    "description": "One is already in the cache (the same content was imported before).",
+                    "type": "string",
+                    "const": "ready"
+                  }
+                ]
               }
             },
             "additionalProperties": false,
@@ -90,7 +110,8 @@ expression: "json!({\n    \"meta\": serde_json::to_value(meta).unwrap(), \"input
               "path",
               "media_id",
               "kind",
-              "duplicate"
+              "duplicate",
+              "proxy"
             ]
           },
           "description": "One entry per imported path, in request order."
@@ -243,6 +264,26 @@ expression: "json!({\n    \"meta\": serde_json::to_value(meta).unwrap(), \"input
             "duplicate": {
               "description": "`true` when the content was already in the project and nothing was added.",
               "type": "boolean"
+            },
+            "proxy": {
+              "description": "Whether a proxy (a small copy the preview scrubs, WP-2F.01) was queued for it, or is\nalready in the cache.",
+              "oneOf": [
+                {
+                  "description": "None is made (the policy does not want one, or the file cannot have one).",
+                  "type": "string",
+                  "const": "none"
+                },
+                {
+                  "description": "Its generation is queued (after the asset's analysis); `media.proxy_status` follows it.",
+                  "type": "string",
+                  "const": "queued"
+                },
+                {
+                  "description": "One is already in the cache (the same content was imported before).",
+                  "type": "string",
+                  "const": "ready"
+                }
+              ]
             }
           },
           "additionalProperties": false,
@@ -250,7 +291,8 @@ expression: "json!({\n    \"meta\": serde_json::to_value(meta).unwrap(), \"input
             "path",
             "media_id",
             "kind",
-            "duplicate"
+            "duplicate",
+            "proxy"
           ]
         },
         "description": "One entry per imported path, in request order."

@@ -463,6 +463,13 @@ impl FrameSource for PreviewSource {
             scene.height = request.layout.height();
         }
         request.quality.apply(scene);
+        if request.purpose == RenderPurpose::Scrub {
+            // Scrub frames try proxies first (arch §10 step 5; WP-2F.01); the refine after the
+            // scrub settles shows the originals.
+            for layer in &mut scene.layers {
+                layer.request.proxy = true;
+            }
+        }
         let target = Target::rgba8(request.layout.width(), request.layout.height());
         let mode = match request.purpose {
             RenderPurpose::Playback => DecodeMode::Sequential,

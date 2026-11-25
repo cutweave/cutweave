@@ -43,6 +43,10 @@ const MENU_IDS: ReadonlySet<string> = new Set([
   ...hintBindingIds(),
   ...Object.values(ZONE_SURFACE).filter((id): id is string => id !== null),
   "timeline.canvas",
+  // The command palette's row surface and its row command, and its shortcut's binding id (WP-2H.04).
+  "palette.row",
+  "palette.run",
+  "menu.commandPalette",
 ]);
 const referenced = new Set([...code.matchAll(KEY_LIKE)].map((m) => m[1] as string));
 

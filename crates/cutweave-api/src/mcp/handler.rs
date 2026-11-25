@@ -421,7 +421,7 @@ impl CutweaveMcp {
         out["undoable"] = json!(meta.undoable);
         out["annotations"] = json!(meta.annotations);
         out["input_schema"] = meta.input_schema.clone();
-        out["output_schema"] = meta.output_schema.clone();
+        out["output_schema"] = results::mcp_output_schema(meta.name, &meta.output_schema);
         results::success(format!("{}: {}", meta.name, meta.summary), out, None)
     }
 }

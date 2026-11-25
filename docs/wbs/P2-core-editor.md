@@ -839,7 +839,7 @@ Schedule note: the roadmap gives 9 weeks. Total effort here is about 162 agent-d
 - **Scope:**
   - Proxy job: transcode to an intra-frame codec at ≤ 960 px on the long edge (ProRes Proxy via `prores_ks`/videotoolbox where present, DNxHR LB fallback, MJPEG last), audio copied to PCM. Keeps frame count and timestamps identical to the source (VFR sources are conformed through the media index to CFR with a stored `pts_map` so that proxy frame *n* equals source frame *n*, essential for frame-exact edits).
   - Content-addressed in the global cache (`cache.sqlite` entry keyed by `content_hash + proxy_profile`), size-capped LRU, resumable job (partial files finalized atomically), progress events, cancel, concurrency limit (default 2; ≤ 1 while exporting), CPU/GPU niceness.
-  - Policy in `project.settings.proxy_policy`: `off | auto | all`. `auto` triggers on import for long-GOP codecs (H.264/HEVC) with long edge > 1920 px or fps > 60 or HEVC 10-bit (documented). Per-media `media.set_proxy_mode{auto|force|off}`.
+  - Policy in `project.settings.proxy_policy`: `off | auto | all`. `auto` triggers on import for long-GOP codecs (H.264/HEVC) with long edge > 1920 px or fps > 60 or HEVC 10-bit (documented). Per-media `media.set_proxy_mode{auto|force|off}`. (2026-11-25: the two project-format fields and their commands wait for [ADR-0027](../adr/0027-proxy-policy-in-the-project.md), Proposed; WP-2F.01 shipped with `auto` for every project, arch §7.)
   - Commands: `media.generate_proxy{media[]}`, `media.delete_proxy`, `media.set_proxy_policy`, `media.proxy_status` query. Jobs resumed after engine restart.
   - MCP: catalog; `media_import` reports `proxy: queued|none`.
 - **Interfaces:** `ProxyRef {path, profile, status}`; `job.progress` events; queries above.
@@ -1221,6 +1221,12 @@ Schedule note: the roadmap gives 9 weeks. Total effort here is about 162 agent-d
   - A fixture command with hints appears in a context-menu surface and in the palette with no UI code change.
 - **Tests:** Vitest, Playwright.
 - **Out of scope:** plugin-contributed menu items (P6).
+- **As built (2026-11-25):**
+  - **No `cmdk`:** the palette is the design system's `Dialog` and `SearchField` over a listbox (no new dependency).
+  - **Catalog:** the editor reads `schema/commands.json` at build time into a `CommandCatalog` store; a command registered there, or a `CommandInfo` or UI command, shows with no UI code change.
+  - **`when` and menus:** `CommandInfo.when` and `UiCommand.when` are the command's default clause. The palette leaves out a row whose clause fails; a menu row without its own `when` takes it as its enabled state.
+  - **Argument form:** a small form generated from the input schema (text, number, switch, select, JSON). `SchemaForm` (WP-2H.02) was not merged, and replaces it when it lands (the field model stays).
+  - **Not built here:** the `#[command(menu=...)]` attribute and the generated application menus and native menu mirror (the menu bar stays `shell/appMenu.ts`, and a `menu` hint needs a macro change outside this WP's Area).
 
 ### WP-2H.05 — Keymap engine, shortcut editor, NLE and CapCut presets
 - **Area:** packages/editor/src/keymap/ (and the editor's existing key tables: `shell/appMenu.ts`, `transport/keymap.ts`, `panels/binKeys.ts`, `shortcuts/`), packages/timeline (`TIMELINE_KEYS` becomes a context of the keymap), packages/preferences (`shortcuts.*`), apps/desktop (global shortcut conflicts), docs/reference/settings.md, apps/desktop/e2e/flows, docs/user-flows.md

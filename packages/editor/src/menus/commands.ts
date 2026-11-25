@@ -24,6 +24,11 @@ export interface CommandInfo {
   readonly destructive?: boolean;
   /** Mirrors the catalog's `undoable`. */
   readonly undoable?: boolean;
+  /**
+   * When the command makes sense (a `when` clause, see `when.ts`): the palette lists it only
+   * while it holds, and a surface row without a clause of its own takes it as its enabled state.
+   */
+  readonly when?: string;
 }
 
 export class CommandInfoTable {
@@ -70,6 +75,10 @@ export interface UiCommand {
   readonly danger?: boolean;
   /** Touches the OS (clipboard, file manager, developer tools): it must be on the exemption list. */
   readonly host?: boolean;
+  /** Not listed in the palette: it only makes sense inside the menu that offers it (a text field's Cut). */
+  readonly hidden?: boolean;
+  /** When the command makes sense; see {@link CommandInfo.when}. */
+  readonly when?: string;
   run(args: unknown, ctx: RunContext): void | Promise<void>;
 }
 

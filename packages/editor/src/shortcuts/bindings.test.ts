@@ -235,6 +235,9 @@ describe("every key handler in the editor is accounted for", () => {
       "a slider's own keys while it has the focus: arrows step a frame, Home, End, Page Up and Down",
     "menus/host.tsx":
       "Shift+F10 and the Menu key open the context menu of the focused surface: the platform's own keys",
+    "palette/CommandPalette.tsx":
+      "the palette's search field: Up, Down, Page Up, Page Down and Enter move through and run its list",
+    "palette/shortcut.ts": "Ctrl+K opens the command palette: PALETTE_COMBO (menu group)",
     "panels/InspectorPanel.tsx":
       "name field: Enter commits, Escape puts the old text back (dialogs group)",
     "panels/MediaPanel.tsx": "the bin's keys: binKeys.ts",

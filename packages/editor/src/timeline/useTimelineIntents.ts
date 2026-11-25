@@ -14,6 +14,7 @@ import { docStore } from "../state/docStore.ts";
 import { toastStore } from "../state/toastStore.ts";
 import { viewStore } from "../state/viewStore.ts";
 import { transportController } from "../transport/useTransport.ts";
+import { setActiveTimelineController } from "./activeController.ts";
 import { TimelineController, type TimelineOverlay } from "./controller.ts";
 import { type Translate, translator } from "./errors.ts";
 
@@ -62,6 +63,9 @@ export function useTimelineIntents(): TimelineIntents {
       }),
     [],
   );
+
+  // Commands outside the panel (the palette's Split at playhead) reach it through this.
+  useEffect(() => setActiveTimelineController(controller), [controller]);
 
   // Losing the window mid-drag cancels the gesture (the pointer-up may never arrive).
   useEffect(() => {
