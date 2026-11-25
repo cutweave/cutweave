@@ -12,6 +12,7 @@ import { useStore } from "zustand";
 import { createStore } from "zustand/vanilla";
 import { useEngineReady } from "../engine/engineStore.ts";
 import { exportController, useTimelineHasItems } from "../export/useExport.ts";
+import { usePref } from "../prefs/prefsStore.ts";
 import { type DesktopBridge, desktopFromWindow, hasNativeMenu } from "../session/desktop.ts";
 import { redoText, undoText } from "../session/historyLabels.ts";
 import type { ProjectController } from "../session/projectController.ts";
@@ -138,6 +139,9 @@ export function useAppMenus(desktop: DesktopBridge | null = desktopFromWindow())
   const dev = useDevBuild(desktop);
   const registered = useRegisteredPanels();
   const openPanels = useOpenPanels().open;
+  // The shortcuts the menus show follow a rebinding at once (WP-2H.05).
+  const preset = usePref("shortcuts.preset");
+  const rebound = usePref("shortcuts.bindings");
   return useMemo(() => {
     const translate = translator(t);
     return buildAppMenu(
@@ -176,6 +180,8 @@ export function useAppMenus(desktop: DesktopBridge | null = desktopFromWindow())
     hasItems,
     registered,
     openPanels,
+    preset,
+    rebound,
   ]);
 }
 

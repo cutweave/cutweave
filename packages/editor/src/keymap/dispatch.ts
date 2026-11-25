@@ -9,8 +9,8 @@ import { useEffect } from "react";
 import { i18n } from "../i18n/index.ts";
 import { runBinding } from "../palette/runBinding.ts";
 import { isTextEntry } from "../session/useProject.ts";
-import { COMMAND_IDS } from "../shell/appMenu.ts";
 import { toastStore } from "../state/toastStore.ts";
+import { KEY_COMMANDS } from "./commands.ts";
 import type { KeyBinding } from "./model.ts";
 import { chordsStartingWith, completeChord, isComposing, matchEvent, strokeOf } from "./store.ts";
 import type { KeyCombo } from "./stroke.ts";
@@ -18,8 +18,13 @@ import type { KeyCombo } from "./stroke.ts";
 /** How long a chord waits for its second stroke. */
 export const CHORD_TIMEOUT_MS = 1500;
 
-/** The commands `useAppShortcuts` runs (they follow the menu's enabled state). */
-const MENU_OWNED: ReadonlySet<string> = new Set(Object.values(COMMAND_IDS));
+/**
+ * The commands another listener runs from their key: the menu bar's (they follow the menu items'
+ * enabled state), the transport's, the bin's. Only the palette's key is the dispatcher's own.
+ */
+const OWNED: ReadonlySet<string> = new Set(
+  KEY_COMMANDS.map((c) => c.id).filter((id) => id !== "palette.open"),
+);
 
 /** Whether a stroke is typing: no modifier and not a function key. */
 function isPlainTyping(stroke: KeyCombo): boolean {
@@ -74,7 +79,7 @@ export function useKeymapDispatcher(): void {
         return;
       }
       const binding = matchEvent(event, ["global"]);
-      if (binding === null || binding.fixed || MENU_OWNED.has(binding.command)) return;
+      if (binding === null || binding.fixed || OWNED.has(binding.command)) return;
       event.preventDefault();
       run(binding);
     };
