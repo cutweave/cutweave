@@ -17,6 +17,7 @@ import { startMediaHttp } from "./media/mediaWiring.ts";
 import { migrateLegacyView } from "./prefs/legacy.ts";
 import { preferences, prefsStore } from "./prefs/prefsStore.ts";
 import { desktopFromWindow } from "./session/desktop.ts";
+import { openNoticeToast } from "./session/openNotices.ts";
 import { sessionStore } from "./session/sessionStore.ts";
 import { EditorShell } from "./shell/EditorShell.tsx";
 import { docStore } from "./state/docStore.ts";
@@ -90,6 +91,16 @@ async function boot(): Promise<void> {
           title: i18n.t("projectUi.autosaveFailedTitle"),
           message: i18n.t("projectUi.autosaveFailed", { message }),
         }),
+      // An agent opened a project, or could not because of unsaved changes (ADR-0029).
+      onOpenNotice: (notice) =>
+        toastStore
+          .getState()
+          .push(
+            openNoticeToast(
+              notice,
+              (key, vars) => i18n.t(key as never, vars as never) as unknown as string,
+            ),
+          ),
     });
     // Real thumbnails, filmstrips and waveforms once the engine is up and has media (WP-1I.03).
     startMediaHttp({ bridge, engine: engineStore, doc: docStore, jobs: jobStore });

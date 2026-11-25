@@ -464,7 +464,13 @@ export type ConflictReason =
  *  The item is soft-locked by another actor's open gesture or proposal transaction
  *  (arch §5.2, ADR-0017); retry after `retry_after_ms`.
  */
-"item_in_gesture";
+"item_in_gesture" | 
+/**
+ *  Opening or closing a project would drop the open document's unsaved changes, and the
+ *  caller did not say to (`discard_unsaved: true` / `save: false`, ADR-0029). The detail
+ *  names the project.
+ */
+"unsaved_changes";
 
 /**  The file format of the output. */
 export type Container = 
@@ -2199,12 +2205,19 @@ export type Project = {
 
 /**
  *  Closes the open project (releasing its lock) and starts an untitled document. With
- *  `save: true` the committed state is saved first; with `save: false` nothing is saved (the
- *  unsaved work stays in the journal and is offered on the next open); by default it is saved
- *  when autosave is on. A failed save keeps the project open. Every client must resync.
+ *  `save: true` the committed state is saved first; with `save: false` nothing is saved (a
+ *  project's unsaved work stays in the journal and is offered on the next open; an untitled
+ *  document's is gone); by default it is saved when autosave is on. Changes the close would
+ *  not save make it fail with `Conflict{reason: unsaved_changes}` unless `save` is `false`
+ *  (ADR-0029): an untitled document with changes (it has no file; `project.save_as` first),
+ *  or, by default, a project with autosave off. A failed save keeps the project open. Every
+ *  client must resync.
  */
 export type ProjectClose = {
-	/**  Save before closing (`true`), never (`false`), or as autosave would (absent). */
+	/**
+	 *  Save before closing (`true`), never: drop unsaved changes (`false`), or as autosave
+	 *  would (absent).
+	 */
 	save?: boolean | null,
 };
 
@@ -2315,16 +2328,42 @@ export type ProjectNewOutput = {
 
 /**
  *  Opens a project (its folder or its `.cutweave` file), closing the current one first (saved
- *  when autosave is on, as `project.close` does). A project open in another Cutweave process
- *  fails with `Invalid` at `/path` and leaves the current project open. Unsaved work from a
- *  crashed session is reported in `project.recovery`; edits are refused until
- *  `project.recover` or `project.discard_recovery`. Every client must resync (`doc.reset`).
- *  Agents and headless callers may only open projects inside the open project's folder and
- *  the folders the user approved (`Invalid` at `/path` otherwise).
+ *  when autosave is on, as `project.close` does). It never drops unsaved changes unasked
+ *  (ADR-0029): when the open document has changes the close would not save (an untitled
+ *  document, or a project with autosave off), it fails with `Conflict{reason:
+ *  unsaved_changes}` and changes nothing, unless `discard_unsaved` is `true` (then the current
+ *  project closes without saving, as `project.close` with `save: false`). A project open in
+ *  another Cutweave process fails with `Invalid` at `/path` and leaves the current project
+ *  open. Unsaved work from a crashed session is reported in `project.recovery`; edits are
+ *  refused until `project.recover` or `project.discard_recovery`. Sends `project.opening`, then
+ *  `project.opened` or `project.open_failed`; every client must resync (`doc.reset`). Agents
+ *  and headless callers may only open projects inside the open project's folder and the
+ *  folders the user approved (`Invalid` at `/path` otherwise).
  */
 export type ProjectOpen = {
 	/**  Absolute path of the project folder or of its `.cutweave` document. */
 	path: string,
+	/**  Drop the open document's unsaved changes (`true`); otherwise they make the open fail. */
+	discard_unsaved?: boolean | null,
+};
+
+/**
+ *  `project.open_failed`: a `project.open` that `project.opening` announced failed (the engine
+ *  holds what it held before, or an untitled document if the old project was already closed),
+ *  or an open was refused before it started because the open document has unsaved changes
+ *  (`code: conflict`, `reason: unsaved_changes`; ADR-0029).
+ */
+export type ProjectOpenFailed = {
+	/**  The project that was to be opened, as the caller named it. */
+	path: string,
+	/**  Who asked: `user`, `agent:<label>` or `plugin:<id>`. */
+	actor: string,
+	/**  The error code the caller got (`conflict`, `invalid`, `not_found`, ...). */
+	code: string,
+	/**  The conflict reason (`unsaved_changes`), if the error is a conflict. */
+	reason: string | null,
+	/**  The error message the caller got. */
+	message: string,
 };
 
 /**  Result of `project.open`. */
@@ -2335,6 +2374,18 @@ export type ProjectOpenOutput = {
 	missing_media: MediaId[],
 	/**  The schema version the document was migrated from, if it was. */
 	migrated_from: number | null,
+};
+
+/**
+ *  `project.opening`: a `project.open` started (ADR-0029). The engine sends `project.opened` when
+ *  it succeeds and `project.open_failed` when it fails, so a client can show that a project is
+ *  opening, and who opens it, until one of them arrives.
+ */
+export type ProjectOpening = {
+	/**  The project being opened, as the caller named it: its folder or its `.cutweave` file. */
+	path: string,
+	/**  Who opens it: `user` (the app), `agent:<label>` (an agent or the CLI) or `plugin:<id>`. */
+	actor: string,
 };
 
 /**

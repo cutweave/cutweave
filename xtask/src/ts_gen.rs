@@ -65,6 +65,8 @@ fn event_payload(name: &str, types: &mut Types) -> Option<DataType> {
         "AutosaveFailed" => cutweave_engine::autosave::AutosaveFailed::definition(types),
         "ProjectStatus" => cutweave_engine::ProjectStatus::definition(types),
         "ProjectClosed" => cutweave_engine::events::ProjectClosed::definition(types),
+        "ProjectOpening" => cutweave_engine::events::ProjectOpening::definition(types),
+        "ProjectOpenFailed" => cutweave_engine::events::ProjectOpenFailed::definition(types),
         "AgentConnection" => cutweave_engine::AgentConnection::definition(types),
         "JobInfo" => cutweave_jobs::JobInfo::definition(types),
         "MediaIndexed" => cutweave_ops::media::MediaIndexed::definition(types),

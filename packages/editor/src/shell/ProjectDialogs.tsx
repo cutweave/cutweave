@@ -1,15 +1,23 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 // The dialogs of the project flows (WP-1M.07): crash recovery (Restore / Discard), "Save
 // changes?" before something that would lose them, the name and place of a new or copied
-// project, and the banner for a project from a newer version (read-only).
+// project, "Opening <name>…" while a project opens (ADR-0029), and the banner for a project from
+// a newer version (read-only).
 
 import { Button, Dialog, DialogNote, InspectorRow, TextField } from "@cutweave/ui";
-import { useId, useState } from "react";
+import { useEffect, useId, useState } from "react";
 import { useTranslation } from "react-i18next";
+import { agentName } from "../agents/agentNames.ts";
 import type { TKey } from "../i18n/index.ts";
 import { preferences } from "../prefs/prefsStore.ts";
 import { clockTime } from "../session/errors.ts";
-import { type SessionStore, useSessionStore } from "../session/sessionStore.ts";
+import {
+  type OpeningProject,
+  projectNameOfPath,
+  type SessionStore,
+  useSessionStore,
+} from "../session/sessionStore.ts";
+import { APP_ACTOR } from "../session/sessionSync.ts";
 import {
   type NameProblem,
   type NamingPrompt,
@@ -198,6 +206,65 @@ function NamingDialog() {
   return prompt === null ? null : <NamingForm key={prompt.mode} prompt={prompt} />;
 }
 
+/**
+ * An open an agent or a plugin started stays on screen at least this long, so the person can
+ * read who is switching their project even when it opens at once.
+ */
+export const AGENT_OPEN_MIN_MS = 800;
+
+/** The open to show: the session's, or an agent's that ended less than the minimum ago. */
+function useShownOpening(): OpeningProject | null {
+  const opening = useSessionStore((s) => s.opening);
+  const [held, setHeld] = useState<{ opening: OpeningProject; since: number } | null>(null);
+  useEffect(() => {
+    if (opening !== null) {
+      setHeld((h) => (h?.opening === opening ? h : { opening, since: Date.now() }));
+      return undefined;
+    }
+    if (held === null) return undefined;
+    const left = held.opening.actor === APP_ACTOR ? 0 : held.since + AGENT_OPEN_MIN_MS - Date.now();
+    if (left <= 0) {
+      setHeld(null);
+      return undefined;
+    }
+    const timer = setTimeout(() => setHeld(null), left);
+    return () => clearTimeout(timer);
+  }, [opening, held]);
+  return opening ?? held?.opening ?? null;
+}
+
+/**
+ * "Opening <name>…" while a project opens, whoever opened it (ADR-0029): the document is about
+ * to be replaced, so it takes no edits until the new one is in. Says who, when an agent did.
+ */
+function OpeningDialog() {
+  const { t } = useTranslation();
+  const opening = useShownOpening();
+  if (opening === null) return null;
+  const name = projectNameOfPath(opening.path);
+  const byAgent = opening.actor !== APP_ACTOR;
+  const agent = byAgent
+    ? agentName(opening.actor, (key, vars) => t(key as never, vars as never) as unknown as string)
+    : "";
+  return (
+    <Dialog
+      open
+      onOpenChange={() => {}}
+      dirty
+      title={t("projectUi.opening.title", { name })}
+      className="cw-dialog--opening"
+    >
+      {byAgent ? (
+        <div className="cw-opening-agent">
+          <DialogNote icon="sparkles">{t("projectUi.opening.byAgent", { agent })}</DialogNote>
+        </div>
+      ) : (
+        <DialogNote icon="loader-circle">{t("projectUi.opening.body")}</DialogNote>
+      )}
+    </Dialog>
+  );
+}
+
 /** All project dialogs; mount once in the shell. */
 export function ProjectDialogs() {
   return (
@@ -205,6 +272,7 @@ export function ProjectDialogs() {
       <RecoveryDialog />
       <UnsavedDialog />
       <NamingDialog />
+      <OpeningDialog />
     </>
   );
 }

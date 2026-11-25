@@ -7,7 +7,8 @@ import { cx } from "./cx.ts";
 import { IconButton } from "./IconButton.tsx";
 import { ProgressBar } from "./ProgressBar.tsx";
 
-export type ToastTone = "success" | "info" | "warning" | "danger" | "job";
+/** `agent`: what an agent did or tried, in agent colour with the agent mark (design/README.md). */
+export type ToastTone = "success" | "info" | "warning" | "danger" | "job" | "agent";
 
 const TONE_ICON: Record<ToastTone, IconName> = {
   success: "check",
@@ -15,12 +16,17 @@ const TONE_ICON: Record<ToastTone, IconName> = {
   warning: "triangle-alert",
   danger: "circle-alert",
   job: "download",
+  agent: "sparkles",
 };
 
-/** Success and info dismiss themselves; warnings, errors and running jobs wait for a person. */
+/**
+ * Success, info and agent notes dismiss themselves; warnings, errors and running jobs wait for a
+ * person (an agent note that needs one passes its own `duration`).
+ */
 const AUTO_DISMISS_MS: Record<ToastTone, number> = {
   success: 5000,
   info: 5000,
+  agent: 5000,
   warning: Number.POSITIVE_INFINITY,
   danger: Number.POSITIVE_INFINITY,
   job: Number.POSITIVE_INFINITY,

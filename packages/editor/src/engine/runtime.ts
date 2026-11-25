@@ -37,7 +37,7 @@ import type { mediaStore } from "../media/mediaStore.ts";
 import type { prefsStore } from "../prefs/prefsStore.ts";
 import { parseRingAnnouncement } from "../preview/ringPreview.ts";
 import type { sessionStore } from "../session/sessionStore.ts";
-import { SessionSync } from "../session/sessionSync.ts";
+import { type OpenNotice, SessionSync } from "../session/sessionSync.ts";
 import { docSink, type docStore } from "../state/docStore.ts";
 import type { jobStore } from "../state/jobStore.ts";
 import type { playbackStore } from "../state/playbackStore.ts";
@@ -104,6 +104,8 @@ export interface RuntimeOptions {
   readonly onError?: (error: unknown) => void;
   /** `project.autosave_failed`: show the engine's message (a toast). */
   readonly onAutosaveFailed?: (message: string) => void;
+  /** An agent's or a plugin's project open opened, was refused or failed (ADR-0029). */
+  readonly onOpenNotice?: (notice: OpenNotice) => void;
 }
 
 /** What the supervisor's state means for reconnecting (`supervisedPolicy`). */
@@ -207,8 +209,10 @@ export function startEngineRuntime(
       : new SessionSync({
           store: stores.session,
           rpc,
+          doc: stores.doc,
           onError,
           ...(options.onAutosaveFailed && { onAutosaveFailed: options.onAutosaveFailed }),
+          ...(options.onOpenNotice && { onOpenNotice: options.onOpenNotice }),
         });
   let started = false;
   const offs: (() => void)[] = [];

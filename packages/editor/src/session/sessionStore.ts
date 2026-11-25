@@ -33,6 +33,14 @@ export const EMPTY_STACKS: UndoStacks = {
   nextRedoActor: null,
 };
 
+/** A project open under way (`project.opening`, ADR-0029): edits wait until it is done. */
+export interface OpeningProject {
+  /** The project being opened, as the caller named it: its folder or its `.cutweave` file. */
+  readonly path: string;
+  /** Who opens it: `user` (this app), `agent:<label>` or `plugin:<id>`. */
+  readonly actor: string;
+}
+
 export interface SessionState {
   /** False until the first status (`rpc.hello`) arrived: the title and menus say nothing yet. */
   readonly known: boolean;
@@ -48,6 +56,8 @@ export interface SessionState {
   readonly stacks: UndoStacks;
   /** The engine's last autosave failed and nothing was saved since (`project.autosave_failed`). */
   readonly autosaveFailed: boolean;
+  /** A project is opening, until its document is in the mirror (or the open failed). */
+  readonly opening: OpeningProject | null;
 }
 
 export interface SessionStore extends SessionState {
@@ -60,6 +70,7 @@ export interface SessionStore extends SessionState {
   setRecovery(recovery: RecoveryInfo | null): void;
   setStacks(stacks: UndoStacks): void;
   setAutosaveFailed(failed: boolean): void;
+  setOpening(opening: OpeningProject | null): void;
 }
 
 export const initialSessionState: SessionState = {
@@ -71,6 +82,7 @@ export const initialSessionState: SessionState = {
   recovery: null,
   stacks: EMPTY_STACKS,
   autosaveFailed: false,
+  opening: null,
 };
 
 export function createSessionStore() {
@@ -100,6 +112,7 @@ export function createSessionStore() {
     setRecovery: (recovery) => set({ recovery }),
     setStacks: (stacks) => set({ stacks }),
     setAutosaveFailed: (autosaveFailed) => set({ autosaveFailed }),
+    setOpening: (opening) => set({ opening }),
   }));
 }
 
@@ -124,6 +137,14 @@ export function documentHasContent(project: Project | null): boolean {
  */
 export function hasUnsavedWork(session: SessionState, project: Project | null): boolean {
   return session.dirty || (session.known && session.path === null && documentHasContent(project));
+}
+
+/**
+ * The project a path names, for messages: the folder's name, or the document's without
+ * `.cutweave` ("/work/Film" and "/work/Film/Film.cutweave" are both "Film").
+ */
+export function projectNameOfPath(path: string): string {
+  return projectFileName(path).replace(/\.cutweave$/i, "");
 }
 
 /** The file name of a project path, for titles and messages ("film.cutweave"). */

@@ -1034,6 +1034,11 @@ body {
   min-width: 0;
 }
 
+/* "Opening <name>…" when an agent opens the project (ADR-0029): agent wording in agent colour. */
+.cw-opening-agent .cw-note {
+  color: var(--agent-text);
+}
+
 /* A wrapper that only marks a context-menu surface: no box of its own (WP-2H.13). */
 .cw-context-surface {
   display: contents;

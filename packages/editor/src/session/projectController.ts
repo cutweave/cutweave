@@ -8,6 +8,8 @@
 // Leaving a project with unsaved changes asks first (Save / Discard / Cancel). "Discard" closes
 // with `save: false` so the engine's autosave-on-close cannot write them either; the work stays
 // in the journal and is offered again by the recovery dialog the next time the project opens.
+// Open passes `discard_unsaved: true` instead, and only after the person chose Discard
+// (ADR-0029); when the engine refuses an open for changes the editor did not count, it asks then.
 
 import { type ProjectStatus, RpcError } from "@cutweave/protocol";
 import type { StoreApi } from "zustand/vanilla";
@@ -17,7 +19,7 @@ import type { ToastStore } from "../state/toastStore.ts";
 import type { Translate } from "../timeline/errors.ts";
 import { applyNewProjectWorkspace } from "../workspace/newProject.ts";
 import { type DesktopBridge, isSessionCommand, type SessionMenuCommand } from "./desktop.ts";
-import { asRpcError, describeProjectError } from "./errors.ts";
+import { asRpcError, describeProjectError, isUnsavedChanges } from "./errors.ts";
 import { stepName } from "./historyLabels.ts";
 import { hasUnsavedWork, type SessionStore } from "./sessionStore.ts";
 import {
@@ -218,14 +220,10 @@ export class ProjectController {
 
   // ---- unsaved changes ----------------------------------------------------------------------
 
-  /**
-   * Settles unsaved changes before something that would lose them. `true`: go on (saved, or
-   * the person chose to discard: the project is then closed without saving); `false`: stay.
-   */
-  async settleUnsaved(): Promise<boolean> {
+  /** Asks Save / Discard / Cancel ("Save changes to <name>?"). */
+  #askUnsaved(): Promise<UnsavedChoice> {
     const { ui } = this.#deps;
-    if (!this.hasUnsavedWork()) return true;
-    const choice = await new Promise<UnsavedChoice>((resolve) => {
+    return new Promise<UnsavedChoice>((resolve) => {
       ui.getState().setUnsaved({
         project: this.projectName(),
         resolve: (answer) => {
@@ -234,6 +232,29 @@ export class ProjectController {
         },
       });
     });
+  }
+
+  /**
+   * Settles unsaved changes before an open, which drops them itself when told to (ADR-0029):
+   * `go` (nothing unsaved, or saved), `discard` (the person chose to drop them: open with
+   * `discard_unsaved`) or `stay`. `ask` asks even when the editor counts nothing unsaved (the
+   * engine refused the open for changes it knows of).
+   */
+  async #settleForOpen(ask = false): Promise<"go" | "discard" | "stay"> {
+    if (!ask && !this.hasUnsavedWork()) return "go";
+    const choice = await this.#askUnsaved();
+    if (choice === "cancel") return "stay";
+    if (choice === "save") return (await this.save()) ? "go" : "stay";
+    return "discard";
+  }
+
+  /**
+   * Settles unsaved changes before something that would lose them. `true`: go on (saved, or
+   * the person chose to discard: the project is then closed without saving); `false`: stay.
+   */
+  async settleUnsaved(): Promise<boolean> {
+    if (!this.hasUnsavedWork()) return true;
+    const choice = await this.#askUnsaved();
     if (choice === "cancel") return false;
     if (choice === "save") return this.save();
     try {
@@ -325,28 +346,42 @@ export class ProjectController {
     return last === undefined ? false : this.open(last);
   }
 
-  /** Opens a project: `path` when given (the recent list), else the native folder picker. */
+  /**
+   * Opens a project: `path` when given (the recent list), else the native folder picker. Unsaved
+   * changes are settled first; the engine drops them only when the person chose Discard.
+   */
   async open(path?: string): Promise<boolean> {
     const chosen = path ?? (await this.chooseFolder());
     if (chosen === null) return false;
-    if (!(await this.settleUnsaved())) return false;
-    return this.#busy(async () => {
-      try {
-        const out = (await this.#call("project.open", { path: chosen })) as {
-          project: ProjectStatus;
-          missing_media: string[];
-          migrated_from: number | null;
-        };
-        this.#applyStatus(out.project);
-        await this.#remember(out.project.path ?? chosen);
-        this.#reportOpened(out);
-        return true;
-      } catch (error) {
-        this.#fail("projectUi.failed.open", error);
-        if (path !== undefined) void this.#forget(path);
-        return false;
-      }
-    });
+    let settled = await this.#settleForOpen();
+    for (;;) {
+      if (settled === "stay") return false;
+      const discard = settled === "discard";
+      const outcome = await this.#busy(async () => {
+        try {
+          const out = (await this.#call(
+            "project.open",
+            discard ? { path: chosen, discard_unsaved: true } : { path: chosen },
+          )) as {
+            project: ProjectStatus;
+            missing_media: string[];
+            migrated_from: number | null;
+          };
+          this.#applyStatus(out.project);
+          await this.#remember(out.project.path ?? chosen);
+          this.#reportOpened(out);
+          return "opened" as const;
+        } catch (error) {
+          // Changes the editor did not count (or that came in since): ask now, then again.
+          if (!discard && isUnsavedChanges(error)) return "unsaved" as const;
+          this.#fail("projectUi.failed.open", error);
+          if (path !== undefined) void this.#forget(path);
+          return "failed" as const;
+        }
+      });
+      if (outcome !== "unsaved") return outcome === "opened";
+      settled = await this.#settleForOpen(true);
+    }
   }
 
   async #forget(path: string): Promise<void> {

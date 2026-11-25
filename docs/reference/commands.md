@@ -47,12 +47,12 @@ MCP exposure: `core` commands are always listed as tools (`item.move` is `item_m
 | media | `media.remove` | Remove an unused media asset from the project | command, undoable, destructive | catalog |
 | media | `media.set_cache_config` | Set the cache limits and the memory for decoded frames | engine, destructive, idempotent, ui-only | catalog |
 | media | `media.set_decode_policy` | Choose hardware or software decoding for the preview | engine, idempotent, ui-only | catalog |
-| project | `project.close` | Close the open project (saving first if asked or if autosave is on) | engine, idempotent | catalog |
+| project | `project.close` | Close the open project (saving first if asked or if autosave is on) | engine, destructive, idempotent | catalog |
 | project | `project.connections` | List the agent connections open on this engine, with their last command | engine, read-only, idempotent | catalog |
 | project | `project.discard_recovery` | Discard unsaved changes from a crashed session and keep the saved project | engine, destructive | catalog |
 | project | `project.info` | Get project name, default format and a summary of its sequences | query | core |
 | project | `project.new` | Initialize an empty project with one sequence (V1 + A1) | command, undoable | catalog |
-| project | `project.open` | Open a project folder or .cutweave file (closes the current project) | engine | core |
+| project | `project.open` | Open a project folder or .cutweave file (closes the current project) | engine, destructive | core |
 | project | `project.recover` | Restore unsaved changes from the journal after a crash | engine | catalog |
 | project | `project.rename` | Rename the project | command, undoable, idempotent | catalog |
 | project | `project.report_focus` | The window gained the focus: record it for agent engine choice | engine, idempotent, ui-only | hidden |

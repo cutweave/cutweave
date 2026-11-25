@@ -14,7 +14,7 @@ use serde_json::{Value, json};
 
 /// A new project with one clip: `(sequence, item)`.
 async fn project_with_a_clip(h: &Harness, client: &Client) -> (Value, Value) {
-    must(&h.direct("setup"), "project.close", json!({}));
+    must(&h.direct("setup"), "project.close", json!({ "save": false }));
     let created = client
         .ok(
             "cutweave_execute",
