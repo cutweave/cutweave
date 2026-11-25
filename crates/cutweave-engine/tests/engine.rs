@@ -155,7 +155,12 @@ fn save_as_names_an_untitled_document_after_its_folder() {
         "project.save_as",
         json!({ "path": path_str(&t.path().join("Holiday")) }),
     );
-    assert!(saved["path"].as_str().unwrap().ends_with("Holiday.cutweave"));
+    assert!(
+        saved["path"]
+            .as_str()
+            .unwrap()
+            .ends_with("Holiday.cutweave")
+    );
     assert_eq!(must(&conn, "project.info", json!({}))["name"], "Holiday");
     assert_eq!(h.status().unwrap().name, "Holiday");
 }
