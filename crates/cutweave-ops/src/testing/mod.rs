@@ -106,6 +106,35 @@ pub fn arb_command_from(registry: &Registry, doc: &Project) -> BoxedStrategy<(St
     Union::new_weighted(arms).boxed()
 }
 
+/// [`arb_command_from`] restricted to the entries called `names`: for a focused property test
+/// of a few commands (WP-2A.02 drives the track and marker commands this way).
+///
+/// # Panics
+///
+/// If a name is not registered or has no strategy.
+pub fn arb_command_among(
+    registry: &Registry,
+    doc: &Project,
+    names: &[&str],
+) -> BoxedStrategy<(String, Value)> {
+    let pools = Pools::of(doc);
+    let arms: Vec<(u32, BoxedStrategy<(String, Value)>)> = names
+        .iter()
+        .map(|name| {
+            let Some(entry) = registry.get(name) else {
+                panic!("{name} is not registered");
+            };
+            let name = entry.name();
+            let Some((weight, params)) = args_for(name, &pools) else {
+                panic!("missing property strategy for {name}");
+            };
+            let arm = params.prop_map(move |p| (name.to_owned(), p)).boxed();
+            (weight, arm)
+        })
+        .collect();
+    Union::new_weighted(arms).boxed()
+}
+
 /// The entries of `registry` (other than `view.*`) that have no strategy.
 #[must_use]
 pub fn missing_strategies(registry: &Registry) -> Vec<&'static str> {
