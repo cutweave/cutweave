@@ -332,7 +332,9 @@ export async function launchApp(
   // does not change what the app does.
   const videoDir = process.env.CUTWEAVE_E2E_VIDEO_DIR;
   const app = await electron.launch({
-    ...(videoDir === undefined ? {} : { recordVideo: { dir: videoDir, size: { width: 1280, height: 800 } } }),
+    ...(videoDir === undefined
+      ? {}
+      : { recordVideo: { dir: videoDir, size: { width: 1280, height: 800 } } }),
     args: [...(process.platform === "linux" ? ["--no-sandbox"] : []), ...switches, desktopDir],
     env: {
       ...process.env,
