@@ -644,6 +644,10 @@ impl PreviewRequest<'_> {
 
 impl FrameSource for PreviewRequest<'_> {
     fn frame(&self, request: &FrameRequest) -> Result<Arc<VideoFrame>, FrameError> {
+        // Proxy jobs yield while pictures are being served (playback, scrub, Source view).
+        if let Some(proxies) = &self.frames.frames.proxies {
+            proxies.note_preview_activity();
+        }
         let mut map = self.frames.held.borrow_mut();
         let asset = self.doc.doc.media.get(&request.media);
         let current = |held: &Held| {
