@@ -31,7 +31,7 @@ use crate::graph::{GraphOptions, Target};
 use crate::image::Image;
 use crate::metrics::{IDENTITY_MIN_PSNR_DB, compare};
 use crate::reference;
-use crate::scene::{BlendMode, Crop, FrameRequest, Layer, LayerTransform, SceneDescription};
+use crate::scene::{BlendMode, Crop, Flip, FrameRequest, Layer, LayerTransform, SceneDescription};
 use crate::testcard::{Alpha, Pattern, SyntheticSource, TestCard};
 
 static GPU_TESTS: Mutex<()> = Mutex::new(());
@@ -112,6 +112,7 @@ fn layer(item: u128, media: u128, size: (u32, u32)) -> Layer {
         opacity: 1.0,
         blend: BlendMode::Normal,
         crop: Crop::default(),
+        flip: Flip::default(),
         effects: Vec::new(),
     }
 }

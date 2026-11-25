@@ -24,6 +24,15 @@
 //! **Crop** (fractions of the displayed picture removed from each edge) masks the picture without
 //! moving it: the visible rectangle shrinks, placement and anchor are unchanged.
 //!
+//! **Flip** (keyframes §7) then mirrors the picture about its centre, crop mask included, in
+//! *item space* before the transform: the order is coded frame → display rotation → crop →
+//! flip → scale, rotation and position. Item pixels are display pixels mirrored on the flipped
+//! axes (same size, so aspect-fit and the anchor's units are unchanged), and every map below
+//! that says "display px" works in item pixels: [`LayerGeometry::to_output`] places the item,
+//! [`LayerGeometry::to_texel`] undoes the flip and the display rotation, and
+//! [`LayerGeometry::visible`] is the crop rectangle mirrored. A flipped item rotated by its
+//! transform therefore mirrors along its own axes, not the canvas's.
+//!
 //! Coverage uses a ½-output-pixel box approximation at every visible edge (distance to the edge in
 //! output pixels + 0.5, clamped to `[0, 1]`), so edges stay one pixel soft at any scale.
 
@@ -88,13 +97,15 @@ pub fn quarter_turns(rotation: u16) -> u16 {
 pub struct LayerGeometry {
     /// Size of the displayed picture (coded size after the display rotation), in source pixels.
     pub display_size: [f64; 2],
-    /// Display pixels → output pixels.
+    /// Display (item) pixels → output pixels.
     pub to_output: Affine,
-    /// Output pixels → display pixels.
+    /// Output pixels → display (item) pixels.
     pub from_output: Affine,
-    /// Display pixels → texel coordinates of the decoded frame (level 0; texel centres at +0.5).
+    /// Display (item) pixels → texel coordinates of the decoded frame (level 0; texel centres at
+    /// +0.5): undoes the flip, then the display rotation.
     pub to_texel: Affine,
-    /// The visible (cropped) rectangle in display pixels: `[x0, y0, x1, y1]`.
+    /// The visible (cropped, then mirrored by the flip) rectangle in display (item) pixels:
+    /// `[x0, y0, x1, y1]`.
     pub visible: [f64; 4],
     /// Display pixels per output pixel across the x and y edges (`‖∇u‖` of each display axis):
     /// divides a display-space distance to an edge into output pixels.
@@ -172,7 +183,22 @@ impl LayerGeometry {
             f64::from(frame.1) / coded.1,
             0.0,
         ];
-        let to_texel = compose_affine(&texel_scale, &rotate);
+        // Item px → display px: the flip mirrors about the centre (an involution).
+        let (fx, fy) = (layer.flip.horizontal, layer.flip.vertical);
+        let unflip = [
+            if fx { -1.0 } else { 1.0 },
+            0.0,
+            if fx { display_size[0] } else { 0.0 },
+            0.0,
+            if fy { -1.0 } else { 1.0 },
+            if fy { display_size[1] } else { 0.0 },
+        ];
+        let unflipped = compose_affine(&texel_scale, &rotate);
+        let to_texel = if fx || fy {
+            compose_affine(&unflipped, &unflip)
+        } else {
+            unflipped
+        };
 
         let crop = |v: f64| {
             if v.is_finite() {
@@ -181,11 +207,16 @@ impl LayerGeometry {
                 0.0
             }
         };
+        // The crop edges of the upright picture, mirrored into item space.
+        let (left, right) = (crop(layer.crop.left), crop(layer.crop.right));
+        let (top, bottom) = (crop(layer.crop.top), crop(layer.crop.bottom));
+        let (left, right) = if fx { (right, left) } else { (left, right) };
+        let (top, bottom) = if fy { (bottom, top) } else { (top, bottom) };
         let visible = [
-            crop(layer.crop.left) * display_size[0],
-            crop(layer.crop.top) * display_size[1],
-            (1.0 - crop(layer.crop.right)) * display_size[0],
-            (1.0 - crop(layer.crop.bottom)) * display_size[1],
+            left * display_size[0],
+            top * display_size[1],
+            (1.0 - right) * display_size[0],
+            (1.0 - bottom) * display_size[1],
         ];
         if visible[2] <= visible[0] || visible[3] <= visible[1] {
             return None;
@@ -334,7 +365,7 @@ mod tests {
     use proptest::prelude::*;
 
     use super::*;
-    use crate::scene::{BlendMode, Crop, FrameRequest, LayerTransform};
+    use crate::scene::{BlendMode, Crop, Flip, FrameRequest, LayerTransform};
 
     fn layer(source: (u32, u32), rotation: u16, transform: LayerTransform) -> Layer {
         Layer {
@@ -354,6 +385,7 @@ mod tests {
             opacity: 1.0,
             blend: BlendMode::Normal,
             crop: Crop::default(),
+            flip: Flip::default(),
             effects: Vec::new(),
         }
     }

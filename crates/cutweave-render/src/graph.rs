@@ -21,8 +21,14 @@
 //! * **Order** is a deterministic Kahn topological sort; the executor derives texture lifetimes
 //!   (last readers) from it. Unreachable passes are pruned.
 //!
-//! Blend modes: only `Normal` exists in schema v1; the `Composite` op carries the mode so the P2
-//! core set (multiply, screen, …) slots in without changing the graph shape (arch §8).
+//! * **Blend modes** (arch §8's core set, WP-2C.04): the `Composite` op carries the layer's
+//!   [`BlendMode`] (formulas in its docs); a non-normal layer reads the canvas below, which the
+//!   executor copies before drawing it. Only normal layers occlude: every other mode lets the
+//!   backdrop through.
+//! * **Filtering**: [`GraphOptions::filter`] picks the resampling of every layer: exact-weight
+//!   bilinear, trilinear between mip levels when a layer is minified (the default: preview,
+//!   agent frames and export alike, so preview equals export), or bicubic (Catmull-Rom) for an
+//!   export that asks for it.
 //!
 //! **Per-frame rebuilds allocate nothing** (arch §10 "Threads"): [`build_into`] compiles into a
 //! graph and a [`BuildScratch`] kept across frames, pass inputs are stored inline
@@ -93,6 +99,36 @@ impl Target {
 pub struct GraphOptions {
     /// HDR → SDR tone map.
     pub tone_map: ToneMap,
+    /// How layers are resampled.
+    pub filter: Filter,
+}
+
+/// How a layer's picture is resampled onto the output (arch §8, WP-2C.04). Both filters work
+/// in premultiplied linear light, sample with clamp-to-edge, and blend trilinearly between the
+/// two nearest mip levels (2×2 box chain) when a layer is minified, so a downscale does not
+/// alias.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Hash)]
+#[non_exhaustive]
+pub enum Filter {
+    /// Exact-weight bilinear (`a + (b − a)·f`, texel centres at +0.5). Every preview, agent
+    /// frame and default export uses it, so preview equals export bit for bit.
+    #[default]
+    Bilinear,
+    /// Catmull-Rom cubic convolution (`a = −½`) over 4×4 texels: sharper magnification, an
+    /// export option. Its negative lobes can ring at hard edges; the result is clamped to no
+    /// negative light and alpha in `[0, 1]`.
+    Bicubic,
+}
+
+impl Filter {
+    /// The filter's id in the composite shader (`flags.w`).
+    #[must_use]
+    pub const fn shader_id(self) -> u32 {
+        match self {
+            Filter::Bilinear => 0,
+            Filter::Bicubic => 1,
+        }
+    }
 }
 
 /// Why a graph could not be built or executed.
@@ -149,6 +185,8 @@ pub struct CompositeOp {
     pub opacity: f64,
     /// Blend mode.
     pub blend: BlendMode,
+    /// Resampling filter.
+    pub filter: Filter,
     /// Mip level of detail (0 = no minification).
     pub lod: f64,
     /// Output-pixel rectangle to rasterise `[x0, y0, x1, y1)`.
@@ -683,6 +721,7 @@ pub fn build_into(
             geometry: v.geometry,
             opacity: layer.opacity.min(1.0),
             blend: layer.blend,
+            filter: options.filter,
             lod: v.geometry.lod(),
             rect: v.geometry.pixel_rect(output),
             full_cover: v.geometry.covers(output),
@@ -837,7 +876,8 @@ fn push_pass(
                 .f64(c.opacity)
                 .f64(c.lod)
                 .u32(u32::from(c.full_cover))
-                .str(c.blend.debug_name());
+                .str(c.blend.debug_name())
+                .u32(c.filter.shader_id());
             for v in c.rect {
                 h.u32(v);
             }
@@ -905,7 +945,7 @@ mod tests {
 
     use super::*;
     use crate::frame::PixelFormat;
-    use crate::scene::{Crop, FrameRequest, Layer, LayerTransform};
+    use crate::scene::{Crop, Flip, FrameRequest, Layer, LayerTransform};
     use crate::testcard::{Alpha, Pattern, SyntheticSource, TestCard};
 
     fn layer(n: u128, media: u128, size: (u32, u32)) -> Layer {
@@ -931,6 +971,7 @@ mod tests {
             opacity: 1.0,
             blend: BlendMode::Normal,
             crop: Crop::default(),
+            flip: Flip::default(),
             effects: Vec::new(),
         }
     }

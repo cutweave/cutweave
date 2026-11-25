@@ -5,8 +5,8 @@
 //! acceptance: GPU vs CPU float reference, PSNR > 45 dB and ΔE2000 < 2). It walks the
 //! *scene* (not the render graph, so culling and decode sharing are checked too) and implements
 //! the documented rules without sharing code with the WGSL shaders; only the colour constants
-//! ([`crate::color`]) and the layer placement ([`crate::geometry`], unit-tested on its own) are
-//! common.
+//! ([`crate::color`]), the layer placement ([`crate::geometry`], unit-tested on its own, flip
+//! included) and the analytic blend formulas ([`crate::BlendMode::composite`]) are common.
 //!
 //! Semantics, per output pixel centre `p`:
 //!
@@ -15,14 +15,17 @@
 //! 2. **Mips** when minifying: level `L` is the 2×2 box average of level `L−1` (edges clamped),
 //!    size `max(1, size >> L)`.
 //! 3. **Sample** at `t = to_texel(from_output(p))` with exact-weight bilinear filtering
-//!    (`a + (b − a)·f`, texel centres at +0.5, clamp-to-edge), trilinear between
-//!    `floor(lod)` and the next level when `lod > 0`.
-//! 4. **Coverage** × opacity scales the sample; **over** composites it:
-//!    `dst = src + dst·(1 − src.a)` (premultiplied, linear light).
+//!    (`a + (b − a)·f`, texel centres at +0.5, clamp-to-edge), or Catmull-Rom bicubic over 4×4
+//!    texels (rows first, then columns; clamped to `rgb ≥ 0`, `a ∈ [0, 1]`) with
+//!    [`Filter::Bicubic`]; trilinear between `floor(lod)` and the next level when `lod > 0`.
+//! 4. **Coverage** × opacity scales the sample; the layer's [`crate::BlendMode`] composites it
+//!    onto the canvas (normal: **over**, `dst = src + dst·(1 − src.a)`; premultiplied, linear
+//!    light).
 //! 5. **Output**: un-premultiply, clamp, encode, round half up.
 //!
 //! The GPU stores intermediates as `Rgba16Float`; the reference does not round them, which
-//! bounds agreement at about one 8-bit code.
+//! bounds agreement at about one 8-bit code, or about `1e-3` in linear light
+//! ([`render_linear`]).
 
 // Pixel and matrix math reads best with the conventional single-letter names.
 #![allow(clippy::many_single_char_names)]
@@ -35,7 +38,7 @@
 use crate::color::{InputColor, InputTransform, encode_output, merge_tags, srgb8_to_linear_premul};
 use crate::frame::{FrameSource, PixelFormat, VideoFrame};
 use crate::geometry::{LayerGeometry, apply_affine, mip_levels_for, mip_size};
-use crate::graph::{GraphError, GraphOptions, Target};
+use crate::graph::{Filter, GraphError, GraphOptions, Target};
 use crate::image::Image;
 use crate::scene::SceneDescription;
 
@@ -73,6 +76,41 @@ impl Level {
             out[i] = top + (bottom - top) * fr[1];
         }
         out
+    }
+
+    /// Catmull-Rom bicubic: each of the 4 rows weighted across, then the rows down; clamped
+    /// to no negative light and alpha in `[0, 1]`.
+    fn bicubic(&self, t: [f64; 2]) -> Rgba {
+        let p = [t[0] - 0.5, t[1] - 0.5];
+        let f0 = [p[0].floor(), p[1].floor()];
+        let (wx, wy) = (cubic_weights(p[0] - f0[0]), cubic_weights(p[1] - f0[1]));
+        let (x, y) = (f0[0] as i64, f0[1] as i64);
+        let mut acc = [0.0; 4];
+        for (j, wj) in (-1..=2).zip(wy) {
+            let mut row = [0.0; 4];
+            for (i, wi) in (-1..=2).zip(wx) {
+                let s = self.at(x + i, y + j);
+                for c in 0..4 {
+                    row[c] += s[c] * wi;
+                }
+            }
+            for c in 0..4 {
+                acc[c] += row[c] * wj;
+            }
+        }
+        [
+            acc[0].max(0.0),
+            acc[1].max(0.0),
+            acc[2].max(0.0),
+            acc[3].clamp(0.0, 1.0),
+        ]
+    }
+
+    fn filtered(&self, t: [f64; 2], filter: Filter) -> Rgba {
+        match filter {
+            Filter::Bicubic => self.bicubic(t),
+            _ => self.bilinear(t),
+        }
     }
 
     fn downsample(&self) -> Level {
@@ -143,7 +181,19 @@ fn decode(frame: &VideoFrame, it: &InputTransform) -> Level {
     Level { w, h, px }
 }
 
-fn sample(levels: &[Level], t: [f64; 2], lod: f64) -> Rgba {
+/// The Catmull-Rom (cubic convolution, `a = −½`) weights of the texels at offsets −1, 0, 1, 2
+/// from the one left of (above) a sample at fraction `f`.
+fn cubic_weights(f: f64) -> [f64; 4] {
+    let (f2, f3) = (f * f, f * f * f);
+    [
+        0.5 * (2.0 * f2 - f3 - f),
+        0.5 * (3.0 * f3 - 5.0 * f2 + 2.0),
+        0.5 * (4.0 * f2 - 3.0 * f3 + f),
+        0.5 * (f3 - f2),
+    ]
+}
+
+fn sample(levels: &[Level], t: [f64; 2], lod: f64, filter: Filter) -> Rgba {
     let base = &levels[0];
     let at_level = |l: usize| {
         let lv = &levels[l];
@@ -151,10 +201,10 @@ fn sample(levels: &[Level], t: [f64; 2], lod: f64) -> Rgba {
             f64::from(lv.w) / f64::from(base.w),
             f64::from(lv.h) / f64::from(base.h),
         ];
-        lv.bilinear([t[0] * s[0], t[1] * s[1]])
+        lv.filtered([t[0] * s[0], t[1] * s[1]], filter)
     };
     if lod <= 0.0 {
-        return base.bilinear(t);
+        return base.filtered(t, filter);
     }
     let top = (levels.len() - 1) as f64;
     let l0 = lod.floor().min(top);
@@ -180,6 +230,27 @@ pub fn render(
     options: &GraphOptions,
 ) -> Result<Image, GraphError> {
     let (w, h) = target.size();
+    let transfer = match target {
+        Target::Rgba8Cpu { transfer, .. } => transfer,
+        Target::Texture { .. } => crate::color::OutputTransfer::Srgb,
+    };
+    let canvas = render_linear(scene, (w, h), source, options)?;
+    let mut img = Image::filled(w, h, [0; 4]);
+    for (px, c) in img.data.as_chunks_mut::<4>().0.iter_mut().zip(&canvas) {
+        px.copy_from_slice(&encode_output(*c, transfer));
+    }
+    Ok(img)
+}
+
+/// Renders `scene` at `size` on the CPU into the compositor's working space: premultiplied
+/// linear-light Rec.709 RGBA per pixel, row by row (what a [`Target::Texture`] holds on the
+/// GPU, before any output transform). Layers whose frame is unavailable are skipped.
+pub fn render_linear(
+    scene: &SceneDescription,
+    (w, h): (u32, u32),
+    source: &dyn FrameSource,
+    options: &GraphOptions,
+) -> Result<Vec<[f64; 4]>, GraphError> {
     if w == 0 || h == 0 || scene.width == 0 || scene.height == 0 {
         return Err(GraphError::Empty {
             what: if w == 0 || h == 0 { "output" } else { "canvas" },
@@ -187,10 +258,6 @@ pub fn render(
             height: h,
         });
     }
-    let transfer = match target {
-        Target::Rgba8Cpu { transfer, .. } => transfer,
-        Target::Texture { .. } => crate::color::OutputTransfer::Srgb,
-    };
     let bg = srgb8_to_linear_premul(scene.background);
     let mut canvas = vec![bg; w as usize * h as usize];
     for layer in &scene.layers {
@@ -230,17 +297,13 @@ pub fn render(
                     continue;
                 }
                 let t = apply_affine(&geo.to_texel, apply_affine(&geo.from_output, p));
-                let s = sample(&levels, t, lod).map(|c| c * cov * opacity);
+                let s = sample(&levels, t, lod, options.filter).map(|c| c * cov * opacity);
                 let d = &mut canvas[y as usize * w as usize + x as usize];
-                *d = std::array::from_fn(|i| s[i] + d[i] * (1.0 - s[3]));
+                *d = layer.blend.composite(s, *d);
             }
         }
     }
-    let mut img = Image::filled(w, h, [0; 4]);
-    for (px, c) in img.data.as_chunks_mut::<4>().0.iter_mut().zip(&canvas) {
-        px.copy_from_slice(&encode_output(*c, transfer));
-    }
-    Ok(img)
+    Ok(canvas)
 }
 
 /// Decodes a frame to its 8-bit R'G'B' signal (chroma upsampled, no colour conversion beyond
@@ -289,7 +352,7 @@ mod tests {
 
     use super::*;
     use crate::color::{OutputTransfer, Transfer, from_linear, quantize8};
-    use crate::scene::{BlendMode, Crop, FrameRequest, Layer, LayerTransform};
+    use crate::scene::{BlendMode, Crop, Flip, FrameRequest, Layer, LayerTransform};
     use crate::testcard::{Pattern, SyntheticSource, TestCard};
 
     fn layer(media: u128, size: (u32, u32)) -> Layer {
@@ -315,6 +378,7 @@ mod tests {
             opacity: 1.0,
             blend: BlendMode::Normal,
             crop: Crop::default(),
+            flip: Flip::default(),
             effects: Vec::new(),
         }
     }
@@ -417,9 +481,9 @@ mod tests {
         assert_eq!(one.px[0], [0.5; 4]);
         let levels = vec![base, one];
         // Texel centre (0.5, 0.5) of level 0 is exactly texel 0; LOD 0.5 blends halfway to 0.5.
-        assert_eq!(sample(&levels, [0.5, 0.5], 0.0), [0.0; 4]);
-        assert_eq!(sample(&levels, [0.5, 0.5], 0.5), [0.25; 4]);
+        assert_eq!(sample(&levels, [0.5, 0.5], 0.0, Filter::Bilinear), [0.0; 4]);
+        assert_eq!(sample(&levels, [0.5, 0.5], 0.5, Filter::Bilinear), [0.25; 4]);
         // Beyond the chain, the last level is used.
-        assert_eq!(sample(&levels, [0.5, 0.5], 7.3), [0.5; 4]);
+        assert_eq!(sample(&levels, [0.5, 0.5], 7.3, Filter::Bilinear), [0.5; 4]);
     }
 }
