@@ -1428,6 +1428,91 @@ Schedule note: the roadmap gives 9 weeks. Total effort here is about 162 agent-d
 
 # Epic 2I — MCP core tool set
 
+### WP-2H.14 — Detached panels I: popout windows, the shell and the layout
+- **Area:** apps/desktop/src/main (`window-policy.ts`, `windows.ts`, `hardening.ts`, `index.ts` focus wiring, a `window:setPopoutOnTop` channel in the IPC contract and `handlers.ts`), apps/desktop/src/preload (the one new bridge method), packages/editor/public/popout.html, packages/editor/src/workspace/ (`dockHost.ts`, `commands.ts`), packages/editor/src/dock/, packages/editor/src/shell/ (a window registry), packages/editor/src/menus/surfaces (the `dock.tab` items), the `en` catalog, apps/desktop/e2e (security, flows), docs/user-flows.md, docs/adr/ (the ADR, Proposed), docs/01-architecture.md §2, §16, §18
+- **Depends on:** WP-2H.01, WP-2H.12, WP-2H.13 (the dock tab menu), the ADR in section 9
+  - **Blocked by the product owner's decision on the popout-window ADR** (research [10-detached-panels.md](../research/10-detached-panels.md) §9): popout windows run unsandboxed in the editor's process, an exception to arch §2/§18 and ADR-0001.
+- **Size:** M
+- **Executor:** opus (it changes the window security policy and the Electron process model)
+- **Scope:**
+  - **Main process:**
+    - A `popout` window kind: the editor's process, `sandbox: false` (Electron 45 requires it to share the opener's process), no preload, the locked settings of every kind.
+    - `setWindowOpenHandler` allows only an editor window's `popout.html` on the app origin (dev: the Vite server), with dockview's frame name (`<dock>-<group>`). Everything else is denied as today.
+    - `did-create-window` registers the kind, asserts the policy, clamps the bounds to the connected displays (`fitToDisplays`), hides the menu bar and paints the theme's background.
+    - A popout's focus counts as its editor's for `project.report_focus` (ADR-0021).
+    - `window:setPopoutOnTop{frame, on}` (zod-validated) for Keep on top.
+  - **Dock:**
+    - `workspace.popout_panel{panel}` and `workspace.dock_panel{panel}` (UI commands, so the palette and keymap list them).
+    - "Move to new window" and "Move back to main window" in the tab menu.
+    - Dragging a tab outside the main window opens it in a new window at the pointer. A tab drag that ends with no drop outside the window counts as that.
+    - Closing a detached window docks its panels back where they were.
+    - A failed popout (`onDidOpenPopoutWindowFail`) leaves the panel docked, with a toast.
+    - Reset layout and Reset all workspaces dock everything back. Switching workspaces closes the old workspace's windows and opens the new one's.
+  - **Layout:**
+    - `popoutGroups` are saved with each workspace and restored on launch. `layoutProblem` validates their panels like the grid's.
+    - A layout saved by an older build still loads.
+  - **Window registry** (`shell/windows.ts`):
+    - Holds the main window and each popout, with `onDidAddWindow` and `onDidRemoveWindow`.
+    - Mirrors `data-theme`, `data-density`, `lang` and `dir` into each popout and keeps them in sync.
+    - Titles each popout "<Panel> - <Project> - Cutweave".
+    - WP-2H.15 builds on it.
+  - **Keep on top:** a toggle in the detached group's header.
+- **Interfaces:** the `popout` window kind and its policy; `window:setPopoutOnTop`; `workspace.popout_panel`, `workspace.dock_panel`; `popoutPanel(id)`, `dockPanel(id)` in `dockHost.ts`; the window registry (`registeredWindows()`, `onDidAddWindow`, `onDidRemoveWindow`).
+- **Acceptance criteria:**
+  - Vitest:
+    - The policy accepts a `popout` only as `sandbox: false` with no preload.
+    - The handler allows only `popout.html` from an editor window with the frame-name pattern and denies everything else.
+    - `dockHost` round-trips a layout with a popout and keeps a failed popout docked (jsdom fake window).
+  - Security e2e (`security.spec.ts`): a popout has no `cutweave` global of its own and no `require`; its navigations and its own `window.open` are blocked; its document has the app CSP; the addon is loaded once.
+  - **A new user flow, "Detached panels" (ADR-0018; its number is allocated at merge, since F44 is taken):**
+    1. Right-click the Inspector's tab and choose Move to new window: a second window titled with the panel name shows the Inspector, and the Preview widens.
+    2. Click a clip in the main timeline: the detached Inspector shows it. Change its opacity there: the engine has the new value.
+    3. Switch to the light theme: the detached window follows.
+    4. Close the detached window: the Inspector is docked where it was.
+    5. Move it out again and relaunch: the window reopens with the Inspector.
+    6. Reset layout: it docks back.
+    7. `quitApp` leaves no window behind.
+  - The engine's focus record does not change when the focus moves between the editor and its detached window.
+- **Tests:** Vitest, security e2e, the user flow.
+- **Out of scope:** keys, context menus, tooltips, the Preview and the Timeline inside a detached window (WP-2H.15); a full-screen program monitor on a second display; detaching plugin panels (P6).
+
+### WP-2H.15 — Detached panels II: every panel works in its own window
+- **Area:** packages/editor (keymap dispatch, transport keymap, app commands, bin keys, the menu host, the palette, `preview/`, the timeline panel, scrub and gesture schedulers), packages/ui (a portal-container provider for `Menu`, `Tooltip` and `Dialog`; `Tabs`), packages/timeline (`timeline-view.ts`), apps/desktop/src/preload (`present-loop.ts`, `api.ts`: present on the canvas's window, re-attach), a lint rule (biome or a script in `just check`), apps/desktop/e2e/flows, docs/user-flows.md
+- **Depends on:** WP-2H.14, WP-2H.05
+  - **Blocked by the product owner's decision on the popout-window ADR** (research [10-detached-panels.md](../research/10-detached-panels.md) §9): popout windows run unsandboxed in the editor's process, an exception to arch §2/§18 and ADR-0001.
+- **Size:** M
+- **Executor:** sonnet
+- **Scope:**
+  - **Per-window helpers:** `windowOf(node)`, `documentOf(node)`, `activeDocument()` and `forEveryWindow(install)`, built on WP-2H.14's registry.
+  - **Keys:** every key listener (the keymap dispatcher, the transport, the app commands, the bin) is installed on every registered window. "Focused surface" checks read the focused window's active element. The menu bar's Alt handling stays in the main window.
+  - **Menus and tooltips:**
+    - `installContextMenuHandlers` runs on each window's document.
+    - `packages/ui` gets a portal-container context. Each panel sets it from `panel.api.getWindow()` and updates it when the panel changes window, so `Menu`, `Tooltip` and the command palette open in the window the person is in.
+    - App dialogs stay in the main window, which takes the focus.
+  - **Preview:**
+    - The preload's present loop schedules on the canvas's own window. The preload API keeps its shape.
+    - The canvas is re-attached when its panel changes window only on a platform where a moved canvas loses its context. Windows does not.
+    - Size and `devicePixelRatio` come from that window, and `view.set_preview_size` follows a DPI change.
+  - **Timeline:**
+    - `timeline-view.ts`, the gesture scheduler and the scrubber use their element's window for `ResizeObserver` and `requestAnimationFrame`.
+    - So do the bin, History, `Tabs` and the media preview.
+  - **Realm-safe checks:** the `instanceof` sites that can see popout events or popout-created nodes become duck-typed. A lint rule bans the bare globals `document`, `window`, `ResizeObserver`, `requestAnimationFrame` and `devicePixelRatio` in panel code, outside an allowlist.
+- **Interfaces:** the helpers above; `PortalContainerProvider` in `packages/ui`; no engine or IPC change.
+- **Acceptance criteria:**
+  - Vitest: a key pressed in a second (jsdom) window runs its binding; a right-click there opens the menu in that window's document; the helpers return the element's own window; the lint rule flags a fixture.
+  - **The "Detached panels" flow, extended (ADR-0018):**
+    1. Detach the Timeline and the Preview.
+    2. Press Space in the detached Timeline: the timecode runs, and the detached Preview's frames change.
+    3. Right-click a clip in the detached Timeline: the menu opens in that window; choose Split at playhead. Press Ctrl+Z there: the split is undone.
+    4. Press Ctrl+K there: the palette opens in that window.
+  - Vitest: the present loop, the timeline and the gesture scheduler take their frames from their canvas's window.
+  - A manual check on Windows, macOS and Linux: a detached Preview keeps playing while the main window is minimized. The flow cannot show it, because Playwright turns throttling off.
+  - **Opt-in real-input steps** (`just e2e-real-input`): drag a bin card from the main window onto the detached Timeline (the clip lands at the drop point); drag the detached Timeline's tab back into the main dock.
+  - With the Preview detached, playback drops no more frames than docked (the playback probe, under 2 per 10 s).
+  - axe finds 0 violations in a detached window.
+- **Tests:** Vitest, the user flow, the playback probe, axe.
+- **Out of scope:** the second-display program monitor; per-window keymaps; detached plugin panels (P6).
+
 ### WP-2I.01 — Core tool set: mapping, annotations and completion (~30 tools)
 - **Area:** crates/cutweave-api/src/mcp/, crates/cutweave-ops (`mcp = ` attributes), docs/reference/mcp-core-tools.md (generated)
 - **Depends on:** E1J, WP-2A.03, WP-2A.04, WP-2B.01, WP-2C.03, WP-2E.01, WP-2G.03, WP-2F.03
