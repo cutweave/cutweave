@@ -236,7 +236,7 @@
         "label": "Cache folder",
         "description": "Where thumbnails, filmstrips, waveforms and frame indexes are kept. Projects and their media are never stored here. The old folder is left for you to delete.",
         "keywords": "location, directory, path, disk, drive, move, temporary, storage",
-        "choose": "Choose\u2026"
+        "choose": "Choose…"
       },
       "thumbnailsLimit": {
         "label": "Thumbnails and filmstrips",
@@ -252,7 +252,7 @@
         "label": "Clear all caches",
         "description": "Delete every thumbnail, filmstrip and waveform. Projects and generated media are not touched, and the caches fill again as you work.",
         "keywords": "delete, empty, free space, reset, purge, cache, storage",
-        "button": "Clear all caches\u2026",
+        "button": "Clear all caches…",
         "confirmTitle": "Clear all caches?",
         "confirmMessage": "Every thumbnail, filmstrip and waveform is deleted and drawn again when needed. Your projects, your media and generated media are not touched.",
         "confirm": "Clear all caches"
@@ -360,7 +360,7 @@
       }
     },
     "cache": {
-      "reading": "Reading\u2026",
+      "reading": "Reading…",
       "empty": "Empty",
       "inUse": "{{used}} in use",
       "thumbnails": "Thumbnails and filmstrips",
@@ -374,7 +374,7 @@
       "clearAllFailed": "Could not clear all caches."
     },
     "performance": {
-      "reading": "Reading\u2026",
+      "reading": "Reading…",
       "noGpu": "None in use (the CPU draws, or the graphics card is still starting)",
       "softwareGpu": "{{name}} (software rendering)",
       "noneFound": "None found"
@@ -382,7 +382,7 @@
     "resultCount": "{{count}} found"
   },
   "shortcuts": {
-    "note": "These are the shortcuts Cutweave has now. Changing them arrives with the shortcut editor.",
+    "note": "Every shortcut in Cutweave. Pick a preset, then record your own keys: only your changes are stored, so a preset updated later still reaches you.",
     "filter": "Find a shortcut",
     "clearFilter": "Clear filter",
     "noMatch": "No shortcut matches “{{query}}”",
@@ -449,9 +449,7 @@
       "renameTrackHelp": "Timeline. Edits the name of the selected track in its header. Double-click the name does the same."
     },
     "bin": {
-      "move": "Move between clips",
-      "moveHelp": "Media bin. Moves the focus to the next or previous clip, or up and down a row.",
-      "edges": "First or last clip",
+      "moveHelp": "Media bin. Moves the focus between clips, or up and down a row.",
       "edgesHelp": "Media bin. Moves the focus to the first or the last clip.",
       "insert": "Add to the timeline",
       "insertHelp": "Media bin. Puts the focused clip on the timeline at the playhead.",
@@ -462,7 +460,13 @@
       "import": "Import media",
       "importHelp": "Opens the file picker to add media. Works anywhere in the app.",
       "search": "Search the bin",
-      "searchHelp": "Media bin. Moves the focus to the search field."
+      "searchHelp": "Media bin. Moves the focus to the search field.",
+      "moveNext": "Move to the next clip",
+      "movePrevious": "Move to the previous clip",
+      "moveDown": "Move down a row",
+      "moveUp": "Move up a row",
+      "first": "First clip",
+      "last": "Last clip"
     },
     "dialogs": {
       "close": "Close or go back",
@@ -471,6 +475,64 @@
       "confirmHelp": "Presses the dialog's main button, or keeps the text you typed.",
       "next": "Next or previous control",
       "nextHelp": "Moves the focus through the buttons and fields."
+    },
+    "sections": {
+      "preset": "Preset and files",
+      "commands": "Other commands",
+      "workspace": "Panels and workspaces"
+    },
+    "rows": {
+      "preset": {
+        "label": "Shortcut preset",
+        "description": "Cutweave's own keys, or keys that feel like CapCut. Your changes below stay on top of whichever you pick.",
+        "keywords": "keymap, keyboard layout, capcut, premiere, resolve, nle",
+        "nle": "Cutweave (NLE)",
+        "capcut": "CapCut"
+      },
+      "reset": {
+        "label": "Reset all shortcuts",
+        "description": "Puts the preset and every key back to the Cutweave defaults.",
+        "keywords": "default, restore, clear, keymap",
+        "button": "Reset all shortcuts",
+        "confirmTitle": "Reset all shortcuts?",
+        "confirmMessage": "Every shortcut you changed goes back to the Cutweave preset. Your other settings stay as they are.",
+        "confirm": "Reset shortcuts"
+      },
+      "export": {
+        "label": "Export shortcuts",
+        "description": "Saves your preset and changed keys to a file, to keep or to use on another computer.",
+        "keywords": "backup, save, share, json, keymap",
+        "button": "Export shortcuts…"
+      },
+      "import": {
+        "label": "Import shortcuts",
+        "description": "Replaces your preset and changed keys with the ones in a file made by Export shortcuts.",
+        "keywords": "load, restore, json, keymap",
+        "button": "Import shortcuts…"
+      }
+    },
+    "notices": {
+      "reset": "All shortcuts are back to the Cutweave preset.",
+      "exported": "Shortcuts exported to {{path}}.",
+      "imported": "Shortcuts imported."
+    },
+    "cell": {
+      "none": "No shortcut",
+      "add": "Add shortcut",
+      "addLabel": "Add a shortcut for {{name}}",
+      "recording": "Press the keys…",
+      "remove": "Remove {{keys}} from {{name}}",
+      "reset": "Reset {{name}} to the preset",
+      "unverified": "Unverified",
+      "fixed": "Fixed",
+      "conflict": "{{keys}} already runs {{name}}. Reassign it here?",
+      "conflictTitle": "Shortcut already in use",
+      "reassign": "Reassign",
+      "cancel": "Cancel",
+      "refused": "{{keys}} cannot be used. {{reason}}",
+      "assigned": "{{keys}} now runs {{name}}.",
+      "command": "Command",
+      "commandHelp": "Runs from the command palette too."
     }
   },
   "about": {
@@ -1246,6 +1308,22 @@
     "diagnostics": {
       "connection": "Engine connection",
       "blocked": "Edits blocked"
+    }
+  },
+  "keymap": {
+    "needsArguments": "This command needs details. Run it from the command palette.",
+    "reserved": {
+      "menuBar": "The menu bar uses this key to open its menus.",
+      "contextMenu": "This key opens the context menu of whatever has the focus.",
+      "closeWindow": "The system uses this key to close the window.",
+      "clipboard": "Text fields use this key to cut, copy, paste and select all.",
+      "dialogs": "Dialogs use this key to close, confirm and move between controls."
+    },
+    "row": {
+      "reset": "Reset binding",
+      "remove": "Remove binding",
+      "notChanged": "Already the preset's keys",
+      "noKeys": "No keys to remove"
     }
   }
 }

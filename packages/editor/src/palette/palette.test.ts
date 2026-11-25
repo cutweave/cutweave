@@ -12,6 +12,8 @@ import { createElement as h } from "react";
 import { I18nextProvider } from "react-i18next";
 import { afterEach, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
 import { i18n, type TKey } from "../i18n/index.ts";
+import { keymapModelFor } from "../keymap/store.ts";
+import { strokeOfEvent } from "../keymap/stroke.ts";
 import { buildMenu } from "../menus/build.ts";
 import { registerBuiltinMenus } from "../menus/builtins.ts";
 import { ContextMenuHost, contextMenuStore, openContextMenu } from "../menus/host.tsx";
@@ -38,7 +40,6 @@ import { buildEntries, type PaletteEnv, planFor } from "./entries.ts";
 import { openPalette, paletteStore } from "./paletteStore.ts";
 import { MAX_RECENTS, recentsStore } from "./recents.ts";
 import { rank, searchable } from "./search.ts";
-import { isPaletteKey } from "./shortcut.ts";
 
 beforeAll(() => {
   globalThis.ResizeObserver ??= class {
@@ -466,23 +467,33 @@ describe("the palette's key", () => {
       shiftKey: false,
       ...over,
     }) as KeyboardEvent;
+  /** Whether the keymap (the NLE preset) runs `palette.open` for this press on `platform`. */
+  const opens = (e: KeyboardEvent, platform: "windows" | "linux" | "mac"): boolean => {
+    const stroke = strokeOfEvent(e, platform);
+    return (
+      stroke !== null &&
+      keymapModelFor(platform)
+        .lookup(stroke, ["global"])
+        .some((b) => b.command === "palette.open")
+    );
+  };
 
   it("is Ctrl+K on Windows and Linux and Cmd+K on macOS, and no other chord", () => {
-    expect(isPaletteKey(press({}), "windows")).toBe(true);
-    expect(isPaletteKey(press({ key: "K" }), "linux")).toBe(true);
-    expect(isPaletteKey(press({ ctrlKey: false, metaKey: true }), "mac")).toBe(true);
-    expect(isPaletteKey(press({}), "mac")).toBe(false);
-    expect(isPaletteKey(press({ shiftKey: true }), "windows")).toBe(false);
-    expect(isPaletteKey(press({ altKey: true }), "windows")).toBe(false);
-    expect(isPaletteKey(press({ key: "j", code: "KeyJ" }), "windows")).toBe(false);
+    expect(opens(press({}), "windows")).toBe(true);
+    expect(opens(press({ key: "K" }), "linux")).toBe(true);
+    expect(opens(press({ ctrlKey: false, metaKey: true }), "mac")).toBe(true);
+    expect(opens(press({}), "mac")).toBe(false);
+    expect(opens(press({ shiftKey: true }), "windows")).toBe(false);
+    expect(opens(press({ altKey: true }), "windows")).toBe(false);
+    expect(opens(press({ key: "j", code: "KeyJ" }), "windows")).toBe(false);
   });
 
   it("still opens it with a non-Latin layout (the physical key)", () => {
-    expect(isPaletteKey(press({ key: "ל" }), "windows")).toBe(true);
+    expect(opens(press({ key: "ל" }), "windows")).toBe(true);
   });
 
-  it("is in the shortcut list", () => {
-    const binding = listBindings("windows").find((b) => b.id === "menu.commandPalette");
+  it("is in the shortcut list, and a rebinding moves it", () => {
+    const binding = listBindings("windows").find((b) => b.id === "palette.open");
     expect(binding?.combos).toEqual([{ key: "K", mod: true }]);
   });
 });

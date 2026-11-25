@@ -65,6 +65,19 @@ export type ClientProfile = (typeof CLIENT_PROFILES)[number];
 /** The most folders "Folders agents can use" holds (the engine takes no more, WP-1J.05). */
 export const MAX_AGENT_FOLDERS = 64;
 
+/** "Keyboard shortcuts" presets (WP-2H.05): the NLE-style keys, or CapCut's. */
+export const SHORTCUT_PRESETS = ["nle", "capcut"] as const;
+export type ShortcutPreset = (typeof SHORTCUT_PRESETS)[number];
+
+/**
+ * Your shortcuts as they differ from the preset (WP-2H.05): a binding id (a command, or
+ * `command:argument` for one that carries a fixed argument) to the keys it now has. Each key is
+ * a stroke or a chord of two strokes, spelled `Mod+Shift+Z` or `Mod+K Mod+S`. An empty list
+ * removes the binding. Only these differences are stored, so a preset fixed in an update
+ * still reaches people who changed other keys.
+ */
+export type ShortcutOverrides = Record<string, string[]>;
+
 /** Every preference key and the type of its value. */
 export interface PreferenceValues {
   "general.startup": StartupChoice;
@@ -103,6 +116,9 @@ export interface PreferenceValues {
   // Media and import (WP-1M.14)
   /** Show a video's frames while the pointer moves across its card in the bin. */
   "media.hover_scrub": boolean;
+  // Keyboard shortcuts (WP-2H.05)
+  "shortcuts.preset": ShortcutPreset;
+  "shortcuts.bindings": ShortcutOverrides;
 }
 
 export type PreferenceKey = keyof PreferenceValues;
@@ -126,6 +142,8 @@ export type PreferenceDef =
   | { type: "path"; scope: PreferenceScope; default: string }
   /** A short map of remembered choices: ids to short words. */
   | { type: "record"; scope: PreferenceScope; default: Record<string, string> }
+  /** Binding ids to the keys they have (see {@link ShortcutOverrides}). */
+  | { type: "bindings"; scope: PreferenceScope; default: ShortcutOverrides }
   /**
    * A list of distinct absolute paths, at most `max`. `writer: "main"`: only main changes it
    * (through its own dialogs); `prefs:set` from the renderer is refused.
@@ -139,6 +157,13 @@ export type PreferenceDef =
     };
 
 export const RECENT_COUNT_MAX = 25;
+/** The most bindings a person can change, keys per binding, and the length of one key. */
+export const MAX_SHORTCUT_OVERRIDES = 512;
+export const MAX_KEYS_PER_BINDING = 4;
+const MAX_KEY_LENGTH = 64;
+const BINDING_ID = /^[A-Za-z0-9][A-Za-z0-9._:-]{0,95}$/;
+/** `Mod+Shift+Z`, `F2`, `Mod+K Mod+S`: one stroke, or two with a space between. */
+const KEY_SPELLING = /^\S+(?: \S+)?$/u;
 const MAX_PATH_LENGTH = 4096;
 const MAX_RECORD_ENTRIES = 64;
 const RECORD_KEY = /^[a-z0-9][a-z0-9._-]{0,63}$/;
@@ -208,6 +233,9 @@ export const PREFERENCES: { readonly [K in PreferenceKey]: PreferenceDef } = {
   },
   // Media and import (WP-1M.14)
   "media.hover_scrub": { type: "boolean", scope: "app", default: true },
+  // Keyboard shortcuts (WP-2H.05)
+  "shortcuts.preset": { type: "enum", scope: "app", options: SHORTCUT_PRESETS, default: "nle" },
+  "shortcuts.bindings": { type: "bindings", scope: "app", default: {} },
 };
 
 export const PREFERENCE_KEYS = Object.keys(PREFERENCES) as PreferenceKey[];
@@ -299,6 +327,29 @@ function validateAgainst(def: PreferenceDef, value: unknown): Validation {
       }
       return { ok: true, value: clean };
     }
+    case "bindings": {
+      if (!isPlainObject(value)) return { ok: false, reason: "expected a list of shortcuts" };
+      const entries = Object.entries(value);
+      if (entries.length > MAX_SHORTCUT_OVERRIDES) {
+        return { ok: false, reason: "too many shortcuts" };
+      }
+      const clean: ShortcutOverrides = {};
+      for (const [id, keys] of entries) {
+        if (!BINDING_ID.test(id)) return { ok: false, reason: `"${id}" is not a command` };
+        if (!Array.isArray(keys) || keys.length > MAX_KEYS_PER_BINDING) {
+          return { ok: false, reason: `"${id}" has too many keys` };
+        }
+        const spelled: string[] = [];
+        for (const key of keys) {
+          if (typeof key !== "string" || key.length > MAX_KEY_LENGTH || !KEY_SPELLING.test(key)) {
+            return { ok: false, reason: `"${id}" has a key that is not valid` };
+          }
+          if (!spelled.includes(key)) spelled.push(key);
+        }
+        clean[id] = spelled;
+      }
+      return { ok: true, value: clean };
+    }
   }
 }
 
@@ -314,8 +365,8 @@ export function defaultPreferences(overrides: PreferenceChanges = {}): Preferenc
   for (const key of PREFERENCE_KEYS) {
     const def = PREFERENCES[key];
     out[key] =
-      def.type === "record"
-        ? { ...def.default }
+      def.type === "record" || def.type === "bindings"
+        ? structuredClone(def.default)
         : def.type === "paths"
           ? [...def.default]
           : def.default;
@@ -333,7 +384,8 @@ export function samePreferenceValue(a: unknown, b: unknown): boolean {
   if (isPlainObject(a) && isPlainObject(b)) {
     const ka = Object.keys(a);
     return (
-      ka.length === Object.keys(b).length && ka.every((k) => Object.hasOwn(b, k) && a[k] === b[k])
+      ka.length === Object.keys(b).length &&
+      ka.every((k) => Object.hasOwn(b, k) && samePreferenceValue(a[k], b[k]))
     );
   }
   return a === b;
@@ -465,10 +517,13 @@ export function serializePreferences(
 export function exportPreferences(
   values: PreferenceMap,
   defaults: PreferenceMap = defaultPreferences(),
+  /** Only the keys that start with this (`"shortcuts."`: "Export shortcuts…"). */
+  only?: string,
 ): { text: string; count: number } {
   const app: Record<string, unknown> = {};
   for (const key of PREFERENCE_KEYS) {
     if (PREFERENCES[key].scope !== "app") continue;
+    if (only !== undefined && !key.startsWith(only)) continue;
     if (samePreferenceValue(values[key], defaults[key])) continue;
     app[key] = values[key];
   }
@@ -486,7 +541,7 @@ export type ParsedImport =
   | { ok: false; reason: "unreadable" | "not-settings" | "newer" };
 
 /** "Import settings…": validates every key; the valid ones are returned, the rest are listed. */
-export function parseImport(text: string): ParsedImport {
+export function parseImport(text: string, only?: string): ParsedImport {
   let doc: unknown;
   try {
     doc = JSON.parse(text);
@@ -500,7 +555,9 @@ export function parseImport(text: string): ParsedImport {
   const applied: Record<string, unknown> = {};
   const skipped: SkippedSetting[] = [];
   for (const [key, value] of Object.entries(doc.app)) {
-    if (!isPreferenceKey(key)) {
+    if (only !== undefined && !key.startsWith(only)) {
+      skipped.push({ key, reason: "not a shortcut" });
+    } else if (!isPreferenceKey(key)) {
       skipped.push({ key, reason: "unknown setting" });
     } else if (PREFERENCES[key].scope !== "app") {
       skipped.push({ key, reason: "belongs to this computer" });
@@ -513,6 +570,13 @@ export function parseImport(text: string): ParsedImport {
   if (isPlainObject(doc.machine)) {
     for (const key of Object.keys(doc.machine)) {
       skipped.push({ key, reason: "belongs to this computer" });
+    }
+  }
+  if (only !== undefined) {
+    // A shortcuts file replaces the shortcuts: what it leaves out is back to its default.
+    const defaults = defaultPreferences();
+    for (const key of PREFERENCE_KEYS) {
+      if (key.startsWith(only) && !Object.hasOwn(applied, key)) applied[key] = defaults[key];
     }
   }
   return { ok: true, applied: applied as PreferenceChanges, skipped };

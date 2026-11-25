@@ -166,13 +166,13 @@ export class PreferencesStore {
   }
 
   /** The text of "Export settings…": app values that differ from their defaults. */
-  exportText(): { text: string; count: number } {
-    return exportPreferences(this.#values, this.#defaults);
+  exportText(only?: string): { text: string; count: number } {
+    return exportPreferences(this.#values, this.#defaults, only);
   }
 
   /** "Import settings…": applies the valid keys and reports the rest. */
-  importText(text: string): ImportOutcome {
-    const parsed = parseImport(text);
+  importText(text: string, only?: string): ImportOutcome {
+    const parsed = parseImport(text, only);
     if (!parsed.ok) return { status: "invalid", reason: parsed.reason };
     this.#apply(parsed.applied);
     return {

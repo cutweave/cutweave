@@ -231,3 +231,78 @@ describe("agents and notifications (WP-1J.05)", () => {
     expect(samePreferenceValue([], [])).toBe(true);
   });
 });
+
+describe("keyboard shortcuts (WP-2H.05)", () => {
+  it("defaults to the NLE preset and no changes", () => {
+    const defaults = defaultPreferences();
+    expect(defaults["shortcuts.preset"]).toBe("nle");
+    expect(defaults["shortcuts.bindings"]).toEqual({});
+  });
+
+  it("takes binding ids with the keys they now have, and an empty list for a removal", () => {
+    const ok = validatePreference("shortcuts.bindings", {
+      "clip.split": ["Mod+K", "S"],
+      "palette.open": [],
+      "workspace.switch_workspace:short-form": ["Mod+K Mod+S"],
+    });
+    expect(ok.ok).toBe(true);
+    expect(validatePreference("shortcuts.preset", "capcut").ok).toBe(true);
+    expect(validatePreference("shortcuts.preset", "emacs").ok).toBe(false);
+  });
+
+  it("refuses what is not a key list, and drops a repeated key", () => {
+    for (const bad of [
+      { "has space": ["S"] },
+      { "clip.split": "S" },
+      { "clip.split": [1] },
+      { "clip.split": ["Mod+K Mod+S Mod+X"] },
+      { "clip.split": ["S", "S", "S", "S", "S"] },
+      [],
+    ]) {
+      expect(validatePreference("shortcuts.bindings", bad).ok, JSON.stringify(bad)).toBe(false);
+    }
+    const dup = validatePreference("shortcuts.bindings", { "clip.split": ["S", "S"] });
+    expect(dup).toEqual({ ok: true, value: { "clip.split": ["S"] } });
+  });
+
+  it("compares key lists by value, so an unchanged list is not written", () => {
+    expect(samePreferenceValue({ a: ["S"] }, { a: ["S"] })).toBe(true);
+    expect(samePreferenceValue({ a: ["S"] }, { a: ["K"] })).toBe(false);
+    const values = defaultPreferences();
+    expect(JSON.parse(serializePreferences(values))).toEqual({
+      version: 1,
+      app: {},
+      machine: {},
+    });
+  });
+
+  it("exports only the shortcuts when asked, and imports only them", () => {
+    const values = {
+      ...defaultPreferences(),
+      "appearance.theme": "light" as const,
+      "shortcuts.preset": "capcut" as const,
+      "shortcuts.bindings": { "clip.split": ["Mod+K"] },
+    };
+    const { text, count } = exportPreferences(values, defaultPreferences(), "shortcuts.");
+    expect(count).toBe(2);
+    expect(JSON.parse(text)).toEqual({
+      version: 1,
+      app: { "shortcuts.preset": "capcut", "shortcuts.bindings": { "clip.split": ["Mod+K"] } },
+    });
+    const parsed = parseImport(
+      JSON.stringify({
+        version: 1,
+        app: { "appearance.theme": "light", "shortcuts.bindings": { "item.delete": ["Delete"] } },
+      }),
+      "shortcuts.",
+    );
+    expect(parsed.ok).toBe(true);
+    if (!parsed.ok) return;
+    // The theme is not a shortcut; what the file leaves out goes back to its default.
+    expect(parsed.applied).toEqual({
+      "shortcuts.preset": "nle",
+      "shortcuts.bindings": { "item.delete": ["Delete"] },
+    });
+    expect(parsed.skipped.map((s) => s.key)).toEqual(["appearance.theme"]);
+  });
+});

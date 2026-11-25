@@ -4,6 +4,7 @@ import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { isPreferenceKey } from "@cutweave/preferences";
 import { describe, expect, it } from "vitest";
+import { KEY_COMMANDS } from "../keymap/commands.ts";
 import { COMMAND_INFO } from "../menus/builtins.ts";
 import { ZONE_SURFACE } from "../menus/canvas.ts";
 import { hintBindingIds } from "../menus/keys.ts";
@@ -47,6 +48,13 @@ const MENU_IDS: ReadonlySet<string> = new Set([
   ...CONTEXT_KEYS,
   ...COMMAND_INFO.map((c) => c.name),
   ...hintBindingIds(),
+  // The keymap's commands and their binding ids (WP-2H.05).
+  ...KEY_COMMANDS.map((c) => c.id),
+  "shortcuts.row",
+  "shortcuts.export",
+  "shortcuts.import",
+  "shortcuts.reset_all",
+  "app.about",
   ...HINT_BINDING_IDS,
   ...SURFACE_IDS,
   ...UI_COMMAND_IDS,

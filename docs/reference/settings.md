@@ -174,9 +174,11 @@ Backups always go to the project's `.cutweave/backups/` (arch §17); that is not
 
 | Key | Setting | Default | Scope | Applied by | Agents | Ships in |
 |---|---|---|---|---|---|---|
-| — | Every shortcut, searchable (read-only) | The built-in bindings | — | — | — | WP-1M.13 |
+| — | Every command with a key, searchable; Add shortcut records a key, and a conflict asks before reassigning | The preset's keys | — | — | — | WP-1M.13, WP-2H.05 |
 | `shortcuts.preset` | Preset: Cutweave (NLE-style) or CapCut | Cutweave | App | Renderer (keymap) | — | WP-2H.05 |
-| `shortcuts.bindings` | Your bindings: record, conflicts, reset one or all, the Redo key the Edit menu shows, import and export (only the changes from the preset are stored) | None | App | Renderer | — | WP-2H.05 |
+| `shortcuts.bindings` | Your bindings: the keys that differ from the preset, by command (`[]` removes a command's keys; the first key is the one menus show, so choosing the Redo key is moving it first). Reset all shortcuts, and Export and Import shortcuts as a file, are on the same page. Only the changes are stored, so a preset fixed in an update still reaches you | None | App | Renderer | — | WP-2H.05 |
+
+Keys that cannot be bound: F10 and Alt+F, E, V, H (the menu bar), Shift+F10 and the Menu key (context menus), Alt+F4, Ctrl/Cmd+C, X, V, A (text fields), and Esc, Enter and Tab (dialogs). Ctrl+K opens the command palette and can be moved to another key. The macOS native menu keeps its own accelerators for the File and Edit commands.
 
 ### Notifications
 

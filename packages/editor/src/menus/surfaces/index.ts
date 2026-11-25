@@ -86,12 +86,12 @@ const KEY_HINTS: Readonly<Record<string, string>> = {
   "timeline.insert": "bin.insert",
   "bin.import": "bin.import",
   "bin.play_in_source": "bin.play",
-  "bin.remove_media": "bin.remove",
-  "transport.toggle_play": "playback.togglePlay",
+  "bin.remove_media": "media.remove",
+  "transport.toggle_play": "transport.toggle_play",
   "source.back": "source.back",
-  "chrome.save_now": "menu.save",
-  "export.open": "menu.export",
-  "timeline.rename_track": "timeline.rename-track",
+  "chrome.save_now": "project.save",
+  "export.open": "export.start",
+  "timeline.rename_track": "track.rename",
 };
 
 /** Puts the surface tables, UI commands, command texts and hints into `services`. */

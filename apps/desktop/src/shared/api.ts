@@ -453,9 +453,9 @@ export interface CutweaveApi {
     /** Puts these keys back to their defaults. */
     reset(keys: readonly string[]): Promise<void>;
     /** Asks for a file with the native save dialog and writes the app preferences to it. */
-    exportToFile(): Promise<PrefsExportResult>;
+    exportToFile(only?: "shortcuts"): Promise<PrefsExportResult>;
     /** Asks for a file with the native open dialog and applies its valid keys. */
-    importFromFile(): Promise<PrefsImportResult>;
+    importFromFile(only?: "shortcuts"): Promise<PrefsImportResult>;
     onChanged(listener: (changes: PreferenceChanges) => void): Unsubscribe;
   };
   /**
