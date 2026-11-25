@@ -1039,12 +1039,13 @@ body {
   display: contents;
 }
 
-/* Command palette (WP-2H.04): a top-anchored dialog, a search field over a list of commands. */
+/* Command palette (WP-2H.04): a top-anchored dialog, a search field over a list of commands.
+   At most half the window tall (#160): the list scrolls inside, the search field stays put. */
 .cw-dialog.cw-dialog--palette {
   top: var(--space-8);
   transform: translateX(-50%);
   width: var(--layer-width-lg);
-  max-height: calc(100vh - var(--space-8) * 2);
+  max-height: 50vh;
   gap: var(--space-2);
   padding: var(--space-4);
 }
