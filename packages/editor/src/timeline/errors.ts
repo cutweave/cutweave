@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 // Engine refusals of timeline edits, said the way the design system asks (design/README.md
 // "Errors": what happened and the next step, no apology). The engine's message is the fallback.
-import type { RpcError } from "@cutweave/protocol";
+import { isTransactionLost, type RpcError } from "@cutweave/protocol";
 import type { TKey } from "../i18n/index.ts";
 
 /** The edits the timeline reports on. */
@@ -33,6 +33,8 @@ export function describeRefusal(error: RpcError, t: Translate): string {
     case "locked":
       return t("timeline.reason.locked");
     case "conflict":
+      // The engine restarted under the gesture: its transaction died with the socket.
+      if (isTransactionLost(error)) return t("timeline.reason.restarted");
       return error.data?.reason === "item_in_gesture"
         ? t("timeline.reason.inGesture")
         : t("timeline.reason.changed");
