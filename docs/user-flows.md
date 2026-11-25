@@ -61,6 +61,7 @@ Status: **covered** (in the suite), **planned** (possible today, not written yet
 - `just e2e-flows` builds the engine (`cutweave-engine-serve`, with FFmpeg when the bundle is set up: `just ffmpeg-fetch`), the CLI, the preview addon and the app, then runs `apps/desktop/e2e/flows` with the bundle on the path. Extra arguments go to Playwright: `just e2e-flows -g F8` runs one flow.
 - Most flows run the engine with `--dev-stub-media` (media probed by extension, never decoded). The real-media flows (F13, F14, F17; `launchFlowApp(work, home, { realMedia: true })`) run the full engine of WP-1I.05 on corpus clips (`just corpus`): FFmpeg, the GPU, playback into the preview ring and audio on the null output (no sound). On Windows they use the Vulkan backend, because creating a D3D12 device in the fresh, empty user profile every launch gets hangs in the driver; they skip on an engine without FFmpeg or without the corpus. The demo media is copied from `CUTWEAVE_DEMO_MEDIA` (default `E:/projects/cutweave-demo/media`); on a machine without it, small placeholder files of the same names stand in.
 - Every run ends with a check that no Electron, engine or CLI process of this checkout is still running (`e2e/run-check.ts`). Leftovers are killed and fail the run.
+- The M1 exit gate (`just m1-gate`, WP-1O.04, [milestones/M1-exit.md](milestones/M1-exit.md)) runs the milestone subset of this suite (F11, F12, F14) together with `apps/desktop/e2e/m1/`: the M1 cut typed into the app for comparison with an agent's, and 20 crash-recovery trials of each kind.
 
 ## Writing a flow
 
