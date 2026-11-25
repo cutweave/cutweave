@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
-//! WP-2A.03 acceptance: the `edit` fixtures of `docs/spec/fixtures/` (timeline spec §9) run
-//! against the real commands, table-driven (`cargo test -p cutweave-ops timeline::fixtures`).
+//! WP-2A.03 and WP-2A.04 acceptance: the `edit` fixtures of `docs/spec/fixtures/` (timeline spec
+//! §9) run against the real commands, table-driven (`cargo test -p cutweave-ops
+//! timeline::fixtures`).
 //!
 //! Each fixture builds its `before` document (25 fps, frames as given, names bound to IDs),
 //! runs its command through the common harness (which also asserts undo/redo identity, document
@@ -8,9 +9,9 @@
 //! `error`), the stated `output` fields and the stated `report`. New entities (`+name`) are
 //! bound by structure: tracks by display position, items by start order on their track.
 //!
-//! The commands of this work package are listed in [`COMMANDS`]; every fixture of theirs must
-//! be in the table below, so a new fixture cannot be skipped silently. The trim, link and
-//! replace fixtures belong to WP-2A.04, 2A.05 and 2A.11.
+//! The commands of these work packages are listed in [`COMMANDS`]; every fixture of theirs must
+//! be in the table below, so a new fixture cannot be skipped silently. The link and replace
+//! fixtures belong to WP-2A.05 and 2A.11.
 
 #![allow(clippy::unwrap_used, clippy::expect_used, clippy::panic)]
 
@@ -30,8 +31,10 @@ use serde_json::{Value, json};
 
 /// Flicks per frame at the fixtures' 25 fps.
 const F: i64 = 28_224_000;
+/// Flicks per second.
+const FLICKS_PER_SECOND: i64 = 705_600_000;
 
-/// The commands whose fixtures this work package runs.
+/// The commands whose fixtures these work packages run.
 const COMMANDS: &[&str] = &[
     "timeline.insert",
     "timeline.overwrite",
@@ -44,6 +47,11 @@ const COMMANDS: &[&str] = &[
     "clip.split",
     "item.duplicate",
     "track.set_magnetic",
+    "clip.trim",
+    "clip.ripple_trim",
+    "clip.roll",
+    "clip.slip",
+    "clip.slide",
 ];
 
 fn fixtures_dir() -> PathBuf {
@@ -179,12 +187,39 @@ fn params(v: &Value, names: &Names) -> Value {
     }
 }
 
-/// An expected output value: names (bound ones too) by ID, `"f:N"` by flicks.
+/// Seconds text (`"-1.16s"`) in flicks, exactly.
+fn seconds(text: &str) -> Option<i64> {
+    let body = text.strip_suffix('s')?;
+    let (sign, body) = match body.strip_prefix('-') {
+        Some(rest) => (-1, rest),
+        None => (1, body),
+    };
+    let (whole, frac) = body.split_once('.').unwrap_or((body, ""));
+    let scale = 10_i64.checked_pow(u32::try_from(frac.len()).ok()?)?;
+    let frac_value = if frac.is_empty() {
+        0
+    } else {
+        frac.parse::<i64>().ok()?
+    };
+    let flicks =
+        whole.parse::<i64>().ok()? * FLICKS_PER_SECOND + frac_value * FLICKS_PER_SECOND / scale;
+    assert_eq!(
+        frac_value * FLICKS_PER_SECOND % scale,
+        0,
+        "{text} is not a whole number of flicks"
+    );
+    Some(sign * flicks)
+}
+
+/// An expected output value: names (bound ones too) by ID, `"f:N"` and seconds (`"0.4s"`) by
+/// flicks.
 fn expected(v: &Value, names: &Names) -> Value {
     match v {
         Value::String(s) => {
             if let Some(n) = s.strip_prefix("f:") {
                 json!(n.parse::<i64>().unwrap() * F)
+            } else if let Some(flicks) = seconds(s) {
+                json!(flicks)
             } else {
                 names
                     .get(s)
@@ -473,9 +508,31 @@ fixtures! {
     split_locked_partner => "split-locked-partner",
     split_magnetic_linked_child => "split-magnetic-linked-child",
     split_still => "split-still",
-    // `clip.trim` is WP-2A.04's; this one checks the magnetic ripple trim this WP routes
-    // through the core (INV-203). `trim-magnetic-end-ripples` also needs `applied_delta`.
+    // The trim family (WP-2A.04).
+    ripple_trim_clamp_at_collision => "ripple-trim-clamp-at-collision",
+    ripple_trim_free_end => "ripple-trim-free-end",
+    ripple_trim_locked => "ripple-trim-locked",
+    ripple_trim_magnetic => "ripple-trim-magnetic",
+    ripple_trim_start => "ripple-trim-start",
+    roll_free_clamp => "roll-free-clamp",
+    roll_locked => "roll-locked",
+    roll_magnetic_linked => "roll-magnetic-linked",
+    roll_not_adjacent => "roll-not-adjacent",
+    slide_free_gap_bounded => "slide-free-gap-bounded",
+    slide_locked => "slide-locked",
+    slide_magnetic_first_clamped => "slide-magnetic-first-clamped",
+    slide_magnetic_middle => "slide-magnetic-middle",
+    slip_clamp_at_media_end => "slip-clamp-at-media-end",
+    slip_linked => "slip-linked",
+    slip_locked => "slip-locked",
+    slip_still_invalid => "slip-still-invalid",
+    trim_free_clamp_at_media_end => "trim-free-clamp-at-media-end",
+    trim_free_clamp_at_neighbour => "trim-free-clamp-at-neighbour",
+    trim_free_strict_limit => "trim-free-strict-limit",
+    trim_locked_partner => "trim-locked-partner",
+    trim_magnetic_end_ripples => "trim-magnetic-end-ripples",
     trim_magnetic_start => "trim-magnetic-start",
+    trim_unlink => "trim-unlink",
 }
 
 #[test]

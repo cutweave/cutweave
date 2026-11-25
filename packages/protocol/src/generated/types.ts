@@ -232,6 +232,101 @@ export type Clip = {
 } & { [key in string]: unknown };
 
 /**
+ *  Trims an edge and closes or opens the space after the clip: the clip's start stays, and
+ *  everything that starts at or after its old end moves by the change of its end, on the
+ *  tracks of the clip and its linked partners, the tracks of partners of what moves, or every
+ *  track with `ripple_all_tracks`. The end edge by `δ` lengthens the clip by `δ`; the start
+ *  edge by `δ` (positive cuts frames from the head; `to` is read as if the clip did not move)
+ *  shortens it by `δ`. Fails with `Invalid` if the shift would make items overlap on a moved
+ *  track or move the magnetic main track from another track, and with `Locked` if it would
+ *  change a locked track. `clamp`, `fine` and `unlink` as in `clip.trim`.
+ */
+export type ClipRippleTrim = {
+	/**  The clip. */
+	item: ItemId,
+	/**  The edge to move. */
+	edge: TrimEdge,
+	/**
+	 *  Timeline time of the edge afterwards (frame-snapped; for the start edge, read as if the
+	 *  clip did not move).
+	 */
+	to?: TimeInput | null,
+	/**  Offset of the edge (negative: earlier). Use seconds or flicks for negative values. */
+	delta?: TimeInput | null,
+	/**  Trim only this clip and remove it from its linked group (default `false`). */
+	unlink?: boolean | null,
+	/**  Stop at the nearest limit instead of failing (default `false`). */
+	clamp?: boolean | null,
+	/**  Snap to the audio sample grid (audio clips only). */
+	fine?: boolean | null,
+	/**  Move what follows on every track of the sequence (default `false`). */
+	ripple_all_tracks?: boolean | null,
+};
+
+/**
+ *  Moves the cut between two adjacent clips of one track (`right` starts where `left` ends) to
+ *  a timeline time (`to`) or by an offset (`delta`; exactly one): `left` gets a later or
+ *  earlier end, `right` the same start (its source position follows), and so do their linked
+ *  partners. Nothing else moves and the track keeps its length. Both clips keep at least one
+ *  frame and stay inside their media; a partner stops at an item of its track that is not the
+ *  other side's partner. `Invalid{path:"/right"}` for clips that do not touch; limits as in
+ *  `clip.trim` (`clamp: true` stops at them). `Locked` if a track involved is locked.
+ */
+export type ClipRoll = {
+	/**  The clip before the cut. */
+	left: ItemId,
+	/**  The clip after the cut: it starts where `left` ends, on the same track. */
+	right: ItemId,
+	/**  Timeline time of the cut afterwards (frame-snapped). */
+	to?: TimeInput | null,
+	/**  Offset of the cut (negative: earlier). Use seconds or flicks for negative values. */
+	delta?: TimeInput | null,
+	/**  Stop at the nearest limit instead of failing (default `false`). */
+	clamp?: boolean | null,
+};
+
+/**
+ *  Moves a clip by `delta` between its neighbours, keeping what it shows: the clip and its
+ *  linked partners move; the clip just before it (if it touches it) gets a later or earlier
+ *  end and the clip just after it (if it touches it) a later or earlier start (its source
+ *  position follows), with their partners. A side with a gap stops the clip at the next item
+ *  (or time 0); the empty end of a track does not. The neighbours keep at least one frame and
+ *  stay inside their media. On the magnetic main track the first clip cannot slide. Children
+ *  attached to the clip move with it. Limits as in `clip.trim` (`clamp: true` stops at them).
+ *  `Locked` if a track involved is locked.
+ */
+export type ClipSlide = {
+	/**  The clip. */
+	item: ItemId,
+	/**  How far the clip moves (negative: earlier). Use seconds or flicks for negative values. */
+	delta: TimeInput,
+	/**  Stop at the nearest limit instead of failing (default `false`). */
+	clamp?: boolean | null,
+};
+
+/**
+ *  Changes which part of the media a clip shows without moving it: its `source_in` (and its
+ *  linked partners') moves by `delta`, in media time and whole frames (positive: later
+ *  material). Positions and lengths on the timeline never change. The source range stays inside
+ *  the media (`clamp: true` stops at its start or end). A still or media of unknown length has
+ *  nothing to slip: `Invalid{path:"/item"}`. `fine: true` snaps to audio samples (audio clips
+ *  not linked to video). `Locked` if a track involved is locked.
+ */
+export type ClipSlip = {
+	/**  The clip. */
+	item: ItemId,
+	/**
+	 *  How far the media moves under the clip (positive: later material). Use seconds or
+	 *  flicks for negative values.
+	 */
+	delta: TimeInput,
+	/**  Stop at the start or end of the media instead of failing (default `false`). */
+	clamp?: boolean | null,
+	/**  Snap to the audio sample grid (audio clips only). */
+	fine?: boolean | null,
+};
+
+/**
  *  Splits a clip (`item`), or several (`items`), into two at a timeline time that lies strictly
  *  inside each (`Invalid{path:"/at"}` at or beyond the edges). The halves are contiguous:
  *  durations sum to the original and the right half's `source_in` continues where the left
@@ -270,12 +365,15 @@ export type ClipSplitOutput = {
 };
 
 /**
- *  Moves one edge of a clip to a timeline time (`to`) or by an offset (`delta`, negative to
- *  move the edge earlier; give exactly one). The clip cannot become empty, extend past the
- *  start or end of its media, or overlap a neighbour: `Invalid{path:"/to"}` (or `/delta`).
- *  Linked partners get the same edge at the same time; `unlink: true` trims only this clip and
- *  removes it from its group. Times are snapped to the sequence's frame grid. `Locked` if a
- *  track involved is locked.
+ *  Moves one edge of a clip to a timeline time (`to`) or by an offset (`delta`, negative:
+ *  earlier; give exactly one). Linked partners get the same edge; `unlink: true` trims only
+ *  this clip, which leaves its group. On free tracks nothing else moves, and the clip cannot
+ *  become shorter than one frame, read outside its media or overlap a neighbour. On the
+ *  magnetic main track it is a ripple trim (`clip.ripple_trim`): what follows moves with the
+ *  end. A request past a limit is `Invalid` at `/to` (or `/delta`) naming it; with `clamp:
+ *  true` the edge stops there instead (`applied_delta`, `clamped`). Times snap to frames
+ *  (`fine: true`: audio samples, for audio clips not linked to video). `Locked` if a track
+ *  involved is locked.
  */
 export type ClipTrim = {
 	/**  The clip. */
@@ -291,12 +389,22 @@ export type ClipTrim = {
 	delta?: TimeInput | null,
 	/**  Trim only this clip and remove it from its linked group (default `false`). */
 	unlink?: boolean | null,
+	/**  Stop at the nearest limit instead of failing (default `false`). */
+	clamp?: boolean | null,
+	/**  Snap to the audio sample grid (audio clips only). */
+	fine?: boolean | null,
 };
 
 /**  Result of `clip.trim`. */
 export type ClipTrimOutput = {
 	/**  The trimmed clips: the requested one first, then its linked partners. */
 	items: TrimmedClip[],
+	/**  How far the edge moved (flicks): the request, or under `clamp` the nearest one allowed. */
+	applied_delta: Time,
+	/**  Whether `applied_delta` differs from the request (only with `clamp: true`). */
+	clamped: boolean,
+	/**  What changed (timeline spec §3.1). */
+	report: EditReport,
 };
 
 /**
@@ -3978,6 +4086,16 @@ export type TrimEdge =
 "start" | 
 /**  The last frame (changes the length). */
 "end";
+
+/**  Result of `clip.ripple_trim`, `clip.roll`, `clip.slip` and `clip.slide`. */
+export type TrimOutput = {
+	/**  The delta applied (flicks): the request, or under `clamp` the nearest one allowed. */
+	applied_delta: Time,
+	/**  Whether `applied_delta` differs from the request (only with `clamp: true`). */
+	clamped: boolean,
+	/**  What changed (timeline spec §3.1). */
+	report: EditReport,
+};
 
 /**  A clip after trimming. */
 export type TrimmedClip = {

@@ -170,8 +170,10 @@ describe("what the palette lists", () => {
     expect(split?.title).toBe("Split at playhead");
     expect(split?.chips).toEqual(["clip"]);
     expect(split?.shortcut).toBe("S");
-    const trim = entries.find((e) => e.command === "clip.trim");
-    expect(trim?.title).toBe(trim?.catalog?.summary);
+    // No editor label for `clip.slip` (the edge menu labels `clip.trim`): the engine's summary.
+    const slip = entries.find((e) => e.command === "clip.slip");
+    expect(slip?.title).toBe(slip?.catalog?.summary);
+    expect(slip?.title).toBeTruthy();
   });
 
   it("leaves out the menu-only UI commands (a text field's Cut) and lists the editor's own", () => {

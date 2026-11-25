@@ -2,14 +2,18 @@
 
 # Command reference
 
-Every command and query the engine registers (83 in total), generated from the registry. The full JSON Schemas are in `schema/commands.json` and `schema/queries.json`.
+Every command and query the engine registers (87 in total), generated from the registry. The full JSON Schemas are in `schema/commands.json` and `schema/queries.json`.
 
 MCP exposure: `core` commands are always listed as tools (`item.move` is `item_move`), `catalog` ones are reachable through the catalog tools, `hidden` ones are not exposed.
 
 | Namespace | Command | Summary | Flags | MCP |
 |---|---|---|---|---|
+| clip | `clip.ripple_trim` | Trim a clip's edge and move what follows by the same amount (ripple) | command, undoable | catalog |
+| clip | `clip.roll` | Move the cut between two adjacent clips (one gets longer, the other shorter) | command, undoable | catalog |
+| clip | `clip.slide` | Move a clip between its neighbours, which get longer or shorter to make room | command, undoable | catalog |
+| clip | `clip.slip` | Show an earlier or later part of a clip's media without moving the clip | command, undoable | catalog |
 | clip | `clip.split` | Split a clip (and its linked partners) at a timeline time | command, undoable | core |
-| clip | `clip.trim` | Trim the start or end edge of a clip (linked partners follow; no ripple) | command, undoable, idempotent | core |
+| clip | `clip.trim` | Trim the start or end edge of a clip (linked partners follow; the main track closes up) | command, undoable, idempotent | core |
 | edit | `edit.begin_tx` | Open a transaction (batch, gesture or proposal) that commits as one undo step | engine | catalog |
 | edit | `edit.cancel_tx` | Cancel your open transaction and roll back its changes | engine | catalog |
 | edit | `edit.checkpoint` | Save a restore point of the committed document (cheap; optional name) | engine | catalog |

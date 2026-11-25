@@ -331,7 +331,11 @@ pub(super) fn args_for(name: &str, p: &Pools) -> Option<(u32, BoxedStrategy<Valu
         "timeline.delete_gap" => (edits.div_ceil(3), delete_gap(p)),
         "timeline.get" => (1, timeline_get(p)),
         "clip.split" => (edits, clip_split(p)),
-        "clip.trim" => (edits, clip_trim(p)),
+        "clip.trim" => (edits, edge_trim(p, false)),
+        "clip.ripple_trim" => (edits.div_ceil(2), edge_trim(p, true)),
+        "clip.roll" => (edits.div_ceil(2), clip_roll(p)),
+        "clip.slip" => (edits.div_ceil(2), clip_shift(p, false)),
+        "clip.slide" => (edits.div_ceil(2), clip_shift(p, true)),
         "item.move" => (edits, item_move(p)),
         "item.delete" => (edits.div_ceil(2), item_delete(p)),
         "item.duplicate" => (edits.div_ceil(2), item_duplicate(p)),
@@ -1433,7 +1437,10 @@ fn clip_split(p: &Pools) -> BoxedStrategy<Value> {
     mix(valid, unknown_item("at"))
 }
 
-fn clip_trim(p: &Pools) -> BoxedStrategy<Value> {
+/// `clip.trim` (`ripple: false`) or `clip.ripple_trim` (WP-2A.04): an edge of a clip to a time
+/// or by a delta of up to 45 frames either way, sometimes clamped, sometimes on the sample grid
+/// (`fine`, valid for audio clips only), the ripple sometimes on every track.
+fn edge_trim(p: &Pools, ripple: bool) -> BoxedStrategy<Value> {
     let invalid = unknown_item("to")
         .prop_map(|mut v| {
             v["edge"] = json!("end");
@@ -1450,22 +1457,101 @@ fn clip_trim(p: &Pools) -> BoxedStrategy<Value> {
         0..10_u8,
         any::<(u8, u32)>(),
         option::weighted(0.3, any::<bool>()),
+        (
+            option::weighted(0.4, any::<bool>()),
+            option::weighted(0.1, any::<bool>()),
+            option::weighted(0.15, any::<bool>()),
+        ),
     )
-        .prop_map(|(it, end, k, mode, (form, jitter), unlink)| {
-            let edge = if end { it.start + it.len } else { it.start };
-            let mut v = json!({"item": it.id, "edge": if end { "end" } else { "start" },
-                               "unlink": unlink});
-            let to = time_json(it.fpf, edge + k, form, jitter);
-            let delta = time_json(it.fpf, k, form, jitter);
-            match mode {
-                0..=5 => v["to"] = to,
-                6..=8 => v["delta"] = delta,
-                // Both, or neither below: `Invalid`.
-                9 if k % 2 == 0 => {
-                    v["to"] = to;
-                    v["delta"] = delta;
+        .prop_map(
+            move |(it, end, k, mode, (form, jitter), unlink, (clamp, fine, all))| {
+                let edge = if end { it.start + it.len } else { it.start };
+                let mut v = json!({"item": it.id, "edge": if end { "end" } else { "start" },
+                                   "unlink": unlink, "clamp": clamp, "fine": fine});
+                if ripple {
+                    v["ripple_all_tracks"] = json!(all);
                 }
-                _ => {}
+                let to = time_json(it.fpf, edge + k, form, jitter);
+                let delta = time_json(it.fpf, k, form, jitter);
+                match mode {
+                    0..=5 => v["to"] = to,
+                    6..=8 => v["delta"] = delta,
+                    // Both, or neither below: `Invalid`.
+                    9 if k % 2 == 0 => {
+                        v["to"] = to;
+                        v["delta"] = delta;
+                    }
+                    _ => {}
+                }
+                v
+            },
+        )
+        .boxed();
+    mix(valid, invalid)
+}
+
+/// `clip.roll` (WP-2A.04): mostly two clips that touch on one track (the cut moved to a time or
+/// by a delta), sometimes two that do not (`Invalid` at `/right`).
+fn clip_roll(p: &Pools) -> BoxedStrategy<Value> {
+    let invalid = (fresh::<ItemId>(), one_of(p.item_ids()), -30..30_i64)
+        .prop_map(|(left, right, d)| {
+            json!({"left": left, "right": right, "delta": time_json(FPF_30, d, 5, 0)})
+        })
+        .boxed();
+    let pairs: Vec<(Itm, Itm)> = p
+        .items
+        .iter()
+        .flat_map(|a| {
+            p.items
+                .iter()
+                .filter(move |b| b.track == a.track && b.start == a.start + a.len)
+                .map(move |b| (a.clone(), b.clone()))
+        })
+        .collect();
+    if pairs.is_empty() {
+        return mix(invalid.clone(), invalid);
+    }
+    let valid = (
+        select(pairs),
+        -45..=45_i64,
+        any::<bool>(),
+        any::<(u8, u32)>(),
+        option::weighted(0.4, any::<bool>()),
+    )
+        .prop_map(|((l, r), k, to, (form, jitter), clamp)| {
+            let mut v = json!({"left": l.id, "right": r.id, "clamp": clamp});
+            if to {
+                v["to"] = time_json(l.fpf, r.start + k, form, jitter);
+            } else {
+                v["delta"] = time_json(l.fpf, k, form, jitter);
+            }
+            v
+        })
+        .boxed();
+    mix(valid, invalid)
+}
+
+/// `clip.slip` (WP-2A.04) and `clip.slide` (`slide`): a clip and a delta of up to 60 frames
+/// either way, often clamped (a clip that plays all of its media has nothing to slip, and one
+/// between two others little room to slide); a slip sometimes on the sample grid (`fine`).
+fn clip_shift(p: &Pools, slide: bool) -> BoxedStrategy<Value> {
+    let invalid = unknown_item("delta");
+    if p.items.is_empty() {
+        return mix(invalid.clone(), invalid);
+    }
+    let clamp = prop_oneof![3 => Just(Some(true)), 1 => Just(Some(false)), 2 => Just(None)];
+    let valid = (
+        select(p.items.clone()),
+        -60..=60_i64,
+        any::<(u8, u32)>(),
+        clamp,
+        option::weighted(0.1, any::<bool>()),
+    )
+        .prop_map(move |(it, k, (form, jitter), clamp, fine)| {
+            let mut v = json!({"item": it.id, "delta": time_json(it.fpf, k, form, jitter),
+                               "clamp": clamp});
+            if !slide {
+                v["fine"] = json!(fine);
             }
             v
         })

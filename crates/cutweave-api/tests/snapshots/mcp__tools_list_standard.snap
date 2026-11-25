@@ -65,7 +65,7 @@ expression: catalog.tools_json()
     },
     {
       "name": "clip_trim",
-      "description": "Trim the start or end edge of a clip (linked partners follow; no ripple)",
+      "description": "Trim the start or end edge of a clip (linked partners follow; the main track closes up)",
       "inputSchema": {
         "type": "object",
         "additionalProperties": false,
@@ -116,6 +116,20 @@ expression: catalog.tools_json()
               "null"
             ],
             "description": "Trim only this clip and remove it from its linked group (default `false`)."
+          },
+          "clamp": {
+            "type": [
+              "boolean",
+              "null"
+            ],
+            "description": "Stop at the nearest limit instead of failing (default `false`)."
+          },
+          "fine": {
+            "type": [
+              "boolean",
+              "null"
+            ],
+            "description": "Snap to the audio sample grid (audio clips only)."
           }
         },
         "required": [

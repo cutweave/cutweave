@@ -22,7 +22,7 @@
         "readOnlyHint": false
       },
       "command": "clip.trim",
-      "description": "Trim the start or end edge of a clip (linked partners follow; no ripple)",
+      "description": "Trim the start or end edge of a clip (linked partners follow; the main track closes up)",
       "kind": "command",
       "name": "clip_trim"
     },
