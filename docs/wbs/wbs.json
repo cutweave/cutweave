@@ -1,7 +1,7 @@
 {
   "version": 1,
   "generated_by": "scripts/wbs-to-issues",
-  "count": 509,
+  "count": 510,
   "work_packages": [
     {
       "id": "WP-0A.01",
@@ -4876,11 +4876,11 @@
       "size": "M",
       "executor": "sonnet",
       "executor_note": "",
-      "depends_raw": "WP-2C.03, WP-2C.04, WP-2H.03, WP-2A.10, WP-2B.01",
+      "depends_raw": "WP-2C.03, WP-2C.04, WP-2H.03a, WP-2A.10, WP-2B.01",
       "depends_wps": [
         "WP-2C.03",
         "WP-2C.04",
-        "WP-2H.03",
+        "WP-2H.03a",
         "WP-2A.10",
         "WP-2B.01"
       ],
@@ -4890,7 +4890,7 @@
         "WP-2B.01",
         "WP-2C.03",
         "WP-2C.04",
-        "WP-2H.03"
+        "WP-2H.03a"
       ],
       "scope": "(product owner request, 2026-11-24: \"if I want to place 2 videos side by side on the timeline, will it be possible?\") Today this is possible by hand. A second clip dropped at the same time goes to a new track, then Scale 50 % and Position X ±480 in the Inspector. The clips are letterboxed, though, because P1 has no crop. Crop arrives with WP-2C.03, WP-2C.04 and WP-2H.03, and transform handles and snapping with WP-2H.06. This WP makes the arrangement one action.\n- **`item.apply_layout{items[], layout, fill: crop|fit, gap?, order?}`** sets each item's transform and crop as ordinary `VisualProps` values in one undoable step. MCP catalog: agents arrange clips with the same command the UI uses, and the result is plain properties that anyone can adjust afterwards.\n  - `crop` fills each cell with a centred crop; `fit` scales to fit inside the cell.\n  - `gap` is a spacing in sequence pixels.\n  - `order` lists the items for the cells; without it, the top track comes first.\n  - A property that is already animated gets a keyframe at the playhead (2C.03's auto-key rule).\n  - The cells come from the sequence's canvas size (WP-2B.01).\n- **Layouts** (data, so packs can add more later):\n  - two clips: side by side (left and right), top and bottom;\n  - picture in picture: a small clip in any corner, 30 % of the width, inset by the title-safe margin;\n  - three clips: three columns, one large and two small;\n  - four clips: a 2 × 2 grid.\n  - Too few or too many visual items give `Invalid`, with the counts the layout accepts.\n- **UI:**\n  - With 2–4 video clips selected, the Inspector shows a Layout row of small diagrams, and the timeline's clip menu has Layout ▸.\n  - In the bin, selecting 2–4 video assets offers \"Place side by side…\", which inserts them at the playhead on new tracks and applies the layout in one undo step.\n  - \"Swap\" reverses the order of a two-clip layout.",
       "interfaces": "`item.apply_layout`; the layout table (`layouts.json` in the ops crate's data, schema-validated).",
@@ -5167,7 +5167,7 @@
         "WP-2E.01",
         "WP-2E.02"
       ],
-      "scope": "- Waveform rendering in audio items (peak pyramid, LOD by zoom, dB-scale option), volume line overlay with draggable keyframe points (rubber band) and fade handles at item corners (drag = `audio.set_fade` under `gesture` tx). Shows normalization/limited badges.\n- Mixer panel: per-track fader, pan knob, mute/solo, live peak meters from `playback.meters`, master fader plus limiter toggle and LUFS readout. Double-click resets.\n- Audio inspector section (volume, pan, fades, preserve pitch, normalize button) through the schema-driven inspector (2H.03). Its \"Fade in\" and \"Fade out\" buttons add a fade of the length set in Settings > Editing (\"Length of a fade added with one click\", `editing.audio_fade`, 0.5 s; catalog `docs/reference/settings.md`).\n- **Context menu (product owner request, 2026-11-25; framework WP-2H.12, plan in [09-context-menus.md](../research/09-context-menus.md)):** menus for the fade handle (Linear, Logarithmic and other fade curves, Remove fade), the volume line (Reset to 0 dB, Add point here, Delete point) and the mixer fader (Reset, Mute, Solo, Bus ▸).",
+      "scope": "- Waveform rendering in audio items (peak pyramid, LOD by zoom, dB-scale option), volume line overlay with draggable keyframe points (rubber band) and fade handles at item corners (drag = `audio.set_fade` under `gesture` tx). Shows normalization/limited badges.\n- Mixer panel: per-track fader, pan knob, mute/solo, live peak meters from `playback.meters`, master fader plus limiter toggle and LUFS readout. Double-click resets.\n- Audio inspector section (volume, pan, fades, preserve pitch, normalize button) through the schema-driven inspector (2H.03b). Its \"Fade in\" and \"Fade out\" buttons add a fade of the length set in Settings > Editing (\"Length of a fade added with one click\", `editing.audio_fade`, 0.5 s; catalog `docs/reference/settings.md`).\n- **Context menu (product owner request, 2026-11-25; framework WP-2H.12, plan in [09-context-menus.md](../research/09-context-menus.md)):** menus for the fade handle (Linear, Logarithmic and other fade curves, Remove fade), the volume line (Reset to 0 dB, Add point here, Delete point) and the mixer fader (Reset, Mute, Solo, Bus ▸).",
       "interfaces": "consumes 2E commands; `<Mixer/>` panel registered in the dock registry (2H.01).",
       "acceptance": [
         "Playwright: drag a fade handle to 1.0 s, the clip's `fade_in` equals 1.0 s ± 1 frame; drag the volume line creates two keyframes; undo reverts.",
@@ -6037,40 +6037,69 @@
       "out_of_scope": "effect/composition params (P3/P4 reuse it), AI model forms (P5)."
     },
     {
-      "id": "WP-2H.03",
-      "title": "Inspector wiring: clip, track, sequence, audio, export panels",
+      "id": "WP-2H.03a",
+      "title": "Inspector wiring: video, clip info, track, keyframes",
       "source": {
         "file": "docs/wbs/P2-core-editor.md",
         "line": 1189
       },
       "phase": "P2",
       "epic": "2H",
-      "area": "packages/editor/src/inspector/",
+      "area": "packages/editor/src/inspector/ (and the editor wiring it needs), `#[ui]` hints on the `item.set_props` params in crates/cutweave-ops (with the regenerated schema and TS types), apps/desktop/e2e/flows, docs/user-flows.md",
       "size": "M",
       "executor": "sonnet",
       "executor_note": "",
-      "depends_raw": "WP-2H.02, WP-2C.03, WP-2E.01, WP-2B.01, WP-2D.01",
+      "depends_raw": "WP-2H.02, WP-2C.03",
       "depends_wps": [
         "WP-2H.02",
+        "WP-2C.03"
+      ],
+      "depends_epics": [],
+      "depends": [
         "WP-2C.03",
+        "WP-2H.02"
+      ],
+      "scope": "- Context inspector sections by selection: Video (transform, crop, opacity, flip, blend), Clip info (name, source, proxy status), Track (name, flags, gain). Multi-selection edits apply to all (`items[]`) in one undo step; fields where the clips differ show \"Mixed\".\n- The Video section is data-driven from the `item.set_props` input schema (`x-ui` hints, WP-2H.02): adding a property to the schema adds a control with no UI code change (tested).\n- Keyframe navigation (previous and next key), \"add or remove keyframe at playhead\" and \"reset\" per property, and a section reset; animated properties show their value at the playhead and edits key at the playhead.\n- Numeric entry supports expressions (`+10`, `*2`, `/2`, `50%`).",
+      "interfaces": "consumes `item.set_props`, `item.reset_props`, `keyframe.*`, `track.set`; the `item.set_props` schema's `x-ui` hints.",
+      "acceptance": [
+        "Playwright: select two clips, set opacity 50% for both in one undo step; keyframe a position animation and verify with `item.get`.",
+        "Adding a dummy optional prop in a test build schema adds a control without UI code changes (test).",
+        "Inspector update latency (typing a value → preview shows change) p95 < 100 ms (probe)."
+      ],
+      "tests": "Playwright, Vitest.",
+      "out_of_scope": "Audio, Speed and Sequence sections (WP-2H.03b); effects, text, masks sections; color label (no model field)."
+    },
+    {
+      "id": "WP-2H.03b",
+      "title": "Inspector wiring: audio, speed and sequence",
+      "source": {
+        "file": "docs/wbs/P2-core-editor.md",
+        "line": 1207
+      },
+      "phase": "P2",
+      "epic": "2H",
+      "area": "packages/editor/src/inspector/, apps/desktop/e2e/flows, docs/user-flows.md",
+      "size": "S",
+      "executor": "sonnet",
+      "executor_note": "",
+      "depends_raw": "WP-2H.03a, WP-2E.01, WP-2D.01, WP-2B.01",
+      "depends_wps": [
+        "WP-2H.03a",
         "WP-2E.01",
-        "WP-2B.01",
-        "WP-2D.01"
+        "WP-2D.01",
+        "WP-2B.01"
       ],
       "depends_epics": [],
       "depends": [
         "WP-2B.01",
-        "WP-2C.03",
         "WP-2D.01",
         "WP-2E.01",
-        "WP-2H.02"
+        "WP-2H.03a"
       ],
-      "scope": "- Context inspector: shows sections by selection: Video (transform, crop, opacity, flip, blend), Speed (rate, reverse, freeze button), Audio (volume, pan, fades, preserve-pitch, normalize), Clip info (name, color label, source, proxy status), Track (name, flags, gain), Sequence (format, background, frame rate) when nothing is selected. Multi-selection edits apply to all (`items[]`).\n- Sections are data-driven from `item.get`/schema; no hand-coded property lists: adding a property to the schema adds a control (tested).\n- Keyframe navigation (prev/next keyframe), \"add keyframe at playhead\", \"reset\" buttons.\n- Numeric entry supports expressions (`+10`, `*2`, `50%`).",
-      "interfaces": "consumes the schemas of `item.set_props`, `clip.set_speed`, `audio.*`, `sequence.set_format`.",
+      "scope": "- Speed (rate, reverse, freeze button), Audio (volume, pan, fades, preserve-pitch, normalize) and Sequence (format, background, frame rate, shown when nothing is selected) sections, on the data-driven sections and keyframe wiring of WP-2H.03a. The Audio section replaces the hand-coded Gain row.",
+      "interfaces": "consumes the schemas of `clip.set_speed`, `audio.*`, `sequence.set_format`.",
       "acceptance": [
-        "Playwright: select two clips, set opacity 50% for both in one undo step; keyframe a position animation and verify with `timeline.get`.",
-        "Adding a dummy optional prop in a test build schema adds a control without UI code changes (test).",
-        "Inspector update latency (typing a value → preview shows change) p95 < 100 ms (probe)."
+        "Playwright: set a clip's volume and pan for two clips at once; change the sequence format with nothing selected."
       ],
       "tests": "Playwright, Vitest.",
       "out_of_scope": "effects, text, masks sections."
@@ -6080,7 +6109,7 @@
       "title": "Command palette and registry-driven menus",
       "source": {
         "file": "docs/wbs/P2-core-editor.md",
-        "line": 1207
+        "line": 1220
       },
       "phase": "P2",
       "epic": "2H",
@@ -6118,7 +6147,7 @@
       "title": "Keymap engine, shortcut editor, NLE and CapCut presets",
       "source": {
         "file": "docs/wbs/P2-core-editor.md",
-        "line": 1231
+        "line": 1244
       },
       "phase": "P2",
       "epic": "2H",
@@ -6170,7 +6199,7 @@
       "title": "Preview overlays: transform handles, crop, safe areas, grid",
       "source": {
         "file": "docs/wbs/P2-core-editor.md",
-        "line": 1259
+        "line": 1272
       },
       "phase": "P2",
       "epic": "2H",
@@ -6213,7 +6242,7 @@
       "title": "UX design review gate (human)",
       "source": {
         "file": "docs/wbs/P2-core-editor.md",
-        "line": 1282
+        "line": 1295
       },
       "phase": "P2",
       "epic": "2H",
@@ -6221,11 +6250,11 @@
       "size": "S",
       "executor": "human",
       "executor_note": "",
-      "depends_raw": "WP-2A.10, WP-2H.01, WP-2H.03, WP-2H.05, WP-2H.06",
+      "depends_raw": "WP-2A.10, WP-2H.01, WP-2H.03a, WP-2H.05, WP-2H.06",
       "depends_wps": [
         "WP-2A.10",
         "WP-2H.01",
-        "WP-2H.03",
+        "WP-2H.03a",
         "WP-2H.05",
         "WP-2H.06"
       ],
@@ -6233,7 +6262,7 @@
       "depends": [
         "WP-2A.10",
         "WP-2H.01",
-        "WP-2H.03",
+        "WP-2H.03a",
         "WP-2H.05",
         "WP-2H.06"
       ],
@@ -6251,7 +6280,7 @@
       "title": "Project settings: `project.set_settings` and File > Project settings…",
       "source": {
         "file": "docs/wbs/P2-core-editor.md",
-        "line": 1295
+        "line": 1308
       },
       "phase": "P2",
       "epic": "2H",
@@ -6288,7 +6317,7 @@
       "title": "Settings: Appearance page (interface scale, density, reduce motion)",
       "source": {
         "file": "docs/wbs/P2-core-editor.md",
-        "line": 1313
+        "line": 1326
       },
       "phase": "P2",
       "epic": "2H",
@@ -6324,7 +6353,7 @@
       "title": "Settings: Playback page (preview quality, proxies, scrub audio, loop)",
       "source": {
         "file": "docs/wbs/P2-core-editor.md",
-        "line": 1332
+        "line": 1345
       },
       "phase": "P2",
       "epic": "2H",
@@ -6362,7 +6391,7 @@
       "title": "History panel: every undo step, who made it, go back to any step",
       "source": {
         "file": "docs/wbs/P2-core-editor.md",
-        "line": 1348
+        "line": 1361
       },
       "phase": "P2",
       "epic": "2H",
@@ -6399,7 +6428,7 @@
       "title": "Context-menu framework: host, surfaces, command-derived items, keyboard and touch, contributions",
       "source": {
         "file": "docs/wbs/P2-core-editor.md",
-        "line": 1376
+        "line": 1389
       },
       "phase": "P2",
       "epic": "2H",
@@ -6450,7 +6479,7 @@
       "title": "Context menus for today's surfaces: bin, preview, timeline basics, inspector, chrome",
       "source": {
         "file": "docs/wbs/P2-core-editor.md",
-        "line": 1403
+        "line": 1416
       },
       "phase": "P2",
       "epic": "2H",
@@ -6500,7 +6529,7 @@
       "title": "Detached panels I: popout windows, the shell and the layout",
       "source": {
         "file": "docs/wbs/P2-core-editor.md",
-        "line": 1431
+        "line": 1444
       },
       "phase": "P2",
       "epic": "2H",
@@ -6536,7 +6565,7 @@
       "title": "Detached panels II: every panel works in its own window",
       "source": {
         "file": "docs/wbs/P2-core-editor.md",
-        "line": 1479
+        "line": 1492
       },
       "phase": "P2",
       "epic": "2H",
@@ -6573,7 +6602,7 @@
       "title": "Core tool set: mapping, annotations and completion (~30 tools)",
       "source": {
         "file": "docs/wbs/P2-core-editor.md",
-        "line": 1516
+        "line": 1529
       },
       "phase": "P2",
       "epic": "2I",
@@ -6624,7 +6653,7 @@
       "title": "Visual tools: contact sheet, filmstrip, waveform image",
       "source": {
         "file": "docs/wbs/P2-core-editor.md",
-        "line": 1536
+        "line": 1549
       },
       "phase": "P2",
       "epic": "2I",
@@ -6676,7 +6705,7 @@
       "title": "Checkpoints: edit.checkpoint / edit.restore",
       "source": {
         "file": "docs/wbs/P2-core-editor.md",
-        "line": 1557
+        "line": 1570
       },
       "phase": "P2",
       "epic": "2I",
@@ -6721,7 +6750,7 @@
       "title": "Optimistic concurrency: expected_rev everywhere",
       "source": {
         "file": "docs/wbs/P2-core-editor.md",
-        "line": 1576
+        "line": 1589
       },
       "phase": "P2",
       "epic": "2I",
@@ -6774,7 +6803,7 @@
       "title": "Tool profiles, change notifications and tools/list budget",
       "source": {
         "file": "docs/wbs/P2-core-editor.md",
-        "line": 1593
+        "line": 1606
       },
       "phase": "P2",
       "epic": "2I",
@@ -6805,7 +6834,7 @@
       "title": "Scripted-agent e2e: YouTube edit and 9:16 short via MCP only",
       "source": {
         "file": "docs/wbs/P2-core-editor.md",
-        "line": 1611
+        "line": 1624
       },
       "phase": "P2",
       "epic": "2I",
@@ -6848,7 +6877,7 @@
       "title": "Benchmark fixtures and Rust criterion suite",
       "source": {
         "file": "docs/wbs/P2-core-editor.md",
-        "line": 1633
+        "line": 1646
       },
       "phase": "P2",
       "epic": "2J",
@@ -6905,7 +6934,7 @@
       "title": "UI benchmarks: timeline pan/zoom and UI command RTT",
       "source": {
         "file": "docs/wbs/P2-core-editor.md",
-        "line": 1650
+        "line": 1663
       },
       "phase": "P2",
       "epic": "2J",
@@ -6939,7 +6968,7 @@
       "title": "Playback, scrub and A/V sync benchmarks",
       "source": {
         "file": "docs/wbs/P2-core-editor.md",
-        "line": 1665
+        "line": 1678
       },
       "phase": "P2",
       "epic": "2J",
@@ -6981,7 +7010,7 @@
       "title": "CI benchmark gate and trend dashboard",
       "source": {
         "file": "docs/wbs/P2-core-editor.md",
-        "line": 1680
+        "line": 1693
       },
       "phase": "P2",
       "epic": "2J",
@@ -7022,7 +7051,7 @@
       "title": "Crash-injection harness: 20 forced crashes, no data loss",
       "source": {
         "file": "docs/wbs/P2-core-editor.md",
-        "line": 1696
+        "line": 1709
       },
       "phase": "P2",
       "epic": "2J",
@@ -7066,7 +7095,7 @@
       "title": "Dogfood edit A: 10-min YouTube video with B-roll (human)",
       "source": {
         "file": "docs/wbs/P2-core-editor.md",
-        "line": 1714
+        "line": 1727
       },
       "phase": "P2",
       "epic": "2J",
@@ -7106,7 +7135,7 @@
       "title": "Dogfood edit B: 9:16 short with manual reframe, music and fades (human)",
       "source": {
         "file": "docs/wbs/P2-core-editor.md",
-        "line": 1729
+        "line": 1742
       },
       "phase": "P2",
       "epic": "2J",
@@ -7144,7 +7173,7 @@
       "title": "M2 exit review (human)",
       "source": {
         "file": "docs/wbs/P2-core-editor.md",
-        "line": 1743
+        "line": 1756
       },
       "phase": "P2",
       "epic": "2J",
@@ -7182,7 +7211,7 @@
       "title": "Background render cache (smart pre-render while idle)",
       "source": {
         "file": "docs/wbs/P2-core-editor.md",
-        "line": 1756
+        "line": 1769
       },
       "phase": "P2",
       "epic": "2J",
@@ -7479,7 +7508,8 @@
         "WP-1M.15",
         "WP-2H.01",
         "WP-2H.02",
-        "WP-2H.03",
+        "WP-2H.03a",
+        "WP-2H.03b",
         "WP-2H.04",
         "WP-2H.05",
         "WP-2H.06",
@@ -8138,7 +8168,8 @@
       "depends": [
         "WP-2H.01",
         "WP-2H.02",
-        "WP-2H.03",
+        "WP-2H.03a",
+        "WP-2H.03b",
         "WP-2H.04",
         "WP-2H.05",
         "WP-2H.06",
@@ -8527,7 +8558,8 @@
       "depends": [
         "WP-2H.01",
         "WP-2H.02",
-        "WP-2H.03",
+        "WP-2H.03a",
+        "WP-2H.03b",
         "WP-2H.04",
         "WP-2H.05",
         "WP-2H.06",
@@ -8971,7 +9003,8 @@
       "depends": [
         "WP-2H.01",
         "WP-2H.02",
-        "WP-2H.03",
+        "WP-2H.03a",
+        "WP-2H.03b",
         "WP-2H.04",
         "WP-2H.05",
         "WP-2H.06",
@@ -9645,7 +9678,8 @@
       "depends": [
         "WP-2H.01",
         "WP-2H.02",
-        "WP-2H.03",
+        "WP-2H.03a",
+        "WP-2H.03b",
         "WP-2H.04",
         "WP-2H.05",
         "WP-2H.06",
@@ -10704,7 +10738,8 @@
       "depends": [
         "WP-2H.01",
         "WP-2H.02",
-        "WP-2H.03",
+        "WP-2H.03a",
+        "WP-2H.03b",
         "WP-2H.04",
         "WP-2H.05",
         "WP-2H.06",
@@ -12617,7 +12652,8 @@
         "WP-1N.02",
         "WP-2H.01",
         "WP-2H.02",
-        "WP-2H.03",
+        "WP-2H.03a",
+        "WP-2H.03b",
         "WP-2H.04",
         "WP-2H.05",
         "WP-2H.06",
@@ -12664,7 +12700,8 @@
       "depends": [
         "WP-2H.01",
         "WP-2H.02",
-        "WP-2H.03",
+        "WP-2H.03a",
+        "WP-2H.03b",
         "WP-2H.04",
         "WP-2H.05",
         "WP-2H.06",
@@ -12940,7 +12977,8 @@
       "depends": [
         "WP-2H.01",
         "WP-2H.02",
-        "WP-2H.03",
+        "WP-2H.03a",
+        "WP-2H.03b",
         "WP-2H.04",
         "WP-2H.05",
         "WP-2H.06",
@@ -13091,7 +13129,8 @@
       "depends": [
         "WP-2H.01",
         "WP-2H.02",
-        "WP-2H.03",
+        "WP-2H.03a",
+        "WP-2H.03b",
         "WP-2H.04",
         "WP-2H.05",
         "WP-2H.06",
@@ -13745,7 +13784,8 @@
       "depends": [
         "WP-2H.01",
         "WP-2H.02",
-        "WP-2H.03",
+        "WP-2H.03a",
+        "WP-2H.03b",
         "WP-2H.04",
         "WP-2H.05",
         "WP-2H.06",
@@ -14706,7 +14746,8 @@
         "WP-1L.03",
         "WP-2H.01",
         "WP-2H.02",
-        "WP-2H.03",
+        "WP-2H.03a",
+        "WP-2H.03b",
         "WP-2H.04",
         "WP-2H.05",
         "WP-2H.06",
@@ -14813,7 +14854,8 @@
       "depends": [
         "WP-2H.01",
         "WP-2H.02",
-        "WP-2H.03",
+        "WP-2H.03a",
+        "WP-2H.03b",
         "WP-2H.04",
         "WP-2H.05",
         "WP-2H.06",
@@ -15277,7 +15319,8 @@
       "depends": [
         "WP-2H.01",
         "WP-2H.02",
-        "WP-2H.03",
+        "WP-2H.03a",
+        "WP-2H.03b",
         "WP-2H.04",
         "WP-2H.05",
         "WP-2H.06",
@@ -17477,7 +17520,8 @@
       "depends": [
         "WP-2H.01",
         "WP-2H.02",
-        "WP-2H.03",
+        "WP-2H.03a",
+        "WP-2H.03b",
         "WP-2H.04",
         "WP-2H.05",
         "WP-2H.06",
@@ -18130,7 +18174,8 @@
       "depends": [
         "WP-2H.01",
         "WP-2H.02",
-        "WP-2H.03",
+        "WP-2H.03a",
+        "WP-2H.03b",
         "WP-2H.04",
         "WP-2H.05",
         "WP-2H.06",
@@ -18253,7 +18298,8 @@
       "depends": [
         "WP-2H.01",
         "WP-2H.02",
-        "WP-2H.03",
+        "WP-2H.03a",
+        "WP-2H.03b",
         "WP-2H.04",
         "WP-2H.05",
         "WP-2H.06",
@@ -18526,7 +18572,8 @@
       "depends": [
         "WP-2H.01",
         "WP-2H.02",
-        "WP-2H.03",
+        "WP-2H.03a",
+        "WP-2H.03b",
         "WP-2H.04",
         "WP-2H.05",
         "WP-2H.06",

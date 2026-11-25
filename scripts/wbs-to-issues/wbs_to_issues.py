@@ -39,7 +39,7 @@ FIELDS = {
 }
 EXECUTORS = ("sonnet", "opus", "human")
 HEADING_RE = re.compile(r"^### (WP-[^\s]+)\s+[—–-]\s+(.+?)\s*$")
-ID_RE = re.compile(r"^WP-(\d)([A-Z])\.(\d{2})$")
+ID_RE = re.compile(r"^WP-(\d)([A-Z])\.(\d{2})([a-z]?)$")
 FIELD_RE = re.compile(r"^- \*\*([A-Za-z ]+?)(?: \([^)]*\))?:\*\*\s*(.*)$")
 OPTIONAL = {"interfaces", "tests", "out_of_scope"}  # missing => warning, not error
 MARKER_RE = re.compile(r"<!-- wp:(WP-[^\s]+) -->")
@@ -163,7 +163,7 @@ def strip_parens(s: str) -> str:
 
 
 DEP_RE = re.compile(
-    r"(?:WP-)?(\d[A-Z])\.(\d+)(?:\s*[–-]\s*(?:WP-)?(?:(\d[A-Z])\.)?(\d+))?"
+    r"(?:WP-)?(\d[A-Z])\.(\d+)(?:\s*[–-]\s*(?:WP-)?(?:(\d[A-Z])\.)?(\d+))?([a-z](?![A-Za-z0-9]))?"
     r"|\bE(\d[A-Z])\b|\b[Ee]pic\s+(\d[A-Z])\b"
 )
 
@@ -177,10 +177,13 @@ def parse_deps(raw: str) -> tuple[list[str], list[str]]:
     for m in DEP_RE.finditer(s):
         if m.group(1):
             ep, a = m.group(1), int(m.group(2))
+            if m.group(5) and not m.group(4):  # a split work package: WP-2H.03a
+                wps.append(f"WP-{ep}.{a:02d}{m.group(5)}")
+                continue
             b = int(m.group(4)) if m.group(4) and (not m.group(3) or m.group(3) == ep) else a
             wps.extend(f"WP-{ep}.{n:02d}" for n in range(a, b + 1))
         else:
-            epics.append(m.group(5) or m.group(6))
+            epics.append(m.group(6) or m.group(7))
     return dedupe(wps), dedupe(epics)
 
 
