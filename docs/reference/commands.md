@@ -52,7 +52,7 @@ MCP exposure: `core` commands are always listed as tools (`item.move` is `item_m
 | project | `project.save_as` | Save the document as a new project folder and continue there | engine | catalog |
 | project | `project.set_allowed_roots` | Set the folders agents may use besides the open project's (the app's own setting) | engine, idempotent, ui-only | catalog |
 | project | `project.set_autosave` | Set whether, how often and with how many backups the engine autosaves | engine, idempotent, ui-only | catalog |
-| timeline | `timeline.add_marker` | Add a marker (or range marker) to a sequence or one of its items | command, undoable | core |
+| timeline | `timeline.add_marker` | Add a marker (or range marker) to a sequence or one of its items | command, undoable | catalog |
 | timeline | `timeline.clear_in_out` | Clear the sequence's in and out points | command, undoable, idempotent | catalog |
 | timeline | `timeline.get` | Get a sequence: summary (depth 0), tracks (1) or tracks with items (2) | query | core |
 | timeline | `timeline.insert` | Insert a media clip at a time on a track (adds linked audio for video with sound) | command, undoable | core |
@@ -60,11 +60,11 @@ MCP exposure: `core` commands are always listed as tools (`item.move` is `item_m
 | timeline | `timeline.move_marker` | Move a marker to another time | command, undoable, idempotent | catalog |
 | timeline | `timeline.remove_marker` | Remove a marker | command, undoable, destructive | catalog |
 | timeline | `timeline.set_in_out` | Set the sequence's in and out points | command, undoable, idempotent | catalog |
-| track | `track.add` | Add an empty video or audio track to a sequence | command, undoable | core |
+| track | `track.add` | Add an empty video or audio track to a sequence | command, undoable | catalog |
 | track | `track.list` | List a sequence's tracks (flags, height, item counts) top to bottom | query | catalog |
 | track | `track.remove` | Remove a track and the items on it (fails if the track is locked) | command, undoable, destructive | catalog |
 | track | `track.reorder` | Move a track to another position in the track stack | command, undoable, idempotent | catalog |
-| track | `track.set` | Set a track's name, mute, hide, lock, solo or gain | command, undoable, idempotent | core |
+| track | `track.set` | Set a track's name, mute, hide, lock, solo or gain | command, undoable, idempotent | catalog |
 | track | `track.set_height` | Set a track's row height in the timeline (a saved UI hint) | command, undoable, idempotent | catalog |
 | track | `track.set_magnetic` | Make a video track the magnetic main track (gap-free from 0), or turn the magnet off | command, undoable, idempotent | catalog |
 | view | `view.get` | Get the UI view state (playhead, zoom, selection, ...) | engine, view, idempotent | catalog |

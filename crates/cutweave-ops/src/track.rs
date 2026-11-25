@@ -100,7 +100,7 @@ pub struct TrackAddOutput {
     name = "track.add",
     summary = "Add an empty video or audio track to a sequence",
     undoable,
-    mcp = "core",
+    mcp = "catalog",
     annotations(destructive = false, idempotent = false)
 )]
 pub struct TrackAdd {
@@ -273,7 +273,7 @@ pub struct TrackSetOutput {
     name = "track.set",
     summary = "Set a track's name, mute, hide, lock, solo or gain",
     undoable,
-    mcp = "core",
+    mcp = "catalog",
     annotations(destructive = false, idempotent = true)
 )]
 pub struct TrackSet {

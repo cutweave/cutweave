@@ -114,7 +114,7 @@ pub struct TimelineAddMarkerOutput {
     name = "timeline.add_marker",
     summary = "Add a marker (or range marker) to a sequence or one of its items",
     undoable,
-    mcp = "core",
+    mcp = "catalog",
     annotations(destructive = false, idempotent = false)
 )]
 pub struct TimelineAddMarker {

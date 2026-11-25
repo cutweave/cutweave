@@ -78,7 +78,7 @@ const CONTRACT: &[Row] = &[
     (
         "track.add",
         EntryKind::Command,
-        McpExposure::Core,
+        McpExposure::Catalog,
         false,
         false,
         false,
@@ -96,7 +96,7 @@ const CONTRACT: &[Row] = &[
     (
         "track.set",
         EntryKind::Command,
-        McpExposure::Core,
+        McpExposure::Catalog,
         false,
         false,
         true,
@@ -141,7 +141,7 @@ const CONTRACT: &[Row] = &[
     (
         "timeline.add_marker",
         EntryKind::Command,
-        McpExposure::Core,
+        McpExposure::Catalog,
         false,
         false,
         false,

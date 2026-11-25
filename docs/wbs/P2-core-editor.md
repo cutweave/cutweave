@@ -100,7 +100,7 @@ Schedule note: the roadmap gives 9 weeks. Total effort here is about 162 agent-d
   - Schema version bump (v2) with migration and golden fixture from a v1 project.
   - Track commands: `track.add{kind, index?}`, `track.remove`, `track.reorder`, `track.rename`, `track.set_flags{muted,hidden,locked,solo}`, `track.set_magnetic`, `track.set_height` (UI hint, `view`-like but persisted).
   - Marker/range commands: `timeline.add_marker`, `timeline.move_marker`, `timeline.remove_marker`, `timeline.set_in_out`, `timeline.clear_in_out`.
-  - MCP: `track.add`, `track.set_flags`, `timeline.add_marker` core; the rest catalog.
+  - MCP: all catalog (ADR-0023 R33: no new core MCP tools).
   - **As built (spec §11, arch §5.1):** renaming and the flags stay in the P1 `track.set` (it is the "set_flags" core tool; `track.rename` and `track.set_flags` do not exist), `track.set_magnetic` follows spec §4.17 and returns an `EditReport`, and the marker query is `timeline.list_markers` because `marker` is not a command namespace (arch §5.1). The model additions share one schema v2 with WP-2F.07 (arch §17, "One v2").
 - **Interfaces:** commands above; queries `track.list`, `timeline.list_markers`.
 - **Acceptance criteria:**

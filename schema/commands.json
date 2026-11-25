@@ -5745,7 +5745,7 @@
         "type": "object"
       },
       "kind": "command",
-      "mcp": "core",
+      "mcp": "catalog",
       "mcp_tool": "timeline_add_marker",
       "name": "timeline.add_marker",
       "namespace": "timeline",
@@ -6344,7 +6344,7 @@
         "type": "object"
       },
       "kind": "command",
-      "mcp": "core",
+      "mcp": "catalog",
       "mcp_tool": "track_add",
       "name": "track.add",
       "namespace": "track",
@@ -6586,7 +6586,7 @@
         "type": "object"
       },
       "kind": "command",
-      "mcp": "core",
+      "mcp": "catalog",
       "mcp_tool": "track_set",
       "name": "track.set",
       "namespace": "track",
