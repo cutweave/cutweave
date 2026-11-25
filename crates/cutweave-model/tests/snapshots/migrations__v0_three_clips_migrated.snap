@@ -186,6 +186,14 @@ expression: canonical_json_pretty(&migrated)
             "itm_0000000000077405950ad8d9f69f2c6f": {
               "attached_to": null,
               "audio": {
+                "fade_in": {
+                  "curve": "linear",
+                  "duration": 0
+                },
+                "fade_out": {
+                  "curve": "linear",
+                  "duration": 0
+                },
                 "gain": 0.0,
                 "pan": 0.0
               },
@@ -233,6 +241,14 @@ expression: canonical_json_pretty(&migrated)
             "itm_00000000000874918ac913f3f46b919e": {
               "attached_to": null,
               "audio": {
+                "fade_in": {
+                  "curve": "linear",
+                  "duration": 0
+                },
+                "fade_out": {
+                  "curve": "linear",
+                  "duration": 0
+                },
                 "gain": 0.0,
                 "pan": 0.0
               },
@@ -295,6 +311,14 @@ expression: canonical_json_pretty(&migrated)
             "itm_0000000000097031b0cbdfaef85bafd1": {
               "attached_to": null,
               "audio": {
+                "fade_in": {
+                  "curve": "linear",
+                  "duration": 0
+                },
+                "fade_out": {
+                  "curve": "linear",
+                  "duration": 0
+                },
                 "gain": -6.0,
                 "pan": 0.0
               },

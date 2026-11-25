@@ -196,7 +196,15 @@
               "source_in": 0,
               "audio": {
                 "gain": 0.0,
-                "pan": 0.0
+                "pan": 0.0,
+                "fade_in": {
+                  "duration": 0,
+                  "curve": "linear"
+                },
+                "fade_out": {
+                  "duration": 0,
+                  "curve": "linear"
+                }
               },
               "visual": {
                 "transform": {
@@ -243,7 +251,15 @@
               "source_in": 705600000,
               "audio": {
                 "gain": 0.0,
-                "pan": 0.0
+                "pan": 0.0,
+                "fade_in": {
+                  "duration": 0,
+                  "curve": "linear"
+                },
+                "fade_out": {
+                  "duration": 0,
+                  "curve": "linear"
+                }
               },
               "visual": {
                 "transform": {
@@ -305,7 +321,15 @@
               "source_in": 0,
               "audio": {
                 "gain": -6.0,
-                "pan": 0.0
+                "pan": 0.0,
+                "fade_in": {
+                  "duration": 0,
+                  "curve": "linear"
+                },
+                "fade_out": {
+                  "duration": 0,
+                  "curve": "linear"
+                }
               },
               "visual": {
                 "transform": {

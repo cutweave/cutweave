@@ -745,6 +745,8 @@ fn an_old_v2_document_opens_and_saves_idempotently() {
                 item["visual"].as_object_mut().unwrap().remove("flip");
                 item["visual"].as_object_mut().unwrap().remove("blend_mode");
                 item["audio"].as_object_mut().unwrap().remove("pan");
+                item["audio"].as_object_mut().unwrap().remove("fade_in");
+                item["audio"].as_object_mut().unwrap().remove("fade_out");
             }
         }
     }

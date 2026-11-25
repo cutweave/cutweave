@@ -60,7 +60,7 @@ pub use id::{
     SequenceId, TrackId,
 };
 pub use item::{
-    AudioProps, BlendMode, Clip, Crop, Flip, Item, PropMut, PropRef, Transform, Vec2, VisualProps,
+    AudioProps, BlendMode, Clip, Crop, Fade, FadeCurve, Flip, Item, PropMut, PropRef, Transform, Vec2, VisualProps,
 };
 pub use marker::{InOut, Marker, MarkerKind, MarkerKindError, Markers};
 pub use media::{

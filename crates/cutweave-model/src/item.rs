@@ -238,10 +238,73 @@ pub struct AudioProps {
     /// Stereo position, -1.0 (left) to 1.0 (right), 0.0 = centre.
     #[specta(type = Animatable<specta_typescript::Number>)]
     pub pan: Animatable<f64>,
+    /// Fade from silence at the start of the clip (WP-2E.01). Absent in documents written
+    /// before it: no fade.
+    #[serde(default)]
+    pub fade_in: Fade,
+    /// Fade to silence at the end of the clip (WP-2E.01). Absent in older documents: no fade.
+    #[serde(default)]
+    pub fade_out: Fade,
     /// Fields unknown to this version.
     #[serde(flatten)]
     #[schemars(skip)]
     pub extra: Extra,
+}
+
+/// The shape of a fade: how the gain goes from 0 to 1 over the fade's duration (a fade out runs
+/// it backwards).
+#[derive(
+    Clone,
+    Copy,
+    Debug,
+    Default,
+    PartialEq,
+    Eq,
+    Hash,
+    Serialize,
+    Deserialize,
+    JsonSchema,
+    specta::Type,
+)]
+#[serde(rename_all = "snake_case")]
+pub enum FadeCurve {
+    /// Gain rises in a straight line (the default).
+    #[default]
+    Linear,
+    /// Gain rises quickly then flattens (`log10(1 + 9x)`): a fast, natural-sounding fade in.
+    Log,
+    /// Constant power with a matching fade of the same shape on the other clip: `sin(x*pi/2)`.
+    EqualPower,
+    /// Gentle at both ends: `(1 - cos(x*pi)) / 2`.
+    SCurve,
+}
+
+impl FadeCurve {
+    /// The gain `0..=1` of a fade in at progress `x` (`0` start, `1` end); a fade out uses
+    /// `gain(1 - x)`. Pure, so preview and export agree.
+    #[must_use]
+    pub fn gain(self, x: f64) -> f64 {
+        let x = x.clamp(0.0, 1.0);
+        match self {
+            FadeCurve::Linear => x,
+            FadeCurve::Log => (1.0 + 9.0 * x).log10(),
+            FadeCurve::EqualPower => (x * std::f64::consts::FRAC_PI_2).sin(),
+            FadeCurve::SCurve => (1.0 - (x * std::f64::consts::PI).cos()) / 2.0,
+        }
+    }
+}
+
+/// A fade at one end of a clip. A zero duration is no fade. Fades are measured on the clip as
+/// placed (after trimming), so trimming keeps their length unless the clip becomes shorter than
+/// both fades together, when they are scaled down at playback (the stored values stay).
+#[derive(
+    Clone, Copy, Debug, Default, PartialEq, Eq, Serialize, Deserialize, JsonSchema, specta::Type,
+)]
+pub struct Fade {
+    /// Length of the fade.
+    pub duration: Duration,
+    /// Its shape.
+    pub curve: FadeCurve,
 }
 
 /// A media clip: a range of a `MediaAsset` placed on a track.

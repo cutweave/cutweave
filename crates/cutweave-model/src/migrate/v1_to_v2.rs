@@ -27,6 +27,9 @@
 //!    (`"normal"`) and `audio.pan` (`0.0`). Keyed values need no step: a v1 value is the bare
 //!    static form, which stays valid.
 //!
+//! 7. **Audio fades** (`add_audio_fades`, WP-2E.01): every clip gets `audio.fade_in` and
+//!    `audio.fade_out` (`{"duration": 0, "curve": "linear"}`, no fade).
+//!
 //! Adding a step for another work package: write `fn(&mut Value, &mut Vec<String>) ->
 //! Result<(), MigrationError>`, append it to [`STEPS`], extend `tests/fixtures/v2/` through
 //! the bless command in `tests/migrations.rs`, and describe the step in the list above.
@@ -49,6 +52,7 @@ const STEPS: &[Step] = &[
     normalize_magnetic,
     add_media_folders,
     add_visual_props,
+    add_audio_fades,
 ];
 
 /// The v1 → v2 migration.
@@ -84,7 +88,12 @@ pub(super) fn fill_in_v2(doc: &mut Value) -> Result<(), MigrationError> {
         return Ok(());
     };
     let mut notes = Vec::new();
-    for step in [add_timeline_fields, add_media_folders, add_visual_props] {
+    for step in [
+        add_timeline_fields,
+        add_media_folders,
+        add_visual_props,
+        add_audio_fades,
+    ] {
         step(root, &mut notes)?;
     }
     Ok(())
@@ -418,6 +427,30 @@ fn add_visual_props(root: &mut JsonObject, _notes: &mut Vec<String>) -> Result<(
     Ok(())
 }
 
+/// Every clip's `audio.fade_in` and `audio.fade_out` (no fade). Idempotent.
+fn add_audio_fades(root: &mut JsonObject, _notes: &mut Vec<String>) -> Result<(), MigrationError> {
+    for (path, seq) in sequences(root)? {
+        for (track_path, track) in tracks(seq, &path)? {
+            for (item_path, item) in items(track, &track_path)? {
+                if let Some(Value::Object(audio)) = item.get_mut("audio") {
+                    for key in ["fade_in", "fade_out"] {
+                        audio
+                            .entry(key)
+                            .or_insert_with(|| serde_json::json!({"duration": 0, "curve": "linear"}));
+                    }
+                } else if item.contains_key("audio") {
+                    return Err(MigrationError::step(
+                        FROM,
+                        format!("{item_path}/audio"),
+                        "expected an object",
+                    ));
+                }
+            }
+        }
+    }
+    Ok(())
+}
+
 #[cfg(test)]
 mod tests {
     #![allow(clippy::unwrap_used)]
@@ -437,6 +470,8 @@ mod tests {
         assert_eq!(item["visual"]["blend_mode"], "normal");
         assert_eq!(item["visual"]["crop"]["left"], 0.0);
         assert_eq!(item["audio"]["pan"], 0.0);
+        assert_eq!(item["audio"]["fade_in"]["duration"], 0);
+        assert_eq!(item["audio"]["fade_out"]["curve"], "linear");
         let once = doc.clone();
         fill_in_v2(&mut doc).unwrap();
         assert_eq!(doc, once);
