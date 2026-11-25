@@ -255,6 +255,7 @@ fn pages(h: &H, params: &Value, limit: u64) -> Vec<Vec<Value>> {
     }
 }
 
+#[allow(clippy::too_many_lines)]
 fn cases() -> Vec<(&'static str, Value, Value, Option<u64>)> {
     let mut c: Vec<(&'static str, Value, Value, Option<u64>)> = Vec::new();
     let none = Value::Null;
