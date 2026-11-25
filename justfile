@@ -36,6 +36,7 @@ check:
     python scripts/run-vitest.py
     cargo xtask gen --check
     python scripts/check-md-links.py
+    just spec-check
 
 # Base: main's first parent on main, else the merge base with main (`--base REV`; `--dry-run` plans).
 # Shared-config changes (root Cargo.toml, lockfile-only, toolchain, justfile) fall back to `check`.
@@ -138,3 +139,8 @@ ci-local:
 # Loom model checks for the document actor (slow; run before touching doc-actor concurrency)
 loom:
     RUSTFLAGS="--cfg cutweave_loom" cargo test -p cutweave-commands --release --test doc_loom
+
+# The executable specs: the edit-semantics fixtures (WP-2A.01) and the keyframe reference vectors (WP-2C.01)
+spec-check:
+    cargo xtask check-fixtures
+    python docs/spec/keyframes_ref.py

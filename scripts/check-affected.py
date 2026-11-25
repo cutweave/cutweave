@@ -195,6 +195,10 @@ def plan(files: list[str]) -> tuple[list[tuple[str, str]], str]:
         steps.append(("just lint-literals", "UI sources changed"))
     if md:
         steps.append(("python scripts/check-md-links.py", "Markdown changed"))
+    # The executable specs (WP-2A.01, WP-2C.01): their checkers run whenever a spec, its fixtures
+    # or vectors change (`just check` runs them through the xtask tests and `just spec-check`).
+    if any(f.startswith("docs/spec/") or f.startswith("xtask/src/fixtures") for f in files):
+        steps.append(("just spec-check", "executable specs changed"))
     if js:
         steps += [
             ("pnpm lint", "TS/JS sources or config changed"),
