@@ -152,14 +152,16 @@ const endOf = (clip: { readonly start: number; readonly duration: number }) =>
 
 /** The nearest clip of the same track on the edge's side, and whether it touches the edge. */
 function neighbour(fact: ClipFact, edge: Edge) {
-  const items = Object.values(fact.track.items).filter((i) => i.id !== fact.clip.id);
-  const after = items
-    .filter((i) => i.start >= endOf(fact.clip))
-    .sort((a, b) => a.start - b.start)[0];
-  const before = items
-    .filter((i) => endOf(i) <= fact.clip.start)
-    .sort((a, b) => endOf(b) - endOf(a))[0];
-  const near = edge === "end" ? after : before;
+  // One pass: a track can hold thousands of clips and a menu reads this several times.
+  let near: ClipFact["clip"] | undefined;
+  for (const i of Object.values(fact.track.items)) {
+    if (i.id === fact.clip.id) continue;
+    const closer =
+      edge === "end"
+        ? i.start >= endOf(fact.clip) && (near === undefined || i.start < near.start)
+        : endOf(i) <= fact.clip.start && (near === undefined || endOf(i) > endOf(near));
+    if (closer) near = i;
+  }
   if (near === undefined) return null;
   const touches =
     edge === "end" ? near.start === endOf(fact.clip) : endOf(near) === fact.clip.start;
