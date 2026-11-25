@@ -4,8 +4,10 @@
 //! Opening a wgpu device costs about a second, and much more the first time a user profile
 //! runs the driver (it builds its shader caches: 5 to 15 s measured on a fresh Windows profile).
 //! So the device opens on `cw-gpu-init` while the rest of the engine starts. A `Gui` engine's
-//! `start` waits for it up to [`GPU_START_WAIT`] (so a GPU that fails exits with code 11); a
-//! headless engine does not wait at all (it never exits 11: it falls back).
+//! `start` waits for it until [`GPU_START_WAIT`] after it began to open (so a GPU that fails
+//! exits with code 11; the caches, audio and the ring start inside that window, not after it); a
+//! headless engine does not wait at all (it never exits 11: it falls back). A debug build on a
+//! busy machine opens the device in 5 to 15 s, so it usually starts without it (issue #143).
 //!
 //! - **Settled in time** (the usual case in `Gui` mode): as if synchronous. A `Gui` engine
 //!   whose GPU fails exits with code 11; a headless one falls back to the software adapter,
@@ -28,9 +30,10 @@ use cutweave_render::{FrameSource, Image, SceneDescription};
 
 use super::frames::MediaFrames;
 
-/// How long a `Gui` engine's `start` waits for the GPU before it reports ready without it: long
-/// enough for a failing adapter search to end in exit 11 on a busy machine, short enough for the
-/// supervisor's 10 s ready timeout.
+/// How long after the device began to open a `Gui` engine's `start` waits for it before it
+/// reports ready without it: long enough for a failing adapter search to end in exit 11 on a busy
+/// machine. It is the longest wait before the ready line (issue #143: the caches, audio and the
+/// preview ring start inside it).
 pub const GPU_START_WAIT: Duration = Duration::from_secs(4);
 /// How long a `render.frame` or export waits for a GPU that is still opening.
 pub const RENDER_WAIT: Duration = Duration::from_secs(60);
@@ -62,6 +65,8 @@ pub(crate) struct LateGpu {
     state: Mutex<State>,
     changed: Condvar,
     settled: AtomicBool,
+    /// When the device began to open (the start of the [`GPU_START_WAIT`] window).
+    began: Instant,
 }
 
 impl std::fmt::Debug for LateGpu {
@@ -84,6 +89,7 @@ impl LateGpu {
             }),
             changed: Condvar::new(),
             settled: AtomicBool::new(false),
+            began: Instant::now(),
         }
     }
 
@@ -137,9 +143,11 @@ impl LateGpu {
     }
 
     /// `start`'s wait: `Err` with the reason when the GPU failed in time; `Ok` when it settled
-    /// or is still opening after `timeout` (then failures fall back).
-    pub(crate) fn wait_start(&self, timeout: Duration) -> Result<(), String> {
-        let deadline = Instant::now() + timeout;
+    /// or is still opening `window` after it began to open (then failures fall back). The window
+    /// counts from when the device began to open, so what starts next to it (caches, audio, the
+    /// ring) runs inside it instead of adding to it (issue #143).
+    pub(crate) fn wait_start(&self, window: Duration) -> Result<(), String> {
+        let deadline = self.began + window;
         let mut st = self.lock();
         loop {
             match &st.status {
@@ -150,10 +158,10 @@ impl LateGpu {
             let left = deadline.saturating_duration_since(Instant::now());
             if left.is_zero() {
                 st.late = true;
-                if !timeout.is_zero() {
+                if !window.is_zero() {
                     tracing::warn!(
                         "the GPU is still opening after {} ms; the engine starts without it",
-                        timeout.as_millis()
+                        window.as_millis()
                     );
                 }
                 return Ok(());
@@ -280,5 +288,49 @@ impl FrameBackend for LateRenderer {
             )
             .map_err(|e| e.to_string()),
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn the_start_window_counts_from_when_the_device_began_to_open() {
+        let gpu = LateGpu::new();
+        // What started next to the GPU took longer than the window: no wait is left.
+        std::thread::sleep(Duration::from_millis(60));
+        assert_eq!(gpu.wait_start(Duration::from_millis(50)), Ok(()));
+        // The start went on without the GPU: a failure from now on falls back.
+        assert!(!gpu.fail_start("no adapter"));
+        assert!(!gpu.is_settled());
+    }
+
+    #[test]
+    fn a_failure_inside_the_window_fails_the_start() {
+        let gpu = Arc::new(LateGpu::new());
+        let opener = Arc::clone(&gpu);
+        std::thread::spawn(move || assert!(opener.fail_start("no adapter")))
+            .join()
+            .unwrap();
+        assert_eq!(
+            gpu.wait_start(Duration::from_secs(60)),
+            Err("no adapter".to_owned())
+        );
+    }
+
+    #[test]
+    fn a_device_that_settles_inside_the_window_ends_the_wait() {
+        let gpu = Arc::new(LateGpu::new());
+        let opener = Arc::clone(&gpu);
+        let thread = std::thread::spawn(move || {
+            std::thread::sleep(Duration::from_millis(20));
+            opener.settle(None);
+        });
+        let waited = Instant::now();
+        assert_eq!(gpu.wait_start(Duration::from_secs(60)), Ok(()));
+        assert!(waited.elapsed() < Duration::from_secs(30));
+        assert!(gpu.is_settled());
+        thread.join().unwrap();
     }
 }

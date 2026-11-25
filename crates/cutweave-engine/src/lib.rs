@@ -47,6 +47,7 @@ pub mod media_http;
 pub mod project_io;
 pub mod rpc_backend;
 pub mod session;
+mod startup;
 pub mod subsystems;
 pub mod ui_state;
 

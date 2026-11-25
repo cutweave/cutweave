@@ -1010,6 +1010,8 @@ pub struct Engine {
     core: Arc<Core>,
     runtime: OwnedRuntime,
     server: Option<RunningServer>,
+    /// The run-file folder whose run-file is being prepared ahead of the server's start.
+    prepared_run_dir: Option<PathBuf>,
     log: Option<LogGuard>,
     stopped: bool,
 }
@@ -1027,7 +1029,7 @@ impl Engine {
     /// Starts the core (see the module docs). Errors carry their launch-protocol exit code
     /// ([`StartError::exit_code`]); anything started before the failure is stopped again.
     pub fn start(mut config: EngineConfig) -> Result<Engine, StartError> {
-        let started = Instant::now();
+        let mut phases = crate::startup::Phases::new();
         Engine::check(&config)?;
         let log = if config.log.enabled() {
             Some(logging::init(&config.log)?)
@@ -1045,6 +1047,7 @@ impl Engine {
             .handle()
             .cloned()
             .ok_or_else(|| StartError::Config("no runtime".into()))?;
+        phases.mark("runtime");
         let seed = config.deterministic_ids;
         let clock: Arc<dyn Clock> = match (&config.clock, seed) {
             (Some(clock), _) => Arc::clone(clock),
@@ -1064,6 +1067,7 @@ impl Engine {
         };
         let mut registry = build_registry()?;
         subsystems.register(&mut registry)?;
+        phases.mark("registry");
         let deps = Deps {
             registry: Arc::new(registry),
             clock,
@@ -1083,6 +1087,7 @@ impl Engine {
             }
             None => Session::untitled(&deps, None).map_err(StartError::Session)?,
         };
+        phases.mark("project");
         // The project the engine was started with stays usable for agents after it is closed
         // (the launcher chose it); nothing else is without `--allow-root`.
         let core = Arc::new(Core {
@@ -1106,18 +1111,23 @@ impl Engine {
             core: Arc::clone(&core),
             runtime,
             server: None,
+            prepared_run_dir: None,
             log,
             stopped: false,
         };
         // From here on, dropping `engine` on an error stops what already runs.
         engine.forward_job_events();
+        engine.prepare_run_file(&config);
         core.start_subsystems(&config)?;
-        engine.serve(&mut config)?;
+        phases.mark("subsystems");
+        engine.serve(&mut config, &mut phases)?;
+        phases.mark("server");
+        tracing::info!(phases = %phases, "engine start phases");
         tracing::info!(
             mode = config.mode.name(),
             port = engine.port(),
             deterministic = seed.is_some(),
-            elapsed_ms = u64::try_from(started.elapsed().as_millis()).unwrap_or(u64::MAX),
+            elapsed_ms = crate::startup::ms(phases.total()),
             "engine ready"
         );
         Ok(engine)
@@ -1147,7 +1157,11 @@ impl Engine {
     }
 
     /// Starts the API server (WP-1I.01) with the mounted routes, when the mode serves.
-    fn serve(&mut self, config: &mut EngineConfig) -> Result<(), StartError> {
+    fn serve(
+        &mut self,
+        config: &mut EngineConfig,
+        phases: &mut crate::startup::Phases,
+    ) -> Result<(), StartError> {
         let Some(port) = config.server_port() else {
             return Ok(());
         };
@@ -1155,6 +1169,7 @@ impl Engine {
             Some(factory) => factory(self.handle()),
             None => cutweave_api::Mounts::default(),
         };
+        phases.mark("mounts");
         let project = self.core.run_file_project();
         let api = ApiConfig {
             port,
@@ -1176,6 +1191,28 @@ impl Engine {
             .unwrap_or_else(PoisonError::into_inner) = Some(server.run_file_path().to_path_buf());
         self.server = Some(server);
         Ok(())
+    }
+
+    /// Makes the run-file's private file while the subsystems start (on Windows that runs
+    /// `whoami` and `icacls`, seconds on a busy machine), so the server's start before the ready
+    /// line only fills it (issue #143).
+    fn prepare_run_file(&mut self, config: &EngineConfig) {
+        if config.server_port().is_none() {
+            return;
+        }
+        let Some(dir) = config.api.run_dir.clone().or_else(RunFile::default_dir) else {
+            return;
+        };
+        let spawned = std::thread::Builder::new()
+            .name("cw-run-file".into())
+            .spawn({
+                let dir = dir.clone();
+                move || RunFile::prepare(&dir)
+            });
+        match spawned {
+            Ok(_) => self.prepared_run_dir = Some(dir),
+            Err(e) => tracing::debug!(error = %e, "cannot prepare the run-file early"),
+        }
     }
 
     fn forward_job_events(&self) {
@@ -1245,6 +1282,9 @@ impl Engine {
             .take();
         if let (Some(server), Some(rt)) = (self.server.take(), self.runtime.handle()) {
             block_on(rt, server.shutdown());
+        } else if let Some(dir) = self.prepared_run_dir.take() {
+            // The start failed before the server wrote the run-file.
+            RunFile::discard_prepared(&dir);
         }
         core.deps.subsystems.shutdown();
         core.deps.jobs.cancel_all();
