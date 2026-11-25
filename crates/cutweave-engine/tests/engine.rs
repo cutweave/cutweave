@@ -245,9 +245,24 @@ fn opening_a_locked_project_fails_and_keeps_the_current_document() {
     engine.shutdown();
 }
 
-/// The names of `events`, and the `project.opening` / `project.open_failed` payloads among them.
+/// The session events among `events` (and `doc.reset`), by name, and the `project.opening` /
+/// `project.open_failed` payloads. Document events of earlier edits may still arrive (the doc
+/// actor's events are forwarded on their own thread), so they are left out.
 fn open_events(events: &[EngineEvent]) -> (Vec<&'static str>, Vec<serde_json::Value>) {
-    let names = events.iter().map(EngineEvent::name).collect();
+    let names = events
+        .iter()
+        .map(EngineEvent::name)
+        .filter(|n| {
+            matches!(
+                *n,
+                "project.opening"
+                    | "project.opened"
+                    | "project.open_failed"
+                    | "project.closed"
+                    | "doc.reset"
+            )
+        })
+        .collect();
     let payloads = events
         .iter()
         .filter(|e| matches!(e.name(), "project.opening" | "project.open_failed"))
