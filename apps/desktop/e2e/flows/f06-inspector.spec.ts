@@ -138,12 +138,18 @@ test.describe("F6 inspector", () => {
       await expect(f.positionX).toHaveAttribute("aria-valuenow", "120");
 
       // Position Y: scrub by dragging the field to the right.
-      // Aim at what is on screen: a reset button appears beside an edited row and moves the field.
+      // Aim at what is on screen: the panel may have scrolled, and a reset button appears beside
+      // an edited row and moves the field.
+      await f.positionY.scrollIntoViewIfNeeded();
       let y = await f.positionY.boundingBox();
       await expect
         .poll(async () => {
           const next = await f.positionY.boundingBox();
-          const steady = next !== null && y !== null && Math.abs(next.x - y.x) < 0.5;
+          const steady =
+            next !== null &&
+            y !== null &&
+            Math.abs(next.x - y.x) < 0.5 &&
+            Math.abs(next.y - y.y) < 0.5;
           y = next;
           return steady;
         })
@@ -249,7 +255,7 @@ test.describe("F6 inspector", () => {
       await shortcut(app, "Control+Z");
       await expect.poll(async () => (await item(page, audioId)).visual.transform.rotation).toBe(0);
 
-      // One clip: scale *2 keeps the aspect, 50% takes half of the shown value.
+      // One clip: scale *2 keeps the aspect, /2 halves it again.
       await clickClip(page, videoId);
       await f.scale.dblclick();
       await page.keyboard.type("*2");
@@ -257,7 +263,7 @@ test.describe("F6 inspector", () => {
       await expect.poll(async () => (await item(page, videoId)).visual.transform.scale.x).toBe(2);
       await expect(f.scale).toHaveAttribute("aria-valuenow", "200");
       await f.scale.dblclick();
-      await page.keyboard.type("50%");
+      await page.keyboard.type("/2");
       await page.keyboard.press("Enter");
       await expect.poll(async () => (await item(page, videoId)).visual.transform.scale.x).toBe(1);
       await editorCaughtUp(page);
