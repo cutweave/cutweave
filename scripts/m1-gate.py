@@ -420,6 +420,7 @@ class Step:
     cmd: list[str] | None = None
     check: object | None = None  # a callable returning (ok, detail) instead of a command
     env: dict[str, str] = field(default_factory=dict)
+    unset: tuple[str, ...] = ()
     status: str = "not run"
     seconds: float = 0.0
     log: str = ""
@@ -438,7 +439,8 @@ def run_step(step: Step, env: dict[str, str], index: int) -> bool:
         if step.cmd is not None:
             out.write(f"$ {' '.join(step.cmd)}\n\n")
             out.flush()
-            code = subprocess.run(step.cmd, cwd=ROOT, env={**env, **step.env}, stdout=out,
+            child_env = {k: v for k, v in {**env, **step.env}.items() if k not in step.unset}
+            code = subprocess.run(step.cmd, cwd=ROOT, env=child_env, stdout=out,
                                   stderr=subprocess.STDOUT).returncode
             ok = code == 0
             step.detail = f"exit {code}"
@@ -607,14 +609,18 @@ def gate(args) -> int:
                                                              "e2e/flows/f12-app-crash-recovery.spec.ts"]),
         ]
     if "4" in wanted:
-        if args.full:
-            steps += [Step("4a", "the full local gate (just check)", [just, "check"]),
-                      Step("4a", "Storybook visual, axe, fonts (just ui-snapshots)", [just, "ui-snapshots"])]
         steps += [
             Step("4b", "golden frames (cargo xtask golden)", [cargo, "xtask", "golden"]),
             Step("4c", "parity CLI = MCP = RPC", [cargo, "nextest", "run", "-p", "cutweave-api",
                                                   "--test", "parity"]),
         ]
+        if args.full:
+            # Last: the workspace build has no FFmpeg and replaces the binaries built above, and
+            # outside the gate the M1 agent may skip (it needs FFmpeg), so CUTWEAVE_M1_OUT goes.
+            plain = ("CUTWEAVE_M1_OUT", "CUTWEAVE_M1_TRIALS")
+            steps += [Step("4a", "the full local gate (just check)", [just, "check"], unset=plain),
+                      Step("4a", "Storybook visual, axe, fonts (just ui-snapshots)",
+                           [just, "ui-snapshots"], unset=plain)]
 
     info = machine(env)
     built = True
