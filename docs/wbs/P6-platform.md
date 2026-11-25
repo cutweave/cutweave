@@ -218,8 +218,10 @@ Three long chains run in parallel; the **eval chain is the longest** because it 
   - Example panel "Marker Notes" (lists markers, edits note, seeks playhead) as L3 reference + fixture.
   - L3 abuse tests: XSS via plugin strings in host chrome (titles, menu labels), oversize assets, frame spam.
   - A plugin's `settings` contribution becomes a page, or rows on an existing page, in WP-1M.11's settings frame, rendered from its schema; values are stored under `plugins.<id>.*` in the preferences, validated against that schema, included in Export settings…, and removed when the plugin is uninstalled.
+  - **Context menu (product owner request, 2026-11-25; framework WP-2H.12, plan in [09-context-menus.md](../research/09-context-menus.md)):** `contributes.menus` is wired to WP-2H.12's `MenuContributionRegistry` using the surface IDs and `when` context keys of ADR-0025 (a contract once published): plugin items render in a trailing group, at most 3 per plugin before an overflow submenu, plain-text labels, only for commands the plugin may run.
 - **Interfaces:** manifest `contributes.panels|inspectors|menus|keybindings|settings`; dockview panel registry.
 - **Acceptance criteria:** installing the example adds a dockable panel, palette command and keybinding without restart; uninstall removes all; plugin labels render as text only (escape test).
+  - A fixture plugin adds an item to `timeline.clip` and `bin.card`; the 4th item of one plugin is moved to its overflow submenu; a label with markup is shown as text; an item for a command the plugin lacks permission for is not shown.
 - **Tests:** Playwright install→use→uninstall, label-sanitization unit tests, visual regression.
 - **Out of scope:** timeline decorations (post-1.0); heavy preview panels (iframes cannot share GPU textures — documented).
 
@@ -428,6 +430,7 @@ Three long chains run in parallel; the **eval chain is the longest** because it 
   - "Templates" tab in the asset browser: grid with hover-play previews, filters (category, aspect, duration, slots count, source: built-in/installed/user), search, favorites, "Apply to new sequence / at playhead".
   - Apply wizard: slot fill UI (drag from media bin, record-free text fields, color/font pickers, caption style gallery), live preview before commit, aspect variant switch.
   - "Smart fill" button hook (6D.05); empty/offline states; lazy thumbnail loading.
+  - **Context menu (product owner request, 2026-11-25; framework WP-2H.12, plan in [09-context-menus.md](../research/09-context-menus.md)):** menus on a template card (`template.card`: Apply…, Preview, Reveal) and on a slot marker (Make replaceable, Edit constraints, Remove slot).
 - **Interfaces:** consumes `template.*`; i18n `templates.*`.
 - **Acceptance criteria:** from open browser to a filled, applied template in ≤ 5 interactions with 3 clips; list of 100 templates scrolls at ≥ 55 fps; keyboard navigable.
 - **Tests:** Playwright e2e; virtualization unit test; visual regression; axe-core.
