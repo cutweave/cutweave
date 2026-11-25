@@ -60,7 +60,7 @@ use rmcp::transport::streamable_http_server::{
     StreamableHttpServerConfig, StreamableHttpService, session::local::LocalSessionManager,
 };
 
-pub use catalog::{Budget, Catalog, ListSize, P1_GATE, Profile};
+pub use catalog::{Budget, Catalog, ListSize, MINIMAL_BUDGET, Profile, STANDARD_BUDGET};
 pub use dispatch::{Dispatch, DispatchCall, DispatchConn, DispatchReply};
 pub use handler::{CutweaveMcp, INSTRUCTIONS};
 pub use notify::Notifier;

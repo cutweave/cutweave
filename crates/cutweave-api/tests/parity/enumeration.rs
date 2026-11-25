@@ -215,9 +215,49 @@ pub fn published_schemas() -> std::collections::BTreeMap<String, Value> {
     out
 }
 
-/// `schema` without annotations, with nested `anyOf`s that carry nothing else spliced into
-/// their parent `anyOf` (`anyOf[{anyOf[A, B]}, C]` accepts what `anyOf[A, B, C]` accepts).
+/// `schema` without annotations, with its local `$ref`s (`#/$defs/...`, which the listed
+/// schemas use for a subschema several params repeat) written out in place, and with nested
+/// `anyOf`s that carry nothing else spliced into their parent `anyOf`
+/// (`anyOf[{anyOf[A, B]}, C]` accepts what `anyOf[A, B, C]` accepts).
 pub fn validation_form(schema: &Value) -> Value {
+    normalize(&inline_local_refs(schema))
+}
+
+/// `schema` with each `{"$ref": "#/$defs/x", ...}` replaced by `x`'s keywords plus the siblings,
+/// and the root `$defs` removed. A reference to a missing definition is kept (and so differs).
+fn inline_local_refs(schema: &Value) -> Value {
+    fn walk(value: &Value, defs: &Value) -> Value {
+        match value {
+            Value::Object(map) => {
+                let mut out = Map::new();
+                let target = map
+                    .get("$ref")
+                    .and_then(Value::as_str)
+                    .and_then(|r| r.strip_prefix("#/$defs/"))
+                    .and_then(|name| defs.get(name))
+                    .and_then(Value::as_object);
+                if let Some(def) = target {
+                    for (k, v) in def {
+                        out.insert(k.clone(), walk(v, defs));
+                    }
+                }
+                for (k, v) in map {
+                    if (k == "$ref" && target.is_some()) || k == "$defs" {
+                        continue;
+                    }
+                    out.insert(k.clone(), walk(v, defs));
+                }
+                Value::Object(out)
+            }
+            Value::Array(list) => Value::Array(list.iter().map(|v| walk(v, defs)).collect()),
+            other => other.clone(),
+        }
+    }
+    let defs = schema.get("$defs").cloned().unwrap_or(Value::Null);
+    walk(schema, &defs)
+}
+
+fn normalize(schema: &Value) -> Value {
     let Value::Object(map) = schema else {
         return schema.clone();
     };
@@ -240,18 +280,18 @@ pub fn validation_form(schema: &Value) -> Value {
                 Value::Object(children) => Value::Object(
                     children
                         .iter()
-                        .map(|(name, child)| (name.clone(), validation_form(child)))
+                        .map(|(name, child)| (name.clone(), normalize(child)))
                         .collect(),
                 ),
                 other => other.clone(),
             }
         } else if SCHEMA_VALUES.contains(&key) {
-            validation_form(value)
+            normalize(value)
         } else if SCHEMA_LISTS.contains(&key)
             && let Value::Array(list) = value
         {
             let mut items = Vec::new();
-            for item in list.iter().map(validation_form) {
+            for item in list.iter().map(normalize) {
                 match item {
                     Value::Object(inner)
                         if key == "anyOf"

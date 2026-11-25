@@ -10,7 +10,7 @@ use std::process::{Child, Command, Output, Stdio};
 use std::time::{Duration, Instant};
 
 use cutweave_api::mcp::switch::PROXY_TOOLS;
-use cutweave_api::mcp::{ListSize, P1_GATE};
+use cutweave_api::mcp::{ListSize, STANDARD_BUDGET};
 use futures_util::{SinkExt, StreamExt};
 use rmcp::{
     ClientHandler, ClientLifecycleMode, ClientServiceExt as _, RoleClient, ServiceExt as _,
@@ -530,7 +530,7 @@ async fn an_agent_lists_engines_and_attaches_to_a_project() {
         for name in PROXY_TOOLS {
             assert!(tools.iter().any(|t| t.name == name), "{name} is listed");
         }
-        // The engine's own tools stay within the P1 gate; the proxy's two come on top and are
+        // The engine's own tools stay within the standard budget (R36); the proxy's two come on top and are
         // counted apart (they are the proxy's, not the engine's).
         let (engine_tools, proxy_tools): (Vec<_>, Vec<_>) = tools
             .iter()
@@ -541,7 +541,7 @@ async fn an_agent_lists_engines_and_attaches_to_a_project() {
             ListSize::of(&proxy_tools),
             ListSize::of(&tools),
         );
-        assert!(P1_GATE.fits(engine_size), "{engine_size:?}");
+        assert!(STANDARD_BUDGET.fits(engine_size), "{engine_size:?}");
         assert_eq!(proxy_size.tools, 2);
         assert!(proxy_size.tokens() <= 300, "{proxy_size:?}");
         println!(

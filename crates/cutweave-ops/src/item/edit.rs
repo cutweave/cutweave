@@ -81,7 +81,7 @@ pub struct ItemMoveOutput {
     summary = "Move items in time and/or to another track (linked partners follow)",
     undoable,
     mcp = "core",
-    annotations(destructive = false, idempotent = true)
+    annotations(destructive = false, idempotent = false)
 )]
 pub struct ItemMove {
     /// The item (or `items`).

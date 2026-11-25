@@ -24,7 +24,7 @@ use std::time::{Duration, Instant};
 use cutweave_api::Credential;
 use cutweave_api::mcp::proxy::{self, ProxyEnd, Upstream};
 use cutweave_api::mcp::stdio::{self, Ended};
-use cutweave_api::mcp::{Catalog, CutweaveMcp, Dispatch, ListSize, P1_GATE, Profile};
+use cutweave_api::mcp::{Catalog, CutweaveMcp, Dispatch, ListSize, Profile, STANDARD_BUDGET};
 use cutweave_engine::Call;
 use mcp_support::{Client, Harness, Revision, SEC, client_over, must};
 use rmcp::model::Tool;
@@ -185,7 +185,7 @@ async fn stdio_serves_the_catalog_and_the_scripted_agent_on_both_revisions() {
         let tools = agent.service.list_tools(None).await.unwrap().tools;
         assert_eq!(names(&tools), expected, "{revision:?}");
         assert_eq!(tools.len(), 19);
-        assert!(P1_GATE.fits(ListSize::of(&tools)));
+        assert!(STANDARD_BUDGET.fits(ListSize::of(&tools)));
         scripted_edit(&h, &agent).await;
         agent.close().await;
         let ended = tokio::time::timeout(Duration::from_secs(10), server)

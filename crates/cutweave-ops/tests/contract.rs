@@ -228,13 +228,14 @@ const CONTRACT: &[Row] = &[
         true,
         true,
     ),
+    // WP-2A.03: a `delta` move repeated moves again, so the idempotent hint is off.
     (
         "item.move",
         EntryKind::Command,
         McpExposure::Core,
         false,
         false,
-        true,
+        false,
         true,
     ),
     (

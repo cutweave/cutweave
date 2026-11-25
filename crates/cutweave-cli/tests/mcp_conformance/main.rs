@@ -56,7 +56,7 @@ use std::sync::{Arc, Mutex};
 use std::time::Duration;
 
 use cutweave_api::mcp::results::UNTRUSTED_FIELDS;
-use cutweave_api::mcp::{ListSize, P1_GATE};
+use cutweave_api::mcp::{ListSize, STANDARD_BUDGET};
 use rmcp::{
     ClientHandler, ClientLifecycleMode, ClientServiceExt as _, RoleClient, ServiceExt as _,
     model::{
@@ -79,7 +79,7 @@ const SEC: i64 = 705_600_000;
 
 /// The standard profile's tools in Phase 1: the registry's 15 core tools and the 4 generic
 /// ones. `render_frame` is not here: this suite runs the dev-stub engine, which has no renderer
-/// (the full engine lists 20, P1 gate R33).
+/// (the full engine lists 20; standard budget, R36).
 const CORE_TOOLS: [&str; 15] = [
     "clip_split",
     "clip_trim",
@@ -642,8 +642,8 @@ async fn conformance(transport: Transport, revision: Revision, tamper: Option<Ta
     );
     let size = ListSize::of(&tools);
     assert!(
-        P1_GATE.fits(size),
-        "{label}: {} tools / ~{} tokens exceeds the P1 gate (<= 20 / 5k)",
+        STANDARD_BUDGET.fits(size),
+        "{label}: {} tools / ~{} tokens exceeds the standard budget (<= 36 / 8k, R36)",
         size.tools,
         size.tokens()
     );

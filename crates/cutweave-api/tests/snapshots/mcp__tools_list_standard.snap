@@ -25,9 +25,8 @@ expression: catalog.tools_json()
               "null"
             ],
             "items": {
-              "description": "A Item id: `^itm_[0-9a-f]{32}$`.",
-              "type": "string",
-              "pattern": "^itm_[0-9a-f]{32}$"
+              "pattern": "^itm_[0-9a-f]{32}$",
+              "type": "string"
             },
             "description": "Clips to split at once."
           },
@@ -92,13 +91,7 @@ expression: catalog.tools_json()
           "to": {
             "anyOf": [
               {
-                "type": "integer",
-                "minimum": -9007199254740991,
-                "maximum": 9007199254740991
-              },
-              {
-                "type": "string",
-                "pattern": "^-?[0-9]+(\\.[0-9]+)?s$|^-?[0-9]+$|^f:[0-9]+$|^[0-9]+[:;][0-9]+[:;][0-9]+[:;][0-9]+$"
+                "$ref": "#/$defs/time"
               },
               {
                 "type": "null"
@@ -109,13 +102,7 @@ expression: catalog.tools_json()
           "delta": {
             "anyOf": [
               {
-                "type": "integer",
-                "minimum": -9007199254740991,
-                "maximum": 9007199254740991
-              },
-              {
-                "type": "string",
-                "pattern": "^-?[0-9]+(\\.[0-9]+)?s$|^-?[0-9]+$|^f:[0-9]+$|^[0-9]+[:;][0-9]+[:;][0-9]+[:;][0-9]+$"
+                "$ref": "#/$defs/time"
               },
               {
                 "type": "null"
@@ -134,7 +121,22 @@ expression: catalog.tools_json()
         "required": [
           "item",
           "edge"
-        ]
+        ],
+        "$defs": {
+          "time": {
+            "anyOf": [
+              {
+                "type": "integer",
+                "minimum": -9007199254740991,
+                "maximum": 9007199254740991
+              },
+              {
+                "type": "string",
+                "pattern": "^-?[0-9]+(\\.[0-9]+)?s$|^-?[0-9]+$|^f:[0-9]+$|^[0-9]+[:;][0-9]+[:;][0-9]+[:;][0-9]+$"
+              }
+            ]
+          }
+        }
       },
       "annotations": {
         "readOnlyHint": false,
@@ -195,31 +197,11 @@ expression: catalog.tools_json()
             "properties": {
               "in": {
                 "description": "Start: flicks, \"2.5s\", \"f:60\" or a timecode.",
-                "anyOf": [
-                  {
-                    "type": "integer",
-                    "minimum": -9007199254740991,
-                    "maximum": 9007199254740991
-                  },
-                  {
-                    "type": "string",
-                    "pattern": "^-?[0-9]+(\\.[0-9]+)?s$|^-?[0-9]+$|^f:[0-9]+$|^[0-9]+[:;][0-9]+[:;][0-9]+[:;][0-9]+$"
-                  }
-                ]
+                "$ref": "#/$defs/time"
               },
               "out": {
                 "description": "End, exclusive: at most the sequence end.",
-                "anyOf": [
-                  {
-                    "type": "integer",
-                    "minimum": -9007199254740991,
-                    "maximum": 9007199254740991
-                  },
-                  {
-                    "type": "string",
-                    "pattern": "^-?[0-9]+(\\.[0-9]+)?s$|^-?[0-9]+$|^f:[0-9]+$|^[0-9]+[:;][0-9]+[:;][0-9]+[:;][0-9]+$"
-                  }
-                ]
+                "$ref": "#/$defs/time"
               }
             },
             "required": [
@@ -370,7 +352,22 @@ expression: catalog.tools_json()
         },
         "required": [
           "path"
-        ]
+        ],
+        "$defs": {
+          "time": {
+            "anyOf": [
+              {
+                "type": "integer",
+                "minimum": -9007199254740991,
+                "maximum": 9007199254740991
+              },
+              {
+                "type": "string",
+                "pattern": "^-?[0-9]+(\\.[0-9]+)?s$|^-?[0-9]+$|^f:[0-9]+$|^[0-9]+[:;][0-9]+[:;][0-9]+[:;][0-9]+$"
+              }
+            ]
+          }
+        }
       },
       "annotations": {
         "readOnlyHint": false,
@@ -389,9 +386,8 @@ expression: catalog.tools_json()
           "items": {
             "type": "array",
             "items": {
-              "description": "A Item id: `^itm_[0-9a-f]{32}$`.",
-              "type": "string",
-              "pattern": "^itm_[0-9a-f]{32}$"
+              "pattern": "^itm_[0-9a-f]{32}$",
+              "type": "string"
             },
             "description": "The items to delete, at least one."
           }
@@ -428,22 +424,15 @@ expression: catalog.tools_json()
               "null"
             ],
             "items": {
-              "description": "A Item id: `^itm_[0-9a-f]{32}$`.",
-              "type": "string",
-              "pattern": "^itm_[0-9a-f]{32}$"
+              "pattern": "^itm_[0-9a-f]{32}$",
+              "type": "string"
             },
             "description": "Items; the first leads."
           },
           "start": {
             "anyOf": [
               {
-                "type": "integer",
-                "minimum": -9007199254740991,
-                "maximum": 9007199254740991
-              },
-              {
-                "type": "string",
-                "pattern": "^-?[0-9]+(\\.[0-9]+)?s$|^-?[0-9]+$|^f:[0-9]+$|^[0-9]+[:;][0-9]+[:;][0-9]+[:;][0-9]+$"
+                "$ref": "#/$defs/time"
               },
               {
                 "type": "null"
@@ -454,13 +443,7 @@ expression: catalog.tools_json()
           "delta": {
             "anyOf": [
               {
-                "type": "integer",
-                "minimum": -9007199254740991,
-                "maximum": 9007199254740991
-              },
-              {
-                "type": "string",
-                "pattern": "^-?[0-9]+(\\.[0-9]+)?s$|^-?[0-9]+$|^f:[0-9]+$|^[0-9]+[:;][0-9]+[:;][0-9]+[:;][0-9]+$"
+                "$ref": "#/$defs/time"
               },
               {
                 "type": "null"
@@ -523,12 +506,27 @@ expression: catalog.tools_json()
             ],
             "description": "Audio sample grid."
           }
+        },
+        "$defs": {
+          "time": {
+            "anyOf": [
+              {
+                "type": "integer",
+                "minimum": -9007199254740991,
+                "maximum": 9007199254740991
+              },
+              {
+                "type": "string",
+                "pattern": "^-?[0-9]+(\\.[0-9]+)?s$|^-?[0-9]+$|^f:[0-9]+$|^[0-9]+[:;][0-9]+[:;][0-9]+[:;][0-9]+$"
+              }
+            ]
+          }
         }
       },
       "annotations": {
         "readOnlyHint": false,
         "destructiveHint": false,
-        "idempotentHint": true,
+        "idempotentHint": false,
         "openWorldHint": false
       }
     },
@@ -800,7 +798,6 @@ expression: catalog.tools_json()
                   "null"
                 ],
                 "items": {
-                  "description": "What a [`MediaAsset`] is.",
                   "oneOf": [
                     {
                       "const": "video",
@@ -825,13 +822,7 @@ expression: catalog.tools_json()
               "min_duration": {
                 "anyOf": [
                   {
-                    "type": "integer",
-                    "minimum": 0,
-                    "maximum": 9007199254740991
-                  },
-                  {
-                    "type": "string",
-                    "pattern": "^-?[0-9]+(\\.[0-9]+)?s$|^-?[0-9]+$"
+                    "$ref": "#/$defs/shared1"
                   },
                   {
                     "type": "null"
@@ -842,13 +833,7 @@ expression: catalog.tools_json()
               "max_duration": {
                 "anyOf": [
                   {
-                    "type": "integer",
-                    "minimum": 0,
-                    "maximum": 9007199254740991
-                  },
-                  {
-                    "type": "string",
-                    "pattern": "^-?[0-9]+(\\.[0-9]+)?s$|^-?[0-9]+$"
+                    "$ref": "#/$defs/shared1"
                   },
                   {
                     "type": "null"
@@ -904,6 +889,21 @@ expression: catalog.tools_json()
               "by"
             ],
             "description": "Order."
+          }
+        },
+        "$defs": {
+          "shared1": {
+            "anyOf": [
+              {
+                "type": "integer",
+                "minimum": 0,
+                "maximum": 9007199254740991
+              },
+              {
+                "type": "string",
+                "pattern": "^-?[0-9]+(\\.[0-9]+)?s$|^-?[0-9]+$"
+              }
+            ]
           }
         }
       },
@@ -1018,28 +1018,12 @@ expression: catalog.tools_json()
           },
           "at": {
             "description": "Timeline position of the clip's first frame, `>= 0`.",
-            "anyOf": [
-              {
-                "type": "integer",
-                "minimum": -9007199254740991,
-                "maximum": 9007199254740991
-              },
-              {
-                "type": "string",
-                "pattern": "^-?[0-9]+(\\.[0-9]+)?s$|^-?[0-9]+$|^f:[0-9]+$|^[0-9]+[:;][0-9]+[:;][0-9]+[:;][0-9]+$"
-              }
-            ]
+            "$ref": "#/$defs/time"
           },
           "source_in": {
             "anyOf": [
               {
-                "type": "integer",
-                "minimum": -9007199254740991,
-                "maximum": 9007199254740991
-              },
-              {
-                "type": "string",
-                "pattern": "^-?[0-9]+(\\.[0-9]+)?s$|^-?[0-9]+$|^f:[0-9]+$|^[0-9]+[:;][0-9]+[:;][0-9]+[:;][0-9]+$"
+                "$ref": "#/$defs/time"
               },
               {
                 "type": "null"
@@ -1050,13 +1034,7 @@ expression: catalog.tools_json()
           "duration": {
             "anyOf": [
               {
-                "type": "integer",
-                "minimum": -9007199254740991,
-                "maximum": 9007199254740991
-              },
-              {
-                "type": "string",
-                "pattern": "^-?[0-9]+(\\.[0-9]+)?s$|^-?[0-9]+$|^f:[0-9]+$|^[0-9]+[:;][0-9]+[:;][0-9]+[:;][0-9]+$"
+                "$ref": "#/$defs/time"
               },
               {
                 "type": "null"
@@ -1118,7 +1096,22 @@ expression: catalog.tools_json()
           "track",
           "media",
           "at"
-        ]
+        ],
+        "$defs": {
+          "time": {
+            "anyOf": [
+              {
+                "type": "integer",
+                "minimum": -9007199254740991,
+                "maximum": 9007199254740991
+              },
+              {
+                "type": "string",
+                "pattern": "^-?[0-9]+(\\.[0-9]+)?s$|^-?[0-9]+$|^f:[0-9]+$|^[0-9]+[:;][0-9]+[:;][0-9]+[:;][0-9]+$"
+              }
+            ]
+          }
+        }
       },
       "annotations": {
         "readOnlyHint": false,

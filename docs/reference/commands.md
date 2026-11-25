@@ -25,7 +25,7 @@ MCP exposure: `core` commands are always listed as tools (`item.move` is `item_m
 | item | `item.delete` | Delete items and their linked partners (the main track closes up) | command, undoable, destructive | core |
 | item | `item.duplicate` | Duplicate items and their linked partners after the selection (inserted on the main track) | command, undoable | catalog |
 | item | `item.get` | Get one item: summary, track, source, audio and visual properties | query | catalog |
-| item | `item.move` | Move items in time and/or to another track (linked partners follow) | command, undoable, idempotent | core |
+| item | `item.move` | Move items in time and/or to another track (linked partners follow) | command, undoable | core |
 | item | `item.set_props` | Set an item's name, enabled, opacity, audio_gain or transform (partial) | command, undoable, idempotent | core |
 | job | `job.cancel` | Cancel a background job (stops within 500 ms; no effect once it finished) | engine, idempotent | catalog |
 | job | `job.list` | List background jobs, newest first (filter by media, state or kind) | engine, read-only, idempotent | catalog |

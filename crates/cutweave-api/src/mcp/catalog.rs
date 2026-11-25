@@ -5,7 +5,8 @@
 //!   tool named after the command with `.` replaced by `_` (`clip_split`), described by its
 //!   `summary`, with the registry's MCP annotations. Its `inputSchema` is the registry params
 //!   schema in [lean](lean_schema) form: validation-identical, without the documentation-only
-//!   keywords that would blow the token budget (the full schema and docs are one
+//!   keywords that would blow the token budget, and with a subschema used by several params
+//!   (the time input) defined once under `$defs` (the full schema and docs are one
 //!   `cutweave_describe_command` away).
 //! - **Generic tools** (always listed): [`SEARCH`], [`DESCRIBE`], [`EXECUTE`] and [`QUERY`]. They
 //!   reach every entry that is not `hidden`, including `catalog` ones (`edit.redo`, `track.add`).
@@ -17,9 +18,9 @@
 //! Tokens are estimated as `ceil(bytes / 4)` of the compact JSON of the `tools/list` result
 //! (`{"tools":[...]}`), [`ListSize`]. There is no offline tokenizer; the estimate is close for
 //! prose and low for dense JSON, so budgets keep headroom. Minimal: <= 12 tools / <= 3k tokens.
-//! Standard: <= 36 tools / <= 8k tokens, and [`P1_GATE`] (<= 20 tools / <= 5k tokens) during
-//! Phase 1. Full: standard plus the search-based long tail, so in Phase 1 it lists exactly the
-//! standard tools. `outputSchema`s are not listed (Spike S5: about 45% of the bytes); results
+//! Standard: [`STANDARD_BUDGET`], <= 36 tools / <= 8k tokens, the gate of the `/mcp` list since
+//! M1 (R36; the Phase 1 gate of <= 20 tools / <= 5k tokens, R33, ended with M1). Full: standard
+//! plus the search-based long tail, so it lists exactly the standard tools for now. `outputSchema`s are not listed (Spike S5: about 45% of the bytes); results
 //! still carry `structuredContent`.
 
 use std::{collections::HashMap, sync::Arc};
@@ -70,10 +71,18 @@ impl Budget {
     }
 }
 
-/// The Phase 1 gate of the standard profile (WP-1J.01, raised to 20 tools by WP-1J.02, R33): <= 20 tools and <= 5k tokens.
-pub const P1_GATE: Budget = Budget {
-    max_tools: 20,
-    max_tokens: 5_000,
+/// The arch §14 budget of the minimal profile: <= 12 tools and <= 3k tokens.
+pub const MINIMAL_BUDGET: Budget = Budget {
+    max_tools: 12,
+    max_tokens: 3_000,
+};
+
+/// The arch §14 budget of the standard (and full) profile, the gate of the `/mcp` tool list
+/// (R36, since M1; it replaced the Phase 1 gate of <= 20 tools / <= 5k tokens, R33): <= 36 tools
+/// and <= 8k tokens.
+pub const STANDARD_BUDGET: Budget = Budget {
+    max_tools: 36,
+    max_tokens: 8_000,
 };
 
 /// A tool profile, chosen by the endpoint (`/mcp`, `/mcp/minimal`, `/mcp/full`) or, on stdio,
@@ -123,14 +132,8 @@ impl Profile {
     #[must_use]
     pub const fn budget(self) -> Budget {
         match self {
-            Profile::Minimal => Budget {
-                max_tools: 12,
-                max_tokens: 3_000,
-            },
-            Profile::Standard | Profile::Full => Budget {
-                max_tools: 36,
-                max_tokens: 8_000,
-            },
+            Profile::Minimal => MINIMAL_BUDGET,
+            Profile::Standard | Profile::Full => STANDARD_BUDGET,
         }
     }
 }
@@ -337,11 +340,13 @@ fn entry_tool(meta: &CommandMeta) -> Tool {
 
 /// The listed form of a registry params schema: the same validation, without the keywords that
 /// only document. Removes the root `description` (the long doc comment; the tool description is
-/// the summary) and every `title`, drops `"default": null`, and flattens
-/// `anyOf[{anyOf[A, B], description}, {type: null}]` into `anyOf[A, B, {type: null}]` (keeping
-/// the outer description). Property descriptions, enums, patterns, bounds, `required` and
-/// `additionalProperties` are kept as they are, so a value is valid under the lean schema
-/// exactly when it is valid under the registry's.
+/// the summary), every `title` and the description of array elements (an ID's pattern says it
+/// all), drops `"default": null`, and flattens `anyOf[{anyOf[A, B], description}, {type: null}]`
+/// into `anyOf[A, B, {type: null}]` (keeping the outer description). Alternatives that several
+/// params repeat (the time input: flicks or text) are defined once under `$defs` and referenced
+/// (`{"$ref": "#/$defs/time"}`, next to `{"type": "null"}` for an optional one). Property
+/// descriptions, enums, patterns, bounds, `required` and `additionalProperties` are kept as they
+/// are, so a value is valid under the lean schema exactly when it is valid under the registry's.
 #[must_use]
 pub fn lean_schema(schema: &Value) -> Value {
     let mut out = schema.clone();
@@ -349,7 +354,121 @@ pub fn lean_schema(schema: &Value) -> Value {
         root.remove("description");
     }
     trim(&mut out);
+    share_repeated(&mut out);
     out
+}
+
+/// The shortest alternatives list worth sharing, in bytes of compact JSON (a `$ref` costs about
+/// 30).
+const MIN_SHARED_BYTES: usize = 80;
+
+/// Moves `anyOf` alternative lists that occur more than once into the root `$defs` (see
+/// [`lean_schema`]). The time input is named `time`; any other shared list `shared<n>`.
+fn share_repeated(root: &mut Value) {
+    let mut counts: Vec<(Value, usize)> = Vec::new();
+    collect_alternatives(root, &mut counts);
+    let mut names: Vec<(Value, String)> = Vec::new();
+    for (alternatives, count) in counts {
+        if count < 2 || alternatives.to_string().len() < MIN_SHARED_BYTES {
+            continue;
+        }
+        let name = if is_time_input(&alternatives) && !names.iter().any(|(_, n)| n == "time") {
+            "time".to_owned()
+        } else {
+            format!("shared{}", names.len() + 1)
+        };
+        names.push((alternatives, name));
+    }
+    if names.is_empty() {
+        return;
+    }
+    refer(root, &names);
+    if let Value::Object(map) = root {
+        let defs = map
+            .entry("$defs")
+            .or_insert_with(|| Value::Object(JsonObject::new()));
+        if let Value::Object(defs) = defs {
+            for (alternatives, name) in names {
+                defs.insert(name, json!({ "anyOf": alternatives }));
+            }
+        }
+    }
+}
+
+/// The alternatives of an `anyOf` other than `{"type": "null"}`, when there are at least two.
+fn non_null_alternatives(map: &JsonObject) -> Option<Value> {
+    let Some(Value::Array(list)) = map.get("anyOf") else {
+        return None;
+    };
+    let rest: Vec<Value> = list
+        .iter()
+        .filter(|a| **a != json!({ "type": "null" }))
+        .cloned()
+        .collect();
+    (rest.len() >= 2).then_some(Value::Array(rest))
+}
+
+fn collect_alternatives(schema: &Value, counts: &mut Vec<(Value, usize)>) {
+    match schema {
+        Value::Object(map) => {
+            if let Some(alternatives) = non_null_alternatives(map) {
+                match counts.iter_mut().find(|(a, _)| *a == alternatives) {
+                    Some((_, n)) => *n += 1,
+                    None => counts.push((alternatives, 1)),
+                }
+            }
+            for (key, value) in map {
+                if key != "$defs" {
+                    collect_alternatives(value, counts);
+                }
+            }
+        }
+        Value::Array(list) => list.iter().for_each(|v| collect_alternatives(v, counts)),
+        _ => {}
+    }
+}
+
+/// Replaces each shared alternatives list by a `$ref` to its definition.
+fn refer(schema: &mut Value, names: &[(Value, String)]) {
+    match schema {
+        Value::Object(map) => {
+            if let Some(alternatives) = non_null_alternatives(map)
+                && let Some((_, name)) = names.iter().find(|(a, _)| *a == alternatives)
+            {
+                let reference = json!({ "$ref": format!("#/$defs/{name}") });
+                let nullable = map
+                    .get("anyOf")
+                    .and_then(Value::as_array)
+                    .is_some_and(|l| l.contains(&json!({ "type": "null" })));
+                if nullable {
+                    map.insert("anyOf".into(), json!([reference, { "type": "null" }]));
+                } else {
+                    map.remove("anyOf");
+                    map.insert("$ref".into(), reference["$ref"].clone());
+                }
+                return;
+            }
+            for (key, value) in map.iter_mut() {
+                if key != "$defs" {
+                    refer(value, names);
+                }
+            }
+        }
+        Value::Array(list) => list.iter_mut().for_each(|v| refer(v, names)),
+        _ => {}
+    }
+}
+
+/// Whether `alternatives` is the time input: an integer (flicks) or a string with a pattern
+/// that accepts frames (`"f:N"`).
+fn is_time_input(alternatives: &Value) -> bool {
+    let Some(list) = alternatives.as_array() else {
+        return false;
+    };
+    list.iter().any(|a| a["type"] == "integer")
+        && list.iter().any(|a| {
+            a["type"] == "string" && a["pattern"].as_str().is_some_and(|p| p.contains("f:"))
+        })
 }
 
 /// Keywords whose value is a map of subschemas (keys are names, not keywords).
@@ -401,6 +520,12 @@ fn trim(schema: &mut Value) {
                 children.values_mut().for_each(trim);
             }
         } else if SCHEMA_VALUES.contains(&key) {
+            // An array element's description (`A Item id: ...`) repeats its pattern.
+            if key == "items"
+                && let Value::Object(element) = value
+            {
+                element.remove("description");
+            }
             trim(value);
         } else if SCHEMA_LISTS.contains(&key)
             && let Value::Array(list) = value
@@ -641,6 +766,48 @@ mod tests {
     }
 
     #[test]
+    fn repeated_time_inputs_are_defined_once_and_element_descriptions_go() {
+        let time = json!({
+            "anyOf": [
+                { "type": "integer", "maximum": 9_007_199_254_740_991_i64, "minimum": -9_007_199_254_740_991_i64 },
+                { "type": "string", "pattern": "^-?[0-9]+(\\.[0-9]+)?s$|^f:[0-9]+$" }
+            ],
+            "description": "A time."
+        });
+        let schema = json!({
+            "type": "object",
+            "properties": {
+                "at": { "anyOf": time["anyOf"].clone(), "description": "When." },
+                "delta": { "anyOf": [time.clone(), { "type": "null" }], "description": "How much." },
+                "items": {
+                    "type": "array",
+                    "items": { "type": "string", "pattern": "^itm_", "description": "An id." }
+                }
+            }
+        });
+        let lean = lean_schema(&schema);
+        assert_eq!(lean["$defs"]["time"]["anyOf"], time["anyOf"]);
+        assert_eq!(
+            lean["properties"]["at"],
+            json!({ "$ref": "#/$defs/time", "description": "When." })
+        );
+        assert_eq!(
+            lean["properties"]["delta"],
+            json!({
+                "anyOf": [{ "$ref": "#/$defs/time" }, { "type": "null" }],
+                "description": "How much."
+            })
+        );
+        assert_eq!(
+            lean["properties"]["items"]["items"],
+            json!({ "type": "string", "pattern": "^itm_" })
+        );
+        // Used once: inlined as before.
+        let once = json!({ "type": "object", "properties": { "at": schema["properties"]["at"] } });
+        assert!(lean_schema(&once).get("$defs").is_none());
+    }
+
+    #[test]
     fn an_undescribed_optional_field_keeps_the_inner_description() {
         let schema = json!({
             "type": "object",
@@ -672,11 +839,16 @@ mod tests {
             bytes: 20_000,
         };
         assert_eq!(size.tokens(), 5_000);
-        assert!(P1_GATE.fits(size));
-        assert!(!P1_GATE.fits(ListSize {
+        assert!(STANDARD_BUDGET.fits(size));
+        assert!(!STANDARD_BUDGET.fits(ListSize {
             tools: 20,
-            bytes: 20_001
+            bytes: 32_001
+        }));
+        assert!(!STANDARD_BUDGET.fits(ListSize {
+            tools: 37,
+            bytes: 100
         }));
         assert!(!Profile::Minimal.budget().fits(size));
+        assert_eq!(Profile::Full.budget(), STANDARD_BUDGET);
     }
 }
