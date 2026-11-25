@@ -1,6 +1,6 @@
 [package]
 name = "xtask"
-description = "Cutweave: developer automation (`cargo xtask <ci|check-wasm|check-deps|license-headers|tokens|fetch-corpus|corpus-verify|bench|bench-check|gen>`)"
+description = "Cutweave: developer automation (`cargo xtask <ci|check-wasm|check-deps|license-headers|tokens|fetch-corpus|corpus-verify|bench|bench-check|gen|golden|golden-projects>`)"
 version.workspace = true
 edition.workspace = true
 license.workspace = true
@@ -31,6 +31,12 @@ cutweave-engine = { path = "../crates/cutweave-engine" }
 cutweave-jobs = { path = "../crates/cutweave-jobs" }
 cutweave-model = { path = "../crates/cutweave-model" }
 cutweave-ops = { path = "../crates/cutweave-ops" }
+# `cargo xtask golden` (WP-1O.01): the comparator uses the render crate's metrics (the single
+# source of the PSNR/SSIM tolerance) and its adapter list; `png` reads frames and writes
+# references and diffs. Both are already in the graph (cutweave-engine, cutweave-render); these
+# are only the direct edges, at the versions already locked.
+cutweave-render = { path = "../crates/cutweave-render" }
+png = "0.18.1"
 
 [dev-dependencies]
 # Review gate for schema/commands.json: a catalog change needs `cargo insta review` (WP-1N.01).

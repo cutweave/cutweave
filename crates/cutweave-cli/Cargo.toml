@@ -30,6 +30,10 @@ cutweave-api = { path = "../cutweave-api" }
 cutweave-commands = { path = "../cutweave-commands" }
 cutweave-engine = { path = "../cutweave-engine" }
 cutweave-model = { path = "../cutweave-model" }
+# `render --frames --check-determinism` (WP-1O.01): a second compositor on the same adapter for the
+# export pipeline's readback, and the PNG encoder `render.frame` uses. Already a dependency of
+# cutweave-engine; this is only the direct edge.
+cutweave-render = { path = "../cutweave-render" }
 serde_json = { workspace = true }
 # Attach mode: a blocking client of the engine's `/rpc` WebSocket, on a private current-thread
 # runtime. Same pins as cutweave-api (already locked; no TLS, loopback only).

@@ -31,13 +31,15 @@
 | `just dev` | Engine (cargo watch) + Electron with Vite HMR, wired to a dev project |
 | `just check` | fmt, clippy `-D warnings`, Biome, `cargo nextest`, vitest, wasm32 check of wasm-safe crates, cargo-deny, schema/codegen snapshot diff, Markdown links. **The full gate** |
 | `just check-affected` | The same steps restricted to what the change can affect: changed crates plus every crate that depends on them, and TS, docs and schema checks only when relevant. Shared-config changes (root `Cargo.toml`, a lockfile-only change, toolchain, `justfile`) fall back to `just check`. `--dry-run` prints the plan |
-| `just golden [--update]` | Render golden-frame projects headless and compare (update requires a human-approved PR label) |
+| `just golden [--update --i-know]` | The reference-update guard, then the six golden projects rendered headless by `cutweave render` on the software adapter (WARP on Windows) and compared with that adapter's references (`--adapter key:<set>` or `--all-adapters` for the local GPUs). Needs the FFmpeg bundle. See below |
 | `just bench [--compare main]` | Criterion + engine benchmarks against the §19 budgets |
 | `just e2e` | Playwright + Electron flows |
 | `just mcp-conformance` | The rmcp conformance suite and scripted agent (both MCP revisions, stdio and Streamable HTTP; offline, part of `just check`). `CUTWEAVE_UPDATE_FIXTURES=1` rewrites the scripted agent's expected-timeline fixture |
 | `just mcp-inspect` | MCP Inspector CLI (version pinned in `scripts/mcp-inspect.py`) against `cutweave mcp --headless` and a headless engine's `/mcp`. Needs Node and the network, so it is not in `just check`; CI runs it on manual dispatch (`mcp-conformance.yml`) |
 | `just corpus` | Fetch the test-media corpus (not committed; checksummed) |
 | `just evals [--client claude\|codex\|…]` | Run Agent Kit eval tasks (Phase 6+) |
+
+**Updating golden references** ([testdata/golden/README.md](../testdata/golden/README.md)). References are lossless PNGs in Git LFS under `testdata/golden/expected/<adapter>/`, one set per adapter class, and a frame is only compared with its own adapter's set. When a change moves pixels on purpose, rewrite one adapter's set on a machine that has that adapter: `just golden --update --i-know --reason "why"` (WARP; `--adapter key:<set>` for another class). It rewrites only the frames whose pixels changed and appends an entry naming the adapter and the set's content digest to `testdata/golden/UPDATES.md`. Commit the PNGs and the entry together and add the `golden-update` label to the pull request. The guard (`cargo xtask golden --check-refs`, also the first step of every `just golden`) fails on any reference change since the merge base without an entry carrying the set's current digest (so a PNG edited by hand fails even after an update), and the `golden-frames` CI job also fails without the label.
 
 ## 3. Repository conventions
 
@@ -121,6 +123,7 @@ stateDiagram-v2
 > - **Integrator, after a merge:** if `main` was an ancestor of the branch, the merged tree is identical to the one the worker gated, so nothing is rerun. Otherwise run `just check-affected` on `main`; its base is the pre-merge `main`, so it covers the branch's changes and every dependent crate built against the new `main`.
 > - **Full `just ci-local`:** once per batch of merges, before milestones and releases, and whenever `check-affected` falls back to it.
 > - **User flows (ADR-0018, 2026-11-24, product owner):** after every merge that touches `apps/`, `packages/` or `crates/`, the integrator runs `just e2e-flows` (the real app, engine and media, driven like a user). A broken or flaky flow blocks the push.
+> - **Golden frames (WP-1O.01):** `just check-affected` runs `just golden` when `cutweave-render`, `-media`, `-engine` or `-cli` changes, or anything under `testdata/golden/` or `xtask/src/golden/`; `just ci-local` always runs it. It renders on the software adapter (WARP) and takes about a minute on an idle machine.
 > - Builds share compiled dependencies through `sccache` (user-level `~/.cargo/config.toml`), so fresh worktrees don't rebuild the dependency tree.
 
 | When | Gates |

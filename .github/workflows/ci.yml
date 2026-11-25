@@ -160,6 +160,64 @@ jobs:
             packages/ui/test-results/
           if-no-files-found: ignore
 
+  # WP-1O.01. Golden frames on the software adapter (WARP; testdata/golden/README.md). First the
+  # reference-update guard: a pull request that adds, changes or removes a reference under
+  # testdata/golden/expected/ needs an entry naming that adapter in testdata/golden/UPDATES.md and
+  # the `golden-update` label. Then the six golden projects are rendered headless by
+  # `cutweave render` (each frame also a second time and through the export readback,
+  # bit-identically) and compared with testdata/golden/expected/dx12-warp/ (SSIM >= 0.995 and
+  # PSNR >= 40 dB). Failures upload actual, expected and diff PNGs. Windows only for M1 (R34):
+  # lavapipe (ubuntu-24.04) and Metal (ref-mac-m1) join when their reference sets exist.
+  golden-frames:
+    name: golden-frames (windows-latest, WARP)
+    runs-on: windows-latest
+    timeout-minutes: 45
+    permissions:
+      contents: read
+      # scripts/ffmpeg/fetch.sh downloads the CI-built FFmpeg bundle (a workflow artifact).
+      actions: read
+    defaults:
+      run:
+        shell: bash
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          lfs: true
+          # The guard diffs against the pull request's base branch.
+          fetch-depth: 0
+      - uses: dtolnay/rust-toolchain@683b588c487a69d01f6c6ddf40f036ff682cc2c8 # v1
+        with:
+          toolchain: "1.100.0"
+      - uses: Swatinem/rust-cache@d1527c8f67ef9af357290475d4af4b0fab8f12e0 # v2.9.3
+        with:
+          key: golden-frames
+      - name: Reference-update guard (label `golden-update`)
+        if: github.event_name == 'pull_request'
+        env:
+          BASE_REF: ${{ github.base_ref }}
+          LABELS: ${{ join(github.event.pull_request.labels.*.name, ',') }}
+        run: cargo xtask golden --check-refs --base "origin/$BASE_REF" --pr-labels "$LABELS"
+      - name: FFmpeg bundle
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: bash scripts/ffmpeg/fetch.sh --repo "${{ github.repository }}"
+      - name: Golden frames (WARP)
+        env:
+          BASE_REF: ${{ github.base_ref || 'main' }}
+        run: |
+          . scripts/ffmpeg/env.sh
+          cargo xtask golden --base "origin/$BASE_REF"
+      - name: Upload failures, the negative test and the report
+        if: always()
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: golden-frames-windows-warp
+          path: |
+            target/golden/failures/
+            target/golden/negative/
+            target/golden/report.json
+          if-no-files-found: ignore
+
   deny:
     name: deny
     runs-on: ubuntu-24.04

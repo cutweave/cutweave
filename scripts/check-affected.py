@@ -9,6 +9,8 @@ dev and build edges, transitively, from `cargo metadata`), and runs the same ste
 Cargo.lock, toolchain, justfile, this script) fall back to the full gate. When the desktop app,
 the editor (or a package it is built from, the UI kit among them), the engine or the CLI is
 affected, the user-flow suite runs last (`just e2e-flows`, ADR-0018); the full gate runs it too.
+When the render, media, engine or CLI crate changes, or the golden data or its runner, the
+golden frames run before it (`just golden`, WP-1O.01); the full gate runs them too.
 
 Base commit:
   * on `main`: the first parent of HEAD (the pre-merge main after a merge commit);
@@ -42,6 +44,12 @@ FLOW_PATHS = (
     "packages/protocol/", "packages/tokens/", "packages/preferences/", "design/",
 )
 FLOW_STEP = "just e2e-flows"
+# Golden frames (WP-1O.01, testdata/golden/README.md): `cutweave render` draws them with the
+# engine's media, render and export code. A change to one of these crates (not to everything
+# upstream of the engine), to the references or to their runner runs them.
+GOLDEN_CRATES = {"cutweave-render", "cutweave-media", "cutweave-engine", "cutweave-cli"}
+GOLDEN_PATHS = ("testdata/golden/", "xtask/src/golden/")
+GOLDEN_STEP = "just golden"
 
 # Any change here can affect everything: run the full gate.
 FULL_GATE_FILES = {
@@ -125,6 +133,7 @@ def plan(files: list[str]) -> tuple[list[tuple[str, str]], str]:
     if full:
         return [
             ("just check", f"shared config changed: {', '.join(full)}"),
+            (GOLDEN_STEP, "full gate: the render pipeline is affected"),
             (FLOW_STEP, "full gate: the app, the editor and the engine are all affected"),
         ], "full gate"
 
@@ -198,7 +207,12 @@ def plan(files: list[str]) -> tuple[list[tuple[str, str]], str]:
         steps.append(("python scripts/run-vitest.py", "TS/JS sources or config changed"))
     if gen:
         steps.append(("cargo xtask gen --check", "schema/codegen inputs affected"))
-    flow_paths = sorted({f.split("/")[0] + "/" + f.split("/")[1] for f in files
+    golden_paths = sorted({f for f in files if f.startswith(GOLDEN_PATHS) and not f.endswith(".md")})
+    if changed_crates & GOLDEN_CRATES or golden_paths:
+        why = ", ".join(sorted(changed_crates & GOLDEN_CRATES) + golden_paths[:3]
+                        + ([f"+{len(golden_paths) - 3} more"] if len(golden_paths) > 3 else []))
+        steps.append((GOLDEN_STEP, f"golden frames affected: {why}"))
+    flow_paths =sorted({f.split("/")[0] + "/" + f.split("/")[1] for f in files
                          if f.startswith(FLOW_PATHS) and not f.endswith(".md")})
     if affected & FLOW_CRATES or flow_paths:
         why = ", ".join(sorted(affected & FLOW_CRATES) + flow_paths)

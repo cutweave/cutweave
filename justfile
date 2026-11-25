@@ -67,9 +67,9 @@ wbs-json:
 wbs-sync *args:
     python scripts/wbs-to-issues/wbs_to_issues.py --sync {{args}}
 
-# Render golden-frame projects headless and compare (`just golden --update`)
+# Golden frames (testdata/golden/README.md): the reference-update guard, then build the CLI with FFmpeg, render the six golden projects headless on the software adapter and compare with that adapter's references (`--adapter key:<set>`, `--all-adapters`, `--update --i-know --reason "..."`)
 golden *args:
-    @echo "golden: not implemented yet (arrives in WP-0I)"
+    . scripts/ffmpeg/env.sh && cargo xtask golden {{args}}
 
 # Criterion + engine benchmarks against the budgets (`just bench --compare main`)
 bench *args:
@@ -127,11 +127,13 @@ ffmpeg-fetch *args:
 test-ffmpeg *args:
     . scripts/ffmpeg/env.sh && cargo nextest run -p cutweave-media --features ffmpeg {{args}}
 
-# Everything CI checks that this machine can run: the fast gate plus Storybook visual regression,
-# axe and offline-fonts tests against this OS's baselines. Run before merging to main.
+# Everything CI checks that this machine can run: the fast gate, Storybook visual regression,
+# axe and offline-fonts tests against this OS's baselines, and the golden frames on the software
+# adapter. Run before merging to main.
 ci-local:
     just check
     just ui-snapshots
+    just golden
 
 # Loom model checks for the document actor (slow; run before touching doc-actor concurrency)
 loom:
