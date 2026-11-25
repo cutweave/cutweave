@@ -228,13 +228,14 @@ const CONTRACT: &[Row] = &[
         true,
         true,
     ),
+    // WP-2A.03: a `delta` move repeated moves again, so the idempotent hint is off.
     (
         "item.move",
         EntryKind::Command,
         McpExposure::Core,
         false,
         false,
-        true,
+        false,
         true,
     ),
     (
@@ -243,6 +244,62 @@ const CONTRACT: &[Row] = &[
         McpExposure::Core,
         false,
         true,
+        false,
+        true,
+    ),
+    // WP-2A.03 (timeline spec §4, ADR-0023): every new placement command is in the catalog
+    // (R33: no new core MCP tools).
+    (
+        "item.duplicate",
+        EntryKind::Command,
+        McpExposure::Catalog,
+        false,
+        false,
+        false,
+        true,
+    ),
+    (
+        "timeline.overwrite",
+        EntryKind::Command,
+        McpExposure::Catalog,
+        false,
+        true,
+        false,
+        true,
+    ),
+    (
+        "timeline.lift",
+        EntryKind::Command,
+        McpExposure::Catalog,
+        false,
+        true,
+        false,
+        true,
+    ),
+    (
+        "timeline.extract",
+        EntryKind::Command,
+        McpExposure::Catalog,
+        false,
+        true,
+        false,
+        true,
+    ),
+    (
+        "timeline.ripple_delete",
+        EntryKind::Command,
+        McpExposure::Catalog,
+        false,
+        true,
+        false,
+        true,
+    ),
+    (
+        "timeline.delete_gap",
+        EntryKind::Command,
+        McpExposure::Catalog,
+        false,
+        false,
         false,
         true,
     ),
@@ -450,9 +507,18 @@ fn optional_params_are_not_required_in_the_input_schema() {
     );
     assert_eq!(required("media.list"), Vec::<String>::new());
     assert_eq!(required("track.set"), ["track"]);
-    assert_eq!(required("clip.split"), ["item", "at"]);
+    assert_eq!(required("clip.split"), ["at"]);
     assert_eq!(required("clip.trim"), ["item", "edge"]);
-    assert_eq!(required("item.move"), ["item", "start"]);
+    assert_eq!(required("item.move"), Vec::<String>::new());
+    assert_eq!(
+        required("timeline.overwrite"),
+        ["sequence", "track", "media", "at"]
+    );
+    assert_eq!(required("timeline.lift"), ["sequence"]);
+    assert_eq!(required("timeline.extract"), ["sequence"]);
+    assert_eq!(required("timeline.ripple_delete"), ["items"]);
+    assert_eq!(required("timeline.delete_gap"), ["track", "at"]);
+    assert_eq!(required("item.duplicate"), ["items"]);
     assert_eq!(required("item.delete"), ["items"]);
     assert_eq!(required("item.set_props"), ["item", "props"]);
     assert_eq!(required("item.get"), ["item"]);

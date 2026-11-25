@@ -1,0 +1,640 @@
+---
+source: crates/cutweave-ops/tests/contract.rs
+expression: "json!({\n    \"meta\": serde_json::to_value(meta).unwrap(), \"input\": meta.input_schema,\n    \"output\": meta.output_schema,\n})"
+---
+{
+  "meta": {
+    "name": "timeline.delete_gap",
+    "summary": "Close the gap of a track at a time (what follows moves left; partners follow)",
+    "kind": "command",
+    "undoable": true,
+    "view": false,
+    "scope": "any",
+    "mcp": "catalog",
+    "annotations": {
+      "readOnlyHint": false,
+      "destructiveHint": false,
+      "idempotentHint": false,
+      "openWorldHint": false
+    },
+    "secret_fields": [],
+    "input_schema": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "track": {
+          "type": "string",
+          "pattern": "^trk_[0-9a-f]{32}$",
+          "description": "The track."
+        },
+        "at": {
+          "description": "A time inside the gap.",
+          "anyOf": [
+            {
+              "type": "integer",
+              "minimum": -9007199254740991,
+              "maximum": 9007199254740991
+            },
+            {
+              "type": "string",
+              "pattern": "^-?[0-9]+(\\.[0-9]+)?s$|^-?[0-9]+$|^f:[0-9]+$|^[0-9]+[:;][0-9]+[:;][0-9]+[:;][0-9]+$"
+            }
+          ]
+        },
+        "ripple_all_tracks": {
+          "type": [
+            "boolean",
+            "null"
+          ],
+          "description": "Shift every track of the sequence, not only this one and its partners' tracks (default\n`false`).",
+          "default": null
+        }
+      },
+      "required": [
+        "track",
+        "at"
+      ],
+      "description": "Closes the gap of a track that contains `at`: the items from the gap's end on move left by\nits length, and so do the tracks of linked partners of what moves (or every track with\n`ripple_all_tracks`). A gap is the empty space between two items, or before the first one;\n`at` inside an item or after the last one is `Invalid` (the magnetic main track has no\ngaps). Fails with `Invalid` if the shift would make items overlap, and with `Locked` if it\nwould change a locked track.",
+      "title": "TimelineDeleteGap"
+    },
+    "output_schema": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "gap": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "start": {
+              "description": "First frame of the range.",
+              "type": "integer",
+              "minimum": -9007199254740991,
+              "maximum": 9007199254740991
+            },
+            "end": {
+              "description": "End of the range (exclusive).",
+              "type": "integer",
+              "minimum": -9007199254740991,
+              "maximum": 9007199254740991
+            }
+          },
+          "required": [
+            "start",
+            "end"
+          ],
+          "description": "The gap that was closed."
+        },
+        "report": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "created": {
+              "type": "array",
+              "items": {
+                "description": "A Item id: `^itm_[0-9a-f]{32}$`.",
+                "type": "string",
+                "pattern": "^itm_[0-9a-f]{32}$"
+              },
+              "description": "New items, other than the right halves of splits."
+            },
+            "removed": {
+              "type": "array",
+              "items": {
+                "description": "A Item id: `^itm_[0-9a-f]{32}$`.",
+                "type": "string",
+                "pattern": "^itm_[0-9a-f]{32}$"
+              },
+              "description": "Items that no longer exist."
+            },
+            "split": {
+              "type": "array",
+              "items": {
+                "description": "A split: `right` is new, `left` keeps its ID; `at` is the cut time before the edit.",
+                "type": "object",
+                "properties": {
+                  "left": {
+                    "description": "The left half (keeps the original ID).",
+                    "type": "string",
+                    "pattern": "^itm_[0-9a-f]{32}$"
+                  },
+                  "right": {
+                    "description": "The right half (new).",
+                    "type": "string",
+                    "pattern": "^itm_[0-9a-f]{32}$"
+                  },
+                  "at": {
+                    "description": "The cut time.",
+                    "type": "integer",
+                    "minimum": -9007199254740991,
+                    "maximum": 9007199254740991
+                  }
+                },
+                "additionalProperties": false,
+                "required": [
+                  "left",
+                  "right",
+                  "at"
+                ]
+              },
+              "description": "Splits, sorted by `(left, at)`."
+            },
+            "moved": {
+              "type": "array",
+              "items": {
+                "description": "An item whose track or start changed (duration and source did not).",
+                "type": "object",
+                "properties": {
+                  "item": {
+                    "description": "The item.",
+                    "type": "string",
+                    "pattern": "^itm_[0-9a-f]{32}$"
+                  },
+                  "track": {
+                    "description": "Its track now.",
+                    "type": "string",
+                    "pattern": "^trk_[0-9a-f]{32}$"
+                  },
+                  "start": {
+                    "description": "Its start now.",
+                    "type": "integer",
+                    "minimum": -9007199254740991,
+                    "maximum": 9007199254740991
+                  }
+                },
+                "additionalProperties": false,
+                "required": [
+                  "item",
+                  "track",
+                  "start"
+                ]
+              },
+              "description": "Items whose track or start changed."
+            },
+            "trimmed": {
+              "type": "array",
+              "items": {
+                "description": "An item whose duration or `source_in` changed (its start may have too).",
+                "type": "object",
+                "properties": {
+                  "item": {
+                    "description": "The item.",
+                    "type": "string",
+                    "pattern": "^itm_[0-9a-f]{32}$"
+                  },
+                  "start": {
+                    "description": "Its start now.",
+                    "type": "integer",
+                    "minimum": -9007199254740991,
+                    "maximum": 9007199254740991
+                  },
+                  "duration": {
+                    "description": "Its duration now.",
+                    "type": "integer",
+                    "minimum": 0,
+                    "maximum": 9007199254740991
+                  },
+                  "source_in": {
+                    "description": "Its `source_in` now (`0` for items that play no media).",
+                    "type": "integer",
+                    "minimum": -9007199254740991,
+                    "maximum": 9007199254740991
+                  }
+                },
+                "additionalProperties": false,
+                "required": [
+                  "item",
+                  "start",
+                  "duration",
+                  "source_in"
+                ]
+              },
+              "description": "Items whose duration or source position changed."
+            },
+            "relinked": {
+              "type": "array",
+              "items": {
+                "description": "An item whose `linked_group` or `attached_to` changed.",
+                "type": "object",
+                "properties": {
+                  "item": {
+                    "description": "The item.",
+                    "type": "string",
+                    "pattern": "^itm_[0-9a-f]{32}$"
+                  },
+                  "linked_group": {
+                    "description": "Its linked group now.",
+                    "type": [
+                      "string",
+                      "null"
+                    ],
+                    "pattern": "^grp_[0-9a-f]{32}$"
+                  },
+                  "attached_to": {
+                    "description": "The item it is attached to now.",
+                    "type": [
+                      "string",
+                      "null"
+                    ],
+                    "pattern": "^itm_[0-9a-f]{32}$"
+                  }
+                },
+                "additionalProperties": false,
+                "required": [
+                  "item",
+                  "linked_group",
+                  "attached_to"
+                ]
+              },
+              "description": "Items whose link or attachment changed."
+            },
+            "replaced": {
+              "type": "array",
+              "items": {
+                "description": "An item whose media changed (`clip.replace`).",
+                "type": "object",
+                "properties": {
+                  "item": {
+                    "description": "The item.",
+                    "type": "string",
+                    "pattern": "^itm_[0-9a-f]{32}$"
+                  },
+                  "media": {
+                    "description": "Its media now.",
+                    "type": "string",
+                    "pattern": "^med_[0-9a-f]{32}$"
+                  }
+                },
+                "additionalProperties": false,
+                "required": [
+                  "item",
+                  "media"
+                ]
+              },
+              "description": "Items whose media changed."
+            },
+            "toggled": {
+              "type": "array",
+              "items": {
+                "description": "An item whose `enabled` flag changed.",
+                "type": "object",
+                "properties": {
+                  "item": {
+                    "description": "The item.",
+                    "type": "string",
+                    "pattern": "^itm_[0-9a-f]{32}$"
+                  },
+                  "enabled": {
+                    "description": "Its flag now.",
+                    "type": "boolean"
+                  }
+                },
+                "additionalProperties": false,
+                "required": [
+                  "item",
+                  "enabled"
+                ]
+              },
+              "description": "Items whose `enabled` flag changed."
+            },
+            "created_tracks": {
+              "type": "array",
+              "items": {
+                "description": "A Track id: `^trk_[0-9a-f]{32}$`.",
+                "type": "string",
+                "pattern": "^trk_[0-9a-f]{32}$"
+              },
+              "description": "Tracks created, in creation order."
+            }
+          },
+          "required": [
+            "created",
+            "removed",
+            "split",
+            "moved",
+            "trimmed",
+            "relinked",
+            "replaced",
+            "toggled",
+            "created_tracks"
+          ],
+          "description": "What changed (timeline spec §3.1)."
+        }
+      },
+      "required": [
+        "gap",
+        "report"
+      ],
+      "description": "Result of `timeline.delete_gap`.",
+      "title": "TimelineDeleteGapOutput"
+    }
+  },
+  "input": {
+    "type": "object",
+    "additionalProperties": false,
+    "properties": {
+      "track": {
+        "type": "string",
+        "pattern": "^trk_[0-9a-f]{32}$",
+        "description": "The track."
+      },
+      "at": {
+        "description": "A time inside the gap.",
+        "anyOf": [
+          {
+            "type": "integer",
+            "minimum": -9007199254740991,
+            "maximum": 9007199254740991
+          },
+          {
+            "type": "string",
+            "pattern": "^-?[0-9]+(\\.[0-9]+)?s$|^-?[0-9]+$|^f:[0-9]+$|^[0-9]+[:;][0-9]+[:;][0-9]+[:;][0-9]+$"
+          }
+        ]
+      },
+      "ripple_all_tracks": {
+        "type": [
+          "boolean",
+          "null"
+        ],
+        "description": "Shift every track of the sequence, not only this one and its partners' tracks (default\n`false`).",
+        "default": null
+      }
+    },
+    "required": [
+      "track",
+      "at"
+    ],
+    "description": "Closes the gap of a track that contains `at`: the items from the gap's end on move left by\nits length, and so do the tracks of linked partners of what moves (or every track with\n`ripple_all_tracks`). A gap is the empty space between two items, or before the first one;\n`at` inside an item or after the last one is `Invalid` (the magnetic main track has no\ngaps). Fails with `Invalid` if the shift would make items overlap, and with `Locked` if it\nwould change a locked track.",
+    "title": "TimelineDeleteGap"
+  },
+  "output": {
+    "type": "object",
+    "additionalProperties": false,
+    "properties": {
+      "gap": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "start": {
+            "description": "First frame of the range.",
+            "type": "integer",
+            "minimum": -9007199254740991,
+            "maximum": 9007199254740991
+          },
+          "end": {
+            "description": "End of the range (exclusive).",
+            "type": "integer",
+            "minimum": -9007199254740991,
+            "maximum": 9007199254740991
+          }
+        },
+        "required": [
+          "start",
+          "end"
+        ],
+        "description": "The gap that was closed."
+      },
+      "report": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "created": {
+            "type": "array",
+            "items": {
+              "description": "A Item id: `^itm_[0-9a-f]{32}$`.",
+              "type": "string",
+              "pattern": "^itm_[0-9a-f]{32}$"
+            },
+            "description": "New items, other than the right halves of splits."
+          },
+          "removed": {
+            "type": "array",
+            "items": {
+              "description": "A Item id: `^itm_[0-9a-f]{32}$`.",
+              "type": "string",
+              "pattern": "^itm_[0-9a-f]{32}$"
+            },
+            "description": "Items that no longer exist."
+          },
+          "split": {
+            "type": "array",
+            "items": {
+              "description": "A split: `right` is new, `left` keeps its ID; `at` is the cut time before the edit.",
+              "type": "object",
+              "properties": {
+                "left": {
+                  "description": "The left half (keeps the original ID).",
+                  "type": "string",
+                  "pattern": "^itm_[0-9a-f]{32}$"
+                },
+                "right": {
+                  "description": "The right half (new).",
+                  "type": "string",
+                  "pattern": "^itm_[0-9a-f]{32}$"
+                },
+                "at": {
+                  "description": "The cut time.",
+                  "type": "integer",
+                  "minimum": -9007199254740991,
+                  "maximum": 9007199254740991
+                }
+              },
+              "additionalProperties": false,
+              "required": [
+                "left",
+                "right",
+                "at"
+              ]
+            },
+            "description": "Splits, sorted by `(left, at)`."
+          },
+          "moved": {
+            "type": "array",
+            "items": {
+              "description": "An item whose track or start changed (duration and source did not).",
+              "type": "object",
+              "properties": {
+                "item": {
+                  "description": "The item.",
+                  "type": "string",
+                  "pattern": "^itm_[0-9a-f]{32}$"
+                },
+                "track": {
+                  "description": "Its track now.",
+                  "type": "string",
+                  "pattern": "^trk_[0-9a-f]{32}$"
+                },
+                "start": {
+                  "description": "Its start now.",
+                  "type": "integer",
+                  "minimum": -9007199254740991,
+                  "maximum": 9007199254740991
+                }
+              },
+              "additionalProperties": false,
+              "required": [
+                "item",
+                "track",
+                "start"
+              ]
+            },
+            "description": "Items whose track or start changed."
+          },
+          "trimmed": {
+            "type": "array",
+            "items": {
+              "description": "An item whose duration or `source_in` changed (its start may have too).",
+              "type": "object",
+              "properties": {
+                "item": {
+                  "description": "The item.",
+                  "type": "string",
+                  "pattern": "^itm_[0-9a-f]{32}$"
+                },
+                "start": {
+                  "description": "Its start now.",
+                  "type": "integer",
+                  "minimum": -9007199254740991,
+                  "maximum": 9007199254740991
+                },
+                "duration": {
+                  "description": "Its duration now.",
+                  "type": "integer",
+                  "minimum": 0,
+                  "maximum": 9007199254740991
+                },
+                "source_in": {
+                  "description": "Its `source_in` now (`0` for items that play no media).",
+                  "type": "integer",
+                  "minimum": -9007199254740991,
+                  "maximum": 9007199254740991
+                }
+              },
+              "additionalProperties": false,
+              "required": [
+                "item",
+                "start",
+                "duration",
+                "source_in"
+              ]
+            },
+            "description": "Items whose duration or source position changed."
+          },
+          "relinked": {
+            "type": "array",
+            "items": {
+              "description": "An item whose `linked_group` or `attached_to` changed.",
+              "type": "object",
+              "properties": {
+                "item": {
+                  "description": "The item.",
+                  "type": "string",
+                  "pattern": "^itm_[0-9a-f]{32}$"
+                },
+                "linked_group": {
+                  "description": "Its linked group now.",
+                  "type": [
+                    "string",
+                    "null"
+                  ],
+                  "pattern": "^grp_[0-9a-f]{32}$"
+                },
+                "attached_to": {
+                  "description": "The item it is attached to now.",
+                  "type": [
+                    "string",
+                    "null"
+                  ],
+                  "pattern": "^itm_[0-9a-f]{32}$"
+                }
+              },
+              "additionalProperties": false,
+              "required": [
+                "item",
+                "linked_group",
+                "attached_to"
+              ]
+            },
+            "description": "Items whose link or attachment changed."
+          },
+          "replaced": {
+            "type": "array",
+            "items": {
+              "description": "An item whose media changed (`clip.replace`).",
+              "type": "object",
+              "properties": {
+                "item": {
+                  "description": "The item.",
+                  "type": "string",
+                  "pattern": "^itm_[0-9a-f]{32}$"
+                },
+                "media": {
+                  "description": "Its media now.",
+                  "type": "string",
+                  "pattern": "^med_[0-9a-f]{32}$"
+                }
+              },
+              "additionalProperties": false,
+              "required": [
+                "item",
+                "media"
+              ]
+            },
+            "description": "Items whose media changed."
+          },
+          "toggled": {
+            "type": "array",
+            "items": {
+              "description": "An item whose `enabled` flag changed.",
+              "type": "object",
+              "properties": {
+                "item": {
+                  "description": "The item.",
+                  "type": "string",
+                  "pattern": "^itm_[0-9a-f]{32}$"
+                },
+                "enabled": {
+                  "description": "Its flag now.",
+                  "type": "boolean"
+                }
+              },
+              "additionalProperties": false,
+              "required": [
+                "item",
+                "enabled"
+              ]
+            },
+            "description": "Items whose `enabled` flag changed."
+          },
+          "created_tracks": {
+            "type": "array",
+            "items": {
+              "description": "A Track id: `^trk_[0-9a-f]{32}$`.",
+              "type": "string",
+              "pattern": "^trk_[0-9a-f]{32}$"
+            },
+            "description": "Tracks created, in creation order."
+          }
+        },
+        "required": [
+          "created",
+          "removed",
+          "split",
+          "moved",
+          "trimmed",
+          "relinked",
+          "replaced",
+          "toggled",
+          "created_tracks"
+        ],
+        "description": "What changed (timeline spec §3.1)."
+      }
+    },
+    "required": [
+      "gap",
+      "report"
+    ],
+    "description": "Result of `timeline.delete_gap`.",
+    "title": "TimelineDeleteGapOutput"
+  }
+}

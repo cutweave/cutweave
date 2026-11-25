@@ -25,6 +25,8 @@ export interface Field {
   /** A text field whose schema also allows a number (a time): digits are sent as a number. */
   readonly numeric: boolean;
   readonly options: readonly FieldOption[];
+  /** The property that can be given instead of this required one (`items` for `item`). */
+  readonly alternative?: string;
 }
 
 /** What a field holds while it is edited: text, or on/off. */
@@ -110,18 +112,45 @@ function fieldOf(root: JsonSchema, name: string, schema: JsonSchema, required: b
   return { ...common, kind: "json", options: [] };
 }
 
+/**
+ * Arguments a command takes one of, the engine refusing both and neither (`clip.split` and
+ * `item.move` take `item` or `items`, `item.move` takes `start` or `delta`). The schema has
+ * both optional; the form asks for the first, and giving the second instead also does.
+ */
+const ALTERNATIVES: readonly (readonly [string, string])[] = [
+  ["item", "items"],
+  ["start", "delta"],
+];
+
+/** The alternatives a schema has, as (asked, instead) pairs. */
+function choicesOf(schema: JsonSchema): (readonly [string, string])[] {
+  const props = schema.properties ?? {};
+  const required = new Set(schema.required ?? []);
+  return ALTERNATIVES.filter(
+    ([a, b]) => a in props && b in props && !required.has(a) && !required.has(b),
+  );
+}
+
+/** What running the command needs: the schema's required names, and one of each alternative. */
+function requiredOf(schema: JsonSchema): string[] {
+  return [...(schema.required ?? []), ...choicesOf(schema).map(([a]) => a)];
+}
+
 /** The fields of an input schema, required ones first, then in the schema's order. */
 export function fieldsOf(schema: JsonSchema): Field[] {
-  const required = new Set(schema.required ?? []);
-  const fields = Object.entries(schema.properties ?? {}).map(([name, prop]) =>
-    fieldOf(schema, name, prop, required.has(name)),
-  );
+  const required = new Set(requiredOf(schema));
+  const instead = new Map(choicesOf(schema));
+  const fields = Object.entries(schema.properties ?? {}).map(([name, prop]) => {
+    const field = fieldOf(schema, name, prop, required.has(name));
+    const alternative = instead.get(name);
+    return alternative === undefined ? field : { ...field, alternative };
+  });
   return [...fields.filter((f) => f.required), ...fields.filter((f) => !f.required)];
 }
 
 /** Whether running the command needs arguments the person has to give. */
 export function needsArguments(schema: JsonSchema): boolean {
-  return (schema.required ?? []).length > 0;
+  return requiredOf(schema).length > 0;
 }
 
 /** The starting values of a form: a field's prefilled value, else empty (a switch is off). */
@@ -156,7 +185,9 @@ export function toArguments(fields: readonly Field[], values: FieldValues): Form
     }
     const text = typeof v === "string" ? v.trim() : "";
     if (text === "") {
-      if (f.required) errors[f.name] = "palette.form.required";
+      const other = f.alternative === undefined ? undefined : values[f.alternative];
+      const givenInstead = typeof other === "string" ? other.trim() !== "" : other === true;
+      if (f.required && !givenInstead) errors[f.name] = "palette.form.required";
       continue;
     }
     if (f.kind === "number" || (f.kind === "text" && f.numeric && /^-?\d+(\.\d+)?$/.test(text))) {
@@ -187,22 +218,26 @@ export interface Prefill {
 
 /**
  * Arguments the context answers: `item` / `items` from the selected clips (an ID pattern names
- * the kind), `at` from the playhead. Anything else is left for the person.
+ * the kind), `at` from the playhead. A command that takes `item` or `items` gets `item` for one
+ * selected clip and `items` for several, never both. Anything else is left for the person.
  */
 export function prefillFor(schema: JsonSchema, context: Prefill): Record<string, unknown> {
   const out: Record<string, unknown> = {};
+  const either = choicesOf(schema).some(([a]) => a === "item");
+  const count = context.items.length;
   for (const [name, prop] of Object.entries(schema.properties ?? {})) {
     const s = deref(schema, prop);
     const itemPattern = (p: JsonSchema | undefined): boolean =>
       p?.pattern?.startsWith("^itm_") === true;
-    if (name === "item" && itemPattern(s) && context.items[0] !== undefined) {
-      out[name] = context.items[0];
-    } else if (
-      name === "items" &&
-      s.type === "array" &&
-      itemPattern(s.items) &&
-      context.items.length > 0
+    const isArray = s.type === "array" || (Array.isArray(s.type) && s.type.includes("array"));
+    if (
+      name === "item" &&
+      itemPattern(s) &&
+      context.items[0] !== undefined &&
+      !(either && count > 1)
     ) {
+      out[name] = context.items[0];
+    } else if (name === "items" && isArray && itemPattern(s.items) && count > (either ? 1 : 0)) {
       out[name] = [...context.items];
     } else if (name === "at" && context.playhead !== null) {
       out[name] = context.playhead;
@@ -216,5 +251,9 @@ export function fullyPrefilled(
   schema: JsonSchema,
   prefilled: Readonly<Record<string, unknown>>,
 ): boolean {
-  return (schema.required ?? []).every((name) => prefilled[name] !== undefined);
+  const instead = new Map(choicesOf(schema));
+  return requiredOf(schema).every((name) => {
+    const other = instead.get(name);
+    return prefilled[name] !== undefined || (other !== undefined && prefilled[other] !== undefined);
+  });
 }

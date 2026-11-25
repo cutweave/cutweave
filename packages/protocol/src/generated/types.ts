@@ -232,31 +232,41 @@ export type Clip = {
 } & { [key in string]: unknown };
 
 /**
- *  Splits a clip into two at a timeline time that lies strictly inside it (`Invalid{path:"/at"}`
- *  at or beyond the edges). The halves are contiguous: durations sum to the original and the
- *  right half's `source_in` continues where the left half ends. Linked partners that contain
- *  the time are split too. `at` is snapped to the sequence's frame grid. `Locked` if the clip's
- *  track or a partner's track is locked.
+ *  Splits a clip (`item`), or several (`items`), into two at a timeline time that lies strictly
+ *  inside each (`Invalid{path:"/at"}` at or beyond the edges). The halves are contiguous:
+ *  durations sum to the original and the right half's `source_in` continues where the left
+ *  half ends. Linked partners are split too, and children attached at or after the time move
+ *  to the right half. `at` is snapped to the sequence's frame grid (`fine: true`: the audio
+ *  sample grid, for audio clips not linked to video). `Locked` if a track involved is locked.
  */
 export type ClipSplit = {
-	/**  The clip. */
-	item: ItemId,
+	/**  The clip (or `items`). */
+	item?: ItemId | null,
+	/**  Clips to split at once. */
+	items?: ItemId[] | null,
 	/**  Timeline time to split at: strictly inside the clip. */
 	at: TimeInput,
+	/**  Audio sample grid. */
+	fine?: boolean | null,
 };
 
 /**  Result of `clip.split`. */
 export type ClipSplitOutput = {
-	/**  The left half of the requested item (keeps its ID). */
+	/**  The left half of the (first) requested clip (keeps its ID). */
 	left: ItemId,
-	/**  The right half of the requested item (new ID). */
+	/**  The right half of the (first) requested clip (new ID). */
 	right: ItemId,
-	/**  The time that was split at, snapped to the frame grid. */
+	/**  The time that was split at, snapped to the frame grid (or the sample grid, `fine`). */
 	at: Time,
-	/**  The linked partners that were split too. */
+	/**
+	 *  The other clips that were split: the first clip's linked partners, then the other
+	 *  requested clips each followed by its partners.
+	 */
 	linked: SplitPair[],
-	/**  The new group shared by the right halves, if there were partners. */
+	/**  The new group shared by the first clip's right halves, if it is linked. */
 	right_group: GroupId | null,
+	/**  What changed (timeline spec §3.1). */
+	report: EditReport,
 };
 
 /**
@@ -520,6 +530,14 @@ export type DeletePresetOutput = {
 	id: string,
 };
 
+/**  Result of `timeline.ripple_delete`. */
+export type DeletedOutput = {
+	/**  Every deleted item: the requested ones in request order, then their linked partners. */
+	deleted: ItemId[],
+	/**  What changed (timeline spec §3.1). */
+	report: EditReport,
+};
+
 /**
  *  A change of the live document, broadcast in revision order (`doc.patched`, arch §5.1).
  * 
@@ -559,6 +577,14 @@ export type DocReset = {
 	prev_rev: Rev,
 	/**  The last committed revision. */
 	committed_rev: Rev,
+};
+
+/**  One copy. */
+export type DuplicatedItem = {
+	/**  The copied item. */
+	source: ItemId,
+	/**  Its copy. */
+	copy: ItemId,
 };
 
 /**
@@ -1177,9 +1203,11 @@ export type Item =
 } & Clip;
 
 /**
- *  Deletes items and their linked partners. Gaps stay (no ripple). All or nothing: if any
- *  affected track is locked the call fails with `Locked` and nothing is deleted. Unknown items
- *  are `NotFound`; repeated IDs are deleted once.
+ *  Deletes items and their linked partners. On free tracks the space stays; on the magnetic
+ *  main track it closes (what follows moves left, and the tracks of its linked partners
+ *  follow). Children attached to a deleted item are detached and keep their place. All or
+ *  nothing: if the edit would change a locked track it fails with `Locked`. Unknown items are
+ *  `NotFound`; repeated IDs are deleted once; all items must be in one sequence.
  */
 export type ItemDelete = {
 	/**  The items to delete, at least one. */
@@ -1190,6 +1218,40 @@ export type ItemDelete = {
 export type ItemDeleteOutput = {
 	/**  Every deleted item: the requested ones in request order, then their linked partners. */
 	deleted: ItemId[],
+	/**  What changed (timeline spec §3.1). */
+	report: EditReport,
+};
+
+/**
+ *  Duplicates items and their linked partners. Each copy goes to its original's track at its
+ *  start plus `offset` (default: the selection's span, so the copies follow the originals);
+ *  each copied group becomes a new group, markers get new IDs. Copies of magnetic main-track
+ *  items are inserted as one block right after the last copied one (`offset` is not allowed
+ *  then). A copied child stays attached to the copy of its parent when that was copied too,
+ *  to its original parent when the copy still starts inside it, and is detached otherwise.
+ *  Overlaps on free tracks are `Invalid` by default; `mode` picks `new_track`, `overwrite` or
+ *  `insert`.
+ */
+export type ItemDuplicate = {
+	/**  The items to copy, at least one, of one sequence. */
+	items: ItemId[],
+	/**
+	 *  Where the copies go relative to the originals (default: the selection's span; not
+	 *  allowed for magnetic main-track items).
+	 */
+	offset?: TimeInput | null,
+	/**  Placement mode for the copies (default `insert` with main-track items, else `reject`). */
+	mode?: PlacementMode | null,
+};
+
+/**  Result of `item.duplicate`. */
+export type ItemDuplicateOutput = {
+	/**  The copies: the given items in order, each followed by its linked partners. */
+	copies: DuplicatedItem[],
+	/**  Tracks created by the placement, in creation order. */
+	created_tracks: TrackId[],
+	/**  What changed (timeline spec §3.1). */
+	report: EditReport,
 };
 
 /**
@@ -1231,32 +1293,47 @@ export type ItemGetOutput = {
 export type ItemId = string & { readonly __brand: "ItemId" };
 
 /**
- *  Moves an item to a new start, optionally onto another track of the same kind and sequence.
- *  The item's linked partners move by the same amount on their own tracks (`unlink: true`
- *  moves only this item and removes it from its group). Overlap is `Invalid{path:"/start"}`
- *  by default; `overlap: "new_track"` puts the item on a new track directly above the target.
- *  `Locked` if the source, the target or a partner's track is locked. `start` is snapped to
- *  the sequence's frame grid and must be `>= 0`.
+ *  Moves items to a new start (`start`, or `delta` from where the first one is), optionally
+ *  onto another track of the same kind and sequence. Give `item`, or `items` (the first is the
+ *  primary; the others keep their offsets to it). Linked partners move by the same amount on
+ *  their own tracks (`unlink: true` moves only the given items and takes them out of their
+ *  groups). On the magnetic main track the space an item leaves closes, and an item moved onto
+ *  it is inserted (default; the start is read after the lift and clamped to the track's end).
+ *  Elsewhere an overlap is `Invalid` by default; `mode` (or its alias `overlap`) picks
+ *  `new_track`, `overwrite` or `insert`. Children attached to a moved item follow it. Times
+ *  snap to the frame grid (`fine: true`: the audio sample grid, audio-only moves).
  */
 export type ItemMove = {
-	/**  The item. */
-	item: ItemId,
-	/**  New timeline position of the item's first frame, `>= 0`. */
-	start: TimeInput,
-	/**  Target track of the same sequence and kind (default: stay on the current track). */
+	/**  The item (or `items`). */
+	item?: ItemId | null,
+	/**  Items; the first leads. */
+	items?: ItemId[] | null,
+	/**  New start, `>= 0` (or `delta`). */
+	start?: TimeInput | null,
+	/**  Offset of the start. */
+	delta?: TimeInput | null,
+	/**  Target track (default: stay). */
 	to_track?: TrackId | null,
-	/**  Move only this item and remove it from its linked group (default `false`). */
+	/**  Move only the given items, unlinked. */
 	unlink?: boolean | null,
-	/**  Overlap handling (default `reject`). */
+	/**  Alias of `mode`. */
 	overlap?: OverlapPolicy | null,
+	/**  Default: `insert` on the main track, else `reject`. */
+	mode?: PlacementMode | null,
+	/**  Ripples reach every track. */
+	ripple_all_tracks?: boolean | null,
+	/**  Audio sample grid. */
+	fine?: boolean | null,
 };
 
 /**  Result of `item.move`. */
 export type ItemMoveOutput = {
-	/**  The moved items: the requested one first, then its linked partners. */
+	/**  The moved items: the given ones in order, each followed by its linked partners. */
 	items: MovedItem[],
-	/**  Tracks created by `overlap: "new_track"`, in creation order. */
+	/**  Tracks created by the placement, in creation order. */
 	created_tracks: TrackId[],
+	/**  What changed (timeline spec §3.1). */
+	report: EditReport,
 };
 
 /**  Item properties to change: absent fields keep their value. */
@@ -1908,12 +1985,13 @@ export type MovedReport = {
 	start: Time,
 };
 
-/**  What to do when the clip would overlap another clip on the target track. */
-export type OverlapPolicy = 
-/**  Fail with `Invalid{path:"/at"}` (default). */
-"reject" | 
-/**  Create a new track of the same kind directly above the target and insert there. */
-"new_track";
+/**
+ *  What to do when an item would overlap another one on its target track: the P1 `overlap`
+ *  param, an alias of the placement `mode` (spec INV-40). `reject` fails with `Invalid`
+ *  (default on free tracks); `new_track` places on a new track of the same kind directly above
+ *  the target.
+ */
+export type OverlapPolicy = "reject" | "new_track";
 
 /**  An ordered list of [`PatchOp`]s, applied first to last. Serialized as a JSON array. */
 export type Patch = PatchOp[];
@@ -1975,6 +2053,20 @@ path: string };
  *  refuses `serde_json::Value`'s 64-bit integers). Only its type definition is used.
  */
 export type PatchValue = null | boolean | number | string | PatchValue[] | { [key in string]: PatchValue };
+
+/**
+ *  How a placement treats what is already on the target range (timeline spec §3.6):
+ * 
+ *  - `insert`: split the item under the start, ripple the rest of the track (and its partners'
+ *    tracks) later by the placed length, then place (default on the magnetic main track);
+ *  - `overwrite`: cut the range out of the track (trimming or splitting what is there), then
+ *    place; nothing ripples;
+ *  - `new_track`: place on the target track if the range is free, otherwise on a new track of
+ *    the same kind directly above it;
+ *  - `reject`: place if the range is free, otherwise fail with `Invalid` naming the item in the
+ *    way (default on free tracks).
+ */
+export type PlacementMode = "insert" | "overwrite" | "new_track" | "reject";
 
 /**  Where a platform preset's numbers come from. */
 export type PlatformInfo = {
@@ -2964,6 +3056,51 @@ export type TimelineClearInOutOutput = {
 };
 
 /**
+ *  Closes the gap of a track that contains `at`: the items from the gap's end on move left by
+ *  its length, and so do the tracks of linked partners of what moves (or every track with
+ *  `ripple_all_tracks`). A gap is the empty space between two items, or before the first one;
+ *  `at` inside an item or after the last one is `Invalid` (the magnetic main track has no
+ *  gaps). Fails with `Invalid` if the shift would make items overlap, and with `Locked` if it
+ *  would change a locked track.
+ */
+export type TimelineDeleteGap = {
+	/**  The track. */
+	track: TrackId,
+	/**  A time inside the gap. */
+	at: TimeInput,
+	/**
+	 *  Shift every track of the sequence, not only this one and its partners' tracks (default
+	 *  `false`).
+	 */
+	ripple_all_tracks?: boolean | null,
+};
+
+/**  Result of `timeline.delete_gap`. */
+export type TimelineDeleteGapOutput = {
+	/**  The gap that was closed. */
+	gap: UsedRange,
+	/**  What changed (timeline spec §3.1). */
+	report: EditReport,
+};
+
+/**
+ *  Extracts time ranges: cuts them out of the tracks like `timeline.lift`, then closes them on
+ *  every target track: whatever starts at or after a range end moves left by the length of the
+ *  ranges before it, and so do the tracks of linked partners of what moves. `ranges` default to
+ *  the sequence in/out range, `tracks` to every track. Fails with `Locked` if it would change
+ *  a locked track, and with `Invalid` if the shift would make items overlap or move the
+ *  magnetic main track when it is not a target.
+ */
+export type TimelineExtract = {
+	/**  The sequence. */
+	sequence: SequenceId,
+	/**  The ranges to cut (default: the sequence in/out range). */
+	ranges?: TimelineRange[] | null,
+	/**  The tracks to cut on (default: every track of the sequence). */
+	tracks?: TrackId[] | null,
+};
+
+/**
  *  Reads a sequence in layers: `depth` 0 is the sequence summary, 1 adds its tracks (summaries
  *  only, small), 2 adds every item. `fields` limits the sections returned (`name`, `format`,
  *  `duration`, `tracks`); the id and the counts are always included.
@@ -3000,39 +3137,43 @@ export type TimelineGetOutput = {
 
 /**
  *  Inserts a media clip on a track at a time. `source_in` is the position in the media the clip
- *  starts from and `duration` its length (defaults: the start of the media and the rest of it;
- *  stills default to five seconds). Times accept flicks, `"1.5s"`, `"f:45"` and timecodes,
- *  resolved against the sequence's frame rate. `at` and `duration` snap to the frame grid
- *  (nearest frame, ties later; at least one frame) and the result states the values used;
- *  `source_in` is a position in the media and is not snapped, nor is a default duration
- *  (the rest of the media, or five seconds for a still). See the module docs for overlap and linked
- *  audio behaviour. Fails with `Locked` if the target track is locked.
+ *  starts from and `duration` its length (defaults: the start of the media and the rest of it,
+ *  floored to whole frames; stills last five seconds). Times accept flicks, `"1.5s"`, `"f:45"`
+ *  and timecodes, snapped to the sequence's frame grid (the result states the values used;
+ *  `source_in` is a media position and is not snapped). `mode` decides what happens to what is
+ *  already there: `insert` (default on the magnetic main track) splits and ripples, `overwrite`
+ *  cuts the range out, `new_track` goes to a new track above, `reject` (default elsewhere)
+ *  fails; `overlap` is the P1 alias of `mode`. A video with sound also places its audio,
+ *  linked. Fails with `Locked` if the placement would change a locked track.
  */
 export type TimelineInsert = {
 	/**  The sequence. */
 	sequence: SequenceId,
-	/**
-	 *  The target track (of that sequence): a video track for pictures, an audio track for
-	 *  sound.
-	 */
+	/**  The target track: video for pictures, audio for sound. */
 	track: TrackId,
 	/**  The media to place. */
 	media: MediaId,
-	/**  Timeline position of the clip's first frame, `>= 0` (snapped to the frame grid). */
+	/**  Timeline position of the clip's first frame, `>= 0`. */
 	at: TimeInput,
 	/**  Position in the media to start from (default 0). */
 	source_in?: TimeInput | null,
-	/**  Clip length, `> 0` (snapped to whole frames, at least one). */
+	/**  Clip length, `> 0` (default: the rest of the media). */
 	duration?: TimeInput | null,
-	/**  Overlap handling (default `reject`). */
+	/**  Alias of `mode`. */
 	overlap?: OverlapPolicy | null,
-	/**  Also insert the audio of a video file as a linked clip (default `true`). */
+	/**  Also place a video's sound, linked (default `true`). */
 	link?: boolean | null,
+	/**  Default: `insert` on the main track, else `reject`. */
+	mode?: PlacementMode | null,
+	/**  Track for the linked sound. */
+	audio_track?: TrackId | null,
+	/**  `insert` ripples every track. */
+	ripple_all_tracks?: boolean | null,
 };
 
-/**  Result of `timeline.insert`. */
+/**  Result of `timeline.insert` and `timeline.overwrite`. */
 export type TimelineInsertOutput = {
-	/**  The start that was used, snapped to the frame grid. */
+	/**  The start that was used: snapped to the frame grid, clamped on the magnetic track. */
 	at: Time,
 	/**  The clip length that was used, a whole number of frames. */
 	duration: Duration,
@@ -3040,8 +3181,27 @@ export type TimelineInsertOutput = {
 	clips: ItemId[],
 	/**  The group shared by the clips when audio was linked. */
 	linked_group: GroupId | null,
-	/**  Tracks created by `overlap: "new_track"`, in creation order. */
+	/**  Tracks created by the placement, in creation order. */
 	created_tracks: TrackId[],
+	/**  What changed (timeline spec §3.1). */
+	report: EditReport,
+};
+
+/**
+ *  Lifts time ranges out of tracks and leaves the space empty: items inside a range are
+ *  removed, items across an edge are trimmed to it, an item across a whole range is split
+ *  around it, and linked partners get the same cut (also on tracks not listed). On the magnetic
+ *  main track the space closes (its partners' tracks follow). `ranges` default to the sequence
+ *  in/out range, `tracks` to every track. Fails with `Locked` if it would change a locked
+ *  track (pass `tracks` to leave one out).
+ */
+export type TimelineLift = {
+	/**  The sequence. */
+	sequence: SequenceId,
+	/**  The ranges to cut (default: the sequence in/out range). */
+	ranges?: TimelineRange[] | null,
+	/**  The tracks to cut on (default: every track of the sequence). */
+	tracks?: TrackId[] | null,
 };
 
 /**  Lists a sequence's markers and its in/out range, or the markers of one item. */
@@ -3085,6 +3245,51 @@ export type TimelineMoveMarkerOutput = {
 	previous: Time,
 };
 
+/**
+ *  Overwrites a range of a track with a media clip: `timeline.insert` with mode `overwrite`.
+ *  Whatever is under `[at, at + duration)` on the track is cut out first (items inside are
+ *  removed, items across an edge are trimmed, an item across the whole range is split around
+ *  it), and their linked partners get the same cut. Nothing ripples. On the magnetic main track
+ *  `at` is clamped to its end.
+ */
+export type TimelineOverwrite = {
+	/**  The sequence. */
+	sequence: SequenceId,
+	/**  The target track. */
+	track: TrackId,
+	/**  The media to place. */
+	media: MediaId,
+	/**  Timeline position of the clip's first frame, `>= 0`. */
+	at: TimeInput,
+	/**  Position in the media to start from (default 0). */
+	source_in?: TimeInput | null,
+	/**  Clip length, `> 0` (default: the rest of the media). */
+	duration?: TimeInput | null,
+	/**  Also place the audio of a video file as a linked clip (default `true`). */
+	link?: boolean | null,
+	/**  The audio track for the linked sound (default: the first unlocked free one). */
+	audio_track?: TrackId | null,
+};
+
+/**  A time range in the params: `[start, end)`, `end > start`. */
+export type TimelineRange = {
+	/**  Start of the range, `>= 0`. */
+	start: TimeInput,
+	/**  End of the range (exclusive), after `start`. */
+	end: TimeInput,
+};
+
+/**  Result of `timeline.lift` and `timeline.extract`. */
+export type TimelineRangesOutput = {
+	/**
+	 *  The ranges used: snapped to the frame grid, sorted, overlapping and touching ones
+	 *  merged.
+	 */
+	ranges: UsedRange[],
+	/**  What changed (timeline spec §3.1). */
+	report: EditReport,
+};
+
 /**  Removes a marker. */
 export type TimelineRemoveMarker = {
 	/**  The marker (on a sequence or on an item). */
@@ -3095,6 +3300,24 @@ export type TimelineRemoveMarker = {
 export type TimelineRemoveMarkerOutput = {
 	/**  The removed marker. */
 	marker: MarkerId,
+};
+
+/**
+ *  Deletes items and their linked partners and closes the space each given item leaves on its
+ *  track: what follows on that track moves left by the length deleted before it, and so do the
+ *  tracks of linked partners of what moves (or every track with `ripple_all_tracks`). All given
+ *  items must be on one track; gaps that were already there stay. Fails with `Invalid` if the
+ *  shift would make items overlap on a rippled track, and with `Locked` if it would change a
+ *  locked track. On the magnetic main track it is the same as `item.delete`.
+ */
+export type TimelineRippleDelete = {
+	/**  The items to delete, at least one, all on one track. */
+	items: ItemId[],
+	/**
+	 *  Shift every track of the sequence, not only the item's track and its partners' tracks
+	 *  (default `false`).
+	 */
+	ripple_all_tracks?: boolean | null,
 };
 
 /**
@@ -3670,6 +3893,14 @@ export type Undo = {
 	 *  recent change by anyone. Default: the caller's own.
 	 */
 	actor?: HistoryScope | null,
+};
+
+/**  A time range of a sequence, as used: `[start, end)` on the frame grid. */
+export type UsedRange = {
+	/**  First frame of the range. */
+	start: Time,
+	/**  End of the range (exclusive). */
+	end: Time,
 };
 
 /**  A 2D vector (positions, scales, anchors). */

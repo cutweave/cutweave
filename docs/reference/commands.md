@@ -2,7 +2,7 @@
 
 # Command reference
 
-Every command and query the engine registers (71 in total), generated from the registry. The full JSON Schemas are in `schema/commands.json` and `schema/queries.json`.
+Every command and query the engine registers (77 in total), generated from the registry. The full JSON Schemas are in `schema/commands.json` and `schema/queries.json`.
 
 MCP exposure: `core` commands are always listed as tools (`item.move` is `item_move`), `catalog` ones are reachable through the catalog tools, `hidden` ones are not exposed.
 
@@ -26,9 +26,10 @@ MCP exposure: `core` commands are always listed as tools (`item.move` is `item_m
 | export | `export.resolve_preset` | Show what an export preset does to a sequence (size, rate, warnings) without exporting | engine, read-only, idempotent | catalog |
 | export | `export.save_preset` | Save your own export preset (replaces your preset with the same id) | engine, idempotent | catalog |
 | export | `export.start` | Export a sequence to an MP4 file (H.264 + AAC) as a background job; returns job_id | engine, destructive | core |
-| item | `item.delete` | Delete items and their linked partners (no ripple; fails if a track is locked) | command, undoable, destructive | core |
+| item | `item.delete` | Delete items and their linked partners (the main track closes up) | command, undoable, destructive | core |
+| item | `item.duplicate` | Duplicate items and their linked partners after the selection (inserted on the main track) | command, undoable | catalog |
 | item | `item.get` | Get one item: summary, track, source, audio and visual properties | query | catalog |
-| item | `item.move` | Move an item in time and/or to another track (linked partners follow) | command, undoable, idempotent | core |
+| item | `item.move` | Move items in time and/or to another track (linked partners follow) | command, undoable | core |
 | item | `item.set_props` | Set an item's name, enabled, opacity, audio_gain or transform (partial) | command, undoable, idempotent | core |
 | job | `job.cancel` | Cancel a background job (stops within 500 ms; no effect once it finished) | engine, idempotent | catalog |
 | job | `job.list` | List background jobs, newest first (filter by media, state or kind) | engine, read-only, idempotent | catalog |
@@ -61,11 +62,16 @@ MCP exposure: `core` commands are always listed as tools (`item.move` is `item_m
 | project | `project.set_autosave` | Set whether, how often and with how many backups the engine autosaves | engine, idempotent, ui-only | catalog |
 | timeline | `timeline.add_marker` | Add a marker (or range marker) to a sequence or one of its items | command, undoable | catalog |
 | timeline | `timeline.clear_in_out` | Clear the sequence's in and out points | command, undoable, idempotent | catalog |
+| timeline | `timeline.delete_gap` | Close the gap of a track at a time (what follows moves left; partners follow) | command, undoable | catalog |
+| timeline | `timeline.extract` | Cut time ranges out of tracks and close them (ripple) | command, undoable, destructive | catalog |
 | timeline | `timeline.get` | Get a sequence: summary (depth 0), tracks (1) or tracks with items (2) | query | core |
 | timeline | `timeline.insert` | Insert a media clip at a time on a track (adds linked audio for video with sound) | command, undoable | core |
+| timeline | `timeline.lift` | Cut time ranges out of tracks, leaving gaps (the magnetic main track closes) | command, undoable, destructive | catalog |
 | timeline | `timeline.list_markers` | List the markers of a sequence (with its in/out range) or of one item | query | catalog |
 | timeline | `timeline.move_marker` | Move a marker to another time | command, undoable, idempotent | catalog |
+| timeline | `timeline.overwrite` | Place a media clip over a range of a track, cutting out what is there | command, undoable, destructive | catalog |
 | timeline | `timeline.remove_marker` | Remove a marker | command, undoable, destructive | catalog |
+| timeline | `timeline.ripple_delete` | Delete items on one track and close the space they leave (partners follow) | command, undoable, destructive | catalog |
 | timeline | `timeline.set_in_out` | Set the sequence's in and out points | command, undoable, idempotent | catalog |
 | track | `track.add` | Add an empty video or audio track to a sequence | command, undoable | catalog |
 | track | `track.list` | List a sequence's tracks (flags, height, item counts) top to bottom | query | catalog |

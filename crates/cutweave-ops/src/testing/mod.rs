@@ -41,7 +41,7 @@ mod invariants;
 mod mirror;
 mod strategies;
 
-pub use invariants::{check_invariants, check_linked_edit};
+pub use invariants::{check_edit_report, check_invariants, check_linked_edit};
 pub use mirror::{JsonMirror, ReplayError, replay_events};
 pub use strategies::{
     AGENT_LABEL, BROKEN_IMPORT_PATH, CHECKPOINT_NAMES, EXPORT_FILE_NAME, EXPORT_JOB_ID,

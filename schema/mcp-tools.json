@@ -58,19 +58,19 @@
         "readOnlyHint": false
       },
       "command": "item.delete",
-      "description": "Delete items and their linked partners (no ripple; fails if a track is locked)",
+      "description": "Delete items and their linked partners (the main track closes up)",
       "kind": "command",
       "name": "item_delete"
     },
     {
       "annotations": {
         "destructiveHint": false,
-        "idempotentHint": true,
+        "idempotentHint": false,
         "openWorldHint": false,
         "readOnlyHint": false
       },
       "command": "item.move",
-      "description": "Move an item in time and/or to another track (linked partners follow)",
+      "description": "Move items in time and/or to another track (linked partners follow)",
       "kind": "command",
       "name": "item_move"
     },
