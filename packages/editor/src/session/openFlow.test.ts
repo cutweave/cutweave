@@ -7,6 +7,7 @@
 import { RpcError } from "@cutweave/protocol";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { docStore } from "../state/docStore.ts";
+import { toastStore } from "../state/toastStore.ts";
 import { createFakeEngine, type FakeEngine } from "../testing/fakeEngine.ts";
 import { EMPTY_STACKS, initialSessionState, sessionStore } from "./sessionStore.ts";
 import { sessionUiStore, type UnsavedChoice } from "./sessionUiStore.ts";
@@ -46,6 +47,7 @@ beforeEach(() => {
   });
   sessionUiStore.setState({ unsaved: null, naming: null, recent: [], busy: false });
   docStore.setState({ status: "empty", rev: 0, committedRev: 0, project: null });
+  toastStore.getState().clear();
   resetProjectController();
   engine.answer("project.open", () => opened);
 });
@@ -111,5 +113,6 @@ describe("File > Open with unsaved changes", () => {
     expect(await flow).toBe(false);
     expect(opens()).toEqual([{ path: "C:\\p\\Other" }]);
     expect(sessionStore.getState().name).toBe("Film");
+    expect(toastStore.getState().notices).toEqual([]);
   });
 });
