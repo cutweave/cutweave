@@ -37,9 +37,11 @@
 //!
 //! # IDs (INV-23)
 //!
-//! An `Edit` draws new IDs only through [`Ids`], in the order its phases need them: a split or
-//! a spanning cut draws the right halves' group (when linked) and then the right halves in
-//! member order; a new track draws its ID when it is created. Each command documents its order.
+//! An `Edit` draws new IDs only through [`Edit::mint`], in the order its phases need them: a
+//! split or a spanning cut draws the right halves' group (when linked) and then the right halves
+//! in member order; a new track draws its ID when it is created. Each command documents its
+//! order. `finish` refuses an item or track ID that is already in use (a seeded generator
+//! restarted on a saved document would otherwise overwrite an item).
 
 use std::collections::{BTreeMap, BTreeSet};
 
