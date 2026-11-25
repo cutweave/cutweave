@@ -4,14 +4,19 @@
 //! ```text
 //! segment := MAGIC frame*                      MAGIC = "CWJRNL" 0x00 0x01
 //! frame   := len:u32le payload[len] crc:u32le   crc = CRC-32(len bytes ++ payload)
-//! payload := UTF-8 JSON object, {"type": "header" | "carry" | "commit", ...}
+//! payload := UTF-8 JSON object, {"type": "header" | "carry" | "commit" | "checkpoint", ...}
 //! ```
 //!
 //! The first frame of a segment is its [`SegmentHeader`]; a [`Carry`] may follow; every other
-//! frame is one committed transaction ([`CommitEntry`]). The checksum covers the length too, so
-//! a torn or bit-flipped length is detected like a torn payload.
+//! frame is one committed transaction ([`CommitEntry`]) or a change of the checkpoints
+//! ([`CheckpointEntry`], WP-2I.03). The checksum covers the length too, so a torn or
+//! bit-flipped length is detected like a torn payload. Entries of an unknown type (written by a
+//! newer engine) are skipped.
 
-use cutweave_commands::{CommitRecord, DedupRecord, JournaledCommit, Rev, WallTime};
+use cutweave_commands::{
+    CheckpointInfo, CheckpointRecord, CommitRecord, DedupRecord, JournaledCheckpoint,
+    JournaledCommit, Patch, Rev, WallTime,
+};
 use serde::{Deserialize, Serialize};
 
 use super::{JournalError, crc::crc32, ids::IdState};
@@ -19,8 +24,9 @@ use super::{JournalError, crc::crc32, ids::IdState};
 /// The first bytes of every segment file.
 pub(crate) const MAGIC: &[u8; 8] = b"CWJRNL\x00\x01";
 
-/// The current format version (in every [`SegmentHeader`]).
-pub const FORMAT_VERSION: u32 = 1;
+/// The current format version (in every [`SegmentHeader`]). Version 2 (WP-2I.03) adds
+/// checkpoint entries and the carried checkpoints; it reads version 1 segments unchanged.
+pub const FORMAT_VERSION: u32 = 2;
 
 /// The first entry of a segment: what it builds on.
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
@@ -44,12 +50,44 @@ pub struct SegmentHeader {
     pub ids: Option<IdState>,
 }
 
-/// Requests remembered across a save: the dedup records of transactions folded into the saved
-/// document that are still inside the dedup window when the segment starts (arch §5.1).
+/// What a new segment carries over from before the save it starts with: the dedup records of
+/// transactions folded into the saved document that are still inside the dedup window (arch
+/// §5.1), and the checkpoints made before the save (WP-2I.03), each as the patch that turns the
+/// saved document into the checkpointed one.
 #[derive(Clone, Debug, Default, PartialEq, Serialize, Deserialize)]
 pub struct Carry {
     /// The remembered requests.
     pub requests: Vec<DedupRecord>,
+    /// The checkpoints made before the save.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub checkpoints: Vec<CarriedCheckpoint>,
+    /// The highest checkpoint number issued so far (numbers are never reused).
+    #[serde(default, skip_serializing_if = "is_zero")]
+    pub checkpoints_issued: u64,
+}
+
+#[allow(clippy::trivially_copy_pass_by_ref)] // serde's `skip_serializing_if` passes a reference
+const fn is_zero(n: &u64) -> bool {
+    *n == 0
+}
+
+impl Carry {
+    /// Whether there is nothing to carry.
+    #[must_use]
+    pub fn is_empty(&self) -> bool {
+        self.requests.is_empty() && self.checkpoints.is_empty() && self.checkpoints_issued == 0
+    }
+}
+
+/// A checkpoint carried over a save (WP-2I.03).
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+pub struct CarriedCheckpoint {
+    /// Its metadata.
+    #[serde(flatten)]
+    pub info: CheckpointInfo,
+    /// The ops that turn the segment's base document (the saved one) into the checkpointed
+    /// document.
+    pub patch: Patch,
 }
 
 /// One committed transaction.
@@ -62,6 +100,18 @@ pub struct CommitEntry {
     pub ids: Option<IdState>,
 }
 
+/// One change of the checkpoints (WP-2I.03): the checkpoint made (its metadata; replay rebuilds
+/// its document at `rev`) and the ones removed.
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+pub struct CheckpointEntry {
+    /// The change as the doc actor made it.
+    pub checkpoint: JournaledCheckpoint,
+    /// The deterministic id generators' positions right after it (`--deterministic-ids`
+    /// only): its request id may have come from them.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub ids: Option<IdState>,
+}
+
 /// A decoded entry.
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 #[serde(tag = "type", rename_all = "snake_case")]
@@ -69,6 +119,10 @@ pub(crate) enum Entry {
     Header(SegmentHeader),
     Carry(Carry),
     Commit(Box<CommitEntry>),
+    Checkpoint(Box<CheckpointEntry>),
+    /// An entry type this version does not know (a newer engine wrote it): skipped.
+    #[serde(other)]
+    Unknown,
 }
 
 /// The borrowed form of a commit entry, serialized on the hot path without copying the record.
@@ -77,6 +131,17 @@ pub(crate) enum Entry {
 enum CommitRef<'a> {
     Commit {
         commit: &'a CommitRecord<'a>,
+        #[serde(skip_serializing_if = "Option::is_none")]
+        ids: Option<IdState>,
+    },
+}
+
+/// The borrowed form of a checkpoint entry.
+#[derive(Serialize)]
+#[serde(tag = "type", rename_all = "snake_case")]
+enum CheckpointRef<'a> {
+    Checkpoint {
+        checkpoint: &'a CheckpointRecord<'a>,
         #[serde(skip_serializing_if = "Option::is_none")]
         ids: Option<IdState>,
     },
@@ -108,6 +173,21 @@ pub(crate) fn commit_frame(
 ) -> Result<Vec<u8>, JournalError> {
     let payload = serde_json::to_vec(&CommitRef::Commit {
         commit: record,
+        ids,
+    })
+    .map_err(JournalError::Encode)?;
+    let mut out = Vec::new();
+    push_frame(&mut out, &payload)?;
+    Ok(out)
+}
+
+/// One frame holding the checkpoint change `record`.
+pub(crate) fn checkpoint_frame(
+    record: &CheckpointRecord<'_>,
+    ids: Option<IdState>,
+) -> Result<Vec<u8>, JournalError> {
+    let payload = serde_json::to_vec(&CheckpointRef::Checkpoint {
+        checkpoint: record,
         ids,
     })
     .map_err(JournalError::Encode)?;
@@ -262,6 +342,23 @@ mod tests {
             matches!(&entries[0].entry, Entry::Header(h) if h.base_rev == Rev(7) && h.seed == Some(42))
         );
         assert_eq!(entries[1].end, bytes.len() as u64);
+    }
+
+    #[test]
+    fn entries_of_unknown_types_are_skipped_not_corruption() {
+        let mut bytes = segment();
+        push_frame(&mut bytes, br#"{"type":"from_the_future","x":1}"#).unwrap();
+        let (entries, stop) = decode_segment(&bytes);
+        assert_eq!(stop, None);
+        assert_eq!(entries[2].entry, Entry::Unknown);
+    }
+
+    #[test]
+    fn carries_without_checkpoints_read_as_version_1_wrote_them() {
+        let carry: Carry = serde_json::from_str(r#"{"requests": []}"#).unwrap();
+        assert!(carry.is_empty());
+        let json = serde_json::to_value(Entry::Carry(Carry::default())).unwrap();
+        assert_eq!(json, serde_json::json!({"type": "carry", "requests": []}));
     }
 
     #[test]

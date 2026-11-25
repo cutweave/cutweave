@@ -76,11 +76,15 @@ use std::path::{Path, PathBuf};
 use std::time::Duration;
 
 use cutweave_commands::{
-    Clock, DEDUP_WINDOW, DedupRecord, DocConfig, JournaledCommit, Rev, SystemClock, TxId, WallTime,
+    CheckpointLedger, Clock, DEDUP_WINDOW, DedupRecord, DocConfig, JournaledCommit, Rev,
+    SystemClock, TxId, WallTime,
 };
 use cutweave_model::Project;
 
-pub use format::{Carry, CommitEntry, FORMAT_VERSION, SegmentHeader, StopReason};
+pub use format::{
+    CarriedCheckpoint, Carry, CheckpointEntry, CommitEntry, FORMAT_VERSION, SegmentHeader,
+    StopReason,
+};
 pub use ids::{IdState, IdTracker};
 pub use scan::{RecoveryAvailable, ReplayReport, ReplayStop};
 pub use writer::{
@@ -218,6 +222,8 @@ pub struct Recovered {
     pub rev: Rev,
     /// The replayed transactions, in commit order (the undo history).
     pub commits: Vec<JournaledCommit>,
+    /// The checkpoints (WP-2I.03): carried over the last save, made and removed since.
+    pub checkpoints: CheckpointLedger,
     /// The requests to keep deduplicating (inside the window at recovery time).
     pub requests: Vec<DedupRecord>,
     /// The first transaction id the doc actor may allocate.
@@ -232,8 +238,9 @@ pub struct Recovered {
 
 impl Recovered {
     /// Applies the recovered state to `config`, which must be built over
-    /// [`project`](Self::project): revision, next transaction id, remembered requests and undo
-    /// history ([`DocConfig::with_recovered_history`]).
+    /// [`project`](Self::project): revision, next transaction id, remembered requests, undo
+    /// history ([`DocConfig::with_recovered_history`]) and checkpoints
+    /// ([`DocConfig::with_recovered_checkpoints`]).
     #[must_use]
     pub fn configure(&self, config: DocConfig) -> DocConfig {
         config
@@ -241,6 +248,7 @@ impl Recovered {
             .with_first_tx_id(self.next_tx)
             .with_restored_requests(self.requests.clone())
             .with_recovered_history(self.commits.clone())
+            .with_recovered_checkpoints(self.checkpoints.clone())
     }
 
     /// The deterministic id streams for a session with `seed`, continuing where the journal's
@@ -290,6 +298,7 @@ struct Plan {
     preserve_resume: bool,
     last_rev: Rev,
     requests: Vec<DedupRecord>,
+    checkpoints: CheckpointLedger,
 }
 
 /// A project's journal between opening the project and starting the journal: the scan, the
@@ -343,11 +352,13 @@ impl PendingJournal {
                 preserve_resume: false,
                 last_rev: Rev::ZERO,
                 requests: Vec::new(),
+                checkpoints: CheckpointLedger::new(),
             });
             return Recovered {
                 project: base.clone(),
                 rev: Rev::ZERO,
                 commits: Vec::new(),
+                checkpoints: CheckpointLedger::new(),
                 requests: Vec::new(),
                 next_tx: TxId::new(1),
                 ids: None,
@@ -359,6 +370,7 @@ impl PendingJournal {
             project,
             rev,
             commits,
+            checkpoints,
             mut requests,
             ids,
             seed,
@@ -387,11 +399,13 @@ impl PendingJournal {
             preserve_resume: preserve,
             last_rev: rev,
             requests: requests.clone(),
+            checkpoints: checkpoints.clone(),
         });
         Recovered {
             project,
             rev,
             commits,
+            checkpoints,
             requests,
             next_tx: TxId::new(max_tx.saturating_add(1)),
             ids,
@@ -494,6 +508,7 @@ impl PendingJournal {
                         .map(|s| s.path.clone())
                         .collect(),
                     next_generation,
+                    checkpoints: plan.checkpoints,
                 }
             }
         };

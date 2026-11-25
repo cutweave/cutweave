@@ -2,7 +2,7 @@
 //! [`Journal`]: the append-only writer behind the doc actor's [`CommitSink`], its durability
 //! policy ([`SyncPolicy`], group commit on a flusher thread) and segment rotation on save.
 
-use std::collections::VecDeque;
+use std::collections::{BTreeMap, VecDeque};
 use std::fmt;
 use std::fs::{self, File, OpenOptions};
 use std::io::{self, Read, Seek, SeekFrom, Write};
@@ -12,14 +12,17 @@ use std::thread::JoinHandle;
 use std::time::{Duration, Instant};
 
 use cutweave_commands::{
-    Clock, CmdError, CommitRecord, CommitSink, DEDUP_CAPACITY, DEDUP_WINDOW, DedupRecord,
-    JournaledCommit, Registry, Rev, SystemClock, WallTime,
+    CheckpointId, CheckpointLedger, CheckpointRecord, Clock, CmdError, CommitRecord, CommitSink,
+    DEDUP_CAPACITY, DEDUP_WINDOW, DedupRecord, JournaledCommit, Patch, Registry, Rev, SystemClock,
+    WallTime, diff,
 };
+use cutweave_model::Project;
 
 use super::{
     JournalError,
     format::{
-        Carry, CommitEntry, Entry, FORMAT_VERSION, MAGIC, SegmentHeader, commit_frame, entry_frame,
+        CarriedCheckpoint, Carry, CommitEntry, Entry, FORMAT_VERSION, MAGIC, SegmentHeader,
+        checkpoint_frame, commit_frame, entry_frame,
     },
     ids::IdTracker,
 };
@@ -183,6 +186,8 @@ pub(crate) enum Start {
         chain: Vec<PathBuf>,
         retained: Vec<PathBuf>,
         next_generation: u64,
+        /// The checkpoints the recovery rebuilt (to carry over the next save).
+        checkpoints: CheckpointLedger,
     },
 }
 
@@ -305,6 +310,9 @@ struct State {
     /// Requests of recent transactions, carried into the next segment on rotation so the
     /// dedup window survives saves and restarts.
     requests: VecDeque<DedupRecord>,
+    /// The checkpoints (WP-2I.03), mirrored from their markers with their documents (shared
+    /// with the doc actor's): the ones older than a save are carried into the next segment.
+    checkpoints: CheckpointLedger,
     dirty_since: Option<Instant>,
     last_sync: Instant,
     /// Appends so far, and how many of them are known durable.
@@ -400,17 +408,57 @@ fn read_range(path: &Path, from: u64, to: u64) -> io::Result<Vec<u8>> {
     Ok(out)
 }
 
-/// The first frames of a new segment: magic, header, carried requests.
-fn segment_prefix(
-    header: &SegmentHeader,
-    requests: Vec<DedupRecord>,
-) -> Result<Vec<u8>, JournalError> {
+/// The first frames of a new segment: magic, header, what it carries over.
+fn segment_prefix(header: &SegmentHeader, carry: Carry) -> Result<Vec<u8>, JournalError> {
     let mut bytes = MAGIC.to_vec();
     bytes.extend(entry_frame(&Entry::Header(header.clone()))?);
-    if !requests.is_empty() {
-        bytes.extend(entry_frame(&Entry::Carry(Carry { requests }))?);
+    if !carry.is_empty() {
+        bytes.extend(entry_frame(&Entry::Carry(carry))?);
     }
     Ok(bytes)
+}
+
+/// The patches that turn `base` (the document a new segment starts from, at `base_rev`) into
+/// each checkpoint of `ledger` made at or before `base_rev`; a later one is in the transactions
+/// the new segment repeats, so replay rebuilds it. Already computed ones in `known` are reused.
+fn carried_patches(
+    ledger: &CheckpointLedger,
+    base_rev: Rev,
+    base: &Project,
+    known: &mut BTreeMap<CheckpointId, Option<Patch>>,
+) {
+    for entry in ledger.iter().filter(|e| e.info.rev <= base_rev) {
+        known.entry(entry.info.checkpoint).or_insert_with(|| {
+            diff(base, &entry.doc)
+                .map_err(|e| {
+                    tracing::warn!(
+                        checkpoint = %entry.info.checkpoint,
+                        error = %e,
+                        "a checkpoint cannot be carried over the save; it is lost after a restart"
+                    );
+                })
+                .ok()
+        });
+    }
+}
+
+/// The checkpoints of `ledger` to carry into a segment over `base_rev`, from `patches`.
+fn carried(
+    ledger: &CheckpointLedger,
+    base_rev: Rev,
+    patches: &BTreeMap<CheckpointId, Option<Patch>>,
+) -> Vec<CarriedCheckpoint> {
+    ledger
+        .iter()
+        .filter(|e| e.info.rev <= base_rev)
+        .filter_map(|e| {
+            let patch = patches.get(&e.info.checkpoint)?.clone()?;
+            Some(CarriedCheckpoint {
+                info: e.info.clone(),
+                patch,
+            })
+        })
+        .collect()
 }
 
 /// Creates `path` holding `bytes` (not yet synced) and opens both handles.
@@ -436,7 +484,13 @@ fn fresh_segment(
     header: SegmentHeader,
     requests: Vec<DedupRecord>,
 ) -> Result<Segment, JournalError> {
-    let bytes = segment_prefix(&header, requests)?;
+    let bytes = segment_prefix(
+        &header,
+        Carry {
+            requests,
+            ..Carry::default()
+        },
+    )?;
     let path = segment_path(dir, header.base_rev);
     let (file, sync_file) = create_segment(&path, &bytes)?;
     sync_file
@@ -492,7 +546,7 @@ impl Journal {
         config: JournalConfig,
     ) -> Result<Journal, JournalError> {
         let now = config.clock.now();
-        let (seg, chain, retained, next_generation, last_rev, requests) = match start {
+        let (seg, chain, retained, next_generation, last_rev, requests, checkpoints) = match start {
             Start::Fresh {
                 base_rev,
                 doc_sha256,
@@ -521,6 +575,7 @@ impl Journal {
                     generation + 1,
                     base_rev,
                     requests,
+                    CheckpointLedger::new(),
                 )
             }
             Start::Resume {
@@ -533,9 +588,18 @@ impl Journal {
                 chain,
                 retained,
                 next_generation,
+                checkpoints,
             } => {
                 let seg = resume_segment(path, header, valid_len, revs)?;
-                (seg, chain, retained, next_generation, last_rev, requests)
+                (
+                    seg,
+                    chain,
+                    retained,
+                    next_generation,
+                    last_rev,
+                    requests,
+                    checkpoints,
+                )
             }
         };
         let mut seg = seg;
@@ -550,6 +614,7 @@ impl Journal {
             next_generation,
             last_rev,
             requests: VecDeque::new(),
+            checkpoints,
             dirty_since: None,
             last_sync: Instant::now(),
             written: 0,
@@ -620,51 +685,48 @@ impl Journal {
                 rev: record.rev,
             });
         }
-        let offset = st.seg.len;
-        if let Err(e) = st.seg.file.write_all(&frame) {
-            // Cut a partial write off again, so later transactions stay reachable.
-            let undo = st
-                .seg
-                .file
-                .set_len(offset)
-                .and_then(|()| st.seg.file.seek(SeekFrom::Start(offset)).map(|_| ()));
-            if let Err(u) = undo {
-                st.error = Some(format!("write failed ({e}) and could not be undone ({u})"));
-            }
-            return Err(JournalError::io("append to journal", &st.seg.path, e));
-        }
-        st.seg.len += frame.len() as u64;
-        st.written += 1;
+        let offset = write_frame(&mut st, &frame)?;
         st.seg.revs.push((record.rev, offset));
         st.last_rev = record.rev;
-        st.stats.appends += 1;
-        st.stats.bytes += frame.len() as u64;
         st.remember(
             record.steps.iter().map(|s| s.record.clone()),
             now,
             shared.window,
         );
-        match shared.sync {
-            SyncPolicy::EveryCommit => {
-                if let Err(e) = st.seg.file.sync_data() {
-                    st.error = Some(format!("fdatasync failed: {e}"));
-                    return Err(JournalError::io("sync journal", &st.seg.path, e));
-                }
-                st.stats.syncs += 1;
-                st.last_sync = Instant::now();
-                st.synced = st.written;
-            }
-            SyncPolicy::Group { .. } => {
-                if st.dirty_since.is_none() {
-                    st.dirty_since = Some(Instant::now());
-                    shared.wake.notify_one();
-                }
-            }
-            SyncPolicy::Manual => {
-                st.dirty_since.get_or_insert_with(Instant::now);
-            }
+        made_durable(shared, &mut st)
+    }
+
+    /// Appends one change of the checkpoints (WP-2I.03): its marker is written to the OS
+    /// before this returns (and synced per the [`SyncPolicy`]), and the journal keeps the
+    /// checkpoint's document to carry it over the next save. On error nothing is appended.
+    pub fn append_checkpoint(&self, record: &CheckpointRecord<'_>) -> Result<(), JournalError> {
+        let shared = &self.handle.shared;
+        let ids = shared.ids.as_ref().map(IdTracker::state);
+        let frame = checkpoint_frame(record, ids)?;
+        let now = shared.clock.now();
+        let mut st = shared.lock();
+        st.writable()?;
+        if record.rev != st.last_rev {
+            // Recovery rebuilds the checkpoint at the revision the marker follows.
+            return Err(JournalError::OutOfOrder {
+                last: st.last_rev,
+                rev: record.rev,
+            });
         }
-        Ok(())
+        write_frame(&mut st, &frame)?;
+        st.checkpoints.record(record);
+        st.remember(
+            record.steps.iter().map(|s| s.record.clone()),
+            now,
+            shared.window,
+        );
+        made_durable(shared, &mut st)
+    }
+
+    /// The checkpoints the journal would carry over a save (diagnostics and tests).
+    #[must_use]
+    pub fn checkpoints(&self) -> CheckpointLedger {
+        self.handle.shared.lock().checkpoints.clone()
     }
 
     /// Makes everything appended so far durable now (`fdatasync`).
@@ -706,8 +768,23 @@ impl Journal {
     /// superseded segments after it is saved.
     ///
     /// Also clears a failure: the new segment holds every transaction since `base_rev`.
+    ///
+    /// Without the saved document the checkpoints made at or before `base_rev` cannot be
+    /// carried over (see [`rotate_over`](Self::rotate_over)); they are lost after a restart.
     pub fn rotate(&self, base_rev: Rev, doc_sha256: &str) -> Result<Rotation, JournalError> {
-        self.rotate_in(None, base_rev, doc_sha256)
+        self.rotate_in(None, base_rev, doc_sha256, None)
+    }
+
+    /// [`rotate`](Self::rotate) over the document `base` that is about to be saved (as it will
+    /// read back from disk): the checkpoints made at or before `base_rev` are carried into the
+    /// new segment as patches from it (WP-2I.03), so they survive the save.
+    pub fn rotate_over(
+        &self,
+        base_rev: Rev,
+        doc_sha256: &str,
+        base: &Project,
+    ) -> Result<Rotation, JournalError> {
+        self.rotate_in(None, base_rev, doc_sha256, Some(base))
     }
 
     /// [`rotate`](Self::rotate) into another project's journal directory (save-as), after its
@@ -719,7 +796,20 @@ impl Journal {
         doc_sha256: &str,
     ) -> Result<Rotation, JournalError> {
         fs::create_dir_all(dir).map_err(|e| JournalError::io("create directory", dir, e))?;
-        self.rotate_in(Some(dir), base_rev, doc_sha256)
+        self.rotate_in(Some(dir), base_rev, doc_sha256, None)
+    }
+
+    /// [`relocate`](Self::relocate) carrying the checkpoints, like
+    /// [`rotate_over`](Self::rotate_over).
+    pub fn relocate_over(
+        &self,
+        dir: &Path,
+        base_rev: Rev,
+        doc_sha256: &str,
+        base: &Project,
+    ) -> Result<Rotation, JournalError> {
+        fs::create_dir_all(dir).map_err(|e| JournalError::io("create directory", dir, e))?;
+        self.rotate_in(Some(dir), base_rev, doc_sha256, Some(base))
     }
 
     fn rotate_in(
@@ -727,8 +817,17 @@ impl Journal {
         target: Option<&Path>,
         base_rev: Rev,
         doc_sha256: &str,
+        base: Option<&Project>,
     ) -> Result<Rotation, JournalError> {
         let shared = &self.handle.shared;
+        // The checkpoints made before the save, as patches from the saved document: computed
+        // before taking the lock, since a diff of a much-changed document takes a while and
+        // commits wait for the lock. Ones made meanwhile are added under it.
+        let mut patches = BTreeMap::new();
+        if let Some(base) = base {
+            let ledger = shared.lock().checkpoints.clone();
+            carried_patches(&ledger, base_rev, base, &mut patches);
+        }
         let now = shared.clock.now();
         let mut st = shared.lock();
         if st.closed {
@@ -757,7 +856,22 @@ impl Journal {
         };
         st.remember(std::iter::empty(), now, shared.window);
         let requests: Vec<DedupRecord> = st.requests.iter().cloned().collect();
-        let mut bytes = segment_prefix(&header, requests)?;
+        match base {
+            Some(base) => carried_patches(&st.checkpoints, base_rev, base, &mut patches),
+            None if st.checkpoints.iter().any(|e| e.info.rev <= base_rev) => {
+                tracing::warn!(
+                    %base_rev,
+                    "journal rotated without the saved document: older checkpoints are not carried over"
+                );
+            }
+            None => {}
+        }
+        let carry = Carry {
+            requests,
+            checkpoints: carried(&st.checkpoints, base_rev, &patches),
+            checkpoints_issued: st.checkpoints.issued(),
+        };
+        let mut bytes = segment_prefix(&header, carry)?;
         let prefix = bytes.len() as u64;
         let first = st.seg.revs.partition_point(|(rev, _)| *rev <= base_rev);
         let mut revs = Vec::new();
@@ -914,6 +1028,53 @@ fn shared_now(shared: &Shared) -> WallTime {
     shared.clock.now()
 }
 
+/// Appends `frame` to the current segment; returns its offset. A failed write is cut off again
+/// so later entries stay reachable (if that fails too, the journal refuses further writes).
+fn write_frame(st: &mut State, frame: &[u8]) -> Result<u64, JournalError> {
+    let offset = st.seg.len;
+    if let Err(e) = st.seg.file.write_all(frame) {
+        let undo = st
+            .seg
+            .file
+            .set_len(offset)
+            .and_then(|()| st.seg.file.seek(SeekFrom::Start(offset)).map(|_| ()));
+        if let Err(u) = undo {
+            st.error = Some(format!("write failed ({e}) and could not be undone ({u})"));
+        }
+        return Err(JournalError::io("append to journal", &st.seg.path, e));
+    }
+    st.seg.len += frame.len() as u64;
+    st.written += 1;
+    st.stats.appends += 1;
+    st.stats.bytes += frame.len() as u64;
+    Ok(offset)
+}
+
+/// Applies the [`SyncPolicy`] after an append.
+fn made_durable(shared: &Shared, st: &mut State) -> Result<(), JournalError> {
+    match shared.sync {
+        SyncPolicy::EveryCommit => {
+            if let Err(e) = st.seg.file.sync_data() {
+                st.error = Some(format!("fdatasync failed: {e}"));
+                return Err(JournalError::io("sync journal", &st.seg.path, e));
+            }
+            st.stats.syncs += 1;
+            st.last_sync = Instant::now();
+            st.synced = st.written;
+        }
+        SyncPolicy::Group { .. } => {
+            if st.dirty_since.is_none() {
+                st.dirty_since = Some(Instant::now());
+                shared.wake.notify_one();
+            }
+        }
+        SyncPolicy::Manual => {
+            st.dirty_since.get_or_insert_with(Instant::now);
+        }
+    }
+    Ok(())
+}
+
 /// A copy of `record` with `#[secret]` params redacted, if any step still carries one.
 fn redacted_copy(
     registry: Option<&Registry>,
@@ -992,6 +1153,15 @@ impl CommitSink for JournalSink {
             tracing::error!(rev = %record.rev, error = %e, "journal write failed; the transaction was not applied");
             CmdError::internal(format!(
                 "the change could not be journaled and was not applied: {e}"
+            ))
+        })
+    }
+
+    fn checkpoint(&mut self, record: &CheckpointRecord<'_>) -> Result<(), CmdError> {
+        self.journal.append_checkpoint(record).map_err(|e| {
+            tracing::error!(rev = %record.rev, error = %e, "journal write failed; the checkpoint change was not applied");
+            CmdError::internal(format!(
+                "the checkpoint change could not be journaled and was not applied: {e}"
             ))
         })
     }
