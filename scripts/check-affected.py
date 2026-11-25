@@ -17,13 +17,23 @@ Base commit:
   * on any other branch: the merge base with `main`;
   * `--base <rev>` overrides both. Uncommitted changes are always included.
 
-Usage: python scripts/check-affected.py [--base REV] [--dry-run]
+GPU lock (optional, for a machine that runs several gates at once): with `CUTWEAVE_GPU_LOCK_FILE`
+set to a lock file, the steps that can use the graphics card (the user flows, the golden frames,
+the full gate and tests of crates that can open a GPU) run one at a time across every gate that
+uses the same file; everything else runs at once. Test steps are built first, outside the lock,
+so only the test run itself waits. `CUTWEAVE_GPU_LOCK_HELD=1` means a caller already holds the
+lock. Unset, nothing is locked.
+
+Usage: python scripts/check-affected.py [--base REV] [--dry-run] [--keep-going]
 """
 
 import argparse
 import json
+import os
 import subprocess
 import sys
+import time
+from contextlib import contextmanager
 from pathlib import PurePosixPath
 
 # Crates that must compile to wasm32 (keep in sync with xtask/src/main.rs WASM_CRATES).
@@ -50,6 +60,15 @@ FLOW_STEP = "just e2e-flows"
 GOLDEN_CRATES = {"cutweave-render", "cutweave-media", "cutweave-engine", "cutweave-cli"}
 GOLDEN_PATHS = ("testdata/golden/", "xtask/src/golden/")
 GOLDEN_STEP = "just golden"
+
+# Crates whose tests can open the GPU or a hardware decoder (wgpu, the engine's GPU thread, the
+# preview path, `cutweave render`). Their test steps take the GPU lock when one is configured.
+GPU_TEST_CRATES = {
+    "cutweave-render", "cutweave-engine", "cutweave-media", "cutweave-playback",
+    "cutweave-bridge", "cutweave-cli",
+}
+GPU_LOCK_ENV = "CUTWEAVE_GPU_LOCK_FILE"
+GPU_LOCK_HELD_ENV = "CUTWEAVE_GPU_LOCK_HELD"
 
 # Any change here can affect everything: run the full gate.
 FULL_GATE_FILES = {
@@ -224,6 +243,85 @@ def plan(files: list[str]) -> tuple[list[tuple[str, str]], str]:
     return steps, f"{len(affected)} crate(s) affected"
 
 
+def uses_gpu(cmd: str) -> bool:
+    """Whether a step can open the GPU or a hardware decoder (and so takes the GPU lock)."""
+    if cmd.startswith(FLOW_STEP) or cmd in (GOLDEN_STEP, "just check"):
+        return True
+    if cmd.startswith("cargo nextest run"):
+        words = cmd.split()
+        return "--workspace" in words or any(
+            words[i] == "-p" and words[i + 1] in GPU_TEST_CRATES for i in range(len(words) - 1)
+        )
+    return False
+
+
+def prebuild(cmd: str) -> str | None:
+    """The build part of a GPU step, run outside the lock so only the test run waits for it."""
+    if cmd.startswith("cargo nextest run"):
+        return cmd.replace("--no-tests=pass", "").strip() + " --no-run"
+    if cmd.startswith(FLOW_STEP):
+        return "just e2e-build"
+    if cmd == "just check":
+        return "cargo nextest run --workspace --no-run"
+    return None
+
+
+@contextmanager
+def gpu_lock(path: str, what: str):
+    """Holds the machine's GPU lock (a byte lock on `path`) for the duration of the block;
+    `<path>.holder` names the holder for anyone waiting."""
+    with open(path, "a+") as fh:
+        start = time.monotonic()
+        said = -1
+        while True:
+            try:
+                fh.seek(0)
+                if os.name == "nt":
+                    import msvcrt
+                    msvcrt.locking(fh.fileno(), msvcrt.LK_NBLCK, 1)
+                else:
+                    import fcntl
+                    fcntl.flock(fh.fileno(), fcntl.LOCK_EX | fcntl.LOCK_NB)
+                break
+            except OSError:
+                waited = int(time.monotonic() - start)
+                if waited // 60 != said:
+                    said = waited // 60
+                    print(f"[gpu-lock] waiting for the GPU ({waited}s)", flush=True)
+                time.sleep(5)
+        print(f"[gpu-lock] acquired after {int(time.monotonic() - start)}s", flush=True)
+        try:
+            with open(f"{path}.holder", "w", encoding="utf-8") as info:
+                info.write(f"pid {os.getpid()} since {time.strftime('%H:%M:%S')} in {os.getcwd()}: {what}")
+        except OSError:
+            pass
+        try:
+            yield
+        finally:
+            fh.seek(0)
+            if os.name == "nt":
+                import msvcrt
+                msvcrt.locking(fh.fileno(), msvcrt.LK_UNLCK, 1)
+            else:
+                import fcntl
+                fcntl.flock(fh.fileno(), fcntl.LOCK_UN)
+
+
+def run_step(cmd: str) -> bool:
+    """Runs one step; a GPU step builds first and then waits for the GPU lock when one is set."""
+    lock = os.environ.get(GPU_LOCK_ENV)
+    if not lock or os.environ.get(GPU_LOCK_HELD_ENV) == "1" or not uses_gpu(cmd):
+        return subprocess.run(cmd, shell=True).returncode == 0
+    build = prebuild(cmd)
+    if build is not None:
+        print(f"[gpu-lock] building first, outside the lock: {build}", flush=True)
+        if subprocess.run(build, shell=True).returncode != 0:
+            return False
+    with gpu_lock(lock, cmd):
+        env = {**os.environ, GPU_LOCK_HELD_ENV: "1"}
+        return subprocess.run(cmd, shell=True, env=env).returncode == 0
+
+
 def main() -> int:
     if hasattr(sys.stdout, "reconfigure"):
         sys.stdout.reconfigure(encoding="utf-8", errors="replace")
@@ -232,6 +330,7 @@ def main() -> int:
     ap.add_argument("--dry-run", action="store_true", help="print the plan without running it")
     ap.add_argument("--head", default="HEAD", help="commit to check instead of HEAD (implies --committed-only; with --dry-run, for planning past merges)")
     ap.add_argument("--committed-only", action="store_true", help="ignore uncommitted and untracked files")
+    ap.add_argument("--keep-going", action="store_true", help="run every step and report all failures at the end")
     args = ap.parse_args()
 
     if args.head != "HEAD" and not args.dry_run:
@@ -250,11 +349,18 @@ def main() -> int:
         return 0
     if args.dry_run:
         return 0
+    failed: list[str] = []
     for cmd, _ in steps:
         print(f"\n==> {cmd}", flush=True)
-        if subprocess.run(cmd, shell=True).returncode != 0:
-            print(f"\ncheck-affected: FAILED at: {cmd}", flush=True)
-            return 1
+        if not run_step(cmd):
+            if not args.keep_going:
+                print(f"\ncheck-affected: FAILED at: {cmd}", flush=True)
+                return 1
+            print(f"\ncheck-affected: step failed, continuing: {cmd}", flush=True)
+            failed.append(cmd)
+    if failed:
+        print("\ncheck-affected: FAILED steps:\n" + "\n".join(f"  - {c}" for c in failed), flush=True)
+        return 1
     print("\ncheck-affected: ok")
     return 0
 
