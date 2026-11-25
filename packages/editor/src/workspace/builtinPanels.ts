@@ -2,7 +2,9 @@
 // The built-in panels, registered once when the dock is imported. Minimum sizes come from layout
 // tokens (design/tokens.json), so no pixel literal lives here.
 import { tokenPx } from "../dock/theme.ts";
+import { HistoryPanel } from "../history/HistoryPanel.tsx";
 import { AssetBrowserPanel } from "../panels/AssetBrowserPanel.tsx";
+import "../history/index.ts";
 import { InspectorPanel } from "../panels/InspectorPanel.tsx";
 import { PreviewPanel } from "../panels/PreviewPanel.tsx";
 import { TimelinePanel } from "../panels/TimelinePanel.tsx";
@@ -36,6 +38,15 @@ export function registerBuiltinPanels(): void {
     component: TimelinePanel,
     defaultDock: { ref: null, direction: "below" },
     minSize: () => ({ height: tokenPx("--track-md") * 3 }),
+  });
+  // WP-2H.11: opens as a tab next to the Inspector, from Edit > History or View > Panels.
+  registerPanel({
+    id: "history",
+    title: "panel.history",
+    component: HistoryPanel,
+    defaultDock: { ref: "inspector", direction: "within" },
+    startClosed: true,
+    minSize: () => ({ width: tokenPx("--layer-width-sm") }),
   });
 }
 

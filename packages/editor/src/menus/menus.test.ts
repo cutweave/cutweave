@@ -7,6 +7,7 @@ import { readFileSync } from "node:fs";
 import { join } from "node:path";
 import type { MenuEntry, MenuItem, MenuSubmenu } from "@cutweave/ui";
 import { describe, expect, it, vi } from "vitest";
+import { registerHistoryCommands } from "../history/commands.ts";
 import { i18n, type TKey } from "../i18n/index.ts";
 import en from "../i18n/locales/en.json";
 import { registerPaletteCommands } from "../palette/commands.ts";
@@ -58,6 +59,7 @@ function fixtureServices(overrides: Partial<MenuServices> = {}): MenuServices {
   });
   registerBuiltinMenus(services);
   registerPaletteCommands(services);
+  registerHistoryCommands(services);
   return services;
 }
 

@@ -231,6 +231,8 @@ describe("every key handler in the editor is accounted for", () => {
   // generated into the list above or a text field's own keys, named here with the reason. A new
   // handler fails this test until it is listed in bindings.ts or named here.
   const KNOWN: Readonly<Record<string, string>> = {
+    "history/HistoryPanel.tsx":
+      "the history list's keys: Up, Down, Home and End move between rows, Enter goes to one",
     "inspector/MediaPreview.tsx":
       "a slider's own keys while it has the focus: arrows step a frame, Home, End, Page Up and Down",
     "menus/host.tsx":

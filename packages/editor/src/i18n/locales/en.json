@@ -20,6 +20,7 @@
     "barLabel": "Application menu",
     "file": "File",
     "edit": "Edit",
+    "history": "History",
     "view": "View",
     "help": "Help",
     "new": "New project…",
@@ -524,6 +525,7 @@
     "preview": "Preview",
     "inspector": "Inspector",
     "timeline": "Timeline",
+    "history": "History",
     "close": "Close panel",
     "closeNamed": "Close {{name}} panel"
   },
@@ -825,7 +827,39 @@
     "trackAdd": "Add track",
     "trackRemove": "Remove track",
     "trackSet": "Change track",
-    "restore": "Restore checkpoint"
+    "restore": "Restore checkpoint",
+    "panel": {
+      "label": "Project history",
+      "filterLabel": "Show changes by",
+      "filter": {
+        "all": "All",
+        "user": "You",
+        "agent": "Agents"
+      },
+      "you": "You",
+      "here": "Current state",
+      "emptyTitle": "No changes yet",
+      "emptyBody": "What you and agents change shows up here, and you can go back to any step.",
+      "rowLabel": "{{step}}, {{who}}, {{when}}",
+      "rowUndone": "{{step}}, {{who}}, {{when}}, undone",
+      "ago": {
+        "now": "just now",
+        "minute": "{{count}} min ago",
+        "hour": "{{count}} hr ago",
+        "day": "{{count}} d ago"
+      },
+      "stoppedTitle": "Stopped part way",
+      "dismiss": "Dismiss"
+    },
+    "menu": {
+      "rowName": "Actions for {{name}}",
+      "buttonsName": "Undo and redo actions",
+      "goTo": "Go to this step",
+      "copyLabel": "Copy label",
+      "open": "Open History…",
+      "nothingToUndo": "There is nothing to undo",
+      "nothingToRedo": "There is nothing to redo"
+    }
   },
   "projectUi": {
     "untitled": "Untitled project",

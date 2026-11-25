@@ -46,6 +46,12 @@ const MENU_IDS: ReadonlySet<string> = new Set([
   // The command palette's row surface and its row command, and its shortcut's binding id (WP-2H.04).
   "palette.row",
   "palette.run",
+  // The History panel's menus and commands (WP-2H.11).
+  "history.row",
+  "history.go_to",
+  "history.copy_label",
+  "history.open",
+  "topbar.history",
   "menu.commandPalette",
 ]);
 const referenced = new Set([...code.matchAll(KEY_LIKE)].map((m) => m[1] as string));

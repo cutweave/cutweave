@@ -1124,3 +1124,132 @@ body {
 .cw-palette__error {
   color: var(--danger);
 }
+
+/* ---------- History panel (WP-2H.11) ---------- */
+.cw-history {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  min-height: 0;
+  background: var(--surface-1);
+}
+.cw-history__tools {
+  display: flex;
+  flex: none;
+  align-items: center;
+  padding: var(--space-2) var(--space-3);
+  border-bottom: var(--border-thin) solid var(--border-subtle);
+}
+.cw-history__notice {
+  display: flex;
+  flex: none;
+  align-items: flex-start;
+  gap: var(--space-2);
+  padding: var(--space-2) var(--space-3);
+  border-bottom: var(--border-thin) solid var(--border-subtle);
+  background: var(--surface-2);
+}
+.cw-history__notice-text {
+  flex: 1;
+  min-width: 0;
+}
+.cw-history__notice p {
+  margin: 0;
+}
+.cw-history__notice .caption {
+  color: var(--text-secondary);
+  overflow-wrap: anywhere;
+}
+.cw-history__scroll {
+  flex: 1;
+  min-height: 0;
+  overflow: auto;
+}
+.cw-history__list {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+.cw-history__item,
+.cw-history__marker {
+  box-sizing: border-box;
+  height: var(--control-lg);
+}
+.cw-history__row {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  box-sizing: border-box;
+  width: 100%;
+  height: 100%;
+  padding: 0 var(--space-3);
+  border: 0;
+  background: transparent;
+  color: var(--text-primary);
+  font: inherit;
+  text-align: start;
+  cursor: pointer;
+}
+.cw-history__row:hover {
+  background: var(--surface-2);
+}
+.cw-history__row:focus-visible {
+  outline: var(--border-thick) solid var(--focus-ring);
+  outline-offset: calc(-1 * var(--border-thick));
+}
+.cw-history__row[aria-disabled="true"] {
+  cursor: progress;
+}
+.cw-history__step {
+  flex: 1 1 auto;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.cw-history__who,
+.cw-history__when {
+  flex: none;
+  color: var(--text-secondary);
+  white-space: nowrap;
+}
+.cw-history__icon {
+  flex: none;
+  color: var(--text-secondary);
+}
+/* Agent blue = AI and agent actions (design/README.md). */
+.cw-history__row[data-actor="agent"] .cw-history__icon,
+.cw-history__row[data-actor="agent"] .cw-history__who,
+.cw-history__row[data-actor="agent"] .cw-history__step {
+  color: var(--agent-text);
+}
+/* Undone changes below the marker, and rows the filter leaves out: dimmed. */
+.cw-history__row[data-state="undone"] .cw-history__step,
+.cw-history__row[data-state="undone"] .cw-history__who,
+.cw-history__row[data-state="undone"] .cw-history__when,
+.cw-history__row[data-state="undone"] .cw-history__icon,
+.cw-history__row[data-dim="true"] .cw-history__step,
+.cw-history__row[data-dim="true"] .cw-history__who,
+.cw-history__row[data-dim="true"] .cw-history__when,
+.cw-history__row[data-dim="true"] .cw-history__icon {
+  color: var(--text-muted);
+}
+.cw-history__row[data-state="undone"] .cw-history__step {
+  font-style: italic;
+}
+/* Marigold = "here": the line under the current state. */
+.cw-history__marker {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  padding: 0 var(--space-3);
+}
+.cw-history__marker-line {
+  flex: 1;
+  height: var(--border-thick);
+  background: var(--marigold);
+}
+.cw-history__marker-text {
+  flex: none;
+  color: var(--marigold-text);
+}

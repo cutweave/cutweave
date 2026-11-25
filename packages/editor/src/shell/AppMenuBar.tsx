@@ -49,7 +49,11 @@ function toEntry(entry: AppMenuEntry, deps: AppCommandDeps): MenuBarEntry {
         id: entry.command,
         label: entry.label,
         disabled: !entry.enabled,
-        onSelect: () => void runWorkspaceCommand(entry.command),
+        onSelect: () =>
+          void runWorkspaceCommand(
+            entry.command,
+            entry.panel === undefined ? {} : { panel: entry.panel },
+          ),
       };
     case "command":
       return {

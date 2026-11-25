@@ -16,7 +16,7 @@ export function applyDefaultLayout(api: DockviewApi, workspace: WorkspaceId): vo
   api.clear();
 
   const added = new Map<string, IDockviewPanel>();
-  let pending: readonly PanelDef[] = registeredPanels();
+  let pending: readonly PanelDef[] = registeredPanels().filter((p) => p.startClosed !== true);
   while (pending.length > 0) {
     const ready = pending.filter((p) => p.defaultDock.ref === null || added.has(p.defaultDock.ref));
     // A panel docked beside one that does not exist goes to the dock's edge.

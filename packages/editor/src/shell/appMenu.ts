@@ -232,9 +232,11 @@ export type AppMenuEntry =
       readonly items: AppMenuState["panels"];
     }
   | {
-      /** A `workspace.*` command (View > Reset layout). */
+      /** A `workspace.*` command (View > Reset layout, Edit > History). */
       readonly kind: "workspace";
       readonly command: string;
+      /** The panel a `workspace.open_panel` entry opens. */
+      readonly panel?: string;
       readonly label: string;
       readonly enabled: boolean;
     }
@@ -296,6 +298,13 @@ export function buildAppMenu(state: AppMenuState, t: MenuTranslate): AppMenu[] {
   const edit: AppMenuEntry[] = [
     command("undo", state.undoLabel, live && !readOnly && state.canUndo),
     command("redo", state.redoLabel, live && !readOnly && state.canRedo),
+    {
+      kind: "workspace",
+      command: "workspace.open_panel",
+      panel: "history",
+      label: t("menu.history"),
+      enabled: true,
+    },
     sep("edit-1"),
     command("cut", t("menu.cut"), true),
     command("copy", t("menu.copy"), true),
