@@ -240,6 +240,17 @@ describe("TransportController: the source target (WP-1M.15, ADR-0022)", () => {
     expect(sourceViewStore.getState().host).toBe("preview");
   });
 
+  it("a source the engine refuses (a still) leaves the host and the transport alone", async () => {
+    const s = setup();
+    s.mock.handle("view.set_source", () => {
+      throw new RpcError("invalid", "a still cannot play");
+    });
+    await s.transport.playSource(MEDIA, "inspector");
+    expect(s.sent()).toEqual([["view.set_source", { media: MEDIA }]]);
+    expect(sourceViewStore.getState().host).toBe("preview");
+    expect(s.playback.getState().source).toBeNull();
+  });
+
   it("does not restart a source that is set, and starts from a seek position", async () => {
     const s = setup();
     s.playback.getState().applyState(playingSource());

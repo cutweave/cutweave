@@ -110,7 +110,11 @@ export class TransportController {
     this.#sourceView().getState().setHost(host);
     if (playback.getState().source?.media !== media) {
       const result = await this.#call("view.set_source", { media });
-      if (result === undefined) return;
+      if (result === undefined) {
+        // Refused (a still, a removed asset): nothing is shown anywhere else.
+        this.#sourceView().getState().setHost("preview");
+        return;
+      }
       playback.getState().applyState(result);
     }
     if (from > 0) await this.seek(from);

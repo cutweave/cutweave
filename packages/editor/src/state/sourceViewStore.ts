@@ -29,11 +29,13 @@ export function usePreviewShowsSource(): boolean {
   return source && host === "preview";
 }
 
-/** Whether the Preview's picture is held while the Inspector draws the source. */
+/**
+ * Whether the Preview's picture is held while the Inspector draws the source. It holds from the
+ * moment the Inspector asks (before the engine answers `view.set_source`), or the first source
+ * frame, which the engine renders at once, would already have replaced the timeline's.
+ */
 export function usePreviewFrozen(): boolean {
-  const source = usePlaybackStore((s) => s.source !== null);
-  const host = useSourceViewStore((s) => s.host);
-  return source && host === "inspector";
+  return useSourceViewStore((s) => s.host === "inspector");
 }
 
 // A source that ends (a removed asset, another project) returns the Preview to the timeline.
