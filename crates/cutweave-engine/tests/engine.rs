@@ -144,6 +144,28 @@ fn cold_start_to_ready_with_an_empty_project_is_under_a_second() {
 }
 
 #[test]
+fn save_as_names_an_untitled_document_after_its_folder() {
+    let t = TempDir::new("saveasname");
+    let engine = Engine::start(oneshot(t.path())).unwrap();
+    let h = engine.handle();
+    let conn = h.connect(&agent("cli")).unwrap();
+    assert_eq!(must(&conn, "project.info", json!({}))["name"], "Untitled");
+    let saved = must(
+        &conn,
+        "project.save_as",
+        json!({ "path": path_str(&t.path().join("Holiday")) }),
+    );
+    assert!(
+        saved["path"]
+            .as_str()
+            .unwrap()
+            .ends_with("Holiday.cutweave")
+    );
+    assert_eq!(must(&conn, "project.info", json!({}))["name"], "Holiday");
+    assert_eq!(h.status().unwrap().name, "Holiday");
+}
+
+#[test]
 fn an_untitled_document_is_saved_as_a_project_closed_and_reopened() {
     let t = TempDir::new("saveas");
     let engine = Engine::start(oneshot(t.path())).unwrap();

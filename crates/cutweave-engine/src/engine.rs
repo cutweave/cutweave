@@ -861,8 +861,16 @@ impl Core {
         // Untitled or read-only: write a new project from the committed document and reopen
         // it journaled.
         let snap = current.handle().committed_snapshot();
+        // A document still called "Untitled" takes the name chosen for the folder; one the
+        // person named keeps its name (#165).
+        let mut doc = snap.doc.clone();
+        if doc.meta.name == session::UNTITLED
+            && let Some(name) = folder.file_name().and_then(|n| n.to_str())
+        {
+            name.clone_into(&mut doc.meta.name);
+        }
         let store =
-            ProjectStore::create(folder, &snap.doc).map_err(|e| session::io_error(&e, "/path"))?;
+            ProjectStore::create(folder, &doc).map_err(|e| session::io_error(&e, "/path"))?;
         let document = store.document_path().to_path_buf();
         store.close().map_err(|e| session::io_error(&e, "/path"))?;
         let opened = session::open_store(&document).map_err(|e| session::io_error(&e, "/path"))?;

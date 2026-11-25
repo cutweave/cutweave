@@ -95,6 +95,30 @@ test.describe("F11 engine crash mid-edit", () => {
       await editorCaughtUp(page);
       await snapshot(page, info, "after the crash");
 
+      // A drag cut short by a crash: the clip goes back and the notice says the engine restarted
+      // (#148), not that the project changed.
+      g = await timelineGeometry(page);
+      const grab = { x: xAt(g, sec(3)), y: laneY(g, "V1") };
+      await page.mouse.move(grab.x, grab.y);
+      await page.mouse.down();
+      await page.mouse.move(grab.x - 12, grab.y, { steps: 3 });
+      await page.mouse.move(grab.x - 40, grab.y, { steps: 3 });
+      await killEngine(app);
+      await expect(engineChip(page)).toHaveText("Reconnecting");
+      await page.mouse.up();
+      await expect(toast(page, "Clip not moved")).toContainText(
+        "The engine restarted, so the edit was undone. Try again.",
+      );
+      await expect(engineChip(page)).toHaveText("Engine connected");
+      await expect.poll(async () => (await engineStatus(app))?.generation).toBe(3);
+      await expect
+        .poll(async () => (await layout(page))[0]?.clips)
+        .toEqual([
+          [1.5, 4.5],
+          [6, 5.5],
+        ]);
+      await editorCaughtUp(page);
+
       // Keep editing: drag the left half 1 s earlier (clear of the toasts), then save.
       g = await timelineGeometry(page);
       await drag(

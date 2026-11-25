@@ -543,6 +543,12 @@ describe("refusal messages", () => {
         tr,
       ),
     ).toBe("The edit was interrupted and undone. Try again.");
+    expect(
+      describeRefusal(
+        new RpcError("conflict", "connection lost", undefined, { reason: "transaction_lost" }),
+        tr,
+      ),
+    ).toBe("The engine restarted, so the edit was undone. Try again.");
     expect(describeRefusal(new RpcError("invalid", "would read past the end"), tr)).toBe(
       "The engine refused the edit: would read past the end",
     );
