@@ -13,13 +13,18 @@
 //   `view.set_master_gain` or mute flag yet): mute sends 0 and keeps the volume to return to.
 // - An engine without the playback subsystem answers `not_found`: reported once, controls go
 //   quiet, seeks still move the view's playhead (which `viewSync` mirrors to the engine).
-import { type Project, RpcError } from "@cutweave/protocol";
+import { type MediaId, type Project, RpcError } from "@cutweave/protocol";
 import { frameDurationFlicks } from "@cutweave/timeline";
 import type { StoreApi } from "zustand";
 import type { EngineStoreState } from "../engine/engineStore.ts";
 import type { DocStore } from "../state/docStore.ts";
 import type { PlaybackStore } from "../state/playbackStore.ts";
 import { selectActiveSequenceId } from "../state/selectors.ts";
+import {
+  type SourceHost,
+  type SourceViewStore,
+  sourceViewStore,
+} from "../state/sourceViewStore.ts";
 import type { ViewStore } from "../state/viewStore.ts";
 
 export type ShuttleKey = "J" | "K" | "L";
@@ -50,6 +55,8 @@ export interface TransportDeps {
   readonly playback: StoreApi<PlaybackStore>;
   readonly view: StoreApi<ViewStore>;
   readonly doc: StoreApi<DocStore>;
+  /** Where the source is shown (the app's own when left out). */
+  readonly sourceView?: StoreApi<SourceViewStore>;
   /** The engine has no transport commands (the first `not_found`). */
   readonly onUnsupported?: () => void;
   readonly onError?: (error: unknown) => void;
@@ -93,12 +100,58 @@ export class TransportController {
     return this.#command("view.step", { frames: Math.trunc(frames) });
   }
 
-  /** Moves the playhead to `t` (flicks); latest wins. */
+  /**
+   * Plays `media` on its own, outside any sequence (ADR-0022): `view.set_source`, then
+   * `view.play`. `host` is the picture that shows it; `from` the position to start at (flicks,
+   * the source's own time). A source already set for `media` is not restarted.
+   */
+  async playSource(media: MediaId, host: SourceHost = "preview", from = 0): Promise<void> {
+    const { playback } = this.#deps;
+    this.#sourceView().getState().setHost(host);
+    if (playback.getState().source?.media !== media) {
+      const result = await this.#call("view.set_source", { media });
+      if (result === undefined) return;
+      playback.getState().applyState(result);
+    }
+    if (from > 0) await this.seek(from);
+    await this.play();
+  }
+
+  /**
+   * The play key of a card or the Inspector: pauses the source when `media` plays in `host`,
+   * else plays it there (moving it from the other picture without a restart).
+   */
+  toggleSource(media: MediaId, host: SourceHost = "preview", from = 0): Promise<void> {
+    const pb = this.#deps.playback.getState();
+    const here = pb.source?.media === media && this.#sourceView().getState().host === host;
+    return here && pb.playing ? this.pause() : this.playSource(media, host, from);
+  }
+
+  /** Back to the timeline: the engine plays the sequence again, at the playhead it kept. */
+  async closeSource(): Promise<void> {
+    const { playback } = this.#deps;
+    if (playback.getState().source === null) return;
+    const result = await this.#call("view.set_source", {});
+    this.#sourceView().getState().setHost("preview");
+    if (result !== undefined) playback.getState().applyState(result);
+  }
+
+  #sourceView(): StoreApi<SourceViewStore> {
+    return this.#deps.sourceView ?? sourceViewStore;
+  }
+
+  /**
+   * Moves the playhead to `t` (flicks); latest wins. While a source plays it is the source's
+   * playhead (its own time) that moves, never the timeline's.
+   */
   seek(t: number): Promise<void> {
     const at = Math.max(0, Math.round(t));
     const { playback, view } = this.#deps;
-    playback.getState().setPlayhead(at);
-    view.getState().setPlayhead(at);
+    if (playback.getState().source !== null) playback.getState().setSourcePlayhead(at);
+    else {
+      playback.getState().setPlayhead(at);
+      view.getState().setPlayhead(at);
+    }
     if (this.#deps.engine.getState().rpc === null) return Promise.resolve();
     playback.getState().setHoldPlayhead(true);
     if (this.#seeking) {
@@ -112,8 +165,12 @@ export class TransportController {
     return this.seek(0);
   }
 
-  /** The last frame of the content. */
+  /** The last frame of the content (of the source while one plays). */
   toEnd(): Promise<void> {
+    const source = this.#deps.playback.getState().source;
+    if (source !== null) {
+      return this.seek(Math.max(0, source.duration - frameDurationFlicks(source.fps)));
+    }
     const project = this.#deps.doc.getState().project;
     const end = sequenceEnd(project);
     const id = selectActiveSequenceId(project);

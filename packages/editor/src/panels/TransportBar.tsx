@@ -37,6 +37,8 @@ export function TransportBar() {
   const support = usePlaybackStore((s) => s.transport);
   const playing = usePlaybackStore((s) => s.playing);
   const quality = usePlaybackStore((s) => s.quality);
+  const source = usePlaybackStore((s) => s.source);
+  const sourcePlayhead = usePlaybackStore((s) => s.sourcePlayhead);
   const playhead = useViewStore((s) => s.playhead);
   const gain = useViewStore((s) => s.masterGain);
   const muted = useViewStore((s) => s.muted);
@@ -51,15 +53,22 @@ export function TransportBar() {
       ),
     };
   }, [project]);
-  const live = connected && hasContent && support !== "unsupported";
+  // A source plays whatever the timeline holds, and the buttons then act on it.
+  const live = connected && (hasContent || source !== null) && support !== "unsupported";
   const off = !live;
   const volume = Math.round(gain * 100);
   const playLabel = playing ? t("transport.pause") : t("transport.play");
 
   return (
     <div className="cw-transport">
-      <output className="cw-transport__time timecode-lg" aria-label={t("transport.timecode")}>
-        {formatTimecode(playhead, fps ?? ZERO_RATE, true)}
+      <output
+        className="cw-transport__time timecode-lg"
+        aria-label={t("transport.timecode")}
+        data-source={source !== null}
+      >
+        {source === null
+          ? formatTimecode(playhead, fps ?? ZERO_RATE, true)
+          : formatTimecode(sourcePlayhead, source.fps, true)}
       </output>
       <Toolbar aria-label={t("transport.label")} className="cw-transport__bar">
         <Tooltip label={t("transport.toStart")}>

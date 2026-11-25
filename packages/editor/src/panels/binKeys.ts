@@ -11,7 +11,7 @@ export type BinKeyAction =
   | "first"
   | "last"
   | "insert"
-  | "select"
+  | "play"
   | "remove"
   | "import"
   | "search";
@@ -32,7 +32,7 @@ export const BIN_KEYS: readonly BinKey[] = [
   { action: "first", key: "Home", inPanel: true },
   { action: "last", key: "End", inPanel: true },
   { action: "insert", key: "Enter", inPanel: true },
-  { action: "select", key: " ", inPanel: true },
+  { action: "play", key: " ", inPanel: true },
   { action: "remove", key: "Delete", inPanel: true },
   { action: "remove", key: "Backspace", inPanel: true },
   { action: "import", key: "i", mod: true, inPanel: false },

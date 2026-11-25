@@ -9,6 +9,7 @@ import { useDocStore } from "../state/docStore.ts";
 import { selectTimelineModel } from "../state/selectors.ts";
 import { useViewStore, viewStore } from "../state/viewStore.ts";
 import { type TimelineIntents, useTimelineIntents } from "../timeline/useTimelineIntents.ts";
+import { transportController } from "../transport/useTransport.ts";
 
 /** Lanes shown until the engine supplies tracks (WP-1M.05): one video, one audio. */
 const PLACEHOLDER_TRACKS = [
@@ -106,7 +107,12 @@ export function TimelinePanel() {
   const live = connected && hasSequence;
   const { controller } = intents;
   return (
-    <div className="cw-timeline" ref={live ? intents.keyTarget : null}>
+    // Touching the timeline leaves the Source view: the engine plays the sequence again (WP-1M.15).
+    <div
+      className="cw-timeline"
+      ref={live ? intents.keyTarget : null}
+      onPointerDownCapture={() => void transportController().closeSource()}
+    >
       <Toolbar aria-label={t("timeline.toolbarLabel")} className="cw-timeline__tools">
         <Tooltip label={t("timeline.select")}>
           <IconButton icon="mouse-pointer-2" label={t("timeline.select")} pressed disabled />

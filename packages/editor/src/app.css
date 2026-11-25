@@ -909,3 +909,74 @@ body {
   justify-content: flex-end;
   gap: var(--space-2);
 }
+
+/* ---------- Source view (WP-1M.15): a media item plays on its own in the Preview ---------- */
+.cw-preview__bar[hidden] {
+  display: none;
+}
+.cw-source__bar {
+  justify-content: flex-start;
+  min-width: 0;
+}
+.cw-source__badge {
+  flex: none;
+  padding: 0 var(--space-2);
+  border-radius: var(--radius-xs);
+  background: var(--marigold-subtle);
+  color: var(--marigold-text);
+}
+.cw-source__name {
+  flex: 1 1 auto;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.cw-source__time {
+  display: inline-flex;
+  flex: none;
+  gap: var(--space-1);
+  color: var(--text-secondary);
+}
+/* The frame is marigold ("here") while a source is shown, so it cannot be taken for the timeline. */
+.cw-preview[data-source="true"] .cw-preview__frame {
+  border-color: var(--marigold);
+  cursor: grab;
+}
+.cw-preview__stage:focus-visible {
+  outline: var(--border-thick) solid var(--focus-ring);
+  outline-offset: calc(-1 * var(--border-thick));
+}
+.cw-preview__stills {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  object-fit: contain;
+}
+/* The play button on a bin card: a pointer shortcut, on the hovered, selected or playing card. */
+.cw-media__play-slot {
+  position: absolute;
+  inset-block-start: var(--space-1);
+  inset-inline-start: var(--space-1);
+  opacity: 0;
+}
+.cw-media__card:hover .cw-media__play-slot,
+.cw-media__card[aria-selected="true"] .cw-media__play-slot,
+.cw-media__card:focus-visible .cw-media__play-slot,
+.cw-media__play-slot[data-playing="true"] {
+  opacity: 1;
+}
+.cw-media__play {
+  background: var(--scrim);
+  color: var(--text-primary);
+}
+.cw-media-preview__row {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+}
+.cw-media-preview__row .cw-media-preview__bar {
+  flex: 1 1 auto;
+  min-width: 0;
+}
