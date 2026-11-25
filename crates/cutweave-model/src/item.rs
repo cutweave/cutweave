@@ -1,14 +1,15 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 //! Timeline items (arch §4.2), restricted to schema v1: media clips with audio gain, transform
-//! and opacity. Text, captions, compositions, generators, adjustments, effects, masks and
-//! keyframes arrive in later versions.
+//! and opacity. Text, captions, compositions, generators, adjustments, effects and masks arrive
+//! in later versions; keyed property values with WP-2C.03's schema bump ([`Animatable`] lives in
+//! `animate`).
 
-use std::{borrow::Cow, convert::Infallible, fmt, marker::PhantomData};
+use schemars::JsonSchema;
+use serde::{Deserialize, Serialize};
 
-use schemars::{JsonSchema, Schema, SchemaGenerator};
-use serde::{Deserialize, Deserializer, Serialize, Serializer, de};
-
-use crate::{Custom, Duration, Extra, GroupId, ItemId, Markers, MediaId, Time, TimeError};
+use crate::{
+    Animatable, Custom, Duration, Extra, GroupId, ItemId, Markers, MediaId, Time, TimeError,
+};
 
 /// A 2D vector (positions, scales, anchors).
 #[derive(
@@ -40,138 +41,6 @@ impl Vec2 {
     #[must_use]
     pub fn is_finite(self) -> bool {
         self.x.is_finite() && self.y.is_finite()
-    }
-}
-
-/// The keyframed form of an [`Animatable`]. Keyframes are not part of schema v1, so this type
-/// has no values: code that matches on [`Animatable::Keyframes`] compiles today and is flagged
-/// by the compiler once keyframes land.
-pub struct Keyframes<T> {
-    never: Infallible,
-    _marker: PhantomData<fn() -> T>,
-}
-
-impl<T> Keyframes<T> {
-    /// Unreachable in schema v1 (the type has no values).
-    #[must_use]
-    pub fn unreachable<R>(&self) -> R {
-        match self.never {}
-    }
-}
-
-impl<T> Clone for Keyframes<T> {
-    fn clone(&self) -> Self {
-        self.unreachable()
-    }
-}
-
-impl<T> fmt::Debug for Keyframes<T> {
-    fn fmt(&self, _: &mut fmt::Formatter<'_>) -> fmt::Result {
-        self.unreachable()
-    }
-}
-
-impl<T> PartialEq for Keyframes<T> {
-    fn eq(&self, _: &Self) -> bool {
-        self.unreachable()
-    }
-}
-
-/// A property that may vary over the item's time (arch §4.2: `Static(T) | Keyframes(…)`).
-///
-/// Schema v1 only has static values: on the wire a static value is the bare `T`
-/// (`"opacity": 1.0`), and a keyframed object (`{"keyframes": [...]}`) is rejected with a clear
-/// error until keyframes are introduced.
-#[derive(Clone, Debug, PartialEq)]
-#[non_exhaustive]
-pub enum Animatable<T> {
-    /// The same value at every time.
-    Static(T),
-    /// Keyframed values (not constructible in schema v1).
-    Keyframes(Keyframes<T>),
-}
-
-impl<T> Animatable<T> {
-    /// The value at item-relative time `t`. In schema v1 every value is static.
-    #[must_use]
-    pub fn value_at(&self, _t: Time) -> &T {
-        self.value()
-    }
-
-    /// The static value (in schema v1, every value).
-    #[must_use]
-    pub fn value(&self) -> &T {
-        match self {
-            Animatable::Static(v) => v,
-            Animatable::Keyframes(k) => k.unreachable(),
-        }
-    }
-
-    /// Replaces the property with a static value.
-    pub fn set(&mut self, value: T) {
-        *self = Animatable::Static(value);
-    }
-
-    /// Whether the value changes over time.
-    #[must_use]
-    pub fn is_animated(&self) -> bool {
-        matches!(self, Animatable::Keyframes(_))
-    }
-}
-
-impl<T> From<T> for Animatable<T> {
-    fn from(value: T) -> Animatable<T> {
-        Animatable::Static(value)
-    }
-}
-
-impl<T: Default> Default for Animatable<T> {
-    fn default() -> Animatable<T> {
-        Animatable::Static(T::default())
-    }
-}
-
-impl<T: Serialize> Serialize for Animatable<T> {
-    fn serialize<S: Serializer>(&self, s: S) -> Result<S::Ok, S::Error> {
-        self.value().serialize(s)
-    }
-}
-
-impl<'de, T: de::DeserializeOwned> Deserialize<'de> for Animatable<T> {
-    fn deserialize<D: Deserializer<'de>>(d: D) -> Result<Animatable<T>, D::Error> {
-        let value = serde_json::Value::deserialize(d)?;
-        if value.get("keyframes").is_some() {
-            return Err(de::Error::custom(
-                "keyframed values are not supported by this version of Cutweave (schema v1)",
-            ));
-        }
-        T::deserialize(value)
-            .map(Animatable::Static)
-            .map_err(de::Error::custom)
-    }
-}
-
-impl<T: JsonSchema> JsonSchema for Animatable<T> {
-    fn schema_name() -> Cow<'static, str> {
-        T::schema_name()
-    }
-
-    fn schema_id() -> Cow<'static, str> {
-        T::schema_id()
-    }
-
-    fn inline_schema() -> bool {
-        T::inline_schema()
-    }
-
-    fn json_schema(generator: &mut SchemaGenerator) -> Schema {
-        T::json_schema(generator)
-    }
-}
-
-impl<T: specta::Type> specta::Type for Animatable<T> {
-    fn definition(types: &mut specta::Types) -> specta::datatype::DataType {
-        T::definition(types)
     }
 }
 
