@@ -43,6 +43,7 @@ const handlers = (): InvokeHandlers => ({
   "window:setTheme": vi.fn(),
   "window:reload": vi.fn(),
   "window:toggleDevTools": vi.fn(),
+  "window:inspectElement": vi.fn(),
   "edit:run": vi.fn(),
   "prefs:get": vi.fn(() => ({ values: {}, defaults: {} }) as never),
   "prefs:set": vi.fn(),
@@ -275,6 +276,16 @@ describe("ipc registry", () => {
     expect(h["window:toggleFullScreen"]).toHaveBeenCalledTimes(1);
     expect(h["window:reload"]).toHaveBeenCalledTimes(1);
     expect(h["window:toggleDevTools"]).toHaveBeenCalledTimes(1);
+  });
+
+  it("takes two whole page coordinates for Inspect element (WP-2H.12)", () => {
+    const h = handlers();
+    const call = register(h);
+    call("window:inspectElement", okEvent, 10, 20);
+    expect(h["window:inspectElement"]).toHaveBeenCalledWith(10, 20);
+    for (const bad of [[], [1], [1.5, 2], [-1, 2], ["1", 2], [1, 2, 3], [1e9, 2]]) {
+      expect(() => call("window:inspectElement", okEvent, ...bad)).toThrow(IpcValidationError);
+    }
   });
 
   it("accepts only a known theme and a known edit action", () => {

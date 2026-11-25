@@ -170,6 +170,7 @@ describe("createCutweaveApi", () => {
     await api.window.setTheme("light");
     await api.window.reload();
     await api.window.toggleDevTools();
+    await api.window.inspectElement(12, 34);
     await api.edit.run("paste");
     expect(vi.mocked(ipc.invoke).mock.calls).toEqual([
       ["app:about"],
@@ -178,6 +179,7 @@ describe("createCutweaveApi", () => {
       ["window:setTheme", "light"],
       ["window:reload"],
       ["window:toggleDevTools"],
+      ["window:inspectElement", 12, 34],
       ["edit:run", "paste"],
     ]);
     expect(Object.keys(api.edit)).toEqual(["run"]);

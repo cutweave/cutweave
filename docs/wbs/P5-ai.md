@@ -554,6 +554,7 @@ Highest-risk items: 5A.08 (spending-authority security), 5C.04 (Higgsfield API u
 - **Executor:** sonnet
 - **Scope:** queue list (state, progress, ETA, cancel, retry, `NeedsReview` with explanation and manual resolve), results gallery (virtualized grid; video hover-play; audio waveform players; compare variants side by side; favourite), history persisted from the jobs table across restarts, provenance drawer (model, prompt, seed, params, cost, licence, watermark, C2PA badge, parent/child links), actions: **vary**, **re-run with same seed**, **use as reference**, send to bin; filters/search.
   - Settings > Notifications: "Notify when an AI generation finishes while Cutweave is in the background" (`notify.ai_done`, on) (catalog `docs/reference/settings.md`).
+  - **Context menu (product owner request, 2026-11-25; framework WP-2H.12, plan in [09-context-menus.md](../research/09-context-menus.md)):** menus on a result tile (`ai.result`: Send to timeline, Extend clip, Fill gap, Open provenance, Copy prompt, Regenerate) and a job row (`ai.job`: Cancel, Retry, Copy error).
 - **Interfaces:** gallery and queue components; actions call `ai.*` commands.
 - **Acceptance criteria:** 500-item history scrolls at 60 fps; restart mid-job restores the queue; "vary" creates a new job from the stored recipe with the cost chip.
 - **Tests:** Vitest, Playwright with MockProvider (success, failure, cancel, needs-review).
@@ -565,6 +566,7 @@ Highest-risk items: 5A.08 (spending-authority security), 5C.04 (Higgsfield API u
 - **Size:** M
 - **Executor:** sonnet
 - **Scope:** `ai.place_result{asset, at, track|new_track, mode: insert|overwrite|replace_clip}` (undoable; marks `contains_ai`; badge on clip); drag from gallery to timeline. `ai.extend_clip{clip, seconds, model?, prompt?}`: last frame (or last N seconds) → ImageToVideo/native-extend model, result appended with optional crossfade. `ai.fill_gap{track, range}`: first/last frame from neighbouring clips → generate to the gap length; handle model duration limits by generating longer and trimming or applying a speed change (E2D), else report impossibility with the nearest option. Timeline context-menu entries; all are F1 paid commands exposed via MCP.
+  - **Context menu (product owner request, 2026-11-25; framework WP-2H.12, plan in [09-context-menus.md](../research/09-context-menus.md)):** its "timeline context menu" contribution uses WP-2H.12's `MenuContributionRegistry` on `timeline.clip` and `timeline.lane`, the same path plugins use in WP-6B.03, with the agent-variant (blue, sparkles) styling.
 - **Interfaces:** the three commands; timeline context-menu contribution.
 - **Acceptance criteria:** MockProvider: extend adds the expected clip and one undo removes only the placement; fill-gap on a 7.3 s gap with a model limited to 5 s/8 s yields a gap-exact result; costs shown before run.
 - **Tests:** unit (gap/duration solver, property tests), Playwright.

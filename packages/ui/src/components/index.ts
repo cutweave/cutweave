@@ -24,8 +24,10 @@ export {
   type MenuEntry,
   type MenuItem,
   type MenuLabel,
+  type MenuLeaf,
   type MenuProps,
   type MenuSeparator,
+  type MenuSubmenu,
 } from "./Menu.tsx";
 export {
   MenuBar,

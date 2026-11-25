@@ -28,9 +28,27 @@ import {
   zoomAround,
 } from "./viewport.ts";
 
+/** A touch or pen held this long without moving is a right-click (WP-2H.12). */
+export const LONG_PRESS_MS = 500;
+/** Moving further than this cancels the long-press. */
+export const LONG_PRESS_SLOP_PX = 8;
+
 export interface TimelinePointerEvent {
-  /** `cancel`: the browser took the pointer away (`pointercancel`); end any gesture. */
-  readonly type: "down" | "move" | "up" | "leave" | "dblclick" | "cancel";
+  /**
+   * `cancel`: the browser took the pointer away (`pointercancel`); end any gesture.
+   * `contextmenu`: the right button (or the platform's context-menu gesture) at this point; the
+   * default menu is already suppressed. `longpress`: a touch or pen held still for
+   * {@link LONG_PRESS_MS}; a `cancel` for the gesture it began precedes it.
+   */
+  readonly type:
+    | "down"
+    | "move"
+    | "up"
+    | "leave"
+    | "dblclick"
+    | "cancel"
+    | "contextmenu"
+    | "longpress";
   /** Canvas-relative CSS pixels. */
   readonly x: number;
   readonly y: number;
@@ -92,6 +110,9 @@ export class TimelineView {
   private readonly viewListeners = new Set<(s: ViewState) => void>();
   private teardown: Array<() => void> = [];
   private panning: { x: number; scrollX: number; y: number; scrollY: number } | null = null;
+  private press: { x: number; y: number; timer: ReturnType<typeof setTimeout> } | null = null;
+  /** A long-press opened the menu: the `contextmenu` event the platform adds is not a second one. */
+  private longPressed = false;
 
   constructor(
     private readonly canvas: HTMLCanvasElement,
@@ -435,7 +456,14 @@ export class TimelineView {
       for (const l of this.pointerListeners) l(ev);
     };
 
+    const endPress = (): void => {
+      if (this.press !== null) clearTimeout(this.press.timer);
+      this.press = null;
+    };
+    this.teardown.push(endPress);
+
     on("pointerdown", (e) => {
+      this.longPressed = false;
       if (e.button === 1) e.preventDefault(); // no autoscroll cursor
       if (e.button === 1 && this.options.pan !== "host") {
         // Middle button drags the timeline (built-in pan); everything else goes to the host.
@@ -450,6 +478,16 @@ export class TimelineView {
       }
       c.setPointerCapture(e.pointerId);
       emit("down", e);
+      if (e.pointerType === "touch" || e.pointerType === "pen") {
+        endPress();
+        const timer = setTimeout(() => {
+          this.press = null;
+          this.longPressed = true;
+          emit("cancel", e); // the gesture it began ends, rolled back
+          emit("longpress", e);
+        }, LONG_PRESS_MS);
+        this.press = { x: e.clientX, y: e.clientY, timer };
+      }
     });
     on("pointermove", (e) => {
       if (this.panning) {
@@ -460,9 +498,16 @@ export class TimelineView {
         });
         return;
       }
+      if (
+        this.press !== null &&
+        Math.hypot(e.clientX - this.press.x, e.clientY - this.press.y) > LONG_PRESS_SLOP_PX
+      ) {
+        endPress();
+      }
       emit("move", e);
     });
     on("pointerup", (e) => {
+      endPress();
       if (this.panning) {
         this.panning = null;
         return;
@@ -474,10 +519,17 @@ export class TimelineView {
       emit("leave", e);
     });
     on("pointercancel", (e) => {
+      endPress();
       this.panning = null;
       emit("cancel", e);
     });
     on("dblclick", (e) => emit("dblclick", e));
+    on("contextmenu", (e) => {
+      // Never the browser's menu: the host draws its own for what is under the pointer.
+      e.preventDefault();
+      if (this.longPressed) return;
+      emit("contextmenu", e);
+    });
     on(
       "wheel",
       (e) => {

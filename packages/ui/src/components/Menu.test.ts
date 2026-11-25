@@ -264,3 +264,119 @@ describe("Menu choices (checked rows, headings)", () => {
     await waitFor(() => expect(screen.queryByRole("menu")).toBeNull());
   });
 });
+
+describe("Menu submenu and disabled reason", () => {
+  const withSubmenu = (onRight: () => void): MenuEntry[] => [
+    { id: "close", label: "Close panel", onSelect: vi.fn() },
+    {
+      kind: "submenu",
+      id: "move",
+      label: "Move to",
+      items: [
+        { id: "left", label: "Left" },
+        { id: "right", label: "Right", onSelect: onRight },
+      ],
+    },
+    {
+      id: "rename",
+      label: "Rename…",
+      disabled: true,
+      disabledReason: "Select one clip to rename it",
+    },
+  ];
+  const view = (items: MenuEntry[]) =>
+    h(Menu, {
+      mode: "dropdown",
+      items,
+      "aria-label": "Panel actions",
+      children: h("button", { type: "button" }, "Open"),
+    });
+
+  it("opens a nested list with the arrow key and runs a row of it", async () => {
+    const onRight = vi.fn();
+    const user = userEvent.setup();
+    render(view(withSubmenu(onRight)));
+    await user.click(screen.getByRole("button", { name: "Open" }));
+    await screen.findByRole("menu", { name: "Panel actions" });
+    await user.keyboard("{ArrowDown}{ArrowDown}{ArrowRight}");
+    const right = await screen.findByRole("menuitem", { name: "Right" });
+    expect(screen.getByRole("menuitem", { name: "Move to" }).getAttribute("aria-haspopup")).toBe(
+      "menu",
+    );
+    await user.click(right);
+    expect(onRight).toHaveBeenCalledTimes(1);
+    await waitFor(() => expect(screen.queryByRole("menu")).toBeNull());
+  });
+
+  it("describes a disabled row by its reason", async () => {
+    const user = userEvent.setup();
+    render(view(withSubmenu(vi.fn())));
+    await user.click(screen.getByRole("button", { name: "Open" }));
+    const rename = await screen.findByRole("menuitem", { name: "Rename…" });
+    expect(rename.getAttribute("aria-disabled")).toBe("true");
+    const label = rename.querySelector("[aria-describedby]");
+    const id = label?.getAttribute("aria-describedby") ?? "";
+    expect(document.getElementById(id)?.textContent).toBe("Select one clip to rename it");
+  });
+
+  it("shows the reason as a tooltip while the row is hovered", async () => {
+    const user = userEvent.setup();
+    render(view(withSubmenu(vi.fn())));
+    await user.click(screen.getByRole("button", { name: "Open" }));
+    const rename = await screen.findByRole("menuitem", { name: "Rename…" });
+    await user.hover(rename.querySelector(".cw-menu__label") as Element);
+    const tip = await screen.findByRole("tooltip", {}, { timeout: 2000 });
+    expect(tip.textContent).toContain("Select one clip to rename it");
+  });
+});
+
+describe("Menu (point)", () => {
+  function PointHost(props: {
+    open: boolean;
+    onOpenChange?: (open: boolean) => void;
+    onCloseAutoFocus?: (e: Event) => void;
+  }) {
+    return h(
+      "div",
+      null,
+      h("button", { type: "button", id: "surface" }, "Surface"),
+      h(Menu, {
+        mode: "point",
+        open: props.open,
+        anchor: { x: 120, y: 80 },
+        items: entries(),
+        "aria-label": "Clip actions for interview_A.mov",
+        ...(props.onOpenChange ? { onOpenChange: props.onOpenChange } : {}),
+        ...(props.onCloseAutoFocus ? { onCloseAutoFocus: props.onCloseAutoFocus } : {}),
+      }),
+    );
+  }
+
+  it("renders closed, opens when controlled, and hangs from a zero-size anchor at the point", async () => {
+    const view = render(h(PointHost, { open: false }));
+    expect(screen.queryByRole("menu")).toBeNull();
+    view.rerender(h(PointHost, { open: true }));
+    await screen.findByRole("menu", { name: "Clip actions for interview_A.mov" });
+    const anchor = document.querySelector<HTMLElement>(".cw-menu__anchor");
+    expect(anchor?.style.left).toBe("120px");
+    expect(anchor?.style.top).toBe("80px");
+    expect(anchor?.getAttribute("aria-hidden")).toBe("true");
+  });
+
+  it("asks to close on Escape and lets the host place the focus afterwards", async () => {
+    const onOpenChange = vi.fn();
+    const onCloseAutoFocus = vi.fn((e: Event) => {
+      e.preventDefault();
+      document.getElementById("surface")?.focus();
+    });
+    const user = userEvent.setup();
+    const view = render(h(PointHost, { open: true, onOpenChange, onCloseAutoFocus }));
+    await screen.findByRole("menu");
+    await user.keyboard("{Escape}");
+    expect(onOpenChange).toHaveBeenCalledWith(false);
+    view.rerender(h(PointHost, { open: false, onOpenChange, onCloseAutoFocus }));
+    await waitFor(() => expect(screen.queryByRole("menu")).toBeNull());
+    expect(onCloseAutoFocus).toHaveBeenCalled();
+    expect(document.activeElement).toBe(document.getElementById("surface"));
+  });
+});

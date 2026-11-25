@@ -123,6 +123,7 @@ Longest single chain ≈ 8 weeks if 3A, 3B and 3D start in week 1.
 - **Executor:** sonnet
 - **Scope:** Text tab "Add text" (title/subtitle/body defaults); schema-driven inspector extended with custom controls: font picker (search, preview, categories, recents), colour/gradient picker, stroke/shadow/glow list editors, background box, spacing, alignment, auto-fit; on-canvas editing overlay (DOM caret/selection positioned from `text.layout`), transform box; keyboard (Enter = newline, Esc = commit); all edits through commands with ephemeral transactions while dragging.
   - Settings > Editing: duration of new text (`editing.text_duration`, 5 s); "Add text" uses it (catalog `docs/reference/settings.md`).
+  - **Context menu (product owner request, 2026-11-25; framework WP-2H.12, plan in [09-context-menus.md](../research/09-context-menus.md)):** a menu on a text clip (in the Preview and on the timeline): Edit text, Copy style, Paste style, Save as preset…, plus the Text tab's preset cards (Apply, Remove).
 - **Interfaces:** consumes `text.*`, `font.list`, `text.layout`; registers a panel in the left-tab registry (see Notes).
 - **Acceptance criteria:** Playwright e2e: add text → type → change font/colour/stroke → undo ×3 restores; caret position matches rendered glyph within 1 px at 100% zoom; IME composition (CJK) input works; every control has an aria-label.
 - **Tests:** Vitest stores; Playwright-Electron e2e; visual regression for the inspector.
@@ -334,6 +335,7 @@ Longest single chain ≈ 8 weeks if 3A, 3B and 3D start in week 1.
 - **Executor:** sonnet
 - **Scope:** Transcript panel: virtualised word list grouped by speaker, click word → seek, playhead-follow highlight, search with next/prev, low-confidence underline, inline word edit, speaker rename/colour; "Generate transcript" dialog (provider, language, diarize, cost estimate, progress, cancel); Settings > AI providers: masked key entry via `ai.set_key` (write-only, arch §13), status badge, local model list with download/remove/progress/licence.
   - This WP creates the AI providers page in WP-1M.11's settings frame (keys and local models; WP-5F.07 extends it) and adds Settings > Media and import: "Transcribe speech in new media" (`media.transcribe_on_import`, off) (catalog `docs/reference/settings.md`).
+  - **Context menu (product owner request, 2026-11-25; framework WP-2H.12, plan in [09-context-menus.md](../research/09-context-menus.md)):** a transcript menu on words and selections (`transcript.range`): Seek here, Copy, Add marker, Delete words; the timeline editing items are WP-3F.03's.
 - **Interfaces:** consumes `transcript.*`, `ai.*`; dockview panel registration.
 - **Acceptance criteria:** Playwright e2e with mock STT: generate → words appear → click seeks within one frame → edit word → undo; 10k-word transcript scrolls ≥ 55 fps; key never shown after save; keyboard accessible.
 - **Tests:** Vitest, Playwright-Electron, visual regression.
@@ -460,6 +462,7 @@ Longest single chain ≈ 8 weeks if 3A, 3B and 3D start in week 1.
 - **Executor:** sonnet
 - **Scope:** Captions tab: generate dialog (source clip/range, language, provider, chunking preset incl. "short-form", cost estimate); style gallery grid with animated thumbnails (pre-rendered webp, on-demand fallback), search/tags/vibe filter, apply-to-all / apply-to-selected; caption list with inline text editing; style-override inspector (font, size, colours, highlight colour, position drag on preview with safe-zone guides); "Re-chunk" and "Resync" buttons; hooks for bilingual toggle.
   - Settings > Editing: characters per line and lines per caption for new captions (32, 2) and the caption style for new captions (`editing.caption_lines`, `editing.caption_style`); the generate dialog starts from them (catalog `docs/reference/settings.md`).
+  - **Context menu (product owner request, 2026-11-25; framework WP-2H.12, plan in [09-context-menus.md](../research/09-context-menus.md)):** a caption row menu (`caption.row`): Split here, Merge with next, Style…, Copy text, Delete; style cards: Apply, Set as default.
 - **Interfaces:** consumes `caption.*`, `transcript.generate`.
 - **Acceptance criteria:** Playwright e2e (mock STT): generate → pick style → change highlight colour → drag position → export a frame matching GF; gallery of 28 loads thumbnails < 1 s warm; every action undoable in one step.
 - **Tests:** Playwright-Electron, Vitest, visual regression.
@@ -519,6 +522,7 @@ Longest single chain ≈ 8 weeks if 3A, 3B and 3D start in week 1.
 - **Size:** M
 - **Executor:** sonnet
 - **Scope:** in the Transcript panel: select words (click/drag/shift/sentence), Delete/Backspace deletes, drag-reorder words/sentences, cut/paste, deleted words shown as struck-through "ghosts" with restore (via undo), present/removed styling from `sequence_view`, speaker-block operations, "Delete sentence" shortcut, keyboard navigation; multi-clip sequences.
+  - **Context menu (product owner request, 2026-11-25; framework WP-2H.12, plan in [09-context-menus.md](../research/09-context-menus.md)):** transcript editing items on `transcript.range`: Cut from timeline, Delete and close gap, Keep only this range.
 - **Interfaces:** consumes `transcript.sequence_view/delete_words/move_words`.
 - **Acceptance criteria:** Playwright e2e: delete 3 sentences → timeline duration drops by the matching amount and playback skips the gap seamlessly; undo restores; panel updates < 100 ms after edit.
 - **Tests:** Playwright-Electron, Vitest.
@@ -600,6 +604,7 @@ Longest single chain ≈ 8 weeks if 3A, 3B and 3D start in week 1.
 - **Size:** M
 - **Executor:** sonnet
 - **Scope:** Audio tab (Music/SFX: search, mood/genre filters, BPM, waveform preview, hover/click audition on a preview bus without moving the playhead, favourites, drag or "+" to timeline at the playhead with beat-snap when BPM known); Stickers tab (grid, animated hover, drag to preview); Emoji tab (search, recents); download-on-demand states; Attribution panel ("copy credits" for CC-BY items).
+  - **Context menu (product owner request, 2026-11-25; framework WP-2H.12, plan in [09-context-menus.md](../research/09-context-menus.md)):** library card menus (`library.card`): Preview, Add to timeline, Favourite, Reveal in Explorer (user packs).
 - **Interfaces:** consumes `asset.*`, `text.add_emoji`.
 - **Acceptance criteria:** Playwright e2e: search "whoosh" → audition plays within 150 ms → add to timeline → clip exists at playhead; offline mode shows installed packs only; credits text lists exactly the CC-BY items on the timeline.
 - **Tests:** Playwright-Electron, Vitest.

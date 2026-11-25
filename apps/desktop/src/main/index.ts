@@ -424,6 +424,7 @@ if (!app.requestSingleInstanceLock()) {
           ? {
               reload: () => liveWindow()?.webContents.reload(),
               toggleDevTools: () => liveWindow()?.webContents.toggleDevTools(),
+              inspectElement: (x, y) => liveWindow()?.webContents.inspectElement(x, y),
             }
           : undefined,
       }),

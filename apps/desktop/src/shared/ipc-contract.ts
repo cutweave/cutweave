@@ -52,6 +52,8 @@ export interface InvokeChannels {
   "window:reload": { args: []; result: undefined };
   /** Development builds only; refused when packaged. */
   "window:toggleDevTools": { args: []; result: undefined };
+  /** Development builds only; refused when packaged. Page coordinates in CSS pixels. */
+  "window:inspectElement": { args: [x: number, y: number]; result: undefined };
   "edit:run": { args: [action: EditAction]; result: undefined };
   // The preferences store (WP-1M.11).
   "prefs:get": { args: []; result: PrefsSnapshot };

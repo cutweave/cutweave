@@ -92,7 +92,7 @@ export {
   snapToFrame,
 } from "./time.ts";
 export type { TimelinePointerEvent, TimelineViewOptions } from "./timeline-view.ts";
-export { TimelineView } from "./timeline-view.ts";
+export { LONG_PRESS_MS, LONG_PRESS_SLOP_PX, TimelineView } from "./timeline-view.ts";
 export type { Viewport } from "./viewport.ts";
 export {
   clampScroll,

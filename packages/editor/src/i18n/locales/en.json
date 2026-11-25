@@ -1052,5 +1052,40 @@
       "mcp": "MCP client",
       "cli": "Command line"
     }
+  },
+  "contextMenu": {
+    "failed": "That did not work",
+    "inspect": "Inspect element",
+    "devName": "Developer actions",
+    "field": {
+      "name": "Text actions",
+      "nameFor": "Text actions for {{name}}",
+      "undo": "Undo",
+      "cut": "Cut",
+      "copy": "Copy",
+      "paste": "Paste",
+      "selectAll": "Select all"
+    },
+    "reason": {
+      "readOnly": "The project is read-only",
+      "noEngine": "The engine is not running",
+      "fieldReadOnly": "This field is read-only",
+      "noSelection": "Nothing is selected",
+      "emptyField": "The field is empty"
+    },
+    "command": {
+      "clipSplit": "Split at playhead",
+      "itemDelete": "Delete clip",
+      "itemDeleteMany": "Delete {{count}} clips",
+      "timelineInsert": "Insert at playhead",
+      "trackAdd": "Add track",
+      "trackRemove": "Delete track",
+      "trackSet": "Set track option",
+      "mediaRemove": "Remove from project",
+      "editUndo": "Undo",
+      "editRedo": "Redo",
+      "viewSelect": "Select",
+      "viewSetPlayhead": "Move playhead here"
+    }
   }
 }

@@ -131,6 +131,8 @@ export interface DesktopBridge {
     reload?(): Promise<void>;
     /** Development builds only (main refuses otherwise). */
     toggleDevTools?(): Promise<void>;
+    /** Development builds only: "Inspect element" at a point (main refuses otherwise). */
+    inspectElement?(x: number, y: number): Promise<void>;
   };
 }
 

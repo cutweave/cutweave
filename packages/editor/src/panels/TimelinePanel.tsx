@@ -54,17 +54,20 @@ function EngineTimeline({ intents }: { readonly intents: TimelineIntents }) {
   }, []);
   return (
     <>
-      <TimelineCanvas
-        className="cw-timeline__canvas"
-        aria-label={t("timeline.canvasLabel")}
-        model={model}
-        viewState={viewState}
-        loaders={loaders}
-        pan="host"
-        onPointer={intents.onPointer}
-        onView={intents.onView}
-        onViewChange={onViewChange}
-      />
+      {/* `display: contents`: no box of its own, it only marks the canvas for the menu host. */}
+      <div ref={intents.canvasSurface} style={{ display: "contents" }}>
+        <TimelineCanvas
+          className="cw-timeline__canvas"
+          aria-label={t("timeline.canvasLabel")}
+          model={model}
+          viewState={viewState}
+          loaders={loaders}
+          pan="host"
+          onPointer={intents.onPointer}
+          onView={intents.onView}
+          onViewChange={onViewChange}
+        />
+      </div>
       <TrackRenameInput controller={intents.controller} />
     </>
   );

@@ -94,7 +94,9 @@ export interface HandlerDeps {
   /** `webContents.cut()` and friends on the editor window's focused element. */
   editCommand(action: EditAction): void;
   /** View > Reload and Toggle developer tools: present in unpackaged runs only. */
-  dev?: { reload(): void; toggleDevTools(): void } | undefined;
+  dev?:
+    | { reload(): void; toggleDevTools(): void; inspectElement(x: number, y: number): void }
+    | undefined;
 }
 
 /** A development-only action asked for in a packaged build. */
@@ -246,6 +248,10 @@ export function createHandlers(deps: HandlerDeps): InvokeHandlers {
     "window:toggleDevTools": () => {
       if (deps.dev === undefined) throw new DevOnlyError("window:toggleDevTools");
       deps.dev.toggleDevTools();
+    },
+    "window:inspectElement": (x, y) => {
+      if (deps.dev === undefined) throw new DevOnlyError("window:inspectElement");
+      deps.dev.inspectElement(x, y);
     },
     "edit:run": (action) => {
       deps.editCommand(action);

@@ -61,6 +61,68 @@ export const ClipActions = {
   ),
 };
 
+const REASON_ITEMS: MenuEntry[] = [
+  { id: "split", label: "Split at playhead", icon: "scissors", shortcut: "S", onSelect: noop },
+  {
+    id: "rename",
+    label: "Rename…",
+    shortcut: "F2",
+    disabled: true,
+    disabledReason: "Select one clip to rename it",
+  },
+  {
+    kind: "submenu",
+    id: "move",
+    label: "Move to",
+    items: [
+      { id: "left", label: "Left", onSelect: noop },
+      { id: "right", label: "Right", onSelect: noop },
+      { id: "bottom", label: "Bottom", onSelect: noop },
+    ],
+  },
+  { kind: "separator", id: "s1" },
+  {
+    id: "delete",
+    label: "Delete 3 clips",
+    icon: "trash-2",
+    variant: "danger",
+    shortcut: "Backspace",
+    disabled: true,
+    disabledReason: "Track is locked",
+  },
+];
+
+/** A row that cannot run says why on hover; "Move to" opens the one allowed nested list. */
+export const SubmenuAndReason = {
+  render: () => (
+    <div style={stage}>
+      <Menu
+        mode="dropdown"
+        defaultOpen
+        items={REASON_ITEMS}
+        aria-label="Clip actions for interview_A.mov"
+      >
+        <IconButton icon="ellipsis" label="Clip actions" />
+      </Menu>
+    </div>
+  ),
+};
+
+/** The editor's host opens every context menu like this: controlled, at a viewport point. */
+export const AtAPoint = {
+  render: () => (
+    <div style={stage}>
+      <Menu
+        mode="point"
+        open
+        anchor={{ x: 48, y: 48 }}
+        items={CLIP_ITEMS}
+        aria-label="Clip actions for interview_A.mov"
+      />
+    </div>
+  ),
+};
+
 export const DisabledItems = {
   render: () => (
     <div style={stage}>

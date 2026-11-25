@@ -179,6 +179,7 @@ export function createCutweaveApi(
       setTheme: (theme) => invoke("window:setTheme", theme),
       reload: () => invoke("window:reload"),
       toggleDevTools: () => invoke("window:toggleDevTools"),
+      inspectElement: (x, y) => invoke("window:inspectElement", x, y),
     },
     edit: {
       run: (action) => invoke("edit:run", action),

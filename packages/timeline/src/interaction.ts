@@ -414,6 +414,8 @@ function onDown(state: InteractionState, e: PointerInput): Transition {
       scrollY0: env.scrollY,
     });
   }
+  // The right button is the host's: `TimelineView` reports it as a `contextmenu` event (menus
+  // open on that, not on the press, so the release cannot land on the menu), never as a gesture.
   if (e.button !== 0) return same(state);
 
   switch (e.hit.zone) {

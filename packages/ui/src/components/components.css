@@ -758,6 +758,16 @@
 .cw-menu__item--check[aria-checked="true"] .cw-menu__check svg {
   color: var(--marigold-text);
 }
+/* The zero-size anchor a point menu hangs from (the pointer, or the focused control). */
+.cw-menu__anchor {
+  position: fixed;
+  width: 0;
+  height: 0;
+  padding: 0;
+  border: 0;
+  opacity: 0;
+  pointer-events: none;
+}
 /* A submenu's row stays lit while its list is open. */
 .cw-menu__item[data-state="open"] {
   background: var(--surface-3);

@@ -223,6 +223,7 @@ The roadmap defines **eight 1.0 gates** (04-roadmap.md, Phase 7 exit); the gates
   - axe-core in Playwright across every in-scope screen/state (light/dark/high-contrast); CI blocks on serious/critical; `eslint-plugin-jsx-a11y`.
   - Remediate: tab order, visible focus, focus traps/returns in dialogs, dockview panel keyboard nav, command palette semantics, form labels/errors, `aria-live` regions for jobs/toasts/copilot streaming, names/roles on all icon buttons, keyboard-only operation of every non-timeline feature.
   - Keyboard-only e2e: import → edit via palette/shortcuts → export without a mouse.
+  - **Context menu (product owner request, 2026-11-25; framework WP-2H.12, plan in [09-context-menus.md](../research/09-context-menus.md)):** a test opens every registered surface menu (from the surface tables) with the pointer and with Shift+F10 or the Menu key and runs axe; a table row without a keyboard path fails the gate.
 - **Interfaces:** `docs/a11y/scope.md`, CI job `a11y`.
 - **Acceptance criteria:** axe: 0 serious/critical on all scoped screens in 3 themes; keyboard-only e2e passes; every interactive element has an accessible name (script check).
 - **Tests:** Playwright+axe matrix; keyboard e2e; lint.

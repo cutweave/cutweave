@@ -4,6 +4,10 @@ import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { isPreferenceKey } from "@cutweave/preferences";
 import { describe, expect, it } from "vitest";
+import { COMMAND_INFO } from "../menus/builtins.ts";
+import { ZONE_SURFACE } from "../menus/canvas.ts";
+import { hintBindingIds } from "../menus/keys.ts";
+import { CONTEXT_KEYS } from "../menus/when.ts";
 import { createI18n, detectLanguage } from "./index.ts";
 import en from "./locales/en.json";
 
@@ -31,6 +35,15 @@ const code = sources(SRC)
   .join("\n");
 /** Every string literal in the code that looks like a catalog key (dotted, camel/kebab segments). */
 const KEY_LIKE = /"([a-z][A-Za-z0-9-]*(?:\.[A-Za-z0-9-]+)+)"/g;
+// Names of registry commands, surfaces, context keys and bindings share roots with the catalog
+// (`timeline.clip`, `menu.undo`, `engine.live`); the menu framework's tables own them (WP-2H.12).
+const MENU_IDS: ReadonlySet<string> = new Set([
+  ...CONTEXT_KEYS,
+  ...COMMAND_INFO.map((c) => c.name),
+  ...hintBindingIds(),
+  ...Object.values(ZONE_SURFACE).filter((id): id is string => id !== null),
+  "timeline.canvas",
+]);
 const referenced = new Set([...code.matchAll(KEY_LIKE)].map((m) => m[1] as string));
 
 describe("i18n catalog", () => {
@@ -43,6 +56,7 @@ describe("i18n catalog", () => {
 
   it("covers every key the code references", () => {
     const missing = [...referenced].filter((key) => {
+      if (MENU_IDS.has(key)) return false;
       // A preference key (`export.hw`) is not a translation key, even where it shares a root.
       if (isPreferenceKey(key)) return false;
       // Only dotted strings under a catalog root count as translation keys.

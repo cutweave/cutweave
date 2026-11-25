@@ -233,6 +233,8 @@ describe("every key handler in the editor is accounted for", () => {
   const KNOWN: Readonly<Record<string, string>> = {
     "inspector/MediaPreview.tsx":
       "a slider's own keys while it has the focus: arrows step a frame, Home, End, Page Up and Down",
+    "menus/host.tsx":
+      "Shift+F10 and the Menu key open the context menu of the focused surface: the platform's own keys",
     "panels/InspectorPanel.tsx":
       "name field: Enter commits, Escape puts the old text back (dialogs group)",
     "panels/MediaPanel.tsx": "the bin's keys: binKeys.ts",

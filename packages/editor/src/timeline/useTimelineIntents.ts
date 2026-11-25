@@ -7,6 +7,9 @@ import { useTranslation } from "react-i18next";
 import { useStore } from "zustand";
 import { engineStore } from "../engine/engineStore.ts";
 import { dragStore } from "../media/dragStore.ts";
+import { requestForCanvasEvent } from "../menus/canvas.ts";
+import { closeContextMenu, openContextMenu } from "../menus/host.tsx";
+import { registerTimelineCanvas } from "../menus/timelineSurface.ts";
 import { docStore } from "../state/docStore.ts";
 import { toastStore } from "../state/toastStore.ts";
 import { viewStore } from "../state/viewStore.ts";
@@ -20,6 +23,8 @@ export interface TimelineIntents {
   readonly overlay: TimelineOverlay;
   /** `TimelineCanvas.onPointer`. */
   readonly onPointer: (e: TimelinePointerEvent) => void;
+  /** Ref for the element around the canvas: Shift+F10 and the Menu key open its context menu. */
+  readonly canvasSurface: (el: HTMLElement | null) => (() => void) | undefined;
   /** `TimelineCanvas.onView`. */
   readonly onView: (view: TimelineView | null) => void;
   /** Handlers for the element around the canvas: a media card dragged from the bin onto the lanes. */
@@ -81,6 +86,13 @@ export function useTimelineIntents(): TimelineIntents {
 
   const onPointer = useCallback(
     (e: TimelinePointerEvent) => {
+      // The right button and a long-press are the menu host's, not a gesture (WP-2H.12).
+      if (e.type === "contextmenu" || e.type === "longpress") {
+        const request = requestForCanvasEvent(e);
+        if (request === null) closeContextMenu();
+        else openContextMenu(request);
+        return;
+      }
       // Keys go where the pointer acted: focus the canvas on a press.
       if (e.type === "down") (e.original.target as HTMLElement | null)?.focus?.();
       controller.handlePointer(e);
@@ -88,7 +100,19 @@ export function useTimelineIntents(): TimelineIntents {
     [controller],
   );
 
-  const onView = useCallback((view: TimelineView | null) => controller.attach(view), [controller]);
+  const view = useRef<TimelineView | null>(null);
+  const onView = useCallback(
+    (next: TimelineView | null) => {
+      view.current = next;
+      controller.attach(next);
+    },
+    [controller],
+  );
+
+  const canvasSurface = useCallback((el: HTMLElement | null) => {
+    if (el === null) return undefined;
+    return registerTimelineCanvas(el, () => view.current);
+  }, []);
 
   const keyTarget = useCallback(
     (el: HTMLElement | null) => {
@@ -139,5 +163,5 @@ export function useTimelineIntents(): TimelineIntents {
     };
   }, [controller]);
 
-  return { controller, overlay, onPointer, onView, keyTarget, drop };
+  return { controller, overlay, onPointer, onView, keyTarget, canvasSurface, drop };
 }
