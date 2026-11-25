@@ -13,6 +13,7 @@
 // the FFmpeg engine and the corpus, like F14, and skips without them). Every choice is checked as
 // an undo step or as state the person sees. Only the OS file picker is stubbed.
 import { expect, test } from "../fixtures.ts";
+import { copyCorpusClips, corpusDir } from "./export-helpers.ts";
 import {
   clickClip,
   clipAt,
@@ -45,7 +46,6 @@ import {
   workspace,
   xAt,
 } from "./helpers.ts";
-import { copyCorpusClips, corpusDir } from "./export-helpers.ts";
 
 test.describe("F42 context menus", () => {
   test.skip(!hasRealEngine, "cutweave-engine-serve is not built");
@@ -168,10 +168,12 @@ test.describe("F42 context menus", () => {
       await expect(inspector(page).panel).toBeVisible();
       await snapshot(page, info, "timeline clip menu");
       await item(clipMenu, /^Split at playhead/).click();
-      await expect.poll(async () => (await layout(page))[0]?.clips).toEqual([
-        [1, 4],
-        [5, 6],
-      ]);
+      await expect
+        .poll(async () => (await layout(page))[0]?.clips)
+        .toEqual([
+          [1, 4],
+          [5, 6],
+        ]);
       await editorCaughtUp(page);
       await shortcut(app, "Control+Z");
       await expect.poll(async () => (await layout(page))[0]?.clips).toEqual([[1, 10]]);
@@ -186,9 +188,7 @@ test.describe("F42 context menus", () => {
       await page.mouse.click(box.x + Math.min(box.w / 2, 60), box.y, { button: "right" });
       await expect(item(clipMenu, /^Enable clip/)).toBeVisible();
       await item(clipMenu, /^Enable clip/).click();
-      await expect
-        .poll(async () => (await sequence(page)).tracks[0]?.items[0]?.enabled)
-        .toBe(true);
+      await expect.poll(async () => (await sequence(page)).tracks[0]?.items[0]?.enabled).toBe(true);
 
       // A track header: Mute (the menu then reads Unmute, checked), Lock, and a drag is refused.
       g = await timelineGeometry(page);
@@ -254,7 +254,13 @@ test.describe("F42 context menus", () => {
       await page.getByRole("tab", { name: "Timeline" }).click({ button: "right" });
       const tab = page.getByRole("menu", { name: "Panel actions for Timeline" });
       await expect(tab).toBeVisible();
-      for (const name of [/^Close panel/, /^Maximize panel/, /^Float panel/, /^Move to/, /^Reset layout/]) {
+      for (const name of [
+        /^Close panel/,
+        /^Maximize panel/,
+        /^Float panel/,
+        /^Move to/,
+        /^Reset layout/,
+      ]) {
         await expect(item(tab, name)).toBeVisible();
       }
       await page.keyboard.press("Escape");
