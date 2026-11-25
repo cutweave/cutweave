@@ -2,7 +2,7 @@
 //! The `item` namespace (WP-1B.06, WP-2A.03; arch §4.3, §5.1; timeline spec §4.2, §4.3, §4.8):
 //! generic edits of any timeline item: `item.move`, `item.delete` and `item.duplicate`
 //! ([`edit`], on the placement core), `item.set_props` and the query `item.get`. The media-clip
-//! specifics (`clip.split`, `clip.trim`) live in [`crate::clip`].
+//! specifics (`clip.split` and the trim family) live in [`crate::clip`].
 //!
 //! # Edit semantics (the contract for the timeline UI and for agents)
 //!
@@ -135,20 +135,10 @@ pub(crate) fn ensure_unlocked(doc: &Project, members: &[Located]) -> Result<(), 
     Ok(())
 }
 
-pub(crate) fn time(pointer: &str, flicks: i64) -> Result<Time, CmdError> {
-    Time::from_flicks(flicks).map_err(|e| CmdError::invalid(pointer, e.to_string()))
-}
-
-pub(crate) fn duration(pointer: &str, flicks: i64) -> Result<cutweave_model::Duration, CmdError> {
-    cutweave_model::Duration::from_flicks(flicks)
-        .map_err(|e| CmdError::invalid(pointer, e.to_string()))
-}
-
 /// Clears the `linked_group` of the last remaining member of every group in `groups` that is
 /// left with exactly one member (a group needs two to link anything). Called after an edit
 /// took members out of their groups, inside the same transaction so undo restores the link.
-/// A last member on a locked track makes the transaction fail with `Locked`; commands check
-/// [`ensure_orphans_unlockable`] up front so `validate` reports it too.
+/// A last member on a locked track makes the transaction fail with `Locked`.
 pub(crate) fn unlink_orphans(
     tx: &mut Tx<'_>,
     groups: impl IntoIterator<Item = GroupId>,
@@ -172,45 +162,6 @@ pub(crate) fn unlink_orphans(
         })?;
     }
     Ok(())
-}
-
-/// `Locked` (naming the partner's track) if taking `leaving` out of `group` would leave a
-/// single partner on a locked track: that partner would have to be unlinked, an edit of a
-/// locked track (arch §4.3).
-pub(crate) fn ensure_orphans_unlockable(
-    doc: &Project,
-    group: Option<GroupId>,
-    leaving: ItemId,
-) -> Result<(), CmdError> {
-    let Some(group) = group else {
-        return Ok(());
-    };
-    let mut rest = doc
-        .sequences
-        .values()
-        .flat_map(|s| s.tracks.values())
-        .flat_map(|t| t.items.iter().map(move |i| (t, i)))
-        .filter(|(_, i)| i.linked_group() == Some(group) && i.id() != leaving);
-    if let (Some((t, _)), None) = (rest.next(), rest.next())
-        && t.locked
-    {
-        return Err(CmdError::locked(EntityKind::Track, t.id));
-    }
-    Ok(())
-}
-
-/// The first item on `track` (not in `excluded`) that overlaps `[start, end)`.
-pub(crate) fn conflict(
-    track: &Track,
-    start: Time,
-    end: Time,
-    excluded: &BTreeSet<ItemId>,
-) -> Option<ItemId> {
-    track
-        .items
-        .overlapping(start, end)
-        .map(Item::id)
-        .find(|id| !excluded.contains(id))
 }
 
 // ----- item.set_props ------------------------------------------------------------------------

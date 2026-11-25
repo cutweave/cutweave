@@ -14,6 +14,16 @@
 //! - `unlink: true` (`item.move`, `clip.trim`) takes only the item out of its group and leaves
 //!   its partners as they were (a partner that would be alone in the group is unlinked too).
 //!
+//! The trim family (WP-2A.04, timeline spec §4.9–§4.13) adds, with the returned
+//! `applied_delta`: a trim changes the length of the clip and its partners by exactly that much
+//! (INV-202); a ripple trim keeps the clip's start (INV-212) and moves everything else it moves
+//! by exactly the change of the clip's end, including all that started at or after that end on
+//! the clip's tracks (INV-211); a roll keeps the outer edges of both sides and puts every
+//! member's edge on the new cut (INV-221); a slip changes no position or length anywhere and
+//! only the source of the clip and its partners (INV-231); a slide moves the clip's group by the
+//! delta without changing what it shows, and keeps the outer edges of its touching neighbours
+//! (INV-241).
+//!
 //! Groups need not be time-aligned: documents may link items that never were (and an undo of
 //! an unlink can re-link an item whose partner changed since), so only the edit rules are
 //! checked.
@@ -73,10 +83,228 @@ pub fn check_linked_edit(
     match name {
         "item.delete" | "timeline.ripple_delete" => deleted_with_partners(output, before, after),
         "item.move" => moved_together(params, before, after),
-        "clip.trim" => trimmed_together(params, before, after),
+        "clip.trim" => {
+            trimmed_together(params, before, after)?;
+            trimmed_by(params, output, before, after)
+        }
+        "clip.ripple_trim" => {
+            trimmed_together(params, before, after)?;
+            trimmed_by(params, output, before, after)?;
+            rippled(params, before, after)
+        }
+        "clip.roll" => rolled(params, before, after),
+        "clip.slip" => slipped(params, output, before, after),
+        "clip.slide" => slid(params, output, before, after),
         "clip.split" => split_together(params, output, before, after),
         _ => Ok(()),
     }
+}
+
+fn applied(output: &Value) -> Result<i64, String> {
+    output["applied_delta"]
+        .as_i64()
+        .ok_or_else(|| format!("no `applied_delta` in {output}"))
+}
+
+/// The item and, unless `unlink`, its partners, as they were before the edit.
+fn group_before(doc: &Project, target: ItemId, unlink: bool) -> Result<Vec<Item>, String> {
+    let (_, was) = found(doc, target, "before the edit")?;
+    let mut out = vec![was.clone()];
+    if !unlink {
+        for p in partners(doc, &was) {
+            out.push(found(doc, p, "before the edit")?.1);
+        }
+    }
+    Ok(out)
+}
+
+/// INV-202: the length of the clip (and its partners) changed by exactly `applied_delta`.
+fn trimmed_by(
+    params: &Value,
+    output: &Value,
+    before: &Project,
+    after: &Project,
+) -> Result<(), String> {
+    let d = applied(output)?;
+    let sign = if params["edge"].as_str() == Some("start") {
+        -1
+    } else {
+        1
+    };
+    for was in group_before(before, id_at(&params["item"])?, unlinked(params))? {
+        let (_, now) = found(after, was.id(), "after the trim")?;
+        let change = now.duration().flicks() - was.duration().flicks();
+        if change != sign * d {
+            return Err(format!(
+                "{} changed length by {change}, but the applied delta is {d}",
+                was.id()
+            ));
+        }
+    }
+    Ok(())
+}
+
+/// The items attached to any of `parents` before the edit.
+fn children_of(doc: &Project, parents: &[ItemId]) -> Vec<ItemId> {
+    doc.sequences
+        .values()
+        .flat_map(|s| s.tracks.values())
+        .flat_map(|t| t.items.iter())
+        .filter(|i| i.attached_to().is_some_and(|p| parents.contains(&p)))
+        .map(Item::id)
+        .collect()
+}
+
+/// INV-211, INV-212: the clip's start stays; every other item that moved moved by the change of
+/// its end (children of the trimmed clips excepted: they are clamped into them), and so did
+/// everything that started at or after its old end on the trimmed clips' tracks.
+fn rippled(params: &Value, before: &Project, after: &Project) -> Result<(), String> {
+    let target = id_at(&params["item"])?;
+    let group = group_before(before, target, unlinked(params))?;
+    let (_, now) = found(after, target, "after the ripple trim")?;
+    let was = &group[0];
+    if now.start() != was.start() {
+        return Err(format!("ripple trim moved the start of {target}"));
+    }
+    let shift = end(&now) - end(was);
+    let ids: Vec<ItemId> = group.iter().map(Item::id).collect();
+    let exempt = children_of(before, &ids);
+    let tracks: Vec<TrackId> = ids
+        .iter()
+        .filter_map(|id| item(before, *id).map(|(t, _)| t))
+        .collect();
+    for s in before.sequences.values() {
+        for t in s.tracks.values() {
+            for i in t.items.iter() {
+                if ids.contains(&i.id()) || exempt.contains(&i.id()) {
+                    continue;
+                }
+                let Some((_, moved)) = item(after, i.id()) else {
+                    return Err(format!("ripple trim removed {}", i.id()));
+                };
+                let by = moved.start().flicks() - i.start().flicks();
+                let downstream = tracks.contains(&t.id) && i.start().flicks() >= end(was);
+                if by != shift && (by != 0 || downstream) {
+                    return Err(format!(
+                        "ripple trim moved {} by {by} instead of {shift}",
+                        i.id()
+                    ));
+                }
+            }
+        }
+    }
+    Ok(())
+}
+
+/// INV-221: the outer edges of both sides stay; every member's edge is on the new cut.
+fn rolled(params: &Value, before: &Project, after: &Project) -> Result<(), String> {
+    let left = group_before(before, id_at(&params["left"])?, false)?;
+    let right = group_before(before, id_at(&params["right"])?, false)?;
+    let (_, l) = found(after, left[0].id(), "after the roll")?;
+    let cut = end(&l);
+    for was in &left {
+        let (_, now) = found(after, was.id(), "after the roll")?;
+        if now.start() != was.start() || end(&now) != cut {
+            return Err(format!("roll: {} does not end on the cut {cut}", was.id()));
+        }
+    }
+    for was in &right {
+        let (_, now) = found(after, was.id(), "after the roll")?;
+        if end(&now) != end(was) || now.start().flicks() != cut {
+            return Err(format!(
+                "roll: {} does not start on the cut {cut}",
+                was.id()
+            ));
+        }
+    }
+    Ok(())
+}
+
+/// INV-231: no position or length changes; only the clip's group's sources, by the delta.
+fn slipped(
+    params: &Value,
+    output: &Value,
+    before: &Project,
+    after: &Project,
+) -> Result<(), String> {
+    let d = applied(output)?;
+    let ids: Vec<ItemId> = group_before(before, id_at(&params["item"])?, false)?
+        .iter()
+        .map(Item::id)
+        .collect();
+    for s in before.sequences.values() {
+        for t in s.tracks.values() {
+            for i in t.items.iter() {
+                let (track, now) = found(after, i.id(), "after the slip")?;
+                if track != t.id || now.start() != i.start() || now.duration() != i.duration() {
+                    return Err(format!("slip moved or resized {}", i.id()));
+                }
+                let source = |it: &Item| it.as_clip().map_or(0, |c| c.source_in.flicks());
+                let still = i
+                    .media()
+                    .and_then(|m| before.media.get(&m))
+                    .is_some_and(|m| m.kind == cutweave_model::MediaKind::Image);
+                let expected = if ids.contains(&i.id()) && !still {
+                    d
+                } else {
+                    0
+                };
+                if source(&now) - source(i) != expected {
+                    return Err(format!(
+                        "slip moved the source of {} by {} instead of {expected}",
+                        i.id(),
+                        source(&now) - source(i)
+                    ));
+                }
+            }
+        }
+    }
+    Ok(())
+}
+
+/// INV-241: the clip's group moves by the delta and shows the same media; the clips touching it
+/// keep their outer edges, and the three lengths keep their sum.
+fn slid(params: &Value, output: &Value, before: &Project, after: &Project) -> Result<(), String> {
+    let d = applied(output)?;
+    let target = id_at(&params["item"])?;
+    let group = group_before(before, target, false)?;
+    for was in &group {
+        let (_, now) = found(after, was.id(), "after the slide")?;
+        let source = |it: &Item| it.as_clip().map(|c| c.source_in);
+        if now.start().flicks() - was.start().flicks() != d
+            || now.duration() != was.duration()
+            || source(&now) != source(was)
+        {
+            return Err(format!("slide: {} did not move by {d} unchanged", was.id()));
+        }
+    }
+    let (track, was) = found(before, target, "before the slide")?;
+    let Some(t) = before.sequences.values().find_map(|s| s.track(&track)) else {
+        return Err(format!("slide: no track {track}"));
+    };
+    let mut sum = (was.duration().flicks(), 0_i64);
+    let mut sides = 0;
+    for other in t.items.iter() {
+        let touches_before = end(other) == was.start().flicks();
+        let touches_after = other.start().flicks() == end(&was);
+        if !(touches_before || touches_after) || other.id() == target {
+            continue;
+        }
+        let (_, now) = found(after, other.id(), "after the slide")?;
+        if (touches_before && now.start() != other.start())
+            || (touches_after && end(&now) != end(other))
+        {
+            return Err(format!("slide moved the outer edge of {}", other.id()));
+        }
+        sides += 1;
+        sum.0 += other.duration().flicks();
+        sum.1 += now.duration().flicks();
+    }
+    let (_, now) = found(after, target, "after the slide")?;
+    if sides == 2 && sum.0 != sum.1 + now.duration().flicks() {
+        return Err("slide changed the total length of the clip and its neighbours".to_owned());
+    }
+    Ok(())
 }
 
 /// Timeline spec INV-28: a command never changes the items of a track that is locked before
