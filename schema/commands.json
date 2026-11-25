@@ -2497,6 +2497,11 @@
                 "const": "export",
                 "description": "Rendering and encoding a sequence to a file (WP-1E.03).",
                 "type": "string"
+              },
+              {
+                "const": "proxy",
+                "description": "Making a media asset's proxy (WP-2F.01): decodes the original and encodes a smaller\nintra-frame copy.",
+                "type": "string"
               }
             ]
           },
@@ -2609,6 +2614,11 @@
                   {
                     "const": "export",
                     "description": "Rendering and encoding a sequence to a file (WP-1E.03).",
+                    "type": "string"
+                  },
+                  {
+                    "const": "proxy",
+                    "description": "Making a media asset's proxy (WP-2F.01): decodes the original and encodes a smaller\nintra-frame copy.",
                     "type": "string"
                   }
                 ]
@@ -2730,6 +2740,11 @@
                     {
                       "const": "export",
                       "description": "Rendering and encoding a sequence to a file (WP-1E.03).",
+                      "type": "string"
+                    },
+                    {
+                      "const": "proxy",
+                      "description": "Making a media asset's proxy (WP-2F.01): decodes the original and encodes a smaller\nintra-frame copy.",
                       "type": "string"
                     }
                   ]
@@ -2887,6 +2902,11 @@
               {
                 "const": "export",
                 "description": "Rendering and encoding a sequence to a file (WP-1E.03).",
+                "type": "string"
+              },
+              {
+                "const": "proxy",
+                "description": "Making a media asset's proxy (WP-2F.01): decodes the original and encodes a smaller\nintra-frame copy.",
                 "type": "string"
               }
             ]
@@ -3046,6 +3066,11 @@
                 "const": "export",
                 "description": "Rendering and encoding a sequence to a file (WP-1E.03).",
                 "type": "string"
+              },
+              {
+                "const": "proxy",
+                "description": "Making a media asset's proxy (WP-2F.01): decodes the original and encodes a smaller\nintra-frame copy.",
+                "type": "string"
               }
             ]
           },
@@ -3185,7 +3210,7 @@
             "type": "integer"
           },
           "kinds": {
-            "description": "Each disk cache, in a fixed order (thumbnails, waveforms).",
+            "description": "Each disk cache, in a fixed order (thumbnails, waveforms, proxies).",
             "items": {
               "additionalProperties": false,
               "description": "One disk cache's usage and limit.",
@@ -3213,6 +3238,11 @@
                     {
                       "const": "waveforms",
                       "description": "Waveform pyramids (one file per audio stream).",
+                      "type": "string"
+                    },
+                    {
+                      "const": "proxies",
+                      "description": "Proxies: small intra-frame copies of video files the preview scrubs (WP-2F.01). Clearing\nthem makes the preview use the originals; `media.generate_proxy` makes them again.",
                       "type": "string"
                     }
                   ]
@@ -3457,7 +3487,7 @@
         "description": "Deletes every entry of the named caches. Projects and `generated/` media are never touched:\nonly files the engine can rebuild from the media. Not undoable, not journaled, never marks\nthe project dirty; UI credential only.",
         "properties": {
           "kinds": {
-            "description": "The caches to empty (`thumbnails`, `waveforms`).",
+            "description": "The caches to empty (`thumbnails`, `waveforms`, `proxies`).",
             "items": {
               "description": "A kind of disk cache.",
               "oneOf": [
@@ -3469,6 +3499,11 @@
                 {
                   "const": "waveforms",
                   "description": "Waveform pyramids (one file per audio stream).",
+                  "type": "string"
+                },
+                {
+                  "const": "proxies",
+                  "description": "Proxies: small intra-frame copies of video files the preview scrubs (WP-2F.01). Clearing\nthem makes the preview use the originals; `media.generate_proxy` makes them again.",
                   "type": "string"
                 }
               ]
@@ -3516,6 +3551,11 @@
                       "const": "waveforms",
                       "description": "Waveform pyramids (one file per audio stream).",
                       "type": "string"
+                    },
+                    {
+                      "const": "proxies",
+                      "description": "Proxies: small intra-frame copies of video files the preview scrubs (WP-2F.01). Clearing\nthem makes the preview use the originals; `media.generate_proxy` makes them again.",
+                      "type": "string"
                     }
                   ]
                 },
@@ -3545,6 +3585,428 @@
       "scope": "ui",
       "secret_fields": [],
       "summary": "Delete everything in the named media caches (they rebuild on demand)",
+      "undoable": false,
+      "view": false
+    },
+    {
+      "annotations": {
+        "destructiveHint": true,
+        "idempotentHint": true,
+        "openWorldHint": false,
+        "readOnlyHint": false
+      },
+      "input_schema": {
+        "additionalProperties": false,
+        "description": "Removes the proxies of video assets from the cache (cancelling a generation in progress):\nthe preview uses the originals again. The assets and their files are untouched; a proxy is\nnot made again automatically until `media.generate_proxy` asks for it.",
+        "properties": {
+          "media": {
+            "description": "The video assets (1..=256, no repeats).",
+            "items": {
+              "description": "A Media id: `^med_[0-9a-f]{32}$`.",
+              "pattern": "^med_[0-9a-f]{32}$",
+              "type": "string"
+            },
+            "type": "array"
+          }
+        },
+        "required": [
+          "media"
+        ],
+        "title": "MediaDeleteProxy",
+        "type": "object"
+      },
+      "journaled": false,
+      "kind": "engine",
+      "mcp": "catalog",
+      "mcp_tool": "media_delete_proxy",
+      "name": "media.delete_proxy",
+      "namespace": "media",
+      "output_schema": {
+        "additionalProperties": false,
+        "description": "Result of the proxy commands.",
+        "properties": {
+          "policy": {
+            "description": "The policy that decides which assets get one automatically.",
+            "oneOf": [
+              {
+                "const": "off",
+                "description": "Never automatically (`media.generate_proxy` still makes one).",
+                "type": "string"
+              },
+              {
+                "const": "auto",
+                "description": "For video that is slow to scrub ([`auto_reason`]); the default.",
+                "type": "string"
+              },
+              {
+                "const": "all",
+                "description": "For every video file.",
+                "type": "string"
+              }
+            ]
+          },
+          "proxies": {
+            "description": "One entry per asset, in request order (`media.proxy_status` without `media`: every video\nasset, by id).",
+            "items": {
+              "additionalProperties": false,
+              "description": "One asset's proxy (`ProxyRef` of WP-2F.01).",
+              "properties": {
+                "bytes": {
+                  "description": "Its size in bytes while it is ready.",
+                  "format": "uint64",
+                  "minimum": 0,
+                  "type": [
+                    "integer",
+                    "null"
+                  ]
+                },
+                "error": {
+                  "description": "Why the last generation failed.",
+                  "type": [
+                    "string",
+                    "null"
+                  ]
+                },
+                "job_id": {
+                  "description": "The job making it (queued or generating).",
+                  "pattern": "^job_[0-9a-f]{32}$",
+                  "type": [
+                    "string",
+                    "null"
+                  ]
+                },
+                "media_id": {
+                  "description": "The asset.",
+                  "pattern": "^med_[0-9a-f]{32}$",
+                  "type": "string"
+                },
+                "path": {
+                  "description": "The proxy file while it is ready.",
+                  "type": [
+                    "string",
+                    "null"
+                  ]
+                },
+                "profile": {
+                  "description": "How it is made (`prores_proxy-960`), once there is one.",
+                  "type": [
+                    "string",
+                    "null"
+                  ]
+                },
+                "progress": {
+                  "description": "Done fraction while generating.",
+                  "format": "double",
+                  "type": [
+                    "number",
+                    "null"
+                  ]
+                },
+                "reason": {
+                  "description": "Why the policy wants one, or why the asset cannot have one.",
+                  "type": [
+                    "string",
+                    "null"
+                  ]
+                },
+                "size": {
+                  "description": "Its picture size `[width, height]`.",
+                  "items": {
+                    "format": "uint32",
+                    "minimum": 0,
+                    "type": "integer"
+                  },
+                  "maxItems": 2,
+                  "minItems": 2,
+                  "type": [
+                    "array",
+                    "null"
+                  ]
+                },
+                "status": {
+                  "description": "Where its proxy is.",
+                  "oneOf": [
+                    {
+                      "const": "none",
+                      "description": "There is none and none is being made.",
+                      "type": "string"
+                    },
+                    {
+                      "const": "queued",
+                      "description": "Waiting for its job to start.",
+                      "type": "string"
+                    },
+                    {
+                      "const": "generating",
+                      "description": "Being made (see `progress`).",
+                      "type": "string"
+                    },
+                    {
+                      "const": "ready",
+                      "description": "Ready: the preview scrubs it.",
+                      "type": "string"
+                    },
+                    {
+                      "const": "incomplete",
+                      "description": "A generation stopped before the end (cancelled, or the engine stopped); the next one\ncontinues from where it got.",
+                      "type": "string"
+                    },
+                    {
+                      "const": "evicted",
+                      "description": "It was removed from the cache (its limit, a clear, `media.delete_proxy`): the original\nis used; `media.generate_proxy` makes it again.",
+                      "type": "string"
+                    },
+                    {
+                      "const": "failed",
+                      "description": "The last generation failed (see `error`).",
+                      "type": "string"
+                    }
+                  ]
+                },
+                "wanted": {
+                  "description": "Whether the project's policy wants one (it is made automatically).",
+                  "type": "boolean"
+                }
+              },
+              "required": [
+                "media_id",
+                "status",
+                "wanted",
+                "reason",
+                "profile",
+                "path",
+                "bytes",
+                "size",
+                "job_id",
+                "progress",
+                "error"
+              ],
+              "type": "object"
+            },
+            "type": "array"
+          }
+        },
+        "required": [
+          "proxies",
+          "policy"
+        ],
+        "title": "ProxiesOutput",
+        "type": "object"
+      },
+      "scope": "any",
+      "secret_fields": [],
+      "summary": "Remove the proxies of video assets (the preview uses the originals again)",
+      "undoable": false,
+      "view": false
+    },
+    {
+      "annotations": {
+        "destructiveHint": false,
+        "idempotentHint": true,
+        "openWorldHint": false,
+        "readOnlyHint": false
+      },
+      "input_schema": {
+        "additionalProperties": false,
+        "description": "Makes proxies of video assets now, whatever the policy: one background job each (two run\nat a time, one while an export runs), resumed from its finished parts if an earlier one was\ninterrupted. Assets whose proxy is ready or being made are left alone. Returns their status;\nfollow it with `media.proxy_status` or `job.wait`.",
+        "properties": {
+          "media": {
+            "description": "The video assets (1..=256, no repeats).",
+            "items": {
+              "description": "A Media id: `^med_[0-9a-f]{32}$`.",
+              "pattern": "^med_[0-9a-f]{32}$",
+              "type": "string"
+            },
+            "type": "array"
+          }
+        },
+        "required": [
+          "media"
+        ],
+        "title": "MediaGenerateProxy",
+        "type": "object"
+      },
+      "journaled": false,
+      "kind": "engine",
+      "mcp": "catalog",
+      "mcp_tool": "media_generate_proxy",
+      "name": "media.generate_proxy",
+      "namespace": "media",
+      "output_schema": {
+        "additionalProperties": false,
+        "description": "Result of the proxy commands.",
+        "properties": {
+          "policy": {
+            "description": "The policy that decides which assets get one automatically.",
+            "oneOf": [
+              {
+                "const": "off",
+                "description": "Never automatically (`media.generate_proxy` still makes one).",
+                "type": "string"
+              },
+              {
+                "const": "auto",
+                "description": "For video that is slow to scrub ([`auto_reason`]); the default.",
+                "type": "string"
+              },
+              {
+                "const": "all",
+                "description": "For every video file.",
+                "type": "string"
+              }
+            ]
+          },
+          "proxies": {
+            "description": "One entry per asset, in request order (`media.proxy_status` without `media`: every video\nasset, by id).",
+            "items": {
+              "additionalProperties": false,
+              "description": "One asset's proxy (`ProxyRef` of WP-2F.01).",
+              "properties": {
+                "bytes": {
+                  "description": "Its size in bytes while it is ready.",
+                  "format": "uint64",
+                  "minimum": 0,
+                  "type": [
+                    "integer",
+                    "null"
+                  ]
+                },
+                "error": {
+                  "description": "Why the last generation failed.",
+                  "type": [
+                    "string",
+                    "null"
+                  ]
+                },
+                "job_id": {
+                  "description": "The job making it (queued or generating).",
+                  "pattern": "^job_[0-9a-f]{32}$",
+                  "type": [
+                    "string",
+                    "null"
+                  ]
+                },
+                "media_id": {
+                  "description": "The asset.",
+                  "pattern": "^med_[0-9a-f]{32}$",
+                  "type": "string"
+                },
+                "path": {
+                  "description": "The proxy file while it is ready.",
+                  "type": [
+                    "string",
+                    "null"
+                  ]
+                },
+                "profile": {
+                  "description": "How it is made (`prores_proxy-960`), once there is one.",
+                  "type": [
+                    "string",
+                    "null"
+                  ]
+                },
+                "progress": {
+                  "description": "Done fraction while generating.",
+                  "format": "double",
+                  "type": [
+                    "number",
+                    "null"
+                  ]
+                },
+                "reason": {
+                  "description": "Why the policy wants one, or why the asset cannot have one.",
+                  "type": [
+                    "string",
+                    "null"
+                  ]
+                },
+                "size": {
+                  "description": "Its picture size `[width, height]`.",
+                  "items": {
+                    "format": "uint32",
+                    "minimum": 0,
+                    "type": "integer"
+                  },
+                  "maxItems": 2,
+                  "minItems": 2,
+                  "type": [
+                    "array",
+                    "null"
+                  ]
+                },
+                "status": {
+                  "description": "Where its proxy is.",
+                  "oneOf": [
+                    {
+                      "const": "none",
+                      "description": "There is none and none is being made.",
+                      "type": "string"
+                    },
+                    {
+                      "const": "queued",
+                      "description": "Waiting for its job to start.",
+                      "type": "string"
+                    },
+                    {
+                      "const": "generating",
+                      "description": "Being made (see `progress`).",
+                      "type": "string"
+                    },
+                    {
+                      "const": "ready",
+                      "description": "Ready: the preview scrubs it.",
+                      "type": "string"
+                    },
+                    {
+                      "const": "incomplete",
+                      "description": "A generation stopped before the end (cancelled, or the engine stopped); the next one\ncontinues from where it got.",
+                      "type": "string"
+                    },
+                    {
+                      "const": "evicted",
+                      "description": "It was removed from the cache (its limit, a clear, `media.delete_proxy`): the original\nis used; `media.generate_proxy` makes it again.",
+                      "type": "string"
+                    },
+                    {
+                      "const": "failed",
+                      "description": "The last generation failed (see `error`).",
+                      "type": "string"
+                    }
+                  ]
+                },
+                "wanted": {
+                  "description": "Whether the project's policy wants one (it is made automatically).",
+                  "type": "boolean"
+                }
+              },
+              "required": [
+                "media_id",
+                "status",
+                "wanted",
+                "reason",
+                "profile",
+                "path",
+                "bytes",
+                "size",
+                "job_id",
+                "progress",
+                "error"
+              ],
+              "type": "object"
+            },
+            "type": "array"
+          }
+        },
+        "required": [
+          "proxies",
+          "policy"
+        ],
+        "title": "ProxiesOutput",
+        "type": "object"
+      },
+      "scope": "any",
+      "secret_fields": [],
+      "summary": "Make proxies (small intra-frame copies the preview scrubs) of video assets now",
       "undoable": false,
       "view": false
     },
@@ -3688,13 +4150,34 @@
                 "path": {
                   "description": "The path as requested.",
                   "type": "string"
+                },
+                "proxy": {
+                  "description": "Whether a proxy (a small copy the preview scrubs, WP-2F.01) was queued for it, or is\nalready in the cache.",
+                  "oneOf": [
+                    {
+                      "const": "none",
+                      "description": "None is made (the policy does not want one, or the file cannot have one).",
+                      "type": "string"
+                    },
+                    {
+                      "const": "queued",
+                      "description": "Its generation is queued (after the asset's analysis); `media.proxy_status` follows it.",
+                      "type": "string"
+                    },
+                    {
+                      "const": "ready",
+                      "description": "One is already in the cache (the same content was imported before).",
+                      "type": "string"
+                    }
+                  ]
                 }
               },
               "required": [
                 "path",
                 "media_id",
                 "kind",
-                "duplicate"
+                "duplicate",
+                "proxy"
               ],
               "type": "object"
             },
@@ -3722,6 +4205,217 @@
       "scope": "any",
       "secret_fields": [],
       "summary": "Import media files: probe and register them now, return media ids and analysis job ids",
+      "undoable": false,
+      "view": false
+    },
+    {
+      "annotations": {
+        "destructiveHint": false,
+        "idempotentHint": true,
+        "openWorldHint": false,
+        "readOnlyHint": true
+      },
+      "input_schema": {
+        "additionalProperties": false,
+        "description": "Shows where the proxies of video assets are: none, queued, generating (with progress),\nready (path, size), incomplete, evicted or failed, and whether the policy wants one.",
+        "properties": {
+          "media": {
+            "default": null,
+            "description": "The assets; absent: every video asset of the project.",
+            "items": {
+              "description": "A Media id: `^med_[0-9a-f]{32}$`.",
+              "pattern": "^med_[0-9a-f]{32}$",
+              "type": "string"
+            },
+            "type": [
+              "array",
+              "null"
+            ]
+          }
+        },
+        "title": "MediaProxyStatus",
+        "type": "object"
+      },
+      "kind": "engine",
+      "mcp": "catalog",
+      "mcp_tool": "media_proxy_status",
+      "name": "media.proxy_status",
+      "namespace": "media",
+      "output_schema": {
+        "additionalProperties": false,
+        "description": "Result of the proxy commands.",
+        "properties": {
+          "policy": {
+            "description": "The policy that decides which assets get one automatically.",
+            "oneOf": [
+              {
+                "const": "off",
+                "description": "Never automatically (`media.generate_proxy` still makes one).",
+                "type": "string"
+              },
+              {
+                "const": "auto",
+                "description": "For video that is slow to scrub ([`auto_reason`]); the default.",
+                "type": "string"
+              },
+              {
+                "const": "all",
+                "description": "For every video file.",
+                "type": "string"
+              }
+            ]
+          },
+          "proxies": {
+            "description": "One entry per asset, in request order (`media.proxy_status` without `media`: every video\nasset, by id).",
+            "items": {
+              "additionalProperties": false,
+              "description": "One asset's proxy (`ProxyRef` of WP-2F.01).",
+              "properties": {
+                "bytes": {
+                  "description": "Its size in bytes while it is ready.",
+                  "format": "uint64",
+                  "minimum": 0,
+                  "type": [
+                    "integer",
+                    "null"
+                  ]
+                },
+                "error": {
+                  "description": "Why the last generation failed.",
+                  "type": [
+                    "string",
+                    "null"
+                  ]
+                },
+                "job_id": {
+                  "description": "The job making it (queued or generating).",
+                  "pattern": "^job_[0-9a-f]{32}$",
+                  "type": [
+                    "string",
+                    "null"
+                  ]
+                },
+                "media_id": {
+                  "description": "The asset.",
+                  "pattern": "^med_[0-9a-f]{32}$",
+                  "type": "string"
+                },
+                "path": {
+                  "description": "The proxy file while it is ready.",
+                  "type": [
+                    "string",
+                    "null"
+                  ]
+                },
+                "profile": {
+                  "description": "How it is made (`prores_proxy-960`), once there is one.",
+                  "type": [
+                    "string",
+                    "null"
+                  ]
+                },
+                "progress": {
+                  "description": "Done fraction while generating.",
+                  "format": "double",
+                  "type": [
+                    "number",
+                    "null"
+                  ]
+                },
+                "reason": {
+                  "description": "Why the policy wants one, or why the asset cannot have one.",
+                  "type": [
+                    "string",
+                    "null"
+                  ]
+                },
+                "size": {
+                  "description": "Its picture size `[width, height]`.",
+                  "items": {
+                    "format": "uint32",
+                    "minimum": 0,
+                    "type": "integer"
+                  },
+                  "maxItems": 2,
+                  "minItems": 2,
+                  "type": [
+                    "array",
+                    "null"
+                  ]
+                },
+                "status": {
+                  "description": "Where its proxy is.",
+                  "oneOf": [
+                    {
+                      "const": "none",
+                      "description": "There is none and none is being made.",
+                      "type": "string"
+                    },
+                    {
+                      "const": "queued",
+                      "description": "Waiting for its job to start.",
+                      "type": "string"
+                    },
+                    {
+                      "const": "generating",
+                      "description": "Being made (see `progress`).",
+                      "type": "string"
+                    },
+                    {
+                      "const": "ready",
+                      "description": "Ready: the preview scrubs it.",
+                      "type": "string"
+                    },
+                    {
+                      "const": "incomplete",
+                      "description": "A generation stopped before the end (cancelled, or the engine stopped); the next one\ncontinues from where it got.",
+                      "type": "string"
+                    },
+                    {
+                      "const": "evicted",
+                      "description": "It was removed from the cache (its limit, a clear, `media.delete_proxy`): the original\nis used; `media.generate_proxy` makes it again.",
+                      "type": "string"
+                    },
+                    {
+                      "const": "failed",
+                      "description": "The last generation failed (see `error`).",
+                      "type": "string"
+                    }
+                  ]
+                },
+                "wanted": {
+                  "description": "Whether the project's policy wants one (it is made automatically).",
+                  "type": "boolean"
+                }
+              },
+              "required": [
+                "media_id",
+                "status",
+                "wanted",
+                "reason",
+                "profile",
+                "path",
+                "bytes",
+                "size",
+                "job_id",
+                "progress",
+                "error"
+              ],
+              "type": "object"
+            },
+            "type": "array"
+          }
+        },
+        "required": [
+          "proxies",
+          "policy"
+        ],
+        "title": "ProxiesOutput",
+        "type": "object"
+      },
+      "scope": "any",
+      "secret_fields": [],
+      "summary": "Show the proxies of video assets: status, progress, file, size, policy",
       "undoable": false,
       "view": false
     },
@@ -4198,6 +4892,16 @@
             "default": null,
             "description": "New limits in bytes (`0` to `16 TiB`); a kind left out keeps its limit.",
             "properties": {
+              "proxies": {
+                "default": null,
+                "description": "Cap on proxies, in bytes (50 GiB by default).",
+                "format": "uint64",
+                "minimum": 0,
+                "type": [
+                  "integer",
+                  "null"
+                ]
+              },
               "thumbnails": {
                 "description": "Cap on thumbnails and filmstrips, in bytes.",
                 "format": "uint64",
@@ -4265,7 +4969,7 @@
             "type": "integer"
           },
           "kinds": {
-            "description": "Each disk cache, in a fixed order (thumbnails, waveforms).",
+            "description": "Each disk cache, in a fixed order (thumbnails, waveforms, proxies).",
             "items": {
               "additionalProperties": false,
               "description": "One disk cache's usage and limit.",
@@ -4293,6 +4997,11 @@
                     {
                       "const": "waveforms",
                       "description": "Waveform pyramids (one file per audio stream).",
+                      "type": "string"
+                    },
+                    {
+                      "const": "proxies",
+                      "description": "Proxies: small intra-frame copies of video files the preview scrubs (WP-2F.01). Clearing\nthem makes the preview use the originals; `media.generate_proxy` makes them again.",
                       "type": "string"
                     }
                   ]

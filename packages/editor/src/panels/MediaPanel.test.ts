@@ -309,8 +309,20 @@ describe("MediaPanel import", () => {
     bridge();
     call.mockResolvedValueOnce({
       media: [
-        { path: "/dropped/a.mp4", media_id: "med_a", kind: "video", duplicate: false },
-        { path: "/dropped/b.mp4", media_id: "med_b", kind: "video", duplicate: true },
+        {
+          path: "/dropped/a.mp4",
+          media_id: "med_a",
+          kind: "video",
+          duplicate: false,
+          proxy: "none",
+        },
+        {
+          path: "/dropped/b.mp4",
+          media_id: "med_b",
+          kind: "video",
+          duplicate: true,
+          proxy: "none",
+        },
       ],
       media_ids: ["med_a", "med_b"],
       failed: [],

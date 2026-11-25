@@ -64,6 +64,11 @@ expression: "json!({\n    \"meta\": serde_json::to_value(meta).unwrap(), \"input
               "type": "string",
               "const": "export",
               "description": "Rendering and encoding a sequence to a file (WP-1E.03)."
+            },
+            {
+              "type": "string",
+              "const": "proxy",
+              "description": "Making a media asset's proxy (WP-2F.01): decodes the original and encodes a smaller\nintra-frame copy."
             }
           ],
           "description": "What kind of work it is."
@@ -205,6 +210,11 @@ expression: "json!({\n    \"meta\": serde_json::to_value(meta).unwrap(), \"input
             "type": "string",
             "const": "export",
             "description": "Rendering and encoding a sequence to a file (WP-1E.03)."
+          },
+          {
+            "type": "string",
+            "const": "proxy",
+            "description": "Making a media asset's proxy (WP-2F.01): decodes the original and encodes a smaller\nintra-frame copy."
           }
         ],
         "description": "What kind of work it is."

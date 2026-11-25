@@ -34,7 +34,7 @@ use std::sync::{Arc, Weak};
 
 use cutweave_commands::{ActorCtx, CmdError, ConnId, DocHandle, Registry, RegistryError};
 use cutweave_model::Time;
-use cutweave_ops::media::{AnalysisStages, MediaProbe};
+use cutweave_ops::media::{AnalysisStages, MediaProbe, ProxyService};
 use cutweave_ops::view::UiState;
 use cutweave_render::query::SharedBackend;
 use serde_json::Value;
@@ -154,6 +154,12 @@ impl EngineLink {
         }
     }
 
+    /// The engine's job manager (proxy jobs, WP-2F.01); `None` once the engine stopped.
+    #[must_use]
+    pub fn jobs(&self) -> Option<cutweave_jobs::JobManager> {
+        self.core.upgrade().map(|core| core.deps.jobs.clone())
+    }
+
     /// The preview ring moved: the run-file's `shm` is rewritten (off the calling thread).
     pub fn preview_ring_changed(&self) {
         if let Some(core) = self.core.upgrade() {
@@ -269,6 +275,13 @@ pub trait Subsystems: Send + Sync {
     /// and the UI-only `media.set_cache_config`, `media.clear_cache`,
     /// `media.set_decode_policy`; WP-1D.08); `None`: this engine has none.
     fn cache_control(&self) -> Option<Arc<dyn crate::media_cache::CacheControl>> {
+        None
+    }
+
+    /// The proxies `media.import` queues and the proxy commands act on (WP-2F.01); `None`:
+    /// this engine makes none (`media.proxy_status` reports none, `media.generate_proxy` is
+    /// unsupported).
+    fn proxy_service(&self) -> Option<Arc<dyn ProxyService>> {
         None
     }
 

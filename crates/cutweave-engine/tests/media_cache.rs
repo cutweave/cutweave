@@ -148,7 +148,12 @@ fn the_status_names_the_folder_each_cache_and_the_policy() {
     assert_eq!(thumbs["limit_bytes"], json!(2048 * MB));
     assert_eq!(thumbs["entries"], 0);
     assert_eq!(kind(&status, "waveforms")["limit_bytes"], json!(512 * MB));
-    assert_eq!(status["kinds"].as_array().unwrap().len(), 2);
+    // Proxies (WP-2F.01): 50 GiB.
+    assert_eq!(
+        kind(&status, "proxies")["limit_bytes"],
+        json!(50 * 1024 * MB)
+    );
+    assert_eq!(status["kinds"].as_array().unwrap().len(), 3);
     r.shutdown();
 }
 

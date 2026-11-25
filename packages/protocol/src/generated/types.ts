@@ -82,7 +82,12 @@ export type CacheKind =
 /**  Thumbnails and filmstrips (JPEG files, accounted in `cache.sqlite`). */
 "thumbnails" | 
 /**  Waveform pyramids (one file per audio stream). */
-"waveforms";
+"waveforms" | 
+/**
+ *  Proxies: small intra-frame copies of video files the preview scrubs (WP-2F.01). Clearing
+ *  them makes the preview use the originals; `media.generate_proxy` makes them again.
+ */
+"proxies";
 
 /**  One disk cache's usage and limit. */
 export type CacheKindStatus = {
@@ -102,6 +107,8 @@ export type CacheLimits = {
 	thumbnails: number | null,
 	/**  Cap on waveforms, in bytes. */
 	waveforms: number | null,
+	/**  Cap on proxies, in bytes (50 GiB by default). */
+	proxies?: number | null,
 };
 
 /**
@@ -833,6 +840,15 @@ export type ImportFailureCode =
 /**  The probe result cannot be registered (for example a zero duration). */
 "invalid";
 
+/**  What `media.import` says about each file's proxy. */
+export type ImportProxy = 
+/**  None is made (the policy does not want one, or the file cannot have one). */
+"none" | 
+/**  Its generation is queued (after the asset's analysis); `media.proxy_status` follows it. */
+"queued" | 
+/**  One is already in the cache (the same content was imported before). */
+"ready";
+
 /**  One imported file. */
 export type ImportedMedia = {
 	/**  The path as requested. */
@@ -843,6 +859,11 @@ export type ImportedMedia = {
 	kind: MediaKind,
 	/**  `true` when the content was already in the project and nothing was added. */
 	duplicate: boolean,
+	/**
+	 *  Whether a proxy (a small copy the preview scrubs, WP-2F.01) was queued for it, or is
+	 *  already in the cache.
+	 */
+	proxy: ImportProxy,
 };
 
 /**  A broken document invariant: what [`Project::validate`] reports. */
@@ -1159,7 +1180,12 @@ export type JobKind =
 /**  Background analysis of an imported asset (index, thumbnails, waveform): decodes media. */
 "analysis" | 
 /**  Rendering and encoding a sequence to a file (WP-1E.03). */
-"export";
+"export" | 
+/**
+ *  Making a media asset's proxy (WP-2F.01): decodes the original and encodes a smaller
+ *  intra-frame copy.
+ */
+"proxy";
 
 /**
  *  Lists background jobs, newest first: unfinished ones and recently finished ones, optionally
@@ -1340,7 +1366,7 @@ export type MediaCacheStatusOutput = {
 	 *  the engine has none.
 	 */
 	folder: string | null,
-	/**  Each disk cache, in a fixed order (thumbnails, waveforms). */
+	/**  Each disk cache, in a fixed order (thumbnails, waveforms, proxies). */
 	kinds: CacheKindStatus[],
 	/**  The hardware decoding policy in force. */
 	decode_hw: DecodeHw,
@@ -1379,7 +1405,7 @@ export type MediaCapabilitiesOutput = {
  *  the project dirty; UI credential only.
  */
 export type MediaClearCache = {
-	/**  The caches to empty (`thumbnails`, `waveforms`). */
+	/**  The caches to empty (`thumbnails`, `waveforms`, `proxies`). */
 	kinds: CacheKind[],
 };
 
@@ -1387,6 +1413,16 @@ export type MediaClearCache = {
 export type MediaClearCacheOutput = {
 	/**  What each requested kind lost. */
 	cleared: ClearedKind[],
+};
+
+/**
+ *  Removes the proxies of video assets from the cache (cancelling a generation in progress):
+ *  the preview uses the originals again. The assets and their files are untouched; a proxy is
+ *  not made again automatically until `media.generate_proxy` asks for it.
+ */
+export type MediaDeleteProxy = {
+	/**  The video assets (1..=256, no repeats). */
+	media: MediaId[],
 };
 
 /**  Which media to list; every part that is absent or empty lets everything through. */
@@ -1403,6 +1439,17 @@ export type MediaFilter = {
 	used?: boolean | null,
 	/**  `true`: only files nothing can be read from (no streams). */
 	problems?: boolean | null,
+};
+
+/**
+ *  Makes proxies of video assets now, whatever the policy: one background job each (two run
+ *  at a time, one while an export runs), resumed from its finished parts if an earlier one was
+ *  interrupted. Assets whose proxy is ready or being made are left alone. Returns their status;
+ *  follow it with `media.proxy_status` or `job.wait`.
+ */
+export type MediaGenerateProxy = {
+	/**  The video assets (1..=256, no repeats). */
+	media: MediaId[],
 };
 
 /**
@@ -1481,6 +1528,15 @@ export type MediaListOutput = {
 	total: number,
 	/**  Number of assets that pass `filter` (all of them without one). */
 	matched: number,
+};
+
+/**
+ *  Shows where the proxies of video assets are: none, queued, generating (with progress),
+ *  ready (path, size), incomplete, evicted or failed, and whether the policy wants one.
+ */
+export type MediaProxyStatus = {
+	/**  The assets; absent: every video asset of the project. */
+	media?: MediaId[] | null,
 };
 
 /**
@@ -2022,6 +2078,75 @@ export type ProjectStatus = {
 	 */
 	recovery: RecoveryInfo | null,
 };
+
+/**  Result of the proxy commands. */
+export type ProxiesOutput = {
+	/**
+	 *  One entry per asset, in request order (`media.proxy_status` without `media`: every video
+	 *  asset, by id).
+	 */
+	proxies: ProxyInfo[],
+	/**  The policy that decides which assets get one automatically. */
+	policy: ProxyPolicy,
+};
+
+/**  One asset's proxy (`ProxyRef` of WP-2F.01). */
+export type ProxyInfo = {
+	/**  The asset. */
+	media_id: MediaId,
+	/**  Where its proxy is. */
+	status: ProxyStatus,
+	/**  Whether the project's policy wants one (it is made automatically). */
+	wanted: boolean,
+	/**  Why the policy wants one, or why the asset cannot have one. */
+	reason: string | null,
+	/**  How it is made (`prores_proxy-960`), once there is one. */
+	profile: string | null,
+	/**  The proxy file while it is ready. */
+	path: string | null,
+	/**  Its size in bytes while it is ready. */
+	bytes: number | null,
+	/**  Its picture size `[width, height]`. */
+	size: [number, number] | null,
+	/**  The job making it (queued or generating). */
+	job_id: JobId | null,
+	/**  Done fraction while generating. */
+	progress: number | null,
+	/**  Why the last generation failed. */
+	error: string | null,
+};
+
+/**  When proxies are made automatically. */
+export type ProxyPolicy = 
+/**  Never automatically (`media.generate_proxy` still makes one). */
+"off" | 
+/**  For video that is slow to scrub ([`auto_reason`]); the default. */
+"auto" | 
+/**  For every video file. */
+"all";
+
+/**  Where an asset's proxy is. */
+export type ProxyStatus = 
+/**  There is none and none is being made. */
+"none" | 
+/**  Waiting for its job to start. */
+"queued" | 
+/**  Being made (see `progress`). */
+"generating" | 
+/**  Ready: the preview scrubs it. */
+"ready" | 
+/**
+ *  A generation stopped before the end (cancelled, or the engine stopped); the next one
+ *  continues from where it got.
+ */
+"incomplete" | 
+/**
+ *  It was removed from the cache (its limit, a clear, `media.delete_proxy`): the original
+ *  is used; `media.generate_proxy` makes it again.
+ */
+"evicted" | 
+/**  The last generation failed (see `error`). */
+"failed";
 
 /**  Unsaved work from a previous session (what a restore would bring back). */
 export type RecoveryInfo = {

@@ -1,6 +1,13 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 //! The FFmpeg [`Encoder`]: H.264 (libx264 or a hardware encoder) and AAC (FFmpeg's native
-//! encoder) in MP4 (WP-1E.01, hardware WP-1E.02).
+//! encoder) in MP4 (WP-1E.01, hardware WP-1E.02), and the intra-frame proxy codecs (ProRes
+//! Proxy, DNxHR LB, MJPEG) with 16-bit PCM in MOV (WP-2F.01).
+//!
+//! - **Proxies** (WP-2F.01). Codec `prores`, `dnxhd` or `mjpeg` in container `mov`: frames
+//!   arrive in the codec's own layout (`Yuv422p10` for ProRes, `Yuv422p` otherwise) and are
+//!   copied, never converted; the stream is tagged with the spec's color tags as they are (an
+//!   unset tag stays unspecified, so a proxy reads like its original). Audio may be `pcm_s16le`
+//!   (1 to 8 channels, any rate): pushed f32 samples are interleaved and rounded to 16 bits.
 //!
 //! - **Video.** libx264 in `yuv420p` with CRF or an average bitrate and an x264 speed preset,
 //!   or a hardware encoder in NV12 with the same settings mapped onto its own (`hwenc`). Which
@@ -32,7 +39,7 @@ use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::{Arc, Mutex, PoisonError};
 
 use cutweave_model::{
-    ColorPrimaries, ColorRange, Duration, FrameRate, MatrixCoefficients, SampleRate,
+    ColorPrimaries, ColorRange, ColorTags, Duration, FrameRate, MatrixCoefficients, SampleRate,
     TransferCharacteristics,
 };
 use ffmpeg_next::codec::{self, encoder};
@@ -41,17 +48,20 @@ use ffmpeg_next::format::{self, Pixel, Sample, sample};
 use ffmpeg_next::util::color;
 use ffmpeg_next::{ChannelLayout, Dictionary, Packet, Rational, frame};
 
-use super::hwenc::{self, Choice};
+use super::hwenc::{self, Choice, Intra};
 use super::sys::{HwFrames, Scaler};
 use crate::backend::{AudioEncodeSpec, EncodeSpec, EncodeSummary, Encoder, VideoEncodeSpec};
 use crate::encode::{InputCheck, output_color};
 use crate::path::display;
 use crate::{AudioChunk, CancelCheck, MediaError, PixelFormat, ProgressSink, VideoFrame};
 
-/// The container this encoder writes.
+/// The containers this encoder writes.
 const MP4: &str = "mp4";
+const MOV: &str = "mov";
 /// The AAC encoder (FFmpeg's own; no libfdk).
 const AAC: &str = "aac";
+/// 16-bit little-endian PCM (proxies, in MOV).
+const PCM_S16LE: &str = "pcm_s16le";
 /// swscale's BT.709 matrix.
 const SWS_CS_ITU709: std::ffi::c_int = ffmpeg_next::ffi::SWS_CS_ITU709;
 
@@ -73,12 +83,19 @@ pub(super) fn open_with(
     spec: &EncodeSpec,
     wrap: &dyn Fn(File) -> Box<dyn WriteSeek>,
 ) -> Result<Box<dyn Encoder>, MediaError> {
-    check_container(spec)?;
+    let container = check_container(spec)?;
     let video = spec.video.as_ref().map(VideoPlan::new).transpose()?;
-    let audio = spec.audio.as_ref().map(AudioPlan::new).transpose()?;
+    let audio = spec
+        .audio
+        .as_ref()
+        .map(|a| AudioPlan::new(a, container))
+        .transpose()?;
     check_target(&spec.path)?;
-    let choices = match video {
-        Some(_) => hwenc::choices(&spec.hw)?,
+    let choices = match &video {
+        Some(plan) => match plan.intra {
+            Some(intra) => vec![Choice::Intra(intra)],
+            None => hwenc::choices(&spec.hw)?,
+        },
         None => vec![Choice::Software],
     };
     // (Formatted before the log macros, whose scope has a `display` of their own.)
@@ -86,7 +103,7 @@ pub(super) fn open_with(
     let mut choices = choices.into_iter().peekable();
     while let Some(choice) = choices.next() {
         let video = video.as_ref().map(|plan| (plan, choice));
-        match open_attempt(spec, video, audio.as_ref(), wrap) {
+        match open_attempt(spec, container, video, audio.as_ref(), wrap) {
             Ok(enc) => {
                 if let Some(name) = enc.video_encoder() {
                     tracing::info!(
@@ -114,6 +131,7 @@ pub(super) fn open_with(
 /// One attempt of [`open_with`] with one video encoder.
 fn open_attempt(
     spec: &EncodeSpec,
+    container: &'static str,
     video: Option<(&VideoPlan, Choice)>,
     audio: Option<&AudioPlan>,
     wrap: &dyn Fn(File) -> Box<dyn WriteSeek>,
@@ -141,14 +159,14 @@ fn open_attempt(
         failed: None,
     };
     // From here on, an error drops `enc`, which closes and removes the partial file.
-    match enc.start(sink, video, audio) {
+    match enc.start(sink, container, video, audio) {
         Ok(()) => Ok(Box::new(enc)),
         Err(fault) => Err(enc.fail(fault)),
     }
 }
 
-/// Only MP4 (named, or from a `.mp4` / `.m4v` extension).
-fn check_container(spec: &EncodeSpec) -> Result<(), MediaError> {
+/// MP4 (named, or from a `.mp4` / `.m4v` extension) or MOV (`.mov`): the muxer's name.
+fn check_container(spec: &EncodeSpec) -> Result<&'static str, MediaError> {
     let name = match &spec.container {
         Some(name) => name.to_ascii_lowercase(),
         None => match spec
@@ -163,13 +181,15 @@ fn check_container(spec: &EncodeSpec) -> Result<(), MediaError> {
             None => String::new(),
         },
     };
-    if name == MP4 {
-        return Ok(());
+    match name.as_str() {
+        MP4 => return Ok(MP4),
+        MOV => return Ok(MOV),
+        _ => {}
     }
     Err(MediaError::Unsupported {
         message: format!(
-            "`{}`: the {} container; this backend writes MP4 (other containers arrive with the \
-             export presets, P2)",
+            "`{}`: the {} container; this backend writes MP4 and MOV (other containers arrive \
+             with the export presets, P2)",
             display(&spec.path),
             if name.is_empty() { "unnamed" } else { &name }
         ),
@@ -213,6 +233,8 @@ fn rational(num: u32, den: u32) -> Result<Rational, MediaError> {
 /// The checked video settings, before anything is opened (whichever encoder then opens).
 pub(super) struct VideoPlan {
     spec: VideoEncodeSpec,
+    /// The intra-frame proxy codec, for `prores`, `dnxhd` and `mjpeg`; `None` for H.264.
+    intra: Option<Intra>,
     /// One frame.
     time_base: Rational,
     fps: Rational,
@@ -220,6 +242,9 @@ pub(super) struct VideoPlan {
 
 impl VideoPlan {
     pub(super) fn new(spec: &VideoEncodeSpec) -> Result<VideoPlan, MediaError> {
+        if let Some(intra) = Intra::of(&spec.codec) {
+            return VideoPlan::intra(spec, intra);
+        }
         if spec.codec != "h264" {
             return Err(unsupported(format!(
                 "no `{}` encoder for MP4: this backend writes H.264 (HEVC and AV1 arrive in P2)",
@@ -263,42 +288,150 @@ impl VideoPlan {
         let (num, den) = (spec.rate.num(), spec.rate.den());
         Ok(VideoPlan {
             spec: spec.clone(),
+            intra: None,
+            time_base: rational(den, num)?,
+            fps: rational(num, den)?,
+        })
+    }
+
+    /// The plan of an intra-frame proxy encode (see the module docs).
+    fn intra(spec: &VideoEncodeSpec, intra: Intra) -> Result<VideoPlan, MediaError> {
+        if encoder::find_by_name(intra.encoder()).is_none() {
+            return Err(unsupported(format!(
+                "this FFmpeg build has no {}",
+                intra.encoder()
+            )));
+        }
+        if spec.input_format != intra.input_format() {
+            return Err(unsupported(format!(
+                "{:?} input: {} takes {:?} frames",
+                spec.input_format,
+                intra.encoder(),
+                intra.input_format()
+            )));
+        }
+        if !spec.width.is_multiple_of(2) {
+            return Err(MediaError::Invalid {
+                message: format!("4:2:2 needs an even width, not {}", spec.width),
+            });
+        }
+        let (num, den) = (spec.rate.num(), spec.rate.den());
+        Ok(VideoPlan {
+            spec: spec.clone(),
+            intra: Some(intra),
             time_base: rational(den, num)?,
             fps: rational(num, den)?,
         })
     }
 }
 
+/// The FFmpeg color properties for `tags`; unset tags (and names without a code here) are
+/// unspecified.
+fn ffmpeg_color(
+    tags: &ColorTags,
+) -> (
+    color::Primaries,
+    color::TransferCharacteristic,
+    color::Space,
+    color::Range,
+) {
+    use color::{Primaries as P, Space as S, TransferCharacteristic as T};
+    let primaries = match tags.primaries {
+        Some(ColorPrimaries::Bt709) => P::BT709,
+        Some(ColorPrimaries::Bt470M) => P::BT470M,
+        Some(ColorPrimaries::Bt470Bg) => P::BT470BG,
+        Some(ColorPrimaries::Smpte170M) => P::SMPTE170M,
+        Some(ColorPrimaries::Smpte240M) => P::SMPTE240M,
+        Some(ColorPrimaries::Film) => P::Film,
+        Some(ColorPrimaries::Bt2020) => P::BT2020,
+        Some(ColorPrimaries::Smpte428) => P::SMPTE428,
+        Some(ColorPrimaries::Smpte431) => P::SMPTE431,
+        Some(ColorPrimaries::Smpte432) => P::SMPTE432,
+        Some(ColorPrimaries::Ebu3213) => P::EBU3213,
+        _ => P::Unspecified,
+    };
+    let transfer = match tags.transfer {
+        Some(TransferCharacteristics::Bt709) => T::BT709,
+        Some(TransferCharacteristics::Gamma22) => T::GAMMA22,
+        Some(TransferCharacteristics::Gamma28) => T::GAMMA28,
+        Some(TransferCharacteristics::Smpte170M) => T::SMPTE170M,
+        Some(TransferCharacteristics::Smpte240M) => T::SMPTE240M,
+        Some(TransferCharacteristics::Linear) => T::Linear,
+        Some(TransferCharacteristics::Srgb) => T::IEC61966_2_1,
+        Some(TransferCharacteristics::Bt2020_10) => T::BT2020_10,
+        Some(TransferCharacteristics::Bt2020_12) => T::BT2020_12,
+        Some(TransferCharacteristics::Pq) => T::SMPTE2084,
+        Some(TransferCharacteristics::Hlg) => T::ARIB_STD_B67,
+        _ => T::Unspecified,
+    };
+    let matrix = match tags.matrix {
+        Some(MatrixCoefficients::Rgb) => S::RGB,
+        Some(MatrixCoefficients::Bt709) => S::BT709,
+        Some(MatrixCoefficients::Fcc) => S::FCC,
+        Some(MatrixCoefficients::Bt470Bg) => S::BT470BG,
+        Some(MatrixCoefficients::Smpte170M) => S::SMPTE170M,
+        Some(MatrixCoefficients::Smpte240M) => S::SMPTE240M,
+        Some(MatrixCoefficients::YCgCo) => S::YCGCO,
+        Some(MatrixCoefficients::Bt2020Ncl) => S::BT2020NCL,
+        Some(MatrixCoefficients::Bt2020Cl) => S::BT2020CL,
+        Some(MatrixCoefficients::ICtCp) => S::ICTCP,
+        _ => S::Unspecified,
+    };
+    let range = match tags.range {
+        Some(ColorRange::Limited) => color::Range::MPEG,
+        Some(ColorRange::Full) => color::Range::JPEG,
+        None => color::Range::Unspecified,
+    };
+    (primaries, transfer, matrix, range)
+}
+
 /// The checked audio settings, before anything is opened.
 struct AudioPlan {
     spec: AudioEncodeSpec,
     codec: ffmpeg_next::Codec,
+    /// The encoder's name (`aac`, `pcm_s16le`).
+    name: &'static str,
     rate: i32,
 }
 
-/// The layout of a mono or stereo stream.
+/// The layout of a stream of `channels` channels: mono, stereo, else FFmpeg's default order.
 fn layout(channels: u16) -> ChannelLayout {
-    if channels == 1 {
-        ChannelLayout::MONO
-    } else {
-        ChannelLayout::STEREO
+    match channels {
+        1 => ChannelLayout::MONO,
+        2 => ChannelLayout::STEREO,
+        n => ChannelLayout::default(i32::from(n)),
     }
 }
 
 impl AudioPlan {
-    fn new(spec: &AudioEncodeSpec) -> Result<AudioPlan, MediaError> {
-        if spec.codec != AAC {
+    fn new(spec: &AudioEncodeSpec, container: &'static str) -> Result<AudioPlan, MediaError> {
+        let name = match (spec.codec.as_str(), container) {
+            (AAC, _) => AAC,
+            (PCM_S16LE, MOV) => PCM_S16LE,
+            _ => {
+                return Err(unsupported(format!(
+                    "no `{}` encoder for {}: this backend writes AAC (and 16-bit PCM in MOV)",
+                    spec.codec,
+                    container.to_ascii_uppercase()
+                )));
+            }
+        };
+        let codec = encoder::find_by_name(name)
+            .ok_or_else(|| unsupported(format!("this FFmpeg build has no {name} encoder")))?;
+        let channels_ok = if name == AAC {
+            matches!(spec.channels, 1 | 2)
+        } else {
+            (1..=8).contains(&spec.channels)
+        };
+        if !channels_ok {
             return Err(unsupported(format!(
-                "no `{}` encoder for MP4: this backend writes AAC",
-                spec.codec
-            )));
-        }
-        let codec = encoder::find_by_name(AAC)
-            .ok_or_else(|| unsupported(format!("this FFmpeg build has no {AAC} encoder")))?;
-        if !matches!(spec.channels, 1 | 2) {
-            return Err(unsupported(format!(
-                "{} audio channels: exports are mono or stereo",
-                spec.channels
+                "{} audio channels: {name} here takes {}",
+                spec.channels,
+                if name == AAC {
+                    "mono or stereo"
+                } else {
+                    "1 to 8 channels"
+                }
             )));
         }
         let hz = spec.rate.hz();
@@ -309,11 +442,12 @@ impl AudioPlan {
             .and_then(|a| a.rates())
             .is_none_or(|mut rates| rates.any(|r| r == rate));
         if !supported {
-            return Err(unsupported(format!("AAC at {}", spec.rate)));
+            return Err(unsupported(format!("{name} at {}", spec.rate)));
         }
         Ok(AudioPlan {
             spec: spec.clone(),
             codec,
+            name,
             rate,
         })
     }
@@ -491,12 +625,16 @@ enum Convert {
     },
 }
 
-/// The FFmpeg layout of an RGBA, NV12 or YUV 4:2:0 input format.
+/// The FFmpeg layout of an input format.
 fn pixel(format: PixelFormat) -> Pixel {
     match format {
         PixelFormat::Rgba8 => Pixel::RGBA,
         PixelFormat::Nv12 => Pixel::NV12,
-        _ => Pixel::YUV420P,
+        PixelFormat::P010 => Pixel::P010LE,
+        PixelFormat::Yuv420p10 => Pixel::YUV420P10LE,
+        PixelFormat::Yuv422p => Pixel::YUV422P,
+        PixelFormat::Yuv422p10 => Pixel::YUV422P10LE,
+        PixelFormat::Yuv420p => Pixel::YUV420P,
     }
 }
 
@@ -603,10 +741,18 @@ impl VideoEncoder {
         ctx.set_time_base(plan.time_base);
         ctx.set_frame_rate(Some(plan.fps));
         ctx.set_aspect_ratio(Rational::new(1, 1));
-        ctx.set_colorspace(color::Space::BT709);
-        ctx.set_color_range(color::Range::MPEG);
-        ctx.set_color_primaries(color::Primaries::BT709);
-        ctx.set_color_transfer_characteristic(color::TransferCharacteristic::BT709);
+        // H.264 exports are BT.709 limited range (checked by the plan); a proxy keeps the
+        // source's tags as they are.
+        let tags = if plan.intra.is_some() {
+            spec.color.clone()
+        } else {
+            output_color(&spec.color)
+        };
+        let (primaries, transfer, space, range) = ffmpeg_color(&tags);
+        ctx.set_colorspace(space);
+        ctx.set_color_range(range);
+        ctx.set_color_primaries(primaries);
+        ctx.set_color_transfer_characteristic(transfer);
         if global_header {
             ctx.set_flags(codec::Flags::GLOBAL_HEADER);
         }
@@ -650,7 +796,7 @@ impl VideoEncoder {
     fn fault(&self, e: ffmpeg_next::Error) -> Fault {
         match self.choice.hardware() {
             Some(hw) => Fault::Hardware(format!("{}: {e}", hw.name)),
-            None => Fault::Encode(hwenc::X264, e),
+            None => Fault::Encode(self.choice.name(), e),
         }
     }
 
@@ -770,11 +916,13 @@ struct VideoOut {
 /// The open audio stream.
 struct AudioOut {
     encoder: encoder::audio::Encoder,
+    /// The encoder's name (`aac`, `pcm_s16le`).
+    name: &'static str,
     stream: usize,
     time_base: Rational,
     stream_time_base: Rational,
     rate: SampleRate,
-    /// Channel count (1 or 2; `ChannelLayout` itself is not `Send`).
+    /// Channel count (`ChannelLayout` itself is not `Send`).
     channels: u16,
     /// Samples per encoder frame.
     frame_size: usize,
@@ -787,29 +935,56 @@ struct AudioOut {
 }
 
 impl AudioOut {
-    /// Sends the first `n` pending samples as one frame of `len ≥ n` samples (zero-padded).
+    /// Sends the first `n` pending samples as one frame of `len ≥ n` samples (zero-padded):
+    /// planar f32 for AAC, interleaved 16-bit for PCM.
     fn send(&mut self, n: usize, len: usize) -> Result<(), Fault> {
-        let mut f = frame::Audio::new(
-            Sample::F32(sample::Type::Planar),
-            len,
-            layout(self.channels),
-        );
-        f.set_rate(self.rate.hz());
-        for (c, pending) in self.pending.iter_mut().enumerate() {
-            let plane = f.plane_mut::<f32>(c);
-            plane[..n].copy_from_slice(&pending[..n]);
-            plane[n..].fill(0.0);
+        let mut f = if self.name == PCM_S16LE {
+            let mut f = frame::Audio::new(
+                Sample::I16(sample::Type::Packed),
+                len,
+                layout(self.channels),
+            );
+            let channels = self.pending.len();
+            let data = f.plane_mut::<i16>(0);
+            data.fill(0);
+            for (c, pending) in self.pending.iter().enumerate() {
+                for (i, v) in pending[..n].iter().enumerate() {
+                    #[allow(clippy::cast_possible_truncation)] // clamped to the i16 range first
+                    let q = (v.clamp(-1.0, 1.0) * 32767.0).round() as i16;
+                    if let Some(slot) = data.get_mut(i * channels + c) {
+                        *slot = q;
+                    }
+                }
+            }
+            f
+        } else {
+            let mut f = frame::Audio::new(
+                Sample::F32(sample::Type::Planar),
+                len,
+                layout(self.channels),
+            );
+            for (c, pending) in self.pending.iter().enumerate() {
+                let plane = f.plane_mut::<f32>(c);
+                plane[..n].copy_from_slice(&pending[..n]);
+                plane[n..].fill(0.0);
+            }
+            f
+        };
+        for pending in &mut self.pending {
             pending.drain(..n);
         }
+        f.set_rate(self.rate.hz());
         f.set_pts(Some(self.sent));
         self.sent += i64::try_from(n).unwrap_or(i64::MAX);
+        let name = self.name;
         self.encoder
             .send_frame(&f)
-            .map_err(|e| Fault::Encode(AAC, e))
+            .map_err(|e| Fault::Encode(name, e))
     }
 }
 
-/// The FFmpeg H.264 + AAC MP4 encoder (see the module docs).
+/// The FFmpeg encoder: H.264 + AAC in MP4, or an intra proxy codec + PCM in MOV (see the module
+/// docs).
 struct FfmpegEncoder {
     // Field order matters: `out` (which owns the writer and so the open file) must close before
     // `partial` removes the file.
@@ -836,6 +1011,7 @@ impl FfmpegEncoder {
     fn start(
         &mut self,
         sink: Sink,
+        container: &'static str,
         video: Option<(&VideoPlan, Choice)>,
         audio: Option<&AudioPlan>,
     ) -> Result<(), Fault> {
@@ -845,7 +1021,8 @@ impl FfmpegEncoder {
             .as_ref()
             .map_or_else(String::new, |p| display(&p.path));
         // The URL is the partial file's own path: `+faststart` re-opens it to move the index.
-        let mut out = format::output_to_stream(io, Some(&url), Some(MP4)).map_err(Fault::Write)?;
+        let mut out =
+            format::output_to_stream(io, Some(&url), Some(container)).map_err(Fault::Write)?;
         let global_header = out.format().flags().contains(format::Flags::GLOBAL_HEADER);
         let mut video = video
             .map(|(plan, choice)| open_video(&mut out, plan, choice, global_header))
@@ -858,7 +1035,7 @@ impl FfmpegEncoder {
         let rest = out.write_header_with(options).map_err(Fault::Write)?;
         if rest.get("movflags").is_some() {
             return Err(Fault::Media(MediaError::Backend {
-                message: "the MP4 muxer ignored `movflags`".to_owned(),
+                message: format!("the {container} muxer ignored `movflags`"),
             }));
         }
         drop(rest);
@@ -993,8 +1170,9 @@ impl FfmpegEncoder {
         let (Some(a), Some(out)) = (self.audio.as_mut(), self.out.as_mut()) else {
             return Err(Fault::Cancelled);
         };
+        let name = a.name;
         let end = drain(
-            |p| receive(&mut a.encoder, p).map_err(|e| Fault::Encode(AAC, e)),
+            |p| receive(&mut a.encoder, p).map_err(|e| Fault::Encode(name, e)),
             out,
             (a.stream, a.time_base, a.stream_time_base),
             0,
@@ -1017,7 +1195,8 @@ impl FfmpegEncoder {
                 let len = if a.small_last_frame { n } else { a.frame_size };
                 a.send(n, len)?;
             }
-            a.encoder.send_eof().map_err(|e| Fault::Encode(AAC, e))?;
+            let name = a.name;
+            a.encoder.send_eof().map_err(|e| Fault::Encode(name, e))?;
             self.drain_audio()?;
             self.report();
         }
@@ -1098,22 +1277,27 @@ fn open_video(
 
 fn open_audio(out: &mut Output, plan: &AudioPlan, global_header: bool) -> Result<AudioOut, Fault> {
     let spec = &plan.spec;
+    let name = plan.name;
     let mut ctx = codec::context::Context::new_with_codec(plan.codec)
         .encoder()
         .audio()
-        .map_err(|e| Fault::Encode(AAC, e))?;
+        .map_err(|e| Fault::Encode(name, e))?;
     let time_base = Rational::new(1, plan.rate);
     ctx.set_rate(plan.rate);
     ctx.set_channel_layout(layout(spec.channels));
-    ctx.set_format(Sample::F32(sample::Type::Planar));
-    ctx.set_bit_rate(spec.bitrate as usize);
+    if name == PCM_S16LE {
+        ctx.set_format(Sample::I16(sample::Type::Packed));
+    } else {
+        ctx.set_format(Sample::F32(sample::Type::Planar));
+        ctx.set_bit_rate(spec.bitrate as usize);
+    }
     ctx.set_time_base(time_base);
     if global_header {
         ctx.set_flags(codec::Flags::GLOBAL_HEADER);
     }
     let encoder = ctx.open_with(Dictionary::new()).map_err(|e| {
         Fault::Media(unsupported(format!(
-            "{AAC} refused {} x{} at {} b/s: {e}",
+            "{name} refused {} x{} at {} b/s: {e}",
             spec.rate, spec.channels, spec.bitrate
         )))
     })?;
@@ -1127,6 +1311,7 @@ fn open_audio(out: &mut Output, plan: &AudioPlan, global_header: bool) -> Result
     };
     let caps = plan.codec.capabilities();
     Ok(AudioOut {
+        name,
         stream: index,
         time_base,
         stream_time_base: time_base,

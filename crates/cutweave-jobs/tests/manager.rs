@@ -14,8 +14,8 @@ use std::{
 };
 
 use cutweave_jobs::{
-    JobConfig, JobCtx, JobError, JobEvent, JobFilter, JobId, JobKind, JobManager, JobSpec,
-    JobState, MemoryHistory,
+    DEFAULT_PROXY_SLOTS, JobConfig, JobCtx, JobError, JobEvent, JobFilter, JobId, JobKind,
+    JobManager, JobSpec, JobState, MemoryHistory,
 };
 use cutweave_model::{MediaId, SeededGen};
 
@@ -72,6 +72,93 @@ fn the_budget_semaphore_limits_concurrency_per_class() {
     }
     assert_eq!(decode_max.load(Ordering::SeqCst), 2, "decode budget");
     assert_eq!(export_max.load(Ordering::SeqCst), 1, "export budget");
+    assert_eq!(jm.active(), 0);
+}
+
+/// A body that counts itself in `now` / `max` while it runs, until `release` is set.
+fn counted(
+    now: &Arc<AtomicUsize>,
+    max: &Arc<AtomicUsize>,
+    release: &Arc<AtomicBool>,
+) -> impl FnOnce(&JobCtx) -> Result<(), JobError> + use<> {
+    let (now, max, release) = (Arc::clone(now), Arc::clone(max), Arc::clone(release));
+    move |ctx| {
+        let running = now.fetch_add(1, Ordering::SeqCst) + 1;
+        max.fetch_max(running, Ordering::SeqCst);
+        while !release.load(Ordering::SeqCst) {
+            ctx.sleep(Duration::from_millis(5))?;
+        }
+        now.fetch_sub(1, Ordering::SeqCst);
+        Ok(())
+    }
+}
+
+/// Waits until `cond` holds (at most [`SETTLE`]).
+fn eventually(what: &str, cond: impl Fn() -> bool) {
+    let until = Instant::now() + SETTLE;
+    while !cond() {
+        assert!(Instant::now() < until, "timed out waiting for {what}");
+        std::thread::sleep(Duration::from_millis(5));
+    }
+}
+
+#[test]
+fn proxy_jobs_run_two_at_a_time_and_one_while_an_export_runs() {
+    let jm = manager(4, 1);
+    assert_eq!(jm.config().proxy_slots, DEFAULT_PROXY_SLOTS);
+    assert_eq!(DEFAULT_PROXY_SLOTS, 2);
+    let (now, max) = (Arc::new(AtomicUsize::new(0)), Arc::new(AtomicUsize::new(0)));
+    // Two proxies run together; a third waits.
+    let first = Arc::new(AtomicBool::new(false));
+    let a = jm.submit(
+        JobSpec::new(JobKind::Proxy, "proxy"),
+        counted(&now, &max, &first),
+    );
+    let b = jm.submit(
+        JobSpec::new(JobKind::Proxy, "proxy"),
+        counted(&now, &max, &first),
+    );
+    eventually("two proxy jobs", || now.load(Ordering::SeqCst) == 2);
+    // An export starts: its reservation takes the slot the first proxy to finish frees.
+    let export_release = Arc::new(AtomicBool::new(false));
+    let (en, em) = (Arc::new(AtomicUsize::new(0)), Arc::new(AtomicUsize::new(0)));
+    let export = jm.submit(
+        JobSpec::new(JobKind::Export, "export"),
+        counted(&en, &em, &export_release),
+    );
+    eventually("the export", || en.load(Ordering::SeqCst) == 1);
+    let later = Arc::new(AtomicBool::new(false));
+    let c = jm.submit(
+        JobSpec::new(JobKind::Proxy, "proxy"),
+        counted(&now, &max, &later),
+    );
+    let d = jm.submit(
+        JobSpec::new(JobKind::Proxy, "proxy"),
+        counted(&now, &max, &later),
+    );
+    // The running proxies finish; while the export runs only one of the next two starts.
+    first.store(true, Ordering::SeqCst);
+    assert_eq!(a.wait(SETTLE).unwrap().state, JobState::Succeeded);
+    assert_eq!(b.wait(SETTLE).unwrap().state, JobState::Succeeded);
+    eventually("one proxy next to the export", || {
+        now.load(Ordering::SeqCst) == 1
+    });
+    std::thread::sleep(Duration::from_millis(100));
+    assert_eq!(
+        now.load(Ordering::SeqCst),
+        1,
+        "one proxy job while exporting"
+    );
+    let queued = [c.status().unwrap().state, d.status().unwrap().state];
+    assert!(queued.contains(&JobState::Queued), "{queued:?}");
+    // The export ends: the other proxy starts.
+    export_release.store(true, Ordering::SeqCst);
+    assert_eq!(export.wait(SETTLE).unwrap().state, JobState::Succeeded);
+    eventually("both proxies again", || now.load(Ordering::SeqCst) == 2);
+    later.store(true, Ordering::SeqCst);
+    assert_eq!(c.wait(SETTLE).unwrap().state, JobState::Succeeded);
+    assert_eq!(d.wait(SETTLE).unwrap().state, JobState::Succeeded);
+    assert_eq!(max.load(Ordering::SeqCst), 2);
     assert_eq!(jm.active(), 0);
 }
 
