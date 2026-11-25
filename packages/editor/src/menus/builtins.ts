@@ -20,6 +20,8 @@ export const COMMAND_INFO: readonly CommandInfo[] = [
     icon: "trash-2",
     destructive: true,
     undoable: true,
+    // The palette lists it with clips selected; a menu row's own clause wins over it.
+    when: "selection.count > 0",
   },
   { name: "timeline.insert", label: "contextMenu.command.timelineInsert", undoable: true },
   { name: "track.add", label: "contextMenu.command.trackAdd", icon: "plus", undoable: true },

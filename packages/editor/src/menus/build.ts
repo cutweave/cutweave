@@ -75,7 +75,9 @@ function resolveRow(
   // Enabled: the row's own clause and check first (their reason is the most specific), then the
   // rules every document-changing command shares.
   let reason: TKey | undefined;
-  let enabled = evaluateWhen(row.when, ctx.keys) && (row.enabledIf?.(ctx) ?? true);
+  // A row without a clause of its own takes the command's (`when` on its registration).
+  let enabled =
+    evaluateWhen(row.when ?? ui?.when ?? info?.when, ctx.keys) && (row.enabledIf?.(ctx) ?? true);
   if (!enabled && row.reason !== undefined) {
     reason = typeof row.reason === "function" ? row.reason(ctx) : row.reason;
   }

@@ -16,6 +16,7 @@
 
 import { TIMELINE_KEYS, type TimelineKeyAction } from "@cutweave/timeline";
 import type { TKey } from "../i18n/index.ts";
+import { PALETTE_COMBO } from "../palette/shortcut.ts";
 import { BIN_KEYS, type BinKeyAction } from "../panels/binKeys.ts";
 import { SOURCE_KEYS, type SourceKeyAction } from "../preview/sourceKeys.ts";
 import {
@@ -107,6 +108,14 @@ function menuBindings(platform: MenuPlatform): Binding[] {
       ...(DEV_COMMANDS.has(command) && { devOnly: true }),
     });
   }
+  // The command palette (WP-2H.04) listens for its own key, so it is listed beside the menus'.
+  out.push({
+    id: "menu.commandPalette",
+    group: "menu",
+    label: "palette.title",
+    description: "shortcuts.menu.commandPalette",
+    combos: [PALETTE_COMBO],
+  });
   return out;
 }
 

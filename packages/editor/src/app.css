@@ -1033,3 +1033,94 @@ body {
   flex: 1 1 auto;
   min-width: 0;
 }
+
+/* Command palette (WP-2H.04): a top-anchored dialog, a search field over a list of commands. */
+.cw-dialog.cw-dialog--palette {
+  top: var(--space-8);
+  transform: translateX(-50%);
+  width: var(--layer-width-lg);
+  max-height: calc(100vh - var(--space-8) * 2);
+  gap: var(--space-2);
+  padding: var(--space-4);
+}
+.cw-dialog--palette .cw-dialog__title {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip-path: inset(50%);
+  white-space: nowrap;
+}
+.cw-palette__list {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1);
+  min-height: 0;
+  overflow-y: auto;
+}
+.cw-palette__heading {
+  padding: var(--space-1) var(--space-2) 0;
+  color: var(--text-muted);
+}
+.cw-palette__row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-1) var(--space-2);
+  box-sizing: border-box;
+  min-height: var(--control-md);
+  padding: var(--space-1) var(--space-2);
+  border-radius: var(--radius-sm);
+  color: var(--text-primary);
+  cursor: pointer;
+  outline: none;
+}
+.cw-palette__row--active {
+  background: var(--surface-3);
+  box-shadow: inset var(--border-thick) 0 0 var(--marigold);
+}
+.cw-palette__row--disabled {
+  color: var(--text-disabled);
+  cursor: not-allowed;
+}
+.cw-palette__main {
+  display: inline-flex;
+  flex: 1 1 auto;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-2);
+  min-width: 0;
+}
+.cw-palette__chip {
+  padding: 0 var(--space-1);
+  border: var(--border-thin) solid var(--border-control);
+  border-radius: var(--radius-xs);
+  color: var(--text-secondary);
+}
+.cw-palette__summary {
+  flex: 1 0 100%;
+  color: var(--text-muted);
+}
+.cw-palette__keys {
+  flex: none;
+}
+.cw-palette__empty,
+.cw-palette__more {
+  margin: 0;
+  padding: var(--space-2);
+}
+.cw-palette__form,
+.cw-palette__field {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+}
+.cw-palette__formtitle {
+  margin: 0;
+}
+.cw-palette__optional {
+  color: var(--text-muted);
+}
+.cw-palette__error {
+  color: var(--danger);
+}

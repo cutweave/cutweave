@@ -413,7 +413,8 @@
       "selectAll": "Edit menu. Selects all the text in a field.",
       "fullScreen": "View menu. Fills the screen with the window.",
       "reload": "View menu, development builds only. Reloads the window.",
-      "devTools": "View menu, development builds only. Shows the developer tools."
+      "devTools": "View menu, development builds only. Shows the developer tools.",
+      "commandPalette": "Opens the command palette: search every command, panel and setting and run it."
     },
     "playback": {
       "togglePlay": "Play or pause",
@@ -1051,6 +1052,44 @@
     "names": {
       "mcp": "MCP client",
       "cli": "Command line"
+    }
+  },
+  "palette": {
+    "title": "Command palette",
+    "search": "Search commands",
+    "clear": "Clear search",
+    "results": "Commands",
+    "recent": "Recent",
+    "all": "All commands",
+    "count": "Matches: {{count}}",
+    "empty": "Nothing matches \"{{query}}\". Try fewer or different words.",
+    "more": "{{count}} more not shown. Keep typing to narrow the list.",
+    "switchTo": "Switch to {{name}}",
+    "settingsPage": "Settings: {{page}}",
+    "needTimeline": "Open the Timeline panel first, then split at the playhead.",
+    "chip": {
+      "panel": "Panel",
+      "workspace": "Workspace",
+      "settings": "Settings"
+    },
+    "command": {
+      "openSettings": "Open settings"
+    },
+    "menu": {
+      "name": "Actions for {{name}}",
+      "run": "Run",
+      "copyId": "Copy command id",
+      "assignShortcut": "Assign shortcut…"
+    },
+    "form": {
+      "choose": "Choose…",
+      "optional": "(optional)",
+      "back": "Back",
+      "run": "Run",
+      "required": "This is required.",
+      "notNumber": "Enter a number.",
+      "notWhole": "Enter a whole number.",
+      "notJson": "Enter valid JSON."
     }
   },
   "contextMenu": {
