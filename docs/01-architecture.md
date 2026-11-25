@@ -717,7 +717,7 @@ flowchart LR
   - A filesystem allowlist applies (project folder plus user-approved roots).
   - Destructive, irreversible or **paid** actions follow the three-tier authority model (§13). Dry-run `confirm_token`s never authorize spending beyond the user-set agent budget, and human-only approvals are minted only by the UI.
   - Transcript and metadata text returned to agents is marked as untrusted content (prompt-injection hygiene).
-- **Parity guarantee:** a CI test enumerates the command registry and asserts that every non-`view` command is reachable via MCP, with a listed input schema that accepts exactly the same values as the RPC one. (Decided in WP-1J.01: listed schemas drop documentation such as titles and nullable wrappers to fit the tool-list budget; `cutweave_describe_command` returns the verbatim schema.)
+- **Parity guarantee:** a CI test enumerates the command registry and asserts that every non-`view` command is reachable via MCP, with a listed input schema that accepts exactly the same values as the RPC one. (Decided in WP-1J.01: listed schemas drop documentation such as titles and nullable wrappers to fit the tool-list budget; `cutweave_describe_command` returns the full input schema and the output schema of the MCP result: untrusted strings as their wrapper, no `render_frame` picture; ADR-0028, Proposed.)
 - **Hardening learned in Spike S5** *(feeds ADR-009)*:
   - `outputSchema` is about 45% of `tools/list`, so it's listed only on `/mcp/full` (in P1 not even there; `/mcp/full` equals the standard profile). Other profiles return structured content without advertising its schema.
   - Origin/Host validation must be enabled explicitly in rmcp; it is off by default.
@@ -975,6 +975,7 @@ MyVideo/                    ← project folder (user-chosen location)
 | 025 | Engine readiness: the ready line means serving, `--progress` `starting` lines, the supervisor judges a start by liveness (§2, §8, §19; [launch protocol](reference/launch-protocol.md)) | Proposed: review of the issue #143 fix |
 | 026 | Context menus: in-app on every platform, built from commands per named surface, plugins contribute to the same surfaces (§10; [research](research/09-context-menus.md)) | **Accepted** (product owner, 2026-11-25) |
 | 027 | Proxy policy in the project (`settings.proxy_policy`) and a proxy mode per asset, as optional fields without a schema bump (§4.2, §7) | Proposed: review of WP-2F.01 |
+| 028 | MCP result schemas: `cutweave_describe_command` serves the output schema of the MCP result (untrusted-text wrappers, no `render_frame` picture), generated from the wrapping rules (§14) | **Accepted** (product owner, 2026-11-25) |
 
 ## 24. Open questions (tracked; none block Phase 0)
 
