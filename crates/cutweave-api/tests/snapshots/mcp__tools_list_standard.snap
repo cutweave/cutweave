@@ -5,6 +5,182 @@ expression: catalog.tools_json()
 {
   "tools": [
     {
+      "name": "audio_set",
+      "description": "Set a clip's fades, volume (dB) or pan",
+      "inputSchema": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "item": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "pattern": "^itm_[0-9a-f]{32}$",
+            "description": "The item (or `items`)."
+          },
+          "items": {
+            "type": [
+              "array",
+              "null"
+            ],
+            "items": {
+              "pattern": "^itm_[0-9a-f]{32}$",
+              "type": "string"
+            },
+            "description": "Items to change the same way."
+          },
+          "set": {
+            "oneOf": [
+              {
+                "type": "object",
+                "additionalProperties": false,
+                "properties": {
+                  "kind": {
+                    "type": "string",
+                    "const": "fade"
+                  },
+                  "in": {
+                    "anyOf": [
+                      {
+                        "$ref": "#/$defs/time"
+                      },
+                      {
+                        "type": "null"
+                      }
+                    ],
+                    "description": "Length of the fade in, `0` removes it. Seconds (`\"0.5s\"`), flicks or a timecode."
+                  },
+                  "out": {
+                    "anyOf": [
+                      {
+                        "$ref": "#/$defs/time"
+                      },
+                      {
+                        "type": "null"
+                      }
+                    ],
+                    "description": "Length of the fade out, `0` removes it."
+                  },
+                  "curve": {
+                    "anyOf": [
+                      {
+                        "oneOf": [
+                          {
+                            "type": "string",
+                            "const": "linear"
+                          },
+                          {
+                            "type": "string",
+                            "const": "log"
+                          },
+                          {
+                            "type": "string",
+                            "const": "equal_power"
+                          },
+                          {
+                            "type": "string",
+                            "const": "s_curve"
+                          }
+                        ]
+                      },
+                      {
+                        "type": "null"
+                      }
+                    ],
+                    "description": "The shape of the fades being set (both when neither `in` nor `out` is given): `linear`\n(default), `log`, `equal_power`, `s_curve`."
+                  }
+                },
+                "description": "Fade in and/or out.",
+                "required": [
+                  "kind"
+                ]
+              },
+              {
+                "type": "object",
+                "properties": {
+                  "kind": {
+                    "type": "string",
+                    "const": "volume"
+                  },
+                  "db": {
+                    "type": "number",
+                    "description": "The volume."
+                  }
+                },
+                "required": [
+                  "kind",
+                  "db"
+                ],
+                "description": "Clip volume in dB (`-144..=12`; at or below `-144` is silence). Keyed at `at` when the\nvolume is animated."
+              },
+              {
+                "type": "object",
+                "properties": {
+                  "kind": {
+                    "type": "string",
+                    "const": "pan"
+                  },
+                  "pan": {
+                    "type": "number",
+                    "description": "The position."
+                  }
+                },
+                "required": [
+                  "kind",
+                  "pan"
+                ],
+                "description": "Stereo position, `-1` (left) to `1` (right); centre is `0`. Keyed at `at` when animated."
+              }
+            ],
+            "description": "What to change."
+          },
+          "auto_key": {
+            "type": [
+              "boolean",
+              "null"
+            ],
+            "description": "Key an animated volume or pan at `at` (default true)."
+          },
+          "at": {
+            "anyOf": [
+              {
+                "$ref": "#/$defs/time"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Sequence time (the playhead) to key at."
+          }
+        },
+        "required": [
+          "set"
+        ],
+        "$defs": {
+          "time": {
+            "anyOf": [
+              {
+                "type": "integer",
+                "minimum": -9007199254740991,
+                "maximum": 9007199254740991
+              },
+              {
+                "type": "string",
+                "pattern": "^-?[0-9]+(\\.[0-9]+)?s$|^-?[0-9]+$|^f:[0-9]+$|^[0-9]+[:;][0-9]+[:;][0-9]+[:;][0-9]+$"
+              }
+            ]
+          }
+        }
+      },
+      "annotations": {
+        "readOnlyHint": false,
+        "destructiveHint": false,
+        "idempotentHint": true,
+        "openWorldHint": false
+      }
+    },
+    {
       "name": "clip_split",
       "description": "Split a clip (and its linked partners) at a timeline time",
       "inputSchema": {

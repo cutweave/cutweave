@@ -280,7 +280,7 @@ async fn the_standard_list_fits_the_standard_budget_with_render_frame() {
                 size.tokens()
             );
             if profile == Profile::Standard {
-                assert_eq!(size.tools, 21);
+                assert_eq!(size.tools, 22);
                 assert!(STANDARD_BUDGET.fits(size), "{size:?}");
             } else {
                 assert!(profile.budget().fits(size), "{size:?}");

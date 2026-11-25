@@ -364,6 +364,11 @@ pub(super) fn args_for(name: &str, p: &Pools) -> Option<(u32, BoxedStrategy<Valu
         "item.set_props" => (edits.div_ceil(2), item_set_props(p)),
         "item.get" => (1, item_get(p)),
         "item.reset_props" => (1, item_reset_props(p)),
+        "audio.set" => (edits.div_ceil(2), audio_set(p)),
+        "audio.set_fade" => (edits.div_ceil(2), audio_set_fade(p)),
+        "audio.set_volume" => (edits.div_ceil(2), audio_set_volume(p)),
+        "audio.set_pan" => (edits.div_ceil(2), audio_set_pan(p)),
+        "audio.set_gain" => (edits.div_ceil(3), audio_set_gain(p)),
         "keyframe.set" => (edits, keyframe_set(p)),
         "keyframe.delete" => (edits.div_ceil(3), keyframe_delete(p)),
         "keyframe.move" => (edits.div_ceil(3), keyframe_move(p)),
@@ -2085,6 +2090,105 @@ fn item_reset_props(p: &Pools) -> BoxedStrategy<Value> {
             shape["item"] = item;
             shape
         })
+        .boxed();
+    mix(valid, unknown_item("at"))
+}
+
+// ----- audio.* (WP-2E.01) -------------------------------------------------------------------
+
+fn fade_secs() -> BoxedStrategy<Value> {
+    prop_oneof![
+        Just(json!(0)),
+        (1..=4_000_i64).prop_map(|ms| json!(format!("{}s", ms as f64 / 1000.0))),
+    ]
+    .boxed()
+}
+
+fn fade_change() -> BoxedStrategy<Value> {
+    (
+        option::weighted(0.7, fade_secs()),
+        option::weighted(0.7, fade_secs()),
+        option::weighted(0.5, select(vec!["linear", "log", "equal_power", "s_curve"])),
+    )
+        .prop_map(|(i, o, curve)| {
+            let mut v = json!({"curve": curve});
+            if let Some(i) = i {
+                v["in"] = i;
+            }
+            if let Some(o) = o {
+                v["out"] = o;
+            }
+            v
+        })
+        .boxed()
+}
+
+fn audio_set_fade(p: &Pools) -> BoxedStrategy<Value> {
+    let valid = (one_of(p.item_ids()), fade_change())
+        .prop_map(|(item, mut change)| {
+            change["item"] = item;
+            change
+        })
+        .boxed();
+    let invalid = (one_of(p.item_ids()), Just(json!({})))
+        .prop_map(|(item, mut change)| {
+            change["item"] = item;
+            change
+        })
+        .boxed();
+    mix(valid, invalid)
+}
+
+fn audio_set_volume(p: &Pools) -> BoxedStrategy<Value> {
+    let valid = (
+        one_of(p.item_ids()),
+        prop_oneof![Just(-144.0), Just(12.0), -60.0..=12.0_f64],
+        option::weighted(0.6, near_any(p)),
+    )
+        .prop_map(|(item, db, at)| json!({"item": item, "db": db, "at": at}))
+        .boxed();
+    let invalid = (one_of(p.item_ids()), Just(40.0))
+        .prop_map(|(item, db)| json!({"item": item, "db": db}))
+        .boxed();
+    mix(valid, invalid)
+}
+
+fn audio_set_pan(p: &Pools) -> BoxedStrategy<Value> {
+    let valid = (
+        one_of(p.item_ids()),
+        -1.0..=1.0_f64,
+        option::weighted(0.6, near_any(p)),
+    )
+        .prop_map(|(item, pan, at)| json!({"item": item, "pan": pan, "at": at}))
+        .boxed();
+    let invalid = (one_of(p.item_ids()), Just(1.5))
+        .prop_map(|(item, pan)| json!({"item": item, "pan": pan}))
+        .boxed();
+    mix(valid, invalid)
+}
+
+fn audio_set_gain(p: &Pools) -> BoxedStrategy<Value> {
+    let valid = (one_of(p.item_ids()), -144.0..=12.0_f64)
+        .prop_map(|(item, db)| json!({"item": item, "db": db}))
+        .boxed();
+    mix(valid, unknown_item("db"))
+}
+
+fn audio_set(p: &Pools) -> BoxedStrategy<Value> {
+    let change = prop_oneof![
+        fade_change().prop_map(|mut f| {
+            f["kind"] = json!("fade");
+            f
+        }),
+        (-60.0..=12.0_f64).prop_map(|db| json!({"kind": "volume", "db": db})),
+        (-1.0..=1.0_f64).prop_map(|pan| json!({"kind": "pan", "pan": pan})),
+    ];
+    let valid = (
+        one_of(p.item_ids()),
+        change,
+        option::weighted(0.6, near_any(p)),
+    )
+        .prop_map(|(item, set, at)| json!({"item": item, "set": set, "at": at}))
         .boxed();
     mix(valid, unknown_item("at"))
 }

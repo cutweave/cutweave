@@ -241,7 +241,7 @@ async fn headless_runs_the_full_engine_and_renders_a_frame() {
         let agent =
             Agent::start(&["--headless", "--allow-root", &root, "--no-log"], revision).await;
         let tools = agent.tools().await;
-        assert_eq!(tools.len(), 21, "{revision:?}");
+        assert_eq!(tools.len(), 22, "{revision:?}");
         assert!(tools.iter().any(|t| t.name == "render_frame"));
         let size = ListSize::of(&tools);
         assert!(STANDARD_BUDGET.fits(size), "{size:?}");
@@ -279,7 +279,7 @@ async fn headless_agents_read_the_cache_status_but_cannot_change_the_caches() {
         let root = dir.path().to_str().unwrap().to_owned();
         let agent =
             Agent::start(&["--headless", "--allow-root", &root, "--no-log"], revision).await;
-        assert_eq!(agent.tools().await.len(), 21, "{revision:?}");
+        assert_eq!(agent.tools().await.len(), 22, "{revision:?}");
         let status = agent
             .ok(
                 "cutweave_execute",
@@ -328,9 +328,9 @@ async fn headless_runs_a_scripted_session_on_both_revisions() {
         assert_eq!(agent.negotiated(), revision.version(), "{revision:?}");
         let tools = agent.tools().await;
         // The registry's core tools plus the 4 generic tools, the same catalog as `/mcp`: 19
-        // with `export_start` (WP-1E.03), 20 with `keyframe_set` (WP-2C.03), 21 once `render_frame`
-        // (WP-1J.02) joins it.
-        assert_eq!(tools.len(), 20, "{revision:?}");
+        // with `export_start` (WP-1E.03), 20 with `keyframe_set` (WP-2C.03), 21 with `audio_set`
+        // (WP-2E.01), 22 once `render_frame` (WP-1J.02) joins it.
+        assert_eq!(tools.len(), 21, "{revision:?}");
         let size = ListSize::of(&tools);
         assert!(STANDARD_BUDGET.fits(size), "{size:?}");
         println!(
@@ -599,10 +599,10 @@ async fn attach_edits_the_running_engines_document() {
     let agent = Agent::start(&["--attach", "--run-file", &run_file], Revision::Stateful).await;
     assert_eq!(agent.negotiated(), Revision::Stateful.version());
     let tools = agent.tools().await;
-    // The dev-stub engine's 20 (no renderer, so no `render_frame`; the full engine lists 21,
+    // The dev-stub engine's 21 (no renderer, so no `render_frame`; the full engine lists 22,
     // within the standard budget) plus the proxy's own `engines_list` and `engine_attach`.
-    assert_eq!(engine_tools(&tools), 20);
-    assert_eq!(tools.len(), 20 + PROXY_TOOLS.len());
+    assert_eq!(engine_tools(&tools), 21);
+    assert_eq!(tools.len(), 21 + PROXY_TOOLS.len());
     scripted_edit(&agent, &clip).await;
     // The same document through the engine's `/rpc`.
     let out = cutweave(&["query", "project.info", "--run-dir", &run]);

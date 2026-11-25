@@ -95,7 +95,7 @@ async fn current_rev(client: &Client) -> u64 {
 // ----- catalog ------------------------------------------------------------------------------
 
 /// Acceptance 1: `/mcp` lists exactly the registry's core tools plus the 4 generic tools (19 in
-/// P1 since `export_start`, WP-1E.03, 20 with `keyframe_set`, WP-2C.03; the core engine has no
+/// P1 since `export_start`, WP-1E.03, 20 with `keyframe_set`, WP-2C.03, 21 with `audio_set`, WP-2E.01; the core engine has no
 /// renderer, so no `render_frame`: the
 /// full engine lists 21, tests/mcp_frames.rs), within the
 /// standard budget (R36), on both revisions.
@@ -107,7 +107,7 @@ async fn mcp_lists_the_core_and_generic_tools_within_the_standard_budget() {
         .map(|t| t["name"].as_str().unwrap().to_owned())
         .collect();
     expected.extend(catalog::GENERIC_TOOLS.map(str::to_owned));
-    assert_eq!(expected.len(), 20);
+    assert_eq!(expected.len(), 21);
     for revision in Revision::ALL {
         let client = h.client(Profile::Standard, revision).await;
         assert_eq!(client.negotiated(), revision.version());
@@ -225,6 +225,7 @@ async fn every_tool_has_the_right_annotations() {
         ("item_move", false, false, false),
         ("item_set_props", false, false, true),
         ("keyframe_set", false, false, true),
+        ("audio_set", false, false, true),
         ("job_status", true, false, true),
         ("job_wait", true, false, true),
         ("media_import", false, false, true),
@@ -482,6 +483,10 @@ async fn each_core_tool_returns_the_engine_output() {
             json!({ "item": split["right"], "prop": "opacity",
                     "keys": [{ "at": "6s", "value": 0.0, "easing": "ease_out" },
                              { "at": "8s", "value": 1.0 }] })
+        );
+        same!(
+            "audio_set",
+            json!({ "item": split["right"], "set": { "kind": "fade", "in": "0.5s", "curve": "log" } })
         );
         same!("item_delete", json!({ "items": [split["right"]] }));
         same!("edit_undo", json!({}));

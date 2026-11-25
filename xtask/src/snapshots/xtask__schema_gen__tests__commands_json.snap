@@ -7,6 +7,1415 @@ expression: text
     {
       "annotations": {
         "destructiveHint": false,
+        "idempotentHint": true,
+        "openWorldHint": false,
+        "readOnlyHint": false
+      },
+      "input_schema": {
+        "additionalProperties": false,
+        "description": "Sets a clip's fades, volume or pan: `{item, set:{kind:\"fade\", in:\"0.5s\", out:\"1s\",\ncurve:\"equal_power\"}}`, `{item, set:{kind:\"volume\", db:-6}}` or `{item, set:{kind:\"pan\",\npan:-0.5}}`.\n\nVolume and pan are set like `item_set_props` does: an animated property is keyed at `at`\n(the playhead), a static one is set. A fade is cut to the room the other fade leaves in the\nclip. `Locked` if the track is locked.",
+        "properties": {
+          "at": {
+            "anyOf": [
+              {
+                "anyOf": [
+                  {
+                    "maximum": 9007199254740991,
+                    "minimum": -9007199254740991,
+                    "type": "integer"
+                  },
+                  {
+                    "pattern": "^-?[0-9]+(\\.[0-9]+)?s$|^-?[0-9]+$|^f:[0-9]+$|^[0-9]+[:;][0-9]+[:;][0-9]+[:;][0-9]+$",
+                    "type": "string"
+                  }
+                ],
+                "description": "A time: integer flicks (1/705600000 s), or a string: seconds (\"62.5s\"), a frame (\"f:1500\") or a timecode (\"00:01:02:03\", drop-frame \"00:01:02;03\"). Frames and timecodes use the frame rate of the target's sequence."
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "description": "Sequence time (the playhead) to key at."
+          },
+          "auto_key": {
+            "default": null,
+            "description": "Key an animated volume or pan at `at` (default true).",
+            "type": [
+              "boolean",
+              "null"
+            ]
+          },
+          "item": {
+            "default": null,
+            "description": "The item (or `items`).",
+            "pattern": "^itm_[0-9a-f]{32}$",
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "items": {
+            "default": null,
+            "description": "Items to change the same way.",
+            "items": {
+              "description": "A Item id: `^itm_[0-9a-f]{32}$`.",
+              "pattern": "^itm_[0-9a-f]{32}$",
+              "type": "string"
+            },
+            "type": [
+              "array",
+              "null"
+            ]
+          },
+          "set": {
+            "description": "What to change.",
+            "oneOf": [
+              {
+                "additionalProperties": false,
+                "description": "Fade in and/or out.",
+                "properties": {
+                  "curve": {
+                    "anyOf": [
+                      {
+                        "description": "The shape of a fade: how the gain goes from 0 to 1 over the fade's duration (a fade out runs\nit backwards).",
+                        "oneOf": [
+                          {
+                            "const": "linear",
+                            "description": "Gain rises in a straight line (the default).",
+                            "type": "string"
+                          },
+                          {
+                            "const": "log",
+                            "description": "Gain rises quickly then flattens (`log10(1 + 9x)`): a fast, natural-sounding fade in.",
+                            "type": "string"
+                          },
+                          {
+                            "const": "equal_power",
+                            "description": "Constant power with a matching fade of the same shape on the other clip: `sin(x*pi/2)`.",
+                            "type": "string"
+                          },
+                          {
+                            "const": "s_curve",
+                            "description": "Gentle at both ends: `(1 - cos(x*pi)) / 2`.",
+                            "type": "string"
+                          }
+                        ]
+                      },
+                      {
+                        "type": "null"
+                      }
+                    ],
+                    "description": "The shape of the fades being set (both when neither `in` nor `out` is given): `linear`\n(default), `log`, `equal_power`, `s_curve`."
+                  },
+                  "in": {
+                    "anyOf": [
+                      {
+                        "anyOf": [
+                          {
+                            "maximum": 9007199254740991,
+                            "minimum": -9007199254740991,
+                            "type": "integer"
+                          },
+                          {
+                            "pattern": "^-?[0-9]+(\\.[0-9]+)?s$|^-?[0-9]+$|^f:[0-9]+$|^[0-9]+[:;][0-9]+[:;][0-9]+[:;][0-9]+$",
+                            "type": "string"
+                          }
+                        ],
+                        "description": "A time: integer flicks (1/705600000 s), or a string: seconds (\"62.5s\"), a frame (\"f:1500\") or a timecode (\"00:01:02:03\", drop-frame \"00:01:02;03\"). Frames and timecodes use the frame rate of the target's sequence."
+                      },
+                      {
+                        "type": "null"
+                      }
+                    ],
+                    "description": "Length of the fade in, `0` removes it. Seconds (`\"0.5s\"`), flicks or a timecode."
+                  },
+                  "kind": {
+                    "const": "fade",
+                    "type": "string"
+                  },
+                  "out": {
+                    "anyOf": [
+                      {
+                        "anyOf": [
+                          {
+                            "maximum": 9007199254740991,
+                            "minimum": -9007199254740991,
+                            "type": "integer"
+                          },
+                          {
+                            "pattern": "^-?[0-9]+(\\.[0-9]+)?s$|^-?[0-9]+$|^f:[0-9]+$|^[0-9]+[:;][0-9]+[:;][0-9]+[:;][0-9]+$",
+                            "type": "string"
+                          }
+                        ],
+                        "description": "A time: integer flicks (1/705600000 s), or a string: seconds (\"62.5s\"), a frame (\"f:1500\") or a timecode (\"00:01:02:03\", drop-frame \"00:01:02;03\"). Frames and timecodes use the frame rate of the target's sequence."
+                      },
+                      {
+                        "type": "null"
+                      }
+                    ],
+                    "description": "Length of the fade out, `0` removes it."
+                  }
+                },
+                "required": [
+                  "kind"
+                ],
+                "type": "object"
+              },
+              {
+                "description": "Clip volume in dB (`-144..=12`; at or below `-144` is silence). Keyed at `at` when the\nvolume is animated.",
+                "properties": {
+                  "db": {
+                    "description": "The volume.",
+                    "format": "double",
+                    "type": "number"
+                  },
+                  "kind": {
+                    "const": "volume",
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "kind",
+                  "db"
+                ],
+                "type": "object"
+              },
+              {
+                "description": "Stereo position, `-1` (left) to `1` (right); centre is `0`. Keyed at `at` when animated.",
+                "properties": {
+                  "kind": {
+                    "const": "pan",
+                    "type": "string"
+                  },
+                  "pan": {
+                    "description": "The position.",
+                    "format": "double",
+                    "type": "number"
+                  }
+                },
+                "required": [
+                  "kind",
+                  "pan"
+                ],
+                "type": "object"
+              }
+            ]
+          }
+        },
+        "required": [
+          "set"
+        ],
+        "title": "AudioSet",
+        "type": "object"
+      },
+      "kind": "command",
+      "mcp": "core",
+      "mcp_tool": "audio_set",
+      "name": "audio.set",
+      "namespace": "audio",
+      "output_schema": {
+        "additionalProperties": false,
+        "description": "Result of the audio commands.",
+        "properties": {
+          "changed": {
+            "description": "What changed on any item (`audio.fade_in`, `audio.fade_out`, `audio.gain`, `audio.pan`);\nempty when everything was already as requested.",
+            "items": {
+              "type": "string"
+            },
+            "type": "array"
+          },
+          "clamped": {
+            "description": "A requested fade was cut to fit the clip.",
+            "type": "boolean"
+          },
+          "fade_in": {
+            "description": "The first item's fade in after the change (a fade longer than the room left is cut).",
+            "properties": {
+              "curve": {
+                "description": "Its shape.",
+                "oneOf": [
+                  {
+                    "const": "linear",
+                    "description": "Gain rises in a straight line (the default).",
+                    "type": "string"
+                  },
+                  {
+                    "const": "log",
+                    "description": "Gain rises quickly then flattens (`log10(1 + 9x)`): a fast, natural-sounding fade in.",
+                    "type": "string"
+                  },
+                  {
+                    "const": "equal_power",
+                    "description": "Constant power with a matching fade of the same shape on the other clip: `sin(x*pi/2)`.",
+                    "type": "string"
+                  },
+                  {
+                    "const": "s_curve",
+                    "description": "Gentle at both ends: `(1 - cos(x*pi)) / 2`.",
+                    "type": "string"
+                  }
+                ]
+              },
+              "duration": {
+                "description": "Length of the fade.",
+                "maximum": 9007199254740991,
+                "minimum": 0,
+                "type": "integer"
+              }
+            },
+            "required": [
+              "duration",
+              "curve"
+            ],
+            "type": "object"
+          },
+          "fade_out": {
+            "description": "The first item's fade out after the change.",
+            "properties": {
+              "curve": {
+                "description": "Its shape.",
+                "oneOf": [
+                  {
+                    "const": "linear",
+                    "description": "Gain rises in a straight line (the default).",
+                    "type": "string"
+                  },
+                  {
+                    "const": "log",
+                    "description": "Gain rises quickly then flattens (`log10(1 + 9x)`): a fast, natural-sounding fade in.",
+                    "type": "string"
+                  },
+                  {
+                    "const": "equal_power",
+                    "description": "Constant power with a matching fade of the same shape on the other clip: `sin(x*pi/2)`.",
+                    "type": "string"
+                  },
+                  {
+                    "const": "s_curve",
+                    "description": "Gentle at both ends: `(1 - cos(x*pi)) / 2`.",
+                    "type": "string"
+                  }
+                ]
+              },
+              "duration": {
+                "description": "Length of the fade.",
+                "maximum": 9007199254740991,
+                "minimum": 0,
+                "type": "integer"
+              }
+            },
+            "required": [
+              "duration",
+              "curve"
+            ],
+            "type": "object"
+          },
+          "item": {
+            "description": "The first item.",
+            "pattern": "^itm_[0-9a-f]{32}$",
+            "type": "string"
+          },
+          "keyed": {
+            "description": "The keys written on animated properties.",
+            "items": {
+              "additionalProperties": false,
+              "description": "A key `item.set_props` wrote on an animated property.",
+              "properties": {
+                "at": {
+                  "description": "Sequence time of the key, after snapping.",
+                  "maximum": 9007199254740991,
+                  "minimum": -9007199254740991,
+                  "type": "integer"
+                },
+                "item": {
+                  "description": "The item.",
+                  "pattern": "^itm_[0-9a-f]{32}$",
+                  "type": "string"
+                },
+                "prop": {
+                  "description": "The property.",
+                  "enum": [
+                    "transform.position",
+                    "transform.scale",
+                    "transform.rotation",
+                    "transform.anchor",
+                    "opacity",
+                    "crop.left",
+                    "crop.top",
+                    "crop.right",
+                    "crop.bottom",
+                    "flip.horizontal",
+                    "flip.vertical",
+                    "audio_gain",
+                    "audio_pan"
+                  ],
+                  "type": "string"
+                },
+                "t": {
+                  "description": "Item time of the key, after snapping.",
+                  "maximum": 9007199254740991,
+                  "minimum": -9007199254740991,
+                  "type": "integer"
+                }
+              },
+              "required": [
+                "item",
+                "prop",
+                "t",
+                "at"
+              ],
+              "type": "object"
+            },
+            "type": "array"
+          }
+        },
+        "required": [
+          "item",
+          "changed",
+          "fade_in",
+          "fade_out",
+          "clamped",
+          "keyed"
+        ],
+        "title": "AudioSetOutput",
+        "type": "object"
+      },
+      "scope": "any",
+      "secret_fields": [],
+      "summary": "Set a clip's fades, volume (dB) or pan",
+      "undoable": true,
+      "view": false
+    },
+    {
+      "annotations": {
+        "destructiveHint": false,
+        "idempotentHint": true,
+        "openWorldHint": false,
+        "readOnlyHint": false
+      },
+      "input_schema": {
+        "additionalProperties": false,
+        "description": "Fade in and out of a clip (`audio.set` with `kind: fade`).",
+        "properties": {
+          "curve": {
+            "anyOf": [
+              {
+                "description": "The shape of a fade: how the gain goes from 0 to 1 over the fade's duration (a fade out runs\nit backwards).",
+                "oneOf": [
+                  {
+                    "const": "linear",
+                    "description": "Gain rises in a straight line (the default).",
+                    "type": "string"
+                  },
+                  {
+                    "const": "log",
+                    "description": "Gain rises quickly then flattens (`log10(1 + 9x)`): a fast, natural-sounding fade in.",
+                    "type": "string"
+                  },
+                  {
+                    "const": "equal_power",
+                    "description": "Constant power with a matching fade of the same shape on the other clip: `sin(x*pi/2)`.",
+                    "type": "string"
+                  },
+                  {
+                    "const": "s_curve",
+                    "description": "Gentle at both ends: `(1 - cos(x*pi)) / 2`.",
+                    "type": "string"
+                  }
+                ]
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "description": "The shape of the fades being set."
+          },
+          "in": {
+            "anyOf": [
+              {
+                "anyOf": [
+                  {
+                    "maximum": 9007199254740991,
+                    "minimum": -9007199254740991,
+                    "type": "integer"
+                  },
+                  {
+                    "pattern": "^-?[0-9]+(\\.[0-9]+)?s$|^-?[0-9]+$|^f:[0-9]+$|^[0-9]+[:;][0-9]+[:;][0-9]+[:;][0-9]+$",
+                    "type": "string"
+                  }
+                ],
+                "description": "A time: integer flicks (1/705600000 s), or a string: seconds (\"62.5s\"), a frame (\"f:1500\") or a timecode (\"00:01:02:03\", drop-frame \"00:01:02;03\"). Frames and timecodes use the frame rate of the target's sequence."
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "description": "Length of the fade in, `0` removes it."
+          },
+          "item": {
+            "default": null,
+            "description": "The item (or `items`).",
+            "pattern": "^itm_[0-9a-f]{32}$",
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "items": {
+            "default": null,
+            "description": "Items to change the same way.",
+            "items": {
+              "description": "A Item id: `^itm_[0-9a-f]{32}$`.",
+              "pattern": "^itm_[0-9a-f]{32}$",
+              "type": "string"
+            },
+            "type": [
+              "array",
+              "null"
+            ]
+          },
+          "out": {
+            "anyOf": [
+              {
+                "anyOf": [
+                  {
+                    "maximum": 9007199254740991,
+                    "minimum": -9007199254740991,
+                    "type": "integer"
+                  },
+                  {
+                    "pattern": "^-?[0-9]+(\\.[0-9]+)?s$|^-?[0-9]+$|^f:[0-9]+$|^[0-9]+[:;][0-9]+[:;][0-9]+[:;][0-9]+$",
+                    "type": "string"
+                  }
+                ],
+                "description": "A time: integer flicks (1/705600000 s), or a string: seconds (\"62.5s\"), a frame (\"f:1500\") or a timecode (\"00:01:02:03\", drop-frame \"00:01:02;03\"). Frames and timecodes use the frame rate of the target's sequence."
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "description": "Length of the fade out, `0` removes it."
+          }
+        },
+        "title": "AudioSetFade",
+        "type": "object"
+      },
+      "kind": "command",
+      "mcp": "catalog",
+      "mcp_tool": "audio_set_fade",
+      "name": "audio.set_fade",
+      "namespace": "audio",
+      "output_schema": {
+        "additionalProperties": false,
+        "description": "Result of the audio commands.",
+        "properties": {
+          "changed": {
+            "description": "What changed on any item (`audio.fade_in`, `audio.fade_out`, `audio.gain`, `audio.pan`);\nempty when everything was already as requested.",
+            "items": {
+              "type": "string"
+            },
+            "type": "array"
+          },
+          "clamped": {
+            "description": "A requested fade was cut to fit the clip.",
+            "type": "boolean"
+          },
+          "fade_in": {
+            "description": "The first item's fade in after the change (a fade longer than the room left is cut).",
+            "properties": {
+              "curve": {
+                "description": "Its shape.",
+                "oneOf": [
+                  {
+                    "const": "linear",
+                    "description": "Gain rises in a straight line (the default).",
+                    "type": "string"
+                  },
+                  {
+                    "const": "log",
+                    "description": "Gain rises quickly then flattens (`log10(1 + 9x)`): a fast, natural-sounding fade in.",
+                    "type": "string"
+                  },
+                  {
+                    "const": "equal_power",
+                    "description": "Constant power with a matching fade of the same shape on the other clip: `sin(x*pi/2)`.",
+                    "type": "string"
+                  },
+                  {
+                    "const": "s_curve",
+                    "description": "Gentle at both ends: `(1 - cos(x*pi)) / 2`.",
+                    "type": "string"
+                  }
+                ]
+              },
+              "duration": {
+                "description": "Length of the fade.",
+                "maximum": 9007199254740991,
+                "minimum": 0,
+                "type": "integer"
+              }
+            },
+            "required": [
+              "duration",
+              "curve"
+            ],
+            "type": "object"
+          },
+          "fade_out": {
+            "description": "The first item's fade out after the change.",
+            "properties": {
+              "curve": {
+                "description": "Its shape.",
+                "oneOf": [
+                  {
+                    "const": "linear",
+                    "description": "Gain rises in a straight line (the default).",
+                    "type": "string"
+                  },
+                  {
+                    "const": "log",
+                    "description": "Gain rises quickly then flattens (`log10(1 + 9x)`): a fast, natural-sounding fade in.",
+                    "type": "string"
+                  },
+                  {
+                    "const": "equal_power",
+                    "description": "Constant power with a matching fade of the same shape on the other clip: `sin(x*pi/2)`.",
+                    "type": "string"
+                  },
+                  {
+                    "const": "s_curve",
+                    "description": "Gentle at both ends: `(1 - cos(x*pi)) / 2`.",
+                    "type": "string"
+                  }
+                ]
+              },
+              "duration": {
+                "description": "Length of the fade.",
+                "maximum": 9007199254740991,
+                "minimum": 0,
+                "type": "integer"
+              }
+            },
+            "required": [
+              "duration",
+              "curve"
+            ],
+            "type": "object"
+          },
+          "item": {
+            "description": "The first item.",
+            "pattern": "^itm_[0-9a-f]{32}$",
+            "type": "string"
+          },
+          "keyed": {
+            "description": "The keys written on animated properties.",
+            "items": {
+              "additionalProperties": false,
+              "description": "A key `item.set_props` wrote on an animated property.",
+              "properties": {
+                "at": {
+                  "description": "Sequence time of the key, after snapping.",
+                  "maximum": 9007199254740991,
+                  "minimum": -9007199254740991,
+                  "type": "integer"
+                },
+                "item": {
+                  "description": "The item.",
+                  "pattern": "^itm_[0-9a-f]{32}$",
+                  "type": "string"
+                },
+                "prop": {
+                  "description": "The property.",
+                  "enum": [
+                    "transform.position",
+                    "transform.scale",
+                    "transform.rotation",
+                    "transform.anchor",
+                    "opacity",
+                    "crop.left",
+                    "crop.top",
+                    "crop.right",
+                    "crop.bottom",
+                    "flip.horizontal",
+                    "flip.vertical",
+                    "audio_gain",
+                    "audio_pan"
+                  ],
+                  "type": "string"
+                },
+                "t": {
+                  "description": "Item time of the key, after snapping.",
+                  "maximum": 9007199254740991,
+                  "minimum": -9007199254740991,
+                  "type": "integer"
+                }
+              },
+              "required": [
+                "item",
+                "prop",
+                "t",
+                "at"
+              ],
+              "type": "object"
+            },
+            "type": "array"
+          }
+        },
+        "required": [
+          "item",
+          "changed",
+          "fade_in",
+          "fade_out",
+          "clamped",
+          "keyed"
+        ],
+        "title": "AudioSetOutput",
+        "type": "object"
+      },
+      "scope": "any",
+      "secret_fields": [],
+      "summary": "Set a clip's fade in and fade out (length and curve)",
+      "undoable": true,
+      "view": false
+    },
+    {
+      "annotations": {
+        "destructiveHint": false,
+        "idempotentHint": true,
+        "openWorldHint": false,
+        "readOnlyHint": false
+      },
+      "input_schema": {
+        "additionalProperties": false,
+        "description": "One flat gain for the whole clip: any volume keys are removed.",
+        "properties": {
+          "db": {
+            "description": "The gain, `-144..=12` dB.",
+            "format": "double",
+            "type": "number"
+          },
+          "item": {
+            "default": null,
+            "description": "The item (or `items`).",
+            "pattern": "^itm_[0-9a-f]{32}$",
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "items": {
+            "default": null,
+            "description": "Items to change the same way.",
+            "items": {
+              "description": "A Item id: `^itm_[0-9a-f]{32}$`.",
+              "pattern": "^itm_[0-9a-f]{32}$",
+              "type": "string"
+            },
+            "type": [
+              "array",
+              "null"
+            ]
+          }
+        },
+        "required": [
+          "db"
+        ],
+        "title": "AudioSetGain",
+        "type": "object"
+      },
+      "kind": "command",
+      "mcp": "catalog",
+      "mcp_tool": "audio_set_gain",
+      "name": "audio.set_gain",
+      "namespace": "audio",
+      "output_schema": {
+        "additionalProperties": false,
+        "description": "Result of the audio commands.",
+        "properties": {
+          "changed": {
+            "description": "What changed on any item (`audio.fade_in`, `audio.fade_out`, `audio.gain`, `audio.pan`);\nempty when everything was already as requested.",
+            "items": {
+              "type": "string"
+            },
+            "type": "array"
+          },
+          "clamped": {
+            "description": "A requested fade was cut to fit the clip.",
+            "type": "boolean"
+          },
+          "fade_in": {
+            "description": "The first item's fade in after the change (a fade longer than the room left is cut).",
+            "properties": {
+              "curve": {
+                "description": "Its shape.",
+                "oneOf": [
+                  {
+                    "const": "linear",
+                    "description": "Gain rises in a straight line (the default).",
+                    "type": "string"
+                  },
+                  {
+                    "const": "log",
+                    "description": "Gain rises quickly then flattens (`log10(1 + 9x)`): a fast, natural-sounding fade in.",
+                    "type": "string"
+                  },
+                  {
+                    "const": "equal_power",
+                    "description": "Constant power with a matching fade of the same shape on the other clip: `sin(x*pi/2)`.",
+                    "type": "string"
+                  },
+                  {
+                    "const": "s_curve",
+                    "description": "Gentle at both ends: `(1 - cos(x*pi)) / 2`.",
+                    "type": "string"
+                  }
+                ]
+              },
+              "duration": {
+                "description": "Length of the fade.",
+                "maximum": 9007199254740991,
+                "minimum": 0,
+                "type": "integer"
+              }
+            },
+            "required": [
+              "duration",
+              "curve"
+            ],
+            "type": "object"
+          },
+          "fade_out": {
+            "description": "The first item's fade out after the change.",
+            "properties": {
+              "curve": {
+                "description": "Its shape.",
+                "oneOf": [
+                  {
+                    "const": "linear",
+                    "description": "Gain rises in a straight line (the default).",
+                    "type": "string"
+                  },
+                  {
+                    "const": "log",
+                    "description": "Gain rises quickly then flattens (`log10(1 + 9x)`): a fast, natural-sounding fade in.",
+                    "type": "string"
+                  },
+                  {
+                    "const": "equal_power",
+                    "description": "Constant power with a matching fade of the same shape on the other clip: `sin(x*pi/2)`.",
+                    "type": "string"
+                  },
+                  {
+                    "const": "s_curve",
+                    "description": "Gentle at both ends: `(1 - cos(x*pi)) / 2`.",
+                    "type": "string"
+                  }
+                ]
+              },
+              "duration": {
+                "description": "Length of the fade.",
+                "maximum": 9007199254740991,
+                "minimum": 0,
+                "type": "integer"
+              }
+            },
+            "required": [
+              "duration",
+              "curve"
+            ],
+            "type": "object"
+          },
+          "item": {
+            "description": "The first item.",
+            "pattern": "^itm_[0-9a-f]{32}$",
+            "type": "string"
+          },
+          "keyed": {
+            "description": "The keys written on animated properties.",
+            "items": {
+              "additionalProperties": false,
+              "description": "A key `item.set_props` wrote on an animated property.",
+              "properties": {
+                "at": {
+                  "description": "Sequence time of the key, after snapping.",
+                  "maximum": 9007199254740991,
+                  "minimum": -9007199254740991,
+                  "type": "integer"
+                },
+                "item": {
+                  "description": "The item.",
+                  "pattern": "^itm_[0-9a-f]{32}$",
+                  "type": "string"
+                },
+                "prop": {
+                  "description": "The property.",
+                  "enum": [
+                    "transform.position",
+                    "transform.scale",
+                    "transform.rotation",
+                    "transform.anchor",
+                    "opacity",
+                    "crop.left",
+                    "crop.top",
+                    "crop.right",
+                    "crop.bottom",
+                    "flip.horizontal",
+                    "flip.vertical",
+                    "audio_gain",
+                    "audio_pan"
+                  ],
+                  "type": "string"
+                },
+                "t": {
+                  "description": "Item time of the key, after snapping.",
+                  "maximum": 9007199254740991,
+                  "minimum": -9007199254740991,
+                  "type": "integer"
+                }
+              },
+              "required": [
+                "item",
+                "prop",
+                "t",
+                "at"
+              ],
+              "type": "object"
+            },
+            "type": "array"
+          }
+        },
+        "required": [
+          "item",
+          "changed",
+          "fade_in",
+          "fade_out",
+          "clamped",
+          "keyed"
+        ],
+        "title": "AudioSetOutput",
+        "type": "object"
+      },
+      "scope": "any",
+      "secret_fields": [],
+      "summary": "Give a clip one flat gain in dB, removing its volume keys",
+      "undoable": true,
+      "view": false
+    },
+    {
+      "annotations": {
+        "destructiveHint": false,
+        "idempotentHint": true,
+        "openWorldHint": false,
+        "readOnlyHint": false
+      },
+      "input_schema": {
+        "additionalProperties": false,
+        "description": "Clip pan (`audio.set` with `kind: pan`; a wrapper over `item.set_props`).",
+        "properties": {
+          "at": {
+            "anyOf": [
+              {
+                "anyOf": [
+                  {
+                    "maximum": 9007199254740991,
+                    "minimum": -9007199254740991,
+                    "type": "integer"
+                  },
+                  {
+                    "pattern": "^-?[0-9]+(\\.[0-9]+)?s$|^-?[0-9]+$|^f:[0-9]+$|^[0-9]+[:;][0-9]+[:;][0-9]+[:;][0-9]+$",
+                    "type": "string"
+                  }
+                ],
+                "description": "A time: integer flicks (1/705600000 s), or a string: seconds (\"62.5s\"), a frame (\"f:1500\") or a timecode (\"00:01:02:03\", drop-frame \"00:01:02;03\"). Frames and timecodes use the frame rate of the target's sequence."
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "description": "Sequence time (the playhead) to key at."
+          },
+          "auto_key": {
+            "default": null,
+            "description": "Key an animated pan at `at` (default true).",
+            "type": [
+              "boolean",
+              "null"
+            ]
+          },
+          "item": {
+            "default": null,
+            "description": "The item (or `items`).",
+            "pattern": "^itm_[0-9a-f]{32}$",
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "items": {
+            "default": null,
+            "description": "Items to change the same way.",
+            "items": {
+              "description": "A Item id: `^itm_[0-9a-f]{32}$`.",
+              "pattern": "^itm_[0-9a-f]{32}$",
+              "type": "string"
+            },
+            "type": [
+              "array",
+              "null"
+            ]
+          },
+          "pan": {
+            "description": "The position, `-1..=1`.",
+            "format": "double",
+            "type": "number"
+          }
+        },
+        "required": [
+          "pan"
+        ],
+        "title": "AudioSetPan",
+        "type": "object"
+      },
+      "kind": "command",
+      "mcp": "catalog",
+      "mcp_tool": "audio_set_pan",
+      "name": "audio.set_pan",
+      "namespace": "audio",
+      "output_schema": {
+        "additionalProperties": false,
+        "description": "Result of the audio commands.",
+        "properties": {
+          "changed": {
+            "description": "What changed on any item (`audio.fade_in`, `audio.fade_out`, `audio.gain`, `audio.pan`);\nempty when everything was already as requested.",
+            "items": {
+              "type": "string"
+            },
+            "type": "array"
+          },
+          "clamped": {
+            "description": "A requested fade was cut to fit the clip.",
+            "type": "boolean"
+          },
+          "fade_in": {
+            "description": "The first item's fade in after the change (a fade longer than the room left is cut).",
+            "properties": {
+              "curve": {
+                "description": "Its shape.",
+                "oneOf": [
+                  {
+                    "const": "linear",
+                    "description": "Gain rises in a straight line (the default).",
+                    "type": "string"
+                  },
+                  {
+                    "const": "log",
+                    "description": "Gain rises quickly then flattens (`log10(1 + 9x)`): a fast, natural-sounding fade in.",
+                    "type": "string"
+                  },
+                  {
+                    "const": "equal_power",
+                    "description": "Constant power with a matching fade of the same shape on the other clip: `sin(x*pi/2)`.",
+                    "type": "string"
+                  },
+                  {
+                    "const": "s_curve",
+                    "description": "Gentle at both ends: `(1 - cos(x*pi)) / 2`.",
+                    "type": "string"
+                  }
+                ]
+              },
+              "duration": {
+                "description": "Length of the fade.",
+                "maximum": 9007199254740991,
+                "minimum": 0,
+                "type": "integer"
+              }
+            },
+            "required": [
+              "duration",
+              "curve"
+            ],
+            "type": "object"
+          },
+          "fade_out": {
+            "description": "The first item's fade out after the change.",
+            "properties": {
+              "curve": {
+                "description": "Its shape.",
+                "oneOf": [
+                  {
+                    "const": "linear",
+                    "description": "Gain rises in a straight line (the default).",
+                    "type": "string"
+                  },
+                  {
+                    "const": "log",
+                    "description": "Gain rises quickly then flattens (`log10(1 + 9x)`): a fast, natural-sounding fade in.",
+                    "type": "string"
+                  },
+                  {
+                    "const": "equal_power",
+                    "description": "Constant power with a matching fade of the same shape on the other clip: `sin(x*pi/2)`.",
+                    "type": "string"
+                  },
+                  {
+                    "const": "s_curve",
+                    "description": "Gentle at both ends: `(1 - cos(x*pi)) / 2`.",
+                    "type": "string"
+                  }
+                ]
+              },
+              "duration": {
+                "description": "Length of the fade.",
+                "maximum": 9007199254740991,
+                "minimum": 0,
+                "type": "integer"
+              }
+            },
+            "required": [
+              "duration",
+              "curve"
+            ],
+            "type": "object"
+          },
+          "item": {
+            "description": "The first item.",
+            "pattern": "^itm_[0-9a-f]{32}$",
+            "type": "string"
+          },
+          "keyed": {
+            "description": "The keys written on animated properties.",
+            "items": {
+              "additionalProperties": false,
+              "description": "A key `item.set_props` wrote on an animated property.",
+              "properties": {
+                "at": {
+                  "description": "Sequence time of the key, after snapping.",
+                  "maximum": 9007199254740991,
+                  "minimum": -9007199254740991,
+                  "type": "integer"
+                },
+                "item": {
+                  "description": "The item.",
+                  "pattern": "^itm_[0-9a-f]{32}$",
+                  "type": "string"
+                },
+                "prop": {
+                  "description": "The property.",
+                  "enum": [
+                    "transform.position",
+                    "transform.scale",
+                    "transform.rotation",
+                    "transform.anchor",
+                    "opacity",
+                    "crop.left",
+                    "crop.top",
+                    "crop.right",
+                    "crop.bottom",
+                    "flip.horizontal",
+                    "flip.vertical",
+                    "audio_gain",
+                    "audio_pan"
+                  ],
+                  "type": "string"
+                },
+                "t": {
+                  "description": "Item time of the key, after snapping.",
+                  "maximum": 9007199254740991,
+                  "minimum": -9007199254740991,
+                  "type": "integer"
+                }
+              },
+              "required": [
+                "item",
+                "prop",
+                "t",
+                "at"
+              ],
+              "type": "object"
+            },
+            "type": "array"
+          }
+        },
+        "required": [
+          "item",
+          "changed",
+          "fade_in",
+          "fade_out",
+          "clamped",
+          "keyed"
+        ],
+        "title": "AudioSetOutput",
+        "type": "object"
+      },
+      "scope": "any",
+      "secret_fields": [],
+      "summary": "Set a clip's stereo pan (-1 left, 1 right; keyed at the playhead when animated)",
+      "undoable": true,
+      "view": false
+    },
+    {
+      "annotations": {
+        "destructiveHint": false,
+        "idempotentHint": true,
+        "openWorldHint": false,
+        "readOnlyHint": false
+      },
+      "input_schema": {
+        "additionalProperties": false,
+        "description": "Clip volume (`audio.set` with `kind: volume`; a wrapper over `item.set_props`).",
+        "properties": {
+          "at": {
+            "anyOf": [
+              {
+                "anyOf": [
+                  {
+                    "maximum": 9007199254740991,
+                    "minimum": -9007199254740991,
+                    "type": "integer"
+                  },
+                  {
+                    "pattern": "^-?[0-9]+(\\.[0-9]+)?s$|^-?[0-9]+$|^f:[0-9]+$|^[0-9]+[:;][0-9]+[:;][0-9]+[:;][0-9]+$",
+                    "type": "string"
+                  }
+                ],
+                "description": "A time: integer flicks (1/705600000 s), or a string: seconds (\"62.5s\"), a frame (\"f:1500\") or a timecode (\"00:01:02:03\", drop-frame \"00:01:02;03\"). Frames and timecodes use the frame rate of the target's sequence."
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "description": "Sequence time (the playhead) to key at."
+          },
+          "auto_key": {
+            "default": null,
+            "description": "Key an animated volume at `at` (default true).",
+            "type": [
+              "boolean",
+              "null"
+            ]
+          },
+          "db": {
+            "description": "The volume, `-144..=12` dB.",
+            "format": "double",
+            "type": "number"
+          },
+          "item": {
+            "default": null,
+            "description": "The item (or `items`).",
+            "pattern": "^itm_[0-9a-f]{32}$",
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "items": {
+            "default": null,
+            "description": "Items to change the same way.",
+            "items": {
+              "description": "A Item id: `^itm_[0-9a-f]{32}$`.",
+              "pattern": "^itm_[0-9a-f]{32}$",
+              "type": "string"
+            },
+            "type": [
+              "array",
+              "null"
+            ]
+          }
+        },
+        "required": [
+          "db"
+        ],
+        "title": "AudioSetVolume",
+        "type": "object"
+      },
+      "kind": "command",
+      "mcp": "catalog",
+      "mcp_tool": "audio_set_volume",
+      "name": "audio.set_volume",
+      "namespace": "audio",
+      "output_schema": {
+        "additionalProperties": false,
+        "description": "Result of the audio commands.",
+        "properties": {
+          "changed": {
+            "description": "What changed on any item (`audio.fade_in`, `audio.fade_out`, `audio.gain`, `audio.pan`);\nempty when everything was already as requested.",
+            "items": {
+              "type": "string"
+            },
+            "type": "array"
+          },
+          "clamped": {
+            "description": "A requested fade was cut to fit the clip.",
+            "type": "boolean"
+          },
+          "fade_in": {
+            "description": "The first item's fade in after the change (a fade longer than the room left is cut).",
+            "properties": {
+              "curve": {
+                "description": "Its shape.",
+                "oneOf": [
+                  {
+                    "const": "linear",
+                    "description": "Gain rises in a straight line (the default).",
+                    "type": "string"
+                  },
+                  {
+                    "const": "log",
+                    "description": "Gain rises quickly then flattens (`log10(1 + 9x)`): a fast, natural-sounding fade in.",
+                    "type": "string"
+                  },
+                  {
+                    "const": "equal_power",
+                    "description": "Constant power with a matching fade of the same shape on the other clip: `sin(x*pi/2)`.",
+                    "type": "string"
+                  },
+                  {
+                    "const": "s_curve",
+                    "description": "Gentle at both ends: `(1 - cos(x*pi)) / 2`.",
+                    "type": "string"
+                  }
+                ]
+              },
+              "duration": {
+                "description": "Length of the fade.",
+                "maximum": 9007199254740991,
+                "minimum": 0,
+                "type": "integer"
+              }
+            },
+            "required": [
+              "duration",
+              "curve"
+            ],
+            "type": "object"
+          },
+          "fade_out": {
+            "description": "The first item's fade out after the change.",
+            "properties": {
+              "curve": {
+                "description": "Its shape.",
+                "oneOf": [
+                  {
+                    "const": "linear",
+                    "description": "Gain rises in a straight line (the default).",
+                    "type": "string"
+                  },
+                  {
+                    "const": "log",
+                    "description": "Gain rises quickly then flattens (`log10(1 + 9x)`): a fast, natural-sounding fade in.",
+                    "type": "string"
+                  },
+                  {
+                    "const": "equal_power",
+                    "description": "Constant power with a matching fade of the same shape on the other clip: `sin(x*pi/2)`.",
+                    "type": "string"
+                  },
+                  {
+                    "const": "s_curve",
+                    "description": "Gentle at both ends: `(1 - cos(x*pi)) / 2`.",
+                    "type": "string"
+                  }
+                ]
+              },
+              "duration": {
+                "description": "Length of the fade.",
+                "maximum": 9007199254740991,
+                "minimum": 0,
+                "type": "integer"
+              }
+            },
+            "required": [
+              "duration",
+              "curve"
+            ],
+            "type": "object"
+          },
+          "item": {
+            "description": "The first item.",
+            "pattern": "^itm_[0-9a-f]{32}$",
+            "type": "string"
+          },
+          "keyed": {
+            "description": "The keys written on animated properties.",
+            "items": {
+              "additionalProperties": false,
+              "description": "A key `item.set_props` wrote on an animated property.",
+              "properties": {
+                "at": {
+                  "description": "Sequence time of the key, after snapping.",
+                  "maximum": 9007199254740991,
+                  "minimum": -9007199254740991,
+                  "type": "integer"
+                },
+                "item": {
+                  "description": "The item.",
+                  "pattern": "^itm_[0-9a-f]{32}$",
+                  "type": "string"
+                },
+                "prop": {
+                  "description": "The property.",
+                  "enum": [
+                    "transform.position",
+                    "transform.scale",
+                    "transform.rotation",
+                    "transform.anchor",
+                    "opacity",
+                    "crop.left",
+                    "crop.top",
+                    "crop.right",
+                    "crop.bottom",
+                    "flip.horizontal",
+                    "flip.vertical",
+                    "audio_gain",
+                    "audio_pan"
+                  ],
+                  "type": "string"
+                },
+                "t": {
+                  "description": "Item time of the key, after snapping.",
+                  "maximum": 9007199254740991,
+                  "minimum": -9007199254740991,
+                  "type": "integer"
+                }
+              },
+              "required": [
+                "item",
+                "prop",
+                "t",
+                "at"
+              ],
+              "type": "object"
+            },
+            "type": "array"
+          }
+        },
+        "required": [
+          "item",
+          "changed",
+          "fade_in",
+          "fade_out",
+          "clamped",
+          "keyed"
+        ],
+        "title": "AudioSetOutput",
+        "type": "object"
+      },
+      "scope": "any",
+      "secret_fields": [],
+      "summary": "Set a clip's volume in dB (keyed at the playhead when animated)",
+      "undoable": true,
+      "view": false
+    },
+    {
+      "annotations": {
+        "destructiveHint": false,
         "idempotentHint": false,
         "openWorldHint": false,
         "readOnlyHint": false
@@ -6865,7 +8274,7 @@ expression: text
                   },
                   {
                     "const": "audio",
-                    "description": "Clip gain and pan.",
+                    "description": "Clip gain, pan and fades.",
                     "type": "string"
                   }
                 ]
