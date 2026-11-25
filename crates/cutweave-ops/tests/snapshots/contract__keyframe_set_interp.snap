@@ -1,0 +1,988 @@
+---
+source: crates/cutweave-ops/tests/contract.rs
+expression: "json!({\n    \"meta\": serde_json::to_value(meta).unwrap(), \"input\": meta.input_schema,\n    \"output\": meta.output_schema,\n})"
+---
+{
+  "meta": {
+    "name": "keyframe.set_interp",
+    "summary": "Set the easing of the segments starting at keys",
+    "kind": "command",
+    "undoable": true,
+    "view": false,
+    "scope": "any",
+    "mcp": "catalog",
+    "annotations": {
+      "readOnlyHint": false,
+      "destructiveHint": false,
+      "idempotentHint": true,
+      "openWorldHint": false
+    },
+    "secret_fields": [],
+    "input_schema": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "item": {
+          "type": "string",
+          "pattern": "^itm_[0-9a-f]{32}$",
+          "description": "The item."
+        },
+        "keys": {
+          "type": "array",
+          "items": {
+            "description": "A key to address: its property and exact item time.",
+            "type": "object",
+            "properties": {
+              "prop": {
+                "description": "The property.",
+                "oneOf": [
+                  {
+                    "description": "`visual.transform.position`: offset of the anchor from the canvas centre, canvas units.",
+                    "type": "string",
+                    "const": "transform.position"
+                  },
+                  {
+                    "description": "`visual.transform.scale`: multiplier of the aspect-fit size, per axis.",
+                    "type": "string",
+                    "const": "transform.scale"
+                  },
+                  {
+                    "description": "`visual.transform.rotation`: degrees, clockwise, accumulating.",
+                    "type": "string",
+                    "const": "transform.rotation"
+                  },
+                  {
+                    "description": "`visual.transform.anchor`: a point of the item in item units.",
+                    "type": "string",
+                    "const": "transform.anchor"
+                  },
+                  {
+                    "description": "`visual.opacity`: 0 transparent to 1 opaque.",
+                    "type": "string",
+                    "const": "opacity"
+                  },
+                  {
+                    "description": "`visual.crop.left`: fraction of the upright source removed from the left edge.",
+                    "type": "string",
+                    "const": "crop.left"
+                  },
+                  {
+                    "description": "`visual.crop.top`: fraction removed from the top edge.",
+                    "type": "string",
+                    "const": "crop.top"
+                  },
+                  {
+                    "description": "`visual.crop.right`: fraction removed from the right edge.",
+                    "type": "string",
+                    "const": "crop.right"
+                  },
+                  {
+                    "description": "`visual.crop.bottom`: fraction removed from the bottom edge.",
+                    "type": "string",
+                    "const": "crop.bottom"
+                  },
+                  {
+                    "description": "`visual.flip.horizontal`: mirror left-right (hold only).",
+                    "type": "string",
+                    "const": "flip.horizontal"
+                  },
+                  {
+                    "description": "`visual.flip.vertical`: mirror top-bottom (hold only).",
+                    "type": "string",
+                    "const": "flip.vertical"
+                  },
+                  {
+                    "description": "`audio.gain`: clip level in dB, interpolated in dB (UI label \"Volume\").",
+                    "type": "string",
+                    "const": "audio_gain"
+                  },
+                  {
+                    "description": "`audio.pan`: −1 left to 1 right, 0 centre.",
+                    "type": "string",
+                    "const": "audio_pan"
+                  }
+                ]
+              },
+              "t": {
+                "description": "The key's stored item time in flicks, as `item.get` returns it.",
+                "anyOf": [
+                  {
+                    "type": "integer",
+                    "minimum": -9007199254740991,
+                    "maximum": 9007199254740991
+                  },
+                  {
+                    "type": "string",
+                    "pattern": "^-?[0-9]+(\\.[0-9]+)?s$|^-?[0-9]+$"
+                  }
+                ]
+              }
+            },
+            "additionalProperties": false,
+            "required": [
+              "prop",
+              "t"
+            ]
+          },
+          "description": "The keys, by property and exact item time."
+        },
+        "interp": {
+          "anyOf": [
+            {
+              "oneOf": [
+                {
+                  "type": "object",
+                  "properties": {
+                    "kind": {
+                      "type": "string",
+                      "const": "hold"
+                    }
+                  },
+                  "required": [
+                    "kind"
+                  ],
+                  "additionalProperties": false,
+                  "description": "The key's value until the next key, then a jump."
+                },
+                {
+                  "type": "object",
+                  "properties": {
+                    "kind": {
+                      "type": "string",
+                      "const": "linear"
+                    }
+                  },
+                  "required": [
+                    "kind"
+                  ],
+                  "additionalProperties": false,
+                  "description": "Constant speed."
+                },
+                {
+                  "type": "object",
+                  "additionalProperties": false,
+                  "properties": {
+                    "kind": {
+                      "type": "string",
+                      "const": "bezier"
+                    },
+                    "x1": {
+                      "type": "number",
+                      "format": "double",
+                      "description": "First control point, time axis, `0..=1`."
+                    },
+                    "y1": {
+                      "type": "number",
+                      "format": "double",
+                      "description": "First control point, progress axis, `-10..=10`."
+                    },
+                    "x2": {
+                      "type": "number",
+                      "format": "double",
+                      "description": "Second control point, time axis, `0..=1`."
+                    },
+                    "y2": {
+                      "type": "number",
+                      "format": "double",
+                      "description": "Second control point, progress axis, `-10..=10`."
+                    },
+                    "preset": {
+                      "type": [
+                        "string",
+                        "null"
+                      ],
+                      "description": "A hint naming the preset the numbers came from.",
+                      "default": null
+                    }
+                  },
+                  "required": [
+                    "kind",
+                    "x1",
+                    "y1",
+                    "x2",
+                    "y2"
+                  ],
+                  "description": "A CSS-style cubic Bezier from (0, 0) to (1, 1)."
+                },
+                {
+                  "type": "object",
+                  "additionalProperties": false,
+                  "properties": {
+                    "kind": {
+                      "type": "string",
+                      "const": "spring"
+                    },
+                    "stiffness": {
+                      "type": "number",
+                      "format": "double",
+                      "description": "Stiffness, `1..=10000`."
+                    },
+                    "damping": {
+                      "type": "number",
+                      "format": "double",
+                      "description": "Damping, `0..=1000`."
+                    },
+                    "mass": {
+                      "type": "number",
+                      "format": "double",
+                      "description": "Mass, `0.1..=100`."
+                    },
+                    "bounce": {
+                      "type": [
+                        "boolean",
+                        "null"
+                      ],
+                      "description": "A hard stop at the target (default `false`).",
+                      "default": null
+                    },
+                    "preset": {
+                      "type": [
+                        "string",
+                        "null"
+                      ],
+                      "description": "A hint naming the preset the numbers came from.",
+                      "default": null
+                    }
+                  },
+                  "required": [
+                    "kind",
+                    "stiffness",
+                    "damping",
+                    "mass"
+                  ],
+                  "description": "A damped spring."
+                }
+              ],
+              "description": "How the segment that starts at a key moves to the next key, as commands take it: the stored\nform ([`Interp`]) with `bounce` optional (default `false`)."
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "description": "The interpolation (stored form).",
+          "default": null
+        },
+        "easing": {
+          "anyOf": [
+            {
+              "oneOf": [
+                {
+                  "type": "string",
+                  "const": "hold",
+                  "description": "The key's value until the next key."
+                },
+                {
+                  "type": "string",
+                  "const": "linear",
+                  "description": "Constant speed."
+                },
+                {
+                  "type": "string",
+                  "const": "ease_in",
+                  "description": "CSS `ease-in`: bezier (0.42, 0, 1, 1)."
+                },
+                {
+                  "type": "string",
+                  "const": "ease_out",
+                  "description": "CSS `ease-out`: bezier (0, 0, 0.58, 1)."
+                },
+                {
+                  "type": "string",
+                  "const": "ease_in_out",
+                  "description": "CSS `ease-in-out`: bezier (0.42, 0, 0.58, 1)."
+                },
+                {
+                  "type": "string",
+                  "const": "sine_in",
+                  "description": "Bezier (0.12, 0, 0.39, 0)."
+                },
+                {
+                  "type": "string",
+                  "const": "sine_out",
+                  "description": "Bezier (0.61, 1, 0.88, 1)."
+                },
+                {
+                  "type": "string",
+                  "const": "sine_in_out",
+                  "description": "Bezier (0.37, 0, 0.63, 1)."
+                },
+                {
+                  "type": "string",
+                  "const": "cubic_in",
+                  "description": "Bezier (0.32, 0, 0.67, 0)."
+                },
+                {
+                  "type": "string",
+                  "const": "cubic_out",
+                  "description": "Bezier (0.33, 1, 0.68, 1)."
+                },
+                {
+                  "type": "string",
+                  "const": "cubic_in_out",
+                  "description": "Bezier (0.65, 0, 0.35, 1)."
+                },
+                {
+                  "type": "string",
+                  "const": "expo_in",
+                  "description": "Bezier (0.7, 0, 0.84, 0)."
+                },
+                {
+                  "type": "string",
+                  "const": "expo_out",
+                  "description": "Bezier (0.16, 1, 0.3, 1)."
+                },
+                {
+                  "type": "string",
+                  "const": "expo_in_out",
+                  "description": "Bezier (0.87, 0, 0.13, 1)."
+                },
+                {
+                  "type": "string",
+                  "const": "back_in",
+                  "description": "Bezier (0.36, 0, 0.66, −0.56): pulls back before leaving."
+                },
+                {
+                  "type": "string",
+                  "const": "back_out",
+                  "description": "Bezier (0.34, 1.56, 0.64, 1): overshoots, then settles."
+                },
+                {
+                  "type": "string",
+                  "const": "back_in_out",
+                  "description": "Bezier (0.68, −0.6, 0.32, 1.6)."
+                },
+                {
+                  "type": "string",
+                  "const": "spring",
+                  "description": "Spring 170 / 26 / 1 (ζ ≈ 1.00)."
+                },
+                {
+                  "type": "string",
+                  "const": "spring_gentle",
+                  "description": "Spring 120 / 14 / 1 (ζ ≈ 0.64)."
+                },
+                {
+                  "type": "string",
+                  "const": "spring_wobbly",
+                  "description": "Spring 180 / 12 / 1 (ζ ≈ 0.45)."
+                },
+                {
+                  "type": "string",
+                  "const": "spring_stiff",
+                  "description": "Spring 210 / 20 / 1 (ζ ≈ 0.69)."
+                },
+                {
+                  "type": "string",
+                  "const": "elastic",
+                  "description": "Spring 200 / 6 / 1 (ζ ≈ 0.21): several decaying oscillations."
+                },
+                {
+                  "type": "string",
+                  "const": "bounce",
+                  "description": "Spring 160 / 10 / 1 with `bounce` (ζ ≈ 0.40): each bounce about a quarter as high."
+                }
+              ],
+              "description": "A named easing (keyframes §4.6): one of the 21 presets, or `linear` or `hold`. Commands\naccept it instead of an [`Interp`] (`easing: \"ease_out\"`) and expand it on write\n([`Easing::interp`]); documents never store the name alone.\n\nThe table is part of the spec: changing a preset's numbers means a new name, because\ndocuments store the expanded numbers and old projects must never change appearance."
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "description": "A preset name, `linear` or `hold`.",
+          "default": null
+        }
+      },
+      "required": [
+        "item",
+        "keys"
+      ],
+      "description": "Sets how the segments that start at the given keys move to the next key: `interp` (stored\nform) or `easing` (a preset name, `linear` or `hold`), not both. An explicit `interp`\ncarries no preset hint unless it gives one. Flips accept only hold. `NotFound` if a key does\nnot exist; `Locked` if the item's track is locked.",
+      "title": "KeyframeSetInterp"
+    },
+    "output_schema": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "changed": {
+          "type": "array",
+          "items": {
+            "description": "A key to address: its property and exact item time.",
+            "type": "object",
+            "properties": {
+              "prop": {
+                "description": "The property.",
+                "oneOf": [
+                  {
+                    "description": "`visual.transform.position`: offset of the anchor from the canvas centre, canvas units.",
+                    "type": "string",
+                    "const": "transform.position"
+                  },
+                  {
+                    "description": "`visual.transform.scale`: multiplier of the aspect-fit size, per axis.",
+                    "type": "string",
+                    "const": "transform.scale"
+                  },
+                  {
+                    "description": "`visual.transform.rotation`: degrees, clockwise, accumulating.",
+                    "type": "string",
+                    "const": "transform.rotation"
+                  },
+                  {
+                    "description": "`visual.transform.anchor`: a point of the item in item units.",
+                    "type": "string",
+                    "const": "transform.anchor"
+                  },
+                  {
+                    "description": "`visual.opacity`: 0 transparent to 1 opaque.",
+                    "type": "string",
+                    "const": "opacity"
+                  },
+                  {
+                    "description": "`visual.crop.left`: fraction of the upright source removed from the left edge.",
+                    "type": "string",
+                    "const": "crop.left"
+                  },
+                  {
+                    "description": "`visual.crop.top`: fraction removed from the top edge.",
+                    "type": "string",
+                    "const": "crop.top"
+                  },
+                  {
+                    "description": "`visual.crop.right`: fraction removed from the right edge.",
+                    "type": "string",
+                    "const": "crop.right"
+                  },
+                  {
+                    "description": "`visual.crop.bottom`: fraction removed from the bottom edge.",
+                    "type": "string",
+                    "const": "crop.bottom"
+                  },
+                  {
+                    "description": "`visual.flip.horizontal`: mirror left-right (hold only).",
+                    "type": "string",
+                    "const": "flip.horizontal"
+                  },
+                  {
+                    "description": "`visual.flip.vertical`: mirror top-bottom (hold only).",
+                    "type": "string",
+                    "const": "flip.vertical"
+                  },
+                  {
+                    "description": "`audio.gain`: clip level in dB, interpolated in dB (UI label \"Volume\").",
+                    "type": "string",
+                    "const": "audio_gain"
+                  },
+                  {
+                    "description": "`audio.pan`: −1 left to 1 right, 0 centre.",
+                    "type": "string",
+                    "const": "audio_pan"
+                  }
+                ]
+              },
+              "t": {
+                "description": "The key's stored item time in flicks, as `item.get` returns it.",
+                "type": "integer",
+                "minimum": -9007199254740991,
+                "maximum": 9007199254740991
+              }
+            },
+            "additionalProperties": false,
+            "required": [
+              "prop",
+              "t"
+            ]
+          },
+          "description": "The keys whose segment changed."
+        }
+      },
+      "required": [
+        "changed"
+      ],
+      "description": "Result of `keyframe.set_interp`.",
+      "title": "KeyframeSetInterpOutput"
+    }
+  },
+  "input": {
+    "type": "object",
+    "additionalProperties": false,
+    "properties": {
+      "item": {
+        "type": "string",
+        "pattern": "^itm_[0-9a-f]{32}$",
+        "description": "The item."
+      },
+      "keys": {
+        "type": "array",
+        "items": {
+          "description": "A key to address: its property and exact item time.",
+          "type": "object",
+          "properties": {
+            "prop": {
+              "description": "The property.",
+              "oneOf": [
+                {
+                  "description": "`visual.transform.position`: offset of the anchor from the canvas centre, canvas units.",
+                  "type": "string",
+                  "const": "transform.position"
+                },
+                {
+                  "description": "`visual.transform.scale`: multiplier of the aspect-fit size, per axis.",
+                  "type": "string",
+                  "const": "transform.scale"
+                },
+                {
+                  "description": "`visual.transform.rotation`: degrees, clockwise, accumulating.",
+                  "type": "string",
+                  "const": "transform.rotation"
+                },
+                {
+                  "description": "`visual.transform.anchor`: a point of the item in item units.",
+                  "type": "string",
+                  "const": "transform.anchor"
+                },
+                {
+                  "description": "`visual.opacity`: 0 transparent to 1 opaque.",
+                  "type": "string",
+                  "const": "opacity"
+                },
+                {
+                  "description": "`visual.crop.left`: fraction of the upright source removed from the left edge.",
+                  "type": "string",
+                  "const": "crop.left"
+                },
+                {
+                  "description": "`visual.crop.top`: fraction removed from the top edge.",
+                  "type": "string",
+                  "const": "crop.top"
+                },
+                {
+                  "description": "`visual.crop.right`: fraction removed from the right edge.",
+                  "type": "string",
+                  "const": "crop.right"
+                },
+                {
+                  "description": "`visual.crop.bottom`: fraction removed from the bottom edge.",
+                  "type": "string",
+                  "const": "crop.bottom"
+                },
+                {
+                  "description": "`visual.flip.horizontal`: mirror left-right (hold only).",
+                  "type": "string",
+                  "const": "flip.horizontal"
+                },
+                {
+                  "description": "`visual.flip.vertical`: mirror top-bottom (hold only).",
+                  "type": "string",
+                  "const": "flip.vertical"
+                },
+                {
+                  "description": "`audio.gain`: clip level in dB, interpolated in dB (UI label \"Volume\").",
+                  "type": "string",
+                  "const": "audio_gain"
+                },
+                {
+                  "description": "`audio.pan`: −1 left to 1 right, 0 centre.",
+                  "type": "string",
+                  "const": "audio_pan"
+                }
+              ]
+            },
+            "t": {
+              "description": "The key's stored item time in flicks, as `item.get` returns it.",
+              "anyOf": [
+                {
+                  "type": "integer",
+                  "minimum": -9007199254740991,
+                  "maximum": 9007199254740991
+                },
+                {
+                  "type": "string",
+                  "pattern": "^-?[0-9]+(\\.[0-9]+)?s$|^-?[0-9]+$"
+                }
+              ]
+            }
+          },
+          "additionalProperties": false,
+          "required": [
+            "prop",
+            "t"
+          ]
+        },
+        "description": "The keys, by property and exact item time."
+      },
+      "interp": {
+        "anyOf": [
+          {
+            "oneOf": [
+              {
+                "type": "object",
+                "properties": {
+                  "kind": {
+                    "type": "string",
+                    "const": "hold"
+                  }
+                },
+                "required": [
+                  "kind"
+                ],
+                "additionalProperties": false,
+                "description": "The key's value until the next key, then a jump."
+              },
+              {
+                "type": "object",
+                "properties": {
+                  "kind": {
+                    "type": "string",
+                    "const": "linear"
+                  }
+                },
+                "required": [
+                  "kind"
+                ],
+                "additionalProperties": false,
+                "description": "Constant speed."
+              },
+              {
+                "type": "object",
+                "additionalProperties": false,
+                "properties": {
+                  "kind": {
+                    "type": "string",
+                    "const": "bezier"
+                  },
+                  "x1": {
+                    "type": "number",
+                    "format": "double",
+                    "description": "First control point, time axis, `0..=1`."
+                  },
+                  "y1": {
+                    "type": "number",
+                    "format": "double",
+                    "description": "First control point, progress axis, `-10..=10`."
+                  },
+                  "x2": {
+                    "type": "number",
+                    "format": "double",
+                    "description": "Second control point, time axis, `0..=1`."
+                  },
+                  "y2": {
+                    "type": "number",
+                    "format": "double",
+                    "description": "Second control point, progress axis, `-10..=10`."
+                  },
+                  "preset": {
+                    "type": [
+                      "string",
+                      "null"
+                    ],
+                    "description": "A hint naming the preset the numbers came from.",
+                    "default": null
+                  }
+                },
+                "required": [
+                  "kind",
+                  "x1",
+                  "y1",
+                  "x2",
+                  "y2"
+                ],
+                "description": "A CSS-style cubic Bezier from (0, 0) to (1, 1)."
+              },
+              {
+                "type": "object",
+                "additionalProperties": false,
+                "properties": {
+                  "kind": {
+                    "type": "string",
+                    "const": "spring"
+                  },
+                  "stiffness": {
+                    "type": "number",
+                    "format": "double",
+                    "description": "Stiffness, `1..=10000`."
+                  },
+                  "damping": {
+                    "type": "number",
+                    "format": "double",
+                    "description": "Damping, `0..=1000`."
+                  },
+                  "mass": {
+                    "type": "number",
+                    "format": "double",
+                    "description": "Mass, `0.1..=100`."
+                  },
+                  "bounce": {
+                    "type": [
+                      "boolean",
+                      "null"
+                    ],
+                    "description": "A hard stop at the target (default `false`).",
+                    "default": null
+                  },
+                  "preset": {
+                    "type": [
+                      "string",
+                      "null"
+                    ],
+                    "description": "A hint naming the preset the numbers came from.",
+                    "default": null
+                  }
+                },
+                "required": [
+                  "kind",
+                  "stiffness",
+                  "damping",
+                  "mass"
+                ],
+                "description": "A damped spring."
+              }
+            ],
+            "description": "How the segment that starts at a key moves to the next key, as commands take it: the stored\nform ([`Interp`]) with `bounce` optional (default `false`)."
+          },
+          {
+            "type": "null"
+          }
+        ],
+        "description": "The interpolation (stored form).",
+        "default": null
+      },
+      "easing": {
+        "anyOf": [
+          {
+            "oneOf": [
+              {
+                "type": "string",
+                "const": "hold",
+                "description": "The key's value until the next key."
+              },
+              {
+                "type": "string",
+                "const": "linear",
+                "description": "Constant speed."
+              },
+              {
+                "type": "string",
+                "const": "ease_in",
+                "description": "CSS `ease-in`: bezier (0.42, 0, 1, 1)."
+              },
+              {
+                "type": "string",
+                "const": "ease_out",
+                "description": "CSS `ease-out`: bezier (0, 0, 0.58, 1)."
+              },
+              {
+                "type": "string",
+                "const": "ease_in_out",
+                "description": "CSS `ease-in-out`: bezier (0.42, 0, 0.58, 1)."
+              },
+              {
+                "type": "string",
+                "const": "sine_in",
+                "description": "Bezier (0.12, 0, 0.39, 0)."
+              },
+              {
+                "type": "string",
+                "const": "sine_out",
+                "description": "Bezier (0.61, 1, 0.88, 1)."
+              },
+              {
+                "type": "string",
+                "const": "sine_in_out",
+                "description": "Bezier (0.37, 0, 0.63, 1)."
+              },
+              {
+                "type": "string",
+                "const": "cubic_in",
+                "description": "Bezier (0.32, 0, 0.67, 0)."
+              },
+              {
+                "type": "string",
+                "const": "cubic_out",
+                "description": "Bezier (0.33, 1, 0.68, 1)."
+              },
+              {
+                "type": "string",
+                "const": "cubic_in_out",
+                "description": "Bezier (0.65, 0, 0.35, 1)."
+              },
+              {
+                "type": "string",
+                "const": "expo_in",
+                "description": "Bezier (0.7, 0, 0.84, 0)."
+              },
+              {
+                "type": "string",
+                "const": "expo_out",
+                "description": "Bezier (0.16, 1, 0.3, 1)."
+              },
+              {
+                "type": "string",
+                "const": "expo_in_out",
+                "description": "Bezier (0.87, 0, 0.13, 1)."
+              },
+              {
+                "type": "string",
+                "const": "back_in",
+                "description": "Bezier (0.36, 0, 0.66, −0.56): pulls back before leaving."
+              },
+              {
+                "type": "string",
+                "const": "back_out",
+                "description": "Bezier (0.34, 1.56, 0.64, 1): overshoots, then settles."
+              },
+              {
+                "type": "string",
+                "const": "back_in_out",
+                "description": "Bezier (0.68, −0.6, 0.32, 1.6)."
+              },
+              {
+                "type": "string",
+                "const": "spring",
+                "description": "Spring 170 / 26 / 1 (ζ ≈ 1.00)."
+              },
+              {
+                "type": "string",
+                "const": "spring_gentle",
+                "description": "Spring 120 / 14 / 1 (ζ ≈ 0.64)."
+              },
+              {
+                "type": "string",
+                "const": "spring_wobbly",
+                "description": "Spring 180 / 12 / 1 (ζ ≈ 0.45)."
+              },
+              {
+                "type": "string",
+                "const": "spring_stiff",
+                "description": "Spring 210 / 20 / 1 (ζ ≈ 0.69)."
+              },
+              {
+                "type": "string",
+                "const": "elastic",
+                "description": "Spring 200 / 6 / 1 (ζ ≈ 0.21): several decaying oscillations."
+              },
+              {
+                "type": "string",
+                "const": "bounce",
+                "description": "Spring 160 / 10 / 1 with `bounce` (ζ ≈ 0.40): each bounce about a quarter as high."
+              }
+            ],
+            "description": "A named easing (keyframes §4.6): one of the 21 presets, or `linear` or `hold`. Commands\naccept it instead of an [`Interp`] (`easing: \"ease_out\"`) and expand it on write\n([`Easing::interp`]); documents never store the name alone.\n\nThe table is part of the spec: changing a preset's numbers means a new name, because\ndocuments store the expanded numbers and old projects must never change appearance."
+          },
+          {
+            "type": "null"
+          }
+        ],
+        "description": "A preset name, `linear` or `hold`.",
+        "default": null
+      }
+    },
+    "required": [
+      "item",
+      "keys"
+    ],
+    "description": "Sets how the segments that start at the given keys move to the next key: `interp` (stored\nform) or `easing` (a preset name, `linear` or `hold`), not both. An explicit `interp`\ncarries no preset hint unless it gives one. Flips accept only hold. `NotFound` if a key does\nnot exist; `Locked` if the item's track is locked.",
+    "title": "KeyframeSetInterp"
+  },
+  "output": {
+    "type": "object",
+    "additionalProperties": false,
+    "properties": {
+      "changed": {
+        "type": "array",
+        "items": {
+          "description": "A key to address: its property and exact item time.",
+          "type": "object",
+          "properties": {
+            "prop": {
+              "description": "The property.",
+              "oneOf": [
+                {
+                  "description": "`visual.transform.position`: offset of the anchor from the canvas centre, canvas units.",
+                  "type": "string",
+                  "const": "transform.position"
+                },
+                {
+                  "description": "`visual.transform.scale`: multiplier of the aspect-fit size, per axis.",
+                  "type": "string",
+                  "const": "transform.scale"
+                },
+                {
+                  "description": "`visual.transform.rotation`: degrees, clockwise, accumulating.",
+                  "type": "string",
+                  "const": "transform.rotation"
+                },
+                {
+                  "description": "`visual.transform.anchor`: a point of the item in item units.",
+                  "type": "string",
+                  "const": "transform.anchor"
+                },
+                {
+                  "description": "`visual.opacity`: 0 transparent to 1 opaque.",
+                  "type": "string",
+                  "const": "opacity"
+                },
+                {
+                  "description": "`visual.crop.left`: fraction of the upright source removed from the left edge.",
+                  "type": "string",
+                  "const": "crop.left"
+                },
+                {
+                  "description": "`visual.crop.top`: fraction removed from the top edge.",
+                  "type": "string",
+                  "const": "crop.top"
+                },
+                {
+                  "description": "`visual.crop.right`: fraction removed from the right edge.",
+                  "type": "string",
+                  "const": "crop.right"
+                },
+                {
+                  "description": "`visual.crop.bottom`: fraction removed from the bottom edge.",
+                  "type": "string",
+                  "const": "crop.bottom"
+                },
+                {
+                  "description": "`visual.flip.horizontal`: mirror left-right (hold only).",
+                  "type": "string",
+                  "const": "flip.horizontal"
+                },
+                {
+                  "description": "`visual.flip.vertical`: mirror top-bottom (hold only).",
+                  "type": "string",
+                  "const": "flip.vertical"
+                },
+                {
+                  "description": "`audio.gain`: clip level in dB, interpolated in dB (UI label \"Volume\").",
+                  "type": "string",
+                  "const": "audio_gain"
+                },
+                {
+                  "description": "`audio.pan`: −1 left to 1 right, 0 centre.",
+                  "type": "string",
+                  "const": "audio_pan"
+                }
+              ]
+            },
+            "t": {
+              "description": "The key's stored item time in flicks, as `item.get` returns it.",
+              "type": "integer",
+              "minimum": -9007199254740991,
+              "maximum": 9007199254740991
+            }
+          },
+          "additionalProperties": false,
+          "required": [
+            "prop",
+            "t"
+          ]
+        },
+        "description": "The keys whose segment changed."
+      }
+    },
+    "required": [
+      "changed"
+    ],
+    "description": "Result of `keyframe.set_interp`.",
+    "title": "KeyframeSetInterpOutput"
+  }
+}

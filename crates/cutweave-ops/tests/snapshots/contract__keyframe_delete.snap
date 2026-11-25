@@ -1,0 +1,608 @@
+---
+source: crates/cutweave-ops/tests/contract.rs
+expression: "json!({\n    \"meta\": serde_json::to_value(meta).unwrap(), \"input\": meta.input_schema,\n    \"output\": meta.output_schema,\n})"
+---
+{
+  "meta": {
+    "name": "keyframe.delete",
+    "summary": "Delete keys of an item's properties",
+    "kind": "command",
+    "undoable": true,
+    "view": false,
+    "scope": "any",
+    "mcp": "catalog",
+    "annotations": {
+      "readOnlyHint": false,
+      "destructiveHint": true,
+      "idempotentHint": false,
+      "openWorldHint": false
+    },
+    "secret_fields": [],
+    "input_schema": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "item": {
+          "type": "string",
+          "pattern": "^itm_[0-9a-f]{32}$",
+          "description": "The item."
+        },
+        "keys": {
+          "type": "array",
+          "items": {
+            "description": "A key to address: its property and exact item time.",
+            "type": "object",
+            "properties": {
+              "prop": {
+                "description": "The property.",
+                "oneOf": [
+                  {
+                    "description": "`visual.transform.position`: offset of the anchor from the canvas centre, canvas units.",
+                    "type": "string",
+                    "const": "transform.position"
+                  },
+                  {
+                    "description": "`visual.transform.scale`: multiplier of the aspect-fit size, per axis.",
+                    "type": "string",
+                    "const": "transform.scale"
+                  },
+                  {
+                    "description": "`visual.transform.rotation`: degrees, clockwise, accumulating.",
+                    "type": "string",
+                    "const": "transform.rotation"
+                  },
+                  {
+                    "description": "`visual.transform.anchor`: a point of the item in item units.",
+                    "type": "string",
+                    "const": "transform.anchor"
+                  },
+                  {
+                    "description": "`visual.opacity`: 0 transparent to 1 opaque.",
+                    "type": "string",
+                    "const": "opacity"
+                  },
+                  {
+                    "description": "`visual.crop.left`: fraction of the upright source removed from the left edge.",
+                    "type": "string",
+                    "const": "crop.left"
+                  },
+                  {
+                    "description": "`visual.crop.top`: fraction removed from the top edge.",
+                    "type": "string",
+                    "const": "crop.top"
+                  },
+                  {
+                    "description": "`visual.crop.right`: fraction removed from the right edge.",
+                    "type": "string",
+                    "const": "crop.right"
+                  },
+                  {
+                    "description": "`visual.crop.bottom`: fraction removed from the bottom edge.",
+                    "type": "string",
+                    "const": "crop.bottom"
+                  },
+                  {
+                    "description": "`visual.flip.horizontal`: mirror left-right (hold only).",
+                    "type": "string",
+                    "const": "flip.horizontal"
+                  },
+                  {
+                    "description": "`visual.flip.vertical`: mirror top-bottom (hold only).",
+                    "type": "string",
+                    "const": "flip.vertical"
+                  },
+                  {
+                    "description": "`audio.gain`: clip level in dB, interpolated in dB (UI label \"Volume\").",
+                    "type": "string",
+                    "const": "audio_gain"
+                  },
+                  {
+                    "description": "`audio.pan`: −1 left to 1 right, 0 centre.",
+                    "type": "string",
+                    "const": "audio_pan"
+                  }
+                ]
+              },
+              "t": {
+                "description": "The key's stored item time in flicks, as `item.get` returns it.",
+                "anyOf": [
+                  {
+                    "type": "integer",
+                    "minimum": -9007199254740991,
+                    "maximum": 9007199254740991
+                  },
+                  {
+                    "type": "string",
+                    "pattern": "^-?[0-9]+(\\.[0-9]+)?s$|^-?[0-9]+$"
+                  }
+                ]
+              }
+            },
+            "additionalProperties": false,
+            "required": [
+              "prop",
+              "t"
+            ]
+          },
+          "description": "The keys to delete, by property and exact item time."
+        }
+      },
+      "required": [
+        "item",
+        "keys"
+      ],
+      "description": "Removes the keys at the exact item times given. Deleting every key of a property makes it\nstatic at its first key's value. `NotFound` if a key does not exist; `Locked` if the item's\ntrack is locked.",
+      "title": "KeyframeDelete"
+    },
+    "output_schema": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "deleted": {
+          "type": "array",
+          "items": {
+            "description": "A key to address: its property and exact item time.",
+            "type": "object",
+            "properties": {
+              "prop": {
+                "description": "The property.",
+                "oneOf": [
+                  {
+                    "description": "`visual.transform.position`: offset of the anchor from the canvas centre, canvas units.",
+                    "type": "string",
+                    "const": "transform.position"
+                  },
+                  {
+                    "description": "`visual.transform.scale`: multiplier of the aspect-fit size, per axis.",
+                    "type": "string",
+                    "const": "transform.scale"
+                  },
+                  {
+                    "description": "`visual.transform.rotation`: degrees, clockwise, accumulating.",
+                    "type": "string",
+                    "const": "transform.rotation"
+                  },
+                  {
+                    "description": "`visual.transform.anchor`: a point of the item in item units.",
+                    "type": "string",
+                    "const": "transform.anchor"
+                  },
+                  {
+                    "description": "`visual.opacity`: 0 transparent to 1 opaque.",
+                    "type": "string",
+                    "const": "opacity"
+                  },
+                  {
+                    "description": "`visual.crop.left`: fraction of the upright source removed from the left edge.",
+                    "type": "string",
+                    "const": "crop.left"
+                  },
+                  {
+                    "description": "`visual.crop.top`: fraction removed from the top edge.",
+                    "type": "string",
+                    "const": "crop.top"
+                  },
+                  {
+                    "description": "`visual.crop.right`: fraction removed from the right edge.",
+                    "type": "string",
+                    "const": "crop.right"
+                  },
+                  {
+                    "description": "`visual.crop.bottom`: fraction removed from the bottom edge.",
+                    "type": "string",
+                    "const": "crop.bottom"
+                  },
+                  {
+                    "description": "`visual.flip.horizontal`: mirror left-right (hold only).",
+                    "type": "string",
+                    "const": "flip.horizontal"
+                  },
+                  {
+                    "description": "`visual.flip.vertical`: mirror top-bottom (hold only).",
+                    "type": "string",
+                    "const": "flip.vertical"
+                  },
+                  {
+                    "description": "`audio.gain`: clip level in dB, interpolated in dB (UI label \"Volume\").",
+                    "type": "string",
+                    "const": "audio_gain"
+                  },
+                  {
+                    "description": "`audio.pan`: −1 left to 1 right, 0 centre.",
+                    "type": "string",
+                    "const": "audio_pan"
+                  }
+                ]
+              },
+              "t": {
+                "description": "The key's stored item time in flicks, as `item.get` returns it.",
+                "type": "integer",
+                "minimum": -9007199254740991,
+                "maximum": 9007199254740991
+              }
+            },
+            "additionalProperties": false,
+            "required": [
+              "prop",
+              "t"
+            ]
+          },
+          "description": "The keys removed."
+        },
+        "now_static": {
+          "type": "array",
+          "items": {
+            "description": "An animatable property (keyframes §7). The IDs match `item.set_props`'s patch paths, so\n`keyframe.*`, `item.set_props` and its `changed` output use the same names.\n\nLater properties (P3 text, P4 effect and composition parameters) register here through\ntheir work packages.",
+            "oneOf": [
+              {
+                "description": "`visual.transform.position`: offset of the anchor from the canvas centre, canvas units.",
+                "type": "string",
+                "const": "transform.position"
+              },
+              {
+                "description": "`visual.transform.scale`: multiplier of the aspect-fit size, per axis.",
+                "type": "string",
+                "const": "transform.scale"
+              },
+              {
+                "description": "`visual.transform.rotation`: degrees, clockwise, accumulating.",
+                "type": "string",
+                "const": "transform.rotation"
+              },
+              {
+                "description": "`visual.transform.anchor`: a point of the item in item units.",
+                "type": "string",
+                "const": "transform.anchor"
+              },
+              {
+                "description": "`visual.opacity`: 0 transparent to 1 opaque.",
+                "type": "string",
+                "const": "opacity"
+              },
+              {
+                "description": "`visual.crop.left`: fraction of the upright source removed from the left edge.",
+                "type": "string",
+                "const": "crop.left"
+              },
+              {
+                "description": "`visual.crop.top`: fraction removed from the top edge.",
+                "type": "string",
+                "const": "crop.top"
+              },
+              {
+                "description": "`visual.crop.right`: fraction removed from the right edge.",
+                "type": "string",
+                "const": "crop.right"
+              },
+              {
+                "description": "`visual.crop.bottom`: fraction removed from the bottom edge.",
+                "type": "string",
+                "const": "crop.bottom"
+              },
+              {
+                "description": "`visual.flip.horizontal`: mirror left-right (hold only).",
+                "type": "string",
+                "const": "flip.horizontal"
+              },
+              {
+                "description": "`visual.flip.vertical`: mirror top-bottom (hold only).",
+                "type": "string",
+                "const": "flip.vertical"
+              },
+              {
+                "description": "`audio.gain`: clip level in dB, interpolated in dB (UI label \"Volume\").",
+                "type": "string",
+                "const": "audio_gain"
+              },
+              {
+                "description": "`audio.pan`: −1 left to 1 right, 0 centre.",
+                "type": "string",
+                "const": "audio_pan"
+              }
+            ]
+          },
+          "description": "Properties that lost their last key and are static now (at their first key's value)."
+        }
+      },
+      "required": [
+        "deleted",
+        "now_static"
+      ],
+      "description": "Result of `keyframe.delete`.",
+      "title": "KeyframeDeleteOutput"
+    }
+  },
+  "input": {
+    "type": "object",
+    "additionalProperties": false,
+    "properties": {
+      "item": {
+        "type": "string",
+        "pattern": "^itm_[0-9a-f]{32}$",
+        "description": "The item."
+      },
+      "keys": {
+        "type": "array",
+        "items": {
+          "description": "A key to address: its property and exact item time.",
+          "type": "object",
+          "properties": {
+            "prop": {
+              "description": "The property.",
+              "oneOf": [
+                {
+                  "description": "`visual.transform.position`: offset of the anchor from the canvas centre, canvas units.",
+                  "type": "string",
+                  "const": "transform.position"
+                },
+                {
+                  "description": "`visual.transform.scale`: multiplier of the aspect-fit size, per axis.",
+                  "type": "string",
+                  "const": "transform.scale"
+                },
+                {
+                  "description": "`visual.transform.rotation`: degrees, clockwise, accumulating.",
+                  "type": "string",
+                  "const": "transform.rotation"
+                },
+                {
+                  "description": "`visual.transform.anchor`: a point of the item in item units.",
+                  "type": "string",
+                  "const": "transform.anchor"
+                },
+                {
+                  "description": "`visual.opacity`: 0 transparent to 1 opaque.",
+                  "type": "string",
+                  "const": "opacity"
+                },
+                {
+                  "description": "`visual.crop.left`: fraction of the upright source removed from the left edge.",
+                  "type": "string",
+                  "const": "crop.left"
+                },
+                {
+                  "description": "`visual.crop.top`: fraction removed from the top edge.",
+                  "type": "string",
+                  "const": "crop.top"
+                },
+                {
+                  "description": "`visual.crop.right`: fraction removed from the right edge.",
+                  "type": "string",
+                  "const": "crop.right"
+                },
+                {
+                  "description": "`visual.crop.bottom`: fraction removed from the bottom edge.",
+                  "type": "string",
+                  "const": "crop.bottom"
+                },
+                {
+                  "description": "`visual.flip.horizontal`: mirror left-right (hold only).",
+                  "type": "string",
+                  "const": "flip.horizontal"
+                },
+                {
+                  "description": "`visual.flip.vertical`: mirror top-bottom (hold only).",
+                  "type": "string",
+                  "const": "flip.vertical"
+                },
+                {
+                  "description": "`audio.gain`: clip level in dB, interpolated in dB (UI label \"Volume\").",
+                  "type": "string",
+                  "const": "audio_gain"
+                },
+                {
+                  "description": "`audio.pan`: −1 left to 1 right, 0 centre.",
+                  "type": "string",
+                  "const": "audio_pan"
+                }
+              ]
+            },
+            "t": {
+              "description": "The key's stored item time in flicks, as `item.get` returns it.",
+              "anyOf": [
+                {
+                  "type": "integer",
+                  "minimum": -9007199254740991,
+                  "maximum": 9007199254740991
+                },
+                {
+                  "type": "string",
+                  "pattern": "^-?[0-9]+(\\.[0-9]+)?s$|^-?[0-9]+$"
+                }
+              ]
+            }
+          },
+          "additionalProperties": false,
+          "required": [
+            "prop",
+            "t"
+          ]
+        },
+        "description": "The keys to delete, by property and exact item time."
+      }
+    },
+    "required": [
+      "item",
+      "keys"
+    ],
+    "description": "Removes the keys at the exact item times given. Deleting every key of a property makes it\nstatic at its first key's value. `NotFound` if a key does not exist; `Locked` if the item's\ntrack is locked.",
+    "title": "KeyframeDelete"
+  },
+  "output": {
+    "type": "object",
+    "additionalProperties": false,
+    "properties": {
+      "deleted": {
+        "type": "array",
+        "items": {
+          "description": "A key to address: its property and exact item time.",
+          "type": "object",
+          "properties": {
+            "prop": {
+              "description": "The property.",
+              "oneOf": [
+                {
+                  "description": "`visual.transform.position`: offset of the anchor from the canvas centre, canvas units.",
+                  "type": "string",
+                  "const": "transform.position"
+                },
+                {
+                  "description": "`visual.transform.scale`: multiplier of the aspect-fit size, per axis.",
+                  "type": "string",
+                  "const": "transform.scale"
+                },
+                {
+                  "description": "`visual.transform.rotation`: degrees, clockwise, accumulating.",
+                  "type": "string",
+                  "const": "transform.rotation"
+                },
+                {
+                  "description": "`visual.transform.anchor`: a point of the item in item units.",
+                  "type": "string",
+                  "const": "transform.anchor"
+                },
+                {
+                  "description": "`visual.opacity`: 0 transparent to 1 opaque.",
+                  "type": "string",
+                  "const": "opacity"
+                },
+                {
+                  "description": "`visual.crop.left`: fraction of the upright source removed from the left edge.",
+                  "type": "string",
+                  "const": "crop.left"
+                },
+                {
+                  "description": "`visual.crop.top`: fraction removed from the top edge.",
+                  "type": "string",
+                  "const": "crop.top"
+                },
+                {
+                  "description": "`visual.crop.right`: fraction removed from the right edge.",
+                  "type": "string",
+                  "const": "crop.right"
+                },
+                {
+                  "description": "`visual.crop.bottom`: fraction removed from the bottom edge.",
+                  "type": "string",
+                  "const": "crop.bottom"
+                },
+                {
+                  "description": "`visual.flip.horizontal`: mirror left-right (hold only).",
+                  "type": "string",
+                  "const": "flip.horizontal"
+                },
+                {
+                  "description": "`visual.flip.vertical`: mirror top-bottom (hold only).",
+                  "type": "string",
+                  "const": "flip.vertical"
+                },
+                {
+                  "description": "`audio.gain`: clip level in dB, interpolated in dB (UI label \"Volume\").",
+                  "type": "string",
+                  "const": "audio_gain"
+                },
+                {
+                  "description": "`audio.pan`: −1 left to 1 right, 0 centre.",
+                  "type": "string",
+                  "const": "audio_pan"
+                }
+              ]
+            },
+            "t": {
+              "description": "The key's stored item time in flicks, as `item.get` returns it.",
+              "type": "integer",
+              "minimum": -9007199254740991,
+              "maximum": 9007199254740991
+            }
+          },
+          "additionalProperties": false,
+          "required": [
+            "prop",
+            "t"
+          ]
+        },
+        "description": "The keys removed."
+      },
+      "now_static": {
+        "type": "array",
+        "items": {
+          "description": "An animatable property (keyframes §7). The IDs match `item.set_props`'s patch paths, so\n`keyframe.*`, `item.set_props` and its `changed` output use the same names.\n\nLater properties (P3 text, P4 effect and composition parameters) register here through\ntheir work packages.",
+          "oneOf": [
+            {
+              "description": "`visual.transform.position`: offset of the anchor from the canvas centre, canvas units.",
+              "type": "string",
+              "const": "transform.position"
+            },
+            {
+              "description": "`visual.transform.scale`: multiplier of the aspect-fit size, per axis.",
+              "type": "string",
+              "const": "transform.scale"
+            },
+            {
+              "description": "`visual.transform.rotation`: degrees, clockwise, accumulating.",
+              "type": "string",
+              "const": "transform.rotation"
+            },
+            {
+              "description": "`visual.transform.anchor`: a point of the item in item units.",
+              "type": "string",
+              "const": "transform.anchor"
+            },
+            {
+              "description": "`visual.opacity`: 0 transparent to 1 opaque.",
+              "type": "string",
+              "const": "opacity"
+            },
+            {
+              "description": "`visual.crop.left`: fraction of the upright source removed from the left edge.",
+              "type": "string",
+              "const": "crop.left"
+            },
+            {
+              "description": "`visual.crop.top`: fraction removed from the top edge.",
+              "type": "string",
+              "const": "crop.top"
+            },
+            {
+              "description": "`visual.crop.right`: fraction removed from the right edge.",
+              "type": "string",
+              "const": "crop.right"
+            },
+            {
+              "description": "`visual.crop.bottom`: fraction removed from the bottom edge.",
+              "type": "string",
+              "const": "crop.bottom"
+            },
+            {
+              "description": "`visual.flip.horizontal`: mirror left-right (hold only).",
+              "type": "string",
+              "const": "flip.horizontal"
+            },
+            {
+              "description": "`visual.flip.vertical`: mirror top-bottom (hold only).",
+              "type": "string",
+              "const": "flip.vertical"
+            },
+            {
+              "description": "`audio.gain`: clip level in dB, interpolated in dB (UI label \"Volume\").",
+              "type": "string",
+              "const": "audio_gain"
+            },
+            {
+              "description": "`audio.pan`: −1 left to 1 right, 0 centre.",
+              "type": "string",
+              "const": "audio_pan"
+            }
+          ]
+        },
+        "description": "Properties that lost their last key and are static now (at their first key's value)."
+      }
+    },
+    "required": [
+      "deleted",
+      "now_static"
+    ],
+    "description": "Result of `keyframe.delete`.",
+    "title": "KeyframeDeleteOutput"
+  }
+}

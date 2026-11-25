@@ -1,0 +1,1258 @@
+---
+source: crates/cutweave-ops/tests/contract.rs
+expression: "json!({\n    \"meta\": serde_json::to_value(meta).unwrap(), \"input\": meta.input_schema,\n    \"output\": meta.output_schema,\n})"
+---
+{
+  "meta": {
+    "name": "keyframe.paste",
+    "summary": "Paste copied keys onto an item at a time",
+    "kind": "command",
+    "undoable": true,
+    "view": false,
+    "scope": "any",
+    "mcp": "catalog",
+    "annotations": {
+      "readOnlyHint": false,
+      "destructiveHint": false,
+      "idempotentHint": true,
+      "openWorldHint": false
+    },
+    "secret_fields": [],
+    "input_schema": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "item": {
+          "type": [
+            "string",
+            "null"
+          ],
+          "pattern": "^itm_[0-9a-f]{32}$",
+          "description": "The item (or `items`).",
+          "default": null
+        },
+        "items": {
+          "type": [
+            "array",
+            "null"
+          ],
+          "items": {
+            "description": "A Item id: `^itm_[0-9a-f]{32}$`.",
+            "type": "string",
+            "pattern": "^itm_[0-9a-f]{32}$"
+          },
+          "description": "Items to paste onto.",
+          "default": null
+        },
+        "payload": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "version": {
+              "type": "integer",
+              "format": "uint32",
+              "minimum": 0,
+              "description": "Always 1."
+            },
+            "keys": {
+              "type": "array",
+              "items": {
+                "description": "One copied key.",
+                "type": "object",
+                "properties": {
+                  "prop": {
+                    "description": "The property it was on.",
+                    "oneOf": [
+                      {
+                        "description": "`visual.transform.position`: offset of the anchor from the canvas centre, canvas units.",
+                        "type": "string",
+                        "const": "transform.position"
+                      },
+                      {
+                        "description": "`visual.transform.scale`: multiplier of the aspect-fit size, per axis.",
+                        "type": "string",
+                        "const": "transform.scale"
+                      },
+                      {
+                        "description": "`visual.transform.rotation`: degrees, clockwise, accumulating.",
+                        "type": "string",
+                        "const": "transform.rotation"
+                      },
+                      {
+                        "description": "`visual.transform.anchor`: a point of the item in item units.",
+                        "type": "string",
+                        "const": "transform.anchor"
+                      },
+                      {
+                        "description": "`visual.opacity`: 0 transparent to 1 opaque.",
+                        "type": "string",
+                        "const": "opacity"
+                      },
+                      {
+                        "description": "`visual.crop.left`: fraction of the upright source removed from the left edge.",
+                        "type": "string",
+                        "const": "crop.left"
+                      },
+                      {
+                        "description": "`visual.crop.top`: fraction removed from the top edge.",
+                        "type": "string",
+                        "const": "crop.top"
+                      },
+                      {
+                        "description": "`visual.crop.right`: fraction removed from the right edge.",
+                        "type": "string",
+                        "const": "crop.right"
+                      },
+                      {
+                        "description": "`visual.crop.bottom`: fraction removed from the bottom edge.",
+                        "type": "string",
+                        "const": "crop.bottom"
+                      },
+                      {
+                        "description": "`visual.flip.horizontal`: mirror left-right (hold only).",
+                        "type": "string",
+                        "const": "flip.horizontal"
+                      },
+                      {
+                        "description": "`visual.flip.vertical`: mirror top-bottom (hold only).",
+                        "type": "string",
+                        "const": "flip.vertical"
+                      },
+                      {
+                        "description": "`audio.gain`: clip level in dB, interpolated in dB (UI label \"Volume\").",
+                        "type": "string",
+                        "const": "audio_gain"
+                      },
+                      {
+                        "description": "`audio.pan`: −1 left to 1 right, 0 centre.",
+                        "type": "string",
+                        "const": "audio_pan"
+                      }
+                    ]
+                  },
+                  "dt": {
+                    "description": "Flicks after the earliest copied key.",
+                    "anyOf": [
+                      {
+                        "type": "integer",
+                        "minimum": -9007199254740991,
+                        "maximum": 9007199254740991
+                      },
+                      {
+                        "type": "string",
+                        "pattern": "^-?[0-9]+(\\.[0-9]+)?s$|^-?[0-9]+$"
+                      }
+                    ]
+                  },
+                  "value": {
+                    "description": "The value.",
+                    "anyOf": [
+                      {
+                        "description": "A boolean.",
+                        "type": "boolean"
+                      },
+                      {
+                        "description": "A number.",
+                        "type": "number",
+                        "format": "double"
+                      },
+                      {
+                        "description": "A 2D vector.",
+                        "type": "object",
+                        "properties": {
+                          "x": {
+                            "description": "Horizontal component.",
+                            "type": "number",
+                            "format": "double"
+                          },
+                          "y": {
+                            "description": "Vertical component (down is positive).",
+                            "type": "number",
+                            "format": "double"
+                          }
+                        },
+                        "additionalProperties": false,
+                        "required": [
+                          "x",
+                          "y"
+                        ]
+                      }
+                    ]
+                  },
+                  "interp": {
+                    "description": "How the segment that starts at the key moves to the next one (stored form).",
+                    "oneOf": [
+                      {
+                        "description": "The key's value until the next key, then a jump (§4.2).",
+                        "type": "object",
+                        "properties": {
+                          "kind": {
+                            "type": "string",
+                            "const": "hold"
+                          }
+                        },
+                        "required": [
+                          "kind"
+                        ],
+                        "additionalProperties": false
+                      },
+                      {
+                        "description": "`p = u` (§4.3).",
+                        "type": "object",
+                        "properties": {
+                          "kind": {
+                            "type": "string",
+                            "const": "linear"
+                          }
+                        },
+                        "required": [
+                          "kind"
+                        ],
+                        "additionalProperties": false
+                      },
+                      {
+                        "description": "A CSS-style cubic Bézier from (0, 0) to (1, 1), normalized to the segment (§4.4).\n(`x1`, `y1`) shapes the speed leaving the key, (`x2`, `y2`) the speed arriving at the\nnext one.",
+                        "type": "object",
+                        "properties": {
+                          "kind": {
+                            "type": "string",
+                            "const": "bezier"
+                          },
+                          "x1": {
+                            "description": "First control point, time axis, in `[0, 1]`.",
+                            "type": "number",
+                            "format": "double",
+                            "minimum": 0.0,
+                            "maximum": 1.0
+                          },
+                          "y1": {
+                            "description": "First control point, progress axis, in `[−10, 10]` (beyond `[0, 1]` overshoots).",
+                            "type": "number",
+                            "format": "double",
+                            "minimum": -10.0,
+                            "maximum": 10.0
+                          },
+                          "x2": {
+                            "description": "Second control point, time axis, in `[0, 1]`.",
+                            "type": "number",
+                            "format": "double",
+                            "minimum": 0.0,
+                            "maximum": 1.0
+                          },
+                          "y2": {
+                            "description": "Second control point, progress axis, in `[−10, 10]`.",
+                            "type": "number",
+                            "format": "double",
+                            "minimum": -10.0,
+                            "maximum": 10.0
+                          },
+                          "preset": {
+                            "description": "The preset these numbers came from, a hint for the UI and agents (§4.6). Never read\nby evaluation.",
+                            "type": [
+                              "string",
+                              "null"
+                            ],
+                            "pattern": "^[a-z][a-z0-9_]{0,63}$"
+                          }
+                        },
+                        "additionalProperties": false,
+                        "required": [
+                          "kind",
+                          "x1",
+                          "y1",
+                          "x2",
+                          "y2"
+                        ]
+                      },
+                      {
+                        "description": "A damped spring in real seconds, released from rest, plus a residual that lands it\nexactly on the next key (§4.5).",
+                        "type": "object",
+                        "properties": {
+                          "kind": {
+                            "type": "string",
+                            "const": "spring"
+                          },
+                          "stiffness": {
+                            "description": "Stiffness, N/m, in `[1, 10000]`.",
+                            "type": "number",
+                            "format": "double",
+                            "minimum": 1.0,
+                            "maximum": 10000.0
+                          },
+                          "damping": {
+                            "description": "Damping, N·s/m, in `[0, 1000]` (0 never settles).",
+                            "type": "number",
+                            "format": "double",
+                            "minimum": 0.0,
+                            "maximum": 1000.0
+                          },
+                          "mass": {
+                            "description": "Mass, kg, in `[0.1, 100]`.",
+                            "type": "number",
+                            "format": "double",
+                            "minimum": 0.1,
+                            "maximum": 100.0
+                          },
+                          "bounce": {
+                            "description": "A hard stop at the target: the motion reflects instead of passing it.",
+                            "type": "boolean"
+                          },
+                          "preset": {
+                            "description": "The preset these numbers came from (§4.6). Never read by evaluation.",
+                            "type": [
+                              "string",
+                              "null"
+                            ],
+                            "pattern": "^[a-z][a-z0-9_]{0,63}$"
+                          }
+                        },
+                        "additionalProperties": false,
+                        "required": [
+                          "kind",
+                          "stiffness",
+                          "damping",
+                          "mass",
+                          "bounce"
+                        ]
+                      }
+                    ]
+                  }
+                },
+                "additionalProperties": false,
+                "required": [
+                  "prop",
+                  "dt",
+                  "value",
+                  "interp"
+                ]
+              },
+              "description": "The keys, by property then time."
+            }
+          },
+          "required": [
+            "version",
+            "keys"
+          ],
+          "description": "What `keyframe.copy` returned."
+        },
+        "t": {
+          "anyOf": [
+            {
+              "description": "A time: integer flicks (1/705600000 s), or a string: seconds (\"62.5s\"), a frame (\"f:1500\") or a timecode (\"00:01:02:03\", drop-frame \"00:01:02;03\"). Frames and timecodes use the frame rate of the target's sequence.",
+              "anyOf": [
+                {
+                  "type": "integer",
+                  "minimum": -9007199254740991,
+                  "maximum": 9007199254740991
+                },
+                {
+                  "type": "string",
+                  "pattern": "^-?[0-9]+(\\.[0-9]+)?s$|^-?[0-9]+$|^f:[0-9]+$|^[0-9]+[:;][0-9]+[:;][0-9]+[:;][0-9]+$"
+                }
+              ]
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "description": "Item time of the earliest key.",
+          "default": null
+        },
+        "at": {
+          "anyOf": [
+            {
+              "description": "A time: integer flicks (1/705600000 s), or a string: seconds (\"62.5s\"), a frame (\"f:1500\") or a timecode (\"00:01:02:03\", drop-frame \"00:01:02;03\"). Frames and timecodes use the frame rate of the target's sequence.",
+              "anyOf": [
+                {
+                  "type": "integer",
+                  "minimum": -9007199254740991,
+                  "maximum": 9007199254740991
+                },
+                {
+                  "type": "string",
+                  "pattern": "^-?[0-9]+(\\.[0-9]+)?s$|^-?[0-9]+$|^f:[0-9]+$|^[0-9]+[:;][0-9]+[:;][0-9]+[:;][0-9]+$"
+                }
+              ]
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "description": "Sequence time of the earliest key.",
+          "default": null
+        },
+        "as_prop": {
+          "anyOf": [
+            {
+              "oneOf": [
+                {
+                  "type": "string",
+                  "const": "transform.position",
+                  "description": "`visual.transform.position`: offset of the anchor from the canvas centre, canvas units."
+                },
+                {
+                  "type": "string",
+                  "const": "transform.scale",
+                  "description": "`visual.transform.scale`: multiplier of the aspect-fit size, per axis."
+                },
+                {
+                  "type": "string",
+                  "const": "transform.rotation",
+                  "description": "`visual.transform.rotation`: degrees, clockwise, accumulating."
+                },
+                {
+                  "type": "string",
+                  "const": "transform.anchor",
+                  "description": "`visual.transform.anchor`: a point of the item in item units."
+                },
+                {
+                  "type": "string",
+                  "const": "opacity",
+                  "description": "`visual.opacity`: 0 transparent to 1 opaque."
+                },
+                {
+                  "type": "string",
+                  "const": "crop.left",
+                  "description": "`visual.crop.left`: fraction of the upright source removed from the left edge."
+                },
+                {
+                  "type": "string",
+                  "const": "crop.top",
+                  "description": "`visual.crop.top`: fraction removed from the top edge."
+                },
+                {
+                  "type": "string",
+                  "const": "crop.right",
+                  "description": "`visual.crop.right`: fraction removed from the right edge."
+                },
+                {
+                  "type": "string",
+                  "const": "crop.bottom",
+                  "description": "`visual.crop.bottom`: fraction removed from the bottom edge."
+                },
+                {
+                  "type": "string",
+                  "const": "flip.horizontal",
+                  "description": "`visual.flip.horizontal`: mirror left-right (hold only)."
+                },
+                {
+                  "type": "string",
+                  "const": "flip.vertical",
+                  "description": "`visual.flip.vertical`: mirror top-bottom (hold only)."
+                },
+                {
+                  "type": "string",
+                  "const": "audio_gain",
+                  "description": "`audio.gain`: clip level in dB, interpolated in dB (UI label \"Volume\")."
+                },
+                {
+                  "type": "string",
+                  "const": "audio_pan",
+                  "description": "`audio.pan`: −1 left to 1 right, 0 centre."
+                }
+              ],
+              "description": "An animatable property (keyframes §7). The IDs match `item.set_props`'s patch paths, so\n`keyframe.*`, `item.set_props` and its `changed` output use the same names.\n\nLater properties (P3 text, P4 effect and composition parameters) register here through\ntheir work packages."
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "description": "Paste a single-property payload onto this property instead.",
+          "default": null
+        },
+        "fine": {
+          "type": [
+            "boolean",
+            "null"
+          ],
+          "description": "Snap to the audio sample grid (audio properties only).",
+          "default": null
+        }
+      },
+      "required": [
+        "payload"
+      ],
+      "description": "Pastes copied keys onto an item (or each of `items`): the earliest key goes to `t` (item\ntime) or `at` (sequence time), the others keep their distance (`dt`), each snapped to\nframes; a key already at a time is replaced. `as_prop` pastes a single-property payload onto\nanother property of the same type (crop left keys onto crop right). Values must fit the\nproperty; `Locked` if an item's track is locked.",
+      "title": "KeyframePaste"
+    },
+    "output_schema": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "keys": {
+          "type": "array",
+          "items": {
+            "description": "Where `keyframe.paste` put a key.",
+            "type": "object",
+            "properties": {
+              "item": {
+                "description": "The item.",
+                "type": "string",
+                "pattern": "^itm_[0-9a-f]{32}$"
+              },
+              "prop": {
+                "description": "The property.",
+                "oneOf": [
+                  {
+                    "description": "`visual.transform.position`: offset of the anchor from the canvas centre, canvas units.",
+                    "type": "string",
+                    "const": "transform.position"
+                  },
+                  {
+                    "description": "`visual.transform.scale`: multiplier of the aspect-fit size, per axis.",
+                    "type": "string",
+                    "const": "transform.scale"
+                  },
+                  {
+                    "description": "`visual.transform.rotation`: degrees, clockwise, accumulating.",
+                    "type": "string",
+                    "const": "transform.rotation"
+                  },
+                  {
+                    "description": "`visual.transform.anchor`: a point of the item in item units.",
+                    "type": "string",
+                    "const": "transform.anchor"
+                  },
+                  {
+                    "description": "`visual.opacity`: 0 transparent to 1 opaque.",
+                    "type": "string",
+                    "const": "opacity"
+                  },
+                  {
+                    "description": "`visual.crop.left`: fraction of the upright source removed from the left edge.",
+                    "type": "string",
+                    "const": "crop.left"
+                  },
+                  {
+                    "description": "`visual.crop.top`: fraction removed from the top edge.",
+                    "type": "string",
+                    "const": "crop.top"
+                  },
+                  {
+                    "description": "`visual.crop.right`: fraction removed from the right edge.",
+                    "type": "string",
+                    "const": "crop.right"
+                  },
+                  {
+                    "description": "`visual.crop.bottom`: fraction removed from the bottom edge.",
+                    "type": "string",
+                    "const": "crop.bottom"
+                  },
+                  {
+                    "description": "`visual.flip.horizontal`: mirror left-right (hold only).",
+                    "type": "string",
+                    "const": "flip.horizontal"
+                  },
+                  {
+                    "description": "`visual.flip.vertical`: mirror top-bottom (hold only).",
+                    "type": "string",
+                    "const": "flip.vertical"
+                  },
+                  {
+                    "description": "`audio.gain`: clip level in dB, interpolated in dB (UI label \"Volume\").",
+                    "type": "string",
+                    "const": "audio_gain"
+                  },
+                  {
+                    "description": "`audio.pan`: −1 left to 1 right, 0 centre.",
+                    "type": "string",
+                    "const": "audio_pan"
+                  }
+                ]
+              },
+              "t": {
+                "description": "Item time after snapping.",
+                "type": "integer",
+                "minimum": -9007199254740991,
+                "maximum": 9007199254740991
+              },
+              "at": {
+                "description": "Sequence time after snapping.",
+                "type": "integer",
+                "minimum": -9007199254740991,
+                "maximum": 9007199254740991
+              },
+              "value": {
+                "description": "The value the key holds.",
+                "anyOf": [
+                  {
+                    "description": "A boolean.",
+                    "type": "boolean"
+                  },
+                  {
+                    "description": "A number.",
+                    "type": "number",
+                    "format": "double"
+                  },
+                  {
+                    "description": "A 2D vector.",
+                    "type": "object",
+                    "properties": {
+                      "x": {
+                        "description": "Horizontal component.",
+                        "type": "number",
+                        "format": "double"
+                      },
+                      "y": {
+                        "description": "Vertical component (down is positive).",
+                        "type": "number",
+                        "format": "double"
+                      }
+                    },
+                    "additionalProperties": false,
+                    "required": [
+                      "x",
+                      "y"
+                    ]
+                  }
+                ]
+              },
+              "created": {
+                "description": "A new key (`false`: it replaced a key at that time).",
+                "type": "boolean"
+              },
+              "outside": {
+                "description": "The key lies outside the item's `[0, duration)`.",
+                "type": "boolean"
+              }
+            },
+            "additionalProperties": false,
+            "required": [
+              "item",
+              "prop",
+              "t",
+              "at",
+              "value",
+              "created",
+              "outside"
+            ]
+          },
+          "description": "The keys written."
+        }
+      },
+      "required": [
+        "keys"
+      ],
+      "description": "Result of `keyframe.paste`.",
+      "title": "KeyframePasteOutput"
+    }
+  },
+  "input": {
+    "type": "object",
+    "additionalProperties": false,
+    "properties": {
+      "item": {
+        "type": [
+          "string",
+          "null"
+        ],
+        "pattern": "^itm_[0-9a-f]{32}$",
+        "description": "The item (or `items`).",
+        "default": null
+      },
+      "items": {
+        "type": [
+          "array",
+          "null"
+        ],
+        "items": {
+          "description": "A Item id: `^itm_[0-9a-f]{32}$`.",
+          "type": "string",
+          "pattern": "^itm_[0-9a-f]{32}$"
+        },
+        "description": "Items to paste onto.",
+        "default": null
+      },
+      "payload": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "version": {
+            "type": "integer",
+            "format": "uint32",
+            "minimum": 0,
+            "description": "Always 1."
+          },
+          "keys": {
+            "type": "array",
+            "items": {
+              "description": "One copied key.",
+              "type": "object",
+              "properties": {
+                "prop": {
+                  "description": "The property it was on.",
+                  "oneOf": [
+                    {
+                      "description": "`visual.transform.position`: offset of the anchor from the canvas centre, canvas units.",
+                      "type": "string",
+                      "const": "transform.position"
+                    },
+                    {
+                      "description": "`visual.transform.scale`: multiplier of the aspect-fit size, per axis.",
+                      "type": "string",
+                      "const": "transform.scale"
+                    },
+                    {
+                      "description": "`visual.transform.rotation`: degrees, clockwise, accumulating.",
+                      "type": "string",
+                      "const": "transform.rotation"
+                    },
+                    {
+                      "description": "`visual.transform.anchor`: a point of the item in item units.",
+                      "type": "string",
+                      "const": "transform.anchor"
+                    },
+                    {
+                      "description": "`visual.opacity`: 0 transparent to 1 opaque.",
+                      "type": "string",
+                      "const": "opacity"
+                    },
+                    {
+                      "description": "`visual.crop.left`: fraction of the upright source removed from the left edge.",
+                      "type": "string",
+                      "const": "crop.left"
+                    },
+                    {
+                      "description": "`visual.crop.top`: fraction removed from the top edge.",
+                      "type": "string",
+                      "const": "crop.top"
+                    },
+                    {
+                      "description": "`visual.crop.right`: fraction removed from the right edge.",
+                      "type": "string",
+                      "const": "crop.right"
+                    },
+                    {
+                      "description": "`visual.crop.bottom`: fraction removed from the bottom edge.",
+                      "type": "string",
+                      "const": "crop.bottom"
+                    },
+                    {
+                      "description": "`visual.flip.horizontal`: mirror left-right (hold only).",
+                      "type": "string",
+                      "const": "flip.horizontal"
+                    },
+                    {
+                      "description": "`visual.flip.vertical`: mirror top-bottom (hold only).",
+                      "type": "string",
+                      "const": "flip.vertical"
+                    },
+                    {
+                      "description": "`audio.gain`: clip level in dB, interpolated in dB (UI label \"Volume\").",
+                      "type": "string",
+                      "const": "audio_gain"
+                    },
+                    {
+                      "description": "`audio.pan`: −1 left to 1 right, 0 centre.",
+                      "type": "string",
+                      "const": "audio_pan"
+                    }
+                  ]
+                },
+                "dt": {
+                  "description": "Flicks after the earliest copied key.",
+                  "anyOf": [
+                    {
+                      "type": "integer",
+                      "minimum": -9007199254740991,
+                      "maximum": 9007199254740991
+                    },
+                    {
+                      "type": "string",
+                      "pattern": "^-?[0-9]+(\\.[0-9]+)?s$|^-?[0-9]+$"
+                    }
+                  ]
+                },
+                "value": {
+                  "description": "The value.",
+                  "anyOf": [
+                    {
+                      "description": "A boolean.",
+                      "type": "boolean"
+                    },
+                    {
+                      "description": "A number.",
+                      "type": "number",
+                      "format": "double"
+                    },
+                    {
+                      "description": "A 2D vector.",
+                      "type": "object",
+                      "properties": {
+                        "x": {
+                          "description": "Horizontal component.",
+                          "type": "number",
+                          "format": "double"
+                        },
+                        "y": {
+                          "description": "Vertical component (down is positive).",
+                          "type": "number",
+                          "format": "double"
+                        }
+                      },
+                      "additionalProperties": false,
+                      "required": [
+                        "x",
+                        "y"
+                      ]
+                    }
+                  ]
+                },
+                "interp": {
+                  "description": "How the segment that starts at the key moves to the next one (stored form).",
+                  "oneOf": [
+                    {
+                      "description": "The key's value until the next key, then a jump (§4.2).",
+                      "type": "object",
+                      "properties": {
+                        "kind": {
+                          "type": "string",
+                          "const": "hold"
+                        }
+                      },
+                      "required": [
+                        "kind"
+                      ],
+                      "additionalProperties": false
+                    },
+                    {
+                      "description": "`p = u` (§4.3).",
+                      "type": "object",
+                      "properties": {
+                        "kind": {
+                          "type": "string",
+                          "const": "linear"
+                        }
+                      },
+                      "required": [
+                        "kind"
+                      ],
+                      "additionalProperties": false
+                    },
+                    {
+                      "description": "A CSS-style cubic Bézier from (0, 0) to (1, 1), normalized to the segment (§4.4).\n(`x1`, `y1`) shapes the speed leaving the key, (`x2`, `y2`) the speed arriving at the\nnext one.",
+                      "type": "object",
+                      "properties": {
+                        "kind": {
+                          "type": "string",
+                          "const": "bezier"
+                        },
+                        "x1": {
+                          "description": "First control point, time axis, in `[0, 1]`.",
+                          "type": "number",
+                          "format": "double",
+                          "minimum": 0.0,
+                          "maximum": 1.0
+                        },
+                        "y1": {
+                          "description": "First control point, progress axis, in `[−10, 10]` (beyond `[0, 1]` overshoots).",
+                          "type": "number",
+                          "format": "double",
+                          "minimum": -10.0,
+                          "maximum": 10.0
+                        },
+                        "x2": {
+                          "description": "Second control point, time axis, in `[0, 1]`.",
+                          "type": "number",
+                          "format": "double",
+                          "minimum": 0.0,
+                          "maximum": 1.0
+                        },
+                        "y2": {
+                          "description": "Second control point, progress axis, in `[−10, 10]`.",
+                          "type": "number",
+                          "format": "double",
+                          "minimum": -10.0,
+                          "maximum": 10.0
+                        },
+                        "preset": {
+                          "description": "The preset these numbers came from, a hint for the UI and agents (§4.6). Never read\nby evaluation.",
+                          "type": [
+                            "string",
+                            "null"
+                          ],
+                          "pattern": "^[a-z][a-z0-9_]{0,63}$"
+                        }
+                      },
+                      "additionalProperties": false,
+                      "required": [
+                        "kind",
+                        "x1",
+                        "y1",
+                        "x2",
+                        "y2"
+                      ]
+                    },
+                    {
+                      "description": "A damped spring in real seconds, released from rest, plus a residual that lands it\nexactly on the next key (§4.5).",
+                      "type": "object",
+                      "properties": {
+                        "kind": {
+                          "type": "string",
+                          "const": "spring"
+                        },
+                        "stiffness": {
+                          "description": "Stiffness, N/m, in `[1, 10000]`.",
+                          "type": "number",
+                          "format": "double",
+                          "minimum": 1.0,
+                          "maximum": 10000.0
+                        },
+                        "damping": {
+                          "description": "Damping, N·s/m, in `[0, 1000]` (0 never settles).",
+                          "type": "number",
+                          "format": "double",
+                          "minimum": 0.0,
+                          "maximum": 1000.0
+                        },
+                        "mass": {
+                          "description": "Mass, kg, in `[0.1, 100]`.",
+                          "type": "number",
+                          "format": "double",
+                          "minimum": 0.1,
+                          "maximum": 100.0
+                        },
+                        "bounce": {
+                          "description": "A hard stop at the target: the motion reflects instead of passing it.",
+                          "type": "boolean"
+                        },
+                        "preset": {
+                          "description": "The preset these numbers came from (§4.6). Never read by evaluation.",
+                          "type": [
+                            "string",
+                            "null"
+                          ],
+                          "pattern": "^[a-z][a-z0-9_]{0,63}$"
+                        }
+                      },
+                      "additionalProperties": false,
+                      "required": [
+                        "kind",
+                        "stiffness",
+                        "damping",
+                        "mass",
+                        "bounce"
+                      ]
+                    }
+                  ]
+                }
+              },
+              "additionalProperties": false,
+              "required": [
+                "prop",
+                "dt",
+                "value",
+                "interp"
+              ]
+            },
+            "description": "The keys, by property then time."
+          }
+        },
+        "required": [
+          "version",
+          "keys"
+        ],
+        "description": "What `keyframe.copy` returned."
+      },
+      "t": {
+        "anyOf": [
+          {
+            "description": "A time: integer flicks (1/705600000 s), or a string: seconds (\"62.5s\"), a frame (\"f:1500\") or a timecode (\"00:01:02:03\", drop-frame \"00:01:02;03\"). Frames and timecodes use the frame rate of the target's sequence.",
+            "anyOf": [
+              {
+                "type": "integer",
+                "minimum": -9007199254740991,
+                "maximum": 9007199254740991
+              },
+              {
+                "type": "string",
+                "pattern": "^-?[0-9]+(\\.[0-9]+)?s$|^-?[0-9]+$|^f:[0-9]+$|^[0-9]+[:;][0-9]+[:;][0-9]+[:;][0-9]+$"
+              }
+            ]
+          },
+          {
+            "type": "null"
+          }
+        ],
+        "description": "Item time of the earliest key.",
+        "default": null
+      },
+      "at": {
+        "anyOf": [
+          {
+            "description": "A time: integer flicks (1/705600000 s), or a string: seconds (\"62.5s\"), a frame (\"f:1500\") or a timecode (\"00:01:02:03\", drop-frame \"00:01:02;03\"). Frames and timecodes use the frame rate of the target's sequence.",
+            "anyOf": [
+              {
+                "type": "integer",
+                "minimum": -9007199254740991,
+                "maximum": 9007199254740991
+              },
+              {
+                "type": "string",
+                "pattern": "^-?[0-9]+(\\.[0-9]+)?s$|^-?[0-9]+$|^f:[0-9]+$|^[0-9]+[:;][0-9]+[:;][0-9]+[:;][0-9]+$"
+              }
+            ]
+          },
+          {
+            "type": "null"
+          }
+        ],
+        "description": "Sequence time of the earliest key.",
+        "default": null
+      },
+      "as_prop": {
+        "anyOf": [
+          {
+            "oneOf": [
+              {
+                "type": "string",
+                "const": "transform.position",
+                "description": "`visual.transform.position`: offset of the anchor from the canvas centre, canvas units."
+              },
+              {
+                "type": "string",
+                "const": "transform.scale",
+                "description": "`visual.transform.scale`: multiplier of the aspect-fit size, per axis."
+              },
+              {
+                "type": "string",
+                "const": "transform.rotation",
+                "description": "`visual.transform.rotation`: degrees, clockwise, accumulating."
+              },
+              {
+                "type": "string",
+                "const": "transform.anchor",
+                "description": "`visual.transform.anchor`: a point of the item in item units."
+              },
+              {
+                "type": "string",
+                "const": "opacity",
+                "description": "`visual.opacity`: 0 transparent to 1 opaque."
+              },
+              {
+                "type": "string",
+                "const": "crop.left",
+                "description": "`visual.crop.left`: fraction of the upright source removed from the left edge."
+              },
+              {
+                "type": "string",
+                "const": "crop.top",
+                "description": "`visual.crop.top`: fraction removed from the top edge."
+              },
+              {
+                "type": "string",
+                "const": "crop.right",
+                "description": "`visual.crop.right`: fraction removed from the right edge."
+              },
+              {
+                "type": "string",
+                "const": "crop.bottom",
+                "description": "`visual.crop.bottom`: fraction removed from the bottom edge."
+              },
+              {
+                "type": "string",
+                "const": "flip.horizontal",
+                "description": "`visual.flip.horizontal`: mirror left-right (hold only)."
+              },
+              {
+                "type": "string",
+                "const": "flip.vertical",
+                "description": "`visual.flip.vertical`: mirror top-bottom (hold only)."
+              },
+              {
+                "type": "string",
+                "const": "audio_gain",
+                "description": "`audio.gain`: clip level in dB, interpolated in dB (UI label \"Volume\")."
+              },
+              {
+                "type": "string",
+                "const": "audio_pan",
+                "description": "`audio.pan`: −1 left to 1 right, 0 centre."
+              }
+            ],
+            "description": "An animatable property (keyframes §7). The IDs match `item.set_props`'s patch paths, so\n`keyframe.*`, `item.set_props` and its `changed` output use the same names.\n\nLater properties (P3 text, P4 effect and composition parameters) register here through\ntheir work packages."
+          },
+          {
+            "type": "null"
+          }
+        ],
+        "description": "Paste a single-property payload onto this property instead.",
+        "default": null
+      },
+      "fine": {
+        "type": [
+          "boolean",
+          "null"
+        ],
+        "description": "Snap to the audio sample grid (audio properties only).",
+        "default": null
+      }
+    },
+    "required": [
+      "payload"
+    ],
+    "description": "Pastes copied keys onto an item (or each of `items`): the earliest key goes to `t` (item\ntime) or `at` (sequence time), the others keep their distance (`dt`), each snapped to\nframes; a key already at a time is replaced. `as_prop` pastes a single-property payload onto\nanother property of the same type (crop left keys onto crop right). Values must fit the\nproperty; `Locked` if an item's track is locked.",
+    "title": "KeyframePaste"
+  },
+  "output": {
+    "type": "object",
+    "additionalProperties": false,
+    "properties": {
+      "keys": {
+        "type": "array",
+        "items": {
+          "description": "Where `keyframe.paste` put a key.",
+          "type": "object",
+          "properties": {
+            "item": {
+              "description": "The item.",
+              "type": "string",
+              "pattern": "^itm_[0-9a-f]{32}$"
+            },
+            "prop": {
+              "description": "The property.",
+              "oneOf": [
+                {
+                  "description": "`visual.transform.position`: offset of the anchor from the canvas centre, canvas units.",
+                  "type": "string",
+                  "const": "transform.position"
+                },
+                {
+                  "description": "`visual.transform.scale`: multiplier of the aspect-fit size, per axis.",
+                  "type": "string",
+                  "const": "transform.scale"
+                },
+                {
+                  "description": "`visual.transform.rotation`: degrees, clockwise, accumulating.",
+                  "type": "string",
+                  "const": "transform.rotation"
+                },
+                {
+                  "description": "`visual.transform.anchor`: a point of the item in item units.",
+                  "type": "string",
+                  "const": "transform.anchor"
+                },
+                {
+                  "description": "`visual.opacity`: 0 transparent to 1 opaque.",
+                  "type": "string",
+                  "const": "opacity"
+                },
+                {
+                  "description": "`visual.crop.left`: fraction of the upright source removed from the left edge.",
+                  "type": "string",
+                  "const": "crop.left"
+                },
+                {
+                  "description": "`visual.crop.top`: fraction removed from the top edge.",
+                  "type": "string",
+                  "const": "crop.top"
+                },
+                {
+                  "description": "`visual.crop.right`: fraction removed from the right edge.",
+                  "type": "string",
+                  "const": "crop.right"
+                },
+                {
+                  "description": "`visual.crop.bottom`: fraction removed from the bottom edge.",
+                  "type": "string",
+                  "const": "crop.bottom"
+                },
+                {
+                  "description": "`visual.flip.horizontal`: mirror left-right (hold only).",
+                  "type": "string",
+                  "const": "flip.horizontal"
+                },
+                {
+                  "description": "`visual.flip.vertical`: mirror top-bottom (hold only).",
+                  "type": "string",
+                  "const": "flip.vertical"
+                },
+                {
+                  "description": "`audio.gain`: clip level in dB, interpolated in dB (UI label \"Volume\").",
+                  "type": "string",
+                  "const": "audio_gain"
+                },
+                {
+                  "description": "`audio.pan`: −1 left to 1 right, 0 centre.",
+                  "type": "string",
+                  "const": "audio_pan"
+                }
+              ]
+            },
+            "t": {
+              "description": "Item time after snapping.",
+              "type": "integer",
+              "minimum": -9007199254740991,
+              "maximum": 9007199254740991
+            },
+            "at": {
+              "description": "Sequence time after snapping.",
+              "type": "integer",
+              "minimum": -9007199254740991,
+              "maximum": 9007199254740991
+            },
+            "value": {
+              "description": "The value the key holds.",
+              "anyOf": [
+                {
+                  "description": "A boolean.",
+                  "type": "boolean"
+                },
+                {
+                  "description": "A number.",
+                  "type": "number",
+                  "format": "double"
+                },
+                {
+                  "description": "A 2D vector.",
+                  "type": "object",
+                  "properties": {
+                    "x": {
+                      "description": "Horizontal component.",
+                      "type": "number",
+                      "format": "double"
+                    },
+                    "y": {
+                      "description": "Vertical component (down is positive).",
+                      "type": "number",
+                      "format": "double"
+                    }
+                  },
+                  "additionalProperties": false,
+                  "required": [
+                    "x",
+                    "y"
+                  ]
+                }
+              ]
+            },
+            "created": {
+              "description": "A new key (`false`: it replaced a key at that time).",
+              "type": "boolean"
+            },
+            "outside": {
+              "description": "The key lies outside the item's `[0, duration)`.",
+              "type": "boolean"
+            }
+          },
+          "additionalProperties": false,
+          "required": [
+            "item",
+            "prop",
+            "t",
+            "at",
+            "value",
+            "created",
+            "outside"
+          ]
+        },
+        "description": "The keys written."
+      }
+    },
+    "required": [
+      "keys"
+    ],
+    "description": "Result of `keyframe.paste`.",
+    "title": "KeyframePasteOutput"
+  }
+}

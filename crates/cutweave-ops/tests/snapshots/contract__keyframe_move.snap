@@ -1,0 +1,650 @@
+---
+source: crates/cutweave-ops/tests/contract.rs
+expression: "json!({\n    \"meta\": serde_json::to_value(meta).unwrap(), \"input\": meta.input_schema,\n    \"output\": meta.output_schema,\n})"
+---
+{
+  "meta": {
+    "name": "keyframe.move",
+    "summary": "Move keys of an item's properties in time",
+    "kind": "command",
+    "undoable": true,
+    "view": false,
+    "scope": "any",
+    "mcp": "catalog",
+    "annotations": {
+      "readOnlyHint": false,
+      "destructiveHint": false,
+      "idempotentHint": false,
+      "openWorldHint": false
+    },
+    "secret_fields": [],
+    "input_schema": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "item": {
+          "type": "string",
+          "pattern": "^itm_[0-9a-f]{32}$",
+          "description": "The item."
+        },
+        "keys": {
+          "type": "array",
+          "items": {
+            "description": "A key to address: its property and exact item time.",
+            "type": "object",
+            "properties": {
+              "prop": {
+                "description": "The property.",
+                "oneOf": [
+                  {
+                    "description": "`visual.transform.position`: offset of the anchor from the canvas centre, canvas units.",
+                    "type": "string",
+                    "const": "transform.position"
+                  },
+                  {
+                    "description": "`visual.transform.scale`: multiplier of the aspect-fit size, per axis.",
+                    "type": "string",
+                    "const": "transform.scale"
+                  },
+                  {
+                    "description": "`visual.transform.rotation`: degrees, clockwise, accumulating.",
+                    "type": "string",
+                    "const": "transform.rotation"
+                  },
+                  {
+                    "description": "`visual.transform.anchor`: a point of the item in item units.",
+                    "type": "string",
+                    "const": "transform.anchor"
+                  },
+                  {
+                    "description": "`visual.opacity`: 0 transparent to 1 opaque.",
+                    "type": "string",
+                    "const": "opacity"
+                  },
+                  {
+                    "description": "`visual.crop.left`: fraction of the upright source removed from the left edge.",
+                    "type": "string",
+                    "const": "crop.left"
+                  },
+                  {
+                    "description": "`visual.crop.top`: fraction removed from the top edge.",
+                    "type": "string",
+                    "const": "crop.top"
+                  },
+                  {
+                    "description": "`visual.crop.right`: fraction removed from the right edge.",
+                    "type": "string",
+                    "const": "crop.right"
+                  },
+                  {
+                    "description": "`visual.crop.bottom`: fraction removed from the bottom edge.",
+                    "type": "string",
+                    "const": "crop.bottom"
+                  },
+                  {
+                    "description": "`visual.flip.horizontal`: mirror left-right (hold only).",
+                    "type": "string",
+                    "const": "flip.horizontal"
+                  },
+                  {
+                    "description": "`visual.flip.vertical`: mirror top-bottom (hold only).",
+                    "type": "string",
+                    "const": "flip.vertical"
+                  },
+                  {
+                    "description": "`audio.gain`: clip level in dB, interpolated in dB (UI label \"Volume\").",
+                    "type": "string",
+                    "const": "audio_gain"
+                  },
+                  {
+                    "description": "`audio.pan`: −1 left to 1 right, 0 centre.",
+                    "type": "string",
+                    "const": "audio_pan"
+                  }
+                ]
+              },
+              "t": {
+                "description": "The key's stored item time in flicks, as `item.get` returns it.",
+                "anyOf": [
+                  {
+                    "type": "integer",
+                    "minimum": -9007199254740991,
+                    "maximum": 9007199254740991
+                  },
+                  {
+                    "type": "string",
+                    "pattern": "^-?[0-9]+(\\.[0-9]+)?s$|^-?[0-9]+$"
+                  }
+                ]
+              }
+            },
+            "additionalProperties": false,
+            "required": [
+              "prop",
+              "t"
+            ]
+          },
+          "description": "The keys to move, by property and exact item time."
+        },
+        "delta": {
+          "anyOf": [
+            {
+              "description": "A time: integer flicks (1/705600000 s), or a string: seconds (\"62.5s\"), a frame (\"f:1500\") or a timecode (\"00:01:02:03\", drop-frame \"00:01:02;03\"). Frames and timecodes use the frame rate of the target's sequence.",
+              "anyOf": [
+                {
+                  "type": "integer",
+                  "minimum": -9007199254740991,
+                  "maximum": 9007199254740991
+                },
+                {
+                  "type": "string",
+                  "pattern": "^-?[0-9]+(\\.[0-9]+)?s$|^-?[0-9]+$|^f:[0-9]+$|^[0-9]+[:;][0-9]+[:;][0-9]+[:;][0-9]+$"
+                }
+              ]
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "description": "How far to move them (negative: earlier). Use seconds or flicks for negative values.",
+          "default": null
+        },
+        "to_t": {
+          "anyOf": [
+            {
+              "description": "A time: integer flicks (1/705600000 s), or a string: seconds (\"62.5s\"), a frame (\"f:1500\") or a timecode (\"00:01:02:03\", drop-frame \"00:01:02;03\"). Frames and timecodes use the frame rate of the target's sequence.",
+              "anyOf": [
+                {
+                  "type": "integer",
+                  "minimum": -9007199254740991,
+                  "maximum": 9007199254740991
+                },
+                {
+                  "type": "string",
+                  "pattern": "^-?[0-9]+(\\.[0-9]+)?s$|^-?[0-9]+$|^f:[0-9]+$|^[0-9]+[:;][0-9]+[:;][0-9]+[:;][0-9]+$"
+                }
+              ]
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "description": "The new item time of the single key.",
+          "default": null
+        },
+        "to_at": {
+          "anyOf": [
+            {
+              "description": "A time: integer flicks (1/705600000 s), or a string: seconds (\"62.5s\"), a frame (\"f:1500\") or a timecode (\"00:01:02:03\", drop-frame \"00:01:02;03\"). Frames and timecodes use the frame rate of the target's sequence.",
+              "anyOf": [
+                {
+                  "type": "integer",
+                  "minimum": -9007199254740991,
+                  "maximum": 9007199254740991
+                },
+                {
+                  "type": "string",
+                  "pattern": "^-?[0-9]+(\\.[0-9]+)?s$|^-?[0-9]+$|^f:[0-9]+$|^[0-9]+[:;][0-9]+[:;][0-9]+[:;][0-9]+$"
+                }
+              ]
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "description": "The new sequence time of the single key.",
+          "default": null
+        },
+        "fine": {
+          "type": [
+            "boolean",
+            "null"
+          ],
+          "description": "Snap to the audio sample grid (audio properties only).",
+          "default": null
+        }
+      },
+      "required": [
+        "item",
+        "keys"
+      ],
+      "description": "Moves keys in time, by `delta`, or to `to_t` (item time) or `to_at` (sequence time) for a\nsingle key; give exactly one. Keys keep their value and interpolation, may pass their\nneighbours (the list re-sorts), and land on frames: a `delta` is rounded to whole frames\n(`fine`: samples). Landing on a key that stays, or two keys on one time, is `Invalid`.\n`NotFound` if a key does not exist; `Locked` if the item's track is locked.",
+      "title": "KeyframeMove"
+    },
+    "output_schema": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "moved": {
+          "type": "array",
+          "items": {
+            "description": "One key that moved.",
+            "type": "object",
+            "properties": {
+              "prop": {
+                "description": "The property.",
+                "oneOf": [
+                  {
+                    "description": "`visual.transform.position`: offset of the anchor from the canvas centre, canvas units.",
+                    "type": "string",
+                    "const": "transform.position"
+                  },
+                  {
+                    "description": "`visual.transform.scale`: multiplier of the aspect-fit size, per axis.",
+                    "type": "string",
+                    "const": "transform.scale"
+                  },
+                  {
+                    "description": "`visual.transform.rotation`: degrees, clockwise, accumulating.",
+                    "type": "string",
+                    "const": "transform.rotation"
+                  },
+                  {
+                    "description": "`visual.transform.anchor`: a point of the item in item units.",
+                    "type": "string",
+                    "const": "transform.anchor"
+                  },
+                  {
+                    "description": "`visual.opacity`: 0 transparent to 1 opaque.",
+                    "type": "string",
+                    "const": "opacity"
+                  },
+                  {
+                    "description": "`visual.crop.left`: fraction of the upright source removed from the left edge.",
+                    "type": "string",
+                    "const": "crop.left"
+                  },
+                  {
+                    "description": "`visual.crop.top`: fraction removed from the top edge.",
+                    "type": "string",
+                    "const": "crop.top"
+                  },
+                  {
+                    "description": "`visual.crop.right`: fraction removed from the right edge.",
+                    "type": "string",
+                    "const": "crop.right"
+                  },
+                  {
+                    "description": "`visual.crop.bottom`: fraction removed from the bottom edge.",
+                    "type": "string",
+                    "const": "crop.bottom"
+                  },
+                  {
+                    "description": "`visual.flip.horizontal`: mirror left-right (hold only).",
+                    "type": "string",
+                    "const": "flip.horizontal"
+                  },
+                  {
+                    "description": "`visual.flip.vertical`: mirror top-bottom (hold only).",
+                    "type": "string",
+                    "const": "flip.vertical"
+                  },
+                  {
+                    "description": "`audio.gain`: clip level in dB, interpolated in dB (UI label \"Volume\").",
+                    "type": "string",
+                    "const": "audio_gain"
+                  },
+                  {
+                    "description": "`audio.pan`: −1 left to 1 right, 0 centre.",
+                    "type": "string",
+                    "const": "audio_pan"
+                  }
+                ]
+              },
+              "from_t": {
+                "description": "Where the key was (item time).",
+                "type": "integer",
+                "minimum": -9007199254740991,
+                "maximum": 9007199254740991
+              },
+              "t": {
+                "description": "Where it is now (item time).",
+                "type": "integer",
+                "minimum": -9007199254740991,
+                "maximum": 9007199254740991
+              },
+              "at": {
+                "description": "Where it is now (sequence time).",
+                "type": "integer",
+                "minimum": -9007199254740991,
+                "maximum": 9007199254740991
+              },
+              "outside": {
+                "description": "The key lies outside the item's `[0, duration)`.",
+                "type": "boolean"
+              }
+            },
+            "additionalProperties": false,
+            "required": [
+              "prop",
+              "from_t",
+              "t",
+              "at",
+              "outside"
+            ]
+          },
+          "description": "The keys moved."
+        }
+      },
+      "required": [
+        "moved"
+      ],
+      "description": "Result of `keyframe.move`.",
+      "title": "KeyframeMoveOutput"
+    }
+  },
+  "input": {
+    "type": "object",
+    "additionalProperties": false,
+    "properties": {
+      "item": {
+        "type": "string",
+        "pattern": "^itm_[0-9a-f]{32}$",
+        "description": "The item."
+      },
+      "keys": {
+        "type": "array",
+        "items": {
+          "description": "A key to address: its property and exact item time.",
+          "type": "object",
+          "properties": {
+            "prop": {
+              "description": "The property.",
+              "oneOf": [
+                {
+                  "description": "`visual.transform.position`: offset of the anchor from the canvas centre, canvas units.",
+                  "type": "string",
+                  "const": "transform.position"
+                },
+                {
+                  "description": "`visual.transform.scale`: multiplier of the aspect-fit size, per axis.",
+                  "type": "string",
+                  "const": "transform.scale"
+                },
+                {
+                  "description": "`visual.transform.rotation`: degrees, clockwise, accumulating.",
+                  "type": "string",
+                  "const": "transform.rotation"
+                },
+                {
+                  "description": "`visual.transform.anchor`: a point of the item in item units.",
+                  "type": "string",
+                  "const": "transform.anchor"
+                },
+                {
+                  "description": "`visual.opacity`: 0 transparent to 1 opaque.",
+                  "type": "string",
+                  "const": "opacity"
+                },
+                {
+                  "description": "`visual.crop.left`: fraction of the upright source removed from the left edge.",
+                  "type": "string",
+                  "const": "crop.left"
+                },
+                {
+                  "description": "`visual.crop.top`: fraction removed from the top edge.",
+                  "type": "string",
+                  "const": "crop.top"
+                },
+                {
+                  "description": "`visual.crop.right`: fraction removed from the right edge.",
+                  "type": "string",
+                  "const": "crop.right"
+                },
+                {
+                  "description": "`visual.crop.bottom`: fraction removed from the bottom edge.",
+                  "type": "string",
+                  "const": "crop.bottom"
+                },
+                {
+                  "description": "`visual.flip.horizontal`: mirror left-right (hold only).",
+                  "type": "string",
+                  "const": "flip.horizontal"
+                },
+                {
+                  "description": "`visual.flip.vertical`: mirror top-bottom (hold only).",
+                  "type": "string",
+                  "const": "flip.vertical"
+                },
+                {
+                  "description": "`audio.gain`: clip level in dB, interpolated in dB (UI label \"Volume\").",
+                  "type": "string",
+                  "const": "audio_gain"
+                },
+                {
+                  "description": "`audio.pan`: −1 left to 1 right, 0 centre.",
+                  "type": "string",
+                  "const": "audio_pan"
+                }
+              ]
+            },
+            "t": {
+              "description": "The key's stored item time in flicks, as `item.get` returns it.",
+              "anyOf": [
+                {
+                  "type": "integer",
+                  "minimum": -9007199254740991,
+                  "maximum": 9007199254740991
+                },
+                {
+                  "type": "string",
+                  "pattern": "^-?[0-9]+(\\.[0-9]+)?s$|^-?[0-9]+$"
+                }
+              ]
+            }
+          },
+          "additionalProperties": false,
+          "required": [
+            "prop",
+            "t"
+          ]
+        },
+        "description": "The keys to move, by property and exact item time."
+      },
+      "delta": {
+        "anyOf": [
+          {
+            "description": "A time: integer flicks (1/705600000 s), or a string: seconds (\"62.5s\"), a frame (\"f:1500\") or a timecode (\"00:01:02:03\", drop-frame \"00:01:02;03\"). Frames and timecodes use the frame rate of the target's sequence.",
+            "anyOf": [
+              {
+                "type": "integer",
+                "minimum": -9007199254740991,
+                "maximum": 9007199254740991
+              },
+              {
+                "type": "string",
+                "pattern": "^-?[0-9]+(\\.[0-9]+)?s$|^-?[0-9]+$|^f:[0-9]+$|^[0-9]+[:;][0-9]+[:;][0-9]+[:;][0-9]+$"
+              }
+            ]
+          },
+          {
+            "type": "null"
+          }
+        ],
+        "description": "How far to move them (negative: earlier). Use seconds or flicks for negative values.",
+        "default": null
+      },
+      "to_t": {
+        "anyOf": [
+          {
+            "description": "A time: integer flicks (1/705600000 s), or a string: seconds (\"62.5s\"), a frame (\"f:1500\") or a timecode (\"00:01:02:03\", drop-frame \"00:01:02;03\"). Frames and timecodes use the frame rate of the target's sequence.",
+            "anyOf": [
+              {
+                "type": "integer",
+                "minimum": -9007199254740991,
+                "maximum": 9007199254740991
+              },
+              {
+                "type": "string",
+                "pattern": "^-?[0-9]+(\\.[0-9]+)?s$|^-?[0-9]+$|^f:[0-9]+$|^[0-9]+[:;][0-9]+[:;][0-9]+[:;][0-9]+$"
+              }
+            ]
+          },
+          {
+            "type": "null"
+          }
+        ],
+        "description": "The new item time of the single key.",
+        "default": null
+      },
+      "to_at": {
+        "anyOf": [
+          {
+            "description": "A time: integer flicks (1/705600000 s), or a string: seconds (\"62.5s\"), a frame (\"f:1500\") or a timecode (\"00:01:02:03\", drop-frame \"00:01:02;03\"). Frames and timecodes use the frame rate of the target's sequence.",
+            "anyOf": [
+              {
+                "type": "integer",
+                "minimum": -9007199254740991,
+                "maximum": 9007199254740991
+              },
+              {
+                "type": "string",
+                "pattern": "^-?[0-9]+(\\.[0-9]+)?s$|^-?[0-9]+$|^f:[0-9]+$|^[0-9]+[:;][0-9]+[:;][0-9]+[:;][0-9]+$"
+              }
+            ]
+          },
+          {
+            "type": "null"
+          }
+        ],
+        "description": "The new sequence time of the single key.",
+        "default": null
+      },
+      "fine": {
+        "type": [
+          "boolean",
+          "null"
+        ],
+        "description": "Snap to the audio sample grid (audio properties only).",
+        "default": null
+      }
+    },
+    "required": [
+      "item",
+      "keys"
+    ],
+    "description": "Moves keys in time, by `delta`, or to `to_t` (item time) or `to_at` (sequence time) for a\nsingle key; give exactly one. Keys keep their value and interpolation, may pass their\nneighbours (the list re-sorts), and land on frames: a `delta` is rounded to whole frames\n(`fine`: samples). Landing on a key that stays, or two keys on one time, is `Invalid`.\n`NotFound` if a key does not exist; `Locked` if the item's track is locked.",
+    "title": "KeyframeMove"
+  },
+  "output": {
+    "type": "object",
+    "additionalProperties": false,
+    "properties": {
+      "moved": {
+        "type": "array",
+        "items": {
+          "description": "One key that moved.",
+          "type": "object",
+          "properties": {
+            "prop": {
+              "description": "The property.",
+              "oneOf": [
+                {
+                  "description": "`visual.transform.position`: offset of the anchor from the canvas centre, canvas units.",
+                  "type": "string",
+                  "const": "transform.position"
+                },
+                {
+                  "description": "`visual.transform.scale`: multiplier of the aspect-fit size, per axis.",
+                  "type": "string",
+                  "const": "transform.scale"
+                },
+                {
+                  "description": "`visual.transform.rotation`: degrees, clockwise, accumulating.",
+                  "type": "string",
+                  "const": "transform.rotation"
+                },
+                {
+                  "description": "`visual.transform.anchor`: a point of the item in item units.",
+                  "type": "string",
+                  "const": "transform.anchor"
+                },
+                {
+                  "description": "`visual.opacity`: 0 transparent to 1 opaque.",
+                  "type": "string",
+                  "const": "opacity"
+                },
+                {
+                  "description": "`visual.crop.left`: fraction of the upright source removed from the left edge.",
+                  "type": "string",
+                  "const": "crop.left"
+                },
+                {
+                  "description": "`visual.crop.top`: fraction removed from the top edge.",
+                  "type": "string",
+                  "const": "crop.top"
+                },
+                {
+                  "description": "`visual.crop.right`: fraction removed from the right edge.",
+                  "type": "string",
+                  "const": "crop.right"
+                },
+                {
+                  "description": "`visual.crop.bottom`: fraction removed from the bottom edge.",
+                  "type": "string",
+                  "const": "crop.bottom"
+                },
+                {
+                  "description": "`visual.flip.horizontal`: mirror left-right (hold only).",
+                  "type": "string",
+                  "const": "flip.horizontal"
+                },
+                {
+                  "description": "`visual.flip.vertical`: mirror top-bottom (hold only).",
+                  "type": "string",
+                  "const": "flip.vertical"
+                },
+                {
+                  "description": "`audio.gain`: clip level in dB, interpolated in dB (UI label \"Volume\").",
+                  "type": "string",
+                  "const": "audio_gain"
+                },
+                {
+                  "description": "`audio.pan`: −1 left to 1 right, 0 centre.",
+                  "type": "string",
+                  "const": "audio_pan"
+                }
+              ]
+            },
+            "from_t": {
+              "description": "Where the key was (item time).",
+              "type": "integer",
+              "minimum": -9007199254740991,
+              "maximum": 9007199254740991
+            },
+            "t": {
+              "description": "Where it is now (item time).",
+              "type": "integer",
+              "minimum": -9007199254740991,
+              "maximum": 9007199254740991
+            },
+            "at": {
+              "description": "Where it is now (sequence time).",
+              "type": "integer",
+              "minimum": -9007199254740991,
+              "maximum": 9007199254740991
+            },
+            "outside": {
+              "description": "The key lies outside the item's `[0, duration)`.",
+              "type": "boolean"
+            }
+          },
+          "additionalProperties": false,
+          "required": [
+            "prop",
+            "from_t",
+            "t",
+            "at",
+            "outside"
+          ]
+        },
+        "description": "The keys moved."
+      }
+    },
+    "required": [
+      "moved"
+    ],
+    "description": "Result of `keyframe.move`.",
+    "title": "KeyframeMoveOutput"
+  }
+}

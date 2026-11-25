@@ -5,7 +5,7 @@ expression: "json!({\n    \"meta\": serde_json::to_value(meta).unwrap(), \"input
 {
   "meta": {
     "name": "item.set_props",
-    "summary": "Set an item's name, enabled, opacity, audio_gain or transform (partial)",
+    "summary": "Set an item's name, enabled, opacity, audio, transform, crop, flip or blend mode (partial)",
     "kind": "command",
     "undoable": true,
     "view": false,
@@ -23,9 +23,26 @@ expression: "json!({\n    \"meta\": serde_json::to_value(meta).unwrap(), \"input
       "additionalProperties": false,
       "properties": {
         "item": {
-          "type": "string",
+          "type": [
+            "string",
+            "null"
+          ],
           "pattern": "^itm_[0-9a-f]{32}$",
-          "description": "The item."
+          "description": "The item (or `items`).",
+          "default": null
+        },
+        "items": {
+          "type": [
+            "array",
+            "null"
+          ],
+          "items": {
+            "description": "A Item id: `^itm_[0-9a-f]{32}$`.",
+            "type": "string",
+            "pattern": "^itm_[0-9a-f]{32}$"
+          },
+          "description": "Items to give the same properties.",
+          "default": null
         },
         "props": {
           "type": "object",
@@ -60,6 +77,14 @@ expression: "json!({\n    \"meta\": serde_json::to_value(meta).unwrap(), \"input
               ],
               "format": "double",
               "description": "Clip gain in dB, `-144..=48` (0 = unchanged)."
+            },
+            "audio_pan": {
+              "type": [
+                "number",
+                "null"
+              ],
+              "format": "double",
+              "description": "Stereo position, `-1` (left) to `1` (right)."
             },
             "transform": {
               "type": [
@@ -150,16 +175,165 @@ expression: "json!({\n    \"meta\": serde_json::to_value(meta).unwrap(), \"input
                 }
               },
               "description": "Placement on the canvas (partial)."
+            },
+            "crop": {
+              "type": [
+                "object",
+                "null"
+              ],
+              "additionalProperties": false,
+              "properties": {
+                "left": {
+                  "type": [
+                    "number",
+                    "null"
+                  ],
+                  "format": "double",
+                  "description": "Fraction removed from the left edge."
+                },
+                "top": {
+                  "type": [
+                    "number",
+                    "null"
+                  ],
+                  "format": "double",
+                  "description": "Fraction removed from the top edge."
+                },
+                "right": {
+                  "type": [
+                    "number",
+                    "null"
+                  ],
+                  "format": "double",
+                  "description": "Fraction removed from the right edge."
+                },
+                "bottom": {
+                  "type": [
+                    "number",
+                    "null"
+                  ],
+                  "format": "double",
+                  "description": "Fraction removed from the bottom edge."
+                }
+              },
+              "description": "Edges of the source picture cut away (partial)."
+            },
+            "flip": {
+              "type": [
+                "object",
+                "null"
+              ],
+              "additionalProperties": false,
+              "properties": {
+                "horizontal": {
+                  "type": [
+                    "boolean",
+                    "null"
+                  ],
+                  "description": "Mirror left-right."
+                },
+                "vertical": {
+                  "type": [
+                    "boolean",
+                    "null"
+                  ],
+                  "description": "Mirror top-bottom."
+                }
+              },
+              "description": "Mirroring (partial)."
+            },
+            "blend_mode": {
+              "anyOf": [
+                {
+                  "oneOf": [
+                    {
+                      "type": "string",
+                      "const": "normal",
+                      "description": "The picture covers what is below, by its opacity."
+                    },
+                    {
+                      "type": "string",
+                      "const": "multiply",
+                      "description": "Darkens: the product of both."
+                    },
+                    {
+                      "type": "string",
+                      "const": "screen",
+                      "description": "Lightens: the inverse of the product of the inverses."
+                    },
+                    {
+                      "type": "string",
+                      "const": "overlay",
+                      "description": "Multiply in the shadows, screen in the highlights, by what is below."
+                    },
+                    {
+                      "type": "string",
+                      "const": "darken",
+                      "description": "The darker of both, per channel."
+                    },
+                    {
+                      "type": "string",
+                      "const": "lighten",
+                      "description": "The lighter of both, per channel."
+                    },
+                    {
+                      "type": "string",
+                      "const": "add",
+                      "description": "The sum of both, clipped."
+                    },
+                    {
+                      "type": "string",
+                      "const": "soft_light",
+                      "description": "A gentle overlay."
+                    }
+                  ],
+                  "description": "How an item's picture combines with what is below it (arch §8's core set). Not animatable."
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "How the item combines with what is below: `normal`, `multiply`, `screen`, `overlay`,\n`darken`, `lighten`, `add` or `soft_light`."
             }
           },
           "description": "The properties to change; at least one."
+        },
+        "auto_key": {
+          "type": [
+            "boolean",
+            "null"
+          ],
+          "description": "Key animated properties at `at` (default `true`; `false` makes an animated property\n`Invalid`).",
+          "default": null
+        },
+        "at": {
+          "anyOf": [
+            {
+              "description": "A time: integer flicks (1/705600000 s), or a string: seconds (\"62.5s\"), a frame (\"f:1500\") or a timecode (\"00:01:02:03\", drop-frame \"00:01:02;03\"). Frames and timecodes use the frame rate of the target's sequence.",
+              "anyOf": [
+                {
+                  "type": "integer",
+                  "minimum": -9007199254740991,
+                  "maximum": 9007199254740991
+                },
+                {
+                  "type": "string",
+                  "pattern": "^-?[0-9]+(\\.[0-9]+)?s$|^-?[0-9]+$|^f:[0-9]+$|^[0-9]+[:;][0-9]+[:;][0-9]+[:;][0-9]+$"
+                }
+              ]
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "description": "The sequence time (the playhead) to key animated properties at.",
+          "default": null
         }
       },
       "required": [
-        "item",
         "props"
       ],
-      "description": "Changes an item's name, enabled flag, opacity, clip gain or transform; absent fields keep\ntheir value and setting a value it already has is a no-op. `Locked` if the item's track is\nlocked.",
+      "description": "Changes an item's name, enabled flag, opacity, clip gain and pan, transform, crop, flip or\nblend mode; absent fields keep their value and setting a value it already has is a no-op.\nA property that is keyed (animated) gets a key at `at` (a sequence time inside the item,\nsnapped to a frame) with the value, as `keyframe.set` would; without `at`, or with\n`auto_key: false`, that is `Invalid` (`keyframe.clear` makes the property static first).\nStatic properties are set as before and `at` is ignored. `Locked` if the item's track is\nlocked.",
       "title": "ItemSetProps"
     },
     "output_schema": {
@@ -169,19 +343,124 @@ expression: "json!({\n    \"meta\": serde_json::to_value(meta).unwrap(), \"input
         "item": {
           "type": "string",
           "pattern": "^itm_[0-9a-f]{32}$",
-          "description": "The item."
+          "description": "The item (the first of `items`)."
         },
         "changed": {
           "type": "array",
           "items": {
             "type": "string"
           },
-          "description": "The props whose value actually changed (`name`, `enabled`, `opacity`, `audio_gain`,\n`transform.position`, ...); empty if everything was already as requested."
+          "description": "The props whose value actually changed on any item (`name`, `enabled`, `opacity`,\n`audio_gain`, `transform.position`, ...); empty if everything was already as requested."
+        },
+        "keyed": {
+          "type": "array",
+          "items": {
+            "description": "A key `item.set_props` wrote on an animated property.",
+            "type": "object",
+            "properties": {
+              "item": {
+                "description": "The item.",
+                "type": "string",
+                "pattern": "^itm_[0-9a-f]{32}$"
+              },
+              "prop": {
+                "description": "The property.",
+                "oneOf": [
+                  {
+                    "description": "`visual.transform.position`: offset of the anchor from the canvas centre, canvas units.",
+                    "type": "string",
+                    "const": "transform.position"
+                  },
+                  {
+                    "description": "`visual.transform.scale`: multiplier of the aspect-fit size, per axis.",
+                    "type": "string",
+                    "const": "transform.scale"
+                  },
+                  {
+                    "description": "`visual.transform.rotation`: degrees, clockwise, accumulating.",
+                    "type": "string",
+                    "const": "transform.rotation"
+                  },
+                  {
+                    "description": "`visual.transform.anchor`: a point of the item in item units.",
+                    "type": "string",
+                    "const": "transform.anchor"
+                  },
+                  {
+                    "description": "`visual.opacity`: 0 transparent to 1 opaque.",
+                    "type": "string",
+                    "const": "opacity"
+                  },
+                  {
+                    "description": "`visual.crop.left`: fraction of the upright source removed from the left edge.",
+                    "type": "string",
+                    "const": "crop.left"
+                  },
+                  {
+                    "description": "`visual.crop.top`: fraction removed from the top edge.",
+                    "type": "string",
+                    "const": "crop.top"
+                  },
+                  {
+                    "description": "`visual.crop.right`: fraction removed from the right edge.",
+                    "type": "string",
+                    "const": "crop.right"
+                  },
+                  {
+                    "description": "`visual.crop.bottom`: fraction removed from the bottom edge.",
+                    "type": "string",
+                    "const": "crop.bottom"
+                  },
+                  {
+                    "description": "`visual.flip.horizontal`: mirror left-right (hold only).",
+                    "type": "string",
+                    "const": "flip.horizontal"
+                  },
+                  {
+                    "description": "`visual.flip.vertical`: mirror top-bottom (hold only).",
+                    "type": "string",
+                    "const": "flip.vertical"
+                  },
+                  {
+                    "description": "`audio.gain`: clip level in dB, interpolated in dB (UI label \"Volume\").",
+                    "type": "string",
+                    "const": "audio_gain"
+                  },
+                  {
+                    "description": "`audio.pan`: −1 left to 1 right, 0 centre.",
+                    "type": "string",
+                    "const": "audio_pan"
+                  }
+                ]
+              },
+              "t": {
+                "description": "Item time of the key, after snapping.",
+                "type": "integer",
+                "minimum": -9007199254740991,
+                "maximum": 9007199254740991
+              },
+              "at": {
+                "description": "Sequence time of the key, after snapping.",
+                "type": "integer",
+                "minimum": -9007199254740991,
+                "maximum": 9007199254740991
+              }
+            },
+            "additionalProperties": false,
+            "required": [
+              "item",
+              "prop",
+              "t",
+              "at"
+            ]
+          },
+          "description": "The keys written on animated properties."
         }
       },
       "required": [
         "item",
-        "changed"
+        "changed",
+        "keyed"
       ],
       "description": "Result of `item.set_props`.",
       "title": "ItemSetPropsOutput"
@@ -192,9 +471,26 @@ expression: "json!({\n    \"meta\": serde_json::to_value(meta).unwrap(), \"input
     "additionalProperties": false,
     "properties": {
       "item": {
-        "type": "string",
+        "type": [
+          "string",
+          "null"
+        ],
         "pattern": "^itm_[0-9a-f]{32}$",
-        "description": "The item."
+        "description": "The item (or `items`).",
+        "default": null
+      },
+      "items": {
+        "type": [
+          "array",
+          "null"
+        ],
+        "items": {
+          "description": "A Item id: `^itm_[0-9a-f]{32}$`.",
+          "type": "string",
+          "pattern": "^itm_[0-9a-f]{32}$"
+        },
+        "description": "Items to give the same properties.",
+        "default": null
       },
       "props": {
         "type": "object",
@@ -229,6 +525,14 @@ expression: "json!({\n    \"meta\": serde_json::to_value(meta).unwrap(), \"input
             ],
             "format": "double",
             "description": "Clip gain in dB, `-144..=48` (0 = unchanged)."
+          },
+          "audio_pan": {
+            "type": [
+              "number",
+              "null"
+            ],
+            "format": "double",
+            "description": "Stereo position, `-1` (left) to `1` (right)."
           },
           "transform": {
             "type": [
@@ -319,16 +623,165 @@ expression: "json!({\n    \"meta\": serde_json::to_value(meta).unwrap(), \"input
               }
             },
             "description": "Placement on the canvas (partial)."
+          },
+          "crop": {
+            "type": [
+              "object",
+              "null"
+            ],
+            "additionalProperties": false,
+            "properties": {
+              "left": {
+                "type": [
+                  "number",
+                  "null"
+                ],
+                "format": "double",
+                "description": "Fraction removed from the left edge."
+              },
+              "top": {
+                "type": [
+                  "number",
+                  "null"
+                ],
+                "format": "double",
+                "description": "Fraction removed from the top edge."
+              },
+              "right": {
+                "type": [
+                  "number",
+                  "null"
+                ],
+                "format": "double",
+                "description": "Fraction removed from the right edge."
+              },
+              "bottom": {
+                "type": [
+                  "number",
+                  "null"
+                ],
+                "format": "double",
+                "description": "Fraction removed from the bottom edge."
+              }
+            },
+            "description": "Edges of the source picture cut away (partial)."
+          },
+          "flip": {
+            "type": [
+              "object",
+              "null"
+            ],
+            "additionalProperties": false,
+            "properties": {
+              "horizontal": {
+                "type": [
+                  "boolean",
+                  "null"
+                ],
+                "description": "Mirror left-right."
+              },
+              "vertical": {
+                "type": [
+                  "boolean",
+                  "null"
+                ],
+                "description": "Mirror top-bottom."
+              }
+            },
+            "description": "Mirroring (partial)."
+          },
+          "blend_mode": {
+            "anyOf": [
+              {
+                "oneOf": [
+                  {
+                    "type": "string",
+                    "const": "normal",
+                    "description": "The picture covers what is below, by its opacity."
+                  },
+                  {
+                    "type": "string",
+                    "const": "multiply",
+                    "description": "Darkens: the product of both."
+                  },
+                  {
+                    "type": "string",
+                    "const": "screen",
+                    "description": "Lightens: the inverse of the product of the inverses."
+                  },
+                  {
+                    "type": "string",
+                    "const": "overlay",
+                    "description": "Multiply in the shadows, screen in the highlights, by what is below."
+                  },
+                  {
+                    "type": "string",
+                    "const": "darken",
+                    "description": "The darker of both, per channel."
+                  },
+                  {
+                    "type": "string",
+                    "const": "lighten",
+                    "description": "The lighter of both, per channel."
+                  },
+                  {
+                    "type": "string",
+                    "const": "add",
+                    "description": "The sum of both, clipped."
+                  },
+                  {
+                    "type": "string",
+                    "const": "soft_light",
+                    "description": "A gentle overlay."
+                  }
+                ],
+                "description": "How an item's picture combines with what is below it (arch §8's core set). Not animatable."
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "How the item combines with what is below: `normal`, `multiply`, `screen`, `overlay`,\n`darken`, `lighten`, `add` or `soft_light`."
           }
         },
         "description": "The properties to change; at least one."
+      },
+      "auto_key": {
+        "type": [
+          "boolean",
+          "null"
+        ],
+        "description": "Key animated properties at `at` (default `true`; `false` makes an animated property\n`Invalid`).",
+        "default": null
+      },
+      "at": {
+        "anyOf": [
+          {
+            "description": "A time: integer flicks (1/705600000 s), or a string: seconds (\"62.5s\"), a frame (\"f:1500\") or a timecode (\"00:01:02:03\", drop-frame \"00:01:02;03\"). Frames and timecodes use the frame rate of the target's sequence.",
+            "anyOf": [
+              {
+                "type": "integer",
+                "minimum": -9007199254740991,
+                "maximum": 9007199254740991
+              },
+              {
+                "type": "string",
+                "pattern": "^-?[0-9]+(\\.[0-9]+)?s$|^-?[0-9]+$|^f:[0-9]+$|^[0-9]+[:;][0-9]+[:;][0-9]+[:;][0-9]+$"
+              }
+            ]
+          },
+          {
+            "type": "null"
+          }
+        ],
+        "description": "The sequence time (the playhead) to key animated properties at.",
+        "default": null
       }
     },
     "required": [
-      "item",
       "props"
     ],
-    "description": "Changes an item's name, enabled flag, opacity, clip gain or transform; absent fields keep\ntheir value and setting a value it already has is a no-op. `Locked` if the item's track is\nlocked.",
+    "description": "Changes an item's name, enabled flag, opacity, clip gain and pan, transform, crop, flip or\nblend mode; absent fields keep their value and setting a value it already has is a no-op.\nA property that is keyed (animated) gets a key at `at` (a sequence time inside the item,\nsnapped to a frame) with the value, as `keyframe.set` would; without `at`, or with\n`auto_key: false`, that is `Invalid` (`keyframe.clear` makes the property static first).\nStatic properties are set as before and `at` is ignored. `Locked` if the item's track is\nlocked.",
     "title": "ItemSetProps"
   },
   "output": {
@@ -338,19 +791,124 @@ expression: "json!({\n    \"meta\": serde_json::to_value(meta).unwrap(), \"input
       "item": {
         "type": "string",
         "pattern": "^itm_[0-9a-f]{32}$",
-        "description": "The item."
+        "description": "The item (the first of `items`)."
       },
       "changed": {
         "type": "array",
         "items": {
           "type": "string"
         },
-        "description": "The props whose value actually changed (`name`, `enabled`, `opacity`, `audio_gain`,\n`transform.position`, ...); empty if everything was already as requested."
+        "description": "The props whose value actually changed on any item (`name`, `enabled`, `opacity`,\n`audio_gain`, `transform.position`, ...); empty if everything was already as requested."
+      },
+      "keyed": {
+        "type": "array",
+        "items": {
+          "description": "A key `item.set_props` wrote on an animated property.",
+          "type": "object",
+          "properties": {
+            "item": {
+              "description": "The item.",
+              "type": "string",
+              "pattern": "^itm_[0-9a-f]{32}$"
+            },
+            "prop": {
+              "description": "The property.",
+              "oneOf": [
+                {
+                  "description": "`visual.transform.position`: offset of the anchor from the canvas centre, canvas units.",
+                  "type": "string",
+                  "const": "transform.position"
+                },
+                {
+                  "description": "`visual.transform.scale`: multiplier of the aspect-fit size, per axis.",
+                  "type": "string",
+                  "const": "transform.scale"
+                },
+                {
+                  "description": "`visual.transform.rotation`: degrees, clockwise, accumulating.",
+                  "type": "string",
+                  "const": "transform.rotation"
+                },
+                {
+                  "description": "`visual.transform.anchor`: a point of the item in item units.",
+                  "type": "string",
+                  "const": "transform.anchor"
+                },
+                {
+                  "description": "`visual.opacity`: 0 transparent to 1 opaque.",
+                  "type": "string",
+                  "const": "opacity"
+                },
+                {
+                  "description": "`visual.crop.left`: fraction of the upright source removed from the left edge.",
+                  "type": "string",
+                  "const": "crop.left"
+                },
+                {
+                  "description": "`visual.crop.top`: fraction removed from the top edge.",
+                  "type": "string",
+                  "const": "crop.top"
+                },
+                {
+                  "description": "`visual.crop.right`: fraction removed from the right edge.",
+                  "type": "string",
+                  "const": "crop.right"
+                },
+                {
+                  "description": "`visual.crop.bottom`: fraction removed from the bottom edge.",
+                  "type": "string",
+                  "const": "crop.bottom"
+                },
+                {
+                  "description": "`visual.flip.horizontal`: mirror left-right (hold only).",
+                  "type": "string",
+                  "const": "flip.horizontal"
+                },
+                {
+                  "description": "`visual.flip.vertical`: mirror top-bottom (hold only).",
+                  "type": "string",
+                  "const": "flip.vertical"
+                },
+                {
+                  "description": "`audio.gain`: clip level in dB, interpolated in dB (UI label \"Volume\").",
+                  "type": "string",
+                  "const": "audio_gain"
+                },
+                {
+                  "description": "`audio.pan`: −1 left to 1 right, 0 centre.",
+                  "type": "string",
+                  "const": "audio_pan"
+                }
+              ]
+            },
+            "t": {
+              "description": "Item time of the key, after snapping.",
+              "type": "integer",
+              "minimum": -9007199254740991,
+              "maximum": 9007199254740991
+            },
+            "at": {
+              "description": "Sequence time of the key, after snapping.",
+              "type": "integer",
+              "minimum": -9007199254740991,
+              "maximum": 9007199254740991
+            }
+          },
+          "additionalProperties": false,
+          "required": [
+            "item",
+            "prop",
+            "t",
+            "at"
+          ]
+        },
+        "description": "The keys written on animated properties."
       }
     },
     "required": [
       "item",
-      "changed"
+      "changed",
+      "keyed"
     ],
     "description": "Result of `item.set_props`.",
     "title": "ItemSetPropsOutput"
