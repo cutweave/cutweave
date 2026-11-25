@@ -46,7 +46,7 @@ Report **briefly**: branch; a one-line-per-criterion checklist; deviations; note
 ## Choosing
 - **Model:** `sonnet` by default. Use `opus` for `exec:opus` WPs and for design-heavy, concurrency, GPU or tricky-integration work.
 - **Settings:** always `isolation: "worktree"` and `run_in_background: true`.
-- **Capacity:** at most **3 build agents at once** (the machine's CPU and GPU limits). Docs-only research agents don't count.
+- **Capacity:** at most **3 GPU-heavy build agents at once**: work whose own testing is mostly app flows, rendering, media or the GPU. The owner allows more for unblocked work that is mostly CPU-only (model/ops logic, data, docs, pure TS), since its GPU steps queue on the lock anyway. Docs-only research agents don't count.
 - **Base:** state the exact sha. If the work depends on an unmerged branch, cut from that branch and say so.
 
 ## Resuming and redirecting
