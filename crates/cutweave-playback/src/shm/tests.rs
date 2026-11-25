@@ -655,6 +655,7 @@ fn stress_reader(
     announce: &Mutex<RingAnnouncement>,
     stop: &AtomicBool,
     attached: &AtomicU64,
+    seen: &AtomicU64,
     expect_layout: bool,
 ) -> ReaderStats {
     // "Ask the engine" for its current ring; it may be mid-move, so retry briefly.
@@ -685,6 +686,7 @@ fn stress_reader(
                 assert!(m.seq > last, "seq went backwards: {} after {last}", m.seq);
                 last = m.seq;
                 stats.frames += 1;
+                seen.fetch_add(1, Ordering::Relaxed);
             }
             Ok(None) | Err(ReadError::Empty | ReadError::Busy) => {}
             Err(e) => panic!("{e:?}"),
@@ -777,14 +779,18 @@ fn stress_publish_while_read_small_frames_with_resizes_and_moves() {
         Arc::clone(&clock_ok),
     ));
     let attached = Arc::new(AtomicU64::new(0));
-    let readers: Vec<_> = (0..3)
-        .map(|_| {
-            let (announce, stop, attached) = (
+    // Frames read by the slowest reader, so the run can wait for progress on a loaded machine.
+    let seen: Vec<Arc<AtomicU64>> = (0..3).map(|_| Arc::new(AtomicU64::new(0))).collect();
+    let readers: Vec<_> = seen
+        .iter()
+        .map(|seen| {
+            let (announce, stop, attached, seen) = (
                 Arc::clone(&announce),
                 Arc::clone(&stop),
                 Arc::clone(&attached),
+                Arc::clone(seen),
             );
-            std::thread::spawn(move || stress_reader(&announce, &stop, &attached, true))
+            std::thread::spawn(move || stress_reader(&announce, &stop, &attached, &seen, true))
         })
         .collect();
     // Every reader is attached to the first ring before anything moves.
@@ -796,7 +802,17 @@ fn stress_publish_while_read_small_frames_with_resizes_and_moves() {
     let (mut moves, mut configs) = (0u32, 0u32);
     let mut phase = p.preview().0;
     let start = Instant::now();
-    while start.elapsed() < run {
+    // The run lasts at least `run`, then continues until the progress the assertions below need
+    // has been made (a loaded machine publishes and reads fewer frames per second, which is not
+    // a regression); a generous deadline still catches a stuck reader or writer.
+    let deadline = start + StdDuration::from_secs(60);
+    let made_progress = |clock_ok: &AtomicU64| {
+        seen.iter().all(|s| s.load(Ordering::Relaxed) > 100)
+            && clock_ok.load(Ordering::Relaxed) > 1000
+    };
+    while Instant::now() < deadline
+        && (start.elapsed() < run || moves < 2 || !made_progress(&clock_ok))
+    {
         let seq = p.write_index() + 1;
         let want = stress_phase(seq);
         if want != phase {
@@ -866,7 +882,8 @@ fn stress_1080p(run: StdDuration) -> (u64, Vec<f64>, Vec<ReaderStats>) {
                 Arc::clone(&stop),
                 Arc::clone(&attached),
             );
-            std::thread::spawn(move || stress_reader(&announce, &stop, &attached, false))
+            let seen = Arc::new(AtomicU64::new(0));
+            std::thread::spawn(move || stress_reader(&announce, &stop, &attached, &seen, false))
         })
         .collect();
     let mut src = vec![0u8; l.len()];
