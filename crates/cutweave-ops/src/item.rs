@@ -201,19 +201,43 @@ pub struct TransformPatch {
 pub struct CropPatch {
     /// Fraction removed from the left edge.
     #[schemars(range(min = 0.0, max = 1.0))]
-    #[ui(widget = "number", unit = "%", scale = 100.0, step = 0.01, keyframeable = true)]
+    #[ui(
+        widget = "number",
+        unit = "%",
+        scale = 100.0,
+        step = 0.01,
+        keyframeable = true
+    )]
     pub left: Option<f64>,
     /// Fraction removed from the top edge.
     #[schemars(range(min = 0.0, max = 1.0))]
-    #[ui(widget = "number", unit = "%", scale = 100.0, step = 0.01, keyframeable = true)]
+    #[ui(
+        widget = "number",
+        unit = "%",
+        scale = 100.0,
+        step = 0.01,
+        keyframeable = true
+    )]
     pub top: Option<f64>,
     /// Fraction removed from the right edge.
     #[schemars(range(min = 0.0, max = 1.0))]
-    #[ui(widget = "number", unit = "%", scale = 100.0, step = 0.01, keyframeable = true)]
+    #[ui(
+        widget = "number",
+        unit = "%",
+        scale = 100.0,
+        step = 0.01,
+        keyframeable = true
+    )]
     pub right: Option<f64>,
     /// Fraction removed from the bottom edge.
     #[schemars(range(min = 0.0, max = 1.0))]
-    #[ui(widget = "number", unit = "%", scale = 100.0, step = 0.01, keyframeable = true)]
+    #[ui(
+        widget = "number",
+        unit = "%",
+        scale = 100.0,
+        step = 0.01,
+        keyframeable = true
+    )]
     pub bottom: Option<f64>,
 }
 
@@ -251,7 +275,14 @@ pub struct ItemProps {
     pub opacity: Option<f64>,
     /// Clip gain in dB, `-144..=48` (0 = unchanged).
     #[schemars(range(min = -144.0, max = 48.0))]
-    #[ui(unit = "dB", step = 0.5, precision = 1, keyframeable = true, group = "audio", order = 0)]
+    #[ui(
+        unit = "dB",
+        step = 0.5,
+        precision = 1,
+        keyframeable = true,
+        group = "audio",
+        order = 0
+    )]
     pub audio_gain: Option<f64>,
     /// Stereo position, `-1` (left) to `1` (right).
     #[schemars(range(min = -1.0, max = 1.0))]
