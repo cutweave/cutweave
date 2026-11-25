@@ -247,7 +247,7 @@ fn enqueue_waits_while_paused_start_resumes_and_a_cancel_lets_the_next_one_run()
         job(&conn, "job.status", json!({ "id": a })).state,
         JobState::Queued
     );
-    assert!(fake.encodes().is_empty(), "nothing runs while paused");
+    assert_eq!(fake.encodes().len(), 0, "nothing runs while paused");
     // export.start adds and resumes; the first one goes first.
     let b = must(&conn, "export.start", small(&dir.file("b-out.mp4")))["job_id"].clone();
     let half = wait_until(&conn, &a, WAIT, |j| j.progress.fraction >= 0.3);
@@ -324,7 +324,7 @@ fn the_queue_survives_a_restart_and_a_running_export_starts_again() {
         e.shutdown();
     }
     assert!(folder.join(".cutweave").join("exports.sqlite").is_file());
-    assert!(fake.encodes().is_empty());
+    assert_eq!(fake.encodes().len(), 0);
     gate.open();
     let e = engine_on(
         dir.path(),
