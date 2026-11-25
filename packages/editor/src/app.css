@@ -649,6 +649,30 @@ body {
   position: absolute;
   inset: 0;
 }
+/* The track-name input laid over a header's name (issue 149). */
+.cw-timeline__rename {
+  position: absolute;
+  z-index: var(--z-overlay);
+  display: flex;
+  align-items: center;
+  box-sizing: border-box;
+}
+.cw-timeline__rename-field {
+  width: 100%;
+  min-width: 0;
+}
+.cw-timeline__rename-reason {
+  position: absolute;
+  top: 100%;
+  left: 0;
+  width: max-content;
+  max-width: calc(var(--space-12) * 4);
+  padding: var(--space-1) var(--space-2);
+  color: var(--text-primary);
+  background: var(--surface-3);
+  border-radius: var(--radius-sm);
+  box-shadow: var(--shadow-popover);
+}
 .cw-timeline__lanes {
   display: flex;
   flex-direction: column;

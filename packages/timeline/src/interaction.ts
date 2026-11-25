@@ -308,6 +308,8 @@ export type Intent =
   | { readonly kind: "seek"; readonly at: number }
   /** Scroll the view (panning). */
   | { readonly kind: "scroll"; readonly scrollX: number; readonly scrollY: number }
+  /** F2: rename the selected track (the host knows which, and owns the input). */
+  | { readonly kind: "rename-track" }
   /** Snapping was switched on or off. */
   | { readonly kind: "set-snapping"; readonly on: boolean };
 
@@ -822,7 +824,7 @@ function aborted(state: InteractionState): Transition {
 }
 
 /** What a key does in the timeline panel. */
-export type TimelineKeyAction = "cancel" | "split" | "delete" | "toggle-snapping";
+export type TimelineKeyAction = "cancel" | "split" | "delete" | "toggle-snapping" | "rename-track";
 
 /**
  * The timeline's own keys, as one table: `onKey` below reads it, and the editor's list of
@@ -837,6 +839,7 @@ export const TIMELINE_KEYS: readonly {
   { action: "split", keys: ["s"] },
   { action: "delete", keys: ["Delete", "Backspace"] },
   { action: "toggle-snapping", keys: ["n"] },
+  { action: "rename-track", keys: ["F2"] },
 ];
 
 /** The action a key press names in {@link TIMELINE_KEYS}, or `null`. */
@@ -856,6 +859,8 @@ function onKey(state: InteractionState, e: KeyInput): Transition {
       return remove(state);
     case "toggle-snapping":
       return toggleSnapping(state);
+    case "rename-track":
+      return isBusy(state) ? same(state) : to(state, state.mode, [{ kind: "rename-track" }]);
     default:
       return same(state);
   }

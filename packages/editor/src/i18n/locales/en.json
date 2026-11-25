@@ -443,7 +443,9 @@
       "delete": "Delete",
       "deleteHelp": "Timeline. Removes the selected clips.",
       "snapping": "Turn snapping on or off",
-      "snappingHelp": "Timeline. Makes clips and the playhead stick to edges, or not."
+      "snappingHelp": "Timeline. Makes clips and the playhead stick to edges, or not.",
+      "renameTrack": "Rename the track",
+      "renameTrackHelp": "Timeline. Edits the name of the selected track in its header. Double-click the name does the same."
     },
     "bin": {
       "move": "Move between clips",
@@ -922,7 +924,12 @@
       "trim": "Clip not trimmed",
       "split": "Clip not split",
       "delete": "Clip not deleted",
-      "insert": "Clip not added"
+      "insert": "Clip not added",
+      "rename": "Track not renamed"
+    },
+    "rename": {
+      "label": "Track name",
+      "empty": "A track needs a name. It stays {{name}}."
     },
     "reason": {
       "overlap": "It would overlap another clip on that track. Drop it on a free spot.",

@@ -40,6 +40,21 @@ export function toggleRect(
   };
 }
 
+/**
+ * Rect of the track name in a header: right of the kind icon, left of the first toggle, the full
+ * lane tall. The renderer draws the name here and hit-testing opens the rename input from it.
+ */
+export function nameRect(
+  vp: Viewport,
+  theme: Pick<Theme, "controlSm" | "iconSm" | "space1" | "space2">,
+  laneTop: number,
+  laneHeight: number,
+): Rect {
+  const x = theme.space2 + theme.iconSm + theme.space2;
+  const firstToggle = toggleRect(vp, theme, laneTop, laneHeight, 0);
+  return { x, y: laneTop, w: Math.max(0, firstToggle.x - theme.space2 - x), h: laneHeight };
+}
+
 /** Vertical center of the keyframe row of a clip whose top is `clipTop` and height `clipH`. */
 export function keyframeRowY(
   theme: Pick<Theme, "space1" | "space1_5">,

@@ -5,6 +5,7 @@
 // user-driven view changes (wheel zoom, scroll) to its host. Interactions (select, move, trim,
 // snap) are the state machine of `interaction.ts` (WP-1M.06), fed from `onPointer`.
 import { MediaCaches, type MediaLoaders } from "./cache.ts";
+import { nameRect } from "./geometry.ts";
 import { type HitResult, hitTest } from "./hit-test.ts";
 import { TimelineLayout } from "./layout.ts";
 import {
@@ -214,6 +215,14 @@ export class TimelineView {
       x,
       y,
     );
+  }
+
+  /** Canvas-space rect of a track's name in its header (the rename input goes here), or null. */
+  trackNameRect(trackId: string): Rect | null {
+    const ti = this.layout.model.tracks.findIndex((t) => t.id === trackId);
+    if (ti < 0) return null;
+    const laneTop = this.vp.rulerHeight + (this.layout.trackTop[ti] ?? 0) - this.vp.scrollY;
+    return nameRect(this.vp, this.theme, laneTop, this.layout.trackHeight[ti] ?? 0);
   }
 
   /** Canvas-space bounding box of an item, or null when unknown. */
@@ -612,6 +621,8 @@ function cursorFor(hit: HitResult): string {
     case "header-toggle":
     case "keyframe":
       return "pointer";
+    case "header-name":
+      return "text";
     default:
       return "default";
   }

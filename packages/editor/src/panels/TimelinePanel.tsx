@@ -8,6 +8,7 @@ import { useMediaLoaders } from "../media/mediaWiring.ts";
 import { useDocStore } from "../state/docStore.ts";
 import { selectTimelineModel } from "../state/selectors.ts";
 import { useViewStore, viewStore } from "../state/viewStore.ts";
+import { TrackRenameInput } from "../timeline/TrackRenameInput.tsx";
 import { type TimelineIntents, useTimelineIntents } from "../timeline/useTimelineIntents.ts";
 import { transportController } from "../transport/useTransport.ts";
 
@@ -52,17 +53,20 @@ function EngineTimeline({ intents }: { readonly intents: TimelineIntents }) {
     store.setScroll(v.scrollX, v.scrollY);
   }, []);
   return (
-    <TimelineCanvas
-      className="cw-timeline__canvas"
-      aria-label={t("timeline.canvasLabel")}
-      model={model}
-      viewState={viewState}
-      loaders={loaders}
-      pan="host"
-      onPointer={intents.onPointer}
-      onView={intents.onView}
-      onViewChange={onViewChange}
-    />
+    <>
+      <TimelineCanvas
+        className="cw-timeline__canvas"
+        aria-label={t("timeline.canvasLabel")}
+        model={model}
+        viewState={viewState}
+        loaders={loaders}
+        pan="host"
+        onPointer={intents.onPointer}
+        onView={intents.onView}
+        onViewChange={onViewChange}
+      />
+      <TrackRenameInput controller={intents.controller} />
+    </>
   );
 }
 

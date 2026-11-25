@@ -18,6 +18,7 @@ import {
   LABEL_MIN_PX,
   labelBand,
   MAX_LABELS,
+  nameRect,
   showsKeyframes,
   TILE_ASPECT,
   toggleRect,
@@ -717,9 +718,9 @@ export class TimelineRenderer {
         th.clip[track.kind].strong,
       );
 
-      const firstToggle = toggleRect(vp, th, laneTop, laneH, 0);
-      const nameX = th.space2 + th.iconSm + th.space2;
-      const text = this.fit(track.name, firstToggle.x - th.space2 - nameX, this.charLabel);
+      const nameBox = nameRect(vp, th, laneTop, laneH);
+      const nameX = nameBox.x;
+      const text = this.fit(track.name, nameBox.w, this.charLabel);
       ctx.font = th.fontLabel;
       ctx.fillStyle = th.textPrimary;
       if (text !== "") ctx.fillText(text, nameX, cy);
