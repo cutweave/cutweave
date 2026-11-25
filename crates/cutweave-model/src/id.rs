@@ -43,6 +43,8 @@ pub enum EntityKind {
     Item,
     /// A linked group of items that edit together (`grp_`).
     Group,
+    /// A timeline or item marker (`mrk_`).
+    Marker,
 }
 
 impl EntityKind {
@@ -55,6 +57,7 @@ impl EntityKind {
             EntityKind::Track => "trk",
             EntityKind::Item => "itm",
             EntityKind::Group => "grp",
+            EntityKind::Marker => "mrk",
         }
     }
 
@@ -67,6 +70,7 @@ impl EntityKind {
             EntityKind::Track => "track",
             EntityKind::Item => "item",
             EntityKind::Group => "group",
+            EntityKind::Marker => "marker",
         }
     }
 }
@@ -92,7 +96,7 @@ mod sealed {
 }
 
 /// Implemented by every typed ID ([`MediaId`], [`SequenceId`], [`TrackId`], [`ItemId`],
-/// [`GroupId`]). Sealed: the set of ID kinds is part of the project format.
+/// [`GroupId`], [`MarkerId`]). Sealed: the set of ID kinds is part of the project format.
 pub trait EntityId:
     Copy
     + Eq
@@ -266,6 +270,12 @@ entity_id!(
     Group,
     "^grp_[0-9a-f]{32}$"
 );
+entity_id!(
+    /// The ID of a marker on a sequence or an item: `mrk_…`.
+    MarkerId,
+    Marker,
+    "^mrk_[0-9a-f]{32}$"
+);
 
 /// A source of fresh 128-bit UUIDv7(-shaped) values for new IDs.
 ///
@@ -434,6 +444,7 @@ mod tests {
             EntityKind::Track,
             EntityKind::Item,
             EntityKind::Group,
+            EntityKind::Marker,
         ];
         let prefixes: std::collections::BTreeSet<_> = kinds.iter().map(|k| k.prefix()).collect();
         assert_eq!(prefixes.len(), kinds.len());

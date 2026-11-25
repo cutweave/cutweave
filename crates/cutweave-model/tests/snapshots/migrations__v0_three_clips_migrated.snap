@@ -144,7 +144,7 @@ expression: canonical_json_pretty(&migrated)
     "app_version": "0.1.0",
     "created": "2026-11-22T09:30:00Z",
     "name": "Three clips",
-    "schema_version": 1
+    "schema_version": 2
   },
   "sequences": {
     "seq_000000000004771ba4a23020bc56afc3": {
@@ -161,6 +161,8 @@ expression: canonical_json_pretty(&migrated)
         "width": 1920
       },
       "id": "seq_000000000004771ba4a23020bc56afc3",
+      "in_out": null,
+      "markers": {},
       "name": "Main",
       "track_order": [
         "trk_0000000000057d3189891744bd0efe34",
@@ -170,10 +172,12 @@ expression: canonical_json_pretty(&migrated)
         "trk_0000000000057d3189891744bd0efe34": {
           "custom": {},
           "gain": 0.0,
+          "height": null,
           "hidden": false,
           "id": "trk_0000000000057d3189891744bd0efe34",
           "items": {
             "itm_0000000000077405950ad8d9f69f2c6f": {
+              "attached_to": null,
               "audio": {
                 "gain": 0.0
               },
@@ -183,6 +187,7 @@ expression: canonical_json_pretty(&migrated)
               "id": "itm_0000000000077405950ad8d9f69f2c6f",
               "kind": "clip",
               "linked_group": null,
+              "markers": {},
               "media": "med_0000000000017e999cdbc20a2319b9cb",
               "name": null,
               "source_in": 0,
@@ -207,6 +212,7 @@ expression: canonical_json_pretty(&migrated)
               }
             },
             "itm_00000000000874918ac913f3f46b919e": {
+              "attached_to": null,
               "audio": {
                 "gain": 0.0
               },
@@ -216,6 +222,7 @@ expression: canonical_json_pretty(&migrated)
               "id": "itm_00000000000874918ac913f3f46b919e",
               "kind": "clip",
               "linked_group": null,
+              "markers": {},
               "media": "med_0000000000027f8989dde9c8c6ffc150",
               "name": null,
               "source_in": 705600000,
@@ -250,10 +257,12 @@ expression: canonical_json_pretty(&migrated)
         "trk_0000000000067e09902721405ac105a0": {
           "custom": {},
           "gain": 0.0,
+          "height": null,
           "hidden": false,
           "id": "trk_0000000000067e09902721405ac105a0",
           "items": {
             "itm_0000000000097031b0cbdfaef85bafd1": {
+              "attached_to": null,
               "audio": {
                 "gain": -6.0
               },
@@ -263,6 +272,7 @@ expression: canonical_json_pretty(&migrated)
               "id": "itm_0000000000097031b0cbdfaef85bafd1",
               "kind": "clip",
               "linked_group": null,
+              "markers": {},
               "media": "med_00000000000376d1902a7aa83bfaaa17",
               "name": null,
               "source_in": 0,

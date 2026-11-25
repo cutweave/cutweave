@@ -183,6 +183,8 @@
               "duration": 1411200000,
               "enabled": true,
               "linked_group": null,
+              "attached_to": null,
+              "markers": {},
               "media": "med_0000000000017e999cdbc20a2319b9cb",
               "source_in": 0,
               "audio": {
@@ -220,6 +222,8 @@
               "duration": 2116800000,
               "enabled": true,
               "linked_group": null,
+              "attached_to": null,
+              "markers": {},
               "media": "med_0000000000027f8989dde9c8c6ffc150",
               "source_in": 705600000,
               "audio": {
@@ -255,6 +259,7 @@
           "locked": false,
           "solo": false,
           "magnetic": false,
+          "height": null,
           "gain": 0.0,
           "custom": {}
         },
@@ -271,6 +276,8 @@
               "duration": 3528000000,
               "enabled": true,
               "linked_group": null,
+              "attached_to": null,
+              "markers": {},
               "media": "med_00000000000376d1902a7aa83bfaaa17",
               "source_in": 0,
               "audio": {
@@ -306,6 +313,7 @@
           "locked": false,
           "solo": false,
           "magnetic": false,
+          "height": null,
           "gain": 0.0,
           "custom": {}
         }
@@ -314,8 +322,10 @@
         "trk_0000000000057d3189891744bd0efe34",
         "trk_0000000000067e09902721405ac105a0"
       ],
+      "markers": {},
+      "in_out": null,
       "custom": {},
-      "markers": [
+      "x_chapters": [
         {
           "at": 0,
           "label": "Start"

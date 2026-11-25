@@ -9,8 +9,8 @@ use schemars::{JsonSchema, Schema, SchemaGenerator, json_schema};
 use serde::{Deserialize, Deserializer, Serialize, Serializer, de};
 
 use crate::{
-    Custom, Duration, Extra, FrameRate, Item, ItemId, MediaKind, SampleRate, SequenceId, Time,
-    TrackId,
+    Custom, Duration, Extra, FrameRate, InOut, Item, ItemId, MarkerId, Markers, MediaKind,
+    SampleRate, SequenceId, Time, TrackId,
 };
 
 /// The working color space of a sequence. Schema v1 has only Rec.709 SDR.
@@ -458,8 +458,12 @@ pub struct Track {
     pub locked: bool,
     /// Solo (audio): when any track is solo, only solo tracks are heard.
     pub solo: bool,
-    /// Magnetic main track: ripple-by-default editing (arch §4.3; behaviour in P2).
+    /// The magnetic main track: ripple-by-default editing, gap-free from 0 (timeline spec
+    /// §1.2). At most one video track per sequence has it (`Project::validate`).
     pub magnetic: bool,
+    /// Row height in the timeline, in pixels: a persisted UI hint (`None` = the default).
+    /// Changing it never touches items.
+    pub height: Option<u32>,
     /// Track gain in decibels (0.0 = unchanged).
     #[specta(type = specta_typescript::Number)]
     pub gain: f64,
@@ -485,6 +489,7 @@ impl Track {
             locked: false,
             solo: false,
             magnetic: false,
+            height: None,
             gain: 0.0,
             custom: Custom::new(),
             extra: Extra::new(),
@@ -511,6 +516,12 @@ pub struct Sequence {
     #[schemars(with = "Vec<TrackId>")]
     #[specta(type = Vec<TrackId>)]
     pub track_order: Vector<TrackId>,
+    /// Markers in sequence time, keyed by ID. They never move with a ripple (spec INV-34).
+    #[schemars(with = "BTreeMap<MarkerId, crate::Marker>")]
+    #[specta(type = BTreeMap<MarkerId, crate::Marker>)]
+    pub markers: Markers,
+    /// The in and out points; both ends or neither.
+    pub in_out: Option<InOut>,
     /// Plugin data (arch §4.3).
     pub custom: Custom,
     /// Fields unknown to this version.
@@ -529,6 +540,8 @@ impl Sequence {
             format,
             tracks: OrdMap::new(),
             track_order: Vector::new(),
+            markers: Markers::new(),
+            in_out: None,
             custom: Custom::new(),
             extra: Extra::new(),
         }

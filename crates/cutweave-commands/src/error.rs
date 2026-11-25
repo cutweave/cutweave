@@ -76,6 +76,8 @@ pub enum ResourceKind {
     Item,
     /// A linked group (`grp_…`).
     Group,
+    /// A marker (`mrk_…`).
+    Marker,
     /// A registry entry: an unknown command or query name.
     Command,
     /// An open transaction (WP-1B.04).
@@ -96,6 +98,7 @@ impl ResourceKind {
             ResourceKind::Track => "track",
             ResourceKind::Item => "item",
             ResourceKind::Group => "group",
+            ResourceKind::Marker => "marker",
             ResourceKind::Command => "command",
             ResourceKind::Transaction => "transaction",
             ResourceKind::Checkpoint => "checkpoint",
@@ -112,6 +115,7 @@ impl From<EntityKind> for ResourceKind {
             EntityKind::Track => ResourceKind::Track,
             EntityKind::Item => ResourceKind::Item,
             EntityKind::Group => ResourceKind::Group,
+            EntityKind::Marker => ResourceKind::Marker,
         }
     }
 }

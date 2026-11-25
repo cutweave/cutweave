@@ -1,0 +1,566 @@
+{
+  "meta": {
+    "schema_version": 2,
+    "name": "Café ☕ — 日本語 \"quotes\"",
+    "created": "2026-11-22T09:30:00Z",
+    "app_version": "0.1.0"
+  },
+  "settings": {
+    "default_format": {
+      "width": 3840,
+      "height": 2160,
+      "frame_rate": {
+        "num": 24000,
+        "den": 1001
+      },
+      "sample_rate": 96000,
+      "color_space": "rec709",
+      "background": "#000000"
+    }
+  },
+  "media": {
+    "med_0000000000017bfc91f4e4cb54a6dfef": {
+      "id": "med_0000000000017bfc91f4e4cb54a6dfef",
+      "kind": "video",
+      "path_abs": "C:\\Users\\Ana\\Vídeos\\phone.mov",
+      "path_rel": null,
+      "content_hash": null,
+      "sequence": null,
+      "probe": {
+        "streams": [
+          {
+            "index": 0,
+            "kind": "video",
+            "codec": "h264",
+            "profile": "High",
+            "width": 1920,
+            "height": 1080,
+            "pixel_format": "yuv420p",
+            "sample_rate": null,
+            "channels": null,
+            "language": null
+          },
+          {
+            "index": 1,
+            "kind": "audio",
+            "codec": "aac",
+            "profile": "LC",
+            "width": null,
+            "height": null,
+            "pixel_format": null,
+            "sample_rate": 48000,
+            "channels": 2,
+            "language": "eng"
+          }
+        ],
+        "duration": 84672000000,
+        "fps": {
+          "num": 30000,
+          "den": 1001
+        },
+        "vfr": true,
+        "rotation": 90,
+        "color": {
+          "primaries": "bt2020",
+          "transfer": "arib-std-b67",
+          "matrix": "future-matrix",
+          "range": "full"
+        },
+        "audio": {
+          "rate": 48000,
+          "channels": 2
+        },
+        "x_future_probe": 1
+      },
+      "custom": {}
+    },
+    "med_0000000000027d0d864d96abce9059f8": {
+      "id": "med_0000000000027d0d864d96abce9059f8",
+      "kind": "image",
+      "path_abs": "/stills/logo.png",
+      "path_rel": null,
+      "content_hash": null,
+      "sequence": null,
+      "probe": {
+        "streams": [],
+        "duration": null,
+        "fps": null,
+        "vfr": false,
+        "rotation": 0,
+        "color": {
+          "primaries": null,
+          "transfer": null,
+          "matrix": null,
+          "range": null
+        },
+        "audio": null
+      },
+      "custom": {}
+    },
+    "med_00000000000371efa3e10f159aef3ea3": {
+      "id": "med_00000000000371efa3e10f159aef3ea3",
+      "kind": "audio",
+      "path_abs": "/audio/voice.flac",
+      "path_rel": null,
+      "content_hash": null,
+      "sequence": null,
+      "probe": {
+        "streams": [],
+        "duration": 21168000000,
+        "fps": null,
+        "vfr": false,
+        "rotation": 0,
+        "color": {
+          "primaries": null,
+          "transfer": null,
+          "matrix": null,
+          "range": null
+        },
+        "audio": {
+          "rate": 44100,
+          "channels": 2
+        }
+      },
+      "custom": {}
+    },
+    "med_00000000000771e28ce44861530185ff": {
+      "id": "med_00000000000771e28ce44861530185ff",
+      "kind": "sequence_ref",
+      "path_abs": null,
+      "path_rel": null,
+      "content_hash": null,
+      "sequence": "seq_00000000000474fc8043b37c774201dd",
+      "probe": {
+        "streams": [],
+        "duration": null,
+        "fps": null,
+        "vfr": false,
+        "rotation": 0,
+        "color": {
+          "primaries": null,
+          "transfer": null,
+          "matrix": null,
+          "range": null
+        },
+        "audio": null
+      },
+      "custom": {}
+    }
+  },
+  "sequences": {
+    "seq_00000000000474fc8043b37c774201dd": {
+      "id": "seq_00000000000474fc8043b37c774201dd",
+      "name": "Nested 9:16",
+      "format": {
+        "width": 1080,
+        "height": 1920,
+        "frame_rate": {
+          "num": 30000,
+          "den": 1001
+        },
+        "sample_rate": 48000,
+        "color_space": "rec709",
+        "background": "#000000"
+      },
+      "tracks": {
+        "trk_000000000005758b9c87a76cb6d55711": {
+          "id": "trk_000000000005758b9c87a76cb6d55711",
+          "kind": "video",
+          "name": "V1",
+          "items": {
+            "itm_0000000000067ea9a6d90a1145f541a8": {
+              "kind": "clip",
+              "id": "itm_0000000000067ea9a6d90a1145f541a8",
+              "name": null,
+              "start": 0,
+              "duration": 2801678880,
+              "enabled": true,
+              "linked_group": null,
+              "attached_to": null,
+              "markers": {},
+              "media": "med_0000000000027d0d864d96abce9059f8",
+              "source_in": 0,
+              "audio": {
+                "gain": 0.0
+              },
+              "visual": {
+                "transform": {
+                  "position": {
+                    "x": 0.0,
+                    "y": 0.0
+                  },
+                  "scale": {
+                    "x": 1.0,
+                    "y": 1.0
+                  },
+                  "rotation": 0.0,
+                  "anchor": {
+                    "x": 0.5,
+                    "y": 0.5
+                  }
+                },
+                "opacity": 1.0
+              },
+              "custom": {}
+            }
+          },
+          "muted": false,
+          "hidden": false,
+          "locked": false,
+          "solo": false,
+          "magnetic": false,
+          "height": null,
+          "gain": 0.0,
+          "custom": {}
+        }
+      },
+      "track_order": [
+        "trk_000000000005758b9c87a76cb6d55711"
+      ],
+      "markers": {},
+      "in_out": null,
+      "custom": {}
+    },
+    "seq_000000000008740198c79e172bc94a5f": {
+      "id": "seq_000000000008740198c79e172bc94a5f",
+      "name": "Main 59.94",
+      "format": {
+        "width": 1920,
+        "height": 1080,
+        "frame_rate": {
+          "num": 60000,
+          "den": 1001
+        },
+        "sample_rate": 44100,
+        "color_space": "rec709",
+        "background": "#12345680",
+        "x_future_format": "hdr10"
+      },
+      "tracks": {
+        "trk_0000000000097ba492c4e79106dc8a10": {
+          "id": "trk_0000000000097ba492c4e79106dc8a10",
+          "kind": "video",
+          "name": "Overlay ✨",
+          "items": {
+            "itm_00000000000a72b7b74bee59a3dc68b1": {
+              "kind": "clip",
+              "id": "itm_00000000000a72b7b74bee59a3dc68b1",
+              "name": "Logo",
+              "start": 117717600,
+              "duration": 11771760,
+              "enabled": false,
+              "linked_group": null,
+              "attached_to": null,
+              "markers": {},
+              "media": "med_0000000000027d0d864d96abce9059f8",
+              "source_in": 0,
+              "audio": {
+                "gain": 0.0
+              },
+              "visual": {
+                "transform": {
+                  "position": {
+                    "x": -0.25,
+                    "y": 0.375
+                  },
+                  "scale": {
+                    "x": 0.5,
+                    "y": 0.5
+                  },
+                  "rotation": -12.5,
+                  "anchor": {
+                    "x": 0.0,
+                    "y": 1.0
+                  }
+                },
+                "opacity": 0.0,
+                "x_blend_mode": "screen"
+              },
+              "custom": {}
+            },
+            "itm_00000000000b7f79b110c3cf0a043bdd": {
+              "kind": "clip",
+              "id": "itm_00000000000b7f79b110c3cf0a043bdd",
+              "name": null,
+              "start": 6096384000000000,
+              "duration": 11771760,
+              "enabled": true,
+              "linked_group": null,
+              "attached_to": null,
+              "markers": {},
+              "media": "med_0000000000027d0d864d96abce9059f8",
+              "source_in": 0,
+              "audio": {
+                "gain": 0.0
+              },
+              "visual": {
+                "transform": {
+                  "position": {
+                    "x": 0.0,
+                    "y": 0.0
+                  },
+                  "scale": {
+                    "x": 1.0,
+                    "y": 1.0
+                  },
+                  "rotation": 0.0,
+                  "anchor": {
+                    "x": 0.5,
+                    "y": 0.5
+                  }
+                },
+                "opacity": 1.0
+              },
+              "custom": {}
+            }
+          },
+          "muted": false,
+          "hidden": true,
+          "locked": true,
+          "solo": false,
+          "magnetic": false,
+          "height": null,
+          "gain": 0.0,
+          "custom": {}
+        },
+        "trk_00000000000c78e4a650c8107bd1adc1": {
+          "id": "trk_00000000000c78e4a650c8107bd1adc1",
+          "kind": "video",
+          "name": "Main",
+          "items": {
+            "itm_00000000000e70ea8794dae7323cfc8e": {
+              "kind": "clip",
+              "id": "itm_00000000000e70ea8794dae7323cfc8e",
+              "name": null,
+              "start": 0,
+              "duration": 3531528000,
+              "enabled": true,
+              "linked_group": "grp_00000000000d75fbaf858cbfec98688a",
+              "attached_to": null,
+              "markers": {},
+              "media": "med_0000000000017bfc91f4e4cb54a6dfef",
+              "source_in": 0,
+              "audio": {
+                "gain": 0.0
+              },
+              "visual": {
+                "transform": {
+                  "position": {
+                    "x": 0.0,
+                    "y": 0.0
+                  },
+                  "scale": {
+                    "x": 1.0,
+                    "y": 1.0
+                  },
+                  "rotation": 0.0,
+                  "anchor": {
+                    "x": 0.5,
+                    "y": 0.5
+                  }
+                },
+                "opacity": 1.0
+              },
+              "custom": {
+                "com.example.grade": {
+                  "lut": "teal-orange"
+                }
+              },
+              "x_future_clip": null
+            },
+            "itm_00000000000f752e90f3b05e635d699d": {
+              "kind": "clip",
+              "id": "itm_00000000000f752e90f3b05e635d699d",
+              "name": null,
+              "start": 3531528000,
+              "duration": 2825222400,
+              "enabled": true,
+              "linked_group": null,
+              "attached_to": null,
+              "markers": {},
+              "media": "med_00000000000771e28ce44861530185ff",
+              "source_in": 0,
+              "audio": {
+                "gain": 0.0
+              },
+              "visual": {
+                "transform": {
+                  "position": {
+                    "x": 0.0,
+                    "y": 0.0
+                  },
+                  "scale": {
+                    "x": 1.0,
+                    "y": 1.0
+                  },
+                  "rotation": 0.0,
+                  "anchor": {
+                    "x": 0.5,
+                    "y": 0.5
+                  }
+                },
+                "opacity": 1.0
+              },
+              "custom": {}
+            }
+          },
+          "muted": false,
+          "hidden": false,
+          "locked": false,
+          "solo": false,
+          "magnetic": true,
+          "height": null,
+          "gain": 0.0,
+          "custom": {}
+        },
+        "trk_0000000000107333a876c647445a4bdc": {
+          "id": "trk_0000000000107333a876c647445a4bdc",
+          "kind": "audio",
+          "name": "Dialog",
+          "items": {
+            "itm_00000000001175d3b9dc679577510035": {
+              "kind": "clip",
+              "id": "itm_00000000001175d3b9dc679577510035",
+              "name": null,
+              "start": 0,
+              "duration": 3531528000,
+              "enabled": true,
+              "linked_group": "grp_00000000000d75fbaf858cbfec98688a",
+              "attached_to": null,
+              "markers": {},
+              "media": "med_0000000000017bfc91f4e4cb54a6dfef",
+              "source_in": 0,
+              "audio": {
+                "gain": 4.25,
+                "x_pan": -0.5
+              },
+              "visual": {
+                "transform": {
+                  "position": {
+                    "x": 0.0,
+                    "y": 0.0
+                  },
+                  "scale": {
+                    "x": 1.0,
+                    "y": 1.0
+                  },
+                  "rotation": 0.0,
+                  "anchor": {
+                    "x": 0.5,
+                    "y": 0.5
+                  }
+                },
+                "opacity": 1.0
+              },
+              "custom": {}
+            },
+            "itm_00000000001279e1b1b826de7caebe93": {
+              "kind": "clip",
+              "id": "itm_00000000001279e1b1b826de7caebe93",
+              "name": null,
+              "start": 3531528000,
+              "duration": 7063056000,
+              "enabled": true,
+              "linked_group": null,
+              "attached_to": null,
+              "markers": {},
+              "media": "med_00000000000371efa3e10f159aef3ea3",
+              "source_in": 235200000,
+              "audio": {
+                "gain": 0.0
+              },
+              "visual": {
+                "transform": {
+                  "position": {
+                    "x": 0.0,
+                    "y": 0.0
+                  },
+                  "scale": {
+                    "x": 1.0,
+                    "y": 1.0
+                  },
+                  "rotation": 0.0,
+                  "anchor": {
+                    "x": 0.5,
+                    "y": 0.5
+                  }
+                },
+                "opacity": 1.0
+              },
+              "custom": {}
+            }
+          },
+          "muted": true,
+          "hidden": false,
+          "locked": false,
+          "solo": true,
+          "magnetic": false,
+          "height": null,
+          "gain": -3.5,
+          "custom": {},
+          "x_future_track": {
+            "bus": 2
+          }
+        },
+        "trk_0000000000137c84a665052dff4a453b": {
+          "id": "trk_0000000000137c84a665052dff4a453b",
+          "kind": "text",
+          "name": "Titles (v2)",
+          "items": {},
+          "muted": false,
+          "hidden": false,
+          "locked": false,
+          "solo": false,
+          "magnetic": false,
+          "height": null,
+          "gain": 0.0,
+          "custom": {}
+        },
+        "trk_00000000001470c5bb9b9e603edc34c8": {
+          "id": "trk_00000000001470c5bb9b9e603edc34c8",
+          "kind": "adjustment",
+          "name": "",
+          "items": {},
+          "muted": false,
+          "hidden": false,
+          "locked": false,
+          "solo": false,
+          "magnetic": false,
+          "height": null,
+          "gain": 0.0,
+          "custom": {}
+        }
+      },
+      "track_order": [
+        "trk_0000000000097ba492c4e79106dc8a10",
+        "trk_00000000000c78e4a650c8107bd1adc1",
+        "trk_0000000000137c84a665052dff4a453b",
+        "trk_00000000001470c5bb9b9e603edc34c8",
+        "trk_0000000000107333a876c647445a4bdc"
+      ],
+      "markers": {},
+      "in_out": null,
+      "custom": {
+        "org.cutweave.markers": []
+      }
+    }
+  },
+  "custom": {
+    "com.example.notes": {
+      "pinned": true,
+      "tags": [
+        "b",
+        "a"
+      ]
+    }
+  },
+  "x_future_root": {
+    "z": [
+      1,
+      {
+        "a": 1,
+        "b": 2
+      }
+    ]
+  }
+}

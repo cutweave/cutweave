@@ -36,6 +36,13 @@ export type Clip = {
 	enabled: boolean,
 	/**  Items with the same group move, trim and delete together (e.g. linked video and audio). */
 	linked_group: GroupId | null,
+	/**
+	 *  The item this one follows when it moves (schema v2, timeline spec §1.4): an overlay
+	 *  attached to a main-track clip. `None` when free.
+	 */
+	attached_to: ItemId | null,
+	/**  Markers in item-relative time; they move with the item. */
+	markers: { [key in MarkerId]: Marker },
 	/**  The media this clip plays. */
 	media: MediaId,
 	/**  Source position (from the start of the media) of the first frame. */
@@ -104,7 +111,9 @@ export type EntityKind =
 /**  A timeline `Item` (`itm_`). */
 "item" | 
 /**  A linked group of items that edit together (`grp_`). */
-"group";
+"group" | 
+/**  A timeline or item marker (`mrk_`). */
+"marker";
 
 /**
  *  A video frame rate as an exact rational `num/den` frames per second (`30000/1001` is
@@ -124,6 +133,17 @@ export type FrameRate = {
  *  Serialized as a string, exported to TypeScript as `string`.
  */
 export type GroupId = string;
+
+/**
+ *  The sequence's in and out points: the half-open range `[start, end)` that lift, extract and
+ *  three-point edits use. Both ends or neither (`Sequence::in_out` is `None` when unset).
+ */
+export type InOut = {
+	/**  The in point (`>= 0`). */
+	start: Time,
+	/**  The out point (`> start`). */
+	end: Time,
+} & { [key in string]: unknown };
 
 /**  A broken document invariant: what [`Project::validate`] reports. */
 export type Invariant = 
@@ -229,6 +249,39 @@ second: SequenceId } |
 path: string; 
 /**  What is wrong. */
 reason: string } | 
+/**
+ *  The magnetic main track rules (spec INV-6, INV-7): at most one per sequence, a video
+ *  track, gap-free from 0.
+ */
+{ invariant: "magnetic_track"; 
+/**  The sequence. */
+sequence: SequenceId; 
+/**  The offending track. */
+track: TrackId; 
+/**  What is wrong. */
+reason: string } | 
+/**  A linked group with fewer than two members (spec INV-8). */
+{ invariant: "linked_group_too_small"; 
+/**  The group. */
+group: GroupId; 
+/**  How many items carry it. */
+members: number } | 
+/**  Linked items that are not aligned: members differ in `start` or `duration` (spec INV-8). */
+{ invariant: "linked_group_misaligned"; 
+/**  The group. */
+group: GroupId; 
+/**  The first member (lowest ID). */
+first: ItemId; 
+/**  A member that differs from it. */
+second: ItemId } | 
+/**  An attachment that breaks spec INV-9. */
+{ invariant: "attachment"; 
+/**  The child. */
+item: ItemId; 
+/**  The item it is attached to. */
+parent: ItemId; 
+/**  What is wrong. */
+reason: string } | 
 /**  Plugin data under a key that is not a namespace (arch §4.3). */
 { invariant: "custom_namespace"; 
 /**  The custom map. */
@@ -260,6 +313,38 @@ export type ItemId = string;
  *  definition is used.
  */
 export type JsonValue = null | boolean | number | string | JsonValue[] | { [key in string]: JsonValue };
+
+/**  A marker on a sequence (sequence time) or an item (item-relative time). */
+export type Marker = {
+	/**  The marker ID (also its key in the owner's `markers`). */
+	id: MarkerId,
+	/**  Where the marker is (`>= 0`). */
+	t: Time,
+	/**  The length of a range marker; `None` for a point marker. */
+	duration: Duration | null,
+	/**  Text shown with the marker (may be empty). */
+	label: string,
+	/**  Display color. */
+	color: Color,
+	/**  What the marker means. */
+	kind: MarkerKind,
+} & { [key in string]: unknown };
+
+/**
+ *  The ID of a marker on a sequence or an item: `mrk_…`.
+ * 
+ *  Serialized as a string, exported to TypeScript as `string`.
+ */
+export type MarkerId = string;
+
+/**  What a marker means. */
+export type MarkerKind = 
+/**  Placed by a person or an agent. */
+"user" | 
+/**  A beat found by analysis (snaps like a marker, spec §6). */
+"beat" | 
+/**  A chapter start (exported to chaptered formats). */
+"chapter";
 
 /**
  *  YUV matrix coefficients (H.273).
@@ -406,6 +491,10 @@ export type Sequence = {
 	 *  are composited over lower ones.
 	 */
 	track_order: TrackId[],
+	/**  Markers in sequence time, keyed by ID. They never move with a ripple (spec INV-34). */
+	markers: { [key in MarkerId]: Marker },
+	/**  The in and out points; both ends or neither. */
+	in_out: InOut | null,
 	/**  Plugin data (arch §4.3). */
 	custom: { [key in string]: JsonValue },
 } & { [key in string]: unknown };
@@ -506,8 +595,16 @@ export type Track = {
 	locked: boolean,
 	/**  Solo (audio): when any track is solo, only solo tracks are heard. */
 	solo: boolean,
-	/**  Magnetic main track: ripple-by-default editing (arch §4.3; behaviour in P2). */
+	/**
+	 *  The magnetic main track: ripple-by-default editing, gap-free from 0 (timeline spec
+	 *  §1.2). At most one video track per sequence has it (`Project::validate`).
+	 */
 	magnetic: boolean,
+	/**
+	 *  Row height in the timeline, in pixels: a persisted UI hint (`None` = the default).
+	 *  Changing it never touches items.
+	 */
+	height: number | null,
 	/**  Track gain in decibels (0.0 = unchanged). */
 	gain: number,
 	/**  Plugin data (arch §4.3). */

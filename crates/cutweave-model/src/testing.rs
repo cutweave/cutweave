@@ -6,8 +6,9 @@ use proptest::prelude::*;
 use serde_json::json;
 
 use crate::{
-    Clip, Duration, FrameRate, IdGen, MAX_SAFE_FLICKS, MediaAsset, MediaKind, ProbeInfo, Project,
-    SampleRate, SeededGen, Sequence, SequenceFormat, Time, Timecode, Track, TrackKind, Vec2,
+    Clip, Duration, FrameRate, IdGen, InOut, MAX_SAFE_FLICKS, Marker, MarkerKind, MediaAsset,
+    MediaKind, ProbeInfo, Project, SampleRate, SeededGen, Sequence, SequenceFormat, Time, Timecode,
+    Track, TrackKind, Vec2,
 };
 
 /// Any representable [`Time`] (±(2⁵³ − 1) flicks).
@@ -92,6 +93,7 @@ struct ProjectRecipe {
     sequences: Vec<SequenceRecipe>,
     link_first_pair: bool,
     plugin_data: bool,
+    markers: u8,
 }
 
 fn media_recipe() -> impl Strategy<Value = MediaRecipe> {
@@ -164,14 +166,16 @@ fn project_recipe() -> impl Strategy<Value = ProjectRecipe> {
         prop::collection::vec(sequence_recipe(), 0..3),
         any::<bool>(),
         any::<bool>(),
+        0..=3_u8,
     )
         .prop_map(
-            |(seed, media, sequences, link_first_pair, plugin_data)| ProjectRecipe {
+            |(seed, media, sequences, link_first_pair, plugin_data, markers)| ProjectRecipe {
                 seed,
                 media,
                 sequences,
                 link_first_pair,
                 plugin_data,
+                markers,
             },
         )
 }
@@ -235,6 +239,7 @@ fn build(recipe: &ProjectRecipe) -> Project {
             }
             sequence.insert_track(t, track);
         }
+        decorate(&mut sequence, recipe.markers, frame, &mut ids);
         project.sequences.insert(sequence.id, sequence);
     }
     if recipe.link_first_pair {
@@ -248,36 +253,78 @@ fn build(recipe: &ProjectRecipe) -> Project {
     project
 }
 
-/// Links the first item of the first video track with the first item of the first audio track
-/// of the first sequence, if both exist.
+/// Adds `count` markers (one range marker among them), an in/out range and a track height to
+/// `sequence` when `count > 0`, so generated documents carry the schema v2 additions.
+fn decorate(sequence: &mut Sequence, count: u8, frame: i64, ids: &mut SeededGen) {
+    if count == 0 {
+        return;
+    }
+    for n in 0..i64::from(count) {
+        let mut marker = Marker::new(ids.mint(), flicks(n * 7 * frame));
+        marker.label = format!("Marker {n}");
+        marker.kind = [MarkerKind::User, MarkerKind::Beat, MarkerKind::Chapter][n as usize % 3];
+        if n == 1 {
+            marker.duration = Some(span(5 * frame));
+        }
+        sequence.markers.insert(marker.id, marker);
+    }
+    sequence.in_out = Some(InOut::new(flicks(frame), flicks(30 * frame)));
+    if let Some(id) = sequence.track_order.front().copied()
+        && let Some(track) = sequence.track_mut(&id)
+    {
+        track.height = Some(48);
+    }
+}
+
+/// Adds an aligned linked pair at the end of the first sequence: a clip on its first video
+/// track and one on its first audio track, with the same `start` and `duration` (timeline spec
+/// INV-8), both reading the start of an existing media file of the right kind. Does nothing
+/// when the sequence has no such tracks or media.
 fn link_first_video_and_audio(project: &mut Project, ids: &mut SeededGen) {
     let Some(key) = project.sequences.keys().next().copied() else {
         return;
     };
+    let media: Vec<MediaAsset> = project.media.values().cloned().collect();
     let Some(sequence) = project.sequences.get_mut(&key) else {
         return;
     };
-    let first_of = |kind: TrackKind| {
-        sequence
-            .tracks_in_order()
-            .filter(|t| t.kind == kind)
-            .find_map(|t| t.items.iter().next().map(|i| (t.id, i.id())))
-    };
+    let first_of = |kind: TrackKind| sequence.tracks_in_order().find(|t| t.kind == kind);
     let (Some(video), Some(audio)) = (first_of(TrackKind::Video), first_of(TrackKind::Audio))
     else {
         return;
     };
+    let pick = |kind: TrackKind| media.iter().find(|m| kind.accepts(m.kind));
+    let (Some(v_media), Some(a_media)) = (pick(TrackKind::Video), pick(TrackKind::Audio)) else {
+        return;
+    };
+    let frame = sequence
+        .format
+        .frame_rate
+        .flicks_per_frame()
+        .unwrap_or(MEDIA_FRAME);
+    let mut length = 10 * frame;
+    for m in [v_media, a_media] {
+        if let Some(total) = m.probe.duration {
+            length = length.min(total.flicks() / frame * frame);
+        }
+    }
+    if length <= 0 {
+        return;
+    }
+    let start = video.items.end().flicks().max(audio.items.end().flicks());
+    let start = (start + frame - 1) / frame * frame;
+    let (video_id, audio_id) = (video.id, audio.id);
     let group = ids.mint();
-    for (track, item) in [video, audio] {
+    for (track, m) in [(video_id, v_media), (audio_id, a_media)] {
+        let mut clip = Clip::new(ids.mint(), m.id, flicks(start), span(length));
+        clip.linked_group = Some(group);
         if let Some(track) = sequence.track_mut(&track) {
-            track
-                .items
-                .update(&item, |i| i.set_linked_group(Some(group)));
+            track.items.insert(clip.into());
         }
     }
 }
 
-/// A valid schema v1 [`Project`] (`validate()` passes): up to 4 media files (video, audio,
+/// A valid schema v2 [`Project`] (`validate()` passes): up to 4 media files (video, audio,
 /// image), up to 2 sequences at ADR-0004 frame rates, each with 1–3 video/audio tracks of
 /// non-overlapping clips within their media bounds, optional linked items and plugin data. IDs
 /// come from a [`SeededGen`] with a generated seed.
