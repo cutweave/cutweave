@@ -5,6 +5,18 @@
     {
       "annotations": {
         "destructiveHint": false,
+        "idempotentHint": true,
+        "openWorldHint": false,
+        "readOnlyHint": false
+      },
+      "command": "audio.set",
+      "description": "Set a clip's fades, volume (dB) or pan",
+      "kind": "command",
+      "name": "audio_set"
+    },
+    {
+      "annotations": {
+        "destructiveHint": false,
         "idempotentHint": false,
         "openWorldHint": false,
         "readOnlyHint": false

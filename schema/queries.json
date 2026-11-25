@@ -78,6 +78,96 @@
           "audio": {
             "description": "Audio properties (unless `fields` leaves them out).",
             "properties": {
+              "fade_in": {
+                "default": {
+                  "curve": "linear",
+                  "duration": 0
+                },
+                "description": "Fade from silence at the start of the clip (WP-2E.01). Absent in documents written\nbefore it: no fade.",
+                "properties": {
+                  "curve": {
+                    "description": "Its shape.",
+                    "oneOf": [
+                      {
+                        "const": "linear",
+                        "description": "Gain rises in a straight line (the default).",
+                        "type": "string"
+                      },
+                      {
+                        "const": "log",
+                        "description": "Gain rises quickly then flattens (`log10(1 + 9x)`): a fast, natural-sounding fade in.",
+                        "type": "string"
+                      },
+                      {
+                        "const": "equal_power",
+                        "description": "Constant power with a matching fade of the same shape on the other clip: `sin(x*pi/2)`.",
+                        "type": "string"
+                      },
+                      {
+                        "const": "s_curve",
+                        "description": "Gentle at both ends: `(1 - cos(x*pi)) / 2`.",
+                        "type": "string"
+                      }
+                    ]
+                  },
+                  "duration": {
+                    "description": "Length of the fade.",
+                    "maximum": 9007199254740991,
+                    "minimum": 0,
+                    "type": "integer"
+                  }
+                },
+                "required": [
+                  "duration",
+                  "curve"
+                ],
+                "type": "object"
+              },
+              "fade_out": {
+                "default": {
+                  "curve": "linear",
+                  "duration": 0
+                },
+                "description": "Fade to silence at the end of the clip (WP-2E.01). Absent in older documents: no fade.",
+                "properties": {
+                  "curve": {
+                    "description": "Its shape.",
+                    "oneOf": [
+                      {
+                        "const": "linear",
+                        "description": "Gain rises in a straight line (the default).",
+                        "type": "string"
+                      },
+                      {
+                        "const": "log",
+                        "description": "Gain rises quickly then flattens (`log10(1 + 9x)`): a fast, natural-sounding fade in.",
+                        "type": "string"
+                      },
+                      {
+                        "const": "equal_power",
+                        "description": "Constant power with a matching fade of the same shape on the other clip: `sin(x*pi/2)`.",
+                        "type": "string"
+                      },
+                      {
+                        "const": "s_curve",
+                        "description": "Gentle at both ends: `(1 - cos(x*pi)) / 2`.",
+                        "type": "string"
+                      }
+                    ]
+                  },
+                  "duration": {
+                    "description": "Length of the fade.",
+                    "maximum": 9007199254740991,
+                    "minimum": 0,
+                    "type": "integer"
+                  }
+                },
+                "required": [
+                  "duration",
+                  "curve"
+                ],
+                "type": "object"
+              },
               "gain": {
                 "description": "Gain in decibels (0.0 = unchanged).",
                 "oneOf": [
@@ -445,7 +535,9 @@
             },
             "required": [
               "gain",
-              "pan"
+              "pan",
+              "fade_in",
+              "fade_out"
             ],
             "type": [
               "object",
