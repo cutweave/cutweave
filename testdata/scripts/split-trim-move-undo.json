@@ -1,5 +1,5 @@
 {
-  "description": "Split, trim, move and delete linked clips, then undo and redo (the caller's own history), checkpoint and restore.",
+  "description": "Split, trim, move and delete linked clips, then undo and redo (the caller's own history, and `steps` of anyone's), checkpoint and restore.",
   "steps": [
     { "cmd": "project.new", "args": { "name": "Parity" } },
     { "cmd": "media.import", "args": { "paths": [{ "$media": "a.mp4" }, { "$media": "b.mp4" }] } },
@@ -33,6 +33,8 @@
     { "cmd": "edit.undo" },
     { "cmd": "edit.redo" },
     { "cmd": "edit.undo" },
+    { "cmd": "edit.undo", "args": { "actor": "*", "steps": 2 } },
+    { "cmd": "edit.redo", "args": { "actor": "*", "steps": 2 } },
     { "cmd": "item.set_props", "args": { "item": { "$ref": "steps[3].output.right" }, "props": { "enabled": false } } },
     { "cmd": "edit.restore", "args": { "checkpoint": "before-delete" } },
     { "cmd": "timeline.get", "args": { "sequence": { "$ref": "steps[0].output.sequence" }, "depth": 2 } },
