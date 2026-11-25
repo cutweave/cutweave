@@ -1133,6 +1133,7 @@ Schedule note: the roadmap gives 9 weeks. Total effort here is about 162 agent-d
   - `pnpm i18n:extract` is idempotent in CI; lint blocks a hard-coded string in a sample PR (test fixture).
 - **Tests:** Playwright, lint test.
 - **Out of scope:** translations other than `en`, RTL (P7), plugin panels (P6).
+- **Moved to a follow-up (WP-2H.01b, integrator decision):** i18n tooling (`pnpm i18n:extract`, ICU plurals and their dependency, `lint:i18n` in `just check`) and "Save layout as…" (named custom workspaces). The layout-change dropped-frames check needs the playback probe and is not asserted in F33.
 
 ### WP-2H.02 — Schema-driven inspector renderer
 - **Area:** packages/ui/src/schema-form/
