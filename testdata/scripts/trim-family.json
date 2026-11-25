@@ -1,0 +1,40 @@
+{
+  "description": "The trim family on linked clips (WP-2A.04): roll, slide, slip, ripple trim and a clamped trim, undo and redo, then a roll of clips that do not touch.",
+  "steps": [
+    { "cmd": "project.new", "args": { "name": "Parity" } },
+    { "cmd": "media.import", "args": { "paths": [{ "$media": "a.mp4" }] } },
+    {
+      "cmd": "timeline.insert",
+      "args": {
+        "sequence": { "$ref": "steps[0].output.sequence" },
+        "track": { "$ref": "steps[0].output.video_track" },
+        "media": { "$ref": "steps[1].output.media_ids[0]" },
+        "at": 0
+      }
+    },
+    { "cmd": "clip.split", "args": { "item": { "$ref": "steps[2].output.clips[0]" }, "at": "4s" } },
+    { "cmd": "clip.split", "args": { "item": { "$ref": "steps[3].output.right" }, "at": "6s" } },
+    {
+      "cmd": "clip.roll",
+      "args": { "left": { "$ref": "steps[3].output.left" }, "right": { "$ref": "steps[3].output.right" }, "to": "3s" }
+    },
+    { "cmd": "clip.slide", "args": { "item": { "$ref": "steps[3].output.right" }, "delta": "0.5s" } },
+    { "cmd": "clip.slip", "args": { "item": { "$ref": "steps[3].output.right" }, "delta": "-1s" } },
+    {
+      "cmd": "clip.ripple_trim",
+      "args": { "item": { "$ref": "steps[3].output.left" }, "edge": "end", "delta": "-0.5s" }
+    },
+    {
+      "cmd": "clip.trim",
+      "args": { "item": { "$ref": "steps[4].output.right" }, "edge": "end", "delta": "-60s", "clamp": true }
+    },
+    { "cmd": "edit.undo" },
+    { "cmd": "edit.redo" },
+    { "cmd": "timeline.get", "args": { "sequence": { "$ref": "steps[0].output.sequence" }, "depth": 2 } },
+    {
+      "cmd": "clip.roll",
+      "args": { "left": { "$ref": "steps[3].output.left" }, "right": { "$ref": "steps[4].output.right" }, "delta": "1s" },
+      "expect": { "error": "invalid" }
+    }
+  ]
+}
