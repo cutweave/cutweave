@@ -1709,6 +1709,1645 @@
     {
       "annotations": {
         "destructiveHint": true,
+        "idempotentHint": true,
+        "openWorldHint": false,
+        "readOnlyHint": false
+      },
+      "input_schema": {
+        "additionalProperties": false,
+        "description": "Deletes one of your export presets. Built-in presets cannot be deleted.",
+        "properties": {
+          "id": {
+            "description": "The preset id.",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id"
+        ],
+        "title": "DeletePreset",
+        "type": "object"
+      },
+      "journaled": false,
+      "kind": "engine",
+      "mcp": "catalog",
+      "mcp_tool": "export_delete_preset",
+      "name": "export.delete_preset",
+      "namespace": "export",
+      "output_schema": {
+        "additionalProperties": false,
+        "description": "Result of `export.delete_preset`.",
+        "properties": {
+          "id": {
+            "description": "The deleted preset's id.",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id"
+        ],
+        "title": "DeletePresetOutput",
+        "type": "object"
+      },
+      "scope": "any",
+      "secret_fields": [],
+      "summary": "Delete one of your export presets",
+      "undoable": false,
+      "view": false
+    },
+    {
+      "annotations": {
+        "destructiveHint": false,
+        "idempotentHint": true,
+        "openWorldHint": false,
+        "readOnlyHint": true
+      },
+      "input_schema": {
+        "additionalProperties": false,
+        "description": "Lists the export presets (built-in and the user's): the platform presets (YouTube,\nInstagram, TikTok, X) with their sources and `checked` dates, and the general formats. Give\n`platform` to list one platform's presets. `export.start{preset: \"<id>\"}` exports with one.",
+        "properties": {
+          "platform": {
+            "default": null,
+            "description": "Only the presets of this platform id (`youtube`, `instagram-reels`, `tiktok`, `x`).",
+            "type": [
+              "string",
+              "null"
+            ]
+          }
+        },
+        "title": "ListPresets",
+        "type": "object"
+      },
+      "kind": "engine",
+      "mcp": "catalog",
+      "mcp_tool": "export_list_presets",
+      "name": "export.list_presets",
+      "namespace": "export",
+      "output_schema": {
+        "additionalProperties": false,
+        "description": "Result of `export.list_presets`.",
+        "properties": {
+          "presets": {
+            "description": "The presets: built-in first (pack order), then the user's by id.",
+            "items": {
+              "additionalProperties": false,
+              "description": "A preset in a listing.",
+              "properties": {
+                "preset": {
+                  "additionalProperties": false,
+                  "description": "The preset.",
+                  "properties": {
+                    "audio": {
+                      "additionalProperties": false,
+                      "default": null,
+                      "description": "Audio settings; absent for GIF.",
+                      "properties": {
+                        "bitrate_kbps": {
+                          "default": null,
+                          "description": "Bitrate in kilobits per second (absent for lossless codecs).",
+                          "format": "uint32",
+                          "minimum": 0,
+                          "type": [
+                            "integer",
+                            "null"
+                          ]
+                        },
+                        "channels": {
+                          "description": "Channel count.",
+                          "format": "uint16",
+                          "maximum": 65535,
+                          "minimum": 0,
+                          "type": "integer"
+                        },
+                        "codec": {
+                          "description": "The codec.",
+                          "oneOf": [
+                            {
+                              "const": "aac",
+                              "description": "AAC-LC.",
+                              "type": "string"
+                            },
+                            {
+                              "const": "mp3",
+                              "description": "MP3.",
+                              "type": "string"
+                            },
+                            {
+                              "const": "pcm",
+                              "description": "Uncompressed PCM.",
+                              "type": "string"
+                            },
+                            {
+                              "const": "flac",
+                              "description": "FLAC.",
+                              "type": "string"
+                            },
+                            {
+                              "const": "opus",
+                              "description": "Opus.",
+                              "type": "string"
+                            }
+                          ]
+                        },
+                        "sample_rate": {
+                          "description": "Sample rate in Hz.",
+                          "format": "uint32",
+                          "minimum": 0,
+                          "type": "integer"
+                        }
+                      },
+                      "required": [
+                        "codec",
+                        "bitrate_kbps",
+                        "sample_rate",
+                        "channels"
+                      ],
+                      "type": [
+                        "object",
+                        "null"
+                      ]
+                    },
+                    "container": {
+                      "description": "The file format.",
+                      "oneOf": [
+                        {
+                          "const": "mp4",
+                          "description": "MP4.",
+                          "type": "string"
+                        },
+                        {
+                          "const": "mov",
+                          "description": "QuickTime MOV.",
+                          "type": "string"
+                        },
+                        {
+                          "const": "gif",
+                          "description": "Animated GIF.",
+                          "type": "string"
+                        },
+                        {
+                          "const": "wav",
+                          "description": "WAV (audio only).",
+                          "type": "string"
+                        },
+                        {
+                          "const": "mp3",
+                          "description": "MP3 (audio only).",
+                          "type": "string"
+                        },
+                        {
+                          "const": "m4a",
+                          "description": "M4A (AAC audio only).",
+                          "type": "string"
+                        },
+                        {
+                          "const": "flac",
+                          "description": "FLAC (audio only).",
+                          "type": "string"
+                        },
+                        {
+                          "const": "ogg",
+                          "description": "Ogg (Opus audio only).",
+                          "type": "string"
+                        }
+                      ]
+                    },
+                    "fps": {
+                      "description": "The frame-rate rule.",
+                      "oneOf": [
+                        {
+                          "description": "The sequence's rate, capped at `max` when given.",
+                          "properties": {
+                            "kind": {
+                              "const": "follow_sequence",
+                              "type": "string"
+                            },
+                            "max": {
+                              "additionalProperties": false,
+                              "default": null,
+                              "description": "The platform's highest frame rate.",
+                              "properties": {
+                                "den": {
+                                  "description": "Seconds.",
+                                  "maximum": 4294967295,
+                                  "minimum": 1,
+                                  "type": "integer"
+                                },
+                                "num": {
+                                  "description": "Frames.",
+                                  "maximum": 4294967295,
+                                  "minimum": 1,
+                                  "type": "integer"
+                                }
+                              },
+                              "required": [
+                                "num",
+                                "den"
+                              ],
+                              "type": [
+                                "object",
+                                "null"
+                              ]
+                            }
+                          },
+                          "required": [
+                            "kind",
+                            "max"
+                          ],
+                          "type": "object"
+                        },
+                        {
+                          "description": "Always this rate.",
+                          "properties": {
+                            "kind": {
+                              "const": "fixed",
+                              "type": "string"
+                            },
+                            "rate": {
+                              "additionalProperties": false,
+                              "description": "The rate.",
+                              "properties": {
+                                "den": {
+                                  "description": "Seconds.",
+                                  "maximum": 4294967295,
+                                  "minimum": 1,
+                                  "type": "integer"
+                                },
+                                "num": {
+                                  "description": "Frames.",
+                                  "maximum": 4294967295,
+                                  "minimum": 1,
+                                  "type": "integer"
+                                }
+                              },
+                              "required": [
+                                "num",
+                                "den"
+                              ],
+                              "type": "object"
+                            }
+                          },
+                          "required": [
+                            "kind",
+                            "rate"
+                          ],
+                          "type": "object"
+                        }
+                      ]
+                    },
+                    "id": {
+                      "description": "Stable id: lowercase letters, digits and `-`.",
+                      "type": "string"
+                    },
+                    "limits": {
+                      "additionalProperties": false,
+                      "default": {
+                        "max_duration_secs": null,
+                        "max_size_mb": null
+                      },
+                      "description": "Limits of the target (warnings).",
+                      "properties": {
+                        "max_duration_secs": {
+                          "default": null,
+                          "description": "Longest accepted video, in seconds.",
+                          "format": "uint32",
+                          "minimum": 0,
+                          "type": [
+                            "integer",
+                            "null"
+                          ]
+                        },
+                        "max_size_mb": {
+                          "default": null,
+                          "description": "Largest accepted file, in MiB (1024 x 1024 bytes).",
+                          "format": "uint32",
+                          "minimum": 0,
+                          "type": [
+                            "integer",
+                            "null"
+                          ]
+                        }
+                      },
+                      "required": [
+                        "max_duration_secs",
+                        "max_size_mb"
+                      ],
+                      "type": "object"
+                    },
+                    "loop": {
+                      "default": null,
+                      "description": "GIF loop count (0 = forever).",
+                      "format": "uint32",
+                      "minimum": 0,
+                      "type": [
+                        "integer",
+                        "null"
+                      ]
+                    },
+                    "loudness": {
+                      "additionalProperties": false,
+                      "default": null,
+                      "description": "Loudness target.",
+                      "properties": {
+                        "target_lufs": {
+                          "description": "Integrated loudness target in LUFS (for example -14).",
+                          "format": "int32",
+                          "type": "integer"
+                        }
+                      },
+                      "required": [
+                        "target_lufs"
+                      ],
+                      "type": [
+                        "object",
+                        "null"
+                      ]
+                    },
+                    "name": {
+                      "description": "Display name.",
+                      "type": "string"
+                    },
+                    "platform": {
+                      "additionalProperties": false,
+                      "default": null,
+                      "description": "Where the numbers come from (platform presets).",
+                      "properties": {
+                        "checked": {
+                          "description": "The date the values were checked against it (`YYYY-MM-DD`).",
+                          "type": "string"
+                        },
+                        "id": {
+                          "description": "Platform surface id (`youtube`, `instagram-reels`); shared with the safe-area ids.",
+                          "type": "string"
+                        },
+                        "name": {
+                          "description": "Display name.",
+                          "type": "string"
+                        },
+                        "spec_url": {
+                          "description": "The platform's published upload specification (`https://`).",
+                          "type": "string"
+                        },
+                        "unverified": {
+                          "default": [],
+                          "description": "The fields (`limits.max_duration_secs`, `size`) nobody could verify at `checked`.",
+                          "items": {
+                            "type": "string"
+                          },
+                          "type": "array"
+                        }
+                      },
+                      "required": [
+                        "id",
+                        "name",
+                        "spec_url",
+                        "checked",
+                        "unverified"
+                      ],
+                      "type": [
+                        "object",
+                        "null"
+                      ]
+                    },
+                    "safe_area": {
+                      "default": null,
+                      "description": "The UI-safe zone to show in the preview: an id of WP-2H.06's `safe-areas.json`.",
+                      "type": [
+                        "string",
+                        "null"
+                      ]
+                    },
+                    "schema_version": {
+                      "description": "The format version (1).",
+                      "format": "uint32",
+                      "minimum": 0,
+                      "type": "integer"
+                    },
+                    "size": {
+                      "description": "The output size rule.",
+                      "oneOf": [
+                        {
+                          "description": "Exactly this size for a sequence of the same aspect; a different aspect is fitted into\nthe frame without stretching, with an `AspectMismatch` warning.",
+                          "properties": {
+                            "height": {
+                              "description": "Frame height in pixels.",
+                              "format": "uint32",
+                              "minimum": 0,
+                              "type": "integer"
+                            },
+                            "kind": {
+                              "const": "fixed",
+                              "type": "string"
+                            },
+                            "width": {
+                              "description": "Frame width in pixels.",
+                              "format": "uint32",
+                              "minimum": 0,
+                              "type": "integer"
+                            }
+                          },
+                          "required": [
+                            "kind",
+                            "width",
+                            "height"
+                          ],
+                          "type": "object"
+                        },
+                        {
+                          "description": "The sequence fitted into this box, never upscaled (the box turns for portrait).",
+                          "properties": {
+                            "height": {
+                              "description": "Box height in pixels.",
+                              "format": "uint32",
+                              "minimum": 0,
+                              "type": "integer"
+                            },
+                            "kind": {
+                              "const": "fit",
+                              "type": "string"
+                            },
+                            "width": {
+                              "description": "Box width in pixels.",
+                              "format": "uint32",
+                              "minimum": 0,
+                              "type": "integer"
+                            }
+                          },
+                          "required": [
+                            "kind",
+                            "width",
+                            "height"
+                          ],
+                          "type": "object"
+                        },
+                        {
+                          "description": "The sequence's own size.",
+                          "properties": {
+                            "kind": {
+                              "const": "follow_sequence",
+                              "type": "string"
+                            }
+                          },
+                          "required": [
+                            "kind"
+                          ],
+                          "type": "object"
+                        }
+                      ]
+                    },
+                    "summary": {
+                      "default": "",
+                      "description": "One line for the picker.",
+                      "type": "string"
+                    },
+                    "video": {
+                      "additionalProperties": false,
+                      "default": null,
+                      "description": "Video settings; absent for audio-only presets.",
+                      "properties": {
+                        "codec": {
+                          "description": "The codec.",
+                          "oneOf": [
+                            {
+                              "const": "h264",
+                              "description": "H.264 / AVC.",
+                              "type": "string"
+                            },
+                            {
+                              "const": "hevc",
+                              "description": "H.265 / HEVC.",
+                              "type": "string"
+                            },
+                            {
+                              "const": "prores",
+                              "description": "Apple ProRes.",
+                              "type": "string"
+                            },
+                            {
+                              "const": "gif",
+                              "description": "GIF (palette).",
+                              "type": "string"
+                            }
+                          ]
+                        },
+                        "hw_preferred": {
+                          "description": "Use a hardware encoder when one works here (software otherwise); `false` always uses\nsoftware, for quality-first presets.",
+                          "type": "boolean"
+                        },
+                        "pix_fmt": {
+                          "default": null,
+                          "description": "Pixel format (`yuv420p`).",
+                          "type": [
+                            "string",
+                            "null"
+                          ]
+                        },
+                        "preset": {
+                          "default": null,
+                          "description": "Encoder speed preset (`medium`, `slow`).",
+                          "type": [
+                            "string",
+                            "null"
+                          ]
+                        },
+                        "profile": {
+                          "default": null,
+                          "description": "Codec profile (`high`, `main10`, `422hq`).",
+                          "type": [
+                            "string",
+                            "null"
+                          ]
+                        },
+                        "rate_control": {
+                          "description": "How bits are spent.",
+                          "oneOf": [
+                            {
+                              "description": "Constant quality on the x264 CRF scale (0-51, lower is better).",
+                              "properties": {
+                                "crf": {
+                                  "description": "The CRF value.",
+                                  "format": "uint8",
+                                  "maximum": 255,
+                                  "minimum": 0,
+                                  "type": "integer"
+                                },
+                                "mode": {
+                                  "const": "crf",
+                                  "type": "string"
+                                }
+                              },
+                              "required": [
+                                "mode",
+                                "crf"
+                              ],
+                              "type": "object"
+                            },
+                            {
+                              "description": "Constant bitrate.",
+                              "properties": {
+                                "bitrate_kbps": {
+                                  "description": "Video bitrate in kilobits per second.",
+                                  "format": "uint32",
+                                  "minimum": 0,
+                                  "type": "integer"
+                                },
+                                "mode": {
+                                  "const": "cbr",
+                                  "type": "string"
+                                }
+                              },
+                              "required": [
+                                "mode",
+                                "bitrate_kbps"
+                              ],
+                              "type": "object"
+                            },
+                            {
+                              "description": "Variable bitrate around a target.",
+                              "properties": {
+                                "bitrate_kbps": {
+                                  "description": "Target video bitrate in kilobits per second.",
+                                  "format": "uint32",
+                                  "minimum": 0,
+                                  "type": "integer"
+                                },
+                                "mode": {
+                                  "const": "vbr",
+                                  "type": "string"
+                                }
+                              },
+                              "required": [
+                                "mode",
+                                "bitrate_kbps"
+                              ],
+                              "type": "object"
+                            },
+                            {
+                              "description": "Set by the codec profile (ProRes, GIF).",
+                              "properties": {
+                                "mode": {
+                                  "const": "profile",
+                                  "type": "string"
+                                }
+                              },
+                              "required": [
+                                "mode"
+                              ],
+                              "type": "object"
+                            }
+                          ]
+                        }
+                      },
+                      "required": [
+                        "codec",
+                        "rate_control",
+                        "profile",
+                        "preset",
+                        "pix_fmt",
+                        "hw_preferred"
+                      ],
+                      "type": [
+                        "object",
+                        "null"
+                      ]
+                    }
+                  },
+                  "required": [
+                    "schema_version",
+                    "id",
+                    "name",
+                    "summary",
+                    "container",
+                    "video",
+                    "audio",
+                    "size",
+                    "fps",
+                    "loudness",
+                    "loop",
+                    "limits",
+                    "platform",
+                    "safe_area"
+                  ],
+                  "type": "object"
+                },
+                "source": {
+                  "description": "Built-in or the user's.",
+                  "oneOf": [
+                    {
+                      "const": "builtin",
+                      "description": "The `presets-core` pack.",
+                      "type": "string"
+                    },
+                    {
+                      "const": "user",
+                      "description": "Saved by the user.",
+                      "type": "string"
+                    }
+                  ]
+                },
+                "supported": {
+                  "description": "Whether this build can export it now.",
+                  "type": "boolean"
+                },
+                "unsupported_reason": {
+                  "default": null,
+                  "description": "Why not, when unsupported.",
+                  "type": [
+                    "string",
+                    "null"
+                  ]
+                }
+              },
+              "required": [
+                "source",
+                "supported",
+                "unsupported_reason",
+                "preset"
+              ],
+              "type": "object"
+            },
+            "type": "array"
+          },
+          "problems": {
+            "description": "Problems loading the presets (a damaged user file); empty when fine.",
+            "items": {
+              "type": "string"
+            },
+            "type": "array"
+          }
+        },
+        "required": [
+          "presets",
+          "problems"
+        ],
+        "title": "ListPresetsOutput",
+        "type": "object"
+      },
+      "scope": "any",
+      "secret_fields": [],
+      "summary": "List export presets (YouTube, Instagram, TikTok, X and formats) and what this build can export",
+      "undoable": false,
+      "view": false
+    },
+    {
+      "annotations": {
+        "destructiveHint": false,
+        "idempotentHint": true,
+        "openWorldHint": false,
+        "readOnlyHint": true
+      },
+      "input_schema": {
+        "additionalProperties": false,
+        "description": "Shows what a preset does to a sequence without exporting: the output size, frame rate,\nestimated size and the warnings (`AspectMismatch`, `DurationOverLimit`, `SizeOverLimit`,\n`FrameRateCapped`). Changes nothing.",
+        "properties": {
+          "overrides": {
+            "additionalProperties": false,
+            "default": null,
+            "description": "Size, frame rate or quality to use instead of the preset's.",
+            "properties": {
+              "fps": {
+                "additionalProperties": false,
+                "default": null,
+                "description": "Frame rate, e.g. {\"num\": 30, \"den\": 1}: at most 240 fps, a whole number of flicks per\nframe.",
+                "properties": {
+                  "den": {
+                    "description": "Seconds.",
+                    "maximum": 4294967295,
+                    "minimum": 1,
+                    "type": "integer"
+                  },
+                  "num": {
+                    "description": "Frames.",
+                    "maximum": 4294967295,
+                    "minimum": 1,
+                    "type": "integer"
+                  }
+                },
+                "required": [
+                  "num",
+                  "den"
+                ],
+                "type": [
+                  "object",
+                  "null"
+                ]
+              },
+              "height": {
+                "default": null,
+                "description": "Frame height in pixels: even, 16-8192.",
+                "format": "uint32",
+                "minimum": 0,
+                "type": [
+                  "integer",
+                  "null"
+                ]
+              },
+              "preset": {
+                "default": null,
+                "description": "Base preset id; the other fields replace its values.",
+                "type": [
+                  "string",
+                  "null"
+                ]
+              },
+              "quality": {
+                "anyOf": [
+                  {
+                    "description": "How hard the encoder works for picture quality (and file size).",
+                    "oneOf": [
+                      {
+                        "const": "low",
+                        "description": "Small files, visible compression.",
+                        "type": "string"
+                      },
+                      {
+                        "const": "medium",
+                        "description": "Balanced.",
+                        "type": "string"
+                      },
+                      {
+                        "const": "high",
+                        "description": "Close to the original (the default).",
+                        "type": "string"
+                      }
+                    ]
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "default": null,
+                "description": "\"low\", \"medium\" or \"high\"."
+              },
+              "width": {
+                "default": null,
+                "description": "Frame width in pixels: even, 16-8192.",
+                "format": "uint32",
+                "minimum": 0,
+                "type": [
+                  "integer",
+                  "null"
+                ]
+              }
+            },
+            "type": [
+              "object",
+              "null"
+            ]
+          },
+          "preset": {
+            "description": "The preset id.",
+            "type": "string"
+          },
+          "range": {
+            "additionalProperties": false,
+            "default": null,
+            "description": "Part of the sequence (default: all of it).",
+            "properties": {
+              "in": {
+                "anyOf": [
+                  {
+                    "maximum": 9007199254740991,
+                    "minimum": -9007199254740991,
+                    "type": "integer"
+                  },
+                  {
+                    "pattern": "^-?[0-9]+(\\.[0-9]+)?s$|^-?[0-9]+$|^f:[0-9]+$|^[0-9]+[:;][0-9]+[:;][0-9]+[:;][0-9]+$",
+                    "type": "string"
+                  }
+                ],
+                "description": "Start: flicks, \"2.5s\", \"f:60\" or a timecode."
+              },
+              "out": {
+                "anyOf": [
+                  {
+                    "maximum": 9007199254740991,
+                    "minimum": -9007199254740991,
+                    "type": "integer"
+                  },
+                  {
+                    "pattern": "^-?[0-9]+(\\.[0-9]+)?s$|^-?[0-9]+$|^f:[0-9]+$|^[0-9]+[:;][0-9]+[:;][0-9]+[:;][0-9]+$",
+                    "type": "string"
+                  }
+                ],
+                "description": "End, exclusive: at most the sequence end."
+              }
+            },
+            "required": [
+              "in",
+              "out"
+            ],
+            "type": [
+              "object",
+              "null"
+            ]
+          },
+          "sequence": {
+            "default": null,
+            "description": "Sequence; optional when the project has one.",
+            "pattern": "^seq_[0-9a-f]{32}$",
+            "type": [
+              "string",
+              "null"
+            ]
+          }
+        },
+        "required": [
+          "preset"
+        ],
+        "title": "ResolvePreset",
+        "type": "object"
+      },
+      "kind": "engine",
+      "mcp": "catalog",
+      "mcp_tool": "export_resolve_preset",
+      "name": "export.resolve_preset",
+      "namespace": "export",
+      "output_schema": {
+        "additionalProperties": false,
+        "description": "Result of `export.resolve_preset`.",
+        "properties": {
+          "estimated_kib": {
+            "description": "Estimated file size in KiB, when the preset has a bitrate.",
+            "format": "uint32",
+            "minimum": 0,
+            "type": [
+              "integer",
+              "null"
+            ]
+          },
+          "frame_rate": {
+            "additionalProperties": false,
+            "description": "Output frame rate.",
+            "properties": {
+              "den": {
+                "description": "Seconds.",
+                "maximum": 4294967295,
+                "minimum": 1,
+                "type": "integer"
+              },
+              "num": {
+                "description": "Frames.",
+                "maximum": 4294967295,
+                "minimum": 1,
+                "type": "integer"
+              }
+            },
+            "required": [
+              "num",
+              "den"
+            ],
+            "type": "object"
+          },
+          "height": {
+            "description": "Output height.",
+            "format": "uint32",
+            "minimum": 0,
+            "type": "integer"
+          },
+          "preset": {
+            "description": "The preset id.",
+            "type": "string"
+          },
+          "sequence": {
+            "description": "The sequence.",
+            "pattern": "^seq_[0-9a-f]{32}$",
+            "type": "string"
+          },
+          "supported": {
+            "description": "Whether this build can export it now.",
+            "type": "boolean"
+          },
+          "unsupported_reason": {
+            "description": "Why not, when unsupported.",
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "warnings": {
+            "description": "Limit and fit warnings; the export would still run.",
+            "items": {
+              "additionalProperties": false,
+              "description": "One warning about a preset on a sequence.",
+              "properties": {
+                "code": {
+                  "description": "What kind.",
+                  "oneOf": [
+                    {
+                      "const": "AspectMismatch",
+                      "description": "The sequence's aspect is not the preset's.",
+                      "type": "string"
+                    },
+                    {
+                      "const": "DurationOverLimit",
+                      "description": "The exported part is longer than the platform accepts.",
+                      "type": "string"
+                    },
+                    {
+                      "const": "SizeOverLimit",
+                      "description": "The estimated file is larger than the platform accepts.",
+                      "type": "string"
+                    },
+                    {
+                      "const": "FrameRateCapped",
+                      "description": "The sequence's frame rate is above the platform's maximum, so the file uses a lower one.",
+                      "type": "string"
+                    }
+                  ]
+                },
+                "message": {
+                  "description": "A sentence for the person.",
+                  "type": "string"
+                }
+              },
+              "required": [
+                "code",
+                "message"
+              ],
+              "type": "object"
+            },
+            "type": "array"
+          },
+          "width": {
+            "description": "Output width.",
+            "format": "uint32",
+            "minimum": 0,
+            "type": "integer"
+          }
+        },
+        "required": [
+          "preset",
+          "sequence",
+          "width",
+          "height",
+          "frame_rate",
+          "estimated_kib",
+          "supported",
+          "unsupported_reason",
+          "warnings"
+        ],
+        "title": "ResolvePresetOutput",
+        "type": "object"
+      },
+      "scope": "any",
+      "secret_fields": [],
+      "summary": "Show what an export preset does to a sequence (size, rate, warnings) without exporting",
+      "undoable": false,
+      "view": false
+    },
+    {
+      "annotations": {
+        "destructiveHint": false,
+        "idempotentHint": true,
+        "openWorldHint": false,
+        "readOnlyHint": false
+      },
+      "input_schema": {
+        "additionalProperties": false,
+        "description": "Saves an export preset of your own (a new id, or replaces your earlier one). Built-in ids\ncannot be replaced; save a copy under another id.",
+        "properties": {
+          "preset": {
+            "additionalProperties": false,
+            "description": "The preset (see export.list_presets for examples).",
+            "properties": {
+              "audio": {
+                "additionalProperties": false,
+                "default": null,
+                "description": "Audio settings; absent for GIF.",
+                "properties": {
+                  "bitrate_kbps": {
+                    "default": null,
+                    "description": "Bitrate in kilobits per second (absent for lossless codecs).",
+                    "format": "uint32",
+                    "minimum": 0,
+                    "type": [
+                      "integer",
+                      "null"
+                    ]
+                  },
+                  "channels": {
+                    "description": "Channel count.",
+                    "format": "uint16",
+                    "maximum": 65535,
+                    "minimum": 0,
+                    "type": "integer"
+                  },
+                  "codec": {
+                    "description": "The codec.",
+                    "oneOf": [
+                      {
+                        "const": "aac",
+                        "description": "AAC-LC.",
+                        "type": "string"
+                      },
+                      {
+                        "const": "mp3",
+                        "description": "MP3.",
+                        "type": "string"
+                      },
+                      {
+                        "const": "pcm",
+                        "description": "Uncompressed PCM.",
+                        "type": "string"
+                      },
+                      {
+                        "const": "flac",
+                        "description": "FLAC.",
+                        "type": "string"
+                      },
+                      {
+                        "const": "opus",
+                        "description": "Opus.",
+                        "type": "string"
+                      }
+                    ]
+                  },
+                  "sample_rate": {
+                    "description": "Sample rate in Hz.",
+                    "format": "uint32",
+                    "minimum": 0,
+                    "type": "integer"
+                  }
+                },
+                "required": [
+                  "codec",
+                  "sample_rate",
+                  "channels"
+                ],
+                "type": [
+                  "object",
+                  "null"
+                ]
+              },
+              "container": {
+                "description": "The file format.",
+                "oneOf": [
+                  {
+                    "const": "mp4",
+                    "description": "MP4.",
+                    "type": "string"
+                  },
+                  {
+                    "const": "mov",
+                    "description": "QuickTime MOV.",
+                    "type": "string"
+                  },
+                  {
+                    "const": "gif",
+                    "description": "Animated GIF.",
+                    "type": "string"
+                  },
+                  {
+                    "const": "wav",
+                    "description": "WAV (audio only).",
+                    "type": "string"
+                  },
+                  {
+                    "const": "mp3",
+                    "description": "MP3 (audio only).",
+                    "type": "string"
+                  },
+                  {
+                    "const": "m4a",
+                    "description": "M4A (AAC audio only).",
+                    "type": "string"
+                  },
+                  {
+                    "const": "flac",
+                    "description": "FLAC (audio only).",
+                    "type": "string"
+                  },
+                  {
+                    "const": "ogg",
+                    "description": "Ogg (Opus audio only).",
+                    "type": "string"
+                  }
+                ]
+              },
+              "fps": {
+                "description": "The frame-rate rule.",
+                "oneOf": [
+                  {
+                    "description": "The sequence's rate, capped at `max` when given.",
+                    "properties": {
+                      "kind": {
+                        "const": "follow_sequence",
+                        "type": "string"
+                      },
+                      "max": {
+                        "additionalProperties": false,
+                        "default": null,
+                        "description": "The platform's highest frame rate.",
+                        "properties": {
+                          "den": {
+                            "description": "Seconds.",
+                            "maximum": 4294967295,
+                            "minimum": 1,
+                            "type": "integer"
+                          },
+                          "num": {
+                            "description": "Frames.",
+                            "maximum": 4294967295,
+                            "minimum": 1,
+                            "type": "integer"
+                          }
+                        },
+                        "required": [
+                          "num",
+                          "den"
+                        ],
+                        "type": [
+                          "object",
+                          "null"
+                        ]
+                      }
+                    },
+                    "required": [
+                      "kind"
+                    ],
+                    "type": "object"
+                  },
+                  {
+                    "description": "Always this rate.",
+                    "properties": {
+                      "kind": {
+                        "const": "fixed",
+                        "type": "string"
+                      },
+                      "rate": {
+                        "additionalProperties": false,
+                        "description": "The rate.",
+                        "properties": {
+                          "den": {
+                            "description": "Seconds.",
+                            "maximum": 4294967295,
+                            "minimum": 1,
+                            "type": "integer"
+                          },
+                          "num": {
+                            "description": "Frames.",
+                            "maximum": 4294967295,
+                            "minimum": 1,
+                            "type": "integer"
+                          }
+                        },
+                        "required": [
+                          "num",
+                          "den"
+                        ],
+                        "type": "object"
+                      }
+                    },
+                    "required": [
+                      "kind",
+                      "rate"
+                    ],
+                    "type": "object"
+                  }
+                ]
+              },
+              "id": {
+                "description": "Stable id: lowercase letters, digits and `-`.",
+                "type": "string"
+              },
+              "limits": {
+                "additionalProperties": false,
+                "default": {
+                  "max_duration_secs": null,
+                  "max_size_mb": null
+                },
+                "description": "Limits of the target (warnings).",
+                "properties": {
+                  "max_duration_secs": {
+                    "default": null,
+                    "description": "Longest accepted video, in seconds.",
+                    "format": "uint32",
+                    "minimum": 0,
+                    "type": [
+                      "integer",
+                      "null"
+                    ]
+                  },
+                  "max_size_mb": {
+                    "default": null,
+                    "description": "Largest accepted file, in MiB (1024 x 1024 bytes).",
+                    "format": "uint32",
+                    "minimum": 0,
+                    "type": [
+                      "integer",
+                      "null"
+                    ]
+                  }
+                },
+                "type": "object"
+              },
+              "loop": {
+                "default": null,
+                "description": "GIF loop count (0 = forever).",
+                "format": "uint32",
+                "minimum": 0,
+                "type": [
+                  "integer",
+                  "null"
+                ]
+              },
+              "loudness": {
+                "additionalProperties": false,
+                "default": null,
+                "description": "Loudness target.",
+                "properties": {
+                  "target_lufs": {
+                    "description": "Integrated loudness target in LUFS (for example -14).",
+                    "format": "int32",
+                    "type": "integer"
+                  }
+                },
+                "required": [
+                  "target_lufs"
+                ],
+                "type": [
+                  "object",
+                  "null"
+                ]
+              },
+              "name": {
+                "description": "Display name.",
+                "type": "string"
+              },
+              "platform": {
+                "additionalProperties": false,
+                "default": null,
+                "description": "Where the numbers come from (platform presets).",
+                "properties": {
+                  "checked": {
+                    "description": "The date the values were checked against it (`YYYY-MM-DD`).",
+                    "type": "string"
+                  },
+                  "id": {
+                    "description": "Platform surface id (`youtube`, `instagram-reels`); shared with the safe-area ids.",
+                    "type": "string"
+                  },
+                  "name": {
+                    "description": "Display name.",
+                    "type": "string"
+                  },
+                  "spec_url": {
+                    "description": "The platform's published upload specification (`https://`).",
+                    "type": "string"
+                  },
+                  "unverified": {
+                    "default": [],
+                    "description": "The fields (`limits.max_duration_secs`, `size`) nobody could verify at `checked`.",
+                    "items": {
+                      "type": "string"
+                    },
+                    "type": "array"
+                  }
+                },
+                "required": [
+                  "id",
+                  "name",
+                  "spec_url",
+                  "checked"
+                ],
+                "type": [
+                  "object",
+                  "null"
+                ]
+              },
+              "safe_area": {
+                "default": null,
+                "description": "The UI-safe zone to show in the preview: an id of WP-2H.06's `safe-areas.json`.",
+                "type": [
+                  "string",
+                  "null"
+                ]
+              },
+              "schema_version": {
+                "description": "The format version (1).",
+                "format": "uint32",
+                "minimum": 0,
+                "type": "integer"
+              },
+              "size": {
+                "description": "The output size rule.",
+                "oneOf": [
+                  {
+                    "description": "Exactly this size for a sequence of the same aspect; a different aspect is fitted into\nthe frame without stretching, with an `AspectMismatch` warning.",
+                    "properties": {
+                      "height": {
+                        "description": "Frame height in pixels.",
+                        "format": "uint32",
+                        "minimum": 0,
+                        "type": "integer"
+                      },
+                      "kind": {
+                        "const": "fixed",
+                        "type": "string"
+                      },
+                      "width": {
+                        "description": "Frame width in pixels.",
+                        "format": "uint32",
+                        "minimum": 0,
+                        "type": "integer"
+                      }
+                    },
+                    "required": [
+                      "kind",
+                      "width",
+                      "height"
+                    ],
+                    "type": "object"
+                  },
+                  {
+                    "description": "The sequence fitted into this box, never upscaled (the box turns for portrait).",
+                    "properties": {
+                      "height": {
+                        "description": "Box height in pixels.",
+                        "format": "uint32",
+                        "minimum": 0,
+                        "type": "integer"
+                      },
+                      "kind": {
+                        "const": "fit",
+                        "type": "string"
+                      },
+                      "width": {
+                        "description": "Box width in pixels.",
+                        "format": "uint32",
+                        "minimum": 0,
+                        "type": "integer"
+                      }
+                    },
+                    "required": [
+                      "kind",
+                      "width",
+                      "height"
+                    ],
+                    "type": "object"
+                  },
+                  {
+                    "description": "The sequence's own size.",
+                    "properties": {
+                      "kind": {
+                        "const": "follow_sequence",
+                        "type": "string"
+                      }
+                    },
+                    "required": [
+                      "kind"
+                    ],
+                    "type": "object"
+                  }
+                ]
+              },
+              "summary": {
+                "default": "",
+                "description": "One line for the picker.",
+                "type": "string"
+              },
+              "video": {
+                "additionalProperties": false,
+                "default": null,
+                "description": "Video settings; absent for audio-only presets.",
+                "properties": {
+                  "codec": {
+                    "description": "The codec.",
+                    "oneOf": [
+                      {
+                        "const": "h264",
+                        "description": "H.264 / AVC.",
+                        "type": "string"
+                      },
+                      {
+                        "const": "hevc",
+                        "description": "H.265 / HEVC.",
+                        "type": "string"
+                      },
+                      {
+                        "const": "prores",
+                        "description": "Apple ProRes.",
+                        "type": "string"
+                      },
+                      {
+                        "const": "gif",
+                        "description": "GIF (palette).",
+                        "type": "string"
+                      }
+                    ]
+                  },
+                  "hw_preferred": {
+                    "description": "Use a hardware encoder when one works here (software otherwise); `false` always uses\nsoftware, for quality-first presets.",
+                    "type": "boolean"
+                  },
+                  "pix_fmt": {
+                    "default": null,
+                    "description": "Pixel format (`yuv420p`).",
+                    "type": [
+                      "string",
+                      "null"
+                    ]
+                  },
+                  "preset": {
+                    "default": null,
+                    "description": "Encoder speed preset (`medium`, `slow`).",
+                    "type": [
+                      "string",
+                      "null"
+                    ]
+                  },
+                  "profile": {
+                    "default": null,
+                    "description": "Codec profile (`high`, `main10`, `422hq`).",
+                    "type": [
+                      "string",
+                      "null"
+                    ]
+                  },
+                  "rate_control": {
+                    "description": "How bits are spent.",
+                    "oneOf": [
+                      {
+                        "description": "Constant quality on the x264 CRF scale (0-51, lower is better).",
+                        "properties": {
+                          "crf": {
+                            "description": "The CRF value.",
+                            "format": "uint8",
+                            "maximum": 255,
+                            "minimum": 0,
+                            "type": "integer"
+                          },
+                          "mode": {
+                            "const": "crf",
+                            "type": "string"
+                          }
+                        },
+                        "required": [
+                          "mode",
+                          "crf"
+                        ],
+                        "type": "object"
+                      },
+                      {
+                        "description": "Constant bitrate.",
+                        "properties": {
+                          "bitrate_kbps": {
+                            "description": "Video bitrate in kilobits per second.",
+                            "format": "uint32",
+                            "minimum": 0,
+                            "type": "integer"
+                          },
+                          "mode": {
+                            "const": "cbr",
+                            "type": "string"
+                          }
+                        },
+                        "required": [
+                          "mode",
+                          "bitrate_kbps"
+                        ],
+                        "type": "object"
+                      },
+                      {
+                        "description": "Variable bitrate around a target.",
+                        "properties": {
+                          "bitrate_kbps": {
+                            "description": "Target video bitrate in kilobits per second.",
+                            "format": "uint32",
+                            "minimum": 0,
+                            "type": "integer"
+                          },
+                          "mode": {
+                            "const": "vbr",
+                            "type": "string"
+                          }
+                        },
+                        "required": [
+                          "mode",
+                          "bitrate_kbps"
+                        ],
+                        "type": "object"
+                      },
+                      {
+                        "description": "Set by the codec profile (ProRes, GIF).",
+                        "properties": {
+                          "mode": {
+                            "const": "profile",
+                            "type": "string"
+                          }
+                        },
+                        "required": [
+                          "mode"
+                        ],
+                        "type": "object"
+                      }
+                    ]
+                  }
+                },
+                "required": [
+                  "codec",
+                  "rate_control",
+                  "hw_preferred"
+                ],
+                "type": [
+                  "object",
+                  "null"
+                ]
+              }
+            },
+            "required": [
+              "schema_version",
+              "id",
+              "name",
+              "container",
+              "size",
+              "fps"
+            ],
+            "type": "object"
+          }
+        },
+        "required": [
+          "preset"
+        ],
+        "title": "SavePreset",
+        "type": "object"
+      },
+      "journaled": false,
+      "kind": "engine",
+      "mcp": "catalog",
+      "mcp_tool": "export_save_preset",
+      "name": "export.save_preset",
+      "namespace": "export",
+      "output_schema": {
+        "additionalProperties": false,
+        "description": "Result of `export.save_preset`.",
+        "properties": {
+          "id": {
+            "description": "The saved preset's id.",
+            "type": "string"
+          },
+          "replaced": {
+            "description": "Whether it replaced an earlier preset of yours.",
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "id",
+          "replaced"
+        ],
+        "title": "SavePresetOutput",
+        "type": "object"
+      },
+      "scope": "any",
+      "secret_fields": [],
+      "summary": "Save your own export preset (replaces your preset with the same id)",
+      "undoable": false,
+      "view": false
+    },
+    {
+      "annotations": {
+        "destructiveHint": true,
         "idempotentHint": false,
         "openWorldHint": false,
         "readOnlyHint": false
@@ -1769,11 +3408,10 @@
           "preset": {
             "anyOf": [
               {
-                "description": "What to make: the preset, or custom settings.",
-                "oneOf": [
+                "anyOf": [
                   {
                     "const": "h264-mp4-1080p",
-                    "description": "MP4, H.264 + AAC 48 kHz stereo, at the sequence frame rate, fit into 1920x1080\n(1080x1920 when portrait) without upscaling, high quality.",
+                    "description": "MP4, H.264 + AAC, fit into 1920x1080 (1080x1920 portrait), not upscaled, high quality.",
                     "type": "string"
                   },
                   {
@@ -1818,6 +3456,14 @@
                             "minimum": 0,
                             "type": [
                               "integer",
+                              "null"
+                            ]
+                          },
+                          "preset": {
+                            "default": null,
+                            "description": "Base preset id; the other fields replace its values.",
+                            "type": [
+                              "string",
                               "null"
                             ]
                           },
@@ -1868,15 +3514,20 @@
                       "custom"
                     ],
                     "type": "object"
+                  },
+                  {
+                    "description": "A preset id (export.list_presets).",
+                    "type": "string"
                   }
-                ]
+                ],
+                "description": "What to make: the preset, or custom settings."
               },
               {
                 "type": "null"
               }
             ],
             "default": null,
-            "description": "\"h264-mp4-1080p\" (default) or {\"custom\": {width, height, fps, quality}}."
+            "description": "\"h264-mp4-1080p\" (default), a preset id (\"youtube-1080p\") or {\"custom\": {width, height,\nfps, quality, preset}}."
           },
           "range": {
             "additionalProperties": false,
@@ -2020,6 +3671,50 @@
             "pattern": "^seq_[0-9a-f]{32}$",
             "type": "string"
           },
+          "warnings": {
+            "description": "Platform-limit and fit warnings of a preset (never errors; the export runs).",
+            "items": {
+              "additionalProperties": false,
+              "description": "One warning about a preset on a sequence.",
+              "properties": {
+                "code": {
+                  "description": "What kind.",
+                  "oneOf": [
+                    {
+                      "const": "AspectMismatch",
+                      "description": "The sequence's aspect is not the preset's.",
+                      "type": "string"
+                    },
+                    {
+                      "const": "DurationOverLimit",
+                      "description": "The exported part is longer than the platform accepts.",
+                      "type": "string"
+                    },
+                    {
+                      "const": "SizeOverLimit",
+                      "description": "The estimated file is larger than the platform accepts.",
+                      "type": "string"
+                    },
+                    {
+                      "const": "FrameRateCapped",
+                      "description": "The sequence's frame rate is above the platform's maximum, so the file uses a lower one.",
+                      "type": "string"
+                    }
+                  ]
+                },
+                "message": {
+                  "description": "A sentence for the person.",
+                  "type": "string"
+                }
+              },
+              "required": [
+                "code",
+                "message"
+              ],
+              "type": "object"
+            },
+            "type": "array"
+          },
           "width": {
             "description": "Frame width in pixels.",
             "format": "uint32",
@@ -2038,7 +3733,8 @@
           "frame_rate",
           "frames",
           "duration",
-          "rev"
+          "rev",
+          "warnings"
         ],
         "title": "ExportStartOutput",
         "type": "object"

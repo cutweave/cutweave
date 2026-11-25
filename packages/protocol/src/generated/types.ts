@@ -42,6 +42,19 @@ export type AgentConnection = {
 	last_command_at: WallTime | null,
 };
 
+/**  The audio codec. */
+export type AudioCodec = 
+/**  AAC-LC. */
+"aac" | 
+/**  MP3. */
+"mp3" | 
+/**  Uncompressed PCM. */
+"pcm" | 
+/**  FLAC. */
+"flac" | 
+/**  Opus. */
+"opus";
+
 /**  Format of the main audio stream. */
 export type AudioInfo = {
 	/**  Samples per second. */
@@ -55,6 +68,18 @@ export type AudioProps = {
 	/**  Gain in decibels (0.0 = unchanged). */
 	gain: number,
 } & { [key in string]: unknown };
+
+/**  Audio settings. */
+export type AudioSpec = {
+	/**  The codec. */
+	codec: AudioCodec,
+	/**  Bitrate in kilobits per second (absent for lossless codecs). */
+	bitrate_kbps?: number | null,
+	/**  Sample rate in Hz. */
+	sample_rate: number,
+	/**  Channel count. */
+	channels: number,
+};
 
 /**  Payload of `project.autosave_failed`. */
 export type AutosaveFailed = {
@@ -431,6 +456,25 @@ export type ConflictReason =
  */
 "item_in_gesture";
 
+/**  The file format of the output. */
+export type Container = 
+/**  MP4. */
+"mp4" | 
+/**  QuickTime MOV. */
+"mov" | 
+/**  Animated GIF. */
+"gif" | 
+/**  WAV (audio only). */
+"wav" | 
+/**  MP3 (audio only). */
+"mp3" | 
+/**  M4A (AAC audio only). */
+"m4a" | 
+/**  FLAC (audio only). */
+"flac" | 
+/**  Ogg (Opus audio only). */
+"ogg";
+
 /**  Custom output settings; absent fields take the sequence's value (quality: high). */
 export type CustomExport = {
 	/**  Frame width in pixels: even, 16-8192. */
@@ -444,6 +488,8 @@ export type CustomExport = {
 	fps?: FrameRate | null,
 	/**  "low", "medium" or "high". */
 	quality?: ExportQuality | null,
+	/**  Base preset id; the other fields replace its values. */
+	preset?: string | null,
 };
 
 /**  Whether decoders may use the hardware. */
@@ -460,6 +506,18 @@ export type DecodeHw =
 export type DeleteCheckpoint = {
 	/**  The checkpoint: its id (`cp_<n>`) or name. */
 	checkpoint: string,
+};
+
+/**  Deletes one of your export presets. Built-in presets cannot be deleted. */
+export type DeletePreset = {
+	/**  The preset id. */
+	id: string,
+};
+
+/**  Result of `export.delete_preset`. */
+export type DeletePresetOutput = {
+	/**  The deleted preset's id. */
+	id: string,
 };
 
 /**
@@ -595,13 +653,56 @@ export type ExportHw =
 
 /**  What to make: the preset, or custom settings. */
 export type ExportPreset = 
-/**
- *  MP4, H.264 + AAC 48 kHz stereo, at the sequence frame rate, fit into 1920x1080
- *  (1080x1920 when portrait) without upscaling, high quality.
- */
+/**  MP4, H.264 + AAC, fit into 1920x1080 (1080x1920 portrait), not upscaled, high quality. */
 "h264-mp4-1080p" | 
 /**  MP4, H.264 + AAC at a custom size, frame rate and quality. */
-{ custom: CustomExport };
+{ custom: CustomExport } | 
+/**  A preset id (export.list_presets). */
+string;
+
+/**  A preset in a listing. */
+export type ExportPresetEntry = {
+	/**  Built-in or the user's. */
+	source: PresetSource,
+	/**  Whether this build can export it now. */
+	supported: boolean,
+	/**  Why not, when unsupported. */
+	unsupported_reason?: string | null,
+	/**  The preset. */
+	preset: ExportPresetSpec,
+};
+
+/**  An export preset: the data the export dialog, the CLI and agents choose from. */
+export type ExportPresetSpec = {
+	/**  The format version (1). */
+	schema_version: number,
+	/**  Stable id: lowercase letters, digits and `-`. */
+	id: string,
+	/**  Display name. */
+	name: string,
+	/**  One line for the picker. */
+	summary?: string,
+	/**  The file format. */
+	container: Container,
+	/**  Video settings; absent for audio-only presets. */
+	video?: VideoSpec | null,
+	/**  Audio settings; absent for GIF. */
+	audio?: AudioSpec | null,
+	/**  The output size rule. */
+	size: PresetSize,
+	/**  The frame-rate rule. */
+	fps: PresetFps,
+	/**  Loudness target. */
+	loudness?: LoudnessSpec | null,
+	/**  GIF loop count (0 = forever). */
+	loop?: number | null,
+	/**  Limits of the target (warnings). */
+	limits?: PresetLimits,
+	/**  Where the numbers come from (platform presets). */
+	platform?: PlatformInfo | null,
+	/**  The UI-safe zone to show in the preview: an id of WP-2H.06's `safe-areas.json`. */
+	safe_area?: string | null,
+};
 
 /**  How hard the encoder works for picture quality (and file size). */
 export type ExportQuality = 
@@ -635,7 +736,10 @@ export type ExportStart = {
 	path: string,
 	/**  Part of the sequence to export (default: all of it). */
 	range?: ExportRange | null,
-	/**  "h264-mp4-1080p" (default) or {"custom": {width, height, fps, quality}}. */
+	/**
+	 *  "h264-mp4-1080p" (default), a preset id ("youtube-1080p") or {"custom": {width, height,
+	 *  fps, quality, preset}}.
+	 */
 	preset?: ExportPreset | null,
 	/**  Hardware encoder: "auto" (default), "off", or {"force": "h264_nvenc"}. */
 	hw?: ExportHw | null,
@@ -667,6 +771,8 @@ export type ExportStartOutput = {
 	duration: Duration,
 	/**  The document revision exported (edits made later are not in the file). */
 	rev: Rev,
+	/**  Platform-limit and fit warnings of a preset (never errors; the export runs). */
+	warnings: PresetWarning[],
 };
 
 /**
@@ -1378,6 +1484,24 @@ export type ListCheckpoints = Record<string, never>;
  */
 export type ListLocks = Record<string, never>;
 
+/**
+ *  Lists the export presets (built-in and the user's): the platform presets (YouTube,
+ *  Instagram, TikTok, X) with their sources and `checked` dates, and the general formats. Give
+ *  `platform` to list one platform's presets. `export.start{preset: "<id>"}` exports with one.
+ */
+export type ListPresets = {
+	/**  Only the presets of this platform id (`youtube`, `instagram-reels`, `tiktok`, `x`). */
+	platform?: string | null,
+};
+
+/**  Result of `export.list_presets`. */
+export type ListPresetsOutput = {
+	/**  The presets: built-in first (pack order), then the user's by id. */
+	presets: ExportPresetEntry[],
+	/**  Problems loading the presets (a damaged user file); empty when fine. */
+	problems: string[],
+};
+
 /**  What `edit.locks` returns. */
 export type LockList = {
 	/**  Every open transaction, oldest first. */
@@ -1386,6 +1510,12 @@ export type LockList = {
 	rev: Rev,
 	/**  The committed revision. */
 	committed_rev: Rev,
+};
+
+/**  The loudness target of a preset (applied by the mixer once WP-2G.05 lands). */
+export type LoudnessSpec = {
+	/**  Integrated loudness target in LUFS (for example -14). */
+	target_lufs: number,
 };
 
 /**  A marker on a sequence (sequence time) or an item (item-relative time). */
@@ -1846,6 +1976,85 @@ path: string };
  */
 export type PatchValue = null | boolean | number | string | PatchValue[] | { [key in string]: PatchValue };
 
+/**  Where a platform preset's numbers come from. */
+export type PlatformInfo = {
+	/**  Platform surface id (`youtube`, `instagram-reels`); shared with the safe-area ids. */
+	id: string,
+	/**  Display name. */
+	name: string,
+	/**  The platform's published upload specification (`https://`). */
+	spec_url: string,
+	/**  The date the values were checked against it (`YYYY-MM-DD`). */
+	checked: string,
+	/**  The fields (`limits.max_duration_secs`, `size`) nobody could verify at `checked`. */
+	unverified?: string[],
+};
+
+/**  The frame-rate rule. */
+export type PresetFps = 
+/**  The sequence's rate, capped at `max` when given. */
+{ kind: "follow_sequence"; 
+/**  The platform's highest frame rate. */
+max?: FrameRate | null } | 
+/**  Always this rate. */
+{ kind: "fixed"; 
+/**  The rate. */
+rate: FrameRate };
+
+/**  Limits of the target; exceeding one is a warning. */
+export type PresetLimits = {
+	/**  Longest accepted video, in seconds. */
+	max_duration_secs?: number | null,
+	/**  Largest accepted file, in MiB (1024 x 1024 bytes). */
+	max_size_mb?: number | null,
+};
+
+/**  The output size rule. */
+export type PresetSize = 
+/**
+ *  Exactly this size for a sequence of the same aspect; a different aspect is fitted into
+ *  the frame without stretching, with an `AspectMismatch` warning.
+ */
+{ kind: "fixed"; 
+/**  Frame width in pixels. */
+width: number; 
+/**  Frame height in pixels. */
+height: number } | 
+/**  The sequence fitted into this box, never upscaled (the box turns for portrait). */
+{ kind: "fit"; 
+/**  Box width in pixels. */
+width: number; 
+/**  Box height in pixels. */
+height: number } | 
+/**  The sequence's own size. */
+{ kind: "follow_sequence" };
+
+/**  Where a listed preset comes from. */
+export type PresetSource = 
+/**  The `presets-core` pack. */
+"builtin" | 
+/**  Saved by the user. */
+"user";
+
+/**  One warning about a preset on a sequence. */
+export type PresetWarning = {
+	/**  What kind. */
+	code: PresetWarningCode,
+	/**  A sentence for the person. */
+	message: string,
+};
+
+/**  A platform-limit or fit warning: the export still runs. */
+export type PresetWarningCode = 
+/**  The sequence's aspect is not the preset's. */
+"AspectMismatch" | 
+/**  The exported part is longer than the platform accepts. */
+"DurationOverLimit" | 
+/**  The estimated file is larger than the platform accepts. */
+"SizeOverLimit" | 
+/**  The sequence's frame rate is above the platform's maximum, so the file uses a lower one. */
+"FrameRateCapped";
+
 /**  Preview resolution (arch §8 quality ladder). */
 export type PreviewQuality = 
 /**  Full resolution. */
@@ -2271,6 +2480,23 @@ export type ProxyStatus =
 /**  The last generation failed (see `error`). */
 "failed";
 
+/**  How the video encoder spends bits. */
+export type RateControlSpec = 
+/**  Constant quality on the x264 CRF scale (0-51, lower is better). */
+{ mode: "crf"; 
+/**  The CRF value. */
+crf: number } | 
+/**  Constant bitrate. */
+{ mode: "cbr"; 
+/**  Video bitrate in kilobits per second. */
+bitrate_kbps: number } | 
+/**  Variable bitrate around a target. */
+{ mode: "vbr"; 
+/**  Target video bitrate in kilobits per second. */
+bitrate_kbps: number } | 
+/**  Set by the codec profile (ProRes, GIF). */
+{ mode: "profile" };
+
 /**  Unsaved work from a previous session (what a restore would bring back). */
 export type RecoveryInfo = {
 	/**  Transactions a restore would replay. */
@@ -2338,6 +2564,44 @@ export type ReplacedReport = {
  *  RFC 9562 UUID is accepted; text form is the usual lowercase `8-4-4-4-12` hex.
  */
 export type RequestId = string & { readonly __brand: "RequestId" };
+
+/**
+ *  Shows what a preset does to a sequence without exporting: the output size, frame rate,
+ *  estimated size and the warnings (`AspectMismatch`, `DurationOverLimit`, `SizeOverLimit`,
+ *  `FrameRateCapped`). Changes nothing.
+ */
+export type ResolvePreset = {
+	/**  The preset id. */
+	preset: string,
+	/**  Sequence; optional when the project has one. */
+	sequence?: SequenceId | null,
+	/**  Part of the sequence (default: all of it). */
+	range?: ExportRange | null,
+	/**  Size, frame rate or quality to use instead of the preset's. */
+	overrides?: CustomExport | null,
+};
+
+/**  Result of `export.resolve_preset`. */
+export type ResolvePresetOutput = {
+	/**  The preset id. */
+	preset: string,
+	/**  The sequence. */
+	sequence: SequenceId,
+	/**  Output width. */
+	width: number,
+	/**  Output height. */
+	height: number,
+	/**  Output frame rate. */
+	frame_rate: FrameRate,
+	/**  Estimated file size in KiB, when the preset has a bitrate. */
+	estimated_kib: number | null,
+	/**  Whether this build can export it now. */
+	supported: boolean,
+	/**  Why not, when unsupported. */
+	unsupported_reason: string | null,
+	/**  Limit and fit warnings; the export would still run. */
+	warnings: PresetWarning[],
+};
 
 /**  What a [`CmdError::NotFound`] or [`CmdError::Locked`] refers to. */
 export type ResourceKind = 
@@ -2424,6 +2688,23 @@ export type Rounding =
  *  Serialized as a JSON integer (`48000`).
  */
 export type SampleRate = number;
+
+/**
+ *  Saves an export preset of your own (a new id, or replaces your earlier one). Built-in ids
+ *  cannot be replaced; save a copy under another id.
+ */
+export type SavePreset = {
+	/**  The preset (see export.list_presets for examples). */
+	preset: ExportPresetSpec,
+};
+
+/**  Result of `export.save_preset`. */
+export type SavePresetOutput = {
+	/**  The saved preset's id. */
+	id: string,
+	/**  Whether it replaced an earlier preset of yours. */
+	replaced: boolean,
+};
 
 /**  Which credentials may invoke an entry (arch §6, ADR-0016). */
 export type Scope = 
@@ -3397,6 +3678,36 @@ export type Vec2 = {
 	x: number,
 	/**  Vertical component (down is positive). */
 	y: number,
+};
+
+/**  The video codec. */
+export type VideoCodec = 
+/**  H.264 / AVC. */
+"h264" | 
+/**  H.265 / HEVC. */
+"hevc" | 
+/**  Apple ProRes. */
+"prores" | 
+/**  GIF (palette). */
+"gif";
+
+/**  Video settings. */
+export type VideoSpec = {
+	/**  The codec. */
+	codec: VideoCodec,
+	/**  How bits are spent. */
+	rate_control: RateControlSpec,
+	/**  Codec profile (`high`, `main10`, `422hq`). */
+	profile?: string | null,
+	/**  Encoder speed preset (`medium`, `slow`). */
+	preset?: string | null,
+	/**  Pixel format (`yuv420p`). */
+	pix_fmt?: string | null,
+	/**
+	 *  Use a hardware encoder when one works here (software otherwise); `false` always uses
+	 *  software, for quality-first presets.
+	 */
+	hw_preferred: boolean,
 };
 
 /**

@@ -2,7 +2,7 @@
 
 # Command reference
 
-Every command and query the engine registers (67 in total), generated from the registry. The full JSON Schemas are in `schema/commands.json` and `schema/queries.json`.
+Every command and query the engine registers (71 in total), generated from the registry. The full JSON Schemas are in `schema/commands.json` and `schema/queries.json`.
 
 MCP exposure: `core` commands are always listed as tools (`item.move` is `item_move`), `catalog` ones are reachable through the catalog tools, `hidden` ones are not exposed.
 
@@ -21,6 +21,10 @@ MCP exposure: `core` commands are always listed as tools (`item.move` is `item_m
 | edit | `edit.redo` | Redo the last undone change of yours, or of another actor (`actor`; `*` = anyone) | engine | catalog |
 | edit | `edit.restore` | Restore a checkpoint as one undoable change | engine, undoable, idempotent | catalog |
 | edit | `edit.undo` | Undo your last change, or another actor's (`actor`; `*` = anyone's latest) | engine | core |
+| export | `export.delete_preset` | Delete one of your export presets | engine, destructive, idempotent | catalog |
+| export | `export.list_presets` | List export presets (YouTube, Instagram, TikTok, X and formats) and what this build can export | engine, read-only, idempotent | catalog |
+| export | `export.resolve_preset` | Show what an export preset does to a sequence (size, rate, warnings) without exporting | engine, read-only, idempotent | catalog |
+| export | `export.save_preset` | Save your own export preset (replaces your preset with the same id) | engine, idempotent | catalog |
 | export | `export.start` | Export a sequence to an MP4 file (H.264 + AAC) as a background job; returns job_id | engine, destructive | core |
 | item | `item.delete` | Delete items and their linked partners (no ripple; fails if a track is locked) | command, undoable, destructive | core |
 | item | `item.get` | Get one item: summary, track, source, audio and visual properties | query | catalog |

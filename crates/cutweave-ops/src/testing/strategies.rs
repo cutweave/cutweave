@@ -287,7 +287,9 @@ pub(super) fn args_for(name: &str, p: &Pools) -> Option<(u32, BoxedStrategy<Valu
     Some(match name {
         "project.new" => (if empty { 12 } else { 1 }, project_new()),
         "project.rename" => (1, project_rename()),
-        "project.info" | "edit.locks" | "edit.list_checkpoints" => (1, no_params()),
+        "project.info" | "edit.locks" | "edit.list_checkpoints" | "export.list_presets" => {
+            (1, no_params())
+        }
         "media.register" => (if no_media { 4 } else { 2 }, media_register(p)),
         "media.import" => (if no_media { 4 } else { 2 }, media_import()),
         "media.list" => (1, media_list(p)),
@@ -328,8 +330,46 @@ pub(super) fn args_for(name: &str, p: &Pools) -> Option<(u32, BoxedStrategy<Valu
         "job.list" => (1, job_list(p)),
         "job.wait" => (1, job_wait()),
         "export.start" => (1, export_start(p)),
+        "export.resolve_preset" => (1, preset_ref("preset")),
+        "export.save_preset" => (1, preset_save()),
+        "export.delete_preset" => (1, preset_ref("id")),
         _ => return None,
     })
+}
+
+/// `{<key>: preset id}`: built-in ids, ids a save may have made, and unknown ones.
+fn preset_ref(key: &'static str) -> BoxedStrategy<Value> {
+    select(vec![
+        "youtube-1080p",
+        "tiktok",
+        "h264-draft",
+        "prores-422-hq",
+        "mine-a",
+        "mine-b",
+        "missing",
+        "Bad Id",
+    ])
+    .prop_map(move |id| json!({ key: id }))
+    .boxed()
+}
+
+/// `export.save_preset` of a small H.264 preset under one of a few ids, sometimes invalid.
+fn preset_save() -> BoxedStrategy<Value> {
+    (
+        select(vec!["mine-a", "mine-b", "youtube-1080p", "Bad Id"]),
+        select(vec![20_u32, 28, 99]),
+    )
+        .prop_map(|(id, crf)| {
+            json!({"preset": {
+                "schema_version": 1, "id": id, "name": "Mine", "container": "mp4",
+                "video": {"codec": "h264", "rate_control": {"mode": "crf", "crf": crf},
+                          "hw_preferred": true},
+                "audio": {"codec": "aac", "bitrate_kbps": 192, "sample_rate": 48000, "channels": 2},
+                "size": {"kind": "fit", "width": 1280, "height": 720},
+                "fps": {"kind": "follow_sequence"}
+            }})
+        })
+        .boxed()
 }
 
 // ----- building blocks -----------------------------------------------------------------------
@@ -1443,6 +1483,18 @@ impl ExportStarter for QueueNothing {
     }
 }
 
+/// The engine context of the preset commands in a harness: `store` and `snapshot`.
+#[must_use]
+pub fn preset_ctx(
+    store: Arc<crate::export::presets::PresetStore>,
+    snapshot: Arc<DocSnapshot>,
+) -> crate::export::presets::PresetCtx {
+    crate::export::presets::PresetCtx {
+        store,
+        snapshot: Some(snapshot),
+    }
+}
+
 /// The engine context of `export.start` in a harness: `snapshot` (the committed document), no
 /// path allowlist, and a starter that queues nothing and answers [`EXPORT_JOB_ID`].
 #[must_use]
@@ -1451,5 +1503,6 @@ pub fn export_ctx(snapshot: Arc<DocSnapshot>) -> ExportCtx {
         snapshot,
         allowed_roots: None,
         starter: Box::new(QueueNothing),
+        presets: Arc::default(),
     }
 }

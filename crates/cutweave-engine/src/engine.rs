@@ -41,6 +41,7 @@ use cutweave_commands::{
 use cutweave_jobs::JobManager;
 use cutweave_model::{SeededGen, Time};
 use cutweave_ops::export::ExportCtx;
+use cutweave_ops::export::presets::{PresetCtx, PresetStore};
 use cutweave_ops::media::proxy::ProxyCall;
 use cutweave_ops::media::{
     AllowedRoots, AnalysisStages, Analyzer, ImportCtx, ImportPolicy, OUTSIDE_ROOTS_HINT,
@@ -207,6 +208,8 @@ pub(crate) struct Core {
     pub(crate) has_ui: bool,
     /// Output files of queued and running exports.
     exports: ActiveExports,
+    /// The export presets: built-in and the user's (WP-2G.01).
+    presets: Arc<PresetStore>,
     /// The run-file, once the server runs (its `shm` follows the preview ring).
     run_file: Mutex<Option<PathBuf>>,
 }
@@ -315,6 +318,18 @@ impl Core {
         }
         if context == TypeId::of::<ExportCtx>() {
             return self.export(ctx, name, params);
+        }
+        if context == TypeId::of::<PresetCtx>() {
+            let mut call = PresetCtx {
+                store: Arc::clone(&self.presets),
+                snapshot: self.session().ok().and_then(|guard| {
+                    guard
+                        .as_ref()
+                        .map(|session| session.handle().committed_snapshot())
+                }),
+            };
+            let output = registry.invoke_engine_json(name, params, &mut call, ctx.access())?;
+            return Ok(self.reply(output));
         }
         if context == TypeId::of::<ViewCtx>() {
             return self.view(ctx, name, params);
@@ -501,6 +516,7 @@ impl Core {
             snapshot,
             allowed_roots,
             starter: Box::new(starter),
+            presets: Arc::clone(&self.presets),
         };
         let output =
             self.deps
@@ -1114,6 +1130,7 @@ impl Engine {
             has_ui: config.mode == EngineMode::Gui,
             session: RwLock::new(None),
             exports: ActiveExports::default(),
+            presets: Arc::new(PresetStore::open(config.presets_dir.clone())),
             run_file: Mutex::new(None),
             deps,
         });

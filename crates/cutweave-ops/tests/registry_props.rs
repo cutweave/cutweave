@@ -60,7 +60,10 @@ use cutweave_commands::{
 use cutweave_jobs::JobManager;
 use cutweave_model::{ItemId, OpenOutcome, Project, open_str, to_document_string};
 use cutweave_ops::{
-    export::ExportCtx,
+    export::{
+        ExportCtx,
+        presets::{PresetCtx, PresetStore},
+    },
     media::{FakeProbe, ImportCtx, MediaRegister, MediaRegistered, MediaSink, proxy::ProxyCall},
     testing::{
         self, AGENT_LABEL, JsonMirror, analyzer, arb_command_from, check_invariants,
@@ -313,6 +316,7 @@ struct Harness<'s> {
     state: Arc<Mutex<DocState>>,
     /// The `job.*` context, also running the analysis jobs of imports (never the document).
     jobs: JobManager,
+    presets: Arc<PresetStore>,
     clock: Arc<ManualClock>,
     initial: Project,
     mirror: JsonMirror,
@@ -359,6 +363,7 @@ impl<'s> Harness<'s> {
             registry: Arc::clone(&REGISTRY),
             state: Arc::new(Mutex::new(DocState::new(config))),
             jobs: job_manager(),
+            presets: Arc::default(),
             clock,
             mirror: JsonMirror::new(&initial, Rev::ZERO),
             initial,
@@ -477,6 +482,15 @@ impl<'s> Harness<'s> {
             .invoke_engine_json("export.start", params.clone(), &mut ctx_any, ctx.access())
     }
 
+    /// Runs an export preset command (WP-2G.01) against the committed document and the
+    /// harness's in-memory preset store.
+    fn preset(&self, ctx: &ActorCtx, name: &str, params: &Value) -> Result<Value, CmdError> {
+        let snapshot = Arc::new(self.lock().committed_snapshot());
+        let mut call = testing::preset_ctx(Arc::clone(&self.presets), snapshot);
+        self.registry
+            .invoke_engine_json(name, params.clone(), &mut call, ctx.access())
+    }
+
     /// Runs a proxy command (WP-2F.01) against a service that makes none: proxies are cache
     /// state, so the document never changes.
     fn proxy(&self, ctx: &ActorCtx, name: &str, params: &Value) -> Result<Value, CmdError> {
@@ -550,6 +564,7 @@ impl<'s> Harness<'s> {
     }
 
     /// Runs one request and checks properties 3–6 (and 1–2 at the patch level).
+    #[allow(clippy::too_many_lines)]
     fn exec(
         &mut self,
         ctx: &ActorCtx,
@@ -587,6 +602,12 @@ impl<'s> Harness<'s> {
             }
             Some(c) if c == TypeId::of::<ExportCtx>() => {
                 self.export(ctx, params).map(|output| Done {
+                    output,
+                    applied: None,
+                })
+            }
+            Some(c) if c == TypeId::of::<PresetCtx>() => {
+                self.preset(ctx, name, params).map(|output| Done {
                     output,
                     applied: None,
                 })
