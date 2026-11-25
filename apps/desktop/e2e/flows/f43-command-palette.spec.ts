@@ -115,7 +115,7 @@ test.describe("F43 command palette", () => {
       const settings = page.getByRole("dialog", { name: "Settings" });
       await expect(settings).toBeVisible();
       await expect(settings.getByRole("heading", { name: "Keyboard shortcuts" })).toBeVisible();
-      await page.keyboard.press("Escape");
+      await settings.getByRole("button", { name: "Done" }).click();
       await expect(settings).toHaveCount(0);
     } finally {
       await close();
