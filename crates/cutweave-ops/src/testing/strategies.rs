@@ -360,6 +360,11 @@ pub(super) fn args_for(name: &str, p: &Pools) -> Option<(u32, BoxedStrategy<Valu
         "clip.slide" => (edits.div_ceil(2), clip_shift(p, true)),
         "item.move" => (edits, item_move(p)),
         "item.delete" => (edits.div_ceil(2), item_delete(p)),
+        "item.link" => (edits.div_ceil(2), item_link(p)),
+        "item.unlink" => (edits.div_ceil(2), item_unlink(p)),
+        "item.attach" => (edits.div_ceil(2), item_attach(p)),
+        "item.detach" => (edits.div_ceil(2), item_detach(p)),
+        "item.group_select" => (1, item_group_select(p)),
         "item.duplicate" => (edits.div_ceil(2), item_duplicate(p)),
         "item.set_props" => (edits.div_ceil(2), item_set_props(p)),
         "item.get" => (1, item_get(p)),
@@ -1706,6 +1711,82 @@ fn item_move(p: &Pools) -> BoxedStrategy<Value> {
         )
         .boxed();
     mix(valid, invalid)
+}
+
+/// Pairs of items of one sequence that start and end together (what `item.link` accepts), when
+/// `aligned`; else pairs where the second starts inside the first (what `item.attach` accepts).
+fn item_pairs(p: &Pools, aligned: bool) -> Vec<(ItemId, ItemId)> {
+    let mut out = Vec::new();
+    for a in &p.items {
+        for b in &p.items {
+            let ok = a.seq == b.seq
+                && a.id != b.id
+                && a.track != b.track
+                && if aligned {
+                    a.id < b.id && a.start == b.start && a.len == b.len
+                } else {
+                    a.start <= b.start && b.start < a.start + a.len
+                };
+            if ok {
+                out.push((a.id, b.id));
+            }
+        }
+    }
+    out
+}
+
+fn item_link(p: &Pools) -> BoxedStrategy<Value> {
+    let invalid = prop_oneof![
+        Just(json!({"items": []})),
+        one_of(p.item_ids()).prop_map(|item| json!({"items": [item]})),
+        (one_of(p.item_ids()), one_of(p.item_ids())).prop_map(|(a, b)| json!({"items": [a, b]})),
+    ]
+    .boxed();
+    let pairs = item_pairs(p, true);
+    if pairs.is_empty() {
+        return mix(invalid.clone(), invalid);
+    }
+    let valid = select(pairs)
+        .prop_map(|(a, b)| json!({"items": [a, b]}))
+        .boxed();
+    mix(valid, invalid)
+}
+
+fn item_unlink(p: &Pools) -> BoxedStrategy<Value> {
+    let valid = vec(one_of(p.item_ids()), 1..=2)
+        .prop_map(|items| json!({"items": items}))
+        .boxed();
+    let invalid = prop_oneof![
+        Just(json!({"items": []})),
+        fresh::<ItemId>().prop_map(|item| json!({"items": [item]})),
+    ]
+    .boxed();
+    mix(valid, invalid)
+}
+
+fn item_attach(p: &Pools) -> BoxedStrategy<Value> {
+    let invalid = prop_oneof![
+        Just(json!({"items": [], "parent": null})),
+        (one_of(p.item_ids()), one_of(p.item_ids()))
+            .prop_map(|(a, b)| json!({"items": [a], "parent": b})),
+    ]
+    .boxed();
+    let pairs = item_pairs(p, false);
+    if pairs.is_empty() {
+        return mix(invalid.clone(), invalid);
+    }
+    let valid = select(pairs)
+        .prop_map(|(parent, child)| json!({"items": [child], "parent": parent}))
+        .boxed();
+    mix(valid, invalid)
+}
+
+fn item_detach(p: &Pools) -> BoxedStrategy<Value> {
+    item_unlink(p)
+}
+
+fn item_group_select(p: &Pools) -> BoxedStrategy<Value> {
+    item_unlink(p)
 }
 
 fn item_delete(p: &Pools) -> BoxedStrategy<Value> {

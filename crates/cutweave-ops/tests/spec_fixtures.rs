@@ -11,7 +11,7 @@
 //!
 //! The commands of these work packages are listed in [`COMMANDS`]; every fixture of theirs must
 //! be in the table below, so a new fixture cannot be skipped silently. The link and replace
-//! fixtures belong to WP-2A.05 and 2A.11.
+//! fixtures belong to WP-2A.11 (the link fixtures to WP-2A.05).
 
 #![allow(clippy::unwrap_used, clippy::expect_used, clippy::panic)]
 
@@ -52,6 +52,10 @@ const COMMANDS: &[&str] = &[
     "clip.roll",
     "clip.slip",
     "clip.slide",
+    "item.link",
+    "item.unlink",
+    "item.attach",
+    "item.detach",
 ];
 
 fn fixtures_dir() -> PathBuf {
@@ -533,6 +537,21 @@ fixtures! {
     trim_magnetic_end_ripples => "trim-magnetic-end-ripples",
     trim_magnetic_start => "trim-magnetic-start",
     trim_unlink => "trim-unlink",
+    // Links and attachments (WP-2A.05).
+    attach_linked_pair => "attach-linked-pair",
+    attach_locked => "attach-locked",
+    attach_outside_parent_invalid => "attach-outside-parent-invalid",
+    attach_overlay_to_main_clip => "attach-overlay-to-main-clip",
+    detach_from_main_clip => "detach-from-main-clip",
+    detach_linked_pair => "detach-linked-pair",
+    detach_locked => "detach-locked",
+    link_aligned => "link-aligned",
+    link_locked => "link-locked",
+    link_magnetic => "link-magnetic",
+    link_misaligned_invalid => "link-misaligned-invalid",
+    unlink_locked => "unlink-locked",
+    unlink_magnetic => "unlink-magnetic",
+    unlink_pair => "unlink-pair",
 }
 
 #[test]

@@ -75,6 +75,14 @@
         "additionalProperties": false,
         "description": "Result of `item.get`.",
         "properties": {
+          "attached_to": {
+            "description": "The item this one is attached to (it follows that parent), if any.",
+            "pattern": "^itm_[0-9a-f]{32}$",
+            "type": [
+              "string",
+              "null"
+            ]
+          },
           "audio": {
             "description": "Audio properties (unless `fields` leaves them out).",
             "properties": {
@@ -451,6 +459,15 @@
               "object",
               "null"
             ]
+          },
+          "children": {
+            "description": "The items attached to this one, in track-ID then item-ID order.",
+            "items": {
+              "description": "A Item id: `^itm_[0-9a-f]{32}$`.",
+              "pattern": "^itm_[0-9a-f]{32}$",
+              "type": "string"
+            },
+            "type": "array"
           },
           "item": {
             "additionalProperties": false,
@@ -2729,7 +2746,8 @@
           "sequence",
           "track",
           "item",
-          "linked"
+          "linked",
+          "children"
         ],
         "title": "ItemGetOutput",
         "type": "object"
@@ -2737,6 +2755,95 @@
       "scope": "any",
       "secret_fields": [],
       "summary": "Get one item: summary, track, source, audio and visual properties",
+      "undoable": false,
+      "view": false
+    },
+    {
+      "annotations": {
+        "destructiveHint": false,
+        "idempotentHint": true,
+        "openWorldHint": false,
+        "readOnlyHint": true
+      },
+      "input_schema": {
+        "additionalProperties": false,
+        "description": "The selection a click on these items makes: the items and every member of their linked\ngroups (timeline spec INV-341). Attached children are not included. A read-only query.",
+        "properties": {
+          "items": {
+            "description": "The items, in one sequence.",
+            "items": {
+              "description": "A Item id: `^itm_[0-9a-f]{32}$`.",
+              "pattern": "^itm_[0-9a-f]{32}$",
+              "type": "string"
+            },
+            "type": "array"
+          }
+        },
+        "required": [
+          "items"
+        ],
+        "title": "ItemGroupSelect",
+        "type": "object"
+      },
+      "kind": "query",
+      "mcp": "catalog",
+      "mcp_tool": "item_group_select",
+      "name": "item.group_select",
+      "namespace": "item",
+      "output_schema": {
+        "additionalProperties": false,
+        "description": "Result of `item.group_select`.",
+        "properties": {
+          "items": {
+            "description": "The given items in order, each followed by the other members of its group (no repeats).",
+            "items": {
+              "additionalProperties": false,
+              "description": "One selected item.",
+              "properties": {
+                "item": {
+                  "description": "The item.",
+                  "pattern": "^itm_[0-9a-f]{32}$",
+                  "type": "string"
+                },
+                "linked_group": {
+                  "description": "Its linked group, if any.",
+                  "pattern": "^grp_[0-9a-f]{32}$",
+                  "type": [
+                    "string",
+                    "null"
+                  ]
+                },
+                "track": {
+                  "description": "Its track.",
+                  "pattern": "^trk_[0-9a-f]{32}$",
+                  "type": "string"
+                }
+              },
+              "required": [
+                "item",
+                "track",
+                "linked_group"
+              ],
+              "type": "object"
+            },
+            "type": "array"
+          },
+          "sequence": {
+            "description": "The sequence of the items.",
+            "pattern": "^seq_[0-9a-f]{32}$",
+            "type": "string"
+          }
+        },
+        "required": [
+          "sequence",
+          "items"
+        ],
+        "title": "ItemGroupSelectOutput",
+        "type": "object"
+      },
+      "scope": "any",
+      "secret_fields": [],
+      "summary": "The items and every member of their linked groups (what a click selects)",
       "undoable": false,
       "view": false
     },

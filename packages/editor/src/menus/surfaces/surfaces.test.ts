@@ -321,6 +321,92 @@ describe("the clip menu", () => {
   });
 });
 
+describe("links and attachments (WP-2A.05)", () => {
+  const SOUND = hex("itm", 5);
+  const OVERLAY = hex("itm", 6);
+
+  /** V1 (magnetic): C1 0-10 s; A1: SOUND 0-10 s (aligned with C1); V2: OVERLAY 2-5 s. */
+  function withLinkables(extra: { linked?: boolean; attached?: boolean } = {}): void {
+    const p = project();
+    const tracks = p.sequences[SEQ as keyof typeof p.sequences]?.tracks as unknown as Record<
+      string,
+      { magnetic: boolean; items: Record<string, unknown> }
+    >;
+    const group = extra.linked === true ? "grp_1" : null;
+    (tracks[V1] as { magnetic: boolean }).magnetic = true;
+    (tracks[V1]?.items[C1] as { linked_group: string | null }).linked_group = group;
+    (tracks[A1] as { items: Record<string, unknown> }).items[SOUND] = clip(SOUND, MED_A, 0, {
+      linked_group: group,
+    });
+    (tracks[V2] as { items: Record<string, unknown> }).items[OVERLAY] = clip(OVERLAY, MED_V, 2, {
+      duration: 3 * F,
+      attached_to: extra.attached === true ? C1 : null,
+    });
+    docStore.setState({ status: "ready", rev: 2, committedRev: 2, project: p });
+  }
+
+  const select = (...ids: string[]) =>
+    viewStore.getState().setSelection(ids.map((id) => ({ kind: "item", id }) as never));
+
+  it("links aligned clips on different tracks with item.link", async () => {
+    withLinkables();
+    select(C1, SOUND);
+    const m = menuFor("timeline.clip", { ids: [C1] });
+    expect(m.item("Link clips").disabled).toBeUndefined();
+    expect(m.item("Unlink clips").disabledReason).toBe("These clips are not linked");
+    await m.choose("Link clips");
+    expect(call).toHaveBeenCalledWith("item.link", { items: [C1, SOUND] });
+    expect(schemaProblems("item.link", { items: [C1, SOUND] })).toEqual([]);
+  });
+
+  it("says why Link cannot run: one clip, clips that are not aligned, a pair already linked", () => {
+    withLinkables();
+    const reason = "Select clips on different tracks that start and end together";
+    expect(menuFor("timeline.clip", { ids: [C1] }).item("Link clips").disabledReason).toBe(reason);
+    select(C1, OVERLAY);
+    expect(menuFor("timeline.clip", { ids: [C1] }).item("Link clips").disabledReason).toBe(reason);
+    withLinkables({ linked: true });
+    select(C1, SOUND);
+    expect(menuFor("timeline.clip", { ids: [C1] }).item("Link clips").disabledReason).toBe(
+      "These clips are already linked",
+    );
+  });
+
+  it("unlinks the selected clips with item.unlink", async () => {
+    withLinkables({ linked: true });
+    select(C1, SOUND);
+    const m = menuFor("timeline.clip", { ids: [C1] });
+    expect(m.item("Unlink clips").disabled).toBeUndefined();
+    await m.choose("Unlink clips");
+    expect(call).toHaveBeenCalledWith("item.unlink", { items: [C1, SOUND] });
+  });
+
+  it("attaches a clip to the main-track clip it starts in, and detaches it again", async () => {
+    withLinkables();
+    const m = menuFor("timeline.clip", { ids: [OVERLAY] });
+    expect(m.item("Detach from main clip").disabledReason).toBe(
+      "Not attached to a main-track clip",
+    );
+    await m.choose("Attach to main clip");
+    expect(call).toHaveBeenCalledWith("item.attach", { items: [OVERLAY], parent: C1 });
+    expect(schemaProblems("item.attach", { items: [OVERLAY], parent: C1 })).toEqual([]);
+    withLinkables({ attached: true });
+    call.mockClear();
+    await menuFor("timeline.clip", { ids: [OVERLAY] }).choose("Detach from main clip");
+    expect(call).toHaveBeenCalledWith("item.detach", { items: [OVERLAY] });
+  });
+
+  it("cannot attach a main-track clip, and names a locked track", () => {
+    withLinkables();
+    expect(menuFor("timeline.clip", { ids: [C2] }).item("Attach to main clip").disabledReason).toBe(
+      "Place the clips inside a main-track clip",
+    );
+    const locked = menuFor("timeline.clip", { ids: [CL] });
+    expect(locked.item("Attach to main clip").disabledReason).toBe("Track is locked");
+    expect(locked.item("Link clips").disabledReason).toBe("Track is locked");
+  });
+});
+
 describe("the edge menu (WP-2A.04)", () => {
   const right = (id: string) => ({ ids: [id], data: { zone: "right-edge" } });
   const left = (id: string) => ({ ids: [id], data: { zone: "left-edge" } });

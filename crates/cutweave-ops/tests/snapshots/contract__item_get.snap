@@ -2697,13 +2697,31 @@ expression: "json!({\n    \"meta\": serde_json::to_value(meta).unwrap(), \"input
             "pattern": "^itm_[0-9a-f]{32}$"
           },
           "description": "The other items of the linked group, if any."
+        },
+        "attached_to": {
+          "type": [
+            "string",
+            "null"
+          ],
+          "pattern": "^itm_[0-9a-f]{32}$",
+          "description": "The item this one is attached to (it follows that parent), if any."
+        },
+        "children": {
+          "type": "array",
+          "items": {
+            "description": "A Item id: `^itm_[0-9a-f]{32}$`.",
+            "type": "string",
+            "pattern": "^itm_[0-9a-f]{32}$"
+          },
+          "description": "The items attached to this one, in track-ID then item-ID order."
         }
       },
       "required": [
         "sequence",
         "track",
         "item",
-        "linked"
+        "linked",
+        "children"
       ],
       "description": "Result of `item.get`.",
       "title": "ItemGetOutput"
@@ -5388,13 +5406,31 @@ expression: "json!({\n    \"meta\": serde_json::to_value(meta).unwrap(), \"input
           "pattern": "^itm_[0-9a-f]{32}$"
         },
         "description": "The other items of the linked group, if any."
+      },
+      "attached_to": {
+        "type": [
+          "string",
+          "null"
+        ],
+        "pattern": "^itm_[0-9a-f]{32}$",
+        "description": "The item this one is attached to (it follows that parent), if any."
+      },
+      "children": {
+        "type": "array",
+        "items": {
+          "description": "A Item id: `^itm_[0-9a-f]{32}$`.",
+          "type": "string",
+          "pattern": "^itm_[0-9a-f]{32}$"
+        },
+        "description": "The items attached to this one, in track-ID then item-ID order."
       }
     },
     "required": [
       "sequence",
       "track",
       "item",
-      "linked"
+      "linked",
+      "children"
     ],
     "description": "Result of `item.get`.",
     "title": "ItemGetOutput"

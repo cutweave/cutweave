@@ -321,6 +321,52 @@ const CONTRACT: &[Row] = &[
         false,
         true,
     ),
+    // WP-2A.05 (timeline spec 4.15, 4.16): links and attachments, catalog only.
+    (
+        "item.link",
+        EntryKind::Command,
+        McpExposure::Catalog,
+        false,
+        false,
+        false,
+        true,
+    ),
+    (
+        "item.unlink",
+        EntryKind::Command,
+        McpExposure::Catalog,
+        false,
+        false,
+        true,
+        true,
+    ),
+    (
+        "item.attach",
+        EntryKind::Command,
+        McpExposure::Catalog,
+        false,
+        false,
+        true,
+        true,
+    ),
+    (
+        "item.detach",
+        EntryKind::Command,
+        McpExposure::Catalog,
+        false,
+        false,
+        true,
+        true,
+    ),
+    (
+        "item.group_select",
+        EntryKind::Query,
+        McpExposure::Catalog,
+        true,
+        false,
+        true,
+        false,
+    ),
     (
         "timeline.overwrite",
         EntryKind::Command,
@@ -676,6 +722,11 @@ fn optional_params_are_not_required_in_the_input_schema() {
     assert_eq!(required("timeline.delete_gap"), ["track", "at"]);
     assert_eq!(required("item.duplicate"), ["items"]);
     assert_eq!(required("item.delete"), ["items"]);
+    assert_eq!(required("item.link"), ["items"]);
+    assert_eq!(required("item.unlink"), ["items"]);
+    assert_eq!(required("item.attach"), ["items", "parent"]);
+    assert_eq!(required("item.detach"), ["items"]);
+    assert_eq!(required("item.group_select"), ["items"]);
     assert_eq!(required("item.set_props"), ["props"]);
     assert_eq!(required("keyframe.set"), ["prop", "keys"]);
     assert_eq!(required("keyframe.delete"), ["item", "keys"]);

@@ -2,7 +2,7 @@
 
 # Command reference
 
-Every command and query the engine registers (97 in total), generated from the registry. The full JSON Schemas are in `schema/commands.json` and `schema/queries.json`.
+Every command and query the engine registers (102 in total), generated from the registry. The full JSON Schemas are in `schema/commands.json` and `schema/queries.json`.
 
 MCP exposure: `core` commands are always listed as tools (`item.move` is `item_move`), `catalog` ones are reachable through the catalog tools, `hidden` ones are not exposed.
 
@@ -30,12 +30,17 @@ MCP exposure: `core` commands are always listed as tools (`item.move` is `item_m
 | export | `export.resolve_preset` | Show what an export preset does to a sequence (size, rate, warnings) without exporting | engine, read-only, idempotent | catalog |
 | export | `export.save_preset` | Save your own export preset (replaces your preset with the same id) | engine, idempotent | catalog |
 | export | `export.start` | Export a sequence to an MP4 file (H.264 + AAC) as a background job; returns job_id | engine, destructive | core |
+| item | `item.attach` | Attach items to a parent item so they follow it | command, undoable, idempotent | catalog |
 | item | `item.delete` | Delete items and their linked partners (the main track closes up) | command, undoable, destructive | core |
+| item | `item.detach` | Detach items from their parent item | command, undoable, idempotent | catalog |
 | item | `item.duplicate` | Duplicate items and their linked partners after the selection (inserted on the main track) | command, undoable | catalog |
 | item | `item.get` | Get one item: summary, track, source, audio and visual properties | query | catalog |
+| item | `item.group_select` | The items and every member of their linked groups (what a click selects) | query | catalog |
+| item | `item.link` | Link aligned items into one group (they edit together) | command, undoable | catalog |
 | item | `item.move` | Move items in time and/or to another track (linked partners follow) | command, undoable | core |
 | item | `item.reset_props` | Reset an item's properties (a group, some properties, or all) to their defaults | command, undoable, idempotent | catalog |
 | item | `item.set_props` | Set an item's name, enabled, opacity, audio, transform, crop, flip or blend mode (partial) | command, undoable, idempotent | core |
+| item | `item.unlink` | Take items out of their linked groups | command, undoable, idempotent | catalog |
 | job | `job.cancel` | Cancel a background job (stops within 500 ms; no effect once it finished) | engine, idempotent | catalog |
 | job | `job.list` | List background jobs, newest first (filter by media, state or kind) | engine, read-only, idempotent | catalog |
 | job | `job.status` | Get a background job's state, progress and error (analysis, export) | engine, read-only, idempotent | core |

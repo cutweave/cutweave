@@ -1184,6 +1184,16 @@ export type GpuAdapterInfo = {
  */
 export type GroupId = string & { readonly __brand: "GroupId" };
 
+/**  One selected item. */
+export type GroupMember = {
+	/**  The item. */
+	item: ItemId,
+	/**  Its track. */
+	track: TrackId,
+	/**  Its linked group, if any. */
+	linked_group: GroupId | null,
+};
+
 /**  What happened to an actor's stacks. */
 export type HistoryChange = 
 /**  It committed a change (pushed onto its undo stack if undoable; its redo stack cleared). */
@@ -1661,6 +1671,30 @@ export type Item =
 } & Clip;
 
 /**
+ *  Attaches items (and their linked partners) to a parent item, so they follow it when it moves
+ *  (timeline spec §1.4). Every child must start inside the parent, be on another track than it
+ *  and not in its linked group; the parent must not be attached itself, and a child must not be
+ *  a parent. A child is never moved to make it fit. Attaching again replaces the old parent.
+ */
+export type ItemAttach = {
+	/**  The children, at least one. */
+	items: ItemId[],
+	/**  The parent item, in the same sequence. */
+	parent: ItemId,
+};
+
+/**  Result of `item.attach` and `item.detach`. */
+export type ItemAttachOutput = {
+	/**
+	 *  The items whose attachment was set or cleared: the given ones in order, each followed by
+	 *  its linked partners.
+	 */
+	items: ItemId[],
+	/**  What changed (timeline spec §3.1). */
+	report: EditReport,
+};
+
+/**
  *  Deletes items and their linked partners. On free tracks the space stays; on the magnetic
  *  main track it closes (what follows moves left, and the tracks of its linked partners
  *  follow). Children attached to a deleted item are detached and keep their place. All or
@@ -1678,6 +1712,15 @@ export type ItemDeleteOutput = {
 	deleted: ItemId[],
 	/**  What changed (timeline spec §3.1). */
 	report: EditReport,
+};
+
+/**
+ *  Clears the attachment of items and their linked partners; they keep their place. Items that
+ *  are not attached are left as they are.
+ */
+export type ItemDetach = {
+	/**  The children to detach. */
+	items: ItemId[],
 };
 
 /**
@@ -1741,6 +1784,27 @@ export type ItemGetOutput = {
 	visual?: VisualProps | null,
 	/**  The other items of the linked group, if any. */
 	linked: ItemId[],
+	/**  The item this one is attached to (it follows that parent), if any. */
+	attached_to?: ItemId | null,
+	/**  The items attached to this one, in track-ID then item-ID order. */
+	children: ItemId[],
+};
+
+/**
+ *  The selection a click on these items makes: the items and every member of their linked
+ *  groups (timeline spec INV-341). Attached children are not included. A read-only query.
+ */
+export type ItemGroupSelect = {
+	/**  The items, in one sequence. */
+	items: ItemId[],
+};
+
+/**  Result of `item.group_select`. */
+export type ItemGroupSelectOutput = {
+	/**  The sequence of the items. */
+	sequence: SequenceId,
+	/**  The given items in order, each followed by the other members of its group (no repeats). */
+	items: GroupMember[],
 };
 
 /**
@@ -1749,6 +1813,28 @@ export type ItemGetOutput = {
  *  Serialized as a string, exported to TypeScript as `string`.
  */
 export type ItemId = string & { readonly __brand: "ItemId" };
+
+/**
+ *  Links items into one group, so they move, trim, split, are deleted and duplicated together.
+ *  The items must be in one sequence, on other tracks than each other, and aligned (identical
+ *  start and duration; trim first, or use `item.attach`). Every member of the items' current
+ *  groups joins the new group, and the old groups no longer exist. All members must be attached
+ *  to the same parent, or none to any. Nothing moves.
+ */
+export type ItemLink = {
+	/**  The items to link, at least two distinct ones. */
+	items: ItemId[],
+};
+
+/**  Result of `item.link`. */
+export type ItemLinkOutput = {
+	/**  The new group. */
+	group: GroupId,
+	/**  Its members: the given items in order, then the partners they brought along. */
+	members: ItemId[],
+	/**  What changed (timeline spec §3.1). */
+	report: EditReport,
+};
 
 /**
  *  Moves items to a new start (`start`, or `delta` from where the first one is), optionally
@@ -1902,6 +1988,21 @@ export type ItemSummary = {
 	linked_group: GroupId | null,
 	/**  Whether the item is rendered and heard. */
 	enabled: boolean,
+};
+
+/**
+ *  Takes the given items (only them) out of their linked groups. A group left with one member
+ *  is dissolved. Items that are not linked are left as they are. Nothing moves.
+ */
+export type ItemUnlink = {
+	/**  The items to unlink. */
+	items: ItemId[],
+};
+
+/**  Result of `item.unlink`. */
+export type ItemUnlinkOutput = {
+	/**  What changed (timeline spec §3.1). */
+	report: EditReport,
 };
 
 /**
