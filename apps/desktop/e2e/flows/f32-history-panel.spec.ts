@@ -134,14 +134,16 @@ test.describe("F32 history panel", () => {
       await chooseMenu(page, app, "Edit", "History");
       const panel = page.getByRole("region", { name: "History" });
       await expect(panel).toBeVisible();
-      await expect.poll(() => labels(page)).toEqual([
-        "Import media, You",
-        "Insert clip, You",
-        "Move clip, You",
-        "Change opacity, You",
-        "Trim clip, You",
-        "Trim clip, cli",
-      ]);
+      await expect
+        .poll(() => labels(page))
+        .toEqual([
+          "Import media, You",
+          "Insert clip, You",
+          "Move clip, You",
+          "Change opacity, You",
+          "Trim clip, You",
+          "Trim clip, cli",
+        ]);
       // The agent's row is named and in agent blue; the person's is not.
       const agentColor = (row: Locator) =>
         row.locator(".cw-history__who").evaluate((el) => {
@@ -181,13 +183,15 @@ test.describe("F32 history panel", () => {
       );
       await expect.poll(clips).toEqual([[4, 10]]);
       await expect(page.locator('[data-state="undone"]')).toHaveCount(0);
-      await expect.poll(() => labels(page)).toEqual([
-        "Import media, You",
-        "Insert clip, You",
-        "Move clip, You",
-        "Change opacity, You",
-        "Move clip, You",
-      ]);
+      await expect
+        .poll(() => labels(page))
+        .toEqual([
+          "Import media, You",
+          "Insert clip, You",
+          "Move clip, You",
+          "Change opacity, You",
+          "Move clip, You",
+        ]);
       await snapshot(page, info, "after a new edit");
     } finally {
       await close();
