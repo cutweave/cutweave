@@ -6441,6 +6441,248 @@
     },
     {
       "annotations": {
+        "destructiveHint": false,
+        "idempotentHint": false,
+        "openWorldHint": false,
+        "readOnlyHint": false
+      },
+      "input_schema": {
+        "additionalProperties": false,
+        "description": "Creates a folder in the media bin, at the top level or inside `parent` (at most 32 levels\ndeep). Without a name it is \"New folder\" (or \"New folder 2\", … when taken). A name that a\nsibling already has, ignoring case, fails with `Invalid` unless `on_conflict` is `rename`.",
+        "properties": {
+          "name": {
+            "default": null,
+            "description": "Its name: 1 to 255 characters, no `/` or control characters (trimmed). Default \"New\nfolder\".",
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "on_conflict": {
+            "anyOf": [
+              {
+                "description": "What to do when a folder's name is already taken where it goes.",
+                "oneOf": [
+                  {
+                    "const": "fail",
+                    "description": "Fail with `Invalid` (the default).",
+                    "type": "string"
+                  },
+                  {
+                    "const": "rename",
+                    "description": "Use the next free name: \"Day 1 2\", \"Day 1 3\", …",
+                    "type": "string"
+                  }
+                ]
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "description": "When a sibling already has the name: `fail` (default) or `rename` (\"Day 1 2\")."
+          },
+          "parent": {
+            "default": null,
+            "description": "The folder to create it in; absent: the top level.",
+            "pattern": "^fld_[0-9a-f]{32}$",
+            "type": [
+              "string",
+              "null"
+            ]
+          }
+        },
+        "title": "MediaCreateFolder",
+        "type": "object"
+      },
+      "kind": "command",
+      "mcp": "catalog",
+      "mcp_tool": "media_create_folder",
+      "name": "media.create_folder",
+      "namespace": "media",
+      "output_schema": {
+        "additionalProperties": false,
+        "description": "Result of `media.create_folder`.",
+        "properties": {
+          "folder_id": {
+            "description": "The new folder.",
+            "pattern": "^fld_[0-9a-f]{32}$",
+            "type": "string"
+          },
+          "name": {
+            "description": "Its name (the next free one with `on_conflict: rename` or without a name).",
+            "type": "string"
+          },
+          "parent": {
+            "description": "The folder it is in; absent at the top level.",
+            "pattern": "^fld_[0-9a-f]{32}$",
+            "type": [
+              "string",
+              "null"
+            ]
+          }
+        },
+        "required": [
+          "folder_id",
+          "name",
+          "parent"
+        ],
+        "title": "MediaFolderCreated",
+        "type": "object"
+      },
+      "scope": "any",
+      "secret_fields": [],
+      "summary": "Create a folder in the media bin (top level or inside another folder)",
+      "undoable": true,
+      "view": false
+    },
+    {
+      "annotations": {
+        "destructiveHint": true,
+        "idempotentHint": false,
+        "openWorldHint": false,
+        "readOnlyHint": false
+      },
+      "input_schema": {
+        "additionalProperties": false,
+        "description": "Deletes a folder of the media bin. `contents: move_up` lifts its assets and subfolders one\nlevel (a subfolder whose name the parent already has gets the next free name);\n`contents: remove` also removes its subfolders and every asset inside that no timeline\nuses, and moves the used assets to the deleted folder's parent. Timelines and files on disk\nnever change; one undo restores everything.",
+        "properties": {
+          "contents": {
+            "description": "`move_up` (lift the contents one level) or `remove` (remove the unused media in it).",
+            "oneOf": [
+              {
+                "const": "move_up",
+                "description": "Lift the folder's assets and subfolders one level, into its parent.",
+                "type": "string"
+              },
+              {
+                "const": "remove",
+                "description": "Remove its subfolders and every asset inside that no timeline uses; the used ones move\nto the deleted folder's parent.",
+                "type": "string"
+              }
+            ]
+          },
+          "folder": {
+            "description": "The folder.",
+            "pattern": "^fld_[0-9a-f]{32}$",
+            "type": "string"
+          }
+        },
+        "required": [
+          "folder",
+          "contents"
+        ],
+        "title": "MediaDeleteFolder",
+        "type": "object"
+      },
+      "kind": "command",
+      "mcp": "catalog",
+      "mcp_tool": "media_delete_folder",
+      "name": "media.delete_folder",
+      "namespace": "media",
+      "output_schema": {
+        "additionalProperties": false,
+        "description": "Result of `media.delete_folder`.",
+        "properties": {
+          "folder_id": {
+            "description": "The deleted folder.",
+            "pattern": "^fld_[0-9a-f]{32}$",
+            "type": "string"
+          },
+          "kept": {
+            "description": "Assets that were inside and are now in `parent`: with `remove` the ones a timeline uses,\nwith `move_up` every asset the folder held.",
+            "items": {
+              "description": "A Media id: `^med_[0-9a-f]{32}$`.",
+              "pattern": "^med_[0-9a-f]{32}$",
+              "type": "string"
+            },
+            "type": "array"
+          },
+          "moved_folders": {
+            "description": "Subfolders now in `parent` (`move_up` only).",
+            "items": {
+              "description": "A Folder id: `^fld_[0-9a-f]{32}$`.",
+              "pattern": "^fld_[0-9a-f]{32}$",
+              "type": "string"
+            },
+            "type": "array"
+          },
+          "parent": {
+            "description": "Where its kept contents went; absent: the top level.",
+            "pattern": "^fld_[0-9a-f]{32}$",
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "removed": {
+            "description": "Assets removed from the project (`remove` only; the files stay on disk).",
+            "items": {
+              "description": "A Media id: `^med_[0-9a-f]{32}$`.",
+              "pattern": "^med_[0-9a-f]{32}$",
+              "type": "string"
+            },
+            "type": "array"
+          },
+          "removed_folders": {
+            "description": "Every folder deleted: the folder, and with `remove` its subfolders.",
+            "items": {
+              "description": "A Folder id: `^fld_[0-9a-f]{32}$`.",
+              "pattern": "^fld_[0-9a-f]{32}$",
+              "type": "string"
+            },
+            "type": "array"
+          },
+          "renamed": {
+            "description": "Subfolders renamed because `parent` already had their name.",
+            "items": {
+              "additionalProperties": false,
+              "description": "A folder that got a new name because its name was taken where it went.",
+              "properties": {
+                "folder": {
+                  "description": "The folder.",
+                  "pattern": "^fld_[0-9a-f]{32}$",
+                  "type": "string"
+                },
+                "from": {
+                  "description": "Its name before.",
+                  "type": "string"
+                },
+                "to": {
+                  "description": "Its name now.",
+                  "type": "string"
+                }
+              },
+              "required": [
+                "folder",
+                "from",
+                "to"
+              ],
+              "type": "object"
+            },
+            "type": "array"
+          }
+        },
+        "required": [
+          "folder_id",
+          "parent",
+          "removed_folders",
+          "removed",
+          "kept",
+          "moved_folders",
+          "renamed"
+        ],
+        "title": "MediaFolderDeleted",
+        "type": "object"
+      },
+      "scope": "any",
+      "secret_fields": [],
+      "summary": "Delete a media bin folder: lift its contents one level, or remove unused media in it",
+      "undoable": true,
+      "view": false
+    },
+    {
+      "annotations": {
         "destructiveHint": true,
         "idempotentHint": true,
         "openWorldHint": false,
@@ -6872,6 +7114,15 @@
         "additionalProperties": false,
         "description": "Imports media files and returns their `media_ids` at once (arch §7, R21). Each file is\nprobed synchronously (up to 4 at a time, 5 s each by default) and every readable one is\nregistered in one transaction (one undo step); files that are missing, unsupported, corrupt\nor too slow to probe are listed in `failed` and get no asset. Files whose content is\nalready in the project are returned as duplicates. Background analysis (frame index,\nthumbnails, waveform) then runs as jobs whose ids are returned in `job_ids`. Agents and\nheadless callers may only import from the project folder and user-approved folders; any\nother path fails the call with `Invalid` at `/paths/<i>`.",
         "properties": {
+          "folder": {
+            "default": null,
+            "description": "Bin folder (default: top level).",
+            "pattern": "^fld_[0-9a-f]{32}$",
+            "type": [
+              "string",
+              "null"
+            ]
+          },
           "paths": {
             "description": "Absolute paths of the files (1..=256, no repeats).",
             "items": {
@@ -7057,6 +7308,160 @@
       "secret_fields": [],
       "summary": "Import media files: probe and register them now, return media ids and analysis job ids",
       "undoable": false,
+      "view": false
+    },
+    {
+      "annotations": {
+        "destructiveHint": false,
+        "idempotentHint": true,
+        "openWorldHint": false,
+        "readOnlyHint": false
+      },
+      "input_schema": {
+        "additionalProperties": false,
+        "description": "Moves assets and folders (with everything inside them) into a folder, or to the top level\nwithout `to`. Moving a folder into itself or one of its subfolders, or so deep that\nsomething would be nested more than 32 levels, fails with `Invalid`. A moved folder whose\nname the destination already has, ignoring case, fails with `Invalid` unless `on_conflict`\nis `rename`. Timelines and files on disk never change.",
+        "properties": {
+          "folders": {
+            "default": null,
+            "description": "Folders to move, with their contents.",
+            "items": {
+              "description": "A Folder id: `^fld_[0-9a-f]{32}$`.",
+              "pattern": "^fld_[0-9a-f]{32}$",
+              "type": "string"
+            },
+            "type": [
+              "array",
+              "null"
+            ]
+          },
+          "media": {
+            "default": null,
+            "description": "Assets to move.",
+            "items": {
+              "description": "A Media id: `^med_[0-9a-f]{32}$`.",
+              "pattern": "^med_[0-9a-f]{32}$",
+              "type": "string"
+            },
+            "type": [
+              "array",
+              "null"
+            ]
+          },
+          "on_conflict": {
+            "anyOf": [
+              {
+                "description": "What to do when a folder's name is already taken where it goes.",
+                "oneOf": [
+                  {
+                    "const": "fail",
+                    "description": "Fail with `Invalid` (the default).",
+                    "type": "string"
+                  },
+                  {
+                    "const": "rename",
+                    "description": "Use the next free name: \"Day 1 2\", \"Day 1 3\", …",
+                    "type": "string"
+                  }
+                ]
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "description": "When a moved folder's name is taken in `to`: `fail` (default) or `rename`."
+          },
+          "to": {
+            "default": null,
+            "description": "The destination folder; absent: the top level.",
+            "pattern": "^fld_[0-9a-f]{32}$",
+            "type": [
+              "string",
+              "null"
+            ]
+          }
+        },
+        "title": "MediaMove",
+        "type": "object"
+      },
+      "kind": "command",
+      "mcp": "catalog",
+      "mcp_tool": "media_move",
+      "name": "media.move",
+      "namespace": "media",
+      "output_schema": {
+        "additionalProperties": false,
+        "description": "Result of `media.move`.",
+        "properties": {
+          "folders": {
+            "description": "The folders that changed parent (those already there are left out).",
+            "items": {
+              "description": "A Folder id: `^fld_[0-9a-f]{32}$`.",
+              "pattern": "^fld_[0-9a-f]{32}$",
+              "type": "string"
+            },
+            "type": "array"
+          },
+          "media": {
+            "description": "The assets that changed folder (those already there are left out).",
+            "items": {
+              "description": "A Media id: `^med_[0-9a-f]{32}$`.",
+              "pattern": "^med_[0-9a-f]{32}$",
+              "type": "string"
+            },
+            "type": "array"
+          },
+          "renamed": {
+            "description": "Folders renamed because their name was taken (`on_conflict: rename`).",
+            "items": {
+              "additionalProperties": false,
+              "description": "A folder that got a new name because its name was taken where it went.",
+              "properties": {
+                "folder": {
+                  "description": "The folder.",
+                  "pattern": "^fld_[0-9a-f]{32}$",
+                  "type": "string"
+                },
+                "from": {
+                  "description": "Its name before.",
+                  "type": "string"
+                },
+                "to": {
+                  "description": "Its name now.",
+                  "type": "string"
+                }
+              },
+              "required": [
+                "folder",
+                "from",
+                "to"
+              ],
+              "type": "object"
+            },
+            "type": "array"
+          },
+          "to": {
+            "description": "Where everything went; absent: the top level.",
+            "pattern": "^fld_[0-9a-f]{32}$",
+            "type": [
+              "string",
+              "null"
+            ]
+          }
+        },
+        "required": [
+          "to",
+          "media",
+          "folders",
+          "renamed"
+        ],
+        "title": "MediaMoved",
+        "type": "object"
+      },
+      "scope": "any",
+      "secret_fields": [],
+      "summary": "Move media assets and folders into a folder of the bin, or to its top level",
+      "undoable": true,
       "view": false
     },
     {
@@ -7279,11 +7684,20 @@
       },
       "input_schema": {
         "additionalProperties": false,
-        "description": "Registers a probed media file. Internal plumbing of `media.import` and the import job\n(WP-1D.07): the kind (video, audio or image) derives from the probe streams. If an asset\nwith the same `content_hash` already exists it is returned unchanged (`created: false`).",
+        "description": "Registers a probed media file. Internal plumbing of `media.import` and the import job\n(WP-1D.07): the kind (video, audio or image) derives from the probe streams. If an asset\nwith the same `content_hash` already exists it is returned unchanged (`created: false`,\nand it stays in its folder).",
         "properties": {
           "content_hash": {
             "description": "Content hash used to relink and deduplicate (non-empty, no whitespace).",
             "type": "string"
+          },
+          "folder": {
+            "default": null,
+            "description": "The folder of the bin to put the new asset in; absent: the top level.",
+            "pattern": "^fld_[0-9a-f]{32}$",
+            "type": [
+              "string",
+              "null"
+            ]
           },
           "media_id": {
             "default": null,
@@ -7714,6 +8128,137 @@
       "scope": "any",
       "secret_fields": [],
       "summary": "Remove an unused media asset from the project",
+      "undoable": true,
+      "view": false
+    },
+    {
+      "annotations": {
+        "destructiveHint": false,
+        "idempotentHint": true,
+        "openWorldHint": false,
+        "readOnlyHint": false
+      },
+      "input_schema": {
+        "additionalProperties": false,
+        "description": "Sets the name the media bin shows for an asset (the file on disk keeps its name). Without\na name the bin shows the file name again. Display names need not be unique.",
+        "properties": {
+          "media": {
+            "description": "The asset.",
+            "pattern": "^med_[0-9a-f]{32}$",
+            "type": "string"
+          },
+          "name": {
+            "default": null,
+            "description": "The display name: 1 to 255 characters without control characters (trimmed); absent:\nthe file name.",
+            "type": [
+              "string",
+              "null"
+            ]
+          }
+        },
+        "required": [
+          "media"
+        ],
+        "title": "MediaRename",
+        "type": "object"
+      },
+      "kind": "command",
+      "mcp": "catalog",
+      "mcp_tool": "media_rename",
+      "name": "media.rename",
+      "namespace": "media",
+      "output_schema": {
+        "additionalProperties": false,
+        "description": "Result of `media.rename`.",
+        "properties": {
+          "display_name": {
+            "description": "The name the bin shows now.",
+            "type": "string"
+          },
+          "media_id": {
+            "description": "The asset.",
+            "pattern": "^med_[0-9a-f]{32}$",
+            "type": "string"
+          },
+          "name": {
+            "description": "Its display name; absent: the bin shows the file name.",
+            "type": [
+              "string",
+              "null"
+            ]
+          }
+        },
+        "required": [
+          "media_id",
+          "name",
+          "display_name"
+        ],
+        "title": "MediaRenamed",
+        "type": "object"
+      },
+      "scope": "any",
+      "secret_fields": [],
+      "summary": "Set the name the media bin shows for an asset, or go back to the file name",
+      "undoable": true,
+      "view": false
+    },
+    {
+      "annotations": {
+        "destructiveHint": false,
+        "idempotentHint": true,
+        "openWorldHint": false,
+        "readOnlyHint": false
+      },
+      "input_schema": {
+        "additionalProperties": false,
+        "description": "Renames a folder of the media bin. Fails with `Invalid` when a sibling already has the\nname, ignoring case (changing only the case of the folder's own name is fine).",
+        "properties": {
+          "folder": {
+            "description": "The folder.",
+            "pattern": "^fld_[0-9a-f]{32}$",
+            "type": "string"
+          },
+          "name": {
+            "description": "The new name: 1 to 255 characters, no `/` or control characters (trimmed).",
+            "type": "string"
+          }
+        },
+        "required": [
+          "folder",
+          "name"
+        ],
+        "title": "MediaRenameFolder",
+        "type": "object"
+      },
+      "kind": "command",
+      "mcp": "catalog",
+      "mcp_tool": "media_rename_folder",
+      "name": "media.rename_folder",
+      "namespace": "media",
+      "output_schema": {
+        "additionalProperties": false,
+        "description": "Result of `media.rename_folder`.",
+        "properties": {
+          "folder_id": {
+            "description": "The folder.",
+            "pattern": "^fld_[0-9a-f]{32}$",
+            "type": "string"
+          },
+          "name": {
+            "description": "Its name now.",
+            "type": "string"
+          }
+        },
+        "required": [
+          "folder_id",
+          "name"
+        ],
+        "title": "MediaFolderRenamed",
+        "type": "object"
+      },
+      "scope": "any",
+      "secret_fields": [],
+      "summary": "Rename a folder of the media bin",
       "undoable": true,
       "view": false
     },

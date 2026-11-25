@@ -636,7 +636,9 @@ export type EntityKind =
 /**  A linked group of items that edit together (`grp_`). */
 "group" | 
 /**  A timeline or item marker (`mrk_`). */
-"marker";
+"marker" | 
+/**  A folder of the media bin (`fld_`, ADR-0020). */
+"folder";
 
 /**  Why a transaction is in the history. */
 export type EntryCause = 
@@ -799,6 +801,51 @@ export type ExportStartOutput = {
 	rev: Rev,
 	/**  Platform-limit and fit warnings of a preset (never errors; the export runs). */
 	warnings: PresetWarning[],
+};
+
+/**  What `media.delete_folder` does with a folder's contents. */
+export type FolderContents = 
+/**  Lift the folder's assets and subfolders one level, into its parent. */
+"move_up" | 
+/**
+ *  Remove its subfolders and every asset inside that no timeline uses; the used ones move
+ *  to the deleted folder's parent.
+ */
+"remove";
+
+/**
+ *  The ID of a folder of the media bin (ADR-0020): `fld_…`.
+ * 
+ *  Serialized as a string, exported to TypeScript as `string`.
+ */
+export type FolderId = string & { readonly __brand: "FolderId" };
+
+/**  A folder that got a new name because its name was taken where it went. */
+export type FolderRenamed = {
+	/**  The folder. */
+	folder: FolderId,
+	/**  Its name before. */
+	from: string,
+	/**  Its name now. */
+	to: string,
+};
+
+/**  One folder of the media bin. */
+export type FolderSummary = {
+	/**  The folder. */
+	id: FolderId,
+	/**  Its name. */
+	name: string,
+	/**  The folder it is in; absent at the top level. */
+	parent: FolderId | null,
+	/**  Names from the top level down, joined with `/` (`B-roll/Drone`). */
+	path: string,
+	/**  Nesting depth: 1 at the top level. */
+	depth: number,
+	/**  Assets directly inside. */
+	media_count: number,
+	/**  Folders directly inside. */
+	folder_count: number,
 };
 
 /**
@@ -1183,6 +1230,38 @@ item: ItemId;
 parent: ItemId; 
 /**  What is wrong. */
 reason: string } | 
+/**  Media folders whose parents form a cycle (ADR-0020). */
+{ invariant: "folder_cycle"; 
+/**
+ *  The folders on the cycle, each followed by its parent; the first is repeated at the
+ *  end.
+ */
+cycle: FolderId[] } | 
+/**  A media folder nested deeper than `MAX_FOLDER_DEPTH` levels (ADR-0020). */
+{ invariant: "folder_too_deep"; 
+/**  The folder. */
+folder: FolderId; 
+/**  Its depth (1 at the top level). */
+depth: number } | 
+/**
+ *  A media folder name that is empty, too long, or holds `/` or control characters
+ *  (ADR-0020).
+ */
+{ invariant: "invalid_folder_name"; 
+/**  The folder. */
+folder: FolderId; 
+/**  What is wrong. */
+reason: string } | 
+/**  Two folders of one parent whose names are equal ignoring case (ADR-0020). */
+{ invariant: "duplicate_folder_name"; 
+/**  The parent; absent at the top level. */
+parent: FolderId | null; 
+/**  The folder with the lower ID. */
+first: FolderId; 
+/**  Another folder with the same name. */
+second: FolderId; 
+/**  The name of `second`. */
+name: string } | 
 /**  Plugin data under a key that is not a namespace (arch §4.3). */
 { invariant: "custom_namespace"; 
 /**  The custom map. */
@@ -1658,6 +1737,13 @@ export type MediaAsset = {
 	id: MediaId,
 	/**  What the media is. */
 	kind: MediaKind,
+	/**
+	 *  The name shown in the bin (ADR-0020); absent: the file name. 1 to 255 characters
+	 *  without control characters.
+	 */
+	name: string | null,
+	/**  The folder of the bin it is in (ADR-0020); absent: the top level. */
+	folder: FolderId | null,
 	/**  Absolute path of the file when it was last found (file kinds only). */
 	path_abs: string | null,
 	/**  Path relative to the project folder, used for relinking moved projects (file kinds only). */
@@ -1736,6 +1822,37 @@ export type MediaClearCacheOutput = {
 };
 
 /**
+ *  Creates a folder in the media bin, at the top level or inside `parent` (at most 32 levels
+ *  deep). Without a name it is "New folder" (or "New folder 2", … when taken). A name that a
+ *  sibling already has, ignoring case, fails with `Invalid` unless `on_conflict` is `rename`.
+ */
+export type MediaCreateFolder = {
+	/**  The folder to create it in; absent: the top level. */
+	parent?: FolderId | null,
+	/**
+	 *  Its name: 1 to 255 characters, no `/` or control characters (trimmed). Default "New
+	 *  folder".
+	 */
+	name?: string | null,
+	/**  When a sibling already has the name: `fail` (default) or `rename` ("Day 1 2"). */
+	on_conflict?: OnConflict | null,
+};
+
+/**
+ *  Deletes a folder of the media bin. `contents: move_up` lifts its assets and subfolders one
+ *  level (a subfolder whose name the parent already has gets the next free name);
+ *  `contents: remove` also removes its subfolders and every asset inside that no timeline
+ *  uses, and moves the used assets to the deleted folder's parent. Timelines and files on disk
+ *  never change; one undo restores everything.
+ */
+export type MediaDeleteFolder = {
+	/**  The folder. */
+	folder: FolderId,
+	/**  `move_up` (lift the contents one level) or `remove` (remove the unused media in it). */
+	contents: FolderContents,
+};
+
+/**
  *  Removes the proxies of video assets from the cache (cancelling a generation in progress):
  *  the preview uses the originals again. The assets and their files are untouched; a proxy is
  *  not made again automatically until `media.generate_proxy` asks for it.
@@ -1747,7 +1864,7 @@ export type MediaDeleteProxy = {
 
 /**  Which media to list; every part that is absent or empty lets everything through. */
 export type MediaFilter = {
-	/**  Terms that must all occur in the file name, ignoring case and accents. */
+	/**  Terms that must all occur in the name, ignoring case and accents. */
 	text?: string | null,
 	/**  Only these kinds. */
 	kinds?: MediaKind[] | null,
@@ -1759,6 +1876,64 @@ export type MediaFilter = {
 	used?: boolean | null,
 	/**  `true`: only files nothing can be read from (no streams). */
 	problems?: boolean | null,
+	/**  Only this bin folder. */
+	folder?: FolderId | null,
+	/**  With subfolders (default: true without folder). */
+	recursive?: boolean | null,
+};
+
+/**  A folder of the media bin (ADR-0020). */
+export type MediaFolder = {
+	/**  The folder ID (also its key in `Project::folders`). */
+	id: FolderId,
+	/**
+	 *  The name shown in the bin: 1 to 255 characters, no `/` or control characters, unique
+	 *  among its siblings ignoring case.
+	 */
+	name: string,
+	/**  The folder it is in; absent at the top level. */
+	parent: FolderId | null,
+	/**  Plugin data (arch §4.3). */
+	custom: { [key in string]: JsonValue },
+} & { [key in string]: unknown };
+
+/**  Result of `media.create_folder`. */
+export type MediaFolderCreated = {
+	/**  The new folder. */
+	folder_id: FolderId,
+	/**  Its name (the next free one with `on_conflict: rename` or without a name). */
+	name: string,
+	/**  The folder it is in; absent at the top level. */
+	parent: FolderId | null,
+};
+
+/**  Result of `media.delete_folder`. */
+export type MediaFolderDeleted = {
+	/**  The deleted folder. */
+	folder_id: FolderId,
+	/**  Where its kept contents went; absent: the top level. */
+	parent: FolderId | null,
+	/**  Every folder deleted: the folder, and with `remove` its subfolders. */
+	removed_folders: FolderId[],
+	/**  Assets removed from the project (`remove` only; the files stay on disk). */
+	removed: MediaId[],
+	/**
+	 *  Assets that were inside and are now in `parent`: with `remove` the ones a timeline uses,
+	 *  with `move_up` every asset the folder held.
+	 */
+	kept: MediaId[],
+	/**  Subfolders now in `parent` (`move_up` only). */
+	moved_folders: FolderId[],
+	/**  Subfolders renamed because `parent` already had their name. */
+	renamed: FolderRenamed[],
+};
+
+/**  Result of `media.rename_folder`. */
+export type MediaFolderRenamed = {
+	/**  The folder. */
+	folder_id: FolderId,
+	/**  Its name now. */
+	name: string,
 };
 
 /**
@@ -1792,6 +1967,8 @@ export type MediaId = string & { readonly __brand: "MediaId" };
 export type MediaImport = {
 	/**  Absolute paths of the files (1..=256, no repeats). */
 	paths: string[],
+	/**  Bin folder (default: top level). */
+	folder?: FolderId | null,
 };
 
 /**  Result of `media.import`. */
@@ -1826,7 +2003,10 @@ export type MediaKind =
 /**  Another sequence of this project, used as a compound clip (arch §4.3). */
 "sequence_ref";
 
-/**  Lists the media of the project, filtered and ordered, one page at a time. */
+/**
+ *  Lists the media of the project, filtered (also by bin folder) and ordered, one page at a
+ *  time. Each asset carries the name the bin shows and its folder.
+ */
 export type MediaList = {
 	/**  Page size, `1..=500` (default 50). */
 	limit?: number | null,
@@ -1836,6 +2016,25 @@ export type MediaList = {
 	filter?: MediaFilter | null,
 	/**  Order. */
 	sort?: MediaSort | null,
+};
+
+/**
+ *  Lists the media bin's folder tree: each folder's ID, name, parent, path and how many
+ *  assets and subfolders it holds directly.
+ */
+export type MediaListFolders = Record<string, never>;
+
+/**  Result of `media.list_folders`. */
+export type MediaListFoldersOutput = {
+	/**
+	 *  Every folder, depth first: parents before their subfolders, siblings by name ignoring
+	 *  case.
+	 */
+	folders: FolderSummary[],
+	/**  Assets at the top level of the bin (in no folder). */
+	top_level_media: number,
+	/**  Assets in the project. */
+	total_media: number,
 };
 
 /**  Result of `media.list`. */
@@ -1851,6 +2050,36 @@ export type MediaListOutput = {
 };
 
 /**
+ *  Moves assets and folders (with everything inside them) into a folder, or to the top level
+ *  without `to`. Moving a folder into itself or one of its subfolders, or so deep that
+ *  something would be nested more than 32 levels, fails with `Invalid`. A moved folder whose
+ *  name the destination already has, ignoring case, fails with `Invalid` unless `on_conflict`
+ *  is `rename`. Timelines and files on disk never change.
+ */
+export type MediaMove = {
+	/**  Assets to move. */
+	media?: MediaId[] | null,
+	/**  Folders to move, with their contents. */
+	folders?: FolderId[] | null,
+	/**  The destination folder; absent: the top level. */
+	to?: FolderId | null,
+	/**  When a moved folder's name is taken in `to`: `fail` (default) or `rename`. */
+	on_conflict?: OnConflict | null,
+};
+
+/**  Result of `media.move`. */
+export type MediaMoved = {
+	/**  Where everything went; absent: the top level. */
+	to: FolderId | null,
+	/**  The assets that changed folder (those already there are left out). */
+	media: MediaId[],
+	/**  The folders that changed parent (those already there are left out). */
+	folders: FolderId[],
+	/**  Folders renamed because their name was taken (`on_conflict: rename`). */
+	renamed: FolderRenamed[],
+};
+
+/**
  *  Shows where the proxies of video assets are: none, queued, generating (with progress),
  *  ready (path, size), incomplete, evicted or failed, and whether the policy wants one.
  */
@@ -1862,7 +2091,8 @@ export type MediaProxyStatus = {
 /**
  *  Registers a probed media file. Internal plumbing of `media.import` and the import job
  *  (WP-1D.07): the kind (video, audio or image) derives from the probe streams. If an asset
- *  with the same `content_hash` already exists it is returned unchanged (`created: false`).
+ *  with the same `content_hash` already exists it is returned unchanged (`created: false`,
+ *  and it stays in its folder).
  */
 export type MediaRegister = {
 	/**  ID for the new asset; minted by the engine when absent. Must not exist yet. */
@@ -1873,6 +2103,8 @@ export type MediaRegister = {
 	probe: ProbeInfo,
 	/**  Content hash used to relink and deduplicate (non-empty, no whitespace). */
 	content_hash: string,
+	/**  The folder of the bin to put the new asset in; absent: the top level. */
+	folder?: FolderId | null,
 };
 
 /**  Result of `media.register`. */
@@ -1898,6 +2130,41 @@ export type MediaRemove = {
 export type MediaRemoveOutput = {
 	/**  The removed asset. */
 	media_id: MediaId,
+};
+
+/**
+ *  Sets the name the media bin shows for an asset (the file on disk keeps its name). Without
+ *  a name the bin shows the file name again. Display names need not be unique.
+ */
+export type MediaRename = {
+	/**  The asset. */
+	media: MediaId,
+	/**
+	 *  The display name: 1 to 255 characters without control characters (trimmed); absent:
+	 *  the file name.
+	 */
+	name?: string | null,
+};
+
+/**
+ *  Renames a folder of the media bin. Fails with `Invalid` when a sibling already has the
+ *  name, ignoring case (changing only the case of the folder's own name is fine).
+ */
+export type MediaRenameFolder = {
+	/**  The folder. */
+	folder: FolderId,
+	/**  The new name: 1 to 255 characters, no `/` or control characters (trimmed). */
+	name: string,
+};
+
+/**  Result of `media.rename`. */
+export type MediaRenamed = {
+	/**  The asset. */
+	media_id: MediaId,
+	/**  Its display name; absent: the bin shows the file name. */
+	name: string | null,
+	/**  The name the bin shows now. */
+	display_name: string,
 };
 
 /**
@@ -1955,6 +2222,10 @@ export type MediaSummary = {
 	id: MediaId,
 	/**  What it is. */
 	kind: MediaKind,
+	/**  The name the bin shows: the display name, else the file name. */
+	name: string,
+	/**  The folder of the bin it is in; absent: the top level. */
+	folder: FolderId | null,
 	/**  Absolute path when it was last found (file kinds). */
 	path: string | null,
 	/**  Playable length, if known. */
@@ -1984,6 +2255,13 @@ export type MovedReport = {
 	/**  Its start now. */
 	start: Time,
 };
+
+/**  What to do when a folder's name is already taken where it goes. */
+export type OnConflict = 
+/**  Fail with `Invalid` (the default). */
+"fail" | 
+/**  Use the next free name: "Day 1 2", "Day 1 3", … */
+"rename";
 
 /**
  *  What to do when an item would overlap another one on its target track: the P1 `overlap`
@@ -2191,6 +2469,8 @@ export type Project = {
 	settings: ProjectSettings,
 	/**  Media, keyed by ID. */
 	media: { [key in MediaId]: MediaAsset },
+	/**  The folder tree of the media bin, keyed by ID (ADR-0020). */
+	folders: { [key in FolderId]: MediaFolder },
 	/**  Sequences, keyed by ID. */
 	sequences: { [key in SequenceId]: Sequence },
 	/**  Plugin data (arch §4.3). */
@@ -2709,6 +2989,8 @@ export type ResourceKind =
 "group" | 
 /**  A marker (`mrk_…`). */
 "marker" | 
+/**  A folder of the media bin (`fld_…`, ADR-0020). */
+"folder" | 
 /**  A registry entry: an unknown command or query name. */
 "command" | 
 /**  An open transaction (WP-1B.04). */

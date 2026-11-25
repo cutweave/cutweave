@@ -11,8 +11,8 @@ use std::{sync::Arc, time::Duration};
 
 use cutweave_jobs::{JobConfig, JobCtx, JobError, JobId, JobKind, JobManager, JobSpec};
 use cutweave_model::{
-    EntityId, FrameRate, ItemId, MarkerId, MediaId, MediaKind, ProbeInfo, Project, SampleRate,
-    SeededGen, SequenceId, TrackId, TrackKind, Vec2,
+    EntityId, FolderId, FrameRate, ItemId, MarkerId, MediaId, MediaKind, ProbeInfo, Project,
+    SampleRate, SeededGen, SequenceId, TrackId, TrackKind, Vec2,
 };
 use proptest::{
     collection::vec,
@@ -208,6 +208,8 @@ pub(super) struct Pools {
     tracks: Vec<Trk>,
     items: Vec<Itm>,
     media: Vec<Med>,
+    /// Media folders (ADR-0020).
+    folders: Vec<FolderId>,
 }
 
 impl Pools {
@@ -264,6 +266,7 @@ impl Pools {
                 used: used.contains(&m.id),
             })
             .collect();
+        pools.folders = doc.folders.keys().copied().collect();
         pools
     }
 
@@ -289,15 +292,25 @@ pub(super) fn args_for(name: &str, p: &Pools) -> Option<(u32, BoxedStrategy<Valu
     Some(match name {
         "project.new" => (if empty { 12 } else { 1 }, project_new()),
         "project.rename" => (1, project_rename()),
-        "project.info" | "edit.locks" | "edit.list_checkpoints" | "export.list_presets" => {
-            (1, no_params())
-        }
+        "project.info"
+        | "edit.locks"
+        | "edit.list_checkpoints"
+        | "export.list_presets"
+        | "media.list_folders" => (1, no_params()),
         "media.register" => (if no_media { 4 } else { 2 }, media_register(p)),
-        "media.import" => (if no_media { 4 } else { 2 }, media_import()),
+        "media.import" => (if no_media { 4 } else { 2 }, media_import(p)),
         "media.list" => (1, media_list(p)),
         "media.remove" => (1, media_remove(p)),
         "media.generate_proxy" | "media.delete_proxy" => (1, proxy_media(p, false)),
         "media.proxy_status" => (1, proxy_media(p, true)),
+        "media.create_folder" => (
+            if p.folders.is_empty() { 4 } else { 2 },
+            media_create_folder(p),
+        ),
+        "media.rename_folder" => (1, media_rename_folder(p)),
+        "media.rename" => (1, media_rename(p)),
+        "media.move" => (if p.folders.is_empty() { 1 } else { 3 }, media_move(p)),
+        "media.delete_folder" => (1, media_delete_folder(p)),
         "track.add" => (2, track_add(p)),
         "track.remove" => (1, track_remove(p)),
         "track.set" => (2, track_set(p)),
@@ -537,11 +550,18 @@ fn media_register(p: &Pools) -> BoxedStrategy<Value> {
         1 => fresh::<MediaId>(),
         1 => one_of(p.media_ids()),
     ];
-    let valid = (0..40_u32, 0..3_u8, 1..=90_i64, any::<bool>(), media_id)
-        .prop_map(|(n, kind, secs, audio, media_id)| {
+    let valid = (
+        0..40_u32,
+        0..3_u8,
+        1..=90_i64,
+        any::<bool>(),
+        media_id,
+        option::weighted(0.3, one_of(p.folders.clone())),
+    )
+        .prop_map(|(n, kind, secs, audio, media_id, folder)| {
             let (path, probed) = probed_file(n, kind, secs, audio);
             json!({"media_id": media_id, "path": path, "probe": probed.probe,
-                   "content_hash": probed.content_hash})
+                   "content_hash": probed.content_hash, "folder": folder})
         })
         .boxed();
     let invalid = (0..40_u32, 0..6_u8)
@@ -563,7 +583,7 @@ fn media_register(p: &Pools) -> BoxedStrategy<Value> {
     mix(valid, invalid)
 }
 
-fn media_import() -> BoxedStrategy<Value> {
+fn media_import(p: &Pools) -> BoxedStrategy<Value> {
     // Unreadable files are not errors: the import reports them in `failed[]` and registers
     // the rest (WP-1D.07), so they belong with the valid requests.
     let unreadable = prop_oneof![
@@ -571,15 +591,19 @@ fn media_import() -> BoxedStrategy<Value> {
         1 => Just(Some(BROKEN_IMPORT_PATH)),
         1 => Just(Some("/import/missing.mp4")),
     ];
-    let valid = (vec(select(IMPORT_PATHS.to_vec()), 1..=3), unreadable)
-        .prop_map(|(paths, unreadable)| {
+    let valid = (
+        vec(select(IMPORT_PATHS.to_vec()), 1..=3),
+        unreadable,
+        option::weighted(0.3, one_of(p.folders.clone())),
+    )
+        .prop_map(|(paths, unreadable, folder)| {
             let mut unique: Vec<&str> = Vec::new();
             for p in paths.into_iter().chain(unreadable) {
                 if !unique.contains(&p) {
                     unique.push(p);
                 }
             }
-            json!({"paths": unique})
+            json!({"paths": unique, "folder": folder})
         })
         .boxed();
     let invalid = prop_oneof![
@@ -592,10 +616,163 @@ fn media_import() -> BoxedStrategy<Value> {
 }
 
 fn media_list(p: &Pools) -> BoxedStrategy<Value> {
-    let valid = (option::of(1..=8_u32), option::of(one_of(p.media_ids())))
-        .prop_map(|(limit, cursor)| json!({"limit": limit, "cursor": cursor}))
+    let filter = (
+        option::weighted(0.5, one_of(p.folders.clone())),
+        option::of(any::<bool>()),
+        option::weighted(0.2, select(vec!["clip", "Clip 1", "interview"])),
+    )
+        .prop_map(|(folder, recursive, text)| {
+            json!({"folder": folder, "recursive": recursive, "text": text})
+        });
+    let valid = (
+        option::of(1..=8_u32),
+        option::of(one_of(p.media_ids())),
+        option::weighted(0.4, filter),
+    )
+        .prop_map(
+            |(limit, cursor, filter)| json!({"limit": limit, "cursor": cursor, "filter": filter}),
+        )
         .boxed();
-    let invalid = prop_oneof![Just(json!({"limit": 0})), Just(json!({"limit": 501}))].boxed();
+    let invalid = prop_oneof![
+        Just(json!({"limit": 0})),
+        Just(json!({"limit": 501})),
+        fresh::<FolderId>().prop_map(|folder| json!({"filter": {"folder": folder}})),
+    ]
+    .boxed();
+    mix(valid, invalid)
+}
+
+// ----- media folders (WP-2F.07) --------------------------------------------------------------
+
+/// Folder names that clash often (case-insensitively) and cover Unicode and padding.
+const FOLDER_NAMES: [&str; 7] = [
+    "B-roll",
+    "b-ROLL",
+    "Interviews",
+    "Day 1",
+    "Día 1 ✂",
+    "  Padded  ",
+    "New folder",
+];
+
+fn folder_name() -> BoxedStrategy<String> {
+    prop_oneof![
+        4 => select(FOLDER_NAMES.to_vec()).prop_map(str::to_owned),
+        1 => (select(FOLDER_NAMES.to_vec()), 2..5_u32).prop_map(|(w, n)| format!("{w} {n}")),
+    ]
+    .boxed()
+}
+
+fn bad_folder_name() -> BoxedStrategy<String> {
+    prop_oneof![
+        Just(String::new()),
+        Just("   ".to_owned()),
+        Just("B-roll/Drone".to_owned()),
+        Just("tab\tname".to_owned()),
+        Just("x".repeat(256)),
+    ]
+    .boxed()
+}
+
+fn on_conflict() -> BoxedStrategy<Option<&'static str>> {
+    option::of(select(vec!["fail", "rename"])).boxed()
+}
+
+fn media_create_folder(p: &Pools) -> BoxedStrategy<Value> {
+    let valid = (
+        option::weighted(0.6, one_of(p.folders.clone())),
+        option::weighted(0.8, folder_name()),
+        on_conflict(),
+    )
+        .prop_map(|(parent, name, on_conflict)| {
+            json!({"parent": parent, "name": name, "on_conflict": on_conflict})
+        })
+        .boxed();
+    let invalid = prop_oneof![
+        bad_folder_name().prop_map(|name| json!({"name": name})),
+        fresh::<FolderId>().prop_map(|parent| json!({"parent": parent})),
+        Just(json!({"on_conflict": "merge"})),
+    ]
+    .boxed();
+    mix(valid, invalid)
+}
+
+fn media_rename_folder(p: &Pools) -> BoxedStrategy<Value> {
+    let valid = (one_of(p.folders.clone()), folder_name())
+        .prop_map(|(folder, name)| json!({"folder": folder, "name": name}))
+        .boxed();
+    let invalid = (one_of(p.folders.clone()), bad_folder_name())
+        .prop_map(|(folder, name)| json!({"folder": folder, "name": name}))
+        .boxed();
+    mix(valid, invalid)
+}
+
+fn media_rename(p: &Pools) -> BoxedStrategy<Value> {
+    let display = prop_oneof![
+        Just("Interview A".to_owned()),
+        Just("Take 1/2 ✂".to_owned()),
+        Just("  Padded  ".to_owned()),
+    ];
+    let valid = (one_of(p.media_ids()), option::weighted(0.7, display))
+        .prop_map(|(media, name)| json!({"media": media, "name": name}))
+        .boxed();
+    let invalid = (
+        one_of(p.media_ids()),
+        prop_oneof![
+            Just(String::new()),
+            Just("line\nbreak".to_owned()),
+            Just("x".repeat(256)),
+        ],
+    )
+        .prop_map(|(media, name)| json!({"media": media, "name": name}))
+        .boxed();
+    mix(valid, invalid)
+}
+
+fn media_move(p: &Pools) -> BoxedStrategy<Value> {
+    let valid = (
+        vec(one_of(p.media_ids()), 0..=3),
+        vec(one_of(p.folders.clone()), 0..=2),
+        option::weighted(0.6, one_of(p.folders.clone())),
+        on_conflict(),
+    )
+        .prop_map(|(media, folders, to, on_conflict)| {
+            let unique = |ids: Vec<Value>| {
+                let mut out: Vec<Value> = Vec::new();
+                for id in ids {
+                    if !out.contains(&id) {
+                        out.push(id);
+                    }
+                }
+                out
+            };
+            let (media, folders) = (unique(media), unique(folders));
+            json!({"media": media, "folders": folders, "to": to, "on_conflict": on_conflict})
+        })
+        .boxed();
+    let invalid = prop_oneof![
+        Just(json!({})),
+        Just(json!({"media": [], "folders": []})),
+        one_of(p.media_ids()).prop_map(|m| json!({"media": [m.clone(), m]})),
+        one_of(p.folders.clone()).prop_map(|f| json!({"folders": [f.clone()], "to": f})),
+        fresh::<FolderId>().prop_map(|to| json!({"media": [], "folders": [], "to": to})),
+    ]
+    .boxed();
+    mix(valid, invalid)
+}
+
+fn media_delete_folder(p: &Pools) -> BoxedStrategy<Value> {
+    let valid = (
+        one_of(p.folders.clone()),
+        prop_oneof![Just("move_up"), Just("remove")],
+    )
+        .prop_map(|(folder, contents)| json!({"folder": folder, "contents": contents}))
+        .boxed();
+    let invalid = prop_oneof![
+        fresh::<FolderId>().prop_map(|folder| json!({"folder": folder, "contents": "remove"})),
+        one_of(p.folders.clone()).prop_map(|folder| json!({"folder": folder, "contents": "keep"})),
+    ]
+    .boxed();
     mix(valid, invalid)
 }
 

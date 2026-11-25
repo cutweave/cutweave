@@ -113,7 +113,16 @@ export type EntityKind =
 /**  A linked group of items that edit together (`grp_`). */
 "group" | 
 /**  A timeline or item marker (`mrk_`). */
-"marker";
+"marker" | 
+/**  A folder of the media bin (`fld_`, ADR-0020). */
+"folder";
+
+/**
+ *  The ID of a folder of the media bin (ADR-0020): `fld_…`.
+ * 
+ *  Serialized as a string, exported to TypeScript as `string`.
+ */
+export type FolderId = string;
 
 /**
  *  A video frame rate as an exact rational `num/den` frames per second (`30000/1001` is
@@ -282,6 +291,38 @@ item: ItemId;
 parent: ItemId; 
 /**  What is wrong. */
 reason: string } | 
+/**  Media folders whose parents form a cycle (ADR-0020). */
+{ invariant: "folder_cycle"; 
+/**
+ *  The folders on the cycle, each followed by its parent; the first is repeated at the
+ *  end.
+ */
+cycle: FolderId[] } | 
+/**  A media folder nested deeper than `MAX_FOLDER_DEPTH` levels (ADR-0020). */
+{ invariant: "folder_too_deep"; 
+/**  The folder. */
+folder: FolderId; 
+/**  Its depth (1 at the top level). */
+depth: number } | 
+/**
+ *  A media folder name that is empty, too long, or holds `/` or control characters
+ *  (ADR-0020).
+ */
+{ invariant: "invalid_folder_name"; 
+/**  The folder. */
+folder: FolderId; 
+/**  What is wrong. */
+reason: string } | 
+/**  Two folders of one parent whose names are equal ignoring case (ADR-0020). */
+{ invariant: "duplicate_folder_name"; 
+/**  The parent; absent at the top level. */
+parent: FolderId | null; 
+/**  The folder with the lower ID. */
+first: FolderId; 
+/**  Another folder with the same name. */
+second: FolderId; 
+/**  The name of `second`. */
+name: string } | 
 /**  Plugin data under a key that is not a namespace (arch §4.3). */
 { invariant: "custom_namespace"; 
 /**  The custom map. */
@@ -362,6 +403,13 @@ export type MediaAsset = {
 	id: MediaId,
 	/**  What the media is. */
 	kind: MediaKind,
+	/**
+	 *  The name shown in the bin (ADR-0020); absent: the file name. 1 to 255 characters
+	 *  without control characters.
+	 */
+	name: string | null,
+	/**  The folder of the bin it is in (ADR-0020); absent: the top level. */
+	folder: FolderId | null,
 	/**  Absolute path of the file when it was last found (file kinds only). */
 	path_abs: string | null,
 	/**  Path relative to the project folder, used for relinking moved projects (file kinds only). */
@@ -372,6 +420,21 @@ export type MediaAsset = {
 	sequence: SequenceId | null,
 	/**  Probe results. */
 	probe: ProbeInfo,
+	/**  Plugin data (arch §4.3). */
+	custom: { [key in string]: JsonValue },
+} & { [key in string]: unknown };
+
+/**  A folder of the media bin (ADR-0020). */
+export type MediaFolder = {
+	/**  The folder ID (also its key in `Project::folders`). */
+	id: FolderId,
+	/**
+	 *  The name shown in the bin: 1 to 255 characters, no `/` or control characters, unique
+	 *  among its siblings ignoring case.
+	 */
+	name: string,
+	/**  The folder it is in; absent at the top level. */
+	parent: FolderId | null,
 	/**  Plugin data (arch §4.3). */
 	custom: { [key in string]: JsonValue },
 } & { [key in string]: unknown };
@@ -429,6 +492,8 @@ export type Project = {
 	settings: ProjectSettings,
 	/**  Media, keyed by ID. */
 	media: { [key in MediaId]: MediaAsset },
+	/**  The folder tree of the media bin, keyed by ID (ADR-0020). */
+	folders: { [key in FolderId]: MediaFolder },
 	/**  Sequences, keyed by ID. */
 	sequences: { [key in SequenceId]: Sequence },
 	/**  Plugin data (arch §4.3). */

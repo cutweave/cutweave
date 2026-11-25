@@ -165,22 +165,27 @@ cutweave/
 - **Wire format:** `Time` serializes as a JSON **integer** (flicks) and maps to TS `number`. It is validated as a safe integer (|t| < 2⁵³ flicks ≈ 147 days, far beyond any timeline). Inputs also accept timecode strings (`"00:01:02:03"`, `"62.5s"`, `"f:1500"`), which are normalized on parse. Frame-based forms (`HH:MM:SS:FF`, `f:N`) resolve against the frame rate of the sequence that owns the command's target, at validation time. Commands with no sequence context accept only flicks or seconds (`"62.5s"`). *(Decided after Spike S5.)* The specta export uses a type override for the `Time` newtype.
 - Media source times stay in the **stream timebase** until mapped. VFR sources are mapped through the media index (§7), never by assuming a constant fps.
 
-### 4.2 Entities (all IDs are UUIDv7 strings with type prefixes: `med_…`, `seq_…`, `trk_…`, `itm_…`, `grp_…`, `mrk_…`)
+### 4.2 Entities (all IDs are UUIDv7 strings with type prefixes: `med_…`, `seq_…`, `trk_…`, `itm_…`, `grp_…`, `mrk_…`, `fld_…`)
 
 ```text
 Project
  ├─ meta { name, created, schema_version, app_version }
  ├─ settings { default_format, color, autosave, proxy_policy }
  ├─ media: Map<MediaId, MediaAsset>         # imported or generated files (by reference)
+ ├─ folders: Map<FolderId, MediaFolder>     # the media bin's folder tree (ADR-0020, schema v2)
  ├─ sequences: Map<SequenceId, Sequence>    # many per project (e.g. long-form + N shorts)
  ├─ transcripts: Map<TranscriptId, Transcript>
  ├─ compositions: Map<CompositionId, CompositionDef>   # code templates stored in project
  ├─ assets: { fonts, luts, packs (plugin refs) }
  └─ markers, tags, custom (plugin-namespaced data)
 
-MediaAsset { id, kind(video|audio|image|sequence-ref), path_abs, path_rel, content_hash,
+MediaAsset { id, kind(video|audio|image|sequence-ref), name?: display name, folder?: FolderId,
+             path_abs, path_rel, content_hash,
              probe{streams, duration, fps, vfr, rotation, color{primaries,transfer,matrix,range}, audio{rate,channels}},
              proxy?: ProxyRef, analysis{scenes?, beats?, loudness?, waveform_ref}, provenance?: Provenance }
+
+MediaFolder { id (fld_…), name, parent?: FolderId, custom }   # one home per asset; ≤ 32 levels,
+                                                               # sibling names unique ignoring case
 
 Sequence { id, name, format{width,height,frame_rate,sample_rate,color_space,background},
            tracks: Vec<TrackId> (top→bottom; stored as `tracks` by ID plus `track_order`),
@@ -241,6 +246,7 @@ Provenance { origin(import|record|ai), provider?, model?, prompt?, seed?, params
 - **Plugin data** goes only into namespaced `custom` maps, so it can never corrupt core fields.
 - **Schema versioning:** `schema_version` plus ordered migrations (`vN → vN+1`) with golden fixture tests. Projects from newer app versions open read-only with a warning. Contract changes inside one unreleased version share its migration (§17, "One v2").
 - **Model v2 (WP-2A.02, [ADR-0023](adr/0023-timeline-edit-semantics.md), spec §1.5, §2):** `Project::validate` enforces INV-6 (at most one magnetic track per sequence, a video track), INV-7 (the magnetic track is gap-free from 0), INV-8 (linked groups have at least two members with identical `start` and `duration`) and INV-9 (attachments: one level deep, same sequence, another track, the child starts inside the parent, linked partners follow the same parent). Markers and `in_out` are metadata: no edit moves them, and sequence markers and the in/out range never move with a ripple (INV-34). `track.set_magnetic` is the only command that sets the flag; until WP-2A.03 ripples, the P1 edits `item.move`, `item.delete`, `clip.trim` and `timeline.insert` answer `Unsupported` on a magnetic track instead of leaving a gap.
+- **Media folders (WP-2F.07, [ADR-0020](adr/0020-media-folders.md)):** `Project::validate` checks that every folder's parent and every asset's `folder` exist, that parents form no cycle, that nothing is nested deeper than 32 levels, that folder names are 1 to 255 characters without `/` or control characters and unique among siblings ignoring case (`FolderCycle`, `FolderTooDeep`, `InvalidFolderName`, `DuplicateFolderName`), and that asset display names are 1 to 255 characters without control characters. The `media` commands `create_folder`, `rename_folder`, `rename`, `move` and `delete_folder` are each one undo step; `delete_folder` never changes a timeline or a file on disk (`remove` keeps the used assets in the deleted folder's parent). `media.list` filters by `folder` (one level, or `recursive`; `recursive: false` without a folder lists the top level) and matches `text` against the display name; `media.list_folders` returns the tree.
 
 ---
 

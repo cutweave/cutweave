@@ -22,6 +22,8 @@
     "med_0000000000017e999cdbc20a2319b9cb": {
       "id": "med_0000000000017e999cdbc20a2319b9cb",
       "kind": "video",
+      "name": null,
+      "folder": null,
       "path_abs": "/media/a.mp4",
       "path_rel": "../media/a.mp4",
       "content_hash": "xxh3:5f1d7a9c3b2e4d60",
@@ -76,6 +78,8 @@
     "med_0000000000027f8989dde9c8c6ffc150": {
       "id": "med_0000000000027f8989dde9c8c6ffc150",
       "kind": "video",
+      "name": null,
+      "folder": null,
       "path_abs": "/media/b.mp4",
       "path_rel": null,
       "content_hash": null,
@@ -130,6 +134,8 @@
     "med_00000000000376d1902a7aa83bfaaa17": {
       "id": "med_00000000000376d1902a7aa83bfaaa17",
       "kind": "audio",
+      "name": null,
+      "folder": null,
       "path_abs": "/media/m.wav",
       "path_rel": null,
       "content_hash": null,
@@ -154,6 +160,7 @@
       "custom": {}
     }
   },
+  "folders": {},
   "sequences": {
     "seq_000000000004771ba4a23020bc56afc3": {
       "id": "seq_000000000004771ba4a23020bc56afc3",

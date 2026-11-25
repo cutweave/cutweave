@@ -22,6 +22,8 @@
     "med_0000000000017bfc91f4e4cb54a6dfef": {
       "id": "med_0000000000017bfc91f4e4cb54a6dfef",
       "kind": "video",
+      "name": null,
+      "folder": null,
       "path_abs": "C:\\Users\\Ana\\Vídeos\\phone.mov",
       "path_rel": null,
       "content_hash": null,
@@ -77,6 +79,8 @@
     "med_0000000000027d0d864d96abce9059f8": {
       "id": "med_0000000000027d0d864d96abce9059f8",
       "kind": "image",
+      "name": null,
+      "folder": null,
       "path_abs": "/stills/logo.png",
       "path_rel": null,
       "content_hash": null,
@@ -100,6 +104,8 @@
     "med_00000000000371efa3e10f159aef3ea3": {
       "id": "med_00000000000371efa3e10f159aef3ea3",
       "kind": "audio",
+      "name": null,
+      "folder": null,
       "path_abs": "/audio/voice.flac",
       "path_rel": null,
       "content_hash": null,
@@ -126,6 +132,8 @@
     "med_00000000000771e28ce44861530185ff": {
       "id": "med_00000000000771e28ce44861530185ff",
       "kind": "sequence_ref",
+      "name": null,
+      "folder": null,
       "path_abs": null,
       "path_rel": null,
       "content_hash": null,
@@ -147,6 +155,7 @@
       "custom": {}
     }
   },
+  "folders": {},
   "sequences": {
     "seq_00000000000474fc8043b37c774201dd": {
       "id": "seq_00000000000474fc8043b37c774201dd",

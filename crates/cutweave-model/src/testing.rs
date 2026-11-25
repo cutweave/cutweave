@@ -6,9 +6,9 @@ use proptest::prelude::*;
 use serde_json::json;
 
 use crate::{
-    Clip, Duration, FrameRate, IdGen, InOut, MAX_SAFE_FLICKS, Marker, MarkerKind, MediaAsset,
-    MediaKind, ProbeInfo, Project, SampleRate, SeededGen, Sequence, SequenceFormat, Time, Timecode,
-    Track, TrackKind, Vec2,
+    Clip, Duration, FolderId, FrameRate, IdGen, InOut, MAX_SAFE_FLICKS, Marker, MarkerKind,
+    MediaAsset, MediaFolder, MediaKind, ProbeInfo, Project, SampleRate, SeededGen, Sequence,
+    SequenceFormat, Time, Timecode, Track, TrackKind, Vec2,
 };
 
 /// Any representable [`Time`] (±(2⁵³ − 1) flicks).
@@ -250,7 +250,41 @@ fn build(recipe: &ProjectRecipe) -> Project {
             .custom
             .insert("com.example.test", json!({ "seed": recipe.seed }));
     }
+    organize(&mut project, recipe.seed, &mut ids);
     project
+}
+
+/// Adds up to four media folders (some nested) and puts some assets in them, some with a
+/// display name (ADR-0020). Everything derives from bits of `seed`, so the other parts of the
+/// recipe draw the same values as before folders existed; the IDs are minted last.
+fn organize(project: &mut Project, seed: u64, ids: &mut SeededGen) {
+    let bits = |shift: u32, mask: u64| usize::try_from((seed >> shift) & mask).unwrap_or(0);
+    let count = bits(8, 0b111) % 5;
+    let mut folders: Vec<FolderId> = Vec::with_capacity(count);
+    for n in 0..count {
+        // Folder n sits at the top level or inside one of the folders before it.
+        let parent = match bits(11 + 2 * u32::try_from(n).unwrap_or(0), 0b11) {
+            0 => None,
+            pick => folders.get((pick - 1) % n.max(1)).copied(),
+        };
+        let folder = MediaFolder::new(ids.mint(), format!("Folder {n}"), parent);
+        folders.push(folder.id);
+        project.folders.insert(folder.id, folder);
+    }
+    let media: Vec<_> = project.media.keys().copied().collect();
+    for (i, id) in media.into_iter().enumerate() {
+        let i = u32::try_from(i).unwrap_or(0);
+        let Some(asset) = project.media.get_mut(&id) else {
+            continue;
+        };
+        let slot = bits(20 + 2 * i, 0b11);
+        if slot > 0 && !folders.is_empty() {
+            asset.folder = Some(folders[slot % folders.len()]);
+        }
+        if bits(40 + i, 1) == 1 {
+            asset.name = Some(format!("Clip {i}"));
+        }
+    }
 }
 
 /// Adds `count` markers (one range marker among them), an in/out range and a track height to
@@ -330,8 +364,9 @@ fn link_first_video_and_audio(project: &mut Project, ids: &mut SeededGen) {
 
 /// A valid schema v2 [`Project`] (`validate()` passes): up to 4 media files (video, audio,
 /// image), up to 2 sequences at ADR-0004 frame rates, each with 1–3 video/audio tracks of
-/// non-overlapping clips within their media bounds, optional linked items and plugin data. IDs
-/// come from a [`SeededGen`] with a generated seed.
+/// non-overlapping clips within their media bounds, optional linked items and plugin data, and
+/// up to 4 media folders holding some of the assets (ADR-0020). IDs come from a [`SeededGen`]
+/// with a generated seed.
 pub fn arb_project() -> impl Strategy<Value = Project> {
     project_recipe().prop_map(|recipe| build(&recipe))
 }

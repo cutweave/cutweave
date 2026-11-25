@@ -7,7 +7,7 @@ use std::{borrow::Cow, fmt, str::FromStr};
 use schemars::{JsonSchema, Schema, SchemaGenerator, json_schema};
 use serde::{Deserialize, Deserializer, Serialize, Serializer};
 
-use crate::{Custom, Duration, Extra, FrameRate, MediaId, SampleRate, SequenceId};
+use crate::{Custom, Duration, Extra, FolderId, FrameRate, MediaId, SampleRate, SequenceId};
 
 /// What a [`MediaAsset`] is.
 #[derive(
@@ -58,6 +58,11 @@ pub struct MediaAsset {
     pub id: MediaId,
     /// What the media is.
     pub kind: MediaKind,
+    /// The name shown in the bin (ADR-0020); absent: the file name. 1 to 255 characters
+    /// without control characters.
+    pub name: Option<String>,
+    /// The folder of the bin it is in (ADR-0020); absent: the top level.
+    pub folder: Option<FolderId>,
     /// Absolute path of the file when it was last found (file kinds only).
     pub path_abs: Option<String>,
     /// Path relative to the project folder, used for relinking moved projects (file kinds only).
@@ -88,6 +93,8 @@ impl MediaAsset {
         MediaAsset {
             id,
             kind,
+            name: None,
+            folder: None,
             path_abs: Some(path_abs.into()),
             path_rel: None,
             content_hash: None,
@@ -104,6 +111,8 @@ impl MediaAsset {
         MediaAsset {
             id,
             kind: MediaKind::SequenceRef,
+            name: None,
+            folder: None,
             path_abs: None,
             path_rel: None,
             content_hash: None,

@@ -1,10 +1,12 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
-//! WP-1A.03 and WP-2A.02 acceptance: golden fixtures per schema version, the v0 → v1 and
-//! v1 → v2 migrations, read-only newer documents and lossless round trips.
+//! WP-1A.03, WP-2A.02 and WP-2F.07 acceptance: golden fixtures per schema version, the v0 → v1
+//! and v1 → v2 migrations, read-only newer documents and lossless round trips.
 //!
 //! The current-version (v2) fixtures are exactly what `to_document_string` writes for the
 //! projects built below. The v1 fixtures are the frozen v1 files of the same projects; they
 //! must migrate to them (the migration of legacy shapes is covered by `v1/legacy-needs-fixes`).
+//! `v2/folders` holds what v1 cannot express (nested media folders and renamed assets,
+//! ADR-0020), so it has no v1 counterpart.
 //! After an intended format change, regenerate the v2 fixtures with
 //! `CUTWEAVE_BLESS_FIXTURES=1 cargo nextest run -p cutweave-model -E 'binary(migrations)'`.
 //! Fixtures of older versions are frozen: they must keep loading (through migrations) as the
@@ -20,11 +22,11 @@ use std::{
 
 use cutweave_model::{
     AudioInfo, CURRENT_SCHEMA_VERSION, Clip, Color, ColorPrimaries, ColorRange, ColorTags,
-    Duration, FrameRate, IdGen, MatrixCoefficients, MediaAsset, MediaKind, MigrationError,
-    OLDEST_SCHEMA_VERSION, OpenOutcome, ProbeInfo, Project, SampleRate, SeededGen, Sequence,
-    SequenceFormat, StreamInfo, StreamKind, Time, Track, TrackKind, TransferCharacteristics, Vec2,
-    canonical_json_pretty, migrate_to_current, migrate_value, open, open_str, schema_version_of,
-    to_document_string,
+    Duration, FolderId, FrameRate, IdGen, MatrixCoefficients, MediaAsset, MediaFolder, MediaKind,
+    MigrationError, OLDEST_SCHEMA_VERSION, OpenOutcome, ProbeInfo, Project, SampleRate, SeededGen,
+    Sequence, SequenceFormat, StreamInfo, StreamKind, Time, Track, TrackKind,
+    TransferCharacteristics, Vec2, canonical_json_pretty, migrate_to_current, migrate_value, open,
+    open_str, schema_version_of, to_document_string,
 };
 use serde_json::{Value, json};
 
@@ -304,12 +306,84 @@ fn expected_edge_cases() -> Project {
     project
 }
 
-fn current_fixtures() -> [(&'static str, Project); 3] {
+/// `v2/folders.cutweave` (ADR-0020): nested folders (three levels, Unicode and an empty
+/// folder), assets in folders and at the top level, display names, folder plugin data and an
+/// unknown folder field; one clip uses a renamed asset in a folder.
+fn expected_folders() -> Project {
+    let mut ids = SeededGen::new(3);
+    let mut project = Project::new("Folders");
+    stamp(&mut project);
+    let broll_id: FolderId = ids.mint();
+    let mut broll = MediaFolder::new(broll_id, "B-roll", None);
+    broll
+        .custom
+        .insert("com.example.bin", json!({"color": "teal"}))
+        .unwrap();
+    let drone = MediaFolder::new(ids.mint(), "Drone", Some(broll_id));
+    let mut day = MediaFolder::new(ids.mint(), "Día 1 — 日本", Some(drone.id));
+    day.extra.insert("x_future_folder", json!({"sort": "name"}));
+    let empty = MediaFolder::new(ids.mint(), "Empty", None);
+    let music_folder = MediaFolder::new(ids.mint(), "Music", None);
+
+    let mut aerial = MediaAsset::file(
+        ids.mint(),
+        MediaKind::Video,
+        "/media/DJI_0042.mp4",
+        video_probe(30),
+    );
+    aerial.name = Some("Coastline aerial".into());
+    aerial.folder = Some(day.id);
+    let mut walk = MediaAsset::file(
+        ids.mint(),
+        MediaKind::Video,
+        "/media/walk.mov",
+        video_probe(12),
+    );
+    walk.folder = Some(broll_id);
+    let mut song = MediaAsset::file(
+        ids.mint(),
+        MediaKind::Audio,
+        "/media/song.wav",
+        audio_probe(90),
+    );
+    song.folder = Some(music_folder.id);
+    song.name = Some("Theme (final mix)".into());
+    let mut logo = MediaAsset::file(
+        ids.mint(),
+        MediaKind::Image,
+        "/stills/logo.png",
+        ProbeInfo::default(),
+    );
+    logo.name = Some("Logo ✨".into());
+
+    let mut sequence = Sequence::new(ids.mint(), "Main", SequenceFormat::default());
+    let mut v1 = Track::new(ids.mint(), TrackKind::Video, "V1");
+    v1.items
+        .insert(Clip::new(ids.mint(), aerial.id, Time::ZERO, span_secs(4)).into());
+    sequence.insert_track(0, v1);
+    for folder in [broll, drone, day, empty, music_folder] {
+        project.folders.insert(folder.id, folder);
+    }
+    for media in [aerial, walk, song, logo] {
+        project.media.insert(media.id, media);
+    }
+    project.sequences.insert(sequence.id, sequence);
+    project
+}
+
+/// The current fixtures that are the migrated form of a frozen v1 file.
+fn migrated_fixtures() -> [(&'static str, Project); 3] {
     [
         ("empty", expected_empty()),
         ("three-clips", expected_three_clips()),
         ("edge-cases", expected_edge_cases()),
     ]
+}
+
+fn current_fixtures() -> Vec<(&'static str, Project)> {
+    let mut all: Vec<_> = migrated_fixtures().into();
+    all.push(("folders", expected_folders()));
+    all
 }
 
 fn editable(outcome: OpenOutcome) -> (Project, cutweave_model::MigrationReport) {
@@ -410,7 +484,7 @@ fn the_v0_fixture_migrates_to_the_current_three_clip_project() {
 /// The frozen v1 files migrate to the same projects the v2 fixtures hold.
 #[test]
 fn the_v1_fixtures_migrate_to_the_v2_projects() {
-    for (name, expected) in current_fixtures() {
+    for (name, expected) in migrated_fixtures() {
         let text = read(&fixtures().join(format!("v1/{name}.cutweave")));
         let (project, report) = editable(open_str(&text).unwrap());
         assert_eq!(project, expected, "{name}");
@@ -419,7 +493,59 @@ fn the_v1_fixtures_migrate_to_the_v2_projects() {
         // The migrated document is what the engine saves: the v2 fixture, byte for byte.
         let v2 = read(&fixtures().join(format!("v2/{name}.cutweave")));
         assert_eq!(to_document_string(&project).unwrap(), v2, "{name}");
+        // Saving the migrated document and migrating it again changes nothing (ADR-0020).
+        let (again, again_report) = editable(open_str(&v2).unwrap());
+        assert_eq!(again, project, "{name}");
+        assert!(!again_report.migrated(), "{name}");
+        assert_eq!(to_document_string(&again).unwrap(), v2, "{name}");
     }
+}
+
+/// ADR-0020: a v1 document has no folders, so every asset lands at the top level under its
+/// file name.
+#[test]
+fn the_v1_migration_puts_every_asset_at_the_top_level() {
+    for (name, _) in migrated_fixtures() {
+        let text = read(&fixtures().join(format!("v1/{name}.cutweave")));
+        let (project, _) = editable(open_str(&text).unwrap());
+        assert!(project.folders.is_empty(), "{name}");
+        for media in project.media.values() {
+            assert_eq!((&media.name, media.folder), (&None, None), "{name}");
+        }
+        let (migrated, _) = migrate_value(serde_json::from_str(&text).unwrap()).unwrap();
+        assert_eq!(migrated["folders"], json!({}), "{name}");
+        for media in migrated["media"].as_object().unwrap().values() {
+            assert_eq!(media["name"], Value::Null, "{name}");
+            assert_eq!(media["folder"], Value::Null, "{name}");
+        }
+    }
+}
+
+#[test]
+fn the_folders_fixture_keeps_its_tree() {
+    let text = read(&fixtures().join("v2/folders.cutweave"));
+    let (project, _) = editable(open_str(&text).unwrap());
+    let paths: Vec<String> = project
+        .folders
+        .keys()
+        .map(|f| project.folder_path(*f).unwrap())
+        .collect();
+    assert_eq!(
+        paths,
+        [
+            "B-roll",
+            "B-roll/Drone",
+            "B-roll/Drone/Día 1 — 日本",
+            "Empty",
+            "Music"
+        ]
+    );
+    let named: Vec<&str> = project
+        .media
+        .values()
+        .filter_map(|m| m.name.as_deref())
+        .collect();
+    assert_eq!(named, ["Coastline aerial", "Theme (final mix)", "Logo ✨"]);
 }
 
 /// A v1 document with every shape the v2 migration repairs: an off-grid clip duration, a
