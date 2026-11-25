@@ -36,6 +36,10 @@ pub const EVENTS: &[(&str, &str)] = &[
         "media.analysis_failed",
         "A background analysis stage failed on a media asset (it stays usable; previews may be missing)",
     ),
+    (
+        "media.import_progress",
+        "A media import is probing its files: how many are done of how many",
+    ),
 ];
 
 // ----- events --------------------------------------------------------------------------------
@@ -62,6 +66,17 @@ pub struct MediaAnalysisFailed {
     pub error: String,
 }
 
+/// `media.import_progress`: a `media.import` of several files (a folder, WP-2F.09) has probed
+/// `done` of its `total` files. The call itself answers when all are done.
+#[wire]
+#[derive(Copy)]
+pub struct MediaImportProgress {
+    /// Files probed so far.
+    pub done: u32,
+    /// Files to probe in this call.
+    pub total: u32,
+}
+
 /// The events of the `media` namespace (see [`EVENTS`]).
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 #[serde(tag = "event")]
@@ -73,6 +88,9 @@ pub enum MediaEvent {
     /// `media.analysis_failed`.
     #[serde(rename = "media.analysis_failed")]
     AnalysisFailed(MediaAnalysisFailed),
+    /// `media.import_progress`.
+    #[serde(rename = "media.import_progress")]
+    ImportProgress(MediaImportProgress),
 }
 
 // ----- stages --------------------------------------------------------------------------------

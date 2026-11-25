@@ -9,12 +9,12 @@
 use std::sync::{Arc, Mutex};
 
 use cutweave_commands::{
-    Access, CmdError, Committed, QueryCtx, Registry, Transaction, apply_patch,
+    Access, CmdError, Command, Committed, QueryCtx, Registry, Transaction, apply_patch,
 };
 use cutweave_model::{GroupId, ItemId, MediaId, Project, SeededGen, SequenceId, Time, TrackId};
 use cutweave_ops::media::{
-    AnalysisSink, FakeProbe, ImportCtx, MediaEvent, MediaRegister, MediaRegistered, MediaSink,
-    register_batch,
+    AnalysisSink, FakeProbe, ImportCtx, MediaEvent, MediaRegister, MediaRegisterTree,
+    MediaRegistered, MediaSink, MediaTreeRegistered, register_batch,
 };
 use serde_json::{Value, json};
 
@@ -196,6 +196,17 @@ impl MediaSink for HSink {
         let Shared { doc, ids, commits } = &mut *s;
         let mut txn = Transaction::begin(doc.clone());
         let out = register_batch(&mut txn.tx(ids, Access::STANDARD), &batch)?;
+        let committed = txn.commit();
+        *doc = committed.doc;
+        *commits += 1;
+        Ok(out)
+    }
+
+    fn register_tree(&mut self, tree: MediaRegisterTree) -> Result<MediaTreeRegistered, CmdError> {
+        let mut s = self.0.lock().unwrap();
+        let Shared { doc, ids, commits } = &mut *s;
+        let mut txn = Transaction::begin(doc.clone());
+        let out = tree.apply(&mut txn.tx(ids, Access::STANDARD))?;
         let committed = txn.commit();
         *doc = committed.doc;
         *commits += 1;

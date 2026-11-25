@@ -170,10 +170,12 @@ impl ImportPolicy {
 /// Each probe runs on its own thread, so a prober that hangs past its timeout is reported as
 /// [`ProbeError::TimedOut`] and abandoned (its thread ends whenever the prober returns; the
 /// late result is dropped). A panicking prober is reported as [`ProbeError::Io`].
+/// `on_done` runs on the calling thread each time a file's result is in (WP-2F.09 progress).
 pub(crate) fn probe_all(
     prober: &Arc<dyn MediaProbe>,
     paths: &[String],
     policy: &ImportPolicy,
+    on_done: &mut dyn FnMut(),
 ) -> Vec<Result<Probed, ProbeError>> {
     let parallel = policy.probe_parallelism.max(1);
     let mut results: Vec<Option<Result<Probed, ProbeError>>> = paths.iter().map(|_| None).collect();
@@ -207,6 +209,7 @@ pub(crate) fn probe_all(
                         path: paths[i].clone(),
                         reason: format!("could not start probing: {e}"),
                     }));
+                    on_done();
                 }
             }
         }
@@ -217,6 +220,7 @@ pub(crate) fn probe_all(
             Ok((i, result)) => {
                 if pending.remove(&i).is_some() {
                     results[i] = Some(result);
+                    on_done();
                 }
             }
             Err(RecvTimeoutError::Timeout) => {
@@ -229,6 +233,7 @@ pub(crate) fn probe_all(
                 for i in expired {
                     pending.remove(&i);
                     results[i] = Some(Err(ProbeError::TimedOut(paths[i].clone())));
+                    on_done();
                 }
             }
             // Unreachable while `tx` is alive; never loop forever.

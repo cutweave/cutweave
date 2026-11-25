@@ -7,13 +7,18 @@ import { validateImportPaths } from "./import.ts";
 export interface MediaFilesBridge {
   /** Native file picker (main validates and answers with absolute paths); `null` when cancelled. */
   pickMediaFiles?(): Promise<string[] | null>;
+  /** Native folder picker (several allowed) for importing folders with their structure (WP-2F.09). */
+  pickMediaFolders?(): Promise<string[] | null>;
   /** The paths behind dropped `File` objects (`webUtils.getPathForFile`, run in the preload). */
   pathsForDrop?(files: readonly File[]): string[];
 }
 
 interface WindowBridge {
   cutweave?: {
-    dialog?: { pickMediaFiles?: () => Promise<string[] | null> };
+    dialog?: {
+      pickMediaFiles?: () => Promise<string[] | null>;
+      pickMediaFolders?: () => Promise<string[] | null>;
+    };
     files?: { pathForFile?: (file: File) => string };
   };
 }
@@ -22,9 +27,11 @@ interface WindowBridge {
 export function mediaFilesBridge(target: WindowBridge = globalThis as never): MediaFilesBridge {
   const api = target.cutweave;
   const pick = api?.dialog?.pickMediaFiles;
+  const pickFolders = api?.dialog?.pickMediaFolders;
   const pathFor = api?.files?.pathForFile;
   return {
     ...(pick && { pickMediaFiles: () => pick() }),
+    ...(pickFolders && { pickMediaFolders: () => pickFolders() }),
     ...(pathFor && {
       // One file at a time: the bridge hands each `File` to Electron separately.
       pathsForDrop: (files: readonly File[]) => validateImportPaths(files.map((f) => pathFor(f))),

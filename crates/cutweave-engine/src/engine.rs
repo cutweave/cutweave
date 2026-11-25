@@ -478,14 +478,12 @@ impl Core {
             .subsystems
             .analysis_stages()
             .unwrap_or_else(|| Arc::new(AnalysisStages::new()));
-        let analyzer = Analyzer::new(
-            self.deps.jobs.clone(),
-            stages,
-            Arc::new(BusAnalysisSink(self.deps.events.clone())),
-        );
+        let bus = Arc::new(BusAnalysisSink(self.deps.events.clone()));
+        let analyzer = Analyzer::new(self.deps.jobs.clone(), stages, bus.clone());
         let mut import = ImportCtx::new(prober, Box::new(sink))
             .with_policy(policy)
-            .with_analysis(analyzer);
+            .with_analysis(analyzer)
+            .with_events(bus);
         if let Some(proxies) = self.deps.subsystems.proxy_service() {
             import = import.with_proxies(proxies);
         }

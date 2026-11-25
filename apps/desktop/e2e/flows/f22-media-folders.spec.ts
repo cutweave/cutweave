@@ -6,11 +6,19 @@
 // All media (path captions, matching folders first) and in This folder; delete Interviews with
 // Keep media (through its context menu) and see its contents lifted; Ctrl+Z brings the folder
 // back; save, relaunch and reopen: the folders are there, and the bin opens where it was left.
-// Importing OS folders and tags are WP-2F.09 and WP-2F.06 and extend this flow later.
+// A second test (WP-2F.09) imports an OS folder: Import folder… (the OS picker is stubbed) mirrors
+// its directories inside the open folder, says what it skipped, is one undo step, adds nothing
+// the second time, and with "Keep folder structure when importing folders" off lands flat. An OS
+// folder dragged in from the file manager is not driven here (Playwright cannot start an
+// OS-level drag, and the app gets no test hook); its drop path is covered in Vitest. Tags are
+// WP-2F.06 and extend this flow later.
+import { appendFileSync, copyFileSync, mkdirSync, symlinkSync, writeFileSync } from "node:fs";
+import path from "node:path";
 import type { Locator, Page } from "@playwright/test";
 import { expect, test } from "../fixtures.ts";
 import {
   chooseMenu,
+  closeSettings,
   createProject,
   DEMO_FILES,
   dirtyDot,
@@ -20,12 +28,14 @@ import {
   launchFlowApp,
   mediaCards,
   openRecent,
+  openSettingsPage,
   pickFiles,
   profileDir,
   removeDir,
   shortcut,
   snapshot,
   toast,
+  type Workspace,
   workspace,
 } from "./helpers.ts";
 
@@ -37,6 +47,37 @@ const names = (page: Page) =>
 const crumbs = (page: Page) => page.getByRole("navigation", { name: "Media folders" });
 const crumb = (page: Page, name: string) => crumbs(page).getByRole("button", { name });
 const nameField = (page: Page) => page.getByRole("textbox", { name: "Folder name" });
+const sortedNames = async (page: Page) => (await names(page)).sort();
+
+/**
+ * A copy of a demo file at `dest`, made unique by a few bytes at its end (the engine tells files
+ * apart by content, so two plain copies would be one asset).
+ */
+function copyUnique(from: string, dest: string): void {
+  mkdirSync(path.dirname(dest), { recursive: true });
+  copyFileSync(from, dest);
+  appendFileSync(dest, `\n${path.basename(dest)}`);
+}
+
+/**
+ * The OS tree of the flow, built from the demo media: 5 media files in 4 folders below Shoot,
+ * two text files nobody can import, a hidden file and a link from day1 back to Shoot.
+ */
+function makeShoot(work: Workspace): string {
+  const shoot = path.join(work.dir, "Shoot");
+  copyUnique(work.file("interview.mp4"), path.join(shoot, "day1", "a1.mp4"));
+  copyUnique(work.file("broll-city.mp4"), path.join(shoot, "day1", "a2.mp4"));
+  copyUnique(work.file("broll-coffee.mp4"), path.join(shoot, "day2", "b1.mp4"));
+  copyUnique(work.file("music.wav"), path.join(shoot, "audio", "m1.wav"));
+  copyUnique(work.file("logo.png"), path.join(shoot, "stills", "s1.png"));
+  mkdirSync(path.join(shoot, "docs"), { recursive: true });
+  writeFileSync(path.join(shoot, "docs", "notes.txt"), "notes");
+  writeFileSync(path.join(shoot, "docs", "todo.txt"), "todo");
+  copyUnique(work.file("interview.mp4"), path.join(shoot, ".hidden.mp4"));
+  // A link back to the root: following it would never end.
+  symlinkSync(shoot, path.join(shoot, "day1", "loop"), "junction");
+  return shoot;
+}
 
 test.describe("F22 organize media in folders", () => {
   test.skip(!hasRealEngine, "cutweave-engine-serve is not built");
@@ -221,6 +262,95 @@ test.describe("F22 organize media in folders", () => {
       } finally {
         await second.close();
       }
+    } finally {
+      work.remove();
+      removeDir(home);
+    }
+  });
+
+  test("import a folder: it mirrors the OS tree, is one undo step, adds nothing twice and goes flat when asked", async () => {
+    test.setTimeout(300_000);
+    const info = test.info();
+    const work = workspace();
+    const home = profileDir();
+    try {
+      const { app, page } = await launchFlowApp(work, home);
+      await createProject(app, page, "Tree", work.dir);
+      const shoot = makeShoot(work);
+      await page.getByRole("radio", { name: "List" }).click();
+
+      // A folder to import into, opened.
+      await page.getByRole("button", { name: "New folder", exact: true }).click();
+      await nameField(page).fill("Imports");
+      await page.keyboard.press("Enter");
+      await tile(page, "Imports").dblclick();
+      await expect(crumb(page, "Imports")).toHaveAttribute("aria-current", "page");
+
+      // Import folder… (the OS folder picker answers with Shoot): five files into five folders,
+      // two text files skipped. The picker was asked for folders.
+      const asked = await pickFiles(app, [shoot]);
+      await page.getByRole("button", { name: "Import folder…" }).click();
+      await expect(toast(page, "Import finished").first()).toContainText(
+        "Imported 5 files into 5 folders; skipped 2 unsupported.",
+      );
+      expect((await asked())[0]?.properties).toContain("openDirectory");
+      await editorCaughtUp(page);
+      await expect(tile(page, "Shoot")).toBeVisible();
+      await snapshot(page, info, "folder imported");
+
+      // The folders mirror the directories that hold media; the link and the hidden file are
+      // left alone, and docs (only text files) made no folder.
+      await tile(page, "Shoot").dblclick();
+      await expect(crumb(page, "Shoot")).toHaveAttribute("aria-current", "page");
+      await expect.poll(() => sortedNames(page)).toEqual(["audio", "day1", "day2", "stills"]);
+      await tile(page, "day1").dblclick();
+      await expect.poll(() => sortedNames(page)).toEqual(["a1.mp4", "a2.mp4"]);
+      await crumb(page, "Media").click();
+
+      // One undo removes the media and the folders it made (Imports, made before, stays)...
+      await editorCaughtUp(page);
+      await shortcut(app, "Control+Z");
+      await expect(tile(page, "Imports")).toContainText("Empty");
+      await tile(page, "Imports").dblclick();
+      await expect(page.getByText("This folder is empty")).toBeVisible();
+      // ...and one redo brings them all back.
+      await shortcut(app, "Control+Y");
+      await expect(tile(page, "Shoot")).toBeVisible();
+
+      // The same folder again: every file is in the project already, so nothing new appears.
+      await pickFiles(app, [shoot]);
+      await page.getByRole("button", { name: "Import folder…" }).click();
+      await expect(toast(page, /5 were already in the project/).first()).toBeVisible();
+      await expect(tile(page, "Shoot 2")).toBeHidden();
+      await expect(mediaCards(page)).toHaveCount(1);
+
+      // The key opens the folder picker too (cancelled here).
+      const cancelled = await pickFiles(app, null);
+      await shortcut(app, "Control+Alt+I");
+      await expect.poll(async () => (await cancelled()).length).toBeGreaterThan(1);
+
+      // Settings > Media and import: with the structure off, a folder's files land flat in the
+      // open folder (the top level here).
+      await crumb(page, "Media").click();
+      const settings = await openSettingsPage(page, app, "Media and import");
+      const keep = settings.getByRole("switch", {
+        name: "Keep folder structure when importing folders",
+      });
+      await expect(keep).toBeChecked();
+      await keep.click();
+      await expect(keep).not.toBeChecked();
+      await closeSettings(settings);
+      const flat = path.join(work.dir, "Flat");
+      copyUnique(work.file("interview.mp4"), path.join(flat, "x", "f1.mp4"));
+      copyUnique(work.file("broll-city.mp4"), path.join(flat, "y", "f2.mp4"));
+      await pickFiles(app, [flat]);
+      await page.getByRole("button", { name: "Import folder…" }).click();
+      await expect(toast(page, "2 files added.").first()).toBeVisible();
+      await expect(tile(page, "f1.mp4")).toBeVisible();
+      await expect(tile(page, "f2.mp4")).toBeVisible();
+      await expect(tile(page, "x")).toBeHidden();
+      await expect(tile(page, "Flat")).toBeHidden();
+      await snapshot(page, info, "folder imported flat");
     } finally {
       work.remove();
       removeDir(home);

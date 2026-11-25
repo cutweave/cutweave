@@ -316,6 +316,7 @@ fn engine_event_payload(name: &str) -> &'static str {
         "job.progress" => "JobInfo",
         "media.indexed" => "MediaIndexed",
         "media.analysis_failed" => "MediaAnalysisFailed",
+        "media.import_progress" => "MediaImportProgress",
         _ => "unknown",
     }
 }
@@ -652,7 +653,12 @@ mod tests {
             assert_eq!(source(n), "engine", "{n}");
             assert_ne!(engine_event_payload(n), "unknown", "{n}");
         }
-        for n in ["job.progress", "media.indexed", "media.analysis_failed"] {
+        for n in [
+            "job.progress",
+            "media.indexed",
+            "media.analysis_failed",
+            "media.import_progress",
+        ] {
             assert_eq!(source(n), "engine", "{n}");
         }
         assert_eq!(

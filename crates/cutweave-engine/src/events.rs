@@ -133,7 +133,7 @@ pub enum EngineEvent {
     Session(SessionEvent),
     /// `job.progress`.
     Job(JobEvent),
-    /// `media.indexed`, `media.analysis_failed`.
+    /// `media.indexed`, `media.analysis_failed`, `media.import_progress`.
     Media(MediaEvent),
     /// `view.changed`; `origin` is the connection that made the change (WP-1I.02 skips it),
     /// `None` when the engine changed the view (a selected item was deleted).
@@ -168,6 +168,7 @@ impl EngineEvent {
             EngineEvent::Job(_) => "job.progress",
             EngineEvent::Media(MediaEvent::Indexed(_)) => "media.indexed",
             EngineEvent::Media(MediaEvent::AnalysisFailed(_)) => "media.analysis_failed",
+            EngineEvent::Media(MediaEvent::ImportProgress(_)) => "media.import_progress",
             EngineEvent::Media(_) => "media.unknown",
             EngineEvent::View { .. } => "view.changed",
             EngineEvent::Subsystem { name, .. } => name,

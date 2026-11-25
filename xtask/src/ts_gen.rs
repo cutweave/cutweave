@@ -71,6 +71,7 @@ fn event_payload(name: &str, types: &mut Types) -> Option<DataType> {
         "JobInfo" => cutweave_jobs::JobInfo::definition(types),
         "MediaIndexed" => cutweave_ops::media::MediaIndexed::definition(types),
         "MediaAnalysisFailed" => cutweave_ops::media::MediaAnalysisFailed::definition(types),
+        "MediaImportProgress" => cutweave_ops::media::MediaImportProgress::definition(types),
         "DocPatched" => DocPatched::definition(types),
         "DocReset" => DocReset::definition(types),
         "CommandPanicked" => CommandPanicked::definition(types),

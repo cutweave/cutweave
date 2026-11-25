@@ -20,6 +20,8 @@ pub mod folders;
 mod policy;
 mod probe;
 pub mod proxy;
+mod tree;
+mod walk;
 
 use std::{cmp::Ordering, sync::Arc};
 
@@ -34,7 +36,7 @@ use cutweave_model::{
 
 pub use analysis::{
     AnalysisInput, AnalysisSink, AnalysisStage, AnalysisStages, Analyzer, EVENTS,
-    MediaAnalysisFailed, MediaEvent, MediaIndexed, StageError,
+    MediaAnalysisFailed, MediaEvent, MediaImportProgress, MediaIndexed, StageError,
 };
 pub use find::{
     Keyed, Matcher, MediaFilter, MediaSort, MediaSortBy, MediaSortOrder, asset_name, compare, fold,
@@ -52,6 +54,8 @@ pub use policy::{
 };
 pub use probe::{FakeProbe, MediaProbe, ProbeError, Probed};
 pub use proxy::{ImportProxy, ProxyService};
+pub use tree::{MediaRegisterTree, MediaTreeRegistered, TreeEntry};
+pub use walk::{MAX_IMPORT_FILES, MAX_WALK_DEPTH};
 
 use crate::util::check_abs_path;
 
@@ -69,6 +73,7 @@ pub fn register(registry: &mut Registry) -> Result<(), RegistryError> {
     registry
         .register::<MediaRegister>()?
         .register::<MediaImport>()?
+        .register::<MediaRegisterTree>()?
         .register::<MediaList>()?
         .register::<MediaRemove>()?;
     folders::register(registry)?;
@@ -262,6 +267,16 @@ pub fn register_batch(
 pub trait MediaSink: Send {
     /// Registers `batch` atomically (all or none) and returns one result per entry.
     fn register(&mut self, batch: Vec<MediaRegister>) -> Result<Vec<MediaRegistered>, CmdError>;
+
+    /// Registers `tree` atomically: the files and the bin folders that mirror their
+    /// directories (`media.register_tree`, WP-2F.09). A sink that cannot create folders keeps
+    /// this default, which refuses.
+    fn register_tree(&mut self, tree: MediaRegisterTree) -> Result<MediaTreeRegistered, CmdError> {
+        let _ = tree;
+        Err(CmdError::internal(
+            "this media sink cannot create bin folders (import with keep_structure off)",
+        ))
+    }
 }
 
 /// What `media.import` runs against (the [`EngineCommand::Context`]). The engine builds one
@@ -277,6 +292,8 @@ pub struct ImportCtx {
     pub analysis: Option<Analyzer>,
     /// Queues the proxies the policy wants (WP-2F.01); `None` makes none.
     pub proxies: Option<Arc<dyn ProxyService>>,
+    /// Where `media.import_progress` goes; `None` announces nothing.
+    pub events: Option<Arc<dyn AnalysisSink>>,
 }
 
 impl ImportCtx {
@@ -290,6 +307,7 @@ impl ImportCtx {
             policy: ImportPolicy::default(),
             analysis: None,
             proxies: None,
+            events: None,
         }
     }
 
@@ -304,6 +322,13 @@ impl ImportCtx {
     #[must_use]
     pub fn with_analysis(mut self, analyzer: Analyzer) -> ImportCtx {
         self.analysis = Some(analyzer);
+        self
+    }
+
+    /// The same context, announcing `media.import_progress` through `events`.
+    #[must_use]
+    pub fn with_events(mut self, events: Arc<dyn AnalysisSink>) -> ImportCtx {
+        self.events = Some(events);
         self
     }
 
@@ -359,6 +384,19 @@ pub struct ImportFailure {
     pub error: String,
 }
 
+/// Files and folders found inside imported folders that were left out, by reason. (A file you
+/// named yourself that cannot be imported is in `failed` instead.)
+#[wire]
+#[derive(Copy, Default)]
+pub struct ImportSkipped {
+    /// Files that hold no playable audio, video or picture.
+    pub unsupported: u32,
+    /// Files and folders that could not be read (or whose probe timed out).
+    pub unreadable: u32,
+    /// Folders nested deeper than 16 levels below the one you gave, which were not entered.
+    pub too_deep: u32,
+}
+
 /// Result of `media.import`.
 #[wire]
 pub struct MediaImportOutput {
@@ -371,6 +409,10 @@ pub struct MediaImportOutput {
     /// Background analysis jobs queued for the new assets (wait with `job.wait`); empty when
     /// no analysis stage is installed.
     pub job_ids: Vec<JobId>,
+    /// What was left out of the folders in the request.
+    pub skipped: ImportSkipped,
+    /// How many bin folders were created for the directories of imported folders.
+    pub folders: u32,
 }
 
 /// Imports media files and returns their `media_ids` at once (arch §7, R21). Each file is
@@ -381,6 +423,13 @@ pub struct MediaImportOutput {
 /// thumbnails, waveform) then runs as jobs whose ids are returned in `job_ids`. Agents and
 /// headless callers may only import from the project folder and user-approved folders; any
 /// other path fails the call with `Invalid` at `/paths/<i>`.
+///
+/// A path may also be a folder (WP-2F.09): the engine imports the files it can read inside it
+/// (up to 16 levels down, no links, no hidden files, at most 2,000 files per call; more fails
+/// with `Invalid`), counts the rest in `skipped`, and with `keep_structure` (default true)
+/// creates a bin folder for each directory that holds new media, named after it, inside
+/// `folder`. One undo removes the media and those folders; files already in the project stay
+/// where they are.
 #[command(
     name = "media.import",
     summary = "Import media files: probe and register them now, return media ids and analysis job ids",
@@ -390,10 +439,13 @@ pub struct MediaImportOutput {
     annotations(destructive = false, idempotent = true)
 )]
 pub struct MediaImport {
-    /// Absolute paths of the files (1..=256, no repeats).
+    /// Absolute paths of files or folders (1..=256, no repeats).
     pub paths: Vec<String>,
     /// Bin folder (default: top level).
     pub folder: Option<FolderId>,
+    /// For folders in `paths`: mirror their directories as bin folders (default true); false
+    /// puts every file straight into `folder`.
+    pub keep_structure: Option<bool>,
 }
 
 impl MediaImport {
@@ -460,19 +512,113 @@ fn failure(path: &str, error: &ProbeError) -> ImportFailure {
     }
 }
 
-impl EngineCommand for MediaImport {
-    type Context = ImportCtx;
-    type Output = MediaImportOutput;
+/// One file to probe: named in the request, or found inside a folder that was.
+struct Item {
+    path: String,
+    /// The bin folders it goes into (empty for a file named in the request).
+    dirs: Vec<String>,
+    /// The index in `paths` it came from.
+    origin: usize,
+    from_folder: bool,
+}
 
-    fn run(&self, ctx: &mut ImportCtx) -> Result<MediaImportOutput, CmdError> {
-        self.check(&ctx.policy)?;
-        let probed = policy::probe_all(&ctx.prober, &self.paths, &ctx.policy);
-        let mut batch = Vec::with_capacity(self.paths.len());
-        // The request index of each batch entry (failed files are not in the batch).
-        let mut origin = Vec::with_capacity(self.paths.len());
-        let mut failed = Vec::new();
-        for (i, (path, result)) in self.paths.iter().zip(probed).enumerate() {
-            match result {
+/// The files `paths` stand for: folders are walked, repeats dropped.
+fn expand(paths: &[String], skipped: &mut ImportSkipped) -> Result<Vec<Item>, CmdError> {
+    let mut seen = std::collections::HashSet::new();
+    let mut items = Vec::with_capacity(paths.len());
+    for (i, path) in paths.iter().enumerate() {
+        if !walk::is_folder(path) {
+            if seen.insert(path.clone()) {
+                items.push(Item {
+                    path: path.clone(),
+                    dirs: Vec::new(),
+                    origin: i,
+                    from_folder: false,
+                });
+            }
+            continue;
+        }
+        let walked = walk::walk(std::path::Path::new(path));
+        let total = items.len() + walked.files.len();
+        if walked.truncated || total > MAX_IMPORT_FILES {
+            let count = if walked.truncated {
+                format!("more than {total}")
+            } else {
+                total.to_string()
+            };
+            return Err(CmdError::invalid(
+                format!("/paths/{i}"),
+                format!(
+                    "this import comes to {count} files, and one call takes at most \
+                     {MAX_IMPORT_FILES}; import its subfolders one at a time instead"
+                ),
+            ));
+        }
+        skipped.too_deep += walked.too_deep;
+        skipped.unreadable += walked.unreadable;
+        for found in walked.files {
+            if seen.insert(found.path.clone()) {
+                items.push(Item {
+                    path: found.path,
+                    dirs: found.dirs,
+                    origin: i,
+                    from_folder: true,
+                });
+            }
+        }
+    }
+    Ok(items)
+}
+
+/// What probing the files of an import gave.
+struct Probing {
+    /// The readable files, ready to register.
+    batch: Vec<MediaRegister>,
+    /// The bin folders each entry of `batch` goes into (empty: straight into the folder).
+    dirs: Vec<Vec<String>>,
+    /// The request index of each entry of `batch`.
+    origin: Vec<usize>,
+    /// The files named in the request that could not be imported.
+    failed: Vec<ImportFailure>,
+}
+
+impl MediaImport {
+    /// Probes `items` (announcing progress) and sorts them into files to register, files named
+    /// in the request that failed, and files found in folders that were left out (counted in
+    /// `skipped`).
+    fn probe_items(
+        &self,
+        ctx: &ImportCtx,
+        items: Vec<Item>,
+        keep: bool,
+        skipped: &mut ImportSkipped,
+    ) -> Probing {
+        let files: Vec<String> = items.iter().map(|item| item.path.clone()).collect();
+        let total = u32::try_from(files.len()).unwrap_or(u32::MAX);
+        // At most about a hundred progress events per call.
+        let step = (total / 100).max(1);
+        let mut done = 0_u32;
+        let probed = policy::probe_all(&ctx.prober, &files, &ctx.policy, &mut || {
+            done += 1;
+            if let Some(events) = &ctx.events
+                && total > 1
+                && (done.is_multiple_of(step) || done == total)
+            {
+                events.publish(MediaEvent::ImportProgress(MediaImportProgress {
+                    done,
+                    total,
+                }));
+            }
+        });
+        let mut out = Probing {
+            batch: Vec::with_capacity(items.len()),
+            dirs: Vec::with_capacity(items.len()),
+            origin: Vec::with_capacity(items.len()),
+            failed: Vec::new(),
+        };
+        for (item, result) in items.into_iter().zip(probed) {
+            let path = &item.path;
+            let refused = match result {
                 Ok(probed) => {
                     let register = MediaRegister {
                         media_id: None,
@@ -483,21 +629,69 @@ impl EngineCommand for MediaImport {
                     };
                     match register.kind() {
                         Ok(_) => {
-                            batch.push(register);
-                            origin.push(i);
+                            out.batch.push(register);
+                            out.dirs.push(if keep { item.dirs } else { Vec::new() });
+                            out.origin.push(item.origin);
+                            continue;
                         }
-                        Err(e) => failed.push(ImportFailure {
+                        Err(e) => ImportFailure {
                             path: path.clone(),
                             code: ImportFailureCode::Invalid,
                             error: format!("`{path}` cannot be imported: {}", e.message()),
-                        }),
+                        },
                     }
                 }
-                Err(e) => failed.push(failure(path, &e)),
+                Err(e) => failure(path, &e),
+            };
+            if !item.from_folder {
+                out.failed.push(refused);
+            } else if matches!(
+                refused.code,
+                ImportFailureCode::Unsupported | ImportFailureCode::Invalid
+            ) {
+                skipped.unsupported += 1;
+            } else {
+                skipped.unreadable += 1;
             }
         }
+        out
+    }
+}
+
+impl EngineCommand for MediaImport {
+    type Context = ImportCtx;
+    type Output = MediaImportOutput;
+
+    fn run(&self, ctx: &mut ImportCtx) -> Result<MediaImportOutput, CmdError> {
+        self.check(&ctx.policy)?;
+        let keep = self.keep_structure.unwrap_or(true);
+        let mut skipped = ImportSkipped::default();
+        let items = expand(&self.paths, &mut skipped)?;
+        let Probing {
+            batch,
+            dirs,
+            origin,
+            failed,
+        } = self.probe_items(ctx, items, keep, &mut skipped);
+        let mut folders = 0;
         let results = if batch.is_empty() {
             Vec::new()
+        } else if dirs.iter().any(|d| !d.is_empty()) {
+            let tree = MediaRegisterTree {
+                folder: self.folder,
+                entries: batch
+                    .iter()
+                    .cloned()
+                    .zip(dirs)
+                    .map(|(register, dirs)| TreeEntry { dirs, register })
+                    .collect(),
+            };
+            let registered = ctx
+                .sink
+                .register_tree(tree)
+                .map_err(|e| request_pointer(e, &origin))?;
+            folders = registered.folders;
+            registered.results
         } else {
             ctx.sink
                 .register(batch.clone())
@@ -513,6 +707,8 @@ impl EngineCommand for MediaImport {
             media_ids: Vec::with_capacity(batch.len()),
             failed,
             job_ids: Vec::new(),
+            skipped,
+            folders,
         };
         for (register, r) in batch.into_iter().zip(results) {
             let mut index_job = Vec::new();

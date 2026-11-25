@@ -311,9 +311,16 @@ export const BIN_BACKGROUND: MenuSurfaceDef = {
       reason: "contextMenu.reason.noEngine",
     },
     {
-      command: "bin.new_folder",
+      command: "bin.import_folder",
       group: "add",
       order: 1,
+      when: "engine.live",
+      reason: "contextMenu.reason.noEngine",
+    },
+    {
+      command: "bin.new_folder",
+      group: "add",
+      order: 2,
       when: "engine.live",
       reason: "contextMenu.reason.noEngine",
       args: () => ({}),

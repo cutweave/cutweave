@@ -64,7 +64,10 @@ use cutweave_ops::{
         ExportCtx,
         presets::{PresetCtx, PresetStore},
     },
-    media::{FakeProbe, ImportCtx, MediaRegister, MediaRegistered, MediaSink, proxy::ProxyCall},
+    media::{
+        FakeProbe, ImportCtx, MediaRegister, MediaRegisterTree, MediaRegistered, MediaSink,
+        MediaTreeRegistered, proxy::ProxyCall,
+    },
     testing::{
         self, AGENT_LABEL, JsonMirror, analyzer, arb_command_from, check_invariants,
         check_linked_edit, export_ctx, fake_probe, job_manager, replay_events,
@@ -308,6 +311,27 @@ impl MediaSink for ImportSink {
             return Err(e);
         }
         Ok(out)
+    }
+
+    fn register_tree(&mut self, tree: MediaRegisterTree) -> Result<MediaTreeRegistered, CmdError> {
+        let mut s = self.state.lock().unwrap();
+        let tx = s.begin_tx(&self.ctx, TxKind::Batch, "Import folder")?.id;
+        let params = serde_json::to_value(&tree).unwrap();
+        let submit = Submit::new(self.ctx.clone(), "media.register_tree", params).in_tx(tx);
+        match s.submit(submit) {
+            Ok(a) => {
+                let out = serde_json::from_value(a.output).unwrap();
+                if let Err(e) = s.commit_tx(&self.ctx, tx) {
+                    let _ = s.cancel_tx(&self.ctx, tx);
+                    return Err(e);
+                }
+                Ok(out)
+            }
+            Err(e) => {
+                s.cancel_tx(&self.ctx, tx).unwrap();
+                Err(e)
+            }
+        }
     }
 }
 

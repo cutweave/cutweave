@@ -199,6 +199,10 @@
       "keys": ["Mod+I"]
     },
     {
+      "command": "bin.import_folder",
+      "keys": ["Mod+Alt+I"]
+    },
+    {
       "command": "bin.search",
       "keys": ["Mod+F"]
     },

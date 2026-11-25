@@ -49,6 +49,15 @@ const CONTRACT: &[Row] = &[
         true,
     ),
     (
+        "media.register_tree",
+        EntryKind::Command,
+        McpExposure::Hidden,
+        false,
+        false,
+        true,
+        true,
+    ),
+    (
         "media.import",
         EntryKind::Engine,
         McpExposure::Core,

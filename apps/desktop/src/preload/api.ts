@@ -160,6 +160,7 @@ export function createCutweaveApi(
     dialog: {
       openProjectFolder: () => invoke("dialog:openProjectFolder"),
       pickMediaFiles: () => invoke("dialog:pickMediaFiles"),
+      pickMediaFolders: () => invoke("dialog:pickMediaFolders"),
       chooseExportFile: (defaultPath) => invoke("dialog:chooseExportFile", defaultPath),
     },
     recent: {

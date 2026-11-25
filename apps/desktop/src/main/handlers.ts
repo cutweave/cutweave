@@ -78,6 +78,8 @@ export interface HandlerDeps {
   confirmWindowClose(): void;
   /** Shows the native multi-file picker; resolves to the chosen paths or null when cancelled. */
   chooseMediaFiles(): Promise<readonly string[] | null>;
+  /** Shows the native multi-folder picker; resolves to the chosen paths or null when cancelled. */
+  chooseMediaFolders(): Promise<readonly string[] | null>;
   /** Shows the native "save as" for the export at `defaultPath`; the chosen path or null. */
   chooseExportFile(defaultPath: string): Promise<string | null>;
   showItemInFolder(path: string): void;
@@ -218,6 +220,12 @@ export function createHandlers(deps: HandlerDeps): InvokeHandlers {
       const chosen = await deps.chooseMediaFiles();
       if (chosen === null) return null;
       // Re-check what comes back from the dialog layer: only plain, bounded, absolute paths leave.
+      return validMediaPaths(chosen);
+    },
+    "dialog:pickMediaFolders": async () => {
+      const chosen = await deps.chooseMediaFolders();
+      if (chosen === null) return null;
+      // The same re-check as for files: only plain, bounded, absolute paths leave.
       return validMediaPaths(chosen);
     },
     "dialog:chooseExportFile": async (defaultPath) => {

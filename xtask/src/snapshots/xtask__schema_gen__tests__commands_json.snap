@@ -8806,7 +8806,7 @@ expression: text
       },
       "input_schema": {
         "additionalProperties": false,
-        "description": "Imports media files and returns their `media_ids` at once (arch §7, R21). Each file is\nprobed synchronously (up to 4 at a time, 5 s each by default) and every readable one is\nregistered in one transaction (one undo step); files that are missing, unsupported, corrupt\nor too slow to probe are listed in `failed` and get no asset. Files whose content is\nalready in the project are returned as duplicates. Background analysis (frame index,\nthumbnails, waveform) then runs as jobs whose ids are returned in `job_ids`. Agents and\nheadless callers may only import from the project folder and user-approved folders; any\nother path fails the call with `Invalid` at `/paths/<i>`.",
+        "description": "Imports media files and returns their `media_ids` at once (arch §7, R21). Each file is\nprobed synchronously (up to 4 at a time, 5 s each by default) and every readable one is\nregistered in one transaction (one undo step); files that are missing, unsupported, corrupt\nor too slow to probe are listed in `failed` and get no asset. Files whose content is\nalready in the project are returned as duplicates. Background analysis (frame index,\nthumbnails, waveform) then runs as jobs whose ids are returned in `job_ids`. Agents and\nheadless callers may only import from the project folder and user-approved folders; any\nother path fails the call with `Invalid` at `/paths/<i>`.\n\nA path may also be a folder (WP-2F.09): the engine imports the files it can read inside it\n(up to 16 levels down, no links, no hidden files, at most 2,000 files per call; more fails\nwith `Invalid`), counts the rest in `skipped`, and with `keep_structure` (default true)\ncreates a bin folder for each directory that holds new media, named after it, inside\n`folder`. One undo removes the media and those folders; files already in the project stay\nwhere they are.",
         "properties": {
           "folder": {
             "default": null,
@@ -8817,8 +8817,16 @@ expression: text
               "null"
             ]
           },
+          "keep_structure": {
+            "default": null,
+            "description": "For folders in `paths`: mirror their directories as bin folders (default true); false\nputs every file straight into `folder`.",
+            "type": [
+              "boolean",
+              "null"
+            ]
+          },
           "paths": {
-            "description": "Absolute paths of the files (1..=256, no repeats).",
+            "description": "Absolute paths of files or folders (1..=256, no repeats).",
             "items": {
               "type": "string"
             },
@@ -8893,6 +8901,12 @@ expression: text
               "type": "object"
             },
             "type": "array"
+          },
+          "folders": {
+            "description": "How many bin folders were created for the directories of imported folders.",
+            "format": "uint32",
+            "minimum": 0,
+            "type": "integer"
           },
           "job_ids": {
             "description": "Background analysis jobs queued for the new assets (wait with `job.wait`); empty when\nno analysis stage is installed.",
@@ -8987,13 +9001,45 @@ expression: text
               "type": "string"
             },
             "type": "array"
+          },
+          "skipped": {
+            "additionalProperties": false,
+            "description": "What was left out of the folders in the request.",
+            "properties": {
+              "too_deep": {
+                "description": "Folders nested deeper than 16 levels below the one you gave, which were not entered.",
+                "format": "uint32",
+                "minimum": 0,
+                "type": "integer"
+              },
+              "unreadable": {
+                "description": "Files and folders that could not be read (or whose probe timed out).",
+                "format": "uint32",
+                "minimum": 0,
+                "type": "integer"
+              },
+              "unsupported": {
+                "description": "Files that hold no playable audio, video or picture.",
+                "format": "uint32",
+                "minimum": 0,
+                "type": "integer"
+              }
+            },
+            "required": [
+              "unsupported",
+              "unreadable",
+              "too_deep"
+            ],
+            "type": "object"
           }
         },
         "required": [
           "media",
           "media_ids",
           "failed",
-          "job_ids"
+          "job_ids",
+          "skipped",
+          "folders"
         ],
         "title": "MediaImportOutput",
         "type": "object"
@@ -9772,6 +9818,474 @@ expression: text
       "scope": "any",
       "secret_fields": [],
       "summary": "Register a probed media file (used by import; deduplicates by content hash)",
+      "undoable": true,
+      "view": false
+    },
+    {
+      "annotations": {
+        "destructiveHint": false,
+        "idempotentHint": true,
+        "openWorldHint": false,
+        "readOnlyHint": false
+      },
+      "input_schema": {
+        "additionalProperties": false,
+        "description": "Registers `entries` like `media.register` and puts each new asset into the bin folders named\nby its `dirs`, created inside `folder` as needed. Internal plumbing of `media.import`.",
+        "properties": {
+          "entries": {
+            "description": "The files (1..=2000).",
+            "items": {
+              "additionalProperties": false,
+              "description": "One file of a tree and the directories above it.",
+              "properties": {
+                "dirs": {
+                  "description": "The names of the bin folders to put the file in, outermost first, inside `folder`; empty:\nstraight into `folder`.",
+                  "items": {
+                    "type": "string"
+                  },
+                  "type": "array"
+                },
+                "register": {
+                  "additionalProperties": false,
+                  "description": "The file. Its `folder` is ignored.",
+                  "properties": {
+                    "content_hash": {
+                      "description": "Content hash used to relink and deduplicate (non-empty, no whitespace).",
+                      "type": "string"
+                    },
+                    "folder": {
+                      "default": null,
+                      "description": "The folder of the bin to put the new asset in; absent: the top level.",
+                      "pattern": "^fld_[0-9a-f]{32}$",
+                      "type": [
+                        "string",
+                        "null"
+                      ]
+                    },
+                    "media_id": {
+                      "default": null,
+                      "description": "ID for the new asset; minted by the engine when absent. Must not exist yet.",
+                      "pattern": "^med_[0-9a-f]{32}$",
+                      "type": [
+                        "string",
+                        "null"
+                      ]
+                    },
+                    "path": {
+                      "description": "Absolute path of the file.",
+                      "type": "string"
+                    },
+                    "probe": {
+                      "description": "What probing found.",
+                      "properties": {
+                        "audio": {
+                          "additionalProperties": false,
+                          "description": "Main audio stream format, if any.",
+                          "properties": {
+                            "channels": {
+                              "description": "Channel count.",
+                              "format": "uint16",
+                              "maximum": 65535,
+                              "minimum": 0,
+                              "type": "integer"
+                            },
+                            "rate": {
+                              "description": "Samples per second.",
+                              "maximum": 352800000,
+                              "minimum": 1,
+                              "type": "integer"
+                            }
+                          },
+                          "required": [
+                            "rate",
+                            "channels"
+                          ],
+                          "type": [
+                            "object",
+                            "null"
+                          ]
+                        },
+                        "color": {
+                          "additionalProperties": false,
+                          "description": "Color tags of the main video stream.",
+                          "properties": {
+                            "matrix": {
+                              "description": "YUV matrix coefficients.",
+                              "examples": [
+                                "gbr",
+                                "bt709",
+                                "fcc",
+                                "bt470bg",
+                                "smpte170m",
+                                "smpte240m",
+                                "ycgco",
+                                "bt2020nc",
+                                "bt2020c",
+                                "ictcp"
+                              ],
+                              "type": [
+                                "string",
+                                "null"
+                              ]
+                            },
+                            "primaries": {
+                              "description": "Color primaries.",
+                              "examples": [
+                                "bt709",
+                                "bt470m",
+                                "bt470bg",
+                                "smpte170m",
+                                "smpte240m",
+                                "film",
+                                "bt2020",
+                                "smpte428",
+                                "smpte431",
+                                "smpte432",
+                                "ebu3213"
+                              ],
+                              "type": [
+                                "string",
+                                "null"
+                              ]
+                            },
+                            "range": {
+                              "anyOf": [
+                                {
+                                  "description": "Sample range of a video stream.",
+                                  "oneOf": [
+                                    {
+                                      "const": "limited",
+                                      "description": "Limited (\"TV\", 16–235 for 8-bit luma).",
+                                      "type": "string"
+                                    },
+                                    {
+                                      "const": "full",
+                                      "description": "Full (\"PC\", 0–255).",
+                                      "type": "string"
+                                    }
+                                  ]
+                                },
+                                {
+                                  "type": "null"
+                                }
+                              ],
+                              "description": "Sample range."
+                            },
+                            "transfer": {
+                              "description": "Transfer characteristics.",
+                              "examples": [
+                                "bt709",
+                                "gamma22",
+                                "gamma28",
+                                "smpte170m",
+                                "smpte240m",
+                                "linear",
+                                "iec61966-2-1",
+                                "bt2020-10",
+                                "bt2020-12",
+                                "smpte2084",
+                                "arib-std-b67"
+                              ],
+                              "type": [
+                                "string",
+                                "null"
+                              ]
+                            }
+                          },
+                          "type": "object"
+                        },
+                        "duration": {
+                          "anyOf": [
+                            {
+                              "anyOf": [
+                                {
+                                  "maximum": 9007199254740991,
+                                  "minimum": 0,
+                                  "type": "integer"
+                                },
+                                {
+                                  "pattern": "^-?[0-9]+(\\.[0-9]+)?s$|^-?[0-9]+$",
+                                  "type": "string"
+                                }
+                              ],
+                              "description": "A non-negative duration in flicks (1/705600000 s) as an integer, or a string: seconds (\"62.5s\") or raw flicks (\"123\")."
+                            },
+                            {
+                              "type": "null"
+                            }
+                          ],
+                          "description": "Playable length, if known (images have none)."
+                        },
+                        "fps": {
+                          "additionalProperties": false,
+                          "description": "Frame rate of the main video stream, if constant or nominal.",
+                          "properties": {
+                            "den": {
+                              "description": "Seconds.",
+                              "maximum": 4294967295,
+                              "minimum": 1,
+                              "type": "integer"
+                            },
+                            "num": {
+                              "description": "Frames.",
+                              "maximum": 4294967295,
+                              "minimum": 1,
+                              "type": "integer"
+                            }
+                          },
+                          "required": [
+                            "num",
+                            "den"
+                          ],
+                          "type": [
+                            "object",
+                            "null"
+                          ]
+                        },
+                        "rotation": {
+                          "description": "Display rotation in degrees clockwise: 0, 90, 180 or 270.",
+                          "format": "uint16",
+                          "maximum": 65535,
+                          "minimum": 0,
+                          "type": "integer"
+                        },
+                        "streams": {
+                          "description": "Streams in container order.",
+                          "items": {
+                            "description": "One stream of a media file.",
+                            "properties": {
+                              "channels": {
+                                "description": "Channel count (audio).",
+                                "format": "uint16",
+                                "maximum": 65535,
+                                "minimum": 0,
+                                "type": [
+                                  "integer",
+                                  "null"
+                                ]
+                              },
+                              "codec": {
+                                "description": "Codec name (FFmpeg naming, e.g. `h264`, `aac`).",
+                                "type": [
+                                  "string",
+                                  "null"
+                                ]
+                              },
+                              "height": {
+                                "description": "Coded height in pixels (video).",
+                                "format": "uint32",
+                                "minimum": 0,
+                                "type": [
+                                  "integer",
+                                  "null"
+                                ]
+                              },
+                              "index": {
+                                "description": "Index in the container.",
+                                "format": "uint32",
+                                "minimum": 0,
+                                "type": "integer"
+                              },
+                              "kind": {
+                                "description": "Stream kind.",
+                                "oneOf": [
+                                  {
+                                    "const": "video",
+                                    "description": "Pictures.",
+                                    "type": "string"
+                                  },
+                                  {
+                                    "const": "audio",
+                                    "description": "Sound.",
+                                    "type": "string"
+                                  },
+                                  {
+                                    "const": "subtitle",
+                                    "description": "Subtitles or captions.",
+                                    "type": "string"
+                                  },
+                                  {
+                                    "const": "data",
+                                    "description": "Timed metadata or other data.",
+                                    "type": "string"
+                                  },
+                                  {
+                                    "const": "attachment",
+                                    "description": "Attached files (fonts, cover art).",
+                                    "type": "string"
+                                  }
+                                ]
+                              },
+                              "language": {
+                                "description": "Language tag (e.g. `eng`).",
+                                "type": [
+                                  "string",
+                                  "null"
+                                ]
+                              },
+                              "pixel_format": {
+                                "description": "Pixel format (FFmpeg naming, e.g. `yuv420p10le`; video).",
+                                "type": [
+                                  "string",
+                                  "null"
+                                ]
+                              },
+                              "profile": {
+                                "description": "Codec profile (e.g. `High`, `Main 10`).",
+                                "type": [
+                                  "string",
+                                  "null"
+                                ]
+                              },
+                              "sample_rate": {
+                                "description": "Sample rate (audio).",
+                                "maximum": 352800000,
+                                "minimum": 1,
+                                "type": [
+                                  "integer",
+                                  "null"
+                                ]
+                              },
+                              "width": {
+                                "description": "Coded width in pixels (video).",
+                                "format": "uint32",
+                                "minimum": 0,
+                                "type": [
+                                  "integer",
+                                  "null"
+                                ]
+                              }
+                            },
+                            "required": [
+                              "index",
+                              "kind"
+                            ],
+                            "type": "object"
+                          },
+                          "type": "array"
+                        },
+                        "vfr": {
+                          "description": "Variable frame rate: times map through the frame index, never through `fps` (arch §4.1).",
+                          "type": "boolean"
+                        }
+                      },
+                      "required": [
+                        "streams",
+                        "vfr",
+                        "rotation",
+                        "color"
+                      ],
+                      "type": "object"
+                    }
+                  },
+                  "required": [
+                    "path",
+                    "probe",
+                    "content_hash"
+                  ],
+                  "type": "object"
+                }
+              },
+              "required": [
+                "dirs",
+                "register"
+              ],
+              "type": "object"
+            },
+            "type": "array"
+          },
+          "folder": {
+            "default": null,
+            "description": "The folder the tree goes into; absent: the top level.",
+            "pattern": "^fld_[0-9a-f]{32}$",
+            "type": [
+              "string",
+              "null"
+            ]
+          }
+        },
+        "required": [
+          "entries"
+        ],
+        "title": "MediaRegisterTree",
+        "type": "object"
+      },
+      "kind": "command",
+      "mcp": "hidden",
+      "mcp_tool": null,
+      "name": "media.register_tree",
+      "namespace": "media",
+      "output_schema": {
+        "additionalProperties": false,
+        "description": "Result of `media.register_tree`.",
+        "properties": {
+          "folders": {
+            "description": "How many bin folders were created.",
+            "format": "uint32",
+            "minimum": 0,
+            "type": "integer"
+          },
+          "results": {
+            "description": "One result per entry, in order.",
+            "items": {
+              "additionalProperties": false,
+              "description": "Result of `media.register`.",
+              "properties": {
+                "created": {
+                  "description": "`false` when an asset with the same content hash already existed and nothing changed.",
+                  "type": "boolean"
+                },
+                "kind": {
+                  "description": "What the asset is.",
+                  "oneOf": [
+                    {
+                      "const": "video",
+                      "description": "A video file (may also carry audio).",
+                      "type": "string"
+                    },
+                    {
+                      "const": "audio",
+                      "description": "An audio-only file.",
+                      "type": "string"
+                    },
+                    {
+                      "const": "image",
+                      "description": "A still image (no duration).",
+                      "type": "string"
+                    },
+                    {
+                      "const": "sequence_ref",
+                      "description": "Another sequence of this project, used as a compound clip (arch §4.3).",
+                      "type": "string"
+                    }
+                  ]
+                },
+                "media_id": {
+                  "description": "The asset: the new one, or the existing one with the same content hash.",
+                  "pattern": "^med_[0-9a-f]{32}$",
+                  "type": "string"
+                }
+              },
+              "required": [
+                "media_id",
+                "kind",
+                "created"
+              ],
+              "type": "object"
+            },
+            "type": "array"
+          }
+        },
+        "required": [
+          "results",
+          "folders"
+        ],
+        "title": "MediaTreeRegistered",
+        "type": "object"
+      },
+      "scope": "any",
+      "secret_fields": [],
+      "summary": "Register probed media files into bin folders that mirror a directory tree (used by import)",
       "undoable": true,
       "view": false
     },

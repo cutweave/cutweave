@@ -19,6 +19,7 @@ import { mediaStore } from "../media/mediaStore.ts";
 import { placeholderThumbnails, setThumbnailSource } from "../media/thumbnails.ts";
 import { menuDialogStore } from "../menus/dialogs.ts";
 import { MenuDialogs } from "../menus/MenuDialogs.tsx";
+import { prefsStore } from "../prefs/prefsStore.ts";
 import { sessionStore } from "../session/sessionStore.ts";
 import { docStore } from "../state/docStore.ts";
 import { jobStore } from "../state/jobStore.ts";
@@ -388,6 +389,46 @@ describe("importing into folders", () => {
         folder: INTERVIEWS,
       }),
     );
+  });
+});
+
+describe("importing an OS folder dropped on a folder tile (WP-2F.09)", () => {
+  it("sends the folder's path, into the tile's folder, with the structure setting", async () => {
+    load(project());
+    connect();
+    (globalThis as { cutweave?: unknown }).cutweave = {
+      files: { pathForFile: (f: File) => `/dropped/${f.name}` },
+    };
+    call.mockResolvedValue({ media: [], media_ids: [], failed: [], job_ids: [] });
+    view();
+    // A dropped folder arrives as a `File` of the folder's name, like a file does.
+    const dropped = [new File([], "Shoot")];
+    const drop = () =>
+      fireEvent.drop(tile("Interviews"), {
+        dataTransfer: { types: ["Files"], files: dropped, dropEffect: "" },
+      });
+    drop();
+    await vi.waitFor(() =>
+      expect(call).toHaveBeenCalledWith("media.import", {
+        paths: ["/dropped/Shoot"],
+        folder: INTERVIEWS,
+      }),
+    );
+    call.mockClear();
+    prefsStore.setState({
+      values: { ...prefsStore.getState().values, "media.keep_structure": false },
+    });
+    drop();
+    await vi.waitFor(() =>
+      expect(call).toHaveBeenCalledWith("media.import", {
+        paths: ["/dropped/Shoot"],
+        folder: INTERVIEWS,
+        keep_structure: false,
+      }),
+    );
+    prefsStore.setState({
+      values: { ...prefsStore.getState().values, "media.keep_structure": true },
+    });
   });
 });
 

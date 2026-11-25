@@ -37,6 +37,11 @@ export interface InvokeChannels {
   /** Native multi-file picker for media import (WP-1M.03): absolute paths, or null when cancelled. */
   "dialog:pickMediaFiles": { args: []; result: string[] | null };
   /**
+   * Native multi-folder picker for importing folders with their structure (WP-2F.09): absolute
+   * paths, or null when cancelled. The engine walks them (`media.import`).
+   */
+  "dialog:pickMediaFolders": { args: []; result: string[] | null };
+  /**
    * Native "save as" for the exported video (WP-1M.08): starts at the default path (or file
    * name); resolves to an absolute `.mp4` path, or null when cancelled.
    */

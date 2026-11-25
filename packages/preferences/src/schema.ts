@@ -116,6 +116,8 @@ export interface PreferenceValues {
   // Media and import (WP-1M.14)
   /** Show a video's frames while the pointer moves across its card in the bin. */
   "media.hover_scrub": boolean;
+  /** Folders in an import keep their directories as bin folders (WP-2F.09). */
+  "media.keep_structure": boolean;
   // Keyboard shortcuts (WP-2H.05)
   "shortcuts.preset": ShortcutPreset;
   "shortcuts.bindings": ShortcutOverrides;
@@ -233,6 +235,7 @@ export const PREFERENCES: { readonly [K in PreferenceKey]: PreferenceDef } = {
   },
   // Media and import (WP-1M.14)
   "media.hover_scrub": { type: "boolean", scope: "app", default: true },
+  "media.keep_structure": { type: "boolean", scope: "app", default: true },
   // Keyboard shortcuts (WP-2H.05)
   "shortcuts.preset": { type: "enum", scope: "app", options: SHORTCUT_PRESETS, default: "nle" },
   "shortcuts.bindings": { type: "bindings", scope: "app", default: {} },

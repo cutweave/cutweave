@@ -361,6 +361,7 @@ test.describe("IPC", () => {
       "cutweave.dialog.chooseExportFile",
       "cutweave.dialog.openProjectFolder",
       "cutweave.dialog.pickMediaFiles",
+      "cutweave.dialog.pickMediaFolders",
       "cutweave.edit.run",
       "cutweave.engine.getConnection",
       "cutweave.engine.getStatus",

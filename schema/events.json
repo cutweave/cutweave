@@ -37,6 +37,12 @@
       "summary": "A background analysis stage failed on a media asset (it stays usable; previews may be missing)"
     },
     {
+      "name": "media.import_progress",
+      "payload": "MediaImportProgress",
+      "source": "engine",
+      "summary": "A media import is probing its files: how many are done of how many"
+    },
+    {
       "name": "media.indexed",
       "payload": "MediaIndexed",
       "source": "engine",
