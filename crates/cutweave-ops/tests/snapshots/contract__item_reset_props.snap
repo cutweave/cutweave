@@ -13,7 +13,7 @@ expression: "json!({\n    \"meta\": serde_json::to_value(meta).unwrap(), \"input
     "mcp": "catalog",
     "annotations": {
       "readOnlyHint": false,
-      "destructiveHint": true,
+      "destructiveHint": false,
       "idempotentHint": true,
       "openWorldHint": false
     },

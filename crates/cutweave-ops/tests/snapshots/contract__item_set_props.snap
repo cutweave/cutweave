@@ -68,7 +68,9 @@ expression: "json!({\n    \"meta\": serde_json::to_value(meta).unwrap(), \"input
                 "null"
               ],
               "format": "double",
-              "description": "Opacity `0.0..=1.0`."
+              "description": "Opacity `0.0..=1.0`.",
+              "minimum": 0.0,
+              "maximum": 1.0
             },
             "audio_gain": {
               "type": [
@@ -76,7 +78,9 @@ expression: "json!({\n    \"meta\": serde_json::to_value(meta).unwrap(), \"input
                 "null"
               ],
               "format": "double",
-              "description": "Clip gain in dB, `-144..=48` (0 = unchanged)."
+              "description": "Clip gain in dB, `-144..=48` (0 = unchanged).",
+              "minimum": -144.0,
+              "maximum": 48.0
             },
             "audio_pan": {
               "type": [
@@ -84,7 +88,9 @@ expression: "json!({\n    \"meta\": serde_json::to_value(meta).unwrap(), \"input
                 "null"
               ],
               "format": "double",
-              "description": "Stereo position, `-1` (left) to `1` (right)."
+              "description": "Stereo position, `-1` (left) to `1` (right).",
+              "minimum": -1.0,
+              "maximum": 1.0
             },
             "transform": {
               "type": [
@@ -189,7 +195,9 @@ expression: "json!({\n    \"meta\": serde_json::to_value(meta).unwrap(), \"input
                     "null"
                   ],
                   "format": "double",
-                  "description": "Fraction removed from the left edge."
+                  "description": "Fraction removed from the left edge.",
+                  "minimum": 0.0,
+                  "maximum": 1.0
                 },
                 "top": {
                   "type": [
@@ -197,7 +205,9 @@ expression: "json!({\n    \"meta\": serde_json::to_value(meta).unwrap(), \"input
                     "null"
                   ],
                   "format": "double",
-                  "description": "Fraction removed from the top edge."
+                  "description": "Fraction removed from the top edge.",
+                  "minimum": 0.0,
+                  "maximum": 1.0
                 },
                 "right": {
                   "type": [
@@ -205,7 +215,9 @@ expression: "json!({\n    \"meta\": serde_json::to_value(meta).unwrap(), \"input
                     "null"
                   ],
                   "format": "double",
-                  "description": "Fraction removed from the right edge."
+                  "description": "Fraction removed from the right edge.",
+                  "minimum": 0.0,
+                  "maximum": 1.0
                 },
                 "bottom": {
                   "type": [
@@ -213,7 +225,9 @@ expression: "json!({\n    \"meta\": serde_json::to_value(meta).unwrap(), \"input
                     "null"
                   ],
                   "format": "double",
-                  "description": "Fraction removed from the bottom edge."
+                  "description": "Fraction removed from the bottom edge.",
+                  "minimum": 0.0,
+                  "maximum": 1.0
                 }
               },
               "description": "Edges of the source picture cut away (partial)."
@@ -430,7 +444,9 @@ expression: "json!({\n    \"meta\": serde_json::to_value(meta).unwrap(), \"input
               "null"
             ],
             "format": "double",
-            "description": "Opacity `0.0..=1.0`."
+            "description": "Opacity `0.0..=1.0`.",
+            "minimum": 0.0,
+            "maximum": 1.0
           },
           "audio_gain": {
             "type": [
@@ -438,7 +454,9 @@ expression: "json!({\n    \"meta\": serde_json::to_value(meta).unwrap(), \"input
               "null"
             ],
             "format": "double",
-            "description": "Clip gain in dB, `-144..=48` (0 = unchanged)."
+            "description": "Clip gain in dB, `-144..=48` (0 = unchanged).",
+            "minimum": -144.0,
+            "maximum": 48.0
           },
           "audio_pan": {
             "type": [
@@ -446,7 +464,9 @@ expression: "json!({\n    \"meta\": serde_json::to_value(meta).unwrap(), \"input
               "null"
             ],
             "format": "double",
-            "description": "Stereo position, `-1` (left) to `1` (right)."
+            "description": "Stereo position, `-1` (left) to `1` (right).",
+            "minimum": -1.0,
+            "maximum": 1.0
           },
           "transform": {
             "type": [
@@ -551,7 +571,9 @@ expression: "json!({\n    \"meta\": serde_json::to_value(meta).unwrap(), \"input
                   "null"
                 ],
                 "format": "double",
-                "description": "Fraction removed from the left edge."
+                "description": "Fraction removed from the left edge.",
+                "minimum": 0.0,
+                "maximum": 1.0
               },
               "top": {
                 "type": [
@@ -559,7 +581,9 @@ expression: "json!({\n    \"meta\": serde_json::to_value(meta).unwrap(), \"input
                   "null"
                 ],
                 "format": "double",
-                "description": "Fraction removed from the top edge."
+                "description": "Fraction removed from the top edge.",
+                "minimum": 0.0,
+                "maximum": 1.0
               },
               "right": {
                 "type": [
@@ -567,7 +591,9 @@ expression: "json!({\n    \"meta\": serde_json::to_value(meta).unwrap(), \"input
                   "null"
                 ],
                 "format": "double",
-                "description": "Fraction removed from the right edge."
+                "description": "Fraction removed from the right edge.",
+                "minimum": 0.0,
+                "maximum": 1.0
               },
               "bottom": {
                 "type": [
@@ -575,7 +601,9 @@ expression: "json!({\n    \"meta\": serde_json::to_value(meta).unwrap(), \"input
                   "null"
                 ],
                 "format": "double",
-                "description": "Fraction removed from the bottom edge."
+                "description": "Fraction removed from the bottom edge.",
+                "minimum": 0.0,
+                "maximum": 1.0
               }
             },
             "description": "Edges of the source picture cut away (partial)."

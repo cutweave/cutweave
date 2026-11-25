@@ -6,7 +6,7 @@
 //
 // WP-2H.13 adds the second flow: the menus of today's surfaces. Right-click a bin card (Insert at
 // playhead), the empty bin (Import…), a timeline clip (it becomes the selection; Split at
-// playhead, Ctrl+Z, Disable clip), a track header (Mute, Lock, then a drag on it is refused), an
+// playhead, Ctrl+Z, Disable clip, Reset properties after an opacity nudge, Ctrl+Z), a track header (Mute, Lock, then a drag on it is refused), an
 // empty lane (Add track above), the ruler (Move playhead here), a dock tab (Reset layout), the
 // save status (Save now); press the Menu key on a bin card and choose Remove from project, then
 // cancel its dialog. WP-2A.04 adds a clip's left edge: Trim to playhead, then Ctrl+Z. A third
@@ -27,6 +27,7 @@ import {
   hasRealEngine,
   importWithButton,
   inspector,
+  item as itemOf,
   laneY,
   launchFlowApp,
   layout,
@@ -191,6 +192,23 @@ test.describe("F42 context menus", () => {
       await expect(item(clipMenu, /^Enable clip/)).toBeVisible();
       await item(clipMenu, /^Enable clip/).click();
       await expect.poll(async () => (await sequence(page)).tracks[0]?.items[0]?.enabled).toBe(true);
+
+      // Reset properties (WP-2C.03): nudge the opacity down a step in the Inspector, then reset
+      // the clip from its menu; Ctrl+Z brings the nudge back.
+      const opacity = inspector(page).opacity;
+      await opacity.focus();
+      await opacity.press("ArrowLeft");
+      await expect.poll(async () => (await itemOf(page, clipId)).visual.opacity).toBeLessThan(1);
+      await editorCaughtUp(page);
+      g = await timelineGeometry(page);
+      box = clipBox(g, clipId);
+      await page.mouse.click(box.x + Math.min(box.w / 2, 60), box.y, { button: "right" });
+      await item(clipMenu, /^Reset properties/).click();
+      await expect.poll(async () => (await itemOf(page, clipId)).visual.opacity).toBe(1);
+      await editorCaughtUp(page);
+      await shortcut(app, "Control+Z");
+      await expect.poll(async () => (await itemOf(page, clipId)).visual.opacity).toBeLessThan(1);
+      await editorCaughtUp(page);
 
       // The clip's left edge (WP-2A.04): Trim to playhead moves the start to the playhead (5 s),
       // with its sound; Roll says why it cannot run; Ctrl+Z puts the clip back.

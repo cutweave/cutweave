@@ -1050,6 +1050,88 @@ fn a_roll_moves_the_keys_of_the_right_clip_only() {
     );
 }
 
+// ----- retiming: cuts and copies ----------------------------------------------------------------------
+
+/// A value a clip's opacity has at the sequence time `abs` (flicks), or `None` off the clip.
+fn opacity_at(h: &H, item: ItemId, abs: i64) -> Option<f64> {
+    let clip = clip_of(h, item);
+    let rel = abs - clip.start.flicks();
+    (rel >= 0 && rel < clip.duration.flicks())
+        .then(|| clip.visual.opacity.eval(Time::from_flicks(rel).unwrap()))
+}
+
+#[test]
+fn a_lift_keeps_what_each_remaining_part_shows() {
+    let (mut h, p, _, v, _) = setup();
+    h.ok(
+        "keyframe.set",
+        json!({"item": v, "prop": "opacity", "keys": [
+            {"t": "0s", "value": 0.0, "easing": "linear"},
+            {"t": "4s", "value": 1.0, "easing": "ease_in_out"},
+            {"t": "10s", "value": 0.25}]}),
+    );
+    let before = clip_of(&h, v);
+    let at = |s: f64| before.start.flicks() + (s * S as f64) as i64;
+    h.ok(
+        "timeline.lift",
+        json!({"sequence": p.sequence, "ranges": [{"start": "5s", "end": "7s"}]}),
+    );
+    // The left part keeps its ID; the right part is another item starting at 7 s.
+    let parts: Vec<ItemId> = h.doc().sequences[&p.sequence].tracks[&p.video]
+        .items
+        .iter()
+        .map(cutweave_model::Item::id)
+        .collect();
+    assert_eq!(parts.len(), 2, "the clip is cut in two");
+    for s in [2.0, 2.5, 4.0, 4.5, 5.5, 6.0, 8.0, 9.0, 11.5] {
+        let abs = at(s);
+        let original = before
+            .visual
+            .opacity
+            .eval(Time::from_flicks(abs - before.start.flicks()).unwrap());
+        let shown: Vec<f64> = parts
+            .iter()
+            .filter_map(|id| opacity_at(&h, *id, abs))
+            .collect();
+        if (5.0..7.0).contains(&(s + 2.0)) && shown.is_empty() {
+            continue; // lifted out
+        }
+        for got in shown {
+            assert_eq!(got.to_bits(), original.to_bits(), "at {s} s");
+        }
+    }
+}
+
+#[test]
+fn duplicates_keep_their_keys() {
+    let (mut h, _, _, v, _) = setup();
+    animated(&mut h, v);
+    let out = h.ok("item.duplicate", json!({"items": [v], "mode": "new_track"}));
+    let copy = item_id(&out["copies"][0]["copy"]);
+    assert_eq!(keys(&h, copy, "opacity"), keys(&h, v, "opacity"));
+}
+
+// ----- schemas -----------------------------------------------------------------------------------------
+
+#[test]
+fn the_schema_of_item_set_props_states_the_ranges() {
+    let mut registry = Registry::new();
+    cutweave_ops::register(&mut registry).unwrap();
+    let meta = &registry.get("item.set_props").unwrap().meta;
+    let props = &meta.input_schema["properties"]["props"]["properties"];
+    for (name, lo, hi) in [
+        ("opacity", 0.0, 1.0),
+        ("audio_gain", -144.0, 48.0),
+        ("audio_pan", -1.0, 1.0),
+    ] {
+        assert_eq!(props[name]["minimum"], json!(lo), "{name}");
+        assert_eq!(props[name]["maximum"], json!(hi), "{name}");
+    }
+    let crop = &props["crop"]["properties"];
+    assert_eq!(crop["left"]["minimum"], json!(0.0));
+    assert_eq!(crop["bottom"]["maximum"], json!(1.0));
+}
+
 // ----- a drag is one undo step (gestures) -----------------------------------------------------------------
 
 static REGISTRY: LazyLock<Arc<Registry>> = LazyLock::new(|| {

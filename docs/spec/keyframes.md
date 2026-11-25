@@ -496,6 +496,19 @@ item.set_props {
 - **WP-2C.03:** `keyframe.set` takes `keys[]` and `replace`. `item.set_props` takes bare values only. `audio.pan` joins WP-2C.03's model migration (§7).
 - **Arch §4.2** said every `VisualProps` field is animatable; `blend_mode` is static (D8). Arch §4.2 and §8 now point here.
 
+### As built in WP-2C.03
+
+Where the implementation made a choice the text above leaves open (no contract changed):
+
+- **Reset is `item.reset_props`**, not `clip.reset_props` (§9.9): the WBS bullet of 2026-11-25 (context menus) names it, and it takes `{item | items[], group? | props?}`. `group` is an Inspector section (`transform`, `crop`, `flip`, `compositing` = opacity and blend mode, `audio` = gain and pan); neither means everything, blend mode included. It lists the properties whose value changed.
+- **`keyframe.move` rounds a `delta` to whole frames** (samples with `fine`) and applies that one delta to every moved key of a property, because the model's `move_keys` takes one delta per property; keys on the grid stay on it. `to_t` and `to_at` (one key) snap as any key time does.
+- **A missing key is `NotFound{kind: "keyframe"}`**: `ResourceKind` gained `keyframe` (`cutweave-commands`). The id names the item, property and time.
+- **`item.set_props`** takes `item` or `items`, so its listing no longer requires `item`. Its result keeps `item` (the first) and `changed` (the union, in the order name, enabled, opacity, audio_gain, transform.*, audio_pan, crop.*, flip.*, blend_mode) and adds `keyed`. A prop value of `item.set_props` and of `keyframe.set` must fit the property's stored range.
+- **Trims.** `prune_keyframes` is a parameter of `clip.trim`, `clip.ripple_trim`, `clip.roll` and `clip.slide`. A start-edge trim, a roll's right clip and a slide's right neighbour shift keys by `−δ` (δ is the change of the content under the clip's start, which is the timeline delta; a ripple trim of the start edge moves the content too, so its keys follow it); a slip changes `source_in` only and, as §8.1 says, leaves keys alone. A cut (lift, extract, overwrite, insert) applies the split and head-trim rules to what it cuts.
+- **Patches.** A property that becomes keyed, or stops being keyed, is one `replace` of the whole animatable (`json::diff`): `{x, y}` and `{keyframes}` share no member, and the halfway states are not valid vectors (§9.1).
+- **Schema.** `Easing`, `PropId` and `BlendMode` list as one flat `enum` (a tool list pays for every `oneOf` description). With `keyframe_set` the standard MCP profile is 20 tools in the dev engine (about 6.4k tokens, from 4.8k; 21 and 6.7k with `render_frame`; R36: at most 36 tools and 8k). `keyframe_set` and the new `item_set_props` fields add about 1.5k together, above §10's 400 for `keyframe_set` alone (the `interp` union and the two time inputs are most of it).
+- **Format.** The migration adds `visual.crop`, `visual.flip`, `visual.blend_mode` and `audio.pan` as another step of the one v2 (`add_visual_props`); `Project::validate` range-checks every key (KF-4).
+
 ## 15. Owner decisions
 
 Decided by the product owner on 2026-11-25, both as the spec proposed: keys stay where they are on a speed change, with an opt-in `scale` (WP-2D.01 adds `clip.set_speed{keyframes: "keep" | "scale"}`, default `keep`); a split leaves no key at the cut. The original questions, for the record:

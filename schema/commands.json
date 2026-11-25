@@ -7032,6 +7032,8 @@
               "audio_gain": {
                 "description": "Clip gain in dB, `-144..=48` (0 = unchanged).",
                 "format": "double",
+                "maximum": 48.0,
+                "minimum": -144.0,
                 "type": [
                   "number",
                   "null"
@@ -7040,6 +7042,8 @@
               "audio_pan": {
                 "description": "Stereo position, `-1` (left) to `1` (right).",
                 "format": "double",
+                "maximum": 1.0,
+                "minimum": -1.0,
                 "type": [
                   "number",
                   "null"
@@ -7070,6 +7074,8 @@
                   "bottom": {
                     "description": "Fraction removed from the bottom edge.",
                     "format": "double",
+                    "maximum": 1.0,
+                    "minimum": 0.0,
                     "type": [
                       "number",
                       "null"
@@ -7078,6 +7084,8 @@
                   "left": {
                     "description": "Fraction removed from the left edge.",
                     "format": "double",
+                    "maximum": 1.0,
+                    "minimum": 0.0,
                     "type": [
                       "number",
                       "null"
@@ -7086,6 +7094,8 @@
                   "right": {
                     "description": "Fraction removed from the right edge.",
                     "format": "double",
+                    "maximum": 1.0,
+                    "minimum": 0.0,
                     "type": [
                       "number",
                       "null"
@@ -7094,6 +7104,8 @@
                   "top": {
                     "description": "Fraction removed from the top edge.",
                     "format": "double",
+                    "maximum": 1.0,
+                    "minimum": 0.0,
                     "type": [
                       "number",
                       "null"
@@ -7146,6 +7158,8 @@
               "opacity": {
                 "description": "Opacity `0.0..=1.0`.",
                 "format": "double",
+                "maximum": 1.0,
+                "minimum": 0.0,
                 "type": [
                   "number",
                   "null"

@@ -1,0 +1,102 @@
+{
+  "description": "Keyframes and property commands (WP-2C.03): key, copy and paste, move, change an easing, split and trim a clip with keys, auto-key through item.set_props, evaluate, reset, clear, delete, then undo and redo.",
+  "steps": [
+    { "cmd": "project.new", "args": { "name": "Parity" } },
+    { "cmd": "media.import", "args": { "paths": [{ "$media": "a.mp4" }] } },
+    {
+      "cmd": "timeline.insert",
+      "args": {
+        "sequence": { "$ref": "steps[0].output.sequence" },
+        "track": { "$ref": "steps[0].output.video_track" },
+        "media": { "$ref": "steps[1].output.media_ids[0]" },
+        "at": 0,
+        "link": false
+      }
+    },
+    {
+      "cmd": "keyframe.set",
+      "args": {
+        "item": { "$ref": "steps[2].output.clips[0]" },
+        "prop": "opacity",
+        "keys": [
+          { "at": "1s", "value": 0.0, "easing": "ease_out" },
+          { "at": "3s", "value": 1.0 },
+          { "at": "7s", "value": 0.5, "interp": { "kind": "spring", "stiffness": 170.0, "damping": 26.0, "mass": 1.0 } }
+        ]
+      }
+    },
+    {
+      "cmd": "keyframe.set",
+      "args": {
+        "item": { "$ref": "steps[2].output.clips[0]" },
+        "prop": "transform.position",
+        "keys": [{ "at": "0s", "value": { "x": -0.25, "y": 0.0 } }, { "at": "5s", "value": { "x": 0.25, "y": 0.1 }, "easing": "ease_in_out" }]
+      }
+    },
+    {
+      "cmd": "item.set_props",
+      "args": {
+        "item": { "$ref": "steps[2].output.clips[0]" },
+        "props": { "crop": { "left": 0.25, "right": 0.25 }, "flip": { "horizontal": true }, "blend_mode": "screen", "audio_pan": -0.5 }
+      }
+    },
+    {
+      "cmd": "keyframe.copy",
+      "args": { "item": { "$ref": "steps[2].output.clips[0]" }, "keys": [{ "prop": "opacity", "t": 705600000 }, { "prop": "opacity", "t": 2116800000 }] }
+    },
+    {
+      "cmd": "keyframe.paste",
+      "args": { "item": { "$ref": "steps[2].output.clips[0]" }, "payload": { "$script": "steps[6].output.clipboard" }, "at": "8s" }
+    },
+    {
+      "cmd": "keyframe.move",
+      "args": { "item": { "$ref": "steps[2].output.clips[0]" }, "keys": [{ "prop": "opacity", "t": 705600000 }], "delta": "0.5s" }
+    },
+    {
+      "cmd": "keyframe.set_interp",
+      "args": { "item": { "$ref": "steps[2].output.clips[0]" }, "keys": [{ "prop": "opacity", "t": 2116800000 }], "easing": "back_out" }
+    },
+    {
+      "cmd": "item.set_props",
+      "args": { "item": { "$ref": "steps[2].output.clips[0]" }, "props": { "opacity": 0.75 }, "at": "4s" }
+    },
+    {
+      "cmd": "item.set_props",
+      "args": { "item": { "$ref": "steps[2].output.clips[0]" }, "props": { "opacity": 0.2 } },
+      "expect": { "error": "invalid" }
+    },
+    {
+      "cmd": "keyframe.eval",
+      "args": { "item": { "$ref": "steps[2].output.clips[0]" }, "prop": "opacity", "from": "0s", "to": "10s", "samples": 9 }
+    },
+    { "cmd": "clip.split", "args": { "item": { "$ref": "steps[2].output.clips[0]" }, "at": "4s" } },
+    {
+      "cmd": "clip.trim",
+      "args": { "item": { "$ref": "steps[13].output.right" }, "edge": "start", "delta": "1s", "prune_keyframes": true }
+    },
+    { "cmd": "item.get", "args": { "item": { "$ref": "steps[13].output.left" } } },
+    { "cmd": "item.get", "args": { "item": { "$ref": "steps[13].output.right" } } },
+    {
+      "cmd": "keyframe.clear",
+      "args": { "item": { "$ref": "steps[13].output.left" }, "prop": "transform.position", "at": "2s" }
+    },
+    {
+      "cmd": "keyframe.delete",
+      "args": { "item": { "$ref": "steps[13].output.left" }, "keys": [{ "prop": "opacity", "t": 2116800000 }] }
+    },
+    {
+      "cmd": "keyframe.delete",
+      "args": { "item": { "$ref": "steps[13].output.left" }, "keys": [{ "prop": "opacity", "t": 7 }] },
+      "expect": { "error": "not_found" }
+    },
+    {
+      "cmd": "item.reset_props",
+      "args": { "item": { "$ref": "steps[13].output.right" }, "group": "compositing" }
+    },
+    { "cmd": "item.reset_props", "args": { "item": { "$ref": "steps[13].output.left" }, "props": ["crop.left", "flip.horizontal"] } },
+    { "cmd": "edit.undo" },
+    { "cmd": "edit.undo" },
+    { "cmd": "edit.redo" },
+    { "cmd": "timeline.get", "args": { "sequence": { "$ref": "steps[0].output.sequence" }, "depth": 2 } }
+  ]
+}

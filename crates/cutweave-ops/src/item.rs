@@ -188,12 +188,16 @@ pub struct TransformPatch {
 #[wire]
 pub struct CropPatch {
     /// Fraction removed from the left edge.
+    #[schemars(range(min = 0.0, max = 1.0))]
     pub left: Option<f64>,
     /// Fraction removed from the top edge.
+    #[schemars(range(min = 0.0, max = 1.0))]
     pub top: Option<f64>,
     /// Fraction removed from the right edge.
+    #[schemars(range(min = 0.0, max = 1.0))]
     pub right: Option<f64>,
     /// Fraction removed from the bottom edge.
+    #[schemars(range(min = 0.0, max = 1.0))]
     pub bottom: Option<f64>,
 }
 
@@ -214,10 +218,13 @@ pub struct ItemProps {
     /// Rendered and heard (`true`) or kept but skipped (`false`).
     pub enabled: Option<bool>,
     /// Opacity `0.0..=1.0`.
+    #[schemars(range(min = 0.0, max = 1.0))]
     pub opacity: Option<f64>,
     /// Clip gain in dB, `-144..=48` (0 = unchanged).
+    #[schemars(range(min = -144.0, max = 48.0))]
     pub audio_gain: Option<f64>,
     /// Stereo position, `-1` (left) to `1` (right).
+    #[schemars(range(min = -1.0, max = 1.0))]
     pub audio_pan: Option<f64>,
     /// Placement on the canvas (partial).
     pub transform: Option<TransformPatch>,
