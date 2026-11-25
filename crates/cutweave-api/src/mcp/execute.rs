@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
-//! `cutweave_execute{steps[{cmd, args}], dry_run?, expected_rev?}`: a transactional batch
-//! (arch §5.2, §14).
+//! `cutweave_execute{steps[{cmd, args}], dry_run?, expected_rev?, checkpoint?}`: a
+//! transactional batch (arch §5.2, §14).
 //!
 //! - **One transaction, one undo step.** The steps run in a `batch` transaction of the session's
 //!   connection (`edit.begin_tx`, each step with `tx`, `edit.commit_tx`), so the document only
@@ -18,6 +18,11 @@
 //!   cancelled: nothing changes, and each step lists the ops it would apply.
 //! - **`expected_rev`** is checked when the transaction opens and again when it commits, so the
 //!   batch applies only to the document revision the agent read.
+//! - **`checkpoint`** (WP-2I.03): an unnamed checkpoint of the document is saved first (one per
+//!   call; its note names the batch) and returned as `checkpoint`, so
+//!   `edit.restore{checkpoint}` brings the document back to before the batch even after later
+//!   edits. A batch that fails changes nothing, so its checkpoint is deleted again; a dry run
+//!   makes none.
 //! - **Engine commands** (`edit.redo`, `project.open`, `media.import`, `job.*`, `view.*`) act on
 //!   engine state and cannot join a document transaction: one runs alone as a single step
 //!   (without `dry_run`); in a longer batch it is refused before anything runs.
@@ -56,6 +61,8 @@ pub(crate) struct Batch {
     pub steps: Vec<Step>,
     pub dry_run: bool,
     pub expected_rev: Option<Rev>,
+    /// Save a checkpoint before running it.
+    pub checkpoint: bool,
 }
 
 /// Why a batch failed.
@@ -110,22 +117,29 @@ pub(crate) fn parse(catalog: &Catalog, args: Value) -> ExecResult<Batch> {
     let Value::Object(mut map) = args else {
         return Err(invalid(
             "",
-            "expected an object `{steps, dry_run?, expected_rev?}`",
+            "expected an object `{steps, dry_run?, expected_rev?, checkpoint?}`",
         ));
     };
-    if let Some(key) = map
-        .keys()
-        .find(|k| !matches!(k.as_str(), "steps" | "dry_run" | "expected_rev"))
-    {
+    if let Some(key) = map.keys().find(|k| {
+        !matches!(
+            k.as_str(),
+            "steps" | "dry_run" | "expected_rev" | "checkpoint"
+        )
+    }) {
         return Err(invalid(
             &format!("/{}", escape(key)),
-            "unknown field; expected `steps`, `dry_run` or `expected_rev`",
+            "unknown field; expected `steps`, `dry_run`, `expected_rev` or `checkpoint`",
         ));
     }
     let dry_run = match map.remove("dry_run") {
         None | Some(Value::Null) => false,
         Some(Value::Bool(b)) => b,
         Some(_) => return Err(invalid("/dry_run", "expected a boolean")),
+    };
+    let checkpoint = match map.remove("checkpoint") {
+        None | Some(Value::Null) => false,
+        Some(Value::Bool(b)) => b,
+        Some(_) => return Err(invalid("/checkpoint", "expected a boolean")),
     };
     let expected_rev = match map.remove("expected_rev") {
         None | Some(Value::Null) => None,
@@ -155,6 +169,7 @@ pub(crate) fn parse(catalog: &Catalog, args: Value) -> ExecResult<Batch> {
         steps,
         dry_run,
         expected_rev,
+        checkpoint,
     })
 }
 
@@ -259,6 +274,42 @@ fn check_engine_steps(steps: &[Step], dry_run: bool) -> ExecResult<()> {
 
 /// Runs `batch` on `conn` (blocking; see the module docs). Returns the structured result.
 pub(crate) fn run(conn: &dyn DispatchConn, batch: &Batch) -> ExecResult<Value> {
+    if !batch.checkpoint || batch.dry_run {
+        return run_batch(conn, batch);
+    }
+    let made = conn
+        .call(
+            DispatchCall::new(
+                "edit.checkpoint",
+                json!({ "note": format!("Before {}", label(&batch.steps)) }),
+            )
+            .expecting(batch.expected_rev),
+        )
+        .map_err(ExecError::batch)?;
+    let checkpoint = made
+        .output
+        .get("checkpoint")
+        .cloned()
+        .unwrap_or(Value::Null);
+    match run_batch(conn, batch) {
+        Ok(mut out) => {
+            out["checkpoint"] = checkpoint;
+            Ok(out)
+        }
+        Err(e) => {
+            // Nothing changed: the checkpoint would only be the current document again.
+            if let Err(error) = conn.call(DispatchCall::new(
+                "edit.delete_checkpoint",
+                json!({ "checkpoint": checkpoint }),
+            )) {
+                tracing::debug!(%error, "cutweave_execute: could not delete its checkpoint");
+            }
+            Err(e)
+        }
+    }
+}
+
+fn run_batch(conn: &dyn DispatchConn, batch: &Batch) -> ExecResult<Value> {
     if let [step] = batch.steps.as_slice()
         && step.kind == EntryKind::Engine
     {

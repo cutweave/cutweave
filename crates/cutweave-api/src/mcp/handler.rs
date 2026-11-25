@@ -269,7 +269,7 @@ impl CutweaveMcp {
                 }
                 let rev = out["rev"].as_u64().unwrap_or_default();
                 let n = batch.steps.len();
-                let summary = if batch.dry_run {
+                let mut summary = if batch.dry_run {
                     format!(
                         "dry run: {n} step(s) ran and were rolled back; nothing changed (rev {rev})"
                     )
@@ -278,6 +278,11 @@ impl CutweaveMcp {
                 } else {
                     format!("{}: done; document at rev {rev}", batch.steps[0].name)
                 };
+                if let Some(cp) = out.get("checkpoint").and_then(Value::as_str) {
+                    summary.push_str(&format!(
+                        "; checkpoint {cp} saved before it (edit.restore reverts to it)"
+                    ));
+                }
                 results::success(summary, out, None)
             }
             Ok(Err(e)) => execute_error(&e),

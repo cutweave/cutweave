@@ -160,6 +160,12 @@ pub fn hint(error: &CmdError) -> &'static str {
         } => {
             "Job ids come from media_import (job_ids) and export; jobs are not kept across restarts"
         }
+        CmdError::NotFound {
+            kind: ResourceKind::Checkpoint,
+            ..
+        } => {
+            "edit.list_checkpoints (cutweave_query) lists them; the oldest unnamed ones are dropped beyond 50, and one the journal could not rebuild after a restart is gone"
+        }
         CmdError::NotFound { .. } => {
             "Check the id: timeline_get lists sequence, track and item ids; project_info lists sequences"
         }
