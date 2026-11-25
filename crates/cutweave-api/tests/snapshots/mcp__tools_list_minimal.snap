@@ -362,6 +362,10 @@ expression: catalog.tools_json()
             "type": "integer",
             "minimum": 0,
             "description": "Fail unless the document is at this revision"
+          },
+          "checkpoint": {
+            "type": "boolean",
+            "description": "Save a checkpoint first; edit.restore brings it back"
           }
         },
         "required": [

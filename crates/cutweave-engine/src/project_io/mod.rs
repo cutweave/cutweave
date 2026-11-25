@@ -452,13 +452,15 @@ impl ProjectStore {
         {
             return Err(JournalError::RecoveryPending.into());
         }
-        let text =
-            to_document_string(&self.persisted_form(project)).map_err(ProjectIoError::Serialize)?;
+        let persisted = self.persisted_form(project);
+        let text = to_document_string(&persisted).map_err(ProjectIoError::Serialize)?;
         let sha = document_sha256(text.as_bytes());
         self.layout.ensure_inside(&self.layout.document)?;
         self.preserve_premigration_original()?;
         let rotation = match (&self.journal, rev) {
-            (Some(journal), Some(rev)) => Some(journal.rotate(rev, &sha)?),
+            // The checkpoints made before this save are carried as patches from the document
+            // as it reads back from disk (WP-2I.03).
+            (Some(journal), Some(rev)) => Some(journal.rotate_over(rev, &sha, &persisted)?),
             (Some(_), None) => return Err(JournalError::RevisionRequired.into()),
             (None, _) => None,
         };
@@ -635,8 +637,14 @@ impl ProjectStore {
         next.write_document(&snapshot.doc, None, &mut |_| Ok(()))?;
         next.pending_journal = None;
         let sha = next.disk_sha256.clone().unwrap_or_default();
-        let rotation =
-            journal.relocate(&next.layout.journal_dir(), snapshot.committed_rev, &sha)?;
+        // The checkpoints move with the journal, carried as patches from the document as the
+        // new folder will read it back (WP-2I.03).
+        let rotation = journal.relocate_over(
+            &next.layout.journal_dir(),
+            snapshot.committed_rev,
+            &sha,
+            &next.persisted_form(&snapshot.doc),
+        )?;
         journal.retire_into(rotation, &self.layout.backups_dir());
         next.journal = self.journal.take();
         std::mem::swap(self, &mut next);

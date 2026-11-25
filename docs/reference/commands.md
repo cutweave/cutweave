@@ -2,7 +2,7 @@
 
 # Command reference
 
-Every command and query the engine registers (53 in total), generated from the registry. The full JSON Schemas are in `schema/commands.json` and `schema/queries.json`.
+Every command and query the engine registers (54 in total), generated from the registry. The full JSON Schemas are in `schema/commands.json` and `schema/queries.json`.
 
 MCP exposure: `core` commands are always listed as tools (`item.move` is `item_move`), `catalog` ones are reachable through the catalog tools, `hidden` ones are not exposed.
 
@@ -14,6 +14,7 @@ MCP exposure: `core` commands are always listed as tools (`item.move` is `item_m
 | edit | `edit.cancel_tx` | Cancel your open transaction and roll back its changes | engine | catalog |
 | edit | `edit.checkpoint` | Save a restore point of the committed document (cheap; optional name) | engine | catalog |
 | edit | `edit.commit_tx` | Commit your open transaction as one undo step | engine | catalog |
+| edit | `edit.delete_checkpoint` | Delete a checkpoint (the document is not changed) | engine, idempotent | catalog |
 | edit | `edit.history` | List the undo history (newest first, paginated) and each actor's undo/redo stacks | engine, read-only, idempotent | catalog |
 | edit | `edit.list_checkpoints` | List the checkpoints | engine, read-only, idempotent | catalog |
 | edit | `edit.locks` | List open transactions and the items they soft-lock (who is editing what) | engine, read-only, idempotent | catalog |

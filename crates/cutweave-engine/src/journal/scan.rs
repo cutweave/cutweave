@@ -6,7 +6,7 @@ use std::fs;
 use std::io;
 use std::path::{Path, PathBuf};
 
-use cutweave_commands::{DedupRecord, JournaledCommit, Rev, TxId, WallTime};
+use cutweave_commands::{CheckpointLedger, DedupRecord, JournaledCommit, Rev, TxId, WallTime};
 use cutweave_model::Project;
 
 use super::{
@@ -211,6 +211,8 @@ pub(crate) struct Replayed {
     pub project: Project,
     pub rev: Rev,
     pub commits: Vec<JournaledCommit>,
+    /// The checkpoints (WP-2I.03): carried over the save, then made and removed since.
+    pub checkpoints: CheckpointLedger,
     pub requests: Vec<DedupRecord>,
     pub ids: Option<IdState>,
     pub seed: Option<u64>,
@@ -260,6 +262,7 @@ fn replay_inner(scan: &DirScan, base: &Project, apply: bool, check_each: bool) -
         project: base.clone(),
         rev: header.base_rev,
         commits: Vec::new(),
+        checkpoints: CheckpointLedger::new(),
         requests: Vec::new(),
         ids: header.ids,
         seed: header.seed,
@@ -298,7 +301,43 @@ fn replay_inner(scan: &DirScan, base: &Project, apply: bool, check_each: bool) -
                         out.max_tx = out.max_tx.max(r.applied.tx_id.map_or(0, TxId::get));
                     }
                     out.requests.extend(carry.requests.iter().cloned());
+                    out.checkpoints.issue(carry.checkpoints_issued);
+                    // The chain's first segment carries the checkpoints made before its save, as
+                    // patches from the saved document; a later segment's carry repeats what
+                    // replay already knows.
+                    if index == start {
+                        for carried in &carry.checkpoints {
+                            match carried.patch.apply(base) {
+                                Ok(doc) => out.checkpoints.carry(carried.info.clone(), doc),
+                                Err(e) => tracing::warn!(
+                                    checkpoint = %carried.info.checkpoint,
+                                    error = %e,
+                                    "a checkpoint carried over the save does not apply to the saved document; it is dropped"
+                                ),
+                            }
+                        }
+                    }
                 }
+                Entry::Checkpoint(entry) => {
+                    let c = &entry.checkpoint;
+                    // Its document is the replayed one at its revision (a copy of a marker
+                    // replayed before changes nothing).
+                    let doc = (c.rev == out.rev).then_some(&out.project);
+                    if out.checkpoints.replay(c, doc) {
+                        out.requests
+                            .extend(c.steps.iter().map(|s| s.record.clone()));
+                    }
+                    // Its request id may have come from the deterministic stream. A copy (a
+                    // later segment repeating it) is older than what replay has: positions
+                    // only move forward.
+                    if let Some(ids) = entry.ids {
+                        out.ids = Some(out.ids.map_or(ids, |cur| IdState {
+                            entity: cur.entity.max(ids.entity),
+                            request: cur.request.max(ids.request),
+                        }));
+                    }
+                }
+                Entry::Unknown => {}
                 Entry::Commit(entry) => {
                     let c = &entry.commit;
                     if c.rev <= out.rev {

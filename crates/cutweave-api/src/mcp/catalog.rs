@@ -32,7 +32,7 @@ use serde_json::{Value, json};
 pub const SEARCH: &str = "cutweave_search_commands";
 /// `cutweave_describe_command{name}`.
 pub const DESCRIBE: &str = "cutweave_describe_command";
-/// `cutweave_execute{steps[{cmd, args}], dry_run?, expected_rev?}`.
+/// `cutweave_execute{steps[{cmd, args}], dry_run?, expected_rev?, checkpoint?}`.
 pub const EXECUTE: &str = "cutweave_execute";
 /// `cutweave_query{name, args}`.
 pub const QUERY: &str = "cutweave_query";
@@ -521,7 +521,8 @@ fn generic_tools() -> Vec<(Tool, Target)> {
                             }
                         },
                         "dry_run": { "type": "boolean", "description": "Validate and list the predicted ops; change nothing" },
-                        "expected_rev": { "type": "integer", "minimum": 0, "description": "Fail unless the document is at this revision" }
+                        "expected_rev": { "type": "integer", "minimum": 0, "description": "Fail unless the document is at this revision" },
+                        "checkpoint": { "type": "boolean", "description": "Save a checkpoint first; edit.restore brings it back" }
                     },
                     "required": ["steps"],
                     "additionalProperties": false

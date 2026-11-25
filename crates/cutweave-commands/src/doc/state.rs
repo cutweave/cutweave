@@ -16,6 +16,10 @@ use serde::Serialize;
 use serde_json::{Map, Value};
 
 use super::{
+    checkpoint::{
+        CheckpointId, CheckpointInfo, CheckpointLedger, CheckpointRecord, Checkpoints,
+        MAX_CHECKPOINT_NAME_CHARS, MAX_CHECKPOINT_NOTE_CHARS,
+    },
     clock::{Clock, ManualClock, WallTime},
     dedup::{DEDUP_CAPACITY, DEDUP_WINDOW, DedupRecord, DedupTable, Fingerprint},
     event::{
@@ -23,9 +27,8 @@ use super::{
         TxEnded,
     },
     history::{
-        CheckpointInfo, Checkpoints, EntryCause, History, HistoryLimits, HistoryMoved, HistoryPage,
-        HistoryScope, MAX_CHECKPOINT_NAME_CHARS, MAX_CHECKPOINT_NOTE_CHARS, MAX_HISTORY_PAGE,
-        NewRecord, Record, Restored, RevertedChanges,
+        EntryCause, History, HistoryLimits, HistoryMoved, HistoryPage, HistoryScope,
+        MAX_HISTORY_PAGE, NewRecord, Record, Restored, RevertedChanges,
     },
     identity::{Actor, ActorCtx, ConnId},
     locks::{ItemLocks, LockList, TxLocks},
@@ -71,6 +74,14 @@ const REQUEST_ID_STREAM: u64 = 0x5245_5155_4553_5453; // "REQUESTS"
 pub trait CommitSink: Send {
     /// Persists `record`.
     fn commit(&mut self, record: &CommitRecord<'_>) -> Result<(), CmdError>;
+
+    /// Persists a change of the checkpoints (WP-2I.03): called on the actor thread before the
+    /// change takes effect or is acknowledged; an `Err` aborts it. The default keeps nothing,
+    /// so the checkpoints last as long as the document state.
+    fn checkpoint(&mut self, record: &CheckpointRecord<'_>) -> Result<(), CmdError> {
+        let _ = record;
+        Ok(())
+    }
 }
 
 /// Closures are sinks (tests, adapters).
@@ -226,6 +237,7 @@ pub struct DocConfig {
     history_limits: HistoryLimits,
     gesture_timeout: Duration,
     recovered: Vec<JournaledCommit>,
+    checkpoints: CheckpointLedger,
 }
 
 impl fmt::Debug for DocConfig {
@@ -290,6 +302,7 @@ impl DocConfig {
             history_limits: HistoryLimits::default(),
             gesture_timeout: GESTURE_IDLE_TIMEOUT,
             recovered: Vec::new(),
+            checkpoints: CheckpointLedger::new(),
         }
     }
 
@@ -377,6 +390,15 @@ impl DocConfig {
     #[must_use]
     pub fn with_recovered_history(mut self, commits: Vec<JournaledCommit>) -> DocConfig {
         self.recovered = commits;
+        self
+    }
+
+    /// The checkpoints the journal rebuilt (WP-2I.03): each one's document is the committed
+    /// document at its revision. Restoring one made before the recovered history (before the
+    /// last save) reverts changes of unknown authorship, so it needs `force: true`.
+    #[must_use]
+    pub fn with_recovered_checkpoints(mut self, checkpoints: CheckpointLedger) -> DocConfig {
+        self.checkpoints = checkpoints;
         self
     }
 }
@@ -759,6 +781,22 @@ impl DocState {
         for record in config.restored {
             dedup.insert(record);
         }
+        // A recovered checkpoint's first history record is the first recovered commit after
+        // its revision; one made before the recovered history (before the last save) has none
+        // in the log (0: its later changes are of unknown authorship).
+        let base = config
+            .recovered
+            .first()
+            .map_or(config.rev, |c| c.prev_committed_rev);
+        let commit_revs: Vec<Rev> = config.recovered.iter().map(|c| c.rev).collect();
+        let checkpoints = Checkpoints::recovered(config.checkpoints, |rev| {
+            if rev < base {
+                0
+            } else {
+                1 + u64::try_from(commit_revs.partition_point(|r| *r <= rev))
+                    .unwrap_or(u64::MAX - 1)
+            }
+        });
         let mut history = History::new(config.history_limits);
         for commit in config.recovered {
             history.replay(commit.into_record());
@@ -778,7 +816,7 @@ impl DocState {
             next_tx: config.first_tx,
             dedup,
             history,
-            checkpoints: Checkpoints::default(),
+            checkpoints,
             gesture_timeout: config.gesture_timeout,
             current: None,
             claimed: None,
@@ -2256,8 +2294,10 @@ impl DocState {
     }
 
     /// Captures the committed document (O(1): persistent collections) under an optional
-    /// `name` (a name moves from an older checkpoint). In memory only; at most
-    /// [`MAX_CHECKPOINTS`](crate::MAX_CHECKPOINTS), least recently used first out.
+    /// `name` (a name moves from an older checkpoint). At most
+    /// [`MAX_CHECKPOINTS`](crate::MAX_CHECKPOINTS), least recently used first out. The
+    /// journal records it (a [`CheckpointRecord`], WP-2I.03) before it exists; a journal error
+    /// changes nothing.
     pub fn checkpoint(
         &mut self,
         ctx: &ActorCtx,
@@ -2278,7 +2318,7 @@ impl DocState {
                     "cannot contain control characters or start or end with whitespace",
                 ));
             }
-            if super::history::CheckpointId::parse(name).is_some() {
+            if CheckpointId::parse(name).is_some() {
                 return Err(CmdError::invalid(
                     "/name",
                     "`cp_<n>` is reserved for checkpoint ids",
@@ -2294,21 +2334,93 @@ impl DocState {
                 format!("must be at most {MAX_CHECKPOINT_NOTE_CHARS} characters"),
             ));
         }
-        Ok(self.checkpoints.create(
+        let displaced = self.checkpoints.displaced(name.as_deref());
+        let info = CheckpointInfo {
+            checkpoint: self.checkpoints.next_id(),
             name,
             note,
-            self.committed_rev,
-            ctx.actor().clone(),
-            self.clock.now(),
+            rev: self.committed_rev,
+            actor: ctx.actor().clone(),
+            at: self.request_time(),
+        };
+        let (steps, claim) = self.marker_step(&info)?;
+        self.journal.checkpoint(&CheckpointRecord {
+            rev: self.committed_rev,
+            created: Some(&info),
+            removed: &displaced,
+            issued: info.checkpoint.get(),
+            steps: &steps,
+            doc: &self.committed,
+        })?;
+        self.checkpoints.insert(
+            info.clone(),
             self.committed.clone(),
             self.history.next_seq(),
-        ))
+            &displaced,
+        );
+        self.claimed = claim;
+        Ok(info)
     }
 
     /// Every checkpoint, oldest first.
     #[must_use]
     pub fn checkpoints(&self) -> Vec<CheckpointInfo> {
         self.checkpoints.list()
+    }
+
+    /// Deletes `checkpoint` (an id `cp_<n>` or a name); the document is not touched. Journaled
+    /// first, like [`checkpoint`](Self::checkpoint).
+    pub fn delete_checkpoint(&mut self, checkpoint: &str) -> Result<CheckpointInfo, CmdError> {
+        let id = self
+            .checkpoints
+            .resolve(checkpoint)
+            .ok_or_else(|| CmdError::not_found(ResourceKind::Checkpoint, checkpoint))?;
+        let removed = [id];
+        let info = self
+            .checkpoints
+            .list()
+            .into_iter()
+            .find(|c| c.checkpoint == id)
+            .ok_or_else(|| CmdError::not_found(ResourceKind::Checkpoint, checkpoint))?;
+        let (steps, claim) = self.marker_step(&info)?;
+        self.journal.checkpoint(&CheckpointRecord {
+            rev: self.committed_rev,
+            created: None,
+            removed: &removed,
+            issued: self.checkpoints.issued(),
+            steps: &steps,
+            doc: &self.committed,
+        })?;
+        self.checkpoints.remove(id);
+        self.claimed = claim;
+        Ok(info)
+    }
+
+    /// The journal step and result of the current request for an engine command that changes
+    /// no document but is journaled (a checkpoint marker), so a restarted engine still
+    /// deduplicates it; none when called directly, not through [`submit`](Self::submit).
+    fn marker_step<T: Serialize>(
+        &self,
+        output: &T,
+    ) -> Result<(Vec<JournalStep>, Option<Applied>), CmdError> {
+        let Some(call) = &self.current else {
+            return Ok((Vec::new(), None));
+        };
+        let applied = Applied {
+            request_id: call.request_id,
+            rev: self.rev,
+            committed_rev: self.committed_rev,
+            tx_id: None,
+            output: encode_output(output)?,
+            ops: Patch::new(),
+            replayed: false,
+        };
+        let step = JournalStep {
+            command: call.name.clone(),
+            params: call.journal_params.clone(),
+            record: Self::record(call, &applied),
+        };
+        Ok((vec![step], Some(applied)))
     }
 
     /// Brings the committed document back to `checkpoint` (an id `cp_<n>` or a name) as a new,
@@ -2337,7 +2449,12 @@ impl DocState {
             .checkpoints
             .find(checkpoint)
             .ok_or_else(|| CmdError::not_found(ResourceKind::Checkpoint, checkpoint))?;
-        let (id, name, target, first_seq) = (cp.id, cp.name.clone(), cp.doc.clone(), cp.first_seq);
+        let (id, name, target, first_seq) = (
+            cp.info.checkpoint,
+            cp.info.name.clone(),
+            cp.doc.clone(),
+            cp.first_seq,
+        );
         let patch = diff(&self.committed, &target).map_err(|e| {
             CmdError::unsupported(format!(
                 "checkpoint {id} cannot be restored as a field-level change: {e}"
@@ -2368,7 +2485,10 @@ impl DocState {
                 if !whose.is_empty() {
                     whose.push_str(" and ");
                 }
-                whose.push_str("changes no longer in the history");
+                whose.push_str(
+                    "changes no longer in the history (older ones, or made before the engine \
+                     restarted)",
+                );
             }
             return Err(CmdError::conflict(
                 ConflictReason::HistoryTargetModified,
@@ -2492,6 +2612,9 @@ impl DocState {
                 self.rev
             ));
         }
+        self.checkpoints
+            .verify(self.history.next_seq())
+            .map_err(|e| format!("checkpoints: {e}"))?;
         self.history.verify().map_err(|e| format!("history: {e}"))
     }
 }
