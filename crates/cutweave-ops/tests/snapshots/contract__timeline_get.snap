@@ -230,6 +230,19 @@ expression: "json!({\n    \"meta\": serde_json::to_value(meta).unwrap(), \"input
                 "description": "Solo.",
                 "type": "boolean"
               },
+              "magnetic": {
+                "description": "The magnetic main track.",
+                "type": "boolean"
+              },
+              "height": {
+                "description": "Row height in pixels; `None` is the default.",
+                "type": [
+                  "integer",
+                  "null"
+                ],
+                "format": "uint32",
+                "minimum": 0
+              },
               "gain": {
                 "description": "Gain in dB.",
                 "type": "number",
@@ -321,6 +334,8 @@ expression: "json!({\n    \"meta\": serde_json::to_value(meta).unwrap(), \"input
               "hidden",
               "locked",
               "solo",
+              "magnetic",
+              "height",
               "gain",
               "item_count",
               "end"
@@ -550,6 +565,19 @@ expression: "json!({\n    \"meta\": serde_json::to_value(meta).unwrap(), \"input
               "description": "Solo.",
               "type": "boolean"
             },
+            "magnetic": {
+              "description": "The magnetic main track.",
+              "type": "boolean"
+            },
+            "height": {
+              "description": "Row height in pixels; `None` is the default.",
+              "type": [
+                "integer",
+                "null"
+              ],
+              "format": "uint32",
+              "minimum": 0
+            },
             "gain": {
               "description": "Gain in dB.",
               "type": "number",
@@ -641,6 +669,8 @@ expression: "json!({\n    \"meta\": serde_json::to_value(meta).unwrap(), \"input
             "hidden",
             "locked",
             "solo",
+            "magnetic",
+            "height",
             "gain",
             "item_count",
             "end"

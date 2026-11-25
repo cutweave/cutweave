@@ -8,7 +8,7 @@ use std::{borrow::Cow, convert::Infallible, fmt, marker::PhantomData};
 use schemars::{JsonSchema, Schema, SchemaGenerator};
 use serde::{Deserialize, Deserializer, Serialize, Serializer, de};
 
-use crate::{Custom, Duration, Extra, GroupId, ItemId, MediaId, Time, TimeError};
+use crate::{Custom, Duration, Extra, GroupId, ItemId, Markers, MediaId, Time, TimeError};
 
 /// A 2D vector (positions, scales, anchors).
 #[derive(
@@ -267,6 +267,13 @@ pub struct Clip {
     pub enabled: bool,
     /// Items with the same group move, trim and delete together (e.g. linked video and audio).
     pub linked_group: Option<GroupId>,
+    /// The item this one follows when it moves (schema v2, timeline spec §1.4): an overlay
+    /// attached to a main-track clip. `None` when free.
+    pub attached_to: Option<ItemId>,
+    /// Markers in item-relative time; they move with the item.
+    #[schemars(with = "std::collections::BTreeMap<crate::MarkerId, crate::Marker>")]
+    #[specta(type = std::collections::BTreeMap<crate::MarkerId, crate::Marker>)]
+    pub markers: Markers,
     /// The media this clip plays.
     pub media: MediaId,
     /// Source position (from the start of the media) of the first frame.
@@ -295,6 +302,8 @@ impl Clip {
             duration,
             enabled: true,
             linked_group: None,
+            attached_to: None,
+            markers: Markers::new(),
             media,
             source_in: Time::ZERO,
             audio: AudioProps::default(),
@@ -369,6 +378,22 @@ impl Item {
         }
     }
 
+    /// The item this one is attached to (follows), if any.
+    #[must_use]
+    pub fn attached_to(&self) -> Option<ItemId> {
+        match self {
+            Item::Clip(c) => c.attached_to,
+        }
+    }
+
+    /// Markers in item-relative time.
+    #[must_use]
+    pub fn markers(&self) -> &Markers {
+        match self {
+            Item::Clip(c) => &c.markers,
+        }
+    }
+
     /// The media the item plays, if it plays one.
     #[must_use]
     pub fn media(&self) -> Option<MediaId> {
@@ -411,6 +436,20 @@ impl Item {
     pub fn set_linked_group(&mut self, group: Option<GroupId>) {
         match self {
             Item::Clip(c) => c.linked_group = group,
+        }
+    }
+
+    /// Sets or clears the item this one is attached to.
+    pub fn set_attached_to(&mut self, parent: Option<ItemId>) {
+        match self {
+            Item::Clip(c) => c.attached_to = parent,
+        }
+    }
+
+    /// The markers, mutably.
+    pub fn markers_mut(&mut self) -> &mut Markers {
+        match self {
+            Item::Clip(c) => &mut c.markers,
         }
     }
 
@@ -464,6 +503,8 @@ mod tests {
         );
         assert_eq!(value["audio"]["gain"], 0.0);
         assert_eq!(value["linked_group"], json!(null));
+        assert_eq!(value["attached_to"], json!(null));
+        assert_eq!(value["markers"], json!({}));
         let back: Item = serde_json::from_value(value).unwrap();
         assert_eq!(back, item);
     }

@@ -6,7 +6,7 @@
 //! - **Time** ([`Time`], [`Duration`], [`FrameRate`], [`SampleRate`], [`Timecode`],
 //!   [`TimeInput`]): integer flicks (1/705,600,000 s) with checked arithmetic and the only
 //!   allowed frame/sample conversions (ADR-0004); JSON integers on the wire (ADR-0015).
-//! - **IDs** ([`MediaId`], [`SequenceId`], [`TrackId`], [`ItemId`], [`GroupId`], [`IdGen`]):
+//! - **IDs** ([`MediaId`], [`SequenceId`], [`TrackId`], [`ItemId`], [`GroupId`], [`MarkerId`], [`IdGen`]):
 //!   prefixed UUIDv7 strings, with a seeded generator for deterministic tests.
 //! - **Entities** ([`Project`], [`MediaAsset`], [`Sequence`], [`Track`], [`Item`], [`Clip`]):
 //!   the schema v1 document, held in persistent `imbl` collections so snapshots are O(1)
@@ -19,6 +19,7 @@
 mod custom;
 mod id;
 mod item;
+mod marker;
 mod media;
 mod migrate;
 mod project;
@@ -38,9 +39,11 @@ pub use custom::{
 #[cfg(not(all(target_arch = "wasm32", target_os = "unknown")))]
 pub use id::Uuid7Gen;
 pub use id::{
-    EntityId, EntityKind, GroupId, IdError, IdGen, ItemId, MediaId, SeededGen, SequenceId, TrackId,
+    EntityId, EntityKind, GroupId, IdError, IdGen, ItemId, MarkerId, MediaId, SeededGen,
+    SequenceId, TrackId,
 };
 pub use item::{Animatable, AudioProps, Clip, Item, Keyframes, Transform, Vec2, VisualProps};
+pub use marker::{InOut, Marker, MarkerKind, MarkerKindError, Markers};
 pub use media::{
     AudioInfo, ColorPrimaries, ColorRange, ColorTags, MatrixCoefficients, MediaAsset, MediaKind,
     ProbeInfo, StreamInfo, StreamKind, TransferCharacteristics,
@@ -59,4 +62,6 @@ pub use time::{
     ABSOLUTE_TIME_PATTERN, Duration, FLICKS_PER_SECOND, MAX_SAFE_FLICKS, Time, TimeError,
 };
 pub use timecode::{TIME_INPUT_PATTERN, TimeInput, Timecode};
-pub use validate::{Invariant, MAX_CANVAS_SIDE, MAX_SEQUENCE_FPS, SEQUENCE_SAMPLE_RATES};
+pub use validate::{
+    Invariant, MAX_CANVAS_SIDE, MAX_SEQUENCE_FPS, SEQUENCE_SAMPLE_RATES, TRACK_HEIGHTS,
+};

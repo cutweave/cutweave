@@ -100,9 +100,10 @@ Schedule note: the roadmap gives 9 weeks. Total effort here is about 162 agent-d
   - Schema version bump (v2) with migration and golden fixture from a v1 project.
   - Track commands: `track.add{kind, index?}`, `track.remove`, `track.reorder`, `track.rename`, `track.set_flags{muted,hidden,locked,solo}`, `track.set_magnetic`, `track.set_height` (UI hint, `view`-like but persisted).
   - Marker/range commands: `timeline.add_marker`, `timeline.move_marker`, `timeline.remove_marker`, `timeline.set_in_out`, `timeline.clear_in_out`.
-  - MCP: `track.add`, `track.set_flags`, `timeline.add_marker` core; the rest catalog.
-  - **Context menu (product owner request, 2026-11-25; framework WP-2H.12, plan in [09-context-menus.md](../research/09-context-menus.md)):** adds the two commands the timeline menus need and nothing else: `timeline.update_marker{id, label?, color?, duration?}` (the marker menu's Edit) and `item.set_label_color{items, color}` (the clip menu's Color label). The menus themselves are WP-2A.10's.
-- **Interfaces:** commands above; queries `track.list`, `marker.list`.
+  - MCP: all catalog (ADR-0023 R33: no new core MCP tools).
+  - **As built (spec §11, arch §5.1):** renaming and the flags stay in the P1 `track.set` (it is the "set_flags" core tool; `track.rename` and `track.set_flags` do not exist), `track.set_magnetic` follows spec §4.17 and returns an `EditReport`, and the marker query is `timeline.list_markers` because `marker` is not a command namespace (arch §5.1). The model additions share one schema v2 with WP-2F.07 (arch §17, "One v2").
+  - **Context menu (product owner request, 2026-11-25; framework WP-2H.12, plan in [09-context-menus.md](../research/09-context-menus.md)):** adds the two commands the timeline menus need and nothing else: `timeline.update_marker{id, label?, color?, duration?}` (the marker menu's Edit) and `item.set_label_color{items, color}` (the clip menu's Color label). The menus themselves are WP-2A.10's. *(Not built in WP-2A.02, which merged first: the timeline menus' WP adds these two commands.)*
+- **Interfaces:** commands above; queries `track.list`, `timeline.list_markers`.
 - **Acceptance criteria:**
   - A v1 fixture migrates to v2 and round-trips (insta snapshot); newer-schema projects still open read-only.
   - Property test: for 1,000 random sequences of track/marker commands, `undo(apply(doc)) == doc` and serialize round-trip holds.
@@ -967,8 +968,9 @@ Schedule note: the roadmap gives 9 weeks. Total effort here is about 162 agent-d
     - `media.delete_folder{folder, contents: move_up|remove}`: `move_up` lifts everything one level; `remove` removes the folder, its subfolders and every asset no timeline uses, and moves the used ones to the deleted folder's parent; the result lists `removed` and `kept`. Timelines never change; files on disk are never touched.
     - `media.import` and `media.register` take an optional `folder`.
   - Queries: `media.list`'s filter gains `folder` and `recursive` (no folder: the whole project; a folder: one level unless `recursive`), and each summary carries `name` and `folder`; new `media.list_folders` returns the tree (id, name, parent, path, asset and subfolder counts). WP-1M.12's `text` matches the display name.
+  - **Joins WP-2A.02's v2 (integrator resolution, 2026-11-25).** WP-2A.02 already bumped `CURRENT_SCHEMA_VERSION` to 2 and wrote `migrate/v1_to_v2.rs` as an ordered list of steps (`STEPS`); nothing is released between the two work packages, so this WP **appends a step** to that list (and its fixtures to `tests/fixtures/v2/`) and makes no v3 (arch §17, "One v2"). Its golden fixtures extend the existing v2 ones; the model types it adds go next to the timeline additions.
   - Migration v1→v2 adds `folders: {}`, `folder: null` and `name: null`; golden fixtures under `v2/` (nested folders, renamed assets); every v1 fixture migrates; v1 apps open v2 files read-only (the existing rule). Strategies for every new command in the registry property harness (`testing/strategies.rs`).
-- **Interfaces:** `FolderId`, `MediaFolder`, `MediaAsset.{folder, name}`; the commands and queries above; `CURRENT_SCHEMA_VERSION` = 2.
+- **Interfaces:** `FolderId`, `MediaFolder`, `MediaAsset.{folder, name}`; the commands and queries above; `CURRENT_SCHEMA_VERSION` is already 2 (WP-2A.02).
 - **Acceptance criteria:**
   - The registry property harness covers every new command: undo/redo identity, failure atomicity, and the invariants after random sequences of create, rename, move and delete (no cycle, no orphan, unique sibling names).
   - `media.delete_folder{remove}` on a fixture of 30 assets, 5 of them on a timeline, removes 25, keeps 5 in the parent, changes no timeline item; one undo restores the tree, the 25 assets and their folders exactly.

@@ -1,0 +1,144 @@
+---
+source: crates/cutweave-ops/tests/contract.rs
+expression: "json!({\n    \"meta\": serde_json::to_value(meta).unwrap(), \"input\": meta.input_schema,\n    \"output\": meta.output_schema,\n})"
+---
+{
+  "meta": {
+    "name": "timeline.move_marker",
+    "summary": "Move a marker to another time",
+    "kind": "command",
+    "undoable": true,
+    "view": false,
+    "scope": "any",
+    "mcp": "catalog",
+    "annotations": {
+      "readOnlyHint": false,
+      "destructiveHint": false,
+      "idempotentHint": true,
+      "openWorldHint": false
+    },
+    "secret_fields": [],
+    "input_schema": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "marker": {
+          "type": "string",
+          "pattern": "^mrk_[0-9a-f]{32}$",
+          "description": "The marker (on a sequence or on an item)."
+        },
+        "t": {
+          "description": "The new time, `>= 0`.",
+          "anyOf": [
+            {
+              "type": "integer",
+              "minimum": -9007199254740991,
+              "maximum": 9007199254740991
+            },
+            {
+              "type": "string",
+              "pattern": "^-?[0-9]+(\\.[0-9]+)?s$|^-?[0-9]+$|^f:[0-9]+$|^[0-9]+[:;][0-9]+[:;][0-9]+[:;][0-9]+$"
+            }
+          ]
+        }
+      },
+      "required": [
+        "marker",
+        "t"
+      ],
+      "description": "Moves a marker to another time (snapped to the frame grid; relative to the item for an\nitem marker). Its label, color, kind and length stay.",
+      "title": "TimelineMoveMarker"
+    },
+    "output_schema": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "marker": {
+          "type": "string",
+          "pattern": "^mrk_[0-9a-f]{32}$",
+          "description": "The marker."
+        },
+        "t": {
+          "description": "Its time now, snapped to the frame grid.",
+          "type": "integer",
+          "minimum": -9007199254740991,
+          "maximum": 9007199254740991
+        },
+        "previous": {
+          "description": "Where it was.",
+          "type": "integer",
+          "minimum": -9007199254740991,
+          "maximum": 9007199254740991
+        }
+      },
+      "required": [
+        "marker",
+        "t",
+        "previous"
+      ],
+      "description": "Result of `timeline.move_marker`.",
+      "title": "TimelineMoveMarkerOutput"
+    }
+  },
+  "input": {
+    "type": "object",
+    "additionalProperties": false,
+    "properties": {
+      "marker": {
+        "type": "string",
+        "pattern": "^mrk_[0-9a-f]{32}$",
+        "description": "The marker (on a sequence or on an item)."
+      },
+      "t": {
+        "description": "The new time, `>= 0`.",
+        "anyOf": [
+          {
+            "type": "integer",
+            "minimum": -9007199254740991,
+            "maximum": 9007199254740991
+          },
+          {
+            "type": "string",
+            "pattern": "^-?[0-9]+(\\.[0-9]+)?s$|^-?[0-9]+$|^f:[0-9]+$|^[0-9]+[:;][0-9]+[:;][0-9]+[:;][0-9]+$"
+          }
+        ]
+      }
+    },
+    "required": [
+      "marker",
+      "t"
+    ],
+    "description": "Moves a marker to another time (snapped to the frame grid; relative to the item for an\nitem marker). Its label, color, kind and length stay.",
+    "title": "TimelineMoveMarker"
+  },
+  "output": {
+    "type": "object",
+    "additionalProperties": false,
+    "properties": {
+      "marker": {
+        "type": "string",
+        "pattern": "^mrk_[0-9a-f]{32}$",
+        "description": "The marker."
+      },
+      "t": {
+        "description": "Its time now, snapped to the frame grid.",
+        "type": "integer",
+        "minimum": -9007199254740991,
+        "maximum": 9007199254740991
+      },
+      "previous": {
+        "description": "Where it was.",
+        "type": "integer",
+        "minimum": -9007199254740991,
+        "maximum": 9007199254740991
+      }
+    },
+    "required": [
+      "marker",
+      "t",
+      "previous"
+    ],
+    "description": "Result of `timeline.move_marker`.",
+    "title": "TimelineMoveMarkerOutput"
+  }
+}

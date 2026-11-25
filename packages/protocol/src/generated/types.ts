@@ -180,6 +180,13 @@ export type Clip = {
 	enabled: boolean,
 	/**  Items with the same group move, trim and delete together (e.g. linked video and audio). */
 	linked_group: GroupId | null,
+	/**
+	 *  The item this one follows when it moves (schema v2, timeline spec §1.4): an overlay
+	 *  attached to a main-track clip. `None` when free.
+	 */
+	attached_to: ItemId | null,
+	/**  Markers in item-relative time; they move with the item. */
+	markers: { [key in MarkerId]: Marker },
 	/**  The media this clip plays. */
 	media: MediaId,
 	/**  Source position (from the start of the media) of the first frame. */
@@ -497,6 +504,34 @@ export type DocReset = {
  */
 export type Duration = number;
 
+/**
+ *  The exact difference one edit command made to a sequence (INV-21).
+ * 
+ *  For every item ID: present only after means in `created` or a `split[].right` (exactly one
+ *  of them); present only before means in `removed`; present in both means in each list whose
+ *  condition its fields meet, and in none otherwise. A split's left half is also in `trimmed`.
+ */
+export type EditReport = {
+	/**  New items, other than the right halves of splits. */
+	created: ItemId[],
+	/**  Items that no longer exist. */
+	removed: ItemId[],
+	/**  Splits, sorted by `(left, at)`. */
+	split: SplitReport[],
+	/**  Items whose track or start changed. */
+	moved: MovedReport[],
+	/**  Items whose duration or source position changed. */
+	trimmed: TrimmedReport[],
+	/**  Items whose link or attachment changed. */
+	relinked: RelinkedReport[],
+	/**  Items whose media changed. */
+	replaced: ReplacedReport[],
+	/**  Items whose `enabled` flag changed. */
+	toggled: ToggledReport[],
+	/**  Tracks created, in creation order. */
+	created_tracks: TrackId[],
+};
+
 /**  The kind of entity an ID names. */
 export type EntityKind = 
 /**  A `MediaAsset` (`med_`). */
@@ -508,7 +543,9 @@ export type EntityKind =
 /**  A timeline `Item` (`itm_`). */
 "item" | 
 /**  A linked group of items that edit together (`grp_`). */
-"group";
+"group" | 
+/**  A timeline or item marker (`mrk_`). */
+"marker";
 
 /**  Why a transaction is in the history. */
 export type EntryCause = 
@@ -845,6 +882,17 @@ export type ImportedMedia = {
 	duplicate: boolean,
 };
 
+/**
+ *  The sequence's in and out points: the half-open range `[start, end)` that lift, extract and
+ *  three-point edits use. Both ends or neither (`Sequence::in_out` is `None` when unset).
+ */
+export type InOut = {
+	/**  The in point (`>= 0`). */
+	start: Time,
+	/**  The out point (`> start`). */
+	end: Time,
+} & { [key in string]: unknown };
+
 /**  A broken document invariant: what [`Project::validate`] reports. */
 export type Invariant = 
 /**
@@ -947,6 +995,39 @@ second: SequenceId } |
 { invariant: "invalid_value"; 
 /**  The value. */
 path: string; 
+/**  What is wrong. */
+reason: string } | 
+/**
+ *  The magnetic main track rules (spec INV-6, INV-7): at most one per sequence, a video
+ *  track, gap-free from 0.
+ */
+{ invariant: "magnetic_track"; 
+/**  The sequence. */
+sequence: SequenceId; 
+/**  The offending track. */
+track: TrackId; 
+/**  What is wrong. */
+reason: string } | 
+/**  A linked group with fewer than two members (spec INV-8). */
+{ invariant: "linked_group_too_small"; 
+/**  The group. */
+group: GroupId; 
+/**  How many items carry it. */
+members: number } | 
+/**  Linked items that are not aligned: members differ in `start` or `duration` (spec INV-8). */
+{ invariant: "linked_group_misaligned"; 
+/**  The group. */
+group: GroupId; 
+/**  The first member (lowest ID). */
+first: ItemId; 
+/**  A member that differs from it. */
+second: ItemId } | 
+/**  An attachment that breaks spec INV-9. */
+{ invariant: "attachment"; 
+/**  The child. */
+item: ItemId; 
+/**  The item it is attached to. */
+parent: ItemId; 
 /**  What is wrong. */
 reason: string } | 
 /**  Plugin data under a key that is not a namespace (arch §4.3). */
@@ -1281,6 +1362,38 @@ export type LockList = {
 	committed_rev: Rev,
 };
 
+/**  A marker on a sequence (sequence time) or an item (item-relative time). */
+export type Marker = {
+	/**  The marker ID (also its key in the owner's `markers`). */
+	id: MarkerId,
+	/**  Where the marker is (`>= 0`). */
+	t: Time,
+	/**  The length of a range marker; `None` for a point marker. */
+	duration: Duration | null,
+	/**  Text shown with the marker (may be empty). */
+	label: string,
+	/**  Display color. */
+	color: Color,
+	/**  What the marker means. */
+	kind: MarkerKind,
+} & { [key in string]: unknown };
+
+/**
+ *  The ID of a marker on a sequence or an item: `mrk_…`.
+ * 
+ *  Serialized as a string, exported to TypeScript as `string`.
+ */
+export type MarkerId = string & { readonly __brand: "MarkerId" };
+
+/**  What a marker means. */
+export type MarkerKind = 
+/**  Placed by a person or an agent. */
+"user" | 
+/**  A beat found by analysis (snaps like a marker, spec §6). */
+"beat" | 
+/**  A chapter start (exported to chaptered formats). */
+"chapter";
+
 /**
  *  YUV matrix coefficients (H.273).
  * 
@@ -1596,6 +1709,16 @@ export type MovedItem = {
 	/**  The track it is on now. */
 	track: TrackId,
 	/**  Its new start. */
+	start: Time,
+};
+
+/**  An item whose track or start changed (duration and source did not). */
+export type MovedReport = {
+	/**  The item. */
+	item: ItemId,
+	/**  Its track now. */
+	track: TrackId,
+	/**  Its start now. */
 	start: Time,
 };
 
@@ -2064,6 +2187,24 @@ export type Redo = {
 	actor?: HistoryScope | null,
 };
 
+/**  An item whose `linked_group` or `attached_to` changed. */
+export type RelinkedReport = {
+	/**  The item. */
+	item: ItemId,
+	/**  Its linked group now. */
+	linked_group: GroupId | null,
+	/**  The item it is attached to now. */
+	attached_to: ItemId | null,
+};
+
+/**  An item whose media changed (`clip.replace`). */
+export type ReplacedReport = {
+	/**  The item. */
+	item: ItemId,
+	/**  Its media now. */
+	media: MediaId,
+};
+
 /**
  *  The idempotency key of a request (arch §5.1, ADR-0015): a client-generated UUIDv7, or one
  *  the engine generates for clients that omit it (CLI, MCP).
@@ -2085,6 +2226,8 @@ export type ResourceKind =
 "item" | 
 /**  A linked group (`grp_…`). */
 "group" | 
+/**  A marker (`mrk_…`). */
+"marker" | 
 /**  A registry entry: an unknown command or query name. */
 "command" | 
 /**  An open transaction (WP-1B.04). */
@@ -2223,6 +2366,10 @@ export type Sequence = {
 	 *  are composited over lower ones.
 	 */
 	track_order: TrackId[],
+	/**  Markers in sequence time, keyed by ID. They never move with a ripple (spec INV-34). */
+	markers: { [key in MarkerId]: Marker },
+	/**  The in and out points; both ends or neither. */
+	in_out: InOut | null,
 	/**  Plugin data (arch §4.3). */
 	custom: { [key in string]: JsonValue },
 } & { [key in string]: unknown };
@@ -2283,6 +2430,16 @@ export type SplitPair = {
 	left: ItemId,
 	/**  The right half (new ID). */
 	right: ItemId,
+};
+
+/**  A split: `right` is new, `left` keeps its ID; `at` is the cut time before the edit. */
+export type SplitReport = {
+	/**  The left half (keeps the original ID). */
+	left: ItemId,
+	/**  The right half (new). */
+	right: ItemId,
+	/**  The cut time. */
+	at: Time,
 };
 
 /**  The next entry of a stack. */
@@ -2347,6 +2504,58 @@ export type Time = number;
  *  `"00:01:02;03"`; in TypeScript `number | string`.
  */
 export type TimeInput = number | string;
+
+/**
+ *  Adds a marker to a sequence, or to an item of it when `item` is given (then `t` is relative
+ *  to the item's start and the marker moves with it). `duration` makes a range marker. `kind`
+ *  is `user` (default), `beat` or `chapter`; `color` is `#rrggbb`. Times snap to the frame
+ *  grid. Sequence markers never move with a ripple; an item marker on a locked track fails
+ *  with `Locked`.
+ */
+export type TimelineAddMarker = {
+	/**  The sequence. */
+	sequence: SequenceId,
+	/**  Put the marker on this item of the sequence instead of on the sequence. */
+	item?: ItemId | null,
+	/**  Where, `>= 0` (snapped to the frame grid; relative to the item for an item marker). */
+	t: TimeInput,
+	/**  Length of a range marker, `> 0` (snapped to whole frames). */
+	duration?: TimeInput | null,
+	/**  Text shown with the marker (default empty), at most 200 characters. */
+	label?: string | null,
+	/**  Display color, `#rrggbb` (default marigold). */
+	color?: Color | null,
+	/**  `user` (default), `beat` or `chapter`. */
+	kind?: MarkerKind | null,
+};
+
+/**  Result of `timeline.add_marker`. */
+export type TimelineAddMarkerOutput = {
+	/**  The new marker. */
+	marker: MarkerId,
+	/**  The sequence it is in. */
+	sequence: SequenceId,
+	/**  The item it is on, for an item marker. */
+	item?: ItemId | null,
+	/**  Its time, snapped to the frame grid (item-relative for an item marker). */
+	t: Time,
+	/**  Its length, for a range marker. */
+	duration?: Duration | null,
+};
+
+/**  Clears the sequence's in and out points (nothing happens if none are set). */
+export type TimelineClearInOut = {
+	/**  The sequence. */
+	sequence: SequenceId,
+};
+
+/**  Result of `timeline.clear_in_out`. */
+export type TimelineClearInOutOutput = {
+	/**  The sequence. */
+	sequence: SequenceId,
+	/**  Whether there was a range to clear. */
+	cleared: boolean,
+};
 
 /**
  *  Reads a sequence in layers: `depth` 0 is the sequence summary, 1 adds its tracks (summaries
@@ -2429,6 +2638,91 @@ export type TimelineInsertOutput = {
 	created_tracks: TrackId[],
 };
 
+/**  Lists a sequence's markers and its in/out range, or the markers of one item. */
+export type TimelineListMarkers = {
+	/**  The sequence. */
+	sequence: SequenceId,
+	/**  List this item's markers (item-relative times) instead of the sequence's. */
+	item?: ItemId | null,
+};
+
+/**  Result of `timeline.list_markers`. */
+export type TimelineListMarkersOutput = {
+	/**  The sequence. */
+	sequence: SequenceId,
+	/**  The item whose markers these are; absent for the sequence's own markers. */
+	item?: ItemId | null,
+	/**  The markers by time, then ID. */
+	markers: Marker[],
+	/**  The sequence's in and out points (sequence markers only). */
+	in_out?: InOut | null,
+};
+
+/**
+ *  Moves a marker to another time (snapped to the frame grid; relative to the item for an
+ *  item marker). Its label, color, kind and length stay.
+ */
+export type TimelineMoveMarker = {
+	/**  The marker (on a sequence or on an item). */
+	marker: MarkerId,
+	/**  The new time, `>= 0`. */
+	t: TimeInput,
+};
+
+/**  Result of `timeline.move_marker`. */
+export type TimelineMoveMarkerOutput = {
+	/**  The marker. */
+	marker: MarkerId,
+	/**  Its time now, snapped to the frame grid. */
+	t: Time,
+	/**  Where it was. */
+	previous: Time,
+};
+
+/**  Removes a marker. */
+export type TimelineRemoveMarker = {
+	/**  The marker (on a sequence or on an item). */
+	marker: MarkerId,
+};
+
+/**  Result of `timeline.remove_marker`. */
+export type TimelineRemoveMarkerOutput = {
+	/**  The removed marker. */
+	marker: MarkerId,
+};
+
+/**
+ *  Sets the sequence's in and out points: the half-open range `[start, end)` that lift,
+ *  extract and three-point edits act on. Both ends are given (a range always has both). Times
+ *  snap to the frame grid and `end` must follow `start`. The range never moves with a ripple.
+ */
+export type TimelineSetInOut = {
+	/**  The sequence. */
+	sequence: SequenceId,
+	/**  The in point, `>= 0`. */
+	start: TimeInput,
+	/**  The out point, after the in point. */
+	end: TimeInput,
+};
+
+/**  Result of `timeline.set_in_out`. */
+export type TimelineSetInOutOutput = {
+	/**  The sequence. */
+	sequence: SequenceId,
+	/**  The in point, snapped to the frame grid. */
+	start: Time,
+	/**  The out point, snapped to the frame grid. */
+	end: Time,
+};
+
+/**  An item whose `enabled` flag changed. */
+export type ToggledReport = {
+	/**  The item. */
+	item: ItemId,
+	/**  Its flag now. */
+	enabled: boolean,
+};
+
 /**  A track of a sequence (arch §4.2): items that never overlap (arch §4.3). */
 export type Track = {
 	/**  The track ID (also its key in `Sequence::tracks`). */
@@ -2447,8 +2741,16 @@ export type Track = {
 	locked: boolean,
 	/**  Solo (audio): when any track is solo, only solo tracks are heard. */
 	solo: boolean,
-	/**  Magnetic main track: ripple-by-default editing (arch §4.3; behaviour in P2). */
+	/**
+	 *  The magnetic main track: ripple-by-default editing, gap-free from 0 (timeline spec
+	 *  §1.2). At most one video track per sequence has it (`Project::validate`).
+	 */
 	magnetic: boolean,
+	/**
+	 *  Row height in the timeline, in pixels: a persisted UI hint (`None` = the default).
+	 *  Changing it never touches items.
+	 */
+	height: number | null,
 	/**  Track gain in decibels (0.0 = unchanged). */
 	gain: number,
 	/**  Plugin data (arch §4.3). */
@@ -2474,6 +2776,12 @@ export type TrackAdd = {
 export type TrackAddOutput = {
 	/**  The new track. */
 	track: TrackId,
+	/**  Where it is in the display order now (0 = top). */
+	index: number,
+	/**  How many tracks the sequence has now. */
+	track_count: number,
+	/**  Soft warnings (more than [`SOFT_TRACK_LIMIT`] tracks), empty normally. */
+	warnings: string[],
 };
 
 /**
@@ -2482,6 +2790,34 @@ export type TrackAddOutput = {
  *  Serialized as a string, exported to TypeScript as `string`.
  */
 export type TrackId = string & { readonly __brand: "TrackId" };
+
+/**  One track of `track.list`. */
+export type TrackInfo = {
+	/**  The track. */
+	id: TrackId,
+	/**  What it holds. */
+	kind: TrackKind,
+	/**  Display name. */
+	name: string,
+	/**  Display position, 0 = top. */
+	index: number,
+	/**  Silenced. */
+	muted: boolean,
+	/**  Not rendered. */
+	hidden: boolean,
+	/**  Item edits fail with `Locked`. */
+	locked: boolean,
+	/**  Solo. */
+	solo: boolean,
+	/**  The magnetic main track. */
+	magnetic: boolean,
+	/**  Gain in dB. */
+	gain: number | null,
+	/**  Row height in pixels; `None` is the default. */
+	height: number | null,
+	/**  Number of items. */
+	item_count: number,
+};
 
 /**
  *  What a track holds. Schema v1 edits only video and audio tracks; the other kinds exist so
@@ -2499,10 +2835,26 @@ export type TrackKind =
 /**  Adjustment layers (later versions). */
 "adjustment";
 
+/**  Lists a sequence's tracks in display order with their flags, height and item counts. */
+export type TrackList = {
+	/**  The sequence. */
+	sequence: SequenceId,
+};
+
+/**  Result of `track.list`. */
+export type TrackListOutput = {
+	/**  The sequence. */
+	sequence: SequenceId,
+	/**  Its tracks in display order, top to bottom. */
+	tracks: TrackInfo[],
+};
+
 /**
- *  Removes a track together with its items. Fails with `Locked` if the track is locked, or
- *  if a linked partner that would be left alone in its group is on a locked track. Linked
- *  partners of the removed items stay; a partner left alone in its group is unlinked.
+ *  Removes a track together with its items. Fails with `Locked` if the track is locked, if a
+ *  linked partner that would be left alone in its group is on a locked track, or if an item
+ *  attached to a removed item is on a locked track. Linked partners of the removed items stay;
+ *  a partner left alone in its group is unlinked. Items attached to a removed item are
+ *  detached and keep their place (spec INV-38).
  */
 export type TrackRemove = {
 	/**  The track. */
@@ -2515,6 +2867,26 @@ export type TrackRemoveOutput = {
 	track: TrackId,
 	/**  How many items it held (removed with it). */
 	removed_items: number,
+};
+
+/**
+ *  Moves a track to another display position (0 = top, clamped to the end). Upper video
+ *  tracks composite over lower ones, so this changes what is on top. Items are not touched,
+ *  so it also works on a locked track.
+ */
+export type TrackReorder = {
+	/**  The track. */
+	track: TrackId,
+	/**  Its new display position, 0 = top (clamped to the end). */
+	index: number,
+};
+
+/**  Result of `track.reorder`. */
+export type TrackReorderOutput = {
+	/**  The track. */
+	track: TrackId,
+	/**  Its display position now (0 = top). */
+	index: number,
 };
 
 /**
@@ -2536,6 +2908,58 @@ export type TrackSet = {
 	solo?: boolean | null,
 	/**  Track gain in dB, `-144..=48`. */
 	gain?: number | null,
+};
+
+/**
+ *  Sets the track's row height in the timeline (a persisted UI hint, not a `view` setting:
+ *  it is saved with the project and undoable). `null` restores the default. Works on a
+ *  locked track and never touches items.
+ */
+export type TrackSetHeight = {
+	/**  The track. */
+	track: TrackId,
+	/**  Height in pixels, `8..=512`; `null` for the default. */
+	height?: number | null,
+};
+
+/**  Result of `track.set_height`. */
+export type TrackSetHeightOutput = {
+	/**  The track. */
+	track: TrackId,
+	/**  Its row height in pixels now; `None` is the default height. */
+	height: number | null,
+};
+
+/**
+ *  Makes a video track the main (magnetic) track, or turns the magnet off. Making a track the
+ *  main track clears the flag of the previous one in the same step. A track with gaps (or that
+ *  does not start at 0) cannot become the main track unless `close_gaps` is set, which closes
+ *  every gap from left to right; linked partners ripple with their items. Turning the magnet
+ *  off only clears the flag and also works on a locked track. Closing gaps on a locked track,
+ *  or on a track the ripple reaches, fails with `Locked`.
+ */
+export type TrackSetMagnetic = {
+	/**  The track. */
+	track: TrackId,
+	/**  `true` makes it the main track, `false` clears its flag. */
+	magnetic: boolean,
+	/**
+	 *  Close gaps (and the space before the first item) when making the track magnetic,
+	 *  instead of failing (default `false`).
+	 */
+	close_gaps?: boolean | null,
+};
+
+/**  Result of `track.set_magnetic`. */
+export type TrackSetMagneticOutput = {
+	/**  The track. */
+	track: TrackId,
+	/**  Whether it is the main track now. */
+	magnetic: boolean,
+	/**  The track that was the main track and no longer is, if any. */
+	previous?: TrackId | null,
+	/**  What changed (items moved by closing gaps). */
+	report: EditReport,
 };
 
 /**  Result of `track.set`: the track's properties now in effect. */
@@ -2572,6 +2996,10 @@ export type TrackSummary = {
 	locked: boolean,
 	/**  Solo. */
 	solo: boolean,
+	/**  The magnetic main track. */
+	magnetic: boolean,
+	/**  Row height in pixels; `None` is the default. */
+	height: number | null,
 	/**  Gain in dB. */
 	gain: number | null,
 	/**  Number of items. */
@@ -2637,6 +3065,18 @@ export type TrimmedClip = {
 	/**  Its length. */
 	duration: Duration,
 	/**  Its source position. */
+	source_in: Time,
+};
+
+/**  An item whose duration or `source_in` changed (its start may have too). */
+export type TrimmedReport = {
+	/**  The item. */
+	item: ItemId,
+	/**  Its start now. */
+	start: Time,
+	/**  Its duration now. */
+	duration: Duration,
+	/**  Its `source_in` now (`0` for items that play no media). */
 	source_in: Time,
 };
 

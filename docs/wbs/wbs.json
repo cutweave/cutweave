@@ -3919,8 +3919,8 @@
         "WP-1B.09",
         "WP-2A.01"
       ],
-      "scope": "- Model: `Marker {id, t, duration?, label, color, kind(user|beat|chapter)}` on sequence and on item. `Sequence.in_out`. `Track.magnetic` constraint (one per sequence). `Item.linked_group: Option<GroupId>`. Track kinds as in §4.2. Unlimited track counts; no hard cap, soft warn above 64.\n- Schema version bump (v2) with migration and golden fixture from a v1 project.\n- Track commands: `track.add{kind, index?}`, `track.remove`, `track.reorder`, `track.rename`, `track.set_flags{muted,hidden,locked,solo}`, `track.set_magnetic`, `track.set_height` (UI hint, `view`-like but persisted).\n- Marker/range commands: `timeline.add_marker`, `timeline.move_marker`, `timeline.remove_marker`, `timeline.set_in_out`, `timeline.clear_in_out`.\n- MCP: `track.add`, `track.set_flags`, `timeline.add_marker` core; the rest catalog.\n- **Context menu (product owner request, 2026-11-25; framework WP-2H.12, plan in [09-context-menus.md](../research/09-context-menus.md)):** adds the two commands the timeline menus need and nothing else: `timeline.update_marker{id, label?, color?, duration?}` (the marker menu's Edit) and `item.set_label_color{items, color}` (the clip menu's Color label). The menus themselves are WP-2A.10's.",
-      "interfaces": "commands above; queries `track.list`, `marker.list`.",
+      "scope": "- Model: `Marker {id, t, duration?, label, color, kind(user|beat|chapter)}` on sequence and on item. `Sequence.in_out`. `Track.magnetic` constraint (one per sequence). `Item.linked_group: Option<GroupId>`. Track kinds as in §4.2. Unlimited track counts; no hard cap, soft warn above 64.\n- Schema version bump (v2) with migration and golden fixture from a v1 project.\n- Track commands: `track.add{kind, index?}`, `track.remove`, `track.reorder`, `track.rename`, `track.set_flags{muted,hidden,locked,solo}`, `track.set_magnetic`, `track.set_height` (UI hint, `view`-like but persisted).\n- Marker/range commands: `timeline.add_marker`, `timeline.move_marker`, `timeline.remove_marker`, `timeline.set_in_out`, `timeline.clear_in_out`.\n- MCP: all catalog (ADR-0023 R33: no new core MCP tools).\n- **As built (spec §11, arch §5.1):** renaming and the flags stay in the P1 `track.set` (it is the \"set_flags\" core tool; `track.rename` and `track.set_flags` do not exist), `track.set_magnetic` follows spec §4.17 and returns an `EditReport`, and the marker query is `timeline.list_markers` because `marker` is not a command namespace (arch §5.1). The model additions share one schema v2 with WP-2F.07 (arch §17, \"One v2\").\n- **Context menu (product owner request, 2026-11-25; framework WP-2H.12, plan in [09-context-menus.md](../research/09-context-menus.md)):** adds the two commands the timeline menus need and nothing else: `timeline.update_marker{id, label?, color?, duration?}` (the marker menu's Edit) and `item.set_label_color{items, color}` (the clip menu's Color label). The menus themselves are WP-2A.10's. *(Not built in WP-2A.02, which merged first: the timeline menus' WP adds these two commands.)*",
+      "interfaces": "commands above; queries `track.list`, `timeline.list_markers`.",
       "acceptance": [
         "A v1 fixture migrates to v2 and round-trips (insta snapshot); newer-schema projects still open read-only.",
         "Property test: for 1,000 random sequences of track/marker commands, `undo(apply(doc)) == doc` and serialize round-trip holds.",
@@ -3937,7 +3937,7 @@
       "title": "Placement core: insert, overwrite, move, lift, extract, ripple-delete",
       "source": {
         "file": "docs/wbs/P2-core-editor.md",
-        "line": 116
+        "line": 117
       },
       "phase": "P2",
       "epic": "2A",
@@ -3971,7 +3971,7 @@
       "title": "Trim family: trim, ripple trim, roll, slip, slide",
       "source": {
         "file": "docs/wbs/P2-core-editor.md",
-        "line": 137
+        "line": 138
       },
       "phase": "P2",
       "epic": "2A",
@@ -4002,7 +4002,7 @@
       "title": "Linked clips and groups",
       "source": {
         "file": "docs/wbs/P2-core-editor.md",
-        "line": 158
+        "line": 159
       },
       "phase": "P2",
       "epic": "2A",
@@ -4034,7 +4034,7 @@
       "title": "Clipboard: copy, cut, paste, paste-attributes, duplicate",
       "source": {
         "file": "docs/wbs/P2-core-editor.md",
-        "line": 178
+        "line": 179
       },
       "phase": "P2",
       "epic": "2A",
@@ -4069,7 +4069,7 @@
       "title": "Snapping engine (Rust, shared via wasm)",
       "source": {
         "file": "docs/wbs/P2-core-editor.md",
-        "line": 200
+        "line": 201
       },
       "phase": "P2",
       "epic": "2A",
@@ -4119,7 +4119,7 @@
       "title": "Timeline interaction state machine",
       "source": {
         "file": "docs/wbs/P2-core-editor.md",
-        "line": 217
+        "line": 218
       },
       "phase": "P2",
       "epic": "2A",
@@ -4155,7 +4155,7 @@
       "title": "Timeline renderer: virtualization, thumbnails, waveforms, zoom/scroll",
       "source": {
         "file": "docs/wbs/P2-core-editor.md",
-        "line": 238
+        "line": 239
       },
       "phase": "P2",
       "epic": "2A",
@@ -4213,7 +4213,7 @@
       "title": "Timeline UI wiring: tools, selection, headers, edit gestures",
       "source": {
         "file": "docs/wbs/P2-core-editor.md",
-        "line": 258
+        "line": 259
       },
       "phase": "P2",
       "epic": "2A",
@@ -4270,7 +4270,7 @@
       "title": "Replace clip",
       "source": {
         "file": "docs/wbs/P2-core-editor.md",
-        "line": 280
+        "line": 281
       },
       "phase": "P2",
       "epic": "2A",
@@ -4305,7 +4305,7 @@
       "title": "Soft-lock extension: retry semantics, UI feedback and auto-cancel",
       "source": {
         "file": "docs/wbs/P2-core-editor.md",
-        "line": 299
+        "line": 300
       },
       "phase": "P2",
       "epic": "2A",
@@ -4349,7 +4349,7 @@
       "title": "Settings: Editing and Timeline pages (editing defaults, snapping, playhead follow, display)",
       "source": {
         "file": "docs/wbs/P2-core-editor.md",
-        "line": 322
+        "line": 323
       },
       "phase": "P2",
       "epic": "2A",
@@ -4388,7 +4388,7 @@
       "title": "Source marks and three-point editing: in and out on a source, insert and overwrite, match frame",
       "source": {
         "file": "docs/wbs/P2-core-editor.md",
-        "line": 339
+        "line": 340
       },
       "phase": "P2",
       "epic": "2A",
@@ -4426,7 +4426,7 @@
       "title": "Multi-sequence commands, aspect presets, sequence settings",
       "source": {
         "file": "docs/wbs/P2-core-editor.md",
-        "line": 363
+        "line": 364
       },
       "phase": "P2",
       "epic": "2B",
@@ -4474,7 +4474,7 @@
       "title": "Background fill: color, blur, image",
       "source": {
         "file": "docs/wbs/P2-core-editor.md",
-        "line": 385
+        "line": 386
       },
       "phase": "P2",
       "epic": "2B",
@@ -4511,7 +4511,7 @@
       "title": "Sequence UI: tabs, settings dialog, aspect switcher",
       "source": {
         "file": "docs/wbs/P2-core-editor.md",
-        "line": 403
+        "line": 404
       },
       "phase": "P2",
       "epic": "2B",
@@ -4545,7 +4545,7 @@
       "title": "Compound clips: nested sequences as media",
       "source": {
         "file": "docs/wbs/P2-core-editor.md",
-        "line": 419
+        "line": 420
       },
       "phase": "P2",
       "epic": "2B",
@@ -4590,7 +4590,7 @@
       "title": "Compound clip UI: create, enter, breadcrumb",
       "source": {
         "file": "docs/wbs/P2-core-editor.md",
-        "line": 441
+        "line": 442
       },
       "phase": "P2",
       "epic": "2B",
@@ -4624,7 +4624,7 @@
       "title": "Spec: keyframe and easing model",
       "source": {
         "file": "docs/wbs/P2-core-editor.md",
-        "line": 460
+        "line": 461
       },
       "phase": "P2",
       "epic": "2C",
@@ -4656,7 +4656,7 @@
       "title": "Interpolation core",
       "source": {
         "file": "docs/wbs/P2-core-editor.md",
-        "line": 479
+        "line": 480
       },
       "phase": "P2",
       "epic": "2C",
@@ -4688,7 +4688,7 @@
       "title": "Keyframe and property commands (with retiming rules)",
       "source": {
         "file": "docs/wbs/P2-core-editor.md",
-        "line": 497
+        "line": 498
       },
       "phase": "P2",
       "epic": "2C",
@@ -4723,7 +4723,7 @@
       "title": "Render: transform, crop, opacity, flip, core blend modes",
       "source": {
         "file": "docs/wbs/P2-core-editor.md",
-        "line": 520
+        "line": 521
       },
       "phase": "P2",
       "epic": "2C",
@@ -4760,7 +4760,7 @@
       "title": "Timeline keyframe lanes and curve editor",
       "source": {
         "file": "docs/wbs/P2-core-editor.md",
-        "line": 540
+        "line": 541
       },
       "phase": "P2",
       "epic": "2C",
@@ -4797,7 +4797,7 @@
       "title": "Shared wasm module: keyframe, easing, time and snapping math",
       "source": {
         "file": "docs/wbs/P2-core-editor.md",
-        "line": 558
+        "line": 559
       },
       "phase": "P2",
       "epic": "2C",
@@ -4833,7 +4833,7 @@
       "title": "Bezier graph editor panel",
       "source": {
         "file": "docs/wbs/P2-core-editor.md",
-        "line": 577
+        "line": 578
       },
       "phase": "P2",
       "epic": "2C",
@@ -4868,7 +4868,7 @@
       "title": "Layouts for several clips: side by side, top and bottom, picture in picture, grids",
       "source": {
         "file": "docs/wbs/P2-core-editor.md",
-        "line": 595
+        "line": 596
       },
       "phase": "P2",
       "epic": "2C",
@@ -4909,7 +4909,7 @@
       "title": "Speed model, reverse, freeze frame, source time mapping",
       "source": {
         "file": "docs/wbs/P2-core-editor.md",
-        "line": 631
+        "line": 632
       },
       "phase": "P2",
       "epic": "2D",
@@ -4951,7 +4951,7 @@
       "title": "Audio for speed and reverse (pitch-preserving)",
       "source": {
         "file": "docs/wbs/P2-core-editor.md",
-        "line": 653
+        "line": 654
       },
       "phase": "P2",
       "epic": "2D",
@@ -4987,7 +4987,7 @@
       "title": "Fades, keyframed volume, pan",
       "source": {
         "file": "docs/wbs/P2-core-editor.md",
-        "line": 676
+        "line": 677
       },
       "phase": "P2",
       "epic": "2E",
@@ -5024,7 +5024,7 @@
       "title": "Track buses, master limiter, meters",
       "source": {
         "file": "docs/wbs/P2-core-editor.md",
-        "line": 694
+        "line": 695
       },
       "phase": "P2",
       "epic": "2E",
@@ -5056,7 +5056,7 @@
       "title": "Loudness normalization and extract audio",
       "source": {
         "file": "docs/wbs/P2-core-editor.md",
-        "line": 713
+        "line": 714
       },
       "phase": "P2",
       "epic": "2E",
@@ -5100,7 +5100,7 @@
       "title": "Voiceover recording",
       "source": {
         "file": "docs/wbs/P2-core-editor.md",
-        "line": 734
+        "line": 735
       },
       "phase": "P2",
       "epic": "2E",
@@ -5145,7 +5145,7 @@
       "title": "Audio UI: waveforms, fade and volume handles, mixer panel",
       "source": {
         "file": "docs/wbs/P2-core-editor.md",
-        "line": 753
+        "line": 754
       },
       "phase": "P2",
       "epic": "2E",
@@ -5182,7 +5182,7 @@
       "title": "Auto-ducking (sidechain from voice tracks)",
       "source": {
         "file": "docs/wbs/P2-core-editor.md",
-        "line": 771
+        "line": 772
       },
       "phase": "P2",
       "epic": "2E",
@@ -5216,7 +5216,7 @@
       "title": "Basic voice effects (offline DSP)",
       "source": {
         "file": "docs/wbs/P2-core-editor.md",
-        "line": 792
+        "line": 793
       },
       "phase": "P2",
       "epic": "2E",
@@ -5254,7 +5254,7 @@
       "title": "Settings: Audio page (output and input devices, buffer, recording, loudness target)",
       "source": {
         "file": "docs/wbs/P2-core-editor.md",
-        "line": 811
+        "line": 812
       },
       "phase": "P2",
       "epic": "2E",
@@ -5293,7 +5293,7 @@
       "title": "Proxy generation pipeline and policy",
       "source": {
         "file": "docs/wbs/P2-core-editor.md",
-        "line": 832
+        "line": 833
       },
       "phase": "P2",
       "epic": "2F",
@@ -5347,7 +5347,7 @@
       "title": "Proxy-aware preview/export source selection",
       "source": {
         "file": "docs/wbs/P2-core-editor.md",
-        "line": 852
+        "line": 853
       },
       "phase": "P2",
       "epic": "2F",
@@ -5388,7 +5388,7 @@
       "title": "Relink missing media (hash-based) and media bin UI for health",
       "source": {
         "file": "docs/wbs/P2-core-editor.md",
-        "line": 870
+        "line": 871
       },
       "phase": "P2",
       "epic": "2F",
@@ -5451,7 +5451,7 @@
       "title": "Collect and archive",
       "source": {
         "file": "docs/wbs/P2-core-editor.md",
-        "line": 890
+        "line": 891
       },
       "phase": "P2",
       "epic": "2F",
@@ -5489,7 +5489,7 @@
       "title": "Image and image-sequence import, still duration defaults",
       "source": {
         "file": "docs/wbs/P2-core-editor.md",
-        "line": 911
+        "line": 912
       },
       "phase": "P2",
       "epic": "2F",
@@ -5535,7 +5535,7 @@
       "title": "Media bin tags, ratings, notes, collections and the bin sidebar",
       "source": {
         "file": "docs/wbs/P2-core-editor.md",
-        "line": 933
+        "line": 934
       },
       "phase": "P2",
       "epic": "2F",
@@ -5598,7 +5598,7 @@
       "title": "Media folders: model, commands and migration (ADR-0020)",
       "source": {
         "file": "docs/wbs/P2-core-editor.md",
-        "line": 955
+        "line": 956
       },
       "phase": "P2",
       "epic": "2F",
@@ -5631,8 +5631,8 @@
         "WP-1M.12",
         "WP-1O.02"
       ],
-      "scope": "(product owner request, 2026-11-24) organize the project's media into folders, as decided in ADR-0020 (Proposed; it must be Accepted before this WP starts).\n- Model: `Project.folders: Map<FolderId, MediaFolder{id, name, parent?: FolderId, custom}>` with IDs `fld_…` (deterministic under `--deterministic-ids`), `MediaAsset.folder?: FolderId` (absent = top level) and `MediaAsset.name?: String` (display name; absent = the file name).\n- Invariants in `Project::validate`: parents and asset folders exist; no cycles; depth ≤ 32; folder names 1–255 characters, no `/` or control characters, unique among siblings ignoring case.\n- Commands in the `media` namespace, all undoable as one step, MCP catalog:\n  - `media.create_folder{parent?, name?}` → `{folder_id, name}` (no name: \"New folder\", \"New folder 2\", …).\n  - `media.rename_folder{folder, name}`; `media.rename{media, name?}` (no name: back to the file name).\n  - `media.move{media?, folders?, to?, on_conflict?: fail|rename}` moves assets and folders (no `to` = top level). A folder into itself or a descendant is `Invalid`; a sibling name clash fails or renames (\"Day 1 2\").\n  - `media.delete_folder{folder, contents: move_up|remove}`: `move_up` lifts everything one level; `remove` removes the folder, its subfolders and every asset no timeline uses, and moves the used ones to the deleted folder's parent; the result lists `removed` and `kept`. Timelines never change; files on disk are never touched.\n  - `media.import` and `media.register` take an optional `folder`.\n- Queries: `media.list`'s filter gains `folder` and `recursive` (no folder: the whole project; a folder: one level unless `recursive`), and each summary carries `name` and `folder`; new `media.list_folders` returns the tree (id, name, parent, path, asset and subfolder counts). WP-1M.12's `text` matches the display name.\n- Migration v1→v2 adds `folders: {}`, `folder: null` and `name: null`; golden fixtures under `v2/` (nested folders, renamed assets); every v1 fixture migrates; v1 apps open v2 files read-only (the existing rule). Strategies for every new command in the registry property harness (`testing/strategies.rs`).",
-      "interfaces": "`FolderId`, `MediaFolder`, `MediaAsset.{folder, name}`; the commands and queries above; `CURRENT_SCHEMA_VERSION` = 2.",
+      "scope": "(product owner request, 2026-11-24) organize the project's media into folders, as decided in ADR-0020 (Proposed; it must be Accepted before this WP starts).\n- Model: `Project.folders: Map<FolderId, MediaFolder{id, name, parent?: FolderId, custom}>` with IDs `fld_…` (deterministic under `--deterministic-ids`), `MediaAsset.folder?: FolderId` (absent = top level) and `MediaAsset.name?: String` (display name; absent = the file name).\n- Invariants in `Project::validate`: parents and asset folders exist; no cycles; depth ≤ 32; folder names 1–255 characters, no `/` or control characters, unique among siblings ignoring case.\n- Commands in the `media` namespace, all undoable as one step, MCP catalog:\n  - `media.create_folder{parent?, name?}` → `{folder_id, name}` (no name: \"New folder\", \"New folder 2\", …).\n  - `media.rename_folder{folder, name}`; `media.rename{media, name?}` (no name: back to the file name).\n  - `media.move{media?, folders?, to?, on_conflict?: fail|rename}` moves assets and folders (no `to` = top level). A folder into itself or a descendant is `Invalid`; a sibling name clash fails or renames (\"Day 1 2\").\n  - `media.delete_folder{folder, contents: move_up|remove}`: `move_up` lifts everything one level; `remove` removes the folder, its subfolders and every asset no timeline uses, and moves the used ones to the deleted folder's parent; the result lists `removed` and `kept`. Timelines never change; files on disk are never touched.\n  - `media.import` and `media.register` take an optional `folder`.\n- Queries: `media.list`'s filter gains `folder` and `recursive` (no folder: the whole project; a folder: one level unless `recursive`), and each summary carries `name` and `folder`; new `media.list_folders` returns the tree (id, name, parent, path, asset and subfolder counts). WP-1M.12's `text` matches the display name.\n- **Joins WP-2A.02's v2 (integrator resolution, 2026-11-25).** WP-2A.02 already bumped `CURRENT_SCHEMA_VERSION` to 2 and wrote `migrate/v1_to_v2.rs` as an ordered list of steps (`STEPS`); nothing is released between the two work packages, so this WP **appends a step** to that list (and its fixtures to `tests/fixtures/v2/`) and makes no v3 (arch §17, \"One v2\"). Its golden fixtures extend the existing v2 ones; the model types it adds go next to the timeline additions.\n- Migration v1→v2 adds `folders: {}`, `folder: null` and `name: null`; golden fixtures under `v2/` (nested folders, renamed assets); every v1 fixture migrates; v1 apps open v2 files read-only (the existing rule). Strategies for every new command in the registry property harness (`testing/strategies.rs`).",
+      "interfaces": "`FolderId`, `MediaFolder`, `MediaAsset.{folder, name}`; the commands and queries above; `CURRENT_SCHEMA_VERSION` is already 2 (WP-2A.02).",
       "acceptance": [
         "The registry property harness covers every new command: undo/redo identity, failure atomicity, and the invariants after random sequences of create, rename, move and delete (no cycle, no orphan, unique sibling names).",
         "`media.delete_folder{remove}` on a fixture of 30 assets, 5 of them on a timeline, removes 25, keeps 5 in the parent, changes no timeline item; one undo restores the tree, the 25 assets and their folders exactly.",
@@ -5648,7 +5648,7 @@
       "title": "Media folders in the bin: browse, organize, drag and drop",
       "source": {
         "file": "docs/wbs/P2-core-editor.md",
-        "line": 981
+        "line": 983
       },
       "phase": "P2",
       "epic": "2F",
@@ -5698,7 +5698,7 @@
       "title": "Import folders with their structure",
       "source": {
         "file": "docs/wbs/P2-core-editor.md",
-        "line": 1004
+        "line": 1006
       },
       "phase": "P2",
       "epic": "2F",
@@ -5734,7 +5734,7 @@
       "title": "Export preset system (L0 data) and built-in presets",
       "source": {
         "file": "docs/wbs/P2-core-editor.md",
-        "line": 1027
+        "line": 1029
       },
       "phase": "P2",
       "epic": "2G",
@@ -5778,7 +5778,7 @@
       "title": "Codecs: HEVC, AV1, ProRes, GIF, audio-only, sequences",
       "source": {
         "file": "docs/wbs/P2-core-editor.md",
-        "line": 1052
+        "line": 1054
       },
       "phase": "P2",
       "epic": "2G",
@@ -5815,7 +5815,7 @@
       "title": "Background export queue, range and marker-set export",
       "source": {
         "file": "docs/wbs/P2-core-editor.md",
-        "line": 1071
+        "line": 1073
       },
       "phase": "P2",
       "epic": "2G",
@@ -5855,7 +5855,7 @@
       "title": "Export dialog and queue panel",
       "source": {
         "file": "docs/wbs/P2-core-editor.md",
-        "line": 1093
+        "line": 1095
       },
       "phase": "P2",
       "epic": "2G",
@@ -5908,7 +5908,7 @@
       "title": "Advanced export controls",
       "source": {
         "file": "docs/wbs/P2-core-editor.md",
-        "line": 1114
+        "line": 1116
       },
       "phase": "P2",
       "epic": "2G",
@@ -5941,7 +5941,7 @@
       "title": "Dockable workspace, Short-form/Long-form layouts, i18n scaffold",
       "source": {
         "file": "docs/wbs/P2-core-editor.md",
-        "line": 1136
+        "line": 1138
       },
       "phase": "P2",
       "epic": "2H",
@@ -5991,7 +5991,7 @@
       "title": "Schema-driven inspector renderer",
       "source": {
         "file": "docs/wbs/P2-core-editor.md",
-        "line": 1166
+        "line": 1168
       },
       "phase": "P2",
       "epic": "2H",
@@ -6041,7 +6041,7 @@
       "title": "Inspector wiring: clip, track, sequence, audio, export panels",
       "source": {
         "file": "docs/wbs/P2-core-editor.md",
-        "line": 1186
+        "line": 1188
       },
       "phase": "P2",
       "epic": "2H",
@@ -6080,7 +6080,7 @@
       "title": "Command palette and registry-driven menus",
       "source": {
         "file": "docs/wbs/P2-core-editor.md",
-        "line": 1204
+        "line": 1206
       },
       "phase": "P2",
       "epic": "2H",
@@ -6118,7 +6118,7 @@
       "title": "Keymap engine, shortcut editor, NLE and CapCut presets",
       "source": {
         "file": "docs/wbs/P2-core-editor.md",
-        "line": 1222
+        "line": 1224
       },
       "phase": "P2",
       "epic": "2H",
@@ -6170,7 +6170,7 @@
       "title": "Preview overlays: transform handles, crop, safe areas, grid",
       "source": {
         "file": "docs/wbs/P2-core-editor.md",
-        "line": 1250
+        "line": 1252
       },
       "phase": "P2",
       "epic": "2H",
@@ -6213,7 +6213,7 @@
       "title": "UX design review gate (human)",
       "source": {
         "file": "docs/wbs/P2-core-editor.md",
-        "line": 1273
+        "line": 1275
       },
       "phase": "P2",
       "epic": "2H",
@@ -6251,7 +6251,7 @@
       "title": "Project settings: `project.set_settings` and File > Project settings…",
       "source": {
         "file": "docs/wbs/P2-core-editor.md",
-        "line": 1286
+        "line": 1288
       },
       "phase": "P2",
       "epic": "2H",
@@ -6288,7 +6288,7 @@
       "title": "Settings: Appearance page (interface scale, density, reduce motion)",
       "source": {
         "file": "docs/wbs/P2-core-editor.md",
-        "line": 1304
+        "line": 1306
       },
       "phase": "P2",
       "epic": "2H",
@@ -6324,7 +6324,7 @@
       "title": "Settings: Playback page (preview quality, proxies, scrub audio, loop)",
       "source": {
         "file": "docs/wbs/P2-core-editor.md",
-        "line": 1323
+        "line": 1325
       },
       "phase": "P2",
       "epic": "2H",
@@ -6362,7 +6362,7 @@
       "title": "History panel: every undo step, who made it, go back to any step",
       "source": {
         "file": "docs/wbs/P2-core-editor.md",
-        "line": 1339
+        "line": 1341
       },
       "phase": "P2",
       "epic": "2H",
@@ -6399,7 +6399,7 @@
       "title": "Context-menu framework: host, surfaces, command-derived items, keyboard and touch, contributions",
       "source": {
         "file": "docs/wbs/P2-core-editor.md",
-        "line": 1367
+        "line": 1369
       },
       "phase": "P2",
       "epic": "2H",
@@ -6450,7 +6450,7 @@
       "title": "Context menus for today's surfaces: bin, preview, timeline basics, inspector, chrome",
       "source": {
         "file": "docs/wbs/P2-core-editor.md",
-        "line": 1394
+        "line": 1396
       },
       "phase": "P2",
       "epic": "2H",
@@ -6500,7 +6500,7 @@
       "title": "Core tool set: mapping, annotations and completion (~30 tools)",
       "source": {
         "file": "docs/wbs/P2-core-editor.md",
-        "line": 1422
+        "line": 1424
       },
       "phase": "P2",
       "epic": "2I",
@@ -6551,7 +6551,7 @@
       "title": "Visual tools: contact sheet, filmstrip, waveform image",
       "source": {
         "file": "docs/wbs/P2-core-editor.md",
-        "line": 1442
+        "line": 1444
       },
       "phase": "P2",
       "epic": "2I",
@@ -6603,7 +6603,7 @@
       "title": "Checkpoints: edit.checkpoint / edit.restore",
       "source": {
         "file": "docs/wbs/P2-core-editor.md",
-        "line": 1463
+        "line": 1465
       },
       "phase": "P2",
       "epic": "2I",
@@ -6648,7 +6648,7 @@
       "title": "Optimistic concurrency: expected_rev everywhere",
       "source": {
         "file": "docs/wbs/P2-core-editor.md",
-        "line": 1482
+        "line": 1484
       },
       "phase": "P2",
       "epic": "2I",
@@ -6701,7 +6701,7 @@
       "title": "Tool profiles, change notifications and tools/list budget",
       "source": {
         "file": "docs/wbs/P2-core-editor.md",
-        "line": 1499
+        "line": 1501
       },
       "phase": "P2",
       "epic": "2I",
@@ -6732,7 +6732,7 @@
       "title": "Scripted-agent e2e: YouTube edit and 9:16 short via MCP only",
       "source": {
         "file": "docs/wbs/P2-core-editor.md",
-        "line": 1517
+        "line": 1519
       },
       "phase": "P2",
       "epic": "2I",
@@ -6775,7 +6775,7 @@
       "title": "Benchmark fixtures and Rust criterion suite",
       "source": {
         "file": "docs/wbs/P2-core-editor.md",
-        "line": 1539
+        "line": 1541
       },
       "phase": "P2",
       "epic": "2J",
@@ -6832,7 +6832,7 @@
       "title": "UI benchmarks: timeline pan/zoom and UI command RTT",
       "source": {
         "file": "docs/wbs/P2-core-editor.md",
-        "line": 1556
+        "line": 1558
       },
       "phase": "P2",
       "epic": "2J",
@@ -6866,7 +6866,7 @@
       "title": "Playback, scrub and A/V sync benchmarks",
       "source": {
         "file": "docs/wbs/P2-core-editor.md",
-        "line": 1571
+        "line": 1573
       },
       "phase": "P2",
       "epic": "2J",
@@ -6908,7 +6908,7 @@
       "title": "CI benchmark gate and trend dashboard",
       "source": {
         "file": "docs/wbs/P2-core-editor.md",
-        "line": 1586
+        "line": 1588
       },
       "phase": "P2",
       "epic": "2J",
@@ -6949,7 +6949,7 @@
       "title": "Crash-injection harness: 20 forced crashes, no data loss",
       "source": {
         "file": "docs/wbs/P2-core-editor.md",
-        "line": 1602
+        "line": 1604
       },
       "phase": "P2",
       "epic": "2J",
@@ -6993,7 +6993,7 @@
       "title": "Dogfood edit A: 10-min YouTube video with B-roll (human)",
       "source": {
         "file": "docs/wbs/P2-core-editor.md",
-        "line": 1620
+        "line": 1622
       },
       "phase": "P2",
       "epic": "2J",
@@ -7033,7 +7033,7 @@
       "title": "Dogfood edit B: 9:16 short with manual reframe, music and fades (human)",
       "source": {
         "file": "docs/wbs/P2-core-editor.md",
-        "line": 1635
+        "line": 1637
       },
       "phase": "P2",
       "epic": "2J",
@@ -7071,7 +7071,7 @@
       "title": "M2 exit review (human)",
       "source": {
         "file": "docs/wbs/P2-core-editor.md",
-        "line": 1649
+        "line": 1651
       },
       "phase": "P2",
       "epic": "2J",
@@ -7109,7 +7109,7 @@
       "title": "Background render cache (smart pre-render while idle)",
       "source": {
         "file": "docs/wbs/P2-core-editor.md",
-        "line": 1662
+        "line": 1664
       },
       "phase": "P2",
       "epic": "2J",

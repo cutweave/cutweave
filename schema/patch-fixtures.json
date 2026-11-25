@@ -9,7 +9,7 @@
           "app_version": null,
           "created": null,
           "name": "Demo",
-          "schema_version": 1
+          "schema_version": 2
         },
         "sequences": {
           "seq_0000000000017e999cdbc20a2319b9cb": {
@@ -26,6 +26,8 @@
               "width": 1920
             },
             "id": "seq_0000000000017e999cdbc20a2319b9cb",
+            "in_out": null,
+            "markers": {},
             "name": "Sequence 1",
             "track_order": [
               "trk_0000000000027f8989dde9c8c6ffc150",
@@ -35,6 +37,7 @@
               "trk_0000000000027f8989dde9c8c6ffc150": {
                 "custom": {},
                 "gain": 0.0,
+                "height": null,
                 "hidden": false,
                 "id": "trk_0000000000027f8989dde9c8c6ffc150",
                 "items": {},
@@ -48,6 +51,7 @@
               "trk_00000000000376d1902a7aa83bfaaa17": {
                 "custom": {},
                 "gain": 0.0,
+                "height": null,
                 "hidden": false,
                 "id": "trk_00000000000376d1902a7aa83bfaaa17",
                 "items": {},
@@ -82,7 +86,7 @@
           "app_version": null,
           "created": null,
           "name": "Untitled",
-          "schema_version": 1
+          "schema_version": 2
         },
         "sequences": {},
         "settings": {
@@ -124,6 +128,8 @@
               "width": 1920
             },
             "id": "seq_0000000000017e999cdbc20a2319b9cb",
+            "in_out": null,
+            "markers": {},
             "name": "Sequence 1",
             "track_order": [
               "trk_0000000000027f8989dde9c8c6ffc150",
@@ -133,6 +139,7 @@
               "trk_0000000000027f8989dde9c8c6ffc150": {
                 "custom": {},
                 "gain": 0.0,
+                "height": null,
                 "hidden": false,
                 "id": "trk_0000000000027f8989dde9c8c6ffc150",
                 "items": {},
@@ -146,6 +153,7 @@
               "trk_00000000000376d1902a7aa83bfaaa17": {
                 "custom": {},
                 "gain": 0.0,
+                "height": null,
                 "hidden": false,
                 "id": "trk_00000000000376d1902a7aa83bfaaa17",
                 "items": {},
@@ -179,6 +187,8 @@
               "width": 1920
             },
             "id": "seq_0000000000017e999cdbc20a2319b9cb",
+            "in_out": null,
+            "markers": {},
             "name": "Sequence 1",
             "track_order": [
               "trk_0000000000027f8989dde9c8c6ffc150",
@@ -188,6 +198,7 @@
               "trk_0000000000027f8989dde9c8c6ffc150": {
                 "custom": {},
                 "gain": 0.0,
+                "height": null,
                 "hidden": false,
                 "id": "trk_0000000000027f8989dde9c8c6ffc150",
                 "items": {},
@@ -201,6 +212,7 @@
               "trk_00000000000376d1902a7aa83bfaaa17": {
                 "custom": {},
                 "gain": 0.0,
+                "height": null,
                 "hidden": false,
                 "id": "trk_00000000000376d1902a7aa83bfaaa17",
                 "items": {},
@@ -293,7 +305,7 @@
           "app_version": null,
           "created": null,
           "name": "Demo",
-          "schema_version": 1
+          "schema_version": 2
         },
         "sequences": {
           "seq_0000000000017e999cdbc20a2319b9cb": {
@@ -310,6 +322,8 @@
               "width": 1920
             },
             "id": "seq_0000000000017e999cdbc20a2319b9cb",
+            "in_out": null,
+            "markers": {},
             "name": "Sequence 1",
             "track_order": [
               "trk_0000000000027f8989dde9c8c6ffc150",
@@ -319,6 +333,7 @@
               "trk_0000000000027f8989dde9c8c6ffc150": {
                 "custom": {},
                 "gain": 0.0,
+                "height": null,
                 "hidden": false,
                 "id": "trk_0000000000027f8989dde9c8c6ffc150",
                 "items": {},
@@ -332,6 +347,7 @@
               "trk_00000000000376d1902a7aa83bfaaa17": {
                 "custom": {},
                 "gain": 0.0,
+                "height": null,
                 "hidden": false,
                 "id": "trk_00000000000376d1902a7aa83bfaaa17",
                 "items": {},
@@ -366,7 +382,7 @@
           "app_version": null,
           "created": null,
           "name": "Demo",
-          "schema_version": 1
+          "schema_version": 2
         },
         "sequences": {
           "seq_0000000000017e999cdbc20a2319b9cb": {
@@ -383,6 +399,8 @@
               "width": 1920
             },
             "id": "seq_0000000000017e999cdbc20a2319b9cb",
+            "in_out": null,
+            "markers": {},
             "name": "Sequence 1",
             "track_order": [
               "trk_0000000000027f8989dde9c8c6ffc150",
@@ -392,6 +410,7 @@
               "trk_0000000000027f8989dde9c8c6ffc150": {
                 "custom": {},
                 "gain": 0.0,
+                "height": null,
                 "hidden": false,
                 "id": "trk_0000000000027f8989dde9c8c6ffc150",
                 "items": {},
@@ -405,6 +424,7 @@
               "trk_00000000000376d1902a7aa83bfaaa17": {
                 "custom": {},
                 "gain": 0.0,
+                "height": null,
                 "hidden": false,
                 "id": "trk_00000000000376d1902a7aa83bfaaa17",
                 "items": {},
@@ -672,7 +692,7 @@
           "app_version": null,
           "created": null,
           "name": "Demo",
-          "schema_version": 1
+          "schema_version": 2
         },
         "sequences": {
           "seq_0000000000017e999cdbc20a2319b9cb": {
@@ -689,6 +709,8 @@
               "width": 1920
             },
             "id": "seq_0000000000017e999cdbc20a2319b9cb",
+            "in_out": null,
+            "markers": {},
             "name": "Sequence 1",
             "track_order": [
               "trk_0000000000057d3189891744bd0efe34",
@@ -699,6 +721,7 @@
               "trk_0000000000027f8989dde9c8c6ffc150": {
                 "custom": {},
                 "gain": 0.0,
+                "height": null,
                 "hidden": false,
                 "id": "trk_0000000000027f8989dde9c8c6ffc150",
                 "items": {},
@@ -712,6 +735,7 @@
               "trk_00000000000376d1902a7aa83bfaaa17": {
                 "custom": {},
                 "gain": 0.0,
+                "height": null,
                 "hidden": false,
                 "id": "trk_00000000000376d1902a7aa83bfaaa17",
                 "items": {},
@@ -725,6 +749,7 @@
               "trk_0000000000057d3189891744bd0efe34": {
                 "custom": {},
                 "gain": 0.0,
+                "height": null,
                 "hidden": false,
                 "id": "trk_0000000000057d3189891744bd0efe34",
                 "items": {},
@@ -814,7 +839,7 @@
           "app_version": null,
           "created": null,
           "name": "Demo",
-          "schema_version": 1
+          "schema_version": 2
         },
         "sequences": {
           "seq_0000000000017e999cdbc20a2319b9cb": {
@@ -831,6 +856,8 @@
               "width": 1920
             },
             "id": "seq_0000000000017e999cdbc20a2319b9cb",
+            "in_out": null,
+            "markers": {},
             "name": "Sequence 1",
             "track_order": [
               "trk_0000000000027f8989dde9c8c6ffc150",
@@ -840,6 +867,7 @@
               "trk_0000000000027f8989dde9c8c6ffc150": {
                 "custom": {},
                 "gain": 0.0,
+                "height": null,
                 "hidden": false,
                 "id": "trk_0000000000027f8989dde9c8c6ffc150",
                 "items": {},
@@ -853,6 +881,7 @@
               "trk_00000000000376d1902a7aa83bfaaa17": {
                 "custom": {},
                 "gain": 0.0,
+                "height": null,
                 "hidden": false,
                 "id": "trk_00000000000376d1902a7aa83bfaaa17",
                 "items": {},
@@ -901,6 +930,7 @@
           "value": {
             "custom": {},
             "gain": 0.0,
+            "height": null,
             "hidden": false,
             "id": "trk_0000000000057d3189891744bd0efe34",
             "items": {},
@@ -923,6 +953,7 @@
           "old": {
             "custom": {},
             "gain": 0.0,
+            "height": null,
             "hidden": false,
             "id": "trk_0000000000057d3189891744bd0efe34",
             "items": {},
@@ -952,7 +983,10 @@
       ],
       "name": "track.add",
       "output": {
-        "track": "trk_0000000000057d3189891744bd0efe34"
+        "index": 0,
+        "track": "trk_0000000000057d3189891744bd0efe34",
+        "track_count": 3,
+        "warnings": []
       }
     },
     {
@@ -1018,7 +1052,7 @@
           "app_version": null,
           "created": null,
           "name": "Demo",
-          "schema_version": 1
+          "schema_version": 2
         },
         "sequences": {
           "seq_0000000000017e999cdbc20a2319b9cb": {
@@ -1035,6 +1069,8 @@
               "width": 1920
             },
             "id": "seq_0000000000017e999cdbc20a2319b9cb",
+            "in_out": null,
+            "markers": {},
             "name": "Sequence 1",
             "track_order": [
               "trk_0000000000057d3189891744bd0efe34",
@@ -1045,10 +1081,12 @@
               "trk_0000000000027f8989dde9c8c6ffc150": {
                 "custom": {},
                 "gain": 0.0,
+                "height": null,
                 "hidden": false,
                 "id": "trk_0000000000027f8989dde9c8c6ffc150",
                 "items": {
                   "itm_0000000000077405950ad8d9f69f2c6f": {
+                    "attached_to": null,
                     "audio": {
                       "gain": 0.0
                     },
@@ -1058,6 +1096,7 @@
                     "id": "itm_0000000000077405950ad8d9f69f2c6f",
                     "kind": "clip",
                     "linked_group": "grp_0000000000067e09902721405ac105a0",
+                    "markers": {},
                     "media": "med_000000000004771ba4a23020bc56afc3",
                     "name": null,
                     "source_in": 0,
@@ -1092,10 +1131,12 @@
               "trk_00000000000376d1902a7aa83bfaaa17": {
                 "custom": {},
                 "gain": 0.0,
+                "height": null,
                 "hidden": false,
                 "id": "trk_00000000000376d1902a7aa83bfaaa17",
                 "items": {
                   "itm_00000000000874918ac913f3f46b919e": {
+                    "attached_to": null,
                     "audio": {
                       "gain": 0.0
                     },
@@ -1105,6 +1146,7 @@
                     "id": "itm_00000000000874918ac913f3f46b919e",
                     "kind": "clip",
                     "linked_group": "grp_0000000000067e09902721405ac105a0",
+                    "markers": {},
                     "media": "med_000000000004771ba4a23020bc56afc3",
                     "name": null,
                     "source_in": 0,
@@ -1139,6 +1181,7 @@
               "trk_0000000000057d3189891744bd0efe34": {
                 "custom": {},
                 "gain": 0.0,
+                "height": null,
                 "hidden": false,
                 "id": "trk_0000000000057d3189891744bd0efe34",
                 "items": {},
@@ -1228,7 +1271,7 @@
           "app_version": null,
           "created": null,
           "name": "Demo",
-          "schema_version": 1
+          "schema_version": 2
         },
         "sequences": {
           "seq_0000000000017e999cdbc20a2319b9cb": {
@@ -1245,6 +1288,8 @@
               "width": 1920
             },
             "id": "seq_0000000000017e999cdbc20a2319b9cb",
+            "in_out": null,
+            "markers": {},
             "name": "Sequence 1",
             "track_order": [
               "trk_0000000000057d3189891744bd0efe34",
@@ -1255,6 +1300,7 @@
               "trk_0000000000027f8989dde9c8c6ffc150": {
                 "custom": {},
                 "gain": 0.0,
+                "height": null,
                 "hidden": false,
                 "id": "trk_0000000000027f8989dde9c8c6ffc150",
                 "items": {},
@@ -1268,6 +1314,7 @@
               "trk_00000000000376d1902a7aa83bfaaa17": {
                 "custom": {},
                 "gain": 0.0,
+                "height": null,
                 "hidden": false,
                 "id": "trk_00000000000376d1902a7aa83bfaaa17",
                 "items": {},
@@ -1281,6 +1328,7 @@
               "trk_0000000000057d3189891744bd0efe34": {
                 "custom": {},
                 "gain": 0.0,
+                "height": null,
                 "hidden": false,
                 "id": "trk_0000000000057d3189891744bd0efe34",
                 "items": {},
@@ -1314,6 +1362,7 @@
           "op": "add",
           "path": "/sequences/seq_0000000000017e999cdbc20a2319b9cb/tracks/trk_0000000000027f8989dde9c8c6ffc150/items/itm_0000000000077405950ad8d9f69f2c6f",
           "value": {
+            "attached_to": null,
             "audio": {
               "gain": 0.0
             },
@@ -1323,6 +1372,7 @@
             "id": "itm_0000000000077405950ad8d9f69f2c6f",
             "kind": "clip",
             "linked_group": "grp_0000000000067e09902721405ac105a0",
+            "markers": {},
             "media": "med_000000000004771ba4a23020bc56afc3",
             "name": null,
             "source_in": 0,
@@ -1351,6 +1401,7 @@
           "op": "add",
           "path": "/sequences/seq_0000000000017e999cdbc20a2319b9cb/tracks/trk_00000000000376d1902a7aa83bfaaa17/items/itm_00000000000874918ac913f3f46b919e",
           "value": {
+            "attached_to": null,
             "audio": {
               "gain": 0.0
             },
@@ -1360,6 +1411,7 @@
             "id": "itm_00000000000874918ac913f3f46b919e",
             "kind": "clip",
             "linked_group": "grp_0000000000067e09902721405ac105a0",
+            "markers": {},
             "media": "med_000000000004771ba4a23020bc56afc3",
             "name": null,
             "source_in": 0,
@@ -1394,6 +1446,7 @@
       "inverse_patch": [
         {
           "old": {
+            "attached_to": null,
             "audio": {
               "gain": 0.0
             },
@@ -1403,6 +1456,7 @@
             "id": "itm_00000000000874918ac913f3f46b919e",
             "kind": "clip",
             "linked_group": "grp_0000000000067e09902721405ac105a0",
+            "markers": {},
             "media": "med_000000000004771ba4a23020bc56afc3",
             "name": null,
             "source_in": 0,
@@ -1431,6 +1485,7 @@
         },
         {
           "old": {
+            "attached_to": null,
             "audio": {
               "gain": 0.0
             },
@@ -1440,6 +1495,7 @@
             "id": "itm_0000000000077405950ad8d9f69f2c6f",
             "kind": "clip",
             "linked_group": "grp_0000000000067e09902721405ac105a0",
+            "markers": {},
             "media": "med_000000000004771ba4a23020bc56afc3",
             "name": null,
             "source_in": 0,
@@ -1542,7 +1598,7 @@
           "app_version": null,
           "created": null,
           "name": "Demo",
-          "schema_version": 1
+          "schema_version": 2
         },
         "sequences": {
           "seq_0000000000017e999cdbc20a2319b9cb": {
@@ -1559,6 +1615,8 @@
               "width": 1920
             },
             "id": "seq_0000000000017e999cdbc20a2319b9cb",
+            "in_out": null,
+            "markers": {},
             "name": "Sequence 1",
             "track_order": [
               "trk_0000000000057d3189891744bd0efe34",
@@ -1569,10 +1627,12 @@
               "trk_0000000000027f8989dde9c8c6ffc150": {
                 "custom": {},
                 "gain": 0.0,
+                "height": null,
                 "hidden": false,
                 "id": "trk_0000000000027f8989dde9c8c6ffc150",
                 "items": {
                   "itm_0000000000077405950ad8d9f69f2c6f": {
+                    "attached_to": null,
                     "audio": {
                       "gain": 0.0
                     },
@@ -1582,6 +1642,7 @@
                     "id": "itm_0000000000077405950ad8d9f69f2c6f",
                     "kind": "clip",
                     "linked_group": "grp_0000000000067e09902721405ac105a0",
+                    "markers": {},
                     "media": "med_000000000004771ba4a23020bc56afc3",
                     "name": null,
                     "source_in": 0,
@@ -1606,6 +1667,7 @@
                     }
                   },
                   "itm_00000000000a7677ac4d118e2be6e1b9": {
+                    "attached_to": null,
                     "audio": {
                       "gain": 0.0
                     },
@@ -1615,6 +1677,7 @@
                     "id": "itm_00000000000a7677ac4d118e2be6e1b9",
                     "kind": "clip",
                     "linked_group": "grp_0000000000097031b0cbdfaef85bafd1",
+                    "markers": {},
                     "media": "med_000000000004771ba4a23020bc56afc3",
                     "name": null,
                     "source_in": 2822400000,
@@ -1649,10 +1712,12 @@
               "trk_00000000000376d1902a7aa83bfaaa17": {
                 "custom": {},
                 "gain": 0.0,
+                "height": null,
                 "hidden": false,
                 "id": "trk_00000000000376d1902a7aa83bfaaa17",
                 "items": {
                   "itm_00000000000874918ac913f3f46b919e": {
+                    "attached_to": null,
                     "audio": {
                       "gain": 0.0
                     },
@@ -1662,6 +1727,7 @@
                     "id": "itm_00000000000874918ac913f3f46b919e",
                     "kind": "clip",
                     "linked_group": "grp_0000000000067e09902721405ac105a0",
+                    "markers": {},
                     "media": "med_000000000004771ba4a23020bc56afc3",
                     "name": null,
                     "source_in": 0,
@@ -1686,6 +1752,7 @@
                     }
                   },
                   "itm_00000000000b7ce789996e9998b9dcff": {
+                    "attached_to": null,
                     "audio": {
                       "gain": 0.0
                     },
@@ -1695,6 +1762,7 @@
                     "id": "itm_00000000000b7ce789996e9998b9dcff",
                     "kind": "clip",
                     "linked_group": "grp_0000000000097031b0cbdfaef85bafd1",
+                    "markers": {},
                     "media": "med_000000000004771ba4a23020bc56afc3",
                     "name": null,
                     "source_in": 2822400000,
@@ -1729,6 +1797,7 @@
               "trk_0000000000057d3189891744bd0efe34": {
                 "custom": {},
                 "gain": 0.0,
+                "height": null,
                 "hidden": false,
                 "id": "trk_0000000000057d3189891744bd0efe34",
                 "items": {},
@@ -1818,7 +1887,7 @@
           "app_version": null,
           "created": null,
           "name": "Demo",
-          "schema_version": 1
+          "schema_version": 2
         },
         "sequences": {
           "seq_0000000000017e999cdbc20a2319b9cb": {
@@ -1835,6 +1904,8 @@
               "width": 1920
             },
             "id": "seq_0000000000017e999cdbc20a2319b9cb",
+            "in_out": null,
+            "markers": {},
             "name": "Sequence 1",
             "track_order": [
               "trk_0000000000057d3189891744bd0efe34",
@@ -1845,10 +1916,12 @@
               "trk_0000000000027f8989dde9c8c6ffc150": {
                 "custom": {},
                 "gain": 0.0,
+                "height": null,
                 "hidden": false,
                 "id": "trk_0000000000027f8989dde9c8c6ffc150",
                 "items": {
                   "itm_0000000000077405950ad8d9f69f2c6f": {
+                    "attached_to": null,
                     "audio": {
                       "gain": 0.0
                     },
@@ -1858,6 +1931,7 @@
                     "id": "itm_0000000000077405950ad8d9f69f2c6f",
                     "kind": "clip",
                     "linked_group": "grp_0000000000067e09902721405ac105a0",
+                    "markers": {},
                     "media": "med_000000000004771ba4a23020bc56afc3",
                     "name": null,
                     "source_in": 0,
@@ -1892,10 +1966,12 @@
               "trk_00000000000376d1902a7aa83bfaaa17": {
                 "custom": {},
                 "gain": 0.0,
+                "height": null,
                 "hidden": false,
                 "id": "trk_00000000000376d1902a7aa83bfaaa17",
                 "items": {
                   "itm_00000000000874918ac913f3f46b919e": {
+                    "attached_to": null,
                     "audio": {
                       "gain": 0.0
                     },
@@ -1905,6 +1981,7 @@
                     "id": "itm_00000000000874918ac913f3f46b919e",
                     "kind": "clip",
                     "linked_group": "grp_0000000000067e09902721405ac105a0",
+                    "markers": {},
                     "media": "med_000000000004771ba4a23020bc56afc3",
                     "name": null,
                     "source_in": 0,
@@ -1939,6 +2016,7 @@
               "trk_0000000000057d3189891744bd0efe34": {
                 "custom": {},
                 "gain": 0.0,
+                "height": null,
                 "hidden": false,
                 "id": "trk_0000000000057d3189891744bd0efe34",
                 "items": {},
@@ -1978,6 +2056,7 @@
           "op": "add",
           "path": "/sequences/seq_0000000000017e999cdbc20a2319b9cb/tracks/trk_0000000000027f8989dde9c8c6ffc150/items/itm_00000000000a7677ac4d118e2be6e1b9",
           "value": {
+            "attached_to": null,
             "audio": {
               "gain": 0.0
             },
@@ -1987,6 +2066,7 @@
             "id": "itm_00000000000a7677ac4d118e2be6e1b9",
             "kind": "clip",
             "linked_group": "grp_0000000000097031b0cbdfaef85bafd1",
+            "markers": {},
             "media": "med_000000000004771ba4a23020bc56afc3",
             "name": null,
             "source_in": 2822400000,
@@ -2021,6 +2101,7 @@
           "op": "add",
           "path": "/sequences/seq_0000000000017e999cdbc20a2319b9cb/tracks/trk_00000000000376d1902a7aa83bfaaa17/items/itm_00000000000b7ce789996e9998b9dcff",
           "value": {
+            "attached_to": null,
             "audio": {
               "gain": 0.0
             },
@@ -2030,6 +2111,7 @@
             "id": "itm_00000000000b7ce789996e9998b9dcff",
             "kind": "clip",
             "linked_group": "grp_0000000000097031b0cbdfaef85bafd1",
+            "markers": {},
             "media": "med_000000000004771ba4a23020bc56afc3",
             "name": null,
             "source_in": 2822400000,
@@ -2062,6 +2144,7 @@
       "inverse_patch": [
         {
           "old": {
+            "attached_to": null,
             "audio": {
               "gain": 0.0
             },
@@ -2071,6 +2154,7 @@
             "id": "itm_00000000000b7ce789996e9998b9dcff",
             "kind": "clip",
             "linked_group": "grp_0000000000097031b0cbdfaef85bafd1",
+            "markers": {},
             "media": "med_000000000004771ba4a23020bc56afc3",
             "name": null,
             "source_in": 2822400000,
@@ -2105,6 +2189,7 @@
         },
         {
           "old": {
+            "attached_to": null,
             "audio": {
               "gain": 0.0
             },
@@ -2114,6 +2199,7 @@
             "id": "itm_00000000000a7677ac4d118e2be6e1b9",
             "kind": "clip",
             "linked_group": "grp_0000000000097031b0cbdfaef85bafd1",
+            "markers": {},
             "media": "med_000000000004771ba4a23020bc56afc3",
             "name": null,
             "source_in": 2822400000,
@@ -2224,7 +2310,7 @@
           "app_version": null,
           "created": null,
           "name": "Demo",
-          "schema_version": 1
+          "schema_version": 2
         },
         "sequences": {
           "seq_0000000000017e999cdbc20a2319b9cb": {
@@ -2241,6 +2327,8 @@
               "width": 1920
             },
             "id": "seq_0000000000017e999cdbc20a2319b9cb",
+            "in_out": null,
+            "markers": {},
             "name": "Sequence 1",
             "track_order": [
               "trk_0000000000057d3189891744bd0efe34",
@@ -2251,10 +2339,12 @@
               "trk_0000000000027f8989dde9c8c6ffc150": {
                 "custom": {},
                 "gain": 0.0,
+                "height": null,
                 "hidden": false,
                 "id": "trk_0000000000027f8989dde9c8c6ffc150",
                 "items": {
                   "itm_0000000000077405950ad8d9f69f2c6f": {
+                    "attached_to": null,
                     "audio": {
                       "gain": 0.0
                     },
@@ -2264,6 +2354,7 @@
                     "id": "itm_0000000000077405950ad8d9f69f2c6f",
                     "kind": "clip",
                     "linked_group": "grp_0000000000067e09902721405ac105a0",
+                    "markers": {},
                     "media": "med_000000000004771ba4a23020bc56afc3",
                     "name": null,
                     "source_in": 0,
@@ -2288,6 +2379,7 @@
                     }
                   },
                   "itm_00000000000a7677ac4d118e2be6e1b9": {
+                    "attached_to": null,
                     "audio": {
                       "gain": 0.0
                     },
@@ -2297,6 +2389,7 @@
                     "id": "itm_00000000000a7677ac4d118e2be6e1b9",
                     "kind": "clip",
                     "linked_group": "grp_0000000000097031b0cbdfaef85bafd1",
+                    "markers": {},
                     "media": "med_000000000004771ba4a23020bc56afc3",
                     "name": null,
                     "source_in": 2822400000,
@@ -2331,10 +2424,12 @@
               "trk_00000000000376d1902a7aa83bfaaa17": {
                 "custom": {},
                 "gain": 0.0,
+                "height": null,
                 "hidden": false,
                 "id": "trk_00000000000376d1902a7aa83bfaaa17",
                 "items": {
                   "itm_00000000000874918ac913f3f46b919e": {
+                    "attached_to": null,
                     "audio": {
                       "gain": 0.0
                     },
@@ -2344,6 +2439,7 @@
                     "id": "itm_00000000000874918ac913f3f46b919e",
                     "kind": "clip",
                     "linked_group": "grp_0000000000067e09902721405ac105a0",
+                    "markers": {},
                     "media": "med_000000000004771ba4a23020bc56afc3",
                     "name": null,
                     "source_in": 0,
@@ -2368,6 +2464,7 @@
                     }
                   },
                   "itm_00000000000b7ce789996e9998b9dcff": {
+                    "attached_to": null,
                     "audio": {
                       "gain": 0.0
                     },
@@ -2377,6 +2474,7 @@
                     "id": "itm_00000000000b7ce789996e9998b9dcff",
                     "kind": "clip",
                     "linked_group": "grp_0000000000097031b0cbdfaef85bafd1",
+                    "markers": {},
                     "media": "med_000000000004771ba4a23020bc56afc3",
                     "name": null,
                     "source_in": 2822400000,
@@ -2411,6 +2509,7 @@
               "trk_0000000000057d3189891744bd0efe34": {
                 "custom": {},
                 "gain": 0.0,
+                "height": null,
                 "hidden": false,
                 "id": "trk_0000000000057d3189891744bd0efe34",
                 "items": {},
@@ -2500,7 +2599,7 @@
           "app_version": null,
           "created": null,
           "name": "Demo",
-          "schema_version": 1
+          "schema_version": 2
         },
         "sequences": {
           "seq_0000000000017e999cdbc20a2319b9cb": {
@@ -2517,6 +2616,8 @@
               "width": 1920
             },
             "id": "seq_0000000000017e999cdbc20a2319b9cb",
+            "in_out": null,
+            "markers": {},
             "name": "Sequence 1",
             "track_order": [
               "trk_0000000000057d3189891744bd0efe34",
@@ -2527,10 +2628,12 @@
               "trk_0000000000027f8989dde9c8c6ffc150": {
                 "custom": {},
                 "gain": 0.0,
+                "height": null,
                 "hidden": false,
                 "id": "trk_0000000000027f8989dde9c8c6ffc150",
                 "items": {
                   "itm_0000000000077405950ad8d9f69f2c6f": {
+                    "attached_to": null,
                     "audio": {
                       "gain": 0.0
                     },
@@ -2540,6 +2643,7 @@
                     "id": "itm_0000000000077405950ad8d9f69f2c6f",
                     "kind": "clip",
                     "linked_group": "grp_0000000000067e09902721405ac105a0",
+                    "markers": {},
                     "media": "med_000000000004771ba4a23020bc56afc3",
                     "name": null,
                     "source_in": 0,
@@ -2564,6 +2668,7 @@
                     }
                   },
                   "itm_00000000000a7677ac4d118e2be6e1b9": {
+                    "attached_to": null,
                     "audio": {
                       "gain": 0.0
                     },
@@ -2573,6 +2678,7 @@
                     "id": "itm_00000000000a7677ac4d118e2be6e1b9",
                     "kind": "clip",
                     "linked_group": "grp_0000000000097031b0cbdfaef85bafd1",
+                    "markers": {},
                     "media": "med_000000000004771ba4a23020bc56afc3",
                     "name": null,
                     "source_in": 2822400000,
@@ -2607,10 +2713,12 @@
               "trk_00000000000376d1902a7aa83bfaaa17": {
                 "custom": {},
                 "gain": 0.0,
+                "height": null,
                 "hidden": false,
                 "id": "trk_00000000000376d1902a7aa83bfaaa17",
                 "items": {
                   "itm_00000000000874918ac913f3f46b919e": {
+                    "attached_to": null,
                     "audio": {
                       "gain": 0.0
                     },
@@ -2620,6 +2728,7 @@
                     "id": "itm_00000000000874918ac913f3f46b919e",
                     "kind": "clip",
                     "linked_group": "grp_0000000000067e09902721405ac105a0",
+                    "markers": {},
                     "media": "med_000000000004771ba4a23020bc56afc3",
                     "name": null,
                     "source_in": 0,
@@ -2644,6 +2753,7 @@
                     }
                   },
                   "itm_00000000000b7ce789996e9998b9dcff": {
+                    "attached_to": null,
                     "audio": {
                       "gain": 0.0
                     },
@@ -2653,6 +2763,7 @@
                     "id": "itm_00000000000b7ce789996e9998b9dcff",
                     "kind": "clip",
                     "linked_group": "grp_0000000000097031b0cbdfaef85bafd1",
+                    "markers": {},
                     "media": "med_000000000004771ba4a23020bc56afc3",
                     "name": null,
                     "source_in": 2822400000,
@@ -2687,6 +2798,7 @@
               "trk_0000000000057d3189891744bd0efe34": {
                 "custom": {},
                 "gain": 0.0,
+                "height": null,
                 "hidden": false,
                 "id": "trk_0000000000057d3189891744bd0efe34",
                 "items": {},
@@ -2827,7 +2939,7 @@
           "app_version": null,
           "created": null,
           "name": "Demo",
-          "schema_version": 1
+          "schema_version": 2
         },
         "sequences": {
           "seq_0000000000017e999cdbc20a2319b9cb": {
@@ -2844,6 +2956,8 @@
               "width": 1920
             },
             "id": "seq_0000000000017e999cdbc20a2319b9cb",
+            "in_out": null,
+            "markers": {},
             "name": "Sequence 1",
             "track_order": [
               "trk_0000000000057d3189891744bd0efe34",
@@ -2854,10 +2968,12 @@
               "trk_0000000000027f8989dde9c8c6ffc150": {
                 "custom": {},
                 "gain": 0.0,
+                "height": null,
                 "hidden": false,
                 "id": "trk_0000000000027f8989dde9c8c6ffc150",
                 "items": {
                   "itm_0000000000077405950ad8d9f69f2c6f": {
+                    "attached_to": null,
                     "audio": {
                       "gain": 0.0
                     },
@@ -2867,6 +2983,7 @@
                     "id": "itm_0000000000077405950ad8d9f69f2c6f",
                     "kind": "clip",
                     "linked_group": "grp_0000000000067e09902721405ac105a0",
+                    "markers": {},
                     "media": "med_000000000004771ba4a23020bc56afc3",
                     "name": null,
                     "source_in": 0,
@@ -2891,6 +3008,7 @@
                     }
                   },
                   "itm_00000000000a7677ac4d118e2be6e1b9": {
+                    "attached_to": null,
                     "audio": {
                       "gain": 0.0
                     },
@@ -2900,6 +3018,7 @@
                     "id": "itm_00000000000a7677ac4d118e2be6e1b9",
                     "kind": "clip",
                     "linked_group": "grp_0000000000097031b0cbdfaef85bafd1",
+                    "markers": {},
                     "media": "med_000000000004771ba4a23020bc56afc3",
                     "name": null,
                     "source_in": 2822400000,
@@ -2934,10 +3053,12 @@
               "trk_00000000000376d1902a7aa83bfaaa17": {
                 "custom": {},
                 "gain": 0.0,
+                "height": null,
                 "hidden": false,
                 "id": "trk_00000000000376d1902a7aa83bfaaa17",
                 "items": {
                   "itm_00000000000874918ac913f3f46b919e": {
+                    "attached_to": null,
                     "audio": {
                       "gain": 0.0
                     },
@@ -2947,6 +3068,7 @@
                     "id": "itm_00000000000874918ac913f3f46b919e",
                     "kind": "clip",
                     "linked_group": "grp_0000000000067e09902721405ac105a0",
+                    "markers": {},
                     "media": "med_000000000004771ba4a23020bc56afc3",
                     "name": null,
                     "source_in": 0,
@@ -2971,6 +3093,7 @@
                     }
                   },
                   "itm_00000000000b7ce789996e9998b9dcff": {
+                    "attached_to": null,
                     "audio": {
                       "gain": 0.0
                     },
@@ -2980,6 +3103,7 @@
                     "id": "itm_00000000000b7ce789996e9998b9dcff",
                     "kind": "clip",
                     "linked_group": "grp_0000000000097031b0cbdfaef85bafd1",
+                    "markers": {},
                     "media": "med_000000000004771ba4a23020bc56afc3",
                     "name": null,
                     "source_in": 2822400000,
@@ -3014,6 +3138,7 @@
               "trk_0000000000057d3189891744bd0efe34": {
                 "custom": {},
                 "gain": 0.0,
+                "height": null,
                 "hidden": false,
                 "id": "trk_0000000000057d3189891744bd0efe34",
                 "items": {},
@@ -3103,7 +3228,7 @@
           "app_version": null,
           "created": null,
           "name": "Demo",
-          "schema_version": 1
+          "schema_version": 2
         },
         "sequences": {
           "seq_0000000000017e999cdbc20a2319b9cb": {
@@ -3120,6 +3245,8 @@
               "width": 1920
             },
             "id": "seq_0000000000017e999cdbc20a2319b9cb",
+            "in_out": null,
+            "markers": {},
             "name": "Sequence 1",
             "track_order": [
               "trk_0000000000057d3189891744bd0efe34",
@@ -3130,10 +3257,12 @@
               "trk_0000000000027f8989dde9c8c6ffc150": {
                 "custom": {},
                 "gain": 0.0,
+                "height": null,
                 "hidden": false,
                 "id": "trk_0000000000027f8989dde9c8c6ffc150",
                 "items": {
                   "itm_0000000000077405950ad8d9f69f2c6f": {
+                    "attached_to": null,
                     "audio": {
                       "gain": 0.0
                     },
@@ -3143,6 +3272,7 @@
                     "id": "itm_0000000000077405950ad8d9f69f2c6f",
                     "kind": "clip",
                     "linked_group": "grp_0000000000067e09902721405ac105a0",
+                    "markers": {},
                     "media": "med_000000000004771ba4a23020bc56afc3",
                     "name": null,
                     "source_in": 0,
@@ -3167,6 +3297,7 @@
                     }
                   },
                   "itm_00000000000a7677ac4d118e2be6e1b9": {
+                    "attached_to": null,
                     "audio": {
                       "gain": 0.0
                     },
@@ -3176,6 +3307,7 @@
                     "id": "itm_00000000000a7677ac4d118e2be6e1b9",
                     "kind": "clip",
                     "linked_group": "grp_0000000000097031b0cbdfaef85bafd1",
+                    "markers": {},
                     "media": "med_000000000004771ba4a23020bc56afc3",
                     "name": null,
                     "source_in": 2822400000,
@@ -3210,10 +3342,12 @@
               "trk_00000000000376d1902a7aa83bfaaa17": {
                 "custom": {},
                 "gain": 0.0,
+                "height": null,
                 "hidden": false,
                 "id": "trk_00000000000376d1902a7aa83bfaaa17",
                 "items": {
                   "itm_00000000000874918ac913f3f46b919e": {
+                    "attached_to": null,
                     "audio": {
                       "gain": 0.0
                     },
@@ -3223,6 +3357,7 @@
                     "id": "itm_00000000000874918ac913f3f46b919e",
                     "kind": "clip",
                     "linked_group": "grp_0000000000067e09902721405ac105a0",
+                    "markers": {},
                     "media": "med_000000000004771ba4a23020bc56afc3",
                     "name": null,
                     "source_in": 0,
@@ -3247,6 +3382,7 @@
                     }
                   },
                   "itm_00000000000b7ce789996e9998b9dcff": {
+                    "attached_to": null,
                     "audio": {
                       "gain": 0.0
                     },
@@ -3256,6 +3392,7 @@
                     "id": "itm_00000000000b7ce789996e9998b9dcff",
                     "kind": "clip",
                     "linked_group": "grp_0000000000097031b0cbdfaef85bafd1",
+                    "markers": {},
                     "media": "med_000000000004771ba4a23020bc56afc3",
                     "name": null,
                     "source_in": 2822400000,
@@ -3290,6 +3427,7 @@
               "trk_0000000000057d3189891744bd0efe34": {
                 "custom": {},
                 "gain": 0.0,
+                "height": null,
                 "hidden": false,
                 "id": "trk_0000000000057d3189891744bd0efe34",
                 "items": {},
@@ -3412,7 +3550,7 @@
           "app_version": null,
           "created": null,
           "name": "Demo cut",
-          "schema_version": 1
+          "schema_version": 2
         },
         "sequences": {
           "seq_0000000000017e999cdbc20a2319b9cb": {
@@ -3429,6 +3567,8 @@
               "width": 1920
             },
             "id": "seq_0000000000017e999cdbc20a2319b9cb",
+            "in_out": null,
+            "markers": {},
             "name": "Sequence 1",
             "track_order": [
               "trk_0000000000057d3189891744bd0efe34",
@@ -3439,10 +3579,12 @@
               "trk_0000000000027f8989dde9c8c6ffc150": {
                 "custom": {},
                 "gain": 0.0,
+                "height": null,
                 "hidden": false,
                 "id": "trk_0000000000027f8989dde9c8c6ffc150",
                 "items": {
                   "itm_0000000000077405950ad8d9f69f2c6f": {
+                    "attached_to": null,
                     "audio": {
                       "gain": 0.0
                     },
@@ -3452,6 +3594,7 @@
                     "id": "itm_0000000000077405950ad8d9f69f2c6f",
                     "kind": "clip",
                     "linked_group": "grp_0000000000067e09902721405ac105a0",
+                    "markers": {},
                     "media": "med_000000000004771ba4a23020bc56afc3",
                     "name": null,
                     "source_in": 0,
@@ -3476,6 +3619,7 @@
                     }
                   },
                   "itm_00000000000a7677ac4d118e2be6e1b9": {
+                    "attached_to": null,
                     "audio": {
                       "gain": 0.0
                     },
@@ -3485,6 +3629,7 @@
                     "id": "itm_00000000000a7677ac4d118e2be6e1b9",
                     "kind": "clip",
                     "linked_group": "grp_0000000000097031b0cbdfaef85bafd1",
+                    "markers": {},
                     "media": "med_000000000004771ba4a23020bc56afc3",
                     "name": null,
                     "source_in": 2822400000,
@@ -3519,10 +3664,12 @@
               "trk_00000000000376d1902a7aa83bfaaa17": {
                 "custom": {},
                 "gain": 0.0,
+                "height": null,
                 "hidden": false,
                 "id": "trk_00000000000376d1902a7aa83bfaaa17",
                 "items": {
                   "itm_00000000000874918ac913f3f46b919e": {
+                    "attached_to": null,
                     "audio": {
                       "gain": 0.0
                     },
@@ -3532,6 +3679,7 @@
                     "id": "itm_00000000000874918ac913f3f46b919e",
                     "kind": "clip",
                     "linked_group": "grp_0000000000067e09902721405ac105a0",
+                    "markers": {},
                     "media": "med_000000000004771ba4a23020bc56afc3",
                     "name": null,
                     "source_in": 0,
@@ -3556,6 +3704,7 @@
                     }
                   },
                   "itm_00000000000b7ce789996e9998b9dcff": {
+                    "attached_to": null,
                     "audio": {
                       "gain": 0.0
                     },
@@ -3565,6 +3714,7 @@
                     "id": "itm_00000000000b7ce789996e9998b9dcff",
                     "kind": "clip",
                     "linked_group": "grp_0000000000097031b0cbdfaef85bafd1",
+                    "markers": {},
                     "media": "med_000000000004771ba4a23020bc56afc3",
                     "name": null,
                     "source_in": 2822400000,
@@ -3599,6 +3749,7 @@
               "trk_0000000000057d3189891744bd0efe34": {
                 "custom": {},
                 "gain": 0.0,
+                "height": null,
                 "hidden": false,
                 "id": "trk_0000000000057d3189891744bd0efe34",
                 "items": {},
@@ -3688,7 +3839,7 @@
           "app_version": null,
           "created": null,
           "name": "Demo",
-          "schema_version": 1
+          "schema_version": 2
         },
         "sequences": {
           "seq_0000000000017e999cdbc20a2319b9cb": {
@@ -3705,6 +3856,8 @@
               "width": 1920
             },
             "id": "seq_0000000000017e999cdbc20a2319b9cb",
+            "in_out": null,
+            "markers": {},
             "name": "Sequence 1",
             "track_order": [
               "trk_0000000000057d3189891744bd0efe34",
@@ -3715,10 +3868,12 @@
               "trk_0000000000027f8989dde9c8c6ffc150": {
                 "custom": {},
                 "gain": 0.0,
+                "height": null,
                 "hidden": false,
                 "id": "trk_0000000000027f8989dde9c8c6ffc150",
                 "items": {
                   "itm_0000000000077405950ad8d9f69f2c6f": {
+                    "attached_to": null,
                     "audio": {
                       "gain": 0.0
                     },
@@ -3728,6 +3883,7 @@
                     "id": "itm_0000000000077405950ad8d9f69f2c6f",
                     "kind": "clip",
                     "linked_group": "grp_0000000000067e09902721405ac105a0",
+                    "markers": {},
                     "media": "med_000000000004771ba4a23020bc56afc3",
                     "name": null,
                     "source_in": 0,
@@ -3752,6 +3908,7 @@
                     }
                   },
                   "itm_00000000000a7677ac4d118e2be6e1b9": {
+                    "attached_to": null,
                     "audio": {
                       "gain": 0.0
                     },
@@ -3761,6 +3918,7 @@
                     "id": "itm_00000000000a7677ac4d118e2be6e1b9",
                     "kind": "clip",
                     "linked_group": "grp_0000000000097031b0cbdfaef85bafd1",
+                    "markers": {},
                     "media": "med_000000000004771ba4a23020bc56afc3",
                     "name": null,
                     "source_in": 2822400000,
@@ -3795,10 +3953,12 @@
               "trk_00000000000376d1902a7aa83bfaaa17": {
                 "custom": {},
                 "gain": 0.0,
+                "height": null,
                 "hidden": false,
                 "id": "trk_00000000000376d1902a7aa83bfaaa17",
                 "items": {
                   "itm_00000000000874918ac913f3f46b919e": {
+                    "attached_to": null,
                     "audio": {
                       "gain": 0.0
                     },
@@ -3808,6 +3968,7 @@
                     "id": "itm_00000000000874918ac913f3f46b919e",
                     "kind": "clip",
                     "linked_group": "grp_0000000000067e09902721405ac105a0",
+                    "markers": {},
                     "media": "med_000000000004771ba4a23020bc56afc3",
                     "name": null,
                     "source_in": 0,
@@ -3832,6 +3993,7 @@
                     }
                   },
                   "itm_00000000000b7ce789996e9998b9dcff": {
+                    "attached_to": null,
                     "audio": {
                       "gain": 0.0
                     },
@@ -3841,6 +4003,7 @@
                     "id": "itm_00000000000b7ce789996e9998b9dcff",
                     "kind": "clip",
                     "linked_group": "grp_0000000000097031b0cbdfaef85bafd1",
+                    "markers": {},
                     "media": "med_000000000004771ba4a23020bc56afc3",
                     "name": null,
                     "source_in": 2822400000,
@@ -3875,6 +4038,7 @@
               "trk_0000000000057d3189891744bd0efe34": {
                 "custom": {},
                 "gain": 0.0,
+                "height": null,
                 "hidden": false,
                 "id": "trk_0000000000057d3189891744bd0efe34",
                 "items": {},
@@ -3990,7 +4154,7 @@
           "app_version": null,
           "created": null,
           "name": "Demo cut",
-          "schema_version": 1
+          "schema_version": 2
         },
         "sequences": {
           "seq_0000000000017e999cdbc20a2319b9cb": {
@@ -4007,6 +4171,8 @@
               "width": 1920
             },
             "id": "seq_0000000000017e999cdbc20a2319b9cb",
+            "in_out": null,
+            "markers": {},
             "name": "Sequence 1",
             "track_order": [
               "trk_0000000000027f8989dde9c8c6ffc150",
@@ -4016,10 +4182,12 @@
               "trk_0000000000027f8989dde9c8c6ffc150": {
                 "custom": {},
                 "gain": 0.0,
+                "height": null,
                 "hidden": false,
                 "id": "trk_0000000000027f8989dde9c8c6ffc150",
                 "items": {
                   "itm_0000000000077405950ad8d9f69f2c6f": {
+                    "attached_to": null,
                     "audio": {
                       "gain": 0.0
                     },
@@ -4029,6 +4197,7 @@
                     "id": "itm_0000000000077405950ad8d9f69f2c6f",
                     "kind": "clip",
                     "linked_group": "grp_0000000000067e09902721405ac105a0",
+                    "markers": {},
                     "media": "med_000000000004771ba4a23020bc56afc3",
                     "name": null,
                     "source_in": 0,
@@ -4053,6 +4222,7 @@
                     }
                   },
                   "itm_00000000000a7677ac4d118e2be6e1b9": {
+                    "attached_to": null,
                     "audio": {
                       "gain": 0.0
                     },
@@ -4062,6 +4232,7 @@
                     "id": "itm_00000000000a7677ac4d118e2be6e1b9",
                     "kind": "clip",
                     "linked_group": "grp_0000000000097031b0cbdfaef85bafd1",
+                    "markers": {},
                     "media": "med_000000000004771ba4a23020bc56afc3",
                     "name": null,
                     "source_in": 2822400000,
@@ -4096,10 +4267,12 @@
               "trk_00000000000376d1902a7aa83bfaaa17": {
                 "custom": {},
                 "gain": 0.0,
+                "height": null,
                 "hidden": false,
                 "id": "trk_00000000000376d1902a7aa83bfaaa17",
                 "items": {
                   "itm_00000000000874918ac913f3f46b919e": {
+                    "attached_to": null,
                     "audio": {
                       "gain": 0.0
                     },
@@ -4109,6 +4282,7 @@
                     "id": "itm_00000000000874918ac913f3f46b919e",
                     "kind": "clip",
                     "linked_group": "grp_0000000000067e09902721405ac105a0",
+                    "markers": {},
                     "media": "med_000000000004771ba4a23020bc56afc3",
                     "name": null,
                     "source_in": 0,
@@ -4133,6 +4307,7 @@
                     }
                   },
                   "itm_00000000000b7ce789996e9998b9dcff": {
+                    "attached_to": null,
                     "audio": {
                       "gain": 0.0
                     },
@@ -4142,6 +4317,7 @@
                     "id": "itm_00000000000b7ce789996e9998b9dcff",
                     "kind": "clip",
                     "linked_group": "grp_0000000000097031b0cbdfaef85bafd1",
+                    "markers": {},
                     "media": "med_000000000004771ba4a23020bc56afc3",
                     "name": null,
                     "source_in": 2822400000,
@@ -4252,7 +4428,7 @@
           "app_version": null,
           "created": null,
           "name": "Demo cut",
-          "schema_version": 1
+          "schema_version": 2
         },
         "sequences": {
           "seq_0000000000017e999cdbc20a2319b9cb": {
@@ -4269,6 +4445,8 @@
               "width": 1920
             },
             "id": "seq_0000000000017e999cdbc20a2319b9cb",
+            "in_out": null,
+            "markers": {},
             "name": "Sequence 1",
             "track_order": [
               "trk_0000000000057d3189891744bd0efe34",
@@ -4279,10 +4457,12 @@
               "trk_0000000000027f8989dde9c8c6ffc150": {
                 "custom": {},
                 "gain": 0.0,
+                "height": null,
                 "hidden": false,
                 "id": "trk_0000000000027f8989dde9c8c6ffc150",
                 "items": {
                   "itm_0000000000077405950ad8d9f69f2c6f": {
+                    "attached_to": null,
                     "audio": {
                       "gain": 0.0
                     },
@@ -4292,6 +4472,7 @@
                     "id": "itm_0000000000077405950ad8d9f69f2c6f",
                     "kind": "clip",
                     "linked_group": "grp_0000000000067e09902721405ac105a0",
+                    "markers": {},
                     "media": "med_000000000004771ba4a23020bc56afc3",
                     "name": null,
                     "source_in": 0,
@@ -4316,6 +4497,7 @@
                     }
                   },
                   "itm_00000000000a7677ac4d118e2be6e1b9": {
+                    "attached_to": null,
                     "audio": {
                       "gain": 0.0
                     },
@@ -4325,6 +4507,7 @@
                     "id": "itm_00000000000a7677ac4d118e2be6e1b9",
                     "kind": "clip",
                     "linked_group": "grp_0000000000097031b0cbdfaef85bafd1",
+                    "markers": {},
                     "media": "med_000000000004771ba4a23020bc56afc3",
                     "name": null,
                     "source_in": 2822400000,
@@ -4359,10 +4542,12 @@
               "trk_00000000000376d1902a7aa83bfaaa17": {
                 "custom": {},
                 "gain": 0.0,
+                "height": null,
                 "hidden": false,
                 "id": "trk_00000000000376d1902a7aa83bfaaa17",
                 "items": {
                   "itm_00000000000874918ac913f3f46b919e": {
+                    "attached_to": null,
                     "audio": {
                       "gain": 0.0
                     },
@@ -4372,6 +4557,7 @@
                     "id": "itm_00000000000874918ac913f3f46b919e",
                     "kind": "clip",
                     "linked_group": "grp_0000000000067e09902721405ac105a0",
+                    "markers": {},
                     "media": "med_000000000004771ba4a23020bc56afc3",
                     "name": null,
                     "source_in": 0,
@@ -4396,6 +4582,7 @@
                     }
                   },
                   "itm_00000000000b7ce789996e9998b9dcff": {
+                    "attached_to": null,
                     "audio": {
                       "gain": 0.0
                     },
@@ -4405,6 +4592,7 @@
                     "id": "itm_00000000000b7ce789996e9998b9dcff",
                     "kind": "clip",
                     "linked_group": "grp_0000000000097031b0cbdfaef85bafd1",
+                    "markers": {},
                     "media": "med_000000000004771ba4a23020bc56afc3",
                     "name": null,
                     "source_in": 2822400000,
@@ -4439,6 +4627,7 @@
               "trk_0000000000057d3189891744bd0efe34": {
                 "custom": {},
                 "gain": 0.0,
+                "height": null,
                 "hidden": false,
                 "id": "trk_0000000000057d3189891744bd0efe34",
                 "items": {},
@@ -4485,6 +4674,7 @@
           "old": {
             "custom": {},
             "gain": 0.0,
+            "height": null,
             "hidden": false,
             "id": "trk_0000000000057d3189891744bd0efe34",
             "items": {},
@@ -4509,6 +4699,7 @@
           "value": {
             "custom": {},
             "gain": 0.0,
+            "height": null,
             "hidden": false,
             "id": "trk_0000000000057d3189891744bd0efe34",
             "items": {},
@@ -4603,7 +4794,7 @@
           "app_version": null,
           "created": null,
           "name": "Demo cut",
-          "schema_version": 1
+          "schema_version": 2
         },
         "sequences": {
           "seq_0000000000017e999cdbc20a2319b9cb": {
@@ -4620,6 +4811,8 @@
               "width": 1920
             },
             "id": "seq_0000000000017e999cdbc20a2319b9cb",
+            "in_out": null,
+            "markers": {},
             "name": "Sequence 1",
             "track_order": [
               "trk_0000000000057d3189891744bd0efe34",
@@ -4630,10 +4823,12 @@
               "trk_0000000000027f8989dde9c8c6ffc150": {
                 "custom": {},
                 "gain": 0.0,
+                "height": null,
                 "hidden": false,
                 "id": "trk_0000000000027f8989dde9c8c6ffc150",
                 "items": {
                   "itm_0000000000077405950ad8d9f69f2c6f": {
+                    "attached_to": null,
                     "audio": {
                       "gain": 0.0
                     },
@@ -4643,6 +4838,7 @@
                     "id": "itm_0000000000077405950ad8d9f69f2c6f",
                     "kind": "clip",
                     "linked_group": "grp_0000000000067e09902721405ac105a0",
+                    "markers": {},
                     "media": "med_000000000004771ba4a23020bc56afc3",
                     "name": null,
                     "source_in": 0,
@@ -4667,6 +4863,7 @@
                     }
                   },
                   "itm_00000000000a7677ac4d118e2be6e1b9": {
+                    "attached_to": null,
                     "audio": {
                       "gain": 0.0
                     },
@@ -4676,6 +4873,7 @@
                     "id": "itm_00000000000a7677ac4d118e2be6e1b9",
                     "kind": "clip",
                     "linked_group": "grp_0000000000097031b0cbdfaef85bafd1",
+                    "markers": {},
                     "media": "med_000000000004771ba4a23020bc56afc3",
                     "name": null,
                     "source_in": 2822400000,
@@ -4710,10 +4908,12 @@
               "trk_00000000000376d1902a7aa83bfaaa17": {
                 "custom": {},
                 "gain": 0.0,
+                "height": null,
                 "hidden": false,
                 "id": "trk_00000000000376d1902a7aa83bfaaa17",
                 "items": {
                   "itm_00000000000874918ac913f3f46b919e": {
+                    "attached_to": null,
                     "audio": {
                       "gain": 0.0
                     },
@@ -4723,6 +4923,7 @@
                     "id": "itm_00000000000874918ac913f3f46b919e",
                     "kind": "clip",
                     "linked_group": "grp_0000000000067e09902721405ac105a0",
+                    "markers": {},
                     "media": "med_000000000004771ba4a23020bc56afc3",
                     "name": null,
                     "source_in": 0,
@@ -4747,6 +4948,7 @@
                     }
                   },
                   "itm_00000000000b7ce789996e9998b9dcff": {
+                    "attached_to": null,
                     "audio": {
                       "gain": 0.0
                     },
@@ -4756,6 +4958,7 @@
                     "id": "itm_00000000000b7ce789996e9998b9dcff",
                     "kind": "clip",
                     "linked_group": "grp_0000000000097031b0cbdfaef85bafd1",
+                    "markers": {},
                     "media": "med_000000000004771ba4a23020bc56afc3",
                     "name": null,
                     "source_in": 2822400000,
@@ -4790,6 +4993,7 @@
               "trk_0000000000057d3189891744bd0efe34": {
                 "custom": {},
                 "gain": 0.0,
+                "height": null,
                 "hidden": false,
                 "id": "trk_0000000000057d3189891744bd0efe34",
                 "items": {},
@@ -4879,7 +5083,7 @@
           "app_version": null,
           "created": null,
           "name": "Demo cut",
-          "schema_version": 1
+          "schema_version": 2
         },
         "sequences": {
           "seq_0000000000017e999cdbc20a2319b9cb": {
@@ -4896,6 +5100,8 @@
               "width": 1920
             },
             "id": "seq_0000000000017e999cdbc20a2319b9cb",
+            "in_out": null,
+            "markers": {},
             "name": "Sequence 1",
             "track_order": [
               "trk_0000000000027f8989dde9c8c6ffc150",
@@ -4905,10 +5111,12 @@
               "trk_0000000000027f8989dde9c8c6ffc150": {
                 "custom": {},
                 "gain": 0.0,
+                "height": null,
                 "hidden": false,
                 "id": "trk_0000000000027f8989dde9c8c6ffc150",
                 "items": {
                   "itm_0000000000077405950ad8d9f69f2c6f": {
+                    "attached_to": null,
                     "audio": {
                       "gain": 0.0
                     },
@@ -4918,6 +5126,7 @@
                     "id": "itm_0000000000077405950ad8d9f69f2c6f",
                     "kind": "clip",
                     "linked_group": "grp_0000000000067e09902721405ac105a0",
+                    "markers": {},
                     "media": "med_000000000004771ba4a23020bc56afc3",
                     "name": null,
                     "source_in": 0,
@@ -4942,6 +5151,7 @@
                     }
                   },
                   "itm_00000000000a7677ac4d118e2be6e1b9": {
+                    "attached_to": null,
                     "audio": {
                       "gain": 0.0
                     },
@@ -4951,6 +5161,7 @@
                     "id": "itm_00000000000a7677ac4d118e2be6e1b9",
                     "kind": "clip",
                     "linked_group": "grp_0000000000097031b0cbdfaef85bafd1",
+                    "markers": {},
                     "media": "med_000000000004771ba4a23020bc56afc3",
                     "name": null,
                     "source_in": 2822400000,
@@ -4985,10 +5196,12 @@
               "trk_00000000000376d1902a7aa83bfaaa17": {
                 "custom": {},
                 "gain": 0.0,
+                "height": null,
                 "hidden": false,
                 "id": "trk_00000000000376d1902a7aa83bfaaa17",
                 "items": {
                   "itm_00000000000874918ac913f3f46b919e": {
+                    "attached_to": null,
                     "audio": {
                       "gain": 0.0
                     },
@@ -4998,6 +5211,7 @@
                     "id": "itm_00000000000874918ac913f3f46b919e",
                     "kind": "clip",
                     "linked_group": "grp_0000000000067e09902721405ac105a0",
+                    "markers": {},
                     "media": "med_000000000004771ba4a23020bc56afc3",
                     "name": null,
                     "source_in": 0,
@@ -5022,6 +5236,7 @@
                     }
                   },
                   "itm_00000000000b7ce789996e9998b9dcff": {
+                    "attached_to": null,
                     "audio": {
                       "gain": 0.0
                     },
@@ -5031,6 +5246,7 @@
                     "id": "itm_00000000000b7ce789996e9998b9dcff",
                     "kind": "clip",
                     "linked_group": "grp_0000000000097031b0cbdfaef85bafd1",
+                    "markers": {},
                     "media": "med_000000000004771ba4a23020bc56afc3",
                     "name": null,
                     "source_in": 2822400000,
@@ -5087,6 +5303,7 @@
           "value": {
             "custom": {},
             "gain": 0.0,
+            "height": null,
             "hidden": false,
             "id": "trk_0000000000057d3189891744bd0efe34",
             "items": {},
@@ -5131,6 +5348,7 @@
           "old": {
             "custom": {},
             "gain": 0.0,
+            "height": null,
             "hidden": false,
             "id": "trk_0000000000057d3189891744bd0efe34",
             "items": {},
