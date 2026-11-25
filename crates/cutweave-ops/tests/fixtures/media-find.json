@@ -10,7 +10,9 @@
           "path_abs": "/m/Beach Day.MP4",
           "path_rel": null,
           "duration": 8467200000,
-          "streams": 1
+          "streams": 1,
+          "name": null,
+          "folder": null
         },
         {
           "id": "med_01900000000070008000000000000002",
@@ -18,7 +20,9 @@
           "path_abs": "/m/beach-day-music.wav",
           "path_rel": null,
           "duration": 130536000000,
-          "streams": 1
+          "streams": 1,
+          "name": null,
+          "folder": null
         },
         {
           "id": "med_01900000000070008000000000000003",
@@ -26,7 +30,9 @@
           "path_abs": "/m/Café Interview.mp4",
           "path_rel": null,
           "duration": 7056000000,
-          "streams": 1
+          "streams": 1,
+          "name": null,
+          "folder": null
         },
         {
           "id": "med_01900000000070008000000000000004",
@@ -34,7 +40,9 @@
           "path_abs": "/m/cafe_broll.mov",
           "path_rel": null,
           "duration": 7055999999,
-          "streams": 1
+          "streams": 1,
+          "name": null,
+          "folder": null
         },
         {
           "id": "med_01900000000070008000000000000005",
@@ -42,7 +50,9 @@
           "path_abs": "/m/ÉCLAIR theme.wav",
           "path_rel": null,
           "duration": 42336000000,
-          "streams": 1
+          "streams": 1,
+          "name": null,
+          "folder": null
         },
         {
           "id": "med_01900000000070008000000000000006",
@@ -50,7 +60,9 @@
           "path_abs": "/m/title card.png",
           "path_rel": null,
           "duration": null,
-          "streams": 1
+          "streams": 1,
+          "name": null,
+          "folder": null
         },
         {
           "id": "med_01900000000070008000000000000007",
@@ -58,7 +70,9 @@
           "path_abs": "/m/logo.png",
           "path_rel": null,
           "duration": null,
-          "streams": 1
+          "streams": 1,
+          "name": null,
+          "folder": null
         },
         {
           "id": "med_01900000000070008000000000000008",
@@ -66,7 +80,9 @@
           "path_abs": "/m/Naïve Intro.mp4",
           "path_rel": null,
           "duration": 211680000000,
-          "streams": 1
+          "streams": 1,
+          "name": null,
+          "folder": null
         },
         {
           "id": "med_01900000000070008000000000000009",
@@ -74,7 +90,9 @@
           "path_abs": "/m/corrupt.mov",
           "path_rel": null,
           "duration": 5644800000,
-          "streams": 0
+          "streams": 0,
+          "name": null,
+          "folder": null
         },
         {
           "id": "med_0190000000007000800000000000000a",
@@ -82,7 +100,9 @@
           "path_abs": "C:\\abs\\ignored.wav",
           "path_rel": "sounds\\Rain Loop.wav",
           "duration": 43041600000,
-          "streams": 1
+          "streams": 1,
+          "name": null,
+          "folder": null
         },
         {
           "id": "med_0190000000007000800000000000000b",
@@ -90,7 +110,9 @@
           "path_abs": "/other/Beach Day.MP4",
           "path_rel": null,
           "duration": 8467200000,
-          "streams": 1
+          "streams": 1,
+          "name": null,
+          "folder": null
         },
         {
           "id": "med_0190000000007000800000000000000c",
@@ -98,7 +120,9 @@
           "path_abs": null,
           "path_rel": null,
           "duration": null,
-          "streams": 0
+          "streams": 0,
+          "name": null,
+          "folder": null
         },
         {
           "id": "med_0190000000007000800000000000000d",
@@ -106,7 +130,9 @@
           "path_abs": "/m/long-take.mp4",
           "path_rel": null,
           "duration": 212385600000,
-          "streams": 1
+          "streams": 1,
+          "name": null,
+          "folder": null
         },
         {
           "id": "med_0190000000007000800000000000000e",
@@ -114,9 +140,12 @@
           "path_abs": "/m/ñandú.wav",
           "path_rel": null,
           "duration": 2822400000,
-          "streams": 1
+          "streams": 1,
+          "name": null,
+          "folder": null
         }
       ],
+      "folders": [],
       "sequences": [
         [
           "med_01900000000070008000000000000001",
@@ -133,6 +162,7 @@
     {
       "name": "empty",
       "media": [],
+      "folders": [],
       "sequences": [
         []
       ]
@@ -146,7 +176,9 @@
           "path_abs": "/a/clip.mp4",
           "path_rel": null,
           "duration": 3528000000,
-          "streams": 1
+          "streams": 1,
+          "name": null,
+          "folder": null
         },
         {
           "id": "med_01900000000070008000000000000001",
@@ -154,7 +186,9 @@
           "path_abs": "/b/clip.mp4",
           "path_rel": null,
           "duration": 3528000000,
-          "streams": 1
+          "streams": 1,
+          "name": null,
+          "folder": null
         },
         {
           "id": "med_01900000000070008000000000000002",
@@ -162,7 +196,9 @@
           "path_abs": "/c/clip.wav",
           "path_rel": null,
           "duration": 3528000000,
-          "streams": 1
+          "streams": 1,
+          "name": null,
+          "folder": null
         },
         {
           "id": "med_01900000000070008000000000000004",
@@ -170,11 +206,112 @@
           "path_abs": "/d/CLIP.mp4",
           "path_rel": null,
           "duration": 3528000000,
-          "streams": 1
+          "streams": 1,
+          "name": null,
+          "folder": null
+        }
+      ],
+      "folders": [],
+      "sequences": [
+        []
+      ]
+    },
+    {
+      "name": "folders",
+      "media": [
+        {
+          "id": "med_01900000000070008000000000000001",
+          "kind": "video",
+          "path_abs": "/m/a.mp4",
+          "path_rel": null,
+          "duration": 3528000000,
+          "streams": 1,
+          "name": "Opening",
+          "folder": "fld_0190000000007000a000000000000001"
+        },
+        {
+          "id": "med_01900000000070008000000000000002",
+          "kind": "video",
+          "path_abs": "/m/b.mp4",
+          "path_rel": null,
+          "duration": 4233600000,
+          "streams": 1,
+          "name": null,
+          "folder": "fld_0190000000007000a000000000000002"
+        },
+        {
+          "id": "med_01900000000070008000000000000003",
+          "kind": "audio",
+          "path_abs": "/m/c.wav",
+          "path_rel": null,
+          "duration": 4939200000,
+          "streams": 1,
+          "name": "Thème",
+          "folder": null
+        },
+        {
+          "id": "med_01900000000070008000000000000004",
+          "kind": "video",
+          "path_abs": "/m/d.mp4",
+          "path_rel": null,
+          "duration": 5644800000,
+          "streams": 1,
+          "name": "interview wide",
+          "folder": "fld_0190000000007000a000000000000002"
+        },
+        {
+          "id": "med_01900000000070008000000000000005",
+          "kind": "image",
+          "path_abs": "/m/e.png",
+          "path_rel": null,
+          "duration": null,
+          "streams": 1,
+          "name": null,
+          "folder": "fld_0190000000007000a000000000000003"
+        },
+        {
+          "id": "med_01900000000070008000000000000006",
+          "kind": "video",
+          "path_abs": "/m/f.mp4",
+          "path_rel": null,
+          "duration": 6350400000,
+          "streams": 1,
+          "name": "A-roll",
+          "folder": "fld_0190000000007000a000000000000003"
+        },
+        {
+          "id": "med_01900000000070008000000000000007",
+          "kind": "video",
+          "path_abs": "/m/Opening night.mp4",
+          "path_rel": null,
+          "duration": 7056000000,
+          "streams": 1,
+          "name": null,
+          "folder": null
+        }
+      ],
+      "folders": [
+        {
+          "id": "fld_0190000000007000a000000000000001",
+          "name": "Interviews",
+          "parent": null
+        },
+        {
+          "id": "fld_0190000000007000a000000000000002",
+          "name": "Day 1",
+          "parent": "fld_0190000000007000a000000000000001"
+        },
+        {
+          "id": "fld_0190000000007000a000000000000003",
+          "name": "B-roll",
+          "parent": null
         }
       ],
       "sequences": [
-        []
+        [
+          "med_01900000000070008000000000000001",
+          "med_01900000000070008000000000000004"
+        ]
       ]
     }
   ],
@@ -677,6 +814,166 @@
       "matched": 0
     },
     {
+      "document": "folders",
+      "filter": {
+        "text": "opening"
+      },
+      "sort": null,
+      "ids": [
+        "med_01900000000070008000000000000001",
+        "med_01900000000070008000000000000007"
+      ],
+      "matched": 2
+    },
+    {
+      "document": "folders",
+      "filter": {
+        "text": "a.mp4"
+      },
+      "sort": null,
+      "ids": [],
+      "matched": 0
+    },
+    {
+      "document": "folders",
+      "filter": {
+        "text": "theme"
+      },
+      "sort": null,
+      "ids": [
+        "med_01900000000070008000000000000003"
+      ],
+      "matched": 1
+    },
+    {
+      "document": "folders",
+      "filter": {
+        "text": "INTERVIEW"
+      },
+      "sort": null,
+      "ids": [
+        "med_01900000000070008000000000000004"
+      ],
+      "matched": 1
+    },
+    {
+      "document": "folders",
+      "filter": {
+        "text": "roll"
+      },
+      "sort": null,
+      "ids": [
+        "med_01900000000070008000000000000006"
+      ],
+      "matched": 1
+    },
+    {
+      "document": "folders",
+      "filter": {
+        "folder": "fld_0190000000007000a000000000000001"
+      },
+      "sort": null,
+      "ids": [
+        "med_01900000000070008000000000000001"
+      ],
+      "matched": 1
+    },
+    {
+      "document": "folders",
+      "filter": {
+        "folder": "fld_0190000000007000a000000000000001",
+        "recursive": true
+      },
+      "sort": null,
+      "ids": [
+        "med_01900000000070008000000000000001",
+        "med_01900000000070008000000000000002",
+        "med_01900000000070008000000000000004"
+      ],
+      "matched": 3
+    },
+    {
+      "document": "folders",
+      "filter": {
+        "folder": "fld_0190000000007000a000000000000002"
+      },
+      "sort": null,
+      "ids": [
+        "med_01900000000070008000000000000002",
+        "med_01900000000070008000000000000004"
+      ],
+      "matched": 2
+    },
+    {
+      "document": "folders",
+      "filter": {
+        "folder": "fld_0190000000007000a000000000000003",
+        "text": "a"
+      },
+      "sort": null,
+      "ids": [
+        "med_01900000000070008000000000000006"
+      ],
+      "matched": 1
+    },
+    {
+      "document": "folders",
+      "filter": {
+        "recursive": false
+      },
+      "sort": null,
+      "ids": [
+        "med_01900000000070008000000000000003",
+        "med_01900000000070008000000000000007"
+      ],
+      "matched": 2
+    },
+    {
+      "document": "folders",
+      "filter": {
+        "recursive": true
+      },
+      "sort": null,
+      "ids": [
+        "med_01900000000070008000000000000001",
+        "med_01900000000070008000000000000002",
+        "med_01900000000070008000000000000003",
+        "med_01900000000070008000000000000004",
+        "med_01900000000070008000000000000005",
+        "med_01900000000070008000000000000006",
+        "med_01900000000070008000000000000007"
+      ],
+      "matched": 7
+    },
+    {
+      "document": "folders",
+      "filter": {
+        "folder": "fld_0190000000007000a000000000000001",
+        "recursive": true,
+        "kinds": [
+          "video"
+        ],
+        "used": true
+      },
+      "sort": null,
+      "ids": [
+        "med_01900000000070008000000000000001",
+        "med_01900000000070008000000000000004"
+      ],
+      "matched": 2
+    },
+    {
+      "document": "folders",
+      "filter": {
+        "folder": "fld_0190000000007000a000000000000001",
+        "recursive": false,
+        "used": false
+      },
+      "sort": null,
+      "ids": [],
+      "matched": 0
+    },
+    {
       "document": "empty",
       "filter": {
         "text": "x"
@@ -769,6 +1066,24 @@
       "matched": 4
     },
     {
+      "document": "folders",
+      "filter": null,
+      "sort": {
+        "by": "imported",
+        "order": "asc"
+      },
+      "ids": [
+        "med_01900000000070008000000000000001",
+        "med_01900000000070008000000000000002",
+        "med_01900000000070008000000000000003",
+        "med_01900000000070008000000000000004",
+        "med_01900000000070008000000000000005",
+        "med_01900000000070008000000000000006",
+        "med_01900000000070008000000000000007"
+      ],
+      "matched": 7
+    },
+    {
       "document": "library",
       "filter": null,
       "sort": {
@@ -829,6 +1144,24 @@
         "med_01900000000070008000000000000001"
       ],
       "matched": 4
+    },
+    {
+      "document": "folders",
+      "filter": null,
+      "sort": {
+        "by": "imported",
+        "order": "desc"
+      },
+      "ids": [
+        "med_01900000000070008000000000000007",
+        "med_01900000000070008000000000000006",
+        "med_01900000000070008000000000000005",
+        "med_01900000000070008000000000000004",
+        "med_01900000000070008000000000000003",
+        "med_01900000000070008000000000000002",
+        "med_01900000000070008000000000000001"
+      ],
+      "matched": 7
     },
     {
       "document": "library",
@@ -893,6 +1226,24 @@
       "matched": 4
     },
     {
+      "document": "folders",
+      "filter": null,
+      "sort": {
+        "by": "name",
+        "order": "asc"
+      },
+      "ids": [
+        "med_01900000000070008000000000000006",
+        "med_01900000000070008000000000000002",
+        "med_01900000000070008000000000000005",
+        "med_01900000000070008000000000000004",
+        "med_01900000000070008000000000000001",
+        "med_01900000000070008000000000000007",
+        "med_01900000000070008000000000000003"
+      ],
+      "matched": 7
+    },
+    {
       "document": "library",
       "filter": null,
       "sort": {
@@ -953,6 +1304,24 @@
         "med_01900000000070008000000000000001"
       ],
       "matched": 4
+    },
+    {
+      "document": "folders",
+      "filter": null,
+      "sort": {
+        "by": "name",
+        "order": "desc"
+      },
+      "ids": [
+        "med_01900000000070008000000000000003",
+        "med_01900000000070008000000000000007",
+        "med_01900000000070008000000000000001",
+        "med_01900000000070008000000000000004",
+        "med_01900000000070008000000000000005",
+        "med_01900000000070008000000000000002",
+        "med_01900000000070008000000000000006"
+      ],
+      "matched": 7
     },
     {
       "document": "library",
@@ -1017,6 +1386,24 @@
       "matched": 4
     },
     {
+      "document": "folders",
+      "filter": null,
+      "sort": {
+        "by": "duration",
+        "order": "asc"
+      },
+      "ids": [
+        "med_01900000000070008000000000000005",
+        "med_01900000000070008000000000000001",
+        "med_01900000000070008000000000000002",
+        "med_01900000000070008000000000000003",
+        "med_01900000000070008000000000000004",
+        "med_01900000000070008000000000000006",
+        "med_01900000000070008000000000000007"
+      ],
+      "matched": 7
+    },
+    {
       "document": "library",
       "filter": null,
       "sort": {
@@ -1077,6 +1464,24 @@
         "med_01900000000070008000000000000001"
       ],
       "matched": 4
+    },
+    {
+      "document": "folders",
+      "filter": null,
+      "sort": {
+        "by": "duration",
+        "order": "desc"
+      },
+      "ids": [
+        "med_01900000000070008000000000000007",
+        "med_01900000000070008000000000000006",
+        "med_01900000000070008000000000000004",
+        "med_01900000000070008000000000000003",
+        "med_01900000000070008000000000000002",
+        "med_01900000000070008000000000000001",
+        "med_01900000000070008000000000000005"
+      ],
+      "matched": 7
     },
     {
       "document": "library",
@@ -1141,6 +1546,24 @@
       "matched": 4
     },
     {
+      "document": "folders",
+      "filter": null,
+      "sort": {
+        "by": "kind",
+        "order": "asc"
+      },
+      "ids": [
+        "med_01900000000070008000000000000006",
+        "med_01900000000070008000000000000002",
+        "med_01900000000070008000000000000004",
+        "med_01900000000070008000000000000001",
+        "med_01900000000070008000000000000007",
+        "med_01900000000070008000000000000003",
+        "med_01900000000070008000000000000005"
+      ],
+      "matched": 7
+    },
+    {
       "document": "library",
       "filter": null,
       "sort": {
@@ -1201,6 +1624,24 @@
         "med_01900000000070008000000000000001"
       ],
       "matched": 4
+    },
+    {
+      "document": "folders",
+      "filter": null,
+      "sort": {
+        "by": "kind",
+        "order": "desc"
+      },
+      "ids": [
+        "med_01900000000070008000000000000005",
+        "med_01900000000070008000000000000003",
+        "med_01900000000070008000000000000007",
+        "med_01900000000070008000000000000001",
+        "med_01900000000070008000000000000004",
+        "med_01900000000070008000000000000002",
+        "med_01900000000070008000000000000006"
+      ],
+      "matched": 7
     },
     {
       "document": "library",

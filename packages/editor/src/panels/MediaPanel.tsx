@@ -1,12 +1,15 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
-import type { MediaId } from "@cutweave/protocol";
+import type { FolderId, MediaId } from "@cutweave/protocol";
 import type { MediaDrag } from "@cutweave/timeline";
 import {
   Button,
   FilterChip,
+  FolderTile,
   Icon,
   IconButton,
   type IconName,
+  InlineRename,
+  MediaBreadcrumb,
   Menu,
   type MenuEntry,
   SearchField,
@@ -17,6 +20,7 @@ import {
 import {
   type DragEvent,
   type KeyboardEvent,
+  type MouseEvent,
   useCallback,
   useEffect,
   useLayoutEffect,
@@ -28,6 +32,8 @@ import { useTranslation } from "react-i18next";
 import { useStore } from "zustand";
 import { engineStore, useEngineStore } from "../engine/engineStore.ts";
 import type { TKey } from "../i18n/index.ts";
+import { moveTiles, renameFolder, renameMedia } from "../media/binActions.ts";
+import { newFolder, selectAllInBin } from "../media/binCommands.ts";
 import {
   activeFilterCount,
   BIN_KINDS,
@@ -36,25 +42,38 @@ import {
   DURATION_BUCKET_IDS,
   type DurationBucket,
   SORT_CHOICES,
-  toMediaFilter,
   useBinStore,
 } from "../media/binStore.ts";
+import { computeBinView } from "../media/binView.ts";
+import { formatDuration, type MediaCard } from "../media/cards.ts";
+import { dragStore, MEDIA_DRAG_TYPE, TILE_DRAG_TYPE, tileDragStore } from "../media/dragStore.ts";
 import {
-  formatDuration,
-  type MediaCard,
-  selectMediaCards,
-  selectMediaUsage,
-} from "../media/cards.ts";
-import { dragStore, MEDIA_DRAG_TYPE } from "../media/dragStore.ts";
-import { findMedia } from "../media/find.ts";
+  breadcrumbOf,
+  canDrop,
+  clickTile,
+  type FolderTileData,
+  folderPathText,
+  resolveOpenFolder,
+  type Tile,
+  type TileSelection,
+} from "../media/folders.ts";
+import { countText } from "../media/folderText.ts";
+import {
+  currentOpenFolder,
+  folderUiStore,
+  openFolder,
+  selectedTiles,
+  useFolderUi,
+} from "../media/folderUi.ts";
 import { insertAtPlayhead } from "../media/insert.ts";
 import { layoutStore } from "../media/layoutStore.ts";
 import { useMediaStore } from "../media/mediaStore.ts";
-import { requestMediaRemoval } from "../media/requestRemoval.ts";
+import { requestDeleteSelection } from "../media/requestDelete.ts";
 import { useThumbnailSource } from "../media/thumbnails.ts";
 import { useCardScrub } from "../media/useCardScrub.ts";
 import { useImport } from "../media/useImport.ts";
 import { ContextSurface, registerContextSurface, useContextMenu } from "../menus/host.tsx";
+import { useSessionStore } from "../session/sessionStore.ts";
 import { docStore, useDocStore } from "../state/docStore.ts";
 import { useJobStore } from "../state/jobStore.ts";
 import { usePlaybackStore } from "../state/playbackStore.ts";
@@ -108,6 +127,9 @@ const SORT_KEY: Record<string, TKey> = {
   "kind-asc": "mediaBin.sort.kindAsc",
 };
 
+/** A second click on the name of the only selected tile renames it after this long. */
+const SLOW_CLICK_MS = 600;
+
 /** Cards drawn beyond the visible rows, so scrolling never shows a gap. */
 const OVERSCAN_ROWS = 2;
 
@@ -151,15 +173,34 @@ const dragOf = (card: MediaCard): MediaDrag | null =>
     ? null
     : { id: card.id, kind: card.kind, duration: card.kind === "image" ? null : card.duration };
 
-interface CardViewProps {
+/** What a drag of a bin tile is told about the tile it starts on. */
+interface TileHandlers {
+  onPress(tile: Tile, e: MouseEvent<HTMLElement>): void;
+  onDragStart(tile: Tile, media: MediaDrag | null, e: DragEvent<HTMLElement>): void;
+  onDragEnd(): void;
+  onCancelRename(): void;
+}
+
+interface DropHandlers {
+  onDragEnter(e: DragEvent<HTMLElement>): void;
+  onDragOver(e: DragEvent<HTMLElement>): void;
+  onDragLeave(e: DragEvent<HTMLElement>): void;
+  onDrop(e: DragEvent<HTMLElement>): void;
+}
+
+interface CardViewProps extends TileHandlers {
   card: MediaCard;
   selected: boolean;
   /** The one card in the tab order (roving tabindex). */
   active: boolean;
   analyzing: boolean;
   failure: string | null;
+  /** The folder path under the name: results across folders say where each one is. */
+  path: string | null;
+  renaming: boolean;
   onSelect(id: MediaId): void;
   onInsert(card: MediaCard): void;
+  onRename(card: MediaCard, name: string): void;
 }
 
 /** Whether a card can play on its own (ADR-0022): sound and video; stills have nothing to play. */
@@ -179,8 +220,15 @@ function CardView({
   active,
   analyzing,
   failure,
+  path,
+  renaming,
   onSelect,
+  onPress,
   onInsert,
+  onDragStart,
+  onDragEnd,
+  onRename,
+  onCancelRename,
 }: CardViewProps) {
   const { t } = useTranslation();
   const source = useThumbnailSource();
@@ -208,18 +256,6 @@ function CardView({
     .filter((part) => part !== null)
     .join(" · ");
 
-  const onDragStart = (e: DragEvent<HTMLElement>) => {
-    if (drag === null) {
-      e.preventDefault();
-      return;
-    }
-    scrub.stop();
-    onSelect(card.id);
-    e.dataTransfer.setData(MEDIA_DRAG_TYPE, card.id);
-    e.dataTransfer.effectAllowed = "copy";
-    dragStore.getState().begin(drag);
-  };
-
   return (
     // biome-ignore lint/a11y/useKeyWithClickEvents: the listbox handles the keys (arrows, Enter, Space, Delete)
     <div
@@ -227,14 +263,17 @@ function CardView({
       role="option"
       aria-selected={selected}
       tabIndex={active ? 0 : -1}
-      draggable={drag !== null}
+      draggable={!renaming}
       data-media-id={card.id}
       data-kind={card.kind}
       className="cw-media__card"
-      onClick={() => onSelect(card.id)}
+      onClick={(e) => onPress({ kind: "media", id: card.id }, e)}
       onDoubleClick={() => onInsert(card)}
-      onDragStart={onDragStart}
-      onDragEnd={() => dragStore.getState().end()}
+      onDragStart={(e) => {
+        scrub.stop();
+        onDragStart({ kind: "media", id: card.id }, drag, e);
+      }}
+      onDragEnd={onDragEnd}
     >
       <span
         className="cw-media__thumb"
@@ -288,7 +327,19 @@ function CardView({
         ) : null}
       </span>
       <span className="cw-media__body">
-        <span className="cw-media__name body-strong">{card.name}</span>
+        {renaming ? (
+          <InlineRename
+            value={card.name}
+            label={t("mediaBin.folder.mediaNameLabel")}
+            onCommit={(name) => onRename(card, name)}
+            onCancel={onCancelRename}
+          />
+        ) : (
+          <span className="cw-media__name body-strong">{card.name}</span>
+        )}
+        {path === null || path === "" ? null : (
+          <span className="cw-media__path caption">{path}</span>
+        )}
         <span className="cw-media__meta caption">
           <span>{t(KIND_KEY[card.kind])}</span>
           {meta === "" ? null : <span>{meta}</span>}
@@ -310,35 +361,111 @@ function CardView({
   );
 }
 
+interface FolderViewProps extends TileHandlers {
+  folder: FolderTileData;
+  selected: boolean;
+  active: boolean;
+  renaming: boolean;
+  dropTarget: boolean;
+  /** Where the folder is, under its name (results across folders). */
+  path: string | null;
+  drop: DropHandlers;
+  onOpen(folder: FolderTileData): void;
+  onRename(folder: FolderTileData, name: string): void;
+}
+
+function FolderView({
+  folder,
+  selected,
+  active,
+  renaming,
+  dropTarget,
+  path,
+  drop,
+  onPress,
+  onOpen,
+  onDragStart,
+  onDragEnd,
+  onRename,
+  onCancelRename,
+}: FolderViewProps) {
+  const { t } = useTranslation();
+  const translate = translator(t);
+  // Right-click or the Menu key: the folder's menu. The host selects the folder first.
+  const menuRef = useContextMenu<HTMLDivElement>("bin.folder", () => ({
+    ids: [folder.id],
+    name: folder.name,
+  }));
+  return (
+    <FolderTile
+      ref={menuRef}
+      name={folder.name}
+      countLabel={countText(folder.items, translate)}
+      kindLabel={t("mediaBin.folder.kind")}
+      selected={selected}
+      active={active}
+      dropTarget={dropTarget}
+      renaming={renaming}
+      renameLabel={t("mediaBin.folder.nameLabel")}
+      path={path ?? undefined}
+      draggable={!renaming}
+      data-folder-id={folder.id}
+      data-drop-folder={folder.id}
+      onClick={(e) => onPress({ kind: "folder", id: folder.id }, e)}
+      onDoubleClick={() => onOpen(folder)}
+      onDragStart={(e) => onDragStart({ kind: "folder", id: folder.id }, null, e)}
+      onDragEnd={onDragEnd}
+      onRename={(name) => onRename(folder, name)}
+      onCancelRename={onCancelRename}
+      {...drop}
+    />
+  );
+}
+
 /**
- * The media bin (WP-1M.03): the project's assets as a grid or list, imported from a native dialog
- * (Ctrl+I) or by dropping files from the OS, dragged onto the timeline, or added at the playhead
- * with Enter. Listbox semantics with a roving tab stop: arrows move (and select), Enter inserts,
- * Delete removes.
+ * The media bin (WP-1M.03, folders WP-2F.08): the open folder's subfolders and assets as a grid or
+ * list, imported from a native dialog (Ctrl+I) or by dropping files from the OS, dragged onto the
+ * timeline or onto folders, or added at the playhead with Enter. Listbox semantics with a roving
+ * tab stop: arrows move (and select), Enter inserts an asset or opens a folder, Delete removes.
  */
 export function MediaPanel() {
   const { t } = useTranslation();
   const project = useDocStore((s) => s.project);
-  const allCards = useMemo(() => selectMediaCards(project), [project]);
-  const usage = useMemo(() => selectMediaUsage(project), [project]);
+  const projectPath = useSessionStore((s) => s.path) ?? "";
   const text = useBinStore((s) => s.text);
   const filters = useBinStore((s) => s.filters);
   const sort = useBinStore((s) => s.sort);
-  // The bin shows what the engine's `media.list` would list for the same filter and sort (the
-  // same predicate, run on the mirror: no round trip per keystroke).
-  const cards = useMemo(
-    () => findMedia(allCards, usage, toMediaFilter({ text, filters }), sort).cards,
-    [allCards, usage, text, filters, sort],
+  const scope = useBinStore((s) => s.scope);
+  const openRaw = useBinStore((s) => s.openFolders[projectPath] ?? null);
+  const open = useMemo(() => resolveOpenFolder(project, openRaw), [project, openRaw]);
+  // The bin shows what the engine's `media.list` would list for the same filter, sort and folder
+  // (the same predicate, run on the mirror: no round trip per keystroke).
+  const view = useMemo(
+    () => computeBinView(project, { text, filters, sort, scope }, open),
+    [project, text, filters, sort, scope, open],
   );
+  const allCards = view.all;
+  const cards = view.cards;
+  const folders = view.folders;
+  const order = view.order;
   const filterCount = activeFilterCount(filters);
-  const searching = text.trim() !== "" || filterCount > 0;
+  const searching = view.searching;
+  const hasFolders = project !== null && Object.keys(project.folders ?? {}).length > 0;
   const selection = useViewStore((s) => s.selection);
-  const selectedId = (selection.find((r) => r.kind === "media")?.id ?? null) as MediaId | null;
+  const selectedMedia = useMemo(
+    () => selection.filter((r) => r.kind === "media").map((r) => r.id as MediaId),
+    [selection],
+  );
+  const selectedId = (selectedMedia[0] ?? null) as MediaId | null;
+  const selectedFolders = useFolderUi((s) => s.folders);
+  const renaming = useFolderUi((s) => s.renaming);
+  const dropOver = useFolderUi((s) => s.dropOver);
   const layout = useStore(layoutStore, (s) => s.layout);
   const ready = useEngineStore((s) => s.rpc !== null && s.connection === "ready");
   const failures = useMediaStore((s) => s.failures);
   const jobs = useJobStore((s) => s.jobs);
   const importer = useImport();
+  const nFolders = folders.length;
 
   const analyzing = useMemo(() => {
     const ids = new Set<string>();
@@ -358,15 +485,39 @@ export function MediaPanel() {
   const scroller = useRef<HTMLDivElement>(null);
   const grid = useRef<HTMLDivElement>(null);
   const [metrics, setMetrics] = useState<Metrics>({ top: 0, height: 0, cols: 0, rowHeight: 0 });
+  // The tab stop, as a position in `order` (folders, then assets).
   const [focusIndex, setFocusIndex] = useState(0);
   const focusRequest = useRef(false);
 
-  const selectedIndex = cards.findIndex((c) => c.id === selectedId);
+  const selectedIndex = order.findIndex((tile) => tile.kind === "media" && tile.id === selectedId);
   // The tab stop follows focus; a selection made elsewhere (the inspector, another click) moves it.
   useEffect(() => {
     if (selectedIndex >= 0) setFocusIndex(selectedIndex);
   }, [selectedIndex]);
-  const activeIndex = Math.min(Math.max(focusIndex, 0), Math.max(cards.length - 1, 0));
+  const activeIndex = Math.min(Math.max(focusIndex, 0), Math.max(order.length - 1, 0));
+  const activeTile = order[activeIndex];
+
+  // Another folder: back to the first tile and the top of the list.
+  useEffect(() => {
+    setFocusIndex(0);
+    if (scroller.current !== null) scroller.current.scrollTop = 0;
+  }, [open]);
+
+  // What is gone from the grid (deleted, moved away) is no longer selected.
+  useEffect(() => {
+    const ui = folderUiStore.getState();
+    const known = new Set(order.filter((tile) => tile.kind === "folder").map((tile) => tile.id));
+    const kept = ui.folders.filter((id) => known.has(id) || project?.folders?.[id] !== undefined);
+    if (kept.length !== ui.folders.length) ui.setFolders(kept);
+  }, [order, project]);
+
+  /** Where the asset grid starts inside the scroller (folder tiles sit above it). */
+  const gridOffset = useCallback((): number => {
+    const el = scroller.current;
+    const g = grid.current;
+    if (el === null || g === null) return 0;
+    return g.getBoundingClientRect().top - el.getBoundingClientRect().top + el.scrollTop;
+  }, []);
 
   const measure = useCallback(() => {
     const el = scroller.current;
@@ -380,18 +531,17 @@ export function MediaPanel() {
     const first = g.firstElementChild as HTMLElement | null;
     const rowGap = Number.parseFloat(style.rowGap) || 0;
     const rowHeight = first === null ? 0 : first.offsetHeight + rowGap;
+    // The scroll position as the asset grid sees it: how far its top is above the viewport top.
+    const top = el.getBoundingClientRect().top - g.getBoundingClientRect().top;
     setMetrics((m) =>
-      m.top === el.scrollTop &&
-      m.height === el.clientHeight &&
-      m.cols === cols &&
-      m.rowHeight === rowHeight
+      m.top === top && m.height === el.clientHeight && m.cols === cols && m.rowHeight === rowHeight
         ? m
-        : { top: el.scrollTop, height: el.clientHeight, cols, rowHeight },
+        : { top, height: el.clientHeight, cols, rowHeight },
     );
   }, []);
 
   // Measure after every layout-affecting change; follow the scroller's own size too.
-  useLayoutEffect(measure, [measure, cards, layout]);
+  useLayoutEffect(measure, [measure, cards, folders, layout]);
   useEffect(() => {
     const el = scroller.current;
     if (el === null || typeof ResizeObserver === "undefined") return undefined;
@@ -402,34 +552,94 @@ export function MediaPanel() {
 
   const win = windowOf(cards.length, layout === "list" ? { ...metrics, cols: 1 } : metrics);
 
-  // Give the keyboard focus to the card a key press moved to, once it is drawn.
+  // Give the keyboard focus to the tile a key press moved to, once it is drawn.
   useEffect(() => {
     if (!focusRequest.current) return;
     focusRequest.current = false;
-    const id = cards[activeIndex]?.id;
-    const el =
-      id === undefined ? null : grid.current?.querySelector<HTMLElement>(`[data-media-id="${id}"]`);
-    el?.focus();
+    const tile = order[activeIndex];
+    if (tile === undefined) return;
+    const attribute = tile.kind === "folder" ? "data-folder-id" : "data-media-id";
+    scroller.current?.querySelector<HTMLElement>(`[${attribute}="${tile.id}"]`)?.focus();
   });
 
-  const select = useCallback((id: MediaId) => {
-    viewStore.getState().setSelection([{ kind: "media", id }]);
+  // ---- selection -------------------------------------------------------------------------
+  const currentSelection = (): TileSelection => ({
+    tiles: [
+      ...folderUiStore.getState().folders.map((id): Tile => ({ kind: "folder", id })),
+      ...viewStore
+        .getState()
+        .selection.filter((r) => r.kind === "media")
+        .map((r): Tile => ({ kind: "media", id: r.id })),
+    ],
+    anchor: folderUiStore.getState().anchor,
+  });
+
+  const applySelection = useCallback((next: TileSelection) => {
+    const ui = folderUiStore.getState();
+    ui.setFolders(
+      next.tiles.filter((tile) => tile.kind === "folder").map((tile) => tile.id as FolderId),
+      next.anchor,
+    );
+    viewStore
+      .getState()
+      .setSelection(
+        next.tiles
+          .filter((tile) => tile.kind === "media")
+          .map((tile) => ({ kind: "media" as const, id: tile.id as MediaId })),
+      );
   }, []);
 
-  const goTo = (index: number) => {
-    const card = cards[index];
+  const select = useCallback(
+    (id: MediaId) =>
+      applySelection({ tiles: [{ kind: "media", id }], anchor: { kind: "media", id } }),
+    [applySelection],
+  );
+
+  const goTo = (index: number, extend = false) => {
+    const tile = order[index];
     const el = scroller.current;
-    if (card === undefined || el === null) return;
+    if (tile === undefined || el === null) return;
     setFocusIndex(index);
-    select(card.id);
+    applySelection(clickTile(order, currentSelection(), tile, { ctrl: false, shift: extend }));
     focusRequest.current = true;
-    if (metrics.rowHeight > 0 && metrics.cols > 0) {
+    const cardIndex = index - nFolders;
+    if (cardIndex >= 0 && metrics.rowHeight > 0 && metrics.cols > 0) {
       const cols = layout === "list" ? 1 : metrics.cols;
-      const rowTop = Math.floor(index / cols) * metrics.rowHeight;
+      const rowTop = gridOffset() + Math.floor(cardIndex / cols) * metrics.rowHeight;
       if (rowTop < el.scrollTop) el.scrollTop = rowTop;
       else if (rowTop + metrics.rowHeight > el.scrollTop + el.clientHeight) {
         el.scrollTop = rowTop + metrics.rowHeight - el.clientHeight;
       }
+    }
+  };
+
+  // A slow second click on the name of the only selected tile renames it, as in a file manager.
+  const slowRename = useRef<number | null>(null);
+  useEffect(
+    () => () => {
+      if (slowRename.current !== null) window.clearTimeout(slowRename.current);
+    },
+    [],
+  );
+  const press = (tile: Tile, e: MouseEvent<HTMLElement>) => {
+    const before = currentSelection();
+    const sole =
+      before.tiles.length === 1 &&
+      before.tiles[0]?.kind === tile.kind &&
+      before.tiles[0]?.id === tile.id;
+    const ctrl = e.ctrlKey || e.metaKey;
+    const onName =
+      (e.target as HTMLElement).closest(".cw-media__name, .cw-foldertile__name") !== null;
+    applySelection(clickTile(order, before, tile, { ctrl, shift: e.shiftKey }));
+    const at = order.findIndex((o) => o.kind === tile.kind && o.id === tile.id);
+    if (at >= 0) setFocusIndex(at);
+    if (slowRename.current !== null) window.clearTimeout(slowRename.current);
+    slowRename.current = null;
+    if (sole && onName && !ctrl && !e.shiftKey) {
+      slowRename.current = window.setTimeout(() => {
+        slowRename.current = null;
+        folderUiStore.getState().startRename(tile);
+      }, SLOW_CLICK_MS);
     }
   };
 
@@ -449,6 +659,10 @@ export function MediaPanel() {
     }),
     [],
   );
+  const binDeps = useMemo(
+    () => ({ engine: engineStore, toasts: toastStore, t: actionDeps.t }),
+    [actionDeps],
+  );
 
   const insert = useCallback(
     (card: MediaCard) => {
@@ -458,18 +672,41 @@ export function MediaPanel() {
     [actionDeps],
   );
 
-  // Removing an asset clips use asks first; the question is `menus/MenuDialogs.tsx`'s, so the bin's
-  // keys and button and its context menu ask the same one.
-  const requestRemove = (card: MediaCard | undefined) => {
-    if (card !== undefined) void requestMediaRemoval(card.id);
+  const openFolderTile = useCallback((folder: { id: FolderId }) => openFolder(folder.id), []);
+
+  const goUp = () => {
+    if (open === null) return;
+    openFolder(project?.folders?.[open]?.parent ?? null);
   };
-  const selectedCard = cards.find((c) => c.id === selectedId);
+
+  // Delete: the selected assets and folders (a folder that holds something asks first).
+  const requestDelete = () => {
+    const sel = selectedTiles();
+    if (sel.media.length === 0 && sel.folders.length === 0) {
+      if (activeTile === undefined) return;
+      applySelection({ tiles: [activeTile], anchor: activeTile });
+    }
+    void requestDeleteSelection();
+  };
+  const onlyFoldersSelected = selectedMedia.length === 0 && selectedFolders.length > 0;
+
+  const finishRename = () => folderUiStore.getState().stopRename();
+  const renameCard = (card: MediaCard, name: string) => {
+    finishRename();
+    void renameMedia(binDeps, card.id, card.name, name);
+  };
+  const renameFolderTile = (folder: FolderTileData, name: string) => {
+    finishRename();
+    void renameFolder(binDeps, folder.id, folder.name, name);
+  };
 
   const onKeyDown = (e: KeyboardEvent<HTMLDivElement>) => {
     // The keys are the table in binKeys.ts (Settings > Keyboard shortcuts lists the same one).
     const cols = layout === "list" ? 1 : Math.max(metrics.cols, 1);
-    const last = cards.length - 1;
+    const last = order.length - 1;
     let next: number | null = null;
+    // Folders sit in their own grid above the assets: a column move from one to the other lands on
+    // the nearest tile, so the arrows treat the two grids as one row-major list.
     switch (binKeyAction(e)) {
       case "moveNext":
         next = layout === "list" ? null : activeIndex + 1;
@@ -490,30 +727,42 @@ export function MediaPanel() {
         next = last;
         break;
       case "insert": {
-        const card = cards[activeIndex];
-        if (card !== undefined) insert(card);
+        if (activeTile?.kind === "folder") openFolder(activeTile.id as FolderId);
+        else {
+          const card = cards.find((c) => c.id === activeTile?.id);
+          if (card !== undefined) insert(card);
+        }
         e.preventDefault();
         return;
       }
       case "play": {
-        // Space selects the focused card, as before, then plays or pauses it in the Source view.
-        const card = cards[activeIndex];
-        if (card !== undefined) {
-          select(card.id);
-          if (playable(card)) playCard(card);
+        // Space selects the focused tile, as before, then plays or pauses an asset in the Source view.
+        if (activeTile !== undefined) {
+          applySelection({ tiles: [activeTile], anchor: activeTile });
+          const card =
+            activeTile.kind === "media" ? cards.find((c) => c.id === activeTile.id) : undefined;
+          if (card !== undefined && playable(card)) playCard(card);
         }
         e.preventDefault();
         return;
       }
       case "remove":
-        requestRemove(cards[activeIndex]);
+        requestDelete();
+        e.preventDefault();
+        return;
+      case "up":
+        goUp();
+        e.preventDefault();
+        return;
+      case "rename":
+        if (activeTile !== undefined) folderUiStore.getState().startRename(activeTile);
         e.preventDefault();
         return;
       default:
         return;
     }
     e.preventDefault();
-    if (next !== null) goTo(Math.min(Math.max(next, 0), last));
+    if (next !== null) goTo(Math.min(Math.max(next, 0), last), e.shiftKey);
   };
 
   // Ctrl/Cmd+I is announced by the empty state: it opens the file dialog from anywhere in the app.
@@ -524,13 +773,26 @@ export function MediaPanel() {
       if (binKeyAction(e) !== "import") return;
       if (e.defaultPrevented || isTextEntry(e.target)) return;
       e.preventDefault();
-      void pickRef.current();
+      void pickRef.current(currentOpenFolder());
     };
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
   }, []);
 
-  // ---- OS file drop ----------------------------------------------------------------------
+  // Ctrl/Cmd+Shift+N and Ctrl/Cmd+A work anywhere in the panel except in a text field.
+  const onPanelKeyDown = (e: KeyboardEvent<HTMLElement>) => {
+    if (isTextEntry(e.target)) return;
+    const action = binKeyAction(e);
+    if (action === "newFolder") {
+      e.preventDefault();
+      if (ready) void newFolder(open);
+    } else if (action === "selectAll") {
+      e.preventDefault();
+      selectAllInBin();
+    }
+  };
+
+  // ---- OS file drop and tile drops -------------------------------------------------------
   const [fileOver, setFileOver] = useState(false);
   const hasFiles = (e: DragEvent<HTMLElement>) => e.dataTransfer.types.includes("Files");
   const onDragOver = (e: DragEvent<HTMLElement>) => {
@@ -543,10 +805,8 @@ export function MediaPanel() {
     const next = e.relatedTarget as Node | null;
     if (next === null || !e.currentTarget.contains(next)) setFileOver(false);
   };
-  const onDrop = (e: DragEvent<HTMLElement>) => {
-    if (!hasFiles(e)) return;
-    e.preventDefault();
-    setFileOver(false);
+  /** Files dropped from the OS go to `folder` (the open one, or the folder tile they landed on). */
+  const importFiles = (e: DragEvent<HTMLElement>, folder: FolderId | null) => {
     const paths = importer.pathsOf(Array.from(e.dataTransfer.files));
     if (paths === null) {
       toastStore
@@ -554,15 +814,104 @@ export function MediaPanel() {
         .push({ tone: "info", title: tr.current("mediaBin.import.desktopOnly") });
       return;
     }
-    void importer.importPaths(paths);
+    void importer.importPaths(paths, folder);
+  };
+  const onDrop = (e: DragEvent<HTMLElement>) => {
+    if (!hasFiles(e)) return;
+    e.preventDefault();
+    setFileOver(false);
+    importFiles(e, open);
+  };
+
+  const dropOn = (target: FolderId | null): DropHandlers => {
+    const over = (e: DragEvent<HTMLElement>) => {
+      const payload = tileDragStore.getState().payload;
+      if (payload !== null) {
+        // Not preventing the default tells the browser this is not a place to drop.
+        if (!canDrop(project, payload, target)) return;
+        e.preventDefault();
+        e.stopPropagation();
+        e.dataTransfer.dropEffect = "move";
+        folderUiStore.getState().setDropOver(target);
+      } else if (hasFiles(e) && ready) {
+        e.preventDefault();
+        e.stopPropagation();
+        e.dataTransfer.dropEffect = "copy";
+        folderUiStore.getState().setDropOver(target);
+      }
+    };
+    return {
+      onDragEnter: over,
+      onDragOver: over,
+      onDragLeave: (e) => {
+        const next = e.relatedTarget as Node | null;
+        if (next !== null && e.currentTarget.contains(next)) return;
+        if (folderUiStore.getState().dropOver === target) {
+          folderUiStore.getState().setDropOver(undefined);
+        }
+      },
+      onDrop: (e) => {
+        const payload = tileDragStore.getState().payload;
+        folderUiStore.getState().setDropOver(undefined);
+        if (payload !== null) {
+          if (!canDrop(project, payload, target)) return;
+          e.preventDefault();
+          e.stopPropagation();
+          tileDragStore.getState().end();
+          dragStore.getState().end();
+          void moveTiles(
+            binDeps,
+            { media: payload.media as MediaId[], folders: payload.folders as FolderId[] },
+            target,
+          );
+        } else if (hasFiles(e)) {
+          e.preventDefault();
+          e.stopPropagation();
+          setFileOver(false);
+          importFiles(e, target);
+        }
+      },
+    };
+  };
+
+  const onTileDragStart = (tile: Tile, media: MediaDrag | null, e: DragEvent<HTMLElement>) => {
+    const sel = currentSelection();
+    const part = sel.tiles.some((s) => s.kind === tile.kind && s.id === tile.id);
+    if (!part) applySelection({ tiles: [tile], anchor: tile });
+    const dragged = part ? sel.tiles : [tile];
+    tileDragStore.getState().begin({
+      media: dragged.filter((d) => d.kind === "media").map((d) => d.id),
+      folders: dragged.filter((d) => d.kind === "folder").map((d) => d.id),
+    });
+    e.dataTransfer.setData(TILE_DRAG_TYPE, "1");
+    if (media === null) {
+      e.dataTransfer.effectAllowed = "move";
+      return;
+    }
+    // An asset can also go onto the timeline (a copy), so the drag allows both.
+    e.dataTransfer.setData(MEDIA_DRAG_TYPE, media.id);
+    e.dataTransfer.effectAllowed = "copyMove";
+    dragStore.getState().begin(media);
+  };
+  const onTileDragEnd = () => {
+    tileDragStore.getState().end();
+    dragStore.getState().end();
+    folderUiStore.getState().setDropOver(undefined);
+  };
+
+  const handlers: TileHandlers = {
+    onPress: press,
+    onDragStart: onTileDragStart,
+    onDragEnd: onTileDragEnd,
+    onCancelRename: finishRename,
   };
 
   // ---- search, filters, sort ---------------------------------------------------------------
   const searchRef = useRef<HTMLInputElement>(null);
   const sectionRef = useRef<HTMLElement>(null);
 
-  // Anywhere in the panel that is not a card: Import, Sort by, View as (WP-2H.13). A right-click
-  // on the empty bin clears the selection, as the Explorer does.
+  // Anywhere in the panel that is not a tile: Import, New folder, Sort by, View as (WP-2H.13). A
+  // right-click on the empty bin clears the selection, as the Explorer does.
   useEffect(() => {
     const section = sectionRef.current;
     if (section === null) return undefined;
@@ -578,7 +927,7 @@ export function MediaPanel() {
     const index = cards.findIndex((c) => c.id === selectedId);
     if (index < 0) return;
     const cols = layout === "list" ? 1 : metrics.cols;
-    const rowTop = Math.floor(index / cols) * metrics.rowHeight;
+    const rowTop = gridOffset() + Math.floor(index / cols) * metrics.rowHeight;
     if (rowTop < el.scrollTop) el.scrollTop = rowTop;
     else if (rowTop + metrics.rowHeight > el.scrollTop + el.clientHeight) {
       el.scrollTop = rowTop + metrics.rowHeight - el.clientHeight;
@@ -710,23 +1059,50 @@ export function MediaPanel() {
   ];
 
   const importLabel = t("mediaBin.importButton");
+  const newFolderLabel = t("mediaBin.folder.newButton");
   const filtersLabel =
     filterCount > 0
       ? t("mediaBin.filters.buttonActive", { count: filterCount })
       : t("mediaBin.filters.button");
   const sortLabel = t("mediaBin.sort.button");
+  const deleteLabel = onlyFoldersSelected
+    ? t("mediaBin.folder.deleteButton")
+    : t("mediaBin.remove.button");
+  const nothingSelected = selectedMedia.length === 0 && selectedFolders.length === 0;
+  const crumbs = breadcrumbOf(project, open);
+  const segments = crumbs.map((crumb) => ({
+    id: crumb.id,
+    label: crumb.name ?? t("mediaBin.folder.topLevel"),
+  }));
+  const crumbDropFor = (id: string | null) => dropOn(id as FolderId | null);
+  const showBreadcrumb = hasFolders || open !== null;
+  const nothingAtAll = allCards.length === 0 && !hasFolders;
+  const emptyFolder = !searching && folders.length === 0 && cards.length === 0 && !nothingAtAll;
+  const pathOf = (folder: FolderId | null): string | null =>
+    searching && folder !== null ? folderPathText(project, folder) : null;
+
   return (
     <section
       ref={sectionRef}
       className="cw-media"
       aria-label={t("mediaBin.panelLabel")}
       data-drop-active={fileOver ? "true" : undefined}
+      onKeyDown={onPanelKeyDown}
+      onDoubleClick={(e) => {
+        // A double-click on the empty body of the panel imports, as the Import button does.
+        const target = e.target as HTMLElement;
+        const inBody = target.closest(".cw-media__scroll") !== null;
+        const onControl = target.closest("[role=option], button, input, a") !== null;
+        if (inBody && !onControl && ready && !importer.busy) {
+          void importer.pickAndImport(open);
+        }
+      }}
       onDragOver={onDragOver}
       onDragEnter={onDragOver}
       onDragLeave={onDragLeave}
       onDrop={onDrop}
     >
-      {allCards.length > 0 ? (
+      {allCards.length > 0 || hasFolders ? (
         <div className="cw-media__search">
           <SearchField
             ref={searchRef}
@@ -736,6 +1112,18 @@ export function MediaPanel() {
             clearLabel={t("mediaBin.search.clear")}
             onArrowDown={() => goTo(0)}
           />
+          {hasFolders ? (
+            <SegmentedControl
+              className="cw-media__scope"
+              aria-label={t("mediaBin.folder.scopeLabel")}
+              value={scope}
+              options={[
+                { value: "all", label: t("mediaBin.folder.scopeAll") },
+                { value: "folder", label: t("mediaBin.folder.scopeFolder") },
+              ]}
+              onChange={(next) => bin.setScope(next)}
+            />
+          ) : null}
         </div>
       ) : null}
       <div className="cw-media__tools">
@@ -746,16 +1134,25 @@ export function MediaPanel() {
             icon="upload"
             label={importLabel}
             disabled={!ready || importer.busy}
-            onClick={() => void importer.pickAndImport()}
+            onClick={() => void importer.pickAndImport(open)}
           />
         </Tooltip>
-        <Tooltip label={t("mediaBin.remove.button")}>
+        <Tooltip label={newFolderLabel} keys={[modifierKey(), "Shift", "N"]}>
+          <IconButton
+            size="sm"
+            icon="folder-plus"
+            label={newFolderLabel}
+            disabled={!ready}
+            onClick={() => void newFolder(open)}
+          />
+        </Tooltip>
+        <Tooltip label={deleteLabel}>
           <IconButton
             size="sm"
             icon="trash-2"
-            label={t("mediaBin.remove.button")}
-            disabled={selectedCard === undefined}
-            onClick={() => requestRemove(selectedCard)}
+            label={deleteLabel}
+            disabled={nothingSelected}
+            onClick={requestDelete}
           />
         </Tooltip>
         <span className="cw-media__spacer" />
@@ -795,6 +1192,19 @@ export function MediaPanel() {
           onChange={(next) => layoutStore.getState().set(next)}
         />
       </div>
+      {showBreadcrumb ? (
+        <div className="cw-media__crumbs">
+          <MediaBreadcrumb
+            label={t("mediaBin.folder.navLabel")}
+            segments={segments}
+            dropTarget={dropOver}
+            onNavigate={(id) => openFolder(id as FolderId | null)}
+            onSegmentDragOver={(segment, e) => crumbDropFor(segment.id).onDragOver(e)}
+            onSegmentDragLeave={(segment, e) => crumbDropFor(segment.id).onDragLeave(e)}
+            onSegmentDrop={(segment, e) => crumbDropFor(segment.id).onDrop(e)}
+          />
+        </div>
+      ) : null}
       {chips.length > 0 ? (
         <fieldset className="cw-media__chips" aria-label={t("mediaBin.filters.chipsLabel")}>
           {chips.map((chip) => (
@@ -816,7 +1226,7 @@ export function MediaPanel() {
           </Button>
         </fieldset>
       ) : null}
-      {allCards.length === 0 ? (
+      {nothingAtAll ? (
         <div className="cw-media__scroll">
           <EmptyState
             icon="film"
@@ -824,7 +1234,15 @@ export function MediaPanel() {
             body={t("assets.empty.media.body")}
           />
         </div>
-      ) : cards.length === 0 ? (
+      ) : emptyFolder ? (
+        <div className="cw-media__scroll">
+          <EmptyState
+            icon="folder"
+            title={t("mediaBin.folder.emptyTitle")}
+            body={t("mediaBin.folder.emptyBody")}
+          />
+        </div>
+      ) : order.length === 0 ? (
         <div className="cw-media__scroll">
           <EmptyState
             icon="search"
@@ -852,34 +1270,75 @@ export function MediaPanel() {
       ) : (
         <div ref={scroller} className="cw-media__scroll" onScroll={measure}>
           <div
-            ref={grid}
             role="listbox"
             aria-label={t("mediaBin.listLabel")}
+            aria-multiselectable="true"
             data-layout={layout}
-            className="cw-media__grid"
-            style={{ paddingTop: win.padTop, paddingBottom: win.padBottom }}
+            className="cw-media__list"
             onKeyDown={onKeyDown}
+            // A double-click is not a slow click: it opens or inserts instead of renaming.
+            onDoubleClickCapture={() => {
+              if (slowRename.current !== null) window.clearTimeout(slowRename.current);
+              slowRename.current = null;
+            }}
             onFocus={(e) => {
-              const id = (e.target as HTMLElement)
-                .closest("[data-media-id]")
-                ?.getAttribute("data-media-id");
-              const index =
-                id === null || id === undefined ? -1 : cards.findIndex((c) => c.id === id);
+              const el = e.target as HTMLElement;
+              const media = el.closest("[data-media-id]")?.getAttribute("data-media-id");
+              const folder = el.closest("[data-folder-id]")?.getAttribute("data-folder-id");
+              const index = order.findIndex((tile) =>
+                media != null
+                  ? tile.kind === "media" && tile.id === media
+                  : tile.kind === "folder" && tile.id === folder,
+              );
               if (index >= 0) setFocusIndex(index);
             }}
           >
-            {cards.slice(win.start, win.end).map((card, i) => (
-              <CardView
-                key={card.id}
-                card={card}
-                selected={card.id === selectedId}
-                active={win.start + i === activeIndex}
-                analyzing={analyzing.has(card.id)}
-                failure={failures[card.id]?.map((f) => `${f.stage}: ${f.error}`).join("\n") ?? null}
-                onSelect={select}
-                onInsert={insert}
-              />
-            ))}
+            {folders.length > 0 ? (
+              <div className="cw-media__grid cw-media__grid--folders" data-layout={layout}>
+                {folders.map((folder, i) => (
+                  <FolderView
+                    key={folder.id}
+                    folder={folder}
+                    selected={selectedFolders.includes(folder.id)}
+                    active={i === activeIndex}
+                    renaming={renaming?.kind === "folder" && renaming.id === folder.id}
+                    dropTarget={dropOver === folder.id}
+                    path={pathOf(folder.parent)}
+                    drop={dropOn(folder.id)}
+                    onOpen={openFolderTile}
+                    onRename={renameFolderTile}
+                    {...handlers}
+                  />
+                ))}
+              </div>
+            ) : null}
+            {cards.length > 0 ? (
+              <div
+                ref={grid}
+                data-layout={layout}
+                className="cw-media__grid"
+                style={{ paddingTop: win.padTop, paddingBottom: win.padBottom }}
+              >
+                {cards.slice(win.start, win.end).map((card, i) => (
+                  <CardView
+                    key={card.id}
+                    card={card}
+                    selected={selectedMedia.includes(card.id)}
+                    active={nFolders + win.start + i === activeIndex}
+                    analyzing={analyzing.has(card.id)}
+                    failure={
+                      failures[card.id]?.map((f) => `${f.stage}: ${f.error}`).join("\n") ?? null
+                    }
+                    path={pathOf(card.folder)}
+                    renaming={renaming?.kind === "media" && renaming.id === card.id}
+                    onSelect={select}
+                    onInsert={insert}
+                    onRename={renameCard}
+                    {...handlers}
+                  />
+                ))}
+              </div>
+            ) : null}
           </div>
         </div>
       )}

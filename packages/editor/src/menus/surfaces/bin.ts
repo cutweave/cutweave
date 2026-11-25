@@ -3,8 +3,8 @@
 // bin, and a filter chip. Rows name commands that exist today; what later work packages add is
 // listed in the TODO below, not stubbed.
 // TODO(WP-2A.14): Overwrite at playhead. TODO(WP-2B.01): New timeline from selection.
-// TODO(WP-2F.07, WP-2F.08, WP-2F.06, WP-2F.03): Rename, Move to, Add tag, Relink, Regenerate
-// proxies, New folder, Select all. Each work package adds its row to these tables.
+// TODO(WP-2F.06, WP-2F.03): Add tag, Relink, Regenerate proxies. Each work package adds its row
+// to these tables. Folders (WP-2F.08): New folder, Rename, Move to, Open, Delete and Select all.
 import type { MediaId } from "@cutweave/protocol";
 import { snapToFrame } from "@cutweave/timeline";
 import { binStore, SORT_CHOICES } from "../../media/binStore.ts";
@@ -13,7 +13,7 @@ import { layoutStore } from "../../media/layoutStore.ts";
 import { prefsStore } from "../../prefs/prefsStore.ts";
 import { docStore } from "../../state/docStore.ts";
 import { viewStore } from "../../state/viewStore.ts";
-import { mediaSelection } from "../adapters.ts";
+import { folderSelection, mediaSelection } from "../adapters.ts";
 import type { LabelSpec, MenuContext, MenuRow, MenuSurfaceDef } from "../types.ts";
 import type { ContextValues } from "../when.ts";
 import { activeSequence, mediaAsset, mediaPath, sequenceEnd } from "./facts.ts";
@@ -113,7 +113,7 @@ export const BIN_CARD: MenuSurfaceDef = {
     target.ids.length > 1
       ? { key: "contextMenu.name.binCards", vars: { count: target.ids.length } }
       : { key: "contextMenu.name.binCard", vars: { name: target.name ?? "" } },
-  groups: ["place", "play", "file", "remove"],
+  groups: ["place", "play", "file", "organize", "remove"],
   selection: mediaSelection,
   keys: binCardKeys,
   rows: [
@@ -166,12 +166,96 @@ export const BIN_CARD: MenuSurfaceDef = {
       args: (ctx) => ({ text: mediaPath(ctx.ids[0] ?? "") ?? "" }),
     },
     {
-      command: "bin.remove_media",
-      group: "remove",
+      command: "bin.rename",
+      group: "organize",
       order: 0,
       when: "selection.count == 1",
       reason: "contextMenu.reason.oneAtATime",
+      args: (ctx) => ({ media: ctx.ids[0] }),
+    },
+    {
+      command: "bin.move_to",
+      group: "organize",
+      order: 1,
+      when: "engine.live",
+      reason: "contextMenu.reason.noEngine",
+      args: (ctx) => ({ media: ctx.ids }),
+    },
+    {
+      command: "bin.remove_media",
+      group: "remove",
+      order: 0,
+      visible: "selection.count < 2",
+      when: "selection.count == 1",
+      reason: "contextMenu.reason.oneAtATime",
       args: (ctx) => ({ id: ctx.ids[0] }),
+    },
+    {
+      id: "remove-many",
+      command: "bin.remove_selected",
+      group: "remove",
+      order: 1,
+      visible: "selection.count > 1",
+      label: (ctx) => ({ key: "contextMenu.item.removeMany", vars: { count: ctx.ids.length } }),
+      args: (ctx) => ({ ids: ctx.ids }),
+    },
+  ],
+};
+
+/** A folder tile (one or several selected): open, add inside, rename, move and delete. */
+export const BIN_FOLDER: MenuSurfaceDef = {
+  id: "bin.folder",
+  name: (target) =>
+    target.ids.length > 1
+      ? { key: "contextMenu.name.binFolders", vars: { count: target.ids.length } }
+      : { key: "contextMenu.name.binFolder", vars: { name: target.name ?? "" } },
+  groups: ["open", "organize", "remove"],
+  selection: folderSelection,
+  rows: [
+    {
+      command: "bin.open_folder",
+      group: "open",
+      order: 0,
+      when: "selection.count == 1",
+      reason: "contextMenu.reason.oneAtATime",
+      args: (ctx) => ({ folder: ctx.ids[0] }),
+    },
+    {
+      id: "new-inside",
+      command: "bin.new_folder",
+      group: "organize",
+      order: 0,
+      when: "selection.count == 1 && engine.live",
+      reason: "contextMenu.reason.oneAtATime",
+      args: (ctx) => ({ parent: ctx.ids[0] }),
+    },
+    {
+      command: "bin.rename",
+      group: "organize",
+      order: 1,
+      when: "selection.count == 1",
+      reason: "contextMenu.reason.oneAtATime",
+      args: (ctx) => ({ folder: ctx.ids[0] }),
+    },
+    {
+      command: "bin.move_to",
+      group: "organize",
+      order: 2,
+      when: "engine.live",
+      reason: "contextMenu.reason.noEngine",
+      args: (ctx) => ({ folders: ctx.ids }),
+    },
+    {
+      command: "bin.delete_folders",
+      group: "remove",
+      order: 0,
+      when: "engine.live",
+      reason: "contextMenu.reason.noEngine",
+      label: (ctx) =>
+        ctx.ids.length > 1
+          ? { key: "contextMenu.item.deleteFolders", vars: { count: ctx.ids.length } }
+          : { key: "contextMenu.item.deleteFolder" },
+      args: (ctx) => ({ folders: ctx.ids }),
     },
   ],
 };
@@ -216,7 +300,7 @@ const layoutRow = (layout: "grid" | "list", order: number): MenuRow => ({
 export const BIN_BACKGROUND: MenuSurfaceDef = {
   id: "bin.background",
   name: () => ({ key: "contextMenu.name.binBackground" }),
-  groups: ["add", "view"],
+  groups: ["add", "select", "view"],
   selection: mediaSelection,
   rows: [
     {
@@ -226,6 +310,15 @@ export const BIN_BACKGROUND: MenuSurfaceDef = {
       when: "engine.live",
       reason: "contextMenu.reason.noEngine",
     },
+    {
+      command: "bin.new_folder",
+      group: "add",
+      order: 1,
+      when: "engine.live",
+      reason: "contextMenu.reason.noEngine",
+      args: () => ({}),
+    },
+    { command: "bin.select_all", group: "select", order: 0 },
     {
       id: "sort",
       group: "view",

@@ -4,12 +4,13 @@
 // (`crates/cutweave-ops/src/media/find.rs`) is the reference; `find.test.ts` holds this one to the
 // shared fixture `crates/cutweave-ops/tests/fixtures/media-find.json`.
 //
-// Text: the name is the file name (`mediaName`); terms split on space, tab, CR and LF; every term
+// Text: the name is the display name (ADR-0020), else the file name (`MediaCard.name`); terms split on space, tab, CR and LF; every term
 // must occur, ignoring case and accents. Durations are flicks, bounds inclusive; stills have none
 // and never match a bound. Sorts are total (ties fall back to the ID) and `desc` is the exact
 // reverse of `asc`.
 import type { MediaFilter, MediaId, MediaSort, MediaSortBy } from "@cutweave/protocol";
 import type { MediaCard } from "./cards.ts";
+import { type FolderParents, folderScope } from "./folderScope.ts";
 
 export type { MediaFilter, MediaSort };
 
@@ -125,12 +126,17 @@ export interface MediaFound {
 
 /** Whether the filter lets everything through. */
 export function isEmptyFilter(filter: MediaFilter | null | undefined): boolean {
-  return filterCount(filter) === 0 && termsOf(filter?.text).length === 0;
+  return (
+    filterCount(filter) === 0 &&
+    termsOf(filter?.text).length === 0 &&
+    (filter?.folder ?? null) === null &&
+    filter?.recursive !== false
+  );
 }
 
 /**
  * Number of active filters: kinds, a duration bound, use and problems (the text is the search
- * field, not a filter).
+ * field, not a filter; the folder is where the bin is, shown by its breadcrumb).
  */
 export function filterCount(filter: MediaFilter | null | undefined): number {
   if (filter === undefined || filter === null) return 0;
@@ -153,6 +159,7 @@ export function findMedia(
   usage: ReadonlyMap<string, number>,
   filter?: MediaFilter | null,
   sort?: MediaSort | null,
+  folders?: FolderParents | null,
 ): MediaFound {
   const by = sort?.by ?? "imported";
   const desc = sort?.order === "desc";
@@ -165,7 +172,10 @@ export function findMedia(
   const max = filter?.max_duration ?? null;
   const used = filter?.used ?? null;
   const problems = filter?.problems === true;
+  // `folder` and `recursive`: the folders whose assets pass (`null` inside: the top level).
+  const scope = folderScope(folders ?? {}, filter);
   const everything =
+    scope === null &&
     terms.length === 0 &&
     kinds.length === 0 &&
     min === null &&
@@ -175,6 +185,7 @@ export function findMedia(
 
   const pass = (e: Entry): boolean => {
     const card = e.card;
+    if (scope !== null && !scope.has(card.folder)) return false;
     if (kinds.length > 0 && !kinds.includes(card.kind)) return false;
     if (min !== null || max !== null) {
       const d = card.duration;
@@ -206,6 +217,7 @@ export function findIds(
   usage: ReadonlyMap<string, number>,
   filter?: MediaFilter | null,
   sort?: MediaSort | null,
+  folders?: FolderParents | null,
 ): MediaId[] {
-  return findMedia(cards, usage, filter, sort).cards.map((c) => c.id);
+  return findMedia(cards, usage, filter, sort, folders).cards.map((c) => c.id);
 }

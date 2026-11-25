@@ -184,7 +184,19 @@
     },
     {
       "command": "media.remove",
-      "keys": ["Delete", "Backspace"]
+      "keys": ["Delete"]
+    },
+    {
+      "command": "bin.up",
+      "keys": ["Backspace", "Alt+ArrowUp"]
+    },
+    {
+      "command": "bin.rename",
+      "keys": ["F2"]
+    },
+    {
+      "command": "bin.new_folder",
+      "keys": ["Mod+Shift+N"]
     },
     {
       "command": "bin.import",

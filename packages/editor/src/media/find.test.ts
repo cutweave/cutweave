@@ -3,7 +3,7 @@
 // engine's `media.list` (`crates/cutweave-ops/tests/media_find_fixture.rs`), plus direct cases.
 import { readFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
-import type { MediaFilter, MediaSort, Project } from "@cutweave/protocol";
+import type { FolderId, MediaFilter, MediaSort, Project } from "@cutweave/protocol";
 import { describe, expect, it } from "vitest";
 import { selectMediaCards, selectMediaUsage } from "./cards.ts";
 import {
@@ -23,11 +23,14 @@ interface FixtureAsset {
   path_rel: string | null;
   duration: number | null;
   streams: number;
+  name: string | null;
+  folder: string | null;
 }
 
 interface FixtureDocument {
   name: string;
   media: FixtureAsset[];
+  folders: { id: string; name: string; parent: string | null }[];
   sequences: string[][];
 }
 
@@ -60,6 +63,8 @@ function projectOf(doc: FixtureDocument): Project {
         kind: a.kind,
         path_abs: a.path_abs,
         path_rel: a.path_rel,
+        name: a.name,
+        folder: a.folder,
         probe: {
           streams: Array.from({ length: a.streams }, (_, index) => ({
             index,
@@ -84,7 +89,8 @@ function projectOf(doc: FixtureDocument): Project {
       },
     ]),
   );
-  return { media, sequences } as unknown as Project;
+  const folders = Object.fromEntries(doc.folders.map((f) => [f.id, f]));
+  return { media, folders, sequences } as unknown as Project;
 }
 
 const projects = new Map(fixture.documents.map((d) => [d.name, projectOf(d)]));
@@ -106,7 +112,7 @@ describe("the media predicate against the Rust fixture", () => {
     const project = projects.get(c.document) as Project;
     const cards = selectMediaCards(project);
     const usage = selectMediaUsage(project);
-    const found = findMedia(cards, usage, c.filter, c.sort);
+    const found = findMedia(cards, usage, c.filter, c.sort, project.folders);
     expect(found.cards.map((card) => card.id)).toEqual(c.ids);
     expect(found.cards.length).toBe(c.matched);
     expect(found.total).toBe(cards.length);
@@ -116,6 +122,44 @@ describe("the media predicate against the Rust fixture", () => {
       for (let i = 0; i < c.ids.length; i += c.limit) chunks.push(c.ids.slice(i, i + c.limit));
       expect(c.pages).toEqual(chunks.length === 0 ? [[]] : chunks);
     }
+  });
+});
+
+describe("display names and folders", () => {
+  const project = projects.get("folders") as Project;
+  const cards = selectMediaCards(project);
+  const usage = selectMediaUsage(project);
+  const names = (filter: MediaFilter | null, sort?: MediaSort | null) =>
+    findMedia(cards, usage, filter, sort, project.folders).cards.map((c) => c.name);
+
+  it("shows the display name, else the file name", () => {
+    expect(cards.map((c) => c.name)).toEqual([
+      "Opening",
+      "b.mp4",
+      "Thème",
+      "interview wide",
+      "e.png",
+      "A-roll",
+      "Opening night.mp4",
+    ]);
+  });
+
+  it("matches the display name and no longer the file name it replaces", () => {
+    expect(names({ text: "opening" })).toEqual(["Opening", "Opening night.mp4"]);
+    expect(names({ text: "a.mp4" })).toEqual([]);
+  });
+
+  it("reads one level of a folder, its subtree with recursive, and the top level with recursive false", () => {
+    const interviews = cards[0]?.folder as FolderId;
+    expect(names({ folder: interviews })).toEqual(["Opening"]);
+    expect(names({ folder: interviews, recursive: true })).toEqual([
+      "Opening",
+      "b.mp4",
+      "interview wide",
+    ]);
+    expect(names({ recursive: false })).toEqual(["Thème", "Opening night.mp4"]);
+    expect(isEmptyFilter({ recursive: false })).toBe(false);
+    expect(isEmptyFilter({ folder: interviews })).toBe(false);
   });
 });
 

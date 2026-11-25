@@ -172,6 +172,9 @@ export const KEY_COMMANDS: readonly KeyCommand[] = [
   cmd("media.remove", "bin", "bin", "shortcuts.bin.remove", "shortcuts.bin.removeHelp"),
   cmd("bin.import", "bin", "global", "shortcuts.bin.import", "shortcuts.bin.importHelp"),
   cmd("bin.search", "bin", "bin", "shortcuts.bin.search", "shortcuts.bin.searchHelp"),
+  cmd("bin.up", "bin", "bin", "shortcuts.bin.up", "shortcuts.bin.upHelp"),
+  cmd("bin.rename", "bin", "bin", "shortcuts.bin.rename", "shortcuts.bin.renameHelp"),
+  cmd("bin.new_folder", "bin", "bin", "shortcuts.bin.newFolder", "shortcuts.bin.newFolderHelp"),
   // ---- dialogs and text fields: the UI library owns these keys
   cmd(
     "dialogs.close",

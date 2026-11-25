@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
-// The three questions a menu choice may ask before it acts (WP-2H.13): a name for a clip, a yes
-// for deleting a track that holds clips, a yes for removing a media asset that clips use. One
+// The questions a menu choice may ask before it acts (WP-2H.13): a name for a clip, a yes for
+// deleting a track that holds clips, a yes for removing a media asset that clips use, and (WP-2F.08)
+// what to do with a folder's contents and where to move tiles to. One
 // store, one component (`MenuDialogs.tsx`); the choice only opens it, and the dialog sends the one
 // command when the person agrees.
 import { useStore } from "zustand";
@@ -19,6 +20,14 @@ export type MenuDialog =
       readonly id: string;
       readonly name: string;
       readonly uses: number;
+    }
+  // Deleting a folder that holds something (WP-2F.08); `rest` are folders still to ask about.
+  | { readonly kind: "delete-folder"; readonly folder: string; readonly rest: readonly string[] }
+  // The folder picker of "Move to…" for the assets and folders chosen.
+  | {
+      readonly kind: "move-to";
+      readonly media: readonly string[];
+      readonly folders: readonly string[];
     };
 
 export interface MenuDialogStore {

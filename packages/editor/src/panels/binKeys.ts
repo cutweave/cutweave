@@ -17,10 +17,14 @@ export type BinKeyAction =
   | "play"
   | "remove"
   | "import"
-  | "search";
+  | "search"
+  | "up"
+  | "rename"
+  | "selectAll"
+  | "newFolder";
 
 /** The keymap command of each bin action. */
-export const BIN_COMMANDS: Readonly<Record<BinKeyAction, string>> = {
+export const BIN_COMMANDS: Readonly<Record<Exclude<BinKeyAction, "selectAll">, string>> = {
   moveNext: "bin.move_next",
   movePrevious: "bin.move_previous",
   moveDown: "bin.move_down",
@@ -32,16 +36,25 @@ export const BIN_COMMANDS: Readonly<Record<BinKeyAction, string>> = {
   remove: "media.remove",
   import: "bin.import",
   search: "bin.search",
+  up: "bin.up",
+  rename: "bin.rename",
+  newFolder: "bin.new_folder",
 };
 
-const ACTION_OF = new Map(
-  (Object.entries(BIN_COMMANDS) as [BinKeyAction, string][]).map(([action, id]) => [id, action]),
-);
+// Ctrl/Cmd+A is the fixed Select all of text fields (`edit.text.select_all`, reserved), so the bin
+// does not bind it again: in the bin, away from a text field, the same key selects every tile.
+const ACTION_OF = new Map<string, BinKeyAction>([
+  ...(Object.entries(BIN_COMMANDS) as [BinKeyAction, string][]).map(
+    ([action, id]): [string, BinKeyAction] => [id, action],
+  ),
+  ["edit.text.select_all", "selectAll"],
+]);
 
 /** The slice of a `KeyboardEvent` the bin reads. */
 export type BinKeyEvent = KeyEventLike;
 
 function lookup(e: BinKeyEvent): BinKeyAction | null {
+  if (typeof e.key !== "string") return null;
   const binding = matchEvent(e, ["bin", "global"]);
   return binding === null ? null : (ACTION_OF.get(binding.command) ?? null);
 }
