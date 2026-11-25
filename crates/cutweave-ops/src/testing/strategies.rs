@@ -2099,7 +2099,7 @@ fn item_reset_props(p: &Pools) -> BoxedStrategy<Value> {
 fn fade_secs() -> BoxedStrategy<Value> {
     prop_oneof![
         Just(json!(0)),
-        (1..=4_000_i64).prop_map(|ms| json!(format!("{}s", ms as f64 / 1000.0))),
+        (1..=4_000_i32).prop_map(|ms| json!(format!("{}s", f64::from(ms) / 1000.0))),
     ]
     .boxed()
 }
