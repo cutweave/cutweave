@@ -290,10 +290,15 @@ test.describe("F42 context menus", () => {
 
       // The keyboard: the Menu key on a focused bin card offers Remove from project; a used
       // asset asks first, and Cancel leaves it in the project.
-      await mediaCard(page, "interview.mp4").focus();
-      await page.keyboard.press("ContextMenu");
       const keyed = page.getByRole("menu", { name: "Media actions for interview.mp4" });
-      await expect(keyed).toBeVisible();
+      // (the focus may still be on its way back from the tab's menu: focus the card and press
+      // the key until the menu is there)
+      await expect(async () => {
+        await mediaCard(page, "interview.mp4").focus();
+        await expect(mediaCard(page, "interview.mp4")).toBeFocused({ timeout: 1000 });
+        await page.keyboard.press("ContextMenu");
+        await expect(keyed).toBeVisible({ timeout: 2000 });
+      }).toPass({ timeout: 10_000 });
       await item(keyed, /^Remove from project/).click();
       const ask = page.getByRole("dialog", { name: "Remove interview.mp4?" });
       await expect(ask).toBeVisible();
