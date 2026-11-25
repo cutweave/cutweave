@@ -761,13 +761,13 @@ export function inspector(page: Page) {
   const panel = page.getByTestId("clip-inspector");
   return {
     panel,
-    name: panel.getByLabel("Name"),
+    name: panel.getByLabel("Name", { exact: true }),
     start: panel.getByLabel("Start"),
     duration: panel.getByLabel("Duration"),
     opacity: panel.getByRole("slider", { name: "Opacity" }),
     positionX: panel.getByRole("spinbutton", { name: "Position X" }),
     positionY: panel.getByRole("spinbutton", { name: "Position Y" }),
-    scale: panel.getByRole("spinbutton", { name: "Scale" }),
+    scale: panel.getByRole("spinbutton", { name: "Scale X" }),
     rotation: panel.getByRole("spinbutton", { name: "Rotation" }),
     gain: panel.getByRole("spinbutton", { name: "Gain" }),
   };
@@ -785,4 +785,27 @@ export async function item(page: Page, id: string) {
     };
     audio: { gain: number };
   }>(page, "item.get", { item: id });
+}
+
+/** An item's position as the engine stores it: static, or keyed (item time in flicks). */
+export async function positionOf(
+  page: Page,
+  id: string,
+): Promise<{
+  x?: number;
+  y?: number;
+  keyframes?: { t: number; value: { x: number; y: number } }[];
+}> {
+  const got = await editorCall<{
+    visual: {
+      transform: {
+        position: {
+          x?: number;
+          y?: number;
+          keyframes?: { t: number; value: { x: number; y: number } }[];
+        };
+      };
+    };
+  }>(page, "item.get", { item: id });
+  return got.visual.transform.position;
 }

@@ -7,14 +7,7 @@
 // `item.move` and Duration sends `clip.trim` on the end edge, so every timeline edit also has a
 // path without a pointer.
 
-import type {
-  Animatable,
-  Item,
-  ItemId,
-  ItemProps,
-  SequenceId,
-  TrackId,
-} from "@cutweave/protocol";
+import type { Animatable, Item, ItemId, ItemProps, SequenceId, TrackId } from "@cutweave/protocol";
 import type { FrameRate } from "@cutweave/timeline";
 import type { TKey } from "../i18n/index.ts";
 import type { GestureUpdate } from "../timeline/gesture.ts";

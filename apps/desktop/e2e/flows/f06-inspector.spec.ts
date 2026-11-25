@@ -2,6 +2,8 @@
 // F6 Inspector (docs/user-flows.md): select a clip; edit its name, start and duration (typed
 // timecodes), opacity, position, scale, rotation and gain, by typing, dragging and keys. The
 // timeline follows timing changes, and input that is not a time is refused with a message.
+// Second test (WP-2H.03a): two clips edited at once (one undo step), typed expressions, keyframes
+// from the diamond (add, next, previous, remove, reset) and the Track section.
 import { expect, test } from "../fixtures.ts";
 import {
   clickClip,
@@ -14,11 +16,19 @@ import {
   importWithButton,
   inspector,
   item,
+  laneY,
   launchFlowApp,
   layout,
+  positionOf,
+  rulerY,
+  sec,
+  sequence,
+  shortcut,
   snapshot,
+  timecode,
   timelineGeometry,
   workspace,
+  xAt,
 } from "./helpers.ts";
 
 test.describe("F6 inspector", () => {
@@ -114,7 +124,7 @@ test.describe("F6 inspector", () => {
       await expect.poll(async () => (await item(page, id)).visual.opacity).toBeLessThan(0.65);
       const dragged = Math.round((await item(page, id)).visual.opacity * 100);
       expect(dragged).toBeGreaterThan(35);
-      await expect(f.opacity).toHaveAttribute("aria-valuetext", `${dragged} %`);
+      await expect(f.opacity).toHaveAttribute("aria-valuetext", `${dragged}%`);
       await f.opacity.press("ArrowLeft");
       await expect
         .poll(async () => Math.round((await item(page, id)).visual.opacity * 100))
@@ -156,6 +166,138 @@ test.describe("F6 inspector", () => {
       await expect.poll(async () => (await item(page, id)).audio.gain).toBe(-6);
       await expect(f.gain).toHaveAttribute("aria-valuetext", "-6.0 dB");
       await snapshot(page, info, "inspector edited");
+    } finally {
+      await close();
+      work.remove();
+    }
+  });
+
+  test("two clips edit as one, expressions work, and the diamond keys a property", async () => {
+    const info = test.info();
+    const work = workspace();
+    const { app, page, close } = await launchFlowApp(work);
+    try {
+      await createProject(app, page, "Inspector video", work.dir);
+      await importWithButton(app, page, [work.file("interview.mp4")]);
+      await dropCard(page, "interview.mp4", "V1", 1);
+      await expect.poll(async () => (await layout(page))[0]?.clips).toEqual([[1, 10]]);
+      await editorCaughtUp(page);
+      const seq = await sequence(page);
+      const videoId = seq.tracks.find((t) => t.name === "V1")?.items[0]?.id;
+      const audioId = seq.tracks.find((t) => t.name === "A1")?.items[0]?.id;
+      if (videoId === undefined || audioId === undefined) throw new Error("expected video + audio");
+      await clickClip(page, videoId);
+      const f = inspector(page);
+
+      // The sections the schema defines, and the clip's source.
+      for (const name of ["Transform", "Crop", "Flip", "Compositing", "Track"]) {
+        await expect(f.panel.getByRole("button", { name, exact: true })).toBeVisible();
+      }
+      await expect(f.panel.getByTestId("clip-source")).toHaveText("interview.mp4");
+
+      // Select the picture and its sound: opacity for both with one drag, one undo step.
+      let g = await timelineGeometry(page);
+      await page.keyboard.down("Shift");
+      await page.mouse.click(xAt(g, sec(3)), laneY(g, "A1"));
+      await page.keyboard.up("Shift");
+      await expect(f.panel.getByText(/2 clips selected/)).toBeVisible();
+      await expect(f.panel.getByText(/sit on different tracks/)).toBeVisible();
+      const rail = f.panel.locator(".cw-slider__track");
+      let box = await rail.boundingBox();
+      await expect
+        .poll(async () => {
+          const next = await rail.boundingBox();
+          const steady =
+            next !== null &&
+            box !== null &&
+            Math.abs(next.x - box.x) < 0.5 &&
+            Math.abs(next.y - box.y) < 0.5;
+          box = next;
+          return steady;
+        })
+        .toBe(true);
+      const thumb = await f.opacity.boundingBox();
+      if (box === null || thumb === null) throw new Error("no opacity slider");
+      await page.mouse.move(thumb.x + thumb.width / 2, thumb.y + thumb.height / 2);
+      await page.mouse.down();
+      await page.mouse.move(box.x + box.width / 2, box.y + box.height / 2, { steps: 10 });
+      await page.mouse.up();
+      await expect.poll(async () => (await item(page, videoId)).visual.opacity).toBeLessThan(0.65);
+      const half = (await item(page, videoId)).visual.opacity;
+      expect(half).toBeGreaterThan(0.35);
+      await expect.poll(async () => (await item(page, audioId)).visual.opacity).toBe(half);
+      await editorCaughtUp(page);
+      await shortcut(app, "Control+Z");
+      await expect.poll(async () => (await item(page, videoId)).visual.opacity).toBe(1);
+      await expect.poll(async () => (await item(page, audioId)).visual.opacity).toBe(1);
+
+      // A typed expression on both: rotation +15 adds to the value.
+      await f.rotation.dblclick();
+      await page.keyboard.type("+15");
+      await page.keyboard.press("Enter");
+      await expect.poll(async () => (await item(page, videoId)).visual.transform.rotation).toBe(15);
+      await expect.poll(async () => (await item(page, audioId)).visual.transform.rotation).toBe(15);
+      await shortcut(app, "Control+Z");
+      await expect.poll(async () => (await item(page, audioId)).visual.transform.rotation).toBe(0);
+
+      // One clip: scale *2 keeps the aspect, 50% takes half of the shown value.
+      await clickClip(page, videoId);
+      await f.scale.dblclick();
+      await page.keyboard.type("*2");
+      await page.keyboard.press("Enter");
+      await expect.poll(async () => (await item(page, videoId)).visual.transform.scale.x).toBe(2);
+      await f.scale.dblclick();
+      await page.keyboard.type("50%");
+      await page.keyboard.press("Enter");
+      await expect.poll(async () => (await item(page, videoId)).visual.transform.scale.x).toBe(1);
+      await editorCaughtUp(page);
+
+      // Keyframes: the playhead at 2 s (1 s into the clip), add a key on Position with the diamond.
+      g = await timelineGeometry(page);
+      await page.mouse.click(xAt(g, sec(2)), rulerY(g));
+      await expect(timecode(page)).toHaveText("00:00:02:00");
+      const keys = f.panel.getByRole("group", { name: "Keyframes for Position" });
+      await keys.getByRole("button", { name: "Add keyframe for Position" }).click();
+      await expect.poll(async () => (await positionOf(page, videoId)).keyframes?.length).toBe(1);
+      // At 4 s, typing a position keys it there (the property is animated now).
+      g = await timelineGeometry(page);
+      await page.mouse.click(xAt(g, sec(4)), rulerY(g));
+      await expect(timecode(page)).toHaveText("00:00:04:00");
+      await f.positionX.dblclick();
+      await page.keyboard.type("100");
+      await page.keyboard.press("Enter");
+      await expect.poll(async () => (await positionOf(page, videoId)).keyframes?.length).toBe(2);
+      const position = await positionOf(page, videoId);
+      expect(position.keyframes?.map((k) => [k.t / FLICKS, k.value.x])).toEqual([
+        [1, 0],
+        [3, 100],
+      ]);
+      // Halfway between the keys the shown value is the engine's interpolation.
+      g = await timelineGeometry(page);
+      await page.mouse.click(xAt(g, sec(3)), rulerY(g));
+      await expect(timecode(page)).toHaveText("00:00:03:00");
+      await expect(f.positionX).toHaveAttribute("aria-valuenow", "50");
+      // Next and previous key move the playhead.
+      await keys.getByRole("button", { name: /^Next keyframe/ }).click();
+      await expect(timecode(page)).toHaveText("00:00:04:00");
+      await keys.getByRole("button", { name: /^Previous keyframe/ }).click();
+      await expect(timecode(page)).toHaveText("00:00:02:00");
+      await snapshot(page, info, "keyframed position");
+      // Remove the key under the playhead, then reset the property: static again, at its default.
+      await keys.getByRole("button", { name: "Remove keyframe at playhead for Position" }).click();
+      await expect.poll(async () => (await positionOf(page, videoId)).keyframes?.length).toBe(1);
+      await f.panel.getByRole("button", { name: "Reset Position" }).click();
+      await expect.poll(async () => (await positionOf(page, videoId)).x).toBe(0);
+      await expect(keys.getByRole("button", { name: "Add keyframe for Position" })).toBeVisible();
+
+      // The Track section: rename V1, then lock it with the icon button; the fields lock.
+      const trackName = f.panel.getByTestId("track-inspector").getByLabel("Track name");
+      await trackName.fill("Main video");
+      await page.keyboard.press("Enter");
+      await expect.poll(async () => (await sequence(page)).tracks[0]?.name).toBe("Main video");
+      await f.panel.getByRole("button", { name: "Lock", exact: true }).click();
+      await expect(f.panel.getByText(/track is locked/i)).toBeVisible();
+      await expect(f.rotation).toHaveAttribute("aria-disabled", "true");
     } finally {
       await close();
       work.remove();

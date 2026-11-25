@@ -211,7 +211,10 @@ export class InspectorEditor {
       if (clips.length > 0) await this.apply(field, clips, value);
       return;
     }
-    await this.#end(drag, clips.length > 0 ? (this.#steps(field, clips, value) as GestureStep) : null);
+    await this.#end(
+      drag,
+      clips.length > 0 ? (this.#steps(field, clips, value) as GestureStep) : null,
+    );
   }
 
   /** Commits an open drag, with a last position first when there is one. */

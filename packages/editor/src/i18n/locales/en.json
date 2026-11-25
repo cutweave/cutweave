@@ -884,7 +884,6 @@
     "duration": "Duration",
     "clip": "Clip",
     "timing": "Timing",
-    "transform": "Transform",
     "audio": "Audio",
     "mixed": "Mixed",
     "multiple": "{{count}} clips selected. Mixed values stay as they are until you change them.",
@@ -945,35 +944,34 @@
       "video": "Video"
     },
     "props": {
-      "transform_position": "position",
-      "transform_scale": "scale",
-      "transform_rotation": "rotation",
-      "transform_anchor": "anchor",
+      "transformPosition": "position",
+      "transformScale": "scale",
+      "transformRotation": "rotation",
+      "transformAnchor": "anchor",
       "opacity": "opacity",
-      "blend_mode": "blend mode",
-      "crop_left": "crop left",
-      "crop_top": "crop top",
-      "crop_right": "crop right",
-      "crop_bottom": "crop bottom",
-      "flip_horizontal": "flip horizontal",
-      "flip_vertical": "flip vertical"
+      "blendMode": "blend mode",
+      "cropLeft": "crop left",
+      "cropTop": "crop top",
+      "cropRight": "crop right",
+      "cropBottom": "crop bottom",
+      "flipHorizontal": "flip horizontal",
+      "flipVertical": "flip vertical"
     },
     "labels": {
-      "transform_position": "Position",
-      "transform_scale": "Scale",
-      "transform_rotation": "Rotation",
-      "transform_anchor": "Anchor",
+      "transformPosition": "Position",
+      "transformScale": "Scale",
+      "transformRotation": "Rotation",
+      "transformAnchor": "Anchor",
       "opacity": "Opacity",
-      "blend_mode": "Blend mode",
-      "crop_left": "Left",
-      "crop_top": "Top",
-      "crop_right": "Right",
-      "crop_bottom": "Bottom",
-      "flip_horizontal": "Horizontal",
-      "flip_vertical": "Vertical"
+      "blendMode": "Blend mode",
+      "cropLeft": "Left",
+      "cropTop": "Top",
+      "cropRight": "Right",
+      "cropBottom": "Bottom",
+      "flipHorizontal": "Horizontal",
+      "flipVertical": "Vertical"
     },
     "clipInfo": {
-      "title": "Clip info",
       "source": "Source",
       "proxy": "Proxy",
       "proxyStates": {
@@ -994,10 +992,8 @@
       "muted": "Mute",
       "hidden": "Hide",
       "locked": "Lock",
-      "solo": "Solo",
       "several": "The selected clips sit on different tracks. Select clips of one track to change it."
-    },
-    "propsUnavailable": "Properties are not available"
+    }
   },
   "history": {
     "stepBy": "{{step}} ({{who}})",

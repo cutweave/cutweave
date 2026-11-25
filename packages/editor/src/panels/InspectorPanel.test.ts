@@ -235,7 +235,7 @@ describe("InspectorPanel", () => {
     const sets = engine.calls.filter((c) => c.name === "item.set_props");
     // One command for both clips.
     expect(sets).toHaveLength(1);
-    expect((sets[0]?.input as { items: string[] }).items).toEqual(["itm_v", "itm_a"]);
+    expect((sets[0]?.input as { items: string[] } | undefined)?.items).toEqual(["itm_v", "itm_a"]);
     expect(engine.names().filter((n) => n === "edit.begin_tx")).toHaveLength(1);
   });
 

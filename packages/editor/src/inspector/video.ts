@@ -7,8 +7,8 @@
 // (or none) belongs to the Video part, and a new property in the schema gets a control with no
 // UI code change. `clip` and `audio` groups are other sections' (Clip info, WP-2H.03b).
 import type { Item, ItemProps, PropId, ResetGroup } from "@cutweave/protocol";
-import { getPath, type JsonSchema, setPath, type UiHints } from "@cutweave/ui";
 import type { KeyframeState } from "@cutweave/ui";
+import { getPath, type JsonSchema, setPath, type UiHints } from "@cutweave/ui";
 
 /** Groups whose properties are not part of the Video sections. */
 const OTHER_SECTIONS: ReadonlySet<string> = new Set(["clip", "audio"]);
@@ -262,7 +262,9 @@ export function keyFacts(
     }
     if (!here) onAll = false;
   }
-  const canAdd = clips.every((c) => playhead >= c.item.start && playhead < c.item.start + c.item.duration);
+  const canAdd = clips.every(
+    (c) => playhead >= c.item.start && playhead < c.item.start + c.item.duration,
+  );
   return {
     state: onAll ? "on" : animated ? "elsewhere" : "off",
     canAdd,

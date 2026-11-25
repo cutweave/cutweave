@@ -19,6 +19,7 @@ import {
   type TextField as TextFieldDef,
   type TimeField,
 } from "../inspector/fields.ts";
+import { PROXY_STATES } from "../inspector/labels.ts";
 import { MediaPreview } from "../inspector/MediaPreview.tsx";
 import { Section } from "../inspector/Section.tsx";
 import { TrackSection } from "../inspector/TrackSection.tsx";
@@ -326,7 +327,7 @@ function SourceRows({ clip }: { readonly clip: SelectedClip }) {
       {proxy === null ? null : (
         <InspectorRow label={t("inspector.clipInfo.proxy")}>
           <span className="body" data-testid="clip-proxy">
-            {t(`inspector.clipInfo.proxyStates.${proxy}` as TKey)}
+            {t(PROXY_STATES[proxy])}
           </span>
         </InspectorRow>
       )}

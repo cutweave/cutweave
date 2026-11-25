@@ -101,7 +101,7 @@ test.describe("F7 undo and redo", () => {
       await expect(redo).toHaveAccessibleName("Redo Trim clip");
       await shortcut(app, "Control+Z");
       await expect.poll(opacity).toBe(1);
-      await expect(f.opacity).toHaveAttribute("aria-valuetext", "100 %");
+      await expect(f.opacity).toHaveAttribute("aria-valuetext", "100%");
       await shortcut(app, "Control+Z");
       await expect.poll(clips).toEqual([[1, 10]]);
       await expect(f.start).toHaveValue("00:00:01:00");

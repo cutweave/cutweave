@@ -2,11 +2,19 @@
 // The Track section: the track the selected clips sit on (name, hide, mute, lock, gain). Edits are
 // `track.set`. Clips of several tracks show a note instead, because one name cannot cover them.
 import type { Project, Track } from "@cutweave/protocol";
-import { IconButton, type IconName, InspectorRow, NumberScrubber, TextField, Tooltip } from "@cutweave/ui";
+import {
+  IconButton,
+  type IconName,
+  InspectorRow,
+  NumberScrubber,
+  TextField,
+  Tooltip,
+} from "@cutweave/ui";
 import { useId, useState } from "react";
 import { useTranslation } from "react-i18next";
 import type { InspectorEditor } from "./editor.ts";
 import type { SelectedClip } from "./fields.ts";
+import { TRACK_FLAGS } from "./labels.ts";
 import { Section } from "./Section.tsx";
 
 /** The one track every clip sits on, or `null` when they sit on several. */
@@ -57,14 +65,18 @@ function TrackRows({ track, editor }: { readonly track: Track; readonly editor: 
     visible: boolean,
   ) =>
     visible ? (
-      <Tooltip label={t(`inspector.track.${key}`)}>
+      <Tooltip label={t(TRACK_FLAGS[key])}>
         <IconButton
           size="sm"
           icon={track[key] ? on : off}
-          label={t(`inspector.track.${key}`)}
+          label={t(TRACK_FLAGS[key])}
           pressed={track[key]}
           onClick={() =>
-            void editor.setTrack(track.id, { [key]: !track[key] }, t(`inspector.track.${key}`).toLowerCase())
+            void editor.setTrack(
+              track.id,
+              { [key]: !track[key] },
+              t(TRACK_FLAGS[key]).toLowerCase(),
+            )
           }
         />
       </Tooltip>
@@ -105,6 +117,7 @@ function TrackRows({ track, editor }: { readonly track: Track; readonly editor: 
           }}
         />
       </InspectorRow>
+      {/* biome-ignore lint/a11y/useSemanticElements: a fieldset would bring its own border and layout */}
       <div className="cw-inspector__flags" role="group" aria-label={t("inspector.track.title")}>
         {flag("hidden", "eye-off", "eye", track.kind === "video")}
         {flag("muted", "volume-x", "volume-2", track.kind === "audio")}

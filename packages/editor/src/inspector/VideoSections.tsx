@@ -16,7 +16,6 @@ import {
 import { useCallback, useMemo } from "react";
 import { useTranslation } from "react-i18next";
 import { useStore } from "zustand";
-import type { TKey } from "../i18n/index.ts";
 import { ContextSurface } from "../menus/host.tsx";
 import type { RowData } from "../menus/surfaces/inspector.ts";
 import { commandCatalog } from "../palette/catalog.ts";
@@ -24,6 +23,7 @@ import { useViewStore } from "../state/viewStore.ts";
 import { transportController } from "../transport/useTransport.ts";
 import type { InspectorEditor, PropEdit } from "./editor.ts";
 import type { SelectedClip } from "./fields.ts";
+import { GROUP_LABELS, PROP_LABELS, PROP_NAMES } from "./labels.ts";
 import { Section } from "./Section.tsx";
 import { useEvaluated } from "./useEvaluated.ts";
 import {
@@ -38,26 +38,6 @@ import {
   videoSections,
   visualValue,
 } from "./video.ts";
-
-const KEY_OF = (path: string): string => path.replaceAll(".", "_");
-
-/** Display names for the properties the engine knows; others are made from the schema key. */
-const PROP_NAMES: ReadonlySet<string> = new Set([
-  "transform_position",
-  "transform_scale",
-  "transform_rotation",
-  "transform_anchor",
-  "opacity",
-  "blend_mode",
-  "crop_left",
-  "crop_top",
-  "crop_right",
-  "crop_bottom",
-  "flip_horizontal",
-  "flip_vertical",
-]);
-
-const GROUPS: ReadonlySet<string> = new Set(["transform", "crop", "flip", "compositing", "video"]);
 
 /** The Video sections of the schema, which the command catalog carries. */
 export function useVideoSections(): {
@@ -144,15 +124,12 @@ function VideoSectionView({
   readonly mixed: readonly string[];
 }) {
   const { t } = useTranslation();
-  const label = GROUPS.has(section.id)
-    ? t(`inspector.groups.${section.id}` as TKey)
-    : humanize(section.id);
+  const groupKey = GROUP_LABELS[section.id];
+  const label = groupKey === undefined ? humanize(section.id) : t(groupKey);
   const propName = useCallback(
     (full: string): string => {
-      const key = KEY_OF(full);
-      return PROP_NAMES.has(key)
-        ? t(`inspector.props.${key}` as TKey)
-        : humanize(full.split(".").at(-1) ?? full).toLowerCase();
+      const key = PROP_NAMES[full];
+      return key === undefined ? humanize(full.split(".").at(-1) ?? full).toLowerCase() : t(key);
     },
     [t],
   );
@@ -173,9 +150,12 @@ function VideoSectionView({
   const defaults = useMemo(() => sectionDefaults(section), [section]);
   const hints = useMemo(() => {
     const out: Record<string, UiHints> = {};
-    for (const path of new Set([...Object.keys(defaults), ...Object.keys(section.schema.properties ?? {})])) {
-      const key = KEY_OF(fullPath(section, path));
-      if (PROP_NAMES.has(key)) out[path] = { label: t(`inspector.labels.${key}` as TKey) };
+    for (const path of new Set([
+      ...Object.keys(defaults),
+      ...Object.keys(section.schema.properties ?? {}),
+    ])) {
+      const key = PROP_LABELS[fullPath(section, path)];
+      if (key !== undefined) out[path] = { label: t(key) };
     }
     return out;
   }, [defaults, section, t]);

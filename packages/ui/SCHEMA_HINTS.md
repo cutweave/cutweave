@@ -40,7 +40,7 @@ The widget is chosen from the hint, else from the schema:
 
 | Widget             | Chosen for                                                                  | Value                                                                                                        |
 | ------------------ | --------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------ |
-| `number`           | `number`, `integer`                                                         | number; drag the label, arrow keys, or type (`+10`-style expressions arrive with the Inspector wiring)       |
+| `number`           | `number`, `integer`                                                         | number; drag the label, arrow keys, or type; `+10`, `*2`, `/2` and `50%` (of the shown value, unless the unit is `%`) are relative |
 | `slider`           | hint, with `min` and `max`                                                  | number                                                                                                       |
 | `angle`            | hint                                                                        | number in degrees; a dial plus a numeric field, Shift snaps the dial to 15°                                  |
 | `color`            | hint on a string                                                            | `"#rrggbb"` or `"#rrggbbaa"`; picker, hex field and alpha. The 8-digit form is kept once a value has alpha   |

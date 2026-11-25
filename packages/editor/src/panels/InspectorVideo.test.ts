@@ -148,13 +148,17 @@ describe("the Video sections", () => {
     });
     view();
     // The key at item time 1 s sits at sequence time 2 s: the diamond is on.
-    const on = await screen.findByRole("button", { name: "Remove keyframe at playhead for Position" });
+    const on = await screen.findByRole("button", {
+      name: "Remove keyframe at playhead for Position",
+    });
     expect(on.getAttribute("aria-pressed")).toBe("true");
     await waitFor(() =>
       expect(
-        within(screen.getByRole("group", { name: "Transform" })).getByRole("spinbutton", {
-          name: "Position X",
-        }).getAttribute("aria-valuenow"),
+        within(screen.getByRole("group", { name: "Transform" }))
+          .getByRole("spinbutton", {
+            name: "Position X",
+          })
+          .getAttribute("aria-valuenow"),
       ).toBe("5"),
     );
     await act(async () => {
@@ -181,7 +185,12 @@ describe("the Video sections", () => {
             ...props,
             properties: {
               ...props?.properties,
-              sharpness: { type: ["number", "null"], minimum: 0, maximum: 10, description: "Sharpness." },
+              sharpness: {
+                type: ["number", "null"],
+                minimum: 0,
+                maximum: 10,
+                description: "Sharpness.",
+              },
             },
           },
         },
