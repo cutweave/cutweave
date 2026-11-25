@@ -4,15 +4,22 @@
 //
 // Per launch: a fresh 256-bit UI token goes to the engine as the first stdin line (never argv,
 // env, disk or logs) and to the renderer only through the preload getter (`credentials`);
-// `--port` is the port main chose (the CSP names it). The supervisor waits for the ready line
-// (10 s), then opens its own JSON-RPC connection to learn which project is open.
+// `--port` is the port main chose (the CSP names it). The supervisor waits for the ready line,
+// then opens its own JSON-RPC connection to learn which project is open.
+//
+// Readiness is judged by liveness (issue #143): with `--progress` the engine prints a `starting`
+// line as soon as it runs and one a second until it is ready. An engine that says nothing for
+// 10 s (from the spawn, or since its last line) is hung; one still starting after 60 s is too.
+// Both are killed and count as a failed start. A slow engine that keeps reporting gets through.
 //
 // States: starting → ready → crashed → restarting → ready …, failed, stopped.
 //   - Exit after ready = crash. Restarts follow 0.5 s, 1 s, 2 s; a fourth crash within 60 s
-//     (more than three restarts) gives up: `failed`, and main offers Restart / Quit.
+//     (more than three restarts) gives up: `failed`, and main offers Restart / Quit. So does a
+//     fourth start in a row that never got ready, however long the starts took.
 //   - Start errors: 12 (port taken) picks a new port and starts again at once (the CSP
 //     follows, `onPortChange`); 2, 10, 11, 13 and a spawn error are `failed` at once (a retry
-//     cannot fix them); anything else (exit 1, a signal, no ready line in 10 s) counts as a crash.
+//     cannot fix them); anything else (exit 1, a signal, a hung start) counts as a crash. An
+//     exit is a crash at once: no timer is involved.
 //   - Before every restart the previous port is checked; if it is taken, a new one is picked.
 //
 // Supervised restart vs. cold open (arch §17): a restart reopens the project the crashed
@@ -49,7 +56,13 @@ import {
 } from "./protocol.ts";
 import { connectEngineRpc, type EngineRpc, uuidv7 } from "./rpc-client.ts";
 
-export const READY_TIMEOUT_MS = 10_000;
+/**
+ * How long a starting engine may say nothing: from the spawn to its first stdout line, then
+ * between its `starting` lines (one a second). Silent this long, it is hung.
+ */
+export const START_SILENCE_MS = 10_000;
+/** The longest a start may take while the engine keeps reporting progress; then it is hung. */
+export const START_TIMEOUT_MS = 60_000;
 export const KILL_GRACE_MS = 3_000;
 /** Delay before restart n (1-based) within the crash window; its length is the restart budget. */
 export const RESTART_BACKOFF_MS: readonly number[] = [500, 1_000, 2_000];
@@ -112,7 +125,10 @@ export interface SupervisorOptions {
   env?: NodeJS.ProcessEnv;
   /** Sent in `rpc.hello`. */
   clientVersion?: string;
-  readyTimeoutMs?: number;
+  /** `START_SILENCE_MS` (tests shorten it). */
+  startSilenceMs?: number;
+  /** `START_TIMEOUT_MS` (tests shorten it). */
+  startTimeoutMs?: number;
   killGraceMs?: number;
   backoffMs?: readonly number[];
   crashWindowMs?: number;
@@ -145,10 +161,20 @@ interface Run {
   readonly project: string | null;
   /** The folders it was started with (`--allow-root`). */
   readonly roots: readonly string[];
-  readyTimer: ReturnType<typeof setTimeout> | undefined;
+  /** Fires when the starting engine has said nothing for `START_SILENCE_MS`. */
+  silenceTimer: ReturnType<typeof setTimeout> | undefined;
+  /** Fires `START_TIMEOUT_MS` after the spawn. */
+  startTimer: ReturnType<typeof setTimeout> | undefined;
   /** The ready line arrived. */
   sawReady: boolean;
-  timedOut: boolean;
+  /** Killed as hung while starting: it went silent, or it took too long. */
+  timedOut: "silent" | "slow" | null;
+  /** It printed a `starting` line (an engine that reports its progress). */
+  progressed: boolean;
+  /** The engine's own milliseconds since it began, from its last `starting` line. */
+  startingMs: number;
+  /** "Still starting" was logged. */
+  slowLogged: boolean;
   exited: boolean;
   errorLine: EngineErrorLine | null;
 }
@@ -194,6 +220,8 @@ export class EngineSupervisor {
   #stopWaiters: (() => void)[] = [];
   #restartTimer: ReturnType<typeof setTimeout> | undefined;
   #crashes: number[] = [];
+  /** Starts in a row that never got ready (bounds slow crash loops and hung starts). */
+  #failedStarts = 0;
   #portRetries = 0;
   #lastError: EngineErrorInfo | undefined;
   #recovery: EngineRecovery | undefined;
@@ -307,6 +335,7 @@ export class EngineSupervisor {
   restart(): Promise<EngineStatus> {
     if (this.#status.state !== "failed" || this.#stopping) return Promise.resolve(this.#status);
     this.#crashes = [];
+    this.#failedStarts = 0;
     this.#portRetries = 0;
     const settled = this.whenSettled();
     void this.#launch("restart");
@@ -319,6 +348,7 @@ export class EngineSupervisor {
    */
   resetCrashHistory(): void {
     this.#crashes = [];
+    this.#failedStarts = 0;
   }
 
   /** Test hook: SIGKILL the engine (a simulated crash). Returns the killed pid, or null. */
@@ -404,6 +434,8 @@ export class EngineSupervisor {
       "--port",
       String(this.#port),
       "--token-stdin",
+      // `starting` lines until ready: a slow start is told from a hung one (issue #143).
+      "--progress",
       ...(project === null ? [] : ["--project", project]),
       ...(this.#o.extraArgs ?? []),
       ...roots.flatMap((root) => ["--allow-root", root]),
@@ -427,9 +459,13 @@ export class EngineSupervisor {
       recover: restart && project !== null && !this.#recoveryPending,
       project,
       roots,
-      readyTimer: undefined,
+      silenceTimer: undefined,
+      startTimer: undefined,
       sawReady: false,
-      timedOut: false,
+      timedOut: null,
+      progressed: false,
+      startingMs: 0,
+      slowLogged: false,
       exited: false,
       errorLine: null,
     };
@@ -446,7 +482,7 @@ export class EngineSupervisor {
       // A spawn failure (no such file) emits no `exit`.
       if (child.pid !== undefined || run.exited) return;
       run.exited = true;
-      clearTimeout(run.readyTimer);
+      this.#clearStartTimers(run);
       lines.close();
       if (this.#run !== run) return;
       this.#run = null;
@@ -456,23 +492,65 @@ export class EngineSupervisor {
       lines.close();
       this.#onExit(run, code, signal);
     });
-    run.readyTimer = setTimeout(() => {
-      if (run.sawReady || run.exited) return;
-      run.timedOut = true;
-      child.kill("SIGKILL");
-    }, this.#o.readyTimeoutMs ?? READY_TIMEOUT_MS);
+    this.#armSilence(run);
+    run.startTimer = setTimeout(
+      () => this.#hung(run, "slow"),
+      this.#o.startTimeoutMs ?? START_TIMEOUT_MS,
+    );
+  }
+
+  /** (Re)starts the silence limit: the starting engine said something. */
+  #armSilence(run: Run): void {
+    clearTimeout(run.silenceTimer);
+    run.silenceTimer = setTimeout(
+      () => this.#hung(run, "silent"),
+      this.#o.startSilenceMs ?? START_SILENCE_MS,
+    );
+  }
+
+  #clearStartTimers(run: Run): void {
+    clearTimeout(run.silenceTimer);
+    clearTimeout(run.startTimer);
+  }
+
+  /** A start that went silent or took too long: kill it (the exit counts it as a failed start). */
+  #hung(run: Run, why: "silent" | "slow"): void {
+    if (run.sawReady || run.exited || run.timedOut !== null) return;
+    run.timedOut = why;
+    this.#clearStartTimers(run);
+    run.child.kill("SIGKILL");
   }
 
   #onLine(run: Run, line: string): void {
+    if (run.exited || run.sawReady || run.timedOut !== null) {
+      // After ready only an error line matters (none is expected); a killed start is over.
+      const late = parseEngineLine(line);
+      if (late?.event === "error" && !run.exited) run.errorLine = late.error;
+      return;
+    }
+    // Any line from a starting engine shows it is alive.
+    this.#armSilence(run);
     const parsed = parseEngineLine(line);
-    if (parsed === null || run.exited) return;
+    if (parsed === null) return;
     if (parsed.event === "error") {
       run.errorLine = parsed.error;
       return;
     }
-    if (run.sawReady || run.timedOut) return;
+    if (parsed.event === "starting") {
+      run.progressed = true;
+      run.startingMs = parsed.starting.elapsedMs;
+      const silence = this.#o.startSilenceMs ?? START_SILENCE_MS;
+      if (!run.slowLogged && parsed.starting.elapsedMs >= silence) {
+        run.slowLogged = true;
+        this.#log(
+          `the engine is still starting after ${Math.round(parsed.starting.elapsedMs / 1000)} s; ` +
+            "waiting, since it reports progress",
+        );
+      }
+      return;
+    }
     run.sawReady = true;
-    clearTimeout(run.readyTimer);
+    this.#clearStartTimers(run);
     void this.#afterReady(run, parsed.ready);
   }
 
@@ -530,6 +608,7 @@ export class EngineSupervisor {
     }
     if (!live()) return;
     this.#portRetries = 0;
+    this.#failedStarts = 0;
     if (ready.port !== this.#port) {
       // Not expected (main always passes a concrete port), but the CSP must name the real one.
       const previous = this.#port;
@@ -601,7 +680,7 @@ export class EngineSupervisor {
   #onExit(run: Run, code: number | null, signal: NodeJS.Signals | null): void {
     if (run.exited) return;
     run.exited = true;
-    clearTimeout(run.readyTimer);
+    this.#clearStartTimers(run);
     if (this.#run !== run) return;
     this.#run = null;
     this.#closeRpc();
@@ -626,11 +705,11 @@ export class EngineSupervisor {
       this.#fail(info);
       return;
     }
-    if (!run.sawReady && !run.timedOut && code !== null && FATAL_EXITS.has(code)) {
+    if (!run.sawReady && run.timedOut === null && code !== null && FATAL_EXITS.has(code)) {
       this.#fail(info);
       return;
     }
-    this.#onCrash(info);
+    this.#onCrash(info, !run.sawReady);
   }
 
   #describeExit(run: Run, code: number | null, signal: NodeJS.Signals | null): EngineErrorInfo {
@@ -644,9 +723,18 @@ export class EngineSupervisor {
       ...(code === null ? {} : { exitCode: code }),
       ...(signal === null ? {} : { signal }),
     };
-    if (run.timedOut) {
-      const s = (this.#o.readyTimeoutMs ?? READY_TIMEOUT_MS) / 1000;
-      return { code: "ready_timeout", message: `the engine was not ready within ${s} s`, ...base };
+    if (run.timedOut === "slow") {
+      const s = (this.#o.startTimeoutMs ?? START_TIMEOUT_MS) / 1000;
+      const message = `the engine was still starting after ${s} s`;
+      return { code: "ready_timeout", message, ...base };
+    }
+    if (run.timedOut === "silent") {
+      const s = (this.#o.startSilenceMs ?? START_SILENCE_MS) / 1000;
+      const message = run.progressed
+        ? `the engine stopped reporting progress while it was starting (nothing for ${s} s, ` +
+          `${Math.round(run.startingMs / 1000)} s into its start)`
+        : `the engine said nothing within ${s} s of its start`;
+      return { code: "ready_timeout", message, ...base };
     }
     if (run.errorLine !== null) {
       const { code: lineCode, message, holder } = run.errorLine;
@@ -676,16 +764,23 @@ export class EngineSupervisor {
     return dir ? readCrashMarker(dir, pid) : null;
   }
 
-  #onCrash(info: EngineErrorInfo): void {
+  /** `beforeReady`: the engine never got ready (a failed start). */
+  #onCrash(info: EngineErrorInfo, beforeReady: boolean): void {
     const now = (this.#o.now ?? Date.now)();
     const window = this.#o.crashWindowMs ?? CRASH_WINDOW_MS;
     const backoff = this.#o.backoffMs ?? RESTART_BACKOFF_MS;
     this.#crashes = this.#crashes.filter((t) => now - t < window);
     this.#crashes.push(now);
+    this.#failedStarts = beforeReady ? this.#failedStarts + 1 : 0;
     this.#lastError = info;
     this.#log(`${info.message} (${this.#crashes.length} in ${window / 1000} s)`);
     if (this.#crashes.length > backoff.length) {
       this.#fail(info, `The engine stopped ${this.#crashes.length} times in ${window / 1000} s.`);
+      return;
+    }
+    // Slow failed starts (a hung start takes up to `START_TIMEOUT_MS`) never fill the window.
+    if (this.#failedStarts > backoff.length) {
+      this.#fail(info, `The engine failed to start ${this.#failedStarts} times in a row.`);
       return;
     }
     const delay = backoff[this.#crashes.length - 1] ?? 0;
