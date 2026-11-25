@@ -349,6 +349,17 @@ pub(crate) fn is_audio(prop: PropId) -> bool {
     matches!(prop, PropId::AudioGain | PropId::AudioPan)
 }
 
+/// `Invalid` at `/fine` when `fine` is asked for a property that is not an audio one.
+pub(crate) fn check_fine(prop: PropId, fine: bool) -> Result<(), CmdError> {
+    if fine && !is_audio(prop) {
+        return Err(CmdError::invalid(
+            "/fine",
+            "`fine` applies to audio properties only",
+        ));
+    }
+    Ok(())
+}
+
 /// A time as a command takes it: item time `t` or sequence time `at`.
 #[derive(Clone, Copy, Debug)]
 pub(crate) struct TimeArg<'a> {
@@ -395,12 +406,7 @@ impl TimeArg<'_> {
         prop: Option<PropId>,
         fine: bool,
     ) -> Result<Time, CmdError> {
-        if fine && prop.is_some_and(|p| !is_audio(p)) {
-            return Err(CmdError::invalid(
-                format!("{}/fine", parent(self.pointer)),
-                "`fine` applies to audio properties only",
-            ));
-        }
+        let _ = prop;
         let start = target.start.flicks();
         let (pointer, abs) = match (self.t, self.at) {
             (Some(t), None) => {
@@ -439,11 +445,6 @@ pub(crate) fn snap_to_item_time(
         i128::from(snapped) - i128::from(target.start.flicks()),
     )?;
     Time::from_flicks(rel).map_err(|e| CmdError::invalid(pointer, e.to_string()))
-}
-
-/// `/keys/3` → `/keys`... the pointer of the params object a key list entry sits in.
-fn parent(pointer: &str) -> &str {
-    pointer.rsplit_once('/').map_or("", |(p, _)| p)
 }
 
 /// `t` as a sequence time (`start + t`), saturating at the ends of the time range.

@@ -219,12 +219,16 @@ fn edit_array(
 
 /// Appends the ops that turn `before` into `after` (both at `path`) to `out`: objects are
 /// diffed key by key (removals, then changes, then additions, each in key order); arrays and
-/// scalars that differ are replaced whole.
+/// scalars that differ are replaced whole. So is an animatable that becomes keyed (an object with
+/// a `keyframes` member) or stops being keyed: the static `{x, y}` of a vector and its keyed form
+/// share no member, and their halfway states are not valid values (keyframes §9.1).
 pub(crate) fn diff(path: &DocPath, before: &Value, after: &Value, out: &mut Vec<PatchOp>) {
     if json_eq(before, after) {
         return;
     }
-    if let (Value::Object(b), Value::Object(a)) = (before, after) {
+    if let (Value::Object(b), Value::Object(a)) = (before, after)
+        && b.contains_key("keyframes") == a.contains_key("keyframes")
+    {
         for (key, old) in b {
             if !a.contains_key(key) {
                 out.push(PatchOp::Remove {
@@ -293,6 +297,19 @@ mod tests {
         diff(&DocPath::root(), &json!([1]), &json!({"a": 1}), &mut ops);
         assert_eq!(ops.len(), 1);
         assert!(matches!(ops[0], PatchOp::Replace { .. }));
+    }
+
+    #[test]
+    fn a_value_that_becomes_keyed_is_replaced_whole() {
+        let static_vec = json!({"p": {"x": 1.0, "y": 2.0}});
+        let keyed = json!({"p": {"keyframes": [{"t": 0, "value": {"x": 1.0, "y": 2.0}}]}});
+        for (before, after) in [(&static_vec, &keyed), (&keyed, &static_vec)] {
+            let mut ops = Vec::new();
+            diff(&DocPath::root(), before, after, &mut ops);
+            assert_eq!(ops.len(), 1, "{ops:?}");
+            assert_eq!(ops[0].path().as_str(), "/p");
+            assert!(matches!(ops[0], PatchOp::Replace { .. }));
+        }
     }
 
     #[test]

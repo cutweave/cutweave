@@ -8,7 +8,7 @@ use cutweave_commands::{CmdError, Command, QueryCtx, Tx, command, wire};
 use cutweave_model::{Clip, Easing, ItemId, Project, PropId, Rounding, Time, TimeInput};
 
 use super::{
-    InterpInput, KeyRef, KeyReq, KeyValue, MAX_KEYS_PER_CALL, Target, TimeArg, Wire,
+    InterpInput, KeyRef, KeyReq, KeyValue, MAX_KEYS_PER_CALL, Target, TimeArg, Wire, check_fine,
     check_value_type, map_error, on_prop, on_prop_mut, one_target, outside, resolve_interp,
     sequence_time, set_keys, targets,
 };
@@ -121,6 +121,7 @@ impl KeyframeSet {
             ));
         }
         let fine = self.fine.unwrap_or(false);
+        check_fine(self.prop, fine)?;
         let mut per_item = Vec::new();
         for target in targets(doc, self.item, self.items.as_deref())? {
             let mut reqs = Vec::with_capacity(self.keys.len());
@@ -383,6 +384,9 @@ impl KeyframeMove {
             ));
         }
         let props = by_prop(&self.keys);
+        for prop in props.keys() {
+            check_fine(*prop, fine)?;
+        }
         let mut out = BTreeMap::new();
         for (prop, ts) in &props {
             let delta = if let Some(d) = self.delta {
@@ -524,7 +528,7 @@ impl KeyframeSetInterp {
             on_prop_mut!(clip, prop, a => {
                 let next = a
                     .set_interps(&ts, &interp)
-                    .map_err(|e| map_error(e, "/interp", &prop.to_string()))?;
+                    .map_err(|e| map_error(e, "", &prop.to_string()))?;
                 *a = next;
             });
         }

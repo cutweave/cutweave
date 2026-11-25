@@ -187,6 +187,8 @@ struct Itm {
     len: i64,
     /// End of the sequence, in frames.
     seq_end: i64,
+    /// The keys of its animated properties: property ID and item time in flicks.
+    keys: Vec<(&'static str, i64)>,
 }
 
 #[derive(Clone, Debug)]
@@ -246,6 +248,7 @@ impl Pools {
                         start: frames(i.start().flicks()),
                         len: frames(i.duration().flicks()).max(1),
                         seq_end,
+                        keys: item_keys(i),
                     });
                     used.extend(i.media());
                     pools.markers.extend(i.markers().keys().copied());
@@ -281,6 +284,24 @@ impl Pools {
     fn media_ids(&self) -> Vec<MediaId> {
         self.media.iter().map(|m| m.id).collect()
     }
+}
+
+/// The keys of a clip's animated properties.
+fn item_keys(item: &cutweave_model::Item) -> Vec<(&'static str, i64)> {
+    use cutweave_model::{PropId, PropRef};
+    let Some(clip) = item.as_clip() else {
+        return Vec::new();
+    };
+    let mut out = Vec::new();
+    for id in PropId::ALL {
+        let times: Vec<i64> = match clip.prop(id) {
+            PropRef::Scalar(a) => a.sample_times().map(cutweave_model::Time::flicks).collect(),
+            PropRef::Vec2(a) => a.sample_times().map(cutweave_model::Time::flicks).collect(),
+            PropRef::Bool(a) => a.sample_times().map(cutweave_model::Time::flicks).collect(),
+        };
+        out.extend(times.into_iter().map(|t| (id.as_str(), t)));
+    }
+    out
 }
 
 /// The weight and the param strategy of `name` against `p`, or `None` if this table has no
@@ -341,6 +362,15 @@ pub(super) fn args_for(name: &str, p: &Pools) -> Option<(u32, BoxedStrategy<Valu
         "item.duplicate" => (edits.div_ceil(2), item_duplicate(p)),
         "item.set_props" => (edits.div_ceil(2), item_set_props(p)),
         "item.get" => (1, item_get(p)),
+        "item.reset_props" => (1, item_reset_props(p)),
+        "keyframe.set" => (edits, keyframe_set(p)),
+        "keyframe.delete" => (edits.div_ceil(3), keyframe_delete(p)),
+        "keyframe.move" => (edits.div_ceil(3), keyframe_move(p)),
+        "keyframe.set_interp" => (edits.div_ceil(3), keyframe_set_interp(p)),
+        "keyframe.clear" => (edits.div_ceil(3), keyframe_clear(p)),
+        "keyframe.paste" => (edits.div_ceil(3), keyframe_paste(p)),
+        "keyframe.copy" => (1, keyframe_copy(p)),
+        "keyframe.eval" => (1, keyframe_eval(p)),
         "edit.begin_tx" => (2, begin_tx()),
         "edit.commit_tx" => (2, tx_ref()),
         "edit.cancel_tx" => (1, tx_ref()),
@@ -1671,19 +1701,56 @@ fn item_set_props(p: &Pools) -> BoxedStrategy<Value> {
         .prop_map(|(position, scale, rotation, anchor)| {
             json!({"position": position, "scale": scale, "rotation": rotation, "anchor": anchor})
         });
-    let props = (
-        option::weighted(0.3, prop_oneof![4 => name(), 1 => Just(String::new())]),
-        option::weighted(0.3, any::<bool>()),
-        option::weighted(0.4, prop_oneof![Just(0.0), Just(1.0), 0.0..=1.0_f64]),
-        option::weighted(0.3, gain()),
-        option::weighted(0.4, transform),
+    let crop = (
+        option::of(0.0..=1.0_f64),
+        option::of(0.0..=1.0_f64),
+        option::of(0.0..=1.0_f64),
+        option::of(0.0..=1.0_f64),
     )
-        .prop_map(|(name, enabled, opacity, audio_gain, transform)| {
-            json!({"name": name, "enabled": enabled, "opacity": opacity,
-                   "audio_gain": audio_gain, "transform": transform})
+        .prop_map(|(left, top, right, bottom)| {
+            json!({"left": left, "top": top, "right": right, "bottom": bottom})
         });
-    let valid = (one_of(p.item_ids()), props)
-        .prop_map(|(item, props)| json!({"item": item, "props": props}))
+    let flip = (option::of(any::<bool>()), option::of(any::<bool>()))
+        .prop_map(|(horizontal, vertical)| json!({"horizontal": horizontal, "vertical": vertical}));
+    let props = (
+        (
+            option::weighted(0.3, prop_oneof![4 => name(), 1 => Just(String::new())]),
+            option::weighted(0.3, any::<bool>()),
+            option::weighted(0.4, prop_oneof![Just(0.0), Just(1.0), 0.0..=1.0_f64]),
+            option::weighted(0.3, gain()),
+            option::weighted(0.4, transform),
+        ),
+        (
+            option::weighted(0.2, -1.0..=1.0_f64),
+            option::weighted(0.2, crop),
+            option::weighted(0.2, flip),
+            option::weighted(
+                0.2,
+                select(vec![
+                    "normal",
+                    "multiply",
+                    "screen",
+                    "overlay",
+                    "soft_light",
+                    "add",
+                ]),
+            ),
+        ),
+    )
+        .prop_map(
+            |((name, enabled, opacity, audio_gain, transform), (pan, crop, flip, blend))| {
+                json!({"name": name, "enabled": enabled, "opacity": opacity,
+                       "audio_gain": audio_gain, "transform": transform, "audio_pan": pan,
+                       "crop": crop, "flip": flip, "blend_mode": blend})
+            },
+        );
+    // `at` lets an animated property take a key; it is ignored for static ones.
+    let valid = (
+        one_of(p.item_ids()),
+        props,
+        option::weighted(0.6, near_any(p)),
+    )
+        .prop_map(|(item, props, at)| json!({"item": item, "props": props, "at": at}))
         .boxed();
     let bad = prop_oneof![
         Just(json!({})),
@@ -1696,6 +1763,295 @@ fn item_set_props(p: &Pools) -> BoxedStrategy<Value> {
         .prop_map(|(item, props)| json!({"item": item, "props": props}))
         .boxed();
     mix(valid, invalid)
+}
+
+/// A sequence time near some item (or just a small time when there are none).
+fn near_any(p: &Pools) -> BoxedStrategy<Value> {
+    match p.items.first() {
+        None => (0..60_i64).prop_map(|f| time_json(FPF_30, f, 0, 0)).boxed(),
+        Some(_) => select(p.items.clone())
+            .prop_flat_map(|it| near_item(&it))
+            .boxed(),
+    }
+}
+
+// ----- keyframe.*, item.reset_props (WP-2C.03) ----------------------------------------------------
+
+const PROP_IDS: [&str; 13] = [
+    "transform.position",
+    "transform.scale",
+    "transform.rotation",
+    "transform.anchor",
+    "opacity",
+    "crop.left",
+    "crop.top",
+    "crop.right",
+    "crop.bottom",
+    "flip.horizontal",
+    "flip.vertical",
+    "audio_gain",
+    "audio_pan",
+];
+
+const EASINGS: [&str; 8] = [
+    "linear",
+    "hold",
+    "ease_in",
+    "ease_out",
+    "ease_in_out",
+    "back_out",
+    "spring",
+    "bounce",
+];
+
+/// A value of the property `prop`, mostly inside its range.
+fn prop_value(prop: &'static str) -> BoxedStrategy<Value> {
+    match prop {
+        "transform.position" | "transform.anchor" => (-2.0..=2.0_f64, -2.0..=2.0_f64)
+            .prop_map(|(x, y)| json!({"x": x, "y": y}))
+            .boxed(),
+        "transform.scale" => prop_oneof![
+            9 => (0.0..=4.0_f64, 0.0..=4.0_f64).prop_map(|(x, y)| json!({"x": x, "y": y})),
+            1 => Just(json!({"x": -1.0, "y": 1.0})),
+        ]
+        .boxed(),
+        "transform.rotation" => (-720.0..=720.0_f64).prop_map(|v| json!(v)).boxed(),
+        "opacity" | "crop.left" | "crop.top" | "crop.right" | "crop.bottom" => prop_oneof![
+            9 => (0.0..=1.0_f64).prop_map(|v| json!(v)),
+            1 => Just(json!(1.5)),
+        ]
+        .boxed(),
+        "flip.horizontal" | "flip.vertical" => any::<bool>().prop_map(|b| json!(b)).boxed(),
+        "audio_gain" => {
+            prop_oneof![9 => gain().prop_map(|v| json!(v)), 1 => Just(json!(99.0))].boxed()
+        }
+        _ => prop_oneof![
+            9 => (-1.0..=1.0_f64).prop_map(|v| json!(v)),
+            1 => Just(json!(-2.0)),
+        ]
+        .boxed(),
+    }
+}
+
+/// A sequence time near the item: a frame from a little before its start to a little past its
+/// end, in a random input form.
+fn near_item(it: &Itm) -> BoxedStrategy<Value> {
+    let fpf = it.fpf;
+    (
+        it.start - 3..it.start + it.len + 3,
+        any::<u8>(),
+        any::<u32>(),
+    )
+        .prop_map(move |(f, form, jitter)| time_json(fpf, f, form, jitter))
+        .boxed()
+}
+
+/// `keyframe.set`: one to three keys on one property of an item, mostly valid.
+fn keyframe_set(p: &Pools) -> BoxedStrategy<Value> {
+    if p.items.is_empty() {
+        return mix(unknown_item("at"), unknown_item("at"));
+    }
+    let valid = (select(p.items.clone()), select(PROP_IDS.to_vec()))
+        .prop_flat_map(|(it, prop)| {
+            let key = (
+                near_item(&it),
+                option::weighted(0.8, prop_value(prop)),
+                option::weighted(0.5, select(EASINGS.to_vec())),
+                any::<bool>(),
+            )
+                .prop_map(|(at, value, easing, use_t)| {
+                    let mut k = serde_json::Map::new();
+                    k.insert(if use_t { "t" } else { "at" }.into(), at);
+                    if let Some(v) = value {
+                        k.insert("value".into(), v);
+                    }
+                    if let Some(e) = easing {
+                        k.insert("easing".into(), json!(e));
+                    }
+                    Value::Object(k)
+                });
+            (
+                Just(it),
+                Just(prop),
+                vec(key, 1..4),
+                option::weighted(0.2, any::<bool>()),
+            )
+        })
+        .prop_map(|(it, prop, keys, replace)| {
+            json!({"item": it.id, "prop": prop, "keys": keys, "replace": replace})
+        })
+        .boxed();
+    let invalid = prop_oneof![
+        Just(json!({"prop": "opacity", "keys": []})),
+        Just(json!({"item": ItemId::from_u128(99), "prop": "opacity", "keys": [{"at": "1s"}]})),
+    ]
+    .boxed();
+    mix(valid, invalid)
+}
+
+/// A key of `it` (the key list is empty for an item without keys: then a random time).
+fn key_refs(it: &Itm) -> BoxedStrategy<Value> {
+    let fresh_key = (select(PROP_IDS.to_vec()), -5..60_i64)
+        .prop_map(|(prop, f)| json!({"prop": prop, "t": f * 1_000_000}))
+        .boxed();
+    if it.keys.is_empty() {
+        return vec(fresh_key, 1..3).prop_map(Value::Array).boxed();
+    }
+    let known: Vec<Value> = it
+        .keys
+        .iter()
+        .map(|(prop, t)| json!({"prop": prop, "t": t}))
+        .collect();
+    prop_oneof![
+        9 => subsequence(known, 1..=it.keys.len().min(4)).prop_map(Value::Array),
+        1 => vec(fresh_key, 1..3).prop_map(Value::Array),
+    ]
+    .boxed()
+}
+
+/// An item with the strategy of a command that addresses its keys.
+fn with_keys(
+    p: &Pools,
+    f: impl Fn(Itm, Value) -> BoxedStrategy<Value> + Send + Sync + 'static,
+) -> BoxedStrategy<Value> {
+    if p.items.is_empty() {
+        return mix(unknown_item("at"), unknown_item("at"));
+    }
+    let f = Arc::new(f);
+    let valid = select(p.items.clone())
+        .prop_flat_map(move |it| {
+            let keys = key_refs(&it);
+            let f = Arc::clone(&f);
+            (Just(it), keys).prop_flat_map(move |(it, keys)| f(it, keys))
+        })
+        .boxed();
+    mix(valid, unknown_item("at"))
+}
+
+fn keyframe_delete(p: &Pools) -> BoxedStrategy<Value> {
+    with_keys(p, |it, keys| {
+        Just(json!({"item": it.id, "keys": keys})).boxed()
+    })
+}
+
+fn keyframe_copy(p: &Pools) -> BoxedStrategy<Value> {
+    keyframe_delete(p)
+}
+
+fn keyframe_move(p: &Pools) -> BoxedStrategy<Value> {
+    with_keys(p, |it, keys| {
+        let fpf = it.fpf;
+        (
+            -20..20_i64,
+            any::<u8>(),
+            any::<u32>(),
+            any::<bool>(),
+            near_item(&it),
+        )
+            .prop_map(move |(f, form, jitter, by, to)| {
+                if by {
+                    json!({"item": it.id, "keys": keys, "delta": time_json(fpf, f, form, jitter)})
+                } else {
+                    json!({"item": it.id, "keys": keys, "to_at": to})
+                }
+            })
+            .boxed()
+    })
+}
+
+fn keyframe_set_interp(p: &Pools) -> BoxedStrategy<Value> {
+    with_keys(p, |it, keys| {
+        select(EASINGS.to_vec())
+            .prop_map(move |e| json!({"item": it.id, "keys": keys, "easing": e}))
+            .boxed()
+    })
+}
+
+fn keyframe_clear(p: &Pools) -> BoxedStrategy<Value> {
+    if p.items.is_empty() {
+        return mix(unknown_item("at"), unknown_item("at"));
+    }
+    let valid = (select(p.items.clone()), select(PROP_IDS.to_vec()))
+        .prop_flat_map(|(it, prop)| {
+            (
+                Just(it.clone()),
+                Just(prop),
+                option::weighted(0.5, near_item(&it)),
+            )
+        })
+        .prop_map(|(it, prop, at)| json!({"item": it.id, "prop": prop, "at": at}))
+        .boxed();
+    mix(valid, unknown_item("at"))
+}
+
+fn keyframe_paste(p: &Pools) -> BoxedStrategy<Value> {
+    if p.items.is_empty() {
+        return mix(unknown_item("at"), unknown_item("at"));
+    }
+    let valid = (select(p.items.clone()), select(PROP_IDS.to_vec()))
+        .prop_flat_map(|(it, prop)| {
+            (
+                Just(it.clone()),
+                Just(prop),
+                vec((0..30_i64, prop_value(prop)), 1..4),
+                near_item(&it),
+            )
+        })
+        .prop_map(|(it, prop, keys, at)| {
+            let keys: Vec<Value> = keys
+                .into_iter()
+                .map(|(f, v)| {
+                    json!({"prop": prop, "dt": f * it.fpf, "value": v,
+                           "interp": {"kind": "linear"}})
+                })
+                .collect();
+            json!({"item": it.id, "payload": {"version": 1, "keys": keys}, "at": at})
+        })
+        .boxed();
+    mix(valid, unknown_item("at"))
+}
+
+fn keyframe_eval(p: &Pools) -> BoxedStrategy<Value> {
+    if p.items.is_empty() {
+        return mix(unknown_item("at"), unknown_item("at"));
+    }
+    let valid = (select(p.items.clone()), select(PROP_IDS.to_vec()))
+        .prop_flat_map(|(it, prop)| {
+            (
+                Just(it.clone()),
+                Just(prop),
+                near_item(&it),
+                near_item(&it),
+                2..40_u32,
+                any::<bool>(),
+            )
+        })
+        .prop_map(|(it, prop, a, b, n, range)| {
+            if range {
+                json!({"item": it.id, "prop": prop, "from": a, "to": b, "samples": n})
+            } else {
+                json!({"item": it.id, "prop": prop, "at": a})
+            }
+        })
+        .boxed();
+    mix(valid, unknown_item("at"))
+}
+
+fn item_reset_props(p: &Pools) -> BoxedStrategy<Value> {
+    let shape = prop_oneof![
+        3 => Just(json!({})),
+        3 => select(vec!["transform", "crop", "flip", "compositing", "audio"])
+            .prop_map(|g| json!({"group": g})),
+        2 => subsequence(PROP_IDS.to_vec(), 1..4).prop_map(|props| json!({"props": props})),
+        1 => Just(json!({"group": "crop", "props": ["opacity"]})),
+    ];
+    let valid = (one_of(p.item_ids()), shape)
+        .prop_map(|(item, mut shape)| {
+            shape["item"] = item;
+            shape
+        })
+        .boxed();
+    mix(valid, unknown_item("at"))
 }
 
 // ----- edit.* --------------------------------------------------------------------------------

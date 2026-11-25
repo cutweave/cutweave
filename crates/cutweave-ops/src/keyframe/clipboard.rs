@@ -7,8 +7,8 @@ use cutweave_model::{Clip, Interp, ItemId, Project, PropId, Time, TimeInput};
 
 use super::{KeyRef, KeySet};
 use super::{
-    KeyReq, KeyValue, MAX_KEYS_PER_CALL, Target, TimeArg, Wire, check_value_type, on_prop, outside,
-    sequence_time, set_keys, snap_to_item_time, targets,
+    KeyReq, KeyValue, MAX_KEYS_PER_CALL, Target, TimeArg, Wire, check_fine, check_value_type,
+    on_prop, outside, sequence_time, set_keys, snap_to_item_time, targets,
 };
 
 /// One copied key.
@@ -183,6 +183,9 @@ impl KeyframePaste {
             ));
         }
         let fine = self.fine.unwrap_or(false);
+        for k in &payload.keys {
+            check_fine(self.as_prop.unwrap_or(k.prop), fine)?;
+        }
         let origin = TimeArg {
             t: self.t,
             at: self.at,
