@@ -42,5 +42,6 @@ CI does not run on pushes (Actions-minutes policy). The local gate is the merge 
 
 ## Machine notes (this Windows laptop)
 - **Cargo:** `~/.cargo/config.toml` caps builds at `jobs = 4`, links with `rust-lld`, and uses `sccache`. Dev builds keep line tables only.
+- **Temp files:** on Windows `gpu-lock.py` puts the temp dir of everything it runs at `<checkout>/.tmp`, inside the Defender exclusion (`scripts/repo_temp.py`). Running `cargo`, `pnpm` or `just` directly still uses the system temp dir.
 - **Priority:** after a session restart, set the session's `claude.exe` to BelowNormal so builds inherit it.
 - **Unit tests:** use `python scripts/run-vitest.py`, never a bare `pnpm exec vitest` in `packages/ui` (it picks up the Playwright specs).
