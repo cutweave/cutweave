@@ -371,8 +371,16 @@ async fn stale_run_files_are_ignored_and_reaped_at_start() {
     std::fs::write(&stale, body.to_string()).unwrap();
     assert!(RunFile::discover(dir.path()).is_empty());
     let s = start(&dir, false).await;
-    assert!(!stale.exists());
     assert_eq!(RunFile::discover(dir.path()).len(), 1);
+    // Reaped in the background, after the server's own run-file is written.
+    let deadline = std::time::Instant::now() + std::time::Duration::from_secs(30);
+    while stale.exists() {
+        assert!(
+            std::time::Instant::now() < deadline,
+            "the stale run-file was not reaped"
+        );
+        tokio::time::sleep(std::time::Duration::from_millis(20)).await;
+    }
     drop(s);
 }
 

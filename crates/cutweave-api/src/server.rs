@@ -215,10 +215,6 @@ impl ApiServer {
             })?
             .port();
 
-        let reaped = RunFile::reap_stale(&run_dir);
-        if reaped > 0 {
-            tracing::info!(reaped, "removed stale run-files");
-        }
         let contents = RunFileContents {
             pid: std::process::id(),
             port,
@@ -244,6 +240,15 @@ impl ApiServer {
             shm: config.shm.clone(),
         };
         let run_file = RunFile::write(&run_dir, &contents).map_err(ApiError::RunFile)?;
+        // Stale run-files of dead engines go in the background: on Windows every pid checked
+        // starts a `tasklist`, seconds on a busy machine, and nothing waits for it (issue #143).
+        let reap_dir = run_dir.clone();
+        tokio::task::spawn_blocking(move || {
+            let reaped = RunFile::reap_stale(&reap_dir);
+            if reaped > 0 {
+                tracing::info!(reaped, "removed stale run-files");
+            }
+        });
 
         let signer = UrlSigner::generate().map_err(CredentialsError::from)?;
         let shared = Arc::new(Shared {

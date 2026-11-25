@@ -40,6 +40,11 @@ class FakeChild extends EventEmitter {
   ready(port = Number(this.arg("--port"))): void {
     this.stdout.write(`${JSON.stringify({ event: "ready", port, pid: this.pid, version: "t" })}\n`);
   }
+  /** `--progress`: the engine is still starting, `elapsedMs` into its start. */
+  starting(elapsedMs: number): void {
+    const line = { event: "starting", pid: this.pid, version: "t", elapsed_ms: elapsedMs };
+    this.stdout.write(`${JSON.stringify(line)}\n`);
+  }
   errorLine(code: string, exitCode: number, extra: object = {}): void {
     const line = { event: "error", code, exit_code: exitCode, message: `${code}!`, ...extra };
     this.stdout.write(`${JSON.stringify(line)}\n`);
@@ -170,6 +175,7 @@ describe("start and the handshake", () => {
       "--port",
       "4000",
       "--token-stdin",
+      "--progress",
       "--allow-origin",
       "app://cutweave",
     ]);
@@ -201,7 +207,7 @@ describe("start and the handshake", () => {
     expect(h.sup.status.recovery).toBeUndefined();
   });
 
-  it("gives the ready line 10 s, then kills the engine and treats it as a crash", async () => {
+  it("kills an engine that says nothing for 10 s and treats it as a crash", async () => {
     const h = harness();
     void h.sup.start();
     await flush();
@@ -214,11 +220,186 @@ describe("start and the handshake", () => {
     expect(h.sup.status).toMatchObject({
       state: "crashed",
       restartInMs: 500,
-      lastError: { code: "ready_timeout" },
+      lastError: {
+        code: "ready_timeout",
+        message: "the engine said nothing within 10 s of its start",
+      },
     });
     await vi.advanceTimersByTimeAsync(500);
     await flush();
     expect(h.children).toHaveLength(2);
+  });
+});
+
+describe("slow starts (issue #143)", () => {
+  /** The newest engine reports progress every second from `from` ms to `to` ms of its start. */
+  async function tick(h: ReturnType<typeof harness>, from: number, to: number): Promise<void> {
+    for (let t = from; t <= to; t += 1_000) {
+      h.last().starting(t);
+      await flush();
+      await vi.advanceTimersByTimeAsync(1_000);
+    }
+  }
+
+  it("lets an engine that takes 15 s but reports progress get ready, with no crash", async () => {
+    const logs: string[] = [];
+    const h = harness({ log: (m) => logs.push(m) });
+    void h.sup.start();
+    await flush();
+    await tick(h, 0, 14_000);
+    expect(h.last().signals).toEqual([]);
+    expect(h.sup.status.state).toBe("starting");
+    await h.ready();
+    expect(h.sup.status).toMatchObject({ state: "ready", generation: 1 });
+    expect(h.states()).toEqual(["starting", "ready"]);
+    expect(h.sup.status.lastError).toBeUndefined();
+    expect(logs.some((m) => /still starting after 10 s/.test(m))).toBe(true);
+  });
+
+  it("kills an engine that stops reporting for 10 s, though it was alive before", async () => {
+    const h = harness();
+    void h.sup.start();
+    await flush();
+    await tick(h, 0, 3_000);
+    // The last line came at 3 s (the clock is at 4 s): silent from then on.
+    await vi.advanceTimersByTimeAsync(8_999);
+    expect(h.last().signals).toEqual([]);
+    await vi.advanceTimersByTimeAsync(1);
+    expect(h.last().signals).toEqual(["SIGKILL"]);
+    h.last().exit(null, "SIGKILL");
+    await flush();
+    expect(h.sup.status.state).toBe("crashed");
+    expect(h.sup.status.lastError?.code).toBe("ready_timeout");
+    expect(h.sup.status.lastError?.message).toMatch(
+      /stopped reporting progress.*3 s into its start/,
+    );
+  });
+
+  it("kills a start still going after 60 s, even while it reports progress", async () => {
+    const h = harness();
+    void h.sup.start();
+    await flush();
+    await tick(h, 0, 58_000);
+    expect(h.last().signals).toEqual([]);
+    h.last().starting(59_000);
+    await flush();
+    await vi.advanceTimersByTimeAsync(1_000);
+    expect(h.last().signals).toEqual(["SIGKILL"]);
+    h.last().exit(null, "SIGKILL");
+    await flush();
+    expect(h.sup.status).toMatchObject({
+      state: "crashed",
+      lastError: { code: "ready_timeout", message: "the engine was still starting after 60 s" },
+    });
+  });
+
+  it("gives up on an engine that hangs while reporting: the fourth hung start in a row is failed", async () => {
+    const h = harness();
+    void h.sup.start();
+    await flush();
+    const began = Date.now();
+    for (let i = 0; i < 4; i++) {
+      expect(h.children).toHaveLength(i + 1);
+      await tick(h, 0, 59_000);
+      expect(h.last().signals).toEqual(["SIGKILL"]);
+      h.last().exit(null, "SIGKILL");
+      await flush();
+      if (i < 3) {
+        // Hung starts 60 s apart never fill the 60 s crash window; each restarts after 0.5 s.
+        expect(h.sup.status).toMatchObject({ state: "crashed", restartInMs: 500 });
+        await vi.advanceTimersByTimeAsync(500);
+        await flush();
+      }
+    }
+    expect(h.sup.status.state).toBe("failed");
+    expect(h.sup.status.message).toMatch(/failed to start 4 times in a row/);
+    // Bounded: four starts of 60 s and three restart delays.
+    expect(Date.now() - began).toBeLessThanOrEqual(4 * 60_000 + 3 * 500);
+    await vi.advanceTimersByTimeAsync(120_000);
+    expect(h.children).toHaveLength(4);
+  });
+
+  it("gives up on a silent hung engine after four starts within 60 s", async () => {
+    const h = harness();
+    void h.sup.start();
+    await flush();
+    for (let i = 0; i < 4; i++) {
+      await vi.advanceTimersByTimeAsync(10_000);
+      expect(h.last().signals).toEqual(["SIGKILL"]);
+      h.last().exit(null, "SIGKILL");
+      await flush();
+      if (i < 3) await vi.advanceTimersByTimeAsync(h.sup.status.restartInMs ?? 0);
+      await flush();
+    }
+    expect(h.sup.status.state).toBe("failed");
+    expect(h.sup.status.message).toMatch(/4 times in 60 s/);
+  });
+
+  it("counts a process that dies while it reports progress as a crash at once", async () => {
+    const h = harness();
+    void h.sup.start();
+    await flush();
+    await tick(h, 0, 2_000);
+    h.last().exit(1);
+    await flush();
+    expect(h.sup.status).toMatchObject({
+      state: "crashed",
+      restartInMs: 500,
+      lastError: { code: "start_failed", exitCode: 1 },
+    });
+  });
+
+  it("still fails a crashing engine after four crashes, whether or not it got ready", async () => {
+    const h = harness();
+    void h.sup.start();
+    await flush();
+    for (let i = 0; i < 4; i++) {
+      h.last().starting(0);
+      await flush();
+      h.last().exit(1);
+      await flush();
+      if (i < 3) {
+        expect(h.sup.status.state).toBe("crashed");
+        await vi.advanceTimersByTimeAsync(h.sup.status.restartInMs ?? 0);
+        await flush();
+      }
+    }
+    expect(h.sup.status.state).toBe("failed");
+    expect(h.children).toHaveLength(4);
+  });
+
+  it("forgets failed starts once an engine gets ready", async () => {
+    const h = harness();
+    void h.sup.start();
+    await flush();
+    /** One hung start (killed after 60 s), then the restart. */
+    const hang = async () => {
+      await tick(h, 0, 59_000);
+      expect(h.last().signals).toEqual(["SIGKILL"]);
+      h.last().exit(null, "SIGKILL");
+      await flush();
+      expect(h.sup.status.state).toBe("crashed");
+      await vi.advanceTimersByTimeAsync(h.sup.status.restartInMs ?? 0);
+      await flush();
+    };
+    for (let i = 0; i < 3; i++) await hang();
+    await h.ready();
+    expect(h.sup.status.state).toBe("ready");
+    // Up for a while, then it crashes and restarts.
+    await vi.advanceTimersByTimeAsync(61_000);
+    h.last().exit(70);
+    await flush();
+    await vi.advanceTimersByTimeAsync(h.sup.status.restartInMs ?? 0);
+    await flush();
+    // Three more hung starts: six failed starts in all, but only three in a row.
+    for (let i = 0; i < 3; i++) await hang();
+    expect(h.sup.status.state).toBe("restarting");
+    // The fourth in a row is one too many.
+    await tick(h, 0, 59_000);
+    h.last().exit(null, "SIGKILL");
+    await flush();
+    expect(h.sup.status.state).toBe("failed");
+    expect(h.sup.status.message).toMatch(/failed to start 4 times in a row/);
   });
 
   it("reports a spawn error as failed without retrying", async () => {

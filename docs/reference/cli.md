@@ -129,6 +129,9 @@ Options:
       --dev-stub-media
           Dev only: fake media probing until the FFmpeg backend lands. `CUTWEAVE_DEV_STUB_MEDIA=1` does the same
 
+      --progress
+          Print `{"event":"starting",...}` lines on stdout until the ready line: one as soon as the engine runs, then one a second (a supervisor tells a slow start from a hung one)
+
   -h, --help
           Print help
 ```
