@@ -78,7 +78,8 @@ impl JobState {
     }
 }
 
-/// How far a job got.
+/// How far a job got. The counters are reported by jobs that have them (exports: frames,
+/// speed, time left and bytes written, WP-2G.03a) and left out otherwise.
 #[derive(Clone, Debug, Default, PartialEq, Serialize, Deserialize, JsonSchema, specta::Type)]
 #[serde(deny_unknown_fields)]
 pub struct JobProgress {
@@ -86,6 +87,33 @@ pub struct JobProgress {
     pub fraction: f64,
     /// What it is doing, for status lines.
     pub message: Option<String>,
+    /// Units done so far (an export: frames handed to the encoder).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub frame: Option<u64>,
+    /// Units in all (an export: frames in the file).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub frames: Option<u64>,
+    /// Speed in units per second.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub fps: Option<f64>,
+    /// Estimated time left, in milliseconds.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub eta_ms: Option<u64>,
+    /// Bytes written so far.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub bytes: Option<u64>,
+}
+
+impl JobProgress {
+    /// Progress with a fraction and a status line, without counters.
+    #[must_use]
+    pub fn new(fraction: f64, message: Option<String>) -> JobProgress {
+        JobProgress {
+            fraction,
+            message,
+            ..JobProgress::default()
+        }
+    }
 }
 
 /// A job as reported by `job.status`, `job.list`, `job.wait`, `job.cancel` and the
@@ -229,10 +257,7 @@ mod tests {
             label: "index".into(),
             media_id: Some(MediaId::from_u128(2)),
             state: JobState::Running,
-            progress: JobProgress {
-                fraction: 0.5,
-                message: Some("half".into()),
-            },
+            progress: JobProgress::new(0.5, Some("half".into())),
             cancel_requested: false,
             error: None,
         }

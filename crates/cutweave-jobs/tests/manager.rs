@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 //! WP-1D.07: the job manager: budgets, waits, cancellation, dependencies, progress events,
-//! history and ID generation.
+//! history and ID generation. WP-2G.03a: holds, given IDs, completion callbacks, restored jobs
+//! and progress counters.
 
 #![allow(clippy::unwrap_used, clippy::expect_used)]
 
@@ -14,8 +15,8 @@ use std::{
 };
 
 use cutweave_jobs::{
-    DEFAULT_PROXY_SLOTS, JobConfig, JobCtx, JobError, JobEvent, JobFilter, JobId, JobKind,
-    JobManager, JobSpec, JobState, MemoryHistory,
+    DEFAULT_PROXY_SLOTS, Hold, JobConfig, JobCtx, JobError, JobEvent, JobFilter, JobId, JobInfo,
+    JobKind, JobManager, JobProgress, JobSpec, JobState, MemoryHistory, Submit, SubmitError,
 };
 use cutweave_model::{MediaId, SeededGen};
 
@@ -458,4 +459,153 @@ fn it_runs_on_an_engine_runtime_and_waits_asynchronously() {
     jm.cancel_all();
     drop(jm);
     rt.shutdown_timeout(Duration::from_secs(5));
+}
+
+#[test]
+fn held_jobs_wait_for_their_release_and_given_ids_are_reused_only_when_free() {
+    let jm = manager(2, 1);
+    let hold = Hold::new();
+    let ran = Arc::new(AtomicBool::new(false));
+    let seen = Arc::new(std::sync::Mutex::new(None));
+    let (flag, record) = (Arc::clone(&ran), Arc::clone(&seen));
+    let id = JobId::from_u128(42);
+    let h = jm
+        .submit_with(
+            JobSpec::new(JobKind::Export, "export"),
+            Submit {
+                id: Some(id),
+                hold: Some(hold.clone()),
+                on_done: Some(Box::new(move |info: &JobInfo| {
+                    *record.lock().unwrap() = Some(info.state);
+                })),
+            },
+            move |_| {
+                flag.store(true, Ordering::SeqCst);
+                Ok(())
+            },
+        )
+        .unwrap();
+    assert_eq!(h.id(), id);
+    // An ID in use is refused.
+    assert_eq!(
+        jm.submit_with(
+            spec("again"),
+            Submit {
+                id: Some(id),
+                ..Submit::default()
+            },
+            |_| Ok(())
+        )
+        .unwrap_err(),
+        SubmitError::InUse(id)
+    );
+    std::thread::sleep(Duration::from_millis(50));
+    assert!(!ran.load(Ordering::SeqCst), "held");
+    assert_eq!(jm.status(id).unwrap().state, JobState::Queued);
+    hold.release();
+    let done = jm.wait(id, SETTLE).unwrap();
+    assert_eq!(done.state, JobState::Succeeded);
+    // The callback ran before the waiter woke.
+    assert_eq!(*seen.lock().unwrap(), Some(JobState::Succeeded));
+    assert!(ran.load(Ordering::SeqCst));
+    // Once finished, the ID may run again (a retry), and the new run supersedes the old.
+    let again = jm
+        .submit_with(
+            spec("retry"),
+            Submit {
+                id: Some(id),
+                ..Submit::default()
+            },
+            |_| Err(JobError::failed("no")),
+        )
+        .unwrap();
+    assert_eq!(jm.wait(again.id(), SETTLE).unwrap().state, JobState::Failed);
+    assert_eq!(jm.status(id).unwrap().state, JobState::Failed);
+}
+
+#[test]
+fn a_held_job_can_be_cancelled_and_fresh_ids_skip_known_ones() {
+    let jm = JobManager::builder()
+        .ids(Box::new(SeededGen::new(5)))
+        .build()
+        .unwrap();
+    let mut ids = SeededGen::new(5);
+    let first = JobId::mint(&mut ids);
+    let second = JobId::mint(&mut ids);
+    // A restored job holds the generator's first ID; a finished one its second.
+    let held = jm
+        .submit_with(
+            spec("held"),
+            Submit {
+                id: Some(first),
+                hold: Some(Hold::new()),
+                on_done: None,
+            },
+            |_| Ok(()),
+        )
+        .unwrap();
+    jm.record(&JobInfo {
+        id: second,
+        kind: JobKind::Export,
+        label: "export".into(),
+        media_id: None,
+        state: JobState::Succeeded,
+        progress: JobProgress::new(1.0, None),
+        cancel_requested: false,
+        error: None,
+    });
+    assert_eq!(jm.status(second).unwrap().state, JobState::Succeeded);
+    let fresh = jm.mint();
+    assert!(fresh != first && fresh != second);
+    let h = jm.submit(spec("x"), |_| Ok(()));
+    assert!(![first, second, fresh].contains(&h.id()));
+    assert_eq!(held.cancel().unwrap().state, JobState::Cancelled);
+}
+
+#[test]
+fn counters_ride_along_with_progress_and_only_jobs_with_counters_send_them() {
+    let jm = manager(2, 1);
+    let mut events = jm.subscribe();
+    let (tx, go) = mpsc::channel::<()>();
+    let h = jm.submit(JobSpec::new(JobKind::Export, "export"), move |ctx| {
+        ctx.report(JobProgress {
+            fraction: 0.5,
+            message: Some("frame 5 of 10".into()),
+            frame: Some(5),
+            frames: Some(10),
+            fps: Some(f64::NAN),
+            eta_ms: Some(1000),
+            bytes: Some(4096),
+        });
+        let _ = go.recv_timeout(SETTLE);
+        Ok(())
+    });
+    eventually("the report", || {
+        jm.status(h.id()).unwrap().progress.frame == Some(5)
+    });
+    let p = jm.status(h.id()).unwrap().progress;
+    assert_eq!(
+        (p.frames, p.eta_ms, p.bytes),
+        (Some(10), Some(1000), Some(4096))
+    );
+    assert_eq!(p.fps, None, "a speed that is not a number is dropped");
+    tx.send(()).unwrap();
+    jm.wait(h.id(), SETTLE).unwrap();
+    let mut with_counters = 0;
+    while let Ok(e) = events.try_recv() {
+        let v = serde_json::to_value(e.job()).unwrap();
+        if v["progress"].get("frame").is_some() {
+            with_counters += 1;
+        }
+    }
+    assert!(with_counters >= 1);
+    let plain = jm.submit(spec("index"), |ctx| {
+        ctx.progress(0.5, Some("half"));
+        Ok(())
+    });
+    let v = serde_json::to_value(jm.wait(plain.id(), SETTLE).unwrap()).unwrap();
+    assert_eq!(
+        v["progress"],
+        serde_json::json!({"fraction": 1.0, "message": "half"})
+    );
 }
