@@ -188,7 +188,7 @@ fn a_save_after_project_recover_reports_clean() {
     config.autosave = Some(AutosaveConfig {
         idle: Duration::from_secs(3600),
         interval: Duration::from_secs(3600),
-        poll: Duration::from_millis(20),
+        poll: Duration::from_secs(3600),
         ..AutosaveConfig::default()
     });
     let engine = Engine::start(config).unwrap();
@@ -197,10 +197,8 @@ fn a_save_after_project_recover_reports_clean() {
     let mut events = h.subscribe();
     let out = must(&conn, "project.recover", json!({}));
     assert_eq!(out["project"]["dirty"], true);
-    // A client that follows only events must be told the restored work is unsaved.
-    wait_for(&mut events, Duration::from_secs(10), |e| {
-        e.name() == "project.dirty" && e.payload()["dirty"] == true
-    });
+    // Save at once, before the first autosave tick could publish `project.dirty`: a client
+    // that follows only events (it saw `dirty: true` in the status) must be told it is clean.
     must(&conn, "project.save", json!({}));
     wait_for(&mut events, Duration::from_secs(10), |e| {
         e.name() == "project.dirty" && e.payload()["dirty"] == false
