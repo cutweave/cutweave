@@ -238,6 +238,8 @@ describe("every key handler in the editor is accounted for", () => {
     "panels/MediaPanel.tsx": "the bin's keys: binKeys.ts",
     "panels/PreviewPanel.tsx": "the Source view's keys: SOURCE_KEYS (preview/sourceKeys.ts)",
     "shell/appCommands.ts": "the menu shortcuts: appMenu.ts",
+    "timeline/TrackRenameInput.tsx":
+      "track name field: Enter commits, Escape puts the old name back (dialogs group)",
     "timeline/useTimelineIntents.ts": "the timeline's keys: TIMELINE_KEYS",
     "transport/keymap.ts": "the playback keys: the keymap",
   };

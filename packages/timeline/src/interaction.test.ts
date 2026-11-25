@@ -15,6 +15,7 @@ import {
   isGestureOpen,
   type PointerInput,
   reduce,
+  TIMELINE_KEYS,
   trimLimits,
 } from "./interaction.ts";
 import type { TimelineItem, TimelineModel } from "./model.ts";
@@ -837,6 +838,16 @@ describe("split, delete and snapping keys", () => {
     expect(run(off.state, { type: "toggle-snapping" }).intents).toEqual([
       { kind: "set-snapping", on: true },
     ]);
+  });
+});
+
+describe("F2 renames the track", () => {
+  it("emits rename-track from the key table, not while a gesture is open", () => {
+    const idle = reduce(initialState(), key("F2"));
+    expect(idle.intents).toEqual([{ kind: "rename-track" }]);
+    expect(TIMELINE_KEYS.some((e) => e.action === "rename-track" && e.keys.includes("F2"))).toBe(
+      true,
+    );
   });
 });
 

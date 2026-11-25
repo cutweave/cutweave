@@ -402,6 +402,113 @@ describe("TimelineController", () => {
   });
 });
 
+describe("TimelineController track rename (issue 149)", () => {
+  const sets = (t: ReturnType<typeof setup>) =>
+    t.transport.requests.filter((r) => r.method === "track.set");
+  let t: ReturnType<typeof setup>;
+  beforeEach(() => {
+    t = setup({ "track.set": () => ({}) });
+  });
+
+  it("double-clicking a header name opens the rename; other zones do not", () => {
+    pointer(t.controller, "dblclick", 20, hit("header", 0, "trk_v"));
+    expect(t.controller.rename.getState().trackId).toBeNull();
+    pointer(t.controller, "dblclick", 20, hit("header-name", 0, "trk_v"));
+    expect(t.controller.rename.getState().trackId).toBe("trk_v");
+    expect(t.controller.renameTarget()).toEqual({ trackId: "trk_v", name: "trk_v" });
+  });
+
+  it("pressing a header selects the track; the toggles do not", () => {
+    pointer(t.controller, "down", 20, hit("header-name", 0, "trk_a"));
+    expect(t.view.getState().selection).toEqual([{ kind: "track", id: "trk_a" }]);
+    t.view.setState({ selection: [] });
+    pointer(t.controller, "down", 20, hit("header-toggle", 0, "trk_a"));
+    expect(t.view.getState().selection).toEqual([]);
+  });
+
+  it("Enter sends track.set once with the trimmed name", async () => {
+    t.controller.beginRename("trk_v");
+    expect(await t.controller.commitRename("  B-roll  ", "enter")).toBe("renamed");
+    expect(sets(t)).toHaveLength(1);
+    expect(sets(t)[0]?.params).toEqual({ track: "trk_v", name: "B-roll" });
+    expect(t.controller.rename.getState().trackId).toBeNull();
+  });
+
+  it("blur commits the same way", async () => {
+    t.controller.beginRename("trk_a");
+    expect(await t.controller.commitRename("Music", "blur")).toBe("renamed");
+    expect(sets(t)[0]?.params).toEqual({ track: "trk_a", name: "Music" });
+  });
+
+  it("Esc closes the input and sends nothing", () => {
+    t.controller.beginRename("trk_v");
+    t.controller.cancelRename();
+    expect(t.controller.rename.getState().trackId).toBeNull();
+    expect(sets(t)).toHaveLength(0);
+  });
+
+  it("an unchanged name sends nothing", async () => {
+    t.controller.beginRename("trk_v");
+    expect(await t.controller.commitRename(" trk_v ", "enter")).toBe("unchanged");
+    expect(sets(t)).toHaveLength(0);
+  });
+
+  it("an empty or blank name is refused on Enter: the input stays, with the reason", async () => {
+    t.controller.beginRename("trk_v");
+    expect(await t.controller.commitRename("   ", "enter")).toBe("refused");
+    expect(sets(t)).toHaveLength(0);
+    expect(t.controller.rename.getState()).toEqual({
+      trackId: "trk_v",
+      reason: "A track needs a name. It stays trk_v.",
+    });
+  });
+
+  it("an empty name on blur closes the input and says why in a toast", async () => {
+    t.controller.beginRename("trk_v");
+    expect(await t.controller.commitRename("", "blur")).toBe("refused");
+    expect(sets(t)).toHaveLength(0);
+    expect(t.controller.rename.getState().trackId).toBeNull();
+    const [toast] = t.toasts.getState().notices;
+    expect(toast?.message).toBe("A track needs a name. It stays trk_v.");
+  });
+
+  it("a locked track can be renamed", async () => {
+    const locked = structuredClone(PROJECT) as unknown as {
+      sequences: { seq_1: { tracks: { trk_v: { locked: boolean } } } };
+    };
+    locked.sequences.seq_1.tracks.trk_v.locked = true;
+    t.doc.getState().resync({ rev: 2, committed_rev: 2, project: locked as unknown as Project });
+    t.controller.beginRename("trk_v");
+    expect(await t.controller.commitRename("Locked label", "enter")).toBe("renamed");
+    expect(sets(t)).toHaveLength(1);
+  });
+
+  it("an engine refusal shows a toast and leaves the old name", async () => {
+    t = setup({
+      "track.set": () => {
+        throw new RpcError("invalid", "the name must be at most 120 characters");
+      },
+    });
+    t.controller.beginRename("trk_v");
+    expect(await t.controller.commitRename("x", "enter")).toBe("failed");
+    expect(t.toasts.getState().notices[0]?.title).toBe("Track not renamed");
+  });
+
+  it("F2 renames the selected track, or the track of the selected clip", () => {
+    t.view.setState({ selection: [{ kind: "track", id: "trk_a" }] as never });
+    expect(t.controller.handleKey({ key: "F2" })).toBe(true);
+    expect(t.controller.rename.getState().trackId).toBe("trk_a");
+    t.controller.cancelRename();
+    t.view.setState({ selection: items(["itm_b"]) as never });
+    t.controller.handleKey({ key: "F2" });
+    expect(t.controller.rename.getState().trackId).toBe("trk_v");
+    t.controller.cancelRename();
+    t.view.setState({ selection: [] });
+    t.controller.handleKey({ key: "F2" });
+    expect(t.controller.rename.getState().trackId).toBeNull();
+  });
+});
+
 describe("refusal messages", () => {
   const tr = translator(i18n.t.bind(i18n));
   it("says what happened and what to do next", () => {
