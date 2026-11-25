@@ -5,7 +5,8 @@
 //
 //   Menu bar    `chordsFor` over `KEYED` and `BROWSER_KEYS` (shell/appMenu.ts), which also decide
 //               what a key press runs
-//   Playback    the keymap's own bindings (transport/keymap.ts)
+//   Playback    the keymap's own bindings (transport/keymap.ts), and the Source view's
+//               `SOURCE_KEYS` (preview/sourceKeys.ts)
 //   Timeline    `TIMELINE_KEYS` (@cutweave/timeline), which the interaction machine reads
 //   Media bin   `BIN_KEYS` (panels/binKeys.ts), which the panel reads
 //   Dialogs     the few keys every dialog and text field share (below; the UI library owns them)
@@ -16,6 +17,7 @@
 import { TIMELINE_KEYS, type TimelineKeyAction } from "@cutweave/timeline";
 import type { TKey } from "../i18n/index.ts";
 import { BIN_KEYS, type BinKeyAction } from "../panels/binKeys.ts";
+import { SOURCE_KEYS, type SourceKeyAction } from "../preview/sourceKeys.ts";
 import {
   type AppCommand,
   BROWSER_KEYS,
@@ -162,6 +164,21 @@ function playbackBindings(): Binding[] {
   }));
 }
 
+const SOURCE_TEXT: Readonly<Record<SourceKeyAction, { label: TKey; description: TKey }>> = {
+  back: { label: "shortcuts.source.back", description: "shortcuts.source.backHelp" },
+  insert: { label: "shortcuts.source.insert", description: "shortcuts.source.insertHelp" },
+};
+
+/** The Preview's Source view keys (`SOURCE_KEYS`); Space, J/K/L and the arrows are the keymap's. */
+function sourceBindings(): Binding[] {
+  return SOURCE_KEYS.map((entry) => ({
+    id: `source.${entry.action}`,
+    group: "playback",
+    ...SOURCE_TEXT[entry.action],
+    combos: [{ key: entry.key }],
+  }));
+}
+
 // ---- the timeline -----------------------------------------------------------------------------
 
 const TIMELINE_TEXT: Readonly<Record<TimelineKeyAction, { label: TKey; description: TKey }>> = {
@@ -193,7 +210,7 @@ const BIN_TEXT: Readonly<Record<BinKeyAction, { label: TKey; description: TKey; 
   first: { id: "edges", label: "shortcuts.bin.edges", description: "shortcuts.bin.edgesHelp" },
   last: { id: "edges", label: "shortcuts.bin.edges", description: "shortcuts.bin.edgesHelp" },
   insert: { id: "insert", label: "shortcuts.bin.insert", description: "shortcuts.bin.insertHelp" },
-  select: { id: "select", label: "shortcuts.bin.select", description: "shortcuts.bin.selectHelp" },
+  play: { id: "play", label: "shortcuts.bin.play", description: "shortcuts.bin.playHelp" },
   remove: { id: "remove", label: "shortcuts.bin.remove", description: "shortcuts.bin.removeHelp" },
   import: { id: "import", label: "shortcuts.bin.import", description: "shortcuts.bin.importHelp" },
   search: { id: "search", label: "shortcuts.bin.search", description: "shortcuts.bin.searchHelp" },
@@ -263,6 +280,7 @@ export function listBindings(
   const all = [
     ...menuBindings(platform),
     ...playbackBindings(),
+    ...sourceBindings(),
     ...timelineBindings(),
     ...binBindings(),
     ...DIALOG_BINDINGS,

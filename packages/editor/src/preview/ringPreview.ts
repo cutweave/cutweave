@@ -125,6 +125,8 @@ export class RingPreview {
   #lastError = "";
   #attached = false;
   #attaching = false;
+  /** Presenting is held: the canvas keeps the frame it shows (the Inspector draws the source). */
+  #paused = false;
   /** Bumped by every attach and detach: a slower, older attach must not take effect. */
   #generation = 0;
 
@@ -193,6 +195,30 @@ export class RingPreview {
     return ring.name === this.#ring?.name && ring.epoch === this.#ring.epoch;
   }
 
+  /** Holds the picture: stops presenting, the canvas keeps its last frame (WP-1M.15). */
+  pause(): void {
+    if (this.#paused) return;
+    this.#paused = true;
+    if (!this.#attached || this.#ring === null) return;
+    try {
+      this.#deps.bridge.stopPresenting();
+    } catch {
+      // Already stopped or gone.
+    }
+  }
+
+  /** Presents the ring again after {@link pause}. */
+  resume(): void {
+    if (!this.#paused) return;
+    this.#paused = false;
+    if (!this.#attached || this.#ring === null) return;
+    try {
+      this.#deps.bridge.startPresenting({ latencyMs: this.#deps.latencyMs ?? PRESENT_LATENCY_MS });
+    } catch (e) {
+      this.#failed(message(e));
+    }
+  }
+
   /** Repaints the last frame (the page just resized the canvas, which cleared it). */
   redraw(): boolean {
     if (!this.#attached) return false;
@@ -229,7 +255,9 @@ export class RingPreview {
     const { bridge } = this.#deps;
     try {
       bridge.open(ring.name, ring.epoch);
-      bridge.startPresenting({ latencyMs: this.#deps.latencyMs ?? PRESENT_LATENCY_MS });
+      if (!this.#paused) {
+        bridge.startPresenting({ latencyMs: this.#deps.latencyMs ?? PRESENT_LATENCY_MS });
+      }
     } catch (e) {
       this.#ring = null;
       this.#lastError = message(e);

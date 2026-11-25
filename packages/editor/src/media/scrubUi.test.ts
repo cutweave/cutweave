@@ -17,6 +17,8 @@ import { InspectorPanel } from "../panels/InspectorPanel.tsx";
 import { MediaPanel } from "../panels/MediaPanel.tsx";
 import { prefsStore } from "../prefs/prefsStore.ts";
 import { docStore } from "../state/docStore.ts";
+import { initialPlaybackState, playbackStore } from "../state/playbackStore.ts";
+import { sourceViewStore } from "../state/sourceViewStore.ts";
 import { initialViewState, viewStore } from "../state/viewStore.ts";
 import { createFakeEngine, type FakeEngine } from "../testing/fakeEngine.ts";
 import { FLICKS, sampleProject } from "../testing/fixtures.ts";
@@ -293,5 +295,102 @@ describe("the Inspector's picture", () => {
     select("med_a");
     const { container } = render(wrap(h(InspectorPanel)));
     expect((await axe.run(container)).violations).toEqual([]);
+  });
+});
+
+describe("play in the Inspector (WP-1M.15)", () => {
+  const SOURCE = { media: "med_a", duration: 10 * FLICKS, fps: { num: 30, den: 1 } };
+  const answer = (over: object = {}) => ({
+    state: "playing",
+    playing: true,
+    rate: 1,
+    t: 0,
+    quality: "full",
+    dropped: 0,
+    source: SOURCE,
+    ...over,
+  });
+
+  function setup() {
+    setScrubSource(fakeSource().source);
+    viewStore.setState({ selection: [{ kind: "media", id: "med_a" } as never] });
+    playbackStore.setState({ ...initialPlaybackState });
+    sourceViewStore.setState({ host: "preview" });
+    engine.answer("view.set_source", (input) =>
+      (input as { media?: string }).media === undefined
+        ? answer({ source: null, playing: false })
+        : answer({ playing: false }),
+    );
+    engine.answer("view.play", () => answer());
+    engine.answer("view.pause", () => answer({ playing: false, state: "stopped" }));
+    engine.answer("view.seek", (input) => answer({ t: (input as { t: number }).t }));
+    return render(wrap(h(InspectorPanel)));
+  }
+
+  it("plays the asset as the source from the bar's position, hosted by the Inspector", async () => {
+    setup();
+    fireEvent.keyDown(screen.getByRole("slider", { name: "Scrub position" }), { key: "PageUp" });
+    await act(async () => {
+      fireEvent.click(screen.getByRole("button", { name: /^Play / }));
+    });
+    // The bar was at one second: the source starts there.
+    expect(engine.calls.map((c) => [c.name, c.input])).toContainEqual([
+      "view.seek",
+      { t: 30 * (FLICKS / 30) },
+    ]);
+    expect(engine.names().filter((n) => n.startsWith("view."))).toEqual([
+      "view.set_source",
+      "view.seek",
+      "view.play",
+    ]);
+    expect(sourceViewStore.getState().host).toBe("inspector");
+    expect(screen.getByRole("button", { name: /^Pause / })).toBeTruthy();
+  });
+
+  it("the bar follows the source's playhead, and moving it seeks the source", async () => {
+    setup();
+    await act(async () => {
+      fireEvent.click(screen.getByRole("button", { name: /^Play / }));
+    });
+    act(() => playbackStore.getState().applyState(answer({ t: 3 * FLICKS })));
+    const bar = screen.getByRole("slider", { name: "Scrub position" });
+    expect(bar.getAttribute("aria-valuetext")).toBe("00:00:03:00");
+    await act(async () => {
+      fireEvent.keyDown(bar, { key: "ArrowRight" });
+    });
+    expect(engine.calls.at(-1)).toMatchObject({
+      name: "view.seek",
+      input: { t: 90 * (FLICKS / 30) + FLICKS / 30 },
+    });
+    // The timeline's playhead is not the source's.
+    expect(viewStore.getState().playhead).toBe(0);
+  });
+
+  it("pauses what plays here, and ends the source when the Inspector leaves the asset", async () => {
+    const view = setup();
+    await act(async () => {
+      fireEvent.click(screen.getByRole("button", { name: /^Play / }));
+    });
+    await act(async () => {
+      fireEvent.click(screen.getByRole("button", { name: /^Pause / }));
+    });
+    expect(engine.calls.at(-1)?.name).toBe("view.pause");
+    await act(async () => {
+      fireEvent.click(screen.getByRole("button", { name: /^Play / }));
+    });
+    await act(async () => {
+      view.unmount();
+    });
+    expect(engine.calls.at(-1)).toMatchObject({ name: "view.set_source", input: {} });
+    expect(playbackStore.getState().source).toBeNull();
+  });
+
+  it("a source the Preview shows is not ended when the Inspector leaves the asset", async () => {
+    const view = setup();
+    await act(async () => {
+      playbackStore.getState().applyState(answer());
+    });
+    view.unmount();
+    expect(engine.names().filter((n) => n.startsWith("view."))).toEqual([]);
   });
 });

@@ -33,6 +33,7 @@ import {
   type RingAnnouncement,
   RingPreview,
 } from "./ringPreview.ts";
+import { SourceStills } from "./SourceStills.tsx";
 
 /** Why the preview runs reduced. */
 export type ReducedReason = "forced" | FailureReason;
@@ -170,9 +171,16 @@ function GpuCanvas({
   label,
   onLive,
   onFail,
-}: PathCanvasProps & { readonly onFail: (reason: ReducedReason) => void }) {
+  frozen,
+}: PathCanvasProps & {
+  readonly onFail: (reason: ReducedReason) => void;
+  /** Holds the picture (the Inspector draws the source): the ring is not presented. */
+  readonly frozen: boolean;
+}) {
   const [canvas, setCanvas] = useState<HTMLCanvasElement | null>(null);
   const ringRef = useRef<RingPreview | null>(null);
+  const frozenRef = useRef(frozen);
+  frozenRef.current = frozen;
   const sizer = useMemo(
     () =>
       new PreviewSizer({
@@ -201,6 +209,7 @@ function GpuCanvas({
       },
     });
     ringRef.current = ring;
+    if (frozenRef.current) ring.pause();
     void ring.attach(canvas, engineStore.getState().previewRing ?? null).then(() => {
       // A fresh ring renders at the engine's default size until told the canvas size.
       if (live && ring.state.kind === "presenting") sizer.resend();
@@ -221,6 +230,11 @@ function GpuCanvas({
   }, [canvas, onFail, onLive, sizer]);
 
   useEffect(() => () => sizer.dispose(), [sizer]);
+
+  useEffect(() => {
+    if (frozen) ringRef.current?.pause();
+    else ringRef.current?.resume();
+  }, [frozen]);
 
   const onResize = useCallback(
     (width: number, height: number) => {
@@ -256,11 +270,14 @@ function JpegCanvas({
   label,
   onLive,
   fetcher,
-}: PathCanvasProps & { readonly fetcher?: FrameFetcher }) {
+  frozen,
+}: PathCanvasProps & { readonly fetcher?: FrameFetcher; readonly frozen: boolean }) {
   const { t } = useTranslation();
   const [canvas, setCanvas] = useState<HTMLCanvasElement | null>(null);
   const previewRef = useRef<JpegPreview | null>(null);
   const [noFrames, setNoFrames] = useState(false);
+  const frozenRef = useRef(frozen);
+  frozenRef.current = frozen;
 
   useEffect(() => {
     if (canvas === null) return;
@@ -289,7 +306,7 @@ function JpegCanvas({
       },
     });
     previewRef.current = preview;
-    preview.start();
+    if (!frozenRef.current) preview.start();
     // An edit changes the picture under the playhead.
     const offDoc = docStore.subscribe((s, prev) => {
       if (s.project !== prev.project) preview.invalidate();
@@ -306,6 +323,17 @@ function JpegCanvas({
       previewRef.current = null;
     };
   }, [canvas, fetcher, onLive]);
+
+  // While the source shows (here as stills, or in the Inspector) the timeline's frames stop.
+  useEffect(() => {
+    const preview = previewRef.current;
+    if (preview === null) return;
+    if (frozen) preview.stop();
+    else {
+      preview.invalidate();
+      preview.start();
+    }
+  }, [frozen]);
 
   const onResize = useCallback(() => {
     previewRef.current?.redraw();
@@ -340,10 +368,19 @@ export interface PreviewCanvasProps {
   readonly onPath?: (path: PreviewPath) => void;
   /** Frames for the JPEG path (tests); the app fetches `/media/frame`. */
   readonly jpegFetcher?: FrameFetcher;
+  /** The Preview shows the source: no timeline overlay, and the JPEG path draws stills of it. */
+  readonly source?: boolean;
+  /** The picture is held (the Inspector draws the source, WP-1M.15). */
+  readonly frozen?: boolean;
 }
 
 /** The preview canvas with its overlay. Mount it only while an engine is attached. */
-export function PreviewCanvas({ onPath, jpegFetcher }: PreviewCanvasProps) {
+export function PreviewCanvas({
+  onPath,
+  jpegFetcher,
+  source = false,
+  frozen = false,
+}: PreviewCanvasProps) {
   const { t } = useTranslation();
   const [path, setPath] = useState<PreviewPath>({ kind: "pending" });
   const [live, setLive] = useState(false);
@@ -385,18 +422,20 @@ export function PreviewCanvas({ onPath, jpegFetcher }: PreviewCanvasProps) {
       data-live={live}
     >
       {path.kind === "gpu" ? (
-        <GpuCanvas key="gpu" label={label} onLive={setLive} onFail={fallBack} />
+        <GpuCanvas key="gpu" label={label} onLive={setLive} onFail={fallBack} frozen={frozen} />
       ) : null}
       {path.kind === "jpeg" ? (
         <JpegCanvas
           key="jpeg"
           label={label}
           onLive={setLive}
+          frozen={frozen || source}
           {...(jpegFetcher && { fetcher: jpegFetcher })}
         />
       ) : null}
-      <PreviewOverlay />
-      {empty ? (
+      {source && path.kind === "jpeg" ? <SourceStills /> : null}
+      {source ? null : <PreviewOverlay />}
+      {empty && !source ? (
         <div className="cw-preview__notice">
           <EmptyState
             icon="file-video"

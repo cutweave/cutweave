@@ -1,16 +1,21 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 import { IconButton, SegmentedControl, Tooltip } from "@cutweave/ui";
-import { useCallback, useState } from "react";
+import { type DragEvent, type KeyboardEvent, useCallback, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { useEngineStore } from "../engine/engineStore.ts";
+import { dragStore, MEDIA_DRAG_TYPE } from "../media/dragStore.ts";
 import {
   PreviewCanvas,
   type PreviewPath,
   REDUCED_TEXT,
   usePreviewAspect,
 } from "../preview/PreviewCanvas.tsx";
+import { sourceKeyAction } from "../preview/sourceKeys.ts";
+import { usePreviewFrozen, usePreviewShowsSource } from "../state/sourceViewStore.ts";
 import { ASPECTS, type AspectId, useViewStore, viewStore } from "../state/viewStore.ts";
+import { transportController } from "../transport/useTransport.ts";
 import { EmptyState } from "./EmptyState.tsx";
+import { SourceHeader, useInsertSource, useSourceAsset } from "./SourceHeader.tsx";
 import { TransportBar } from "./TransportBar.tsx";
 
 /** Says the preview runs on still frames, and why (WP-1M.04 fallback). */
@@ -40,9 +45,39 @@ export function PreviewPanel() {
   const aspect = usePreviewAspect();
   const [path, setPath] = useState<PreviewPath>({ kind: "pending" });
   const onPath = useCallback((next: PreviewPath) => setPath(next), []);
+  const showsSource = usePreviewShowsSource();
+  const frozen = usePreviewFrozen();
+  const asset = useSourceAsset();
+  const insertSource = useInsertSource();
+
+  // Esc goes back to the timeline and Enter places the clip (a focused button keeps its Enter).
+  const onKeyDown = (e: KeyboardEvent<HTMLDivElement>) => {
+    if (!showsSource || e.defaultPrevented) return;
+    const action = sourceKeyAction(e);
+    if (action === null) return;
+    const target = e.target as HTMLElement;
+    if (action === "insert" && target.closest("button, [role='slider'], input") !== null) return;
+    e.preventDefault();
+    if (action === "back") void transportController().closeSource();
+    else insertSource();
+  };
+
+  // Dragging the Source view's picture onto the timeline drops the whole asset like a card.
+  const onDragStart = (e: DragEvent<HTMLElement>) => {
+    if (!showsSource || asset === null) {
+      e.preventDefault();
+      return;
+    }
+    e.dataTransfer.setData(MEDIA_DRAG_TYPE, asset.id);
+    e.dataTransfer.effectAllowed = "copy";
+    dragStore.getState().begin({ id: asset.id, kind: asset.kind, duration: asset.duration });
+  };
+
   return (
-    <div className="cw-preview">
-      <div className="cw-preview__bar">
+    // biome-ignore lint/a11y/noStaticElementInteractions: Esc and Enter of the Source view; the buttons keep their own keys
+    <div className="cw-preview" data-source={showsSource} onKeyDown={onKeyDown}>
+      {showsSource ? <SourceHeader /> : null}
+      <div className="cw-preview__bar" hidden={showsSource}>
         <SegmentedControl<AspectId>
           aria-label={t("preview.aspectLabel")}
           // The sequence's own canvas sets the shape once there is one: the control then shows
@@ -63,10 +98,24 @@ export function PreviewPanel() {
         </Tooltip>
       </div>
       {engine ? <ReducedBanner path={path} /> : null}
-      <div className="cw-preview__stage">
-        <div className="cw-preview__frame" style={aspect.style}>
+      <div
+        className="cw-preview__stage"
+        {...(showsSource && {
+          role: "group",
+          tabIndex: 0,
+          "aria-label": t("preview.source.frameLabel", { name: asset?.name ?? "" }),
+        })}
+      >
+        {/* biome-ignore lint/a11y/noStaticElementInteractions: the Source view's picture is a drag source for the timeline; the keyboard places it with Enter */}
+        <div
+          className="cw-preview__frame"
+          style={aspect.style}
+          draggable={showsSource}
+          onDragStart={onDragStart}
+          onDragEnd={() => dragStore.getState().end()}
+        >
           {engine ? (
-            <PreviewCanvas onPath={onPath} />
+            <PreviewCanvas onPath={onPath} source={showsSource} frozen={frozen} />
           ) : (
             <EmptyState
               icon="file-video"

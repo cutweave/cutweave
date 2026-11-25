@@ -422,6 +422,12 @@
       "stepForward": "Step forward one frame",
       "stepForwardHelp": "Moves the playhead forward by one frame."
     },
+    "source": {
+      "back": "Back to the timeline",
+      "backHelp": "Source view. Returns the Preview to the timeline.",
+      "insert": "Add the clip to the timeline",
+      "insertHelp": "Source view. Puts the clip on the timeline at the playhead."
+    },
     "timeline": {
       "cancel": "Cancel",
       "cancelHelp": "Timeline. Stops a drag, trim or marquee and puts everything back.",
@@ -439,8 +445,8 @@
       "edgesHelp": "Media bin. Moves the focus to the first or the last clip.",
       "insert": "Add to the timeline",
       "insertHelp": "Media bin. Puts the focused clip on the timeline at the playhead.",
-      "select": "Select the clip",
-      "selectHelp": "Media bin. Selects the focused clip.",
+      "play": "Select and play the clip",
+      "playHelp": "Media bin. Selects the focused clip and plays or pauses it in the Preview.",
       "remove": "Remove from the project",
       "removeHelp": "Media bin. Removes the focused clip, after asking when it is used.",
       "import": "Import media",
@@ -552,7 +558,9 @@
       "sequenceRef": "Sequence"
     },
     "card": {
-      "fps": "{{fps}} fps"
+      "fps": "{{fps}} fps",
+      "play": "Play {{name}}",
+      "pause": "Pause {{name}}"
     },
     "layout": {
       "label": "Media layout",
@@ -653,6 +661,15 @@
     "emptyBody": "Add a clip to the timeline and the frame at the playhead shows here.",
     "canvasLabel": "Preview of the frame at the playhead",
     "safeAreas": "Safe areas",
+    "source": {
+      "label": "Source",
+      "region": "Source view",
+      "timecode": "Source time",
+      "back": "Back to timeline",
+      "insert": "Add to the timeline at the playhead",
+      "frameLabel": "Source: {{name}}. Press Enter to add it to the timeline, Esc to go back.",
+      "stills": "Still frames of the source"
+    },
     "reducedTitle": "Reduced preview",
     "reduced": {
       "forced": "CUTWEAVE_PREVIEW=jpeg is set, so frames arrive as still images at up to 15 fps.",
@@ -751,7 +768,9 @@
       "path": "File",
       "preview": {
         "picture": "Preview of {{name}}",
-        "scrub": "Scrub position"
+        "scrub": "Scrub position",
+        "play": "Play {{name}}",
+        "pause": "Pause {{name}}"
       },
       "placeholder": "Placeholder data. The FFmpeg backend is not installed, so this probe is made up."
     }

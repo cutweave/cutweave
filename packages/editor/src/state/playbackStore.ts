@@ -66,6 +66,8 @@ export interface PlaybackActions {
   applyState(payload: unknown): void;
   /** Moves the playhead ahead of the engine's answer (a seek the user just made). */
   setPlayhead(flicks: number): void;
+  /** Moves the source's playhead ahead of the engine's answer (a seek in the Source view). */
+  setSourcePlayhead(flicks: number): void;
   setTransport(transport: TransportSupport): void;
   setHoldPlayhead(hold: boolean): void;
 }
@@ -167,8 +169,8 @@ export function createPlaybackStore(now: () => number = () => performance.now())
       const source = rest.source !== undefined ? rest.source : get().source;
       let next: Partial<PlaybackState> = rest;
       if (playhead !== undefined && source !== null) {
-        // A source's time never moves the timeline's playhead.
-        next = { ...rest, sourcePlayhead: playhead };
+        // A source's time never moves the timeline's playhead; a seek the user made holds it.
+        next = get().holdPlayhead ? rest : { ...rest, sourcePlayhead: playhead };
       } else if (playhead !== undefined && !get().holdPlayhead) {
         next = { ...rest, playhead, sampledAt: now() };
       }
@@ -178,6 +180,10 @@ export function createPlaybackStore(now: () => number = () => performance.now())
     setPlayhead: (flicks) => {
       if (!Number.isFinite(flicks)) return;
       set({ playhead: Math.max(0, Math.round(flicks)), sampledAt: now() });
+    },
+    setSourcePlayhead: (flicks) => {
+      if (!Number.isFinite(flicks)) return;
+      set({ sourcePlayhead: Math.max(0, Math.round(flicks)) });
     },
     setTransport: (transport) => set({ transport }),
     setHoldPlayhead: (holdPlayhead) => set({ holdPlayhead }),

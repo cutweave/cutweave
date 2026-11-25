@@ -13,19 +13,33 @@ import type { Locator, Page } from "@playwright/test";
 import { editorCall, expect, test } from "../fixtures.ts";
 import { copyCorpusClips, corpusDir } from "./export-helpers.ts";
 import {
+  chooseTheme,
   closeSettings,
   createProject,
+  dirtyDot,
+  dropCard,
+  editorCaughtUp,
   hasRealEngine,
+  laneY,
   launchFlowApp,
+  layout,
   mediaCard,
   mediaCards,
   openSettingsPage,
   pickFiles,
+  rulerY,
+  sec,
+  shortcut,
   snapshot,
+  timecode,
+  timelineCanvas,
+  timelineGeometry,
   workspace,
+  xAt,
 } from "./helpers.ts";
 
 const H264 = "h264_1080p60.mp4";
+const TRAILER = "sintel_trailer_480p.mp4";
 const HEVC = "hevc_10bit_sdr.mp4";
 
 /** The scrub picture of a card: a hash of the pixels the card's canvas shows. */
@@ -58,6 +72,70 @@ async function settled(read: () => Promise<string | null>): Promise<string> {
     )
     .toBe(true);
   return value ?? "";
+}
+
+/** The source's own time in whole frames at 30 fps (the Source header's timecode). */
+async function sourceFrames(page: Page): Promise<number> {
+  const text = (await page.getByTestId("source-timecode").textContent()) ?? "";
+  const [hh, mm, ss, ff] = text.split(/[:;]/).map(Number);
+  return (((hh ?? 0) * 60 + (mm ?? 0)) * 60 + (ss ?? 0)) * 30 + (ff ?? 0);
+}
+
+/**
+ * A hash of what the Preview shows: a 64 x 36 screenshot at the canvas's centre (a WebGPU canvas
+ * cannot be read back from script), away from the overlay.
+ */
+async function previewHash(page: Page): Promise<string> {
+  const box = await page.locator("canvas.cw-preview__canvas").boundingBox();
+  if (box === null) throw new Error("no preview canvas");
+  const png = await page.screenshot({
+    clip: {
+      x: Math.round(box.x + box.width / 2 - 32),
+      y: Math.round(box.y + box.height / 2 - 18),
+      width: 64,
+      height: 36,
+    },
+    animations: "allow",
+    caret: "initial",
+  });
+  return createHash("sha1").update(png).digest("hex");
+}
+
+/** A hash of the pixels the Inspector's picture shows. */
+async function inspectorHash(page: Page): Promise<string> {
+  return page.getByTestId("media-preview-picture").evaluate((el) => {
+    const canvas = el as HTMLCanvasElement;
+    const ctx = canvas.getContext("2d");
+    if (ctx === null) return "";
+    const { data } = ctx.getImageData(0, 0, canvas.width, canvas.height);
+    let hash = 5381;
+    for (let i = 0; i < data.length; i += 7) hash = ((hash << 5) + hash + (data[i] ?? 0)) | 0;
+    return String(hash);
+  });
+}
+
+/** Keys go to the page (the keymap), not to a focused control. */
+async function press(page: Page, key: string): Promise<void> {
+  await page.evaluate(() => (document.activeElement as HTMLElement | null)?.blur());
+  await page.keyboard.press(key);
+}
+
+/** Resolves once `read` gives the same number twice in a row. */
+async function settledNumber(read: () => Promise<number>): Promise<number> {
+  let last: number | null = null;
+  let value = 0;
+  await expect
+    .poll(
+      async () => {
+        value = await read();
+        const same = value === last;
+        last = value;
+        return same;
+      },
+      { intervals: [150, 250, 400], timeout: 20_000 },
+    )
+    .toBe(true);
+  return value;
 }
 
 /** Moves the pointer to `fraction` of the card's picture, as a person would. */
@@ -259,6 +337,189 @@ test.describe("F31 preview media before placing it", () => {
       const first = await poster();
       await hoverAt(page, hevc, 0.8);
       expect(await poster()).toBe(first);
+    } finally {
+      await close();
+    }
+  });
+
+  // WP-1M.15: playing a clip before it is placed (ADR-0022). Everything is read from what is on
+  // screen: the Source header's timecode, the Preview's pixels, the Inspector's picture.
+  test("play a clip from the bin and the Inspector, and place it from the Source view", async () => {
+    test.setTimeout(420_000);
+    const info = test.info();
+    const corpus = corpusDir();
+    test.skip(corpus === null, "the corpus is not fetched (just corpus)");
+    const work = workspace();
+    const { app, page, close } = await launchFlowApp(work, undefined, { realMedia: true });
+    try {
+      const caps = await editorCall<{ available?: boolean }>(page, "media.capabilities");
+      test.skip(
+        caps.available !== true,
+        "this engine has no media backend; build it with --features cutweave-engine/ffmpeg",
+      );
+      await createProject(app, page, "Source", work.dir);
+      const files = copyCorpusClips(corpus ?? "", work.media, [TRAILER, HEVC, H264]);
+      await pickFiles(app, files);
+      await page.getByRole("button", { name: "Import", exact: true }).click();
+      await expect(mediaCards(page)).toHaveCount(3);
+
+      // The timeline: the trailer from 0, the playhead at 10 s (the trailer opens on a title).
+      await dropCard(page, TRAILER, "V1", 0);
+      await expect.poll(async () => (await layout(page))[0]?.clips.length ?? 0).toBe(1);
+      await editorCaughtUp(page);
+      const surface = page.locator(".cw-preview__surface");
+      await expect(surface).toHaveAttribute("data-path", /^(gpu|jpeg)$/, { timeout: 20_000 });
+      test.skip(
+        (await surface.getAttribute("data-path")) !== "gpu",
+        `the preview fell back to still frames (${await surface.getAttribute("data-reason")}); ` +
+          "the Source view's frames are the engine's ring",
+      );
+      await expect(surface).toHaveAttribute("data-live", "true", { timeout: 30_000 });
+      const g = await timelineGeometry(page);
+      await page.mouse.click(xAt(g, sec(10)), rulerY(g));
+      await expect(timecode(page)).toHaveText("00:00:10:00");
+      const onTimeline = await settled(() => previewHash(page));
+      await shortcut(app, "Control+S");
+      await expect(dirtyDot(page)).toBeHidden();
+      const layoutBefore = await layout(page);
+      const view = await editorCall<{ playhead: number }>(page, "view.get");
+
+      // Press play on the HEVC card: the Preview says "Source" and plays it from 0.
+      const hevc = mediaCard(page, HEVC);
+      const header = page.getByTestId("source-header");
+      const pause = page.getByRole("button", { name: "Pause", exact: true });
+      const play = page.getByRole("button", { name: "Play", exact: true });
+      await expect(header).toBeHidden();
+      await hevc.hover();
+      await hevc.locator(".cw-media__play").click();
+      await expect(header).toBeVisible();
+      await expect(header).toContainText("Source");
+      await expect(header).toContainText(HEVC);
+      await expect(page.getByTestId("source-duration")).toHaveText("00:00:05:00");
+      await expect(pause).toBeVisible();
+      // Its own time runs from 0, in the Source header and on the transport.
+      await expect.poll(() => sourceFrames(page), { timeout: 20_000 }).toBeGreaterThan(10);
+      await expect(timecode(page)).toHaveText(/^00:00:0[0-5]:\d\d$/);
+      // The picture is the clip, not the timeline's frame, and it moves.
+      const first = await previewHash(page);
+      expect(first).not.toBe(onTimeline);
+      await expect.poll(() => previewHash(page), { timeout: 20_000 }).not.toBe(first);
+      await snapshot(page, info, "source-playing");
+      // The timeline's playhead did not move.
+      expect((await editorCall<{ playhead: number }>(page, "view.get")).playhead).toBe(
+        view.playhead,
+      );
+      expect(await page.getByRole("radiogroup", { name: "Preview aspect ratio" }).count()).toBe(0);
+
+      // K pauses the source and J, L, → act on it, not on the timeline.
+      await press(page, "k");
+      await expect(play).toBeVisible();
+      const paused = await settledNumber(() => sourceFrames(page));
+      await press(page, "ArrowRight");
+      await expect.poll(() => sourceFrames(page)).toBe(paused + 1);
+      await press(page, "l");
+      await expect(pause).toBeVisible();
+      await expect.poll(() => sourceFrames(page), { timeout: 20_000 }).toBeGreaterThan(paused + 4);
+      await press(page, "k");
+      const forward = await settledNumber(() => sourceFrames(page));
+      await press(page, "j");
+      await expect.poll(() => sourceFrames(page), { timeout: 20_000 }).toBeLessThan(forward - 3);
+      await press(page, "k");
+      // Go to start / end are the source's own.
+      await page.getByRole("button", { name: "Go to end" }).click();
+      await expect(header.getByTestId("source-timecode")).toHaveText("00:00:04:29");
+      await page.getByRole("button", { name: "Go to start" }).click();
+      await expect(header.getByTestId("source-timecode")).toHaveText("00:00:00:00");
+      expect((await editorCall<{ playhead: number }>(page, "view.get")).playhead).toBe(
+        view.playhead,
+      );
+
+      // Back to timeline: the timeline frame at the playhead it had.
+      await header.getByRole("button", { name: "Back to timeline" }).click();
+      await expect(header).toBeHidden();
+      await expect(timecode(page)).toHaveText("00:00:10:00");
+      await expect.poll(() => previewHash(page), { timeout: 20_000 }).toBe(onTimeline);
+      expect((await editorCall<{ playhead: number }>(page, "view.get")).playhead).toBe(
+        view.playhead,
+      );
+
+      // Play from the Inspector: its picture changes, the Preview's does not.
+      await hevc.click();
+      const picture = page.getByTestId("media-preview-picture");
+      await expect(picture).toHaveAttribute("data-frame", "ready", { timeout: 30_000 });
+      await page.getByTestId("media-preview-play").click();
+      await expect(page.getByTestId("media-preview-play")).toHaveAccessibleName(/^Pause /);
+      const still = await settled(() => inspectorHash(page));
+      await expect.poll(() => inspectorHash(page), { timeout: 20_000 }).not.toBe(still);
+      await expect(header).toBeHidden();
+      for (let i = 0; i < 4; i += 1) {
+        expect(await previewHash(page)).toBe(onTimeline);
+        await page.waitForTimeout(250);
+      }
+      const bar = page.getByRole("slider", { name: "Scrub position" });
+      await expect
+        .poll(async () => Number(await bar.getAttribute("aria-valuenow")), { timeout: 20_000 })
+        .toBeGreaterThan(10);
+      await snapshot(page, info, "inspector-playing");
+      await page.getByTestId("media-preview-play").click();
+      await expect(page.getByTestId("media-preview-play")).toHaveAccessibleName(/^Play /);
+
+      // Starting it from the bin moves it to the Preview.
+      await hevc.hover();
+      await hevc.locator(".cw-media__play").click();
+      await expect(header).toBeVisible();
+      await press(page, "k");
+      await expect(play).toBeVisible();
+
+      // Enter in the Source view places the whole clip at the timeline's playhead: one step.
+      await page.getByRole("group", { name: /^Source: / }).click();
+      await page.keyboard.press("Enter");
+      const clipCount = async () => (await layout(page)).flatMap((t) => t.clips).length;
+      const clipsBefore = layoutBefore.flatMap((t) => t.clips).length;
+      await expect.poll(clipCount).toBeGreaterThan(clipsBefore);
+      const placed = (await layout(page))
+        .flatMap((t) => t.clips)
+        .find(([start, length]) => Math.abs(start - 10) < 0.1 && Math.abs(length - 5) < 0.1);
+      expect(placed).toBeDefined();
+      expect(placed?.[0]).toBeCloseTo(10, 1);
+      expect(placed?.[1]).toBeCloseTo(5, 1);
+      await expect(dirtyDot(page)).toBeVisible();
+      // The source stays up and the timeline's playhead is where it was.
+      await expect(header).toBeVisible();
+      expect((await editorCall<{ playhead: number }>(page, "view.get")).playhead).toBe(
+        view.playhead,
+      );
+      await snapshot(page, info, "source-placed");
+
+      // Esc goes back; one undo removes the clip and the project is as it was saved.
+      await page.getByRole("group", { name: /^Source: / }).focus();
+      await page.keyboard.press("Escape");
+      await expect(header).toBeHidden();
+      await shortcut(app, "Control+Z");
+      await expect.poll(() => layout(page)).toEqual(layoutBefore);
+      await expect(dirtyDot(page)).toBeHidden();
+
+      // Dragging the Source view's picture onto the timeline drops the clip like a card.
+      await hevc.hover();
+      await hevc.locator(".cw-media__play").click();
+      await expect(header).toBeVisible();
+      await press(page, "k");
+      const g2 = await timelineGeometry(page);
+      await page.locator(".cw-preview__frame").dragTo(timelineCanvas(page), {
+        targetPosition: { x: xAt(g2, sec(6)) - g2.box.x, y: laneY(g2, "V1") - g2.box.y },
+      });
+      await expect.poll(clipCount).toBeGreaterThan(clipsBefore);
+
+      // The header in both themes (a picture to look at, as for every key step).
+      await snapshot(page, info, "source-header-dark");
+      await chooseTheme(page, app, "Light");
+      await expect(header).toBeVisible();
+      await snapshot(page, info, "source-header-light");
+      await chooseTheme(page, app, "Dark");
+
+      // Touching the timeline leaves the Source view.
+      await page.mouse.click(xAt(g2, sec(2)), rulerY(g2));
+      await expect(header).toBeHidden();
     } finally {
       await close();
     }

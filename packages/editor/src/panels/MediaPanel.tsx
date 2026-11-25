@@ -57,9 +57,12 @@ import { useCardScrub } from "../media/useCardScrub.ts";
 import { useImport } from "../media/useImport.ts";
 import { docStore, useDocStore } from "../state/docStore.ts";
 import { useJobStore } from "../state/jobStore.ts";
+import { usePlaybackStore } from "../state/playbackStore.ts";
+import { useSourceViewStore } from "../state/sourceViewStore.ts";
 import { toastStore } from "../state/toastStore.ts";
 import { useViewStore, viewStore } from "../state/viewStore.ts";
 import { translator } from "../timeline/errors.ts";
+import { transportController } from "../transport/useTransport.ts";
 import { binKeyAction } from "./binKeys.ts";
 import { EmptyState } from "./EmptyState.tsx";
 
@@ -166,6 +169,17 @@ interface CardViewProps {
   onInsert(card: MediaCard): void;
 }
 
+/** Whether a card can play on its own (ADR-0022): sound and video; stills have nothing to play. */
+const playable = (card: MediaCard): boolean =>
+  (card.kind === "video" || card.kind === "audio") &&
+  !card.broken &&
+  card.duration !== null &&
+  card.duration > 0;
+
+/** Plays `card` in the Preview's Source view, or pauses it while it plays there. */
+const playCard = (card: MediaCard): void =>
+  void transportController().toggleSource(card.id, "preview");
+
 function CardView({
   card,
   selected,
@@ -183,6 +197,13 @@ function CardView({
   const image = thumb.kind === "image" && thumb.src !== failedImage ? thumb.src : null;
   const drag = dragOf(card);
   const scrub = useCardScrub(card);
+  const canPlay = playable(card);
+  const playingHere = usePlaybackStore((s) => s.source?.media === card.id && s.playing);
+  const shownInPreview = useSourceViewStore((s) => s.host === "preview");
+  const playing = playingHere && shownInPreview;
+  const playLabel = t(playing ? "mediaBin.card.pause" : "mediaBin.card.play", {
+    name: card.name,
+  });
 
   const size = card.width !== null && card.height !== null ? `${card.width}×${card.height}` : null;
   const meta = [size, card.fps === null ? null : t("mediaBin.card.fps", { fps: String(card.fps) })]
@@ -241,6 +262,27 @@ function CardView({
             <span className="cw-media__scrub-line" ref={scrub.lineRef} />
             <span className="cw-media__scrub-time numeric" ref={scrub.timeRef} />
           </>
+        ) : null}
+        {canPlay ? (
+          <span className="cw-media__play-slot" data-playing={playing}>
+            <Tooltip label={playLabel}>
+              {/* biome-ignore lint/a11y/noStaticElementInteractions lint/a11y/useKeyWithClickEvents: a pointer shortcut in the card's picture (aria-hidden); a button would nest a control in the option, and the keyboard plays with Space on the card */}
+              <span
+                className="cw-iconbtn cw-iconbtn--sm cw-media__play"
+                data-playing={playing}
+                // It neither double-clicks into an insert nor scrubs the card.
+                onClick={(e) => {
+                  e.stopPropagation();
+                  onSelect(card.id);
+                  playCard(card);
+                }}
+                onDoubleClick={(e) => e.stopPropagation()}
+                onPointerMove={(e) => e.stopPropagation()}
+              >
+                <Icon name={playing ? "pause" : "play"} size="md" />
+              </span>
+            </Tooltip>
+          </span>
         ) : null}
         {card.duration !== null && card.kind !== "image" ? (
           <span className="cw-media__duration numeric">{formatDuration(card.duration)}</span>
@@ -459,9 +501,13 @@ export function MediaPanel() {
         e.preventDefault();
         return;
       }
-      case "select": {
+      case "play": {
+        // Space selects the focused card, as before, then plays or pauses it in the Source view.
         const card = cards[activeIndex];
-        if (card !== undefined) select(card.id);
+        if (card !== undefined) {
+          select(card.id);
+          if (playable(card)) playCard(card);
+        }
         e.preventDefault();
         return;
       }

@@ -2,11 +2,12 @@
 // The transport controller (WP-1M.04): every transport action is a `view.*` engine command
 // (arch §10 "Wire"); seeks are latest-wins, JKL follows the engine's shuttle rule, volume and
 // mute go to `master_gain`, and `playback.state` moves the view's playhead.
-import { MockTransport, RpcClient, RpcError } from "@cutweave/protocol";
+import { type MediaId, MockTransport, RpcClient, RpcError } from "@cutweave/protocol";
 import { describe, expect, it, vi } from "vitest";
 import { createEngineStore } from "../engine/engineStore.ts";
 import { createDocStore } from "../state/docStore.ts";
-import { createPlaybackStore } from "../state/playbackStore.ts";
+import { createPlaybackStore, playbackStore } from "../state/playbackStore.ts";
+import { sourceViewStore } from "../state/sourceViewStore.ts";
 import { createViewStore } from "../state/viewStore.ts";
 import { FLICKS, sampleProject } from "../testing/fixtures.ts";
 import { nextShuttleRate, sequenceEnd, TransportController } from "./transport.ts";
@@ -216,5 +217,109 @@ describe("TransportController", () => {
     off();
     s.playback.getState().applyState(state({ t: 7 }));
     expect(s.view.getState().playhead).toBe(4242);
+  });
+});
+
+describe("TransportController: the source target (WP-1M.15, ADR-0022)", () => {
+  const MEDIA = "med_a" as MediaId;
+  const SOURCE = { media: MEDIA, duration: 4 * FLICKS, fps: { num: 30, den: 1 } };
+  const playingSource = (over: object = {}) =>
+    state({ state: "playing", playing: true, rate: 1, source: SOURCE, ...over });
+
+  it("play is view.set_source then view.play, hosted in the Preview by default", async () => {
+    const s = setup();
+    sourceViewStore.getState().setHost("inspector");
+    s.mock.handle("view.set_source", () => state({ source: SOURCE }));
+    s.mock.handle("view.play", () => playingSource());
+    await s.transport.playSource(MEDIA);
+    expect(s.sent()).toEqual([
+      ["view.set_source", { media: MEDIA }],
+      ["view.play", {}],
+    ]);
+    expect(s.playback.getState()).toMatchObject({ playing: true, source: SOURCE });
+    expect(sourceViewStore.getState().host).toBe("preview");
+  });
+
+  it("a source the engine refuses (a still) leaves the host and the transport alone", async () => {
+    const s = setup();
+    s.mock.handle("view.set_source", () => {
+      throw new RpcError("invalid", "a still cannot play");
+    });
+    await s.transport.playSource(MEDIA, "inspector");
+    expect(s.sent()).toEqual([["view.set_source", { media: MEDIA }]]);
+    expect(sourceViewStore.getState().host).toBe("preview");
+    expect(s.playback.getState().source).toBeNull();
+  });
+
+  it("does not restart a source that is set, and starts from a seek position", async () => {
+    const s = setup();
+    s.playback.getState().applyState(playingSource());
+    s.mock.handle("view.seek", () => playingSource({ t: FLICKS }));
+    s.mock.handle("view.play", () => playingSource());
+    await s.transport.playSource(MEDIA, "inspector", FLICKS);
+    expect(s.sent()).toEqual([
+      ["view.seek", { t: FLICKS }],
+      ["view.play", {}],
+    ]);
+    expect(sourceViewStore.getState().host).toBe("inspector");
+  });
+
+  it("toggleSource pauses what plays in that host and moves it from the other one", async () => {
+    const s = setup();
+    s.playback.getState().applyState(playingSource());
+    sourceViewStore.getState().setHost("inspector");
+    s.mock.handle("view.pause", () => state({ source: SOURCE }));
+    s.mock.handle("view.play", () => playingSource());
+    await s.transport.toggleSource(MEDIA, "preview");
+    // Playing in the Inspector: the bin's play moves it to the Preview, still playing.
+    expect(s.sent()).toEqual([["view.play", {}]]);
+    expect(sourceViewStore.getState().host).toBe("preview");
+    await s.transport.toggleSource(MEDIA, "preview");
+    expect(s.sent().at(-1)).toEqual(["view.pause", {}]);
+  });
+
+  it("seek moves the source's playhead (its own time) and never the timeline's", async () => {
+    const s = setup();
+    s.view.getState().setPlayhead(2 * FLICKS);
+    s.playback.getState().applyState(state({ t: 2 * FLICKS }));
+    s.playback.getState().applyState(playingSource({ t: 0 }));
+    s.mock.handle("view.seek", (p) => playingSource({ t: (p as { t: number }).t }));
+    await s.transport.seek(FLICKS);
+    expect(s.sent()).toEqual([["view.seek", { t: FLICKS }]]);
+    expect(s.playback.getState()).toMatchObject({ sourcePlayhead: FLICKS, playhead: 2 * FLICKS });
+    expect(s.view.getState().playhead).toBe(2 * FLICKS);
+  });
+
+  it("go to end uses the source's length and rate, not the sequence's", async () => {
+    const s = setup();
+    s.playback.getState().applyState(playingSource());
+    s.mock.handle("view.seek", (p) => playingSource({ t: (p as { t: number }).t }));
+    await s.transport.toEnd();
+    // 4 s long at 30 fps: the last frame starts one frame before the end.
+    expect(s.sent()).toEqual([["view.seek", { t: 4 * FLICKS - FLICKS / 30 }]]);
+    expect(s.view.getState().playhead).toBe(0);
+  });
+
+  it("closeSource returns to the timeline at the playhead it kept", async () => {
+    const s = setup();
+    s.view.getState().setPlayhead(2 * FLICKS);
+    s.playback.getState().applyState(state({ t: 2 * FLICKS }));
+    s.playback.getState().applyState(playingSource());
+    sourceViewStore.getState().setHost("inspector");
+    s.mock.handle("view.set_source", () => state({ t: 2 * FLICKS, source: null }));
+    await s.transport.closeSource();
+    expect(s.sent()).toEqual([["view.set_source", {}]]);
+    expect(s.playback.getState()).toMatchObject({ source: null, playhead: 2 * FLICKS });
+    expect(sourceViewStore.getState().host).toBe("preview");
+    // With no source there is nothing to close.
+    await s.transport.closeSource();
+    expect(s.sent()).toHaveLength(1);
+  });
+
+  it("a source that ends by itself (removed asset, another project) returns the Preview", () => {
+    playbackStore.getState().applyState(playingSource());
+    sourceViewStore.getState().setHost("inspector");
+    playbackStore.getState().applyState(state({ source: null }));
+    expect(sourceViewStore.getState().host).toBe("preview");
   });
 });

@@ -4,9 +4,16 @@
 // running when the bar moves again is aborted, and only the newest answer is drawn. The bar is a
 // slider (arrow keys step one frame, Home and End go to the ends, Page Up and Down a second), and
 // its value reads as timecode at the asset's rate. A sound shows its waveform instead of a
-// picture. Playing with sound belongs to the Source view (WP-1M.15), not here.
+// picture.
+//
+// Play and pause (WP-1M.15) play the asset as the engine's source (ADR-0022) with this picture as
+// its host: the Preview keeps showing the timeline's frame and the sound comes from the engine.
+// While it plays here, the bar follows the source's playhead, the picture is the frame at that
+// time (the same `/media/{id}/thumb` frames as scrubbing, so no second frame ring is needed), and
+// moving the bar seeks the source. Leaving the asset (selecting something else) ends the source.
 import type { MediaAsset } from "@cutweave/protocol";
-import { formatTimecode } from "@cutweave/timeline";
+import { formatTimecode, frameDurationFlicks } from "@cutweave/timeline";
+import { IconButton, Tooltip } from "@cutweave/ui";
 import { type KeyboardEvent, type PointerEvent, useEffect, useMemo, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 import {
@@ -19,7 +26,10 @@ import {
   timeOfFrame,
 } from "../media/scrub.ts";
 import { useScrubSource } from "../media/scrubSource.ts";
+import { usePlaybackStore } from "../state/playbackStore.ts";
 import { mediaName } from "../state/selectors.ts";
+import { useSourceViewStore } from "../state/sourceViewStore.ts";
+import { transportController } from "../transport/useTransport.ts";
 
 /** Widest picture asked for, px. */
 const MAX_PICTURE_WIDTH = 1280;
@@ -49,9 +59,29 @@ export function MediaPreview({ media }: { readonly media: MediaAsset }) {
     [media.probe.duration, media.probe.fps],
   );
   const scrubbable = (media.kind === "video" || sound) && grid.frames > 1;
+  // The source plays here: the engine's playhead drives the bar.
+  const hosting = usePlaybackStore((s) => s.source?.media === id);
+  const hostedHere = useSourceViewStore((s) => s.host === "inspector") && hosting;
+  const playing = usePlaybackStore((s) => s.playing) && hostedHere;
+  const sourceTime = usePlaybackStore((s) => s.sourcePlayhead);
+  const hostedRef = useRef(false);
+  hostedRef.current = hostedHere;
   const at = Math.min(frame, grid.frames - 1);
   const time = timeOfFrame(at, grid);
   const timecode = formatTimecode(time, grid.rate);
+
+  useEffect(() => {
+    if (!hostedHere) return;
+    const step = frameDurationFlicks(grid.rate);
+    setFrame(Math.min(grid.frames - 1, Math.max(0, Math.floor(sourceTime / step))));
+  }, [hostedHere, sourceTime, grid]);
+  // Selecting something else ends a source this picture was showing.
+  useEffect(
+    () => () => {
+      if (hostedRef.current) void transportController().closeSource();
+    },
+    [],
+  );
 
   const frames = useMemo(
     () =>
@@ -104,10 +134,20 @@ export function MediaPreview({ media }: { readonly media: MediaAsset }) {
     return () => controller.abort();
   }, [sound, source, id]);
 
+  const goTo = (next: number) => {
+    const clamped = Math.min(grid.frames - 1, Math.max(0, next));
+    setFrame(clamped);
+    if (hostedHere) void transportController().seek(timeOfFrame(clamped, grid));
+  };
+  const togglePlay = () => {
+    // From the bar's position, or from the start when it is on the last frame.
+    const from = at >= grid.frames - 1 ? 0 : timeOfFrame(at, grid);
+    void transportController().toggleSource(id, "inspector", from);
+  };
   const moveTo = (clientX: number) => {
     const box = barRef.current?.getBoundingClientRect();
     if (box === undefined) return;
-    setFrame(frameAtFraction(pointerFraction(clientX, box.left, box.width), grid));
+    goTo(frameAtFraction(pointerFraction(clientX, box.left, box.width), grid));
   };
   const onPointerDown = (event: PointerEvent<HTMLDivElement>) => {
     if (event.button !== 0) return;
@@ -143,11 +183,15 @@ export function MediaPreview({ media }: { readonly media: MediaAsset }) {
     else if (event.key === "End") next = grid.frames - 1;
     if (next === null) return;
     event.preventDefault();
-    setFrame(Math.min(grid.frames - 1, Math.max(0, next)));
+    goTo(next);
   };
 
   if (source === null || (media.kind !== "video" && media.kind !== "image" && !sound)) return null;
   const place = `${fractionOfFrame(at, grid) * 100}%`;
+  const name = mediaName(media, media.id);
+  const playLabel = t(playing ? "inspector.media.preview.pause" : "inspector.media.preview.play", {
+    name,
+  });
   return (
     <div className="cw-media-preview" data-testid="media-preview">
       <div
@@ -168,27 +212,38 @@ export function MediaPreview({ media }: { readonly media: MediaAsset }) {
       </div>
       {scrubbable ? (
         <>
-          <div
-            className="cw-media-preview__bar"
-            ref={barRef}
-            role="slider"
-            tabIndex={0}
-            aria-label={t("inspector.media.preview.scrub")}
-            aria-orientation="horizontal"
-            aria-valuemin={0}
-            aria-valuemax={grid.frames - 1}
-            aria-valuenow={at}
-            aria-valuetext={timecode}
-            data-testid="media-preview-bar"
-            onPointerDown={onPointerDown}
-            onPointerMove={onPointerMove}
-            onPointerUp={onPointerUp}
-            onPointerCancel={onPointerUp}
-            onKeyDown={onKeyDown}
-          >
-            <span className="cw-media-preview__track" />
-            <span className="cw-media-preview__fill" style={{ inlineSize: place }} />
-            <span className="cw-media-preview__knob" style={{ insetInlineStart: place }} />
+          <div className="cw-media-preview__row">
+            <Tooltip label={playLabel}>
+              <IconButton
+                icon={playing ? "pause" : "play"}
+                size="sm"
+                label={playLabel}
+                data-testid="media-preview-play"
+                onClick={togglePlay}
+              />
+            </Tooltip>
+            <div
+              className="cw-media-preview__bar"
+              ref={barRef}
+              role="slider"
+              tabIndex={0}
+              aria-label={t("inspector.media.preview.scrub")}
+              aria-orientation="horizontal"
+              aria-valuemin={0}
+              aria-valuemax={grid.frames - 1}
+              aria-valuenow={at}
+              aria-valuetext={timecode}
+              data-testid="media-preview-bar"
+              onPointerDown={onPointerDown}
+              onPointerMove={onPointerMove}
+              onPointerUp={onPointerUp}
+              onPointerCancel={onPointerUp}
+              onKeyDown={onKeyDown}
+            >
+              <span className="cw-media-preview__track" />
+              <span className="cw-media-preview__fill" style={{ inlineSize: place }} />
+              <span className="cw-media-preview__knob" style={{ insetInlineStart: place }} />
+            </div>
           </div>
           <span className="cw-media-preview__time numeric" data-testid="media-preview-time">
             {timecode}

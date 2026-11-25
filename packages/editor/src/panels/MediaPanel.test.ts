@@ -29,6 +29,8 @@ import {
 } from "../media/thumbnails.ts";
 import { docStore } from "../state/docStore.ts";
 import { jobStore } from "../state/jobStore.ts";
+import { initialPlaybackState, playbackStore } from "../state/playbackStore.ts";
+import { sourceViewStore } from "../state/sourceViewStore.ts";
 import { toastStore } from "../state/toastStore.ts";
 import { initialViewState, viewStore } from "../state/viewStore.ts";
 import { MediaPanel } from "./MediaPanel.tsx";
@@ -845,5 +847,76 @@ describe("MediaPanel search accessibility", () => {
     expect((await axe.run(container)).violations).toEqual([]);
     await userEvent.type(searchBox(), "zzz");
     expect((await axe.run(container)).violations).toEqual([]);
+  });
+});
+
+describe("MediaPanel play (WP-1M.15)", () => {
+  const playCalls = () => call.mock.calls.map(([method, params]) => [method, params]);
+  const answers = (source: object | null) => ({
+    state: "playing",
+    playing: true,
+    rate: 1,
+    t: 0,
+    quality: "full",
+    dropped: 0,
+    source,
+  });
+
+  beforeEach(() => {
+    playbackStore.setState({ ...initialPlaybackState });
+    sourceViewStore.setState({ host: "preview" });
+    connect();
+    call.mockImplementation(async (method: string) =>
+      method === "view.set_source"
+        ? {
+            ...answers({ media: "med_a", duration: 10 * F, fps: { num: 30, den: 1 } }),
+            playing: false,
+          }
+        : answers({ media: "med_a", duration: 10 * F, fps: { num: 30, den: 1 } }),
+    );
+    load(project());
+  });
+
+  it("a card's play button sets the source and plays it; video and sound have one, a still does not", async () => {
+    const { container } = view();
+    const options = screen.getAllByRole("option");
+    expect(container.querySelectorAll(".cw-media__play")).toHaveLength(2);
+    expect(options[2]?.querySelector(".cw-media__play")).toBeNull();
+    fireEvent.click(options[0]?.querySelector(".cw-media__play") as HTMLElement);
+    await waitFor(() =>
+      expect(playCalls()).toEqual([
+        ["view.set_source", { media: "med_a" }],
+        ["view.play", {}],
+      ]),
+    );
+    // It selected the card too, and did not insert (a double click on the button must not).
+    expect(options[0]?.getAttribute("aria-selected")).toBe("true");
+    fireEvent.doubleClick(options[0]?.querySelector(".cw-media__play") as HTMLElement);
+    expect(playCalls().some(([method]) => method === "timeline.insert")).toBe(false);
+    await waitFor(() =>
+      expect(options[0]?.querySelector(".cw-media__play")?.getAttribute("data-playing")).toBe(
+        "true",
+      ),
+    );
+  });
+
+  it("Space on a focused card selects it, then plays it; again, pauses it", async () => {
+    view();
+    const options = screen.getAllByRole("option");
+    (options[0] as HTMLElement).focus();
+    fireEvent.keyDown(options[0] as HTMLElement, { key: " " });
+    await waitFor(() => expect(playCalls().at(-1)).toEqual(["view.play", {}]));
+    expect(options[0]?.getAttribute("aria-selected")).toBe("true");
+    fireEvent.keyDown(options[0] as HTMLElement, { key: " " });
+    await waitFor(() => expect(playCalls().at(-1)).toEqual(["view.pause", {}]));
+  });
+
+  it("Space on a still only selects it", async () => {
+    view();
+    const options = screen.getAllByRole("option");
+    fireEvent.click(options[2] as HTMLElement);
+    fireEvent.keyDown(options[2] as HTMLElement, { key: " " });
+    expect(options[2]?.getAttribute("aria-selected")).toBe("true");
+    expect(playCalls()).toEqual([]);
   });
 });

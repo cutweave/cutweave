@@ -8,6 +8,7 @@ import { TIMELINE_KEYS, timelineKeyAction } from "@cutweave/timeline";
 import { describe, expect, it } from "vitest";
 import { i18n } from "../i18n/index.ts";
 import { BIN_KEYS, binKeyAction } from "../panels/binKeys.ts";
+import { SOURCE_KEYS, sourceKeyAction } from "../preview/sourceKeys.ts";
 import {
   BROWSER_KEYS,
   buildAppMenu,
@@ -141,7 +142,7 @@ describe("the menu bar's keys", () => {
 describe("the playback keys", () => {
   it("lists every key of the keymap, and nothing else", () => {
     const listed = listBindings("windows")
-      .filter((b) => b.group === "playback")
+      .filter((b) => b.group === "playback" && b.id.startsWith("playback."))
       .flatMap((b) => b.combos.map((c) => c.key))
       .sort();
     const keymapKeys = keymap
@@ -149,6 +150,26 @@ describe("the playback keys", () => {
       .map(([spelled]) => parseKeymapKey(spelled).key)
       .sort();
     expect(listed).toEqual(keymapKeys);
+  });
+
+  it("lists the Source view's keys (WP-1M.15) with the playback keys", () => {
+    const listed = listBindings("windows")
+      .filter((b) => b.id.startsWith("source."))
+      .flatMap((b) => b.combos.map((c) => c.key))
+      .sort();
+    expect(listed).toEqual(SOURCE_KEYS.map((entry) => entry.key).sort());
+    expect(sourceKeyAction(event("Escape"))).toBe("back");
+    expect(sourceKeyAction(event("Enter"))).toBe("insert");
+    expect(sourceKeyAction(event("Enter", { ctrlKey: true }))).toBeNull();
+    expect(sourceKeyAction(event("a"))).toBeNull();
+  });
+
+  it("lists the bin's play key (Space selects the card and plays it)", () => {
+    const play = BIN_KEYS.find((entry) => entry.action === "play");
+    expect(play?.key).toBe(" ");
+    const listed = listBindings("windows").find((b) => b.id === "bin.play");
+    expect(listed?.combos).toEqual([{ key: " " }]);
+    expect(binKeyAction(event(" "))).toBe("play");
   });
 
   it("is what the keymap matches: every listed key finds its action", () => {
@@ -214,6 +235,7 @@ describe("every key handler in the editor is accounted for", () => {
     "panels/InspectorPanel.tsx":
       "name field: Enter commits, Escape puts the old text back (dialogs group)",
     "panels/MediaPanel.tsx": "the bin's keys: binKeys.ts",
+    "panels/PreviewPanel.tsx": "the Source view's keys: SOURCE_KEYS (preview/sourceKeys.ts)",
     "shell/appCommands.ts": "the menu shortcuts: appMenu.ts",
     "timeline/useTimelineIntents.ts": "the timeline's keys: TIMELINE_KEYS",
     "transport/keymap.ts": "the playback keys: the keymap",
