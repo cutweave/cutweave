@@ -18,6 +18,8 @@ import { afterEach, beforeAll, beforeEach, describe, expect, it, vi } from "vite
 import { engineStore } from "../../engine/engineStore.ts";
 import { i18n } from "../../i18n/index.ts";
 import { sectionsStore } from "../../inspector/sections.ts";
+import { binStore } from "../../media/binStore.ts";
+import { currentOpenFolder, folderUiStore } from "../../media/folderUi.ts";
 import { layoutStore } from "../../media/layoutStore.ts";
 import { docStore } from "../../state/docStore.ts";
 import { toastStore } from "../../state/toastStore.ts";
@@ -586,4 +588,88 @@ describe("accessibility", () => {
     }
     expect(found).toEqual([]);
   }, 120_000);
+});
+
+describe("the folder menus (WP-2F.08)", () => {
+  const FLD_A = hex("fld", 1);
+  const FLD_B = hex("fld", 2);
+
+  const withFolders = () => {
+    const p = project();
+    (p as unknown as Record<string, unknown>).folders = {
+      [FLD_A]: { id: FLD_A, name: "Interviews", parent: null, custom: {} },
+      [FLD_B]: { id: FLD_B, name: "B-roll", parent: null, custom: {} },
+    };
+    docStore.setState({ status: "ready", rev: 2, committedRev: 2, project: p });
+  };
+
+  it("a card offers Rename and Move to… and names a selection when removing several", () => {
+    const one = menuFor("bin.card", { ids: [MED_V] });
+    expect(one.item("Rename").disabled).toBeUndefined();
+    expect(one.item("Move to…").disabled).toBeUndefined();
+    expect(one.items.some((i) => /^Remove \d+ from project$/.test(i.label))).toBe(false);
+    const many = menuFor("bin.card", { ids: [MED_V, MED_U] });
+    expect(many.item("Rename").disabled).toBe(true);
+    expect(many.item("Rename").disabledReason).toBe("Select one item");
+    expect(many.item("Remove 2 from project")).toBeDefined();
+    expect(many.items.some((i) => i.label === "Remove from project")).toBe(false);
+  });
+
+  it("Rename starts the name edit in place and Move to… opens the folder picker", async () => {
+    withFolders();
+    await menuFor("bin.card", { ids: [MED_V] }).choose("Rename");
+    expect(folderUiStore.getState().renaming).toEqual({ kind: "media", id: MED_V });
+    folderUiStore.getState().stopRename();
+    await menuFor("bin.card", { ids: [MED_V, MED_U] }).choose("Move to…");
+    expect(menuDialogStore.getState().dialog).toEqual({
+      kind: "move-to",
+      media: [MED_V, MED_U],
+      folders: [],
+    });
+  });
+
+  it("a folder tile has its own menu: Open, New folder, Rename, Move to…, Delete folder…", async () => {
+    withFolders();
+    const m = menuFor("bin.folder", { ids: [FLD_A], name: "Interviews" });
+    expect(m.menu.name).toBe("Folder actions for Interviews");
+    for (const label of ["Open", "New folder", "Rename", "Move to…", "Delete folder…"]) {
+      expect(m.item(label).disabled, label).toBeUndefined();
+    }
+    await m.choose("Rename");
+    expect(folderUiStore.getState().renaming).toEqual({ kind: "folder", id: FLD_A });
+    folderUiStore.getState().stopRename();
+  });
+
+  it("several folders: no Open or Rename, and Delete names the count", () => {
+    withFolders();
+    folderUiStore.getState().setFolders([FLD_A as never, FLD_B as never]);
+    const m = menuFor("bin.folder", { ids: [FLD_A] });
+    expect(m.menu.name).toBe("Folder actions for 2 folders");
+    expect(m.item("Open").disabled).toBe(true);
+    expect(m.item("Rename").disabled).toBe(true);
+    expect(m.item("Delete 2 folders…").disabled).toBeUndefined();
+    folderUiStore.getState().setFolders([]);
+  });
+
+  it("Open goes into the folder", async () => {
+    withFolders();
+    await menuFor("bin.folder", { ids: [FLD_B] }).choose("Open");
+    expect(currentOpenFolder()).toBe(FLD_B);
+    binStore.getState().openFolder("", null);
+  });
+
+  it("the empty bin offers New folder and Select all", () => {
+    withFolders();
+    const m = menuFor("bin.background");
+    expect(m.item("New folder").disabled).toBeUndefined();
+    expect(m.item("Select all").disabled).toBeUndefined();
+  });
+
+  it("Select all selects the assets and folders the bin shows", async () => {
+    withFolders();
+    await menuFor("bin.background").choose("Select all");
+    expect(folderUiStore.getState().folders).toEqual([FLD_B, FLD_A]);
+    expect(viewStore.getState().selection.map((r) => r.id)).toEqual([MED_V, MED_A, MED_U]);
+    folderUiStore.getState().setFolders([]);
+  });
 });
