@@ -42,7 +42,8 @@ export function actorKind(actor: string): ActorKind {
 
 /**
  * The rows, oldest first, from the engine's page of entries (newest first). Undo and redo
- * records are not rows, and nor is a change that was undone and cannot be redone.
+ * records are not rows, and nor is a change that was undone and cannot be redone, or that was
+ * undone before a change that is applied now.
  */
 export function buildRows(entries: readonly HistoryEntry[]): HistoryRow[] {
   const rows: HistoryRow[] = [];
@@ -61,7 +62,11 @@ export function buildRows(entries: readonly HistoryEntry[]): HistoryRow[] {
       restore: entry.cause.type === "restore",
     });
   }
-  return rows;
+  // The list is linear: what can be redone sits after the current state. An undone change
+  // before a later applied one (another actor's, undone while the person kept editing) is not
+  // shown; Redo still reaches it, and it is a row again once it is applied.
+  const lastApplied = rows.reduce((at, row, i) => (row.state === "applied" ? i : at), -1);
+  return rows.filter((row, i) => row.state === "applied" || i > lastApplied);
 }
 
 /**

@@ -65,6 +65,17 @@ describe("rows", () => {
     ]);
   });
 
+  it("leaves out an undone change that sits before an applied one", () => {
+    // The agent's trim was undone, then the person kept editing: the list stays linear.
+    const rows = buildRows([
+      entry(3, "Move clip", "user"),
+      entry(2, "Trim clip", "agent:claude", { status: "undone" }),
+      entry(1, "timeline.insert", "user"),
+    ]);
+    expect(rows.map((r) => r.txId)).toEqual(["tx_1", "tx_3"]);
+    expect(markerIndex(rows)).toBe(2);
+  });
+
   it("puts the marker before everything when every change is undone", () => {
     const rows = buildRows([
       entry(2, "b", "user", { status: "undone" }),
