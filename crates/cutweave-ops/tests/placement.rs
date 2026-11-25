@@ -6,7 +6,11 @@
 //! edits (INV-22) and determinism (INV-23). Every call goes through the common harness, which
 //! also asserts undo/redo identity and that failures change nothing.
 
-#![allow(clippy::unwrap_used, clippy::expect_used, clippy::many_single_char_names)]
+#![allow(
+    clippy::unwrap_used,
+    clippy::expect_used,
+    clippy::many_single_char_names
+)]
 
 mod common;
 

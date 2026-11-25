@@ -28,7 +28,7 @@ use cutweave_model::{
 use super::{
     DEFAULT_STILL_SECS, OverlapPolicy,
     magnetic::clamp_to_end,
-    placement::{DryIds, Edit, Ids, PlacementMode, Plan, resolve_mode, span, time},
+    placement::{DryIds, Edit, Ids, PlacementMode, Plan, resolve_mode, time},
 };
 use crate::{
     media::has_audio_stream,
@@ -399,14 +399,8 @@ fn run(cmd: &TimelineInsert, tx: &mut Tx<'_>) -> Result<TimelineInsertOutput, Cm
     let doc = tx.doc().clone();
     let planned = plan(cmd, &doc, tx)?;
     let report = planned.plan.commit(tx)?;
-    // The clip's own range, for the output: the placed clip is the first one.
-    let at = planned
-        .plan
-        .after
-        .find_item(&planned.clips[0])
-        .map_or(planned.at, |(_, i)| span(i).0);
     Ok(TimelineInsertOutput {
-        at: time(at),
+        at: time(planned.at),
         duration: planned.duration,
         clips: planned.clips,
         linked_group: planned.group,
