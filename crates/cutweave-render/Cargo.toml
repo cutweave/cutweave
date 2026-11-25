@@ -45,11 +45,19 @@ tracing = { version = "0.1.44", optional = true }
 
 [dev-dependencies]
 cutweave-model = { path = "../cutweave-model", features = ["testing"] }
+# The render bench (already a workspace dev-dependency of the model, commands and engine).
+criterion.workspace = true
 insta.workspace = true
 proptest.workspace = true
 serde_json.workspace = true
 # Decodes the in-crate JPEG encoder's output in tests (MIT OR Apache-2.0 OR Zlib; pinned).
 zune-jpeg = "=0.5.15"
+
+# Compositing cost of three animated 1080p layers per frame (WP-2C.04; arch §19 playback).
+[[bench]]
+name = "composite"
+harness = false
+required-features = ["gpu"]
 
 [lints]
 workspace = true

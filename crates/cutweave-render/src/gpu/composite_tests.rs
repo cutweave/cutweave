@@ -34,8 +34,14 @@ use crate::scene::{BlendMode, Crop, SceneDescription};
 use crate::testcard::{Alpha, Pattern, SyntheticSource, TestCard};
 use crate::{TimelineIndex, evaluate};
 
-/// The acceptance bound of the blend modes against the analytic reference, linear light.
+/// The acceptance bound of the blend modes against the analytic reference, linear light: the
+/// GPU rounds the decoded picture, the canvas and each composite to half floats (about
+/// 2.4e-4 each near 1.0); the reference does not round.
 const LINEAR_MAX_ABS: f32 = 1e-3;
+
+/// The bound for minified layers: each mip level of the chain is one more half-float
+/// rounding of a box average.
+const LINEAR_MAX_ABS_MIPS: f32 = 2e-3;
 
 /// Converts an IEEE half to `f32` (the readback of `Rgba16Float`).
 fn half(h: u16) -> f32 {
@@ -173,7 +179,7 @@ fn blend_sources() -> SyntheticSource {
 }
 
 /// A blend layer over a gradient chart and bars: the top chart turned 90° (so the two
-/// gradients cross), cropped, flipped, at 85% with an alpha ramp, plus a minified copy (mips).
+/// gradients cross), cropped, flipped, at 85% with an alpha ramp.
 fn blend_scene(mode: BlendMode) -> SceneDescription {
     let bottom = layer(1, 20, (W, H));
     let mut bars = layer(2, 22, (192, 108));
@@ -192,11 +198,21 @@ fn blend_scene(mode: BlendMode) -> SceneDescription {
     };
     top.flip.horizontal = true;
     top.blend = mode;
-    let mut small = layer(4, 21, (200, 120));
-    small.transform.scale = Vec2::new(0.22, 0.22);
-    small.transform.position = Vec2::new(0.36, -0.36);
-    small.blend = mode;
-    scene(W, H, background(), vec![bottom, bars, top, small])
+    scene(W, H, background(), vec![bottom, bars, top])
+}
+
+/// The blend scene plus minified copies of the chart in the same mode (trilinear mips).
+fn minified_blend_scene(mode: BlendMode) -> SceneDescription {
+    let mut s = blend_scene(mode);
+    for (n, (scale, x)) in [(0.22, 0.36), (0.13, -0.38)].into_iter().enumerate() {
+        let mut small = layer(4 + n as u128, 21, (200, 120));
+        small.transform.scale = Vec2::new(scale, scale);
+        small.transform.position = Vec2::new(x, -0.36);
+        small.transform.rotation_deg = 12.0;
+        small.blend = mode;
+        s.layers.push(small);
+    }
+    s
 }
 
 /// The blend-mode golden frame names, in `BlendMode::ALL` order.
@@ -299,25 +315,32 @@ fn blend_modes_match_the_analytic_reference_in_linear_light() {
     let src = blend_sources();
     let options = GraphOptions::default();
     for mode in BlendMode::ALL {
-        let s = blend_scene(mode);
-        let gpu = gpu_linear(&mut c, &s, &src, (W, H), &options);
-        let want = reference::render_linear(&s, (W, H), &src, &options).unwrap();
-        let (worst, at) = max_linear_diff(&gpu, &want, W);
-        eprintln!("{mode:?}: max |GPU − reference| = {worst:.2e} at {at:?} (linear light)");
-        assert!(
-            worst <= LINEAR_MAX_ABS,
-            "{mode:?}: {worst:e} at {at:?}: GPU {:?}, reference {:?}",
-            gpu[(at.1 * W + at.0) as usize],
-            want[(at.1 * W + at.0) as usize]
-        );
-        // The encoded frame agrees too (§20 reference tolerance).
-        let t = Target::rgba8(W, H);
-        let img = render(&mut c, &s, &src, t);
-        let cmp = compare(&img, &cpu(&s, &src, t), OutputTransfer::Srgb);
-        assert!(
-            cmp.passes_reference() && cmp.max_abs_diff <= 2,
-            "{mode:?}: {cmp}"
-        );
+        for (s, bound) in [
+            (blend_scene(mode), LINEAR_MAX_ABS),
+            (minified_blend_scene(mode), LINEAR_MAX_ABS_MIPS),
+        ] {
+            let gpu = gpu_linear(&mut c, &s, &src, (W, H), &options);
+            let want = reference::render_linear(&s, (W, H), &src, &options).unwrap();
+            let (worst, at) = max_linear_diff(&gpu, &want, W);
+            eprintln!(
+                "{mode:?} ({} layers): max |GPU − reference| = {worst:.2e} at {at:?} (linear)",
+                s.layers.len()
+            );
+            assert!(
+                worst <= bound,
+                "{mode:?}: {worst:e} at {at:?}: GPU {:?}, reference {:?}",
+                gpu[(at.1 * W + at.0) as usize],
+                want[(at.1 * W + at.0) as usize]
+            );
+            // The encoded frame agrees too (§20 reference tolerance).
+            let t = Target::rgba8(W, H);
+            let img = render(&mut c, &s, &src, t);
+            let cmp = compare(&img, &cpu(&s, &src, t), OutputTransfer::Srgb);
+            assert!(
+                cmp.passes_reference() && cmp.max_abs_diff <= 2,
+                "{mode:?}: {cmp}"
+            );
+        }
     }
 }
 
@@ -509,15 +532,28 @@ fn bicubic_matches_the_cpu_reference() {
     minified.transform.scale = Vec2::new(0.3, 0.3);
     minified.transform.position = Vec2::new(-0.3, 0.25);
     minified.blend = BlendMode::Screen;
-    let s = scene(W, H, background(), vec![magnified, minified]);
-    let gpu = gpu_linear(&mut c, &s, &src, (W, H), &options);
-    let want = reference::render_linear(&s, (W, H), &src, &options).unwrap();
-    let (worst, at) = max_linear_diff(&gpu, &want, W);
-    eprintln!("bicubic: max |GPU − reference| = {worst:.2e} at {at:?}");
-    assert!(worst <= LINEAR_MAX_ABS, "{worst:e} at {at:?}");
-    // It differs from bilinear (sharper), and bilinear stays the default.
-    let bilinear = gpu_linear(&mut c, &s, &src, (W, H), &GraphOptions::default());
-    assert_ne!(gpu, bilinear);
+    for (s, bound) in [
+        (
+            scene(W, H, background(), vec![magnified.clone()]),
+            LINEAR_MAX_ABS,
+        ),
+        (
+            scene(W, H, background(), vec![magnified, minified]),
+            LINEAR_MAX_ABS_MIPS,
+        ),
+    ] {
+        let gpu = gpu_linear(&mut c, &s, &src, (W, H), &options);
+        let want = reference::render_linear(&s, (W, H), &src, &options).unwrap();
+        let (worst, at) = max_linear_diff(&gpu, &want, W);
+        eprintln!(
+            "bicubic ({} layers): max |GPU − reference| = {worst:.2e} at {at:?}",
+            s.layers.len()
+        );
+        assert!(worst <= bound, "{worst:e} at {at:?}");
+        // It differs from bilinear (sharper), and bilinear stays the default.
+        let bilinear = gpu_linear(&mut c, &s, &src, (W, H), &GraphOptions::default());
+        assert_ne!(gpu, bilinear);
+    }
 }
 
 // ---- preview equals export ------------------------------------------------------------------
