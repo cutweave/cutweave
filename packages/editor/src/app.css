@@ -184,6 +184,14 @@ body {
   cursor: grab;
   user-select: none;
 }
+/* Dockview's action areas are plain blocks the full header height: centre what they hold, so
+   the close button lines up with the tab titles instead of sitting at the top. */
+.dockview-theme-cutweave .dv-pre-actions-container,
+.dockview-theme-cutweave .dv-left-actions-container,
+.dockview-theme-cutweave .dv-right-actions-container {
+  display: flex;
+  align-items: center;
+}
 /* The close button at the end of a group's tab strip (the active panel's). */
 .cw-dock-tab__close {
   flex: none;
