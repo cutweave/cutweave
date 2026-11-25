@@ -44,8 +44,23 @@
 //! queries accept only `open_world`); `view` (a `view.*` command: engine-run, never undoable,
 //! never journaled); `engine` (a command run against engine state, e.g. `edit.undo`, via
 //! `EngineCommand`); `journaled = false` (a non-undoable engine command that is never
-//! journaled because nothing it changes is replayed, e.g. `job.cancel`). Field attribute:
-//! `#[secret]`.
+//! journaled because nothing it changes is replayed, e.g. `job.cancel`). Field attributes:
+//! `#[secret]`, and `#[ui(...)]` (render hints for the schema-driven inspector, see below).
+//!
+//! ## `#[ui(...)]` (WP-2H.02)
+//!
+//! A field attribute on `#[command]`, `#[query]` and `#[wire]` structs. It adds an `x-ui`
+//! object to that property's JSON Schema; `packages/ui` reads it to pick a widget (the format
+//! is specified in `packages/ui/SCHEMA_HINTS.md`). It never affects validation or the Rust
+//! type. Keys: `widget`, `label`, `min`, `max`, `step`, `unit`, `precision`, `scale`, `group`,
+//! `order`, `placeholder`, `visible_when` (JSON `visibleWhen`), `keyframeable`, `advanced`,
+//! `lines`, `linked`, `kind`. The MCP tool schemas leave `x-ui` out (`lean_schema`), so it costs
+//! no agent tokens.
+//!
+//! ```ignore
+//! #[ui(widget = "slider", min = 0.0, max = 1.0, step = 0.01, unit = "%", scale = 100.0)]
+//! pub opacity: f64,
+//! ```
 
 use proc_macro::TokenStream;
 use proc_macro2::{Span, TokenStream as TokenStream2};
@@ -118,7 +133,16 @@ pub fn wire(args: TokenStream, input: TokenStream) -> TokenStream {
         .to_compile_error()
         .into();
     }
-    let item = parse_macro_input!(input as syn::Item);
+    let mut item = parse_macro_input!(input as syn::Item);
+    if let syn::Item::Struct(st) = &mut item
+        && let Fields::Named(fields) = &mut st.fields
+    {
+        for field in &mut fields.named {
+            if let Err(e) = expand_ui_attrs(field) {
+                return e.to_compile_error().into();
+            }
+        }
+    }
     let deny = match &item {
         syn::Item::Struct(s) if matches!(s.fields, Fields::Named(_)) => {
             quote!(#[serde(deny_unknown_fields)])
@@ -564,6 +588,133 @@ fn json_name(field: &syn::Field) -> syn::Result<String> {
     Ok(name)
 }
 
+/// Widgets the form renderer knows (mirrors `packages/ui/SCHEMA_HINTS.md`).
+const UI_WIDGETS: &[&str] = &[
+    "number",
+    "slider",
+    "angle",
+    "color",
+    "toggle",
+    "segmented",
+    "select",
+    "vec2",
+    "font",
+    "asset",
+    "curve",
+    "text",
+    "textarea",
+    "hidden",
+];
+
+/// `(rust key, JSON key, value kind)`; `s` string, `n` number, `b` bool.
+const UI_KEYS: &[(&str, &str, char)] = &[
+    ("widget", "widget", 's'),
+    ("label", "label", 's'),
+    ("min", "min", 'n'),
+    ("max", "max", 'n'),
+    ("step", "step", 'n'),
+    ("unit", "unit", 's'),
+    ("precision", "precision", 'n'),
+    ("scale", "scale", 'n'),
+    ("group", "group", 's'),
+    ("order", "order", 'n'),
+    ("placeholder", "placeholder", 's'),
+    ("visible_when", "visibleWhen", 's'),
+    ("keyframeable", "keyframeable", 'b'),
+    ("advanced", "advanced", 'b'),
+    ("lines", "lines", 'n'),
+    ("linked", "linked", 'b'),
+    ("kind", "kind", 's'),
+];
+
+fn is_number_lit(expr: &syn::Expr) -> bool {
+    matches!(expr, syn::Expr::Lit(l) if matches!(l.lit, syn::Lit::Int(_) | syn::Lit::Float(_)))
+}
+
+fn ui_value_ok(expr: &syn::Expr, kind: char) -> bool {
+    match (expr, kind) {
+        (syn::Expr::Lit(l), 's') => matches!(l.lit, syn::Lit::Str(_)),
+        (syn::Expr::Lit(l), 'b') => matches!(l.lit, syn::Lit::Bool(_)),
+        (syn::Expr::Unary(u), 'n') => matches!(u.op, syn::UnOp::Neg(_)) && is_number_lit(&u.expr),
+        (e, 'n') => is_number_lit(e),
+        _ => false,
+    }
+}
+
+/// Parses one `#[ui(...)]` attribute into `(json key, value)` pairs.
+fn parse_ui(attr: &syn::Attribute, pairs: &mut Vec<(String, TokenStream2)>) -> syn::Result<()> {
+    attr.parse_nested_meta(|meta| {
+        let key = key_of(&meta);
+        let Some(&(_, json, kind)) = UI_KEYS.iter().find(|(k, _, _)| *k == key) else {
+            let known: Vec<&str> = UI_KEYS.iter().map(|(k, _, _)| *k).collect();
+            return Err(meta.error(format!(
+                "unknown #[ui] key `{key}`; expected one of {}",
+                known.join(", ")
+            )));
+        };
+        if pairs.iter().any(|(j, _)| j == json) {
+            return Err(meta.error(format!("duplicate `{key}`")));
+        }
+        let expr: syn::Expr = meta.value()?.parse()?;
+        if !ui_value_ok(&expr, kind) {
+            let want = match kind {
+                's' => "a string literal",
+                'b' => "`true` or `false`",
+                _ => "a number literal",
+            };
+            return Err(syn::Error::new(
+                expr.span(),
+                format!("`{key}` takes {want}"),
+            ));
+        }
+        if key == "widget"
+            && let syn::Expr::Lit(syn::ExprLit {
+                lit: syn::Lit::Str(w),
+                ..
+            }) = &expr
+            && !UI_WIDGETS.contains(&w.value().as_str())
+        {
+            return Err(syn::Error::new(
+                w.span(),
+                format!("unknown widget; expected one of {}", UI_WIDGETS.join(", ")),
+            ));
+        }
+        pairs.push((json.to_owned(), quote!(#expr)));
+        Ok(())
+    })
+}
+
+/// Turns the field's `#[ui(...)]` attributes into one `#[schemars(extend("x-ui" = {...}))]`.
+fn expand_ui_attrs(field: &mut syn::Field) -> syn::Result<()> {
+    let mut pairs: Vec<(String, TokenStream2)> = Vec::new();
+    let mut error: Option<syn::Error> = None;
+    let mut found = false;
+    field.attrs.retain(|a| {
+        if !a.path().is_ident("ui") {
+            return true;
+        }
+        found = true;
+        if let Err(e) = parse_ui(a, &mut pairs) {
+            match &mut error {
+                Some(prev) => prev.combine(e),
+                None => error = Some(e),
+            }
+        }
+        false
+    });
+    if let Some(e) = error {
+        return Err(e);
+    }
+    if found {
+        let keys = pairs.iter().map(|(k, _)| k);
+        let vals = pairs.iter().map(|(_, v)| v);
+        field
+            .attrs
+            .push(syn::parse_quote!(#[schemars(extend("x-ui" = { #(#keys: #vals),* }))]));
+    }
+    Ok(())
+}
+
 fn expand(kind: Kind, args: TokenStream, input: TokenStream) -> TokenStream {
     let item = parse_macro_input!(input as syn::Item);
     match expand_item(kind, args, item) {
@@ -611,6 +762,7 @@ fn expand_item(kind: Kind, args: TokenStream, item: syn::Item) -> syn::Result<To
     let mut debug_fields = Vec::new();
     if let Fields::Named(fields) = &mut st.fields {
         for field in &mut fields.named {
+            expand_ui_attrs(field)?;
             let mut secret = false;
             let mut error = None;
             field.attrs.retain(|a| {

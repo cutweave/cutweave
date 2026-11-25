@@ -1,0 +1,89 @@
+---
+source: crates/cutweave-commands-derive/tests/ui_hints.rs
+expression: "cutweave_model::canonical_json_pretty(&schema)"
+---
+{
+  "additionalProperties": false,
+  "description": "Sets look properties (a fixture for the hints).",
+  "properties": {
+    "blend": {
+      "description": "Blend mode.",
+      "type": "string",
+      "x-ui": {
+        "group": "Look",
+        "order": 2
+      }
+    },
+    "custom": {
+      "default": null,
+      "description": "Shown only for a custom blend.",
+      "type": [
+        "string",
+        "null"
+      ],
+      "x-ui": {
+        "placeholder": "Expression",
+        "visibleWhen": "blend == 'custom'"
+      }
+    },
+    "opacity": {
+      "description": "Opacity, 0 to 1.",
+      "format": "double",
+      "type": "number",
+      "x-ui": {
+        "keyframeable": true,
+        "max": 1.0,
+        "min": 0.0,
+        "scale": 100.0,
+        "step": 0.01,
+        "unit": "%",
+        "widget": "slider"
+      }
+    },
+    "plain": {
+      "description": "No hint at all.",
+      "type": "boolean"
+    },
+    "position": {
+      "additionalProperties": false,
+      "description": "Where it sits.",
+      "properties": {
+        "x": {
+          "description": "Horizontal.",
+          "format": "double",
+          "type": "number",
+          "x-ui": {
+            "max": 8192,
+            "min": -8192,
+            "step": 1,
+            "unit": "px",
+            "widget": "number"
+          }
+        },
+        "y": {
+          "description": "Vertical.",
+          "format": "double",
+          "type": "number",
+          "x-ui": {
+            "step": 1,
+            "unit": "px",
+            "widget": "number"
+          }
+        }
+      },
+      "required": [
+        "x",
+        "y"
+      ],
+      "type": "object"
+    }
+  },
+  "required": [
+    "opacity",
+    "blend",
+    "position",
+    "plain"
+  ],
+  "title": "SetLook",
+  "type": "object"
+}

@@ -7,3 +7,5 @@ export * from "./icons/index.ts";
 
 import "./components/components.css";
 import "./components/scrollbars.css";
+
+export * from "./schema-form/index.ts";

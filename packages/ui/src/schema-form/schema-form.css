@@ -1,0 +1,213 @@
+/* SPDX-License-Identifier: GPL-3.0-or-later */
+/* Schema-driven form (WP-2H.02). Rows reuse .cw-row; only layout and the few new widgets live here. */
+
+.cw-sf {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+  min-width: 0;
+}
+.cw-sf-plain {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1);
+}
+.cw-sf .cw-section__body {
+  gap: var(--space-1);
+}
+
+/* A row is label, control, then the optional keyframe group and reset, with no wrapper element:
+   the control and what follows it sit on the right. */
+.cw-sf-row {
+  gap: var(--space-1);
+}
+.cw-sf-row > .cw-row__label {
+  flex: 0 1 auto;
+  min-width: 0;
+  margin-right: auto;
+}
+.cw-sf-row > .cw-row__label + * {
+  min-width: 0;
+}
+.cw-sf-row[data-animated="on"] > .cw-row__label {
+  color: var(--marigold-text);
+}
+
+/* The slider takes the room the label leaves. */
+.cw-sf-row > .cw-slider {
+  flex: 1 1 0;
+  min-width: 0;
+}
+.cw-sf-row .cw-slider__track {
+  min-width: calc(var(--space-12) * 2);
+}
+
+/* A row whose control is wide puts the label on a line of its own. */
+.cw-sf-row[data-layout="stack"] {
+  flex-wrap: wrap;
+  align-items: flex-start;
+  padding-block: var(--space-1);
+}
+.cw-sf-row[data-layout="stack"] > .cw-row__label {
+  flex: 1 0 100%;
+}
+.cw-sf-row[data-layout="stack"] > .cw-row__label + * {
+  flex: 1 1 0;
+}
+
+/* Nested object: a titled group, indented under its title. */
+.cw-sf-object {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1);
+  padding-left: var(--space-3);
+  border-left: var(--border-thin) solid var(--border-subtle);
+}
+.cw-sf-object__title {
+  color: var(--text-muted);
+}
+
+.cw-sf-vec2,
+.cw-sf-tuple,
+.cw-sf-angle,
+.cw-sf-color,
+.cw-sf-toggle,
+.cw-sf-font {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-1);
+  min-width: 0;
+}
+.cw-sf-tuple {
+  flex-wrap: wrap;
+}
+.cw-sf-vec2 .cw-num__value,
+.cw-sf-tuple .cw-num__value {
+  width: 6ch;
+}
+
+.cw-sf-mixed {
+  color: var(--text-muted);
+}
+
+/* Select: a native <select> in the field style. */
+.cw-sf-select {
+  box-sizing: border-box;
+  height: var(--control-sm);
+  min-width: 0;
+  max-width: 100%;
+  padding: 0 var(--space-2);
+  background: var(--surface-2);
+  border: var(--border-thin) solid var(--border-control);
+  border-radius: var(--radius-sm);
+  color: var(--text-primary);
+}
+.cw-sf-select:hover {
+  background: var(--surface-3);
+}
+.cw-sf-select:focus-visible {
+  outline: var(--border-thick) solid var(--focus-ring);
+  outline-offset: 1px;
+  border-color: var(--marigold);
+}
+.cw-sf-select:disabled {
+  border-color: var(--border-subtle);
+  color: var(--text-disabled);
+  cursor: not-allowed;
+}
+
+.cw-sf-textarea {
+  width: 100%;
+  height: auto;
+  padding: var(--space-1) var(--space-2);
+  resize: vertical;
+  font-family: inherit;
+}
+
+/* Color: the native picker as a swatch. */
+.cw-sf-swatch {
+  box-sizing: border-box;
+  width: var(--control-sm);
+  height: var(--control-sm);
+  padding: 0;
+  background: var(--surface-2);
+  border: var(--border-thin) solid var(--border-control);
+  border-radius: var(--radius-sm);
+  cursor: pointer;
+}
+.cw-sf-swatch:focus-visible {
+  outline: var(--border-thick) solid var(--focus-ring);
+  outline-offset: 1px;
+}
+.cw-sf-swatch[data-mixed="true"],
+.cw-sf-swatch:disabled {
+  opacity: var(--opacity-disabled);
+}
+.cw-sf-swatch:disabled {
+  cursor: not-allowed;
+}
+.cw-sf-color .cw-field {
+  width: 11ch;
+}
+
+/* Angle dial: a ring with a needle. */
+.cw-sf-dial {
+  position: relative;
+  box-sizing: border-box;
+  width: var(--control-sm);
+  height: var(--control-sm);
+  flex: none;
+  background: var(--surface-2);
+  border: var(--border-thin) solid var(--border-control);
+  border-radius: var(--radius-full);
+  cursor: grab;
+  touch-action: none;
+}
+.cw-sf-dial:hover {
+  background: var(--surface-3);
+}
+.cw-sf-dial:focus-visible {
+  outline: var(--border-thick) solid var(--focus-ring);
+  outline-offset: 1px;
+  border-color: var(--marigold);
+}
+.cw-sf-dial[aria-disabled="true"] {
+  border-color: var(--border-subtle);
+  cursor: not-allowed;
+}
+.cw-sf-dial__needle {
+  position: absolute;
+  top: var(--space-0-5);
+  left: 50%;
+  width: var(--border-thick);
+  height: calc(50% - var(--space-0-5));
+  margin-left: calc(var(--border-thick) / -2);
+  background: var(--marigold);
+  border-radius: var(--radius-full);
+  transform-origin: 50% 100%;
+}
+
+/* Array editor. */
+.cw-sf-array {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1);
+  align-items: stretch;
+  width: 100%;
+}
+.cw-sf-array__item {
+  display: flex;
+  align-items: center;
+  gap: var(--space-1);
+}
+.cw-sf-array__item > .cw-row {
+  flex: 1;
+  min-width: 0;
+}
+.cw-sf-array > .cw-btn {
+  align-self: flex-start;
+}
+
+.cw-sf-unsupported {
+  color: var(--text-muted);
+}

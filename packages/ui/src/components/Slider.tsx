@@ -26,6 +26,8 @@ export interface SliderProps {
   /** Readout text; defaults to the plain number. */
   format?: ((value: number) => string) | undefined;
   disabled?: boolean | undefined;
+  /** The label stays the accessible name but is not drawn (a host row draws it). */
+  labelHidden?: boolean | undefined;
   /** Built-in KeyframeToggle (with prev/next when handlers are given). */
   keyframe?: SliderKeyframe | undefined;
   className?: string | undefined;
@@ -42,6 +44,7 @@ export function Slider({
   onCommit,
   format,
   disabled,
+  labelHidden,
   keyframe,
   className,
 }: SliderProps) {
@@ -49,7 +52,10 @@ export function Slider({
   const text = format ? format(value) : String(value);
   return (
     <div className={cx("cw-slider", className)} aria-disabled={disabled ? "true" : undefined}>
-      <span id={labelId} className="cw-slider__label label">
+      <span
+        id={labelId}
+        className={cx("cw-slider__label label", labelHidden && "cw-visually-hidden")}
+      >
         {label}
       </span>
       <RadixSlider.Root

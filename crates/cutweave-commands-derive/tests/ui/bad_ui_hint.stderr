@@ -1,0 +1,5 @@
+error: unknown widget; expected one of number, slider, angle, color, toggle, segmented, select, vec2, font, asset, curve, text, textarea, hidden
+ --> tests/ui/bad_ui_hint.rs:6:19
+  |
+6 |     #[ui(widget = "knob")]
+  |                   ^^^^^^

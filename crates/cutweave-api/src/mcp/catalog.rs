@@ -500,6 +500,9 @@ fn trim(schema: &mut Value) {
         return;
     };
     map.remove("title");
+    // `x-ui` (render hints for the schema-driven inspector, WP-2H.02) is for people, not agents:
+    // it never costs tool-list tokens.
+    map.remove("x-ui");
     // `format: "uint32"` and friends only name the Rust width; the `minimum`/`maximum` next to
     // them are what validates.
     if map.get("format").and_then(Value::as_str).is_some_and(|f| {
@@ -738,7 +741,11 @@ mod tests {
                     "description": "Where the edge goes."
                 },
                 "edge": { "oneOf": [{ "const": "start", "type": "string" }] },
-                "flag": { "type": ["boolean", "null"], "default": false }
+                "flag": {
+                    "type": ["boolean", "null"],
+                    "default": false,
+                    "x-ui": { "widget": "toggle" }
+                }
             },
             "required": ["edge"]
         });

@@ -1,0 +1,129 @@
+// Vitest Snapshot v1, https://vitest.dev/guide/snapshot.html
+
+exports[`fixtures > records every fixture's widget map (snapshot) 1`] = `
+{
+  "$ref into $defs": {
+    "pad": "object",
+    "pad.bottom": "number",
+    "pad.top": "number",
+  },
+  "a time (flicks or text) edits as text": {
+    "at": "text",
+  },
+  "advanced options start collapsed": {
+    "crf": "number",
+  },
+  "an unsupported shape is shown, not hidden": {
+    "blob": "unsupported",
+  },
+  "angle dial": {
+    "rotation": "angle",
+  },
+  "array of objects": {
+    "stops": "array",
+    "stops.0": "object",
+    "stops.0.at": "number",
+    "stops.0.color": "color",
+    "stops.1": "object",
+    "stops.1.at": "number",
+    "stops.1.color": "color",
+  },
+  "array of strings": {
+    "tags": "array",
+    "tags.0": "text",
+    "tags.1": "text",
+  },
+  "asset reference": {
+    "lut": "asset",
+  },
+  "color": {
+    "fill": "color",
+  },
+  "color with alpha": {
+    "shadow": "color",
+  },
+  "curve slot": {
+    "easing": "curve",
+  },
+  "font": {
+    "family": "font",
+  },
+  "hidden widget is omitted": {
+    "name": "text",
+  },
+  "integer with a range": {
+    "count": "number",
+  },
+  "long enum is a select": {
+    "blend": "select",
+  },
+  "multi-selection with mixed values": {
+    "blend": "select",
+    "flip": "toggle",
+    "name": "text",
+    "opacity": "slider",
+    "position": "vec2",
+  },
+  "nested object": {
+    "crop": "object",
+    "crop.left": "number",
+    "crop.right": "number",
+  },
+  "nullable enum": {
+    "mode": "select",
+  },
+  "nullable number": {
+    "limit": "number",
+  },
+  "number": {
+    "gain": "number",
+  },
+  "oneOf const with titles": {
+    "policy": "segmented",
+  },
+  "order hint and groups": {
+    "a": "number",
+    "b": "number",
+    "c": "number",
+  },
+  "percent slider (scale)": {
+    "opacity": "slider",
+  },
+  "short enum is segmented": {
+    "fit": "segmented",
+  },
+  "slider": {
+    "blur": "slider",
+  },
+  "slider without a range falls back to a number": {
+    "blur": "number",
+  },
+  "text": {
+    "name": "text",
+  },
+  "textarea": {
+    "note": "textarea",
+  },
+  "toggle": {
+    "reverse": "toggle",
+  },
+  "tuple of three": {
+    "lift": "tuple",
+  },
+  "two levels of objects": {
+    "shadow": "object",
+    "shadow.color": "color",
+    "shadow.offset": "vec2",
+  },
+  "vec2 array, linked scale": {
+    "scale": "vec2",
+  },
+  "vec2 object": {
+    "position": "vec2",
+  },
+  "visibleWhen": {
+    "crf": "number",
+    "mode": "segmented",
+  },
+}
+`;

@@ -17,19 +17,21 @@ export interface NumberScrubberProps {
   value: number;
   /** The selection disagrees: shows an em dash and announces "mixed". Never cleared by focus. */
   mixed?: boolean;
-  unit?: string;
-  min?: number;
-  max?: number;
+  unit?: string | undefined;
+  min?: number | undefined;
+  max?: number | undefined;
   /** Base step for keys and drag. Integer steps stay exact integers. Default 1. */
-  step?: number;
+  step?: number | undefined;
   /** Pixels of drag per step. Default 4. */
-  sensitivity?: number;
+  sensitivity?: number | undefined;
   /** Fixed decimals for display. Default: the shortest exact representation. */
-  precision?: number;
+  precision?: number | undefined;
   /** Live value during a drag, key press or typed commit. */
   onChange: (value: number) => void;
   /** Once per gesture: drag release, key press or typed Enter/blur. Not called on cancel. */
   onCommit?: ((value: number) => void) | undefined;
+  /** A drag was abandoned (Escape); `onChange` has already restored the start value. */
+  onCancel?: (() => void) | undefined;
   disabled?: boolean | undefined;
   className?: string | undefined;
 }
@@ -60,6 +62,7 @@ export function NumberScrubber({
   precision,
   onChange,
   onCommit,
+  onCancel,
   disabled = false,
   className,
 }: NumberScrubberProps) {
@@ -84,7 +87,8 @@ export function NumberScrubber({
     gesture.current = null;
     exitLock();
     if (g.moved && g.current !== g.startValue) onChange(g.startValue);
-  }, [exitLock, onChange]);
+    if (g.moved) onCancel?.();
+  }, [exitLock, onChange, onCancel]);
 
   // Escape (or any other way of losing the pointer lock) mid-drag cancels the gesture.
   useEffect(() => {
