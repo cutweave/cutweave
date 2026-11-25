@@ -84,6 +84,10 @@ pub struct DecodeOpts {
     /// arch §7; layouts outside [`PixelFormat`] are converted to the nearest one).
     /// `Some(PixelFormat::Rgba8)` is the software-scaled thumbnail path.
     pub target_pixfmt: Option<PixelFormat>,
+    /// Scale every frame to this `(width, height)` (in coded orientation); `None` keeps the
+    /// coded size. Scaling goes with the layout conversion (FFmpeg: one swscale pass, bilinear),
+    /// so a smaller copy costs one conversion (the proxy generator, WP-2F.01).
+    pub target_size: Option<(u32, u32)>,
     /// What the decoder is for (threading).
     pub mode: DecodeMode,
     /// Decoder threads; 0 lets the backend choose (FFmpeg: cores + 1, at most 16).
@@ -109,6 +113,13 @@ impl DecodeOpts {
         self
     }
 
+    /// The same options scaling every frame to `width × height`.
+    #[must_use]
+    pub fn with_size(mut self, width: u32, height: u32) -> DecodeOpts {
+        self.target_size = Some((width, height));
+        self
+    }
+
     /// The same options for `mode`.
     #[must_use]
     pub fn with_mode(mut self, mode: DecodeMode) -> DecodeOpts {
@@ -127,8 +138,19 @@ impl DecodeOpts {
     /// index, which only saves the scan).
     #[must_use]
     pub fn same_decoder(&self, other: &DecodeOpts) -> bool {
-        (self.hw, self.target_pixfmt, self.mode, self.threads)
-            == (other.hw, other.target_pixfmt, other.mode, other.threads)
+        (
+            self.hw,
+            self.target_pixfmt,
+            self.target_size,
+            self.mode,
+            self.threads,
+        ) == (
+            other.hw,
+            other.target_pixfmt,
+            other.target_size,
+            other.mode,
+            other.threads,
+        )
     }
 }
 
@@ -331,6 +353,55 @@ impl EncodeSpec {
     }
 }
 
+/// Files to join end to end into one, by copying their packets (no re-encoding): the parts of
+/// a proxy (WP-2F.01, [`MediaBackend::concat`]).
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct ConcatSpec {
+    /// The parts, in order. Each has the same streams as the first (codec, size, frame rate,
+    /// sample rate and channels): intra-frame video and PCM audio join cleanly anywhere.
+    pub parts: Vec<PathBuf>,
+    /// The output file; its container follows from the extension. It appears only when the
+    /// join completes (an existing file there is replaced then); a cancel or failure leaves no
+    /// partial output.
+    pub path: PathBuf,
+    /// Polled between packets; once it answers `true` the join stops with
+    /// [`MediaError::Cancelled`].
+    pub cancel: Option<CancelCheck>,
+}
+
+impl ConcatSpec {
+    /// Joins `parts` into `path`.
+    #[must_use]
+    pub fn new(parts: Vec<PathBuf>, path: impl Into<PathBuf>) -> ConcatSpec {
+        ConcatSpec {
+            parts,
+            path: path.into(),
+            cancel: None,
+        }
+    }
+
+    /// The same join, cancelled by `cancel`.
+    #[must_use]
+    pub fn with_cancel(mut self, cancel: CancelCheck) -> ConcatSpec {
+        self.cancel = Some(cancel);
+        self
+    }
+
+    /// Checks what every backend requires: at least one part and syntactically valid paths.
+    pub fn validate(&self) -> Result<(), MediaError> {
+        if self.parts.is_empty() {
+            return Err(MediaError::Invalid {
+                message: "nothing to join: no parts".to_owned(),
+            });
+        }
+        crate::path::check_syntax(&self.path)?;
+        for part in &self.parts {
+            crate::path::check_syntax(part)?;
+        }
+        Ok(())
+    }
+}
+
 /// What an encoder wrote.
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
 pub struct EncodeSummary {
@@ -383,6 +454,17 @@ pub trait MediaBackend: Send + Sync {
 
     /// Creates the output file described by `spec`.
     fn open_encoder(&self, spec: &EncodeSpec) -> Result<Box<dyn Encoder>, MediaError>;
+
+    /// Joins the files of `spec` end to end into one, copying their packets (WP-2F.01: a proxy
+    /// made of parts). Each part's timestamps follow the previous part's end, per stream. The
+    /// summary counts the video frames (packets) and audio samples written. Backends that
+    /// cannot join files answer [`MediaError::Unsupported`] (the default).
+    fn concat(&self, spec: &ConcatSpec) -> Result<EncodeSummary, MediaError> {
+        spec.validate()?;
+        Err(MediaError::Unsupported {
+            message: "this media backend cannot join files".to_owned(),
+        })
+    }
 
     /// What this backend can decode and encode on this machine. Cheap: backends compute it once.
     fn capabilities(&self) -> Capabilities;

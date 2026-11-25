@@ -8,7 +8,8 @@
 //!   [`wait_async`](JobManager::wait_async)), and the `job.progress` stream
 //!   ([`subscribe`](JobManager::subscribe)).
 //! - Bodies run on tokio's blocking pool under a per-class [`Budget`] semaphore: at most
-//!   cores/2 decode-class jobs ([`JobKind::Analysis`]) and one export at a time. A job may
+//!   cores/2 decode-class jobs ([`JobKind::Analysis`]), one export and two proxy jobs
+//!   ([`JobKind::Proxy`], WP-2F.01; one while an export runs) at a time. A job may
 //!   depend on others ([`JobSpec::after`]) and then runs only if they succeeded.
 //! - [`CancelToken`] / [`JobCtx`]: what a body polls and reports progress through.
 //! - [`JobHistory`]: where finished jobs go. [`MemoryHistory`] for now; the `jobs` table of
@@ -29,8 +30,8 @@ pub use cancel::CancelToken;
 pub use history::{DEFAULT_HISTORY_CAPACITY, JobHistory, MemoryHistory};
 pub use id::{JOB_ID_PATTERN, JobId, JobIdError};
 pub use manager::{
-    DEFAULT_EVENT_CAPACITY, DEFAULT_EXPORT_SLOTS, JobConfig, JobCtx, JobHandle, JobManager,
-    JobManagerBuilder, PROGRESS_EVENT_STEP, default_decode_slots,
+    DEFAULT_EVENT_CAPACITY, DEFAULT_EXPORT_SLOTS, DEFAULT_PROXY_SLOTS, JobConfig, JobCtx,
+    JobHandle, JobManager, JobManagerBuilder, PROGRESS_EVENT_STEP, default_decode_slots,
 };
 pub use types::{
     Budget, JobError, JobEvent, JobFilter, JobInfo, JobKind, JobProgress, JobSpec, JobState,

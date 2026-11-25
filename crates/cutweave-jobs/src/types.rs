@@ -19,6 +19,9 @@ pub enum JobKind {
     Analysis,
     /// Rendering and encoding a sequence to a file (WP-1E.03).
     Export,
+    /// Making a media asset's proxy (WP-2F.01): decodes the original and encodes a smaller
+    /// intra-frame copy.
+    Proxy,
 }
 
 impl JobKind {
@@ -28,6 +31,7 @@ impl JobKind {
         match self {
             JobKind::Analysis => Budget::Decode,
             JobKind::Export => Budget::Export,
+            JobKind::Proxy => Budget::Proxy,
         }
     }
 }
@@ -40,6 +44,9 @@ pub enum Budget {
     Decode,
     /// Exports: one at a time.
     Export,
+    /// Proxy generation (WP-2F.01): two at a time by default, and at most one while an export
+    /// runs.
+    Proxy,
 }
 
 /// Where a job is in its lifecycle. `succeeded`, `failed` and `cancelled` are final.
@@ -262,6 +269,11 @@ mod tests {
         assert!(JobState::Cancelled.is_terminal());
         assert_eq!(JobKind::Analysis.budget(), Budget::Decode);
         assert_eq!(JobKind::Export.budget(), Budget::Export);
+        assert_eq!(JobKind::Proxy.budget(), Budget::Proxy);
+        assert_eq!(
+            serde_json::to_value(JobKind::Proxy).unwrap(),
+            json!("proxy")
+        );
     }
 
     #[test]

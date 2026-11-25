@@ -253,6 +253,15 @@ impl Analyzer {
     /// IDs (none when no stage is registered).
     #[allow(clippy::must_use_candidate)] // queues the jobs; the IDs are for waiting on them
     pub fn spawn(&self, media: AnalysisInput) -> Vec<JobId> {
+        self.spawn_stages(media)
+            .into_iter()
+            .map(|(_, id)| id)
+            .collect()
+    }
+
+    /// [`spawn`](Self::spawn), with each job's stage name.
+    #[allow(clippy::must_use_candidate)] // queues the jobs; the IDs are for waiting on them
+    pub fn spawn_stages(&self, media: AnalysisInput) -> Vec<(&'static str, JobId)> {
         let media = Arc::new(media);
         let mut spawned: BTreeMap<&'static str, JobId> = BTreeMap::new();
         let mut ids = Vec::new();
@@ -277,7 +286,7 @@ impl Analyzer {
                 .jobs
                 .submit(spec, move |ctx| run_stage(&*stage, &input, &*sink, ctx));
             spawned.insert(name, job.id());
-            ids.push(job.id());
+            ids.push((name, job.id()));
         }
         ids
     }

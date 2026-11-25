@@ -21,7 +21,9 @@
 //! the encoder (H.264 + AAC in MP4, [`EncodeSpec`]), WP-1E.02 hardware H.264 encoders with
 //! software fallback ([`HwEncode`], [`encode_with_fallback`]), WP-1D.03 software decode,
 //! frame-exact seek and the decoder pool, and WP-1D.04 hardware decode with software fallback
-//! ([`HwMode`], [`Capabilities::hw_decode`], [`VideoDecoder::hw_failed`]).
+//! ([`HwMode`], [`Capabilities::hw_decode`], [`VideoDecoder::hw_failed`]). WP-2F.01 adds what
+//! proxies need: scaling while decoding ([`DecodeOpts::target_size`]), the intra-frame proxy
+//! codecs and PCM in MOV, and joining files ([`MediaBackend::concat`]).
 //!
 //! **Dependency rule** (arch §3, `cargo xtask check-deps`): `cutweave-model` never depends on
 //! this crate, and `cutweave-render` / `cutweave-audio` may use only its trait half (the default
@@ -46,8 +48,8 @@ mod version;
 mod ffmpeg;
 
 pub use backend::{
-    AudioDecoder, AudioEncodeSpec, DecodeMode, DecodeOpts, EncodeSpec, EncodeSummary, Encoder,
-    HwEncode, HwMode, MediaBackend, VideoDecoder, VideoEncodeSpec,
+    AudioDecoder, AudioEncodeSpec, ConcatSpec, DecodeMode, DecodeOpts, EncodeSpec, EncodeSummary,
+    Encoder, HwEncode, HwMode, MediaBackend, VideoDecoder, VideoEncodeSpec,
 };
 pub use cancel::CancelToken;
 pub use caps::{Capabilities, CodecSupport, HwCodec};

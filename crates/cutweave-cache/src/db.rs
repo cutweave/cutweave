@@ -18,6 +18,9 @@
 //! `disk_entries(path, content_hash, kind, meta, bytes, last_used)` (version 2): the files the
 //! disk cache holds (see `crate::disk`), accounted and evicted by the same access counter.
 //!
+//! `proxies(content_hash, profile, state, bytes, frames, width, height, error, source_index,
+//! proxy_index, last_used)` (version 3): proxies and their frame indexes (see `crate::proxy`).
+//!
 //! **Size accounting (stub).** [`CacheDb::usage`] sums `bytes`; [`CacheDb::evict_lru`] deletes the
 //! least recently used entries until the total fits a budget. It covers `frame_index` only;
 //! WP-1D.05 moves the accounting to a table shared by thumbnails, filmstrips and waveforms.
@@ -31,7 +34,7 @@ use rusqlite::{Connection, ErrorCode, OptionalExtension, params};
 use crate::CacheError;
 
 /// The schema version this build writes (the number of [`MIGRATIONS`]).
-pub const SCHEMA_VERSION: u32 = 2;
+pub const SCHEMA_VERSION: u32 = 3;
 
 /// One script per schema version; script `i` upgrades version `i` to `i + 1`.
 const MIGRATIONS: &[&str] = &[
@@ -63,6 +66,22 @@ const MIGRATIONS: &[&str] = &[
      ) WITHOUT ROWID;
      CREATE INDEX disk_entries_lru ON disk_entries (last_used);
      CREATE INDEX disk_entries_media ON disk_entries (content_hash);",
+    // 3: proxies (WP-2F.01; see `crate::proxy`).
+    "CREATE TABLE proxies (
+         content_hash TEXT    NOT NULL,
+         profile      TEXT    NOT NULL,
+         state        INTEGER NOT NULL,
+         bytes        INTEGER NOT NULL,
+         frames       INTEGER NOT NULL,
+         width        INTEGER NOT NULL,
+         height       INTEGER NOT NULL,
+         error        TEXT,
+         source_index BLOB,
+         proxy_index  BLOB,
+         last_used    INTEGER NOT NULL,
+         PRIMARY KEY (content_hash, profile)
+     ) WITHOUT ROWID;
+     CREATE INDEX proxies_state ON proxies (state, last_used);",
 ];
 
 /// What the cache holds, for the size accounting.

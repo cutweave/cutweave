@@ -28,6 +28,9 @@ blake3.workspace = true
 # The OS cache directory (`ThumbConfig::default_dir`).
 dirs.workspace = true
 thiserror.workspace = true
+# Logs: proxies evicted by the size cap, a proxy whose sound could not be decoded (WP-2F.01). The
+# workspace's pinned `tracing`, already used by cutweave-media and cutweave-jobs.
+tracing.workspace = true
 # `cache.sqlite`.
 rusqlite.workspace = true
 # The waveform PNG helper (WP-1D.06); already in the lockfile through cutweave-render.

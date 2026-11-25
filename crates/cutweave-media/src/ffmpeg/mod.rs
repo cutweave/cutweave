@@ -17,6 +17,7 @@
 //! `encode`, its hardware encoders and their probe (WP-1E.02) in `hwenc`.
 
 mod audio;
+mod concat;
 mod decode;
 mod encode;
 mod error;
@@ -38,7 +39,10 @@ use std::sync::{Arc, OnceLock};
 
 use cutweave_model::ProbeInfo;
 
-use crate::backend::{AudioDecoder, DecodeOpts, EncodeSpec, Encoder, MediaBackend, VideoDecoder};
+use crate::backend::{
+    AudioDecoder, ConcatSpec, DecodeOpts, EncodeSpec, EncodeSummary, Encoder, MediaBackend,
+    VideoDecoder,
+};
 use crate::version::{self, LinkedLibrary, Release};
 use crate::{Capabilities, FrameIndex, MediaError};
 
@@ -230,6 +234,10 @@ impl MediaBackend for FfmpegBackend {
     fn open_encoder(&self, spec: &EncodeSpec) -> Result<Box<dyn Encoder>, MediaError> {
         spec.validate()?;
         encode::open(spec)
+    }
+
+    fn concat(&self, spec: &ConcatSpec) -> Result<EncodeSummary, MediaError> {
+        concat::concat(spec)
     }
 
     fn capabilities(&self) -> Capabilities {

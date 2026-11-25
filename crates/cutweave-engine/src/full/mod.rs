@@ -11,6 +11,9 @@
 //!   [`MediaState`] is what the `/media` HTTP endpoints (WP-1I.03) serve.
 //! - **Frames** ([`frames`]): one `DecoderPool` per media item and the RAM `FrameCache`
 //!   (budget: the smaller of 1 GiB and a quarter of RAM), shared by preview and `render.frame`.
+//! - **Proxies** ([`proxy`], WP-2F.01): intra-frame copies of slow-to-scrub video in
+//!   `<cache>/proxies`, made by proxy jobs after import, on request and to resume interrupted
+//!   ones when a document is attached; scrub frames of the preview use them.
 //! - **Render** ([`gpu`]): a wgpu device per `EngineConfig::gpu` (`auto`: the best adapter,
 //!   honouring `CUTWEAVE_GPU`; `software`: WARP / lavapipe), opened on its own thread while the
 //!   rest starts. One compositor serves `render.frame` and export (its lock is the GPU budget), a
@@ -56,6 +59,7 @@ pub mod media;
 pub mod preview;
 #[cfg(test)]
 mod preview_alloc;
+pub mod proxy;
 mod watch;
 
 use std::any::TypeId;
@@ -67,7 +71,7 @@ use std::thread::JoinHandle;
 use cutweave_cache::FrameCache;
 use cutweave_commands::{CmdError, DocHandle, Registry, RegistryError};
 use cutweave_media::{HwMode, MediaBackend};
-use cutweave_ops::media::{AnalysisStages, MediaProbe};
+use cutweave_ops::media::{AnalysisStages, MediaProbe, ProxyService};
 use cutweave_ops::view::UiState;
 use cutweave_playback::shm::{
     ClockWriter, FramePublisher, PixelFormat, RingAnnouncement, RingConfig,
@@ -91,6 +95,7 @@ use self::audio::{Audio, AudioFeed, LivePcm, TargetedAudio};
 use self::gpu::{LateGpu, LateRenderer};
 use self::media::{Caches, IndexStage, ThumbStage, WaveformStage};
 use self::preview::{CompositorSlot, DocSources, PreviewSource};
+use self::proxy::FullProxies;
 use self::watch::{DocWatcher, Targets};
 use crate::config::{EngineMode, GpuConfig};
 use crate::export::{DecoderSources, ExportServices};
@@ -245,6 +250,8 @@ struct Started {
     clock_writer: Option<ClockWriter>,
     stages: Arc<AnalysisStages>,
     probe: Option<Arc<dyn MediaProbe>>,
+    /// Proxies (WP-2F.01), when there is a backend and a cache database.
+    proxies: Option<Arc<FullProxies>>,
     lost_reported: Arc<AtomicBool>,
     /// Warms the backend's capabilities (joined at shutdown).
     caps_thread: Option<JoinHandle<()>>,
@@ -740,6 +747,29 @@ impl FullCacheControl {
     fn caches(&self) -> Option<Caches> {
         lock(&self.inner.started).as_ref().map(|s| s.caches.clone())
     }
+
+    /// The proxy store, once the subsystems run (and have one).
+    fn proxy_store(&self) -> Option<Arc<cutweave_cache::proxy::ProxyStore>> {
+        lock(&self.inner.started)
+            .as_ref()
+            .and_then(|s| s.proxies.as_ref())
+            .map(|p| Arc::clone(p.store()))
+    }
+}
+
+/// Queues the proxies `doc` wants that were never made or were interrupted, off the calling
+/// thread (the per-project hooks run under the session lock).
+fn reconcile_proxies(proxies: Option<&Arc<FullProxies>>, doc: &DocHandle) {
+    let Some(proxies) = proxies.cloned() else {
+        return;
+    };
+    let snapshot = doc.snapshot();
+    let spawned = std::thread::Builder::new()
+        .name("cw-proxy-reconcile".into())
+        .spawn(move || proxies.reconcile(&snapshot.doc));
+    if let Err(e) = spawned {
+        tracing::warn!(error = %e, "cannot queue the project's proxies");
+    }
 }
 
 fn cache_failure(what: &str, e: &cutweave_cache::CacheError) -> CmdError {
@@ -779,6 +809,18 @@ impl CacheControl for FullCacheControl {
                 entries: usage.entries,
             });
         }
+        if let Some(store) = self.proxy_store() {
+            let usage = store.usage().unwrap_or_else(|e| {
+                tracing::warn!(error = %e, "cannot read the proxy cache usage");
+                cutweave_cache::CacheUsage::default()
+            });
+            kinds.push(CacheKindStatus {
+                kind: CacheKind::Proxies,
+                bytes: usage.bytes,
+                limit_bytes: store.max_bytes(),
+                entries: usage.entries,
+            });
+        }
         MediaCacheStatusOutput {
             folder: caches.root.map(|p| p.to_string_lossy().into_owned()),
             kinds,
@@ -810,6 +852,11 @@ impl CacheControl for FullCacheControl {
                 .shrink_to(limit)
                 .map_err(|e| cache_failure("waveform cache", &e))?;
         }
+        if let (Some(limit), Some(store)) = (limits.proxies, self.proxy_store()) {
+            store
+                .shrink_to(limit)
+                .map_err(|e| cache_failure("proxy cache", &e))?;
+        }
         if let Some(wanted) = frame_cache_bytes {
             let budget = if wanted == 0 {
                 FrameCache::default_budget(total_ram())
@@ -837,6 +884,9 @@ impl CacheControl for FullCacheControl {
                     .waveforms
                     .as_ref()
                     .map(|w| w.clear().map_err(|e| cache_failure("waveforms", &e))),
+                CacheKind::Proxies => self
+                    .proxy_store()
+                    .map(|p| p.clear().map_err(|e| cache_failure("proxies", &e))),
             };
             if let Some(eviction) = cleared {
                 let eviction = eviction?;
@@ -913,13 +963,26 @@ impl Subsystems for FullSubsystems {
                 return Err(e);
             }
         };
-        let frames = Arc::new(MediaFrames::new(
-            self.inner.config.media.clone(),
-            self.inner.doc.clone(),
-            Arc::clone(&self.inner.frame_cache),
-            caches.db.clone(),
-            Arc::clone(&self.inner.decode),
-        ));
+        let proxies = match (&self.inner.config.media, &caches.db, &caches.root) {
+            (Some(backend), Some(db), Some(root)) => Some(Arc::new(FullProxies::new(
+                backend,
+                Arc::clone(db),
+                root.join("proxies"),
+                self.inner.doc.clone(),
+                host.link.clone(),
+            ))),
+            _ => None,
+        };
+        let frames = Arc::new(
+            MediaFrames::new(
+                self.inner.config.media.clone(),
+                self.inner.doc.clone(),
+                Arc::clone(&self.inner.frame_cache),
+                caches.db.clone(),
+                Arc::clone(&self.inner.decode),
+            )
+            .with_proxies(proxies.clone()),
+        );
         let renderer: SharedBackend = Arc::new(Mutex::new(LateRenderer::new(
             Arc::clone(&gpu),
             Arc::clone(&frames),
@@ -951,12 +1014,14 @@ impl Subsystems for FullSubsystems {
             clock_writer,
             stages,
             probe,
+            proxies,
             lost_reported: Arc::new(AtomicBool::new(false)),
             caps_thread: self.warm_capabilities(),
         };
         phases.mark("frames");
         if let Some(doc) = self.inner.doc.handle() {
             self.attach(&mut started, &doc);
+            reconcile_proxies(started.proxies.as_ref(), &doc);
         }
         phases.mark("playback");
         tracing::info!(phases = %phases, "subsystem start phases");
@@ -1001,6 +1066,7 @@ impl Subsystems for FullSubsystems {
         let mut started = lock(&self.inner.started);
         if let Some(started) = started.as_mut() {
             self.attach(started, doc);
+            reconcile_proxies(started.proxies.as_ref(), doc);
         }
     }
 
@@ -1126,6 +1192,13 @@ impl Subsystems for FullSubsystems {
             device_type: info.device_type,
             software: info.software,
         })
+    }
+
+    fn proxy_service(&self) -> Option<Arc<dyn ProxyService>> {
+        lock(&self.inner.started)
+            .as_ref()
+            .and_then(|s| s.proxies.clone())
+            .map(|p| p as Arc<dyn ProxyService>)
     }
 
     fn cache_control(&self) -> Option<Arc<dyn CacheControl>> {

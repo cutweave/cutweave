@@ -14,6 +14,7 @@
 //! - [`job_manager`] / [`analyzer`]: the engine context of the `job.*` commands (seeded job IDs
 //!   the strategies can name, with jobs already in several states) and the analysis jobs a
 //!   harness's `media.import` queues (WP-1D.07).
+//! - [`NoProxies`]: the proxy service of the proxy commands in a harness (WP-2F.01).
 //! - [`export_ctx`]: the engine context of `export.start` (WP-1E.03), with a starter that
 //!   queues nothing.
 //!
@@ -44,7 +45,7 @@ pub use invariants::{check_invariants, check_linked_edit};
 pub use mirror::{JsonMirror, ReplayError, replay_events};
 pub use strategies::{
     AGENT_LABEL, BROKEN_IMPORT_PATH, CHECKPOINT_NAMES, EXPORT_FILE_NAME, EXPORT_JOB_ID,
-    IMPORT_PATHS, JOB_ID_SEED, analyzer, export_ctx, fake_probe, job_manager,
+    IMPORT_PATHS, JOB_ID_SEED, NoProxies, analyzer, export_ctx, fake_probe, job_manager,
 };
 
 use strategies::{Pools, args_for};
