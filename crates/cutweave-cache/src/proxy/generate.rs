@@ -98,12 +98,24 @@ pub struct GenerateReport {
     pub evicted: Vec<ProxyRecord>,
 }
 
+/// Lets proxy work step aside for interactive work (issue 153).
+///
+/// A generation calls [`Pacer::wait`] before every frame. The frame boundary is the only place
+/// it pauses, so a pause never loses work: parts already finished stay on disk and the
+/// frames of the part in progress are simply not pulled until `wait` returns.
+pub trait Pacer: Send + Sync {
+    /// Returns when proxy work may take its next frame: at once when the engine is idle,
+    /// else after it has been idle for a while, or as soon as `cancel` is cancelled.
+    fn wait(&self, cancel: &CancelToken);
+}
+
 /// Makes proxies (see the module docs).
 pub struct ProxyGenerator {
     backend: Arc<dyn MediaBackend>,
     db: Arc<CacheDb>,
     store: Arc<ProxyStore>,
     options: GenerateOptions,
+    pacer: Option<Arc<dyn Pacer>>,
 }
 
 impl std::fmt::Debug for ProxyGenerator {
@@ -177,7 +189,15 @@ impl ProxyGenerator {
             db,
             store,
             options,
+            pacer: None,
         }
+    }
+
+    /// The same generator, taking its frames only when `pacer` lets it (see [`Pacer`]).
+    #[must_use]
+    pub fn with_pacer(mut self, pacer: Arc<dyn Pacer>) -> ProxyGenerator {
+        self.pacer = Some(pacer);
+        self
     }
 
     /// The store.
@@ -548,6 +568,12 @@ impl<'a> Run<'a> {
         let mut written: i64 = 0;
         let mut previous: Option<VideoFrame> = None;
         for (i, n) in range.clone().enumerate() {
+            if let Some(pacer) = &self.generator.pacer {
+                pacer.wait(self.cancel);
+                if self.cancel.is_cancelled() {
+                    return Err(media(MediaError::Cancelled));
+                }
+            }
             let mut frame = match self.frame(n).map_err(media)? {
                 Some(f) => f,
                 None => match &previous {

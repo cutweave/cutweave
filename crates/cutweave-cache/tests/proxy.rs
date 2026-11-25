@@ -393,3 +393,93 @@ fn proxy_jobs_report_progress_and_their_outcome() {
         ProxyState::Building
     );
 }
+
+/// A pacer that holds generations while `busy` is set, counting how often they asked.
+struct Hold {
+    busy: AtomicBool,
+    asked: std::sync::atomic::AtomicUsize,
+}
+
+impl cutweave_cache::proxy::Pacer for Hold {
+    fn wait(&self, cancel: &CancelToken) {
+        self.asked.fetch_add(1, Ordering::SeqCst);
+        while self.busy.load(Ordering::SeqCst) && !cancel.is_cancelled() {
+            std::thread::yield_now();
+        }
+    }
+}
+
+#[test]
+fn a_generation_takes_no_frame_while_the_pacer_holds_it_and_finishes_after() {
+    let f = fixture("proxy-pace", 60);
+    let hold = Arc::new(Hold {
+        busy: AtomicBool::new(true),
+        asked: std::sync::atomic::AtomicUsize::new(0),
+    });
+    let generator = Arc::new(generator(&f, 30).with_pacer(hold.clone()));
+    let cancel = CancelToken::new();
+    let done = Arc::new(Mutex::new(Vec::<f64>::new()));
+    let worker = {
+        let (generator, source, cancel, done) = (
+            Arc::clone(&generator),
+            f.source.clone(),
+            cancel.clone(),
+            Arc::clone(&done),
+        );
+        std::thread::spawn(move || {
+            generator.generate(&source, &profile(), &cancel, &mut |p| {
+                done.lock().unwrap().push(p);
+            })
+        })
+    };
+    // It reached the first frame and waits there: no progress is reported.
+    while hold.asked.load(Ordering::SeqCst) == 0 {
+        std::thread::yield_now();
+    }
+    std::thread::sleep(Wall::from_millis(50));
+    assert!(!worker.is_finished());
+    assert_eq!(hold.asked.load(Ordering::SeqCst), 1, "no second frame");
+    assert!(done.lock().unwrap().iter().all(|p| *p == 0.0));
+    // Idle: it finishes, with nothing lost.
+    hold.busy.store(false, Ordering::SeqCst);
+    let report = worker.join().unwrap().unwrap();
+    assert_eq!(report.proxy.state, ProxyState::Ready);
+    assert_eq!(report.proxy.frames, 60);
+    assert!(hold.asked.load(Ordering::SeqCst) >= 60);
+}
+
+#[test]
+fn a_held_generation_stops_on_cancel_and_keeps_its_finished_parts() {
+    let f = fixture("proxy-pace-cancel", 60);
+    // The first part runs free; the pacer holds once it is done.
+    let hold = Arc::new(Hold {
+        busy: AtomicBool::new(false),
+        asked: std::sync::atomic::AtomicUsize::new(0),
+    });
+    let generator = Arc::new(generator(&f, 30).with_pacer(hold.clone()));
+    let cancel = CancelToken::new();
+    let worker = {
+        let (generator, source, cancel, hold) = (
+            Arc::clone(&generator),
+            f.source.clone(),
+            cancel.clone(),
+            Arc::clone(&hold),
+        );
+        std::thread::spawn(move || {
+            generator.generate(&source, &profile(), &cancel, &mut |p| {
+                if p > 0.48 {
+                    hold.busy.store(true, Ordering::SeqCst);
+                }
+            })
+        })
+    };
+    while hold.asked.load(Ordering::SeqCst) < 31 {
+        std::thread::yield_now();
+    }
+    std::thread::sleep(Wall::from_millis(30));
+    assert!(!worker.is_finished());
+    cancel.cancel();
+    assert!(worker.join().unwrap().is_err());
+    let part = f.store.part(&f.source.hash, &profile().key(), 0);
+    assert!(part.is_file(), "the finished part is kept");
+}

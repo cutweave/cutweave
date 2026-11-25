@@ -14,23 +14,27 @@
 //!   wanted proxies that were never made or were interrupted (a killed engine resumes from the
 //!   finished parts); `media.generate_proxy` queues any. Evicted and failed proxies are made
 //!   again only on request, so a cache too small for the project never thrashes.
+//! - **Yielding.** A generation takes its next frame only when the preview has served no
+//!   picture for [`IDLE_BEFORE_PROXIES`] (playback, scrub, Source view; issue 153); finished
+//!   parts stay, so a pause loses nothing.
 //! - **Policy.** [`DEFAULT_POLICY`] (`auto`) for every project until ADR-0025 stores one in
 //!   the project.
 
 use std::collections::HashMap;
 use std::path::PathBuf;
 use std::str::FromStr;
+use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::{Arc, Mutex, PoisonError};
-use std::time::Duration as StdDuration;
+use std::time::{Duration as StdDuration, Instant};
 
 use cutweave_cache::proxy::{
-    GenerateOptions, ProxyGenerator, ProxyProfile, ProxyRecord, ProxySource, ProxyState,
+    GenerateOptions, Pacer, ProxyGenerator, ProxyProfile, ProxyRecord, ProxySource, ProxyState,
     ProxyStore, ReadyProxy, submit_proxy,
 };
 use cutweave_cache::{CacheDb, ContentHash};
 use cutweave_commands::CmdError;
 use cutweave_jobs::{JobId, JobManager, JobState};
-use cutweave_media::MediaBackend;
+use cutweave_media::{CancelToken, MediaBackend};
 use cutweave_model::{MediaAsset, MediaId, Project};
 use cutweave_ops::media::proxy::{
     DEFAULT_POLICY, ImportProxy, ProxyInfo, ProxyService, ProxyStatus, proxyable, wants_proxy,
@@ -45,6 +49,82 @@ const DELETE_WAIT: StdDuration = StdDuration::from_secs(5);
 
 type Key = (ContentHash, String);
 
+/// How long the engine must have served no preview picture before proxy jobs take frames again.
+///
+/// Playback asks for a picture every frame (at most ~100 ms apart even at 10 fps) and a scrub
+/// keeps asking while the pointer moves, so 1.5 s of silence means the user stopped (paused,
+/// let go of the scrub, left the Source view). It is long enough not to start a decode in
+/// every pause between two scrubs or between pressing pause and play again, and short enough
+/// that an idle engine finishes proxies right after the user looks away. Jobs resume at part
+/// granularity of work already on disk, so a pause costs nothing but time.
+pub(crate) const IDLE_BEFORE_PROXIES: StdDuration = StdDuration::from_millis(1500);
+
+/// How often a paused proxy job looks at the activity again (and at its cancel token).
+const PAUSE_POLL: StdDuration = StdDuration::from_millis(50);
+
+/// Time for [`Activity`] (a manual one in tests).
+pub(crate) trait Clock: Send + Sync {
+    /// Milliseconds since some fixed point; never goes back.
+    fn now_ms(&self) -> u64;
+}
+
+struct WallClock(Instant);
+
+impl Clock for WallClock {
+    fn now_ms(&self) -> u64 {
+        u64::try_from(self.0.elapsed().as_millis()).unwrap_or(u64::MAX)
+    }
+}
+
+/// When the engine last served a picture to the preview (playback, scrubbing, the Source
+/// view). The preview touches it per picture with one atomic store: no lock, no allocation.
+/// Proxy generations pause on it ([`Pacer`]).
+pub(crate) struct Activity {
+    clock: Arc<dyn Clock>,
+    /// `now_ms + 1` of the last touch (0: never).
+    last: AtomicU64,
+    idle_after: StdDuration,
+}
+
+impl Activity {
+    pub(crate) fn new(clock: Arc<dyn Clock>, idle_after: StdDuration) -> Activity {
+        Activity {
+            clock,
+            last: AtomicU64::new(0),
+            idle_after,
+        }
+    }
+
+    fn wall() -> Activity {
+        Activity::new(Arc::new(WallClock(Instant::now())), IDLE_BEFORE_PROXIES)
+    }
+
+    /// Records that a preview picture was just asked for.
+    pub(crate) fn touch(&self) {
+        self.last
+            .store(self.clock.now_ms().saturating_add(1), Ordering::Relaxed);
+    }
+
+    /// Whether a picture was asked for within the idle time.
+    pub(crate) fn busy(&self) -> bool {
+        match self.last.load(Ordering::Relaxed) {
+            0 => false,
+            t => {
+                let idle = u64::try_from(self.idle_after.as_millis()).unwrap_or(u64::MAX);
+                self.clock.now_ms().saturating_add(1).saturating_sub(t) < idle
+            }
+        }
+    }
+}
+
+impl Pacer for Activity {
+    fn wait(&self, cancel: &CancelToken) {
+        while self.busy() && !cancel.is_cancelled() {
+            std::thread::sleep(PAUSE_POLL);
+        }
+    }
+}
+
 /// The full engine's proxies (see the module docs). Cheap to share (`Arc`).
 pub struct FullProxies {
     store: Arc<ProxyStore>,
@@ -54,6 +134,8 @@ pub struct FullProxies {
     link: EngineLink,
     /// Generations queued or running, by original and profile.
     jobs: Arc<Mutex<HashMap<Key, JobId>>>,
+    /// Interactive preview activity that pauses generations (issue 153).
+    activity: Arc<Activity>,
 }
 
 impl std::fmt::Debug for FullProxies {
@@ -91,12 +173,16 @@ impl FullProxies {
             root,
             ProxyStore::DEFAULT_MAX_BYTES,
         ));
-        let generator = Arc::new(ProxyGenerator::new(
-            Arc::clone(backend),
-            db,
-            Arc::clone(&store),
-            GenerateOptions::default(),
-        ));
+        let activity = Arc::new(Activity::wall());
+        let generator = Arc::new(
+            ProxyGenerator::new(
+                Arc::clone(backend),
+                db,
+                Arc::clone(&store),
+                GenerateOptions::default(),
+            )
+            .with_pacer(Arc::clone(&activity) as Arc<dyn Pacer>),
+        );
         let profile = generator.profile();
         if profile.is_none() {
             tracing::info!("the media backend encodes no proxy codec: no proxies are made");
@@ -108,7 +194,13 @@ impl FullProxies {
             doc,
             link,
             jobs: Arc::default(),
+            activity,
         }
+    }
+
+    /// Records that the preview is serving a picture: proxy jobs wait for it to go quiet.
+    pub(crate) fn note_preview_activity(&self) {
+        self.activity.touch();
     }
 
     /// The store.
@@ -388,6 +480,52 @@ mod tests {
 
     use super::*;
     use crate::full::frames::{MediaFrames, PreviewFrames};
+
+    struct Manual(AtomicU64);
+
+    impl Clock for Manual {
+        fn now_ms(&self) -> u64 {
+            self.0.load(Ordering::Relaxed)
+        }
+    }
+
+    #[test]
+    fn proxy_work_waits_while_pictures_are_served_and_goes_on_after_the_idle_time() {
+        let clock = Arc::new(Manual(AtomicU64::new(10_000)));
+        let activity = Arc::new(Activity::new(clock.clone(), IDLE_BEFORE_PROXIES));
+        // Nothing served yet: proxies run.
+        assert!(!activity.busy());
+        activity.touch();
+        assert!(activity.busy());
+        clock.0.store(10_000 + 1_499, Ordering::Relaxed);
+        assert!(activity.busy());
+        // Playback keeps touching: still busy past the first touch's idle time.
+        activity.touch();
+        clock.0.store(10_000 + 2_000, Ordering::Relaxed);
+        assert!(activity.busy());
+        clock.0.store(10_000 + 1_499 + 1_500, Ordering::Relaxed);
+        assert!(!activity.busy());
+
+        // A waiting job is released by the idle time, and by a cancel.
+        activity.touch();
+        let cancel = CancelToken::new();
+        let waiter = {
+            let (activity, cancel) = (Arc::clone(&activity), cancel.clone());
+            std::thread::spawn(move || activity.wait(&cancel))
+        };
+        std::thread::sleep(StdDuration::from_millis(120));
+        assert!(!waiter.is_finished(), "paused while busy");
+        clock.0.fetch_add(1_500, Ordering::Relaxed);
+        waiter.join().unwrap();
+
+        activity.touch();
+        let waiter = {
+            let (activity, cancel) = (Arc::clone(&activity), cancel.clone());
+            std::thread::spawn(move || activity.wait(&cancel))
+        };
+        cancel.cancel();
+        waiter.join().unwrap();
+    }
 
     fn codec(name: &str, kind: StreamKind) -> CodecSupport {
         CodecSupport {

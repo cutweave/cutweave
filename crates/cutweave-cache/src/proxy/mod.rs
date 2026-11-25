@@ -25,7 +25,7 @@ use cutweave_media::{CancelCheck, CancelToken, MediaError};
 use cutweave_model::MediaId;
 
 pub use generate::{
-    DEFAULT_PART_FRAMES, GenerateOptions, GenerateReport, ProxyGenerator, ProxySource,
+    DEFAULT_PART_FRAMES, GenerateOptions, GenerateReport, Pacer, ProxyGenerator, ProxySource,
 };
 pub use profile::{ProxyCodec, ProxyProfile};
 pub use store::{ProxyRecord, ProxyState, ProxyStore, ReadyProxy, plan_eviction};
