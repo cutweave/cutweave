@@ -39,6 +39,14 @@ pub const SESSION_EVENTS: &[(&str, &str)] = &[
         "The open project changed (opened, saved under a new path, recovery decided); payload: its status",
     ),
     (
+        "project.opening",
+        "A project open started (ADR-0029); project.opened or project.open_failed follows; payload: the path and who opens it",
+    ),
+    (
+        "project.open_failed",
+        "A project open failed, or was refused because of unsaved changes (ADR-0029); payload: the path, who asked, the error",
+    ),
+    (
         "project.connection_opened",
         "An agent connected to this engine (WP-1J.05); payload: the connection as project.connections lists it",
     ),
@@ -55,6 +63,35 @@ pub struct ProjectClosed {
     pub path: String,
 }
 
+/// `project.opening`: a `project.open` started (ADR-0029). The engine sends `project.opened` when
+/// it succeeds and `project.open_failed` when it fails, so a client can show that a project is
+/// opening, and who opens it, until one of them arrives.
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, specta::Type)]
+pub struct ProjectOpening {
+    /// The project being opened, as the caller named it: its folder or its `.cutweave` file.
+    pub path: String,
+    /// Who opens it: `user` (the app), `agent:<label>` (an agent or the CLI) or `plugin:<id>`.
+    pub actor: String,
+}
+
+/// `project.open_failed`: a `project.open` that `project.opening` announced failed (the engine
+/// holds what it held before, or an untitled document if the old project was already closed),
+/// or an open was refused before it started because the open document has unsaved changes
+/// (`code: conflict`, `reason: unsaved_changes`; ADR-0029).
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, specta::Type)]
+pub struct ProjectOpenFailed {
+    /// The project that was to be opened, as the caller named it.
+    pub path: String,
+    /// Who asked: `user`, `agent:<label>` or `plugin:<id>`.
+    pub actor: String,
+    /// The error code the caller got (`conflict`, `invalid`, `not_found`, ...).
+    pub code: String,
+    /// The conflict reason (`unsaved_changes`), if the error is a conflict.
+    pub reason: Option<String>,
+    /// The error message the caller got.
+    pub message: String,
+}
+
 /// A session change: which project the engine holds.
 #[derive(Clone, Debug, PartialEq, Serialize)]
 #[serde(tag = "event")]
@@ -66,6 +103,12 @@ pub enum SessionEvent {
     /// `project.closed`.
     #[serde(rename = "project.closed")]
     Closed(ProjectClosed),
+    /// `project.opening`: an open started (ADR-0029).
+    #[serde(rename = "project.opening")]
+    Opening(ProjectOpening),
+    /// `project.open_failed`: an open failed or was refused (ADR-0029).
+    #[serde(rename = "project.open_failed")]
+    OpenFailed(ProjectOpenFailed),
     /// `project.connection_opened`: an agent connected (WP-1J.05).
     #[serde(rename = "project.connection_opened")]
     ConnectionOpened(AgentConnection),
@@ -84,8 +127,9 @@ pub enum EngineEvent {
     /// A project file event (`project.dirty`, `project.saved`, `project.recovery_available`,
     /// `project.autosave_failed`).
     Project(ProjectEvent),
-    /// A session change (`project.opened`, `project.closed`) or an agent connection opening or
-    /// closing (`project.connection_opened`, `project.connection_closed`).
+    /// A session change (`project.opening`, `project.opened`, `project.open_failed`,
+    /// `project.closed`) or an agent connection opening or closing
+    /// (`project.connection_opened`, `project.connection_closed`).
     Session(SessionEvent),
     /// `job.progress`.
     Job(JobEvent),
@@ -117,6 +161,8 @@ impl EngineEvent {
             EngineEvent::Project(e) => e.name(),
             EngineEvent::Session(SessionEvent::Opened(_)) => "project.opened",
             EngineEvent::Session(SessionEvent::Closed(_)) => "project.closed",
+            EngineEvent::Session(SessionEvent::Opening(_)) => "project.opening",
+            EngineEvent::Session(SessionEvent::OpenFailed(_)) => "project.open_failed",
             EngineEvent::Session(SessionEvent::ConnectionOpened(_)) => "project.connection_opened",
             EngineEvent::Session(SessionEvent::ConnectionClosed(_)) => "project.connection_closed",
             EngineEvent::Job(_) => "job.progress",

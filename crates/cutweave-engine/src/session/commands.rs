@@ -75,12 +75,17 @@ pub struct ProjectOpenOutput {
 }
 
 /// Opens a project (its folder or its `.cutweave` file), closing the current one first (saved
-/// when autosave is on, as `project.close` does). A project open in another Cutweave process
-/// fails with `Invalid` at `/path` and leaves the current project open. Unsaved work from a
-/// crashed session is reported in `project.recovery`; edits are refused until
-/// `project.recover` or `project.discard_recovery`. Every client must resync (`doc.reset`).
-/// Agents and headless callers may only open projects inside the open project's folder and
-/// the folders the user approved (`Invalid` at `/path` otherwise).
+/// when autosave is on, as `project.close` does). It never drops unsaved changes unasked
+/// (ADR-0029): when the open document has changes the close would not save (an untitled
+/// document, or a project with autosave off), it fails with `Conflict{reason:
+/// unsaved_changes}` and changes nothing, unless `discard_unsaved` is `true` (then the current
+/// project closes without saving, as `project.close` with `save: false`). A project open in
+/// another Cutweave process fails with `Invalid` at `/path` and leaves the current project
+/// open. Unsaved work from a crashed session is reported in `project.recovery`; edits are
+/// refused until `project.recover` or `project.discard_recovery`. Sends `project.opening`, then
+/// `project.opened` or `project.open_failed`; every client must resync (`doc.reset`). Agents
+/// and headless callers may only open projects inside the open project's folder and the
+/// folders the user approved (`Invalid` at `/path` otherwise).
 #[command(
     name = "project.open",
     summary = "Open a project folder or .cutweave file (closes the current project)",
@@ -88,11 +93,13 @@ pub struct ProjectOpenOutput {
     undoable = false,
     journaled = false,
     mcp = "core",
-    annotations(destructive = false, idempotent = false)
+    annotations(destructive = true, idempotent = false)
 )]
 pub struct ProjectOpen {
     /// Absolute path of the project folder or of its `.cutweave` document.
     pub path: String,
+    /// Drop the open document's unsaved changes (`true`); otherwise they make the open fail.
+    pub discard_unsaved: Option<bool>,
 }
 
 impl EngineCommand for ProjectOpen {
@@ -101,7 +108,11 @@ impl EngineCommand for ProjectOpen {
 
     fn run(&self, s: &mut SessionCall) -> Result<ProjectOpenOutput, CmdError> {
         let path = s.path("/path", &self.path)?;
-        s.core.open_project(path)
+        s.core.open_project(
+            path,
+            self.discard_unsaved.unwrap_or(false),
+            s.caller.actor(),
+        )
     }
 }
 
@@ -180,9 +191,13 @@ pub struct ProjectCloseOutput {
 }
 
 /// Closes the open project (releasing its lock) and starts an untitled document. With
-/// `save: true` the committed state is saved first; with `save: false` nothing is saved (the
-/// unsaved work stays in the journal and is offered on the next open); by default it is saved
-/// when autosave is on. A failed save keeps the project open. Every client must resync.
+/// `save: true` the committed state is saved first; with `save: false` nothing is saved (a
+/// project's unsaved work stays in the journal and is offered on the next open; an untitled
+/// document's is gone); by default it is saved when autosave is on. Changes the close would
+/// not save make it fail with `Conflict{reason: unsaved_changes}` unless `save` is `false`
+/// (ADR-0029): an untitled document with changes (it has no file; `project.save_as` first),
+/// or, by default, a project with autosave off. A failed save keeps the project open. Every
+/// client must resync.
 #[command(
     name = "project.close",
     summary = "Close the open project (saving first if asked or if autosave is on)",
@@ -190,10 +205,11 @@ pub struct ProjectCloseOutput {
     undoable = false,
     journaled = false,
     mcp = "catalog",
-    annotations(destructive = false, idempotent = true)
+    annotations(destructive = true, idempotent = true)
 )]
 pub struct ProjectClose {
-    /// Save before closing (`true`), never (`false`), or as autosave would (absent).
+    /// Save before closing (`true`), never: drop unsaved changes (`false`), or as autosave
+    /// would (absent).
     pub save: Option<bool>,
 }
 

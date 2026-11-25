@@ -1014,7 +1014,18 @@
     "migratedTitle": "Project updated",
     "migrated": "{{name}} was converted from format {{from}}. Saving writes the new format.",
     "autosaveFailedTitle": "Autosave failed",
-    "autosaveFailed": "{{message}} Save the project yourself, or free up disk space."
+    "autosaveFailed": "{{message}} Save the project yourself, or free up disk space.",
+    "opening": {
+      "title": "Opening {{name}}…",
+      "body": "Editing resumes when the project is open.",
+      "byAgent": "{{agent}} is opening this project."
+    },
+    "agentOpen": {
+      "openedTitle": "Project opened by an agent",
+      "opened": "{{agent}} opened {{name}}.",
+      "refused": "{{agent}} tried to open {{name}}, but {{current}} has unsaved changes. Save them, then ask the agent again.",
+      "failed": "{{agent}} could not open {{name}}. The engine said: {{message}}"
+    }
   },
   "timeline": {
     "toolbarLabel": "Timeline tools",

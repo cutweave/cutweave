@@ -185,6 +185,89 @@ describe("render loop and dirty regions", () => {
   });
 });
 
+describe("resizing (#163: no blank canvas while the panel is resized)", () => {
+  /** A canvas that counts size assignments: each one clears a real canvas's bitmap. */
+  function countingCanvas() {
+    const canvas = fakeCanvas() as unknown as { width: number; height: number };
+    let width = 0;
+    let height = 0;
+    const counts = { clears: 0 };
+    Object.defineProperty(canvas, "width", {
+      get: () => width,
+      set: (v: number) => {
+        width = v;
+        counts.clears++;
+      },
+    });
+    Object.defineProperty(canvas, "height", {
+      get: () => height,
+      set: (v: number) => {
+        height = v;
+        counts.clears++;
+      },
+    });
+    return { canvas: canvas as unknown as HTMLCanvasElement, counts };
+  }
+
+  function resizable() {
+    const spy = spyContext();
+    const frames = manualFrames();
+    const { canvas, counts } = countingCanvas();
+    const view = new TimelineView(canvas, {
+      theme: th,
+      context: spy.ctx,
+      requestFrame: frames.requestFrame,
+      cancelFrame: frames.cancelFrame,
+    });
+    view.resize(1600, 400, 1);
+    view.setModel(generateSmallTimeline());
+    frames.run();
+    return { view, spy, frames, canvas, counts };
+  }
+
+  it("draws the resized canvas at once, before the browser paints, not on a later frame", () => {
+    const { view, spy, frames, canvas } = resizable();
+    spy.reset();
+    view.resize(1600, 520, 2);
+    expect(canvas.width).toBe(3200);
+    expect(canvas.height).toBe(1040);
+    // Drawn inside the call (the ResizeObserver callback runs between layout and paint) ...
+    expect(spy.calls.fillRect ?? 0).toBeGreaterThan(0);
+    expect(spy.calls.roundRect ?? 0).toBeGreaterThan(0);
+    // ... so nothing is left for the next frame.
+    expect(frames.pending).toBe(false);
+    expect(view.flush()).toBe(false);
+  });
+
+  it("keeps drawing every step of a splitter drag", () => {
+    const { view, spy } = resizable();
+    for (let h = 390; h >= 200; h -= 10) {
+      spy.reset();
+      view.resize(1600, h, 1);
+      expect(spy.calls.fillRect ?? 0, `height ${h}`).toBeGreaterThan(0);
+    }
+  });
+
+  it("leaves the canvas alone when the size did not change", () => {
+    const { view, spy, frames, counts } = resizable();
+    const clears = counts.clears;
+    spy.reset();
+    view.resize(1600, 400, 1);
+    view.resize(1600.4, 400.2, 1); // the same whole pixels
+    expect(counts.clears).toBe(clears);
+    expect(spy.calls.fillRect ?? 0).toBe(0);
+    expect(frames.pending).toBe(false);
+  });
+
+  it("redraws at a new pixel density even when the CSS size is the same", () => {
+    const { view, spy, canvas } = resizable();
+    spy.reset();
+    view.resize(1600, 400, 1.5);
+    expect(canvas.width).toBe(2400);
+    expect(spy.calls.fillRect ?? 0).toBeGreaterThan(0);
+  });
+});
+
 describe("ruler labels and the playhead flag (issue #97)", () => {
   /** A no-op context that records the text it draws (6 px per character). */
   function textContext(): { ctx: CanvasRenderingContext2D; texts: string[] } {
@@ -216,6 +299,7 @@ describe("ruler labels and the playhead flag (issue #97)", () => {
     view.setModel(generateSmallTimeline());
     // 100 px/s: ruler labels every second, 100 px apart; the flag is about 80 px wide.
     view.setViewState({ pxPerSec: 100, scrollX: 0, playhead: 8 * F });
+    texts.length = 0; // the resize drew the empty view at once (#163); count from here
     return { view, texts };
   }
 

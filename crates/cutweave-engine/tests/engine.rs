@@ -19,7 +19,7 @@ use std::sync::Arc;
 use std::time::{Duration, Instant};
 
 use cutweave_api::{Credential, Token};
-use cutweave_commands::{CmdError, DocEvent, Rev, TxKind};
+use cutweave_commands::{CmdError, ConflictReason, DocEvent, Rev, TxKind};
 use cutweave_engine::autosave::{AutosaveConfig, ProjectEvent};
 use cutweave_engine::project_io::{ProjectIoError, ProjectStore};
 use cutweave_engine::{
@@ -215,10 +215,11 @@ fn opening_a_locked_project_fails_and_keeps_the_current_document() {
     let engine = Engine::start(oneshot(t.path())).unwrap();
     let conn = engine.handle().connect(&agent("cli")).unwrap();
     new_document(&conn, "Mine");
+    // Even when told to drop the unsaved document, a project that cannot be opened keeps it.
     let err = conn
         .call(Call::new(
             "project.open",
-            json!({ "path": path_str(&folder) }),
+            json!({ "path": path_str(&folder), "discard_unsaved": true }),
         ))
         .unwrap_err();
     assert_eq!(err.code(), "invalid");
@@ -241,6 +242,204 @@ fn opening_a_locked_project_fails_and_keeps_the_current_document() {
     assert_eq!(err.exit_code(), 10);
     assert_eq!(err.code(), "project_locked");
     drop(holder);
+    engine.shutdown();
+}
+
+/// The session events among `events` (and `doc.reset`), by name, and the `project.opening` /
+/// `project.open_failed` payloads. Document events of earlier edits may still arrive (the doc
+/// actor's events are forwarded on their own thread), so they are left out.
+fn open_events(events: &[EngineEvent]) -> (Vec<&'static str>, Vec<serde_json::Value>) {
+    let names = events
+        .iter()
+        .map(EngineEvent::name)
+        .filter(|n| {
+            matches!(
+                *n,
+                "project.opening"
+                    | "project.opened"
+                    | "project.open_failed"
+                    | "project.closed"
+                    | "doc.reset"
+            )
+        })
+        .collect();
+    let payloads = events
+        .iter()
+        .filter(|e| matches!(e.name(), "project.opening" | "project.open_failed"))
+        .map(EngineEvent::to_json)
+        .collect();
+    (names, payloads)
+}
+
+/// ADR-0029: an agent's open never drops an untitled document's work unless it says so; the
+/// refusal changes nothing and is announced, and an open is framed by `project.opening`.
+#[test]
+fn an_open_or_close_refuses_to_drop_an_untitled_documents_work_unless_asked() {
+    let t = TempDir::new("unsaved-untitled");
+    let target = empty_project(t.path(), "Target");
+    let engine = Engine::start(oneshot(t.path())).unwrap();
+    let h = engine.handle();
+    let conn = h.connect(&agent("cli")).unwrap();
+
+    // A fresh untitled document has nothing to lose: it opens and closes freely.
+    assert!(!h.status().unwrap().dirty);
+    must(&conn, "project.open", json!({ "path": path_str(&target) }));
+    must(&conn, "project.close", json!({}));
+
+    new_document(&conn, "Mine");
+    assert!(h.status().unwrap().dirty);
+    let mut events = h.subscribe();
+    for args in [
+        json!({ "path": path_str(&target) }),
+        json!({ "path": path_str(&target), "discard_unsaved": false }),
+    ] {
+        let err = conn.call(Call::new("project.open", args)).unwrap_err();
+        assert!(
+            matches!(
+                err,
+                CmdError::Conflict {
+                    reason: ConflictReason::UnsavedChanges,
+                    ..
+                }
+            ),
+            "{err}"
+        );
+        assert!(
+            err.to_string().contains("\"Mine\" has unsaved changes"),
+            "{err}"
+        );
+        assert!(err.to_string().contains("discard_unsaved: true"), "{err}");
+    }
+    // Nothing changed, and the refusal was announced (not as an open that started).
+    assert_eq!(h.state(), SessionState::NoProject);
+    assert_eq!(must(&conn, "project.info", json!({}))["name"], "Mine");
+    let (names, payloads) = open_events(&drain(&mut events));
+    assert_eq!(names, ["project.open_failed", "project.open_failed"]);
+    assert_eq!(payloads[0]["path"], path_str(&target));
+    assert_eq!(payloads[0]["actor"], "agent:cli");
+    assert_eq!(payloads[0]["code"], "conflict");
+    assert_eq!(payloads[0]["reason"], "unsaved_changes");
+
+    // Closing by default, or "saving" a document that has no file, is refused the same way.
+    for args in [json!({}), json!({ "save": true })] {
+        let err = conn.call(Call::new("project.close", args)).unwrap_err();
+        assert!(err.to_string().contains("project.save_as"), "{err}");
+        assert!(err.to_string().contains("save: false"), "{err}");
+    }
+    assert_eq!(must(&conn, "project.info", json!({}))["name"], "Mine");
+
+    // Told to, it opens: project.opening first, then the swap and project.opened.
+    let opened = must(
+        &conn,
+        "project.open",
+        json!({ "path": path_str(&target), "discard_unsaved": true }),
+    );
+    assert_eq!(opened["project"]["name"], "Target");
+    let (names, payloads) = open_events(&drain(&mut events));
+    assert_eq!(names.first(), Some(&"project.opening"), "{names:?}");
+    assert!(names.contains(&"doc.reset"), "{names:?}");
+    assert_eq!(names.last(), Some(&"project.opened"), "{names:?}");
+    assert!(!names.contains(&"project.open_failed"), "{names:?}");
+    assert_eq!(
+        payloads[0],
+        json!({ "event": "project.opening", "path": path_str(&target), "actor": "agent:cli" })
+    );
+
+    // A failed open ends with project.open_failed.
+    let missing = t.path().join("Missing");
+    let err = conn
+        .call(Call::new(
+            "project.open",
+            json!({ "path": path_str(&missing) }),
+        ))
+        .unwrap_err();
+    let (names, payloads) = open_events(&drain(&mut events));
+    assert_eq!(names, ["project.opening", "project.open_failed"]);
+    assert_eq!(payloads[1]["code"], err.code());
+    assert!(payloads[1]["reason"].is_null());
+    assert_eq!(h.status().unwrap().name, "Target");
+    engine.shutdown();
+}
+
+/// ADR-0029: a project's unsaved changes are saved first when autosave is on, and refused when
+/// autosave is off (they would only be in the journal); `save: false` and `discard_unsaved`
+/// drop them to the journal as asked.
+#[test]
+fn an_open_saves_a_projects_changes_with_autosave_on_and_refuses_with_it_off() {
+    let t = TempDir::new("unsaved-project");
+    let a = empty_project(t.path(), "A");
+    let b = empty_project(t.path(), "B");
+    let mut config = oneshot(t.path());
+    // Slow autosave: the edits below stay unsaved until a close saves them.
+    config.autosave = Some(AutosaveConfig {
+        idle: Duration::from_secs(600),
+        poll: Duration::from_millis(20),
+        ..AutosaveConfig::default()
+    });
+    config.mode = EngineMode::Gui;
+    config.ui_token = Some(ui_token());
+    config.api.run_dir = Some(t.path().join("run"));
+    let engine = Engine::start(config).unwrap();
+    let h = engine.handle();
+    let ui = h.connect(&Credential::Ui).unwrap();
+    let cli = h.connect(&agent("cli")).unwrap();
+
+    // Autosave on (the default): the open saves A, then opens B.
+    must(&ui, "project.open", json!({ "path": path_str(&a) }));
+    must(&ui, "project.rename", json!({ "name": "A edited" }));
+    assert!(h.status().unwrap().dirty);
+    must(&cli, "project.open", json!({ "path": path_str(&b) }));
+    assert!(
+        std::fs::read_to_string(a.join("A.cutweave"))
+            .unwrap()
+            .contains("A edited")
+    );
+
+    // Autosave off: refused, for the app's own connection too (one rule for every caller).
+    must(
+        &ui,
+        "project.set_autosave",
+        json!({ "enabled": false, "interval_s": 60, "keep_backups": 5 }),
+    );
+    must(&ui, "project.rename", json!({ "name": "B edited" }));
+    for conn in [&cli, &ui] {
+        let err = conn
+            .call(Call::new("project.open", json!({ "path": path_str(&a) })))
+            .unwrap_err();
+        assert!(
+            err.to_string().contains("\"B edited\" has unsaved changes"),
+            "{err}"
+        );
+        assert!(err.to_string().contains("project.save"), "{err}");
+    }
+    let err = cli.call(Call::new("project.close", json!({}))).unwrap_err();
+    assert_eq!(err.code(), "conflict");
+    assert_eq!(h.status().unwrap().name, "B edited");
+    // `save: true` saves them, so it closes.
+    must(&cli, "project.close", json!({ "save": true }));
+    assert!(
+        std::fs::read_to_string(b.join("B.cutweave"))
+            .unwrap()
+            .contains("B edited")
+    );
+
+    // Saved by hand, it opens; told to drop them, it opens without saving.
+    must(&cli, "project.open", json!({ "path": path_str(&b) }));
+    must(&ui, "project.rename", json!({ "name": "B again" }));
+    must(&ui, "project.save", json!({}));
+    must(&cli, "project.open", json!({ "path": path_str(&a) }));
+    must(&ui, "project.rename", json!({ "name": "A dropped" }));
+    must(
+        &cli,
+        "project.open",
+        json!({ "path": path_str(&b), "discard_unsaved": true }),
+    );
+    assert_eq!(h.status().unwrap().name, "B again");
+    assert!(
+        !std::fs::read_to_string(a.join("A.cutweave"))
+            .unwrap()
+            .contains("A dropped")
+    );
     engine.shutdown();
 }
 

@@ -73,6 +73,14 @@ describe("Toast", () => {
     expect(toast?.querySelector("svg")?.getAttribute("data-icon")).toBe("triangle-alert");
   });
 
+  it("agent notes carry the agent mark (sparkles) and are announced politely", () => {
+    render(h(Harness, { tone: "agent", title: "Project opened by an agent" }));
+    const toast = document.querySelector(".cw-toast");
+    expect(toast?.getAttribute("data-tone")).toBe("agent");
+    expect(toast?.querySelector(".cw-toast__icon")?.getAttribute("data-icon")).toBe("sparkles");
+    expect(toast?.getAttribute("role")).not.toBe("alert");
+  });
+
   it("job variant shows a progressbar with values and a cancel that does not dismiss", async () => {
     const onCancel = vi.fn();
     const onOpen = vi.fn();

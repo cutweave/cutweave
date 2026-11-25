@@ -73,10 +73,22 @@
       "summary": "The project gained or lost unsaved changes (last saved revision differs from the committed one)"
     },
     {
+      "name": "project.open_failed",
+      "payload": "ProjectOpenFailed",
+      "source": "engine",
+      "summary": "A project open failed, or was refused because of unsaved changes (ADR-0029); payload: the path, who asked, the error"
+    },
+    {
       "name": "project.opened",
       "payload": "ProjectStatus",
       "source": "engine",
       "summary": "The open project changed (opened, saved under a new path, recovery decided); payload: its status"
+    },
+    {
+      "name": "project.opening",
+      "payload": "ProjectOpening",
+      "source": "engine",
+      "summary": "A project open started (ADR-0029); project.opened or project.open_failed follows; payload: the path and who opens it"
     },
     {
       "name": "project.recovery_available",

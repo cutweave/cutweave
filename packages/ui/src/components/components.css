@@ -1189,6 +1189,13 @@
 .cw-toast[data-tone="job"] {
   --tone: var(--marigold-text);
 }
+/* What an agent did or tried: agent colour on the mark and along the leading edge. */
+.cw-toast[data-tone="agent"] {
+  --tone: var(--agent-text);
+  box-shadow:
+    inset var(--border-thick) 0 0 var(--agent),
+    var(--shadow-popover);
+}
 .cw-toast__icon {
   color: var(--tone);
   margin-top: var(--space-0-5);

@@ -10202,18 +10202,18 @@ expression: text
     },
     {
       "annotations": {
-        "destructiveHint": false,
+        "destructiveHint": true,
         "idempotentHint": true,
         "openWorldHint": false,
         "readOnlyHint": false
       },
       "input_schema": {
         "additionalProperties": false,
-        "description": "Closes the open project (releasing its lock) and starts an untitled document. With\n`save: true` the committed state is saved first; with `save: false` nothing is saved (the\nunsaved work stays in the journal and is offered on the next open); by default it is saved\nwhen autosave is on. A failed save keeps the project open. Every client must resync.",
+        "description": "Closes the open project (releasing its lock) and starts an untitled document. With\n`save: true` the committed state is saved first; with `save: false` nothing is saved (a\nproject's unsaved work stays in the journal and is offered on the next open; an untitled\ndocument's is gone); by default it is saved when autosave is on. Changes the close would\nnot save make it fail with `Conflict{reason: unsaved_changes}` unless `save` is `false`\n(ADR-0029): an untitled document with changes (it has no file; `project.save_as` first),\nor, by default, a project with autosave off. A failed save keeps the project open. Every\nclient must resync.",
         "properties": {
           "save": {
             "default": null,
-            "description": "Save before closing (`true`), never (`false`), or as autosave would (absent).",
+            "description": "Save before closing (`true`), never: drop unsaved changes (`false`), or as autosave\nwould (absent).",
             "type": [
               "boolean",
               "null"
@@ -10753,15 +10753,23 @@ expression: text
     },
     {
       "annotations": {
-        "destructiveHint": false,
+        "destructiveHint": true,
         "idempotentHint": false,
         "openWorldHint": false,
         "readOnlyHint": false
       },
       "input_schema": {
         "additionalProperties": false,
-        "description": "Opens a project (its folder or its `.cutweave` file), closing the current one first (saved\nwhen autosave is on, as `project.close` does). A project open in another Cutweave process\nfails with `Invalid` at `/path` and leaves the current project open. Unsaved work from a\ncrashed session is reported in `project.recovery`; edits are refused until\n`project.recover` or `project.discard_recovery`. Every client must resync (`doc.reset`).\nAgents and headless callers may only open projects inside the open project's folder and\nthe folders the user approved (`Invalid` at `/path` otherwise).",
+        "description": "Opens a project (its folder or its `.cutweave` file), closing the current one first (saved\nwhen autosave is on, as `project.close` does). It never drops unsaved changes unasked\n(ADR-0029): when the open document has changes the close would not save (an untitled\ndocument, or a project with autosave off), it fails with `Conflict{reason:\nunsaved_changes}` and changes nothing, unless `discard_unsaved` is `true` (then the current\nproject closes without saving, as `project.close` with `save: false`). A project open in\nanother Cutweave process fails with `Invalid` at `/path` and leaves the current project\nopen. Unsaved work from a crashed session is reported in `project.recovery`; edits are\nrefused until `project.recover` or `project.discard_recovery`. Sends `project.opening`, then\n`project.opened` or `project.open_failed`; every client must resync (`doc.reset`). Agents\nand headless callers may only open projects inside the open project's folder and the\nfolders the user approved (`Invalid` at `/path` otherwise).",
         "properties": {
+          "discard_unsaved": {
+            "default": null,
+            "description": "Drop the open document's unsaved changes (`true`); otherwise they make the open fail.",
+            "type": [
+              "boolean",
+              "null"
+            ]
+          },
           "path": {
             "description": "Absolute path of the project folder or of its `.cutweave` document.",
             "type": "string"

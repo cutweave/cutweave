@@ -991,6 +991,13 @@ expression: catalog.tools_json()
           "path": {
             "type": "string",
             "description": "Absolute path of the project folder or of its `.cutweave` document."
+          },
+          "discard_unsaved": {
+            "type": [
+              "boolean",
+              "null"
+            ],
+            "description": "Drop the open document's unsaved changes (`true`); otherwise they make the open fail."
           }
         },
         "required": [
@@ -999,7 +1006,7 @@ expression: catalog.tools_json()
       },
       "annotations": {
         "readOnlyHint": false,
-        "destructiveHint": false,
+        "destructiveHint": true,
         "idempotentHint": false,
         "openWorldHint": false
       }

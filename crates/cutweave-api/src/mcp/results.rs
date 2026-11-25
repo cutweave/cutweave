@@ -314,6 +314,9 @@ pub fn hint(error: &CmdError) -> &'static str {
             ConflictReason::HistoryTargetModified => {
                 "It was changed since; edit.history (cutweave_query) shows who changed what"
             }
+            ConflictReason::UnsavedChanges => {
+                "The user has unsaved changes: ask them to save first; pass discard_unsaved: true only if they agree to lose them"
+            }
             _ => "Use a new request_id for a different request",
         },
         CmdError::Invalid { .. } => {

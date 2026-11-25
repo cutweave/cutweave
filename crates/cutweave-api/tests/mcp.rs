@@ -56,7 +56,11 @@ fn rev_of(result: &CallToolResult) -> u64 {
 /// A new project (the engine's current one is closed first) with one clip:
 /// `(sequence, video track, media, item)`.
 async fn project_with_a_clip(h: &Harness, client: &Client) -> (Value, Value, Value, Value) {
-    must(&h.direct("setup"), "project.close", json!({}));
+    must(
+        &h.direct("setup"),
+        "project.close",
+        json!({ "save": false }),
+    );
     let created = client
         .ok(
             "cutweave_execute",
@@ -224,7 +228,7 @@ async fn every_tool_has_the_right_annotations() {
         ("media_import", false, false, true),
         ("media_list", true, false, true),
         ("project_info", true, false, true),
-        ("project_open", false, false, false),
+        ("project_open", false, true, false),
         ("timeline_get", true, false, true),
         ("timeline_insert", false, false, false),
         ("cutweave_search_commands", true, false, true),

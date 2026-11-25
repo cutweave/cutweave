@@ -103,7 +103,7 @@ Events are notifications named after the event, with the event's payload as `par
 | Events | Source |
 |---|---|
 | `doc.patched`, `doc.reset`, `doc.command_panicked`, `edit.history_changed`, `tx.opened`, `tx.locked`, `tx.closed` | The document actor |
-| `project.dirty`, `project.saved`, `project.recovery_available`, `project.autosave_failed`, `project.opened`, `project.closed` | The project file and the session |
+| `project.dirty`, `project.saved`, `project.recovery_available`, `project.autosave_failed`, `project.opening`, `project.opened`, `project.open_failed`, `project.closed` | The project file and the session (`project.opening` starts every `project.open`; `project.opened` or `project.open_failed` ends it; ADR-0029) |
 | `job.progress`, `media.indexed`, `media.analysis_failed` | Jobs and media analysis |
 | `view.changed` | View state; not sent back to the connection that made the change |
 | `playback.state`, `engine.degraded` | Subsystems (WP-1I.05) |

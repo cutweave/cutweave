@@ -1062,17 +1062,23 @@ body {
   min-width: 0;
 }
 
+/* "Opening <name>…" when an agent opens the project (ADR-0029): agent wording in agent colour. */
+.cw-opening-agent .cw-note {
+  color: var(--agent-text);
+}
+
 /* A wrapper that only marks a context-menu surface: no box of its own (WP-2H.13). */
 .cw-context-surface {
   display: contents;
 }
 
-/* Command palette (WP-2H.04): a top-anchored dialog, a search field over a list of commands. */
+/* Command palette (WP-2H.04): a top-anchored dialog, a search field over a list of commands.
+   At most half the window tall (#160): the list scrolls inside, the search field stays put. */
 .cw-dialog.cw-dialog--palette {
   top: var(--space-8);
   transform: translateX(-50%);
   width: var(--layer-width-lg);
-  max-height: calc(100vh - var(--space-8) * 2);
+  max-height: 50vh;
   gap: var(--space-2);
   padding: var(--space-4);
 }

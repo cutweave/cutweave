@@ -44,6 +44,8 @@ Stdout carries protocol frames only. Closing stdin ends the session, and the eng
 
 `exec` takes one step, `{\"cmd\": \"clip.split\", \"args\": {...}}`, or an array of steps (or `{\"steps\": [...]}`) that runs as **one transaction and one undo step**: all steps apply or none does, and a failing step is reported as `failed_step`. Engine commands (`edit.undo`, `project.open`, `media.import`, `job.*`, `view.*`) cannot join a transaction; run one as the only step. A step's args may use an earlier step's output as in MCP's `cutweave_execute`: `{\"$ref\": \"steps[0].output.left\"}` (also `steps[1].output.media_ids[0]`, or the JSON Pointer form `#/steps/0/output/left`). A malformed reference, or one to the same or a later step, is `invalid` before anything runs.
 
+`project.open` and `project.close` never drop unsaved changes unasked (ADR-0029): when the app holds an untitled document with changes, or a project with changes autosave would not save, they fail with `conflict` (`reason` `unsaved_changes`, exit 1) and change nothing. Ask the person to save; pass `discard_unsaved: true` (`project.open`) or `save: false` (`project.close`) only if they agree to lose the changes.
+
 Results are one JSON object on stdout: `{\"rev\", \"committed_rev\", \"output\"}` for one step, `{\"rev\", \"committed_rev\", \"steps\": [{\"cmd\", \"output\"}]}` for a batch. Errors are one JSON object on stderr in the engine's wire form (`{\"code\": \"not_found\", \"message\": ..., ...}`).
 
 ## Exit codes

@@ -8,6 +8,12 @@ export function asRpcError(error: unknown): RpcError {
   return error instanceof RpcErrorClass ? error : new RpcErrorClass("internal", String(error));
 }
 
+/** The engine refused to drop unsaved changes (`conflict`, `unsaved_changes`; ADR-0029). */
+export function isUnsavedChanges(error: unknown): boolean {
+  const failure = asRpcError(error);
+  return failure.code === "conflict" && failure.data?.reason === "unsaved_changes";
+}
+
 /** Why a project command was refused, for a toast body. */
 export function describeProjectError(error: RpcError, t: Translate): string {
   const message = error.message;
