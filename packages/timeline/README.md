@@ -27,7 +27,7 @@ machine.send({ type: "pointer.down", x, y, button: 0, shift, alt, ctrl, meta });
 
 ### State chart
 
-Every edge below is taken by at least one transcript test, and the machine takes no other: `interaction/coverage.test.ts` reads this diagram and fails otherwise.
+Every edge below is taken by at least one transcript test, and the machine takes no other: `interaction/coverage.test.ts` reads this diagram and fails otherwise (`pnpm --filter @cutweave/timeline check:machine` prints the coverage).
 
 ```mermaid
 stateDiagram-v2
@@ -96,21 +96,21 @@ Edge labels: `pointer.over` is any pointer event over the canvas from `idle`; `t
 
 Each gesture is one `gesture` transaction and one undo step ([spec §3.9](../../docs/spec/timeline-edit-semantics.md#39-one-undo-step-per-user-action)). Its updates carry the command for where the pointer is now; the engine applies each with `_meta.replace: true`, so the gesture commits the effect of its last update (INV-301). Gestures pass `clamp: true`.
 
-| Tool | Press on | State | Update |
-|---|---|---|---|
-| select | clip body | `moving` | `item.move{items, start, to_track?, mode, unlink?}` |
-| select, Alt held when the drag starts | clip body | `moving` | `item.duplicate{items, offset, mode:"new_track"}` (main track: no offset) |
-| select | clip edge | `trimming` | `clip.trim{item, edge, to, unlink?}` (the engine ripples on the main track) |
-| select (with a keyframe handler, WP-2C.05) | keyframe | `keyframe_dragging` | the handler's command (`keyframe.move`) |
-| ripple | clip edge | `ripple_trimming` | `clip.ripple_trim{item, edge, to, unlink?}` |
-| roll | the edge at a cut | `rolling` | `clip.roll{left, right, to}`; an edge with a gap beside it trims |
-| slip | clip | `slipping` | `clip.slip{item, delta}` (drag right: earlier media); stills cannot slip |
-| slide | clip | `sliding` | `clip.slide{item, delta}` |
-| razor | clip | `razor` | on release `clip.split{items, at}` (Shift: every clip at that time) |
-| hand, or the middle button | lanes | `panning` | `scroll_to` |
-| zoom | lanes | `zooming` | click `zoom_by` 2 (Alt: ½), drag `zoom_to_range` |
-| any | ruler, playhead | `scrubbing` | `seek` |
-| (bin card) | lanes | `dropping` | `timeline.insert{sequence, track, media, at, mode?}` |
+| Tool                                       | Press on          | State               | Update                                                                      |
+| ------------------------------------------ | ----------------- | ------------------- | --------------------------------------------------------------------------- |
+| select                                     | clip body         | `moving`            | `item.move{items, start, to_track?, mode, unlink?}`                         |
+| select, Alt held when the drag starts      | clip body         | `moving`            | `item.duplicate{items, offset, mode:"new_track"}` (main track: no offset)   |
+| select                                     | clip edge         | `trimming`          | `clip.trim{item, edge, to, unlink?}` (the engine ripples on the main track) |
+| select (with a keyframe handler, WP-2C.05) | keyframe          | `keyframe_dragging` | the handler's command (`keyframe.move`)                                     |
+| ripple                                     | clip edge         | `ripple_trimming`   | `clip.ripple_trim{item, edge, to, unlink?}`                                 |
+| roll                                       | the edge at a cut | `rolling`           | `clip.roll{left, right, to}`; an edge with a gap beside it trims            |
+| slip                                       | clip              | `slipping`          | `clip.slip{item, delta}` (drag right: earlier media); stills cannot slip    |
+| slide                                      | clip              | `sliding`           | `clip.slide{item, delta}`                                                   |
+| razor                                      | clip              | `razor`             | on release `clip.split{items, at}` (Shift: every clip at that time)         |
+| hand, or the middle button                 | lanes             | `panning`           | `scroll_to`                                                                 |
+| zoom                                       | lanes             | `zooming`           | click `zoom_by` 2 (Alt: ½), drag `zoom_to_range`                            |
+| any                                        | ruler, playhead   | `scrubbing`         | `seek`                                                                      |
+| (bin card)                                 | lanes             | `dropping`          | `timeline.insert{sequence, track, media, at, mode?}`                        |
 
 Placement ([spec §3.6, INV-40, D8](../../docs/spec/timeline-edit-semantics.md#36-placement)): on the main track a clip or card goes in at the nearest cut of the layout without the movers (`mode: "insert"`); on a free track a dragged clip asks for `new_track` (a track above when it overlaps), and a card dropped onto a clip uses the Editing preference `dropOnClip` (`overwrite` by default, or `insert`), onto free space too short for it `new_track`. Tracks of another kind, and locked tracks, are never targets.
 
@@ -131,5 +131,5 @@ Keys (when the host's keymap gives no `action`): Esc cancels; S splits at the pl
 
 - Feed `TimelineView.onPointer` events as `pointer.*` (canvas-relative x, y, the button and modifiers), `keydown`/`keyup` in the timeline panel as `key.*` with the keymap's `action`, window `blur` as `blur`, bin card drags as `media.*`, and toolbar buttons as `action`.
 - Keep `env` current: `model` and `sequence` from `docStore`, zoom, scroll and playhead from `viewStore`/`playbackStore`, `selection` (item ids), `tool`, `snapping`, `linkedSelection`, the Editing and Timeline preferences (`dropOnClip`, `snapThresholdPx`, `snapKinds`), `inOut`, and `heldBy` from `locksStore.byItem`.
-- Carry out the intents: `begin_tx` opens `edit.begin_tx{kind:"gesture"}` with the label of its `edit`; `update_tx` calls its command with `_meta: {tx, replace: true}` and answers with `engine.result`; `commit_tx`/`cancel_tx` close it; `command` runs one command (its refusal is a toast); `set_selection`, `set_tool`, `set_snapping`, `seek`, `scroll_*`, `zoom_*`, `snap_guides` (`viewState.snapGuides`), `marquee`, `preview` (the drop ghost) and `set_cursor` (overrides `TimelineView`'s own cursor) go to the view. After an insert, paste or duplicate commits, select what it created from the command's output (INV-343).
+- Carry out the intents: `begin_tx` opens `edit.begin_tx{kind:"gesture"}` with the label of its `edit`; `update_tx` calls its command with `_meta: {tx, replace: true}` and answers with `engine.result`; `commit_tx`/`cancel_tx` close it; `command` runs one command (its refusal is a toast); `set_selection`, `set_tool`, `set_snapping`, `seek`, `scroll_*`, `zoom_*`, `snap_guides` (`viewState.snapGuides`), `marquee`, `preview` (the drop ghost) and `set_cursor` (overrides `TimelineView`'s own cursor, except `auto`) go to the view. After an insert, paste or duplicate commits, select what it created from the command's output (INV-343).
 - Clicks on track headers, double-clicks, context menus and marker drags stay with the host: the machine ignores header presses and the secondary button.

@@ -2,7 +2,7 @@
 // WP-2A.08 coverage check: the state chart in packages/timeline/README.md is the machine. Every
 // state the chart names exists, every edge the transcripts take is in the chart, and every edge
 // in the chart is taken by at least one transcript (100% of states and transitions).
-// Run alone: `pnpm vitest run packages/timeline/src/interaction/coverage.test.ts`.
+// Run alone (prints the coverage): `pnpm --filter @cutweave/timeline check:machine`.
 import { mathModuleBytes } from "@cutweave/protocol/test-support/math-wasm";
 import { initMath } from "@cutweave/protocol/wasm";
 import { beforeAll, describe, expect, it } from "vitest";

@@ -24,6 +24,7 @@ import {
   env,
   frame,
   frames,
+  header,
   key,
   keyUp,
   lane,
@@ -123,6 +124,14 @@ const selection: Transcript[] = [
     world: { env: { linkedSelection: false } },
     steps: [down(clip("B")), up(clip("B"))],
     expect: [sel("B")],
+    end: "hover",
+  },
+  {
+    name: "track headers are the host's: a press there starts nothing, the view keeps its cursor",
+    world: { env: { selection: ["B", "b"] } },
+    steps: [move(clip("B")), move(header("V2")), down(header("V2")), up(header("V2"))],
+    show: ["set_selection", "set_cursor", "begin_tx"],
+    expect: ["cursor move", "cursor auto"],
     end: "hover",
   },
   {

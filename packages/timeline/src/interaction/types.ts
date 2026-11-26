@@ -50,6 +50,8 @@ export interface Modifiers {
 
 /** What the pointer shows; the host maps each to a CSS cursor. */
 export type Cursor =
+  /** Not the machine's (track headers): keep the view's own cursor. */
+  | "auto"
   | "default"
   | "move"
   | "copy"

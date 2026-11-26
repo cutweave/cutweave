@@ -338,6 +338,7 @@ const LANE_ZONES: ReadonlySet<string> = new Set([...CLIP_ZONES, "lane"]);
 function hoverCursor(st: Step, hit: HitResult): Cursor {
   const { env, keys } = st.s;
   if (hit.zone === "ruler" || hit.zone === "playhead") return "scrub";
+  if (hit.zone.startsWith("header")) return "auto";
   if (!LANE_ZONES.has(hit.zone)) return "default";
   const tool: Tool = env.tool;
   if (tool === "hand") return "grab";
