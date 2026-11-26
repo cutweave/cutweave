@@ -1,0 +1,32 @@
+{
+  "version": 1,
+  "note": "Approximate UI-safe zones of the platforms' own screens, as insets from each edge in fractions of the frame (portrait 9:16). They are guides, not rules: each platform moves its buttons and captions now and then. Each id is shared with the platform export presets (plugins/presets-core/manifest.json, safe_area_ids). Checked 2026-11.",
+  "generic": [{ "id": "action", "inset": 0.035 }, { "id": "title", "inset": 0.05 }],
+  "platforms": [
+    {
+      "id": "youtube-shorts",
+      "name": "YouTube Shorts",
+      "insets": { "top": 0.08, "bottom": 0.22, "left": 0.05, "right": 0.15 }
+    },
+    {
+      "id": "instagram-reels",
+      "name": "Instagram Reels",
+      "insets": { "top": 0.11, "bottom": 0.22, "left": 0.05, "right": 0.13 }
+    },
+    {
+      "id": "instagram-stories",
+      "name": "Instagram Stories",
+      "insets": { "top": 0.13, "bottom": 0.13, "left": 0.05, "right": 0.05 }
+    },
+    {
+      "id": "tiktok",
+      "name": "TikTok",
+      "insets": { "top": 0.06, "bottom": 0.2, "left": 0.05, "right": 0.17 }
+    },
+    {
+      "id": "x-portrait",
+      "name": "X (portrait)",
+      "insets": { "top": 0.08, "bottom": 0.12, "left": 0.05, "right": 0.05 }
+    }
+  ]
+}

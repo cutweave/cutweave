@@ -26,6 +26,7 @@ import {
 } from "./inspector.ts";
 import {
   PREVIEW_CANVAS,
+  PREVIEW_ITEM,
   SOURCE_VIEW,
   TRANSPORT_QUALITY,
   TRANSPORT_TIME,
@@ -59,6 +60,7 @@ export const SURFACES: readonly MenuSurfaceDef[] = [
   BIN_BACKGROUND,
   BIN_CHIP,
   PREVIEW_CANVAS,
+  PREVIEW_ITEM,
   SOURCE_VIEW,
   TRANSPORT_TIME,
   TRANSPORT_VOLUME,

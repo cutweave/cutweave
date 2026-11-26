@@ -10,11 +10,11 @@ import type { TKey } from "../i18n/index.ts";
 /**
  * Where a key works. `global` is everywhere (text fields keep their plain keys); `playback` is the
  * transport's keys, everywhere except where the bin has its own use of the same key; `timeline`,
- * `bin` and `source` work while that panel has the focus.
+ * `bin`, `source` and `preview` (the picture's handles) work while that panel has the focus.
  */
-export type KeyContext = "global" | "playback" | "timeline" | "bin" | "source";
+export type KeyContext = "global" | "playback" | "timeline" | "bin" | "source" | "preview";
 
-export type BindingGroupId = "menu" | "playback" | "timeline" | "bin" | "dialogs";
+export type BindingGroupId = "menu" | "playback" | "timeline" | "preview" | "bin" | "dialogs";
 
 export interface KeyCommand {
   /** The command id: `edit.undo`, `transport.toggle_play`. */
@@ -160,6 +160,42 @@ export const KEY_COMMANDS: readonly KeyCommand[] = [
     "shortcuts.timeline.renameTrack",
     "shortcuts.timeline.renameTrackHelp",
   ),
+  // ---- the preview's handles
+  cmd(
+    "preview.nudge_left",
+    "preview",
+    "preview",
+    "shortcuts.preview.nudgeLeft",
+    "shortcuts.preview.nudgeHelp",
+  ),
+  cmd(
+    "preview.nudge_right",
+    "preview",
+    "preview",
+    "shortcuts.preview.nudgeRight",
+    "shortcuts.preview.nudgeHelp",
+  ),
+  cmd(
+    "preview.nudge_up",
+    "preview",
+    "preview",
+    "shortcuts.preview.nudgeUp",
+    "shortcuts.preview.nudgeHelp",
+  ),
+  cmd(
+    "preview.nudge_down",
+    "preview",
+    "preview",
+    "shortcuts.preview.nudgeDown",
+    "shortcuts.preview.nudgeHelp",
+  ),
+  cmd(
+    "preview.toggle_crop",
+    "preview",
+    "preview",
+    "shortcuts.preview.toggleCrop",
+    "shortcuts.preview.toggleCropHelp",
+  ),
   // ---- the media bin
   cmd("bin.move_next", "bin", "bin", "shortcuts.bin.moveNext", "shortcuts.bin.moveHelp"),
   cmd("bin.move_previous", "bin", "bin", "shortcuts.bin.movePrevious", "shortcuts.bin.moveHelp"),
@@ -215,8 +251,8 @@ export function keyCommand(id: string): KeyCommand | undefined {
 export function contextsOverlap(a: KeyContext, b: KeyContext): boolean {
   if (a === b || a === "global" || b === "global") return true;
   // The bin's own keys (Space, the arrows) take precedence where it has the focus; that is by
-  // design, so a playback key and a bin key may share a stroke. Everywhere else playback is live.
-  if (a === "playback") return b !== "bin";
-  if (b === "playback") return a !== "bin";
+  // design, so a playback key and a bin (or preview) key may share a stroke. Everywhere else playback is live.
+  if (a === "playback") return b !== "bin" && b !== "preview";
+  if (b === "playback") return a !== "bin" && a !== "preview";
   return false;
 }

@@ -13,7 +13,7 @@ import { i18n } from "../i18n/index.ts";
 import { docStore } from "../state/docStore.ts";
 import { initialPlaybackState, playbackStore } from "../state/playbackStore.ts";
 import { initialViewState, viewStore } from "../state/viewStore.ts";
-import { sampleProject } from "../testing/fixtures.ts";
+import { FLICKS, sampleProject } from "../testing/fixtures.ts";
 import { PreviewPanel } from "./PreviewPanel.tsx";
 
 const RING = { name: "cwp-00000001-0000000000000002", epoch: "0x3" };
@@ -120,16 +120,22 @@ describe("PreviewPanel", () => {
     await vi.waitFor(() => expect(surface()?.getAttribute("data-reason")).toBe("no-addon"));
   });
 
-  it("the overlay shows safe areas when toggled and the selected clip's outline", async () => {
+  it("the overlay shows safe areas when toggled and the selected clip's box and handles", async () => {
     desktop();
     renderPanel();
     expect(document.querySelectorAll(".cw-preview__safe")).toHaveLength(0);
     act(() => screen.getByRole("button", { name: "Safe areas" }).click());
     expect(document.querySelectorAll(".cw-preview__safe")).toHaveLength(2);
+    // The clip starts at 1 s: no box before it, a box with handles while the playhead is in it.
     act(() => viewStore.getState().setSelection([{ kind: "item", id: "itm_v" as never }]));
-    const outline = document.querySelector<HTMLElement>(".cw-preview__selection");
-    expect(outline?.style.width).toBe("100%");
-    expect(document.querySelector(".cw-preview__readout")?.textContent).toBe("00:00:00:00");
+    expect(document.querySelector(".cw-xform__outline")).toBeNull();
+    act(() => viewStore.getState().setPlayhead(2 * FLICKS));
+    // The fixture's anchor is the picture's top-left, placed at the canvas centre.
+    expect(document.querySelector(".cw-xform__outline")?.getAttribute("points")).toBe(
+      "960,540 2880,540 2880,1620 960,1620",
+    );
+    expect(document.querySelectorAll(".cw-xform__handle[data-kind='scale']")).toHaveLength(8);
+    expect(document.querySelector(".cw-preview__readout")?.textContent).toBe("00:00:02:00");
   });
 
   it("the aspect switch shows the sequence's shape, not the workspace's, and is off", () => {

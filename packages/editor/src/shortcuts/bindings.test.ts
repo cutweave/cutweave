@@ -286,6 +286,8 @@ describe("every key handler in the editor is accounted for", () => {
       "name field: Enter commits, Escape puts the old text back (dialogs group)",
     "panels/MediaPanel.tsx": "the bin's keys: the keymap's `bin` context (binKeys.ts)",
     "panels/PreviewPanel.tsx": "the Source view's keys: the keymap's `source` context",
+    "preview/overlays/TransformOverlay.tsx":
+      "the picture's handles: the keymap's `preview` context (nudges, crop); Escape ends a drag or crop mode",
     "settings/shortcuts.tsx": "record-a-shortcut: the next key press is the shortcut",
     "shell/appCommands.ts": "the menu shortcuts: appMenu.ts, from the keymap",
     "timeline/TrackRenameInput.tsx":

@@ -572,7 +572,9 @@ body {
     calc((100cqh - 2 * var(--border-thin)) * var(--cw-ar))
   );
   aspect-ratio: var(--cw-aspect);
-  overflow: hidden;
+  /* Not clipped: the transform handles of a clip scaled past the frame stay reachable. The
+     picture itself is clipped by the surface. */
+  overflow: visible;
   background: var(--surface-1);
   border: var(--border-thin) solid var(--border-default);
   border-radius: var(--radius-sm);
@@ -580,6 +582,7 @@ body {
 .cw-preview__surface {
   position: absolute;
   inset: 0;
+  overflow: hidden;
 }
 .cw-preview__canvas {
   position: absolute;
@@ -1366,4 +1369,146 @@ body {
 .cw-history__marker-text {
   flex: none;
   color: var(--marigold-text);
+}
+
+/* Guides over the picture (WP-2H.06): drawn in overlay-guide with the shadow outline. */
+.cw-preview__safe--platform {
+  border-style: dashed;
+}
+.cw-preview__safe--aspect {
+  border-color: var(--marigold);
+}
+.cw-preview__line {
+  position: absolute;
+  background: var(--overlay-guide);
+  box-shadow: 0 0 0 var(--border-thin) var(--overlay-guide-shadow);
+}
+.cw-preview__line[data-axis="x"] {
+  top: 0;
+  bottom: 0;
+  width: var(--border-thin);
+}
+.cw-preview__line[data-axis="y"] {
+  left: 0;
+  right: 0;
+  height: var(--border-thin);
+}
+.cw-preview__readout--zoom {
+  left: auto;
+  right: var(--space-2);
+}
+
+/* Transform handles (WP-2H.06): marigold = the selected clip, "here". The layer is the frame's
+   size and not clipped, so handles of a clip bigger than the frame stay reachable. */
+.cw-xform {
+  position: absolute;
+  inset: 0;
+  z-index: var(--z-overlay);
+  pointer-events: none;
+}
+.cw-xform:focus {
+  outline: none;
+}
+.cw-xform__hint {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip-path: inset(50%);
+  white-space: nowrap;
+}
+.cw-xform__svg {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  overflow: visible;
+}
+.cw-xform__outline {
+  fill: none;
+  stroke: var(--marigold);
+  stroke-width: var(--border-thick);
+  vector-effect: non-scaling-stroke;
+}
+.cw-xform:focus-visible .cw-xform__outline {
+  stroke-width: calc(2 * var(--border-thick));
+}
+.cw-xform__body,
+.cw-xform__bounds {
+  fill: transparent;
+  stroke: none;
+  pointer-events: all;
+  cursor: move;
+  touch-action: none;
+}
+.cw-xform__body[data-locked] {
+  pointer-events: none;
+}
+.cw-xform__bounds {
+  stroke: var(--marigold);
+  stroke-width: var(--border-thin);
+  stroke-dasharray: var(--space-1) var(--space-1);
+  vector-effect: non-scaling-stroke;
+}
+.cw-xform__guide,
+.cw-xform__stalk {
+  stroke: var(--marigold);
+  stroke-width: var(--border-thin);
+  vector-effect: non-scaling-stroke;
+  pointer-events: none;
+}
+.cw-xform__handle,
+.cw-xform__anchor {
+  position: absolute;
+  box-sizing: border-box;
+  width: var(--space-3);
+  height: var(--space-3);
+  pointer-events: auto;
+  touch-action: none;
+  transform: translate(-50%, -50%) rotate(var(--cw-xform-turn, 0deg));
+  background: var(--marigold);
+  border: var(--border-thin) solid var(--overlay-guide-shadow);
+  border-radius: var(--radius-xs);
+}
+.cw-xform__handle[data-kind="scale"] {
+  cursor: nwse-resize;
+}
+.cw-xform__handle[data-handle="tr"][data-kind="scale"],
+.cw-xform__handle[data-handle="bl"][data-kind="scale"] {
+  cursor: nesw-resize;
+}
+.cw-xform__handle[data-handle="t"][data-kind="scale"],
+.cw-xform__handle[data-handle="b"][data-kind="scale"] {
+  cursor: ns-resize;
+}
+.cw-xform__handle[data-handle="l"][data-kind="scale"],
+.cw-xform__handle[data-handle="r"][data-kind="scale"] {
+  cursor: ew-resize;
+}
+.cw-xform__handle[data-kind="rotate"] {
+  cursor: grab;
+  border-radius: var(--radius-full);
+}
+.cw-xform__handle[data-kind="crop"] {
+  cursor: crosshair;
+  background: var(--text-primary);
+  border-color: var(--marigold);
+  border-width: var(--border-thick);
+}
+.cw-xform__handle[data-kind="crop"][data-edge][data-handle="t"],
+.cw-xform__handle[data-kind="crop"][data-edge][data-handle="b"] {
+  width: var(--space-6);
+  height: var(--space-1-5);
+}
+.cw-xform__handle[data-kind="crop"][data-edge][data-handle="l"],
+.cw-xform__handle[data-kind="crop"][data-edge][data-handle="r"] {
+  width: var(--space-1-5);
+  height: var(--space-6);
+}
+.cw-xform__anchor {
+  background: transparent;
+  border: var(--border-thick) solid var(--marigold);
+  border-radius: var(--radius-full);
+  cursor: move;
+  box-shadow: 0 0 0 var(--border-thin) var(--overlay-guide-shadow);
 }

@@ -378,6 +378,10 @@ test.describe("F31 preview media before placing it", () => {
       const g = await timelineGeometry(page);
       await page.mouse.click(xAt(g, sec(10)), rulerY(g));
       await expect(timecode(page)).toHaveText("00:00:10:00");
+      // Click the empty timeline below the tracks: no clip is selected, so no handles (WP-2H.06)
+      // draw over the picture whose pixels are compared.
+      await page.mouse.click(g.box.x + g.headerWidth + 200, g.box.y + g.box.height - 12);
+      await expect(page.locator(".cw-xform")).toHaveCount(0);
       const onTimeline = await settled(() => previewHash(page));
       await shortcut(app, "Control+S");
       await expect(dirtyDot(page)).toBeHidden();
