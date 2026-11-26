@@ -18514,6 +18514,111 @@ expression: text
         "destructiveHint": false,
         "idempotentHint": true,
         "openWorldHint": false,
+        "readOnlyHint": true
+      },
+      "input_schema": {
+        "additionalProperties": false,
+        "description": "Lists the media whose file is not where the project says (moved, renamed, deleted or on a\ndrive that is not connected). With `verify` it also reads every file that is there and\nreports the ones whose content is no longer what was imported as `changed`. Relink them\nwith `media.relink_folder` or `media.relink`.",
+        "properties": {
+          "verify": {
+            "description": "Also read the files that exist and report changed content (slower; default false).",
+            "type": [
+              "boolean",
+              "null"
+            ]
+          }
+        },
+        "title": "MediaFindMissing",
+        "type": "object"
+      },
+      "journaled": false,
+      "kind": "engine",
+      "mcp": "catalog",
+      "mcp_tool": "media_find_missing",
+      "name": "media.find_missing",
+      "namespace": "media",
+      "output_schema": {
+        "additionalProperties": false,
+        "description": "Result of `media.find_missing`.",
+        "properties": {
+          "checked": {
+            "description": "The number of media files that were checked.",
+            "format": "uint32",
+            "minimum": 0,
+            "type": "integer"
+          },
+          "missing": {
+            "description": "The assets whose file is missing or changed, by id.",
+            "items": {
+              "additionalProperties": false,
+              "description": "An asset whose file is missing or changed.",
+              "properties": {
+                "media_id": {
+                  "description": "The asset.",
+                  "pattern": "^med_[0-9a-f]{32}$",
+                  "type": "string"
+                },
+                "name": {
+                  "description": "The name the bin shows.",
+                  "type": "string"
+                },
+                "path": {
+                  "description": "Where the project says its file is.",
+                  "type": [
+                    "string",
+                    "null"
+                  ]
+                },
+                "status": {
+                  "description": "What is wrong: `missing` or `changed`.",
+                  "oneOf": [
+                    {
+                      "const": "ok",
+                      "description": "The file is where the project says.",
+                      "type": "string"
+                    },
+                    {
+                      "const": "missing",
+                      "description": "There is no readable file at the asset's path.",
+                      "type": "string"
+                    },
+                    {
+                      "const": "changed",
+                      "description": "There is a file, but its content is not what was imported (`verify` only).",
+                      "type": "string"
+                    }
+                  ]
+                }
+              },
+              "required": [
+                "media_id",
+                "name",
+                "path",
+                "status"
+              ],
+              "type": "object"
+            },
+            "type": "array"
+          }
+        },
+        "required": [
+          "missing",
+          "checked"
+        ],
+        "title": "MediaFindMissingOutput",
+        "type": "object"
+      },
+      "scope": "any",
+      "secret_fields": [],
+      "summary": "List the media whose file is missing (or, with verify, changed) on this computer",
+      "undoable": false,
+      "view": false
+    },
+    {
+      "annotations": {
+        "destructiveHint": false,
+        "idempotentHint": true,
+        "openWorldHint": false,
         "readOnlyHint": false
       },
       "input_schema": {
@@ -20214,6 +20319,235 @@ expression: text
     },
     {
       "annotations": {
+        "destructiveHint": false,
+        "idempotentHint": true,
+        "openWorldHint": false,
+        "readOnlyHint": false
+      },
+      "input_schema": {
+        "additionalProperties": false,
+        "description": "Points one media asset at a file: the same file after it was moved or renamed, or another\nfile to use in its place. A replacement must be the same kind of media (video, audio or\nimage) and at least as long as the original, so every clip that uses the asset stays valid;\nthe asset then takes the new file's content hash and probe results. Fails with `Invalid` at\n`/path` when the file cannot be read or cannot stand in. One undo step puts the old path\nback. Agents and headless callers may only name files inside the project folder and the\nfolders the user approved.",
+        "properties": {
+          "media": {
+            "description": "The asset (a file, not a compound clip).",
+            "pattern": "^med_[0-9a-f]{32}$",
+            "type": "string"
+          },
+          "path": {
+            "description": "Absolute path of the file to use.",
+            "type": "string"
+          }
+        },
+        "required": [
+          "media",
+          "path"
+        ],
+        "title": "MediaRelink",
+        "type": "object"
+      },
+      "kind": "engine",
+      "mcp": "catalog",
+      "mcp_tool": "media_relink",
+      "name": "media.relink",
+      "namespace": "media",
+      "output_schema": {
+        "additionalProperties": false,
+        "description": "One asset that was pointed at a file.",
+        "properties": {
+          "from": {
+            "description": "Where the document said its file was.",
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "matched_by": {
+            "description": "How the file was recognized.",
+            "oneOf": [
+              {
+                "const": "hash",
+                "description": "Its content hash is the asset's: the same file, moved or renamed.",
+                "type": "string"
+              },
+              {
+                "const": "name",
+                "description": "Other bytes with the asset's file name, kind and duration (`media.relink_folder`).",
+                "type": "string"
+              },
+              {
+                "const": "chosen",
+                "description": "The caller named it (`media.relink`) and its content differs from what was imported.",
+                "type": "string"
+              }
+            ]
+          },
+          "media_id": {
+            "description": "The asset.",
+            "pattern": "^med_[0-9a-f]{32}$",
+            "type": "string"
+          },
+          "to": {
+            "description": "Where it is now.",
+            "type": "string"
+          }
+        },
+        "required": [
+          "media_id",
+          "from",
+          "to",
+          "matched_by"
+        ],
+        "title": "Relinked",
+        "type": "object"
+      },
+      "scope": "any",
+      "secret_fields": [],
+      "summary": "Point a media asset at a file (the moved original, or a replacement)",
+      "undoable": false,
+      "view": false
+    },
+    {
+      "annotations": {
+        "destructiveHint": false,
+        "idempotentHint": true,
+        "openWorldHint": false,
+        "readOnlyHint": false
+      },
+      "input_schema": {
+        "additionalProperties": false,
+        "description": "Searches a folder for the files of missing media and points each asset at its file, all in\none undo step. A file is recognized by its content, so moved and renamed files are found;\nan asset whose content is nowhere in the folder takes the one file with its name, kind and\nduration, if there is exactly one. Assets whose file is where the project says are left\nalone. Reads at most 2,000 files per call (16 levels down, no links, no hidden files).\nAgents and headless callers may only search the project folder and the folders the user\napproved (`Invalid` at `/folder` otherwise).",
+        "properties": {
+          "folder": {
+            "description": "Absolute path of the folder on disk to search.",
+            "type": "string"
+          },
+          "media": {
+            "default": null,
+            "description": "Only relink these assets (1..=256, no repeats); absent: every missing asset.",
+            "items": {
+              "description": "A Media id: `^med_[0-9a-f]{32}$`.",
+              "pattern": "^med_[0-9a-f]{32}$",
+              "type": "string"
+            },
+            "type": [
+              "array",
+              "null"
+            ]
+          },
+          "recursive": {
+            "default": null,
+            "description": "Also search the folders inside it (default true).",
+            "type": [
+              "boolean",
+              "null"
+            ]
+          }
+        },
+        "required": [
+          "folder"
+        ],
+        "title": "MediaRelinkFolder",
+        "type": "object"
+      },
+      "kind": "engine",
+      "mcp": "catalog",
+      "mcp_tool": "media_relink_folder",
+      "name": "media.relink_folder",
+      "namespace": "media",
+      "output_schema": {
+        "additionalProperties": false,
+        "description": "Result of `media.relink_folder`.",
+        "properties": {
+          "relinked": {
+            "description": "The assets whose file was found, by asset id.",
+            "items": {
+              "additionalProperties": false,
+              "description": "One asset that was pointed at a file.",
+              "properties": {
+                "from": {
+                  "description": "Where the document said its file was.",
+                  "type": [
+                    "string",
+                    "null"
+                  ]
+                },
+                "matched_by": {
+                  "description": "How the file was recognized.",
+                  "oneOf": [
+                    {
+                      "const": "hash",
+                      "description": "Its content hash is the asset's: the same file, moved or renamed.",
+                      "type": "string"
+                    },
+                    {
+                      "const": "name",
+                      "description": "Other bytes with the asset's file name, kind and duration (`media.relink_folder`).",
+                      "type": "string"
+                    },
+                    {
+                      "const": "chosen",
+                      "description": "The caller named it (`media.relink`) and its content differs from what was imported.",
+                      "type": "string"
+                    }
+                  ]
+                },
+                "media_id": {
+                  "description": "The asset.",
+                  "pattern": "^med_[0-9a-f]{32}$",
+                  "type": "string"
+                },
+                "to": {
+                  "description": "Where it is now.",
+                  "type": "string"
+                }
+              },
+              "required": [
+                "media_id",
+                "from",
+                "to",
+                "matched_by"
+              ],
+              "type": "object"
+            },
+            "type": "array"
+          },
+          "scanned": {
+            "description": "The number of files that were read.",
+            "format": "uint32",
+            "minimum": 0,
+            "type": "integer"
+          },
+          "still_missing": {
+            "description": "The assets (of `media`, or of the project) that are still missing.",
+            "items": {
+              "description": "A Media id: `^med_[0-9a-f]{32}$`.",
+              "pattern": "^med_[0-9a-f]{32}$",
+              "type": "string"
+            },
+            "type": "array"
+          },
+          "truncated": {
+            "description": "The folder holds more files than one call reads (2,000): run it on its subfolders.",
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "relinked",
+          "still_missing",
+          "scanned",
+          "truncated"
+        ],
+        "title": "MediaRelinkFolderOutput",
+        "type": "object"
+      },
+      "scope": "any",
+      "secret_fields": [],
+      "summary": "Find the files of missing media in a folder (by content, then name) and relink them",
+      "undoable": false,
+      "view": false
+    },
+    {
+      "annotations": {
         "destructiveHint": true,
         "idempotentHint": false,
         "openWorldHint": false,
@@ -20635,6 +20969,375 @@ expression: text
       "secret_fields": [],
       "summary": "Choose hardware or software decoding for the preview",
       "undoable": false,
+      "view": false
+    },
+    {
+      "annotations": {
+        "destructiveHint": false,
+        "idempotentHint": true,
+        "openWorldHint": false,
+        "readOnlyHint": false
+      },
+      "input_schema": {
+        "additionalProperties": false,
+        "description": "Records where a media file is now. Internal plumbing of `media.relink` and\n`media.relink_folder`, which check the file first: this command only writes the path, and\nthe content hash and probe results when the file's content is not what was imported. The\nproject-relative path is recomputed when the project is saved.",
+        "properties": {
+          "content_hash": {
+            "default": null,
+            "description": "The file's content hash, when it differs from the asset's.",
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "media": {
+            "description": "The asset (a file, not a compound clip).",
+            "pattern": "^med_[0-9a-f]{32}$",
+            "type": "string"
+          },
+          "path": {
+            "description": "Absolute path of the file.",
+            "type": "string"
+          },
+          "probe": {
+            "default": null,
+            "description": "What probing the file found, when its content differs from the asset's.",
+            "properties": {
+              "audio": {
+                "additionalProperties": false,
+                "description": "Main audio stream format, if any.",
+                "properties": {
+                  "channels": {
+                    "description": "Channel count.",
+                    "format": "uint16",
+                    "maximum": 65535,
+                    "minimum": 0,
+                    "type": "integer"
+                  },
+                  "rate": {
+                    "description": "Samples per second.",
+                    "maximum": 352800000,
+                    "minimum": 1,
+                    "type": "integer"
+                  }
+                },
+                "required": [
+                  "rate",
+                  "channels"
+                ],
+                "type": [
+                  "object",
+                  "null"
+                ]
+              },
+              "color": {
+                "additionalProperties": false,
+                "description": "Color tags of the main video stream.",
+                "properties": {
+                  "matrix": {
+                    "description": "YUV matrix coefficients.",
+                    "examples": [
+                      "gbr",
+                      "bt709",
+                      "fcc",
+                      "bt470bg",
+                      "smpte170m",
+                      "smpte240m",
+                      "ycgco",
+                      "bt2020nc",
+                      "bt2020c",
+                      "ictcp"
+                    ],
+                    "type": [
+                      "string",
+                      "null"
+                    ]
+                  },
+                  "primaries": {
+                    "description": "Color primaries.",
+                    "examples": [
+                      "bt709",
+                      "bt470m",
+                      "bt470bg",
+                      "smpte170m",
+                      "smpte240m",
+                      "film",
+                      "bt2020",
+                      "smpte428",
+                      "smpte431",
+                      "smpte432",
+                      "ebu3213"
+                    ],
+                    "type": [
+                      "string",
+                      "null"
+                    ]
+                  },
+                  "range": {
+                    "anyOf": [
+                      {
+                        "description": "Sample range of a video stream.",
+                        "oneOf": [
+                          {
+                            "const": "limited",
+                            "description": "Limited (\"TV\", 16–235 for 8-bit luma).",
+                            "type": "string"
+                          },
+                          {
+                            "const": "full",
+                            "description": "Full (\"PC\", 0–255).",
+                            "type": "string"
+                          }
+                        ]
+                      },
+                      {
+                        "type": "null"
+                      }
+                    ],
+                    "description": "Sample range."
+                  },
+                  "transfer": {
+                    "description": "Transfer characteristics.",
+                    "examples": [
+                      "bt709",
+                      "gamma22",
+                      "gamma28",
+                      "smpte170m",
+                      "smpte240m",
+                      "linear",
+                      "iec61966-2-1",
+                      "bt2020-10",
+                      "bt2020-12",
+                      "smpte2084",
+                      "arib-std-b67"
+                    ],
+                    "type": [
+                      "string",
+                      "null"
+                    ]
+                  }
+                },
+                "type": "object"
+              },
+              "duration": {
+                "anyOf": [
+                  {
+                    "anyOf": [
+                      {
+                        "maximum": 9007199254740991,
+                        "minimum": 0,
+                        "type": "integer"
+                      },
+                      {
+                        "pattern": "^-?[0-9]+(\\.[0-9]+)?s$|^-?[0-9]+$",
+                        "type": "string"
+                      }
+                    ],
+                    "description": "A non-negative duration in flicks (1/705600000 s) as an integer, or a string: seconds (\"62.5s\") or raw flicks (\"123\")."
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "description": "Playable length, if known (images have none)."
+              },
+              "fps": {
+                "additionalProperties": false,
+                "description": "Frame rate of the main video stream, if constant or nominal.",
+                "properties": {
+                  "den": {
+                    "description": "Seconds.",
+                    "maximum": 4294967295,
+                    "minimum": 1,
+                    "type": "integer"
+                  },
+                  "num": {
+                    "description": "Frames.",
+                    "maximum": 4294967295,
+                    "minimum": 1,
+                    "type": "integer"
+                  }
+                },
+                "required": [
+                  "num",
+                  "den"
+                ],
+                "type": [
+                  "object",
+                  "null"
+                ]
+              },
+              "rotation": {
+                "description": "Display rotation in degrees clockwise: 0, 90, 180 or 270.",
+                "format": "uint16",
+                "maximum": 65535,
+                "minimum": 0,
+                "type": "integer"
+              },
+              "streams": {
+                "description": "Streams in container order.",
+                "items": {
+                  "description": "One stream of a media file.",
+                  "properties": {
+                    "channels": {
+                      "description": "Channel count (audio).",
+                      "format": "uint16",
+                      "maximum": 65535,
+                      "minimum": 0,
+                      "type": [
+                        "integer",
+                        "null"
+                      ]
+                    },
+                    "codec": {
+                      "description": "Codec name (FFmpeg naming, e.g. `h264`, `aac`).",
+                      "type": [
+                        "string",
+                        "null"
+                      ]
+                    },
+                    "height": {
+                      "description": "Coded height in pixels (video).",
+                      "format": "uint32",
+                      "minimum": 0,
+                      "type": [
+                        "integer",
+                        "null"
+                      ]
+                    },
+                    "index": {
+                      "description": "Index in the container.",
+                      "format": "uint32",
+                      "minimum": 0,
+                      "type": "integer"
+                    },
+                    "kind": {
+                      "description": "Stream kind.",
+                      "oneOf": [
+                        {
+                          "const": "video",
+                          "description": "Pictures.",
+                          "type": "string"
+                        },
+                        {
+                          "const": "audio",
+                          "description": "Sound.",
+                          "type": "string"
+                        },
+                        {
+                          "const": "subtitle",
+                          "description": "Subtitles or captions.",
+                          "type": "string"
+                        },
+                        {
+                          "const": "data",
+                          "description": "Timed metadata or other data.",
+                          "type": "string"
+                        },
+                        {
+                          "const": "attachment",
+                          "description": "Attached files (fonts, cover art).",
+                          "type": "string"
+                        }
+                      ]
+                    },
+                    "language": {
+                      "description": "Language tag (e.g. `eng`).",
+                      "type": [
+                        "string",
+                        "null"
+                      ]
+                    },
+                    "pixel_format": {
+                      "description": "Pixel format (FFmpeg naming, e.g. `yuv420p10le`; video).",
+                      "type": [
+                        "string",
+                        "null"
+                      ]
+                    },
+                    "profile": {
+                      "description": "Codec profile (e.g. `High`, `Main 10`).",
+                      "type": [
+                        "string",
+                        "null"
+                      ]
+                    },
+                    "sample_rate": {
+                      "description": "Sample rate (audio).",
+                      "maximum": 352800000,
+                      "minimum": 1,
+                      "type": [
+                        "integer",
+                        "null"
+                      ]
+                    },
+                    "width": {
+                      "description": "Coded width in pixels (video).",
+                      "format": "uint32",
+                      "minimum": 0,
+                      "type": [
+                        "integer",
+                        "null"
+                      ]
+                    }
+                  },
+                  "required": [
+                    "index",
+                    "kind"
+                  ],
+                  "type": "object"
+                },
+                "type": "array"
+              },
+              "vfr": {
+                "description": "Variable frame rate: times map through the frame index, never through `fps` (arch §4.1).",
+                "type": "boolean"
+              }
+            },
+            "required": [
+              "streams",
+              "vfr",
+              "rotation",
+              "color"
+            ],
+            "type": [
+              "object",
+              "null"
+            ]
+          }
+        },
+        "required": [
+          "media",
+          "path"
+        ],
+        "title": "MediaSetLocation",
+        "type": "object"
+      },
+      "kind": "command",
+      "mcp": "hidden",
+      "mcp_tool": null,
+      "name": "media.set_location",
+      "namespace": "media",
+      "output_schema": {
+        "additionalProperties": false,
+        "description": "Result of `media.set_location`.",
+        "properties": {
+          "media_id": {
+            "description": "The asset.",
+            "pattern": "^med_[0-9a-f]{32}$",
+            "type": "string"
+          }
+        },
+        "required": [
+          "media_id"
+        ],
+        "title": "MediaLocationSet",
+        "type": "object"
+      },
+      "scope": "any",
+      "secret_fields": [],
+      "summary": "Record where a media file is now (used by relink)",
+      "undoable": true,
       "view": false
     },
     {
