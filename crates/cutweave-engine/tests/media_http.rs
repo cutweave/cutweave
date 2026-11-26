@@ -522,7 +522,14 @@ fn rotated_media_give_upright_thumbnails_and_filmstrips() {
     // A 320×180 clip the probe says to show turned a quarter: a 180×320 picture.
     let f = fixture_turned("turned", true, Wall::ZERO, 4, 90);
     let s = &f.server;
-    let decoded = f.fake.decoded_frames();
+    // Entries in the thumbnail cache (the preview decodes too, so decodes are not counted).
+    let entries = || {
+        let status = call(&f.conn, "media.cache_status", json!({})).unwrap();
+        let kinds = status["kinds"].as_array().unwrap();
+        let thumbs = kinds.iter().find(|k| k["kind"] == "thumbnails").unwrap();
+        thumbs["entries"].as_u64().unwrap()
+    };
+    assert_eq!(entries(), 2, "the poster and the filmstrip of the import");
 
     // The poster and the filmstrip of the import analysis are the upright ones.
     let poster = s.get(&format!("/media/{}/thumb", f.media), &[]);
@@ -547,11 +554,7 @@ fn rotated_media_give_upright_thumbnails_and_filmstrips() {
         (json!(sprite.0), json!(sprite.1)),
         (manifest["sprite_w"].clone(), manifest["sprite_h"].clone())
     );
-    assert_eq!(
-        f.fake.decoded_frames(),
-        decoded,
-        "both were made by the import analysis"
-    );
+    assert_eq!(entries(), 2, "both were made by the import analysis");
 
     // A width is the upright picture's, and `h` narrows the tiles by its aspect.
     let thumb = s.get(&format!("/media/{}/thumb?t=1000&w=90", f.media), &[]);
