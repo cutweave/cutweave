@@ -7,6 +7,9 @@
 //   than the strip's spacing, a tile asks for its own frame (`/media/{id}/thumb`), which decodes.
 // - Waveforms are the asset's peak pyramid at the coarsest level that still gives the
 //   resolution asked for (`/media/{id}/waveform?lod=`), as min/max per bin.
+// - The pictures are upright (the engine turns them by the media's display rotation), so a phone
+//   clip's are taller than wide. The timeline stretches a tile over its slot, so a tile is the
+//   centred part of the picture that has the slot's shape (like `object-fit: cover`).
 // - Every URL carries `hash=` (the asset's content hash), so the engine answers it as immutable
 //   and the browser cache keeps it; the token goes in the `Authorization` header.
 // - Cancellation: the timeline aborts a tile or peaks request (its `AbortSignal`) when it
@@ -148,6 +151,23 @@ export function tileIndex(manifest: FilmstripManifest, t: number): number {
   return Math.min(manifest.count - 1, Math.max(0, i));
 }
 
+/**
+ * The centred part of a `w`×`h` picture that has the shape of a `boxW`×`boxH` slot, in whole
+ * pixels (like `object-fit: cover`): all of it when the shapes agree.
+ */
+export function coverPart(
+  w: number,
+  h: number,
+  boxW: number,
+  boxH: number,
+): { x: number; y: number; w: number; h: number } {
+  if (!(w > 0 && h > 0 && boxW > 0 && boxH > 0)) return { x: 0, y: 0, w, h };
+  const scale = Math.max(boxW / w, boxH / h);
+  const cw = Math.min(w, Math.max(1, Math.round(boxW / scale)));
+  const ch = Math.min(h, Math.max(1, Math.round(boxH / scale)));
+  return { x: Math.floor((w - cw) / 2), y: Math.floor((h - ch) / 2), w: cw, h: ch };
+}
+
 export function parseManifest(header: string | null): FilmstripManifest | null {
   if (header === null) return null;
   try {
@@ -245,7 +265,14 @@ export function httpMediaLoaders(options: HttpLoaderOptions): HttpMediaLoaders {
       const path = mediaPath(req.mediaId, "thumb", { t: Math.floor(center), w, hash: media.hash });
       try {
         const response = await options.http.get(path, signal);
-        return await decode(await response.blob());
+        const frame = await decode(await response.blob());
+        const part = coverPart(frame.width, frame.height, req.width, req.height);
+        if (part.w === frame.width && part.h === frame.height) return frame;
+        try {
+          return await crop(frame, part.x, part.y, part.w, part.h);
+        } finally {
+          frame.close();
+        }
       } catch (e) {
         if (absent(e)) return null;
         throw e;
@@ -254,7 +281,8 @@ export function httpMediaLoaders(options: HttpLoaderOptions): HttpMediaLoaders {
     const i = tileIndex(manifest, center);
     const sx = (i % manifest.columns) * manifest.tile_w;
     const sy = Math.floor(i / manifest.columns) * manifest.tile_h;
-    return crop(strip.bitmap, sx, sy, manifest.tile_w, manifest.tile_h);
+    const part = coverPart(manifest.tile_w, manifest.tile_h, req.width, req.height);
+    return crop(strip.bitmap, sx + part.x, sy + part.y, part.w, part.h);
   }
 
   async function waveform(
