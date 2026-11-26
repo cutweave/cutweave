@@ -460,7 +460,9 @@ const FieldView = memo(function FieldView({
   };
   const showKeyframe = keyframe !== undefined || (hasKeyframes && node.keyframeable);
   const labelProps = { id: labelId, className: "cw-row__label label", title: node.description };
-  const stacked = STACKED.has(node.widget);
+  // A pair needs the row's width for its two fields; with the keyframe group and reset beside it
+  // in a narrow dock the control would run under them, so the label gets its own line.
+  const stacked = STACKED.has(node.widget) || (node.widget === "vec2" && showKeyframe);
   return (
     <div
       className="cw-row cw-sf-row"

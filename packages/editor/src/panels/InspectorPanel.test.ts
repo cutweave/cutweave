@@ -132,6 +132,39 @@ describe("InspectorPanel", () => {
     expect(engine.calls).toEqual([]);
   });
 
+  it("after an opacity key press the slider follows the document again (an undo)", async () => {
+    selectItems("itm_v");
+    renderPanel();
+    const thumb = screen.getByRole("slider", { name: "Opacity" });
+    act(() => thumb.focus());
+    fireEvent.keyDown(thumb, { key: "ArrowLeft" });
+    await waitFor(() => expect(engine.names()).toContain("edit.commit_tx"));
+    const opacity = (value: number) => ({
+      visual: {
+        transform: {
+          position: { x: 0, y: 0 },
+          scale: { x: 1, y: 1 },
+          rotation: 0,
+          anchor: { x: 0, y: 0 },
+        },
+        opacity: value,
+      },
+    });
+    act(() => load({ itm_v: opacity(0.99) }));
+    await waitFor(() =>
+      expect(screen.getByRole("slider", { name: "Opacity" }).getAttribute("aria-valuenow")).toBe(
+        "99",
+      ),
+    );
+    // The edit is undone: the document says 100 again, and the slider must show it.
+    act(() => load({ itm_v: opacity(1) }));
+    await waitFor(() =>
+      expect(screen.getByRole("slider", { name: "Opacity" }).getAttribute("aria-valuenow")).toBe(
+        "100",
+      ),
+    );
+  });
+
   it("renames a clip with item.set_props", async () => {
     selectItems("itm_v");
     renderPanel();
