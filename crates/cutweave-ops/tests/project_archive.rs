@@ -3,7 +3,11 @@
 //! the engine's part (free space, writing the project, the hash) is a stand-in, so the hashes
 //! here are FNV-1a, not SHA-256 (the engine's test checks the real ones).
 
-#![allow(clippy::unwrap_used, clippy::expect_used)]
+#![allow(
+    clippy::unwrap_used,
+    clippy::expect_used,
+    clippy::many_single_char_names
+)]
 
 mod common;
 
@@ -320,6 +324,28 @@ fn a_folder_archive_lists_every_file_with_its_size_and_hash() {
     let (done, total) = progress.last.get();
     assert_eq!(done, total);
     assert!(total > 0);
+}
+
+#[test]
+fn a_folder_archive_cancelled_while_it_is_checked_continues() {
+    let f = fixture("folder-cancel");
+    let host = Host::new(None);
+    let dest = f.t.path("Out/Handover");
+    let plan = f.folder_plan(&dest);
+    // Past the copy (reported up to the media's size), two megabytes into the check.
+    let stop = (CLIP_A + CLIP_B) as u64 + 2_000_000;
+    let err = run_archive_folder(&plan, &*host, &Progress::until(stop)).unwrap_err();
+    assert!(matches!(err, JobError::Cancelled), "{err:?}");
+    // The media are kept, but the folder holds no project and no file list yet.
+    let left = files_below(&dest);
+    assert!(left.contains("media/day1/clip.mp4"), "{left:?}");
+    assert!(!left.contains("Handover.cutweave"), "{left:?}");
+    assert!(!left.contains(MANIFEST_NAME), "{left:?}");
+    assert!(!host.holds_project(&dest));
+    // The same call finishes it.
+    let manifest = run_archive_folder(&plan, &*host, &Progress::all()).unwrap();
+    assert_eq!(paths(&manifest), FILES);
+    assert!(dest.join(MANIFEST_NAME).is_file());
 }
 
 #[test]

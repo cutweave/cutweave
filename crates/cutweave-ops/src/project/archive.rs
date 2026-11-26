@@ -10,7 +10,8 @@
 //!
 //! - [`ArchiveFormat::Folder`]: `dest` is the folder. The files are copied by the collect
 //!   copier (each through `<name>.part`, compared with its source), then every file of the copy
-//!   is read once more for its hash and the manifest is written last.
+//!   is read once more for its hash and the manifest is written last. A run that stops before
+//!   that leaves the copied media but no project document, so the same call continues it.
 //! - [`ArchiveFormat::Zip`]: `dest` is the `.zip` file. It holds one folder named after the file
 //!   (`Promo.zip` holds `Promo/…`), so extracting it anywhere gives a project folder. Entries
 //!   are stored, not compressed (media do not shrink, and a stored entry can be read in place);
@@ -219,7 +220,26 @@ pub fn run_archive_folder(
         second: false,
     };
     let (_, document) = collect_into(plan, host, &copying)?;
-    let mut entries = vec![entry(relative(&plan.dest, &document)?, document)?];
+    let listed = list_folder(plan, &document, host, progress);
+    if listed.is_err() {
+        // Without its document the folder is an interrupted archive again, so the same call
+        // continues it (a folder that holds a project is refused).
+        let _ = fs::remove_file(&document);
+    }
+    listed
+}
+
+/// The second half of a folder archive: hashes the copy and writes `archive.json`.
+fn list_folder(
+    plan: &CollectPlan,
+    document: &Path,
+    host: &dyn CollectHost,
+    progress: &dyn CollectProgress,
+) -> Result<ArchiveManifest, JobError> {
+    let mut entries = vec![entry(
+        relative(&plan.dest, document)?,
+        document.to_path_buf(),
+    )?];
     for file in &plan.files {
         entries.push(entry(relative(&plan.dest, &file.to)?, file.to.clone())?);
     }

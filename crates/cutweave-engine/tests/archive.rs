@@ -96,10 +96,13 @@ fn wait(conn: &Connection, job: &Value) -> Value {
 }
 
 fn sha256(bytes: &[u8]) -> String {
+    use std::fmt::Write as _;
     Sha256::digest(bytes)
         .iter()
-        .map(|b| format!("{b:02x}"))
-        .collect()
+        .fold(String::new(), |mut hex, b| {
+            let _ = write!(hex, "{b:02x}");
+            hex
+        })
 }
 
 /// Checks every entry of the manifest in `folder` against the files there, and that the
