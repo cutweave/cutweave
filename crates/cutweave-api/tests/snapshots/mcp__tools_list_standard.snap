@@ -1374,6 +1374,13 @@ expression: catalog.tools_json()
               "null"
             ],
             "description": "For folders in `paths`: mirror their directories as bin folders (default true); false\nputs every file straight into `folder`."
+          },
+          "copy_to_project": {
+            "type": [
+              "boolean",
+              "null"
+            ],
+            "description": "Copy each new file into the project's `media/` folder first (default false)."
           }
         },
         "required": [
