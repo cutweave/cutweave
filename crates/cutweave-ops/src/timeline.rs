@@ -14,9 +14,23 @@ use cutweave_model::{
     Duration, GroupId, Item, ItemId, MediaId, SequenceFormat, SequenceId, Time, TrackId, TrackKind,
 };
 
-/// Length of a still image when `duration` is omitted: five seconds (snapped to the nearest
-/// frame, INV-25).
-pub const DEFAULT_STILL_SECS: i64 = 5;
+/// Length of a still image when `duration` is omitted and the project stores no still
+/// duration: five seconds (ADR-0035).
+pub const DEFAULT_STILL_SECS: i64 = cutweave_model::DEFAULT_STILL_DURATION_SECS;
+
+/// The frames a still gets when it is placed without a length: the project's still duration
+/// (`settings.still_duration`, ADR-0035) snapped to the nearest frame of `rate`, at least one
+/// frame (INV-25).
+pub(crate) fn default_still_frames(
+    doc: &cutweave_model::Project,
+    rate: cutweave_model::FrameRate,
+) -> Result<i64, cutweave_commands::CmdError> {
+    let length = cutweave_model::Time::from_flicks(doc.settings.still_duration().flicks())
+        .map_err(|e| cutweave_commands::CmdError::internal(e.to_string()))?;
+    Ok(rate
+        .time_to_frame(length, cutweave_model::Rounding::Nearest)
+        .max(1))
+}
 
 pub mod clipboard;
 pub mod edit;

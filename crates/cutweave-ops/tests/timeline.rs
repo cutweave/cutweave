@@ -297,6 +297,51 @@ fn insert_an_image_defaults_to_five_seconds() {
 }
 
 #[test]
+fn a_still_gets_the_projects_still_duration_and_existing_clips_keep_theirs() {
+    // ADR-0035: insert, change the setting, insert again.
+    let mut h = H::empty();
+    let out = h.ok(
+        "project.new",
+        json!({"name": "Stills", "still_duration": "8s"}),
+    );
+    let p = P {
+        sequence: id(&out["sequence"]),
+        video: id(&out["video_track"]),
+        audio: id(&out["audio_track"]),
+    };
+    assert_eq!(h.doc().settings.still_duration().flicks(), 8 * FLICKS);
+    let img = h.add_image("/m/i.png");
+    let first = insert(&mut h, p, p.video, img, json!({})).unwrap();
+    assert_eq!(
+        clip_of(&h, p, &first["clips"][0]).duration.flicks(),
+        8 * FLICKS
+    );
+
+    let mut doc = h.doc();
+    doc.settings.still_duration = Some(cutweave_model::Duration::from_secs(2).unwrap());
+    h.replace_doc(doc);
+    let second = insert(&mut h, p, p.video, img, json!({"at": "20s"})).unwrap();
+    assert_eq!(
+        clip_of(&h, p, &second["clips"][0]).duration.flicks(),
+        2 * FLICKS
+    );
+    assert_eq!(
+        clip_of(&h, p, &first["clips"][0]).duration.flicks(),
+        8 * FLICKS,
+        "unchanged"
+    );
+    // A length shorter than a frame is one frame.
+    let mut doc = h.doc();
+    doc.settings.still_duration = Some(cutweave_model::Duration::from_flicks(1).unwrap());
+    h.replace_doc(doc);
+    let third = insert(&mut h, p, p.video, img, json!({"at": "40s"})).unwrap();
+    assert_eq!(
+        clip_of(&h, p, &third["clips"][0]).duration.flicks(),
+        FLICKS / 30
+    );
+}
+
+#[test]
 fn insert_unknown_sequence_track_or_media_is_not_found() {
     let (mut h, p) = H::project();
     let m = h.add_video("/m/v.mp4", 10, false);

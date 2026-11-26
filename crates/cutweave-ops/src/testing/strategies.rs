@@ -592,8 +592,15 @@ fn project_new() -> BoxedStrategy<Value> {
             json!({"width": width, "height": height, "frame_rate": frame_rate,
                    "sample_rate": sample_rate})
         });
-    let valid = (name(), option::of(format))
-        .prop_map(|(name, format)| json!({"name": name, "format": format}))
+    let still = option::of(prop_oneof![
+        Just(json!("3s")),
+        Just(json!("f:1")),
+        Just(json!("3600s")),
+    ]);
+    let valid = (name(), option::of(format), still)
+        .prop_map(|(name, format, still)| {
+            json!({"name": name, "format": format, "still_duration": still})
+        })
         .boxed();
     let invalid = prop_oneof![
         bad_name().prop_map(|name| json!({"name": name})),
@@ -602,6 +609,8 @@ fn project_new() -> BoxedStrategy<Value> {
         Just(json!({"name": "P", "format": {"frame_rate": {"num": 2000, "den": 1}}})),
         Just(json!({"name": "P", "format": {"frame_rate": {"num": 1001, "den": 7}}})),
         Just(json!({"name": "P", "format": {"sample_rate": 1234}})),
+        Just(json!({"name": "P", "still_duration": "0s"})),
+        Just(json!({"name": "P", "still_duration": "3601s"})),
     ]
     .boxed();
     mix(valid, invalid)

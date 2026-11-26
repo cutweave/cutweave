@@ -4780,6 +4780,11 @@ export type ProjectNew = {
 	name: string,
 	/**  Format of the first sequence; also the default for new sequences. */
 	format?: FormatSpec | null,
+	/**
+	 *  How long a still image is when it is placed without a length (up to one hour); absent:
+	 *  five seconds. The editor passes the person's "Still image duration" setting.
+	 */
+	still_duration?: TimeInput | null,
 };
 
 /**  Result of `project.new`. */
@@ -4992,6 +4997,13 @@ export type ProjectSetAutosaveOutput = {
 export type ProjectSettings = {
 	/**  Format of new sequences. */
 	default_format: SequenceFormat,
+	/**
+	 *  How long a still image is when it is placed without a length (ADR-0035). Absent: five
+	 *  seconds ([`DEFAULT_STILL_DURATION_SECS`]); left out of the file while absent, so
+	 *  documents written before the field read the same. Changing it never alters clips that
+	 *  already exist.
+	 */
+	still_duration?: Duration | null,
 } & { [key in string]: unknown };
 
 /**  What the engine holds: the `project.*` commands return it and `project.opened` carries it. */

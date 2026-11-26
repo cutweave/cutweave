@@ -81,3 +81,20 @@ describe("a new project opens in the workspace chosen in Settings", () => {
     expect(viewStore.getState().workspaceId).toBe("long-form");
   });
 });
+
+describe("a new project takes the still image duration from Settings (WP-2F.05b)", () => {
+  it("passes Settings > Editing > Still image duration to project.new", async () => {
+    const sent: unknown[] = [];
+    engine.answer("project.new", (params: unknown) => {
+      sent.push(params);
+      return { project: status() };
+    });
+    expect(await newProject()).toBe(true);
+    prefsStore.setState({ values: { ...defaultPreferences(), "editing.still_duration": 12 } });
+    expect(await newProject()).toBe(true);
+    expect(sent).toEqual([
+      { name: "Film", still_duration: "5s" },
+      { name: "Film", still_duration: "12s" },
+    ]);
+  });
+});

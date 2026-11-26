@@ -693,6 +693,7 @@ export async function openSettingsPage(
   name:
     | "General"
     | "Appearance"
+    | "Editing"
     | "Media and import"
     | "Export"
     | "Saving and backups"
