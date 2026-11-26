@@ -839,7 +839,7 @@ Schedule note: the roadmap gives 9 weeks. Total effort here is about 162 agent-d
 - **Scope:**
   - Proxy job: transcode to an intra-frame codec at ≤ 960 px on the long edge (ProRes Proxy via `prores_ks`/videotoolbox where present, DNxHR LB fallback, MJPEG last), audio copied to PCM. Keeps frame count and timestamps identical to the source (VFR sources are conformed through the media index to CFR with a stored `pts_map` so that proxy frame *n* equals source frame *n*, essential for frame-exact edits).
   - Content-addressed in the global cache (`cache.sqlite` entry keyed by `content_hash + proxy_profile`), size-capped LRU, resumable job (partial files finalized atomically), progress events, cancel, concurrency limit (default 2; ≤ 1 while exporting), CPU/GPU niceness.
-  - Policy in `project.settings.proxy_policy`: `off | auto | all`. `auto` triggers on import for long-GOP codecs (H.264/HEVC) with long edge > 1920 px or fps > 60 or HEVC 10-bit (documented). Per-media `media.set_proxy_mode{auto|force|off}`. (2026-11-25: the two project-format fields and their commands wait for [ADR-0027](../adr/0027-proxy-policy-in-the-project.md), Proposed; WP-2F.01 shipped with `auto` for every project, arch §7.)
+  - Policy in `project.settings.proxy_policy`: `off | auto | all`. `auto` triggers on import for long-GOP codecs (H.264/HEVC) with long edge > 1920 px or fps > 60 or HEVC 10-bit (documented). Per-media `media.set_proxy_mode{auto|force|off}`. (2026-11-25: WP-2F.01 shipped with `auto` for every project, arch §7. [ADR-0027](../adr/0027-proxy-policy-in-the-project.md) was accepted on 2026-11-26; the two project-format fields and their commands are a follow-up.)
   - Commands: `media.generate_proxy{media[]}`, `media.delete_proxy`, `media.set_proxy_policy`, `media.proxy_status` query. Jobs resumed after engine restart.
   - MCP: catalog; `media_import` reports `proxy: queued|none`.
 - **Interfaces:** `ProxyRef {path, profile, status}`; `job.progress` events; queries above.
@@ -1444,7 +1444,7 @@ Schedule note: the roadmap gives 9 weeks. Total effort here is about 162 agent-d
 ### WP-2H.14 — Detached panels I: popout windows, the shell and the layout
 - **Area:** apps/desktop/src/main (`window-policy.ts`, `windows.ts`, `hardening.ts`, `index.ts` focus wiring, a `window:setPopoutOnTop` channel in the IPC contract and `handlers.ts`), apps/desktop/src/preload (the one new bridge method), packages/editor/public/popout.html, packages/editor/src/workspace/ (`dockHost.ts`, `commands.ts`), packages/editor/src/dock/, packages/editor/src/shell/ (a window registry), packages/editor/src/menus/surfaces (the `dock.tab` items), the `en` catalog, apps/desktop/e2e (security, flows), docs/user-flows.md, docs/adr/ (the ADR, Proposed), docs/01-architecture.md §2, §16, §18
 - **Depends on:** WP-2H.01, WP-2H.12, WP-2H.13 (the dock tab menu), the ADR in section 9
-  - **Blocked by the product owner's decision on the popout-window ADR** (research [10-detached-panels.md](../research/10-detached-panels.md) §9): popout windows run unsandboxed in the editor's process, an exception to arch §2/§18 and ADR-0001.
+  - **Decided in [ADR-0031](../adr/0031-detached-panels-popout-windows.md)** (Accepted 2026-11-26): popout windows run unsandboxed in the editor's process with no preload, an exception to arch §2/§18 and ADR-0001.
 - **Size:** M
 - **Executor:** opus (it changes the window security policy and the Electron process model)
 - **Scope:**
@@ -1492,7 +1492,7 @@ Schedule note: the roadmap gives 9 weeks. Total effort here is about 162 agent-d
 ### WP-2H.15 — Detached panels II: every panel works in its own window
 - **Area:** packages/editor (keymap dispatch, transport keymap, app commands, bin keys, the menu host, the palette, `preview/`, the timeline panel, scrub and gesture schedulers), packages/ui (a portal-container provider for `Menu`, `Tooltip` and `Dialog`; `Tabs`), packages/timeline (`timeline-view.ts`), apps/desktop/src/preload (`present-loop.ts`, `api.ts`: present on the canvas's window, re-attach), a lint rule (biome or a script in `just check`), apps/desktop/e2e/flows, docs/user-flows.md
 - **Depends on:** WP-2H.14, WP-2H.05
-  - **Blocked by the product owner's decision on the popout-window ADR** (research [10-detached-panels.md](../research/10-detached-panels.md) §9): popout windows run unsandboxed in the editor's process, an exception to arch §2/§18 and ADR-0001.
+  - **Decided in [ADR-0031](../adr/0031-detached-panels-popout-windows.md)** (Accepted 2026-11-26): popout windows run unsandboxed in the editor's process with no preload, an exception to arch §2/§18 and ADR-0001.
 - **Size:** M
 - **Executor:** sonnet
 - **Scope:**

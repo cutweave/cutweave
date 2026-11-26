@@ -1,6 +1,6 @@
 # ADR-0025: The ready line means serving; the supervisor judges a start by liveness
 
-- **Status:** Proposed
+- **Status:** Accepted (product owner, 2026-11-26)
 - **Date:** 2026-11-25
 - **Deciders:** Cutweave maintainers (drafted by the issue #143 fix)
 - **Supersedes:** none (amends the supervision rules of the [launch protocol](../reference/launch-protocol.md), WP-1L.03, and the GPU wait of WP-1I.05)
@@ -38,6 +38,8 @@ Two things were wrong. The engine kept optional work on the path to the ready li
 4. **Heartbeats on stderr.** Rejected: stderr is for people, and main does not read it.
 
 ## Decision
+
+Accepted by the product owner on 2026-11-26 as built in the issue #143 fix.
 
 We will make the ready line mean "serving": the server accepts connections, the run-file is written and every command works. Work nothing needs at once goes on in the background and announces itself (`engine.degraded`) when it fails: the GPU (a Gui engine waits for it only until 4 s after it began to open; the caches, the audio output and the preview ring start inside that window), the media capabilities probe, the reaping of stale run-files, and the run-file's private file, which the engine makes while its subsystems start.
 
