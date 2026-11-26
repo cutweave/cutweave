@@ -77,9 +77,10 @@ impl Policy {
                 collision: Collision::Overwrite,
                 explicit: true,
             }),
-            (None, o) => Ok(Policy {
+            // `overwrite: false` is the old spelling of the default.
+            (None, _) => Ok(Policy {
                 collision: Collision::Fail,
-                explicit: o.is_some(),
+                explicit: false,
             }),
         }
     }

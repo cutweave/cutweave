@@ -381,6 +381,11 @@ fn fail_refuses_an_existing_file_at_the_path() {
     std::fs::write(&path, b"old").unwrap();
     // As before the policy existed: the hint is about `overwrite`.
     assert_invalid(export(&h, json!({"path": path})).0, "/overwrite");
+    // The editor sends `overwrite: false` for the default and relies on that pointer.
+    assert_invalid(
+        export(&h, json!({"path": path, "overwrite": false})).0,
+        "/overwrite",
+    );
     let (r, plans) = export(&h, json!({"path": path, "collision": "fail"}));
     assert_invalid(r, "/path");
     assert!(plans.is_empty());
