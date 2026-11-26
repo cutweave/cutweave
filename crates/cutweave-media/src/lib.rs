@@ -49,7 +49,7 @@ mod ffmpeg;
 
 pub use backend::{
     AudioDecoder, AudioEncodeSpec, ConcatSpec, DecodeMode, DecodeOpts, EncodeSpec, EncodeSummary,
-    Encoder, HwEncode, HwMode, MediaBackend, VideoDecoder, VideoEncodeSpec,
+    Encoder, HwEncode, HwMode, MediaBackend, VideoAdvanced, VideoDecoder, VideoEncodeSpec,
 };
 pub use cancel::CancelToken;
 pub use caps::{Capabilities, CodecSupport, HwCodec};

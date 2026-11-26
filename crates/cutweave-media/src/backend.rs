@@ -191,6 +191,42 @@ pub struct VideoEncodeSpec {
     pub profile: Option<String>,
     /// Keeps the alpha channel of RGBA input: ProRes 4444 and 4444 XQ only.
     pub alpha: bool,
+    /// The settings of the advanced export controls (WP-2G.05); the default leaves every one to
+    /// the encoder.
+    pub advanced: VideoAdvanced,
+}
+
+/// Encoder settings beyond rate control and speed (WP-2G.05). Every field left `None` (or
+/// `false`) keeps the encoder's own behaviour, so the default changes nothing. Settings an
+/// encoder cannot take are [`MediaError::Unsupported`](crate::MediaError::Unsupported) when it
+/// opens: x264 and x265 take all of them, SVT-AV1 all but `bframes` and `level`, hardware
+/// encoders only `keyint`, `bframes` and the rate-control fields, ProRes none.
+#[derive(Clone, Debug, Default, PartialEq, Eq)]
+pub struct VideoAdvanced {
+    /// Peak bitrate in bits per second (with `Bitrate`: capped VBR; with `Crf`: constrained
+    /// quality). `Cbr` fixes it to the bitrate.
+    pub max_bitrate: Option<u32>,
+    /// Rate-control buffer (VBV) size in bits.
+    pub buffer_size: Option<u32>,
+    /// Keyframe interval in frames (the GOP size).
+    pub keyint: Option<u32>,
+    /// Shortest distance between keyframes, in frames.
+    pub keyint_min: Option<u32>,
+    /// Consecutive B-frames (0 turns them off).
+    pub bframes: Option<u8>,
+    /// `true`: every keyframe is an IDR frame and no frame refers across one (a closed GOP);
+    /// `false`: open GOPs. `None`: the encoder's default.
+    pub closed_gop: Option<bool>,
+    /// Scene-cut detection: `false` turns it off, so keyframes fall exactly on the interval.
+    pub scenecut: Option<bool>,
+    /// The encoder's tune (`film`, `grain`, `zerolatency`; SVT-AV1: `vq`, `psnr`, `ssim`).
+    pub tune: Option<String>,
+    /// The codec level (`4.1`).
+    pub level: Option<String>,
+    /// Write the color tags without converting the picture: RGB input is converted with
+    /// BT.709 limited range whatever the tags say. `false`: the matrix and range of `color`
+    /// are the ones of the conversion.
+    pub tag_only: bool,
 }
 
 impl VideoEncodeSpec {
@@ -216,6 +252,7 @@ impl VideoEncodeSpec {
             bit_depth: 8,
             profile: None,
             alpha: false,
+            advanced: VideoAdvanced::default(),
         }
     }
 

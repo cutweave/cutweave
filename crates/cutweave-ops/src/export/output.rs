@@ -301,7 +301,7 @@ const fn bpp_milli(crf: u8) -> u128 {
 #[must_use]
 pub fn estimate_bytes(plan: &ExportPlan) -> u64 {
     let video_bps = match plan.rate {
-        Some(PlanRate::BitrateKbps(k)) => u128::from(k) * 1000,
+        Some(PlanRate::BitrateKbps(k) | PlanRate::Cbr(k)) => u128::from(k) * 1000,
         other => {
             let crf = match other {
                 Some(PlanRate::Crf(c)) => c,

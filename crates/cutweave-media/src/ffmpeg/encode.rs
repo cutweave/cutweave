@@ -76,6 +76,10 @@ const AAC: &str = "aac";
 const PCM_S16LE: &str = "pcm_s16le";
 /// 24-bit little-endian PCM (ProRes exports, in MOV).
 const PCM_S24LE: &str = "pcm_s24le";
+/// The codec-id names of the other audio codecs of the advanced export controls.
+const MP3: &str = "mp3";
+const OPUS: &str = "opus";
+const FLAC: &str = "flac";
 /// swscale's BT.709 matrix.
 const SWS_CS_ITU709: std::ffi::c_int = ffmpeg_next::ffi::SWS_CS_ITU709;
 
@@ -376,14 +380,27 @@ impl VideoPlan {
             });
         }
         let color = output_color(&spec.color);
-        if color.primaries != Some(ColorPrimaries::Bt709)
-            || color.transfer != Some(TransferCharacteristics::Bt709)
-            || color.matrix != Some(MatrixCoefficients::Bt709)
-            || color.range != Some(ColorRange::Limited)
+        if matches!(
+            color.transfer,
+            Some(TransferCharacteristics::Pq | TransferCharacteristics::Hlg)
+        ) {
+            return Err(unsupported(format!(
+                "output transfer {}: HDR output is not exported yet",
+                color.transfer.as_ref().map_or("", TransferCharacteristics::as_str)
+            )));
+        }
+        if let Some(name) = unknown_color_name(&color) {
+            return Err(unsupported(format!(
+                "output color `{name}`: not a color tag this encoder writes"
+            )));
+        }
+        if !spec.advanced.tag_only
+            && spec.input_format == PixelFormat::Rgba8
+            && sws_matrix(color.matrix.as_ref()).is_none()
         {
             return Err(unsupported(format!(
-                "output color {color:?}: exports are BT.709 limited range (other tags arrive with \
-                 the advanced export settings, P2)"
+                "matrix {}: the picture cannot be converted with it; write it as a tag only (tag_only)",
+                color.matrix.as_ref().map_or("", MatrixCoefficients::as_str)
             )));
         }
         let (num, den) = (spec.rate.num(), spec.rate.den());
@@ -452,6 +469,34 @@ impl VideoPlan {
                 }
             )))
         }
+    }
+}
+
+/// The first tag of `tags` that is a name this build does not know (`Other`), if any.
+fn unknown_color_name(tags: &ColorTags) -> Option<String> {
+    if let Some(ColorPrimaries::Other(n)) = &tags.primaries {
+        return Some(n.clone());
+    }
+    if let Some(TransferCharacteristics::Other(n)) = &tags.transfer {
+        return Some(n.clone());
+    }
+    if let Some(MatrixCoefficients::Other(n)) = &tags.matrix {
+        return Some(n.clone());
+    }
+    None
+}
+
+/// swscale's matrix constant for `matrix`, and whether swscale can convert with it (RGB and the
+/// constant-luminance, ICtCp and YCgCo matrices cannot).
+fn sws_matrix(matrix: Option<&MatrixCoefficients>) -> Option<std::ffi::c_int> {
+    use ffmpeg_next::ffi as f;
+    match matrix {
+        None | Some(MatrixCoefficients::Bt709) => Some(f::SWS_CS_ITU709),
+        Some(MatrixCoefficients::Bt470Bg | MatrixCoefficients::Smpte170M) => Some(f::SWS_CS_ITU601),
+        Some(MatrixCoefficients::Smpte240M) => Some(f::SWS_CS_SMPTE240M),
+        Some(MatrixCoefficients::Fcc) => Some(f::SWS_CS_FCC),
+        Some(MatrixCoefficients::Bt2020Ncl) => Some(f::SWS_CS_BT2020),
+        _ => None,
     }
 }
 
@@ -535,21 +580,25 @@ fn layout(channels: u16) -> ChannelLayout {
 
 impl AudioPlan {
     fn new(spec: &AudioEncodeSpec, container: &'static str) -> Result<AudioPlan, MediaError> {
-        let name = match (spec.codec.as_str(), container) {
-            (AAC, _) => AAC,
-            (PCM_S16LE, MOV) => PCM_S16LE,
-            (PCM_S24LE, MOV) => PCM_S24LE,
+        let (name, encoder_name) = match (spec.codec.as_str(), container) {
+            (AAC, _) => (AAC, "aac"),
+            (MP3, _) => (MP3, "libmp3lame"),
+            (OPUS, MP4) => (OPUS, "libopus"),
+            (FLAC, MP4) => (FLAC, "flac"),
+            (PCM_S16LE, MOV) => (PCM_S16LE, PCM_S16LE),
+            (PCM_S24LE, MOV) => (PCM_S24LE, PCM_S24LE),
             _ => {
                 return Err(unsupported(format!(
-                    "no `{}` encoder for {}: this backend writes AAC (and 16 or 24-bit PCM in MOV)",
+                    "no `{}` encoder for {}: this backend writes AAC and MP3 (MP4 and MOV), \
+                     Opus and FLAC (MP4) and 16 or 24-bit PCM (MOV)",
                     spec.codec,
                     container.to_ascii_uppercase()
                 )));
             }
         };
-        let codec = encoder::find_by_name(name)
-            .ok_or_else(|| unsupported(format!("this FFmpeg build has no {name} encoder")))?;
-        let channels_ok = if name == AAC {
+        let codec = encoder::find_by_name(encoder_name)
+            .ok_or_else(|| unsupported(format!("this FFmpeg build has no {encoder_name} encoder")))?;
+        let channels_ok = if matches!(name, AAC | MP3 | OPUS) {
             matches!(spec.channels, 1 | 2)
         } else {
             (1..=8).contains(&spec.channels)
@@ -558,7 +607,7 @@ impl AudioPlan {
             return Err(unsupported(format!(
                 "{} audio channels: {name} here takes {}",
                 spec.channels,
-                if name == AAC {
+                if matches!(name, AAC | MP3 | OPUS) {
                     "mono or stereo"
                 } else {
                     "1 to 8 channels"
@@ -772,10 +821,22 @@ pub(super) fn pixel(format: PixelFormat) -> Pixel {
 impl Convert {
     /// From `input` frames to `output` frames (RGBA in; 4:2:0, 4:2:2 or 4:4:4 out, 8 or 10 bit)
     /// at `size`.
+    #[cfg(test)]
     fn new(
         input: PixelFormat,
         output: Pixel,
         size: (u32, u32),
+    ) -> Result<Convert, ffmpeg_next::Error> {
+        Convert::with(input, output, size, SWS_CS_ITU709, false)
+    }
+
+    /// Like [`new`](Self::new) with the output's swscale `matrix` and range (`full`).
+    fn with(
+        input: PixelFormat,
+        output: Pixel,
+        size: (u32, u32),
+        matrix: std::ffi::c_int,
+        full: bool,
     ) -> Result<Convert, ffmpeg_next::Error> {
         let src = pixel(input);
         if src == output {
@@ -784,7 +845,7 @@ impl Convert {
         // RGB input is full range; YUV input is already limited range like the output.
         let src_full = input == PixelFormat::Rgba8;
         Ok(Convert::Scale {
-            scaler: Scaler::new(src, output, size, SWS_CS_ITU709, (src_full, false))?,
+            scaler: Scaler::new(src, output, size, matrix, (src_full, full))?,
             staging: frame::Video::new(src, size.0, size.1),
         })
     }
@@ -919,8 +980,24 @@ impl VideoEncoder {
             ))
         })?;
         let pixel = choice.pixel(spec);
-        let convert = Convert::new(spec.input_format, pixel, (spec.width, spec.height))
-            .map_err(|e| Fault::Encode("swscale", e))?;
+        // RGB input is converted with the output's matrix and range unless the tags are only
+        // labels (and always for a proxy, whose tags are the source's).
+        let (matrix, full) = if plan.intra.is_some() || spec.advanced.tag_only {
+            (SWS_CS_ITU709, false)
+        } else {
+            (
+                sws_matrix(tags.matrix.as_ref()).unwrap_or(SWS_CS_ITU709),
+                tags.range == Some(ColorRange::Full),
+            )
+        };
+        let convert = Convert::with(
+            spec.input_format,
+            pixel,
+            (spec.width, spec.height),
+            matrix,
+            full,
+        )
+        .map_err(|e| Fault::Encode("swscale", e))?;
         Ok(VideoEncoder {
             encoder,
             codec,
@@ -1077,7 +1154,25 @@ impl AudioOut {
     /// Sends the first `n` pending samples as one frame of `len ≥ n` samples (zero-padded):
     /// planar f32 for AAC, interleaved 16-bit for PCM.
     fn send(&mut self, n: usize, len: usize) -> Result<(), Fault> {
-        let mut f = if self.name == PCM_S16LE {
+        let mut f = if self.name == OPUS {
+            // libopus takes interleaved 32-bit float.
+            let mut f = frame::Audio::new(
+                Sample::F32(sample::Type::Packed),
+                len,
+                layout(self.channels),
+            );
+            let channels = self.pending.len();
+            let data = f.plane_mut::<f32>(0);
+            data.fill(0.0);
+            for (c, pending) in self.pending.iter().enumerate() {
+                for (i, v) in pending[..n].iter().enumerate() {
+                    if let Some(slot) = data.get_mut(i * channels + c) {
+                        *slot = *v;
+                    }
+                }
+            }
+            f
+        } else if self.name == PCM_S16LE {
             let mut f = frame::Audio::new(
                 Sample::I16(sample::Type::Packed),
                 len,
@@ -1096,8 +1191,9 @@ impl AudioOut {
                 }
             }
             f
-        } else if self.name == PCM_S24LE {
-            // `pcm_s24le` takes 32-bit samples and writes their top 24 bits.
+        } else if self.name == PCM_S24LE || self.name == FLAC {
+            // `pcm_s24le` takes 32-bit samples and writes their top 24 bits; FLAC does the same
+            // from 32-bit input (24-bit FLAC).
             let mut f = frame::Audio::new(
                 Sample::I32(sample::Type::Packed),
                 len,
@@ -1450,8 +1546,11 @@ fn open_audio(out: &mut Output, plan: &AudioPlan, global_header: bool) -> Result
     ctx.set_channel_layout(layout(spec.channels));
     if name == PCM_S16LE {
         ctx.set_format(Sample::I16(sample::Type::Packed));
-    } else if name == PCM_S24LE {
+    } else if name == PCM_S24LE || name == FLAC {
         ctx.set_format(Sample::I32(sample::Type::Packed));
+    } else if name == OPUS {
+        ctx.set_format(Sample::F32(sample::Type::Packed));
+        ctx.set_bit_rate(spec.bitrate as usize);
     } else {
         ctx.set_format(Sample::F32(sample::Type::Planar));
         ctx.set_bit_rate(spec.bitrate as usize);

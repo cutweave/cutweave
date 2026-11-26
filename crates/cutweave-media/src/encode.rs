@@ -34,6 +34,10 @@ pub enum RateControl {
     Crf(u8),
     /// Average bitrate in bits per second.
     Bitrate(u32),
+    /// Constant bitrate in bits per second: the peak equals the average and the encoder pads
+    /// when the picture needs fewer bits (x264 and x265, and the hardware encoders that have
+    /// the mode; SVT-AV1 does not).
+    Cbr(u32),
 }
 
 impl RateControl {
@@ -77,6 +81,24 @@ pub enum SpeedPreset {
 }
 
 impl SpeedPreset {
+    /// The preset called `name` (`slow`), `None` for any other word.
+    #[must_use]
+    pub fn from_name(name: &str) -> Option<SpeedPreset> {
+        [
+            SpeedPreset::Ultrafast,
+            SpeedPreset::Superfast,
+            SpeedPreset::Veryfast,
+            SpeedPreset::Faster,
+            SpeedPreset::Fast,
+            SpeedPreset::Medium,
+            SpeedPreset::Slow,
+            SpeedPreset::Slower,
+            SpeedPreset::Veryslow,
+        ]
+        .into_iter()
+        .find(|p| p.name() == name)
+    }
+
     /// The x264 preset name (`medium`).
     #[must_use]
     pub const fn name(self) -> &'static str {

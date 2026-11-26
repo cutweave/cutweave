@@ -14,7 +14,7 @@ use cutweave_media::testing::{FakeAudio, FakeVideo};
 use cutweave_media::{
     AudioChunk, AudioEncodeSpec, CancelCheck, ConcatSpec, DecodeMode, DecodeOpts, EncodeSpec,
     FfmpegBackend, HwMode, MediaBackend, MediaError, PixelFormat, RateControl, SpeedPreset,
-    VideoEncodeSpec,
+    VideoAdvanced, VideoEncodeSpec,
 };
 use cutweave_model::{
     ColorPrimaries, ColorRange, ColorTags, FrameRate, MatrixCoefficients, SampleRate, StreamKind,
@@ -50,6 +50,7 @@ fn intra_spec(path: &Path, codec: &str, format: PixelFormat, (w, h): (u32, u32))
             bit_depth: 8,
             profile: None,
             alpha: false,
+            advanced: VideoAdvanced::default(),
         })
         .with_audio(AudioEncodeSpec {
             codec: "pcm_s16le".to_owned(),

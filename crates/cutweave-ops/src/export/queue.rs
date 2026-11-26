@@ -30,7 +30,7 @@ use serde::{Deserialize, Serialize};
 
 use super::presets::{PlanRate, PresetWarning};
 use super::{
-    Collision, ExportCtx, ExportHw, ExportPlan, ExportPreset, ExportQuality, ExportRange,
+    AdvancedExportOptions, Collision, ExportCtx, ExportHw, ExportPlan, ExportPreset, ExportQuality, ExportRange,
     ExportRequest, ExportStartOutput, PlanOutput, queue_request,
 };
 
@@ -181,6 +181,8 @@ pub struct ExportEnqueue {
     pub overwrite: Option<bool>,
     /// An existing file: "fail" (default), "rename" or "overwrite".
     pub collision: Option<Collision>,
+    /// Fine control (rate control, GOP, encoder, color tags, audio), as in export.start.
+    pub advanced: Option<AdvancedExportOptions>,
 }
 
 impl EngineCommand for ExportEnqueue {
@@ -196,6 +198,7 @@ impl EngineCommand for ExportEnqueue {
             hw: self.hw.as_ref(),
             overwrite: self.overwrite,
             collision: self.collision,
+            advanced: self.advanced.as_ref(),
         };
         queue_request(&request, ctx, false)
     }

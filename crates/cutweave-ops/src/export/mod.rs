@@ -32,6 +32,7 @@ use cutweave_model::{
     Duration, EntityKind, FrameRate, Project, Rounding, Sequence, SequenceId, Time,
 };
 
+pub mod advanced;
 pub mod encoders;
 pub mod output;
 pub mod presets;
@@ -42,6 +43,7 @@ use crate::media::{AllowedRoots, OUTSIDE_ROOTS_HINT};
 use crate::util::check_abs_path;
 pub use output::Collision;
 use output::{Policy, Template};
+pub use advanced::AdvancedExportOptions;
 use presets::{AudioCodec, Container, PlanRate, PresetStore, PresetWarning, VideoCodec};
 pub use range::{ExportRange, PairMode, RangeKind, Region};
 
@@ -60,6 +62,7 @@ pub const MAX_EXPORT_FPS: u32 = 240;
 pub fn register(registry: &mut Registry) -> Result<(), RegistryError> {
     registry.register::<ExportStart>()?;
     registry.register::<encoders::ListEncoders>()?;
+    registry.register::<advanced::DescribeOptions>()?;
     presets::register(registry)?;
     queue::register(registry)?;
     Ok(())
@@ -189,6 +192,10 @@ pub struct ExportStartOutput {
     pub rev: Rev,
     /// Platform-limit and fit warnings of a preset (never errors; the export runs).
     pub warnings: Vec<PresetWarning>,
+    /// Estimated file size in KiB when the rate control fixes a bitrate (`vbr`, `cbr`, a
+    /// bitrate preset); absent for a quality (`crf`).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub estimated_kib: Option<u32>,
     /// Every export of a marker set, in time order (empty for any other range). The fields
     /// above describe the first of them.
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
@@ -253,6 +260,13 @@ pub struct ExportStart {
     pub overwrite: Option<bool>,
     /// An existing file: "fail" (default), "rename" or "overwrite".
     pub collision: Option<Collision>,
+    /// Fine control (export.describe_options lists the options of a codec): {video:
+    /// {rate_control: {mode: crf|cbr|vbr|cq, crf, bitrate_kbps, max_bitrate_kbps, buffer_kbit},
+    /// gop: {keyint | keyint_seconds, keyint_min, bframes, closed_gop, scenecut}, preset, tune,
+    /// profile, level, pix_fmt, threads}, color: {primaries, transfer, matrix, range, tag_only},
+    /// audio: {codec, bitrate_kbps, sample_rate, channels}}. Impossible combinations fail with
+    /// Invalid and a hint.
+    pub advanced: Option<AdvancedExportOptions>,
 }
 
 // ----- the engine seam -------------------------------------------------------------------------
@@ -275,6 +289,47 @@ pub struct PlanOutput {
     pub audio_codec: AudioCodec,
     /// The audio bitrate in kilobits per second (AAC); the encoder's default when absent.
     pub audio_bitrate_kbps: Option<u32>,
+    /// The advanced settings (WP-2G.05); absent in jobs queued before it: the defaults.
+    #[serde(default)]
+    pub advanced: PlanAdvanced,
+}
+
+/// What the advanced export controls set, as the engine reads it (WP-2G.05). The default is
+/// every field unset: the encoder's own behaviour. Stored with queued exports.
+#[derive(Clone, Debug, Default, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+pub struct PlanAdvanced {
+    /// Peak video bitrate in kilobits per second.
+    pub max_bitrate_kbps: Option<u32>,
+    /// Rate-control buffer in kilobits.
+    pub buffer_kbit: Option<u32>,
+    /// Keyframe interval in frames.
+    pub keyint: Option<u32>,
+    /// Shortest distance between keyframes in frames.
+    pub keyint_min: Option<u32>,
+    /// Consecutive B-frames.
+    pub bframes: Option<u8>,
+    /// Closed (`true`) or open (`false`) GOPs.
+    pub closed_gop: Option<bool>,
+    /// Scene-cut keyframes on or off.
+    pub scenecut: Option<bool>,
+    /// The encoder speed preset (`slow`); the engine's own when absent.
+    pub preset: Option<String>,
+    /// The encoder's tune.
+    pub tune: Option<String>,
+    /// The codec level (`4.1`).
+    pub level: Option<String>,
+    /// Encoder threads (0: automatic); the engine's own when absent.
+    pub threads: Option<u16>,
+    /// The color tags to write (unset fields: BT.709 limited).
+    pub color: Option<cutweave_model::ColorTags>,
+    /// Tags only: the picture is converted as BT.709 limited whatever the tags say.
+    pub tag_only: bool,
+    /// The audio sample rate in Hz (48000 when absent).
+    pub audio_sample_rate: Option<u32>,
+    /// The audio channels, 1 or 2 (stereo when absent).
+    pub audio_channels: Option<u16>,
+    /// The PCM sample size, 16 or 24 (24 when absent).
+    pub pcm_bits: Option<u8>,
 }
 
 impl Default for PlanOutput {
@@ -287,6 +342,7 @@ impl Default for PlanOutput {
             alpha: false,
             audio_codec: AudioCodec::Aac,
             audio_bitrate_kbps: None,
+            advanced: PlanAdvanced::default(),
         }
     }
 }
@@ -675,6 +731,7 @@ impl ExportStart {
             hw: self.hw.as_ref(),
             overwrite: self.overwrite,
             collision: self.collision,
+            advanced: self.advanced.as_ref(),
         }
     }
 
@@ -714,6 +771,8 @@ pub struct ExportRequest<'a> {
     pub overwrite: Option<bool>,
     /// Collision policy.
     pub collision: Option<Collision>,
+    /// Advanced settings.
+    pub advanced: Option<&'a AdvancedExportOptions>,
 }
 
 impl ExportRequest<'_> {
@@ -765,6 +824,7 @@ impl ExportRequest<'_> {
             let mut rate = None;
             let mut warnings = Vec::new();
             let mut preset_hw = None;
+            let mut preset_advanced = None;
             let mut output = PlanOutput::default();
             let named = match self.preset {
                 Some(ExportPreset::Id(id)) => Some((id, None)),
@@ -782,6 +842,7 @@ impl ExportRequest<'_> {
                     )
                 })?;
                 output = spec.plan_output().map_err(CmdError::unsupported)?;
+                preset_advanced = spec.advanced.clone();
                 let p = presets::plan_preset(&spec, seq, length, overrides)?;
                 rate = p.rate;
                 warnings = p.warnings;
@@ -791,8 +852,18 @@ impl ExportRequest<'_> {
                 resolve_preset(self.preset, seq)?
             };
             let (frames, duration) = frame_count(length, frame_rate)?;
-            let hw = self.hw.cloned().or(preset_hw).unwrap_or_default();
+            let mut hw = self.hw.cloned().or(preset_hw).unwrap_or_default();
             hw.check()?;
+            if let Some(adv) = advanced::merge(preset_advanced.as_ref(), self.advanced) {
+                hw = advanced::apply(
+                    &adv,
+                    &mut output,
+                    &mut rate,
+                    hw,
+                    frame_rate,
+                    &mut warnings,
+                )?;
+            }
             let wanted = match &template {
                 Some(t) => {
                     let label = region.label.as_deref().unwrap_or_default();
@@ -845,6 +916,8 @@ impl ExportStartOutput {
             duration: plan.duration,
             rev: plan.snapshot.rev,
             warnings: plan.warnings.clone(),
+            estimated_kib: advanced::estimated_bytes(plan.rate, &plan.output, plan.duration)
+                .map(|b| u32::try_from(b.div_ceil(1024)).unwrap_or(u32::MAX)),
             jobs: Vec::new(),
         }
     }
