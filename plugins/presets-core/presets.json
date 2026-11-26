@@ -634,6 +634,36 @@
     },
     {
       "schema_version": 1,
+      "id": "av1-small",
+      "name": "AV1 (small files)",
+      "summary": "Sequence size, AV1 in MP4: smaller than H.264 at the same look, slower to make",
+      "container": "mp4",
+      "video": {
+        "codec": "av1",
+        "rate_control": {
+          "mode": "crf",
+          "crf": 22
+        },
+        "preset": "medium",
+        "pix_fmt": "yuv420p",
+        "hw_preferred": false
+      },
+      "audio": {
+        "codec": "aac",
+        "bitrate_kbps": 192,
+        "sample_rate": 48000,
+        "channels": 2
+      },
+      "size": {
+        "kind": "follow_sequence"
+      },
+      "fps": {
+        "kind": "follow_sequence"
+      },
+      "limits": {}
+    },
+    {
+      "schema_version": 1,
       "id": "prores-422-hq",
       "name": "ProRes 422 HQ",
       "summary": "Sequence size and rate, ProRes 422 HQ in MOV",

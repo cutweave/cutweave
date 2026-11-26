@@ -6,8 +6,9 @@
 //! [`ExportPlan`]; this module adds it to the engine's export queue ([`ExportJobs`], a
 //! [`cutweave_jobs::ExportQueue`]: one export at a time under the job manager's export budget,
 //! first in line first, pausable, reorderable) through a [`Starter`], and runs each export with
-//! the [`pipeline`]: render every frame like `render.frame`, mix the range down, encode H.264 +
-//! AAC into an MP4. `export.status` is `job.status`; `job.cancel` / `export.cancel` stop an
+//! the [`pipeline`]: render every frame like `render.frame`, mix the range down, encode the
+//! plan's codec (H.264, HEVC, AV1 or ProRes, WP-2G.02) and audio (AAC, or PCM in MOV) into an
+//! MP4 or MOV. `export.status` is `job.status`; `job.cancel` / `export.cancel` stop an
 //! export within a frame and remove its partial file, and the next one starts.
 //!
 //! What an export renders, decodes and encodes with comes from the subsystems
@@ -32,11 +33,11 @@
 //! interrupted export's partial file (`.<name>.<pid>-<n>.partial`, written by an engine that is
 //! gone) is removed before it runs again ([`remove_stale_partials`]).
 //!
-//! The video encoder follows `export.start{hw}` (WP-1E.02): `auto` (the first hardware H.264
-//! encoder that works, else x264, restarting in software when a hardware encoder fails during
-//! the export), `off` (x264) or `{"force": "<implementation>"}`, which must name one of the
-//! machine's `Capabilities::hw_encode` entries (`Invalid` at `/hw/force` otherwise) and never
-//! falls back.
+//! The video encoder follows `export.start{hw}` (WP-1E.02, WP-2G.02): `auto` (the first hardware
+//! encoder of the plan's codec that works, else the software one, restarting in software when a
+//! hardware encoder fails during the export), `off` (software) or `{"force": "<implementation>"}`,
+//! which must name one of the machine's `Capabilities::hw_encode` entries for the plan's codec
+//! (`Invalid` at `/hw/force` otherwise) and never falls back.
 
 pub mod disk;
 pub mod pipeline;
@@ -51,13 +52,14 @@ use cutweave_jobs::queue::{
 };
 use cutweave_jobs::{JobCtx, JobError, JobId, JobManager, JobProgress};
 use cutweave_media::Capabilities;
+use cutweave_ops::export::encoders::EncoderEntry;
 use cutweave_ops::export::queue::{PlanCodec, queue_error};
 use cutweave_ops::export::{ExportHw, ExportPlan, ExportStarter};
 
 pub use pipeline::{
     EXPORT_CHANNELS, EXPORT_SAMPLE_RATE, EXPORT_YIELD, ExportError, ExportPacer, ExportServices,
-    ExportSummary, FrameTap, PIPELINE_DEPTH, PROGRESS_INTERVAL, ProgressReport, hw_encode,
-    rate_control, render_frame, run_export,
+    ExportSummary, FrameTap, PIPELINE_DEPTH, PROGRESS_INTERVAL, ProgressReport, audio_codec_name,
+    hw_encode, rate_control, render_frame, run_export, video_codec_id,
 };
 pub use sources::{
     DecoderFrameSource, DecoderPcmFactory, DecoderSources, ExportSources, FORWARD_DECODE_LIMIT,
@@ -207,7 +209,8 @@ impl Starter {
             )
         })?;
         let caps = services.encoder.capabilities();
-        for codec in ["h264", "aac"] {
+        let video = video_codec_id(plan.output.video_codec);
+        for codec in [video, audio_codec_name(plan.output.audio_codec)] {
             if !caps.can_encode(codec) {
                 return Err(CmdError::unsupported(format!(
                     "this engine's media backend has no `{codec}` encoder"
@@ -215,7 +218,7 @@ impl Starter {
             }
         }
         if let ExportHw::Force(name) = &plan.hw {
-            check_forced(&caps, name)?;
+            check_forced(&caps, name, video)?;
         }
         let item = QueueItem {
             label: EXPORT_LABEL.to_owned(),
@@ -238,22 +241,22 @@ fn output_key(path: &Path) -> String {
     }
 }
 
-/// `Invalid` at `/hw/force` unless `name` is one of the machine's hardware H.264 encoders.
-fn check_forced(caps: &Capabilities, name: &str) -> Result<(), CmdError> {
+/// `Invalid` at `/hw/force` unless `name` is one of the machine's hardware encoders of `codec`.
+fn check_forced(caps: &Capabilities, name: &str, codec: &str) -> Result<(), CmdError> {
     let available: Vec<&str> = caps
         .hw_encode
         .iter()
-        .filter(|c| c.codec == "h264")
+        .filter(|c| c.codec == codec)
         .map(|c| c.implementation.as_str())
         .collect();
     if available.contains(&name) {
         return Ok(());
     }
     let msg = if available.is_empty() {
-        format!("`{name}` is not available: this machine has no hardware H.264 encoder")
+        format!("`{name}` is not available: this machine has no hardware {codec} encoder")
     } else {
         format!(
-            "`{name}` is not available here; the hardware encoders are: {}",
+            "`{name}` is not available here; the hardware {codec} encoders are: {}",
             available.join(", ")
         )
     };
@@ -283,6 +286,41 @@ impl ExportStarter for Starter {
     fn queue(&mut self) -> Result<ExportJobs, CmdError> {
         Ok(self.queue.clone())
     }
+
+    fn encoders(&mut self) -> Result<Vec<EncoderEntry>, CmdError> {
+        let services = self.subsystems.export_services().ok_or_else(|| {
+            CmdError::unsupported("this engine has no media backend to list encoders from")
+        })?;
+        Ok(encoder_entries(&services.encoder.capabilities()))
+    }
+}
+
+/// The video encoders of `caps` for `export.list_encoders`: the software ones of the export
+/// codecs, then the hardware ones that passed the trial encode, in `auto` order.
+fn encoder_entries(caps: &Capabilities) -> Vec<EncoderEntry> {
+    let mut entries = Vec::new();
+    for id in ["h264", "hevc", "av1", "prores"] {
+        if let Some(codec) = caps.codec(id) {
+            entries.extend(codec.encoders.iter().map(|name| EncoderEntry {
+                codec: id.to_owned(),
+                implementation: name.clone(),
+                hardware: false,
+                device: None,
+            }));
+        }
+        entries.extend(
+            caps.hw_encode
+                .iter()
+                .filter(|c| c.codec == id)
+                .map(|c| EncoderEntry {
+                    codec: id.to_owned(),
+                    implementation: c.implementation.clone(),
+                    hardware: true,
+                    device: Some(c.device.clone()),
+                }),
+        );
+    }
+    entries
 }
 
 #[cfg(test)]

@@ -62,7 +62,7 @@ use cutweave_media::{
     VideoEncodeSpec, VideoFrame, encode_with_fallback,
 };
 use cutweave_model::{ColorTags, Project, Rounding, SampleRate, SequenceId, Time};
-use cutweave_ops::export::presets::PlanRate;
+use cutweave_ops::export::presets::{AudioCodec, PlanRate, VideoCodec};
 use cutweave_ops::export::{ExportHw, ExportPlan, ExportQuality};
 use cutweave_render::graph::{GraphOptions, RenderGraph, build};
 use cutweave_render::query::SharedBackend;
@@ -515,9 +515,34 @@ impl AudioFeed {
     }
 }
 
-/// The encode spec of `plan`: H.264 from RGBA8 frames + AAC with the plan's encoder policy and
-/// quality, cancelled by `cancel`, reporting the encoded length into `written` (flicks) and the
-/// file size into `bytes`.
+/// The video codec-id name of an export (`hevc`).
+#[must_use]
+pub fn video_codec_id(codec: VideoCodec) -> &'static str {
+    match codec {
+        VideoCodec::H264 => "h264",
+        VideoCodec::Hevc => "hevc",
+        VideoCodec::Av1 => "av1",
+        VideoCodec::Prores => "prores",
+        VideoCodec::Gif => "gif",
+    }
+}
+
+/// The audio encoder name of an export: AAC, or 24-bit PCM for MOV.
+#[must_use]
+pub fn audio_codec_name(codec: AudioCodec) -> &'static str {
+    match codec {
+        AudioCodec::Pcm => "pcm_s24le",
+        AudioCodec::Mp3 => "mp3",
+        AudioCodec::Flac => "flac",
+        AudioCodec::Opus => "opus",
+        AudioCodec::Aac => "aac",
+    }
+}
+
+/// The encode spec of `plan`: the plan's codec (H.264 unless a preset says otherwise: HEVC, AV1,
+/// ProRes) from RGBA8 frames + AAC (or PCM in MOV) with the plan's encoder policy and quality,
+/// cancelled by `cancel`, reporting the encoded length into `written` (flicks) and the file size
+/// into `bytes`.
 fn encode_spec(
     plan: &ExportPlan,
     services: &ExportServices,
@@ -525,8 +550,13 @@ fn encode_spec(
     written: &Arc<AtomicI64>,
     bytes: &Arc<AtomicU64>,
 ) -> EncodeSpec {
+    let out = &plan.output;
     let mut video =
-        VideoEncodeSpec::h264(plan.width, plan.height, plan.frame_rate, PixelFormat::Rgba8);
+        VideoEncodeSpec::h264(plan.width, plan.height, plan.frame_rate, PixelFormat::Rgba8)
+            .with_codec(video_codec_id(out.video_codec));
+    video.bit_depth = out.bit_depth;
+    video.profile.clone_from(&out.profile);
+    video.alpha = out.alpha;
     video.rate_control = match plan.rate {
         // A preset's own rate control; an override's quality leaves `rate` empty.
         Some(PlanRate::Crf(crf)) => RateControl::Crf(crf.min(RateControl::MAX_CRF)),
@@ -535,18 +565,25 @@ fn encode_spec(
     };
     video.preset = services.speed;
     video.threads = services.encoder_threads;
+    let mut audio = AudioEncodeSpec::aac(EXPORT_SAMPLE_RATE, EXPORT_CHANNELS);
+    audio_codec_name(out.audio_codec).clone_into(&mut audio.codec);
+    if let Some(kbps) = out.audio_bitrate_kbps.filter(|k| *k > 0) {
+        audio.bitrate = kbps.saturating_mul(1000);
+    }
     let token = cancel.clone();
     let sink = Arc::clone(written);
     let size = Arc::clone(bytes);
-    EncodeSpec::new(&plan.path)
+    let mut spec = EncodeSpec::new(&plan.path)
         .with_hw(hw_encode(&plan.hw))
         .with_video(video)
-        .with_audio(AudioEncodeSpec::aac(EXPORT_SAMPLE_RATE, EXPORT_CHANNELS))
+        .with_audio(audio)
         .with_cancel(CancelCheck::new(move || token.is_cancelled()))
         .with_progress(ProgressSink::new(move |p| {
             sink.store(p.encoded.flicks(), Ordering::Relaxed);
             size.store(p.bytes, Ordering::Relaxed);
-        }))
+        }));
+    spec.container = Some(out.extension().to_owned());
+    spec
 }
 
 /// `m:ss` for status lines.

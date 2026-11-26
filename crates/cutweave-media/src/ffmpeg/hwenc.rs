@@ -1,14 +1,17 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
-//! Hardware H.264 encoders (WP-1E.02): which ones exist per OS, how our one quality setting and
-//! speed preset map onto each, which one an encode tries, and the once-per-process probe that
-//! fills [`Capabilities::hw_encode`](crate::Capabilities::hw_encode).
+//! Hardware H.264, HEVC and AV1 encoders (WP-1E.02, WP-2G.02): which ones exist per OS, how our
+//! one quality setting and speed preset map onto each, which one an encode tries, and the
+//! once-per-process probe (one per codec) that fills
+//! [`Capabilities::hw_encode`](crate::Capabilities::hw_encode). Also the software choices of
+//! every export codec (x264, x265, SVT-AV1, `prores_ks`).
 //!
 //! - **Order** ([`candidates`], also the order of `hw_encode` and of [`HwEncode::Auto`]):
 //!   Windows NVENC, AMF, QSV; macOS VideoToolbox; Linux NVENC, QSV, VA-API. Discrete NVIDIA
 //!   first, then the vendor APIs that cover the rest of the machine.
 //! - **Probe** ([`available`]): each candidate this FFmpeg build has must open for a 256×256
-//!   NV12 encode at the default settings and return a packet for three frames. Cached for the
-//!   process; a machine without a usable encoder gets an empty list.
+//!   NV12 encode at the default settings and return a packet for eight frames (a real trial
+//!   encode, not just the encoder's name). Cached per codec for the process; a machine without a
+//!   usable encoder gets an empty list.
 //! - **Mapping** ([`Choice::settings`]): `RateControl::Crf(c)` becomes each encoder's
 //!   constant-quality knob at `c` plus a measured offset, `Bitrate` its VBR mode, and
 //!   `SpeedPreset` its preset scale. The offsets and the measurements behind them are in
@@ -25,6 +28,7 @@
 use std::sync::OnceLock;
 
 use cutweave_model::FrameRate;
+use ffmpeg_next::format::Pixel;
 
 use crate::backend::{HwEncode, VideoEncodeSpec};
 use crate::{HwCodec, MediaError, PixelFormat, RateControl, SpeedPreset};
@@ -63,6 +67,53 @@ pub(super) struct Faults {
     pub finish: bool,
 }
 
+/// A video codec the export encoder writes (the hardware-capable ones have a candidate list).
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
+pub(super) enum Codec {
+    H264,
+    Hevc,
+    Av1,
+    /// Apple ProRes (`prores_ks`, software only), as an export codec: RGBA input, a chosen
+    /// profile. (The proxy ProRes of WP-2F.01 is [`Intra::ProRes`].)
+    ProRes,
+}
+
+impl Codec {
+    /// The codec of a codec-id name (`h265` is `hevc`).
+    pub(super) fn of(name: &str) -> Option<Codec> {
+        match name {
+            "h264" => Some(Codec::H264),
+            "hevc" | "h265" => Some(Codec::Hevc),
+            "av1" => Some(Codec::Av1),
+            "prores" => Some(Codec::ProRes),
+            _ => None,
+        }
+    }
+
+    /// The codec-id name (`hevc`), as `Capabilities` lists it.
+    pub(super) const fn id(self) -> &'static str {
+        match self {
+            Codec::H264 => "h264",
+            Codec::Hevc => "hevc",
+            Codec::Av1 => "av1",
+            Codec::ProRes => "prores",
+        }
+    }
+
+    /// The software encoder choice.
+    pub(super) const fn software(self) -> Choice {
+        match self {
+            Codec::H264 => Choice::Software,
+            Codec::Hevc => Choice::X265,
+            Codec::Av1 => Choice::SvtAv1,
+            Codec::ProRes => Choice::ProResKs,
+        }
+    }
+
+    /// Every codec with hardware candidates, in the order the probe runs.
+    pub(super) const HARDWARE: [Codec; 3] = [Codec::H264, Codec::Hevc, Codec::Av1];
+}
+
 /// A hardware encoder this backend knows.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub(super) struct HwEncoder {
@@ -71,53 +122,83 @@ pub(super) struct HwEncoder {
     /// FFmpeg hardware device type it runs on (`cuda`), as listed in `hw_encode`.
     pub device: &'static str,
     pub family: Family,
+    /// The codec it writes.
+    pub codec: Codec,
 }
 
-const NVENC: HwEncoder = HwEncoder {
-    name: "h264_nvenc",
-    device: "cuda",
-    family: Family::Nvenc,
-};
-const AMF: HwEncoder = HwEncoder {
-    name: "h264_amf",
-    device: "amf",
-    family: Family::Amf,
-};
-const QSV: HwEncoder = HwEncoder {
-    name: "h264_qsv",
-    device: "qsv",
-    family: Family::Qsv,
-};
-const VIDEOTOOLBOX: HwEncoder = HwEncoder {
-    name: "h264_videotoolbox",
-    device: "videotoolbox",
-    family: Family::VideoToolbox,
-};
-const VAAPI: HwEncoder = HwEncoder {
-    name: "h264_vaapi",
-    device: "vaapi",
-    family: Family::Vaapi,
-};
+macro_rules! hw_encoder {
+    ($name:ident, $codec:ident, $family:ident, $encoder:literal, $device:literal) => {
+        const $name: HwEncoder = HwEncoder {
+            name: $encoder,
+            device: $device,
+            family: Family::$family,
+            codec: Codec::$codec,
+        };
+    };
+}
+
+hw_encoder!(NVENC, H264, Nvenc, "h264_nvenc", "cuda");
+hw_encoder!(AMF, H264, Amf, "h264_amf", "amf");
+hw_encoder!(QSV, H264, Qsv, "h264_qsv", "qsv");
+hw_encoder!(
+    VIDEOTOOLBOX,
+    H264,
+    VideoToolbox,
+    "h264_videotoolbox",
+    "videotoolbox"
+);
+hw_encoder!(VAAPI, H264, Vaapi, "h264_vaapi", "vaapi");
+hw_encoder!(HEVC_NVENC, Hevc, Nvenc, "hevc_nvenc", "cuda");
+hw_encoder!(HEVC_AMF, Hevc, Amf, "hevc_amf", "amf");
+hw_encoder!(HEVC_QSV, Hevc, Qsv, "hevc_qsv", "qsv");
+hw_encoder!(
+    HEVC_VIDEOTOOLBOX,
+    Hevc,
+    VideoToolbox,
+    "hevc_videotoolbox",
+    "videotoolbox"
+);
+hw_encoder!(HEVC_VAAPI, Hevc, Vaapi, "hevc_vaapi", "vaapi");
+hw_encoder!(AV1_NVENC, Av1, Nvenc, "av1_nvenc", "cuda");
+hw_encoder!(AV1_AMF, Av1, Amf, "av1_amf", "amf");
+hw_encoder!(AV1_QSV, Av1, Qsv, "av1_qsv", "qsv");
+hw_encoder!(AV1_VAAPI, Av1, Vaapi, "av1_vaapi", "vaapi");
 /// Tests only: the VA-API path on Windows.
 #[cfg(all(test, windows))]
 pub(super) const D3D12VA: HwEncoder = HwEncoder {
     name: "h264_d3d12va",
     device: "d3d12va",
     family: Family::D3d12va,
+    codec: Codec::H264,
 };
 
 /// Every hardware encoder of the mapping table, whatever the OS (for tests of the mapping).
 #[cfg(test)]
 pub(super) const ALL: [HwEncoder; 5] = [NVENC, AMF, QSV, VIDEOTOOLBOX, VAAPI];
 
-/// The hardware encoders for this OS, in the order `Auto` tries them.
-pub(super) const fn candidates() -> &'static [HwEncoder] {
+/// The hardware encoders of `codec` for this OS, in the order `Auto` tries them (none for
+/// ProRes).
+pub(super) const fn candidates(codec: Codec) -> &'static [HwEncoder] {
     if cfg!(windows) {
-        &[NVENC, AMF, QSV]
+        match codec {
+            Codec::H264 => &[NVENC, AMF, QSV],
+            Codec::Hevc => &[HEVC_NVENC, HEVC_AMF, HEVC_QSV],
+            Codec::Av1 => &[AV1_NVENC, AV1_AMF, AV1_QSV],
+            Codec::ProRes => &[],
+        }
     } else if cfg!(target_os = "macos") {
-        &[VIDEOTOOLBOX]
+        match codec {
+            Codec::H264 => &[VIDEOTOOLBOX],
+            Codec::Hevc => &[HEVC_VIDEOTOOLBOX],
+            Codec::Av1 | Codec::ProRes => &[],
+        }
     } else {
-        &[NVENC, QSV, VAAPI]
+        match codec {
+            Codec::H264 => &[NVENC, QSV, VAAPI],
+            Codec::Hevc => &[HEVC_NVENC, HEVC_QSV, HEVC_VAAPI],
+            Codec::Av1 => &[AV1_NVENC, AV1_QSV, AV1_VAAPI],
+            Codec::ProRes => &[],
+        }
     }
 }
 
@@ -134,6 +215,12 @@ pub(super) const AMF_QP_OFFSET: u8 = 1;
 pub(super) const QSV_ICQ_OFFSET: u8 = 2;
 /// VA-API `qp` = CRF + this (CQP; also D3D12VA). Estimate (AMF's measured CQP offset).
 pub(super) const VAAPI_QP_OFFSET: u8 = 1;
+/// SVT-AV1 `crf` = CRF + this: AV1's scale (0-63) runs about ten steps above x264's for the same
+/// look. Estimate (docs/reference/export-quality.md); hardware AV1 encoders use the offsets of
+/// their H.264 siblings until measured.
+pub(super) const SVTAV1_CRF_OFFSET: u8 = 10;
+/// The largest SVT-AV1 CRF.
+const SVTAV1_MAX_CRF: u8 = 63;
 
 /// `crf + offset`, kept on the 1–51 scale (0 is "automatic" for NVENC).
 fn shifted(crf: u8, offset: u8) -> u8 {
@@ -153,6 +240,12 @@ const QP2LAMBDA: u32 = 118;
 pub(super) enum Choice {
     /// libx264.
     Software,
+    /// libx265 (HEVC).
+    X265,
+    /// SVT-AV1 (`libsvtav1`).
+    SvtAv1,
+    /// `prores_ks`, an export (RGBA input, a profile; WP-2G.02).
+    ProResKs,
     /// A hardware encoder.
     Hardware(HwEncoder),
     /// An intra-frame software encoder (proxies, WP-2F.01).
@@ -223,14 +316,23 @@ impl Intra {
     }
 }
 
-/// libx264, the software encoder.
+/// libx264, the software H.264 encoder.
 pub(super) const X264: &str = "libx264";
+/// libx265, the software HEVC encoder.
+pub(super) const X265: &str = "libx265";
+/// SVT-AV1, the software AV1 encoder.
+pub(super) const SVTAV1: &str = "libsvtav1";
+/// FFmpeg's ProRes encoder.
+pub(super) const PRORES_KS: &str = "prores_ks";
 
 impl Choice {
     /// The name reported by `Encoder::video_encoder` and in logs.
     pub(super) fn name(self) -> &'static str {
         match self {
             Choice::Software => X264,
+            Choice::X265 => X265,
+            Choice::SvtAv1 => SVTAV1,
+            Choice::ProResKs => PRORES_KS,
             Choice::Hardware(hw) => hw.name,
             Choice::Intra(intra) => intra.encoder(),
         }
@@ -240,6 +342,9 @@ impl Choice {
     pub(super) fn ffmpeg_name(self) -> &'static str {
         match self {
             Choice::Software => X264,
+            Choice::X265 => X265,
+            Choice::SvtAv1 => SVTAV1,
+            Choice::ProResKs => PRORES_KS,
             #[cfg(test)]
             Choice::Hardware(HwEncoder {
                 family: Family::Pseudo(_),
@@ -252,8 +357,8 @@ impl Choice {
 
     pub(super) fn hardware(self) -> Option<HwEncoder> {
         match self {
-            Choice::Software | Choice::Intra(_) => None,
             Choice::Hardware(hw) => Some(hw),
+            _ => None,
         }
     }
 
@@ -268,24 +373,61 @@ impl Choice {
         }
     }
 
-    /// The layout frames are converted to before the encoder (or the surface upload).
-    pub(super) fn input_format(self) -> PixelFormat {
+    /// The layout frames are converted to before the encoder (or the surface upload) for
+    /// `spec`: 8-bit 4:2:0 (NV12 for hardware), 10-bit 4:2:0 for `bit_depth` 10 (P010 for
+    /// hardware), 4:2:2 or 4:4:4 10-bit for ProRes by profile.
+    pub(super) fn pixel(self, spec: &VideoEncodeSpec) -> Pixel {
+        let ten = spec.bit_depth > 8;
         match self {
-            Choice::Software => PixelFormat::Yuv420p,
-            Choice::Hardware(_) => PixelFormat::Nv12,
-            Choice::Intra(intra) => intra.input_format(),
+            Choice::Software => Pixel::YUV420P,
+            Choice::X265 | Choice::SvtAv1 => {
+                if ten {
+                    Pixel::YUV420P10LE
+                } else {
+                    Pixel::YUV420P
+                }
+            }
+            Choice::ProResKs => match prores_profile(spec.profile.as_deref()) {
+                Some(p) if p.is_444() => {
+                    if spec.alpha {
+                        Pixel::YUVA444P10LE
+                    } else {
+                        Pixel::YUV444P10LE
+                    }
+                }
+                _ => Pixel::YUV422P10LE,
+            },
+            Choice::Hardware(_) => {
+                if ten {
+                    Pixel::P010LE
+                } else {
+                    Pixel::NV12
+                }
+            }
+            Choice::Intra(intra) => super::encode::pixel(intra.input_format()),
         }
     }
 
     /// The encoder options (`avcodec_open2` dictionary: private and generic options) for `spec`.
     pub(super) fn settings(self, spec: &VideoEncodeSpec) -> Vec<(&'static str, String)> {
-        let family = match self {
+        let hw = match self {
             Choice::Software => return x264_settings(spec),
+            Choice::X265 => return x265_settings(spec),
+            Choice::SvtAv1 => return svtav1_settings(spec),
+            Choice::ProResKs => return prores_settings(spec),
             Choice::Intra(intra) => return intra.settings(spec),
-            Choice::Hardware(hw) => hw.family,
+            Choice::Hardware(hw) => hw,
         };
+        let family = hw.family;
         let preset = spec.preset;
-        let mut out: Vec<(&'static str, String)> = vec![("profile", "high".to_owned())];
+        let mut out: Vec<(&'static str, String)> = match hw.codec {
+            Codec::H264 => vec![("profile", "high".to_owned())],
+            Codec::Hevc => vec![(
+                "profile",
+                if spec.bit_depth > 8 { "main10" } else { "main" }.to_owned(),
+            )],
+            Codec::Av1 | Codec::ProRes => Vec::new(),
+        };
         let mut set = |key: &'static str, value: String| out.push((key, value));
         match (family, spec.rate_control) {
             (Family::Nvenc, rc) => {
@@ -310,7 +452,9 @@ impl Choice {
                         set("rc", "cqp".to_owned());
                         set("qp_i", qp.clone());
                         set("qp_p", qp.clone());
-                        set("qp_b", qp);
+                        if hw.codec == Codec::H264 {
+                            set("qp_b", qp);
+                        }
                     }
                     RateControl::Bitrate(b) => {
                         set("rc", "vbr_peak".to_owned());
@@ -370,6 +514,101 @@ fn x264_settings(spec: &VideoEncodeSpec) -> Vec<(&'static str, String)> {
     vec![
         ("preset", spec.preset.name().to_owned()),
         rate,
+        ("threads", threads),
+    ]
+}
+
+/// x265: preset, CRF or average bitrate, threads, quiet log. 10-bit follows the pixel format.
+fn x265_settings(spec: &VideoEncodeSpec) -> Vec<(&'static str, String)> {
+    let rate = match spec.rate_control {
+        RateControl::Crf(q) => ("crf", q.to_string()),
+        RateControl::Bitrate(bps) => ("b", bps.to_string()),
+    };
+    let threads = if spec.threads == 0 {
+        "auto".to_owned()
+    } else {
+        spec.threads.to_string()
+    };
+    vec![
+        ("preset", spec.preset.name().to_owned()),
+        rate,
+        ("threads", threads),
+        // x265 logs to stderr by itself; FFmpeg's log callback gets the warnings that matter.
+        ("x265-params", "log-level=error".to_owned()),
+    ]
+}
+
+/// SVT-AV1's numeric preset (0 slowest to 13 fastest) for a speed preset: `medium` is 6.
+pub(super) fn svtav1_preset(preset: SpeedPreset) -> u8 {
+    match preset {
+        SpeedPreset::Ultrafast => 12,
+        SpeedPreset::Superfast => 11,
+        SpeedPreset::Veryfast => 10,
+        SpeedPreset::Faster => 9,
+        SpeedPreset::Fast => 8,
+        SpeedPreset::Medium => 6,
+        SpeedPreset::Slow => 4,
+        SpeedPreset::Slower => 3,
+        SpeedPreset::Veryslow => 2,
+    }
+}
+
+/// SVT-AV1: numeric preset, CRF (shifted onto AV1's scale) or average bitrate.
+fn svtav1_settings(spec: &VideoEncodeSpec) -> Vec<(&'static str, String)> {
+    let rate = match spec.rate_control {
+        RateControl::Crf(q) => (
+            "crf",
+            q.saturating_add(SVTAV1_CRF_OFFSET)
+                .min(SVTAV1_MAX_CRF)
+                .to_string(),
+        ),
+        RateControl::Bitrate(bps) => ("b", bps.to_string()),
+    };
+    vec![("preset", svtav1_preset(spec.preset).to_string()), rate]
+}
+
+/// A ProRes profile (`prores_ks`).
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub(super) struct ProResProfile(&'static str);
+
+impl ProResProfile {
+    /// `prores_ks`'s `profile` option value.
+    pub(super) const fn option(self) -> &'static str {
+        self.0
+    }
+
+    /// 4:4:4 (`4444`, `4444xq`): the others are 4:2:2.
+    pub(super) fn is_444(self) -> bool {
+        self.0.starts_with("4444")
+    }
+}
+
+/// The ProRes profile named `name` (`422hq`, `4444`; `hq` and `standard` are accepted too);
+/// `None` for an unknown name. No name is `hq`.
+pub(super) fn prores_profile(name: Option<&str>) -> Option<ProResProfile> {
+    let option = match name.map(str::to_ascii_lowercase).as_deref() {
+        None | Some("422hq" | "hq") => "hq",
+        Some("422proxy" | "proxy") => "proxy",
+        Some("422lt" | "lt") => "lt",
+        Some("422" | "standard") => "standard",
+        Some("4444") => "4444",
+        Some("4444xq") => "4444xq",
+        Some(_) => return None,
+    };
+    Some(ProResProfile(option))
+}
+
+/// `prores_ks` with Apple's vendor tag; the profile sets the quality.
+fn prores_settings(spec: &VideoEncodeSpec) -> Vec<(&'static str, String)> {
+    let threads = if spec.threads == 0 {
+        "auto".to_owned()
+    } else {
+        spec.threads.to_string()
+    };
+    let profile = prores_profile(spec.profile.as_deref()).map_or("hq", ProResProfile::option);
+    vec![
+        ("profile", profile.to_owned()),
+        ("vendor", "apl0".to_owned()),
         ("threads", threads),
     ]
 }
@@ -456,63 +695,76 @@ fn overridden() -> Option<Vec<HwEncoder>> {
     OVERRIDE.with(|o| o.borrow().clone())
 }
 
-/// The hardware encoders `Force` may name on this OS.
-fn known() -> Vec<HwEncoder> {
+/// The hardware encoders of `codec` that `Force` may name on this OS.
+fn known(codec: Codec) -> Vec<HwEncoder> {
     #[cfg(test)]
     if let Some(list) = overridden() {
-        return list;
+        return list.into_iter().filter(|hw| hw.codec == codec).collect();
     }
-    candidates().to_vec()
+    candidates(codec).to_vec()
 }
 
-/// The probe's result for this process.
-static PROBED: OnceLock<Vec<HwEncoder>> = OnceLock::new();
+/// The probe's result for this process, per hardware codec ([`Codec::HARDWARE`] order).
+static PROBED: [OnceLock<Vec<HwEncoder>>; 3] = [OnceLock::new(), OnceLock::new(), OnceLock::new()];
 
-/// The hardware encoders that passed the probe, in `Auto` order (probed on first use).
-pub(super) fn available() -> Vec<HwEncoder> {
+/// The hardware encoders of `codec` that passed the probe, in `Auto` order (probed on first
+/// use).
+pub(super) fn available(codec: Codec) -> Vec<HwEncoder> {
     #[cfg(test)]
     if let Some(list) = overridden() {
-        return list;
+        return list.into_iter().filter(|hw| hw.codec == codec).collect();
     }
-    PROBED.get_or_init(|| probe(candidates())).clone()
+    match Codec::HARDWARE.iter().position(|c| *c == codec) {
+        Some(i) => PROBED[i]
+            .get_or_init(|| probe(codec, candidates(codec)))
+            .clone(),
+        None => Vec::new(),
+    }
 }
 
-/// [`available`] as `Capabilities::hw_encode` entries.
+/// [`available`] for every hardware codec, as `Capabilities::hw_encode` entries.
 pub(super) fn capabilities() -> Vec<HwCodec> {
-    available()
+    Codec::HARDWARE
         .into_iter()
+        .flat_map(available)
         .map(|hw| HwCodec {
             device: hw.device.to_owned(),
-            codec: "h264".to_owned(),
+            codec: hw.codec.id().to_owned(),
             implementation: hw.name.to_owned(),
         })
         .collect()
 }
 
-/// The encoders one encode tries, in order, for policy `hw`.
-pub(super) fn choices(hw: &HwEncode) -> Result<Vec<Choice>, MediaError> {
+/// The encoders one encode of `codec` tries, in order, for policy `hw`: the hardware ones, then
+/// the codec's software encoder (ProRes has only the software one).
+pub(super) fn choices(hw: &HwEncode, codec: Codec) -> Result<Vec<Choice>, MediaError> {
     match hw {
-        HwEncode::Off => Ok(vec![Choice::Software]),
-        HwEncode::Auto => Ok(available()
+        HwEncode::Off => Ok(vec![codec.software()]),
+        HwEncode::Auto => Ok(available(codec)
             .into_iter()
             .map(Choice::Hardware)
-            .chain([Choice::Software])
+            .chain([codec.software()])
             .collect()),
         HwEncode::Force(name) => {
             let name = name.trim();
-            let known = known();
+            let known = known(codec);
             known
                 .iter()
                 .find(|hw| hw.name.eq_ignore_ascii_case(name))
                 .map(|hw| vec![Choice::Hardware(*hw)])
                 .ok_or_else(|| MediaError::HwUnavailable {
                     reason: format!(
-                        "`{name}` is not a hardware H.264 encoder on this system (known here: {})",
-                        known
-                            .iter()
-                            .map(|hw| hw.name)
-                            .collect::<Vec<_>>()
-                            .join(", ")
+                        "`{name}` is not a hardware {} encoder on this system (known here: {})",
+                        codec.id(),
+                        if known.is_empty() {
+                            "none".to_owned()
+                        } else {
+                            known
+                                .iter()
+                                .map(|hw| hw.name)
+                                .collect::<Vec<_>>()
+                                .join(", ")
+                        }
                     ),
                 })
         }
@@ -521,13 +773,15 @@ pub(super) fn choices(hw: &HwEncode) -> Result<Vec<Choice>, MediaError> {
 
 /// Probe size: small enough to be quick, large enough for every encoder's minimum.
 pub(super) const PROBE_SIZE: u32 = 256;
+/// Frames of the trial encode.
+pub(super) const PROBE_FRAMES: i64 = 8;
 
-/// The encoders of `candidates` that complete a 256×256 test encode here.
-pub(super) fn probe(candidates: &[HwEncoder]) -> Vec<HwEncoder> {
+/// The encoders of `candidates` that complete a 256x256 trial encode of eight frames here.
+pub(super) fn probe(codec: Codec, candidates: &[HwEncoder]) -> Vec<HwEncoder> {
     let mut found = Vec::new();
     let mut missing = Vec::new();
     for hw in candidates {
-        match probe_one(*hw) {
+        match probe_one(codec, *hw) {
             Ok(()) => found.push(*hw),
             Err(why) => missing.push(format!("{} ({why})", hw.name)),
         }
@@ -535,7 +789,8 @@ pub(super) fn probe(candidates: &[HwEncoder]) -> Vec<HwEncoder> {
     let names: Vec<&str> = found.iter().map(|hw| hw.name).collect();
     tracing::info!(
         target: "cutweave_media",
-        "hardware H.264 encoders: {}{}",
+        "hardware {} encoders: {}{}",
+        codec.id(),
         if names.is_empty() { "none".to_owned() } else { names.join(", ") },
         if missing.is_empty() {
             String::new()
@@ -546,13 +801,16 @@ pub(super) fn probe(candidates: &[HwEncoder]) -> Vec<HwEncoder> {
     found
 }
 
-/// Opens `hw` at the default settings, encodes three frames and expects a packet.
-fn probe_one(hw: HwEncoder) -> Result<(), String> {
+/// Opens `hw` at the default settings, encodes eight frames and expects a packet.
+fn probe_one(codec: Codec, hw: HwEncoder) -> Result<(), String> {
     if ffmpeg_next::encoder::find_by_name(Choice::Hardware(hw).ffmpeg_name()).is_none() {
         return Err("not in this FFmpeg build".to_owned());
     }
-    let spec = VideoEncodeSpec::h264(PROBE_SIZE, PROBE_SIZE, FrameRate::FPS_30, PixelFormat::Nv12);
-    super::encode::test_encode(&spec, Choice::Hardware(hw), 3)
+    let spec = VideoEncodeSpec {
+        codec: codec.id().to_owned(),
+        ..VideoEncodeSpec::h264(PROBE_SIZE, PROBE_SIZE, FrameRate::FPS_30, PixelFormat::Nv12)
+    };
+    super::encode::test_encode(&spec, Choice::Hardware(hw), PROBE_FRAMES)
 }
 
 #[cfg(test)]
@@ -697,31 +955,38 @@ mod tests {
             name: "test_hw",
             device: "test",
             family: Family::Pseudo(Faults::default()),
+            codec: Codec::H264,
         };
         with_encoders(vec![pseudo], || {
-            assert_eq!(choices(&HwEncode::Off), Ok(vec![Choice::Software]));
             assert_eq!(
-                choices(&HwEncode::Auto),
+                choices(&HwEncode::Off, Codec::H264),
+                Ok(vec![Choice::Software])
+            );
+            assert_eq!(
+                choices(&HwEncode::Auto, Codec::H264),
                 Ok(vec![Choice::Hardware(pseudo), Choice::Software])
             );
             assert_eq!(
-                choices(&HwEncode::Force(" TEST_HW ".into())),
+                choices(&HwEncode::Force(" TEST_HW ".into()), Codec::H264),
                 Ok(vec![Choice::Hardware(pseudo)])
             );
-            let err = choices(&HwEncode::Force("h264_nosuch".into()));
+            let err = choices(&HwEncode::Force("h264_nosuch".into()), Codec::H264);
             assert!(
                 matches!(&err, Err(MediaError::HwUnavailable { reason }) if reason.contains("test_hw")),
                 "{err:?}"
             );
         });
         with_encoders(Vec::new(), || {
-            assert_eq!(choices(&HwEncode::Auto), Ok(vec![Choice::Software]));
+            assert_eq!(
+                choices(&HwEncode::Auto, Codec::H264),
+                Ok(vec![Choice::Software])
+            );
         });
     }
 
     #[test]
     fn the_os_table_is_in_auto_order() {
-        let names: Vec<&str> = candidates().iter().map(|hw| hw.name).collect();
+        let names: Vec<&str> = candidates(Codec::H264).iter().map(|hw| hw.name).collect();
         let want: &[&str] = if cfg!(windows) {
             &["h264_nvenc", "h264_amf", "h264_qsv"]
         } else if cfg!(target_os = "macos") {
@@ -731,7 +996,8 @@ mod tests {
         };
         assert_eq!(names, want);
         assert_eq!(Choice::Software.name(), "libx264");
-        assert_eq!(Choice::Hardware(NVENC).input_format(), PixelFormat::Nv12);
+        let s = spec(RateControl::default(), SpeedPreset::Medium);
+        assert_eq!(Choice::Hardware(NVENC).pixel(&s), Pixel::NV12);
         assert!(Choice::Hardware(VAAPI).surfaces().is_some());
         assert!(Choice::Hardware(NVENC).surfaces().is_none());
     }

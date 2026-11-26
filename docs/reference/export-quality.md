@@ -43,6 +43,28 @@ mapping (WP-1E.02). Architecture: [§7](../01-architecture.md#7-media-pipeline-c
   Vulkan finds no encode queue on the default adapter. The tests use D3D12VA only to exercise
   the VA-API upload path on Windows.
 
+## HEVC, AV1 and ProRes (WP-2G.02)
+
+`export.list_encoders` lists, per codec, the software encoder, the hardware encoders that passed an
+8-frame trial encode on this machine, the containers, bit depths and profiles. The policy table above
+holds for every codec: `Auto` tries the hardware encoders of **that codec** in the OS order, then the
+software one; `Force` takes a name of that codec (`hevc_nvenc`, `av1_amf`, ...), and a hardware encoder
+that fails midway ends the encode with `HwUnavailable`, so the export starts again in software.
+
+| Codec | Software | Hardware candidates (OS order) | Containers | Bit depth | Notes |
+|---|---|---|---|---|---|
+| H.264 | `libx264` | NVENC, AMF, QSV, VideoToolbox, VA-API | MP4, MOV | 8 | |
+| HEVC | `libx265` | the same families, `hevc_*` | MP4, MOV | 8, 10 | Tagged `hvc1`. 10-bit is `Main 10`. VA-API takes 8-bit only here. |
+| AV1 | `libsvtav1` | NVENC, AMF, QSV, VA-API, `av1_*` | MP4 | 8, 10 | `crf` = CRF + 10 (estimate), numeric preset 12 (ultrafast) to 2 (veryslow), medium is 6. |
+| ProRes | `prores_ks` | none | MOV | 10 | Profiles `422proxy`, `422lt`, `422`, `422hq`, `4444`, `4444xq`; `4444` keeps alpha (`yuva444p10le`). Audio is 24-bit PCM. |
+
+Every export tags BT.709 primaries, transfer and matrix in limited range (in the bitstream and the
+container) and writes the index in front (`+faststart`). The hardware quality offsets of the H.264
+table are reused for HEVC and AV1 until a machine runs the `export_quality_table` test for them; they
+are estimates. The renderer still produces 8-bit RGBA, so a 10-bit export converts that picture to
+10-bit YUV (more headroom for the encoder, not more picture information); a 16-bit pipeline arrives
+with ADR-0032's follow-up.
+
 ## The quality mapping
 
 One setting, `RateControl::Crf(c)` (default 20, lower is better), becomes each encoder's

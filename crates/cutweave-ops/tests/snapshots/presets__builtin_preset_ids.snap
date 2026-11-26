@@ -16,6 +16,7 @@ expression: ids
   "h264-mp4-1080p",
   "h264-draft",
   "archive-hevc",
+  "av1-small",
   "prores-422-hq",
   "gif",
   "audio-wav",

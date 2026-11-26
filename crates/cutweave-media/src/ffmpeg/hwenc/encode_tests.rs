@@ -14,7 +14,7 @@ use std::sync::atomic::{AtomicBool, Ordering};
 
 use cutweave_model::FrameRate;
 
-use super::{Choice, Family, Faults, HwEncoder, candidates, probe, with_encoders};
+use super::{Choice, Codec, Family, Faults, HwEncoder, candidates, probe, with_encoders};
 use crate::backend::{EncodeSpec, Encoder, HwEncode, MediaBackend, VideoEncodeSpec};
 use crate::ffmpeg::encode::{open, test_encode};
 use crate::testing::FakeVideo;
@@ -45,6 +45,7 @@ fn pseudo(faults: Faults) -> HwEncoder {
         name: "test_hw",
         device: "test",
         family: Family::Pseudo(faults),
+        codec: Codec::H264,
     }
 }
 
@@ -276,6 +277,7 @@ fn the_probe_is_empty_without_usable_hardware() {
         name: "h264_nosuch",
         device: "none",
         family: Family::Nvenc,
+        codec: Codec::H264,
     };
     let refuses = pseudo(Faults {
         open: true,
@@ -289,10 +291,10 @@ fn the_probe_is_empty_without_usable_hardware() {
         finish: true,
         ..Faults::default()
     });
-    assert_eq!(probe(&[absent, refuses, breaks, flush]), []);
+    assert_eq!(probe(Codec::H264, &[absent, refuses, breaks, flush]), []);
     // A working encoder is found.
     assert_eq!(
-        probe(&[pseudo(Faults::default())]),
+        probe(Codec::H264, &[pseudo(Faults::default())]),
         [pseudo(Faults::default())]
     );
     assert_eq!(
@@ -309,10 +311,9 @@ fn the_probe_is_empty_without_usable_hardware() {
 fn the_backend_lists_probed_encoders_in_auto_order() {
     // Whatever this machine has: a subsequence of the OS table, named and typed like it.
     let caps = backend().capabilities();
-    let table = candidates();
+    let table = candidates(Codec::H264);
     let mut rest = table.iter();
-    for hw in &caps.hw_encode {
-        assert_eq!(hw.codec, "h264");
+    for hw in caps.hw_encode.iter().filter(|hw| hw.codec == "h264") {
         let entry = rest
             .find(|c| c.name == hw.implementation)
             .unwrap_or_else(|| panic!("{hw:?} out of order or not in {table:?}"));

@@ -392,27 +392,40 @@ fn hw_preferred_false_means_software() {
 fn presets_this_build_cannot_encode_fail_with_unsupported_and_list_as_such() {
     let (h, _) = project();
     let store = Arc::new(PresetStore::default());
-    let (out, plans) = export(
-        &h,
-        &store,
-        json!({"path": out_path(), "preset": "prores-422-hq", "overwrite": true}),
-    );
-    assert_eq!(out.unwrap_err().code(), "unsupported");
-    assert!(plans.is_empty());
+    // GIF and audio-only formats wait for WP-2G.02b.
+    for id in ["gif", "audio-wav", "audio-mp3"] {
+        let (out, plans) = export(
+            &h,
+            &store,
+            json!({"path": out_path(), "preset": id, "overwrite": true}),
+        );
+        assert_eq!(out.unwrap_err().code(), "unsupported", "{id}");
+        assert!(plans.is_empty());
+    }
     let list = run(&h, &store, "export.list_presets", json!({})).unwrap();
     let entry = list["presets"]
         .as_array()
         .unwrap()
         .iter()
-        .find(|e| e["preset"]["id"] == "prores-422-hq")
+        .find(|e| e["preset"]["id"] == "gif")
         .unwrap();
     assert_eq!(entry["supported"], json!(false));
     assert!(
         entry["unsupported_reason"]
             .as_str()
             .unwrap()
-            .contains("WP-2G.02")
+            .contains("WP-2G.02b")
     );
+    // HEVC, AV1 and ProRes are exportable now.
+    for id in ["archive-hevc", "av1-small", "prores-422-hq"] {
+        let entry = list["presets"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .find(|e| e["preset"]["id"] == id)
+            .unwrap();
+        assert_eq!(entry["supported"], json!(true), "{id}");
+    }
     // Unknown ids, also as the base of a custom preset, are invalid.
     let (out, _) = export(
         &h,
@@ -526,4 +539,189 @@ fn user_presets_save_list_replace_delete_and_persist() {
     std::fs::write(dir.join(presets::USER_PRESETS_FILE), "{not json").unwrap();
     assert_eq!(PresetStore::open(Some(dir.clone())).problems().len(), 1);
     let _ = std::fs::remove_dir_all(&dir);
+}
+
+fn out_path_ext(ext: &str) -> String {
+    std::env::temp_dir()
+        .join(format!("cutweave-presets-test.{ext}"))
+        .to_string_lossy()
+        .into_owned()
+}
+
+#[test]
+fn codec_presets_plan_their_container_codec_profile_bit_depth_and_audio() {
+    use cutweave_ops::export::PlanOutput;
+    use cutweave_ops::export::presets::{AudioCodec, VideoCodec};
+    let (h, _) = project();
+    let store = Arc::new(PresetStore::default());
+    let plan = |id: &str, ext: &str| {
+        let (out, plans) = export(
+            &h,
+            &store,
+            json!({"path": out_path_ext(ext), "preset": id, "overwrite": true}),
+        );
+        (out, plans)
+    };
+    // The classic export is MP4, 8-bit H.264, AAC.
+    let (out, plans) = plan("h264-mp4-1080p", "mp4");
+    out.unwrap();
+    assert_eq!(plans[0].output.video_codec, VideoCodec::H264);
+    assert_eq!(plans[0].output.bit_depth, 8);
+    assert_eq!(
+        plans[0].output.audio_bitrate_kbps, None,
+        "the default export keeps the encoder's AAC rate"
+    );
+    // HEVC archive: 10-bit Main 10 in MP4, software.
+    let (out, plans) = plan("archive-hevc", "mp4");
+    out.unwrap();
+    assert_eq!(
+        plans[0].output,
+        PlanOutput {
+            container: Container::Mp4,
+            video_codec: VideoCodec::Hevc,
+            profile: Some("main10".into()),
+            bit_depth: 10,
+            alpha: false,
+            audio_codec: AudioCodec::Aac,
+            audio_bitrate_kbps: Some(320),
+        }
+    );
+    assert_eq!(
+        plans[0].hw,
+        ExportHw::Off,
+        "archive presets are quality-first"
+    );
+    assert_eq!(plans[0].rate, Some(PlanRate::Crf(16)));
+    // AV1.
+    let (out, plans) = plan("av1-small", "mp4");
+    out.unwrap();
+    assert_eq!(plans[0].output.video_codec, VideoCodec::Av1);
+    assert_eq!(plans[0].output.bit_depth, 8);
+    // ProRes goes into .mov with PCM audio; the .mp4 name is refused.
+    let (out, plans) = plan("prores-422-hq", "mov");
+    out.unwrap();
+    let o = &plans[0].output;
+    assert_eq!(
+        (o.container, o.video_codec, o.bit_depth, o.audio_codec),
+        (Container::Mov, VideoCodec::Prores, 10, AudioCodec::Pcm)
+    );
+    assert_eq!(o.profile.as_deref(), Some("422hq"));
+    assert_eq!(o.extension(), "mov");
+    let (out, _) = plan("prores-422-hq", "mp4");
+    let err = out.unwrap_err();
+    assert_eq!(err.code(), "invalid");
+    assert!(err.to_string().contains(".mov"), "{err}");
+    // And the MP4 presets refuse .mov.
+    let (out, _) = plan("archive-hevc", "mov");
+    assert_eq!(out.unwrap_err().code(), "invalid");
+}
+
+#[test]
+fn a_user_preset_can_name_prores_4444_with_alpha_and_hevc_profiles_are_checked() {
+    let (h, _) = project();
+    let store = Arc::new(PresetStore::default());
+    let prores = |profile: &str, pix: &str| {
+        json!({
+            "schema_version": 1, "id": "p4", "name": "P4", "container": "mov",
+            "video": {"codec": "prores", "rate_control": {"mode": "profile"},
+                      "profile": profile, "pix_fmt": pix, "hw_preferred": false},
+            "audio": {"codec": "pcm", "sample_rate": 48000, "channels": 2},
+            "size": {"kind": "follow_sequence"}, "fps": {"kind": "follow_sequence"}
+        })
+    };
+    let save = |preset: Value| run(&h, &store, "export.save_preset", json!({"preset": preset}));
+    save(prores("4444", "yuva444p10le")).unwrap();
+    let (out, plans) = export(
+        &h,
+        &store,
+        json!({"path": out_path_ext("mov"), "preset": "p4", "overwrite": true}),
+    );
+    out.unwrap();
+    assert!(plans[0].output.alpha, "yuva keeps the alpha channel");
+    // A profile and pixel format that do not belong together are `Invalid` at their pointer.
+    let err = save(prores("422hq", "yuv444p10le")).unwrap_err();
+    assert_eq!(err.code(), "invalid");
+    let err = save(prores("nope", "yuv422p10le")).unwrap_err();
+    assert!(err.to_string().contains("ProRes profiles"), "{err}");
+    let mut hevc = mine("hv");
+    hevc["video"] = json!({"codec": "hevc", "rate_control": {"mode": "crf", "crf": 20},
+        "profile": "main", "pix_fmt": "yuv420p10le", "hw_preferred": false});
+    let err = save(hevc).unwrap_err();
+    assert_eq!(err.code(), "invalid");
+    assert!(err.to_string().contains("main10"), "{err}");
+}
+
+#[test]
+fn export_list_encoders_asks_the_engine_and_lists_the_four_codecs() {
+    struct Found;
+    impl ExportStarter for Found {
+        fn start(&mut self, _plan: ExportPlan) -> Result<JobId, CmdError> {
+            Ok(JobId::from_u128(1))
+        }
+        fn encoders(
+            &mut self,
+        ) -> Result<Vec<cutweave_ops::export::encoders::EncoderEntry>, CmdError> {
+            use cutweave_ops::export::encoders::EncoderEntry;
+            Ok(vec![
+                EncoderEntry {
+                    codec: "hevc".into(),
+                    implementation: "libx265".into(),
+                    hardware: false,
+                    device: None,
+                },
+                EncoderEntry {
+                    codec: "hevc".into(),
+                    implementation: "hevc_nvenc".into(),
+                    hardware: true,
+                    device: Some("cuda".into()),
+                },
+            ])
+        }
+    }
+    let (h, _) = project();
+    let mut ctx = ExportCtx {
+        snapshot: snapshot(&h),
+        allowed_roots: None,
+        starter: Box::new(Found),
+        presets: Arc::default(),
+    };
+    let out = h
+        .registry
+        .invoke_engine_json(
+            "export.list_encoders",
+            json!({}),
+            &mut ctx,
+            Access::STANDARD,
+        )
+        .unwrap();
+    let codecs = out["codecs"].as_array().unwrap();
+    let names: Vec<&str> = codecs
+        .iter()
+        .map(|c| c["codec"].as_str().unwrap())
+        .collect();
+    assert_eq!(names, ["h264", "hevc", "av1", "prores"]);
+    assert_eq!(codecs[1]["software"], json!("libx265"));
+    assert_eq!(
+        codecs[1]["hardware"][0]["implementation"],
+        json!("hevc_nvenc")
+    );
+    assert_eq!(codecs[1]["hardware"][0]["device"], json!("cuda"));
+    assert_eq!(codecs[2]["available"], json!(false));
+    // An engine without a media backend says so.
+    let mut none = ExportCtx {
+        snapshot: snapshot(&h),
+        allowed_roots: None,
+        starter: Box::new(Recorder(Arc::default())),
+        presets: Arc::default(),
+    };
+    let err = h
+        .registry
+        .invoke_engine_json(
+            "export.list_encoders",
+            json!({}),
+            &mut none,
+            Access::STANDARD,
+        )
+        .unwrap_err();
+    assert_eq!(err.code(), "unsupported");
 }

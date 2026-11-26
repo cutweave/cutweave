@@ -546,9 +546,10 @@ fn unsupported_specs(dir: &Path) -> Vec<(&'static str, EncodeSpec)> {
             },
         ),
         (
-            "HEVC",
+            // HEVC, AV1 and ProRes are written since WP-2G.02 (ffmpeg_export_codecs.rs).
+            "VP9",
             at("out.mp4").with_video(VideoEncodeSpec {
-                codec: "hevc".into(),
+                codec: "vp9".into(),
                 ..h264.clone()
             }),
         ),

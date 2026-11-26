@@ -157,7 +157,8 @@ impl DecodeOpts {
 /// A video stream to encode.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct VideoEncodeSpec {
-    /// Codec-id name (`h264`); the backend picks an implementation it has.
+    /// Codec-id name (`h264`, `hevc`, `av1`, `prores`); the backend picks an implementation it
+    /// has.
     pub codec: String,
     /// Frame width.
     pub width: u32,
@@ -180,6 +181,16 @@ pub struct VideoEncodeSpec {
     /// FFmpeg bundle (the export determinism test, WP-1E.03, which also sets
     /// [`HwEncode::Off`]: hardware encoders ignore this field).
     pub threads: u16,
+    /// Bits per sample of the coded video: 8 (the default) or 10. 10-bit HEVC and AV1 encode
+    /// from 10-bit YUV input or from RGBA (converted with the output's matrix and range); H.264
+    /// is 8-bit only. ProRes is always 10-bit and ignores this field.
+    pub bit_depth: u8,
+    /// Codec profile, for codecs that have named ones: ProRes `proxy`, `lt`, `standard`, `hq`
+    /// (the default), `4444`, `4444xq` (an `422` prefix is accepted: `422hq`). `None` takes the
+    /// codec's default. HEVC takes the profile from `bit_depth` (`main`, `main10`).
+    pub profile: Option<String>,
+    /// Keeps the alpha channel of RGBA input: ProRes 4444 and 4444 XQ only.
+    pub alpha: bool,
 }
 
 impl VideoEncodeSpec {
@@ -202,7 +213,17 @@ impl VideoEncodeSpec {
             preset: SpeedPreset::default(),
             color: crate::bt709_tags(),
             threads: 0,
+            bit_depth: 8,
+            profile: None,
+            alpha: false,
         }
+    }
+
+    /// The same stream with codec `codec` (`hevc`, `av1`, `prores`).
+    #[must_use]
+    pub fn with_codec(mut self, codec: &str) -> VideoEncodeSpec {
+        codec.clone_into(&mut self.codec);
+        self
     }
 }
 
@@ -333,6 +354,9 @@ impl EncodeSpec {
                 }
                 RateControl::Bitrate(0) => return invalid("the video bitrate is zero"),
                 _ => {}
+            }
+            if !matches!(v.bit_depth, 8 | 10) {
+                return invalid("the video bit depth is 8 or 10");
             }
             if matches!(&self.hw, HwEncode::Force(name) if name.trim().is_empty()) {
                 return invalid("the forced hardware encoder name is empty");

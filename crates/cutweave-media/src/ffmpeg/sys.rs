@@ -1170,3 +1170,26 @@ pub(super) mod test_support {
         unsafe { ffi::av_log(std::ptr::null_mut(), level, c"%s".as_ptr(), text.as_ptr()) };
     }
 }
+
+// ---------------------------------------------------------------------------------------------
+// WP-2G.02: the codec tag of an output stream (HEVC in MP4/MOV is written as `hvc1`, which Apple's
+// players read; the muxers' own default is `hev1`).
+// ---------------------------------------------------------------------------------------------
+
+/// Sets the codec tag (a FourCC such as `*b"hvc1"`) of output stream `stream`, after its
+/// parameters were copied from the encoder and before the header is written.
+pub(super) fn set_stream_codec_tag(
+    stream: &mut ffmpeg_next::format::stream::StreamMut<'_>,
+    tag: [u8; 4],
+) {
+    // SAFETY: `as_mut_ptr` points at the live AVStream this `StreamMut` borrows from the output
+    // context; `avformat_new_stream` always allocates its `codecpar`, so the pointer is non-null
+    // (checked anyway). The write is a plain integer field that the muxer reads in
+    // `write_header`, which has not run yet.
+    unsafe {
+        let par = (*stream.as_mut_ptr()).codecpar;
+        if !par.is_null() {
+            (*par).codec_tag = u32::from_le_bytes(tag);
+        }
+    }
+}

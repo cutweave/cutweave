@@ -1,8 +1,20 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 //! The FFmpeg [`Encoder`]: H.264 (libx264 or a hardware encoder) and AAC (FFmpeg's native
-//! encoder) in MP4 (WP-1E.01, hardware WP-1E.02), and the intra-frame proxy codecs (ProRes
-//! Proxy, DNxHR LB, MJPEG) with 16-bit PCM in MOV (WP-2F.01).
+//! encoder) in MP4 (WP-1E.01, hardware WP-1E.02), HEVC, AV1 and ProRes exports (WP-2G.02), and
+//! the intra-frame proxy codecs (ProRes Proxy, DNxHR LB, MJPEG) with 16-bit PCM in MOV
+//! (WP-2F.01).
 //!
+//! - **Export codecs** (WP-2G.02). H.264 and HEVC go into MP4 or MOV, AV1 into MP4, ProRes into
+//!   MOV. HEVC is libx265 or a hardware encoder (`hevc_nvenc`, `hevc_amf`, `hevc_qsv`, ...), tagged
+//!   `hvc1` so Apple's players open it; AV1 is SVT-AV1 or a hardware encoder; ProRes is
+//!   `prores_ks` with a profile from proxy to 4444 XQ (4444 keeps alpha) in 10-bit. `bit_depth`
+//!   10 gives 10-bit HEVC and AV1 (RGBA, `P010` or `Yuv420p10` input). Every export tags BT.709
+//!   limited range in the bitstream and the container, and writes the MP4/MOV index in front
+//!   (`+faststart`). A hardware encoder that fails to open is skipped; one that fails midway ends
+//!   the encode with [`MediaError::HwUnavailable`] and the caller encodes again in software
+//!   ([`encode_with_fallback`](crate::encode_with_fallback)). A ProRes export takes RGBA frames
+//!   (or 4:2:2 10-bit ones for 4:2:2 profiles); the proxy path below takes only the codec's own
+//!   layout.
 //! - **Proxies** (WP-2F.01). Codec `prores`, `dnxhd` or `mjpeg` in container `mov`: frames
 //!   arrive in the codec's own layout (`Yuv422p10` for ProRes, `Yuv422p` otherwise) and are
 //!   copied, never converted; the stream is tagged with the spec's color tags as they are (an
@@ -48,7 +60,7 @@ use ffmpeg_next::format::{self, Pixel, Sample, sample};
 use ffmpeg_next::util::color;
 use ffmpeg_next::{ChannelLayout, Dictionary, Packet, Rational, frame};
 
-use super::hwenc::{self, Choice, Intra};
+use super::hwenc::{self, Choice, Codec, Intra};
 use super::sys::{HwFrames, Scaler};
 use crate::backend::{AudioEncodeSpec, EncodeSpec, EncodeSummary, Encoder, VideoEncodeSpec};
 use crate::encode::{InputCheck, output_color};
@@ -62,6 +74,8 @@ const MOV: &str = "mov";
 const AAC: &str = "aac";
 /// 16-bit little-endian PCM (proxies, in MOV).
 const PCM_S16LE: &str = "pcm_s16le";
+/// 24-bit little-endian PCM (ProRes exports, in MOV).
+const PCM_S24LE: &str = "pcm_s24le";
 /// swscale's BT.709 matrix.
 const SWS_CS_ITU709: std::ffi::c_int = ffmpeg_next::ffi::SWS_CS_ITU709;
 
@@ -91,10 +105,13 @@ pub(super) fn open_with(
         .map(|a| AudioPlan::new(a, container))
         .transpose()?;
     check_target(&spec.path)?;
+    if let Some(plan) = &video {
+        plan.check_container(container)?;
+    }
     let choices = match &video {
-        Some(plan) => match plan.intra {
-            Some(intra) => vec![Choice::Intra(intra)],
-            None => hwenc::choices(&spec.hw)?,
+        Some(plan) => match (plan.intra, plan.codec) {
+            (Some(intra), _) => vec![Choice::Intra(intra)],
+            (None, codec) => hwenc::choices(&spec.hw, codec)?,
         },
         None => vec![Choice::Software],
     };
@@ -233,44 +250,128 @@ fn rational(num: u32, den: u32) -> Result<Rational, MediaError> {
 /// The checked video settings, before anything is opened (whichever encoder then opens).
 pub(super) struct VideoPlan {
     spec: VideoEncodeSpec,
-    /// The intra-frame proxy codec, for `prores`, `dnxhd` and `mjpeg`; `None` for H.264.
+    /// The intra-frame proxy codec, for `prores` (4:2:2 10-bit input), `dnxhd` and `mjpeg`;
+    /// `None` for the export codecs.
     intra: Option<Intra>,
+    /// The export codec (H.264 for a proxy plan, where it is not used).
+    codec: Codec,
     /// One frame.
     time_base: Rational,
     fps: Rational,
 }
 
+/// Whether a `prores` spec is the proxy encode of WP-2F.01 (the codec's own layout, no profile)
+/// rather than an export.
+fn is_proxy_prores(spec: &VideoEncodeSpec) -> bool {
+    spec.input_format == PixelFormat::Yuv422p10 && spec.profile.is_none() && !spec.alpha
+}
+
+/// The input and settings of a ProRes export: a known profile, RGBA frames (or 4:2:2 10-bit
+/// ones for the 4:2:2 profiles), alpha only in 4444.
+fn check_prores(spec: &VideoEncodeSpec, is_444: bool) -> Result<(), MediaError> {
+    if hwenc::prores_profile(spec.profile.as_deref()).is_none() {
+        return Err(unsupported(format!(
+            "ProRes profile `{}`: proxy, lt, standard, hq, 4444 or 4444xq",
+            spec.profile.as_deref().unwrap_or_default()
+        )));
+    }
+    let ok = spec.input_format == PixelFormat::Rgba8
+        || (spec.input_format == PixelFormat::Yuv422p10 && !is_444 && !spec.alpha);
+    if !ok {
+        return Err(unsupported(format!(
+            "{:?} input: ProRes takes Rgba8 frames (Yuv422p10 for the 4:2:2 profiles)",
+            spec.input_format
+        )));
+    }
+    if spec.alpha && !is_444 {
+        return Err(unsupported(
+            "alpha needs the ProRes 4444 or 4444xq profile".to_owned(),
+        ));
+    }
+    Ok(())
+}
+
+/// The input and settings of an H.264, HEVC or AV1 export: 8-bit input for 8-bit video, 10-bit
+/// for 10-bit, no alpha, HEVC's profile following the bit depth.
+fn check_coded(spec: &VideoEncodeSpec, codec: Codec) -> Result<(), MediaError> {
+    let ten = spec.bit_depth > 8;
+    let formats: [PixelFormat; 3] = if ten {
+        [
+            PixelFormat::Rgba8,
+            PixelFormat::P010,
+            PixelFormat::Yuv420p10,
+        ]
+    } else {
+        [PixelFormat::Rgba8, PixelFormat::Nv12, PixelFormat::Yuv420p]
+    };
+    if !formats.contains(&spec.input_format) {
+        return Err(unsupported(format!(
+            "{:?} input: {}-bit {} takes {:?} frames",
+            spec.input_format,
+            if ten { 10 } else { 8 },
+            codec.id(),
+            formats
+        )));
+    }
+    if spec.alpha {
+        return Err(unsupported(format!("{} has no alpha here", codec.id())));
+    }
+    let want = if ten { "main10" } else { "main" };
+    if codec == Codec::Hevc
+        && let Some(profile) = spec.profile.as_deref()
+        && profile != want
+    {
+        return Err(unsupported(format!(
+            "HEVC profile `{profile}` at {} bits: `{want}`",
+            if ten { 10 } else { 8 },
+        )));
+    }
+    Ok(())
+}
+
 impl VideoPlan {
+    #[allow(clippy::too_many_lines)] // one flat run of checks, before anything opens
     pub(super) fn new(spec: &VideoEncodeSpec) -> Result<VideoPlan, MediaError> {
-        if let Some(intra) = Intra::of(&spec.codec) {
+        if let Some(intra) = Intra::of(&spec.codec)
+            && (intra != Intra::ProRes || is_proxy_prores(spec))
+        {
             return VideoPlan::intra(spec, intra);
         }
-        if spec.codec != "h264" {
+        let Some(codec) = Codec::of(&spec.codec) else {
             return Err(unsupported(format!(
-                "no `{}` encoder for MP4: this backend writes H.264 (HEVC and AV1 arrive in P2)",
+                "no `{}` encoder: this backend writes H.264, HEVC, AV1 and ProRes",
                 spec.codec
             )));
+        };
+        let software = codec.software().name();
+        if encoder::find_by_name(software).is_none() {
+            return Err(unsupported(format!("this FFmpeg build has no {software}")));
         }
-        if encoder::find_by_name(hwenc::X264).is_none() {
-            return Err(unsupported(format!(
-                "this FFmpeg build has no {}",
-                hwenc::X264
-            )));
+        let ten = spec.bit_depth > 8;
+        if codec == Codec::H264 && ten {
+            return Err(unsupported(
+                "10-bit H.264 is not exported: use HEVC or AV1 for 10-bit video".to_owned(),
+            ));
         }
-        if !matches!(
-            spec.input_format,
-            PixelFormat::Rgba8 | PixelFormat::Nv12 | PixelFormat::Yuv420p
-        ) {
-            return Err(unsupported(format!(
-                "{:?} input: 8-bit H.264 takes Rgba8, Nv12 or Yuv420p frames",
-                spec.input_format
-            )));
+        let prores_444 = codec == Codec::ProRes
+            && hwenc::prores_profile(spec.profile.as_deref())
+                .is_some_and(hwenc::ProResProfile::is_444);
+        if codec == Codec::ProRes {
+            check_prores(spec, prores_444)?;
+        } else {
+            check_coded(spec, codec)?;
         }
-        if !spec.width.is_multiple_of(2) || !spec.height.is_multiple_of(2) {
+        let even_height = codec != Codec::ProRes;
+        if !spec.width.is_multiple_of(2) && !prores_444
+            || even_height && !spec.height.is_multiple_of(2)
+        {
             return Err(MediaError::Invalid {
                 message: format!(
-                    "H.264 4:2:0 needs an even width and height, not {}x{}",
-                    spec.width, spec.height
+                    "{} needs an even width{} here, not {}x{}",
+                    codec.id(),
+                    if even_height { " and height" } else { "" },
+                    spec.width,
+                    spec.height
                 ),
             });
         }
@@ -289,6 +390,7 @@ impl VideoPlan {
         Ok(VideoPlan {
             spec: spec.clone(),
             intra: None,
+            codec,
             time_base: rational(den, num)?,
             fps: rational(num, den)?,
         })
@@ -319,9 +421,37 @@ impl VideoPlan {
         Ok(VideoPlan {
             spec: spec.clone(),
             intra: Some(intra),
+            codec: Codec::H264,
             time_base: rational(den, num)?,
             fps: rational(num, den)?,
         })
+    }
+
+    /// Whether the codec goes into `container`: H.264 and HEVC into MP4 or MOV, AV1 into MP4,
+    /// ProRes into MOV (proxies are not checked: they are MOV by construction).
+    fn check_container(&self, container: &'static str) -> Result<(), MediaError> {
+        if self.intra.is_some() {
+            return Ok(());
+        }
+        let ok = match self.codec {
+            Codec::H264 | Codec::Hevc => true,
+            Codec::Av1 => container == MP4,
+            Codec::ProRes => container == MOV,
+        };
+        if ok {
+            Ok(())
+        } else {
+            Err(unsupported(format!(
+                "{} does not go into {}: {}",
+                self.codec.id(),
+                container.to_ascii_uppercase(),
+                if self.codec == Codec::Av1 {
+                    "AV1 goes into MP4"
+                } else {
+                    "ProRes goes into MOV"
+                }
+            )))
+        }
     }
 }
 
@@ -408,9 +538,10 @@ impl AudioPlan {
         let name = match (spec.codec.as_str(), container) {
             (AAC, _) => AAC,
             (PCM_S16LE, MOV) => PCM_S16LE,
+            (PCM_S24LE, MOV) => PCM_S24LE,
             _ => {
                 return Err(unsupported(format!(
-                    "no `{}` encoder for {}: this backend writes AAC (and 16-bit PCM in MOV)",
+                    "no `{}` encoder for {}: this backend writes AAC (and 16 or 24-bit PCM in MOV)",
                     spec.codec,
                     container.to_ascii_uppercase()
                 )));
@@ -626,7 +757,7 @@ enum Convert {
 }
 
 /// The FFmpeg layout of an input format.
-fn pixel(format: PixelFormat) -> Pixel {
+pub(super) fn pixel(format: PixelFormat) -> Pixel {
     match format {
         PixelFormat::Rgba8 => Pixel::RGBA,
         PixelFormat::Nv12 => Pixel::NV12,
@@ -639,27 +770,28 @@ fn pixel(format: PixelFormat) -> Pixel {
 }
 
 impl Convert {
-    /// From `input` frames to `output` frames (both RGBA, NV12 or YUV 4:2:0) at `size`.
+    /// From `input` frames to `output` frames (RGBA in; 4:2:0, 4:2:2 or 4:4:4 out, 8 or 10 bit)
+    /// at `size`.
     fn new(
         input: PixelFormat,
-        output: PixelFormat,
+        output: Pixel,
         size: (u32, u32),
     ) -> Result<Convert, ffmpeg_next::Error> {
-        if input == output {
+        let src = pixel(input);
+        if src == output {
             return Ok(Convert::Copy);
         }
-        let src = pixel(input);
         // RGB input is full range; YUV input is already limited range like the output.
         let src_full = input == PixelFormat::Rgba8;
         Ok(Convert::Scale {
-            scaler: Scaler::new(src, pixel(output), size, SWS_CS_ITU709, (src_full, false))?,
+            scaler: Scaler::new(src, output, size, SWS_CS_ITU709, (src_full, false))?,
             staging: frame::Video::new(src, size.0, size.1),
         })
     }
 
     /// `frame` as a new `output` frame (new, because the encoder may keep a reference).
-    fn run(&mut self, frame: &VideoFrame, output: PixelFormat) -> Result<frame::Video, Fault> {
-        let mut out = frame::Video::new(pixel(output), frame.width, frame.height);
+    fn run(&mut self, frame: &VideoFrame, output: Pixel) -> Result<frame::Video, Fault> {
+        let mut out = frame::Video::new(output, frame.width, frame.height);
         match self {
             Convert::Copy => copy_planes(frame, &mut out)?,
             Convert::Scale { scaler, staging } => {
@@ -702,6 +834,8 @@ struct VideoEncoder {
     encoder: encoder::video::Encoder,
     codec: ffmpeg_next::Codec,
     convert: Convert,
+    /// The layout the encoder takes (before any GPU upload).
+    pixel: Pixel,
     /// The pool frames are uploaded to (VA-API).
     surfaces: Option<HwFrames>,
     choice: Choice,
@@ -729,6 +863,13 @@ impl VideoEncoder {
         #[cfg(test)]
         if injected(choice).is_some_and(|f| f.open) {
             return Err(fault(format!("{name} could not open (injected)")));
+        }
+        if spec.bit_depth > 8
+            && choice
+                .hardware()
+                .is_some_and(|hw| matches!(hw.family, hwenc::Family::Vaapi))
+        {
+            return Err(fault(format!("{name}: 10-bit input is not supported here")));
         }
         let codec = encoder::find_by_name(choice.ffmpeg_name())
             .ok_or_else(|| fault(format!("{name} is not in this FFmpeg build")))?;
@@ -764,7 +905,7 @@ impl VideoEncoder {
             ctx.set_format(format);
             Some(pool)
         } else {
-            ctx.set_format(pixel(choice.input_format()));
+            ctx.set_format(choice.pixel(spec));
             None
         };
         let mut options = Dictionary::new();
@@ -777,16 +918,14 @@ impl VideoEncoder {
                 spec.width, spec.height, spec.rate
             ))
         })?;
-        let convert = Convert::new(
-            spec.input_format,
-            choice.input_format(),
-            (spec.width, spec.height),
-        )
-        .map_err(|e| Fault::Encode("swscale", e))?;
+        let pixel = choice.pixel(spec);
+        let convert = Convert::new(spec.input_format, pixel, (spec.width, spec.height))
+            .map_err(|e| Fault::Encode("swscale", e))?;
         Ok(VideoEncoder {
             encoder,
             codec,
             convert,
+            pixel,
             surfaces,
             choice,
         })
@@ -809,7 +948,7 @@ impl VideoEncoder {
                 "{name}: device lost at frame {index} (injected)"
             )));
         }
-        let mut input = self.convert.run(frame, self.choice.input_format())?;
+        let mut input = self.convert.run(frame, self.pixel)?;
         if let Some(pool) = &self.surfaces {
             input = pool.upload(&input).map_err(|e| self.fault(e))?;
         }
@@ -951,6 +1090,26 @@ impl AudioOut {
                 for (i, v) in pending[..n].iter().enumerate() {
                     #[allow(clippy::cast_possible_truncation)] // clamped to the i16 range first
                     let q = (v.clamp(-1.0, 1.0) * 32767.0).round() as i16;
+                    if let Some(slot) = data.get_mut(i * channels + c) {
+                        *slot = q;
+                    }
+                }
+            }
+            f
+        } else if self.name == PCM_S24LE {
+            // `pcm_s24le` takes 32-bit samples and writes their top 24 bits.
+            let mut f = frame::Audio::new(
+                Sample::I32(sample::Type::Packed),
+                len,
+                layout(self.channels),
+            );
+            let channels = self.pending.len();
+            let data = f.plane_mut::<i32>(0);
+            data.fill(0);
+            for (c, pending) in self.pending.iter().enumerate() {
+                for (i, v) in pending[..n].iter().enumerate() {
+                    #[allow(clippy::cast_possible_truncation)] // clamped to the i32 range first
+                    let q = (f64::from(v.clamp(-1.0, 1.0)) * f64::from(i32::MAX)).round() as i32;
                     if let Some(slot) = data.get_mut(i * channels + c) {
                         *slot = q;
                     }
@@ -1262,6 +1421,10 @@ fn open_video(
     let encoder = VideoEncoder::open(plan, choice, global_header)?;
     let mut stream = out.add_stream(encoder.codec).map_err(Fault::Write)?;
     stream.set_parameters(&encoder.encoder);
+    if plan.intra.is_none() && plan.codec == Codec::Hevc {
+        // MP4/MOV default to `hev1`, which Apple's players refuse; `hvc1` plays everywhere.
+        super::sys::set_stream_codec_tag(&mut stream, *b"hvc1");
+    }
     stream.set_time_base(plan.time_base);
     stream.set_rate(plan.fps);
     stream.set_avg_frame_rate(plan.fps);
@@ -1287,6 +1450,8 @@ fn open_audio(out: &mut Output, plan: &AudioPlan, global_header: bool) -> Result
     ctx.set_channel_layout(layout(spec.channels));
     if name == PCM_S16LE {
         ctx.set_format(Sample::I16(sample::Type::Packed));
+    } else if name == PCM_S24LE {
+        ctx.set_format(Sample::I32(sample::Type::Packed));
     } else {
         ctx.set_format(Sample::F32(sample::Type::Planar));
         ctx.set_bit_rate(spec.bitrate as usize);
@@ -1434,7 +1599,8 @@ mod tests {
         // BT.601 would give red Y 81, green Y 145: the matrix is checked, not just the range.
         // Both the x264 layout (planar) and the hardware layout (NV12, interleaved chroma).
         for output in [PixelFormat::Yuv420p, PixelFormat::Nv12] {
-            let mut convert = Convert::new(PixelFormat::Rgba8, output, size).expect("swscale");
+            let mut convert =
+                Convert::new(PixelFormat::Rgba8, pixel(output), size).expect("swscale");
             for (rgb, want) in [
                 ([0, 0, 0], [16.0, 128.0, 128.0]),
                 ([255, 255, 255], [235.0, 128.0, 128.0]),
@@ -1443,7 +1609,7 @@ mod tests {
                 ([0, 0, 255], [31.8, 240.0, 117.7]),
             ] {
                 let yuv = convert
-                    .run(&solid(PixelFormat::Rgba8, size, rgb), output)
+                    .run(&solid(PixelFormat::Rgba8, size, rgb), pixel(output))
                     .expect("convert");
                 assert_eq!(yuv.format(), pixel(output));
                 let chroma = |c: usize| -> Vec<u8> {
@@ -1528,9 +1694,8 @@ mod tests {
         let uv: Vec<u8> = cb.iter().zip(&cr).flat_map(|(&u, &v)| [u, v]).collect();
         for frame in [nv12, planar] {
             // To x264's planar layout.
-            let mut convert =
-                Convert::new(frame.format, PixelFormat::Yuv420p, (w, h)).expect("swscale");
-            let out = convert.run(&frame, PixelFormat::Yuv420p).expect("convert");
+            let mut convert = Convert::new(frame.format, Pixel::YUV420P, (w, h)).expect("swscale");
+            let out = convert.run(&frame, Pixel::YUV420P).expect("convert");
             let plane = |out: &frame::Video, i: usize, (pw, ph): (u32, u32)| -> Vec<u8> {
                 (0..ph as usize)
                     .flat_map(|r| out.data(i)[r * out.stride(i)..][..pw as usize].to_vec())
@@ -1540,9 +1705,8 @@ mod tests {
             assert_eq!(plane(&out, 1, (w / 2, h / 2)), cb, "{:?} Cb", frame.format);
             assert_eq!(plane(&out, 2, (w / 2, h / 2)), cr, "{:?} Cr", frame.format);
             // To the hardware encoders' NV12.
-            let mut convert =
-                Convert::new(frame.format, PixelFormat::Nv12, (w, h)).expect("swscale");
-            let out = convert.run(&frame, PixelFormat::Nv12).expect("convert");
+            let mut convert = Convert::new(frame.format, Pixel::NV12, (w, h)).expect("swscale");
+            let out = convert.run(&frame, Pixel::NV12).expect("convert");
             assert_eq!(out.format(), Pixel::NV12);
             assert_eq!(plane(&out, 0, (w, h)), y, "{:?} → NV12 luma", frame.format);
             assert_eq!(

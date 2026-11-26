@@ -7457,17 +7457,17 @@ expression: text
                 "oneOf": [
                   {
                     "const": "auto",
-                    "description": "The first hardware H.264 encoder that works here, else software (x264); if it fails\nduring the export, the export starts again in software.",
+                    "description": "The first hardware encoder of the codec that works here (`export.list_encoders`), else\nsoftware; if it fails during the export, the export starts again in software.",
                     "type": "string"
                   },
                   {
                     "const": "off",
-                    "description": "Software (x264) only.",
+                    "description": "Software (x264, x265, SVT-AV1) only.",
                     "type": "string"
                   },
                   {
                     "additionalProperties": false,
-                    "description": "This hardware encoder and no other, e.g. \"h264_nvenc\" (the `implementation` names of\nthe machine's hardware encoders); fails instead of falling back.",
+                    "description": "This hardware encoder and no other, e.g. \"hevc_nvenc\" (the `implementation` names of\nthe machine's hardware encoders, `export.list_encoders`); fails instead of falling back.",
                     "properties": {
                       "force": {
                         "type": "string"
@@ -7990,6 +7990,192 @@ expression: text
       },
       "input_schema": {
         "additionalProperties": false,
+        "description": "Lists the video codecs this machine exports (H.264, HEVC, AV1, ProRes) with their software\nencoder, the hardware encoders that passed an 8-frame trial encode (what `hw: \"auto\"` uses\nand `hw: {\"force\": ...}` names), and the containers, bit depths and profiles each takes.",
+        "title": "ListEncoders",
+        "type": "object"
+      },
+      "kind": "engine",
+      "mcp": "catalog",
+      "mcp_tool": "export_list_encoders",
+      "name": "export.list_encoders",
+      "namespace": "export",
+      "output_schema": {
+        "additionalProperties": false,
+        "description": "Result of `export.list_encoders`.",
+        "properties": {
+          "codecs": {
+            "description": "H.264, HEVC, AV1 and ProRes, in that order.",
+            "items": {
+              "additionalProperties": false,
+              "description": "One codec and how it can be exported here.",
+              "properties": {
+                "available": {
+                  "description": "Whether any encoder (software or hardware) is available.",
+                  "type": "boolean"
+                },
+                "bit_depths": {
+                  "description": "The bit depths of the coded video.",
+                  "items": {
+                    "format": "uint8",
+                    "maximum": 255,
+                    "minimum": 0,
+                    "type": "integer"
+                  },
+                  "type": "array"
+                },
+                "codec": {
+                  "description": "The codec.",
+                  "oneOf": [
+                    {
+                      "const": "h264",
+                      "description": "H.264 / AVC.",
+                      "type": "string"
+                    },
+                    {
+                      "const": "hevc",
+                      "description": "H.265 / HEVC.",
+                      "type": "string"
+                    },
+                    {
+                      "const": "av1",
+                      "description": "AV1.",
+                      "type": "string"
+                    },
+                    {
+                      "const": "prores",
+                      "description": "Apple ProRes.",
+                      "type": "string"
+                    },
+                    {
+                      "const": "gif",
+                      "description": "GIF (palette).",
+                      "type": "string"
+                    }
+                  ]
+                },
+                "containers": {
+                  "description": "The containers the codec goes into.",
+                  "items": {
+                    "description": "The file format of the output.",
+                    "oneOf": [
+                      {
+                        "const": "mp4",
+                        "description": "MP4.",
+                        "type": "string"
+                      },
+                      {
+                        "const": "mov",
+                        "description": "QuickTime MOV.",
+                        "type": "string"
+                      },
+                      {
+                        "const": "gif",
+                        "description": "Animated GIF.",
+                        "type": "string"
+                      },
+                      {
+                        "const": "wav",
+                        "description": "WAV (audio only).",
+                        "type": "string"
+                      },
+                      {
+                        "const": "mp3",
+                        "description": "MP3 (audio only).",
+                        "type": "string"
+                      },
+                      {
+                        "const": "m4a",
+                        "description": "M4A (AAC audio only).",
+                        "type": "string"
+                      },
+                      {
+                        "const": "flac",
+                        "description": "FLAC (audio only).",
+                        "type": "string"
+                      },
+                      {
+                        "const": "ogg",
+                        "description": "Ogg (Opus audio only).",
+                        "type": "string"
+                      }
+                    ]
+                  },
+                  "type": "array"
+                },
+                "hardware": {
+                  "description": "Hardware encoders verified on this machine, in the order `auto` tries them.",
+                  "items": {
+                    "additionalProperties": false,
+                    "description": "A hardware encoder that passed the trial encode.",
+                    "properties": {
+                      "device": {
+                        "description": "The device type it runs on (`cuda`, `amf`, `qsv`, `videotoolbox`, `vaapi`).",
+                        "type": "string"
+                      },
+                      "implementation": {
+                        "description": "The name for `hw: {\"force\": ...}` (`hevc_nvenc`).",
+                        "type": "string"
+                      }
+                    },
+                    "required": [
+                      "implementation",
+                      "device"
+                    ],
+                    "type": "object"
+                  },
+                  "type": "array"
+                },
+                "profiles": {
+                  "description": "The profile names a preset's `video.profile` takes (empty when the codec has none).",
+                  "items": {
+                    "type": "string"
+                  },
+                  "type": "array"
+                },
+                "software": {
+                  "default": null,
+                  "description": "The software encoder (`libx265`), when this FFmpeg build has it.",
+                  "type": [
+                    "string",
+                    "null"
+                  ]
+                }
+              },
+              "required": [
+                "codec",
+                "available",
+                "software",
+                "hardware",
+                "containers",
+                "bit_depths",
+                "profiles"
+              ],
+              "type": "object"
+            },
+            "type": "array"
+          }
+        },
+        "required": [
+          "codecs"
+        ],
+        "title": "ListEncodersOutput",
+        "type": "object"
+      },
+      "scope": "any",
+      "secret_fields": [],
+      "summary": "List the video encoders this machine exports with: H.264, HEVC, AV1, ProRes, hardware ones verified",
+      "undoable": false,
+      "view": false
+    },
+    {
+      "annotations": {
+        "destructiveHint": false,
+        "idempotentHint": true,
+        "openWorldHint": false,
+        "readOnlyHint": true
+      },
+      "input_schema": {
+        "additionalProperties": false,
         "description": "Lists the export presets (built-in and the user's): the platform presets (YouTube,\nInstagram, TikTok, X) with their sources and `checked` dates, and the general formats. Give\n`platform` to list one platform's presets. `export.start{preset: \"<id>\"}` exports with one.",
         "properties": {
           "platform": {
@@ -8445,6 +8631,11 @@ expression: text
                               "type": "string"
                             },
                             {
+                              "const": "av1",
+                              "description": "AV1.",
+                              "type": "string"
+                            },
+                            {
                               "const": "prores",
                               "description": "Apple ProRes.",
                               "type": "string"
@@ -8488,7 +8679,7 @@ expression: text
                           "description": "How bits are spent.",
                           "oneOf": [
                             {
-                              "description": "Constant quality on the x264 CRF scale (0-51, lower is better).",
+                              "description": "Constant quality on the x264 CRF scale (0-51, lower is better; AV1 maps it onto its own).",
                               "properties": {
                                 "crf": {
                                   "description": "The CRF value.",
@@ -10813,6 +11004,11 @@ expression: text
                         "type": "string"
                       },
                       {
+                        "const": "av1",
+                        "description": "AV1.",
+                        "type": "string"
+                      },
+                      {
                         "const": "prores",
                         "description": "Apple ProRes.",
                         "type": "string"
@@ -10856,7 +11052,7 @@ expression: text
                     "description": "How bits are spent.",
                     "oneOf": [
                       {
-                        "description": "Constant quality on the x264 CRF scale (0-51, lower is better).",
+                        "description": "Constant quality on the x264 CRF scale (0-51, lower is better; AV1 maps it onto its own).",
                         "properties": {
                           "crf": {
                             "description": "The CRF value.",
@@ -11001,7 +11197,7 @@ expression: text
       },
       "input_schema": {
         "additionalProperties": false,
-        "description": "Exports a sequence (or a range of it) to an MP4 file (H.264 video, AAC audio) as a\nbackground job and returns the job id at once; wait with `job.wait`, stop with\n`job.cancel` (the partial file is deleted). Exports queue and run one at a time; this one\nalso resumes a paused queue (`export.queue` lists it). The export uses the project as it is\nnow; later edits do not change it. Agents and headless callers may only write inside the\nproject folder and folders the user approved. `range.kind` picks the part: \"sequence\",\n\"in_out\" (the sequence's in/out points), \"custom\" (`in`, `out`) or \"markers\" (one file per\nmarker: `path` is a folder or an .mp4 name template with {seq}, {marker_label}, {n}; the\noutput lists every job). `collision` says what happens to an existing file: \"fail\"\n(default), \"rename\" (pick a free name) or \"overwrite\" (replace it when the export\nsucceeds). Fails with `Invalid` when the drive has too little free space.",
+        "description": "Exports a sequence (or a range of it) to a file (MP4, H.264 + AAC by default; a preset id\npicks HEVC, AV1 or ProRes) as a background job and returns the job id at once; wait with\n`job.wait`, stop with `job.cancel` (the partial file is deleted). Exports queue and run one at a time; this one\nalso resumes a paused queue (`export.queue` lists it). The export uses the project as it is\nnow; later edits do not change it. Agents and headless callers may only write inside the\nproject folder and folders the user approved. `range.kind` picks the part: \"sequence\",\n\"in_out\" (the sequence's in/out points), \"custom\" (`in`, `out`) or \"markers\" (one file per\nmarker: `path` is a folder or an .mp4 name template with {seq}, {marker_label}, {n}; the\noutput lists every job). `collision` says what happens to an existing file: \"fail\"\n(default), \"rename\" (pick a free name) or \"overwrite\" (replace it when the export\nsucceeds). Fails with `Invalid` when the drive has too little free space.",
         "properties": {
           "collision": {
             "anyOf": [
@@ -11039,17 +11235,17 @@ expression: text
                 "oneOf": [
                   {
                     "const": "auto",
-                    "description": "The first hardware H.264 encoder that works here, else software (x264); if it fails\nduring the export, the export starts again in software.",
+                    "description": "The first hardware encoder of the codec that works here (`export.list_encoders`), else\nsoftware; if it fails during the export, the export starts again in software.",
                     "type": "string"
                   },
                   {
                     "const": "off",
-                    "description": "Software (x264) only.",
+                    "description": "Software (x264, x265, SVT-AV1) only.",
                     "type": "string"
                   },
                   {
                     "additionalProperties": false,
-                    "description": "This hardware encoder and no other, e.g. \"h264_nvenc\" (the `implementation` names of\nthe machine's hardware encoders); fails instead of falling back.",
+                    "description": "This hardware encoder and no other, e.g. \"hevc_nvenc\" (the `implementation` names of\nthe machine's hardware encoders, `export.list_encoders`); fails instead of falling back.",
                     "properties": {
                       "force": {
                         "type": "string"
@@ -11067,7 +11263,7 @@ expression: text
               }
             ],
             "default": null,
-            "description": "Hardware encoder: \"auto\" (default), \"off\", or {\"force\": \"h264_nvenc\"}."
+            "description": "Hardware encoder: \"auto\" (default), \"off\", or {\"force\": \"hevc_nvenc\"}."
           },
           "overwrite": {
             "default": null,
@@ -11078,7 +11274,7 @@ expression: text
             ]
           },
           "path": {
-            "description": "Absolute path of the output file (`.mp4`).",
+            "description": "Absolute path of the output file (`.mp4`; `.mov` for ProRes presets).",
             "type": "string"
           },
           "preset": {
@@ -11559,7 +11755,7 @@ expression: text
       },
       "scope": "any",
       "secret_fields": [],
-      "summary": "Export a sequence to an MP4 file (H.264 + AAC) as a background job; returns job_id",
+      "summary": "Export a sequence to a video file (H.264, HEVC, AV1, ProRes) as a background job; returns job_id",
       "undoable": false,
       "view": false
     },

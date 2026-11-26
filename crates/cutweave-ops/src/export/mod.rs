@@ -12,7 +12,7 @@
 //! `job.status` on the returned job.
 //!
 //! **Output path** rules (checked here, before anything is queued): an absolute path ending in
-//! `.mp4`, inside the caller's allowed folders ([`ExportCtx::allowed_roots`], the same rule as
+//! the container's extension (`.mp4`, or `.mov` for ProRes presets), inside the caller's allowed folders ([`ExportCtx::allowed_roots`], the same rule as
 //! `media.import`), never the source file of a media asset of the project, in an existing
 //! folder the engine can write to, and an existing file only as the collision policy says
 //! ([`output`], WP-2G.03b: `fail` by default, `overwrite` replaces it when the export succeeds
@@ -32,6 +32,7 @@ use cutweave_model::{
     Duration, EntityKind, FrameRate, Project, Rounding, Sequence, SequenceId, Time,
 };
 
+pub mod encoders;
 pub mod output;
 pub mod presets;
 pub mod queue;
@@ -41,7 +42,7 @@ use crate::media::{AllowedRoots, OUTSIDE_ROOTS_HINT};
 use crate::util::check_abs_path;
 pub use output::Collision;
 use output::{Policy, Template};
-use presets::{PlanRate, PresetStore, PresetWarning};
+use presets::{AudioCodec, Container, PlanRate, PresetStore, PresetWarning, VideoCodec};
 pub use range::{ExportRange, PairMode, RangeKind, Region};
 
 /// The preset's bounding box: 1920×1080 for landscape sequences (1080×1920 for portrait).
@@ -58,6 +59,7 @@ pub const MAX_EXPORT_FPS: u32 = 240;
 /// Registers `export.start`, the preset commands and the queue commands.
 pub fn register(registry: &mut Registry) -> Result<(), RegistryError> {
     registry.register::<ExportStart>()?;
+    registry.register::<encoders::ListEncoders>()?;
     presets::register(registry)?;
     queue::register(registry)?;
     Ok(())
@@ -122,14 +124,14 @@ pub enum ExportPreset {
 #[derive(Default, Eq, Hash)]
 #[serde(rename_all = "snake_case")]
 pub enum ExportHw {
-    /// The first hardware H.264 encoder that works here, else software (x264); if it fails
-    /// during the export, the export starts again in software.
+    /// The first hardware encoder of the codec that works here (`export.list_encoders`), else
+    /// software; if it fails during the export, the export starts again in software.
     #[default]
     Auto,
-    /// Software (x264) only.
+    /// Software (x264, x265, SVT-AV1) only.
     Off,
-    /// This hardware encoder and no other, e.g. "h264_nvenc" (the `implementation` names of
-    /// the machine's hardware encoders); fails instead of falling back.
+    /// This hardware encoder and no other, e.g. "hevc_nvenc" (the `implementation` names of
+    /// the machine's hardware encoders, `export.list_encoders`); fails instead of falling back.
     Force(String),
 }
 
@@ -150,7 +152,7 @@ impl ExportHw {
                 "/hw/force",
                 format!(
                     "`{name}` is not an encoder name (1..={MAX_ENCODER_NAME_CHARS} lowercase \
-                     letters, digits and `_`, e.g. `h264_nvenc`)"
+                     letters, digits and `_`, e.g. `hevc_nvenc`)"
                 ),
             ));
         }
@@ -214,9 +216,9 @@ pub struct ExportedFile {
     pub duration: Duration,
 }
 
-/// Exports a sequence (or a range of it) to an MP4 file (H.264 video, AAC audio) as a
-/// background job and returns the job id at once; wait with `job.wait`, stop with
-/// `job.cancel` (the partial file is deleted). Exports queue and run one at a time; this one
+/// Exports a sequence (or a range of it) to a file (MP4, H.264 + AAC by default; a preset id
+/// picks HEVC, AV1 or ProRes) as a background job and returns the job id at once; wait with
+/// `job.wait`, stop with `job.cancel` (the partial file is deleted). Exports queue and run one at a time; this one
 /// also resumes a paused queue (`export.queue` lists it). The export uses the project as it is
 /// now; later edits do not change it. Agents and headless callers may only write inside the
 /// project folder and folders the user approved. `range.kind` picks the part: "sequence",
@@ -227,7 +229,7 @@ pub struct ExportedFile {
 /// succeeds). Fails with `Invalid` when the drive has too little free space.
 #[command(
     name = "export.start",
-    summary = "Export a sequence to an MP4 file (H.264 + AAC) as a background job; returns job_id",
+    summary = "Export a sequence to a video file (H.264, HEVC, AV1, ProRes) as a background job; returns job_id",
     engine,
     undoable = false,
     journaled = false,
@@ -237,7 +239,7 @@ pub struct ExportedFile {
 pub struct ExportStart {
     /// Sequence; optional when the project has one.
     pub sequence: Option<SequenceId>,
-    /// Absolute path of the output file (`.mp4`).
+    /// Absolute path of the output file (`.mp4`; `.mov` for ProRes presets).
     pub path: String,
     /// Part of the sequence to export (default: all of it): {kind: "sequence" | "in_out" |
     /// "custom" | "markers", in, out, markers: [ids], pair_mode: "duration" | "pairs"}.
@@ -245,7 +247,7 @@ pub struct ExportStart {
     /// "h264-mp4-1080p" (default), a preset id ("youtube-1080p") or {"custom": {width, height,
     /// fps, quality, preset}}.
     pub preset: Option<ExportPreset>,
-    /// Hardware encoder: "auto" (default), "off", or {"force": "h264_nvenc"}.
+    /// Hardware encoder: "auto" (default), "off", or {"force": "hevc_nvenc"}.
     pub hw: Option<ExportHw>,
     /// Replace an existing file at `path` (default false); same as `collision: "overwrite"`.
     pub overwrite: Option<bool>,
@@ -255,6 +257,51 @@ pub struct ExportStart {
 
 // ----- the engine seam -------------------------------------------------------------------------
 
+/// What the file holds: container, codecs and the codec settings a preset carries. The default
+/// is the classic export: MP4, 8-bit H.264, AAC.
+#[derive(Clone, Debug, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+pub struct PlanOutput {
+    /// The container (MP4 or MOV; the output path ends in its extension).
+    pub container: Container,
+    /// The video codec.
+    pub video_codec: VideoCodec,
+    /// The codec profile a preset names (ProRes: `422hq`, `4444`; HEVC: `main10`).
+    pub profile: Option<String>,
+    /// Bits per sample of the coded video (8 or 10; ProRes is always 10).
+    pub bit_depth: u8,
+    /// Whether the file keeps an alpha channel (ProRes 4444).
+    pub alpha: bool,
+    /// The audio codec.
+    pub audio_codec: AudioCodec,
+    /// The audio bitrate in kilobits per second (AAC); the encoder's default when absent.
+    pub audio_bitrate_kbps: Option<u32>,
+}
+
+impl Default for PlanOutput {
+    fn default() -> PlanOutput {
+        PlanOutput {
+            container: Container::Mp4,
+            video_codec: VideoCodec::H264,
+            profile: None,
+            bit_depth: 8,
+            alpha: false,
+            audio_codec: AudioCodec::Aac,
+            audio_bitrate_kbps: None,
+        }
+    }
+}
+
+impl PlanOutput {
+    /// The extension of the output file.
+    #[must_use]
+    pub fn extension(&self) -> &'static str {
+        match self.container {
+            Container::Mov => "mov",
+            _ => "mp4",
+        }
+    }
+}
+
 /// A checked, resolved export: everything the engine needs to run it.
 #[derive(Clone, Debug)]
 pub struct ExportPlan {
@@ -262,7 +309,7 @@ pub struct ExportPlan {
     pub snapshot: Arc<DocSnapshot>,
     /// The sequence.
     pub sequence: SequenceId,
-    /// The output file (absolute, `.mp4`).
+    /// The output file (absolute, `.mp4` or `.mov` as `output` says).
     pub path: PathBuf,
     /// Whether an existing file at `path` may be replaced.
     pub overwrite: bool,
@@ -288,6 +335,8 @@ pub struct ExportPlan {
     pub rate: Option<PlanRate>,
     /// Platform-limit and fit warnings of the preset.
     pub warnings: Vec<PresetWarning>,
+    /// Container, codecs and codec settings.
+    pub output: PlanOutput,
 }
 
 impl ExportPlan {
@@ -308,10 +357,19 @@ impl ExportPlan {
 pub trait ExportStarter: Send {
     /// `export.start`: adds the export of `plan` to the queue, resumes a paused queue and
     /// returns its job. Fails with `Unsupported` when this engine cannot export (no media
-    /// backend, renderer or encoder), with `Invalid` at `/path` when another queued or running
-    /// export writes that file and with `Invalid` at `/hw/force` when the forced hardware
-    /// encoder is not one this machine has.
+    /// backend, renderer or the plan's encoder), with `Invalid` at `/path` when another queued
+    /// or running export writes that file and with `Invalid` at `/hw/force` when the forced
+    /// hardware encoder is not one this machine has for the plan's codec.
     fn start(&mut self, plan: ExportPlan) -> Result<JobId, CmdError>;
+
+    /// `export.list_encoders`: the video encoders this engine has, software and hardware (the
+    /// hardware ones passed a trial encode). `Unsupported` by default (an engine without a media
+    /// backend).
+    fn encoders(&mut self) -> Result<Vec<encoders::EncoderEntry>, CmdError> {
+        Err(CmdError::unsupported(
+            "this engine has no media backend to list encoders from",
+        ))
+    }
 
     /// `export.enqueue`: like [`start`](Self::start) without resuming a paused queue. The
     /// default starts (for starters without a queue).
@@ -509,17 +567,18 @@ fn check_target(
     doc: &Project,
     path: &str,
     roots: Option<&AllowedRoots>,
+    ext: &str,
 ) -> Result<PathBuf, CmdError> {
     check_abs_path("/path", path)?;
     let out = PathBuf::from(path);
-    let is_mp4 = out
+    let has_ext = out
         .extension()
         .and_then(|e| e.to_str())
-        .is_some_and(|e| e.eq_ignore_ascii_case("mp4"));
-    if !is_mp4 || out.file_stem().is_none_or(std::ffi::OsStr::is_empty) {
+        .is_some_and(|e| e.eq_ignore_ascii_case(ext));
+    if !has_ext || out.file_stem().is_none_or(std::ffi::OsStr::is_empty) {
         return Err(CmdError::invalid(
             "/path",
-            format!("`{path}` must name an .mp4 file"),
+            format!("`{path}` must name an .{ext} file"),
         ));
     }
     if out.components().any(|c| matches!(c, Component::ParentDir)) {
@@ -565,7 +624,7 @@ fn check_target(
     if out.is_dir() {
         return Err(CmdError::invalid(
             "/path",
-            format!("`{path}` is a folder; name an .mp4 file"),
+            format!("`{path}` is a folder; name an .{ext} file"),
         ));
     }
     check_writable(folder).map_err(|e| {
@@ -706,6 +765,7 @@ impl ExportRequest<'_> {
             let mut rate = None;
             let mut warnings = Vec::new();
             let mut preset_hw = None;
+            let mut output = PlanOutput::default();
             let named = match self.preset {
                 Some(ExportPreset::Id(id)) => Some((id, None)),
                 Some(ExportPreset::Custom(c)) => c.preset.as_ref().map(|id| (id, Some(c))),
@@ -721,7 +781,7 @@ impl ExportRequest<'_> {
                         ),
                     )
                 })?;
-                spec.engine_support().map_err(CmdError::unsupported)?;
+                output = spec.plan_output().map_err(CmdError::unsupported)?;
                 let p = presets::plan_preset(&spec, seq, length, overrides)?;
                 rate = p.rate;
                 warnings = p.warnings;
@@ -740,7 +800,7 @@ impl ExportRequest<'_> {
                 }
                 None => PathBuf::from(self.path),
             };
-            let target = check_target(doc, &wanted.to_string_lossy(), roots)?;
+            let target = check_target(doc, &wanted.to_string_lossy(), roots, output.extension())?;
             let path = output::settle(target, policy, &taken, starter)?;
             taken.push(path.clone());
             labels.push(region.label.clone().unwrap_or_default());
@@ -760,6 +820,7 @@ impl ExportRequest<'_> {
                 hw,
                 rate,
                 warnings,
+                output,
             });
         }
         output::check_disk(&plans, starter)?;

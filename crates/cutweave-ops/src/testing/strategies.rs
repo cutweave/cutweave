@@ -321,6 +321,7 @@ pub(super) fn args_for(name: &str, p: &Pools) -> Option<(u32, BoxedStrategy<Valu
         | "edit.locks"
         | "edit.list_checkpoints"
         | "export.list_presets"
+        | "export.list_encoders"
         | "export.queue"
         | "media.list_folders" => (1, no_params()),
         "media.register" => (if no_media { 4 } else { 2 }, media_register(p)),
@@ -3133,6 +3134,7 @@ pub fn export_queue(jobs: &JobManager) -> cutweave_jobs::ExportQueue<ExportPlan>
         hw: crate::export::ExportHw::Off,
         rate: None,
         warnings: Vec::new(),
+        output: crate::export::PlanOutput::default(),
     };
     let mut ids = Vec::new();
     for _ in 0..3 {

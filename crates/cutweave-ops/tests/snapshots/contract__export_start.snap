@@ -5,7 +5,7 @@ expression: "json!({\n    \"meta\": serde_json::to_value(meta).unwrap(), \"input
 {
   "meta": {
     "name": "export.start",
-    "summary": "Export a sequence to an MP4 file (H.264 + AAC) as a background job; returns job_id",
+    "summary": "Export a sequence to a video file (H.264, HEVC, AV1, ProRes) as a background job; returns job_id",
     "kind": "engine",
     "undoable": false,
     "view": false,
@@ -34,7 +34,7 @@ expression: "json!({\n    \"meta\": serde_json::to_value(meta).unwrap(), \"input
         },
         "path": {
           "type": "string",
-          "description": "Absolute path of the output file (`.mp4`)."
+          "description": "Absolute path of the output file (`.mp4`; `.mov` for ProRes presets)."
         },
         "range": {
           "type": [
@@ -295,12 +295,12 @@ expression: "json!({\n    \"meta\": serde_json::to_value(meta).unwrap(), \"input
                 {
                   "type": "string",
                   "const": "auto",
-                  "description": "The first hardware H.264 encoder that works here, else software (x264); if it fails\nduring the export, the export starts again in software."
+                  "description": "The first hardware encoder of the codec that works here (`export.list_encoders`), else\nsoftware; if it fails during the export, the export starts again in software."
                 },
                 {
                   "type": "string",
                   "const": "off",
-                  "description": "Software (x264) only."
+                  "description": "Software (x264, x265, SVT-AV1) only."
                 },
                 {
                   "type": "object",
@@ -313,7 +313,7 @@ expression: "json!({\n    \"meta\": serde_json::to_value(meta).unwrap(), \"input
                     "force"
                   ],
                   "additionalProperties": false,
-                  "description": "This hardware encoder and no other, e.g. \"h264_nvenc\" (the `implementation` names of\nthe machine's hardware encoders); fails instead of falling back."
+                  "description": "This hardware encoder and no other, e.g. \"hevc_nvenc\" (the `implementation` names of\nthe machine's hardware encoders, `export.list_encoders`); fails instead of falling back."
                 }
               ],
               "description": "Whether to use a hardware video encoder."
@@ -322,7 +322,7 @@ expression: "json!({\n    \"meta\": serde_json::to_value(meta).unwrap(), \"input
               "type": "null"
             }
           ],
-          "description": "Hardware encoder: \"auto\" (default), \"off\", or {\"force\": \"h264_nvenc\"}.",
+          "description": "Hardware encoder: \"auto\" (default), \"off\", or {\"force\": \"hevc_nvenc\"}.",
           "default": null
         },
         "overwrite": {
@@ -366,7 +366,7 @@ expression: "json!({\n    \"meta\": serde_json::to_value(meta).unwrap(), \"input
       "required": [
         "path"
       ],
-      "description": "Exports a sequence (or a range of it) to an MP4 file (H.264 video, AAC audio) as a\nbackground job and returns the job id at once; wait with `job.wait`, stop with\n`job.cancel` (the partial file is deleted). Exports queue and run one at a time; this one\nalso resumes a paused queue (`export.queue` lists it). The export uses the project as it is\nnow; later edits do not change it. Agents and headless callers may only write inside the\nproject folder and folders the user approved. `range.kind` picks the part: \"sequence\",\n\"in_out\" (the sequence's in/out points), \"custom\" (`in`, `out`) or \"markers\" (one file per\nmarker: `path` is a folder or an .mp4 name template with {seq}, {marker_label}, {n}; the\noutput lists every job). `collision` says what happens to an existing file: \"fail\"\n(default), \"rename\" (pick a free name) or \"overwrite\" (replace it when the export\nsucceeds). Fails with `Invalid` when the drive has too little free space.",
+      "description": "Exports a sequence (or a range of it) to a file (MP4, H.264 + AAC by default; a preset id\npicks HEVC, AV1 or ProRes) as a background job and returns the job id at once; wait with\n`job.wait`, stop with `job.cancel` (the partial file is deleted). Exports queue and run one at a time; this one\nalso resumes a paused queue (`export.queue` lists it). The export uses the project as it is\nnow; later edits do not change it. Agents and headless callers may only write inside the\nproject folder and folders the user approved. `range.kind` picks the part: \"sequence\",\n\"in_out\" (the sequence's in/out points), \"custom\" (`in`, `out`) or \"markers\" (one file per\nmarker: `path` is a folder or an .mp4 name template with {seq}, {marker_label}, {n}; the\noutput lists every job). `collision` says what happens to an existing file: \"fail\"\n(default), \"rename\" (pick a free name) or \"overwrite\" (replace it when the export\nsucceeds). Fails with `Invalid` when the drive has too little free space.",
       "title": "ExportStart"
     },
     "output_schema": {
@@ -587,7 +587,7 @@ expression: "json!({\n    \"meta\": serde_json::to_value(meta).unwrap(), \"input
       },
       "path": {
         "type": "string",
-        "description": "Absolute path of the output file (`.mp4`)."
+        "description": "Absolute path of the output file (`.mp4`; `.mov` for ProRes presets)."
       },
       "range": {
         "type": [
@@ -848,12 +848,12 @@ expression: "json!({\n    \"meta\": serde_json::to_value(meta).unwrap(), \"input
               {
                 "type": "string",
                 "const": "auto",
-                "description": "The first hardware H.264 encoder that works here, else software (x264); if it fails\nduring the export, the export starts again in software."
+                "description": "The first hardware encoder of the codec that works here (`export.list_encoders`), else\nsoftware; if it fails during the export, the export starts again in software."
               },
               {
                 "type": "string",
                 "const": "off",
-                "description": "Software (x264) only."
+                "description": "Software (x264, x265, SVT-AV1) only."
               },
               {
                 "type": "object",
@@ -866,7 +866,7 @@ expression: "json!({\n    \"meta\": serde_json::to_value(meta).unwrap(), \"input
                   "force"
                 ],
                 "additionalProperties": false,
-                "description": "This hardware encoder and no other, e.g. \"h264_nvenc\" (the `implementation` names of\nthe machine's hardware encoders); fails instead of falling back."
+                "description": "This hardware encoder and no other, e.g. \"hevc_nvenc\" (the `implementation` names of\nthe machine's hardware encoders, `export.list_encoders`); fails instead of falling back."
               }
             ],
             "description": "Whether to use a hardware video encoder."
@@ -875,7 +875,7 @@ expression: "json!({\n    \"meta\": serde_json::to_value(meta).unwrap(), \"input
             "type": "null"
           }
         ],
-        "description": "Hardware encoder: \"auto\" (default), \"off\", or {\"force\": \"h264_nvenc\"}.",
+        "description": "Hardware encoder: \"auto\" (default), \"off\", or {\"force\": \"hevc_nvenc\"}.",
         "default": null
       },
       "overwrite": {
@@ -919,7 +919,7 @@ expression: "json!({\n    \"meta\": serde_json::to_value(meta).unwrap(), \"input
     "required": [
       "path"
     ],
-    "description": "Exports a sequence (or a range of it) to an MP4 file (H.264 video, AAC audio) as a\nbackground job and returns the job id at once; wait with `job.wait`, stop with\n`job.cancel` (the partial file is deleted). Exports queue and run one at a time; this one\nalso resumes a paused queue (`export.queue` lists it). The export uses the project as it is\nnow; later edits do not change it. Agents and headless callers may only write inside the\nproject folder and folders the user approved. `range.kind` picks the part: \"sequence\",\n\"in_out\" (the sequence's in/out points), \"custom\" (`in`, `out`) or \"markers\" (one file per\nmarker: `path` is a folder or an .mp4 name template with {seq}, {marker_label}, {n}; the\noutput lists every job). `collision` says what happens to an existing file: \"fail\"\n(default), \"rename\" (pick a free name) or \"overwrite\" (replace it when the export\nsucceeds). Fails with `Invalid` when the drive has too little free space.",
+    "description": "Exports a sequence (or a range of it) to a file (MP4, H.264 + AAC by default; a preset id\npicks HEVC, AV1 or ProRes) as a background job and returns the job id at once; wait with\n`job.wait`, stop with `job.cancel` (the partial file is deleted). Exports queue and run one at a time; this one\nalso resumes a paused queue (`export.queue` lists it). The export uses the project as it is\nnow; later edits do not change it. Agents and headless callers may only write inside the\nproject folder and folders the user approved. `range.kind` picks the part: \"sequence\",\n\"in_out\" (the sequence's in/out points), \"custom\" (`in`, `out`) or \"markers\" (one file per\nmarker: `path` is a folder or an .mp4 name template with {seq}, {marker_label}, {n}; the\noutput lists every job). `collision` says what happens to an existing file: \"fail\"\n(default), \"rename\" (pick a free name) or \"overwrite\" (replace it when the export\nsucceeds). Fails with `Invalid` when the drive has too little free space.",
     "title": "ExportStart"
   },
   "output": {
