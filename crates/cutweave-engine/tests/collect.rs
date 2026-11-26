@@ -30,11 +30,16 @@ fn start(t: &TempDir) -> Engine {
     Engine::start(config).unwrap()
 }
 
-/// Every file below `dir` with its modification time.
+/// Every file below `dir` with its modification time. The engine's own bookkeeping folder
+/// (`.cutweave`: the lock, the journal, the export queue's database) is left out: the engine
+/// writes there while a project is open, whatever a collect does.
 fn mtimes(dir: &Path) -> Vec<(PathBuf, SystemTime)> {
     let mut out = Vec::new();
     for entry in std::fs::read_dir(dir).unwrap().flatten() {
         let path = entry.path();
+        if path.file_name().is_some_and(|n| n == ".cutweave") {
+            continue;
+        }
         if path.is_dir() {
             out.extend(mtimes(&path));
         } else {
