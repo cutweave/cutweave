@@ -8,6 +8,7 @@ import { useMediaLoaders } from "../media/mediaWiring.ts";
 import { useDocStore } from "../state/docStore.ts";
 import { selectTimelineModel } from "../state/selectors.ts";
 import { useViewStore, viewStore } from "../state/viewStore.ts";
+import { InUseMarks } from "../timeline/InUseMarks.tsx";
 import { TrackRenameInput } from "../timeline/TrackRenameInput.tsx";
 import { type TimelineIntents, useTimelineIntents } from "../timeline/useTimelineIntents.ts";
 import { transportController } from "../transport/useTransport.ts";
@@ -69,6 +70,7 @@ function EngineTimeline({ intents }: { readonly intents: TimelineIntents }) {
         />
       </div>
       <TrackRenameInput controller={intents.controller} />
+      <InUseMarks controller={intents.controller} />
     </>
   );
 }

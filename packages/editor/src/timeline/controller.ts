@@ -30,7 +30,13 @@ import type { DocStore } from "../state/docStore.ts";
 import { selectTimelineModel } from "../state/selectors.ts";
 import type { ToastStore } from "../state/toastStore.ts";
 import type { ViewStore } from "../state/viewStore.ts";
-import { describeRefusal, FAILED_TITLE, type TimelineEdit, type Translate } from "./errors.ts";
+import {
+  describeRefusal,
+  FAILED_TITLE,
+  heldByOther,
+  type TimelineEdit,
+  type Translate,
+} from "./errors.ts";
 import { type FrameScheduler, GestureSession, toRpcError } from "./gesture.ts";
 
 /** What the controller needs from the live `TimelineView`. */
@@ -43,6 +49,8 @@ export interface TimelineGeometry {
   hitTest(x: number, y: number): HitResult;
   /** Canvas rect of a track's name in its header (where the rename input goes). */
   trackNameRect?(trackId: string): Rect | null;
+  /** Canvas rect of an item's clip box (where its "in use by" mark goes, WP-2A.12). */
+  itemRect?(itemId: string): Rect | null;
 }
 
 /** Transient drawing the timeline shows while a gesture runs. */
@@ -249,6 +257,11 @@ export class TimelineController {
   /** The canvas rect of a track's name (the input goes over it), or `null` while it is off screen. */
   trackNameRect(trackId: string): Rect | null {
     return this.#geometry?.trackNameRect?.(trackId) ?? null;
+  }
+
+  /** Canvas rect of an item's clip box, or null while it is not laid out. */
+  itemRect(itemId: string): Rect | null {
+    return this.#geometry?.itemRect?.(itemId) ?? null;
   }
 
   deleteSelection(): void {
@@ -495,10 +508,12 @@ export class TimelineController {
 
   #notify(edit: TimelineEdit, error: unknown): void {
     const { t, toasts } = this.#deps;
+    const refusal = toRpcError(error);
     toasts.getState().push({
-      tone: "warning",
+      // A clip an agent or a plugin holds: agent blue, like its "in use by" mark (WP-2A.12).
+      tone: heldByOther(refusal) ? "agent" : "warning",
       title: t(FAILED_TITLE[edit]),
-      message: describeRefusal(toRpcError(error), t),
+      message: describeRefusal(refusal, t),
     });
   }
 }
