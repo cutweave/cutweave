@@ -361,20 +361,67 @@ expression: catalog.tools_json()
             ],
             "additionalProperties": false,
             "properties": {
+              "kind": {
+                "description": "\"sequence\", \"in_out\", \"custom\" or \"markers\" (default: from the other fields).",
+                "type": [
+                  "string",
+                  "null"
+                ],
+                "enum": [
+                  "sequence",
+                  "in_out",
+                  "custom",
+                  "markers",
+                  null
+                ]
+              },
               "in": {
-                "description": "Start: flicks, \"2.5s\", \"f:60\" or a timecode.",
-                "$ref": "#/$defs/time"
+                "anyOf": [
+                  {
+                    "$ref": "#/$defs/time"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "description": "Custom start: flicks, \"2.5s\", \"f:60\" or a timecode."
               },
               "out": {
-                "description": "End, exclusive: at most the sequence end.",
-                "$ref": "#/$defs/time"
+                "anyOf": [
+                  {
+                    "$ref": "#/$defs/time"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "description": "Custom end, exclusive: at most the sequence end."
+              },
+              "markers": {
+                "type": [
+                  "array",
+                  "null"
+                ],
+                "items": {
+                  "pattern": "^mrk_[0-9a-f]{32}$",
+                  "type": "string"
+                },
+                "description": "Marker kind: the markers to export (default: all of the sequence's markers)."
+              },
+              "pair_mode": {
+                "description": "Marker kind: \"duration\" (default; each marker's own duration) or \"pairs\" (each marker to\nthe next).",
+                "type": [
+                  "string",
+                  "null"
+                ],
+                "enum": [
+                  "duration",
+                  "pairs",
+                  null
+                ]
               }
             },
-            "required": [
-              "in",
-              "out"
-            ],
-            "description": "Part of the sequence to export (default: all of it)."
+            "description": "Part of the sequence to export (default: all of it): {kind: \"sequence\" | \"in_out\" |\n\"custom\" | \"markers\", in, out, markers: [ids], pair_mode: \"duration\" | \"pairs\"}."
           },
           "preset": {
             "anyOf": [
@@ -508,7 +555,20 @@ expression: catalog.tools_json()
               "boolean",
               "null"
             ],
-            "description": "Replace an existing file at `path` (default false)."
+            "description": "Replace an existing file at `path` (default false); same as `collision: \"overwrite\"`."
+          },
+          "collision": {
+            "description": "An existing file: \"fail\" (default), \"rename\" or \"overwrite\".",
+            "type": [
+              "string",
+              "null"
+            ],
+            "enum": [
+              "rename",
+              "overwrite",
+              "fail",
+              null
+            ]
           }
         },
         "required": [
