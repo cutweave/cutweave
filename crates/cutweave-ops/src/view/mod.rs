@@ -12,7 +12,10 @@ mod state;
 
 use cutweave_commands::{Registry, RegistryError};
 
-pub use commands::{ViewGet, ViewSelect, ViewSet, ViewSetPlayhead, ViewSetZoom};
+pub use commands::{
+    ViewGet, ViewSelect, ViewSet, ViewSetActiveSequence, ViewSetActiveSequenceOutput,
+    ViewSetPlayhead, ViewSetZoom,
+};
 pub use state::{
     MAX_MASTER_GAIN, MAX_PANEL_LAYOUT_BYTES, MAX_SELECTION, MAX_ZOOM, MIN_ZOOM, PreviewQuality,
     Scroll, SelectMode, SelectionRef, UI_STATE_VERSION, UiState, ViewChanged, ViewCtx, ViewPatch,
@@ -25,6 +28,7 @@ pub fn register(registry: &mut Registry) -> Result<(), RegistryError> {
         .register::<ViewSet>()?
         .register::<ViewSetPlayhead>()?
         .register::<ViewSelect>()?
-        .register::<ViewSetZoom>()?;
+        .register::<ViewSetZoom>()?
+        .register::<ViewSetActiveSequence>()?;
     Ok(())
 }

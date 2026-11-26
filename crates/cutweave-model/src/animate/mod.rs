@@ -106,6 +106,18 @@ impl<T> Animatable<T> {
     }
 }
 
+impl<T: Clone> Animatable<T> {
+    /// The property with `f` applied to its static value, or to every key's value (times and
+    /// curves are kept). Used to rescale a property when the canvas changes (WP-2B.01).
+    #[must_use]
+    pub fn map_values(&self, f: impl Fn(&T) -> T) -> Animatable<T> {
+        match self {
+            Animatable::Static(v) => Animatable::Static(f(v)),
+            Animatable::Keyframes(k) => Animatable::Keyframes(k.map_values(f)),
+        }
+    }
+}
+
 impl<T: AnimValue> Animatable<T> {
     /// `eval(animatable, t)` (keyframes §6) at item time `t`, in the evaluated form, without the
     /// property clamp. Pure and deterministic: exact at keys, before the first key and after the

@@ -34,6 +34,7 @@ const KNOWN_KEYS: &[&str] = &[
     "panel_layout",
     "preview_quality",
     "master_gain",
+    "active_sequence",
 ];
 
 /// Preview resolution (arch §8 quality ladder).
@@ -127,6 +128,9 @@ pub struct UiState {
     pub preview_quality: PreviewQuality,
     /// Master output gain (linear, `0..=4`, 1 = unity).
     pub master_gain: f64,
+    /// The sequence the editor shows (WP-2B.01). `None` until one is chosen: the editor then
+    /// shows the first sequence. Never names a sequence that no longer exists.
+    pub active_sequence: Option<SequenceId>,
 }
 
 impl Default for UiState {
@@ -147,6 +151,7 @@ impl UiState {
             panel_layout: Value::Null,
             preview_quality: PreviewQuality::Full,
             master_gain: 1.0,
+            active_sequence: None,
         }
     }
 }
@@ -178,6 +183,9 @@ pub struct ViewPatch {
     /// New master gain (linear, `0..=4`).
     #[serde(default)]
     pub master_gain: Option<f64>,
+    /// The sequence to show; must exist.
+    #[serde(default)]
+    pub active_sequence: Option<SequenceId>,
 }
 
 /// How `view.select` combines its IDs with the current selection.
@@ -313,6 +321,7 @@ impl ViewCtx {
                 warnings.push(format!("ui-state.json: ignoring `{key}`: {e}"));
             }
         };
+        let known: Vec<SequenceId> = ctx.doc.sequences.keys().copied().collect();
         let s = &mut ctx.state;
         field("playhead", &mut |v| {
             let t: Time = from_value(v)?;
@@ -338,6 +347,12 @@ impl ViewCtx {
         field("panel_layout", &mut |v| {
             check_layout(v)?;
             s.panel_layout = v.clone();
+            Ok(())
+        });
+        field("active_sequence", &mut |v| {
+            // A sequence that no longer exists falls back to none (the first one is shown).
+            let id: Option<SequenceId> = from_value(v)?;
+            s.active_sequence = id.filter(|id| known.contains(id));
             Ok(())
         });
         let mut selection = Vec::new();
@@ -408,7 +423,13 @@ impl ViewCtx {
         let before = self.state.selection.len();
         let doc = &self.doc;
         self.state.selection.retain(|r| r.check_exists(doc).is_ok());
-        let changed = self.state.selection.len() != before;
+        let mut changed = self.state.selection.len() != before;
+        if let Some(id) = self.state.active_sequence
+            && !self.doc.sequences.contains_key(&id)
+        {
+            self.state.active_sequence = None;
+            changed = true;
+        }
         if changed {
             self.bump();
         }
@@ -449,7 +470,25 @@ impl ViewCtx {
         if let Some(g) = patch.master_gain {
             next.master_gain = check_gain(g).map_err(|m| invalid("/patch/master_gain", m))?;
         }
+        if let Some(id) = patch.active_sequence {
+            next.active_sequence = Some(self.checked_sequence(id)?);
+        }
         Ok(self.commit(next))
+    }
+
+    /// Makes `id` the sequence the editor shows (`sequence.set_active`); it must exist.
+    pub fn set_active_sequence(&mut self, id: SequenceId) -> Result<bool, CmdError> {
+        let mut next = self.state.clone();
+        next.active_sequence = Some(self.checked_sequence(id)?);
+        Ok(self.commit(next))
+    }
+
+    fn checked_sequence(&self, id: SequenceId) -> Result<SequenceId, CmdError> {
+        if self.doc.sequences.contains_key(&id) {
+            Ok(id)
+        } else {
+            Err(CmdError::not_found(EntityKind::Sequence, id))
+        }
     }
 
     /// Combines `ids` with the selection per `mode`. Added IDs must exist; removing unknown

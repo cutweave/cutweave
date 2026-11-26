@@ -201,6 +201,26 @@ impl<T> Keyframes<T> {
 }
 
 impl<T: Clone> Keyframes<T> {
+    /// The same keys (times, curves and unknown fields) with `f` applied to every value. For
+    /// maps that keep values valid, such as multiplying by a positive factor; the caller
+    /// checks the result against the property's range.
+    #[must_use]
+    pub fn map_values(&self, f: impl Fn(&T) -> T) -> Keyframes<T> {
+        let keys: Vec<Keyframe<T>> = self
+            .keys
+            .iter()
+            .map(|k| {
+                let mut key = k.clone();
+                key.value = f(&k.value);
+                key
+            })
+            .collect();
+        Keyframes {
+            keys: keys.into(),
+            extra: self.extra.clone(),
+        }
+    }
+
     /// `shift(K, δ)` (§8): every `t` becomes `t + δ`, exactly. Fails with
     /// [`KeyframeError::Invalid`] if a result leaves ±(2⁵³ − 1); keys are never dropped.
     pub fn shifted(&self, delta: Time) -> Result<Keyframes<T>, KeyframeError> {

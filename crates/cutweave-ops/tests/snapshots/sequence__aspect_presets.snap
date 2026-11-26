@@ -1,0 +1,64 @@
+---
+source: crates/cutweave-ops/tests/sequence.rs
+assertion_line: 933
+expression: "json!({\n    \"aspect\": table, \"frame_rates\":\n    cutweave_model::FRAME_RATE_PRESETS.iter().map(ToString::to_string).collect::<Vec<_>>(),\n})"
+---
+{
+  "aspect": [
+    [
+      "16:9",
+      16,
+      9,
+      1920,
+      1080,
+      "YouTube, long-form, X landscape"
+    ],
+    [
+      "16:9-4k",
+      16,
+      9,
+      3840,
+      2160,
+      "YouTube 4K"
+    ],
+    [
+      "9:16",
+      9,
+      16,
+      1080,
+      1920,
+      "Shorts, Reels, Stories, TikTok"
+    ],
+    [
+      "1:1",
+      1,
+      1,
+      1080,
+      1080,
+      "Instagram feed square"
+    ],
+    [
+      "4:5",
+      4,
+      5,
+      1080,
+      1350,
+      "Instagram feed portrait"
+    ],
+    [
+      "21:9",
+      21,
+      9,
+      2560,
+      1080,
+      "Ultrawide"
+    ]
+  ],
+  "frame_rates": [
+    "24",
+    "25",
+    "30",
+    "50",
+    "60"
+  ]
+}

@@ -6,8 +6,8 @@
 //! only sees the document snapshot; it is idempotent and has no side effects. The registry
 //! reserves `readOnlyHint` for queries.
 
-use cutweave_commands::{CmdError, EngineCommand, command};
-use cutweave_model::TimeInput;
+use cutweave_commands::{CmdError, EngineCommand, command, wire};
+use cutweave_model::{SequenceId, TimeInput};
 
 use super::state::{SelectMode, SelectionRef, UiState, ViewCtx, ViewPatch};
 
@@ -119,5 +119,36 @@ impl EngineCommand for ViewSetZoom {
     fn run(&self, ctx: &mut ViewCtx) -> Result<UiState, CmdError> {
         ctx.set_zoom(self.zoom)?;
         Ok(ctx.state().clone())
+    }
+}
+
+/// Result of `view.set_active_sequence`.
+#[wire]
+pub struct ViewSetActiveSequenceOutput {
+    /// The sequence the editor shows now.
+    pub sequence: SequenceId,
+}
+
+/// Chooses the sequence the editor shows (WP-2B.01). Not undoable; never changes the project.
+#[command(
+    name = "view.set_active_sequence",
+    summary = "Show a sequence in the editor",
+    view,
+    mcp = "catalog",
+    annotations(destructive = false, idempotent = true)
+)]
+pub struct ViewSetActiveSequence {
+    /// The sequence; it must exist.
+    pub sequence: SequenceId,
+}
+
+impl EngineCommand for ViewSetActiveSequence {
+    type Context = ViewCtx;
+    type Output = ViewSetActiveSequenceOutput;
+    fn run(&self, ctx: &mut ViewCtx) -> Result<ViewSetActiveSequenceOutput, CmdError> {
+        ctx.set_active_sequence(self.sequence)?;
+        Ok(ViewSetActiveSequenceOutput {
+            sequence: self.sequence,
+        })
     }
 }

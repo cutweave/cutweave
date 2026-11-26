@@ -174,6 +174,20 @@ fn count(n: usize) -> u32 {
     u32::try_from(n).unwrap_or(u32::MAX)
 }
 
+/// The summary of one sequence (`project.info`, `sequence.list`).
+pub(crate) fn sequence_brief(s: &Sequence) -> SequenceBrief {
+    let of_kind = |k| s.tracks.values().filter(|t| t.kind == k).count();
+    SequenceBrief {
+        id: s.id,
+        name: s.name.clone(),
+        format: s.format.clone(),
+        duration: s.duration(),
+        video_tracks: count(of_kind(TrackKind::Video)),
+        audio_tracks: count(of_kind(TrackKind::Audio)),
+        item_count: count(s.tracks.values().map(|t| t.items.len()).sum()),
+    }
+}
+
 /// Returns the project name, format, media count and a summary of each sequence.
 #[query(
     name = "project.info",
@@ -187,22 +201,7 @@ impl Query for ProjectInfo {
 
     fn run(&self, ctx: &QueryCtx<'_>) -> Result<ProjectInfoOutput, CmdError> {
         let doc = ctx.doc();
-        let sequences = doc
-            .sequences
-            .values()
-            .map(|s| {
-                let of_kind = |k| s.tracks.values().filter(|t| t.kind == k).count();
-                SequenceBrief {
-                    id: s.id,
-                    name: s.name.clone(),
-                    format: s.format.clone(),
-                    duration: s.duration(),
-                    video_tracks: count(of_kind(TrackKind::Video)),
-                    audio_tracks: count(of_kind(TrackKind::Audio)),
-                    item_count: count(s.tracks.values().map(|t| t.items.len()).sum()),
-                }
-            })
-            .collect();
+        let sequences = doc.sequences.values().map(sequence_brief).collect();
         Ok(ProjectInfoOutput {
             name: doc.meta.name.clone(),
             schema_version: doc.meta.schema_version,

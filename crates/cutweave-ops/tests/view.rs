@@ -399,6 +399,7 @@ fn arb_patch(ids: [ItemId; 2]) -> impl Strategy<Value = ViewPatch> {
                 _ => PreviewQuality::Quarter,
             }),
             master_gain: g,
+            active_sequence: None,
         })
 }
 
