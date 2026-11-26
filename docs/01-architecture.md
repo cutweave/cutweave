@@ -886,7 +886,7 @@ MyVideo/                    ← project folder (user-chosen location)
 - **Local API:** localhost-only, token-authenticated, Host/Origin checked, with filesystem allowlists. Tokens never appear in URLs; `<img>` loads media through short-lived signed URLs scoped to one resource (§6).
 - **Plugins:** signed index, explicit permission prompts (network domains, file scopes, paid AI use), and process or sandbox isolation per layer.
 - **Electron hardening:**
-  - `contextIsolation` everywhere, no `nodeIntegration`, strict CSP (connect only to the engine origin), validated IPC.
+  - `contextIsolation` everywhere, no `nodeIntegration`, strict CSP (connect only to the engine origin; the editor and its popouts also allow `'wasm-unsafe-eval'` for the bundled math module, ADR-0033), validated IPC.
   - Every window is sandboxed except the main editor window's preload, which hosts the native frame-bridge addon (§2), and the detached-panel popouts it opens, which share its process with no preload (ADR-0031).
 - **Prompt-injection hygiene for agents:** media metadata, transcripts and plugin-provided text are labelled untrusted in MCP results. Paid or destructive actions need confirmation.
 - **Supply chain:** `cargo-deny` (licenses, advisories), `pnpm audit`, lockfiles, reproducible CI builds, SBOM per release, signed artifacts.
@@ -1011,7 +1011,7 @@ MyVideo/                    ← project folder (user-chosen location)
 | 030 | The export queue lives in the project folder (`.cutweave/exports.sqlite`): queued exports and their snapshots survive a restart; untitled queues move into the saved project; a project switch suspends the old one's exports (§7, §17) | **Accepted** (product owner, 2026-11-26) |
 | 031 | Detached panels: dockview popout windows in the editor's renderer process, unsandboxed with no preload, saved with the workspace layout (§2, §16, §18; [research](research/10-detached-panels.md)) | **Accepted** (product owner, 2026-11-26) |
 | 032 | Exports encode the BT.709 transfer curve they are tagged with; `render.frame` gets a matching transfer parameter (§7, §8) | **Accepted** (product owner, 2026-11-26) |
-| 033 | The editor's CSP allows `'wasm-unsafe-eval'` for the bundled math module (§10, §18) | Proposed |
+| 033 | The editor's CSP allows `'wasm-unsafe-eval'` for the bundled math module (§10, §18) | **Accepted** (product owner, 2026-11-26) |
 
 ## 24. Open questions (tracked; none block Phase 0)
 

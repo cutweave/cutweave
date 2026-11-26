@@ -1,8 +1,8 @@
 # ADR-0033: The editor's CSP allows `'wasm-unsafe-eval'` for the bundled math module
 
-- **Status:** Proposed
+- **Status:** Accepted (product owner, 2026-11-26)
 - **Date:** 2026-11-26
-- **Deciders:** product owner (pending)
+- **Deciders:** product owner
 - **Supersedes:** none (amends the CSP rule in `apps/desktop/src/main/csp.ts` and arch §18)
 - **Architecture refs:** `docs/01-architecture.md` §10 ("Shared math via wasm"), §18 (security); WP-2C.06
 
@@ -20,7 +20,7 @@ Arch §10 decides that the timeline and Inspector evaluate time, keyframe, easin
 
 ## Decision
 
-Pending the product owner. Recommended: option 1.
+Option 1: the editor window and its popouts allow `'wasm-unsafe-eval'` in `script-src`; every other window and plugin frame keeps the strict policy. (Accepted by the product owner on 2026-11-26.)
 
 ## Consequences
 
