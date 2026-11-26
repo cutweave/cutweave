@@ -221,8 +221,16 @@ export type Chord = `${"Control+" | "Control+Shift+" | ""}${string}`;
  * Keys only reach a focused window (Electron drops `sendInputEvent` otherwise), and another
  * app's window can take the focus while the suite runs. A person's keys go to the window they
  * are looking at, so this brings the editor to the front first and waits until it has the focus.
+ *
+ * `inWindow` is the title of a detached panel's window to press it in instead ("Timeline — My
+ * video — Cutweave", WP-2H.15); by default the keys go to the editor window, whatever other
+ * windows are open.
  */
-export async function shortcut(app: ElectronApplication, chord: Chord): Promise<void> {
+export async function shortcut(
+  app: ElectronApplication,
+  chord: Chord,
+  inWindow?: string,
+): Promise<void> {
   const parts = chord.split("+");
   const key = parts.pop() ?? "";
   const mac = process.platform === "darwin";
@@ -230,24 +238,32 @@ export async function shortcut(app: ElectronApplication, chord: Chord): Promise<
     m === "Control" ? (mac ? "meta" : "control") : m.toLowerCase(),
   );
   const focused = () =>
-    app.evaluate(({ BrowserWindow }) => {
-      const win = BrowserWindow.getAllWindows()[0];
+    app.evaluate(({ BrowserWindow }, title) => {
+      const win = BrowserWindow.getAllWindows().find((w) =>
+        title === null
+          ? !w.webContents.getURL().endsWith("/popout.html")
+          : w.webContents.getTitle() === title,
+      );
       if (win === undefined) throw new Error("no window to type into");
       if (win.isFocused() && win.webContents.isFocused()) return true;
       win.focus();
       win.webContents.focus();
       return false;
-    });
-  await expect.poll(focused, { message: "the editor window never got the focus" }).toBe(true);
+    }, inWindow ?? null);
+  await expect.poll(focused, { message: "the window never got the focus" }).toBe(true);
   await app.evaluate(
-    ({ BrowserWindow }, { key, modifiers }) => {
-      const win = BrowserWindow.getAllWindows()[0];
+    ({ BrowserWindow }, { key, modifiers, title }) => {
+      const win = BrowserWindow.getAllWindows().find((w) =>
+        title === null
+          ? !w.webContents.getURL().endsWith("/popout.html")
+          : w.webContents.getTitle() === title,
+      );
       if (win === undefined) throw new Error("no window to type into");
       const mods = modifiers as ("control" | "meta" | "shift")[];
       win.webContents.sendInputEvent({ type: "keyDown", keyCode: key, modifiers: mods });
       win.webContents.sendInputEvent({ type: "keyUp", keyCode: key, modifiers: mods });
     },
-    { key, modifiers },
+    { key, modifiers, title: inWindow ?? null },
   );
 }
 
@@ -472,10 +488,17 @@ export interface TimelineGeometry {
   readonly tracks: readonly TrackView[];
 }
 
-export async function timelineGeometry(page: Page): Promise<TimelineGeometry> {
-  const box = await timelineCanvas(page).boundingBox();
+/**
+ * `drawnIn` is the window the Timeline is shown in, when it is detached into its own (WP-2H.15);
+ * the engine's view and sequence are still asked of the editor `page`.
+ */
+export async function timelineGeometry(
+  page: Page,
+  drawnIn: Page = page,
+): Promise<TimelineGeometry> {
+  const box = await timelineCanvas(drawnIn).boundingBox();
   if (box === null) throw new Error("the timeline canvas is not visible");
-  const tokens = await page.evaluate(() => {
+  const tokens = await drawnIn.evaluate(() => {
     const cs = getComputedStyle(document.documentElement);
     const px = (name: string) => Number.parseFloat(cs.getPropertyValue(name));
     return {
