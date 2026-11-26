@@ -436,7 +436,9 @@ export class TimelineView {
 
   /** Scroll by CSS pixels. */
   scrollBy(dx: number, dy = 0): void {
-    if (dx !== 0) this.zoomAnim = null; // a pan ends a smooth zoom where it is
+    // A pan during a smooth zoom carries the zoom's anchor along, so both compose.
+    const a = this.zoomAnim;
+    if (a !== null) a.anchorT += dx * (FLICKS_PER_SECOND / this.vp.pxPerSec);
     this.userView({
       scrollX: this.vp.scrollX + dx * (FLICKS_PER_SECOND / this.vp.pxPerSec),
       scrollY: this.vp.scrollY + dy,

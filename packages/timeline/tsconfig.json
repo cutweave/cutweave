@@ -9,5 +9,5 @@
       "@cutweave/protocol/*": ["../protocol/src/*"]
     }
   },
-  "include": ["src", "bench"]
+  "include": ["src", "bench", "demo"]
 }

@@ -2,7 +2,7 @@
 // WP-2A.09: what the renderer draws (markers, snap guides by kind, linked badges, track styles
 // and heights, time formats), its zoom range and smooth zoom, and that media never block a frame.
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { MediaCaches, type MediaLoaders, zoomBucket } from "../cache.ts";
+import { type FilmstripRequest, MediaCaches, type MediaLoaders, zoomBucket } from "../cache.ts";
 import { generateTimeline } from "../fixtures.ts";
 import { TimelineLayout } from "../layout.ts";
 import type { TimelineItem, TimelineModel, TimelineTrack } from "../model.ts";
@@ -229,13 +229,11 @@ describe("clips and tracks", () => {
       th.trackLg + 2 * th.space1,
     ]);
     // The collapsed track shows labels only: no tiles are asked for it.
-    const filmstripTile = vi.fn(async () => null);
+    const filmstripTile = vi.fn(async (_req: FilmstripRequest) => null);
     const { draw } = setup(model, { loaders: { filmstripTile } });
     draw();
     await tick();
-    const asked = new Set(
-      filmstripTile.mock.calls.map((c) => (c[0] as { mediaId: string }).mediaId),
-    );
+    const asked = new Set(filmstripTile.mock.calls.map((c) => c[0].mediaId));
     expect(asked).toEqual(new Set(["m1"]));
   });
 });
@@ -337,20 +335,23 @@ describe("zoom range and smooth zoom", () => {
     expect(instant.view.zooming).toBe(false);
   });
 
-  it("a pan ends a smooth zoom where it is", () => {
+  it("a pan during a smooth zoom carries the zoom along", () => {
     const { view, frames, advance } = setup(model, { smoothZoom: true });
     view.setViewState({ pxPerSec: 100, scrollX: s(10) });
+    frames.run();
+    const t = view.xToTime(600);
     view.zoomSmooth(4, 600);
     advance(16);
     frames.run();
     const mid = view.getViewState().pxPerSec;
-    view.scrollBy(50);
-    for (let i = 0; i < 10; i++) {
+    view.scrollBy(50); // 50 px at the zoom of the moment
+    for (let i = 0; i < 60 && frames.pending; i++) {
       advance(16);
       frames.run();
     }
     expect(view.zooming).toBe(false);
-    expect(view.getViewState().pxPerSec).toBe(mid);
+    expect(view.getViewState().pxPerSec).toBe(400);
+    expect(Math.abs(view.xToTime(600) - (t + (50 * F) / mid))).toBeLessThanOrEqual(2);
   });
 
   it("zooms to a range with a margin", () => {

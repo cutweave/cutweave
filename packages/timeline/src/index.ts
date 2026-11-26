@@ -23,6 +23,7 @@ export {
   generateTimeline,
   mulberry32,
   syntheticLoaders,
+  withMarkers,
 } from "./fixtures.ts";
 export type { HeaderToggle } from "./geometry.ts";
 export type { HitContext, HitResult, HitZone } from "./hit-test.ts";
