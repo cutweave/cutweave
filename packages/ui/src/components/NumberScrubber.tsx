@@ -9,6 +9,7 @@ import {
 } from "react";
 import { cx } from "./cx.ts";
 import { clamp, modifierScale, parseEntry, stepValue } from "./numberMath.ts";
+import { useOwnerWindow } from "./PortalContainer.ts";
 
 export interface NumberScrubberProps {
   /** Short visible label; doubles as the accessible name unless `aria-label` is given. */
@@ -77,9 +78,20 @@ export function NumberScrubber({
   const name = ariaLabel ?? label;
   const shown = precision === undefined ? String(value) : value.toFixed(precision);
 
+  // The pointer lock is its own document's: a detached panel's window has its own.
+  const ownerWindow = useOwnerWindow();
+  const ownDocument = useCallback(
+    (): Document | undefined => rootRef.current?.ownerDocument ?? ownerWindow?.document,
+    [ownerWindow],
+  );
+  const locked = useCallback(
+    () => rootRef.current !== null && ownDocument()?.pointerLockElement === rootRef.current,
+    [ownDocument],
+  );
+
   const exitLock = useCallback(() => {
-    if (document.pointerLockElement === rootRef.current) document.exitPointerLock?.();
-  }, []);
+    if (locked()) ownDocument()?.exitPointerLock?.();
+  }, [locked, ownDocument]);
 
   const cancelDrag = useCallback(() => {
     const g = gesture.current;
@@ -92,15 +104,17 @@ export function NumberScrubber({
 
   // Escape (or any other way of losing the pointer lock) mid-drag cancels the gesture.
   useEffect(() => {
+    const doc = ownDocument();
+    if (doc === undefined) return undefined;
     const onLockChange = () => {
       const g = gesture.current;
       if (!g?.moved) return;
-      if (document.pointerLockElement === rootRef.current) g.locked = true;
+      if (locked()) g.locked = true;
       else if (g.locked) cancelDrag();
     };
-    document.addEventListener("pointerlockchange", onLockChange);
-    return () => document.removeEventListener("pointerlockchange", onLockChange);
-  }, [cancelDrag]);
+    doc.addEventListener("pointerlockchange", onLockChange);
+    return () => doc.removeEventListener("pointerlockchange", onLockChange);
+  }, [cancelDrag, locked, ownDocument]);
 
   useEffect(() => {
     if (editing) {
@@ -163,8 +177,7 @@ export function NumberScrubber({
       }
       return;
     }
-    const locked = document.pointerLockElement === rootRef.current;
-    const dx = locked ? event.movementX : event.clientX - g.lastX;
+    const dx = locked() ? event.movementX : event.clientX - g.lastX;
     g.lastX = event.clientX;
     g.acc += dx / sensitivity;
     const whole = Math.trunc(g.acc);

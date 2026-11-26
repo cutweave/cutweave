@@ -3,6 +3,22 @@ import * as RadixDialog from "@radix-ui/react-dialog";
 import { type KeyboardEvent, type ReactNode, useRef } from "react";
 import { Icon, type IconName } from "../icons/index.ts";
 import { cx } from "./cx.ts";
+import { PortalContainerProvider } from "./PortalContainer.ts";
+
+const FOCUSABLE =
+  'input:not([disabled]):not([type="hidden"]), textarea:not([disabled]), select:not([disabled]), button:not([disabled]), a[href], [tabindex]:not([tabindex="-1"])';
+
+/**
+ * A dialog takes the focus of the window it opens in: an app dialog raised while the person works
+ * in a detached panel's window brings the main window forward (WP-2H.15).
+ */
+function focusWindowOf(doc: Document): void {
+  try {
+    if (!doc.hasFocus()) doc.defaultView?.focus();
+  } catch {
+    // A window that is going away keeps whatever focus it has.
+  }
+}
 
 export interface DialogProps {
   open: boolean;
@@ -23,6 +39,12 @@ export interface DialogProps {
   dirty?: boolean | undefined;
   onDismissAttempt?: (() => void) | undefined;
   className?: string | undefined;
+  /**
+   * Where it opens: a window's `<body>` (the command palette opens in the window the person is
+   * in). Left out, it opens in the main document, as app dialogs do. Menus and tooltips inside
+   * it open in the same place.
+   */
+  container?: HTMLElement | null | undefined;
 }
 
 /** Modal sheet on `surface-2` over a scrim. Focus is trapped and restored by the host (Radix). */
@@ -38,6 +60,7 @@ export function Dialog({
   dirty,
   onDismissAttempt,
   className,
+  container,
 }: DialogProps) {
   const openerRef = useRef<HTMLElement | null>(null);
   const guard = (event: Event) => {
@@ -61,14 +84,23 @@ export function Dialog({
   return (
     <RadixDialog.Root open={open} onOpenChange={onOpenChange}>
       {trigger ? <RadixDialog.Trigger asChild>{trigger}</RadixDialog.Trigger> : null}
-      <RadixDialog.Portal>
+      <RadixDialog.Portal container={container ?? undefined}>
         <RadixDialog.Overlay className="cw-scrim" />
         <RadixDialog.Content
           aria-modal="true"
           {...(description ? {} : { "aria-describedby": undefined })}
           className={cx("cw-dialog", className)}
-          onOpenAutoFocus={() => {
-            openerRef.current = document.activeElement as HTMLElement | null;
+          onOpenAutoFocus={(event) => {
+            const content = event.target as HTMLElement | null;
+            const doc = content?.ownerDocument ?? document;
+            openerRef.current = doc.activeElement as HTMLElement | null;
+            focusWindowOf(doc);
+            // Radix finds the first field by the main document's focus; in another window's
+            // document the dialog focuses it itself.
+            if (doc !== document && content !== null) {
+              event.preventDefault();
+              (content.querySelector<HTMLElement>(FOCUSABLE) ?? content).focus();
+            }
           }}
           onCloseAutoFocus={(event) => {
             // Radix only restores focus to its own Trigger; cover dialogs opened by app state.
@@ -85,8 +117,10 @@ export function Dialog({
           {description ? (
             <RadixDialog.Description className="cw-note">{description}</RadixDialog.Description>
           ) : null}
-          {children}
-          {footer ? <div className="cw-dialog__footer">{footer}</div> : null}
+          <PortalContainerProvider container={container ?? null}>
+            {children}
+            {footer ? <div className="cw-dialog__footer">{footer}</div> : null}
+          </PortalContainerProvider>
         </RadixDialog.Content>
       </RadixDialog.Portal>
     </RadixDialog.Root>

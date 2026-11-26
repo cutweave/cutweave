@@ -52,6 +52,12 @@ export {
 } from "./MenuBar.tsx";
 export { NumberScrubber, type NumberScrubberProps } from "./NumberScrubber.tsx";
 export { Panel, PanelDivider, type PanelProps } from "./Panel.tsx";
+export {
+  PortalContainerProvider,
+  type PortalContainerProviderProps,
+  useOwnerWindow,
+  usePortalContainer,
+} from "./PortalContainer.ts";
 export { ProgressBar, type ProgressBarProps } from "./ProgressBar.tsx";
 export { SearchField, type SearchFieldProps } from "./SearchField.tsx";
 export {

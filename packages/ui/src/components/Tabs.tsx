@@ -3,6 +3,7 @@ import * as RadixTabs from "@radix-ui/react-tabs";
 import { createContext, type ReactNode, useContext, useEffect, useRef, useState } from "react";
 import { Icon, type IconName } from "../icons/index.ts";
 import { cx } from "./cx.ts";
+import { useOwnerWindow } from "./PortalContainer.ts";
 
 const SelectedTab = createContext<string | undefined>(undefined);
 
@@ -53,6 +54,8 @@ export function TabList({ tabs, className, ...rest }: TabListProps) {
   const selected = useContext(SelectedTab);
   const listRef = useRef<HTMLDivElement>(null);
   const [hidden, setHidden] = useState({ start: false, end: false });
+  // The strip is observed from its own window (a detached panel's), and again when it moves.
+  const ownerWindow = useOwnerWindow();
   useEffect(() => {
     const el = listRef.current?.querySelector<HTMLElement>('[aria-selected="true"]');
     el?.scrollIntoView?.({ block: "nearest", inline: "nearest" });
@@ -76,14 +79,15 @@ export function TabList({ tabs, className, ...rest }: TabListProps) {
     measure();
     list.addEventListener("scroll", measure, { passive: true });
     list.addEventListener("wheel", onWheel, { passive: false });
-    const resize = typeof ResizeObserver === "undefined" ? null : new ResizeObserver(measure);
+    const Observer = (list.ownerDocument.defaultView ?? ownerWindow)?.ResizeObserver;
+    const resize = Observer === undefined ? null : new Observer(measure);
     resize?.observe(list);
     return () => {
       list.removeEventListener("scroll", measure);
       list.removeEventListener("wheel", onWheel);
       resize?.disconnect();
     };
-  }, [tabs]);
+  }, [tabs, ownerWindow]);
   const page = (direction: 1 | -1) => {
     const list = listRef.current;
     list?.scrollBy?.({ left: direction * list.clientWidth * 0.8, behavior: "smooth" });

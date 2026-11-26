@@ -61,6 +61,7 @@ import {
   PanelLeft,
   PanelRight,
   Pause,
+  Pin,
   Play,
   Plug,
   Plus,
@@ -167,6 +168,8 @@ export const LUCIDE_ICONS = {
   "panel-left": PanelLeft,
   "panel-right": PanelRight,
   pause: Pause,
+  /** Keep on top, in a detached panel's window (WP-2H.15). */
+  pin: Pin,
   play: Play,
   plug: Plug,
   plus: Plus,
