@@ -25,6 +25,7 @@ export const READ_ONLY_METHODS: ReadonlySet<string> = new Set([
   "keyframe.eval",
   "media.cache_status",
   "media.capabilities",
+  "media.find_missing",
   "media.list",
   "media.list_folders",
   "media.proxy_status",
