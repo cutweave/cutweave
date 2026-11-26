@@ -150,6 +150,8 @@ export interface PreferenceValues {
   "media.hover_scrub": boolean;
   /** Folders in an import keep their directories as bin folders (WP-2F.09). */
   "media.keep_structure": boolean;
+  /** Imports copy each new file into the project's `media/` folder first (WP-2F.04c). */
+  "media.copy_on_import": boolean;
   /** The frame rate of a new image sequence (WP-2F.05c); `"sequence"` is the sequence's own. */
   "media.image_sequence_fps": ImageSequenceFps;
   /** The History panel's sort order (#171), the person's, not the project's. */
@@ -301,6 +303,7 @@ export const PREFERENCES: { readonly [K in PreferenceKey]: PreferenceDef } = {
   // Media and import (WP-1M.14)
   "media.hover_scrub": { type: "boolean", scope: "app", default: true },
   "media.keep_structure": { type: "boolean", scope: "app", default: true },
+  "media.copy_on_import": { type: "boolean", scope: "app", default: false },
   "media.image_sequence_fps": {
     type: "enum",
     scope: "app",

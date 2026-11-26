@@ -737,19 +737,23 @@ fn media_import(p: &Pools) -> BoxedStrategy<Value> {
         vec(select(IMPORT_PATHS.to_vec()), 1..=3),
         unreadable,
         option::weighted(0.3, one_of(p.folders.clone())),
+        // Absent and `false` both leave the files where they are.
+        option::weighted(0.2, Just(false)),
     )
-        .prop_map(|(paths, unreadable, folder)| {
+        .prop_map(|(paths, unreadable, folder, copy)| {
             let mut unique: Vec<&str> = Vec::new();
             for p in paths.into_iter().chain(unreadable) {
                 if !unique.contains(&p) {
                     unique.push(p);
                 }
             }
-            json!({"paths": unique, "folder": folder})
+            json!({"paths": unique, "folder": folder, "copy_to_project": copy})
         })
         .boxed();
     let invalid = prop_oneof![
         Just(json!({"paths": []})),
+        // The harness document is untitled: it has no folder to copy into (WP-2F.04c).
+        Just(json!({"paths": [IMPORT_PATHS[0]], "copy_to_project": true})),
         Just(json!({"paths": ["import/relative.mp4"]})),
         select(IMPORT_PATHS.to_vec()).prop_map(|p| json!({"paths": [p, p]})),
     ]
