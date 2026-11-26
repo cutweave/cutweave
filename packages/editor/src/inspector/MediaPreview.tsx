@@ -27,6 +27,7 @@ import {
   timeOfFrame,
 } from "../media/scrub.ts";
 import { useScrubSource } from "../media/scrubSource.ts";
+import { windowOf } from "../shell/windows.ts";
 import { usePlaybackStore } from "../state/playbackStore.ts";
 import { mediaName } from "../state/selectors.ts";
 import { useSourceViewStore } from "../state/sourceViewStore.ts";
@@ -41,7 +42,8 @@ const WAVEFORM_ASPECT = "16 / 5";
 /** The width to ask the engine for: the box at the device's pixel ratio, in steps of 32. */
 function pictureWidth(box: HTMLElement | null): number {
   const css = box?.clientWidth ?? 0;
-  const px = Math.ceil((css * (globalThis.devicePixelRatio || 1)) / 32) * 32;
+  // The density of the display its window is on (a detached Inspector's may differ).
+  const px = Math.ceil((css * (windowOf(box).devicePixelRatio || 1)) / 32) * 32;
   return Math.min(MAX_PICTURE_WIDTH, Math.max(MIN_PICTURE_WIDTH, px));
 }
 

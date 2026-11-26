@@ -5,6 +5,7 @@
 // animation frame, a load still running is aborted when a newer one starts, a late answer is
 // dropped, and nothing is asked once the pointer has left.
 import { type FrameRate, frameDurationFlicks, frameToFlicks } from "@cutweave/timeline";
+import { activeWindow, windowOf } from "../shell/windows.ts";
 
 /** The rate assumed for assets without one (sound, stills). */
 export const DEFAULT_RATE: FrameRate = { num: 30, den: 1 };
@@ -49,7 +50,10 @@ export interface LatestFramesOptions<T> {
   readonly load: (t: number, signal: AbortSignal) => Promise<T | null>;
   /** Shows a loaded picture; only ever called for the newest request. */
   readonly paint: (t: number, picture: T) => void;
-  /** Schedules `run` for the next animation frame (default: `requestAnimationFrame`). */
+  /**
+   * Schedules `run` for the next animation frame (default: the frames of the window the pointer
+   * is in, a detached panel's own, WP-2H.15).
+   */
   readonly raf?: (run: () => void) => number;
   readonly cancelRaf?: (handle: number) => void;
 }
@@ -60,6 +64,8 @@ export class LatestFrames<T> {
   #wanted: number | null = null;
   #started: number | null = null;
   #handle: number | null = null;
+  /** The window the pending frame was asked of (default scheduling). */
+  #asked: Window | null = null;
   #current: AbortController | null = null;
   #sequence = 0;
 
@@ -71,7 +77,13 @@ export class LatestFrames<T> {
   request(t: number): void {
     this.#wanted = t;
     if (this.#handle !== null) return;
-    const raf = this.#options.raf ?? ((run) => requestAnimationFrame(() => run()));
+    const raf =
+      this.#options.raf ??
+      ((run) => {
+        const win = activeWindow();
+        this.#asked = win;
+        return win.requestAnimationFrame(() => run());
+      });
     this.#handle = raf(() => {
       this.#handle = null;
       this.#flush();
@@ -81,7 +93,8 @@ export class LatestFrames<T> {
   /** Stops: a load in flight is aborted, a scheduled one never starts, an answer is dropped. */
   cancel(): void {
     if (this.#handle !== null) {
-      const cancelRaf = this.#options.cancelRaf ?? ((h) => cancelAnimationFrame(h));
+      const cancelRaf =
+        this.#options.cancelRaf ?? ((h) => (this.#asked ?? activeWindow()).cancelAnimationFrame(h));
       cancelRaf(this.#handle);
       this.#handle = null;
     }
@@ -140,7 +153,7 @@ export function paintContain(
   source: CanvasImageSource,
   size: { readonly width: number; readonly height: number },
 ): void {
-  const ratio = globalThis.devicePixelRatio || 1;
+  const ratio = windowOf(canvas).devicePixelRatio || 1;
   const width = Math.max(1, Math.round(canvas.clientWidth * ratio));
   const height = Math.max(1, Math.round(canvas.clientHeight * ratio));
   if (canvas.width !== width) canvas.width = width;
@@ -162,7 +175,7 @@ export function paintCover(
   size: { readonly width: number; readonly height: number },
   part?: { readonly sx: number; readonly sy: number; readonly sw: number; readonly sh: number },
 ): void {
-  const ratio = globalThis.devicePixelRatio || 1;
+  const ratio = windowOf(canvas).devicePixelRatio || 1;
   const width = Math.max(1, Math.round(canvas.clientWidth * ratio));
   const height = Math.max(1, Math.round(canvas.clientHeight * ratio));
   if (canvas.width !== width) canvas.width = width;
