@@ -77,7 +77,7 @@ function HeaderToggles({
             <IconButton
               size="sm"
               icon={toggle.icon}
-              label={`${label}: ${track.name}`}
+              label={t("timeline.header.toggle", { action: label, name: track.name })}
               pressed={on}
               onClick={() => host.toggleTrack(track.id, toggle.flag)}
             />

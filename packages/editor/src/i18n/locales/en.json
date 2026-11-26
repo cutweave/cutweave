@@ -1417,7 +1417,8 @@
     "header": {
       "addTrack": "Add track",
       "addVideo": "Video track",
-      "addAudio": "Audio track"
+      "addAudio": "Audio track",
+      "toggle": "{{action}} track {{name}}"
     },
     "drop": {
       "insert": "Insert",
