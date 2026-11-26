@@ -11,6 +11,7 @@ export const GROUP_LABELS: Readonly<Record<string, TKey>> = {
   flip: "inspector.groups.flip",
   compositing: "inspector.groups.compositing",
   video: "inspector.groups.video",
+  audio: "inspector.groups.audio",
 };
 
 /** A property's name in a sentence ("Change position"), by its full dot path. */
@@ -20,6 +21,8 @@ export const PROP_NAMES: Readonly<Record<string, TKey>> = {
   "transform.rotation": "inspector.props.transformRotation",
   "transform.anchor": "inspector.props.transformAnchor",
   opacity: "inspector.props.opacity",
+  audio_gain: "inspector.props.audioGain",
+  audio_pan: "inspector.props.audioPan",
   blend_mode: "inspector.props.blendMode",
   "crop.left": "inspector.props.cropLeft",
   "crop.top": "inspector.props.cropTop",
@@ -36,6 +39,8 @@ export const PROP_LABELS: Readonly<Record<string, TKey>> = {
   "transform.rotation": "inspector.labels.transformRotation",
   "transform.anchor": "inspector.labels.transformAnchor",
   opacity: "inspector.labels.opacity",
+  audio_gain: "inspector.labels.audioGain",
+  audio_pan: "inspector.labels.audioPan",
   blend_mode: "inspector.labels.blendMode",
   "crop.left": "inspector.labels.cropLeft",
   "crop.top": "inspector.labels.cropTop",

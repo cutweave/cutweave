@@ -181,6 +181,7 @@ export function createCutweaveApi(
       reload: () => invoke("window:reload"),
       toggleDevTools: () => invoke("window:toggleDevTools"),
       inspectElement: (x, y) => invoke("window:inspectElement", x, y),
+      setPopoutOnTop: (frame, on) => invoke("window:setPopoutOnTop", { frame, on }),
     },
     edit: {
       run: (action) => invoke("edit:run", action),

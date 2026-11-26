@@ -11,11 +11,13 @@
 // save status (Save now); press the Menu key on a bin card and choose Remove from project, then
 // cancel its dialog. WP-2A.04 adds a clip's left edge: Trim to playhead, then Ctrl+Z; WP-2A.05
 // the clip menu's Unlink clips (Link clips is disabled for a pair already linked), then Ctrl+Z.
-// WP-2D.01 adds the clip's Speed ▸ 2x and Custom…, Reverse and Freeze frame, each undone. A third
+// WP-2D.01 adds the clip's Speed ▸ 2x and Custom…, Reverse and Freeze frame, each undone.
+// WP-2A.06 adds the clipboard flow: Ctrl+C and Ctrl+V, Ctrl+X, Ctrl+D, the clip menu's Copy and
+// Paste attributes… and the lane menu's Paste here, each one undo step. A further
 // flow right-clicks the Export chip and cancels the export (it needs
 // the FFmpeg engine and the corpus, like F14, and skips without them). Every choice is checked as
 // an undo step or as state the person sees. Only the OS file picker is stubbed.
-import { expect, test } from "../fixtures.ts";
+import { editorCall, expect, test } from "../fixtures.ts";
 import { copyCorpusClips, corpusDir } from "./export-helpers.ts";
 import {
   clickClip,
@@ -44,6 +46,7 @@ import {
   shortcut,
   snapshot,
   timecode,
+  timelineCanvas,
   timelineGeometry,
   timelineTools,
   toast,
@@ -417,7 +420,9 @@ test.describe("F42 context menus", () => {
         /^Close panel/,
         /^Maximize panel/,
         /^Float panel/,
-        /^Move to/,
+        // Its own window (WP-2H.14, F47), and the dock's edges (a submenu).
+        /^Move to new window/,
+        /^Move to$/,
         /^Reset layout/,
       ]) {
         await expect(item(tab, name)).toBeVisible();
@@ -442,6 +447,161 @@ test.describe("F42 context menus", () => {
       await ask.getByRole("button", { name: "Cancel" }).click();
       await expect(ask).toBeHidden();
       expect(await mediaNames(page)).toContain("interview.mp4");
+    } finally {
+      await close();
+      work.remove();
+    }
+  });
+
+  test("copy, cut, paste, duplicate and paste attributes work from the keys and the menus (WP-2A.06)", async () => {
+    test.setTimeout(240_000);
+    const work = workspace();
+    const { app, page, close } = await launchFlowApp(work);
+    try {
+      await createProject(app, page, "Clipboard", work.dir);
+      await importWithButton(app, page, [work.file("interview.mp4")]);
+      await dropCard(page, "interview.mp4", "V1", 1);
+      await expect
+        .poll(() => layout(page))
+        .toEqual([
+          { track: "V1", clips: [[1, 10]] },
+          { track: "A1", clips: [[1, 10]] },
+        ]);
+      await editorCaughtUp(page);
+      const menu = page.getByRole("menu");
+      const item = (m: ReturnType<typeof page.getByRole>, name: string | RegExp) =>
+        m.getByRole("menuitem", { name });
+      const clipsOnV1 = async () => (await layout(page))[0]?.clips;
+      const original = (await sequence(page)).tracks[0]?.items[0]?.id ?? "";
+      // Zoom out (- on the focused timeline) so the playhead can go well past the clip.
+      await timelineCanvas(page).locator("canvas").focus();
+      for (let n = 0; n < 5; n += 1) await page.keyboard.press("-");
+      await expect
+        .poll(async () => (await editorCall<{ zoom: number | null }>(page, "view.get")).zoom)
+        .toBeLessThan(35);
+      const moveTo = async (s: number) => {
+        const g = await timelineGeometry(page);
+        await page.mouse.click(xAt(g, sec(s)) + 0.5, rulerY(g));
+        await expect(timecode(page)).toHaveText(`00:00:${String(s).padStart(2, "0")}:00`);
+      };
+
+      // Ctrl+C then Ctrl+V: the clip and its sound come back at the playhead, on their own
+      // tracks and in a group of their own, as one undo step (Ctrl+Z).
+      await clickClip(page, original);
+      await shortcut(app, "Control+C");
+      await moveTo(14);
+      await shortcut(app, "Control+V");
+      await expect
+        .poll(() => layout(page))
+        .toEqual([
+          {
+            track: "V1",
+            clips: [
+              [1, 10],
+              [14, 10],
+            ],
+          },
+          {
+            track: "A1",
+            clips: [
+              [1, 10],
+              [14, 10],
+            ],
+          },
+        ]);
+      await editorCaughtUp(page);
+      const items = (await sequence(page)).tracks[0]?.items ?? [];
+      expect(items[1]?.id).not.toBe(original);
+      expect(items[1]?.linked_group).not.toBeNull();
+      expect(items[1]?.linked_group).not.toBe(items[0]?.linked_group);
+      await shortcut(app, "Control+Z");
+      await expect.poll(clipsOnV1).toEqual([[1, 10]]);
+      await editorCaughtUp(page);
+
+      // Ctrl+X takes the clip out (both tracks); Ctrl+V puts it at the playhead; two undo steps
+      // return the first position.
+      await clickClip(page, original);
+      await shortcut(app, "Control+X");
+      await expect
+        .poll(() => layout(page))
+        .toEqual([
+          { track: "V1", clips: [] },
+          { track: "A1", clips: [] },
+        ]);
+      await editorCaughtUp(page);
+      await shortcut(app, "Control+V");
+      await expect.poll(clipsOnV1).toEqual([[14, 10]]);
+      await editorCaughtUp(page);
+      await shortcut(app, "Control+Z");
+      await shortcut(app, "Control+Z");
+      await expect.poll(clipsOnV1).toEqual([[1, 10]]);
+      await editorCaughtUp(page);
+
+      // Ctrl+D copies the clip right after itself.
+      await clickClip(page, original);
+      await shortcut(app, "Control+D");
+      await expect.poll(clipsOnV1).toEqual([
+        [1, 10],
+        [11, 10],
+      ]);
+      await editorCaughtUp(page);
+      await shortcut(app, "Control+Z");
+      await expect.poll(clipsOnV1).toEqual([[1, 10]]);
+      await editorCaughtUp(page);
+
+      // The menus: Copy on the clip, then Paste here on an empty lane at the click's time.
+      let g = await timelineGeometry(page);
+      let box = clipBox(g, original);
+      await page.mouse.click(box.x + Math.min(box.w / 2, 60), box.y, { button: "right" });
+      const clipMenu = page.getByRole("menu", { name: "Clip actions for interview.mp4" });
+      await expect(clipMenu).toBeVisible();
+      await item(clipMenu, /^Copy(?! path)/).click();
+      await expect(menu).toHaveCount(0);
+      g = await timelineGeometry(page);
+      await page.mouse.click(xAt(g, sec(22)) + 0.5, laneY(g, "V1"), { button: "right" });
+      const laneMenu = page.getByRole("menu", { name: "Timeline actions" });
+      await expect(laneMenu).toBeVisible();
+      await item(laneMenu, /^Paste here/).click();
+      await expect.poll(clipsOnV1).toEqual([
+        [1, 10],
+        [22, 10],
+      ]);
+      await editorCaughtUp(page);
+      await shortcut(app, "Control+Z");
+      await expect.poll(clipsOnV1).toEqual([[1, 10]]);
+      await editorCaughtUp(page);
+
+      // Paste attributes: the copy gets the first clip's opacity; Ctrl+Z takes it back.
+      await moveTo(14);
+      await shortcut(app, "Control+V");
+      await expect.poll(clipsOnV1).toEqual([
+        [1, 10],
+        [14, 10],
+      ]);
+      await editorCaughtUp(page);
+      const copy = (await sequence(page)).tracks[0]?.items[1]?.id ?? "";
+      await clickClip(page, original);
+      const opacity = inspector(page).opacity;
+      await opacity.focus();
+      await opacity.press("ArrowLeft");
+      await expect.poll(async () => (await itemOf(page, original)).visual.opacity).toBeLessThan(1);
+      await editorCaughtUp(page);
+      const dimmed = (await itemOf(page, original)).visual.opacity;
+      expect((await itemOf(page, copy)).visual.opacity).toBe(1);
+      await clickClip(page, original);
+      await shortcut(app, "Control+C");
+      g = await timelineGeometry(page);
+      box = clipBox(g, copy);
+      await page.mouse.click(box.x + Math.min(box.w / 2, 60), box.y, { button: "right" });
+      await item(clipMenu, /^Paste attributes/).click();
+      const dialog = page.getByRole("dialog", { name: "Paste attributes" });
+      await expect(dialog).toBeVisible();
+      await dialog.getByRole("button", { name: "Paste", exact: true }).click();
+      await expect(dialog).toBeHidden();
+      await expect.poll(async () => (await itemOf(page, copy)).visual.opacity).toBe(dimmed);
+      await editorCaughtUp(page);
+      await shortcut(app, "Control+Z");
+      await expect.poll(async () => (await itemOf(page, copy)).visual.opacity).toBe(1);
     } finally {
       await close();
       work.remove();

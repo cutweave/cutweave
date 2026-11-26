@@ -107,6 +107,15 @@ export type MenuCommand = (typeof MENU_COMMANDS)[number];
 export const THEMES = ["dark", "light"] as const;
 export type ThemeId = (typeof THEMES)[number];
 
+/**
+ * Keep on top for a detached panel's window (ADR-0031): `frame` is the window's name, which
+ * dockview gives it as `<dock>-<group>`; `on` turns it on or off.
+ */
+export interface PopoutOnTopRequest {
+  readonly frame: string;
+  readonly on: boolean;
+}
+
 /** The preferences as the editor first sees them (WP-1M.11): every key's value and default. */
 export interface PrefsSnapshot {
   readonly values: PreferenceMap;
@@ -443,6 +452,11 @@ export interface CutweaveApi {
     toggleDevTools(): Promise<void>;
     /** "Inspect element" of the context-menu host at a point of the page; development builds only. */
     inspectElement(x: number, y: number): Promise<void>;
+    /**
+     * Keep on top for a detached panel's window this editor opened (ADR-0031), named by its
+     * window name. Resolves to whether such a window was open.
+     */
+    setPopoutOnTop(frame: string, on: boolean): Promise<boolean>;
   };
   /** Edit > Cut, Copy, Paste, Select all on the focused element (WP-1M.09). */
   readonly edit: {

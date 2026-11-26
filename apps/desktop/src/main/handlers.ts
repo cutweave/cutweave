@@ -93,6 +93,11 @@ export interface HandlerDeps {
   toggleFullScreen(): void;
   /** Recolors the OS window-controls overlay (Windows, Linux; nothing on macOS). */
   setTheme(theme: ThemeId): void;
+  /**
+   * Keep on top for the editor's detached-panel window named `frame` (ADR-0031); false when the
+   * editor has no such window open.
+   */
+  setPopoutOnTop(frame: string, on: boolean): boolean;
   /** `webContents.cut()` and friends on the editor window's focused element. */
   editCommand(action: EditAction): void;
   /** View > Reload and Toggle developer tools: present in unpackaged runs only. */
@@ -264,6 +269,7 @@ export function createHandlers(deps: HandlerDeps): InvokeHandlers {
       if (deps.dev === undefined) throw new DevOnlyError("window:inspectElement");
       deps.dev.inspectElement(x, y);
     },
+    "window:setPopoutOnTop": ({ frame, on }) => deps.setPopoutOnTop(frame, on),
     "edit:run": (action) => {
       deps.editCommand(action);
     },

@@ -45,6 +45,7 @@ const handlers = (): InvokeHandlers => ({
   "window:reload": vi.fn(),
   "window:toggleDevTools": vi.fn(),
   "window:inspectElement": vi.fn(),
+  "window:setPopoutOnTop": vi.fn(() => true),
   "edit:run": vi.fn(),
   "prefs:get": vi.fn(() => ({ values: {}, defaults: {} }) as never),
   "prefs:set": vi.fn(),
@@ -295,6 +296,29 @@ describe("ipc registry", () => {
     for (const bad of [[], [1], [1.5, 2], [-1, 2], ["1", 2], [1, 2, 3], [1e9, 2]]) {
       expect(() => call("window:inspectElement", okEvent, ...bad)).toThrow(IpcValidationError);
     }
+  });
+
+  it("takes Keep on top only for a dock's popout window name and a flag (ADR-0031)", () => {
+    const h = handlers();
+    const call = register(h);
+    call("window:setPopoutOnTop", okEvent, { frame: "1-4", on: true });
+    expect(h["window:setPopoutOnTop"]).toHaveBeenCalledWith({ frame: "1-4", on: true });
+    for (const bad of [
+      [],
+      ["1-4", true],
+      [{ frame: "1-4" }],
+      [{ frame: "1-4", on: "yes" }],
+      [{ frame: "main", on: true }],
+      [{ frame: "", on: true }],
+      [{ frame: "1-4/../x", on: true }],
+      [{ frame: "1-4", on: true, url: "https://example.com/" }],
+      [{ frame: "1-4", on: true }, "extra"],
+    ]) {
+      expect(() => call("window:setPopoutOnTop", okEvent, ...bad), JSON.stringify(bad)).toThrow(
+        IpcValidationError,
+      );
+    }
+    expect(h["window:setPopoutOnTop"]).toHaveBeenCalledTimes(1);
   });
 
   it("accepts only a known theme and a known edit action", () => {

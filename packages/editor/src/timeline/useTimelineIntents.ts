@@ -6,7 +6,7 @@ import { type DragEvent, useCallback, useEffect, useMemo, useRef } from "react";
 import { useTranslation } from "react-i18next";
 import { useStore } from "zustand";
 import { engineStore } from "../engine/engineStore.ts";
-import { timelineActionOf } from "../keymap/timeline.ts";
+import { timelineActionOf, timelineEditorCommandOf } from "../keymap/timeline.ts";
 import { dragStore } from "../media/dragStore.ts";
 import { requestForCanvasEvent } from "../menus/canvas.ts";
 import { closeContextMenu, openContextMenu } from "../menus/host.tsx";
@@ -16,8 +16,27 @@ import { toastStore } from "../state/toastStore.ts";
 import { viewStore } from "../state/viewStore.ts";
 import { transportController } from "../transport/useTransport.ts";
 import { setActiveTimelineController } from "./activeController.ts";
+import {
+  type Call,
+  CLIPBOARD_MIME,
+  clipboardStore,
+  copyClips,
+  cutClips,
+  duplicateClips,
+  isWritingClipboard,
+  parsePayload,
+  pasteClips,
+  selectedClips,
+} from "./clipboard.ts";
 import { TimelineController, type TimelineOverlay } from "./controller.ts";
-import { type Translate, translator } from "./errors.ts";
+import {
+  describeRefusal,
+  FAILED_TITLE,
+  type TimelineEdit,
+  type Translate,
+  translator,
+} from "./errors.ts";
+import { toRpcError } from "./gesture.ts";
 
 export interface TimelineIntents {
   readonly controller: TimelineController;
@@ -38,6 +57,13 @@ export interface TimelineIntents {
   /** Ref for the panel root: timeline keys (S, N, Delete, Backspace, Esc) pressed inside it. */
   readonly keyTarget: (el: HTMLElement | null) => (() => void) | undefined;
 }
+
+/** Calls the engine for the clipboard actions (the same calls a menu choice makes). */
+const engineCall: Call = async (name, args) => {
+  const rpc = engineStore.getState().rpc;
+  if (rpc === null) throw new Error("the engine is not connected");
+  return (rpc.call as (n: string, a: unknown) => Promise<unknown>)(name, args ?? {});
+};
 
 /** Keys typed into a field belong to the field. */
 function isTextEntry(target: EventTarget | null): boolean {
@@ -122,8 +148,52 @@ export function useTimelineIntents(): TimelineIntents {
   const keyTarget = useCallback(
     (el: HTMLElement | null) => {
       if (el === null) return undefined;
+      const refused = (edit: TimelineEdit, error: unknown): void => {
+        const tr = translator(t);
+        toastStore.getState().push({
+          tone: "warning",
+          title: tr(FAILED_TITLE[edit]),
+          message: describeRefusal(toRpcError(error), tr),
+        });
+      };
+      const run = (edit: TimelineEdit, work: () => Promise<void>): void => {
+        void work().catch((error: unknown) => refused(edit, error));
+      };
+      // Copy, Cut and Paste come as clipboard events, from the keys and from the Edit menu alike.
+      const onCopy = (e: ClipboardEvent): void => {
+        if (isWritingClipboard() || isTextEntry(e.target)) return;
+        const ids = selectedClips();
+        if (ids.length === 0) return;
+        e.preventDefault();
+        run("copy", async () => void (await copyClips(engineCall, ids)));
+      };
+      const onCut = (e: ClipboardEvent): void => {
+        if (isTextEntry(e.target)) return;
+        const ids = selectedClips();
+        if (ids.length === 0) return;
+        e.preventDefault();
+        run("cut", () => cutClips(engineCall, ids));
+      };
+      const onPaste = (e: ClipboardEvent): void => {
+        if (isTextEntry(e.target)) return;
+        const system = parsePayload(e.clipboardData?.getData(CLIPBOARD_MIME) ?? "");
+        const payload = system ?? clipboardStore.getState().payload;
+        if (payload === null) return;
+        e.preventDefault();
+        clipboardStore.getState().setPayload(payload);
+        const view = viewStore.getState();
+        const track = view.selection.find((r) => r.kind === "track")?.id;
+        run("paste", () => pasteClips(engineCall, payload, view.playhead, track));
+      };
       const onKey = (e: KeyboardEvent): void => {
         if (e.defaultPrevented || isTextEntry(e.target)) return;
+        if (timelineEditorCommandOf(e) === "item.duplicate") {
+          const ids = selectedClips();
+          if (ids.length === 0) return;
+          e.preventDefault();
+          run("duplicate", () => duplicateClips(engineCall, ids));
+          return;
+        }
         // The keys are the keymap's `timeline` context (Settings > Keyboard shortcuts).
         const action = timelineActionOf(e);
         const handled = controller.handleKey({
@@ -137,9 +207,17 @@ export function useTimelineIntents(): TimelineIntents {
         if (handled) e.preventDefault();
       };
       el.addEventListener("keydown", onKey);
-      return () => el.removeEventListener("keydown", onKey);
+      el.addEventListener("copy", onCopy);
+      el.addEventListener("cut", onCut);
+      el.addEventListener("paste", onPaste);
+      return () => {
+        el.removeEventListener("keydown", onKey);
+        el.removeEventListener("copy", onCopy);
+        el.removeEventListener("cut", onCut);
+        el.removeEventListener("paste", onPaste);
+      };
     },
-    [controller],
+    [controller, t],
   );
 
   const drop = useMemo<TimelineIntents["drop"]>(() => {

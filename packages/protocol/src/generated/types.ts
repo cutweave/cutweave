@@ -45,6 +45,19 @@ export type AgentConnection = {
 /**  A static value or keyed values (keyframes §3.1); the wire form for TypeScript. */
 export type Animatable<T> = T | Keyframes<T>;
 
+/**  A group of properties, as `item.reset_props` and the Inspector name them. */
+export type Attribute = 
+/**  Position, scale, rotation and anchor. */
+"transform" | 
+/**  The four crop edges. */
+"crop" | 
+/**  Flip horizontal and vertical. */
+"flip" | 
+/**  Opacity and blend mode. */
+"compositing" | 
+/**  Clip gain, pan and fades. */
+"audio";
+
 /**  What `audio.set` changes. */
 export type AudioChange = 
 /**  Fade in and/or out. */
@@ -455,6 +468,26 @@ export type ClipFreezeFrameOutput = {
 };
 
 /**
+ *  Copies the chosen property groups (`transform`, `crop`, `flip`, `compositing`, `audio`) of
+ *  `from` onto each clip of `to`, with their keyframes. Names, timing, media and links are not
+ *  touched. `Locked` if a target's track is locked; nothing changes then.
+ */
+export type ClipPasteAttributes = {
+	/**  The clip to read the values from. */
+	from: ItemId,
+	/**  The clips to change, at least one, of one sequence. */
+	to: ItemId[],
+	/**  The groups to copy, at least one. */
+	which: Attribute[],
+};
+
+/**  Result of `clip.paste_attributes`. */
+export type ClipPasteAttributesOutput = {
+	/**  The clips whose properties changed (those that already matched are left out). */
+	changed: ItemId[],
+};
+
+/**
  *  Plays a clip (`item`), or several (`items`), and their linked partners forwards at normal speed
  *  again, keeping the media they play (their length changes as in `clip.set_speed` with `keep:
  *  "in_point"`; `ripple` and `keyframes` as there).
@@ -714,6 +747,17 @@ export type ClipTrimOutput = {
 	report: EditReport,
 };
 
+/**  One copied item. */
+export type ClipboardItem = {
+	/**  Index into the payload's `tracks`. */
+	track: number,
+	/**
+	 *  The item as copied, with its `start` relative to the earliest copied item. Its `id`,
+	 *  `linked_group` and `attached_to` only relate the items of the payload to each other.
+	 */
+	item: Item,
+};
+
 /**  One copied key. */
 export type ClipboardKey = {
 	/**  The property it was on. */
@@ -724,6 +768,35 @@ export type ClipboardKey = {
 	value: KeyValue,
 	/**  How the segment that starts at the key moves to the next one (stored form). */
 	interp: Interp,
+};
+
+/**
+ *  Copied items, as `application/x-cutweave-items+json` on the system clipboard (arch §5;
+ *  WP-2A.06). Version 1.
+ */
+export type ClipboardPayload = {
+	/**  Always 1. */
+	version: number,
+	/**  The sequence the items came from. */
+	sequence: SequenceId,
+	/**  Its frame rate: pasting into a sequence with another one snaps to the frame grid. */
+	frame_rate: FrameRate,
+	/**  Length of the copied range: the latest end minus the earliest start. */
+	span: Duration,
+	/**  The source tracks in display order, top first. */
+	tracks: ClipboardTrack[],
+	/**  The items, by source track (display order), then start, then ID. */
+	items: ClipboardItem[],
+};
+
+/**  One track of a payload: the kind it had and where it was. */
+export type ClipboardTrack = {
+	/**  What the track holds; pasted items go only to tracks of this kind. */
+	kind: TrackKind,
+	/**  Display-order distance from the top-most track of the payload (0 for the first). */
+	row: number,
+	/**  The track the items were copied from (where `timeline.paste` goes without `track`). */
+	source: TrackId,
 };
 
 /**
@@ -832,6 +905,15 @@ export type CodecInfo = {
 	/**  Encoder implementations (empty: cannot encode). */
 	encoders: string[],
 };
+
+/**  What to do when the output file exists. */
+export type Collision = 
+/**  Pick a free name (`name (1).mp4`). */
+"rename" | 
+/**  Replace the file once the export has succeeded. */
+"overwrite" | 
+/**  Refuse (the default). */
+"fail";
 
 /**  An sRGB color with straight alpha, written `#rrggbb` (opaque) or `#rrggbbaa`. */
 export type Color = string;
@@ -1234,14 +1316,20 @@ export type ExportEnqueue = {
 	sequence?: SequenceId | null,
 	/**  Absolute path of the output file (`.mp4`). */
 	path: string,
-	/**  Part of the sequence to export (default: all of it). */
+	/**
+	 *  Part of the sequence to export (default: all of it): {kind: "sequence" | "in_out" |
+	 *  "custom" | "markers", in, out, markers: [ids], pair_mode: "duration" | "pairs"}, as in
+	 *  export.start.
+	 */
 	range?: ExportRange | null,
 	/**  "h264-mp4-1080p" (default), a preset id or {"custom": {...}}, as in export.start. */
 	preset?: ExportPreset | null,
 	/**  Hardware encoder: "auto" (default), "off", or {"force": "h264_nvenc"}. */
 	hw?: ExportHw | null,
-	/**  Replace an existing file at `path` (default false). */
+	/**  Replace an existing file at `path` (default false); same as `collision: "overwrite"`. */
 	overwrite?: boolean | null,
+	/**  An existing file: "fail" (default), "rename" or "overwrite". */
+	collision?: Collision | null,
 };
 
 /**  Whether to use a hardware video encoder. */
@@ -1380,13 +1468,30 @@ export type ExportQueueOutput = {
 	jobs: ExportQueueJob[],
 };
 
-/**  The part of the sequence to export: `[in, out)`, both snapped to the nearest frame. */
+/**  The part of the sequence to export: `[in, out)` snapped to frames, or a set of regions. */
 export type ExportRange = {
-	/**  Start: flicks, "2.5s", "f:60" or a timecode. */
-	in: TimeInput,
-	/**  End, exclusive: at most the sequence end. */
-	out: TimeInput,
-};
+	/**  "sequence", "in_out", "custom" or "markers" (default: from the other fields). */
+	kind?: RangeKind | null,
+	/**  Marker kind: the markers to export (default: all of the sequence's markers). */
+	markers?: MarkerId[] | null,
+	/**
+	 *  Marker kind: "duration" (default; each marker's own duration) or "pairs" (each marker to
+	 *  the next).
+	 */
+	pair_mode?: PairMode | null,
+} & ({
+	/**  Custom start: flicks, "2.5s", "f:60" or a timecode. */
+	in?: TimeInput | null,
+} & {
+	/**  Custom start: flicks, "2.5s", "f:60" or a timecode. */
+	start?: TimeInput | null,
+}) & ({
+	/**  Custom end, exclusive: at most the sequence end. */
+	out?: TimeInput | null,
+} & {
+	/**  Custom end, exclusive: at most the sequence end. */
+	end?: TimeInput | null,
+});
 
 /**
  *  Takes an export off the queue: a finished one is forgotten (its file stays), a queued one is
@@ -1423,15 +1528,22 @@ export type ExportRetry = {
  *  `job.wait`, stop with `job.cancel` (the partial file is deleted). Exports queue and run one at a time; this one
  *  also resumes a paused queue (`export.queue` lists it). The export uses the project as it is
  *  now; later edits do not change it. Agents and headless callers may only write inside the
- *  project folder and folders the user approved. An existing file is replaced only with
- *  `overwrite: true`.
+ *  project folder and folders the user approved. `range.kind` picks the part: "sequence",
+ *  "in_out" (the sequence's in/out points), "custom" (`in`, `out`) or "markers" (one file per
+ *  marker: `path` is a folder or an .mp4 name template with {seq}, {marker_label}, {n}; the
+ *  output lists every job). `collision` says what happens to an existing file: "fail"
+ *  (default), "rename" (pick a free name) or "overwrite" (replace it when the export
+ *  succeeds). Fails with `Invalid` when the drive has too little free space.
  */
 export type ExportStart = {
 	/**  Sequence; optional when the project has one. */
 	sequence?: SequenceId | null,
 	/**  Absolute path of the output file (`.mp4`; `.mov` for ProRes presets). */
 	path: string,
-	/**  Part of the sequence to export (default: all of it). */
+	/**
+	 *  Part of the sequence to export (default: all of it): {kind: "sequence" | "in_out" |
+	 *  "custom" | "markers", in, out, markers: [ids], pair_mode: "duration" | "pairs"}.
+	 */
 	range?: ExportRange | null,
 	/**
 	 *  "h264-mp4-1080p" (default), a preset id ("youtube-1080p") or {"custom": {width, height,
@@ -1440,8 +1552,10 @@ export type ExportStart = {
 	preset?: ExportPreset | null,
 	/**  Hardware encoder: "auto" (default), "off", or {"force": "hevc_nvenc"}. */
 	hw?: ExportHw | null,
-	/**  Replace an existing file at `path` (default false). */
+	/**  Replace an existing file at `path` (default false); same as `collision: "overwrite"`. */
 	overwrite?: boolean | null,
+	/**  An existing file: "fail" (default), "rename" or "overwrite". */
+	collision?: Collision | null,
 };
 
 /**  Result of `export.start`: the job and what it will write. */
@@ -1470,6 +1584,29 @@ export type ExportStartOutput = {
 	rev: Rev,
 	/**  Platform-limit and fit warnings of a preset (never errors; the export runs). */
 	warnings: PresetWarning[],
+	/**
+	 *  Every export of a marker set, in time order (empty for any other range). The fields
+	 *  above describe the first of them.
+	 */
+	jobs?: ExportedFile[],
+};
+
+/**  One file of a marker-set export. */
+export type ExportedFile = {
+	/**  Its export job. */
+	job_id: JobId,
+	/**  The output file (after `rename`). */
+	path: string,
+	/**  The marker's label. */
+	label: string,
+	/**  Range start (sequence time, flicks). */
+	in: Time,
+	/**  Range end, exclusive. */
+	out: Time,
+	/**  Video frames the file will hold. */
+	frames: number,
+	/**  Length of the file. */
+	duration: Duration,
 };
 
 /**
@@ -3749,6 +3886,13 @@ export type OnConflict =
  */
 export type OverlapPolicy = "reject" | "new_track";
 
+/**  How markers become regions. */
+export type PairMode = 
+/**  Each marker's own `duration` (the default). */
+"duration" | 
+/**  Each marker to the next one. */
+"pairs";
+
 /**  Where `keyframe.paste` put a key. */
 export type PastedKey = {
 	/**  The item. */
@@ -4451,6 +4595,17 @@ export type ProxyStatus =
 "evicted" | 
 /**  The last generation failed (see `error`). */
 "failed";
+
+/**  Which part of the sequence to export. */
+export type RangeKind = 
+/**  The whole sequence. */
+"sequence" | 
+/**  Between the sequence's in and out points. */
+"in_out" | 
+/**  `in` to `out`. */
+"custom" | 
+/**  One file per marker. */
+"markers";
 
 /**  How the video encoder spends bits. */
 export type RateControlSpec = 
@@ -5181,6 +5336,22 @@ export type TimelineClearInOutOutput = {
 };
 
 /**
+ *  Reads items and their linked partners into a clipboard payload (nothing changes).
+ *  `NotFound` for an unknown item; `Invalid{path:"/items"}` for none or items of several
+ *  sequences.
+ */
+export type TimelineCopy = {
+	/**  The items to copy, at least one, of one sequence. */
+	items: ItemId[],
+};
+
+/**  Result of `timeline.copy`. */
+export type TimelineCopyOutput = {
+	/**  The payload to paste. */
+	clipboard: ClipboardPayload,
+};
+
+/**
  *  Closes the gap of a track that contains `at`: the items from the gap's end on move left by
  *  its length, and so do the tracks of linked partners of what moves (or every track with
  *  `ripple_all_tracks`). A gap is the empty space between two items, or before the first one;
@@ -5394,6 +5565,35 @@ export type TimelineOverwrite = {
 	link?: boolean | null,
 	/**  The audio track for the linked sound (default: the first unlocked free one). */
 	audio_track?: TrackId | null,
+};
+
+/**
+ *  Pastes a clipboard payload at `at`. Every item and group gets a new ID and links are
+ *  remapped; media references are kept, so it works across sequences. `track` is where the
+ *  top-most payload track goes (the others keep their rows and need the same kind); without it
+ *  the items return to their source tracks. `mode` picks the placement (default `insert` with
+ *  items on the magnetic main track, else `reject`). `Locked` if a track it would change is
+ *  locked; nothing changes then.
+ */
+export type TimelinePaste = {
+	/**  The payload `timeline.copy` returned. */
+	payload: ClipboardPayload,
+	/**  Where the earliest copied item goes. */
+	at: TimeInput,
+	/**  The track for the top-most payload track (default: the source tracks). */
+	track?: TrackId | null,
+	/**  Placement mode. */
+	mode?: PlacementMode | null,
+};
+
+/**  Result of `timeline.paste`. */
+export type TimelinePasteOutput = {
+	/**  The new items: each payload item's ID (`source`) and the ID of its copy. */
+	copies: DuplicatedItem[],
+	/**  Tracks created by the placement, in creation order. */
+	created_tracks: TrackId[],
+	/**  What changed (timeline spec §3.1). */
+	report: EditReport,
 };
 
 /**  A time range in the params: `[start, end)`, `end > start`. */

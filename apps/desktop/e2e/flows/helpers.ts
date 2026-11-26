@@ -769,7 +769,6 @@ export function inspector(page: Page) {
     positionY: panel.getByRole("spinbutton", { name: "Position Y" }),
     scale: panel.getByRole("spinbutton", { name: "Scale X" }),
     rotation: panel.getByRole("spinbutton", { name: "Rotation" }),
-    gain: panel.getByRole("spinbutton", { name: "Gain", exact: true }),
   };
 }
 
@@ -783,10 +782,27 @@ export async function item(page: Page, id: string) {
       opacity: number;
       transform: { position: { x: number; y: number }; scale: { x: number }; rotation: number };
     };
-    audio: { gain: number };
+    audio: { gain: number; pan: number; fade_in?: { duration: number } };
     /** Where it reads its media, with speed and direction (WP-2D.01). */
     source?: { source_in: number; speed: { num: number; den: number }; reverse: boolean };
   }>(page, "item.get", { item: id });
+}
+
+/** The first sequence's format as the engine has it (`project.info`). */
+export async function sequenceFormat(page: Page) {
+  const info = await editorCall<{
+    sequences: {
+      format: {
+        width: number;
+        height: number;
+        frame_rate: { num: number; den: number };
+        background: string;
+      };
+    }[];
+  }>(page, "project.info");
+  const first = info.sequences[0];
+  if (first === undefined) throw new Error("the project has no sequence");
+  return first.format;
 }
 
 /** An item's position as the engine stores it: static, or keyed (item time in flicks). */

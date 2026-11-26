@@ -19,6 +19,7 @@ const RESET_GROUPS: ReadonlySet<string> = new Set<ResetGroup>([
   "crop",
   "flip",
   "compositing",
+  "audio",
 ]);
 
 /** The group of a property the schema gives no `x-ui.group`. */
@@ -75,6 +76,16 @@ export function propsSchema(input: JsonSchema): JsonSchema | null {
 
 /** The Video sections the schema defines, in the schema's `order`. */
 export function videoSections(input: JsonSchema): VideoSection[] {
+  return sectionsOf(input, (group) => !OTHER_SECTIONS.has(group));
+}
+
+/** The Audio section the schema defines (volume and pan: the properties of group `audio`). */
+export function audioSection(input: JsonSchema): VideoSection | null {
+  return sectionsOf(input, (group) => group === "audio")[0] ?? null;
+}
+
+/** The sections of the properties whose group `pick` accepts. */
+function sectionsOf(input: JsonSchema, pick: (group: string) => boolean): VideoSection[] {
   const props = propsSchema(input);
   if (props === null || props.properties === undefined) return [];
   const byGroup = new Map<
@@ -86,7 +97,7 @@ export function videoSections(input: JsonSchema): VideoSection[] {
     const hint = hintOf(schema);
     const group = hint.group ?? OTHER_VIDEO_GROUP;
     position += 1;
-    if (OTHER_SECTIONS.has(group) || hint.widget === "hidden") continue;
+    if (!pick(group) || hint.widget === "hidden") continue;
     const slot = byGroup.get(group) ?? { order: hint.order ?? 1000, entries: [], position };
     slot.order = Math.min(slot.order, hint.order ?? 1000);
     slot.entries.push([key, denull(schema)]);
@@ -126,6 +137,8 @@ export const PROP_DEFAULTS: Readonly<Record<string, unknown>> = {
   "crop.bottom": 0,
   "flip.horizontal": false,
   "flip.vertical": false,
+  audio_gain: 0,
+  audio_pan: 0,
 };
 
 /** The animatable properties (`PropId`), which are the dot paths into `props`. */
@@ -141,6 +154,8 @@ export const ANIMATABLE: ReadonlySet<string> = new Set<PropId>([
   "crop.bottom",
   "flip.horizontal",
   "flip.vertical",
+  "audio_gain",
+  "audio_pan",
 ]);
 
 export const fullPath = (section: VideoSection, local: string): string =>
@@ -189,8 +204,34 @@ export function visualValue(
   return walk(item.visual, "") as Record<string, unknown>;
 }
 
-/** The animated properties of an item (dot paths), static ones left out. */
-export function animatedPaths(item: Item): string[] {
+/** The audio properties as plain values (`audio_gain`, `audio_pan`), animated ones evaluated. */
+export function audioValue(
+  item: Item,
+  evaluated: Readonly<Record<string, unknown>> = {},
+): Record<string, unknown> {
+  const one = (path: string, value: unknown): unknown =>
+    isKeyed(value) ? (path in evaluated ? evaluated[path] : value.keyframes[0]?.value) : value;
+  return {
+    audio_gain: one("audio_gain", item.audio.gain),
+    audio_pan: one("audio_pan", item.audio.pan),
+  };
+}
+
+/** The value of a property by its `PropId` path, as stored (keyed or static). */
+function stored(item: Item, path: string): unknown {
+  if (path === "audio_gain") return item.audio.gain;
+  if (path === "audio_pan") return item.audio.pan;
+  return getPath(item.visual, path);
+}
+
+/**
+ * The animated properties of an item (dot paths), static ones left out: the visual ones, or the
+ * audio ones (`audio_gain`, `audio_pan`) with `which` `audio`.
+ */
+export function animatedPaths(item: Item, which: "visual" | "audio" = "visual"): string[] {
+  if (which === "audio") {
+    return ["audio_gain", "audio_pan"].filter((path) => isKeyed(stored(item, path)));
+  }
   const out: string[] = [];
   const walk = (value: unknown, path: string): void => {
     if (isKeyed(value)) out.push(path);
@@ -204,7 +245,7 @@ export function animatedPaths(item: Item): string[] {
 
 /** The key times (item time, flicks) of an animated property, or `null` when it is static. */
 export function keyTimes(item: Item, path: string): readonly number[] | null {
-  const value = getPath(item.visual, path);
+  const value = stored(item, path);
   return isKeyed(value) ? (value.keyframes as unknown as { t: number }[]).map((k) => k.t) : null;
 }
 

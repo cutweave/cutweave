@@ -25,6 +25,13 @@ import { openSettings } from "../../settings/settingsStore.ts";
 import { toastStore } from "../../state/toastStore.ts";
 import { viewStore } from "../../state/viewStore.ts";
 import { activeTimelineController } from "../../timeline/activeController.ts";
+import {
+  attributesSource,
+  clipboardStore,
+  copyClips,
+  cutClips,
+  pasteClips,
+} from "../../timeline/clipboard.ts";
 import { translator } from "../../timeline/errors.ts";
 import { transportController } from "../../transport/useTransport.ts";
 import { runWorkspaceCommand } from "../../workspace/commands.ts";
@@ -84,6 +91,20 @@ export const UI_COMMANDS: readonly UiCommand[] = [
     id: "workspace.float_panel",
     label: "contextMenu.item.float",
     run: (args) => floatPanel(arg<{ panel: string }>(args).panel),
+  },
+  // A panel in a window of its own and back (WP-2H.14). The palette lists them with the
+  // workspace commands (for the active panel), so they are hidden here.
+  {
+    id: "workspace.popout_panel",
+    label: "contextMenu.item.moveToWindow",
+    hidden: true,
+    run: (args) => void runWorkspaceCommand("workspace.popout_panel", arg(args)),
+  },
+  {
+    id: "workspace.dock_panel",
+    label: "contextMenu.item.moveToMain",
+    hidden: true,
+    run: (args) => void runWorkspaceCommand("workspace.dock_panel", arg(args)),
   },
   {
     id: "workspace.move_panel",
@@ -344,6 +365,40 @@ export const UI_COMMANDS: readonly UiCommand[] = [
   },
 
   // ---- the timeline -------------------------------------------------------------------------
+  {
+    id: "timeline.cut",
+    label: "contextMenu.item.cut",
+    icon: "scissors",
+    run: (_args, ctx) => cutClips(ctx.call, ctx.ids),
+  },
+  {
+    id: "timeline.copy_clips",
+    label: "contextMenu.item.copy",
+    icon: "copy",
+    run: async (_args, ctx) => {
+      await copyClips(ctx.call, ctx.ids);
+    },
+  },
+  {
+    id: "timeline.paste_here",
+    label: "contextMenu.item.pasteHere",
+    icon: "clipboard",
+    run: async (_args, ctx) => {
+      const payload = clipboardStore.getState().payload;
+      const at = ctx.target.place?.time;
+      if (payload === null || at === undefined) return;
+      await pasteClips(ctx.call, payload, at, ctx.target.place?.trackId);
+    },
+  },
+  {
+    id: "timeline.paste_attributes",
+    label: "contextMenu.item.pasteAttributes",
+    run: (_args, ctx) => {
+      const from = attributesSource();
+      if (from === null) return;
+      menuDialogStore.getState().open({ kind: "paste-attributes", from, to: ctx.ids });
+    },
+  },
   {
     id: "timeline.rename_clip",
     label: "contextMenu.item.renameClip",

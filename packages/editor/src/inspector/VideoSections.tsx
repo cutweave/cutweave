@@ -13,7 +13,7 @@ import {
   SchemaForm,
   type UiHints,
 } from "@cutweave/ui";
-import { useCallback, useMemo } from "react";
+import { type ReactNode, useCallback, useMemo } from "react";
 import { useTranslation } from "react-i18next";
 import { useStore } from "zustand";
 import { ContextSurface } from "../menus/host.tsx";
@@ -28,6 +28,7 @@ import { Section } from "./Section.tsx";
 import { useEvaluated } from "./useEvaluated.ts";
 import {
   ANIMATABLE,
+  audioSection,
   fullPath,
   keyFacts,
   keyframeablePaths,
@@ -43,6 +44,8 @@ import {
 export function useVideoSections(): {
   readonly sections: readonly VideoSection[];
   readonly props: JsonSchema | null;
+  /** The Audio section (volume and pan), from the same schema. */
+  readonly audio: VideoSection | null;
 } {
   const commands = useStore(commandCatalog, (s) => s.commands);
   return useMemo(() => {
@@ -50,8 +53,12 @@ export function useVideoSections(): {
       | JsonSchema
       | undefined;
     return input === undefined
-      ? { sections: [], props: null }
-      : { sections: videoSections(input), props: propsSchema(input) };
+      ? { sections: [], props: null, audio: null }
+      : {
+          sections: videoSections(input),
+          props: propsSchema(input),
+          audio: audioSection(input),
+        };
   }, [commands]);
 }
 
@@ -102,7 +109,7 @@ export function VideoSections({
   );
 }
 
-function VideoSectionView({
+export function VideoSectionView({
   section,
   props,
   clips,
@@ -112,7 +119,13 @@ function VideoSectionView({
   perClip,
   value,
   mixed,
+  extra,
+  extraModified = false,
 }: {
+  /** More rows under the form, inside the section (the Audio section's fades). */
+  readonly extra?: ReactNode;
+  /** The extra rows are not at their defaults: the section's reset button shows. */
+  readonly extraModified?: boolean;
   readonly section: VideoSection;
   readonly props: JsonSchema | null;
   readonly clips: readonly SelectedClip[];
@@ -228,8 +241,10 @@ function VideoSectionView({
       Object.entries(defaults).some(([path, def]) => {
         const v = getPath(local, path);
         return v !== undefined && !deepEqual(v, def);
-      }) || localMixed.length > 0,
-    [defaults, local, localMixed],
+      }) ||
+      localMixed.length > 0 ||
+      extraModified,
+    [defaults, local, localMixed, extraModified],
   );
 
   const target = useCallback(
@@ -277,6 +292,7 @@ function VideoSectionView({
           onReset={onReset}
         />
       </ContextSurface>
+      {extra}
     </Section>
   );
 }

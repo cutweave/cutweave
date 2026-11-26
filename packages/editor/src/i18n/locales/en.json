@@ -459,6 +459,8 @@
       "deleteHelp": "Timeline. Removes the selected clips.",
       "snapping": "Turn snapping on or off",
       "snappingHelp": "Timeline. Makes clips and the playhead stick to edges, or not.",
+      "duplicate": "Duplicate the clips",
+      "duplicateHelp": "Timeline. Copies the selected clips right after themselves. Cut, Copy and Paste work with the Edit menu keys while the timeline has the focus.",
       "renameTrack": "Rename the track",
       "renameTrackHelp": "Timeline. Edits the name of the selected track in its header. Double-click the name does the same."
     },
@@ -607,6 +609,15 @@
       "title": "Every panel is closed",
       "body": "Reopen the panels you had, or start again from the default layout.",
       "reopen": "Reopen panels"
+    }
+  },
+  "windows": {
+    "popoutTitle": "{{panels}} — {{name}} — Cutweave",
+    "popoutTitleNoProject": "{{panels}} — Cutweave",
+    "keepOnTop": "Keep on top",
+    "popoutFailed": {
+      "title": "The panel could not open in a new window",
+      "body": "It stays in the main window. Try again, or use Float panel."
     }
   },
   "theme": {
@@ -924,33 +935,32 @@
     "emptyTitle": "Nothing selected",
     "emptyBody": "Select a clip on the timeline to edit its position, scale, opacity and effects.",
     "project": "Project",
-    "resolution": "Resolution",
-    "resolutionValue": "{{width}} × {{height}}",
-    "frameRate": "Frame rate",
-    "frameRateValue": "{{fps}} fps",
     "duration": "Duration",
     "clip": "Clip",
     "timing": "Timing",
-    "audio": "Audio",
     "mixed": "Mixed",
     "multiple": "{{count}} clips selected. Mixed values stay as they are until you change them.",
     "multipleTime": "Select one clip to change its start or duration.",
     "fields": {
       "name": "Name",
       "start": "Start",
-      "duration": "Duration",
-      "gain": "Gain"
+      "duration": "Duration"
     },
     "history": {
       "name": "Rename clip",
-      "gain": "Change gain",
       "start": "Move clip",
       "duration": "Trim clip",
       "change": "Change {{name}}",
       "reset": "Reset {{name}}",
       "addKey": "Add keyframe for {{name}}",
       "removeKey": "Remove keyframe for {{name}}",
-      "track": "Change track {{name}}"
+      "track": "Change track {{name}}",
+      "fade": "Change {{name}}",
+      "speed": "Change speed",
+      "reverse": "Reverse clip",
+      "resetSpeed": "Reset speed",
+      "freeze": "Freeze frame",
+      "sequence": "Change sequence {{name}}"
     },
     "time": {
       "invalid": "Not a time. Try 00:00:02:00, 2.5s or f:60.",
@@ -988,9 +998,12 @@
       "crop": "Crop",
       "flip": "Flip",
       "compositing": "Compositing",
-      "video": "Video"
+      "video": "Video",
+      "audio": "Audio"
     },
     "props": {
+      "audioGain": "volume",
+      "audioPan": "pan",
       "transformPosition": "position",
       "transformScale": "scale",
       "transformRotation": "rotation",
@@ -1005,6 +1018,8 @@
       "flipVertical": "flip vertical"
     },
     "labels": {
+      "audioGain": "Volume",
+      "audioPan": "Pan",
       "transformPosition": "Position",
       "transformScale": "Scale",
       "transformRotation": "Rotation",
@@ -1031,6 +1046,54 @@
         "failed": "Failed"
       },
       "unknownSource": "Unknown file"
+    },
+    "audio": {
+      "fadeIn": "Fade in",
+      "fadeOut": "Fade out",
+      "fadeShape": "Fade shape",
+      "fadeInName": "fade in",
+      "fadeOutName": "fade out",
+      "fadeShapeName": "fade shape",
+      "curves": {
+        "linear": "Linear",
+        "log": "Logarithmic",
+        "equalPower": "Equal power",
+        "sCurve": "S-curve"
+      }
+    },
+    "speed": {
+      "title": "Speed",
+      "rate": "Speed",
+      "placeholder": "2x, 50% or 1/3",
+      "reverse": "Reverse",
+      "length": "Clip length",
+      "lengthChanges": "Changes",
+      "lengthStays": "Stays",
+      "scaleKeys": "Scale keyframes",
+      "ripple": "Move what follows",
+      "freeze": "Freeze frame at playhead",
+      "freezeNeedsOne": "Select one clip to freeze a frame",
+      "freezeNeedsPlayhead": "Move the playhead inside the clip",
+      "actions": "Speed actions"
+    },
+    "sequence": {
+      "title": "Sequence",
+      "width": "Width",
+      "height": "Height",
+      "frameRate": "Frame rate",
+      "background": "Background",
+      "reframe": "Reframe clips",
+      "rateValue": "{{fps}} fps",
+      "widthName": "width",
+      "heightName": "height",
+      "frameRateName": "frame rate",
+      "backgroundName": "background",
+      "reframes": {
+        "fit": "Fit",
+        "fill": "Fill",
+        "keepScale": "Keep scale",
+        "none": "None"
+      }
     },
     "track": {
       "title": "Track",
@@ -1077,6 +1140,8 @@
     "resetSpeed": "Reset speed",
     "freezeFrame": "Freeze frame",
     "duplicate": "Duplicate clip",
+    "paste": "Paste clips",
+    "pasteAttributes": "Paste attributes",
     "link": "Link clips",
     "unlink": "Unlink clips",
     "attach": "Attach clips",
@@ -1249,7 +1314,11 @@
       "split": "Clip not split",
       "delete": "Clip not deleted",
       "insert": "Clip not added",
-      "rename": "Track not renamed"
+      "rename": "Track not renamed",
+      "copy": "Clips not copied",
+      "cut": "Clips not cut",
+      "paste": "Clips not pasted",
+      "duplicate": "Clips not duplicated"
     },
     "rename": {
       "label": "Track name",
@@ -1448,6 +1517,8 @@
       "notLinked": "These clips are not linked",
       "notAttached": "Not attached to a main-track clip",
       "noMainClip": "Place the clips inside a main-track clip",
+      "clipboardEmpty": "Copy clips first",
+      "noCopiedClip": "Copy a clip from this project first",
       "noGap": "No gap next to this edge",
       "noTrack": "No track takes this",
       "noFile": "No file on disk",
@@ -1465,7 +1536,9 @@
       "nothingToRedo": "Nothing to redo",
       "onlyOneToast": "No other notices",
       "layoutAssets": "Select 2 to 4 videos or images",
-      "layoutSwap": "Apply a layout to the two clips first"
+      "layoutSwap": "Apply a layout to the two clips first",
+      "inOwnWindow": "The panel is already in its own window",
+      "inMainWindow": "The panel is in the main window"
     },
     "command": {
       "clipSplit": "Split at playhead",
@@ -1479,6 +1552,8 @@
       "clipSetSpeed": "Change speed",
       "clipReverse": "Reverse",
       "clipFreezeFrame": "Freeze frame",
+      "itemDuplicate": "Duplicate",
+      "itemDuplicateMany": "Duplicate {{count}} clips",
       "itemDelete": "Delete clip",
       "itemDeleteMany": "Delete {{count}} clips",
       "itemSetProps": "Change clip",
@@ -1532,9 +1607,14 @@
       "engine": "Engine actions"
     },
     "item": {
+      "cut": "Cut",
+      "pasteHere": "Paste here",
+      "pasteAttributes": "Paste attributes…",
       "maximize": "Maximize panel",
       "restore": "Restore panel size",
       "float": "Float panel",
+      "moveToWindow": "Move to new window",
+      "moveToMain": "Move back to main window",
       "moveTo": "Move to",
       "left": "Left",
       "right": "Right",
@@ -1636,7 +1716,17 @@
       "deleteTrackTitle": "Delete track {{name}}?",
       "deleteTrackBody": "Clips on this track: {{count}}.",
       "deleteTrackNote": "They are deleted with it. Undo brings them back.",
-      "deleteTrack": "Delete track"
+      "deleteTrack": "Delete track",
+      "pasteAttributesTitle": "Paste attributes",
+      "pasteAttributesBody": "Choose what to copy from the copied clip onto the selected clips. Keyframes come along.",
+      "paste": "Paste",
+      "attribute": {
+        "transform": "Position, scale, rotation and anchor",
+        "crop": "Crop",
+        "flip": "Flip",
+        "compositing": "Opacity and blend mode",
+        "audio": "Volume, pan and fades"
+      }
     },
     "diagnostics": {
       "connection": "Engine connection",

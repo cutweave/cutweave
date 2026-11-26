@@ -19,9 +19,12 @@ export const INSPECTOR_SECTIONS = [
   "flip",
   "compositing",
   "video",
+  "speed",
   "audio",
+  "layout",
   "media",
   "project",
+  "sequence",
 ] as const;
 /** A section id: one of the above, or a group a newer schema brings. */
 export type InspectorSectionId = string;

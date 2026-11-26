@@ -84,7 +84,7 @@ The dialog is a side tab list of these pages, in this order, with one search fie
 
 | Key | Setting | Default | Scope | Applied by | Agents | Ships in |
 |---|---|---|---|---|---|---|
-| `editing.still_duration` | Still image duration for new projects (freeze frames use it too) | 5 s | App, copied to the project | `project.new` | Read and change the project's value | WP-2F.05 |
+| `editing.still_duration` | Still image duration for new projects (freeze frames default to 3 s, set per freeze with `clip.freeze_frame`'s `duration`) | 5 s | App, copied to the project | `project.new` | Read and change the project's value | WP-2F.05 |
 | `editing.text_duration` | Duration of new text | 5 s | App | Renderer | — | WP-3A.07 |
 | `editing.transition_duration` | Duration of new transitions | 0.5 s | App | Renderer | — | WP-4A.09 |
 | `editing.audio_fade` | Length of a fade added with one click | 0.5 s | App | Renderer | — | WP-2E.05 |

@@ -139,6 +139,11 @@
       "unverified": true
     },
     {
+      "command": "item.duplicate",
+      "keys": ["Mod+D"],
+      "unverified": true
+    },
+    {
       "command": "timeline.cancel",
       "keys": ["Escape"]
     },

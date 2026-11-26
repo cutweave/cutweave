@@ -6,7 +6,17 @@ import type { TKey } from "../i18n/index.ts";
 import { actorDisplayName } from "../session/historyLabels.ts";
 
 /** The edits the timeline reports on. */
-export type TimelineEdit = "move" | "trim" | "split" | "delete" | "insert" | "rename";
+export type TimelineEdit =
+  | "move"
+  | "trim"
+  | "split"
+  | "delete"
+  | "insert"
+  | "rename"
+  | "copy"
+  | "cut"
+  | "paste"
+  | "duplicate";
 
 export const FAILED_TITLE: Readonly<Record<TimelineEdit, TKey>> = {
   move: "timeline.failed.move",
@@ -15,6 +25,10 @@ export const FAILED_TITLE: Readonly<Record<TimelineEdit, TKey>> = {
   delete: "timeline.failed.delete",
   insert: "timeline.failed.insert",
   rename: "timeline.failed.rename",
+  copy: "timeline.failed.copy",
+  cut: "timeline.failed.cut",
+  paste: "timeline.failed.paste",
+  duplicate: "timeline.failed.duplicate",
 };
 
 export type Translate = (key: TKey, vars?: Readonly<Record<string, string>>) => string;

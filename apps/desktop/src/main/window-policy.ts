@@ -5,12 +5,17 @@
 // - `editor` (the main editor window): contextIsolation on, nodeIntegration off, and
 //   `sandbox: false` ONLY because its preload loads the native frame-bridge addon (ADR-0001
 //   transport (a)). It is the only kind with a preload.
+// - `popout` (a detached panel's window, ADR-0031): opened only by an editor window, for
+//   `popout.html` (popout.ts). It runs in the editor's renderer process, so it is
+//   `sandbox: false` like its opener (Electron 45 puts a popup whose sandbox differs from its
+//   opener's in another process, where the editor cannot script it), with NO preload and no Node.
+//   Its document runs no code of its own: the editor renders into it.
 // - every other kind: `sandbox: true`, no preload, no addon.
 // Any other combination throws a WindowPolicyError.
 
 import type { WebPreferences } from "electron";
 
-export const WINDOW_KINDS = ["editor", "auxiliary"] as const;
+export const WINDOW_KINDS = ["editor", "popout", "auxiliary"] as const;
 export type WindowKind = (typeof WINDOW_KINDS)[number];
 
 export interface WindowPolicyContext {
@@ -72,9 +77,14 @@ export function isWindowKind(value: unknown): value is WindowKind {
 /** The policy for `kind`: exactly the security-relevant webPreferences the factory enforces. */
 export function webPreferencesFor(kind: WindowKind, ctx: WindowPolicyContext): WebPreferences {
   const base: WebPreferences = { ...LOCKED, devTools: ctx.isDev };
-  return kind === "editor"
-    ? { ...base, sandbox: false, preload: ctx.preloadPath }
-    : { ...base, sandbox: true };
+  if (kind === "editor") return { ...base, sandbox: false, preload: ctx.preloadPath };
+  if (kind === "popout") return { ...base, sandbox: false };
+  return { ...base, sandbox: true };
+}
+
+/** Whether `kind` runs unsandboxed: the editor (its addon preload) and its popouts (its process). */
+export function isUnsandboxedKind(kind: WindowKind): boolean {
+  return kind === "editor" || kind === "popout";
 }
 
 /**
@@ -98,6 +108,10 @@ export function assertWindowPreferences(
     if (prefs.sandbox !== false)
       fail("the editor window runs its addon preload with sandbox: false");
     if (prefs.preload !== ctx.preloadPath) fail("the editor window must use the audited preload");
+  } else if (kind === "popout") {
+    if (prefs.sandbox !== false)
+      fail("a popout shares its editor's process, so it must match it (sandbox: false)");
+    if (prefs.preload !== undefined) fail("must not have a preload");
   } else {
     if (prefs.sandbox !== true) fail("must be sandboxed (sandbox: true)");
     if (prefs.preload !== undefined) fail("must not have a preload");
@@ -124,7 +138,7 @@ export function resolveWebPreferences(
     if (key in policy) {
       if (policy[key] !== value) {
         throw new WindowPolicyError(
-          key === "sandbox" && kind !== "editor"
+          key === "sandbox" && !isUnsandboxedKind(kind)
             ? `${kind} window: must be sandboxed (sandbox: true)`
             : `${kind} window: webPreferences.${key} must be ${String(policy[key])}`,
         );

@@ -43,40 +43,125 @@ expression: "json!({\n    \"meta\": serde_json::to_value(meta).unwrap(), \"input
           ],
           "additionalProperties": false,
           "properties": {
-            "in": {
-              "description": "Start: flicks, \"2.5s\", \"f:60\" or a timecode.",
+            "kind": {
               "anyOf": [
                 {
-                  "type": "integer",
-                  "minimum": -9007199254740991,
-                  "maximum": 9007199254740991
+                  "oneOf": [
+                    {
+                      "type": "string",
+                      "const": "sequence",
+                      "description": "The whole sequence."
+                    },
+                    {
+                      "type": "string",
+                      "const": "in_out",
+                      "description": "Between the sequence's in and out points."
+                    },
+                    {
+                      "type": "string",
+                      "const": "custom",
+                      "description": "`in` to `out`."
+                    },
+                    {
+                      "type": "string",
+                      "const": "markers",
+                      "description": "One file per marker."
+                    }
+                  ],
+                  "description": "Which part of the sequence to export."
                 },
                 {
-                  "type": "string",
-                  "pattern": "^-?[0-9]+(\\.[0-9]+)?s$|^-?[0-9]+$|^f:[0-9]+$|^[0-9]+[:;][0-9]+[:;][0-9]+[:;][0-9]+$"
+                  "type": "null"
                 }
-              ]
+              ],
+              "description": "\"sequence\", \"in_out\", \"custom\" or \"markers\" (default: from the other fields).",
+              "default": null
+            },
+            "in": {
+              "anyOf": [
+                {
+                  "description": "A time: integer flicks (1/705600000 s), or a string: seconds (\"62.5s\"), a frame (\"f:1500\") or a timecode (\"00:01:02:03\", drop-frame \"00:01:02;03\"). Frames and timecodes use the frame rate of the target's sequence.",
+                  "anyOf": [
+                    {
+                      "type": "integer",
+                      "minimum": -9007199254740991,
+                      "maximum": 9007199254740991
+                    },
+                    {
+                      "type": "string",
+                      "pattern": "^-?[0-9]+(\\.[0-9]+)?s$|^-?[0-9]+$|^f:[0-9]+$|^[0-9]+[:;][0-9]+[:;][0-9]+[:;][0-9]+$"
+                    }
+                  ]
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "Custom start: flicks, \"2.5s\", \"f:60\" or a timecode.",
+              "default": null
             },
             "out": {
-              "description": "End, exclusive: at most the sequence end.",
               "anyOf": [
                 {
-                  "type": "integer",
-                  "minimum": -9007199254740991,
-                  "maximum": 9007199254740991
+                  "description": "A time: integer flicks (1/705600000 s), or a string: seconds (\"62.5s\"), a frame (\"f:1500\") or a timecode (\"00:01:02:03\", drop-frame \"00:01:02;03\"). Frames and timecodes use the frame rate of the target's sequence.",
+                  "anyOf": [
+                    {
+                      "type": "integer",
+                      "minimum": -9007199254740991,
+                      "maximum": 9007199254740991
+                    },
+                    {
+                      "type": "string",
+                      "pattern": "^-?[0-9]+(\\.[0-9]+)?s$|^-?[0-9]+$|^f:[0-9]+$|^[0-9]+[:;][0-9]+[:;][0-9]+[:;][0-9]+$"
+                    }
+                  ]
                 },
                 {
-                  "type": "string",
-                  "pattern": "^-?[0-9]+(\\.[0-9]+)?s$|^-?[0-9]+$|^f:[0-9]+$|^[0-9]+[:;][0-9]+[:;][0-9]+[:;][0-9]+$"
+                  "type": "null"
                 }
-              ]
+              ],
+              "description": "Custom end, exclusive: at most the sequence end.",
+              "default": null
+            },
+            "markers": {
+              "type": [
+                "array",
+                "null"
+              ],
+              "items": {
+                "description": "A Marker id: `^mrk_[0-9a-f]{32}$`.",
+                "type": "string",
+                "pattern": "^mrk_[0-9a-f]{32}$"
+              },
+              "description": "Marker kind: the markers to export (default: all of the sequence's markers).",
+              "default": null
+            },
+            "pair_mode": {
+              "anyOf": [
+                {
+                  "oneOf": [
+                    {
+                      "type": "string",
+                      "const": "duration",
+                      "description": "Each marker's own `duration` (the default)."
+                    },
+                    {
+                      "type": "string",
+                      "const": "pairs",
+                      "description": "Each marker to the next one."
+                    }
+                  ],
+                  "description": "How markers become regions."
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "Marker kind: \"duration\" (default; each marker's own duration) or \"pairs\" (each marker to\nthe next).",
+              "default": null
             }
           },
-          "required": [
-            "in",
-            "out"
-          ],
-          "description": "Part of the sequence to export (default: all of it).",
+          "description": "Part of the sequence to export (default: all of it): {kind: \"sequence\" | \"in_out\" |\n\"custom\" | \"markers\", in, out, markers: [ids], pair_mode: \"duration\" | \"pairs\"}.",
           "default": null
         },
         "preset": {
@@ -245,14 +330,43 @@ expression: "json!({\n    \"meta\": serde_json::to_value(meta).unwrap(), \"input
             "boolean",
             "null"
           ],
-          "description": "Replace an existing file at `path` (default false).",
+          "description": "Replace an existing file at `path` (default false); same as `collision: \"overwrite\"`.",
+          "default": null
+        },
+        "collision": {
+          "anyOf": [
+            {
+              "oneOf": [
+                {
+                  "type": "string",
+                  "const": "rename",
+                  "description": "Pick a free name (`name (1).mp4`)."
+                },
+                {
+                  "type": "string",
+                  "const": "overwrite",
+                  "description": "Replace the file once the export has succeeded."
+                },
+                {
+                  "type": "string",
+                  "const": "fail",
+                  "description": "Refuse (the default)."
+                }
+              ],
+              "description": "What to do when the output file exists."
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "description": "An existing file: \"fail\" (default), \"rename\" or \"overwrite\".",
           "default": null
         }
       },
       "required": [
         "path"
       ],
-      "description": "Exports a sequence (or a range of it) to a file (MP4, H.264 + AAC by default; a preset id\npicks HEVC, AV1 or ProRes) as a background job and returns the job id at once; wait with\n`job.wait`, stop with `job.cancel` (the partial file is deleted). Exports queue and run one at a time; this one\nalso resumes a paused queue (`export.queue` lists it). The export uses the project as it is\nnow; later edits do not change it. Agents and headless callers may only write inside the\nproject folder and folders the user approved. An existing file is replaced only with\n`overwrite: true`.",
+      "description": "Exports a sequence (or a range of it) to a file (MP4, H.264 + AAC by default; a preset id\npicks HEVC, AV1 or ProRes) as a background job and returns the job id at once; wait with\n`job.wait`, stop with `job.cancel` (the partial file is deleted). Exports queue and run one at a time; this one\nalso resumes a paused queue (`export.queue` lists it). The export uses the project as it is\nnow; later edits do not change it. Agents and headless callers may only write inside the\nproject folder and folders the user approved. `range.kind` picks the part: \"sequence\",\n\"in_out\" (the sequence's in/out points), \"custom\" (`in`, `out`) or \"markers\" (one file per\nmarker: `path` is a folder or an .mp4 name template with {seq}, {marker_label}, {n}; the\noutput lists every job). `collision` says what happens to an existing file: \"fail\"\n(default), \"rename\" (pick a free name) or \"overwrite\" (replace it when the export\nsucceeds). Fails with `Invalid` when the drive has too little free space.",
       "title": "ExportStart"
     },
     "output_schema": {
@@ -381,6 +495,63 @@ expression: "json!({\n    \"meta\": serde_json::to_value(meta).unwrap(), \"input
             ]
           },
           "description": "Platform-limit and fit warnings of a preset (never errors; the export runs)."
+        },
+        "jobs": {
+          "type": "array",
+          "items": {
+            "description": "One file of a marker-set export.",
+            "type": "object",
+            "properties": {
+              "job_id": {
+                "description": "Its export job.",
+                "type": "string",
+                "pattern": "^job_[0-9a-f]{32}$"
+              },
+              "path": {
+                "description": "The output file (after `rename`).",
+                "type": "string"
+              },
+              "label": {
+                "description": "The marker's label.",
+                "type": "string"
+              },
+              "in": {
+                "description": "Range start (sequence time, flicks).",
+                "type": "integer",
+                "minimum": -9007199254740991,
+                "maximum": 9007199254740991
+              },
+              "out": {
+                "description": "Range end, exclusive.",
+                "type": "integer",
+                "minimum": -9007199254740991,
+                "maximum": 9007199254740991
+              },
+              "frames": {
+                "description": "Video frames the file will hold.",
+                "type": "integer",
+                "format": "uint32",
+                "minimum": 0
+              },
+              "duration": {
+                "description": "Length of the file.",
+                "type": "integer",
+                "minimum": 0,
+                "maximum": 9007199254740991
+              }
+            },
+            "additionalProperties": false,
+            "required": [
+              "job_id",
+              "path",
+              "label",
+              "in",
+              "out",
+              "frames",
+              "duration"
+            ]
+          },
+          "description": "Every export of a marker set, in time order (empty for any other range). The fields\nabove describe the first of them."
         }
       },
       "required": [
@@ -425,40 +596,125 @@ expression: "json!({\n    \"meta\": serde_json::to_value(meta).unwrap(), \"input
         ],
         "additionalProperties": false,
         "properties": {
-          "in": {
-            "description": "Start: flicks, \"2.5s\", \"f:60\" or a timecode.",
+          "kind": {
             "anyOf": [
               {
-                "type": "integer",
-                "minimum": -9007199254740991,
-                "maximum": 9007199254740991
+                "oneOf": [
+                  {
+                    "type": "string",
+                    "const": "sequence",
+                    "description": "The whole sequence."
+                  },
+                  {
+                    "type": "string",
+                    "const": "in_out",
+                    "description": "Between the sequence's in and out points."
+                  },
+                  {
+                    "type": "string",
+                    "const": "custom",
+                    "description": "`in` to `out`."
+                  },
+                  {
+                    "type": "string",
+                    "const": "markers",
+                    "description": "One file per marker."
+                  }
+                ],
+                "description": "Which part of the sequence to export."
               },
               {
-                "type": "string",
-                "pattern": "^-?[0-9]+(\\.[0-9]+)?s$|^-?[0-9]+$|^f:[0-9]+$|^[0-9]+[:;][0-9]+[:;][0-9]+[:;][0-9]+$"
+                "type": "null"
               }
-            ]
+            ],
+            "description": "\"sequence\", \"in_out\", \"custom\" or \"markers\" (default: from the other fields).",
+            "default": null
+          },
+          "in": {
+            "anyOf": [
+              {
+                "description": "A time: integer flicks (1/705600000 s), or a string: seconds (\"62.5s\"), a frame (\"f:1500\") or a timecode (\"00:01:02:03\", drop-frame \"00:01:02;03\"). Frames and timecodes use the frame rate of the target's sequence.",
+                "anyOf": [
+                  {
+                    "type": "integer",
+                    "minimum": -9007199254740991,
+                    "maximum": 9007199254740991
+                  },
+                  {
+                    "type": "string",
+                    "pattern": "^-?[0-9]+(\\.[0-9]+)?s$|^-?[0-9]+$|^f:[0-9]+$|^[0-9]+[:;][0-9]+[:;][0-9]+[:;][0-9]+$"
+                  }
+                ]
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Custom start: flicks, \"2.5s\", \"f:60\" or a timecode.",
+            "default": null
           },
           "out": {
-            "description": "End, exclusive: at most the sequence end.",
             "anyOf": [
               {
-                "type": "integer",
-                "minimum": -9007199254740991,
-                "maximum": 9007199254740991
+                "description": "A time: integer flicks (1/705600000 s), or a string: seconds (\"62.5s\"), a frame (\"f:1500\") or a timecode (\"00:01:02:03\", drop-frame \"00:01:02;03\"). Frames and timecodes use the frame rate of the target's sequence.",
+                "anyOf": [
+                  {
+                    "type": "integer",
+                    "minimum": -9007199254740991,
+                    "maximum": 9007199254740991
+                  },
+                  {
+                    "type": "string",
+                    "pattern": "^-?[0-9]+(\\.[0-9]+)?s$|^-?[0-9]+$|^f:[0-9]+$|^[0-9]+[:;][0-9]+[:;][0-9]+[:;][0-9]+$"
+                  }
+                ]
               },
               {
-                "type": "string",
-                "pattern": "^-?[0-9]+(\\.[0-9]+)?s$|^-?[0-9]+$|^f:[0-9]+$|^[0-9]+[:;][0-9]+[:;][0-9]+[:;][0-9]+$"
+                "type": "null"
               }
-            ]
+            ],
+            "description": "Custom end, exclusive: at most the sequence end.",
+            "default": null
+          },
+          "markers": {
+            "type": [
+              "array",
+              "null"
+            ],
+            "items": {
+              "description": "A Marker id: `^mrk_[0-9a-f]{32}$`.",
+              "type": "string",
+              "pattern": "^mrk_[0-9a-f]{32}$"
+            },
+            "description": "Marker kind: the markers to export (default: all of the sequence's markers).",
+            "default": null
+          },
+          "pair_mode": {
+            "anyOf": [
+              {
+                "oneOf": [
+                  {
+                    "type": "string",
+                    "const": "duration",
+                    "description": "Each marker's own `duration` (the default)."
+                  },
+                  {
+                    "type": "string",
+                    "const": "pairs",
+                    "description": "Each marker to the next one."
+                  }
+                ],
+                "description": "How markers become regions."
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Marker kind: \"duration\" (default; each marker's own duration) or \"pairs\" (each marker to\nthe next).",
+            "default": null
           }
         },
-        "required": [
-          "in",
-          "out"
-        ],
-        "description": "Part of the sequence to export (default: all of it).",
+        "description": "Part of the sequence to export (default: all of it): {kind: \"sequence\" | \"in_out\" |\n\"custom\" | \"markers\", in, out, markers: [ids], pair_mode: \"duration\" | \"pairs\"}.",
         "default": null
       },
       "preset": {
@@ -627,14 +883,43 @@ expression: "json!({\n    \"meta\": serde_json::to_value(meta).unwrap(), \"input
           "boolean",
           "null"
         ],
-        "description": "Replace an existing file at `path` (default false).",
+        "description": "Replace an existing file at `path` (default false); same as `collision: \"overwrite\"`.",
+        "default": null
+      },
+      "collision": {
+        "anyOf": [
+          {
+            "oneOf": [
+              {
+                "type": "string",
+                "const": "rename",
+                "description": "Pick a free name (`name (1).mp4`)."
+              },
+              {
+                "type": "string",
+                "const": "overwrite",
+                "description": "Replace the file once the export has succeeded."
+              },
+              {
+                "type": "string",
+                "const": "fail",
+                "description": "Refuse (the default)."
+              }
+            ],
+            "description": "What to do when the output file exists."
+          },
+          {
+            "type": "null"
+          }
+        ],
+        "description": "An existing file: \"fail\" (default), \"rename\" or \"overwrite\".",
         "default": null
       }
     },
     "required": [
       "path"
     ],
-    "description": "Exports a sequence (or a range of it) to a file (MP4, H.264 + AAC by default; a preset id\npicks HEVC, AV1 or ProRes) as a background job and returns the job id at once; wait with\n`job.wait`, stop with `job.cancel` (the partial file is deleted). Exports queue and run one at a time; this one\nalso resumes a paused queue (`export.queue` lists it). The export uses the project as it is\nnow; later edits do not change it. Agents and headless callers may only write inside the\nproject folder and folders the user approved. An existing file is replaced only with\n`overwrite: true`.",
+    "description": "Exports a sequence (or a range of it) to a file (MP4, H.264 + AAC by default; a preset id\npicks HEVC, AV1 or ProRes) as a background job and returns the job id at once; wait with\n`job.wait`, stop with `job.cancel` (the partial file is deleted). Exports queue and run one at a time; this one\nalso resumes a paused queue (`export.queue` lists it). The export uses the project as it is\nnow; later edits do not change it. Agents and headless callers may only write inside the\nproject folder and folders the user approved. `range.kind` picks the part: \"sequence\",\n\"in_out\" (the sequence's in/out points), \"custom\" (`in`, `out`) or \"markers\" (one file per\nmarker: `path` is a folder or an .mp4 name template with {seq}, {marker_label}, {n}; the\noutput lists every job). `collision` says what happens to an existing file: \"fail\"\n(default), \"rename\" (pick a free name) or \"overwrite\" (replace it when the export\nsucceeds). Fails with `Invalid` when the drive has too little free space.",
     "title": "ExportStart"
   },
   "output": {
@@ -763,6 +1048,63 @@ expression: "json!({\n    \"meta\": serde_json::to_value(meta).unwrap(), \"input
           ]
         },
         "description": "Platform-limit and fit warnings of a preset (never errors; the export runs)."
+      },
+      "jobs": {
+        "type": "array",
+        "items": {
+          "description": "One file of a marker-set export.",
+          "type": "object",
+          "properties": {
+            "job_id": {
+              "description": "Its export job.",
+              "type": "string",
+              "pattern": "^job_[0-9a-f]{32}$"
+            },
+            "path": {
+              "description": "The output file (after `rename`).",
+              "type": "string"
+            },
+            "label": {
+              "description": "The marker's label.",
+              "type": "string"
+            },
+            "in": {
+              "description": "Range start (sequence time, flicks).",
+              "type": "integer",
+              "minimum": -9007199254740991,
+              "maximum": 9007199254740991
+            },
+            "out": {
+              "description": "Range end, exclusive.",
+              "type": "integer",
+              "minimum": -9007199254740991,
+              "maximum": 9007199254740991
+            },
+            "frames": {
+              "description": "Video frames the file will hold.",
+              "type": "integer",
+              "format": "uint32",
+              "minimum": 0
+            },
+            "duration": {
+              "description": "Length of the file.",
+              "type": "integer",
+              "minimum": 0,
+              "maximum": 9007199254740991
+            }
+          },
+          "additionalProperties": false,
+          "required": [
+            "job_id",
+            "path",
+            "label",
+            "in",
+            "out",
+            "frames",
+            "duration"
+          ]
+        },
+        "description": "Every export of a marker set, in time order (empty for any other range). The fields\nabove describe the first of them."
       }
     },
     "required": [

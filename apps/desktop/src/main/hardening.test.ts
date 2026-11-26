@@ -29,15 +29,93 @@ const evt = (fields: Record<string, unknown> = {}) => ({
 
 function fakeContents() {
   const emitter = new EventEmitter();
-  let openHandler: ((d: { url: string }) => { action: string }) | undefined;
+  let openHandler:
+    | ((d: { url: string; frameName: string }) => {
+        action: string;
+        overrideBrowserWindowOptions?: Record<string, unknown>;
+      })
+    | undefined;
   const contents = Object.assign(emitter, {
     setWindowOpenHandler: (h: typeof openHandler) => {
       openHandler = h;
     },
     closeDevTools: vi.fn(),
   });
-  return { contents, open: (url: string) => openHandler?.({ url }) };
+  return {
+    contents,
+    open: (url: string, frameName = "") => openHandler?.({ url, frameName }),
+  };
 }
+
+describe("popout windows for detached panels (ADR-0031)", () => {
+  const popoutOptions = { useContentSize: true, webPreferences: { sandbox: false } };
+  const hooks = (kinds: Map<unknown, "editor" | "popout">) => ({
+    isEditor: (c: unknown) => kinds.get(c) === "editor",
+    isPopout: (c: unknown) => kinds.get(c) === "popout",
+    options: () => popoutOptions,
+    created: vi.fn(),
+  });
+
+  it("allows only an editor window's popout.html with dockview's window name", () => {
+    const kinds = new Map<unknown, "editor" | "popout">();
+    const popouts = hooks(kinds);
+    const editor = fakeContents();
+    const aux = fakeContents();
+    kinds.set(editor.contents, "editor");
+    for (const f of [editor, aux]) {
+      hardenWebContents(f.contents as unknown as WebContents, ctx({ popouts }));
+    }
+    expect(editor.open("app://cutweave/popout.html", "1-2")).toEqual({
+      action: "allow",
+      overrideBrowserWindowOptions: popoutOptions,
+    });
+    // Not from another window, not another page, not another window name.
+    expect(aux.open("app://cutweave/popout.html", "1-2")).toEqual({ action: "deny" });
+    expect(editor.open("app://cutweave/", "1-2")).toEqual({ action: "deny" });
+    expect(editor.open("app://cutweave/popout.html?x", "1-2")).toEqual({ action: "deny" });
+    expect(editor.open("https://example.com/popout.html", "1-2")).toEqual({ action: "deny" });
+    expect(editor.open("app://cutweave/popout.html", "")).toEqual({ action: "deny" });
+    expect(editor.open("app://cutweave/popout.html", "_blank")).toEqual({ action: "deny" });
+
+    // Electron made the allowed one: main checks and registers it.
+    const child = { webContents: {} };
+    const details = { url: "app://cutweave/popout.html", frameName: "1-2" };
+    editor.contents.emit("did-create-window", child, details);
+    expect(popouts.created).toHaveBeenCalledWith(child, details, editor.contents);
+  });
+
+  it("denies a popout's own window.open and every navigation away from its page", () => {
+    const kinds = new Map<unknown, "editor" | "popout">();
+    const popout = fakeContents();
+    kinds.set(popout.contents, "popout");
+    const log = vi.fn();
+    hardenWebContents(
+      popout.contents as unknown as WebContents,
+      ctx({ popouts: hooks(kinds), log }),
+    );
+    expect(popout.open("app://cutweave/popout.html", "1-3")).toEqual({ action: "deny" });
+
+    const navigate = (url: string, event = "will-frame-navigate") => {
+      const e = evt({ url, isMainFrame: true });
+      popout.contents.emit(event, e);
+      return e.defaultPrevented ? "blocked" : "allowed";
+    };
+    expect(navigate("app://cutweave/popout.html")).toBe("allowed");
+    // The editor's own page is still somewhere else: a popout never becomes a second editor.
+    expect(navigate("app://cutweave/")).toBe("blocked");
+    expect(navigate("https://example.com/")).toBe("blocked");
+    expect(navigate("app://cutweave/", "will-navigate")).toBe("blocked");
+    expect(navigate("app://cutweave/", "will-redirect")).toBe("blocked");
+    expect(log).toHaveBeenCalledWith("navigation blocked: app://cutweave/");
+  });
+
+  it("denies every window.open without the popout hooks", () => {
+    const { contents, open } = fakeContents();
+    hardenWebContents(contents as unknown as WebContents, ctx());
+    expect(open("app://cutweave/popout.html", "1-2")).toEqual({ action: "deny" });
+    expect(contents.listenerCount("did-create-window")).toBe(0);
+  });
+});
 
 describe("hardenWebContents", () => {
   it("denies window.open and blocks external, file and data navigation", () => {

@@ -14,9 +14,12 @@
 //! **Output path** rules (checked here, before anything is queued): an absolute path ending in
 //! the container's extension (`.mp4`, or `.mov` for ProRes presets), inside the caller's allowed folders ([`ExportCtx::allowed_roots`], the same rule as
 //! `media.import`), never the source file of a media asset of the project, in an existing
-//! folder the engine can write to, and an existing file only with `overwrite: true` (the
-//! encoder replaces it when the export succeeds; a failed or cancelled export leaves it as it
-//! was).
+//! folder the engine can write to, and an existing file only as the collision policy says
+//! ([`output`], WP-2G.03b: `fail` by default, `overwrite` replaces it when the export succeeds
+//! and a failed or cancelled export leaves it as it was, `rename` picks a free name). The
+//! range may be the whole sequence, its in/out points, a custom range or one file per marker
+//! ([`range`]); a marker set queues one job per region. Before queueing, the free disk space
+//! is checked ([`output::check_disk`]).
 
 use std::path::{Component, Path, PathBuf};
 use std::sync::Arc;
@@ -26,16 +29,21 @@ use cutweave_commands::{
 };
 use cutweave_jobs::JobId;
 use cutweave_model::{
-    Duration, EntityKind, FrameRate, Project, Rounding, Sequence, SequenceId, Time, TimeInput,
+    Duration, EntityKind, FrameRate, Project, Rounding, Sequence, SequenceId, Time,
 };
 
 pub mod encoders;
+pub mod output;
 pub mod presets;
 pub mod queue;
+pub mod range;
 
 use crate::media::{AllowedRoots, OUTSIDE_ROOTS_HINT};
-use crate::util::{check_abs_path, resolve_frame_time};
+use crate::util::check_abs_path;
+pub use output::Collision;
+use output::{Policy, Template};
 use presets::{AudioCodec, Container, PlanRate, PresetStore, PresetWarning, VideoCodec};
+pub use range::{ExportRange, PairMode, RangeKind, Region};
 
 /// The preset's bounding box: 1920×1080 for landscape sequences (1080×1920 for portrait).
 pub const PRESET_LONG_SIDE: u32 = 1920;
@@ -58,17 +66,6 @@ pub fn register(registry: &mut Registry) -> Result<(), RegistryError> {
 }
 
 // ----- params ----------------------------------------------------------------------------------
-
-/// The part of the sequence to export: `[in, out)`, both snapped to the nearest frame.
-#[wire]
-pub struct ExportRange {
-    /// Start: flicks, "2.5s", "f:60" or a timecode.
-    #[serde(rename = "in")]
-    pub start: TimeInput,
-    /// End, exclusive: at most the sequence end.
-    #[serde(rename = "out")]
-    pub end: TimeInput,
-}
 
 /// How hard the encoder works for picture quality (and file size).
 #[wire]
@@ -192,6 +189,31 @@ pub struct ExportStartOutput {
     pub rev: Rev,
     /// Platform-limit and fit warnings of a preset (never errors; the export runs).
     pub warnings: Vec<PresetWarning>,
+    /// Every export of a marker set, in time order (empty for any other range). The fields
+    /// above describe the first of them.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub jobs: Vec<ExportedFile>,
+}
+
+/// One file of a marker-set export.
+#[wire]
+pub struct ExportedFile {
+    /// Its export job.
+    pub job_id: JobId,
+    /// The output file (after `rename`).
+    pub path: String,
+    /// The marker's label.
+    pub label: String,
+    /// Range start (sequence time, flicks).
+    #[serde(rename = "in")]
+    pub start: Time,
+    /// Range end, exclusive.
+    #[serde(rename = "out")]
+    pub end: Time,
+    /// Video frames the file will hold.
+    pub frames: u32,
+    /// Length of the file.
+    pub duration: Duration,
 }
 
 /// Exports a sequence (or a range of it) to a file (MP4, H.264 + AAC by default; a preset id
@@ -199,8 +221,12 @@ pub struct ExportStartOutput {
 /// `job.wait`, stop with `job.cancel` (the partial file is deleted). Exports queue and run one at a time; this one
 /// also resumes a paused queue (`export.queue` lists it). The export uses the project as it is
 /// now; later edits do not change it. Agents and headless callers may only write inside the
-/// project folder and folders the user approved. An existing file is replaced only with
-/// `overwrite: true`.
+/// project folder and folders the user approved. `range.kind` picks the part: "sequence",
+/// "in_out" (the sequence's in/out points), "custom" (`in`, `out`) or "markers" (one file per
+/// marker: `path` is a folder or an .mp4 name template with {seq}, {marker_label}, {n}; the
+/// output lists every job). `collision` says what happens to an existing file: "fail"
+/// (default), "rename" (pick a free name) or "overwrite" (replace it when the export
+/// succeeds). Fails with `Invalid` when the drive has too little free space.
 #[command(
     name = "export.start",
     summary = "Export a sequence to a video file (H.264, HEVC, AV1, ProRes) as a background job; returns job_id",
@@ -215,15 +241,18 @@ pub struct ExportStart {
     pub sequence: Option<SequenceId>,
     /// Absolute path of the output file (`.mp4`; `.mov` for ProRes presets).
     pub path: String,
-    /// Part of the sequence to export (default: all of it).
+    /// Part of the sequence to export (default: all of it): {kind: "sequence" | "in_out" |
+    /// "custom" | "markers", in, out, markers: [ids], pair_mode: "duration" | "pairs"}.
     pub range: Option<ExportRange>,
     /// "h264-mp4-1080p" (default), a preset id ("youtube-1080p") or {"custom": {width, height,
     /// fps, quality, preset}}.
     pub preset: Option<ExportPreset>,
     /// Hardware encoder: "auto" (default), "off", or {"force": "hevc_nvenc"}.
     pub hw: Option<ExportHw>,
-    /// Replace an existing file at `path` (default false).
+    /// Replace an existing file at `path` (default false); same as `collision: "overwrite"`.
     pub overwrite: Option<bool>,
+    /// An existing file: "fail" (default), "rename" or "overwrite".
+    pub collision: Option<Collision>,
 }
 
 // ----- the engine seam -------------------------------------------------------------------------
@@ -346,6 +375,18 @@ pub trait ExportStarter: Send {
     /// default starts (for starters without a queue).
     fn enqueue(&mut self, plan: ExportPlan) -> Result<JobId, CmdError> {
         self.start(plan)
+    }
+
+    /// Whether another queued or running export writes `path` (a free name for
+    /// `collision: "rename"` must not be one). No queue: never.
+    fn output_claimed(&self, _path: &Path) -> bool {
+        false
+    }
+
+    /// Bytes free on the drive of `folder`, `None` when it cannot be told (the disk check is
+    /// then skipped).
+    fn free_space(&self, _folder: &Path) -> Option<u64> {
+        None
     }
 
     /// The export queue the queue commands work on; `Unsupported` by default (an engine
@@ -475,39 +516,6 @@ fn resolve_preset(
     }
 }
 
-/// The frame-aligned range `[start, end)`: the whole sequence, or the requested range.
-fn resolve_range(range: Option<&ExportRange>, seq: &Sequence) -> Result<(Time, Time), CmdError> {
-    let rate = seq.format.frame_rate;
-    let seq_end = Time::from(seq.duration());
-    let Some(range) = range else {
-        if seq_end <= Time::ZERO {
-            return Err(CmdError::invalid(
-                "/sequence",
-                "the sequence is empty: there is nothing to export",
-            ));
-        }
-        return Ok((Time::ZERO, seq_end));
-    };
-    let start = resolve_frame_time("/range/in", range.start, rate)?;
-    let end = resolve_frame_time("/range/out", range.end, rate)?;
-    if start < Time::ZERO {
-        return Err(CmdError::invalid("/range/in", "must not be negative"));
-    }
-    if end <= start {
-        return Err(CmdError::invalid(
-            "/range/out",
-            format!("must be after `in` ({start}) by at least one frame"),
-        ));
-    }
-    if end > seq_end {
-        return Err(CmdError::invalid(
-            "/range/out",
-            format!("the sequence ends at {seq_end}"),
-        ));
-    }
-    Ok((start, end))
-}
-
 /// The number of output frames covering `length` at `rate` (the last one may run past it).
 fn frame_count(length: Duration, rate: FrameRate) -> Result<(u32, Duration), CmdError> {
     let t = Time::from(length);
@@ -529,7 +537,7 @@ fn frame_count(length: Duration, rate: FrameRate) -> Result<(u32, Duration), Cmd
 
 /// The path's components without `.`, compared as the platform does (ASCII case-insensitive on
 /// Windows).
-fn same_path(a: &Path, b: &Path) -> bool {
+pub(crate) fn same_path(a: &Path, b: &Path) -> bool {
     let parts = |p: &Path| -> Vec<String> {
         p.components()
             .filter(|c| !matches!(c, Component::CurDir))
@@ -553,11 +561,11 @@ fn same_path(a: &Path, b: &Path) -> bool {
     }
 }
 
-/// Checks the output path (see the module docs) and returns it.
-fn check_output(
+/// Checks the output path (see the module docs) except that the file may exist: the
+/// collision policy ([`output::settle`]) decides about that.
+fn check_target(
     doc: &Project,
     path: &str,
-    overwrite: bool,
     roots: Option<&AllowedRoots>,
     ext: &str,
 ) -> Result<PathBuf, CmdError> {
@@ -613,20 +621,11 @@ fn check_output(
             format!("the folder `{}` does not exist", folder.display()),
         ));
     }
-    match std::fs::metadata(&out) {
-        Ok(meta) if meta.is_dir() => {
-            return Err(CmdError::invalid(
-                "/path",
-                format!("`{path}` is a folder; name an .{ext} file"),
-            ));
-        }
-        Ok(_) if !overwrite => {
-            return Err(CmdError::invalid(
-                "/overwrite",
-                format!("`{path}` already exists; pass `overwrite: true` to replace it"),
-            ));
-        }
-        _ => {}
+    if out.is_dir() {
+        return Err(CmdError::invalid(
+            "/path",
+            format!("`{path}` is a folder; name an .{ext} file"),
+        ));
     }
     check_writable(folder).map_err(|e| {
         CmdError::invalid(
@@ -655,68 +654,177 @@ fn check_writable(folder: &Path) -> std::io::Result<()> {
     std::fs::remove_file(&probe)
 }
 
+/// A starter that only answers questions: what [`ExportStart::plan`] checks against.
+struct Inert;
+
+impl ExportStarter for Inert {
+    fn start(&mut self, _plan: ExportPlan) -> Result<JobId, CmdError> {
+        Err(CmdError::unsupported("planning only"))
+    }
+}
+
 impl ExportStart {
-    /// Checks the request against `doc` and resolves it into a plan.
+    /// The params as a borrowed request (one planner for `export.start` and `export.enqueue`).
+    #[must_use]
+    pub fn request(&self) -> ExportRequest<'_> {
+        ExportRequest {
+            sequence: self.sequence,
+            path: &self.path,
+            range: self.range.as_ref(),
+            preset: self.preset.as_ref(),
+            hw: self.hw.as_ref(),
+            overwrite: self.overwrite,
+            collision: self.collision,
+        }
+    }
+
+    /// Checks the request against `snapshot` and resolves it into its single plan (an error
+    /// for a marker set: see [`ExportRequest::plans`]).
     pub fn plan(
         &self,
         snapshot: &Arc<DocSnapshot>,
         roots: Option<&AllowedRoots>,
         presets: &PresetStore,
     ) -> Result<ExportPlan, CmdError> {
+        let mut plans = self.request().plans(snapshot, roots, presets, &Inert)?.0;
+        match (plans.pop(), plans.is_empty()) {
+            (Some(plan), true) => Ok(plan),
+            _ => Err(CmdError::invalid(
+                "/range",
+                "a marker set exports several files; use ExportRequest::plans",
+            )),
+        }
+    }
+}
+
+/// The params every export command shares, borrowed.
+#[derive(Clone, Copy)]
+pub struct ExportRequest<'a> {
+    /// Sequence.
+    pub sequence: Option<SequenceId>,
+    /// Output path.
+    pub path: &'a str,
+    /// Range.
+    pub range: Option<&'a ExportRange>,
+    /// Preset.
+    pub preset: Option<&'a ExportPreset>,
+    /// Hardware encoder.
+    pub hw: Option<&'a ExportHw>,
+    /// Replace an existing file.
+    pub overwrite: Option<bool>,
+    /// Collision policy.
+    pub collision: Option<Collision>,
+}
+
+impl ExportRequest<'_> {
+    /// Whether the range is a marker set.
+    fn is_marker_set(&self) -> bool {
+        self.range.is_some_and(|r| {
+            r.kind == Some(RangeKind::Markers) || (r.kind.is_none() && r.markers.is_some())
+        })
+    }
+
+    /// Checks the request and resolves it into one plan per region (see the module docs), with
+    /// the marker label of each (empty for other ranges). Nothing is queued.
+    pub fn plans(
+        &self,
+        snapshot: &Arc<DocSnapshot>,
+        roots: Option<&AllowedRoots>,
+        presets: &PresetStore,
+        starter: &dyn ExportStarter,
+    ) -> Result<(Vec<ExportPlan>, Vec<String>), CmdError> {
         let doc = &snapshot.doc;
         let seq = resolve_sequence(doc, self.sequence)?;
-        let (start, end) = resolve_range(self.range.as_ref(), seq)?;
-        let length = end
-            .duration_since(start)
-            .map_err(|e| CmdError::invalid("/range", e.to_string()))?;
-        let mut rate = None;
-        let mut warnings = Vec::new();
-        let mut preset_hw = None;
-        let mut output = PlanOutput::default();
-        let named = match &self.preset {
-            Some(ExportPreset::Id(id)) => Some((id, None)),
-            Some(ExportPreset::Custom(c)) => c.preset.as_ref().map(|id| (id, Some(c))),
-            _ => None,
-        };
-        let (width, height, frame_rate, quality) = if let Some((id, overrides)) = named {
-            let spec = presets.get(id).ok_or_else(|| {
-                CmdError::invalid(
-                    "/preset",
-                    format!("there is no export preset `{id}`; list them with export.list_presets"),
-                )
-            })?;
-            output = spec.plan_output().map_err(CmdError::unsupported)?;
-            let p = presets::plan_preset(&spec, seq, length, overrides)?;
-            rate = p.rate;
-            warnings = p.warnings;
-            preset_hw = Some(p.hw);
-            (p.width, p.height, p.frame_rate, p.quality)
+        let regions = range::resolve_regions(self.range, seq)?;
+        let policy = Policy::of(self.collision, self.overwrite)?;
+        let template = if self.is_marker_set() {
+            check_abs_path("/path", self.path)?;
+            let t = Template::parse(self.path)?;
+            if regions.len() > 1 && !t.varies() {
+                return Err(CmdError::invalid(
+                    "/path",
+                    format!(
+                        "{} files are exported; the file name needs {{n}} or {{marker_label}} \
+                         to tell them apart",
+                        regions.len()
+                    ),
+                ));
+            }
+            Some(t)
         } else {
-            resolve_preset(self.preset.as_ref(), seq)?
+            None
         };
-        let (frames, duration) = frame_count(length, frame_rate)?;
-        let hw = self.hw.clone().or(preset_hw).unwrap_or_default();
-        hw.check()?;
-        let overwrite = self.overwrite.unwrap_or(false);
-        let path = check_output(doc, &self.path, overwrite, roots, output.extension())?;
-        Ok(ExportPlan {
-            snapshot: Arc::clone(snapshot),
-            sequence: seq.id,
-            path,
-            overwrite,
-            start,
-            end,
-            width,
-            height,
-            frame_rate,
-            frames,
-            duration,
-            quality,
-            hw,
-            rate,
-            warnings,
-            output,
-        })
+        let mut plans: Vec<ExportPlan> = Vec::with_capacity(regions.len());
+        let mut taken: Vec<PathBuf> = Vec::with_capacity(regions.len());
+        let mut labels = Vec::with_capacity(regions.len());
+        for (i, region) in regions.iter().enumerate() {
+            let length = region
+                .end
+                .duration_since(region.start)
+                .map_err(|e| CmdError::invalid("/range", e.to_string()))?;
+            let mut rate = None;
+            let mut warnings = Vec::new();
+            let mut preset_hw = None;
+            let mut output = PlanOutput::default();
+            let named = match self.preset {
+                Some(ExportPreset::Id(id)) => Some((id, None)),
+                Some(ExportPreset::Custom(c)) => c.preset.as_ref().map(|id| (id, Some(c))),
+                _ => None,
+            };
+            let (width, height, frame_rate, quality) = if let Some((id, overrides)) = named {
+                let spec = presets.get(id).ok_or_else(|| {
+                    CmdError::invalid(
+                        "/preset",
+                        format!(
+                            "there is no export preset `{id}`; list them with \
+                             export.list_presets"
+                        ),
+                    )
+                })?;
+                output = spec.plan_output().map_err(CmdError::unsupported)?;
+                let p = presets::plan_preset(&spec, seq, length, overrides)?;
+                rate = p.rate;
+                warnings = p.warnings;
+                preset_hw = Some(p.hw);
+                (p.width, p.height, p.frame_rate, p.quality)
+            } else {
+                resolve_preset(self.preset, seq)?
+            };
+            let (frames, duration) = frame_count(length, frame_rate)?;
+            let hw = self.hw.cloned().or(preset_hw).unwrap_or_default();
+            hw.check()?;
+            let wanted = match &template {
+                Some(t) => {
+                    let label = region.label.as_deref().unwrap_or_default();
+                    t.file(&seq.name, label, i + 1)?
+                }
+                None => PathBuf::from(self.path),
+            };
+            let target = check_target(doc, &wanted.to_string_lossy(), roots, output.extension())?;
+            let path = output::settle(target, policy, &taken, starter)?;
+            taken.push(path.clone());
+            labels.push(region.label.clone().unwrap_or_default());
+            plans.push(ExportPlan {
+                snapshot: Arc::clone(snapshot),
+                sequence: seq.id,
+                path,
+                overwrite: policy.collision == Collision::Overwrite,
+                start: region.start,
+                end: region.end,
+                width,
+                height,
+                frame_rate,
+                frames,
+                duration,
+                quality,
+                hw,
+                rate,
+                warnings,
+                output,
+            });
+        }
+        output::check_disk(&plans, starter)?;
+        Ok((plans, labels))
     }
 }
 
@@ -737,8 +845,66 @@ impl ExportStartOutput {
             duration: plan.duration,
             rev: plan.snapshot.rev,
             warnings: plan.warnings.clone(),
+            jobs: Vec::new(),
         }
     }
+}
+
+/// Plans `request`, queues every plan (`resume`: `export.start`) and describes the result. A
+/// marker set that fails halfway leaves nothing queued.
+pub fn queue_request(
+    request: &ExportRequest<'_>,
+    ctx: &mut ExportCtx,
+    resume: bool,
+) -> Result<ExportStartOutput, CmdError> {
+    let (plans, labels) = request.plans(
+        &ctx.snapshot,
+        ctx.allowed_roots.as_ref(),
+        &ctx.presets,
+        &*ctx.starter,
+    )?;
+    let Some(first) = plans.first() else {
+        return Err(CmdError::invalid("/range", "there is nothing to export"));
+    };
+    let mut output = ExportStartOutput::of(first);
+    let mut ids: Vec<JobId> = Vec::with_capacity(plans.len());
+    for plan in &plans {
+        let queued = if resume {
+            ctx.starter.start(plan.clone())
+        } else {
+            ctx.starter.enqueue(plan.clone())
+        };
+        match queued {
+            Ok(id) => ids.push(id),
+            Err(e) => {
+                if let Ok(queue) = ctx.starter.queue() {
+                    for id in ids {
+                        let _ = queue.cancel(id);
+                        let _ = queue.remove(id);
+                    }
+                }
+                return Err(e);
+            }
+        }
+    }
+    output.job_id = ids[0];
+    if request.is_marker_set() {
+        output.jobs = plans
+            .iter()
+            .zip(&ids)
+            .zip(labels)
+            .map(|((plan, id), label)| ExportedFile {
+                job_id: *id,
+                path: plan.path.to_string_lossy().into_owned(),
+                label,
+                start: plan.start,
+                end: plan.end,
+                frames: plan.frames,
+                duration: plan.duration,
+            })
+            .collect();
+    }
+    Ok(output)
 }
 
 impl EngineCommand for ExportStart {
@@ -746,10 +912,7 @@ impl EngineCommand for ExportStart {
     type Output = ExportStartOutput;
 
     fn run(&self, ctx: &mut ExportCtx) -> Result<ExportStartOutput, CmdError> {
-        let plan = self.plan(&ctx.snapshot, ctx.allowed_roots.as_ref(), &ctx.presets)?;
-        let output = ExportStartOutput::of(&plan);
-        let job_id = ctx.starter.start(plan)?;
-        Ok(ExportStartOutput { job_id, ..output })
+        queue_request(&self.request(), ctx, true)
     }
 }
 

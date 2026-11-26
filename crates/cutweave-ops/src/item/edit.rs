@@ -594,7 +594,7 @@ fn plan_duplicate(
 }
 
 /// Copies of item markers with fresh IDs (in marker-ID order).
-fn remint(markers: &Markers, e: &mut Edit<'_>, ids: &mut dyn Ids) -> Markers {
+pub(crate) fn remint(markers: &Markers, e: &mut Edit<'_>, ids: &mut dyn Ids) -> Markers {
     let mut out = Markers::new();
     for m in markers.values() {
         let mut copy = m.clone();

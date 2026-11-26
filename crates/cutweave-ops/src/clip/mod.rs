@@ -13,6 +13,7 @@
 //! ripples. IDs (INV-23): per given clip, in order, the right halves' group (when linked), then
 //! the right halves in member order (the clip, then its partners by track ID and item ID).
 
+pub mod attributes;
 pub mod speed;
 pub mod trim;
 
@@ -24,6 +25,7 @@ use cutweave_model::{
     TrackKind,
 };
 
+pub use attributes::{Attribute, ClipPasteAttributes, ClipPasteAttributesOutput};
 pub use speed::{
     ClipFreezeFrame, ClipFreezeFrameOutput, ClipResetSpeed, ClipReverse, ClipSetSpeed,
     ClipSpeedOutput, KeyframeTiming, SpeedClip, SpeedInput, SpeedKeep,
@@ -55,7 +57,8 @@ pub fn register(registry: &mut Registry) -> Result<(), RegistryError> {
         .register::<ClipSetSpeed>()?
         .register::<ClipReverse>()?
         .register::<ClipResetSpeed>()?
-        .register::<ClipFreezeFrame>()?;
+        .register::<ClipFreezeFrame>()?
+        .register::<ClipPasteAttributes>()?;
     Ok(())
 }
 

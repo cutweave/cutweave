@@ -14,6 +14,7 @@ cargo xtask gen                 # schemas, TS types, commands.md, schema hash
 just wbs-json                   # wbs.json (wbs-lint fails if it's stale)
 git add -A
 ```
+**Only these files.** Never `git checkout --ours/--theirs` a hand-written file (e.g. `testing/strategies.rs`, menus, i18n): it drops the other side's non-conflicting additions too. Resolve the conflict hunks only, keeping both sides' additions.
 
 ## Decision tables: keep every row, in number order
 `docs/adr/README.md` (rows like `| [00NN] link | … | Status | Decided by |`) and `docs/01-architecture.md`

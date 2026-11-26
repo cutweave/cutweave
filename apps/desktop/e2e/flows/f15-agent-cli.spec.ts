@@ -138,7 +138,7 @@ test.describe("F15 an agent edits while the UI is open", () => {
       await expect(page).toHaveTitle("Saved by hand — Cutweave");
       await expect(mediaCards(page)).toHaveCount(2);
       await editorCaughtUp(page);
-      await expect(page.getByTestId("project-resolution")).toBeVisible();
+      await expect(page.getByTestId("sequence-inspector")).toBeVisible();
       await expect(dirtyDot(page)).toBeHidden();
       await snapshot(page, info, "agent opened a project");
     } finally {

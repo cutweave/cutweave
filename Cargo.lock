@@ -947,6 +947,7 @@ dependencies = [
  "cutweave-ops",
  "cutweave-playback",
  "cutweave-render",
+ "libc",
  "png",
  "proptest",
  "reqwest",
@@ -960,6 +961,7 @@ dependencies = [
  "tokio",
  "tracing",
  "tracing-subscriber",
+ "windows-sys",
  "zune-jpeg",
 ]
 

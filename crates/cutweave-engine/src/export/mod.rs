@@ -19,7 +19,11 @@
 //! exports restored at start wait for the subsystems.
 //!
 //! An output path is claimed while its export is queued or running: a second export to the same
-//! file fails with `Invalid` at `/path` instead of racing it.
+//! file fails with `Invalid` at `/path` instead of racing it (`collision: "rename"` picks
+//! another name; [`Starter`] tells the planner which files are claimed). The planner's disk check
+//! reads the drive's free space through a [`FreeSpaceProbe`] ([`disk::free_space`] by default;
+//! `EngineConfig::free_space` replaces it in tests). Ranges, marker sets, collisions and the
+//! disk check are `cutweave-ops`'s (WP-2G.03b); each marker region is one queued export here.
 //!
 //! **The queue's store** ([`queue_store`], ADR-0030) is the open project's
 //! `.cutweave/exports.sqlite`; an untitled project's queue lives in memory and moves into the
@@ -35,6 +39,7 @@
 //! which must name one of the machine's `Capabilities::hw_encode` entries for the plan's codec
 //! (`Invalid` at `/hw/force` otherwise) and never falls back.
 
+pub mod disk;
 pub mod pipeline;
 pub mod sources;
 
@@ -64,6 +69,9 @@ use crate::Subsystems;
 
 /// The job label of exports.
 pub const EXPORT_LABEL: &str = "export";
+
+/// Reads the free bytes of the drive holding a folder (`None`: cannot tell).
+pub type FreeSpaceProbe = Arc<dyn Fn(&Path) -> Option<u64> + Send + Sync>;
 
 /// The engine's export queue.
 pub type ExportJobs = ExportQueue<ExportPlan>;
@@ -163,6 +171,7 @@ pub fn remove_stale_partials(output: &Path) {
 pub struct Starter {
     queue: ExportJobs,
     subsystems: Arc<dyn Subsystems>,
+    free_space: FreeSpaceProbe,
 }
 
 impl std::fmt::Debug for Starter {
@@ -177,7 +186,18 @@ impl Starter {
     /// A starter adding to `queue`, checking `subsystems`' export services first.
     #[must_use]
     pub fn new(queue: ExportJobs, subsystems: Arc<dyn Subsystems>) -> Starter {
-        Starter { queue, subsystems }
+        Starter {
+            queue,
+            subsystems,
+            free_space: Arc::new(disk::free_space),
+        }
+    }
+
+    /// Reads free disk space with `probe` instead of asking the operating system.
+    #[must_use]
+    pub fn with_free_space(mut self, probe: FreeSpaceProbe) -> Starter {
+        self.free_space = probe;
+        self
     }
 
     /// Checks that this engine can run `plan` now, then queues it.
@@ -211,6 +231,16 @@ impl Starter {
     }
 }
 
+/// The comparison key of an output file (the queue's: ASCII case-insensitive on Windows).
+fn output_key(path: &Path) -> String {
+    let s = path.to_string_lossy();
+    if cfg!(windows) {
+        s.replace('/', "\\").to_ascii_lowercase()
+    } else {
+        s.into_owned()
+    }
+}
+
 /// `Invalid` at `/hw/force` unless `name` is one of the machine's hardware encoders of `codec`.
 fn check_forced(caps: &Capabilities, name: &str, codec: &str) -> Result<(), CmdError> {
     let available: Vec<&str> = caps
@@ -240,6 +270,17 @@ impl ExportStarter for Starter {
 
     fn enqueue(&mut self, plan: ExportPlan) -> Result<JobId, CmdError> {
         self.add(plan, false)
+    }
+
+    fn output_claimed(&self, path: &Path) -> bool {
+        let key = output_key(path);
+        self.queue.view().entries.iter().any(|e| {
+            !e.info.state.is_terminal() && e.output.as_deref().is_some_and(|o| output_key(o) == key)
+        })
+    }
+
+    fn free_space(&self, folder: &Path) -> Option<u64> {
+        (self.free_space)(folder)
     }
 
     fn queue(&mut self) -> Result<ExportJobs, CmdError> {
