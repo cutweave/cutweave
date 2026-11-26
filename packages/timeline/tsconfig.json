@@ -3,7 +3,11 @@
   "compilerOptions": {
     "noEmit": true,
     "jsx": "react-jsx",
-    "types": ["node"]
+    "types": ["node"],
+    "paths": {
+      "@cutweave/protocol": ["../protocol/src/index.ts"],
+      "@cutweave/protocol/*": ["../protocol/src/*"]
+    }
   },
   "include": ["src", "bench"]
 }

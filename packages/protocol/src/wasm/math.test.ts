@@ -26,6 +26,8 @@ import {
   type MathModule,
   MathVersionError,
   math,
+  SNAP_KINDS,
+  type SnapKindName,
   time,
   type ValueKind,
 } from "./index.ts";
@@ -58,6 +60,14 @@ interface Fixture {
   eval: [string, number[]][];
   eval_range: [string, string, string, number, number[] | Failed][];
   invalid: [string, string][];
+  snap: {
+    name: string;
+    rate: [number, number];
+    candidates: [number, string][];
+    queries: { r: string; offsets: string[]; px: number; threshold: number; enabled: number }[];
+    results: [string, number, string, number][];
+  }[];
+  snap_errors: { case: string; t?: string | Failed; handle?: number; message?: string }[];
 }
 
 interface VectorRow {
@@ -551,5 +561,147 @@ describe("budgets", () => {
       `evalRange(1000): median ${(median * 1000).toFixed(1)} µs, p95 ${((times[190] as number) * 1000).toFixed(1)} µs`,
     );
     expect(median).toBeLessThan(0.3);
+  });
+});
+
+const kindsOf = (bits: number): SnapKindName[] =>
+  SNAP_KINDS.filter((_, i) => (bits & (1 << i)) !== 0);
+
+describe("snapping (WP-2A.07)", () => {
+  it("gives the native result for every scenario, bit for bit", () => {
+    let queries = 0;
+    const mismatches: string[] = [];
+    for (const sc of fixture.snap) {
+      const index = m.snap.createIndex(
+        { num: sc.rate[0], den: sc.rate[1] },
+        sc.candidates.map(([k, t]) => ({ kind: SNAP_KINDS[k] as SnapKindName, t: BigInt(t) })),
+      );
+      sc.queries.forEach((q, i) => {
+        const [t, kind, targetT, probe] = sc.results[i] as [string, number, string, number];
+        const got = index.snap(BigInt(q.r), q.offsets.map(BigInt), {
+          pxPerSecond: q.px,
+          thresholdPx: q.threshold,
+          enabled: kindsOf(q.enabled),
+        });
+        const want = {
+          t: Number(t),
+          target: kind < 0 ? null : { kind: SNAP_KINDS[kind], t: Number(targetT) },
+          probe,
+        };
+        queries++;
+        if (JSON.stringify(got) !== JSON.stringify(want)) {
+          mismatches.push(
+            `${sc.name} #${i}: got ${JSON.stringify(got)}, want ${JSON.stringify(want)}`,
+          );
+        }
+      });
+      index.free();
+    }
+    expect(queries).toBeGreaterThan(200);
+    expect(mismatches).toEqual([]);
+    expect(m.snap.liveIndexes()).toBe(0);
+  });
+
+  it("refuses what the engine refuses, with the engine's text", () => {
+    const index = m.snap.createIndex({ num: 25, den: 1 }, [{ kind: "edge", t: 0 }]);
+    for (const row of fixture.snap_errors.filter((e) => e.t !== undefined)) {
+      const [px, threshold, r] =
+        {
+          "zoom 0": [0, 8, 0],
+          "zoom NaN": [Number.NaN, 8, 0],
+          "threshold -1": [100, -1, 0],
+          "unsafe time": [100, 8, 2 ** 53],
+        }[row.case] ?? [];
+      const message = (row.t as Failed).error;
+      expect(
+        () =>
+          index.snap(r as number, [0], {
+            pxPerSecond: px as number,
+            thresholdPx: threshold as number,
+          }),
+        row.case,
+      ).toThrow(message);
+    }
+    index.free();
+    const unknown = fixture.snap_errors.find((e) => e.case === "bad rate");
+    expect(() => m.snap.createIndex({ num: 0, den: 1 }, [{ kind: "edge", t: 0 }])).toThrow(
+      unknown?.message as string,
+    );
+    expect(() =>
+      m.snap.createIndex({ num: 25, den: 1 }, [{ kind: "nope" as "edge", t: 0 }]),
+    ).toThrow(RangeError);
+  });
+
+  it("frees an index once and refuses later calls", () => {
+    const index = m.snap.createIndex({ num: 25, den: 1 }, [{ kind: "edge", t: 0 }]);
+    expect(index.size).toBe(1);
+    expect(m.snap.liveIndexes()).toBe(1);
+    index.free();
+    index.free();
+    expect(m.snap.liveIndexes()).toBe(0);
+    expect(() => index.snap(0, [0], { pxPerSecond: 100 })).toThrow(/freed/);
+  });
+
+  it("updates one kind in place and snaps to the new candidates", () => {
+    const F = 28_224_000; // one frame at 25 fps
+    const index = m.snap.createIndex({ num: 25, den: 1 }, [
+      { kind: "edge", t: 10 * F },
+      { kind: "playhead", t: 50 * F },
+    ]);
+    expect(index.snap(10 * F + 1000, [0], { pxPerSecond: 100 }).target).toEqual({
+      kind: "edge",
+      t: 10 * F,
+    });
+    expect(index.setKind("edge", [20 * F, 30 * F])).toBe(3);
+    expect(index.snap(10 * F + 1000, [0], { pxPerSecond: 100 }).target).toBeNull();
+    expect(index.snap(30 * F - 1000, [0], { pxPerSecond: 100 })).toEqual({
+      t: 30 * F,
+      target: { kind: "edge", t: 30 * F },
+      probe: 0,
+    });
+    index.free();
+  });
+
+  it("snaps off with no enabled kinds: the frame snap, on the grid", () => {
+    const F = 28_224_000;
+    const index = m.snap.createIndex({ num: 25, den: 1 }, [{ kind: "edge", t: 10 * F }]);
+    const got = index.snap(10 * F + 5, [0], { pxPerSecond: 100, enabled: [] });
+    expect(got).toEqual({ t: 10 * F, target: null, probe: 0 });
+    index.free();
+  });
+});
+
+describe("snap lookup budget", () => {
+  it("looks up in 50,000 candidates in under 0.1 ms (p95), through wasm", { retry: 2 }, () => {
+    const S = 705_600_000;
+    const kinds = ["edge", "marker", "beat"] as const;
+    const candidates = Array.from({ length: 50_000 }, (_, i) => ({
+      kind: kinds[i % 3] as (typeof kinds)[number],
+      t: Math.floor((i * S) / 5),
+    }));
+    const built = performance.now();
+    const index = m.snap.createIndex({ num: 25, den: 1 }, candidates);
+    console.info(`snap index of 50,000: built in ${(performance.now() - built).toFixed(1)} ms`);
+    expect(index.size).toBe(50_000);
+    const options = { pxPerSecond: 100 };
+    const offsets = [0, 4 * S];
+    let r = 0;
+    const next = () => {
+      r = (r + 7_919_001) % (9_000 * S);
+      return r;
+    };
+    for (let i = 0; i < 2000; i++) index.snap(next(), offsets, options);
+    const times: number[] = [];
+    for (let i = 0; i < 2000; i++) {
+      const at = next();
+      const start = performance.now();
+      index.snap(at, offsets, options);
+      times.push(performance.now() - start);
+    }
+    index.free();
+    times.sort((a, b) => a - b);
+    const p95 = times[Math.floor(times.length * 0.95)] as number;
+    console.info(`snap(50,000): p95 ${(p95 * 1000).toFixed(1)} µs`);
+    expect(p95).toBeLessThan(0.1);
   });
 });

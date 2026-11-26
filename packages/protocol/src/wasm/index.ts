@@ -170,6 +170,62 @@ export interface EasingMath {
   presets(): readonly EasingPreset[];
 }
 
+/** What a snap candidate is, in rank order (timeline spec §6): `playhead` wins ties. */
+export type SnapKindName = "playhead" | "edge" | "marker" | "beat" | "in_out";
+
+/** Every snap kind, in rank order (the wire code of a kind is its index). */
+export const SNAP_KINDS: readonly SnapKindName[] = ["playhead", "edge", "marker", "beat", "in_out"];
+
+/** A snap candidate: a kind and a time in flicks (moved to the nearest frame by the module). */
+export interface SnapCandidate {
+  readonly kind: SnapKindName;
+  readonly t: Flicks;
+}
+
+/** How a snap is asked for. */
+export interface SnapOptions {
+  /** The zoom: CSS pixels per second of timeline. */
+  readonly pxPerSecond: number;
+  /** The snap distance in pixels (default 8, the Timeline preference "Snap distance"). */
+  readonly thresholdPx?: number;
+  /** The kinds that may attract (default all; empty: snapping off or Ctrl/Cmd held). */
+  readonly enabled?: readonly SnapKindName[];
+}
+
+/** The outcome of a snap. */
+export interface SnapResult {
+  /** The snapped raw time, in flicks, always on the frame grid. */
+  readonly t: number;
+  /** The candidate the winning probe landed on (draw a guide there), or null. */
+  readonly target: { readonly kind: SnapKindName; readonly t: number } | null;
+  /** The index of the winning probe offset (0 without a target). */
+  readonly probe: number;
+}
+
+/** The snap candidates of a sequence, held by the module. Call `free()` when done. */
+export interface SnapIndex {
+  /** How many candidates the index holds. */
+  readonly size: number;
+  /**
+   * Snaps the raw time `r` (spec §6). `offsets` are the probes relative to `r`, in flicks:
+   * `[0]` for an edge, the playhead or a marker; `[0, duration]` for a clip; every edge of every
+   * moving item for a multi-item move.
+   */
+  snap(r: Flicks, offsets: readonly Flicks[], options: SnapOptions): SnapResult;
+  /** Replaces every candidate of `kind` (the update after a document patch); returns the size. */
+  setKind(kind: SnapKindName, times: readonly Flicks[] | ArrayLike<number>): number;
+  /** Releases the module's copy. Later calls throw. */
+  free(): void;
+}
+
+/** Snapping (timeline spec §6), one Rust implementation shared with the engine. */
+export interface SnapMath {
+  /** Builds an index at `rate` from candidates (any order). */
+  createIndex(rate: FrameRate, candidates: readonly SnapCandidate[]): SnapIndex;
+  /** Snap indexes not yet freed (leak checks). */
+  liveIndexes(): number;
+}
+
 /** A loaded math module. */
 export interface MathModule {
   /** The version the module reports (equals `MODULE_VERSION`). */
@@ -177,6 +233,7 @@ export interface MathModule {
   readonly time: TimeMath;
   readonly anim: AnimMath;
   readonly easing: EasingMath;
+  readonly snap: SnapMath;
   /** Compiled animatables not yet freed (leak checks). */
   liveAnimatables(): number;
 }
@@ -248,6 +305,19 @@ class Raw {
       at += e.length;
     }
     return encoded.map((e) => e.length);
+  }
+
+  /**
+   * Writes `values` (safe integers or bigints) into the aligned bulk buffer; returns how many.
+   * Pass `Float64Array`/arrays of integers for speed; no per-value allocation beyond the BigInt.
+   */
+  bulk(values: ArrayLike<Flicks>, what: string): number {
+    const n = values.length;
+    const ptr = this.x.cw_in_i64(u32(n, "bulk length")) >>> 0;
+    this.#views();
+    const view = new BigInt64Array(this.x.memory.buffer, ptr, n);
+    for (let i = 0; i < n; i++) view[i] = big(values[i] as Flicks, what);
+    return n;
   }
 
   /** The output buffer's text. */
@@ -451,6 +521,88 @@ function createEasing(raw: () => Raw): EasingMath {
   };
 }
 
+const snapFinalizers =
+  typeof FinalizationRegistry === "undefined"
+    ? undefined
+    : new FinalizationRegistry<{ raw: Raw; handle: number }>(({ raw, handle }) => {
+        raw.x.cw_snap_index_free(handle);
+      });
+
+function kindCode(kind: SnapKindName): number {
+  const code = SNAP_KINDS.indexOf(kind);
+  if (code < 0) throw new RangeError(`unknown snap kind ${String(kind)}`);
+  return code;
+}
+
+function kindBits(kinds: readonly SnapKindName[]): number {
+  let bits = 0;
+  for (const k of kinds) bits |= 1 << kindCode(k);
+  return bits;
+}
+
+const ALL_KINDS = kindBits(SNAP_KINDS);
+
+function createSnap(raw: () => Raw): SnapMath {
+  return {
+    liveIndexes: () => raw().x.cw_snap_index_live() >>> 0,
+    createIndex(rate, candidates) {
+      const r = raw();
+      const [num, den] = rateArgs(rate);
+      const flat = new Array<Flicks>(candidates.length * 2);
+      candidates.forEach((c, i) => {
+        flat[2 * i] = kindCode(c.kind);
+        flat[2 * i + 1] = c.t;
+      });
+      r.bulk(flat, "snap candidate");
+      const handle = r.x.cw_snap_index_new(num, den, candidates.length) >>> 0;
+      if (handle === 0) r.fail();
+      let live = true;
+      const token = {};
+      snapFinalizers?.register(token, { raw: r, handle }, token);
+      const check = () => {
+        if (!live) throw new MathError("this snap index was freed");
+      };
+      return {
+        get size() {
+          check();
+          const n = r.x.cw_snap_index_len(handle);
+          if (n < 0) r.fail();
+          return n;
+        },
+        snap(at, offsets, options) {
+          check();
+          const px = options.pxPerSecond;
+          const threshold = options.thresholdPx ?? 8;
+          const enabled = options.enabled === undefined ? ALL_KINDS : kindBits(options.enabled);
+          r.bulk(offsets, "probe offset");
+          const t = r.time(
+            r.x.cw_snap(handle, big(at, "time"), offsets.length, px, threshold, enabled),
+          );
+          const code = r.number(0);
+          return {
+            t,
+            target: code < 0 ? null : { kind: SNAP_KINDS[code] as SnapKindName, t: r.number(1) },
+            probe: r.number(2),
+          };
+        },
+        setKind(kind, times) {
+          check();
+          r.bulk(times as ArrayLike<Flicks>, "snap candidate");
+          const n = r.x.cw_snap_index_set_kind(handle, kindCode(kind), times.length);
+          if (n < 0) r.fail();
+          return n;
+        },
+        free() {
+          if (!live) return;
+          live = false;
+          snapFinalizers?.unregister(token);
+          r.x.cw_snap_index_free(handle);
+        },
+      };
+    },
+  };
+}
+
 /** The marshalling behind each loaded module (for the shared `time`, `anim` and `easing`). */
 const rawOf = new WeakMap<MathModule, Raw>();
 
@@ -461,6 +613,7 @@ function createModule(raw: Raw, version: string): MathModule {
     time: createTime(get),
     anim: createAnim(get),
     easing: createEasing(get),
+    snap: createSnap(get),
     liveAnimatables: () => raw.x.cw_anim_live() >>> 0,
   };
   rawOf.set(module, raw);
@@ -550,3 +703,5 @@ export const time: TimeMath = createTime(sharedRaw);
 export const anim: AnimMath = createAnim(sharedRaw);
 /** Easing curves of the shared module (after `initMath()`). */
 export const easing: EasingMath = createEasing(sharedRaw);
+/** Snapping of the shared module (after `initMath()`). */
+export const snap: SnapMath = createSnap(sharedRaw);

@@ -29,14 +29,17 @@
 //! The pointers these functions return stay valid until the next call (any call may grow the
 //! linear memory). Everything is single-threaded: the buffers and handles are per thread.
 //!
-//! Snapping (WP-2A.07) adds its exports here, next to the model's `snap` module.
+//! - **Bulk integers in.** [`cw_in_i64`] hands out an aligned `i64` buffer (the byte buffer of
+//!   [`cw_in`] is not 8-aligned), for tens of thousands of snap candidates without JSON.
+//! - **Snap indexes** ([`cw_snap_index_new`]) hold the candidates of a sequence by handle;
+//!   [`cw_snap`] snaps a time against one and leaves the target in the number buffer.
 
 use std::{cell::RefCell, fmt::Display};
 
 use cutweave_model::{
     AnimValue, Animatable, Color, Easing, Evaluator, FrameRate, Interp, LinearRgba, PropId,
-    PropSpec, Rounding, ShortestAngle, Time, TimeInput, Timecode, ValueRange, ValueType, Vec2,
-    sample_times,
+    PropSpec, Rounding, ShortestAngle, SnapIndex, SnapKind, SnapKinds, SnapOptions, Time,
+    TimeInput, Timecode, ValueRange, ValueType, Vec2, sample_times,
 };
 use serde_json::Value;
 
@@ -65,6 +68,8 @@ thread_local! {
     static OUTPUT: RefCell<String> = const { RefCell::new(String::new()) };
     static NUMBERS: RefCell<Vec<f64>> = const { RefCell::new(Vec::new()) };
     static ANIMS: RefCell<Vec<Option<Entry>>> = const { RefCell::new(Vec::new()) };
+    static INPUT_I64: RefCell<Vec<i64>> = const { RefCell::new(Vec::new()) };
+    static SNAPS: RefCell<Vec<Option<SnapIndex>>> = const { RefCell::new(Vec::new()) };
 }
 
 /// Defines one export of the module: a `cw_`-prefixed `extern "C"` function over numbers.
@@ -637,6 +642,174 @@ export! {
 }
 
 // ---------------------------------------------------------------------------------------------
+// Snapping (timeline spec §6)
+// ---------------------------------------------------------------------------------------------
+
+export! {
+    /// The bulk integer input buffer, resized to `n` `i64`s (zeroed): aligned, so the caller can
+    /// view it as a `BigInt64Array` and write candidate times and probe offsets directly.
+    fn cw_in_i64(n: u32) -> *mut i64 {
+        INPUT_I64.with_borrow_mut(|buf| {
+            buf.clear();
+            buf.resize(size(n), 0);
+            buf.as_mut_ptr()
+        })
+    }
+}
+
+/// The first `n` integers of the bulk input buffer.
+fn bulk(n: usize) -> Res<Vec<i64>> {
+    INPUT_I64.with_borrow(|buf| {
+        buf.get(..n).map(<[i64]>::to_vec).ok_or_else(|| {
+            Fail("the input is longer than the bulk buffer (call cw_in_i64 first)".to_owned())
+        })
+    })
+}
+
+fn snap_kind(code: i64) -> Res<SnapKind> {
+    u32::try_from(code)
+        .ok()
+        .and_then(SnapKind::from_code)
+        .ok_or_else(|| {
+            Fail(format!(
+                "unknown snap kind {code} (0 playhead, 1 edge, 2 marker, 3 beat, 4 in/out)"
+            ))
+        })
+}
+
+fn with_snap_index<R>(handle: u32, f: impl FnOnce(&mut SnapIndex) -> Res<R>) -> Res<R> {
+    SNAPS.with_borrow_mut(|slots| {
+        let index = size(handle)
+            .checked_sub(1)
+            .and_then(|i| slots.get_mut(i))
+            .and_then(Option::as_mut)
+            .ok_or_else(|| Fail(format!("no snap index with handle {handle}")))?;
+        f(index)
+    })
+}
+
+export! {
+    /// Builds a snap index at `num/den` fps from `n` candidates in the bulk buffer, as `n` pairs
+    /// `[kind, t]` (kind 0 playhead, 1 edge, 2 marker, 3 beat, 4 in/out; `t` in flicks, moved to
+    /// the nearest frame). Returns a handle, or 0 with the message in the output buffer.
+    fn cw_snap_index_new(num: u32, den: u32, n: u32) -> u32 {
+        match snap_index_new(num, den, n) {
+            Ok(index) => SNAPS.with_borrow_mut(|slots| {
+                let at = slots.iter().position(Option::is_none).unwrap_or_else(|| {
+                    slots.push(None);
+                    slots.len() - 1
+                });
+                slots[at] = Some(index);
+                u32::try_from(at + 1).unwrap_or(0)
+            }),
+            Err(Fail(message)) => {
+                set_output(&message);
+                0
+            }
+        }
+    }
+}
+
+fn snap_index_new(num: u32, den: u32, n: u32) -> Res<SnapIndex> {
+    let rate = rate(num, den)?;
+    let pairs = bulk(size(n).saturating_mul(2))?;
+    let mut candidates = Vec::with_capacity(pairs.len() / 2);
+    for pair in pairs.as_chunks::<2>().0 {
+        candidates.push((snap_kind(pair[0])?, pair[1]));
+    }
+    Ok(SnapIndex::new(rate, candidates)?)
+}
+
+export! {
+    /// Replaces every candidate of `kind` in an index with the `n` times in the bulk buffer (the
+    /// incremental update after a document patch). Returns the new candidate count, or -1.
+    fn cw_snap_index_set_kind(handle: u32, kind: u32, n: u32) -> i32 {
+        count_reply(snap_index_set_kind(handle, kind, n))
+    }
+}
+
+fn snap_index_set_kind(handle: u32, kind: u32, n: u32) -> Res<usize> {
+    let kind = snap_kind(i64::from(kind))?;
+    let times = bulk(size(n))?;
+    with_snap_index(handle, |index| {
+        index.set_kind(kind, times)?;
+        Ok(index.len())
+    })
+}
+
+export! {
+    /// How many candidates an index holds, or -1 for a bad handle.
+    fn cw_snap_index_len(handle: u32) -> i32 {
+        count_reply(with_snap_index(handle, |index| Ok(index.len())))
+    }
+}
+
+export! {
+    /// Snaps the raw time `r` (flicks) against an index (spec §6). The `n` probe offsets are in
+    /// the bulk buffer. `enabled` is a bit set of kinds (bit `n` for kind `n`; 0 is snapping
+    /// off), `px_per_second` the zoom and `threshold_px` the snap distance. Returns the snapped
+    /// time, always on the frame grid, or [`ERR_TIME`] with the message in the output buffer.
+    /// The number buffer then holds `[kind, t, probe]`: the target's kind and time and the index
+    /// of the winning probe, or `[-1, 0, 0]` when nothing was snapped to.
+    fn cw_snap(
+        handle: u32,
+        r: i64,
+        n: u32,
+        px_per_second: f64,
+        threshold_px: f64,
+        enabled: u32,
+    ) -> i64 {
+        int_reply(snap_call(
+            handle,
+            r,
+            n,
+            &SnapOptions {
+                px_per_second,
+                threshold_px,
+                enabled: SnapKinds::from_bits(enabled),
+            },
+        ))
+    }
+}
+
+fn snap_call(handle: u32, r: i64, n: u32, options: &SnapOptions) -> Res<i64> {
+    let offsets = bulk(size(n))?;
+    let snapped = with_snap_index(handle, |index| Ok(index.snap(r, &offsets, options)?))?;
+    fill_numbers(|out| match snapped.target {
+        Some(target) => {
+            #[allow(clippy::cast_precision_loss)] // |t| < 2^53: exact in f64.
+            let t = target.t as f64;
+            out.extend([
+                f64::from(target.kind.code()),
+                t,
+                f64::from(u32::try_from(snapped.probe).unwrap_or(u32::MAX)),
+            ]);
+        }
+        None => out.extend([-1.0, 0.0, 0.0]),
+    });
+    Ok(snapped.t)
+}
+
+export! {
+    /// Frees a snap index; returns 1, or 0 if there was none with that handle.
+    fn cw_snap_index_free(handle: u32) -> u32 {
+        SNAPS.with_borrow_mut(|slots| {
+            let slot = size(handle).checked_sub(1).and_then(|i| slots.get_mut(i));
+            u32::from(slot.and_then(Option::take).is_some())
+        })
+    }
+}
+
+export! {
+    /// How many snap indexes are built and not yet freed (leak checks).
+    fn cw_snap_index_live() -> u32 {
+        SNAPS.with_borrow(|slots| {
+            u32::try_from(slots.iter().filter(|s| s.is_some()).count()).unwrap_or(u32::MAX)
+        })
+    }
+}
+
+// ---------------------------------------------------------------------------------------------
 // Native callers
 // ---------------------------------------------------------------------------------------------
 
@@ -651,6 +824,15 @@ pub fn write_input<const N: usize>(parts: [&str; N]) -> [u32; N] {
         }
     });
     parts.map(|p| u32::try_from(p.len()).unwrap_or(u32::MAX))
+}
+
+/// For native callers, what the loader does with [`cw_in_i64`]: writes `values` into the bulk
+/// buffer.
+pub fn write_bulk(values: &[i64]) {
+    INPUT_I64.with_borrow_mut(|buf| {
+        buf.clear();
+        buf.extend_from_slice(values);
+    });
 }
 
 /// For native callers: the output buffer's text.

@@ -35,6 +35,7 @@ mod project;
 mod proptests;
 mod rate;
 mod sequence;
+mod snap;
 mod speed;
 #[cfg(any(test, feature = "testing"))]
 pub mod testing;
@@ -81,6 +82,7 @@ pub use rate::{FrameRate, Rounding, SampleRate};
 pub use sequence::{
     Color, ColorError, ColorSpace, Sequence, SequenceFormat, Track, TrackItems, TrackKind,
 };
+pub use snap::{SnapError, SnapIndex, SnapKind, SnapKinds, SnapOptions, SnapTarget, Snapped, snap};
 pub use speed::{
     Freeze, MAX_SPEED_TERM, SourceMap, Speed, SpeedError, fit as fit_source_in, source_time,
 };
