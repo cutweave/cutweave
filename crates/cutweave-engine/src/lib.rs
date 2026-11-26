@@ -36,6 +36,7 @@ mod engine;
 pub mod events;
 pub mod export;
 pub mod full;
+mod collect;
 mod import;
 pub mod journal;
 pub mod launch;
