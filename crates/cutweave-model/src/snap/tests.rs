@@ -2,7 +2,11 @@
 //! Snapping tests (WP-2A.07): the spec's `snap` fixtures, hand-made cases for ties, disabled
 //! kinds and zoom, and a brute-force reference over random indexes.
 
-#![allow(clippy::cast_precision_loss, clippy::unnecessary_wraps, clippy::type_complexity)]
+#![allow(
+    clippy::cast_precision_loss,
+    clippy::unnecessary_wraps,
+    clippy::type_complexity
+)]
 
 use std::{fs, path::PathBuf};
 
