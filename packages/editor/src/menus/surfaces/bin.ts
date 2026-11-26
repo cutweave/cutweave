@@ -166,7 +166,7 @@ export const BIN_CARD: MenuSurfaceDef = {
       command: "bin.place_layout",
       group: "place",
       order: 2,
-      visible: "selection.videoCount >= 2",
+      visible: "selection.count >= 2 && selection.videoCount >= 1",
       label: { key: "contextMenu.item.placeSideBySide" },
       enabledIf: (ctx) => placeable(ctx.ids),
       reason: "contextMenu.reason.layoutAssets",

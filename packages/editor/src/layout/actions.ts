@@ -44,6 +44,11 @@ export function lastApplied(ids: readonly string[]): Applied | undefined {
   return applied.get(keyOf(ids));
 }
 
+/** Forgets every remembered layout (tests; a new project starts with none). */
+export function forgetAppliedLayouts(): void {
+  applied.clear();
+}
+
 /** The video clips of `ids` (clips on video tracks) of the active sequence, in the given order. */
 export function visualClipIds(ids: readonly string[]): string[] {
   return clipFacts(ids)
