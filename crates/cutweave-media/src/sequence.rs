@@ -356,11 +356,8 @@ mod tests {
         assert_eq!(decoder.index().frame_count(), 8);
         let mut shown = Vec::new();
         while let Some(frame) = decoder.next_frame().expect("frame") {
-            let n = shown.len();
-            assert_eq!(
-                frame.pts,
-                FrameRate::FPS_30.frame_to_time(n as i64).unwrap()
-            );
+            let n = i64::try_from(shown.len()).unwrap();
+            assert_eq!(frame.pts, FrameRate::FPS_30.frame_to_time(n).unwrap());
             shown.push((fake_frame_number(&frame).expect("number"), frame.damaged));
         }
         assert_eq!(

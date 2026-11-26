@@ -305,13 +305,8 @@ impl ImageSequence {
                 }
                 "missing" => {
                     for range in value.split(',').filter(|r| !r.is_empty()) {
-                        let (a, b) = match range.split_once('-') {
-                            Some((a, b)) => (a.parse::<u32>().ok()?, b.parse::<u32>().ok()?),
-                            None => {
-                                let n = range.parse::<u32>().ok()?;
-                                (n, n)
-                            }
-                        };
+                        let (a, b) = range.split_once('-').unwrap_or((range, range));
+                        let (a, b) = (a.parse::<u32>().ok()?, b.parse::<u32>().ok()?);
                         if a > b || b - a >= MAX_IMAGE_SEQUENCE_FRAMES {
                             return None;
                         }

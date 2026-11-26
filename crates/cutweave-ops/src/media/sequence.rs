@@ -337,10 +337,15 @@ impl EngineCommand for MediaImportSequence {
         // One probe, of the first picture, through the run's locator: the prober answers with
         // the run's duration and its own content hash.
         let locator = run.locator(&found.first_file);
-        let probed = policy::probe_all(&ctx.prober, &[locator.clone()], &ctx.policy, &mut || {})
-            .pop()
-            .unwrap_or_else(|| Err(ProbeError::NotFound(found.first_file.clone())))
-            .map_err(|e| probe_failure(&e))?;
+        let probed = policy::probe_all(
+            &ctx.prober,
+            std::slice::from_ref(&locator),
+            &ctx.policy,
+            &mut || {},
+        )
+        .pop()
+        .unwrap_or_else(|| Err(ProbeError::NotFound(found.first_file.clone())))
+        .map_err(|e| probe_failure(&e))?;
         let register = MediaRegister {
             media_id: None,
             path: found.first_file.clone(),
@@ -420,7 +425,7 @@ mod tests {
 
     fn refused(probe: &FakeProbe, path: &str) -> String {
         match detect(probe, path) {
-            Err(e) => e.message().to_owned(),
+            Err(e) => e.message().clone(),
             Ok(run) => panic!("{path} was detected as {run:?}"),
         }
     }
