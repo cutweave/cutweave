@@ -56,6 +56,10 @@ expression: f.at(sec(3))
         "right": 0.0,
         "bottom": 0.0
       },
+      "flip": {
+        "horizontal": false,
+        "vertical": false
+      },
       "effects": []
     },
     {
@@ -100,6 +104,10 @@ expression: f.at(sec(3))
         "top": 0.0,
         "right": 0.0,
         "bottom": 0.0
+      },
+      "flip": {
+        "horizontal": false,
+        "vertical": false
       },
       "effects": []
     }

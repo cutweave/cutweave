@@ -13,9 +13,12 @@
 //! * Audio: audio tracks only (a clip's sound lives on its own audio track; linked video clips
 //!   are silent), not muted, honouring solo; enabled clips whose media has sound.
 //! * Source time is [`Speed::map`] of the time since the clip start (identity speed in v1).
-//! * Animatable values are evaluated at the clip-relative time, then sanitized (non-finite
-//!   numbers fall back to the identity, opacity is clamped to `0..=1`) so the compositor never
-//!   sees NaN.
+//! * Visual properties (transform, opacity, crop, flip; keyframes §6 and §7) are evaluated by
+//!   the keyframe core at the item-relative time `t − start` (so speed and slips never move
+//!   them) and clamped to each property's evaluation range ([`PropId`]'s registry: opacity and
+//!   crop edges to `0..=1`, scale to `≥ 0`), then sanitized (a non-finite number falls back to
+//!   the identity) so the compositor never sees NaN. The blend mode is static. Values stay
+//!   `f64` here; they become `f32` only at the GPU boundary.
 //! * Anything that cannot be resolved (missing media, unrepresentable time) skips that clip
 //!   instead of failing: evaluation of a valid project never panics and never errors on content.
 //!
@@ -26,13 +29,13 @@
 //! stacks when walked once a track outgrows one node).
 
 use cutweave_model::{
-    Clip, Color, Duration, FrameRate, Item, MediaAsset, MediaKind, Project, Sequence, SequenceId,
-    StreamKind, Time, Track, TrackId, TrackKind, Vec2,
+    Animatable, Clip, Color, Duration, FrameRate, Item, MediaAsset, MediaKind, Project, PropId,
+    Sequence, SequenceId, StreamKind, Time, Track, TrackId, TrackKind, Vec2, VisualProps,
 };
 
 use crate::{
     scene::{
-        AudioActivation, AudioSegment, BlendMode, Crop, FrameRequest, Layer, LayerTransform,
+        AudioActivation, AudioSegment, Crop, Flip, FrameRequest, Layer, LayerTransform,
         SceneDescription,
     },
     speed::Speed,
@@ -348,8 +351,8 @@ fn layer_at(media: Option<&MediaAsset>, track: TrackId, clip: &Clip, t: Time) ->
         Speed::NORMAL.map(clip.source_in, clip.duration, offset)?
     };
     let stream = first_stream(media, StreamKind::Video);
-
-    let tr = &clip.visual.transform;
+    let visual = &clip.visual;
+    let (transform, opacity, crop, flip) = visual_at(visual, rel);
     Some(Layer {
         item: clip.id,
         track,
@@ -363,17 +366,56 @@ fn layer_at(media: Option<&MediaAsset>, track: TrackId, clip: &Clip, t: Time) ->
             still,
             proxy: false,
         },
-        transform: LayerTransform {
-            position: finite_vec(*tr.position.value_at(rel), Vec2::ZERO),
-            scale: finite_vec(*tr.scale.value_at(rel), Vec2::ONE),
-            rotation_deg: finite(*tr.rotation.value_at(rel), 0.0),
-            anchor: finite_vec(*tr.anchor.value_at(rel), Vec2::new(0.5, 0.5)),
-        },
-        opacity: finite(*clip.visual.opacity.value_at(rel), 1.0).clamp(0.0, 1.0),
-        blend: BlendMode::Normal,
-        crop: Crop::default(),
+        transform,
+        opacity,
+        blend: visual.blend_mode.into(),
+        crop,
+        flip,
         effects: Vec::new(),
     })
+}
+
+/// A scalar property at item time `rel`, clamped to its evaluation range (keyframes §7) and
+/// sanitized.
+fn scalar_at(anim: &Animatable<f64>, id: PropId, rel: Time, fallback: f64) -> f64 {
+    finite(anim.eval_clamped(rel, id.spec().clamp), fallback)
+}
+
+/// A vector property at item time `rel`, clamped and sanitized like [`scalar_at`].
+fn vec_at(anim: &Animatable<Vec2>, id: PropId, rel: Time, fallback: Vec2) -> Vec2 {
+    finite_vec(anim.eval_clamped(rel, id.spec().clamp), fallback)
+}
+
+/// The animated visual properties at item time `rel`: transform, opacity, crop and flip. No
+/// heap allocation (the keyframe core evaluates scalars, vectors and booleans in place).
+fn visual_at(visual: &VisualProps, rel: Time) -> (LayerTransform, f64, Crop, Flip) {
+    let tr = &visual.transform;
+    let transform = LayerTransform {
+        position: vec_at(&tr.position, PropId::TransformPosition, rel, Vec2::ZERO),
+        scale: vec_at(&tr.scale, PropId::TransformScale, rel, Vec2::ONE),
+        rotation_deg: scalar_at(&tr.rotation, PropId::TransformRotation, rel, 0.0),
+        anchor: vec_at(
+            &tr.anchor,
+            PropId::TransformAnchor,
+            rel,
+            Vec2::new(0.5, 0.5),
+        ),
+    };
+    // A non-finite opacity hides nothing (the identity), as before keyframes; the clamp keeps
+    // it in `0..=1`.
+    let opacity = scalar_at(&visual.opacity, PropId::Opacity, rel, 1.0).clamp(0.0, 1.0);
+    let c = &visual.crop;
+    let crop = Crop {
+        left: scalar_at(&c.left, PropId::CropLeft, rel, 0.0),
+        top: scalar_at(&c.top, PropId::CropTop, rel, 0.0),
+        right: scalar_at(&c.right, PropId::CropRight, rel, 0.0),
+        bottom: scalar_at(&c.bottom, PropId::CropBottom, rel, 0.0),
+    };
+    let flip = Flip {
+        horizontal: visual.flip.horizontal.eval(rel),
+        vertical: visual.flip.vertical.eval(rel),
+    };
+    (transform, opacity, crop, flip)
 }
 
 fn activation_at(

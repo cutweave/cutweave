@@ -66,7 +66,7 @@ pub use image::Image;
 pub use quality::{AutoQuality, AutoQualityConfig, Ladder, PlaybackMode, Quality, Scale};
 pub use query::register;
 pub use scene::{
-    AudioActivation, AudioSegment, BlendMode, Crop, EffectRef, FrameRequest, Layer, LayerTransform,
-    SceneDescription,
+    AudioActivation, AudioSegment, BlendMode, Crop, EffectRef, Flip, FrameRequest, Layer,
+    LayerTransform, SceneDescription,
 };
 pub use speed::Speed;

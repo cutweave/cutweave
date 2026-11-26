@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
-//! The golden projects (WP-1O.01): synthetic sources and the six `.cutweave` projects built
-//! from them with real commands (`cargo xtask golden-projects`).
+//! The golden projects (WP-1O.01, WP-2C.04): synthetic sources and the eight `.cutweave` projects
+//! built from them with real commands (`cargo xtask golden-projects`).
 //!
 //! **Sources** are FFmpeg `lavfi` test patterns (project-generated, no licensing question),
 //! encoded losslessly (H.264 `-qp 0`, 4:2:0, so the decoded pictures are exactly the
@@ -10,7 +10,7 @@
 //!
 //! **Projects** are built by a `cutweave mcp --headless` engine (one process, the real FFmpeg
 //! probe for `media.import`) through `cutweave_execute`: `project.new`, `media.import`,
-//! `timeline.insert`, `track.add`, `item.set_props`, `clip.split`, `item.delete`,
+//! `timeline.insert`, `track.add`, `item.set_props`, `keyframe.set`, `clip.split`, `item.delete`,
 //! `project.save_as`. So they are schema-valid by construction and follow every change to the
 //! commands. They land in `target/golden/projects/<name>/<name>.cutweave` with seeded ids
 //! (`--deterministic-ids`) and are rebuilt on every run, because a saved project records the
@@ -100,8 +100,9 @@ pub struct Golden {
     pub sources: &'static [&'static str],
 }
 
-/// The six golden projects (WBS WP-1O.01), 18 frames.
-pub const PROJECTS: [Golden; 6] = [
+/// The golden projects: the six of WP-1O.01 and two of WP-2C.04 (flip with a display rotation;
+/// a keyframed screen-mode layer), 24 frames.
+pub const PROJECTS: [Golden; 8] = [
     Golden {
         name: "bars_100",
         about: "one SMPTE HD colour-bars clip at 100% (fills the canvas)",
@@ -139,6 +140,20 @@ pub const PROJECTS: [Golden; 6] = [
                 frames 44 and 45 sit on either side of the cut",
         frames: [20, 44, 45],
         sources: &["testsrc", "bars"],
+    },
+    Golden {
+        name: "flipped_phone",
+        about: "the 90° display-rotated phone clip with 10% cropped from the left of the upright \
+                picture, flipped left-right, then turned another 90° clockwise by its transform",
+        frames: [0, 45, 110],
+        sources: &["phone"],
+    },
+    Golden {
+        name: "screen_keyframed",
+        about: "the test pattern at half size in screen mode over colour bars, its position and \
+                rotation keyframed from left to right over the 4 s",
+        frames: [0, 45, 110],
+        sources: &["bars", "testsrc"],
     },
 ];
 
@@ -334,6 +349,37 @@ fn timeline_steps(project: &Golden, ids: &NewProject, media: &[Value]) -> Value 
             {"cmd": "timeline.insert", "args": {
                 "sequence": seq, "track": v1, "media": &media[1], "at": "f:45",
                 "duration": "f:75", "link": false
+            }},
+        ]),
+        "flipped_phone" => json!([
+            insert(v1.clone(), &media[0], at_0),
+            props(
+                0,
+                json!({
+                    "crop": {"left": 0.1},
+                    "flip": {"horizontal": true},
+                    "transform": {"rotation": 90.0}
+                })
+            ),
+        ]),
+        "screen_keyframed" => json!([
+            insert(v1.clone(), &media[0], at_0.clone()),
+            new_track,
+            insert(track_of(1), &media[1], at_0),
+            props(2, json!({
+                "blend_mode": "screen",
+                "transform": {"scale": {"x": 0.5, "y": 0.5}}
+            })),
+            {"cmd": "keyframe.set", "args": {
+                "item": {"$ref": "steps[2].output.clips[0]"}, "prop": "transform.position",
+                "keys": [
+                    {"at": "f:0", "value": {"x": -0.25, "y": 0.1}},
+                    {"at": "f:119", "value": {"x": 0.25, "y": -0.1}}
+                ]
+            }},
+            {"cmd": "keyframe.set", "args": {
+                "item": {"$ref": "steps[2].output.clips[0]"}, "prop": "transform.rotation",
+                "keys": [{"at": "f:0", "value": -20.0}, {"at": "f:119", "value": 25.0}]
             }},
         ]),
         other => json!([{"cmd": "no.such.golden.project", "args": {"name": other}}]),
@@ -568,13 +614,14 @@ mod tests {
     use super::*;
 
     #[test]
-    fn six_projects_and_eighteen_frames() {
-        assert_eq!(PROJECTS.len(), 6);
+    fn eight_projects_and_twenty_four_frames() {
+        assert_eq!(PROJECTS.len(), 8);
         let frames: usize = PROJECTS.iter().map(|p| p.frames.len()).sum();
-        assert_eq!(frames, 18);
+        assert_eq!(frames, 24);
         let mut names: Vec<_> = PROJECTS.iter().map(|p| p.name).collect();
+        names.sort_unstable();
         names.dedup();
-        assert_eq!(names.len(), 6);
+        assert_eq!(names.len(), 8);
     }
 
     #[test]
