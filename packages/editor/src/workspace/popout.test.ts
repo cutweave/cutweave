@@ -224,6 +224,9 @@ describe("moving a panel into its own window (WP-2H.14)", () => {
     await waitFor(() => expect(savedPopouts()).toHaveLength(0), {
       timeout: LAYOUT_SAVE_DELAY_MS * 10,
     });
+    // Its tab, a new one in its old group, still has the tab's menu: it can go out again.
+    await detachInspector(user);
+    expect(opened).toHaveLength(2);
   });
 
   it("moves it back from the menu's command, and from the palette for the active panel", async () => {

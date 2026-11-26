@@ -34,16 +34,29 @@ function PanelTab({ api, params }: IDockviewPanelHeaderProps<{ titleKey: TKey }>
   // whole tab is the surface (dockview's own element around this one), not only the title.
   const ref = useRef<HTMLDivElement>(null);
   const panel = api.id;
+  // A panel that changes group (floated, into its own window and back) gets a new tab element
+  // around this one: the menu moves to that one, once the dock has finished the move.
+  const [tab, setTab] = useState<HTMLElement | null>(null);
   useEffect(() => {
-    const own = ref.current;
-    const tab = own?.closest<HTMLElement>("[role='tab']") ?? own;
-    if (tab === null || tab === undefined) return undefined;
+    const find = () => {
+      const own = ref.current;
+      setTab(own?.closest<HTMLElement>("[role='tab']") ?? own);
+    };
+    find();
+    const moved = () => queueMicrotask(find);
+    const subs = [api.onDidGroupChange(moved), api.onDidLocationChange(moved)];
+    return () => {
+      for (const sub of subs) sub.dispose();
+    };
+  }, [api]);
+  useEffect(() => {
+    if (tab === null) return undefined;
     return registerContextSurface(
       tab,
       () => ({ surface: "dock.tab", target: { ids: [panel], name: title } }),
       { name: "dock.tab" },
     );
-  }, [panel, title]);
+  }, [tab, panel, title]);
   return (
     <div ref={ref} className="cw-dock-tab heading">
       {title}
