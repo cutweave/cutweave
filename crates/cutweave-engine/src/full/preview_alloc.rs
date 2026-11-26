@@ -371,3 +371,28 @@ fn source_frames_make_no_heap_allocation_of_their_own() {
     }
     check("switches", &switches);
 }
+
+/// WP-2D.01b: playing backwards through the clips' long GOPs (the fake's keyframe every 12
+/// frames), each GOP is read back once by the media layer; the frames between come out of the
+/// read-back with no heap operation at all, of ours or of the media layer.
+#[test]
+fn reverse_playback_frames_come_from_the_read_back_without_heap_allocation() {
+    let Some(mut rig) = Rig::new() else { return };
+    let full = Quality::FULL;
+    let playback = RenderPurpose::Playback;
+    rig.render(0..WARM_UP, full, playback);
+
+    // Backwards over a stretch not played before (the frame cache does not hold it).
+    let n = i64::try_from(COUNTED).unwrap();
+    let start = 4 * WARM_UP + n;
+    rig.render([start], full, playback);
+    let reversed = rig.render((start - n..start).rev(), full, playback);
+    check("reverse playback", &reversed);
+    let from_read_back = reversed.iter().filter(|o| o[MEDIA] == 0).count();
+    // One window per GOP of 12 frames (both clips' GOPs line up).
+    let windows = COUNTED.div_ceil(12) + 1;
+    assert!(
+        from_read_back >= COUNTED - windows,
+        "{from_read_back} of {COUNTED} frames came from the read-back"
+    );
+}

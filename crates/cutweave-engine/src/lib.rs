@@ -67,8 +67,8 @@ pub use media_http::media_mounts;
 pub use rpc_backend::rpc_mounts;
 pub use session::{ProjectStatus, RecoveryInfo, SessionState};
 pub use subsystems::{
-    CoreOnly, DEGRADED_EVENT, EngineLink, SUBSYSTEM_EVENTS, SubsystemCall, SubsystemError,
-    SubsystemEvents, SubsystemHost, SubsystemKind, Subsystems,
+    CoreOnly, DEGRADED_EVENT, EngineLink, REVERSE_SLOW_EVENT, SUBSYSTEM_EVENTS, SubsystemCall,
+    SubsystemError, SubsystemEvents, SubsystemHost, SubsystemKind, Subsystems,
 };
 
 /// Returns the crate name.

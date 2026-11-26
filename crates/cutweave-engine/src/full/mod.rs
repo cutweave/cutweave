@@ -60,6 +60,8 @@ pub mod preview;
 #[cfg(test)]
 mod preview_alloc;
 pub mod proxy;
+#[cfg(all(test, feature = "ffmpeg"))]
+mod reverse_ffmpeg;
 mod watch;
 
 use std::any::TypeId;
@@ -587,6 +589,7 @@ impl FullSubsystems {
             pcm: Arc::clone(&self.inner.pcm),
             frames: Arc::clone(&started.frames),
             thumbs: started.caches.thumbs.clone(),
+            proxies: started.proxies.clone(),
         };
         let watcher = match DocWatcher::spawn(doc.clone(), targets) {
             Ok(w) => w,
@@ -665,13 +668,16 @@ impl FullSubsystems {
     /// The proxy service (WP-2F.01), when there is a media backend and a cache to keep proxies in.
     fn proxies(&self, caches: &Caches, host: &SubsystemHost) -> Option<Arc<FullProxies>> {
         match (&self.inner.config.media, &caches.db, &caches.root) {
-            (Some(backend), Some(db), Some(root)) => Some(Arc::new(FullProxies::new(
-                backend,
-                Arc::clone(db),
-                root.join("proxies"),
-                self.inner.doc.clone(),
-                host.link.clone(),
-            ))),
+            (Some(backend), Some(db), Some(root)) => Some(Arc::new(
+                FullProxies::new(
+                    backend,
+                    Arc::clone(db),
+                    root.join("proxies"),
+                    self.inner.doc.clone(),
+                    host.link.clone(),
+                )
+                .with_events(host.events.clone()),
+            )),
             _ => None,
         }
     }

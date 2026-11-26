@@ -13,7 +13,9 @@
 //!   plays ([`AudioFeed`]: the whole sequence, or the source), so edits are heard
 //!   `edit_latency` after the playhead;
 //! - drops the decoder pools and cached frames of media that were removed or relinked, and
-//!   their thumbnails and filmstrips (WP-1D.05 handoff).
+//!   their thumbnails and filmstrips (WP-1D.05 handoff);
+//! - asks for the proxies of long-GOP media that a clip now plays backwards, and warns while
+//!   they build (WP-2D.01b, [`FullProxies::reversed`]).
 //!
 //! It never takes an engine lock; [`DocWatcher::stop`] joins it.
 
@@ -30,6 +32,7 @@ use cutweave_playback::transport::{PlaybackTarget, Transport};
 use super::audio::{AudioFeed, LivePcm};
 use super::frames::MediaFrames;
 use super::preview::{source_info, timing_of};
+use super::proxy::FullProxies;
 
 /// How long the thread waits for an event before looking at its stop flag.
 const POLL: StdDuration = StdDuration::from_millis(50);
@@ -41,6 +44,8 @@ pub(crate) struct Targets {
     pub(crate) pcm: Arc<LivePcm>,
     pub(crate) frames: Arc<MediaFrames>,
     pub(crate) thumbs: Option<Arc<ThumbCache>>,
+    /// Proxies to ask for when a clip plays long-GOP media backwards.
+    pub(crate) proxies: Option<Arc<FullProxies>>,
 }
 
 impl Targets {
@@ -73,6 +78,14 @@ impl Targets {
             {
                 tracing::debug!(error = %e, "cannot drop the thumbnails of removed media");
             }
+        }
+        // Not for the document playback attached to: `apply(_, None)` runs under the session
+        // lock, and attaching reconciles the document's proxies (reversed clips too) on its
+        // own thread.
+        if previous.is_some()
+            && let Some(proxies) = &self.proxies
+        {
+            proxies.reversed(doc);
         }
     }
 }

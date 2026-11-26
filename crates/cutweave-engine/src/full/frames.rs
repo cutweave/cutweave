@@ -48,8 +48,28 @@
 //! ready, was evicted or deleted): one atomic load per frame, so a proxy finished while the
 //! file is open is used from the next frame on. A missing or failing proxy falls back to the
 //! original. Agent frames, `/media/frame` and exports never use proxies.
+//!
+//! # Reverse playback (WP-2D.01b)
+//!
+//! The preview notes, per media item, the source time it was last asked for: a request up to
+//! a second before it reads the media backwards (a reversed clip, or the transport playing or
+//! scrubbing backwards). Then:
+//!
+//! - **Playback prefers the proxy.** A playback frame read backwards is served from the asset's
+//!   ready proxy, like a scrub frame (intra-frame: every frame costs one decode). The paused
+//!   frame, a step and the refine after a scrub show the original.
+//! - **The original is read back.** Read backwards in small steps (at most a quarter of a
+//!   window: playback, a step, a drag), a long-GOP original (one whose frames do not all decode
+//!   on their own) is decoded forward in windows ([`ReadBack`]: from the GOP's keyframe, at
+//!   most [`READBACK_BYTES`] of pictures), converted for the compositor once, and served from
+//!   the window until it is used up: a hit takes no lock and allocates nothing. A frame the RAM
+//!   frame cache holds (a stretch played forwards before) comes from there instead, and a jump
+//!   back decodes the one frame as before. At most [`READBACK_MEDIA`] media items keep a window (the least recently used one
+//!   is let go), and a window unused for [`READBACK_IDLE_RENDERS`] renders is let go.
+//! - **Proxies are asked for.** The engine requests a proxy for long-GOP media that a reversed
+//!   clip plays and warns while it builds ([`FullProxies::reversed`](super::proxy::FullProxies)).
 
-use std::cell::RefCell;
+use std::cell::{Cell, RefCell};
 use std::collections::{HashMap, HashSet};
 use std::path::PathBuf;
 use std::sync::atomic::{AtomicBool, Ordering};
@@ -60,15 +80,39 @@ use cutweave_cache::{CacheDb, ContentHash, FrameCache, FrameIndex, FrameKey};
 use cutweave_commands::DocSnapshot;
 use cutweave_media::{
     CancelCheck, CancelToken, DecodeMode, DecodeOpts, DecoderPool, HwMode, MediaBackend,
-    MediaError, PixelFormat, VideoDecoder,
+    MediaError, PixelFormat, ReadBack, VideoDecoder,
 };
-use cutweave_model::{MediaAsset, MediaId, ProbeInfo, Project, Time};
+use cutweave_model::{FLICKS_PER_SECOND, MediaAsset, MediaId, ProbeInfo, Project, Time};
 use cutweave_render::alloc_scope::{self, Scope};
 use cutweave_render::{FrameError, FrameRequest, FrameSource, VideoFrame};
 
 use super::media::{CurrentDoc, MediaFile};
 use super::proxy::FullProxies;
 use crate::export::sources::{compositor_frame, compositor_target, media_identity};
+
+/// Bytes of decoded pictures the read-back of one media item may hold while the preview reads
+/// it backwards (WP-2D.01b): 64 frames of 1080p 4:2:0, 16 of 4K.
+pub(crate) const READBACK_BYTES: usize = 192 << 20;
+/// Media items whose read-back the preview keeps at once; the least recently used one goes.
+pub(crate) const READBACK_MEDIA: usize = 2;
+/// Renders after which a read-back nobody used is let go (3 s of playback at 30 fps).
+pub(crate) const READBACK_IDLE_RENDERS: u64 = 90;
+/// The longest step back in source time that counts as reading backwards (1 s: reverse
+/// playback up to 30× at 30 fps).
+const REVERSE_STEP_FLICKS: i64 = FLICKS_PER_SECOND;
+
+/// Frames of `width × height` a read-back holds within [`READBACK_BYTES`], as the compositor
+/// gets them: 4:2:0, in 16-bit samples when `pixel_format` (the probe's) is 10 or 12-bit.
+pub(crate) fn readback_frames(width: u32, height: u32, pixel_format: Option<&str>) -> usize {
+    let pixels = usize::try_from(u64::from(width) * u64::from(height)).unwrap_or(usize::MAX);
+    let deep = pixel_format.is_some_and(|f| f.contains("10") || f.contains("12"));
+    let bytes = if deep {
+        pixels.saturating_mul(3)
+    } else {
+        pixels.saturating_mul(3) / 2
+    };
+    ReadBack::<()>::capacity_for(READBACK_BYTES, bytes)
+}
 
 /// Whether the preview's decoders may use the hardware (`media.set_decode_policy`, WP-1D.08).
 /// Read by every preview decode, so a change reaches decoders opened from then on; exports and
@@ -346,6 +390,52 @@ impl MediaFrames {
         Ok(frame)
     }
 
+    /// Fills `readback` with the window of `file` (decoded from `pool`; `index` is its frame
+    /// index) that ends at frame `n`, decoded like the preview's other frames (hardware per the
+    /// policy, run in `mode`, stopped by `cancel`) and converted for the compositor as media
+    /// `identity`; returns frame `n` (WP-2D.01b). `None` when the stream ended before it.
+    #[allow(clippy::too_many_arguments)]
+    fn read_back(
+        &self,
+        pool: &DecoderPool,
+        file: &MediaFile,
+        identity: u64,
+        readback: &mut ReadBack<Arc<VideoFrame>>,
+        index: &FrameIndex,
+        n: usize,
+        (cancel, mode): (CancelToken, DecodeMode),
+    ) -> Result<Option<Arc<VideoFrame>>, FrameError> {
+        let mut opts = DecodeOpts::default()
+            .with_mode(mode)
+            .with_hw(self.policy.hw());
+        if let Some(target) = self
+            .targets
+            .lock()
+            .unwrap_or_else(PoisonError::into_inner)
+            .get(&file.id)
+            .copied()
+        {
+            opts = opts.with_target(target);
+        }
+        let near = ReadBack::<()>::window(index, n, readback.capacity())
+            .and_then(|w| index.time_of(*w.start()));
+        let mut lease = pool
+            .checkout(&opts, near, &cancel)
+            .map_err(|e| unavailable(file.id, &e))?;
+        let mut damaged = false;
+        let filled = readback.fill(&mut lease, index, n, |frame| {
+            damaged |= frame.damaged;
+            compositor_frame(identity, frame).map_err(Fill::Frame)
+        });
+        if damaged {
+            self.flag_damaged(file);
+        }
+        filled.map_err(|e| match e {
+            Fill::Media(e) => unavailable(file.id, &e),
+            Fill::Frame(e) => e,
+        })
+    }
+
     /// Seeks a decoder of `pool` (opened with `opts`, converting to `target`) to `t`.
     fn seek(
         pool: &DecoderPool,
@@ -383,8 +473,26 @@ impl MediaFrames {
 
 /// The pts of the frame `index` shows at `t` (the last frame past the end).
 fn shown_at(index: &FrameIndex, t: Time) -> Option<Time> {
+    shown_frame(index, t).map(|(_, pts)| pts)
+}
+
+/// The frame `index` shows at `t` (the last frame past the end): its presentation index and pts.
+fn shown_frame(index: &FrameIndex, t: Time) -> Option<(usize, Time)> {
     let last = index.frame_count().checked_sub(1)?;
-    index.time_of(index.frame_at(t).min(last))
+    let n = index.frame_at(t).min(last);
+    Some((n, index.time_of(n)?))
+}
+
+/// Why a read-back stopped: the decoder, or the conversion for the compositor.
+enum Fill {
+    Media(MediaError),
+    Frame(FrameError),
+}
+
+impl From<MediaError> for Fill {
+    fn from(e: MediaError) -> Fill {
+        Fill::Media(e)
+    }
 }
 
 /// The frame time a request asks for.
@@ -447,6 +555,33 @@ struct Held {
     /// The asset's ready proxy, as resolved at `proxy_generation` of the store.
     proxy: Option<HeldProxy>,
     proxy_generation: Option<u64>,
+    /// The source time last asked for: a request before it reads the media backwards.
+    requested: Option<Time>,
+    /// Whether some frames of the media decode only from an earlier keyframe (from the index).
+    long_gop: Option<bool>,
+    /// Frames decoded forward for reading backwards (WP-2D.01b), of stream `readback_stream`.
+    readback: Option<ReadBack<Arc<VideoFrame>>>,
+    readback_stream: u32,
+    /// The render (`PreviewFrames::renders`) that last used the read-back.
+    readback_used: u64,
+    /// Bytes of the media's last picture for the compositor (0: none yet).
+    frame_bytes: usize,
+}
+
+impl Held {
+    /// Whether some frames decode only from an earlier keyframe (computed once per item).
+    fn long_gop(&mut self) -> bool {
+        match (self.long_gop, &self.index) {
+            (Some(long), _) => long,
+            (None, Some(index)) => *self.long_gop.insert(index.max_decode_distance() > 1),
+            (None, None) => false,
+        }
+    }
+}
+
+/// Bytes of the planes of `frame`.
+fn frame_bytes(frame: &VideoFrame) -> usize {
+    frame.planes.iter().map(|p| p.data.len()).sum()
 }
 
 /// A ready proxy the preview holds for one media item.
@@ -491,6 +626,10 @@ impl HeldProxy {
 pub(crate) struct PreviewFrames {
     frames: Arc<MediaFrames>,
     held: RefCell<HashMap<MediaId, Held>>,
+    /// Renders so far (one per [`request`](Self::request)): the read-backs' clock.
+    renders: Cell<u64>,
+    /// Bytes of pictures one media item's read-back holds ([`READBACK_BYTES`]).
+    readback_budget: usize,
 }
 
 impl std::fmt::Debug for PreviewFrames {
@@ -506,7 +645,26 @@ impl PreviewFrames {
         PreviewFrames {
             frames,
             held: RefCell::new(HashMap::new()),
+            renders: Cell::new(0),
+            readback_budget: READBACK_BYTES,
         }
+    }
+
+    /// The same front with read-backs of `bytes` per media item (tests).
+    #[cfg(all(test, feature = "ffmpeg"))]
+    pub(crate) fn with_readback_budget(mut self, bytes: usize) -> PreviewFrames {
+        self.readback_budget = bytes;
+        self
+    }
+
+    /// Windows the read-back of `media` decoded so far (tests).
+    #[cfg(all(test, feature = "ffmpeg"))]
+    pub(crate) fn readback_fills(&self, media: MediaId) -> u64 {
+        self.held
+            .borrow()
+            .get(&media)
+            .and_then(|h| h.readback.as_ref())
+            .map_or(0, ReadBack::fills)
     }
 
     /// Lets go of media that `doc` no longer has, or has relinked (call after an edit): their
@@ -523,12 +681,24 @@ impl PreviewFrames {
     }
 
     /// The pictures of one render: `doc`'s media, decodes stopped by `cancel` and run in `mode`.
+    /// Lets go of read-backs unused for [`READBACK_IDLE_RENDERS`] renders.
     pub(crate) fn request<'a>(
         &'a self,
         doc: &'a DocSnapshot,
         cancel: &'a cutweave_playback::transport::CancelToken,
         mode: DecodeMode,
     ) -> PreviewRequest<'a> {
+        let now = self.renders.get().wrapping_add(1);
+        self.renders.set(now);
+        for held in self.held.borrow_mut().values_mut() {
+            if let Some(rb) = held.readback.as_mut()
+                && !rb.is_empty()
+                && now.saturating_sub(held.readback_used) > READBACK_IDLE_RENDERS
+            {
+                // The pictures belong to the media layer.
+                alloc_scope::within(Scope::Media, || rb.clear());
+            }
+        }
         PreviewRequest {
             frames: self,
             doc,
@@ -562,7 +732,39 @@ impl PreviewFrames {
             last: None,
             proxy: None,
             proxy_generation: None,
+            requested: None,
+            long_gop: None,
+            readback: None,
+            readback_stream: 0,
+            readback_used: 0,
+            frame_bytes: 0,
         })
+    }
+}
+
+/// Makes room for a read-back of `keep`: lets go of the least recently used windows of other
+/// media until fewer than [`READBACK_MEDIA`] remain.
+fn make_room(held: &mut HashMap<MediaId, Held>, keep: MediaId) {
+    loop {
+        let mut live = 0;
+        let mut oldest: Option<(u64, MediaId)> = None;
+        for (id, h) in held.iter() {
+            if *id == keep || h.readback.as_ref().is_none_or(ReadBack::is_empty) {
+                continue;
+            }
+            live += 1;
+            if oldest.is_none_or(|(used, _)| h.readback_used < used) {
+                oldest = Some((h.readback_used, *id));
+            }
+        }
+        match oldest {
+            Some((_, id)) if live >= READBACK_MEDIA => {
+                if let Some(rb) = held.get_mut(&id).and_then(|h| h.readback.as_mut()) {
+                    rb.clear();
+                }
+            }
+            _ => return,
+        }
     }
 }
 
@@ -637,8 +839,75 @@ impl PreviewRequest<'_> {
             Some((cancel, self.mode)),
         )?;
         let converted = convert(held.identity, &frame)?;
+        held.frame_bytes = frame_bytes(&converted);
         held.last = Some((stream, frame.pts, Arc::clone(&converted)));
         Ok(converted)
+    }
+
+    /// Frames of `held`'s original a read-back window holds: the budget over the size of its
+    /// last picture (else of a 4:2:0 picture of `size`, else of 1080p).
+    fn readback_capacity(&self, held: &Held, size: Option<(u32, u32)>) -> usize {
+        let bytes = match held.frame_bytes {
+            0 => size.map_or(1920 * 1080 * 3 / 2, |(w, h)| {
+                usize::try_from(u64::from(w) * u64::from(h) * 3 / 2).unwrap_or(usize::MAX)
+            }),
+            b => b,
+        };
+        ReadBack::<()>::capacity_for(self.frames.readback_budget, bytes)
+    }
+
+    /// Frame `n` of `held`'s original read backwards (see the module docs) into windows of
+    /// `capacity` frames: from the RAM frame cache when it is there, else from a new read-back
+    /// window. `None`: not read back (the media layer could not; the caller decodes it the
+    /// ordinary way).
+    fn read_back(
+        &self,
+        held: &mut Held,
+        stream: u32,
+        n: usize,
+        capacity: usize,
+    ) -> Result<Option<Arc<VideoFrame>>, FrameError> {
+        let Some(index) = held.index.clone() else {
+            return Ok(None);
+        };
+        let frames = &self.frames.frames;
+        // A stretch played forwards before is in the frame cache.
+        if let Some(hash) = held.file.hash
+            && let Some(pts) = index.time_of(n)
+            && let Some(frame) = frames.cache.get(&FrameKey { hash, stream, pts })
+        {
+            let converted = convert(held.identity, &frame)?;
+            held.last = Some((stream, frame.pts, Arc::clone(&converted)));
+            return Ok(Some(converted));
+        }
+        let rb = held.readback.get_or_insert_with(|| ReadBack::new(capacity));
+        rb.set_capacity(capacity);
+        held.readback_stream = stream;
+        held.readback_used = self.frames.renders.get();
+        let token = self.cancel.clone();
+        let cancel = CancelToken::linked(CancelCheck::new(move || token.is_cancelled()));
+        let read = frames.read_back(
+            &held.pool,
+            &held.file,
+            held.identity,
+            rb,
+            &index,
+            n,
+            (cancel, self.mode),
+        );
+        match read {
+            Ok(Some(frame)) => {
+                held.frame_bytes = frame_bytes(&frame);
+                Ok(Some(frame))
+            }
+            Ok(None) => Ok(None),
+            Err(e) => {
+                if !self.cancel.is_cancelled() {
+                    tracing::debug!(error = %e, "reading back failed; decoding the frame");
+                }
+                Ok(None)
+            }
+        }
     }
 }
 
@@ -667,7 +936,15 @@ impl FrameSource for PreviewRequest<'_> {
             .ok_or_else(|| FrameError::Unavailable(format!("media {}", request.media)))?;
         let stream = request.stream.unwrap_or(0);
         let t = request_time(request);
-        if request.proxy
+        // Read backwards: a reversed clip, or the transport playing or scrubbing back (a jump
+        // back, or another clip of the media further on, is not).
+        let previous = held.requested;
+        let backward = !request.still
+            && previous.is_some_and(|p| t < p && p.flicks() - t.flicks() <= REVERSE_STEP_FLICKS);
+        held.requested = Some(t);
+        // Scrub frames try the proxy first, and so do playback frames read backwards
+        // (WP-2D.01b).
+        if (request.proxy || (backward && self.mode == DecodeMode::Sequential))
             && let Some(frame) = self.proxy_frame(held, asset, t)
         {
             return Ok(frame);
@@ -675,14 +952,46 @@ impl FrameSource for PreviewRequest<'_> {
         if held.index.is_none() {
             held.index = alloc_scope::within(Scope::Media, || held.pool.index());
         }
+        let shown = held.index.as_ref().and_then(|index| shown_frame(index, t));
         // The picture shown at `t`, if the preview already holds it.
-        if let Some(pts) = held.index.as_ref().and_then(|index| shown_at(index, t))
+        if let Some((_, pts)) = shown
             && let Some((s, p, frame)) = &held.last
             && *s == stream
             && *p == pts
         {
             return Ok(Arc::clone(frame));
         }
+        if let Some((n, _)) = shown {
+            // A frame read back: no lock, no allocation.
+            if held.readback_stream == stream
+                && let Some(frame) = held.readback.as_ref().and_then(|rb| rb.get(n))
+            {
+                let frame = Arc::clone(frame);
+                held.readback_used = self.frames.renders.get();
+                return Ok(frame);
+            }
+            // Read back when the step back is small enough for a window to serve the next few
+            // (playback, a step, a drag); a jump back decodes the one frame.
+            let capacity = self.readback_capacity(held, request.source_size);
+            let step = previous
+                .and_then(|p| held.index.as_ref().and_then(|index| shown_frame(index, p)))
+                .map_or(usize::MAX, |(m, _)| m.saturating_sub(n));
+            if backward && step <= (capacity / 4).max(1) && held.long_gop() {
+                let read = alloc_scope::within(Scope::Media, || {
+                    make_room(&mut map, request.media);
+                    match map.get_mut(&request.media) {
+                        Some(held) => self.read_back(held, stream, n, capacity),
+                        None => Ok(None),
+                    }
+                })?;
+                if let Some(frame) = read {
+                    return Ok(frame);
+                }
+            }
+        }
+        let held = map
+            .get_mut(&request.media)
+            .ok_or_else(|| FrameError::Unavailable(format!("media {}", request.media)))?;
         alloc_scope::within(Scope::Media, || self.fetch(held, stream, t))
     }
 }
