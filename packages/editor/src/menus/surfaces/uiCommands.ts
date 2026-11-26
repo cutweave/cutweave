@@ -33,6 +33,12 @@ import {
   pasteClips,
 } from "../../timeline/clipboard.ts";
 import { translator } from "../../timeline/errors.ts";
+import {
+  canReplaceWith,
+  pickedClip,
+  pickedMedia,
+  replaceClip,
+} from "../../timeline/replacePick.ts";
 import { transportController } from "../../transport/useTransport.ts";
 import { runWorkspaceCommand } from "../../workspace/commands.ts";
 import { floatPanel, movePanel, toggleMaximizePanel } from "../../workspace/dockHost.ts";
@@ -397,6 +403,34 @@ export const UI_COMMANDS: readonly UiCommand[] = [
       const from = attributesSource();
       if (from === null) return;
       menuDialogStore.getState().open({ kind: "paste-attributes", from, to: ctx.ids });
+    },
+  },
+  {
+    // Replace clip… (WP-2A.11): with a bin card picked that fits, replaces right away; otherwise
+    // asks for the media. Either way one `clip.replace`.
+    id: "timeline.replace_clip",
+    label: "contextMenu.item.replaceClip",
+    run: async (_args, ctx) => {
+      const item = ctx.ids[0];
+      if (item === undefined) return;
+      const media = pickedMedia();
+      if (media !== null && canReplaceWith(item, media)) {
+        await replaceClip(ctx.call, { item, media });
+        return;
+      }
+      menuDialogStore.getState().open({ kind: "replace-clip", item });
+    },
+  },
+  {
+    // Replace selected clip (the bin card's menu): the last clip picked on the timeline gets
+    // this card's media.
+    id: "bin.replace_clip",
+    label: "contextMenu.item.replaceSelectedClip",
+    run: async (args, ctx) => {
+      const item = pickedClip();
+      const media = arg<{ media?: string }>(args).media ?? ctx.ids[0];
+      if (item === null || media === undefined || !canReplaceWith(item, media)) return;
+      await replaceClip(ctx.call, { item, media });
     },
   },
   {

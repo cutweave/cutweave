@@ -16,10 +16,11 @@ import { layoutStore } from "../../media/layoutStore.ts";
 import { prefsStore } from "../../prefs/prefsStore.ts";
 import { docStore } from "../../state/docStore.ts";
 import { viewStore } from "../../state/viewStore.ts";
+import { canReplaceWith, pickedClip } from "../../timeline/replacePick.ts";
 import { folderSelection, mediaSelection } from "../adapters.ts";
 import type { LabelSpec, MenuContext, MenuRow, MenuSurfaceDef } from "../types.ts";
 import type { ContextValues } from "../when.ts";
-import { activeSequence, mediaAsset, mediaPath, sequenceEnd } from "./facts.ts";
+import { activeSequence, clipFact, mediaAsset, mediaPath, sequenceEnd } from "./facts.ts";
 import { revealLabel } from "./shared.ts";
 
 type Placement = "playhead" | "end";
@@ -99,6 +100,27 @@ const hasFile = (ctx: MenuContext): boolean =>
 const fileReason = (ctx: MenuContext) =>
   ctx.ids.length === 1 ? "contextMenu.reason.noFile" : "contextMenu.reason.oneAtATime";
 
+/** Replace selected clip: one card, and a clip picked on the timeline that it may replace. */
+const canReplaceClip = (ctx: MenuContext): boolean => {
+  const clip = pickedClip();
+  return (
+    ctx.ids.length === 1 &&
+    canReplaceWith(clip, ctx.ids[0] ?? null) &&
+    clipFact(clip ?? "")?.track.locked !== true
+  );
+};
+
+const replaceClipReason = (ctx: MenuContext) => {
+  const clip = pickedClip();
+  return ctx.ids.length !== 1
+    ? ("contextMenu.reason.oneAtATime" as const)
+    : clip === null
+      ? ("contextMenu.reason.noPickedClip" as const)
+      : clipFact(clip)?.track.locked === true
+        ? ("contextMenu.reason.trackLocked" as const)
+        : ("contextMenu.reason.cannotReplaceWith" as const);
+};
+
 /** What a card menu knows about its target. */
 export function binCardKeys(target: { ids: readonly string[] }): ContextValues {
   const project = docStore.getState().project;
@@ -160,6 +182,14 @@ export const BIN_CARD: MenuSurfaceDef = {
       enabledIf: canInsert,
       reason: insertReason,
       args: (ctx) => insertArgs(ctx, "end"),
+    },
+    {
+      command: "bin.replace_clip",
+      group: "place",
+      order: 1.5,
+      enabledIf: canReplaceClip,
+      reason: replaceClipReason,
+      args: (ctx) => ({ media: ctx.ids[0] }),
     },
     {
       id: "place-layout",

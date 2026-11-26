@@ -488,6 +488,47 @@ export type ClipPasteAttributesOutput = {
 };
 
 /**
+ *  Swaps the media of a clip (`item`) for `media` and keeps everything else: position, name,
+ *  transform, crop, opacity, blend, keyframes, audio settings, markers, links. `mode`:
+ *  `keep_duration` (default) plays the new media from `source_in` (default its start) for the
+ *  old length, shortening the clip (`shortened: true`) if the media is shorter; `keep_source_in`
+ *  starts where the old media was played from; `fit_to_source` plays from `source_in` to the
+ *  end of the new media, changing the length (the main track ripples, a free track may not grow
+ *  into the next item). Linked partners are replaced together; with no sound in the new media
+ *  they are unlinked and muted. Video may become a still (speed resets); audio and video
+ *  cannot replace each other (`Invalid` at `/media`). `Locked` if a track involved is locked.
+ */
+export type ClipReplace = {
+	/**  The clip. */
+	item: ItemId,
+	/**  The new media. */
+	media: MediaId,
+	/**  `keep_duration` (default), `keep_source_in` or `fit_to_source`. */
+	mode?: ReplaceMode | null,
+	/**
+	 *  Where the new media starts playing (default: its start). Not for `keep_source_in`, and
+	 *  not for stills.
+	 */
+	source_in?: TimeInput | null,
+};
+
+/**  Result of `clip.replace`. */
+export type ClipReplaceOutput = {
+	/**  The clip (its ID is unchanged). */
+	item: ItemId,
+	/**  The clips that now play the new media: `item` first, then its linked partners. */
+	replaced: ItemId[],
+	/**  Partners that were unlinked and muted because the new media has no sound. */
+	muted: ItemId[],
+	/**  The clip got shorter than before (the new media was too short). */
+	shortened: boolean,
+	/**  Speed and direction were reset (a video became a still). */
+	speed_reset: boolean,
+	/**  What changed (timeline spec §3.1). */
+	report: EditReport,
+};
+
+/**
  *  Plays a clip (`item`), or several (`items`), and their linked partners forwards at normal speed
  *  again, keeping the media they play (their length changes as in `clip.set_speed` with `keep:
  *  "in_point"`; `ripple` and `keyframes` as there).
@@ -4569,6 +4610,9 @@ export type RelinkedReport = {
 	/**  The item it is attached to now. */
 	attached_to: ItemId | null,
 };
+
+/**  How the new media is lined up and how long the clip becomes. */
+export type ReplaceMode = "keep_duration" | "keep_source_in" | "fit_to_source";
 
 /**  An item whose media changed (`clip.replace`). */
 export type ReplacedReport = {

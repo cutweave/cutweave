@@ -19,6 +19,7 @@ import { useDocStore } from "../state/docStore.ts";
 import { toastStore } from "../state/toastStore.ts";
 import { ATTRIBUTE_GROUPS, type AttributeGroup } from "../timeline/clipboard.ts";
 import { translator } from "../timeline/errors.ts";
+import { canReplaceWith, pickedMedia, replaceClip } from "../timeline/replacePick.ts";
 import { menuServices } from "./defaults.ts";
 import { menuDialogStore, useMenuDialog } from "./dialogs.ts";
 
@@ -364,6 +365,102 @@ function MoveTo({
   );
 }
 
+const REPLACE_MODES = ["keep_duration", "fit_to_source", "keep_source_in"] as const;
+type ReplaceMode = (typeof REPLACE_MODES)[number];
+
+const REPLACE_MODE_LABEL: Readonly<Record<ReplaceMode, TKey>> = {
+  keep_duration: "contextMenu.dialog.replaceModeKeepDuration",
+  fit_to_source: "contextMenu.dialog.replaceModeFit",
+  keep_source_in: "contextMenu.dialog.replaceModeKeepSourceIn",
+};
+
+/** Replace clip…: pick the media that takes the clip's place, and what happens to its length. */
+function ReplaceClip({ item }: { readonly item: string }) {
+  const { t } = useTranslation();
+  const project = useDocStore((s) => s.project);
+  const choices = useMemo(
+    () => selectMediaCards(project).filter((card) => canReplaceWith(item, card.id)),
+    [project, item],
+  );
+  const picked = pickedMedia();
+  const [media, setMedia] = useState<string | undefined>(
+    choices.find((card) => card.id === picked)?.id,
+  );
+  const [mode, setMode] = useState<ReplaceMode>("keep_duration");
+  const close = () => menuDialogStore.getState().close();
+  const submit = () => {
+    if (media === undefined) return;
+    close();
+    void replaceClip((name, args) => menuServices.call(name, args), { item, media, mode }).catch(
+      (error: unknown) => menuServices.report(error),
+    );
+  };
+  return (
+    <Dialog
+      open
+      onOpenChange={(open) => {
+        if (!open) close();
+      }}
+      title={t("contextMenu.dialog.replaceClipTitle")}
+      description={t(
+        choices.length === 0
+          ? "contextMenu.dialog.replaceClipNone"
+          : "contextMenu.dialog.replaceClipBody",
+      )}
+      onSubmit={submit}
+      footer={
+        <>
+          <Button variant="ghost" size="lg" onClick={close}>
+            {t("contextMenu.dialog.cancel")}
+          </Button>
+          <Button variant="primary" size="lg" disabled={media === undefined} onClick={submit}>
+            {t("contextMenu.dialog.replaceConfirm")}
+          </Button>
+        </>
+      }
+    >
+      {choices.length > 0 ? (
+        <>
+          <div
+            role="radiogroup"
+            aria-label={t("contextMenu.dialog.replaceClipMedia")}
+            className="cw-movelist"
+          >
+            {choices.map((card) => (
+              <label key={card.id} className="cw-movelist__row">
+                <input
+                  type="radio"
+                  name="replace-media"
+                  checked={media === card.id}
+                  onChange={() => setMedia(card.id)}
+                />
+                <span className="body">{card.name}</span>
+              </label>
+            ))}
+          </div>
+          <div
+            role="radiogroup"
+            aria-label={t("contextMenu.dialog.replaceMode")}
+            className="cw-movelist"
+          >
+            {REPLACE_MODES.map((option) => (
+              <label key={option} className="cw-movelist__row">
+                <input
+                  type="radio"
+                  name="replace-mode"
+                  checked={mode === option}
+                  onChange={() => setMode(option)}
+                />
+                <span className="body">{t(REPLACE_MODE_LABEL[option])}</span>
+              </label>
+            ))}
+          </div>
+        </>
+      ) : null}
+    </Dialog>
+  );
+}
+
 const ATTRIBUTE_LABEL: Readonly<Record<AttributeGroup, TKey>> = {
   transform: "contextMenu.dialog.attribute.transform",
   crop: "contextMenu.dialog.attribute.crop",
@@ -455,6 +552,8 @@ export function MenuDialogs() {
       return <DeleteFolder key={dialog.folder} folder={dialog.folder} rest={dialog.rest} />;
     case "move-to":
       return <MoveTo media={dialog.media} folders={dialog.folders} />;
+    case "replace-clip":
+      return <ReplaceClip key={dialog.item} item={dialog.item} />;
     case "paste-attributes":
       return <PasteAttributes key={dialog.from} from={dialog.from} to={dialog.to} />;
   }

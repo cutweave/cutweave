@@ -26,6 +26,7 @@ import { docStore } from "../../state/docStore.ts";
 import { toastStore } from "../../state/toastStore.ts";
 import { initialViewState, viewStore } from "../../state/viewStore.ts";
 import { clipboardStore } from "../../timeline/clipboard.ts";
+import { replacePickStore } from "../../timeline/replacePick.ts";
 import { buildMenu } from "../build.ts";
 import { registerBuiltinMenus } from "../builtins.ts";
 import { menuDialogStore } from "../dialogs.ts";
@@ -237,6 +238,7 @@ beforeEach(() => {
   viewStore.setState({ ...initialViewState, playhead: 5 * F });
   toastStore.getState().clear();
   menuDialogStore.getState().close();
+  replacePickStore.setState({ clip: null, media: null });
 });
 
 afterEach(() => {
@@ -868,6 +870,65 @@ describe("the clipboard rows (WP-2A.06)", () => {
     });
     // The copied clip itself is no target.
     expect(menuFor("timeline.clip", { ids: [C1] }).item("Paste attributes…").disabled).toBe(true);
+  });
+});
+
+describe("replace clip (WP-2A.11)", () => {
+  const pick = (kind: "item" | "media", id: string) =>
+    viewStore.getState().setSelection([{ kind, id } as never]);
+
+  it("replaces at once with the bin card picked before, as one clip.replace", async () => {
+    pick("media", MED_U);
+    pick("item", C2);
+    const m = menuFor("timeline.clip", { ids: [C2] });
+    expect(m.item("Replace clip…").disabled).toBeUndefined();
+    await m.choose("Replace clip…");
+    expect(call).toHaveBeenCalledTimes(1);
+    const [name, args] = call.mock.calls[0] ?? [];
+    expect(name).toBe("clip.replace");
+    expect(args).toEqual({ item: C2, media: MED_U });
+    expect(schemaProblems("clip.replace", args)).toEqual([]);
+    expect(menuDialogStore.getState().dialog).toBeNull();
+  });
+
+  it("asks for the media when no card fits: none picked, or sound for a picture", async () => {
+    await menuFor("timeline.clip", { ids: [C2] }).choose("Replace clip…");
+    expect(call).not.toHaveBeenCalled();
+    expect(menuDialogStore.getState().dialog).toEqual({ kind: "replace-clip", item: C2 });
+    menuDialogStore.getState().close();
+    pick("media", MED_A);
+    await menuFor("timeline.clip", { ids: [C2] }).choose("Replace clip…");
+    expect(call).not.toHaveBeenCalled();
+    expect(menuDialogStore.getState().dialog).toEqual({ kind: "replace-clip", item: C2 });
+  });
+
+  it("says why it cannot run: several clips, a locked track", () => {
+    expect(menuFor("timeline.clip", { ids: [C1, C2] }).item("Replace clip…").disabledReason).toBe(
+      "Select one clip",
+    );
+    expect(menuFor("timeline.clip", { ids: [CL] }).item("Replace clip…").disabledReason).toBe(
+      "Track is locked",
+    );
+  });
+
+  it("offers Replace selected clip on a card for the clip picked on the timeline", async () => {
+    expect(menuFor("bin.card", { ids: [MED_U] }).item("Replace selected clip").disabledReason).toBe(
+      "Pick a clip on the timeline first",
+    );
+    pick("item", C1);
+    const m = menuFor("bin.card", { ids: [MED_U] });
+    expect(m.item("Replace selected clip").disabled).toBeUndefined();
+    await m.choose("Replace selected clip");
+    const [name, args] = call.mock.calls[0] ?? [];
+    expect(name).toBe("clip.replace");
+    expect(args).toEqual({ item: C1, media: MED_U });
+    expect(schemaProblems("clip.replace", args)).toEqual([]);
+    expect(menuFor("bin.card", { ids: [MED_A] }).item("Replace selected clip").disabledReason).toBe(
+      "This media cannot replace the clip you picked",
+    );
+    expect(menuFor("bin.card", { ids: [MED_V] }).item("Replace selected clip").disabledReason).toBe(
+      "This media cannot replace the clip you picked",
+    );
   });
 });
 

@@ -28,6 +28,8 @@ export type MenuDialog =
   | { readonly kind: "delete-folder"; readonly folder: string; readonly rest: readonly string[] }
   // Paste attributes… (WP-2A.06): which groups of `from` go onto the clips `to`.
   | { readonly kind: "paste-attributes"; readonly from: string; readonly to: readonly string[] }
+  // Replace clip… (WP-2A.11): which media takes the clip's place, and how long the clip stays.
+  | { readonly kind: "replace-clip"; readonly item: string }
   // The folder picker of "Move to…" for the assets and folders chosen.
   | {
       readonly kind: "move-to";

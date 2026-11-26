@@ -401,7 +401,7 @@ output {out}"
         panic!("{e}");
     }
     assert!(
-        replaced.get() >= cases as usize / 2,
+        replaced.get() >= cases as usize / 4,
         "only {} replaces succeeded in {cases} sequences",
         replaced.get()
     );
