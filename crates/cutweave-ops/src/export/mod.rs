@@ -41,9 +41,9 @@ pub mod range;
 
 use crate::media::{AllowedRoots, OUTSIDE_ROOTS_HINT};
 use crate::util::check_abs_path;
+pub use advanced::AdvancedExportOptions;
 pub use output::Collision;
 use output::{Policy, Template};
-pub use advanced::AdvancedExportOptions;
 use presets::{AudioCodec, Container, PlanRate, PresetStore, PresetWarning, VideoCodec};
 pub use range::{ExportRange, PairMode, RangeKind, Region};
 
@@ -230,7 +230,8 @@ pub struct ExportedFile {
 /// now; later edits do not change it. Agents and headless callers may only write inside the
 /// project folder and folders the user approved. `range.kind` picks the part: "sequence",
 /// "in_out" (the sequence's in/out points), "custom" (`in`, `out`) or "markers" (one file per
-/// marker: `path` is a folder or an .mp4 name template with {seq}, {marker_label}, {n}; the
+/// marker: `path` is a folder or a name template ending in the container's extension (.mp4;
+/// .mov for ProRes) with {seq}, {marker_label}, {n}; the
 /// output lists every job). `collision` says what happens to an existing file: "fail"
 /// (default), "rename" (pick a free name) or "overwrite" (replace it when the export
 /// succeeds). Fails with `Invalid` when the drive has too little free space.
@@ -260,12 +261,8 @@ pub struct ExportStart {
     pub overwrite: Option<bool>,
     /// An existing file: "fail" (default), "rename" or "overwrite".
     pub collision: Option<Collision>,
-    /// Fine control (export.describe_options lists the options of a codec): {video:
-    /// {rate_control: {mode: crf|cbr|vbr|cq, crf, bitrate_kbps, max_bitrate_kbps, buffer_kbit},
-    /// gop: {keyint | keyint_seconds, keyint_min, bframes, closed_gop, scenecut}, preset, tune,
-    /// profile, level, pix_fmt, threads}, color: {primaries, transfer, matrix, range, tag_only},
-    /// audio: {codec, bitrate_kbps, sample_rate, channels}}. Impossible combinations fail with
-    /// Invalid and a hint.
+    /// Fine control of rate control, GOP, encoder, color tags and audio. Impossible combinations
+    /// fail with Invalid and a hint.
     pub advanced: Option<AdvancedExportOptions>,
 }
 
@@ -776,6 +773,19 @@ pub struct ExportRequest<'a> {
 }
 
 impl ExportRequest<'_> {
+    /// The extension of the file the preset writes (`mov` for ProRes), `mp4` when the request
+    /// names no preset this build can resolve (that error is reported where it belongs).
+    fn container_extension(&self, presets: &PresetStore) -> &'static str {
+        let id = match self.preset {
+            Some(ExportPreset::Id(id)) => Some(id),
+            Some(ExportPreset::Custom(c)) => c.preset.as_ref(),
+            _ => None,
+        };
+        id.and_then(|id| presets.get(id))
+            .and_then(|spec| spec.plan_output().ok())
+            .map_or("mp4", |out| out.extension())
+    }
+
     /// Whether the range is a marker set.
     fn is_marker_set(&self) -> bool {
         self.range.is_some_and(|r| {
@@ -798,7 +808,7 @@ impl ExportRequest<'_> {
         let policy = Policy::of(self.collision, self.overwrite)?;
         let template = if self.is_marker_set() {
             check_abs_path("/path", self.path)?;
-            let t = Template::parse(self.path)?;
+            let t = Template::parse(self.path, self.container_extension(presets))?;
             if regions.len() > 1 && !t.varies() {
                 return Err(CmdError::invalid(
                     "/path",
@@ -855,14 +865,7 @@ impl ExportRequest<'_> {
             let mut hw = self.hw.cloned().or(preset_hw).unwrap_or_default();
             hw.check()?;
             if let Some(adv) = advanced::merge(preset_advanced.as_ref(), self.advanced) {
-                hw = advanced::apply(
-                    &adv,
-                    &mut output,
-                    &mut rate,
-                    hw,
-                    frame_rate,
-                    &mut warnings,
-                )?;
+                hw = advanced::apply(&adv, &mut output, &mut rate, hw, frame_rate, &mut warnings)?;
             }
             let wanted = match &template {
                 Some(t) => {

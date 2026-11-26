@@ -67,7 +67,9 @@ use crate::backend::{
 };
 use crate::encode::{InputCheck, output_color};
 use crate::path::display;
-use crate::{AudioChunk, CancelCheck, MediaError, PixelFormat, ProgressSink, RateControl, VideoFrame};
+use crate::{
+    AudioChunk, CancelCheck, MediaError, PixelFormat, ProgressSink, RateControl, VideoFrame,
+};
 
 /// The containers this encoder writes.
 const MP4: &str = "mp4";
@@ -429,7 +431,10 @@ impl VideoPlan {
         ) {
             return Err(unsupported(format!(
                 "output transfer {}: HDR output is not exported yet",
-                color.transfer.as_ref().map_or("", TransferCharacteristics::as_str)
+                color
+                    .transfer
+                    .as_ref()
+                    .map_or("", TransferCharacteristics::as_str)
             )));
         }
         if let Some(name) = unknown_color_name(&color) {
@@ -639,8 +644,9 @@ impl AudioPlan {
                 )));
             }
         };
-        let codec = encoder::find_by_name(encoder_name)
-            .ok_or_else(|| unsupported(format!("this FFmpeg build has no {encoder_name} encoder")))?;
+        let codec = encoder::find_by_name(encoder_name).ok_or_else(|| {
+            unsupported(format!("this FFmpeg build has no {encoder_name} encoder"))
+        })?;
         let channels_ok = if matches!(name, AAC | MP3 | OPUS) {
             matches!(spec.channels, 1 | 2)
         } else {

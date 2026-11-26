@@ -786,7 +786,9 @@ impl EncodeSide<'_> {
             .map_err(Stop::Media)?;
             let frame_end = at(i64::from(expected) + 1)?;
             self.audio.push_until(
-                self.audio.rate.time_to_samples(frame_end, Rounding::Nearest),
+                self.audio
+                    .rate
+                    .time_to_samples(frame_end, Rounding::Nearest),
                 sink,
             )?;
             self.progress.frame(expected + 1);

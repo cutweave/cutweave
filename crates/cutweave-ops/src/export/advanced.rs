@@ -41,6 +41,7 @@ use cutweave_model::{
     ColorPrimaries, ColorRange, ColorTags, Duration, FrameRate, MatrixCoefficients,
     TransferCharacteristics,
 };
+use cutweave_commands::__private::schemars::{Schema, SchemaGenerator, json_schema};
 use serde_json::{Value, json};
 
 use super::presets::{
@@ -249,9 +250,25 @@ pub struct AdvancedAudio {
     pub channels: Option<AudioChannels>,
 }
 
+/// The tool-list schema of [`AdvancedExportOptions`]: names only. The tool list of an agent is
+/// size-limited (arch §14, R36), so the full per-encoder schema is the answer of
+/// `export.describe_options` instead of being repeated in `export.start`.
+fn compact_schema(_: &mut SchemaGenerator) -> Schema {
+    json_schema!({
+        "type": "object",
+        "description": "Fine control of the encode; export.describe_options{codec} gives the JSON Schema of a codec's options. video{rate_control{mode crf|cbr|vbr|cq, crf, bitrate_kbps, max_bitrate_kbps, buffer_kbit}, gop{keyint|keyint_seconds, keyint_min, bframes, closed_gop, scenecut}, preset, tune, profile, level, pix_fmt, threads}, color{primaries, transfer, matrix, range, tag_only}, audio{codec, bitrate_kbps, sample_rate, channels}",
+        "properties": {
+            "video": {"type": "object"},
+            "color": {"type": "object"},
+            "audio": {"type": "object"}
+        }
+    })
+}
+
 /// Fine control of the encode; every field is optional and absent ones keep the preset's value.
 #[wire]
 #[derive(Default)]
+#[schemars(schema_with = "compact_schema")]
 pub struct AdvancedExportOptions {
     /// Video encoder.
     #[serde(default)]
@@ -561,7 +578,13 @@ fn bad(pointer: &str, msg: impl Into<String>) -> CmdError {
 }
 
 /// A name in `allowed`, or an `Invalid` that lists them.
-fn one_of(pointer: &str, what: &str, value: &str, allowed: &[&str], hint: &str) -> Result<(), CmdError> {
+fn one_of(
+    pointer: &str,
+    what: &str,
+    value: &str,
+    allowed: &[&str],
+    hint: &str,
+) -> Result<(), CmdError> {
     if allowed.contains(&value) {
         return Ok(());
     }
@@ -570,7 +593,10 @@ fn one_of(pointer: &str, what: &str, value: &str, allowed: &[&str], hint: &str) 
     }
     Err(bad(
         pointer,
-        format!("{what} `{value}` is not one of {}; {hint}", allowed.join(", ")),
+        format!(
+            "{what} `{value}` is not one of {}; {hint}",
+            allowed.join(", ")
+        ),
     ))
 }
 
@@ -742,7 +768,9 @@ pub fn apply(
                 && l.bytes().next().is_some_and(|b| (b'1'..=b'6').contains(&b))
                 && (l.len() == 1
                     || (l.as_bytes().get(1) == Some(&b'.')
-                        && l.as_bytes().get(2).is_some_and(|b| (b'0'..=b'2').contains(b))));
+                        && l.as_bytes()
+                            .get(2)
+                            .is_some_and(|b| (b'0'..=b'2').contains(b))));
             if !ok {
                 return Err(bad(
                     "/advanced/video/level",
@@ -821,7 +849,11 @@ fn prores_checks(v: &AdvancedVideo) -> Result<(), CmdError> {
         ));
     }
     for (pointer, given, what) in [
-        ("/advanced/video/preset", v.preset.is_some(), "an encoder preset"),
+        (
+            "/advanced/video/preset",
+            v.preset.is_some(),
+            "an encoder preset",
+        ),
         ("/advanced/video/tune", v.tune.is_some(), "a tune"),
         ("/advanced/video/level", v.level.is_some(), "a level"),
     ] {
@@ -890,7 +922,10 @@ fn rate_control(
     if let Some(crf) = rc.crf
         && crf > 51
     {
-        return Err(bad(&format!("{P}/crf"), "must be 0 to 51 (lower is better)"));
+        return Err(bad(
+            &format!("{P}/crf"),
+            "must be 0 to 51 (lower is better)",
+        ));
     }
     let kbps = |pointer: &str, v: Option<u32>| -> Result<Option<u32>, CmdError> {
         if let Some(v) = v
@@ -912,7 +947,10 @@ fn rate_control(
             if sets_bitrate {
                 format!("mode `{}` needs bitrate_kbps", rc.mode.name())
             } else {
-                format!("mode `{}` sets a quality; leave bitrate_kbps out", rc.mode.name())
+                format!(
+                    "mode `{}` sets a quality; leave bitrate_kbps out",
+                    rc.mode.name()
+                )
             },
         ));
     }
@@ -946,7 +984,14 @@ fn rate_control(
     }
     if (max.is_some() || rc.buffer_kbit.is_some()) && !caps.vbv {
         return Err(bad(
-            &format!("{P}/{}", if max.is_some() { "max_bitrate_kbps" } else { "buffer_kbit" }),
+            &format!(
+                "{P}/{}",
+                if max.is_some() {
+                    "max_bitrate_kbps"
+                } else {
+                    "buffer_kbit"
+                }
+            ),
             "this encoder has no peak or buffer control; leave it out, or use hw: \"off\" \
              (software)",
         ));
@@ -990,12 +1035,18 @@ fn gop(
         ));
     }
     if (g.keyint.is_some() || g.keyint_seconds.is_some()) && !caps.keyint {
-        return Err(bad(&format!("{P}/keyint"), "this encoder takes no keyframe interval"));
+        return Err(bad(
+            &format!("{P}/keyint"),
+            "this encoder takes no keyframe interval",
+        ));
     }
     let keyint = match (g.keyint, g.keyint_seconds) {
         (Some(k), _) => {
             if !(1..=MAX_KEYINT).contains(&k) {
-                return Err(bad(&format!("{P}/keyint"), format!("must be 1 to {MAX_KEYINT} frames")));
+                return Err(bad(
+                    &format!("{P}/keyint"),
+                    format!("must be 1 to {MAX_KEYINT} frames"),
+                ));
             }
             Some(k)
         }
@@ -1003,7 +1054,9 @@ fn gop(
             if !(1..=MAX_KEYINT_SECONDS).contains(&s) {
                 return Err(bad(
                     &format!("{P}/keyint_seconds"),
-                    format!("must be 1 to {MAX_KEYINT_SECONDS} seconds; use keyint for fractions of a second"),
+                    format!(
+                        "must be 1 to {MAX_KEYINT_SECONDS} seconds; use keyint for fractions of a second"
+                    ),
                 ));
             }
             Some(keyint_frames(s, frame_rate).min(MAX_KEYINT))
@@ -1013,7 +1066,10 @@ fn gop(
     next.keyint = keyint;
     if let Some(min) = g.keyint_min {
         if !sw.keyint_min {
-            return Err(bad(&format!("{P}/keyint_min"), "this codec takes no minimum keyframe distance; leave it out"));
+            return Err(bad(
+                &format!("{P}/keyint_min"),
+                "this codec takes no minimum keyframe distance; leave it out",
+            ));
         }
         if min == 0 || keyint.is_some_and(|k| min > k) || min > MAX_KEYINT {
             return Err(bad(
@@ -1032,20 +1088,29 @@ fn gop(
             ));
         }
         if b > MAX_BFRAMES {
-            return Err(bad(&format!("{P}/bframes"), format!("at most {MAX_BFRAMES}")));
+            return Err(bad(
+                &format!("{P}/bframes"),
+                format!("at most {MAX_BFRAMES}"),
+            ));
         }
         next.bframes = Some(b);
     }
     if let Some(c) = g.closed_gop {
         if !sw.closed_gop {
-            return Err(bad(&format!("{P}/closed_gop"), "this codec has no GOP setting; leave it out"));
+            return Err(bad(
+                &format!("{P}/closed_gop"),
+                "this codec has no GOP setting; leave it out",
+            ));
         }
         soft.add("/advanced/video/gop/closed_gop", "closed_gop");
         next.closed_gop = Some(c);
     }
     if let Some(s) = g.scenecut {
         if !sw.scenecut {
-            return Err(bad(&format!("{P}/scenecut"), "this codec has no scene-cut setting; leave it out"));
+            return Err(bad(
+                &format!("{P}/scenecut"),
+                "this codec has no scene-cut setting; leave it out",
+            ));
         }
         soft.add("/advanced/video/gop/scenecut", "scenecut");
         next.scenecut = Some(s);
@@ -1147,7 +1212,10 @@ fn audio(
                 "{} does not go into {into}: use {}{}",
                 codec.name(),
                 names.join(", "),
-                if matches!(codec, AdvancedAudioCodec::PcmS16 | AdvancedAudioCodec::PcmS24) {
+                if matches!(
+                    codec,
+                    AdvancedAudioCodec::PcmS16 | AdvancedAudioCodec::PcmS24
+                ) {
                     ", or a MOV preset for PCM"
                 } else {
                     ""
@@ -1166,7 +1234,11 @@ fn audio(
             let list: Vec<String> = codec.rates().iter().map(ToString::to_string).collect();
             return Err(bad(
                 &format!("{P}/sample_rate"),
-                format!("{} takes {} Hz; change the sample rate or the codec", codec.name(), list.join(" or ")),
+                format!(
+                    "{} takes {} Hz; change the sample rate or the codec",
+                    codec.name(),
+                    list.join(" or ")
+                ),
             ));
         }
         next.audio_sample_rate = Some(rate);
@@ -1175,14 +1247,20 @@ fn audio(
     {
         return Err(bad(
             &format!("{P}/codec"),
-            format!("{} does not take {rate} Hz; change the sample rate too", codec.name()),
+            format!(
+                "{} does not take {rate} Hz; change the sample rate too",
+                codec.name()
+            ),
         ));
     }
     if let Some(kbps) = a.bitrate_kbps {
         let Some((lo, hi)) = codec.bitrates() else {
             return Err(bad(
                 &format!("{P}/bitrate_kbps"),
-                format!("{} is lossless and has no bitrate; leave it out", codec.name()),
+                format!(
+                    "{} is lossless and has no bitrate; leave it out",
+                    codec.name()
+                ),
             ));
         };
         if !(lo..=hi).contains(&kbps) {
@@ -1254,11 +1332,15 @@ pub fn estimated_bytes(
         PlanRate::Crf(_) => return None,
     };
     let audio_kbps = match output.audio_codec {
-        AudioCodec::Aac | AudioCodec::Mp3 | AudioCodec::Opus => u64::from(
-            output
-                .audio_bitrate_kbps
-                .unwrap_or(if output.audio_codec == AudioCodec::Opus { 128 } else { 192 }),
-        ),
+        AudioCodec::Aac | AudioCodec::Mp3 | AudioCodec::Opus => {
+            u64::from(output.audio_bitrate_kbps.unwrap_or(
+                if output.audio_codec == AudioCodec::Opus {
+                    128
+                } else {
+                    192
+                },
+            ))
+        }
         AudioCodec::Pcm => {
             let channels = u64::from(output.advanced.audio_channels.unwrap_or(2));
             let hz = u64::from(output.advanced.audio_sample_rate.unwrap_or(48_000));
@@ -1303,6 +1385,7 @@ pub struct DescribeOptionsOutput {
     /// Whether it is a hardware encoder.
     pub hardware: bool,
     /// JSON Schema of `advanced` for this encoder.
+    #[specta(type = specta_typescript::Any)]
     pub schema: Value,
 }
 
@@ -1379,7 +1462,10 @@ pub fn options_schema(caps: &Caps, container: Container) -> Value {
         );
     }
     if caps.keyint_min {
-        gop.insert("keyint_min".into(), json!({"type": "integer", "minimum": 1}));
+        gop.insert(
+            "keyint_min".into(),
+            json!({"type": "integer", "minimum": 1}),
+        );
     }
     if caps.bframes {
         gop.insert(
@@ -1474,7 +1560,8 @@ impl EngineCommand for DescribeOptions {
                     VideoCodec::Av1 => "av1_",
                     _ => "",
                 };
-                let family = Family::of(name).filter(|_| !want.is_empty() && name.starts_with(want));
+                let family =
+                    Family::of(name).filter(|_| !want.is_empty() && name.starts_with(want));
                 match family {
                     Some(f) => (name.clone(), hardware_caps(self.codec, f), true),
                     None if name == software_encoder(self.codec) => {
@@ -1493,11 +1580,13 @@ impl EngineCommand for DescribeOptions {
                 }
             }
         };
-        let container = self.container.unwrap_or(if self.codec == VideoCodec::Prores {
-            Container::Mov
-        } else {
-            Container::Mp4
-        });
+        let container = self
+            .container
+            .unwrap_or(if self.codec == VideoCodec::Prores {
+                Container::Mov
+            } else {
+                Container::Mp4
+            });
         Ok(DescribeOptionsOutput {
             codec: self.codec,
             schema: options_schema(&caps, container),
@@ -1551,7 +1640,14 @@ mod tests {
         let mut out = output(codec);
         let mut rate = None;
         let mut warnings = Vec::new();
-        let hw = apply(adv, &mut out, &mut rate, hw, FrameRate::FPS_30, &mut warnings)?;
+        let hw = apply(
+            adv,
+            &mut out,
+            &mut rate,
+            hw,
+            FrameRate::FPS_30,
+            &mut warnings,
+        )?;
         Ok((out, rate, hw, warnings))
     }
 
@@ -1600,11 +1696,25 @@ mod tests {
     fn each_rate_mode_needs_its_numbers_and_refuses_the_others() {
         let ok = |r: AdvancedRate, codec| run(&with_rate(r), codec, ExportHw::Off);
         // crf
-        let (_, rate, ..) = ok(AdvancedRate { crf: Some(18), ..rc(RateMode::Crf) }, VideoCodec::H264).unwrap();
+        let (_, rate, ..) = ok(
+            AdvancedRate {
+                crf: Some(18),
+                ..rc(RateMode::Crf)
+            },
+            VideoCodec::H264,
+        )
+        .unwrap();
         assert_eq!(rate, Some(PlanRate::Crf(18)));
-        assert!(ok(rc(RateMode::Crf), VideoCodec::H264).is_err(), "crf needs a crf");
+        assert!(
+            ok(rc(RateMode::Crf), VideoCodec::H264).is_err(),
+            "crf needs a crf"
+        );
         let e = ok(
-            AdvancedRate { crf: Some(18), bitrate_kbps: Some(8000), ..rc(RateMode::Crf) },
+            AdvancedRate {
+                crf: Some(18),
+                bitrate_kbps: Some(8000),
+                ..rc(RateMode::Crf)
+            },
             VideoCodec::H264,
         )
         .unwrap_err();
@@ -1612,7 +1722,11 @@ mod tests {
         assert!(message(&e).contains("quality"), "{e}");
         // cbr
         let (out, rate, ..) = ok(
-            AdvancedRate { bitrate_kbps: Some(8000), buffer_kbit: Some(4000), ..rc(RateMode::Cbr) },
+            AdvancedRate {
+                bitrate_kbps: Some(8000),
+                buffer_kbit: Some(4000),
+                ..rc(RateMode::Cbr)
+            },
             VideoCodec::H264,
         )
         .unwrap();
@@ -1620,34 +1734,79 @@ mod tests {
         assert_eq!(out.advanced.buffer_kbit, Some(4000));
         assert!(
             ok(
-                AdvancedRate { bitrate_kbps: Some(8000), max_bitrate_kbps: Some(9000), ..rc(RateMode::Cbr) },
+                AdvancedRate {
+                    bitrate_kbps: Some(8000),
+                    max_bitrate_kbps: Some(9000),
+                    ..rc(RateMode::Cbr)
+                },
                 VideoCodec::H264
             )
             .is_err()
         );
         // vbr with a cap below the average
         let e = ok(
-            AdvancedRate { bitrate_kbps: Some(8000), max_bitrate_kbps: Some(4000), ..rc(RateMode::Vbr) },
+            AdvancedRate {
+                bitrate_kbps: Some(8000),
+                max_bitrate_kbps: Some(4000),
+                ..rc(RateMode::Vbr)
+            },
             VideoCodec::Hevc,
         )
         .unwrap_err();
         assert_eq!(pointer(&e), "/advanced/video/rate_control/max_bitrate_kbps");
         // cq needs the cap
         let (out, rate, ..) = ok(
-            AdvancedRate { crf: Some(20), max_bitrate_kbps: Some(6000), ..rc(RateMode::Cq) },
+            AdvancedRate {
+                crf: Some(20),
+                max_bitrate_kbps: Some(6000),
+                ..rc(RateMode::Cq)
+            },
             VideoCodec::H264,
         )
         .unwrap();
-        assert_eq!((rate, out.advanced.max_bitrate_kbps), (Some(PlanRate::Crf(20)), Some(6000)));
-        assert!(ok(AdvancedRate { crf: Some(20), ..rc(RateMode::Cq) }, VideoCodec::H264).is_err());
+        assert_eq!(
+            (rate, out.advanced.max_bitrate_kbps),
+            (Some(PlanRate::Crf(20)), Some(6000))
+        );
+        assert!(
+            ok(
+                AdvancedRate {
+                    crf: Some(20),
+                    ..rc(RateMode::Cq)
+                },
+                VideoCodec::H264
+            )
+            .is_err()
+        );
         // out of range
-        assert!(ok(AdvancedRate { crf: Some(52), ..rc(RateMode::Crf) }, VideoCodec::H264).is_err());
-        assert!(ok(AdvancedRate { bitrate_kbps: Some(10), ..rc(RateMode::Vbr) }, VideoCodec::H264).is_err());
+        assert!(
+            ok(
+                AdvancedRate {
+                    crf: Some(52),
+                    ..rc(RateMode::Crf)
+                },
+                VideoCodec::H264
+            )
+            .is_err()
+        );
+        assert!(
+            ok(
+                AdvancedRate {
+                    bitrate_kbps: Some(10),
+                    ..rc(RateMode::Vbr)
+                },
+                VideoCodec::H264
+            )
+            .is_err()
+        );
     }
 
     #[test]
     fn constant_bitrate_is_refused_on_av1_and_two_pass_is_unsupported() {
-        let cbr = with_rate(AdvancedRate { bitrate_kbps: Some(4000), ..rc(RateMode::Cbr) });
+        let cbr = with_rate(AdvancedRate {
+            bitrate_kbps: Some(4000),
+            ..rc(RateMode::Cbr)
+        });
         let e = run(&cbr, VideoCodec::Av1, ExportHw::Off).unwrap_err();
         assert_eq!(pointer(&e), "/advanced/video/rate_control/mode");
         assert!(message(&e).contains("vbr"), "{e}");
@@ -1671,7 +1830,12 @@ mod tests {
             ..AdvancedVideo::default()
         });
         // Forced hardware: refused with the way out.
-        let e = run(&closed, VideoCodec::Hevc, ExportHw::Force("hevc_nvenc".into())).unwrap_err();
+        let e = run(
+            &closed,
+            VideoCodec::Hevc,
+            ExportHw::Force("hevc_nvenc".into()),
+        )
+        .unwrap_err();
         assert_eq!(pointer(&e), "/advanced/video/gop/closed_gop");
         assert!(message(&e).contains("hw: \"off\""), "{e}");
         // Auto: software, with a warning.
@@ -1684,16 +1848,31 @@ mod tests {
         assert_eq!((hw, warnings.len()), (ExportHw::Off, 0));
         // The basics stay on the hardware encoder under Auto.
         let basics = video(AdvancedVideo {
-            rate_control: Some(AdvancedRate { bitrate_kbps: Some(6000), ..rc(RateMode::Cbr) }),
-            gop: Some(AdvancedGop { keyint: Some(60), bframes: Some(2), ..AdvancedGop::default() }),
+            rate_control: Some(AdvancedRate {
+                bitrate_kbps: Some(6000),
+                ..rc(RateMode::Cbr)
+            }),
+            gop: Some(AdvancedGop {
+                keyint: Some(60),
+                bframes: Some(2),
+                ..AdvancedGop::default()
+            }),
             preset: Some("slow".into()),
             ..AdvancedVideo::default()
         });
         let (out, _, hw, warnings) = run(&basics, VideoCodec::H264, ExportHw::Auto).unwrap();
         assert_eq!((hw, warnings.len()), (ExportHw::Auto, 0));
-        assert_eq!((out.advanced.keyint, out.advanced.bframes), (Some(60), Some(2)));
+        assert_eq!(
+            (out.advanced.keyint, out.advanced.bframes),
+            (Some(60), Some(2))
+        );
         // VideoToolbox has no constant bitrate: refused up front with the way out.
-        let e = run(&basics, VideoCodec::H264, ExportHw::Force("h264_videotoolbox".into())).unwrap_err();
+        let e = run(
+            &basics,
+            VideoCodec::H264,
+            ExportHw::Force("h264_videotoolbox".into()),
+        )
+        .unwrap_err();
         assert_eq!(pointer(&e), "/advanced/video/rate_control/mode");
         assert!(message(&e).contains("vbr"), "{e}");
     }
@@ -1706,15 +1885,30 @@ mod tests {
         assert_eq!(keyint_frames(2, FrameRate::FPS_29_97), 60);
         assert_eq!(keyint_frames(1, FrameRate::FPS_23_976), 24);
         let adv = video(AdvancedVideo {
-            gop: Some(AdvancedGop { keyint_seconds: Some(2), ..AdvancedGop::default() }),
+            gop: Some(AdvancedGop {
+                keyint_seconds: Some(2),
+                ..AdvancedGop::default()
+            }),
             ..AdvancedVideo::default()
         });
         let mut out = output(VideoCodec::H264);
-        apply(&adv, &mut out, &mut None, ExportHw::Off, FrameRate::FPS_25, &mut Vec::new()).unwrap();
+        apply(
+            &adv,
+            &mut out,
+            &mut None,
+            ExportHw::Off,
+            FrameRate::FPS_25,
+            &mut Vec::new(),
+        )
+        .unwrap();
         assert_eq!(out.advanced.keyint, Some(50));
         // Both at once is a mistake.
         let both = video(AdvancedVideo {
-            gop: Some(AdvancedGop { keyint: Some(10), keyint_seconds: Some(2), ..AdvancedGop::default() }),
+            gop: Some(AdvancedGop {
+                keyint: Some(10),
+                keyint_seconds: Some(2),
+                ..AdvancedGop::default()
+            }),
             ..AdvancedVideo::default()
         });
         assert!(run(&both, VideoCodec::H264, ExportHw::Off).is_err());
@@ -1722,36 +1916,127 @@ mod tests {
 
     #[test]
     fn gop_limits_and_codec_support() {
-        let gop = |g: AdvancedGop| video(AdvancedVideo { gop: Some(g), ..AdvancedVideo::default() });
-        assert!(run(&gop(AdvancedGop { keyint: Some(0), ..AdvancedGop::default() }), VideoCodec::H264, ExportHw::Off).is_err());
-        assert!(run(&gop(AdvancedGop { keyint: Some(60), keyint_min: Some(90), ..AdvancedGop::default() }), VideoCodec::H264, ExportHw::Off).is_err());
+        let gop = |g: AdvancedGop| {
+            video(AdvancedVideo {
+                gop: Some(g),
+                ..AdvancedVideo::default()
+            })
+        };
+        assert!(
+            run(
+                &gop(AdvancedGop {
+                    keyint: Some(0),
+                    ..AdvancedGop::default()
+                }),
+                VideoCodec::H264,
+                ExportHw::Off
+            )
+            .is_err()
+        );
+        assert!(
+            run(
+                &gop(AdvancedGop {
+                    keyint: Some(60),
+                    keyint_min: Some(90),
+                    ..AdvancedGop::default()
+                }),
+                VideoCodec::H264,
+                ExportHw::Off
+            )
+            .is_err()
+        );
         // SVT-AV1 has no B-frame count and no minimum distance.
         for g in [
-            AdvancedGop { bframes: Some(2), ..AdvancedGop::default() },
-            AdvancedGop { keyint_min: Some(2), ..AdvancedGop::default() },
+            AdvancedGop {
+                bframes: Some(2),
+                ..AdvancedGop::default()
+            },
+            AdvancedGop {
+                keyint_min: Some(2),
+                ..AdvancedGop::default()
+            },
         ] {
             assert!(run(&gop(g), VideoCodec::Av1, ExportHw::Off).is_err());
         }
-        assert!(run(&gop(AdvancedGop { closed_gop: Some(true), scenecut: Some(false), keyint: Some(48), ..AdvancedGop::default() }), VideoCodec::Av1, ExportHw::Off).is_ok());
+        assert!(
+            run(
+                &gop(AdvancedGop {
+                    closed_gop: Some(true),
+                    scenecut: Some(false),
+                    keyint: Some(48),
+                    ..AdvancedGop::default()
+                }),
+                VideoCodec::Av1,
+                ExportHw::Off
+            )
+            .is_ok()
+        );
     }
 
     #[test]
     fn profile_pixel_format_tune_and_level_agree_with_the_codec() {
         let v = |v: AdvancedVideo| run(&video(v), VideoCodec::Hevc, ExportHw::Off);
         // main10 turns the video 10-bit.
-        let (out, ..) = v(AdvancedVideo { profile: Some("main10".into()), ..AdvancedVideo::default() }).unwrap();
-        assert_eq!((out.profile.as_deref(), out.bit_depth), (Some("main10"), 10));
+        let (out, ..) = v(AdvancedVideo {
+            profile: Some("main10".into()),
+            ..AdvancedVideo::default()
+        })
+        .unwrap();
+        assert_eq!(
+            (out.profile.as_deref(), out.bit_depth),
+            (Some("main10"), 10)
+        );
         // main with 10-bit pixels disagree.
-        let e = v(AdvancedVideo { profile: Some("main".into()), pix_fmt: Some("yuv420p10le".into()), ..AdvancedVideo::default() }).unwrap_err();
+        let e = v(AdvancedVideo {
+            profile: Some("main".into()),
+            pix_fmt: Some("yuv420p10le".into()),
+            ..AdvancedVideo::default()
+        })
+        .unwrap_err();
         assert!(message(&e).contains("main10"), "{e}");
-        assert!(v(AdvancedVideo { tune: Some("film".into()), ..AdvancedVideo::default() }).is_err(), "film is x264's");
-        assert!(v(AdvancedVideo { tune: Some("grain".into()), level: Some("4.1".into()), ..AdvancedVideo::default() }).is_ok());
-        assert!(v(AdvancedVideo { level: Some("9".into()), ..AdvancedVideo::default() }).is_err());
-        assert!(v(AdvancedVideo { preset: Some("warp".into()), ..AdvancedVideo::default() }).is_err());
-        assert!(v(AdvancedVideo { threads: Some(500), ..AdvancedVideo::default() }).is_err());
+        assert!(
+            v(AdvancedVideo {
+                tune: Some("film".into()),
+                ..AdvancedVideo::default()
+            })
+            .is_err(),
+            "film is x264's"
+        );
+        assert!(
+            v(AdvancedVideo {
+                tune: Some("grain".into()),
+                level: Some("4.1".into()),
+                ..AdvancedVideo::default()
+            })
+            .is_ok()
+        );
+        assert!(
+            v(AdvancedVideo {
+                level: Some("9".into()),
+                ..AdvancedVideo::default()
+            })
+            .is_err()
+        );
+        assert!(
+            v(AdvancedVideo {
+                preset: Some("warp".into()),
+                ..AdvancedVideo::default()
+            })
+            .is_err()
+        );
+        assert!(
+            v(AdvancedVideo {
+                threads: Some(500),
+                ..AdvancedVideo::default()
+            })
+            .is_err()
+        );
         // H.264 is 8-bit; ProRes pixel formats follow the profile.
         let e = run(
-            &video(AdvancedVideo { pix_fmt: Some("yuv420p10le".into()), ..AdvancedVideo::default() }),
+            &video(AdvancedVideo {
+                pix_fmt: Some("yuv420p10le".into()),
+                ..AdvancedVideo::default()
+            }),
             VideoCodec::H264,
             ExportHw::Off,
         )
@@ -1777,7 +2062,10 @@ mod tests {
     fn color_tags_are_checked_and_hdr_is_unsupported() {
         let c = |c: AdvancedColor| {
             run(
-                &AdvancedExportOptions { color: Some(c), ..AdvancedExportOptions::default() },
+                &AdvancedExportOptions {
+                    color: Some(c),
+                    ..AdvancedExportOptions::default()
+                },
                 VideoCodec::H264,
                 ExportHw::Off,
             )
@@ -1795,12 +2083,24 @@ mod tests {
         assert_eq!(tags.range, Some(ColorRange::Full));
         assert_eq!(tags.transfer, None, "unset tags stay BT.709 in the encoder");
         for hdr in [TransferCharacteristics::Pq, TransferCharacteristics::Hlg] {
-            let e = c(AdvancedColor { transfer: Some(hdr), ..AdvancedColor::default() }).unwrap_err();
+            let e = c(AdvancedColor {
+                transfer: Some(hdr),
+                ..AdvancedColor::default()
+            })
+            .unwrap_err();
             assert!(matches!(e, CmdError::Unsupported { .. }), "{e:?}");
         }
-        let e = c(AdvancedColor { matrix: Some(MatrixCoefficients::Rgb), ..AdvancedColor::default() }).unwrap_err();
+        let e = c(AdvancedColor {
+            matrix: Some(MatrixCoefficients::Rgb),
+            ..AdvancedColor::default()
+        })
+        .unwrap_err();
         assert_eq!(pointer(&e), "/advanced/color/matrix");
-        let e = c(AdvancedColor { primaries: Some(ColorPrimaries::Other("p3".into())), ..AdvancedColor::default() }).unwrap_err();
+        let e = c(AdvancedColor {
+            primaries: Some(ColorPrimaries::Other("p3".into())),
+            ..AdvancedColor::default()
+        })
+        .unwrap_err();
         assert_eq!(pointer(&e), "/advanced/color/primaries");
     }
 
@@ -1808,41 +2108,109 @@ mod tests {
     fn audio_settings_follow_the_container_and_the_codec() {
         let a = |a: AdvancedAudio, codec| {
             run(
-                &AdvancedExportOptions { audio: Some(a), ..AdvancedExportOptions::default() },
+                &AdvancedExportOptions {
+                    audio: Some(a),
+                    ..AdvancedExportOptions::default()
+                },
                 codec,
                 ExportHw::Off,
             )
         };
         let (out, ..) = a(
-            AdvancedAudio { codec: Some(AdvancedAudioCodec::Opus), bitrate_kbps: Some(128), ..AdvancedAudio::default() },
+            AdvancedAudio {
+                codec: Some(AdvancedAudioCodec::Opus),
+                bitrate_kbps: Some(128),
+                ..AdvancedAudio::default()
+            },
             VideoCodec::H264,
         )
         .unwrap();
-        assert_eq!((out.audio_codec, out.audio_bitrate_kbps), (AudioCodec::Opus, Some(128)));
+        assert_eq!(
+            (out.audio_codec, out.audio_bitrate_kbps),
+            (AudioCodec::Opus, Some(128))
+        );
         // Opus runs at 48 kHz only; PCM does not go into MP4; FLAC has no bitrate.
-        let e = a(AdvancedAudio { codec: Some(AdvancedAudioCodec::Opus), sample_rate: Some(44_100), ..AdvancedAudio::default() }, VideoCodec::H264).unwrap_err();
+        let e = a(
+            AdvancedAudio {
+                codec: Some(AdvancedAudioCodec::Opus),
+                sample_rate: Some(44_100),
+                ..AdvancedAudio::default()
+            },
+            VideoCodec::H264,
+        )
+        .unwrap_err();
         assert_eq!(pointer(&e), "/advanced/audio/sample_rate");
-        let e = a(AdvancedAudio { codec: Some(AdvancedAudioCodec::PcmS16), ..AdvancedAudio::default() }, VideoCodec::H264).unwrap_err();
+        let e = a(
+            AdvancedAudio {
+                codec: Some(AdvancedAudioCodec::PcmS16),
+                ..AdvancedAudio::default()
+            },
+            VideoCodec::H264,
+        )
+        .unwrap_err();
         assert!(message(&e).contains("MOV"), "{e}");
-        assert!(a(AdvancedAudio { codec: Some(AdvancedAudioCodec::Flac), bitrate_kbps: Some(500), ..AdvancedAudio::default() }, VideoCodec::H264).is_err());
-        assert!(a(AdvancedAudio { sample_rate: Some(22_050), ..AdvancedAudio::default() }, VideoCodec::H264).is_err());
-        assert!(a(AdvancedAudio { codec: Some(AdvancedAudioCodec::Mp3), sample_rate: Some(96_000), ..AdvancedAudio::default() }, VideoCodec::H264).is_err());
+        assert!(
+            a(
+                AdvancedAudio {
+                    codec: Some(AdvancedAudioCodec::Flac),
+                    bitrate_kbps: Some(500),
+                    ..AdvancedAudio::default()
+                },
+                VideoCodec::H264
+            )
+            .is_err()
+        );
+        assert!(
+            a(
+                AdvancedAudio {
+                    sample_rate: Some(22_050),
+                    ..AdvancedAudio::default()
+                },
+                VideoCodec::H264
+            )
+            .is_err()
+        );
+        assert!(
+            a(
+                AdvancedAudio {
+                    codec: Some(AdvancedAudioCodec::Mp3),
+                    sample_rate: Some(96_000),
+                    ..AdvancedAudio::default()
+                },
+                VideoCodec::H264
+            )
+            .is_err()
+        );
         // MOV: PCM 16-bit, mono, 96 kHz.
         let (out, ..) = a(
-            AdvancedAudio { codec: Some(AdvancedAudioCodec::PcmS16), sample_rate: Some(96_000), channels: Some(AudioChannels::Mono), ..AdvancedAudio::default() },
+            AdvancedAudio {
+                codec: Some(AdvancedAudioCodec::PcmS16),
+                sample_rate: Some(96_000),
+                channels: Some(AudioChannels::Mono),
+                ..AdvancedAudio::default()
+            },
             VideoCodec::Prores,
         )
         .unwrap();
         assert_eq!(out.audio_codec, AudioCodec::Pcm);
         assert_eq!(
-            (out.advanced.pcm_bits, out.advanced.audio_sample_rate, out.advanced.audio_channels),
+            (
+                out.advanced.pcm_bits,
+                out.advanced.audio_sample_rate,
+                out.advanced.audio_channels
+            ),
             (Some(16), Some(96_000), Some(1))
         );
     }
 
     #[test]
     fn nothing_given_changes_nothing() {
-        let (out, rate, hw, warnings) = run(&AdvancedExportOptions::default(), VideoCodec::Hevc, ExportHw::Auto).unwrap();
+        let (out, rate, hw, warnings) = run(
+            &AdvancedExportOptions::default(),
+            VideoCodec::Hevc,
+            ExportHw::Auto,
+        )
+        .unwrap();
         assert_eq!(out, output(VideoCodec::Hevc));
         assert_eq!((rate, hw, warnings.len()), (None, ExportHw::Auto, 0));
     }
@@ -1853,10 +2221,16 @@ mod tests {
             video: Some(AdvancedVideo {
                 preset: Some("slow".into()),
                 tune: Some("film".into()),
-                rate_control: Some(AdvancedRate { crf: Some(18), ..rc(RateMode::Crf) }),
+                rate_control: Some(AdvancedRate {
+                    crf: Some(18),
+                    ..rc(RateMode::Crf)
+                }),
                 ..AdvancedVideo::default()
             }),
-            audio: Some(AdvancedAudio { bitrate_kbps: Some(128), ..AdvancedAudio::default() }),
+            audio: Some(AdvancedAudio {
+                bitrate_kbps: Some(128),
+                ..AdvancedAudio::default()
+            }),
             ..AdvancedExportOptions::default()
         };
         let request = AdvancedExportOptions {
@@ -1880,7 +2254,10 @@ mod tests {
         let out = output(VideoCodec::H264);
         let ten = Duration::from_secs(10).unwrap();
         // 8000 + 192 kb/s for 10 s = 10.24 MB.
-        assert_eq!(estimated_bytes(Some(PlanRate::BitrateKbps(8000)), &out, ten), Some(10_240_000));
+        assert_eq!(
+            estimated_bytes(Some(PlanRate::BitrateKbps(8000)), &out, ten),
+            Some(10_240_000)
+        );
         assert_eq!(estimated_bytes(Some(PlanRate::Crf(20)), &out, ten), None);
         assert_eq!(estimated_bytes(None, &out, ten), None);
     }
@@ -1892,13 +2269,22 @@ mod tests {
             options_schema(&caps, Container::Mp4)
         };
         let x264 = schema(VideoCodec::H264, None);
-        let modes = &x264["properties"]["video"]["properties"]["rate_control"]["properties"]["mode"]["enum"];
+        let modes = &x264["properties"]["video"]["properties"]["rate_control"]["properties"]["mode"]
+            ["enum"];
         assert_eq!(modes, &json!(["crf", "cbr", "vbr", "cq"]));
         let nvenc = schema(VideoCodec::H264, Some(Family::Nvenc));
         let gop = &nvenc["properties"]["video"]["properties"]["gop"]["properties"];
         assert!(gop.get("keyint").is_some() && gop.get("closed_gop").is_none());
         let prores = schema(VideoCodec::Prores, None);
-        assert!(prores["properties"]["video"]["properties"].get("rate_control").is_none());
-        assert!(prores["properties"]["video"]["properties"]["profile"]["enum"].as_array().is_some());
+        assert!(
+            prores["properties"]["video"]["properties"]
+                .get("rate_control")
+                .is_none()
+        );
+        assert!(
+            prores["properties"]["video"]["properties"]["profile"]["enum"]
+                .as_array()
+                .is_some()
+        );
     }
 }

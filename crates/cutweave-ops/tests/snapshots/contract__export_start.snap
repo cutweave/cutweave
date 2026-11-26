@@ -361,12 +361,31 @@ expression: "json!({\n    \"meta\": serde_json::to_value(meta).unwrap(), \"input
           ],
           "description": "An existing file: \"fail\" (default), \"rename\" or \"overwrite\".",
           "default": null
+        },
+        "advanced": {
+          "type": [
+            "object",
+            "null"
+          ],
+          "description": "Fine control of rate control, GOP, encoder, color tags and audio. Impossible combinations\nfail with Invalid and a hint.",
+          "properties": {
+            "video": {
+              "type": "object"
+            },
+            "color": {
+              "type": "object"
+            },
+            "audio": {
+              "type": "object"
+            }
+          },
+          "default": null
         }
       },
       "required": [
         "path"
       ],
-      "description": "Exports a sequence (or a range of it) to a file (MP4, H.264 + AAC by default; a preset id\npicks HEVC, AV1 or ProRes) as a background job and returns the job id at once; wait with\n`job.wait`, stop with `job.cancel` (the partial file is deleted). Exports queue and run one at a time; this one\nalso resumes a paused queue (`export.queue` lists it). The export uses the project as it is\nnow; later edits do not change it. Agents and headless callers may only write inside the\nproject folder and folders the user approved. `range.kind` picks the part: \"sequence\",\n\"in_out\" (the sequence's in/out points), \"custom\" (`in`, `out`) or \"markers\" (one file per\nmarker: `path` is a folder or an .mp4 name template with {seq}, {marker_label}, {n}; the\noutput lists every job). `collision` says what happens to an existing file: \"fail\"\n(default), \"rename\" (pick a free name) or \"overwrite\" (replace it when the export\nsucceeds). Fails with `Invalid` when the drive has too little free space.",
+      "description": "Exports a sequence (or a range of it) to a file (MP4, H.264 + AAC by default; a preset id\npicks HEVC, AV1 or ProRes) as a background job and returns the job id at once; wait with\n`job.wait`, stop with `job.cancel` (the partial file is deleted). Exports queue and run one at a time; this one\nalso resumes a paused queue (`export.queue` lists it). The export uses the project as it is\nnow; later edits do not change it. Agents and headless callers may only write inside the\nproject folder and folders the user approved. `range.kind` picks the part: \"sequence\",\n\"in_out\" (the sequence's in/out points), \"custom\" (`in`, `out`) or \"markers\" (one file per\nmarker: `path` is a folder or a name template ending in the container's extension (.mp4;\n.mov for ProRes) with {seq}, {marker_label}, {n}; the\noutput lists every job). `collision` says what happens to an existing file: \"fail\"\n(default), \"rename\" (pick a free name) or \"overwrite\" (replace it when the export\nsucceeds). Fails with `Invalid` when the drive has too little free space.",
       "title": "ExportStart"
     },
     "output_schema": {
@@ -480,6 +499,11 @@ expression: "json!({\n    \"meta\": serde_json::to_value(meta).unwrap(), \"input
                     "description": "The sequence's frame rate is above the platform's maximum, so the file uses a lower one.",
                     "type": "string",
                     "const": "FrameRateCapped"
+                  },
+                  {
+                    "description": "An advanced setting needs the software encoder, so the export does not use the hardware one.",
+                    "type": "string",
+                    "const": "SoftwareEncoder"
                   }
                 ]
               },
@@ -495,6 +519,15 @@ expression: "json!({\n    \"meta\": serde_json::to_value(meta).unwrap(), \"input
             ]
           },
           "description": "Platform-limit and fit warnings of a preset (never errors; the export runs)."
+        },
+        "estimated_kib": {
+          "type": [
+            "integer",
+            "null"
+          ],
+          "format": "uint32",
+          "minimum": 0,
+          "description": "Estimated file size in KiB when the rate control fixes a bitrate (`vbr`, `cbr`, a\nbitrate preset); absent for a quality (`crf`)."
         },
         "jobs": {
           "type": "array",
@@ -914,12 +947,31 @@ expression: "json!({\n    \"meta\": serde_json::to_value(meta).unwrap(), \"input
         ],
         "description": "An existing file: \"fail\" (default), \"rename\" or \"overwrite\".",
         "default": null
+      },
+      "advanced": {
+        "type": [
+          "object",
+          "null"
+        ],
+        "description": "Fine control of rate control, GOP, encoder, color tags and audio. Impossible combinations\nfail with Invalid and a hint.",
+        "properties": {
+          "video": {
+            "type": "object"
+          },
+          "color": {
+            "type": "object"
+          },
+          "audio": {
+            "type": "object"
+          }
+        },
+        "default": null
       }
     },
     "required": [
       "path"
     ],
-    "description": "Exports a sequence (or a range of it) to a file (MP4, H.264 + AAC by default; a preset id\npicks HEVC, AV1 or ProRes) as a background job and returns the job id at once; wait with\n`job.wait`, stop with `job.cancel` (the partial file is deleted). Exports queue and run one at a time; this one\nalso resumes a paused queue (`export.queue` lists it). The export uses the project as it is\nnow; later edits do not change it. Agents and headless callers may only write inside the\nproject folder and folders the user approved. `range.kind` picks the part: \"sequence\",\n\"in_out\" (the sequence's in/out points), \"custom\" (`in`, `out`) or \"markers\" (one file per\nmarker: `path` is a folder or an .mp4 name template with {seq}, {marker_label}, {n}; the\noutput lists every job). `collision` says what happens to an existing file: \"fail\"\n(default), \"rename\" (pick a free name) or \"overwrite\" (replace it when the export\nsucceeds). Fails with `Invalid` when the drive has too little free space.",
+    "description": "Exports a sequence (or a range of it) to a file (MP4, H.264 + AAC by default; a preset id\npicks HEVC, AV1 or ProRes) as a background job and returns the job id at once; wait with\n`job.wait`, stop with `job.cancel` (the partial file is deleted). Exports queue and run one at a time; this one\nalso resumes a paused queue (`export.queue` lists it). The export uses the project as it is\nnow; later edits do not change it. Agents and headless callers may only write inside the\nproject folder and folders the user approved. `range.kind` picks the part: \"sequence\",\n\"in_out\" (the sequence's in/out points), \"custom\" (`in`, `out`) or \"markers\" (one file per\nmarker: `path` is a folder or a name template ending in the container's extension (.mp4;\n.mov for ProRes) with {seq}, {marker_label}, {n}; the\noutput lists every job). `collision` says what happens to an existing file: \"fail\"\n(default), \"rename\" (pick a free name) or \"overwrite\" (replace it when the export\nsucceeds). Fails with `Invalid` when the drive has too little free space.",
     "title": "ExportStart"
   },
   "output": {
@@ -1033,6 +1085,11 @@ expression: "json!({\n    \"meta\": serde_json::to_value(meta).unwrap(), \"input
                   "description": "The sequence's frame rate is above the platform's maximum, so the file uses a lower one.",
                   "type": "string",
                   "const": "FrameRateCapped"
+                },
+                {
+                  "description": "An advanced setting needs the software encoder, so the export does not use the hardware one.",
+                  "type": "string",
+                  "const": "SoftwareEncoder"
                 }
               ]
             },
@@ -1048,6 +1105,15 @@ expression: "json!({\n    \"meta\": serde_json::to_value(meta).unwrap(), \"input
           ]
         },
         "description": "Platform-limit and fit warnings of a preset (never errors; the export runs)."
+      },
+      "estimated_kib": {
+        "type": [
+          "integer",
+          "null"
+        ],
+        "format": "uint32",
+        "minimum": 0,
+        "description": "Estimated file size in KiB when the rate control fixes a bitrate (`vbr`, `cbr`, a\nbitrate preset); absent for a quality (`crf`)."
       },
       "jobs": {
         "type": "array",

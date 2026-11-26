@@ -88,8 +88,12 @@ impl Policy {
 
 // ----- naming ----------------------------------------------------------------------------------
 
-/// The default file name template of a marker set.
-pub const DEFAULT_TEMPLATE: &str = "{seq}_{marker_label}_{n}.mp4";
+/// The default file name template of a marker set, for files with extension `ext` (the preset's
+/// container: `mp4`, or `mov` for ProRes).
+#[must_use]
+pub fn default_template(ext: &str) -> String {
+    format!("{{seq}}_{{marker_label}}_{{n}}.{ext}")
+}
 /// Longest value of `{seq}` or `{marker_label}`, in characters.
 const MAX_TOKEN_CHARS: usize = 60;
 
@@ -103,28 +107,30 @@ pub struct Template {
 }
 
 impl Template {
-    /// Reads `path` as an existing folder or as a `.mp4` path whose file name is the template.
+    /// Reads `path` as an existing folder or as a path ending in `.{ext}` (the container of the
+    /// export: `mp4`, `mov` for ProRes) whose file name is the template.
     ///
     /// # Errors
     /// `Invalid` at `/path`.
-    pub fn parse(path: &str) -> Result<Template, CmdError> {
+    pub fn parse(path: &str, ext: &str) -> Result<Template, CmdError> {
         let p = Path::new(path);
         if p.is_dir() {
             return Ok(Template {
                 folder: p.to_path_buf(),
-                name: DEFAULT_TEMPLATE.to_owned(),
+                name: default_template(ext),
             });
         }
+        let dotted = format!(".{ext}");
         let name = p
             .file_name()
             .and_then(|n| n.to_str())
-            .filter(|n| n.to_ascii_lowercase().ends_with(".mp4"))
+            .filter(|n| n.to_ascii_lowercase().ends_with(&dotted))
             .ok_or_else(|| {
                 CmdError::invalid(
                     "/path",
                     format!(
-                        "`{path}` must be an existing folder or an .mp4 file name template such \
-                         as `{{seq}}_{{marker_label}}_{{n}}.mp4`"
+                        "`{path}` must be an existing folder or a .{ext} file name template \
+                         such as `{{seq}}_{{marker_label}}_{{n}}.{ext}`"
                     ),
                 )
             })?;

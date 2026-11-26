@@ -164,13 +164,14 @@ fn frame(n: u64, amplitude: u32) -> VideoFrame {
 fn solid(n: u64, rgb: [u8; 3]) -> VideoFrame {
     let (w, h) = SIZE;
     let mut f = frame(n, 0);
-    f.planes[0].data = (0..w * h).flat_map(|_| [rgb[0], rgb[1], rgb[2], 255]).collect();
+    f.planes[0].data = (0..w * h)
+        .flat_map(|_| [rgb[0], rgb[1], rgb[2], 255])
+        .collect();
     f
 }
 
 fn video_spec(codec: &str) -> VideoEncodeSpec {
-    let mut v =
-        VideoEncodeSpec::h264(SIZE.0, SIZE.1, RATE, PixelFormat::Rgba8).with_codec(codec);
+    let mut v = VideoEncodeSpec::h264(SIZE.0, SIZE.1, RATE, PixelFormat::Rgba8).with_codec(codec);
     v.preset = SpeedPreset::Veryfast;
     v.threads = 2;
     v
@@ -262,7 +263,10 @@ fn a_capped_variable_bitrate_stays_under_its_peak() {
     };
     let path = encode_video(&dir, "cq.mp4", cq, 120).unwrap();
     let (average, _) = bit_stats(&path);
-    assert!(average <= 4e6 * 1.1, "the cap holds the quality's rate: {average}");
+    assert!(
+        average <= 4e6 * 1.1,
+        "the cap holds the quality's rate: {average}"
+    );
 }
 
 #[test]
@@ -295,7 +299,11 @@ fn keyframes(path: &Path) -> Vec<usize> {
 #[test]
 fn keyframes_fall_exactly_on_the_interval() {
     let dir = TempDir::new("adv-keyint");
-    for (codec, keyint, bframes) in [("h264", 60_u32, Some(2_u8)), ("hevc", 40, Some(2)), ("av1", 30, None)] {
+    for (codec, keyint, bframes) in [
+        ("h264", 60_u32, Some(2_u8)),
+        ("hevc", 40, Some(2)),
+        ("av1", 30, None),
+    ] {
         let mut v = video_spec(codec);
         v.rate_control = RateControl::Crf(30);
         v.advanced = VideoAdvanced {
@@ -316,9 +324,9 @@ fn keyframes_fall_exactly_on_the_interval() {
 /// Whether any picture is shown before a keyframe it is decoded after (an open GOP).
 fn has_leading_pictures(path: &Path) -> bool {
     let all = packets(path, "v");
-    all.iter().enumerate().any(|(i, k)| {
-        k.key && i > 0 && all[i + 1..].iter().any(|later| later.pts < k.pts - 1e-6)
-    })
+    all.iter()
+        .enumerate()
+        .any(|(i, k)| k.key && i > 0 && all[i + 1..].iter().any(|later| later.pts < k.pts - 1e-6))
 }
 
 #[test]
@@ -354,7 +362,10 @@ fn the_encoder_settings_read_back() {
     v.advanced.tune = Some("zerolatency".to_owned());
     let path = encode_video(&dir, "baseline.mp4", v, 20).unwrap();
     let info = ffprobe(&["-show_streams", "-select_streams", "v:0"], &path);
-    assert_eq!(get(&info, "streams_stream_0_profile"), "Constrained Baseline");
+    assert_eq!(
+        get(&info, "streams_stream_0_profile"),
+        "Constrained Baseline"
+    );
     assert_eq!(get(&info, "streams_stream_0_level"), "41");
     assert_eq!(get(&info, "streams_stream_0_has_b_frames"), "0");
     // HEVC level.
@@ -378,11 +389,36 @@ fn tags(p: &str, t: &str, m: &str, range: ColorRange) -> ColorTags {
 fn color_tags_read_back_exactly_as_set() {
     let dir = TempDir::new("adv-color");
     let cases = [
-        ("h264", "mp4", tags("smpte170m", "smpte170m", "smpte170m", ColorRange::Limited), ("smpte170m", "smpte170m", "smpte170m", "tv")),
-        ("h264", "mp4", tags("bt709", "iec61966-2-1", "bt709", ColorRange::Full), ("bt709", "iec61966-2-1", "bt709", "pc")),
-        ("hevc", "mp4", tags("bt2020", "bt2020-10", "bt2020nc", ColorRange::Limited), ("bt2020", "bt2020-10", "bt2020nc", "tv")),
-        ("av1", "mp4", tags("bt470bg", "gamma22", "bt470bg", ColorRange::Full), ("bt470bg", "bt470m", "bt470bg", "pc")),
-        ("prores", "mov", tags("smpte170m", "bt709", "smpte170m", ColorRange::Limited), ("smpte170m", "bt709", "smpte170m", "tv")),
+        (
+            "h264",
+            "mp4",
+            tags("smpte170m", "smpte170m", "smpte170m", ColorRange::Limited),
+            ("smpte170m", "smpte170m", "smpte170m", "tv"),
+        ),
+        (
+            "h264",
+            "mp4",
+            tags("bt709", "iec61966-2-1", "bt709", ColorRange::Full),
+            ("bt709", "iec61966-2-1", "bt709", "pc"),
+        ),
+        (
+            "hevc",
+            "mp4",
+            tags("bt2020", "bt2020-10", "bt2020nc", ColorRange::Limited),
+            ("bt2020", "bt2020-10", "bt2020nc", "tv"),
+        ),
+        (
+            "av1",
+            "mp4",
+            tags("bt470bg", "gamma22", "bt470bg", ColorRange::Full),
+            ("bt470bg", "bt470m", "bt470bg", "pc"),
+        ),
+        (
+            "prores",
+            "mov",
+            tags("smpte170m", "bt709", "smpte170m", ColorRange::Limited),
+            ("smpte170m", "bt709", "smpte170m", "tv"),
+        ),
     ];
     for (codec, ext, color, (primaries, transfer, matrix, range)) in cases {
         let mut v = video_spec(codec);
@@ -391,8 +427,18 @@ fn color_tags_read_back_exactly_as_set() {
         let info = ffprobe(&["-show_streams", "-select_streams", "v:0"], &path);
         let got = |k: &str| get(&info, &format!("streams_stream_0_{k}")).to_owned();
         assert_eq!(
-            (got("color_primaries"), got("color_transfer"), got("color_space"), got("color_range")),
-            (primaries.to_owned(), transfer.to_owned(), matrix.to_owned(), range.to_owned()),
+            (
+                got("color_primaries"),
+                got("color_transfer"),
+                got("color_space"),
+                got("color_range")
+            ),
+            (
+                primaries.to_owned(),
+                transfer.to_owned(),
+                matrix.to_owned(),
+                range.to_owned()
+            ),
             "{codec}"
         );
     }
@@ -444,7 +490,10 @@ fn convert_changes_the_pixels_and_tag_only_does_not() {
         },
     ));
     assert!(converted >= 250, "full-range white is 255, not {converted}");
-    assert!((233..=237).contains(&tagged), "limited-range white is 235, not {tagged}");
+    assert!(
+        (233..=237).contains(&tagged),
+        "limited-range white is 235, not {tagged}"
+    );
 }
 
 #[test]
@@ -468,7 +517,10 @@ fn settings_an_encoder_cannot_take_are_refused_when_it_opens() {
             .with_video(v)
             .with_hw(HwEncode::Off);
         let e = backend().open_encoder(&spec).err();
-        assert!(matches!(e, Some(MediaError::Unsupported { .. })), "{codec}: {e:?}");
+        assert!(
+            matches!(e, Some(MediaError::Unsupported { .. })),
+            "{codec}: {e:?}"
+        );
     };
     refused("av1", &|v| v.rate_control = RateControl::Cbr(4_000_000));
     refused("av1", &|v| v.advanced.bframes = Some(2));
@@ -528,10 +580,16 @@ fn encode_audio(
     let per_frame = (rate.hz() / 30) as usize;
     for n in 0..120_u64 {
         enc.push_video(&frame(n, 5)).unwrap();
-        enc.push_audio(&noise_chunk(rate, channels, n as i64 * per_frame as i64, per_frame))
-            .unwrap_or_else(|e| panic!("{codec}: push_audio: {e}"));
+        enc.push_audio(&noise_chunk(
+            rate,
+            channels,
+            n as i64 * per_frame as i64,
+            per_frame,
+        ))
+        .unwrap_or_else(|e| panic!("{codec}: push_audio: {e}"));
     }
-    enc.finish().unwrap_or_else(|e| panic!("{codec}: finish: {e}"));
+    enc.finish()
+        .unwrap_or_else(|e| panic!("{codec}: finish: {e}"));
     path
 }
 
@@ -545,7 +603,11 @@ fn audio_bitrate(path: &Path) -> f64 {
 #[test]
 fn aac_192_and_opus_128_read_back_within_ten_percent() {
     let dir = TempDir::new("adv-audio-rates");
-    for (codec, name, kbps) in [("aac", "aac", 192.0), ("opus", "opus", 128.0), ("mp3", "mp3", 192.0)] {
+    for (codec, name, kbps) in [
+        ("aac", "aac", 192.0),
+        ("opus", "opus", 128.0),
+        ("mp3", "mp3", 192.0),
+    ] {
         let path = encode_audio(
             &dir,
             &format!("{codec}.mp4"),
@@ -595,10 +657,16 @@ fn audio_codecs_rates_and_channels() {
         let per_frame = (rate.hz() / 30) as usize;
         for n in 0..30_u64 {
             enc.push_video(&frame(n, 5)).unwrap();
-            enc.push_audio(&noise_chunk(rate, channels, n as i64 * per_frame as i64, per_frame))
-                .unwrap_or_else(|e| panic!("{file}: push_audio: {e}"));
+            enc.push_audio(&noise_chunk(
+                rate,
+                channels,
+                n as i64 * per_frame as i64,
+                per_frame,
+            ))
+            .unwrap_or_else(|e| panic!("{file}: push_audio: {e}"));
         }
-        enc.finish().unwrap_or_else(|e| panic!("{file}: finish: {e}"));
+        enc.finish()
+            .unwrap_or_else(|e| panic!("{file}: finish: {e}"));
         let info = ffprobe(&["-show_streams", "-select_streams", "a:0"], &path);
         let a = |k: &str| get(&info, &format!("streams_stream_0_{k}")).to_owned();
         assert_eq!(a("codec_name"), name, "{file}");
@@ -632,6 +700,9 @@ fn opus_and_flac_stay_out_of_mov_and_pcm_out_of_mp4() {
             .with_audio(audio)
             .with_hw(HwEncode::Off);
         let e = backend().open_encoder(&spec).err();
-        assert!(matches!(e, Some(MediaError::Unsupported { .. })), "{codec} in {ext}: {e:?}");
+        assert!(
+            matches!(e, Some(MediaError::Unsupported { .. })),
+            "{codec} in {ext}: {e:?}"
+        );
     }
 }

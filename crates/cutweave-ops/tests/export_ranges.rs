@@ -290,6 +290,78 @@ fn a_marker_set_makes_one_file_per_marker_with_the_right_length() {
 }
 
 #[test]
+fn the_advanced_block_reaches_the_plan_and_an_impossible_one_queues_nothing() {
+    let (h, _) = project();
+    let dir = Dir::new();
+    let (r, plans) = export(
+        &h,
+        json!({"path": dir.file("a.mp4"), "hw": "off", "advanced": {"video": {
+            "rate_control": {"mode": "cbr", "bitrate_kbps": 8000},
+            "gop": {"keyint_seconds": 2}}}}),
+    );
+    let out = r.unwrap();
+    assert_eq!(
+        plans[0].rate,
+        Some(cutweave_ops::export::presets::PlanRate::Cbr(8000))
+    );
+    // 2 s at 30 fps.
+    assert_eq!(plans[0].output.advanced.keyint, Some(60));
+    // 5 s of 8000 + 192 kb/s: 5 000 000 bytes plus the rounding up to KiB.
+    assert_eq!(out["estimated_kib"], json!(5000));
+    // ProRes with a CRF: refused with the pointer, nothing planned.
+    let (r, plans) = export(
+        &h,
+        json!({"path": dir.file("a.mov"), "preset": "prores-422-hq",
+               "advanced": {"video": {"rate_control": {"mode": "crf", "crf": 18}}}}),
+    );
+    assert_invalid(r, "/advanced/video/rate_control");
+    assert!(plans.is_empty());
+}
+
+#[test]
+fn a_prores_marker_set_is_named_in_its_container() {
+    let (mut h, p) = project();
+    four_markers(&mut h, p);
+    let dir = Dir::new();
+    // A folder: the default template ends in .mov.
+    let (r, plans) = export(
+        &h,
+        json!({"path": dir.0.to_string_lossy(), "preset": "prores-422-hq",
+               "range": {"kind": "markers"}}),
+    );
+    r.unwrap();
+    let seq = seq_name(&h);
+    assert_eq!(plans.len(), 4);
+    assert_eq!(
+        plans[0].path.file_name().unwrap().to_string_lossy(),
+        format!("{seq}_Intro_1.mov")
+    );
+    // A name template: .mov is the extension it must have, .mp4 is refused.
+    let (r, plans) = export(
+        &h,
+        json!({"path": dir.file("clip_{n}.mov"), "preset": "prores-422-hq",
+               "range": {"kind": "markers"}}),
+    );
+    r.unwrap();
+    assert_eq!(
+        plans[1].path.file_name().unwrap().to_string_lossy(),
+        "clip_2.mov"
+    );
+    let (r, _) = export(
+        &h,
+        json!({"path": dir.file("clip_{n}.mp4"), "preset": "prores-422-hq",
+               "range": {"kind": "markers"}}),
+    );
+    assert_invalid(r, "/path");
+    // The same template with the default (H.264) export is the other way round.
+    let (r, _) = export(
+        &h,
+        json!({"path": dir.file("clip_{n}.mov"), "range": {"kind": "markers"}}),
+    );
+    assert_invalid(r, "/path");
+}
+
+#[test]
 fn marker_selection_modes_and_templates() {
     let (mut h, p) = project();
     four_markers(&mut h, p);

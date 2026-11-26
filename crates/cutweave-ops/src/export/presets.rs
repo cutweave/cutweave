@@ -43,7 +43,9 @@
 //!   (`422proxy`, `422lt`, `422`, `422hq`, `4444`, `4444xq`; `yuva444p10le` keeps alpha) and
 //!   HEVC's (`main`, `main10`). GIF and audio-only presets resolve and list, but `export.start`
 //!   fails with `Unsupported` until they are built (WP-2G.02b). The preset's `preset` field
-//!   (encoder speed) is carried and not applied yet (WP-2G.05).
+//!   (encoder speed) is carried and not applied (it would change what the built-in presets
+//!   export); a preset's `advanced` block (WP-2G.05, [`super::advanced`]) is, under the
+//!   request's own `advanced`.
 
 use std::collections::BTreeMap;
 use std::path::PathBuf;

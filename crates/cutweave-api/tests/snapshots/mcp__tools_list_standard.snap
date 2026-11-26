@@ -569,6 +569,24 @@ expression: catalog.tools_json()
               "fail",
               null
             ]
+          },
+          "advanced": {
+            "type": [
+              "object",
+              "null"
+            ],
+            "description": "Fine control of rate control, GOP, encoder, color tags and audio. Impossible combinations\nfail with Invalid and a hint.",
+            "properties": {
+              "video": {
+                "type": "object"
+              },
+              "color": {
+                "type": "object"
+              },
+              "audio": {
+                "type": "object"
+              }
+            }
           }
         },
         "required": [

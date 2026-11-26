@@ -89,7 +89,8 @@ pub struct CodecEncoders {
     pub containers: Vec<Container>,
     /// The bit depths of the coded video.
     pub bit_depths: Vec<u8>,
-    /// The profile names a preset's `video.profile` takes (empty when the codec has none).
+    /// The profile names a preset's `video.profile` or `advanced.video.profile` takes (empty when
+    /// the codec has none).
     pub profiles: Vec<String>,
 }
 
@@ -120,7 +121,7 @@ fn codec_rows() -> [Row; 4] {
             "libx264",
             &[Container::Mp4, Container::Mov],
             &[8],
-            &[],
+            &["baseline", "main", "high"],
         ),
         (
             VideoCodec::Hevc,
