@@ -141,7 +141,10 @@ test.describe("F45 preview handles", () => {
         .toBeCloseTo(0.5, 1);
 
       // 5. Reset from the picture's own menu, then take the reset back.
-      await page.mouse.click(pointOnPicture.x, pointOnPicture.y, { button: "right" });
+      // The picture is the top-left quarter now: right-click inside it.
+      await page.mouse.click(frame.x + frame.width * 0.2, frame.y + frame.height * 0.2, {
+        button: "right",
+      });
       await page.getByRole("menuitem", { name: "Reset transform" }).click();
       await expect.poll(async () => (await placed(page, id)).visual.transform.scale.x).toBe(1);
       await shortcut(app, "Control+Z");
