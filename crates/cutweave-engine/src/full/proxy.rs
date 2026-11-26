@@ -26,8 +26,11 @@
 //!   (`media.set_proxy_config`, UI-only). Another size is another profile, so another proxy:
 //!   a change stops the generations of the old size, queues what the project wants at the new
 //!   one, and leaves ready proxies of other sizes in the cache until its limit removes them.
-//! - **Policy.** [`DEFAULT_POLICY`] (`auto`) for every project until ADR-0027 stores one in
-//!   the project.
+//! - **Policy** (ADR-0027). The project stores its policy (`settings.proxy_policy`) and each
+//!   asset a mode (`proxy_mode`); [`wanted`] reads both. When either changes
+//!   (`media.set_proxy_policy`, `media.set_proxy_mode`, their undo), the document watcher
+//!   reconciles: what is now wanted is queued, nothing is deleted. An asset whose mode is `off`
+//!   gets no proxy from the engine's own rules and the preview uses none that exists.
 //! - **Reversed clips** (WP-2D.01b, [`FullProxies::reversed`]). Reverse playback reads the
 //!   original back in windows of [`READBACK_BYTES`](super::frames::READBACK_BYTES); a file whose
 //!   keyframes are further apart than a window holds at its size (from the stored frame index;
@@ -54,9 +57,9 @@ use cutweave_cache::{CacheDb, ContentHash};
 use cutweave_commands::{CmdError, DocHandle};
 use cutweave_jobs::{JobId, JobManager, JobState};
 use cutweave_media::{CancelToken, MediaBackend};
-use cutweave_model::{Item, MediaAsset, MediaId, Project, StreamKind, TrackKind};
+use cutweave_model::{Item, MediaAsset, MediaId, Project, ProxyMode, StreamKind, TrackKind};
 use cutweave_ops::media::proxy::{
-    DEFAULT_POLICY, ImportProxy, ProxyInfo, ProxyService, ProxyStatus, proxyable, wants_proxy,
+    ImportProxy, ProxyInfo, ProxyService, ProxyStatus, proxyable, wanted,
 };
 
 use super::frames::readback_frames;
@@ -431,9 +434,15 @@ impl FullProxies {
 
     /// The ready proxy of `asset`, if any (the preview's lookup; marks it recently used).
     pub(crate) fn ready(&self, asset: &MediaAsset) -> Option<Arc<ReadyProxy>> {
-        if !proxyable(asset) {
+        // An asset whose proxies are off plays its original even when a proxy exists.
+        if !proxyable(asset) || asset.proxy_mode == ProxyMode::Off {
             return None;
         }
+        self.stored(asset)
+    }
+
+    /// The ready proxy of `asset` in the cache, whatever its mode (marks it recently used).
+    fn stored(&self, asset: &MediaAsset) -> Option<Arc<ReadyProxy>> {
         let (hash, profile) = (hash_of(asset)?, self.profile()?);
         match self.store.ready(&hash, &profile.key()) {
             Ok(ready) => ready,
@@ -563,6 +572,7 @@ impl FullProxies {
             };
             let Some(hash) = hash_of(asset) else { continue };
             if !proxyable(asset)
+                || asset.proxy_mode == ProxyMode::Off
                 || self
                     .reverse
                     .lock()
@@ -614,17 +624,23 @@ impl FullProxies {
         }
     }
 
-    /// The status of `asset` (with `jobs` to read a generation's progress).
-    fn info(&self, jobs: Option<&JobManager>, asset: &MediaAsset) -> ProxyInfo {
+    /// The status of `asset` of `doc` (with `jobs` to read a generation's progress).
+    fn info(&self, jobs: Option<&JobManager>, doc: &Project, asset: &MediaAsset) -> ProxyInfo {
         let mut info = ProxyInfo::none(asset.id);
         if !proxyable(asset) {
             info.reason = Some("only video files have proxies".to_owned());
             return info;
         }
-        let reason = wants_proxy(DEFAULT_POLICY, asset)
-            .or_else(|| hash_of(asset).and_then(|h| self.reverse_reason_of(&h)));
+        let reason = if asset.proxy_mode == ProxyMode::Off {
+            None
+        } else {
+            wanted(doc, asset).or_else(|| hash_of(asset).and_then(|h| self.reverse_reason_of(&h)))
+        };
         info.wanted = reason.is_some();
         info.reason = reason;
+        if asset.proxy_mode == ProxyMode::Off {
+            info.reason = Some("its proxy mode is `off`".to_owned());
+        }
         let (Some(hash), Some(profile)) = (hash_of(asset), self.profile()) else {
             if self.codec.is_none() {
                 info.reason = Some("this engine cannot encode proxies".to_owned());
@@ -660,7 +676,7 @@ impl FullProxies {
         let key = profile.key();
         let mut queued = 0;
         for asset in doc.media.values() {
-            if wants_proxy(DEFAULT_POLICY, asset).is_none() {
+            if wanted(doc, asset).is_none() {
                 continue;
             }
             let Some(hash) = hash_of(asset) else { continue };
@@ -716,7 +732,7 @@ impl ProxyService for FullProxies {
         media
             .iter()
             .map(|id| match doc.media.get(id) {
-                Some(asset) => self.info(jobs.as_ref(), asset),
+                Some(asset) => self.info(jobs.as_ref(), doc, asset),
                 None => ProxyInfo::none(*id),
             })
             .collect()
@@ -742,7 +758,7 @@ impl ProxyService for FullProxies {
                     format!("media `{id}` has no content hash to key its proxy"),
                 ));
             }
-            if self.ready(asset).is_none() {
+            if self.stored(asset).is_none() {
                 self.queue(&jobs, asset, &[]);
             }
         }
@@ -779,7 +795,7 @@ impl ProxyService for FullProxies {
         let Some(asset) = snapshot.doc.media.get(&media) else {
             return ImportProxy::None;
         };
-        if self.ready(asset).is_some() {
+        if self.stored(asset).is_some() {
             return ImportProxy::Ready;
         }
         let (Some(jobs), Some(profile), Some(hash)) =
@@ -787,7 +803,7 @@ impl ProxyService for FullProxies {
         else {
             return ImportProxy::None;
         };
-        if wants_proxy(DEFAULT_POLICY, asset).is_none() {
+        if wanted(&snapshot.doc, asset).is_none() {
             return ImportProxy::None;
         }
         // An evicted or failed proxy is made again only on request (no thrashing).

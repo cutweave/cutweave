@@ -9,8 +9,8 @@ use cutweave_commands::{
     CmdError, Command, Query, QueryCtx, Registry, RegistryError, Tx, command, query, wire,
 };
 use cutweave_model::{
-    Duration, FrameRate, Invariant, MAX_STILL_DURATION_SECS, Project, SampleRate, Sequence,
-    SequenceFormat, SequenceId, TimeInput, Track, TrackId, TrackKind,
+    Duration, FrameRate, Invariant, MAX_STILL_DURATION_SECS, Project, ProxyPolicy, SampleRate,
+    Sequence, SequenceFormat, SequenceId, TimeInput, Track, TrackId, TrackKind,
 };
 
 use crate::util::{check_name, resolve_duration};
@@ -84,6 +84,9 @@ pub struct ProjectNew {
     /// How long a still image is when it is placed without a length (up to one hour); absent:
     /// five seconds. The editor passes the person's "Still image duration" setting.
     pub still_duration: Option<TimeInput>,
+    /// Which of the project's video gets proxies automatically (`off`, `auto`, `all`; ADR-0027);
+    /// absent: `auto`. The editor passes the person's "Proxies for new projects" setting.
+    pub proxy_policy: Option<ProxyPolicy>,
 }
 
 impl ProjectNew {
@@ -150,6 +153,7 @@ impl Command for ProjectNew {
         tx.update_settings(|s| {
             s.default_format = format;
             s.still_duration = still;
+            s.proxy_policy = self.proxy_policy.unwrap_or_default();
             Ok(())
         })?;
         tx.insert_sequence(&sequence)?;

@@ -349,6 +349,8 @@ pub(super) fn args_for(name: &str, p: &Pools) -> Option<(u32, BoxedStrategy<Valu
         "media.remove" => (1, media_remove(p)),
         "media.generate_proxy" | "media.delete_proxy" => (1, proxy_media(p, false)),
         "media.proxy_status" => (1, proxy_media(p, true)),
+        "media.set_proxy_policy" => (1, proxy_policy()),
+        "media.set_proxy_mode" => (1, proxy_mode(p)),
         "project.collect" | "project.collect_estimate" => (1, project_collect()),
         "media.set_location" => (1, media_set_location(p)),
         "media.relink" => (1, media_relink(p)),
@@ -614,9 +616,11 @@ fn project_new() -> BoxedStrategy<Value> {
         Just(json!("f:1")),
         Just(json!("3600s")),
     ]);
-    let valid = (name(), option::of(format), still)
-        .prop_map(|(name, format, still)| {
-            json!({"name": name, "format": format, "still_duration": still})
+    let policy = option::of(select(vec!["off", "auto", "all"]));
+    let valid = (name(), option::of(format), still, policy)
+        .prop_map(|(name, format, still, policy)| {
+            json!({"name": name, "format": format, "still_duration": still,
+                   "proxy_policy": policy})
         })
         .boxed();
     let invalid = prop_oneof![
@@ -628,6 +632,7 @@ fn project_new() -> BoxedStrategy<Value> {
         Just(json!({"name": "P", "format": {"sample_rate": 1234}})),
         Just(json!({"name": "P", "still_duration": "0s"})),
         Just(json!({"name": "P", "still_duration": "3601s"})),
+        Just(json!({"name": "P", "proxy_policy": "some"})),
     ]
     .boxed();
     mix(valid, invalid)
@@ -975,6 +980,31 @@ fn proxy_media(p: &Pools, optional: bool) -> BoxedStrategy<Value> {
     } else {
         mix(valid, invalid)
     }
+}
+
+/// `media.set_proxy_policy` (ADR-0027): each policy, or a word that is none.
+fn proxy_policy() -> BoxedStrategy<Value> {
+    let valid = select(vec!["off", "auto", "all"])
+        .prop_map(|policy| json!({ "policy": policy }))
+        .boxed();
+    let invalid = prop_oneof![Just(json!({ "policy": "some" })), Just(json!({}))].boxed();
+    mix(valid, invalid)
+}
+
+/// `media.set_proxy_mode` (ADR-0027): a mode for known or unknown assets, an empty or repeated
+/// list.
+fn proxy_mode(p: &Pools) -> BoxedStrategy<Value> {
+    let mode = || select(vec!["auto", "force", "off"]);
+    let valid = (vec(one_of(p.media_ids()), 1..=3), mode())
+        .prop_map(|(ids, mode)| json!({ "media": ids, "mode": mode }))
+        .boxed();
+    let invalid = prop_oneof![
+        mode().prop_map(|mode| json!({ "media": [], "mode": mode })),
+        one_of(p.media_ids()).prop_map(|id| json!({ "media": [id.clone(), id], "mode": "off" })),
+        one_of(p.media_ids()).prop_map(|id| json!({ "media": [id], "mode": "never" })),
+    ]
+    .boxed();
+    mix(valid, invalid)
 }
 
 /// `project.collect` and its estimate: a destination no test writes media into (the

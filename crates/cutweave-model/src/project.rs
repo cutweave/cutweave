@@ -37,6 +37,51 @@ pub const DEFAULT_STILL_DURATION_SECS: i64 = 5;
 /// The longest still duration a project may store: one hour.
 pub const MAX_STILL_DURATION_SECS: i64 = 3600;
 
+/// When a project's video gets proxies automatically (ADR-0027). Proxies themselves are cache
+/// state of each computer; the policy is the editor's intent and travels with the project.
+#[derive(
+    Clone,
+    Copy,
+    Debug,
+    Default,
+    PartialEq,
+    Eq,
+    Hash,
+    Serialize,
+    Deserialize,
+    schemars::JsonSchema,
+    specta::Type,
+)]
+#[serde(rename_all = "snake_case")]
+pub enum ProxyPolicy {
+    /// Never automatically (`media.generate_proxy` still makes one).
+    Off,
+    /// For video that is slow to scrub: long-GOP H.264 or HEVC larger than 1920 pixels, faster
+    /// than 60 fps, or 10-bit HEVC. The default.
+    #[default]
+    Auto,
+    /// For every video file.
+    All,
+}
+
+impl ProxyPolicy {
+    /// Whether it is the default, which is left out of the file.
+    #[must_use]
+    pub fn is_auto(&self) -> bool {
+        *self == ProxyPolicy::Auto
+    }
+
+    /// Lowercase name for messages.
+    #[must_use]
+    pub const fn name(self) -> &'static str {
+        match self {
+            ProxyPolicy::Off => "off",
+            ProxyPolicy::Auto => "auto",
+            ProxyPolicy::All => "all",
+        }
+    }
+}
+
 impl ProjectSettings {
     /// How long a still image is when it is placed without a length: the project's value, else
     /// five seconds.
@@ -61,6 +106,10 @@ pub struct ProjectSettings {
     /// already exist.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub still_duration: Option<Duration>,
+    /// Which video gets proxies automatically (ADR-0027). `auto` is left out of the file, so
+    /// documents written before the field read the same.
+    #[serde(default, skip_serializing_if = "ProxyPolicy::is_auto")]
+    pub proxy_policy: ProxyPolicy,
     /// Fields unknown to this version.
     #[serde(flatten)]
     #[schemars(skip)]
