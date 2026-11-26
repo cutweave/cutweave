@@ -425,6 +425,24 @@ pub fn webp(
     out
 }
 
+/// A `width × height` 8-bit RGB PNG that carries `number` in every pixel: red is its low byte,
+/// green the next, blue the third. A frame-number burn-in for image sequence tests (ADR-0035):
+/// [`burned_number`] reads it back from any decoded pixel.
+#[must_use]
+pub fn numbered_png(width: u32, height: u32, number: u32) -> Vec<u8> {
+    let [r, g, b, _] = number.to_le_bytes();
+    let samples: Vec<u8> = std::iter::repeat_n([r, g, b], (width * height) as usize)
+        .flatten()
+        .collect();
+    png(width, height, 8, png_color::RGB, &samples, &[])
+}
+
+/// The number a pixel of a [`numbered_png`] carries (its red, green and blue samples).
+#[must_use]
+pub fn burned_number(rgb: [u8; 3]) -> u32 {
+    u32::from_le_bytes([rgb[0], rgb[1], rgb[2], 0])
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

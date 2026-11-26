@@ -30,6 +30,7 @@ pub const FAST_HASH_WINDOW: u64 = 1 << 20;
 
 const FAST_DOMAIN: &[u8] = b"cutweave/fast-hash/v1";
 const FULL_DOMAIN: &[u8] = b"cutweave/full-hash/v1";
+const SEQUENCE_DOMAIN: &[u8] = b"cutweave/image-sequence-hash/v1";
 const CHUNK: usize = 1 << 20;
 
 /// How much of the file a hash covers.
@@ -107,12 +108,28 @@ impl FromStr for ContentHash {
     }
 }
 
-/// The content hash of the file at `path` in `mode`.
+/// The content hash of the file at `path` in `mode`. For the locator of an image sequence
+/// ([`SequenceSource`](crate::SequenceSource)) it is the hash of the first file mixed with the
+/// run's pattern, first number, count and frame rate.
 ///
 /// Errors: [`MediaError::NotFound`], [`MediaError::InvalidPath`] (not a regular file),
 /// [`MediaError::Io`]. A file that changes while it is hashed gives an unspecified hash, never an
 /// error.
 pub fn content_hash(path: &Path, mode: HashMode) -> Result<ContentHash, MediaError> {
+    if let Some(sequence) = crate::SequenceSource::parse(path) {
+        // An image sequence (ADR-0035): the first file's hash mixed with the run, so the
+        // sequence and a still of its first picture have different cache keys, and importing
+        // reads one file.
+        let first = content_hash(&sequence.first_file(), mode)?;
+        let mut hasher = blake3::Hasher::new();
+        hasher.update(SEQUENCE_DOMAIN);
+        hasher.update(first.digest());
+        hasher.update(sequence.hash_salt().as_bytes());
+        return Ok(ContentHash {
+            mode,
+            digest: *hasher.finalize().as_bytes(),
+        });
+    }
     path::check_file(path)?;
     let io = |e: std::io::Error| MediaError::Io {
         path: path::display(path),

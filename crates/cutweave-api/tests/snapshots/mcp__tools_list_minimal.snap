@@ -115,6 +115,7 @@ expression: catalog.tools_json()
                     "video",
                     "audio",
                     "image",
+                    "image_sequence",
                     "sequence_ref"
                   ]
                 }

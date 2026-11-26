@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 //! The `media` namespace (WP-1B.05, WP-1D.07; arch §5.1, §7): `media.register`,
-//! `media.import`, `media.list`, `media.remove`, and the `media.indexed` /
+//! `media.import`, `media.import_sequence` (WP-2F.05c, ADR-0035: [`sequence`]), `media.list`,
+//! `media.remove`, and the `media.indexed` /
 //! `media.analysis_failed` events of background analysis (which never mutates the document);
 //! the proxy commands of WP-2F.01 ([`proxy`]); the folders of the bin (WP-2F.07, ADR-0020:
 //! [`folders`]); relinking missing media (WP-2F.03: [`relink`]).
@@ -21,6 +22,7 @@ mod policy;
 mod probe;
 pub mod proxy;
 pub mod relink;
+mod sequence;
 mod tree;
 mod walk;
 
@@ -32,7 +34,8 @@ use cutweave_commands::{
 };
 use cutweave_jobs::JobId;
 use cutweave_model::{
-    Duration, FolderId, MediaAsset, MediaId, MediaKind, ProbeInfo, Project, StreamKind,
+    Duration, FolderId, FrameRate, ImageSequence, MediaAsset, MediaId, MediaKind, ProbeInfo,
+    Project, StreamKind,
 };
 
 pub use analysis::{
@@ -61,6 +64,7 @@ pub use relink::{
     MediaRelinkFolderOutput, MediaSetLocation, MediaStatus, MemoryFiles, MissingMedia, RelinkCtx,
     RelinkFiles, RelinkMatch, RelinkSink, Relinked, relocate_batch,
 };
+pub use sequence::{MediaImportSequence, MediaImportSequenceOutput};
 pub use tree::{MediaRegisterTree, MediaTreeRegistered, TreeEntry};
 pub use walk::{MAX_IMPORT_FILES, MAX_WALK_DEPTH};
 
@@ -80,6 +84,7 @@ pub fn register(registry: &mut Registry) -> Result<(), RegistryError> {
     registry
         .register::<MediaRegister>()?
         .register::<MediaImport>()?
+        .register::<MediaImportSequence>()?
         .register::<MediaRegisterTree>()?
         .register::<MediaList>()?
         .register::<MediaRemove>()?;
@@ -154,6 +159,10 @@ pub struct MediaRegister {
     pub content_hash: String,
     /// The folder of the bin to put the new asset in; absent: the top level.
     pub folder: Option<FolderId>,
+    /// For an image sequence (ADR-0035): the run. `path` is then its first picture and `probe`
+    /// the picture with the run's duration and frame rate; the asset's kind is
+    /// `image_sequence`. Absent for every other file.
+    pub image_sequence: Option<ImageSequence>,
 }
 
 fn check_hash(hash: &str) -> Result<(), CmdError> {
@@ -189,6 +198,30 @@ impl MediaRegister {
                 "/probe/rotation",
                 "the rotation must be 0, 90, 180 or 270",
             ));
+        }
+        if let Some(run) = &self.image_sequence {
+            if let Some(problem) = run.problem() {
+                return Err(CmdError::invalid("/image_sequence", problem));
+            }
+            if !self
+                .probe
+                .streams
+                .iter()
+                .any(|s| s.kind == StreamKind::Video)
+            {
+                return Err(CmdError::invalid(
+                    "/probe/streams",
+                    "the first file of the run is not a picture",
+                ));
+            }
+            if self.probe.duration != run.duration() || self.probe.fps != Some(run.fps) {
+                return Err(CmdError::invalid(
+                    "/probe/duration",
+                    "the probe of an image sequence must have the run's duration (count / fps) \
+                     and frame rate",
+                ));
+            }
+            return Ok(MediaKind::ImageSequence);
         }
         kind_of_probe(&self.probe).ok_or_else(|| {
             CmdError::invalid(
@@ -233,7 +266,12 @@ impl Command for MediaRegister {
             Some(id) => id,
             None => tx.new_id(),
         };
-        let mut media = MediaAsset::file(id, kind, self.path.clone(), self.probe.clone());
+        let mut media = match &self.image_sequence {
+            Some(run) => {
+                MediaAsset::image_sequence(id, self.path.clone(), run.clone(), self.probe.clone())
+            }
+            None => MediaAsset::file(id, kind, self.path.clone(), self.probe.clone()),
+        };
         media.content_hash = Some(self.content_hash.clone());
         media.folder = self.folder;
         tx.insert_media(&media)?;
@@ -302,6 +340,9 @@ pub struct ImportCtx {
     pub proxies: Option<Arc<dyn ProxyService>>,
     /// Where `media.import_progress` goes; `None` announces nothing.
     pub events: Option<Arc<dyn AnalysisSink>>,
+    /// The frame rate of the sequence the editor shows: what `media.import_sequence` gives a
+    /// run when the caller names no `fps` (`None`: 30).
+    pub sequence_fps: Option<FrameRate>,
 }
 
 impl ImportCtx {
@@ -316,7 +357,15 @@ impl ImportCtx {
             analysis: None,
             proxies: None,
             events: None,
+            sequence_fps: None,
         }
+    }
+
+    /// The same context with the frame rate of the sequence the editor shows.
+    #[must_use]
+    pub fn with_sequence_fps(mut self, fps: Option<FrameRate>) -> ImportCtx {
+        self.sequence_fps = fps;
+        self
     }
 
     /// The same context with `policy`.
@@ -634,6 +683,7 @@ impl MediaImport {
                         probe: probed.probe,
                         content_hash: probed.content_hash,
                         folder: self.folder,
+                        image_sequence: None,
                     };
                     match register.kind() {
                         Ok(_) => {

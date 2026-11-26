@@ -1,0 +1,287 @@
+{
+  "meta": {
+    "schema_version": 3,
+    "name": "Animated",
+    "created": "2026-11-22T09:30:00Z",
+    "app_version": "0.1.0"
+  },
+  "settings": {
+    "default_format": {
+      "width": 1920,
+      "height": 1080,
+      "frame_rate": {
+        "num": 30,
+        "den": 1
+      },
+      "sample_rate": 48000,
+      "color_space": "rec709",
+      "background": "#000000"
+    }
+  },
+  "media": {
+    "med_0000000000017c9fa16a0416be76c2a2": {
+      "id": "med_0000000000017c9fa16a0416be76c2a2",
+      "kind": "video",
+      "name": null,
+      "folder": null,
+      "path_abs": "/media/a.mp4",
+      "path_rel": null,
+      "content_hash": null,
+      "sequence": null,
+      "probe": {
+        "streams": [
+          {
+            "index": 0,
+            "kind": "video",
+            "codec": "h264",
+            "profile": "High",
+            "width": 1920,
+            "height": 1080,
+            "pixel_format": "yuv420p",
+            "sample_rate": null,
+            "channels": null,
+            "language": null
+          },
+          {
+            "index": 1,
+            "kind": "audio",
+            "codec": "aac",
+            "profile": "LC",
+            "width": null,
+            "height": null,
+            "pixel_format": null,
+            "sample_rate": 48000,
+            "channels": 2,
+            "language": "eng"
+          }
+        ],
+        "duration": 7056000000,
+        "fps": {
+          "num": 30,
+          "den": 1
+        },
+        "vfr": false,
+        "rotation": 0,
+        "color": {
+          "primaries": "bt709",
+          "transfer": "bt709",
+          "matrix": "bt709",
+          "range": "limited"
+        },
+        "audio": {
+          "rate": 48000,
+          "channels": 2
+        }
+      },
+      "custom": {}
+    }
+  },
+  "folders": {},
+  "sequences": {
+    "seq_0000000000027dbebe4b85ad024be2cd": {
+      "id": "seq_0000000000027dbebe4b85ad024be2cd",
+      "name": "Main",
+      "format": {
+        "width": 1920,
+        "height": 1080,
+        "frame_rate": {
+          "num": 30,
+          "den": 1
+        },
+        "sample_rate": 48000,
+        "color_space": "rec709",
+        "background": "#000000"
+      },
+      "tracks": {
+        "trk_000000000003700d96610d4de6333e34": {
+          "id": "trk_000000000003700d96610d4de6333e34",
+          "kind": "video",
+          "name": "V1",
+          "items": {
+            "itm_0000000000047e8ebad220d0590dd41b": {
+              "kind": "clip",
+              "id": "itm_0000000000047e8ebad220d0590dd41b",
+              "name": null,
+              "start": 0,
+              "duration": 2822400000,
+              "enabled": true,
+              "linked_group": null,
+              "attached_to": null,
+              "markers": {},
+              "media": "med_0000000000017c9fa16a0416be76c2a2",
+              "source_in": 0,
+              "speed": {
+                "num": 1,
+                "den": 1
+              },
+              "reverse": false,
+              "freeze": null,
+              "audio": {
+                "gain": 0.0,
+                "pan": {
+                  "keyframes": [
+                    {
+                      "t": 0,
+                      "value": -1.0,
+                      "interp": {
+                        "kind": "linear"
+                      }
+                    },
+                    {
+                      "t": 2822400000,
+                      "value": 1.0,
+                      "interp": {
+                        "kind": "linear"
+                      }
+                    }
+                  ]
+                },
+                "fade_in": {
+                  "duration": 0,
+                  "curve": "linear"
+                },
+                "fade_out": {
+                  "duration": 0,
+                  "curve": "linear"
+                }
+              },
+              "visual": {
+                "transform": {
+                  "position": {
+                    "keyframes": [
+                      {
+                        "t": 0,
+                        "value": {
+                          "x": 0.0,
+                          "y": 0.0
+                        },
+                        "interp": {
+                          "kind": "spring",
+                          "stiffness": 170.0,
+                          "damping": 26.0,
+                          "mass": 1.0,
+                          "bounce": false,
+                          "preset": "spring"
+                        }
+                      },
+                      {
+                        "t": 1411200000,
+                        "value": {
+                          "x": 0.25,
+                          "y": -0.125
+                        },
+                        "interp": {
+                          "kind": "linear"
+                        }
+                      }
+                    ]
+                  },
+                  "scale": {
+                    "x": 1.0,
+                    "y": 1.0
+                  },
+                  "rotation": 0.0,
+                  "anchor": {
+                    "x": 0.5,
+                    "y": 0.5
+                  }
+                },
+                "opacity": {
+                  "keyframes": [
+                    {
+                      "t": 0,
+                      "value": 0.0,
+                      "interp": {
+                        "kind": "bezier",
+                        "x1": 0.42,
+                        "y1": 0.0,
+                        "x2": 0.58,
+                        "y2": 1.0,
+                        "preset": "ease_in_out"
+                      }
+                    },
+                    {
+                      "t": 705600000,
+                      "value": 1.0,
+                      "interp": {
+                        "kind": "linear"
+                      }
+                    },
+                    {
+                      "t": 2116800000,
+                      "value": 0.5,
+                      "interp": {
+                        "kind": "hold"
+                      }
+                    },
+                    {
+                      "t": 3528000000,
+                      "value": 0.25,
+                      "interp": {
+                        "kind": "linear"
+                      }
+                    }
+                  ]
+                },
+                "crop": {
+                  "left": {
+                    "keyframes": [
+                      {
+                        "t": -705600000,
+                        "value": 0.5,
+                        "interp": {
+                          "kind": "linear"
+                        }
+                      }
+                    ]
+                  },
+                  "top": 0.125,
+                  "right": 0.25,
+                  "bottom": 0.0
+                },
+                "flip": {
+                  "horizontal": {
+                    "keyframes": [
+                      {
+                        "t": 0,
+                        "value": false,
+                        "interp": {
+                          "kind": "hold"
+                        }
+                      },
+                      {
+                        "t": 705600000,
+                        "value": true,
+                        "interp": {
+                          "kind": "hold"
+                        }
+                      }
+                    ]
+                  },
+                  "vertical": false
+                },
+                "blend_mode": "soft_light"
+              },
+              "custom": {}
+            }
+          },
+          "muted": false,
+          "hidden": false,
+          "locked": false,
+          "solo": false,
+          "magnetic": false,
+          "height": null,
+          "gain": 0.0,
+          "custom": {}
+        }
+      },
+      "track_order": [
+        "trk_000000000003700d96610d4de6333e34"
+      ],
+      "markers": {},
+      "in_out": null,
+      "custom": {}
+    }
+  },
+  "custom": {}
+}

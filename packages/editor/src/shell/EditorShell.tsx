@@ -11,6 +11,7 @@ import { useKeymapDispatcher } from "../keymap/dispatch.ts";
 import { ArchiveDialog } from "../media/ArchiveDialog.tsx";
 import { CollectDialog } from "../media/CollectDialog.tsx";
 import { RelinkDialog } from "../media/RelinkDialog.tsx";
+import { SequenceOffer } from "../media/SequenceOffer.tsx";
 import { ContextMenuHost } from "../menus/host.tsx";
 import { MenuDialogs } from "../menus/MenuDialogs.tsx";
 import { CommandPalette } from "../palette/index.ts";
@@ -95,6 +96,7 @@ function Shell() {
         <RelinkDialog />
         <CollectDialog />
         <ArchiveDialog />
+        <SequenceOffer />
         <ContextMenuHost />
       </ToastProvider>
     </TooltipProvider>

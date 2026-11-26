@@ -2,7 +2,7 @@
 
 # Command reference
 
-Every command and query the engine registers (142 in total), generated from the registry. The full JSON Schemas are in `schema/commands.json` and `schema/queries.json`.
+Every command and query the engine registers (143 in total), generated from the registry. The full JSON Schemas are in `schema/commands.json` and `schema/queries.json`.
 
 MCP exposure: `core` commands are always listed as tools (`item.move` is `item_move`), `catalog` ones are reachable through the catalog tools, `hidden` ones are not exposed.
 
@@ -85,6 +85,7 @@ MCP exposure: `core` commands are always listed as tools (`item.move` is `item_m
 | media | `media.find_missing` | List the media whose file is missing (or, with verify, changed) on this computer | engine, read-only, idempotent | catalog |
 | media | `media.generate_proxy` | Make proxies (small intra-frame copies the preview scrubs) of video assets now | engine, idempotent | catalog |
 | media | `media.import` | Import media files: probe and register them now, return media ids and analysis job ids | engine, idempotent | core |
+| media | `media.import_sequence` | Import a numbered run of pictures as one image sequence that plays like video | engine, idempotent | catalog |
 | media | `media.list` | List the project's media (filter, sort, paged; default by id) | query | core |
 | media | `media.list_folders` | List the media bin's folder tree with paths and counts | query | catalog |
 | media | `media.move` | Move media assets and folders into a folder of the bin, or to its top level | command, undoable, idempotent | catalog |

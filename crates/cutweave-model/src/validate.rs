@@ -444,6 +444,22 @@ impl Project {
                     Some(_) => {}
                 }
             }
+            match (media.kind, &media.image_sequence) {
+                (MediaKind::ImageSequence, None) => {
+                    out.push(invalid(
+                        "image_sequence media needs its image_sequence description",
+                    ));
+                }
+                (MediaKind::ImageSequence, Some(run)) => {
+                    if let Some(reason) = run.problem() {
+                        out.push(invalid(reason));
+                    }
+                }
+                (_, Some(_)) => out.push(invalid(
+                    "only image_sequence media may have an image_sequence description",
+                )),
+                (_, None) => {}
+            }
             if !matches!(media.probe.rotation, 0 | 90 | 180 | 270) {
                 out.push(invalid("probe rotation must be 0, 90, 180 or 270"));
             }
