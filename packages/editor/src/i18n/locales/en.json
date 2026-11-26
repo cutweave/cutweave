@@ -1832,7 +1832,9 @@
       "editRedo": "Redo",
       "viewSelect": "Select",
       "viewSetPlayhead": "Move playhead here",
-      "itemApplyLayout": "Apply layout"
+      "itemApplyLayout": "Apply layout",
+      "mediaImportFrame": "Add frame to media bin",
+      "mediaImportImagesAsSlideshow": "Import as slideshow…"
     },
     "name": {
       "dockTab": "Panel actions for {{name}}",
@@ -1967,9 +1969,7 @@
       "layout": "Layout",
       "swapLayout": "Swap",
       "placeSideBySide": "Place side by side",
-      "placeAs": "Place as",
-      "importSlideshow": "Import as slideshow…",
-      "addFrameToBin": "Add frame to media bin"
+      "placeAs": "Place as"
     },
     "dialog": {
       "cancel": "Cancel",
