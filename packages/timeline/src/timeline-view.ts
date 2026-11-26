@@ -109,6 +109,8 @@ export class TimelineView {
   private frameWindow: Window | null = null;
   /** The window the DOM listeners are bound in. */
   private boundWindow: Window | null = null;
+  /** Stops waiting for a stylesheet to read the tokens from (`refreshTheme`). */
+  private themeRetry: (() => void) | null = null;
   private dirtyFull = true;
   private dirty: Rect | null = null;
   private destroyed = false;
@@ -367,9 +369,24 @@ export class TimelineView {
     this.flush();
   }
 
-  /** Re-read the design tokens (call on theme change; `bind()` does this automatically). */
+  /**
+   * Re-read the design tokens (call on theme change; `bind()` does this automatically). A canvas
+   * that just moved into another window's document may find its stylesheets still loading (the
+   * window copies them as links): it keeps the tokens it has and reads them again once a
+   * stylesheet there has loaded.
+   */
   refreshTheme(): void {
-    this.theme = this.fixedTheme ?? readTheme(this.canvas.ownerDocument.documentElement);
+    if (this.fixedTheme === undefined) {
+      const doc = this.canvas.ownerDocument;
+      try {
+        this.theme = readTheme(doc.documentElement);
+      } catch {
+        this.retryThemeOnLoad(doc);
+        return;
+      }
+    } else {
+      this.theme = this.fixedTheme;
+    }
     this.vp.rulerHeight = this.theme.controlMd;
     this.vp.headerWidth = this.headerOverride ?? 4 * this.theme.space12;
     this.layout = this.buildLayout();
@@ -459,6 +476,21 @@ export class TimelineView {
     return () => this.viewListeners.delete(cb);
   }
 
+  /** The tokens could not be read yet: read them again when a stylesheet of `doc` has loaded. */
+  private retryThemeOnLoad(doc: Document): void {
+    if (this.themeRetry !== null || this.destroyed) return;
+    const onLoad = (): void => {
+      this.themeRetry?.();
+      this.refreshTheme();
+    };
+    // A `<link>`'s load does not bubble; the document hears it while capturing.
+    doc.addEventListener("load", onLoad, true);
+    this.themeRetry = () => {
+      doc.removeEventListener("load", onLoad, true);
+      this.themeRetry = null;
+    };
+  }
+
   /** The window the canvas is in now (a detached panel's window has its own). */
   private canvasWindow(): Window & typeof globalThis {
     return (this.canvas.ownerDocument.defaultView ?? globalThis) as Window & typeof globalThis;
@@ -474,6 +506,7 @@ export class TimelineView {
     if (this.boundWindow === this.canvasWindow()) return;
     for (const t of this.teardown) t();
     this.teardown = [];
+    this.themeRetry?.();
     this.bind();
     if (!this.fixedTheme) this.refreshTheme();
     this.invalidate();
@@ -678,6 +711,7 @@ export class TimelineView {
 
   destroy(): void {
     this.destroyed = true;
+    this.themeRetry?.();
     if (this.frameId !== 0) this.cancelFrame(this.frameId);
     this.frameId = 0;
     for (const t of this.teardown) t();

@@ -178,8 +178,19 @@ async function moveToNewWindow(app: ElectronApplication, page: Page, name: strin
   await menu.getByRole("menuitem", { name: /^Move to new window/ }).click();
   const popout = await opened;
   await popout.waitForLoadState("domcontentloaded");
+  // On screen only once the panel is in it (WP-2H.15): never an empty window.
+  await expect(panel(popout, name)).toBeVisible();
+  await expect.poll(() => shownWindowTitles(app)).toContain(await popout.title());
   return popout;
 }
+
+/** The titles of the app's windows that are on screen, as main sees them. */
+const shownWindowTitles = (app: ElectronApplication) =>
+  app.evaluate(({ BrowserWindow }) =>
+    BrowserWindow.getAllWindows()
+      .filter((w) => w.isVisible())
+      .map((w) => w.webContents.getTitle()),
+  );
 
 /** The engine's run-file record of when its window last had the focus (ms since the epoch). */
 async function focusedAt(app: ElectronApplication, home: string): Promise<number | null> {
@@ -324,6 +335,8 @@ test.describe("F47 detached panels", () => {
         const reopened = detachedWindows(second.app)[0] as Page;
         await expect(panel(reopened, "Inspector")).toBeVisible();
         await expect(reopened).toHaveTitle(/^Inspector — .*Cutweave$/);
+        // On screen once the Inspector is back in it (WP-2H.15).
+        await expect.poll(() => shownWindowTitles(second.app)).toContain(await reopened.title());
         await expect(reopened.locator("html")).toHaveAttribute("data-theme", "light");
         await expect(panel(page2, "Inspector")).toHaveCount(0);
         await expect(panel(page2, "Timeline")).toBeVisible();
@@ -504,9 +517,13 @@ test.describe("F47 detached panels", () => {
             description: "real-input steps: set CUTWEAVE_E2E_REAL_INPUT=1 (just e2e-real-input)",
           });
         }
-      } finally {
+        // Quitting leaves no window behind, the detached ones included.
         await quitApp(app, page, "discard", launched.mainLog);
-        await launched.close();
+      } finally {
+        // After a failed step the first failure is the one to report, not the quit's.
+        await launched.close().catch((error: unknown) => {
+          console.warn(`F47: closing after a failed step: ${String(error)}`);
+        });
       }
     } finally {
       work.remove();

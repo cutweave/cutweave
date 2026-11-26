@@ -22,6 +22,25 @@ export const POPOUT_FRAME_NAME = /^\d{1,9}-\d{1,9}$/;
 /** A popout is never smaller than this, so a restored one stays usable. */
 export const POPOUT_MIN = { width: 240, height: 160 } as const;
 
+/** `popout.html`'s own title: the window is empty while it has it. */
+export const POPOUT_PAGE_TITLE = "Cutweave";
+
+/**
+ * How long a popout may stay empty (hidden) before main closes it: the editor never moved a
+ * panel into it (a failed open), so nobody should ever see it.
+ */
+export const POPOUT_FILL_TIMEOUT_MS = 15_000;
+
+/**
+ * Whether a popout's page title says the editor has filled it: the editor titles the window by
+ * the panels it moved in ("Inspector — My video — Cutweave", shell/windows.ts) right after the
+ * dock moved them, so a title other than the page's own means the window has content. Main shows
+ * a popout only then (WP-2H.15): an empty one is never on screen.
+ */
+export function isFilledPopoutTitle(title: string): boolean {
+  return title.trim() !== "" && title !== POPOUT_PAGE_TITLE;
+}
+
 export interface PopoutRequest {
   readonly url: string;
   readonly frameName: string;
@@ -92,6 +111,8 @@ export function popoutWindowOptions(
   backgroundColor: string,
 ): BrowserWindowConstructorOptions {
   return {
+    // Hidden until the editor has moved its panels in (`isFilledPopoutTitle`): never empty.
+    show: false,
     autoHideMenuBar: true,
     useContentSize: true,
     minWidth: POPOUT_MIN.width,

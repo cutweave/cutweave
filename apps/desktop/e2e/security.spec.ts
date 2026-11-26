@@ -404,6 +404,38 @@ test.describe("detached panels' windows (ADR-0031)", () => {
     expect(await page.evaluate(() => window.cutweave.preview.isAvailable())).toBe(true);
   });
 
+  // WP-2H.15: a popout is shown only once the editor has moved a panel into it (it titles the
+  // window after it); one it never fills (a failed open) is closed without ever being seen.
+  test("an empty popout is never on screen, and one never filled is closed unseen", async ({
+    app,
+    page,
+  }) => {
+    const child = await openPopout(app, page);
+    /** How many popout windows are shown and how many hidden, as main sees them. */
+    const popouts = () =>
+      app.evaluate(({ BrowserWindow }) => {
+        const all = BrowserWindow.getAllWindows().filter((w) =>
+          w.webContents.getURL().endsWith("/popout.html"),
+        );
+        return {
+          shown: all.filter((w) => w.isVisible()).length,
+          hidden: all.filter((w) => !w.isVisible()).length,
+        };
+      });
+    expect(await popouts()).toEqual({ shown: 0, hidden: 1 });
+    // Titled after a panel (what the editor does once the dock moved it in): shown.
+    await child.evaluate(() => {
+      document.title = "Inspector — Cutweave";
+    });
+    await expect.poll(popouts).toEqual({ shown: 1, hidden: 0 });
+
+    // Another one the editor never fills stays hidden and is closed within the fill timeout.
+    const empty = await openPopout(app, page, "1-97");
+    expect(await popouts()).toEqual({ shown: 1, hidden: 1 });
+    await empty.waitForEvent("close", { timeout: 30_000 });
+    await expect.poll(popouts).toEqual({ shown: 1, hidden: 0 });
+  });
+
   test("a popout's document has the app CSP", async ({ app, page }) => {
     const child = await openPopout(app, page);
     expect(await violationOf(child, { fetch: "http://example.com/" })).toBe(
