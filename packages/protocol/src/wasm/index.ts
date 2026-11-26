@@ -208,7 +208,7 @@ function rateArgs(rate: FrameRate): [number, number] {
 }
 
 function rounding(r: Rounding): number {
-  const code = ROUNDING[r];
+  const code = Object.hasOwn(ROUNDING, r) ? ROUNDING[r] : undefined;
   if (code === undefined) throw new RangeError(`unknown rounding ${String(r)}`);
   return code;
 }
@@ -218,21 +218,21 @@ class Raw {
   readonly x: RawExports;
   #encoder = new TextEncoder();
   #decoder = new TextDecoder();
-  #f64: Float64Array;
-  #u8: Uint8Array;
+  #floats: Float64Array;
+  #bytes: Uint8Array;
 
   constructor(x: RawExports) {
     this.x = x;
-    this.#f64 = new Float64Array(x.memory.buffer);
-    this.#u8 = new Uint8Array(x.memory.buffer);
+    this.#floats = new Float64Array(x.memory.buffer);
+    this.#bytes = new Uint8Array(x.memory.buffer);
   }
 
   /** Views over the current memory (a call can grow it, which detaches the old buffer). */
   #views(): void {
     const buffer = this.x.memory.buffer;
-    if (this.#u8.buffer !== buffer) {
-      this.#u8 = new Uint8Array(buffer);
-      this.#f64 = new Float64Array(buffer);
+    if (this.#bytes.buffer !== buffer) {
+      this.#bytes = new Uint8Array(buffer);
+      this.#floats = new Float64Array(buffer);
     }
   }
 
@@ -244,7 +244,7 @@ class Raw {
     this.#views();
     let at = ptr;
     for (const e of encoded) {
-      this.#u8.set(e, at);
+      this.#bytes.set(e, at);
       at += e.length;
     }
     return encoded.map((e) => e.length);
@@ -255,7 +255,7 @@ class Raw {
     const len = this.x.cw_out_len() >>> 0;
     const ptr = this.x.cw_out_ptr() >>> 0;
     this.#views();
-    return this.#decoder.decode(this.#u8.subarray(ptr, ptr + len));
+    return this.#decoder.decode(this.#bytes.subarray(ptr, ptr + len));
   }
 
   fail(): never {
@@ -283,15 +283,15 @@ class Raw {
     if (target.length < count) {
       throw new RangeError(`the output array holds ${target.length} numbers, ${count} needed`);
     }
-    target.set(this.#f64.subarray(ptr / 8, ptr / 8 + count));
+    target.set(this.#floats.subarray(ptr / 8, ptr / 8 + count));
     return target;
   }
 
-  /** The first number a call left in the number buffer. */
+  /** Number `index` of those a call left in the number buffer. */
   number(index: number): number {
     const ptr = this.x.cw_f64_ptr() >>> 0;
     this.#views();
-    return this.#f64[ptr / 8 + index] as number;
+    return this.#floats[ptr / 8 + index] as number;
   }
 }
 
