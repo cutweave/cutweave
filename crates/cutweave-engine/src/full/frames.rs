@@ -51,9 +51,9 @@
 //!
 //! # Reverse playback (WP-2D.01b)
 //!
-//! The preview notes, per media item, the source time it was last asked for: a request before
-//! it reads the media backwards (a reversed clip, or the transport playing or scrubbing
-//! backwards). Then:
+//! The preview notes, per media item, the source time it was last asked for: a request up to
+//! a second before it reads the media backwards (a reversed clip, or the transport playing or
+//! scrubbing backwards). Then:
 //!
 //! - **Playback prefers the proxy.** A playback frame read backwards is served from the asset's
 //!   ready proxy, like a scrub frame (intra-frame: every frame costs one decode). The paused
@@ -82,7 +82,7 @@ use cutweave_media::{
     CancelCheck, CancelToken, DecodeMode, DecodeOpts, DecoderPool, HwMode, MediaBackend,
     MediaError, PixelFormat, ReadBack, VideoDecoder,
 };
-use cutweave_model::{MediaAsset, MediaId, ProbeInfo, Project, Time};
+use cutweave_model::{FLICKS_PER_SECOND, MediaAsset, MediaId, ProbeInfo, Project, Time};
 use cutweave_render::alloc_scope::{self, Scope};
 use cutweave_render::{FrameError, FrameRequest, FrameSource, VideoFrame};
 
@@ -97,6 +97,9 @@ pub(crate) const READBACK_BYTES: usize = 192 << 20;
 pub(crate) const READBACK_MEDIA: usize = 2;
 /// Renders after which a read-back nobody used is let go (3 s of playback at 30 fps).
 pub(crate) const READBACK_IDLE_RENDERS: u64 = 90;
+/// The longest step back in source time that counts as reading backwards (1 s: reverse
+/// playback up to 30× at 30 fps).
+const REVERSE_STEP_FLICKS: i64 = FLICKS_PER_SECOND;
 
 /// Frames of `width × height` a read-back holds within [`READBACK_BYTES`], as the compositor
 /// gets them: 4:2:0, in 16-bit samples when `pixel_format` (the probe's) is 10 or 12-bit.
@@ -933,9 +936,11 @@ impl FrameSource for PreviewRequest<'_> {
             .ok_or_else(|| FrameError::Unavailable(format!("media {}", request.media)))?;
         let stream = request.stream.unwrap_or(0);
         let t = request_time(request);
-        // Read backwards: a reversed clip, or the transport playing or scrubbing back.
+        // Read backwards: a reversed clip, or the transport playing or scrubbing back (a jump
+        // back, or another clip of the media further on, is not).
         let previous = held.requested;
-        let backward = !request.still && previous.is_some_and(|p| t < p);
+        let backward = !request.still
+            && previous.is_some_and(|p| t < p && p.flicks() - t.flicks() <= REVERSE_STEP_FLICKS);
         held.requested = Some(t);
         // Scrub frames try the proxy first, and so do playback frames read backwards
         // (WP-2D.01b).
