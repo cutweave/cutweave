@@ -4,7 +4,7 @@
 // commands add their rows here; a row for a command nobody has registered is left out, so a
 // feature WP only adds its row.
 // TODO(WP-2A.03): Ripple delete, Delete gap. TODO(WP-2A.06): Cut, Copy, Paste, Paste attributes,
-// Duplicate. TODO(WP-2A.05): Link, Unlink, Group. TODO(WP-2A.11): Replace clip. TODO(WP-2D.01):
+// Duplicate. TODO(WP-2A.11): Replace clip. TODO(WP-2D.01):
 // Speed, Reverse, Freeze frame. TODO(WP-2A.02): markers, in and out, Make magnetic, track
 // height, Move up and down, Color label. TODO(WP-2A.09): Zoom to fit and Zoom to selection.
 // TODO(WP-2C.05): the keyframe menu. The edge menu (WP-2A.04) trims, ripple trims and rolls the
@@ -13,7 +13,15 @@ import { formatTimecode } from "@cutweave/timeline";
 import { itemSelection, trackSelection } from "../adapters.ts";
 import type { LabelSpec, MenuContext, MenuRow, MenuSurfaceDef, MenuTarget } from "../types.ts";
 import type { ContextValues } from "../when.ts";
-import { type ClipFact, clipFact, clipFacts, clipLabel, mediaPath, trackFact } from "./facts.ts";
+import {
+  activeSequence,
+  type ClipFact,
+  clipFact,
+  clipFacts,
+  clipLabel,
+  mediaPath,
+  trackFact,
+} from "./facts.ts";
 import { sequenceRate } from "./shared.ts";
 
 const LOCKED = "contextMenu.reason.trackLocked" as const;
@@ -24,8 +32,66 @@ export function clipKeys(target: MenuTarget): ContextValues {
   return {
     "track.locked": facts.some((f) => f.track.locked),
     "item.enabled": facts.length > 0 && facts.every((f) => f.clip.enabled),
+    "item.linked": facts.some((f) => f.clip.linked_group !== null),
   };
 }
+
+// ----- links and attachments (WP-2A.05) ----------------------------------------------------------
+
+/** The clips of the menu's selection start and end together, each on its own track. */
+function alignedOnOwnTracks(facts: readonly ClipFact[]): boolean {
+  const [first] = facts;
+  return (
+    first !== undefined &&
+    facts.length >= 2 &&
+    facts.every(
+      (f) => f.clip.start === first.clip.start && f.clip.duration === first.clip.duration,
+    ) &&
+    new Set(facts.map((f) => f.track.id)).size === facts.length
+  );
+}
+
+const sameGroup = (facts: readonly ClipFact[]): boolean =>
+  facts.every(
+    (f) => f.clip.linked_group !== null && f.clip.linked_group === facts[0]?.clip.linked_group,
+  );
+
+const canLink = (ctx: MenuContext): boolean => {
+  const facts = clipFacts(ctx.ids);
+  return (
+    facts.length === ctx.ids.length &&
+    ctx.keys["track.locked"] !== true &&
+    alignedOnOwnTracks(facts) &&
+    !sameGroup(facts)
+  );
+};
+
+const linkReason = (ctx: MenuContext) => {
+  if (ctx.keys["track.locked"] === true) return LOCKED;
+  const facts = clipFacts(ctx.ids);
+  return alignedOnOwnTracks(facts) && sameGroup(facts)
+    ? ("contextMenu.reason.alreadyLinked" as const)
+    : ("contextMenu.reason.notAligned" as const);
+};
+
+/** The main-track clip a clip menu's selection can be attached to: the one all of them start in. */
+function mainClipFor(ids: readonly string[]): string | null {
+  const found = activeSequence();
+  const facts = clipFacts(ids);
+  const main = Object.values(found?.sequence.tracks ?? {}).find((t) => t.magnetic);
+  if (main === undefined || facts.length === 0) return null;
+  const parent = Object.values(main.items).find((i) =>
+    facts.every((f) => f.clip.start >= i.start && f.clip.start < i.start + i.duration),
+  );
+  const onMain = facts.some((f) => f.track.id === main.id);
+  return parent === undefined || onMain ? null : parent.id;
+}
+
+const canAttach = (ctx: MenuContext): boolean =>
+  ctx.keys["track.locked"] !== true && mainClipFor(ctx.ids) !== null;
+
+const attachReason = (ctx: MenuContext) =>
+  ctx.keys["track.locked"] === true ? LOCKED : ("contextMenu.reason.noMainClip" as const);
 
 /** The playhead the menu acts on (Split cuts there, not where the pointer was). */
 const playheadOf = (ctx: MenuContext): number => ctx.playhead ?? 0;
@@ -63,6 +129,42 @@ const clipRows: readonly MenuRow[] = [
     order: 1,
     when: "!track.locked",
     reason: LOCKED,
+    args: (ctx) => ({ items: ctx.ids }),
+  },
+  {
+    command: "item.link",
+    group: "link",
+    order: 0,
+    enabledIf: canLink,
+    reason: linkReason,
+    args: (ctx) => ({ items: ctx.ids }),
+  },
+  {
+    command: "item.unlink",
+    group: "link",
+    order: 1,
+    enabledIf: (ctx) => ctx.keys["item.linked"] === true && ctx.keys["track.locked"] !== true,
+    reason: (ctx) =>
+      ctx.keys["track.locked"] === true ? LOCKED : ("contextMenu.reason.notLinked" as const),
+    args: (ctx) => ({ items: ctx.ids }),
+  },
+  {
+    command: "item.attach",
+    group: "link",
+    order: 2,
+    enabledIf: canAttach,
+    reason: attachReason,
+    args: (ctx) => ({ items: ctx.ids, parent: mainClipFor(ctx.ids) }),
+  },
+  {
+    command: "item.detach",
+    group: "link",
+    order: 3,
+    enabledIf: (ctx) =>
+      ctx.keys["track.locked"] !== true &&
+      clipFacts(ctx.ids).some((f) => (f.clip.attached_to ?? null) !== null),
+    reason: (ctx) =>
+      ctx.keys["track.locked"] === true ? LOCKED : ("contextMenu.reason.notAttached" as const),
     args: (ctx) => ({ items: ctx.ids }),
   },
   {
@@ -135,7 +237,7 @@ const clipName = (target: MenuTarget) =>
 export const TIMELINE_CLIP: MenuSurfaceDef = {
   id: "timeline.clip",
   name: clipName,
-  groups: ["edit", "state", "reveal"],
+  groups: ["edit", "link", "state", "reveal"],
   selection: itemSelection,
   keys: clipKeys,
   rows: clipRows,

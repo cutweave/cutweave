@@ -16,6 +16,10 @@ export const COMMAND_INFO: readonly CommandInfo[] = [
   { name: "clip.trim", label: "contextMenu.command.clipTrim", undoable: true },
   { name: "clip.ripple_trim", label: "contextMenu.command.clipRippleTrim", undoable: true },
   { name: "clip.roll", label: "contextMenu.command.clipRoll", undoable: true },
+  { name: "item.link", label: "contextMenu.command.itemLink", icon: "link", undoable: true },
+  { name: "item.unlink", label: "contextMenu.command.itemUnlink", icon: "unlink", undoable: true },
+  { name: "item.attach", label: "contextMenu.command.itemAttach", undoable: true },
+  { name: "item.detach", label: "contextMenu.command.itemDetach", undoable: true },
   {
     name: "item.delete",
     label: "contextMenu.command.itemDelete",

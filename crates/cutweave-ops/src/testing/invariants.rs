@@ -96,6 +96,9 @@ pub fn check_linked_edit(
         "clip.slip" => slipped(params, output, before, after),
         "clip.slide" => slid(params, output, before, after),
         "clip.split" => split_together(params, output, before, after),
+        "item.link" => linked(params, output, before, after),
+        "item.unlink" => unlinked_only(params, before, after),
+        "item.attach" | "item.detach" => attached(name, params, before, after),
         _ => Ok(()),
     }
 }
@@ -457,6 +460,130 @@ fn only_item_unlinked(
             return Err(format!(
                 "partner {p} of {target} changed although only {target} was unlinked"
             ));
+        }
+    }
+    Ok(())
+}
+
+/// Every item of `before` is in `after` on its track with the same fields, except that the
+/// field `ignore` clears (the link or the attachment) may differ: INV-261, INV-271.
+fn only_changes(before: &Project, after: &Project, links: bool) -> Result<(), String> {
+    let strip = |mut it: Item| {
+        if links {
+            it.set_linked_group(None);
+        } else {
+            it.set_attached_to(None);
+        }
+        it
+    };
+    for s in before.sequences.values() {
+        for t in s.tracks.values() {
+            for i in t.items.iter() {
+                let (t1, now) = found(after, i.id(), "after the edit")?;
+                if t1 != t.id || strip(now) != strip(i.clone()) {
+                    return Err(format!(
+                        "{} changed in a way that is not its {}",
+                        i.id(),
+                        if links { "link" } else { "attachment" }
+                    ));
+                }
+            }
+        }
+    }
+    let count = |d: &Project| {
+        d.sequences
+            .values()
+            .flat_map(|s| s.tracks.values())
+            .map(|t| t.items.len())
+            .sum::<usize>()
+    };
+    if count(before) != count(after) {
+        return Err("the number of items changed".to_owned());
+    }
+    Ok(())
+}
+
+/// INV-261: the given items and every member of their groups share one new group, and the old
+/// groups are gone; nothing else changed.
+fn linked(params: &Value, output: &Value, before: &Project, after: &Project) -> Result<(), String> {
+    only_changes(before, after, true)?;
+    let group: GroupId = output["group"]
+        .as_str()
+        .and_then(|g| g.parse().ok())
+        .ok_or("item.link returned no group")?;
+    let mut expected: Vec<ItemId> = Vec::new();
+    for id in given(params)? {
+        let (_, it) = found(before, id, "before the edit")?;
+        expected.push(id);
+        expected.extend(partners(before, &it));
+    }
+    expected.sort();
+    expected.dedup();
+    if members(after, group) != expected {
+        return Err(format!(
+            "the new group {group} has members {:?}, expected {expected:?}",
+            members(after, group)
+        ));
+    }
+    for id in &expected {
+        let (_, it) = found(before, *id, "before the edit")?;
+        if let Some(old) = it.linked_group()
+            && !members(after, old).is_empty()
+        {
+            return Err(format!("the old group {old} of {id} still exists"));
+        }
+    }
+    Ok(())
+}
+
+/// INV-262: the given items have no group, the others keep theirs (a group left with one member
+/// dissolves, which `check_invariants` also asserts); nothing else changed.
+fn unlinked_only(params: &Value, before: &Project, after: &Project) -> Result<(), String> {
+    only_changes(before, after, true)?;
+    let given = given(params)?;
+    for id in &given {
+        let (_, it) = found(after, *id, "after the edit")?;
+        if it.linked_group().is_some() {
+            return Err(format!("{id} is still linked after item.unlink"));
+        }
+    }
+    for s in before.sequences.values() {
+        for t in s.tracks.values() {
+            for i in t.items.iter() {
+                let (_, now) = found(after, i.id(), "after the edit")?;
+                let left = i.linked_group().is_some_and(|g| {
+                    members(before, g)
+                        .iter()
+                        .filter(|m| !given.contains(m))
+                        .count()
+                        < 2
+                });
+                if !given.contains(&i.id()) && !left && now.linked_group() != i.linked_group() {
+                    return Err(format!("{} left its group but was not given", i.id()));
+                }
+            }
+        }
+    }
+    Ok(())
+}
+
+/// INV-271: only `attached_to` changed; the given items and their partners are attached to the
+/// parent (`item.attach`) or to nothing (`item.detach`).
+fn attached(name: &str, params: &Value, before: &Project, after: &Project) -> Result<(), String> {
+    only_changes(before, after, false)?;
+    let parent = (name == "item.attach")
+        .then(|| id_at(&params["parent"]))
+        .transpose()?;
+    for id in given(params)? {
+        let (_, it) = found(before, id, "before the edit")?;
+        for m in std::iter::once(id).chain(partners(before, &it)) {
+            let (_, now) = found(after, m, "after the edit")?;
+            if now.attached_to() != parent {
+                return Err(format!(
+                    "{m} is attached to {:?}, not {parent:?}",
+                    now.attached_to()
+                ));
+            }
         }
     }
     Ok(())

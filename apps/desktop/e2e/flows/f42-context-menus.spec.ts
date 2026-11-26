@@ -9,7 +9,8 @@
 // playhead, Ctrl+Z, Disable clip, Reset properties after an opacity nudge, Ctrl+Z), a track header (Mute, Lock, then a drag on it is refused), an
 // empty lane (Add track above), the ruler (Move playhead here), a dock tab (Reset layout), the
 // save status (Save now); press the Menu key on a bin card and choose Remove from project, then
-// cancel its dialog. WP-2A.04 adds a clip's left edge: Trim to playhead, then Ctrl+Z. A third
+// cancel its dialog. WP-2A.04 adds a clip's left edge: Trim to playhead, then Ctrl+Z; WP-2A.05
+// the clip menu's Unlink clips (Link clips is disabled for a pair already linked), then Ctrl+Z. A third
 // flow right-clicks the Export chip and cancels the export (it needs
 // the FFmpeg engine and the corpus, like F14, and skips without them). Every choice is checked as
 // an undo step or as state the person sees. Only the OS file picker is stubbed.
@@ -192,6 +193,27 @@ test.describe("F42 context menus", () => {
       await expect(item(clipMenu, /^Enable clip/)).toBeVisible();
       await item(clipMenu, /^Enable clip/).click();
       await expect.poll(async () => (await sequence(page)).tracks[0]?.items[0]?.enabled).toBe(true);
+
+      // Links (WP-2A.05): the clip and its sound are one group; Unlink clips takes the picture
+      // out (the pair dissolves) and Ctrl+Z links them again.
+      await editorCaughtUp(page);
+      g = await timelineGeometry(page);
+      box = clipBox(g, clipId);
+      await expect
+        .poll(async () => (await sequence(page)).tracks[0]?.items[0]?.linked_group)
+        .not.toBeNull();
+      await page.mouse.click(box.x + Math.min(box.w / 2, 60), box.y, { button: "right" });
+      await expect(item(clipMenu, /^Link clips/)).toBeDisabled();
+      await item(clipMenu, /^Unlink clips/).click();
+      await expect
+        .poll(async () => (await sequence(page)).tracks[0]?.items[0]?.linked_group)
+        .toBeNull();
+      await editorCaughtUp(page);
+      await shortcut(app, "Control+Z");
+      await expect
+        .poll(async () => (await sequence(page)).tracks[0]?.items[0]?.linked_group)
+        .not.toBeNull();
+      await editorCaughtUp(page);
 
       // Reset properties (WP-2C.03): nudge the opacity down a step in the Inspector, then reset
       // the clip from its menu; Ctrl+Z brings the nudge back.
