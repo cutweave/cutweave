@@ -540,7 +540,7 @@ fn reframe_scales_keyed_values_and_leaves_audio_tracks_alone() {
             {"t": "f:30", "value": {"x": -0.1, "y": 0.0}}]}),
     );
     let audio_before = serde_json::to_value(
-        &clips(&seq(&h, p.sequence))
+        clips(&seq(&h, p.sequence))
             .into_iter()
             .find(|c| c.id == a)
             .unwrap(),
@@ -567,7 +567,7 @@ fn reframe_scales_keyed_values_and_leaves_audio_tracks_alone() {
     assert!((keys[0].value.y - 0.2).abs() < 1e-12);
     assert_eq!(keys[1].t.flicks(), 30 * 23_520_000);
     let audio_after = serde_json::to_value(
-        &clips(&seq(&h, p.sequence))
+        clips(&seq(&h, p.sequence))
             .into_iter()
             .find(|c| c.id == a)
             .unwrap(),
@@ -734,7 +734,7 @@ fn ui_state_keeps_the_active_sequence_and_drops_a_deleted_one() {
     // It survives the file round trip, and a deleted sequence falls back to none.
     let json = ctx.to_json();
     let (back, warnings) = ViewCtx::from_json(&json, h.doc());
-    assert!(warnings.is_empty());
+    assert_eq!(warnings, Vec::<String>::new());
     assert_eq!(back.state().active_sequence, Some(reel));
     h.ok("sequence.delete", json!({"sequence": reel}));
     let (gone, _) = ViewCtx::from_json(&json, h.doc());
