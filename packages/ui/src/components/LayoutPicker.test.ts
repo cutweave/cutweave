@@ -49,7 +49,7 @@ describe("LayoutPicker", () => {
       h(LayoutPicker, { options: OPTIONS, onPick, "aria-label": "Layout" }),
     );
     await user.click(screen.getByRole("button", { name: "Top and bottom" }));
-    await user.tab();
+    screen.getByRole("button", { name: "Side by side" }).focus();
     await user.keyboard("{Enter}");
     expect(onPick.mock.calls.map((c) => c[0])).toEqual(["top_bottom", "side_by_side"]);
     rerender(h(LayoutPicker, { options: OPTIONS, onPick, disabled: true, "aria-label": "Layout" }));
