@@ -11,6 +11,7 @@
     "build": "tsc -b tsconfig.build.json",
     "typecheck": "tsc --noEmit",
     "test": "vitest run",
+    "check:machine": "vitest run --root ../.. --silent=false packages/timeline/src/interaction/coverage.test.ts",
     "bench": "node bench/run.mjs",
     "demo": "vite demo",
     "test:perf": "playwright test -c demo/playwright.config.ts"
@@ -23,6 +24,7 @@
     "@playwright/test": "1.65.1",
     "@types/node": "^24.19.2",
     "@types/react": "19.3.0",
+    "fast-check": "4.10.2",
     "vite": "8.3.8"
   }
 }

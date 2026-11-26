@@ -8,6 +8,11 @@
     "declaration": true
   },
   "include": ["src"],
-  "exclude": ["src/**/*.test.ts", "src/**/*.stories.tsx", "src/test-support.ts"],
+  "exclude": [
+    "src/**/*.test.ts",
+    "src/**/*.stories.tsx",
+    "src/test-support.ts",
+    "src/interaction/testing/**"
+  ],
   "references": [{ "path": "../protocol/tsconfig.build.json" }]
 }
