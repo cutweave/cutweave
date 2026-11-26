@@ -50,6 +50,7 @@ pub use link::{
 };
 pub use reset::{ItemResetProps, ItemResetPropsOutput, ResetGroup};
 
+pub(crate) use edit::remint;
 pub use edit::{
     DuplicatedItem, ItemDelete, ItemDeleteOutput, ItemDuplicate, ItemDuplicateOutput, ItemMove,
     ItemMoveOutput, MovedItem,

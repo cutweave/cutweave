@@ -12,6 +12,7 @@
 //! ripples. IDs (INV-23): per given clip, in order, the right halves' group (when linked), then
 //! the right halves in member order (the clip, then its partners by track ID and item ID).
 
+pub mod attributes;
 pub mod trim;
 
 use std::collections::BTreeSet;
@@ -22,6 +23,7 @@ use cutweave_model::{
     TrackKind,
 };
 
+pub use attributes::{Attribute, ClipPasteAttributes, ClipPasteAttributesOutput};
 pub use trim::{
     ClipRippleTrim, ClipRoll, ClipSlide, ClipSlip, ClipSpan, ClipTrim, ClipTrimOutput, Speed,
     TrimEdge, TrimOutput, TrimmedClip,
@@ -45,7 +47,8 @@ pub fn register(registry: &mut Registry) -> Result<(), RegistryError> {
         .register::<ClipRippleTrim>()?
         .register::<ClipRoll>()?
         .register::<ClipSlip>()?
-        .register::<ClipSlide>()?;
+        .register::<ClipSlide>()?
+        .register::<ClipPasteAttributes>()?;
     Ok(())
 }
 
