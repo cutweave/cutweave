@@ -183,7 +183,7 @@ pub struct TxEnded {
 #[serde(rename_all = "snake_case")]
 #[non_exhaustive]
 pub enum GestureCancelReason {
-    /// No request named it for [`GESTURE_IDLE_TIMEOUT`](crate::GESTURE_IDLE_TIMEOUT) (30 s).
+    /// No request named it for 30 s (the gesture idle timeout).
     IdleTimeout,
 }
 

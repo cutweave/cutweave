@@ -17,8 +17,8 @@ use std::collections::BTreeSet;
 use std::fmt::Write as _;
 
 use cutweave_commands::{
-    CmdError, CommandMeta, CommandPanicked, DocPatched, DocReset, EntryKind, HistoryChanged, Patch,
-    Registry, Rev, TxActivity, TxEnded,
+    CmdError, CommandMeta, CommandPanicked, DocPatched, DocReset, EntryKind, GestureCancelled,
+    HistoryChanged, Patch, Registry, Rev, TxActivity, TxEnded,
 };
 use cutweave_model::{
     Duration, EntityKind, FrameRate, GroupId, Invariant, ItemId, MediaId, Project, Rounding,
@@ -78,6 +78,7 @@ fn event_payload(name: &str, types: &mut Types) -> Option<DataType> {
         "HistoryChanged" => HistoryChanged::definition(types),
         "TxActivity" => TxActivity::definition(types),
         "TxEnded" => TxEnded::definition(types),
+        "GestureCancelled" => GestureCancelled::definition(types),
         _ => return None,
     })
 }
