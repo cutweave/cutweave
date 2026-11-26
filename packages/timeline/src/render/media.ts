@@ -129,7 +129,11 @@ export function drawTiles(
     const frozenTile = Math.floor(slice.sourceIn / dur);
     const tw = frozen ? dur * k : (dur / sp) * k;
     for (let n = j0; n <= j1 && n - j0 < MAX_TILES_PER_ITEM; n++) {
-      const at = frozen ? n * dur : rev ? (end - (n + 1) * dur) / sp : (n * dur - slice.sourceIn) / sp;
+      const at = frozen
+        ? n * dur
+        : rev
+          ? (end - (n + 1) * dur) / sp
+          : (n * dur - slice.sourceIn) / sp;
       const tx = x + at * k;
       const d0 = Math.max(tx, v0);
       const d1 = Math.min(tx + tw, v1);

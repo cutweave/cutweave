@@ -47,7 +47,13 @@ export interface FrameInput {
 }
 
 /** Snap kinds in rank order, and how each draws its guide. */
-export const GUIDE_KINDS: readonly SnapKindName[] = ["playhead", "edge", "marker", "beat", "in_out"];
+export const GUIDE_KINDS: readonly SnapKindName[] = [
+  "playhead",
+  "edge",
+  "marker",
+  "beat",
+  "in_out",
+];
 
 export interface GuideStyle {
   readonly color: string;

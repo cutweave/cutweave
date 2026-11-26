@@ -15,9 +15,9 @@ import {
   FLAG_DISABLED,
   FLAG_PROPOSED,
   FLAG_SELECTED,
+  type TimelineLayout,
   TRACK_DIMMED,
   TRACK_LOCKED,
-  type TimelineLayout,
 } from "../layout.ts";
 import type { ItemKind } from "../model.ts";
 import type { Viewport } from "../viewport.ts";
@@ -48,7 +48,13 @@ export function edgeX(
 }
 
 /** The lane background of track `ti` and its visible clips, in `[t0, t1]` flicks. */
-export function drawTrack(s: RenderState, ti: number, laneTop: number, t0: number, t1: number): void {
+export function drawTrack(
+  s: RenderState,
+  ti: number,
+  laneTop: number,
+  t0: number,
+  t1: number,
+): void {
   const { ctx, f } = s;
   const { layout, vp, theme: th, view } = f;
   const stats = s.stats;

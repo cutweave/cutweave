@@ -157,7 +157,7 @@ function drawMarkers(s: RenderState, t0: number, t1: number, baseY: number): voi
   for (let n = begin; n < markers.length; n++) {
     const m = markers[n] as TimelineMarker;
     if (m.t > t1) break;
-    if (m.t < t0 - (w / 2) / s.k) continue;
+    if (m.t < t0 - w / 2 / s.k) continue;
     const x = Math.round(s.x(m.t)) + 0.5;
     if (x < vp.headerWidth) continue;
     color = batch(s, color, m.color ?? th.marigold);

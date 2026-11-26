@@ -42,14 +42,7 @@ export function drawHeaders(s: RenderState, y0: number, y1: number): void {
     }
 
     const nameBox = nameRect(vp, th, laneTop, laneH, s.rect);
-    const text = s.trackNames.fit(
-      layout,
-      tracks.length,
-      ti,
-      track.name,
-      nameBox.w,
-      s.charLabel,
-    );
+    const text = s.trackNames.fit(layout, tracks.length, ti, track.name, nameBox.w, s.charLabel);
     ctx.font = th.fontLabel;
     ctx.fillStyle = th.textPrimary;
     if (text !== "") ctx.fillText(text, nameBox.x, cy);

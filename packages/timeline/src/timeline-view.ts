@@ -466,7 +466,9 @@ export class TimelineView {
       this.zoomAnim = null;
     }
     a.current = next;
-    const scrollX = Math.round(a.anchorT - (a.anchorX - this.vp.headerWidth) / (next / FLICKS_PER_SECOND));
+    const scrollX = Math.round(
+      a.anchorT - (a.anchorX - this.vp.headerWidth) / (next / FLICKS_PER_SECOND),
+    );
     this.userView({ pxPerSec: next, scrollX });
   }
 
