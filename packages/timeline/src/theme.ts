@@ -55,11 +55,15 @@ export interface Theme {
 const KINDS: readonly ItemKind[] = ["media", "audio", "graphics", "captions", "effects"];
 
 /**
- * Reads every token from `root`'s computed style (default `document.documentElement`). Throws on
- * a missing token so a broken theme fails loudly instead of drawing transparent pixels.
+ * Reads every token from `root`'s computed style (default: the main document's root; a detached
+ * window's canvas passes its own). Throws on a missing token so a broken theme fails loudly
+ * instead of drawing transparent pixels.
  */
+// biome-ignore lint/style/noRestrictedGlobals: the default is the main document, callers pass theirs
 export function readTheme(root: HTMLElement = document.documentElement): Theme {
-  const cs = getComputedStyle(root);
+  const doc = root.ownerDocument;
+  const view = doc.defaultView ?? globalThis;
+  const cs = view.getComputedStyle(root);
   const v = (name: string): string => {
     const s = cs.getPropertyValue(name).trim();
     if (!s) throw new Error(`@cutweave/timeline: missing design token ${name}`);
@@ -74,12 +78,12 @@ export function readTheme(root: HTMLElement = document.documentElement): Theme {
   // Type styles are composite tokens (generated `.caption`, `.label`, `.numeric` classes), which a
   // canvas cannot read directly; probe each class once and build the `font` shorthand from it.
   const probe = (cls: string): { font: string; size: number } => {
-    const el = document.createElement("span");
+    const el = doc.createElement("span");
     el.className = cls;
     el.style.position = "absolute";
     el.style.visibility = "hidden";
     root.appendChild(el);
-    const s = getComputedStyle(el);
+    const s = view.getComputedStyle(el);
     const size = Number.parseFloat(s.fontSize);
     const font = `${s.fontWeight} ${s.fontSize} ${s.fontFamily}`;
     el.remove();

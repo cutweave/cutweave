@@ -1,15 +1,17 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 // @vitest-environment jsdom
 // The editor's window registry (WP-2H.14): the main window and each detached panel's window.
-import { afterEach, describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import { sessionStore } from "../session/sessionStore.ts";
 import { docStore } from "../state/docStore.ts";
+import { GestureSession } from "../timeline/gesture.ts";
 import {
   activeDocument,
   activeWindow,
   addPopoutWindow,
   documentOf,
   forEveryWindow,
+  framesOf,
   isKeptOnTop,
   isMainWindow,
   MIRRORED_ATTRIBUTES,
@@ -176,5 +178,40 @@ describe("the per-window helpers", () => {
     // Stopped: a window opening later gets nothing.
     addPopoutWindow(secondWindow("1-3"));
     expect(installed).toHaveLength(3);
+  });
+
+  it("take a node's frames from its own window, and cancel them there", () => {
+    const popout = secondWindow();
+    const node = popout.document.createElement("div");
+    popout.document.body.append(node);
+    const asked = vi.spyOn(popout, "requestAnimationFrame");
+    const cancelled = vi.spyOn(popout, "cancelAnimationFrame");
+    const mainAsked = vi.spyOn(window, "requestAnimationFrame");
+    const frames = framesOf(() => node);
+    const handle = frames.request(() => {});
+    frames.cancel(handle);
+    expect(asked).toHaveBeenCalledTimes(1);
+    expect(cancelled).toHaveBeenCalledTimes(1);
+    expect(mainAsked).not.toHaveBeenCalled();
+    vi.restoreAllMocks();
+  });
+
+  it("pace a drag in a detached window on that window's frames (the gesture scheduler)", async () => {
+    const popout = secondWindow();
+    addPopoutWindow(popout, ["panel.inspector"]);
+    // The person works in the detached window: the drag's updates wait for its frames.
+    popout.dispatchEvent(new PointerEvent("pointerdown"));
+    const asked = vi.spyOn(popout, "requestAnimationFrame");
+    const mainAsked = vi.spyOn(window, "requestAnimationFrame");
+    const call = vi.fn(async (name: string) => (name === "edit.begin_tx" ? { tx: "tx_1" } : {}));
+    const session = new GestureSession({
+      rpc: { call } as unknown as ConstructorParameters<typeof GestureSession>[0]["rpc"],
+      label: "Opacity",
+    });
+    session.update({ name: "item.set_props", input: { items: ["itm_1"], props: {} } as never });
+    await vi.waitFor(() => expect(asked).toHaveBeenCalled());
+    expect(mainAsked).not.toHaveBeenCalled();
+    await session.finish(false);
+    vi.restoreAllMocks();
   });
 });

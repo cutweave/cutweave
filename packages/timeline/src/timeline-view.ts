@@ -72,7 +72,10 @@ export interface TimelineViewOptions {
   readonly headerWidth?: number;
   readonly filmstripBytes?: number;
   readonly waveformBytes?: number;
-  /** Frame scheduler (default `requestAnimationFrame`); tests pass a manual one. */
+  /**
+   * Frame scheduler (default: the canvas's own window's `requestAnimationFrame`, so a timeline in
+   * a detached window keeps drawing while the main window is hidden); tests pass a manual one.
+   */
   readonly requestFrame?: (cb: () => void) => number;
   readonly cancelFrame?: (id: number) => void;
   /**
@@ -102,6 +105,10 @@ export class TimelineView {
   private dpr = 1;
   private hoverItem = -1;
   private frameId = 0;
+  /** The window the pending frame was asked of (the canvas's when it was asked). */
+  private frameWindow: Window | null = null;
+  /** The window the DOM listeners are bound in. */
+  private boundWindow: Window | null = null;
   private dirtyFull = true;
   private dirty: Rect | null = null;
   private destroyed = false;
@@ -121,8 +128,22 @@ export class TimelineView {
     const ctx = options.context ?? canvas.getContext("2d", { alpha: false });
     if (!ctx) throw new Error("@cutweave/timeline: Canvas2D unavailable");
     this.ctx = ctx;
-    this.requestFrame = options.requestFrame ?? ((cb) => requestAnimationFrame(cb));
-    this.cancelFrame = options.cancelFrame ?? ((id) => cancelAnimationFrame(id));
+    this.requestFrame =
+      options.requestFrame ??
+      ((cb) => {
+        const win = this.canvasWindow();
+        this.frameWindow = win;
+        return win.requestAnimationFrame(cb);
+      });
+    this.cancelFrame =
+      options.cancelFrame ??
+      ((id) => {
+        try {
+          (this.frameWindow ?? this.canvasWindow()).cancelAnimationFrame(id);
+        } catch {
+          // The window it was asked of has closed, and its frames with it.
+        }
+      });
     this.fixedTheme = options.theme;
     this.headerOverride = options.headerWidth;
     this.theme = options.theme ?? readTheme(canvas.ownerDocument.documentElement);
@@ -372,6 +393,14 @@ export class TimelineView {
         this.dirty = { x: x0, y: y0, w: x1 - x0, h: y1 - y0 };
       }
     }
+    // The canvas moved to another window (its panel was detached or docked back): a frame asked
+    // of the old window may never come, so ask the new one.
+    if (this.frameId !== 0 && this.frameWindow !== null) {
+      if (this.frameWindow !== this.canvasWindow()) {
+        this.cancelFrame(this.frameId);
+        this.frameId = 0;
+      }
+    }
     if (this.frameId === 0) {
       this.frameId = this.requestFrame(() => {
         this.frameId = 0;
@@ -430,15 +459,37 @@ export class TimelineView {
     return () => this.viewListeners.delete(cb);
   }
 
+  /** The window the canvas is in now (a detached panel's window has its own). */
+  private canvasWindow(): Window & typeof globalThis {
+    return (this.canvas.ownerDocument.defaultView ?? globalThis) as Window & typeof globalThis;
+  }
+
+  /**
+   * The canvas moved to another window (its panel was detached into its own window, or docked
+   * back): observe its size, theme, fonts and display density there, take its frames from there,
+   * and redraw at that window's density. Nothing happens when it is still where it was bound.
+   */
+  rehome(): void {
+    if (this.destroyed || this.teardown.length === 0) return;
+    if (this.boundWindow === this.canvasWindow()) return;
+    for (const t of this.teardown) t();
+    this.teardown = [];
+    this.bind();
+    if (!this.fixedTheme) this.refreshTheme();
+    this.invalidate();
+  }
+
   /**
    * Attach DOM listeners: pointer, wheel, `+`/`-` keys, `ResizeObserver` on the parent, theme
-   * (`data-theme`) and device-pixel-ratio changes, font loading. Call `destroy()` to remove.
+   * (`data-theme`) and device-pixel-ratio changes, font loading. Call `destroy()` to remove. They
+   * are the canvas's own window's; `rehome()` moves them when the canvas changes window.
    */
   bind(): void {
     if (this.teardown.length > 0 || this.destroyed) return;
     const c = this.canvas;
     const doc = c.ownerDocument;
     const win = doc.defaultView;
+    this.boundWindow = win;
     const on = <K extends keyof HTMLElementEventMap>(
       type: K,
       fn: (e: HTMLElementEventMap[K]) => void,
@@ -578,8 +629,10 @@ export class TimelineView {
     });
 
     const parent = c.parentElement;
-    if (parent && typeof ResizeObserver !== "undefined") {
-      const ro = new ResizeObserver((entries) => {
+    // The canvas's own window's observer: one from another window fires unreliably for it.
+    const Observer = win?.ResizeObserver ?? globalThis.ResizeObserver;
+    if (parent && Observer !== undefined) {
+      const ro = new Observer((entries) => {
         const box = entries[entries.length - 1]?.contentRect;
         if (box) this.resize(box.width, box.height, win?.devicePixelRatio ?? 1);
       });
