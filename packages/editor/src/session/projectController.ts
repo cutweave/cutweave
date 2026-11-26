@@ -14,6 +14,7 @@
 import { type ProjectStatus, RpcError } from "@cutweave/protocol";
 import type { StoreApi } from "zustand/vanilla";
 import type { EngineStoreState } from "../engine/engineStore.ts";
+import { preferences } from "../prefs/prefsStore.ts";
 import { activeDocument } from "../shell/windows.ts";
 import type { DocStore } from "../state/docStore.ts";
 import type { ToastStore } from "../state/toastStore.ts";
@@ -318,7 +319,11 @@ export class ProjectController {
           project: ProjectStatus;
         };
         this.#applyStatus(closed.project);
-        await this.#call("project.new", { name: target.name });
+        // Settings > Editing > Still image duration becomes the project's own (ADR-0035).
+        await this.#call("project.new", {
+          name: target.name,
+          still_duration: `${preferences.get("editing.still_duration")}s`,
+        });
         const saved = (await this.#call("project.save_as", { path: target.path })) as {
           path: string;
         };

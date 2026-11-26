@@ -2,6 +2,7 @@
 //! The project document root (arch §4.2), schema v2: meta, settings, media, the media folders
 //! (ADR-0020) and sequences, plus plugin data.
 
+use crate::Duration;
 use std::collections::BTreeMap;
 
 use imbl::OrdMap;
@@ -31,6 +32,22 @@ pub struct ProjectMeta {
     pub extra: Extra,
 }
 
+/// The still duration of a project that stores none: five seconds (ADR-0035).
+pub const DEFAULT_STILL_DURATION_SECS: i64 = 5;
+/// The longest still duration a project may store: one hour.
+pub const MAX_STILL_DURATION_SECS: i64 = 3600;
+
+impl ProjectSettings {
+    /// How long a still image is when it is placed without a length: the project's value, else
+    /// five seconds.
+    #[must_use]
+    pub fn still_duration(&self) -> Duration {
+        self.still_duration.unwrap_or_else(|| {
+            Duration::from_secs(DEFAULT_STILL_DURATION_SECS).unwrap_or(Duration::ZERO)
+        })
+    }
+}
+
 /// Project-wide settings (arch §4.2 `settings`, v1 subset).
 #[derive(
     Clone, Debug, Default, PartialEq, Serialize, Deserialize, schemars::JsonSchema, specta::Type,
@@ -38,6 +55,12 @@ pub struct ProjectMeta {
 pub struct ProjectSettings {
     /// Format of new sequences.
     pub default_format: SequenceFormat,
+    /// How long a still image is when it is placed without a length (ADR-0035). Absent: five
+    /// seconds ([`DEFAULT_STILL_DURATION_SECS`]); left out of the file while absent, so
+    /// documents written before the field read the same. Changing it never alters clips that
+    /// already exist.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub still_duration: Option<Duration>,
     /// Fields unknown to this version.
     #[serde(flatten)]
     #[schemars(skip)]

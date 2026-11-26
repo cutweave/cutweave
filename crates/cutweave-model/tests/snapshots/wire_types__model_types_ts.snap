@@ -694,6 +694,13 @@ export type ProjectMeta = {
 export type ProjectSettings = {
 	/**  Format of new sequences. */
 	default_format: SequenceFormat,
+	/**
+	 *  How long a still image is when it is placed without a length (ADR-0035). Absent: five
+	 *  seconds ([`DEFAULT_STILL_DURATION_SECS`]); left out of the file while absent, so
+	 *  documents written before the field read the same. Changing it never alters clips that
+	 *  already exist.
+	 */
+	still_duration?: Duration | null,
 } & { [key in string]: unknown };
 
 /**  How a time that falls between two frame (or sample) boundaries is mapped to a unit index. */
