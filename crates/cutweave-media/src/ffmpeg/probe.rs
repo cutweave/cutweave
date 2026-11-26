@@ -2,6 +2,8 @@
 //! `probe` for the FFmpeg backend (WP-1D.02): streams, duration, frame rate and VFR, rotation,
 //! color tags, audio format and codec profile, mapped to [`ProbeInfo`].
 //!
+//! A still image's rotation is its EXIF orientation ([`still_orientation`](crate::still_orientation)).
+//!
 //! Cheap by design (import probes synchronously under a timeout, arch §7): it reads the container
 //! header and `avformat_find_stream_info`'s sample, not the whole file. The only thing that looks
 //! at many packets is VFR detection, which uses the demuxer's seek index where the container has
@@ -84,6 +86,16 @@ pub(super) fn probe(path: &Path) -> Result<ProbeInfo, MediaError> {
 
     if !still_image {
         info.duration = duration(&input, video);
+    } else if let Some(orientation) = crate::still_orientation(path) {
+        // A photo's EXIF orientation (WP-2F.05a). FFmpeg's image demuxers put no display matrix
+        // on the stream, and its decoders return the picture as coded, like video.
+        info.rotation = orientation.rotation;
+        if orientation.mirrored {
+            tracing::debug!(
+                path = %crate::path::display(path),
+                "the still's EXIF orientation is mirrored; it is shown turned but not mirrored"
+            );
+        }
     }
     Ok(info)
 }
