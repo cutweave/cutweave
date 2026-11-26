@@ -90,8 +90,11 @@ export interface PressedMode {
   readonly target: PressTarget;
   /** The selection a click (release without travel) leaves, when it differs from the current. */
   readonly collapse: readonly string[] | null;
-  /** The blocked notice went out (once per press). */
-  readonly noticed: boolean;
+  /**
+   * The pointer travelled although nothing can be dragged (`target.kind === "none"`): the notice
+   * went out once, and the release is no click.
+   */
+  readonly dragged: boolean;
 }
 
 /** A gesture transaction and the engine traffic of its updates. */

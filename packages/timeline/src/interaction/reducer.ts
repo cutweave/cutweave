@@ -632,7 +632,7 @@ function pressItem(st: Step, e: PointerPoint, hit: HitResult): void {
   else if (!sameIds(env.selection, unit)) collapse = unit;
   const target = pressTarget(st, hit);
   st.go(
-    { name: "pressed", x: e.x, y: e.y, time: hit.time, target, collapse, noticed: false },
+    { name: "pressed", x: e.x, y: e.y, time: hit.time, target, collapse, dragged: false },
     "pointer.down [clip]",
   );
   st.guides([]);
@@ -691,9 +691,9 @@ function pressedMove(st: Step, m: PressedMode, p: PointerPoint): void {
   if (!travelled(m, p)) return;
   const t = m.target;
   if (t.kind === "none") {
-    if (t.notice !== null && !m.noticed) {
-      st.notice(t.notice);
-      st.set({ ...m, noticed: true });
+    if (!m.dragged) {
+      if (t.notice !== null) st.notice(t.notice);
+      st.set({ ...m, dragged: true });
     }
     return;
   }
@@ -1160,7 +1160,7 @@ function onUp(st: Step, e: PointerPoint): void {
     case "hover":
       return;
     case "pressed":
-      if (m.collapse !== null) st.select(m.collapse);
+      if (m.collapse !== null && !m.dragged) st.select(m.collapse);
       toHover(st, "pointer.up");
       return;
     case "selecting": {
