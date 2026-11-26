@@ -4,7 +4,7 @@
 import type { ToastTone } from "@cutweave/ui";
 import { useStore } from "zustand";
 import { createStore } from "zustand/vanilla";
-import { activeWindow, isMainWindow } from "../shell/windows.ts";
+import { activeWindow, registeredWindows } from "../shell/windows.ts";
 
 export interface Notice {
   readonly id: number;
@@ -44,7 +44,10 @@ export function createToastStore() {
     push(notice) {
       const id = next++;
       const raisedIn = notice.window ?? activeWindow();
-      const stamped = isMainWindow(raisedIn) ? notice : { ...notice, window: raisedIn };
+      const inPopout = registeredWindows().some(
+        (w) => w.role === "popout" && w.window === raisedIn,
+      );
+      const stamped = inPopout ? { ...notice, window: raisedIn } : notice;
       set((s) => {
         const others = s.notices.filter(
           (n) => n.tone !== notice.tone || n.title !== notice.title || n.message !== notice.message,
