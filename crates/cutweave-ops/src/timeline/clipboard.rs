@@ -367,10 +367,30 @@ fn plan_paste(
         }
     }
     for c in &p.items {
-        if let Some(media) = c.item.media()
-            && !doc.media.contains_key(&media)
+        let Some(id) = c.item.media() else { continue };
+        let asset = doc
+            .media
+            .get(&id)
+            .ok_or_else(|| CmdError::not_found(EntityKind::Media, id))?;
+        // What `Project::validate` holds every clip to: the media plays on the track, and the
+        // source range lies inside it (a payload an agent wrote by hand may break either).
+        if let Some(track) = e.seq.track(&dest[c.track as usize])
+            && !track.kind.accepts(asset.kind)
         {
-            return Err(CmdError::not_found(EntityKind::Media, media));
+            return Err(bad(
+                "/items",
+                format!("media `{id}` cannot play on a {:?} track", track.kind),
+            ));
+        }
+        if let (Some(clip), Some(len)) = (c.item.as_clip(), asset.probe.duration)
+            && asset.kind != cutweave_model::MediaKind::Image
+            && i128::from(clip.source_in.flicks()) + i128::from(clip.duration.flicks())
+                > i128::from(len.flicks())
+        {
+            return Err(bad(
+                "/items",
+                format!("item `{}` reads past the end of media `{id}`", clip.id),
+            ));
         }
     }
     let mag = e.magnetic();
