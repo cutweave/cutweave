@@ -623,3 +623,57 @@ fn engine_speaks_the_launch_protocol_like_the_desktop_supervisor() {
     let status = child.wait().expect("wait");
     assert_eq!(status.code(), Some(0));
 }
+
+/// WP-2D.01 e2e through the CLI: one batch places 10 s of a 30 s video, plays it at a third of
+/// its speed (30 s, exact) and freezes a frame (a 3 s still between two halves).
+#[test]
+fn speed_and_freeze_frame_run_from_the_cli() {
+    let probe = cutweave_model::ProbeInfo {
+        streams: vec![cutweave_model::StreamInfo {
+            index: 0,
+            kind: cutweave_model::StreamKind::Video,
+            codec: None,
+            profile: None,
+            width: None,
+            height: None,
+            pixel_format: None,
+            sample_rate: None,
+            channels: None,
+            language: None,
+            extra: cutweave_model::Extra::default(),
+        }],
+        duration: Some(cutweave_model::Duration::from_secs(30).unwrap()),
+        ..cutweave_model::ProbeInfo::default()
+    };
+    let steps = serde_json::json!([
+        {"cmd": "project.new", "args": {"name": "Speed"}},
+        {"cmd": "media.register",
+         "args": {"path": "/media/a.mp4", "probe": probe, "content_hash": "h-a"}},
+        {"cmd": "timeline.insert", "args": {
+            "sequence": {"$ref": "steps[0].output.sequence"},
+            "track": {"$ref": "steps[0].output.video_track"},
+            "media": {"$ref": "steps[1].output.media_id"}, "at": 0, "duration": "10s"}},
+        {"cmd": "clip.set_speed",
+         "args": {"item": {"$ref": "steps[2].output.clips[0]"}, "speed": "1/3"}},
+        {"cmd": "clip.freeze_frame",
+         "args": {"item": {"$ref": "steps[2].output.clips[0]"}, "at": "6s"}},
+    ]);
+    let out = cutweave(&["exec", &steps.to_string(), "--headless"]);
+    assert_eq!(out.status.code(), Some(0), "{out:?}");
+    let v = stdout_json(&out);
+    let second = 705_600_000_i64;
+    let sped = &v["steps"][3]["output"];
+    assert_eq!(sped["items"][0]["duration"], 30 * second, "{v}");
+    assert_eq!(
+        sped["items"][0]["speed"],
+        serde_json::json!({"num": 1, "den": 3})
+    );
+    let frozen = &v["steps"][4]["output"];
+    assert_eq!(frozen["duration"], 3 * second, "{v}");
+    assert_eq!(frozen["at_source"], 2 * second, "{v}");
+    assert!(
+        frozen["after"]
+            .as_str()
+            .is_some_and(|s| s.starts_with("itm_"))
+    );
+}

@@ -211,7 +211,12 @@ fn half_speed_and_reverse_show_the_exact_source_frame_in_preview_and_export() {
     .unwrap();
     assert_eq!(imported["failed"], json!([]), "{imported}");
     for job in imported["job_ids"].as_array().unwrap() {
-        call(&conn, "job.wait", json!({ "id": job, "timeout_ms": 60_000 })).unwrap();
+        call(
+            &conn,
+            "job.wait",
+            json!({ "id": job, "timeout_ms": 60_000 }),
+        )
+        .unwrap();
     }
     let inserted = call(
         &conn,
@@ -234,7 +239,11 @@ fn half_speed_and_reverse_show_the_exact_source_frame_in_preview_and_export() {
     .unwrap();
     assert_eq!(sped["items"][0]["duration"], json!(4 * SEC), "{sped}");
     for k in 0..2 * FRAMES {
-        assert_eq!(preview_counter(&conn, k), k / 2, "preview, timeline frame {k}");
+        assert_eq!(
+            preview_counter(&conn, k),
+            k / 2,
+            "preview, timeline frame {k}"
+        );
     }
     let exported = export_counters(&conn, &tool, &t.path().join("half.mp4"));
     let want: Vec<u32> = (0..2 * FRAMES).map(|k| k / 2).collect();

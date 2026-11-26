@@ -314,7 +314,10 @@ fn speed_changes_play_the_source_faster_or_slower() {
     let normal = crossings(&offline(&sources, &[seg.clone()], Time::ZERO, secs(1.0)));
     seg.speed = (2, 1);
     let fast = offline(&sources, &[seg.clone()], Time::ZERO, secs(1.0));
-    assert_eq!(fast, offline(&sources, &[seg.clone()], Time::ZERO, secs(1.0)));
+    assert_eq!(
+        fast,
+        offline(&sources, &[seg.clone()], Time::ZERO, secs(1.0))
+    );
     seg.speed = (1, 2);
     let slow = crossings(&offline(&sources, &[seg], Time::ZERO, secs(1.0)));
     let fast = crossings(&fast);

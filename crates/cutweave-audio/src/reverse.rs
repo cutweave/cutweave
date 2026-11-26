@@ -119,7 +119,9 @@ mod tests {
         }
         fn read(&mut self, out: &mut [f32]) -> Result<usize, SourceError> {
             // Short reads on purpose: at most 1000 frames.
-            let n = (out.len() / 2).min(1000).min(self.len.saturating_sub(self.pos) as usize);
+            let n = (out.len() / 2)
+                .min(1000)
+                .min(self.len.saturating_sub(self.pos) as usize);
             for i in 0..n {
                 let f = (self.pos + i as u64) as f32;
                 out[2 * i] = f;
@@ -132,7 +134,10 @@ mod tests {
 
     #[test]
     fn frames_come_backwards_across_blocks_and_end_at_the_start() {
-        let mut r = Reversed::new(Box::new(Ramp { len: 20_000, pos: 0 }));
+        let mut r = Reversed::new(Box::new(Ramp {
+            len: 20_000,
+            pos: 0,
+        }));
         r.seek(19_999).unwrap();
         let mut got = Vec::new();
         let mut buf = vec![0.0; 2 * 777];
