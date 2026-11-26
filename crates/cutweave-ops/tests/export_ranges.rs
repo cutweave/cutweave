@@ -588,5 +588,5 @@ fn the_estimate_follows_bitrate_and_length() {
     assert!(a > 0 && (a / 2).abs_diff(b) <= a / 100, "{a} vs {b}");
     let low = plan_of(json!({"path": dir.file("a.mp4"), "preset": {"custom": {"quality": "low"}}}));
     assert!(estimate_bytes(&low) < a);
-    assert!(!human_bytes(a).is_empty());
+    assert!(human_bytes(a).ends_with("MB") || human_bytes(a).ends_with("GB"));
 }

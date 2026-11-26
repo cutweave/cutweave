@@ -7,7 +7,12 @@
 //! refuses an export that does not fit before anything is queued. Real files (ffprobe
 //! durations, replacing a file only on success) are in `export_ranges_ffmpeg.rs`.
 
-#![allow(clippy::unwrap_used, clippy::expect_used, clippy::too_many_lines)]
+#![allow(
+    clippy::unwrap_used,
+    clippy::expect_used,
+    clippy::too_many_lines,
+    clippy::many_single_char_names
+)]
 
 mod export_support;
 
@@ -104,7 +109,7 @@ fn encoded(fake: &FakeBackend) -> Vec<(String, u64)> {
         .map(|(p, s)| {
             (
                 p.file_name().unwrap().to_string_lossy().into_owned(),
-                u64::from(s.video_frames),
+                s.video_frames,
             )
         })
         .collect();
@@ -196,7 +201,7 @@ fn rename_avoids_existing_files_and_files_other_exports_will_write() {
     project(&conn, &fake, &path);
     must(&conn, "export.pause_queue", json!({ "paused": true }));
     std::fs::write(dir.file("out.mp4"), b"old").unwrap();
-    let mut path_of = |collision: Option<&str>| -> Value {
+    let path_of = |collision: Option<&str>| -> Value {
         let mut p = small(&dir.file("out.mp4"));
         if let Some(c) = collision {
             p["collision"] = json!(c);
