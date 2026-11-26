@@ -8,7 +8,8 @@
 //! each in a folder named after the folder it came from (`media/Footage/clip.mp4`; a name taken
 //! by another file gets ` (2)`). With [`CollectMode::CopyExternalOnly`] a file inside the
 //! project folder keeps its place relative to it instead. Assets with the same content share
-//! one copy. The copy's document points at the copied files; with `trim_unused` the assets no
+//! one copy. The copy's document is named after its folder and points at the copied files;
+//! with `trim_unused` the assets no
 //! timeline uses are left out of it. `generated/` is copied when `include_generated` is set.
 //! The open project and its files are never written to. Proxies are cache state and are not
 //! copied: the copy makes its own.
@@ -175,6 +176,12 @@ pub fn plan_collect(
         .unwrap_or(false)
         .then(|| used_media(doc));
     let mut out = doc.clone();
+    // The copy is named after its folder, so two open windows are told apart.
+    if let Some(name) = dest.file_name().and_then(|n| n.to_str())
+        && !name.trim().is_empty()
+    {
+        out.meta.name = name.trim().to_owned();
+    }
     let mut files: Vec<PlannedFile> = Vec::new();
     let mut by_hash: HashMap<String, usize> = HashMap::new();
     let mut by_source: HashMap<String, usize> = HashMap::new();

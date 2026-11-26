@@ -220,7 +220,10 @@ fn every_file_goes_under_media_in_a_folder_named_after_its_own() {
     assert!(to.contains(&dest.join("media").join("day2").join("clip.mp4")));
     assert!(to.contains(&dest.join("media").join("assets").join("logo.mp4")));
     assert!(to.contains(&dest.join("media").join("Sounds").join("rain.wav")));
-    // The copy's document points at the copies; the open document is as it was.
+    // The copy is named after its folder and points at the copies; the open document is as
+    // it was.
+    assert_eq!(plan.doc.meta.name, "Out");
+    assert_eq!(f.h.doc().meta.name, "Test");
     let copy = &plan.doc.media[&f.a];
     assert_eq!(
         copy.path_abs.as_deref(),
