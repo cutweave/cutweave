@@ -3887,6 +3887,17 @@ export type MediaId = string & { readonly __brand: "MediaId" };
  *  creates a bin folder for each directory that holds new media, named after it, inside
  *  `folder`. One undo removes the media and those folders; files already in the project stay
  *  where they are.
+ * 
+ *  With `copy_to_project` (WP-2F.04c) each new file is first copied into the project's
+ *  `media/` folder (`media/<source folder name>/<file>`, a taken name gets ` (2)`; a file from
+ *  an imported folder keeps its place in that folder's tree) and the asset points at the copy,
+ *  so the project keeps working when the original moves. The copy is compared with the
+ *  original before it is used. A file already inside the project folder is not copied, and
+ *  neither is one whose content the project already has (it is returned as a duplicate). The
+ *  call fails with `Invalid` at `/copy_to_project` when the project has not been saved yet (it
+ *  has no folder) or when the files do not fit on its drive; nothing is copied then. A file
+ *  that cannot be copied is listed in `failed`. Undoing the import removes the assets; the
+ *  copied files stay on disk (undo never deletes a file).
  */
 export type MediaImport = {
 	/**  Absolute paths of files or folders (1..=256, no repeats). */
@@ -3898,6 +3909,8 @@ export type MediaImport = {
 	 *  puts every file straight into `folder`.
 	 */
 	keep_structure?: boolean | null,
+	/**  Copy each new file into the project's `media/` folder first (default false). */
+	copy_to_project?: boolean | null,
 };
 
 /**  Result of `media.import`. */
