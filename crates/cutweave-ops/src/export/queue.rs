@@ -31,7 +31,7 @@ use serde::{Deserialize, Serialize};
 use super::presets::{PlanRate, PresetWarning};
 use super::{
     ExportCtx, ExportHw, ExportPlan, ExportPreset, ExportQuality, ExportRange, ExportStart,
-    ExportStartOutput,
+    ExportStartOutput, PlanOutput,
 };
 
 /// Registers the queue commands.
@@ -423,6 +423,9 @@ struct StoredPlan {
     hw: ExportHw,
     rate: Option<PlanRate>,
     warnings: Vec<PresetWarning>,
+    /// Absent in jobs queued before WP-2G.02: those are MP4, H.264, AAC.
+    #[serde(default)]
+    output: PlanOutput,
 }
 
 /// Encodes export jobs for the queue's store (JSON).
@@ -451,6 +454,7 @@ impl TaskCodec<ExportPlan> for PlanCodec {
             hw: plan.hw.clone(),
             rate: plan.rate,
             warnings: plan.warnings.clone(),
+            output: plan.output.clone(),
         };
         serde_json::to_vec(&stored).map_err(|e| e.to_string())
     }
@@ -486,6 +490,7 @@ impl TaskCodec<ExportPlan> for PlanCodec {
             hw: stored.hw,
             rate: stored.rate,
             warnings: stored.warnings,
+            output: stored.output,
         })
     }
 }

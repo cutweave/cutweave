@@ -534,6 +534,9 @@ impl<'a> Run<'a> {
                 } else {
                     options.encode_threads
                 },
+                bit_depth: 8,
+                profile: None,
+                alpha: false,
             });
         if let Some((rate, channels)) = plan.audio {
             spec = spec.with_audio(AudioEncodeSpec {

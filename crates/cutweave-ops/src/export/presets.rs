@@ -35,12 +35,15 @@
 //!   maximum, half of it when that is within the maximum, else the maximum (`FrameRateCapped`).
 //!   `fixed`: that rate.
 //! - **Hardware.** `video.hw_preferred: true` runs as `hw: "auto"` (the first working hardware
-//!   H.264 encoder, else software); `false` as `hw: "off"`. An explicit `hw` on `export.start`
-//!   wins.
-//! - **Codecs.** This build encodes H.264 + AAC in MP4 only; any other preset resolves and
-//!   lists, but `export.start` fails with `Unsupported` until WP-2G.02 adds the encoders.
-//!   Today the encoder takes a CRF or a video bitrate; the audio bitrate and `profile`/`preset`
-//!   fields are carried for WP-2G.02 and not applied yet.
+//!   encoder of the preset's codec, else software); `false` as `hw: "off"`. An explicit `hw` on
+//!   `export.start` wins.
+//! - **Codecs** (WP-2G.02). This build exports H.264, HEVC and AV1 in MP4 (H.264 and HEVC also in
+//!   MOV) and ProRes in MOV, with AAC (or 24-bit PCM in MOV) audio at the preset's bitrate.
+//!   `pix_fmt` `yuv420p10le` makes 10-bit HEVC and AV1; `profile` names the ProRes flavour
+//!   (`422proxy`, `422lt`, `422`, `422hq`, `4444`, `4444xq`; `yuva444p10le` keeps alpha) and
+//!   HEVC's (`main`, `main10`). GIF and audio-only presets resolve and list, but `export.start`
+//!   fails with `Unsupported` until they are built (WP-2G.02b). The preset's `preset` field
+//!   (encoder speed) is carried and not applied yet (WP-2G.05).
 
 use std::collections::BTreeMap;
 use std::path::PathBuf;
@@ -114,6 +117,8 @@ pub enum VideoCodec {
     H264,
     /// H.265 / HEVC.
     Hevc,
+    /// AV1.
+    Av1,
     /// Apple ProRes.
     Prores,
     /// GIF (palette).
@@ -141,7 +146,7 @@ pub enum AudioCodec {
 #[wire]
 #[serde(tag = "mode", rename_all = "snake_case")]
 pub enum RateControlSpec {
-    /// Constant quality on the x264 CRF scale (0-51, lower is better).
+    /// Constant quality on the x264 CRF scale (0-51, lower is better; AV1 maps it onto its own).
     Crf {
         /// The CRF value.
         crf: u8,
@@ -394,6 +399,7 @@ impl ExportPresetSpec {
         self.check_codecs()?;
         if let Some(v) = &self.video {
             Self::check_rate_control(v)?;
+            Self::check_video(v)?;
         }
         if let Some(a) = &self.audio {
             if !(8_000..=192_000).contains(&a.sample_rate) {
@@ -478,7 +484,10 @@ impl ExportPresetSpec {
             return Err(bad("/video", "this container needs video settings"));
         };
         let ok = match c {
-            Container::Mp4 => matches!(v.codec, VideoCodec::H264 | VideoCodec::Hevc),
+            Container::Mp4 => matches!(
+                v.codec,
+                VideoCodec::H264 | VideoCodec::Hevc | VideoCodec::Av1
+            ),
             Container::Mov => matches!(
                 v.codec,
                 VideoCodec::Prores | VideoCodec::H264 | VideoCodec::Hevc
@@ -510,8 +519,71 @@ impl ExportPresetSpec {
         Ok(())
     }
 
+    /// Profile and pixel format against the codec: 8 or 10-bit 4:2:0 for H.264 (8), HEVC and
+    /// AV1; the ProRes profile names and their layouts; HEVC's profile follows the bit depth.
+    fn check_video(v: &VideoSpec) -> Result<(), CmdError> {
+        let pix = v.pix_fmt.as_deref();
+        let profile = v.profile.as_deref();
+        match v.codec {
+            VideoCodec::H264 => {
+                if pix.is_some_and(|p| p != "yuv420p") {
+                    return Err(bad("/video/pix_fmt", "H.264 exports are `yuv420p` (8-bit)"));
+                }
+            }
+            VideoCodec::Hevc | VideoCodec::Av1 => {
+                if pix.is_some_and(|p| !matches!(p, "yuv420p" | "yuv420p10le")) {
+                    return Err(bad(
+                        "/video/pix_fmt",
+                        "must be `yuv420p` (8-bit) or `yuv420p10le` (10-bit)",
+                    ));
+                }
+                if v.codec == VideoCodec::Hevc
+                    && let Some(p) = profile
+                {
+                    let want = if pix == Some("yuv420p10le") {
+                        "main10"
+                    } else {
+                        "main"
+                    };
+                    if p != want {
+                        return Err(bad(
+                            "/video/profile",
+                            format!("HEVC with this `pix_fmt` is profile `{want}`, not `{p}`"),
+                        ));
+                    }
+                }
+            }
+            VideoCodec::Prores => {
+                let known = ["422proxy", "422lt", "422", "422hq", "4444", "4444xq"];
+                if profile.is_some_and(|p| !known.contains(&p)) {
+                    return Err(bad(
+                        "/video/profile",
+                        format!("ProRes profiles are {}", known.join(", ")),
+                    ));
+                }
+                let is444 = profile.is_some_and(|p| p.starts_with("4444"));
+                let ok: &[&str] = if is444 {
+                    &["yuv444p10le", "yuva444p10le"]
+                } else {
+                    &["yuv422p10le"]
+                };
+                if pix.is_some_and(|p| !ok.contains(&p)) {
+                    return Err(bad(
+                        "/video/pix_fmt",
+                        format!("this ProRes profile is {}", ok.join(" or ")),
+                    ));
+                }
+            }
+            VideoCodec::Gif => {}
+        }
+        Ok(())
+    }
+
     fn check_rate_control(v: &VideoSpec) -> Result<(), CmdError> {
-        let coded = matches!(v.codec, VideoCodec::H264 | VideoCodec::Hevc);
+        let coded = matches!(
+            v.codec,
+            VideoCodec::H264 | VideoCodec::Hevc | VideoCodec::Av1
+        );
         match v.rate_control {
             RateControlSpec::Crf { crf } if coded && crf <= 51 => Ok(()),
             RateControlSpec::Cbr { bitrate_kbps } | RateControlSpec::Vbr { bitrate_kbps }
@@ -522,7 +594,7 @@ impl ExportPresetSpec {
             RateControlSpec::Profile if !coded => Ok(()),
             _ => Err(bad(
                 "/video/rate_control",
-                "CRF (0..=51) and bitrates (100..=1000000 kbps) belong to H.264 and HEVC; \
+                "CRF (0..=51) and bitrates (100..=1000000 kbps) belong to H.264, HEVC and AV1; \
                  `profile` to ProRes and GIF",
             )),
         }
@@ -547,20 +619,55 @@ impl ExportPresetSpec {
         Ok(())
     }
 
-    /// Whether this build can encode the preset (H.264 + AAC in MP4 only until WP-2G.02);
-    /// the reason when it cannot.
+    /// Whether this build can encode the preset (video in MP4 or MOV; GIF and audio-only formats
+    /// wait for WP-2G.02b); the reason when it cannot.
     pub fn engine_support(&self) -> Result<(), String> {
-        let h264 = matches!(&self.video, Some(v) if v.codec == VideoCodec::H264);
-        let aac = matches!(&self.audio, Some(a) if a.codec == AudioCodec::Aac);
-        if self.container == Container::Mp4 && h264 && aac {
-            Ok(())
-        } else {
-            Err(format!(
-                "this build exports H.264 + AAC in MP4 only; `{}` ({:?}) needs the encoders of \
-                 WP-2G.02",
-                self.id, self.container
-            ))
+        self.plan_output().map(drop)
+    }
+
+    /// What the file of this preset holds, or why this build cannot write it.
+    pub fn plan_output(&self) -> Result<super::PlanOutput, String> {
+        let unsupported = |what: &str| {
+            format!(
+                "this build exports video in MP4 or MOV (H.264, HEVC, AV1, ProRes); `{}` needs \
+                 {what} (WP-2G.02b)",
+                self.id
+            )
+        };
+        if !matches!(self.container, Container::Mp4 | Container::Mov) {
+            return Err(unsupported(&format!("the {:?} format", self.container)));
         }
+        let Some(v) = &self.video else {
+            return Err(unsupported("audio-only export"));
+        };
+        let audio_codec = match &self.audio {
+            Some(a) if a.codec == AudioCodec::Aac => AudioCodec::Aac,
+            Some(a) if a.codec == AudioCodec::Pcm && self.container == Container::Mov => {
+                AudioCodec::Pcm
+            }
+            Some(a) => {
+                return Err(unsupported(&format!(
+                    "{:?} audio in {:?}",
+                    a.codec, self.container
+                )));
+            }
+            None => return Err(unsupported("a file without sound")),
+        };
+        let pix = v.pix_fmt.as_deref().unwrap_or_default();
+        let bit_depth = if v.codec == VideoCodec::Prores || pix.contains("10") {
+            10
+        } else {
+            8
+        };
+        Ok(super::PlanOutput {
+            container: self.container,
+            video_codec: v.codec,
+            profile: v.profile.clone(),
+            bit_depth,
+            alpha: v.codec == VideoCodec::Prores && pix.starts_with("yuva"),
+            audio_codec,
+            audio_bitrate_kbps: self.audio.as_ref().and_then(|a| a.bitrate_kbps),
+        })
     }
 }
 
