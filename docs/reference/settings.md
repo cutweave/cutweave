@@ -145,7 +145,7 @@ The dialog is a side tab list of these pages, in this order, with one search fie
 | `media.proxy_size` | Proxy size: 540p, 720p, 960p | 960p | Machine | Engine (UI-only) | Read | WP-2F.03 |
 | `media.keep_structure` | Keep folder structure when importing folders | On | App | Renderer (passes it to `media.import`) | — | WP-2F.09 |
 | `media.copy_on_import` | Copy imported files into the project folder | Off | App | Renderer | — | WP-2F.04 |
-| `media.image_sequence_fps` | Frame rate for image sequences | The sequence's frame rate | App | Renderer | — | WP-2F.05 |
+| `media.image_sequence_fps` | Frame rate for image sequences: the sequence's frame rate, or 23.976, 24, 25, 29.97, 30, 50, 59.94 or 60 fps | The sequence's frame rate | App | Renderer (passes it to `media.import_sequence` as `fps`; the engine's own default is the frame rate of the sequence the editor shows, 30 without one) | — | WP-2F.05c |
 | `media.transcribe_on_import` | Transcribe speech in new media | Off | App | Renderer | — | WP-3D.06 |
 | `media.analyze_on_import` | Detect scenes and beats in new media | Off | App | Renderer | — | WP-5G.11 |
 

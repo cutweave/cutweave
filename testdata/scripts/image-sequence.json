@@ -1,0 +1,34 @@
+{
+  "description": "Image sequences (WP-2F.05c, ADR-0035): media.import keeps numbered pictures as stills; media.import_sequence imports the run they belong to as one asset (a gap is reported, the frame rate defaults to the sequence's or is given), the same run again is a duplicate, the asset goes on a video track with its whole length, and a file that is not part of a run is refused.",
+  "steps": [
+    { "cmd": "project.new", "args": { "name": "Image sequence" } },
+    { "cmd": "media.import", "args": { "paths": [{ "$media": "shot_0001.png" }, { "$media": "shot_0002.png" }, { "$media": "shot_0004.png" }, { "$media": "cover.png" }] } },
+    { "cmd": "media.import_sequence", "args": { "path": { "$media": "shot_0002.png" } } },
+    { "cmd": "media.import_sequence", "args": { "path": { "$media": "shot_0004.png" }, "fps": { "num": 24000, "den": 1001 } } },
+    { "cmd": "media.import_sequence", "args": { "path": { "$media": "shot_0001.png" } } },
+    {
+      "cmd": "timeline.insert",
+      "args": {
+        "sequence": { "$ref": "steps[0].output.sequence" },
+        "track": { "$ref": "steps[0].output.video_track" },
+        "media": { "$ref": "steps[2].output.media_id" },
+        "at": 0
+      }
+    },
+    {
+      "cmd": "timeline.insert",
+      "args": {
+        "sequence": { "$ref": "steps[0].output.sequence" },
+        "track": { "$ref": "steps[0].output.audio_track" },
+        "media": { "$ref": "steps[2].output.media_id" },
+        "at": 0
+      },
+      "expect": { "error": "invalid" }
+    },
+    { "cmd": "media.import_sequence", "args": { "path": { "$media": "cover.png" } }, "expect": { "error": "invalid" } },
+    { "cmd": "media.import_sequence", "args": { "path": { "$media": "shot_0001.png" }, "fps": { "num": 0, "den": 1 } }, "expect": { "error": "invalid" } },
+    { "cmd": "media.list", "args": { "filter": { "kinds": ["image_sequence"] } } },
+    { "cmd": "edit.undo" },
+    { "cmd": "edit.undo" }
+  ]
+}
