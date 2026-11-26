@@ -29,6 +29,7 @@
     "save": "Save",
     "saveAs": "Save as…",
     "export": "Export…",
+    "collect": "Collect files…",
     "settings": "Settings…",
     "exit": "Exit",
     "quit": "Quit",
@@ -442,6 +443,7 @@
       "open": "File menu. Opens a project from disk.",
       "save": "File menu. Saves the project.",
       "saveAs": "File menu. Saves the project under a new name.",
+      "collect": "File menu. Copies the project and all its media into one folder.",
       "export": "File menu. Opens the Export dialog once the timeline has clips.",
       "settings": "File menu. Opens Settings.",
       "quit": "File menu. Closes Cutweave.",
@@ -794,7 +796,9 @@
     "status": {
       "analyzing": "Analyzing",
       "analysisFailed": "Analysis failed",
-      "broken": "Unreadable"
+      "broken": "Unreadable",
+      "offline": "Offline",
+      "changed": "Changed"
     },
     "drop": {
       "title": "Drop to import",
@@ -1328,9 +1332,6 @@
       "title": "Changes restored",
       "body": "{{count}} unsaved edits are back. They are not saved to the project file yet."
     },
-    "missingMedia": "{{count}} media files are offline. Relink them to keep editing.",
-    "missingMediaOne": "1 media file is offline. Relink it to keep editing.",
-    "missingMediaTitle": "Media offline",
     "migratedTitle": "Project updated",
     "migrated": "{{name}} was converted from format {{from}}. Saving writes the new format.",
     "autosaveFailedTitle": "Autosave failed",
@@ -1346,6 +1347,60 @@
       "refused": "{{agent}} tried to open {{name}}, but {{current}} has unsaved changes. Save them, then ask the agent again.",
       "failed": "{{agent}} could not open {{name}}. The engine said: {{message}}"
     }
+  },
+  "relink": {
+    "title": {
+      "none": "All media found",
+      "one": "1 media file is missing",
+      "many": "{{count}} media files are missing"
+    },
+    "hint": "The files were moved, renamed or are on a drive that is not connected. Choose the folder they are in now: Cutweave recognizes them by content, even when they were renamed.",
+    "allFound": "Every file is where the project expects it. Undo puts the old locations back.",
+    "listLabel": "Missing media",
+    "searchFolder": "Search a folder…",
+    "searching": "Searching…",
+    "later": "Not now",
+    "done": "Done",
+    "locateFile": "Choose the file for {{name}}",
+    "result": {
+      "none": "None of the missing files are in that folder.",
+      "one": "Found 1 file.",
+      "many": "Found {{count}} files.",
+      "truncated": "The folder holds more files than one search reads. Search its subfolders one at a time."
+    },
+    "failed": {
+      "folder": "Could not search that folder",
+      "file": "Could not use that file"
+    }
+  },
+  "collect": {
+    "title": "Collect files",
+    "hint": "Copies the project and every media file it uses into one folder that opens on any computer. This project and its files stay as they are.",
+    "name": "Folder name",
+    "location": "Location",
+    "locationNone": "Choose where to put the folder",
+    "choose": "Choose…",
+    "trimUnused": "Only media used on a timeline",
+    "needFolder": "Choose a location and a folder name.",
+    "estimating": "Checking the files…",
+    "estimate": "{{count}} media files, {{size}}.",
+    "estimateOne": "1 media file, {{size}}.",
+    "free": "{{free}} free on that drive.",
+    "noSpace": "Not enough space: the media take {{size}} and that drive has {{free}} free. Choose another location.",
+    "missingOne": "The file of {{name}} is missing. Relink it first.",
+    "missingMany": "{{count}} media files are missing. Relink them first.",
+    "cancel": "Cancel",
+    "start": "Collect",
+    "runningTitle": "Collecting files",
+    "doneTitle": "Files collected",
+    "doneBody": "The copy is in {{path}}.",
+    "cancelledBody": "Stopped. The files copied so far are kept: Continue picks up where it stopped.",
+    "hide": "Hide",
+    "close": "Close",
+    "continue": "Continue",
+    "reveal": "Show the folder",
+    "jobLabel": "Collect progress",
+    "jobName": "Collecting {{name}}"
   },
   "timeline": {
     "toolbarLabel": "Timeline tools",
@@ -1843,6 +1898,7 @@
       "copyDiagnostics": "Copy diagnostics",
       "copySettingKey": "Copy setting key",
       "revealFile": "Reveal file",
+      "relink": "Relink…",
       "revealExplorer": "Reveal in Explorer",
       "revealFinder": "Reveal in Finder",
       "revealFiles": "Reveal in file manager",

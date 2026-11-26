@@ -66,6 +66,7 @@ import {
   selectedTiles,
   useFolderUi,
 } from "../media/folderUi.ts";
+import { useIsOffline } from "../media/health.ts";
 import { insertAtPlayhead } from "../media/insert.ts";
 import { isMovingPicture } from "../media/kinds.ts";
 import { layoutStore } from "../media/layoutStore.ts";
@@ -256,6 +257,7 @@ function CardView({
     name: card.name,
   }));
   const scrub = useCardScrub(card);
+  const offline = useIsOffline(card.id);
   const canPlay = playable(card);
   const playingHere = usePlaybackStore((s) => s.source?.media === card.id && s.playing);
   const shownInPreview = useSourceViewStore((s) => s.host === "preview");
@@ -358,9 +360,11 @@ function CardView({
           {meta === "" ? null : <span>{meta}</span>}
           {card.codec === null ? null : <span className="cw-media__badge">{card.codec}</span>}
         </span>
-        {card.broken || failure !== null || analyzing ? (
+        {offline || card.broken || failure !== null || analyzing ? (
           <span className="cw-media__status" title={failure ?? undefined}>
-            {card.broken ? (
+            {offline ? (
+              <StatusChip tone="danger">{t("mediaBin.status.offline")}</StatusChip>
+            ) : card.broken ? (
               <StatusChip tone="danger">{t("mediaBin.status.broken")}</StatusChip>
             ) : failure !== null ? (
               <StatusChip tone="warning">{t("mediaBin.status.analysisFailed")}</StatusChip>

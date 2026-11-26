@@ -45,6 +45,7 @@ export const KEY_COMMANDS: readonly KeyCommand[] = [
   cmd("project.open", "menu", "global", "menu.open", "shortcuts.menu.open"),
   cmd("project.save", "menu", "global", "menu.save", "shortcuts.menu.save"),
   cmd("project.save_as", "menu", "global", "menu.saveAs", "shortcuts.menu.saveAs"),
+  cmd("project.collect", "menu", "global", "menu.collect", "shortcuts.menu.collect"),
   cmd("export.start", "menu", "global", "menu.export", "shortcuts.menu.export"),
   cmd("app.open_settings", "menu", "global", "menu.settings", "shortcuts.menu.settings"),
   cmd("app.quit", "menu", "global", "menu.quit", "shortcuts.menu.quit"),

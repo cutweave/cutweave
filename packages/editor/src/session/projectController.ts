@@ -404,17 +404,7 @@ export class ProjectController {
     migrated_from: number | null;
   }): void {
     const { t, toasts } = this.#deps;
-    const count = out.missing_media.length;
-    if (count > 0) {
-      toasts.getState().push({
-        tone: "warning",
-        title: t("projectUi.missingMediaTitle"),
-        message:
-          count === 1
-            ? t("projectUi.missingMediaOne")
-            : t("projectUi.missingMedia", { count: String(count) }),
-      });
-    }
+    // Missing media: the relink dialog says so (`media/health.ts`, WP-2F.03).
     if (out.migrated_from !== null) {
       toasts.getState().push({
         tone: "info",

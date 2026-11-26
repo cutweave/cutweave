@@ -16,6 +16,7 @@ import { mediaFilesBridge, pickedPaths } from "../../media/bridge.ts";
 import { currentOpenFolder, folderUiStore, openFolder } from "../../media/folderUi.ts";
 import { importMedia } from "../../media/import.ts";
 import { layoutStore, type MediaLayout } from "../../media/layoutStore.ts";
+import { openRelinkDialog } from "../../media/RelinkDialog.tsx";
 import { requestFolderDelete, requestMediaDelete } from "../../media/requestDelete.ts";
 import { requestMediaRemoval } from "../../media/requestRemoval.ts";
 import { importPicked } from "../../media/sequence.ts";
@@ -188,6 +189,12 @@ export const UI_COMMANDS: readonly UiCommand[] = [
     icon: "folder-open",
     host: true,
     run: () => pickAndImport("folders"),
+  },
+  {
+    id: "bin.relink",
+    label: "contextMenu.item.relink",
+    icon: "search",
+    run: () => openRelinkDialog(),
   },
   {
     id: "bin.new_folder",

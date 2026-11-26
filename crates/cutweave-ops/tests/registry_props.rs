@@ -66,8 +66,8 @@ use cutweave_ops::{
         presets::{PresetCtx, PresetStore},
     },
     media::{
-        FakeProbe, ImportCtx, MediaRegister, MediaRegisterTree, MediaRegistered, MediaSink,
-        MediaTreeRegistered, proxy::ProxyCall,
+        FakeProbe, ImportCtx, ImportPolicy, MediaRegister, MediaRegisterTree, MediaRegistered,
+        MediaSetLocation, MediaSink, MediaTreeRegistered, RelinkCtx, RelinkSink, proxy::ProxyCall,
     },
     testing::{
         self, AGENT_LABEL, JsonMirror, analyzer, arb_command_from, check_invariants,
@@ -339,6 +339,33 @@ impl MediaSink for ImportSink {
     }
 }
 
+/// The relink commands' sink: `media.set_location` for each asset in one transaction on a
+/// connection of its own, as the engine does.
+struct RelinkTx {
+    state: Arc<Mutex<DocState>>,
+    ctx: ActorCtx,
+}
+
+impl RelinkSink for RelinkTx {
+    fn relocate(&mut self, batch: Vec<MediaSetLocation>) -> Result<(), CmdError> {
+        let mut s = self.state.lock().unwrap();
+        let tx = s.begin_tx(&self.ctx, TxKind::Batch, "Relink media")?.id;
+        for set in &batch {
+            let params = serde_json::to_value(set).unwrap();
+            let submit = Submit::new(self.ctx.clone(), "media.set_location", params).in_tx(tx);
+            if let Err(e) = s.submit(submit) {
+                s.cancel_tx(&self.ctx, tx).unwrap();
+                return Err(e);
+            }
+        }
+        if let Err(e) = s.commit_tx(&self.ctx, tx) {
+            let _ = s.cancel_tx(&self.ctx, tx);
+            return Err(e);
+        }
+        Ok(())
+    }
+}
+
 struct Harness<'s> {
     registry: Arc<Registry>,
     state: Arc<Mutex<DocState>>,
@@ -535,6 +562,42 @@ impl<'s> Harness<'s> {
             .invoke_engine_json(name, params.clone(), &mut call, ctx.access())
     }
 
+    /// Runs a collect command (WP-2F.04) against the committed document and a disk that
+    /// holds nothing: the open document never changes.
+    fn collect(&self, ctx: &ActorCtx, name: &str, params: &Value) -> Result<Value, CmdError> {
+        let mut call = cutweave_ops::project::collect::CollectCtx {
+            doc: self.lock().committed_snapshot().doc.clone(),
+            project_root: None,
+            allowed_roots: None,
+            jobs: self.jobs.clone(),
+            host: Arc::new(testing::NoDisk),
+        };
+        self.registry
+            .invoke_engine_json(name, params.clone(), &mut call, ctx.access())
+    }
+
+    /// Runs a relink command (WP-2F.03) against a disk that holds the import files; what it
+    /// finds is committed in one transaction on a connection of its own.
+    fn relink(&self, ctx: &ActorCtx, name: &str, params: &Value) -> Result<Value, CmdError> {
+        let relinker = if *ctx.actor() == cutweave_commands::Actor::User {
+            ActorCtx::ui(ConnId::new(1003))
+        } else {
+            ActorCtx::agent(ConnId::new(1004), AGENT_LABEL).unwrap()
+        };
+        let mut call = RelinkCtx {
+            doc: self.lock().snapshot().doc.clone(),
+            prober: Arc::new(fake_probe()),
+            files: Arc::new(testing::fake_files()),
+            sink: Some(Box::new(RelinkTx {
+                state: Arc::clone(&self.state),
+                ctx: relinker,
+            })),
+            policy: ImportPolicy::default(),
+        };
+        self.registry
+            .invoke_engine_json(name, params.clone(), &mut call, ctx.access())
+    }
+
     /// Runs `audio.get_levels` (WP-2E.02) against an analyzer that hears silence: measuring
     /// never changes the document.
     fn levels(&self, ctx: &ActorCtx, name: &str, params: &Value) -> Result<Value, CmdError> {
@@ -658,6 +721,18 @@ impl<'s> Harness<'s> {
             }
             Some(c) if c == TypeId::of::<ProxyCall>() => {
                 self.proxy(ctx, name, params).map(|output| Done {
+                    output,
+                    applied: None,
+                })
+            }
+            Some(c) if c == TypeId::of::<cutweave_ops::project::collect::CollectCtx>() => {
+                self.collect(ctx, name, params).map(|output| Done {
+                    output,
+                    applied: None,
+                })
+            }
+            Some(c) if c == TypeId::of::<RelinkCtx>() => {
+                self.relink(ctx, name, params).map(|output| Done {
                     output,
                     applied: None,
                 })
