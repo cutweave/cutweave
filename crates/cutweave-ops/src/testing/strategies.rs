@@ -376,6 +376,8 @@ pub(super) fn args_for(name: &str, p: &Pools) -> Option<(u32, BoxedStrategy<Valu
         "item.set_props" => (edits.div_ceil(2), item_set_props(p)),
         "item.get" => (1, item_get(p)),
         "item.reset_props" => (1, item_reset_props(p)),
+        "item.apply_layout" => (1, item_apply_layout(p)),
+        "item.layouts" => (1, item_layouts()),
         "audio.set" => (edits.div_ceil(2), audio_set(p)),
         "audio.set_fade" => (edits.div_ceil(2), audio_set_fade(p)),
         "audio.set_volume" => (edits.div_ceil(2), audio_set_volume(p)),
@@ -2285,6 +2287,41 @@ fn keyframe_eval(p: &Pools) -> BoxedStrategy<Value> {
         })
         .boxed();
     mix(valid, unknown_item("at"))
+}
+
+fn item_apply_layout(p: &Pools) -> BoxedStrategy<Value> {
+    let ids = p.item_ids();
+    if ids.len() < 2 {
+        return mix(unknown_item("at"), unknown_item("at"));
+    }
+    let n = ids.len();
+    let valid = (
+        subsequence(ids, 2..=n.min(4)),
+        select(vec![
+            "side_by_side",
+            "top_bottom",
+            "pip_top_right",
+            "columns_3",
+            "one_large_two_small",
+            "grid_2x2",
+            "nope",
+        ]),
+        select(vec!["crop", "fit"]),
+        option::of(0.0..=40.0_f64),
+    )
+        .prop_map(|(items, layout, fill, gap)| {
+            json!({"items": items, "layout": layout, "fill": fill, "gap": gap})
+        })
+        .boxed();
+    mix(valid, unknown_item("at"))
+}
+
+fn item_layouts() -> BoxedStrategy<Value> {
+    prop_oneof![
+        Just(json!({})),
+        (0..6_u32).prop_map(|count| json!({"count": count}))
+    ]
+    .boxed()
 }
 
 fn item_reset_props(p: &Pools) -> BoxedStrategy<Value> {

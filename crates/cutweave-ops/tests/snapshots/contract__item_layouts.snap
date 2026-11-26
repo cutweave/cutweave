@@ -1,0 +1,216 @@
+---
+source: crates/cutweave-ops/tests/contract.rs
+expression: "json!({\n    \"meta\": serde_json::to_value(meta).unwrap(), \"input\": meta.input_schema,\n    \"output\": meta.output_schema,\n})"
+---
+{
+  "meta": {
+    "name": "item.layouts",
+    "summary": "List the layouts item.apply_layout offers",
+    "kind": "query",
+    "undoable": false,
+    "view": false,
+    "scope": "any",
+    "mcp": "catalog",
+    "annotations": {
+      "readOnlyHint": true,
+      "destructiveHint": false,
+      "idempotentHint": true,
+      "openWorldHint": false
+    },
+    "secret_fields": [],
+    "input_schema": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "count": {
+          "type": [
+            "integer",
+            "null"
+          ],
+          "format": "uint32",
+          "minimum": 0,
+          "description": "Only the layouts for this many clips.",
+          "default": null
+        }
+      },
+      "description": "Lists the layouts `item.apply_layout` knows, with how many clips each takes.",
+      "title": "ItemLayouts"
+    },
+    "output_schema": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "layouts": {
+          "type": "array",
+          "items": {
+            "description": "A layout, as `item.layouts` lists it.",
+            "type": "object",
+            "properties": {
+              "id": {
+                "description": "The ID to give `item.apply_layout`.",
+                "type": "string"
+              },
+              "label": {
+                "description": "English name.",
+                "type": "string"
+              },
+              "count": {
+                "description": "How many clips the layout takes.",
+                "type": "integer",
+                "format": "uint32",
+                "minimum": 0
+              },
+              "cells": {
+                "description": "The cells in fractions of the canvas at gap 0, in cell order (for diagrams).",
+                "type": "array",
+                "items": {
+                  "description": "A cell in fractions of the canvas.",
+                  "type": "object",
+                  "properties": {
+                    "x": {
+                      "description": "Left edge.",
+                      "type": "number",
+                      "format": "double"
+                    },
+                    "y": {
+                      "description": "Top edge.",
+                      "type": "number",
+                      "format": "double"
+                    },
+                    "w": {
+                      "description": "Width.",
+                      "type": "number",
+                      "format": "double"
+                    },
+                    "h": {
+                      "description": "Height.",
+                      "type": "number",
+                      "format": "double"
+                    }
+                  },
+                  "additionalProperties": false,
+                  "required": [
+                    "x",
+                    "y",
+                    "w",
+                    "h"
+                  ]
+                }
+              }
+            },
+            "additionalProperties": false,
+            "required": [
+              "id",
+              "label",
+              "count",
+              "cells"
+            ]
+          },
+          "description": "The layouts, in table order."
+        }
+      },
+      "required": [
+        "layouts"
+      ],
+      "description": "Result of `item.layouts`.",
+      "title": "ItemLayoutsOutput"
+    }
+  },
+  "input": {
+    "type": "object",
+    "additionalProperties": false,
+    "properties": {
+      "count": {
+        "type": [
+          "integer",
+          "null"
+        ],
+        "format": "uint32",
+        "minimum": 0,
+        "description": "Only the layouts for this many clips.",
+        "default": null
+      }
+    },
+    "description": "Lists the layouts `item.apply_layout` knows, with how many clips each takes.",
+    "title": "ItemLayouts"
+  },
+  "output": {
+    "type": "object",
+    "additionalProperties": false,
+    "properties": {
+      "layouts": {
+        "type": "array",
+        "items": {
+          "description": "A layout, as `item.layouts` lists it.",
+          "type": "object",
+          "properties": {
+            "id": {
+              "description": "The ID to give `item.apply_layout`.",
+              "type": "string"
+            },
+            "label": {
+              "description": "English name.",
+              "type": "string"
+            },
+            "count": {
+              "description": "How many clips the layout takes.",
+              "type": "integer",
+              "format": "uint32",
+              "minimum": 0
+            },
+            "cells": {
+              "description": "The cells in fractions of the canvas at gap 0, in cell order (for diagrams).",
+              "type": "array",
+              "items": {
+                "description": "A cell in fractions of the canvas.",
+                "type": "object",
+                "properties": {
+                  "x": {
+                    "description": "Left edge.",
+                    "type": "number",
+                    "format": "double"
+                  },
+                  "y": {
+                    "description": "Top edge.",
+                    "type": "number",
+                    "format": "double"
+                  },
+                  "w": {
+                    "description": "Width.",
+                    "type": "number",
+                    "format": "double"
+                  },
+                  "h": {
+                    "description": "Height.",
+                    "type": "number",
+                    "format": "double"
+                  }
+                },
+                "additionalProperties": false,
+                "required": [
+                  "x",
+                  "y",
+                  "w",
+                  "h"
+                ]
+              }
+            }
+          },
+          "additionalProperties": false,
+          "required": [
+            "id",
+            "label",
+            "count",
+            "cells"
+          ]
+        },
+        "description": "The layouts, in table order."
+      }
+    },
+    "required": [
+      "layouts"
+    ],
+    "description": "Result of `item.layouts`.",
+    "title": "ItemLayoutsOutput"
+  }
+}
