@@ -2,14 +2,15 @@
 // F50 Still images (docs/user-flows.md; WP-2F.05a): a photo taken with the camera turned (a JPEG
 // whose EXIF orientation says "turn me a quarter clockwise") is imported from the bin's Import
 // button, dropped on the timeline and shows upright in the preview, in its own colours: checked
-// from the pixels on screen. The clip is 5 s long (a still has no length of its own).
+// from the pixels on screen. The clip is 5 s long (a still has no length of its own). Its card in
+// the bin shows the photo upright too (#207), not as stored.
 //
 // The photo is written by the flow (a baseline JPEG of six flat 8 × 8 blocks with an EXIF
 // block): no media is committed. Needs an engine built with FFmpeg (`just e2e-flows` builds it
 // when the bundle is set up); without it the flow skips and says why.
 import { writeFileSync } from "node:fs";
 import path from "node:path";
-import type { Page } from "@playwright/test";
+import type { Locator, Page } from "@playwright/test";
 import { editorCall, expect, test } from "../fixtures.ts";
 import {
   createProject,
@@ -186,8 +187,51 @@ async function seen(page: Page): Promise<Seen | null> {
   }, png.toString("base64"));
 }
 
-function close(a: Rgb, b: Rgb): boolean {
-  return a.every((v, i) => Math.abs(v - (b[i] ?? 0)) <= 24);
+function close(a: Rgb, b: Rgb, tolerance = 24): boolean {
+  return a.every((v, i) => Math.abs(v - (b[i] ?? 0)) <= tolerance);
+}
+
+interface CardPicture {
+  /** The size of the picture the card loaded. */
+  readonly width: number;
+  readonly height: number;
+  /** The colours on screen in the middle of the left and the right half of the card's picture. */
+  readonly left: Rgb;
+  readonly right: Rgb;
+}
+
+/**
+ * What the person sees on a card in the bin: a screenshot of its picture box, decoded in the
+ * page. `null` while the card still shows its icon tile.
+ */
+async function cardPicture(page: Page, card: Locator): Promise<CardPicture | null> {
+  const img = card.locator("img.cw-media__thumb-img");
+  if ((await img.count()) === 0) return null;
+  const natural = await img.evaluate((el) => {
+    const image = el as HTMLImageElement;
+    return image.complete ? { width: image.naturalWidth, height: image.naturalHeight } : null;
+  });
+  if (natural === null || natural.width === 0) return null;
+  const png = await card.locator(".cw-media__thumb").screenshot({ animations: "allow" });
+  const halves = await page.evaluate(async (base64) => {
+    const bytes = Uint8Array.from(atob(base64), (c) => c.charCodeAt(0));
+    const bitmap = await createImageBitmap(new Blob([bytes], { type: "image/png" }));
+    const canvas = new OffscreenCanvas(bitmap.width, bitmap.height);
+    const ctx = canvas.getContext("2d");
+    if (ctx === null) throw new Error("no 2D context");
+    ctx.drawImage(bitmap, 0, 0);
+    const at = (fx: number): [number, number, number] => {
+      const { data } = ctx.getImageData(
+        Math.round(bitmap.width * fx),
+        Math.round(bitmap.height / 2),
+        1,
+        1,
+      );
+      return [data[0] ?? 0, data[1] ?? 0, data[2] ?? 0];
+    };
+    return { left: at(0.25), right: at(0.75) };
+  }, png.toString("base64"));
+  return { ...natural, ...halves };
 }
 
 test.describe("F50 still images", () => {
@@ -222,6 +266,26 @@ test.describe("F50 still images", () => {
       await expect(mediaCard(page, name)).toBeVisible();
       const listed = await editorCall<{ media: { kind: string }[] }>(page, "media.list");
       expect(listed.media.map((m) => m.kind)).toEqual(["image"]);
+
+      // The card shows the photo the way the preview will: upright, 16 × 24. Its box is wide, so
+      // it shows the middle of the photo across its whole width: dark on the left, green on
+      // the right. (As stored, on its side, the middles of the halves are red-white and
+      // blue-yellow edges, and the picture is wider than tall.)
+      await expect
+        .poll(
+          async () => {
+            const picture = await cardPicture(page, mediaCard(page, name));
+            if (picture === null) return "no picture";
+            if (picture.height <= picture.width) {
+              return `not upright: ${picture.width} × ${picture.height}`;
+            }
+            return close(picture.left, DARK, 40) && close(picture.right, GREEN, 40)
+              ? "upright"
+              : `left ${String(picture.left)}, right ${String(picture.right)}`;
+          },
+          { timeout: 30_000, message: "the photo on its card" },
+        )
+        .toBe("upright");
 
       // On the timeline a still is 5 s long.
       await dropCard(page, name, "V1", 0);
