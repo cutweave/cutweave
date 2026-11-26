@@ -57,6 +57,28 @@ describe("validatePreference", () => {
   });
 });
 
+describe("export presets and file names (WP-2G.04)", () => {
+  it("defaults to the last preset used and the project's name", () => {
+    const values = defaultPreferences();
+    expect(values["export.preset"]).toBe("");
+    expect(values["export.last_preset"]).toBe("");
+    expect(values["export.filename"]).toBe("{project}");
+  });
+
+  it("takes a preset id and a file name pattern, and refuses what a file name cannot hold", () => {
+    expect(validatePreference("export.preset", "youtube-1080p").ok).toBe(true);
+    expect(validatePreference("export.preset", "").ok).toBe(true);
+    expect(validatePreference("export.preset", "YouTube 1080p").ok).toBe(false);
+    expect(validatePreference("export.preset", "a".repeat(65)).ok).toBe(false);
+    expect(validatePreference("export.filename", "{project}_{date}").ok).toBe(true);
+    expect(validatePreference("export.filename", "a/b").ok).toBe(false);
+    expect(validatePreference("export.filename", "a:b").ok).toBe(false);
+    expect(validatePreference("export.filename", "a\nb").ok).toBe(false);
+    expect(validatePreference("export.filename", "").ok).toBe(false);
+    expect(validatePreference("export.filename", 3).ok).toBe(false);
+  });
+});
+
 describe("loadPreferences", () => {
   it("returns the defaults for a missing file", () => {
     const loaded = loadPreferences(null);

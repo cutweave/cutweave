@@ -3,6 +3,7 @@
 // from, and Media and import. Keyboard shortcuts (WP-2H.05) is `shortcuts.tsx`.
 
 import { EXPORT_FOLDER_CHOICES, EXPORT_HW_CHOICES, EXPORT_QUALITIES } from "@cutweave/preferences";
+import { DefaultPresetControl, FileNameControl } from "../export/ExportSettingRows.tsx";
 import { type ChoiceOption, registerSettingsPage, type SettingsPageDef } from "./registry.ts";
 import { registerShortcutsPage } from "./shortcuts.tsx";
 
@@ -85,6 +86,44 @@ const exportPage: SettingsPageDef = {
       description: "settings.rows.exportHw.description",
       keywords: "settings.rows.exportHw.keywords",
       control: { kind: "segmented", options: choices(EXPORT_HW_CHOICES, HW_LABELS) },
+    },
+    // WP-2G.04: the preset and the file name the dialog starts at.
+    {
+      id: "export.preset",
+      key: "export.preset",
+      label: "settings.rows.exportPreset.label",
+      description: "settings.rows.exportPreset.description",
+      keywords: "settings.rows.exportPreset.keywords",
+      control: {
+        kind: "custom",
+        render: (ctx, id) => <DefaultPresetControl ctx={ctx} id={id} />,
+      },
+    },
+    {
+      id: "export.last_preset",
+      key: "export.last_preset",
+      label: "settings.rows.exportLastPreset.label",
+      description: "settings.rows.exportLastPreset.description",
+      keywords: "settings.rows.exportLastPreset.keywords",
+      noRowReset: true,
+      control: {
+        kind: "action",
+        label: "settings.rows.exportLastPreset.button",
+        run: (ctx) => ctx.client.reset(["export.last_preset"]),
+        disabled: (ctx) => ctx.values["export.last_preset"] === "",
+        status: (ctx) =>
+          ctx.values["export.last_preset"] === ""
+            ? ctx.t("settings.rows.exportLastPreset.none")
+            : ctx.values["export.last_preset"],
+      },
+    },
+    {
+      id: "export.filename",
+      key: "export.filename",
+      label: "settings.rows.exportFileName.label",
+      description: "settings.rows.exportFileName.description",
+      keywords: "settings.rows.exportFileName.keywords",
+      control: { kind: "custom", render: (ctx, id) => <FileNameControl ctx={ctx} id={id} /> },
     },
   ],
 };

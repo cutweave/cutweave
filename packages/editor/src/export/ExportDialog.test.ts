@@ -1,11 +1,14 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 // @vitest-environment jsdom
-// WP-1M.08: the export dialog and the top bar's chip, over the real stores and a recording
-// engine. `apps/desktop/e2e/export-dialog.spec.ts` runs the same flow in the app.
+// WP-1M.08, WP-2G.04: the export dialog and the top bar's chip, over the real stores and a
+// recording engine that answers like the real one (presets, resolve, encoders, options). The
+// user flows F14 and F34 run the same dialog in the app on the real engine.
 import type { JobInfo, Project } from "@cutweave/protocol";
+import { RpcError } from "@cutweave/protocol";
 import { TooltipProvider } from "@cutweave/ui";
 import { act, cleanup, render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
+import axe from "axe-core";
 import { createElement as h } from "react";
 import { I18nextProvider } from "react-i18next";
 import { afterEach, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
@@ -16,9 +19,16 @@ import { initialSessionState, sessionStore } from "../session/sessionStore.ts";
 import { docStore } from "../state/docStore.ts";
 import { jobStore } from "../state/jobStore.ts";
 import { toastStore } from "../state/toastStore.ts";
+import {
+  ENCODERS,
+  exportProject,
+  H264_OPTIONS,
+  PRESET_ENTRIES,
+  resolveFor,
+} from "../testing/exportFixtures.ts";
 import { ExportStatusChip } from "./ExportChip.tsx";
 import { ExportDialog } from "./ExportDialog.tsx";
-import { exportStore } from "./exportStore.ts";
+import { exportStore, initialExportState } from "./exportStore.ts";
 import { exportController, resetExportController } from "./useExport.ts";
 
 beforeAll(() => {
@@ -32,23 +42,7 @@ beforeAll(() => {
 });
 
 const JOB = "job_1" as JobInfo["id"];
-
-const project = {
-  meta: { name: "Film" },
-  settings: {},
-  media: {},
-  sequences: {
-    seq_1: {
-      id: "seq_1",
-      name: "Main",
-      format: { width: 3840, height: 2160, frame_rate: { num: 30000, den: 1001 } },
-      tracks: { trk_1: { id: "trk_1", items: { itm_1: { id: "itm_1" } } } },
-      track_order: ["trk_1"],
-      custom: {},
-    },
-  },
-  custom: {},
-} as unknown as Project;
+const F = 705_600_000;
 
 const running = (fraction: number, message: string): JobInfo => ({
   id: JOB,
@@ -62,18 +56,30 @@ const running = (fraction: number, message: string): JobInfo => ({
 });
 
 let call: ReturnType<typeof vi.fn>;
+let seq: { width: number; height: number; seconds: number };
 
 const mount = () =>
   render(
     h(I18nextProvider, { i18n }, h(TooltipProvider, null, h(ExportDialog), h(ExportStatusChip))),
   );
 
+function useProject(project: Project, size: typeof seq): void {
+  seq = size;
+  docStore.setState({ project } as never);
+}
+
 beforeEach(async () => {
   await preferences.resetAll();
   resetExportController();
-  call = vi.fn(async (name: string) => {
-    if (name === "media.capabilities") return { hw_encode: [{ implementation: "h264_amf" }] };
-    if (name === "export.start") return { job_id: JOB, path: "C:\\p\\Film.mp4" };
+  call = vi.fn(async (name: string, input: Record<string, unknown>) => {
+    if (name === "export.list_presets") return { presets: PRESET_ENTRIES, problems: [] };
+    if (name === "export.list_encoders") return { codecs: ENCODERS };
+    if (name === "export.describe_options")
+      return { codec: "h264", encoder: "libx264", hardware: false, schema: H264_OPTIONS };
+    if (name === "export.resolve_preset") return resolveFor(String(input.preset), seq);
+    if (name === "export.start" || name === "export.enqueue") {
+      return { job_id: JOB, path: String(input.path), warnings: [], estimated_kib: null };
+    }
     if (name === "job.cancel") return { ...running(0.2, ""), cancel_requested: true };
     throw new Error(`unexpected ${name}`);
   });
@@ -84,14 +90,9 @@ beforeEach(async () => {
     path: "C:\\p\\Film\\Film.cutweave",
     name: "Film",
   });
-  docStore.setState({ project } as never);
+  useProject(exportProject(1920, 1080, 10), { width: 1920, height: 1080, seconds: 10 });
   jobStore.setState({ jobs: {} });
-  exportStore.setState({
-    dialogOpen: false,
-    active: null,
-    cancelling: false,
-    probe: { status: "idle" },
-  });
+  exportStore.setState({ ...initialExportState });
   toastStore.getState().clear();
   exportController().attach();
 });
@@ -101,92 +102,285 @@ afterEach(() => {
   resetExportController();
 });
 
+async function openDialog() {
+  mount();
+  act(() => exportController().open());
+  return settings();
+}
+
+/** The settings dialog once the presets are there (the loading dialog is another element). */
+async function settings() {
+  await screen.findByLabelText("Preset");
+  return screen.getByRole("dialog", { name: "Export video" });
+}
+
+const presetSelect = (dialog: HTMLElement) =>
+  within(dialog).getByLabelText("Preset") as HTMLSelectElement;
+const lastCall = (name: string) =>
+  call.mock.calls.filter(([n]) => n === name).at(-1)?.[1] as Record<string, unknown> | undefined;
+
 describe("ExportDialog", () => {
-  it("starts from the sequence: the preset's 1080p size, its rate, the project's folder", async () => {
-    mount();
-    act(() => exportController().open());
-    const dialog = await screen.findByRole("dialog", { name: "Export video" });
+  it("on a 9:16 sequence puts the portrait platform presets first; Reels shows its size and limit", async () => {
+    useProject(exportProject(1080, 1920, 200), { width: 1080, height: 1920, seconds: 200 });
+    const user = userEvent.setup();
+    const dialog = await openDialog();
+    const groups = [...presetSelect(dialog).querySelectorAll("optgroup")];
+    expect(groups[0]?.label).toBe("For this 9:16 sequence");
+    expect([...(groups[0]?.querySelectorAll("option") ?? [])].map((o) => o.textContent)).toEqual([
+      "YouTube Shorts",
+      "Instagram Reels",
+      "TikTok",
+      "X portrait",
+    ]);
+    expect(groups.map((g) => g.label)).toEqual([
+      "For this 9:16 sequence",
+      "YouTube",
+      "Instagram",
+      "X",
+      "General",
+    ]);
+    // GIF is listed, off, saying it is not in this build.
+    const gif = within(dialog).getByRole("option", { name: "GIF (not in this build)" });
+    expect((gif as HTMLOptionElement).disabled).toBe(true);
+
+    await user.selectOptions(presetSelect(dialog), "instagram-reels");
+    const summary = within(dialog).getByTestId("export-summary");
+    await waitFor(() =>
+      expect(summary.textContent).toContain("1080 × 1920 · 30 fps · H.264 + AAC · MP4"),
+    );
+    expect(summary.textContent).toContain("Length 00:03:20:00");
+    expect(summary.textContent).toContain("about");
+    expect(
+      await within(dialog).findByText(
+        "Instagram Reels takes videos up to 3:00; this export is 3:20. You can still export it.",
+      ),
+    ).toBeTruthy();
+    expect(within(dialog).getByText("1080 x 1920, up to 30 fps")).toBeTruthy();
+    // Over the limit is a warning, never a block.
+    expect(within(dialog).getByRole("button", { name: "Export" }).hasAttribute("disabled")).toBe(
+      false,
+    );
+
+    // YouTube 1080p on the same sequence says it fits with bars.
+    await user.selectOptions(presetSelect(dialog), "youtube-1080p");
+    expect(
+      await within(dialog).findByText(
+        /^Fits with bars: YouTube 1080p is 16:9 and this sequence is 9:16/,
+      ),
+    ).toBeTruthy();
+  });
+
+  it("starts at the general preset, the project's folder and the default quality (Settings > Export)", async () => {
+    const user = userEvent.setup();
+    const dialog = await openDialog();
+    expect(presetSelect(dialog).value).toBe("h264-mp4-1080p");
     expect(within(dialog).getByLabelText("Save to")).toHaveProperty(
       "value",
       "C:\\p\\Film\\Film.mp4",
     );
-    expect(within(dialog).getByLabelText("Width")).toHaveProperty("value", "1920");
-    expect(within(dialog).getByLabelText("Height")).toHaveProperty("value", "1080");
-    expect(within(dialog).getByLabelText("Frame rate")).toHaveProperty("value", "29.97");
-    expect(await within(dialog).findByText("Found AMD AMF. Faster than software.")).toBeTruthy();
-  });
-
-  it("starts at the export defaults of Settings > Export: quality, hardware and folder", async () => {
-    await preferences.set("export.quality", "low");
-    await preferences.set("export.hw", "off");
-    await preferences.set("export.folder", "chosen");
-    await preferences.set("export.folder_path", "D:\\Renders");
-    const user = userEvent.setup();
-    mount();
-    act(() => exportController().open());
-    const dialog = await screen.findByRole("dialog", { name: "Export video" });
-    expect(within(dialog).getByLabelText("Save to")).toHaveProperty(
-      "value",
-      "D:\\Renders\\Film.mp4",
-    );
-    expect(within(dialog).getByRole("radio", { name: "Low" }).getAttribute("aria-checked")).toBe(
-      "true",
-    );
-    expect(
-      within(dialog)
-        .getByRole("switch", { name: "Use hardware encoder" })
-        .getAttribute("aria-checked"),
-    ).toBe("false");
-    await user.click(within(dialog).getByRole("button", { name: "Export" }));
+    await user.click(within(dialog).getByRole("button", { name: "Advanced" }));
     await waitFor(() =>
-      expect(call).toHaveBeenLastCalledWith(
-        "export.start",
-        expect.objectContaining({
-          hw: "off",
-          path: "D:\\Renders\\Film.mp4",
-          preset: { custom: expect.objectContaining({ quality: "low" }) },
-        }),
-      ),
+      expect(within(dialog).getByLabelText("Width")).toHaveProperty("value", "1920"),
     );
-  });
-
-  it("sends a custom Medium export by default, since the preset is High", async () => {
-    const user = userEvent.setup();
-    mount();
-    act(() => exportController().open());
-    const dialog = await screen.findByRole("dialog", { name: "Export video" });
+    expect(within(dialog).getByLabelText("Height")).toHaveProperty("value", "1080");
+    expect(within(dialog).getByLabelText("Frame rate")).toHaveProperty("value", "30");
     expect(within(dialog).getByRole("radio", { name: "Medium" }).getAttribute("aria-checked")).toBe(
       "true",
     );
+    expect(
+      await within(dialog).findByText("Found NVIDIA NVENC. Faster than software."),
+    ).toBeTruthy();
     await user.click(within(dialog).getByRole("button", { name: "Export" }));
+    await waitFor(() => expect(lastCall("export.start")).toBeDefined());
+    expect(lastCall("export.start")).toEqual({
+      sequence: "seq_1",
+      path: "C:\\p\\Film\\Film.mp4",
+      preset: { custom: { quality: "medium", preset: "h264-mp4-1080p" } },
+      hw: "auto",
+      overwrite: false,
+      range: { kind: "sequence" },
+    });
+    expect(await preferences.get("export.last_preset")).toBe("h264-mp4-1080p");
+  });
+
+  it("sends a platform preset as itself, and the size typed in Advanced on top of it", async () => {
+    await preferences.set("export.hw", "off");
+    const user = userEvent.setup();
+    const dialog = await openDialog();
+    await user.selectOptions(presetSelect(dialog), "youtube-4k");
+    await user.click(within(dialog).getByRole("button", { name: "Advanced" }));
+    expect(within(dialog).getByText("40 Mb/s, set by the preset")).toBeTruthy();
+    expect(within(dialog).getByText("Software only: slower, works on any computer.")).toBeTruthy();
+    await user.click(within(dialog).getByRole("button", { name: "Export" }));
+    await waitFor(() => expect(lastCall("export.start")).toBeDefined());
+    expect(lastCall("export.start")).toMatchObject({ preset: "youtube-4k", hw: "off" });
+    act(() => jobStore.getState().applyProgress({ ...running(1, ""), state: "succeeded" }));
+
+    act(() => exportController().open());
+    const again = await settings();
+    // The last preset used is where the next export starts.
+    expect(presetSelect(again).value).toBe("youtube-4k");
+    await user.click(within(again).getByRole("button", { name: "Advanced" }));
+    await user.clear(within(again).getByLabelText("Width"));
+    await user.type(within(again).getByLabelText("Width"), "1921");
+    await user.click(within(again).getByRole("button", { name: "Export" }));
+    expect((await within(again).findByRole("alert")).textContent).toBe(
+      "Width must be an even number from 16 to 8192.",
+    );
+    await user.clear(within(again).getByLabelText("Width"));
+    await user.type(within(again).getByLabelText("Width"), "2560");
+    await user.clear(within(again).getByLabelText("Height"));
+    await user.type(within(again).getByLabelText("Height"), "1440");
+    await user.click(within(again).getByRole("button", { name: "Export" }));
     await waitFor(() =>
-      expect(call).toHaveBeenLastCalledWith(
-        "export.start",
-        expect.objectContaining({
-          preset: { custom: expect.objectContaining({ quality: "medium", width: 1920 }) },
-        }),
-      ),
+      expect(lastCall("export.start")).toMatchObject({
+        preset: { custom: { width: 2560, height: 1440, preset: "youtube-4k" } },
+      }),
     );
   });
 
-  it("sends the preset when the default is High and a custom export once a value changes", async () => {
-    await preferences.set("export.quality", "high");
+  it("gives ProRes its .mov and checks the extension", async () => {
     const user = userEvent.setup();
-    mount();
-    act(() => exportController().open());
-    const dialog = await screen.findByRole("dialog", { name: "Export video" });
+    const dialog = await openDialog();
+    await user.selectOptions(presetSelect(dialog), "prores-422-hq");
+    const path = within(dialog).getByLabelText("Save to") as HTMLInputElement;
+    expect(path.value).toBe("C:\\p\\Film\\Film.mov");
+    await user.clear(path);
+    await user.type(path, "C:\\p\\Film\\Film.mp4");
     await user.click(within(dialog).getByRole("button", { name: "Export" }));
-    await waitFor(() => expect(call).toHaveBeenCalledWith("export.start", expect.anything()));
-    expect(call).toHaveBeenLastCalledWith("export.start", {
-      sequence: "seq_1",
-      path: "C:\\p\\Film\\Film.mp4",
-      preset: "h264-mp4-1080p",
-      hw: "auto",
-      overwrite: false,
-    });
-    expect(exportStore.getState().active?.jobId).toBe(JOB);
+    expect((await within(dialog).findByRole("alert")).textContent).toBe(
+      "The file name must end in .mov.",
+    );
+    expect(lastCall("export.start")).toBeUndefined();
+  });
 
-    // Running: the dialog now shows the progress.
+  it("exports a custom range, and says when the times do not make one", async () => {
+    const user = userEvent.setup();
+    const dialog = await openDialog();
+    // No in and out points, no markers: those choices are off.
+    expect(within(dialog).getByRole("radio", { name: "In to out" }).hasAttribute("disabled")).toBe(
+      true,
+    );
+    expect(within(dialog).getByRole("radio", { name: "Markers" }).hasAttribute("disabled")).toBe(
+      true,
+    );
+    await user.click(within(dialog).getByRole("radio", { name: "Custom" }));
+    await user.type(within(dialog).getByLabelText("Start"), "00:00:02:00");
+    await user.type(within(dialog).getByLabelText("End"), "1s");
+    await user.click(within(dialog).getByRole("button", { name: "Export" }));
+    expect((await within(dialog).findByRole("alert")).textContent).toBe(
+      "Type a start and an end inside the sequence, the end after the start.",
+    );
+    await user.clear(within(dialog).getByLabelText("End"));
+    await user.type(within(dialog).getByLabelText("End"), "00:00:06:00");
+    await waitFor(() =>
+      expect(within(dialog).getByTestId("export-summary").textContent).toContain(
+        "Length 00:00:04:00",
+      ),
+    );
+    await user.click(within(dialog).getByRole("button", { name: "Export" }));
+    await waitFor(() =>
+      expect(lastCall("export.start")).toMatchObject({
+        range: { kind: "custom", in: "00:00:02:00", out: "00:00:06:00" },
+      }),
+    );
+  });
+
+  it("exports one file per marker under a name template", async () => {
+    const markers = {
+      m1: { id: "m1", t: 0, duration: 2 * F, label: "Intro", color: "#fff", kind: "user" },
+      m2: { id: "m2", t: 4 * F, duration: 2 * F, label: "Hook", color: "#fff", kind: "user" },
+    };
+    useProject(exportProject(1920, 1080, 10, { markers }), {
+      width: 1920,
+      height: 1080,
+      seconds: 2,
+    });
+    const user = userEvent.setup();
+    const dialog = await openDialog();
+    await user.click(within(dialog).getByRole("radio", { name: "Markers" }));
+    expect(within(dialog).getByText("Makes 2 files, one per marker.")).toBeTruthy();
+    expect(within(dialog).getByLabelText("Save to")).toHaveProperty(
+      "value",
+      "C:\\p\\Film\\Film_{marker_label}_{n}.mp4",
+    );
+    await user.click(within(dialog).getByRole("radio", { name: "To the next marker" }));
+    expect(within(dialog).getByText("Makes 1 file.")).toBeTruthy();
+    await user.click(within(dialog).getByRole("button", { name: "Export" }));
+    await waitFor(() =>
+      expect(lastCall("export.start")).toMatchObject({
+        path: "C:\\p\\Film\\Film_{marker_label}_{n}.mp4",
+        range: { kind: "markers", pair_mode: "pairs" },
+      }),
+    );
+  });
+
+  it("shows the engine's refusal at the field it names: an encoder option, the path", async () => {
+    const user = userEvent.setup();
+    const dialog = await openDialog();
+    await user.click(within(dialog).getByRole("button", { name: "Advanced" }));
+    const form = await within(dialog).findByRole("group", { name: "Encoder settings" });
+    await user.selectOptions(within(form).getByLabelText("Mode"), "CBR");
+    call.mockRejectedValueOnce(
+      new RpcError(
+        "invalid",
+        "cbr needs a bitrate_kbps; set one",
+        "/advanced/video/rate_control/mode",
+      ),
+    );
+    await user.click(within(dialog).getByRole("button", { name: "Export" }));
+    const alert = await within(form).findByRole("alert");
+    expect(alert.textContent).toBe("cbr needs a bitrate_kbps; set one");
+    expect(alert.getAttribute("data-path")).toBe("video.rate_control.mode");
+    expect(lastCall("export.start")).toMatchObject({
+      advanced: { video: { rate_control: { mode: "cbr" } } },
+    });
+    // Back to the preset's settings: nothing extra is sent.
+    await user.click(within(dialog).getByRole("button", { name: "Use the preset's" }));
+    call.mockRejectedValueOnce(
+      new RpcError("invalid", "not enough room: 2 GB needed, 1 GB free", "/path"),
+    );
+    await user.click(within(dialog).getByRole("button", { name: "Export" }));
+    expect((await within(dialog).findByRole("alert")).textContent).toBe(
+      "not enough room: 2 GB needed, 1 GB free",
+    );
+    expect(lastCall("export.start")?.advanced).toBeUndefined();
+    expect(within(dialog).getByLabelText("Save to").getAttribute("aria-invalid")).toBe("true");
+  });
+
+  it("asks before replacing a file unless told what to do; Replace sends overwrite", async () => {
+    const user = userEvent.setup();
+    const dialog = await openDialog();
+    call.mockRejectedValueOnce(new RpcError("invalid", "exists", "/overwrite"));
+    await user.click(within(dialog).getByRole("button", { name: "Export" }));
+    const replace = await screen.findByRole("dialog", { name: "Replace Film.mp4?" });
+    await user.click(within(replace).getByRole("button", { name: "Replace" }));
+    await waitFor(() => expect(lastCall("export.start")).toMatchObject({ collision: "overwrite" }));
+
+    act(() => jobStore.getState().applyProgress({ ...running(1, ""), state: "succeeded" }));
+    act(() => exportController().open());
+    const again = await settings();
+    await user.selectOptions(within(again).getByLabelText("If the file exists"), "rename");
+    await user.click(within(again).getByRole("button", { name: "Export" }));
+    await waitFor(() => expect(lastCall("export.start")).toMatchObject({ collision: "rename" }));
+  });
+
+  it("adds to the queue: export.enqueue, the dialog closes, a toast says so", async () => {
+    const user = userEvent.setup();
+    const dialog = await openDialog();
+    await user.click(within(dialog).getByRole("button", { name: "Add to queue" }));
+    await waitFor(() => expect(lastCall("export.enqueue")).toBeDefined());
+    expect(lastCall("export.start")).toBeUndefined();
+    await waitFor(() => expect(screen.queryByRole("dialog")).toBeNull());
+    expect(toastStore.getState().notices[0]?.title).toBe("Added to the export queue");
+    expect(exportStore.getState().active).toBeNull();
+  });
+
+  it("shows the progress, the chip, and the hide and cancel", async () => {
+    const user = userEvent.setup();
+    const dialog = await openDialog();
+    await user.click(within(dialog).getByRole("button", { name: "Export" }));
+    await waitFor(() => expect(exportStore.getState().active).not.toBeNull());
     act(() =>
       jobStore.getState().applyProgress(running(0.4, "frame 12 of 30, 20.5 fps, about 0:03 left")),
     );
@@ -194,64 +388,11 @@ describe("ExportDialog", () => {
     expect(within(progress).getByRole("progressbar").getAttribute("aria-valuenow")).toBe("40");
     expect(within(progress).getByText("20.5 fps · about 0:03 left")).toBeTruthy();
     expect(screen.getByTestId("export-chip").textContent).toBe("Exporting 40%");
-
-    // Hide: the export goes on and the chip stays; it brings the dialog back.
     await user.click(within(progress).getByRole("button", { name: "Hide" }));
     expect(screen.queryByRole("dialog")).toBeNull();
-    expect(exportStore.getState().active).not.toBeNull();
     await user.click(screen.getByTestId("export-chip"));
-    expect(await screen.findByRole("dialog", { name: "Exporting Film.mp4" })).toBeTruthy();
-  });
-
-  it("turns the hardware switch into hw off and a changed size into a custom preset", async () => {
-    const user = userEvent.setup();
-    mount();
-    act(() => exportController().open());
-    const dialog = await screen.findByRole("dialog", { name: "Export video" });
-    await user.click(within(dialog).getByRole("switch", { name: "Use hardware encoder" }));
-    expect(within(dialog).getByText("Software only: slower, works on any computer.")).toBeTruthy();
-    await user.click(within(dialog).getByRole("radio", { name: "Medium" }));
-    await user.click(within(dialog).getByRole("button", { name: "Export" }));
-    await waitFor(() =>
-      expect(call).toHaveBeenLastCalledWith(
-        "export.start",
-        expect.objectContaining({
-          hw: "off",
-          preset: {
-            custom: {
-              width: 1920,
-              height: 1080,
-              fps: { num: 30000, den: 1001 },
-              quality: "medium",
-            },
-          },
-        }),
-      ),
-    );
-  });
-
-  it("says why a value is refused and does not start", async () => {
-    const user = userEvent.setup();
-    mount();
-    act(() => exportController().open());
-    const dialog = await screen.findByRole("dialog", { name: "Export video" });
-    await user.clear(within(dialog).getByLabelText("Width"));
-    await user.type(within(dialog).getByLabelText("Width"), "1921");
-    await user.click(within(dialog).getByRole("button", { name: "Export" }));
-    expect((await within(dialog).findByRole("alert")).textContent).toBe(
-      "Width must be an even number from 16 to 8192.",
-    );
-    expect(call).not.toHaveBeenCalledWith("export.start", expect.anything());
-  });
-
-  it("cancels through the engine and reports it", async () => {
-    const user = userEvent.setup();
-    mount();
-    act(() => exportController().open());
-    await user.click(await screen.findByRole("button", { name: "Export" }));
-    await waitFor(() => expect(exportStore.getState().active).not.toBeNull());
-    act(() => jobStore.getState().applyProgress(running(0.2, "")));
-    await user.click(await screen.findByRole("button", { name: "Cancel export" }));
+    const back = await screen.findByRole("dialog", { name: "Exporting Film.mp4" });
+    await user.click(within(back).getByRole("button", { name: "Cancel export" }));
     await waitFor(() => expect(call).toHaveBeenCalledWith("job.cancel", { id: JOB }));
     act(() =>
       jobStore
@@ -261,5 +402,16 @@ describe("ExportDialog", () => {
     expect(exportStore.getState().active).toBeNull();
     expect(toastStore.getState().notices[0]?.title).toBe("Export cancelled");
     expect(screen.queryByTestId("export-chip")).toBeNull();
+  });
+
+  it("has no axe violations, with Advanced open and a warning shown", async () => {
+    useProject(exportProject(1080, 1920, 200), { width: 1080, height: 1920, seconds: 200 });
+    const user = userEvent.setup();
+    const dialog = await openDialog();
+    await user.selectOptions(presetSelect(dialog), "instagram-reels");
+    await within(dialog).findByText(/takes videos up to 3:00/);
+    await user.click(within(dialog).getByRole("button", { name: "Advanced" }));
+    await within(dialog).findByRole("group", { name: "Encoder settings" });
+    expect((await axe.run(dialog)).violations).toEqual([]);
   });
 });

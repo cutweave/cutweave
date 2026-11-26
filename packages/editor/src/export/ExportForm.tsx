@@ -192,6 +192,49 @@ function optionHints(t: Translate): Record<string, UiHints> {
   };
 }
 
+/** Codec, rate-control and speed names as editors write them; other values keep their own. */
+const OPTION_NAMES: Readonly<Record<string, string>> = {
+  crf: "CRF",
+  cbr: "CBR",
+  vbr: "VBR",
+  cq: "CQ",
+  aac: "AAC",
+  mp3: "MP3",
+  opus: "Opus",
+  flac: "FLAC",
+  pcm_s16: "PCM 16-bit",
+  pcm_s24: "PCM 24-bit",
+  veryfast: "Very fast",
+  veryslow: "Very slow",
+};
+
+/** The schema with readable choices: `enum`s become `oneOf` with titles (words translated). */
+function labelChoices(schema: JsonSchema, t: Translate): JsonSchema {
+  const words: Readonly<Record<string, string>> = {
+    mono: t("export.options.mono"),
+    stereo: t("export.options.stereo"),
+    limited: t("export.options.limited"),
+    full: t("export.options.full"),
+  };
+  const walk = (node: JsonSchema): JsonSchema => {
+    const out: JsonSchema = { ...node };
+    if (Array.isArray(node.enum)) {
+      delete out.enum;
+      out.oneOf = node.enum.map((value) => {
+        const key = String(value);
+        return { const: value, title: words[key] ?? OPTION_NAMES[key] ?? key };
+      });
+    }
+    if (node.properties !== undefined) {
+      out.properties = Object.fromEntries(
+        Object.entries(node.properties).map(([key, child]) => [key, walk(child)]),
+      );
+    }
+    return out;
+  };
+  return walk(schema);
+}
+
 /** Whether the schema has a field at this dot path (`video.rate_control.mode`). */
 function schemaHas(schema: JsonSchema, path: string): boolean {
   let at: JsonSchema | undefined = schema;
@@ -305,6 +348,13 @@ function PresetForm({
       live = false;
     };
   }, [controller, codec, spec.container]);
+
+  // The encoder options as the form shows them: readable choices and field names.
+  const formSchema = useMemo(
+    () => (schema === null ? null : labelChoices(schema, translator(rawT))),
+    [schema, rawT],
+  );
+  const hints = useMemo(() => optionHints(translator(rawT)), [rawT]);
 
   const plan = resolved?.ok === true ? resolved.value : null;
   const width = plan?.width ?? facts.width;
@@ -788,9 +838,9 @@ function PresetForm({
                 </div>
                 <SchemaForm
                   aria-label={t("export.options.title")}
-                  schema={schema}
+                  schema={formSchema ?? schema}
                   value={options}
-                  hints={optionHints(t)}
+                  hints={hints}
                   errors={optionErrors}
                   onChange={(at, value) => {
                     setOptions((current) => setPath(current, at, value) as Record<string, unknown>);

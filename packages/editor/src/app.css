@@ -1054,6 +1054,14 @@ body {
   flex: none;
 }
 
+/* Settings > Export > File name (WP-2G.04): the pattern over the name it makes. */
+.cw-settings__filename {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1);
+  min-width: 0;
+}
+
 /* File > Settings…: what the dialog adds around the kit's SettingsLayout and SettingRow. */
 .cw-settings__status {
   flex: 1;
