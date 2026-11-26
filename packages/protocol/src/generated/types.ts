@@ -1041,7 +1041,10 @@ export type CodecEncoders = {
 	containers: Container[],
 	/**  The bit depths of the coded video. */
 	bit_depths: number[],
-	/**  The profile names a preset's `video.profile` takes (empty when the codec has none). */
+	/**
+	 *  The profile names a preset's `video.profile` or `advanced.video.profile` takes (empty when
+	 *  the codec has none).
+	 */
 	profiles: string[],
 };
 
@@ -1743,8 +1746,12 @@ export type ExportStart = {
 	/**  An existing file: "fail" (default), "rename" or "overwrite". */
 	collision?: Collision | null,
 	/**
-	 *  Fine control of rate control, GOP, encoder, color tags and audio. Impossible combinations
-	 *  fail with Invalid and a hint.
+	 *  Fine control (export.describe_options{codec} gives a codec's options as a JSON Schema):
+	 *  video{rate_control{mode crf|cbr|vbr|cq, crf, bitrate_kbps, max_bitrate_kbps, buffer_kbit},
+	 *  gop{keyint|keyint_seconds, keyint_min, bframes, closed_gop, scenecut}, preset, tune,
+	 *  profile, level, pix_fmt, threads}, color{primaries, transfer, matrix, range, tag_only},
+	 *  audio{codec, bitrate_kbps, sample_rate, channels}. Impossible combinations fail with
+	 *  Invalid and a hint.
 	 */
 	advanced?: AdvancedExportOptions | null,
 };
