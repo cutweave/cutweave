@@ -603,8 +603,15 @@ impl MixerHandle {
     /// Replaces only the bus settings (gain, pan, mute, solo) of the current segments: ramps in
     /// at the next callback, no lane is re-rendered.
     pub fn set_buses(&self, buses: &BusGraph) -> Result<(), MixError> {
-        let segments = self.control().segments.clone();
-        self.set_mix(&segments, buses)
+        let mut c = self.control();
+        let plan = plan_buses(&c.segments, self.rate, buses)?;
+        c.graph = buses.clone();
+        if c.desired != plan {
+            c.desired = plan;
+            c.dirty = true;
+        }
+        c.flush();
+        Ok(())
     }
 
     /// The bus settings in effect (as last set).

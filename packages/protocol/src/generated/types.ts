@@ -2016,8 +2016,8 @@ export type GetHistory = {
  *  peak (dBTP), RMS (dBFS, AES17: a sine reads its peak level), integrated loudness (LUFS),
  *  the loudest momentary and short-term loudness and the loudness range of the master, and
  *  the same levels (without momentary, short-term and range) for every audio track
- *  (post-fader). Silent values are null. Read-only; it decodes the range, so long ranges take a
- *  while (about a second per few minutes of audio).
+ *  (post-fader). Silent values are null. Read-only; it decodes and mixes the whole range before
+ *  it answers, so a long range takes a while.
  */
 export type GetLevels = {
 	/**  Sequence; optional when the project has one. */
