@@ -1,0 +1,92 @@
+{
+  "version": 1,
+  "note": "WP-2C.08. Cells of `item.apply_layout`. A grid cell sits on columns and rows given as weights (the gap is taken out between tracks); a rect cell is placed in fractions of the canvas and ignores the gap. The first cell takes the first clip (without `order`, the one on the top track). Picture in picture insets by the title-safe margin of 5 % and is 30 % of the width.",
+  "layouts": [
+    {
+      "id": "side_by_side",
+      "label": "Side by side",
+      "columns": [1, 1],
+      "rows": [1],
+      "cells": [
+        { "col": 0, "row": 0 },
+        { "col": 1, "row": 0 }
+      ]
+    },
+    {
+      "id": "top_bottom",
+      "label": "Top and bottom",
+      "columns": [1],
+      "rows": [1, 1],
+      "cells": [
+        { "col": 0, "row": 0 },
+        { "col": 0, "row": 1 }
+      ]
+    },
+    {
+      "id": "pip_top_left",
+      "label": "Picture in picture, top left",
+      "cells": [
+        { "x": 0.05, "y": 0.05, "w": 0.3, "h": 0.3 },
+        { "x": 0.0, "y": 0.0, "w": 1.0, "h": 1.0 }
+      ]
+    },
+    {
+      "id": "pip_top_right",
+      "label": "Picture in picture, top right",
+      "cells": [
+        { "x": 0.65, "y": 0.05, "w": 0.3, "h": 0.3 },
+        { "x": 0.0, "y": 0.0, "w": 1.0, "h": 1.0 }
+      ]
+    },
+    {
+      "id": "pip_bottom_left",
+      "label": "Picture in picture, bottom left",
+      "cells": [
+        { "x": 0.05, "y": 0.65, "w": 0.3, "h": 0.3 },
+        { "x": 0.0, "y": 0.0, "w": 1.0, "h": 1.0 }
+      ]
+    },
+    {
+      "id": "pip_bottom_right",
+      "label": "Picture in picture, bottom right",
+      "cells": [
+        { "x": 0.65, "y": 0.65, "w": 0.3, "h": 0.3 },
+        { "x": 0.0, "y": 0.0, "w": 1.0, "h": 1.0 }
+      ]
+    },
+    {
+      "id": "columns_3",
+      "label": "Three columns",
+      "columns": [1, 1, 1],
+      "rows": [1],
+      "cells": [
+        { "col": 0, "row": 0 },
+        { "col": 1, "row": 0 },
+        { "col": 2, "row": 0 }
+      ]
+    },
+    {
+      "id": "one_large_two_small",
+      "label": "One large, two small",
+      "columns": [2, 1],
+      "rows": [1, 1],
+      "cells": [
+        { "col": 0, "row": 0, "row_span": 2 },
+        { "col": 1, "row": 0 },
+        { "col": 1, "row": 1 }
+      ]
+    },
+    {
+      "id": "grid_2x2",
+      "label": "2 x 2 grid",
+      "columns": [1, 1],
+      "rows": [1, 1],
+      "cells": [
+        { "col": 0, "row": 0 },
+        { "col": 1, "row": 0 },
+        { "col": 0, "row": 1 },
+        { "col": 1, "row": 1 }
+      ]
+    }
+  ]
+}
