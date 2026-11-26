@@ -413,6 +413,33 @@ const CONTRACT: &[Row] = &[
         true,
     ),
     (
+        "timeline.copy",
+        EntryKind::Query,
+        McpExposure::Catalog,
+        true,
+        false,
+        true,
+        false,
+    ),
+    (
+        "timeline.paste",
+        EntryKind::Command,
+        McpExposure::Catalog,
+        false,
+        false,
+        false,
+        true,
+    ),
+    (
+        "clip.paste_attributes",
+        EntryKind::Command,
+        McpExposure::Catalog,
+        false,
+        false,
+        true,
+        true,
+    ),
+    (
         "item.set_props",
         EntryKind::Command,
         McpExposure::Core,
@@ -830,6 +857,12 @@ fn optional_params_are_not_required_in_the_input_schema() {
     assert_eq!(required("timeline.ripple_delete"), ["items"]);
     assert_eq!(required("timeline.delete_gap"), ["track", "at"]);
     assert_eq!(required("item.duplicate"), ["items"]);
+    assert_eq!(required("timeline.copy"), ["items"]);
+    assert_eq!(required("timeline.paste"), ["payload", "at"]);
+    assert_eq!(
+        required("clip.paste_attributes"),
+        ["from", "to", "which"]
+    );
     assert_eq!(required("item.delete"), ["items"]);
     assert_eq!(required("item.link"), ["items"]);
     assert_eq!(required("item.unlink"), ["items"]);
