@@ -1,22 +1,25 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
-// `useTimelineIntents()` (WP-1M.06 interface): one `TimelineController` per timeline panel, bound
-// to the app's stores, with the callbacks the panel hands to `TimelineCanvas`.
+// `useTimelineHost()` (WP-2A.10): one `TimelineHost` per timeline panel, bound to the app's stores,
+// with the callbacks the panel hands to `TimelineCanvas` and the elements around it: pointer
+// events, keys (keydown and keyup, so held modifiers reach the machine), the clipboard events,
+// a bin card dragged over the lanes, and a lost window.
 import type { TimelinePointerEvent, TimelineView } from "@cutweave/timeline";
 import { type DragEvent, useCallback, useEffect, useMemo, useRef } from "react";
 import { useTranslation } from "react-i18next";
 import { useStore } from "zustand";
 import { engineStore } from "../engine/engineStore.ts";
-import { timelineActionOf, timelineEditorCommandOf } from "../keymap/timeline.ts";
+import { timelineKeyOf } from "../keymap/timeline.ts";
 import { dragStore } from "../media/dragStore.ts";
 import { requestForCanvasEvent } from "../menus/canvas.ts";
 import { closeContextMenu, openContextMenu } from "../menus/host.tsx";
 import { registerTimelineCanvas } from "../menus/timelineSurface.ts";
+import { isHTMLElement } from "../shell/realm.ts";
 import { forEveryWindow, framesOf } from "../shell/windows.ts";
 import { docStore } from "../state/docStore.ts";
 import { toastStore } from "../state/toastStore.ts";
 import { viewStore } from "../state/viewStore.ts";
 import { transportController } from "../transport/useTransport.ts";
-import { setActiveTimelineController } from "./activeController.ts";
+import { setActiveTimelineHost } from "./activeHost.ts";
 import {
   type Call,
   CLIPBOARD_MIME,
@@ -29,20 +32,15 @@ import {
   pasteClips,
   selectedClips,
 } from "./clipboard.ts";
-import { TimelineController, type TimelineOverlay } from "./controller.ts";
-import {
-  describeRefusal,
-  FAILED_TITLE,
-  type TimelineEdit,
-  type Translate,
-  translator,
-} from "./errors.ts";
-import { toRpcError } from "./gesture.ts";
+import { describeRefusal, FAILED_TITLE, type TimelineEdit, translator } from "./errors.ts";
+import { toRpcError } from "./gestureTx.ts";
+import { type LaneBox, TimelineHost, type TimelineUi, withCode } from "./host.ts";
+import { locksStore } from "./locks.ts";
 
-export interface TimelineIntents {
-  readonly controller: TimelineController;
-  /** Snap guides and marquee to draw. */
-  readonly overlay: TimelineOverlay;
+export interface TimelineBinding {
+  readonly host: TimelineHost;
+  /** Tool, guides, marquee, drop ghost and cursor. */
+  readonly ui: TimelineUi;
   /** `TimelineCanvas.onPointer`. */
   readonly onPointer: (e: TimelinePointerEvent) => void;
   /** Ref for the element around the canvas: Shift+F10 and the Menu key open its context menu. */
@@ -55,7 +53,7 @@ export interface TimelineIntents {
     readonly onDragLeave: (e: DragEvent<HTMLElement>) => void;
     readonly onDrop: (e: DragEvent<HTMLElement>) => void;
   };
-  /** Ref for the panel root: timeline keys (S, N, Delete, Backspace, Esc) pressed inside it. */
+  /** Ref for the panel root: the timeline's keys and the clipboard events inside it. */
   readonly keyTarget: (el: HTMLElement | null) => (() => void) | undefined;
 }
 
@@ -73,20 +71,42 @@ function isTextEntry(target: EventTarget | null): boolean {
   return el.isContentEditable || el.tagName === "INPUT" || el.tagName === "TEXTAREA";
 }
 
-export function useTimelineIntents(): TimelineIntents {
+/** A CSS length token in px, read where the canvas is (the ruler is `control-md` tall). */
+function tokenPx(el: Element, name: string): number {
+  const view = el.ownerDocument.defaultView;
+  if (view === null) return 0;
+  return Number.parseFloat(view.getComputedStyle(el).getPropertyValue(name)) || 0;
+}
+
+/** The lane area of the canvas: right of the headers, under the ruler. */
+function laneBox(view: TimelineView, canvas: HTMLElement): () => LaneBox {
+  let ruler = 0;
+  return () => {
+    if (ruler === 0) ruler = tokenPx(canvas, "--control-md");
+    return {
+      left: view.timeToX(view.getViewState().scrollX),
+      right: canvas.clientWidth,
+      top: ruler,
+      bottom: canvas.clientHeight,
+    };
+  };
+}
+
+export function useTimelineHost(): TimelineBinding {
   const { t } = useTranslation();
-  const translate = useRef<Translate>(translator(t));
+  const translate = useRef(translator(t));
   translate.current = translator(t);
   /** The canvas's surface element: its window is where the gesture's frames come from. */
   const surface = useRef<HTMLElement | null>(null);
 
-  const controller = useMemo(
+  const host = useMemo(
     () =>
-      new TimelineController({
+      new TimelineHost({
         doc: docStore,
         view: viewStore,
         engine: engineStore,
         toasts: toastStore,
+        locks: locksStore,
         t: (key, vars) => translate.current(key, vars),
         // Ruler scrubbing goes to the engine as latest-wins `view.seek` (WP-1M.04).
         seek: (at) => void transportController().seek(at),
@@ -97,37 +117,50 @@ export function useTimelineIntents(): TimelineIntents {
   );
 
   // Commands outside the panel (the palette's Split at playhead) reach it through this.
-  useEffect(() => setActiveTimelineController(controller), [controller]);
+  useEffect(() => setActiveTimelineHost(host), [host]);
 
   // Losing the window mid-drag cancels the gesture (the pointer-up may never arrive): any editor
   // window, since the Timeline may be in a detached one.
   useEffect(() => {
-    const blur = (): void => controller.cancel();
+    const blur = (): void => host.cancel();
     const off = forEveryWindow((win) => {
       win.addEventListener("blur", blur);
       return () => win.removeEventListener("blur", blur);
     });
     return () => {
       off();
-      controller.dispose();
+      host.dispose();
     };
-  }, [controller]);
+  }, [host]);
 
-  // A card drag that ends without a drop here (Esc, dropped elsewhere) clears the drop guide.
+  // A card drag that ends without a drop here (Esc, dropped elsewhere) rolls its placement back.
   useEffect(
     () =>
       dragStore.subscribe((state) => {
-        if (state.session === null) controller.mediaDragLeave();
+        if (state.session === null) host.mediaLeave();
       }),
-    [controller],
+    [host],
   );
 
-  const overlay = useStore(controller.overlay);
+  const ui = useStore(host.ui);
+  const view = useRef<TimelineView | null>(null);
 
   const onPointer = useCallback(
     (e: TimelinePointerEvent) => {
       // The right button and a long-press are the menu host's, not a gesture (WP-2H.12).
       if (e.type === "contextmenu" || e.type === "longpress") {
+        const marker = e.hit.zone === "ruler" ? (view.current?.markerAt(e.x, e.y) ?? null) : null;
+        const original = e.original;
+        if (marker !== null) {
+          openContextMenu({
+            surface: "timeline.marker",
+            point: { x: original.clientX, y: original.clientY },
+            via: e.type === "longpress" ? "touch" : "pointer",
+            element: isHTMLElement(original.target) ? original.target : null,
+            target: { ids: [marker.id], name: marker.label, place: { time: marker.t } },
+          });
+          return;
+        }
         const request = requestForCanvasEvent(e);
         if (request === null) closeContextMenu();
         else openContextMenu(request);
@@ -135,39 +168,47 @@ export function useTimelineIntents(): TimelineIntents {
       }
       // Keys go where the pointer acted: focus the canvas on a press.
       if (e.type === "down") (e.original.target as HTMLElement | null)?.focus?.();
-      controller.handlePointer(e);
+      host.handlePointer(e);
     },
-    [controller],
+    [host],
   );
 
-  const view = useRef<TimelineView | null>(null);
   const onView = useCallback(
     (next: TimelineView | null) => {
       view.current = next;
-      controller.attach(next);
+      const canvas = surface.current?.querySelector("canvas") ?? null;
+      host.attach(next, canvas, next !== null && canvas !== null ? laneBox(next, canvas) : null);
     },
-    [controller],
+    [host],
   );
 
-  const canvasSurface = useCallback((el: HTMLElement | null) => {
-    if (el === null) return undefined;
-    surface.current = el;
-    const off = registerTimelineCanvas(el, () => view.current);
-    return () => {
-      off();
-      if (surface.current === el) surface.current = null;
-    };
-  }, []);
+  const canvasSurface = useCallback(
+    (el: HTMLElement | null) => {
+      if (el === null) return undefined;
+      surface.current = el;
+      const canvas = el.querySelector("canvas");
+      if (view.current !== null && canvas !== null) {
+        host.attach(view.current, canvas, laneBox(view.current, canvas));
+      }
+      const off = registerTimelineCanvas(el, () => view.current);
+      return () => {
+        off();
+        if (surface.current === el) surface.current = null;
+      };
+    },
+    [host],
+  );
 
   const keyTarget = useCallback(
     (el: HTMLElement | null) => {
       if (el === null) return undefined;
       const refused = (edit: TimelineEdit, error: unknown): void => {
         const tr = translator(t);
+        const refusal = toRpcError(error);
         toastStore.getState().push({
           tone: "warning",
           title: tr(FAILED_TITLE[edit]),
-          message: describeRefusal(toRpcError(error), tr),
+          message: withCode(describeRefusal(refusal, tr), refusal.code),
         });
       };
       const run = (edit: TimelineEdit, work: () => Promise<void>): void => {
@@ -195,46 +236,49 @@ export function useTimelineIntents(): TimelineIntents {
         if (payload === null) return;
         e.preventDefault();
         clipboardStore.getState().setPayload(payload);
-        const view = viewStore.getState();
-        const track = view.selection.find((r) => r.kind === "track")?.id;
-        run("paste", () => pasteClips(engineCall, payload, view.playhead, track));
+        const v = viewStore.getState();
+        const track = v.selection.find((r) => r.kind === "track")?.id;
+        run("paste", () => pasteClips(engineCall, payload, v.playhead, track));
       };
-      const onKey = (e: KeyboardEvent): void => {
+      const onKeyDown = (e: KeyboardEvent): void => {
         if (e.defaultPrevented || isTextEntry(e.target)) return;
-        if (timelineEditorCommandOf(e) === "item.duplicate") {
-          const ids = selectedClips();
-          if (ids.length === 0) return;
-          e.preventDefault();
-          run("duplicate", () => duplicateClips(engineCall, ids));
+        // The keys are the keymap's `timeline` context (Settings > Keyboard shortcuts).
+        const key = timelineKeyOf(e);
+        if (key.kind === "editor") {
+          if (key.command === "item.duplicate") {
+            const ids = selectedClips();
+            if (ids.length === 0) return;
+            e.preventDefault();
+            run("duplicate", () => duplicateClips(engineCall, ids));
+            return;
+          }
+          if (host.runHostKey(key.command)) e.preventDefault();
           return;
         }
-        // The keys are the keymap's `timeline` context (Settings > Keyboard shortcuts).
-        const action = timelineActionOf(e);
-        const handled = controller.handleKey({
-          key: e.key,
-          shiftKey: e.shiftKey,
-          altKey: e.altKey,
-          ctrlKey: e.ctrlKey,
-          metaKey: e.metaKey,
-          action,
-        });
-        if (handled) e.preventDefault();
+        const action = key.kind === "action" ? key.action : null;
+        if (host.handleKey(e, true, action)) e.preventDefault();
       };
-      el.addEventListener("keydown", onKey);
+      const onKeyUp = (e: KeyboardEvent): void => {
+        if (isTextEntry(e.target)) return;
+        host.handleKey(e, false);
+      };
+      el.addEventListener("keydown", onKeyDown);
+      el.addEventListener("keyup", onKeyUp);
       el.addEventListener("copy", onCopy);
       el.addEventListener("cut", onCut);
       el.addEventListener("paste", onPaste);
       return () => {
-        el.removeEventListener("keydown", onKey);
+        el.removeEventListener("keydown", onKeyDown);
+        el.removeEventListener("keyup", onKeyUp);
         el.removeEventListener("copy", onCopy);
         el.removeEventListener("cut", onCut);
         el.removeEventListener("paste", onPaste);
       };
     },
-    [controller, t],
+    [host, t],
   );
 
-  const drop = useMemo<TimelineIntents["drop"]>(() => {
+  const drop = useMemo<TimelineBinding["drop"]>(() => {
     /** Canvas-relative CSS pixels of a drag event, or `null` without a canvas. */
     const local = (e: DragEvent<HTMLElement>): { x: number; y: number } | null => {
       const canvas = e.currentTarget.querySelector("canvas");
@@ -247,7 +291,7 @@ export function useTimelineIntents(): TimelineIntents {
         const media = dragStore.getState().session;
         const at = media === null ? null : local(e);
         if (media === null || at === null) return;
-        const lands = controller.mediaDragOver(at.x, at.y, media);
+        const lands = host.mediaOver(at.x, at.y, media, { alt: e.altKey });
         // Allowing the drop is what shows the "copy" cursor; with nowhere to land it stays "no drop".
         if (lands) {
           e.preventDefault();
@@ -255,20 +299,20 @@ export function useTimelineIntents(): TimelineIntents {
         }
       },
       onDragLeave(e) {
-        // Moving between children fires leave too: only a real exit clears the preview.
+        // Moving between children fires leave too: only a real exit rolls the placement back.
         const next = e.relatedTarget as Node | null;
-        if (next === null || !e.currentTarget.contains(next)) controller.mediaDragLeave();
+        if (next === null || !e.currentTarget.contains(next)) host.mediaLeave();
       },
       onDrop(e) {
         const media = dragStore.getState().session;
         const at = media === null ? null : local(e);
         if (media === null || at === null) return;
         e.preventDefault();
-        controller.mediaDrop(at.x, at.y, media);
+        host.mediaDrop(at.x, at.y, media, { alt: e.altKey });
         dragStore.getState().end();
       },
     };
-  }, [controller]);
+  }, [host]);
 
-  return { controller, overlay, onPointer, onView, keyTarget, canvasSurface, drop };
+  return { host, ui, onPointer, onView, keyTarget, canvasSurface, drop };
 }

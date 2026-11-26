@@ -5,7 +5,7 @@
 import { exportController } from "../export/useExport.ts";
 import { i18n } from "../i18n/index.ts";
 import { projectController } from "../session/useProject.ts";
-import { activeTimelineController } from "../timeline/activeController.ts";
+import { activeTimelineHost } from "../timeline/activeHost.ts";
 import { registerPaletteAction } from "./actions.ts";
 
 let registered = false;
@@ -17,9 +17,9 @@ export function registerBuiltinPaletteActions(): void {
   // The toolbar's Split and the `S` key: the selected clips (or the one under the playhead), at
   // the playhead's frame, linked partners together, one undo step.
   registerPaletteAction("clip.split", () => {
-    const controller = activeTimelineController();
-    if (controller === null) throw new Error(i18n.t("palette.needTimeline"));
-    controller.split();
+    const host = activeTimelineHost();
+    if (host === null) throw new Error(i18n.t("palette.needTimeline"));
+    host.split();
   });
   registerPaletteAction("edit.undo", async () => void (await projectController().run("undo")));
   registerPaletteAction("edit.redo", async () => void (await projectController().run("redo")));

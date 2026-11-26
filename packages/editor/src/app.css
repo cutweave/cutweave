@@ -770,6 +770,67 @@ body {
   outline: var(--border-thick) solid var(--focus-ring);
   outline-offset: var(--border-thick);
 }
+/* WP-2A.10: the header toggles laid over the ones the canvas draws (same place, same size), so
+   they are buttons with tooltips and reach the keyboard. The column is clipped under the ruler. */
+.cw-timeline__headers {
+  position: absolute;
+  top: var(--control-md);
+  bottom: 0;
+  left: 0;
+  width: calc(var(--space-12) * 4);
+  overflow: hidden;
+  pointer-events: none;
+}
+.cw-timeline__toggles {
+  position: absolute;
+  display: flex;
+  gap: var(--space-1);
+  background: var(--surface-1);
+  pointer-events: auto;
+}
+.cw-timeline__toggles .cw-iconbtn {
+  width: var(--control-sm);
+  height: var(--control-sm);
+}
+/* The corner above the headers: "Add track". */
+.cw-timeline__corner {
+  position: absolute;
+  top: 0;
+  left: 0;
+  z-index: var(--z-overlay);
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  box-sizing: border-box;
+  width: calc(var(--space-12) * 4);
+  height: var(--control-md);
+  padding: 0 var(--space-2);
+}
+/* Where a bin card lands: marigold, the "here" colour, with how it lands. */
+.cw-timeline__ghost {
+  position: absolute;
+  z-index: var(--z-overlay);
+  box-sizing: border-box;
+  border: var(--border-thick) solid var(--marigold);
+  border-radius: var(--radius-sm);
+  pointer-events: none;
+}
+.cw-timeline__ghost[data-mode="insert"] {
+  border-left-width: calc(var(--border-thick) * 2);
+}
+.cw-timeline__ghost--replace {
+  border-style: dashed;
+}
+.cw-timeline__ghost-label {
+  position: absolute;
+  top: var(--space-1);
+  left: var(--space-1);
+  padding: 0 var(--space-1);
+  color: var(--on-marigold);
+  white-space: nowrap;
+  background: var(--marigold);
+  border-radius: var(--radius-sm);
+}
 .cw-timeline__lanes {
   display: flex;
   flex-direction: column;

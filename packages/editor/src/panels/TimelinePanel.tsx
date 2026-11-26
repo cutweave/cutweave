@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 import { DEFAULT_VIEW_STATE, TimelineCanvas, type ViewState } from "@cutweave/timeline";
-import { Icon, IconButton, Toolbar, ToolbarSeparator, Tooltip, useOwnerWindow } from "@cutweave/ui";
+import { Icon, useOwnerWindow } from "@cutweave/ui";
 import { useCallback, useMemo } from "react";
 import { useTranslation } from "react-i18next";
 import { useEngineStore } from "../engine/engineStore.ts";
@@ -10,8 +10,10 @@ import { useDocStore } from "../state/docStore.ts";
 import { selectInOut, selectTimelineModel } from "../state/selectors.ts";
 import { useViewStore, viewStore } from "../state/viewStore.ts";
 import { InUseMarks } from "../timeline/InUseMarks.tsx";
+import { DropGhost, TrackHeaderControls } from "../timeline/TimelineOverlays.tsx";
+import { TimelineToolbar } from "../timeline/TimelineToolbar.tsx";
 import { TrackRenameInput } from "../timeline/TrackRenameInput.tsx";
-import { type TimelineIntents, useTimelineIntents } from "../timeline/useTimelineIntents.ts";
+import { type TimelineBinding, useTimelineHost } from "../timeline/useTimelineHost.ts";
 import { transportController } from "../transport/useTransport.ts";
 
 /** Lanes shown until the engine supplies tracks (WP-1M.05): one video, one audio. */
@@ -22,12 +24,12 @@ const PLACEHOLDER_TRACKS = [
 
 /**
  * The engine's current sequence drawn by the `packages/timeline` renderer from `docStore`
- * selectors (it follows every `doc.patched`), with the interactions of WP-1M.06: pointer input
+ * selectors (it follows every `doc.patched`), with the interactions of WP-2A.10: pointer input
  * goes through the timeline state machine and comes back as engine commands. Video clips draw
  * filmstrips and audio clips waveforms through the engine's media endpoints (WP-1I.03); the
  * sequence's markers and in/out show in the ruler and over the lanes (WP-2A.09).
  */
-function EngineTimeline({ intents }: { readonly intents: TimelineIntents }) {
+function EngineTimeline({ intents }: { readonly intents: TimelineBinding }) {
   const { t } = useTranslation();
   const project = useDocStore((s) => s.project);
   const mediaLoaders = useMediaLoaders();
@@ -45,7 +47,7 @@ function EngineTimeline({ intents }: { readonly intents: TimelineIntents }) {
   const zoom = useViewStore((s) => s.zoom);
   const scroll = useViewStore((s) => s.scroll);
   const selection = useViewStore((s) => s.selection);
-  const { snapGuides, marquee } = intents.overlay;
+  const { snapGuides, marquee } = intents.ui;
   const viewState = useMemo<Partial<ViewState>>(
     () => ({
       pxPerSec: zoom ?? DEFAULT_VIEW_STATE.pxPerSec,
@@ -82,8 +84,10 @@ function EngineTimeline({ intents }: { readonly intents: TimelineIntents }) {
           ownerWindow={ownerWindow}
         />
       </div>
-      <TrackRenameInput controller={intents.controller} />
-      <InUseMarks controller={intents.controller} />
+      <TrackHeaderControls host={intents.host} />
+      <DropGhost host={intents.host} />
+      <TrackRenameInput controller={intents.host} />
+      <InUseMarks controller={intents.host} />
     </>
   );
 }
@@ -115,63 +119,27 @@ function SampleLanes() {
 /**
  * Bottom dock panel: timeline tools and the track area. Connected to an engine with a sequence
  * it shows that sequence and edits it; without an engine it keeps the empty sample lanes. Keys
- * pressed anywhere in the panel reach the timeline: `S` split at playhead, `Delete`/`Backspace`
- * delete the selection, `N` snapping, `Esc` cancels a drag (WP-1M.06).
+ * pressed anywhere in the panel reach the timeline through the keymap's `timeline` context: the
+ * tools, `S` split, `Delete` and `Shift+Delete`, `N` snapping, `M`, `I` and `O`, `Esc` cancels a
+ * drag (WP-2A.10).
  */
 export function TimelinePanel() {
-  const { t } = useTranslation();
-  const intents = useTimelineIntents();
-  const snapping = useViewStore((s) => s.snapping);
+  const intents = useTimelineHost();
   const connected = useEngineStore((s) => s.connection !== "none");
   const hasSequence = useDocStore(
     (s) => s.project !== null && Object.keys(s.project.sequences).length > 0,
   );
   const live = connected && hasSequence;
-  const { controller } = intents;
   return (
     // Touching the timeline leaves the Source view: the engine plays the sequence again (WP-1M.15).
     <div
       className="cw-timeline"
       ref={live ? intents.keyTarget : null}
+      data-tool={intents.ui.tool}
+      data-state={intents.ui.state}
       onPointerDownCapture={() => void transportController().closeSource()}
     >
-      <Toolbar aria-label={t("timeline.toolbarLabel")} className="cw-timeline__tools">
-        <Tooltip label={t("timeline.select")}>
-          <IconButton icon="mouse-pointer-2" label={t("timeline.select")} pressed disabled />
-        </Tooltip>
-        <Tooltip label={t("timeline.razor")}>
-          <IconButton icon="razor" label={t("timeline.razor")} pressed={false} disabled />
-        </Tooltip>
-        <Tooltip label={t("timeline.ripple")}>
-          <IconButton icon="ripple" label={t("timeline.ripple")} pressed={false} disabled />
-        </Tooltip>
-        <ToolbarSeparator />
-        <Tooltip label={t("timeline.split")} keys={["S"]}>
-          <IconButton
-            icon="scissors"
-            label={t("timeline.split")}
-            disabled={!live}
-            onClick={() => controller.split()}
-          />
-        </Tooltip>
-        <ToolbarSeparator />
-        <Tooltip label={t("timeline.snapping")} keys={["N"]}>
-          <IconButton
-            icon="magnet"
-            label={t("timeline.snapping")}
-            pressed={snapping}
-            disabled={!live}
-            onClick={() => controller.toggleSnapping()}
-          />
-        </Tooltip>
-        <ToolbarSeparator />
-        <Tooltip label={t("timeline.zoomOut")}>
-          <IconButton icon="zoom-out" label={t("timeline.zoomOut")} disabled />
-        </Tooltip>
-        <Tooltip label={t("timeline.zoomIn")}>
-          <IconButton icon="zoom-in" label={t("timeline.zoomIn")} disabled />
-        </Tooltip>
-      </Toolbar>
+      <TimelineToolbar host={intents.host} ui={intents.ui} live={live} />
       <div className="cw-timeline__body" {...(live ? intents.drop : {})}>
         {live ? <EngineTimeline intents={intents} /> : <SampleLanes />}
       </div>

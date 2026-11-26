@@ -94,15 +94,17 @@ export {
 export { VIEW_SYNC_DEBOUNCE_MS, ViewSync } from "./state/viewSync.ts";
 export { type ParsedTime, parseTimeInput, type TimeInputError } from "./time/timeInput.ts";
 export {
-  TimelineController,
-  type TimelineControllerDeps,
-  type TimelineGeometry,
-  type TimelineOverlay,
-} from "./timeline/controller.ts";
-export {
   type FrameScheduler,
   type GestureOutcome,
   GestureSession,
   type GestureUpdate,
 } from "./timeline/gesture.ts";
-export { type TimelineIntents, useTimelineIntents } from "./timeline/useTimelineIntents.ts";
+export { EngineQueue, GestureTransactions } from "./timeline/gestureTx.ts";
+export {
+  type TimelineGeometry,
+  TimelineHost,
+  type TimelineHostDeps,
+  type TimelineUi,
+} from "./timeline/host.ts";
+export { RTT_MEASURE, RttProbe } from "./timeline/rttProbe.ts";
+export { type TimelineBinding, useTimelineHost } from "./timeline/useTimelineHost.ts";

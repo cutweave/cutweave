@@ -13,8 +13,8 @@ import { i18n } from "../i18n/index.ts";
 import { createDocStore } from "../state/docStore.ts";
 import { createToastStore } from "../state/toastStore.ts";
 import { createViewStore } from "../state/viewStore.ts";
-import { TimelineController } from "./controller.ts";
 import { translator } from "./errors.ts";
+import { TimelineHost } from "./host.ts";
 import { TrackRenameInput } from "./TrackRenameInput.tsx";
 
 const PROJECT = {
@@ -58,7 +58,7 @@ function setup() {
   const engine = createEngineStore();
   engine.setState({ rpc: new RpcClient(transport), connection: "ready" });
   const toasts = createToastStore();
-  const controller = new TimelineController({
+  const controller = new TimelineHost({
     doc,
     view: createViewStore(),
     engine,
@@ -71,6 +71,8 @@ function setup() {
     hitTest: () => {
       throw new Error("unused");
     },
+    timeToX: (t) => t,
+    visibleRange: () => ({ t0: 0, t1: 0 }),
     trackNameRect: () => ({ x: 40, y: 28, w: 100, h: 56 }),
   });
   return { transport, controller, toasts, doc };

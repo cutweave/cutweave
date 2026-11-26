@@ -24,7 +24,7 @@ import { projectController } from "../../session/useProject.ts";
 import { openSettings } from "../../settings/settingsStore.ts";
 import { toastStore } from "../../state/toastStore.ts";
 import { viewStore } from "../../state/viewStore.ts";
-import { activeTimelineController } from "../../timeline/activeController.ts";
+import { activeTimelineHost } from "../../timeline/activeHost.ts";
 import {
   attributesSource,
   clipboardStore,
@@ -503,7 +503,7 @@ export const UI_COMMANDS: readonly UiCommand[] = [
     label: "contextMenu.item.renameTrack",
     run: (_args, ctx) => {
       const track = ctx.ids[0];
-      if (track !== undefined) activeTimelineController()?.beginRename(track);
+      if (track !== undefined) activeTimelineHost()?.beginRename(track);
     },
   },
   {

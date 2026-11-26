@@ -462,7 +462,43 @@
       "duplicate": "Duplicate the clips",
       "duplicateHelp": "Timeline. Copies the selected clips right after themselves. Cut, Copy and Paste work with the Edit menu keys while the timeline has the focus.",
       "renameTrack": "Rename the track",
-      "renameTrackHelp": "Timeline. Edits the name of the selected track in its header. Double-click the name does the same."
+      "renameTrackHelp": "Timeline. Edits the name of the selected track in its header. Double-click the name does the same.",
+      "rippleDelete": "Ripple delete",
+      "rippleDeleteHelp": "Timeline. Removes the selected clips and closes the gap they leave.",
+      "nudgeLeft": "Nudge one frame earlier",
+      "nudgeLeftHelp": "Timeline. Moves the selected clips one frame to the left.",
+      "nudgeRight": "Nudge one frame later",
+      "nudgeRightHelp": "Timeline. Moves the selected clips one frame to the right.",
+      "nudgeLeftFar": "Nudge ten frames earlier",
+      "nudgeLeftFarHelp": "Timeline. Moves the selected clips ten frames to the left.",
+      "nudgeRightFar": "Nudge ten frames later",
+      "nudgeRightFarHelp": "Timeline. Moves the selected clips ten frames to the right.",
+      "selectAll": "Select all clips",
+      "selectAllHelp": "Timeline. Selects every clip of the sequence.",
+      "deselect": "Clear the selection",
+      "deselectHelp": "Timeline. Selects no clip.",
+      "addMarker": "Add a marker",
+      "addMarkerHelp": "Timeline. Puts a marker at the playhead.",
+      "markIn": "Set the in point",
+      "markInHelp": "Timeline. Marks where the range starts, at the playhead.",
+      "markOut": "Set the out point",
+      "markOutHelp": "Timeline. Marks where the range ends, at the playhead.",
+      "toolSelect": "Select tool",
+      "toolSelectHelp": "Timeline. Click to select, drag a clip to move it, drag an edge to trim.",
+      "toolRipple": "Ripple tool",
+      "toolRippleHelp": "Timeline. Drag an edge to trim; what follows moves with it.",
+      "toolRoll": "Roll tool",
+      "toolRollHelp": "Timeline. Drag a cut between two clips; the total length stays the same.",
+      "toolSlip": "Slip tool",
+      "toolSlipHelp": "Timeline. Drag a clip to change which part of its media it shows.",
+      "toolSlide": "Slide tool",
+      "toolSlideHelp": "Timeline. Drag a clip between its neighbours; they shorten and lengthen around it.",
+      "toolRazor": "Razor tool",
+      "toolRazorHelp": "Timeline. Click a clip to split it there; Shift splits every track.",
+      "toolHand": "Hand tool",
+      "toolHandHelp": "Timeline. Drag to scroll the timeline.",
+      "toolZoom": "Zoom tool",
+      "toolZoomHelp": "Timeline. Click to zoom in, Alt+click to zoom out, drag to zoom to a range."
     },
     "preview": {
       "nudgeLeft": "Nudge the picture left",
@@ -1318,7 +1354,14 @@
     "history": {
       "move": "Move clip",
       "trim": "Trim clip",
-      "split": "Split clip"
+      "split": "Split clip",
+      "duplicate": "Duplicate clip",
+      "rippleTrim": "Ripple trim",
+      "roll": "Roll edit",
+      "slip": "Slip clip",
+      "slide": "Slide clip",
+      "keyframe": "Move keyframe",
+      "insert": "Insert clip"
     },
     "failed": {
       "move": "Clip not moved",
@@ -1330,7 +1373,15 @@
       "copy": "Clips not copied",
       "cut": "Clips not cut",
       "paste": "Clips not pasted",
-      "duplicate": "Clips not duplicated"
+      "duplicate": "Clips not duplicated",
+      "roll": "Cut not rolled",
+      "slip": "Clip not slipped",
+      "slide": "Clip not slid",
+      "keyframe": "Keyframe not moved",
+      "marker": "Marker not changed",
+      "inOut": "In and out not set",
+      "track": "Track not changed",
+      "replace": "Clip not replaced"
     },
     "rename": {
       "label": "Track name",
@@ -1347,6 +1398,32 @@
       "interrupted": "The edit was interrupted and undone. Try again.",
       "restarted": "The engine restarted, so the edit was undone. Try again.",
       "other": "The engine refused the edit: {{message}}"
+    },
+    "roll": "Roll",
+    "slip": "Slip",
+    "slide": "Slide",
+    "hand": "Hand",
+    "zoomTool": "Zoom tool",
+    "addMarker": "Add marker",
+    "markIn": "Set in point",
+    "markOut": "Set out point",
+    "linkedSelection": "Linked selection",
+    "zoomToFit": "Zoom to fit",
+    "zoomToSelection": "Zoom to selection",
+    "notice": {
+      "partialGroup": "Only part of a linked group is selected",
+      "partialGroupHelp": "Select the whole group with Shift+click, or turn on linked selection, then try again."
+    },
+    "header": {
+      "addTrack": "Add track",
+      "addVideo": "Video track",
+      "addAudio": "Audio track"
+    },
+    "drop": {
+      "insert": "Insert",
+      "overwrite": "Overwrite",
+      "newTrack": "New track",
+      "replace": "Replace clip"
     }
   },
   "engine": {

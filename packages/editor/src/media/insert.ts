@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 // Putting a bin asset on the timeline (WP-1M.03): one `timeline.insert` with `overlap: "new_track"`
 // so a drop or an Enter never fails on an occupied spot (arch §5.1: the engine decides; the
-// result comes back as `doc.patched`). Shared by the timeline drop (`TimelineController`) and the
+// result comes back as `doc.patched`). Shared by the bin's Enter (`insertAtPlayhead`) and the
 // media panel's keyboard path.
 import type { ItemId, MediaId, RpcClient, SelectionRef, TrackId } from "@cutweave/protocol";
 import { snapToFrame } from "@cutweave/timeline";

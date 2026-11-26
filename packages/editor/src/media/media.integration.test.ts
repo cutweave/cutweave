@@ -2,7 +2,8 @@
 // WP-1M.03 end to end against a REAL headless engine (`--dev-stub-media`: files with video, audio
 // or image extensions probe as media, anything else is refused). Import, the bin's cards, removal
 // and the drag-to-timeline flow run through the editor's own code (`importMedia`, `removeMedia`,
-// `TimelineController` over a real `TimelineView` hit-test, `insertAtPlayhead`) and the engine's
+// `TimelineHost` and its interaction machine over a real `TimelineView` hit-test,
+// `insertAtPlayhead`) and the engine's
 // `doc.patched` events back into the stores. Only canvas drawing is stubbed. This is the "e2e"
 // of the WP in Vitest-node form (as WP-1M.06 did): Playwright-Electron needs a built bridge
 // addon, a display and Electron's native file dialog, none of which the WP's logic depends on.
@@ -16,6 +17,8 @@ import {
   resolveEngineBinary,
   startEngine,
 } from "@cutweave/protocol/test-support/engine";
+import { mathModuleBytes } from "@cutweave/protocol/test-support/math-wasm";
+import { initMath } from "@cutweave/protocol/wasm";
 import { type Theme, TimelineView } from "@cutweave/timeline";
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest";
 import { createEngineStore } from "../engine/engineStore.ts";
@@ -27,8 +30,8 @@ import { createPlaybackStore } from "../state/playbackStore.ts";
 import { selectTimelineModel } from "../state/selectors.ts";
 import { createToastStore } from "../state/toastStore.ts";
 import { createViewStore } from "../state/viewStore.ts";
-import { TimelineController } from "../timeline/controller.ts";
 import { translator } from "../timeline/errors.ts";
+import { TimelineHost } from "../timeline/host.ts";
 import { type MediaCard, selectMediaCards } from "./cards.ts";
 import { importMedia } from "./import.ts";
 import { insertAtPlayhead } from "./insert.ts";
@@ -55,7 +58,7 @@ const stores = {
 const toasts = createToastStore();
 const t = translator(i18n.t.bind(i18n));
 const deps = { engine: stores.engine, toasts, t };
-let controller: TimelineController;
+let controller: TimelineHost;
 let view: TimelineView;
 
 // ---- a headless TimelineView (as in the WP-1M.06 suite) -------------------------------------
@@ -162,14 +165,15 @@ beforeAll(async () => {
       selection: new Set(s.selection.map((r) => r.id)),
     }),
   );
-  controller = new TimelineController({
+  await initMath(mathModuleBytes());
+  controller = new TimelineHost({
     doc: stores.doc,
     view: stores.view,
     engine: stores.engine,
     toasts,
     t,
   });
-  controller.attach(view);
+  controller.attach(view, null, () => ({ left: HEADER, right: 1600, top: RULER, bottom: 400 }));
 }, 20 * 60_000);
 
 afterAll(async () => {
@@ -338,15 +342,19 @@ describe("dragging a card onto the timeline", () => {
       const [clip] = await seed("a.mp4");
       const media = drag(clip as MediaCard);
       const x = xOf(sec(2)) + 1.3; // a little past 2 s
-      expect(controller.mediaDragOver(x, laneOf(video), media)).toBe(true);
-      expect(controller.state.mode.name).toBe("dropping-media");
-      expect(controller.overlay.getState().snapGuides).toHaveLength(1);
+      expect(controller.mediaOver(x, laneOf(video), media)).toBe(true);
+      expect(controller.state.mode.name).toBe("dropping");
+      // Nothing to snap to near 2 s (the frame grid alone): no guide.
+      expect(controller.ui.getState().snapGuides).toHaveLength(0);
+      // Where it lands, for the drop ghost.
+      expect(controller.ui.getState().preview).toMatchObject({ trackId: video, mode: "place" });
       const before = await historyLength();
       controller.mediaDrop(x, laneOf(video), media);
       await controller.settled();
       await until(() => model().items.length > 0 && settledDoc());
       expect(controller.state.mode.name).toBe("idle");
-      expect(controller.overlay.getState().snapGuides).toHaveLength(0);
+      expect(controller.ui.getState().snapGuides).toHaveLength(0);
+      expect(controller.ui.getState().preview).toBeNull();
       const placed = model().items.find((i) => i.trackId === video);
       expect(placed).toBeDefined();
       expect((placed?.start ?? 1) % frame()).toBeCloseTo(0, 5);
@@ -358,12 +366,16 @@ describe("dragging a card onto the timeline", () => {
     },
   );
 
-  live("a drop onto an occupied spot opens a new track instead of failing", async () => {
+  live("a drop onto free space too short for it opens a new track instead of failing", async () => {
     const [first, second] = await seed("a.mp4", "e.mp4");
-    for (const card of [first, second] as MediaCard[]) {
+    // The first at 1 s; the second dropped at 0.5 s does not fit before it (spec INV-40).
+    for (const [card, at] of [
+      [first, sec(1)],
+      [second, sec(0.5)],
+    ] as [MediaCard, number][]) {
       const media = drag(card);
-      controller.mediaDragOver(xOf(sec(1)), laneOf(video), media);
-      controller.mediaDrop(xOf(sec(1)), laneOf(video), media);
+      controller.mediaOver(xOf(at), laneOf(video), media);
+      controller.mediaDrop(xOf(at), laneOf(video), media);
       await controller.settled();
       await until(() => settledDoc());
     }
@@ -372,7 +384,7 @@ describe("dragging a card onto the timeline", () => {
     const starts = model()
       .items.filter((i) => i.kind === "media")
       .map((i) => i.start);
-    expect(starts[0]).toBe(starts[1]);
+    expect(starts.sort((a, b) => a - b)).toEqual([sec(0.5), sec(1)]);
     expect(
       new Set(
         model()
@@ -382,10 +394,32 @@ describe("dragging a card onto the timeline", () => {
     ).toBe(2);
   });
 
+  live(
+    "a card dropped onto a clip overwrites that span (the Editing preference's default)",
+    async () => {
+      const [first, second] = await seed("a.mp4", "e.mp4");
+      const a = drag(first as MediaCard);
+      controller.mediaDrop(xOf(sec(1)), laneOf(video), a);
+      await controller.settled();
+      await until(() => model().items.length === 2 && settledDoc());
+      const b = drag(second as MediaCard);
+      controller.mediaOver(xOf(sec(3)), laneOf(video), b);
+      expect(controller.ui.getState().preview).toMatchObject({ mode: "overwrite" });
+      controller.mediaDrop(xOf(sec(3)), laneOf(video), b);
+      await controller.settled();
+      await until(() => settledDoc() && model().items.some((i) => i.start === sec(3)));
+      const onVideo = model().items.filter((i) => i.trackId === video);
+      // The first clip keeps 1 s - 3 s; the second is on the same track from 3 s.
+      expect(onVideo.map((i) => i.start)).toEqual([sec(1), sec(3)]);
+      expect(onVideo[0]?.duration).toBe(sec(2));
+      expect(toasts.getState().notices.filter((n) => n.tone === "warning")).toEqual([]);
+    },
+  );
+
   live("sound dropped on a video lane lands on the audio track", async () => {
     const [sound] = await seed("c.wav");
     const media = drag(sound as MediaCard);
-    controller.mediaDragOver(xOf(sec(1)), laneOf(video), media);
+    controller.mediaOver(xOf(sec(1)), laneOf(video), media);
     controller.mediaDrop(xOf(sec(1)), laneOf(video), media);
     await controller.settled();
     await until(() => model().items.length === 1 && settledDoc());
@@ -417,14 +451,16 @@ describe("dragging a card onto the timeline", () => {
     const [clip] = await seed("a.mp4");
     const media = drag(clip as MediaCard);
     const before = await historyLength();
-    controller.mediaDragOver(xOf(sec(1)), laneOf(video), media);
-    controller.mediaDragLeave();
+    controller.mediaOver(xOf(sec(1)), laneOf(video), media);
+    controller.mediaLeave();
     expect(controller.state.mode.name).toBe("idle");
-    controller.mediaDragOver(xOf(sec(1)), laneOf(video), media);
-    controller.handleKey({ key: "Escape" });
+    controller.mediaOver(xOf(sec(1)), laneOf(video), media);
+    controller.handleKey({ key: "Escape" }, true, "cancel");
     expect(controller.state.mode.name).toBe("idle");
-    expect(controller.overlay.getState().snapGuides).toHaveLength(0);
+    expect(controller.ui.getState().snapGuides).toHaveLength(0);
+    expect(controller.ui.getState().preview).toBeNull();
     await controller.settled();
+    await until(() => settledDoc());
     expect(model().items).toHaveLength(0);
     expect(await historyLength()).toBe(before);
   });
