@@ -196,8 +196,12 @@ impl TrackKind {
         match self {
             TrackKind::Video => matches!(
                 media,
-                MediaKind::Video | MediaKind::Image | MediaKind::SequenceRef
+                MediaKind::Video
+                    | MediaKind::Image
+                    | MediaKind::ImageSequence
+                    | MediaKind::SequenceRef
             ),
+            // An image sequence has no sound (ADR-0035).
             TrackKind::Audio => matches!(
                 media,
                 MediaKind::Audio | MediaKind::Video | MediaKind::SequenceRef
@@ -745,6 +749,8 @@ mod tests {
         assert!(!TrackKind::Video.accepts(MediaKind::Audio));
         assert!(TrackKind::Audio.accepts(MediaKind::Video));
         assert!(!TrackKind::Audio.accepts(MediaKind::Image));
+        assert!(TrackKind::Video.accepts(MediaKind::ImageSequence));
+        assert!(!TrackKind::Audio.accepts(MediaKind::ImageSequence));
         assert!(!TrackKind::Text.accepts(MediaKind::Video));
     }
 }

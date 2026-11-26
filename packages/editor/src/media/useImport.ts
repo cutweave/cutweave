@@ -10,6 +10,7 @@ import { toastStore } from "../state/toastStore.ts";
 import { translator } from "../timeline/errors.ts";
 import { mediaFilesBridge, pickedPaths } from "./bridge.ts";
 import { type ImportSummary, importMedia } from "./import.ts";
+import { importPicked } from "./sequence.ts";
 
 export interface UseImport {
   /** An import is under way (the engine probes each file before it answers). */
@@ -63,9 +64,28 @@ export function useImport(): UseImport {
       }
       const answer = await bridge.pickMediaFiles().catch(() => null);
       const paths = pickedPaths(answer);
-      return paths.length === 0 ? null : importPaths(paths, folder ?? null);
+      if (paths.length === 0) return null;
+      setBusy(true);
+      try {
+        // A numbered run of pictures is asked about first: one image sequence, or stills.
+        return await importPicked(
+          {
+            engine: engineStore,
+            toasts: toastStore,
+            t: (key, vars) => translate.current(key, vars),
+          },
+          paths,
+          folder ?? null,
+          {
+            keepStructure: preferences.get("media.keep_structure"),
+            fps: preferences.get("media.image_sequence_fps"),
+          },
+        );
+      } finally {
+        setBusy(false);
+      }
     },
-    [bridge, importPaths],
+    [bridge],
   );
 
   const pickFoldersAndImport = useCallback(

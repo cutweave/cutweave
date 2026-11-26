@@ -434,6 +434,7 @@ impl MediaImportImagesAsSlideshow {
                 probe: probed.probe,
                 content_hash: probed.content_hash,
                 folder: None,
+                image_sequence: None,
             };
             match register.kind() {
                 Ok(MediaKind::Image) => pictures.push((i, register)),

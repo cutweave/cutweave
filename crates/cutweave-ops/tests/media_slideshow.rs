@@ -414,6 +414,41 @@ fn a_frame_of_a_video_asset_is_named_after_the_asset() {
 }
 
 #[test]
+fn a_frame_of_an_image_sequence_is_taken_like_a_frame_of_a_video() {
+    use cutweave_model::{Extra, FrameRate, ImageSequence, MediaAsset};
+    let (mut h, _) = H::project();
+    let run = ImageSequence {
+        pattern: "shot_%04d.png".to_owned(),
+        first: 1,
+        count: 60,
+        fps: FrameRate::FPS_30,
+        missing: Vec::new(),
+        extra: Extra::new(),
+    };
+    let mut probe = FakeProbe::image("/p/shot_0001.png").probe;
+    probe.duration = run.duration();
+    probe.fps = Some(run.fps);
+    let id = MediaId::from_u128(0x5e9);
+    let mut doc = h.doc();
+    doc.media.insert(
+        id,
+        MediaAsset::image_sequence(id, "/p/shot_0001.png".to_owned(), run, probe),
+    );
+    doc.validate().expect("a valid document");
+    h.replace_doc(doc);
+    let frames = Arc::new(FakeFrames::new(h.doc()));
+    let out = import_frame(&h, &frames, json!({"source": {"media": id}, "at": "1s"})).unwrap();
+    assert_eq!(out["name"], "shot_0001.png 00:00:01:00");
+    assert_eq!(out["duplicate"], false);
+    assert_eq!(h.doc().media.len(), 2);
+    // Past the end of the run (2 s) there is no frame.
+    assert_invalid(
+        import_frame(&h, &frames, json!({"source": {"media": id}, "at": "2s"})),
+        "/at",
+    );
+}
+
+#[test]
 fn the_same_picture_twice_is_one_asset_and_the_second_file_is_removed() {
     let (h, _) = H::project();
     let frames = Arc::new(FakeFrames::new(h.doc()));

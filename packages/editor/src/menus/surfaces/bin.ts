@@ -13,6 +13,7 @@ import { LAYOUTS } from "../../layout/table.ts";
 import { binStore, SORT_CHOICES } from "../../media/binStore.ts";
 import { selectMediaCards, selectMediaUsage } from "../../media/cards.ts";
 import { healthStore } from "../../media/health.ts";
+import { isMovingPicture } from "../../media/kinds.ts";
 import { layoutStore } from "../../media/layoutStore.ts";
 import { prefsStore } from "../../prefs/prefsStore.ts";
 import { docStore } from "../../state/docStore.ts";
@@ -86,7 +87,7 @@ export function playableMedia(id: string): boolean {
   const card = selectMediaCards(docStore.getState().project).find((c) => c.id === id);
   return (
     card !== undefined &&
-    (card.kind === "video" || card.kind === "audio") &&
+    (isMovingPicture(card.kind) || card.kind === "audio") &&
     !card.broken &&
     card.duration !== null &&
     card.duration > 0
@@ -133,7 +134,9 @@ export function binCardKeys(target: { ids: readonly string[] }): ContextValues {
     "media.used": cards.some((c) => (usage.get(c.id) ?? 0) > 0),
     "media.offline": cards.some((c) => missing.has(c.id)),
     "selection.kind": kinds.size === 1 ? [...kinds][0] : "mixed",
-    "selection.videoCount": cards.filter((c) => c.kind === "video" || c.kind === "image").length,
+    "selection.videoCount": cards.filter(
+      (c) => c.kind === "video" || c.kind === "image" || c.kind === "image_sequence",
+    ).length,
   };
 }
 

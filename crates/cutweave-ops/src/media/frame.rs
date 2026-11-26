@@ -33,7 +33,8 @@ use crate::util::check_name;
 pub enum FrameOf {
     /// The frame the Preview shows: the sequence the editor shows, composited.
     Sequence,
-    /// The frame the Source viewer shows for this video asset, at its own size.
+    /// The frame the Source viewer shows for this video or image-sequence asset, at its own
+    /// size.
     Media(MediaId),
 }
 
@@ -53,6 +54,14 @@ pub struct GrabbedFrame {
     /// The bin name the asset gets when the caller gives none (the source's name and the
     /// timecode).
     pub label: String,
+}
+
+/// Whether an asset of `kind` has frames `media.import_frame` can take on its own
+/// (`source: {"media": id}`): a video, or an image sequence, which is video for tracks, proxies
+/// and export (ADR-0035). A still is one picture already, and sound has none.
+#[must_use]
+pub fn has_frames(kind: MediaKind) -> bool {
+    matches!(kind, MediaKind::Video | MediaKind::ImageSequence)
 }
 
 /// The bin name an imported frame gets when the caller gives none: the name of what was
@@ -108,8 +117,8 @@ pub struct MediaImportFrameOutput {
 }
 
 /// Saves the frame the Preview shows (`source: "sequence"`: the sequence the editor shows) or
-/// the frame of a video asset (`source: {"media": id}`) at time `at` as a PNG picture in the
-/// bin. The picture has the full sequence or source size and the same pixels as `render.frame`
+/// the frame of a video or image-sequence asset (`source: {"media": id}`) at time `at` as a PNG
+/// picture in the bin. The picture has the full sequence or source size and the same pixels as `render.frame`
 /// at that time. The file goes into the project's `generated/frames/` folder, named after the
 /// new asset; `name` is the name the bin shows (default: the source's name and the timecode)
 /// and `folder` the bin folder. One undo step removes the asset; the file stays. Fails with
@@ -124,7 +133,7 @@ pub struct MediaImportFrameOutput {
     annotations(destructive = false, idempotent = false)
 )]
 pub struct MediaImportFrame {
-    /// `"sequence"` (the Preview) or `{"media": id}` (a video asset on its own).
+    /// `"sequence"` (the Preview) or `{"media": id}` (a video or image sequence on its own).
     pub source: FrameOf,
     /// The time of the frame: flicks, "2.5s", "f:60" or a timecode.
     pub at: TimeInput,
@@ -195,6 +204,7 @@ impl MediaImportFrame {
             probe: probed.probe,
             content_hash: probed.content_hash,
             folder: self.folder,
+            image_sequence: None,
         };
         if register.kind()? != MediaKind::Image {
             return Err(CmdError::internal(

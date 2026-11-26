@@ -6,7 +6,7 @@
 use std::{collections::BTreeMap, time};
 
 use cutweave_model::{
-    AudioInfo, Duration, FrameRate, ProbeInfo, SampleRate, StreamInfo, StreamKind,
+    AudioInfo, Duration, FrameRate, ImageSequence, ProbeInfo, SampleRate, StreamInfo, StreamKind,
 };
 
 /// What probing a file found: the probe results and a content hash for relinking.
@@ -56,8 +56,29 @@ pub enum ProbeError {
 /// that overrun it (reported as [`ProbeError::TimedOut`]), so an implementation should still
 /// give up on a stuck file eventually but need not enforce the timeout itself.
 pub trait MediaProbe: Send + Sync {
-    /// Probes the file at the absolute `path`.
+    /// Probes the file at the absolute `path`. For the locator of an image sequence
+    /// (`ImageSequence::locator`, ADR-0035) it reads the first picture only and answers with
+    /// the run's duration and frame rate, and a content hash of the run.
     fn probe(&self, path: &str) -> Result<Probed, ProbeError>;
+
+    /// The names of the files in the directory `dir` (no sub-folders, links or hidden
+    /// entries), or `None` when `dir` is not a readable directory. `media.import_sequence`
+    /// finds the files of a run with it. The default reads the disk.
+    fn list_files(&self, dir: &str) -> Option<Vec<String>> {
+        let mut names = Vec::new();
+        for entry in std::fs::read_dir(dir).ok()? {
+            let Ok(entry) = entry else { continue };
+            let Ok(kind) = entry.file_type() else {
+                continue;
+            };
+            let name = entry.file_name().to_string_lossy().into_owned();
+            if kind.is_file() && !name.starts_with('.') {
+                names.push(name);
+            }
+        }
+        names.sort();
+        Some(names)
+    }
 }
 
 /// A [`MediaProbe`] backed by an in-memory table, for tests and headless runs. Paths that were
@@ -172,9 +193,51 @@ fn stream(index: u32, kind: StreamKind, codec: &str) -> StreamInfo {
 }
 
 impl MediaProbe for FakeProbe {
+    /// The files of the table that are directly in `dir`.
+    fn list_files(&self, dir: &str) -> Option<Vec<String>> {
+        let dir = dir.trim_end_matches(['/', '\\']);
+        let names: Vec<String> = self
+            .files
+            .keys()
+            .filter_map(|path| {
+                let cut = path.rfind(['/', '\\'])?;
+                (&path[..cut] == dir).then(|| path[cut + 1..].to_owned())
+            })
+            .collect();
+        (!names.is_empty()).then_some(names)
+    }
+
     fn probe(&self, path: &str) -> Result<Probed, ProbeError> {
         if let Some(delay) = self.delays.get(path) {
             std::thread::sleep(*delay);
+        }
+        if let Some((dir, run)) = ImageSequence::parse_locator(path) {
+            // An image sequence: the first picture, with the run's duration and its own hash.
+            let first = format!("{dir}{}", run.file_name(run.first).unwrap_or_default());
+            let mut probed = self.probe(&first)?;
+            let picture = probed.probe.duration.is_none()
+                && probed
+                    .probe
+                    .streams
+                    .iter()
+                    .any(|s| s.kind == StreamKind::Video);
+            if !picture {
+                return Err(ProbeError::Unsupported {
+                    path: first,
+                    reason: "an image sequence is made of pictures, and this is not one".to_owned(),
+                });
+            }
+            probed.probe.duration = run.duration();
+            probed.probe.fps = Some(run.fps);
+            probed.content_hash = format!(
+                "{}+seq{}x{}@{}x{}",
+                probed.content_hash,
+                run.first,
+                run.count,
+                run.fps.num(),
+                run.fps.den()
+            );
+            return Ok(probed);
         }
         self.files
             .get(path)

@@ -19,6 +19,7 @@ import { layoutStore, type MediaLayout } from "../../media/layoutStore.ts";
 import { openRelinkDialog } from "../../media/RelinkDialog.tsx";
 import { requestFolderDelete, requestMediaDelete } from "../../media/requestDelete.ts";
 import { requestMediaRemoval } from "../../media/requestRemoval.ts";
+import { importPicked } from "../../media/sequence.ts";
 import { addShownFrameToBin, pickSlideshow } from "../../media/slideshowCommands.ts";
 import { preferences } from "../../prefs/prefsStore.ts";
 import { desktopFromWindow } from "../../session/desktop.ts";
@@ -69,12 +70,17 @@ async function pickAndImport(what: "files" | "folders" = "files"): Promise<void>
   }
   const paths = pickedPaths(await pick().catch(() => null));
   if (paths.length === 0) return;
-  await importMedia(
-    { engine: engineStore, toasts: toastStore, t: tr() },
-    paths,
-    currentOpenFolder(),
-    { keepStructure: preferences.get("media.keep_structure") },
-  );
+  const deps = { engine: engineStore, toasts: toastStore, t: tr() };
+  const keepStructure = preferences.get("media.keep_structure");
+  if (what === "folders") {
+    await importMedia(deps, paths, currentOpenFolder(), { keepStructure });
+    return;
+  }
+  // Picked files that are a numbered run of pictures are asked about first (WP-2F.05c).
+  await importPicked(deps, paths, currentOpenFolder(), {
+    keepStructure,
+    fps: preferences.get("media.image_sequence_fps"),
+  });
 }
 
 const selectIds = (kind: SelectionRef["kind"], ids: readonly string[]): void => {

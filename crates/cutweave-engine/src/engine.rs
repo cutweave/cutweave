@@ -521,6 +521,15 @@ impl Core {
             project_root: session.project_root().map(Path::to_path_buf),
             seed: self.deps.seed,
         });
+        // The sequence the editor shows (the first one): `media.import_sequence` gives a run
+        // its frame rate when the caller names none (ADR-0035).
+        let sequence_fps = handle
+            .snapshot()
+            .doc
+            .sequences
+            .values()
+            .next()
+            .map(|s| s.format.frame_rate);
         let sink = ImportSink::new(handle, ctx_for(ctx.actor(), self.next_conn()));
         let prober = self
             .deps
@@ -538,7 +547,8 @@ impl Core {
             .with_policy(policy)
             .with_analysis(analyzer)
             .with_events(bus)
-            .with_frames(frames);
+            .with_frames(frames)
+            .with_sequence_fps(sequence_fps);
         if let Some(proxies) = self.deps.subsystems.proxy_service() {
             import = import.with_proxies(proxies);
         }

@@ -4,7 +4,7 @@
 //! project's `generated/frames/` folder.
 //!
 //! - **What is rendered.** `sequence`: the sequence the editor shows, composited, at the
-//!   sequence size. A video asset: the transient one-clip timeline the Source viewer plays
+//!   sequence size. A video or image-sequence asset: the transient one-clip timeline the Source viewer plays
 //!   ([`source_timeline`], ADR-0022), at the asset's own upright size. Both go through the
 //!   renderer `render.frame` uses, at full quality from the original media, so the pixels are
 //!   the ones `render.frame` gives at that time.
@@ -21,9 +21,11 @@ use std::sync::{Arc, PoisonError};
 
 use cutweave_commands::{CmdError, DocSnapshot};
 use cutweave_model::{
-    Duration, IdGen, MediaId, MediaKind, Project, SeededGen, SequenceId, Time, TimeInput, Uuid7Gen,
+    Duration, IdGen, MediaId, Project, SeededGen, SequenceId, Time, TimeInput, Uuid7Gen,
 };
-use cutweave_ops::media::{FrameGrabber, FrameOf, GrabbedFrame, asset_name, frame_label};
+use cutweave_ops::media::{
+    FrameGrabber, FrameOf, GrabbedFrame, asset_name, frame_label, has_frames,
+};
 use cutweave_render::encode::encode_png;
 use cutweave_render::query::{SharedBackend, render_full_frame};
 
@@ -114,8 +116,8 @@ fn source_pointer(error: CmdError) -> CmdError {
     }
 }
 
-/// What `source` stands for in `doc`: the sequence the editor shows, or a video asset's own
-/// timeline.
+/// What `source` stands for in `doc`: the sequence the editor shows, or the own timeline of a
+/// video or image-sequence asset.
 fn target(doc: &Project, source: FrameOf) -> Result<Target<'_>, CmdError> {
     match source {
         FrameOf::Sequence => {
@@ -136,11 +138,14 @@ fn target(doc: &Project, source: FrameOf) -> Result<Target<'_>, CmdError> {
             let asset = doc
                 .media
                 .get(&media)
-                .filter(|asset| asset.kind == MediaKind::Video)
+                .filter(|asset| has_frames(asset.kind))
                 .ok_or_else(|| {
                     CmdError::invalid(
                         "/source/media",
-                        format!("media {media} has no picture: only a video has frames to take"),
+                        format!(
+                            "media {media} has no picture: only a video or an image sequence \
+                             has frames to take"
+                        ),
                     )
                 })?;
             let timeline = source_timeline(doc, media).ok_or_else(|| {
@@ -246,6 +251,80 @@ mod tests {
         };
         assert_eq!(path, "");
         assert!(msg.contains("save the project first"), "{msg}");
+    }
+
+    #[test]
+    fn an_image_sequence_has_frames_like_a_video_and_a_still_has_none() {
+        use cutweave_model::{
+            Duration, Extra, FrameRate, ImageSequence, MediaAsset, MediaKind, ProbeInfo,
+            StreamInfo, StreamKind,
+        };
+        let probe = |duration: Option<Duration>| ProbeInfo {
+            streams: vec![StreamInfo {
+                index: 0,
+                kind: StreamKind::Video,
+                codec: Some("png".to_owned()),
+                profile: None,
+                width: Some(64),
+                height: Some(36),
+                pixel_format: None,
+                sample_rate: None,
+                channels: None,
+                language: None,
+                extra: Extra::new(),
+            }],
+            duration,
+            fps: duration.map(|_| FrameRate::FPS_30),
+            ..ProbeInfo::default()
+        };
+        let run = ImageSequence {
+            pattern: "shot_%04d.png".to_owned(),
+            first: 1,
+            count: 30,
+            fps: FrameRate::FPS_30,
+            missing: Vec::new(),
+            extra: Extra::new(),
+        };
+        let (run_id, still_id) = (MediaId::from_u128(1), MediaId::from_u128(2));
+        let mut doc = Project::new("Frames");
+        doc.media.insert(
+            run_id,
+            MediaAsset::image_sequence(
+                run_id,
+                "/shots/shot_0001.png".to_owned(),
+                run.clone(),
+                probe(run.duration()),
+            ),
+        );
+        doc.media.insert(
+            still_id,
+            MediaAsset::file(
+                still_id,
+                MediaKind::Image,
+                "/shots/logo.png".to_owned(),
+                probe(None),
+            ),
+        );
+        // The run: its own timeline, 64 x 36, one second long, named after its first file.
+        let found = target(&doc, FrameOf::Media(run_id)).unwrap();
+        assert_eq!(found.sequence, SOURCE_SEQUENCE);
+        assert_eq!(found.length, Duration::from_secs(1).ok());
+        assert_eq!(found.name, "shot_0001.png");
+        let sequence = &found.doc.sequences[&SOURCE_SEQUENCE];
+        assert_eq!((sequence.format.width, sequence.format.height), (64, 36));
+        assert_eq!(
+            sequence
+                .tracks
+                .values()
+                .map(|t| t.items.len())
+                .sum::<usize>(),
+            1
+        );
+        // A still has no frame to take.
+        let Err(CmdError::Invalid { path, .. }) = target(&doc, FrameOf::Media(still_id)) else {
+            panic!("a still must be refused");
+        };
+        assert_eq!(path, "/source/media");
     }
 
     #[test]

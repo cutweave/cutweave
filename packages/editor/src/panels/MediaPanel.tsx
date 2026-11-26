@@ -68,6 +68,7 @@ import {
 } from "../media/folderUi.ts";
 import { useIsOffline } from "../media/health.ts";
 import { insertAtPlayhead } from "../media/insert.ts";
+import { isMovingPicture } from "../media/kinds.ts";
 import { layoutStore } from "../media/layoutStore.ts";
 import { useMediaStore } from "../media/mediaStore.ts";
 import { requestDeleteSelection } from "../media/requestDelete.ts";
@@ -98,6 +99,7 @@ const KIND_ICON: Record<MediaCard["kind"], IconName> = {
   video: "film",
   audio: "audio-waveform",
   image: "image",
+  image_sequence: "images",
   sequence_ref: "layers",
 };
 
@@ -105,6 +107,7 @@ const KIND_KEY: Record<MediaCard["kind"], TKey> = {
   video: "mediaBin.kind.video",
   audio: "mediaBin.kind.audio",
   image: "mediaBin.kind.image",
+  image_sequence: "mediaBin.kind.imageSequence",
   sequence_ref: "mediaBin.kind.sequenceRef",
 };
 
@@ -171,10 +174,18 @@ function isTextEntry(target: EventTarget | null): boolean {
   return el.isContentEditable || el.tagName === "INPUT" || el.tagName === "TEXTAREA";
 }
 
+/** What the timeline is told a card is: an image sequence is video there (ADR-0035). */
+const dropKind = (kind: Exclude<MediaCard["kind"], "sequence_ref">): MediaDrag["kind"] =>
+  kind === "image_sequence" ? "video" : kind;
+
 const dragOf = (card: MediaCard): MediaDrag | null =>
   card.kind === "sequence_ref"
     ? null
-    : { id: card.id, kind: card.kind, duration: card.kind === "image" ? null : card.duration };
+    : {
+        id: card.id,
+        kind: dropKind(card.kind),
+        duration: card.kind === "image" ? null : card.duration,
+      };
 
 /** What a drag of a bin tile is told about the tile it starts on. */
 interface TileHandlers {
@@ -208,7 +219,7 @@ interface CardViewProps extends TileHandlers {
 
 /** Whether a card can play on its own (ADR-0022): sound and video; stills have nothing to play. */
 const playable = (card: MediaCard): boolean =>
-  (card.kind === "video" || card.kind === "audio") &&
+  (isMovingPicture(card.kind) || card.kind === "audio") &&
   !card.broken &&
   card.duration !== null &&
   card.duration > 0;

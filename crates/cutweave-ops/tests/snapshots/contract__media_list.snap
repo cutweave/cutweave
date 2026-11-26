@@ -80,6 +80,11 @@ expression: "json!({\n    \"meta\": serde_json::to_value(meta).unwrap(), \"input
                     "const": "image"
                   },
                   {
+                    "description": "A numbered run of pictures that plays like video (ADR-0035); the asset's\n`image_sequence` field describes the run.",
+                    "type": "string",
+                    "const": "image_sequence"
+                  },
+                  {
                     "description": "Another sequence of this project, used as a compound clip (arch §4.3).",
                     "type": "string",
                     "const": "sequence_ref"
@@ -243,6 +248,11 @@ expression: "json!({\n    \"meta\": serde_json::to_value(meta).unwrap(), \"input
                     "const": "image"
                   },
                   {
+                    "description": "A numbered run of pictures that plays like video (ADR-0035); the asset's\n`image_sequence` field describes the run.",
+                    "type": "string",
+                    "const": "image_sequence"
+                  },
+                  {
                     "description": "Another sequence of this project, used as a compound clip (arch §4.3).",
                     "type": "string",
                     "const": "sequence_ref"
@@ -391,6 +401,11 @@ expression: "json!({\n    \"meta\": serde_json::to_value(meta).unwrap(), \"input
                   "description": "A still image (no duration).",
                   "type": "string",
                   "const": "image"
+                },
+                {
+                  "description": "A numbered run of pictures that plays like video (ADR-0035); the asset's\n`image_sequence` field describes the run.",
+                  "type": "string",
+                  "const": "image_sequence"
                 },
                 {
                   "description": "Another sequence of this project, used as a compound clip (arch §4.3).",
@@ -554,6 +569,11 @@ expression: "json!({\n    \"meta\": serde_json::to_value(meta).unwrap(), \"input
                   "description": "A still image (no duration).",
                   "type": "string",
                   "const": "image"
+                },
+                {
+                  "description": "A numbered run of pictures that plays like video (ADR-0035); the asset's\n`image_sequence` field describes the run.",
+                  "type": "string",
+                  "const": "image_sequence"
                 },
                 {
                   "description": "Another sequence of this project, used as a compound clip (arch §4.3).",

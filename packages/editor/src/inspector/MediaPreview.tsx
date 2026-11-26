@@ -16,6 +16,7 @@ import { formatTimecode, frameDurationFlicks } from "@cutweave/timeline";
 import { IconButton, Tooltip } from "@cutweave/ui";
 import { type KeyboardEvent, type PointerEvent, useEffect, useMemo, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
+import { isMovingPicture } from "../media/kinds.ts";
 import {
   fractionOfFrame,
   frameAtFraction,
@@ -61,7 +62,7 @@ export function MediaPreview({ media }: { readonly media: MediaAsset }) {
     () => frameGrid(media.probe.duration, media.probe.fps),
     [media.probe.duration, media.probe.fps],
   );
-  const scrubbable = (media.kind === "video" || sound) && grid.frames > 1;
+  const scrubbable = (isMovingPicture(media.kind) || sound) && grid.frames > 1;
   // The source plays here: the engine's playhead drives the bar.
   const hosting = usePlaybackStore((s) => s.source?.media === id);
   const hostedHere = useSourceViewStore((s) => s.host === "inspector") && hosting;
@@ -190,7 +191,9 @@ export function MediaPreview({ media }: { readonly media: MediaAsset }) {
     goTo(next);
   };
 
-  if (source === null || (media.kind !== "video" && media.kind !== "image" && !sound)) return null;
+  const picture =
+    media.kind === "video" || media.kind === "image" || media.kind === "image_sequence";
+  if (source === null || (!picture && !sound)) return null;
   const place = `${fractionOfFrame(at, grid) * 100}%`;
   const name = mediaName(media, media.id);
   const playLabel = t(playing ? "inspector.media.preview.pause" : "inspector.media.preview.play", {

@@ -10,6 +10,7 @@ import { i18n } from "../i18n/index.ts";
 import { useKeymapDispatcher } from "../keymap/dispatch.ts";
 import { CollectDialog } from "../media/CollectDialog.tsx";
 import { RelinkDialog } from "../media/RelinkDialog.tsx";
+import { SequenceOffer } from "../media/SequenceOffer.tsx";
 import { ContextMenuHost } from "../menus/host.tsx";
 import { MenuDialogs } from "../menus/MenuDialogs.tsx";
 import { CommandPalette } from "../palette/index.ts";
@@ -93,6 +94,7 @@ function Shell() {
         <MenuDialogs />
         <RelinkDialog />
         <CollectDialog />
+        <SequenceOffer />
         <ContextMenuHost />
       </ToastProvider>
     </TooltipProvider>

@@ -93,10 +93,11 @@ pub fn wants_proxy(policy: ProxyPolicy, asset: &MediaAsset) -> Option<String> {
     }
 }
 
-/// Whether `asset` can have a proxy at all: a video file with a picture stream.
+/// Whether `asset` can have a proxy at all: a video file, or an image sequence (video for
+/// proxies, ADR-0035), with a picture stream.
 #[must_use]
 pub fn proxyable(asset: &MediaAsset) -> bool {
-    asset.kind == MediaKind::Video
+    matches!(asset.kind, MediaKind::Video | MediaKind::ImageSequence)
         && asset.path_abs.is_some()
         && asset
             .probe

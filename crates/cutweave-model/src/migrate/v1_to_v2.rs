@@ -3,7 +3,8 @@
 //!
 //! **One v2.** Nothing was released between the timeline epic (2A) and the media folders
 //! (2F.07), so both change the format in this single migration. A work package that needs
-//! another v2 field adds a function to [`STEPS`]; it never adds a v3. The steps run in order on
+//! another v2 field added a function to [`STEPS`]. (v3 followed with ADR-0035, which needed
+//! older builds to refuse the document; v2 is frozen now.) The steps run in order on
 //! the raw JSON, and every step is written so that it can run on a document of any v1 shape.
 //!
 //! What this migration does today:
@@ -86,6 +87,7 @@ impl Migration for V1ToV2 {
 /// The steps that only add missing fields, for documents already at v2 (#168): v2 was one
 /// version for several work packages, so a v2 file written by an earlier build lacks the fields
 /// a later one added. Every step is `or_insert`-style, so a complete document is untouched.
+/// The v2 → v3 migration runs it.
 pub(super) fn fill_in_v2(doc: &mut Value) -> Result<(), MigrationError> {
     let Value::Object(root) = doc else {
         return Ok(());

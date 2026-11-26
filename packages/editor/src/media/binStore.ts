@@ -10,7 +10,12 @@ import { createStore } from "zustand/vanilla";
 import type { MediaFilter } from "./find.ts";
 
 /** The kinds the Filters menu offers (a compound clip is not something to import and search). */
-export const BIN_KINDS = ["video", "audio", "image"] as const satisfies readonly MediaKind[];
+export const BIN_KINDS = [
+  "video",
+  "audio",
+  "image",
+  "image_sequence",
+] as const satisfies readonly MediaKind[];
 export type BinKind = (typeof BIN_KINDS)[number];
 
 /** Length ranges of the Filters menu. Bounds are inclusive, so the ranges do not overlap. */
