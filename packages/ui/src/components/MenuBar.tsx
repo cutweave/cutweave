@@ -23,7 +23,14 @@ import {
 } from "react";
 import { Icon, type IconName } from "../icons/index.ts";
 import { cx } from "./cx.ts";
-import { type MenuItem, MenuItemBody, type MenuSeparator, menuItemClass } from "./Menu.tsx";
+import {
+  MenuGutter,
+  type MenuItem,
+  MenuItemBody,
+  type MenuSeparator,
+  menuGutters,
+  menuItemClass,
+} from "./Menu.tsx";
 
 /** A nested list (File > Open recent). */
 export interface MenuBarSubmenu {
@@ -88,6 +95,7 @@ function Entries({
   items: readonly MenuBarEntry[];
   choose: (run: (() => void) | undefined) => void;
 }): ReactNode {
+  const gutters = menuGutters(items);
   return items.map((entry, index) => {
     if (entry.kind === "separator") {
       return <RadixMenubar.Separator key={entry.id ?? `sep-${index}`} className="cw-menu__sep" />;
@@ -100,7 +108,12 @@ function Entries({
             disabled={entry.disabled}
             textValue={entry.label}
           >
-            {entry.icon ? <Icon name={entry.icon} size="md" /> : null}
+            {gutters.check ? <MenuGutter /> : null}
+            {entry.icon ? (
+              <Icon name={entry.icon} size="md" />
+            ) : gutters.icon ? (
+              <MenuGutter />
+            ) : null}
             <span className="cw-menu__label">{entry.label}</span>
             <Icon name="chevron-right" size="md" />
           </RadixMenubar.SubTrigger>
@@ -124,10 +137,7 @@ function Entries({
           onSelect={() => choose(entry.onSelect)}
           className={cx(menuItemClass(entry), "cw-menu__item--check")}
         >
-          <span className="cw-menu__check" aria-hidden="true">
-            {entry.checked ? <Icon name="check" size="md" /> : null}
-          </span>
-          <MenuItemBody entry={entry} />
+          <MenuItemBody entry={entry} gutters={gutters} />
         </RadixMenubar.CheckboxItem>
       );
     }
@@ -139,7 +149,7 @@ function Entries({
         onSelect={() => choose(entry.onSelect)}
         className={menuItemClass(entry)}
       >
-        <MenuItemBody entry={entry} />
+        <MenuItemBody entry={entry} gutters={gutters} />
       </RadixMenubar.Item>
     );
   });
