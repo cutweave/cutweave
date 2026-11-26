@@ -503,7 +503,8 @@ impl AudioFeed {
             let mut planes = vec![Vec::with_capacity(take); out_channels];
             for frame in span.chunks_exact(channels) {
                 if out_channels == 1 {
-                    planes[0].push(frame.iter().sum::<f32>() / channels as f32);
+                    // The mix is stereo: the average of its two channels.
+                    planes[0].push(frame.iter().sum::<f32>() * 0.5);
                 } else {
                     for (plane, &s) in planes.iter_mut().zip(frame) {
                         plane.push(s);

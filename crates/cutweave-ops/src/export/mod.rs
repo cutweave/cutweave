@@ -856,7 +856,7 @@ impl ExportRequest<'_> {
                     )
                 })?;
                 output = spec.plan_output().map_err(CmdError::unsupported)?;
-                preset_advanced = spec.advanced.clone();
+                preset_advanced.clone_from(&spec.advanced);
                 let p = presets::plan_preset(&spec, seq, length, overrides)?;
                 rate = p.rate;
                 warnings = p.warnings;

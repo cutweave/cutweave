@@ -362,6 +362,7 @@ impl Family {
 
 /// What an encoder takes of the advanced settings.
 #[derive(Clone, Debug)]
+#[allow(clippy::struct_excessive_bools)] // one flag per setting: the capability matrix
 pub struct Caps {
     /// The rate-control modes.
     pub rate_modes: Vec<RateMode>,
@@ -865,6 +866,7 @@ fn prores_checks(v: &AdvancedVideo) -> Result<(), CmdError> {
 }
 
 /// The rate control: the plan's rate and the peak and buffer to carry.
+#[allow(clippy::too_many_lines)] // one flat run of checks, before anything is queued
 fn rate_control(
     rc: &AdvancedRate,
     sw: &Caps,
@@ -1183,6 +1185,7 @@ fn profile_and_format(
 }
 
 /// The audio settings.
+#[allow(clippy::too_many_lines)] // one flat run of checks, before anything is queued
 fn audio(
     a: &AdvancedAudio,
     output: &mut PlanOutput,
@@ -1352,6 +1355,7 @@ pub fn estimated_bytes(
     #[allow(clippy::cast_precision_loss)]
     let secs = cutweave_model::Time::from(duration).flicks() as f64
         / cutweave_model::FLICKS_PER_SECOND as f64;
+    #[allow(clippy::cast_precision_loss)] // kilobits per second, far below 2^52
     let bytes = (video_kbps + audio_kbps) as f64 * 125.0 * secs;
     #[allow(clippy::cast_possible_truncation, clippy::cast_sign_loss)]
     Some(bytes.ceil() as u64)
@@ -1427,6 +1431,7 @@ fn software_encoder(codec: VideoCodec) -> &'static str {
 
 /// The JSON Schema of the advanced options `caps` allows for `codec` in `container`.
 #[must_use]
+#[allow(clippy::too_many_lines)] // the schema as one literal
 pub fn options_schema(caps: &Caps, container: Container) -> Value {
     let modes: Vec<&str> = caps.rate_modes.iter().map(|m| m.name()).collect();
     let mut video = serde_json::Map::new();

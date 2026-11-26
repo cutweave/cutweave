@@ -963,6 +963,7 @@ fn injected(choice: Choice) -> Option<hwenc::Faults> {
 
 impl VideoEncoder {
     /// Opens `choice` for `plan`.
+    #[allow(clippy::too_many_lines)] // one flat run of option setting, then the open
     fn open(plan: &VideoPlan, choice: Choice, global_header: bool) -> Result<VideoEncoder, Fault> {
         let spec = &plan.spec;
         let name = choice.name();

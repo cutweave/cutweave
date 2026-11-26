@@ -409,6 +409,7 @@ impl Choice {
     }
 
     /// The encoder options (`avcodec_open2` dictionary: private and generic options) for `spec`.
+    #[allow(clippy::too_many_lines)] // one arm per hardware family
     pub(super) fn settings(self, spec: &VideoEncodeSpec) -> Vec<(&'static str, String)> {
         let hw = match self {
             Choice::Software => return x264_settings(spec),
