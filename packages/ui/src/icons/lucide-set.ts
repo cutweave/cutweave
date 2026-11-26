@@ -2,6 +2,7 @@
 import {
   ArrowDown,
   ArrowLeft,
+  ArrowLeftRight,
   ArrowRight,
   ArrowUp,
   ArrowUpDown,
@@ -107,6 +108,7 @@ export type SvgComponent = ComponentType<SVGProps<SVGSVGElement>>;
 export const LUCIDE_ICONS = {
   "arrow-down": ArrowDown,
   "arrow-left": ArrowLeft,
+  "arrow-left-right": ArrowLeftRight,
   "arrow-right": ArrowRight,
   "arrow-up": ArrowUp,
   "arrow-up-down": ArrowUpDown,

@@ -3,7 +3,7 @@
 // of the layouts for that many clips, how the pictures fill their cells, and Swap for two clips.
 // Each choice is one `item.apply_layout`; the result is ordinary transform and crop values.
 import type { LayoutFill } from "@cutweave/protocol";
-import { Button, InspectorRow, LayoutPicker, SegmentedControl } from "@cutweave/ui";
+import { IconButton, InspectorRow, LayoutPicker, SegmentedControl, Tooltip } from "@cutweave/ui";
 import { useMemo, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { useStore } from "zustand";
@@ -75,17 +75,17 @@ export function LayoutSection({
         </InspectorRow>
         {visual.length === 2 ? (
           <InspectorRow label={t("layout.swap")}>
-            <Button
-              variant="secondary"
-              size="sm"
-              disabled={!enabled || !(swappable || canSwap(ids))}
-              title={canSwap(ids) ? undefined : t("layout.swapReason")}
-              onClick={() => {
-                void swapLayout(engineStore, ids).then(remember);
-              }}
-            >
-              {t("layout.swap")}
-            </Button>
+            <Tooltip label={canSwap(ids) ? t("layout.swap") : t("layout.swapReason")}>
+              <IconButton
+                size="sm"
+                icon="arrow-left-right"
+                label={t("layout.swap")}
+                disabled={!enabled || !(swappable || canSwap(ids))}
+                onClick={() => {
+                  void swapLayout(engineStore, ids).then(remember);
+                }}
+              />
+            </Tooltip>
           </InspectorRow>
         ) : null}
       </div>
