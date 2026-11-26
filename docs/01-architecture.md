@@ -1026,6 +1026,7 @@ MyVideo/                    ← project folder (user-chosen location)
 | 032 | Exports encode the BT.709 transfer curve they are tagged with; `render.frame` gets a matching transfer parameter (§7, §8) | **Accepted** (product owner, 2026-11-26) |
 | 033 | The editor's CSP allows `'wasm-unsafe-eval'` for the bundled math module (§10, §18) | **Accepted** (product owner, 2026-11-26) |
 | 034 | Track pan, a keyframed track gain and the master bus settings (master gain, limiter) in the project as optional fields; `track.set_gain`, `audio.set_master` (§4.2, §9, §17) | Proposed: maintainers' review of WP-2E.02 |
+| 035 | The still duration is a project setting (`ProjectSettings.still_duration`, a still inserted without a duration gets it; existing clips never change); image sequences are a media kind, with a schema version bump; slideshow import and `media.import_frame` are commands (§4.2, §4.3, §5.1, §7, §17) | **Accepted** (product owner, 2026-11-26) |
 
 ## 24. Open questions (tracked; none block Phase 0)
 
