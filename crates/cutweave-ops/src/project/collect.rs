@@ -180,7 +180,7 @@ pub fn plan_collect(
     if let Some(name) = dest.file_name().and_then(|n| n.to_str())
         && !name.trim().is_empty()
     {
-        out.meta.name = name.trim().to_owned();
+        name.trim().clone_into(&mut out.meta.name);
     }
     let mut files: Vec<PlannedFile> = Vec::new();
     let mut by_hash: HashMap<String, usize> = HashMap::new();
