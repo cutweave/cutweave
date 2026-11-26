@@ -2,7 +2,7 @@
 
 # Command reference
 
-Every command and query the engine registers (141 in total), generated from the registry. The full JSON Schemas are in `schema/commands.json` and `schema/queries.json`.
+Every command and query the engine registers (142 in total), generated from the registry. The full JSON Schemas are in `schema/commands.json` and `schema/queries.json`.
 
 MCP exposure: `core` commands are always listed as tools (`item.move` is `item_move`), `catalog` ones are reachable through the catalog tools, `hidden` ones are not exposed.
 
@@ -99,6 +99,7 @@ MCP exposure: `core` commands are always listed as tools (`item.move` is `item_m
 | media | `media.set_cache_config` | Set the cache limits and the memory for decoded frames | engine, destructive, idempotent, ui-only | catalog |
 | media | `media.set_decode_policy` | Choose hardware or software decoding for the preview | engine, idempotent, ui-only | catalog |
 | media | `media.set_location` | Record where a media file is now (used by relink) | command, undoable, idempotent | hidden |
+| project | `project.archive` | Bundle the project, its media and a checked file list into a folder or a zip (a job) | engine, idempotent | catalog |
 | project | `project.close` | Close the open project (saving first if asked or if autosave is on) | engine, destructive, idempotent | catalog |
 | project | `project.collect` | Copy the project and all its media into one folder that opens anywhere (a job) | engine, idempotent | catalog |
 | project | `project.collect_estimate` | Say what collecting the project would copy and whether it fits on the drive | engine, read-only, idempotent | catalog |

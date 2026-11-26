@@ -639,7 +639,10 @@ pub(super) fn prepare(
     check_dest(&options.dest, ctx)?;
     let dest = Path::new(&options.dest);
     if dest.is_file() {
-        return Err(CmdError::invalid("/dest", "that is a file, not a folder"));
+        return Err(CmdError::invalid(
+            "/dest",
+            "a file with that name is already there; choose another name",
+        ));
     }
     if ctx.host.holds_project(dest) {
         return Err(CmdError::invalid(

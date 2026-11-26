@@ -8,6 +8,7 @@ import { ExportDialog } from "../export/ExportDialog.tsx";
 import { useExportWiring } from "../export/useExport.ts";
 import { i18n } from "../i18n/index.ts";
 import { useKeymapDispatcher } from "../keymap/dispatch.ts";
+import { ArchiveDialog } from "../media/ArchiveDialog.tsx";
 import { CollectDialog } from "../media/CollectDialog.tsx";
 import { RelinkDialog } from "../media/RelinkDialog.tsx";
 import { ContextMenuHost } from "../menus/host.tsx";
@@ -93,6 +94,7 @@ function Shell() {
         <MenuDialogs />
         <RelinkDialog />
         <CollectDialog />
+        <ArchiveDialog />
         <ContextMenuHost />
       </ToastProvider>
     </TooltipProvider>

@@ -5,6 +5,7 @@
 
 import { exportController } from "../export/useExport.ts";
 import { i18n } from "../i18n/index.ts";
+import { openArchiveDialog } from "../media/ArchiveDialog.tsx";
 import { openCollectDialog } from "../media/CollectDialog.tsx";
 import { projectController } from "../session/useProject.ts";
 import { activeTimelineController } from "../timeline/activeController.ts";
@@ -35,4 +36,5 @@ export function registerBuiltinPaletteActions(): void {
   );
   registerPaletteAction("export.start", () => exportController().open());
   registerPaletteAction("project.collect", () => openCollectDialog());
+  registerPaletteAction("project.archive", () => openArchiveDialog());
 }
