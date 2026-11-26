@@ -16,6 +16,7 @@
 // - `onChange` runs when new URLs arrive, so the panel can ask again (`setThumbnailSource` with
 //   a fresh wrapper).
 import type { MediaId } from "@cutweave/protocol";
+import { isMovingPicture } from "./kinds.ts";
 import type { MediaHttp } from "./mediaHttp.ts";
 import { mediaPath } from "./mediaHttp.ts";
 import type { Thumbnail, ThumbnailRequest, ThumbnailSource } from "./thumbnails.ts";
@@ -79,7 +80,7 @@ export class HttpThumbnailSource implements ThumbnailSource {
 
   thumbnailFor(request: ThumbnailRequest): Thumbnail {
     if (request.kind === "audio" || request.kind === "sequence_ref") return PLACEHOLDER;
-    if (request.kind === "video" && request.indexed === 0) {
+    if (isMovingPicture(request.kind) && request.indexed === 0) {
       const analysing = this.#options.analysing;
       if (analysing === undefined || analysing(request.id)) return PLACEHOLDER;
     }

@@ -3724,6 +3724,11 @@
                       "type": "string"
                     },
                     {
+                      "const": "image_sequence",
+                      "description": "A numbered run of pictures that plays like video (ADR-0035); the asset's\n`image_sequence` field describes the run.",
+                      "type": "string"
+                    },
+                    {
                       "const": "sequence_ref",
                       "description": "Another sequence of this project, used as a compound clip (arch §4.3).",
                       "type": "string"
@@ -3933,6 +3938,11 @@
                     {
                       "const": "image",
                       "description": "A still image (no duration).",
+                      "type": "string"
+                    },
+                    {
+                      "const": "image_sequence",
+                      "description": "A numbered run of pictures that plays like video (ADR-0035); the asset's\n`image_sequence` field describes the run.",
                       "type": "string"
                     },
                     {

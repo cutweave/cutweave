@@ -55,7 +55,8 @@ const KIND_RANK: Record<MediaCard["kind"], number> = {
   video: 0,
   audio: 1,
   image: 2,
-  sequence_ref: 3,
+  image_sequence: 3,
+  sequence_ref: 4,
 };
 
 interface Entry {
