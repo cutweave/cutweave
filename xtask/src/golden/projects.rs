@@ -353,11 +353,14 @@ fn timeline_steps(project: &Golden, ids: &NewProject, media: &[Value]) -> Value 
         ]),
         "flipped_phone" => json!([
             insert(v1.clone(), &media[0], at_0),
-            props(0, json!({
-                "crop": {"left": 0.1},
-                "flip": {"horizontal": true},
-                "transform": {"rotation": 90.0}
-            })),
+            props(
+                0,
+                json!({
+                    "crop": {"left": 0.1},
+                    "flip": {"horizontal": true},
+                    "transform": {"rotation": 90.0}
+                })
+            ),
         ]),
         "screen_keyframed" => json!([
             insert(v1.clone(), &media[0], at_0.clone()),
