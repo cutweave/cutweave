@@ -450,7 +450,7 @@ mod tests {
             let mut f = frame(format, 5, 3);
             for plane in &mut f.planes {
                 for (i, b) in plane.data.iter_mut().enumerate() {
-                    *b = (i % 251) as u8;
+                    *b = u8::try_from(i % 251).unwrap_or(0);
                 }
             }
             let original = f.clone();
