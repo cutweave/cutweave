@@ -305,7 +305,7 @@ fn a_slideshow_and_a_frame_of_the_preview_are_one_undo_step_each() {
         .expect("the frame is back");
     assert_eq!(asset.path_abs.as_deref(), saved.to_str());
     drop(snapshot);
-    assert_eq!(frame_files(&folder), [saved.clone()]);
+    assert_eq!(frame_files(&folder), std::slice::from_ref(&saved));
 
     // The same frame again is the same picture: no second asset, and no second file is left.
     let again = call(
@@ -331,7 +331,10 @@ fn a_slideshow_and_a_frame_of_the_preview_are_one_undo_step_each() {
     assert_eq!(other["name"], "Poster");
     assert_eq!(frame_files(&folder).len(), 2);
     let file = decode(&std::fs::read(other["path"].as_str().unwrap()).unwrap());
-    assert!(file == render_frame(&conn, SEC / 5));
+    assert!(
+        file == render_frame(&conn, SEC / 5),
+        "the second saved frame differs from render.frame"
+    );
     assert!(close(file.at(width / 4, height / 2), RED));
 
     // A time before zero is refused, and nothing is written for it.
