@@ -30,7 +30,9 @@ use cutweave_engine::{Connection, Engine, EngineMode, FullConfig, FullHandle, Fu
 use cutweave_media::testing::stills::{self, png_color};
 use cutweave_media::{DecodeMode, DecodeOpts, FfmpegBackend, MediaBackend, PixelFormat};
 use engine_support::TempDir;
-use full_support::{Clocks, FRAME_30, SEC, call, delivered, engine_config, play_frames};
+use full_support::{
+    Clocks, FRAME_30, SEC, call, delivered, engine_config, eventually, play_frames,
+};
 use serde_json::{Value, json};
 
 const FRAMES: u32 = 300;
@@ -369,6 +371,25 @@ fn a_missing_picture_shows_the_one_before_it() {
             "source frame {source_frame}"
         );
     }
+    // A proxy can be made for it, as for a video file (`auto` makes none for pictures).
+    assert_eq!(imported["proxy"], "none");
+    call(
+        &conn,
+        "media.generate_proxy",
+        json!({ "media": [imported["media_id"]] }),
+    )
+    .unwrap();
+    eventually("the sequence's proxy", || {
+        let status = call(
+            &conn,
+            "media.proxy_status",
+            json!({ "media": [imported["media_id"]] }),
+        )
+        .unwrap()["proxies"][0]
+            .clone();
+        assert_ne!(status["status"], "failed", "{status}");
+        (status["status"] == "ready").then_some(())
+    });
     // The same run again is the same asset.
     let again = call(
         &conn,
