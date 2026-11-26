@@ -27,7 +27,7 @@ import {
 /** Settings > Editing > Still image duration, typed and committed with Enter. */
 async function setStillDuration(page: Page, app: ElectronApplication, seconds: number) {
   const settings = await openSettingsPage(page, app, "Editing");
-  const field = settings.getByRole("textbox", { name: "Still image duration" });
+  const field = settings.getByRole("spinbutton", { name: "Still image duration" });
   await field.fill(String(seconds));
   await field.press("Enter");
   await expect(field).toHaveValue(String(seconds));
