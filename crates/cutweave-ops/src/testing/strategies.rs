@@ -405,6 +405,7 @@ pub(super) fn args_for(name: &str, p: &Pools) -> Option<(u32, BoxedStrategy<Valu
         "audio.set_volume" => (edits.div_ceil(2), audio_set_volume(p)),
         "audio.set_pan" => (edits.div_ceil(2), audio_set_pan(p)),
         "audio.set_gain" => (edits.div_ceil(3), audio_set_gain(p)),
+        "audio.get_levels" => (1, audio_get_levels(p)),
         "keyframe.set" => (edits, keyframe_set(p)),
         "keyframe.delete" => (edits.div_ceil(3), keyframe_delete(p)),
         "keyframe.move" => (edits.div_ceil(3), keyframe_move(p)),
@@ -426,6 +427,7 @@ pub(super) fn args_for(name: &str, p: &Pools) -> Option<(u32, BoxedStrategy<Valu
         "job.list" => (1, job_list(p)),
         "job.wait" => (1, job_wait()),
         "export.start" | "export.enqueue" => (1, export_start(p)),
+        "export.describe_options" => (1, describe_options()),
         "export.cancel" | "export.retry" | "export.remove" => (2, export_job_ref()),
         "export.pause_queue" => (1, pause_queue()),
         "export.reorder" => (1, export_reorder()),
@@ -1425,6 +1427,33 @@ fn timeline_list_markers(p: &Pools) -> BoxedStrategy<Value> {
     let invalid = fresh::<SequenceId>()
         .prop_map(|sequence| json!({"sequence": sequence}))
         .boxed();
+    mix(valid, invalid)
+}
+
+/// `audio.get_levels`: a sequence, sometimes a range and the limiter switch; sometimes a range
+/// that is empty or past the end, or an unknown sequence.
+fn audio_get_levels(p: &Pools) -> BoxedStrategy<Value> {
+    let valid = (
+        one_of(p.seqs.clone()),
+        option::of(select(vec![("0s", "1s"), ("0.5s", "f:30"), ("f:0", "2s")])),
+        option::of(any::<bool>()),
+    )
+        .prop_map(|(sequence, range, limiter)| {
+            let mut v = json!({"sequence": sequence, "limiter": limiter});
+            if let Some((start, end)) = range {
+                v["in"] = json!(start);
+                v["out"] = json!(end);
+            }
+            v
+        })
+        .boxed();
+    let invalid = prop_oneof![
+        fresh::<SequenceId>().prop_map(|sequence| json!({"sequence": sequence})),
+        one_of(p.seqs.clone())
+            .prop_map(|sequence| json!({"sequence": sequence, "in": "2s", "out": "1s"})),
+        one_of(p.seqs.clone()).prop_map(|sequence| json!({"sequence": sequence, "out": "99999s"})),
+    ]
+    .boxed();
     mix(valid, invalid)
 }
 
@@ -3071,11 +3100,15 @@ fn export_start(p: &Pools) -> BoxedStrategy<Value> {
         ])),
         option::of(any::<bool>()),
         option::of(select(vec!["rename", "overwrite", "fail"])),
+        option::weighted(0.4, advanced_block()),
     )
-        .prop_map(move |(sequence, range, preset, hw, overwrite, collision)| {
-            json!({"sequence": sequence, "path": to, "range": range, "preset": preset,
-                   "hw": hw, "overwrite": overwrite, "collision": collision})
-        })
+        .prop_map(
+            move |(sequence, range, preset, hw, overwrite, collision, advanced)| {
+                json!({"sequence": sequence, "path": to, "range": range, "preset": preset,
+                       "hw": hw, "overwrite": overwrite, "collision": collision,
+                       "advanced": advanced})
+            },
+        )
         .boxed();
     let in_temp = move |name: &str| {
         std::env::temp_dir()
@@ -3095,6 +3128,56 @@ fn export_start(p: &Pools) -> BoxedStrategy<Value> {
         Just(json!({"path": path, "preset": "h265-mkv"})),
         Just(json!({"path": path, "hw": {"force": "H264 NVENC"}})),
         Just(json!({"path": path, "hw": "nvenc"})),
+        Just(json!({"path": path, "advanced": {"video": {"nonsense": 1}}})),
+        Just(json!({"path": path, "advanced": {"video": {"gop": {"keyint": 0}}}})),
+        Just(json!({"path": path, "advanced": {"audio": {"sample_rate": 22050}}})),
+    ]
+    .boxed();
+    mix(valid, invalid)
+}
+
+/// An `advanced` block of `export.start`: mostly workable ones, some the checks refuse (ProRes
+/// with a CRF, constant bitrate on AV1, HDR, two-pass).
+fn advanced_block() -> BoxedStrategy<Value> {
+    select(vec![
+        json!({}),
+        json!({"video": {"rate_control": {"mode": "crf", "crf": 18}}}),
+        json!({"video": {"rate_control": {"mode": "cbr", "bitrate_kbps": 8000}}}),
+        json!({"video": {"rate_control": {"mode": "vbr", "bitrate_kbps": 6000, "max_bitrate_kbps": 9000, "buffer_kbit": 6000}}}),
+        json!({"video": {"rate_control": {"mode": "cq", "crf": 22, "max_bitrate_kbps": 5000}}}),
+        json!({"video": {"rate_control": {"mode": "vbr", "bitrate_kbps": 4000, "two_pass": true}}}),
+        json!({"video": {"gop": {"keyint_seconds": 2, "scenecut": false, "closed_gop": true, "bframes": 2}}}),
+        json!({"video": {"gop": {"keyint": 60, "keyint_min": 30}, "preset": "slow", "tune": "film", "level": "4.1"}}),
+        json!({"video": {"profile": "main10", "pix_fmt": "yuv420p10le", "threads": 4}}),
+        json!({"color": {"primaries": "smpte170m", "transfer": "smpte170m", "matrix": "smpte170m", "range": "full", "tag_only": true}}),
+        json!({"color": {"transfer": "smpte2084"}}),
+        json!({"audio": {"codec": "opus", "bitrate_kbps": 128, "channels": "mono"}}),
+        json!({"audio": {"codec": "pcm_s16", "sample_rate": 96000}}),
+    ])
+    .boxed()
+}
+
+/// `export.describe_options`: a codec, sometimes with an encoder or container, sometimes wrong.
+fn describe_options() -> BoxedStrategy<Value> {
+    let valid = (
+        select(vec!["h264", "hevc", "av1", "prores"]),
+        option::of(select(vec![
+            "libx264",
+            "libx265",
+            "hevc_nvenc",
+            "h264_amf",
+            "av1_qsv",
+        ])),
+        option::of(select(vec!["mp4", "mov"])),
+    )
+        .prop_map(|(codec, encoder, container)| {
+            json!({"codec": codec, "encoder": encoder, "container": container})
+        })
+        .boxed();
+    let invalid = prop_oneof![
+        Just(json!({})),
+        Just(json!({"codec": "vp9"})),
+        Just(json!({"codec": "hevc", "encoder": "h264_nvenc"})),
     ]
     .boxed();
     mix(valid, invalid)

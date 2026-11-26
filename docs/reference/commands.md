@@ -2,12 +2,13 @@
 
 # Command reference
 
-Every command and query the engine registers (139 in total), generated from the registry. The full JSON Schemas are in `schema/commands.json` and `schema/queries.json`.
+Every command and query the engine registers (141 in total), generated from the registry. The full JSON Schemas are in `schema/commands.json` and `schema/queries.json`.
 
 MCP exposure: `core` commands are always listed as tools (`item.move` is `item_move`), `catalog` ones are reachable through the catalog tools, `hidden` ones are not exposed.
 
 | Namespace | Command | Summary | Flags | MCP |
 |---|---|---|---|---|
+| audio | `audio.get_levels` | Measure peak, true peak, RMS and LUFS loudness of a sequence's mix (and each track) over a range | engine, read-only, idempotent | catalog |
 | audio | `audio.set` | Set a clip's fades, volume (dB) or pan | command, undoable, idempotent | core |
 | audio | `audio.set_fade` | Set a clip's fade in and fade out (length and curve) | command, undoable, idempotent | catalog |
 | audio | `audio.set_gain` | Give a clip one flat gain in dB, removing its volume keys | command, undoable, idempotent | catalog |
@@ -38,6 +39,7 @@ MCP exposure: `core` commands are always listed as tools (`item.move` is `item_m
 | edit | `edit.undo` | Undo your last change, or another actor's (`actor`; `*` = anyone's latest) | engine | core |
 | export | `export.cancel` | Cancel a queued or running export; the queue goes on with the next one | engine, idempotent | catalog |
 | export | `export.delete_preset` | Delete one of your export presets | engine, destructive, idempotent | catalog |
+| export | `export.describe_options` | Describe the advanced export options of a codec or encoder as a JSON Schema | engine, read-only, idempotent | catalog |
 | export | `export.enqueue` | Add an export to the export queue (waits while the queue is paused); returns job_id | engine, destructive | catalog |
 | export | `export.list_encoders` | List the video encoders this machine exports with: H.264, HEVC, AV1, ProRes, hardware ones verified | engine, read-only, idempotent | catalog |
 | export | `export.list_presets` | List export presets (YouTube, Instagram, TikTok, X and formats) and what this build can export | engine, read-only, idempotent | catalog |

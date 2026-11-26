@@ -976,11 +976,98 @@ body {
   gap: var(--space-1);
 }
 
-/* ---------- Export dialog and status chip (WP-1M.08) ---------- */
+/* ---------- Export dialog and status chip (WP-1M.08, WP-2G.04) ---------- */
+/* At most 60 % of the window: the title and the buttons stay, the settings scroll between. */
+.cw-dialog.cw-dialog--export {
+  width: var(--layer-width-lg);
+  max-height: 60vh;
+  overflow: hidden;
+}
+.cw-export__body {
+  display: flex;
+  flex: 1 1 auto;
+  flex-direction: column;
+  gap: var(--space-2);
+  min-height: 0;
+  overflow-y: auto;
+  padding-right: var(--space-1);
+}
+.cw-export__preset {
+  flex: 1 1 auto;
+  min-width: 0;
+}
+.cw-export__hint {
+  margin: 0;
+  color: var(--text-secondary);
+  overflow-wrap: anywhere;
+}
+.cw-export__summary {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-0-5);
+  padding: var(--space-2) var(--space-3);
+  border: var(--border-thin) solid var(--border-subtle);
+  border-radius: var(--radius-md);
+  background: var(--surface-1);
+}
+.cw-export__length {
+  color: var(--text-secondary);
+}
+.cw-export__warnings {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1);
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+.cw-export__warning,
+.cw-export__warning svg {
+  color: var(--warning);
+}
+.cw-export__warning {
+  align-items: flex-start;
+}
+.cw-export__warning > span {
+  color: var(--text-primary);
+}
+.cw-export__error,
+.cw-export__error svg {
+  color: var(--danger);
+}
+.cw-export__pair {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+}
+.cw-export__time {
+  width: calc(var(--space-12) * 2.5);
+}
+.cw-export__disclosure {
+  align-self: flex-start;
+}
+.cw-export__advanced {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+  padding-left: var(--space-3);
+  border-left: var(--border-thin) solid var(--border-subtle);
+}
+.cw-export__options {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+}
+.cw-export__options-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-2);
+}
 .cw-export__path {
   flex: 1 1 auto;
   min-width: 0;
-  width: calc(var(--space-12) * 4);
+  width: calc(var(--space-12) * 7);
 }
 .cw-export__num {
   width: calc(var(--space-12) * 2);
@@ -1002,6 +1089,14 @@ body {
 /* The chip keeps to its content: an icon and a short percent, so it fits the tight top bar. */
 .cw-export-chip {
   flex: none;
+}
+
+/* Settings > Export > File name (WP-2G.04): the pattern over the name it makes. */
+.cw-settings__filename {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1);
+  min-width: 0;
 }
 
 /* File > Settings…: what the dialog adds around the kit's SettingsLayout and SettingRow. */
@@ -1440,6 +1535,87 @@ body {
 .cw-history__marker-text {
   flex: none;
   color: var(--marigold-text);
+}
+
+/* ---------- Export queue panel (WP-2G.04) ---------- */
+.cw-queue {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  min-height: 0;
+  background: var(--surface-1);
+}
+.cw-queue__tools {
+  display: flex;
+  flex: none;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-2);
+  padding: var(--space-1) var(--space-3);
+  border-bottom: var(--border-thin) solid var(--border-subtle);
+}
+.cw-queue__count {
+  color: var(--text-secondary);
+}
+.cw-queue__toolbar,
+.cw-queue__actions {
+  display: flex;
+  flex: none;
+  align-items: center;
+  gap: var(--space-0-5);
+}
+.cw-queue__notice {
+  padding: var(--space-2) var(--space-3);
+}
+.cw-queue__scroll {
+  flex: 1;
+  min-height: 0;
+  overflow: auto;
+}
+.cw-queue__list {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+.cw-queue__row {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  padding: var(--space-2) var(--space-3);
+  border-bottom: var(--border-thin) solid var(--border-subtle);
+}
+.cw-queue__row[draggable="true"] {
+  cursor: grab;
+}
+.cw-queue__row[data-over="true"] {
+  box-shadow: inset 0 var(--border-thick) 0 var(--marigold);
+}
+.cw-queue__main {
+  display: flex;
+  flex: 1 1 auto;
+  flex-direction: column;
+  gap: var(--space-1);
+  min-width: 0;
+}
+.cw-queue__line {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-2);
+}
+.cw-queue__name {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.cw-queue__meta,
+.cw-queue__pct {
+  color: var(--text-secondary);
+}
+.cw-queue__error {
+  color: var(--danger);
+  overflow-wrap: anywhere;
 }
 
 /* Guides over the picture (WP-2H.06): drawn in overlay-guide with the shadow outline. */

@@ -24,9 +24,11 @@
 //!   [`PIPELINE_DEPTH`] frames ahead of the next stage, so an export runs at the speed of its
 //!   slowest stage rather than their sum; clips decode sequentially
 //!   ([`DecoderFrameSource`](super::DecoderFrameSource)).
-//! - **Sound** is the offline mixdown ([`mixdown`], the real-time mixer's lane and bus code) of
-//!   the exported range at [`EXPORT_SAMPLE_RATE`] stereo, gapless from sample 0, pushed in step
-//!   with the pictures (up to the end of each frame).
+//! - **Sound** is the offline mixdown ([`mixdown_with`], the real-time mixer's lane and bus code:
+//!   track gain, mute and solo, the master's true-peak limiter at −1 dBTP unless
+//!   `advanced.audio.limiter` is false; WP-2E.02) of the exported range at
+//!   [`EXPORT_SAMPLE_RATE`] stereo, gapless from sample 0, pushed in step with the pictures (up
+//!   to the end of each frame).
 //! - **Timestamps.** Frame `i` shows sequence time `start + i / fps` and gets pts `i / fps` in
 //!   the file (output time from 0); flicks become codec time bases only inside the encoder.
 //! - **Encoder** (WP-1E.02): the plan's `hw` becomes the encode spec's [`HwEncode`] (`auto`:
@@ -54,12 +56,12 @@ use std::sync::mpsc::{Receiver, SyncSender, sync_channel};
 use std::sync::{Arc, PoisonError};
 use std::time::{Duration as StdDuration, Instant};
 
-use cutweave_audio::{Mixdown, mixdown};
+use cutweave_audio::{BusGraph, LimiterConfig, Mixdown, mixdown_with};
 use cutweave_jobs::{CancelToken, JobError, JobProgress};
 use cutweave_media::{
     AudioChunk, AudioEncodeSpec, CancelCheck, EncodeSpec, EncodeSummary, Encoder, HwEncode,
     MediaBackend, MediaError, PixelFormat, Plane, ProgressSink, RateControl, SpeedPreset,
-    VideoEncodeSpec, VideoFrame, encode_with_fallback,
+    VideoAdvanced, VideoEncodeSpec, VideoFrame, encode_with_fallback,
 };
 use cutweave_model::{ColorTags, Project, Rounding, SampleRate, SequenceId, Time};
 use cutweave_ops::export::presets::{AudioCodec, PlanRate, VideoCodec};
@@ -444,6 +446,10 @@ impl RenderInputs<'_> {
 /// Feeds the mixdown to the encoder in step with the pictures.
 struct AudioFeed {
     mix: Mixdown,
+    /// The rate of the mix and of the file (48 kHz unless `advanced.audio` says otherwise).
+    rate: SampleRate,
+    /// Channels of the file: the stereo mix is averaged down to one.
+    channels: u16,
     /// The current mixdown chunk (interleaved stereo) and how many of its frames were pushed.
     chunk: Vec<f32>,
     head: usize,
@@ -455,21 +461,35 @@ impl AudioFeed {
     /// The mixdown of `plan`'s range: exactly the pictures' length from the range start.
     fn new(plan: &ExportPlan, services: &ExportServices) -> Result<AudioFeed, ExportError> {
         let doc = &plan.snapshot.doc;
+        let rate = audio_rate(plan)?;
         let end = plan
             .start
             .checked_add(plan.duration)
             .map_err(|e| failed(format!("the export range: {e}")))?;
+        // The audible tracks only (nothing to decode for a muted track), with their buses.
         let segments = evaluate_audio(doc, plan.sequence, plan.start, end)
             .map_err(|e| failed(format!("cannot evaluate the audio: {e}")))?;
-        let mix = mixdown(
+        let buses = doc
+            .sequences
+            .get(&plan.sequence)
+            .map_or_else(|| BusGraph::from_segments(&segments), BusGraph::of_sequence);
+        let limiter = LimiterConfig {
+            enabled: plan.output.advanced.audio_limiter.unwrap_or(true),
+            ..LimiterConfig::default()
+        };
+        let mix = mixdown_with(
             &services.sources.audio(doc),
             &segments,
+            &buses,
             plan.start..end,
-            EXPORT_SAMPLE_RATE,
+            rate,
+            limiter,
         )
         .map_err(|e| failed(format!("cannot mix the audio down: {e}")))?;
         Ok(AudioFeed {
             mix,
+            rate,
+            channels: audio_channels(plan),
             chunk: Vec::new(),
             head: 0,
             pushed: 0,
@@ -478,7 +498,9 @@ impl AudioFeed {
 
     /// Pushes samples until `target` (exclusive) or the end of the mix.
     fn push_until(&mut self, target: i64, encoder: &mut dyn Encoder) -> Result<(), Stop> {
+        // The mix is interleaved stereo; the file may take one channel.
         let channels = usize::from(EXPORT_CHANNELS);
+        let out_channels = usize::from(self.channels);
         while self.pushed < target {
             let left = self.chunk.len() / channels - self.head;
             if left == 0 {
@@ -491,20 +513,26 @@ impl AudioFeed {
             }
             let take = usize::try_from(target - self.pushed).map_or(left, |n| n.min(left));
             let span = &self.chunk[self.head * channels..(self.head + take) * channels];
-            let mut planes = vec![Vec::with_capacity(take); channels];
+            let mut planes = vec![Vec::with_capacity(take); out_channels];
             for frame in span.chunks_exact(channels) {
-                for (plane, &s) in planes.iter_mut().zip(frame) {
-                    plane.push(s);
+                if out_channels == 1 {
+                    // The mix is stereo: the average of its two channels.
+                    planes[0].push(frame.iter().sum::<f32>() * 0.5);
+                } else {
+                    for (plane, &s) in planes.iter_mut().zip(frame) {
+                        plane.push(s);
+                    }
                 }
             }
-            let pts = EXPORT_SAMPLE_RATE
+            let pts = self
+                .rate
                 .samples_to_time(self.pushed)
                 .map_err(|e| failed(format!("audio position: {e}")))?;
             encoder
                 .push_audio(&AudioChunk {
                     pts,
-                    rate: EXPORT_SAMPLE_RATE,
-                    channels: EXPORT_CHANNELS,
+                    rate: self.rate,
+                    channels: self.channels,
                     planes,
                 })
                 .map_err(Stop::Media)?;
@@ -512,6 +540,22 @@ impl AudioFeed {
             self.pushed += i64::try_from(take).unwrap_or(i64::MAX);
         }
         Ok(())
+    }
+}
+
+/// The sample rate of `plan`'s audio (48 kHz unless `advanced.audio.sample_rate` says otherwise).
+fn audio_rate(plan: &ExportPlan) -> Result<SampleRate, ExportError> {
+    match plan.output.advanced.audio_sample_rate {
+        None => Ok(EXPORT_SAMPLE_RATE),
+        Some(hz) => SampleRate::new(hz).map_err(|e| failed(format!("audio sample rate {hz}: {e}"))),
+    }
+}
+
+/// The channels of `plan`'s audio (stereo unless `advanced.audio.channels` says mono).
+fn audio_channels(plan: &ExportPlan) -> u16 {
+    match plan.output.advanced.audio_channels {
+        Some(1) => 1,
+        _ => EXPORT_CHANNELS,
     }
 }
 
@@ -527,10 +571,11 @@ pub fn video_codec_id(codec: VideoCodec) -> &'static str {
     }
 }
 
-/// The audio encoder name of an export: AAC, or 24-bit PCM for MOV.
+/// The audio encoder name of an export: AAC, or PCM (24-bit unless `pcm_bits` is 16) for MOV.
 #[must_use]
-pub fn audio_codec_name(codec: AudioCodec) -> &'static str {
+pub fn audio_codec_name(codec: AudioCodec, pcm_bits: Option<u8>) -> &'static str {
     match codec {
+        AudioCodec::Pcm if pcm_bits == Some(16) => "pcm_s16le",
         AudioCodec::Pcm => "pcm_s24le",
         AudioCodec::Mp3 => "mp3",
         AudioCodec::Flac => "flac",
@@ -561,14 +606,41 @@ fn encode_spec(
         // A preset's own rate control; an override's quality leaves `rate` empty.
         Some(PlanRate::Crf(crf)) => RateControl::Crf(crf.min(RateControl::MAX_CRF)),
         Some(PlanRate::BitrateKbps(kbps)) => RateControl::Bitrate(kbps.saturating_mul(1000)),
+        Some(PlanRate::Cbr(kbps)) => RateControl::Cbr(kbps.saturating_mul(1000)),
         None => rate_control(plan.quality),
     };
-    video.preset = services.speed;
-    video.threads = services.encoder_threads;
-    let mut audio = AudioEncodeSpec::aac(EXPORT_SAMPLE_RATE, EXPORT_CHANNELS);
-    audio_codec_name(out.audio_codec).clone_into(&mut audio.codec);
+    // The advanced settings (WP-2G.05). A preset's own `video.preset` is not applied: only an
+    // explicit `advanced.video.preset`, so presets without `advanced` export as they always did.
+    let adv = &out.advanced;
+    video.preset = adv
+        .preset
+        .as_deref()
+        .and_then(SpeedPreset::from_name)
+        .unwrap_or(services.speed);
+    video.threads = adv.threads.unwrap_or(services.encoder_threads);
+    if let Some(tags) = &adv.color {
+        video.color = tags.clone();
+    }
+    video.advanced = VideoAdvanced {
+        max_bitrate: adv.max_bitrate_kbps.map(|k| k.saturating_mul(1000)),
+        buffer_size: adv.buffer_kbit.map(|k| k.saturating_mul(1000)),
+        keyint: adv.keyint,
+        keyint_min: adv.keyint_min,
+        bframes: adv.bframes,
+        closed_gop: adv.closed_gop,
+        scenecut: adv.scenecut,
+        tune: adv.tune.clone(),
+        level: adv.level.clone(),
+        tag_only: adv.tag_only,
+    };
+    // The plan was checked, so the rate is one the encoder takes; a missing one is the default.
+    let rate = audio_rate(plan).unwrap_or(EXPORT_SAMPLE_RATE);
+    let mut audio = AudioEncodeSpec::aac(rate, audio_channels(plan));
+    audio_codec_name(out.audio_codec, adv.pcm_bits).clone_into(&mut audio.codec);
     if let Some(kbps) = out.audio_bitrate_kbps.filter(|k| *k > 0) {
         audio.bitrate = kbps.saturating_mul(1000);
+    } else if out.audio_codec == AudioCodec::Opus {
+        audio.bitrate = 128_000;
     }
     let token = cancel.clone();
     let sink = Arc::clone(written);
@@ -728,7 +800,9 @@ impl EncodeSide<'_> {
             .map_err(Stop::Media)?;
             let frame_end = at(i64::from(expected) + 1)?;
             self.audio.push_until(
-                EXPORT_SAMPLE_RATE.time_to_samples(frame_end, Rounding::Nearest),
+                self.audio
+                    .rate
+                    .time_to_samples(frame_end, Rounding::Nearest),
                 sink,
             )?;
             self.progress.frame(expected + 1);

@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 //! Allocation-free sample math shared by the real-time graph and the offline mixdown: gains,
-//! per-frame gain ramps, the master soft limiter and the stereo down-mix.
+//! per-frame gain ramps and the stereo down-mix. The master limiter is [`crate::Limiter`].
 //!
 //! All buffers are interleaved stereo ([`CHANNELS`] samples per frame).
 
@@ -24,30 +24,6 @@ pub fn db_to_gain(db: f64) -> f32 {
     } else {
         10f64.powf(db.min(MAX_DB) / 20.0) as f32
     }
-}
-
-/// Start of the soft limiter's knee: −1 dBFS. Below it the limiter is exactly transparent.
-pub const LIMITER_KNEE: f32 = 0.891_250_96;
-
-/// The master limiter placeholder (WBS 1G.01): a memoryless soft clipper at 0 dBFS.
-///
-/// Identity up to [`LIMITER_KNEE`]; above it the excess is compressed with `u / (1 + u)`, which
-/// meets the identity with slope 1 at the knee and approaches ±1.0 without reaching it, so the
-/// output never exceeds 0 dBFS. No `tanh`, no state (so it is independent of buffer sizes), and
-/// non-finite input becomes silence. The P2 limiter (look-ahead, true peak) replaces it.
-#[must_use]
-pub fn soft_limit(x: f32) -> f32 {
-    if !x.is_finite() {
-        return 0.0;
-    }
-    let a = x.abs();
-    if a <= LIMITER_KNEE {
-        return x;
-    }
-    let range = 1.0 - LIMITER_KNEE;
-    let u = (a - LIMITER_KNEE) / range;
-    let y = LIMITER_KNEE + range * (u / (1.0 + u));
-    y.copysign(x)
 }
 
 /// A gain that moves linearly to a new target over a fixed number of frames (no zipper noise),
@@ -89,13 +65,6 @@ impl Ramp {
         }
     }
 
-    /// The largest gain magnitude the ramp applies from now to its target (meters scale a
-    /// pre-gain peak by it).
-    #[must_use]
-    pub fn max_gain(&self) -> f32 {
-        self.current.abs().max(self.target.abs())
-    }
-
     /// Gain of the next frame.
     #[inline]
     fn next(&mut self) -> f32 {
@@ -110,25 +79,6 @@ impl Ramp {
             self.current += self.step;
         }
         self.current
-    }
-
-    /// `out += src · gain`, frame by frame (stereo).
-    pub fn add_scaled(&mut self, out: &mut [f32], src: &[f32]) {
-        let (out, _) = out.as_chunks_mut::<CHANNELS>();
-        let (src, _) = src.as_chunks::<CHANNELS>();
-        if self.left == 0 {
-            let g = self.current;
-            for (o, s) in out.iter_mut().zip(src) {
-                o[0] += s[0] * g;
-                o[1] += s[1] * g;
-            }
-            return;
-        }
-        for (o, s) in out.iter_mut().zip(src) {
-            let g = self.next();
-            o[0] += s[0] * g;
-            o[1] += s[1] * g;
-        }
     }
 
     /// `buf *= gain`, frame by frame (stereo).
@@ -149,24 +99,6 @@ impl Ramp {
             f[0] *= g;
             f[1] *= g;
         }
-    }
-}
-
-/// Peak absolute value of the left and right channels of `buf` (interleaved stereo).
-#[must_use]
-pub fn peak(buf: &[f32]) -> [f32; 2] {
-    let (frames, _) = buf.as_chunks::<CHANNELS>();
-    frames.iter().fold([0.0f32; 2], |p, f| {
-        [p[0].max(f[0].abs()), p[1].max(f[1].abs())]
-    })
-}
-
-/// The master stage: master gain, then the soft limiter. Shared by the real-time graph and the
-/// offline mixdown.
-pub fn master(buf: &mut [f32], gain: &mut Ramp) {
-    gain.scale(buf);
-    for s in buf {
-        *s = soft_limit(*s);
     }
 }
 
@@ -224,40 +156,17 @@ mod tests {
     }
 
     #[test]
-    fn limiter_is_transparent_below_the_knee_and_never_reaches_full_scale() {
-        for x in [0.0, 0.1, -0.5, LIMITER_KNEE, -LIMITER_KNEE] {
-            assert_eq!(soft_limit(x), x);
-        }
-        let mut last = LIMITER_KNEE;
-        for i in 1..=10_000 {
-            #[allow(clippy::cast_precision_loss)]
-            let x = LIMITER_KNEE + i as f32 * 0.01;
-            let y = soft_limit(x);
-            assert!(y >= last && y < 1.0, "{x} → {y}");
-            assert_eq!(soft_limit(-x), -y);
-            last = y;
-        }
-        assert_eq!(soft_limit(f32::NAN), 0.0);
-        assert_eq!(soft_limit(f32::INFINITY), 0.0);
-        // Slope 1 at the knee: no corner.
-        let d = 1e-4;
-        let slope = (soft_limit(LIMITER_KNEE + d) - LIMITER_KNEE) / d;
-        assert!((slope - 1.0).abs() < 1e-2, "{slope}");
-    }
-
-    #[test]
     fn ramps_reach_their_target_exactly_and_are_split_invariant() {
-        let src = vec![1.0f32; 2 * 100];
         let mut whole = Ramp::at(1.0);
         whole.set_target(0.0, 64);
-        let mut a = vec![0.0f32; 200];
-        whole.add_scaled(&mut a, &src);
+        let mut a = vec![1.0f32; 200];
+        whole.scale(&mut a);
 
         let mut split = Ramp::at(1.0);
         split.set_target(0.0, 64);
-        let mut b = vec![0.0f32; 200];
-        split.add_scaled(&mut b[..34], &src[..34]);
-        split.add_scaled(&mut b[34..], &src[34..]);
+        let mut b = vec![1.0f32; 200];
+        split.scale(&mut b[..34]);
+        split.scale(&mut b[34..]);
         assert_eq!(a, b);
         assert_eq!(a[2 * 63], 0.0);
         assert_eq!(a[2 * 99], 0.0);

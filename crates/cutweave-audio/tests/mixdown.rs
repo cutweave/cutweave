@@ -277,7 +277,8 @@ fn project_mixes_through_evaluate_audio() {
     assert!((f64::from(mix[sample_of(secs(0.75)) as usize * 2]) - b).abs() < 1e-6);
 }
 
-/// The master limiter keeps a hot mix under 0 dBFS.
+/// The master limiter keeps a hot mix (four 0.9 sines in phase: +11 dBFS) under its −1 dBTP
+/// ceiling (WP-2E.02; the WP-1G.01 soft clipper stopped at 0 dBFS), without crushing it.
 #[test]
 fn hot_mixes_stay_below_full_scale() {
     let sources = factory(&[sine(100.0, 0.9, 0.0, RATE, 2)]);
@@ -286,7 +287,8 @@ fn hot_mixes_stay_below_full_scale() {
         .collect();
     let mix = offline(&sources, &segments(&segs), Time::ZERO, secs(0.2));
     let peak = mix.iter().fold(0.0f32, |m, s| m.max(s.abs()));
-    assert!(peak < 1.0 && peak > 0.95, "peak {peak}");
+    let ceiling = 10f32.powf(-1.0 / 20.0);
+    assert!(peak <= ceiling && peak > 0.85, "peak {peak}");
 }
 
 #[test]

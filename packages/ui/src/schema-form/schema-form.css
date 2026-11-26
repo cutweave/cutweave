@@ -32,6 +32,21 @@
 .cw-sf-row[data-animated="on"] > .cw-row__label {
   color: var(--marigold-text);
 }
+/* A refused value: the label in the danger color and the reason on its own line under the row. */
+.cw-sf-row[data-invalid="true"] > .cw-row__label {
+  color: var(--danger);
+}
+.cw-sf-error {
+  display: flex;
+  align-items: flex-start;
+  gap: var(--space-1);
+  margin: 0;
+  color: var(--danger);
+}
+.cw-sf-error > svg {
+  flex: none;
+  margin-top: var(--space-0-5);
+}
 
 /* The slider takes the room the label leaves. */
 .cw-sf-row > .cw-slider {

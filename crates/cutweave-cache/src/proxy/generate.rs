@@ -536,6 +536,7 @@ impl<'a> Run<'a> {
                 },
                 bit_depth: 8,
                 profile: None,
+                advanced: cutweave_media::VideoAdvanced::default(),
                 alpha: false,
             });
         if let Some((rate, channels)) = plan.audio {

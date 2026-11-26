@@ -89,11 +89,29 @@ pub struct SubsystemHost {
 /// The `engine.degraded` event: a subsystem runs in a reduced mode (arch §8, §9; WP-1I.05).
 pub const DEGRADED_EVENT: &str = "engine.degraded";
 
+/// The `media.reverse_slow` event: a clip plays a long-GOP file backwards and the file has no
+/// proxy, so reverse playback is slower until the proxy queued for it is ready (WP-2D.01b).
+pub const REVERSE_SLOW_EVENT: &str = "media.reverse_slow";
+
+/// The `playback.meters` event: the track and master meters, 30 times a second while playing
+/// (WP-2E.02).
+pub const METERS_EVENT: &str = "playback.meters";
+
 /// The events subsystems emit, as `(name, summary)` (for the generated events catalog).
-pub const SUBSYSTEM_EVENTS: &[(&str, &str)] = &[(
-    DEGRADED_EVENT,
-    "A subsystem runs in a reduced mode (audio on the null clock, software rendering); payload: {subsystem, reason}",
-)];
+pub const SUBSYSTEM_EVENTS: &[(&str, &str)] = &[
+    (
+        METERS_EVENT,
+        "The meters, 30 times a second while playing (WP-2E.02); payload: {t, master{peak_db[2], rms_db[2], true_peak_db, lufs_momentary, lufs_short_term, lufs_integrated, gr_db}, buses[{track, peak_db[2], rms_db[2]}]} (dB values null when silent; RMS on the AES17 scale)",
+    ),
+    (
+        DEGRADED_EVENT,
+        "A subsystem runs in a reduced mode (audio on the null clock, software rendering); payload: {subsystem, reason}",
+    ),
+    (
+        REVERSE_SLOW_EVENT,
+        "A clip plays a long-GOP file backwards and the file has no proxy: reverse playback is slower until the proxy queued for it is ready; payload: {media_id, reason, job_id} (job_id null when none was queued)",
+    ),
+];
 
 /// Publishes subsystem events into the engine fan-out.
 #[derive(Clone, Debug)]

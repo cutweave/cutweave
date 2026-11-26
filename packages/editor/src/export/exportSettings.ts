@@ -1,12 +1,10 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
-// What the export dialog (WP-1M.08) decides before it calls `export.start`: the defaults taken
-// from the sequence, the checks on what a person typed, the request the settings make, and how
-// the engine's progress line and encoder names read. Pure functions, so they are tested alone.
-//
-// Contract: `export.start` (arch §7 "Export", §6): `preset` is "h264-mp4-1080p" or
-// `{custom: {width, height, fps, quality}}`; `hw` is "auto", "off" or `{force: name}`.
+// What the export dialog (WP-1M.08) reads and checks besides the presets (`exportModel.ts`,
+// WP-2G.04): the sequence's own size and rate, typed frame rates, the proposed file and its
+// folder, and how the engine's progress line and encoder names read. Pure functions, so they are
+// tested alone.
 
-import type { ExportHw, ExportQuality, ExportStart, FrameRate, Sequence } from "@cutweave/protocol";
+import type { ExportQuality, FrameRate, Sequence } from "@cutweave/protocol";
 
 export const QUALITIES: readonly ExportQuality[] = ["low", "medium", "high"];
 
@@ -20,27 +18,6 @@ export interface SequenceFacts {
 export function sequenceFacts(sequence: Sequence): SequenceFacts {
   const { width, height, frame_rate } = sequence.format;
   return { width, height, fps: frame_rate };
-}
-
-const even = (n: number): number => Math.max(2, Math.floor(n / 2) * 2);
-
-/**
- * The size the "MP4 H.264 1080p" preset writes: the canvas fit into 1920x1080 (1080x1920 when
- * portrait), never upscaled, with even sides.
- */
-export function presetSize(facts: Pick<SequenceFacts, "width" | "height">): {
-  width: number;
-  height: number;
-} {
-  const [boxW, boxH] = facts.height > facts.width ? [1080, 1920] : [1920, 1080];
-  const scale = Math.min(1, boxW / facts.width, boxH / facts.height);
-  return { width: even(facts.width * scale), height: even(facts.height * scale) };
-}
-
-/** A frame rate as people write it: "30", "29.97", "23.976". */
-export function fpsText(rate: FrameRate): string {
-  const value = rate.num / rate.den;
-  return Number.isInteger(value) ? String(value) : String(Math.round(value * 1000) / 1000);
 }
 
 const NTSC: readonly FrameRate[] = [
@@ -63,78 +40,6 @@ export function parseFps(text: string): FrameRate | null {
 
 export const MIN_SIDE = 16;
 export const MAX_SIDE = 8192;
-
-/** What the person typed for the size, rate and quality. */
-export interface FormatDraft {
-  readonly width: string;
-  readonly height: string;
-  readonly fps: string;
-  readonly quality: ExportQuality;
-}
-
-/** The quality the "MP4 H.264 1080p" preset writes. */
-export const PRESET_QUALITY: ExportQuality = "high";
-
-/**
- * The draft that means "the preset": the fitted size and the sequence rate. `quality` is the
- * person's default (Settings > Export); with the preset's own quality the export is the preset.
- */
-export function defaultDraft(
-  facts: SequenceFacts,
-  quality: ExportQuality = PRESET_QUALITY,
-): FormatDraft {
-  const size = presetSize(facts);
-  return {
-    width: String(size.width),
-    height: String(size.height),
-    fps: fpsText(facts.fps),
-    quality,
-  };
-}
-
-export type FormatProblem = "width" | "height" | "fps";
-
-const wholeNumber = (text: string): number | null => {
-  const trimmed = text.trim();
-  return /^\d+$/.test(trimmed) ? Number(trimmed) : null;
-};
-
-const sideOk = (n: number | null): n is number =>
-  n !== null && n >= MIN_SIDE && n <= MAX_SIDE && n % 2 === 0;
-
-/** The first field the engine would refuse (even sides of 16 to 8192, at most 240 fps). */
-export function formatProblem(draft: FormatDraft): FormatProblem | null {
-  if (!sideOk(wholeNumber(draft.width))) return "width";
-  if (!sideOk(wholeNumber(draft.height))) return "height";
-  if (parseFps(draft.fps) === null) return "fps";
-  return null;
-}
-
-/** The `preset` of the request: the named preset when nothing differs from it, else custom. */
-export function presetFor(draft: FormatDraft, facts: SequenceFacts): ExportStart["preset"] {
-  const base = defaultDraft(facts, PRESET_QUALITY);
-  const rate = parseFps(draft.fps);
-  const same =
-    draft.width.trim() === base.width &&
-    draft.height.trim() === base.height &&
-    draft.quality === base.quality &&
-    rate !== null &&
-    rate.num * facts.fps.den === facts.fps.num * rate.den;
-  if (same) return "h264-mp4-1080p";
-  return {
-    custom: {
-      width: wholeNumber(draft.width),
-      height: wholeNumber(draft.height),
-      fps: rate,
-      quality: draft.quality,
-    },
-  };
-}
-
-/** "Auto" when the switch is on, else software only. */
-export function hwFor(useHardware: boolean): ExportHw {
-  return useHardware ? "auto" : "off";
-}
 
 // ---- the file name -----------------------------------------------------------------------------
 
@@ -192,46 +97,27 @@ export function isAbsolutePath(path: string): boolean {
   return /^([a-zA-Z]:[\\/]|[\\/]{2}|\/)/.test(path.trim());
 }
 
-export function hasMp4Extension(path: string): boolean {
-  return /\.mp4$/i.test(path.trim());
-}
-
 export function baseName(path: string): string {
   return path.split(/[\\/]/).filter(Boolean).at(-1) ?? path;
 }
 
 // ---- encoders ----------------------------------------------------------------------------------
 
-const ENCODER_NAMES: Readonly<Record<string, string>> = {
-  h264_nvenc: "NVIDIA NVENC",
-  h264_amf: "AMD AMF",
-  h264_qsv: "Intel Quick Sync",
-  h264_videotoolbox: "Apple VideoToolbox",
-  h264_vaapi: "VA-API",
+const ENCODER_FAMILIES: Readonly<Record<string, string>> = {
+  nvenc: "NVIDIA NVENC",
+  amf: "AMD AMF",
+  qsv: "Intel Quick Sync",
+  videotoolbox: "Apple VideoToolbox",
+  vaapi: "VA-API",
 };
 
-/** "NVIDIA NVENC" for `h264_nvenc`; the implementation name itself when it is not known. */
-export function encoderLabel(implementation: string): string {
-  return ENCODER_NAMES[implementation] ?? implementation;
-}
-
 /**
- * The hardware H.264 encoders in a `media.capabilities` answer (`hw_encode[].implementation`,
- * in the order `auto` tries them), or `null` when the engine has no media backend
- * (`available: false`) or the answer is not that shape.
+ * "NVIDIA NVENC" for `h264_nvenc`, `hevc_nvenc` or `av1_nvenc`; the implementation name itself
+ * when its family is not known.
  */
-export function hardwareEncoders(answer: unknown): string[] | null {
-  if (typeof answer !== "object" || answer === null) return null;
-  // An engine without a media backend answers `available: false` (and empty lists).
-  if ((answer as { available?: unknown }).available === false) return null;
-  const list = (answer as { hw_encode?: unknown }).hw_encode;
-  if (!Array.isArray(list)) return null;
-  const names: string[] = [];
-  for (const entry of list) {
-    const name = (entry as { implementation?: unknown } | null)?.implementation;
-    if (typeof name === "string" && !names.includes(name)) names.push(name);
-  }
-  return names;
+export function encoderLabel(implementation: string): string {
+  const family = /^(?:h264|hevc|av1)_([a-z]+)$/.exec(implementation)?.[1];
+  return (family === undefined ? undefined : ENCODER_FAMILIES[family]) ?? implementation;
 }
 
 // ---- progress ----------------------------------------------------------------------------------

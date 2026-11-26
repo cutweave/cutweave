@@ -28,6 +28,8 @@ export {
 export type { HeaderToggle } from "./geometry.ts";
 export type { HitContext, HitResult, HitZone } from "./hit-test.ts";
 export { hitTest } from "./hit-test.ts";
+// The P2 interaction state machine (WP-2A.08); the P1 one above stays until WP-2A.10 wires this.
+export * from "./interaction/index.ts";
 export type {
   DroppingMediaMode,
   HoveringMode,

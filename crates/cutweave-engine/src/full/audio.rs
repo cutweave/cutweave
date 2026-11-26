@@ -5,27 +5,185 @@
 //! and `engine.degraded{subsystem: "audio"}` is sent.
 //!
 //! **What the mixer plays** ([`AudioFeed`], ADR-0022): the sound of the transport's target, the
-//! active sequence's audible clips or one source's clip (its transient timeline, built like the
-//! preview's), from the document's current revision. The document watcher feeds it after every
-//! change; the transport switches it ([`TargetedAudio`]) under its control lock, paused, before
-//! the seek that primes the new target's sound at its playhead.
+//! active sequence's clips with its track buses (gain, mute, exclusive solo; WP-2E.02:
+//! [`mix_of`]) or one source's clip (its transient timeline, built like the preview's), from the
+//! document's current revision. The document watcher feeds it after every change; the transport
+//! switches it ([`TargetedAudio`]) under its control lock, paused, before the seek that primes
+//! the new target's sound at its playhead. Muting or soloing a track ramps in at once: the lanes
+//! of muted tracks keep playing silently.
+//!
+//! **Meters** ([`MeterPump`], WP-2E.02): while playing, the output publishes a meter frame 30
+//! times a second; a thread drains them every 15 ms and sends each as `playback.meters`
+//! ([`PlaybackMeters`]): per track bus peak and RMS, and the master's peak, RMS, true peak, LUFS
+//! (momentary, short-term, integrated since the last seek) and limiter gain reduction.
 
+use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, Mutex, PoisonError, RwLock};
+use std::thread::JoinHandle;
+use std::time::Duration as StdDuration;
 
 use cutweave_audio::{
-    AudioClock, AudioOutput, ManualClock, Mixer, MixerConfig, MixerHandle, OutputConfig, PcmSource,
-    SourceError, SourceFactory, SourceRequest,
+    AudioClock, AudioOutput, BusGraph, BusLevel, ManualClock, MeterFrame, Mixer, MixerConfig,
+    MixerHandle, OutputConfig, PcmSource, SourceError, SourceFactory, SourceRequest,
 };
 use cutweave_commands::DocHandle;
 use cutweave_media::MediaBackend;
-use cutweave_model::{Project, SampleRate, Time};
+use cutweave_model::{Project, SampleRate, Time, TrackId};
 use cutweave_playback::transport::{AudioControl, PlaybackTarget, VirtualClock};
-use cutweave_render::{AudioSegment, EvalError, evaluate_audio};
+use cutweave_render::{AudioSegment, EvalError};
+use serde::Serialize;
 
 use super::preview::{SOURCE_SEQUENCE, active_sequence, source_timeline};
 use crate::config::AudioConfig;
 use crate::export::DecoderPcmFactory;
-use crate::subsystems::{SubsystemError, SubsystemKind};
+use crate::levels::mix_of;
+use crate::subsystems::{SubsystemError, SubsystemEvents, SubsystemKind};
+
+pub use crate::subsystems::METERS_EVENT as PLAYBACK_METERS_EVENT;
+/// How often the meter thread looks for new frames.
+const METER_POLL: StdDuration = StdDuration::from_millis(15);
+/// Levels at or below this are reported as `null` (silence).
+const METER_FLOOR_DB: f64 = -144.0;
+
+/// `20 log10(x)`, `None` for silence (at or below −144 dBFS).
+fn meter_db(linear: f32) -> Option<f64> {
+    let linear = f64::from(linear);
+    (linear > 0.0)
+        .then(|| 20.0 * linear.log10())
+        .filter(|db| db.is_finite() && *db > METER_FLOOR_DB)
+}
+
+/// RMS in dBFS on the AES17 scale (a sine reads its peak level: raw RMS + 3.01 dB).
+fn rms_db(linear: f32) -> Option<f64> {
+    meter_db(linear).map(|db| db + 3.010_299_956_639_812)
+}
+
+fn lufs(v: f64) -> Option<f64> {
+    v.is_finite().then_some(v)
+}
+
+/// The master's meters in a `playback.meters` event.
+#[derive(Clone, Debug, PartialEq, Serialize, specta::Type)]
+pub struct MasterMeters {
+    /// Sample peak over the window, left and right, dBFS after the limiter (null: silence).
+    pub peak_db: [Option<f64>; 2],
+    /// RMS over the window, left and right, dBFS on the AES17 scale (a sine reads its peak).
+    pub rms_db: [Option<f64>; 2],
+    /// True peak over the window, both channels, dBTP.
+    pub true_peak_db: Option<f64>,
+    /// Momentary loudness (the last 400 ms), LUFS; null until measurable.
+    pub lufs_momentary: Option<f64>,
+    /// Short-term loudness (the last 3 s), LUFS.
+    pub lufs_short_term: Option<f64>,
+    /// Integrated loudness since the last seek, LUFS; null below the −70 LUFS gate.
+    pub lufs_integrated: Option<f64>,
+    /// The deepest gain reduction of the master limiter in the window, dB (0: none).
+    pub gr_db: f64,
+}
+
+/// One track bus in a `playback.meters` event (post-fader).
+#[derive(Clone, Debug, PartialEq, Serialize, specta::Type)]
+pub struct BusMeters {
+    /// The audio track.
+    pub track: TrackId,
+    /// Sample peak over the window, left and right, dBFS (null: silence).
+    pub peak_db: [Option<f64>; 2],
+    /// RMS over the window, left and right, dBFS on the AES17 scale.
+    pub rms_db: [Option<f64>; 2],
+}
+
+/// The `playback.meters` payload.
+#[derive(Clone, Debug, PartialEq, Serialize, specta::Type)]
+pub struct PlaybackMeters {
+    /// Timeline time (flicks) of the end of the window, as heard.
+    pub t: Time,
+    /// The master bus.
+    pub master: MasterMeters,
+    /// The track buses with clips, top to bottom (at most 32).
+    pub buses: Vec<BusMeters>,
+}
+
+impl PlaybackMeters {
+    /// The event of one meter frame.
+    #[must_use]
+    pub fn of(frame: &MeterFrame) -> PlaybackMeters {
+        let bus = |b: &BusLevel| BusMeters {
+            track: b.track,
+            peak_db: b.peak.map(meter_db),
+            rms_db: b.rms.map(rms_db),
+        };
+        PlaybackMeters {
+            t: frame.at,
+            master: MasterMeters {
+                peak_db: frame.peak.map(meter_db),
+                rms_db: frame.rms.map(rms_db),
+                true_peak_db: meter_db(frame.true_peak),
+                lufs_momentary: lufs(frame.loudness.momentary),
+                lufs_short_term: lufs(frame.loudness.short_term),
+                lufs_integrated: lufs(frame.loudness.integrated),
+                gr_db: meter_db(frame.limiter_gain).map_or(0.0, |db| (-db).max(0.0)),
+            },
+            buses: frame.buses().iter().map(bus).collect(),
+        }
+    }
+}
+
+/// The thread that sends the output's meter frames as `playback.meters` events.
+pub(crate) struct MeterPump {
+    stop: Arc<AtomicBool>,
+    thread: Option<JoinHandle<()>>,
+}
+
+impl MeterPump {
+    /// Starts draining `output`'s meters into `events`.
+    pub(crate) fn spawn(
+        output: Arc<AudioOutput>,
+        events: SubsystemEvents,
+    ) -> std::io::Result<MeterPump> {
+        let stop = Arc::new(AtomicBool::new(false));
+        let flag = Arc::clone(&stop);
+        let thread = std::thread::Builder::new()
+            .name("cutweave-audio-meters".into())
+            .spawn(move || {
+                let mut frames = Vec::with_capacity(16);
+                while !flag.load(Ordering::Acquire) {
+                    std::thread::park_timeout(METER_POLL);
+                    output.drain_meters(&mut frames);
+                    for frame in frames.drain(..) {
+                        match serde_json::to_value(PlaybackMeters::of(&frame)) {
+                            Ok(payload) => events.publish(PLAYBACK_METERS_EVENT, payload),
+                            Err(e) => tracing::debug!(error = %e, "cannot encode the meters"),
+                        }
+                    }
+                }
+            })?;
+        Ok(MeterPump {
+            stop,
+            thread: Some(thread),
+        })
+    }
+
+    /// Stops the thread (it lets go of the output).
+    pub(crate) fn stop(mut self) {
+        self.halt();
+    }
+
+    fn halt(&mut self) {
+        self.stop.store(true, Ordering::Release);
+        if let Some(thread) = self.thread.take() {
+            thread.thread().unpark();
+            if thread.join().is_err() {
+                tracing::error!("the audio meter thread panicked");
+            }
+        }
+    }
+}
+
+impl Drop for MeterPump {
+    fn drop(&mut self) {
+        self.halt();
+    }
+}
 
 /// Where playback audio goes.
 #[derive(Clone, Debug, Default)]
@@ -95,20 +253,21 @@ impl SourceFactory for LivePcm {
     }
 }
 
-/// The sound of `target` in `doc`: the active sequence's audible clips over its whole length,
-/// or the one clip of a source's transient timeline (nothing when its asset is gone).
+/// The sound of `target` in `doc`: the active sequence's clips over its whole length with its
+/// track buses (mute and solo applied by the buses), or the one clip of a source's transient
+/// timeline (nothing when its asset is gone).
 pub(crate) fn segments_of(
     doc: &Project,
     target: PlaybackTarget,
-) -> Result<Vec<AudioSegment>, EvalError> {
+) -> Result<(Vec<AudioSegment>, BusGraph), EvalError> {
     let (project, seq) = match target {
         PlaybackTarget::Sequence => match active_sequence(doc) {
             Some(seq) => (None, seq),
-            None => return Ok(Vec::new()),
+            None => return Ok((Vec::new(), BusGraph::new())),
         },
         PlaybackTarget::Media(media) => match source_timeline(doc, media) {
             Some(project) => (Some(project), SOURCE_SEQUENCE),
-            None => return Ok(Vec::new()),
+            None => return Ok((Vec::new(), BusGraph::new())),
         },
     };
     let project = project.as_ref().unwrap_or(doc);
@@ -116,7 +275,7 @@ pub(crate) fn segments_of(
         .sequences
         .get(&seq)
         .map_or(Time::ZERO, |s| Time::from(s.duration()));
-    evaluate_audio(project, seq, Time::ZERO, end)
+    mix_of(project, seq, Time::ZERO, end)
 }
 
 /// What the mixer plays (see the module docs): the sound of the transport's target in the
@@ -168,8 +327,8 @@ impl AudioFeed {
     fn feed(&self, doc: &Project, target: PlaybackTarget) {
         let Some(mixer) = &self.mixer else { return };
         match segments_of(doc, target) {
-            Ok(segments) => {
-                if let Err(e) = mixer.set_segments(&segments) {
+            Ok((segments, buses)) => {
+                if let Err(e) = mixer.set_mix(&segments, &buses) {
                     tracing::warn!(error = %e, ?target, "the mixer refused the audio to play");
                 }
             }
@@ -218,7 +377,9 @@ impl AudioControl for TargetedAudio {
 pub(crate) enum Audio {
     /// An output (device or null) playing the mixer.
     Output {
-        // Field order is drop order: the output stops before the mixer handle (WP-1G.02).
+        // Field order is drop order: the meter thread lets go of the output, the output stops
+        // before the mixer handle (WP-1G.02).
+        meters: Option<MeterPump>,
         output: Arc<AudioOutput>,
         mixer: Arc<MixerHandle>,
     },
@@ -249,7 +410,7 @@ impl Audio {
 
     /// Silence while no document plays: paused, no segments, the playhead back at 0.
     pub(crate) fn idle(&self) {
-        if let Audio::Output { output, mixer } = self {
+        if let Audio::Output { output, mixer, .. } = self {
             output.pause();
             if let Err(e) = mixer.set_segments(&[]) {
                 tracing::debug!(error = %e, "cannot clear the mixer");
@@ -258,9 +419,17 @@ impl Audio {
         }
     }
 
-    /// Stops the output, then the mixer workers (in that order, WP-1G.02).
+    /// Stops the meter thread, the output, then the mixer workers (in that order, WP-1G.02).
     pub(crate) fn stop(self) {
-        if let Audio::Output { output, mixer } = self {
+        if let Audio::Output {
+            meters,
+            output,
+            mixer,
+        } = self
+        {
+            if let Some(meters) = meters {
+                meters.stop();
+            }
             match Arc::try_unwrap(output) {
                 Ok(output) => drop(output.stop()),
                 Err(shared) => {
@@ -273,12 +442,13 @@ impl Audio {
     }
 }
 
-/// Starts playback audio (see the module docs); also returns why it degraded to the null
-/// output, if it did.
+/// Starts playback audio (see the module docs) with its meter thread publishing to `events`;
+/// also returns why it degraded to the null output, if it did.
 pub(crate) fn start(
     mode: &AudioMode,
     engine: AudioConfig,
     sources: &Arc<LivePcm>,
+    events: &SubsystemEvents,
 ) -> Result<(Audio, Option<String>), SubsystemError> {
     let (config, fail) = match mode {
         AudioMode::Manual { clock, host } => {
@@ -346,9 +516,14 @@ pub(crate) fn start(
             });
         }
     };
+    let output = Arc::new(output);
+    let meters = MeterPump::spawn(Arc::clone(&output), events.clone())
+        .map_err(|e| tracing::warn!(error = %e, "no meter thread: playback.meters stays silent"))
+        .ok();
     Ok((
         Audio::Output {
-            output: Arc::new(output),
+            meters,
+            output,
             mixer: Arc::new(handle),
         },
         degraded,

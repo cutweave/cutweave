@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
-//! Generated, deterministic sources for tests and demos: sines, impulse trains and silence
-//! (R29: the mixer is built and verified against these until decoded audio lands).
+//! Generated, deterministic sources for tests and demos: sines, impulse trains, seeded pink
+//! noise and silence (R29: the mixer is built and verified against these until decoded audio
+//! lands).
 //!
 //! Every sample is a pure function of its frame index (no accumulated phase), so a source
 //! returns the same frames whatever the read sizes and seeks, and tests can compute the exact
@@ -39,8 +40,33 @@ pub enum Tone {
         /// The value of every frame.
         level: f32,
     },
+    /// Pink noise (−3 dB per octave from about 1.5 Hz up): the Voss–McCartney sum of 16 white
+    /// noise rows, row `k` holding a new value every `2^k` frames, each value a hash of `seed`,
+    /// the row and the frame. Peaks stay within `±amplitude`. Every frame is a pure function of
+    /// its index, like the other tones.
+    PinkNoise {
+        /// The largest possible magnitude.
+        amplitude: f32,
+        /// The noise seed (equal seeds play equal noise).
+        seed: u64,
+    },
     /// Digital silence.
     Silence,
+}
+
+/// Rows of the pink noise generator.
+const PINK_ROWS: u32 = 16;
+
+/// A value in `[-1, 1)` from `seed`, `row` and `index` (SplitMix64 finalizer).
+#[allow(clippy::cast_precision_loss)]
+fn white(seed: u64, row: u32, index: u64) -> f64 {
+    let mut z = seed
+        ^ u64::from(row).wrapping_mul(0x9E37_79B9_7F4A_7C15)
+        ^ index.wrapping_mul(0xD1B5_4A32_D192_ED03);
+    z = (z ^ (z >> 30)).wrapping_mul(0xBF58_476D_1CE4_E5B9);
+    z = (z ^ (z >> 27)).wrapping_mul(0x94D0_49BB_1331_11EB);
+    z ^= z >> 31;
+    (z >> 11) as f64 / (1u64 << 52) as f64 - 1.0
 }
 
 /// A generated source: what it plays, its native format and its length.
@@ -99,6 +125,12 @@ impl ToneSpec {
                 if hit { amplitude } else { 0.0 }
             }
             Tone::Dc { level } => level,
+            Tone::PinkNoise { amplitude, seed } => {
+                let sum: f64 = (0..PINK_ROWS)
+                    .map(|row| white(seed, row, frame >> row))
+                    .sum();
+                (f64::from(amplitude) * sum / f64::from(PINK_ROWS)) as f32
+            }
             Tone::Silence => 0.0,
         }
     }

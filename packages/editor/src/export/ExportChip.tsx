@@ -7,19 +7,22 @@ import { Button, Tooltip } from "@cutweave/ui";
 import { useTranslation } from "react-i18next";
 import { ContextSurface } from "../menus/host.tsx";
 import { useJobStore } from "../state/jobStore.ts";
+import { translator } from "../timeline/errors.ts";
+import { activeFraction, activeName } from "./ExportDialog.tsx";
 import { percent } from "./exportSettings.ts";
 import { useExportStore } from "./exportStore.ts";
 import { exportController } from "./useExport.ts";
 
 export function ExportStatusChip() {
-  const { t } = useTranslation();
+  const { t: rawT } = useTranslation();
+  const t = translator(rawT);
   const active = useExportStore((s) => s.active);
-  const info = useJobStore((s) => (active === null ? undefined : s.jobs[active.jobId]));
+  const pct = useJobStore((s) => (active === null ? 0 : percent(activeFraction(active, s.jobs))));
   if (active === null) return null;
-  const pct = String(percent(info?.progress.fraction ?? null));
+  const name = activeName(active, (count) => t("export.files", { count: String(count) }));
   return (
     <ContextSurface surface="chrome.export" className="cw-context-surface">
-      <Tooltip label={t("export.chip.tooltip", { name: active.fileName, percent: pct })}>
+      <Tooltip label={t("export.chip.tooltip", { name, percent: String(pct) })}>
         <Button
           variant="ghost"
           size="sm"
@@ -28,7 +31,7 @@ export function ExportStatusChip() {
           data-testid="export-chip"
           onClick={() => exportController().open()}
         >
-          {t("export.chip.label", { percent: pct })}
+          {t("export.chip.label", { percent: String(pct) })}
         </Button>
       </Tooltip>
     </ContextSurface>
