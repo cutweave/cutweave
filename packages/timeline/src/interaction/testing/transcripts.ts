@@ -1073,7 +1073,7 @@ const rollbacks: Transcript[] = OPENERS.flatMap((g) => [
     world: { keyframes: true },
     steps: g.steps,
     show: ["begin_tx", "commit_tx", "cancel_tx"],
-    expect: ["begin #1 " + editOf(g.state)],
+    expect: [`begin #1 ${editOf(g.state)}`],
     end: g.state,
   },
   ...ENDINGS.map(

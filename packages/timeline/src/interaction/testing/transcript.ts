@@ -138,7 +138,7 @@ export const down =
   };
 
 export const up =
-  (pos: Pos, mods: Modifiers = {}): Step =>
+  (pos: Pos, mods: Modifiers & { button?: number } = {}): Step =>
   (w) => {
     w.send({ type: "pointer.up", ...pos(w), ...mods });
   };
