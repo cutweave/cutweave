@@ -3,8 +3,9 @@
 // bin, and a filter chip. Rows name commands that exist today; what later work packages add is
 // listed in the TODO below, not stubbed.
 // TODO(WP-2A.14): Overwrite at playhead. TODO(WP-2B.01): New timeline from selection.
-// TODO(WP-2F.06, WP-2F.03b): Add tag, Regenerate proxies. Each work package adds its row
-// to these tables. Relink… (WP-2F.03) shows on a card whose file is missing. Folders (WP-2F.08): New folder, Rename, Move to, Open, Delete and Select all.
+// TODO(WP-2F.06): Add tag. Each work package adds its row
+// to these tables. Relink… (WP-2F.03) shows on a card whose file is missing. Regenerate proxies
+// and Delete proxies (WP-2F.03b) show on video. Folders (WP-2F.08): New folder, Rename, Move to, Open, Delete and Select all.
 import type { MediaId } from "@cutweave/protocol";
 import { snapToFrame } from "@cutweave/timeline";
 import { placeable } from "../../layout/actions.ts";
@@ -15,6 +16,7 @@ import { selectMediaCards, selectMediaUsage } from "../../media/cards.ts";
 import { healthStore } from "../../media/health.ts";
 import { isMovingPicture } from "../../media/kinds.ts";
 import { layoutStore } from "../../media/layoutStore.ts";
+import { canHaveProxy, hasProxy, proxyStore } from "../../media/proxies.ts";
 import { prefsStore } from "../../prefs/prefsStore.ts";
 import { docStore } from "../../state/docStore.ts";
 import { viewStore } from "../../state/viewStore.ts";
@@ -122,6 +124,19 @@ const replaceClipReason = (ctx: MenuContext) => {
         ? ("contextMenu.reason.trackLocked" as const)
         : ("contextMenu.reason.cannotReplaceWith" as const);
 };
+
+/** Proxies (WP-2F.03b): some target can have one on this engine; some target has one. */
+const anyProxyable = (ctx: MenuContext): boolean => {
+  const known = proxyStore.getState().byMedia;
+  return ctx.ids.some((id) => canHaveProxy(known.get(id)));
+};
+const anyProxy = (ctx: MenuContext): boolean => {
+  const known = proxyStore.getState().byMedia;
+  return ctx.ids.some((id) => hasProxy(known.get(id)));
+};
+/** Video and image sequences have proxies; a selection of several kinds may hold some. */
+const PROXY_KINDS =
+  "selection.kind == video || selection.kind == image_sequence || selection.kind == mixed";
 
 /** What a card menu knows about its target. */
 export function binCardKeys(target: { ids: readonly string[] }): ContextValues {
@@ -240,6 +255,28 @@ export const BIN_CARD: MenuSurfaceDef = {
       visible: "media.offline",
       when: "engine.live",
       reason: "contextMenu.reason.noEngine",
+    },
+    {
+      command: "bin.regenerate_proxies",
+      group: "file",
+      order: 2,
+      visible: PROXY_KINDS,
+      when: "engine.live",
+      enabledIf: anyProxyable,
+      reason: (ctx) =>
+        anyProxyable(ctx) ? "contextMenu.reason.noEngine" : "contextMenu.reason.noProxyMedia",
+      args: (ctx) => ({ media: ctx.ids }),
+    },
+    {
+      command: "bin.delete_proxies",
+      group: "file",
+      order: 3,
+      visible: PROXY_KINDS,
+      when: "engine.live",
+      enabledIf: anyProxy,
+      reason: (ctx) =>
+        anyProxy(ctx) ? "contextMenu.reason.noEngine" : "contextMenu.reason.noProxyToDelete",
+      args: (ctx) => ({ media: ctx.ids }),
     },
     {
       id: "copy-path",

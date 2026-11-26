@@ -907,6 +907,27 @@
       "gapsOne": "1 number in the run has no file. It shows the picture before it.",
       "gapsMany": "{{count}} numbers in the run have no file. Each shows the picture before it.",
       "failedTitle": "The image sequence was not imported"
+    },
+    "proxy": {
+      "ready": "Proxy",
+      "generating": "Proxy {{percent}}%",
+      "queued": "Proxy queued",
+      "evicted": "Proxy removed",
+      "incomplete": "Proxy incomplete",
+      "failed": {
+        "badge": "Proxy failed",
+        "generate": "Could not make the proxies",
+        "delete": "Could not delete the proxies"
+      },
+      "tip": {
+        "ready": "A proxy is ready: scrubbing uses this smaller copy. Exports always use the original file.",
+        "generating": "Cutweave is making a smaller copy for smooth scrubbing. You can keep editing.",
+        "queued": "A proxy will be made when the jobs before it finish.",
+        "failed": "The proxy could not be made. Right-click and choose Regenerate proxies to try again.",
+        "failedBecause": "The proxy could not be made: {{message}}. Right-click and choose Regenerate proxies to try again.",
+        "evicted": "The proxy was removed from the cache, so scrubbing uses the original file. Right-click and choose Regenerate proxies to make it again.",
+        "incomplete": "Making the proxy was stopped before the end. Regenerate proxies continues from where it stopped."
+      }
     }
   },
   "preview": {
@@ -1800,7 +1821,9 @@
       "nothingToRedo": "Nothing to redo",
       "onlyOneToast": "No other notices",
       "layoutAssets": "Select 2 to 4 videos or images",
-      "layoutSwap": "Apply a layout to the two clips first"
+      "layoutSwap": "Apply a layout to the two clips first",
+      "noProxyMedia": "Only video has proxies",
+      "noProxyToDelete": "There is no proxy to delete"
     },
     "command": {
       "clipSplit": "Split at playhead",
@@ -1968,7 +1991,9 @@
       "layout": "Layout",
       "swapLayout": "Swap",
       "placeSideBySide": "Place side by side",
-      "placeAs": "Place as"
+      "placeAs": "Place as",
+      "regenerateProxies": "Regenerate proxies",
+      "deleteProxies": "Delete proxies"
     },
     "dialog": {
       "cancel": "Cancel",

@@ -13,9 +13,15 @@ import { applyLayout, placeAssets, swapLayout } from "../../layout/actions.ts";
 import { newFolder, selectAllInBin } from "../../media/binCommands.ts";
 import { binStore } from "../../media/binStore.ts";
 import { mediaFilesBridge, pickedPaths } from "../../media/bridge.ts";
-import { currentOpenFolder, folderUiStore, openFolder } from "../../media/folderUi.ts";
+import {
+  currentOpenFolder,
+  folderUiStore,
+  openFolder,
+  selectedTiles,
+} from "../../media/folderUi.ts";
 import { importMedia } from "../../media/import.ts";
 import { layoutStore, type MediaLayout } from "../../media/layoutStore.ts";
+import { deleteProxies, regenerateProxies } from "../../media/proxies.ts";
 import { openRelinkDialog } from "../../media/RelinkDialog.tsx";
 import { requestFolderDelete, requestMediaDelete } from "../../media/requestDelete.ts";
 import { requestMediaRemoval } from "../../media/requestRemoval.ts";
@@ -195,6 +201,28 @@ export const UI_COMMANDS: readonly UiCommand[] = [
     label: "contextMenu.item.relink",
     icon: "search",
     run: () => openRelinkDialog(),
+  },
+  // Proxies (WP-2F.03b): the catalog's `media.generate_proxy` and `media.delete_proxy` for the
+  // cards the menu was opened on (the palette: the selected cards).
+  {
+    id: "bin.regenerate_proxies",
+    label: "contextMenu.item.regenerateProxies",
+    icon: "refresh-cw",
+    when: "engine.live",
+    run: async (args) => {
+      const media = arg<{ media?: MediaId[] }>(args).media ?? selectedTiles().media;
+      await regenerateProxies({ engine: engineStore, toasts: toastStore, t: tr() }, media);
+    },
+  },
+  {
+    id: "bin.delete_proxies",
+    label: "contextMenu.item.deleteProxies",
+    icon: "trash-2",
+    when: "engine.live",
+    run: async (args) => {
+      const media = arg<{ media?: MediaId[] }>(args).media ?? selectedTiles().media;
+      await deleteProxies({ engine: engineStore, toasts: toastStore, t: tr() }, media);
+    },
   },
   {
     id: "bin.new_folder",
