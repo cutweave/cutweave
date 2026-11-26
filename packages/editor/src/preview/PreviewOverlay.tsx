@@ -6,8 +6,10 @@
 // frame and the zoom readout, and a timecode readout. The clip's transform handles are
 // `TransformOverlay`, which may draw outside the frame; this layer is clipped to it.
 import { formatTimecode } from "@cutweave/timeline";
+import { useOwnerWindow } from "@cutweave/ui";
 import { type CSSProperties, useEffect, useMemo, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
+import { observeSize } from "../shell/windows.ts";
 import { useDocStore } from "../state/docStore.ts";
 import { selectActiveSequenceId } from "../state/selectors.ts";
 import { useViewStore } from "../state/viewStore.ts";
@@ -44,15 +46,15 @@ export function PreviewOverlay() {
   }, [project]);
   const rootRef = useRef<HTMLDivElement>(null);
   const [width, setWidth] = useState(0);
+  // Observed from its own window (a detached Preview's), again when it moves.
+  const ownerWindow = useOwnerWindow();
   useEffect(() => {
     const el = rootRef.current;
-    if (el === null || !pixelRatio) return undefined;
+    if (el === null || !pixelRatio || ownerWindow === null) return undefined;
     const read = () => setWidth(el.getBoundingClientRect().width);
     read();
-    const observer = new ResizeObserver(read);
-    observer.observe(el);
-    return () => observer.disconnect();
-  }, [pixelRatio]);
+    return observeSize(el, read);
+  }, [pixelRatio, ownerWindow]);
 
   const fps = format?.frame_rate;
   const canvasRatio =
@@ -60,7 +62,8 @@ export function PreviewOverlay() {
   const platformZone = safeAreas ? platformSafeArea(platform) : undefined;
   const aspectGuide = ASPECT_GUIDES.find((a) => a.id === aspect);
   const zoom = format !== undefined && format.width > 0 && width > 0 ? width / format.width : 0;
-  const dpr = typeof window === "undefined" ? 1 : window.devicePixelRatio || 1;
+  // The density of the display the Preview's window is on.
+  const dpr = ownerWindow?.devicePixelRatio || 1;
 
   return (
     // Display only: the canvas's accessible name and the transport's timecode carry the meaning.

@@ -20,6 +20,8 @@ import {
   useState,
 } from "react";
 import { useTranslation } from "react-i18next";
+import { useOwnerWindow } from "@cutweave/ui";
+import { observeSize } from "../../shell/windows.ts";
 import { engineStore } from "../../engine/engineStore.ts";
 import { i18n } from "../../i18n/index.ts";
 import { matchEvent } from "../../keymap/store.ts";
@@ -107,15 +109,15 @@ function useOverlayEditor(): OverlayEditor {
 /** The overlay's width on screen, for sizes that stay constant in screen pixels. */
 function useWidth(ref: React.RefObject<HTMLElement | null>): number {
   const [width, setWidth] = useState(0);
+  // Observed from its own window (a detached Preview's), again when it moves.
+  const ownerWindow = useOwnerWindow();
   useEffect(() => {
     const el = ref.current;
-    if (el === null) return undefined;
+    if (el === null || ownerWindow === null) return undefined;
     const read = () => setWidth(el.getBoundingClientRect().width);
     read();
-    const observer = new ResizeObserver(read);
-    observer.observe(el);
-    return () => observer.disconnect();
-  }, [ref]);
+    return observeSize(el, read);
+  }, [ref, ownerWindow]);
   return width;
 }
 

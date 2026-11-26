@@ -152,7 +152,12 @@ export function observeSize(
   const Observer = windowOf(el).ResizeObserver ?? globalThis.ResizeObserver;
   if (Observer === undefined) return () => {};
   const observer = new Observer(onResize);
-  observer.observe(el, options);
+  try {
+    observer.observe(el, options);
+  } catch {
+    // A box this browser does not observe (`device-pixel-content-box`): the content box.
+    observer.observe(el);
+  }
   return () => observer.disconnect();
 }
 

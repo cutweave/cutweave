@@ -13,16 +13,24 @@
 // tells the engine the new size (`view.set_preview_size`, debounced, rounded to even). The
 // overlay is DOM in the same box, so it lines up at every size.
 import type { RpcClient } from "@cutweave/protocol";
+import { useOwnerWindow } from "@cutweave/ui";
 import { type CSSProperties, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { engineStore, useEngineStore } from "../engine/engineStore.ts";
 import type { TKey } from "../i18n/index.ts";
 import { EmptyState } from "../panels/EmptyState.tsx";
+import { observeSize, windowOf } from "../shell/windows.ts";
 import { docStore, useDocStore } from "../state/docStore.ts";
 import { playbackStore } from "../state/playbackStore.ts";
 import { selectActiveSequenceId } from "../state/selectors.ts";
 import { ASPECTS, type AspectId, useViewStore, viewStore } from "../state/viewStore.ts";
-import { canvasSurface, type FrameFetcher, httpFrameFetcher, JpegPreview } from "./jpegPreview.ts";
+import {
+  canvasSurface,
+  type FrameFetcher,
+  httpFrameFetcher,
+  JpegPreview,
+  windowTicker,
+} from "./jpegPreview.ts";
 import { PreviewOverlay } from "./PreviewOverlay.tsx";
 import type { PlayheadSample } from "./presenter.ts";
 import { devicePixelSize, PreviewSizer } from "./previewSize.ts";
@@ -132,38 +140,72 @@ async function announceRing(): Promise<RingAnnouncement | null> {
 
 /**
  * Keeps `canvas`'s backing store at its device-pixel size; `onResize` runs right after a change
- * (repaint the cleared canvas, tell the engine), in the same frame.
+ * (repaint the cleared canvas, tell the engine), in the same frame. The size and the density are
+ * the canvas's own window's (a detached Preview's), and a move of that window to a display with
+ * another density resizes it too, so `view.set_preview_size` follows.
  */
 function useDeviceSizedCanvas(
   canvas: HTMLCanvasElement | null,
   onResize: (width: number, height: number) => void,
 ): void {
+  const ownerWindow = useOwnerWindow();
   useEffect(() => {
-    if (canvas === null || typeof ResizeObserver === "undefined") return;
-    const observer = new ResizeObserver((entries) => {
-      const entry = entries[entries.length - 1];
-      if (entry === undefined) return;
-      const { width, height } = devicePixelSize(entry, globalThis.devicePixelRatio || 1);
+    if (canvas === null || ownerWindow === null) return;
+    const win = windowOf(canvas);
+    const apply = (width: number, height: number): void => {
       if (width <= 0 || height <= 0) return;
       if (canvas.width !== width || canvas.height !== height) {
         canvas.width = width;
         canvas.height = height;
       }
       onResize(width, height);
-    });
-    try {
-      observer.observe(canvas, { box: "device-pixel-content-box" });
-    } catch {
-      observer.observe(canvas);
-    }
-    return () => observer.disconnect();
-  }, [canvas, onResize]);
+    };
+    const stop = observeSize(
+      canvas,
+      (entries) => {
+        const entry = entries[entries.length - 1];
+        if (entry === undefined) return;
+        const { width, height } = devicePixelSize(entry, win.devicePixelRatio || 1);
+        apply(width, height);
+      },
+      { box: "device-pixel-content-box" },
+    );
+    // Another display's density: where the observer does not report device pixels, this does.
+    let query: MediaQueryList | null = null;
+    const onDensity = (): void => {
+      const box = canvas.getBoundingClientRect();
+      const dpr = win.devicePixelRatio || 1;
+      apply(Math.round(box.width * dpr), Math.round(box.height * dpr));
+      watch();
+    };
+    const watch = (): void => {
+      query?.removeEventListener("change", onDensity);
+      query = win.matchMedia?.(`(resolution: ${win.devicePixelRatio || 1}dppx)`) ?? null;
+      query?.addEventListener("change", onDensity);
+    };
+    watch();
+    return () => {
+      stop();
+      query?.removeEventListener("change", onDensity);
+    };
+  }, [canvas, onResize, ownerWindow]);
 }
 
 interface PathCanvasProps {
   readonly label: string;
   /** Frames reach the canvas (GPU: presenting from the ring; JPEG: a first frame drawn). */
   readonly onLive: (live: boolean) => void;
+}
+
+/**
+ * Whether a canvas that moves into another window (its panel detached, or docked back) keeps its
+ * WebGPU context. Windows does (research 10, the spike); elsewhere, until a check shows it, the
+ * canvas is handed to the preload again after a move.
+ */
+export function keepsContextWhenMoved(
+  platform: string = typeof navigator === "undefined" ? "" : navigator.platform,
+): boolean {
+  return /^win/i.test(platform);
 }
 
 /** The GPU path: the preload presents into this canvas. */
@@ -181,6 +223,9 @@ function GpuCanvas({
   const ringRef = useRef<RingPreview | null>(null);
   const frozenRef = useRef(frozen);
   frozenRef.current = frozen;
+  // Where a moved canvas may lose its context, a new window attaches it again (WP-2H.15).
+  const ownerWindow = useOwnerWindow();
+  const attachedIn = keepsContextWhenMoved() ? null : ownerWindow;
   const sizer = useMemo(
     () =>
       new PreviewSizer({
@@ -227,7 +272,8 @@ function GpuCanvas({
       ring.detach();
       ringRef.current = null;
     };
-  }, [canvas, onFail, onLive, sizer]);
+    // `attachedIn` is read nowhere: a change re-attaches (macOS and Linux after a move).
+  }, [canvas, onFail, onLive, sizer, attachedIn]);
 
   useEffect(() => () => sizer.dispose(), [sizer]);
 
@@ -297,6 +343,8 @@ function JpegCanvas({
     const preview = new JpegPreview({
       fetcher: source,
       surface,
+      // On the canvas's own window's frames (a detached Preview keeps playing there).
+      ticker: windowTicker(() => canvas),
       playhead: playheadSample,
       size: () => ({ width: canvas.width, height: canvas.height }),
       frameRate: () => {
@@ -324,16 +372,18 @@ function JpegCanvas({
     };
   }, [canvas, fetcher, onLive]);
 
-  // While the source shows (here as stills, or in the Inspector) the timeline's frames stop.
+  // While the source shows (here as stills, or in the Inspector) the timeline's frames stop. A
+  // move to another window starts them again there (a frame the old window owed may never come).
+  const ownerWindow = useOwnerWindow();
   useEffect(() => {
     const preview = previewRef.current;
-    if (preview === null) return;
-    if (frozen) preview.stop();
-    else {
+    if (preview === null || ownerWindow === null) return;
+    preview.stop();
+    if (!frozen) {
       preview.invalidate();
       preview.start();
     }
-  }, [frozen]);
+  }, [frozen, ownerWindow]);
 
   const onResize = useCallback(() => {
     previewRef.current?.redraw();

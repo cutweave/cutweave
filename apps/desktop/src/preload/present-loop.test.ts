@@ -7,6 +7,7 @@ import {
   type FramePresenter,
   installedPresenter,
   type LoopClock,
+  canvasLoopClock,
   PresentLoop,
   setFramePresenter,
 } from "./present-loop.ts";
@@ -175,5 +176,90 @@ describe("PresentLoop", () => {
     expect(currentFramePresenter()).toBe(p);
     setFramePresenter(null);
     expect(currentFramePresenter()).toBeNull();
+  });
+});
+
+/** A window with its own frames: `frame()` runs what it was asked for, like one display frame. */
+function fakeWindow() {
+  let next = 1;
+  const asked = new Map<number, FrameRequestCallback>();
+  const pagehide: (() => void)[] = [];
+  const win = {
+    closed: false,
+    requestAnimationFrame: vi.fn((cb: FrameRequestCallback) => {
+      asked.set(next, cb);
+      return next++;
+    }),
+    cancelAnimationFrame: vi.fn((id: number) => {
+      asked.delete(id);
+    }),
+    addEventListener: (_type: "pagehide", listener: () => void) => {
+      pagehide.push(listener);
+    },
+    frame() {
+      const due = [...asked.values()];
+      asked.clear();
+      for (const cb of due) cb(0);
+    },
+    close() {
+      win.closed = true;
+      for (const listener of pagehide) listener();
+      asked.clear();
+    },
+  };
+  return win;
+}
+
+// WP-2H.15: a Preview detached into its own window is presented on that window's frames.
+describe("the canvas clock", () => {
+  it("ticks on the frames of the window the canvas is in, read at every tick", () => {
+    const main = fakeWindow();
+    const popout = fakeWindow();
+    let canvasIn: ReturnType<typeof fakeWindow> | null = null;
+    const source = { frameAtClock: vi.fn(() => frame(1)) };
+    const loop = new PresentLoop(
+      source,
+      null,
+      canvasLoopClock(() => canvasIn, main, () => 0),
+    );
+    loop.start();
+    expect(main.requestAnimationFrame).toHaveBeenCalledTimes(1);
+    // The canvas moves into the detached window: its next tick is that window's.
+    canvasIn = popout;
+    main.frame();
+    expect(popout.requestAnimationFrame).toHaveBeenCalledTimes(1);
+    popout.frame();
+    popout.frame();
+    expect(popout.requestAnimationFrame).toHaveBeenCalledTimes(3);
+    expect(main.requestAnimationFrame).toHaveBeenCalledTimes(1);
+    expect(loop.stats().ticks).toBe(3);
+    // Stopping cancels the frame in the window that owes it.
+    loop.stop();
+    expect(popout.cancelAnimationFrame).toHaveBeenCalledTimes(1);
+  });
+
+  it("asks the main window again when the canvas's window closes before its frame comes", () => {
+    const main = fakeWindow();
+    const popout = fakeWindow();
+    let canvasIn: ReturnType<typeof fakeWindow> | null = popout;
+    const loop = new PresentLoop(
+      { frameAtClock: () => null },
+      null,
+      canvasLoopClock(() => canvasIn, main, () => 0),
+    );
+    loop.start();
+    expect(popout.requestAnimationFrame).toHaveBeenCalledTimes(1);
+    // The person closes the detached window: the dock docks the Preview back.
+    canvasIn = null;
+    popout.close();
+    expect(main.requestAnimationFrame).toHaveBeenCalledTimes(1);
+    main.frame();
+    expect(loop.stats().ticks).toBe(1);
+    expect(loop.running).toBe(true);
+    // A closed window is never asked again.
+    canvasIn = popout;
+    main.frame();
+    expect(popout.requestAnimationFrame).toHaveBeenCalledTimes(1);
+    loop.stop();
   });
 });
