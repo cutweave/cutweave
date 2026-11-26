@@ -33,18 +33,9 @@ use full_support::{call, engine_config, full_config};
 use media_support::{Server, base64_decode, is_png, jpeg_size};
 use serde_json::{Value, json};
 
-/// A 4 s 30 fps 320×180 clip with a stereo tone, on disk (only hashed) and in `fake`.
-fn fake_clip(dir: &Path, name: &str, fake: FakeBackend) -> (FakeBackend, PathBuf) {
-    fake_clip_turned(dir, name, fake, 0)
-}
-
-/// [`fake_clip`] whose probe reports a display rotation (a phone clip shot upright).
-fn fake_clip_turned(
-    dir: &Path,
-    name: &str,
-    fake: FakeBackend,
-    rotation: u16,
-) -> (FakeBackend, PathBuf) {
+/// A 4 s 30 fps 320×180 clip with a stereo tone, on disk (only hashed) and in `fake`. Its probe
+/// reports the display `rotation` (90: a phone clip shot upright).
+fn fake_clip(dir: &Path, name: &str, fake: FakeBackend, rotation: u16) -> (FakeBackend, PathBuf) {
     let path = dir.join(name);
     std::fs::write(&path, format!("fake media {name}")).unwrap();
     let d = Duration::from_secs(4).unwrap();
@@ -79,7 +70,7 @@ fn fixture_turned(
     rotation: u16,
 ) -> Fixture {
     let dir = TempDir::new(tag);
-    let (fake, clip) = fake_clip_turned(
+    let (fake, clip) = fake_clip(
         dir.path(),
         "a.mp4",
         FakeBackend::new().with_frame_cost(cost),
