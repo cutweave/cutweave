@@ -3,13 +3,18 @@
 // interval indexes and track geometry. The renderer and hit-testing both read this one structure,
 // so what is drawn is what is hit.
 import { IntervalIndex } from "./interval-index.ts";
-import type { Rect, TimelineItem, TimelineModel, TrackSize } from "./model.ts";
+import type { Rect, TimelineItem, TimelineMarker, TimelineModel, TrackSize } from "./model.ts";
 import { FLICKS_PER_SECOND } from "./time.ts";
 import type { Viewport } from "./viewport.ts";
 
 export const FLAG_DISABLED = 1;
 export const FLAG_PROPOSED = 2;
 export const FLAG_SELECTED = 4;
+
+/** Per-track style bits (`TimelineLayout.trackFlags`). */
+export const TRACK_LOCKED = 1;
+/** Muted (audio) or hidden (video): its clips dim. */
+export const TRACK_DIMMED = 2;
 
 /** Clip heights per track size (the `track-*` tokens) and the lane padding above/below a clip. */
 export interface TrackMetrics {
@@ -29,6 +34,11 @@ export class TimelineLayout {
   /** Lane top and lane height per track, content space (before scrollY). */
   readonly trackTop: Float64Array;
   readonly trackHeight: Float64Array;
+  /** `TRACK_*` bits per track. */
+  readonly trackFlags: Uint8Array;
+  /** Sequence markers sorted by time, and the longest range marker (flicks) for culling. */
+  readonly markers: readonly TimelineMarker[];
+  readonly markerMaxDuration: number;
   readonly totalHeight: number;
   /** Largest item end, flicks. */
   readonly contentEnd: number;
@@ -53,14 +63,24 @@ export class TimelineLayout {
 
     this.trackTop = new Float64Array(nTracks);
     this.trackHeight = new Float64Array(nTracks);
+    this.trackFlags = new Uint8Array(nTracks);
     let y = 0;
     model.tracks.forEach((t, i) => {
-      const h = (metrics.sizes[t.size ?? "md"] ?? 0) + 2 * metrics.pad;
+      const clip =
+        t.height != null && Number.isFinite(t.height)
+          ? Math.max(metrics.sizes.sm, Math.round(t.height))
+          : (metrics.sizes[t.size ?? "md"] ?? 0);
+      const h = clip + 2 * metrics.pad;
       this.trackTop[i] = y;
       this.trackHeight[i] = h;
+      this.trackFlags[i] = (t.locked ? TRACK_LOCKED : 0) | (t.muted || t.hidden ? TRACK_DIMMED : 0);
       y += h;
     });
     this.totalHeight = y;
+
+    const markers = (model.markers ?? []).slice().sort((a, b) => a.t - b.t);
+    this.markers = markers;
+    this.markerMaxDuration = markers.reduce((m, k) => Math.max(m, k.duration ?? 0), 0);
 
     this.start = new Float64Array(n);
     this.end = new Float64Array(n);
@@ -119,6 +139,20 @@ export class TimelineLayout {
   /** Clip height of a track (lane height minus padding). */
   clipHeight(track: number): number {
     return (this.trackHeight[track] ?? 0) - 2 * this.pad;
+  }
+
+  /** Index of the first marker whose range can reach time `t` (markers sorted by time). */
+  firstMarkerFrom(t: number): number {
+    const from = t - this.markerMaxDuration;
+    const m = this.markers;
+    let lo = 0;
+    let hi = m.length;
+    while (lo < hi) {
+      const mid = (lo + hi) >>> 1;
+      if ((m[mid] as TimelineMarker).t < from) lo = mid + 1;
+      else hi = mid;
+    }
+    return lo;
   }
 
   /** Bounding box of an item in canvas coordinates, or null for an unknown item index. */

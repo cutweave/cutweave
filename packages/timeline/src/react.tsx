@@ -3,7 +3,7 @@
 // destroys the view, and forwards props. All timeline logic stays in the framework-agnostic class.
 import { type CSSProperties, useEffect, useRef } from "react";
 import type { MediaLoaders } from "./cache.ts";
-import type { TimelineModel, ViewState } from "./model.ts";
+import type { TimelineDisplay, TimelineModel, ViewState } from "./model.ts";
 import { type TimelinePointerEvent, TimelineView } from "./timeline-view.ts";
 
 export interface TimelineCanvasProps {
@@ -12,6 +12,8 @@ export interface TimelineCanvasProps {
   readonly viewState?: Partial<ViewState>;
   /** Pluggable media loaders (filmstrip tiles, waveform peaks). */
   readonly loaders?: MediaLoaders;
+  /** Display preferences (how the ruler and the playhead show time). */
+  readonly display?: Partial<TimelineDisplay>;
   readonly headerWidth?: number;
   /** Middle-button pan in the view (`builtin`, default) or reported to `onPointer` (`host`). */
   readonly pan?: "builtin" | "host";
@@ -59,6 +61,7 @@ export function TimelineCanvas(props: TimelineCanvasProps) {
     viewRef.current = view;
     view.bind();
     view.setModel(p.model);
+    if (p.display) view.setDisplay(p.display);
     if (p.viewState) view.setViewState(p.viewState);
     const offPointer = view.onPointer((e) => latest.current.onPointer?.(e));
     const offView = view.onViewChange((s) => latest.current.onViewChange?.(s));
@@ -84,6 +87,10 @@ export function TimelineCanvas(props: TimelineCanvasProps) {
   useEffect(() => {
     if (props.loaders) viewRef.current?.setLoaders(props.loaders);
   }, [props.loaders]);
+
+  useEffect(() => {
+    if (props.display) viewRef.current?.setDisplay(props.display);
+  }, [props.display]);
 
   // Moved into another window (or back): listen, observe and draw there.
   useEffect(() => {

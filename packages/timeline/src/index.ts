@@ -10,7 +10,14 @@ export type {
   WaveformPeaks,
   WaveformRequest,
 } from "./cache.ts";
-export { bucketPxPerSec, LoadingCache, MediaCaches, zoomBucket } from "./cache.ts";
+export {
+  bucketPxPerSec,
+  FILMSTRIP_BYTES,
+  LoadingCache,
+  MediaCaches,
+  WAVEFORM_BYTES,
+  zoomBucket,
+} from "./cache.ts";
 export {
   generateSmallTimeline,
   generateTimeline,
@@ -61,21 +68,27 @@ export { TimelineLayout } from "./layout.ts";
 export type {
   ItemKind,
   ItemState,
+  MarkerKind,
   MediaSlice,
   Rect,
+  SnapGuide,
   SourceRange,
+  TimeFormat,
+  TimelineDisplay,
   TimelineItem,
+  TimelineMarker,
   TimelineModel,
   TimelineTrack,
   TrackKind,
   TrackSize,
   ViewState,
 } from "./model.ts";
-export { DEFAULT_VIEW_STATE, EMPTY_MODEL } from "./model.ts";
+export { DEFAULT_DISPLAY, DEFAULT_VIEW_STATE, EMPTY_MODEL } from "./model.ts";
 export type { TimelineCanvasProps } from "./react.tsx";
 export { TimelineCanvas } from "./react.tsx";
-export type { FrameInput, FrameStats } from "./renderer.ts";
-export { TimelineRenderer } from "./renderer.ts";
+export { tileSpans } from "./render/media.ts";
+export { TimelineRenderer } from "./render/renderer.ts";
+export type { FrameInput, FrameStats } from "./render/state.ts";
 export type { TickPlan } from "./ruler.ts";
 export { chooseTickPlan, tickCandidates } from "./ruler.ts";
 export type {
@@ -95,6 +108,7 @@ export type { FrameRate } from "./time.ts";
 export {
   FLICKS_PER_SECOND,
   flicksToFrame,
+  formatFrameTimecode,
   formatTimecode,
   frameDurationFlicks,
   frameToFlicks,
@@ -107,6 +121,7 @@ export {
   clampScroll,
   clampZoom,
   durationToPx,
+  fitRange,
   flicksPerPx,
   MAX_PX_PER_SEC,
   MIN_PX_PER_SEC,

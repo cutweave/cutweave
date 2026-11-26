@@ -1,5 +1,8 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 
+/** Placeholder output between queries (never written: `walk` runs only inside `query`). */
+const NO_OUT: number[] = [];
+
 /**
  * Static interval tree over a set of items, used for visibility culling and hit-testing.
  *
@@ -17,7 +20,7 @@ export class IntervalIndex {
   private readonly starts: Float64Array;
   private readonly ends: Float64Array;
   private readonly maxEnd: Float64Array;
-  private out: number[] = [];
+  private out: number[] = NO_OUT;
   private qa = 0;
   private qb = 0;
 
@@ -51,7 +54,7 @@ export class IntervalIndex {
     this.qa = a;
     this.qb = b;
     this.walk(0, this.size);
-    this.out = [];
+    this.out = NO_OUT; // drop the caller's array without allocating a new one
     return out;
   }
 

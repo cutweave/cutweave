@@ -24,8 +24,11 @@ export interface Viewport {
   rulerHeight: number;
 }
 
-/** Zoom limits: 0.05 px/s (about 6 hours across 1000 px) to 20,000 px/s (frame-level at 120 fps). */
-export const MIN_PX_PER_SEC = 0.05;
+/**
+ * Zoom limits (WP-2A.09): from 0.01 px/s, where 4 hours fit in 144 px of lane (so in any lane),
+ * to 20,000 px/s, where one frame is at least 100 px wide up to 200 fps (833 px at 24 fps).
+ */
+export const MIN_PX_PER_SEC = 0.01;
 export const MAX_PX_PER_SEC = 20_000;
 
 export function clampZoom(pxPerSec: number): number {
@@ -55,6 +58,23 @@ export function durationToPx(vp: Pick<Viewport, "pxPerSec">, duration: number): 
 /** Visible time range of the lane area, flicks (inclusive, fractional ends rounded outward). */
 export function visibleTimeRange(vp: Viewport): { t0: number; t1: number } {
   return { t0: xToTime(vp, vp.headerWidth), t1: xToTime(vp, vp.width) };
+}
+
+/**
+ * `{ pxPerSec, scrollX }` that shows `[t0, t1]` (flicks) across the lane with `marginPx` on each
+ * side, within the zoom limits (a range too long for the lane starts at its left edge).
+ */
+export function fitRange(
+  vp: Viewport,
+  t0: number,
+  t1: number,
+  marginPx: number,
+): { pxPerSec: number; scrollX: number } {
+  const lane = Math.max(1, vp.width - vp.headerWidth - 2 * marginPx);
+  const span = Math.max(1, t1 - t0);
+  const pxPerSec = clampZoom((lane * FLICKS_PER_SECOND) / span);
+  const scrollX = Math.round(t0 - (marginPx * FLICKS_PER_SECOND) / pxPerSec);
+  return { pxPerSec, scrollX };
 }
 
 /** New `{ pxPerSec, scrollX }` after zooming by `factor` keeping the time under `anchorX` fixed. */

@@ -2,6 +2,7 @@
 // The read-only timeline projection the renderer consumes (arch §16: `docStore` is a normalized
 // read-only projection of the engine doc). No engine dependency: fixtures build these directly.
 // All times are flicks (`number`, integer). Entities are addressed by id, never by index.
+import type { SnapKindName } from "@cutweave/protocol/wasm";
 import type { FrameRate } from "./time.ts";
 
 export type ItemKind = "media" | "audio" | "graphics" | "captions" | "effects";
@@ -19,6 +20,27 @@ export interface TimelineTrack {
   readonly hidden?: boolean;
   /** Magnetic main track: 2px marigold edge on its header. */
   readonly main?: boolean;
+  /**
+   * Clip height in CSS px (the engine's `track.height`), overriding `size`. Never below the
+   * `track-sm` token: at that height or less the track is collapsed (labels only).
+   */
+  readonly height?: number | null;
+}
+
+/** What a sequence marker means (the engine's `MarkerKind`). */
+export type MarkerKind = "user" | "beat" | "chapter";
+
+/** A sequence marker, in sequence time (item markers are not drawn yet). */
+export interface TimelineMarker {
+  readonly id: string;
+  /** Where it is, flicks (`>= 0`). */
+  readonly t: number;
+  /** Length of a range marker, flicks; absent or `null` for a point marker. */
+  readonly duration?: number | null;
+  readonly label: string;
+  /** The marker's own color from the document (`#rrggbb[aa]`); default the marigold token. */
+  readonly color?: string;
+  readonly kind: MarkerKind;
 }
 
 /** A slice of a media asset an item shows (thumbnails, waveform), addressed by media id. */
@@ -83,6 +105,8 @@ export interface TimelineModel {
   readonly dropFrame?: boolean;
   readonly tracks: readonly TimelineTrack[];
   readonly items: readonly TimelineItem[];
+  /** Sequence markers (any order; drawn in the ruler). */
+  readonly markers?: readonly TimelineMarker[];
 }
 
 export const EMPTY_MODEL: TimelineModel = {
@@ -98,6 +122,22 @@ export interface Rect {
   readonly h: number;
 }
 
+/**
+ * A snap guide: a time (flicks), or the target of a shared snap (`snap(...).target`, WP-2A.07),
+ * whose kind picks the guide's color. A bare time draws like an `edge` guide.
+ */
+export type SnapGuide = number | { readonly kind: SnapKindName; readonly t: number };
+
+/** How the ruler and the playhead flag show time (the Timeline preference "Show time as"). */
+export type TimeFormat = "timecode" | "frames";
+
+/** Display options the host's preferences set (WP-2A.13 adds more). */
+export interface TimelineDisplay {
+  readonly timeFormat: TimeFormat;
+}
+
+export const DEFAULT_DISPLAY: TimelineDisplay = { timeFormat: "timecode" };
+
 /** View state owned by the host (`viewStore` / `playbackStore`); the renderer only reads it. */
 export interface ViewState {
   /** Zoom, CSS pixels per second. */
@@ -110,8 +150,8 @@ export interface ViewState {
   readonly playhead: number;
   /** Selected item ids (in addition to `item.state.selected`). */
   readonly selection: ReadonlySet<string>;
-  /** Snap guide times (flicks), drawn as vertical lines. */
-  readonly snapGuides: readonly number[];
+  /** Snap guides, drawn as vertical lines colored by their kind. */
+  readonly snapGuides: readonly SnapGuide[];
   /** In/out range shading, flicks. */
   readonly range: { readonly in: number; readonly out: number } | null;
   /** Marquee rectangle in canvas CSS pixels. */

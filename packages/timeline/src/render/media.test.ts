@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 // Filmstrip tiles of sped, reversed and frozen clips (WP-2D.01).
 import { describe, expect, it } from "vitest";
-import { tileSpans } from "./renderer.ts";
+import { tileSpans } from "./media.ts";
 
 const D = 100; // flicks per media tile
 

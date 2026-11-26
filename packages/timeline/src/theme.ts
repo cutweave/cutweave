@@ -37,6 +37,7 @@ export interface Theme {
   readonly opacityDisabled: number;
   readonly borderThin: number;
   readonly clipStrip: number;
+  readonly radiusXs: number;
   readonly radiusSm: number;
   readonly controlSm: number;
   readonly controlMd: number;
@@ -120,6 +121,7 @@ export function readTheme(root: HTMLElement = document.documentElement): Theme {
     opacityDisabled: Number.parseFloat(v("--opacity-disabled")),
     borderThin: px("--border-thin"),
     clipStrip: px("--clip-strip"),
+    radiusXs: px("--radius-xs"),
     radiusSm: px("--radius-sm"),
     controlSm: px("--control-sm"),
     controlMd: px("--control-md"),

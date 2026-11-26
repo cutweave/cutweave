@@ -66,7 +66,12 @@ const pad2 = (n: number): string => (n < 10 ? `0${n}` : String(n));
  * `dropFrame` is set and the rate supports it). Negative times clamp to zero.
  */
 export function formatTimecode(t: number, fps: FrameRate, dropFrame = false): string {
-  let frames = Math.max(0, flicksToFrame(t, fps));
+  return formatFrameTimecode(flicksToFrame(t, fps), fps, dropFrame);
+}
+
+/** `HH:MM:SS:FF` timecode of frame index `frame` (see {@link formatTimecode}). */
+export function formatFrameTimecode(frame: number, fps: FrameRate, dropFrame = false): string {
+  let frames = Math.max(0, frame);
   const base = nominalFps(fps);
   const drop = dropFrame && isDropFrameRate(fps);
   if (drop) {

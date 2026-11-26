@@ -167,7 +167,7 @@ export function hitTest(ctx: HitContext, x: number, y: number): HitResult {
         const j = lowerBound(kfs, time);
         let best = -1;
         let bestDx = reach + 1;
-        for (const c of [j - 1, j]) {
+        for (let c = j - 1; c <= j; c++) {
           const kt = kfs[c];
           if (kt === undefined) continue;
           const dx = Math.abs(vp.headerWidth + (kt - vp.scrollX) * k - x);
