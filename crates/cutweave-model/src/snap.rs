@@ -303,6 +303,9 @@ impl SnapIndex {
     }
 }
 
+/// What a pair is ranked by: distance, kind rank, probe index, candidate time.
+type SnapKey = (i64, SnapKind, usize, i64);
+
 /// `t` on the frame grid (nearest, ties later).
 fn grid(rate: FrameRate, t: i64) -> Result<i64, SnapError> {
     Ok(rate
@@ -326,7 +329,7 @@ pub fn snap(
 ) -> Result<Snapped, SnapError> {
     let tolerance = options.tolerance()?;
     let plain = grid(index.rate, r)?;
-    let mut best: Option<((i64, SnapKind, usize, i64), SnapTarget, i64)> = None;
+    let mut best: Option<(SnapKey, SnapTarget, i64)> = None;
     if options.enabled != SnapKinds::NONE {
         // A distance is a whole number of flicks, so `d <= tolerance` is `d <= floor(tolerance)`.
         #[allow(clippy::cast_possible_truncation, clippy::cast_precision_loss)]

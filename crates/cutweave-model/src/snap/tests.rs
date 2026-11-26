@@ -2,6 +2,8 @@
 //! Snapping tests (WP-2A.07): the spec's `snap` fixtures, hand-made cases for ties, disabled
 //! kinds and zoom, and a brute-force reference over random indexes.
 
+#![allow(clippy::cast_precision_loss, clippy::unnecessary_wraps, clippy::type_complexity)]
+
 use std::{fs, path::PathBuf};
 
 use serde_json::Value;
@@ -41,7 +43,7 @@ fn fixtures() -> Vec<Value> {
     for entry in fs::read_dir(dir).unwrap() {
         let path = entry.unwrap().path();
         let name = path.file_name().unwrap().to_string_lossy().into_owned();
-        if name.starts_with("snap-") && name.ends_with(".json") {
+        if name.starts_with("snap-") && path.extension().is_some_and(|e| e == "json") {
             out.push(serde_json::from_str(&fs::read_to_string(path).unwrap()).unwrap());
         }
     }

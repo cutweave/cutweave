@@ -19,9 +19,16 @@ export const EXPORT_SIGNATURES: Readonly<Record<string, string>> = {
   cw_f64_ptr: "() -> i32",
   cw_frame_to_time: "(i64, i32, i32) -> i64",
   cw_in: "(i32) -> i32",
+  cw_in_i64: "(i32) -> i32",
   cw_out_len: "() -> i32",
   cw_out_ptr: "() -> i32",
   cw_sample_times: "(i64, i64, i32) -> i32",
+  cw_snap: "(i32, i64, i32, f64, f64, i32) -> i64",
+  cw_snap_index_free: "(i32) -> i32",
+  cw_snap_index_len: "(i32) -> i32",
+  cw_snap_index_live: "() -> i32",
+  cw_snap_index_new: "(i32, i32, i32) -> i32",
+  cw_snap_index_set_kind: "(i32, i32, i32) -> i32",
   cw_snap_to_frame: "(i64, i32, i32, i32) -> i64",
   cw_time_format: "(i64, i32) -> i32",
   cw_time_parse: "(i32, i32, i32) -> i64",
@@ -45,9 +52,16 @@ export interface RawExports {
   cw_f64_ptr(): number;
   cw_frame_to_time(a0: bigint, a1: number, a2: number): bigint;
   cw_in(a0: number): number;
+  cw_in_i64(a0: number): number;
   cw_out_len(): number;
   cw_out_ptr(): number;
   cw_sample_times(a0: bigint, a1: bigint, a2: number): number;
+  cw_snap(a0: number, a1: bigint, a2: number, a3: number, a4: number, a5: number): bigint;
+  cw_snap_index_free(a0: number): number;
+  cw_snap_index_len(a0: number): number;
+  cw_snap_index_live(): number;
+  cw_snap_index_new(a0: number, a1: number, a2: number): number;
+  cw_snap_index_set_kind(a0: number, a1: number, a2: number): number;
   cw_snap_to_frame(a0: bigint, a1: number, a2: number, a3: number): bigint;
   cw_time_format(a0: bigint, a1: number): number;
   cw_time_parse(a0: number, a1: number, a2: number): bigint;

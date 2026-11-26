@@ -13,7 +13,12 @@
 //! intended change.
 
 // Exact comparisons of floats are the point of a parity test.
-#![allow(clippy::unwrap_used, clippy::expect_used, clippy::float_cmp)]
+#![allow(
+    clippy::unwrap_used,
+    clippy::expect_used,
+    clippy::float_cmp,
+    clippy::cast_possible_truncation
+)]
 
 use std::{fs, path::PathBuf};
 
@@ -524,6 +529,183 @@ fn invalids(vectors: &Value) -> Value {
     json!(out)
 }
 
+/// Snap scenarios: each is an index (rate, candidates) and queries `(r, offsets, px, threshold,
+/// enabled)`. The spec's `snap` fixtures, then hand-made edge cases, then seeded random ones.
+const ZOOMS: [f64; 4] = [5.0, 50.0, 500.0, 5000.0];
+
+fn snap_scenarios() -> Vec<Value> {
+    let mut out = Vec::new();
+    let dir = root().join("docs/spec/fixtures");
+    let mut names: Vec<_> = fs::read_dir(dir)
+        .unwrap()
+        .map(|e| e.unwrap().file_name().to_string_lossy().into_owned())
+        .filter(|n| n.starts_with("snap-") && n.to_ascii_lowercase().ends_with(".json"))
+        .collect();
+    names.sort();
+    for name in names {
+        let fx = read_json(&format!("docs/spec/fixtures/{name}"));
+        let kinds = ["playhead", "edge", "marker", "beat", "in_out"];
+        let code = |k: &Value| kinds.iter().position(|n| Some(*n) == k.as_str()).unwrap();
+        let enabled: u64 = match fx.get("enabled") {
+            Some(list) => list.as_array().unwrap().iter().map(|k| 1 << code(k)).sum(),
+            None => 31,
+        };
+        out.push(json!({
+            "name": name,
+            "rate": [fx["fps"].as_i64().unwrap(), 1],
+            "candidates": fx["candidates"].as_array().unwrap().iter()
+                .map(|c| json!([code(&c["kind"]), c["t"].as_i64().unwrap().to_string()])).collect::<Vec<_>>(),
+            "queries": [{
+                "r": fx["r"].as_i64().unwrap().to_string(),
+                "offsets": fx["offsets"].as_array().unwrap().iter().map(|o| json!(o.as_i64().unwrap().to_string())).collect::<Vec<_>>(),
+                "px": fx["px_per_second"],
+                "threshold": fx["threshold_px"],
+                "enabled": enabled,
+            }],
+        }));
+    }
+    // Seeded: every common rate, candidates of every kind, clips and multi-item probes.
+    let mut seed = 0x2A07;
+    for (num, den) in [
+        (25_u32, 1_u32),
+        (30_000, 1001),
+        (24_000, 1001),
+        (60, 1),
+        (7, 3),
+    ] {
+        let candidates: Vec<Value> = (0..80)
+            .map(|_| {
+                json!([
+                    lcg(&mut seed) % 5,
+                    (lcg(&mut seed) % (FPS * 600)).to_string()
+                ])
+            })
+            .collect();
+        let queries: Vec<Value> = (0..40)
+            .map(|i| {
+                let probes = 1 + lcg(&mut seed) % 4;
+                let offsets: Vec<Value> = (0..probes)
+                    .map(|k| json!((k * (1 + lcg(&mut seed) % 90) * FPS / 25).to_string()))
+                    .collect();
+                json!({
+                    "r": (lcg(&mut seed) % (FPS * 620)).to_string(),
+                    "offsets": offsets,
+                    "px": ZOOMS[i % 4],
+                    "threshold": 8.0,
+                    "enabled": lcg(&mut seed) % 32,
+                })
+            })
+            .collect();
+        out.push(json!({
+            "name": format!("random-{num}-{den}"),
+            "rate": [num, den],
+            "candidates": candidates,
+            "queries": queries,
+        }));
+    }
+    out
+}
+
+/// The scenarios' answers through the exports: `[t, kind, target_t, probe]` or an error, per
+/// query; plus the error cases of the calls.
+fn snaps() -> (Value, Value) {
+    let mut out = Vec::new();
+    for sc in snap_scenarios() {
+        let rate = sc["rate"].as_array().unwrap();
+        let (num, den) = (
+            u32::try_from(rate[0].as_i64().unwrap()).unwrap(),
+            u32::try_from(rate[1].as_i64().unwrap()).unwrap(),
+        );
+        let cands = sc["candidates"].as_array().unwrap();
+        let mut bulk = Vec::new();
+        for c in cands {
+            bulk.push(c[0].as_i64().unwrap());
+            bulk.push(c[1].as_str().unwrap().parse::<i64>().unwrap());
+        }
+        m::write_bulk(&bulk);
+        let handle = m::cw_snap_index_new(num, den, u32::try_from(cands.len()).unwrap());
+        assert_ne!(handle, 0, "{}", m::output());
+        let model_rate = FrameRate::new(num, den).unwrap();
+        let direct = cutweave_model::SnapIndex::new(
+            model_rate,
+            bulk.chunks(2).map(|p| {
+                (
+                    cutweave_model::SnapKind::from_code(u32::try_from(p[0]).unwrap()).unwrap(),
+                    p[1],
+                )
+            }),
+        )
+        .unwrap();
+        let mut rows = Vec::new();
+        for q in sc["queries"].as_array().unwrap() {
+            let r: i64 = q["r"].as_str().unwrap().parse().unwrap();
+            let offsets: Vec<i64> = q["offsets"]
+                .as_array()
+                .unwrap()
+                .iter()
+                .map(|o| o.as_str().unwrap().parse().unwrap())
+                .collect();
+            let (px, threshold) = (q["px"].as_f64().unwrap(), q["threshold"].as_f64().unwrap());
+            let enabled = u32::try_from(q["enabled"].as_i64().unwrap()).unwrap();
+            m::write_bulk(&offsets);
+            let t = m::cw_snap(
+                handle,
+                r,
+                u32::try_from(offsets.len()).unwrap(),
+                px,
+                threshold,
+                enabled,
+            );
+            let numbers = m::numbers();
+            let want = direct
+                .snap(
+                    r,
+                    &offsets,
+                    &cutweave_model::SnapOptions {
+                        px_per_second: px,
+                        threshold_px: threshold,
+                        enabled: cutweave_model::SnapKinds::from_bits(enabled),
+                    },
+                )
+                .unwrap();
+            assert_eq!(t, want.t);
+            assert_eq!(
+                numbers.first().copied().unwrap() as i64,
+                want.target.map_or(-1, |c| i64::from(c.kind.code()))
+            );
+            rows.push(json!([
+                t.to_string(),
+                numbers[0],
+                numbers[1].to_string(),
+                numbers[2]
+            ]));
+        }
+        assert_eq!(m::cw_snap_index_free(handle), 1);
+        out.push(json!({ "name": sc["name"], "rate": sc["rate"], "candidates": sc["candidates"], "queries": sc["queries"], "results": rows }));
+    }
+    // Error cases: a bad zoom, a bad threshold, an unsafe time, an unknown kind, a bad rate.
+    let mut errors = Vec::new();
+    m::write_bulk(&[1, 0]);
+    let handle = m::cw_snap_index_new(25, 1, 1);
+    m::write_bulk(&[0]);
+    for (label, r, px, threshold) in [
+        ("zoom 0", 0, 0.0, 8.0),
+        ("zoom NaN", 0, f64::NAN, 8.0),
+        ("threshold -1", 0, 100.0, -1.0),
+        ("unsafe time", MAX_SAFE_FLICKS + 1, 100.0, 8.0),
+    ] {
+        let t = m::cw_snap(handle, r, 1, px, threshold, 31);
+        errors.push(json!({ "case": label, "t": int(t) }));
+    }
+    m::write_bulk(&[9, 0]);
+    errors.push(json!({ "case": "unknown kind", "handle": m::cw_snap_index_new(25, 1, 1), "message": m::output() }));
+    m::write_bulk(&[1, 0]);
+    errors.push(json!({ "case": "bad rate", "handle": m::cw_snap_index_new(0, 1, 1), "message": m::output() }));
+    assert_eq!(m::cw_snap_index_free(handle), 1);
+    assert_eq!(m::cw_snap_index_live(), 0);
+    (json!(out), json!(errors))
+}
+
 fn generate() -> Value {
     let vectors = read_json("docs/spec/keyframes-vectors.json");
     let (easing, easing_sample) = easings(&vectors);
@@ -534,6 +716,7 @@ fn generate() -> Value {
     let presets: Value = serde_json::from_str(&m::output()).unwrap();
     assert_eq!(usize::try_from(presets_len).unwrap(), m::output().len());
     let invalid = invalids(&vectors);
+    let (snap_rows, snap_errors) = snaps();
     assert_eq!(m::cw_anim_live(), 0, "every test handle was freed");
     json!({
         "comment": "Generated by crates/cutweave-wasm/tests/parity.rs from the module's exports run natively; do not edit (CUTWEAVE_BLESS=1 cargo test -p cutweave-wasm --test parity). Times and frames are decimal strings; a failed call is {\"error\": message}.",
@@ -550,6 +733,8 @@ fn generate() -> Value {
         "eval": eval,
         "eval_range": eval_range,
         "invalid": invalid,
+        "snap": snap_rows,
+        "snap_errors": snap_errors,
     })
 }
 
