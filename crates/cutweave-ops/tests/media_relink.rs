@@ -40,6 +40,10 @@ fn set_location_moves_the_asset_and_undo_puts_it_back() {
     let mut h = H::empty();
     let m = h.add_video("/old/a.mp4", 10, true);
     let hash = h.doc().media[&m].content_hash.clone();
+    // A saved project also holds the path relative to its folder.
+    let mut doc = h.doc();
+    doc.media.get_mut(&m).unwrap().path_rel = Some("../old/a.mp4".into());
+    h.replace_doc(doc);
     // `H::run` asserts the undo and redo identity of every command it runs.
     h.ok(
         "media.set_location",
@@ -47,8 +51,14 @@ fn set_location_moves_the_asset_and_undo_puts_it_back() {
     );
     assert_eq!(path_of(&h, m), "/new/a.mp4");
     assert_eq!(h.doc().media[&m].content_hash, hash, "content unchanged");
+    assert_eq!(
+        h.doc().media[&m].path_rel,
+        None,
+        "the old relative path is gone"
+    );
     let before = &h.last.as_ref().unwrap().base;
     assert_eq!(before.media[&m].path_abs.as_deref(), Some("/old/a.mp4"));
+    assert_eq!(before.media[&m].path_rel.as_deref(), Some("../old/a.mp4"));
 }
 
 #[test]

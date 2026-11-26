@@ -3908,7 +3908,8 @@ export type MediaSetDecodePolicyOutput = {
  *  Records where a media file is now. Internal plumbing of `media.relink` and
  *  `media.relink_folder`, which check the file first: this command only writes the path, and
  *  the content hash and probe results when the file's content is not what was imported. The
- *  project-relative path is recomputed when the project is saved.
+ *  project-relative path is dropped (it named the old place) and recomputed when the project is
+ *  saved.
  */
 export type MediaSetLocation = {
 	/**  The asset (a file, not a compound clip). */
