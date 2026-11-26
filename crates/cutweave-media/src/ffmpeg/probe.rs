@@ -14,7 +14,8 @@
 use std::path::Path;
 
 use cutweave_model::{
-    AudioInfo, ColorTags, Duration, Extra, FrameRate, ProbeInfo, SampleRate, StreamInfo, StreamKind,
+    AudioInfo, ColorPrimaries, ColorTags, Duration, Extra, FrameRate, MatrixCoefficients,
+    ProbeInfo, SampleRate, StreamInfo, StreamKind, TransferCharacteristics,
 };
 use ffmpeg_next::codec::packet::side_data::Type as SideDataType;
 use ffmpeg_next::format::context::Input;
@@ -64,6 +65,9 @@ pub(super) fn probe(path: &Path) -> Result<ProbeInfo, MediaError> {
             matrix: params.matrix.as_deref().map(parse_name),
             range: params.range,
         };
+        if still_image {
+            untagged_still_is_srgb(&mut info.color);
+        }
         info.rotation = rotation(&stream);
         if !still_image && !attached_pic {
             info.fps = frame_rate(&stream);
@@ -94,6 +98,19 @@ pub(super) fn probe(path: &Path) -> Result<ProbeInfo, MediaError> {
         info.rotation = orientation.rotation;
     }
     Ok(info)
+}
+
+/// Fills the tags a still image leaves unspecified with what untagged pictures are (WP-2F.05a):
+/// the sRGB transfer curve and BT.709 primaries (sRGB's), and, for Y'CbCr pictures (JPEG, lossy
+/// WebP), the BT.601 matrix whatever the picture size (JFIF). Without this a photo would be read
+/// with video's conventions (the BT.709 curve, SD primaries below 577 lines, the BT.709 matrix
+/// above) and show shifted colours. The range is left alone: decoders tag full-range JPEG, and
+/// R'G'B' is full range anyway. Tags the file does carry are kept; embedded ICC profiles are not
+/// read (no colour-management library in the tree), so a wide-gamut photo is shown as sRGB.
+fn untagged_still_is_srgb(color: &mut ColorTags) {
+    color.transfer.get_or_insert(TransferCharacteristics::Srgb);
+    color.primaries.get_or_insert(ColorPrimaries::Bt709);
+    color.matrix.get_or_insert(MatrixCoefficients::Bt470Bg);
 }
 
 /// A color name as the model's enum (unknown names are kept as `Other`, never an error).

@@ -462,3 +462,65 @@ fn a_mirrored_exif_orientation_is_applied_by_the_decoder() {
         }
     }
 }
+
+#[test]
+fn an_untagged_still_is_probed_as_srgb() {
+    use cutweave_model::{ColorPrimaries, MatrixCoefficients, TransferCharacteristics};
+    let dir = TempDir::new("stills-srgb");
+    let backend = backend();
+    let files = [
+        (
+            "u.png",
+            stills::png(W, H, 8, png_color::RGBA, &card(4, 1), &[]),
+        ),
+        ("u.jpg", card_jpeg(None)),
+        ("u.tif", stills::tiff(W, H, 3, 8, &card(3, 1), None)),
+        ("u.bmp", stills::bmp(W, H, &card(3, 1))),
+        (
+            "gray.png",
+            stills::png(2, 2, 8, png_color::GRAY, &[0, 128, 255, 64], &[]),
+        ),
+    ];
+    for (name, bytes) in files {
+        let color = backend.probe(&write(&dir, name, &bytes)).unwrap().color;
+        // Not video's defaults (the BT.709 curve; SD primaries for a picture this small).
+        assert_eq!(
+            color.transfer,
+            Some(TransferCharacteristics::Srgb),
+            "{name}"
+        );
+        assert_eq!(color.primaries, Some(ColorPrimaries::Bt709), "{name}");
+        // Y'CbCr stills are BT.601 (JFIF) at any size; the matrix is not used for R'G'B'.
+        assert!(
+            matches!(
+                color.matrix,
+                Some(MatrixCoefficients::Bt470Bg | MatrixCoefficients::Smpte170M)
+            ) || name != "u.jpg",
+            "{name}: {color:?}"
+        );
+    }
+    // A file that says what it is keeps its own tags: a PNG with a gamma of 1.0 is linear, on
+    // the frame (which wins over the probe) or on the probe itself.
+    let linear = write(
+        &dir,
+        "linear.png",
+        &stills::png(
+            W,
+            H,
+            8,
+            png_color::RGBA,
+            &card(4, 1),
+            &[(*b"gAMA", &100_000_u32.to_be_bytes())],
+        ),
+    );
+    let probed = backend.probe(&linear).unwrap().color;
+    let mut d = backend
+        .open_decoder(&linear, &DecodeOpts::default())
+        .unwrap();
+    let frame = d.seek_exact(Time::ZERO).unwrap().color;
+    assert_eq!(
+        frame.transfer.clone().or_else(|| probed.transfer.clone()),
+        Some(TransferCharacteristics::Linear),
+        "frame {frame:?}, probe {probed:?}"
+    );
+}

@@ -222,6 +222,35 @@ fn a_jpeg_with_exif_orientation_6_shows_upright() {
         assert_eq!(picture.at(40, 90), [0, 0, 0]);
         assert_eq!(picture.at(280, 90), [0, 0, 0]);
     }
+
+    // A mirrored orientation (EXIF 5, the picture transposed: rows become columns), placed
+    // after the first clip:
+    //   red   white
+    //   green dark
+    //   blue  yellow
+    let jpeg = stills::jpeg(3, 2, &cells, Some(&exif_orientation(5, false)));
+    let media = import(&conn, &[write(t.path(), "transposed.jpg", &jpeg)]);
+    call(
+        &conn,
+        "timeline.insert",
+        json!({
+            "sequence": project["sequence"], "track": project["video_track"],
+            "media": media[0], "at": 5 * SEC, "duration": "1s",
+        }),
+    )
+    .unwrap();
+    let picture = frame(&conn, 5 * SEC + SEC / 2);
+    let expected = [[RED, WHITE], [GREEN, DARK], [BLUE, YELLOW]];
+    for (row, colours) in expected.iter().enumerate() {
+        for (col, colour) in colours.iter().enumerate() {
+            let (x, y) = (130 + 60 * col as u32, 30 + 60 * row as u32);
+            let got = picture.at(x, y);
+            assert!(
+                close(got, *colour, 6),
+                "transposed: ({x}, {y}) is {got:?}, expected {colour:?}"
+            );
+        }
+    }
     drop(conn);
     engine.shutdown();
 }
