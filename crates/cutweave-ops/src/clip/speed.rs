@@ -294,17 +294,17 @@ fn snap(rate: FrameRate, t: i64, rounding: Rounding) -> i64 {
 /// `clip` (which starts at `start`) maps to `round_half_even(t × num / den)`, snapped to the
 /// frame grid in sequence time.
 fn scale_keys(clip: &mut Clip, (num, den): (u64, u64), start: i64, rate: FrameRate) {
+    fn one<T: AnimValue>(a: &mut Animatable<T>, f: &dyn Fn(Time) -> Time) {
+        if a.is_animated() {
+            *a = a.retimed(f);
+        }
+    }
     let f = |t: Time| -> Time {
         let scaled = div_half_even(i128::from(t.flicks()) * i128::from(num), i128::from(den));
         let scaled = i64::try_from(scaled).unwrap_or(if scaled < 0 { i64::MIN } else { i64::MAX });
         let abs = snap(rate, start.saturating_add(scaled), Rounding::Nearest);
         time(abs.saturating_sub(start))
     };
-    fn one<T: AnimValue>(a: &mut Animatable<T>, f: &dyn Fn(Time) -> Time) {
-        if a.is_animated() {
-            *a = a.retimed(f);
-        }
-    }
     for id in PropId::ALL {
         match clip.prop_mut(id) {
             PropMut::Scalar(a) => one(a, &f),

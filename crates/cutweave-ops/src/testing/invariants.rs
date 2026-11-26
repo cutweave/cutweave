@@ -544,7 +544,7 @@ fn sped_together(
                 return Err(format!("{name}: {id} is missing from `items`"));
             }
             if name == "clip.reset_speed" && (!c.speed.is_one() || c.reverse) {
-                return Err(format!("clip.reset_speed left {id} at {:?}", this));
+                return Err(format!("clip.reset_speed left {id} at {this:?}"));
             }
         }
     }

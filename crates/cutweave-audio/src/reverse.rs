@@ -97,7 +97,11 @@ impl PcmSource for Reversed {
 
 #[cfg(test)]
 mod tests {
-    #![allow(clippy::unwrap_used, clippy::cast_precision_loss)]
+    #![allow(
+        clippy::unwrap_used,
+        clippy::cast_precision_loss,
+        clippy::cast_possible_truncation
+    )]
 
     use cutweave_model::SampleRate;
 

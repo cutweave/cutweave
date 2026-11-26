@@ -5,7 +5,12 @@
 //! successful run also checks undo/redo identity and `Project::validate` (the harness); the
 //! random sequences with these commands run in `registry_props.rs`.
 
-#![allow(clippy::unwrap_used, clippy::expect_used, clippy::panic)]
+#![allow(
+    clippy::unwrap_used,
+    clippy::expect_used,
+    clippy::panic,
+    clippy::many_single_char_names
+)]
 
 mod common;
 
@@ -37,7 +42,7 @@ fn speed_of(h: &H, item: ItemId) -> (u32, u32, bool) {
     (c.speed.num(), c.speed.den(), c.reverse)
 }
 
-fn set_speed(h: &mut H, item: ItemId, speed: Value) -> Value {
+fn set_speed(h: &mut H, item: ItemId, speed: &Value) -> Value {
     h.ok("clip.set_speed", json!({"item": item, "speed": speed}))
 }
 
@@ -88,7 +93,7 @@ fn twice_as_fast_over_ten_seconds_is_five_seconds_exactly() {
     let (mut h, p) = H::project();
     let m = mute(&mut h, 60);
     let x = put(&mut h, p, p.video, m, 0, 3, 10);
-    let out = set_speed(&mut h, x, json!(2));
+    let out = set_speed(&mut h, x, &json!(2));
     assert_eq!(timing(&h, x), (0, 5 * S, 3 * S));
     assert_eq!(speed_of(&h, x), (2, 1, false));
     assert_eq!(out["items"][0]["duration"], json!(5 * S));
@@ -102,11 +107,11 @@ fn a_third_of_normal_speed_is_exact() {
     let (mut h, p) = H::project();
     let m = mute(&mut h, 60);
     let x = put(&mut h, p, p.video, m, 0, 0, 10);
-    set_speed(&mut h, x, json!("1/3"));
+    set_speed(&mut h, x, &json!("1/3"));
     assert_eq!(timing(&h, x), (0, 30 * S, 0));
     assert_eq!(speed_of(&h, x), (1, 3, false));
     assert_eq!(SourceMap::of(&clip_of(&h, x)).source_out(), 10 * S);
-    set_speed(&mut h, x, json!({"num": 1, "den": 1}));
+    set_speed(&mut h, x, &json!({"num": 1, "den": 1}));
     assert_eq!(timing(&h, x), (0, 10 * S, 0), "back to 10 s, to the flick");
 }
 
@@ -123,7 +128,7 @@ fn speeds_are_given_as_numbers_text_or_fractions_and_checked() {
         (json!({"num": 4, "den": 8}), (1, 2)),
         (json!("1"), (1, 1)),
     ] {
-        set_speed(&mut h, x, input.clone());
+        set_speed(&mut h, x, &input);
         let (n, d, _) = speed_of(&h, x);
         assert_eq!((n, d), want, "{input}");
     }
@@ -184,9 +189,9 @@ fn a_thousand_speed_round_trips_never_drift() {
         }
         let before = timing(&h, x);
         let (num, den) = speeds[usize::try_from(next() % 16).unwrap()];
-        set_speed(&mut h, x, json!({"num": num, "den": den}));
+        set_speed(&mut h, x, &json!({"num": num, "den": den}));
         let landed = clip_of(&h, x).duration.flicks();
-        set_speed(&mut h, x, json!(1));
+        set_speed(&mut h, x, &json!(1));
         let after = timing(&h, x);
         let len = before.1;
         let on_grid = (i128::from(len) * i128::from(den)) % (i128::from(num) * i128::from(F)) == 0;
@@ -196,9 +201,9 @@ fn a_thousand_speed_round_trips_never_drift() {
         } else {
             // Rounded once: the next trip from here returns here exactly.
             assert_eq!(after.2, before.2, "trip {trip}: source_in stays");
-            set_speed(&mut h, x, json!({"num": num, "den": den}));
+            set_speed(&mut h, x, &json!({"num": num, "den": den}));
             assert_eq!(clip_of(&h, x).duration.flicks(), landed, "trip {trip}");
-            set_speed(&mut h, x, json!(1));
+            set_speed(&mut h, x, &json!(1));
             assert_eq!(timing(&h, x), after, "trip {trip}: no drift");
         }
     }
@@ -245,7 +250,7 @@ fn keeping_the_in_point_near_the_media_end_rounds_the_length_down() {
     let x = item_id(&out["clips"][0]);
     let c = clip_of(&h, x);
     assert_eq!(SourceMap::of(&c).source_out(), 10 * S);
-    set_speed(&mut h, x, json!(2));
+    set_speed(&mut h, x, &json!(2));
     let c = clip_of(&h, x);
     assert_eq!(c.duration.flicks(), 15 * F);
     assert!(SourceMap::of(&c).source_out() <= 10 * S);
@@ -264,12 +269,12 @@ fn on_the_main_track_a_speed_change_ripples_and_stays_gapless() {
         "track.set_magnetic",
         json!({"track": p.video, "magnetic": true}),
     );
-    set_speed(&mut h, b, json!(2));
+    set_speed(&mut h, b, &json!(2));
     assert_eq!(
         lane(&h, p.video),
         vec![(a, 0, 4 * S), (b, 4 * S, 7 * S), (c, 7 * S, 9 * S)]
     );
-    set_speed(&mut h, b, json!(0.5));
+    set_speed(&mut h, b, &json!(0.5));
     assert_eq!(
         lane(&h, p.video),
         vec![(a, 0, 4 * S), (b, 4 * S, 16 * S), (c, 16 * S, 18 * S)]
@@ -296,7 +301,7 @@ fn on_a_free_track_the_next_item_blocks_unless_ripple() {
         other => panic!("{other:?}"),
     }
     // Faster: a gap opens and nothing else moves.
-    set_speed(&mut h, a, json!(2));
+    set_speed(&mut h, a, &json!(2));
     assert_eq!(lane(&h, v2), vec![(a, 0, 2 * S), (b, 4 * S, 8 * S)]);
     h.ok(
         "clip.set_speed",
@@ -310,7 +315,7 @@ fn linked_partners_take_the_same_speed_and_length() {
     let (mut h, p) = H::project();
     let m = h.add_video("/m/av.mp4", 20, true);
     let (v, a) = insert_av(&mut h, p, m, "0s");
-    let out = set_speed(&mut h, v, json!(4));
+    let out = set_speed(&mut h, v, &json!(4));
     assert_eq!(out["items"].as_array().unwrap().len(), 2);
     assert_eq!(timing(&h, v), (0, 5 * S, 0));
     assert_eq!(timing(&h, a), (0, 5 * S, 0));
@@ -365,8 +370,9 @@ fn opacity_key_times(h: &H, item: ItemId) -> Vec<i64> {
     let c = serde_json::to_value(clip_of(h, item)).unwrap();
     c["visual"]["opacity"]["keyframes"]
         .as_array()
-        .map(|a| a.iter().map(|k| k["t"].as_i64().unwrap()).collect())
-        .unwrap_or_default()
+        .map_or_else(Vec::new, |a| {
+            a.iter().map(|k| k["t"].as_i64().unwrap()).collect()
+        })
 }
 
 #[test]
@@ -379,7 +385,7 @@ fn keyframes_stay_by_default_and_scale_on_request() {
         json!({"item": x, "prop": "opacity", "keys": [
             {"t": 0, "value": 0.0}, {"t": 3 * S, "value": 1.0}, {"t": 9 * S, "value": 0.5}]}),
     );
-    set_speed(&mut h, x, json!(2));
+    set_speed(&mut h, x, &json!(2));
     assert_eq!(opacity_key_times(&h, x), vec![0, 3 * S, 9 * S], "kept");
     h.ok(
         "clip.set_speed",
@@ -457,7 +463,7 @@ fn a_reversed_clip_keeps_its_first_frame_when_its_speed_changes() {
     h.ok("clip.reverse", json!({"item": x}));
     let first = |h: &H| source_time(&clip_of(h, x), Time::ZERO).unwrap();
     let shown = first(&h);
-    set_speed(&mut h, x, json!(2));
+    set_speed(&mut h, x, &json!(2));
     assert_eq!(first(&h), shown, "in_point");
     h.ok(
         "clip.set_speed",
@@ -473,7 +479,7 @@ fn reset_speed_plays_forwards_at_normal_speed_again() {
     let (mut h, p) = H::project();
     let m = mute(&mut h, 60);
     let x = put(&mut h, p, p.video, m, 0, 6, 10);
-    set_speed(&mut h, x, json!(0.25));
+    set_speed(&mut h, x, &json!(0.25));
     h.ok("clip.reverse", json!({"item": x}));
     assert_eq!(timing(&h, x), (0, 40 * S, 6 * S));
     h.ok("clip.reset_speed", json!({"item": x}));
@@ -490,7 +496,7 @@ fn trims_and_splits_follow_the_speed() {
     let (mut h, p) = H::project();
     let m = mute(&mut h, 60);
     let x = put(&mut h, p, p.video, m, 0, 0, 10);
-    set_speed(&mut h, x, json!(2));
+    set_speed(&mut h, x, &json!(2));
     h.ok("clip.trim", json!({"item": x, "edge": "start", "delta": S}));
     assert_eq!(
         timing(&h, x),
@@ -618,7 +624,7 @@ fn a_freeze_of_a_fast_reversed_clip_holds_the_frame_on_screen() {
     let (mut h, p) = H::project();
     let m = mute(&mut h, 30);
     let x = put(&mut h, p, p.video, m, 0, 0, 20);
-    set_speed(&mut h, x, json!(2));
+    set_speed(&mut h, x, &json!(2));
     h.ok("clip.reverse", json!({"item": x}));
     let at = Time::from_flicks(3 * S).unwrap();
     let shown = source_time(&clip_of(&h, x), at).unwrap();
@@ -674,7 +680,7 @@ fn item_get_reports_the_speed() {
     let (mut h, p) = H::project();
     let m = mute(&mut h, 30);
     let x = put(&mut h, p, p.video, m, 0, 2, 4);
-    set_speed(&mut h, x, json!(0.5));
+    set_speed(&mut h, x, &json!(0.5));
     h.ok("clip.reverse", json!({"item": x}));
     let got = h
         .query("item.get", json!({"item": x, "fields": ["source"]}))

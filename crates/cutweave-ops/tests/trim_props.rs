@@ -322,9 +322,9 @@ fn random_trims_keep_every_invariant() {
     let applied = std::cell::Cell::new(0_usize);
     let sped = std::cell::Cell::new(0_usize);
     let result = runner.run(&(arb_start(), vec(any::<u64>(), 1..=10)), |(s, seeds)| {
-        let (ok, speed) = run_case(&s, &seeds);
-        applied.set(applied.get() + ok);
-        sped.set(sped.get() + speed);
+        let (trims, speeds) = run_case(&s, &seeds);
+        applied.set(applied.get() + trims);
+        sped.set(sped.get() + speeds);
         Ok(())
     });
     if let Err(e) = result {

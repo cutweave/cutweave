@@ -169,7 +169,7 @@ fn export_counters(conn: &Connection, tool: &Path, out: &Path) -> Vec<u32> {
     let job = call(
         conn,
         "job.wait",
-        json!({ "id": started["job_id"], "timeout_ms": 60_000 }),
+        json!({ "job_id": started["job_id"], "timeout_ms": 60_000 }),
     )
     .unwrap();
     assert_eq!(job["state"], "succeeded", "{job}");
@@ -214,7 +214,7 @@ fn half_speed_and_reverse_show_the_exact_source_frame_in_preview_and_export() {
         call(
             &conn,
             "job.wait",
-            json!({ "id": job, "timeout_ms": 60_000 }),
+            json!({ "job_id": job, "timeout_ms": 60_000 }),
         )
         .unwrap();
     }
