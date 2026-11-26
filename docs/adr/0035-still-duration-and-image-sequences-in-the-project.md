@@ -1,6 +1,6 @@
 # ADR-0035: Store the still duration in the project and add image sequences as a media kind
 
-- **Status:** Proposed
+- **Status:** Accepted (product owner, 2026-11-26)
 - **Date:** 2026-11-26
 - **Deciders:** Cutweave maintainers, on the review of WP-2F.05a (before the follow-ups that add the fields and commands)
 - **Supersedes:** none
@@ -40,14 +40,14 @@ WP-2F.05 ([P2 WBS](../wbs/P2-core-editor.md)) covers still images, image sequenc
 
 ## Decision
 
-**Decided by:** the maintainers' review of WP-2F.05a. Nothing below is built until this ADR is accepted. Pass criteria for the follow-up work packages:
+Accepted by the product owner on 2026-11-26, as proposed, including the schema version bump for image sequences. Cutweave has no public release yet, so no user's project is affected: the cost is ours (the no-op migration and its fixture, and the test projects and user flows that pin a schema version). Pass criteria for the follow-up work packages:
 
 - an older document opens with a 5 s still duration; a document with the field opens in an older build and keeps it in `extra`; changing the setting changes the next inserted still and no existing clip (a property test over insert, change, insert);
 - a document with an image sequence is refused by a build with the older schema version with the usual "newer version" message, and the migration golden passes;
 - a 300-frame PNG sequence imports in under 3 s (probe only), plays at 30 fps and every frame is exact (frame-number burn-in);
 - the three commands are undoable where they change the document, have parity tests (UI, MCP, CLI), and `media.import_frame`'s picture equals `render.frame` at that time (golden).
 
-If accepted, we will:
+We will:
 
 1. **Still duration.** Add `ProjectSettings.still_duration` (option 1). A still inserted without a `duration` gets it, rounded to whole frames of the sequence, at least one frame. Existing clips never change. Settings rows: `editing.still_duration` (Settings > Editing, the default for new projects) and the project's own row in File > Project settings… (WP-2H.08). The bin's "Duration…" item for image cards (context menu, ADR-0026) sets the length the *next* insert of that card uses in the session; it is UI state, not a model field.
 2. **Image sequences.** Add the kind and the field of option 1 and bump the schema version.
@@ -59,7 +59,7 @@ If accepted, we will:
 3. **`media.import_images_as_slideshow{ files[], per_image?, order?, sequence?, track?, at? }`.** Imports the pictures as stills (existing assets are reused by content hash) and places them one after the other, each `per_image` long (default: the project's `still_duration`), in `order`: `given` (default), `name` or `name_numeric`. One undo step. It builds on today's model only and needs no format change; it is listed here because it is a new command. MCP: catalog.
 4. **`media.import_frame{ source: "sequence" | { media }, at, name?, folder? }`.** Renders the frame the Preview (`sequence`) or the Source viewer (`media`) shows at `at`, at full sequence or source size, writes it as a PNG into the project's `generated/frames/` folder and registers it as an image asset in the bin. Its pixels equal `render.frame` at that time. One undo step removes the asset; the file stays until the project's generated files are cleaned. It is the Preview's "Add frame to media bin" (ADR-0026). MCP: catalog.
 
-**Fallback** (rejected or deferred): stills keep the fixed 5 s (callers pass `duration` to choose another), image sequences are not importable as one asset (a run can be turned into a video outside Cutweave), and the two convenience commands wait.
+**Fallback** (not taken; kept for the record): stills keep the fixed 5 s (callers pass `duration` to choose another), image sequences are not importable as one asset (a run can be turned into a video outside Cutweave), and the two convenience commands wait.
 
 ## Consequences
 
@@ -81,7 +81,7 @@ If accepted, we will:
 - WP-2F.05b: `still_duration` (field, insert default, settings rows, "Duration…" for image cards).
 - WP-2F.05c: image sequences (kind, field, schema bump, `media.import_sequence`, backend pattern input, gap warnings, the import prompt).
 - WP-2F.05d: `media.import_images_as_slideshow` and `media.import_frame`.
-- Not decided here: GIF and animated WebP/APNG as video, SVG, HEIC, RAW stills, and the mirrored EXIF orientations (2, 4, 5, 7), which need a flip the probe cannot express today.
+- Not decided here: GIF and animated WebP/APNG as video, SVG, HEIC and RAW stills. (The mirrored EXIF orientations 2, 4, 5 and 7 shipped in WP-2F.05a: the decoder applies the mirror, since the probe's rotation cannot express it.)
 
 ## Links
 
