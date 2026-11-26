@@ -89,11 +89,21 @@ pub struct SubsystemHost {
 /// The `engine.degraded` event: a subsystem runs in a reduced mode (arch §8, §9; WP-1I.05).
 pub const DEGRADED_EVENT: &str = "engine.degraded";
 
+/// The `media.reverse_slow` event: a clip plays a long-GOP file backwards and the file has no
+/// proxy, so reverse playback is slower until the proxy queued for it is ready (WP-2D.01b).
+pub const REVERSE_SLOW_EVENT: &str = "media.reverse_slow";
+
 /// The events subsystems emit, as `(name, summary)` (for the generated events catalog).
-pub const SUBSYSTEM_EVENTS: &[(&str, &str)] = &[(
-    DEGRADED_EVENT,
-    "A subsystem runs in a reduced mode (audio on the null clock, software rendering); payload: {subsystem, reason}",
-)];
+pub const SUBSYSTEM_EVENTS: &[(&str, &str)] = &[
+    (
+        DEGRADED_EVENT,
+        "A subsystem runs in a reduced mode (audio on the null clock, software rendering); payload: {subsystem, reason}",
+    ),
+    (
+        REVERSE_SLOW_EVENT,
+        "A clip plays a long-GOP file backwards and the file has no proxy: reverse playback is slower until the proxy queued for it is ready; payload: {media_id, reason, job_id} (job_id null when none was queued)",
+    ),
+];
 
 /// Publishes subsystem events into the engine fan-out.
 #[derive(Clone, Debug)]

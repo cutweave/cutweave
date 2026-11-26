@@ -23,6 +23,15 @@
 //!   each exported frame waits [`EXPORT_YIELD`](crate::export::EXPORT_YIELD) (WP-2G.03a).
 //! - **Policy.** [`DEFAULT_POLICY`] (`auto`) for every project until ADR-0027 stores one in
 //!   the project.
+//! - **Reversed clips** (WP-2D.01b, [`FullProxies::reversed`]). Reverse playback reads the
+//!   original back in windows of [`READBACK_BYTES`](super::frames::READBACK_BYTES); a file whose
+//!   keyframes are further apart than a window holds at its size (from the stored frame index;
+//!   H.264 and HEVC count as such until it is stored) costs a decode from the keyframe per
+//!   window. When a clip plays such a file backwards and the file has no proxy, the engine
+//!   queues one (whatever the policy; once per file per session, never again after it was
+//!   evicted or failed) and warns while it builds: a log line and `media.reverse_slow`
+//!   `{media_id, reason, job_id}`. `media.proxy_status` reports it `wanted` with that reason.
+//!   The document watcher checks after every edit; attaching a document checks its clips.
 
 use std::collections::HashMap;
 use std::path::PathBuf;
@@ -40,19 +49,42 @@ use cutweave_cache::{CacheDb, ContentHash};
 use cutweave_commands::{CmdError, DocHandle};
 use cutweave_jobs::{JobId, JobManager, JobState};
 use cutweave_media::{CancelToken, MediaBackend};
-use cutweave_model::{MediaAsset, MediaId, Project};
+use cutweave_model::{Item, MediaAsset, MediaId, Project, StreamKind, TrackKind};
 use cutweave_ops::media::proxy::{
     DEFAULT_POLICY, ImportProxy, ProxyInfo, ProxyService, ProxyStatus, proxyable, wants_proxy,
 };
 
+use super::frames::readback_frames;
 use super::media::CurrentDoc;
-use crate::subsystems::EngineLink;
+use crate::subsystems::{EngineLink, REVERSE_SLOW_EVENT, SubsystemEvents};
 
 /// How long `media.delete_proxy` waits for a cancelled generation to stop before removing the
 /// files.
 const DELETE_WAIT: StdDuration = StdDuration::from_secs(5);
 
 type Key = (ContentHash, String);
+
+/// Codecs whose streams count as long-GOP for reverse playback while their frame index is not
+/// stored yet (FFmpeg names).
+const LONG_GOP_CODECS: [&str; 2] = ["h264", "hevc"];
+
+/// The media that clips of `doc` play backwards on video tracks (freeze frames excluded).
+fn reversed_media(doc: &Project) -> Vec<MediaId> {
+    let mut media: Vec<MediaId> = doc
+        .sequences
+        .values()
+        .flat_map(|s| s.tracks.values())
+        .filter(|t| t.kind == TrackKind::Video)
+        .flat_map(|t| t.items.iter())
+        .filter_map(|item| match item {
+            Item::Clip(c) if c.reverse && c.freeze.is_none() => Some(c.media),
+            _ => None,
+        })
+        .collect();
+    media.sort_unstable();
+    media.dedup();
+    media
+}
 
 /// How long the engine must have served no preview picture before proxy jobs take frames again.
 ///
@@ -153,6 +185,13 @@ pub struct FullProxies {
     activity: Arc<Activity>,
     /// Reconcile threads not joined yet ([`FullProxies::stop`]).
     reconciles: Mutex<Vec<JoinHandle<()>>>,
+    /// Frame indexes (the reverse rule's GOP lengths).
+    db: Arc<CacheDb>,
+    /// Where `media.reverse_slow` goes.
+    events: Option<SubsystemEvents>,
+    /// What the reverse rule decided per file this session: why a proxy was asked for, or
+    /// `None` (not needed).
+    reverse: Mutex<HashMap<ContentHash, Option<String>>>,
 }
 
 impl std::fmt::Debug for FullProxies {
@@ -194,7 +233,7 @@ impl FullProxies {
         let generator = Arc::new(
             ProxyGenerator::new(
                 Arc::clone(backend),
-                db,
+                Arc::clone(&db),
                 Arc::clone(&store),
                 GenerateOptions::default(),
             )
@@ -213,7 +252,16 @@ impl FullProxies {
             jobs: Arc::default(),
             activity,
             reconciles: Mutex::default(),
+            db,
+            events: None,
+            reverse: Mutex::default(),
         }
+    }
+
+    /// The same proxies, sending `media.reverse_slow` to `events`.
+    pub(crate) fn with_events(mut self, events: SubsystemEvents) -> FullProxies {
+        self.events = Some(events);
+        self
     }
 
     /// [`reconcile`](Self::reconcile)s `doc` on its own thread (the per-project hooks call it
@@ -354,6 +402,107 @@ impl FullProxies {
         Some(handle.id())
     }
 
+    /// Why reverse playback asked for `hash`'s proxy this session, if it did.
+    fn reverse_reason_of(&self, hash: &ContentHash) -> Option<String> {
+        self.reverse
+            .lock()
+            .unwrap_or_else(PoisonError::into_inner)
+            .get(hash)
+            .cloned()
+            .flatten()
+    }
+
+    /// Why `asset` (content `hash`) needs a proxy to play backwards smoothly, if it does: its
+    /// keyframes are further apart than a read-back window holds at its size.
+    fn reverse_reason(&self, asset: &MediaAsset, hash: &ContentHash) -> Option<String> {
+        let video = asset
+            .probe
+            .streams
+            .iter()
+            .find(|s| s.kind == StreamKind::Video)?;
+        let (width, height) = (video.width?, video.height?);
+        let window = readback_frames(width, height, video.pixel_format.as_deref());
+        match self.db.get_main_frame_index(hash) {
+            Ok(Some(index)) => {
+                let (_, _, longest, _) = index.gop_stats();
+                (index.max_decode_distance() > 1 && longest > window).then(|| {
+                    format!(
+                        "played in reverse: its keyframes are up to {longest} frames apart, more \
+                         than reverse playback keeps decoded at {width}x{height} ({window} frames)"
+                    )
+                })
+            }
+            Ok(None) | Err(_) => {
+                let codec = video.codec.as_deref()?;
+                LONG_GOP_CODECS.contains(&codec).then(|| {
+                    format!("played in reverse: {codec} keeps its keyframes far apart (long GOP)")
+                })
+            }
+        }
+    }
+
+    /// Queues the proxies of the long-GOP media that clips of `doc` play backwards and that
+    /// have none (see the module docs), and warns about each: a log line and
+    /// `media.reverse_slow`. Each file is decided once per session. Never call it from the
+    /// per-project hooks (it reads the cache database and queues jobs): the document watcher
+    /// and the reconcile thread do.
+    pub(crate) fn reversed(&self, doc: &Project) {
+        let Some(profile) = self.profile else {
+            return;
+        };
+        for media in reversed_media(doc) {
+            let Some(asset) = doc.media.get(&media) else {
+                continue;
+            };
+            let Some(hash) = hash_of(asset) else { continue };
+            if !proxyable(asset)
+                || self
+                    .reverse
+                    .lock()
+                    .unwrap_or_else(PoisonError::into_inner)
+                    .contains_key(&hash)
+            {
+                continue;
+            }
+            let reason = self.reverse_reason(asset, &hash);
+            self.reverse
+                .lock()
+                .unwrap_or_else(PoisonError::into_inner)
+                .insert(hash, reason.clone());
+            let Some(reason) = reason else { continue };
+            if self.ready(asset).is_some() {
+                continue;
+            }
+            // An evicted or failed proxy is made again only on request (no thrashing).
+            let state = self.store.get(&hash, &profile.key()).ok().flatten();
+            let refused =
+                state.is_some_and(|r| matches!(r.state, ProxyState::Evicted | ProxyState::Failed));
+            let job = if refused {
+                None
+            } else {
+                self.link
+                    .jobs()
+                    .and_then(|jobs| self.queue(&jobs, asset, &[]))
+            };
+            tracing::warn!(
+                media = %media,
+                reason = %reason,
+                job = ?job,
+                "reverse playback is slower until the proxy is ready"
+            );
+            if let Some(events) = &self.events {
+                events.publish(
+                    REVERSE_SLOW_EVENT,
+                    serde_json::json!({
+                        "media_id": media,
+                        "reason": reason,
+                        "job_id": job,
+                    }),
+                );
+            }
+        }
+    }
+
     /// The status of `asset` (with `jobs` to read a generation's progress).
     fn info(&self, jobs: Option<&JobManager>, asset: &MediaAsset) -> ProxyInfo {
         let mut info = ProxyInfo::none(asset.id);
@@ -361,7 +510,8 @@ impl FullProxies {
             info.reason = Some("only video files have proxies".to_owned());
             return info;
         }
-        let reason = wants_proxy(DEFAULT_POLICY, asset);
+        let reason = wants_proxy(DEFAULT_POLICY, asset)
+            .or_else(|| hash_of(asset).and_then(|h| self.reverse_reason_of(&h)));
         info.wanted = reason.is_some();
         info.reason = reason;
         let (Some(hash), Some(profile)) = (hash_of(asset), self.profile) else {
@@ -419,6 +569,7 @@ impl FullProxies {
         if queued > 0 {
             tracing::info!(queued, "proxies queued for the open project");
         }
+        self.reversed(doc);
     }
 }
 
@@ -550,6 +701,8 @@ mod tests {
     use cutweave_media::{CancelToken, Capabilities, CodecSupport, DecodeMode, HashMode};
     use cutweave_model::{ColorTags, Duration, FrameRate, MediaKind, StreamKind, Time};
     use cutweave_render::{FrameRequest, FrameSource};
+
+    use serde_json::{Value, json};
 
     use super::*;
     use crate::full::frames::{MediaFrames, PreviewFrames};
@@ -710,6 +863,116 @@ mod tests {
         proxies.delete(&snapshot.doc, &[id]).unwrap();
         assert_eq!(size(true, t), (2560, 1440));
         drop(actor);
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    /// WP-2D.01b: the reverse rule, decided once per file per session.
+    #[test]
+    fn reversed_long_gop_media_ask_for_a_proxy_once_and_short_gops_need_none() {
+        use crate::events::EventBus;
+        use cutweave_model::{
+            Clip, ItemId, SampleRate, Sequence, SequenceFormat, SequenceId, Track, TrackId,
+        };
+
+        let dir =
+            std::env::temp_dir().join(format!("cutweave-proxy-reverse-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        std::fs::create_dir_all(&dir).unwrap();
+        let six = Duration::from_secs(6).unwrap();
+        // 1080p: the read-back holds 64 frames. `long` has 120-frame GOPs, `short` the fake's
+        // 12, `unindexed` no stored index (H.264 to the probe: long until indexed), `forward`
+        // long GOPs but played forwards.
+        let clips = [
+            ("long", 120, true, true),
+            ("short", 12, true, true),
+            ("unindexed", 120, false, true),
+            ("forward", 120, true, false),
+        ];
+        let mut backend = FakeBackend::new().with_capabilities(Capabilities::with_codecs([
+            codec("rawvideo", StreamKind::Video),
+            codec("prores", StreamKind::Video),
+        ]));
+        let mut project = Project::new("reverse rule");
+        let seq = SequenceId::from_u128(1);
+        let format = SequenceFormat::new(1920, 1080, FrameRate::FPS_30, SampleRate::HZ_48_000);
+        let mut sequence = Sequence::new(seq, "Main", format);
+        let v1 = TrackId::from_u128(11);
+        sequence.insert_track(0, Track::new(v1, TrackKind::Video, "V1"));
+        let db = Arc::new(CacheDb::open_in_memory().unwrap());
+        let mut ids = Vec::new();
+        for (i, (name, gop, indexed, reversed)) in clips.into_iter().enumerate() {
+            let path = dir.join(format!("{name}.mp4"));
+            std::fs::write(&path, name).unwrap();
+            let media = FakeMedia::video(
+                FakeVideo::lasting(1920, 1080, FrameRate::FPS_30, six).with_gop(gop),
+            );
+            let mut probe = media.probe().unwrap();
+            probe.streams[0].codec = Some("h264".into());
+            let hash = cutweave_media::content_hash(&path, HashMode::Fast).unwrap();
+            if indexed {
+                db.put_frame_index(&hash, &media.index(&path).unwrap())
+                    .unwrap();
+            }
+            backend = backend.with_media(&path, media);
+            let id = MediaId::from_u128(100 + i as u128);
+            let mut asset = MediaAsset::file(id, MediaKind::Video, path.to_string_lossy(), probe);
+            asset.content_hash = Some(hash.to_string());
+            project.media.insert(id, asset);
+            let mut clip = Clip::new(ItemId::from_u128(200 + i as u128), id, Time::ZERO, six);
+            clip.start = Time::from_secs(6 * i as i64).unwrap();
+            clip.reverse = reversed;
+            sequence.track_mut(&v1).unwrap().items.insert(clip.into());
+            ids.push(id);
+        }
+        project.sequences.insert(seq, sequence);
+        let backend: Arc<dyn MediaBackend> = Arc::new(backend);
+        let bus = EventBus::new(16);
+        let mut rx = bus.subscribe();
+        let proxies = FullProxies::new(
+            &backend,
+            db,
+            dir.join("proxies"),
+            CurrentDoc::default(),
+            EngineLink::detached(),
+        )
+        .with_events(SubsystemEvents(bus));
+
+        proxies.reversed(&project);
+        let mut warned = Vec::new();
+        while let Ok(e) = rx.try_recv() {
+            assert_eq!(e.name(), REVERSE_SLOW_EVENT);
+            warned.push(e.payload());
+        }
+        let warned_ids: Vec<&Value> = warned.iter().map(|w| &w["media_id"]).collect();
+        assert_eq!(
+            warned_ids,
+            [&json!(ids[0]), &json!(ids[2])],
+            "long and unindexed: {warned:?}"
+        );
+        assert!(
+            warned[0]["reason"]
+                .as_str()
+                .unwrap()
+                .contains("up to 120 frames apart"),
+            "{warned:?}"
+        );
+        assert!(
+            warned[1]["reason"].as_str().unwrap().contains("h264"),
+            "{warned:?}"
+        );
+        // No engine to queue on here.
+        assert_eq!(warned[0]["job_id"], Value::Null);
+        // Reported by `media.proxy_status`.
+        let status = proxies.status(&project, &ids);
+        assert!(status[0].wanted && status[2].wanted, "{status:?}");
+        assert!(!status[1].wanted && !status[3].wanted, "{status:?}");
+        assert!(
+            status[0].reason.as_deref().unwrap().contains("reverse"),
+            "{status:?}"
+        );
+        // Once per file per session.
+        proxies.reversed(&project);
+        assert!(rx.try_recv().is_err(), "warned once");
         let _ = std::fs::remove_dir_all(&dir);
     }
 }
