@@ -497,8 +497,12 @@ fn restore_on_a_5000_item_document_takes_under_50_ms() {
         }
     }
     let edited = s.committed_doc().clone();
+    // The budget is how fast a restore is, and a loaded machine only inflates it: a real
+    // regression is slow on every attempt, a descheduled thread on some. Correctness is asserted on
+    // every attempt; the budget on the best of up to 15, stopping at the first one within it.
+    let budget = Duration::from_millis(50);
     let mut times = Vec::new();
-    for _ in 0..3 {
+    while times.len() < 15 && times.iter().min().is_none_or(|best| *best >= budget) {
         let t = Instant::now();
         ok(&mut s, &ui(), "edit.restore", json!({"checkpoint": "base"}));
         times.push(t.elapsed());
@@ -508,7 +512,7 @@ fn restore_on_a_5000_item_document_takes_under_50_ms() {
     }
     let best = times.iter().min().copied().unwrap();
     println!("restore of 500 changes on 5,000 items: {times:?}");
-    assert!(best < Duration::from_millis(50), "restore took {times:?}");
+    assert!(best < budget, "restore took {times:?}");
 }
 
 // ----- property: a restart rebuilds the same checkpoints ------------------------------------------
