@@ -659,6 +659,15 @@ export type CodecInfo = {
 	encoders: string[],
 };
 
+/**  What to do when the output file exists. */
+export type Collision = 
+/**  Pick a free name (`name (1).mp4`). */
+"rename" | 
+/**  Replace the file once the export has succeeded. */
+"overwrite" | 
+/**  Refuse (the default). */
+"fail";
+
 /**  An sRGB color with straight alpha, written `#rrggbb` (opaque) or `#rrggbbaa`. */
 export type Color = string;
 
@@ -1060,14 +1069,20 @@ export type ExportEnqueue = {
 	sequence?: SequenceId | null,
 	/**  Absolute path of the output file (`.mp4`). */
 	path: string,
-	/**  Part of the sequence to export (default: all of it). */
+	/**
+	 *  Part of the sequence to export (default: all of it): {kind: "sequence" | "in_out" |
+	 *  "custom" | "markers", in, out, markers: [ids], pair_mode: "duration" | "pairs"}, as in
+	 *  export.start.
+	 */
 	range?: ExportRange | null,
 	/**  "h264-mp4-1080p" (default), a preset id or {"custom": {...}}, as in export.start. */
 	preset?: ExportPreset | null,
 	/**  Hardware encoder: "auto" (default), "off", or {"force": "h264_nvenc"}. */
 	hw?: ExportHw | null,
-	/**  Replace an existing file at `path` (default false). */
+	/**  Replace an existing file at `path` (default false); same as `collision: "overwrite"`. */
 	overwrite?: boolean | null,
+	/**  An existing file: "fail" (default), "rename" or "overwrite". */
+	collision?: Collision | null,
 };
 
 /**  Whether to use a hardware video encoder. */
@@ -1206,13 +1221,30 @@ export type ExportQueueOutput = {
 	jobs: ExportQueueJob[],
 };
 
-/**  The part of the sequence to export: `[in, out)`, both snapped to the nearest frame. */
+/**  The part of the sequence to export: `[in, out)` snapped to frames, or a set of regions. */
 export type ExportRange = {
-	/**  Start: flicks, "2.5s", "f:60" or a timecode. */
-	in: TimeInput,
-	/**  End, exclusive: at most the sequence end. */
-	out: TimeInput,
-};
+	/**  "sequence", "in_out", "custom" or "markers" (default: from the other fields). */
+	kind?: RangeKind | null,
+	/**  Marker kind: the markers to export (default: all of the sequence's markers). */
+	markers?: MarkerId[] | null,
+	/**
+	 *  Marker kind: "duration" (default; each marker's own duration) or "pairs" (each marker to
+	 *  the next).
+	 */
+	pair_mode?: PairMode | null,
+} & ({
+	/**  Custom start: flicks, "2.5s", "f:60" or a timecode. */
+	in?: TimeInput | null,
+} & {
+	/**  Custom start: flicks, "2.5s", "f:60" or a timecode. */
+	start?: TimeInput | null,
+}) & ({
+	/**  Custom end, exclusive: at most the sequence end. */
+	out?: TimeInput | null,
+} & {
+	/**  Custom end, exclusive: at most the sequence end. */
+	end?: TimeInput | null,
+});
 
 /**
  *  Takes an export off the queue: a finished one is forgotten (its file stays), a queued one is
@@ -1249,15 +1281,22 @@ export type ExportRetry = {
  *  `job.cancel` (the partial file is deleted). Exports queue and run one at a time; this one
  *  also resumes a paused queue (`export.queue` lists it). The export uses the project as it is
  *  now; later edits do not change it. Agents and headless callers may only write inside the
- *  project folder and folders the user approved. An existing file is replaced only with
- *  `overwrite: true`.
+ *  project folder and folders the user approved. `range.kind` picks the part: "sequence",
+ *  "in_out" (the sequence's in/out points), "custom" (`in`, `out`) or "markers" (one file per
+ *  marker: `path` is a folder or an .mp4 name template with {seq}, {marker_label}, {n}; the
+ *  output lists every job). `collision` says what happens to an existing file: "fail"
+ *  (default), "rename" (pick a free name) or "overwrite" (replace it when the export
+ *  succeeds). Fails with `Invalid` when the drive has too little free space.
  */
 export type ExportStart = {
 	/**  Sequence; optional when the project has one. */
 	sequence?: SequenceId | null,
 	/**  Absolute path of the output file (`.mp4`). */
 	path: string,
-	/**  Part of the sequence to export (default: all of it). */
+	/**
+	 *  Part of the sequence to export (default: all of it): {kind: "sequence" | "in_out" |
+	 *  "custom" | "markers", in, out, markers: [ids], pair_mode: "duration" | "pairs"}.
+	 */
 	range?: ExportRange | null,
 	/**
 	 *  "h264-mp4-1080p" (default), a preset id ("youtube-1080p") or {"custom": {width, height,
@@ -1266,8 +1305,10 @@ export type ExportStart = {
 	preset?: ExportPreset | null,
 	/**  Hardware encoder: "auto" (default), "off", or {"force": "h264_nvenc"}. */
 	hw?: ExportHw | null,
-	/**  Replace an existing file at `path` (default false). */
+	/**  Replace an existing file at `path` (default false); same as `collision: "overwrite"`. */
 	overwrite?: boolean | null,
+	/**  An existing file: "fail" (default), "rename" or "overwrite". */
+	collision?: Collision | null,
 };
 
 /**  Result of `export.start`: the job and what it will write. */
@@ -1296,6 +1337,29 @@ export type ExportStartOutput = {
 	rev: Rev,
 	/**  Platform-limit and fit warnings of a preset (never errors; the export runs). */
 	warnings: PresetWarning[],
+	/**
+	 *  Every export of a marker set, in time order (empty for any other range). The fields
+	 *  above describe the first of them.
+	 */
+	jobs?: ExportedFile[],
+};
+
+/**  One file of a marker-set export. */
+export type ExportedFile = {
+	/**  Its export job. */
+	job_id: JobId,
+	/**  The output file (after `rename`). */
+	path: string,
+	/**  The marker's label. */
+	label: string,
+	/**  Range start (sequence time, flicks). */
+	in: Time,
+	/**  Range end, exclusive. */
+	out: Time,
+	/**  Video frames the file will hold. */
+	frames: number,
+	/**  Length of the file. */
+	duration: Duration,
 };
 
 /**
@@ -3431,6 +3495,13 @@ export type OnConflict =
  */
 export type OverlapPolicy = "reject" | "new_track";
 
+/**  How markers become regions. */
+export type PairMode = 
+/**  Each marker's own `duration` (the default). */
+"duration" | 
+/**  Each marker to the next one. */
+"pairs";
+
 /**  Where `keyframe.paste` put a key. */
 export type PastedKey = {
 	/**  The item. */
@@ -4125,6 +4196,17 @@ export type ProxyStatus =
 "evicted" | 
 /**  The last generation failed (see `error`). */
 "failed";
+
+/**  Which part of the sequence to export. */
+export type RangeKind = 
+/**  The whole sequence. */
+"sequence" | 
+/**  Between the sequence's in and out points. */
+"in_out" | 
+/**  `in` to `out`. */
+"custom" | 
+/**  One file per marker. */
+"markers";
 
 /**  How the video encoder spends bits. */
 export type RateControlSpec = 

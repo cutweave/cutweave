@@ -5404,6 +5404,35 @@
         "additionalProperties": false,
         "description": "Adds an export of a sequence (or a range of it) to an MP4 file (H.264 + AAC) to the end of\nthe export queue and returns its job. It runs when its turn comes; while the queue is paused\nit waits (`export.start` adds and resumes). It renders the project as it is now; later edits\ndo not change it. The same params and path rules as `export.start`.",
         "properties": {
+          "collision": {
+            "anyOf": [
+              {
+                "description": "What to do when the output file exists.",
+                "oneOf": [
+                  {
+                    "const": "rename",
+                    "description": "Pick a free name (`name (1).mp4`).",
+                    "type": "string"
+                  },
+                  {
+                    "const": "overwrite",
+                    "description": "Replace the file once the export has succeeded.",
+                    "type": "string"
+                  },
+                  {
+                    "const": "fail",
+                    "description": "Refuse (the default).",
+                    "type": "string"
+                  }
+                ]
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "description": "An existing file: \"fail\" (default), \"rename\" or \"overwrite\"."
+          },
           "hw": {
             "anyOf": [
               {
@@ -5443,7 +5472,7 @@
           },
           "overwrite": {
             "default": null,
-            "description": "Replace an existing file at `path` (default false).",
+            "description": "Replace an existing file at `path` (default false); same as `collision: \"overwrite\"`.",
             "type": [
               "boolean",
               "null"
@@ -5580,41 +5609,126 @@
           "range": {
             "additionalProperties": false,
             "default": null,
-            "description": "Part of the sequence to export (default: all of it).",
+            "description": "Part of the sequence to export (default: all of it): {kind: \"sequence\" | \"in_out\" |\n\"custom\" | \"markers\", in, out, markers: [ids], pair_mode: \"duration\" | \"pairs\"}, as in\nexport.start.",
             "properties": {
               "in": {
                 "anyOf": [
                   {
-                    "maximum": 9007199254740991,
-                    "minimum": -9007199254740991,
-                    "type": "integer"
+                    "anyOf": [
+                      {
+                        "maximum": 9007199254740991,
+                        "minimum": -9007199254740991,
+                        "type": "integer"
+                      },
+                      {
+                        "pattern": "^-?[0-9]+(\\.[0-9]+)?s$|^-?[0-9]+$|^f:[0-9]+$|^[0-9]+[:;][0-9]+[:;][0-9]+[:;][0-9]+$",
+                        "type": "string"
+                      }
+                    ],
+                    "description": "A time: integer flicks (1/705600000 s), or a string: seconds (\"62.5s\"), a frame (\"f:1500\") or a timecode (\"00:01:02:03\", drop-frame \"00:01:02;03\"). Frames and timecodes use the frame rate of the target's sequence."
                   },
                   {
-                    "pattern": "^-?[0-9]+(\\.[0-9]+)?s$|^-?[0-9]+$|^f:[0-9]+$|^[0-9]+[:;][0-9]+[:;][0-9]+[:;][0-9]+$",
-                    "type": "string"
+                    "type": "null"
                   }
                 ],
-                "description": "Start: flicks, \"2.5s\", \"f:60\" or a timecode."
+                "default": null,
+                "description": "Custom start: flicks, \"2.5s\", \"f:60\" or a timecode."
+              },
+              "kind": {
+                "anyOf": [
+                  {
+                    "description": "Which part of the sequence to export.",
+                    "oneOf": [
+                      {
+                        "const": "sequence",
+                        "description": "The whole sequence.",
+                        "type": "string"
+                      },
+                      {
+                        "const": "in_out",
+                        "description": "Between the sequence's in and out points.",
+                        "type": "string"
+                      },
+                      {
+                        "const": "custom",
+                        "description": "`in` to `out`.",
+                        "type": "string"
+                      },
+                      {
+                        "const": "markers",
+                        "description": "One file per marker.",
+                        "type": "string"
+                      }
+                    ]
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "default": null,
+                "description": "\"sequence\", \"in_out\", \"custom\" or \"markers\" (default: from the other fields)."
+              },
+              "markers": {
+                "default": null,
+                "description": "Marker kind: the markers to export (default: all of the sequence's markers).",
+                "items": {
+                  "description": "A Marker id: `^mrk_[0-9a-f]{32}$`.",
+                  "pattern": "^mrk_[0-9a-f]{32}$",
+                  "type": "string"
+                },
+                "type": [
+                  "array",
+                  "null"
+                ]
               },
               "out": {
                 "anyOf": [
                   {
-                    "maximum": 9007199254740991,
-                    "minimum": -9007199254740991,
-                    "type": "integer"
+                    "anyOf": [
+                      {
+                        "maximum": 9007199254740991,
+                        "minimum": -9007199254740991,
+                        "type": "integer"
+                      },
+                      {
+                        "pattern": "^-?[0-9]+(\\.[0-9]+)?s$|^-?[0-9]+$|^f:[0-9]+$|^[0-9]+[:;][0-9]+[:;][0-9]+[:;][0-9]+$",
+                        "type": "string"
+                      }
+                    ],
+                    "description": "A time: integer flicks (1/705600000 s), or a string: seconds (\"62.5s\"), a frame (\"f:1500\") or a timecode (\"00:01:02:03\", drop-frame \"00:01:02;03\"). Frames and timecodes use the frame rate of the target's sequence."
                   },
                   {
-                    "pattern": "^-?[0-9]+(\\.[0-9]+)?s$|^-?[0-9]+$|^f:[0-9]+$|^[0-9]+[:;][0-9]+[:;][0-9]+[:;][0-9]+$",
-                    "type": "string"
+                    "type": "null"
                   }
                 ],
-                "description": "End, exclusive: at most the sequence end."
+                "default": null,
+                "description": "Custom end, exclusive: at most the sequence end."
+              },
+              "pair_mode": {
+                "anyOf": [
+                  {
+                    "description": "How markers become regions.",
+                    "oneOf": [
+                      {
+                        "const": "duration",
+                        "description": "Each marker's own `duration` (the default).",
+                        "type": "string"
+                      },
+                      {
+                        "const": "pairs",
+                        "description": "Each marker to the next one.",
+                        "type": "string"
+                      }
+                    ]
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "default": null,
+                "description": "Marker kind: \"duration\" (default; each marker's own duration) or \"pairs\" (each marker to\nthe next)."
               }
             },
-            "required": [
-              "in",
-              "out"
-            ],
             "type": [
               "object",
               "null"
@@ -5697,6 +5811,63 @@
             "description": "The export job: follow it with `job.wait` or `job.status`, stop it with `job.cancel`.",
             "pattern": "^job_[0-9a-f]{32}$",
             "type": "string"
+          },
+          "jobs": {
+            "description": "Every export of a marker set, in time order (empty for any other range). The fields\nabove describe the first of them.",
+            "items": {
+              "additionalProperties": false,
+              "description": "One file of a marker-set export.",
+              "properties": {
+                "duration": {
+                  "description": "Length of the file.",
+                  "maximum": 9007199254740991,
+                  "minimum": 0,
+                  "type": "integer"
+                },
+                "frames": {
+                  "description": "Video frames the file will hold.",
+                  "format": "uint32",
+                  "minimum": 0,
+                  "type": "integer"
+                },
+                "in": {
+                  "description": "Range start (sequence time, flicks).",
+                  "maximum": 9007199254740991,
+                  "minimum": -9007199254740991,
+                  "type": "integer"
+                },
+                "job_id": {
+                  "description": "Its export job.",
+                  "pattern": "^job_[0-9a-f]{32}$",
+                  "type": "string"
+                },
+                "label": {
+                  "description": "The marker's label.",
+                  "type": "string"
+                },
+                "out": {
+                  "description": "Range end, exclusive.",
+                  "maximum": 9007199254740991,
+                  "minimum": -9007199254740991,
+                  "type": "integer"
+                },
+                "path": {
+                  "description": "The output file (after `rename`).",
+                  "type": "string"
+                }
+              },
+              "required": [
+                "job_id",
+                "path",
+                "label",
+                "in",
+                "out",
+                "frames",
+                "duration"
+              ],
+              "type": "object"
+            },
+            "type": "array"
           },
           "out": {
             "description": "Exported range end, exclusive.",
@@ -7674,36 +7845,121 @@
               "in": {
                 "anyOf": [
                   {
-                    "maximum": 9007199254740991,
-                    "minimum": -9007199254740991,
-                    "type": "integer"
+                    "anyOf": [
+                      {
+                        "maximum": 9007199254740991,
+                        "minimum": -9007199254740991,
+                        "type": "integer"
+                      },
+                      {
+                        "pattern": "^-?[0-9]+(\\.[0-9]+)?s$|^-?[0-9]+$|^f:[0-9]+$|^[0-9]+[:;][0-9]+[:;][0-9]+[:;][0-9]+$",
+                        "type": "string"
+                      }
+                    ],
+                    "description": "A time: integer flicks (1/705600000 s), or a string: seconds (\"62.5s\"), a frame (\"f:1500\") or a timecode (\"00:01:02:03\", drop-frame \"00:01:02;03\"). Frames and timecodes use the frame rate of the target's sequence."
                   },
                   {
-                    "pattern": "^-?[0-9]+(\\.[0-9]+)?s$|^-?[0-9]+$|^f:[0-9]+$|^[0-9]+[:;][0-9]+[:;][0-9]+[:;][0-9]+$",
-                    "type": "string"
+                    "type": "null"
                   }
                 ],
-                "description": "Start: flicks, \"2.5s\", \"f:60\" or a timecode."
+                "default": null,
+                "description": "Custom start: flicks, \"2.5s\", \"f:60\" or a timecode."
+              },
+              "kind": {
+                "anyOf": [
+                  {
+                    "description": "Which part of the sequence to export.",
+                    "oneOf": [
+                      {
+                        "const": "sequence",
+                        "description": "The whole sequence.",
+                        "type": "string"
+                      },
+                      {
+                        "const": "in_out",
+                        "description": "Between the sequence's in and out points.",
+                        "type": "string"
+                      },
+                      {
+                        "const": "custom",
+                        "description": "`in` to `out`.",
+                        "type": "string"
+                      },
+                      {
+                        "const": "markers",
+                        "description": "One file per marker.",
+                        "type": "string"
+                      }
+                    ]
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "default": null,
+                "description": "\"sequence\", \"in_out\", \"custom\" or \"markers\" (default: from the other fields)."
+              },
+              "markers": {
+                "default": null,
+                "description": "Marker kind: the markers to export (default: all of the sequence's markers).",
+                "items": {
+                  "description": "A Marker id: `^mrk_[0-9a-f]{32}$`.",
+                  "pattern": "^mrk_[0-9a-f]{32}$",
+                  "type": "string"
+                },
+                "type": [
+                  "array",
+                  "null"
+                ]
               },
               "out": {
                 "anyOf": [
                   {
-                    "maximum": 9007199254740991,
-                    "minimum": -9007199254740991,
-                    "type": "integer"
+                    "anyOf": [
+                      {
+                        "maximum": 9007199254740991,
+                        "minimum": -9007199254740991,
+                        "type": "integer"
+                      },
+                      {
+                        "pattern": "^-?[0-9]+(\\.[0-9]+)?s$|^-?[0-9]+$|^f:[0-9]+$|^[0-9]+[:;][0-9]+[:;][0-9]+[:;][0-9]+$",
+                        "type": "string"
+                      }
+                    ],
+                    "description": "A time: integer flicks (1/705600000 s), or a string: seconds (\"62.5s\"), a frame (\"f:1500\") or a timecode (\"00:01:02:03\", drop-frame \"00:01:02;03\"). Frames and timecodes use the frame rate of the target's sequence."
                   },
                   {
-                    "pattern": "^-?[0-9]+(\\.[0-9]+)?s$|^-?[0-9]+$|^f:[0-9]+$|^[0-9]+[:;][0-9]+[:;][0-9]+[:;][0-9]+$",
-                    "type": "string"
+                    "type": "null"
                   }
                 ],
-                "description": "End, exclusive: at most the sequence end."
+                "default": null,
+                "description": "Custom end, exclusive: at most the sequence end."
+              },
+              "pair_mode": {
+                "anyOf": [
+                  {
+                    "description": "How markers become regions.",
+                    "oneOf": [
+                      {
+                        "const": "duration",
+                        "description": "Each marker's own `duration` (the default).",
+                        "type": "string"
+                      },
+                      {
+                        "const": "pairs",
+                        "description": "Each marker to the next one.",
+                        "type": "string"
+                      }
+                    ]
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "default": null,
+                "description": "Marker kind: \"duration\" (default; each marker's own duration) or \"pairs\" (each marker to\nthe next)."
               }
             },
-            "required": [
-              "in",
-              "out"
-            ],
             "type": [
               "object",
               "null"
@@ -8728,8 +8984,37 @@
       },
       "input_schema": {
         "additionalProperties": false,
-        "description": "Exports a sequence (or a range of it) to an MP4 file (H.264 video, AAC audio) as a\nbackground job and returns the job id at once; wait with `job.wait`, stop with\n`job.cancel` (the partial file is deleted). Exports queue and run one at a time; this one\nalso resumes a paused queue (`export.queue` lists it). The export uses the project as it is\nnow; later edits do not change it. Agents and headless callers may only write inside the\nproject folder and folders the user approved. An existing file is replaced only with\n`overwrite: true`.",
+        "description": "Exports a sequence (or a range of it) to an MP4 file (H.264 video, AAC audio) as a\nbackground job and returns the job id at once; wait with `job.wait`, stop with\n`job.cancel` (the partial file is deleted). Exports queue and run one at a time; this one\nalso resumes a paused queue (`export.queue` lists it). The export uses the project as it is\nnow; later edits do not change it. Agents and headless callers may only write inside the\nproject folder and folders the user approved. `range.kind` picks the part: \"sequence\",\n\"in_out\" (the sequence's in/out points), \"custom\" (`in`, `out`) or \"markers\" (one file per\nmarker: `path` is a folder or an .mp4 name template with {seq}, {marker_label}, {n}; the\noutput lists every job). `collision` says what happens to an existing file: \"fail\"\n(default), \"rename\" (pick a free name) or \"overwrite\" (replace it when the export\nsucceeds). Fails with `Invalid` when the drive has too little free space.",
         "properties": {
+          "collision": {
+            "anyOf": [
+              {
+                "description": "What to do when the output file exists.",
+                "oneOf": [
+                  {
+                    "const": "rename",
+                    "description": "Pick a free name (`name (1).mp4`).",
+                    "type": "string"
+                  },
+                  {
+                    "const": "overwrite",
+                    "description": "Replace the file once the export has succeeded.",
+                    "type": "string"
+                  },
+                  {
+                    "const": "fail",
+                    "description": "Refuse (the default).",
+                    "type": "string"
+                  }
+                ]
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "description": "An existing file: \"fail\" (default), \"rename\" or \"overwrite\"."
+          },
           "hw": {
             "anyOf": [
               {
@@ -8769,7 +9054,7 @@
           },
           "overwrite": {
             "default": null,
-            "description": "Replace an existing file at `path` (default false).",
+            "description": "Replace an existing file at `path` (default false); same as `collision: \"overwrite\"`.",
             "type": [
               "boolean",
               "null"
@@ -8906,41 +9191,126 @@
           "range": {
             "additionalProperties": false,
             "default": null,
-            "description": "Part of the sequence to export (default: all of it).",
+            "description": "Part of the sequence to export (default: all of it): {kind: \"sequence\" | \"in_out\" |\n\"custom\" | \"markers\", in, out, markers: [ids], pair_mode: \"duration\" | \"pairs\"}.",
             "properties": {
               "in": {
                 "anyOf": [
                   {
-                    "maximum": 9007199254740991,
-                    "minimum": -9007199254740991,
-                    "type": "integer"
+                    "anyOf": [
+                      {
+                        "maximum": 9007199254740991,
+                        "minimum": -9007199254740991,
+                        "type": "integer"
+                      },
+                      {
+                        "pattern": "^-?[0-9]+(\\.[0-9]+)?s$|^-?[0-9]+$|^f:[0-9]+$|^[0-9]+[:;][0-9]+[:;][0-9]+[:;][0-9]+$",
+                        "type": "string"
+                      }
+                    ],
+                    "description": "A time: integer flicks (1/705600000 s), or a string: seconds (\"62.5s\"), a frame (\"f:1500\") or a timecode (\"00:01:02:03\", drop-frame \"00:01:02;03\"). Frames and timecodes use the frame rate of the target's sequence."
                   },
                   {
-                    "pattern": "^-?[0-9]+(\\.[0-9]+)?s$|^-?[0-9]+$|^f:[0-9]+$|^[0-9]+[:;][0-9]+[:;][0-9]+[:;][0-9]+$",
-                    "type": "string"
+                    "type": "null"
                   }
                 ],
-                "description": "Start: flicks, \"2.5s\", \"f:60\" or a timecode."
+                "default": null,
+                "description": "Custom start: flicks, \"2.5s\", \"f:60\" or a timecode."
+              },
+              "kind": {
+                "anyOf": [
+                  {
+                    "description": "Which part of the sequence to export.",
+                    "oneOf": [
+                      {
+                        "const": "sequence",
+                        "description": "The whole sequence.",
+                        "type": "string"
+                      },
+                      {
+                        "const": "in_out",
+                        "description": "Between the sequence's in and out points.",
+                        "type": "string"
+                      },
+                      {
+                        "const": "custom",
+                        "description": "`in` to `out`.",
+                        "type": "string"
+                      },
+                      {
+                        "const": "markers",
+                        "description": "One file per marker.",
+                        "type": "string"
+                      }
+                    ]
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "default": null,
+                "description": "\"sequence\", \"in_out\", \"custom\" or \"markers\" (default: from the other fields)."
+              },
+              "markers": {
+                "default": null,
+                "description": "Marker kind: the markers to export (default: all of the sequence's markers).",
+                "items": {
+                  "description": "A Marker id: `^mrk_[0-9a-f]{32}$`.",
+                  "pattern": "^mrk_[0-9a-f]{32}$",
+                  "type": "string"
+                },
+                "type": [
+                  "array",
+                  "null"
+                ]
               },
               "out": {
                 "anyOf": [
                   {
-                    "maximum": 9007199254740991,
-                    "minimum": -9007199254740991,
-                    "type": "integer"
+                    "anyOf": [
+                      {
+                        "maximum": 9007199254740991,
+                        "minimum": -9007199254740991,
+                        "type": "integer"
+                      },
+                      {
+                        "pattern": "^-?[0-9]+(\\.[0-9]+)?s$|^-?[0-9]+$|^f:[0-9]+$|^[0-9]+[:;][0-9]+[:;][0-9]+[:;][0-9]+$",
+                        "type": "string"
+                      }
+                    ],
+                    "description": "A time: integer flicks (1/705600000 s), or a string: seconds (\"62.5s\"), a frame (\"f:1500\") or a timecode (\"00:01:02:03\", drop-frame \"00:01:02;03\"). Frames and timecodes use the frame rate of the target's sequence."
                   },
                   {
-                    "pattern": "^-?[0-9]+(\\.[0-9]+)?s$|^-?[0-9]+$|^f:[0-9]+$|^[0-9]+[:;][0-9]+[:;][0-9]+[:;][0-9]+$",
-                    "type": "string"
+                    "type": "null"
                   }
                 ],
-                "description": "End, exclusive: at most the sequence end."
+                "default": null,
+                "description": "Custom end, exclusive: at most the sequence end."
+              },
+              "pair_mode": {
+                "anyOf": [
+                  {
+                    "description": "How markers become regions.",
+                    "oneOf": [
+                      {
+                        "const": "duration",
+                        "description": "Each marker's own `duration` (the default).",
+                        "type": "string"
+                      },
+                      {
+                        "const": "pairs",
+                        "description": "Each marker to the next one.",
+                        "type": "string"
+                      }
+                    ]
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "default": null,
+                "description": "Marker kind: \"duration\" (default; each marker's own duration) or \"pairs\" (each marker to\nthe next)."
               }
             },
-            "required": [
-              "in",
-              "out"
-            ],
             "type": [
               "object",
               "null"
@@ -9023,6 +9393,63 @@
             "description": "The export job: follow it with `job.wait` or `job.status`, stop it with `job.cancel`.",
             "pattern": "^job_[0-9a-f]{32}$",
             "type": "string"
+          },
+          "jobs": {
+            "description": "Every export of a marker set, in time order (empty for any other range). The fields\nabove describe the first of them.",
+            "items": {
+              "additionalProperties": false,
+              "description": "One file of a marker-set export.",
+              "properties": {
+                "duration": {
+                  "description": "Length of the file.",
+                  "maximum": 9007199254740991,
+                  "minimum": 0,
+                  "type": "integer"
+                },
+                "frames": {
+                  "description": "Video frames the file will hold.",
+                  "format": "uint32",
+                  "minimum": 0,
+                  "type": "integer"
+                },
+                "in": {
+                  "description": "Range start (sequence time, flicks).",
+                  "maximum": 9007199254740991,
+                  "minimum": -9007199254740991,
+                  "type": "integer"
+                },
+                "job_id": {
+                  "description": "Its export job.",
+                  "pattern": "^job_[0-9a-f]{32}$",
+                  "type": "string"
+                },
+                "label": {
+                  "description": "The marker's label.",
+                  "type": "string"
+                },
+                "out": {
+                  "description": "Range end, exclusive.",
+                  "maximum": 9007199254740991,
+                  "minimum": -9007199254740991,
+                  "type": "integer"
+                },
+                "path": {
+                  "description": "The output file (after `rename`).",
+                  "type": "string"
+                }
+              },
+              "required": [
+                "job_id",
+                "path",
+                "label",
+                "in",
+                "out",
+                "frames",
+                "duration"
+              ],
+              "type": "object"
+            },
+            "type": "array"
           },
           "out": {
             "description": "Exported range end, exclusive.",
