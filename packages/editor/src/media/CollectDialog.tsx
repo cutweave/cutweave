@@ -50,7 +50,6 @@ export function CollectDialog() {
   const phase = phaseOf(state.jobId, job);
 
   // Ask for the estimate whenever the form names a folder (again when it changes).
-  // biome-ignore lint/correctness/useExhaustiveDependencies: the form's values are the trigger
   useEffect(() => {
     if (state.open && phase === "form" && dest !== null) void estimateCollect(deps);
   }, [state.open, phase, dest, state.trimUnused]);
