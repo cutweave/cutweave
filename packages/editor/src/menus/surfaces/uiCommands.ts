@@ -31,7 +31,7 @@ import { runWorkspaceCommand } from "../../workspace/commands.ts";
 import { floatPanel, movePanel, toggleMaximizePanel } from "../../workspace/dockHost.ts";
 import type { UiCommand } from "../commands.ts";
 import { menuDialogStore } from "../dialogs.ts";
-import { clipFact, trackFact } from "./facts.ts";
+import { clipFact, clipFacts, trackFact } from "./facts.ts";
 
 const tr = () => translator(i18n.t.bind(i18n));
 
@@ -355,6 +355,23 @@ export const UI_COMMANDS: readonly UiCommand[] = [
         kind: "rename-clip",
         item,
         name: fact.clip.name ?? "",
+      });
+    },
+  },
+  {
+    // Speed ▸ Custom… (WP-2D.01): asks for a speed, then sends one `clip.set_speed`.
+    id: "timeline.custom_speed",
+    label: "contextMenu.item.speedCustom",
+    hidden: true,
+    run: (_args, ctx) => {
+      const facts = clipFacts(ctx.ids);
+      if (facts.length === 0) return;
+      const speeds = new Set(facts.map((f) => (f.clip.speed?.num ?? 1) / (f.clip.speed?.den ?? 1)));
+      const shared = speeds.size === 1 ? [...speeds][0] : undefined;
+      menuDialogStore.getState().open({
+        kind: "custom-speed",
+        items: facts.map((f) => f.clip.id),
+        speed: shared === undefined ? "" : String(Number(shared.toFixed(3))),
       });
     },
   },

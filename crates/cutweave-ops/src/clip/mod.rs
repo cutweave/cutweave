@@ -1,7 +1,8 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
-//! The `clip` namespace (WP-1B.06, WP-2A.03, WP-2A.04; arch §5.1; timeline spec §4.7,
-//! §4.9–§4.13): the media-clip specifics `clip.split` and the trim family in [`trim`]
-//! (`clip.trim`, `clip.ripple_trim`, `clip.roll`, `clip.slip`, `clip.slide`). The edit semantics
+//! The `clip` namespace (WP-1B.06, WP-2A.03, WP-2A.04, WP-2D.01; arch §5.1; timeline spec §4.7,
+//! §4.9–§4.13, INV-47): the media-clip specifics `clip.split`, the trim family in [`trim`]
+//! (`clip.trim`, `clip.ripple_trim`, `clip.roll`, `clip.slip`, `clip.slide`) and speed in
+//! [`speed`] (`clip.set_speed`, `clip.reverse`, `clip.reset_speed`, `clip.freeze_frame`). The edit semantics
 //! (frame grid, overlaps, locks, linked groups, the magnetic track) are documented once in
 //! [`crate::item`].
 //!
@@ -12,6 +13,7 @@
 //! ripples. IDs (INV-23): per given clip, in order, the right halves' group (when linked), then
 //! the right halves in member order (the clip, then its partners by track ID and item ID).
 
+pub mod speed;
 pub mod trim;
 
 use std::collections::BTreeSet;
@@ -22,6 +24,10 @@ use cutweave_model::{
     TrackKind,
 };
 
+pub use speed::{
+    ClipFreezeFrame, ClipFreezeFrameOutput, ClipResetSpeed, ClipReverse, ClipSetSpeed,
+    ClipSpeedOutput, KeyframeTiming, SpeedClip, SpeedInput, SpeedKeep,
+};
 pub use trim::{
     ClipRippleTrim, ClipRoll, ClipSlide, ClipSlip, ClipSpan, ClipTrim, ClipTrimOutput, Speed,
     TrimEdge, TrimOutput, TrimmedClip,
@@ -45,7 +51,11 @@ pub fn register(registry: &mut Registry) -> Result<(), RegistryError> {
         .register::<ClipRippleTrim>()?
         .register::<ClipRoll>()?
         .register::<ClipSlip>()?
-        .register::<ClipSlide>()?;
+        .register::<ClipSlide>()?
+        .register::<ClipSetSpeed>()?
+        .register::<ClipReverse>()?
+        .register::<ClipResetSpeed>()?
+        .register::<ClipFreezeFrame>()?;
     Ok(())
 }
 

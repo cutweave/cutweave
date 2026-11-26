@@ -25,6 +25,8 @@ export const CONTEXT_KEYS = [
   "item.linked",
   "item.hasAudio",
   "item.enabled",
+  /** Every target clip plays moving pictures: video, not a still or a freeze frame (WP-2D.01). */
+  "item.movingPicture",
   "track.locked",
   "playhead.inItem",
   "clipboard.hasItems",

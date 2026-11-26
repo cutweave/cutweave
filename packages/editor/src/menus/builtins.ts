@@ -20,6 +20,9 @@ export const COMMAND_INFO: readonly CommandInfo[] = [
   { name: "item.unlink", label: "contextMenu.command.itemUnlink", icon: "unlink", undoable: true },
   { name: "item.attach", label: "contextMenu.command.itemAttach", undoable: true },
   { name: "item.detach", label: "contextMenu.command.itemDetach", undoable: true },
+  { name: "clip.set_speed", label: "contextMenu.command.clipSetSpeed", undoable: true },
+  { name: "clip.reverse", label: "contextMenu.command.clipReverse", undoable: true },
+  { name: "clip.freeze_frame", label: "contextMenu.command.clipFreezeFrame", undoable: true },
   {
     name: "item.delete",
     label: "contextMenu.command.itemDelete",

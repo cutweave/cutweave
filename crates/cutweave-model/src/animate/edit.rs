@@ -22,6 +22,16 @@ impl<T: AnimValue> Animatable<T> {
         }
     }
 
+    /// Every key moved to `f(t)` (`scale_times`, keyframes §8.1); `f` must not decrease and
+    /// the later of two keys landing on one time wins. Static values are unchanged.
+    #[must_use]
+    pub fn retimed(&self, f: impl Fn(Time) -> Time) -> Animatable<T> {
+        match self {
+            Animatable::Keyframes(k) => Animatable::Keyframes(k.retimed(f)),
+            Animatable::Static(_) => self.clone(),
+        }
+    }
+
     /// `window(K, a, b)` (§8): the keys needed to evaluate `[a, b)` exactly.
     #[must_use]
     pub fn window(&self, a: Time, b: Time) -> Animatable<T> {
@@ -291,6 +301,20 @@ mod tests {
     }
 
     const ANY: ValueRange = ValueRange::ANY;
+
+    #[test]
+    fn retimed_keys_scale_and_the_later_of_two_on_one_time_wins() {
+        let a = anim(&[0, 10, 11, 30]);
+        let halved = a.retimed(|k| t(k.flicks() / 2 / 5 * 5));
+        assert_eq!(times(&halved), vec![0, 5, 15]);
+        assert_eq!(
+            halved.eval(t(5)).to_bits(),
+            11.0_f64.to_bits(),
+            "the later key won"
+        );
+        let stat = Animatable::from(1.0);
+        assert_eq!(stat.retimed(|k| t(k.flicks() * 2)), stat);
+    }
 
     #[test]
     fn moved_keys_may_land_where_another_moved_key_was() {

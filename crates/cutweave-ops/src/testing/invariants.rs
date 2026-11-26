@@ -24,13 +24,19 @@
 //! delta without changing what it shows, and keeps the outer edges of its touching neighbours
 //! (INV-241).
 //!
+//! Speed (WP-2D.01): after `clip.set_speed`, `clip.reverse` or `clip.reset_speed` every requested
+//! clip and its partners share one speed, direction and length (normal speed forwards after a
+//! reset), and a single clip keeps its start; after `clip.freeze_frame` the still
+//! starts at `at`, lasts `duration`, shows the frame the clip showed at `at`, is unlinked and has
+//! no keys.
+//!
 //! Groups need not be time-aligned: documents may link items that never were (and an undo of
 //! an unlink can re-link an item whose partner changed since), so only the edit rules are
 //! checked.
 
 use std::collections::BTreeMap;
 
-use cutweave_model::{GroupId, Item, ItemId, Project, TrackId};
+use cutweave_model::{GroupId, Item, ItemId, Project, PropId, PropRef, Time, TrackId};
 use serde_json::Value;
 
 use crate::report::EditReport;
@@ -99,6 +105,10 @@ pub fn check_linked_edit(
         "item.link" => linked(params, output, before, after),
         "item.unlink" => unlinked_only(params, before, after),
         "item.attach" | "item.detach" => attached(name, params, before, after),
+        "clip.set_speed" | "clip.reverse" | "clip.reset_speed" => {
+            sped_together(name, params, output, before, after)
+        }
+        "clip.freeze_frame" => frozen(params, output, before, after),
         _ => Ok(()),
     }
 }
@@ -621,6 +631,85 @@ fn given(params: &Value) -> Result<Vec<ItemId>, String> {
     let mut seen = std::collections::BTreeSet::new();
     out.retain(|id| seen.insert(*id));
     Ok(out)
+}
+
+/// WP-2D.01: each requested clip and its partners keep their start and share one speed,
+/// direction and length; `clip.set_speed` gives the speed `output` reports for all of them, and
+/// `clip.reset_speed` normal speed forwards.
+fn sped_together(
+    name: &str,
+    params: &Value,
+    output: &Value,
+    before: &Project,
+    after: &Project,
+) -> Result<(), String> {
+    let targets = given(params)?;
+    // Several clips: an earlier one's ripple may move a later one.
+    let single = targets.len() == 1;
+    for target in targets {
+        let (_, was) = found(before, target, "before the speed change")?;
+        let mut group = vec![target];
+        group.extend(partners(before, &was));
+        let mut shared = None;
+        for id in group {
+            let (_, was) = found(before, id, "before the speed change")?;
+            let (_, now) = found(after, id, "after the speed change")?;
+            let c = now
+                .as_clip()
+                .ok_or_else(|| format!("{name}: {id} is not a clip"))?;
+            if single && now.start() != was.start() {
+                return Err(format!("{name} moved the start of {id}"));
+            }
+            let this = (c.speed, c.reverse, c.duration);
+            if *shared.get_or_insert(this) != this {
+                return Err(format!("{name}: {id} differs from its partners: {this:?}"));
+            }
+            let listed = output["items"]
+                .as_array()
+                .is_some_and(|l| l.iter().any(|i| i["item"] == Value::String(id.to_string())));
+            if !listed {
+                return Err(format!("{name}: {id} is missing from `items`"));
+            }
+            if name == "clip.reset_speed" && (!c.speed.is_one() || c.reverse) {
+                return Err(format!("clip.reset_speed left {id} at {this:?}"));
+            }
+        }
+    }
+    Ok(())
+}
+
+/// WP-2D.01: the still of `clip.freeze_frame`.
+fn frozen(params: &Value, output: &Value, before: &Project, after: &Project) -> Result<(), String> {
+    let target = id_at(&params["item"])?;
+    let (_, was) = found(before, target, "before the freeze")?;
+    let clip = was
+        .as_clip()
+        .ok_or_else(|| format!("clip.freeze_frame: {target} is not a clip"))?;
+    let freeze = id_at(&output["freeze"])?;
+    let (_, still) = found(after, freeze, "after the freeze")?;
+    let at = output["at"].as_i64().ok_or("no `at`")?;
+    let shown =
+        cutweave_model::source_time(clip, Time::from_flicks(at).map_err(|e| e.to_string())?)
+            .ok_or_else(|| format!("clip.freeze_frame: {target} shows nothing at {at}"))?;
+    let c = still.as_clip().ok_or("the still is not a clip")?;
+    if c.start.flicks() != at
+        || Some(c.duration.flicks()) != output["duration"].as_i64()
+        || c.freeze.map(|f| f.at_source) != Some(shown)
+        || c.linked_group.is_some()
+    {
+        return Err(format!("clip.freeze_frame: the still {freeze} is {c:?}"));
+    }
+    for id in PropId::ALL {
+        let keyed = match c.prop(id) {
+            PropRef::Scalar(a) => a.is_animated(),
+            PropRef::Vec2(a) => a.is_animated(),
+            PropRef::Bool(a) => a.is_animated(),
+        };
+        if keyed {
+            return Err(format!("clip.freeze_frame: the still keeps keys of {id:?}"));
+        }
+    }
+    Ok(())
 }
 
 /// Whether `doc` has a magnetic track (ripples may move partners of unlinked items there).

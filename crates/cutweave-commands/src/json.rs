@@ -221,13 +221,19 @@ fn edit_array(
 /// diffed key by key (removals, then changes, then additions, each in key order); arrays and
 /// scalars that differ are replaced whole. So is an animatable that becomes keyed (an object with
 /// a `keyframes` member) or stops being keyed: the static `{x, y}` of a vector and its keyed form
-/// share no member, and their halfway states are not valid values (keyframes §9.1).
+/// share no member, and their halfway states are not valid values (keyframes §9.1). So is a
+/// fraction `{num, den}` (a frame rate, a clip speed): it is kept in lowest terms, so a halfway
+/// `{2, 2}` would read back as `{1, 1}`.
 pub(crate) fn diff(path: &DocPath, before: &Value, after: &Value, out: &mut Vec<PatchOp>) {
     if json_eq(before, after) {
         return;
     }
+    let fraction = |v: &serde_json::Map<String, Value>| {
+        v.len() == 2 && v.contains_key("num") && v.contains_key("den")
+    };
     if let (Value::Object(b), Value::Object(a)) = (before, after)
         && b.contains_key("keyframes") == a.contains_key("keyframes")
+        && !(fraction(b) && fraction(a))
     {
         for (key, old) in b {
             if !a.contains_key(key) {
@@ -265,6 +271,19 @@ mod tests {
 
     use super::*;
     use crate::patch::{Patch, apply_patch_json, invert};
+
+    #[test]
+    fn a_fraction_is_replaced_whole() {
+        let mut out = Vec::new();
+        let before = json!({"speed": {"num": 2, "den": 1}, "x": 1});
+        let after = json!({"speed": {"num": 1, "den": 2}, "x": 1});
+        diff(&DocPath::root(), &before, &after, &mut out);
+        assert_eq!(out.len(), 1);
+        assert!(
+            matches!(&out[0], PatchOp::Replace { path, .. } if path.to_string() == "/speed"),
+            "{out:?}"
+        );
+    }
 
     #[test]
     fn numbers_compare_by_value() {

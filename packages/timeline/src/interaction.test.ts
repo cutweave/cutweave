@@ -677,6 +677,26 @@ describe("trimming", () => {
     expect(endLimits.max).toBeLessThanOrEqual(B.start - FRAME / 3 + sec(4));
   });
 
+  it("bounds the edges of a sped or reversed clip by its media at its speed (WP-2D.01)", () => {
+    // 4 s of 10 s media from 2 s at 2x: 2 s on the timeline from 0.
+    const fast: TimelineItem = {
+      ...B,
+      start: 0,
+      duration: sec(2),
+      source: { sourceIn: sec(2), mediaDuration: sec(10), speed: 2 },
+    };
+    const model = { ...MODEL, items: [fast] };
+    // 2 s of media before it is 1 s on the timeline (stopped at 0); 4 s after it, 2 s.
+    expect(trimLimits(model, fast, "start").min).toBe(0);
+    expect(trimLimits(model, fast, "end").max).toBe(sec(4));
+    const later = { ...fast, start: sec(5) };
+    expect(trimLimits({ ...MODEL, items: [later] }, later, "start").min).toBe(sec(4));
+    // Reversed: the start shows the end of the range, so it reaches into the later media.
+    const back = { ...later, source: { ...fast.source, reverse: true } } as TimelineItem;
+    expect(trimLimits({ ...MODEL, items: [back] }, back, "start").min).toBe(sec(3));
+    expect(trimLimits({ ...MODEL, items: [back] }, back, "end").max).toBe(sec(8));
+  });
+
   it("snaps the trimmed edge to the playhead and shows the guide", () => {
     const { intents } = run(
       start({ playhead: sec(2.5) }),

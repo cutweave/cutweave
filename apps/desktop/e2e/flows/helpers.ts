@@ -784,6 +784,8 @@ export async function item(page: Page, id: string) {
       transform: { position: { x: number; y: number }; scale: { x: number }; rotation: number };
     };
     audio: { gain: number };
+    /** Where it reads its media, with speed and direction (WP-2D.01). */
+    source?: { source_in: number; speed: { num: number; den: number }; reverse: boolean };
   }>(page, "item.get", { item: id });
 }
 

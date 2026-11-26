@@ -194,6 +194,12 @@
               "markers": {},
               "media": "med_0000000000017e999cdbc20a2319b9cb",
               "source_in": 0,
+              "speed": {
+                "num": 1,
+                "den": 1
+              },
+              "reverse": false,
+              "freeze": null,
               "audio": {
                 "gain": 0.0,
                 "pan": 0.0,
@@ -249,6 +255,12 @@
               "markers": {},
               "media": "med_0000000000027f8989dde9c8c6ffc150",
               "source_in": 705600000,
+              "speed": {
+                "num": 1,
+                "den": 1
+              },
+              "reverse": false,
+              "freeze": null,
               "audio": {
                 "gain": 0.0,
                 "pan": 0.0,
@@ -319,6 +331,12 @@
               "markers": {},
               "media": "med_00000000000376d1902a7aa83bfaaa17",
               "source_in": 0,
+              "speed": {
+                "num": 1,
+                "den": 1
+              },
+              "reverse": false,
+              "freeze": null,
               "audio": {
                 "gain": -6.0,
                 "pan": 0.0,

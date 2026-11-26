@@ -298,7 +298,7 @@ For an item of duration `D`, all times item-relative:
 | **Lift, extract, ripple delete of a range, overwrite** | The splits and trims they are made of, by the rules above. |
 | **Duplicate, copy and paste, compound nesting** (WP-2A.06, WP-2B.04) | Unchanged: keys travel with the item. |
 | **Replace clip** (WP-2A.11) | Unchanged. Keys beyond a shorter new duration are kept. |
-| **Speed change** (WP-2D.01) | Unchanged. Keys beyond the new end are kept (open question for the owner, §15). |
+| **Speed change** (WP-2D.01) | Unchanged by default (`keyframes: "keep"`); keys beyond the new end are kept. With `keyframes: "scale"` (owner decision 2026-11-25) each key maps to `round_half_even(t × old / new)` in `i128`, snapped (§3.2), so keys stay on the same media frames; where two keys land on one time, the later one wins. |
 | **Reverse** (WP-2D.01) | Unchanged: the animation stays with the item, not the picture. |
 | **Freeze frame** (WP-2D.01) | The halves follow the split rule. The still item gets static values, each property's value at the freeze time, and no keys. |
 | **Paste attributes** (WP-2A.06) | Copies each chosen property's `Animatable` as it is. With an optional `scale_times`, as Premiere offers, keys map to `round_half_even(t·D_to/D_from)` in `i128` and then snap (§3.2). Where two keys land on one time, the later one wins. |

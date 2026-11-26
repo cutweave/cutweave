@@ -201,6 +201,60 @@ fn source_time_is_source_in_plus_offset() {
     assert_eq!(f.at(sec(10)).layers[0].request.source_time, sec(20));
 }
 
+/// WP-2D.01: at half speed timeline frame `k` of a 30 fps clip shows source frame
+/// `floor(k × 0.5)`; reversed it starts from the last frame of the range; a freeze frame shows
+/// one position and is silent.
+#[test]
+fn speed_reverse_and_freeze_map_source_time() {
+    use cutweave_model::{Freeze, Speed};
+    let frame = S / 30;
+    let mut f = Fixture::new();
+    let m = f.media(1, MediaKind::Video, 60);
+    let v = f.track(10, TrackKind::Video);
+    let a = f.track(11, TrackKind::Audio);
+    let c = f.clip(v, m, sec(0), Duration::from_secs(10).unwrap());
+    f.edit_clip(v, c, |c| {
+        c.source_in = sec(2);
+        c.speed = Speed::new(1, 2).unwrap();
+    });
+    for k in 0..300 {
+        let shown = f.at(t(k * frame)).layers[0].request.source_time;
+        let source_frame = (shown.flicks() - 2 * S).div_euclid(frame);
+        assert_eq!(source_frame, k / 2, "timeline frame {k}");
+    }
+    f.edit_clip(v, c, |c| c.reverse = true);
+    // The range is [2 s, 7 s): the first frame shown is the last one, the last frame the first.
+    assert_eq!(f.at(sec(0)).layers[0].request.source_time, t(7 * S - 1));
+    let last = f.at(t(10 * S - frame)).layers[0].request.source_time;
+    assert_eq!((last.flicks() - 2 * S).div_euclid(frame), 0);
+    f.edit_clip(v, c, |c| {
+        c.freeze = Some(Freeze { at_source: sec(4) });
+    });
+    for k in [0, 77, 299] {
+        assert_eq!(f.at(t(k * frame)).layers[0].request.source_time, sec(4));
+    }
+    // Sound: speed and direction reach the mixer; a frozen clip is silent.
+    let s = f.clip(a, m, sec(0), Duration::from_secs(4).unwrap());
+    f.edit_clip(a, s, |c| {
+        c.source_in = sec(1);
+        c.speed = Speed::new(2, 1).unwrap();
+        c.reverse = true;
+    });
+    let act = &f.at(sec(1)).audio[0];
+    assert_eq!((act.speed, act.reverse), ((2, 1), true));
+    assert_eq!(act.source_time, t(9 * S - 1 - 2 * S));
+    let segs = evaluate_audio(&f.project, f.seq, sec(1), sec(3)).unwrap();
+    assert_eq!(segs[0].src_start, t(9 * S - 1 - 2 * S));
+    assert_eq!((segs[0].speed, segs[0].reverse), ((2, 1), true));
+    f.edit_clip(a, s, |c| c.freeze = Some(Freeze { at_source: sec(3) }));
+    assert!(f.at(sec(1)).audio.is_empty());
+    assert!(
+        evaluate_audio(&f.project, f.seq, sec(0), sec(4))
+            .unwrap()
+            .is_empty()
+    );
+}
+
 #[test]
 fn stacked_tracks_are_ordered_bottom_first() {
     let mut f = Fixture::new();

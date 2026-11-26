@@ -44,7 +44,7 @@ A1   [a 0-30][b 30-60][c 60-90]      linked audio of A, B, C
 
 - A **sequence** has a frame rate (rational, exact in flicks), a sample rate and **tracks** in display order (top to bottom). Upper video tracks composite over lower ones.
 - A **track** has a kind (`video`, `audio`; `text`, `caption` and `adjustment` stay `Unsupported` for editing until their epics), the flags `locked`, `hidden`, `muted`, `solo` and `magnetic`, and its items.
-- An **item** occupies the half-open range `[start, end)` with `end = start + duration`. A **clip** also plays the media range that starts at `source_in` and lasts `duration × speed` (speed is 1 until WP-2D.01 adds it; §3.7 gives the speed rule).
+- An **item** occupies the half-open range `[start, end)` with `end = start + duration`. A **clip** also plays the media range that starts at `source_in` and lasts `duration × speed`, backwards when `reverse` (WP-2D.01; §3.7 gives the speed rule).
 - **Free track:** any track that is not magnetic. **Gap:** a maximal empty range between two items of a track (or between 0 and its first item). The empty range after the last item is not a gap.
 - **Media bound.** A clip's source range MUST lie inside its media when the media has a known length and is not a still image (§2, INV-4). Stills, generators and media of unknown length are **unbounded**: trims may extend them freely and slip has nothing to move.
 
@@ -171,7 +171,7 @@ Placing items on a track (inserting media, moving, duplicating, pasting) uses on
 Trims, rolls, slips, slides and ripple trims change an edge or a source position by a delta `δ`. Each constraint (minimum duration of one frame, media bounds, neighbours on free tracks, ripple collisions, time 0) allows an interval of deltas that contains 0, so together they allow an interval `[lo, hi]` with `lo <= 0 <= hi`.
 
 - **INV-46** With `clamp: true` the command applies `δ` clamped into `[lo, hi]` and rounded toward 0 to a whole number of frames, and returns `applied_delta` and `clamped` (true when it differs from the request). With `clamp: false` (default, P1-compatible) a request outside `[lo, hi]` fails with `Invalid` at the time param, and the message names the limiting constraint and the largest delta allowed. Gestures pass `clamp: true` (§5).
-- **INV-47** Speed. With speed `s` (WP-2D.01), a timeline delta `δ` moves a source position by `round(δ × s)`, where the rounding is odd-symmetric (half away from zero), so trimming by `δ` then by `−δ` restores `source_in` exactly. For a reversed clip the timeline start edge moves the source *end*. Every source bound in this spec reads "the source range `[source_in, source_in + duration × s)` stays inside the media".
+- **INV-47** Speed. A clip at speed `s` (an exact fraction from 1/10 to 100, WP-2D.01) plays `round(d × s)` flicks of media over a timeline span `d`, rounded half away from zero (odd-symmetric). An edit keeps the media position the clip shows at the edge it does not move: forwards a start-edge trim by `δ` keeps the source end and moves `source_in` by `round(D × s) − round((D − δ) × s)`, which is `round(δ × s)` whenever no rounding is involved, and an end-edge trim keeps `source_in`; a split's left half keeps `source_in` and its right half the source end. For a reversed clip the timeline start shows the source *end*, so it is the other way round: a start-edge trim keeps `source_in` and moves the source end. Trimming by `δ` then by `−δ` restores `source_in` exactly, and no part of a clip reads outside the range the clip read. Every source bound in this spec reads "the source range `[source_in, source_in + round(duration × s))` stays inside the media". A freeze frame (`freeze.at_source`) shows one position: edits never move it and nothing bounds its length.
 
 ### 3.8 Errors
 
@@ -687,7 +687,7 @@ Each of these is refused (`Unsupported` or `Invalid` as noted) or simply absent;
 - A magnetic audio track, and more than one magnetic track per sequence.
 - Ripple across sequences.
 - Item-level locks (track locks only).
-- Speed curves (P4, 4H); constant speed arrives in WP-2D.01 under INV-47.
+- Speed curves (P4, 4H); constant speed, reverse and freeze frames are WP-2D.01's (INV-47).
 - Editing text, caption and adjustment tracks before their epics (3A, 3E, 4A).
 - Replace-all-instances and generative replace (P5).
 

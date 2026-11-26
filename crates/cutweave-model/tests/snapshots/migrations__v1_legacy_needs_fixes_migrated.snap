@@ -201,13 +201,19 @@ expression: canonical_json_pretty(&migrated)
               "custom": {},
               "duration": 705600000,
               "enabled": true,
+              "freeze": null,
               "id": "itm_00000000000170008000000000000c01",
               "kind": "clip",
               "linked_group": null,
               "markers": {},
               "media": "med_0000000000027f8989dde9c8c6ffc150",
               "name": null,
+              "reverse": false,
               "source_in": 705600000,
+              "speed": {
+                "den": 1,
+                "num": 1
+              },
               "start": 3528000000,
               "visual": {
                 "blend_mode": "normal",
@@ -271,13 +277,19 @@ expression: canonical_json_pretty(&migrated)
               "custom": {},
               "duration": 1411200000,
               "enabled": true,
+              "freeze": null,
               "id": "itm_0000000000077405950ad8d9f69f2c6f",
               "kind": "clip",
               "linked_group": null,
               "markers": {},
               "media": "med_0000000000017e999cdbc20a2319b9cb",
               "name": null,
+              "reverse": false,
               "source_in": 0,
+              "speed": {
+                "den": 1,
+                "num": 1
+              },
               "start": 0,
               "visual": {
                 "blend_mode": "normal",
@@ -326,13 +338,19 @@ expression: canonical_json_pretty(&migrated)
               "custom": {},
               "duration": 2116800000,
               "enabled": true,
+              "freeze": null,
               "id": "itm_00000000000874918ac913f3f46b919e",
               "kind": "clip",
               "linked_group": null,
               "markers": {},
               "media": "med_0000000000027f8989dde9c8c6ffc150",
               "name": null,
+              "reverse": false,
               "source_in": 705600000,
+              "speed": {
+                "den": 1,
+                "num": 1
+              },
               "start": 1411200000,
               "visual": {
                 "blend_mode": "normal",
@@ -396,13 +414,19 @@ expression: canonical_json_pretty(&migrated)
               "custom": {},
               "duration": 3528000000,
               "enabled": true,
+              "freeze": null,
               "id": "itm_0000000000097031b0cbdfaef85bafd1",
               "kind": "clip",
               "linked_group": null,
               "markers": {},
               "media": "med_00000000000376d1902a7aa83bfaaa17",
               "name": null,
+              "reverse": false,
               "source_in": 0,
+              "speed": {
+                "den": 1,
+                "num": 1
+              },
               "start": 0,
               "visual": {
                 "blend_mode": "normal",

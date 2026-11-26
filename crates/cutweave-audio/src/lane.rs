@@ -131,6 +131,8 @@ mod tests {
             src_end: Time::ZERO
                 .checked_add(Duration::from_secs(10).unwrap())
                 .unwrap(),
+            speed: cutweave_model::Speed::ONE,
+            reverse: false,
             env: Envelope::flat(gain, start, end - start),
         }
     }

@@ -237,7 +237,13 @@
               },
               "custom": {},
               "speed": {
-                "constant": 1.0
+                "num": 1,
+                "den": 1
+              },
+              "reverse": false,
+              "freeze": null,
+              "time_remap": {
+                "curve": []
               }
             },
             "itm_00000000000874918ac913f3f46b919e": {
@@ -295,7 +301,13 @@
               },
               "custom": {},
               "speed": {
-                "constant": 1.0
+                "num": 1,
+                "den": 1
+              },
+              "reverse": false,
+              "freeze": null,
+              "time_remap": {
+                "curve": []
               }
             }
           },
@@ -368,7 +380,13 @@
               },
               "custom": {},
               "speed": {
-                "constant": 1.0
+                "num": 1,
+                "den": 1
+              },
+              "reverse": false,
+              "freeze": null,
+              "time_remap": {
+                "curve": []
               }
             }
           },

@@ -10,7 +10,8 @@
 // empty lane (Add track above), the ruler (Move playhead here), a dock tab (Reset layout), the
 // save status (Save now); press the Menu key on a bin card and choose Remove from project, then
 // cancel its dialog. WP-2A.04 adds a clip's left edge: Trim to playhead, then Ctrl+Z; WP-2A.05
-// the clip menu's Unlink clips (Link clips is disabled for a pair already linked), then Ctrl+Z. A third
+// the clip menu's Unlink clips (Link clips is disabled for a pair already linked), then Ctrl+Z.
+// WP-2D.01 adds the clip's Speed ▸ 2x and Custom…, Reverse and Freeze frame, each undone. A third
 // flow right-clicks the Export chip and cancels the export (it needs
 // the FFmpeg engine and the corpus, like F14, and skips without them). Every choice is checked as
 // an undo step or as state the person sees. Only the OS file picker is stubbed.
@@ -231,6 +232,78 @@ test.describe("F42 context menus", () => {
       await shortcut(app, "Control+Z");
       await expect.poll(async () => (await itemOf(page, clipId)).visual.opacity).toBeLessThan(1);
       await editorCaughtUp(page);
+
+      // Speed (WP-2D.01): Speed ▸ 2x halves the clip and its sound, and Ctrl+Z puts it back;
+      // Speed ▸ Custom… asks for a speed and 1/2 doubles it; Reverse plays it backwards (checked
+      // the next time the menu opens); Freeze frame at the playhead (5 s) splits the clip there
+      // and puts a 3 s still in between while its sound waits. Each is one undo step.
+      const openClipMenu = async () => {
+        await editorCaughtUp(page);
+        g = await timelineGeometry(page);
+        box = clipBox(g, clipId);
+        await page.mouse.click(box.x + Math.min(box.w / 2, 60), box.y, { button: "right" });
+        await expect(clipMenu).toBeVisible();
+      };
+      const speedMenu = page.getByRole("menu", { name: "Speed" });
+      await openClipMenu();
+      await item(clipMenu, /^Speed/).click();
+      await expect(speedMenu.getByRole("menuitemradio", { name: /^Normal/ })).toBeChecked();
+      await snapshot(page, info, "clip speed menu");
+      await speedMenu.getByRole("menuitemradio", { name: /^2x/ }).click();
+      await expect
+        .poll(() => layout(page))
+        .toEqual([
+          { track: "V1", clips: [[1, 5]] },
+          { track: "A1", clips: [[1, 5]] },
+        ]);
+      await editorCaughtUp(page);
+      await shortcut(app, "Control+Z");
+      await expect.poll(async () => (await layout(page))[0]?.clips).toEqual([[1, 10]]);
+      await openClipMenu();
+      await item(clipMenu, /^Speed/).click();
+      await speedMenu.getByRole("menuitem", { name: /^Custom/ }).click();
+      const speedDialog = page.getByRole("dialog", { name: "Custom speed" });
+      await expect(speedDialog).toBeVisible();
+      await speedDialog.getByRole("textbox", { name: "Speed" }).fill("1/2");
+      await speedDialog.getByRole("button", { name: "Set speed" }).click();
+      await expect.poll(async () => (await layout(page))[0]?.clips).toEqual([[1, 20]]);
+      await editorCaughtUp(page);
+      await shortcut(app, "Control+Z");
+      await expect.poll(async () => (await layout(page))[0]?.clips).toEqual([[1, 10]]);
+      await openClipMenu();
+      await clipMenu.getByRole("menuitemcheckbox", { name: /^Reverse/ }).click();
+      await expect.poll(async () => (await itemOf(page, clipId)).source?.reverse).toBe(true);
+      await openClipMenu();
+      await expect(clipMenu.getByRole("menuitemcheckbox", { name: /^Reverse/ })).toBeChecked();
+      await page.keyboard.press("Escape");
+      await expect(menu).toHaveCount(0);
+      await editorCaughtUp(page);
+      await shortcut(app, "Control+Z");
+      await expect.poll(async () => (await itemOf(page, clipId)).source?.reverse).toBe(false);
+      await openClipMenu();
+      await item(clipMenu, /^Freeze frame/).click();
+      await expect
+        .poll(() => layout(page))
+        .toEqual([
+          {
+            track: "V1",
+            clips: [
+              [1, 4],
+              [5, 3],
+              [8, 6],
+            ],
+          },
+          {
+            track: "A1",
+            clips: [
+              [1, 4],
+              [8, 6],
+            ],
+          },
+        ]);
+      await editorCaughtUp(page);
+      await shortcut(app, "Control+Z");
+      await expect.poll(async () => (await layout(page))[0]?.clips).toEqual([[1, 10]]);
 
       // The clip's left edge (WP-2A.04): Trim to playhead moves the start to the playhead (5 s),
       // with its sound; Roll says why it cannot run; Ctrl+Z puts the clip back.

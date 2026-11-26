@@ -92,9 +92,25 @@ function toItem(item: Item, track: Track, project: Project): TimelineItem {
   const kind: ItemKind = kindOf(track.kind);
   const media = project.media[item.media];
   const label = item.name ?? mediaName(media, item.media);
-  // The engine's trim bounds (`clip.trim`): stills have none, other media end at the probed
-  // length when there is one.
-  const still = media?.kind === "image";
+  // The engine's trim bounds (`clip.trim`): stills and freeze frames have none, other media end
+  // at the probed length when there is one.
+  const still = media?.kind === "image" || (item.freeze ?? null) !== null;
+  // WP-2D.01: speed (display only; the engine keeps the exact fraction) and direction. A freeze
+  // frame shows one frame all along (speed 0).
+  const speed =
+    (item.freeze ?? null) !== null
+      ? 0
+      : item.speed === undefined
+        ? 1
+        : item.speed.num / item.speed.den;
+  const reverse = item.reverse === true;
+  const sourceIn = item.freeze?.at_source ?? item.source_in;
+  const slice = {
+    mediaId: item.media,
+    sourceIn,
+    ...(speed !== 1 && { speed }),
+    ...(reverse && { reverse }),
+  };
   return {
     id: item.id,
     trackId: track.id,
@@ -107,9 +123,11 @@ function toItem(item: Item, track: Track, project: Project): TimelineItem {
       sourceIn: item.source_in,
       mediaDuration: still ? null : (media?.probe.duration ?? null),
       ...(still && { still }),
+      ...(!still && speed !== 1 && { speed }),
+      ...(!still && reverse && { reverse }),
     },
-    ...(kind === "media" && { thumbnails: { mediaId: item.media, sourceIn: item.source_in } }),
-    ...(kind === "audio" && { waveform: { mediaId: item.media, sourceIn: item.source_in } }),
+    ...(kind === "media" && { thumbnails: slice }),
+    ...(kind === "audio" && { waveform: slice }),
     ...(!item.enabled && { state: { disabled: true } }),
   };
 }

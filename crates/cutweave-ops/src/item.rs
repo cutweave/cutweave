@@ -661,13 +661,21 @@ impl Command for ItemSetProps {
 /// Sections `item.get` can be limited to with `fields`.
 pub const ITEM_GET_FIELDS: [&str; 4] = ["name", "source", "audio", "visual"];
 
-/// Where a clip reads from.
+/// Where a clip reads from, and how (speed, reverse, freeze frame: WP-2D.01).
 #[wire]
 pub struct ItemSource {
     /// The media.
     pub media: cutweave_model::MediaId,
-    /// Position in the media of the clip's first frame.
+    /// Position in the media of the clip's first frame (of the last frame shown when reversed).
     pub source_in: Time,
+    /// End of the media range the clip plays: `source_in + duration × speed`.
+    pub source_out: Time,
+    /// Playback speed, an exact fraction (`{"num": 1, "den": 2}` is half speed).
+    pub speed: cutweave_model::Speed,
+    /// Plays its range backwards.
+    pub reverse: bool,
+    /// A freeze frame: the media position it shows for its whole length.
+    pub freeze: Option<cutweave_model::Freeze>,
 }
 
 /// Result of `item.get`.
@@ -744,6 +752,11 @@ impl Query for ItemGet {
             source: clip.filter(|_| wants("source")).map(|c| ItemSource {
                 media: c.media,
                 source_in: c.source_in,
+                source_out: Time::from_flicks(cutweave_model::SourceMap::of(c).source_out())
+                    .unwrap_or(Time::MAX),
+                speed: c.speed,
+                reverse: c.reverse,
+                freeze: c.freeze,
             }),
             audio: clip.filter(|_| wants("audio")).map(|c| c.audio.clone()),
             visual: clip.filter(|_| wants("visual")).map(|c| c.visual.clone()),

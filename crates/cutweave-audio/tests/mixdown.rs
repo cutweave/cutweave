@@ -293,6 +293,63 @@ fn hot_mixes_stay_below_full_scale() {
 fn unsupported_segments_are_rejected() {
     let sources: Arc<dyn SourceFactory> = Arc::new(ToneFactory::new());
     let mut seg = Seg::new(1, 1, 1, Time::ZERO, secs(1.0)).segment();
-    seg.speed = (2, 1);
+    seg.speed = (1, 20);
     assert!(mixdown(&sources, &[seg], Time::ZERO..secs(1.0), RATE).is_err());
+}
+
+/// Zero crossings per second of the left channel of `mix` (interleaved stereo at 48 kHz).
+fn crossings(mix: &[f32]) -> usize {
+    let left: Vec<f32> = mix.iter().step_by(2).copied().collect();
+    left.windows(2)
+        .filter(|w| (w[0] < 0.0) != (w[1] < 0.0))
+        .count()
+}
+
+/// WP-2D.01: a clip at 2x plays its source twice as fast (pitch follows until WP-2D.02), at 0.5x
+/// half as fast; the offline mix is deterministic.
+#[test]
+fn speed_changes_play_the_source_faster_or_slower() {
+    let sources = factory(&[sine(100.0, 0.5, 0.0, RATE, 2)]);
+    let mut seg = Seg::new(1, 1, 1, Time::ZERO, secs(1.0)).segment();
+    let normal = crossings(&offline(&sources, &[seg.clone()], Time::ZERO, secs(1.0)));
+    seg.speed = (2, 1);
+    let fast = offline(&sources, &[seg.clone()], Time::ZERO, secs(1.0));
+    assert_eq!(
+        fast,
+        offline(&sources, &[seg.clone()], Time::ZERO, secs(1.0))
+    );
+    seg.speed = (1, 2);
+    let slow = crossings(&offline(&sources, &[seg], Time::ZERO, secs(1.0)));
+    let fast = crossings(&fast);
+    assert!((199..=201).contains(&normal), "{normal}");
+    assert!((396..=404).contains(&fast), "{fast}");
+    assert!((98..=102).contains(&slow), "{slow}");
+}
+
+/// WP-2D.01: a reversed clip plays its source range backwards, sample for sample: output sample
+/// `k` of a clip whose range ends at source frame 24,000 is source frame 23,999 − k.
+#[test]
+fn a_reversed_clip_plays_its_source_backwards() {
+    let spec = ToneSpec::new(
+        Tone::Impulse {
+            amplitude: 0.5,
+            period: 1000,
+        },
+        PcmFormat::new(RATE, 1),
+    );
+    let sources = factory(&[spec]);
+    let mut seg = Seg::new(1, 1, 1, Time::ZERO, secs(0.5)).segment();
+    // The model's mapping: the first position is one flick before the end of [0, 0.5 s).
+    seg.src_start = Time::from_flicks(secs(0.5).flicks() - 1).unwrap();
+    seg.reverse = true;
+    let mix = offline(&sources, &[seg], Time::ZERO, secs(0.5));
+    let hits: Vec<usize> = mix
+        .iter()
+        .step_by(2)
+        .enumerate()
+        .filter(|(_, s)| s.abs() > 0.1)
+        .map(|(k, _)| k)
+        .collect();
+    let want: Vec<usize> = (0..24).map(|i| 999 + 1000 * i).collect();
+    assert_eq!(hits, want);
 }

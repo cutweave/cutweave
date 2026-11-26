@@ -1121,13 +1121,19 @@
                     "custom": {},
                     "duration": 7056000000,
                     "enabled": true,
+                    "freeze": null,
                     "id": "itm_0000000000077405950ad8d9f69f2c6f",
                     "kind": "clip",
                     "linked_group": "grp_0000000000067e09902721405ac105a0",
                     "markers": {},
                     "media": "med_000000000004771ba4a23020bc56afc3",
                     "name": null,
+                    "reverse": false,
                     "source_in": 0,
+                    "speed": {
+                      "den": 1,
+                      "num": 1
+                    },
                     "start": 1411200000,
                     "visual": {
                       "blend_mode": "normal",
@@ -1191,13 +1197,19 @@
                     "custom": {},
                     "duration": 7056000000,
                     "enabled": true,
+                    "freeze": null,
                     "id": "itm_00000000000874918ac913f3f46b919e",
                     "kind": "clip",
                     "linked_group": "grp_0000000000067e09902721405ac105a0",
                     "markers": {},
                     "media": "med_000000000004771ba4a23020bc56afc3",
                     "name": null,
+                    "reverse": false,
                     "source_in": 0,
+                    "speed": {
+                      "den": 1,
+                      "num": 1
+                    },
                     "start": 1411200000,
                     "visual": {
                       "blend_mode": "normal",
@@ -1440,13 +1452,19 @@
             "custom": {},
             "duration": 7056000000,
             "enabled": true,
+            "freeze": null,
             "id": "itm_0000000000077405950ad8d9f69f2c6f",
             "kind": "clip",
             "linked_group": "grp_0000000000067e09902721405ac105a0",
             "markers": {},
             "media": "med_000000000004771ba4a23020bc56afc3",
             "name": null,
+            "reverse": false,
             "source_in": 0,
+            "speed": {
+              "den": 1,
+              "num": 1
+            },
             "start": 1411200000,
             "visual": {
               "blend_mode": "normal",
@@ -1499,13 +1517,19 @@
             "custom": {},
             "duration": 7056000000,
             "enabled": true,
+            "freeze": null,
             "id": "itm_00000000000874918ac913f3f46b919e",
             "kind": "clip",
             "linked_group": "grp_0000000000067e09902721405ac105a0",
             "markers": {},
             "media": "med_000000000004771ba4a23020bc56afc3",
             "name": null,
+            "reverse": false,
             "source_in": 0,
+            "speed": {
+              "den": 1,
+              "num": 1
+            },
             "start": 1411200000,
             "visual": {
               "blend_mode": "normal",
@@ -1564,13 +1588,19 @@
             "custom": {},
             "duration": 7056000000,
             "enabled": true,
+            "freeze": null,
             "id": "itm_00000000000874918ac913f3f46b919e",
             "kind": "clip",
             "linked_group": "grp_0000000000067e09902721405ac105a0",
             "markers": {},
             "media": "med_000000000004771ba4a23020bc56afc3",
             "name": null,
+            "reverse": false,
             "source_in": 0,
+            "speed": {
+              "den": 1,
+              "num": 1
+            },
             "start": 1411200000,
             "visual": {
               "blend_mode": "normal",
@@ -1623,13 +1653,19 @@
             "custom": {},
             "duration": 7056000000,
             "enabled": true,
+            "freeze": null,
             "id": "itm_0000000000077405950ad8d9f69f2c6f",
             "kind": "clip",
             "linked_group": "grp_0000000000067e09902721405ac105a0",
             "markers": {},
             "media": "med_000000000004771ba4a23020bc56afc3",
             "name": null,
+            "reverse": false,
             "source_in": 0,
+            "speed": {
+              "den": 1,
+              "num": 1
+            },
             "start": 1411200000,
             "visual": {
               "blend_mode": "normal",
@@ -1807,13 +1843,19 @@
                     "custom": {},
                     "duration": 2822400000,
                     "enabled": true,
+                    "freeze": null,
                     "id": "itm_0000000000077405950ad8d9f69f2c6f",
                     "kind": "clip",
                     "linked_group": "grp_0000000000067e09902721405ac105a0",
                     "markers": {},
                     "media": "med_000000000004771ba4a23020bc56afc3",
                     "name": null,
+                    "reverse": false,
                     "source_in": 0,
+                    "speed": {
+                      "den": 1,
+                      "num": 1
+                    },
                     "start": 1411200000,
                     "visual": {
                       "blend_mode": "normal",
@@ -1862,13 +1904,19 @@
                     "custom": {},
                     "duration": 4233600000,
                     "enabled": true,
+                    "freeze": null,
                     "id": "itm_00000000000a7677ac4d118e2be6e1b9",
                     "kind": "clip",
                     "linked_group": "grp_0000000000097031b0cbdfaef85bafd1",
                     "markers": {},
                     "media": "med_000000000004771ba4a23020bc56afc3",
                     "name": null,
+                    "reverse": false,
                     "source_in": 2822400000,
+                    "speed": {
+                      "den": 1,
+                      "num": 1
+                    },
                     "start": 4233600000,
                     "visual": {
                       "blend_mode": "normal",
@@ -1932,13 +1980,19 @@
                     "custom": {},
                     "duration": 2822400000,
                     "enabled": true,
+                    "freeze": null,
                     "id": "itm_00000000000874918ac913f3f46b919e",
                     "kind": "clip",
                     "linked_group": "grp_0000000000067e09902721405ac105a0",
                     "markers": {},
                     "media": "med_000000000004771ba4a23020bc56afc3",
                     "name": null,
+                    "reverse": false,
                     "source_in": 0,
+                    "speed": {
+                      "den": 1,
+                      "num": 1
+                    },
                     "start": 1411200000,
                     "visual": {
                       "blend_mode": "normal",
@@ -1987,13 +2041,19 @@
                     "custom": {},
                     "duration": 4233600000,
                     "enabled": true,
+                    "freeze": null,
                     "id": "itm_00000000000b7ce789996e9998b9dcff",
                     "kind": "clip",
                     "linked_group": "grp_0000000000097031b0cbdfaef85bafd1",
                     "markers": {},
                     "media": "med_000000000004771ba4a23020bc56afc3",
                     "name": null,
+                    "reverse": false,
                     "source_in": 2822400000,
+                    "speed": {
+                      "den": 1,
+                      "num": 1
+                    },
                     "start": 4233600000,
                     "visual": {
                       "blend_mode": "normal",
@@ -2179,13 +2239,19 @@
                     "custom": {},
                     "duration": 7056000000,
                     "enabled": true,
+                    "freeze": null,
                     "id": "itm_0000000000077405950ad8d9f69f2c6f",
                     "kind": "clip",
                     "linked_group": "grp_0000000000067e09902721405ac105a0",
                     "markers": {},
                     "media": "med_000000000004771ba4a23020bc56afc3",
                     "name": null,
+                    "reverse": false,
                     "source_in": 0,
+                    "speed": {
+                      "den": 1,
+                      "num": 1
+                    },
                     "start": 1411200000,
                     "visual": {
                       "blend_mode": "normal",
@@ -2249,13 +2315,19 @@
                     "custom": {},
                     "duration": 7056000000,
                     "enabled": true,
+                    "freeze": null,
                     "id": "itm_00000000000874918ac913f3f46b919e",
                     "kind": "clip",
                     "linked_group": "grp_0000000000067e09902721405ac105a0",
                     "markers": {},
                     "media": "med_000000000004771ba4a23020bc56afc3",
                     "name": null,
+                    "reverse": false,
                     "source_in": 0,
+                    "speed": {
+                      "den": 1,
+                      "num": 1
+                    },
                     "start": 1411200000,
                     "visual": {
                       "blend_mode": "normal",
@@ -2354,13 +2426,19 @@
             "custom": {},
             "duration": 4233600000,
             "enabled": true,
+            "freeze": null,
             "id": "itm_00000000000a7677ac4d118e2be6e1b9",
             "kind": "clip",
             "linked_group": "grp_0000000000097031b0cbdfaef85bafd1",
             "markers": {},
             "media": "med_000000000004771ba4a23020bc56afc3",
             "name": null,
+            "reverse": false,
             "source_in": 2822400000,
+            "speed": {
+              "den": 1,
+              "num": 1
+            },
             "start": 4233600000,
             "visual": {
               "blend_mode": "normal",
@@ -2419,13 +2497,19 @@
             "custom": {},
             "duration": 4233600000,
             "enabled": true,
+            "freeze": null,
             "id": "itm_00000000000b7ce789996e9998b9dcff",
             "kind": "clip",
             "linked_group": "grp_0000000000097031b0cbdfaef85bafd1",
             "markers": {},
             "media": "med_000000000004771ba4a23020bc56afc3",
             "name": null,
+            "reverse": false,
             "source_in": 2822400000,
+            "speed": {
+              "den": 1,
+              "num": 1
+            },
             "start": 4233600000,
             "visual": {
               "blend_mode": "normal",
@@ -2482,13 +2566,19 @@
             "custom": {},
             "duration": 4233600000,
             "enabled": true,
+            "freeze": null,
             "id": "itm_00000000000b7ce789996e9998b9dcff",
             "kind": "clip",
             "linked_group": "grp_0000000000097031b0cbdfaef85bafd1",
             "markers": {},
             "media": "med_000000000004771ba4a23020bc56afc3",
             "name": null,
+            "reverse": false,
             "source_in": 2822400000,
+            "speed": {
+              "den": 1,
+              "num": 1
+            },
             "start": 4233600000,
             "visual": {
               "blend_mode": "normal",
@@ -2547,13 +2637,19 @@
             "custom": {},
             "duration": 4233600000,
             "enabled": true,
+            "freeze": null,
             "id": "itm_00000000000a7677ac4d118e2be6e1b9",
             "kind": "clip",
             "linked_group": "grp_0000000000097031b0cbdfaef85bafd1",
             "markers": {},
             "media": "med_000000000004771ba4a23020bc56afc3",
             "name": null,
+            "reverse": false,
             "source_in": 2822400000,
+            "speed": {
+              "den": 1,
+              "num": 1
+            },
             "start": 4233600000,
             "visual": {
               "blend_mode": "normal",
@@ -2760,13 +2856,19 @@
                     "custom": {},
                     "duration": 2822400000,
                     "enabled": true,
+                    "freeze": null,
                     "id": "itm_0000000000077405950ad8d9f69f2c6f",
                     "kind": "clip",
                     "linked_group": "grp_0000000000067e09902721405ac105a0",
                     "markers": {},
                     "media": "med_000000000004771ba4a23020bc56afc3",
                     "name": null,
+                    "reverse": false,
                     "source_in": 0,
+                    "speed": {
+                      "den": 1,
+                      "num": 1
+                    },
                     "start": 21168000000,
                     "visual": {
                       "blend_mode": "normal",
@@ -2815,13 +2917,19 @@
                     "custom": {},
                     "duration": 4233600000,
                     "enabled": true,
+                    "freeze": null,
                     "id": "itm_00000000000a7677ac4d118e2be6e1b9",
                     "kind": "clip",
                     "linked_group": "grp_0000000000097031b0cbdfaef85bafd1",
                     "markers": {},
                     "media": "med_000000000004771ba4a23020bc56afc3",
                     "name": null,
+                    "reverse": false,
                     "source_in": 2822400000,
+                    "speed": {
+                      "den": 1,
+                      "num": 1
+                    },
                     "start": 4233600000,
                     "visual": {
                       "blend_mode": "normal",
@@ -2885,13 +2993,19 @@
                     "custom": {},
                     "duration": 2822400000,
                     "enabled": true,
+                    "freeze": null,
                     "id": "itm_00000000000874918ac913f3f46b919e",
                     "kind": "clip",
                     "linked_group": "grp_0000000000067e09902721405ac105a0",
                     "markers": {},
                     "media": "med_000000000004771ba4a23020bc56afc3",
                     "name": null,
+                    "reverse": false,
                     "source_in": 0,
+                    "speed": {
+                      "den": 1,
+                      "num": 1
+                    },
                     "start": 21168000000,
                     "visual": {
                       "blend_mode": "normal",
@@ -2940,13 +3054,19 @@
                     "custom": {},
                     "duration": 4233600000,
                     "enabled": true,
+                    "freeze": null,
                     "id": "itm_00000000000b7ce789996e9998b9dcff",
                     "kind": "clip",
                     "linked_group": "grp_0000000000097031b0cbdfaef85bafd1",
                     "markers": {},
                     "media": "med_000000000004771ba4a23020bc56afc3",
                     "name": null,
+                    "reverse": false,
                     "source_in": 2822400000,
+                    "speed": {
+                      "den": 1,
+                      "num": 1
+                    },
                     "start": 4233600000,
                     "visual": {
                       "blend_mode": "normal",
@@ -3132,13 +3252,19 @@
                     "custom": {},
                     "duration": 2822400000,
                     "enabled": true,
+                    "freeze": null,
                     "id": "itm_0000000000077405950ad8d9f69f2c6f",
                     "kind": "clip",
                     "linked_group": "grp_0000000000067e09902721405ac105a0",
                     "markers": {},
                     "media": "med_000000000004771ba4a23020bc56afc3",
                     "name": null,
+                    "reverse": false,
                     "source_in": 0,
+                    "speed": {
+                      "den": 1,
+                      "num": 1
+                    },
                     "start": 1411200000,
                     "visual": {
                       "blend_mode": "normal",
@@ -3187,13 +3313,19 @@
                     "custom": {},
                     "duration": 4233600000,
                     "enabled": true,
+                    "freeze": null,
                     "id": "itm_00000000000a7677ac4d118e2be6e1b9",
                     "kind": "clip",
                     "linked_group": "grp_0000000000097031b0cbdfaef85bafd1",
                     "markers": {},
                     "media": "med_000000000004771ba4a23020bc56afc3",
                     "name": null,
+                    "reverse": false,
                     "source_in": 2822400000,
+                    "speed": {
+                      "den": 1,
+                      "num": 1
+                    },
                     "start": 4233600000,
                     "visual": {
                       "blend_mode": "normal",
@@ -3257,13 +3389,19 @@
                     "custom": {},
                     "duration": 2822400000,
                     "enabled": true,
+                    "freeze": null,
                     "id": "itm_00000000000874918ac913f3f46b919e",
                     "kind": "clip",
                     "linked_group": "grp_0000000000067e09902721405ac105a0",
                     "markers": {},
                     "media": "med_000000000004771ba4a23020bc56afc3",
                     "name": null,
+                    "reverse": false,
                     "source_in": 0,
+                    "speed": {
+                      "den": 1,
+                      "num": 1
+                    },
                     "start": 1411200000,
                     "visual": {
                       "blend_mode": "normal",
@@ -3312,13 +3450,19 @@
                     "custom": {},
                     "duration": 4233600000,
                     "enabled": true,
+                    "freeze": null,
                     "id": "itm_00000000000b7ce789996e9998b9dcff",
                     "kind": "clip",
                     "linked_group": "grp_0000000000097031b0cbdfaef85bafd1",
                     "markers": {},
                     "media": "med_000000000004771ba4a23020bc56afc3",
                     "name": null,
+                    "reverse": false,
                     "source_in": 2822400000,
+                    "speed": {
+                      "den": 1,
+                      "num": 1
+                    },
                     "start": 4233600000,
                     "visual": {
                       "blend_mode": "normal",
@@ -3577,13 +3721,19 @@
                     "custom": {},
                     "duration": 2822400000,
                     "enabled": true,
+                    "freeze": null,
                     "id": "itm_0000000000077405950ad8d9f69f2c6f",
                     "kind": "clip",
                     "linked_group": "grp_0000000000067e09902721405ac105a0",
                     "markers": {},
                     "media": "med_000000000004771ba4a23020bc56afc3",
                     "name": null,
+                    "reverse": false,
                     "source_in": 0,
+                    "speed": {
+                      "den": 1,
+                      "num": 1
+                    },
                     "start": 21168000000,
                     "visual": {
                       "blend_mode": "normal",
@@ -3632,13 +3782,19 @@
                     "custom": {},
                     "duration": 4233600000,
                     "enabled": true,
+                    "freeze": null,
                     "id": "itm_00000000000a7677ac4d118e2be6e1b9",
                     "kind": "clip",
                     "linked_group": "grp_0000000000097031b0cbdfaef85bafd1",
                     "markers": {},
                     "media": "med_000000000004771ba4a23020bc56afc3",
                     "name": null,
+                    "reverse": false,
                     "source_in": 2822400000,
+                    "speed": {
+                      "den": 1,
+                      "num": 1
+                    },
                     "start": 4233600000,
                     "visual": {
                       "blend_mode": "normal",
@@ -3702,13 +3858,19 @@
                     "custom": {},
                     "duration": 2822400000,
                     "enabled": true,
+                    "freeze": null,
                     "id": "itm_00000000000874918ac913f3f46b919e",
                     "kind": "clip",
                     "linked_group": "grp_0000000000067e09902721405ac105a0",
                     "markers": {},
                     "media": "med_000000000004771ba4a23020bc56afc3",
                     "name": null,
+                    "reverse": false,
                     "source_in": 0,
+                    "speed": {
+                      "den": 1,
+                      "num": 1
+                    },
                     "start": 21168000000,
                     "visual": {
                       "blend_mode": "normal",
@@ -3757,13 +3919,19 @@
                     "custom": {},
                     "duration": 4233600000,
                     "enabled": true,
+                    "freeze": null,
                     "id": "itm_00000000000b7ce789996e9998b9dcff",
                     "kind": "clip",
                     "linked_group": "grp_0000000000097031b0cbdfaef85bafd1",
                     "markers": {},
                     "media": "med_000000000004771ba4a23020bc56afc3",
                     "name": null,
+                    "reverse": false,
                     "source_in": 2822400000,
+                    "speed": {
+                      "den": 1,
+                      "num": 1
+                    },
                     "start": 4233600000,
                     "visual": {
                       "blend_mode": "normal",
@@ -3949,13 +4117,19 @@
                     "custom": {},
                     "duration": 2822400000,
                     "enabled": true,
+                    "freeze": null,
                     "id": "itm_0000000000077405950ad8d9f69f2c6f",
                     "kind": "clip",
                     "linked_group": "grp_0000000000067e09902721405ac105a0",
                     "markers": {},
                     "media": "med_000000000004771ba4a23020bc56afc3",
                     "name": null,
+                    "reverse": false,
                     "source_in": 0,
+                    "speed": {
+                      "den": 1,
+                      "num": 1
+                    },
                     "start": 21168000000,
                     "visual": {
                       "blend_mode": "normal",
@@ -4004,13 +4178,19 @@
                     "custom": {},
                     "duration": 4233600000,
                     "enabled": true,
+                    "freeze": null,
                     "id": "itm_00000000000a7677ac4d118e2be6e1b9",
                     "kind": "clip",
                     "linked_group": "grp_0000000000097031b0cbdfaef85bafd1",
                     "markers": {},
                     "media": "med_000000000004771ba4a23020bc56afc3",
                     "name": null,
+                    "reverse": false,
                     "source_in": 2822400000,
+                    "speed": {
+                      "den": 1,
+                      "num": 1
+                    },
                     "start": 4233600000,
                     "visual": {
                       "blend_mode": "normal",
@@ -4074,13 +4254,19 @@
                     "custom": {},
                     "duration": 2822400000,
                     "enabled": true,
+                    "freeze": null,
                     "id": "itm_00000000000874918ac913f3f46b919e",
                     "kind": "clip",
                     "linked_group": "grp_0000000000067e09902721405ac105a0",
                     "markers": {},
                     "media": "med_000000000004771ba4a23020bc56afc3",
                     "name": null,
+                    "reverse": false,
                     "source_in": 0,
+                    "speed": {
+                      "den": 1,
+                      "num": 1
+                    },
                     "start": 21168000000,
                     "visual": {
                       "blend_mode": "normal",
@@ -4129,13 +4315,19 @@
                     "custom": {},
                     "duration": 4233600000,
                     "enabled": true,
+                    "freeze": null,
                     "id": "itm_00000000000b7ce789996e9998b9dcff",
                     "kind": "clip",
                     "linked_group": "grp_0000000000097031b0cbdfaef85bafd1",
                     "markers": {},
                     "media": "med_000000000004771ba4a23020bc56afc3",
                     "name": null,
+                    "reverse": false,
                     "source_in": 2822400000,
+                    "speed": {
+                      "den": 1,
+                      "num": 1
+                    },
                     "start": 4233600000,
                     "visual": {
                       "blend_mode": "normal",
@@ -4354,13 +4546,19 @@
                     "custom": {},
                     "duration": 2822400000,
                     "enabled": true,
+                    "freeze": null,
                     "id": "itm_0000000000077405950ad8d9f69f2c6f",
                     "kind": "clip",
                     "linked_group": "grp_0000000000067e09902721405ac105a0",
                     "markers": {},
                     "media": "med_000000000004771ba4a23020bc56afc3",
                     "name": null,
+                    "reverse": false,
                     "source_in": 0,
+                    "speed": {
+                      "den": 1,
+                      "num": 1
+                    },
                     "start": 21168000000,
                     "visual": {
                       "blend_mode": "normal",
@@ -4409,13 +4607,19 @@
                     "custom": {},
                     "duration": 4233600000,
                     "enabled": true,
+                    "freeze": null,
                     "id": "itm_00000000000a7677ac4d118e2be6e1b9",
                     "kind": "clip",
                     "linked_group": "grp_0000000000097031b0cbdfaef85bafd1",
                     "markers": {},
                     "media": "med_000000000004771ba4a23020bc56afc3",
                     "name": null,
+                    "reverse": false,
                     "source_in": 2822400000,
+                    "speed": {
+                      "den": 1,
+                      "num": 1
+                    },
                     "start": 4233600000,
                     "visual": {
                       "blend_mode": "normal",
@@ -4479,13 +4683,19 @@
                     "custom": {},
                     "duration": 2822400000,
                     "enabled": true,
+                    "freeze": null,
                     "id": "itm_00000000000874918ac913f3f46b919e",
                     "kind": "clip",
                     "linked_group": "grp_0000000000067e09902721405ac105a0",
                     "markers": {},
                     "media": "med_000000000004771ba4a23020bc56afc3",
                     "name": null,
+                    "reverse": false,
                     "source_in": 0,
+                    "speed": {
+                      "den": 1,
+                      "num": 1
+                    },
                     "start": 21168000000,
                     "visual": {
                       "blend_mode": "normal",
@@ -4534,13 +4744,19 @@
                     "custom": {},
                     "duration": 4233600000,
                     "enabled": true,
+                    "freeze": null,
                     "id": "itm_00000000000b7ce789996e9998b9dcff",
                     "kind": "clip",
                     "linked_group": "grp_0000000000097031b0cbdfaef85bafd1",
                     "markers": {},
                     "media": "med_000000000004771ba4a23020bc56afc3",
                     "name": null,
+                    "reverse": false,
                     "source_in": 2822400000,
+                    "speed": {
+                      "den": 1,
+                      "num": 1
+                    },
                     "start": 4233600000,
                     "visual": {
                       "blend_mode": "normal",
@@ -4726,13 +4942,19 @@
                     "custom": {},
                     "duration": 2822400000,
                     "enabled": true,
+                    "freeze": null,
                     "id": "itm_0000000000077405950ad8d9f69f2c6f",
                     "kind": "clip",
                     "linked_group": "grp_0000000000067e09902721405ac105a0",
                     "markers": {},
                     "media": "med_000000000004771ba4a23020bc56afc3",
                     "name": null,
+                    "reverse": false,
                     "source_in": 0,
+                    "speed": {
+                      "den": 1,
+                      "num": 1
+                    },
                     "start": 21168000000,
                     "visual": {
                       "blend_mode": "normal",
@@ -4781,13 +5003,19 @@
                     "custom": {},
                     "duration": 4233600000,
                     "enabled": true,
+                    "freeze": null,
                     "id": "itm_00000000000a7677ac4d118e2be6e1b9",
                     "kind": "clip",
                     "linked_group": "grp_0000000000097031b0cbdfaef85bafd1",
                     "markers": {},
                     "media": "med_000000000004771ba4a23020bc56afc3",
                     "name": null,
+                    "reverse": false,
                     "source_in": 2822400000,
+                    "speed": {
+                      "den": 1,
+                      "num": 1
+                    },
                     "start": 4233600000,
                     "visual": {
                       "blend_mode": "normal",
@@ -4851,13 +5079,19 @@
                     "custom": {},
                     "duration": 2822400000,
                     "enabled": true,
+                    "freeze": null,
                     "id": "itm_00000000000874918ac913f3f46b919e",
                     "kind": "clip",
                     "linked_group": "grp_0000000000067e09902721405ac105a0",
                     "markers": {},
                     "media": "med_000000000004771ba4a23020bc56afc3",
                     "name": null,
+                    "reverse": false,
                     "source_in": 0,
+                    "speed": {
+                      "den": 1,
+                      "num": 1
+                    },
                     "start": 21168000000,
                     "visual": {
                       "blend_mode": "normal",
@@ -4906,13 +5140,19 @@
                     "custom": {},
                     "duration": 4233600000,
                     "enabled": true,
+                    "freeze": null,
                     "id": "itm_00000000000b7ce789996e9998b9dcff",
                     "kind": "clip",
                     "linked_group": "grp_0000000000097031b0cbdfaef85bafd1",
                     "markers": {},
                     "media": "med_000000000004771ba4a23020bc56afc3",
                     "name": null,
+                    "reverse": false,
                     "source_in": 2822400000,
+                    "speed": {
+                      "den": 1,
+                      "num": 1
+                    },
                     "start": 4233600000,
                     "visual": {
                       "blend_mode": "normal",
@@ -5123,13 +5363,19 @@
                     "custom": {},
                     "duration": 2822400000,
                     "enabled": true,
+                    "freeze": null,
                     "id": "itm_0000000000077405950ad8d9f69f2c6f",
                     "kind": "clip",
                     "linked_group": "grp_0000000000067e09902721405ac105a0",
                     "markers": {},
                     "media": "med_000000000004771ba4a23020bc56afc3",
                     "name": null,
+                    "reverse": false,
                     "source_in": 0,
+                    "speed": {
+                      "den": 1,
+                      "num": 1
+                    },
                     "start": 21168000000,
                     "visual": {
                       "blend_mode": "normal",
@@ -5178,13 +5424,19 @@
                     "custom": {},
                     "duration": 4233600000,
                     "enabled": true,
+                    "freeze": null,
                     "id": "itm_00000000000a7677ac4d118e2be6e1b9",
                     "kind": "clip",
                     "linked_group": "grp_0000000000097031b0cbdfaef85bafd1",
                     "markers": {},
                     "media": "med_000000000004771ba4a23020bc56afc3",
                     "name": null,
+                    "reverse": false,
                     "source_in": 2822400000,
+                    "speed": {
+                      "den": 1,
+                      "num": 1
+                    },
                     "start": 4233600000,
                     "visual": {
                       "blend_mode": "normal",
@@ -5248,13 +5500,19 @@
                     "custom": {},
                     "duration": 2822400000,
                     "enabled": true,
+                    "freeze": null,
                     "id": "itm_00000000000874918ac913f3f46b919e",
                     "kind": "clip",
                     "linked_group": "grp_0000000000067e09902721405ac105a0",
                     "markers": {},
                     "media": "med_000000000004771ba4a23020bc56afc3",
                     "name": null,
+                    "reverse": false,
                     "source_in": 0,
+                    "speed": {
+                      "den": 1,
+                      "num": 1
+                    },
                     "start": 21168000000,
                     "visual": {
                       "blend_mode": "normal",
@@ -5303,13 +5561,19 @@
                     "custom": {},
                     "duration": 4233600000,
                     "enabled": true,
+                    "freeze": null,
                     "id": "itm_00000000000b7ce789996e9998b9dcff",
                     "kind": "clip",
                     "linked_group": "grp_0000000000097031b0cbdfaef85bafd1",
                     "markers": {},
                     "media": "med_000000000004771ba4a23020bc56afc3",
                     "name": null,
+                    "reverse": false,
                     "source_in": 2822400000,
+                    "speed": {
+                      "den": 1,
+                      "num": 1
+                    },
                     "start": 4233600000,
                     "visual": {
                       "blend_mode": "normal",
@@ -5481,13 +5745,19 @@
                     "custom": {},
                     "duration": 2822400000,
                     "enabled": true,
+                    "freeze": null,
                     "id": "itm_0000000000077405950ad8d9f69f2c6f",
                     "kind": "clip",
                     "linked_group": "grp_0000000000067e09902721405ac105a0",
                     "markers": {},
                     "media": "med_000000000004771ba4a23020bc56afc3",
                     "name": null,
+                    "reverse": false,
                     "source_in": 0,
+                    "speed": {
+                      "den": 1,
+                      "num": 1
+                    },
                     "start": 21168000000,
                     "visual": {
                       "blend_mode": "normal",
@@ -5536,13 +5806,19 @@
                     "custom": {},
                     "duration": 4233600000,
                     "enabled": true,
+                    "freeze": null,
                     "id": "itm_00000000000a7677ac4d118e2be6e1b9",
                     "kind": "clip",
                     "linked_group": "grp_0000000000097031b0cbdfaef85bafd1",
                     "markers": {},
                     "media": "med_000000000004771ba4a23020bc56afc3",
                     "name": null,
+                    "reverse": false,
                     "source_in": 2822400000,
+                    "speed": {
+                      "den": 1,
+                      "num": 1
+                    },
                     "start": 4233600000,
                     "visual": {
                       "blend_mode": "normal",
@@ -5606,13 +5882,19 @@
                     "custom": {},
                     "duration": 2822400000,
                     "enabled": true,
+                    "freeze": null,
                     "id": "itm_00000000000874918ac913f3f46b919e",
                     "kind": "clip",
                     "linked_group": "grp_0000000000067e09902721405ac105a0",
                     "markers": {},
                     "media": "med_000000000004771ba4a23020bc56afc3",
                     "name": null,
+                    "reverse": false,
                     "source_in": 0,
+                    "speed": {
+                      "den": 1,
+                      "num": 1
+                    },
                     "start": 21168000000,
                     "visual": {
                       "blend_mode": "normal",
@@ -5661,13 +5943,19 @@
                     "custom": {},
                     "duration": 4233600000,
                     "enabled": true,
+                    "freeze": null,
                     "id": "itm_00000000000b7ce789996e9998b9dcff",
                     "kind": "clip",
                     "linked_group": "grp_0000000000097031b0cbdfaef85bafd1",
                     "markers": {},
                     "media": "med_000000000004771ba4a23020bc56afc3",
                     "name": null,
+                    "reverse": false,
                     "source_in": 2822400000,
+                    "speed": {
+                      "den": 1,
+                      "num": 1
+                    },
                     "start": 4233600000,
                     "visual": {
                       "blend_mode": "normal",
@@ -5930,13 +6218,19 @@
                     "custom": {},
                     "duration": 2822400000,
                     "enabled": true,
+                    "freeze": null,
                     "id": "itm_0000000000077405950ad8d9f69f2c6f",
                     "kind": "clip",
                     "linked_group": "grp_0000000000067e09902721405ac105a0",
                     "markers": {},
                     "media": "med_000000000004771ba4a23020bc56afc3",
                     "name": null,
+                    "reverse": false,
                     "source_in": 0,
+                    "speed": {
+                      "den": 1,
+                      "num": 1
+                    },
                     "start": 21168000000,
                     "visual": {
                       "blend_mode": "normal",
@@ -5985,13 +6279,19 @@
                     "custom": {},
                     "duration": 4233600000,
                     "enabled": true,
+                    "freeze": null,
                     "id": "itm_00000000000a7677ac4d118e2be6e1b9",
                     "kind": "clip",
                     "linked_group": "grp_0000000000097031b0cbdfaef85bafd1",
                     "markers": {},
                     "media": "med_000000000004771ba4a23020bc56afc3",
                     "name": null,
+                    "reverse": false,
                     "source_in": 2822400000,
+                    "speed": {
+                      "den": 1,
+                      "num": 1
+                    },
                     "start": 4233600000,
                     "visual": {
                       "blend_mode": "normal",
@@ -6055,13 +6355,19 @@
                     "custom": {},
                     "duration": 2822400000,
                     "enabled": true,
+                    "freeze": null,
                     "id": "itm_00000000000874918ac913f3f46b919e",
                     "kind": "clip",
                     "linked_group": "grp_0000000000067e09902721405ac105a0",
                     "markers": {},
                     "media": "med_000000000004771ba4a23020bc56afc3",
                     "name": null,
+                    "reverse": false,
                     "source_in": 0,
+                    "speed": {
+                      "den": 1,
+                      "num": 1
+                    },
                     "start": 21168000000,
                     "visual": {
                       "blend_mode": "normal",
@@ -6110,13 +6416,19 @@
                     "custom": {},
                     "duration": 4233600000,
                     "enabled": true,
+                    "freeze": null,
                     "id": "itm_00000000000b7ce789996e9998b9dcff",
                     "kind": "clip",
                     "linked_group": "grp_0000000000097031b0cbdfaef85bafd1",
                     "markers": {},
                     "media": "med_000000000004771ba4a23020bc56afc3",
                     "name": null,
+                    "reverse": false,
                     "source_in": 2822400000,
+                    "speed": {
+                      "den": 1,
+                      "num": 1
+                    },
                     "start": 4233600000,
                     "visual": {
                       "blend_mode": "normal",
@@ -6301,13 +6613,19 @@
                     "custom": {},
                     "duration": 2822400000,
                     "enabled": true,
+                    "freeze": null,
                     "id": "itm_0000000000077405950ad8d9f69f2c6f",
                     "kind": "clip",
                     "linked_group": "grp_0000000000067e09902721405ac105a0",
                     "markers": {},
                     "media": "med_000000000004771ba4a23020bc56afc3",
                     "name": null,
+                    "reverse": false,
                     "source_in": 0,
+                    "speed": {
+                      "den": 1,
+                      "num": 1
+                    },
                     "start": 21168000000,
                     "visual": {
                       "blend_mode": "normal",
@@ -6356,13 +6674,19 @@
                     "custom": {},
                     "duration": 4233600000,
                     "enabled": true,
+                    "freeze": null,
                     "id": "itm_00000000000a7677ac4d118e2be6e1b9",
                     "kind": "clip",
                     "linked_group": "grp_0000000000097031b0cbdfaef85bafd1",
                     "markers": {},
                     "media": "med_000000000004771ba4a23020bc56afc3",
                     "name": null,
+                    "reverse": false,
                     "source_in": 2822400000,
+                    "speed": {
+                      "den": 1,
+                      "num": 1
+                    },
                     "start": 4233600000,
                     "visual": {
                       "blend_mode": "normal",
@@ -6426,13 +6750,19 @@
                     "custom": {},
                     "duration": 2822400000,
                     "enabled": true,
+                    "freeze": null,
                     "id": "itm_00000000000874918ac913f3f46b919e",
                     "kind": "clip",
                     "linked_group": "grp_0000000000067e09902721405ac105a0",
                     "markers": {},
                     "media": "med_000000000004771ba4a23020bc56afc3",
                     "name": null,
+                    "reverse": false,
                     "source_in": 0,
+                    "speed": {
+                      "den": 1,
+                      "num": 1
+                    },
                     "start": 21168000000,
                     "visual": {
                       "blend_mode": "normal",
@@ -6481,13 +6811,19 @@
                     "custom": {},
                     "duration": 4233600000,
                     "enabled": true,
+                    "freeze": null,
                     "id": "itm_00000000000b7ce789996e9998b9dcff",
                     "kind": "clip",
                     "linked_group": "grp_0000000000097031b0cbdfaef85bafd1",
                     "markers": {},
                     "media": "med_000000000004771ba4a23020bc56afc3",
                     "name": null,
+                    "reverse": false,
                     "source_in": 2822400000,
+                    "speed": {
+                      "den": 1,
+                      "num": 1
+                    },
                     "start": 4233600000,
                     "visual": {
                       "blend_mode": "normal",

@@ -1,5 +1,6 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
-// The questions a menu choice may ask before it acts (WP-2H.13): a name for a clip, a yes for
+// The questions a menu choice may ask before it acts (WP-2H.13): a name for a clip, a speed for
+// clips (WP-2D.01), a yes for
 // deleting a track that holds clips, a yes for removing a media asset that clips use, and (WP-2F.08)
 // what to do with a folder's contents and where to move tiles to. One
 // store, one component (`MenuDialogs.tsx`); the choice only opens it, and the dialog sends the one
@@ -9,6 +10,8 @@ import { createStore } from "zustand/vanilla";
 
 export type MenuDialog =
   | { readonly kind: "rename-clip"; readonly item: string; readonly name: string }
+  // Speed ▸ Custom… (WP-2D.01): a speed for the clips, prefilled with their shared one.
+  | { readonly kind: "custom-speed"; readonly items: readonly string[]; readonly speed: string }
   | {
       readonly kind: "delete-track";
       readonly track: string;

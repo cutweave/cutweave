@@ -5,12 +5,13 @@
 //! **Sample grid.** A clip covering `[dst_start, dst_start + dst_duration)` plays the device
 //! samples `[time_to_samples(dst_start), time_to_samples(dst_end))`, both ends rounded to the
 //! nearest sample ([`Rounding::Nearest`]), so abutting clips tile the grid with no gap and no
-//! overlap. The clip's first sample plays its source at `src_start`; sample `k` of the clip plays
-//! source time `src_start + samples_to_time(k)`.
+//! overlap. The clip's first sample plays its source at `src_start` (the model's `source_time`,
+//! WP-2D.01); sample `k` of the clip plays source time `src_start ± round(samples_to_time(k) ×
+//! speed)` (minus when the clip is reversed).
 
 use std::sync::Arc;
 
-use cutweave_model::{Duration, ItemId, MediaId, Rounding, SampleRate, Time, TrackId};
+use cutweave_model::{Duration, ItemId, MediaId, Rounding, SampleRate, Speed, Time, TrackId};
 use cutweave_render::AudioSegment;
 
 use crate::automation::Envelope;
@@ -30,10 +31,15 @@ pub(crate) struct ClipPlan {
     pub start: i64,
     /// End output sample (exclusive).
     pub end: i64,
-    /// Source time at `start`.
+    /// Source time at `start` (reversed: the latest position, played first).
     pub src_start: Time,
-    /// End of the played source range (exclusive).
+    /// The other end of the played source range: exclusive end forwards, the lowest position
+    /// reversed (a read-ahead hint).
     pub src_end: Time,
+    /// Playback speed (WP-2D.01).
+    pub speed: Speed,
+    /// Played backwards (WP-2D.01).
+    pub reverse: bool,
     /// Gain, pan and fades of the whole clip (WP-2E.01), on the output grid.
     pub env: Envelope,
 }
@@ -61,25 +67,25 @@ impl BusPlan {
 /// Builds the buses of `segments` at the output rate `rate`, in the order tracks first appear
 /// (the `evaluate_audio` order: top to bottom).
 ///
-/// Empty or sub-sample segments are dropped. Speed changes and reverse are rejected (P2).
+/// Empty or sub-sample segments are dropped. A speed outside the model's range is rejected.
+/// Speed changes play by resampling (the pitch follows the speed until WP-2D.02) and reversed
+/// clips read their source backwards.
 pub(crate) fn plan_buses(
     segments: &[AudioSegment],
     rate: SampleRate,
 ) -> Result<Vec<BusPlan>, MixError> {
     let mut buses: Vec<(TrackId, f32, Vec<ClipPlan>)> = Vec::new();
     for seg in segments {
-        if seg.reverse {
-            return Err(MixError::Unsupported {
-                item: seg.item,
-                reason: "reverse playback of audio is not supported yet",
-            });
-        }
-        if seg.speed.0 != seg.speed.1 || seg.speed.1 == 0 {
-            return Err(MixError::Unsupported {
-                item: seg.item,
-                reason: "audio speed changes are not supported yet",
-            });
-        }
+        let speed = Speed::new(seg.speed.0, seg.speed.1).map_err(|_| MixError::Unsupported {
+            item: seg.item,
+            reason: "the speed is outside 0.1x to 100x",
+        })?;
+        let span = Duration::from_flicks(speed.source(seg.dst_duration.flicks()).max(0))?;
+        let src_end = if seg.reverse {
+            seg.src_start.saturating_sub(span).max(Time::ZERO)
+        } else {
+            seg.src_start.checked_add(span)?
+        };
         let dst_end = seg.dst_start.checked_add(seg.dst_duration)?;
         let start = rate.time_to_samples(seg.dst_start, Rounding::Nearest);
         let end = rate.time_to_samples(dst_end, Rounding::Nearest);
@@ -100,7 +106,9 @@ pub(crate) fn plan_buses(
             start,
             end,
             src_start: seg.src_start,
-            src_end: seg.src_start.checked_add(seg.dst_duration)?,
+            src_end,
+            speed,
+            reverse: seg.reverse,
             env: Envelope::of_segment(seg, rate)?,
         });
     }
@@ -118,15 +126,20 @@ pub(crate) fn plan_buses(
         .collect())
 }
 
-/// Source time played at output sample `at` of `clip` (`at ≥ clip.start`).
+/// Source time played at output sample `at` of `clip` (`at ≥ clip.start`): the timeline offset
+/// times the speed, from `src_start`, backwards when reversed.
 pub(crate) fn source_time_at(
     clip: &ClipPlan,
     rate: SampleRate,
     at: i64,
 ) -> Result<Time, cutweave_model::TimeError> {
     let offset = rate.samples_to_time(at - clip.start)?;
-    clip.src_start
-        .checked_add(Duration::from_flicks(offset.flicks())?)
+    let moved = Duration::from_flicks(clip.speed.source(offset.flicks()))?;
+    if clip.reverse {
+        Ok(clip.src_start.saturating_sub(moved).max(Time::ZERO))
+    } else {
+        clip.src_start.checked_add(moved)
+    }
 }
 
 #[cfg(test)]
@@ -193,19 +206,35 @@ mod tests {
     }
 
     #[test]
-    fn speed_and_reverse_are_rejected() {
+    fn speed_and_reverse_map_the_source_and_bad_speeds_are_rejected() {
         let rate = SampleRate::HZ_48_000;
-        let mut s = seg(1, 1, 0, S);
+        let mut s = seg(1, 1, 100 * S, 1000 * S);
+        s.src_start = Time::from_flicks(3000 * S).unwrap();
+        s.speed = (2, 1);
+        let buses = plan_buses(&[s.clone()], rate).unwrap();
+        let clip = &buses[0].clips[0];
+        assert_eq!(clip.src_end, Time::from_flicks(5000 * S).unwrap());
+        assert_eq!(
+            source_time_at(clip, rate, 150).unwrap(),
+            Time::from_flicks(3100 * S).unwrap()
+        );
         s.reverse = true;
+        let buses = plan_buses(&[s.clone()], rate).unwrap();
+        let clip = &buses[0].clips[0];
+        assert_eq!(clip.src_end, Time::from_flicks(1000 * S).unwrap());
+        assert_eq!(
+            source_time_at(clip, rate, 150).unwrap(),
+            Time::from_flicks(2900 * S).unwrap()
+        );
+        s.speed = (3, 3);
+        assert!(plan_buses(&[s.clone()], rate).is_ok());
+        s.speed = (1, 20);
         assert!(matches!(
-            plan_buses(&[s], rate),
+            plan_buses(&[s.clone()], rate),
             Err(MixError::Unsupported { .. })
         ));
-        let mut s = seg(1, 1, 0, S);
-        s.speed = (2, 1);
-        assert!(plan_buses(&[s.clone()], rate).is_err());
-        s.speed = (3, 3);
-        assert!(plan_buses(&[s], rate).is_ok());
+        s.speed = (2, 0);
+        assert!(plan_buses(&[s], rate).is_err());
     }
 
     #[test]

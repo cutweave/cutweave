@@ -12,7 +12,9 @@
 //!   supported. Layers are ordered bottom first.
 //! * Audio: audio tracks only (a clip's sound lives on its own audio track; linked video clips
 //!   are silent), not muted, honouring solo; enabled clips whose media has sound.
-//! * Source time is [`Speed::map`] of the time since the clip start (identity speed in v1).
+//! * Source time is the model's one mapping, [`SourceMap::at`] of the time since the clip start
+//!   (`cutweave_model::source_time`, WP-2D.01): speed, reverse and freeze frames. Freeze frames
+//!   are silent.
 //! * Visual properties (transform, opacity, crop, flip; keyframes §6 and §7) are evaluated by
 //!   the keyframe core at the item-relative time `t − start` (so speed and slips never move
 //!   them) and clamped to each property's evaluation range ([`PropId`]'s registry: opacity and
@@ -30,15 +32,13 @@
 
 use cutweave_model::{
     Animatable, Clip, Color, Duration, FrameRate, Item, MediaAsset, MediaKind, Project, PropId,
-    Sequence, SequenceId, StreamKind, Time, Track, TrackId, TrackKind, Vec2, VisualProps,
+    Sequence, SequenceId, SourceMap, StreamKind, Time, Track, TrackId, TrackKind, Vec2,
+    VisualProps,
 };
 
-use crate::{
-    scene::{
-        AudioActivation, AudioSegment, Crop, Flip, FrameRequest, Layer, LayerTransform,
-        SceneDescription,
-    },
-    speed::Speed,
+use crate::scene::{
+    AudioActivation, AudioSegment, Crop, Flip, FrameRequest, Layer, LayerTransform,
+    SceneDescription,
 };
 
 /// Why a sequence could not be evaluated.
@@ -325,6 +325,16 @@ fn first_stream(media: &MediaAsset, kind: StreamKind) -> Option<&cutweave_model:
     media.probe.streams.iter().find(|s| s.kind == kind)
 }
 
+/// The media time `clip` shows and plays `offset` into it (the model's mapping, WP-2D.01).
+fn source_at(clip: &Clip, offset: Duration) -> Option<Time> {
+    Time::from_flicks(SourceMap::of(clip).at(offset.flicks())?).ok()
+}
+
+/// The clip's speed for the mixer: `(num, den)`.
+fn speed_of(clip: &Clip) -> (u32, u32) {
+    (clip.speed.num(), clip.speed.den())
+}
+
 /// Time since the clip start, as a duration and as an item-relative time for animatables.
 fn offset_in(clip: &Clip, t: Time) -> Option<(Duration, Time)> {
     let offset = t.duration_since(clip.start).ok()?;
@@ -348,7 +358,7 @@ fn layer_at(media: Option<&MediaAsset>, track: TrackId, clip: &Clip, t: Time) ->
     let source_time = if still {
         Time::ZERO
     } else {
-        Speed::NORMAL.map(clip.source_in, clip.duration, offset)?
+        source_at(clip, offset)?
     };
     let stream = first_stream(media, StreamKind::Video);
     let visual = &clip.visual;
@@ -435,21 +445,20 @@ fn activation_on(
     t: Time,
 ) -> Option<AudioActivation> {
     let media = media?;
-    if !media.has_audio() || media.kind == MediaKind::SequenceRef {
+    if !media.has_audio() || media.kind == MediaKind::SequenceRef || clip.freeze.is_some() {
         return None;
     }
     let (offset, rel) = offset_in(clip, t)?;
-    let speed = Speed::NORMAL;
     Some(AudioActivation {
         item: clip.id,
         track,
         media: clip.media,
         stream: first_stream(media, StreamKind::Audio).map(|s| s.index),
-        source_time: speed.map(clip.source_in, clip.duration, offset)?,
+        source_time: source_at(clip, offset)?,
         clip_gain_db: finite(*clip.audio.gain.value_at(rel), 0.0),
         track_gain_db: finite(gain, 0.0),
-        reverse: speed.reverse,
-        speed: (speed.num, speed.den),
+        reverse: clip.reverse,
+        speed: speed_of(clip),
     })
 }
 
@@ -462,7 +471,7 @@ fn segment_in(
     end: Time,
 ) -> Option<AudioSegment> {
     let media = media_of(project, clip)?;
-    if !media.has_audio() || media.kind == MediaKind::SequenceRef {
+    if !media.has_audio() || media.kind == MediaKind::SequenceRef || clip.freeze.is_some() {
         return None;
     }
     let clip_end = clip.start.checked_add(clip.duration).ok()?;
@@ -471,7 +480,6 @@ fn segment_in(
     if dst_end <= dst_start {
         return None;
     }
-    let speed = Speed::NORMAL;
     let (offset, rel) = offset_in(clip, dst_start)?;
     Some(AudioSegment {
         item: clip.id,
@@ -480,7 +488,7 @@ fn segment_in(
         stream: first_stream(media, StreamKind::Audio).map(|s| s.index),
         dst_start,
         dst_duration: dst_end.duration_since(dst_start).ok()?,
-        src_start: speed.map(clip.source_in, clip.duration, offset)?,
+        src_start: source_at(clip, offset)?,
         clip_gain_db: finite(*clip.audio.gain.value_at(rel), 0.0),
         clip_start: clip.start,
         clip_duration: clip.duration,
@@ -489,8 +497,8 @@ fn segment_in(
         fade_in: clip.audio.fade_in,
         fade_out: clip.audio.fade_out,
         track_gain_db: finite(track.gain, 0.0),
-        reverse: speed.reverse,
-        speed: (speed.num, speed.den),
+        reverse: clip.reverse,
+        speed: speed_of(clip),
         sample_rate: sequence.format.sample_rate,
     })
 }

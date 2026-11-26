@@ -38,7 +38,6 @@ mod query_tests;
 pub mod reference;
 mod scene;
 pub mod sheet;
-mod speed;
 pub mod testcard;
 #[cfg(test)]
 mod testkit;
@@ -69,4 +68,3 @@ pub use scene::{
     AudioActivation, AudioSegment, BlendMode, Crop, EffectRef, Flip, FrameRequest, Layer,
     LayerTransform, SceneDescription,
 };
-pub use speed::Speed;

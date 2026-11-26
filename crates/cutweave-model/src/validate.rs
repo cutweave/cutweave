@@ -109,7 +109,8 @@ pub enum Invariant {
         /// What is wrong.
         reason: String,
     },
-    /// A clip that reads past the end of its media (`source_in + duration > media duration`).
+    /// A clip that reads past the end of its media (`source_in + duration × speed > media
+    /// duration`, or a freeze frame at or past the end).
     #[error(
         "item `{item}` reads media `{media}` up to {source_end} but the media lasts {media_duration}"
     )]
@@ -118,7 +119,7 @@ pub enum Invariant {
         item: ItemId,
         /// The media.
         media: MediaId,
-        /// `source_in + duration`.
+        /// `source_in + duration × speed` (a freeze frame's position).
         source_end: Time,
         /// The media duration.
         media_duration: Duration,
@@ -599,6 +600,12 @@ impl Project {
                 reason: "source_in must not be negative".into(),
             });
         }
+        if clip.freeze.is_some_and(|f| f.at_source < Time::ZERO) {
+            out.push(Invariant::InvalidTiming {
+                item: clip.id,
+                reason: "a freeze frame's at_source must not be negative".into(),
+            });
+        }
         match self.media.get(&clip.media) {
             None => out.push(Invariant::DanglingReference {
                 path: format!("{path}/media"),
@@ -618,13 +625,25 @@ impl Project {
                 if let Some(media_duration) = media.probe.duration
                     && media.kind != MediaKind::Image
                 {
-                    let end =
-                        i128::from(clip.source_in.flicks()) + i128::from(clip.duration.flicks());
-                    if end > i128::from(media_duration.flicks()) {
+                    // INV-4 with speed (INV-47): the played range `[source_in, source_in +
+                    // round(duration × speed))`; a freeze frame reads one position before the end.
+                    let total = i128::from(media_duration.flicks());
+                    let (end, past) = if let Some(f) = clip.freeze {
+                        let at = i128::from(f.at_source.flicks());
+                        (at, at >= total)
+                    } else {
+                        let end = i128::from(clip.source_in.flicks())
+                            + i128::from(clip.speed.source(clip.duration.flicks()));
+                        (end, end > total)
+                    };
+                    if past {
                         out.push(Invariant::SourceOutOfBounds {
                             item: clip.id,
                             media: clip.media,
-                            source_end: clip.source_in.saturating_add(clip.duration),
+                            source_end: Time::from_flicks(
+                                i64::try_from(end).unwrap_or(Time::MAX.flicks()),
+                            )
+                            .unwrap_or(Time::MAX),
                             media_duration,
                         });
                     }

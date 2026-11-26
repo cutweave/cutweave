@@ -20,6 +20,11 @@
 //!   never its start (INV-211, INV-212); a trim changes lengths by exactly the delta (INV-202)
 //!   (`check_linked_edit`).
 //!
+//! WP-2D.01 extends it with `clip.set_speed`, `clip.reverse`, `clip.reset_speed` and
+//! `clip.freeze_frame` (their rules: `check_linked_edit`), so the trims, splits and ripples run on
+//! clips at every speed, reversed and frozen, and the undo identity and the gapless main track
+//! hold with them.
+//!
 //! `PROPTEST_CASES` sets the number of sequences (default 500; the nightly run uses 10,000).
 
 #![allow(
@@ -43,7 +48,8 @@ use proptest::{
 };
 use serde_json::{Value, json};
 
-/// The trim family, plus splits and moves so the timelines they edit keep changing.
+/// The trim family, plus splits and moves so the timelines they edit keep changing, and (WP-2D.01)
+/// speed changes, reverse and freeze frames, so trims run on clips at every speed.
 const NAMES: &[&str] = &[
     "clip.trim",
     "clip.ripple_trim",
@@ -52,6 +58,18 @@ const NAMES: &[&str] = &[
     "clip.slide",
     "clip.split",
     "item.move",
+    "clip.set_speed",
+    "clip.reverse",
+    "clip.reset_speed",
+    "clip.freeze_frame",
+];
+
+/// The speed commands (WP-2D.01).
+const SPEED: &[&str] = &[
+    "clip.set_speed",
+    "clip.reverse",
+    "clip.reset_speed",
+    "clip.freeze_frame",
 ];
 
 /// The trim family (counted for the "they really edit" check).
@@ -259,10 +277,10 @@ fn check_grid_and_durations(doc: &Project) -> Result<(), String> {
     Ok(())
 }
 
-/// Runs one sequence; how many trim-family commands succeeded.
-fn run_case(s: &Start, seeds: &[u64]) -> usize {
+/// Runs one sequence; how many trim-family and speed commands succeeded.
+fn run_case(s: &Start, seeds: &[u64]) -> (usize, usize) {
     let mut h = start(s);
-    let mut ok = 0;
+    let (mut ok, mut sped) = (0, 0);
     for (n, seed) in seeds.iter().enumerate() {
         let before = h.doc();
         let (name, params) = generate(&h, &before, *seed);
@@ -276,13 +294,16 @@ fn run_case(s: &Start, seeds: &[u64]) -> usize {
                 if FAMILY.contains(&name.as_str()) {
                     ok += 1;
                 }
+                if SPEED.contains(&name.as_str()) {
+                    sped += 1;
+                }
                 check_linked_edit(&name, &params, &out, &before, &after)
                     .unwrap_or_else(|e| panic!("{what}: {e}\noutput {out}"));
             }
             Err(_) => assert_eq!(before, after, "{what}: failed but changed the document"),
         }
     }
-    ok
+    (ok, sped)
 }
 
 #[test]
@@ -299,8 +320,11 @@ fn random_trims_keep_every_invariant() {
     let mut runner =
         TestRunner::new_with_rng(config, TestRng::deterministic_rng(RngAlgorithm::ChaCha));
     let applied = std::cell::Cell::new(0_usize);
+    let sped = std::cell::Cell::new(0_usize);
     let result = runner.run(&(arb_start(), vec(any::<u64>(), 1..=10)), |(s, seeds)| {
-        applied.set(applied.get() + run_case(&s, &seeds));
+        let (trims, speeds) = run_case(&s, &seeds);
+        applied.set(applied.get() + trims);
+        sped.set(sped.get() + speeds);
         Ok(())
     });
     if let Err(e) = result {
@@ -311,5 +335,10 @@ fn random_trims_keep_every_invariant() {
         applied.get() >= cases as usize,
         "only {} trim-family commands succeeded in {cases} sequences",
         applied.get()
+    );
+    assert!(
+        sped.get() >= cases as usize / 2,
+        "only {} speed commands succeeded in {cases} sequences",
+        sped.get()
     );
 }

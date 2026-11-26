@@ -35,6 +35,7 @@ mod project;
 mod proptests;
 mod rate;
 mod sequence;
+mod speed;
 #[cfg(any(test, feature = "testing"))]
 pub mod testing;
 mod time;
@@ -79,6 +80,9 @@ pub use project::{ItemRef, Project, ProjectMeta, ProjectSettings};
 pub use rate::{FrameRate, Rounding, SampleRate};
 pub use sequence::{
     Color, ColorError, ColorSpace, Sequence, SequenceFormat, Track, TrackItems, TrackKind,
+};
+pub use speed::{
+    Freeze, MAX_SPEED_TERM, SourceMap, Speed, SpeedError, fit as fit_source_in, source_time,
 };
 pub use time::{
     ABSOLUTE_TIME_PATTERN, Duration, FLICKS_PER_SECOND, MAX_SAFE_FLICKS, Time, TimeError,

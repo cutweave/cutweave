@@ -28,8 +28,9 @@
 //! - **slide**: the clip and its partners move; the clip just before it (touching it) and its
 //!   partners get a longer or shorter end, the clip just after it a later or earlier start.
 //!
-//! Source positions follow a start edge by `round(δ × speed)` (INV-47; [`Speed`], always 1 until
-//! WP-2D.01 adds speed to the model); a still keeps its source position. Attached children of a
+//! Source positions follow a start edge by `round(δ × speed)` (INV-47; [`Speed`], WP-2D.01); a
+//! reversed clip's source *end* follows its start edge and its `source_in` its end edge; a still
+//! or a freeze frame keeps its source position. Attached children of a
 //! trimmed clip keep their start unless it falls outside the clip (then they are clamped into
 //! it); children of a slid clip move with it (INV-36). Item markers keep their item-relative times.
 //!
@@ -46,7 +47,7 @@ use std::collections::BTreeSet;
 use cutweave_commands::{CmdError, Command, QueryCtx, Tx, command, wire};
 use cutweave_model::{
     Clip, FLICKS_PER_SECOND, FrameRate, Item, ItemId, MediaAsset, Project, SampleRate, Sequence,
-    SequenceId, Time, TimeInput, Track, TrackId, TrackKind,
+    SequenceId, SourceMap, Time, TimeInput, Track, TrackId, TrackKind,
 };
 
 use super::{clip_of, is_still, media_bound, media_of};
@@ -62,70 +63,26 @@ use crate::{
 // ----- speed and clip spans (INV-47) ---------------------------------------------------------
 
 /// A clip's playback speed as an exact ratio (timeline spec INV-47): a timeline span `d` plays
-/// `d × speed` of its media. The model has no speed yet (WP-2D.01), so every clip plays at
-/// [`Speed::ONE`]; the trim math already takes it into account.
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub struct Speed {
-    num: i64,
-    den: i64,
-}
-
-impl Speed {
-    /// Normal speed.
-    pub const ONE: Speed = Speed { num: 1, den: 1 };
-
-    /// `num / den`, both positive.
-    #[must_use]
-    pub fn new(num: i64, den: i64) -> Option<Speed> {
-        (num > 0 && den > 0).then_some(Speed { num, den })
-    }
-
-    /// The media span a timeline span `d` plays: `d × speed` rounded half away from zero, so
-    /// `source(-d) == -source(d)` and trimming by `δ` then by `−δ` restores a source position.
-    #[must_use]
-    pub fn source(self, d: i64) -> i64 {
-        let n = i128::from(d) * i128::from(self.num);
-        let den = i128::from(self.den);
-        let (q, r) = (n / den, n % den);
-        let rounded = if 2 * r.abs() >= den {
-            q + n.signum()
-        } else {
-            q
-        };
-        saturate(rounded)
-    }
-
-    /// The longest timeline span (at least 0) whose media span fits in `room` flicks:
-    /// `source(len) <= room`.
-    #[must_use]
-    pub fn longest_within(self, room: i64) -> i64 {
-        // source(len) <= room  <=>  len × num < (room + 1/2) × den  (half away from zero)
-        //                     <=>  2·len·num < (2·room + 1)·den
-        let limit = (2 * i128::from(room) + 1) * i128::from(self.den);
-        let step = 2 * i128::from(self.num);
-        saturate(((limit + step - 1).div_euclid(step) - 1).max(0))
-    }
-}
-
-fn saturate(v: i128) -> i64 {
-    i64::try_from(v).unwrap_or(if v < 0 { i64::MIN } else { i64::MAX })
-}
+/// `d × speed` of its media (`cutweave_model::Speed`, WP-2D.01).
+pub use cutweave_model::Speed;
 
 /// One clip as the trim math sees it: timeline start and length, the media position of its
-/// first frame, its speed and how far its media goes.
+/// first frame, its speed and direction, and how far its media goes.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub struct ClipSpan {
     /// Timeline start (flicks).
     pub start: i64,
     /// Timeline length (flicks).
     pub len: i64,
-    /// Media position of the first frame (flicks).
+    /// Media position of the start of the played range (flicks).
     pub source_in: i64,
     /// Playback speed.
     pub speed: Speed,
+    /// Played backwards: the start edge moves the source end, the end edge `source_in`.
+    pub reverse: bool,
     /// Length of the media when it bounds the clip (not a still, known length).
     pub media_len: Option<i64>,
-    /// A still: its source position never moves and nothing bounds it.
+    /// A still or a freeze frame: its source position never moves and nothing bounds it.
     pub still: bool,
 }
 
@@ -137,11 +94,21 @@ impl ClipSpan {
             start: clip.start.flicks(),
             len: clip.duration.flicks(),
             source_in: clip.source_in.flicks(),
-            // WP-2D.01: read the clip's speed here (and the start edge of a reversed clip moves
-            // its source end).
-            speed: Speed::ONE,
+            speed: clip.speed,
+            reverse: clip.reverse,
             media_len: media_bound(media),
-            still: is_still(media),
+            still: is_still(media) || clip.freeze.is_some(),
+        }
+    }
+
+    /// The source mapping of the span (`cutweave_model::SourceMap`).
+    fn map(&self) -> SourceMap {
+        SourceMap {
+            source_in: self.source_in,
+            len: self.len,
+            speed: self.speed,
+            reverse: self.reverse,
+            freeze: None,
         }
     }
 
@@ -157,32 +124,41 @@ impl ClipSpan {
         self.source_in.saturating_add(self.speed.source(self.len))
     }
 
-    /// The start edge moved by `d` (positive: later): the length changes by `−d` and the source
-    /// position by `source(d)` (a still's stays). `keep_start`: the clip's start stays where it
-    /// is (a ripple trim cuts or extends the head and pulls the rest along).
+    /// The start edge moved by `d` (positive: later): the length changes by `−d`; the source
+    /// end stays, so `source_in` moves by `round(len × s) − round((len − d) × s)`, which is
+    /// `round(d × s)` without rounding (reversed: `source_in` stays and the source end moves; a
+    /// still's stays). `keep_start`: the clip's start stays where it is (a ripple trim cuts or
+    /// extends the head and pulls the rest along).
     #[must_use]
     pub fn head(self, d: i64, keep_start: bool) -> ClipSpan {
+        let len = self.len.saturating_sub(d);
         ClipSpan {
             start: if keep_start {
                 self.start
             } else {
                 self.start.saturating_add(d)
             },
-            len: self.len.saturating_sub(d),
+            len,
             source_in: if self.still {
                 self.source_in
             } else {
-                self.source_in.saturating_add(self.speed.source(d))
+                self.map().part(d, len, self.media_len)
             },
             ..self
         }
     }
 
-    /// The end edge moved by `d`.
+    /// The end edge moved by `d` (reversed: `source_in` moves so the source end stays).
     #[must_use]
     pub fn tail(self, d: i64) -> ClipSpan {
+        let len = self.len.saturating_add(d);
         ClipSpan {
-            len: self.len.saturating_add(d),
+            len,
+            source_in: if self.still {
+                self.source_in
+            } else {
+                self.map().part(0, len, self.media_len)
+            },
             ..self
         }
     }
@@ -200,23 +176,49 @@ impl ClipSpan {
         }
     }
 
-    /// The lowest start-edge delta the media allows (the source position stays at or after 0),
-    /// or `None` for a still.
+    /// The longest the clip may grow from the edge whose media position it keeps: back to the
+    /// media start from its source end, or on to the media end from its `source_in` (`None` for
+    /// media of unknown length).
+    fn longest_from_end(&self) -> i64 {
+        self.speed.longest_within(self.source_out())
+    }
+
+    fn longest_from_start(&self) -> Option<i64> {
+        Some(
+            self.speed
+                .longest_within(self.media_len?.saturating_sub(self.source_in)),
+        )
+    }
+
+    /// The lowest start-edge delta the media allows (forwards the source position stays at or
+    /// after 0; reversed the source end stays inside the media), or `None` when nothing bounds
+    /// it (a still, or a reversed clip of media of unknown length).
     #[must_use]
     pub fn head_min(&self) -> Option<i64> {
-        (!self.still).then(|| -self.speed.longest_within(self.source_in))
+        if self.still {
+            return None;
+        }
+        let longest = if self.reverse {
+            self.longest_from_start()?
+        } else {
+            self.longest_from_end()
+        };
+        Some(self.len.saturating_sub(longest))
     }
 
     /// The highest end-edge delta the media allows (the source stays inside the media), or
     /// `None` when nothing bounds it.
     #[must_use]
     pub fn tail_max(&self) -> Option<i64> {
-        let total = self.media_len?;
-        Some(
-            self.speed
-                .longest_within(total.saturating_sub(self.source_in))
-                .saturating_sub(self.len),
-        )
+        if self.still {
+            return None;
+        }
+        let longest = if self.reverse {
+            self.longest_from_end()
+        } else {
+            self.longest_from_start()?
+        };
+        Some(longest.saturating_sub(self.len))
     }
 
     /// The slip deltas the media allows, `(lowest, highest)`; `None` for a still or media of
@@ -1338,7 +1340,7 @@ mod tests {
         assert_eq!(s.source(2), 3);
         assert_eq!(Speed::ONE.source(-7), -7);
         assert_eq!(Speed::new(1, 3).unwrap().source(1), 0);
-        assert!(Speed::new(0, 1).is_none());
+        assert!(Speed::new(0, 1).is_err());
     }
 
     #[test]
@@ -1360,6 +1362,7 @@ mod tests {
             len: 30,
             source_in: 210,
             speed: Speed::ONE,
+            reverse: false,
             media_len: Some(250),
             still: false,
         };
@@ -1374,6 +1377,31 @@ mod tests {
         assert_eq!((still.head_min(), still.tail_max()), (None, None));
         assert_eq!(still.slip_range(), None);
         assert_eq!(still.head(5, false).source_in, 210);
+        // Reversed: the start edge reaches the media end, the end edge the media start.
+        let rev = ClipSpan { reverse: true, ..s };
+        assert_eq!(rev.head_min(), Some(-10));
+        assert_eq!(rev.tail_max(), Some(210));
+        assert_eq!(rev.slip_range(), Some((-210, 10)));
+        assert_eq!(
+            rev.head(-10, false).source_in,
+            210,
+            "the head extends the source end"
+        );
+        assert_eq!(rev.head(-10, false).source_out(), 250);
+        assert_eq!(
+            rev.tail(210).source_in,
+            0,
+            "the tail extends the source start"
+        );
+        assert_eq!(rev.tail(210).source_out(), 240);
+        let unbounded = ClipSpan {
+            media_len: None,
+            ..rev
+        };
+        assert_eq!(
+            (unbounded.head_min(), unbounded.tail_max()),
+            (None, Some(210))
+        );
     }
 
     #[test]
@@ -1419,6 +1447,7 @@ mod tests {
             len: 2 * SEC,
             source_in: 3 * SEC,
             speed,
+            reverse: false,
             media_len: Some(10 * SEC),
             still: false,
         };
@@ -1472,6 +1501,82 @@ mod tests {
                 "trim {n}: {s:?}"
             );
             assert!(s.len >= frame, "trim {n}");
+            let back = if start_edge {
+                s.head(-d, false)
+            } else {
+                s.tail(-d)
+            };
+            assert_eq!(back, before, "trim {n}: trimming back restores the span");
+        }
+    }
+
+    /// WP-2D.01: on a reversed clip at 3/2 (rounding on most deltas) start-edge trims move the
+    /// source end and keep `source_in`, end-edge trims the other way round; 1,000 random trims
+    /// stay inside the media and undo exactly.
+    #[test]
+    fn reversed_trims_move_the_mirrored_edge_and_undo_exactly() {
+        let frame = SEC / 30;
+        let mut s = ClipSpan {
+            start: 0,
+            len: 2 * SEC,
+            source_in: 3 * SEC,
+            speed: Speed::new(3, 2).unwrap(),
+            reverse: true,
+            media_len: Some(10 * SEC),
+            still: false,
+        };
+        let grid = Grid {
+            rate: FrameRate::FPS_30,
+            samples: None,
+            unit: frame,
+        };
+        let mut rng = 0x2D01_u64;
+        let mut next = move || {
+            rng ^= rng << 13;
+            rng ^= rng >> 7;
+            rng ^= rng << 17;
+            rng
+        };
+        for n in 0..1000 {
+            let start_edge = next() % 2 == 0;
+            // Deltas off the frame grid too (fine edits), so the 3/2 rounding shows.
+            let d0 = i64::try_from(next() % 61).unwrap() - 30;
+            let jitter = i64::try_from(next() % 7).unwrap();
+            let mut limits = Limits::new();
+            let m = Member {
+                track: TrackId::from_u128(1),
+                id: ItemId::from_u128(1),
+                span: s,
+            };
+            if start_edge {
+                head_limits(&mut limits, &m, &grid);
+            } else {
+                tail_limits(&mut limits, &m, &grid);
+            }
+            let wanted = d0 * frame + jitter;
+            let d = wanted.clamp(limits.lo, limits.hi);
+            let before = s;
+            s = if start_edge {
+                s.head(d, false)
+            } else {
+                s.tail(d)
+            };
+            if start_edge {
+                assert_eq!(
+                    s.source_in, before.source_in,
+                    "trim {n}: the head keeps source_in"
+                );
+            } else {
+                assert_eq!(
+                    s.source_out(),
+                    before.source_out(),
+                    "trim {n}: the tail keeps the end"
+                );
+            }
+            assert!(
+                s.source_in >= 0 && s.source_out() <= 10 * SEC,
+                "trim {n}: {s:?}"
+            );
             let back = if start_edge {
                 s.head(-d, false)
             } else {
