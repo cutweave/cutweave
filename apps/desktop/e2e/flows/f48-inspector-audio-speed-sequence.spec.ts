@@ -26,6 +26,7 @@ import {
   timecode,
   timelineCanvas,
   timelineGeometry,
+  toast,
   workspace,
   xAt,
 } from "./helpers.ts";
@@ -130,7 +131,7 @@ test.describe("F48 inspector: sound, speed and sequence", () => {
       // Text the engine does not accept is refused with its own message; nothing changes.
       await speed.fill("500x");
       await speed.press("Enter");
-      await expect(page.getByText("Change not applied")).toBeVisible(BOUND);
+      await expect(toast(page, "Change not applied")).toBeVisible(BOUND);
       expect((await item(page, v1.id)).source?.speed).toEqual({ num: 1, den: 1 });
 
       // Reverse, then Reset speed.
