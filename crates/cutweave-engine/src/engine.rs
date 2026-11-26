@@ -1127,6 +1127,7 @@ impl std::fmt::Debug for Engine {
 impl Engine {
     /// Starts the core (see the module docs). Errors carry their launch-protocol exit code
     /// ([`StartError::exit_code`]); anything started before the failure is stopped again.
+    #[allow(clippy::too_many_lines)]
     pub fn start(mut config: EngineConfig) -> Result<Engine, StartError> {
         let mut phases = crate::startup::Phases::new();
         Engine::check(&config)?;
