@@ -13,7 +13,9 @@
 // FAKE_ENGINE_EXIT=<code> prints the protocol's error line and exits with it after the
 // handshake; FAKE_ENGINE_RECOVERY=1 makes a `--project` start report unsaved work to recover;
 // FAKE_ENGINE_SCHEMA_HASH=<h> reports another schema hash (the editor must refuse to edit).
-// Export (WP-1M.08): `media.capabilities` (FAKE_ENGINE_ENCODERS=h264_nvenc,h264_amf, default one),
+// Export (WP-1M.08, WP-2G.04): `export.list_presets` (three presets), `export.list_encoders`
+// (FAKE_ENGINE_ENCODERS=h264_nvenc,h264_amf, default one; also `media.capabilities`),
+// `export.resolve_preset`, `export.describe_options`, `export.queue`, `export.enqueue`,
 // `export.start` (a path with "fail" fails at 30%, one with "restart" drops to 0 once as a failed
 // hardware encoder restarts in software; an existing file needs `overwrite`), `job.cancel`; the
 // job ramps up over about 2 s with `job.progress` events and writes a small file on success.
@@ -274,6 +276,53 @@ interface FakeJob {
 const jobs = new Map<string, FakeJob>();
 let jobCounter = 0;
 
+/** The presets the fake lists (WP-2G.04): the general one, a 16:9 and a 9:16 platform preset. */
+const fakePreset = (
+  id: string,
+  name: string,
+  size: { kind: "fit" | "fixed"; width: number; height: number },
+  rate: { mode: "crf"; crf: number } | { mode: "vbr"; bitrate_kbps: number },
+  platform: { id: string; name: string } | null,
+) => ({
+  schema_version: 1,
+  id,
+  name,
+  summary: `${size.width} x ${size.height}`,
+  container: "mp4",
+  video: { codec: "h264", rate_control: rate, hw_preferred: true },
+  audio: { codec: "aac", bitrate_kbps: 192, sample_rate: 48000, channels: 2 },
+  size,
+  fps: { kind: "follow_sequence" },
+  limits: {},
+  platform:
+    platform === null
+      ? null
+      : { ...platform, spec_url: "https://example.invalid/spec", checked: "2026-11-24" },
+});
+const FAKE_PRESETS = [
+  fakePreset(
+    "youtube-1080p",
+    "YouTube 1080p",
+    { kind: "fixed", width: 1920, height: 1080 },
+    { mode: "vbr", bitrate_kbps: 8000 },
+    { id: "youtube", name: "YouTube" },
+  ),
+  fakePreset(
+    "tiktok",
+    "TikTok",
+    { kind: "fixed", width: 1080, height: 1920 },
+    { mode: "vbr", bitrate_kbps: 6000 },
+    { id: "tiktok", name: "TikTok" },
+  ),
+  fakePreset(
+    "h264-mp4-1080p",
+    "H.264 MP4 1080p",
+    { kind: "fit", width: 1920, height: 1080 },
+    { mode: "crf", crf: 20 },
+    null,
+  ),
+];
+
 const jobInfo = (job: FakeJob) => ({
   id: job.id,
   kind: "export",
@@ -439,6 +488,85 @@ function handle(client: Client, text: string): void {
         codecs: [],
       });
       return;
+    // The export dialog's reads (WP-2G.04): three presets, the encoders, a preset resolved
+    // for the 1920x1080 fake sequence, and the H.264 encoder options.
+    case "export.list_presets":
+      ok({
+        presets: FAKE_PRESETS.map((preset) => ({ source: "builtin", supported: true, preset })),
+        problems: [],
+      });
+      return;
+    case "export.list_encoders":
+      ok({
+        codecs: [
+          {
+            codec: "h264",
+            available: true,
+            software: "libx264",
+            hardware: (process.env.FAKE_ENGINE_ENCODERS ?? "h264_nvenc")
+              .split(",")
+              .filter((n) => n !== "")
+              .map((implementation) => ({ implementation, device: "fake" })),
+            containers: ["mp4", "mov"],
+            bit_depths: [8],
+            profiles: ["baseline", "main", "high"],
+          },
+        ],
+      });
+      return;
+    case "export.resolve_preset": {
+      const preset = FAKE_PRESETS.find((p) => p.id === params?.preset) ?? FAKE_PRESETS[0];
+      const portrait = preset?.size.kind === "fixed" && preset.size.height > preset.size.width;
+      const custom = (params?.overrides ?? {}) as { width?: number; height?: number };
+      ok({
+        preset: preset?.id,
+        sequence: "seq_1",
+        width: custom.width ?? (portrait ? 608 : 1920),
+        height: custom.height ?? 1080,
+        frame_rate: { num: 30, den: 1 },
+        estimated_kib: preset?.video.rate_control.mode === "vbr" ? 2048 : null,
+        supported: true,
+        unsupported_reason: null,
+        warnings: portrait ? [{ code: "AspectMismatch", message: "fits with bars" }] : [],
+      });
+      return;
+    }
+    case "export.describe_options":
+      ok({
+        codec: "h264",
+        encoder: "libx264",
+        hardware: false,
+        schema: {
+          type: "object",
+          properties: {
+            video: {
+              type: "object",
+              properties: { preset: { enum: ["ultrafast", "medium", "veryslow"] } },
+            },
+          },
+        },
+      });
+      return;
+    case "export.queue":
+      ok({
+        paused: false,
+        parallel: 1,
+        jobs: [...jobs.values()].map((job) => ({
+          ...jobInfo(job),
+          path: job.path,
+          sequence: "seq_1",
+          in: 0,
+          out: 2 * 705_600_000,
+          width: 1920,
+          height: 1080,
+          frame_rate: { num: 30, den: 1 },
+          frames: 60,
+          duration: 2 * 705_600_000,
+          rev: 0,
+        })),
+      });
+      return;
+    case "export.enqueue":
     case "export.start": {
       const file = typeof params?.path === "string" ? params.path : "";
       const refuse = (code: string, message: string, at?: string) => {
@@ -453,12 +581,18 @@ function handle(client: Client, text: string): void {
         refuse("invalid", "the output must be an .mp4 file", "/path");
         return;
       }
-      if (existsSync(file) && params?.overwrite !== true) {
-        refuse("invalid", `${file} already exists; pass overwrite to replace it`, "/overwrite");
+      const replace = params?.overwrite === true || params?.collision === "overwrite";
+      if (existsSync(file) && !replace) {
+        const explicit = params?.collision !== undefined;
+        refuse(
+          "invalid",
+          `${file} already exists; pass overwrite to replace it`,
+          explicit ? "/path" : "/overwrite",
+        );
         return;
       }
       const job = startFakeJob(file);
-      ok({ job_id: job.id, path: file, frames: 60 });
+      ok({ job_id: job.id, path: file, frames: 60, warnings: [], estimated_kib: null, jobs: [] });
       broadcast("job.progress", jobInfo(job));
       return;
     }
